@@ -123,9 +123,11 @@ jobs:
             preset: linux-debug
             cc: gcc-14
             cxx: g++-14
-          - name: linux-clang-release
+          # Debug: the smoke tests run the editor, which loads only the
+          # template_debug library.
+          - name: linux-clang-debug
             os: ubuntu-24.04
-            preset: linux-release
+            preset: linux-debug
             cc: clang-18
             cxx: clang++-18
           - name: windows-msvc-release
@@ -160,7 +162,9 @@ jobs:
           curl -sSL -o godot.zip \
             "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_win64.exe.zip"
           unzip -q godot.zip -d godot
-          mv "godot/Godot_v${GODOT_VERSION}-stable_win64.exe" godot/godot4.7.exe
+          # Plain godot.exe: find_program reads "godot4.7" as a name with an
+          # extension and never tries godot4.7.exe.
+          mv "godot/Godot_v${GODOT_VERSION}-stable_win64.exe" godot/godot.exe
           echo "$PWD/godot" >> "$GITHUB_PATH"
 
       - name: MSVC on PATH for the Ninja generator

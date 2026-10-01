@@ -43,6 +43,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -2093,9 +2094,16 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
     }
     int cx = 0;
     int cy = 0;
-    if (!grid.empty() && std::sscanf(grid.c_str(), "%d,%d", &cx, &cy) != 2) {
-        std::fprintf(stderr, "error: --grid wants X,Y\n");
-        return 1;
+    if (!grid.empty()) {
+        const char* end = grid.data() + grid.size();
+        const auto x = std::from_chars(grid.data(), end, cx);
+        const auto y = x.ec == std::errc{} && x.ptr != end && *x.ptr == ','
+                           ? std::from_chars(x.ptr + 1, end, cy)
+                           : std::from_chars_result{x.ptr, std::errc::invalid_argument};
+        if (y.ec != std::errc{} || y.ptr != end) {
+            std::fprintf(stderr, "error: --grid wants X,Y\n");
+            return 1;
+        }
     }
     // Bit 0 of PNAM: land data comes from the parent.
     const std::uint32_t land_world =
