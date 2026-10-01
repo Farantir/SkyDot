@@ -53,9 +53,11 @@ func _pure_checks() -> void:
     expect(args == PackedStringArray(["convert", "--json", "--data", "/d", "-o", "/o"]),
         "minimal convert args: %s" % args)
     args = BethconvCli.convert_args({"data": "/d", "out": "/o", "mo2": "/m", "profile": "P 1",
-        "store": "loose", "prune": true, "max_texture": 1024, "filter": "meshes/", "limit": 50})
+        "store": "loose", "prune": true, "max_texture": 1024, "encode": "bc7", "filter": "meshes/",
+        "limit": 50})
     expect(args == PackedStringArray(["convert", "--json", "--data", "/d", "-o", "/o", "--mo2", "/m",
         "--profile", "P 1", "--store", "loose", "--prune", "--max-texture-size", "1024",
+        "--encode-uncompressed", "bc7",
         "--filter", "meshes/", "--limit", "50"]),
         "full convert args: %s" % args)
     expect(BethconvCli.parse_document("noise\n{\"a\": 1}\n") == {"a": 1.0}, "last JSON line is taken")

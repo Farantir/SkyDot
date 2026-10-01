@@ -119,7 +119,10 @@ std::string ConvertOptions::mesh_settings() const {
 std::string ConvertOptions::texture_settings() const {
     // The limit only when set, so full-size packs keep their asset names.
     return "texture/1;" + flag("mip_tail", fix_mip_tail) +
-           (max_texture_size != 0 ? ";max=" + std::to_string(max_texture_size) : std::string());
+           (max_texture_size != 0 ? ";max=" + std::to_string(max_texture_size) : std::string()) +
+           (texture_encoding != texture::Encoding::keep
+                ? ";encode=" + std::string(texture::to_string(texture_encoding))
+                : std::string());
 }
 
 std::string ConvertOptions::script_settings() const {
@@ -157,7 +160,9 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     manifest.input = options.input;
     if (options.convert_textures) {
         manifest.textures = TextureRecord{.max_size = options.max_texture_size,
-                                          .complete_mip_chains = options.fix_mip_tail};
+                                          .complete_mip_chains = options.fix_mip_tail,
+                                          .uncompressed = std::string(
+                                              texture::to_string(options.texture_encoding))};
     }
 
     const auto report = [&](const std::string& phase, std::uint64_t done, std::uint64_t total) {
@@ -318,6 +323,35 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                                   std::to_string(info->height) + ", over the " +
                                   std::to_string(options.max_texture_size) + " px limit (" +
                                   std::string(texture::to_string(limit.outcome)) + ")"});
+                }
+            }
+            texture::Encoded encoded;
+            if (options.texture_encoding != texture::Encoding::keep &&
+                !info->layout.block_compressed) {
+                // Normal maps by Skyrim's naming: tangent (_n) and model space (_msn).
+                const bool normal_map = vpath.ends_with("_n.dds") || vpath.ends_with("_msn.dds");
+                auto enc = texture::encode_uncompressed(payload, *info, options.texture_encoding,
+                                                        normal_map, vpath);
+                if (!enc) {
+                    writer->fail(failure_from(vpath, "texture", enc.error()));
+                    break;
+                }
+                encoded = std::move(*enc);
+                if (encoded.outcome == texture::EncodeOutcome::encoded) {
+                    auto compressed = texture::parse_dds(encoded.data, vpath);
+                    if (!compressed) {
+                        writer->fail(failure_from(vpath, "texture", compressed.error()));
+                        break;
+                    }
+                    result.texture_bytes_saved +=
+                        payload.size() > encoded.data.size() ? payload.size() - encoded.data.size() : 0;
+                    info = std::move(compressed);
+                    payload = encoded.data;
+                    ++result.textures_encoded;
+                } else if (encoded.outcome == texture::EncodeOutcome::unsupported) {
+                    ++result.textures_not_encoded;
+                    writer->warn(PackWarning{.vpath = vpath,
+                                             .detail = "left uncompressed: " + encoded.reason});
                 }
             }
             texture::TailFix fix;

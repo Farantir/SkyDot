@@ -7,3 +7,6 @@
 [submodule "engine/extern/flatbuffers"]
 	path = engine/extern/flatbuffers
 	url = https://github.com/google/flatbuffers
+[submodule "converter/extern/bc7enc_rdo"]
+	path = converter/extern/bc7enc_rdo
+	url = https://github.com/richgel999/bc7enc_rdo

@@ -130,7 +130,8 @@ Events, one per line, in this order:
  "forms": 1274726, "cells": 74028,
  "assets": {"written": ..., "deduped": ..., "distinct": ..., "meshes": ..., "textures": ...,
             "scripts": ..., "lod": ..., "bytes_written": ..., "store_bytes": ...},
- "textures": {"max_size": 0, "shrunk": 0, "kept_large": 0, "bytes_saved": 0},
+ "textures": {"max_size": 0, "shrunk": 0, "kept_large": 0, "uncompressed": "keep",
+              "encoded": 0, "not_encoded": 0, "bytes_saved": 0},
  "failed": 0, "warnings": 0, "orphaned_assets": 0, "pruned": false,
  "first_failures": [{"vpath": "...", "stage": "mesh", "detail": "..."}]}
 {"event": "error", "json_version": 1, "message": "...", "exit": 2}
@@ -141,8 +142,10 @@ Events, one per line, in this order:
   after; the game does not load them, so they are not mounted
   (`install/mount_plan.hpp`).
 - `textures`: with `--max-texture-size`, how many textures lost top mip
-  levels, how many stayed larger (no smaller level stored; each is a warning
-  in `report.json`) and the bytes saved.
+  levels and how many stayed larger (no smaller level stored; each is a
+  warning in `report.json`); with `--encode-uncompressed`, how many
+  uncompressed textures were block-compressed and how many were left so
+  (cubemaps, volumes; also warnings); `bytes_saved` counts both.
 - `exit` 1 in `done` means some files failed (they are in `report.json`); the
   pack is still written. Exit 2 is a refused output folder.
 

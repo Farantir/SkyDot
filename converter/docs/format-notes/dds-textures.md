@@ -175,3 +175,28 @@ Godot, the largest at 512. All 42 `textures/cubemaps/` at 32 px: 9 cut, 41 load
 through `SkydotPack.load_texture` as a `Cubemap`, one is a 2D texture, none
 failed.
 
+## Compressing uncompressed textures
+
+`convert --encode-uncompressed bc7|compact` (`texture/bc_encode.hpp`,
+bc7enc_rdo) block-compresses textures the game stores uncompressed, level by
+level, through their channel masks. `bc7` makes everything BC7 (DX10 header,
+format 98); `compact` uses BC1 for opaque textures that are not normal maps
+(`_n`, `_msn`) and BC7 for the rest. Cubemaps and volumes are left alone and
+reported. Already compressed textures are never re-encoded.
+
+Measured on vanilla SE, all of `textures/` (release build, 12 threads,
+2026-10-01):
+
+| | Time | Store | Encoded |
+| --- | ---: | ---: | ---: |
+| keep | 16 s | 15,304 MiB | |
+| compact | 29 s | 14,373 MiB | 2,780 (12 left: cubemaps, the volume) |
+| bc7 | 37 s | 14,476 MiB | 2,780 |
+
+The 10,047 uncompressed paths are 2,780 distinct files, mostly small terrain
+LOD tiles, so vanilla gains about 0.8 GiB; mods with uncompressed 2K and 4K
+textures gain far more. Quality against the uncompressed originals, 150 terrain
+paths decoded by Godot: BC7 mean 70.0 dB PSNR, worst 49.3 dB; compact (149 of
+them BC1) mean 69.4 dB, worst 42.5 dB. Every file loads in Godot as BPTC or
+DXT1.
+

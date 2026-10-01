@@ -15,6 +15,7 @@ as a reference, not depended on.
 | Dependency | Licence | Used for |
 | --- | --- | --- |
 | [nifly](https://github.com/ousnius/nifly) | GPL-3.0 | NIF parsing (no vcpkg port) |
+| [bc7enc_rdo](https://github.com/richgel999/bc7enc_rdo) `b943862` | MIT or public domain | BC7 and BC1 encoding of uncompressed textures, BC decoding for tests (no vcpkg port; only `bc7enc`, `rgbcx`, `bc7decomp` are built, not the Apache-2.0 `bc7e.ispc`) |
 
 ## vcpkg
 

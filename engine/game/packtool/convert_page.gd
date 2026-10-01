@@ -20,6 +20,13 @@ const TEXTURE_PRESETS := [
 	["Very low: at most 512 px", 512],
 ]
 
+## Uncompressed textures: label, `--encode-uncompressed` value.
+const ENCODINGS := [
+	["Keep them uncompressed", "keep"],
+	["Compress to BC7 (4x smaller, near lossless)", "bc7"],
+	["Compress compactly (BC1 when opaque: 8x smaller; else BC7)", "compact"],
+]
+
 ## Readable names for convert's phases (converter/docs/cli-json.md).
 const PHASES := {
 	"mount": "Reading archives and mod folders",
@@ -45,6 +52,7 @@ var _out_edit: LineEdit
 var _target_note: Label
 var _store_option: OptionButton
 var _texture_option: OptionButton
+var _encode_option: OptionButton
 var _prune_check: CheckBox
 var _advanced_check: CheckButton
 var _advanced_rows: Array[Control] = []
@@ -155,6 +163,12 @@ func setup(tool) -> void:
 		+ "re-encoding, each halving needs a quarter of the memory. Formats for GPUs "
 		+ "without BCn (ASTC) are not there yet (TOOLS-REQUIREMENTS.md, section 2).")
 	PackToolUi.row(conversion, "Texture profile", _texture_option)
+	_encode_option = OptionButton.new()
+	for e in ENCODINGS:
+		_encode_option.add_item(e[0])
+	_encode_option.tooltip_text = ("About a third of Special Edition's textures (mostly distant "
+		+ "terrain) are stored uncompressed. Already compressed textures are never re-encoded.")
+	PackToolUi.row(conversion, "Uncompressed textures", _encode_option)
 	_store_option = OptionButton.new()
 	_store_option.add_item("One blob file (recommended)")
 	_store_option.add_item("A file per asset (debugging; slow disks refuse it)")
@@ -236,6 +250,8 @@ func _restore() -> void:
 	_mode_option.select(s.get_value("form", "mode", MODE_DATA))
 	_store_option.select(s.get_value("form", "store", 0))
 	_texture_option.select(s.get_value("form", "texture_preset", 0))
+	# BC7 unless chosen otherwise: near lossless, 4x smaller (dds-textures.md).
+	_encode_option.select(s.get_value("form", "encode", 1))
 	# A folder the user chose is kept; a suggestion is made again.
 	if s.get_value("form", "out_manual", false):
 		_out_edit.text = s.get_value("form", "out", "")
@@ -255,6 +271,7 @@ func _save() -> void:
 	s.set_value("form", "mode", _mode_option.selected)
 	s.set_value("form", "store", _store_option.selected)
 	s.set_value("form", "texture_preset", _texture_option.selected)
+	s.set_value("form", "encode", _encode_option.selected)
 	s.set_value("form", "out", _out_edit.text)
 	s.set_value("form", "out_manual", _out_touched)
 	s.save(_tool.settings_path)
@@ -516,10 +533,13 @@ func _update_buttons() -> void:
 func load_input(path: String, input: Dictionary) -> void:
 	_out_edit.text = path
 	_out_touched = true
-	# Keep the pack's texture size; its assets were named with it.
+	# Keep the pack's texture settings; its assets were named with them.
 	for i in TEXTURE_PRESETS.size():
 		if TEXTURE_PRESETS[i][1] == int(input.get("max_texture", 0)):
 			_texture_option.select(i)
+	for i in ENCODINGS.size():
+		if ENCODINGS[i][1] == input.get("encode", "keep"):
+			_encode_option.select(i)
 	_data_edit.text = input.get("data", "")
 	if input.get("kind", "data") == "mo2":
 		_mode_option.select(MODE_MO2)
@@ -543,6 +563,7 @@ func form() -> Dictionary:
 		"store": "loose" if _store_option.selected == 1 else "blob",
 		"prune": _prune_check.button_pressed,
 		"max_texture": TEXTURE_PRESETS[maxi(_texture_option.selected, 0)][1],
+		"encode": ENCODINGS[maxi(_encode_option.selected, 0)][1],
 	}
 	if _mode_option.selected == MODE_MO2:
 		f["mo2"] = _mo2_edit.text
@@ -619,6 +640,9 @@ func _on_event(data: Dictionary) -> void:
 			_summary.add_theme_color_override("font_color",
 				PackToolUi.COLORS["ok" if data["failed"] == 0 else "warn"])
 			var t: Dictionary = data.get("textures", {})
+			if t.get("uncompressed", "keep") != "keep":
+				_append_log("%d uncompressed textures encoded (%s), %d left uncompressed" % [
+					t["encoded"], t["uncompressed"], t["not_encoded"]])
 			if int(t.get("max_size", 0)) > 0:
 				_append_log("%d textures limited to %d px (%s saved); %d kept larger, see report.json" % [
 					t["shrunk"], t["max_size"], BethconvCli.format_bytes(t["bytes_saved"]), t["kept_large"]])

@@ -71,7 +71,7 @@ newline):
 | `pack_format_version` | `5` |
 | `converter` | writer name and version |
 | `language` | language used to resolve strings |
-| `textures` | how textures were converted: `max_size` (largest side in pixels, 0 for full size; larger textures lost their top mip levels) and `complete_mip_chains`; absent when textures were not converted |
+| `textures` | how textures were converted: `max_size` (largest side in pixels, 0 for full size; larger textures lost their top mip levels), `complete_mip_chains`, and `uncompressed` (`keep`, `bc7` or `compact`: what happened to textures the game stores uncompressed; BC7 files carry a DX10 header, format 98); absent when textures were not converted |
 | `input` | optional: what the pack was converted from, so it can be converted again: `kind` (`data` or `mo2`), `edition`, `data` (the Data folder), `plugin_list`, and for `mo2` also `mo2_instance`, `mo2_profile`, `mods`. Local paths; nothing reads it but front ends |
 | `load_order` | plugin filenames in order |
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
@@ -282,7 +282,7 @@ Per kind, mentioning only settings that affect that kind:
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
 | mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/13` |
-| texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited | `texture/1` |
+| texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep` | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 

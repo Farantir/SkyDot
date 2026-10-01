@@ -1935,6 +1935,7 @@ struct ConvertArgs {
     bool keep_z_up = false;
     float unit_scale = 0.0142875f;
     std::uint32_t max_texture_size = 0;
+    bethconv::texture::Encoding encoding = bethconv::texture::Encoding::keep;
     bool hash_archives = false;
     bool prune = false;
     bethconv::pack::StoreLayout layout = bethconv::pack::StoreLayout::blob;
@@ -2113,6 +2114,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_lod = !args.no_lod;
     options.fix_mip_tail = !args.no_mip_fix;
     options.max_texture_size = args.max_texture_size;
+    options.texture_encoding = args.encoding;
     options.mesh_read.read_collision = !args.no_collision;
     options.mesh_read.read_skinning = !args.no_skinning;
     options.mesh_write.convert_to_y_up = !args.keep_z_up;
@@ -2214,6 +2216,13 @@ int cmd_convert(const ConvertArgs& args) {
     std::fprintf(text, "                %.1f MiB written, %.1f MiB not re-converted\n",
                  static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
                  static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
+    if (args.encoding != bethconv::texture::Encoding::keep) {
+        std::fprintf(text, "  textures      %llu uncompressed ones encoded (%s), %llu left "
+                     "uncompressed (listed in report.json)\n",
+                     static_cast<unsigned long long>(result->textures_encoded),
+                     std::string(bethconv::texture::to_string(args.encoding)).c_str(),
+                     static_cast<unsigned long long>(result->textures_not_encoded));
+    }
     if (args.max_texture_size != 0) {
         std::fprintf(text, "  textures      %llu limited to %u px (%.1f MiB saved), %llu kept larger "
                      "(no smaller level stored; listed in report.json)\n",
@@ -2278,6 +2287,9 @@ int cmd_convert(const ConvertArgs& args) {
             {"textures", ordered_json{{"max_size", args.max_texture_size},
                                       {"shrunk", result->textures_shrunk},
                                       {"kept_large", result->textures_kept_large},
+                                      {"uncompressed", bethconv::texture::to_string(args.encoding)},
+                                      {"encoded", result->textures_encoded},
+                                      {"not_encoded", result->textures_not_encoded},
                                       {"bytes_saved", result->texture_bytes_saved}}},
             {"failed", stats.failed},
             {"warnings", stats.warnings},
@@ -2930,6 +2942,7 @@ int main(int argc, char** argv) {
     bool convert_quiet = false;
     bool convert_json = false;
     std::uint32_t convert_max_texture = 0;
+    std::string convert_encode = "keep";
     std::filesystem::path convert_mo2;
     std::string convert_profile;
     auto* convert = app.add_subcommand("convert", "Convert an install into a pack");
@@ -2982,6 +2995,10 @@ int main(int argc, char** argv) {
                         "Largest texture side in pixels; larger textures lose their top mip "
                         "levels (0: full size)")
         ->check(CLI::NonNegativeNumber);
+    convert->add_option("--encode-uncompressed", convert_encode,
+                        "Uncompressed textures: keep, bc7 (4x smaller), or compact (BC1, 8x "
+                        "smaller, when opaque and not a normal map; else BC7)")
+        ->check(CLI::IsMember({"keep", "bc7", "compact"}));
     convert->add_flag("--json", convert_json,
                       "Progress and result as JSON lines on stdout; text goes to stderr");
 
@@ -3244,6 +3261,11 @@ int main(int argc, char** argv) {
                                        .keep_z_up = convert_keep_z_up,
                                        .unit_scale = convert_unit_scale,
                                        .max_texture_size = convert_max_texture,
+                                       .encoding = convert_encode == "bc7"
+                                                       ? bethconv::texture::Encoding::bc7
+                                                   : convert_encode == "compact"
+                                                       ? bethconv::texture::Encoding::compact
+                                                       : bethconv::texture::Encoding::keep,
                                        .hash_archives = convert_hash_archives,
                                        .prune = convert_prune,
                                        .layout = *bethconv::pack::layout_from_string(convert_store),

@@ -74,6 +74,7 @@ func setup(tool) -> void:
 		var manifest: Dictionary = info.get("manifest", {})
 		var input: Dictionary = manifest.get("input", {}).duplicate()
 		input["max_texture"] = int(manifest.get("textures", {}).get("max_size", 0))
+		input["encode"] = manifest.get("textures", {}).get("uncompressed", "keep")
 		_tool.edit_pack(_selected, input)))
 	_actions.add_child(PackToolUi.button("Open folder", func() -> void:
 		OS.shell_open(_selected)))

@@ -66,6 +66,10 @@ struct PixelLayout {
     std::uint32_t dxgi_format{};    ///< Zero unless the file carries DX10.
     std::uint32_t unit_bytes{};     ///< Bytes per block, or per pixel.
     std::uint32_t rgb_bit_count{};  ///< Uncompressed only.
+    /// Uncompressed only: DDS_PIXELFORMAT's R, G, B, A bit masks and dwFlags
+    /// (DDPF_ALPHAPIXELS 0x1 says whether the A mask is used).
+    std::uint32_t masks[4]{};
+    std::uint32_t pf_flags{};
     bool block_compressed{};
     std::string name;               ///< "DXT1", "BC7", "RGBA32"; for reports.
 };

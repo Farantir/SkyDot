@@ -61,6 +61,7 @@ add_library(bethconv_core STATIC
     texture/dds.cpp
     texture/mip_tail.cpp
     texture/mip_drop.cpp
+    texture/bc_encode.cpp
     pack/snapshot_writer.cpp
     pack/snapshot_reader.cpp
     pack/content_hash.cpp
@@ -86,7 +87,7 @@ target_include_directories(bethconv_core
 
 target_link_libraries(bethconv_core
     PRIVATE bethconv::warnings ZLIB::ZLIB lz4::lz4 bsa::bsa nifly fastgltf::fastgltf nlohmann_json::nlohmann_json
-            flatbuffers::flatbuffers BLAKE3::blake3
+            flatbuffers::flatbuffers BLAKE3::blake3 bc7enc
     PUBLIC bethconv::sanitizers)
 
 # install/game_install.cpp reads Steam's and the games' registry keys.

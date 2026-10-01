@@ -222,8 +222,13 @@ io::ParseResult<DdsInfo> parse_dds(std::span<const std::byte> bytes, std::string
     if (!rgb_bits) {
         return std::unexpected(std::move(rgb_bits).error());
     }
-    if (auto masks = reader.skip(16); !masks) { // R/G/B/A bit masks
-        return std::unexpected(std::move(masks).error());
+    std::uint32_t masks[4]{}; // R/G/B/A bit masks
+    for (auto& mask : masks) {
+        auto value = reader.get<std::uint32_t>();
+        if (!value) {
+            return std::unexpected(std::move(value).error());
+        }
+        mask = *value;
     }
 
     if (auto caps = reader.get<std::uint32_t>(); !caps) { // dwCaps
@@ -297,6 +302,10 @@ io::ParseResult<DdsInfo> parse_dds(std::span<const std::byte> bytes, std::string
         }
         info.layout.unit_bytes = *rgb_bits / 8;
         info.layout.rgb_bit_count = *rgb_bits;
+        for (std::size_t c = 0; c < 4; ++c) {
+            info.layout.masks[c] = masks[c];
+        }
+        info.layout.pf_flags = *pf_flags;
         info.layout.block_compressed = false;
         info.layout.name = uncompressed_name(*pf_flags, *rgb_bits);
     } else {

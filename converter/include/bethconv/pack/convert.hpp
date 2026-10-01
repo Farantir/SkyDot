@@ -26,6 +26,7 @@
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
+#include "bethconv/texture/bc_encode.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -73,6 +74,10 @@ struct ConvertOptions {
     /// Part of the texture fingerprint when set.
     std::uint32_t max_texture_size = 0;
 
+    /// Block-compress uncompressed textures (texture/bc_encode.hpp). Part of
+    /// the texture fingerprint unless `keep`.
+    texture::Encoding texture_encoding = texture::Encoding::keep;
+
     /// Substring filter on the virtual path; empty means everything.
     std::string filter;
 
@@ -118,6 +123,8 @@ struct ConvertResult {
     std::uint64_t textures_shrunk{};     ///< Lost top levels to max_texture_size.
     std::uint64_t textures_kept_large{}; ///< Over the limit with no smaller level.
     std::uint64_t texture_bytes_saved{};
+    std::uint64_t textures_encoded{};    ///< Uncompressed ones block-compressed.
+    std::uint64_t textures_not_encoded{}; ///< Uncompressed but left so (cubemaps, ...).
 
     /// The first few failures, for the terminal; `report.json` has all.
     std::vector<PackFailure> first_failures;

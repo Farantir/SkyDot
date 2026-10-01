@@ -245,7 +245,8 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     }
     if (manifest.textures) {
         doc["textures"] = ordered_json{{"max_size", manifest.textures->max_size},
-                                       {"complete_mip_chains", manifest.textures->complete_mip_chains}};
+                                       {"complete_mip_chains", manifest.textures->complete_mip_chains},
+                                       {"uncompressed", manifest.textures->uncompressed}};
     }
 
     auto order = ordered_json::array();

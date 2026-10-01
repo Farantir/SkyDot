@@ -112,6 +112,7 @@ struct InputRecord {
 struct TextureRecord {
     std::uint32_t max_size{};   ///< 0: full size.
     bool complete_mip_chains{};
+    std::string uncompressed{"keep"}; ///< texture::to_string(Encoding).
 };
 
 struct PackManifest {

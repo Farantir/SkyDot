@@ -181,7 +181,8 @@ func shutdown() -> void:
 
 ## Arguments for `convert --json` from the pack tool's form. Keys: data, out,
 ## and optionally list, mo2, profile, store ("blob"/"loose"), prune,
-## max_texture (pixels, 0 for full size), filter, limit, allow_slow.
+## max_texture (pixels, 0 for full size), encode ("keep", "bc7", "compact"),
+## filter, limit, allow_slow.
 static func convert_args(form: Dictionary) -> PackedStringArray:
 	var args := PackedStringArray(["convert", "--json", "--data", form["data"], "-o", form["out"]])
 	if not str(form.get("mo2", "")).is_empty():
@@ -196,6 +197,8 @@ static func convert_args(form: Dictionary) -> PackedStringArray:
 		args.append("--prune")
 	if int(form.get("max_texture", 0)) > 0:
 		args.append_array(["--max-texture-size", str(int(form["max_texture"]))])
+	if form.get("encode", "keep") != "keep":
+		args.append_array(["--encode-uncompressed", form["encode"]])
 	if not str(form.get("filter", "")).is_empty():
 		args.append_array(["--filter", form["filter"]])
 	if int(form.get("limit", 0)) > 0:

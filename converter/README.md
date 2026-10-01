@@ -35,7 +35,9 @@ tested against real installs:
   vanilla NIFs convert and open in Godot and Blender.
 - **Textures:** DDS passthrough, with short mip chains completed for Godot. All
   50,413 vanilla textures parse. `--max-texture-size N` makes larger textures
-  smaller by dropping their top mip levels, without re-encoding. See
+  smaller by dropping their top mip levels, without re-encoding;
+  `--encode-uncompressed bc7|compact` block-compresses the textures the game
+  stores uncompressed (bc7enc_rdo); compressed ones are never re-encoded. See
   `docs/format-notes/dds-textures.md`.
 - **Scripts:** compiled Papyrus decoded completely (objects, states,
   functions, bytecode, line numbers) and stored as FlatBuffers; VMAD script

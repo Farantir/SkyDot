@@ -31,3 +31,24 @@ endif()
 get_target_property(_nifly_inc nifly INTERFACE_INCLUDE_DIRECTORIES)
 set_target_properties(nifly PROPERTIES
     INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${_nifly_inc}")
+
+# bc7enc_rdo: BC7 (bc7enc), BC1-BC5 (rgbcx) and BC7 decoding (bc7decomp) for
+# texture/bc_encode.cpp. No CMake library upstream (its CMakeLists builds the
+# command line tool), so the three sources we use are listed here. MIT or
+# public domain; the Apache-2.0 bc7e.ispc, ispc.exe and lodepng are not built.
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bc7enc_rdo/bc7enc.cpp")
+    message(FATAL_ERROR
+        "bethconv: extern/bc7enc_rdo is empty. Run 'git submodule update --init --recursive'.")
+endif()
+add_library(bc7enc STATIC
+    bc7enc_rdo/bc7enc.cpp
+    bc7enc_rdo/rgbcx.cpp
+    bc7enc_rdo/bc7decomp.cpp)
+target_include_directories(bc7enc SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/bc7enc_rdo")
+set_target_properties(bc7enc PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(_san_c)
+    target_compile_options(bc7enc PRIVATE ${_san_c})
+endif()
+if(_san_l)
+    target_link_options(bc7enc PUBLIC ${_san_l})
+endif()
