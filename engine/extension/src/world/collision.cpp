@@ -128,7 +128,7 @@ std::pair<Vector3, real_t> thinnest_axis(const godot::PackedVector3Array& points
     double a[3][3] = {};
     for (const Vector3& p : points) {
         const Vector3 d = p - mean;
-        const double v[3] = {d.x, d.y, d.z};
+        const double v[3] = {static_cast<double>(d.x), static_cast<double>(d.y), static_cast<double>(d.z)};
         for (int i = 0; i < 3; ++i) {
             for (int j = 0; j < 3; ++j) {
                 a[i][j] += v[i] * v[j];

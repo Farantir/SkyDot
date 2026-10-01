@@ -169,7 +169,7 @@ void SkydotPlayer::_physics_process(double delta) {
         return;
     }
     if (fly_) {
-        const Vector3 dir = (look_basis().xform(Vector3(r(move_.x), 0, r(-move_.y))) +
+        const Vector3 dir = (look_basis().xform(Vector3(move_.x, 0, -move_.y)) +
                              Vector3(0, r(vertical_), 0))
                                 .limit_length(1);
         const double speed = fly_speed_ * (gait_ == SPRINT ? 4.0 : gait_ == WALK ? 0.25 : 1.0);
@@ -201,7 +201,7 @@ void SkydotPlayer::_physics_process(double delta) {
 
 void SkydotPlayer::walk(double delta) {
     const Basis yaw(Vector3(0, 1, 0), r(yaw_));
-    const Vector3 wish = yaw.xform(Vector3(r(move_.x), 0, r(-move_.y)));
+    const Vector3 wish = yaw.xform(Vector3(move_.x, 0, -move_.y));
     const double speed = gait_ == WALK ? walk_speed_ : gait_ == SPRINT ? sprint_speed_ : run_speed_;
     const bool on_floor = is_on_floor();
 
@@ -229,7 +229,7 @@ void SkydotPlayer::walk(double delta) {
 }
 
 void SkydotPlayer::swim(double delta) {
-    Vector3 target = (look_basis().xform(Vector3(r(move_.x), 0, r(-move_.y))) +
+    Vector3 target = (look_basis().xform(Vector3(move_.x, 0, -move_.y)) +
                       Vector3(0, r(vertical_), 0))
                          .limit_length(1) *
                      r(swim_speed_);
