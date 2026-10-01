@@ -42,6 +42,9 @@
 # running quests with their stage and shown objectives.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
+# N shows the navmeshes (green, water triangles included) of the built cells;
+# G asks the navigation map for a path from the feet to the navmesh point the
+# camera looks at and draws it (--navigation off builds no navmeshes).
 # --at X,Y,Z --target X,Y,Z (Skyrim game units, as `bethconv cell` prints)
 # places the camera. With --screenshot, renders four views from the cell's centre
 # (out_0.png .. out_3.png, one per 90 degrees of yaw; one view with --at) and
@@ -93,6 +96,10 @@ var _note_lines: Array = []  # [text, seconds left]
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
+var _show_navmesh := false  # N toggles the navmesh overlay
+var _path_line: MeshInstance3D  # G draws a path here
+var _navmesh_fill: StandardMaterial3D
+var _navmesh_lines: StandardMaterial3D
 
 
 func _ready() -> void:
@@ -149,6 +156,7 @@ func _ready() -> void:
 	world.skyrim_materials = args.get("materials", "on") != "off"
 	world.effects = args.get("effects", "on") != "off"
 	world.collision = args.get("collision", "on") != "off"
+	world.navigation = args.get("navigation", "on") != "off"
 	_radius = int(args.get("radius", "2"))
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
@@ -275,6 +283,8 @@ func _leave() -> void:
 	_building.clear()
 	_world_id = 0
 	_lod = null  # freed with _place
+	if _path_line != null:
+		_path_line.mesh = null
 	_world.call_deferred("trim_cache")
 
 
@@ -293,6 +303,7 @@ func _enter_interior(cell_id: int, at, target) -> void:
 	_add_to_place(root)
 	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
 	_scripts_loaded(root, cell_id)
+	_navmesh_overlay(root)
 	_add_environment(cell)
 	_camera.far = 500.0
 	var spawn = _interior_spawn(cell_id) if at == null and not _player.fly else null
@@ -648,6 +659,7 @@ func _finish_cell(key: Vector2i, cell: Node3D) -> void:
 	cell.visible = true
 	print("cell ", key, ": ", cell.get_meta("skydot_stats"))
 	_scripts_loaded(cell, _world.get_exterior_cell(_world_id, key.x, key.y))
+	_navmesh_overlay(cell)
 	if _lod != null:
 		_lod.set_cell_loaded(key.x, key.y, true)
 	_loaded[key] = cell
@@ -829,11 +841,101 @@ func _unhandled_input(event: InputEvent) -> void:
 		_print_journal()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_player.jump()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
+		_show_navmesh = not _show_navmesh
+		_navmesh_overlay(self)
+		_note("navmesh shown" if _show_navmesh else "navmesh hidden")
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_G:
+		_path_to_view()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_player.fly = not _player.fly
 		if not _player.fly:
 			_last_ground = _player.global_position
 		_note("flying" if _player.fly else "walking")
+
+
+## Show or hide the navmeshes under `root` as a translucent overlay, built
+## once per region.
+func _navmesh_overlay(root: Node) -> void:
+	for region in root.find_children("*", "NavigationRegion3D", true, false):
+		var overlay: Node3D = region.get_node_or_null("Overlay")
+		if overlay != null:
+			overlay.visible = _show_navmesh
+		elif _show_navmesh:
+			region.add_child(_navmesh_mesh(region.navigation_mesh))
+
+
+func _navmesh_mesh(nav: NavigationMesh) -> MeshInstance3D:
+	if _navmesh_fill == null:
+		_navmesh_fill = StandardMaterial3D.new()
+		_navmesh_fill.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		_navmesh_fill.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		_navmesh_fill.cull_mode = BaseMaterial3D.CULL_DISABLED
+		_navmesh_fill.albedo_color = Color(0.1, 0.9, 0.3, 0.3)
+		_navmesh_lines = _navmesh_fill.duplicate()
+		_navmesh_lines.albedo_color = Color(0.2, 1.0, 0.4, 0.9)
+	var lift := Vector3(0, 0.03, 0)  # above the ground it lies on
+	var vertices := nav.get_vertices()
+	var faces := PackedVector3Array()
+	var edges := PackedVector3Array()
+	for i in nav.get_polygon_count():
+		var polygon := nav.get_polygon(i)
+		for k in polygon.size():
+			faces.append(vertices[polygon[k]] + lift)
+			edges.append(vertices[polygon[k]] + lift)
+			edges.append(vertices[polygon[(k + 1) % polygon.size()]] + lift)
+	var mesh := ArrayMesh.new()
+	for part in [[faces, Mesh.PRIMITIVE_TRIANGLES, _navmesh_fill], [edges, Mesh.PRIMITIVE_LINES, _navmesh_lines]]:
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = part[0]
+		mesh.add_surface_from_arrays(part[1], arrays)
+		mesh.surface_set_material(mesh.get_surface_count() - 1, part[2])
+	var instance := MeshInstance3D.new()
+	instance.name = "Overlay"
+	instance.mesh = mesh
+	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return instance
+
+
+## A path from the feet to the navmesh point closest to the view ray (G).
+func _path_to_view() -> void:
+	var map := get_world_3d().navigation_map
+	var eye := _camera.global_position
+	var end := eye - _camera.global_transform.basis.z * 300.0
+	# Aim with physics where there is collision; the navigation map's own
+	# segment test returns the origin when the segment misses.
+	var hit := get_world_3d().direct_space_state.intersect_ray(
+		PhysicsRayQueryParameters3D.create(eye, end, 0xFFFFFFFF, [_player.get_rid()]))
+	var target := NavigationServer3D.map_get_closest_point(map, hit["position"]) if not hit.is_empty() \
+		else NavigationServer3D.map_get_closest_point_to_segment(map, eye, end, false)
+	var path := NavigationServer3D.map_get_path(map, _player.global_position, target, true)
+	if _path_line == null:
+		_path_line = MeshInstance3D.new()
+		_path_line.name = "Path"
+		_path_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var material := StandardMaterial3D.new()
+		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		material.albedo_color = Color(1.0, 0.8, 0.1)
+		material.no_depth_test = true
+		_path_line.material_override = material
+		add_child(_path_line)
+	var line := ImmediateMesh.new()
+	if path.size() >= 2:
+		line.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
+		for point in path:
+			line.surface_add_vertex(point + Vector3(0, 0.1, 0))
+		line.surface_end()
+	_path_line.mesh = line
+	if path.size() < 2:
+		_note("no path")
+		return
+	var length := 0.0
+	for k in range(1, path.size()):
+		length += path[k - 1].distance_to(path[k])
+	var short := path[path.size() - 1].distance_to(target)
+	_note("path: %d points, %.1f m%s" % [path.size(), length,
+		"" if short < 0.5 else ", ends %.1f m short" % short])
 
 
 func _quest_name(quest: int) -> String:

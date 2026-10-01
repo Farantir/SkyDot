@@ -19,6 +19,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -285,12 +286,60 @@ struct Landscape {
 /// NAVM: one cell's navmesh. 20,057 in SE (102 MiB), 19,986 compressed.
 struct NavMesh {
     /// NVNM: vertices, triangles, edge links, cover and door portals in a
-    /// variable-length layout (6,801 distinct sizes in vanilla). Kept raw.
+    /// variable-length layout (6,801 distinct sizes in vanilla). Kept raw;
+    /// `decode_nav_mesh_geometry` reads it.
     std::vector<std::byte> geometry;
 
     std::vector<std::byte> onam; ///< ONAM, on 463 records.
     std::vector<std::byte> pnam; ///< PNAM
     std::vector<std::byte> nnam; ///< NNAM
+};
+
+/// NVNM decoded. Version 12 is the only one in LE, SE and VR; every vanilla
+/// NAVM decodes with no bytes left over. Layout from xEdit's TES5 definitions.
+struct NavMeshGeometry {
+    static constexpr std::uint32_t k_version = 12;
+
+    /// Triangle flag bits. Bits 0-2: edge k (v0-v1, v1-v2, v2-v0) is an edge
+    /// link rather than a neighbour.
+    static constexpr std::uint16_t k_edge_link_mask = 0x0007;
+    static constexpr std::uint16_t k_preferred = 0x0040;
+    static constexpr std::uint16_t k_water = 0x0200;
+    static constexpr std::uint16_t k_door = 0x0400;
+
+    struct Triangle {
+        std::array<std::uint16_t, 3> vertices{};
+        /// Per edge: the neighbouring triangle, -1 for none, or an index into
+        /// `edge_links` if the edge's flag bit is set.
+        std::array<std::int16_t, 3> edges{};
+        std::uint16_t flags{};
+        std::uint16_t cover{};
+    };
+    /// An edge leading into another navmesh. Type 0 is a portal (another
+    /// cell's navmesh, edges side by side); 1 and 2 come in equal numbers
+    /// and join edges far apart (ledges).
+    struct EdgeLink {
+        std::uint32_t type{};
+        FormId navmesh;
+        std::int16_t triangle{};
+    };
+    /// A triangle in front of a door.
+    struct DoorTriangle {
+        std::int16_t triangle{};
+        std::uint32_t type{}; ///< A hash of the door type; meaning unknown.
+        FormId door;          ///< The door's REFR.
+    };
+
+    FormId world; ///< Null for an interior navmesh.
+    FormId cell;  ///< Interiors only.
+    std::int16_t grid_x{};
+    std::int16_t grid_y{};
+    std::vector<Vec3> vertices;
+    std::vector<Triangle> triangles;
+    std::vector<EdgeLink> edge_links;
+    std::vector<DoorTriangle> doors;
+    std::vector<std::uint16_t> cover_triangles;
+    // The search grid at the end is checked but not kept.
 };
 
 /// NAVI: the navigation index linking all NAVMs, one per worldspace plugin.
@@ -373,6 +422,9 @@ struct ActorReference {
                                                          const FormContext& ctx);
 [[nodiscard]] io::ParseResult<NavMesh> parse_nav_mesh(io::SpanReader& data,
                                                       const FormContext& ctx);
+/// Decode NAVM's NVNM. Indices are checked against the counts.
+[[nodiscard]] io::ParseResult<NavMeshGeometry> decode_nav_mesh_geometry(
+    std::span<const std::byte> nvnm);
 [[nodiscard]] io::ParseResult<NavigationIndex> parse_navigation_index(io::SpanReader& data,
                                                                       const FormContext& ctx);
 /// ACHR also needs the header, as REFR does.

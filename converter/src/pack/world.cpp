@@ -202,8 +202,9 @@ public:
             on_global(merged, data, form_ctx);
         } else if (merged.type == FourCC{"ACHR"}) {
             on_actor(merged, ctx, data, form_ctx);
-        } else if (merged.type != FourCC{"NAVM"} &&
-                   merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
+        } else if (merged.type == FourCC{"NAVM"}) {
+            on_navmesh(merged, data, form_ctx);
+        } else if (merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
             on_other(merged, data);
         }
     }
@@ -236,6 +237,9 @@ public:
     [[nodiscard]] std::map<std::uint32_t, WorldQuest>& quests() noexcept { return quests_; }
     [[nodiscard]] std::map<std::uint32_t, WorldGlobal>& globals() noexcept { return globals_; }
     [[nodiscard]] std::vector<WorldActor>& actors() noexcept { return actors_; }
+    [[nodiscard]] std::unordered_map<std::uint32_t, std::vector<WorldNavMesh>>& navmeshes() noexcept {
+        return navmeshes_;
+    }
 
 private:
     /// A FormID from inside the winning record's payload, made global. 0 (and
@@ -541,6 +545,46 @@ private:
             ++stats_.unresolved;
         }
         actors_.push_back(out);
+    }
+
+    /// NAVM's parent is its CELL. Edge link and door FormIDs are made global.
+    void on_navmesh(const record::MergedRecord& merged, io::SpanReader& data,
+                    const record::FormContext& form_ctx) {
+        auto navm = record::parse_nav_mesh(data, form_ctx);
+        if (!navm) {
+            ++stats_.parse_errors;
+            return;
+        }
+        auto geometry = record::decode_nav_mesh_geometry(navm->geometry);
+        if (!geometry) {
+            ++stats_.parse_errors;
+            return;
+        }
+        if (merged.parent.is_null()) {
+            ++stats_.orphan_navmeshes;
+            return;
+        }
+        bool failed = false;
+        WorldNavMesh out;
+        out.id = merged.form.value;
+        out.vertices = std::move(geometry->vertices);
+        out.triangles.reserve(geometry->triangles.size());
+        for (const auto& t : geometry->triangles) {
+            out.triangles.push_back({.vertices = t.vertices, .edges = t.edges, .flags = t.flags,
+                                     .cover = t.cover});
+        }
+        for (const auto& l : geometry->edge_links) {
+            out.links.push_back({.type = l.type,
+                                 .navmesh = global(merged, l.navmesh, failed),
+                                 .triangle = l.triangle});
+        }
+        for (const auto& d : geometry->doors) {
+            out.doors.push_back({.triangle = d.triangle, .door = global(merged, d.door, failed)});
+        }
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        navmeshes_[merged.parent.value].push_back(std::move(out));
     }
 
     /// Any other type: keep it as a base if it has a model or scripts. ARMO's
@@ -857,6 +901,7 @@ private:
     std::map<std::uint32_t, WorldQuest> quests_;
     std::map<std::uint32_t, WorldGlobal> globals_;
     std::vector<WorldActor> actors_;
+    std::unordered_map<std::uint32_t, std::vector<WorldNavMesh>> navmeshes_;
 };
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>> write_scripts(
@@ -1014,6 +1059,40 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         const auto parents_off = builder.CreateVectorOfStructs(fb_parents);
         const auto primitives_off = builder.CreateVectorOfStructs(fb_primitives);
 
+        std::vector<flatbuffers::Offset<wfb::NavMesh>> fb_navmeshes;
+        if (const auto n = sink.navmeshes().find(id); n != sink.navmeshes().end()) {
+            std::ranges::sort(n->second, {}, &WorldNavMesh::id);
+            for (const auto& nav : n->second) {
+                std::vector<wfb::Vec3f> vertices;
+                vertices.reserve(nav.vertices.size());
+                for (const auto& v : nav.vertices) {
+                    vertices.push_back(to_fb(v));
+                }
+                std::vector<wfb::NavTriangle> triangles;
+                triangles.reserve(nav.triangles.size());
+                for (const auto& t : nav.triangles) {
+                    triangles.emplace_back(t.vertices[0], t.vertices[1], t.vertices[2],
+                                           t.edges[0], t.edges[1], t.edges[2], t.flags, t.cover);
+                }
+                std::vector<wfb::NavLink> nav_links;
+                for (const auto& l : nav.links) {
+                    nav_links.emplace_back(l.type, l.navmesh, l.triangle);
+                }
+                std::vector<wfb::NavDoor> nav_doors;
+                for (const auto& d : nav.doors) {
+                    nav_doors.emplace_back(d.triangle, d.door);
+                }
+                const auto v_off = builder.CreateVectorOfStructs(vertices);
+                const auto t_off = builder.CreateVectorOfStructs(triangles);
+                const auto l_off = builder.CreateVectorOfStructs(nav_links);
+                const auto d_off = builder.CreateVectorOfStructs(nav_doors);
+                fb_navmeshes.push_back(wfb::CreateNavMesh(builder, nav.id, v_off, t_off, l_off, d_off));
+                ++stats.navmeshes;
+                stats.nav_triangles += nav.triangles.size();
+            }
+        }
+        const auto navmeshes_off = builder.CreateVector(fb_navmeshes);
+
         const auto editor_id = builder.CreateString(cell.editor_id);
         const auto refs_off = builder.CreateVectorOfStructs(fb_refs);
         const auto doors_off = builder.CreateVectorOfStructs(fb_doors);
@@ -1076,6 +1155,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         cb.add_links(links_off);
         cb.add_activate_parents(parents_off);
         cb.add_primitives(primitives_off);
+        cb.add_navmeshes(navmeshes_off);
         cells.push_back(cb.Finish());
 
         ++stats.cells;
@@ -1087,6 +1167,11 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     for (const auto& [parent, refs] : sink.refs()) {
         if (!sink.cells().contains(parent)) {
             stats.orphan_refs += refs.size();
+        }
+    }
+    for (const auto& [parent, navmeshes] : sink.navmeshes()) {
+        if (!sink.cells().contains(parent)) {
+            stats.orphan_navmeshes += navmeshes.size();
         }
     }
 
@@ -1472,6 +1557,37 @@ WorldCell to_cell(const wfb::Cell& c) {
         for (const auto* p : *primitives) {
             out.primitives.push_back(WorldPrimitive{
                 .ref = p->ref(), .bounds = from_fb(p->bounds()), .type = p->type()});
+        }
+    }
+    if (const auto* navmeshes = c.navmeshes()) {
+        for (const auto* n : *navmeshes) {
+            WorldNavMesh nav;
+            nav.id = n->id();
+            if (const auto* v = n->vertices()) {
+                for (const auto* p : *v) {
+                    nav.vertices.push_back(from_fb(*p));
+                }
+            }
+            if (const auto* t = n->triangles()) {
+                for (const auto* p : *t) {
+                    nav.triangles.push_back({.vertices = {p->v0(), p->v1(), p->v2()},
+                                             .edges = {p->e0(), p->e1(), p->e2()},
+                                             .flags = p->flags(),
+                                             .cover = p->cover()});
+                }
+            }
+            if (const auto* l = n->links()) {
+                for (const auto* p : *l) {
+                    nav.links.push_back(
+                        {.type = p->type(), .navmesh = p->navmesh(), .triangle = p->triangle()});
+                }
+            }
+            if (const auto* d = n->doors()) {
+                for (const auto* p : *d) {
+                    nav.doors.push_back({.triangle = p->triangle(), .door = p->door()});
+                }
+            }
+            out.navmeshes.push_back(std::move(nav));
         }
     }
     if (const auto* t = c.terrain()) {

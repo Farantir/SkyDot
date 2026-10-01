@@ -44,6 +44,9 @@ The engine shows interior cells and streams exterior ones. What exists:
   [`docs/effects.md`](docs/effects.md)): controllers and sequences (flames,
   glows, UV scrolling, doors, waterwheels), particle systems, flickering
   lights.
+- **Navigation** (see [`docs/navigation.md`](docs/navigation.md)): every
+  cell's navmeshes become navigation regions, joined across cell borders, so
+  Godot's navigation map paths over Skyrim's own navmeshes.
 - **Activation**: `pick_ref` finds the usable reference along a ray (doors,
   activators, containers, furniture, flora, items, anything scripted);
   `get_ref_info` gives its lock, load door, linked refs, activate parents and
@@ -115,7 +118,9 @@ water); V toggles flying through everything (Q/E down/up, Shift faster).
 entered at its door from outside. See `docs/physics.md`. F activates what the camera looks at (within 2.6 m); Shift+F
 or `--pick-locks on` ignores locks. F5 saves the scripts' state and the place,
 F9 loads it. J shows the journal; quest stages and objectives show at the top
-left. P shows the camera's position and facing in the game's terms, and
+left. N shows the navmeshes, G draws a path from the feet to where the
+camera looks (`--navigation off` builds none; see `docs/navigation.md`).
+P shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting.
@@ -195,6 +200,7 @@ extension/src/            the GDExtension, C++20
   world/world.*           SkydotWorld
 game/                     the Godot project (.gdextension, project.godot, glue)
   viewer/                 cell viewer
+  tools/                  headless checks against a real pack
 tests/smoke/              headless editor runs, registered with ctest
 tools/ci/                 repository checks
 docs/godot-notes.md       observations about the editor and bindings

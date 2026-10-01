@@ -29,7 +29,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 4;
+inline constexpr std::uint32_t k_world_format_version = 5;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -62,6 +62,10 @@ struct WorldStats {
     std::uint64_t quest_fragments{};
     std::uint64_t globals{};
     std::uint64_t actors{};
+    std::uint64_t navmeshes{};
+    std::uint64_t nav_triangles{};
+    /// Navmeshes whose parent is not a cell; not included.
+    std::uint64_t orphan_navmeshes{};
     /// References whose base or other FormIDs could not be resolved; the
     /// reference is kept with the unresolved field set to 0.
     std::uint64_t unresolved{};
@@ -167,6 +171,30 @@ struct WorldTerrain {
     [[nodiscard]] std::vector<float> heights() const;
 };
 
+/// See world.fbs `NavMesh`.
+struct WorldNavMesh {
+    struct Triangle {
+        std::array<std::uint16_t, 3> vertices{};
+        std::array<std::int16_t, 3> edges{};
+        std::uint16_t flags{};
+        std::uint16_t cover{};
+    };
+    struct Link {
+        std::uint32_t type{};
+        std::uint32_t navmesh{};
+        std::int16_t triangle{};
+    };
+    struct Door {
+        std::int16_t triangle{};
+        std::uint32_t door{};
+    };
+    std::uint32_t id{};
+    std::vector<record::Vec3> vertices;
+    std::vector<Triangle> triangles;
+    std::vector<Link> links;
+    std::vector<Door> doors;
+};
+
 struct WorldCell {
     std::uint32_t id{};
     std::string editor_id;
@@ -187,6 +215,7 @@ struct WorldCell {
     std::vector<WorldLink> links;
     std::vector<WorldActivateParent> activate_parents;
     std::vector<WorldPrimitive> primitives;
+    std::vector<WorldNavMesh> navmeshes; ///< Sorted by id.
 
     [[nodiscard]] bool interior() const noexcept { return (flags & 0x1u) != 0; }
 };

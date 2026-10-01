@@ -158,6 +158,50 @@ table Terrain {
     layers: [TerrainLayer];
 }
 
+/// A navmesh triangle (NVNM). Vertices index the navmesh's `vertices`.
+struct NavTriangle {
+    v0: ushort;
+    v1: ushort;
+    v2: ushort;
+    /// Per edge (v0-v1, v1-v2, v2-v0): the neighbouring triangle, -1 for
+    /// none, or an index into `links` if the edge's flag bit is set.
+    e0: short;
+    e1: short;
+    e2: short;
+    /// Bits 0-2: edge k is a link. Bit 6 preferred, 9 water, 10 in front of a
+    /// door. Others as stored.
+    flags: ushort;
+    /// As stored; per-edge cover, not decoded.
+    cover: ushort;
+}
+
+/// An edge leading into another navmesh's triangle. Type 0: a portal, the
+/// two edges side by side (within a few units across, up to about 64
+/// vertically). Types 1 and 2 come in equal numbers and join edges far
+/// apart (ledges).
+struct NavLink {
+    type: uint32;
+    /// A NavMesh id, in this cell or another.
+    navmesh: uint32;
+    triangle: short;
+}
+
+/// A triangle in front of a door.
+struct NavDoor {
+    triangle: short;
+    /// The door's reference.
+    door: uint32;
+}
+
+/// NAVM: a cell's navmesh. Positions are in Skyrim's space, as everywhere.
+table NavMesh {
+    id: uint32;
+    vertices: [Vec3f];
+    triangles: [NavTriangle];
+    links: [NavLink];
+    doors: [NavDoor];
+}
+
 table Cell {
     id: uint32;
     editor_id: string;
@@ -190,6 +234,8 @@ table Cell {
     links: [LinkedRef];
     activate_parents: [ActivateParent];
     primitives: [Primitive];
+    /// Sorted by id.
+    navmeshes: [NavMesh];
 }
 
 /// LIGH DATA and FNAM. Color is RGBA bytes, red in the low byte.

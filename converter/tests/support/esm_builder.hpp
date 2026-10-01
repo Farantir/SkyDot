@@ -4,6 +4,7 @@
 // files.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <span>
@@ -160,6 +161,85 @@ inline void write_group(ByteWriter& w, std::uint32_t label, std::int32_t group_t
     w.u16(44); // version
     w.u16(0);
     w.raw(children);
+}
+
+/// A navmesh for `nvnm`.
+struct NavSpec {
+    struct Triangle {
+        std::array<std::uint16_t, 3> vertices{};
+        std::array<std::int16_t, 3> edges{-1, -1, -1};
+        std::uint16_t flags{};
+    };
+    struct Link {
+        std::uint32_t type{};
+        std::uint32_t navmesh{};
+        std::int16_t triangle{};
+    };
+    struct Door {
+        std::int16_t triangle{};
+        std::uint32_t door{};
+    };
+    std::uint32_t world{}; ///< 0 for an interior.
+    std::uint32_t cell{};  ///< Interiors.
+    std::int16_t grid_x{};
+    std::int16_t grid_y{};
+    std::vector<std::array<float, 3>> vertices;
+    std::vector<Triangle> triangles;
+    std::vector<Link> links;
+    std::vector<Door> doors;
+};
+
+/// NVNM version 12, with a 1x1 search grid listing every triangle.
+inline ByteWriter nvnm(const NavSpec& nav) {
+    ByteWriter w;
+    w.u32(12);
+    w.u32(0xA5E9A03Cu);
+    w.u32(nav.world);
+    if (nav.world == 0) {
+        w.u32(nav.cell);
+    } else {
+        w.u16(static_cast<std::uint16_t>(nav.grid_y));
+        w.u16(static_cast<std::uint16_t>(nav.grid_x));
+    }
+    w.u32(static_cast<std::uint32_t>(nav.vertices.size()));
+    for (const auto& v : nav.vertices) {
+        w.f32(v[0]);
+        w.f32(v[1]);
+        w.f32(v[2]);
+    }
+    w.u32(static_cast<std::uint32_t>(nav.triangles.size()));
+    for (const auto& t : nav.triangles) {
+        for (const auto v : t.vertices) {
+            w.u16(v);
+        }
+        for (const auto e : t.edges) {
+            w.u16(static_cast<std::uint16_t>(e));
+        }
+        w.u16(t.flags);
+        w.u16(0);
+    }
+    w.u32(static_cast<std::uint32_t>(nav.links.size()));
+    for (const auto& l : nav.links) {
+        w.u32(l.type);
+        w.u32(l.navmesh);
+        w.u16(static_cast<std::uint16_t>(l.triangle));
+    }
+    w.u32(static_cast<std::uint32_t>(nav.doors.size()));
+    for (const auto& d : nav.doors) {
+        w.u16(static_cast<std::uint16_t>(d.triangle));
+        w.u32(0);
+        w.u32(d.door);
+    }
+    w.u32(0); // cover triangles
+    w.u32(1); // grid divisor
+    for (int i = 0; i < 8; ++i) {
+        w.f32(0.0F); // cell size, bounds
+    }
+    w.u32(static_cast<std::uint32_t>(nav.triangles.size()));
+    for (std::size_t i = 0; i < nav.triangles.size(); ++i) {
+        w.u16(static_cast<std::uint16_t>(i));
+    }
+    return w;
 }
 
 } // namespace bethconv::test

@@ -11,6 +11,7 @@
 
 #include "assets/asset_cache.hpp"
 #include "world/materials.hpp"
+#include "world/navmesh.hpp"
 #include "world/terrain.hpp"
 #include "world/water.hpp"
 
@@ -52,7 +53,7 @@ class SkydotWorld : public godot::RefCounted {
 
 public:
     /// The world.fb format version this engine reads.
-    static constexpr int WORLD_FORMAT_VERSION = 4;
+    static constexpr int WORLD_FORMAT_VERSION = 5;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
 
@@ -223,6 +224,16 @@ public:
     void set_collision(bool enabled);
     bool get_collision() const { return collision_; }
 
+    /// Give cells their navmeshes as navigation regions (see navmesh.hpp). On
+    /// by default.
+    void set_navigation(bool enabled) { navigation_ = enabled; }
+    bool get_navigation() const { return navigation_; }
+    /// The cell's navmeshes, as get_navmesh describes them.
+    godot::Array get_navmeshes(std::int64_t cell) const;
+    /// One navmesh: id, cell, vertices, triangles, water, links and doors (see
+    /// navmesh_info in navmesh.hpp). Empty if there is no such navmesh.
+    godot::Dictionary get_navmesh(std::int64_t id) const;
+
     /// Skyrim position (game units), rotation (radians) and scale to a Godot
     /// transform.
     static godot::Transform3D skyrim_transform(const godot::Vector3& position,
@@ -270,6 +281,7 @@ private:
     bool skyrim_materials_{true};
     bool effects_{true};
     bool collision_{true};
+    bool navigation_{true};
     mutable godot::Ref<SkydotMaterials> materials_;
     const bethconv::pack::wfb::World* root_{};
     godot::String error_;
@@ -278,6 +290,7 @@ private:
     std::unordered_map<std::uint64_t, const bethconv::pack::wfb::Cell*> exteriors_;
     /// (world, x, y) -> persistent references positioned in that cell.
     std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::Ref*>> persistent_;
+    NavIndex navmeshes_;
     /// Worldspace -> its persistent cell.
     std::unordered_map<std::uint32_t, std::uint32_t> persistent_cells_;
     /// (ref, cell) sorted by ref; built on first use.

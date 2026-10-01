@@ -11,6 +11,7 @@
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/form_census.hpp"
 #include "bethconv/record/forms.hpp"
+#include "bethconv/record/forms_world.hpp"
 
 #include "../support/esm_builder.hpp"
 
@@ -935,4 +936,84 @@ TEST_CASE("a payload with no fields at all is an empty record, not an error",
     REQUIRE(stat.has_value());
     CHECK(stat->editor_id.empty());
     CHECK(stat->model.empty());
+}
+
+namespace {
+
+/// Two triangles making a square, the second linked across its far edge.
+test::NavSpec square_navmesh() {
+    test::NavSpec nav;
+    nav.world = 0x3C;
+    nav.grid_x = -2;
+    nav.grid_y = 5;
+    nav.vertices = {{0, 0, 0}, {100, 0, 0}, {100, 100, 10}, {0, 100, 10}};
+    nav.triangles = {
+        {.vertices = {0, 1, 2}, .edges = {-1, -1, 1}, .flags = 0},
+        {.vertices = {0, 2, 3}, .edges = {0, 0, -1}, .flags = 0x0402},
+    };
+    nav.links = {{.type = 0, .navmesh = 0x0001'2345, .triangle = 7}};
+    nav.doors = {{.triangle = 1, .door = 0x0000'0ABC}};
+    return nav;
+}
+
+} // namespace
+
+TEST_CASE("NVNM decodes vertices, triangles, links and doors", "[record][forms][navmesh]") {
+    const auto bytes = test::nvnm(square_navmesh());
+    const auto nav = record::decode_nav_mesh_geometry(bytes.span());
+    REQUIRE(nav.has_value());
+    CHECK(nav->world.value == 0x3C);
+    CHECK(nav->grid_x == -2);
+    CHECK(nav->grid_y == 5);
+    REQUIRE(nav->vertices.size() == 4);
+    CHECK(nav->vertices[2] == record::Vec3{100, 100, 10});
+    REQUIRE(nav->triangles.size() == 2);
+    CHECK(nav->triangles[1].vertices == std::array<std::uint16_t, 3>{0, 2, 3});
+    CHECK(nav->triangles[1].edges == std::array<std::int16_t, 3>{0, 0, -1});
+    CHECK(nav->triangles[1].flags == 0x0402);
+    REQUIRE(nav->edge_links.size() == 1);
+    CHECK(nav->edge_links[0].navmesh.value == 0x0001'2345);
+    CHECK(nav->edge_links[0].triangle == 7);
+    REQUIRE(nav->doors.size() == 1);
+    CHECK(nav->doors[0].door.value == 0x0ABC);
+
+    test::NavSpec interior = square_navmesh();
+    interior.world = 0;
+    interior.cell = 0x0000'0D0D;
+    const auto in = record::decode_nav_mesh_geometry(test::nvnm(interior).span());
+    REQUIRE(in.has_value());
+    CHECK(in->world.is_null());
+    CHECK(in->cell.value == 0x0D0D);
+}
+
+TEST_CASE("NVNM with bad indices, another version or extra bytes fails",
+          "[record][forms][navmesh]") {
+    auto nav = square_navmesh();
+    nav.triangles[0].vertices[2] = 4;
+    CHECK(record::decode_nav_mesh_geometry(test::nvnm(nav).span()).error().kind ==
+          io::ErrorKind::corrupt);
+
+    nav = square_navmesh();
+    nav.triangles[0].flags = 0x0001; // edge 0 a link, but -1
+    CHECK(record::decode_nav_mesh_geometry(test::nvnm(nav).span()).error().kind ==
+          io::ErrorKind::corrupt);
+
+    nav = square_navmesh();
+    nav.triangles[1].edges[0] = 2; // only one link
+    CHECK(record::decode_nav_mesh_geometry(test::nvnm(nav).span()).error().kind ==
+          io::ErrorKind::corrupt);
+
+    auto bytes = test::nvnm(square_navmesh());
+    bytes.patch_u32(0, 11);
+    CHECK(record::decode_nav_mesh_geometry(bytes.span()).error().kind ==
+          io::ErrorKind::unsupported);
+
+    bytes = test::nvnm(square_navmesh());
+    bytes.u8(0);
+    CHECK(record::decode_nav_mesh_geometry(bytes.span()).error().kind == io::ErrorKind::bad_value);
+
+    const auto whole = test::nvnm(square_navmesh());
+    for (std::size_t cut = 0; cut < whole.bytes().size(); cut += 7) {
+        CHECK_FALSE(record::decode_nav_mesh_geometry(whole.span().first(cut)).has_value());
+    }
 }

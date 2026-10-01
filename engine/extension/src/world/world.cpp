@@ -195,6 +195,11 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_collision", "enabled"), &SkydotWorld::set_collision);
     godot::ClassDB::bind_method(D_METHOD("get_collision"), &SkydotWorld::get_collision);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "collision"), "set_collision", "get_collision");
+    godot::ClassDB::bind_method(D_METHOD("set_navigation", "enabled"), &SkydotWorld::set_navigation);
+    godot::ClassDB::bind_method(D_METHOD("get_navigation"), &SkydotWorld::get_navigation);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "navigation"), "set_navigation", "get_navigation");
+    godot::ClassDB::bind_method(D_METHOD("get_navmeshes", "cell"), &SkydotWorld::get_navmeshes);
+    godot::ClassDB::bind_method(D_METHOD("get_navmesh", "id"), &SkydotWorld::get_navmesh);
     godot::ClassDB::bind_static_method("SkydotWorld",
                                        D_METHOD("skyrim_transform", "position", "rotation", "scale"),
                                        &SkydotWorld::skyrim_transform);
@@ -258,11 +263,17 @@ void SkydotWorld::build_indexes() {
     activate_children_.clear();
     enable_children_.clear();
     enable_parents_.clear();
+    navmeshes_.clear();
     const auto* cells = root_->cells();
     if (cells == nullptr) {
         return;
     }
     for (const auto* cell : *cells) {
+        if (const auto* navmeshes = cell->navmeshes()) {
+            for (const auto* nav : *navmeshes) {
+                navmeshes_.emplace(nav->id(), std::pair{nav, cell});
+            }
+        }
         if (const auto* refs = cell->refs()) {
             for (const auto* ref : *refs) {
                 if (ref->enable_parent() != 0) {
@@ -717,16 +728,42 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
     }
 
     auto* root = memnew(godot::Node3D);
-    root->set_name(cell->editor_id() != nullptr ? to_godot(cell->editor_id())
-                                                : hex_id(cell->id()));
+    root->set_name(cell->editor_id() != nullptr && cell->editor_id()->size() != 0
+                       ? to_godot(cell->editor_id())
+                       : hex_id(cell->id()));
     BuildStats stats;
     if (const auto* refs = cell->refs()) {
         for (const auto* ref : *refs) {
             place_ref(root, *ref, cell->id(), stats);
         }
     }
+    if (navigation_) {
+        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
+            root->add_child(navmesh);
+        }
+    }
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
+}
+
+godot::Array SkydotWorld::get_navmeshes(std::int64_t cell_id) const {
+    Array out;
+    const auto* cell = cell_ptr(cell_id);
+    if (cell == nullptr || cell->navmeshes() == nullptr) {
+        return out;
+    }
+    for (const auto* nav : *cell->navmeshes()) {
+        out.push_back(navmesh_info(*nav, *cell, navmeshes_));
+    }
+    return out;
+}
+
+Dictionary SkydotWorld::get_navmesh(std::int64_t id) const {
+    const auto it = navmeshes_.find(static_cast<std::uint32_t>(id));
+    if (it == navmeshes_.end()) {
+        return {};
+    }
+    return navmesh_info(*it->second.first, *it->second.second, navmeshes_);
 }
 
 // ---- exteriors ------------------------------------------------------------
@@ -1149,6 +1186,12 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
                                                static_cast<float>(static_cast<double>(water_height) * UNIT_SCALE),
                                                -side / 2));
         root->add_child(surface);
+    }
+
+    if (cell != nullptr && navigation_) {
+        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
+            root->add_child(navmesh);
+        }
     }
 
     auto job = std::make_shared<BuildJob>();

@@ -2025,6 +2025,14 @@ int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::pa
                     static_cast<unsigned long long>(w.quest_fragments),
                     static_cast<unsigned long long>(w.globals),
                     static_cast<unsigned long long>(w.actors));
+        std::printf("                %llu navmeshes (%llu triangles, %llu orphaned)\n",
+                    static_cast<unsigned long long>(w.navmeshes),
+                    static_cast<unsigned long long>(w.nav_triangles),
+                    static_cast<unsigned long long>(w.orphan_navmeshes));
+        std::printf("                %llu unresolved, %llu parse errors, %llu script errors\n",
+                    static_cast<unsigned long long>(w.unresolved),
+                    static_cast<unsigned long long>(w.parse_errors),
+                    static_cast<unsigned long long>(w.script_errors));
     }
     std::printf("  assets        %llu written, %llu deduped, %llu distinct "
                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD)\n",

@@ -147,8 +147,9 @@ only decoded fields would pass every other snapshot test.
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (4; 3 added scripts, locks, linked refs, activate parents,
-primitives and base flags, 4 quests, globals, placed actors and plugins). Written during a merge pass, so every FormID in it is
+own `format_version` (5; 3 added scripts, locks, linked refs, activate parents,
+primitives and base flags, 4 quests, globals, placed actors and plugins, 5
+navmeshes). Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
 - `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags,
@@ -159,6 +160,11 @@ global: resolved through the winning plugin's master list.
   radians), scale, flags (initially disabled, persistent, enable-opposite,
   activated only by its activate parents), enable parent. Deleted references
   are omitted. Placed actors (ACHR) are listed separately.
+- Per cell, sorted by id: its navmeshes (NAVM's NVNM): vertices in Skyrim
+  space, triangles with their neighbours per edge and flags (water, door,
+  preferred), edge links into other navmeshes (portals across cell borders,
+  ledges), and the triangles in front of doors. The search grid and the
+  cover triangle list are left out.
 - Per cell, sorted by reference: scripts (VMAD), locks (XLOC), linked
   references (XLKR), activate parents (XAPR) and primitive volumes (XPRM).
 - Scripts, on references and bases: name, status, and properties by name with

@@ -431,6 +431,16 @@ void make_land(const TempDir& dir) {
                                  exterior("LandPersistent", 0).span(), 0x400);
     ByteWriter land_group;
     bethconv::test::write_record(land_group, "LAND", 0x0000'0D03, land.span());
+    // NAVM: one triangle linked to itself across edge 2, with a door.
+    bethconv::test::NavSpec nav;
+    nav.world = world;
+    nav.vertices = {{0, 0, 24}, {128, 0, 16}, {0, 128, 32}};
+    nav.triangles = {{.vertices = {0, 1, 2}, .edges = {-1, -1, 0}, .flags = 0x0404}};
+    nav.links = {{.type = 0, .navmesh = 0x0000'0D04, .triangle = 0}};
+    nav.doors = {{.triangle = 0, .door = 0x0000'0D10}};
+    ByteWriter navm;
+    bethconv::test::write_field(navm, "NVNM", bethconv::test::nvnm(nav));
+    bethconv::test::write_record(land_group, "NAVM", 0x0000'0D04, navm.span());
     ByteWriter temporary;
     bethconv::test::write_group(temporary, real, 9, land_group.span());
     ByteWriter real_children;
@@ -586,6 +596,8 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(stats->terrain_layers == 3);
     CHECK(stats->land_textures == 1);
     CHECK(stats->parse_errors == 0);
+    CHECK(stats->navmeshes == 1);
+    CHECK(stats->nav_triangles == 1);
 
     const auto file = pack::WorldFile::open(out);
     REQUIRE(file.has_value());
@@ -604,6 +616,20 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(cell->id == 0x0000'0D02);
     CHECK_FALSE(cell->persistent);
     CHECK_FALSE(file->cell_at_grid(0x0000'0D00, 1, 0).has_value());
+
+    REQUIRE(cell->navmeshes.size() == 1);
+    const auto& nav = cell->navmeshes[0];
+    CHECK(nav.id == 0x0000'0D04);
+    REQUIRE(nav.vertices.size() == 3);
+    CHECK(nav.vertices[2] == record::Vec3{0, 128, 32});
+    REQUIRE(nav.triangles.size() == 1);
+    CHECK(nav.triangles[0].edges == std::array<std::int16_t, 3>{-1, -1, 0});
+    CHECK(nav.triangles[0].flags == 0x0404);
+    REQUIRE(nav.links.size() == 1);
+    CHECK(nav.links[0].navmesh == 0x0000'0D04);
+    REQUIRE(nav.doors.size() == 1);
+    CHECK(nav.doors[0].door == 0x0000'0D10);
+    CHECK(file->cell(0x0000'0D01)->navmeshes.empty());
 
     REQUIRE(cell->terrain.has_value());
     const auto heights = cell->terrain->heights();

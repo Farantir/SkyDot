@@ -15,3 +15,15 @@ renderer/rendering_method="forward_plus"
 [physics]
 
 3d/physics_engine="Jolt Physics"
+
+[navigation]
+
+; Navmesh vertices are kept as Skyrim placed them; a coarse cell would merge
+; nearby ones. Portals between cells' navmeshes lie up to 64 units (0.9 m)
+; apart, so free edges within 1 m are joined (docs/navigation.md).
+3d/default_cell_size=0.01
+3d/default_cell_height=0.01
+3d/default_edge_connection_margin=1.0
+; About 1.6% of vanilla navmeshes have edges shared by more than two
+; triangles; Godot skips the extra connection and would warn every time.
+3d/warnings/navmesh_edge_merge_errors=false

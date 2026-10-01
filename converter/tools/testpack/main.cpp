@@ -16,6 +16,8 @@
 //   * a CLMT with one WTHR, whose day sky is pure blue and night sky black;
 //   * LAND on the cell at (0, 0): a slope rising to the east, one LTEX (via a
 //     TXST) as the base layer and a second layer on one quadrant;
+//   * navmeshes on both exterior cells, linked across their border, and on
+//     the interior, with a door triangle;
 //   * an interior cell;
 //   * REFRs placing STATs with scale and an enable parent;
 //   * a LIGH;
@@ -332,12 +334,18 @@ ByteWriter cell_record(std::string_view name, bool exterior, std::int32_t x, std
 /// worldspace; the merge's parent tracking depends on it.
 void write_cell(ByteWriter& out, std::uint32_t form, const ByteWriter& payload,
                 std::uint32_t cell_flags, const std::vector<Placement>& refrs,
-                const ByteWriter* land = nullptr, std::uint32_t land_form = 0) {
+                const ByteWriter* land = nullptr, std::uint32_t land_form = 0,
+                const std::vector<std::pair<std::uint32_t, bethconv::test::NavSpec>>& navmeshes = {}) {
     bethconv::test::write_record(out, "CELL", form, payload.span(), cell_flags);
 
     ByteWriter children;
     if (land != nullptr) {
         bethconv::test::write_record(children, "LAND", land_form, land->span());
+    }
+    for (const auto& [nav_form, nav] : navmeshes) {
+        ByteWriter navm;
+        bethconv::test::write_field(navm, "NVNM", bethconv::test::nvnm(nav));
+        bethconv::test::write_record(children, "NAVM", nav_form, navm.span());
     }
     for (const auto& p : refrs) {
         bethconv::test::write_record(children, "REFR", p.form, reference_record(p).span());
@@ -347,6 +355,46 @@ void write_cell(ByteWriter& out, std::uint32_t form, const ByteWriter& payload,
     ByteWriter cell_children;
     bethconv::test::write_group(cell_children, form, 6, temporary.span());
     out.raw(cell_children.span());
+}
+
+/// Navmeshes. The origin cell's follows its land (z = x / 16) and links
+/// across x = 4096 to the east cell's, which sits 30 units higher there, as
+/// real portals often do. The interior's has a door triangle at its door.
+bethconv::test::NavSpec origin_navmesh() {
+    bethconv::test::NavSpec nav;
+    nav.world = 0x0000'0001;
+    nav.vertices = {{0, 0, 0}, {4096, 0, 256}, {4096, 4096, 256}, {0, 4096, 0}};
+    nav.triangles = {
+        {.vertices = {0, 1, 2}, .edges = {-1, 0, 1}, .flags = 0x0002},
+        {.vertices = {0, 2, 3}, .edges = {0, -1, -1}, .flags = 0},
+    };
+    nav.links = {{.type = 0, .navmesh = 0x0000'0223, .triangle = 1}};
+    return nav;
+}
+
+bethconv::test::NavSpec east_navmesh() {
+    bethconv::test::NavSpec nav;
+    nav.world = 0x0000'0001;
+    nav.grid_x = 1;
+    nav.vertices = {{4096, 0, 286}, {8192, 0, 286}, {8192, 4096, 286}, {4096, 4096, 286}};
+    nav.triangles = {
+        {.vertices = {0, 1, 2}, .edges = {-1, -1, 1}, .flags = 0},
+        {.vertices = {0, 2, 3}, .edges = {0, -1, 0}, .flags = 0x0004},
+    };
+    nav.links = {{.type = 0, .navmesh = 0x0000'0216, .triangle = 0}};
+    return nav;
+}
+
+bethconv::test::NavSpec interior_navmesh() {
+    bethconv::test::NavSpec nav;
+    nav.cell = 0x0000'0300;
+    nav.vertices = {{-256, -512, 0}, {256, -512, 0}, {256, 256, 0}, {-256, 256, 0}};
+    nav.triangles = {
+        {.vertices = {0, 1, 2}, .edges = {-1, -1, 1}, .flags = 0},
+        {.vertices = {0, 2, 3}, .edges = {0, -1, -1}, .flags = 0x0400},
+    };
+    nav.doors = {{.triangle = 1, .door = 0x0000'0303}};
+    return nav;
 }
 
 /// LAND: heights rising 8 units per vertex to the east, the testpack LTEX as
@@ -656,7 +704,7 @@ std::vector<std::byte> build_plugin() {
                         return bytes;
                     }()},
                },
-               &land, 0x0000'0215);
+               &land, 0x0000'0215, {{0x0000'0216, origin_navmesh()}});
     write_cell(cells, 0x0000'0220, cell_record("TestpackEast", true, 1, 0), 0,
                {
                    {.form = 0x0000'0221, .base = 0x0000'0100, .x = 4096, .y = 0, .z = 0},
@@ -668,7 +716,8 @@ std::vector<std::byte> build_plugin() {
                     .y = 128,
                     .z = 0,
                     .enable_parent = 0x0000'0211},
-               });
+               },
+               nullptr, 0, {{0x0000'0223, east_navmesh()}});
 
     ByteWriter sub_block;
     bethconv::test::write_group(sub_block, 0, 5, cells.span());
@@ -734,7 +783,8 @@ std::vector<std::byte> build_plugin() {
                         bethconv::test::write_field(out, "XLKR", xlkr);
                         return out.bytes();
                     }()},
-               });
+               },
+               nullptr, 0, {{0x0000'0306, interior_navmesh()}});
     ByteWriter interior_sub_block;
     bethconv::test::write_group(interior_sub_block, 0, 3, interior.span());
     ByteWriter interior_block;
@@ -1000,6 +1050,14 @@ int main(int argc, char** argv) {
             std::cerr << "world.fb: the quest or its global is wrong\n";
             return EXIT_FAILURE;
         }
+        const auto east = world->cell(0x0000'0220);
+        if (origin->navmeshes.size() != 1 || !east || east->navmeshes.size() != 1 ||
+            inside->navmeshes.size() != 1 || inside->navmeshes[0].doors.size() != 1 ||
+            origin->navmeshes[0].links.size() != 1 ||
+            origin->navmeshes[0].links[0].navmesh != east->navmeshes[0].id) {
+            std::cerr << "world.fb: the navmeshes are wrong\n";
+            return EXIT_FAILURE;
+        }
 
         if (!keep_data) {
             fs::remove_all(out / "testpack");
@@ -1018,7 +1076,7 @@ int main(int argc, char** argv) {
                   << "warnings:  " << result->pack.warnings << "\n"
                   << "verified:  records.fb reopens, blob hash matches, all "
                   << index->entries().size() << " vpath.idx entries resolve, "
-                  << world_refs << " world.fb references place known bases, terrain resolves\n";
+                  << world_refs << " world.fb references place known bases, terrain and navmeshes resolve\n";
 
         // Every input is meant to convert; a failure means the pack is broken.
         if (result->pack.failed != 0) {

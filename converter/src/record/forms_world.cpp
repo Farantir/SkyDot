@@ -2,6 +2,7 @@
 #include "bethconv/record/forms_world.hpp"
 
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace bethconv::record {
@@ -501,6 +502,133 @@ io::ParseResult<NavMesh> parse_nav_mesh(io::SpanReader& data, const FormContext&
         });
     if (!walked) {
         return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<NavMeshGeometry> decode_nav_mesh_geometry(std::span<const std::byte> nvnm) {
+    io::SpanReader r(nvnm, "NVNM");
+    NavMeshGeometry out;
+    std::optional<io::ParseError> failure;
+    const auto count = [&](std::size_t stride) -> std::size_t {
+        std::uint32_t n = 0;
+        take(failure, r.get<std::uint32_t>(), n);
+        if (!failure && n > r.remaining() / stride) {
+            failure = r.fail(io::ErrorKind::truncated, "NVNM array of " + std::to_string(n) +
+                                                           " x " + std::to_string(stride))
+                          .error();
+        }
+        return failure ? 0 : n;
+    };
+    const auto skip = [&](std::size_t n) {
+        if (auto skipped = r.skip(n); !skipped && !failure) {
+            failure = std::move(skipped).error();
+        }
+    };
+
+    std::uint32_t version = 0;
+    take(failure, r.get<std::uint32_t>(), version);
+    if (!failure && version != NavMeshGeometry::k_version) {
+        return r.fail(io::ErrorKind::unsupported, "NVNM version " + std::to_string(version));
+    }
+    skip(4); // a constant, 0xA5E9A03C on every vanilla navmesh
+    take(failure, read_formid(r), out.world);
+    if (out.world.is_null()) {
+        take(failure, read_formid(r), out.cell);
+    } else {
+        take(failure, r.get<std::int16_t>(), out.grid_y);
+        take(failure, r.get<std::int16_t>(), out.grid_x);
+    }
+
+    const std::size_t vertices = count(12);
+    out.vertices.reserve(vertices);
+    for (std::size_t i = 0; i < vertices && !failure; ++i) {
+        Vec3 v;
+        take(failure, r.get<float>(), v.x);
+        take(failure, r.get<float>(), v.y);
+        take(failure, r.get<float>(), v.z);
+        out.vertices.push_back(v);
+    }
+    const std::size_t triangles = count(16);
+    out.triangles.reserve(triangles);
+    for (std::size_t i = 0; i < triangles && !failure; ++i) {
+        NavMeshGeometry::Triangle t;
+        for (auto& v : t.vertices) {
+            take(failure, r.get<std::uint16_t>(), v);
+        }
+        for (auto& e : t.edges) {
+            take(failure, r.get<std::int16_t>(), e);
+        }
+        take(failure, r.get<std::uint16_t>(), t.flags);
+        take(failure, r.get<std::uint16_t>(), t.cover);
+        out.triangles.push_back(t);
+    }
+    const std::size_t links = count(10);
+    for (std::size_t i = 0; i < links && !failure; ++i) {
+        NavMeshGeometry::EdgeLink link;
+        take(failure, r.get<std::uint32_t>(), link.type);
+        take(failure, read_formid(r), link.navmesh);
+        take(failure, r.get<std::int16_t>(), link.triangle);
+        out.edge_links.push_back(link);
+    }
+    const std::size_t doors = count(10);
+    for (std::size_t i = 0; i < doors && !failure; ++i) {
+        NavMeshGeometry::DoorTriangle door;
+        take(failure, r.get<std::int16_t>(), door.triangle);
+        take(failure, r.get<std::uint32_t>(), door.type);
+        take(failure, read_formid(r), door.door);
+        out.doors.push_back(door);
+    }
+    const std::size_t cover = count(2);
+    for (std::size_t i = 0; i < cover && !failure; ++i) {
+        std::uint16_t t = 0;
+        take(failure, r.get<std::uint16_t>(), t);
+        out.cover_triangles.push_back(t);
+    }
+    // Search grid: divisor, cell size (2 floats), bounds (6 floats), then
+    // divisor^2 triangle lists.
+    std::uint32_t divisor = 0;
+    take(failure, r.get<std::uint32_t>(), divisor);
+    skip(32);
+    if (!failure && divisor > 1024) {
+        failure =
+            r.fail(io::ErrorKind::bad_value, "NVNM grid divisor " + std::to_string(divisor)).error();
+    }
+    for (std::size_t i = 0; i < std::size_t{divisor} * divisor && !failure; ++i) {
+        skip(count(2) * 2);
+    }
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    if (!r.at_end()) {
+        return r.fail(io::ErrorKind::bad_value,
+                      std::to_string(r.remaining()) + " bytes after the NVNM grid");
+    }
+
+    const auto bad = [&](std::string why) { return r.fail(io::ErrorKind::corrupt, std::move(why)); };
+    for (std::size_t i = 0; i < out.triangles.size(); ++i) {
+        const auto& t = out.triangles[i];
+        for (std::size_t k = 0; k < 3; ++k) {
+            if (t.vertices[k] >= out.vertices.size()) {
+                return bad("triangle " + std::to_string(i) + " vertex out of range");
+            }
+            const bool link = (t.flags & (1U << k)) != 0;
+            const auto limit = link ? out.edge_links.size() : out.triangles.size();
+            if (t.edges[k] < -1 || (t.edges[k] >= 0 && std::size_t(t.edges[k]) >= limit) ||
+                (link && t.edges[k] < 0)) {
+                return bad("triangle " + std::to_string(i) + " edge out of range");
+            }
+        }
+    }
+    for (const auto& door : out.doors) {
+        if (door.triangle < 0 || std::size_t(door.triangle) >= out.triangles.size()) {
+            return bad("door triangle out of range");
+        }
+    }
+    for (const auto t : out.cover_triangles) {
+        if (t >= out.triangles.size()) {
+            return bad("cover triangle out of range");
+        }
     }
     return out;
 }
