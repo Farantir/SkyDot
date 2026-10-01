@@ -130,9 +130,9 @@ jobs:
             preset: linux-debug
             cc: clang-18
             cxx: clang++-18
-          - name: windows-msvc-release
+          - name: windows-msvc-debug
             os: windows-2022
-            preset: windows-release
+            preset: windows-debug
     defaults:
       run:
         working-directory: engine
@@ -165,7 +165,7 @@ jobs:
           # Plain godot.exe: find_program reads "godot4.7" as a name with an
           # extension and never tries godot4.7.exe.
           mv "godot/Godot_v${GODOT_VERSION}-stable_win64.exe" godot/godot.exe
-          echo "$PWD/godot" >> "$GITHUB_PATH"
+          cygpath -w "$PWD/godot" >> "$GITHUB_PATH"
 
       - name: MSVC on PATH for the Ninja generator
         if: runner.os == 'Windows'

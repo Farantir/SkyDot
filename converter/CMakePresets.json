@@ -1,6 +1,10 @@
 {
   "version": 6,
-  "cmakeMinimumRequired": { "major": 3, "minor": 28, "patch": 0 },
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 28,
+    "patch": 0
+  },
   "configurePresets": [
     {
       "name": "base",
@@ -27,7 +31,9 @@
       "name": "linux-release",
       "displayName": "Linux Release",
       "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      }
     },
     {
       "name": "linux-fuzz",
@@ -46,27 +52,58 @@
       "name": "windows-release",
       "displayName": "Windows Release (MSVC)",
       "inherits": "base",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo" },
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      }
     }
   ],
   "buildPresets": [
-    { "name": "linux-debug-asan", "configurePreset": "linux-debug-asan" },
-    { "name": "linux-release", "configurePreset": "linux-release" },
-    { "name": "linux-fuzz", "configurePreset": "linux-fuzz" },
-    { "name": "windows-release", "configurePreset": "windows-release" }
+    {
+      "name": "linux-debug-asan",
+      "configurePreset": "linux-debug-asan"
+    },
+    {
+      "name": "linux-release",
+      "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-fuzz",
+      "configurePreset": "linux-fuzz"
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release"
+    }
   ],
   "testPresets": [
     {
       "name": "linux-debug-asan",
       "configurePreset": "linux-debug-asan",
-      "output": { "outputOnFailure": true },
-      "execution": { "noTestsAction": "error" }
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error"
+      }
     },
     {
       "name": "linux-release",
       "configurePreset": "linux-release",
-      "output": { "outputOnFailure": true }
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "windows-release",
+      "configurePreset": "windows-release",
+      "output": {
+        "outputOnFailure": true
+      }
     }
   ]
 }
