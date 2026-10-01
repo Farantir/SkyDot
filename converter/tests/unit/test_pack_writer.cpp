@@ -7,11 +7,13 @@
 //     timestamp would pass every other test.
 //   * The index names only existing assets: a failed conversion leaves no line
 //     in `vpath.idx`.
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/pack_writer.hpp"
 
 #include "../support/temp_dir.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <nlohmann/json.hpp>
 
 #include <fstream>
@@ -41,8 +43,9 @@ std::string read_text(const std::filesystem::path& path) {
     return buffer.str();
 }
 
-PackOptions default_options() {
+PackOptions default_options(StoreLayout layout = StoreLayout::blob) {
     PackOptions options;
+    options.layout = layout;
     options.converter = "bethconv-test";
     options.mesh_settings = "mesh/1";
     options.texture_settings = "texture/1";
@@ -71,11 +74,48 @@ AssetSlot put(PackWriter& writer, std::string_view vpath, AssetKind kind,
     return slot;
 }
 
+/// An asset's bytes as a reader of the pack sees them.
+std::string stored_text(const std::filesystem::path& root, const AssetSlot& slot) {
+    auto reader = AssetReader::open(root);
+    REQUIRE(reader.has_value());
+    const VpathEntry entry{
+        .vpath = slot.vpath, .hex = slot.hash.hex(), .kind = slot.kind, .source = {}};
+    auto bytes = reader->read(entry);
+    REQUIRE(bytes.has_value());
+    std::string out;
+    for (const std::byte b : bytes->data) {
+        out.push_back(static_cast<char>(b));
+    }
+    return out;
+}
+
 } // namespace
 
-TEST_CASE("a pack lands in the layout the plan describes", "[pack]") {
+TEST_CASE("a blob pack is an index and one blob", "[pack]") {
     TempDir dir;
     auto writer = PackWriter::create(dir / "pack", default_options());
+    REQUIRE(writer.has_value());
+    const auto mesh = put(*writer, "meshes/a.nif", AssetKind::mesh, "nif-a", "glb-a");
+    const auto texture = put(*writer, "textures/a.dds", AssetKind::texture, "dds-a", "dds-aa");
+    REQUIRE(writer->finish(default_manifest()).has_value());
+
+    const auto root = dir / "pack";
+    CHECK(std::filesystem::exists(root / "assets.idx"));
+    CHECK(std::filesystem::exists(root / "assets-0001.blob"));
+    CHECK_FALSE(std::filesystem::exists(root / "assets"));
+    CHECK(stored_text(root, mesh) == "glb-a");
+    CHECK(stored_text(root, texture) == "dds-aa");
+
+    const auto doc = nlohmann::json::parse(read_text(root / "manifest.json"));
+    CHECK(doc["store"]["layout"] == "blob");
+    CHECK(doc["store"]["blob"] == "assets-0001.blob");
+    // "glb-a" padded to the 16-byte boundary, then "dds-aa".
+    CHECK(doc["store"]["bytes"] == 22);
+}
+
+TEST_CASE("a loose pack lands in the layout the plan describes", "[pack]") {
+    TempDir dir;
+    auto writer = PackWriter::create(dir / "pack", default_options(StoreLayout::loose));
     REQUIRE(writer.has_value());
 
     const auto mesh = put(*writer, "meshes/a.nif", AssetKind::mesh, "nif-a", "glb-a");
@@ -98,7 +138,8 @@ TEST_CASE("a pack lands in the layout the plan describes", "[pack]") {
     const auto asset = root / "assets" / mesh.hash.prefix() / (mesh.hash.hex() + ".glb");
     REQUIRE(std::filesystem::exists(asset));
     CHECK(read_text(asset) == "glb-a");
-    CHECK(mesh.relative_path == "assets/" + mesh.hash.prefix() + "/" + mesh.hash.hex() + ".glb");
+    CHECK(stored_text(root, mesh) == "glb-a");
+    CHECK_FALSE(std::filesystem::exists(root / "assets.idx"));
 }
 
 TEST_CASE("the extension is .dds, not .ktx2", "[pack]") {
@@ -239,7 +280,7 @@ TEST_CASE("the manifest carries the load order and the source hashes", "[pack]")
     CHECK(doc["records"]["forms"] == 1178001);
 }
 
-TEST_CASE("two identical runs produce byte-identical bookkeeping", "[pack]") {
+TEST_CASE("two identical runs produce byte-identical packs", "[pack]") {
     // Inputs are offered in an order a hash table would not keep, so an
     // unsorted index fails here.
     const auto build = [](const std::filesystem::path& root) {
@@ -257,7 +298,8 @@ TEST_CASE("two identical runs produce byte-identical bookkeeping", "[pack]") {
     build(dir / "one");
     build(dir / "two");
 
-    for (const std::string name : {"manifest.json", "vpath.idx", "report.json"}) {
+    for (const std::string name :
+         {"manifest.json", "vpath.idx", "report.json", "assets.idx", "assets-0001.blob"}) {
         CAPTURE(name);
         CHECK(read_text(dir / "one" / name) == read_text(dir / "two" / name));
     }
@@ -284,15 +326,17 @@ TEST_CASE("nothing in a pack records a wall clock", "[pack]") {
 TEST_CASE("reopening a pack skips what is already there", "[pack]") {
     // Incremental rebuild: the second run sees the asset as present before
     // converting anything.
+    const auto layout = GENERATE(StoreLayout::blob, StoreLayout::loose);
+    CAPTURE(to_string(layout));
     TempDir dir;
     {
-        auto writer = PackWriter::create(dir / "pack", default_options());
+        auto writer = PackWriter::create(dir / "pack", default_options(layout));
         REQUIRE(writer.has_value());
         put(*writer, "meshes/a.nif", AssetKind::mesh, "source", "converted");
         REQUIRE(writer->finish(default_manifest()).has_value());
     }
 
-    auto again = PackWriter::create(dir / "pack", default_options());
+    auto again = PackWriter::create(dir / "pack", default_options(layout));
     REQUIRE(again.has_value());
     const auto slot = again->reserve("meshes/a.nif", AssetKind::mesh, bytes_of("source"),
                                      "Fixture.bsa");
@@ -338,17 +382,19 @@ TEST_CASE("a changed settings fingerprint does not reuse the old asset", "[pack]
 }
 
 TEST_CASE("pruning removes exactly the assets nothing names", "[pack]") {
+    const auto layout = GENERATE(StoreLayout::blob, StoreLayout::loose);
+    CAPTURE(to_string(layout));
     TempDir dir;
-    std::string kept;
+    AssetSlot kept;
     {
-        auto writer = PackWriter::create(dir / "pack", default_options());
+        auto writer = PackWriter::create(dir / "pack", default_options(layout));
         REQUIRE(writer.has_value());
-        kept = put(*writer, "meshes/a.nif", AssetKind::mesh, "keep", "keep").relative_path;
+        kept = put(*writer, "meshes/a.nif", AssetKind::mesh, "keep", "keep");
         put(*writer, "meshes/b.nif", AssetKind::mesh, "drop", "drop");
         REQUIRE(writer->finish(default_manifest()).has_value());
     }
 
-    auto options = default_options();
+    auto options = default_options(layout);
     options.prune_orphans = true;
     auto again = PackWriter::create(dir / "pack", options);
     REQUIRE(again.has_value());
@@ -361,5 +407,61 @@ TEST_CASE("pruning removes exactly the assets nothing names", "[pack]") {
     REQUIRE(stats.has_value());
     CHECK(stats->orphaned_assets == 1);
     CHECK(stats->pruned_assets == 1);
-    CHECK(std::filesystem::exists(dir / "pack" / kept));
+    CHECK(stored_text(dir / "pack", kept) == "keep");
+    if (layout == StoreLayout::blob) {
+        // Compaction wrote the next generation and dropped the old one.
+        CHECK(std::filesystem::exists(dir / "pack" / "assets-0002.blob"));
+        CHECK_FALSE(std::filesystem::exists(dir / "pack" / "assets-0001.blob"));
+        CHECK(std::filesystem::file_size(dir / "pack" / "assets-0002.blob") == 4);
+    }
+}
+
+TEST_CASE("bytes an interrupted run appended are dropped on reopening", "[pack]") {
+    TempDir dir;
+    AssetSlot first;
+    {
+        auto writer = PackWriter::create(dir / "pack", default_options());
+        REQUIRE(writer.has_value());
+        first = put(*writer, "meshes/a.nif", AssetKind::mesh, "a", "first");
+        REQUIRE(writer->finish(default_manifest()).has_value());
+    }
+    // A run that appended and died before writing the index.
+    {
+        std::ofstream blob(dir / "pack" / "assets-0001.blob", std::ios::binary | std::ios::app);
+        blob << "half-written garbage";
+    }
+    auto again = PackWriter::create(dir / "pack", default_options());
+    REQUIRE(again.has_value());
+    CHECK(std::filesystem::file_size(dir / "pack" / "assets-0001.blob") == 5);
+    const auto second = put(*again, "meshes/b.nif", AssetKind::mesh, "b", "second");
+    REQUIRE(again->finish(default_manifest()).has_value());
+    CHECK(stored_text(dir / "pack", first) == "first");
+    CHECK(stored_text(dir / "pack", second) == "second");
+}
+
+TEST_CASE("a damaged asset index is an error, not a short pack", "[pack]") {
+    TempDir dir;
+    {
+        auto writer = PackWriter::create(dir / "pack", default_options());
+        REQUIRE(writer.has_value());
+        put(*writer, "meshes/a.nif", AssetKind::mesh, "a", "first");
+        REQUIRE(writer->finish(default_manifest()).has_value());
+    }
+    const auto index_path = dir / "pack" / "assets.idx";
+    auto bytes = bytes_of(read_text(index_path));
+    REQUIRE(bytes.size() == k_asset_index_header + k_asset_index_entry);
+
+    SECTION("truncated") { bytes.resize(bytes.size() - 1); }
+    SECTION("an entry past the blob") { bytes[k_asset_index_header + 32] = std::byte{0x40}; }
+    SECTION("a newer version") { bytes[4] = std::byte{9}; }
+    SECTION("an unknown kind") { bytes[k_asset_index_header + 48] = std::byte{7}; }
+
+    {
+        std::ofstream out(index_path, std::ios::binary | std::ios::trunc);
+        for (const std::byte b : bytes) {
+            out.put(static_cast<char>(b));
+        }
+    }
+    CHECK_FALSE(AssetReader::open(dir / "pack").has_value());
+    CHECK_FALSE(PackWriter::create(dir / "pack", default_options()).has_value());
 }

@@ -1,16 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The view, without a game install. Three properties:
+// The view, without a game install. Four properties:
 //
-//   * URIs are rebased by exactly the document's depth: `../../` two levels
-//     down, nothing at the root. Wrong prefixes load with no materials and no
-//     error.
+//   * Pack meshes have no images; the view adds them from the material
+//     extras, with URIs prefixed by exactly the document's depth: `../../`
+//     two levels down, nothing at the root. Wrong prefixes load with no
+//     materials and no error.
 //   * Everything else survives: accessors, buffer and `extras` unchanged, the
 //     BIN chunk byte-identical.
 //   * Dangling references are counted.
+//   * Blob and loose packs give the same view.
 #include "bethconv/pack/pack_view.hpp"
 
 #include "bethconv/mesh/gltf_writer.hpp"
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 
@@ -24,6 +27,7 @@
 #include <nlohmann/json.hpp>
 
 #include <fstream>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -100,9 +104,11 @@ struct Fixture {
     }
 
     /// Build the pack the views are made from.
-    ConvertResult build(const std::filesystem::path& out) const {
+    ConvertResult build(const std::filesystem::path& out,
+                        StoreLayout layout = StoreLayout::blob) const {
         ConvertOptions options;
         options.out = out;
+        options.layout = layout;
         options.converter = "bethconv-test";
         options.write_records = false;
         auto result = convert(set, order(), options);
@@ -142,6 +148,27 @@ std::vector<std::byte> glb_tail(std::span<const std::byte> glb) {
     return {glb.begin() + static_cast<std::ptrdiff_t>(start), glb.end()};
 }
 
+/// An asset's bytes, read the way the view reads them.
+std::vector<std::byte> stored(const std::filesystem::path& pack, const VpathEntry& entry) {
+    auto reader = AssetReader::open(pack);
+    REQUIRE(reader.has_value());
+    auto bytes = reader->read(entry);
+    REQUIRE(bytes.has_value());
+    return {bytes->data.begin(), bytes->data.end()};
+}
+
+/// Every file under `root`, by relative path.
+std::map<std::string, std::vector<std::byte>> tree(const std::filesystem::path& root) {
+    std::map<std::string, std::vector<std::byte>> out;
+    for (const auto& file : std::filesystem::recursive_directory_iterator(root)) {
+        if (file.is_regular_file()) {
+            out.emplace(std::filesystem::relative(file.path(), root).generic_string(),
+                        read_file(file.path()));
+        }
+    }
+    return out;
+}
+
 std::vector<std::string> image_uris(const nlohmann::json& doc) {
     std::vector<std::string> out;
     if (!doc.contains("images")) {
@@ -171,22 +198,19 @@ TEST_CASE("a view resolves a pack's textures for a consumer that only reads glTF
     const auto view = out.path() / "view";
     (void)fixture.build(pack);
 
-    // In the pack, the URI is the uncorrected virtual path, so a consumer finds
-    // nothing.
+    // In the pack, the mesh has no images; the extras name the textures.
     const auto index = VpathIndex::read(pack / "vpath.idx");
     REQUIRE(index.has_value());
     const auto* mesh_entry = index->find("meshes/clutter/apple01.nif");
     REQUIRE(mesh_entry != nullptr);
-    const auto packed = read_file(pack / std::filesystem::path(mesh_entry->asset_path()));
-    CHECK(image_uris(glb_json(packed)) ==
-          std::vector<std::string>{"textures/clutter/apple01.dds",
-                                   "textures/clutter/absent_n.dds"});
+    CHECK(image_uris(glb_json(stored(pack, *mesh_entry))).empty());
 
     ViewOptions options;
     options.out = view;
     const auto result = materialize_view(pack, options);
     REQUIRE(result.has_value());
     CHECK(result->failures.empty());
+    CHECK(result->stats.linked == 0); // nothing to link to in a blob
     CHECK(result->stats.failed == 0);
 
     // Every index entry became a file at its virtual path, with the converted
@@ -216,7 +240,7 @@ TEST_CASE("a view resolves a pack's textures for a consumer that only reads glTF
     CHECK(result->stats.image_refs_dangling == 2);
 }
 
-TEST_CASE("a rebase changes the image URIs and nothing else", "[view]") {
+TEST_CASE("the view adds images and changes nothing else", "[view]") {
     Fixture fixture;
     TempDir out;
     const auto pack = out.path() / "pack";
@@ -227,7 +251,7 @@ TEST_CASE("a rebase changes the image URIs and nothing else", "[view]") {
     REQUIRE(index.has_value());
     const auto* entry = index->find("meshes/clutter/apple01.nif");
     REQUIRE(entry != nullptr);
-    const auto packed = read_file(pack / std::filesystem::path(entry->asset_path()));
+    const auto packed = stored(pack, *entry);
 
     ViewOptions options;
     options.out = view;
@@ -239,13 +263,18 @@ TEST_CASE("a rebase changes the image URIs and nothing else", "[view]") {
 
     auto before = glb_json(packed);
     auto after = glb_json(viewed);
-    // `extras` keep the pack-relative path; only `images[].uri` changes.
     CHECK(before.at("meshes") == after.at("meshes"));
     CHECK(before.at("accessors") == after.at("accessors"));
     CHECK(before.at("bufferViews") == after.at("bufferViews"));
-    CHECK(before.at("materials") == after.at("materials"));
-    before.erase("images");
+    // Materials gain texture references; their extras are untouched.
+    auto& material = after.at("materials").at(0);
+    CHECK(material.at("pbrMetallicRoughness").at("baseColorTexture").at("index") == 0);
+    CHECK(material.at("normalTexture").at("index") == 1);
+    CHECK(material.at("extras") == before.at("materials").at(0).at("extras"));
+    material.at("pbrMetallicRoughness").erase("baseColorTexture");
+    material.erase("normalTexture");
     after.erase("images");
+    after.erase("textures");
     CHECK(before == after);
 }
 
@@ -373,6 +402,24 @@ TEST_CASE("the index round-trips through its own reader", "[view]") {
     CHECK(index->find("nothing/here.nif") == nullptr);
 }
 
+TEST_CASE("blob and loose packs give the same view", "[view]") {
+    Fixture fixture;
+    TempDir out;
+    (void)fixture.build(out.path() / "blob", StoreLayout::blob);
+    (void)fixture.build(out.path() / "loose", StoreLayout::loose);
+    CHECK(std::filesystem::exists(out.path() / "blob/assets.idx"));
+    CHECK(std::filesystem::is_directory(out.path() / "loose/assets"));
+
+    ViewOptions options;
+    options.out = out.path() / "from-blob";
+    REQUIRE(materialize_view(out.path() / "blob", options).has_value());
+    options.out = out.path() / "from-loose";
+    const auto loose = materialize_view(out.path() / "loose", options);
+    REQUIRE(loose.has_value());
+    CHECK(loose->stats.linked > 0);
+    CHECK(tree(out.path() / "from-blob") == tree(out.path() / "from-loose"));
+}
+
 TEST_CASE("textures named only in material extras are reported for the view", "[pack][view]") {
     // Effect palettes, glow and environment maps are not glTF images, but an
     // engine shader needs them in the view.
@@ -383,13 +430,33 @@ TEST_CASE("textures named only in material extras are reported for the view", "[
     REQUIRE(model.has_value());
     model->materials[0].textures[3] = "textures\\effects\\gradients\\GradFlame01.dds";
     auto glb = bethconv::mesh::write_glb(
-        *model, bethconv::mesh::WriteOptions{.texture_refs = bethconv::mesh::TextureRefs::pack_vpaths});
+        *model, bethconv::mesh::WriteOptions{.texture_refs = bethconv::mesh::TextureRefs::none});
     REQUIRE(glb.has_value());
 
-    const auto rebased = rebase_glb_uris(*glb, "../", "fire.glb");
-    REQUIRE(rebased.has_value());
-    CHECK(rebased->image_vpaths ==
+    const auto viewed = view_glb(*glb, "../", "fire.glb");
+    REQUIRE(viewed.has_value());
+    CHECK(viewed->image_vpaths ==
           std::vector<std::string>{"textures/effects/fxfire.dds", "textures/effects/fxfire_n.dds"});
-    CHECK(rebased->slot_vpaths ==
+    CHECK(viewed->slot_vpaths ==
           std::vector<std::string>{"textures/effects/gradients/gradflame01.dds"});
+    CHECK(image_uris(glb_json(viewed->bytes)) ==
+          std::vector<std::string>{"../textures/effects/fxfire.dds",
+                                   "../textures/effects/fxfire_n.dds"});
+}
+
+TEST_CASE("a GLB that already has images gets them rebased, not added", "[view]") {
+    // Packs before v5 kept images in their meshes.
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shader(builder.add_shape("box", bethconv::test::make_cube()),
+                       "textures\\a.dds", "textures\\a_n.dds");
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "box.nif");
+    REQUIRE(model.has_value());
+    auto glb = bethconv::mesh::write_glb(*model);
+    REQUIRE(glb.has_value());
+
+    const auto viewed = view_glb(*glb, "../../", "box.glb");
+    REQUIRE(viewed.has_value());
+    CHECK(image_uris(glb_json(viewed->bytes)) ==
+          std::vector<std::string>{"../../textures/a.dds", "../../textures/a_n.dds"});
+    CHECK(glb_json(viewed->bytes).at("images").size() == 2);
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // `vpath.idx`: maps virtual paths to content hashes. Assets are stored under
-// the hash of their source bytes (`assets/3f/3f9c....glb`), so this is the only
+// the hash of their source bytes (pack/asset_store.hpp), so this is the only
 // way to find an asset by its game path.
 //
 // pack_writer.cpp writes it and pack_view.cpp reads it; the format and the
@@ -32,7 +32,7 @@ namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in the pack layout changes. See
 /// formats/pack-format.md.
-inline constexpr std::uint32_t k_pack_format_version = 4;
+inline constexpr std::uint32_t k_pack_format_version = 5;
 
 /// Asset kind. One extension and one settings fingerprint each.
 enum class AssetKind : std::uint8_t {

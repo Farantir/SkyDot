@@ -12,7 +12,7 @@ Conversion, as in bethconv's mesh writer:
 - axes: rotate -90° about X, so Skyrim `(x, y, z)` becomes Godot `(x, z, -y)`;
 - scale: 0.0142875 m per game unit (64 units per yard).
 
-Baked scenes already contain this conversion in their root node. A reference
+Converted meshes carry this conversion in their root node. A reference
 is placed with `C · T · C⁻¹`, where `T` is its Skyrim transform and `C` the
 axis rotation; `SkydotWorld.skyrim_transform` does this.
 

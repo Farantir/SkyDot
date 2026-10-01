@@ -18,16 +18,6 @@ namespace {
 using nlohmann::ordered_json;
 using bethconv::io::json_text;
 
-/// Convert a filesystem error to a ParseError, so there is one error type.
-[[nodiscard]] std::unexpected<io::ParseError> fs_error(const std::filesystem::path& path,
-                                                       std::string_view what,
-                                                       const std::error_code& ec) {
-    return std::unexpected(io::ParseError{.origin = path.string(),
-                                          .offset = 0,
-                                          .kind = io::ErrorKind::corrupt,
-                                          .detail = std::string(what) + ": " + ec.message()});
-}
-
 [[nodiscard]] std::unexpected<io::ParseError> write_error(const std::filesystem::path& path,
                                                           std::string detail) {
     return std::unexpected(io::ParseError{.origin = path.string(),
@@ -48,35 +38,14 @@ PackWriter& PackWriter::operator=(PackWriter&&) noexcept = default;
 
 io::ParseResult<PackWriter> PackWriter::create(const std::filesystem::path& root,
                                                PackOptions options) {
-    std::error_code ec;
-    std::filesystem::create_directories(root / "assets", ec);
-    if (ec) {
-        return fs_error(root, "cannot create the pack directory", ec);
+    auto store = AssetStore::open(root, options.layout);
+    if (!store) {
+        return std::unexpected(store.error());
     }
-
     PackWriter writer;
     writer.root_ = root;
     writer.options_ = std::move(options);
-
-    // Index existing assets; these are never read, converted or written again.
-    for (std::filesystem::directory_iterator bucket(root / "assets", ec), end;
-         !ec && bucket != end; bucket.increment(ec)) {
-        if (!bucket->is_directory()) {
-            continue;
-        }
-        std::error_code inner;
-        for (std::filesystem::directory_iterator file(bucket->path(), inner), last;
-             !inner && file != last; file.increment(inner)) {
-            if (!file->is_regular_file()) {
-                continue;
-            }
-            writer.present_.insert("assets/" + bucket->path().filename().string() + "/" +
-                                   file->path().filename().string());
-        }
-    }
-    if (ec) {
-        return fs_error(root / "assets", "cannot read the existing pack", ec);
-    }
+    writer.store_ = std::move(*store);
     return writer;
 }
 
@@ -93,17 +62,12 @@ std::string PackWriter::settings_for(AssetKind kind) const {
     return {};
 }
 
-std::filesystem::path PackWriter::asset_path(const AssetSlot& slot) const {
-    return root_ / "assets" / slot.hash.prefix() / (slot.hash.hex() + std::string(extension_of(slot.kind)));
-}
-
 AssetSlot PackWriter::reserve(std::string_view vpath, AssetKind kind,
                               std::span<const std::byte> source, std::string_view source_name) {
     AssetSlot slot;
     slot.kind = kind;
     slot.hash = content_hash(source, options_.converter, settings_for(kind));
-    slot.relative_path = asset_relative_path(slot.hash.hex(), kind);
-    slot.already_present = present_.contains(slot.relative_path);
+    slot.already_present = store_.contains(slot.hash);
     slot.vpath = std::string(vpath);
     slot.source = std::string(source_name);
     slot.source_bytes = source.size();
@@ -122,12 +86,9 @@ void PackWriter::record(const AssetSlot& slot) {
 
 io::ParseResult<void> PackWriter::store(const AssetSlot& slot,
                                         std::span<const std::byte> converted) {
-    const auto path = asset_path(slot);
-    std::string error;
-    if (!io::write_file(path, converted, error)) {
-        return write_error(path, std::move(error));
+    if (auto put = store_.put(slot.hash, slot.kind, converted); !put) {
+        return std::unexpected(put.error());
     }
-    present_.insert(slot.relative_path);
     record(slot);
 
     ++stats_.converted;
@@ -182,7 +143,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
 
     std::unordered_set<std::string> referenced;
     for (const auto& entry : index_) {
-        referenced.insert(asset_relative_path(entry.hex, entry.kind));
+        referenced.insert(entry.hex);
     }
     stats_.distinct_assets = referenced.size();
     stats_.index_entries = index_.size();
@@ -200,34 +161,16 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     }
     stats_.index_bytes = index_text.size();
 
-    // ---- orphans ------------------------------------------------------
-    std::error_code ec;
-    for (std::filesystem::directory_iterator bucket(root_ / "assets", ec), end;
-         !ec && bucket != end; bucket.increment(ec)) {
-        if (!bucket->is_directory()) {
-            continue;
-        }
-        std::error_code inner;
-        for (std::filesystem::directory_iterator file(bucket->path(), inner), last;
-             !inner && file != last; file.increment(inner)) {
-            if (!file->is_regular_file()) {
-                continue;
-            }
-            const std::string relative =
-                "assets/" + bucket->path().filename().string() + "/" +
-                file->path().filename().string();
-            if (referenced.contains(relative)) {
-                continue;
-            }
-            ++stats_.orphaned_assets;
-            if (options_.prune_orphans) {
-                std::error_code removed;
-                if (std::filesystem::remove(file->path(), removed)) {
-                    ++stats_.pruned_assets;
-                }
-            }
-        }
+    // ---- the store ----------------------------------------------------
+    // Before the report: pruning changes the counts it lists.
+    stats_.orphaned_assets = 0;
+    auto stored = store_.finish(referenced, options_.prune_orphans);
+    if (!stored) {
+        return std::unexpected(stored.error());
     }
+    stats_.orphaned_assets = stored->orphaned;
+    stats_.pruned_assets += stored->pruned;
+    stats_.store_bytes = stored->bytes;
 
     // ---- report.json --------------------------------------------------
     ordered_json report;
@@ -244,6 +187,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     report["bytes"] = ordered_json{
         {"source", stats_.source_bytes},
         {"assets", stats_.asset_bytes},
+        {"store", stats_.store_bytes},
         {"dedupe_saved", stats_.dedupe_saved_bytes},
     };
     report["assets"] = ordered_json{
@@ -327,6 +271,16 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
                                  {"lod", stats_.lod},
                                  {"bytes", stats_.asset_bytes},
                                  {"dedupe_saved_bytes", stats_.dedupe_saved_bytes}};
+
+    // How the engine finds asset bytes: an index plus one blob, or loose files.
+    if (store_.layout() == StoreLayout::blob) {
+        doc["store"] = ordered_json{{"layout", "blob"},
+                                    {"index", "assets.idx"},
+                                    {"blob", blob_file_name(store_.generation())},
+                                    {"bytes", stats_.store_bytes}};
+    } else {
+        doc["store"] = ordered_json{{"layout", "loose"}, {"bytes", stats_.store_bytes}};
+    }
 
     auto not_converted = ordered_json::object();
     for (const auto& [extension, counts] : deferred_) {

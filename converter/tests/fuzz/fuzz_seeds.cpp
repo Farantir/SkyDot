@@ -12,6 +12,7 @@
 #include "../support/pex_builder.hpp"
 #include "../support/strings_builder.hpp"
 
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/snapshot.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
@@ -443,6 +444,26 @@ void seed_lod(const std::filesystem::path& root) {
     emit(dir, "trees-trailing.btt", trailing);
 }
 
+void seed_assets(const std::filesystem::path& root) {
+    using namespace bethconv::pack;
+    const auto dir = root / "assets";
+    AssetIndex index;
+    index.generation = 3;
+    emit(dir, "empty.idx", index.serialize());
+    index.blob_bytes = 64;
+    for (std::uint8_t i = 0; i < 3; ++i) {
+        BlobEntry entry;
+        entry.hash.bytes[0] = std::byte{i};
+        entry.offset = 16u * i;
+        entry.size = 10;
+        entry.kind = static_cast<AssetKind>(i);
+        index.entries.push_back(entry);
+    }
+    const auto three = index.serialize();
+    emit(dir, "three.idx", three);
+    emit(dir, "three-truncated.idx", truncated(three, 50));
+}
+
 int main(int argc, char** argv) {
     if (argc != 2) {
         std::fprintf(stderr, "usage: %s <output-directory>\n", argv[0]);
@@ -457,6 +478,7 @@ int main(int argc, char** argv) {
     seed_pex(root);
     seed_bsa(root);
     seed_lod(root);
+    seed_assets(root);
     // fuzz_forms shares the esm corpus.
     std::printf("%zu seed(s) under %s\n", written, root.string().c_str());
     return 0;

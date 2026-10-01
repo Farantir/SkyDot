@@ -1,29 +1,24 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Mounts a `.pck` baked from the test pack (bethconv's tools/bake) through
-# SkydotPack and loads its scenes: a scene path derived from a virtual path must
-# give a mesh with materials.
-#
-# Expected counts come from the bake (converter/tools/bake/README.md: 4 scenes,
-# 4 meshes, 4 albedo, 4 normals). A `.pck` is not byte-reproducible, so loading
-# it is the only check.
+# Loads the test pack's models and textures straight from its asset store, as
+# the engine does: a virtual path must give a scene whose surfaces end up with
+# Skyrim materials and their textures, and the test cells must build.
 extends SceneTree
 
 var failures := 0
 
 func _init() -> void:
-    var pck := OS.get_environment("SKYDOT_TESTPCK")
     var pack_dir := OS.get_environment("SKYDOT_TESTPACK")
-    if pck == "" or pack_dir == "":
+    if pack_dir == "":
         if OS.get_environment("SKYDOT_TESTPACK_REQUIRE") != "":
-            printerr("smoke_bake: SKYDOT_TESTPCK or SKYDOT_TESTPACK is unset and SKYDOT_TESTPACK_REQUIRE is set")
+            printerr("smoke_assets: SKYDOT_TESTPACK is unset and SKYDOT_TESTPACK_REQUIRE is set")
             quit(1)
             return
-        print("smoke_bake: SKIP (SKYDOT_TESTPCK unset; bake the test pack and point it here)")
+        print("smoke_assets: SKIP (SKYDOT_TESTPACK unset; build bethconv-testpack and point it here)")
         quit(77)
         return
-    _run(pack_dir, pck)
-    print("smoke_bake: failures=", failures)
+    _run(pack_dir)
+    print("smoke_assets: failures=", failures)
     quit(failures)
 
 func expect(ok: bool, what: String) -> void:
@@ -31,12 +26,21 @@ func expect(ok: bool, what: String) -> void:
         failures += 1
         printerr("FAIL: ", what)
 
-func _run(pack_dir: String, pck: String) -> void:
+func _run(pack_dir: String) -> void:
     var pack := SkydotPack.new()
     expect(pack.open(pack_dir) == OK, "the test pack opens: " + pack.get_error())
-    expect(pack.mount_baked(pck) == OK, "the bake mounts: " + pack.get_error())
     if failures > 0:
         return
+
+    var albedo_tex := pack.load_texture("textures/testpack/cube.dds")
+    expect(albedo_tex is ImageTexture and albedo_tex.get_width() == 16,
+           "a DDS loads as a 16x16 texture: %s" % albedo_tex)
+    if albedo_tex is ImageTexture:
+        var image: Image = albedo_tex.get_image()
+        expect(image.is_compressed() and image.has_mipmaps(), "block-compressed, with its mips")
+    var sky := pack.load_texture("textures/testpack/sky.dds")
+    expect(sky is Cubemap and sky.get_layers() == 6, "a cube map loads as a Cubemap: %s" % sky)
+    expect(pack.load_texture("textures/testpack/cube.dds") == albedo_tex, "textures are cached")
 
     var meshes := ["meshes/testpack/cube_se.nif", "meshes/testpack/cube_le.nif",
                    "meshes/testpack/cube_se_copy.nif", "meshes/testpack/cube with space.nif"]
@@ -46,35 +50,31 @@ func _run(pack_dir: String, pck: String) -> void:
     var normals := 0
     for vpath in meshes:
         expect(pack.get_kind(vpath) == "mesh", "the pack knows " + vpath)
-        var scene_path: String = SkydotPack.scene_path_for(vpath)
-        expect(ResourceLoader.exists(scene_path), "the bake has " + scene_path)
-        var scene := ResourceLoader.load(scene_path, "PackedScene") as PackedScene
+        var scene := pack.load_scene(vpath)
         if scene == null:
-            expect(false, "loads: " + scene_path)
+            expect(false, "loads: " + vpath)
             continue
         scenes += 1
         var root := scene.instantiate()
+        expect(root.scene_file_path == SkydotPack.normalize_vpath(vpath),
+               "an instance names its model: " + root.scene_file_path)
         for mi in _find_meshes(root):
             var mesh: Mesh = mi.mesh
             for s in mesh.get_surface_count():
                 surfaces += 1
-                var mat := mi.get_active_material(s) as BaseMaterial3D
-                if mat == null:
-                    continue
-                if mat.albedo_texture != null:
-                    albedo += 1
-                if mat.normal_enabled and mat.normal_texture != null:
-                    normals += 1
+                # Pack meshes carry no images; the extras name the textures.
+                var base := mi.get_active_material(s) as BaseMaterial3D
+                expect(base != null and base.albedo_texture == null and base.has_meta("extras"),
+                       "the glTF material has extras and no image")
         root.free()
+    expect(pack.load_scene(meshes[0]) == pack.load_scene(meshes[0]), "scenes are cached")
 
-    print("smoke_bake: scenes=", scenes, " surfaces=", surfaces, " albedo=", albedo, " normals=", normals)
+    print("smoke_assets: scenes=", scenes, " surfaces=", surfaces)
     expect(scenes == 4, "4 scenes")
     expect(surfaces == 4, "4 surfaces")
-    expect(albedo == 4, "4 surfaces with an albedo texture")
-    expect(normals == 4, "4 surfaces with a normal map")
 
-    # With the bake mounted, the interior cell builds with its cube, door and
-    # lever in place.
+    # The interior cell builds with its cube, door and lever in place, their
+    # Skyrim materials textured from the extras.
     var world := pack.open_world()
     expect(world != null, "world.fb opens: " + pack.get_error())
     if world != null:
@@ -85,9 +85,16 @@ func _run(pack_dir: String, pck: String) -> void:
         expect(stats["materials"] == 3, "each surface gets a Skyrim material: %s" % stats)
         var converted := 0
         for mi in _find_meshes(cell):
-            if mi.get_surface_override_material(0) is ShaderMaterial:
-                converted += 1
+            var m := mi.get_surface_override_material(0) as ShaderMaterial
+            if m == null:
+                continue
+            converted += 1
+            if m.get_shader_parameter("albedo_tex") == albedo_tex:
+                albedo += 1
+            if m.get_shader_parameter("normal_tex") is Texture2D:
+                normals += 1
         expect(converted == 3, "as a surface override")
+        expect(albedo == 3 and normals == 3, "each with its albedo and normal map: %d, %d" % [albedo, normals])
         _check_pick(world, cell)
         cell.free()
         _check_exterior(world)
@@ -139,8 +146,8 @@ func _check_exterior(world: SkydotWorld) -> void:
         var dawn := world.get_sky(world_id, 7.0)
         expect(dawn["sun_direction"].x > 0.5, "the sun rises in the east")
     var resources := world.get_exterior_resources(world_id, 0, 0)
-    expect(resources.has("res://meshes/testpack/cube_se.scn")
-           and resources.has("res://textures/testpack/cube.dds"),
+    expect(resources.has("meshes/testpack/cube_se.nif")
+           and resources.has("textures/testpack/cube.dds"),
            "the origin needs its cube and its land texture: %s" % resources)
     var polls := 0
     while world.request_exterior(world_id, 0, 0) != 0 and polls < 2000:
@@ -166,7 +173,7 @@ func _check_exterior(world: SkydotWorld) -> void:
             textured += 1
     expect(textured == 4, "every quadrant has its base texture")
     var q0 := (quadrants[0] as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
-    # Its second layer is the default texture, which the test bake lacks, so
+    # Its second layer is the default texture, which the test pack lacks, so
     # check the shader rather than the texture.
     expect(q0.shader.code.contains("uniform sampler2D albedo_1"), "quadrant 0 has a second layer")
     var q1 := (quadrants[1] as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial

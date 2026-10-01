@@ -23,12 +23,16 @@ The engine shows interior cells and streams exterior ones. What exists:
   Windows (debug and release), hot reload in debug. The library builds into
   `game/bin/`.
 - **`SkydotPack`**: mounts a bethconv pack. Reads `manifest.json`, the
-  `records.fb` header and `vpath.idx` per
-  [`formats/pack-format.md`](../formats/pack-format.md) v4, refuses unknown
-  versions with both numbers in the message, resolves virtual paths in any
-  spelling to files on disk, and mounts a baked `.pck` over `res://`.
+  `records.fb` header, `vpath.idx` and the asset store (one memory-mapped
+  blob, or loose files) per
+  [`formats/pack-format.md`](../formats/pack-format.md) v5, and refuses
+  unknown versions with both numbers in the message.
+- **Assets load straight from the pack**, no import or bake: meshes through
+  Godot's runtime glTF loader, DDS textures as they are (block-compressed,
+  cube maps too), on worker threads, cached by virtual path
+  (`assets/asset_cache.hpp`).
 - **`SkydotWorld`**: reads the pack's `world.fb` (cells, references, base
-  objects, lights) and builds a cell: baked scenes placed at their references
+  objects, lights) and builds a cell: models placed at their references
   (see `docs/coordinates.md`), `OmniLight3D`/`SpotLight3D` for lights, editor
   markers and initially disabled references skipped.
 - **Exteriors**: terrain, water, grid streaming, sky and light from the
@@ -63,8 +67,8 @@ The engine shows interior cells and streams exterior ones. What exists:
   and exit.
 - **Smoke tests** (headless editor runs): the extension loads; each refusal
   path is triggered with files the test writes; the converter's test pack is
-  mounted and queried; a bake of it is mounted and its four scenes load with
-  materials; synthetic effect extras animate, emit and flicker; its doors,
+  mounted and queried; its four meshes and its textures (a cube map among
+  them) load from the blob, and its cells build with Skyrim materials; synthetic effect extras animate, emit and flicker; its doors,
   lock and lever are queried and picked; the viewer walks through its door
   pair; its scripts run in the VM, and the viewer's lever toggles the cube;
   its quest starts, fills its alias with the lever and moves on when the lever
@@ -75,32 +79,25 @@ conditions, the VR shell.
 
 ### Viewing a cell
 
+Convert once (see `../converter/README.md`), onto a local SSD; then any cell
+or worldspace opens directly:
+
 ```sh
-# in ../converter: which models does the cell use, and bake only those
+# in ../converter
 B=./build/linux-release/tools/bethconv-cli/bethconv
-$B cell pack/ --list --filter breezehome
-$B cell pack/ WhiterunBreezehome --models > models.txt
-./tools/bake/bethconv-bake.sh --pack pack/ --from models.txt --out breezehome.pck \
-    --bethconv $B --godot godot4.7
+$B convert --data "<Skyrim Special Edition>/Data" -o ~/packs/se   # about a minute
+$B cell ~/packs/se --list --filter breezehome
 
 # here
 godot4.7 --path game res://viewer/cell_viewer.tscn -- \
-    --pack ../converter/pack --pck ../converter/breezehome.pck --cell WhiterunBreezehome
+    --pack ~/packs/se --cell WhiterunBreezehome
 ```
 
-An exterior region, baked the same way and streamed around the camera:
+An exterior, streamed around the camera with distant LOD beyond it:
 
 ```sh
-# in ../converter: Riverwood is around cell (4, -12) of Tamriel
-$B cell pack/ --worlds
-$B cell pack/ --world Tamriel --grid 4,-12 --radius 2 --models > riverwood.txt
-$B cell pack/ --world Tamriel --lod >> riverwood.txt     # distant LOD (about 4,100 meshes)
-./tools/bake/bethconv-bake.sh --pack pack/ --from riverwood.txt --out riverwood.pck \
-    --bethconv $B --godot godot4.7
-
-# here
 godot4.7 --path game res://viewer/cell_viewer.tscn -- \
-    --pack ../converter/pack --pck ../converter/riverwood.pck --world Tamriel \
+    --pack ~/packs/se --world Tamriel \
     --at 18400,-47900,300 --target 19400,-46500,0
 ```
 
@@ -133,7 +130,7 @@ generator) and a Godot 4.7 editor on `PATH` as `godot4.7`, `godot4` or `godot`
 git submodule update --init
 cmake --preset linux-debug
 cmake --build --preset linux-debug     # -> game/bin/libskydot.linux.template_debug.x86_64.so
-ctest --preset linux-debug             # 8 tests, 15 with a baked test pack
+ctest --preset linux-debug             # 7 tests, 12 with the converter's test pack
 ../tools/ci/check-no-game-data.sh
 ```
 
@@ -148,23 +145,26 @@ open on `game/` reloads the library. Only tested headlessly so far.
 
 ### Converter output for the tests
 
-Two tests need converter output and show as *Not Run* without it. Build
-bethconv's test pack (no Bethesda data) and optionally bake it:
+Most tests need converter output: without it the pack tests are skipped and
+the five viewer tests are not registered. Build the converter's test pack (no
+Bethesda data):
 
 ```sh
 # in ../converter, after building it
 ./build/linux-debug-asan/tools/testpack/bethconv-testpack /tmp/tp
-./tools/bake/bethconv-bake.sh --pack /tmp/tp/pack --out /tmp/tp/testpack.pck \
-    --bethconv ./build/linux-debug-asan/tools/bethconv-cli/bethconv --godot godot4.7
 
 # here
-cmake --preset linux-debug -DSKYDOT_TESTPACK=/tmp/tp/pack -DSKYDOT_TESTPCK=/tmp/tp/testpack.pck
+cmake --preset linux-debug -DSKYDOT_TESTPACK=/tmp/tp/pack
 ctest --preset linux-debug
 ```
 
-With both repositories side by side, `SKYDOT_TESTPACK` defaults to the pack
-bethconv's `ctest -R testpack` leaves in its build tree.
-`SKYDOT_TESTPACK_REQUIRE=1` turns skips into failures.
+`SKYDOT_TESTPACK` defaults to the pack the converter's `ctest -R testpack`
+leaves in its build tree. `SKYDOT_TESTPACK_REQUIRE=1` turns skips into
+failures.
+
+Headless runs load assets on the calling thread: Godot's headless renderer
+creates resources without locking, so the worker threads are exercised only
+with a window (the viewer, `--screenshot`, `--benchmark`).
 
 ### From GDScript
 
@@ -173,11 +173,11 @@ var pack := SkydotPack.new()
 if pack.open("/path/to/pack") != OK:
     push_error(pack.get_error())      # e.g. "pack format version 2 is not one this engine reads (it reads v1)"
     return
-pack.mount_baked("/path/to/bake.pck")
-
 var vpath := SkydotPack.model_vpath("Clutter\\Apple01.nif")   # "meshes/clutter/apple01.nif"
-var on_disk := pack.resolve(vpath)                            # ".../assets/3f/3f9c….glb", or ""
-var scene := load(SkydotPack.scene_path_for(vpath))           # "res://meshes/clutter/apple01.scn"
+var model := pack.load_scene(vpath)                           # SkydotModel, or null
+add_child(model.instantiate())
+var texture := pack.load_texture("textures/clutter/apple01.dds")
+var bytes := pack.get_bytes(vpath)                            # the GLB as stored
 ```
 
 ## Layout
@@ -186,13 +186,14 @@ var scene := load(SkydotPack.scene_path_for(vpath))           # "res://meshes/cl
 extension/src/            the GDExtension, C++20
   register_types.cpp      entry point and class registration
   assets/pack.*           SkydotPack
+  assets/pack_store.*     vpath.idx and asset bytes (blob or loose)
+  assets/asset_cache.*    models and textures built from those bytes
   world/world.*           SkydotWorld
 game/                     the Godot project (.gdextension, project.godot, glue)
   viewer/                 cell viewer
 tests/smoke/              headless editor runs, registered with ctest
 tools/ci/                 repository checks
 docs/godot-notes.md       observations about the editor and bindings
-extension/schema/*.fbs   copies of bethconv's schemas (ctests check they match)
 extern/godot-cpp          submodule, master, bindings for 4.7
 extern/flatbuffers        submodule, v25.12.19 (headers and flatc)
 ```

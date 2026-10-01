@@ -55,11 +55,11 @@ struct ConvertOptions {
 
     mesh::ReadOptions mesh_read;
 
-    /// Defaults to `pack_vpaths` (unlike mesh::WriteOptions): in a
-    /// content-addressed pack meshes cannot reach textures by relative path, so
-    /// `vpath.idx` resolves them (see mesh::TextureRefs, pack/pack_view.hpp).
-    /// Part of the mesh fingerprint.
-    mesh::WriteOptions mesh_write{.texture_refs = mesh::TextureRefs::pack_vpaths};
+    /// Defaults to no glTF images (unlike mesh::WriteOptions): a pack's meshes
+    /// name their textures in material extras, which the engine resolves through
+    /// `vpath.idx`, and `view` adds images back (pack/pack_view.hpp). Part of
+    /// the mesh fingerprint.
+    mesh::WriteOptions mesh_write{.texture_refs = mesh::TextureRefs::none};
 
     /// Complete short DDS mip chains. Off is the control run. Part of the
     /// texture fingerprint.
@@ -77,6 +77,9 @@ struct ConvertOptions {
     bool hash_archives = false;
 
     bool prune_orphans = false;
+
+    /// Where asset bytes go: one blob (default) or a file per asset.
+    StoreLayout layout = StoreLayout::blob;
 
     /// Called every `progress_interval` inputs and at the end of each phase.
     /// Terminal output only.

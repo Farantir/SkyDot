@@ -6,7 +6,8 @@
 //       manifest.json         version, converter, load order, source hashes
 //       records.fb            record snapshot (written by pack/snapshot)
 //       world.fb              cells, references, base objects (pack/world)
-//       assets/<bb>/<hash>.glb|.dds|.pex     content-addressed, 2-level fanout
+//       assets.idx, assets-<gen>.blob         assets, content-addressed (pack/asset_store)
+//       (or assets/<bb>/<hash>.<ext> with the loose layout)
 //       vpath.idx             virtual path -> content hash
 //       report.json           every skipped or failed input, with reason
 //
@@ -22,6 +23,7 @@
 #pragma once
 
 #include "bethconv/io/parse_error.hpp"
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/content_hash.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 
@@ -113,9 +115,12 @@ struct PackOptions {
     std::string script_settings;
     std::string lod_settings;
 
-    /// Delete assets not named by this run's index. Off by default: partial
-    /// rebuilds are legitimate and the directory belongs to the user.
-    /// `finish()` counts orphans either way.
+    /// Where asset bytes go. Blob unless asked otherwise.
+    StoreLayout layout = StoreLayout::blob;
+
+    /// Delete assets not named by this run's index (for the blob, compact it).
+    /// Off by default: partial rebuilds are legitimate and the directory
+    /// belongs to the user. `finish()` counts orphans either way.
     bool prune_orphans = false;
 };
 
@@ -133,7 +138,8 @@ struct PackStats {
     std::uint64_t scripts{};
     std::uint64_t lod{};
 
-    std::uint64_t asset_bytes{};  ///< Written under assets/.
+    std::uint64_t asset_bytes{};  ///< Written by this run.
+    std::uint64_t store_bytes{};  ///< Every stored asset, after pruning.
     std::uint64_t source_bytes{}; ///< Read from the mount, converted or not.
 
     /// Bytes not written because the asset already existed.
@@ -142,7 +148,7 @@ struct PackStats {
     std::uint64_t distinct_assets{};
     std::uint64_t index_entries{};
 
-    /// Files under assets/ not named by the index. 0 for a fresh directory.
+    /// Stored assets not named by the index. 0 for a fresh directory.
     std::uint64_t orphaned_assets{};
     std::uint64_t pruned_assets{};
 
@@ -157,7 +163,6 @@ struct PackStats {
 struct AssetSlot {
     ContentHash hash;
     AssetKind kind{};
-    std::string relative_path; ///< "assets/ab/<64 hex>.glb", forward slashes.
     bool already_present{};
 
     /// Used by `store`/`reuse` to write the index entry. `reserve` does not,
@@ -210,7 +215,7 @@ public:
     /// lowercase.
     void defer(std::string_view extension);
 
-    /// Write manifest.json, vpath.idx and report.json and count assets/. The
+    /// Write manifest.json, vpath.idx and report.json and finish the store. The
     /// writer stays usable, so tests can call it twice and compare.
     [[nodiscard]] io::ParseResult<PackStats> finish(const PackManifest& manifest);
 
@@ -232,13 +237,12 @@ private:
     void record(const AssetSlot& slot);
 
     [[nodiscard]] std::string settings_for(AssetKind kind) const;
-    [[nodiscard]] std::filesystem::path asset_path(const AssetSlot& slot) const;
 
     std::filesystem::path root_;
     PackOptions options_;
 
     std::vector<IndexEntry> index_;
-    std::unordered_set<std::string> present_; ///< Asset hex names on disk.
+    AssetStore store_;
     std::vector<PackFailure> failures_;
     std::vector<PackWarning> warnings_;
     std::map<std::string, DeferredKind> deferred_;

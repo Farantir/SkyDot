@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -36,6 +37,9 @@ struct ContentHash {
 
     friend bool operator==(const ContentHash&, const ContentHash&) = default;
 };
+
+/// Inverse of `ContentHash::hex`; nullopt unless 64 hex digits.
+[[nodiscard]] std::optional<ContentHash> parse_hex_hash(std::string_view hex) noexcept;
 
 /// Incremental BLAKE3-256. Public because packs also hash non-assets (plugins,
 /// load orders).

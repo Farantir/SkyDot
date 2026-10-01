@@ -54,10 +54,24 @@ Without hot reload, godot-cpp links `-static-libstdc++ -static-libgcc`
 preset turns it off; distribution builds should use
 `-DGODOTCPP_USE_STATIC_CPP=ON` and install the package.
 
-## Mounting a `.pck` over `res://`
+## Loading packs at runtime
 
-`SkydotPack.mount_baked` calls `ProjectSettings.load_resource_pack`. Scenes
-load by the virtual path the bake used (`res://meshes/testpack/cube_se.scn`),
-with materials and textures, in a project that did not build them:
-`scenes=4 surfaces=4 albedo=4 normals=4` on the test pack, matching bethconv's
-`tools/bake/verify.gd`.
+There is no `.pck` and no import. `GLTFDocument.append_from_buffer` and
+`generate_scene` build a model from a GLB's bytes (about 1 ms per Riverwood
+mesh, against 1.7 ms to load a baked `.scn`), and `Image.load_dds_from_buffer`
+keeps DDS block formats (cube maps are split into six faces for
+`Cubemap.create_from_images`).
+
+Two traps:
+
+- `PackedScene.pack()` on a worker thread reads mesh data back through the
+  RenderingServer, which waits for the main thread; with the main thread
+  waiting for the worker, the viewer hung. The cache keeps the generated node
+  tree as a template and duplicates it instead (`SkydotModel`).
+- Headless runs use a renderer whose resource owners take no lock: two workers
+  creating meshes at once fail with "Initializing already initialized RID".
+  Headless, the cache loads on the calling thread.
+
+A GLB without a binary chunk (780 of 33,235 vanilla SE meshes, all without
+geometry) logs "Reading less data than requested" from the glTF reader; it is
+harmless.

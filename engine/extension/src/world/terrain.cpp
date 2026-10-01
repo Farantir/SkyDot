@@ -131,12 +131,7 @@ Ref<godot::Texture> TerrainBuilder::texture(const std::string& vpath) {
     if (auto it = textures_.find(vpath); it != textures_.end()) {
         return it->second;
     }
-    Ref<godot::Texture> texture;
-    const String path = String("res://") + to_godot(vpath);
-    auto* loader = godot::ResourceLoader::get_singleton();
-    if (loader->exists(path)) {
-        texture = loader->load(path);
-    }
+    Ref<godot::Texture> texture = assets_ != nullptr ? assets_->texture(vpath) : Ref<godot::Texture>();
     textures_.emplace(vpath, texture);
     return texture;
 }

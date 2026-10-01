@@ -29,8 +29,9 @@ set(map_strings  strings)
 set(map_snapshot snapshot)
 set(map_pex      pex)
 set(map_lod      lod)
+set(map_assets   assets)
 
-set(names esm forms bsa nif dds strings snapshot pex lod)
+set(names esm forms bsa nif dds strings snapshot pex lod assets)
 set(failed "")
 
 foreach(name IN LISTS names)

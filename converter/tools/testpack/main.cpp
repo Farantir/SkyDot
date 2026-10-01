@@ -34,6 +34,7 @@
 // for the engine's VM tests (scripts.hpp), and an unconverted file kind for
 // `report.json`.
 #include "bethconv/archive/archive_set.hpp"
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 #include "bethconv/pack/snapshot.hpp"
@@ -910,10 +911,16 @@ int main(int argc, char** argv) {
                       << bethconv::pack::k_pack_format_version << "\n";
             return EXIT_FAILURE;
         }
+        const auto assets = bethconv::pack::AssetReader::open(pack_dir);
+        if (!assets) {
+            std::cerr << "the pack's own asset store does not open: " << assets.error().detail
+                      << "\n";
+            return EXIT_FAILURE;
+        }
         for (const auto& entry : index->entries()) {
-            if (!fs::exists(pack_dir / entry.asset_path())) {
+            if (const auto bytes = assets->read(entry); !bytes || bytes->data.empty()) {
                 std::cerr << "vpath.idx names an asset that is not there: " << entry.vpath
-                          << " -> " << entry.asset_path() << "\n";
+                          << " -> " << entry.hex << "\n";
                 return EXIT_FAILURE;
             }
         }

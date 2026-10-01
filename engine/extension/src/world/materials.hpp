@@ -17,6 +17,8 @@
 // mesh shares them.
 #pragma once
 
+#include "assets/asset_cache.hpp"
+
 #include <godot_cpp/classes/material.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
@@ -40,6 +42,9 @@ class SkydotMaterials : public godot::RefCounted {
     GDCLASS(SkydotMaterials, godot::RefCounted)
 
 public:
+    /// Where textures come from. Without it materials are untextured.
+    void set_assets(std::shared_ptr<AssetCache> assets) { assets_ = std::move(assets); }
+
     /// Convert every surface material under `root` (inclusive). Returns the
     /// number of surfaces given a converted material.
     std::int64_t apply(godot::Node* root);
@@ -83,6 +88,7 @@ private:
                           const godot::Ref<godot::Texture>& source, godot::Color emission);
     godot::Ref<godot::Texture> load_texture(const godot::String& vpath);
 
+    std::shared_ptr<AssetCache> assets_;
     std::unordered_map<std::uint64_t, godot::Ref<godot::Material>> materials_;
     std::unordered_map<std::string, godot::Ref<godot::Shader>> shaders_;
     std::vector<godot::Ref<godot::ShaderMaterial>> warm_;

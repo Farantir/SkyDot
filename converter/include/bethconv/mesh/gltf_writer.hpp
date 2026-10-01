@@ -31,16 +31,6 @@ enum class TextureRefs : std::uint8_t {
     /// relative to the GLB's location, because glTF resolves against the
     /// document; `extras` keep the unescaped pack-relative path.
     source_paths,
-
-    /// The virtual path as is (`textures/foo.dds`), without `../` correction,
-    /// so it does not resolve relative to the document.
-    ///
-    /// Used for content-addressed packs: a GLB at `assets/<bb>/<hash>.glb` has
-    /// no stable relative path to its texture, and making the URI depend on the
-    /// texture's hash would leave stale URIs when only the texture changes.
-    /// `vpath.idx` resolves the path instead (the bake does this). Such a GLB
-    /// cannot be loaded directly from the pack directory.
-    pack_vpaths,
 };
 
 struct WriteOptions {
@@ -58,6 +48,10 @@ struct WriteOptions {
     /// plain glTF for comparing with other tools.
     bool write_extras = true;
 };
+
+/// A texture path as a relative URI reference, escaped as the writer does
+/// (`house crafting/nail01.dds` -> `house%20crafting/nail01.dds`).
+[[nodiscard]] std::string escape_texture_uri(std::string_view path);
 
 /// Serialize `model` as a self-contained GLB. Never throws.
 [[nodiscard]] io::ParseResult<std::vector<std::byte>> write_glb(const Model& model,

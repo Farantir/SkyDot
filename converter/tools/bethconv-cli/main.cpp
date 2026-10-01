@@ -19,6 +19,7 @@
 #include "bethconv/archive/archive_set.hpp"
 #include "bethconv/archive/vpath.hpp"
 #include "bethconv/io/mapped_file.hpp"
+#include "bethconv/io/output_target.hpp"
 #include "bethconv/io/span_stream.hpp"
 #include "bethconv/mesh/gltf_writer.hpp"
 #include "bethconv/mesh/nif_reader.hpp"
@@ -1877,6 +1878,40 @@ int cmd_loadorder(const std::filesystem::path& data_dir, const std::filesystem::
 }
 
 
+/// Whether `out` can take what is about to be written. Many small files on a
+/// FUSE filesystem or a spinning disk are refused unless `allow`: a loose
+/// pack on an SMR disk behind ntfs-3g once hung the whole mount. Large files
+/// there only warn. See io/output_target.hpp.
+bool output_target_ok(const std::filesystem::path& out, bool many_files, bool allow) {
+    const auto target = bethconv::io::probe_output_target(out);
+    if (!target || !target->slow_for_many_files()) {
+        return true;
+    }
+    const char* why = target->fuse ? "a FUSE filesystem (every file operation goes through one "
+                                     "userspace process; NTFS via ntfs-3g is one)"
+                                   : "a spinning or zoned disk";
+    if (!many_files) {
+        std::fprintf(stderr,
+                     "warning: %s is on %s: %s. Large sequential files only; expect it to be "
+                     "slow.\n",
+                     out.string().c_str(), target->describe().c_str(), why);
+        return true;
+    }
+    if (allow) {
+        std::fprintf(stderr,
+                     "warning: writing many small files to %s, on %s: %s. Proceeding because "
+                     "of --allow-slow-target.\n",
+                     out.string().c_str(), target->describe().c_str(), why);
+        return true;
+    }
+    std::fprintf(stderr,
+                 "error: %s is on %s: %s.\n"
+                 "Writing many small files there can stall the whole mount. Write to a local "
+                 "SSD instead, use --store blob for a pack, or pass --allow-slow-target.\n",
+                 out.string().c_str(), target->describe().c_str(), why);
+    return false;
+}
+
 /// One command, one pack. The work is in `pack/convert.cpp`; this mounts,
 /// builds the load order and prints.
 int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::path& list_file,
@@ -1885,7 +1920,11 @@ int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::pa
                 const std::string& filter, std::size_t limit, bool no_records, bool no_meshes,
                 bool no_textures, bool no_scripts, bool no_lod, bool no_mip_fix, bool no_collision,
                 bool no_skinning, bool keep_z_up, float unit_scale, bool hash_archives,
-                bool prune, bool quiet) {
+                bool prune, bethconv::pack::StoreLayout layout, bool allow_slow_target,
+                bool quiet) {
+    if (!output_target_ok(out, layout == bethconv::pack::StoreLayout::loose, allow_slow_target)) {
+        return 2;
+    }
     auto order = build_order(data_dir, list_file);
     if (!order) {
         std::fprintf(stderr, "error: %s\n", order.error().to_string().c_str());
@@ -1920,13 +1959,11 @@ int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::pa
     options.mesh_read.read_skinning = !no_skinning;
     options.mesh_write.convert_to_y_up = !keep_z_up;
     options.mesh_write.unit_scale = unit_scale;
-    // Packs resolve textures through `vpath.idx`; see
-    // mesh::TextureRefs::pack_vpaths.
-    options.mesh_write.texture_refs = bethconv::mesh::TextureRefs::pack_vpaths;
     options.filter = filter;
     options.limit = limit;
     options.hash_archives = hash_archives;
     options.prune_orphans = prune;
+    options.layout = layout;
 
     const auto started = std::chrono::steady_clock::now();
     if (!quiet) {
@@ -2002,6 +2039,8 @@ int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::pa
     std::printf("                %.1f MiB written, %.1f MiB not re-converted\n",
                 static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
                 static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
+    std::printf("  store         %s, %.1f MiB\n", std::string(to_string(layout)).c_str(),
+                static_cast<double>(stats.store_bytes) / (1024.0 * 1024.0));
     std::printf("  vpath.idx     %llu entries, %.1f MiB\n",
                 static_cast<unsigned long long>(stats.index_entries),
                 static_cast<double>(stats.index_bytes) / (1024.0 * 1024.0));
@@ -2170,7 +2209,7 @@ void print_scripts(const std::vector<bethconv::record::Script>& scripts) {
 }
 
 /// The LOD meshes of a worldspace and its tree atlas, as virtual paths the
-/// pack has (input for the bake's --from).
+/// pack has (input for view --from).
 int cmd_cell_lod(const std::filesystem::path& pack, const std::string& world_name) {
     auto index = bethconv::pack::VpathIndex::read(pack / "vpath.idx");
     if (!index) {
@@ -2332,12 +2371,20 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
     return 0;
 }
 
-/// Materialize a pack as a directory tree glTF-only consumers can open: hard
-/// links for textures and scripts, rebased image URIs for meshes. See
+/// Materialize a pack as a directory tree glTF-only consumers can open. See
 /// pack/pack_view.hpp.
 int cmd_view(const std::filesystem::path& pack, const std::filesystem::path& out,
              const std::string& filter, std::size_t limit, const std::filesystem::path& list_file,
-             bool copy, bool quiet) {
+             bool copy, bool all, bool allow_slow_target, bool quiet) {
+    if (filter.empty() && limit == 0 && list_file.empty() && !all) {
+        std::fprintf(stderr, "error: a view of the whole pack writes one file per asset (about "
+                             "80,000 and 20 GiB for vanilla SE). Choose with --filter, --from or "
+                             "--limit, or pass --all.\n");
+        return 2;
+    }
+    if (!output_target_ok(out, true, allow_slow_target)) {
+        return 2;
+    }
     bethconv::pack::ViewOptions options;
     options.out = out;
     options.copy_assets = copy;
@@ -2422,6 +2469,11 @@ int cmd_view(const std::filesystem::path& pack, const std::filesystem::path& out
 
 int main(int argc, char** argv) {
     CLI::App app{"bethconv - ahead-of-time Bethesda data converter"};
+
+    // Commands that write many files refuse slow targets without this flag.
+    bool allow_slow_target = false;
+    const char* k_allow_slow_help =
+        "Write many small files even to a FUSE filesystem or a spinning disk";
     app.set_version_flag("--version", std::string(BETHCONV_VERSION));
     std::vector<std::filesystem::path> texture_sources;
     std::vector<std::string> texture_vpaths;
@@ -2455,6 +2507,7 @@ int main(int argc, char** argv) {
         ->check(CLI::ExistingFile);
     texture->add_option("--filter", texture_filter, "Only sweep paths containing this substring");
     texture->add_option("-o,--out", texture_out, "Write .dds files under this directory");
+    texture->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     texture->add_flag("--inspect", texture_inspect, "Census only; write nothing");
     texture->add_flag("--no-fix", texture_no_fix,
                       "Copy verbatim; do not complete short mip chains");
@@ -2611,6 +2664,7 @@ int main(int argc, char** argv) {
     float convert_unit_scale = 0.0142875f;
     bool convert_hash_archives = false;
     bool convert_prune = false;
+    std::string convert_store = "blob";
     bool convert_quiet = false;
     auto* convert = app.add_subcommand("convert", "Convert an install into a pack");
     convert->add_option("--data", convert_data, "The game's Data folder")
@@ -2645,7 +2699,11 @@ int main(int argc, char** argv) {
     convert->add_flag("--hash-sources", convert_hash_archives,
                       "Hash every mounted archive into the manifest, not only the plugins");
     convert->add_flag("--prune", convert_prune,
-                      "Delete assets on disk this run's index does not name");
+                      "Remove assets this run's index does not name (compacts a blob)");
+    convert->add_option("--store", convert_store,
+                        "blob: one index and one blob file (default); loose: one file per asset")
+        ->check(CLI::IsMember({"blob", "loose"}));
+    convert->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     convert->add_flag("-q,--quiet", convert_quiet, "No progress line");
 
     std::filesystem::path view_pack;
@@ -2653,6 +2711,7 @@ int main(int argc, char** argv) {
     std::string view_filter;
     std::size_t view_limit = 0;
     bool view_copy = false;
+    bool view_all = false;
     bool view_quiet = false;
     std::filesystem::path cell_pack;
     std::string cell_which;
@@ -2678,7 +2737,7 @@ int main(int argc, char** argv) {
     cell->add_option("--grid", cell_grid, "With --world: centre cell as X,Y (default 0,0)");
     cell->add_option("--radius", cell_radius, "With --world: cells around the centre (default 0)");
     cell->add_flag("--lod", cell_lod,
-                   "With --world: print its LOD meshes and tree atlas (input for the bake)");
+                   "With --world: print its LOD meshes and tree atlas (input for view --from)");
 
     std::filesystem::path view_list;
     auto* view = app.add_subcommand(
@@ -2697,7 +2756,9 @@ int main(int argc, char** argv) {
                      "the textures their meshes use")
         ->check(CLI::ExistingFile);
     view->add_flag("--copy", view_copy,
-                   "Copy asset bytes instead of hard-linking them into the pack");
+                   "Copy asset bytes instead of hard-linking them into a loose pack");
+    view->add_flag("--all", view_all, "Materialize the whole pack");
+    view->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     view->add_flag("-q,--quiet", view_quiet, "No progress line");
 
     std::filesystem::path verify_path;
@@ -2758,6 +2819,7 @@ int main(int argc, char** argv) {
         ->check(CLI::ExistingFile);
     extract->add_option("-o,--out", extract_out,
                         "Write here: a file for one path, a directory root for several");
+    extract->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     extract->add_flag("-q,--quiet", extract_quiet, "Summary only, no per-file line");
 
     std::vector<std::filesystem::path> mesh_sources;
@@ -2781,6 +2843,7 @@ int main(int argc, char** argv) {
                      "Virtual paths to convert; omit to sweep every .nif in the set");
     mesh->add_option("--filter", mesh_filter, "Only sweep paths containing this substring");
     mesh->add_option("-o,--out", mesh_out, "Write .glb files under this directory");
+    mesh->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     mesh->add_flag("--inspect", mesh_inspect, "Report contents only; write nothing");
     mesh->add_option("--limit", mesh_limit, "Stop after this many files")->default_val(0);
     mesh->add_flag("--no-collision", mesh_no_collision, "Skip bhkCollisionObject extraction");
@@ -2823,6 +2886,10 @@ int main(int argc, char** argv) {
                         read_all);
     }
     if (extract->parsed()) {
+        const bool many = !extract_list.empty() || extract_vpaths.size() > 1;
+        if (!extract_out.empty() && !output_target_ok(extract_out, many, allow_slow_target)) {
+            return 2;
+        }
         return cmd_extract(extract_sources, extract_vpaths, extract_list,
                            extract_out, extract_quiet);
     }
@@ -2831,6 +2898,9 @@ int main(int argc, char** argv) {
                              lo_verbose);
     }
     if (mesh->parsed()) {
+        if (!mesh_out.empty() && !output_target_ok(mesh_out, true, allow_slow_target)) {
+            return 2;
+        }
         return cmd_mesh(mesh_sources, mesh_vpaths, mesh_filter, mesh_out, mesh_inspect,
                         mesh_limit, mesh_no_collision, mesh_no_skinning, mesh_keep_z_up,
                         mesh_unit_scale, mesh_verbose);
@@ -2839,6 +2909,9 @@ int main(int argc, char** argv) {
         return cmd_script(script_sources, script_vpaths, script_filter, script_dump);
     }
     if (texture->parsed()) {
+        if (!texture_out.empty() && !output_target_ok(texture_out, true, allow_slow_target)) {
+            return 2;
+        }
         return cmd_texture(texture_sources, texture_vpaths, texture_list, texture_filter,
                            texture_out, texture_inspect, texture_no_fix, texture_limit,
                            texture_verbose, texture_quiet);
@@ -2849,7 +2922,9 @@ int main(int argc, char** argv) {
                            convert_no_records, convert_no_meshes, convert_no_textures,
                            convert_no_scripts, convert_no_lod, convert_no_mip_fix, convert_no_collision,
                            convert_no_skinning, convert_keep_z_up, convert_unit_scale,
-                           convert_hash_archives, convert_prune, convert_quiet);
+                           convert_hash_archives, convert_prune,
+                           *bethconv::pack::layout_from_string(convert_store), allow_slow_target,
+                           convert_quiet);
     }
     if (cell->parsed()) {
         return cmd_cell(cell_pack, cell_which, cell_filter, cell_list, cell_models, cell_worlds,
@@ -2857,7 +2932,7 @@ int main(int argc, char** argv) {
     }
     if (view->parsed()) {
         return cmd_view(view_pack, view_out, view_filter, view_limit, view_list, view_copy,
-                        view_quiet);
+                        view_all, allow_slow_target, view_quiet);
     }
     return 0;
 }

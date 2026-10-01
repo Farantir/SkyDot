@@ -1,10 +1,12 @@
-# Pack format v4
+# Pack format v5
 
 The interface between converter and engine. The converter writes packs; the
-engine reads only packs. Everything below is stable in v4. The last section
+engine reads only packs. Everything below is stable in v5. The last section
 lists what is not promised.
 
-v4 adds LOD: terrain and object LOD (`.btr`, `.bto`) become meshes, and
+v5 stores assets in one blob with an index (or, on request, as loose files)
+and drops glTF images from meshes: the engine loads packs directly, without a
+Godot import or bake. v4 adds LOD: terrain and object LOD (`.btr`, `.bto`) become meshes, and
 LOD settings and tree LOD (`.lod`, `.lst`, `.btt`) become `.lodfb` assets of
 a new kind, `lod`. v3 decodes scripts: a script asset is a `.pexfb` FlatBuffer instead of the
 original `.pex`. v2 added `world.fb` (cells, references and base objects,
@@ -22,7 +24,7 @@ byte-identical pack.
 
 ## Versioning
 
-`k_pack_format_version` (`include/bethconv/pack/vpath_index.hpp`) is 4. It
+`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 5. It
 appears in `manifest.json`, `report.json` and, as `k_snapshot_format_version`,
 the `records.fb` header. Each is checked separately so a reader can say which
 file it cannot read.
@@ -41,20 +43,23 @@ pack/
   manifest.json                      what the pack is and what built it
   records.fb                         the merged world, mmap-able
   world.fb                           cells, references, base objects
-  assets/<bb>/<hash>.glb|.dds|.pexfb|.lodfb  content-addressed, two-level fanout
+  assets.idx                         content hash -> offset, size, kind
+  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb bytes)
   vpath.idx                          virtual path -> content hash
   report.json                        every skipped, failed and warned input
 ```
 
-`assets/` always exists; an asset-less pack has an empty `assets/` and a
-`vpath.idx` with only its two header lines.
+With `--store loose`, `assets.idx` and the blob are replaced by
+`assets/<bb>/<hash><ext>`, one file per asset in a two-level fanout. The
+manifest's `store` key says which; readers support both. An asset-less pack
+has an index with no entries and an empty blob (or an empty `assets/`).
 
 `records.fb` and `world.fb` may be absent (asset-only pack). The `records` and
 `world` keys in `manifest.json` decide: if present, the file must exist and
 match its `hash`.
 
 There is no `.ktx2`: the headless-bake spike showed DDS passthrough works (see
-`docs/spikes/headless-bake.md`).
+`converter/docs/spikes/headless-bake.md`).
 
 ## `manifest.json`
 
@@ -70,7 +75,8 @@ newline):
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
 | `records` | `file`, `forms`, `bytes`, `hash`; absent without a snapshot |
 | `world` | `file`, `cells`, `refs`, `bases`, `bytes`, `hash`; absent without a snapshot |
-| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `bytes`, `dedupe_saved_bytes` |
+| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `bytes` (written by this run), `dedupe_saved_bytes` |
+| `store` | `layout` (`blob` or `loose`); for a blob also `index` and `blob` (file names); `bytes` (all stored assets) |
 | `deferred` | extension → count of inputs not converted by this version |
 | `report` | `file`, `failed`, `warnings` |
 
@@ -102,7 +108,7 @@ names the container, the inner one the schema.
 
 ### Schema
 
-`src/pack/records.fbs` is normative. `Form` is a struct (47 MiB instead of
+`formats/schema/records.fbs` is normative. `Form` is a struct (47 MiB instead of
 ~130 MiB as tables at 1.18M forms), so editor ids and payloads are referenced
 from it. `forms` is sorted by `id`, unique and binary-searchable.
 
@@ -136,7 +142,7 @@ only decoded fields would pass every other snapshot test.
 
 ## `world.fb`
 
-A plain FlatBuffer (identifier `BWD1`), schema `src/pack/world.fbs`, with its
+A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
 own `format_version` (4; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins). Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
@@ -202,10 +208,42 @@ A reference whose base is not in `bases` places something without a model
 (markers without meshes, sounds, etc.). The engine converts coordinates: the
 same Z-up → Y-up rotation and 0.0142875 m per unit the mesh writer applies.
 
-## `assets/` and the content hash
+## Asset store
+
+Two layouts hold the same assets under the same names.
+
+**Blob** (the default). `assets.idx`, little-endian:
+
+| Field | Type |
+| --- | --- |
+| magic | `BCAI` |
+| version | u32, 1 |
+| generation | u32: the blob is `assets-<generation, 4 digits>.blob` |
+| count | u32 |
+| blob_bytes | u64: bytes of the blob the index covers |
+| entries | count × { hash: 32 bytes, offset: u64, size: u64, kind: u8, 7 zero bytes } |
+
+Entries are sorted by hash bytes; kind is 0 mesh, 1 texture, 2 script, 3 lod.
+Every entry lies inside `blob_bytes`, and nothing follows the last entry; a
+reader refuses an index that breaks either. Entries start on 16-byte
+boundaries, in conversion order (sorted virtual paths), so the blob is
+byte-identical for the same input.
+
+A run appends to the blob and replaces `assets.idx` at the end (write, then
+rename). Bytes past `blob_bytes` are left by an interrupted run; the next run
+truncates them. `--prune` copies the referenced entries into the next
+generation's blob, switches the index to it, then deletes the old blob.
+
+The blob exists because packs are written to whatever disk has room. About
+70,000 loose files on an SMR disk behind ntfs-3g once hung the whole mount
+until a hard reset; one large file is written sequentially, and engines map it.
+
+**Loose** (`--store loose`): `assets/<first two hex>/<hex><ext>`.
+
+### The content hash
 
 Name: `BLAKE3-256(source bytes ‖ converter version ‖ settings)` as 64 lowercase
-hex digits, stored at `assets/<first two hex>/<hex><ext>`.
+hex digits.
 
 Each component is prefixed with its 64-bit length; otherwise bytes `ab` +
 settings `c` would hash like `a` + `bc`.
@@ -226,7 +264,8 @@ Per kind, mentioning only settings that affect that kind:
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
-whenever a writer's output changes: `mesh/2` percent-encoded control bytes in
+whenever a writer's output changes (a changed option already changes its
+fingerprint, e.g. `refs=` when pack meshes lost their images): `mesh/2` percent-encoded control bytes in
 texture paths, `mesh/3` kept non-finite floats out of JSON, `mesh/8` added
 controllers, particle systems and hidden nodes to the extras
 ([`format-notes/nif-animation.md`](format-notes/nif-animation.md)), `mesh/9`
@@ -239,7 +278,7 @@ Fingerprint bumps rename assets; format bumps make readers refuse the pack.
 ## Script assets
 
 A `.pexfb` is one compiled Papyrus script, decoded: a FlatBuffer (identifier
-`BPX1`, schema `src/pack/script.fbs`, its own `format_version`, 1) holding the
+`BPX1`, schema `formats/schema/script.fbs`, its own `format_version`, 1) holding the
 PEX's string table, user flags and objects with their variables, properties,
 states and functions. Names stay indices into the string table; docstrings are
 dropped. Each function keeps its instructions as opcode bytes and a flat
@@ -277,7 +316,7 @@ A worldspace's distant LOD, as the game ships it (for Tamriel):
 - `meshes/terrain/tamriel/trees/tamriel.4.X.Y.btt` → a LOD asset with
   `trees`: the tree instances of a level-4 quad, in world space.
 
-A `.lodfb` is a FlatBuffer (identifier `BLD1`, schema `src/pack/lod.fbs`, its
+A `.lodfb` is a FlatBuffer (identifier `BLD1`, schema `formats/schema/lod.fbs`, its
 own `format_version`, 1). The source layouts are in
 `include/bethconv/pack/lod_asset.hpp`; the converter refuses a file with
 counts larger than itself, levels that are not powers of two, or bytes left
@@ -290,7 +329,7 @@ converts.
 Tab-separated, sorted, one line per virtual path, after two comment lines:
 
 ```
-# bethconv vpath index v4
+# bethconv vpath index v5
 # virtual path\tcontent hash\tkind\twinning source
 meshes/clutter/apple01.nif\t3f9c…\tmesh\tSkyrim - Meshes0.bsa
 ```
@@ -306,11 +345,25 @@ Several paths mapping to one hash is normal (dedupe); each gets a line.
 `include/bethconv/pack/vpath_index.hpp` implements the format and both writer
 and reader use it.
 
+### Texture references in meshes
+
+A pack's GLBs have no `images` or `textures`: glTF resolves image URIs against
+the document, which a content-addressed store has no layout for, and Godot's
+runtime glTF loader fails on URIs it cannot open. Each material names its
+textures in `extras.bethconv.texture_slots` (`"0"` diffuse, `"1"` normal,
+`"2"` glow, and so on, each with a `role` and a `path` in the `vpath.idx`
+form). The engine resolves those itself.
+
+`bethconv view` adds glTF images back for other consumers: slot 0 as base
+colour, slot 1 as normal map unless `model_space_normals`, slot 2 as emissive
+when `has_glowmap`, with URIs relative to the view.
+
 ### Path encodings differ between `vpath.idx` and GLB URIs
 
-In `vpath.idx` a path is unescaped: lowercase, forward slashes.
+In `vpath.idx` and in extras a path is unescaped: lowercase, forward slashes.
 
-In a GLB it is a URI reference (RFC 3986 §4.2), produced in three steps:
+In a GLB written outside a pack (`bethconv mesh`), or added by the view, it is
+a URI reference (RFC 3986 §4.2), produced in three steps:
 
 1. `to_uri`: backslashes to slashes, lowercase (the `vpath.idx` form).
 2. `uri_escape`: percent-encode everything outside `pchar` except `/`. `:` is
@@ -336,21 +389,17 @@ Same formatting as the manifest. Keys: `pack_format_version`, `totals`,
 needed. `kind` is an `io::ErrorKind` name, for counting by class. Warnings do
 not fail a file and are only visible here.
 
-## Bake
+## Loading in an engine
 
-`tools/bake/` runs headless Godot over a pack and produces a `.pck`. It builds on
-the pack; a pack is complete without it.
+No import step. The engine maps the blob, reads a mesh's GLB bytes and builds
+its scene with a runtime glTF loader (Godot's `GLTFDocument`), and loads DDS
+bytes as they are, block-compressed. Measured on 4,115 Riverwood meshes: about
+1 ms per mesh against 1.7 ms for a baked `.scn`, 0.1 ms per texture.
 
-- A `.glb` imports as a `.scn` (`PackedScene` with `MeshInstance3D`). Only
-  meshes are imported: Godot loads `.dds`, `.ktx` and `.ktx2` directly, so
-  textures pass through.
-- A `.pck` is keyed by virtual path: `clutter/apple01.nif` becomes
-  `res://meshes/clutter/apple01.scn`, so the engine derives a scene path from a
-  base record's MODL without a lookup.
-
-A `.pck` is not reproducible: Godot assigns resource ids without a seed, and
-two bakes differ by about 20 bytes per scene. Test a `.pck` by loading it; pin
-the pack.
+Earlier versions baked packs into a Godot `.pck` through `--import`. It read
+about 16 times its input and wrote five small files per mesh, which on a slow
+disk took longer than the conversion and on an SMR disk behind ntfs-3g hung
+the machine.
 
 ## Determinism
 
@@ -358,7 +407,7 @@ the pack.
 - No hash-table iteration order in files. `vpath.idx` and all `report.json`
   arrays are sorted.
 
-## Not promised in v4
+## Not promised in v5
 
 - **Resolved text.** There is no per-language string file; names cannot be
   resolved from a pack alone.
@@ -376,17 +425,20 @@ the pack.
 
 ## Code
 
+Paths relative to `converter/`; schemas in `formats/schema/`.
+
 | Piece | Implementation |
 | --- | --- |
 | layout, dedupe, manifest, report | `include/bethconv/pack/pack_writer.hpp` |
+| `assets.idx`, the blob, loose files | `include/bethconv/pack/asset_store.hpp` |
 | `vpath.idx`, asset paths, kinds | `include/bethconv/pack/vpath_index.hpp` |
 | content hash | `include/bethconv/pack/content_hash.hpp` |
 | `records.fb` container and reader | `include/bethconv/pack/snapshot.hpp` |
-| `records.fb` schema | `src/pack/records.fbs` |
+| `records.fb` schema | `formats/schema/records.fbs` |
 | `world.fb` writer and reader | `include/bethconv/pack/world.hpp` |
-| `world.fb` schema | `src/pack/world.fbs` |
-| script assets | `include/bethconv/pack/script_asset.hpp`, `src/pack/script.fbs` |
+| `world.fb` schema | `formats/schema/world.fbs` |
+| script assets | `include/bethconv/pack/script_asset.hpp`, `formats/schema/script.fbs` |
 | PEX decoding | `include/bethconv/script/pex.hpp` |
 | consumer using only this document | `src/pack/pack_view.cpp` |
 | complete pack without game data | `tools/testpack/` (`bethconv-testpack`) |
-| pack loaded in Godot | `tools/bake/` |
+| pack loaded in Godot | `engine/extension/src/assets/` |

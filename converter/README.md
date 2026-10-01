@@ -45,15 +45,23 @@ tested against real installs:
   read back zero-copy, with form, editor-id, type, child and cell-grid indices.
   `bethconv verify --against` re-runs the merge and compares. See
   `docs/format-notes/snapshot.md`.
-- **Pack:** every NIF, DDS and PEX content-addressed into `assets/<bb>/<hash>`,
-  plus `manifest.json`, `vpath.idx` and a `report.json` listing every failure.
-  See `formats/pack-format.md`.
+- **Pack:** every NIF, DDS and PEX content-addressed into one blob with an
+  index (`--store loose` for a file per asset), plus `manifest.json`,
+  `vpath.idx` and a `report.json` listing every failure. See
+  `formats/pack-format.md`. A full vanilla SE pack is 7 files and 20 GB,
+  written in under a minute.
+- **Slow targets refused:** commands that write many files (`convert --store
+  loose`, `view`, `mesh`, `texture`, `extract`) refuse a FUSE filesystem
+  (NTFS through ntfs-3g) or a spinning disk unless given `--allow-slow-target`;
+  a blob there only warns. A loose pack on an SMR disk behind ntfs-3g once
+  hung the whole mount.
 - **World:** `world.fb` in the pack: cells, their references with resolved
   base objects, model paths and lights, load doors, locks, linked refs,
   activate parents and scripts, ready for the engine. `bethconv cell`
   inspects it.
-- **View:** `bethconv view` rebuilds the virtual directory tree from a pack so
-  any glTF consumer can open it.
+- **View:** `bethconv view` rebuilds the virtual directory tree from a pack,
+  adding glTF images back, so Godot or Blender can open the meshes. Choose a
+  subset with `--filter`, `--from` or `--limit` (`--all` for everything).
 
 `docs/spikes/` holds the measurements the design decisions rest on.
 

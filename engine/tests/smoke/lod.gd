@@ -3,7 +3,7 @@
 # SkydotLod over the test pack's worldspace LOD (converter/tools/testpack:
 # settings with levels 4 to 8 over 8 cells from (0, 0), terrain LOD for the
 # level-8 quad and the level-4 quad at (0, 0), object LOD and two trees for
-# the latter). Needs the pack and its bake.
+# the latter). Needs the test pack.
 extends SceneTree
 
 const CELL := 4096.0
@@ -11,17 +11,16 @@ const CELL := 4096.0
 var failures := 0
 
 func _init() -> void:
-    var pck := OS.get_environment("SKYDOT_TESTPCK")
     var pack_dir := OS.get_environment("SKYDOT_TESTPACK")
-    if pck == "" or pack_dir == "":
+    if pack_dir == "":
         if OS.get_environment("SKYDOT_TESTPACK_REQUIRE") != "":
-            printerr("smoke_lod: SKYDOT_TESTPCK or SKYDOT_TESTPACK is unset and SKYDOT_TESTPACK_REQUIRE is set")
+            printerr("smoke_lod: SKYDOT_TESTPACK is unset and SKYDOT_TESTPACK_REQUIRE is set")
             quit(1)
             return
-        print("smoke_lod: SKIP (SKYDOT_TESTPCK unset)")
+        print("smoke_lod: SKIP (SKYDOT_TESTPACK unset)")
         quit(77)
         return
-    _run(pack_dir, pck)
+    _run(pack_dir)
     print("smoke_lod: failures=", failures)
     quit(failures)
 
@@ -39,10 +38,9 @@ func settle(lod: SkydotLod, at: Vector3) -> Dictionary:
         OS.delay_msec(5)
     return lod.get_stats()
 
-func _run(pack_dir: String, pck: String) -> void:
+func _run(pack_dir: String) -> void:
     var pack := SkydotPack.new()
     expect(pack.open(pack_dir) == OK, "the test pack opens: " + pack.get_error())
-    expect(pack.mount_baked(pck) == OK, "the bake mounts: " + pack.get_error())
     var world := pack.open_world()
     if world == null or failures > 0:
         expect(false, "world.fb opens")

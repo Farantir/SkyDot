@@ -33,6 +33,7 @@ add_library(bethconv_core STATIC
     io/deflate.cpp
     io/byte_writer.cpp
     io/span_stream.cpp
+    io/output_target.cpp
     io/json_text.cpp
     record/types.cpp
     record/headers.cpp
@@ -58,6 +59,7 @@ add_library(bethconv_core STATIC
     pack/snapshot_writer.cpp
     pack/snapshot_reader.cpp
     pack/content_hash.cpp
+    pack/asset_store.cpp
     pack/pack_writer.cpp
     pack/script_asset.cpp
     pack/lod_asset.cpp

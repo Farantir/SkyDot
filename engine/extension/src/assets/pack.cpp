@@ -2,6 +2,7 @@
 #include "assets/pack.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/json.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
@@ -12,6 +13,8 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
 
+#include <cstring>
+#include <span>
 #include <string_view>
 
 using godot::Dictionary;
@@ -32,7 +35,7 @@ constexpr const char* k_index_name = "vpath.idx";
 
 // formats/pack-format.md, "vpath.idx": two comment lines, the first naming format
 // and version.
-constexpr const char* k_index_header = "# bethconv vpath index v4";
+constexpr const char* k_index_header = "# bethconv vpath index v5";
 
 // formats/pack-format.md, "records.fb" > "The header": little-endian, 64 bytes,
 // magic `BETHSNAP`, then `format_version` (uint32). Only enough is read to
@@ -40,24 +43,6 @@ constexpr const char* k_index_header = "# bethconv vpath index v4";
 constexpr std::string_view k_snapshot_magic = "BETHSNAP";
 constexpr std::int64_t k_snapshot_header_size = 64;
 constexpr std::int64_t k_snapshot_version_offset = 8;
-
-// formats/pack-format.md, "assets/ and the content hash":
-// `assets/<first two hex>/<hex><ext>`, one extension per kind.
-std::string_view extension_of(std::string_view kind) {
-    if (kind == "mesh") {
-        return ".glb";
-    }
-    if (kind == "texture") {
-        return ".dds";
-    }
-    if (kind == "script") {
-        return ".pexfb";
-    }
-    if (kind == "lod") {
-        return ".lodfb";
-    }
-    return {};
-}
 
 std::string to_std(const String& s) {
     return std::string(s.utf8().get_data());
@@ -111,7 +96,11 @@ void SkydotPack::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_index_count"), &SkydotPack::get_index_count);
     ClassDB::bind_method(D_METHOD("get_unknown_kind_count"), &SkydotPack::get_unknown_kind_count);
 
-    ClassDB::bind_method(D_METHOD("resolve", "vpath"), &SkydotPack::resolve);
+    ClassDB::bind_method(D_METHOD("has", "vpath"), &SkydotPack::has);
+    ClassDB::bind_method(D_METHOD("get_bytes", "vpath"), &SkydotPack::get_bytes);
+    ClassDB::bind_method(D_METHOD("load_scene", "vpath"), &SkydotPack::load_scene);
+    ClassDB::bind_method(D_METHOD("load_texture", "vpath"), &SkydotPack::load_texture);
+    ClassDB::bind_method(D_METHOD("get_store_layout"), &SkydotPack::get_store_layout);
     ClassDB::bind_method(D_METHOD("get_kind", "vpath"), &SkydotPack::get_kind);
     ClassDB::bind_method(D_METHOD("get_hash", "vpath"), &SkydotPack::get_hash);
     ClassDB::bind_method(D_METHOD("get_source", "vpath"), &SkydotPack::get_source);
@@ -120,10 +109,6 @@ void SkydotPack::_bind_methods() {
                                 &SkydotPack::normalize_vpath);
     ClassDB::bind_static_method("SkydotPack", D_METHOD("model_vpath", "modl"),
                                 &SkydotPack::model_vpath);
-    ClassDB::bind_static_method("SkydotPack", D_METHOD("scene_path_for", "vpath"),
-                                &SkydotPack::scene_path_for);
-
-    ClassDB::bind_method(D_METHOD("mount_baked", "pck_path"), &SkydotPack::mount_baked);
 }
 
 // ---- mounting -------------------------------------------------------------
@@ -161,6 +146,9 @@ Error SkydotPack::open(const String& pack_dir) {
     if (const Error e = read_index(path_.path_join(k_index_name)); e != Error::OK) {
         return e;
     }
+    if (const Error e = open_store(); e != Error::OK) {
+        return e;
+    }
 
     open_ = true;
     error_ = String();
@@ -175,7 +163,10 @@ void SkydotPack::close() {
     asset_count_ = 0;
     index_count_ = 0;
     unknown_kind_count_ = 0;
-    index_.clear();
+    layout_ = String();
+    blob_name_ = String();
+    assets_.reset();
+    store_.reset();
     // path_ and error_ stay, so the refusal can still be queried.
 }
 
@@ -228,6 +219,22 @@ Error SkydotPack::read_manifest(const String& path) {
         return refuse(Error::ERR_FILE_CORRUPT,
                       "manifest.json's assets object lacks distinct or index_entries");
     }
+
+    // formats/pack-format.md, "Asset store": the `store` key names the layout.
+    if (!manifest.has("store") || Variant(manifest["store"]).get_type() != Variant::DICTIONARY) {
+        return refuse(Error::ERR_FILE_CORRUPT, "manifest.json has no store object");
+    }
+    const Dictionary store = manifest["store"];
+    layout_ = store.get("layout", String());
+    if (layout_ == "blob") {
+        blob_name_ = store.get("blob", String());
+        if (blob_name_.is_empty() || blob_name_.contains("/") || blob_name_.contains("\\")) {
+            return refuse(Error::ERR_FILE_CORRUPT, "manifest.json's store names no usable blob");
+        }
+    } else if (layout_ != "loose") {
+        return refuse(Error::ERR_FILE_UNRECOGNIZED,
+                      "asset store layout '" + layout_ + "' is not one this engine reads");
+    }
     return Error::OK;
 }
 
@@ -266,61 +273,22 @@ Error SkydotPack::read_index(const String& path) {
 
     // Read at once; about 20 MB for vanilla.
     const std::string text = to_std(FileAccess::get_file_as_string(path));
-
-    std::size_t line_no = 0;
-    std::size_t pos = 0;
-    while (pos < text.size()) {
-        std::size_t end = text.find('\n', pos);
-        if (end == std::string::npos) {
-            end = text.size();
-        }
-        std::string_view line(text.data() + pos, end - pos);
-        pos = end + 1;
-        ++line_no;
-
-        if (line_no == 1) {
-            if (line != k_index_header) {
-                return refuse(Error::ERR_FILE_UNRECOGNIZED,
-                              "vpath.idx does not begin with '" + String(k_index_header)
-                                  + "': " + path);
-            }
-            continue;
-        }
-        if (line.empty() || line.front() == '#') {
-            continue;
-        }
-
-        // `virtual path \t content hash \t kind \t winning source`
-        const std::size_t t1 = line.find('\t');
-        const std::size_t t2 = t1 == std::string_view::npos ? t1 : line.find('\t', t1 + 1);
-        const std::size_t t3 = t2 == std::string_view::npos ? t2 : line.find('\t', t2 + 1);
-        if (t3 == std::string_view::npos) {
-            return refuse(Error::ERR_FILE_CORRUPT,
-                          "vpath.idx line " + count(line_no)
-                              + " does not have four tab-separated fields");
-        }
-        Entry entry{
-            std::string(line.substr(t1 + 1, t2 - t1 - 1)),
-            std::string(line.substr(t2 + 1, t3 - t2 - 1)),
-            std::string(line.substr(t3 + 1)),
-        };
-        if (entry.hash.size() != 64) {
-            return refuse(Error::ERR_FILE_CORRUPT,
-                          "vpath.idx line " + count(line_no)
-                              + " carries a content hash of " + count(entry.hash.size())
-                              + " characters, not 64");
-        }
-        if (extension_of(entry.kind).empty()) {
-            ++unknown_kind_count_;
-        }
-        index_.emplace(std::string(line.substr(0, t1)), std::move(entry));
+    if (std::string_view(text).substr(0, text.find('\n')) != k_index_header) {
+        return refuse(Error::ERR_FILE_UNRECOGNIZED,
+                      "vpath.idx does not begin with '" + String(k_index_header) + "': " + path);
     }
+    store_ = std::make_shared<PackStore>();
+    std::string error;
+    if (!store_->read_index(text, k_index_header, error)) {
+        return refuse(Error::ERR_FILE_CORRUPT, to_godot(error) + ": " + path);
+    }
+    unknown_kind_count_ = static_cast<std::int64_t>(store_->unknown_kinds());
 
     // Must match the manifest's count; otherwise the pack was edited or
     // truncated.
-    if (static_cast<std::int64_t>(index_.size()) != index_count_) {
+    if (static_cast<std::int64_t>(store_->size()) != index_count_) {
         return refuse(Error::ERR_FILE_CORRUPT,
-                      "vpath.idx has " + count(index_.size())
+                      "vpath.idx has " + count(store_->size())
                           + " entries but manifest.json says " + String::num_int64(index_count_));
     }
     if (unknown_kind_count_ > 0) {
@@ -330,6 +298,32 @@ Error SkydotPack::read_index(const String& path) {
             "written by a newer converter and will not resolve: ",
             path_);
     }
+    return Error::OK;
+}
+
+Error SkydotPack::open_store() {
+    // Native path: the store maps and reads files itself, off the main thread.
+    const std::string native =
+        to_std(godot::ProjectSettings::get_singleton()->globalize_path(path_));
+    if (layout_ == "blob") {
+        const String index_path = path_.path_join("assets.idx");
+        if (!FileAccess::file_exists(index_path)) {
+            return refuse(Error::ERR_FILE_NOT_FOUND, "the pack's assets.idx is missing: " + index_path);
+        }
+        const PackedByteArray index = FileAccess::get_file_as_bytes(index_path);
+        std::string error;
+        if (!store_->open_blob(std::span<const std::uint8_t>(index.ptr(), static_cast<std::size_t>(index.size())),
+                               native + "/" + to_std(blob_name_), error)) {
+            return refuse(Error::ERR_FILE_CORRUPT, to_godot(error) + ": " + path_);
+        }
+    } else {
+        store_->open_loose(native);
+    }
+    // Godot's headless renderer creates resources without locking, so loads
+    // there run on the calling thread rather than racing on workers.
+    const bool headless = godot::DisplayServer::get_singleton() == nullptr ||
+                          godot::DisplayServer::get_singleton()->get_name() == "headless";
+    assets_ = std::make_shared<AssetCache>(store_, !headless);
     return Error::OK;
 }
 
@@ -362,6 +356,7 @@ godot::Ref<SkydotWorld> SkydotPack::open_world() {
     }
     godot::Ref<SkydotWorld> world;
     world.instantiate();
+    world->set_assets(assets_);
     if (world->open(path_.path_join("world.fb")) != Error::OK) {
         report(Error::ERR_FILE_CORRUPT, world->get_error());
         return {};
@@ -385,40 +380,54 @@ std::int64_t SkydotPack::get_unknown_kind_count() const {
     return unknown_kind_count_;
 }
 
-const SkydotPack::Entry* SkydotPack::find(const String& vpath) const {
-    if (!open_) {
+const PackStore::Entry* SkydotPack::find(const String& vpath) const {
+    if (!open_ || store_ == nullptr) {
         return nullptr;
     }
-    const auto it = index_.find(to_std(normalize_vpath(vpath)));
-    return it == index_.end() ? nullptr : &it->second;
+    return store_->find(to_std(normalize_vpath(vpath)));
 }
 
-String SkydotPack::resolve(const String& vpath) const {
-    const Entry* entry = find(vpath);
-    if (entry == nullptr) {
-        return String();
+bool SkydotPack::has(const String& vpath) const {
+    return find(vpath) != nullptr;
+}
+
+PackedByteArray SkydotPack::get_bytes(const String& vpath) const {
+    PackedByteArray out;
+    if (!open_ || store_ == nullptr) {
+        return out;
     }
-    const std::string_view ext = extension_of(entry->kind);
-    if (ext.empty()) {
-        return String();
+    const auto bytes = store_->read(to_std(normalize_vpath(vpath)));
+    if (bytes && !bytes->empty()) {
+        out.resize(static_cast<std::int64_t>(bytes->size()));
+        std::memcpy(out.ptrw(), bytes->data(), bytes->size());
     }
-    const std::string relative =
-        "assets/" + entry->hash.substr(0, 2) + "/" + entry->hash + std::string(ext);
-    return path_.path_join(to_godot(relative));
+    return out;
+}
+
+godot::Ref<SkydotModel> SkydotPack::load_scene(const String& vpath) const {
+    return open_ && assets_ != nullptr ? assets_->scene(to_std(vpath)) : godot::Ref<SkydotModel>();
+}
+
+godot::Ref<godot::Texture> SkydotPack::load_texture(const String& vpath) const {
+    return open_ && assets_ != nullptr ? assets_->texture(to_std(vpath)) : godot::Ref<godot::Texture>();
+}
+
+String SkydotPack::get_store_layout() const {
+    return layout_;
 }
 
 String SkydotPack::get_kind(const String& vpath) const {
-    const Entry* entry = find(vpath);
+    const PackStore::Entry* entry = find(vpath);
     return entry == nullptr ? String() : to_godot(entry->kind);
 }
 
 String SkydotPack::get_hash(const String& vpath) const {
-    const Entry* entry = find(vpath);
+    const PackStore::Entry* entry = find(vpath);
     return entry == nullptr ? String() : to_godot(entry->hash);
 }
 
 String SkydotPack::get_source(const String& vpath) const {
-    const Entry* entry = find(vpath);
+    const PackStore::Entry* entry = find(vpath);
     return entry == nullptr ? String() : to_godot(entry->source);
 }
 
@@ -438,27 +447,6 @@ String SkydotPack::model_vpath(const String& modl) {
         return normalized;
     }
     return "meshes/" + normalized;
-}
-
-String SkydotPack::scene_path_for(const String& vpath) {
-    const String normalized = normalize_vpath(vpath);
-    if (normalized.is_empty()) {
-        return String();
-    }
-    return "res://" + normalized.get_basename() + ".scn";
-}
-
-// ---- the bake -------------------------------------------------------------
-
-Error SkydotPack::mount_baked(const String& pck_path) {
-    // A missing bake does not close the pack; packs are complete without one.
-    if (!FileAccess::file_exists(pck_path)) {
-        return report(Error::ERR_FILE_NOT_FOUND, "no baked pack at " + pck_path);
-    }
-    if (!godot::ProjectSettings::get_singleton()->load_resource_pack(pck_path, true, 0)) {
-        return report(Error::ERR_CANT_OPEN, "Godot could not mount the baked pack at " + pck_path);
-    }
-    return Error::OK;
 }
 
 } // namespace skydot

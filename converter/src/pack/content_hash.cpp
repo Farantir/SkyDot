@@ -68,6 +68,31 @@ std::string ContentHash::hex() const {
     return out;
 }
 
+std::optional<ContentHash> parse_hex_hash(std::string_view hex) noexcept {
+    ContentHash out;
+    if (hex.size() != out.bytes.size() * 2) {
+        return std::nullopt;
+    }
+    const auto digit = [](char c) -> int {
+        if (c >= '0' && c <= '9') {
+            return c - '0';
+        }
+        if (c >= 'a' && c <= 'f') {
+            return c - 'a' + 10;
+        }
+        return -1;
+    };
+    for (std::size_t i = 0; i < out.bytes.size(); ++i) {
+        const int hi = digit(hex[2 * i]);
+        const int lo = digit(hex[2 * i + 1]);
+        if (hi < 0 || lo < 0) {
+            return std::nullopt;
+        }
+        out.bytes[i] = static_cast<std::byte>(hi * 16 + lo);
+    }
+    return out;
+}
+
 std::string ContentHash::prefix() const {
     const auto value = static_cast<unsigned>(bytes[0]);
     return std::string{k_hex[(value >> 4) & 0x0Fu], k_hex[value & 0x0Fu]};

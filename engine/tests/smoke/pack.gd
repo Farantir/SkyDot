@@ -38,51 +38,52 @@ func _run(pack_dir: String) -> void:
     expect(pack.get_index_count() == 31, "31 index entries, got %d" % pack.get_index_count())
     expect(pack.get_unknown_kind_count() == 0, "every kind is one this engine knows")
 
-    # Every line resolves to an existing file with the kind's extension.
+    expect(pack.get_store_layout() == "blob", "the test pack keeps its assets in a blob")
+
+    # Every line has bytes of its kind: a GLB, a DDS, a decoded script.
     var expected := {
-        "meshes/testpack/cube_se.nif": ["mesh", ".glb"],
-        "meshes/testpack/cube_le.nif": ["mesh", ".glb"],
-        "meshes/testpack/cube_se_copy.nif": ["mesh", ".glb"],
-        "meshes/testpack/cube with space.nif": ["mesh", ".glb"],
-        "textures/testpack/cube.dds": ["texture", ".dds"],
-        "textures/testpack/cube_n.dds": ["texture", ".dds"],
-        "textures/testpack/sky.dds": ["texture", ".dds"],
-        "scripts/testpack/fixture.pex": ["script", ".pexfb"],
-        "scripts/testpackleverscript.pex": ["script", ".pexfb"],
+        "meshes/testpack/cube_se.nif": ["mesh", "glTF"],
+        "meshes/testpack/cube_le.nif": ["mesh", "glTF"],
+        "meshes/testpack/cube_se_copy.nif": ["mesh", "glTF"],
+        "meshes/testpack/cube with space.nif": ["mesh", "glTF"],
+        "textures/testpack/cube.dds": ["texture", "DDS "],
+        "textures/testpack/cube_n.dds": ["texture", "DDS "],
+        "textures/testpack/sky.dds": ["texture", "DDS "],
+        "scripts/testpack/fixture.pex": ["script", ""],
+        "scripts/testpackleverscript.pex": ["script", ""],
     }
     for vpath in expected:
-        var on_disk: String = pack.resolve(vpath)
-        expect(on_disk != "", "resolves: " + vpath)
-        expect(on_disk.ends_with(expected[vpath][1]), "extension of " + vpath + ": " + on_disk)
-        expect(FileAccess.file_exists(on_disk), "exists on disk: " + on_disk)
+        expect(pack.has(vpath), "has " + vpath)
+        var bytes := pack.get_bytes(vpath)
+        expect(bytes.size() > 0, "bytes for " + vpath)
+        var magic: String = expected[vpath][1]
+        if magic != "":
+            expect(bytes.slice(0, 4).get_string_from_ascii() == magic, "magic of " + vpath)
         expect(pack.get_kind(vpath) == expected[vpath][0], "kind of " + vpath)
         expect(pack.get_hash(vpath).length() == 64, "hash of " + vpath)
         expect(pack.get_source(vpath) != "", "winning source of " + vpath)
 
-    # Dedupe: two virtual paths, one hash, one file.
+    # Dedupe: two virtual paths, one hash, the same bytes.
     expect(pack.get_hash("meshes/testpack/cube_se.nif") == pack.get_hash("meshes/testpack/cube_se_copy.nif"),
            "the duplicate mesh shares its hash")
-    expect(pack.resolve("meshes/testpack/cube_se.nif") == pack.resolve("meshes/testpack/cube_se_copy.nif"),
-           "and its file")
+    expect(pack.get_bytes("meshes/testpack/cube_se.nif") == pack.get_bytes("meshes/testpack/cube_se_copy.nif"),
+           "and its bytes")
 
     # Lookup in any spelling.
-    expect(pack.resolve("Meshes\\TestPack\\Cube_SE.nif") == pack.resolve("meshes/testpack/cube_se.nif"),
-           "resolve normalizes")
-    expect(pack.resolve(SkydotPack.model_vpath("testpack\\cube_se.nif")) != "",
-           "a MODL field resolves through model_vpath")
+    expect(pack.get_bytes("Meshes\\TestPack\\Cube_SE.nif") == pack.get_bytes("meshes/testpack/cube_se.nif"),
+           "lookup normalizes")
+    expect(pack.has(SkydotPack.model_vpath("testpack\\cube_se.nif")), "a MODL field resolves through model_vpath")
 
-    # Missing paths give "", not a crash or a guess.
-    expect(pack.resolve("meshes/testpack/nope.nif") == "", "an absent path resolves to nothing")
+    # Missing paths give nothing, not a crash or a guess.
+    expect(not pack.has("meshes/testpack/nope.nif") and pack.get_bytes("meshes/testpack/nope.nif").is_empty(),
+           "an absent path has no bytes")
     expect(pack.get_kind("meshes/testpack/nope.nif") == "", "and has no kind")
-
-    # The scene path a bake would use, computed.
-    expect(SkydotPack.scene_path_for("meshes/testpack/cube_se.nif") == "res://meshes/testpack/cube_se.scn",
-           "scene path for the test cube")
+    expect(pack.load_scene("meshes/testpack/nope.nif") == null, "and no scene")
 
     _check_world(pack)
 
     pack.close()
-    expect(not pack.is_open() and pack.resolve("meshes/testpack/cube_se.nif") == "", "closed is closed")
+    expect(not pack.is_open() and not pack.has("meshes/testpack/cube_se.nif"), "closed is closed")
 
 func _check_world(pack: SkydotPack) -> void:
     expect(pack.has_world(), "the test pack carries world.fb")
@@ -109,11 +110,11 @@ func _check_world(pack: SkydotPack) -> void:
     var torch: Dictionary = world.get_base(refs[1]["base"])
     expect(torch.get("light") != null, "the torch is a light")
 
-    # Without a mounted bake the cube's scene is missing but the light is built.
+    # Models load from the pack itself: cube, door and lever, and the light.
     var root := world.build_cell(id)
     var stats: Dictionary = root.get_meta("skydot_stats")
     expect(stats["lights"] == 1, "one light built: %s" % stats)
-    expect(stats["placed"] + stats["missing"].size() == 1, "one model placed or missing: %s" % stats)
+    expect(stats["placed"] == 3 and stats["missing"].is_empty(), "three models placed: %s" % stats)
     root.free()
 
     _check_doors(world, id)

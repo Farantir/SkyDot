@@ -9,6 +9,8 @@
 // rows where they exist so that cells meet without seams.
 #pragma once
 
+#include "assets/asset_cache.hpp"
+
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
@@ -18,6 +20,7 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -35,6 +38,9 @@ public:
     /// Vanilla quadrants use at most a base and six additional layers.
     static constexpr int k_max_layers = 7;
     static constexpr const char* k_default_texture = "textures/landscape/dirt02.dds";
+
+    /// Textures come from `assets`; without it terrain is untextured.
+    explicit TerrainBuilder(std::shared_ptr<AssetCache> assets) : assets_(std::move(assets)) {}
 
     /// Heights (game units, row-major from the south-west corner) of the
     /// terrain `dx`, `dy` cells away from the one being built, or empty.
@@ -61,6 +67,7 @@ private:
     godot::Ref<godot::Texture> texture(const std::string& vpath);
     godot::Ref<godot::ShaderMaterial> material_for(const std::vector<std::array<std::string, 2>>& layers);
 
+    std::shared_ptr<AssetCache> assets_;
     float tiling_{8.0F};
     std::unordered_map<int, godot::Ref<godot::Shader>> shaders_;
     std::unordered_map<std::string, godot::Ref<godot::Texture>> textures_;

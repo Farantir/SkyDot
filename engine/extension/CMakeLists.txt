@@ -25,8 +25,14 @@ add_library(skydot SHARED)
 target_sources(skydot PRIVATE
     src/register_types.cpp
     src/register_types.hpp
+    src/assets/asset_cache.cpp
+    src/assets/asset_cache.hpp
+    src/assets/model.cpp
+    src/assets/model.hpp
     src/assets/pack.cpp
     src/assets/pack.hpp
+    src/assets/pack_store.cpp
+    src/assets/pack_store.hpp
     src/world/animator.cpp
     src/world/animator.hpp
     src/world/billboard.cpp

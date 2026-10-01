@@ -5,6 +5,7 @@
 // registered with ClassDB at SCENE level, since no server needs them.
 #include "register_types.hpp"
 
+#include "assets/model.hpp"
 #include "assets/pack.hpp"
 #include "vm/papyrus.hpp"
 #include "world/animator.hpp"
@@ -29,6 +30,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotAnimator);
     GDREGISTER_CLASS(skydot::SkydotMaterials);
     GDREGISTER_CLASS(skydot::SkydotWorld);
+    GDREGISTER_CLASS(skydot::SkydotModel);
     GDREGISTER_CLASS(skydot::SkydotPack);
     GDREGISTER_CLASS(skydot::SkydotPapyrus);
     GDREGISTER_CLASS(skydot::SkydotLod);

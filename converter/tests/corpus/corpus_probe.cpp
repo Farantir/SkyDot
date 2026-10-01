@@ -548,9 +548,9 @@ std::optional<ConvertFacts> probe_convert(const std::filesystem::path& data_dir,
     options.mesh_read.read_skinning = true;
     options.mesh_write.convert_to_y_up = true;
     options.mesh_write.unit_scale = 0.0142875f;
-    // Virtual-path texture references, as in a pack. Part of the mesh
-    // fingerprint, so part of every name in `index_hash`.
-    options.mesh_write.texture_refs = mesh::TextureRefs::pack_vpaths;
+    // No glTF images, as in a pack. Part of the mesh fingerprint, so part of
+    // every name in `index_hash`.
+    options.mesh_write.texture_refs = mesh::TextureRefs::none;
     options.mesh_write.write_extras = true;
     options.filter = filter;
     options.limit = limit;

@@ -29,8 +29,6 @@ if(NOT _default_testpack)
 endif()
 set(SKYDOT_TESTPACK "${_default_testpack}" CACHE PATH
     "A pack directory written by bethconv-testpack; empty skips the pack tests")
-set(SKYDOT_TESTPCK "$ENV{SKYDOT_TESTPCK}" CACHE FILEPATH
-    "A .pck baked from SKYDOT_TESTPACK by bethconv's tools/bake; empty skips the bake test")
 
 set(_game "${CMAKE_SOURCE_DIR}/game")
 set(_smoke "${CMAKE_CURRENT_SOURCE_DIR}/smoke")
@@ -60,23 +58,23 @@ function(skydot_smoke_test name script)
         # failure.
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR"
         TIMEOUT 300
-        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_TESTPCK=${SKYDOT_TESTPCK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch")
+        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch")
 endfunction()
 
 skydot_smoke_test(smoke_extension extension.gd)
 skydot_smoke_test(smoke_pack pack.gd)
-skydot_smoke_test(smoke_bake bake.gd)
+skydot_smoke_test(smoke_assets assets.gd)
 skydot_smoke_test(smoke_papyrus papyrus.gd)
 skydot_smoke_test(smoke_quests quests.gd)
 skydot_smoke_test(smoke_lod lod.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
-# then (locks picked) back in through the locked outside door. Needs the pack
-# and its bake, so it is only registered when both are configured.
-if(SKYDOT_TESTPACK AND SKYDOT_TESTPCK)
+# then (locks picked) back in through the locked outside door. Needs the pack,
+# so it is only registered when one is configured.
+if(SKYDOT_TESTPACK)
     add_test(NAME viewer_doors
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}" --pck "${SKYDOT_TESTPCK}"
+                     --pack "${SKYDOT_TESTPACK}"
                      --cell TestpackInterior --activate 0x303,0x213 --pick-locks on)
     set_tests_properties(viewer_doors PROPERTIES
         LABELS smoke
@@ -86,7 +84,7 @@ if(SKYDOT_TESTPACK AND SKYDOT_TESTPCK)
         TIMEOUT 120)
     add_test(NAME viewer_locked
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}" --pck "${SKYDOT_TESTPCK}"
+                     --pack "${SKYDOT_TESTPACK}"
                      --cell TestpackInterior --activate 0x303,0x213,0x212)
     set_tests_properties(viewer_locked PROPERTIES
         LABELS smoke
@@ -96,7 +94,7 @@ if(SKYDOT_TESTPACK AND SKYDOT_TESTPCK)
         TIMEOUT 120)
     add_test(NAME viewer_lever
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}" --pck "${SKYDOT_TESTPCK}"
+                     --pack "${SKYDOT_TESTPACK}"
                      --cell TestpackInterior --activate 0x304,0x304)
     set_tests_properties(viewer_lever PROPERTIES
         LABELS smoke
@@ -109,7 +107,7 @@ if(SKYDOT_TESTPACK AND SKYDOT_TESTPCK)
     set(_save "${CMAKE_CURRENT_BINARY_DIR}/scratch/viewer.skydot")
     add_test(NAME viewer_save
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}" --pck "${SKYDOT_TESTPCK}"
+                     --pack "${SKYDOT_TESTPACK}"
                      --cell TestpackInterior --activate 0x304 --save-to "${_save}")
     set_tests_properties(viewer_save PROPERTIES
         LABELS smoke
@@ -120,7 +118,7 @@ if(SKYDOT_TESTPACK AND SKYDOT_TESTPCK)
         TIMEOUT 120)
     add_test(NAME viewer_load
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}" --pck "${SKYDOT_TESTPCK}"
+                     --pack "${SKYDOT_TESTPACK}"
                      --cell TestpackInterior --load "${_save}" --activate 0x304)
     set_tests_properties(viewer_load PROPERTIES
         LABELS smoke

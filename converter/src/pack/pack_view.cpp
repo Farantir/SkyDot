@@ -6,6 +6,8 @@
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/io/span_stream.hpp"
+#include "bethconv/mesh/gltf_writer.hpp"
+#include "bethconv/pack/asset_store.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -107,8 +109,89 @@ std::string ascent_prefix(std::string_view vpath) {
     return out;
 }
 
-io::ParseResult<RebasedGlb> rebase_glb_uris(std::span<const std::byte> glb, std::string_view prefix,
-                                            std::string_view origin) {
+namespace {
+
+/// Give each material the glTF textures its extras name, as the writer does
+/// for `TextureRefs::source_paths`: slot 0 as base colour, 1 as normal map
+/// (unless model-space), 2 as emissive when it is a glow map.
+void add_images(ordered_json& doc, std::string_view prefix, ViewGlb& out) {
+    const auto materials = doc.find("materials");
+    if (materials == doc.end() || !materials->is_array()) {
+        return;
+    }
+    std::unordered_map<std::string, std::size_t> texture_of;
+    auto images = ordered_json::array();
+    auto textures = ordered_json::array();
+    const auto texture_for = [&](const std::string& vpath) {
+        if (const auto found = texture_of.find(vpath); found != texture_of.end()) {
+            return found->second;
+        }
+        images.push_back(ordered_json{{"uri", std::string(prefix) + mesh::escape_texture_uri(vpath)},
+                                      {"name", vpath}});
+        textures.push_back(ordered_json{{"source", images.size() - 1}, {"name", vpath}});
+        out.image_vpaths.push_back(vpath);
+        ++out.uris;
+        texture_of.emplace(vpath, textures.size() - 1);
+        return textures.size() - 1;
+    };
+
+    for (auto& material : *materials) {
+        if (!material.is_object() || !material.contains("extras") ||
+            !material["extras"].is_object() || !material["extras"].contains("bethconv")) {
+            continue;
+        }
+        // Read everything first: adding keys to the material may move its
+        // extras (ordered_json keeps members in a vector).
+        std::string base;
+        std::string normal;
+        std::string glow;
+        {
+            const auto& bethconv = material["extras"]["bethconv"];
+            if (!bethconv.is_object() || !bethconv.contains("texture_slots") ||
+                !bethconv["texture_slots"].is_object()) {
+                continue;
+            }
+            const auto& slots = bethconv["texture_slots"];
+            const auto slot = [&](const char* key) -> std::string {
+                if (!slots.contains(key) || !slots[key].is_object() ||
+                    !slots[key].contains("path") || !slots[key]["path"].is_string()) {
+                    return {};
+                }
+                return slots[key]["path"].get<std::string>();
+            };
+            const auto flag = [&](const char* key) {
+                return bethconv.contains(key) && bethconv[key].is_boolean() &&
+                       bethconv[key].get<bool>();
+            };
+            base = slot("0");
+            if (!flag("model_space_normals")) {
+                normal = slot("1");
+            }
+            if (flag("has_glowmap")) {
+                glow = slot("2");
+            }
+        }
+        if (!base.empty()) {
+            material["pbrMetallicRoughness"]["baseColorTexture"] =
+                ordered_json{{"index", texture_for(base)}};
+        }
+        if (!normal.empty()) {
+            material["normalTexture"] = ordered_json{{"index", texture_for(normal)}};
+        }
+        if (!glow.empty()) {
+            material["emissiveTexture"] = ordered_json{{"index", texture_for(glow)}};
+        }
+    }
+    if (!images.empty()) {
+        doc["images"] = std::move(images);
+        doc["textures"] = std::move(textures);
+    }
+}
+
+} // namespace
+
+io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_view prefix,
+                                  std::string_view origin) {
     io::SpanReader reader(glb, origin);
 
     const auto magic = reader.tag();
@@ -161,10 +244,14 @@ io::ParseResult<RebasedGlb> rebase_glb_uris(std::span<const std::byte> glb, std:
                           "the GLB's JSON chunk does not parse as a JSON object");
     }
 
-    RebasedGlb out;
+    ViewGlb out;
     std::unordered_set<std::string> seen;
     const auto images = doc.find("images");
-    if (images != doc.end() && images->is_array()) {
+    const bool has_images = images != doc.end() && images->is_array() && !images->empty();
+    if (!has_images) {
+        add_images(doc, prefix, out);
+        seen.insert(out.image_vpaths.begin(), out.image_vpaths.end());
+    } else {
         for (auto& image : *images) {
             if (!image.is_object()) {
                 continue;
@@ -183,7 +270,7 @@ io::ParseResult<RebasedGlb> rebase_glb_uris(std::span<const std::byte> glb, std:
             }
             if (!prefix.empty()) {
                 *uri = std::string(prefix) + text;
-                ++out.rebased;
+                ++out.uris;
             }
         }
     }
@@ -254,6 +341,11 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
                               std::to_string(k_pack_format_version));
     }
 
+    auto assets = AssetReader::open(pack);
+    if (!assets) {
+        return std::unexpected(assets.error());
+    }
+
     std::error_code ec;
     std::filesystem::create_directories(options.out, ec);
     if (ec) {
@@ -293,7 +385,21 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
                                               .detail = std::move(detail)});
     };
 
-    /// Place one stored asset at `relative` in the view, by link or copy.
+    /// Write `bytes` at `relative` in the view.
+    const auto write = [&](const VpathEntry& entry, std::span<const std::byte> bytes,
+                           const std::string& relative) -> bool {
+        const auto to = options.out / std::filesystem::path(relative);
+        std::string error;
+        if (!io::write_file(to, bytes, error)) {
+            fail(entry, "write", io::ErrorKind::corrupt, std::move(error));
+            return false;
+        }
+        ++result.stats.copied;
+        result.stats.bytes += bytes.size();
+        return true;
+    };
+
+    /// Place one file at `relative` in the view, by link or copy.
     const auto place = [&](const VpathEntry& entry, const std::filesystem::path& from,
                            const std::string& relative) -> bool {
         const auto to = options.out / std::filesystem::path(relative);
@@ -340,6 +446,20 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
         return true;
     };
 
+    /// A stored asset into the view: linked from a loose pack, written from a
+    /// blob.
+    const auto place_asset = [&](const VpathEntry& entry, const std::string& relative) -> bool {
+        if (const auto path = assets->path_of(entry)) {
+            return place(entry, *path, relative);
+        }
+        auto stored = assets->read(entry);
+        if (!stored) {
+            fail(entry, "read", stored.error().kind, stored.error().detail);
+            return false;
+        }
+        return write(entry, stored->data, relative);
+    };
+
     const auto report = [&options](const char* phase, std::uint64_t done, std::uint64_t total) {
         if (options.progress) {
             options.progress(phase, done, total);
@@ -374,7 +494,6 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
         if (!placed.insert(relative).second) {
             continue;
         }
-        const auto source = pack / std::filesystem::path(entry->asset_path());
         const auto prefix = ascent_prefix(entry->vpath);
 
         const std::string key = entry->hex + ":" + std::to_string(prefix.size());
@@ -386,12 +505,12 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
             continue;
         }
 
-        auto file = io::MappedFile::open(source);
-        if (!file) {
-            fail(*entry, "read", file.error().kind, file.error().detail);
+        auto stored = assets->read(*entry);
+        if (!stored) {
+            fail(*entry, "read", stored.error().kind, stored.error().detail);
             continue;
         }
-        auto rebased = rebase_glb_uris(file->bytes(), prefix, entry->vpath);
+        auto rebased = view_glb(stored->data, prefix, entry->vpath);
         if (!rebased) {
             fail(*entry, "rebase", rebased.error().kind, rebased.error().detail);
             continue;
@@ -446,7 +565,7 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
         if (!placed.insert(relative).second) {
             continue;
         }
-        if (!place(*entry, pack / std::filesystem::path(entry->asset_path()), relative)) {
+        if (!place_asset(*entry, relative)) {
             continue;
         }
         if (entry->kind == AssetKind::texture) {
@@ -479,7 +598,7 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
         if (!placed.insert(relative).second) {
             continue;
         }
-        if (!place(*entry, pack / std::filesystem::path(entry->asset_path()), relative)) {
+        if (!place_asset(*entry, relative)) {
             continue;
         }
         ++result.stats.textures;

@@ -614,12 +614,7 @@ private:
 
         // `uri` stays pack-relative and unescaped wherever it names the file
         // (extras, image/texture names, dedupe key); only the href is escaped.
-        // pack_vpaths keeps the virtual path, since a content-addressed pack
-        // has no relative layout to correct for (see TextureRefs).
-        const std::string reference =
-            opt_.texture_refs == TextureRefs::pack_vpaths
-                ? uri_escape(uri)
-                : ascent_to_root(model_.source) + uri_escape(uri);
+        const std::string reference = ascent_to_root(model_.source) + uri_escape(uri);
         const std::string href = shield_percents(reference);
 
         fastgltf::Image image;
@@ -1006,5 +1001,7 @@ io::ParseResult<std::size_t> write_glb_file(const Model& model,
     }
     return glb->size();
 }
+
+std::string escape_texture_uri(std::string_view path) { return uri_escape(path); }
 
 } // namespace bethconv::mesh

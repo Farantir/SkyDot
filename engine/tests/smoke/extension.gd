@@ -4,7 +4,7 @@
 # pack; runs anywhere.
 extends SceneTree
 
-const k_index_header := "# bethconv vpath index v4\n"
+const k_index_header := "# bethconv vpath index v5\n"
 const k_index_columns := "# virtual path\tcontent hash\tkind\twinning source\n"
 
 var failures := 0
@@ -33,7 +33,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotPack"), "SkydotPack is registered")
     expect(ClassDB.can_instantiate("SkydotPack"), "SkydotPack can be instantiated")
     var pack := SkydotPack.new()
-    expect(pack.PACK_FORMAT_VERSION == 4, "the engine reads pack format v4")
+    expect(pack.PACK_FORMAT_VERSION == 5, "the engine reads pack format v5")
     expect(pack.RECORDS_FORMAT_VERSION == 1, "and records.fb format v1")
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
@@ -41,7 +41,9 @@ func _check_registered() -> void:
     for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker"]:
         expect(ClassDB.class_exists(name), name + " is registered")
     expect(not pack.is_open(), "a new pack is closed")
-    expect(pack.resolve("meshes/anything.nif") == "", "a closed pack resolves nothing")
+    expect(not pack.has("meshes/anything.nif") and pack.get_bytes("meshes/anything.nif").is_empty(),
+           "a closed pack has nothing")
+    expect(pack.load_scene("meshes/anything.nif") == null, "and loads nothing")
 
 func _check_path_arithmetic() -> void:
     expect(SkydotPack.normalize_vpath("Meshes\\Clutter\\Apple01.NIF") == "meshes/clutter/apple01.nif",
@@ -53,11 +55,6 @@ func _check_path_arithmetic() -> void:
     expect(SkydotPack.model_vpath("meshes\\Clutter\\Apple01.nif") == "meshes/clutter/apple01.nif",
            "a MODL field that already says meshes/ is left alone")
     expect(SkydotPack.model_vpath("") == "", "an empty MODL is empty")
-    expect(SkydotPack.scene_path_for("meshes/clutter/apple01.nif") == "res://meshes/clutter/apple01.scn",
-           "a bake keys scenes by virtual path")
-    expect(SkydotPack.scene_path_for("meshes/testpack/cube with space.nif")
-           == "res://meshes/testpack/cube with space.scn",
-           "a space survives into the scene path")
 
 ## Billboard nodes, marked the way the importer keeps glTF node extras.
 func _check_billboards() -> void:
@@ -127,22 +124,23 @@ func _check_refusals() -> void:
     expect(pack.open(empty) == ERR_FILE_NOT_FOUND, "a directory with no manifest is not a pack")
     expect(pack.get_error().contains("manifest.json"), "and the message names the file")
 
-    # A v5 manifest: refused with both numbers in the sentence.
-    var v5 := root.path_join("v5")
-    _write_pack(v5, 5, k_index_header + k_index_columns)
-    expect(pack.open(v5) == ERR_UNAVAILABLE, "a v5 pack is refused")
-    expect(pack.get_error().contains("version 5") and pack.get_error().contains("v4"),
+    # A v4 manifest (a pack that still needs a bake): refused with both
+    # numbers in the sentence.
+    var v4 := root.path_join("v4")
+    _write_pack(v4, 4, k_index_header + k_index_columns)
+    expect(pack.open(v4) == ERR_UNAVAILABLE, "a v4 pack is refused")
+    expect(pack.get_error().contains("version 4") and pack.get_error().contains("v5"),
            "the refusal names both versions: " + pack.get_error())
     expect(not pack.is_open(), "a refused pack is closed")
 
-    # A v4 manifest whose index header is from another version.
+    # A v5 manifest whose index header is from another version.
     var idx1 := root.path_join("idx1")
-    _write_pack(idx1, 4, "# bethconv vpath index v1\n")
+    _write_pack(idx1, 5, "# bethconv vpath index v1\n")
     expect(pack.open(idx1) == ERR_FILE_UNRECOGNIZED, "an index header this engine does not know")
 
-    # A v4 manifest whose index has more lines than the manifest counted.
+    # A v5 manifest whose index has more lines than the manifest counted.
     var extra := root.path_join("extra")
-    _write_pack(extra, 4, k_index_header + k_index_columns
+    _write_pack(extra, 5, k_index_header + k_index_columns
         + "meshes/a.nif\t" + "0".repeat(64) + "\tmesh\tsrc\n")
     expect(pack.open(extra) == ERR_FILE_CORRUPT, "an index the manifest did not count")
     expect(pack.get_error().contains("1 entries but manifest.json says 0"),
@@ -150,7 +148,7 @@ func _check_refusals() -> void:
 
     # An empty but valid pack: manifest and index both count zero.
     var ok := root.path_join("ok")
-    _write_pack(ok, 4, k_index_header + k_index_columns)
+    _write_pack(ok, 5, k_index_header + k_index_columns)
     expect(pack.open(ok) == OK, "an empty pack opens: " + pack.get_error())
     expect(pack.is_open() and pack.get_index_count() == 0 and not pack.has_records(),
            "and reports itself empty")
@@ -158,7 +156,7 @@ func _check_refusals() -> void:
 
     # A records key whose file carries the wrong magic.
     var badrec := root.path_join("badrec")
-    _write_pack(badrec, 4, k_index_header, true)
+    _write_pack(badrec, 5, k_index_header, true)
     var f := FileAccess.open(badrec.path_join("records.fb"), FileAccess.WRITE)
     f.store_string("NOTASNAP".rpad(64, " "))
     f.close()
@@ -166,7 +164,7 @@ func _check_refusals() -> void:
 
     # Correct magic, unsupported version.
     var rec2 := root.path_join("rec2")
-    _write_pack(rec2, 4, k_index_header, true)
+    _write_pack(rec2, 5, k_index_header, true)
     var header := PackedByteArray()
     header.resize(64)
     for i in 8:
@@ -181,7 +179,7 @@ func _check_refusals() -> void:
 
     # A world key whose file is missing.
     var noworld := root.path_join("noworld")
-    _write_pack(noworld, 4, k_index_header + k_index_columns, false, true)
+    _write_pack(noworld, 5, k_index_header + k_index_columns, false, true)
     expect(pack.open(noworld) == ERR_FILE_NOT_FOUND, "a missing world.fb is refused")
 
     # A damaged world.fb is refused by SkydotWorld.
@@ -193,19 +191,44 @@ func _check_refusals() -> void:
     expect(world.open(junk) == ERR_FILE_CORRUPT, "a damaged world.fb is refused")
     expect(not world.is_open(), "and stays closed")
 
-    # A missing bake does not close the pack.
-    expect(pack.open(ok) == OK, "reopen the empty pack")
-    expect(pack.mount_baked(root.path_join("nope.pck")) == ERR_FILE_NOT_FOUND, "a missing bake")
-    expect(pack.is_open(), "a missing bake leaves the pack open")
+    # The blob layout: its index must be there and well formed.
+    var noidx := root.path_join("noidx")
+    _write_pack(noidx, 5, k_index_header + k_index_columns, false, false, "blob")
+    expect(pack.open(noidx) == ERR_FILE_NOT_FOUND, "a blob pack without assets.idx is refused")
+    var badidx := root.path_join("badidx")
+    _write_pack(badidx, 5, k_index_header + k_index_columns, false, false, "blob")
+    f = FileAccess.open(badidx.path_join("assets.idx"), FileAccess.WRITE)
+    f.store_string("BCAI")
+    f.close()
+    FileAccess.open(badidx.path_join("assets-0001.blob"), FileAccess.WRITE).close()
+    expect(pack.open(badidx) == ERR_FILE_CORRUPT, "a truncated assets.idx is refused")
+    var blob := root.path_join("blob")
+    _write_pack(blob, 5, k_index_header + k_index_columns, false, false, "blob")
+    var index := PackedByteArray()
+    index.resize(24)
+    for i in 4:
+        index[i] = "BCAI".unicode_at(i)
+    index.encode_u32(4, 1)
+    index.encode_u32(8, 1)
+    f = FileAccess.open(blob.path_join("assets.idx"), FileAccess.WRITE)
+    f.store_buffer(index)
+    f.close()
+    FileAccess.open(blob.path_join("assets-0001.blob"), FileAccess.WRITE).close()
+    expect(pack.open(blob) == OK, "an empty blob pack opens: " + pack.get_error())
+    expect(pack.get_store_layout() == "blob", "and says it is one")
+    var odd := root.path_join("odd")
+    _write_pack(odd, 5, k_index_header + k_index_columns, false, false, "zip")
+    expect(pack.open(odd) == ERR_FILE_UNRECOGNIZED, "an unknown store layout is refused")
 
 func _write_pack(dir: String, version: int, index_text: String, with_records := false,
-        with_world := false) -> void:
+        with_world := false, layout := "loose") -> void:
     DirAccess.make_dir_recursive_absolute(dir)
     DirAccess.make_dir_recursive_absolute(dir.path_join("assets"))
     var manifest := {
         "pack_format_version": version,
         "converter": "smoke test",
         "assets": {"distinct": 0, "index_entries": 0},
+        "store": {"layout": layout, "index": "assets.idx", "blob": "assets-0001.blob"},
     }
     if with_records:
         manifest["records"] = {"file": "records.fb", "forms": 0}

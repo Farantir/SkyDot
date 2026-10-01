@@ -5,10 +5,11 @@
 //
 // Coordinates in world.fb are Skyrim's: Z-up, game units, radians. They are
 // converted with the same axis rotation (Z-up -> Y-up, -90 degrees about X) and
-// unit scale (0.0142875 m per unit) the converter bakes into every mesh, so a
-// baked scene placed with `skyrim_transform` lands where the game puts it.
+// unit scale (0.0142875 m per unit) the converter applies to every mesh, so a
+// model placed with `skyrim_transform` lands where the game puts it.
 #pragma once
 
+#include "assets/asset_cache.hpp"
 #include "world/materials.hpp"
 #include "world/terrain.hpp"
 #include "world/water.hpp"
@@ -142,8 +143,8 @@ public:
     /// or 0.
     std::int64_t find_actor_of(std::int64_t npc) const;
 
-    /// Build a cell under a new Node3D: baked scenes for references with a
-    /// model (from the mounted .pck), lights for LIGH bases. Initially disabled
+    /// Build a cell under a new Node3D: models (from the pack's asset cache)
+    /// for references with one, lights for LIGH bases. Initially disabled
     /// references and editor markers are skipped; billboard nodes get a
     /// SkydotBillboard. Statistics are stored as node metadata "skydot_stats".
     godot::Node3D* build_cell(std::int64_t id) const;
@@ -170,12 +171,17 @@ public:
     /// is set); also true for a root with no build under way.
     bool continue_build(godot::Node3D* root, std::int64_t budget_usec) const;
 
-    /// Resources (scenes, land textures) exterior cell (x, y) of `world` needs.
+    /// The pack's asset cache, which every model and texture comes from.
+    /// Set by SkydotPack::open_world; without it nothing loads.
+    void set_assets(std::shared_ptr<AssetCache> assets) { assets_ = std::move(assets); }
+
+    /// Virtual paths of the resources (models, land and water textures)
+    /// exterior cell (x, y) of `world` needs.
     godot::PackedStringArray get_exterior_resources(std::int64_t world, std::int64_t x,
                                                     std::int64_t y) const;
-    /// Start loading those resources on the loader's threads. Returns how many
-    /// are still pending; 0 means build_exterior will not touch the disk for
-    /// them. Call again to poll.
+    /// Start loading those resources on the asset cache's threads. Returns how
+    /// many are still pending; 0 means build_exterior will not load anything
+    /// itself. Call again to poll.
     std::int64_t request_exterior(std::int64_t world, std::int64_t x, std::int64_t y);
     /// Loaded resources kept for reuse, and those still loading.
     std::int64_t get_cached_resource_count() const;
@@ -238,7 +244,9 @@ private:
     void build_indexes();
     std::array<std::string, 2> land_texture_paths(std::uint32_t ltex) const;
     /// A resource from the cache, else loaded now (and cached).
-    godot::Ref<godot::Resource> resource(const godot::String& path) const;
+    godot::Ref<godot::Resource> resource(const godot::String& vpath) const;
+    /// materials_, created on first use and attached to the asset cache.
+    SkydotMaterials& materials() const;
 
     struct BuildStats;
     struct BuildJob;
@@ -286,8 +294,7 @@ private:
     /// Builds under way, by root instance id.
     mutable std::unordered_map<std::uint64_t, std::shared_ptr<BuildJob>> jobs_;
     mutable WaterMaterials water_;
-    mutable std::unordered_map<std::string, godot::Ref<godot::Resource>> cache_;
-    std::unordered_map<std::string, bool> pending_;
+    std::shared_ptr<AssetCache> assets_;
     double terrain_tiling_{8.0};
 };
 

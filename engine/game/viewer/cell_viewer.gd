@@ -4,18 +4,18 @@
 # worldspace's exterior cells around the camera. Load doors lead between them.
 #
 #   godot4.7 --path game res://viewer/cell_viewer.tscn -- \
-#       --pack DIR --pck FILE --cell EDITOR_ID [--screenshot out.png] [--materials off]
+#       --pack DIR --cell EDITOR_ID [--screenshot out.png] [--materials off]
 #   godot4.7 --path game res://viewer/cell_viewer.tscn -- \
-#       --pack DIR --pck FILE --world Tamriel --at X,Y,Z [--target X,Y,Z] [--radius 2]
+#       --pack DIR --world Tamriel --at X,Y,Z [--target X,Y,Z] [--radius 2]
 #
 # Exteriors keep the cells within --radius of the camera's cell loaded, nearest
-# first, and drop those further than one more. Scenes and textures load on the
-# loader's threads; only the build runs here, in steps within a frame budget
-# (--build-budget USEC, default 8000).
+# first, and drop those further than one more. Models and textures load from
+# the pack on the asset cache's threads; only the build runs here, in steps
+# within a frame budget (--build-budget USEC, default 8000).
 # --tiling sets land texture repeats per cell. --benchmark SECONDS flies the
 # camera east at --fly-speed m/s (default 20) and prints frame times.
 # Beyond the loaded cells the worldspace's LOD shows (terrain, objects, tree
-# billboards; needs its LOD meshes in the bake, see README); --lod off turns
+# billboards, from the pack's converted LOD); --lod off turns
 # it off, --lod-split and --tree-distance tune it (SkydotLod).
 # --shadows off disables the sun's shadows. --time HOURS (default 12) and
 # --weather EDITOR_ID set the sky, light and fog from the worldspace's climate.
@@ -90,7 +90,7 @@ func _ready() -> void:
 	_args = _parse_args(OS.get_cmdline_user_args())
 	var args := _args
 	if not args.has("pack") or not (args.has("cell") or args.has("world")):
-		_fail("usage: -- --pack DIR [--pck FILE] (--cell EDITOR_ID | --world EDITOR_ID --at X,Y,Z)"
+		_fail("usage: -- --pack DIR (--cell EDITOR_ID | --world EDITOR_ID --at X,Y,Z)"
 			+ " [--screenshot out.png]")
 		return
 
@@ -98,9 +98,8 @@ func _ready() -> void:
 	if pack.open(args["pack"]) != OK:
 		_fail(pack.get_error())
 		return
-	if args.has("pck") and pack.mount_baked(args["pck"]) != OK:
-		_fail(pack.get_error())
-		return
+	if args.has("pck"):
+		push_warning("--pck is ignored: packs load directly, there is no bake any more")
 	var world := pack.open_world()
 	if world == null:
 		_fail(pack.get_error())

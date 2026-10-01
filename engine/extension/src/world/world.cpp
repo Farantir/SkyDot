@@ -92,13 +92,9 @@ bool is_marker_model(std::string_view model) {
            model.find("/markers/") != std::string_view::npos;
 }
 
-/// `meshes/foo/bar.nif` -> `res://meshes/foo/bar.scn` (the bake's naming).
-String scene_path_for(std::string_view model) {
-    std::string path(model);
-    if (path.ends_with(".nif")) {
-        path.replace(path.size() - 4, 4, ".scn");
-    }
-    return String("res://") + String::utf8(path.c_str(), static_cast<int>(path.size()));
+/// A model's virtual path as the asset cache keys it.
+String model_path(std::string_view model) {
+    return String::utf8(model.data(), static_cast<int>(model.size()));
 }
 
 /// Game units per exterior cell side.
@@ -595,9 +591,6 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         ++stats.no_base;
         return;
     }
-    if (materials_.is_null()) {
-        materials_.instantiate();
-    }
     const auto& p = ref.position();
     const auto& r = ref.rotation();
     const Transform3D transform = skyrim_transform(Vector3(p.x(), p.y(), p.z()),
@@ -609,18 +602,19 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         if (is_marker_model(model->string_view())) {
             ++stats.markers;
         } else {
-            const String scene_path = scene_path_for(model->string_view());
-            const godot::Ref<godot::PackedScene> scene = resource(scene_path);
+            const String scene_path = model_path(model->string_view());
+            const godot::Ref<SkydotModel> scene = resource(scene_path);
             if (scene.is_valid()) {
                 auto* node = godot::Object::cast_to<godot::Node3D>(scene->instantiate());
                 if (node != nullptr) {
                     node->set_name(name);
                     node->set_transform(transform);
                     if (skyrim_materials_) {
-                        stats.materials += materials_->apply(node);
+                        stats.materials += materials().apply(node);
                     }
                     stats.billboards += SkydotBillboard::attach(node);
                     if (effects_) {
+                        (void)materials();
                         stats.effects += SkydotAnimator::attach(node, materials_);
                     }
                     tag_ref(node, ref.id(), cell, activatable(base, cell, ref.id()));
@@ -800,18 +794,16 @@ std::array<std::string, 2> SkydotWorld::land_texture_paths(std::uint32_t id) con
     return {str(it->diffuse()), str(it->normal())};
 }
 
-godot::Ref<godot::Resource> SkydotWorld::resource(const String& path) const {
-    const std::string key = utf8(path);
-    if (const auto it = cache_.find(key); it != cache_.end()) {
-        return it->second;
+godot::Ref<godot::Resource> SkydotWorld::resource(const String& vpath) const {
+    return assets_ != nullptr ? assets_->get(utf8(vpath)) : godot::Ref<godot::Resource>();
+}
+
+SkydotMaterials& SkydotWorld::materials() const {
+    if (materials_.is_null()) {
+        materials_.instantiate();
+        materials_->set_assets(assets_);
     }
-    godot::Ref<godot::Resource> loaded;
-    auto* loader = godot::ResourceLoader::get_singleton();
-    if (loader->exists(path)) {
-        loaded = loader->load(path);
-    }
-    cache_.emplace(key, loaded);
-    return loaded;
+    return *materials_.ptr();
 }
 
 godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world, std::int64_t x,
@@ -829,7 +821,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
         if (model == nullptr || model->size() == 0 || is_marker_model(model->string_view())) {
             return;
         }
-        const String path = scene_path_for(model->string_view());
+        const String path = model_path(model->string_view());
         if (!out.has(path)) {
             out.push_back(path);
         }
@@ -847,7 +839,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
     const auto* cell = exterior_ptr(w, gx, gy);
     if (const auto* water = water_ptr(water_type(w, cell));
         water != nullptr && water->noise() != nullptr && water->noise()->size() != 0) {
-        const String path = String("res://") + String::utf8(water->noise()->Get(0)->c_str());
+        const String path = String::utf8(water->noise()->Get(0)->c_str());
         if (!out.has(path)) {
             out.push_back(path);
         }
@@ -859,7 +851,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
                 if (vpath.empty()) {
                     continue;
                 }
-                const String path = String("res://") + String::utf8(vpath.c_str());
+                const String path = String::utf8(vpath.c_str());
                 if (!out.has(path)) {
                     out.push_back(path);
                 }
@@ -870,52 +862,30 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
 }
 
 std::int64_t SkydotWorld::request_exterior(std::int64_t world, std::int64_t x, std::int64_t y) {
-    auto* loader = godot::ResourceLoader::get_singleton();
+    if (assets_ == nullptr) {
+        return 0;
+    }
     std::int64_t waiting = 0;
     for (const String& path : get_exterior_resources(world, x, y)) {
-        const std::string key = utf8(path);
-        if (cache_.contains(key)) {
-            continue;
-        }
-        if (!pending_.contains(key)) {
-            if (!loader->exists(path)) {
-                cache_.emplace(key, godot::Ref<godot::Resource>());
-                continue;
-            }
-            loader->load_threaded_request(path);
-            pending_.emplace(key, true);
+        if (assets_->request(utf8(path)) == AssetCache::Status::loading) {
             ++waiting;
-            continue;
-        }
-        switch (loader->load_threaded_get_status(path)) {
-        case godot::ResourceLoader::THREAD_LOAD_IN_PROGRESS:
-            ++waiting;
-            break;
-        case godot::ResourceLoader::THREAD_LOAD_LOADED:
-            cache_.emplace(key, loader->load_threaded_get(path));
-            pending_.erase(key);
-            break;
-        default: // failed or unknown: remember the miss
-            cache_.emplace(key, godot::Ref<godot::Resource>());
-            pending_.erase(key);
-            break;
         }
     }
     return waiting;
 }
 
 std::int64_t SkydotWorld::get_cached_resource_count() const {
-    return static_cast<std::int64_t>(cache_.size());
+    return assets_ != nullptr ? static_cast<std::int64_t>(assets_->cached()) : 0;
 }
 
 std::int64_t SkydotWorld::get_pending_resource_count() const {
-    return static_cast<std::int64_t>(pending_.size());
+    return assets_ != nullptr ? static_cast<std::int64_t>(assets_->pending()) : 0;
 }
 
 void SkydotWorld::trim_cache() {
-    std::erase_if(cache_, [](const auto& entry) {
-        return entry.second.is_valid() && entry.second->get_reference_count() <= 1;
-    });
+    if (assets_ != nullptr) {
+        assets_->trim();
+    }
 }
 
 std::int64_t SkydotWorld::find_weather(const String& editor_id) const {
@@ -1048,16 +1018,13 @@ Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t we
 }
 
 std::int64_t SkydotWorld::warm_up() {
-    if (materials_.is_null()) {
-        materials_.instantiate();
-    }
     if (!terrain_) {
-        terrain_ = std::make_unique<TerrainBuilder>();
+        terrain_ = std::make_unique<TerrainBuilder>(assets_);
         terrain_->set_tiling(static_cast<float>(terrain_tiling_));
     }
     terrain_->warm_up();
     water_.warm_up();
-    return materials_->warm_up() + TerrainBuilder::k_max_layers + 1;
+    return materials().warm_up() + TerrainBuilder::k_max_layers + 1;
 }
 
 void SkydotWorld::set_terrain_tiling(double repeats) {
@@ -1133,7 +1100,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
 
     if (terrain != nullptr) {
         if (!terrain_) {
-            terrain_ = std::make_unique<TerrainBuilder>();
+            terrain_ = std::make_unique<TerrainBuilder>(assets_);
             terrain_->set_tiling(static_cast<float>(terrain_tiling_));
         }
         const auto neighbours = [&](int dx, int dy) {
@@ -1163,7 +1130,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     }
     if (water) {
         const auto load = [&](const std::string& vpath) -> godot::Ref<godot::Texture> {
-            return resource(String("res://") + String::utf8(vpath.c_str()));
+            return resource(String::utf8(vpath.c_str()));
         };
         const auto material = water_.material(water_ptr(water_type(w, cell)), load);
         godot::Ref<godot::PlaneMesh> plane;

@@ -1,29 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Materializes a pack as a directory tree that mirrors the virtual filesystem,
-// so any glTF consumer can open it.
+// so any glTF consumer (Godot, Blender) can open it.
 //
-// In a pack, a GLB lives at `assets/3f/3f9c....glb` and names its textures by
-// virtual path (`textures/clutter/apple01.dds`), because a relative path to the
-// texture's hash would go stale when the texture changes (see
-// `mesh::TextureRefs::pack_vpaths`). Without `vpath.idx`, Godot and Blender load
-// such meshes with no textures.
+// A pack's meshes have no glTF images: the engine resolves the texture paths
+// in their material extras through `vpath.idx`. The view adds images whose
+// URIs reach the view's own copy of each texture:
 //
 //     view/
-//       meshes/clutter/apple01.glb      <- rewritten: URIs rebased to ../..
-//       textures/clutter/apple01.dds    <- hard link into the pack
-//       scripts/wispwallscript.pex
+//       meshes/clutter/apple01.glb      <- images added, URIs start with ../..
+//       textures/clutter/apple01.dds    <- hard link (loose pack) or copy (blob)
+//       scripts/wispwallscript.pexfb
 //
-// One file per index entry, with the converted extension. Textures and scripts
-// are hard links, so a full view costs almost nothing.
+// One file per index entry, with the converted extension. glTF resolves image
+// URIs against the document, so each mesh gets the `../` prefix for its depth;
+// everything else, including `extras`, is unchanged.
 //
-// Meshes are rewritten because glTF resolves image URIs against the document:
-// `textures/foo.dds` inside `meshes/clutter/apple01.glb` means
-// `meshes/clutter/textures/foo.dds`. Each mesh's `images[].uri` gets the `../`
-// prefix for its depth; everything else, including `extras`, is unchanged.
-//
-// A view is derived and disposable; it is not part of the pack format, and the
-// bake could read `vpath.idx` directly.
+// A view is derived and disposable; it is not part of the pack format. From a
+// blob pack every file is a copy, so view a filtered subset.
 #pragma once
 
 #include "bethconv/io/parse_error.hpp"
@@ -112,27 +106,25 @@ struct ViewResult {
 /// here).
 [[nodiscard]] std::string ascent_prefix(std::string_view vpath);
 
-/// What `rebase_glb_uris` produced.
-/// Result of `rebase_glb_uris`.
-struct RebasedGlb {
+/// Result of `view_glb`.
+struct ViewGlb {
     std::vector<std::byte> bytes;
-
     /// Virtual paths named by the images, percent-decoded to the `vpath.idx`
     /// form, deduplicated, in document order.
     std::vector<std::string> image_vpaths;
-
-    /// Texture paths named in the materials' `extras` (all texture slots,
-    /// e.g. effect palettes, glow and environment maps), which an engine
-    /// shader may load even though no glTF image references them.
+    /// Texture paths named in the materials' `extras` that are not images (e.g.
+    /// effect palettes, environment maps), which an engine shader may load.
     std::vector<std::string> slot_vpaths;
-
-    std::uint64_t rebased{}; ///< URIs that got the prefix.
+    std::uint64_t uris{}; ///< Image URIs rebased or added.
 };
 
-/// Prefix every relative `images[].uri` in `glb` with `prefix`. Absolute URIs,
-/// URIs starting with `../` and `data:` URIs are left alone and not reported.
-[[nodiscard]] io::ParseResult<RebasedGlb> rebase_glb_uris(std::span<const std::byte> glb,
-                                                          std::string_view prefix,
-                                                          std::string_view origin);
+/// A pack GLB made loadable from the view: images are added from the
+/// materials' extras with `prefix` in front of each URI. A GLB that already has
+/// images (packs before v5) gets `prefix` on every relative `images[].uri`
+/// instead; absolute, `../` and `data:` URIs are left alone and not reported.
+/// Everything else, including `extras` and the BIN chunk, is unchanged.
+[[nodiscard]] io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb,
+                                                std::string_view prefix,
+                                                std::string_view origin);
 
 } // namespace bethconv::pack

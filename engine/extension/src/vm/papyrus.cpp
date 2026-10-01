@@ -174,11 +174,10 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     reset();
     // Scripts keep their virtual paths: class Foo is scripts/foo.pex.
     vm_->set_loader([this](const std::string& key) -> std::optional<std::vector<std::uint8_t>> {
-        const String path = pack_->resolve(to_godot("scripts/" + key + ".pex"));
-        if (path.is_empty()) {
+        const auto bytes = pack_->get_bytes(to_godot("scripts/" + key + ".pex"));
+        if (bytes.is_empty()) {
             return std::nullopt;
         }
-        const auto bytes = godot::FileAccess::get_file_as_bytes(path);
         return std::vector<std::uint8_t>(bytes.ptr(), bytes.ptr() + bytes.size());
     });
     vm_->set_log([this](const std::string& message) {

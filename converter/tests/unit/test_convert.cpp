@@ -4,6 +4,7 @@
 // writer; this covers the layer above: which paths become assets, of which
 // kind, what filter and limit do, and whether ConvertOptions reach the content
 // hash. Three files and a two-plugin order, no game data.
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/convert.hpp"
 
 #include "../support/dds_builder.hpp"
@@ -99,16 +100,30 @@ nlohmann::json read_json(const std::filesystem::path& path) {
 }
 
 /// The set of asset files on disk, by their `<bb>/<hash><ext>` names.
+/// Stored assets as "<hex><ext>", whichever layout the pack uses.
 std::set<std::string> assets_in(const std::filesystem::path& root) {
     std::set<std::string> names;
+    if (std::filesystem::exists(root / "assets.idx")) {
+        std::ifstream in(root / "assets.idx", std::ios::binary);
+        std::vector<char> raw((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        std::vector<std::byte> bytes;
+        for (const char c : raw) {
+            bytes.push_back(static_cast<std::byte>(c));
+        }
+        const auto index = AssetIndex::parse(bytes, "assets.idx");
+        REQUIRE(index.has_value());
+        for (const auto& entry : index->entries) {
+            names.insert(entry.hash.hex() + std::string(extension_of(entry.kind)));
+        }
+        return names;
+    }
     const auto dir = root / "assets";
     if (!std::filesystem::is_directory(dir)) {
         return names;
     }
     for (const auto& entry : std::filesystem::recursive_directory_iterator(dir)) {
         if (entry.is_regular_file()) {
-            names.insert(entry.path().parent_path().filename().string() + "/" +
-                         entry.path().filename().string());
+            names.insert(entry.path().filename().string());
         }
     }
     return names;

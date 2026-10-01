@@ -134,6 +134,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     pack_options.script_settings = options.script_settings();
     pack_options.lod_settings = options.lod_settings();
     pack_options.prune_orphans = options.prune_orphans;
+    pack_options.layout = options.layout;
 
     auto writer = PackWriter::create(options.out, std::move(pack_options));
     if (!writer) {

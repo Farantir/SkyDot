@@ -386,12 +386,8 @@ Ref<godot::Texture> SkydotMaterials::load_texture(const String& vpath) {
     if (auto it = textures_.find(key); it != textures_.end()) {
         return it->second;
     }
-    Ref<godot::Texture> texture;
-    const String path = String("res://") + vpath;
-    auto* loader = godot::ResourceLoader::get_singleton();
-    if (loader->exists(path)) {
-        texture = loader->load(path);
-    }
+    Ref<godot::Texture> texture =
+        assets_ != nullptr ? assets_->texture(key) : Ref<godot::Texture>();
     textures_.emplace(key, texture);
     return texture;
 }
@@ -429,16 +425,20 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
     const godot::Vector2 uv_scale = as_vec2(extras, "uv_scale", godot::Vector2(1, 1));
     const godot::Vector2 uv_offset = as_vec2(extras, "uv_offset", godot::Vector2(0, 0));
 
+    // Pack meshes carry no glTF images: the extras name every texture
+    // (formats/pack-format.md, "Texture references in meshes").
+    const Ref<godot::Texture> albedo = load_texture(slot_path(extras, 0));
+    const Ref<godot::Texture> normal_map = static_cast<bool>(extras.get("model_space_normals", false))
+                                               ? Ref<godot::Texture>()
+                                               : load_texture(slot_path(extras, 1));
+
     Ref<godot::ShaderMaterial> out;
     out.instantiate();
     out->set_name(source->get_name());
 
     if (refraction) {
         out->set_shader(shader_for(refraction_code(double_sided)));
-        Ref<godot::Texture> normal = base->get_texture(godot::BaseMaterial3D::TEXTURE_NORMAL);
-        if (normal.is_null()) {
-            normal = base->get_texture(godot::BaseMaterial3D::TEXTURE_ALBEDO);
-        }
+        const Ref<godot::Texture> normal = normal_map.is_valid() ? normal_map : albedo;
         out->set_shader_parameter("normal_tex", normal);
         // The screen texture holds only opaque geometry, so a refraction
         // surface drawn after flames or glows would paint over them. Draw it
@@ -447,8 +447,7 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
     } else if (kind == "BSEffectShaderProperty") {
         // The importer gamma-encodes glTF's emissiveFactor; undo that to get
         // the NIF's value back.
-        configure_effect(out, extras, double_sided, false,
-                         base->get_texture(godot::BaseMaterial3D::TEXTURE_ALBEDO),
+        configure_effect(out, extras, double_sided, false, albedo,
                          base->get_emission().srgb_to_linear());
     } else {
         const auto transparency = base->get_transparency();
@@ -479,8 +478,8 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
                                                           (flags2 & k_sf2_tree_anim) == 0);
         out->set_shader_parameter("use_glow_map", glow.is_valid());
         out->set_shader_parameter("own_emit", glow.is_null() && (flags1 & k_sf1_own_emit) != 0);
-        out->set_shader_parameter("albedo_tex", base->get_texture(godot::BaseMaterial3D::TEXTURE_ALBEDO));
-        out->set_shader_parameter("normal_tex", base->get_texture(godot::BaseMaterial3D::TEXTURE_NORMAL));
+        out->set_shader_parameter("albedo_tex", albedo);
+        out->set_shader_parameter("normal_tex", normal_map);
         out->set_shader_parameter("base_color", base->get_albedo());
         out->set_shader_parameter("specular_color",
                                   as_vec3(extras, "specular_color", godot::Vector3(1, 1, 1)));

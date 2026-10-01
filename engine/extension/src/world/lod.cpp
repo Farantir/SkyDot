@@ -227,11 +227,10 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     const lfb::Lod* settings = nullptr;
     godot::PackedByteArray bytes;
     for (const auto& name : names) {
-        const String path = pack->resolve(String("lodsettings/") + name + String(".lod"));
-        if (path.is_empty()) {
+        bytes = pack->get_bytes(String("lodsettings/") + name + String(".lod"));
+        if (bytes.is_empty()) {
             continue;
         }
-        bytes = godot::FileAccess::get_file_as_bytes(path);
         settings = read_lod(bytes);
         if (settings != nullptr && settings->settings() != nullptr) {
             name_ = name;
@@ -255,9 +254,9 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     }
 
     tree_types_.clear();
-    const String list = pack->resolve(String("meshes/terrain/") + name_ + String("/trees/") + name_ + String(".lst"));
-    if (!list.is_empty()) {
-        const auto list_bytes = godot::FileAccess::get_file_as_bytes(list);
+    const auto list_bytes =
+        pack->get_bytes(String("meshes/terrain/") + name_ + String("/trees/") + name_ + String(".lst"));
+    if (!list_bytes.is_empty()) {
         if (const auto* lod = read_lod(list_bytes); lod != nullptr && lod->tree_types() != nullptr) {
             for (const auto* t : *lod->tree_types()) {
                 tree_types_[t->index()] = TreeType{.width = t->width(), .height = t->height(),
@@ -265,10 +264,8 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
             }
         }
     }
-    const String atlas =
-        String("res://textures/terrain/") + name_ + String("/trees/") + name_ + String("treelod.dds");
-    auto* loader = godot::ResourceLoader::get_singleton();
-    tree_atlas_ = loader->exists(atlas) ? Ref<godot::Texture2D>(loader->load(atlas)) : Ref<godot::Texture2D>();
+    tree_atlas_ = pack->load_texture(String("textures/terrain/") + name_ + String("/trees/") + name_ +
+                                     String("treelod.dds"));
 
     mask_image_ = godot::Image::create_empty(stride_, stride_, false, godot::Image::FORMAT_R8);
     mask_image_->fill(godot::Color(0, 0, 0));
@@ -352,10 +349,10 @@ std::vector<String> SkydotLod::scenes_for(const Quad& q) const {
         const std::string key = utf8(v);
         auto it = exists_.find(key);
         if (it == exists_.end()) {
-            it = exists_.emplace(key, !pack_->resolve(v).is_empty()).first;
+            it = exists_.emplace(key, pack_->has(v)).first;
         }
         if (it->second) {
-            out.push_back(SkydotPack::scene_path_for(v));
+            out.push_back(v);
         }
     }
     return out;
@@ -366,27 +363,16 @@ bool SkydotLod::loaded(const String& path) {
     if (resources_.contains(key)) {
         return true;
     }
-    auto* loader = godot::ResourceLoader::get_singleton();
-    if (!pending_.contains(key)) {
-        if (!loader->exists(path)) {
-            resources_.emplace(key, Ref<godot::Resource>());
-            return true;
-        }
-        loader->load_threaded_request(path);
+    const auto assets = pack_->assets();
+    if (assets == nullptr) {
+        return true;
+    }
+    if (assets->request(key) == AssetCache::Status::loading) {
         pending_.insert(key);
         return false;
     }
-    switch (loader->load_threaded_get_status(path)) {
-    case godot::ResourceLoader::THREAD_LOAD_IN_PROGRESS:
-        return false;
-    case godot::ResourceLoader::THREAD_LOAD_LOADED:
-        resources_.emplace(key, loader->load_threaded_get(path));
-        break;
-    default:
-        resources_.emplace(key, Ref<godot::Resource>());
-        break;
-    }
     pending_.erase(key);
+    resources_.emplace(key, assets->get(key));
     return true;
 }
 
@@ -450,11 +436,10 @@ void SkydotLod::retexture(godot::Node* node, bool terrain, bool water) {
 }
 
 void SkydotLod::add_trees(godot::Node3D* parent, const Quad& q, Shown& stats) {
-    const String path = pack_->resolve(vpath(q, "btt"));
-    if (path.is_empty() || tree_atlas_.is_null()) {
+    if (tree_atlas_.is_null()) {
         return;
     }
-    const auto bytes = godot::FileAccess::get_file_as_bytes(path);
+    const auto bytes = pack_->get_bytes(vpath(q, "btt"));
     const auto* lod = read_lod(bytes);
     if (lod == nullptr || lod->trees() == nullptr || lod->trees()->size() == 0) {
         return;
@@ -523,7 +508,7 @@ godot::Node3D* SkydotLod::build(const Quad& q, bool trees, Shown& stats) {
     }
     for (const String& path : scenes_for(q)) {
         const auto it = resources_.find(utf8(path));
-        const Ref<godot::PackedScene> scene = it != resources_.end() ? it->second : Ref<godot::Resource>();
+        const Ref<SkydotModel> scene = it != resources_.end() ? it->second : Ref<godot::Resource>();
         if (scene.is_null()) {
             continue;
         }
@@ -575,7 +560,7 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
                 const double ex = std::max({static_cast<double>(q.x) - cx, 0.0, cx - (q.x + lowest_)});
                 const double ey = std::max({static_cast<double>(q.y) - cy, 0.0, cy - (q.y + lowest_)});
                 if (std::sqrt(ex * ex + ey * ey) < tree_distance_ &&
-                    !pack_->resolve(vpath(Quad{.level = lowest_, .x = q.x, .y = q.y}, "btt")).is_empty()) {
+                    pack_->has(vpath(Quad{.level = lowest_, .x = q.x, .y = q.y}, "btt"))) {
                     wanted_trees.insert(q);
                 }
             }

@@ -43,8 +43,8 @@ class SkydotLod : public godot::Node3D {
     GDCLASS(SkydotLod, godot::Node3D)
 
 public:
-    /// Read `world`'s LOD settings and tree list from `pack`. Scenes come
-    /// from the mounted bake. Fails if the worldspace (or the one whose land
+    /// Read `world`'s LOD settings and tree list from `pack`. Meshes come
+    /// from the pack's asset cache. Fails if the worldspace (or the one whose land
     /// it uses) has no LOD settings.
     godot::Error setup(const godot::Ref<SkydotPack>& pack, const godot::Ref<SkydotWorld>& world,
                        std::int64_t world_id);
@@ -131,7 +131,7 @@ private:
     /// Threaded loads: path -> resource, null once failed; absent while not
     /// requested.
     std::unordered_map<std::string, godot::Ref<godot::Resource>> resources_;
-    std::set<std::string> pending_;
+    std::set<std::string> pending_; ///< Requested from the asset cache, not loaded yet.
     /// Vpaths the pack lacks, so their quads count as built.
     mutable std::unordered_map<std::string, bool> exists_;
 
