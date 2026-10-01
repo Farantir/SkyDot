@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+  VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/vcpkg-cache
+  VCPKG_DISABLE_METRICS: "1"
+  GODOT_VERSION: "4.7.2"
+
+jobs:
+  guards:
+    name: Repository rules
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Cheap checks from CONTRIBUTING.md; run before building.
+      - name: No Bethesda bytes in git
+        run: ./tools/ci/check-no-game-data.sh
+      - name: All untrusted input through SpanReader
+        run: ./tools/ci/check-raw-access.sh
+
+  converter:
+    name: converter ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc-debug-asan
+            os: ubuntu-24.04
+            preset: linux-debug-asan
+            cc: gcc-14
+            cxx: g++-14
+            testpack: true
+          - name: linux-clang-release
+            os: ubuntu-24.04
+            preset: linux-release
+            cc: clang-18
+            cxx: clang++-18
+          - name: windows-msvc-release
+            os: windows-2022
+            preset: windows-release
+    defaults:
+      run:
+        working-directory: converter
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      # Full clone: vcpkg.json's builtin-baseline must exist in vcpkg's history.
+      - name: Install vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            "$VCPKG_ROOT"/bootstrap-vcpkg.bat -disableMetrics
+          else
+            "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+          fi
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-${{ matrix.name }}-${{ hashFiles('converter/vcpkg.json') }}
+
+      - name: Configure
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        # Fail if a sanitizer runtime is missing instead of dropping it.
+        run: cmake --preset ${{ matrix.preset }} -DBETHCONV_SANITIZE_STRICT=ON
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+
+      # Synthetic, no game data: the engine's tests run against it.
+      - name: Publish the test pack
+        if: matrix.testpack
+        uses: actions/upload-artifact@v4
+        with:
+          name: testpack
+          path: converter/build/${{ matrix.preset }}/tests/testpack/out/pack
+          if-no-files-found: error
+
+  engine:
+    name: engine ${{ matrix.name }}
+    needs: converter
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-gcc-debug
+            os: ubuntu-24.04
+            preset: linux-debug
+            cc: gcc-14
+            cxx: g++-14
+          - name: linux-clang-release
+            os: ubuntu-24.04
+            preset: linux-release
+            cc: clang-18
+            cxx: clang++-18
+          - name: windows-msvc-release
+            os: windows-2022
+            preset: windows-release
+    defaults:
+      run:
+        working-directory: engine
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: The converter's test pack
+        uses: actions/download-artifact@v4
+        with:
+          name: testpack
+          path: ${{ github.workspace }}/testpack
+
+      - name: Godot editor (headless runs only; the smoke tests are editor runs)
+        if: runner.os == 'Linux'
+        run: |
+          curl -sSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo install -m 755 "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot4.7
+
+      - name: Godot editor (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          curl -sSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_win64.exe.zip"
+          unzip -q godot.zip -d godot
+          mv "godot/Godot_v${GODOT_VERSION}-stable_win64.exe" godot/godot4.7.exe
+          echo "$PWD/godot" >> "$GITHUB_PATH"
+
+      - name: MSVC on PATH for the Ninja generator
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        shell: bash
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: cmake --preset ${{ matrix.preset }} -DSKYDOT_TESTPACK="${{ github.workspace }}/testpack"
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Test
+        env:
+          SKYDOT_TESTPACK_REQUIRE: "1"
+        run: ctest --preset ${{ matrix.preset }}
