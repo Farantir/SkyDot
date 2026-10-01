@@ -58,5 +58,6 @@ add_test(NAME fuzz-replay
         -DSEEDS_TOOL=$<TARGET_FILE:bethconv_fuzz_seeds>
         -DSEEDS_DIR=${CMAKE_CURRENT_BINARY_DIR}/seeds
         -DBIN_DIR=${CMAKE_CURRENT_BINARY_DIR}
+        -DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}
         -P ${CMAKE_CURRENT_SOURCE_DIR}/replay.cmake)
 set_tests_properties(fuzz-replay PROPERTIES LABELS fuzz TIMEOUT 600)

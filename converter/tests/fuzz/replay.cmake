@@ -2,7 +2,8 @@
 #
 # Generates the seed corpus and replays it through every fuzz target.
 #
-# Driven from ctest as `fuzz-replay`. Expects SEEDS_TOOL, SEEDS_DIR and BIN_DIR.
+# Driven from ctest as `fuzz-replay`. Expects SEEDS_TOOL, SEEDS_DIR, BIN_DIR and
+# EXE_SUFFIX.
 
 if(NOT DEFINED SEEDS_TOOL OR NOT DEFINED SEEDS_DIR OR NOT DEFINED BIN_DIR)
     message(FATAL_ERROR "replay.cmake needs SEEDS_TOOL, SEEDS_DIR and BIN_DIR")
@@ -35,7 +36,7 @@ set(names esm forms bsa nif dds strings snapshot pex lod assets)
 set(failed "")
 
 foreach(name IN LISTS names)
-    set(binary "${BIN_DIR}/bethconv-fuzz-${name}-replay")
+    set(binary "${BIN_DIR}/bethconv-fuzz-${name}-replay${EXE_SUFFIX}")
     if(NOT EXISTS "${binary}")
         list(APPEND failed "${name}: replay binary missing at ${binary}")
         continue()

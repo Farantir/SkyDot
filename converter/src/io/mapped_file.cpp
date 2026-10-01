@@ -79,7 +79,10 @@ ParseResult<MappedFile> MappedFile::open(const std::filesystem::path& path) {
     out.origin_ = path.filename().string();
 
 #if defined(_WIN32)
-    HANDLE file = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+    // Shared for writing and deletion too: a pack's blob may still be open in
+    // the writer, and Windows otherwise refuses the open.
+    HANDLE file = ::CreateFileW(path.c_str(), GENERIC_READ,
+                                FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
         return std::unexpected(os_error(path, "CreateFileW"));

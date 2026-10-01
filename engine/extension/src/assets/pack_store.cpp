@@ -76,7 +76,10 @@ bool MappedFile::open(const std::string& path, std::string& error) {
     const int wide_size = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
     std::wstring wide(static_cast<std::size_t>(wide_size), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, wide.data(), wide_size);
-    file_ = CreateFileW(wide.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+    // Shared for writing and deletion too: a converter may still hold the
+    // blob open, and Windows otherwise refuses the open.
+    file_ = CreateFileW(wide.c_str(), GENERIC_READ,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
                         FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file_ == INVALID_HANDLE_VALUE) {
         error = "cannot open " + path;
