@@ -122,6 +122,18 @@ if(SKYDOT_TESTPACK)
         PASS_REGULAR_EXPRESSION "scripts: 1 references.*lever pulled 1.*0x00000301 disabled by script.*lever pulled 2.*0x00000301 enabled by script"
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;never appeared;Papyrus:"
         TIMEOUT 120)
+    # A viewer screenshot's JSON (F12) brings the viewer back to its place;
+    # --pack given on the command line wins over the shot's.
+    add_test(NAME viewer_from_shot
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
+                     --from-shot "${CMAKE_CURRENT_SOURCE_DIR}/smoke/testpack_shot.json"
+                     --pack "${SKYDOT_TESTPACK}" --activate 0x303)
+    set_tests_properties(viewer_from_shot PROPERTIES
+        LABELS smoke
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "entered TestpackInterior.*leads to 0x00000213"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;cannot read the shot"
+        TIMEOUT 120)
     # Pull the lever, save, then load in a fresh run and pull it again: the
     # count and the cube's state must carry over.
     set(_save "${CMAKE_CURRENT_BINARY_DIR}/scratch/viewer.skydot")

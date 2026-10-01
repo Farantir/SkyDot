@@ -1,0 +1,8 @@
+{
+  "format": 1,
+  "place": {"kind": "interior", "cell": "TestpackInterior"},
+  "camera": {"game": {"x": 0, "y": 0, "z": 100, "heading": 90, "tilt": 0}},
+  "time": {"hour": 9.5, "day": 0},
+  "weather": {},
+  "viewer": {"flying": true, "radius": 2, "quests": true, "materials": true}
+}

@@ -43,6 +43,14 @@
 # --set-stage EDID:STAGE[,EDID:STAGE...] then sets stages. Quest stages,
 # objectives and script notifications show at the top left; J prints the
 # running quests with their stage and shown objectives.
+# F12 saves a screenshot and, next to it, a JSON file with what is needed to
+# get the same view again: place, camera (in engine and game terms), time,
+# weather, viewer options, pack, Godot and GPU, and the game console commands
+# for the same spot (GAME-COMPARISON.md). Shift+F12 leaves out the text
+# overlay. They go to --shot-dir (default user://screenshots).
+# --from-shot FILE.json starts where such a shot was taken, with time
+# stopped; arguments given as well win (--pack, or --screenshot to render it
+# again and exit).
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
 # N shows the navmeshes (green, water triangles included) of the built cells;
@@ -106,10 +114,20 @@ var _show_navmesh := false  # N toggles the navmesh overlay
 var _path_line: MeshInstance3D  # G draws a path here
 var _navmesh_fill: StandardMaterial3D
 var _navmesh_lines: StandardMaterial3D
+var _overlay: CanvasLayer  # notes and journal; Shift+F12 hides it for a shot
+var _shot_busy := false
+const SHOT_FORMAT := 1
 
 
 func _ready() -> void:
 	_args = _parse_args(OS.get_cmdline_user_args())
+	if _args.has("from-shot"):
+		var from := _args_from_shot(_args["from-shot"])
+		if from.is_empty():
+			_fail("cannot read the shot " + _args["from-shot"])
+			return
+		from.merge(_args, true)  # the command line wins
+		_args = from
 	var args := _args
 	_hour = float(args.get("time", "12"))
 	if not args.has("pack") or not (args.has("cell") or args.has("world")):
@@ -185,6 +203,7 @@ func _ready() -> void:
 		or args.has("benchmark") or args.has("screenshot")
 	add_child(_player)
 	var overlay := CanvasLayer.new()
+	_overlay = overlay
 	_notes = Label.new()
 	_notes.position = Vector2(16, 16)
 	_notes.add_theme_color_override("font_outline_color", Color.BLACK)
@@ -915,6 +934,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
 		_note(_position_text())
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
+		_capture_shot(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
 		_activate_in_view(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
@@ -1159,6 +1180,166 @@ func _take_screenshots() -> void:
 	if _shots[0] != null:
 		_apply_look(_shots[0], -0.15)
 	_frames = 20
+
+
+## F12: the frame as a PNG and a JSON file describing it. The PNG is written
+## on a worker thread so the frame does not hitch.
+func _capture_shot(hide_overlay: bool) -> void:
+	if _shot_busy:
+		return
+	_shot_busy = true
+	if hide_overlay:
+		_overlay.visible = false
+		await RenderingServer.frame_post_draw
+	var image := get_viewport().get_texture().get_image()
+	_overlay.visible = true
+	var dir: String = _args.get("shot-dir", "user://screenshots")
+	DirAccess.make_dir_recursive_absolute(dir)
+	var stem := dir.path_join("shot_" + Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_"))
+	var base := stem
+	var n := 2
+	while FileAccess.file_exists(base + ".png") or FileAccess.file_exists(base + ".json"):
+		base = "%s_%d" % [stem, n]
+		n += 1
+	var meta := _shot_metadata(hide_overlay)
+	meta["image"] = (base + ".png").get_file()
+	var file := FileAccess.open(base + ".json", FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(meta, "  ") + "\n")
+		file.close()
+	var png := base + ".png"
+	if image == null:  # headless: nothing is rendered, the JSON still helps
+		_note("screenshot: no image here, wrote " + ProjectSettings.globalize_path(base + ".json"))
+		_shot_busy = false
+		return
+	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
+	_note("screenshot: " + ProjectSettings.globalize_path(png))
+	_shot_busy = false
+
+
+## Everything needed to come back to this view, in the viewer or the game.
+func _shot_metadata(overlay_hidden: bool) -> Dictionary:
+	var eye := SkydotWorld.godot_to_skyrim(_camera.global_position)
+	var heading := fposmod(-rad_to_deg(_yaw), 360.0)
+	var tilt := -rad_to_deg(_pitch)
+	var place := {}
+	var console: Array[String] = []
+	if _world_id != 0:
+		var world_name := ""
+		for w in _world.list_worlds():
+			if w["id"] == _world_id:
+				world_name = w["editor_id"]
+		var grid := Vector2i(floori(eye.x / CELL_UNITS), floori(eye.y / CELL_UNITS))
+		place = {"kind": "exterior", "world": world_name, "world_id": "0x%08X" % _world_id,
+			"grid": [grid.x, grid.y]}
+		console.append("cow %s %d %d" % [world_name, grid.x, grid.y])
+	else:
+		var cell := _world.get_cell(_cell_id)
+		place = {"kind": "interior", "cell": cell.get("editor_id", ""), "cell_id": "0x%08X" % _cell_id}
+		console.append("coc " + str(cell.get("editor_id", "")))
+	# The game's getpos is at the feet; the first-person eye is about 120
+	# units higher (GAME-COMPARISON.md).
+	console.append_array(["player.setpos x %.0f" % eye.x, "player.setpos y %.0f" % eye.y,
+		"player.setpos z %.0f" % (eye.z - 120.0), "player.setangle z %.0f" % heading,
+		"player.setangle x %.0f" % tilt])
+	var time := {}
+	var weather := {}
+	if _weather != null and is_instance_valid(_weather):
+		var state := _weather.get_state()
+		time = {"hour": _weather.hour, "day": _weather.day, "time_scale": _weather.time_scale}
+		weather = {"id": "0x%08X" % int(state.get("weather", 0)), "editor_id": state.get("editor_id", ""),
+			"transition": state.get("transition", 1.0), "auto": _weather.auto_weather}
+		console.append("set gamehour to %.2f" % _weather.hour)
+		if int(state.get("weather", 0)) != 0:
+			console.append("sw %X" % int(state["weather"]))
+	else:
+		time = {"hour": _hour, "day": _day}  # inside: kept for when one leaves
+	console.append("tm")
+	var pack_dir: String = _args.get("pack", "")
+	var manifest = JSON.parse_string(FileAccess.get_file_as_string(pack_dir.path_join("manifest.json")))
+	var pack := {"path": ProjectSettings.globalize_path(pack_dir)}
+	if manifest is Dictionary:
+		pack["converter"] = manifest.get("converter", "")
+		pack["records_hash"] = manifest.get("records", {}).get("hash", "")
+		pack["world_hash"] = manifest.get("world", {}).get("hash", "")
+		pack["input"] = manifest.get("input", {})
+	var size := get_viewport().get_visible_rect().size
+	return {
+		"format": SHOT_FORMAT,
+		"taken": Time.get_datetime_string_from_system(),
+		"place": place,
+		"camera": {
+			"game": {"x": eye.x, "y": eye.y, "z": eye.z, "heading": heading, "tilt": tilt},
+			"engine": {"position": [_camera.global_position.x, _camera.global_position.y,
+				_camera.global_position.z], "yaw": _yaw, "pitch": _pitch},
+			"fov": _camera.fov,
+			"resolution": [int(size.x), int(size.y)],
+		},
+		"time": time,
+		"weather": weather,
+		"viewer": {
+			"flying": _player.fly,
+			"materials": _world.skyrim_materials,
+			"effects": _world.effects,
+			"collision": _world.collision,
+			"navigation": _world.navigation,
+			"navmesh_shown": _show_navmesh,
+			"lod": _lod != null,
+			"radius": _radius,
+			"quests": _args.get("quests", "on") != "off",
+			"overlay_hidden": overlay_hidden,
+		},
+		"pack": pack,
+		"system": {
+			"godot": Engine.get_version_info()["string"],
+			"os": OS.get_name(),
+			"renderer": RenderingServer.get_current_rendering_method(),
+			"gpu": RenderingServer.get_video_adapter_name(),
+			"gpu_vendor": RenderingServer.get_video_adapter_vendor(),
+			"driver": RenderingServer.get_video_adapter_api_version(),
+		},
+		"game_console": console,
+	}
+
+
+## Viewer arguments that come back to a shot's view (--from-shot), with time
+## stopped there. {} if the file is not a shot.
+func _args_from_shot(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var shot = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not shot is Dictionary or int(shot.get("format", 0)) != SHOT_FORMAT:
+		return {}
+	var out := {}
+	var pack_path: String = shot.get("pack", {}).get("path", "")
+	if not pack_path.is_empty():
+		out["pack"] = pack_path
+	var place: Dictionary = shot.get("place", {})
+	var game: Dictionary = shot.get("camera", {}).get("game", {})
+	if place.get("kind") == "exterior":
+		out["world"] = place.get("world", "")
+	else:
+		out["cell"] = place.get("cell", "")
+	if not game.is_empty():
+		out["at"] = "%f,%f,%f" % [game["x"], game["y"], game["z"]]
+		out["look"] = "%f,%f" % [game["heading"], game["tilt"]]
+	var time: Dictionary = shot.get("time", {})
+	if time.has("hour"):
+		out["time"] = str(time["hour"])
+	out["time-scale"] = "0"
+	var weather: Dictionary = shot.get("weather", {})
+	if not str(weather.get("editor_id", "")).is_empty():
+		out["weather"] = weather["editor_id"]
+	var viewer: Dictionary = shot.get("viewer", {})
+	if viewer.get("flying", false):
+		out["walk"] = "off"
+	if viewer.has("radius"):
+		out["radius"] = str(viewer["radius"])
+	if viewer.get("quests", true) == false:
+		out["quests"] = "off"
+	if viewer.get("materials", true) == false:
+		out["materials"] = "off"
+	return out
 
 
 func _vec3(text: String) -> Vector3:

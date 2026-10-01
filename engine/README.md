@@ -152,6 +152,13 @@ P shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting.
+F12 saves a screenshot with a JSON file beside it (Shift+F12 without the text
+overlay; `--shot-dir`, default `user://screenshots`): place, camera in engine
+and game terms, time, weather, viewer options, pack hashes, GPU, and the game
+console commands for the same spot. `--from-shot shot.json` starts there with
+time stopped; with `--screenshot out.png` it renders that view again and
+exits (a re-render at Riverwood differed in 0.11% of pixels, from moving
+foliage), which is how a shot becomes a bug report or a regression check.
 `--activate 0xREF,0xREF` activates references in turn, each in the place the
 previous one led to, and exits; it runs headless. `--save-to FILE` saves at
 the end of such a run, `--load FILE` loads at the start. Add
