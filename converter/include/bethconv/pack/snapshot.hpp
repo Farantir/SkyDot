@@ -58,6 +58,9 @@ struct SnapshotHeader {
 };
 
 inline constexpr std::size_t k_snapshot_header_size = 64;
+/// The index (the FlatBuffer) starts at a multiple of this; zero bytes fill
+/// the gap after the payloads.
+inline constexpr std::uint64_t k_snapshot_index_alignment = 8;
 
 // ---- writing --------------------------------------------------------------
 

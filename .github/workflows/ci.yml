@@ -39,11 +39,13 @@ jobs:
             cc: gcc-14
             cxx: g++-14
             testpack: true
+          # clang 18 with Ubuntu's libstdc++ has no std::expected.
           - name: linux-clang-release
             os: ubuntu-24.04
             preset: linux-release
-            cc: clang-18
-            cxx: clang++-18
+            cc: clang-19
+            cxx: clang++-19
+            apt: clang-19
           - name: windows-msvc-release
             os: windows-2022
             preset: windows-release
@@ -54,6 +56,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+
+      - name: Compiler
+        if: matrix.apt
+        run: sudo apt-get update -q && sudo apt-get install -y -q ${{ matrix.apt }}
 
       # Full clone: vcpkg.json's builtin-baseline must exist in vcpkg's history.
       - name: Install vcpkg

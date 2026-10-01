@@ -310,7 +310,14 @@ io::ParseResult<SnapshotStats> write_snapshot(const record::MergedWorld& world,
     root.add_unresolved(merge.unresolved);
     fb::FinishSnapshotBuffer(builder, root.Finish());
 
-    const std::uint64_t fb_offset = k_snapshot_header_size + sink.blob_bytes();
+    // The index starts on an 8-byte boundary: FlatBuffers reads its fields in
+    // place, and the payloads before it have any length.
+    const std::uint64_t blob_end = k_snapshot_header_size + sink.blob_bytes();
+    const std::uint64_t fb_offset = (blob_end + k_snapshot_index_alignment - 1) /
+                                    k_snapshot_index_alignment * k_snapshot_index_alignment;
+    for (std::uint64_t i = blob_end; i < fb_offset; ++i) {
+        file.put('\0');
+    }
     file.write(static_cast<const char*>(static_cast<const void*>(builder.GetBufferPointer())),
                static_cast<std::streamsize>(builder.GetSize()));
     if (!file) {

@@ -16,7 +16,11 @@
     "archives": {
       "description": "BSA/BA2 archive support",
       "dependencies": [
-        "rsm-bsa"
+        "rsm-bsa",
+        {
+          "name": "directx-headers",
+          "platform": "windows"
+        }
       ]
     },
     "hashing": {

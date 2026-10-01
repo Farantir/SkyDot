@@ -142,6 +142,13 @@ namespace {
     if (header.fb_bytes == 0) {
         return reader.fail(io::ErrorKind::corrupt, "index is empty");
     }
+    // FlatBuffers reads fields in place; a misaligned index is undefined
+    // behaviour. Snapshots written before the padding existed have one.
+    if (header.fb_offset % k_snapshot_index_alignment != 0) {
+        return reader.fail(io::ErrorKind::unsupported,
+                           "index is not 8-byte aligned (written by an older converter); "
+                           "convert again");
+    }
     return header;
 }
 

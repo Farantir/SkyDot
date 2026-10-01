@@ -103,8 +103,12 @@ reserved space for later fields.
 `blob_hash` is FNV-1a over the blob. It detects truncation, not tampering.
 `verify --deep` checks it; `open` does not.
 
-The FlatBuffer has its own identifier, `BSN1`, 64 bytes in. The outer magic
-names the container, the inner one the schema.
+The payload blob follows the header at `blob_offset` 64; the FlatBuffer (the
+index) follows the blob at `fb_offset`, padded with zero bytes to a multiple of
+8, because FlatBuffers reads its fields in place. A reader refuses a
+misaligned `fb_offset` (snapshots written before 2026-10-01 have one). The
+FlatBuffer has its own identifier, `BSN1`; the outer magic names the
+container, the inner one the schema.
 
 ### Schema
 
