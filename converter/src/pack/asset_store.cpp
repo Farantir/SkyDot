@@ -11,6 +11,10 @@
 #include <system_error>
 #include <utility>
 
+#if defined(_WIN32)
+#include <share.h>
+#endif
+
 namespace bethconv::pack {
 namespace {
 
@@ -33,12 +37,11 @@ constexpr std::size_t k_write_buffer = 8u << 20;
 }
 
 /// fopen with the native path type, so Windows does not narrow it to the
-/// ANSI code page.
+/// ANSI code page. Shared like fopen (_wfopen_s would lock readers out).
 [[nodiscard]] std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
 #if defined(_WIN32)
     std::wstring wide_mode(mode, mode + std::char_traits<char>::length(mode));
-    std::FILE* file = nullptr;
-    return _wfopen_s(&file, path.c_str(), wide_mode.c_str()) == 0 ? file : nullptr;
+    return _wfsopen(path.c_str(), wide_mode.c_str(), _SH_DENYNO);
 #else
     return std::fopen(path.c_str(), mode);
 #endif
