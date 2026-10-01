@@ -45,7 +45,7 @@ jobs:
             preset: linux-release
             cc: clang-19
             cxx: clang++-19
-            apt: clang-19
+            apt: clang-19 clang-tools-19
           - name: windows-msvc-release
             os: windows-2022
             preset: windows-release
@@ -78,6 +78,11 @@ jobs:
         with:
           path: ${{ github.workspace }}/vcpkg-cache
           key: vcpkg-${{ matrix.name }}-${{ hashFiles('converter/vcpkg.json') }}
+
+      # Otherwise Ninja finds the runner's MinGW GCC before MSVC.
+      - name: MSVC on PATH for the Ninja generator
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
 
       - name: Configure
         shell: bash

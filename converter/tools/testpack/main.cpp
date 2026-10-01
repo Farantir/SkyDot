@@ -935,7 +935,10 @@ int main(int argc, char** argv) {
         }
         std::size_t world_refs = 0;
         for (std::size_t i = 0; i < world->cell_count(); ++i) {
-            for (const auto& ref : world->cell_at(i)->refs) {
+            // Held in a local: before C++23 (GCC 14), a range-for does not
+            // keep the temporary cell alive.
+            const auto cell = world->cell_at(i);
+            for (const auto& ref : cell->refs) {
                 ++world_refs;
                 const auto base = world->base(ref.base);
                 if (!base) {
