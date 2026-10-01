@@ -14,11 +14,13 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
   hangs off; the body inherits the model's and the reference's scale (uniform,
   which Jolt takes).
 - Kinds: box (convex radius added to the half extents), sphere, capsule,
-  convex hull, mesh (`ConcavePolygonShape3D`, both sides solid). Hulls thinner
-  than 2 units (load door planes, rugs: Havok thickens them by their convex
-  radius) become slabs, since Jolt cannot build a hull without volume. Every
-  vanilla SE mesh with collision (11,409, 13,306 bodies) builds without an
-  error.
+  cylinder, convex hull, mesh (`ConcavePolygonShape3D`, both sides solid:
+  compressed meshes and `bhkNiTriStripsShape`). The one vanilla
+  `bhkPlaneShape` arrives as a flat hull. Hulls thinner than 2 units (load
+  door planes, rugs: Havok thickens them by their convex radius) become
+  slabs, since Jolt cannot build a hull without volume. Every vanilla SE
+  mesh builds its bodies without an error: 13,326 bodies in 11,111 models,
+  69 of them cylinders (`game/tools/collision_check.gd`).
 - By layer: static, animated static, transparent, trees, terrain, trap,
   ground, invisible walls and stair helpers are solid; clutter, weapons,
   props and debris may move; the rest (biped, triggers, water,
@@ -33,7 +35,11 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
   which only runs while it is awake. It starts frozen as placed: Jolt
   activates bodies when they enter the space, so sleep alone does not hold.
   `wake()` unfreezes it; the player wakes what it walks into, and woken
-  clutter wakes frozen clutter it hits.
+  clutter wakes frozen clutter it hits. `SkydotWorld.wake_clutter` wakes
+  what lies near a point: the viewer calls it around a reference a script
+  disables or animates, so what rested on it falls. Papyrus
+  `ApplyHavokImpulse` wakes and pushes clutter; `SetMotionType` releases it
+  (the moving types) or holds it (keyframed, fixed).
 - Terrain: one mesh shape per cell with the triangles the quadrants draw, on
   its own layer.
 
@@ -61,6 +67,14 @@ bottom meets a step's edge at a slant and slides off.
   cell under it is built).
 - `get_eye_position` interpolates between physics ticks, for the camera.
 
+## Picking
+
+`SkydotWorld.pick_ref` casts the view ray against the world, clutter and
+terrain layers first. The first body hit decides: its reference if that is
+usable, otherwise nothing behind it can be picked. Model bounds still find
+usable references without collision of their own (most triggers' activators,
+some flora), as long as they are in front of that first body.
+
 ## Viewer
 
 Walking is the default. The camera follows the player's eyes; P, saves and
@@ -73,9 +87,8 @@ flying.
 ## Open
 
 - Not seen on screen yet: feel of the speeds, the step-up, swimming.
-- Clutter only wakes when touched by the player or other woken clutter;
-  scripts, explosions and havok impulses do not wake it.
+- Explosions do not wake clutter, and `SetMotionType` cannot make a static
+  model move (only models built as clutter can).
 - No constraints: chains, hanging lanterns and multi-body ragdolls stay
   static.
 - Per-triangle Havok materials (sound, footsteps) are not kept.
-- `pick_ref` still uses model bounds, not physics rays.

@@ -198,6 +198,8 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_navigation", "enabled"), &SkydotWorld::set_navigation);
     godot::ClassDB::bind_method(D_METHOD("get_navigation"), &SkydotWorld::get_navigation);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "navigation"), "set_navigation", "get_navigation");
+    godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("wake_clutter", "root", "centre", "radius"),
+                                       &SkydotWorld::wake_clutter);
     godot::ClassDB::bind_method(D_METHOD("get_navmeshes", "cell"), &SkydotWorld::get_navmeshes);
     godot::ClassDB::bind_method(D_METHOD("get_navmesh", "id"), &SkydotWorld::get_navmesh);
     godot::ClassDB::bind_static_method("SkydotWorld",
@@ -744,6 +746,10 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
     }
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
+}
+
+std::int64_t SkydotWorld::wake_clutter(godot::Node* root, const Vector3& centre, double radius) {
+    return skydot::wake_clutter(root, centre, static_cast<godot::real_t>(radius));
 }
 
 godot::Array SkydotWorld::get_navmeshes(std::int64_t cell_id) const {

@@ -98,6 +98,17 @@ func _run(pack_dir: String) -> void:
     vm.update(0.0)
     expect(enabled_changes.back() == [0x301, true], "a second pull enables it again")
     expect(vm.get_variable(0x304, "TestpackLeverScript", "Pulls") == 2, "Pulls counts to 2")
+
+    # Physics natives leave the bodies to the game layer.
+    var physics := []
+    vm.havok_impulse.connect(func(ref: int, direction: Vector3, magnitude: float) -> void:
+        physics.append([ref, direction, magnitude]))
+    vm.motion_type_changed.connect(func(ref: int, motion_type: int) -> void:
+        physics.append([ref, motion_type]))
+    finish(vm, vm.call_method(0x304, "TestpackLeverScript", "ApplyHavokImpulse", [0.0, 0.0, 1.0, 50.0]))
+    finish(vm, vm.call_method(0x304, "TestpackLeverScript", "SetMotionType", [1, true]))
+    expect(physics == [[0x304, Vector3(0, 0, 1), 50.0], [0x304, 1]],
+           "impulses and motion types reach the game layer: %s" % [physics])
     expect(vm.get_error_count() == 0, "nothing went wrong so far")
 
     _check_triggers(vm, world)

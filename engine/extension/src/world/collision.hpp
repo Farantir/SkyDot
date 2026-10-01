@@ -49,15 +49,15 @@ inline constexpr godot::real_t k_havok_scale = 69.99124F;
 
 class ModelCollision {
 public:
-    enum class Kind : std::uint8_t { box, sphere, capsule, convex, mesh };
+    enum class Kind : std::uint8_t { box, sphere, capsule, cylinder, convex, mesh };
     enum class Motion : std::uint8_t { fixed, animated, dynamic };
 
     struct Shape {
         Kind kind{Kind::box};
         godot::Transform3D transform; ///< In the owning node's frame, game units.
         godot::Vector3 half_extents;  ///< box, convex radius included
-        godot::real_t radius{};       ///< sphere, capsule
-        godot::real_t height{};       ///< capsule, end to end (Godot's)
+        godot::real_t radius{};       ///< sphere, capsule, cylinder
+        godot::real_t height{};       ///< capsule, end to end (Godot's); cylinder
         godot::PackedVector3Array points; ///< convex points, or mesh faces
     };
 
@@ -115,5 +115,10 @@ private:
     godot::Node3D* model_{nullptr};
     godot::Transform3D model_offset_; ///< Body to model root.
 };
+
+/// Wake every frozen clutter body under `root` whose centre is within
+/// `radius` of `centre` (Godot space), as when what it rests on goes away.
+/// Returns how many.
+int wake_clutter(godot::Node* root, const godot::Vector3& centre, godot::real_t radius);
 
 } // namespace skydot

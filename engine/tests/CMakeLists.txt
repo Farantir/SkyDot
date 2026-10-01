@@ -69,6 +69,7 @@ skydot_smoke_test(smoke_quests quests.gd)
 skydot_smoke_test(smoke_lod lod.gd)
 skydot_smoke_test(smoke_physics physics.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
+skydot_smoke_test(smoke_weather weather.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,

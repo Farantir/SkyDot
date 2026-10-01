@@ -17,8 +17,11 @@
 # Beyond the loaded cells the worldspace's LOD shows (terrain, objects, tree
 # billboards, from the pack's converted LOD); --lod off turns
 # it off, --lod-split and --tree-distance tune it (SkydotLod).
-# --shadows off disables the sun's shadows. --time HOURS (default 12) and
-# --weather EDITOR_ID set the sky, light and fog from the worldspace's climate.
+# --shadows off disables the sun's shadows. Outside, SkydotWeather runs time
+# and weather: --time HOURS (default 12) to start at, --time-scale (game
+# seconds per second, default 20, 0 stops time), --weather EDITOR_ID to keep
+# one weather; otherwise the region's or climate's weathers take turns. T and
+# Shift+T move the time by an hour, K changes the weather.
 #
 # Controls: the mouse looks (Esc releases it, a click captures it again; the
 # right button looks while released), WASD to move, Shift sprints, Ctrl walks,
@@ -96,6 +99,9 @@ var _note_lines: Array = []  # [text, seconds left]
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
+var _weather: SkydotWeather  # outside only
+var _hour := 12.0  # kept while inside
+var _day := 0
 var _show_navmesh := false  # N toggles the navmesh overlay
 var _path_line: MeshInstance3D  # G draws a path here
 var _navmesh_fill: StandardMaterial3D
@@ -105,6 +111,7 @@ var _navmesh_lines: StandardMaterial3D
 func _ready() -> void:
 	_args = _parse_args(OS.get_cmdline_user_args())
 	var args := _args
+	_hour = float(args.get("time", "12"))
 	if not args.has("pack") or not (args.has("cell") or args.has("world")):
 		_fail("usage: -- --pack DIR (--cell EDITOR_ID | --world EDITOR_ID --at X,Y,Z)"
 			+ " [--screenshot out.png]")
@@ -126,6 +133,8 @@ func _ready() -> void:
 	_papyrus.setup(pack, world)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.play_animation.connect(_on_play_animation)
+	_papyrus.havok_impulse.connect(_on_havok_impulse)
+	_papyrus.motion_type_changed.connect(_on_motion_type)
 	_papyrus.activate_requested.connect(func(ref: int, _activator: int, _default_only: bool) -> void:
 		var node := _find_ref_node(ref)
 		call_deferred("_activate", _world.get_ref_cell(ref), ref, node, true))
@@ -270,6 +279,10 @@ func _ready() -> void:
 
 ## Remove the current cell or worldspace.
 func _leave() -> void:
+	if _weather != null and is_instance_valid(_weather):
+		_hour = _weather.hour
+		_day = _weather.day
+	_weather = null
 	for node in _place:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -339,8 +352,8 @@ func _enter_exterior(world_id: int, at: Vector3, target) -> bool:
 		if weather == 0:
 			_fail("no weather named " + _args["weather"])
 			return false
-	_add_sky(_world.get_sky(_world_id, float(_args.get("time", "12")), weather),
-		_args.get("shadows", "on") != "off")
+	if not _start_weather(weather):
+		_add_sky(_world.get_sky(_world_id, _hour, weather), _args.get("shadows", "on") != "off")
 	_camera.far = (_radius + 1) * CELL_UNITS * UNIT_SCALE * 1.5
 	_place_camera(at, target)
 	if _args.get("lod", "on") != "off":
@@ -463,6 +476,8 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 	print("0x%08X %s by script" % [ref, "enabled" if enabled else "disabled"])
 	var node := _find_ref_node(ref)
 	if node != null:
+		if not enabled:
+			_wake_around(node)
 		_show_ref(node, enabled)
 	elif enabled:
 		# Initially disabled references are not built with their cell.
@@ -478,12 +493,53 @@ func _show_ref(node: Node, enabled: bool) -> void:
 	node.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
 
+## Clutter resting on or against `node` falls once it is gone or moves.
+func _wake_around(node: Node) -> void:
+	var bounds := _mesh_bounds(node)
+	if bounds.size != Vector3.ZERO:
+		SkydotWorld.wake_clutter(self, bounds.get_center(), bounds.size.length() / 2 + 0.5)
+
+
+func _clutter_body(ref: int) -> SkydotDynamicBody:
+	var node := _find_ref_node(ref)
+	if node == null:
+		return null
+	var bodies := node.find_children("*", "SkydotDynamicBody", true, false)
+	return bodies[0] if not bodies.is_empty() else null
+
+
+## ApplyHavokImpulse: Skyrim's direction, Havok's magnitude (Havok units are
+## metres here, so it applies as is).
+func _on_havok_impulse(ref: int, direction: Vector3, magnitude: float) -> void:
+	var body := _clutter_body(ref)
+	if body == null:
+		print("0x%08X has no movable body for an impulse" % ref)
+		return
+	body.wake()
+	var godot_direction := SkydotWorld.skyrim_position(direction).normalized()
+	body.apply_central_impulse(godot_direction * magnitude)
+
+
+## SetMotionType: the moving types release clutter, keyframed and fixed hold
+## it. Static models cannot be made to move.
+func _on_motion_type(ref: int, motion_type: int) -> void:
+	var body := _clutter_body(ref)
+	if body == null:
+		print("0x%08X has no movable body for motion type %d" % [ref, motion_type])
+		return
+	if motion_type in [4, 5]:
+		body.freeze = true
+	else:
+		body.wake()
+
+
 func _on_play_animation(ref: int, animation: String) -> void:
 	var node := _find_ref_node(ref)
 	var animator := node.get_node_or_null("SkydotAnimator") if node != null else null
 	if animator == null or not animator.play(animation):
 		print("0x%08X has no %s animation" % [ref, animation])
 		return
+	_wake_around(node)
 	# PlayAnimationAndWait waits for a text key or the clip's end.
 	if not animator.has_meta("skydot_notifies"):
 		animator.set_meta("skydot_notifies", true)
@@ -682,6 +738,34 @@ func _benchmark_frame(delta: float) -> void:
 
 ## Sky colours, sun or moon, ambient light and depth fog from get_sky; a
 ## neutral daylight setup if the worldspace has no climate.
+## Time and weather outside (SkydotWeather): the climate's or region's
+## weathers in turn, unless --weather fixes one. False if the worldspace has
+## no climate.
+func _start_weather(weather: int) -> bool:
+	var node := SkydotWeather.new()
+	node.name = "weather"
+	node.hour = _hour
+	node.day = _day
+	# Screenshots and benchmarks stand still.
+	var still := _args.has("screenshot") or _args.has("benchmark")
+	node.time_scale = 0.0 if still else float(_args.get("time-scale", "20"))
+	node.shadows = _args.get("shadows", "on") != "off"
+	if weather != 0:
+		node.auto_weather = false
+	_add_to_place(node)
+	if node.setup(_world, _world_id, _camera) != OK:
+		_place.erase(node)
+		node.queue_free()
+		return false
+	if weather != 0:
+		node.set_weather(weather, 0.0)
+	_weather = node
+	node.weather_changed.connect(func(_id: int) -> void:
+		_note("weather: " + str(node.get_state()["editor_id"])))
+	print("weather: ", node.get_state()["editor_id"])
+	return true
+
+
 func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 	var material := ProceduralSkyMaterial.new()
 	var env := Environment.new()
@@ -841,6 +925,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		_print_journal()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_player.jump()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T and _weather != null:
+		_weather.hour = fmod(_weather.hour + (-1.0 if event.shift_pressed else 1.0) + 24.0, 24.0)
+		_note("%02d:%02d" % [int(_weather.hour), int(fmod(_weather.hour, 1.0) * 60)])
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _weather != null:
+		_weather.next_weather()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
 		_show_navmesh = not _show_navmesh
 		_navmesh_overlay(self)

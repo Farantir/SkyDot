@@ -172,6 +172,8 @@ std::string_view collision_kind_name(CollisionKind kind) {
     case CollisionKind::convex_vertices: return "convex_vertices";
     case CollisionKind::compressed_mesh: return "compressed_mesh";
     case CollisionKind::list: return "list";
+    case CollisionKind::cylinder: return "cylinder";
+    case CollisionKind::mesh: return "mesh";
     case CollisionKind::unsupported: break;
     }
     return "unsupported";
@@ -582,12 +584,14 @@ private:
                 j["radius"] = shape.radius;
                 break;
             case CollisionKind::capsule:
+            case CollisionKind::cylinder:
                 j["radius"] = shape.radius;
                 j["point_a"] = {shape.point_a.x, shape.point_a.y, shape.point_a.z};
                 j["point_b"] = {shape.point_b.x, shape.point_b.y, shape.point_b.z};
                 break;
             case CollisionKind::convex_vertices:
-            case CollisionKind::compressed_mesh: {
+            case CollisionKind::compressed_mesh:
+            case CollisionKind::mesh: {
                 if (shape.kind == CollisionKind::convex_vertices) {
                     j["radius"] = json_number(shape.radius);
                 }

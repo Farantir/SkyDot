@@ -53,7 +53,7 @@ class SkydotWorld : public godot::RefCounted {
 
 public:
     /// The world.fb format version this engine reads.
-    static constexpr int WORLD_FORMAT_VERSION = 5;
+    static constexpr int WORLD_FORMAT_VERSION = 6;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
 
@@ -99,9 +99,11 @@ public:
     /// Dictionary of form and alias for quest aliases; arrays as Arrays).
     /// Empty if the cell has no such reference.
     godot::Dictionary get_ref_info(std::int64_t cell, std::int64_t ref) const;
-    /// The nearest activatable reference whose model's bounds the segment
-    /// `from`-`to` (Godot space) crosses, among the cells built under `root`:
-    /// ref, cell, node, distance, position. Empty if none.
+    /// The usable reference the segment `from`-`to` (Godot space) points at,
+    /// among the cells built under `root`: ref, cell, node, distance,
+    /// position. In a scene tree with collision, the first body hit decides
+    /// (its reference, or nothing behind it); otherwise, and for references
+    /// without collision, the nearest model bounds crossed. Empty if none.
     godot::Dictionary pick_ref(godot::Node* root, const godot::Vector3& from,
                                const godot::Vector3& to) const;
     /// Build one reference of `cell` under a new Node3D, even if it starts
@@ -224,6 +226,11 @@ public:
     void set_collision(bool enabled);
     bool get_collision() const { return collision_; }
 
+    /// Wake frozen clutter under `root` within `radius` metres of `centre`
+    /// (Godot space), as when what it rests on is disabled or moves. Returns
+    /// how many bodies woke.
+    static std::int64_t wake_clutter(godot::Node* root, const godot::Vector3& centre, double radius);
+
     /// Give cells their navmeshes as navigation regions (see navmesh.hpp). On
     /// by default.
     void set_navigation(bool enabled) { navigation_ = enabled; }
@@ -247,6 +254,8 @@ protected:
     static void _bind_methods();
 
 private:
+    friend class SkydotWeather;
+
     godot::Error fail(godot::Error code, const godot::String& why);
     const bethconv::pack::wfb::Cell* cell_ptr(std::int64_t id) const;
     const bethconv::pack::wfb::Base* base_ptr(std::int64_t id) const;

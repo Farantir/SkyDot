@@ -290,7 +290,12 @@ enum class CollisionKind : std::uint8_t {
     convex_vertices,
     compressed_mesh,
     list,       ///< Container; children are listed as separate shapes.
+    cylinder,   ///< Its convex radius included in `radius` and the end points.
+    mesh,       ///< bhkNiTriStripsShape's triangles.
 };
+
+/// Game units per Havok unit in Skyrim.
+inline constexpr float k_havok_scale = 69.99124f;
 
 /// One collision shape in the target node's frame, in Havok units (game units
 /// divided by 69.99124). Goes to `extras`, never glTF geometry (which would
@@ -308,10 +313,10 @@ struct CollisionShape {
     float restitution{};
 
     Vec3 half_extents{};         ///< box
-    float radius{};              ///< sphere, capsule
-    Vec3 point_a{}, point_b{};   ///< capsule
-    std::vector<Vec3> vertices;  ///< convex_vertices, compressed_mesh
-    std::vector<std::uint32_t> indices; ///< compressed_mesh
+    float radius{};              ///< sphere, capsule, cylinder
+    Vec3 point_a{}, point_b{};   ///< capsule, cylinder
+    std::vector<Vec3> vertices;  ///< convex_vertices, compressed_mesh, mesh
+    std::vector<std::uint32_t> indices; ///< compressed_mesh, mesh
     Transform transform{};       ///< Body and shape transforms, composed.
 };
 

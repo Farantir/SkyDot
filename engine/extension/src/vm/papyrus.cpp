@@ -115,6 +115,11 @@ void SkydotPapyrus::_bind_methods() {
                                  PropertyInfo(Variant::BOOL, "enabled")));
     ADD_SIGNAL(godot::MethodInfo("play_animation", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::STRING, "animation")));
+    ADD_SIGNAL(godot::MethodInfo("havok_impulse", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::VECTOR3, "direction"),
+                                 PropertyInfo(Variant::FLOAT, "magnitude")));
+    ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::INT, "motion_type")));
     ADD_SIGNAL(godot::MethodInfo("activate_requested", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "activator"),
                                  PropertyInfo(Variant::BOOL, "default_only")));
@@ -409,6 +414,22 @@ void SkydotPapyrus::bind_natives() {
            [result](NativeCall&) { return result(Value::boolean(true)); });
     v.bind("ObjectReference", "RemoveDependentAnimatedObjectReference",
            [result](NativeCall&) { return result(Value::boolean(true)); });
+
+    // ---- physics: the game layer owns the bodies
+    // Direction in Skyrim's space, magnitude in Havok's (about kg m/s).
+    v.bind("ObjectReference", "ApplyHavokImpulse", [this, arg, number](NativeCall& c) {
+        const Vector3 direction(static_cast<float>(number(arg(c, 0))), static_cast<float>(number(arg(c, 1))),
+                                static_cast<float>(number(arg(c, 2))));
+        emit_signal("havok_impulse", static_cast<std::int64_t>(c.self.form), direction, number(arg(c, 3)));
+        return NativeResult{};
+    });
+    // ObjectReference.psc: 1 dynamic, 2 sphere, 3 box, 6 thin box inertia
+    // (all moving), 4 keyframed, 5 fixed, 7 character.
+    v.bind("ObjectReference", "SetMotionType", [this, arg](NativeCall& c) {
+        emit_signal("motion_type_changed", static_cast<std::int64_t>(c.self.form),
+                    static_cast<std::int64_t>(arg(c, 0).i));
+        return NativeResult{};
+    });
 
     // ---- activation
     v.bind("ObjectReference", "Activate", [this, arg, result](NativeCall& c) {

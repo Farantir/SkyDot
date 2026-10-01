@@ -879,9 +879,9 @@ TEST_CASE("a truncated WRLD DNAM leaves both heights unset",
 // ---- the type set ---------------------------------------------------------
 
 TEST_CASE("the defined-type set and its lookup agree", "[record][forms]") {
-    // 6 + 15 + 10 + 8. Pinned so a new definition missing from the list fails
+    // 6 + 15 + 11 + 8. Pinned so a new definition missing from the list fails
     // here.
-    CHECK(record::defined_types().size() == 39);
+    CHECK(record::defined_types().size() == 40);
     for (const auto type : record::defined_types()) {
         CHECK(record::is_defined_type(type));
     }

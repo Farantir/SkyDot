@@ -118,7 +118,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
-| ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
 | EffectShader | `Play`, `Stop` |
 | Quest | `Start`, `Stop`, `Reset`, `IsRunning`, `IsStopped`, `IsStarting`, `IsStopping`, `IsCompleted`, `CompleteQuest`, `GetStage`, `GetCurrentStageID`, `SetStage`, `SetCurrentStageID`, `GetStageDone`, `IsStageDone`, `IsActive`, `SetActive`, `GetAlias`, `SetObjectiveDisplayed/Completed/Failed`, `IsObjectiveDisplayed/Completed/Failed`, `CompleteAllObjectives`, `FailAllObjectives`, `UpdateCurrentInstanceGlobal`, `PrepareForReinitializing` |
 | Alias | `GetOwningQuest`, `GetID`, `GetName`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
@@ -128,15 +128,16 @@ shows XPRM bounds doubled. Not checked against the game.
 
 World changes are signals: `enable_changed`, `play_animation`,
 `activate_requested`, `open_changed`, `lock_changed`, `effect_shader`,
-`message`, `trigger`, and for quests `quest_started`, `quest_stopped`,
-`quest_stage`, `objective_changed`. The viewer shows or builds the reference, plays the
-animation on its `SkydotAnimator` (whose text keys and finished clips come
-back through `notify_animation_event` for `PlayAnimationAndWait`), activates
-the target, opens or closes the door, and honours locks and blocked
-activation. Everything else logs once per native.
+`message`, `trigger`, `havok_impulse`, `motion_type_changed`, and for
+quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
+The viewer shows or builds the reference, plays the animation on its
+`SkydotAnimator` (whose text keys and finished clips come back through
+`notify_animation_event` for `PlayAnimationAndWait`), activates the target,
+opens or closes the door, honours locks and blocked activation, and pushes,
+releases or holds clutter (`physics.md`). Everything else logs once per native.
 
 No-ops, because what they control does not exist yet: dependent animated
-objects (physics), furniture in use (always false), favours. Effect shaders
+objects (constraints), furniture in use (always false), favours. Effect shaders
 are signalled, not drawn.
 
 A probe over Bleak Falls Barrow 01 and 02, Breezehome, the Sleeping Giant,

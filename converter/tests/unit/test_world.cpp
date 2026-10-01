@@ -339,9 +339,98 @@ void make_land(const TempDir& dir) {
     }
     dalc.f32(1.0F);
     bethconv::test::write_field(wthr, "DALC", dalc);
+    // Two cloud layers, the second disabled by NAM1; layer 0 drifts east.
+    ByteWriter cloud0;
+    cloud0.zstring("Sky\\Clouds01.dds");
+    bethconv::test::write_field(wthr, "00TX", cloud0);
+    ByteWriter cloud1;
+    cloud1.zstring("Sky\\Clouds02.dds");
+    bethconv::test::write_field(wthr, "10TX", cloud1);
+    ByteWriter nam1;
+    nam1.u32(0x2);
+    bethconv::test::write_field(wthr, "NAM1", nam1);
+    ByteWriter qnam;
+    ByteWriter rnam;
+    for (int i = 0; i < 32; ++i) {
+        qnam.u8(i == 0 ? 254 : 127);
+        rnam.u8(127);
+    }
+    bethconv::test::write_field(wthr, "QNAM", qnam);
+    bethconv::test::write_field(wthr, "RNAM", rnam);
+    ByteWriter pnam;
+    ByteWriter jnam;
+    for (std::uint32_t layer = 0; layer < 32; ++layer) {
+        for (std::uint32_t time = 0; time < 4; ++time) {
+            pnam.u32(layer | (time << 8));
+            jnam.f32(static_cast<float>(time) / 4.0F);
+        }
+    }
+    bethconv::test::write_field(wthr, "PNAM", pnam);
+    bethconv::test::write_field(wthr, "JNAM", jnam);
+    ByteWriter wthr_data;
+    for (const int b : {51, 0, 0, 125, 0, 51, 153, 103, 0, 255, 246, 4, 10, 20, 30, 0, 0, 64, 128}) {
+        wthr_data.u8(static_cast<std::uint8_t>(b));
+    }
+    bethconv::test::write_field(wthr, "DATA", wthr_data);
+    ByteWriter mnam;
+    mnam.u32(0x0000'0C05);
+    bethconv::test::write_field(wthr, "MNAM", mnam);
     ByteWriter wthrs;
     bethconv::test::write_record(wthrs, "WTHR", 0x0000'0C03, wthr.span());
     top_group(file, "WTHR", wthrs);
+
+    // SPGD: rain, in the 48-byte form.
+    ByteWriter spgd;
+    ByteWriter spgd_id;
+    spgd_id.zstring("LandRain");
+    bethconv::test::write_field(spgd, "EDID", spgd_id);
+    ByteWriter spgd_data;
+    for (const float v : {675.0F, 0.0F, 0.35F, 2.0F, 0.0F, 0.0F, 0.0F}) {
+        spgd_data.f32(v);
+    }
+    spgd_data.u32(4);
+    spgd_data.u32(2);
+    spgd_data.u32(0);
+    spgd_data.u32(1300);
+    spgd_data.f32(1.0F);
+    bethconv::test::write_field(spgd, "DATA", spgd_data);
+    ByteWriter icon;
+    icon.zstring("Effects\\FXRaindrops.dds");
+    bethconv::test::write_field(spgd, "ICON", icon);
+    ByteWriter spgds;
+    bethconv::test::write_record(spgds, "SPGD", 0x0000'0C05, spgd.span());
+    top_group(file, "SPGD", spgds);
+
+    // REGN: a square over the origin cell with that weather, priority 60.
+    ByteWriter regn;
+    ByteWriter regn_id;
+    regn_id.zstring("LandStorms");
+    bethconv::test::write_field(regn, "EDID", regn_id);
+    ByteWriter wnam;
+    wnam.u32(0x0000'0D00);
+    bethconv::test::write_field(regn, "WNAM", wnam);
+    ByteWriter rpli;
+    rpli.u32(0);
+    bethconv::test::write_field(regn, "RPLI", rpli);
+    ByteWriter rpld;
+    for (const float v : {0.0F, 0.0F, 4096.0F, 0.0F, 4096.0F, 4096.0F, 0.0F, 4096.0F}) {
+        rpld.f32(v);
+    }
+    bethconv::test::write_field(regn, "RPLD", rpld);
+    ByteWriter rdat;
+    rdat.u32(3);
+    rdat.u8(1);
+    rdat.u8(60);
+    rdat.u16(0);
+    bethconv::test::write_field(regn, "RDAT", rdat);
+    ByteWriter rdwt;
+    rdwt.u32(0x0000'0C03);
+    rdwt.u32(80);
+    rdwt.u32(0);
+    bethconv::test::write_field(regn, "RDWT", rdwt);
+    ByteWriter regns;
+    bethconv::test::write_record(regns, "REGN", 0x0000'0C06, regn.span());
+    top_group(file, "REGN", regns);
 
     // CLMT: that weather at 100%, sunrise 5:30-10:00, sunset 16:00-20:30.
     ByteWriter clmt;
@@ -351,10 +440,16 @@ void make_land(const TempDir& dir) {
     wlst.u32(0);
     bethconv::test::write_field(clmt, "WLST", wlst);
     ByteWriter tnam_clmt;
-    for (const int v : {33, 60, 96, 123, 0, 0}) {
+    for (const int v : {33, 60, 96, 123, 50, 0x80 | 3}) {
         tnam_clmt.u8(static_cast<std::uint8_t>(v));
     }
     bethconv::test::write_field(clmt, "TNAM", tnam_clmt);
+    ByteWriter sun;
+    sun.zstring("Sky\\Sun.dds");
+    bethconv::test::write_field(clmt, "FNAM", sun);
+    ByteWriter stars;
+    stars.zstring("Sky\\Stars.nif");
+    bethconv::test::write_field(clmt, "MODL", stars);
     ByteWriter clmts;
     bethconv::test::write_record(clmts, "CLMT", 0x0000'0C04, clmt.span());
     top_group(file, "CLMT", clmts);
@@ -689,6 +784,49 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(weather->fog[1] == 2000.0F);
     REQUIRE(weather->directional_ambient.size() == 7);
     CHECK(weather->directional_ambient[1] == 0x00020406u);
+
+    // Sky, moons (only Secunda here, three days a phase), and the stars.
+    CHECK(climate->sun_texture == "textures/sky/sun.dds");
+    CHECK(climate->sky == "meshes/sky/stars.nif");
+    CHECK(climate->volatility == 50);
+    CHECK(climate->moons == 0x2);
+    CHECK(climate->phase_length == 3);
+
+    REQUIRE(weather->clouds.size() == 29);
+    CHECK(weather->clouds[0].texture == "textures/sky/clouds01.dds");
+    CHECK(weather->clouds[0].enabled);
+    CHECK_FALSE(weather->clouds[1].enabled); // NAM1 bit 1
+    CHECK_FALSE(weather->clouds[2].enabled); // no texture
+    CHECK(weather->clouds[0].speed_x == 1.0F);
+    CHECK(weather->clouds[0].speed_y == 0.0F);
+    CHECK(weather->clouds[1].colors[2] == (1u | (2u << 8)));
+    CHECK(weather->clouds[1].alphas[3] == 0.75F);
+    CHECK(weather->classification == 4); // rainy
+    CHECK(weather->wind_speed == 0.2F);
+    CHECK(weather->wind_direction == 90.0F);
+    CHECK(weather->lightning_color == 0x001E140Au);
+    CHECK(weather->precipitation == 0x0000'0C05);
+
+    CHECK(stats->precipitations == 1);
+    const auto rain = file->precipitation(0x0000'0C05);
+    REQUIRE(rain.has_value());
+    CHECK(rain->texture == "textures/effects/fxraindrops.dds");
+    CHECK(rain->gravity_velocity == 675.0F);
+    CHECK(rain->size_y == 2.0F);
+    CHECK((rain->subtextures_x == 4 && rain->subtextures_y == 2));
+    CHECK(rain->type == 0);
+    CHECK(rain->box_size == 1300);
+
+    const auto regions = file->regions();
+    REQUIRE(regions.size() == 1);
+    CHECK(regions[0].editor_id == "LandStorms");
+    CHECK(regions[0].world == 0x0000'0D00);
+    CHECK(regions[0].weather_priority == 60);
+    CHECK(regions[0].weather_override);
+    REQUIRE(regions[0].areas.size() == 1);
+    CHECK(regions[0].areas[0].size() == 8);
+    REQUIRE(regions[0].weathers.size() == 1);
+    CHECK((regions[0].weathers[0].weather == 0x0000'0C03 && regions[0].weathers[0].chance == 80));
 }
 
 namespace {

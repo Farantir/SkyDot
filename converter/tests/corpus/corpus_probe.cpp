@@ -3,8 +3,10 @@
 
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_reader.hpp"
+#include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/pack/snapshot.hpp"
+#include "bethconv/pack/vpath_index.hpp"
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/form_census.hpp"
 #include "bethconv/record/strings.hpp"
@@ -17,6 +19,7 @@
 #include <map>
 #include <ranges>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 namespace bethconv::corpus {
@@ -591,30 +594,34 @@ std::optional<ConvertFacts> probe_convert(const std::filesystem::path& data_dir,
     facts.index_hash = hash_whole_file(out / "vpath.idx");
     facts.report_hash = hash_whole_file(out / "report.json");
 
-    // Check every GLB the run wrote (control bytes, strict JSON).
-    std::error_code ec;
-    const std::filesystem::path assets = out / "assets";
-    if (std::filesystem::is_directory(assets, ec)) {
-        for (const auto& entry : std::filesystem::recursive_directory_iterator(assets, ec)) {
-            if (!entry.is_regular_file() || entry.path().extension() != ".glb") {
-                continue;
-            }
-            const auto mapped = io::MappedFile::open(entry.path());
-            if (!mapped) {
-                ++facts.glb_bad_container;
-                continue;
-            }
-            ++facts.glb_checked;
-            const auto check = inspect_glb(mapped->bytes());
-            if (!check.container_ok) {
-                ++facts.glb_bad_container;
-            }
-            if (!check.json_parses) {
-                ++facts.glb_unparseable;
-            }
-            facts.glb_control_bytes += check.control_bytes;
-            facts.glb_escaped_uris += check.escaped_uris;
+    // Check every GLB the run wrote (control bytes, strict JSON), through the
+    // store, so either layout is covered.
+    const auto index = pack::VpathIndex::read(out / "vpath.idx");
+    const auto reader = pack::AssetReader::open(out);
+    if (!index || !reader) {
+        ++facts.glb_bad_container;
+        return facts;
+    }
+    std::unordered_set<std::string> seen;
+    for (const auto& entry : index->entries()) {
+        if (entry.kind != pack::AssetKind::mesh || !seen.insert(entry.hex).second) {
+            continue;
         }
+        const auto bytes = reader->read(entry);
+        if (!bytes) {
+            ++facts.glb_bad_container;
+            continue;
+        }
+        ++facts.glb_checked;
+        const auto check = inspect_glb(bytes->data);
+        if (!check.container_ok) {
+            ++facts.glb_bad_container;
+        }
+        if (!check.json_parses) {
+            ++facts.glb_unparseable;
+        }
+        facts.glb_control_bytes += check.control_bytes;
+        facts.glb_escaped_uris += check.escaped_uris;
     }
     return facts;
 }
@@ -805,6 +812,8 @@ std::optional<MergeFacts> probe_merge(const std::filesystem::path& data_dir,
                                {"quest_fragments", w->quest_fragments},
                                {"globals", w->globals},
                                {"actors", w->actors},
+                               {"precipitations", w->precipitations},
+                               {"regions", w->regions},
                                {"navmeshes", w->navmeshes},
                                {"nav_triangles", w->nav_triangles},
                                {"orphan_navmeshes", w->orphan_navmeshes},

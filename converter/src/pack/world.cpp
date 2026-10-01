@@ -204,6 +204,10 @@ public:
             on_actor(merged, ctx, data, form_ctx);
         } else if (merged.type == FourCC{"NAVM"}) {
             on_navmesh(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"SPGD"}) {
+            on_precipitation(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"REGN"}) {
+            on_region(merged, data, form_ctx);
         } else if (merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
             on_other(merged, data);
         }
@@ -228,6 +232,10 @@ public:
     [[nodiscard]] std::map<std::uint32_t, WorldWater>& waters() noexcept { return waters_; }
     [[nodiscard]] std::map<std::uint32_t, WorldClimate>& climates() noexcept { return climates_; }
     [[nodiscard]] std::map<std::uint32_t, WorldWeather>& weathers() noexcept { return weathers_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldPrecipitation>& precipitations() noexcept {
+        return precipitations_;
+    }
+    [[nodiscard]] std::map<std::uint32_t, WorldRegion>& regions() noexcept { return regions_; }
     [[nodiscard]] std::unordered_map<std::uint32_t, TextureSetEntry>& texture_sets() noexcept {
         return texture_sets_;
     }
@@ -840,6 +848,15 @@ private:
         const auto hours = [](std::uint8_t steps) { return static_cast<float>(steps) / 6.0F; };
         out.sun = {hours(climate->sunrise_begin), hours(climate->sunrise_end),
                    hours(climate->sunset_begin), hours(climate->sunset_end)};
+        out.sun_texture = texture_vpath(climate->sun_texture);
+        out.sun_glare_texture = texture_vpath(climate->sun_glare_texture);
+        out.sky = model_vpath(climate->model.path);
+        out.volatility = climate->volatility;
+        // TNAM's last byte: phase length in days, bit 6 Masser, bit 7 Secunda
+        // (UESP, CLMT record).
+        const auto moons = climate->moons_and_phase_length;
+        out.moons = static_cast<std::uint8_t>(((moons >> 6) & 1U) | (((moons >> 7) & 1U) << 1));
+        out.phase_length = static_cast<std::uint8_t>(moons & 0x3FU);
         if (failed) {
             ++stats_.unresolved;
         }
@@ -881,7 +898,139 @@ private:
             out.directional_ambient.insert(out.directional_ambient.end(), colours.begin(),
                                            colours.end());
         }
+        read_clouds(*weather, out);
+        // DATA, 19 bytes (xEdit's TES5 layout; flags checked against the
+        // rain and snow weathers): fractions stored as 0..255.
+        if (weather->data.size() >= record::Weather::k_data_size) {
+            io::SpanReader r(weather->data, "WTHR DATA");
+            std::array<std::uint8_t, record::Weather::k_data_size> d{};
+            for (auto& b : d) {
+                b = r.get<std::uint8_t>().value_or(0);
+            }
+            const auto unit = [](std::uint8_t v) { return static_cast<float>(v) / 255.0F; };
+            out.wind_speed = unit(d[0]);
+            out.transition_delta = unit(d[3]);
+            out.sun_glare = unit(d[4]);
+            out.sun_damage = unit(d[5]);
+            out.precipitation_begin = unit(d[6]);
+            out.precipitation_end = unit(d[7]);
+            out.thunder_begin = unit(d[8]);
+            out.thunder_end = unit(d[9]);
+            out.thunder_frequency = unit(d[10]);
+            out.classification = d[11];
+            out.lightning_color = static_cast<std::uint32_t>(d[12]) |
+                                  (static_cast<std::uint32_t>(d[13]) << 8) |
+                                  (static_cast<std::uint32_t>(d[14]) << 16);
+            out.wind_direction = static_cast<float>(d[17]) * 360.0F / 256.0F;
+            out.wind_direction_range = static_cast<float>(d[18]) * 180.0F / 256.0F;
+        }
+        bool failed = false;
+        out.precipitation = global(merged, weather->precipitation, failed);
+        out.aurora = model_vpath(weather->model.path);
+        if (failed) {
+            ++stats_.unresolved;
+        }
         weathers_[out.id] = std::move(out);
+    }
+
+    /// Cloud layers: textures (00TX..), speeds (QNAM, RNAM: one byte each,
+    /// 127 still), colours by time (PNAM, RGBA), alphas by time (JNAM) and
+    /// NAM1, whose set bits disable a layer. Layer i is drawn on the i-th
+    /// shape of meshes/sky/clouds.nif.
+    static void read_clouds(const record::Weather& weather, WorldWeather& out) {
+        out.clouds.resize(record::Weather::k_cloud_layers);
+        for (std::size_t i = 0; i < out.clouds.size(); ++i) {
+            auto& layer = out.clouds[i];
+            layer.texture = texture_vpath(weather.cloud_textures[i]);
+            layer.enabled = !layer.texture.empty() &&
+                            (weather.cloud_layers_disabled & (1U << i)) == 0;
+            const auto speed = [&](const std::vector<std::byte>& raw) {
+                return i < raw.size()
+                           ? (static_cast<float>(static_cast<std::uint8_t>(raw[i])) - 127.0F) / 127.0F
+                           : 0.0F;
+            };
+            layer.speed_x = speed(weather.cloud_speed_x);
+            layer.speed_y = speed(weather.cloud_speed_y);
+            io::SpanReader colours(weather.cloud_colours, "WTHR PNAM");
+            io::SpanReader alphas(weather.cloud_alphas, "WTHR JNAM");
+            (void)colours.skip(i * 16);
+            (void)alphas.skip(i * 16);
+            for (std::size_t t = 0; t < 4; ++t) {
+                layer.colors[t] = colours.get<std::uint32_t>().value_or(0);
+                layer.alphas[t] = alphas.get<float>().value_or(1.0F);
+            }
+        }
+    }
+
+    void on_precipitation(const record::MergedRecord& merged, io::SpanReader& data,
+                          const record::FormContext& form_ctx) {
+        auto spgd = record::parse_shader_particle_geometry(data, form_ctx);
+        if (!spgd) {
+            ++stats_.parse_errors;
+            return;
+        }
+        precipitations_[merged.form.value] = WorldPrecipitation{
+            .id = merged.form.value,
+            .editor_id = spgd->editor_id,
+            .texture = texture_vpath(spgd->texture),
+            .gravity_velocity = spgd->gravity_velocity,
+            .rotation_velocity = spgd->rotation_velocity,
+            .size_x = spgd->particle_size_x,
+            .size_y = spgd->particle_size_y,
+            .center_offset_min = spgd->center_offset_min,
+            .center_offset_max = spgd->center_offset_max,
+            .rotation_range = spgd->initial_rotation_range,
+            .subtextures_x = spgd->subtextures_x,
+            .subtextures_y = spgd->subtextures_y,
+            .type = static_cast<std::uint8_t>(spgd->type),
+            .box_size = spgd->box_size,
+            .density = spgd->particle_density,
+        };
+    }
+
+    /// Regions with a weather list (RDAT type 3); the others are not needed
+    /// yet.
+    void on_region(const record::MergedRecord& merged, io::SpanReader& data,
+                   const record::FormContext& form_ctx) {
+        auto region = record::parse_region(data, form_ctx);
+        if (!region) {
+            ++stats_.parse_errors;
+            return;
+        }
+        constexpr std::uint32_t k_weather = 3;
+        bool failed = false;
+        WorldRegion out;
+        out.id = merged.form.value;
+        out.editor_id = region->editor_id;
+        out.world = global(merged, region->worldspace, failed);
+        for (const auto& entry : region->entries) {
+            if (entry.type != k_weather || entry.weathers.empty()) {
+                continue;
+            }
+            out.weather_priority = entry.priority;
+            out.weather_override = (entry.flags & 0x1U) != 0;
+            for (const auto& w : entry.weathers) {
+                out.weathers.push_back({.weather = global(merged, w.weather, failed),
+                                        .chance = w.chance,
+                                        .global = global(merged, w.global, failed)});
+            }
+        }
+        if (out.weathers.empty()) {
+            return;
+        }
+        for (const auto& area : region->areas) {
+            std::vector<float> points;
+            points.reserve(area.points.size() * 2);
+            for (const auto& [x, y] : area.points) {
+                points.push_back(x);
+                points.push_back(y);
+            }
+            out.areas.push_back(std::move(points));
+        }
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        regions_[out.id] = std::move(out);
     }
 
     const record::LoadOrder& order_;
@@ -889,6 +1038,8 @@ private:
     std::map<std::uint32_t, WorldWater> waters_;
     std::map<std::uint32_t, WorldClimate> climates_;
     std::map<std::uint32_t, WorldWeather> weathers_;
+    std::map<std::uint32_t, WorldPrecipitation> precipitations_;
+    std::map<std::uint32_t, WorldRegion> regions_;
     std::unordered_map<std::uint32_t, WorldTerrain> terrains_;
     std::map<std::uint32_t, Worldspace> worlds_;
     std::map<std::uint32_t, LandTextureEntry> land_textures_;
@@ -1286,17 +1437,57 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         for (const auto& [weather, chance] : c.weathers) {
             entries.emplace_back(weather, chance);
         }
-        climates.push_back(wfb::CreateClimate(builder, c.id, builder.CreateString(c.editor_id),
-                                              builder.CreateVectorOfStructs(entries), c.sun[0],
-                                              c.sun[1], c.sun[2], c.sun[3]));
+        climates.push_back(wfb::CreateClimate(
+            builder, c.id, builder.CreateString(c.editor_id),
+            builder.CreateVectorOfStructs(entries), c.sun[0], c.sun[1], c.sun[2], c.sun[3],
+            builder.CreateString(c.sun_texture), builder.CreateString(c.sun_glare_texture),
+            builder.CreateString(c.sky), c.volatility, c.moons, c.phase_length));
         ++stats.climates;
     }
     std::vector<flatbuffers::Offset<wfb::Weather>> weathers;
     for (const auto& [id, w] : sink.weathers()) {
+        std::vector<flatbuffers::Offset<wfb::CloudLayer>> clouds;
+        clouds.reserve(w.clouds.size());
+        for (const auto& layer : w.clouds) {
+            clouds.push_back(wfb::CreateCloudLayer(
+                builder, builder.CreateString(layer.texture), layer.speed_x, layer.speed_y,
+                builder.CreateVector(layer.colors.data(), layer.colors.size()),
+                builder.CreateVector(layer.alphas.data(), layer.alphas.size()), layer.enabled));
+        }
         weathers.push_back(wfb::CreateWeather(
             builder, w.id, builder.CreateString(w.editor_id), builder.CreateVector(w.colors),
-            builder.CreateVector(w.fog), builder.CreateVector(w.directional_ambient)));
+            builder.CreateVector(w.fog), builder.CreateVector(w.directional_ambient),
+            builder.CreateVector(clouds), w.wind_speed, w.wind_direction,
+            w.wind_direction_range, w.transition_delta, w.sun_glare, w.sun_damage,
+            w.precipitation_begin, w.precipitation_end, w.thunder_begin, w.thunder_end,
+            w.thunder_frequency, w.classification, w.lightning_color, w.precipitation,
+            builder.CreateString(w.aurora)));
         ++stats.weathers;
+    }
+    std::vector<flatbuffers::Offset<wfb::Precipitation>> precipitations;
+    for (const auto& [id, p] : sink.precipitations()) {
+        precipitations.push_back(wfb::CreatePrecipitation(
+            builder, p.id, builder.CreateString(p.editor_id), builder.CreateString(p.texture),
+            p.gravity_velocity, p.rotation_velocity, p.size_x, p.size_y, p.center_offset_min,
+            p.center_offset_max, p.rotation_range, p.subtextures_x, p.subtextures_y, p.type,
+            p.box_size, p.density));
+        ++stats.precipitations;
+    }
+    std::vector<flatbuffers::Offset<wfb::Region>> regions;
+    for (const auto& [id, r] : sink.regions()) {
+        std::vector<flatbuffers::Offset<wfb::RegionArea>> areas;
+        for (const auto& area : r.areas) {
+            areas.push_back(wfb::CreateRegionArea(builder, builder.CreateVector(area)));
+        }
+        std::vector<wfb::RegionWeather> entries;
+        for (const auto& e : r.weathers) {
+            entries.emplace_back(e.weather, e.chance, e.global);
+        }
+        regions.push_back(wfb::CreateRegion(builder, r.id, builder.CreateString(r.editor_id),
+                                            r.world, builder.CreateVector(areas),
+                                            builder.CreateVectorOfStructs(entries),
+                                            r.weather_priority, r.weather_override));
+        ++stats.regions;
     }
 
     std::vector<flatbuffers::Offset<wfb::Quest>> quests;
@@ -1407,6 +1598,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto bases_off = builder.CreateVector(bases);
     const auto climates_off = builder.CreateVector(climates);
     const auto weathers_off = builder.CreateVector(weathers);
+    const auto precipitations_off = builder.CreateVector(precipitations);
+    const auto regions_off = builder.CreateVector(regions);
     const auto worlds_off = builder.CreateVector(worlds);
     const auto waters_off = builder.CreateVector(waters);
     const auto land_textures_off = builder.CreateVector(land_textures);
@@ -1423,6 +1616,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     wb.add_globals(globals_off);
     wb.add_actors(actors_off);
     wb.add_plugins(plugins_off);
+    wb.add_precipitations(precipitations_off);
+    wb.add_regions(regions_off);
     wfb::FinishWorldBuffer(builder, wb.Finish());
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
@@ -1986,6 +2181,13 @@ std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
         }
     }
     out.sun = {it->sunrise_begin(), it->sunrise_end(), it->sunset_begin(), it->sunset_end()};
+    out.sun_texture = it->sun_texture() != nullptr ? it->sun_texture()->str() : std::string{};
+    out.sun_glare_texture =
+        it->sun_glare_texture() != nullptr ? it->sun_glare_texture()->str() : std::string{};
+    out.sky = it->sky() != nullptr ? it->sky()->str() : std::string{};
+    out.volatility = it->volatility();
+    out.moons = it->moons();
+    out.phase_length = it->phase_length();
     return out;
 }
 
@@ -2009,6 +2211,97 @@ std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
     }
     if (const auto* d = it->directional_ambient()) {
         out.directional_ambient.assign(d->begin(), d->end());
+    }
+    const auto str = [](const flatbuffers::String* t) { return t != nullptr ? t->str() : std::string{}; };
+    if (const auto* clouds = it->clouds()) {
+        for (const auto* c : *clouds) {
+            WorldCloudLayer layer;
+            layer.texture = str(c->texture());
+            layer.speed_x = c->speed_x();
+            layer.speed_y = c->speed_y();
+            for (flatbuffers::uoffset_t t = 0; t < 4; ++t) {
+                if (c->colors() != nullptr && t < c->colors()->size()) {
+                    layer.colors[t] = c->colors()->Get(t);
+                }
+                if (c->alphas() != nullptr && t < c->alphas()->size()) {
+                    layer.alphas[t] = c->alphas()->Get(t);
+                }
+            }
+            layer.enabled = c->enabled();
+            out.clouds.push_back(std::move(layer));
+        }
+    }
+    out.wind_speed = it->wind_speed();
+    out.wind_direction = it->wind_direction();
+    out.wind_direction_range = it->wind_direction_range();
+    out.transition_delta = it->transition_delta();
+    out.sun_glare = it->sun_glare();
+    out.sun_damage = it->sun_damage();
+    out.precipitation_begin = it->precipitation_begin();
+    out.precipitation_end = it->precipitation_end();
+    out.thunder_begin = it->thunder_begin();
+    out.thunder_end = it->thunder_end();
+    out.thunder_frequency = it->thunder_frequency();
+    out.classification = it->classification();
+    out.lightning_color = it->lightning_color();
+    out.precipitation = it->precipitation();
+    out.aurora = str(it->aurora());
+    return out;
+}
+
+std::optional<WorldPrecipitation> WorldFile::precipitation(std::uint32_t id) const {
+    const auto* it = find_sorted(impl_->root->precipitations(), id);
+    if (it == nullptr) {
+        return std::nullopt;
+    }
+    const auto str = [](const flatbuffers::String* t) { return t != nullptr ? t->str() : std::string{}; };
+    return WorldPrecipitation{
+        .id = it->id(),
+        .editor_id = str(it->editor_id()),
+        .texture = str(it->texture()),
+        .gravity_velocity = it->gravity_velocity(),
+        .rotation_velocity = it->rotation_velocity(),
+        .size_x = it->size_x(),
+        .size_y = it->size_y(),
+        .center_offset_min = it->center_offset_min(),
+        .center_offset_max = it->center_offset_max(),
+        .rotation_range = it->rotation_range(),
+        .subtextures_x = it->subtextures_x(),
+        .subtextures_y = it->subtextures_y(),
+        .type = it->type(),
+        .box_size = it->box_size(),
+        .density = it->density(),
+    };
+}
+
+std::vector<WorldRegion> WorldFile::regions() const {
+    std::vector<WorldRegion> out;
+    const auto* regions = impl_->root->regions();
+    if (regions == nullptr) {
+        return out;
+    }
+    for (const auto* r : *regions) {
+        WorldRegion region;
+        region.id = r->id();
+        region.editor_id = r->editor_id() != nullptr ? r->editor_id()->str() : std::string{};
+        region.world = r->world();
+        if (const auto* areas = r->areas()) {
+            for (const auto* a : *areas) {
+                region.areas.emplace_back();
+                if (a->points() != nullptr) {
+                    region.areas.back().assign(a->points()->begin(), a->points()->end());
+                }
+            }
+        }
+        if (const auto* weathers = r->weathers()) {
+            for (const auto* w : *weathers) {
+                region.weathers.push_back(
+                    {.weather = w->weather(), .chance = w->chance(), .global = w->global()});
+            }
+        }
+        region.weather_priority = r->weather_priority();
+        region.weather_override = r->weather_override();
+        out.push_back(std::move(region));
     }
     return out;
 }

@@ -35,8 +35,10 @@ The engine shows interior cells and streams exterior ones. What exists:
   objects, lights) and builds a cell: models placed at their references
   (see `docs/coordinates.md`), `OmniLight3D`/`SpotLight3D` for lights, editor
   markers and initially disabled references skipped.
-- **Exteriors**: terrain, water, grid streaming, sky and light from the
-  climate's weather, and distant LOD beyond the loaded cells (terrain,
+- **Exteriors**: terrain, water, grid streaming, weather (`SkydotWeather`,
+  see [`docs/weather.md`](docs/weather.md): time of day, region and climate
+  weathers fading into each other, clouds, sun, moons, stars, rain, snow,
+  lightning), and distant LOD beyond the loaded cells (terrain,
   objects, tree billboards; `SkydotLod`, see [`docs/lod.md`](docs/lod.md)).
 - **Materials** (`SkydotMaterials`): Skyrim-style lighting, effect and
   refraction shaders; billboards.
@@ -105,8 +107,10 @@ godot4.7 --path game res://viewer/cell_viewer.tscn -- \
 ```
 
 Cells build in steps within `--build-budget` microseconds per frame (8000)
-and show once complete. `--time 19` and `--weather SkyrimClear` choose the sky; by default it is noon
-under the climate's most likely weather. `--benchmark 10` flies east and
+and show once complete. Time starts at `--time` (default 12) and runs at
+`--time-scale` (default 20); `--weather SkyrimClear` keeps one weather,
+otherwise the region's or climate's weathers take turns. T and Shift+T move
+the time by an hour, K changes the weather. `--benchmark 10` flies east and
 prints frame times (pass `--disable-vsync` to Godot when the window is not
 visible, or the compositor throttles it).
 

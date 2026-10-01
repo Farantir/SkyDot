@@ -6,6 +6,7 @@
 #include <godot_cpp/classes/animatable_body3d.hpp>
 #include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/capsule_shape3d.hpp>
+#include <godot_cpp/classes/cylinder_shape3d.hpp>
 #include <godot_cpp/classes/collision_shape3d.hpp>
 #include <godot_cpp/classes/concave_polygon_shape3d.hpp>
 #include <godot_cpp/classes/convex_polygon_shape3d.hpp>
@@ -238,7 +239,8 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
         out.radius = radius;
         return std::isfinite(radius) && radius > 0;
     }
-    if (kind == "capsule") {
+    if (kind == "capsule" || kind == "cylinder") {
+        const bool cylinder = kind == "cylinder";
         const Vector3 a = vec3(d, "point_a", ok);
         const Vector3 b = vec3(d, "point_b", ok);
         if (!ok || !finite(a) || !finite(b) || !std::isfinite(radius) || radius <= 0) {
@@ -247,14 +249,18 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
         const Vector3 axis = b - a;
         const real_t length = axis.length();
         out.radius = radius;
-        if (length < 1e-4F) {
+        if (length < 1e-4F && !cylinder) {
             out.kind = ModelCollision::Kind::sphere;
             out.transform = out.transform * Transform3D(godot::Basis(), (a + b) / 2);
             return true;
         }
-        // Godot's capsules run along Y and count their caps in the height.
-        out.kind = ModelCollision::Kind::capsule;
-        out.height = length + 2 * radius;
+        if (cylinder && length < 1e-4F) {
+            return false;
+        }
+        // Godot's capsules and cylinders run along Y; a capsule counts its
+        // caps in the height.
+        out.kind = cylinder ? ModelCollision::Kind::cylinder : ModelCollision::Kind::capsule;
+        out.height = cylinder ? length : length + 2 * radius;
         out.transform = out.transform *
                         Transform3D(godot::Basis(godot::Quaternion(Vector3(0, 1, 0), axis / length)),
                                     (a + b) / 2);
@@ -269,7 +275,7 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
         thicken(out.points, radius);
         return true;
     }
-    if (kind == "compressed_mesh") {
+    if (kind == "compressed_mesh" || kind == "mesh") {
         out.kind = ModelCollision::Kind::mesh;
         const godot::PackedVector3Array vertices = points_of(d);
         const Variant v = d.get("indices", Variant());
@@ -405,6 +411,14 @@ const std::vector<Ref<godot::Shape3D>>& ModelCollision::shapes_of(std::size_t in
             out = capsule;
             break;
         }
+        case Kind::cylinder: {
+            Ref<godot::CylinderShape3D> cylinder;
+            cylinder.instantiate();
+            cylinder->set_radius(static_cast<float>(shape.radius));
+            cylinder->set_height(static_cast<float>(shape.height));
+            out = cylinder;
+            break;
+        }
         case Kind::convex: {
             Ref<godot::ConvexPolygonShape3D> convex;
             convex.instantiate();
@@ -513,13 +527,40 @@ void SkydotDynamicBody::_ready() {
     set_freeze_enabled(true);
 }
 
+int wake_clutter(godot::Node* root, const Vector3& centre, godot::real_t radius) {
+    if (root == nullptr) {
+        return 0;
+    }
+    int count = 0;
+    std::vector<godot::Node*> pending{root};
+    while (!pending.empty()) {
+        godot::Node* node = pending.back();
+        pending.pop_back();
+        if (auto* body = godot::Object::cast_to<SkydotDynamicBody>(node)) {
+            if (body->is_freeze_enabled() && body->is_inside_tree() &&
+                body->get_global_position().distance_to(centre) <= radius) {
+                body->wake();
+                ++count;
+            }
+            continue;
+        }
+        for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+            pending.push_back(node->get_child(i));
+        }
+    }
+    return count;
+}
+
 void SkydotDynamicBody::wake() {
     if (is_freeze_enabled()) {
         set_freeze_enabled(false);
         // Whatever frozen clutter it runs into starts moving too.
         set_contact_monitor(true);
         set_max_contacts_reported(4);
-        connect("body_entered", callable_mp(this, &SkydotDynamicBody::on_body_entered));
+        const auto entered = callable_mp(this, &SkydotDynamicBody::on_body_entered);
+        if (!is_connected("body_entered", entered)) {
+            connect("body_entered", entered);
+        }
     }
     set_sleeping(false);
 }

@@ -39,6 +39,7 @@ target_sources(skydot PRIVATE
     src/world/billboard.hpp
     src/world/collision.cpp
     src/world/navmesh.cpp
+    src/world/weather.cpp
     src/world/collision.hpp
     src/world/effect_asset.cpp
     src/world/effect_asset.hpp

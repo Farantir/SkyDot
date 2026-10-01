@@ -522,3 +522,87 @@ TEST_CASE("compressed-mesh chunks keep the triangle list that follows their stri
     CHECK(shape.vertices.size() == 4);
     CHECK(shape.indices == std::vector<std::uint32_t>{0, 1, 2, 1, 3, 2});
 }
+
+TEST_CASE("a Havok cylinder keeps its ends and radius, padded by its convex radius",
+          "[mesh][gltf][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto cylinder = std::make_unique<nifly::bhkCylinderShape>();
+    cylinder->vertexA = nifly::Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    cylinder->vertexB = nifly::Vector4(0.0f, 0.0f, 1.0f, 0.0f);
+    cylinder->cylinderRadius = 0.5f;
+    cylinder->radius = 0.1f;
+    builder.add_collision(std::move(cylinder), {});
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "well.nif");
+    REQUIRE(model.has_value());
+    CHECK(model->warnings.empty());
+    auto glb = bethconv::mesh::write_glb(*model, {});
+    REQUIRE(glb.has_value());
+    const auto shapes = collision_extras(*glb);
+    REQUIRE(shapes.size() == 1);
+    CHECK(shapes[0]["kind"] == "cylinder");
+    CHECK_THAT(shapes[0]["radius"].get<double>(), Catch::Matchers::WithinAbs(0.6, 1e-6));
+    CHECK_THAT(shapes[0]["point_a"][2].get<double>(), Catch::Matchers::WithinAbs(-0.1, 1e-6));
+    CHECK_THAT(shapes[0]["point_b"][2].get<double>(), Catch::Matchers::WithinAbs(1.1, 1e-6));
+}
+
+TEST_CASE("bhkNiTriStripsShape becomes a mesh in Havok units", "[mesh][gltf][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    // A square of 70 game units as one strip of two triangles.
+    auto data = std::make_unique<nifly::NiTriStripsData>();
+    const std::vector<nifly::Vector3> verts{
+        {0.0f, 0.0f, 0.0f}, {70.0f, 0.0f, 0.0f}, {0.0f, 70.0f, 0.0f}, {70.0f, 70.0f, 0.0f}};
+    auto version = builder.file().GetHeader().GetVersion();
+    data->Create(version, &verts, nullptr, nullptr, nullptr);
+    std::uint16_t length = 4;
+    data->stripsInfo.stripLengths.push_back(length);
+    data->stripsInfo.points = {{0, 1, 2, 3}};
+    auto& header = builder.file().GetHeader();
+    const auto data_index = header.AddBlock(std::move(data));
+    auto strips = std::make_unique<nifly::bhkNiTriStripsShape>();
+    strips->partRefs.AddBlockRef(data_index);
+    builder.add_collision(std::move(strips), {});
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "pelt.nif");
+    REQUIRE(model.has_value());
+    CHECK(model->warnings.empty());
+    REQUIRE(model->collision.size() == 1);
+    const auto& shape = model->collision[0];
+    CHECK(shape.kind == bethconv::mesh::CollisionKind::mesh);
+    REQUIRE(shape.vertices.size() == 4);
+    CHECK_THAT(shape.vertices[3].x, Catch::Matchers::WithinAbs(70.0 / 69.99124, 1e-5));
+    CHECK(shape.indices.size() == 6);
+
+    auto glb = bethconv::mesh::write_glb(*model, {});
+    REQUIRE(glb.has_value());
+    const auto shapes = collision_extras(*glb);
+    REQUIRE(shapes.size() == 1);
+    CHECK(shapes[0]["kind"] == "mesh");
+    CHECK(shapes[0]["indices"].size() == 6);
+}
+
+TEST_CASE("a bhkPlaneShape becomes the flat hull where it cuts its bounds",
+          "[mesh][nif][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto plane = std::make_unique<nifly::bhkPlaneShape>();
+    plane->plane.normal = nifly::Vector3(0.0f, 0.0f, 1.0f);
+    plane->plane.constant = -0.25f; // z = 0.25
+    plane->center = nifly::Vector4(0.0f, 0.0f, 0.0f, 0.0f);
+    plane->halfExtents = nifly::Vector4(1.0f, 2.0f, 1.0f, 0.0f);
+    builder.add_collision(std::move(plane), {});
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "eggs.nif");
+    REQUIRE(model.has_value());
+    REQUIRE(model->collision.size() == 1);
+    const auto& shape = model->collision[0];
+    CHECK(shape.kind == bethconv::mesh::CollisionKind::convex_vertices);
+    REQUIRE(shape.vertices.size() == 4);
+    for (const auto& v : shape.vertices) {
+        CHECK_THAT(v.z, Catch::Matchers::WithinAbs(0.25, 1e-6));
+        CHECK_THAT(std::abs(v.x), Catch::Matchers::WithinAbs(1.0, 1e-6));
+        CHECK_THAT(std::abs(v.y), Catch::Matchers::WithinAbs(2.0, 1e-6));
+    }
+}

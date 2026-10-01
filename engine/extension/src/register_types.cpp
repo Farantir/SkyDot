@@ -15,6 +15,7 @@
 #include "world/lod.hpp"
 #include "world/particles.hpp"
 #include "world/player.hpp"
+#include "world/weather.hpp"
 #include "world/world.hpp"
 
 #include <gdextension_interface.h>
@@ -38,6 +39,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotLod);
     GDREGISTER_CLASS(skydot::SkydotDynamicBody);
     GDREGISTER_CLASS(skydot::SkydotPlayer);
+    GDREGISTER_CLASS(skydot::SkydotWeather);
 }
 
 void skydot_uninitialize(godot::ModuleInitializationLevel level) {

@@ -506,6 +506,51 @@ io::ParseResult<NavMesh> parse_nav_mesh(io::SpanReader& data, const FormContext&
     return out;
 }
 
+io::ParseResult<ShaderParticleGeometry> parse_shader_particle_geometry(io::SpanReader& data,
+                                                                       const FormContext& ctx) {
+    ShaderParticleGeometry out;
+    const auto walked = walk_fields(
+        data, FourCC{"SPGD"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"ICON"}) {
+                take(failure, read_zstring(body), out.texture);
+            } else if (field.type == FourCC{"DATA"}) {
+                if (body.remaining() != ShaderParticleGeometry::k_data_size &&
+                    body.remaining() != ShaderParticleGeometry::k_short_data_size) {
+                    failure = body.fail(io::ErrorKind::bad_value,
+                                        "SPGD DATA of " + std::to_string(body.remaining()) +
+                                            " bytes")
+                                  .error();
+                    return true;
+                }
+                take(failure, body.get<float>(), out.gravity_velocity);
+                take(failure, body.get<float>(), out.rotation_velocity);
+                take(failure, body.get<float>(), out.particle_size_x);
+                take(failure, body.get<float>(), out.particle_size_y);
+                take(failure, body.get<float>(), out.center_offset_min);
+                take(failure, body.get<float>(), out.center_offset_max);
+                take(failure, body.get<float>(), out.initial_rotation_range);
+                take(failure, body.get<std::uint32_t>(), out.subtextures_x);
+                take(failure, body.get<std::uint32_t>(), out.subtextures_y);
+                take(failure, body.get<std::uint32_t>(), out.type);
+                if (body.remaining() != 0) {
+                    take(failure, body.get<std::uint32_t>(), out.box_size);
+                    take(failure, body.get<float>(), out.particle_density);
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<NavMeshGeometry> decode_nav_mesh_geometry(std::span<const std::byte> nvnm) {
     io::SpanReader r(nvnm, "NVNM");
     NavMeshGeometry out;

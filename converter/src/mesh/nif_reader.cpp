@@ -476,6 +476,11 @@ private:
         for (std::uint32_t slot = 0; slot < slots.size(); ++slot) {
             nif_.GetTextureSlot(shape, slots[slot], slot);
         }
+        // Sky shaders (stars, sky domes) name their one texture themselves.
+        if (auto* sky = dynamic_cast<nifly::BSSkyShaderProperty*>(nif_.GetShader(shape));
+            sky != nullptr && slots[0].empty()) {
+            slots[0] = sky->baseTexture.get();
+        }
         return read_material(shape->name.get(), nif_.GetShader(shape),
                              nif_.GetAlphaProperty(shape), std::move(slots));
     }
@@ -677,6 +682,17 @@ private:
         } else if (auto* mesh = dynamic_cast<nifly::bhkCompressedMeshShape*>(shape)) {
             out.kind = CollisionKind::compressed_mesh;
             read_compressed_mesh(mesh, out);
+        } else if (auto* cylinder = dynamic_cast<nifly::bhkCylinderShape*>(shape)) {
+            read_cylinder(*cylinder, out);
+        } else if (auto* strips = dynamic_cast<nifly::bhkNiTriStripsShape*>(shape)) {
+            out.kind = CollisionKind::mesh;
+            read_strips(*strips, out);
+        } else if (auto* plane = dynamic_cast<nifly::bhkPlaneShape*>(shape)) {
+            read_plane(*plane, out);
+            if (out.kind == CollisionKind::unsupported) {
+                model_.warnings.push_back(std::format(
+                    "collision on '{}': plane does not cut its bounds", ctx.node_name));
+            }
         } else {
             model_.warnings.push_back(
                 std::format("collision on '{}': unsupported Havok shape '{}'",
@@ -684,6 +700,82 @@ private:
         }
 
         model_.collision.push_back(std::move(out));
+    }
+
+    /// The convex radius pads a Havok cylinder all round, as it does a box:
+    /// folded into the radius and the end points.
+    static void read_cylinder(const nifly::bhkCylinderShape& cylinder, CollisionShape& out) {
+        out.kind = CollisionKind::cylinder;
+        const nifly::Vector3 a(cylinder.vertexA.x, cylinder.vertexA.y, cylinder.vertexA.z);
+        const nifly::Vector3 b(cylinder.vertexB.x, cylinder.vertexB.y, cylinder.vertexB.z);
+        nifly::Vector3 axis = b - a;
+        const float length = axis.length();
+        if (length > 0.0f) {
+            axis /= length;
+        }
+        const float pad = std::max(cylinder.radius, 0.0f);
+        out.point_a = to_vec3(a - axis * pad);
+        out.point_b = to_vec3(b + axis * pad);
+        out.radius = cylinder.cylinderRadius + pad;
+    }
+
+    /// NiTriStripsData parts, in game units, divided down to Havok units like
+    /// every other shape.
+    void read_strips(nifly::bhkNiTriStripsShape& strips, CollisionShape& out) {
+        for (auto& ref : strips.partRefs) {
+            const auto* data = nif_.GetHeader().GetBlock<nifly::NiTriStripsData>(ref);
+            if (data == nullptr) {
+                continue;
+            }
+            const auto base = static_cast<std::uint32_t>(out.vertices.size());
+            for (const nifly::Vector3& v : data->vertices) {
+                out.vertices.push_back(Vec3{v.x / k_havok_scale, v.y / k_havok_scale,
+                                            v.z / k_havok_scale});
+            }
+            std::vector<nifly::Triangle> triangles;
+            data->GetTriangles(triangles);
+            for (const nifly::Triangle& t : triangles) {
+                if (t.p1 >= data->vertices.size() || t.p2 >= data->vertices.size() ||
+                    t.p3 >= data->vertices.size()) {
+                    continue;
+                }
+                out.indices.push_back(base + t.p1);
+                out.indices.push_back(base + t.p2);
+                out.indices.push_back(base + t.p3);
+            }
+        }
+    }
+
+    /// bhkPlaneShape: a plane bounded by a box (centre, half extents). Kept as
+    /// the flat hull where the plane cuts the box; consumers thicken flat
+    /// hulls as they do Havok's thin convex shapes.
+    static void read_plane(const nifly::bhkPlaneShape& plane, CollisionShape& out) {
+        const nifly::Vector3 n = plane.plane.normal;
+        const nifly::Vector3 c(plane.center.x, plane.center.y, plane.center.z);
+        const nifly::Vector3 h(plane.halfExtents.x, plane.halfExtents.y, plane.halfExtents.z);
+        std::array<nifly::Vector3, 8> corners;
+        for (std::size_t i = 0; i < 8; ++i) {
+            corners[i] = c + nifly::Vector3((i & 1) != 0 ? h.x : -h.x, (i & 2) != 0 ? h.y : -h.y,
+                                            (i & 4) != 0 ? h.z : -h.z);
+        }
+        // Havok stores the plane as n.p + w = 0.
+        const auto side = [&](const nifly::Vector3& p) { return n.dot(p) + plane.plane.constant; };
+        for (std::size_t i = 0; i < 8; ++i) {
+            for (std::size_t bit = 1; bit < 8; bit <<= 1) {
+                const std::size_t j = i | bit;
+                if (j == i) {
+                    continue;
+                }
+                const float si = side(corners[i]);
+                const float sj = side(corners[j]);
+                if ((si <= 0.0f) != (sj <= 0.0f) || si == 0.0f) {
+                    const float t = si == sj ? 0.0f : si / (si - sj);
+                    out.vertices.push_back(to_vec3(corners[i] + (corners[j] - corners[i]) * t));
+                }
+            }
+        }
+        out.kind = out.vertices.size() >= 3 ? CollisionKind::convex_vertices
+                                            : CollisionKind::unsupported;
     }
 
     static nifly::MatTransform mat_transform_of(const nifly::Matrix4& m) {

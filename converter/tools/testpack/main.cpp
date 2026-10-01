@@ -13,7 +13,9 @@
 //
 //   * a WRLD with a persistent cell and a real exterior cell both at (0, 0);
 //   * a second exterior cell at (1, 0), for misses and neighbor streaming;
-//   * a CLMT with one WTHR, whose day sky is pure blue and night sky black;
+//   * a CLMT with one WTHR, whose day sky is pure blue and night sky black,
+//     and a rainy WTHR (cloud layer, SPGD, thunder) that a REGN over the
+//     cell at (1, 0) offers;
 //   * LAND on the cell at (0, 0): a slope rising to the east, one LTEX (via a
 //     TXST) as the base layer and a second layer on one quadrant;
 //   * navmeshes on both exterior cells, linked across their border, and on
@@ -631,7 +633,69 @@ std::vector<std::byte> build_plugin() {
     bethconv::test::write_field(wthr, "FNAM", fnam);
     ByteWriter wthrs;
     bethconv::test::write_record(wthrs, "WTHR", 0x0000'0130, wthr.span());
+    // TestpackRain: one cloud layer, rain from an SPGD, thunder; only the
+    // region over the east cell offers it.
+    ByteWriter rain;
+    edid(rain, "TestpackRain");
+    bethconv::test::write_field(rain, "NAM0", nam0);
+    bethconv::test::write_field(rain, "FNAM", fnam);
+    ByteWriter cloud;
+    cloud.zstring("testpack\\sky.dds");
+    bethconv::test::write_field(rain, "00TX", cloud);
+    ByteWriter rain_data;
+    for (const int b : {128, 0, 0, 255, 0, 0, 0, 255, 0, 255, 0, 4, 255, 255, 255, 0, 0, 0, 0}) {
+        rain_data.u8(static_cast<std::uint8_t>(b)); // rainy, thunder at once and often
+    }
+    bethconv::test::write_field(rain, "DATA", rain_data);
+    ByteWriter mnam;
+    mnam.u32(0x0000'0133);
+    bethconv::test::write_field(rain, "MNAM", mnam);
+    bethconv::test::write_record(wthrs, "WTHR", 0x0000'0132, rain.span());
     bethconv::test::write_group(file, tag_value("WTHR"), 0, wthrs.span());
+    ByteWriter spgd;
+    edid(spgd, "TestpackDrops");
+    ByteWriter spgd_data;
+    for (const float v : {675.0F, 0.0F, 0.35F, 2.0F, 0.0F, 0.0F, 0.0F}) {
+        spgd_data.f32(v);
+    }
+    for (const std::uint32_t v : {1U, 1U, 0U, 700U}) {
+        spgd_data.u32(v);
+    }
+    spgd_data.f32(1.0F);
+    bethconv::test::write_field(spgd, "DATA", spgd_data);
+    ByteWriter icon;
+    icon.zstring("testpack\\sky.dds");
+    bethconv::test::write_field(spgd, "ICON", icon);
+    ByteWriter spgds;
+    bethconv::test::write_record(spgds, "SPGD", 0x0000'0133, spgd.span());
+    bethconv::test::write_group(file, tag_value("SPGD"), 0, spgds.span());
+    ByteWriter regn;
+    edid(regn, "TestpackStorms");
+    ByteWriter regn_world;
+    regn_world.u32(0x0000'0001);
+    bethconv::test::write_field(regn, "WNAM", regn_world);
+    ByteWriter rpli;
+    rpli.u32(0);
+    bethconv::test::write_field(regn, "RPLI", rpli);
+    ByteWriter rpld;
+    for (const float v : {4096.0F, 0.0F, 8192.0F, 0.0F, 8192.0F, 4096.0F, 4096.0F, 4096.0F}) {
+        rpld.f32(v);
+    }
+    bethconv::test::write_field(regn, "RPLD", rpld);
+    ByteWriter rdat;
+    rdat.u32(3); // weather
+    rdat.u8(0);
+    rdat.u8(50);
+    rdat.u16(0);
+    bethconv::test::write_field(regn, "RDAT", rdat);
+    ByteWriter rdwt;
+    rdwt.u32(0x0000'0132);
+    rdwt.u32(100);
+    rdwt.u32(0);
+    bethconv::test::write_field(regn, "RDWT", rdwt);
+    ByteWriter regns;
+    bethconv::test::write_record(regns, "REGN", 0x0000'0134, regn.span());
+    bethconv::test::write_group(file, tag_value("REGN"), 0, regns.span());
     ByteWriter clmt;
     edid(clmt, "TestpackClimate");
     ByteWriter wlst;

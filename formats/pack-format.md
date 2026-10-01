@@ -147,9 +147,10 @@ only decoded fields would pass every other snapshot test.
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (5; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (6; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
-navmeshes). Written during a merge pass, so every FormID in it is
+navmeshes, 6 cloud layers, weather data, precipitation and weather
+regions). Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
 - `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags,
@@ -199,10 +200,20 @@ global: resolved through the winning plugin's master list.
   reflection colours, fresnel, reflectivity, fog distance, three noise layers
   with wind direction, speed, scale and amplitude) and its noise textures.
   Cells name theirs (XCWT); 0 means the worldspace's.
-- `climates` and `weathers`, sorted by id: CLMT's weather chances and sun
-  times (hours); WTHR's colour table (17 colours by sunrise, day, sunset,
-  night), fog distances and directional ambient. Worldspaces name their
-  climate.
+- `climates` and `weathers`, sorted by id: CLMT's weather chances, sun
+  times (hours), sun and glare textures, night sky model, volatility and
+  moons with their phase length; WTHR's colour table (17 colours by sunrise,
+  day, sunset, night), fog distances, directional ambient, its 29 cloud
+  layers (texture, speed, colour and alpha by time of day, enabled; layer i
+  is drawn on the i-th shape of `meshes/sky/clouds.nif`), DATA (wind,
+  transition, sun glare and damage, precipitation and thunder timing,
+  classification, lightning colour), its precipitation and aurora model.
+  Worldspaces name their climate.
+- `precipitations`, sorted by id: SPGD, rain or snow particles (speeds,
+  sizes, atlas, box size, density; units mostly undocumented).
+- `regions`, sorted by id, only those with a weather list (REGN RDAT type 3):
+  worldspace, polygons in game units, weathers with chance and gating
+  global, priority and override flag.
 - A cell's terrain (LAND): VHGT's height offset and 33 x 33 deltas as stored
   (heights are 8 units per step, summed down column 0 and then along each
   row), VCLR vertex colours, and per quadrant a base layer and additional
@@ -268,7 +279,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/11` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/13` |
 | texture | `.dds` | `texture/<n>;` flags | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -281,7 +292,8 @@ controllers, particle systems and hidden nodes to the extras
 ([`format-notes/nif-animation.md`](format-notes/nif-animation.md)), `mesh/9`
 every drag modifier with its axis, `mesh/10` rigid body fields in the
 collision extras (below), `mesh/11` compressed-mesh triangles that follow a
-chunk's strips (they were dropped); the list in
+chunk's strips (they were dropped), `mesh/12` cylinder, strips and plane
+collision shapes, `mesh/13` the texture of sky shaders (stars); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 
@@ -379,7 +391,7 @@ unwrapped):
 
 | Key | Meaning |
 | --- | --- |
-| `kind` | `box`, `sphere`, `capsule`, `convex_vertices`, `compressed_mesh`, or `unsupported` |
+| `kind` | `box`, `sphere`, `capsule`, `cylinder`, `convex_vertices`, `compressed_mesh`, `mesh`, or `unsupported` |
 | `block`, `node` | Havok block name; the owning node's name |
 | `layer` | Skyrim collision layer (1 static, 2 animated static, 4 clutter, 13 terrain, 15 non-collidable, ...) |
 | `motion_type`, `quality_type` | `hkMotionType`; `hkpCollidableQualityType` (0 fixed, 1 keyframed, 2 to 7 moving, 8 character, 9 keyframed reporting) |
@@ -387,10 +399,15 @@ unwrapped):
 | `havok_material` | the shape's material id |
 | `transform` | `translation`, `rotation` (quaternion): a `bhkRigidBodyT`'s transform composed with every transform shape above the leaf |
 | `half_extents` | box |
-| `radius` | sphere, capsule; a box's or convex hull's convex radius |
-| `point_a`, `point_b` | capsule end points |
+| `radius` | sphere, capsule, cylinder; a box's or convex hull's convex radius |
+| `point_a`, `point_b` | capsule and cylinder end points (a cylinder's convex radius is already added to its radius and ends) |
 | `vertices` | flat `x, y, z` list: convex hull points, or mesh vertices |
-| `indices` | `compressed_mesh` triangles, three per triangle: big triangles, then per chunk its strips and the plain list after them |
+| `indices` | mesh triangles, three per triangle. `compressed_mesh`: big triangles, then per chunk its strips and the plain list after them; `mesh` (`bhkNiTriStripsShape`): its strips parts' triangles |
+
+A `bhkPlaneShape` (one vanilla mesh) becomes `convex_vertices`: the flat
+polygon where the plane cuts its bounding box. Flat hulls need thickening in
+engines that cannot build a hull without volume, as Havok's do through their
+convex radius.
 
 Everything is in the owning node's frame but in **Havok units**: multiply
 lengths (including translations) by 69.99124 to get game units, the node's

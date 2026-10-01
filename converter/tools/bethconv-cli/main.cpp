@@ -1200,6 +1200,27 @@ int cmd_extract(const std::vector<std::filesystem::path>& paths,
     return missing == 0 ? 0 : 1;
 }
 
+
+/// Bounds of `points` times `scale` (game units), before any node transform.
+void print_bounds(const std::vector<bethconv::mesh::Vec3>& points, float scale) {
+    if (points.empty()) {
+        return;
+    }
+    std::array<float, 3> lo{points[0].x, points[0].y, points[0].z};
+    std::array<float, 3> hi = lo;
+    for (const auto& v : points) {
+        const std::array<float, 3> p{v.x, v.y, v.z};
+        for (std::size_t k = 0; k < 3; ++k) {
+            lo[k] = std::min(lo[k], p[k]);
+            hi[k] = std::max(hi[k], p[k]);
+        }
+    }
+    std::printf("      bounds (%.1f %.1f %.1f) to (%.1f %.1f %.1f)\n",
+                static_cast<double>(lo[0] * scale), static_cast<double>(lo[1] * scale),
+                static_cast<double>(lo[2] * scale), static_cast<double>(hi[0] * scale),
+                static_cast<double>(hi[1] * scale), static_cast<double>(hi[2] * scale));
+}
+
 /// Result of one NIF, for the summary and sweep totals.
 struct MeshTally {
     std::size_t files = 0;
@@ -1323,11 +1344,17 @@ int cmd_mesh(const std::vector<std::filesystem::path>& sources,
                             prim.uvs.empty() ? "-" : "U",
                             prim.colors.empty() ? "-" : "C", mat.bs_shader_type,
                             mat.textures[0].c_str());
+                if (verbose) {
+                    print_bounds(prim.positions, 1.0f);
+                }
             }
             for (const auto& shape : model->collision) {
                 std::printf("    collision %-18s verts=%zu tris=%zu\n",
                             shape.block_name.c_str(), shape.vertices.size(),
                             shape.indices.size() / 3);
+                if (verbose) {
+                    print_bounds(shape.vertices, bethconv::mesh::k_havok_scale);
+                }
             }
             for (const auto& clip : model->animations) {
                 std::printf("    clip '%s'%s %.2f-%.2fs x%.2f, %zu channels\n",
@@ -2025,6 +2052,9 @@ int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::pa
                     static_cast<unsigned long long>(w.quest_fragments),
                     static_cast<unsigned long long>(w.globals),
                     static_cast<unsigned long long>(w.actors));
+        std::printf("                %llu precipitation types, %llu regions with weather\n",
+                    static_cast<unsigned long long>(w.precipitations),
+                    static_cast<unsigned long long>(w.regions));
         std::printf("                %llu navmeshes (%llu triangles, %llu orphaned)\n",
                     static_cast<unsigned long long>(w.navmeshes),
                     static_cast<unsigned long long>(w.nav_triangles),

@@ -331,6 +331,85 @@ table Climate {
     sunrise_end: float;
     sunset_begin: float;
     sunset_end: float;
+    /// FNAM, GNAM: virtual paths.
+    sun_texture: string;
+    sun_glare_texture: string;
+    /// MODL: the night sky's model (stars), a virtual path.
+    sky: string;
+    /// TNAM.
+    volatility: ubyte;
+    /// Bit 0 Masser, bit 1 Secunda.
+    moons: ubyte;
+    /// Days per moon phase.
+    phase_length: ubyte;
+}
+
+/// One cloud layer of a weather. Layer i is drawn on the i-th shape of
+/// meshes/sky/clouds.nif (29 shapes, 29 layers).
+table CloudLayer {
+    /// A virtual path, or empty.
+    texture: string;
+    /// QNAM, RNAM: the stored byte minus 127, over 127 (-1..1). Units not
+    /// known; 0 is still.
+    speed_x: float;
+    speed_y: float;
+    /// PNAM: RGBA by time of day (sunrise, day, sunset, night), red in the
+    /// low byte.
+    colors: [uint];
+    /// JNAM: by time of day.
+    alphas: [float];
+    /// Has a texture and its NAM1 bit is clear.
+    enabled: bool;
+}
+
+/// SPGD: rain or snow particles.
+table Precipitation {
+    id: uint32;
+    editor_id: string;
+    /// ICON, a virtual path: an atlas of subtextures_x by subtextures_y.
+    texture: string;
+    /// Game units per second, downwards.
+    gravity_velocity: float;
+    rotation_velocity: float;
+    size_x: float;
+    size_y: float;
+    center_offset_min: float;
+    center_offset_max: float;
+    /// Degrees.
+    rotation_range: float;
+    subtextures_x: uint32;
+    subtextures_y: uint32;
+    /// 0 rain, 1 snow.
+    type: ubyte;
+    /// Game units; 0 if not given.
+    box_size: uint32;
+    /// 0 if not given.
+    density: float;
+}
+
+/// A weather a region offers, as CLMT's list plus RDWT's gating global.
+struct RegionWeather {
+    weather: uint32;
+    chance: int;
+    global: uint32;
+}
+
+/// RPLD: a region polygon, x and y in game units.
+table RegionArea {
+    points: [float];
+}
+
+/// REGN with a weather list (RDAT type 3). Where its areas cover the
+/// player, the region with the highest priority picks the weather.
+table Region {
+    id: uint32;
+    editor_id: string;
+    world: uint32;
+    areas: [RegionArea];
+    weathers: [RegionWeather];
+    weather_priority: ubyte;
+    /// RDAT flags bit 0.
+    weather_override: bool;
 }
 
 /// WTHR, the parts that light a scene. Times of day are sunrise, day,
@@ -348,6 +427,31 @@ table Weather {
     fog: [float];
     /// DALC: per time, x+, x-, y+, y-, z+, z- and specular (7 x 4).
     directional_ambient: [uint];
+    clouds: [CloudLayer];
+    /// DATA, stored as bytes; fractions are byte / 255.
+    wind_speed: float;
+    /// Degrees.
+    wind_direction: float;
+    wind_direction_range: float;
+    transition_delta: float;
+    sun_glare: float;
+    sun_damage: float;
+    /// Points of a transition where precipitation starts to fade in and
+    /// finishes fading out.
+    precipitation_begin: float;
+    precipitation_end: float;
+    thunder_begin: float;
+    thunder_end: float;
+    thunder_frequency: float;
+    /// Bit 0 pleasant, 1 cloudy, 2 rainy, 3 snow, 4 sky statics always
+    /// visible, 5 sky statics follow the sun.
+    classification: ubyte;
+    /// RGB, red in the low byte.
+    lightning_color: uint;
+    /// MNAM, a Precipitation; 0 if none.
+    precipitation: uint32;
+    /// MODL: the aurora, a virtual path.
+    aurora: string;
 }
 
 /// WRLD.
@@ -516,6 +620,10 @@ table World {
     actors: [ActorRef];
     /// In load order; inactive plugins are left out.
     plugins: [Plugin];
+    /// Sorted by id.
+    precipitations: [Precipitation];
+    /// Sorted by id; only those with weather.
+    regions: [Region];
 }
 
 root_type World;

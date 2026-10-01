@@ -29,7 +29,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 5;
+inline constexpr std::uint32_t k_world_format_version = 6;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -62,6 +62,8 @@ struct WorldStats {
     std::uint64_t quest_fragments{};
     std::uint64_t globals{};
     std::uint64_t actors{};
+    std::uint64_t precipitations{};
+    std::uint64_t regions{};
     std::uint64_t navmeshes{};
     std::uint64_t nav_triangles{};
     /// Navmeshes whose parent is not a cell; not included.
@@ -296,6 +298,22 @@ struct WorldClimate {
     std::string editor_id;
     std::vector<std::pair<std::uint32_t, std::int32_t>> weathers; ///< weather, chance
     std::array<float, 4> sun{}; ///< sunrise begin/end, sunset begin/end (hours)
+    std::string sun_texture;       ///< Virtual paths.
+    std::string sun_glare_texture;
+    std::string sky;               ///< The night sky's model.
+    std::uint8_t volatility{};
+    std::uint8_t moons{};          ///< Bit 0 Masser, bit 1 Secunda.
+    std::uint8_t phase_length{};   ///< Days per moon phase.
+};
+
+/// See world.fbs `CloudLayer`.
+struct WorldCloudLayer {
+    std::string texture;
+    float speed_x{};
+    float speed_y{};
+    std::array<std::uint32_t, 4> colors{};
+    std::array<float, 4> alphas{};
+    bool enabled{};
 };
 
 /// See world.fbs `Weather`.
@@ -305,6 +323,58 @@ struct WorldWeather {
     std::vector<std::uint32_t> colors;
     std::vector<float> fog;
     std::vector<std::uint32_t> directional_ambient;
+    std::vector<WorldCloudLayer> clouds;
+    float wind_speed{};
+    float wind_direction{};
+    float wind_direction_range{};
+    float transition_delta{};
+    float sun_glare{};
+    float sun_damage{};
+    float precipitation_begin{};
+    float precipitation_end{};
+    float thunder_begin{};
+    float thunder_end{};
+    float thunder_frequency{};
+    std::uint8_t classification{};
+    std::uint32_t lightning_color{};
+    std::uint32_t precipitation{};
+    std::string aurora;
+};
+
+/// See world.fbs `Precipitation`.
+struct WorldPrecipitation {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::string texture;
+    float gravity_velocity{};
+    float rotation_velocity{};
+    float size_x{};
+    float size_y{};
+    float center_offset_min{};
+    float center_offset_max{};
+    float rotation_range{};
+    std::uint32_t subtextures_x{};
+    std::uint32_t subtextures_y{};
+    std::uint8_t type{};
+    std::uint32_t box_size{};
+    float density{};
+};
+
+/// See world.fbs `Region`.
+struct WorldRegion {
+    struct Weather {
+        std::uint32_t weather{};
+        std::int32_t chance{};
+        std::uint32_t global{};
+    };
+    std::uint32_t id{};
+    std::string editor_id;
+    std::uint32_t world{};
+    /// Polygons as x, y pairs in game units.
+    std::vector<std::vector<float>> areas;
+    std::vector<Weather> weathers;
+    std::uint8_t weather_priority{};
+    bool weather_override{};
 };
 
 /// See world.fbs `Quest` and its parts.
@@ -398,6 +468,9 @@ public:
     [[nodiscard]] std::optional<WorldWater> water(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldClimate> climate(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldWeather> weather(std::uint32_t id) const;
+    [[nodiscard]] std::optional<WorldPrecipitation> precipitation(std::uint32_t id) const;
+    /// Regions with weather data.
+    [[nodiscard]] std::vector<WorldRegion> regions() const;
     [[nodiscard]] std::size_t quest_count() const noexcept;
     [[nodiscard]] std::optional<WorldQuest> quest(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldGlobal> global(std::uint32_t id) const;

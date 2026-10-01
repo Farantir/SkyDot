@@ -145,6 +145,30 @@ struct Weather {
     std::string dnam;
 };
 
+/// SPGD: shader particle geometry, a weather's rain or snow. 16 in SE.
+struct ShaderParticleGeometry {
+    std::string editor_id;
+    std::string texture; ///< ICON, under textures/.
+
+    /// DATA, 48 bytes on 14 and 40 on two (without box size and density):
+    /// twelve 4-byte values, not the padded layout xEdit gives. Checked
+    /// against all 16 vanilla records.
+    float gravity_velocity{};   ///< Units per second, downwards.
+    float rotation_velocity{};
+    float particle_size_x{};
+    float particle_size_y{};
+    float center_offset_min{};
+    float center_offset_max{};
+    float initial_rotation_range{}; ///< Degrees.
+    std::uint32_t subtextures_x{};
+    std::uint32_t subtextures_y{};
+    std::uint32_t type{};        ///< 0 rain, 1 snow.
+    std::uint32_t box_size{};    ///< Units; 0 if absent.
+    float particle_density{};    ///< 0 if absent.
+    static constexpr std::size_t k_data_size = 48;
+    static constexpr std::size_t k_short_data_size = 40;
+};
+
 /// REGN: a region polygon where grass, sound, weather and map color apply.
 /// 389 in SE.
 struct Region {
@@ -415,6 +439,8 @@ struct ActorReference {
                                                      const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Weather> parse_weather(io::SpanReader& data,
                                                      const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ShaderParticleGeometry> parse_shader_particle_geometry(
+    io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Region> parse_region(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Location> parse_location(io::SpanReader& data,
                                                        const FormContext& ctx);

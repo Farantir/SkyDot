@@ -3,11 +3,15 @@
 // SkydotWorld: doors, scripts and the other data activation needs, and
 // picking the reference the player looks at.
 #include "world/refs.hpp"
+#include "world/collision.hpp"
 #include "world/fb_search.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/physics_direct_space_state3d.hpp>
+#include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
+#include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/variant/aabb.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -355,12 +359,70 @@ Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) 
     return out;
 }
 
+namespace {
+
+/// The reference node a physics body belongs to, or null.
+godot::Node* ref_of(godot::Object* collider) {
+    for (auto* node = godot::Object::cast_to<godot::Node>(collider); node != nullptr;
+         node = node->get_parent()) {
+        if (node->has_meta("skydot_ref")) {
+            return node;
+        }
+    }
+    return nullptr;
+}
+
+/// The first world, clutter or terrain body along the segment: the collider
+/// and the distance. Null outside a scene tree.
+std::pair<godot::Object*, double> first_body(godot::Node* root, const Vector3& from,
+                                             const Vector3& to) {
+    auto* spatial = godot::Object::cast_to<godot::Node3D>(root);
+    if (spatial == nullptr || !spatial->is_inside_tree()) {
+        return {nullptr, 0.0};
+    }
+    const godot::Ref<godot::World3D> world = spatial->get_world_3d();
+    auto* space = world.is_valid() ? world->get_direct_space_state() : nullptr;
+    if (space == nullptr) {
+        return {nullptr, 0.0};
+    }
+    const auto query = godot::PhysicsRayQueryParameters3D::create(
+        from, to, physics_layer::solid);
+    const Dictionary hit = space->intersect_ray(query);
+    if (hit.is_empty()) {
+        return {nullptr, 0.0};
+    }
+    const Vector3 position = hit["position"];
+    return {static_cast<godot::Object*>(hit["collider"]), static_cast<double>(from.distance_to(position))};
+}
+
+} // namespace
+
 Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const Vector3& to) const {
     Dictionary out;
     if (root == nullptr) {
         return out;
     }
-    double best = std::numeric_limits<double>::infinity();
+    // Where there is collision, the first body hit decides: its reference if
+    // that is usable, else nothing behind it. Bounds still find what has no
+    // collision of its own in front of it.
+    const auto [collider, blocked_at] = first_body(root, from, to);
+    if (collider != nullptr) {
+        auto* node = ref_of(collider);
+        auto* model = godot::Object::cast_to<godot::Node3D>(node);
+        if (model != nullptr && model->is_visible_in_tree() && node->has_meta("skydot_activatable")) {
+            out["ref"] = node->get_meta("skydot_ref");
+            out["cell"] = node->get_meta("skydot_cell");
+            out["node"] = node;
+            out["distance"] = blocked_at;
+            out["position"] = from + (to - from).normalized() * static_cast<godot::real_t>(blocked_at);
+            return out;
+        }
+    }
+    // Bounds are boxes around the model, so they start in front of its
+    // surface; allow a little.
+    constexpr double k_bounds_slack = 0.05; // metres
+    double best = collider != nullptr ? blocked_at + k_bounds_slack
+                                      : std::numeric_limits<double>::infinity();
     std::vector<godot::Node*> pending{root};
     while (!pending.empty()) {
         godot::Node* node = pending.back();

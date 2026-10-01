@@ -60,6 +60,7 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"CLMT"}, &run<parse_climate>},
     {FourCC{"WTHR"}, &run<parse_weather>},
     {FourCC{"REGN"}, &run<parse_region>},
+    {FourCC{"SPGD"}, &run<parse_shader_particle_geometry>},
     {FourCC{"LCTN"}, &run<parse_location>},
     {FourCC{"LAND"}, &run<parse_landscape>},
     {FourCC{"NAVM"}, &run<parse_nav_mesh>},

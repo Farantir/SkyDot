@@ -71,7 +71,22 @@ func _run(pack_dir: String) -> void:
     await _walk_the_slope()
     await _steps_and_walls(pack)
     cell.free()
+    await _pick_with_collision(world)
     _finish()
+
+## In the interior, the door stands 200 units north of the cube; both have
+## boxes. Picking goes by the first body hit, so the cube hides the door.
+func _pick_with_collision(world: SkydotWorld) -> void:
+    var cell := world.build_cell(world.find_cell("TestpackInterior"))
+    root.add_child(cell)
+    await ticks(2)
+    var door := world.pick_ref(cell, Vector3(0, 0, -100 * S), Vector3(0, 0, -300 * S))
+    expect(door.get("ref", 0) == 0x303, "looking north picks the door's body: %s" % door)
+    if not door.is_empty():
+        expect(absf(door["distance"] - 88 * S) < 0.01, "at the door's face: %s" % door["distance"])
+    var hidden := world.pick_ref(cell, Vector3(0, 0, 100 * S), Vector3(0, 0, -300 * S))
+    expect(hidden.is_empty(), "the cube in between hides the door: %s" % hidden)
+    cell.free()
 
 func _finish() -> void:
     print("smoke_physics: failures=", failures)
@@ -147,7 +162,10 @@ func _steps_and_walls(pack: SkydotPack) -> void:
         if bodies.size() == 1:
             var body: RigidBody3D = bodies[0]
             expect(body.collision_layer == 2 and is_equal_approx(body.mass, 5.0), "clutter weighing 5 kg")
-            body.wake()
+            expect(SkydotWorld.wake_clutter(root, crate.global_position + Vector3(5, 0, 0), 1.0) == 0,
+                   "clutter further away stays frozen")
+            expect(SkydotWorld.wake_clutter(root, crate.global_position, 1.0) == 1,
+                   "clutter near what went away wakes")
             await ticks(120)
             expect(absf(crate.position.y - (base.y + 12 * S)) < 0.03,
                    "and lands on the floor when woken: %.3f" % (crate.position.y - base.y))

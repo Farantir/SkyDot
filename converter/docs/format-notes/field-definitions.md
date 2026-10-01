@@ -11,7 +11,7 @@ layer decodes them for 38 record types. Sizes were measured with
 | --- | --- | --- |
 | `record/forms.{hpp,cpp}` | STAT DOOR LIGH CELL WRLD REFR | placing a city |
 | `record/forms_object.*` | TXST ACTI CONT MISC MSTT FURN FLOR TREE KEYM ALCH AMMO WEAP PROJ IDLM LVLN | cell contents |
-| `record/forms_world.*` | LTEX IMGS CLMT WTHR REGN LCTN LAND NAVM NAVI ACHR | world layers |
+| `record/forms_world.*` | LTEX IMGS CLMT WTHR REGN LCTN LAND NAVM NAVI ACHR SPGD | world layers |
 | `record/forms_game.*` | GMST GLOB CLAS FACT ENCH SPEL NPC_ | game data |
 
 The list lives in `defined_types()`. A type listed there without a census
