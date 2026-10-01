@@ -8,8 +8,7 @@
 namespace bethconv::record {
 namespace {
 
-/// Header: count and dataSize (uint32 each). Directory entries: two uint32.
-constexpr std::size_t k_header_size = 8;
+/// Directory entries: two uint32 (after a count and dataSize header).
 constexpr std::size_t k_directory_entry_size = 8;
 
 /// Entry count limit, so a corrupt header cannot trigger a huge reservation.

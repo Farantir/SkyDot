@@ -32,6 +32,18 @@ constexpr std::size_t k_write_buffer = 8u << 20;
     return store_error(path, io::ErrorKind::corrupt, std::string(what) + ": " + ec.message());
 }
 
+/// fopen with the native path type, so Windows does not narrow it to the
+/// ANSI code page.
+[[nodiscard]] std::FILE* open_file(const std::filesystem::path& path, const char* mode) {
+#if defined(_WIN32)
+    std::wstring wide_mode(mode, mode + std::char_traits<char>::length(mode));
+    std::FILE* file = nullptr;
+    return _wfopen_s(&file, path.c_str(), wide_mode.c_str()) == 0 ? file : nullptr;
+#else
+    return std::fopen(path.c_str(), mode);
+#endif
+}
+
 [[nodiscard]] bool seek_to(std::FILE* file, std::uint64_t offset) {
 #if defined(_WIN32)
     return _fseeki64(file, static_cast<long long>(offset), SEEK_SET) == 0;
@@ -329,7 +341,7 @@ io::ParseResult<AssetStore> AssetStore::open(const std::filesystem::path& root,
         }
     }
 
-    store.blob_ = std::fopen(blob_path.string().c_str(), "r+b");
+    store.blob_ = open_file(blob_path, "r+b");
     if (store.blob_ == nullptr) {
         return store_error(blob_path, io::ErrorKind::corrupt, "cannot open for appending");
     }
@@ -394,7 +406,7 @@ io::ParseResult<void> AssetStore::compact(const std::unordered_set<std::string>&
         if (!old_blob && index_.blob_bytes != 0) {
             return std::unexpected(old_blob.error());
         }
-        std::FILE* out = std::fopen(new_path.string().c_str(), "wb");
+        std::FILE* out = open_file(new_path, "wb");
         if (out == nullptr) {
             return store_error(new_path, io::ErrorKind::corrupt, "cannot create");
         }
@@ -444,7 +456,7 @@ io::ParseResult<void> AssetStore::compact(const std::unordered_set<std::string>&
     for (std::size_t i = 0; i < index_.entries.size(); ++i) {
         by_hex_.emplace(index_.entries[i].hash.hex(), i);
     }
-    blob_ = std::fopen(new_path.string().c_str(), "r+b");
+    blob_ = open_file(new_path, "r+b");
     if (blob_ == nullptr || !seek_to(blob_, index_.blob_bytes)) {
         return store_error(new_path, io::ErrorKind::corrupt, "cannot reopen for appending");
     }
