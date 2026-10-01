@@ -71,7 +71,10 @@ func setup(tool) -> void:
 	_actions = HBoxContainer.new()
 	_actions.add_child(PackToolUi.button("Update…", func() -> void:
 		var info: Dictionary = _infos.get(_selected, {})
-		_tool.edit_pack(_selected, info.get("manifest", {}).get("input", {}))))
+		var manifest: Dictionary = info.get("manifest", {})
+		var input: Dictionary = manifest.get("input", {}).duplicate()
+		input["max_texture"] = int(manifest.get("textures", {}).get("max_size", 0))
+		_tool.edit_pack(_selected, input)))
 	_actions.add_child(PackToolUi.button("Open folder", func() -> void:
 		OS.shell_open(_selected)))
 	_actions.add_child(PackToolUi.button("Remove from list", func() -> void:
@@ -227,6 +230,9 @@ func _on_selected() -> void:
 	else:
 		lines.append("From %s%s." % [input.get("data", "?"),
 			(" with MO2 profile " + input.get("mo2_profile", "")) if input.get("kind") == "mo2" else ""])
+	var max_size := int(manifest.get("textures", {}).get("max_size", 0))
+	if max_size > 0:
+		lines.append("Textures at most %d px." % max_size)
 	_note.text = " ".join(lines)
 	if changed:
 		_worlds = []

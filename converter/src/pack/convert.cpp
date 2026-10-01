@@ -6,6 +6,7 @@
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/script/pex.hpp"
 #include "bethconv/texture/dds.hpp"
+#include "bethconv/texture/mip_drop.hpp"
 #include "bethconv/texture/mip_tail.hpp"
 
 #include <algorithm>
@@ -116,7 +117,9 @@ std::string ConvertOptions::mesh_settings() const {
 }
 
 std::string ConvertOptions::texture_settings() const {
-    return "texture/1;" + flag("mip_tail", fix_mip_tail);
+    // The limit only when set, so full-size packs keep their asset names.
+    return "texture/1;" + flag("mip_tail", fix_mip_tail) +
+           (max_texture_size != 0 ? ";max=" + std::to_string(max_texture_size) : std::string());
 }
 
 std::string ConvertOptions::script_settings() const {
@@ -152,6 +155,10 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     manifest.converter = options.converter;
     manifest.language = options.language;
     manifest.input = options.input;
+    if (options.convert_textures) {
+        manifest.textures = TextureRecord{.max_size = options.max_texture_size,
+                                          .complete_mip_chains = options.fix_mip_tail};
+    }
 
     const auto report = [&](const std::string& phase, std::uint64_t done, std::uint64_t total) {
         if (options.progress) {
@@ -284,9 +291,38 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                 break;
             }
             std::span<const std::byte> payload = *bytes;
+            texture::SizeLimit limit;
+            if (options.max_texture_size != 0) {
+                auto limited = texture::limit_size(*bytes, *info, options.max_texture_size, vpath);
+                if (!limited) {
+                    writer->fail(failure_from(vpath, "texture", limited.error()));
+                    break;
+                }
+                limit = std::move(*limited);
+                if (limit.outcome == texture::DropOutcome::shrunk) {
+                    // The tail fix below works on the smaller file.
+                    auto smaller = texture::parse_dds(limit.data, vpath);
+                    if (!smaller) {
+                        writer->fail(failure_from(vpath, "texture", smaller.error()));
+                        break;
+                    }
+                    info = std::move(smaller);
+                    payload = limit.data;
+                    ++result.textures_shrunk;
+                    result.texture_bytes_saved += limit.saved_bytes;
+                } else if (limit.outcome != texture::DropOutcome::fits) {
+                    ++result.textures_kept_large;
+                    writer->warn(PackWarning{
+                        .vpath = vpath,
+                        .detail = "kept at " + std::to_string(info->width) + "x" +
+                                  std::to_string(info->height) + ", over the " +
+                                  std::to_string(options.max_texture_size) + " px limit (" +
+                                  std::string(texture::to_string(limit.outcome)) + ")"});
+                }
+            }
             texture::TailFix fix;
             if (options.fix_mip_tail) {
-                auto completed = texture::complete_mip_tail(*bytes, *info, vpath);
+                auto completed = texture::complete_mip_tail(payload, *info, vpath);
                 if (!completed) {
                     writer->fail(failure_from(vpath, "texture", completed.error()));
                     break;

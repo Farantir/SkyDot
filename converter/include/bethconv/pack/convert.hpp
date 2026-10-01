@@ -68,6 +68,11 @@ struct ConvertOptions {
     /// texture fingerprint.
     bool fix_mip_tail = true;
 
+    /// Largest texture side kept, in pixels; 0 keeps every texture as it is.
+    /// Larger textures lose their top mip levels (texture/mip_drop.hpp).
+    /// Part of the texture fingerprint when set.
+    std::uint32_t max_texture_size = 0;
+
     /// Substring filter on the virtual path; empty means everything.
     std::string filter;
 
@@ -109,6 +114,10 @@ struct ConvertResult {
     std::uint64_t sources{};      ///< Mounted archives and loose directories.
     std::uint64_t unique_paths{}; ///< Distinct virtual paths in the mount.
     std::uint64_t considered{};   ///< Paths passing the filter and limit.
+
+    std::uint64_t textures_shrunk{};     ///< Lost top levels to max_texture_size.
+    std::uint64_t textures_kept_large{}; ///< Over the limit with no smaller level.
+    std::uint64_t texture_bytes_saved{};
 
     /// The first few failures, for the terminal; `report.json` has all.
     std::vector<PackFailure> first_failures;

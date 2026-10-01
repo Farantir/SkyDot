@@ -1934,6 +1934,7 @@ struct ConvertArgs {
     bool no_skinning = false;
     bool keep_z_up = false;
     float unit_scale = 0.0142875f;
+    std::uint32_t max_texture_size = 0;
     bool hash_archives = false;
     bool prune = false;
     bethconv::pack::StoreLayout layout = bethconv::pack::StoreLayout::blob;
@@ -2111,6 +2112,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_scripts = !args.no_scripts;
     options.convert_lod = !args.no_lod;
     options.fix_mip_tail = !args.no_mip_fix;
+    options.max_texture_size = args.max_texture_size;
     options.mesh_read.read_collision = !args.no_collision;
     options.mesh_read.read_skinning = !args.no_skinning;
     options.mesh_write.convert_to_y_up = !args.keep_z_up;
@@ -2212,6 +2214,14 @@ int cmd_convert(const ConvertArgs& args) {
     std::fprintf(text, "                %.1f MiB written, %.1f MiB not re-converted\n",
                  static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
                  static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
+    if (args.max_texture_size != 0) {
+        std::fprintf(text, "  textures      %llu limited to %u px (%.1f MiB saved), %llu kept larger "
+                     "(no smaller level stored; listed in report.json)\n",
+                     static_cast<unsigned long long>(result->textures_shrunk),
+                     args.max_texture_size,
+                     static_cast<double>(result->texture_bytes_saved) / (1024.0 * 1024.0),
+                     static_cast<unsigned long long>(result->textures_kept_large));
+    }
     std::fprintf(text, "  store         %s, %.1f MiB\n", std::string(to_string(args.layout)).c_str(),
                  static_cast<double>(stats.store_bytes) / (1024.0 * 1024.0));
     std::fprintf(text, "  vpath.idx     %llu entries, %.1f MiB\n",
@@ -2265,6 +2275,10 @@ int cmd_convert(const ConvertArgs& args) {
                                     {"lod", stats.lod},
                                     {"bytes_written", stats.asset_bytes},
                                     {"store_bytes", stats.store_bytes}}},
+            {"textures", ordered_json{{"max_size", args.max_texture_size},
+                                      {"shrunk", result->textures_shrunk},
+                                      {"kept_large", result->textures_kept_large},
+                                      {"bytes_saved", result->texture_bytes_saved}}},
             {"failed", stats.failed},
             {"warnings", stats.warnings},
             {"orphaned_assets", stats.orphaned_assets},
@@ -2915,6 +2929,7 @@ int main(int argc, char** argv) {
     std::string convert_store = "blob";
     bool convert_quiet = false;
     bool convert_json = false;
+    std::uint32_t convert_max_texture = 0;
     std::filesystem::path convert_mo2;
     std::string convert_profile;
     auto* convert = app.add_subcommand("convert", "Convert an install into a pack");
@@ -2963,6 +2978,10 @@ int main(int argc, char** argv) {
     convert->add_option("--profile", convert_profile,
                         "With --mo2: the profile (default: the one MO2 has selected)")
         ->needs("--mo2");
+    convert->add_option("--max-texture-size", convert_max_texture,
+                        "Largest texture side in pixels; larger textures lose their top mip "
+                        "levels (0: full size)")
+        ->check(CLI::NonNegativeNumber);
     convert->add_flag("--json", convert_json,
                       "Progress and result as JSON lines on stdout; text goes to stderr");
 
@@ -3224,6 +3243,7 @@ int main(int argc, char** argv) {
                                        .no_skinning = convert_no_skinning,
                                        .keep_z_up = convert_keep_z_up,
                                        .unit_scale = convert_unit_scale,
+                                       .max_texture_size = convert_max_texture,
                                        .hash_archives = convert_hash_archives,
                                        .prune = convert_prune,
                                        .layout = *bethconv::pack::layout_from_string(convert_store),

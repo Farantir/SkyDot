@@ -60,6 +60,7 @@ add_library(bethconv_core STATIC
     mesh/gltf_writer.cpp
     texture/dds.cpp
     texture/mip_tail.cpp
+    texture/mip_drop.cpp
     pack/snapshot_writer.cpp
     pack/snapshot_reader.cpp
     pack/content_hash.cpp

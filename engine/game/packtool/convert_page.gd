@@ -12,6 +12,14 @@ extends ScrollContainer
 const MODE_DATA := 0
 const MODE_MO2 := 1
 
+## Texture profiles: name, largest side in pixels (0: as the game has them).
+const TEXTURE_PRESETS := [
+	["Desktop: full size (DDS passed through, mip chains completed)", 0],
+	["Reduced: at most 2048 px", 2048],
+	["Low-end and standalone VR: at most 1024 px", 1024],
+	["Very low: at most 512 px", 512],
+]
+
 ## Readable names for convert's phases (converter/docs/cli-json.md).
 const PHASES := {
 	"mount": "Reading archives and mod folders",
@@ -36,6 +44,7 @@ var _list_edit: LineEdit
 var _out_edit: LineEdit
 var _target_note: Label
 var _store_option: OptionButton
+var _texture_option: OptionButton
 var _prune_check: CheckBox
 var _advanced_check: CheckButton
 var _advanced_rows: Array[Control] = []
@@ -139,11 +148,13 @@ func setup(tool) -> void:
 
 	# ---- settings ----
 	var conversion := PackToolUi.section(page, "Conversion")
-	var textures := OptionButton.new()
-	textures.add_item("Desktop: textures passed through (DDS, mip chains completed)")
-	textures.disabled = true
-	textures.tooltip_text = "Smaller and mobile profiles are planned (TOOLS-REQUIREMENTS.md, section 2)."
-	PackToolUi.row(conversion, "Texture profile", textures)
+	_texture_option = OptionButton.new()
+	for preset in TEXTURE_PRESETS:
+		_texture_option.add_item(preset[0])
+	_texture_option.tooltip_text = ("Smaller textures keep their own smaller mip levels: no "
+		+ "re-encoding, each halving needs a quarter of the memory. Formats for GPUs "
+		+ "without BCn (ASTC) are not there yet (TOOLS-REQUIREMENTS.md, section 2).")
+	PackToolUi.row(conversion, "Texture profile", _texture_option)
 	_store_option = OptionButton.new()
 	_store_option.add_item("One blob file (recommended)")
 	_store_option.add_item("A file per asset (debugging; slow disks refuse it)")
@@ -224,6 +235,7 @@ func _restore() -> void:
 	_mo2_edit.text = s.get_value("form", "mo2", "")
 	_mode_option.select(s.get_value("form", "mode", MODE_DATA))
 	_store_option.select(s.get_value("form", "store", 0))
+	_texture_option.select(s.get_value("form", "texture_preset", 0))
 	# A folder the user chose is kept; a suggestion is made again.
 	if s.get_value("form", "out_manual", false):
 		_out_edit.text = s.get_value("form", "out", "")
@@ -242,6 +254,7 @@ func _save() -> void:
 	s.set_value("form", "profile", _selected_profile())
 	s.set_value("form", "mode", _mode_option.selected)
 	s.set_value("form", "store", _store_option.selected)
+	s.set_value("form", "texture_preset", _texture_option.selected)
 	s.set_value("form", "out", _out_edit.text)
 	s.set_value("form", "out_manual", _out_touched)
 	s.save(_tool.settings_path)
@@ -503,6 +516,10 @@ func _update_buttons() -> void:
 func load_input(path: String, input: Dictionary) -> void:
 	_out_edit.text = path
 	_out_touched = true
+	# Keep the pack's texture size; its assets were named with it.
+	for i in TEXTURE_PRESETS.size():
+		if TEXTURE_PRESETS[i][1] == int(input.get("max_texture", 0)):
+			_texture_option.select(i)
 	_data_edit.text = input.get("data", "")
 	if input.get("kind", "data") == "mo2":
 		_mode_option.select(MODE_MO2)
@@ -525,6 +542,7 @@ func form() -> Dictionary:
 		"out": _out_edit.text,
 		"store": "loose" if _store_option.selected == 1 else "blob",
 		"prune": _prune_check.button_pressed,
+		"max_texture": TEXTURE_PRESETS[maxi(_texture_option.selected, 0)][1],
 	}
 	if _mode_option.selected == MODE_MO2:
 		f["mo2"] = _mo2_edit.text
@@ -600,6 +618,10 @@ func _on_event(data: Dictionary) -> void:
 				data["warnings"]]
 			_summary.add_theme_color_override("font_color",
 				PackToolUi.COLORS["ok" if data["failed"] == 0 else "warn"])
+			var t: Dictionary = data.get("textures", {})
+			if int(t.get("max_size", 0)) > 0:
+				_append_log("%d textures limited to %d px (%s saved); %d kept larger, see report.json" % [
+					t["shrunk"], t["max_size"], BethconvCli.format_bytes(t["bytes_saved"]), t["kept_large"]])
 			for failure in data["first_failures"]:
 				_append_log("failed: %s (%s): %s" % [failure["vpath"], failure["stage"], failure["detail"]])
 			_result_buttons.visible = true

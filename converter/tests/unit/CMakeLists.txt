@@ -18,6 +18,7 @@ add_executable(bethconv_unit_tests
     test_gltf_writer.cpp
     test_dds.cpp
     test_mip_tail.cpp
+    test_mip_drop.cpp
     test_forms.cpp
     test_vmad.cpp
     test_quest.cpp

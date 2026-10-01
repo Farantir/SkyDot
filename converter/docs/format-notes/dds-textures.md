@@ -158,3 +158,20 @@ textures.
 
 Copied without rewriting: volume textures (depth halves too, so their sizes are
 not computed) and DX10 texture arrays.
+
+## Limiting the size
+
+`convert --max-texture-size N` (`texture/mip_drop.hpp`) keeps every texture
+within N pixels on its longer side by dropping its top mip levels: the smaller
+levels are already in the file, so nothing is decoded or re-encoded. Only
+dwHeight, dwWidth, dwPitchOrLinearSize (when set) and dwMipMapCount change;
+cubemaps are cut face by face. The mip-tail fix then runs on the smaller file.
+A texture over the limit without a chain, or whose chain stops before a level
+that fits, is passed through and listed as a warning.
+
+Measured on vanilla SE (2026-10-01): the first 2,000 texture paths at 512 px:
+300 cut, 930 MiB saved, none kept larger; all 1,999 files of a `view` load in
+Godot, the largest at 512. All 42 `textures/cubemaps/` at 32 px: 9 cut, 41 load
+through `SkydotPack.load_texture` as a `Cubemap`, one is a 2D texture, none
+failed.
+

@@ -34,7 +34,9 @@ tested against real installs:
 - **Meshes:** NIF → GLB for LE and SE geometry, skins and collision. All 39,263
   vanilla NIFs convert and open in Godot and Blender.
 - **Textures:** DDS passthrough, with short mip chains completed for Godot. All
-  50,413 vanilla textures parse. See `docs/format-notes/dds-textures.md`.
+  50,413 vanilla textures parse. `--max-texture-size N` makes larger textures
+  smaller by dropping their top mip levels, without re-encoding. See
+  `docs/format-notes/dds-textures.md`.
 - **Scripts:** compiled Papyrus decoded completely (objects, states,
   functions, bytecode, line numbers) and stored as FlatBuffers; VMAD script
   data decoded on every record that carries it. All vanilla scripts decode;

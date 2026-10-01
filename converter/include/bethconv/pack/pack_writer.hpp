@@ -108,10 +108,17 @@ struct InputRecord {
     std::uint64_t mods{};      ///< "mo2" only: enabled mods mounted.
 };
 
+/// How textures were converted, so an engine can tell a reduced pack.
+struct TextureRecord {
+    std::uint32_t max_size{};   ///< 0: full size.
+    bool complete_mip_chains{};
+};
+
 struct PackManifest {
     std::string converter;   ///< "bethconv 0.0.1". Also hashed into every asset.
     std::string language;
     std::optional<InputRecord> input;
+    std::optional<TextureRecord> textures;
     std::vector<std::string> load_order;
     std::vector<SourceRecord> sources;
     std::optional<RecordsRecord> records;
