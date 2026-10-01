@@ -67,12 +67,12 @@ TEST_CASE("the LE and SE encodings of one mesh read back identically", "[mesh][f
     // Positions must match numerically. SE uses half floats, so not exactly,
     // but within a millimetre on a ten-unit cube.
     for (std::size_t i = 0; i < a.positions.size(); ++i) {
-        CHECK_THAT(a.positions[i].x,
-                   Catch::Matchers::WithinAbs(b.positions[i].x, 0.001));
-        CHECK_THAT(a.positions[i].y,
-                   Catch::Matchers::WithinAbs(b.positions[i].y, 0.001));
-        CHECK_THAT(a.positions[i].z,
-                   Catch::Matchers::WithinAbs(b.positions[i].z, 0.001));
+        CHECK_THAT(static_cast<double>(a.positions[i].x),
+                   Catch::Matchers::WithinAbs(static_cast<double>(b.positions[i].x), 0.001));
+        CHECK_THAT(static_cast<double>(a.positions[i].y),
+                   Catch::Matchers::WithinAbs(static_cast<double>(b.positions[i].y), 0.001));
+        CHECK_THAT(static_cast<double>(a.positions[i].z),
+                   Catch::Matchers::WithinAbs(static_cast<double>(b.positions[i].z), 0.001));
     }
     CHECK(a.indices == b.indices);
 }

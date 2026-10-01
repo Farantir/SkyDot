@@ -92,8 +92,9 @@ jobs:
         # Fail if a sanitizer runtime is missing instead of dropping it.
         run: cmake --preset ${{ matrix.preset }} -DBETHCONV_SANITIZE_STRICT=ON
 
+      # -k 0: report every failing file, not only the first.
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        run: cmake --build --preset ${{ matrix.preset }} -- -k 0
 
       - name: Test
         run: ctest --preset ${{ matrix.preset }}
@@ -110,6 +111,8 @@ jobs:
   engine:
     name: engine ${{ matrix.name }}
     needs: converter
+    # The test pack comes from one converter job; the others need not pass.
+    if: ${{ !cancelled() }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -171,8 +174,9 @@ jobs:
           CXX: ${{ matrix.cxx }}
         run: cmake --preset ${{ matrix.preset }} -DSKYDOT_TESTPACK="${{ github.workspace }}/testpack"
 
+      # -k 0: report every failing file, not only the first.
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        run: cmake --build --preset ${{ matrix.preset }} -- -k 0
 
       - name: Test
         env:

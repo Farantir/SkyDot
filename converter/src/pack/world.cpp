@@ -22,6 +22,26 @@
 namespace bethconv::pack {
 namespace {
 
+/// The entry of a vector sorted by id with this id, or null. By index: MSVC
+/// warns about std::lower_bound over FlatBuffers' 32-bit iterators.
+template <typename T>
+const T* find_sorted(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uint32_t id) {
+    if (list == nullptr) {
+        return nullptr;
+    }
+    flatbuffers::uoffset_t lo = 0;
+    flatbuffers::uoffset_t hi = list->size();
+    while (lo < hi) {
+        const flatbuffers::uoffset_t mid = lo + (hi - lo) / 2;
+        if (list->Get(mid)->id() < id) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo < list->size() && list->Get(lo)->id() == id ? list->Get(lo) : nullptr;
+}
+
 namespace wfb = bethconv::pack::wfb;
 using io::FourCC;
 using record::FormId;
@@ -1556,12 +1576,11 @@ std::optional<WorldCell> WorldFile::cell(std::uint32_t id) const {
     if (cells == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(cells->begin(), cells->end(), id,
-                                     [](const wfb::Cell* c, std::uint32_t v) { return c->id() < v; });
-    if (it == cells->end() || it->id() != id) {
+    const auto* it = find_sorted(cells, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
-    return to_cell(**it);
+    return to_cell(*it);
 }
 
 std::optional<WorldCell> WorldFile::cell_at(std::size_t index) const {
@@ -1591,9 +1610,8 @@ std::optional<WorldBase> WorldFile::base(std::uint32_t id) const {
     if (bases == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(bases->begin(), bases->end(), id,
-                                     [](const wfb::Base* b, std::uint32_t v) { return b->id() < v; });
-    if (it == bases->end() || it->id() != id) {
+    const auto* it = find_sorted(bases, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
     WorldBase out;
@@ -1633,9 +1651,7 @@ const T* find_by_id(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std
     if (list == nullptr) {
         return nullptr;
     }
-    const auto it = std::lower_bound(list->begin(), list->end(), id,
-                                     [](const T* e, std::uint32_t v) { return e->id() < v; });
-    return it == list->end() || it->id() != id ? nullptr : *it;
+    return find_sorted(list, id);
 }
 
 } // namespace
@@ -1780,9 +1796,8 @@ std::optional<WorldLandTexture> WorldFile::land_texture(std::uint32_t id) const 
     if (ltex == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(ltex->begin(), ltex->end(), id,
-                                     [](const wfb::LandTexture* l, std::uint32_t v) { return l->id() < v; });
-    if (it == ltex->end() || it->id() != id) {
+    const auto* it = find_sorted(ltex, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
     const auto str = [](const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string{}; };
@@ -1800,9 +1815,8 @@ std::optional<WorldWater> WorldFile::water(std::uint32_t id) const {
     if (waters == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(waters->begin(), waters->end(), id,
-                                     [](const wfb::Water* w, std::uint32_t v) { return w->id() < v; });
-    if (it == waters->end() || it->id() != id) {
+    const auto* it = find_sorted(waters, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
     WorldWater out;
@@ -1843,9 +1857,8 @@ std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
     if (climates == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(climates->begin(), climates->end(), id,
-                                     [](const wfb::Climate* c, std::uint32_t v) { return c->id() < v; });
-    if (it == climates->end() || it->id() != id) {
+    const auto* it = find_sorted(climates, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
     WorldClimate out;
@@ -1865,9 +1878,8 @@ std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
     if (weathers == nullptr) {
         return std::nullopt;
     }
-    const auto it = std::lower_bound(weathers->begin(), weathers->end(), id,
-                                     [](const wfb::Weather* w, std::uint32_t v) { return w->id() < v; });
-    if (it == weathers->end() || it->id() != id) {
+    const auto* it = find_sorted(weathers, id);
+    if (it == nullptr) {
         return std::nullopt;
     }
     WorldWeather out;
