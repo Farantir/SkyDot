@@ -74,11 +74,16 @@ constexpr std::array<EditionInfo, 3> k_editions{{
 }
 
 [[nodiscard]] std::filesystem::path env_path(const char* name) {
-    // getenv is fine here: read once, at startup, from one thread.
+    // getenv is fine here: read once, at startup, from one thread. MSVC
+    // deprecates it (C4996) in favour of _dupenv_s.
 #ifdef _MSC_VER
-#pragma warning(suppress : 4996)
+#pragma warning(push)
+#pragma warning(disable : 4996)
 #endif
     const char* value = std::getenv(name);
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
     return value != nullptr ? std::filesystem::path(value) : std::filesystem::path();
 }
 

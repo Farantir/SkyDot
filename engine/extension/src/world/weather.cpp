@@ -879,7 +879,7 @@ void SkydotWeather::configure_precipitation(const Weather* weather) {
     quad->set_material(material);
 
     particles_->set_amount(amount);
-    particles_->set_lifetime(box / speed);
+    particles_->set_lifetime(static_cast<double>(box / speed));
     // Start with the box full rather than with the first drops at its top.
     particles_->set_pre_process_time(static_cast<double>(box / speed));
     particles_->set_process_material(process);
@@ -904,7 +904,7 @@ void SkydotWeather::update_precipitation() {
         in = begin >= 0.999F ? (t >= 1.0F ? 1.0F : 0.0F) : std::clamp((t - begin) / (1.0F - begin), 0.0F, 1.0F);
     }
     const auto* shown = in > 0.0F || out <= 0.0F ? to : from;
-    precipitation_ = in > 0.0F ? in : out;
+    precipitation_ = static_cast<double>(in > 0.0F ? in : out);
     configure_precipitation(precipitation_ > 0.0 ? shown : nullptr);
     if (particles_for_ == 0) {
         return;
