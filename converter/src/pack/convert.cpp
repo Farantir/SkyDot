@@ -151,6 +151,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     PackManifest manifest;
     manifest.converter = options.converter;
     manifest.language = options.language;
+    manifest.input = options.input;
 
     const auto report = [&](const std::string& phase, std::uint64_t done, std::uint64_t total) {
         if (options.progress) {
@@ -353,6 +354,9 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     report("assets", work.size(), work.size());
 
     // ---- the manifest -------------------------------------------------
+    // Hashing every plugin and writing the indexes (and pruning) takes seconds
+    // on a large install; a phase of its own so progress does not stall.
+    report("finish", 0, 1);
     for (const auto& entry : order.entries()) {
         manifest.load_order.push_back(entry.name);
         std::error_code ec;
@@ -383,6 +387,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         return std::unexpected(stats.error());
     }
     result.pack = *stats;
+    report("finish", 1, 1);
     for (const auto& failure : writer->failures()) {
         if (result.first_failures.size() >= 10) {
             break;

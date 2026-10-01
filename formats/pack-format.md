@@ -68,9 +68,10 @@ newline):
 
 | Key | Content |
 | --- | --- |
-| `pack_format_version` | `4` |
+| `pack_format_version` | `5` |
 | `converter` | writer name and version |
 | `language` | language used to resolve strings |
+| `input` | optional: what the pack was converted from, so it can be converted again: `kind` (`data` or `mo2`), `edition`, `data` (the Data folder), `plugin_list`, and for `mo2` also `mo2_instance`, `mo2_profile`, `mods`. Local paths; nothing reads it but front ends |
 | `load_order` | plugin filenames in order |
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
 | `records` | `file`, `forms`, `bytes`, `hash`; absent without a snapshot |

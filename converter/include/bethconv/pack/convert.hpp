@@ -43,6 +43,9 @@ struct ConvertOptions {
 
     std::string language{std::string(record::k_default_language)};
 
+    /// Written to the manifest's `input` key; affects nothing else.
+    std::optional<InputRecord> input;
+
     /// Write `records.fb`. Off for asset-only runs.
     bool write_records = true;
 

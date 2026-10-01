@@ -82,7 +82,8 @@ struct Fixture {
         return bethconv::record::LoadOrder::build(
             dir.path(), list,
             bethconv::record::LoadOrderOptions{.active_only = true,
-                                               .add_implicit_masters = false});
+                                               .add_implicit_masters = false,
+                                               .always_loaded = {}});
     }
 };
 

@@ -1000,7 +1000,8 @@ int main(int argc, char** argv) {
         const auto order = bethconv::record::LoadOrder::build(
             data, listed,
             bethconv::record::LoadOrderOptions{.active_only = true,
-                                               .add_implicit_masters = false});
+                                               .add_implicit_masters = false,
+                                               .always_loaded = {}});
         if (!order.problems().empty()) {
             for (const auto& problem : order.problems()) {
                 std::cerr << "load order: " << problem.to_string() << "\n";

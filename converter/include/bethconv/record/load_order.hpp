@@ -126,6 +126,14 @@ struct LoadOrderOptions {
 
     /// Prepend implicit masters that exist and are not listed.
     bool add_implicit_masters = true;
+
+    /// Plugins the game loads right after the implicit masters whatever the
+    /// list says, in this order: Skyrim SE's Creation Club list (`Skyrim.ccc`
+    /// next to the executable; install::creation_club_plugins). Hoisted like
+    /// the masters; missing files are skipped. LOOT's libloadorder treats them
+    /// the same way ("early loading plugins"). Without them, a plugins.txt
+    /// that lists no Creation Club content drops what the game loads anyway.
+    std::vector<std::string> always_loaded;
 };
 
 /// A resolved load order: plugins, order and indices.
@@ -134,6 +142,14 @@ public:
     /// Build from a list. Names match the data folder case-insensitively.
     [[nodiscard]] static LoadOrder build(const std::filesystem::path& data_dir,
                                          const PluginList& list, const LoadOrderOptions& options = {});
+
+    /// Build from a list, finding plugins in several folders. A name present
+    /// in more than one folder is taken from the last: Mod Organizer's mods
+    /// overlay the game's Data folder in priority order, and the cleaned
+    /// masters a list ships must replace the game's.
+    [[nodiscard]] static LoadOrder build(std::span<const std::filesystem::path> plugin_dirs,
+                                         const PluginList& list,
+                                         const LoadOrderOptions& options = {});
 
     /// Build from the data folder alone, as the game does without a
     /// `plugins.txt`: implicit masters, then by modification time, then name.

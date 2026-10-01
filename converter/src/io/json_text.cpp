@@ -70,4 +70,14 @@ std::string json_text(std::string_view text) {
     return out;
 }
 
+std::string path_text(const std::filesystem::path& path) {
+    const auto utf8 = path.u8string();
+    std::string bytes;
+    bytes.reserve(utf8.size());
+    for (const char8_t c : utf8) {
+        bytes.push_back(static_cast<char>(c));
+    }
+    return json_text(bytes);
+}
+
 } // namespace bethconv::io

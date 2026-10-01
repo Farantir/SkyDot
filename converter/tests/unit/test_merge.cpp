@@ -206,7 +206,7 @@ PluginList listed(const std::vector<std::string>& names) {
 }
 
 LoadOrderOptions plain() {
-    return LoadOrderOptions{.active_only = true, .add_implicit_masters = false};
+    return LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}};
 }
 
 /// Collects winning records from the second pass, to compare with the index.

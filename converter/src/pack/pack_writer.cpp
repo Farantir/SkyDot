@@ -230,6 +230,19 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     doc["pack_format_version"] = k_pack_format_version;
     doc["converter"] = manifest.converter;
     doc["language"] = json_text(manifest.language);
+    if (manifest.input) {
+        const auto& in = *manifest.input;
+        ordered_json input{{"kind", json_text(in.kind)},
+                           {"edition", json_text(in.edition)},
+                           {"data", json_text(in.data)},
+                           {"plugin_list", json_text(in.plugin_list)}};
+        if (in.kind == "mo2") {
+            input["mo2_instance"] = json_text(in.mo2_instance);
+            input["mo2_profile"] = json_text(in.mo2_profile);
+            input["mods"] = in.mods;
+        }
+        doc["input"] = std::move(input);
+    }
 
     auto order = ordered_json::array();
     for (const auto& plugin : manifest.load_order) {

@@ -63,6 +63,25 @@ index_directory(const std::filesystem::path& dir) {
     return out;
 }
 
+/// index_directory over several folders; a later folder replaces an earlier
+/// one's file of the same name.
+[[nodiscard]] std::vector<std::pair<std::string, std::filesystem::path>>
+index_directories(std::span<const std::filesystem::path> dirs) {
+    std::vector<std::pair<std::string, std::filesystem::path>> out;
+    for (const auto& dir : dirs) {
+        for (auto& [key, path] : index_directory(dir)) {
+            const auto it = std::ranges::lower_bound(
+                out, key, {}, &std::pair<std::string, std::filesystem::path>::first);
+            if (it != out.end() && it->first == key) {
+                it->second = std::move(path);
+            } else {
+                out.emplace(it, std::move(key), std::move(path));
+            }
+        }
+    }
+    return out;
+}
+
 [[nodiscard]] const std::filesystem::path* lookup(
     const std::vector<std::pair<std::string, std::filesystem::path>>& index,
     std::string_view name) {
@@ -159,8 +178,13 @@ io::ParseResult<PluginList> read_plugin_list(const std::filesystem::path& path) 
 
 LoadOrder LoadOrder::build(const std::filesystem::path& data_dir, const PluginList& list,
                            const LoadOrderOptions& options) {
+    return build(std::span(&data_dir, 1), list, options);
+}
+
+LoadOrder LoadOrder::build(std::span<const std::filesystem::path> plugin_dirs,
+                           const PluginList& list, const LoadOrderOptions& options) {
     LoadOrder order;
-    const auto index = index_directory(data_dir);
+    const auto index = index_directories(plugin_dirs);
 
     // ---- the name sequence, before anything is opened ---------------------
 
@@ -186,15 +210,22 @@ LoadOrder LoadOrder::build(const std::filesystem::path& data_dir, const PluginLi
             }
         }
     }
+    for (const auto& name : options.always_loaded) {
+        if (lookup(index, name) != nullptr && !already(name)) {
+            push(ListedPlugin{.name = name, .active = true});
+        }
+    }
 
     for (const auto& plugin : list.plugins) {
         if (list.marks_active && options.active_only && !plugin.active) {
             continue;
         }
         if (already(plugin.name)) {
-            const bool implicit = std::ranges::any_of(
-                implicit_masters(),
-                [&](std::string_view m) { return ascii_lower(m) == ascii_lower(plugin.name); });
+            const auto same = [&](std::string_view m) {
+                return ascii_lower(m) == ascii_lower(plugin.name);
+            };
+            const bool implicit = std::ranges::any_of(implicit_masters(), same) ||
+                                  std::ranges::any_of(options.always_loaded, same);
             if (!implicit) {
                 order.problems_.push_back(LoadOrderProblem{
                     .kind = LoadOrderProblem::Kind::duplicate,

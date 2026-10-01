@@ -150,7 +150,7 @@ pack::SnapshotStats build_snapshot(const TempDir& dir, const std::filesystem::pa
     make_patch(dir, "Patch.esp", "Master.esm");
     const auto order = record::LoadOrder::build(
         dir.path(), listed({"Master.esm", "Patch.esp"}),
-        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
     REQUIRE(order.problems().empty());
     const auto world = record::MergedWorld::build(order);
     const auto stats = pack::write_snapshot(world, order, out);
@@ -510,7 +510,7 @@ TEST_CASE("a payload keeps the fields no definition decodes", "[pack][snapshot]"
 
     const auto order = record::LoadOrder::build(
         dir.path(), listed({"Verbatim.esm"}),
-        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
     REQUIRE(order.problems().empty());
     const auto world = record::MergedWorld::build(order);
     const auto stats = pack::write_snapshot(world, order, path);

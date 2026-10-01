@@ -95,9 +95,23 @@ struct WorldRecord {
     ContentHash hash;
 };
 
+/// What the pack was converted from, so a front end can convert it again with
+/// the same inputs. Local paths: packs are never redistributed. Not hashed into
+/// anything; the sources are (`source_hashes`).
+struct InputRecord {
+    std::string kind;          ///< "data" (a Data folder) or "mo2" (Data plus a profile).
+    std::string edition;       ///< install::to_string(Edition).
+    std::string data;          ///< The game's Data folder.
+    std::string plugin_list;   ///< The list file used; empty if none.
+    std::string mo2_instance;  ///< "mo2" only.
+    std::string mo2_profile;   ///< "mo2" only.
+    std::uint64_t mods{};      ///< "mo2" only: enabled mods mounted.
+};
+
 struct PackManifest {
     std::string converter;   ///< "bethconv 0.0.1". Also hashed into every asset.
     std::string language;
+    std::optional<InputRecord> input;
     std::vector<std::string> load_order;
     std::vector<SourceRecord> sources;
     std::optional<RecordsRecord> records;

@@ -59,6 +59,15 @@ tested against real installs:
   base objects, model paths and lights, load doors, locks, linked refs,
   activate parents and scripts, ready for the engine. `bethconv cell`
   inspects it.
+- **Installs and mods:** `bethconv detect` finds Steam installs (every
+  library), their build and the game's `plugins.txt` (under Proton too);
+  `convert --mo2 <instance>` converts a Mod Organizer 2 profile (also
+  Wabbajack lists), mounting the mods in the profile's priority over Data,
+  as MO2's virtual filesystem would. Creation Club plugins from `Skyrim.ccc`
+  load after the masters. See `include/bethconv/install/`.
+- **For front ends:** `detect`, `mo2`, `target`, `info`, `cell` and
+  `convert` print JSON with `--json`; `convert` streams progress events. See
+  `docs/cli-json.md`. The pack tool in `../engine/game/packtool/` uses them.
 - **View:** `bethconv view` rebuilds the virtual directory tree from a pack,
   adding glTF images back, so Godot or Blender can open the meshes. Choose a
   subset with `--filter`, `--from` or `--limit` (`--all` for everything).

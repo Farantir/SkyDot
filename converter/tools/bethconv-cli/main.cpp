@@ -16,8 +16,17 @@
 //   convert   produce a pack
 //   view      materialize a pack as a directory tree
 //   cell      inspect cells in a pack's world.fb
+//   detect    find installs (front_end.cpp, as are the next three)
+//   mo2       read a Mod Organizer 2 instance
+//   target    check a folder for a pack
+//   info      summarize a pack
+#include "front_end.hpp"
+
 #include "bethconv/archive/archive_set.hpp"
 #include "bethconv/archive/vpath.hpp"
+#include "bethconv/install/mo2.hpp"
+#include "bethconv/install/mount_plan.hpp"
+#include "bethconv/io/json_text.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/output_target.hpp"
 #include "bethconv/io/span_stream.hpp"
@@ -331,23 +340,11 @@ int cmd_strings(const std::vector<std::filesystem::path>& sources,
 /// `strings/` paths have more than one provider rather than assuming none.
 std::size_t mount_data_folder(bethconv::archive::ArchiveSet& set,
                               const std::filesystem::path& data_dir) {
-    std::vector<std::filesystem::path> archives;
-    std::error_code ec;
-    for (const auto& entry : std::filesystem::directory_iterator(data_dir, ec)) {
-        if (!entry.is_regular_file(ec)) {
-            continue;
-        }
-        auto ext = entry.path().extension().string();
-        std::ranges::transform(ext, ext.begin(),
-                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (ext == ".bsa" || ext == ".ba2") {
-            archives.push_back(entry.path());
-        }
+    const auto plan = bethconv::install::plan_data_folder(data_dir);
+    for (const auto& failure : bethconv::install::mount(set, plan)) {
+        std::fprintf(stderr, "warning: skipping %s\n", failure.c_str());
     }
-    std::ranges::sort(archives);
-    archives.push_back(data_dir);
-    (void)mount_all(set, archives);
-    return archives.size();
+    return plan.archives.size() + plan.loose.size();
 }
 
 /// Number of paths under `prefix` with more than one provider.
@@ -1904,207 +1901,377 @@ int cmd_loadorder(const std::filesystem::path& data_dir, const std::filesystem::
 }
 
 
-/// Whether `out` can take what is about to be written. Many small files on a
-/// FUSE filesystem or a spinning disk are refused unless `allow`: a loose
-/// pack on an SMR disk behind ntfs-3g once hung the whole mount. Large files
-/// there only warn. See io/output_target.hpp.
+/// check_target (front_end.hpp), printed: refusals as errors, the rest as
+/// warnings.
 bool output_target_ok(const std::filesystem::path& out, bool many_files, bool allow) {
-    const auto target = bethconv::io::probe_output_target(out);
-    if (!target || !target->slow_for_many_files()) {
+    const auto verdict = bethconv::cli::check_target(out, many_files, allow);
+    if (verdict.level == bethconv::cli::TargetLevel::ok) {
         return true;
     }
-    const char* why = target->fuse ? "a FUSE filesystem (every file operation goes through one "
-                                     "userspace process; NTFS via ntfs-3g is one)"
-                                   : "a spinning or zoned disk";
-    if (!many_files) {
-        std::fprintf(stderr,
-                     "warning: %s is on %s: %s. Large sequential files only; expect it to be "
-                     "slow.\n",
-                     out.string().c_str(), target->describe().c_str(), why);
-        return true;
-    }
-    if (allow) {
-        std::fprintf(stderr,
-                     "warning: writing many small files to %s, on %s: %s. Proceeding because "
-                     "of --allow-slow-target.\n",
-                     out.string().c_str(), target->describe().c_str(), why);
-        return true;
-    }
-    std::fprintf(stderr,
-                 "error: %s is on %s: %s.\n"
-                 "Writing many small files there can stall the whole mount. Write to a local "
-                 "SSD instead, use --store blob for a pack, or pass --allow-slow-target.\n",
-                 out.string().c_str(), target->describe().c_str(), why);
-    return false;
+    const bool refused = verdict.level == bethconv::cli::TargetLevel::refuse;
+    std::fprintf(stderr, "%s: %s\n", refused ? "error" : "warning", verdict.reason.c_str());
+    return !refused;
 }
+
+/// Everything `convert` takes from the command line.
+struct ConvertArgs {
+    std::filesystem::path data_dir;
+    std::filesystem::path list_file;
+    std::vector<std::filesystem::path> sources;
+    std::filesystem::path mo2;
+    std::string mo2_profile;
+    std::filesystem::path out;
+    std::string language;
+    std::string filter;
+    std::size_t limit = 0;
+    bool no_records = false;
+    bool no_meshes = false;
+    bool no_textures = false;
+    bool no_scripts = false;
+    bool no_lod = false;
+    bool no_mip_fix = false;
+    bool no_collision = false;
+    bool no_skinning = false;
+    bool keep_z_up = false;
+    float unit_scale = 0.0142875f;
+    bool hash_archives = false;
+    bool prune = false;
+    bethconv::pack::StoreLayout layout = bethconv::pack::StoreLayout::blob;
+    bool allow_slow_target = false;
+    bool quiet = false;
+    /// Progress and the result as JSON lines on stdout (docs/cli-json.md);
+    /// the text goes to stderr.
+    bool json = false;
+};
 
 /// One command, one pack. The work is in `pack/convert.cpp`; this mounts,
 /// builds the load order and prints.
-int cmd_convert(const std::filesystem::path& data_dir, const std::filesystem::path& list_file,
-                const std::vector<std::filesystem::path>& sources,
-                const std::filesystem::path& out, const std::string& language,
-                const std::string& filter, std::size_t limit, bool no_records, bool no_meshes,
-                bool no_textures, bool no_scripts, bool no_lod, bool no_mip_fix, bool no_collision,
-                bool no_skinning, bool keep_z_up, float unit_scale, bool hash_archives,
-                bool prune, bethconv::pack::StoreLayout layout, bool allow_slow_target,
-                bool quiet) {
-    if (!output_target_ok(out, layout == bethconv::pack::StoreLayout::loose, allow_slow_target)) {
-        return 2;
+int cmd_convert(const ConvertArgs& args) {
+    using bethconv::cli::emit;
+    using nlohmann::ordered_json;
+    using bethconv::io::path_text;
+    // With --json, stdout carries only JSON lines.
+    FILE* text = args.json ? stderr : stdout;
+    const auto started = std::chrono::steady_clock::now();
+    const auto seconds = [&started] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    };
+    const auto fail = [&](int code, const std::string& message) {
+        std::fprintf(stderr, "error: %s\n", message.c_str());
+        if (args.json) {
+            emit(ordered_json{{"event", "error"},
+                              {"json_version", bethconv::cli::k_json_version},
+                              {"message", message},
+                              {"exit", code}});
+        }
+        return code;
+    };
+
+    const auto verdict = bethconv::cli::check_target(
+        args.out, args.layout == bethconv::pack::StoreLayout::loose, args.allow_slow_target);
+    if (verdict.level == bethconv::cli::TargetLevel::refuse) {
+        return fail(2, verdict.reason);
     }
-    auto order = build_order(data_dir, list_file);
-    if (!order) {
-        std::fprintf(stderr, "error: %s\n", order.error().to_string().c_str());
-        return 1;
+    if (verdict.level == bethconv::cli::TargetLevel::warn) {
+        std::fprintf(stderr, "warning: %s\n", verdict.reason.c_str());
     }
-    std::printf("%zu plugins in the order, %zu problems\n", order->entries().size(),
-                order->problems().size());
+
+    // ---- what to mount and the load order ---------------------------------
+    bethconv::pack::InputRecord input;
+    input.kind = args.mo2.empty() ? "data" : "mo2";
+    input.edition = std::string(bethconv::install::to_string(bethconv::install::identify(args.data_dir)));
+    input.data = path_text(args.data_dir);
+
+    bethconv::install::MountPlan plan;
+    if (!args.mo2.empty()) {
+        auto instance = bethconv::install::read_mo2_instance(args.mo2);
+        if (!instance) {
+            return fail(1, instance.error().to_string());
+        }
+        auto profile = bethconv::install::read_mo2_profile(*instance, args.mo2_profile);
+        if (!profile) {
+            return fail(1, profile.error().to_string());
+        }
+        if (instance->edition != bethconv::install::Edition::unknown) {
+            input.edition = std::string(bethconv::install::to_string(instance->edition));
+        }
+        input.mo2_instance = path_text(instance->dir);
+        input.mo2_profile = profile->name;
+        input.mods = profile->mods.size();
+        input.plugin_list = path_text(profile->plugins_file);
+        plan = bethconv::install::plan_mo2(args.data_dir, *instance, *profile);
+        std::fprintf(text, "profile %s: %zu mods enabled, %zu disabled, %zu missing\n",
+                     profile->name.c_str(), profile->mods.size(), profile->disabled,
+                     profile->missing.size());
+        for (const auto& name : profile->missing) {
+            std::fprintf(text, "  missing mod folder: %s\n", name.c_str());
+        }
+    } else if (args.sources.empty()) {
+        plan = bethconv::install::plan_data_folder(args.data_dir);
+    }
+    if (!args.list_file.empty()) {
+        auto list = bethconv::record::read_plugin_list(args.list_file);
+        if (!list) {
+            return fail(1, list.error().to_string());
+        }
+        plan.plugins = std::move(*list);
+        input.plugin_list = path_text(args.list_file);
+    }
+
+    std::optional<bethconv::record::LoadOrder> order;
+    if (plan.plugins) {
+        auto dirs = plan.plugin_dirs;
+        if (dirs.empty()) {
+            dirs.push_back(args.data_dir);
+        }
+        bethconv::record::LoadOrderOptions order_options;
+        order_options.always_loaded = bethconv::install::creation_club_plugins(args.data_dir);
+        order = bethconv::record::LoadOrder::build(dirs, *plan.plugins, order_options);
+    } else {
+        auto built = build_order(args.data_dir, {});
+        if (!built) {
+            return fail(1, built.error().to_string());
+        }
+        order = std::move(*built);
+    }
+    std::fprintf(text, "%zu plugins in the order, %zu problems\n", order->entries().size(),
+                 order->problems().size());
     for (const auto& problem : order->problems()) {
-        std::printf("  %s\n", problem.to_string().c_str());
+        std::fprintf(text, "  %s\n", problem.to_string().c_str());
     }
 
     bethconv::archive::ArchiveSet set;
-    if (sources.empty()) {
-        const auto mounted = mount_data_folder(set, data_dir);
-        std::printf("mounted %zu sources from the data folder\n", mounted);
+    std::vector<std::string> mount_failures;
+    if (!args.sources.empty() && args.mo2.empty()) {
+        (void)mount_all(set, args.sources);
     } else {
-        (void)mount_all(set, sources);
+        std::function<void(std::size_t, std::size_t)> mounted;
+        if (args.json) {
+            mounted = [&seconds](std::size_t done, std::size_t total) {
+                emit(ordered_json{{"event", "progress"},
+                                  {"phase", "mount"},
+                                  {"done", done},
+                                  {"total", total},
+                                  {"elapsed", seconds()}});
+            };
+        }
+        mount_failures = bethconv::install::mount(set, plan, mounted);
+        for (const auto& failure : mount_failures) {
+            std::fprintf(stderr, "warning: skipping %s\n", failure.c_str());
+        }
+        std::fprintf(text, "mounted %zu archives and %zu folders\n", plan.archives.size(),
+                     plan.loose.size());
     }
-    std::printf("%zu unique virtual paths\n", set.unique_paths());
+    if (!plan.unloaded_archives.empty()) {
+        std::fprintf(text, "%zu mod archives not mounted: no loaded plugin is named like them\n",
+                     plan.unloaded_archives.size());
+    }
+    std::fprintf(text, "%zu unique virtual paths\n", set.unique_paths());
+
+    if (args.json) {
+        auto problems = ordered_json::array();
+        for (const auto& problem : order->problems()) {
+            problems.push_back(problem.to_string());
+        }
+        auto failures = ordered_json::array();
+        for (const auto& failure : mount_failures) {
+            failures.push_back(failure);
+        }
+        auto unloaded = ordered_json::array();
+        for (const auto& path : plan.unloaded_archives) {
+            unloaded.push_back(path_text(path));
+        }
+        emit(ordered_json{{"event", "start"},
+                          {"json_version", bethconv::cli::k_json_version},
+                          {"out", path_text(args.out)},
+                          {"target_warning", verdict.reason},
+                          {"input", ordered_json{{"kind", input.kind},
+                                                 {"edition", input.edition},
+                                                 {"data", input.data},
+                                                 {"plugin_list", input.plugin_list},
+                                                 {"mo2_instance", input.mo2_instance},
+                                                 {"mo2_profile", bethconv::io::json_text(input.mo2_profile)},
+                                                 {"mods", input.mods}}},
+                          {"plugins", order->entries().size()},
+                          {"load_order_problems", std::move(problems)},
+                          {"sources", set.sources().size()},
+                          {"mount_failures", std::move(failures)},
+                          {"unloaded_archives", std::move(unloaded)},
+                          {"unique_paths", set.unique_paths()}});
+    }
 
     bethconv::pack::ConvertOptions options;
-    options.out = out;
+    options.out = args.out;
     options.converter = std::string("bethconv ") + BETHCONV_VERSION;
-    options.language = language;
-    options.write_records = !no_records;
-    options.convert_meshes = !no_meshes;
-    options.convert_textures = !no_textures;
-    options.convert_scripts = !no_scripts;
-    options.convert_lod = !no_lod;
-    options.fix_mip_tail = !no_mip_fix;
-    options.mesh_read.read_collision = !no_collision;
-    options.mesh_read.read_skinning = !no_skinning;
-    options.mesh_write.convert_to_y_up = !keep_z_up;
-    options.mesh_write.unit_scale = unit_scale;
-    options.filter = filter;
-    options.limit = limit;
-    options.hash_archives = hash_archives;
-    options.prune_orphans = prune;
-    options.layout = layout;
+    options.language = args.language;
+    options.input = std::move(input);
+    options.write_records = !args.no_records;
+    options.convert_meshes = !args.no_meshes;
+    options.convert_textures = !args.no_textures;
+    options.convert_scripts = !args.no_scripts;
+    options.convert_lod = !args.no_lod;
+    options.fix_mip_tail = !args.no_mip_fix;
+    options.mesh_read.read_collision = !args.no_collision;
+    options.mesh_read.read_skinning = !args.no_skinning;
+    options.mesh_write.convert_to_y_up = !args.keep_z_up;
+    options.mesh_write.unit_scale = args.unit_scale;
+    options.filter = args.filter;
+    options.limit = args.limit;
+    options.hash_archives = args.hash_archives;
+    options.prune_orphans = args.prune;
+    options.layout = args.layout;
 
-    const auto started = std::chrono::steady_clock::now();
-    if (!quiet) {
-        options.progress = [started](const std::string& phase, std::uint64_t done,
-                                     std::uint64_t total) {
-            const auto elapsed =
-                std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    if (args.json) {
+        // A bar needs more than one step per 2,000 files (~1.5 s).
+        options.progress_interval = 250;
+        options.progress = [&seconds](const std::string& phase, std::uint64_t done,
+                                      std::uint64_t total) {
+            emit(ordered_json{{"event", "progress"},
+                              {"phase", phase},
+                              {"done", done},
+                              {"total", total},
+                              {"elapsed", seconds()}});
+        };
+    } else if (!args.quiet) {
+        options.progress = [&seconds](const std::string& phase, std::uint64_t done,
+                                      std::uint64_t total) {
             std::printf("\r%-8s %llu/%llu  %.0fs", phase.c_str(),
                         static_cast<unsigned long long>(done),
-                        static_cast<unsigned long long>(total), elapsed);
+                        static_cast<unsigned long long>(total), seconds());
             std::fflush(stdout);
         };
     }
 
     auto result = bethconv::pack::convert(set, *order, options);
-    if (!quiet) {
+    if (!args.quiet && !args.json) {
         std::printf("\r%-40s\r", "");
     }
     if (!result) {
-        std::fprintf(stderr, "error: %s\n", result.error().to_string().c_str());
-        return 1;
+        return fail(1, result.error().to_string());
     }
-    const auto elapsed =
-        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    const auto elapsed = seconds();
 
     const auto& stats = result->pack;
-    std::printf("\nwrote %s\n", out.string().c_str());
+    std::fprintf(text, "\nwrote %s\n", args.out.string().c_str());
     if (result->snapshot) {
-        std::printf("  records.fb    %llu forms, %.1f MiB\n",
-                    static_cast<unsigned long long>(result->snapshot->forms),
-                    static_cast<double>(result->snapshot->file_bytes) / (1024.0 * 1024.0));
+        std::fprintf(text, "  records.fb    %llu forms, %.1f MiB\n",
+                     static_cast<unsigned long long>(result->snapshot->forms),
+                     static_cast<double>(result->snapshot->file_bytes) / (1024.0 * 1024.0));
     }
     if (result->world) {
         const auto& w = *result->world;
-        std::printf("  world.fb      %llu cells, %llu refs, %llu worldspaces, %llu with terrain "
-                    "(%llu layers), %llu land textures, %llu water types, %llu climates, "
-                    "%llu weathers, %.1f MiB\n",
-                    static_cast<unsigned long long>(w.cells),
-                    static_cast<unsigned long long>(w.refs),
-                    static_cast<unsigned long long>(w.worlds),
-                    static_cast<unsigned long long>(w.terrains),
-                    static_cast<unsigned long long>(w.terrain_layers),
-                    static_cast<unsigned long long>(w.land_textures),
-                    static_cast<unsigned long long>(w.waters),
-                    static_cast<unsigned long long>(w.climates),
-                    static_cast<unsigned long long>(w.weathers),
-                    static_cast<double>(w.file_bytes) / (1024.0 * 1024.0));
-        std::printf("                %llu doors, %llu scripts, %llu locks, %llu linked refs, "
-                    "%llu activate parents, %llu primitives\n",
-                    static_cast<unsigned long long>(w.doors),
-                    static_cast<unsigned long long>(w.scripts),
-                    static_cast<unsigned long long>(w.locks),
-                    static_cast<unsigned long long>(w.links),
-                    static_cast<unsigned long long>(w.activate_parents),
-                    static_cast<unsigned long long>(w.primitives));
-        std::printf("                %llu quests (%llu aliases, %llu stage fragments), "
-                    "%llu globals, %llu placed actors\n",
-                    static_cast<unsigned long long>(w.quests),
-                    static_cast<unsigned long long>(w.quest_aliases),
-                    static_cast<unsigned long long>(w.quest_fragments),
-                    static_cast<unsigned long long>(w.globals),
-                    static_cast<unsigned long long>(w.actors));
-        std::printf("                %llu precipitation types, %llu regions with weather\n",
-                    static_cast<unsigned long long>(w.precipitations),
-                    static_cast<unsigned long long>(w.regions));
-        std::printf("                %llu navmeshes (%llu triangles, %llu orphaned)\n",
-                    static_cast<unsigned long long>(w.navmeshes),
-                    static_cast<unsigned long long>(w.nav_triangles),
-                    static_cast<unsigned long long>(w.orphan_navmeshes));
-        std::printf("                %llu unresolved, %llu parse errors, %llu script errors\n",
-                    static_cast<unsigned long long>(w.unresolved),
-                    static_cast<unsigned long long>(w.parse_errors),
-                    static_cast<unsigned long long>(w.script_errors));
+        std::fprintf(text, "  world.fb      %llu cells, %llu refs, %llu worldspaces, %llu with terrain "
+                     "(%llu layers), %llu land textures, %llu water types, %llu climates, "
+                     "%llu weathers, %.1f MiB\n",
+                     static_cast<unsigned long long>(w.cells),
+                     static_cast<unsigned long long>(w.refs),
+                     static_cast<unsigned long long>(w.worlds),
+                     static_cast<unsigned long long>(w.terrains),
+                     static_cast<unsigned long long>(w.terrain_layers),
+                     static_cast<unsigned long long>(w.land_textures),
+                     static_cast<unsigned long long>(w.waters),
+                     static_cast<unsigned long long>(w.climates),
+                     static_cast<unsigned long long>(w.weathers),
+                     static_cast<double>(w.file_bytes) / (1024.0 * 1024.0));
+        std::fprintf(text, "                %llu doors, %llu scripts, %llu locks, %llu linked refs, "
+                     "%llu activate parents, %llu primitives\n",
+                     static_cast<unsigned long long>(w.doors),
+                     static_cast<unsigned long long>(w.scripts),
+                     static_cast<unsigned long long>(w.locks),
+                     static_cast<unsigned long long>(w.links),
+                     static_cast<unsigned long long>(w.activate_parents),
+                     static_cast<unsigned long long>(w.primitives));
+        std::fprintf(text, "                %llu quests (%llu aliases, %llu stage fragments), "
+                     "%llu globals, %llu placed actors\n",
+                     static_cast<unsigned long long>(w.quests),
+                     static_cast<unsigned long long>(w.quest_aliases),
+                     static_cast<unsigned long long>(w.quest_fragments),
+                     static_cast<unsigned long long>(w.globals),
+                     static_cast<unsigned long long>(w.actors));
+        std::fprintf(text, "                %llu precipitation types, %llu regions with weather\n",
+                     static_cast<unsigned long long>(w.precipitations),
+                     static_cast<unsigned long long>(w.regions));
+        std::fprintf(text, "                %llu navmeshes (%llu triangles, %llu orphaned)\n",
+                     static_cast<unsigned long long>(w.navmeshes),
+                     static_cast<unsigned long long>(w.nav_triangles),
+                     static_cast<unsigned long long>(w.orphan_navmeshes));
+        std::fprintf(text, "                %llu unresolved, %llu parse errors, %llu script errors\n",
+                     static_cast<unsigned long long>(w.unresolved),
+                     static_cast<unsigned long long>(w.parse_errors),
+                     static_cast<unsigned long long>(w.script_errors));
     }
-    std::printf("  assets        %llu written, %llu deduped, %llu distinct "
-                "(%llu meshes, %llu textures, %llu scripts, %llu LOD)\n",
-                static_cast<unsigned long long>(stats.converted),
-                static_cast<unsigned long long>(stats.deduped),
-                static_cast<unsigned long long>(stats.distinct_assets),
-                static_cast<unsigned long long>(stats.meshes),
-                static_cast<unsigned long long>(stats.textures),
-                static_cast<unsigned long long>(stats.scripts),
-                static_cast<unsigned long long>(stats.lod));
-    std::printf("                %.1f MiB written, %.1f MiB not re-converted\n",
-                static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
-                static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
-    std::printf("  store         %s, %.1f MiB\n", std::string(to_string(layout)).c_str(),
-                static_cast<double>(stats.store_bytes) / (1024.0 * 1024.0));
-    std::printf("  vpath.idx     %llu entries, %.1f MiB\n",
-                static_cast<unsigned long long>(stats.index_entries),
-                static_cast<double>(stats.index_bytes) / (1024.0 * 1024.0));
-    std::printf("  report.json   %llu failed, %llu warnings\n",
-                static_cast<unsigned long long>(stats.failed),
-                static_cast<unsigned long long>(stats.warnings));
-    std::printf("  deferred      %llu inputs this pass does not convert, across "
-                "%llu extensions\n",
-                static_cast<unsigned long long>(stats.deferred),
-                static_cast<unsigned long long>(stats.deferred_kinds));
+    std::fprintf(text, "  assets        %llu written, %llu deduped, %llu distinct "
+                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD)\n",
+                 static_cast<unsigned long long>(stats.converted),
+                 static_cast<unsigned long long>(stats.deduped),
+                 static_cast<unsigned long long>(stats.distinct_assets),
+                 static_cast<unsigned long long>(stats.meshes),
+                 static_cast<unsigned long long>(stats.textures),
+                 static_cast<unsigned long long>(stats.scripts),
+                 static_cast<unsigned long long>(stats.lod));
+    std::fprintf(text, "                %.1f MiB written, %.1f MiB not re-converted\n",
+                 static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
+                 static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
+    std::fprintf(text, "  store         %s, %.1f MiB\n", std::string(to_string(args.layout)).c_str(),
+                 static_cast<double>(stats.store_bytes) / (1024.0 * 1024.0));
+    std::fprintf(text, "  vpath.idx     %llu entries, %.1f MiB\n",
+                 static_cast<unsigned long long>(stats.index_entries),
+                 static_cast<double>(stats.index_bytes) / (1024.0 * 1024.0));
+    std::fprintf(text, "  report.json   %llu failed, %llu warnings\n",
+                 static_cast<unsigned long long>(stats.failed),
+                 static_cast<unsigned long long>(stats.warnings));
+    std::fprintf(text, "  deferred      %llu inputs this pass does not convert, across "
+                 "%llu extensions\n",
+                 static_cast<unsigned long long>(stats.deferred),
+                 static_cast<unsigned long long>(stats.deferred_kinds));
     if (stats.orphaned_assets != 0) {
-        std::printf("  %llu asset(s) on disk this run's index does not name%s\n",
-                    static_cast<unsigned long long>(stats.orphaned_assets),
-                    prune ? " -- pruned" : " -- pass --prune to remove them");
+        std::fprintf(text, "  %llu asset(s) on disk this run's index does not name%s\n",
+                     static_cast<unsigned long long>(stats.orphaned_assets),
+                     args.prune ? " -- pruned" : " -- pass --prune to remove them");
     }
-    std::printf("in %.1fs\n", elapsed);
+    std::fprintf(text, "in %.1fs\n", elapsed);
 
     // Show a few failures on the terminal; the full list is in report.json.
     if (stats.failed != 0) {
-        std::printf("\nfirst %zu of %llu failures -- report.json has every one:\n",
-                    result->first_failures.size(),
-                    static_cast<unsigned long long>(stats.failed));
+        std::fprintf(text, "\nfirst %zu of %llu failures -- report.json has every one:\n",
+                     result->first_failures.size(),
+                     static_cast<unsigned long long>(stats.failed));
         for (const auto& failure : result->first_failures) {
-            std::printf("  %-8s %s\n", failure.stage.c_str(), failure.detail.c_str());
+            std::fprintf(text, "  %-8s %s\n", failure.stage.c_str(), failure.detail.c_str());
         }
     }
-    return stats.failed == 0 ? 0 : 1;
+    const int exit_code = stats.failed == 0 ? 0 : 1;
+    if (args.json) {
+        auto failures = ordered_json::array();
+        for (const auto& failure : result->first_failures) {
+            failures.push_back(ordered_json{{"vpath", bethconv::io::json_text(failure.vpath)},
+                                            {"stage", failure.stage},
+                                            {"detail", bethconv::io::json_text(failure.detail)}});
+        }
+        emit(ordered_json{
+            {"event", "done"},
+            {"json_version", bethconv::cli::k_json_version},
+            {"exit", exit_code},
+            {"elapsed", elapsed},
+            {"out", path_text(args.out)},
+            {"forms", result->snapshot ? result->snapshot->forms : 0},
+            {"cells", result->world ? result->world->cells : 0},
+            {"assets", ordered_json{{"written", stats.converted},
+                                    {"deduped", stats.deduped},
+                                    {"distinct", stats.distinct_assets},
+                                    {"meshes", stats.meshes},
+                                    {"textures", stats.textures},
+                                    {"scripts", stats.scripts},
+                                    {"lod", stats.lod},
+                                    {"bytes_written", stats.asset_bytes},
+                                    {"store_bytes", stats.store_bytes}}},
+            {"failed", stats.failed},
+            {"warnings", stats.warnings},
+            {"orphaned_assets", stats.orphaned_assets},
+            {"pruned", args.prune},
+            {"first_failures", std::move(failures)}});
+    }
+    return exit_code;
 }
 
 
@@ -2283,11 +2450,48 @@ int cmd_cell_lod(const std::filesystem::path& pack, const std::string& world_nam
 
 int cmd_cell(const std::filesystem::path& pack, const std::string& which, const std::string& filter,
              bool list, bool models, bool worlds, const std::string& world_name,
-             const std::string& grid, int radius, bool lod) {
+             const std::string& grid, int radius, bool lod, bool json) {
+    using nlohmann::ordered_json;
     auto world = bethconv::pack::WorldFile::open(pack / "world.fb");
     if (!world) {
         std::fprintf(stderr, "error: %s\n", world.error().to_string().c_str());
+        if (json) {
+            bethconv::cli::emit(ordered_json{
+                {"json_version", bethconv::cli::k_json_version},
+                {"error", world.error().to_string()}});
+        }
         return 1;
+    }
+    if (worlds && json) {
+        auto spaces = ordered_json::array();
+        for (const auto& w : world->worldspaces()) {
+            spaces.push_back(ordered_json{
+                {"id", w.id},
+                {"editor_id", bethconv::io::json_text(w.editor_id)},
+                {"parent", w.parent},
+                {"uses_parent_land", w.parent != 0 && (w.parent_flags & 0x1u) != 0},
+                {"bounds", {w.bounds[0], w.bounds[1], w.bounds[2], w.bounds[3]}}});
+        }
+        bethconv::cli::emit(ordered_json{{"json_version", bethconv::cli::k_json_version},
+                                         {"worlds", std::move(spaces)}});
+        return 0;
+    }
+    if ((list || which.empty()) && world_name.empty() && json) {
+        auto cells = ordered_json::array();
+        for (std::size_t i = 0; i < world->cell_count(); ++i) {
+            const auto cell = world->cell_at(i);
+            if (!cell || cell->editor_id.empty()) {
+                continue;
+            }
+            cells.push_back(ordered_json{{"id", cell->id},
+                                         {"editor_id", bethconv::io::json_text(cell->editor_id)},
+                                         {"interior", cell->interior()},
+                                         {"refs", cell->refs.size()}});
+        }
+        bethconv::cli::emit(ordered_json{{"json_version", bethconv::cli::k_json_version},
+                                         {"total", world->cell_count()},
+                                         {"cells", std::move(cells)}});
+        return 0;
     }
     if (worlds) {
         for (const auto& w : world->worldspaces()) {
@@ -2710,6 +2914,9 @@ int main(int argc, char** argv) {
     bool convert_prune = false;
     std::string convert_store = "blob";
     bool convert_quiet = false;
+    bool convert_json = false;
+    std::filesystem::path convert_mo2;
+    std::string convert_profile;
     auto* convert = app.add_subcommand("convert", "Convert an install into a pack");
     convert->add_option("--data", convert_data, "The game's Data folder")
         ->required()
@@ -2749,6 +2956,41 @@ int main(int argc, char** argv) {
         ->check(CLI::IsMember({"blob", "loose"}));
     convert->add_flag("--allow-slow-target", allow_slow_target, k_allow_slow_help);
     convert->add_flag("-q,--quiet", convert_quiet, "No progress line");
+    convert->add_option("--mo2", convert_mo2,
+                        "A Mod Organizer 2 instance folder: mount its profile's mods over --data")
+        ->check(CLI::ExistingDirectory)
+        ->excludes("--source");
+    convert->add_option("--profile", convert_profile,
+                        "With --mo2: the profile (default: the one MO2 has selected)")
+        ->needs("--mo2");
+    convert->add_flag("--json", convert_json,
+                      "Progress and result as JSON lines on stdout; text goes to stderr");
+
+    bool front_json = false;
+    auto* detect = app.add_subcommand("detect", "Find Skyrim installs and their plugins.txt");
+    detect->add_flag("--json", front_json, "One JSON document on stdout");
+
+    std::filesystem::path mo2_dir;
+    std::string mo2_profile;
+    auto* mo2 = app.add_subcommand("mo2", "Read a Mod Organizer 2 instance and one profile");
+    mo2->add_option("instance", mo2_dir, "The instance folder (holds ModOrganizer.ini)")
+        ->required()
+        ->check(CLI::ExistingDirectory);
+    mo2->add_option("--profile", mo2_profile, "Profile to read (default: the selected one)");
+    mo2->add_flag("--json", front_json, "One JSON document on stdout");
+
+    std::filesystem::path target_dir;
+    auto* target = app.add_subcommand(
+        "target", "Check a folder for a pack: storage, free space, whether it is a pack");
+    target->add_option("dir", target_dir, "The folder (need not exist)")->required();
+    target->add_flag("--json", front_json, "One JSON document on stdout");
+
+    std::filesystem::path info_pack;
+    auto* info = app.add_subcommand("info", "Summarize a pack: inputs, size, stale blob bytes");
+    info->add_option("pack", info_pack, "The pack directory")
+        ->required()
+        ->check(CLI::ExistingDirectory);
+    info->add_flag("--json", front_json, "One JSON document on stdout");
 
     std::filesystem::path view_pack;
     std::filesystem::path view_out;
@@ -2767,6 +3009,7 @@ int main(int argc, char** argv) {
     std::string cell_grid;
     int cell_radius = 0;
     bool cell_lod = false;
+    bool cell_json = false;
     auto* cell = app.add_subcommand("cell", "Inspect cells in a pack's world.fb");
     cell->add_option("pack", cell_pack, "The pack directory")
         ->required()
@@ -2780,6 +3023,7 @@ int main(int argc, char** argv) {
     cell->add_option("--world", cell_world, "Worldspace editor id: select an exterior region");
     cell->add_option("--grid", cell_grid, "With --world: centre cell as X,Y (default 0,0)");
     cell->add_option("--radius", cell_radius, "With --world: cells around the centre (default 0)");
+    cell->add_flag("--json", cell_json, "With --worlds or --list: one JSON document on stdout");
     cell->add_flag("--lod", cell_lod,
                    "With --world: print its LOD meshes and tree atlas (input for view --from)");
 
@@ -2961,18 +3205,47 @@ int main(int argc, char** argv) {
                            texture_verbose, texture_quiet);
     }
     if (convert->parsed()) {
-        return cmd_convert(convert_data, convert_list, convert_sources, convert_out,
-                           convert_language, convert_filter, convert_limit,
-                           convert_no_records, convert_no_meshes, convert_no_textures,
-                           convert_no_scripts, convert_no_lod, convert_no_mip_fix, convert_no_collision,
-                           convert_no_skinning, convert_keep_z_up, convert_unit_scale,
-                           convert_hash_archives, convert_prune,
-                           *bethconv::pack::layout_from_string(convert_store), allow_slow_target,
-                           convert_quiet);
+        return cmd_convert(ConvertArgs{.data_dir = convert_data,
+                                       .list_file = convert_list,
+                                       .sources = convert_sources,
+                                       .mo2 = convert_mo2,
+                                       .mo2_profile = convert_profile,
+                                       .out = convert_out,
+                                       .language = convert_language,
+                                       .filter = convert_filter,
+                                       .limit = convert_limit,
+                                       .no_records = convert_no_records,
+                                       .no_meshes = convert_no_meshes,
+                                       .no_textures = convert_no_textures,
+                                       .no_scripts = convert_no_scripts,
+                                       .no_lod = convert_no_lod,
+                                       .no_mip_fix = convert_no_mip_fix,
+                                       .no_collision = convert_no_collision,
+                                       .no_skinning = convert_no_skinning,
+                                       .keep_z_up = convert_keep_z_up,
+                                       .unit_scale = convert_unit_scale,
+                                       .hash_archives = convert_hash_archives,
+                                       .prune = convert_prune,
+                                       .layout = *bethconv::pack::layout_from_string(convert_store),
+                                       .allow_slow_target = allow_slow_target,
+                                       .quiet = convert_quiet,
+                                       .json = convert_json});
+    }
+    if (detect->parsed()) {
+        return bethconv::cli::cmd_detect(front_json);
+    }
+    if (mo2->parsed()) {
+        return bethconv::cli::cmd_mo2(mo2_dir, mo2_profile, front_json);
+    }
+    if (target->parsed()) {
+        return bethconv::cli::cmd_target(target_dir, front_json);
+    }
+    if (info->parsed()) {
+        return bethconv::cli::cmd_info(info_pack, front_json);
     }
     if (cell->parsed()) {
         return cmd_cell(cell_pack, cell_which, cell_filter, cell_list, cell_models, cell_worlds,
-                        cell_world, cell_grid, cell_radius, cell_lod);
+                        cell_world, cell_grid, cell_radius, cell_lod, cell_json);
     }
     if (view->parsed()) {
         return cmd_view(view_pack, view_out, view_filter, view_limit, view_list, view_copy,

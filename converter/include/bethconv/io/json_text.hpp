@@ -13,6 +13,7 @@
 // UTF-8, passes through, and the escaping is reversible.
 #pragma once
 
+#include <filesystem>
 #include <string>
 #include <string_view>
 
@@ -34,5 +35,9 @@ namespace bethconv::io {
 /// above U+10FFFF. Game strings are often cp1252, so high bytes are not assumed
 /// to be UTF-8.
 [[nodiscard]] std::size_t utf8_sequence_length(std::string_view text, std::size_t i);
+
+/// A path as JSON-safe UTF-8 (json_text over its UTF-8 form), for reports and
+/// machine-readable output. Native separators are kept.
+[[nodiscard]] std::string path_text(const std::filesystem::path& path);
 
 } // namespace bethconv::io

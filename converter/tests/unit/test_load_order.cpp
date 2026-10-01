@@ -49,7 +49,7 @@ PluginList listed(const std::vector<std::string>& names, bool marks_active = fal
 
 /// Options without implicit-master handling, which most tests do not need.
 LoadOrderOptions plain() {
-    return LoadOrderOptions{.active_only = true, .add_implicit_masters = false};
+    return LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}};
 }
 
 } // namespace

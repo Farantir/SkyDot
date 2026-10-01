@@ -100,7 +100,8 @@ struct Fixture {
         return bethconv::record::LoadOrder::build(
             dir.path(), list,
             bethconv::record::LoadOrderOptions{.active_only = true,
-                                               .add_implicit_masters = false});
+                                               .add_implicit_masters = false,
+                                               .always_loaded = {}});
     }
 
     /// Build the pack the views are made from.
@@ -319,7 +320,7 @@ TEST_CASE("two meshes with one hash at one depth are written once", "[view]") {
     list.plugins.push_back(bethconv::record::ListedPlugin{.name = "Fixture.esm", .active = true});
     const auto order = bethconv::record::LoadOrder::build(
         dir.path(), list,
-        bethconv::record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        bethconv::record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
 
     ConvertOptions convert_options;
     convert_options.out = pack;

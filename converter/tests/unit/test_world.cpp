@@ -582,7 +582,7 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
         list.plugins.push_back(record::ListedPlugin{.name = name, .active = true});
     }
     const auto order = record::LoadOrder::build(
-        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
     REQUIRE(order.entries().size() == 3);
 
     const auto world = record::MergedWorld::build(order);
@@ -681,7 +681,7 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     record::PluginList list;
     list.plugins.push_back(record::ListedPlugin{.name = "Land.esm", .active = true});
     const auto order = record::LoadOrder::build(
-        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
     const auto world = record::MergedWorld::build(order);
     const auto out = dir / "world.fb";
     const auto stats = pack::write_world(world, order, out);
@@ -967,7 +967,7 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
         list.plugins.push_back(record::ListedPlugin{.name = name, .active = true});
     }
     const auto order = record::LoadOrder::build(
-        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false});
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
     const auto world = record::MergedWorld::build(order);
     const auto out = dir / "world.fb";
     const auto stats = pack::write_world(world, order, out);

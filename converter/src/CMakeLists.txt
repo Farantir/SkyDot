@@ -35,6 +35,10 @@ add_library(bethconv_core STATIC
     io/span_stream.cpp
     io/output_target.cpp
     io/json_text.cpp
+    install/vdf.cpp
+    install/game_install.cpp
+    install/mo2.cpp
+    install/mount_plan.cpp
     record/types.cpp
     record/headers.cpp
     record/plugin.cpp
@@ -83,5 +87,10 @@ target_link_libraries(bethconv_core
     PRIVATE bethconv::warnings ZLIB::ZLIB lz4::lz4 bsa::bsa nifly fastgltf::fastgltf nlohmann_json::nlohmann_json
             flatbuffers::flatbuffers BLAKE3::blake3
     PUBLIC bethconv::sanitizers)
+
+# install/game_install.cpp reads Steam's and the games' registry keys.
+if(WIN32)
+    target_link_libraries(bethconv_core PRIVATE advapi32)
+endif()
 
 set_target_properties(bethconv_core PROPERTIES POSITION_INDEPENDENT_CODE ON)
