@@ -82,6 +82,30 @@ The engine shows interior cells and streams exterior ones. What exists:
 Not yet: NPCs, most Papyrus natives (actors, dialogue),
 conditions, the VR shell.
 
+### The pack tool
+
+The project's main scene converts installs and opens packs, for anyone
+without a terminal:
+
+```sh
+godot4.7 --path game          # or run an exported build
+```
+
+- **Convert:** picks a detected install (Steam libraries, the game's
+  `plugins.txt`), optionally a Mod Organizer 2 instance and profile, and an
+  output folder that `bethconv target` checks while it is typed (slow or
+  FUSE disks are flagged before anything starts). Progress, the log and the
+  result come from `bethconv convert --json`.
+- **Packs:** every pack the tool wrote or opened and those in the packs
+  folder, with size, stale blob bytes and failures; update one with its
+  recorded inputs, delete it, or open it in the viewer at Riverwood, in any
+  worldspace or in an interior.
+
+It runs the converter as a separate process (`game/packtool/bethconv.gd`):
+next to the executable, else a build in `../converter/build/`, or the binary
+chosen under Settings. The JSON it reads is described in
+`../converter/docs/cli-json.md`.
+
 ### Viewing a cell
 
 Convert once (see `../converter/README.md`), onto a local SSD; then any cell
@@ -203,6 +227,7 @@ extension/src/            the GDExtension, C++20
   assets/asset_cache.*    models and textures built from those bytes
   world/world.*           SkydotWorld
 game/                     the Godot project (.gdextension, project.godot, glue)
+  packtool/               the pack tool (main scene): convert, list, view
   viewer/                 cell viewer
   tools/                  headless checks against a real pack
 tests/smoke/              headless editor runs, registered with ctest

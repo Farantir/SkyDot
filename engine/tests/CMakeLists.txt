@@ -30,6 +30,22 @@ endif()
 set(SKYDOT_TESTPACK "${_default_testpack}" CACHE PATH
     "A pack directory written by bethconv-testpack; empty skips the pack tests")
 
+# The pack tool's smoke test runs a real bethconv: by default the sibling
+# checkout's build (release first); the environment variable wins.
+set(_default_bethconv "$ENV{SKYDOT_BETHCONV}")
+if(NOT _default_bethconv)
+    foreach(_preset IN ITEMS linux-release linux-debug-asan windows-release)
+        foreach(_exe IN ITEMS bethconv bethconv.exe)
+            set(_candidate "${CMAKE_SOURCE_DIR}/../converter/build/${_preset}/tools/bethconv-cli/${_exe}")
+            if(NOT _default_bethconv AND EXISTS "${_candidate}")
+                set(_default_bethconv "${_candidate}")
+            endif()
+        endforeach()
+    endforeach()
+endif()
+set(SKYDOT_BETHCONV "${_default_bethconv}" CACHE FILEPATH
+    "A bethconv binary for the pack tool test; empty runs its pure checks only")
+
 set(_game "${CMAKE_SOURCE_DIR}/game")
 set(_smoke "${CMAKE_CURRENT_SOURCE_DIR}/smoke")
 
@@ -58,7 +74,7 @@ function(skydot_smoke_test name script)
         # failure.
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR"
         TIMEOUT 300
-        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch")
+        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch;SKYDOT_BETHCONV=${SKYDOT_BETHCONV}")
 endfunction()
 
 skydot_smoke_test(smoke_extension extension.gd)
@@ -70,6 +86,7 @@ skydot_smoke_test(smoke_lod lod.gd)
 skydot_smoke_test(smoke_physics physics.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
+skydot_smoke_test(smoke_packtool packtool.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,
