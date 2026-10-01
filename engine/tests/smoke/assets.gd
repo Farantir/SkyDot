@@ -164,8 +164,10 @@ func _check_exterior(world: SkydotWorld) -> void:
     var stats: Dictionary = origin.get_meta("skydot_stats")
     expect(stats["placed"] == 3 and stats["lights"] == 1 and stats["terrain"],
            "two cubes, a door, the persistent light and terrain: %s" % stats)
-    var quadrants := origin.find_child("Terrain", false, false).get_children()
+    var terrain := origin.find_child("Terrain", false, false)
+    var quadrants := terrain.find_children("Quadrant*", "MeshInstance3D", false, false)
     expect(quadrants.size() == 4, "one mesh per quadrant")
+    expect(terrain.get_node_or_null("Collision") is StaticBody3D, "and a body to walk on")
     var textured := 0
     for q in quadrants:
         var material := (q as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial

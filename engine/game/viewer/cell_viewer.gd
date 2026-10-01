@@ -21,7 +21,13 @@
 # --weather EDITOR_ID set the sky, light and fog from the worldspace's climate.
 #
 # Controls: the mouse looks (Esc releases it, a click captures it again; the
-# right button looks while released), WASD to move, Q/E down/up, Shift faster.
+# right button looks while released), WASD to move, Shift sprints, Ctrl walks,
+# Space jumps (and swims up). The player walks with collision (SkydotPlayer):
+# it falls, climbs steps, swims in exterior water and pushes clutter. V
+# toggles flying through everything, with Q/E down/up and Shift faster
+# (--walk off starts flying; --benchmark and --screenshot always fly;
+# --collision off builds no physics bodies and flies). Without
+# --at, an interior is entered where its door from outside leads.
 # F activates what the camera looks at: its scripts run (SkydotPapyrus), a load
 # door leads to its destination, a plain door opens or closes, and references
 # whose activate parent it is are activated in turn. Locked doors stay shut;
@@ -45,6 +51,9 @@
 extends Node3D
 
 var _camera: Camera3D
+var _player: SkydotPlayer  # the camera follows its eyes
+var _last_ground := Vector3.ZERO  # where the player last stood
+var _ground_check := 0  # frames until checking the player is not under the land
 var _yaw := 0.0
 var _pitch := 0.0
 var _speed := 3.0
@@ -139,6 +148,7 @@ func _ready() -> void:
 		print("%s trigger 0x%08X" % ["entered" if entered else "left", ref]))
 	world.skyrim_materials = args.get("materials", "on") != "off"
 	world.effects = args.get("effects", "on") != "off"
+	world.collision = args.get("collision", "on") != "off"
 	_radius = int(args.get("radius", "2"))
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
@@ -151,6 +161,12 @@ func _ready() -> void:
 	_camera = Camera3D.new()
 	_camera.near = 0.05
 	add_child(_camera)
+	_player = SkydotPlayer.new()
+	_player.name = "player"
+	_player.eye_height = EYE_HEIGHT
+	_player.fly = args.get("walk", "on") == "off" or args.get("collision", "on") == "off" \
+		or args.has("benchmark") or args.has("screenshot")
+	add_child(_player)
 	var overlay := CanvasLayer.new()
 	_notes = Label.new()
 	_notes.position = Vector2(16, 16)
@@ -279,12 +295,21 @@ func _enter_interior(cell_id: int, at, target) -> void:
 	_scripts_loaded(root, cell_id)
 	_add_environment(cell)
 	_camera.far = 500.0
-	if at == null:
+	var spawn = _interior_spawn(cell_id) if at == null and not _player.fly else null
+	if spawn != null:
+		var eye: Vector3 = spawn.origin + Vector3(0, EYE_HEIGHT, 0)
+		var forward: Vector3 = -spawn.basis.z
+		forward.y = 0.0
+		_place_camera(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
+	elif at == null:
+		if not _player.fly:
+			_player.fly = true
+			print("no door leads into %s: flying (V walks)" % cell["editor_id"])
 		var bounds := _mesh_bounds(root)
 		print("bounds: ", bounds)
 		var eye := bounds.get_center()
 		eye.y = bounds.position.y + min(EYE_HEIGHT, bounds.size.y * 0.5)
-		_camera.position = eye
+		_place_camera(eye, null)
 		_apply_look(0.0, 0.0)
 	else:
 		_place_camera(at, target)
@@ -333,6 +358,63 @@ func _place_camera(at: Vector3, target) -> void:
 		_camera.look_at(target)
 	_yaw = _camera.rotation.y
 	_pitch = _camera.rotation.x
+	# A little above the spot, so feet placed on a floor do not start in it.
+	_player.teleport(at - Vector3(0, EYE_HEIGHT - 0.05, 0))
+	_last_ground = _player.global_position
+	_ground_check = 3
+
+
+## Where the game puts the player entering interior `cell_id`: the arrival
+## spot of a door elsewhere that leads to one of its doors, or null.
+func _interior_spawn(cell_id: int):
+	for ref in _world.get_refs(cell_id):
+		var door := _world.get_door(ref["id"])
+		if door.is_empty():
+			continue
+		var back := _world.get_door(door["destination"])
+		if not back.is_empty() and back["destination_cell"] == cell_id:
+			return back["arrival"]
+	return null
+
+
+## Hold the player while the ground under it is still being built, keep its
+## water level, and catch it if it falls through the world.
+func _update_player() -> void:
+	if _world_id != 0:
+		var key := _camera_cell()
+		var cell = _loaded.get(key)
+		_player.hold = not _loaded.has(key) and not _player.fly
+		var water: Node3D = cell.get_node_or_null("Water") if cell != null else null
+		if water != null:
+			_player.water_height = water.global_position.y
+		else:
+			_player.clear_water()
+	else:
+		_player.hold = false
+		_player.clear_water()
+	if _player.hold or _player.fly:
+		return
+	if _ground_check > 0:
+		_ground_check -= 1
+		if _ground_check == 0:
+			_lift_onto_land()
+	if _player.is_on_floor():
+		_last_ground = _player.global_position
+	elif _last_ground.y - _player.global_position.y > 200.0:
+		_player.teleport(_last_ground)
+		_player.fly = true
+		_note("fell through the world: flying (V walks)")
+
+
+## A spot given in game units may be under the terrain; put the feet on it.
+func _lift_onto_land() -> void:
+	var feet := _player.global_position
+	var query := PhysicsRayQueryParameters3D.create(feet + Vector3(0, 2000, 0), feet,
+		SkydotPlayer.LAYER_TERRAIN)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if not hit.is_empty():
+		_player.teleport(hit["position"] + Vector3(0, 0.05, 0))
+		_last_ground = _player.global_position
 
 
 ## Arrive through a load door: its XTEL gives the spot and the facing.
@@ -363,19 +445,26 @@ func _scripts_loaded(root: Node, cell_id: int) -> void:
 	for ref in changes:
 		var node := _find_ref_node(ref)
 		if node != null:
-			node.visible = not changes[ref]
+			_show_ref(node, not changes[ref])
 
 
 func _on_enable_changed(ref: int, enabled: bool) -> void:
 	print("0x%08X %s by script" % [ref, "enabled" if enabled else "disabled"])
 	var node := _find_ref_node(ref)
 	if node != null:
-		node.visible = enabled
+		_show_ref(node, enabled)
 	elif enabled:
 		# Initially disabled references are not built with their cell.
 		var holder := _world.build_ref(_world.get_ref_cell(ref), ref)
 		if holder != null:
 			_add_to_place(holder)
+
+
+## Enable or disable a built reference: shown and solid, or neither (a
+## disabled node's bodies leave the physics space).
+func _show_ref(node: Node, enabled: bool) -> void:
+	node.visible = enabled
+	node.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
 
 func _on_play_animation(ref: int, animation: String) -> void:
@@ -566,7 +655,7 @@ func _finish_cell(key: Vector2i, cell: Node3D) -> void:
 
 func _benchmark_frame(delta: float) -> void:
 	_frame_times.append(delta * 1000.0)
-	_camera.global_position += Vector3(_fly_speed * delta, 0, 0)
+	_player.teleport(_player.global_position + Vector3(_fly_speed * delta, 0, 0))
 	_benchmark -= delta
 	if _benchmark > 0.0:
 		return
@@ -674,6 +763,8 @@ func _process(delta: float) -> void:
 	if _shot_path != "":
 		_take_screenshots()
 		return
+	_update_player()
+	_camera.global_position = _player.get_eye_position()
 	if _world_id != 0:
 		var stream_started := Time.get_ticks_usec()
 		_stream_step()
@@ -681,7 +772,7 @@ func _process(delta: float) -> void:
 			_lod.update(_camera.global_position, LOD_BUDGET_USEC)
 		_stream_max_usec = max(_stream_max_usec, Time.get_ticks_usec() - stream_started)
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
-		SkydotWorld.godot_to_skyrim(_camera.global_position - Vector3(0, EYE_HEIGHT, 0)))
+		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
 	_age_notes(delta)
 	if _quit_in >= 0:
@@ -697,15 +788,24 @@ func _process(delta: float) -> void:
 	if _benchmark > 0.0:
 		_benchmark_frame(delta)
 		return
-	var dir := Vector3.ZERO
-	if Input.is_key_pressed(KEY_W): dir.z -= 1
-	if Input.is_key_pressed(KEY_S): dir.z += 1
-	if Input.is_key_pressed(KEY_A): dir.x -= 1
-	if Input.is_key_pressed(KEY_D): dir.x += 1
-	if Input.is_key_pressed(KEY_E): dir.y += 1
-	if Input.is_key_pressed(KEY_Q): dir.y -= 1
-	var speed := _speed * (4.0 if Input.is_key_pressed(KEY_SHIFT) else 1.0)
-	_camera.translate(dir.normalized() * speed * delta)
+	var move := Vector2.ZERO
+	if Input.is_key_pressed(KEY_W): move.y += 1
+	if Input.is_key_pressed(KEY_S): move.y -= 1
+	if Input.is_key_pressed(KEY_A): move.x -= 1
+	if Input.is_key_pressed(KEY_D): move.x += 1
+	var vertical := 0.0
+	if Input.is_key_pressed(KEY_E) or (Input.is_key_pressed(KEY_SPACE) and _player.is_swimming()):
+		vertical += 1
+	if Input.is_key_pressed(KEY_Q):
+		vertical -= 1
+	var gait := SkydotPlayer.RUN
+	if Input.is_key_pressed(KEY_SHIFT):
+		gait = SkydotPlayer.SPRINT
+	elif Input.is_key_pressed(KEY_CTRL):
+		gait = SkydotPlayer.WALK
+	_player.fly_speed = _speed
+	_player.set_input(move, vertical, gait)
+	_player.set_look(_yaw, _pitch)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -727,6 +827,13 @@ func _unhandled_input(event: InputEvent) -> void:
 		_load_game(QUICKSAVE)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_J:
 		_print_journal()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
+		_player.jump()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
+		_player.fly = not _player.fly
+		if not _player.fly:
+			_last_ground = _player.global_position
+		_note("flying" if _player.fly else "walking")
 
 
 func _quest_name(quest: int) -> String:

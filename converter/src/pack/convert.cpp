@@ -99,9 +99,11 @@ namespace {
 /// out of JSON. 4: EditorMarker geometry dropped, shader flags in extras,
 /// refraction surfaces transparent. 5: effect falloff and emissive alpha in
 /// extras. 6: billboard modes. 7: tangents along U. 8: animations, particle
-/// systems, hidden nodes and node ids.
+/// systems, hidden nodes and node ids. 9: every drag modifier. 10: rigid body
+/// quality, mass, friction and restitution; nested collision transforms
+/// composed. 11: compressed-mesh triangles listed after a chunk's strips.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/9;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/11;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +

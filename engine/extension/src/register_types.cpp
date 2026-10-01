@@ -10,9 +10,11 @@
 #include "vm/papyrus.hpp"
 #include "world/animator.hpp"
 #include "world/billboard.hpp"
+#include "world/collision.hpp"
 #include "world/flicker.hpp"
 #include "world/lod.hpp"
 #include "world/particles.hpp"
+#include "world/player.hpp"
 #include "world/world.hpp"
 
 #include <gdextension_interface.h>
@@ -34,6 +36,8 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotPack);
     GDREGISTER_CLASS(skydot::SkydotPapyrus);
     GDREGISTER_CLASS(skydot::SkydotLod);
+    GDREGISTER_CLASS(skydot::SkydotDynamicBody);
+    GDREGISTER_CLASS(skydot::SkydotPlayer);
 }
 
 void skydot_uninitialize(godot::ModuleInitializationLevel level) {

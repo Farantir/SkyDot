@@ -61,6 +61,8 @@ public:
 
     /// Texture repeats per cell side.
     void set_tiling(float repeats) { tiling_ = repeats; }
+    /// Whether terrain gets a physics body.
+    void set_collision(bool enabled) { collision_ = enabled; }
 
 private:
     godot::Ref<godot::Shader> shader_for(int layers);
@@ -69,6 +71,7 @@ private:
 
     std::shared_ptr<AssetCache> assets_;
     float tiling_{8.0F};
+    bool collision_{true};
     std::unordered_map<int, godot::Ref<godot::Shader>> shaders_;
     std::unordered_map<std::string, godot::Ref<godot::Texture>> textures_;
     std::unordered_map<std::string, godot::Ref<godot::ShaderMaterial>> materials_;

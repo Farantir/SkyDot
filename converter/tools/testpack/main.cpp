@@ -29,7 +29,7 @@
 // LOD for the worldspace: settings, terrain LOD at levels 4 and 8, object LOD
 // and tree LOD with its list and atlas.
 //
-// Assets: both NIF encodings, a duplicate that dedupes to one asset under two
+// Assets: both NIF encodings (static and clutter collision), a duplicate that dedupes to one asset under two
 // paths, a path with a space, a texture with a mip chain, a cubemap, scripts
 // for the engine's VM tests (scripts.hpp), and an unconverted file kind for
 // `report.json`.
@@ -746,12 +746,29 @@ std::vector<std::byte> build_plugin() {
 
 // ---- the assets -----------------------------------------------------------
 
-std::vector<std::byte> a_nif(bethconv::test::NifFlavor flavor, const std::string& shape_name) {
+/// What a cube collides as.
+enum class Collision { none, fixed, clutter };
+
+std::vector<std::byte> a_nif(bethconv::test::NifFlavor flavor, const std::string& shape_name,
+                             Collision collision = Collision::none) {
     bethconv::test::NifBuilder builder(flavor);
     auto* root = builder.add_node("TestpackRoot");
     auto* shape = builder.add_shape(shape_name, bethconv::test::make_cube(24.0F));
     builder.add_shader(shape, "textures\\testpack\\cube.dds", "textures\\testpack\\cube_n.dds");
     (void)root;
+    if (collision != Collision::none) {
+        // A box around the cube: 12 game units in Havok units.
+        auto box = std::make_unique<nifly::bhkBoxShape>();
+        const float half = 12.0F / 69.99124F;
+        box->dimensions = nifly::Vector3(half, half, half);
+        bethconv::test::NifBuilder::Body body;
+        if (collision == Collision::clutter) {
+            body.layer = 4;   // clutter
+            body.quality = 4; // moving
+            body.mass = 5.0F;
+        }
+        builder.add_collision(std::move(box), body);
+    }
     return builder.bytes();
 }
 
@@ -775,13 +792,16 @@ std::size_t write_data_folder(const fs::path& data) {
 
     put("Testpack.esm", build_plugin());
 
-    const auto se_cube = a_nif(bethconv::test::NifFlavor::se, "Cube");
+    // Static collision on the cube every base uses.
+    const auto se_cube = a_nif(bethconv::test::NifFlavor::se, "Cube", Collision::fixed);
     put("meshes/testpack/cube_se.nif", se_cube);
     // Same bytes under a second path: two index lines, one asset.
     put("meshes/testpack/cube_se_copy.nif", se_cube);
     // Other encoding: the same call gives NiTriShape at stream 83, BSTriShape
     // at 100.
-    put("meshes/testpack/cube_le.nif", a_nif(bethconv::test::NifFlavor::le, "CubeLE"));
+    // Placed by no reference; the engine's physics test drops it as clutter.
+    put("meshes/testpack/cube_le.nif",
+        a_nif(bethconv::test::NifFlavor::le, "CubeLE", Collision::clutter));
     // A space in the path; tests URI escaping.
     put("meshes/testpack/cube with space.nif", a_nif(bethconv::test::NifFlavor::se, "CubeSpaced"));
 

@@ -218,6 +218,11 @@ public:
     void set_effects(bool enabled);
     bool get_effects() const;
 
+    /// Give models and terrain physics bodies (see collision.hpp). On by
+    /// default.
+    void set_collision(bool enabled);
+    bool get_collision() const { return collision_; }
+
     /// Skyrim position (game units), rotation (radians) and scale to a Godot
     /// transform.
     static godot::Transform3D skyrim_transform(const godot::Vector3& position,
@@ -264,6 +269,7 @@ private:
     godot::PackedByteArray bytes_;
     bool skyrim_materials_{true};
     bool effects_{true};
+    bool collision_{true};
     mutable godot::Ref<SkydotMaterials> materials_;
     const bethconv::pack::wfb::World* root_{};
     godot::String error_;

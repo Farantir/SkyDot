@@ -420,3 +420,105 @@ TEST_CASE("refraction surfaces are written fully transparent", "[mesh][gltf][mat
     CHECK(mat["pbrMetallicRoughness"]["baseColorFactor"][3] == 0.0);
     CHECK(mat["extras"]["bethconv"]["refraction"] == true);
 }
+
+namespace {
+
+/// The collision extras of the node that has them.
+nlohmann::json collision_extras(const std::vector<std::byte>& glb) {
+    const auto json = json_chunk(glb);
+    for (const auto& node : json["nodes"]) {
+        if (node.contains("extras") && node["extras"]["bethconv"].contains("collision")) {
+            return node["extras"]["bethconv"]["collision"];
+        }
+    }
+    return {};
+}
+
+} // namespace
+
+TEST_CASE("collision keeps the rigid body's layer, quality, mass and friction",
+          "[mesh][gltf][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto box = std::make_unique<nifly::bhkBoxShape>();
+    box->dimensions = nifly::Vector3(0.5f, 0.25f, 1.0f);
+    box->radius = 0.05f;
+    bethconv::test::NifBuilder::Body body;
+    body.layer = 4;
+    body.quality = 4;
+    body.mass = 3.0f;
+    body.friction = 0.7f;
+    builder.add_collision(std::move(box), body);
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "clutter.nif");
+    REQUIRE(model.has_value());
+    auto glb = bethconv::mesh::write_glb(*model, {});
+    REQUIRE(glb.has_value());
+
+    const auto shapes = collision_extras(*glb);
+    REQUIRE(shapes.size() == 1);
+    const auto& shape = shapes[0];
+    CHECK(shape["kind"] == "box");
+    CHECK(shape["layer"] == 4);
+    CHECK(shape["quality_type"] == 4);
+    CHECK_THAT(shape["mass"].get<double>(), Catch::Matchers::WithinAbs(3.0, 1e-6));
+    CHECK_THAT(shape["friction"].get<double>(), Catch::Matchers::WithinAbs(0.7, 1e-6));
+    // Havok units, unscaled: the engine converts.
+    CHECK_THAT(shape["half_extents"][2].get<double>(), Catch::Matchers::WithinAbs(1.0, 1e-6));
+    CHECK_THAT(shape["radius"].get<double>(), Catch::Matchers::WithinAbs(0.05, 1e-6));
+}
+
+TEST_CASE("a transform shape inside a bhkRigidBodyT adds to the body's transform",
+          "[mesh][nif][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto box = std::make_unique<nifly::bhkBoxShape>();
+    box->dimensions = nifly::Vector3(1.0f, 1.0f, 1.0f);
+    bethconv::test::NifBuilder::Body body;
+    body.translation = nifly::Vector3(1.0f, 0.0f, 0.0f);
+    builder.add_collision(std::move(box), body, nullptr, nifly::Vector3(0.0f, 2.0f, 0.0f));
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "moved.nif");
+    REQUIRE(model.has_value());
+    REQUIRE(model->collision.size() == 1);
+    const auto& t = model->collision[0].transform.translation;
+    CHECK_THAT(t.x, Catch::Matchers::WithinAbs(1.0, 1e-6));
+    CHECK_THAT(t.y, Catch::Matchers::WithinAbs(2.0, 1e-6));
+    CHECK_THAT(t.z, Catch::Matchers::WithinAbs(0.0, 1e-6));
+}
+
+TEST_CASE("compressed-mesh chunks keep the triangle list that follows their strips",
+          "[mesh][nif][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+
+    // One chunk, a unit square (1/1000 Havok units per step): a strip of one
+    // triangle, then one more triangle as a plain list.
+    // nifly's push_back takes a non-const reference.
+    nifly::bhkCMSDChunk chunk;
+    const std::vector<std::uint16_t> verts{0, 0, 0, 1000, 0, 0, 0, 1000, 0, 1000, 1000, 0};
+    const std::vector<std::uint16_t> indices{0, 1, 2, 1, 3, 2};
+    for (std::uint16_t v : verts) {
+        chunk.verts.push_back(v);
+    }
+    for (std::uint16_t i : indices) {
+        chunk.indices.push_back(i);
+    }
+    std::uint16_t strip = 3;
+    chunk.strips.push_back(strip);
+    auto data = std::make_unique<nifly::bhkCompressedMeshShapeData>();
+    data->chunks.push_back(chunk);
+    auto& header = builder.file().GetHeader();
+    const auto data_index = header.AddBlock(std::move(data));
+    auto mesh = std::make_unique<nifly::bhkCompressedMeshShape>();
+    mesh->dataRef.index = data_index;
+    builder.add_collision(std::move(mesh), {});
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "square.nif");
+    REQUIRE(model.has_value());
+    REQUIRE(model->collision.size() == 1);
+    const auto& shape = model->collision[0];
+    CHECK(shape.kind == bethconv::mesh::CollisionKind::compressed_mesh);
+    CHECK(shape.vertices.size() == 4);
+    CHECK(shape.indices == std::vector<std::uint32_t>{0, 1, 2, 1, 3, 2});
+}

@@ -562,6 +562,10 @@ private:
             j["havok_material"] = shape.havok_material;
             j["layer"] = shape.layer;
             j["motion_type"] = shape.motion_type;
+            j["quality_type"] = shape.quality_type;
+            j["mass"] = json_number(shape.mass);
+            j["friction"] = json_number(shape.friction);
+            j["restitution"] = json_number(shape.restitution);
             j["transform"] = {
                 {"translation", {shape.transform.translation.x, shape.transform.translation.y,
                                  shape.transform.translation.z}},
@@ -572,6 +576,7 @@ private:
             case CollisionKind::box:
                 j["half_extents"] = {shape.half_extents.x, shape.half_extents.y,
                                      shape.half_extents.z};
+                j["radius"] = json_number(shape.radius);
                 break;
             case CollisionKind::sphere:
                 j["radius"] = shape.radius;
@@ -583,6 +588,9 @@ private:
                 break;
             case CollisionKind::convex_vertices:
             case CollisionKind::compressed_mesh: {
+                if (shape.kind == CollisionKind::convex_vertices) {
+                    j["radius"] = json_number(shape.radius);
+                }
                 // Flat vertex array: physics data, and a third the size of
                 // nested triples.
                 nlohmann::json verts = nlohmann::json::array();

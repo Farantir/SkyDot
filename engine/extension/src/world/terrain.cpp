@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/terrain.hpp"
 
+#include "world/collision.hpp"
+
 #include "world/world.hpp"
 
 #include "world_generated.h"
 
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/mesh.hpp>
+#include <godot_cpp/classes/collision_shape3d.hpp>
+#include <godot_cpp/classes/concave_polygon_shape3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -337,6 +342,41 @@ godot::Node3D* TerrainBuilder::build(const wfb::Terrain& terrain,
         instance->set_mesh(mesh);
         root->add_child(instance);
     }
+
+    if (!collision_) {
+        return root;
+    }
+    // Collision: the same triangles as the quadrants draw.
+    godot::PackedVector3Array faces;
+    faces.resize(static_cast<std::int64_t>(k_last) * k_last * 6);
+    const auto vertex = [&](int x, int y) {
+        return Vector3(static_cast<float>(x) * k_spacing, at(x, y), -static_cast<float>(y) * k_spacing) *
+               scale;
+    };
+    std::int64_t next = 0;
+    for (int y = 0; y < k_last; ++y) {
+        for (int x = 0; x < k_last; ++x) {
+            const Vector3 a = vertex(x, y);
+            const Vector3 b = vertex(x + 1, y);
+            const Vector3 c = vertex(x, y + 1);
+            const Vector3 d = vertex(x + 1, y + 1);
+            for (const Vector3& v : {a, d, b, a, c, d}) {
+                faces.set(next++, v);
+            }
+        }
+    }
+    Ref<godot::ConcavePolygonShape3D> ground;
+    ground.instantiate();
+    ground->set_backface_collision_enabled(true);
+    ground->set_faces(faces);
+    auto* shape = memnew(godot::CollisionShape3D);
+    shape->set_shape(ground);
+    auto* body = memnew(godot::StaticBody3D);
+    body->set_name("Collision");
+    body->set_collision_layer(physics_layer::terrain);
+    body->set_collision_mask(0);
+    body->add_child(shape);
+    root->add_child(body);
     return root;
 }
 

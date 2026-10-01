@@ -292,8 +292,9 @@ enum class CollisionKind : std::uint8_t {
     list,       ///< Container; children are listed as separate shapes.
 };
 
-/// One collision shape in NIF space. Goes to `extras`, never glTF geometry
-/// (which would render); the engine builds physics shapes from it.
+/// One collision shape in the target node's frame, in Havok units (game units
+/// divided by 69.99124). Goes to `extras`, never glTF geometry (which would
+/// render); the engine builds physics shapes from it.
 struct CollisionShape {
     CollisionKind kind{CollisionKind::unsupported};
     std::string block_name;      ///< Havok block name, always recorded.
@@ -301,13 +302,17 @@ struct CollisionShape {
     std::uint32_t havok_material{};
     std::uint8_t layer{};
     std::uint8_t motion_type{};
+    std::uint8_t quality_type{}; ///< hkpCollidableQualityType: 0 fixed, 1 keyframed, 2-7 moving.
+    float mass{};                ///< kg; 0 for fixed bodies.
+    float friction{};
+    float restitution{};
 
     Vec3 half_extents{};         ///< box
     float radius{};              ///< sphere, capsule
     Vec3 point_a{}, point_b{};   ///< capsule
     std::vector<Vec3> vertices;  ///< convex_vertices, compressed_mesh
     std::vector<std::uint32_t> indices; ///< compressed_mesh
-    Transform transform{};
+    Transform transform{};       ///< Body and shape transforms, composed.
 };
 
 /// Everything one NIF becomes.

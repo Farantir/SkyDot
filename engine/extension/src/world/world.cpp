@@ -4,6 +4,7 @@
 
 #include "world/animator.hpp"
 #include "world/billboard.hpp"
+#include "world/collision.hpp"
 #include "world/flicker.hpp"
 #include "world/refs.hpp"
 
@@ -191,6 +192,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_effects", "enabled"), &SkydotWorld::set_effects);
     godot::ClassDB::bind_method(D_METHOD("get_effects"), &SkydotWorld::get_effects);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "effects"), "set_effects", "get_effects");
+    godot::ClassDB::bind_method(D_METHOD("set_collision", "enabled"), &SkydotWorld::set_collision);
+    godot::ClassDB::bind_method(D_METHOD("get_collision"), &SkydotWorld::get_collision);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "collision"), "set_collision", "get_collision");
     godot::ClassDB::bind_static_method("SkydotWorld",
                                        D_METHOD("skyrim_transform", "position", "rotation", "scale"),
                                        &SkydotWorld::skyrim_transform);
@@ -540,6 +544,12 @@ void SkydotWorld::set_skyrim_materials(bool enabled) { skyrim_materials_ = enabl
 bool SkydotWorld::get_skyrim_materials() const { return skyrim_materials_; }
 void SkydotWorld::set_effects(bool enabled) { effects_ = enabled; }
 bool SkydotWorld::get_effects() const { return effects_; }
+void SkydotWorld::set_collision(bool enabled) {
+    collision_ = enabled;
+    if (terrain_) {
+        terrain_->set_collision(enabled);
+    }
+}
 
 struct SkydotWorld::BuildStats {
     std::int64_t refs = 0;
@@ -552,6 +562,7 @@ struct SkydotWorld::BuildStats {
     std::int64_t billboards = 0;
     std::int64_t effects = 0;
     std::int64_t flickers = 0;
+    std::int64_t bodies = 0;
     godot::PackedStringArray missing;
 };
 
@@ -610,6 +621,10 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                         stats.effects += SkydotAnimator::attach(node, materials_);
                     }
                     tag_ref(node, ref.id(), cell, activatable(base, cell, ref.id()));
+                    // Last, so material and effect passes never see the bodies.
+                    if (const auto& collision = scene->collision(); collision && collision_) {
+                        stats.bodies += collision->attach(node);
+                    }
                     root->add_child(node);
                     ++stats.placed;
                 }
@@ -671,6 +686,7 @@ Dictionary SkydotWorld::stats_dictionary(const BuildStats& stats) const {
     out["billboards"] = stats.billboards;
     out["effects"] = stats.effects;
     out["flickers"] = stats.flickers;
+    out["bodies"] = stats.bodies;
     return out;
 }
 
@@ -1089,6 +1105,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         if (!terrain_) {
             terrain_ = std::make_unique<TerrainBuilder>(assets_);
             terrain_->set_tiling(static_cast<float>(terrain_tiling_));
+            terrain_->set_collision(collision_);
         }
         const auto neighbours = [&](int dx, int dy) {
             const auto* n = exterior_ptr(land, gx + dx, gy + dy);

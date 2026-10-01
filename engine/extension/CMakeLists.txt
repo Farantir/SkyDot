@@ -37,6 +37,8 @@ target_sources(skydot PRIVATE
     src/world/animator.hpp
     src/world/billboard.cpp
     src/world/billboard.hpp
+    src/world/collision.cpp
+    src/world/collision.hpp
     src/world/effect_asset.cpp
     src/world/effect_asset.hpp
     src/world/flicker.cpp
@@ -49,6 +51,8 @@ target_sources(skydot PRIVATE
     src/world/materials.hpp
     src/world/particles.cpp
     src/world/particles.hpp
+    src/world/player.cpp
+    src/world/player.hpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

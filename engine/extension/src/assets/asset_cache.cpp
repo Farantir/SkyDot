@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/asset_cache.hpp"
 
+#include "world/collision.hpp"
+
 #include <godot_cpp/classes/cubemap.hpp>
 #include <godot_cpp/classes/gltf_document.hpp>
 #include <godot_cpp/classes/gltf_state.hpp>
@@ -277,6 +279,7 @@ Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath,
     }
     Ref<SkydotModel> model;
     model.instantiate();
+    model->set_collision(ModelCollision::take_from(root));
     model->set_template(root, godot::String::utf8(vpath.c_str()));
     return model;
 }

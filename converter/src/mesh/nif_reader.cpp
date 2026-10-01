@@ -591,12 +591,15 @@ private:
         ctx.node_name = node_name;
         ctx.layer = body->collisionFilter.layer;
         ctx.motion_type = body->motionSystem;
+        ctx.quality_type = body->qualityType;
+        ctx.mass = body->mass;
+        ctx.friction = body->friction;
+        ctx.restitution = body->restitution;
         // bhkRigidBodyT has its own transform; bhkRigidBody uses the node's.
         if (dynamic_cast<nifly::bhkRigidBodyT*>(body) != nullptr) {
             ctx.transform.translation =
-                Vec3{body->translation.x, body->translation.y, body->translation.z};
-            ctx.transform.rotation = Vec4{body->rotation.x, body->rotation.y,
-                                          body->rotation.z, body->rotation.w};
+                nifly::Vector3(body->translation.x, body->translation.y, body->translation.z);
+            ctx.transform.rotation = quat_to_matrix(body->rotation);
         }
         read_collision_shape(shape, ctx, 0);
     }
@@ -605,7 +608,11 @@ private:
         std::string node_name;
         std::uint8_t layer{};
         std::uint8_t motion_type{};
-        Transform transform{};
+        std::uint8_t quality_type{};
+        float mass{};
+        float friction{};
+        float restitution{};
+        nifly::MatTransform transform; ///< Body, then each transform shape.
     };
 
     void read_collision_shape(nifly::bhkShape* shape, const CollisionContext& ctx,
@@ -621,7 +628,11 @@ private:
         out.havok_material = shape->GetMaterial();
         out.layer = ctx.layer;
         out.motion_type = ctx.motion_type;
-        out.transform = ctx.transform;
+        out.quality_type = ctx.quality_type;
+        out.mass = ctx.mass;
+        out.friction = ctx.friction;
+        out.restitution = ctx.restitution;
+        out.transform = to_transform(ctx.transform);
 
         if (auto* mopp = dynamic_cast<nifly::bhkMoppBvTreeShape*>(shape)) {
             // MOPP is an acceleration tree around the real shape; unwrap it.
@@ -638,7 +649,7 @@ private:
         }
         if (auto* xform = dynamic_cast<nifly::bhkTransformShape*>(shape)) {
             CollisionContext nested = ctx;
-            nested.transform = to_transform(mat_transform_of(xform->xform));
+            nested.transform = ctx.transform.ComposeTransforms(mat_transform_of(xform->xform));
             read_collision_shape(nif_.GetHeader().GetBlock<nifly::bhkShape>(xform->shapeRef),
                                  nested, depth + 1);
             return;
@@ -739,33 +750,32 @@ private:
                 out.vertices.push_back(p);
             }
 
-            // Chunk indices are strips if `strips` is set, otherwise a list;
-            // both occur.
+            // Chunk indices start with the strips `strips` lists the lengths
+            // of; whatever follows them is a plain triangle list. Chunks
+            // with both are common (vanilla's Dragonsreach stairs lose their
+            // bridge without the list).
             const std::size_t chunk_vcount = out.vertices.size() - base;
-            if (strips.empty()) {
-                for (std::size_t i = 0; i + 2 < indices.size(); i += 3) {
-                    push_triangle(out, base, chunk_vcount, indices[i], indices[i + 1],
-                                  indices[i + 2]);
-                }
-            } else {
-                std::size_t offset = 0;
-                for (std::uint16_t strip_len : strips) {
-                    for (std::size_t i = 0; i + 2 < strip_len; ++i) {
-                        const std::size_t k = offset + i;
-                        if (k + 2 >= indices.size()) {
-                            break;
-                        }
-                        // Keep strip winding so normals do not alternate.
-                        if ((i % 2) == 0) {
-                            push_triangle(out, base, chunk_vcount, indices[k],
-                                          indices[k + 1], indices[k + 2]);
-                        } else {
-                            push_triangle(out, base, chunk_vcount, indices[k + 1],
-                                          indices[k], indices[k + 2]);
-                        }
+            std::size_t offset = 0;
+            for (std::uint16_t strip_len : strips) {
+                for (std::size_t i = 0; i + 2 < strip_len; ++i) {
+                    const std::size_t k = offset + i;
+                    if (k + 2 >= indices.size()) {
+                        break;
                     }
-                    offset += strip_len;
+                    // Keep strip winding so normals do not alternate.
+                    if ((i % 2) == 0) {
+                        push_triangle(out, base, chunk_vcount, indices[k], indices[k + 1],
+                                      indices[k + 2]);
+                    } else {
+                        push_triangle(out, base, chunk_vcount, indices[k + 1], indices[k],
+                                      indices[k + 2]);
+                    }
                 }
+                offset += strip_len;
+            }
+            for (std::size_t i = offset; i + 2 < indices.size(); i += 3) {
+                push_triangle(out, base, chunk_vcount, indices[i], indices[i + 1],
+                              indices[i + 2]);
             }
         }
 

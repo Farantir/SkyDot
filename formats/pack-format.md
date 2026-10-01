@@ -262,7 +262,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/9` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/11` |
 | texture | `.dds` | `texture/<n>;` flags | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -273,7 +273,9 @@ fingerprint, e.g. `refs=` when pack meshes lost their images): `mesh/2` percent-
 texture paths, `mesh/3` kept non-finite floats out of JSON, `mesh/8` added
 controllers, particle systems and hidden nodes to the extras
 ([`format-notes/nif-animation.md`](format-notes/nif-animation.md)), `mesh/9`
-every drag modifier with its axis; the list in
+every drag modifier with its axis, `mesh/10` rigid body fields in the
+collision extras (below), `mesh/11` compressed-mesh triangles that follow a
+chunk's strips (they were dropped); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 
@@ -361,6 +363,36 @@ form). The engine resolves those itself.
 `bethconv view` adds glTF images back for other consumers: slot 0 as base
 colour, slot 1 as normal map unless `model_space_normals`, slot 2 as emissive
 when `has_glowmap`, with URIs relative to the view.
+
+### Collision in meshes
+
+Havok collision is never glTF geometry (which would render). The node a
+`bhkCollisionObject` hangs off carries `extras.bethconv.collision`, an array
+with one entry per leaf shape (MOPP trees, list and transform shapes are
+unwrapped):
+
+| Key | Meaning |
+| --- | --- |
+| `kind` | `box`, `sphere`, `capsule`, `convex_vertices`, `compressed_mesh`, or `unsupported` |
+| `block`, `node` | Havok block name; the owning node's name |
+| `layer` | Skyrim collision layer (1 static, 2 animated static, 4 clutter, 13 terrain, 15 non-collidable, ...) |
+| `motion_type`, `quality_type` | `hkMotionType`; `hkpCollidableQualityType` (0 fixed, 1 keyframed, 2 to 7 moving, 8 character, 9 keyframed reporting) |
+| `mass`, `friction`, `restitution` | the rigid body's values (mass in kg) |
+| `havok_material` | the shape's material id |
+| `transform` | `translation`, `rotation` (quaternion): a `bhkRigidBodyT`'s transform composed with every transform shape above the leaf |
+| `half_extents` | box |
+| `radius` | sphere, capsule; a box's or convex hull's convex radius |
+| `point_a`, `point_b` | capsule end points |
+| `vertices` | flat `x, y, z` list: convex hull points, or mesh vertices |
+| `indices` | `compressed_mesh` triangles, three per triangle: big triangles, then per chunk its strips and the plain list after them |
+
+Everything is in the owning node's frame but in **Havok units**: multiply
+lengths (including translations) by 69.99124 to get game units, the node's
+own unit. `motion_type` is unreliable on its own: vanilla static architecture
+often says `5` (box stabilized); `quality_type` is the one to read. Vanilla SE:
+static architecture is layer 1 with quality 0, animated statics layer 2 with
+quality 1, clutter layer 4 with quality 4. (nif.xml numbers the quality from 1
+for fixed; the data does not fit that.)
 
 ### Path encodings differ between `vpath.idx` and GLB URIs
 

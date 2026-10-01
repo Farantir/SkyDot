@@ -13,7 +13,12 @@
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <cstdint>
+#include <memory>
+
 namespace skydot {
+
+class ModelCollision;
 
 class SkydotModel : public godot::Resource {
     GDCLASS(SkydotModel, godot::Resource)
@@ -28,7 +33,19 @@ public:
     /// the model's virtual path, which keys per-model caches.
     godot::Node* instantiate() const;
 
+    /// Give a copy made by `instantiate` its physics bodies (see
+    /// world/collision.hpp). Returns how many; 0 if nothing collides.
+    std::int64_t attach_collision(godot::Node* instance) const;
+    /// Bodies each instance gets.
+    std::int64_t get_body_count() const;
+
     godot::String get_vpath() const { return vpath_; }
+
+    /// The model's physics bodies, or null if nothing collides.
+    void set_collision(std::shared_ptr<const ModelCollision> collision) {
+        collision_ = std::move(collision);
+    }
+    const std::shared_ptr<const ModelCollision>& collision() const { return collision_; }
 
 protected:
     static void _bind_methods();
@@ -36,6 +53,7 @@ protected:
 private:
     godot::Node* template_{nullptr};
     godot::String vpath_;
+    std::shared_ptr<const ModelCollision> collision_;
 };
 
 } // namespace skydot

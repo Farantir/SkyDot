@@ -107,8 +107,12 @@ under the climate's most likely weather. `--benchmark 10` flies east and
 prints frame times (pass `--disable-vsync` to Godot when the window is not
 visible, or the compositor throttles it).
 
-The mouse looks (Esc releases it, a click captures it again), WASD/Q/E move,
-Shift is faster. F activates what the camera looks at (within 2.6 m); Shift+F
+The mouse looks (Esc releases it, a click captures it again). You walk with
+collision: WASD moves, Shift sprints, Ctrl walks, Space jumps (and swims up in
+water); V toggles flying through everything (Q/E down/up, Shift faster).
+`--walk off` starts flying, `--collision off` builds no physics bodies;
+`--benchmark` and `--screenshot` always fly. Without `--at` an interior is
+entered at its door from outside. See `docs/physics.md`. F activates what the camera looks at (within 2.6 m); Shift+F
 or `--pick-locks on` ignores locks. F5 saves the scripts' state and the place,
 F9 loads it. J shows the journal; quest stages and objectives show at the top
 left. P shows the camera's position and facing in the game's terms, and
