@@ -15,6 +15,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cctype>
 #include <fstream>
 
 using namespace bethconv::install;
@@ -133,7 +134,13 @@ TEST_CASE("Steam installs are found through every library, with build and plugin
     CHECK(se.build_id == "24914197");
     CHECK(se.data.filename() == "Data");
     REQUIRE(se.plugins_txt);
-    CHECK(se.plugins_txt->filename() == "Plugins.txt");
+    // Found despite the case; Windows reports the spelling that was asked for.
+    auto name = se.plugins_txt->filename().string();
+    std::ranges::transform(name, name.begin(), [](unsigned char c) {
+        return static_cast<char>(std::tolower(c));
+    });
+    CHECK(name == "plugins.txt");
+    CHECK(std::filesystem::exists(*se.plugins_txt));
 }
 
 TEST_CASE("an app manifest without a game folder is not an install", "[install]") {
