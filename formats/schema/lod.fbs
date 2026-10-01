@@ -1,0 +1,64 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Schema of a LOD asset (`.lodfb`): one of a worldspace's LOD data files,
+// decoded by the converter. Exactly one part is set, by source extension:
+//
+// - `.lod` (lodsettings/<world>.lod): `settings`.
+// - `.lst` (meshes/terrain/<world>/trees/<world>.lst): `tree_types`, the
+//   billboards of the tree LOD atlas.
+// - `.btt` (meshes/terrain/<world>/trees/<world>.4.X.Y.btt): `trees`, the
+//   tree instances of one level-4 quad.
+//
+// Terrain (`.btr`) and object (`.bto`) LOD are NIFs and become meshes.
+// Positions are Skyrim's: Z-up, game units, world space.
+
+namespace bethconv.pack.lfb;
+
+/// `.lod`, 16 bytes: the south-west cell of the LOD grid, how many cells it
+/// spans, and its finest and coarsest quad sizes in cells (4 and 32 in
+/// vanilla). Quad (x, y) of level L covers cells x..x+L-1, y..y+L-1.
+struct LodSettings {
+    south_west_x: short;
+    south_west_y: short;
+    stride: int;
+    lowest_level: int;
+    highest_level: int;
+}
+
+/// `.lst` entry, 32 bytes: a billboard of `width` x `height` game units whose
+/// image is the atlas rectangle (u0, v0)-(u1, v1). `unknown` as stored.
+struct TreeType {
+    index: uint32;
+    width: float;
+    height: float;
+    u0: float;
+    v0: float;
+    u1: float;
+    v1: float;
+    unknown: uint32;
+}
+
+/// `.btt` instance, 32 bytes: a `TreeType` index, the base of the tree, its
+/// rotation about Z (radians), its scale and the reference it stands for.
+struct TreeInstance {
+    type: uint32;
+    x: float;
+    y: float;
+    z: float;
+    rotation: float;
+    scale: float;
+    ref: uint32;
+    /// Two words as stored; not understood.
+    unknown1: uint32;
+    unknown2: uint32;
+}
+
+table Lod {
+    format_version: uint32;
+    settings: LodSettings;
+    tree_types: [TreeType];
+    trees: [TreeInstance];
+}
+
+root_type Lod;
+file_identifier "BLD1";

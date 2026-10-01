@@ -1,0 +1,30 @@
+build/
+vcpkg_installed/
+compile_commands.json
+.cache/
+.vscode/
+.idea/
+
+# Corpus harness output: reads a local install, writes here, commits nothing.
+converter/tests/corpus/local/
+
+# The built extension goes here for the editor to load. Never committed.
+engine/game/bin/
+engine/game/.godot/
+engine/tests/smoke/.godot/
+
+# Never commit game data (also enforced by tools/ci/check-no-game-data.sh).
+*.esm
+*.esp
+*.esl
+*.bsa
+*.ba2
+*.nif
+*.dds
+*.pex
+*.hkx
+*.fuz
+
+# Converter output: built locally, never committed.
+*.pck
+*.blob

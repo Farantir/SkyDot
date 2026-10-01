@@ -1,0 +1,92 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Schema of a script asset (`.pexfb`): one compiled Papyrus script, decoded
+// from its `.pex` by the converter. Names are indices into `strings`, as in
+// the PEX; docstrings are dropped. Opcodes and value types are PEX's (see
+// include/bethconv/script/pex.hpp).
+
+namespace bethconv.pack.sfb;
+
+/// Type 0 none, 1 identifier, 2 string, 3 int, 4 float, 5 bool. For
+/// identifiers and strings `data` indexes `Script.strings`; ints and floats
+/// are their bits; bools 0 or 1.
+struct Value {
+    type: ubyte;
+    data: uint32;
+}
+
+/// Both indices into `Script.strings`.
+struct NameType {
+    name: ushort;
+    type: ushort;
+}
+
+table Function {
+    /// The property's name for getters and setters.
+    name: ushort;
+    return_type: ushort;
+    user_flags: uint32;
+    /// Bit 0 global (static), bit 1 native.
+    flags: ubyte;
+    params: [NameType];
+    locals: [NameType];
+    /// Instruction i is opcodes[i] with args[arg_offsets[i] .. arg_offsets[i + 1]];
+    /// a call's variable arguments follow its fixed ones. `arg_offsets` has
+    /// one entry more than `opcodes`.
+    opcodes: [ubyte];
+    arg_offsets: [uint32];
+    args: [Value];
+    /// Source line per instruction, or empty.
+    lines: [ushort];
+}
+
+table State {
+    /// The empty string for the default state.
+    name: ushort;
+    functions: [Function];
+}
+
+struct Variable {
+    name: ushort;
+    type: ushort;
+    user_flags: uint32;
+    initial: Value;
+}
+
+table Property {
+    name: ushort;
+    type: ushort;
+    user_flags: uint32;
+    /// Bit 0 has a getter, bit 1 a setter, bit 2 auto (backed by `auto_var`).
+    flags: ubyte;
+    auto_var: ushort;
+    getter: Function;
+    setter: Function;
+}
+
+table Object {
+    name: ushort;
+    /// The empty string for none.
+    parent: ushort;
+    user_flags: uint32;
+    auto_state: ushort;
+    variables: [Variable];
+    properties: [Property];
+    states: [State];
+}
+
+struct UserFlag {
+    name: ushort;
+    bit: ubyte;
+}
+
+table Script {
+    format_version: uint32;
+    source: string;
+    strings: [string];
+    user_flags: [UserFlag];
+    objects: [Object];
+}
+
+root_type Script;
+file_identifier "BPX1";

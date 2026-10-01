@@ -1,0 +1,46 @@
+# Effects
+
+How the engine plays what the converter writes into a model's extras (see
+`../converter/docs/format-notes/nif-animation.md`). `SkydotWorld` attaches all
+of it when it places a model; `effects = false` (viewer: `--effects off`)
+leaves models and lights still.
+
+## Clips (`SkydotAnimator`)
+
+- Unnamed clips follow the application clock, so every copy of a model moves
+  in step, as in the game. Their shader variables go to the material all
+  copies share, written once per frame.
+- Named clips play on request (`play("Open")`); the first of `AutoPlay`,
+  `AutoLoop`, `Idle`, `mIdle`, `SpecialIdle`, `mLoop` starts on load. A model
+  that a named clip recolours gets its own material copy.
+- Signals: `text_key(clip, key)` as a sequence passes a text key,
+  `finished(clip)` when a clamped one ends.
+- Models more than 250 m from the camera hold still.
+- Euler keys compose X, then Y, then Z; checked against rest poses (door,
+  chest, fire, waterwheel), which equal their first or last keys.
+
+## Particles (`SkydotParticles`)
+
+One `GPUParticles3D` per emitter under the system's node, with one process
+shader for all (`SkydotParticles::process_shader_code`) and the effect
+shader's particle variant for drawing (camera-facing quads, spin, sub-texture
+rectangles). Built on entering the tree, since emitter, gravity and particle
+space depend on global transforms. Amount is the peak birth rate times the
+longest life, capped by the NIF's maximum; the emission channel scales
+`amount_ratio`.
+
+Guesses, not checked against the game: speed, radius and life vary by
+±variation/2, angles by ±variation; spherical gravity pushes away from its
+object; drag removes `drag` of the velocity per second; turbulence is random
+acceleration re-rolled eight times a second.
+
+## Lights (`SkydotFlicker`)
+
+LIGH flicker flags vary brightness by the intensity amplitude over the flicker
+period (smooth noise) and move the light by the movement amplitude; pulse
+flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
+
+## Cost
+
+Riverwood flythrough (5x5 cells, debug build of the extension): median frame
+0.9 ms without effects, 1.3 ms with; the difference is almost all clips.

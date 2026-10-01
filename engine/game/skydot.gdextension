@@ -1,0 +1,20 @@
+; Built by CMake directly into bin/ (see extension/CMakeLists.txt), so a build
+; is a reload.
+;
+; compatibility_minimum is the API the bindings target (GODOTCPP_API_VERSION in
+; CMakeLists.txt): newer editors load the library, older ones refuse it.
+
+[configuration]
+
+entry_symbol = "skydot_library_init"
+compatibility_minimum = "4.7"
+reloadable = true
+
+[libraries]
+
+linux.debug.x86_64 = "res://bin/libskydot.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://bin/libskydot.linux.template_release.x86_64.so"
+linux.debug.arm64 = "res://bin/libskydot.linux.template_debug.arm64.so"
+linux.release.arm64 = "res://bin/libskydot.linux.template_release.arm64.so"
+windows.debug.x86_64 = "res://bin/libskydot.windows.template_debug.x86_64.dll"
+windows.release.x86_64 = "res://bin/libskydot.windows.template_release.x86_64.dll"

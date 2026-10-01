@@ -1,0 +1,13 @@
+; The game project: `.tscn`/`.gd` glue only, never a hot path. The real work is
+; in extension/, loaded via skydot.gdextension.
+
+config_version=5
+
+[application]
+
+config/name="skydot"
+config/features=PackedStringArray("4.7", "Forward Plus")
+
+[rendering]
+
+renderer/rendering_method="forward_plus"

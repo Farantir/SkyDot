@@ -1,0 +1,476 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Schema of `world.fb`: what the engine needs to build cells, decoded by the
+// converter. Every FormID in here is global (resolved through the load order),
+// unlike FormIDs inside `records.fb` payloads, which are plugin-local.
+//
+// Positions and rotations are in Skyrim's own space: Z-up, game units,
+// rotation in radians. The engine converts them.
+
+namespace bethconv.pack.wfb;
+
+struct Vec3f {
+    x: float;
+    y: float;
+    z: float;
+}
+
+/// One placed reference (REFR). Deleted references are not included.
+struct Ref {
+    id: uint32;
+    /// The placed base record (a `Base` in `bases`, if it has a model or light).
+    base: uint32;
+    position: Vec3f;
+    rotation: Vec3f;
+    scale: float;
+    /// Bit 0: initially disabled. Bit 1: persistent. Bit 2: enable state is the
+    /// opposite of `enable_parent`'s. Bit 3: only activate parents can
+    /// activate it (XAPD).
+    flags: uint32;
+    /// 0 if none.
+    enable_parent: uint32;
+}
+
+/// A reference that is a load door: where it leads.
+struct DoorLink {
+    ref: uint32;
+    destination: uint32;
+    position: Vec3f;
+    rotation: Vec3f;
+}
+
+/// XLOC. Level 0-100, 255 needs the key.
+struct Lock {
+    ref: uint32;
+    level: ubyte;
+    /// Bit 2: levelled lock.
+    flags: ubyte;
+    /// A KEYM; 0 if none.
+    key: uint32;
+}
+
+/// XLKR: a linked reference, optionally named by a keyword.
+struct LinkedRef {
+    ref: uint32;
+    keyword: uint32;
+    target: uint32;
+}
+
+/// XAPR: activating `parent` activates `ref` after `delay` seconds.
+struct ActivateParent {
+    ref: uint32;
+    parent: uint32;
+    delay: float;
+}
+
+/// XPRM: the volume of a trigger, occlusion plane or room marker, centred on
+/// the reference and turned with it. `bounds` as stored (game units); whether
+/// they are half or full extents is not yet checked against the game. Type 1
+/// box, 2 sphere (source: UESP, REFR record); other values as stored.
+struct Primitive {
+    ref: uint32;
+    bounds: Vec3f;
+    type: uint32;
+}
+
+/// A form or quest alias a script property points at.
+struct ScriptObject {
+    form: uint32;
+    /// An alias index of the quest `form`, or -1.
+    alias: short;
+}
+
+/// VMAD property. Type 1-5: object, string, int, float, bool; 11-15 arrays of
+/// those. A scalar is the single element of its vector; bools are ints.
+table ScriptProperty {
+    name: string;
+    type: ubyte;
+    /// 1 edited, 3 removed (bit 1: the property's value is not set here).
+    status: ubyte;
+    objects: [ScriptObject];
+    strings: [string];
+    ints: [int];
+    floats: [float];
+}
+
+table Script {
+    name: string;
+    /// 0 local, 1 inherited, 2 removed, 3 inherited and removed.
+    status: ubyte;
+    properties: [ScriptProperty];
+}
+
+/// VMAD of one reference.
+table RefScripts {
+    ref: uint32;
+    scripts: [Script];
+}
+
+/// Decoded XCLL (92-byte form). Colors are RGBA bytes packed little-endian
+/// (red in the low byte). Source: UESP, CELL record, XCLL.
+struct CellLighting {
+    ambient: uint32;
+    directional: uint32;
+    fog_near_color: uint32;
+    fog_far_color: uint32;
+    fog_near: float;
+    fog_far: float;
+    fog_power: float;
+    fog_max: float;
+    directional_rotation_xy: int32;
+    directional_rotation_z: int32;
+    directional_fade: float;
+    light_fade_begin: float;
+    light_fade_end: float;
+    /// Which values come from the lighting template instead.
+    inherit: uint32;
+}
+
+/// One texture layer of a terrain quadrant (LAND BTXT, or ATXT with its VTXT).
+table TerrainLayer {
+    /// An LTEX in `land_textures`; 0 means the engine's default texture.
+    texture: uint32;
+    /// 0 south-west, 1 south-east, 2 north-west, 3 north-east.
+    quadrant: ubyte;
+    /// -1 for the base layer, else the ATXT layer index (0..5 in vanilla),
+    /// drawn in ascending order over the base.
+    layer: short;
+    /// VTXT: vertex indices in the quadrant's 17x17 grid (row-major from its
+    /// south-west corner) and their opacity, 0..255 for 0..1. Points not listed
+    /// are 0. Empty for the base layer.
+    points: [ushort];
+    opacity: [ubyte];
+}
+
+/// LAND. The 33x33 vertex grid spans the cell's 4096 units, 128 apart, rows
+/// running south to north, columns west to east. Heights are VHGT's: the
+/// running sum of `height_deltas`, down column 0 for the first vertex of each
+/// row and then along the row, starting at `height_offset`, times 8 units.
+/// Normals are not stored; they follow from the heights to within about a
+/// degree.
+table Terrain {
+    height_offset: float;
+    /// 33 x 33.
+    height_deltas: [byte];
+    /// VCLR, 33 x 33 RGB, or empty.
+    colours: [ubyte];
+    /// Sorted by quadrant, then layer.
+    layers: [TerrainLayer];
+}
+
+table Cell {
+    id: uint32;
+    editor_id: string;
+    /// Worldspace for exterior cells, 0 for interiors.
+    world: uint32;
+    /// CELL DATA flags (bit 0: interior).
+    flags: uint16;
+    has_grid: bool;
+    grid_x: int32;
+    grid_y: int32;
+    water_height: float;
+    has_lighting: bool;
+    lighting: CellLighting;
+    lighting_template: uint32;
+    /// Sorted by id.
+    refs: [Ref];
+    /// Sorted by ref.
+    doors: [DoorLink];
+    /// Exterior cells with a LAND record.
+    terrain: Terrain;
+    /// XCWT, a WATR in `waters`; 0 means the worldspace's water.
+    water: uint32;
+    /// A worldspace's persistent cell (record flag 0x400). It has grid (0, 0)
+    /// like the real cell there, but holds the persistent references of the
+    /// whole worldspace; place them by position.
+    persistent: bool;
+    /// These are all sorted by ref.
+    scripts: [RefScripts];
+    locks: [Lock];
+    links: [LinkedRef];
+    activate_parents: [ActivateParent];
+    primitives: [Primitive];
+}
+
+/// LIGH DATA and FNAM. Color is RGBA bytes, red in the low byte.
+struct LightData {
+    radius: uint32;
+    color: uint32;
+    flags: uint32;
+    falloff_exponent: float;
+    fov: float;
+    near_clip: float;
+    fade: float;
+    flicker_period: float;
+    flicker_intensity: float;
+    flicker_movement: float;
+}
+
+/// A base record that references can place: anything with a model or scripts,
+/// plus lights.
+table Base {
+    id: uint32;
+    type: uint32;
+    editor_id: string;
+    /// Normalized virtual path (`meshes/...`), or empty. For ARMO the world
+    /// model (MOD2, else MOD4).
+    model: string;
+    has_light: bool;
+    light: LightData;
+    /// Type-specific flags: DOOR FNAM (bit 1 automatic, 2 hidden, 3 minimal
+    /// use, 4 sliding).
+    flags: uint32;
+    /// VMAD.
+    scripts: [Script];
+}
+
+/// LTEX with its TXST resolved. Paths are normalized virtual paths.
+table LandTexture {
+    id: uint32;
+    editor_id: string;
+    diffuse: string;
+    normal: string;
+    /// SNAM, 0..255.
+    specular: ubyte;
+}
+
+/// One of WATR's three noise layers.
+struct WaterLayer {
+    /// Degrees.
+    wind_direction: float;
+    wind_speed: float;
+    /// Game units per noise tile.
+    uv_scale: float;
+    amplitude: float;
+}
+
+/// WATR: the visual part of DNAM (source: UESP, WATR record; offsets checked
+/// against Skyrim.esm). Colours are RGBA bytes, red in the low byte.
+table Water {
+    id: uint32;
+    editor_id: string;
+    /// ANAM, 0..100.
+    opacity: ubyte;
+    /// FNAM bit 0: causes damage.
+    flags: ubyte;
+    shallow_color: uint32;
+    deep_color: uint32;
+    reflection_color: uint32;
+    sun_specular_power: float;
+    reflectivity: float;
+    fresnel: float;
+    fog_near: float;
+    fog_far: float;
+    specular_power: float;
+    refraction_magnitude: float;
+    reflection_magnitude: float;
+    layers: [WaterLayer];
+    /// NNAM (or NAM2..NAM4) noise textures as virtual paths.
+    noise: [string];
+}
+
+struct ClimateWeather {
+    /// A WTHR in `weathers`.
+    weather: uint32;
+    /// Out of 100.
+    chance: int;
+}
+
+/// CLMT. Times are hours (TNAM stores 10-minute steps).
+table Climate {
+    id: uint32;
+    editor_id: string;
+    weathers: [ClimateWeather];
+    sunrise_begin: float;
+    sunrise_end: float;
+    sunset_begin: float;
+    sunset_end: float;
+}
+
+/// WTHR, the parts that light a scene. Times of day are sunrise, day,
+/// sunset, night, in that order. Colours are RGBA bytes, red in the low byte.
+table Weather {
+    id: uint32;
+    editor_id: string;
+    /// NAM0: 17 colours x 4 times, index colour * 4 + time. Colours in order:
+    /// sky upper, fog near, unknown, ambient, sunlight, sun, stars, sky lower,
+    /// horizon, effect lighting, cloud LOD diffuse, cloud LOD ambient, fog
+    /// far, sky statics, water multiplier, sun glare, moon glare.
+    colors: [uint];
+    /// FNAM: day near, day far, night near, night far, day power, night
+    /// power, day max, night max. Distances in game units.
+    fog: [float];
+    /// DALC: per time, x+, x-, y+, y-, z+, z- and specular (7 x 4).
+    directional_ambient: [uint];
+}
+
+/// WRLD.
+table Worldspace {
+    id: uint32;
+    editor_id: string;
+    /// WNAM; 0 if none.
+    parent: uint32;
+    /// PNAM: which properties come from the parent. Bit 0: land data.
+    parent_flags: ushort;
+    /// DATA flags.
+    flags: ubyte;
+    /// DNAM; the land and water height of cells without LAND or XCLW.
+    has_defaults: bool;
+    default_land_height: float;
+    default_water_height: float;
+    /// NAM2, a WATR; 0 if none.
+    water: uint32;
+    /// CNAM, a CLMT in `climates`; 0 if none.
+    climate: uint32;
+    /// NAM0 / NAM9: bounds in game units.
+    min_x: float;
+    min_y: float;
+    max_x: float;
+    max_y: float;
+}
+
+/// A journal entry of a quest stage (QSDT, CNAM).
+table QuestLogEntry {
+    /// Bit 0: completes the quest. Bit 1: fails it.
+    flags: ubyte;
+    text: string;
+    /// CTDA count. Conditions choose among a stage's entries; the engine does
+    /// not evaluate them.
+    conditions: ushort;
+}
+
+table QuestStage {
+    index: ushort;
+    /// INDX. Bit 1: start-up stage. Bit 2: shut-down stage.
+    flags: ubyte;
+    log: [QuestLogEntry];
+}
+
+/// QOBJ with its FNAM, NNAM and QSTA.
+table QuestObjective {
+    index: ushort;
+    /// Bit 0: ORed with the previous objective.
+    flags: uint32;
+    text: string;
+    /// The aliases the compass points at.
+    targets: [int];
+}
+
+/// A stage fragment: `function` of the quest's fragment script runs when
+/// `stage` is set and its log entry `log_entry` is the one chosen.
+table QuestFragment {
+    stage: ushort;
+    log_entry: int;
+    function: string;
+}
+
+/// A quest alias, in the order the quest fills them. How it is filled is the
+/// first that applies: `forced` (ALFR, or ALFL for a location alias),
+/// `unique_actor`, `external_quest`/`external_alias`, `created_object` at
+/// alias `create_at`; otherwise conditions pick it ("find matching"), which
+/// the engine does not evaluate.
+table QuestAlias {
+    id: uint32;
+    name: string;
+    /// A location alias (ALLS) rather than a reference alias (ALST).
+    location: bool;
+    /// FNAM. Bit 1: optional. Bit 7: allow disabled. Bit 15: initially
+    /// disabled. (Source: UESP, QUST record.)
+    flags: uint32;
+    forced: uint32;
+    /// An NPC_; the alias takes its one placed actor.
+    unique_actor: uint32;
+    external_quest: uint32;
+    external_alias: int = -1;
+    created_object: uint32;
+    /// ALCA, low 16 bits: the alias to create at.
+    create_at: uint32;
+    /// CTDA count.
+    conditions: ushort;
+    /// ALDN, a MESG.
+    display_name: uint32;
+    /// Scripts attached to the alias (from the quest's VMAD).
+    scripts: [Script];
+}
+
+/// QUST.
+table Quest {
+    id: uint32;
+    editor_id: string;
+    name: string;
+    /// DNAM. Bit 0: start game enabled. Bit 3: allow repeated stages. Bit 8:
+    /// run once. (Source: UESP, QUST record.)
+    flags: ushort;
+    priority: ubyte;
+    type: uint32;
+    /// ENAM: the story manager event as a four-character code, or 0.
+    event: uint32;
+    scripts: [Script];
+    /// The script holding the stage fragments.
+    fragment_script: string;
+    /// Sorted by stage, then log entry.
+    fragments: [QuestFragment];
+    /// Sorted by index.
+    stages: [QuestStage];
+    /// In record order.
+    objectives: [QuestObjective];
+    aliases: [QuestAlias];
+}
+
+/// GLOB. `kind` is FNAM: 's' short, 'l' long, 'f' float.
+table Global {
+    id: uint32;
+    editor_id: string;
+    kind: ubyte;
+    value: float;
+}
+
+/// A placed actor (ACHR). Not built yet; quest aliases name them.
+struct ActorRef {
+    ref: uint32;
+    /// The NPC_.
+    base: uint32;
+    cell: uint32;
+    position: Vec3f;
+    rotation: Vec3f;
+    /// As `Ref.flags`.
+    flags: uint32;
+}
+
+/// A plugin of the load order and where its forms live: a form of this
+/// plugin with object id `n` is `prefix | n`, `n` masked to 24 bits (12 for a
+/// light plugin). For Game.GetFormFromFile.
+table Plugin {
+    name: string;
+    prefix: uint32;
+    light: bool;
+}
+
+table World {
+    format_version: uint32;
+    /// Sorted by id.
+    worlds: [Worldspace];
+    /// Sorted by id.
+    land_textures: [LandTexture];
+    /// Sorted by id.
+    waters: [Water];
+    /// Sorted by id.
+    climates: [Climate];
+    /// Sorted by id.
+    weathers: [Weather];
+    /// Sorted by id.
+    cells: [Cell];
+    /// Sorted by id.
+    bases: [Base];
+    /// Sorted by id.
+    quests: [Quest];
+    /// Sorted by id.
+    globals: [Global];
+    /// Sorted by ref.
+    actors: [ActorRef];
+    /// In load order; inactive plugins are left out.
+    plugins: [Plugin];
+}
+
+root_type World;
+file_identifier "BWD1";

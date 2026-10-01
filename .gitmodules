@@ -1,0 +1,9 @@
+[submodule "converter/extern/nifly"]
+	path = converter/extern/nifly
+	url = https://github.com/ousnius/nifly
+[submodule "engine/extern/godot-cpp"]
+	path = engine/extern/godot-cpp
+	url = https://github.com/godotengine/godot-cpp
+[submodule "engine/extern/flatbuffers"]
+	path = engine/extern/flatbuffers
+	url = https://github.com/google/flatbuffers
