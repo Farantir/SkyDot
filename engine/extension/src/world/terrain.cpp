@@ -271,10 +271,10 @@ godot::Node3D* TerrainBuilder::build(const wfb::Terrain& terrain,
                 // image, as Godot expects (w = 1).
                 const Vector3 tangent =
                     (Vector3(1, 0, 0) - normal * normal.dot(Vector3(1, 0, 0))).normalized();
-                tangents.push_back(tangent.x);
-                tangents.push_back(tangent.y);
-                tangents.push_back(tangent.z);
-                tangents.push_back(1.0F);
+                tangents.push_back(static_cast<double>(tangent.x));
+                tangents.push_back(static_cast<double>(tangent.y));
+                tangents.push_back(static_cast<double>(tangent.z));
+                tangents.push_back(1.0);
                 uvs.push_back(Vector2(static_cast<float>(x), -static_cast<float>(y)) /
                               static_cast<float>(k_last));
                 Color colour(1, 1, 1);
@@ -288,12 +288,12 @@ godot::Node3D* TerrainBuilder::build(const wfb::Terrain& terrain,
                 vertex_colours.push_back(colour);
                 const auto& w = weights[static_cast<std::size_t>(row * k_quadrant_grid + column)];
                 for (int i = 0; i < 4; ++i) {
-                    custom0.push_back(w[static_cast<std::size_t>(i)]);
+                    custom0.push_back(static_cast<double>(w[static_cast<std::size_t>(i)]));
                 }
-                custom1.push_back(w[4]);
-                custom1.push_back(w[5]);
-                custom1.push_back(0.0F);
-                custom1.push_back(0.0F);
+                custom1.push_back(static_cast<double>(w[4]));
+                custom1.push_back(static_cast<double>(w[5]));
+                custom1.push_back(0.0);
+                custom1.push_back(0.0);
             }
         }
 

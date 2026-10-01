@@ -320,7 +320,7 @@ void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
             }
             if (t.particles != nullptr) {
                 if (ch.prop == Prop::birth_rate) {
-                    t.particles->set_birth_rate(v[0]);
+                    t.particles->set_birth_rate(static_cast<double>(v[0]));
                 } else {
                     t.particles->set_active(v[0] > 0.5f);
                 }

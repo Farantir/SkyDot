@@ -33,8 +33,14 @@ struct FourCC {
     constexpr FourCC() = default;
     constexpr explicit FourCC(std::uint32_t v) noexcept : value(v) {}
 
-    /// FourCC{"TES4"}. consteval, so a malformed literal fails to compile.
+    /// FourCC{"TES4"}. consteval, so a malformed literal fails to compile;
+    /// only constexpr on MSVC, which rejects consteval constructors in member
+    /// and aggregate initializers. GCC and clang still check.
+#if defined(_MSC_VER) && !defined(__clang__)
+    constexpr FourCC(const char (&s)[5]) noexcept
+#else
     consteval FourCC(const char (&s)[5]) noexcept
+#endif
         : value(static_cast<std::uint32_t>(static_cast<unsigned char>(s[0])) |
                 static_cast<std::uint32_t>(static_cast<unsigned char>(s[1])) << 8 |
                 static_cast<std::uint32_t>(static_cast<unsigned char>(s[2])) << 16 |

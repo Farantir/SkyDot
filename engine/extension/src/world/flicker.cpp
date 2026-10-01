@@ -65,7 +65,7 @@ godot::Vector3 SkydotFlicker::offset_at(double seconds) const {
 
 void SkydotFlicker::_ready() {
     if (auto* light = godot::Object::cast_to<godot::Light3D>(get_parent())) {
-        base_energy_ = light->get_param(godot::Light3D::PARAM_ENERGY);
+        base_energy_ = static_cast<double>(light->get_param(godot::Light3D::PARAM_ENERGY));
         base_position_ = light->get_position();
         // Neighbouring lights should not flicker in step.
         const godot::Vector3 p = base_position_;

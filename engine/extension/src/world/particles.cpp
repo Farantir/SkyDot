@@ -462,10 +462,10 @@ void SkydotParticles::build_emitter(Emitter& em) {
     double extent = 0.0;
     if (kind == "sphere") {
         process->set_shader_parameter("emitter_kind", 1);
-        extent = size.x;
+        extent = static_cast<double>(size.x);
     } else if (kind == "cylinder") {
         process->set_shader_parameter("emitter_kind", 2);
-        extent = std::max(size.x, size.y);
+        extent = static_cast<double>(std::max(size.x, size.y));
     } else if (kind == "mesh") {
         process->set_shader_parameter("emitter_kind", 3);
         std::vector<Vector3> points;

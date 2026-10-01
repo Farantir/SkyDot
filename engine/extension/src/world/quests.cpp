@@ -3,6 +3,7 @@
 // SkydotWorld: quests, globals and placed actors as world.fb carries them.
 // The quest system itself is in SkydotPapyrus (vm/quests.cpp).
 #include "world/refs.hpp"
+#include "world/fb_search.hpp"
 #include "world/world.hpp"
 
 #include <algorithm>
@@ -35,9 +36,7 @@ const T* by_id(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uin
     if (list == nullptr) {
         return nullptr;
     }
-    const auto it = std::lower_bound(list->begin(), list->end(), id,
-                                     [](const T* e, std::uint32_t v) { return e->id() < v; });
-    return it != list->end() && it->id() == id ? *it : nullptr;
+    return find_sorted(list, id, [](const T* e) { return e->id(); });
 }
 
 String fourcc_text(std::uint32_t v) {
@@ -217,9 +216,8 @@ Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
         return out;
     }
     const auto id = static_cast<std::uint32_t>(ref);
-    const auto it = std::lower_bound(actors->begin(), actors->end(), id,
-                                     [](const wfb::ActorRef* a, std::uint32_t v) { return a->ref() < v; });
-    if (it == actors->end() || it->ref() != id) {
+    const auto* it = find_sorted(actors, id, [](const wfb::ActorRef* a) { return a->ref(); });
+    if (it == nullptr) {
         return out;
     }
     out["ref"] = static_cast<std::int64_t>(it->ref());

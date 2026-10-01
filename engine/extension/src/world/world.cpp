@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/world.hpp"
+#include "world/fb_search.hpp"
 
 #include "world/animator.hpp"
 #include "world/billboard.hpp"
@@ -323,9 +324,7 @@ const wfb::Cell* SkydotWorld::cell_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    const auto it = std::lower_bound(cells->begin(), cells->end(), key,
-                                     [](const wfb::Cell* c, std::uint32_t v) { return c->id() < v; });
-    return (it != cells->end() && it->id() == key) ? *it : nullptr;
+    return find_sorted(cells, key, [](const wfb::Cell* c) { return c->id(); });
 }
 
 const wfb::Worldspace* SkydotWorld::world_ptr(std::int64_t id) const {
@@ -334,10 +333,7 @@ const wfb::Worldspace* SkydotWorld::world_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    const auto it = std::lower_bound(
-        worlds->begin(), worlds->end(), key,
-        [](const wfb::Worldspace* w, std::uint32_t v) { return w->id() < v; });
-    return (it != worlds->end() && it->id() == key) ? *it : nullptr;
+    return find_sorted(worlds, key, [](const wfb::Worldspace* w) { return w->id(); });
 }
 
 const wfb::Cell* SkydotWorld::exterior_ptr(std::uint32_t world, std::int32_t x,
@@ -353,9 +349,7 @@ const wfb::Water* SkydotWorld::water_ptr(std::uint32_t id) const {
     if (waters == nullptr || id == 0) {
         return nullptr;
     }
-    const auto it = std::lower_bound(waters->begin(), waters->end(), id,
-                                     [](const wfb::Water* w, std::uint32_t v) { return w->id() < v; });
-    return (it != waters->end() && it->id() == id) ? *it : nullptr;
+    return find_sorted(waters, id, [](const wfb::Water* w) { return w->id(); });
 }
 
 std::uint32_t SkydotWorld::water_type(std::uint32_t world, const wfb::Cell* cell) const {
@@ -380,9 +374,7 @@ const wfb::Base* SkydotWorld::base_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    const auto it = std::lower_bound(bases->begin(), bases->end(), key,
-                                     [](const wfb::Base* b, std::uint32_t v) { return b->id() < v; });
-    return (it != bases->end() && it->id() == key) ? *it : nullptr;
+    return find_sorted(bases, key, [](const wfb::Base* b) { return b->id(); });
 }
 
 std::int64_t SkydotWorld::find_cell(const String& editor_id) const {
@@ -477,7 +469,7 @@ Array SkydotWorld::get_refs(std::int64_t cell_id) const {
         entry["id"] = static_cast<std::int64_t>(ref->id());
         entry["base"] = static_cast<std::int64_t>(ref->base());
         entry["transform"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()),
-                                              Vector3(r.x(), r.y(), r.z()), ref->scale());
+                                              Vector3(r.x(), r.y(), r.z()), static_cast<double>(ref->scale()));
         entry["scale"] = ref->scale();
         entry["disabled"] = initially_disabled(*ref);
         entry["persistent"] = (ref->flags() & k_ref_persistent) != 0;
@@ -594,7 +586,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
     const auto& p = ref.position();
     const auto& r = ref.rotation();
     const Transform3D transform = skyrim_transform(Vector3(p.x(), p.y(), p.z()),
-                                                   Vector3(r.x(), r.y(), r.z()), ref.scale());
+                                                   Vector3(r.x(), r.y(), r.z()), static_cast<double>(ref.scale()));
     const String name = hex_id(ref.id()) + " " + to_godot(base->editor_id());
 
     const auto* model = base->model();
@@ -689,15 +681,14 @@ godot::Node3D* SkydotWorld::build_ref(std::int64_t cell_id, std::int64_t ref_id)
         return nullptr;
     }
     const auto id = static_cast<std::uint32_t>(ref_id);
-    const auto it = std::lower_bound(refs->begin(), refs->end(), id,
-                                     [](const wfb::Ref* r, std::uint32_t v) { return r->id() < v; });
-    if (it == refs->end() || it->id() != id) {
+    const auto* it = find_sorted(refs, id, [](const wfb::Ref* r) { return r->id(); });
+    if (it == nullptr) {
         return nullptr;
     }
     auto* root = memnew(godot::Node3D);
     root->set_name(hex_id(id));
     BuildStats stats;
-    place_ref(root, **it, cell->id(), stats, true);
+    place_ref(root, *it, cell->id(), stats, true);
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }
@@ -782,10 +773,8 @@ std::array<std::string, 2> SkydotWorld::land_texture_paths(std::uint32_t id) con
     if (id == 0 || ltex == nullptr) {
         return {TerrainBuilder::k_default_texture, ""};
     }
-    const auto it = std::lower_bound(
-        ltex->begin(), ltex->end(), id,
-        [](const wfb::LandTexture* l, std::uint32_t v) { return l->id() < v; });
-    if (it == ltex->end() || it->id() != id) {
+    const auto* it = find_sorted(ltex, id, [](const wfb::LandTexture* l) { return l->id(); });
+    if (it == nullptr) {
         return {TerrainBuilder::k_default_texture, ""};
     }
     const auto str = [](const flatbuffers::String* s) {
@@ -911,9 +900,7 @@ Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t we
         return out;
     }
     const auto find = [](const auto* list, std::uint32_t id) -> decltype(list->Get(0)) {
-        const auto it = std::lower_bound(list->begin(), list->end(), id,
-                                         [](const auto* e, std::uint32_t v) { return e->id() < v; });
-        return (it != list->end() && it->id() == id) ? *it : nullptr;
+        return find_sorted(list, id, [](const auto* e) { return e->id(); });
     };
     const wfb::Climate* climate = find(climates, ws->climate());
     if (climate == nullptr && ws->parent() != 0) {

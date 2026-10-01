@@ -1122,13 +1122,11 @@ bool write_bytes(const std::filesystem::path& out, std::span<const std::byte> da
     if (out.has_parent_path()) {
         std::filesystem::create_directories(out.parent_path(), ec);
     }
-    std::FILE* file = std::fopen(out.string().c_str(), "wb");
-    if (file == nullptr) {
-        std::fprintf(stderr, "error: cannot write %s\n", out.string().c_str());
+    std::string error;
+    if (!bethconv::io::write_file(out, data, error)) {
+        std::fprintf(stderr, "error: cannot write %s: %s\n", out.string().c_str(), error.c_str());
         return false;
     }
-    std::fwrite(data.data(), 1, data.size(), file);
-    std::fclose(file);
     return true;
 }
 

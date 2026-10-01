@@ -3,6 +3,7 @@
 // SkydotWorld: doors, scripts and the other data activation needs, and
 // picking the reference the player looks at.
 #include "world/refs.hpp"
+#include "world/fb_search.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/mesh.hpp>
@@ -67,10 +68,9 @@ std::vector<const T*> by_ref(const flatbuffers::Vector<const T*>* list, std::uin
     if (list == nullptr) {
         return out;
     }
-    auto it = std::lower_bound(list->begin(), list->end(), ref,
-                               [](const T* e, std::uint32_t v) { return e->ref() < v; });
-    for (; it != list->end() && it->ref() == ref; ++it) {
-        out.push_back(*it);
+    for (auto i = first_at_least(list, ref, [](const T* e) { return e->ref(); });
+         i < list->size() && list->Get(i)->ref() == ref; ++i) {
+        out.push_back(list->Get(i));
     }
     return out;
 }
@@ -80,10 +80,7 @@ const wfb::RefScripts* ref_scripts(const wfb::Cell& cell, std::uint32_t ref) {
     if (list == nullptr) {
         return nullptr;
     }
-    const auto it = std::lower_bound(
-        list->begin(), list->end(), ref,
-        [](const wfb::RefScripts* r, std::uint32_t v) { return r->ref() < v; });
-    return (it != list->end() && it->ref() == ref) ? *it : nullptr;
+    return find_sorted(list, ref, [](const wfb::RefScripts* r) { return r->ref(); });
 }
 
 const wfb::Ref* find_ref(const wfb::Cell& cell, std::uint32_t id) {
@@ -91,9 +88,7 @@ const wfb::Ref* find_ref(const wfb::Cell& cell, std::uint32_t id) {
     if (refs == nullptr) {
         return nullptr;
     }
-    const auto it = std::lower_bound(refs->begin(), refs->end(), id,
-                                     [](const wfb::Ref* r, std::uint32_t v) { return r->id() < v; });
-    return (it != refs->end() && it->id() == id) ? *it : nullptr;
+    return find_sorted(refs, id, [](const wfb::Ref* r) { return r->id(); });
 }
 
 Variant object_value(const wfb::ScriptObject& object) {
@@ -388,7 +383,7 @@ Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const V
                 continue;
             }
             const Vector3 hit = from + (to - from) * static_cast<godot::real_t>(t);
-            const double distance = from.distance_to(hit);
+            const double distance = static_cast<double>(from.distance_to(hit));
             if (distance < best) {
                 best = distance;
                 out["ref"] = child->get_meta("skydot_ref");

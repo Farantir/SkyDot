@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+cmake_minimum_required(VERSION 3.28) # IN_LIST and other policies in script mode
 #
 # Run the editor's project scan and check what it wrote, not its exit code.
 #
