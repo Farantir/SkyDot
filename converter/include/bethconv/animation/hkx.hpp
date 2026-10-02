@@ -6,9 +6,13 @@
 // offsets per pointer size. Format and measurements:
 // converter/docs/spikes/hkx.md.
 //
-// Read: skeletons (hkaSkeleton), animation bindings, and spline-compressed
-// or interleaved animations with their annotations. Behaviour graphs,
-// physics and everything else are counted by class and skipped.
+// Read: skeletons (hkaSkeleton), animation bindings, spline-compressed or
+// interleaved animations with their annotations, a behaviour character's
+// names (hkbCharacterStringData) and a behaviour graph's clip generators
+// (hkbClipGenerator: clip name -> animation file; the animationdata text
+// files give the same names root motion, see animation_data.hpp). The rest of
+// behaviour graphs, physics and everything else are counted by class and
+// skipped.
 //
 // Animations are kept as splines, not sampled: every vanilla SE clip sampled
 // per frame would take 1 GiB, the splines 54 MiB. A channel's control points
@@ -116,11 +120,33 @@ struct Clip {
     std::string extracted_motion;
 };
 
+/// hkbCharacterStringData, from a behaviour character
+/// (`actors/character/characters/defaultmale.hkx`). Paths are as stored:
+/// relative to the behaviour project's folder, backslashes, any case.
+struct Character {
+    std::string name;
+    std::string rig;      ///< The animation skeleton.
+    std::string ragdoll;
+    std::string behavior; ///< The root behaviour graph.
+    /// Every animation file the character's behaviours load.
+    std::vector<std::string> animations;
+};
+
+/// hkbClipGenerator, from a behaviour graph: a clip's name (as the
+/// animationdata files and behaviour events call it) and the animation file
+/// it plays, relative to the behaviour project's folder.
+struct ClipGenerator {
+    std::string name;
+    std::string animation;
+};
+
 struct HkxFile {
     std::uint8_t pointer_size{};
     std::string version;
     std::vector<Skeleton> skeletons;
     std::vector<Clip> clips;
+    std::vector<Character> characters;
+    std::vector<ClipGenerator> clip_generators;
     /// Every object's class, counted, including those not read.
     std::map<std::string, std::uint32_t, std::less<>> classes;
 };
@@ -128,6 +154,8 @@ struct HkxFile {
 /// Limits on what one file may claim; vanilla stays far below them.
 inline constexpr std::uint32_t k_max_tracks = 4096;
 inline constexpr std::uint32_t k_max_frames = 1u << 20;
+/// Animation names in one character; vanilla's largest has 1,656.
+inline constexpr std::uint32_t k_max_character_animations = 1u << 16;
 
 /// Read a packfile. Malformed input, an unknown layout or version, and an
 /// unsupported rotation quantization are errors; unknown classes are not.

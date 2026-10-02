@@ -163,6 +163,33 @@ public:
         }
     }
 
+    /// hkbCharacterStringData: nine arrays (only animation names filled),
+    /// then name, rig, ragdoll and behaviour.
+    void add_character(const std::string& name, const std::string& rig, const std::string& behavior,
+                       const std::vector<std::string>& animations) {
+        const std::size_t A = P_ + 8;
+        const std::size_t o = object("hkbCharacterStringData", ref() + 9 * A + 4 * P_);
+        if (!animations.empty()) {
+            const std::size_t names = blob(animations.size() * P_, 16);
+            for (std::size_t i = 0; i < animations.size(); ++i) {
+                string_ptr(names + i * P_, animations[i]);
+            }
+            array(o + ref() + 2 * A, names, animations.size());
+        }
+        const std::size_t s = o + ref() + 9 * A;
+        string_ptr(s, name);
+        string_ptr(s + P_, rig);
+        string_ptr(s + 3 * P_, behavior);
+    }
+
+    /// hkbClipGenerator: name and animation file; the rest left zero.
+    void add_clip_generator(const std::string& name, const std::string& animation) {
+        const bool wide = P_ == 8;
+        const std::size_t o = object("hkbClipGenerator", wide ? 152 : 104);
+        string_ptr(o + (wide ? 56 : 32), name);
+        string_ptr(o + (wide ? 72 : 40), animation);
+    }
+
     void add_clip(const HkxClip& clip) {
         const std::size_t A = P_ + 8;
         const std::size_t base_off = ref() + 16 + P_ + A;

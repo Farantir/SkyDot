@@ -652,7 +652,8 @@ private:
         std::string plugin = owner.name;
         std::ranges::transform(plugin, plugin.begin(),
                                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        return "meshes/actors/character/facegendata/facegeom/" + plugin + "/" + id.data() + ".nif";
+        const std::string hex(id.data());
+        return "meshes/actors/character/facegendata/facegeom/" + plugin + "/" + hex + ".nif";
     }
 
     void on_npc(const record::MergedRecord& merged, io::SpanReader& data,

@@ -28,7 +28,9 @@
 //   * a start-game-enabled QUST with two stage fragments, an objective and an
 //     alias forced to the lever, and a GLOB its fragment sets;
 //   * a STAT with `XRGD`, `VMAD` and an invented tag, to check the
-//     verbatim-payload rule.
+//     verbatim-payload rule;
+//   * an NPC_ placed in the interior, whose race's behaviour project has an
+//     idle, a walk and a run with root motion.
 //
 // LOD for the worldspace: settings, terrain LOD at levels 4 and 8, object LOD
 // and tree LOD with its list and atlas.
@@ -1010,6 +1012,33 @@ std::vector<std::byte> actor_clip() {
     return b.bytes();
 }
 
+/// The race's behaviour project (`Behaviour.hkx`): one behaviour graph whose
+/// clip generators name the idle, walk and run files, the animationdata
+/// project giving those clips ids, and root motion: the walk 70 units forward
+/// in a second (1 m/s), the run 280 (4 m/s).
+std::vector<std::byte> actor_behaviour() {
+    bethconv::test::HkxBuilder b(8);
+    b.add_clip_generator("MT_Idle", "Animations\\mt_idle.hkx");
+    b.add_clip_generator("MT_WalkForward", "Animations\\mt_walkforward.hkx");
+    b.add_clip_generator("MT_RunForward", "Animations\\mt_runforward.hkx");
+    return b.bytes();
+}
+
+std::vector<std::byte> text_bytes(std::string_view text) {
+    const auto view = std::as_bytes(std::span(text.data(), text.size()));
+    return {view.begin(), view.end()};
+}
+
+constexpr std::string_view k_actor_project =
+    "1\r\n1\r\nBehaviors\\Walk.hkx\r\n1\r\n"
+    "MT_Idle\r\n1\r\n1\r\n0\r\n0\r\n0\r\n\r\n"
+    "MT_WalkForward\r\n2\r\n1\r\n0\r\n0\r\n2\r\nFootLeft:0.2\r\nFootRight:0.7\r\n\r\n"
+    "MT_RunForward\r\n3\r\n1\r\n0\r\n0\r\n0\r\n\r\n";
+
+constexpr std::string_view k_actor_motion =
+    "2\r\n1\r\n1\r\n1 0 70 0\r\n1\r\n1 0 0 0 1\r\n\r\n"
+    "3\r\n1\r\n1\r\n1 0 280 0\r\n1\r\n1 0 0 0 1\r\n\r\n";
+
 std::vector<std::byte> actor_body() {
     bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
     auto* root_bone = builder.add_node("NPC Root [Root]");
@@ -1089,6 +1118,12 @@ std::size_t write_data_folder(const fs::path& data) {
     put("meshes/testpack/actor/turnhead.hkx", actor_clip());
     // The idle the race's behaviour folder offers; same bytes, one asset.
     put("meshes/testpack/actor/animations/mt_idle.hkx", actor_clip());
+    // Walking: the behaviour project and the clips it names (same bytes).
+    put("meshes/testpack/actor/behaviors/walk.hkx", actor_behaviour());
+    put("meshes/testpack/actor/animations/mt_walkforward.hkx", actor_clip());
+    put("meshes/testpack/actor/animations/mt_runforward.hkx", actor_clip());
+    put("meshes/animationdata/behaviour.txt", text_bytes(k_actor_project));
+    put("meshes/animationdata/boundanims/anims_behaviour.txt", text_bytes(k_actor_motion));
     put("meshes/testpack/actor/body.nif", actor_body());
 
     // Not converted; must appear in `report.json`.

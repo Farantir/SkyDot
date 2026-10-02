@@ -663,6 +663,12 @@ TEST_CASE("every animation file decodes, to the same assets", "[corpus]") {
         CHECK(facts.clips == expected.at("clips").get<std::uint64_t>());
         CHECK(facts.frames == expected.at("frames").get<std::uint64_t>());
         CHECK(facts.annotations == expected.at("annotations").get<std::uint64_t>());
+        CHECK(facts.data_failed == 0);
+        CHECK(facts.characters == expected.at("characters").get<std::uint64_t>());
+        CHECK(facts.clip_generators == expected.at("clip_generators").get<std::uint64_t>());
+        CHECK(facts.data_files == expected.at("data_files").get<std::uint64_t>());
+        CHECK(facts.data_clips == expected.at("data_clips").get<std::uint64_t>());
+        CHECK(facts.data_motions == expected.at("data_motions").get<std::uint64_t>());
         CHECK(facts.asset_hash == expected.at("asset_hash").get<std::uint64_t>());
     }
 }

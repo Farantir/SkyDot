@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "corpus_probe.hpp"
+#include "bethconv/animation/animation_data.hpp"
 #include "bethconv/animation/hkx.hpp"
 
 #include "bethconv/io/mapped_file.hpp"
@@ -951,16 +952,38 @@ ScriptFacts probe_scripts(const archive::ArchiveSet& sources) {
 AnimationFacts probe_animations(const archive::ArchiveSet& sources) {
     std::vector<std::string> vpaths;
     sources.for_each([&](const archive::Resolution& entry) {
-        if (entry.vpath.ends_with(".hkx")) {
+        if (entry.vpath.ends_with(".hkx") || animation::is_animation_data(entry.vpath)) {
             vpaths.push_back(entry.vpath);
         }
     });
     std::ranges::sort(vpaths);
     AnimationFacts facts;
     std::uint64_t hash = 0xcbf29ce484222325ULL;
+    const auto mix = [&](const std::vector<std::byte>& asset) {
+        for (const auto b : asset) {
+            hash = (hash ^ static_cast<std::uint8_t>(b)) * 0x100000001b3ULL;
+        }
+    };
     for (const auto& vpath : vpaths) {
-        ++facts.files;
         auto bytes = sources.read(vpath);
+        if (animation::is_animation_data(vpath)) {
+            ++facts.data_files;
+            auto data = bytes ? animation::read_animation_data(*bytes, vpath)
+                              : io::ParseResult<animation::ProjectData>(std::unexpected(bytes.error()));
+            if (!data) {
+                ++facts.data_failed;
+                continue;
+            }
+            facts.data_clips += data->clips.size();
+            facts.data_motions += data->motions.size();
+            for (const auto& p : data->projects) {
+                facts.data_clips += p.clips.size();
+                facts.data_motions += p.motions.size();
+            }
+            mix(pack::write_animation_asset(*data));
+            continue;
+        }
+        ++facts.files;
         auto decoded = bytes ? animation::read_hkx(*bytes, vpath)
                              : io::ParseResult<animation::HkxFile>(std::unexpected(bytes.error()));
         if (!decoded) {
@@ -980,9 +1003,9 @@ AnimationFacts probe_animations(const archive::ArchiveSet& sources) {
                 facts.annotations += track.annotations.size();
             }
         }
-        for (const auto b : pack::write_animation_asset(*decoded)) {
-            hash = (hash ^ static_cast<std::uint8_t>(b)) * 0x100000001b3ULL;
-        }
+        facts.characters += decoded->characters.size();
+        facts.clip_generators += decoded->clip_generators.size();
+        mix(pack::write_animation_asset(*decoded));
     }
     facts.asset_hash = hash;
     return facts;

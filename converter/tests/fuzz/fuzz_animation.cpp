@@ -2,7 +2,9 @@
 //
 // Havok packfiles (`.hkx`). Whatever decodes is sampled at every track's
 // first, middle and last frame, written as an animation asset and must read
-// back the same.
+// back the same. The same bytes also go through the three animationdata text
+// readers, whose assets must read back too.
+#include "bethconv/animation/animation_data.hpp"
 #include "bethconv/animation/hkx.hpp"
 #include "bethconv/pack/animation_asset.hpp"
 
@@ -15,6 +17,17 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
         return 0;
     }
     const auto bytes = bethconv::fuzz::as_bytes(data, size);
+    for (const char* vpath : {"meshes/animationdata/fuzz.txt", "meshes/animationdata/boundanims/anims_fuzz.txt",
+                              "meshes/animationdatasinglefile.txt"}) {
+        if (auto text = bethconv::animation::read_animation_data(bytes, vpath)) {
+            const auto back =
+                bethconv::pack::read_project_asset(bethconv::pack::write_animation_asset(*text), "fuzz.animfb");
+            BETHCONV_FUZZ_CHECK(back.has_value());
+            BETHCONV_FUZZ_CHECK(back->clips.size() == text->clips.size());
+            BETHCONV_FUZZ_CHECK(back->motions.size() == text->motions.size());
+            BETHCONV_FUZZ_CHECK(back->projects.size() == text->projects.size());
+        }
+    }
     auto file = bethconv::animation::read_hkx(bytes, "fuzz.hkx");
     if (!file) {
         return 0;
@@ -48,5 +61,6 @@ extern "C" int LLVMFuzzerTestOneInput(const std::uint8_t* data, std::size_t size
     BETHCONV_FUZZ_CHECK(back.has_value());
     BETHCONV_FUZZ_CHECK(back->clips.size() == file->clips.size());
     BETHCONV_FUZZ_CHECK(back->skeletons.size() == file->skeletons.size());
+    BETHCONV_FUZZ_CHECK(back->clip_generators.size() == file->clip_generators.size());
     return 0;
 }

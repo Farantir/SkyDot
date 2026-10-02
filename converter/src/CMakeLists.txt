@@ -59,6 +59,7 @@ add_library(bethconv_core STATIC
     mesh/nif_reader.cpp
     mesh/nif_controllers.cpp
     mesh/gltf_writer.cpp
+    animation/animation_data.cpp
     animation/hkx.cpp
     texture/dds.cpp
     texture/mip_tail.cpp

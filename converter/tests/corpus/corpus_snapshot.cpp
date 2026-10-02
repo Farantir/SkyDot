@@ -185,12 +185,23 @@ void update_animations(json& install, const archive::ArchiveSet& set) {
     expected["clips"] = facts.clips;
     expected["frames"] = facts.frames;
     expected["annotations"] = facts.annotations;
+    expected["characters"] = facts.characters;
+    expected["clip_generators"] = facts.clip_generators;
+    expected["data_files"] = facts.data_files;
+    expected["data_clips"] = facts.data_clips;
+    expected["data_motions"] = facts.data_motions;
     expected["asset_hash"] = facts.asset_hash;
     std::fprintf(stderr, "  animations: %llu files, %llu failed, %llu skeletons, %llu clips, %llu frames\n",
                  static_cast<unsigned long long>(facts.files), static_cast<unsigned long long>(facts.failed),
                  static_cast<unsigned long long>(facts.skeletons), static_cast<unsigned long long>(facts.clips),
                  static_cast<unsigned long long>(facts.frames));
-    if (facts.failed != 0) {
+    std::fprintf(stderr, "  animationdata: %llu files, %llu failed, %llu clips, %llu motions; %llu clip generators\n",
+                 static_cast<unsigned long long>(facts.data_files),
+                 static_cast<unsigned long long>(facts.data_failed),
+                 static_cast<unsigned long long>(facts.data_clips),
+                 static_cast<unsigned long long>(facts.data_motions),
+                 static_cast<unsigned long long>(facts.clip_generators));
+    if (facts.failed != 0 || facts.data_failed != 0) {
         std::fprintf(stderr, "    ^ NOT ZERO on a vanilla install -- recording this is recording a bug.\n");
     }
 }

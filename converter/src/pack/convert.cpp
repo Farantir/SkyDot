@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/convert.hpp"
 
+#include "bethconv/animation/animation_data.hpp"
 #include "bethconv/animation/hkx.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/pack/animation_asset.hpp"
@@ -52,7 +53,7 @@ namespace {
     return vpath.substr(dot);
 }
 
-[[nodiscard]] std::optional<AssetKind> kind_of(std::string_view extension,
+[[nodiscard]] std::optional<AssetKind> kind_of(std::string_view vpath, std::string_view extension,
                                                const ConvertOptions& options) {
     if (extension == ".nif" && options.convert_meshes) {
         return AssetKind::mesh;
@@ -71,7 +72,7 @@ namespace {
     if ((extension == ".btt" || extension == ".lst" || extension == ".lod") && options.convert_lod) {
         return AssetKind::lod;
     }
-    if (extension == ".hkx" && options.convert_animations) {
+    if ((extension == ".hkx" || animation::is_animation_data(vpath)) && options.convert_animations) {
         return AssetKind::animation;
     }
     return std::nullopt;
@@ -141,7 +142,8 @@ std::string ConvertOptions::lod_settings() const {
 }
 
 std::string ConvertOptions::animation_settings() const {
-    return "animation/1;decoded";
+    // 2: behaviour characters and clip generators; animationdata text files.
+    return "animation/2;decoded";
 }
 
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
@@ -257,7 +259,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         }
 
         const auto extension = extension_of_vpath(vpath);
-        const auto kind = kind_of(extension, options);
+        const auto kind = kind_of(vpath, extension, options);
         if (!kind) {
             // Not converted: counted in the manifest, never read.
             writer->defer(extension.empty() ? "<none>" : extension);
@@ -432,6 +434,15 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
             break;
         }
         case AssetKind::animation: {
+            if (animation::is_animation_data(vpath)) {
+                auto data = animation::read_animation_data(*bytes, vpath);
+                if (!data) {
+                    writer->fail(failure_from(vpath, "animation", data.error()));
+                } else if (auto stored = writer->store(slot, write_animation_asset(*data)); !stored) {
+                    writer->fail(failure_from(vpath, "write", stored.error()));
+                }
+                break;
+            }
             auto decoded = animation::read_hkx(*bytes, vpath);
             if (!decoded) {
                 writer->fail(failure_from(vpath, "animation", decoded.error()));

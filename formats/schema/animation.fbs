@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Schema of an animation asset (`.animfb`): one Havok file (`.hkx`), decoded
-// by the converter. It holds whatever skeletons and animations the file has:
-// a skeleton file (`character assets/skeleton.hkx`) has skeletons, an
-// animation file a clip, a behaviour file neither (it is still written, so
-// every path resolves).
+// Schema of an animation asset (`.animfb`): one Havok file (`.hkx`) or one
+// animationdata text file, decoded by the converter. It holds whatever the
+// file has: a skeleton file (`character assets/skeleton.hkx`) has skeletons,
+// an animation file a clip, a behaviour character (`characters/*.hkx`) a
+// character, a behaviour graph nothing (it is still written, so every path
+// resolves); `meshes/animationdata/<project>.txt` gives project files and
+// clips, `meshes/animationdata/boundanims/anims_<project>.txt` motions, and
+// `meshes/animationdatasinglefile.txt` projects with both (the only place
+// the DLC creatures' are).
+//
+// To find a clip by name for an actor whose race names behaviour project
+// `actors/character/defaultmale.hkx`: the project file
+// `animationdata/defaultmale.txt` lists the behaviour graphs
+// (`Behaviors\MT_Behavior.hkx`) and gives the clip's id; a behaviour's
+// clip generator of that name names the clip's file, relative to the
+// project's folder; `boundanims/anims_defaultmale.txt` has its root motion
+// by the id.
 //
 // Values are Skyrim's: Z-up, game units, each bone relative to its parent.
 // Quaternions are x, y, z, w.
@@ -102,13 +114,76 @@ table Clip {
     extracted_motion: string;
 }
 
+/// hkbCharacterStringData. Paths as stored: relative to the behaviour
+/// project's folder, backslashes, any case.
+table Character {
+    name: string;
+    rig: string;
+    ragdoll: string;
+    behavior: string;
+    /// Every animation file the character's behaviours load. Not indexed by
+    /// anything in the animationdata files.
+    animations: [string];
+}
+
+/// hkbClipGenerator: a clip of a behaviour graph and the animation file it
+/// plays, relative to the behaviour project's folder.
+table ClipGenerator {
+    name: string;
+    animation: string;
+}
+
+/// A clip generator of a behaviour project, as the animationdata files list
+/// it. `animation` is not an index into anything but a unique id that the
+/// project's motions use; the clip's file is its behaviour graph's
+/// ClipGenerator of the same name.
+table ProjectClip {
+    name: string;
+    /// The id the project's motions are keyed by.
+    animation: uint;
+    speed: float;
+    crop_start: float;
+    crop_end: float;
+    annotations: [Annotation];
+}
+
+/// Root motion keys: where the actor is after `time` seconds (game units,
+/// Z up, +Y forward), and its turn as a quaternion x, y, z, w.
+struct MotionKey { time: float; x: float; y: float; z: float; }
+struct RotationKey { time: float; x: float; y: float; z: float; w: float; }
+
+table Motion {
+    animation: uint;
+    duration: float;
+    translations: [MotionKey];
+    rotations: [RotationKey];
+}
+
+/// One project of `meshes/animationdatasinglefile.txt`: what its own
+/// project and boundanims files would hold. `name` without ".txt".
+table Project {
+    name: string;
+    files: [string];
+    clips: [ProjectClip];
+    motions: [Motion];
+}
+
 table Animation {
-    /// Bumped whenever the meaning of anything here changes.
+    /// Bumped whenever the meaning of anything here changes. Characters,
+    /// project files, clips and motions were added later in format 1 (older
+    /// assets lack them, nothing else differs).
     format_version: uint;
     pointer_size: ubyte;
     havok_version: string;
     skeletons: [Skeleton];
     clips: [Clip];
+    characters: [Character];
+    project_files: [string];
+    project_clips: [ProjectClip];
+    motions: [Motion];
+    /// The single file's projects, sorted by lowercase name.
+    projects: [Project];
+    clip_generators: [ClipGenerator];
 }
 
 root_type Animation;

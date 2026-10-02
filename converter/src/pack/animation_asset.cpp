@@ -4,6 +4,7 @@
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/pack/animation_generated.h"
 
+#include <algorithm>
 #include <utility>
 
 namespace bethconv::pack {
@@ -42,6 +43,30 @@ std::vector<T> copy(const flatbuffers::Vector<T>* v) {
 
 std::string text(const flatbuffers::String* s) {
     return s == nullptr ? std::string() : s->str();
+}
+
+std::vector<std::byte> finish(const flatbuffers::FlatBufferBuilder& b) {
+    const std::span<const std::uint8_t> raw(b.GetBufferPointer(), b.GetSize());
+    const auto bytes = std::as_bytes(raw);
+    return {bytes.begin(), bytes.end()};
+}
+
+/// The verified root, or why not.
+io::ParseResult<const afb::Animation*> verified(std::span<const std::byte> bytes, std::string_view origin) {
+    io::SpanReader reader(bytes, origin);
+    const auto* raw = static_cast<const std::uint8_t*>(static_cast<const void*>(bytes.data()));
+    flatbuffers::Verifier verifier(raw, bytes.size());
+    if (bytes.empty() || !afb::VerifyAnimationBuffer(verifier)) {
+        return reader.fail(io::ErrorKind::corrupt, "not a valid animation asset");
+    }
+    const auto* root = afb::GetAnimation(raw);
+    if (root->format_version() != k_animation_format_version) {
+        return reader.fail(io::ErrorKind::unsupported,
+                           "animation asset format " + std::to_string(root->format_version()) +
+                               " is not one this build reads (it reads " +
+                               std::to_string(k_animation_format_version) + ")");
+    }
+    return root;
 }
 
 Channel read_channel(const afb::Channel* c) {
@@ -123,31 +148,189 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
             c.float_tracks, blocks_off, notes_off, skeleton, t2b, f2s, c.blend_hint, motion));
     }
 
+    std::vector<flatbuffers::Offset<afb::Character>> characters;
+    for (const auto& c : file.characters) {
+        const auto name = b.CreateString(c.name);
+        const auto rig = b.CreateString(c.rig);
+        const auto ragdoll = b.CreateString(c.ragdoll);
+        const auto behavior = b.CreateString(c.behavior);
+        const auto animations = b.CreateVectorOfStrings(c.animations);
+        characters.push_back(afb::CreateCharacter(b, name, rig, ragdoll, behavior, animations));
+    }
+
+    std::vector<flatbuffers::Offset<afb::ClipGenerator>> generators;
+    for (const auto& g : file.clip_generators) {
+        const auto name = b.CreateString(g.name);
+        const auto animation = b.CreateString(g.animation);
+        generators.push_back(afb::CreateClipGenerator(b, name, animation));
+    }
+
     const auto skeletons_off = b.CreateVector(skeletons);
     const auto clips_off = b.CreateVector(clips);
+    const auto characters_off = characters.empty() ? 0 : b.CreateVector(characters).o;
+    const auto generators_off = generators.empty() ? 0 : b.CreateVector(generators).o;
     const auto version = b.CreateString(file.version);
-    afb::FinishAnimationBuffer(b, afb::CreateAnimation(b, k_animation_format_version, file.pointer_size,
-                                                      version, skeletons_off, clips_off));
-    const std::span<const std::uint8_t> raw(b.GetBufferPointer(), b.GetSize());
-    const auto bytes = std::as_bytes(raw);
-    return {bytes.begin(), bytes.end()};
+    afb::AnimationBuilder ab(b);
+    ab.add_format_version(k_animation_format_version);
+    ab.add_pointer_size(file.pointer_size);
+    ab.add_havok_version(version);
+    ab.add_skeletons(skeletons_off);
+    ab.add_clips(clips_off);
+    if (characters_off != 0) {
+        ab.add_characters(characters_off);
+    }
+    if (generators_off != 0) {
+        ab.add_clip_generators(generators_off);
+    }
+    afb::FinishAnimationBuffer(b, ab.Finish());
+    return finish(b);
+}
+
+namespace {
+
+struct ProjectOffsets {
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>> files;
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<afb::ProjectClip>>> clips;
+    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<afb::Motion>>> motions;
+};
+
+ProjectOffsets write_project(flatbuffers::FlatBufferBuilder& b, const animation::ProjectData& data) {
+    std::vector<flatbuffers::Offset<afb::ProjectClip>> clips;
+    for (const auto& c : data.clips) {
+        std::vector<flatbuffers::Offset<afb::Annotation>> notes;
+        for (const auto& [time, text] : c.annotations) {
+            notes.push_back(afb::CreateAnnotation(b, time, b.CreateString(text)));
+        }
+        const auto name = b.CreateString(c.name);
+        const auto notes_off = b.CreateVector(notes);
+        clips.push_back(afb::CreateProjectClip(b, name, c.animation, c.speed, c.crop_start, c.crop_end, notes_off));
+    }
+    std::vector<flatbuffers::Offset<afb::Motion>> motions;
+    for (const auto& m : data.motions) {
+        std::vector<afb::MotionKey> moves;
+        for (const auto& k : m.translations) {
+            moves.emplace_back(k.time, k.translation[0], k.translation[1], k.translation[2]);
+        }
+        std::vector<afb::RotationKey> turns;
+        for (const auto& k : m.rotations) {
+            turns.emplace_back(k.time, k.rotation[0], k.rotation[1], k.rotation[2], k.rotation[3]);
+        }
+        const auto moves_off = b.CreateVectorOfStructs(moves);
+        const auto turns_off = b.CreateVectorOfStructs(turns);
+        motions.push_back(afb::CreateMotion(b, m.animation, m.duration, moves_off, turns_off));
+    }
+    ProjectOffsets out;
+    if (!data.files.empty()) {
+        out.files = b.CreateVectorOfStrings(data.files);
+    }
+    if (!clips.empty()) {
+        out.clips = b.CreateVector(clips);
+    }
+    if (!motions.empty()) {
+        out.motions = b.CreateVector(motions);
+    }
+    return out;
+}
+
+std::string lowercase(std::string s) {
+    for (char& c : s) {
+        if (c >= 'A' && c <= 'Z') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return s;
+}
+
+animation::ProjectData read_project(const flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>* files,
+                                    const flatbuffers::Vector<flatbuffers::Offset<afb::ProjectClip>>* clips,
+                                    const flatbuffers::Vector<flatbuffers::Offset<afb::Motion>>* motions) {
+    animation::ProjectData out;
+    if (files != nullptr) {
+        for (const auto* f : *files) {
+            out.files.push_back(text(f));
+        }
+    }
+    if (clips != nullptr) {
+        for (const auto* c : *clips) {
+            animation::ProjectClip clip;
+            clip.name = text(c->name());
+            clip.animation = c->animation();
+            clip.speed = c->speed();
+            clip.crop_start = c->crop_start();
+            clip.crop_end = c->crop_end();
+            if (const auto* notes = c->annotations()) {
+                for (const auto* a : *notes) {
+                    clip.annotations.emplace_back(a->time(), text(a->text()));
+                }
+            }
+            out.clips.push_back(std::move(clip));
+        }
+    }
+    if (motions != nullptr) {
+        for (const auto* m : *motions) {
+            animation::Motion motion;
+            motion.animation = m->animation();
+            motion.duration = m->duration();
+            if (const auto* keys = m->translations()) {
+                for (const auto* k : *keys) {
+                    motion.translations.push_back(animation::MotionKey{k->time(), {k->x(), k->y(), k->z()}});
+                }
+            }
+            if (const auto* keys = m->rotations()) {
+                for (const auto* k : *keys) {
+                    motion.rotations.push_back(
+                        animation::RotationKey{k->time(), {k->x(), k->y(), k->z(), k->w()}});
+                }
+            }
+            out.motions.push_back(std::move(motion));
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+std::vector<std::byte> write_animation_asset(const animation::ProjectData& data) {
+    flatbuffers::FlatBufferBuilder b(4096);
+    const auto top = write_project(b, data);
+    // Sorted by lowercase name, so a reader can search.
+    std::vector<const animation::ProjectData*> sorted;
+    for (const auto& p : data.projects) {
+        sorted.push_back(&p);
+    }
+    std::ranges::stable_sort(sorted, [](const auto* x, const auto* y) { return lowercase(x->name) < lowercase(y->name); });
+    std::vector<flatbuffers::Offset<afb::Project>> projects;
+    for (const auto* p : sorted) {
+        const auto offsets = write_project(b, *p);
+        const auto name = b.CreateString(p->name);
+        projects.push_back(afb::CreateProject(b, name, offsets.files, offsets.clips, offsets.motions));
+    }
+    const auto projects_off = projects.empty() ? 0 : b.CreateVector(projects).o;
+    afb::AnimationBuilder ab(b);
+    ab.add_format_version(k_animation_format_version);
+    if (!top.files.IsNull()) {
+        ab.add_project_files(top.files);
+    }
+    if (!top.clips.IsNull()) {
+        ab.add_project_clips(top.clips);
+    }
+    if (!top.motions.IsNull()) {
+        ab.add_motions(top.motions);
+    }
+    if (projects_off != 0) {
+        ab.add_projects(projects_off);
+    }
+    afb::FinishAnimationBuffer(b, ab.Finish());
+    return finish(b);
 }
 
 io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::byte> bytes,
                                                          std::string_view origin) {
-    io::SpanReader reader(bytes, origin);
-    const auto* raw = static_cast<const std::uint8_t*>(static_cast<const void*>(bytes.data()));
-    flatbuffers::Verifier verifier(raw, bytes.size());
-    if (bytes.empty() || !afb::VerifyAnimationBuffer(verifier)) {
-        return reader.fail(io::ErrorKind::corrupt, "not a valid animation asset");
+    auto checked = verified(bytes, origin);
+    if (!checked) {
+        return std::unexpected(std::move(checked).error());
     }
-    const auto* root = afb::GetAnimation(raw);
-    if (root->format_version() != k_animation_format_version) {
-        return reader.fail(io::ErrorKind::unsupported,
-                           "animation asset format " + std::to_string(root->format_version()) +
-                               " is not one this build reads (it reads " +
-                               std::to_string(k_animation_format_version) + ")");
-    }
+    const auto* root = *checked;
     animation::HkxFile out;
     out.pointer_size = root->pointer_size();
     out.version = text(root->havok_version());
@@ -222,6 +405,44 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
             clip.blend_hint = c->blend_hint();
             clip.extracted_motion = text(c->extracted_motion());
             out.clips.push_back(std::move(clip));
+        }
+    }
+    if (const auto* characters = root->characters()) {
+        for (const auto* c : *characters) {
+            animation::Character ch;
+            ch.name = text(c->name());
+            ch.rig = text(c->rig());
+            ch.ragdoll = text(c->ragdoll());
+            ch.behavior = text(c->behavior());
+            if (const auto* names = c->animations()) {
+                for (const auto* n : *names) {
+                    ch.animations.push_back(text(n));
+                }
+            }
+            out.characters.push_back(std::move(ch));
+        }
+    }
+    if (const auto* generators = root->clip_generators()) {
+        for (const auto* g : *generators) {
+            out.clip_generators.push_back(animation::ClipGenerator{text(g->name()), text(g->animation())});
+        }
+    }
+    return out;
+}
+
+io::ParseResult<animation::ProjectData> read_project_asset(std::span<const std::byte> bytes,
+                                                           std::string_view origin) {
+    auto checked = verified(bytes, origin);
+    if (!checked) {
+        return std::unexpected(std::move(checked).error());
+    }
+    const auto* root = *checked;
+    animation::ProjectData out = read_project(root->project_files(), root->project_clips(), root->motions());
+    if (const auto* projects = root->projects()) {
+        for (const auto* p : *projects) {
+            auto project = read_project(p->files(), p->clips(), p->motions());
+            project.name = text(p->name());
+            out.projects.push_back(std::move(project));
         }
     }
     return out;

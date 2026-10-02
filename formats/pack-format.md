@@ -5,7 +5,9 @@ engine reads only packs. Everything below is stable in v6. The last section
 lists what is not promised.
 
 v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
-a new kind, `animation`, holding its skeletons and clips. v5 stores assets in one blob with an index (or, on request, as loose files)
+a new kind, `animation`, holding its skeletons and clips; later v6 packs add
+behaviour graphs' clip generators and the animationdata text files (clip
+ids, root motion) to the same kind, which older v6 packs lack. v5 stores assets in one blob with an index (or, on request, as loose files)
 and drops glTF images from meshes: the engine loads packs directly, without a
 Godot import or bake. v4 adds LOD: terrain and object LOD (`.btr`, `.bto`) become meshes, and
 LOD settings and tree LOD (`.lod`, `.lst`, `.btt`) become `.lodfb` assets of
@@ -373,8 +375,10 @@ Every `.hkx` becomes an `.animfb`: a FlatBuffer (identifier `BAN1`, schema
 `formats/schema/animation.fbs`, its own `format_version`, 1) with whatever
 skeletons (`hkaSkeleton`) and clips (`hkaSplineCompressedAnimation` or
 `hkaInterleavedUncompressedAnimation`, with their binding and annotations)
-the file holds. Behaviour graphs and physics are not decoded; their files
-still convert, empty, so every path resolves.
+the file holds, a behaviour character's names (`hkbCharacterStringData`)
+and a behaviour graph's clip generators (`hkbClipGenerator`: clip name and
+the animation file it plays). The rest of behaviour graphs and physics is
+not decoded; such files still convert, so every path resolves.
 
 Clips stay B-splines, as Havok stores them: sampled per frame, vanilla SE's
 clips would take 1 GiB, the splines about 130 MiB. The schema's header says
@@ -382,8 +386,22 @@ how to sample. Values are game units, Z-up, each bone relative to its parent.
 The format and its measurements: `converter/docs/spikes/hkx.md`. Every `.hkx`
 of the three vanilla installs converts (SE 7,699 files, 6,126 clips).
 
-Root motion is not in the HKX; Skyrim keeps it in
-`meshes/animationdata/boundanims/*.txt`, not yet converted.
+Root motion is not in the HKX. Skyrim keeps it, with each clip's id and
+playback speed, in text files, which also become `.animfb` assets of kind
+`animation`:
+
+| Source | Fields filled |
+| --- | --- |
+| `meshes/animationdata/<project>.txt` | `project_files`, `project_clips` |
+| `meshes/animationdata/boundanims/anims_<project>.txt` | `motions` |
+| `meshes/animationdatasinglefile.txt` | `projects`, each with all three |
+
+`dirlist.txt` is not converted. A clip's id is not an index into anything:
+the file it plays is the clip generator of the same name in one of the
+project's behaviour graphs (`project_files` starting `Behaviors\`), and its
+motion is the `motions` entry with the same id. The DLC creatures' projects are
+only in the single file (LE's is in `Update.bsa`). The text formats:
+`converter/include/bethconv/animation/animation_data.hpp`.
 
 ## `vpath.idx`
 

@@ -166,6 +166,15 @@ its `.hkx` path needs the character file's animation list
 (`hkbCharacterStringData` in `characters/defaultmale.hkx`), which this spike
 does not read.
 
+Correction (2026-10-02, when the converter started reading these): the
+number is a clip id, not an index into the character's animation list. It
+only keys the boundanims motions. For creatures the two happen to line up;
+for humans `animations[965]` is `MLh_WardCharge.hkx`. The file a clip plays
+is named by the behaviour graph's `hkbClipGenerator` of the same name
+(`behaviors/mt_behavior.hkx`: `MT_WalkForward` ->
+`Animations\Male\MT_WalkForward.hkx`). See `formats/pack-format.md`,
+"Animation assets".
+
 ## Size in a pack
 
 All 6,126 SE clips:

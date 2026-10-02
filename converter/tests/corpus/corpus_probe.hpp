@@ -318,6 +318,16 @@ struct AnimationFacts {
     std::uint64_t clips{};
     std::uint64_t frames{};
     std::uint64_t annotations{};
+    /// Behaviour characters and their clip generators.
+    std::uint64_t characters{};
+    std::uint64_t clip_generators{};
+    /// The animationdata text files (project, boundanims, SE's single file):
+    /// files read, files that failed, clips and motions in them (the single
+    /// file's projects included).
+    std::uint64_t data_files{};
+    std::uint64_t data_failed{};
+    std::uint64_t data_clips{};
+    std::uint64_t data_motions{};
     std::uint64_t asset_hash{};
 };
 

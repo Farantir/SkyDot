@@ -40,7 +40,7 @@ enum class AssetKind : std::uint8_t {
     texture, ///< DDS -> DDS, mip chain completed.
     script,  ///< PEX -> decoded FlatBuffer (formats/schema/script.fbs).
     lod,     ///< .lod/.lst/.btt -> decoded FlatBuffer (formats/schema/lod.fbs).
-    animation, ///< .hkx -> decoded FlatBuffer (formats/schema/animation.fbs).
+    animation, ///< .hkx, animationdata .txt -> decoded FlatBuffer (formats/schema/animation.fbs).
 };
 
 [[nodiscard]] std::string_view to_string(AssetKind kind) noexcept;

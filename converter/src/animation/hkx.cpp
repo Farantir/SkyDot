@@ -359,6 +359,44 @@ Skeleton read_skeleton(Packfile& pf, std::size_t a) {
     return s;
 }
 
+/// hkbCharacterStringData: after hkReferencedObject, nine hkArrays
+/// (deformable and rigid skin names, animation names, animation file names,
+/// character property names, retargeting mappers, LOD names, mirrored sync
+/// point map, and one more Skyrim leaves empty), then four hkStringPtrs: name,
+/// rig, ragdoll, behaviour. Measured on all 309 vanilla SE characters, which
+/// all have a name, a rig and a behaviour there.
+Character read_character(Packfile& pf, std::size_t a) {
+    const std::size_t A = pf.array_size();
+    const std::size_t o = a + pf.referenced();
+    Character c;
+    const auto names = pf.array(o + 2 * A, pf.ptr(), "character animation names");
+    if (names.count > k_max_character_animations) {
+        pf.bytes().fail(io::ErrorKind::bad_value,
+                        std::to_string(names.count) + " animation names in one character");
+        return c;
+    }
+    c.animations.reserve(names.count);
+    for (std::size_t i = 0; i < names.count; ++i) {
+        c.animations.push_back(pf.string(names.data + i * pf.ptr()));
+    }
+    const std::size_t s = o + 9 * A;
+    c.name = pf.string(s);
+    c.rig = pf.string(s + pf.ptr());
+    c.ragdoll = pf.string(s + 2u * pf.ptr());
+    c.behavior = pf.string(s + 3u * pf.ptr());
+    return c;
+}
+
+/// hkbClipGenerator: hkReferencedObject, hkbBindable (variable binding set
+/// pointer, cached bindables array, a bool padded to 8 or 4), hkbNode (user
+/// data, name, id, clone state, padding), then animationName. Name at 56 and
+/// animation at 72 with 8-byte pointers, 32 and 40 with 4-byte ones; measured
+/// on every vanilla behaviour (SE 9,973, LE 7,947 clip generators).
+ClipGenerator read_clip_generator(Packfile& pf, std::size_t a) {
+    const bool wide = pf.ptr() == 8;
+    return ClipGenerator{pf.string(a + (wide ? 56 : 32)), pf.string(a + (wide ? 72 : 40))};
+}
+
 // ---- spline-compressed blocks ------------------------------------------
 
 /// Reads one block's tracks in sequence from `data` (the animation's byte
@@ -942,6 +980,18 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
             break;
         }
         out.skeletons.push_back(read_skeleton(pf, a));
+    }
+    for (const std::size_t a : pf.objects_of("hkbCharacterStringData")) {
+        if (!b.ok()) {
+            break;
+        }
+        out.characters.push_back(read_character(pf, a));
+    }
+    for (const std::size_t a : pf.objects_of("hkbClipGenerator")) {
+        if (!b.ok()) {
+            break;
+        }
+        out.clip_generators.push_back(read_clip_generator(pf, a));
     }
     std::vector<Binding> bindings;
     for (const std::size_t a : pf.objects_of("hkaAnimationBinding")) {

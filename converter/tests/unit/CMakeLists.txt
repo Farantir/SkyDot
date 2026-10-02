@@ -26,6 +26,7 @@ add_executable(bethconv_unit_tests
     test_quest.cpp
     test_lod_asset.cpp
     test_hkx.cpp
+    test_animation_data.cpp
     test_strings.cpp
     test_merge.cpp
     test_snapshot.cpp
