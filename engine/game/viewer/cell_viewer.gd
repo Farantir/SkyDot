@@ -62,6 +62,11 @@
 # N shows the navmeshes (green, water triangles included) of the built cells;
 # G asks the navigation map for a path from the feet to the navmesh point the
 # camera looks at and draws it (--navigation off builds no navmeshes).
+# Placed actors stand dressed in their cells (--actors off builds none) and
+# wander around where they were placed, walking the navmesh, until AI
+# packages are read (--wander off keeps them in their idle; --screenshot and
+# --benchmark runs keep them still unless --wander on; --shot-delay SECONDS
+# lets the world run that long before a --screenshot is taken).
 # --at X,Y,Z --target X,Y,Z (Skyrim game units, as `bethconv cell` prints)
 # places the camera. With --screenshot, renders four views from the cell's centre
 # (out_0.png .. out_3.png, one per 90 degrees of yaw; one view with --at) and
@@ -79,6 +84,7 @@ var _pitch := 0.0
 var _speed := 3.0
 var _shots: Array = []
 var _shot_path := ""
+var _shot_delay := 0.0  # seconds the world runs before --screenshot captures
 var _frames := 0
 var _shot_index := 0
 
@@ -200,6 +206,9 @@ func _ready() -> void:
 	world.collision = args.get("collision", "on") != "off"
 	world.navigation = args.get("navigation", "on") != "off"
 	world.actors = args.get("actors", "on") != "off"
+	_shot_delay = float(args.get("shot-delay", "0"))
+	var captures := args.has("screenshot") or args.has("benchmark")
+	world.actor_wander = args.get("wander", "off" if captures else "on") != "off"
 	_radius = int(args.get("radius", "2"))
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
@@ -908,6 +917,9 @@ func _process(delta: float) -> void:
 	# Additive effects fade by the fog themselves (SkydotMaterials.sync_fog).
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
 	if _shot_path != "":
+		if _shot_delay > 0.0:
+			_shot_delay -= delta
+			return
 		_take_screenshots()
 		return
 	_update_player()
@@ -1386,6 +1398,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"collision": _world.collision,
 			"navigation": _world.navigation,
 			"actors": _world.actors,
+			"wander": _world.actor_wander,
 			"navmesh_shown": _show_navmesh,
 			"lod": _lod != null,
 			"radius": _radius,

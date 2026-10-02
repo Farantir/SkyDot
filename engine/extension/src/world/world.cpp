@@ -2,6 +2,7 @@
 #include "world/world.hpp"
 #include "world/fb_search.hpp"
 
+#include "world/actor.hpp"
 #include "world/actor_animation.hpp"
 #include "world/actors.hpp"
 #include "world/animator.hpp"
@@ -212,6 +213,10 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_actors"), &SkydotWorld::get_actors);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actors"), "set_actors", "get_actors");
     godot::ClassDB::bind_method(D_METHOD("get_actor_plan", "ref"), &SkydotWorld::get_actor_plan);
+    godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
+    godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
+    godot::ClassDB::bind_method(D_METHOD("get_locomotion", "behaviour"), &SkydotWorld::get_locomotion);
     godot::ClassDB::bind_method(D_METHOD("build_actor", "ref"), &SkydotWorld::build_actor);
     godot::ClassDB::bind_method(D_METHOD("get_cell_actors", "cell"), &SkydotWorld::get_cell_actors);
     godot::ClassDB::bind_method(D_METHOD("set_collision", "enabled"), &SkydotWorld::set_collision);
@@ -247,6 +252,9 @@ Error SkydotWorld::fail(Error code, const String& why) {
     ref_cells_.clear();
     activate_children_.clear();
     actor_of_.clear();
+    locomotion_.clear();
+    animation_single_file_ = godot::PackedByteArray();
+    animation_single_file_read_ = false;
     godot::UtilityFunctions::push_error("SkydotWorld: ", why);
     return code;
 }
@@ -279,6 +287,9 @@ Error SkydotWorld::open(const String& path) {
 
 void SkydotWorld::build_indexes() {
     actor_of_.clear();
+    locomotion_.clear();
+    animation_single_file_ = godot::PackedByteArray();
+    animation_single_file_read_ = false;
     exteriors_.clear();
     persistent_.clear();
     persistent_cells_.clear();
@@ -821,6 +832,7 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
     out["hide_hair"] = plan.hide_hair;
     out["skeleton"] = String::utf8(plan.skeleton.c_str());
     out["idle"] = String::utf8(plan.idle.c_str());
+    out["behaviour"] = String::utf8(plan.behaviour.c_str());
     godot::PackedStringArray parts;
     for (const auto& p : plan.parts) {
         parts.push_back(String::utf8(p.c_str()));
@@ -843,6 +855,61 @@ std::vector<std::string> SkydotWorld::actor_resources(const wfb::ActorRef& actor
         return {};
     }
     return plan_for(*root_, actor, assets_).parts;
+}
+
+const Locomotion& SkydotWorld::locomotion_of(const std::string& behaviour) const {
+    auto it = locomotion_.find(behaviour);
+    if (it == locomotion_.end()) {
+        const auto bytes = [&](const std::string& vpath) {
+            if (assets_ == nullptr) {
+                return godot::PackedByteArray();
+            }
+            if (vpath == "meshes/animationdatasinglefile.txt") {
+                if (!animation_single_file_read_) {
+                    animation_single_file_ = assets_->bytes(vpath);
+                    animation_single_file_read_ = true;
+                }
+                return animation_single_file_;
+            }
+            return assets_->bytes(vpath);
+        };
+        const auto exists = [&](const std::string& vpath) { return assets_ != nullptr && assets_->has(vpath); };
+        it = locomotion_.emplace(behaviour, find_locomotion(behaviour, bytes, exists)).first;
+    }
+    return it->second;
+}
+
+godot::Dictionary SkydotWorld::get_locomotion(const String& behaviour) const {
+    const Locomotion& l = locomotion_of(behaviour.utf8().get_data());
+    const auto gait = [](const GaitClip& g) {
+        godot::Dictionary d;
+        d["name"] = String::utf8(g.name.c_str());
+        d["file"] = String::utf8(g.file.c_str());
+        d["playback"] = g.playback;
+        d["speed"] = g.speed;
+        return d;
+    };
+    godot::Dictionary out;
+    out["idle"] = gait(l.idle);
+    out["walk"] = gait(l.walk);
+    out["run"] = gait(l.run);
+    out["missing"] = String::utf8(l.missing.c_str());
+    return out;
+}
+
+godot::Ref<godot::Animation> SkydotWorld::actor_clip(const std::string& file, const std::string& skeleton_path,
+                                                     godot::Skeleton3D* skeleton) const {
+    const std::string key = file + "|" + skeleton_path;
+    auto it = clips_.find(key);
+    if (it == clips_.end()) {
+        it = clips_.emplace(key, SkydotAnimation::build_clip(assets_->bytes(file), skeleton,
+                                                               "bethconv_z_up_to_y_up/Skeleton"))
+                 .first;
+        if (it->second.is_valid()) {
+            it->second->set_loop_mode(godot::Animation::LOOP_LINEAR);
+        }
+    }
+    return it->second;
 }
 
 godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
@@ -898,7 +965,7 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
     skeleton->set_name("Skeleton");
 
     const auto* npc = find_sorted(root_->npcs(), plan.npc, [](const wfb::Npc* n) { return n->id(); });
-    auto* node = memnew(godot::Node3D);
+    auto* node = memnew(SkydotActor);
     node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
     const auto& p = actor.position();
@@ -959,27 +1026,71 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         }
     }
 
-    if (!plan.idle.empty()) {
-        const std::string key = plan.idle + "|" + plan.skeleton;
-        auto it = clips_.find(key);
-        if (it == clips_.end()) {
-            it = clips_.emplace(key, SkydotAnimation::build_clip(assets_->bytes(plan.idle), skeleton,
-                                                                   "bethconv_z_up_to_y_up/Skeleton"))
-                     .first;
-            if (it->second.is_valid()) {
-                it->second->set_loop_mode(godot::Animation::LOOP_LINEAR);
-            }
+    // Clips: the project's idle, walk and run when the pack has animationdata,
+    // else an idle found by file name.
+    const Locomotion& loco = locomotion_of(plan.behaviour);
+    godot::Ref<godot::AnimationLibrary> library;
+    library.instantiate();
+    const std::string idle = !loco.idle.empty() ? loco.idle.file : plan.idle;
+    if (!idle.empty()) {
+        if (const auto clip = actor_clip(idle, plan.skeleton, skeleton); clip.is_valid()) {
+            library->add_animation("idle", clip);
         }
-        if (it->second.is_valid()) {
-            auto* player = memnew(godot::AnimationPlayer);
-            player->set_name("AnimationPlayer");
-            godot::Ref<godot::AnimationLibrary> library;
-            library.instantiate();
-            library->add_animation("idle", it->second);
-            player->add_animation_library("", library);
+    }
+    // Metres per second at playback speed 1; taller actors stride further.
+    const double stride = UNIT_SCALE * static_cast<double>(plan.scale);
+    double walk_speed = 0.0;
+    double run_speed = 0.0;
+    if (!loco.walk.empty()) {
+        if (const auto clip = actor_clip(loco.walk.file, plan.skeleton, skeleton); clip.is_valid()) {
+            library->add_animation("walk", clip);
+            walk_speed = static_cast<double>(loco.walk.speed) * stride;
+        }
+    }
+    if (!loco.run.empty()) {
+        if (const auto clip = actor_clip(loco.run.file, plan.skeleton, skeleton); clip.is_valid()) {
+            library->add_animation("run", clip);
+            run_speed = static_cast<double>(loco.run.speed) * stride;
+        }
+    }
+    if (library->has_animation("idle") || library->has_animation("walk")) {
+        auto* player = memnew(godot::AnimationPlayer);
+        player->set_name("AnimationPlayer");
+        player->add_animation_library("", library);
+        if (library->has_animation("idle")) {
             player->set_autoplay("idle");
-            node->add_child(player);
         }
+        node->add_child(player);
+    }
+    node->set_clip_speeds(walk_speed, run_speed);
+    node->set_wander(actor_wander_);
+    node->set_seed(static_cast<std::int64_t>(actor.ref()));
+    // The body: a cylinder about as wide and tall as the skeleton at rest
+    // (skinned meshes' own bounds are not where the bones put them). Bones
+    // parked far away for props are left out.
+    godot::AABB bounds;
+    bool any = false;
+    const godot::Transform3D to_node = units->get_transform();
+    for (int i = 0; i < skeleton->get_bone_count(); ++i) {
+        const godot::Vector3 at = skeleton->get_bone_global_rest(i).origin;
+        if (std::abs(at.x) > 1e4F || std::abs(at.y) > 1e4F || std::abs(at.z) > 1e4F) {
+            continue;
+        }
+        const godot::Vector3 bone = to_node.xform(at);
+        if (!any) {
+            bounds = godot::AABB(bone, godot::Vector3());
+            any = true;
+        } else {
+            bounds.expand_to(bone);
+        }
+    }
+    if (any) {
+        const godot::Vector3 size = bounds.get_size();
+        // The highest bones (head, magic nodes) are about the top of the head.
+        const double top = static_cast<double>(bounds.get_end().y);
+        node->set_radius(std::clamp(static_cast<double>(std::min(size.x, size.z)) * 0.5, 0.2, 1.5));
+        node->set_height(std::clamp(top, 0.3, 12.0));
+        node->set_step_height(std::clamp(0.25 * top, 0.15, 0.6));
     }
     tag_ref(node, actor.ref(), actor.cell(), false);
     root->add_child(node);

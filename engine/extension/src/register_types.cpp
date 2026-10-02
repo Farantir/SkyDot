@@ -15,6 +15,7 @@
 #include "world/flicker.hpp"
 #include "world/lod.hpp"
 #include "world/particles.hpp"
+#include "world/actor.hpp"
 #include "world/player.hpp"
 #include "world/weather.hpp"
 #include "world/world.hpp"
@@ -41,6 +42,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotLod);
     GDREGISTER_CLASS(skydot::SkydotDynamicBody);
     GDREGISTER_CLASS(skydot::SkydotPlayer);
+    GDREGISTER_CLASS(skydot::SkydotActor);
     GDREGISTER_CLASS(skydot::SkydotWeather);
 }
 

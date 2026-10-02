@@ -34,11 +34,15 @@ target_sources(skydot PRIVATE
     src/assets/pack.hpp
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
+    src/world/actor.cpp
+    src/world/actor.hpp
     src/world/actor_animation.cpp
     src/world/actors.cpp
     src/world/actors.hpp
     src/world/actor_animation.hpp
     src/world/animator.cpp
+    src/world/locomotion.cpp
+    src/world/locomotion.hpp
     src/world/animator.hpp
     src/world/billboard.cpp
     src/world/billboard.hpp

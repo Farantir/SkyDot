@@ -43,8 +43,10 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
 - Terrain: one mesh shape per cell with the triangles the quadrants draw, on
   its own layer.
 
-Layers (bits; `SkydotPlayer.LAYER_*`): 1 world, 2 clutter, 4 actor, 8
-terrain.
+Layers (bits; `SkydotPlayer.LAYER_*`): 1 world, 2 clutter, 4 actor (the
+player), 8 terrain, 16 NPC (placed actors, `SkydotActor`; see actors.md).
+The player collides with NPCs; NPCs with the world, clutter, terrain, the
+player and each other.
 
 Riverwood's nine cells: 743 bodies (693 static, 45 clutter, 14 animated). A
 streaming benchmark there is the same with and without collision.

@@ -18,6 +18,8 @@
 #include <godot_cpp/variant/vector2.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <cstdint>
+
 namespace skydot {
 
 class SkydotPlayer : public godot::CharacterBody3D {
@@ -65,12 +67,22 @@ public:
     double get_jump_height() const { return jump_height_; }
     void set_step_height(double v) { step_height_ = v; }
     double get_step_height() const { return step_height_; }
+    /// The body's cylinder; read when the node enters the tree.
+    void set_radius(double v) { radius_ = v; }
+    double get_radius() const { return radius_; }
+    void set_height(double v) { height_ = v; }
+    double get_height() const { return height_; }
+    double get_yaw() const { return yaw_; }
 
     void _ready() override;
     void _physics_process(double delta) override;
 
 protected:
     static void _bind_methods();
+
+    /// The layers this body is on and collides with; NPCs differ.
+    virtual std::uint32_t body_layer() const;
+    virtual std::uint32_t body_mask() const;
 
 private:
     void walk(double delta);

@@ -265,6 +265,7 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
     }
 
     const std::string behaviour = at(race->behaviours(), sex);
+    plan.behaviour = behaviour;
     const auto slash = behaviour.rfind('/');
     if (slash != std::string::npos) {
         const std::string dir = behaviour.substr(0, slash + 1) + "animations/";

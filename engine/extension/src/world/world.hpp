@@ -10,6 +10,7 @@
 #pragma once
 
 #include "assets/asset_cache.hpp"
+#include "world/locomotion.hpp"
 #include "world/materials.hpp"
 #include "world/navmesh.hpp"
 #include "world/terrain.hpp"
@@ -19,6 +20,7 @@
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -230,6 +232,14 @@ public:
     /// The plan for placed actor `ref` (keys: npc, race, female, scale,
     /// skeleton, idle, parts, missing), for tools and tests.
     godot::Dictionary get_actor_plan(std::int64_t ref) const;
+    /// Actors walk around their place while no AI packages are read (see
+    /// actor.hpp). On by default; off, they stand in their idle.
+    void set_actor_wander(bool enabled) { actor_wander_ = enabled; }
+    bool get_actor_wander() const { return actor_wander_; }
+    /// The clips that move actors of a behaviour project (keys: idle, walk,
+    /// run, each with name, file, playback, speed in game units per second;
+    /// missing).
+    godot::Dictionary get_locomotion(const godot::String& behaviour) const;
     /// Build placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref) const;
     /// The placed actors (ACHR refs) of an interior or exterior cell.
@@ -310,6 +320,16 @@ private:
     std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
     /// Idle clips built once per (clip, skeleton).
     mutable std::unordered_map<std::string, godot::Ref<godot::Animation>> clips_;
+    /// Behaviour project -> its idle, walk and run clips.
+    mutable std::unordered_map<std::string, Locomotion> locomotion_;
+    bool actor_wander_{true};
+    /// meshes/animationdatasinglefile.txt, read once for every project it holds.
+    mutable godot::PackedByteArray animation_single_file_;
+    mutable bool animation_single_file_read_{false};
+    const Locomotion& locomotion_of(const std::string& behaviour) const;
+    /// The looping clip `file` for `skeleton`, cached; null if it does not build.
+    godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path,
+                                            godot::Skeleton3D* skeleton) const;
     void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats) const;
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
     bool collision_{true};

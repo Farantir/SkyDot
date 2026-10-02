@@ -58,6 +58,7 @@ void SkydotPlayer::_bind_methods() {
     ClassDB::bind_integer_constant(self, "", "LAYER_CLUTTER", physics_layer::clutter);
     ClassDB::bind_integer_constant(self, "", "LAYER_ACTOR", physics_layer::actor);
     ClassDB::bind_integer_constant(self, "", "LAYER_TERRAIN", physics_layer::terrain);
+    ClassDB::bind_integer_constant(self, "", "LAYER_NPC", physics_layer::npc);
 
     ClassDB::bind_method(D_METHOD("set_input", "move", "vertical", "gait"), &SkydotPlayer::set_input);
     ClassDB::bind_method(D_METHOD("set_look", "yaw", "pitch"), &SkydotPlayer::set_look);
@@ -84,7 +85,10 @@ void SkydotPlayer::_bind_methods() {
     SKYDOT_PROPERTY(swim_speed, FLOAT);
     SKYDOT_PROPERTY(jump_height, FLOAT);
     SKYDOT_PROPERTY(step_height, FLOAT);
+    SKYDOT_PROPERTY(radius, FLOAT);
+    SKYDOT_PROPERTY(height, FLOAT);
 #undef SKYDOT_PROPERTY
+    ClassDB::bind_method(D_METHOD("get_yaw"), &SkydotPlayer::get_yaw);
 }
 
 void SkydotPlayer::_ready() {
@@ -105,8 +109,8 @@ void SkydotPlayer::_ready() {
         shape->set_position(Vector3(0, r(height_ / 2), 0));
         add_child(shape);
     }
-    set_collision_layer(physics_layer::actor);
-    set_collision_mask(physics_layer::solid);
+    set_collision_layer(body_layer());
+    set_collision_mask(body_mask());
     set_floor_max_angle(r(max_slope_));
     // Long enough to stay on the ground walking down a step.
     set_floor_snap_length(r(step_height_ + 0.05));
@@ -117,6 +121,15 @@ void SkydotPlayer::_ready() {
     gravity_ = static_cast<double>(g);
     previous_ = current_ = get_global_position();
     set_physics_process(true);
+}
+
+std::uint32_t SkydotPlayer::body_layer() const {
+    return physics_layer::actor;
+}
+
+// The player bumps into NPCs; they are not solid to clutter or rays.
+std::uint32_t SkydotPlayer::body_mask() const {
+    return physics_layer::solid | physics_layer::npc;
 }
 
 void SkydotPlayer::set_input(const godot::Vector2& move, double vertical, int gait) {
@@ -142,7 +155,7 @@ void SkydotPlayer::teleport(const Vector3& feet) {
 void SkydotPlayer::set_fly(bool fly) {
     fly_ = fly;
     // Flying passes through everything.
-    set_collision_mask(fly ? 0 : (physics_layer::solid));
+    set_collision_mask(fly ? 0 : body_mask());
     set_velocity(Vector3());
 }
 

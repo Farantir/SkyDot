@@ -60,8 +60,9 @@ What an actor is built from is decided from `world.fb` alone
   slider, `_0` below weight 50 and `_1` from it, when the pack has it.
 - **Head.** The FaceGen NIF the game precomputes
   (`facegendata/facegeom/<plugin>/<id>.nif`), when the pack has it.
-- **Idle.** In the behaviour graph's folder, `animations/male|female/mt_idle.hkx`,
-  else `animations/mt_idle.hkx`, `idle.hkx`, `idle1.hkx` or `idlestand.hkx`.
+- **Idle.** The behaviour project's idle clip (see Locomotion), else in the
+  behaviour graph's folder `animations/male|female/mt_idle.hkx`, then
+  `animations/mt_idle.hkx`, `idle.hkx`, `idle1.hkx` or `idlestand.hkx`.
   Played looping; one Animation per (clip, skeleton) for every actor.
 - **Size and facing.** NPC height times the race's height for the sex; only
   the rotation about Z.
@@ -69,6 +70,80 @@ What an actor is built from is decided from `world.fb` alone
 `game/tools/cell_actors.gd` prints the plans of an interior's actors and
 builds it. In the Sleeping Giant Inn every actor stands dressed in its outfit
 in the idle.
+
+## Locomotion (`world/locomotion.*`)
+
+Which clips move an actor, and how fast, is looked up by clip name in its
+race's behaviour project, without interpreting the behaviour graph (PLAN.md).
+For a race whose behaviour is `meshes/actors/character/defaultmale.hkx`:
+
+1. `meshes/animationdata/defaultmale.txt` lists the project's behaviour
+   graphs and its clips: name, id, playback speed.
+2. Each behaviour graph's clip generators name the file a clip plays
+   (`MT_WalkForward` -> `animations/male/mt_walkforward.hkx`).
+3. `meshes/animationdata/boundanims/anims_defaultmale.txt` gives the motion
+   for a clip id: 93.4 units forward over 1.133 s, so 82.5 units/s, times the
+   playback speed.
+
+The DLC creatures' projects are only in
+`meshes/animationdatasinglefile.txt`, which is read when a project has no
+file of its own. (The id is not an index into the character's animation
+list, as the HKX spike assumed: for humans that gives the wrong files.)
+
+Names differ between creatures, so each gait tries a list first, humans
+then creature schemes, and takes the first the project has whose animation
+moves forward:
+
+| Gait | Names, in order |
+| --- | --- |
+| idle | `MT_Idle`, `MainIdle`, `Idle` (a trailing `.hkx` ignored) |
+| walk | `MT_WalkForward`, `WalkForward`, `MTWalkForward`, `Forward_Walk`, `WalkForward00`, `WalkForward00_Wolf`, `WalkF`, `MT_Walk_F`, `H2HWalkForward`, `MTForward`, `MT_Forward`, `DefaultForward`, `Forward` |
+| run | `MT_RunForward`, `RunForward`, `MTRunForward`, `Forward_Run`, `RunForward00`, `RunF`, `MT_Run_F`, `H2HRunForward`, `MTFastForward`, `MT_FastForward`, `DefaultFastForward`, `FastForward` |
+
+Failing those, the shortest name saying walk (run) forward without a side,
+pace or stance. A run no faster than the walk is dropped.
+`SkydotWorld.get_locomotion(behaviour)` shows the choice. On vanilla SE,
+11,594 of 11,937 placed actors get a walk; humans walk at 1.18 m/s and run
+at 5.01 m/s. Without one: storm atronachs, wisps, witchlights, ballista
+centurions, dragons, slaughterfish, and those with only a run (chaurus
+hunters, vampire brutes, netches, ice wraiths); they stand.
+`game/tools/locomotion_check.gd` prints the table for a pack.
+
+## Walking (`SkydotActor`)
+
+A placed actor is a `SkydotActor`: a `SkydotPlayer` (cylinder, gravity,
+slopes, step-up, pushing clutter) steered by itself.
+
+- **Body.** As wide as half the skeleton's narrower side at rest, as tall
+  as its highest bone, stepping up a quarter of that (0.15-0.6 m). Skinned
+  meshes' own bounds are not used: they are not where the bones put them.
+  NPCs are on their own physics layer (`LAYER_NPC`); they collide with the
+  world, clutter, the player and each other, and the player with them.
+  Rays (`pick_ref`, ground checks) do not hit them.
+- **Ground.** It holds still until a ray finds the world or terrain under
+  it (cells stream their collision in after their actors), and goes back
+  home to wait again if it falls 30 m below it.
+- **Walking.** `walk_to(target, run)` asks the navigation map for a path
+  (from within 1.5 m of the navmesh) and follows its corners, turning at
+  5 rad/s; a corner behind it turns it on the spot. Speeds are the clips'
+  (metres per second times the actor's scale). Less than 0.2 m of progress
+  in 1.5 s gives up the walk (a closed door, another actor).
+- **Animation.** Its AnimationPlayer plays `idle`, `walk` or `run` with a
+  0.25 s blend, and plays the gait as fast as the body moves (0.5-2x), so
+  feet keep pace.
+- **Wander.** Until AI packages (PACK) are read, it idles 6-20 s, then walks
+  to a random point within 7.3 m (512 units, the CK's default sandbox
+  radius) of where it was placed, and idles again. A path longer than three
+  times the radius is not taken. The choices are seeded by the reference,
+  so a reload repeats them (physics timing aside).
+  `SkydotWorld.actor_wander` (viewer `--wander off`) keeps actors in their
+  idle; `--screenshot` and `--benchmark` runs keep them still unless
+  `--wander on`.
+
+Measured headless (`game/tools/actor_walk.gd`): in the Sleeping Giant Inn
+all three actors walk and stay on the floor; around Riverwood 13 of 13
+(guards, chickens, a dog, a cow, a horse) wander for a minute without
+falling or sticking.
 
 ## Skin and faces (`SkydotMaterials`)
 
@@ -108,18 +183,37 @@ A pack with only `meshes/actors/character/` converts in about 6 s
 (`bethconv convert --filter meshes/actors/character/ --no-records`).
 `smoke_animation` covers the same on the test pack's three-bone actor.
 
+```sh
+godot4.7 --headless --path game --script res://tools/locomotion_check.gd -- --pack <pack>
+godot4.7 --headless --path game --script res://tools/actor_walk.gd -- --pack <pack> \
+    --cell RiverwoodSleepingGiantInn [--seconds 40] [--trace on]
+godot4.7 --headless --path game --script res://tools/actor_walk.gd -- --pack <pack> \
+    --world Tamriel --at 19458,-47900
+```
+
+`actor_walk.gd` builds a cell (or 3x3 exterior cells) and reports per actor
+how long it idled and walked, how far it went from home and how low it got;
+`--trace on` prints every actor's state, speed and clip each second. In the
+viewer, `--wander on --shot-delay 12 --screenshot out.png` captures actors
+mid-walk. `smoke_actors` walks the test pack's actor across its interior's
+navmesh.
+
 ## Not done
 
 - Skin: soft lighting and subsurface, hair colour (see above).
 - Bare feet (`malefeet_1.nif`) rendered white before the skin work, most
   likely the same full-strength specular; not checked again.
 - Weapons and shields, carried or sheathed; inventory beyond the outfit.
-- Root motion (`meshes/animationdata/boundanims/`), behaviour graphs (not
-  interpreted, per PLAN.md; clips are chosen by name), blending between
-  clips, additive clips (blend hint 1), float tracks (`hkVis`/`hkFade`
-  slots), paired animations' second actor.
-- AI: packages, walking the navmesh, sitting in furniture, unlocking doors.
-- Actors have no collision; the player walks through them.
-- Creature idles: most creatures have `mt_idle.hkx` (wolf, bear, elk, deer,
-  hare, chicken, cow, dog), the horse `idle.hkx`; the mudcrab none of the
-  names tried, so it stands in its bind pose.
+- Root motion is used only as a speed: the body moves in a straight line
+  at the clip's average speed, the clip's own turns are not applied.
+  Behaviour graphs are not interpreted (per PLAN.md; clips are chosen by
+  name): no turning or start/stop clips, no strafing, no blending beyond the
+  cross-fade, additive clips (blend hint 1), float tracks
+  (`hkVis`/`hkFade` slots), paired animations' second actor.
+- AI: packages (the wander stands in for them), schedules, sitting and
+  sleeping in furniture, opening doors (a closed door stops a walk), paths
+  through load doors, swimming, avoidance (actors bump into each other).
+- Creatures that only fly, swim or hover (dragons, slaughterfish, wisps)
+  have no walk and stand; those with only a run stand too.
+- Wolves, bears, deer and other creatures without a named idle use the
+  `mt_idle.hkx` file fallback; the mudcrab now gets `MainIdle`.

@@ -42,4 +42,5 @@ their own cells; none sit in a worldspace's persistent cell.
   path leads through a load door into another cell or worldspace.
 - The search grid NVNM ends with, the cover triangle list, NAVI (preferred
   paths, islands) and ONAM/PNAM/NNAM are not used.
-- Nothing walks the paths yet: there are no actors.
+- Placed actors walk the paths (`SkydotActor`, actors.md), but use no
+  triangle flags, cover or preferred paths, and no paths through doors.
