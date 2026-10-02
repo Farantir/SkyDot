@@ -658,6 +658,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 			var open: bool = not node.get_meta("skydot_open", false)
 			if animator.play("Open" if open else "Close"):
 				node.set_meta("skydot_open", open)
+				node.remove_meta("skydot_opened_by")  # an actor no longer closes it
 				_papyrus.set_open_state(ref, 1 if open else 3)
 				print(label, " opens" if open else " closes")
 				return true

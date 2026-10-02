@@ -701,6 +701,11 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                         stats.effects += SkydotAnimator::attach(node, materials_);
                     }
                     tag_ref(node, ref.id(), cell, activatable(base, cell, ref.id()));
+                    // Doors that swing rather than lead somewhere: actors open
+                    // them in their way (SkydotActor).
+                    if (base != nullptr && door_type(base->type()) && !doors_.contains(ref.id())) {
+                        node->set_meta("skydot_plain_door", true);
+                    }
                     // Last, so material and effect passes never see the bodies.
                     if (const auto& collision = scene->collision(); collision && collision_) {
                         stats.bodies += collision->attach(node);

@@ -13,13 +13,17 @@
 //
 // It holds still until there is ground under it (cells stream their
 // collision in after their actors), and gives up a walk when it stops making
-// progress (a closed door, another actor, a ledge the path did not know).
+// progress (another actor, a ledge the path did not know). A closed plain
+// door in its way it opens, waits for, and closes again once past it
+// (`door_toggled` tells, for SkydotPapyrus's open state).
 #pragma once
 
 #include "world/player.hpp"
 
 #include <godot_cpp/classes/random_number_generator.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+
+#include <vector>
 
 namespace skydot {
 
@@ -65,6 +69,10 @@ private:
     void steer(double delta);
     void animate();
     bool find_ground();
+    /// Open a closed plain door within reach along `dir`; true if it did.
+    bool open_door_ahead(const godot::Vector3& dir);
+    /// Close the doors it opened once it is past them.
+    void close_doors(double delta);
 
     godot::PackedVector3Array path_;
     std::int32_t corner_{0};
@@ -81,6 +89,13 @@ private:
     bool home_set_{false};
     double ground_wait_{0.0};
     godot::String playing_;
+    double door_probe_{0.0}; ///< Seconds before the next look for a door.
+    double door_wait_{0.0};  ///< Seconds left standing while a door opens.
+    struct OpenedDoor {
+        std::uint64_t model{}; ///< The door's instance id.
+        double time{};         ///< Seconds since it opened it.
+    };
+    std::vector<OpenedDoor> opened_;
     godot::Ref<godot::RandomNumberGenerator> rng_;
 };
 

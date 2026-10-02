@@ -8,6 +8,7 @@
 
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/callable_method_pointer.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
@@ -945,6 +946,10 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
             if (std::find(attached_.begin(), attached_.end(), ref) == attached_.end()) {
                 attached_.push_back(ref);
             }
+            const auto toggled = callable_mp(this, &SkydotAi::on_door_toggled);
+            if (!actor->is_connected("door_toggled", toggled)) {
+                actor->connect("door_toggled", toggled);
+            }
             choose(*m);
             // With no package it keeps wandering about its place.
             actor->set_wander(m->package == 0 ? world_->get_actor_wander() : false);
@@ -956,6 +961,12 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
         }
     }
     return count;
+}
+
+void SkydotAi::on_door_toggled(std::int64_t ref, std::int64_t open_state) {
+    if (vm_ != nullptr) {
+        vm_->set_open_state(ref, open_state);
+    }
 }
 
 void SkydotAi::detach(Mind& m) {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/actor.hpp"
 
+#include "world/animator.hpp"
 #include "world/collision.hpp"
 
 #include <godot_cpp/classes/animation_player.hpp>
@@ -40,6 +41,29 @@ constexpr double k_ground_poll = 0.25;
 /// Falling this far below home puts it back there.
 constexpr double k_lost_depth = 30.0;
 constexpr double k_blend = 0.25;
+/// Doors: how often to look for one ahead (seconds), how far past the body
+/// (metres), how long to stand while it swings, and when to close it behind
+/// (seconds after opening, metres from its hinge).
+constexpr double k_door_probe = 0.2;
+constexpr double k_door_reach = 0.8;
+constexpr double k_door_wait = 0.8;
+constexpr double k_door_close_after = 2.0;
+constexpr double k_door_close_distance = 2.0;
+/// GetOpenState's values (SkydotPapyrus).
+constexpr std::int64_t k_door_open = 1;
+constexpr std::int64_t k_door_closed = 3;
+
+/// The placed model a collision object belongs to: its nearest ancestor
+/// with a reference.
+godot::Node3D* model_of(godot::Object* collider) {
+    auto* node = godot::Object::cast_to<godot::Node>(collider);
+    for (int depth = 0; node != nullptr && depth < 16; ++depth, node = node->get_parent()) {
+        if (node->has_meta("skydot_ref")) {
+            return godot::Object::cast_to<godot::Node3D>(node);
+        }
+    }
+    return nullptr;
+}
 
 double wrap(double a) {
     a = std::fmod(a + std::numbers::pi, k_tau);
@@ -73,6 +97,8 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_wander_radius", "value"), &SkydotActor::set_wander_radius);
     ClassDB::bind_method(D_METHOD("get_wander_radius"), &SkydotActor::get_wander_radius);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wander_radius"), "set_wander_radius", "get_wander_radius");
+    ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::INT, "open_state")));
 }
 
 std::uint32_t SkydotActor::body_layer() const {
@@ -230,6 +256,21 @@ void SkydotActor::steer(double delta) {
         to = path_[corner_] - here;
         to.y = 0;
     }
+    if (door_wait_ > 0.0) {
+        door_wait_ -= delta;
+        set_input(godot::Vector2(), 0.0, WALK);
+        stuck_time_ = 0.0;
+        stuck_from_ = here;
+        return;
+    }
+    door_probe_ -= delta;
+    if (door_probe_ <= 0.0) {
+        door_probe_ = k_door_probe;
+        if (open_door_ahead(to.normalized())) {
+            door_wait_ = k_door_wait;
+            return;
+        }
+    }
     const double want = std::atan2(-static_cast<double>(to.x), -static_cast<double>(to.z));
     const double diff = wrap(want - facing_);
     const double step = k_turn_rate * delta;
@@ -247,6 +288,62 @@ void SkydotActor::steer(double delta) {
         stuck_time_ = 0.0;
         stuck_from_ = here;
     }
+}
+
+bool SkydotActor::open_door_ahead(const Vector3& dir) {
+    auto* space = get_world_3d()->get_direct_space_state();
+    if (space == nullptr) {
+        return false;
+    }
+    // Waist high: over thresholds and rugs, under lintels.
+    const Vector3 from = get_global_position() + Vector3(0, 1, 0);
+    const auto query = godot::PhysicsRayQueryParameters3D::create(
+        from, from + dir * r(get_radius() + k_door_reach), physics_layer::world);
+    const godot::Dictionary hit = space->intersect_ray(query);
+    if (hit.is_empty()) {
+        return false;
+    }
+    godot::Node3D* door = model_of(hit["collider"]);
+    if (door == nullptr || !door->has_meta("skydot_plain_door") || door->get_meta("skydot_open", false)) {
+        return false;
+    }
+    auto* animator = godot::Object::cast_to<SkydotAnimator>(door->get_node_or_null("SkydotAnimator"));
+    if (animator == nullptr || !animator->play("Open")) {
+        return false;
+    }
+    door->set_meta("skydot_open", true);
+    door->set_meta("skydot_opened_by", static_cast<std::int64_t>(get_instance_id()));
+    opened_.push_back({door->get_instance_id(), 0.0});
+    emit_signal("door_toggled", door->get_meta("skydot_ref"), k_door_open);
+    return true;
+}
+
+void SkydotActor::close_doors(double delta) {
+    const Vector3 here = get_global_position();
+    std::erase_if(opened_, [&](OpenedDoor& o) {
+        o.time += delta;
+        auto* door = godot::Object::cast_to<godot::Node3D>(godot::ObjectDB::get_instance(o.model));
+        if (door == nullptr || !door->is_inside_tree()) {
+            return true;
+        }
+        // Someone else closed or took it over meanwhile.
+        if (!door->get_meta("skydot_open", false) ||
+            static_cast<std::int64_t>(door->get_meta("skydot_opened_by", 0)) !=
+                static_cast<std::int64_t>(get_instance_id())) {
+            return true;
+        }
+        Vector3 away = door->get_global_position() - here;
+        away.y = 0;
+        if (o.time < k_door_close_after || static_cast<double>(away.length()) < k_door_close_distance) {
+            return false;
+        }
+        auto* animator = godot::Object::cast_to<SkydotAnimator>(door->get_node_or_null("SkydotAnimator"));
+        if (animator != nullptr && animator->play("Close")) {
+            door->set_meta("skydot_open", false);
+            emit_signal("door_toggled", door->get_meta("skydot_ref"), k_door_closed);
+        }
+        return true;
+    });
 }
 
 void SkydotActor::animate() {
@@ -287,6 +384,7 @@ void SkydotActor::_physics_process(double delta) {
         think(delta);
         steer(delta);
     }
+    close_doors(delta);
     SkydotPlayer::_physics_process(delta);
     if (!get_hold() && get_global_position().y < home_.y - r(k_lost_depth)) {
         // Fell through something not built yet: back home, wait for ground.

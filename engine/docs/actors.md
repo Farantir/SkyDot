@@ -127,7 +127,16 @@ slopes, step-up, pushing clutter) steered by itself.
   (from within 1.5 m of the navmesh) and follows its corners, turning at
   5 rad/s; a corner behind it turns it on the spot. Speeds are the clips'
   (metres per second times the actor's scale). Less than 0.2 m of progress
-  in 1.5 s gives up the walk (a closed door, another actor).
+  in 1.5 s gives up the walk (another actor, a locked way).
+- **Doors.** Every 0.2 s a waist-high ray looks 0.8 m past the body along
+  the way; a closed plain door it hits (models tagged
+  `skydot_plain_door`: DOOR bases that lead nowhere) it opens, standing
+  0.8 s while it swings. It closes it again 2 s later at the earliest, once
+  it is 2 m from the hinge, unless someone else closed or toggled it since.
+  Locks are ignored (in the game, residents carry keys). `door_toggled`
+  reports both; SkydotAi passes it on to SkydotPapyrus's open state. In the
+  Sleeping Giant, Orgnar opens a back room door, goes in and closes it on
+  the way out (`game/tools/actor_walk.gd` prints door events).
 - **Animation.** Its AnimationPlayer plays `idle`, `walk` or `run` with a
   0.25 s blend, and plays the gait as fast as the body moves (0.5-2x), so
   feet keep pace.
@@ -213,7 +222,7 @@ navmesh.
   cross-fade, additive clips (blend hint 1), float tracks
   (`hkVis`/`hkFade` slots), paired animations' second actor.
 - AI: packages and schedules are run (`ai.md`); sitting and sleeping in
-  furniture, opening doors (a closed door stops a walk), swimming and
+  furniture, swimming and
   avoidance (actors bump into each other) are not.
 - Creatures that only fly, swim or hover (dragons, slaughterfish, wisps)
   have no walk and stand; those with only a run stand too.

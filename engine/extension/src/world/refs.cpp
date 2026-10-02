@@ -234,6 +234,8 @@ Array script_list(const ScriptVector* scripts, bool from_ref) {
     return out;
 }
 
+bool door_type(std::uint32_t type) { return type == fourcc("DOOR"); }
+
 void tag_ref(godot::Node3D* node, std::uint32_t ref, std::uint32_t cell, bool activatable) {
     node->set_meta("skydot_ref", static_cast<std::int64_t>(ref));
     node->set_meta("skydot_cell", static_cast<std::int64_t>(cell));

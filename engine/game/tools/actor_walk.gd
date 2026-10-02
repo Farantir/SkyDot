@@ -57,6 +57,8 @@ func _initialize() -> void:
 func _collect(node: Node) -> void:
     if node is SkydotActor:
         _actors.append(node)
+        node.door_toggled.connect(func(ref: int, state: int) -> void:
+            print("%5.1f %s %s door 0x%08X" % [_elapsed, node.name.substr(0, 30), "opens" if state == 1 else "closes", ref]))
     for child in node.get_children():
         _collect(child)
 

@@ -23,4 +23,7 @@ godot::Array script_list(const ScriptVector* scripts, bool from_ref);
 /// bounds in the node's own space ("skydot_bounds"), for pick_ref.
 void tag_ref(godot::Node3D* node, std::uint32_t ref, std::uint32_t cell, bool activatable);
 
+/// Whether a base of record type `type` is a door (DOOR).
+bool door_type(std::uint32_t type);
+
 } // namespace skydot

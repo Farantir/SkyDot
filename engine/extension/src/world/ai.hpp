@@ -187,6 +187,8 @@ private:
     void next_step(Mind& m);
     void leave(Mind& m, SkydotActor& actor, std::uint32_t door);
     void detach(Mind& m);
+    /// An attached actor opened or closed a plain door (`door_toggled`).
+    void on_door_toggled(std::int64_t ref, std::int64_t open_state);
 
     godot::Ref<SkydotWorld> world_;
     godot::Ref<godot::RefCounted> papyrus_;
