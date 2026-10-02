@@ -162,6 +162,10 @@ std::string with_extension(const std::string& path, const char* ext) {
 
 } // namespace
 
+const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, std::uint16_t flag, std::uint32_t ref) {
+    return resolve(w, npc_of(w, npc), flag, ref);
+}
+
 ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref,
                      const std::function<bool(const std::string&)>& exists) {
     ActorPlan plan;

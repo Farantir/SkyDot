@@ -63,10 +63,15 @@
 # G asks the navigation map for a path from the feet to the navmesh point the
 # camera looks at and draws it (--navigation off builds no navmeshes).
 # Placed actors stand dressed in their cells (--actors off builds none) and
-# wander around where they were placed, walking the navmesh, until AI
-# packages are read (--wander off keeps them in their idle; --screenshot and
-# --benchmark runs keep them still unless --wander on; --shot-delay SECONDS
-# lets the world run that long before a --screenshot is taken).
+# follow their AI packages (SkydotAi): where they are when a place is built
+# depends on the time, and they walk to work, home, the inn and to bed,
+# through load doors, locking and unlocking them (--ai off: they stay where
+# they were placed and wander about it). --wander off keeps them in their
+# idle where their packages put them; --screenshot and --benchmark runs keep
+# them still unless --wander on; --shot-delay SECONDS lets the world run that
+# long before a --screenshot is taken. Inside, time runs too (--time-scale);
+# T and Shift+T move it there as well. I tells what the nearest actor's
+# package is.
 # --at X,Y,Z --target X,Y,Z (Skyrim game units, as `bethconv cell` prints)
 # places the camera. With --screenshot, renders four views from the cell's centre
 # (out_0.png .. out_3.png, one per 90 degrees of yaw; one view with --at) and
@@ -111,6 +116,7 @@ var _script_activations: Array = []  # --activate: refs still to activate
 var _script_wait := 0
 var _quit_in := -1  # frames until quitting after --activate
 var _papyrus: SkydotPapyrus
+var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
 var _lod: SkydotLod  # the worldspace's LOD, or null
 var _cell_id := 0  # the interior being shown, or 0 outside
@@ -209,6 +215,17 @@ func _ready() -> void:
 	_shot_delay = float(args.get("shot-delay", "0"))
 	var captures := args.has("screenshot") or args.has("benchmark")
 	world.actor_wander = args.get("wander", "off" if captures else "on") != "off"
+	if args.get("ai", "on") != "off":
+		_ai = SkydotAi.new()
+		if _ai.setup(world, _papyrus) == OK:
+			_ai.days = _day + _hour / 24.0
+			_ai.drive = world.actor_wander
+			_ai.time_scale = 0.0 if captures else float(args.get("time-scale", "20"))
+			_ai.actor_arrived.connect(_on_actor_arrived)
+			_ai.actor_left.connect(func(ref: int, _door: int) -> void:
+				print("0x%08X leaves through a door" % ref))
+		else:
+			_ai = null
 	_radius = int(args.get("radius", "2"))
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
@@ -360,8 +377,13 @@ func _enter_interior(cell_id: int, at, target) -> void:
 	_leave()
 	_cell_id = cell_id
 	var cell := _world.get_cell(cell_id)
+	if _ai != null:
+		_ai.set_space(cell_id)
+		_ai.place_actors()
 	var root := _world.build_cell(cell_id)
 	_add_to_place(root)
+	if _ai != null:
+		_ai.attach_built(root)
 	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
 	_scripts_loaded(root, cell_id)
 	_navmesh_overlay(root)
@@ -394,6 +416,9 @@ func _enter_exterior(world_id: int, at: Vector3, target) -> bool:
 	_leave()
 	_world_id = world_id
 	_cell_id = 0
+	if _ai != null:
+		_ai.set_space(world_id)
+		_ai.place_actors()
 	var weather := 0
 	if _args.has("weather"):
 		weather = _world.find_weather(_args["weather"])
@@ -771,6 +796,8 @@ func _stream_step() -> bool:
 
 func _finish_cell(key: Vector2i, cell: Node3D) -> void:
 	cell.visible = true
+	if _ai != null:
+		_ai.attach_built(cell)
 	print("cell ", key, ": ", cell.get_meta("skydot_stats"))
 	_scripts_loaded(cell, _world.get_exterior_cell(_world_id, key.x, key.y))
 	_navmesh_overlay(cell)
@@ -933,6 +960,16 @@ func _process(delta: float) -> void:
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
 		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
+	if _ai != null:
+		# Outside the weather keeps the time; inside the AI's clock does.
+		if _weather != null and is_instance_valid(_weather):
+			_ai.time_scale = 0.0
+			_ai.days = _weather.day + _weather.hour / 24.0
+		else:
+			_ai.time_scale = float(_args.get("time-scale", "20")) if _shot_path == "" and _benchmark <= 0.0 else 0.0
+			_hour = _ai.get_hour()
+			_day = int(_ai.days)
+		_ai.update(delta)
 	_age_notes(delta)
 	if _quit_in >= 0:
 		_quit_in -= 1
@@ -999,6 +1036,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T and _weather != null:
 		_weather.hour = fmod(_weather.hour + (-1.0 if event.shift_pressed else 1.0) + 24.0, 24.0)
 		_note("%02d:%02d" % [int(_weather.hour), int(fmod(_weather.hour, 1.0) * 60)])
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T and _ai != null:
+		_ai.days = maxf(0.0, _ai.days + (-1.0 if event.shift_pressed else 1.0) / 24.0)
+		_hour = _ai.get_hour()
+		_note("%02d:%02d" % [int(_hour), int(fmod(_hour, 1.0) * 60)])
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
+		_inspect_actor()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _weather != null:
 		_weather.next_weather()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
@@ -1012,6 +1055,53 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not _player.fly:
 			_last_ground = _player.global_position
 		_note("flying" if _player.fly else "walking")
+
+
+## An actor the AI brought into the place on screen: build it where its
+## place now is, if that part of the world is built.
+func _on_actor_arrived(ref: int) -> void:
+	var place := _world.get_actor_place(ref)
+	if place.is_empty():
+		return
+	var parent: Node = null
+	if _world_id == 0:
+		if place["space"] == _cell_id and not _place.is_empty():
+			parent = _place[0]
+	elif place["space"] == _world_id:
+		var p: Vector3 = place["position"]
+		parent = _loaded.get(Vector2i(floori(p.x / CELL_UNITS), floori(p.y / CELL_UNITS)))
+	if parent == null:
+		return
+	var node := _world.build_actor(ref)
+	if node == null:
+		return
+	parent.add_child(node)
+	if _ai != null:
+		_ai.attach_built(node)
+
+
+## Tell what the actor nearest the camera is doing (its AI package).
+func _inspect_actor() -> void:
+	if _ai == null:
+		_note("no AI (--ai off)")
+		return
+	var best: SkydotActor = null
+	var best_d := 8.0
+	for actor in get_tree().root.find_children("*", "SkydotActor", true, false):
+		var d: float = actor.global_position.distance_to(_camera.global_position)
+		if d < best_d:
+			best_d = d
+			best = actor
+	if best == null:
+		_note("no actor within 8 m")
+		return
+	var ref: int = best.get_meta("skydot_ref", 0)
+	var state := _ai.get_actor_state(ref)
+	var text := "%s: %s (%s), %s, step %d of %s" % [best.name, state.get("package_editor_id", "-"),
+		state.get("template", ""), state.get("procedure", "-"), int(state.get("step", 0)) + 1,
+		",".join(state.get("steps", []))]
+	_note(text)
+	print(text, " ", state)
 
 
 ## Show or hide the navmeshes under `root` as a translucent overlay, built

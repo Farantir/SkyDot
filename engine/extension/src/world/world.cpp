@@ -160,6 +160,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_global", "id"), &SkydotWorld::get_global);
     godot::ClassDB::bind_method(D_METHOD("get_actor", "ref"), &SkydotWorld::get_actor);
     godot::ClassDB::bind_method(D_METHOD("find_actor_of", "npc"), &SkydotWorld::find_actor_of);
+    godot::ClassDB::bind_method(D_METHOD("find_npc", "editor_id"), &SkydotWorld::find_npc);
     godot::ClassDB::bind_method(D_METHOD("get_form_from_file", "id", "plugin"),
                                 &SkydotWorld::get_form_from_file);
     godot::ClassDB::bind_method(D_METHOD("get_door", "ref"), &SkydotWorld::get_door);
@@ -219,6 +220,14 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_locomotion", "behaviour"), &SkydotWorld::get_locomotion);
     godot::ClassDB::bind_method(D_METHOD("build_actor", "ref"), &SkydotWorld::build_actor);
     godot::ClassDB::bind_method(D_METHOD("get_cell_actors", "cell"), &SkydotWorld::get_cell_actors);
+    godot::ClassDB::bind_method(D_METHOD("set_actor_place", "ref", "space", "position", "rotation_z"),
+                                &SkydotWorld::set_actor_place);
+    godot::ClassDB::bind_method(D_METHOD("clear_actor_place", "ref"), &SkydotWorld::clear_actor_place);
+    godot::ClassDB::bind_method(D_METHOD("clear_actor_places"), &SkydotWorld::clear_actor_places);
+    godot::ClassDB::bind_method(D_METHOD("get_actor_place", "ref"), &SkydotWorld::get_actor_place);
+    godot::ClassDB::bind_method(D_METHOD("get_cell_space", "cell"), &SkydotWorld::get_cell_space);
+    godot::ClassDB::bind_method(D_METHOD("nearest_nav_point", "space", "position", "reach"),
+                                &SkydotWorld::nearest_nav_point);
     godot::ClassDB::bind_method(D_METHOD("set_collision", "enabled"), &SkydotWorld::set_collision);
     godot::ClassDB::bind_method(D_METHOD("get_collision"), &SkydotWorld::get_collision);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "collision"), "set_collision", "get_collision");
@@ -303,6 +312,8 @@ void SkydotWorld::build_indexes() {
     navmeshes_.clear();
     cell_actors_.clear();
     persistent_actors_.clear();
+    actor_places_.clear();
+    moved_in_.clear();
     const auto* cells = root_->cells();
     if (cells == nullptr) {
         return;
@@ -799,10 +810,8 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
         }
     }
     if (actors_) {
-        if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
-            for (const auto* actor : it->second) {
-                place_actor(root, *actor, stats);
-            }
+        for (const auto& at : actors_in_cell(cell->id())) {
+            place_actor(root, *at.actor, stats, at.place);
         }
     }
     if (navigation_) {
@@ -812,6 +821,271 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
     }
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
+}
+
+// ---- where actors are ---------------------------------------------------
+
+std::uint64_t SkydotWorld::place_bucket(const ActorPlace& place) const {
+    const auto* cell = cell_ptr(place.space);
+    if (cell != nullptr && (cell->flags() & 0x1u) != 0) {
+        return place.space; // An interior: its id (grid keys have a world above bit 32).
+    }
+    const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
+    const auto y = static_cast<std::int32_t>(std::floor(place.position.y / k_cell_units));
+    return grid_key(place.space, x, y);
+}
+
+std::uint64_t SkydotWorld::placed_bucket(const wfb::ActorRef& actor) const {
+    const auto* cell = cell_ptr(actor.cell());
+    if (cell == nullptr) {
+        return 0;
+    }
+    if ((cell->flags() & 0x1u) != 0 || cell->world() == 0) {
+        return cell->id();
+    }
+    const auto x = static_cast<std::int32_t>(std::floor(actor.position().x() / k_cell_units));
+    const auto y = static_cast<std::int32_t>(std::floor(actor.position().y() / k_cell_units));
+    return grid_key(cell->world(), x, y);
+}
+
+std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_cell(std::uint32_t cell) const {
+    std::vector<ActorAt> out;
+    const auto bucket = static_cast<std::uint64_t>(cell);
+    const auto stays = [&](const wfb::ActorRef* a) {
+        const auto it = actor_places_.find(a->ref());
+        return it == actor_places_.end() || place_bucket(it->second) == bucket;
+    };
+    if (const auto it = cell_actors_.find(cell); it != cell_actors_.end()) {
+        for (const auto* a : it->second) {
+            // An exterior cell's own actors are bucketed by its grid square;
+            // interiors by the cell.
+            if (actor_places_.contains(a->ref())) {
+                if (placed_bucket(*a) == bucket && stays(a)) {
+                    out.push_back({a, &actor_places_.at(a->ref())});
+                }
+                continue;
+            }
+            out.push_back({a, nullptr});
+        }
+    }
+    if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
+        for (const auto ref : it->second) {
+            const auto* a = find_sorted(root_->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); });
+            if (a != nullptr && placed_bucket(*a) != bucket) {
+                out.push_back({a, &actor_places_.at(ref)});
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_grid(std::uint32_t world, std::int32_t x,
+                                                              std::int32_t y) const {
+    std::vector<ActorAt> out;
+    const auto bucket = grid_key(world, x, y);
+    const auto add_placed = [&](const std::vector<const wfb::ActorRef*>& list) {
+        for (const auto* a : list) {
+            const auto it = actor_places_.find(a->ref());
+            if (it == actor_places_.end()) {
+                out.push_back({a, nullptr});
+            } else if (place_bucket(it->second) == bucket) {
+                out.push_back({a, &it->second});
+            }
+        }
+    };
+    if (const auto* cell = exterior_ptr(world, x, y)) {
+        if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
+            add_placed(it->second);
+        }
+    }
+    if (const auto it = persistent_actors_.find(bucket); it != persistent_actors_.end()) {
+        add_placed(it->second);
+    }
+    if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
+        for (const auto ref : it->second) {
+            const auto* a = find_sorted(root_->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); });
+            if (a != nullptr && placed_bucket(*a) != bucket) {
+                out.push_back({a, &actor_places_.at(ref)});
+            }
+        }
+    }
+    return out;
+}
+
+void SkydotWorld::set_actor_place(std::int64_t ref, std::int64_t space, const Vector3& position,
+                                  double rotation_z) {
+    clear_actor_place(ref);
+    const auto id = static_cast<std::uint32_t>(ref);
+    const ActorPlace place{static_cast<std::uint32_t>(space), position, static_cast<float>(rotation_z)};
+    actor_places_[id] = place;
+    moved_in_[place_bucket(place)].push_back(id);
+}
+
+void SkydotWorld::clear_actor_place(std::int64_t ref) {
+    const auto id = static_cast<std::uint32_t>(ref);
+    const auto it = actor_places_.find(id);
+    if (it == actor_places_.end()) {
+        return;
+    }
+    if (const auto in = moved_in_.find(place_bucket(it->second)); in != moved_in_.end()) {
+        std::erase(in->second, id);
+    }
+    actor_places_.erase(it);
+}
+
+void SkydotWorld::clear_actor_places() {
+    actor_places_.clear();
+    moved_in_.clear();
+}
+
+std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
+    const auto* cell = cell_ptr(id);
+    if (cell == nullptr) {
+        return 0;
+    }
+    return (cell->flags() & 0x1u) != 0 || cell->world() == 0 ? cell->id() : cell->world();
+}
+
+Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
+    Dictionary out;
+    const auto* a = find_sorted(root_ != nullptr ? root_->actors() : nullptr, static_cast<std::uint32_t>(ref),
+                                [](const wfb::ActorRef* r) { return r->ref(); });
+    if (a == nullptr) {
+        return out;
+    }
+    ActorPlace place{static_cast<std::uint32_t>(get_cell_space(a->cell())),
+                     Vector3(a->position().x(), a->position().y(), a->position().z()), a->rotation().z()};
+    const auto it = actor_places_.find(a->ref());
+    if (it != actor_places_.end()) {
+        place = it->second;
+    }
+    const auto* space = cell_ptr(place.space);
+    const bool interior = space != nullptr && (space->flags() & 0x1u) != 0;
+    std::uint32_t cell = interior ? place.space : 0;
+    if (!interior) {
+        const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
+        const auto y = static_cast<std::int32_t>(std::floor(place.position.y / k_cell_units));
+        if (const auto* c = exterior_ptr(place.space, x, y)) {
+            cell = c->id();
+        }
+    }
+    out["space"] = static_cast<std::int64_t>(place.space);
+    out["interior"] = interior;
+    out["cell"] = static_cast<std::int64_t>(cell);
+    out["position"] = place.position;
+    out["rotation_z"] = static_cast<double>(place.rotation_z);
+    out["moved"] = it != actor_places_.end();
+    return out;
+}
+
+namespace {
+
+/// The point of triangle (a, b, c) nearest `p` (Ericson, Real-Time Collision
+/// Detection, 5.1.5).
+using godot::real_t;
+
+Vector3 closest_on_triangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
+    const Vector3 ab = b - a;
+    const Vector3 ac = c - a;
+    const Vector3 ap = p - a;
+    const real_t d1 = ab.dot(ap);
+    const real_t d2 = ac.dot(ap);
+    if (d1 <= 0 && d2 <= 0) {
+        return a;
+    }
+    const Vector3 bp = p - b;
+    const real_t d3 = ab.dot(bp);
+    const real_t d4 = ac.dot(bp);
+    if (d3 >= 0 && d4 <= d3) {
+        return b;
+    }
+    const real_t vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+        return a + ab * (d1 / (d1 - d3));
+    }
+    const Vector3 cp = p - c;
+    const real_t d5 = ab.dot(cp);
+    const real_t d6 = ac.dot(cp);
+    if (d6 >= 0 && d5 <= d6) {
+        return c;
+    }
+    const real_t vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+        return a + ac * (d2 / (d2 - d6));
+    }
+    const real_t va = d3 * d6 - d5 * d4;
+    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+        return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
+    }
+    const real_t denom = 1 / (va + vb + vc);
+    return a + ab * (vb * denom) + ac * (vc * denom);
+}
+
+} // namespace
+
+Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& position, double reach) const {
+    std::vector<const wfb::Cell*> cells;
+    const auto* s = cell_ptr(space);
+    if (s != nullptr && ((s->flags() & 0x1u) != 0 || s->world() == 0)) {
+        cells.push_back(s);
+    } else {
+        // The cell the point is in, and its neighbours only as far as `reach`.
+        const auto r = static_cast<float>(reach);
+        const auto x0 = static_cast<std::int32_t>(std::floor((position.x - r) / k_cell_units));
+        const auto x1 = static_cast<std::int32_t>(std::floor((position.x + r) / k_cell_units));
+        const auto y0 = static_cast<std::int32_t>(std::floor((position.y - r) / k_cell_units));
+        const auto y1 = static_cast<std::int32_t>(std::floor((position.y + r) / k_cell_units));
+        for (auto y = y0; y <= y1; ++y) {
+            for (auto x = x0; x <= x1; ++x) {
+                if (const auto* c = exterior_ptr(static_cast<std::uint32_t>(space), x, y)) {
+                    cells.push_back(c);
+                }
+            }
+        }
+    }
+    Vector3 best = position;
+    auto best_d = static_cast<godot::real_t>(reach * reach);
+    for (const auto* cell : cells) {
+        const auto* navs = cell->navmeshes();
+        if (navs == nullptr) {
+            continue;
+        }
+        for (const auto* nav : *navs) {
+            const auto* verts = nav->vertices();
+            const auto* tris = nav->triangles();
+            if (verts == nullptr || tris == nullptr) {
+                continue;
+            }
+            const auto vertex = [&](std::int32_t i) {
+                const auto* v = verts->Get(static_cast<flatbuffers::uoffset_t>(i));
+                return Vector3(v->x(), v->y(), v->z());
+            };
+            const auto n = static_cast<std::int32_t>(verts->size());
+            for (const auto* t : *tris) {
+                if (t->v0() >= n || t->v1() >= n || t->v2() >= n) {
+                    continue;
+                }
+                const Vector3 a = vertex(t->v0());
+                const Vector3 b = vertex(t->v1());
+                const Vector3 c = vertex(t->v2());
+                // Its box is no nearer than the best so far: skip the exact test.
+                const godot::real_t dx = std::max({std::min({a.x, b.x, c.x}) - position.x, godot::real_t(0),
+                                                   position.x - std::max({a.x, b.x, c.x})});
+                const godot::real_t dy = std::max({std::min({a.y, b.y, c.y}) - position.y, godot::real_t(0),
+                                                   position.y - std::max({a.y, b.y, c.y})});
+                if (dx * dx + dy * dy > best_d) {
+                    continue;
+                }
+                const Vector3 q = closest_on_triangle(position, a, b, c);
+                const godot::real_t d = q.distance_squared_to(position);
+                if (d < best_d) {
+                    best_d = d;
+                    best = q;
+                }
+            }
+        }
+    }
+    return best;
 }
 
 // ---- actors -------------------------------------------------------------
@@ -940,12 +1214,14 @@ godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) const {
     auto* root = memnew(godot::Node3D);
     root->set_name(hex_id(actor->ref()));
     BuildStats stats;
-    place_actor(root, *actor, stats);
+    const auto moved = actor_places_.find(actor->ref());
+    place_actor(root, *actor, stats, moved != actor_places_.end() ? &moved->second : nullptr);
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }
 
-void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats) const {
+void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats,
+                              const ActorPlace* place) const {
     if ((actor.flags() & k_ref_initially_disabled) != 0) {
         ++stats.disabled;
         return;
@@ -971,7 +1247,9 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
     node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
     const auto& p = actor.position();
-    node->set_transform(skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(0, 0, actor.rotation().z()), 1.0));
+    const Vector3 spot = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
+    const double facing = place != nullptr ? static_cast<double>(place->rotation_z) : static_cast<double>(actor.rotation().z());
+    node->set_transform(skyrim_transform(spot, Vector3(0, 0, static_cast<godot::real_t>(facing)), 1.0));
     auto* units = memnew(godot::Node3D);
     units->set_name("bethconv_z_up_to_y_up");
     units->set_transform(godot::Transform3D(
@@ -1231,23 +1509,13 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
         }
     }
     if (actors_) {
-        const auto add_actors = [&](const std::vector<const wfb::ActorRef*>& list) {
-            for (const auto* a : list) {
-                for (const auto& part : actor_resources(*a)) {
-                    const String path = String::utf8(part.c_str());
-                    if (!out.has(path)) {
-                        out.push_back(path);
-                    }
+        for (const auto& at : actors_in_grid(w, gx, gy)) {
+            for (const auto& part : actor_resources(*at.actor)) {
+                const String path = String::utf8(part.c_str());
+                if (!out.has(path)) {
+                    out.push_back(path);
                 }
             }
-        };
-        if (const auto* cell = exterior_ptr(w, gx, gy)) {
-            if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
-                add_actors(it->second);
-            }
-        }
-        if (const auto it = persistent_actors_.find(grid_key(w, gx, gy)); it != persistent_actors_.end()) {
-            add_actors(it->second);
         }
     }
     if (const auto it = persistent_.find(grid_key(w, gx, gy)); it != persistent_.end()) {
@@ -1455,7 +1723,7 @@ struct SkydotWorld::BuildJob {
     std::vector<std::pair<const wfb::Ref*, std::uint32_t>> refs;
     std::size_t next = 0;
     /// Actors, placed after the references.
-    std::vector<const wfb::ActorRef*> actors;
+    std::vector<ActorAt> actors;
     std::size_t next_actor = 0;
     BuildStats stats;
     bool terrain = false;
@@ -1494,7 +1762,8 @@ bool SkydotWorld::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
         if (static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec() - started) > budget_usec) {
             return false;
         }
-        place_actor(root, *job.actors[job.next_actor++], job.stats);
+        const auto& at = job.actors[job.next_actor++];
+        place_actor(root, *at.actor, job.stats, at.place);
     }
     Dictionary out = stats_dictionary(job.stats);
     out["terrain"] = job.terrain;
@@ -1595,14 +1864,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         }
     }
     if (actors_) {
-        if (cell != nullptr) {
-            if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
-                job->actors.insert(job->actors.end(), it->second.begin(), it->second.end());
-            }
-        }
-        if (const auto it = persistent_actors_.find(grid_key(w, gx, gy)); it != persistent_actors_.end()) {
-            job->actors.insert(job->actors.end(), it->second.begin(), it->second.end());
-        }
+        job->actors = actors_in_grid(w, gx, gy);
     }
     // Builds whose roots were freed unfinished are dropped here.
     std::erase_if(jobs_, [](const auto& entry) {

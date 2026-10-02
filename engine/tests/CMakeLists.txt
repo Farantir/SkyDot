@@ -85,6 +85,7 @@ skydot_smoke_test(smoke_quests quests.gd)
 skydot_smoke_test(smoke_lod lod.gd)
 skydot_smoke_test(smoke_animation animation.gd)
 skydot_smoke_test(smoke_actors actors.gd)
+skydot_smoke_test(smoke_ai ai.gd)
 skydot_smoke_test(smoke_physics physics.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
@@ -106,10 +107,11 @@ if(SKYDOT_TESTPACK)
         TIMEOUT 120)
     add_test(NAME viewer_locked
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
-                     --pack "${SKYDOT_TESTPACK}"
+                     --pack "${SKYDOT_TESTPACK}" --time 22
                      --cell TestpackInterior --activate 0x303)
     # The lock is stored on the outside door (0x213) only, as plugins do; the
-    # pair shares it, so the inside door does not open either.
+    # pair shares it, so the inside door does not open either. At 22:00: by
+    # day the NPC's work package unlocks it.
     set_tests_properties(viewer_locked PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan

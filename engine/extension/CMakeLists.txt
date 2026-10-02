@@ -39,6 +39,10 @@ target_sources(skydot PRIVATE
     src/world/actor_animation.cpp
     src/world/actors.cpp
     src/world/actors.hpp
+    src/world/ai.cpp
+    src/world/ai.hpp
+    src/world/packages.cpp
+    src/world/packages.hpp
     src/world/actor_animation.hpp
     src/world/animator.cpp
     src/world/locomotion.cpp

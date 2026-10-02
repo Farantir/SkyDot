@@ -151,6 +151,8 @@ public:
     /// The placed actor of NPC_ `npc` (the lowest ref if there are several),
     /// or 0.
     std::int64_t find_actor_of(std::int64_t npc) const;
+    /// Form id of the NPC_ with this editor id (case-insensitive), or 0.
+    std::int64_t find_npc(const godot::String& editor_id) const;
 
     /// Build a cell under a new Node3D: models (from the pack's asset cache)
     /// for references with one, lights for LIGH bases. Initially disabled
@@ -244,8 +246,29 @@ public:
     godot::Dictionary get_locomotion(const godot::String& behaviour) const;
     /// Build placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref) const;
-    /// The placed actors (ACHR refs) of an interior or exterior cell.
+    /// The placed actors (ACHR refs) of an interior or exterior cell, as
+    /// placed in the editor.
     godot::PackedInt64Array get_cell_actors(std::int64_t cell) const;
+
+    /// Where actors are, when not where the editor placed them (SkydotAi
+    /// moves them): a space (an interior cell, or a worldspace for the
+    /// outside), a position (Skyrim space) and a facing about Z. Cells built
+    /// afterwards build an actor where its place is, and not where it was
+    /// placed.
+    void set_actor_place(std::int64_t ref, std::int64_t space, const godot::Vector3& position,
+                         double rotation_z);
+    void clear_actor_place(std::int64_t ref);
+    void clear_actor_places();
+    /// space, interior, cell (the interior, or the exterior cell at the
+    /// position; 0 if none), position, rotation_z, moved (whether it is not
+    /// the editor's). Empty if `ref` is no placed actor.
+    godot::Dictionary get_actor_place(std::int64_t ref) const;
+    /// The space of a cell: itself for an interior, its worldspace outside.
+    std::int64_t get_cell_space(std::int64_t cell) const;
+    /// The nearest point on a navmesh of `space` near `position` (Skyrim
+    /// space), or `position` itself if none is within `reach` game units.
+    godot::Vector3 nearest_nav_point(std::int64_t space, const godot::Vector3& position,
+                                     double reach) const;
 
     /// Give models and terrain physics bodies (see collision.hpp). On by
     /// default.
@@ -281,6 +304,29 @@ protected:
 
 private:
     friend class SkydotWeather;
+    friend class SkydotAi;
+
+    struct ActorPlace {
+        std::uint32_t space{};
+        godot::Vector3 position;
+        float rotation_z{};
+    };
+    /// A placed actor and, if it was moved, where it is now.
+    struct ActorAt {
+        const bethconv::pack::wfb::ActorRef* actor{};
+        const ActorPlace* place{};
+    };
+    /// The actors that are in an interior cell (`cell`) or an exterior grid
+    /// square now: those placed there that were not moved elsewhere, and
+    /// those moved there.
+    std::vector<ActorAt> actors_in_cell(std::uint32_t cell) const;
+    std::vector<ActorAt> actors_in_grid(std::uint32_t world, std::int32_t x, std::int32_t y) const;
+    /// The bucket a place falls in: an interior cell id, or a grid key.
+    std::uint64_t place_bucket(const ActorPlace& place) const;
+    std::uint64_t placed_bucket(const bethconv::pack::wfb::ActorRef& actor) const;
+    std::unordered_map<std::uint32_t, ActorPlace> actor_places_;
+    /// Bucket -> actors moved into it.
+    std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> moved_in_;
 
     godot::Error fail(godot::Error code, const godot::String& why);
     const bethconv::pack::wfb::Cell* cell_ptr(std::int64_t id) const;
@@ -332,7 +378,8 @@ private:
     /// The looping clip `file` for `skeleton`, cached; null if it does not build.
     godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path,
                                             godot::Skeleton3D* skeleton) const;
-    void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats) const;
+    void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats,
+                     const ActorPlace* place = nullptr) const;
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
     bool collision_{true};
     bool navigation_{true};

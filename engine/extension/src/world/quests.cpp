@@ -260,4 +260,18 @@ std::int64_t SkydotWorld::find_actor_of(std::int64_t npc) const {
     return it != actor_of_.end() ? it->second : 0;
 }
 
+std::int64_t SkydotWorld::find_npc(const String& editor_id) const {
+    const auto* npcs = root_ != nullptr ? root_->npcs() : nullptr;
+    if (npcs == nullptr) {
+        return 0;
+    }
+    const String wanted = editor_id.to_lower();
+    for (const auto* n : *npcs) {
+        if (n->editor_id() != nullptr && String::utf8(n->editor_id()->c_str()).to_lower() == wanted) {
+            return n->id();
+        }
+    }
+    return 0;
+}
+
 } // namespace skydot

@@ -131,9 +131,11 @@ slopes, step-up, pushing clutter) steered by itself.
 - **Animation.** Its AnimationPlayer plays `idle`, `walk` or `run` with a
   0.25 s blend, and plays the gait as fast as the body moves (0.5-2x), so
   feet keep pace.
-- **Wander.** Until AI packages (PACK) are read, it idles 6-20 s, then walks
-  to a random point within 7.3 m (512 units, the CK's default sandbox
-  radius) of where it was placed, and idles again. A path longer than three
+- **Wander.** It idles 6-20 s, then walks to a random point within a radius
+  (7.3 m, 512 units, the CK's default sandbox radius, unless set) of its home,
+  and idles again. AI packages (`ai.md`) set home and radius for a sandbox
+  and turn wandering off for everything else; an actor without packages
+  wanders about where it was placed. A path longer than three
   times the radius is not taken. The choices are seeded by the reference,
   so a reload repeats them (physics timing aside).
   `SkydotWorld.actor_wander` (viewer `--wander off`) keeps actors in their
@@ -210,9 +212,9 @@ navmesh.
   name): no turning or start/stop clips, no strafing, no blending beyond the
   cross-fade, additive clips (blend hint 1), float tracks
   (`hkVis`/`hkFade` slots), paired animations' second actor.
-- AI: packages (the wander stands in for them), schedules, sitting and
-  sleeping in furniture, opening doors (a closed door stops a walk), paths
-  through load doors, swimming, avoidance (actors bump into each other).
+- AI: packages and schedules are run (`ai.md`); sitting and sleeping in
+  furniture, opening doors (a closed door stops a walk), swimming and
+  avoidance (actors bump into each other) are not.
 - Creatures that only fly, swim or hover (dragons, slaughterfish, wisps)
   have no walk and stand; those with only a run stand too.
 - Wolves, bears, deer and other creatures without a named idle use the
