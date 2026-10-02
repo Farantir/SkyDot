@@ -507,11 +507,17 @@ int ModelCollision::attach(godot::Node3D* instance) const {
             object->set_collision_layer(physics_layer::world);
             object->set_collision_mask(0);
             break;
-        case Motion::animated:
-            object = memnew(godot::AnimatableBody3D);
+        case Motion::animated: {
+            auto* animated = memnew(godot::AnimatableBody3D);
+            // Synced to physics, the body follows only its own local
+            // transform; clips move the node it hangs off (a door's leaf),
+            // so it would stay shut. Unsynced it follows its global one.
+            animated->set_sync_to_physics(false);
+            object = animated;
             object->set_collision_layer(physics_layer::world);
             object->set_collision_mask(0);
             break;
+        }
         case Motion::dynamic: {
             auto* dynamic = memnew(SkydotDynamicBody);
             dynamic->set_model(instance);

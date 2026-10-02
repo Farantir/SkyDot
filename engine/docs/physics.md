@@ -28,7 +28,10 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
 - By `quality_type` (`hkpCollidableQualityType`: 0 fixed, 1 keyframed, 2 to 7
   moving): fixed is a `StaticBody3D`; keyframed, or layer animated static, an
   `AnimatableBody3D` under its node, so animated doors and gates carry their
-  collision; movable is a `SkydotDynamicBody` if it is the model's only body
+  collision (not synced to physics: synced, it follows only its own local
+  transform, and the clips move its parent, so opened doors stayed shut;
+  `game/tools/door_check.gd` opens the Sleeping Giant's doors and walks
+  through); movable is a `SkydotDynamicBody` if it is the model's only body
   and has no mesh shape, else static.
 - `SkydotDynamicBody` simulates in world space without scale (the shapes are
   scaled instead) and moves the model with it, from `_integrate_forces`,
