@@ -675,6 +675,12 @@ struct NpcItem {
     count: int32;
 }
 
+/// SNAM: a faction an NPC belongs to, and its rank there.
+struct NpcFaction {
+    faction: uint32;
+    rank: int;
+}
+
 /// NPC_: what an actor base looks like and wears.
 table Npc {
     id: uint32;
@@ -703,6 +709,119 @@ table Npc {
     /// QNAM: the skin tone the SkinTint shader multiplies body skin by, RGB
     /// 0-1. Absent in packs written before it was added: no tint.
     skin_tone: [float];
+    /// PKID, in priority order (format 9).
+    packages: [uint32];
+    /// DPLT's FLST, expanded: tried after `packages`.
+    default_packages: [uint32];
+    /// SNAM, in record order (format 9).
+    factions: [NpcFaction];
+}
+
+/// A CTDA condition. FormID parameters (by the function's parameter types)
+/// are global; everything else is raw. Source: xEdit's wbConditions; see
+/// `bethconv/record/conditions.hpp` for the function table.
+table Condition {
+    /// The comparison in the top three bits (0 ==, 1 !=, 2 >, 3 >=, 4 <,
+    /// 5 <=); flags 0x01 OR with the next, 0x02 use aliases, 0x04 compare
+    /// with the GLOB `value_global`, 0x08 use package data, 0x10 swap subject
+    /// and target.
+    type: ubyte;
+    function: ushort;
+    value: float;
+    value_global: uint32;
+    param1: uint32;
+    param2: uint32;
+    /// 0 subject, 1 target, 2 `reference`, 3 combat target, 4 linked
+    /// reference, 5 quest alias `param3`, 6 package data, 7 event data.
+    run_on: uint32;
+    reference: uint32;
+    param3: int = -1;
+    /// CIS1/CIS2: string parameters (variable names).
+    string1: string;
+    string2: string;
+}
+
+/// One data input of a package, matched to the template's by `key`.
+table PackageInput {
+    key: byte;
+    /// Bool, Int, Float, Location, SingleRef, TargetSelector, ObjectList,
+    /// Topic, Keyword, …
+    type: string;
+    /// The template's name for it (BNAM after the tree), on templates.
+    name: string;
+    /// Bool (0 or 1), Int and Float values.
+    number: float;
+    /// PLDT, for Location: 0 near reference, 1 in cell, 2 near package start,
+    /// 3 near editor location, 4 object id, 5 object type, 6 near linked
+    /// reference (value: a keyword or 0), 7 at package location, 8 reference
+    /// alias, 9 location alias, 12 near self. -1 if absent. Value is global
+    /// for 0, 1, 4 and 6.
+    location_type: int = -1;
+    location_value: uint32;
+    location_radius: int;
+    /// PTDA, for SingleRef and TargetSelector: 0 specific reference, 1 object
+    /// id, 2 object type, 3 linked reference (value: a keyword or 0), 4
+    /// reference alias, 6 self. -1 if absent. Value is global for 0, 1 and 3.
+    target_type: int = -1;
+    target_value: uint32;
+    target_count: int;
+}
+
+/// A node of a template's procedure tree, in pre-order: a node with
+/// `children` > 0 (Sequence, Stack, Simultaneous, Random, …) is followed by
+/// that many subtrees; a `Procedure` node is a leaf running `procedure`.
+table PackageBranch {
+    type: string;
+    conditions: [Condition];
+    children: uint32;
+    /// PRCB flags. Bit 0: repeat when complete.
+    flags: uint32;
+    procedure: string;
+    success_completes: bool;
+    /// The data input keys the procedure reads, in its own parameter order.
+    inputs: [ubyte];
+    /// PFO2: flags set and cleared while it runs, and a speed (-1 none).
+    set_flags: uint32;
+    clear_flags: uint32;
+    speed: byte = -1;
+}
+
+/// PACK: an AI package (type 18) or a template (19). A package runs its
+/// template's `branches` with the template's `inputs` overridden by its own,
+/// by key.
+table Package {
+    id: uint32;
+    editor_id: string;
+    type: ubyte;
+    /// PKDT general flags. 0x4 must complete, 0x40/0x80 unlock doors at
+    /// start/end, 0x400 once per day, 0x20000000 wear sleep outfit, …
+    /// (Source: xEdit, wbPackageFlags.)
+    flags: uint32;
+    interrupt_override: ubyte;
+    /// 0 walk, 1 jog, 2 run, 3 fast walk.
+    speed: ubyte;
+    interrupt_flags: ushort;
+    /// PSDT: -1 any (`date` 0 any). Day of week 0 Sunday … 6 Saturday, 7
+    /// weekdays, 8 weekends, 9 Monday/Wednesday/Friday, 10 Tuesday/Thursday.
+    month: byte = -1;
+    day_of_week: byte = -1;
+    date: byte;
+    hour: byte = -1;
+    minute: byte = -1;
+    /// Minutes.
+    duration: uint32;
+    conditions: [Condition];
+    template: uint32;
+    inputs: [PackageInput];
+    branches: [PackageBranch];
+    idle_flags: ubyte;
+    idle_timer: float;
+    idles: [uint32];
+    owner_quest: uint32;
+    combat_style: uint32;
+    on_begin_idle: uint32;
+    on_end_idle: uint32;
+    on_change_idle: uint32;
 }
 
 /// A plugin of the load order and where its forms live: a form of this
@@ -754,6 +873,8 @@ table World {
     outfits: [Outfit];
     /// Sorted by id: LVLI and LVLN.
     leveled_lists: [LeveledList];
+    /// Sorted by id (format 9).
+    packages: [Package];
 }
 
 root_type World;

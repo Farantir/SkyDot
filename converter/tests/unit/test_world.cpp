@@ -942,6 +942,10 @@ void make_quests(const TempDir& dir) {
         data.f32(f);
     }
     bethconv::test::write_field(achr, "DATA", data);
+    ByteWriter xlkr;
+    xlkr.u32(0x0000'0A00); // a keyword in Base.esm's space
+    xlkr.u32(0x0100'0B01); // itself, local
+    bethconv::test::write_field(achr, "XLKR", xlkr);
     ByteWriter refrs;
     bethconv::test::write_record(refrs, "ACHR", 0x0100'0B01, achr.span());
     ByteWriter temporary;
@@ -1021,6 +1025,13 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(actors[0].base == 0x0000'0900);
     CHECK(actors[0].cell == 0x0200'0B00);
     CHECK(actors[0].rotation.z == 0.5F);
+    // A placed actor's linked references are its cell's, like a reference's.
+    const auto room = file->cell(0x0200'0B00);
+    REQUIRE(room.has_value());
+    REQUIRE(room->links.size() == 1);
+    CHECK(room->links[0].ref == 0x0200'0B01);
+    CHECK(room->links[0].keyword == 0x0000'0A00);
+    CHECK(room->links[0].target == 0x0200'0B01);
 
     const auto plugins = file->plugins();
     REQUIRE(plugins.size() == 3);
@@ -1110,9 +1121,84 @@ void make_actors(const TempDir& dir) {
         tone.f32(f);
     }
     bethconv::test::write_field(npc, "QNAM", tone);
+    field_u32(npc, "PKID", 0x0100'0E40);
+    ByteWriter snam;
+    snam.u32(0x0000'0A10); // a faction in Base.esm's space
+    snam.u32(2);
+    bethconv::test::write_field(npc, "SNAM", snam);
+    field_u32(npc, "DPLT", 0x0100'0E50);
     ByteWriter npcs;
     bethconv::test::write_record(npcs, "NPC_", 0x0100'0E30, npc.span());
     top_group(file, "NPC_", npcs);
+
+    // A package: GetIsID on the NPC (a FormID parameter), sandboxing near a
+    // reference (a FormID) and targeting an object type (not a FormID).
+    ByteWriter pack;
+    field_text(pack, "EDID", "TestSandbox8x4");
+    ByteWriter pkdt;
+    pkdt.u32(0x4);
+    pkdt.u8(18);
+    pkdt.u8(0);
+    pkdt.u8(0);
+    pkdt.u8(0);
+    pkdt.u16(0);
+    pkdt.u16(0);
+    bethconv::test::write_field(pack, "PKDT", pkdt);
+    ByteWriter psdt;
+    for (const int b : {0xFF, 0xFF, 0x00, 0x08, 0xFF, 0x00, 0x00, 0x00}) {
+        psdt.u8(static_cast<std::uint8_t>(b));
+    }
+    psdt.u32(240);
+    bethconv::test::write_field(pack, "PSDT", psdt);
+    ByteWriter ctda;
+    ctda.u32(0);
+    ctda.f32(1.0F);
+    ctda.u16(72); // GetIsID
+    ctda.u16(0);
+    ctda.u32(0x0100'0E30);
+    ctda.u32(0);
+    ctda.u32(0);
+    ctda.u32(0);
+    ctda.u32(0xFFFF'FFFF);
+    bethconv::test::write_field(pack, "CTDA", ctda);
+    ByteWriter pkcu;
+    pkcu.u32(3);
+    pkcu.u32(0x0100'0E41);
+    pkcu.u32(1);
+    bethconv::test::write_field(pack, "PKCU", pkcu);
+    field_text(pack, "ANAM", "Location");
+    ByteWriter pldt;
+    pldt.u32(0);
+    pldt.u32(0x0100'0E30);
+    pldt.u32(300);
+    bethconv::test::write_field(pack, "PLDT", pldt);
+    field_text(pack, "ANAM", "TargetSelector");
+    ByteWriter ptda;
+    ptda.u32(2);
+    ptda.u32(27); // chairs
+    ptda.u32(1);
+    bethconv::test::write_field(pack, "PTDA", ptda);
+    field_text(pack, "ANAM", "Int");
+    field_u32(pack, "CNAM", 7);
+    for (const int key : {0, 3, 5}) {
+        ByteWriter unam;
+        unam.u8(static_cast<std::uint8_t>(key));
+        bethconv::test::write_field(pack, "UNAM", unam);
+    }
+    ByteWriter xnam;
+    xnam.u8(6);
+    bethconv::test::write_field(pack, "XNAM", xnam);
+    ByteWriter packs;
+    bethconv::test::write_record(packs, "PACK", 0x0100'0E40, pack.span());
+    top_group(file, "PACK", packs);
+
+    ByteWriter flst;
+    field_text(flst, "EDID", "TestDefaultPackages");
+    field_u32(flst, "LNAM", 0x0100'0E40);
+    field_u32(flst, "LNAM", 0x0000'0901); // in Base.esm's space
+    ByteWriter lists;
+    bethconv::test::write_record(lists, "FLST", 0x0100'0E50, flst.span());
+    top_group(file, "FLST", lists);
     save(dir, "Actors.esp", file);
 }
 
@@ -1167,4 +1253,35 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(addon->race == 0x0200'0E00);
     CHECK(addon->slots == 4);
     CHECK(addon->models[1] == "meshes/actors/character/character assets/femalebody_1.nif");
+
+    CHECK(stats->packages == 1);
+    CHECK(npc->packages == std::vector<std::uint32_t>{0x0200'0E40});
+    CHECK(npc->default_packages == std::vector<std::uint32_t>{0x0200'0E40, 0x0000'0901});
+    REQUIRE(npc->factions.size() == 1);
+    CHECK(npc->factions[0].first == 0x0000'0A10);
+    CHECK(npc->factions[0].second == 2);
+    CHECK(file->package_count() == 1);
+    const auto pack = file->package(0x0200'0E40);
+    REQUIRE(pack.has_value());
+    CHECK(pack->editor_id == "TestSandbox8x4");
+    CHECK(pack->type == 18);
+    CHECK(pack->flags == 0x4);
+    CHECK(pack->schedule.hour == 8);
+    CHECK(pack->schedule.duration == 240);
+    CHECK(pack->template_package == 0x0200'0E41);
+    REQUIRE(pack->conditions.size() == 1);
+    CHECK(pack->conditions[0].function == 72);
+    CHECK(pack->conditions[0].param1 == 0x0200'0E30);
+    REQUIRE(pack->inputs.size() == 3);
+    CHECK(pack->inputs[0].key == 0);
+    CHECK(pack->inputs[0].location.type == 0);
+    CHECK(pack->inputs[0].location.value == 0x0200'0E30);
+    CHECK(pack->inputs[0].location.radius == 300);
+    CHECK(pack->inputs[0].target.type == -1);
+    CHECK(pack->inputs[1].key == 3);
+    CHECK(pack->inputs[1].target.type == 2);
+    CHECK(pack->inputs[1].target.value == 27); // an object type stays as it is
+    CHECK(pack->inputs[2].type == "Int");
+    CHECK(pack->inputs[2].number == 7.0F);
+    CHECK(pack->branches.empty());
 }

@@ -237,6 +237,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("godot_to_skyrim", "position"),
                                        &SkydotWorld::godot_to_skyrim);
     BIND_CONSTANT(WORLD_FORMAT_VERSION);
+    BIND_CONSTANT(WORLD_FORMAT_VERSION_MIN);
 }
 
 // ---- opening --------------------------------------------------------------
@@ -273,11 +274,12 @@ Error SkydotWorld::open(const String& path) {
         return fail(godot::ERR_FILE_CORRUPT, path + String(" is not a valid world.fb"));
     }
     const auto* root = wfb::GetWorld(data);
-    if (root->format_version() != WORLD_FORMAT_VERSION) {
+    if (root->format_version() < WORLD_FORMAT_VERSION_MIN || root->format_version() > WORLD_FORMAT_VERSION) {
         return fail(godot::ERR_FILE_UNRECOGNIZED,
                     String("world.fb format version ") +
                         String::num_int64(root->format_version()) +
                         " is not one this engine reads (it reads " +
+                        String::num_int64(WORLD_FORMAT_VERSION_MIN) + " to " +
                         String::num_int64(WORLD_FORMAT_VERSION) + ")");
     }
     root_ = root;

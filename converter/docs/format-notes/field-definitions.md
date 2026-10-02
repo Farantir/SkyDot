@@ -1,7 +1,7 @@
 # Field definitions
 
 The record layer (`esm4-plugins.md`) walks plugins and hands out payloads; this
-layer decodes them for 45 record types. Sizes were measured with
+layer decodes them for 47 record types. Sizes were measured with
 `bethconv records --field-sizes <TYPE>`, and every definition is checked with
 `bethconv forms` over real installs.
 
@@ -12,7 +12,8 @@ layer decodes them for 45 record types. Sizes were measured with
 | `record/forms.{hpp,cpp}` | STAT DOOR LIGH CELL WRLD REFR | placing a city |
 | `record/forms_object.*` | TXST ACTI CONT MISC MSTT FURN FLOR TREE KEYM ALCH AMMO WEAP PROJ IDLM LVLN | cell contents |
 | `record/forms_world.*` | LTEX IMGS CLMT WTHR REGN LCTN LAND NAVM NAVI ACHR SPGD | world layers |
-| `record/forms_game.*` | GMST GLOB CLAS FACT ENCH SPEL NPC_ | game data |
+| `record/forms_game.*` | GMST GLOB CLAS FACT ENCH SPEL NPC_ QUST FLST PACK | game data, quests, AI packages |
+| `record/conditions.*` | (CTDA in any record) | conditions and the condition function table |
 | `record/forms_actor.*` | ARMO ARMA OTFT LVLI RACE | what actors look like and wear |
 
 The list lives in `defined_types()`. A type listed there without a census
@@ -75,8 +76,8 @@ property values, both object layouts (format 1 FormID first, format 2 FormID
 last) and versions 2-5 (status bytes from 4 on). Decoded on every defined type
 that carries it, including REFR, DOOR, LIGH and TREE (332 scripted TREEs in the
 FUS list, none in vanilla). Every VMAD in the three installs and the FUS list
-decodes with no failures or leftover bytes. Fragment data (QUST, INFO, PACK,
-SCEN, PERK) is not decoded; none of those types is defined.
+decodes with no failures or leftover bytes. QUST's fragment data is decoded;
+PACK keeps its fragment VMAD raw; INFO, SCEN and PERK are not defined.
 
 ## Two patterns
 
@@ -95,6 +96,29 @@ the section and sex as state. RACE reads what building an actor needs
 other field whole in `other`, so its definition claims all 60 field types
 without decoding tints, morphs and movement. Every RACE of the three installs
 and the 985 in the FUS list parse with nothing left over.
+
+PACK (2026-10-02) has five sections, and CNAM, QNAM, ANAM, BNAM, PNAM and
+UNAM each mean something different in each. Before `PKCU`: the package's own
+conditions, idles, combat style (CNAM) and owner quest (QNAM). Between `PKCU`
+and the one-byte `XNAM`: data input values, each opened by `ANAM` (its type
+as text: Bool, Int, Float, Location, SingleRef, TargetSelector, ObjectList,
+Topic) and given by `CNAM`, `PLDT`, `PTDA`, `PDTO` or `TPIC`, then one `UNAM`
+per input with its key; inputs match the template's by key, not position.
+After `XNAM`: the procedure tree in pre-order, `ANAM` opening each branch
+(Sequence, Stacked, Simultaneous, Random, Procedure) with `PRCB` giving its
+child count and `PNAM` its procedure as text; then `UNAM`/`BNAM`/`PNAM`
+triples naming the template's inputs, `PNAM` now a u32. `POBA`, `POEA` and
+`POCA` open the event blocks. Only templates (PKDT type 19) have a tree. All
+7,611 SE, 5,980 LE and 7,512 VR packages parse with nothing unhandled or left
+over, as do the 16,639 packages and 2,671 form lists of the 612-plugin FUS
+list. Source: xEdit's PACK definition, checked against the field order in
+Skyrim.esm (the Sandbox template, 0001C254).
+
+**Conditions.** `CTDA` is 32 bytes everywhere; its parameters are raw words
+whose meaning depends on the function. `record/conditions.cpp` holds xEdit's
+table of the 402 Skyrim functions with their parameter types, generated from
+`wbConditionFunctions`, so the world writer can make FormID parameters global
+(and leave alias indices, package data keys and enums alone).
 
 **A field typed by another field.** GMST's `DATA` type comes from the first
 letter of its editor id: `b` bool, `i` int, `f` float, `s` string, `u`

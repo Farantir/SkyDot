@@ -2305,11 +2305,12 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(w.nav_triangles),
                      static_cast<unsigned long long>(w.orphan_navmeshes));
         std::fprintf(text, "                %llu actors of %llu NPCs, %llu races, %llu armors (%llu addons), "
-                           "%llu outfits, %llu leveled lists\n",
+                           "%llu outfits, %llu leveled lists, %llu packages\n",
                      static_cast<unsigned long long>(w.actors), static_cast<unsigned long long>(w.npcs),
                      static_cast<unsigned long long>(w.races), static_cast<unsigned long long>(w.armors),
                      static_cast<unsigned long long>(w.armor_addons), static_cast<unsigned long long>(w.outfits),
-                     static_cast<unsigned long long>(w.leveled_lists));
+                     static_cast<unsigned long long>(w.leveled_lists),
+                     static_cast<unsigned long long>(w.packages));
         std::fprintf(text, "                %llu unresolved, %llu parse errors, %llu script errors\n",
                      static_cast<unsigned long long>(w.unresolved),
                      static_cast<unsigned long long>(w.parse_errors),

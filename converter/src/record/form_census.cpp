@@ -74,6 +74,8 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"SPEL"}, &run<parse_spell>},
     {FourCC{"NPC_"}, &run<parse_npc>},
     {FourCC{"QUST"}, &run<parse_quest>},
+    {FourCC{"FLST"}, &run<parse_form_list>},
+    {FourCC{"PACK"}, &run<parse_package>},
     {FourCC{"ARMO"}, &run<parse_armor>},
     {FourCC{"ARMA"}, &run<parse_armor_addon>},
     {FourCC{"OTFT"}, &run<parse_outfit>},

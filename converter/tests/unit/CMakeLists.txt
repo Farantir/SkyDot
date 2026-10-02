@@ -22,6 +22,7 @@ add_executable(bethconv_unit_tests
     test_bc_encode.cpp
     test_forms.cpp
     test_forms_actor.cpp
+    test_package.cpp
     test_vmad.cpp
     test_quest.cpp
     test_lod_asset.cpp

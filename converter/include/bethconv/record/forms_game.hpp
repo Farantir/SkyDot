@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Game-data types: GMST and GLOB (settings), ENCH and SPEL (magic), CLAS and
-// FACT (actor classification), NPC_ (58 distinct field types in vanilla) and
-// QUST.
+// FACT (actor classification), NPC_ (58 distinct field types in vanilla),
+// QUST, FLST and PACK.
 //
 // GMST's DATA layout depends on its editor id's first letter, and EDID is not
 // guaranteed to come first, so DATA is captured during the walk and interpreted
@@ -12,6 +12,7 @@
 // against xEdit.
 #pragma once
 
+#include "bethconv/record/conditions.hpp"
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/plugin.hpp"
 
@@ -482,6 +483,177 @@ struct Quest {
     }
 };
 
+/// FLST: a list of forms. 787 in Skyrim.esm.
+struct FormList {
+    std::string editor_id;
+    std::vector<FormId> forms; ///< LNAM, one per field, in order.
+};
+
+/// PACK: an AI package. 5,961 in Skyrim.esm.
+///
+/// A package is either a template (PKDT type 19), which holds a procedure tree
+/// and the default value of every data input, or a package (type 18) naming
+/// its template in PKCU and giving its own values for those inputs. Inputs
+/// are matched by key (UNAM), not by position.
+///
+/// Fields are positional. Before PKCU: the package's own conditions, idles,
+/// combat style, owner quest. Between PKCU and XNAM: the data input values,
+/// ANAM opening each, then their keys (UNAM). After XNAM: the procedure tree,
+/// ANAM opening each branch, then the public inputs (UNAM, BNAM, PNAM), then
+/// the OnBegin/OnEnd/OnChange blocks (POBA, POEA, POCA). CNAM, QNAM, ANAM,
+/// BNAM, PNAM and UNAM each mean different things by position.
+///
+/// Source: xEdit's wbDefinitionsTES5.pas (PACK) and the record order observed
+/// in Skyrim.esm.
+struct Package {
+    std::string editor_id;
+    std::vector<std::byte> scripts; ///< VMAD with package fragments, kept raw.
+
+    /// PKDT, 12 bytes on all 5,961.
+    std::uint32_t flags{};
+    std::uint8_t type{};
+    std::uint8_t interrupt_override{};
+    std::uint8_t preferred_speed{}; ///< 0 walk, 1 jog, 2 run, 3 fast walk.
+    std::uint8_t pkdt_unknown{};
+    std::uint16_t interrupt_flags{};
+    std::uint16_t pkdt_unknown2{};
+
+    static constexpr std::uint8_t k_type_package = 18;
+    static constexpr std::uint8_t k_type_template = 19;
+
+    /// PSDT, 12 bytes on all 5,961. -1 (or 0 for `date`) means any.
+    struct Schedule {
+        std::int8_t month{-1};
+        std::int8_t day_of_week{-1}; ///< 0 Sunday … 6 Saturday, 7 weekdays, 8 weekends, …
+        std::int8_t date{};
+        std::int8_t hour{-1};
+        std::int8_t minute{-1};
+        std::uint32_t duration{}; ///< Minutes.
+    };
+    Schedule schedule;
+
+    std::uint32_t declared_condition_count{}; ///< CITC
+    std::vector<Condition> conditions;
+
+    /// IDLF/IDLC/IDLT/IDLA/IDLB.
+    std::uint8_t idle_flags{};
+    std::uint8_t idle_count{};
+    float idle_timer{};
+    std::vector<FormId> idles;
+    std::vector<std::byte> idle_unused; ///< IDLB
+
+    FormId combat_style; ///< CNAM before PKCU.
+    FormId owner_quest;  ///< QNAM before PKCU.
+
+    /// PKCU, 12 bytes on all 5,961.
+    std::uint32_t input_count{};
+    FormId template_package;
+    std::uint32_t version{};
+
+    /// PLDT, 12 bytes: where. `value` is a FormID, an object type or an alias
+    /// depending on `type` (0 near reference, 1 in cell, 2 near package start,
+    /// 3 near editor location, 4 object id, 5 object type, 6 near linked
+    /// reference, 7 at package location, 8 reference alias, 9 location alias,
+    /// 12 near self).
+    struct Location {
+        std::int32_t type{-1};
+        std::uint32_t value{};
+        std::int32_t radius{};
+    };
+    /// PTDA, 12 bytes: what. 0 specific reference, 1 object id, 2 object type,
+    /// 3 linked reference (value: a keyword or 0), 4 reference alias, 6 self.
+    struct Target {
+        std::int32_t type{-1};
+        std::uint32_t value{};
+        std::int32_t count{}; ///< Count or distance.
+    };
+    /// PDTO, 8 bytes: 0 a DIAL, 1 a subtype as four characters.
+    struct Topic {
+        std::uint32_t type{};
+        std::uint32_t value{};
+    };
+
+    /// One data input value: ANAM, then the field its type uses.
+    struct Input {
+        std::string type;               ///< ANAM: Bool, Int, Float, Location, SingleRef, …
+        std::vector<std::byte> value;   ///< CNAM: 1 byte for Bool, 4 otherwise.
+        std::vector<std::byte> extra;   ///< BNAM, unknown.
+        std::optional<Location> location; ///< PLDT
+        std::optional<Target> target;     ///< PTDA
+        std::vector<Topic> topics;        ///< PDTO
+        FormId topic;                     ///< TPIC
+        std::int8_t key{-1};              ///< From the UNAM list, by position.
+    };
+    std::vector<Input> inputs;
+    std::uint8_t marker{}; ///< XNAM
+
+    /// A procedure tree branch (templates only).
+    struct Branch {
+        std::string type; ///< ANAM: Sequence, Procedure, Stack, Simultaneous, Random, …
+        std::uint32_t declared_condition_count{};
+        std::vector<Condition> conditions;
+        bool has_root{};
+        std::uint32_t branch_count{}; ///< PRCB: children that follow.
+        std::uint32_t root_flags{};   ///< PRCB: 1 repeat when complete.
+        std::string procedure;        ///< PNAM: Travel, Sandbox, Sit, Sleep, …
+        bool success_completes{};     ///< FNAM
+        std::vector<std::uint8_t> input_keys; ///< PKC2
+        /// PFO2, 16 bytes: package flags, interrupt flags and speed set or
+        /// cleared while this branch runs.
+        struct FlagOverride {
+            std::uint32_t set_flags{};
+            std::uint32_t clear_flags{};
+            std::uint16_t set_interrupt{};
+            std::uint16_t clear_interrupt{};
+            std::uint8_t speed{};
+        };
+        std::vector<FlagOverride> flag_overrides;
+        std::vector<std::vector<std::byte>> unknown; ///< PFOR
+    };
+    std::vector<Branch> branches;
+
+    /// The template's names for its inputs: UNAM, BNAM, PNAM after the tree.
+    struct PublicInput {
+        std::int8_t key{};
+        std::string name;
+        std::uint32_t is_public{};
+    };
+    std::vector<PublicInput> public_inputs;
+
+    /// POBA/POEA/POCA and what follows each.
+    struct Event {
+        bool present{};
+        FormId idle;                      ///< INAM
+        std::vector<std::byte> legacy;    ///< SCHR/SCDA/SCTX/QNAM/TNAM, all unused.
+        std::vector<Topic> topics;        ///< PDTO
+    };
+    Event on_begin;
+    Event on_end;
+    Event on_change;
+
+    /// Source: xEdit, wbPackageFlags (TES5 names).
+    enum class Flag : std::uint32_t {
+        offers_services = 0x00000001,
+        must_complete = 0x00000004,
+        maintain_speed_at_goal = 0x00000008,
+        unlock_doors_at_start = 0x00000040,
+        unlock_doors_at_end = 0x00000080,
+        continue_if_pc_near = 0x00000200,
+        once_per_day = 0x00000400,
+        preferred_speed = 0x00002000,
+        always_sneak = 0x00020000,
+        allow_swimming = 0x00040000,
+        ignore_combat = 0x00100000,
+        weapons_unequipped = 0x00200000,
+        weapon_drawn = 0x00800000,
+        no_combat_alert = 0x08000000,
+        wear_sleep_outfit = 0x20000000,
+    };
+    [[nodiscard]] bool has(Flag f) const noexcept {
+        return (flags & static_cast<std::uint32_t>(f)) != 0;
+    }
+};
+
 // ---- parsing --------------------------------------------------------------
 
 [[nodiscard]] io::ParseResult<GameSetting> parse_game_setting(io::SpanReader& data,
@@ -497,5 +669,9 @@ struct Quest {
 [[nodiscard]] io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<FormList> parse_form_list(io::SpanReader& data,
+                                                       const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Package> parse_package(io::SpanReader& data,
+                                                     const FormContext& ctx);
 
 } // namespace bethconv::record

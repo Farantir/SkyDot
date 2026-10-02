@@ -56,8 +56,10 @@ class SkydotWorld : public godot::RefCounted {
     GDCLASS(SkydotWorld, godot::RefCounted)
 
 public:
-    /// The world.fb format version this engine reads.
-    static constexpr int WORLD_FORMAT_VERSION = 8;
+    /// The world.fb format version this engine writes against. Format 8
+    /// (before AI packages) still reads; its actors have no packages.
+    static constexpr int WORLD_FORMAT_VERSION = 9;
+    static constexpr int WORLD_FORMAT_VERSION_MIN = 8;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
 

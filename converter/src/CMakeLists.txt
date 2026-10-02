@@ -45,6 +45,7 @@ add_library(bethconv_core STATIC
     record/load_order.cpp
     record/histogram.cpp
     record/field_reader.cpp
+    record/conditions.cpp
     record/vmad.cpp
     record/forms.cpp
     record/forms_object.cpp

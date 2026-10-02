@@ -10,6 +10,7 @@
 
 #include "bethconv/io/parse_error.hpp"
 #include "bethconv/record/field_reader.hpp"
+#include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/vmad.hpp"
@@ -29,7 +30,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 8;
+inline constexpr std::uint32_t k_world_format_version = 9;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -73,6 +74,8 @@ struct WorldStats {
     std::uint64_t armor_addons{};
     std::uint64_t outfits{};
     std::uint64_t leveled_lists{};
+    /// AI packages and templates (format 9).
+    std::uint64_t packages{};
     /// Navmeshes whose parent is not a cell; not included.
     std::uint64_t orphan_navmeshes{};
     /// References whose base or other FormIDs could not be resolved; the
@@ -462,6 +465,54 @@ struct WorldNpc {
     std::vector<std::pair<std::uint32_t, std::int32_t>> items;
     std::string face_model;
     std::array<float, 3> skin_tone{1, 1, 1};
+    std::vector<std::uint32_t> packages{};         ///< PKID
+    std::vector<std::uint32_t> default_packages{}; ///< DPLT's FLST, expanded.
+    std::uint32_t default_package_list{};          ///< DPLT; not written.
+    std::vector<std::pair<std::uint32_t, std::int32_t>> factions{}; ///< SNAM: faction, rank.
+};
+
+/// PACK as written to world.fb; FormIDs global (see world.fbs, Package).
+struct WorldPackage {
+    std::uint32_t id{};
+    std::string editor_id{};
+    std::uint8_t type{};
+    std::uint32_t flags{};
+    std::uint8_t interrupt_override{};
+    std::uint8_t speed{};
+    std::uint16_t interrupt_flags{};
+    record::Package::Schedule schedule{};
+    std::vector<record::Condition> conditions{};
+    std::uint32_t template_package{};
+    struct Input {
+        std::int8_t key{-1};
+        std::string type{};
+        std::string name{};
+        float number{};
+        record::Package::Location location{};///< type -1 if absent.
+        record::Package::Target target{};///< type -1 if absent.
+    };
+    std::vector<Input> inputs{};
+    struct Branch {
+        std::string type{};
+        std::vector<record::Condition> conditions{};
+        std::uint32_t children{};
+        std::uint32_t flags{};
+        std::string procedure{};
+        bool success_completes{};
+        std::vector<std::uint8_t> inputs{};
+        std::uint32_t set_flags{};
+        std::uint32_t clear_flags{};
+        std::int8_t speed{-1};
+    };
+    std::vector<Branch> branches{};
+    std::uint8_t idle_flags{};
+    float idle_timer{};
+    std::vector<std::uint32_t> idles{};
+    std::uint32_t owner_quest{};
+    std::uint32_t combat_style{};
+    std::uint32_t on_begin_idle{};
+    std::uint32_t on_end_idle{};
+    std::uint32_t on_change_idle{};
 };
 
 /// RACE as written to world.fb; index 0 male, 1 female.
@@ -562,6 +613,8 @@ public:
     [[nodiscard]] std::optional<WorldGlobal> global(std::uint32_t id) const;
     [[nodiscard]] std::vector<WorldActor> actors() const;
     [[nodiscard]] std::optional<WorldNpc> npc(std::uint32_t id) const;
+    [[nodiscard]] std::optional<WorldPackage> package(std::uint32_t id) const;
+    [[nodiscard]] std::size_t package_count() const noexcept;
     [[nodiscard]] std::optional<WorldRace> race(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldArmorAddon> armor_addon(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.

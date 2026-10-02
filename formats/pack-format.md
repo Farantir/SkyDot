@@ -152,10 +152,12 @@ only decoded fields would pass every other snapshot test.
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (8; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (9; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
-regions, 7 base record flags, 8 what actors are built from). Written during a merge pass, so every FormID in it is
+regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
+NPC factions and placed actors' linked references). Format 9 only adds:
+an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
 - `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags,
@@ -172,7 +174,8 @@ global: resolved through the winning plugin's master list.
   ledges), and the triangles in front of doors. The search grid and the
   cover triangle list are left out.
 - Per cell, sorted by reference: scripts (VMAD), locks (XLOC), linked
-  references (XLKR), activate parents (XAPR) and primitive volumes (XPRM).
+  references (XLKR; placed actors' too, from format 9), activate parents
+  (XAPR) and primitive volumes (XPRM).
 - Scripts, on references and bases: name, status, and properties by name with
   their type, status and values. Object properties are global FormIDs, with an
   alias index when they name a quest alias. Status as stored (UESP: 0 local,
@@ -205,6 +208,23 @@ global: resolved through the winning plugin's master list.
   races, the model per sex, priorities and weight sliders); `outfits` (OTFT's
   items); `leveled_lists` (LVLI and LVLN with flags, chance none and
   entries). How the engine combines them: `engine/docs/actors.md`.
+- AI packages (format 9): `npcs` also carry their packages (PKID, in
+  priority order), their default package list (DPLT's FLST, expanded) and
+  factions with rank (SNAM). `packages`, sorted by id: every PACK, a package
+  (PKDT type 18) or a template (19), with its general and interrupt flags,
+  preferred speed, schedule (PSDT: month, day of week, date, hour, minute,
+  duration in minutes; -1 any), conditions, template, data inputs, procedure
+  tree (templates only), idles, owner quest, combat style and its OnBegin,
+  OnEnd and OnChange idles. A data input has its key (UNAM), type (ANAM), the
+  template's name for it, a number (Bool, Int, Float), and a location (PLDT:
+  type, value, radius) or target (PTDA: type, value, count). The tree is in
+  pre-order: a branch has its type, conditions, child count, flags, its
+  procedure for a leaf, the input keys the procedure reads and PFO2's flag
+  overrides. Conditions (CTDA, with CIS1/CIS2) have their type byte, function,
+  comparison value or GLOB, parameters, run-on, reference and third
+  parameter; FormID parameters are global, chosen by the function's
+  parameter types (`bethconv/record/conditions.cpp`, from xEdit). How the
+  engine runs them: `engine/docs/ai.md`.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.

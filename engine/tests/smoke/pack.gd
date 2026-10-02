@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Mounts the pack from `bethconv-testpack` and queries it. Expected numbers
-# come from that tool (converter/tools/testpack/main.cpp: 41 forms, 36 distinct
+# come from that tool (converter/tools/testpack/main.cpp: 44 forms, 36 distinct
 # assets, 40 index entries) and change with it.
 extends SceneTree
 
@@ -33,7 +33,7 @@ func _run(pack_dir: String) -> void:
         return
 
     expect(pack.has_records(), "the test pack carries records")
-    expect(pack.get_form_count() == 41, "41 forms, got %d" % pack.get_form_count())
+    expect(pack.get_form_count() == 44, "44 forms, got %d" % pack.get_form_count())
     expect(pack.get_asset_count() == 36, "36 distinct assets, got %d" % pack.get_asset_count())
     expect(pack.get_index_count() == 40, "40 index entries, got %d" % pack.get_index_count())
     expect(pack.get_unknown_kind_count() == 0, "every kind is one this engine knows")

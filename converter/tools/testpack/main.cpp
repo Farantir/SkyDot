@@ -30,7 +30,8 @@
 //   * a STAT with `XRGD`, `VMAD` and an invented tag, to check the
 //     verbatim-payload rule;
 //   * an NPC_ placed in the interior, whose race's behaviour project has an
-//     idle, a walk and a run with root motion.
+//     idle, a walk and a run with root motion; it is persistent and has AI
+//     packages: home by night, by the scaled cube outside by day.
 //
 // LOD for the worldspace: settings, terrain LOD at levels 4 and 8, object LOD
 // and tree LOD with its list and atlas.
@@ -229,6 +230,7 @@ struct Placement {
     float rz{}; ///< Rotation about Z, radians.
     /// Further fields, written after DATA.
     std::vector<std::byte> extra{};
+    std::uint32_t record_flags{}; ///< E.g. persistent (0x400).
 };
 
 /// XTEL: the destination door and where the player arrives.
@@ -357,7 +359,7 @@ void write_cell(ByteWriter& out, std::uint32_t form, const ByteWriter& payload,
         bethconv::test::write_record(children, "REFR", p.form, reference_record(p).span());
     }
     for (const auto& p : actors) {
-        bethconv::test::write_record(children, "ACHR", p.form, reference_record(p).span());
+        bethconv::test::write_record(children, "ACHR", p.form, reference_record(p).span(), p.record_flags);
     }
     ByteWriter temporary;
     bethconv::test::write_group(temporary, form, 9, children.span());
@@ -691,9 +693,140 @@ std::vector<std::byte> build_plugin() {
         }
         bethconv::test::write_field(npc, "ACBS", acbs);
         u32(npc, "RNAM", 0x0000'0160);
+        u32(npc, "PKID", 0x0000'0172); // work by day
+        u32(npc, "PKID", 0x0000'0171); // home by night
         ByteWriter npcs;
         bethconv::test::write_record(npcs, "NPC_", 0x0000'0164, npc.span());
         bethconv::test::write_group(file, tag_value("NPC_"), 0, npcs.span());
+
+        // AI packages: a template like Skyrim.esm's Sandbox (travel and
+        // unlock the doors there if "Unlock On Arrival?", then sandbox), a
+        // home package near the editor location from 20:00 for 12 hours,
+        // and a work package by the scaled cube outside from 08:00 that
+        // unlocks doors there.
+        const auto bytes = [](std::initializer_list<int> list) {
+            ByteWriter w;
+            for (const int b : list) {
+                w.u8(static_cast<std::uint8_t>(b));
+            }
+            return w;
+        };
+        const auto pack_header = [&](ByteWriter& p, std::string_view name, std::uint8_t type,
+                                     std::int8_t hour, std::uint32_t minutes,
+                                     std::uint32_t templ, std::uint32_t inputs) {
+            edid(p, name);
+            ByteWriter pkdt;
+            pkdt.u32(0);
+            pkdt.u8(type);
+            pkdt.u8(0);
+            pkdt.u8(0);
+            pkdt.u8(0);
+            pkdt.u16(0);
+            pkdt.u16(0);
+            bethconv::test::write_field(p, "PKDT", pkdt);
+            ByteWriter psdt = bytes({0xFF, 0xFF, 0, static_cast<std::uint8_t>(hour), 0xFF, 0, 0, 0});
+            psdt.u32(minutes);
+            bethconv::test::write_field(p, "PSDT", psdt);
+            ByteWriter pkcu;
+            pkcu.u32(inputs);
+            pkcu.u32(templ);
+            pkcu.u32(1);
+            bethconv::test::write_field(p, "PKCU", pkcu);
+        };
+        const auto location = [&](ByteWriter& p, std::int32_t type, std::uint32_t value, std::int32_t radius) {
+            text(p, "ANAM", "Location");
+            ByteWriter pldt;
+            pldt.u32(static_cast<std::uint32_t>(type));
+            pldt.u32(value);
+            pldt.u32(static_cast<std::uint32_t>(radius));
+            bethconv::test::write_field(p, "PLDT", pldt);
+        };
+        const auto flag = [&](ByteWriter& p, bool on) {
+            text(p, "ANAM", "Bool");
+            bethconv::test::write_field(p, "CNAM", bytes({on ? 1 : 0}));
+        };
+        const auto keys = [&](ByteWriter& p, std::initializer_list<int> list) {
+            for (const int k : list) {
+                bethconv::test::write_field(p, "UNAM", bytes({k}));
+            }
+            bethconv::test::write_field(p, "XNAM", bytes({0x0F}));
+        };
+        const auto events = [&](ByteWriter& p) {
+            for (const char* marker : {"POBA", "POEA", "POCA"}) {
+                bethconv::test::write_field(p, marker, ByteWriter{});
+                u32(p, "INAM", 0);
+            }
+        };
+        // GetNumericPackageData(key 0x0E) == 1.
+        const auto unlock_on_arrival = [&](ByteWriter& p) {
+            u32(p, "CITC", 1);
+            ByteWriter ctda;
+            ctda.u32(0);
+            ctda.f32(1.0F);
+            ctda.u16(612);
+            ctda.u16(0);
+            ctda.u32(0x0E);
+            ctda.u32(0);
+            ctda.u32(0);
+            ctda.u32(0);
+            ctda.u32(0xFFFF'FFFF);
+            bethconv::test::write_field(p, "CTDA", ctda);
+        };
+        const auto procedure = [&](ByteWriter& p, std::string_view name, bool conditional) {
+            text(p, "ANAM", "Procedure");
+            if (conditional) {
+                unlock_on_arrival(p);
+            } else {
+                u32(p, "CITC", 0);
+            }
+            text(p, "PNAM", name);
+            u32(p, "FNAM", 0);
+            bethconv::test::write_field(p, "PKC2", bytes({0}));
+        };
+        ByteWriter packs;
+        {
+            ByteWriter p;
+            pack_header(p, "TestpackSandboxTemplate", 19, -1, 0, 0, 2);
+            location(p, 3, 0, 256);
+            flag(p, false);
+            keys(p, {0, 0x0E});
+            text(p, "ANAM", "Sequence");
+            u32(p, "CITC", 0);
+            ByteWriter prcb;
+            prcb.u32(3);
+            prcb.u32(0);
+            bethconv::test::write_field(p, "PRCB", prcb);
+            procedure(p, "Travel", true);
+            procedure(p, "UnlockDoors", true);
+            procedure(p, "Sandbox", false);
+            bethconv::test::write_field(p, "UNAM", bytes({0}));
+            text(p, "BNAM", "Location");
+            u32(p, "PNAM", 1);
+            bethconv::test::write_field(p, "UNAM", bytes({0x0E}));
+            text(p, "BNAM", "Unlock On Arrival?");
+            u32(p, "PNAM", 1);
+            events(p);
+            bethconv::test::write_record(packs, "PACK", 0x0000'0170, p.span());
+        }
+        {
+            ByteWriter p;
+            pack_header(p, "TestpackHome20x12", 18, 20, 720, 0x0000'0170, 2);
+            location(p, 3, 0, 256);
+            flag(p, false);
+            keys(p, {0, 0x0E});
+            events(p);
+            bethconv::test::write_record(packs, "PACK", 0x0000'0171, p.span());
+        }
+        {
+            ByteWriter p;
+            pack_header(p, "TestpackWork8x12", 18, 8, 720, 0x0000'0170, 2);
+            location(p, 0, 0x0000'0212, 300); // near the scaled cube outside
+            flag(p, true);
+            keys(p, {0, 0x0E});
+            events(p);
+            bethconv::test::write_record(packs, "PACK", 0x0000'0172, p.span());
+        }
+        bethconv::test::write_group(file, tag_value("PACK"), 0, packs.span());
     }
 
     // ---- WTHR and CLMT, for the sky ----
@@ -930,8 +1063,15 @@ std::vector<std::byte> build_plugin() {
                     }()},
                },
                nullptr, 0, {{0x0000'0306, interior_navmesh()}},
-               // The actor, 100 units west of the cube, facing east.
-               {{.form = 0x0000'0307, .base = 0x0000'0164, .x = -100, .y = 0, .z = 0, .rz = 1.5707964F}});
+               // The actor, 100 units west of the cube, facing east; persistent,
+               // so its packages may take it outside.
+               {{.form = 0x0000'0307,
+                 .base = 0x0000'0164,
+                 .x = -100,
+                 .y = 0,
+                 .z = 0,
+                 .rz = 1.5707964F,
+                 .record_flags = k_flag_persistent}});
     ByteWriter interior_sub_block;
     bethconv::test::write_group(interior_sub_block, 0, 3, interior.span());
     ByteWriter interior_block;
@@ -1294,6 +1434,15 @@ int main(int argc, char** argv) {
             origin->navmeshes[0].links.size() != 1 ||
             origin->navmeshes[0].links[0].navmesh != east->navmeshes[0].id) {
             std::cerr << "world.fb: the navmeshes are wrong\n";
+            return EXIT_FAILURE;
+        }
+        const auto npc = world->npc(0x0000'0164);
+        const auto work = world->package(0x0000'0172);
+        const auto templ = world->package(0x0000'0170);
+        if (!npc || npc->packages != std::vector<std::uint32_t>{0x0000'0172, 0x0000'0171} || !work ||
+            work->template_package != 0x0000'0170 || work->schedule.hour != 8 || !templ ||
+            templ->branches.size() != 4 || templ->branches[3].procedure != "Sandbox") {
+            std::cerr << "world.fb: the AI packages are wrong\n";
             return EXIT_FAILURE;
         }
 

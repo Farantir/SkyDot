@@ -220,6 +220,10 @@ public:
             on_outfit(merged, data, form_ctx);
         } else if (merged.type == FourCC{"LVLI"}) {
             on_leveled_item(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"PACK"}) {
+            on_package(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"FLST"}) {
+            on_form_list(merged, data, form_ctx);
         } else if (merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
             // These are bases too (placed armor, scripted NPCs); read twice.
             io::SpanReader copy = data;
@@ -244,6 +248,11 @@ public:
     [[nodiscard]] std::map<std::uint32_t, WorldOutfit>& outfits() noexcept { return outfits_; }
     [[nodiscard]] std::map<std::uint32_t, WorldLeveledList>& leveled_lists() noexcept {
         return leveled_lists_;
+    }
+    [[nodiscard]] std::map<std::uint32_t, WorldPackage>& packages() noexcept { return packages_; }
+    [[nodiscard]] const std::unordered_map<std::uint32_t, std::vector<std::uint32_t>>& form_lists()
+        const noexcept {
+        return form_lists_;
     }
     [[nodiscard]] std::map<std::uint32_t, CellEntry>& cells() noexcept { return cells_; }
     [[nodiscard]] std::map<std::uint32_t, BaseEntry>& bases() noexcept { return bases_; }
@@ -581,6 +590,14 @@ private:
         if (actor->persistent) {
             out.flags |= k_ref_persistent;
         }
+        // Packages walk to linked references (beds, work markers, patrols).
+        for (const auto& link : actor->linked_references) {
+            extras_[merged.parent.value].links.push_back(WorldLink{
+                .ref = out.ref,
+                .keyword = global(merged, link.keyword, failed),
+                .target = global(merged, link.target, failed),
+            });
+        }
         if (failed) {
             ++stats_.unresolved;
         }
@@ -679,6 +696,11 @@ private:
         out.height = npc->height;
         out.weight = npc->weight;
         out.head_parts = global_all(merged, npc->head_parts, failed);
+        out.packages = global_all(merged, npc->packages, failed);
+        out.default_package_list = global(merged, npc->default_package_list, failed);
+        for (const auto& f : npc->factions) {
+            out.factions.emplace_back(global(merged, f.faction, failed), f.rank);
+        }
         for (const auto& item : npc->items) {
             out.items.emplace_back(global(merged, item.item, failed), item.count);
         }
@@ -799,6 +821,130 @@ private:
             ++stats_.unresolved;
         }
         leveled_lists_[out.id] = std::move(out);
+    }
+
+    /// FLST: kept to expand NPCs' default package lists.
+    void on_form_list(const record::MergedRecord& merged, io::SpanReader& data,
+                      const record::FormContext& form_ctx) {
+        auto list = record::parse_form_list(data, form_ctx);
+        if (!list) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        form_lists_[merged.form.value] = global_all(merged, list->forms, failed);
+        if (failed) {
+            ++stats_.unresolved;
+        }
+    }
+
+    /// A condition with its FormID parameters made global.
+    record::Condition global_condition(const record::MergedRecord& merged, record::Condition c,
+                                       bool& failed) {
+        c.value_global = FormId{global(merged, c.value_global, failed)};
+        if (c.run_on == record::Condition::k_run_on_reference) {
+            c.reference = FormId{global(merged, c.reference, failed)};
+        }
+        if (record::condition_param_is_form(c, 1)) {
+            c.param1 = global(merged, FormId{c.param1}, failed);
+        }
+        if (record::condition_param_is_form(c, 2)) {
+            c.param2 = global(merged, FormId{c.param2}, failed);
+        }
+        return c;
+    }
+
+    std::vector<record::Condition> global_conditions(const record::MergedRecord& merged,
+                                                     std::vector<record::Condition> list,
+                                                     bool& failed) {
+        for (auto& c : list) {
+            c = global_condition(merged, std::move(c), failed);
+        }
+        return list;
+    }
+
+    void on_package(const record::MergedRecord& merged, io::SpanReader& data,
+                    const record::FormContext& form_ctx) {
+        auto pack = record::parse_package(data, form_ctx);
+        if (!pack) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        WorldPackage out{
+            .id = merged.form.value,
+            .editor_id = pack->editor_id,
+            .type = pack->type,
+            .flags = pack->flags,
+            .interrupt_override = pack->interrupt_override,
+            .speed = pack->preferred_speed,
+            .interrupt_flags = pack->interrupt_flags,
+            .schedule = pack->schedule,
+            .conditions = global_conditions(merged, std::move(pack->conditions), failed),
+            .template_package = global(merged, pack->template_package, failed),
+            .idle_flags = pack->idle_flags,
+            .idle_timer = pack->idle_timer,
+            .idles = global_all(merged, pack->idles, failed),
+            .owner_quest = global(merged, pack->owner_quest, failed),
+            .combat_style = global(merged, pack->combat_style, failed),
+            .on_begin_idle = global(merged, pack->on_begin.idle, failed),
+            .on_end_idle = global(merged, pack->on_end.idle, failed),
+            .on_change_idle = global(merged, pack->on_change.idle, failed),
+        };
+        for (const auto& in : pack->inputs) {
+            WorldPackage::Input w{.key = in.key, .type = in.type};
+            // CNAM: one byte for Bool, a word otherwise; Float and ObjectList
+            // (a radius) hold floats, Int an integer.
+            io::SpanReader v{in.value, "PACK CNAM"};
+            if (in.value.size() == 1) {
+                w.number = static_cast<float>(v.get<std::uint8_t>().value_or(0));
+            } else if (in.value.size() == 4) {
+                w.number = in.type == "Int" ? static_cast<float>(v.get<std::int32_t>().value_or(0))
+                                            : v.get<float>().value_or(0.0F);
+            }
+            if (in.location) {
+                w.location = *in.location;
+                const auto t = w.location.type;
+                if (t == 0 || t == 1 || t == 4 || t == 6) {
+                    w.location.value = global(merged, FormId{w.location.value}, failed);
+                }
+            }
+            if (in.target) {
+                w.target = *in.target;
+                const auto t = w.target.type;
+                if (t == 0 || t == 1 || t == 3) {
+                    w.target.value = global(merged, FormId{w.target.value}, failed);
+                }
+            }
+            for (const auto& named : pack->public_inputs) {
+                if (named.key == in.key) {
+                    w.name = named.name;
+                }
+            }
+            out.inputs.push_back(std::move(w));
+        }
+        for (auto& b : pack->branches) {
+            WorldPackage::Branch w{
+                .type = b.type,
+                .conditions = global_conditions(merged, std::move(b.conditions), failed),
+                .children = b.branch_count,
+                .flags = b.root_flags,
+                .procedure = b.procedure,
+                .success_completes = b.success_completes,
+                .inputs = b.input_keys,
+            };
+            if (!b.flag_overrides.empty()) {
+                const auto& o = b.flag_overrides.front();
+                w.set_flags = o.set_flags;
+                w.clear_flags = o.clear_flags;
+                w.speed = static_cast<std::int8_t>(o.speed);
+            }
+            out.branches.push_back(std::move(w));
+        }
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        packages_[out.id] = std::move(out);
     }
 
     void on_leveled_item(const record::MergedRecord& merged, io::SpanReader& data,
@@ -1286,6 +1432,8 @@ private:
     std::map<std::uint32_t, WorldArmorAddon> armor_addons_;
     std::map<std::uint32_t, WorldOutfit> outfits_;
     std::map<std::uint32_t, WorldLeveledList> leveled_lists_;
+    std::map<std::uint32_t, WorldPackage> packages_;
+    std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> form_lists_;
 };
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>> write_scripts(
@@ -1815,11 +1963,20 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         }
         return builder.CreateVector(offsets);
     };
+    // DPLT names an FLST of packages.
+    const auto default_packages = [&](const WorldNpc& n) {
+        const auto found = sink.form_lists().find(n.default_package_list);
+        return found != sink.form_lists().end() ? found->second : std::vector<std::uint32_t>{};
+    };
     std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
     for (const auto& [id, n] : sink.npcs()) {
         std::vector<wfb::NpcItem> items;
         for (const auto& [form, count] : n.items) {
             items.emplace_back(form, count);
+        }
+        std::vector<wfb::NpcFaction> factions;
+        for (const auto& [faction, rank] : n.factions) {
+            factions.emplace_back(faction, rank);
         }
         npcs.push_back(wfb::CreateNpc(builder, n.id, builder.CreateString(n.editor_id),
                                       builder.CreateString(n.name), n.flags, n.level, n.race,
@@ -1828,8 +1985,50 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                       builder.CreateVector(n.head_parts),
                                       builder.CreateVectorOfStructs(items),
                                       builder.CreateString(n.face_model),
-                                      builder.CreateVector(std::vector<float>(n.skin_tone.begin(), n.skin_tone.end()))));
+                                      builder.CreateVector(std::vector<float>(n.skin_tone.begin(), n.skin_tone.end())),
+                                      builder.CreateVector(n.packages),
+                                      builder.CreateVector(default_packages(n)),
+                                      builder.CreateVectorOfStructs(factions)));
         ++stats.npcs;
+    }
+    const auto conditions = [&](const std::vector<record::Condition>& list) {
+        std::vector<flatbuffers::Offset<wfb::Condition>> offsets;
+        for (const auto& c : list) {
+            offsets.push_back(wfb::CreateCondition(
+                builder, c.type, c.function, c.value, c.value_global.value, c.param1, c.param2,
+                c.run_on, c.reference.value, c.param3,
+                c.string1.empty() ? 0 : builder.CreateString(c.string1),
+                c.string2.empty() ? 0 : builder.CreateString(c.string2)));
+        }
+        return builder.CreateVector(offsets);
+    };
+    std::vector<flatbuffers::Offset<wfb::Package>> packages;
+    for (const auto& [id, p] : sink.packages()) {
+        std::vector<flatbuffers::Offset<wfb::PackageInput>> inputs;
+        for (const auto& in : p.inputs) {
+            inputs.push_back(wfb::CreatePackageInput(
+                builder, in.key, builder.CreateString(in.type),
+                in.name.empty() ? 0 : builder.CreateString(in.name), in.number, in.location.type,
+                in.location.value, in.location.radius, in.target.type, in.target.value,
+                in.target.count));
+        }
+        std::vector<flatbuffers::Offset<wfb::PackageBranch>> branches;
+        for (const auto& b : p.branches) {
+            branches.push_back(wfb::CreatePackageBranch(
+                builder, builder.CreateString(b.type), conditions(b.conditions), b.children,
+                b.flags, b.procedure.empty() ? 0 : builder.CreateString(b.procedure),
+                b.success_completes, builder.CreateVector(b.inputs), b.set_flags, b.clear_flags,
+                b.speed));
+        }
+        const auto& sch = p.schedule;
+        packages.push_back(wfb::CreatePackage(
+            builder, p.id, builder.CreateString(p.editor_id), p.type, p.flags,
+            p.interrupt_override, p.speed, p.interrupt_flags, sch.month, sch.day_of_week,
+            sch.date, sch.hour, sch.minute, sch.duration, conditions(p.conditions),
+            p.template_package, builder.CreateVector(inputs), builder.CreateVector(branches),
+            p.idle_flags, p.idle_timer, builder.CreateVector(p.idles), p.owner_quest,
+            p.combat_style, p.on_begin_idle, p.on_end_idle, p.on_change_idle));
+        ++stats.packages;
     }
     std::vector<flatbuffers::Offset<wfb::Race>> races;
     for (const auto& [id, r] : sink.races()) {
@@ -1878,6 +2077,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         ++stats.leveled_lists;
     }
     const auto npcs_off = builder.CreateVector(npcs);
+    const auto packages_off = builder.CreateVector(packages);
     const auto races_off = builder.CreateVector(races);
     const auto armors_off = builder.CreateVector(armors);
     const auto addons_off = builder.CreateVector(addons);
@@ -1930,6 +2130,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     wb.add_precipitations(precipitations_off);
     wb.add_regions(regions_off);
     wb.add_npcs(npcs_off);
+    wb.add_packages(packages_off);
     wb.add_races(races_off);
     wb.add_armors(armors_off);
     wb.add_armor_addons(addons_off);
@@ -2399,6 +2600,114 @@ std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {
     }
     if (const auto* tone = n->skin_tone(); tone != nullptr && tone->size() == 3) {
         out.skin_tone = {tone->Get(0), tone->Get(1), tone->Get(2)};
+    }
+    if (const auto* list = n->packages()) {
+        out.packages.assign(list->begin(), list->end());
+    }
+    if (const auto* list = n->default_packages()) {
+        out.default_packages.assign(list->begin(), list->end());
+    }
+    if (const auto* list = n->factions()) {
+        for (const auto* f : *list) {
+            out.factions.emplace_back(f->faction(), f->rank());
+        }
+    }
+    return out;
+}
+
+namespace {
+
+std::vector<record::Condition> read_conditions(
+    const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list) {
+    std::vector<record::Condition> out;
+    if (list == nullptr) {
+        return out;
+    }
+    for (const auto* c : *list) {
+        out.push_back(record::Condition{.type = c->type(),
+                                        .value = c->value(),
+                                        .value_global = FormId{c->value_global()},
+                                        .function = c->function(),
+                                        .param1 = c->param1(),
+                                        .param2 = c->param2(),
+                                        .run_on = c->run_on(),
+                                        .reference = FormId{c->reference()},
+                                        .param3 = c->param3(),
+                                        .string1 = str(c->string1()),
+                                        .string2 = str(c->string2())});
+    }
+    return out;
+}
+
+} // namespace
+
+std::size_t WorldFile::package_count() const noexcept {
+    const auto* list = impl_->root->packages();
+    return list != nullptr ? list->size() : 0;
+}
+
+std::optional<WorldPackage> WorldFile::package(std::uint32_t id) const {
+    const auto* p = find_by_id(impl_->root->packages(), id);
+    if (p == nullptr) {
+        return std::nullopt;
+    }
+    WorldPackage out{.id = p->id(),
+                     .editor_id = str(p->editor_id()),
+                     .type = p->type(),
+                     .flags = p->flags(),
+                     .interrupt_override = p->interrupt_override(),
+                     .speed = p->speed(),
+                     .interrupt_flags = p->interrupt_flags(),
+                     .schedule = {.month = p->month(),
+                                  .day_of_week = p->day_of_week(),
+                                  .date = p->date(),
+                                  .hour = p->hour(),
+                                  .minute = p->minute(),
+                                  .duration = p->duration()},
+                     .conditions = read_conditions(p->conditions()),
+                     .template_package = p->template_(),
+                     .idle_flags = p->idle_flags(),
+                     .idle_timer = p->idle_timer(),
+                     .owner_quest = p->owner_quest(),
+                     .combat_style = p->combat_style(),
+                     .on_begin_idle = p->on_begin_idle(),
+                     .on_end_idle = p->on_end_idle(),
+                     .on_change_idle = p->on_change_idle()};
+    if (const auto* list = p->inputs()) {
+        for (const auto* in : *list) {
+            out.inputs.push_back(WorldPackage::Input{
+                .key = in->key(),
+                .type = str(in->type()),
+                .name = str(in->name()),
+                .number = in->number(),
+                .location = {.type = in->location_type(),
+                             .value = in->location_value(),
+                             .radius = in->location_radius()},
+                .target = {.type = in->target_type(),
+                           .value = in->target_value(),
+                           .count = in->target_count()}});
+        }
+    }
+    if (const auto* list = p->branches()) {
+        for (const auto* b : *list) {
+            WorldPackage::Branch branch{.type = str(b->type()),
+                                        .conditions = read_conditions(b->conditions()),
+                                        .children = b->children(),
+                                        .flags = b->flags(),
+                                        .procedure = str(b->procedure()),
+                                        .success_completes = b->success_completes(),
+                                        .inputs = {},
+                                        .set_flags = b->set_flags(),
+                                        .clear_flags = b->clear_flags(),
+                                        .speed = b->speed()};
+            if (const auto* keys = b->inputs()) {
+                branch.inputs.assign(keys->begin(), keys->end());
+            }
+            out.branches.push_back(std::move(branch));
+        }
+    }
+    if (const auto* idles = p->idles()) {
+        out.idles.assign(idles->begin(), idles->end());
     }
     return out;
 }

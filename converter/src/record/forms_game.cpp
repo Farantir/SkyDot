@@ -797,4 +797,268 @@ io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx)
     return out;
 }
 
+// ---- FLST -----------------------------------------------------------------
+
+io::ParseResult<FormList> parse_form_list(io::SpanReader& data, const FormContext& ctx) {
+    FormList out;
+    const BaseObjectFields into{.editor_id = &out.editor_id};
+    const auto walked = walk_fields(
+        data, FourCC{"FLST"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body, std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"LNAM"}) {
+                append_formid(failure, out.forms, body);
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"FLST"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+// ---- PACK -----------------------------------------------------------------
+
+namespace {
+
+io::ParseResult<Package::Topic> read_topic(io::SpanReader& body) {
+    Package::Topic topic;
+    auto type = body.get<std::uint32_t>();
+    if (!type) {
+        return std::unexpected(std::move(type).error());
+    }
+    auto value = body.get<std::uint32_t>();
+    if (!value) {
+        return std::unexpected(std::move(value).error());
+    }
+    topic.type = *type;
+    topic.value = *value;
+    return topic;
+}
+
+/// PLDT and PTDA share a layout: type, value, a third word.
+template <typename T>
+void read_triple(std::optional<io::ParseError>& failure, io::SpanReader& body,
+                 std::optional<T>& out) {
+    T v;
+    take(failure, body.get<std::int32_t>(), v.type);
+    take(failure, body.get<std::uint32_t>(), v.value);
+    if constexpr (requires { v.radius; }) {
+        take(failure, body.get<std::int32_t>(), v.radius);
+    } else {
+        take(failure, body.get<std::int32_t>(), v.count);
+    }
+    if (!failure) {
+        out = v;
+    }
+}
+
+} // namespace
+
+io::ParseResult<Package> parse_package(io::SpanReader& data, const FormContext& ctx) {
+    Package out;
+    const BaseObjectFields into{.editor_id = &out.editor_id};
+    enum class Section : std::uint8_t { head, inputs, tree, publics, events };
+    Section section = Section::head;
+    Package::Event* event = nullptr;
+    std::size_t keys = 0;
+    const auto missing = [](io::SpanReader& body, std::optional<io::ParseError>& failure,
+                            const FieldHeader& field, std::string_view parent) {
+        if (!failure) {
+            failure = body.fail(io::ErrorKind::bad_value,
+                                field.type.to_string() + " before any " + std::string(parent))
+                          .error();
+        }
+    };
+    const auto walked = walk_fields(
+        data, FourCC{"PACK"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body, std::optional<io::ParseError>& failure) {
+            const FourCC t = field.type;
+            // Event blocks can follow any section.
+            if (t == FourCC{"POBA"} || t == FourCC{"POEA"} || t == FourCC{"POCA"}) {
+                section = Section::events;
+                event = t == FourCC{"POBA"} ? &out.on_begin
+                        : t == FourCC{"POEA"} ? &out.on_end
+                                              : &out.on_change;
+                event->present = true;
+                return true;
+            }
+            switch (section) {
+            case Section::head:
+                if (t == FourCC{"VMAD"}) {
+                    take(failure, read_verbatim(body), out.scripts);
+                } else if (t == FourCC{"PKDT"}) {
+                    take(failure, body.get<std::uint32_t>(), out.flags);
+                    take(failure, body.get<std::uint8_t>(), out.type);
+                    take(failure, body.get<std::uint8_t>(), out.interrupt_override);
+                    take(failure, body.get<std::uint8_t>(), out.preferred_speed);
+                    take(failure, body.get<std::uint8_t>(), out.pkdt_unknown);
+                    take(failure, body.get<std::uint16_t>(), out.interrupt_flags);
+                    take(failure, body.get<std::uint16_t>(), out.pkdt_unknown2);
+                } else if (t == FourCC{"PSDT"}) {
+                    auto& s = out.schedule;
+                    take(failure, body.get<std::int8_t>(), s.month);
+                    take(failure, body.get<std::int8_t>(), s.day_of_week);
+                    take(failure, body.get<std::int8_t>(), s.date);
+                    take(failure, body.get<std::int8_t>(), s.hour);
+                    take(failure, body.get<std::int8_t>(), s.minute);
+                    skip_bytes(failure, body, 3); // Unused; vanilla has garbage here.
+                    take(failure, body.get<std::uint32_t>(), s.duration);
+                } else if (read_ctda_field(out.conditions, out.declared_condition_count, field,
+                                           body, failure)) {
+                    return true;
+                } else if (t == FourCC{"IDLF"}) {
+                    take(failure, body.get<std::uint8_t>(), out.idle_flags);
+                } else if (t == FourCC{"IDLC"}) {
+                    take(failure, body.get<std::uint8_t>(), out.idle_count);
+                    skip_bytes(failure, body, body.remaining()); // Pre-1.70 padding.
+                } else if (t == FourCC{"IDLT"}) {
+                    take(failure, body.get<float>(), out.idle_timer);
+                } else if (t == FourCC{"IDLA"}) {
+                    take(failure, read_formid_array(body), out.idles);
+                } else if (t == FourCC{"IDLB"}) {
+                    take(failure, read_verbatim(body), out.idle_unused);
+                } else if (t == FourCC{"CNAM"}) {
+                    take(failure, read_formid(body), out.combat_style);
+                } else if (t == FourCC{"QNAM"}) {
+                    take(failure, read_formid(body), out.owner_quest);
+                } else if (t == FourCC{"PKCU"}) {
+                    take(failure, body.get<std::uint32_t>(), out.input_count);
+                    take(failure, read_formid(body), out.template_package);
+                    take(failure, body.get<std::uint32_t>(), out.version);
+                    section = Section::inputs;
+                } else {
+                    return read_base_object_field(into, FourCC{"PACK"}, field, body, ctx, failure);
+                }
+                return true;
+            case Section::inputs:
+                if (t == FourCC{"ANAM"}) {
+                    take(failure, read_zstring(body), out.inputs.emplace_back().type);
+                } else if (t == FourCC{"UNAM"}) {
+                    if (keys >= out.inputs.size()) {
+                        missing(body, failure, field, "input left to key");
+                        return true;
+                    }
+                    take(failure, body.get<std::int8_t>(), out.inputs[keys++].key);
+                } else if (t == FourCC{"XNAM"}) {
+                    take(failure, body.get<std::uint8_t>(), out.marker);
+                    section = Section::tree;
+                } else if (t == FourCC{"CNAM"} || t == FourCC{"BNAM"} || t == FourCC{"PLDT"} ||
+                           t == FourCC{"PTDA"} || t == FourCC{"PDTO"} || t == FourCC{"TPIC"}) {
+                    if (out.inputs.empty()) {
+                        missing(body, failure, field, "ANAM");
+                        return true;
+                    }
+                    auto& input = out.inputs.back();
+                    if (t == FourCC{"CNAM"}) {
+                        take(failure, read_verbatim(body), input.value);
+                    } else if (t == FourCC{"BNAM"}) {
+                        take(failure, read_verbatim(body), input.extra);
+                    } else if (t == FourCC{"PLDT"}) {
+                        read_triple(failure, body, input.location);
+                    } else if (t == FourCC{"PTDA"}) {
+                        read_triple(failure, body, input.target);
+                    } else if (t == FourCC{"PDTO"}) {
+                        Package::Topic topic;
+                        take(failure, read_topic(body), topic);
+                        if (!failure) {
+                            input.topics.push_back(topic);
+                        }
+                    } else {
+                        take(failure, read_formid(body), input.topic);
+                    }
+                } else {
+                    return false;
+                }
+                return true;
+            case Section::tree:
+                if (t == FourCC{"ANAM"}) {
+                    take(failure, read_zstring(body), out.branches.emplace_back().type);
+                    return true;
+                }
+                if (t == FourCC{"UNAM"}) {
+                    section = Section::publics;
+                    take(failure, body.get<std::int8_t>(), out.public_inputs.emplace_back().key);
+                    return true;
+                }
+                if (out.branches.empty()) {
+                    return false;
+                } else {
+                    auto& branch = out.branches.back();
+                    if (read_ctda_field(branch.conditions, branch.declared_condition_count, field,
+                                        body, failure)) {
+                        return true;
+                    }
+                    if (t == FourCC{"PRCB"}) {
+                        branch.has_root = true;
+                        take(failure, body.get<std::uint32_t>(), branch.branch_count);
+                        take(failure, body.get<std::uint32_t>(), branch.root_flags);
+                    } else if (t == FourCC{"PNAM"}) {
+                        take(failure, read_zstring(body), branch.procedure);
+                    } else if (t == FourCC{"FNAM"}) {
+                        std::uint32_t v{};
+                        take(failure, body.get<std::uint32_t>(), v);
+                        branch.success_completes = v != 0;
+                    } else if (t == FourCC{"PKC2"}) {
+                        std::uint8_t key{};
+                        take(failure, body.get<std::uint8_t>(), key);
+                        if (!failure) {
+                            branch.input_keys.push_back(key);
+                        }
+                    } else if (t == FourCC{"PFO2"}) {
+                        Package::Branch::FlagOverride o;
+                        take(failure, body.get<std::uint32_t>(), o.set_flags);
+                        take(failure, body.get<std::uint32_t>(), o.clear_flags);
+                        take(failure, body.get<std::uint16_t>(), o.set_interrupt);
+                        take(failure, body.get<std::uint16_t>(), o.clear_interrupt);
+                        take(failure, body.get<std::uint8_t>(), o.speed);
+                        skip_bytes(failure, body, 3);
+                        if (!failure) {
+                            branch.flag_overrides.push_back(o);
+                        }
+                    } else if (t == FourCC{"PFOR"}) {
+                        take(failure, read_verbatim(body), branch.unknown.emplace_back());
+                    } else {
+                        return false;
+                    }
+                }
+                return true;
+            case Section::publics:
+                if (t == FourCC{"UNAM"}) {
+                    take(failure, body.get<std::int8_t>(), out.public_inputs.emplace_back().key);
+                } else if (t == FourCC{"BNAM"}) {
+                    take(failure, read_zstring(body), out.public_inputs.back().name);
+                } else if (t == FourCC{"PNAM"}) {
+                    take(failure, body.get<std::uint32_t>(), out.public_inputs.back().is_public);
+                } else {
+                    return false;
+                }
+                return true;
+            case Section::events:
+                if (t == FourCC{"INAM"}) {
+                    take(failure, read_formid(body), event->idle);
+                } else if (t == FourCC{"PDTO"}) {
+                    Package::Topic topic;
+                    take(failure, read_topic(body), topic);
+                    if (!failure) {
+                        event->topics.push_back(topic);
+                    }
+                } else if (t == FourCC{"SCHR"} || t == FourCC{"SCDA"} || t == FourCC{"SCTX"} ||
+                           t == FourCC{"QNAM"} || t == FourCC{"TNAM"}) {
+                    std::vector<std::byte> bytes;
+                    take(failure, read_verbatim(body), bytes);
+                    event->legacy.insert(event->legacy.end(), bytes.begin(), bytes.end());
+                } else {
+                    return false;
+                }
+                return true;
+            }
+            return false;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 } // namespace bethconv::record
