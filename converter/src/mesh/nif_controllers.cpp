@@ -130,8 +130,13 @@ bool read_keys(const nifly::NiAnimationKeyGroup<T>& group, std::uint8_t componen
         ch.times.push_back(key.time);
         push_components(ch.values, key.value);
         if (type == nifly::QUADRATIC_KEY) {
-            push_components(ch.in_tangents, key.backward);
-            push_components(ch.out_tangents, key.forward);
+            // nifly names the stored pair after nif.xml, but the first is the
+            // tangent into the key and the second the one out of it: a
+            // waterwheel's two keys (0 to -2 pi) carry -2 pi on exactly the
+            // sides its one segment uses. Over vanilla SE, 5,885 of 5,890
+            // channels where the readings differ only fit this one.
+            push_components(ch.in_tangents, key.forward);
+            push_components(ch.out_tangents, key.backward);
         }
         tbc.push_back(key.tbc);
     }

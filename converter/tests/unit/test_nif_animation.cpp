@@ -54,8 +54,9 @@ const AnimationChannel* find(const AnimationClip& clip, const Model& model,
 
 /// A flame shape whose effect shader scrolls U on its own, a door the "Open"
 /// sequence turns, and a smoke particle system with a box emitter and
-/// gravity.
-Model build(bool hide_flame = false) {
+/// gravity. `quadratic` gives the scroll Hermite keys laid out as vanilla's
+/// steady scrolls and wheels store them.
+Model build(bool hide_flame = false, bool quadratic = false) {
     NifBuilder builder(bethconv::test::NifFlavor::se);
     nifly::NifFile& nif = builder.file();
 
@@ -68,13 +69,17 @@ Model build(bool hide_flame = false) {
     flame->ShaderPropertyRef()->index = shader_index;
 
     auto [data, data_index] = add(nif, std::make_unique<nifly::NiFloatData>());
-    data->data.SetInterpolationType(nifly::LINEAR_KEY);
+    data->data.SetInterpolationType(quadratic ? nifly::QUADRATIC_KEY : nifly::LINEAR_KEY);
     nifly::NiAnimationKey<float> key;
     key.time = 0.0f;
     key.value = 0.0f;
+    key.forward = 0.0f; // stored first: into the key, unused on the first
+    key.backward = 1.0f;
     data->data.AddKey(key);
     key.time = 2.0f;
     key.value = 1.0f;
+    key.forward = 1.0f;
+    key.backward = 0.0f; // out of the last key, unused
     data->data.AddKey(key);
     auto [interp, interp_index] = add(nif, std::make_unique<nifly::NiFloatInterpolator>());
     interp->dataRef.index = data_index;
@@ -195,6 +200,27 @@ TEST_CASE("a controller outside a manager becomes an autoplaying clip", "[mesh][
     CHECK(ch->times == std::vector<float>{0.0f, 2.0f});
     CHECK(ch->values == std::vector<float>{0.0f, 1.0f});
     CHECK(model.nodes[ch->node].referenced);
+}
+
+TEST_CASE("quadratic keys store the tangent into a key before the one out of it",
+          "[mesh][animation]") {
+    const Model model = build(false, true);
+    const auto clip = std::ranges::find_if(model.animations, [&](const AnimationClip& c) {
+        return find(c, model, "flame", "effect.u_offset") != nullptr;
+    });
+    REQUIRE(clip != model.animations.end());
+    const AnimationChannel* ch = find(*clip, model, "flame", "effect.u_offset");
+    CHECK(ch->interp == KeyInterp::cubic);
+    CHECK(ch->in_tangents == std::vector<float>{0.0f, 1.0f});
+    CHECK(ch->out_tangents == std::vector<float>{1.0f, 0.0f});
+    // The segment's Hermite (out0 = in1 = v1 - v0) is a straight line: a
+    // steady scroll, not one that eases in and out at every key.
+    const float s = 0.25f;
+    const float h10 = s * s * s - 2 * s * s + s;
+    const float h01 = -2 * s * s * s + 3 * s * s;
+    const float h11 = s * s * s - s * s;
+    const float v = h10 * ch->out_tangents[0] + h01 * ch->values[1] + h11 * ch->in_tangents[1];
+    CHECK_THAT(v, Catch::Matchers::WithinAbs(0.25, 1e-6));
 }
 
 TEST_CASE("a controller sequence becomes a named clip that waits to be played",
