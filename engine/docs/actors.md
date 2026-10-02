@@ -13,10 +13,12 @@ files, the `.animfb` asset) is in `../converter/docs/spikes/hkx.md` and
   X, scale 0.014287), as converted meshes have.
 - `attach_skinned(model, skeleton)`: moves every skinned mesh of a converted
   body part (`malebody_1.nif`, hands, feet, head) onto the skeleton. Binds
-  match bones by name, case-insensitively, and are recomputed against the
-  skeleton's rest, so a part sits where its own NIF put it even where its
-  bones differ slightly from the skeleton's. Binds naming a missing bone
-  fall back to the root and are counted (`get_last_missing_bones`).
+  match bones by name, case-insensitively, and stay relative to their bone,
+  as in the game: a part follows the actor's bones, not the bones of the NIF
+  it came from. (Keeping each part where its own NIF put it instead opened a
+  gap between a FaceGen head and the body at the neck.) Binds naming a
+  missing bone keep the part where its NIF put it, on the root, and are
+  counted (`get_last_missing_bones`).
 - `build_clip(asset, skeleton, skeleton_path)`: the asset's first clip as an
   Animation. Its splines are sampled once per frame (30 fps) at load, a
   position and a rotation track per bone, so playback costs what any Godot
@@ -68,6 +70,30 @@ What an actor is built from is decided from `world.fb` alone
 builds it. In the Sleeping Giant Inn every actor stands dressed in its outfit
 in the idle.
 
+## Skin and faces (`SkydotMaterials`)
+
+- **Model-space normals.** Bodies, hands, feet and FaceGen heads carry
+  model-space normal maps (`_msn`) and no vertex normals. In the NIF's axes
+  the normal is (r, b, g) * 2 - 1: measured against the face normals of
+  `malebody_1` (mean dot 0.98; the next candidate 0.68). Skinned shapes use
+  the bind pose's axes, so limbs bent far from it are lit as if they were
+  not.
+- **Specular.** Skin (shader type 5) and FaceGen heads (4) take their
+  specular mask from slot 7 (`_s`). Before, the mask was 1 everywhere and
+  their strong, bluish specular (strength 4.5) washed skin pale blue-grey.
+- **SkinTint (5):** the texture times the actor's skin tone, the traits
+  NPC's QNAM (`world.fb` `npcs.skin_tone`); each actor gets its own copy of
+  the material.
+- **FaceGen (4):** the NPC's tint mask (slot 6,
+  `facegendata/facetint/<plugin>/<id>.dds`) overlaid on the texture.
+- **Hair** of the FaceGen head (shapes named `Hair…`, hairlines included) is
+  hidden under items covering slot 31 (hoods, helmets).
+
+Not compared with the game: skin looks slightly cool and grey. The game
+also lights skin with soft lighting and the subsurface map (`_sk`, slot 2),
+which are not drawn; hair tint (type 6, the NPC's hair colour) is not
+applied either.
+
 ## Checking
 
 ```sh
@@ -84,12 +110,9 @@ A pack with only `meshes/actors/character/` converts in about 6 s
 
 ## Not done
 
-- **Skin and face shading:** skin and FaceGen faces use the plain lighting
-  shader, so they come out pale grey: Skyrim tints skin (SkinTint) and faces
-  (the per-NPC tint mask in `facegendata/facetint/`) in the shader.
-- Hair from the FaceGen head shows through helmets (slot 31 is not hidden).
-- Bare feet (`malefeet_1.nif`) render untextured white although they use the
-  body's texture, which renders on the body; not looked into yet.
+- Skin: soft lighting and subsurface, hair colour (see above).
+- Bare feet (`malefeet_1.nif`) rendered white before the skin work, most
+  likely the same full-strength specular; not checked again.
 - Weapons and shields, carried or sheathed; inventory beyond the outfit.
 - Root motion (`meshes/animationdata/boundanims/`), behaviour graphs (not
   interpreted, per PLAN.md; clips are chosen by name), blending between

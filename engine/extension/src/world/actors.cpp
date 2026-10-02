@@ -13,6 +13,8 @@ namespace wfb = bethconv::pack::wfb;
 constexpr std::uint16_t k_use_traits = 0x0001;
 constexpr std::uint16_t k_use_inventory = 0x0100;
 constexpr std::uint32_t k_female = 0x1;
+/// Body slot 31 (bit 1): hair. Hoods and helmets cover it.
+constexpr std::uint32_t k_slot_hair = 0x2;
 /// Templates and leveled lists nest; vanilla stays far below this.
 constexpr int k_max_depth = 8;
 constexpr std::uint32_t k_lvln = 0x4E4C564C; // "LVLN"
@@ -180,6 +182,11 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
     const auto* traits = resolve(w, npc, k_use_traits, ref);
     const auto* inventory = resolve(w, npc, k_use_inventory, ref);
     plan.npc = traits->id();
+    if (const auto* tone = traits->skin_tone(); tone != nullptr && tone->size() == 3) {
+        for (flatbuffers::uoffset_t i = 0; i < 3; ++i) {
+            plan.skin_tone[i] = tone->Get(i);
+        }
+    }
     plan.female = (traits->flags() & k_female) != 0;
     const std::size_t sex = plan.female ? 1 : 0;
     const auto* race = race_of(w, traits->race());
@@ -244,14 +251,14 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
         for (const auto* armor : worn) {
             add_armor(*armor, false);
         }
+        plan.hide_hair = (covered & k_slot_hair) != 0;
     }
     const std::uint32_t skin_id = traits->skin() != 0 ? traits->skin() : race->skin();
     if (const auto* skin = armor_of(w, skin_id)) {
         add_armor(*skin, true);
     }
-    // Head: the precomputed FaceGen NIF. It includes the hair, which the game
-    // hides under items covering slot 31; not done yet, so hair shows
-    // through helmets.
+    // Head: the precomputed FaceGen NIF. It includes the hair, which items
+    // covering slot 31 hide (`hide_hair`).
     const std::string face = str(traits->face_model());
     if (!face.empty() && exists(face)) {
         plan.parts.push_back(face);

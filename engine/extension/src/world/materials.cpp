@@ -52,6 +52,8 @@ constexpr std::uint32_t k_sf2_effect_lighting = 1u << 30;
 // BSLightingShaderProperty shader types.
 constexpr std::int64_t k_type_envmap = 1;
 constexpr std::int64_t k_type_glowmap = 2;
+constexpr std::int64_t k_type_face_tint = 4;
+constexpr std::int64_t k_type_skin_tint = 5;
 
 // NiAlphaProperty flags: bit 0 blending, bits 1-4 source factor, bits 5-8
 // destination factor, bit 9 alpha test. Factor 0 is ONE.
@@ -82,8 +84,26 @@ uniform bool use_env_mask = false;
 uniform samplerCube env_tex : source_color, filter_linear_mipmap;
 uniform sampler2D env_mask_tex : filter_linear_mipmap, repeat_enable;
 uniform float env_scale = 1.0;
+// Model-space normal maps (bodies, heads): the normal in the NIF's axes is
+// (r, b, g) * 2 - 1, measured against face normals on malebody_1 (mean dot
+// 0.98). Such shapes have no vertex normals. The specular mask is then its
+// own texture (slot 7, `_s`). Skinned shapes use the bind pose's axes, so
+// limbs bent far from it are lit as if they were not.
+uniform bool model_space_normals = false;
+uniform bool use_spec_tex = false;
+uniform sampler2D spec_tex : filter_linear_mipmap, repeat_enable;
+// SkinTint (shader type 5): the actor's skin tone times the texture.
+uniform bool use_skin_tint = false;
+uniform vec3 skin_tint : source_color = vec3(1.0);
+// FaceGen (shader type 4): the NPC's tint mask (slot 6) over the texture.
+uniform bool use_face_tint = false;
+uniform sampler2D face_tint_tex : source_color, filter_linear_mipmap, repeat_enable;
 
 varying float spec_mask;
+
+vec3 overlay(vec3 base, vec3 blend) {
+	return mix(2.0 * base * blend, 1.0 - 2.0 * (1.0 - base) * (1.0 - blend), step(0.5, base));
+}
 
 void fragment() {
 	vec2 uv = UV * uv_scale + uv_offset;
@@ -94,10 +114,22 @@ void fragment() {
 	if (use_vertex_alpha) {
 		albedo.a *= COLOR.a;
 	}
+	if (use_skin_tint) {
+		albedo.rgb *= skin_tint;
+	}
+	if (use_face_tint) {
+		albedo.rgb = overlay(albedo.rgb, texture(face_tint_tex, uv).rgb);
+	}
 	vec4 n = texture(normal_tex, uv);
-	// Skyrim normal maps use the DirectX convention (green points down).
-	NORMAL_MAP = vec3(n.r, 1.0 - n.g, n.b);
-	spec_mask = n.a;
+	if (model_space_normals) {
+		vec3 m = n.rgb * 2.0 - 1.0;
+		NORMAL = normalize((VIEW_MATRIX * (MODEL_MATRIX * vec4(m.r, m.b, m.g, 0.0))).xyz);
+		spec_mask = use_spec_tex ? texture(spec_tex, uv).r : 0.0;
+	} else {
+		// Skyrim normal maps use the DirectX convention (green points down).
+		NORMAL_MAP = vec3(n.r, 1.0 - n.g, n.b);
+		spec_mask = use_spec_tex ? texture(spec_tex, uv).r : n.a;
+	}
 	METALLIC = 0.0;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
@@ -499,9 +531,8 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
     // Pack meshes carry no glTF images: the extras name every texture
     // (formats/pack-format.md, "Texture references in meshes").
     const Ref<godot::Texture> albedo = load_texture(slot_path(extras, 0));
-    const Ref<godot::Texture> normal_map = static_cast<bool>(extras.get("model_space_normals", false))
-                                               ? Ref<godot::Texture>()
-                                               : load_texture(slot_path(extras, 1));
+    const bool model_space = static_cast<bool>(extras.get("model_space_normals", false));
+    const Ref<godot::Texture> normal_map = load_texture(slot_path(extras, 1));
 
     Ref<godot::ShaderMaterial> out;
     out.instantiate();
@@ -551,6 +582,22 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("own_emit", glow.is_null() && (flags1 & k_sf1_own_emit) != 0);
         out->set_shader_parameter("albedo_tex", albedo);
         out->set_shader_parameter("normal_tex", normal_map);
+        out->set_shader_parameter("model_space_normals", model_space && normal_map.is_valid());
+        // Slot 7 is the specular map on skin (type 5) and FaceGen heads (4);
+        // elsewhere it is a backlight map.
+        if (shader_type == k_type_skin_tint || shader_type == k_type_face_tint) {
+            if (const Ref<godot::Texture> spec = load_texture(slot_path(extras, 7)); spec.is_valid()) {
+                out->set_shader_parameter("use_spec_tex", true);
+                out->set_shader_parameter("spec_tex", spec);
+            }
+        }
+        out->set_shader_parameter("use_skin_tint", shader_type == k_type_skin_tint);
+        if (shader_type == k_type_face_tint) {
+            if (const Ref<godot::Texture> tint = load_texture(slot_path(extras, 6)); tint.is_valid()) {
+                out->set_shader_parameter("use_face_tint", true);
+                out->set_shader_parameter("face_tint_tex", tint);
+            }
+        }
         out->set_shader_parameter("base_color", base->get_albedo());
         out->set_shader_parameter("specular_color",
                                   as_vec3(extras, "specular_color", godot::Vector3(1, 1, 1)));

@@ -682,6 +682,7 @@ private:
             out.items.emplace_back(global(merged, item.item, failed), item.count);
         }
         out.face_model = face_model(merged);
+        out.skin_tone = {npc->skin_red, npc->skin_green, npc->skin_blue};
         if (failed) {
             ++stats_.unresolved;
         }
@@ -1825,7 +1826,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                       n.sleeping_outfit, n.height, n.weight,
                                       builder.CreateVector(n.head_parts),
                                       builder.CreateVectorOfStructs(items),
-                                      builder.CreateString(n.face_model)));
+                                      builder.CreateString(n.face_model),
+                                      builder.CreateVector(std::vector<float>(n.skin_tone.begin(), n.skin_tone.end()))));
         ++stats.npcs;
     }
     std::vector<flatbuffers::Offset<wfb::Race>> races;
@@ -2393,6 +2395,9 @@ std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {
         for (const auto* i : *items) {
             out.items.emplace_back(i->form(), i->count());
         }
+    }
+    if (const auto* tone = n->skin_tone(); tone != nullptr && tone->size() == 3) {
+        out.skin_tone = {tone->Get(0), tone->Get(1), tone->Get(2)};
     }
     return out;
 }

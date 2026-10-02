@@ -1105,6 +1105,11 @@ void make_actors(const TempDir& dir) {
     ByteWriter height;
     height.f32(1.05F);
     bethconv::test::write_field(npc, "NAM6", height);
+    ByteWriter tone;
+    for (const float f : {0.9F, 0.75F, 0.6F}) {
+        tone.f32(f);
+    }
+    bethconv::test::write_field(npc, "QNAM", tone);
     ByteWriter npcs;
     bethconv::test::write_record(npcs, "NPC_", 0x0100'0E30, npc.span());
     top_group(file, "NPC_", npcs);
@@ -1145,6 +1150,7 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(npc->race == 0x0200'0E00);
     CHECK(npc->default_outfit == 0x0200'0E20);
     CHECK(npc->height == 1.05F);
+    CHECK(npc->skin_tone == std::array<float, 3>{0.9F, 0.75F, 0.6F});
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
 

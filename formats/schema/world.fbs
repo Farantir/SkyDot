@@ -700,6 +700,9 @@ table Npc {
     /// (`meshes/actors/character/facegendata/facegeom/<plugin>/<id>.nif`,
     /// named by the plugin that defines it), whether or not it exists.
     face_model: string;
+    /// QNAM: the skin tone the SkinTint shader multiplies body skin by, RGB
+    /// 0-1. Absent in packs written before it was added: no tint.
+    skin_tone: [float];
 }
 
 /// A plugin of the load order and where its forms live: a form of this

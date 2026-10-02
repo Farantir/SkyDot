@@ -17,6 +17,7 @@
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/packed_scene.hpp>
@@ -816,6 +817,8 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
     out["race"] = static_cast<std::int64_t>(plan.race);
     out["female"] = plan.female;
     out["scale"] = plan.scale;
+    out["skin_tone"] = godot::Color(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);
+    out["hide_hair"] = plan.hide_hair;
     out["skeleton"] = String::utf8(plan.skeleton.c_str());
     out["idle"] = String::utf8(plan.idle.c_str());
     godot::PackedStringArray parts;
@@ -928,6 +931,32 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         stats.actor_parts += SkydotAnimation::attach_skinned(model, skeleton);
         node->remove_child(model);
         memdelete(model);
+    }
+    // Under a hood or helmet the head's hair shapes ("Hair…", hairlines too)
+    // would show through.
+    if (plan.hide_hair) {
+        for (int i = 0; i < skeleton->get_child_count(); ++i) {
+            auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
+            if (mesh != nullptr && String(mesh->get_name()).to_lower().begins_with("hair")) {
+                mesh->set_visible(false);
+            }
+        }
+    }
+    // Body skin takes this actor's tone: its own copy of the shared material.
+    const godot::Color tone(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);
+    for (int i = 0; i < skeleton->get_child_count(); ++i) {
+        auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
+        if (mesh == nullptr || mesh->get_mesh().is_null()) {
+            continue;
+        }
+        for (int s = 0; s < mesh->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::ShaderMaterial> m = mesh->get_surface_override_material(s);
+            if (m.is_valid() && static_cast<bool>(m->get_shader_parameter("use_skin_tint"))) {
+                godot::Ref<godot::ShaderMaterial> own = m->duplicate();
+                own->set_shader_parameter("skin_tint", tone);
+                mesh->set_surface_override_material(s, own);
+            }
+        }
     }
 
     if (!plan.idle.empty()) {

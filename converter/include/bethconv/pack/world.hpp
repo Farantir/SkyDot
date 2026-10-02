@@ -461,6 +461,7 @@ struct WorldNpc {
     std::vector<std::uint32_t> head_parts;
     std::vector<std::pair<std::uint32_t, std::int32_t>> items;
     std::string face_model;
+    std::array<float, 3> skin_tone{1, 1, 1};
 };
 
 /// RACE as written to world.fb; index 0 male, 1 female.

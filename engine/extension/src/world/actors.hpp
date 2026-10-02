@@ -30,10 +30,14 @@ struct ActorPlan {
     std::uint32_t race{};
     bool female{};
     float scale{1.0F};      ///< NPC height times the race's for its sex.
+    /// The traits NPC's QNAM, which body skin (SkinTint) is multiplied by.
+    float skin_tone[3]{1.0F, 1.0F, 1.0F};
     std::string skeleton;   ///< Animation skeleton (`.hkx`).
     std::string idle;       ///< An idle clip (`.hkx`), or empty.
     std::vector<std::string> parts; ///< Models, all skinned to the skeleton.
     std::string missing;    ///< Why nothing can be built, or empty.
+    /// Worn items cover slot 31 (hair): the FaceGen head's hair is hidden.
+    bool hide_hair{};
 };
 
 /// `exists(vpath)` says whether the pack has an asset.

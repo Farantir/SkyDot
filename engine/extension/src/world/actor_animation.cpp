@@ -361,8 +361,15 @@ int SkydotAnimation::attach_skinned(godot::Node* model, godot::Skeleton3D* skele
             } else {
                 bone = found->second;
             }
-            rebound->add_named_bind(skeleton->get_bone_name(bone),
-                                    rest_global[static_cast<std::size_t>(bone)].affine_inverse() * to_ours * placed);
+            // As the game does: the bind stays relative to its bone, so the mesh
+            // follows the actor's bones, not the bones of the NIF it came from
+            // (a FaceGen head's neck then meets the body's). A bone the
+            // skeleton lacks keeps the mesh where its NIF put it, on the root.
+            const godot::Transform3D bind =
+                found != by_name.end() && orig_index >= 0
+                    ? skin->get_bind_pose(b)
+                    : rest_global[static_cast<std::size_t>(bone)].affine_inverse() * to_ours * placed;
+            rebound->add_named_bind(skeleton->get_bone_name(bone), bind);
         }
         mesh->get_parent()->remove_child(mesh);
         skeleton->add_child(mesh);

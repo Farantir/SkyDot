@@ -293,10 +293,11 @@ struct Npc {
     float weight{};                 ///< NAM7
     std::uint32_t sound_level{};    ///< NAM8
     std::uint16_t nam5{};           ///< NAM5, 0xFFFF on every vanilla record.
-    /// QNAM, 12 bytes on all 6,626: RGB text color.
-    float text_red{};
-    float text_green{};
-    float text_blue{};
+    /// QNAM, 12 bytes on all 6,626: "texture lighting", the skin tone the
+    /// SkinTint shader multiplies body skin by (UESP), RGB 0-1.
+    float skin_red{};
+    float skin_green{};
+    float skin_blue{};
 
     /// NAM9 (76 bytes on 3,493) and NAMA (16 bytes on 3,433): FaceGen morph
     /// values and face part indices. Kept raw.

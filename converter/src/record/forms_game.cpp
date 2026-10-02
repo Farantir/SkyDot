@@ -507,9 +507,9 @@ io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx) {
             } else if (field.type == FourCC{"NAM5"}) {
                 take(failure, body.get<std::uint16_t>(), out.nam5);
             } else if (field.type == FourCC{"QNAM"}) {
-                take(failure, body.get<float>(), out.text_red);
-                take(failure, body.get<float>(), out.text_green);
-                take(failure, body.get<float>(), out.text_blue);
+                take(failure, body.get<float>(), out.skin_red);
+                take(failure, body.get<float>(), out.skin_green);
+                take(failure, body.get<float>(), out.skin_blue);
             } else if (field.type == FourCC{"NAM9"}) {
                 take(failure, read_verbatim(body), out.face_morph);
             } else if (field.type == FourCC{"NAMA"}) {
