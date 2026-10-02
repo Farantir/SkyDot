@@ -132,7 +132,7 @@ func _pack_paths() -> PackedStringArray:
 	var dir := DirAccess.open(root)
 	if dir != null:
 		for name in dir.get_directories():
-			var path := root.path_join(name)
+			var path: String = _tool.pack_key(root.path_join(name))
 			if FileAccess.file_exists(path.path_join("manifest.json")) and not paths.has(path):
 				paths.append(path)
 	return paths
@@ -199,6 +199,7 @@ func _on_info(doc: Dictionary, path: String, item: TreeItem, generation: int) ->
 
 
 func select(path: String) -> void:
+	path = _tool.pack_key(path)
 	_selected = path
 	var item := _tree.get_root().get_first_child() if _tree.get_root() != null else null
 	while item != null:

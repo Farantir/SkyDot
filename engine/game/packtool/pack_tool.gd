@@ -89,12 +89,26 @@ func packs_root() -> String:
 	return root
 
 
+## One spelling per folder, so a folder typed as ".../sse/" and found as
+## ".../sse" is one pack.
+static func pack_key(path: String) -> String:
+	var out := path.simplify_path()
+	while out.length() > 1 and out.ends_with("/") and not out.ends_with(":/"):
+		out = out.substr(0, out.length() - 1)
+	return out
+
+
 ## Pack folders the tool has written or opened, most recent first.
 func known_packs() -> PackedStringArray:
-	return PackedStringArray(setting("known_packs", PackedStringArray()))
+	var out := PackedStringArray()
+	for path in PackedStringArray(setting("known_packs", PackedStringArray())):
+		if not out.has(pack_key(path)):
+			out.append(pack_key(path))
+	return out
 
 
 func remember_pack(path: String) -> void:
+	path = pack_key(path)
 	var list := known_packs()
 	var at := list.find(path)
 	if at >= 0:
@@ -105,10 +119,10 @@ func remember_pack(path: String) -> void:
 
 func forget_pack(path: String) -> void:
 	var list := known_packs()
-	var at := list.find(path)
+	var at := list.find(pack_key(path))
 	if at >= 0:
 		list.remove_at(at)
-		set_setting("known_packs", list)
+	set_setting("known_packs", list)
 
 
 func locate_cli() -> void:
@@ -130,6 +144,7 @@ func _on_detected(doc: Dictionary) -> void:
 
 ## A pack was written: list it and show it.
 func pack_converted(path: String) -> void:
+	path = pack_key(path)
 	remember_pack(path)
 	_packs.refresh()
 
