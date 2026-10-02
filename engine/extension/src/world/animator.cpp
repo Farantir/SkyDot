@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/animator.hpp"
 
+#include <cmath>
+#include <numbers>
+
 #include "world/effect_asset.hpp"
 #include "world/particles.hpp"
 
@@ -368,12 +371,14 @@ void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
                 t.uv_scale.y = v[0];
                 t.dirty |= k_uv_scale;
                 break;
+            // The property stores the angles as cosines, its controllers key
+            // them in degrees (CloudDistant01: 0.342 and 63-73).
             case Prop::falloff_start_angle:
-                t.falloff.x = v[0];
+                t.falloff.x = std::cos(v[0] * static_cast<float>(std::numbers::pi / 180.0));
                 t.dirty |= k_falloff;
                 break;
             case Prop::falloff_stop_angle:
-                t.falloff.y = v[0];
+                t.falloff.y = std::cos(v[0] * static_cast<float>(std::numbers::pi / 180.0));
                 t.dirty |= k_falloff;
                 break;
             case Prop::falloff_start_opacity:

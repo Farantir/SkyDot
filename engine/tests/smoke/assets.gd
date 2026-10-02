@@ -129,7 +129,7 @@ func _check_exterior(world: SkydotWorld) -> void:
     expect(world.get_exterior_cell(world_id, 0, 0) != 0, "and has a cell at (0, 0)")
     expect(world.build_exterior(world_id, 5, 5) == null, "nothing where there is no cell or land")
 
-    expect(world.warm_up() == 29, "every shader variant is created up front, particles included")
+    expect(world.warm_up() == 41, "every shader variant is created up front, particles and lit effects included")
 
     # The test climate: one weather, sunrise 6-8, sunset 18-20, sky upper blue
     # by day and black at night.

@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/cubemap.hpp>
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
+#include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/standard_material3d.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
@@ -20,6 +21,8 @@
 #include <godot_cpp/variant/vector3.hpp>
 #include <godot_cpp/variant/vector4.hpp>
 #include <godot_cpp/variant/packed_vector4_array.hpp>
+
+#include <mutex>
 
 using godot::Array;
 using godot::Color;
@@ -44,6 +47,7 @@ constexpr std::uint32_t k_sf2_double_sided = 1u << 4;
 constexpr std::uint32_t k_sf2_vertex_colors = 1u << 5;
 constexpr std::uint32_t k_sf2_glow_map = 1u << 6;
 constexpr std::uint32_t k_sf2_tree_anim = 1u << 29;
+constexpr std::uint32_t k_sf2_effect_lighting = 1u << 30;
 
 // BSLightingShaderProperty shader types.
 constexpr std::int64_t k_type_envmap = 1;
@@ -98,7 +102,9 @@ void fragment() {
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 	if (own_emit) {
-		EMISSION = emission_color * emission_strength;
+		// The game lights the texture with it (albedo * (diffuse + emissive)
+		// in NifSkope's sk_default.frag) rather than painting it flat.
+		EMISSION = albedo.rgb * emission_color * emission_strength;
 	}
 	if (use_glow_map) {
 		EMISSION = texture(glow_tex, uv).rgb * emission_color * emission_strength;
@@ -153,6 +159,9 @@ uniform bool use_falloff = false;
 uniform bool palette_color = false;
 uniform bool palette_alpha = false;
 uniform bool soft_effect = false;
+#ifdef ALPHA_ADD
+global uniform vec4 skydot_fog;
+#endif
 
 #ifdef PARTICLES
 // Camera-facing quads sized by the particle transform's scale and turned by
@@ -160,6 +169,7 @@ uniform bool soft_effect = false;
 // (u, width, v, height).
 uniform vec4 subtex_rects[64];
 uniform int subtex_count = 0;
+varying flat vec4 subtex_rect;
 
 void vertex() {
 	mat4 world = mat4(normalize(INV_VIEW_MATRIX[0]), normalize(INV_VIEW_MATRIX[1]),
@@ -174,7 +184,20 @@ void vertex() {
 	if (subtex_count > 0) {
 		vec4 r = subtex_rects[clamp(int(INSTANCE_CUSTOM.z), 0, subtex_count - 1)];
 		UV = vec2(r.x + UV.x * r.y, r.z + UV.y * r.w);
+		subtex_rect = r;
+	} else {
+		subtex_rect = vec4(0.0, 1.0, 0.0, 1.0);
 	}
+}
+#endif
+
+#ifdef LIT
+// Effect_Lighting: the scene's lights tint the effect (mountain clouds take the
+// weather's ambient and sun) instead of it glowing at full strength. Wrapped,
+// so the side away from the sun is dimmer but not black.
+void light() {
+	float wrap = clamp(dot(NORMAL, LIGHT) * 0.5 + 0.5, 0.0, 1.0);
+	DIFFUSE_LIGHT += wrap * ATTENUATION * LIGHT_COLOR / PI;
 }
 #endif
 
@@ -187,7 +210,16 @@ vec3 to_linear(vec3 c) {
 // Shaders (Effect.hlsl); NifSkope's version leaves the texture alpha out of the
 // palette row.
 void fragment() {
-	vec4 source = texture(source_tex, UV * uv_scale + uv_offset);
+	vec2 source_uv = UV * uv_scale + uv_offset;
+	vec4 source = texture(source_tex, source_uv);
+#ifdef PARTICLES
+	// A sub-texture is one cell of an atlas, and the game's own small mips
+	// blur the cells into each other: from 16 texels a cell down, its
+	// transparent border fills in and far particles turn into squares.
+	vec2 cell = subtex_rect.yw * vec2(textureSize(source_tex, 0));
+	float max_lod = max(log2(max(min(cell.x, cell.y), 1.0)) - 4.0, 0.0);
+	source = textureLod(source_tex, source_uv, min(textureQueryLod(source_tex, source_uv).y, max_lod));
+#endif
 	vec4 vertex = vec4(1.0);
 	if (use_vertex_colors) {
 		vertex.rgb = COLOR.rgb;
@@ -223,8 +255,18 @@ void fragment() {
 #ifdef ALPHA_ADD
 	ALBEDO = to_linear(color * alpha);
 	ALPHA = 1.0;
+	// Fog would mix the transparent (black) parts towards its colour, and
+	// adding that draws every quad as a square far away. Fade towards black
+	// by Godot's depth fog amount instead (SkydotMaterials::sync_fog).
+	float fog_far = skydot_fog.y > skydot_fog.x ? skydot_fog.y : skydot_fog.x + 1.0;
+	float fog_z = smoothstep(skydot_fog.x, fog_far, length(VERTEX));
+	FOG = vec4(0.0, 0.0, 0.0, clamp(pow(fog_z, skydot_fog.z) * skydot_fog.w, 0.0, 1.0));
 #else
 	ALBEDO = to_linear(color);
+#endif
+#ifdef LIT
+	ROUGHNESS = 1.0;
+	SPECULAR = 0.0;
 #endif
 #ifdef ALPHA_TEST
 	ALPHA = alpha;
@@ -266,9 +308,13 @@ std::string lighting_code(bool double_sided, Alpha alpha) {
     return "shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_lighting_body;
 }
 
-std::string effect_code(bool double_sided, Alpha alpha, bool particles = false) {
-    std::string modes = double_sided ? "cull_disabled, unshaded" : "cull_back, unshaded";
+std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, bool lit = false) {
+    std::string modes = double_sided ? "cull_disabled" : "cull_back";
+    modes += lit ? ", specular_disabled" : ", unshaded";
     std::string defines = particles ? "#define PARTICLES\n" : "";
+    if (lit) {
+        defines += "#define LIT\n";
+    }
     if (alpha == Alpha::add) {
         modes += ", depth_draw_never, blend_add";
         defines += "#define ALPHA_ADD\n";
@@ -351,6 +397,8 @@ void SkydotMaterials::_bind_methods() {
     using godot::D_METHOD;
     godot::ClassDB::bind_method(D_METHOD("apply", "root"), &SkydotMaterials::apply);
     godot::ClassDB::bind_method(D_METHOD("warm_up"), &SkydotMaterials::warm_up);
+    godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("sync_fog", "environment"),
+                                       &SkydotMaterials::sync_fog);
     godot::ClassDB::bind_method(D_METHOD("convert", "source"), &SkydotMaterials::convert);
     godot::ClassDB::bind_method(D_METHOD("get_material_count"),
                                 &SkydotMaterials::get_material_count);
@@ -365,7 +413,30 @@ std::int64_t SkydotMaterials::get_shader_count() const {
     return static_cast<std::int64_t>(shaders_.size());
 }
 
+void SkydotMaterials::ensure_fog_globals() {
+    // Once per process (materials are made on worker threads too); listing
+    // the existing parameters is editor-only.
+    static std::once_flag once;
+    std::call_once(once, [] {
+        // x begin, y end (metres), z curve, w density: Environment's depth fog.
+        godot::RenderingServer::get_singleton()->global_shader_parameter_add(
+            "skydot_fog", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC4, godot::Vector4(0, 1, 1, 0));
+    });
+}
+
+void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
+    ensure_fog_globals();
+    godot::Vector4 fog(0, 1, 1, 0);
+    if (environment.is_valid() && environment->is_fog_enabled() &&
+        environment->get_fog_mode() == godot::Environment::FOG_MODE_DEPTH) {
+        fog = godot::Vector4(environment->get_fog_depth_begin(), environment->get_fog_depth_end(),
+                             environment->get_fog_depth_curve(), environment->get_fog_density());
+    }
+    godot::RenderingServer::get_singleton()->global_shader_parameter_set("skydot_fog", fog);
+}
+
 Ref<godot::Shader> SkydotMaterials::shader_for(const std::string& code) {
+    ensure_fog_globals();
     auto it = shaders_.find(code);
     if (it != shaders_.end()) {
         return it->second;
@@ -527,7 +598,8 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
     const Alpha alpha = blend ? (destination == 0 ? Alpha::add : Alpha::blend)
                               : (test ? Alpha::test : Alpha::none);
     const Ref<godot::Texture> palette = load_texture(slot_path(extras, 3));
-    out->set_shader(shader_for(effect_code(double_sided, alpha, particles)));
+    const bool lit = (flags2 & k_sf2_effect_lighting) != 0;
+    out->set_shader(shader_for(effect_code(double_sided, alpha, particles, lit)));
     out->set_shader_parameter("palette_color", (flags1 & k_sf1_greyscale_to_palette_color) != 0 &&
                                                    palette.is_valid());
     out->set_shader_parameter("palette_alpha", (flags1 & k_sf1_greyscale_to_palette_alpha) != 0 &&
@@ -645,12 +717,12 @@ std::int64_t SkydotMaterials::warm_up() {
         for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend}) {
             shader_for(lighting_code(double_sided, alpha));
         }
-        for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::add}) {
-            shader_for(effect_code(double_sided, alpha));
-        }
-        if (double_sided) {
+        for (const bool lit : {false, true}) {
             for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::add}) {
-                shader_for(effect_code(true, alpha, true));
+                shader_for(effect_code(double_sided, alpha, false, lit));
+                if (double_sided) {
+                    shader_for(effect_code(true, alpha, true, lit));
+                }
             }
         }
         shader_for(refraction_code(double_sided));

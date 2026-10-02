@@ -3,7 +3,7 @@
 // `SkydotFlicker`: animates its parent light as LIGH's flicker and pulse flags
 // ask: brightness varies by the intensity amplitude over the flicker period
 // (smooth noise for flicker, a sine for pulse), and flickering lights wander
-// by the movement amplitude.
+// within half the movement amplitude of their place.
 #pragma once
 
 #include <godot_cpp/classes/node.hpp>

@@ -17,6 +17,8 @@
 // mesh shares them.
 #pragma once
 
+#include <godot_cpp/classes/environment.hpp>
+
 #include "assets/asset_cache.hpp"
 
 #include <godot_cpp/classes/material.hpp>
@@ -80,6 +82,14 @@ public:
 
 protected:
     static void _bind_methods();
+
+public:
+    /// Copy `environment`'s depth fog into the global shader parameters
+    /// additive effects fade by (Godot's fog would add its colour to their
+    /// transparent parts). Call when the fog changes, or once a frame.
+    static void sync_fog(const godot::Ref<godot::Environment>& environment);
+    /// Register those parameters (no fog) if they are not yet.
+    static void ensure_fog_globals();
 
 private:
     godot::Ref<godot::Shader> shader_for(const std::string& code);

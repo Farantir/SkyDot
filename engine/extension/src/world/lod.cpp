@@ -410,6 +410,35 @@ Ref<godot::ShaderMaterial> SkydotLod::material(const Ref<godot::Shader>& shader,
     return m;
 }
 
+namespace {
+
+/// A texture slot's path in a material's bethconv extras; pack meshes carry
+/// no glTF images, so this is where a surface's textures are named.
+String slot_path(const Ref<godot::Material>& material, int slot) {
+    if (material.is_null() || !material->has_meta("extras")) {
+        return {};
+    }
+    const godot::Variant extras = material->get_meta("extras");
+    if (extras.get_type() != godot::Variant::DICTIONARY) {
+        return {};
+    }
+    const godot::Variant block = godot::Dictionary(extras).get("bethconv", godot::Variant());
+    if (block.get_type() != godot::Variant::DICTIONARY) {
+        return {};
+    }
+    const godot::Variant slots = godot::Dictionary(block).get("texture_slots", godot::Variant());
+    if (slots.get_type() != godot::Variant::DICTIONARY) {
+        return {};
+    }
+    const godot::Variant entry = godot::Dictionary(slots).get(String::num_int64(slot), godot::Variant());
+    if (entry.get_type() != godot::Variant::DICTIONARY) {
+        return {};
+    }
+    return godot::Dictionary(entry).get("path", String());
+}
+
+} // namespace
+
 void SkydotLod::retexture(godot::Node* node, bool terrain, bool water) {
     const bool is_water = water || String(node->get_name()).to_lower() == "water";
     if (auto* mi = godot::Object::cast_to<godot::MeshInstance3D>(node); mi != nullptr && mi->get_mesh().is_valid()) {
@@ -425,6 +454,14 @@ void SkydotLod::retexture(godot::Node* node, bool terrain, bool water) {
             if (base.is_valid()) {
                 albedo = base->get_texture(godot::BaseMaterial3D::TEXTURE_ALBEDO);
                 normal = base->get_texture(godot::BaseMaterial3D::TEXTURE_NORMAL);
+            }
+            if (albedo.is_null() && pack_.is_valid()) {
+                const String path = slot_path(base, 0);
+                albedo = path.is_empty() ? Ref<godot::Texture2D>() : Ref<godot::Texture2D>(pack_->load_texture(path));
+            }
+            if (normal.is_null() && pack_.is_valid()) {
+                const String path = slot_path(base, 1);
+                normal = path.is_empty() ? Ref<godot::Texture2D>() : Ref<godot::Texture2D>(pack_->load_texture(path));
             }
             mi->set_surface_override_material(i, material(terrain ? terrain_shader_ : object_shader_, albedo, normal));
         }

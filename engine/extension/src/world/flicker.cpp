@@ -57,10 +57,13 @@ godot::Vector3 SkydotFlicker::offset_at(double seconds) const {
         return {};
     }
     const double x = seconds / period_ + seed_;
-    return godot::Vector3(static_cast<float>(2.0 * noise(x + 17.0) - 1.0),
-                          static_cast<float>(2.0 * noise(x + 43.0) - 1.0),
-                          static_cast<float>(2.0 * noise(x + 71.0) - 1.0)) *
-           static_cast<float>(movement_);
+    const godot::Vector3 wander(static_cast<float>(2.0 * noise(x + 17.0) - 1.0),
+                                static_cast<float>(2.0 * noise(x + 43.0) - 1.0),
+                                static_cast<float>(2.0 * noise(x + 71.0) - 1.0));
+    // The amplitude is read as the whole range the light moves through, so it
+    // stays within half of it of its place: Bleak Falls' torches (48 units)
+    // otherwise left their sconces, which the game's do not.
+    return wander.limit_length(1.0F) * static_cast<float>(movement_ / 2.0);
 }
 
 void SkydotFlicker::_ready() {

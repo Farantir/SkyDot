@@ -34,10 +34,23 @@ Guesses, not checked against the game: speed, radius and life vary by
 object; drag removes `drag` of the velocity per second; turbulence is random
 acceleration re-rolled eight times a second.
 
+## Effect shader
+
+- Effect_Lighting (shader flags 2, bit 30) draws the effect lit by the
+  scene's lights, wrapped so the far side is dim rather than black; mountain
+  clouds and blowing snow take the weather's light this way.
+- Additive effects write their own fog (`SkydotMaterials.sync_fog`, the
+  `skydot_fog` global): Godot's fog would turn their black, transparent parts
+  fog-coloured and add them, so every particle was a square far away.
+- Falloff angle controllers key degrees; the property holds cosines.
+- Particles sampling one atlas cell stop at the mip where the cell is 16
+  texels wide, below which the game's mips blur the cells together.
+
 ## Lights (`SkydotFlicker`)
 
 LIGH flicker flags vary brightness by the intensity amplitude over the flicker
-period (smooth noise) and move the light by the movement amplitude; pulse
+period (smooth noise) and move the light within half the movement amplitude
+of its place (read as the whole range; a guess, see flicker.cpp); pulse
 flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
 
 ## Cost
