@@ -449,6 +449,7 @@ public:
 
     /// Translation or scale. `flags`: bits 0-2 static axes, 4-6 spline axes.
     Channel vector(std::uint8_t flags, bool eight_bit, float identity) {
+        const unsigned bits = flags; // Shifted unsigned, not promoted to int.
         Channel c;
         const bool any_spline = (flags & 0x70) != 0;
         const bool any_static = (flags & 0x07) != 0;
@@ -461,17 +462,17 @@ public:
             c.lo.assign(3, identity);
             c.hi.assign(3, identity);
             for (std::size_t a = 0; a < 3; ++a) {
-                if ((flags >> (4 + a)) & 1u) {
+                if ((bits >> (4 + a)) & 1u) {
                     c.lo[a] = get<float>();
                     c.hi[a] = get<float>();
-                } else if ((flags >> a) & 1u) {
+                } else if ((bits >> a) & 1u) {
                     c.lo[a] = c.hi[a] = get<float>();
                 }
             }
             c.points.assign((std::size_t{n} + 1) * 3, 0);
             for (std::size_t i = 0; i <= n; ++i) {
                 for (std::size_t a = 0; a < 3; ++a) {
-                    if ((flags >> (4 + a)) & 1u) {
+                    if ((bits >> (4 + a)) & 1u) {
                         // 8-bit sources widen exactly: 255 * 257 = 65535.
                         c.points[i * 3 + a] = eight_bit
                                                   ? static_cast<std::uint16_t>(get<std::uint8_t>() * 257u)
@@ -483,7 +484,7 @@ public:
         } else if (any_static) {
             c.lo.assign(3, identity);
             for (std::size_t a = 0; a < 3; ++a) {
-                if ((flags >> a) & 1u) {
+                if ((bits >> a) & 1u) {
                     c.lo[a] = get<float>();
                 }
             }

@@ -97,7 +97,8 @@ TEST_CASE("a skeleton reads the same with 4- and 8-byte pointers", "[animation][
         CHECK(s.float_slots == std::vector<std::string>{"hkVis:Shield", "hkFade:AnimObjectA"});
         REQUIRE(s.reference_pose.size() == 3);
         CHECK(s.reference_pose[2].translation == std::array<float, 3>{0, 2, 50});
-        CHECK_THAT(s.reference_pose[2].rotation[2], WithinAbs(z_turn(30)[2], 1e-6));
+        CHECK_THAT(static_cast<double>(s.reference_pose[2].rotation[2]),
+                   WithinAbs(static_cast<double>(z_turn(30)[2]), 1e-6));
         CHECK(file->classes.at("hkaSkeleton") == 1);
     }
 }
