@@ -109,6 +109,11 @@ func _process(_delta: float) -> bool:
         3:
             if answers.has("info") and answers.has("worlds") and answers.has("bad"):
                 _check_queries()
+                # The tool starts knowing the pack, so its first listing asks
+                # bethconv about it (it once asked before finding bethconv).
+                var cfg := ConfigFile.new()
+                cfg.set_value("tool", "known_packs", PackedStringArray([scratch.path_join("pack")]))
+                cfg.save(scratch.path_join("packtool.cfg"))
                 tool = load("res://packtool/pack_tool.tscn").instantiate()
                 tool.settings_path = scratch.path_join("packtool.cfg")
                 root.add_child(tool)
@@ -117,10 +122,15 @@ func _process(_delta: float) -> bool:
             elif now > deadline:
                 return _give_up("queries")
         4:
-            # Detection has answered once the install list was refreshed.
-            if tool.get("_convert")._install_option.item_count > 0:
+            # Detection has answered once the install list was refreshed, and
+            # the pack's row once it says something other than "reading…".
+            var row := _pack_row(scratch.path_join("pack"))
+            if tool.get("_convert")._install_option.item_count > 0 \
+                    and row != null and row.get_text(1) != "reading…":
                 var f: Dictionary = tool.get("_convert").form()
                 expect(f.has("data") and f.has("out"), "the convert form has data and out")
+                expect(row.get_text(1) != "not readable",
+                    "the pack is read at start-up: %s" % row.get_tooltip_text(1))
                 tool.queue_free()
                 cli.shutdown()
                 print("smoke_packtool: failures=", failures)
@@ -129,6 +139,16 @@ func _process(_delta: float) -> bool:
             elif now > deadline:
                 return _give_up("the tool's detection")
     return false
+
+
+func _pack_row(path: String) -> TreeItem:
+    var tree: Tree = tool.get("_packs").get("_tree")
+    if tree == null or tree.get_root() == null:
+        return null
+    for item in tree.get_root().get_children():
+        if item.get_metadata(0) == path:
+            return item
+    return null
 
 
 func _check_convert() -> void:

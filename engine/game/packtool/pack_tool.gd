@@ -135,6 +135,8 @@ func locate_cli() -> void:
 		return
 	PackToolUi.set_note(_cli_note, "Using " + found, "ok")
 	cli.query(PackedStringArray(["detect", "--json"]), _on_detected)
+	# The Packs page first listed its packs before there was a binary to ask.
+	_packs.refresh()
 
 
 func _on_detected(doc: Dictionary) -> void:
