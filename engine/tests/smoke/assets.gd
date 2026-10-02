@@ -78,6 +78,8 @@ func _run(pack_dir: String) -> void:
     var world := pack.open_world()
     expect(world != null, "world.fb opens: " + pack.get_error())
     if world != null:
+        # Static models only; smoke_animation covers the interior's actor.
+        world.actors = false
         var cell := world.build_cell(world.find_cell("TestpackInterior"))
         var stats: Dictionary = cell.get_meta("skydot_stats")
         expect(stats["placed"] == 3 and stats["lights"] == 1 and stats["missing"].is_empty(),

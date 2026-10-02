@@ -150,10 +150,10 @@ only decoded fields would pass every other snapshot test.
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (6; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (8; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
-regions). Written during a merge pass, so every FormID in it is
+regions, 7 base record flags, 8 what actors are built from). Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
 - `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags,
@@ -191,6 +191,18 @@ global: resolved through the winning plugin's master list.
 - `globals`, sorted by id: GLOB's kind and value.
 - `actors`, sorted by reference: ACHR's NPC_, cell, position, rotation and
   flags (as a reference's).
+- What actors are built from, each sorted by id (format 8):
+  `npcs` (NPC_: sex and other ACBS flags, level, race, template and template
+  flags, skin, default and sleeping outfit, height, weight, head parts,
+  items, and the path of the FaceGen head the game precomputes for it,
+  `meshes/actors/character/facegendata/facegeom/<plugin>/<id>.nif`, named by
+  the plugin owning the form, whether or not the pack has it); `races`
+  (skeleton NIF and behaviour graph per sex, skin, heights and weights per
+  sex, DATA flags, body parts, head parts, armor race); `armors` (ARMO's
+  slots, race and addons); `armor_addons` (ARMA's slots, race and further
+  races, the model per sex, priorities and weight sliders); `outfits` (OTFT's
+  items); `leveled_lists` (LVLI and LVLN with flags, chance none and
+  entries). How the engine combines them: `engine/docs/actors.md`.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.

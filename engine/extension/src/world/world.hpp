@@ -15,6 +15,7 @@
 #include "world/terrain.hpp"
 #include "world/water.hpp"
 
+#include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/resource.hpp>
@@ -40,6 +41,7 @@ struct World;
 struct Cell;
 struct Base;
 struct Ref;
+struct ActorRef;
 struct Worldspace;
 struct Water;
 struct DoorLink;
@@ -53,7 +55,7 @@ class SkydotWorld : public godot::RefCounted {
 
 public:
     /// The world.fb format version this engine reads.
-    static constexpr int WORLD_FORMAT_VERSION = 7;
+    static constexpr int WORLD_FORMAT_VERSION = 8;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
 
@@ -221,6 +223,18 @@ public:
     void set_effects(bool enabled);
     bool get_effects() const;
 
+    /// Build placed actors (ACHR) in cells: body, worn outfit and head on
+    /// an animated skeleton (see actors.hpp). On by default.
+    void set_actors(bool enabled) { actors_ = enabled; }
+    bool get_actors() const { return actors_; }
+    /// The plan for placed actor `ref` (keys: npc, race, female, scale,
+    /// skeleton, idle, parts, missing), for tools and tests.
+    godot::Dictionary get_actor_plan(std::int64_t ref) const;
+    /// Build placed actor `ref` alone, at its place; null if it has none.
+    godot::Node3D* build_actor(std::int64_t ref) const;
+    /// The placed actors (ACHR refs) of an interior or exterior cell.
+    godot::PackedInt64Array get_cell_actors(std::int64_t cell) const;
+
     /// Give models and terrain physics bodies (see collision.hpp). On by
     /// default.
     void set_collision(bool enabled);
@@ -289,6 +303,15 @@ private:
     godot::PackedByteArray bytes_;
     bool skyrim_materials_{true};
     bool effects_{true};
+    bool actors_{true};
+    /// Placed actors by interior or exterior cell; those of a worldspace's
+    /// persistent cell by the grid square they stand in.
+    std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;
+    std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
+    /// Idle clips built once per (clip, skeleton).
+    mutable std::unordered_map<std::string, godot::Ref<godot::Animation>> clips_;
+    void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats) const;
+    std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
     bool collision_{true};
     bool navigation_{true};
     mutable godot::Ref<SkydotMaterials> materials_;

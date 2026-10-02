@@ -99,7 +99,7 @@ covered by `tests/unit/test_strings.cpp`.
 
 ## Resolution results
 
-`bethconv forms --source <Data> --source <Interface.bsa>`, 38 types defined:
+`bethconv forms --source <Data> --source <Interface.bsa>`, 38 types defined (45 today):
 
 | Set | Resolved | Unresolved |
 | --- | --- | --- |

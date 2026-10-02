@@ -1027,3 +1027,138 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(plugins[2].first == "Quests.esp");
     CHECK(plugins[2].second == 0x0200'0000u);
 }
+
+namespace {
+
+/// Actors.esp, masters [Base.esm], loaded third: a race, its skin (an ARMO
+/// with one addon), an outfit and a female NPC wearing it.
+void make_actors(const TempDir& dir) {
+    ByteWriter file;
+    bethconv::test::write_tes4(file, 0, {"Base.esm"});
+
+    ByteWriter race;
+    field_text(race, "EDID", "TestRace");
+    field_u32(race, "WNAM", 0x0100'0E10);
+    ByteWriter data;
+    for (int i = 0; i < 16; ++i) {
+        data.u8(0);
+    }
+    data.f32(1.0F);
+    data.f32(0.95F);
+    data.f32(1.0F);
+    data.f32(1.0F);
+    data.u32(1);
+    for (int i = 36; i < 164; ++i) {
+        data.u8(0);
+    }
+    bethconv::test::write_field(race, "DATA", data);
+    bethconv::test::write_field(race, "MNAM", ByteWriter{});
+    field_text(race, "ANAM", "Actors\\Character\\Character Assets\\skeleton.nif");
+    bethconv::test::write_field(race, "FNAM", ByteWriter{});
+    field_text(race, "ANAM", "Actors\\Character\\Character Assets Female\\skeleton_female.nif");
+    bethconv::test::write_field(race, "NAM3", ByteWriter{});
+    bethconv::test::write_field(race, "MNAM", ByteWriter{});
+    field_text(race, "MODL", "Actors\\Character\\DefaultMale.hkx");
+    ByteWriter races;
+    bethconv::test::write_record(races, "RACE", 0x0100'0E00, race.span());
+    top_group(file, "RACE", races);
+
+    ByteWriter addon;
+    field_text(addon, "EDID", "TestSkinAddon");
+    ByteWriter bod2;
+    bod2.u32(0x4);
+    bod2.u32(2);
+    bethconv::test::write_field(addon, "BOD2", bod2);
+    field_u32(addon, "RNAM", 0x0100'0E00);
+    field_text(addon, "MOD2", "Actors\\Character\\Character Assets\\MaleBody_1.nif");
+    field_text(addon, "MOD3", "Actors\\Character\\Character Assets\\FemaleBody_1.nif");
+    ByteWriter addons;
+    bethconv::test::write_record(addons, "ARMA", 0x0100'0E11, addon.span());
+    top_group(file, "ARMA", addons);
+
+    ByteWriter skin;
+    field_text(skin, "EDID", "TestSkin");
+    bethconv::test::write_field(skin, "BOD2", bod2);
+    field_u32(skin, "RNAM", 0x0100'0E00);
+    field_u32(skin, "MODL", 0x0100'0E11);
+    ByteWriter armors;
+    bethconv::test::write_record(armors, "ARMO", 0x0100'0E10, skin.span());
+    top_group(file, "ARMO", armors);
+
+    ByteWriter outfit;
+    field_text(outfit, "EDID", "TestOutfit");
+    field_u32(outfit, "INAM", 0x0100'0E10);
+    ByteWriter outfits;
+    bethconv::test::write_record(outfits, "OTFT", 0x0100'0E20, outfit.span());
+    top_group(file, "OTFT", outfits);
+
+    ByteWriter npc;
+    field_text(npc, "EDID", "TestNpc");
+    ByteWriter acbs;
+    acbs.u32(0x1); // female
+    for (int i = 0; i < 10; ++i) {
+        acbs.u16(0);
+    }
+    bethconv::test::write_field(npc, "ACBS", acbs);
+    field_u32(npc, "RNAM", 0x0100'0E00);
+    field_u32(npc, "DOFT", 0x0100'0E20);
+    ByteWriter height;
+    height.f32(1.05F);
+    bethconv::test::write_field(npc, "NAM6", height);
+    ByteWriter npcs;
+    bethconv::test::write_record(npcs, "NPC_", 0x0100'0E30, npc.span());
+    top_group(file, "NPC_", npcs);
+    save(dir, "Actors.esp", file);
+}
+
+} // namespace
+
+TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[pack][world]") {
+    const TempDir dir;
+    make_base(dir);
+    make_other(dir);
+    make_actors(dir);
+    record::PluginList list;
+    for (const char* name : {"Base.esm", "Other.esm", "Actors.esp"}) {
+        list.plugins.push_back(record::ListedPlugin{.name = name, .active = true});
+    }
+    const auto order = record::LoadOrder::build(
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto out = dir / "world.fb";
+    const auto stats = pack::write_world(world, order, out);
+    REQUIRE(stats.has_value());
+    CHECK(stats->npcs == 1);
+    CHECK(stats->races == 1);
+    CHECK(stats->armors == 2); // and Base.esm's placed armor
+    CHECK(stats->armor_addons == 1);
+    CHECK(stats->outfits == 1);
+    CHECK(stats->parse_errors == 0);
+    CHECK(stats->unresolved == 0);
+
+    const auto file = pack::WorldFile::open(out);
+    REQUIRE(file.has_value());
+    const auto npc = file->npc(0x0200'0E30);
+    REQUIRE(npc.has_value());
+    CHECK(npc->editor_id == "TestNpc");
+    CHECK((npc->flags & 1) == 1);
+    CHECK(npc->race == 0x0200'0E00);
+    CHECK(npc->default_outfit == 0x0200'0E20);
+    CHECK(npc->height == 1.05F);
+    // Named by the defining plugin and the form's id within it.
+    CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
+
+    const auto race = file->race(0x0200'0E00);
+    REQUIRE(race.has_value());
+    CHECK(race->skin == 0x0200'0E10);
+    CHECK(race->skeletons[0] == "meshes/actors/character/character assets/skeleton.nif");
+    CHECK(race->skeletons[1] == "meshes/actors/character/character assets female/skeleton_female.nif");
+    CHECK(race->behaviours[0] == "meshes/actors/character/defaultmale.hkx");
+    CHECK(race->heights[1] == 0.95F);
+
+    const auto addon = file->armor_addon(0x0200'0E11);
+    REQUIRE(addon.has_value());
+    CHECK(addon->race == 0x0200'0E00);
+    CHECK(addon->slots == 4);
+    CHECK(addon->models[1] == "meshes/actors/character/character assets/femalebody_1.nif");
+}

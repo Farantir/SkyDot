@@ -384,6 +384,8 @@ std::span<const FourCC> defined_types() noexcept {
         // forms_game.cpp
         FourCC{"GMST"}, FourCC{"GLOB"}, FourCC{"CLAS"}, FourCC{"FACT"},
         FourCC{"ENCH"}, FourCC{"SPEL"}, FourCC{"NPC_"}, FourCC{"QUST"},
+        // forms_actor.cpp
+        FourCC{"ARMO"}, FourCC{"ARMA"}, FourCC{"OTFT"}, FourCC{"LVLI"}, FourCC{"RACE"},
     };
     return k_types;
 }

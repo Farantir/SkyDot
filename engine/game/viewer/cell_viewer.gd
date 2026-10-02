@@ -199,6 +199,7 @@ func _ready() -> void:
 	world.effects = args.get("effects", "on") != "off"
 	world.collision = args.get("collision", "on") != "off"
 	world.navigation = args.get("navigation", "on") != "off"
+	world.actors = args.get("actors", "on") != "off"
 	_radius = int(args.get("radius", "2"))
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
@@ -1384,6 +1385,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"effects": _world.effects,
 			"collision": _world.collision,
 			"navigation": _world.navigation,
+			"actors": _world.actors,
 			"navmesh_shown": _show_navmesh,
 			"lod": _lod != null,
 			"radius": _radius,

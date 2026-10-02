@@ -26,7 +26,7 @@ tested against real installs:
 - **Archives:** BSA v104/v105 and loose files mounted as one virtual filesystem,
   with load-order precedence and conflict reporting.
 - **Records:** the ESM4 container (GRUP tree, record and field headers,
-  compression). 1.2M vanilla and 2.7M third-party records parse. 38 record
+  compression). 1.2M vanilla and 2.7M third-party records parse. 45 record
   types have field definitions.
 - **Load order:** `plugins.txt`/`loadorder.txt`, ESL compact space, and
   plugin-local FormIDs remapped into one global space. See

@@ -21,6 +21,7 @@
 
 #include <godot_cpp/classes/resource.hpp>
 #include <godot_cpp/classes/texture.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 
 #include <condition_variable>
 #include <cstdint>
@@ -61,6 +62,8 @@ public:
     void trim();
 
     [[nodiscard]] bool has(const std::string& vpath) const;
+    /// An asset's bytes as stored (an animation asset, …); empty if absent.
+    [[nodiscard]] godot::PackedByteArray bytes(const std::string& vpath) const;
     [[nodiscard]] std::size_t cached() const;
     [[nodiscard]] std::size_t pending() const;
 

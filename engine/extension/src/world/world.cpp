@@ -2,6 +2,8 @@
 #include "world/world.hpp"
 #include "world/fb_search.hpp"
 
+#include "world/actor_animation.hpp"
+#include "world/actors.hpp"
 #include "world/animator.hpp"
 #include "world/billboard.hpp"
 #include "world/collision.hpp"
@@ -10,6 +12,8 @@
 
 #include "world_generated.h"
 
+#include <godot_cpp/classes/animation_library.hpp>
+#include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -203,6 +207,12 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_effects", "enabled"), &SkydotWorld::set_effects);
     godot::ClassDB::bind_method(D_METHOD("get_effects"), &SkydotWorld::get_effects);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "effects"), "set_effects", "get_effects");
+    godot::ClassDB::bind_method(D_METHOD("set_actors", "enabled"), &SkydotWorld::set_actors);
+    godot::ClassDB::bind_method(D_METHOD("get_actors"), &SkydotWorld::get_actors);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actors"), "set_actors", "get_actors");
+    godot::ClassDB::bind_method(D_METHOD("get_actor_plan", "ref"), &SkydotWorld::get_actor_plan);
+    godot::ClassDB::bind_method(D_METHOD("build_actor", "ref"), &SkydotWorld::build_actor);
+    godot::ClassDB::bind_method(D_METHOD("get_cell_actors", "cell"), &SkydotWorld::get_cell_actors);
     godot::ClassDB::bind_method(D_METHOD("set_collision", "enabled"), &SkydotWorld::set_collision);
     godot::ClassDB::bind_method(D_METHOD("get_collision"), &SkydotWorld::get_collision);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "collision"), "set_collision", "get_collision");
@@ -277,9 +287,26 @@ void SkydotWorld::build_indexes() {
     enable_children_.clear();
     enable_parents_.clear();
     navmeshes_.clear();
+    cell_actors_.clear();
+    persistent_actors_.clear();
     const auto* cells = root_->cells();
     if (cells == nullptr) {
         return;
+    }
+    if (const auto* actors = root_->actors()) {
+        for (const auto* a : *actors) {
+            const auto* cell = cell_ptr(a->cell());
+            if (cell == nullptr) {
+                continue;
+            }
+            if (cell->persistent() && cell->world() != 0 && (cell->flags() & 0x1u) == 0) {
+                const auto x = static_cast<std::int32_t>(std::floor(a->position().x() / k_cell_units));
+                const auto y = static_cast<std::int32_t>(std::floor(a->position().y() / k_cell_units));
+                persistent_actors_[grid_key(cell->world(), x, y)].push_back(a);
+            } else {
+                cell_actors_[cell->id()].push_back(a);
+            }
+        }
     }
     for (const auto* cell : *cells) {
         if (const auto* navmeshes = cell->navmeshes()) {
@@ -587,6 +614,10 @@ struct SkydotWorld::BuildStats {
     std::int64_t effects = 0;
     std::int64_t flickers = 0;
     std::int64_t bodies = 0;
+    std::int64_t actors = 0;
+    std::int64_t actor_parts = 0;
+    /// Actors not built, by reason ("no NPC_", "no animation skeleton …").
+    godot::Dictionary actor_failures;
     godot::PackedStringArray missing;
 };
 
@@ -711,6 +742,9 @@ Dictionary SkydotWorld::stats_dictionary(const BuildStats& stats) const {
     out["effects"] = stats.effects;
     out["flickers"] = stats.flickers;
     out["bodies"] = stats.bodies;
+    out["actors"] = stats.actors;
+    out["actor_parts"] = stats.actor_parts;
+    out["actor_failures"] = stats.actor_failures;
     return out;
 }
 
@@ -750,6 +784,13 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
             place_ref(root, *ref, cell->id(), stats);
         }
     }
+    if (actors_) {
+        if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
+            for (const auto* actor : it->second) {
+                place_actor(root, *actor, stats);
+            }
+        }
+    }
     if (navigation_) {
         if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
             root->add_child(navmesh);
@@ -757,6 +798,163 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
     }
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
+}
+
+// ---- actors -------------------------------------------------------------
+
+namespace {
+
+skydot::ActorPlan plan_for(const wfb::World& world, const wfb::ActorRef& actor,
+                           const std::shared_ptr<AssetCache>& assets) {
+    const auto exists = [&](const std::string& vpath) { return assets != nullptr && assets->has(vpath); };
+    return plan_actor(world, actor.base(), actor.ref(), exists);
+}
+
+godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
+    godot::Dictionary out;
+    out["npc"] = static_cast<std::int64_t>(plan.npc);
+    out["race"] = static_cast<std::int64_t>(plan.race);
+    out["female"] = plan.female;
+    out["scale"] = plan.scale;
+    out["skeleton"] = String::utf8(plan.skeleton.c_str());
+    out["idle"] = String::utf8(plan.idle.c_str());
+    godot::PackedStringArray parts;
+    for (const auto& p : plan.parts) {
+        parts.push_back(String::utf8(p.c_str()));
+    }
+    out["parts"] = parts;
+    out["missing"] = String::utf8(plan.missing.c_str());
+    return out;
+}
+
+const wfb::ActorRef* actor_ptr(const wfb::World* root, std::int64_t ref) {
+    return root != nullptr ? find_sorted(root->actors(), static_cast<std::uint32_t>(ref),
+                                         [](const wfb::ActorRef* a) { return a->ref(); })
+                           : nullptr;
+}
+
+} // namespace
+
+std::vector<std::string> SkydotWorld::actor_resources(const wfb::ActorRef& actor) const {
+    if ((actor.flags() & k_ref_initially_disabled) != 0) {
+        return {};
+    }
+    return plan_for(*root_, actor, assets_).parts;
+}
+
+godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
+    const auto* actor = actor_ptr(root_, ref);
+    if (actor == nullptr) {
+        return {};
+    }
+    return plan_dictionary(plan_for(*root_, *actor, assets_));
+}
+
+godot::PackedInt64Array SkydotWorld::get_cell_actors(std::int64_t cell) const {
+    godot::PackedInt64Array out;
+    if (const auto it = cell_actors_.find(static_cast<std::uint32_t>(cell)); it != cell_actors_.end()) {
+        for (const auto* a : it->second) {
+            out.push_back(a->ref());
+        }
+    }
+    return out;
+}
+
+godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) const {
+    const auto* actor = actor_ptr(root_, ref);
+    if (actor == nullptr) {
+        return nullptr;
+    }
+    auto* root = memnew(godot::Node3D);
+    root->set_name(hex_id(actor->ref()));
+    BuildStats stats;
+    place_actor(root, *actor, stats);
+    root->set_meta("skydot_stats", stats_dictionary(stats));
+    return root;
+}
+
+void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats) const {
+    if ((actor.flags() & k_ref_initially_disabled) != 0) {
+        ++stats.disabled;
+        return;
+    }
+    const auto plan = plan_for(*root_, actor, assets_);
+    const auto fail = [&](const String& why) {
+        const std::int64_t n = stats.actor_failures.get(why, 0);
+        stats.actor_failures[why] = n + 1;
+    };
+    if (!plan.missing.empty()) {
+        fail(String::utf8(plan.missing.c_str()));
+        return;
+    }
+    auto* skeleton = SkydotAnimation::build_skeleton(assets_->bytes(plan.skeleton));
+    if (skeleton == nullptr) {
+        fail("skeleton does not build");
+        return;
+    }
+    skeleton->set_name("Skeleton");
+
+    const auto* npc = find_sorted(root_->npcs(), plan.npc, [](const wfb::Npc* n) { return n->id(); });
+    auto* node = memnew(godot::Node3D);
+    node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
+    // Actors stand upright: only the rotation about Z counts.
+    const auto& p = actor.position();
+    node->set_transform(skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(0, 0, actor.rotation().z()), 1.0));
+    auto* units = memnew(godot::Node3D);
+    units->set_name("bethconv_z_up_to_y_up");
+    units->set_transform(godot::Transform3D(
+        godot::Basis(Vector3(1, 0, 0), static_cast<float>(-std::numbers::pi / 2))
+            .scaled(Vector3(1, 1, 1) * static_cast<float>(UNIT_SCALE) * plan.scale),
+        Vector3()));
+    node->add_child(units);
+    units->add_child(skeleton);
+
+    for (const auto& part : plan.parts) {
+        const godot::Ref<SkydotModel> scene = resource(String::utf8(part.c_str()));
+        if (scene.is_null()) {
+            if (!stats.missing.has(String::utf8(part.c_str()))) {
+                stats.missing.push_back(String::utf8(part.c_str()));
+            }
+            continue;
+        }
+        godot::Node* model = scene->instantiate();
+        if (model == nullptr) {
+            continue;
+        }
+        if (skyrim_materials_) {
+            stats.materials += materials().apply(model);
+        }
+        node->add_child(model);
+        stats.actor_parts += SkydotAnimation::attach_skinned(model, skeleton);
+        node->remove_child(model);
+        memdelete(model);
+    }
+
+    if (!plan.idle.empty()) {
+        const std::string key = plan.idle + "|" + plan.skeleton;
+        auto it = clips_.find(key);
+        if (it == clips_.end()) {
+            it = clips_.emplace(key, SkydotAnimation::build_clip(assets_->bytes(plan.idle), skeleton,
+                                                                   "bethconv_z_up_to_y_up/Skeleton"))
+                     .first;
+            if (it->second.is_valid()) {
+                it->second->set_loop_mode(godot::Animation::LOOP_LINEAR);
+            }
+        }
+        if (it->second.is_valid()) {
+            auto* player = memnew(godot::AnimationPlayer);
+            player->set_name("AnimationPlayer");
+            godot::Ref<godot::AnimationLibrary> library;
+            library.instantiate();
+            library->add_animation("idle", it->second);
+            player->add_animation_library("", library);
+            player->set_autoplay("idle");
+            node->add_child(player);
+        }
+    }
+    tag_ref(node, actor.ref(), actor.cell(), false);
+    root->add_child(node);
+    ++stats.actors;
 }
 
 std::int64_t SkydotWorld::wake_clutter(godot::Node* root, const Vector3& centre, double radius) {
@@ -888,6 +1086,26 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
     if (const auto* cell = exterior_ptr(w, gx, gy); cell != nullptr && cell->refs() != nullptr) {
         for (const auto* ref : *cell->refs()) {
             add_ref(*ref);
+        }
+    }
+    if (actors_) {
+        const auto add_actors = [&](const std::vector<const wfb::ActorRef*>& list) {
+            for (const auto* a : list) {
+                for (const auto& part : actor_resources(*a)) {
+                    const String path = String::utf8(part.c_str());
+                    if (!out.has(path)) {
+                        out.push_back(path);
+                    }
+                }
+            }
+        };
+        if (const auto* cell = exterior_ptr(w, gx, gy)) {
+            if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
+                add_actors(it->second);
+            }
+        }
+        if (const auto it = persistent_actors_.find(grid_key(w, gx, gy)); it != persistent_actors_.end()) {
+            add_actors(it->second);
         }
     }
     if (const auto it = persistent_.find(grid_key(w, gx, gy)); it != persistent_.end()) {
@@ -1094,6 +1312,9 @@ struct SkydotWorld::BuildJob {
     /// References still to place, with the cell each belongs to.
     std::vector<std::pair<const wfb::Ref*, std::uint32_t>> refs;
     std::size_t next = 0;
+    /// Actors, placed after the references.
+    std::vector<const wfb::ActorRef*> actors;
+    std::size_t next_actor = 0;
     BuildStats stats;
     bool terrain = false;
     bool water = false;
@@ -1126,6 +1347,12 @@ bool SkydotWorld::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
         }
         const auto& [ref, cell] = job.refs[job.next++];
         place_ref(root, *ref, cell, job.stats);
+    }
+    while (job.next_actor < job.actors.size()) {
+        if (static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec() - started) > budget_usec) {
+            return false;
+        }
+        place_actor(root, *job.actors[job.next_actor++], job.stats);
     }
     Dictionary out = stats_dictionary(job.stats);
     out["terrain"] = job.terrain;
@@ -1223,6 +1450,16 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         const auto owner = persistent_cells_.find(w);
         for (const auto* ref : it->second) {
             job->refs.emplace_back(ref, owner != persistent_cells_.end() ? owner->second : 0);
+        }
+    }
+    if (actors_) {
+        if (cell != nullptr) {
+            if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
+                job->actors.insert(job->actors.end(), it->second.begin(), it->second.end());
+            }
+        }
+        if (const auto it = persistent_actors_.find(grid_key(w, gx, gy)); it != persistent_actors_.end()) {
+            job->actors.insert(job->actors.end(), it->second.begin(), it->second.end());
         }
     }
     // Builds whose roots were freed unfinished are dropped here.

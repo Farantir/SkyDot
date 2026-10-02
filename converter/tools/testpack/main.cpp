@@ -338,7 +338,8 @@ ByteWriter cell_record(std::string_view name, bool exterior, std::int32_t x, std
 void write_cell(ByteWriter& out, std::uint32_t form, const ByteWriter& payload,
                 std::uint32_t cell_flags, const std::vector<Placement>& refrs,
                 const ByteWriter* land = nullptr, std::uint32_t land_form = 0,
-                const std::vector<std::pair<std::uint32_t, bethconv::test::NavSpec>>& navmeshes = {}) {
+                const std::vector<std::pair<std::uint32_t, bethconv::test::NavSpec>>& navmeshes = {},
+                const std::vector<Placement>& actors = {}) {
     bethconv::test::write_record(out, "CELL", form, payload.span(), cell_flags);
 
     ByteWriter children;
@@ -352,6 +353,9 @@ void write_cell(ByteWriter& out, std::uint32_t form, const ByteWriter& payload,
     }
     for (const auto& p : refrs) {
         bethconv::test::write_record(children, "REFR", p.form, reference_record(p).span());
+    }
+    for (const auto& p : actors) {
+        bethconv::test::write_record(children, "ACHR", p.form, reference_record(p).span());
     }
     ByteWriter temporary;
     bethconv::test::write_group(temporary, form, 9, children.span());
@@ -616,6 +620,80 @@ std::vector<std::byte> build_plugin() {
     bethconv::test::write_record(quests, "QUST", 0x0000'0150, quest_record().span());
     bethconv::test::write_group(file, tag_value("QUST"), 0, quests.span());
 
+    // ---- an actor: race, skin armor and its addon, NPC ----
+    // The race's skeleton and behaviour name files under meshes/testpack/actor/
+    // (see actor_skeleton and actor_clip); its skin is one addon, the skinned
+    // body.
+    {
+        const auto text = [](ByteWriter& payload, std::string_view tag, std::string_view value) {
+            ByteWriter field;
+            field.zstring(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        const auto u32 = [](ByteWriter& payload, std::string_view tag, std::uint32_t value) {
+            ByteWriter field;
+            field.u32(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        ByteWriter race;
+        edid(race, "TestpackRace");
+        u32(race, "WNAM", 0x0000'0162);
+        ByteWriter data;
+        for (int i = 0; i < 16; ++i) {
+            data.u8(0);
+        }
+        for (const float f : {1.0F, 1.0F, 1.0F, 1.0F}) {
+            data.f32(f);
+        }
+        data.u32(1);
+        for (int i = 36; i < 164; ++i) {
+            data.u8(0);
+        }
+        bethconv::test::write_field(race, "DATA", data);
+        bethconv::test::write_field(race, "MNAM", ByteWriter{});
+        text(race, "ANAM", "TestPack\\Actor\\skeleton.nif");
+        bethconv::test::write_field(race, "NAM3", ByteWriter{});
+        bethconv::test::write_field(race, "MNAM", ByteWriter{});
+        text(race, "MODL", "TestPack\\Actor\\Behaviour.hkx");
+        ByteWriter races;
+        bethconv::test::write_record(races, "RACE", 0x0000'0160, race.span());
+        bethconv::test::write_group(file, tag_value("RACE"), 0, races.span());
+
+        ByteWriter bod2;
+        bod2.u32(0x4); // body
+        bod2.u32(2);
+        ByteWriter addon;
+        edid(addon, "TestpackSkinAddon");
+        bethconv::test::write_field(addon, "BOD2", bod2);
+        u32(addon, "RNAM", 0x0000'0160);
+        text(addon, "MOD2", "TestPack\\Actor\\body.nif");
+        ByteWriter addons;
+        bethconv::test::write_record(addons, "ARMA", 0x0000'0161, addon.span());
+        bethconv::test::write_group(file, tag_value("ARMA"), 0, addons.span());
+
+        ByteWriter skin;
+        edid(skin, "TestpackSkin");
+        bethconv::test::write_field(skin, "BOD2", bod2);
+        u32(skin, "RNAM", 0x0000'0160);
+        u32(skin, "MODL", 0x0000'0161);
+        ByteWriter armors;
+        bethconv::test::write_record(armors, "ARMO", 0x0000'0162, skin.span());
+        bethconv::test::write_group(file, tag_value("ARMO"), 0, armors.span());
+
+        ByteWriter npc;
+        edid(npc, "TestpackNpc");
+        ByteWriter acbs;
+        acbs.u32(0); // male
+        for (int i = 0; i < 10; ++i) {
+            acbs.u16(0);
+        }
+        bethconv::test::write_field(npc, "ACBS", acbs);
+        u32(npc, "RNAM", 0x0000'0160);
+        ByteWriter npcs;
+        bethconv::test::write_record(npcs, "NPC_", 0x0000'0164, npc.span());
+        bethconv::test::write_group(file, tag_value("NPC_"), 0, npcs.span());
+    }
+
     // ---- WTHR and CLMT, for the sky ----
     ByteWriter wthr;
     edid(wthr, "TestpackClear");
@@ -849,7 +927,9 @@ std::vector<std::byte> build_plugin() {
                         return out.bytes();
                     }()},
                },
-               nullptr, 0, {{0x0000'0306, interior_navmesh()}});
+               nullptr, 0, {{0x0000'0306, interior_navmesh()}},
+               // The actor, 100 units west of the cube, facing east.
+               {{.form = 0x0000'0307, .base = 0x0000'0164, .x = -100, .y = 0, .z = 0, .rz = 1.5707964F}});
     ByteWriter interior_sub_block;
     bethconv::test::write_group(interior_sub_block, 0, 3, interior.span());
     ByteWriter interior_block;
@@ -1007,6 +1087,8 @@ std::size_t write_data_folder(const fs::path& data) {
 
     put("meshes/testpack/actor/skeleton.hkx", actor_skeleton());
     put("meshes/testpack/actor/turnhead.hkx", actor_clip());
+    // The idle the race's behaviour folder offers; same bytes, one asset.
+    put("meshes/testpack/actor/animations/mt_idle.hkx", actor_clip());
     put("meshes/testpack/actor/body.nif", actor_body());
 
     // Not converted; must appear in `report.json`.

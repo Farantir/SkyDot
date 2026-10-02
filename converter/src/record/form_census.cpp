@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/record/form_census.hpp"
 
+#include "bethconv/record/forms_actor.hpp"
 #include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
@@ -73,6 +74,11 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"SPEL"}, &run<parse_spell>},
     {FourCC{"NPC_"}, &run<parse_npc>},
     {FourCC{"QUST"}, &run<parse_quest>},
+    {FourCC{"ARMO"}, &run<parse_armor>},
+    {FourCC{"ARMA"}, &run<parse_armor_addon>},
+    {FourCC{"OTFT"}, &run<parse_outfit>},
+    {FourCC{"LVLI"}, &run<parse_leveled_item>},
+    {FourCC{"RACE"}, &run<parse_race>},
 };
 
 } // namespace

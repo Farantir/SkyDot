@@ -29,7 +29,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 7;
+inline constexpr std::uint32_t k_world_format_version = 8;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -66,6 +66,13 @@ struct WorldStats {
     std::uint64_t regions{};
     std::uint64_t navmeshes{};
     std::uint64_t nav_triangles{};
+    /// What actors are built from (world.fb format 8).
+    std::uint64_t npcs{};
+    std::uint64_t races{};
+    std::uint64_t armors{};
+    std::uint64_t armor_addons{};
+    std::uint64_t outfits{};
+    std::uint64_t leveled_lists{};
     /// Navmeshes whose parent is not a cell; not included.
     std::uint64_t orphan_navmeshes{};
     /// References whose base or other FormIDs could not be resolved; the
@@ -436,6 +443,83 @@ struct WorldGlobal {
     char kind{};
     float value{};
 };
+/// NPC_ as written to world.fb; FormIDs global.
+struct WorldNpc {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::string name;
+    std::uint32_t flags{}; ///< ACBS; 1 female.
+    std::uint16_t level{};
+    std::uint32_t race{};
+    std::uint32_t template_form{};
+    std::uint16_t template_flags{};
+    std::uint32_t skin{};
+    std::uint32_t default_outfit{};
+    std::uint32_t sleeping_outfit{};
+    float height{};
+    float weight{};
+    std::vector<std::uint32_t> head_parts;
+    std::vector<std::pair<std::uint32_t, std::int32_t>> items;
+    std::string face_model;
+};
+
+/// RACE as written to world.fb; index 0 male, 1 female.
+struct WorldRace {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::array<std::string, 2> skeletons;
+    std::array<std::string, 2> behaviours;
+    std::uint32_t skin{};
+    std::array<float, 2> heights{1, 1};
+    std::array<float, 2> weights{1, 1};
+    std::uint32_t flags{};
+    struct BodyPart {
+        bool female{};
+        std::uint32_t index{};
+        std::string model;
+    };
+    std::vector<BodyPart> body_parts;
+    std::array<std::vector<std::uint32_t>, 2> head_parts;
+    std::uint32_t armor_race{};
+};
+
+struct WorldArmor {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::uint32_t slots{};
+    std::uint32_t race{};
+    std::vector<std::uint32_t> addons;
+};
+
+struct WorldArmorAddon {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::uint32_t slots{};
+    std::uint32_t race{};
+    std::vector<std::uint32_t> additional_races;
+    std::array<std::string, 2> models;
+    std::array<std::uint8_t, 2> priorities{};
+    std::array<std::uint8_t, 2> weight_sliders{};
+};
+
+struct WorldOutfit {
+    std::uint32_t id{};
+    std::vector<std::uint32_t> items;
+};
+
+struct WorldLeveledList {
+    std::uint32_t id{};
+    std::uint32_t type{}; ///< LVLI or LVLN as a FourCC value.
+    std::uint8_t flags{};
+    std::uint8_t chance_none{};
+    struct Entry {
+        std::uint16_t level{};
+        std::uint16_t count{};
+        std::uint32_t form{};
+    };
+    std::vector<Entry> entries;
+};
+
 struct WorldActor {
     std::uint32_t ref{};
     std::uint32_t base{};
@@ -476,6 +560,9 @@ public:
     [[nodiscard]] std::optional<WorldQuest> quest(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldGlobal> global(std::uint32_t id) const;
     [[nodiscard]] std::vector<WorldActor> actors() const;
+    [[nodiscard]] std::optional<WorldNpc> npc(std::uint32_t id) const;
+    [[nodiscard]] std::optional<WorldRace> race(std::uint32_t id) const;
+    [[nodiscard]] std::optional<WorldArmorAddon> armor_addon(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<std::pair<std::string, std::uint32_t>> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

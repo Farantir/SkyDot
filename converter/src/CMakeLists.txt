@@ -50,6 +50,7 @@ add_library(bethconv_core STATIC
     record/forms_object.cpp
     record/forms_world.cpp
     record/forms_game.cpp
+    record/forms_actor.cpp
     record/form_census.cpp
     record/strings.cpp
     record/merge.cpp

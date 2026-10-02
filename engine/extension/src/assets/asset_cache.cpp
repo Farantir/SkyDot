@@ -125,6 +125,15 @@ bool AssetCache::has(const std::string& vpath) const {
     return store_->find(normalize(vpath)) != nullptr;
 }
 
+godot::PackedByteArray AssetCache::bytes(const std::string& vpath) const {
+    godot::PackedByteArray out;
+    if (const auto data = store_->read(normalize(vpath))) {
+        out.resize(static_cast<std::int64_t>(data->size()));
+        std::copy(data->begin(), data->end(), out.ptrw());
+    }
+    return out;
+}
+
 void AssetCache::trim() {
     std::lock_guard lock(mutex_);
     std::erase_if(ready_, [](const auto& entry) {

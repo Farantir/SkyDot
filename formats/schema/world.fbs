@@ -590,6 +590,118 @@ struct ActorRef {
     flags: uint32;
 }
 
+/// One sex's body part of a race (RACE NAM1 section): INDX 0 upper body,
+/// 1 lower body, 2 hand, 3 foot, 4 tail.
+table RaceBodyPart {
+    female: bool;
+    index: uint32;
+    model: string;
+}
+
+/// RACE: what an actor of this race is built from. Paths are normalized
+/// virtual paths. Per-sex vectors hold male, then female.
+table Race {
+    id: uint32;
+    editor_id: string;
+    /// ANAM: the skeleton NIF; its animation skeleton is the `.hkx` of the
+    /// same name beside it.
+    skeletons: [string];
+    /// The behaviour graph (`.hkx`) per sex.
+    behaviours: [string];
+    /// WNAM: the ARMO worn when naked (body, hands, feet).
+    skin: uint32;
+    heights: [float];
+    weights: [float];
+    /// DATA flags: 1 playable, 2 FaceGen head, 4 child, …
+    flags: uint32;
+    body_parts: [RaceBodyPart];
+    /// HEAD in the head data section, male then female in `head_parts_female`.
+    head_parts_male: [uint32];
+    head_parts_female: [uint32];
+    /// RNAM: the race whose armor this one wears.
+    armor_race: uint32;
+}
+
+/// ARMO: an item worn. Bit n of `slots` is body slot 30 + n.
+table Armor {
+    id: uint32;
+    editor_id: string;
+    slots: uint32;
+    race: uint32;
+    /// The ARMA that render it, in order.
+    addons: [uint32];
+}
+
+/// ARMA: one race's model of an armor. Weight slider bit 1 (2) means the
+/// model has `_0` (thin) and `_1` (heavy) variants; the path names `_1`.
+table ArmorAddon {
+    id: uint32;
+    editor_id: string;
+    slots: uint32;
+    race: uint32;
+    additional_races: [uint32];
+    male_model: string;
+    female_model: string;
+    male_priority: ubyte;
+    female_priority: ubyte;
+    male_weight_slider: ubyte;
+    female_weight_slider: ubyte;
+}
+
+/// OTFT: ARMO and LVLI.
+table Outfit {
+    id: uint32;
+    items: [uint32];
+}
+
+struct LeveledEntry {
+    level: uint16;
+    count: uint16;
+    form: uint32;
+}
+
+/// LVLI or LVLN. LVLF flags: 1 from all levels, 2 each entry (LVLI), 4 use
+/// all.
+table LeveledList {
+    id: uint32;
+    type: uint32;
+    flags: ubyte;
+    chance_none: ubyte;
+    entries: [LeveledEntry];
+}
+
+struct NpcItem {
+    form: uint32;
+    count: int32;
+}
+
+/// NPC_: what an actor base looks like and wears.
+table Npc {
+    id: uint32;
+    editor_id: string;
+    name: string;
+    /// ACBS flags: 1 female, 2 essential, 0x20 unique, …
+    flags: uint32;
+    level: uint16;
+    race: uint32;
+    /// TPLT (an NPC_ or LVLN) and which parts come from it (ACBS template
+    /// flags: 1 traits, 0x100 inventory, …).
+    template: uint32;
+    template_flags: uint16;
+    /// WNAM: overrides the race's skin.
+    skin: uint32;
+    default_outfit: uint32;
+    sleeping_outfit: uint32;
+    height: float;
+    weight: float;
+    head_parts: [uint32];
+    items: [NpcItem];
+    /// The FaceGen head the game precomputes for this NPC
+    /// (`meshes/actors/character/facegendata/facegeom/<plugin>/<id>.nif`,
+    /// named by the plugin that defines it), whether or not it exists.
+    face_model: string;
+}
+
 /// A plugin of the load order and where its forms live: a form of this
 /// plugin with object id `n` is `prefix | n`, `n` masked to 24 bits (12 for a
 /// light plugin). For Game.GetFormFromFile.
@@ -627,6 +739,18 @@ table World {
     precipitations: [Precipitation];
     /// Sorted by id; only those with weather.
     regions: [Region];
+    /// Sorted by id.
+    npcs: [Npc];
+    /// Sorted by id.
+    races: [Race];
+    /// Sorted by id.
+    armors: [Armor];
+    /// Sorted by id.
+    armor_addons: [ArmorAddon];
+    /// Sorted by id.
+    outfits: [Outfit];
+    /// Sorted by id: LVLI and LVLN.
+    leveled_lists: [LeveledList];
 }
 
 root_type World;

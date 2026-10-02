@@ -151,7 +151,8 @@ camera looks (`--navigation off` builds none; see `docs/navigation.md`).
 P shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
-start-game-enabled quests from starting.
+start-game-enabled quests from starting. Placed NPCs stand in their idle,
+dressed in their outfits (`--actors off` builds none; see `docs/actors.md`).
 F12 saves a screenshot with a JSON file beside it (Shift+F12 without the text
 overlay; `--shot-dir`, default `user://screenshots`): place, camera in engine
 and game terms, time, weather, viewer options, pack hashes, GPU, and the game

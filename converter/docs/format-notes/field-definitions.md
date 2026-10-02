@@ -1,7 +1,7 @@
 # Field definitions
 
 The record layer (`esm4-plugins.md`) walks plugins and hands out payloads; this
-layer decodes them for 38 record types. Sizes were measured with
+layer decodes them for 45 record types. Sizes were measured with
 `bethconv records --field-sizes <TYPE>`, and every definition is checked with
 `bethconv forms` over real installs.
 
@@ -13,6 +13,7 @@ layer decodes them for 38 record types. Sizes were measured with
 | `record/forms_object.*` | TXST ACTI CONT MISC MSTT FURN FLOR TREE KEYM ALCH AMMO WEAP PROJ IDLM LVLN | cell contents |
 | `record/forms_world.*` | LTEX IMGS CLMT WTHR REGN LCTN LAND NAVM NAVI ACHR SPGD | world layers |
 | `record/forms_game.*` | GMST GLOB CLAS FACT ENCH SPEL NPC_ | game data |
+| `record/forms_actor.*` | ARMO ARMA OTFT LVLI RACE | what actors look like and wear |
 
 The list lives in `defined_types()`. A type listed there without a census
 dispatch entry is a hard error; `tests/unit/test_forms.cpp` walks the whole set.
@@ -83,6 +84,17 @@ SCEN, PERK) is not decoded; none of those types is defined.
 (NPC_ attack), `TINI` (tint layer), `CSDT` (sound set). Following fields belong
 to the last opener. Push on the opener, append to `back()` on followers, and
 emplace a default if a follower comes first, since malformed files do that.
+
+**Sections switched by marker fields.** RACE's fields come in sections:
+`NAM0` opens head data, `NAM1` body data, `NAM3` the behaviour graph, and
+within each the empty `MNAM` and `FNAM` switch between male and female. The
+same tag means different things per section (`INDX` + `MODL` is a body part
+under `NAM1`, `MODL` the behaviour file under `NAM3`), so the parser carries
+the section and sex as state. RACE reads what building an actor needs
+(skeleton per sex, body parts, behaviour, skin, heights) and keeps every
+other field whole in `other`, so its definition claims all 60 field types
+without decoding tints, morphs and movement. Every RACE of the three installs
+and the 985 in the FUS list parse with nothing left over.
 
 **A field typed by another field.** GMST's `DATA` type comes from the first
 letter of its editor id: `b` bool, `i` int, `f` float, `s` string, `u`

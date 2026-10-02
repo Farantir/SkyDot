@@ -6,6 +6,7 @@
 #include "bethconv/io/span_stream.hpp"
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/forms.hpp"
+#include "bethconv/record/forms_actor.hpp"
 #include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
@@ -14,6 +15,8 @@
 #include "bethconv/pack/world_generated.h"
 
 #include <algorithm>
+#include <cctype>
+#include <cstdio>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -209,12 +212,39 @@ public:
             on_precipitation(merged, data, form_ctx);
         } else if (merged.type == FourCC{"REGN"}) {
             on_region(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"RACE"}) {
+            on_race(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"ARMA"}) {
+            on_armor_addon(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"OTFT"}) {
+            on_outfit(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"LVLI"}) {
+            on_leveled_item(merged, data, form_ctx);
         } else if (merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
+            // These are bases too (placed armor, scripted NPCs); read twice.
+            io::SpanReader copy = data;
+            if (merged.type == FourCC{"NPC_"}) {
+                on_npc(merged, copy, form_ctx);
+            } else if (merged.type == FourCC{"ARMO"}) {
+                on_armor(merged, copy, form_ctx);
+            } else if (merged.type == FourCC{"LVLN"}) {
+                on_leveled_npc(merged, copy, form_ctx);
+            }
             on_other(merged, data);
         }
     }
 
     [[nodiscard]] WorldStats& stats() noexcept { return stats_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldNpc>& npcs() noexcept { return npcs_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldRace>& races() noexcept { return races_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldArmor>& armors() noexcept { return armors_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldArmorAddon>& armor_addons() noexcept {
+        return armor_addons_;
+    }
+    [[nodiscard]] std::map<std::uint32_t, WorldOutfit>& outfits() noexcept { return outfits_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldLeveledList>& leveled_lists() noexcept {
+        return leveled_lists_;
+    }
     [[nodiscard]] std::map<std::uint32_t, CellEntry>& cells() noexcept { return cells_; }
     [[nodiscard]] std::map<std::uint32_t, BaseEntry>& bases() noexcept { return bases_; }
     [[nodiscard]] std::unordered_map<std::uint32_t, std::vector<WorldRef>>& refs() noexcept {
@@ -595,6 +625,198 @@ private:
             ++stats_.unresolved;
         }
         navmeshes_[merged.parent.value].push_back(std::move(out));
+    }
+
+    // ---- what actors are built from -------------------------------------
+
+    std::vector<std::uint32_t> global_all(const record::MergedRecord& merged,
+                                          const std::vector<FormId>& forms, bool& failed) {
+        std::vector<std::uint32_t> out;
+        out.reserve(forms.size());
+        for (const FormId f : forms) {
+            out.push_back(global(merged, f, failed));
+        }
+        return out;
+    }
+
+    /// The precomputed FaceGen head: named by the plugin owning the form and
+    /// the form's id within it.
+    std::string face_model(const record::MergedRecord& merged) const {
+        const auto& entries = order_.entries();
+        if (merged.owner >= entries.size()) {
+            return {};
+        }
+        const auto& owner = entries[merged.owner];
+        std::array<char, 16> id{};
+        std::snprintf(id.data(), id.size(), "%08x", merged.form.value & owner.object_mask());
+        std::string plugin = owner.name;
+        std::ranges::transform(plugin, plugin.begin(),
+                               [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        return "meshes/actors/character/facegendata/facegeom/" + plugin + "/" + id.data() + ".nif";
+    }
+
+    void on_npc(const record::MergedRecord& merged, io::SpanReader& data,
+                const record::FormContext& form_ctx) {
+        auto npc = record::parse_npc(data, form_ctx);
+        if (!npc) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        WorldNpc out;
+        out.id = merged.form.value;
+        out.editor_id = npc->editor_id;
+        out.name = npc->name.text;
+        out.flags = npc->flags;
+        out.level = npc->level;
+        out.race = global(merged, npc->race, failed);
+        out.template_form = global(merged, npc->npc_template, failed);
+        out.template_flags = npc->template_flags;
+        out.skin = global(merged, npc->worn_armor, failed);
+        out.default_outfit = global(merged, npc->default_outfit, failed);
+        out.sleeping_outfit = global(merged, npc->sleeping_outfit, failed);
+        out.height = npc->height;
+        out.weight = npc->weight;
+        out.head_parts = global_all(merged, npc->head_parts, failed);
+        for (const auto& item : npc->items) {
+            out.items.emplace_back(global(merged, item.item, failed), item.count);
+        }
+        out.face_model = face_model(merged);
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        npcs_[out.id] = std::move(out);
+    }
+
+    void on_race(const record::MergedRecord& merged, io::SpanReader& data,
+                 const record::FormContext& form_ctx) {
+        auto race = record::parse_race(data, form_ctx);
+        if (!race) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        WorldRace out;
+        out.id = merged.form.value;
+        out.editor_id = race->editor_id;
+        for (std::size_t sex = 0; sex < 2; ++sex) {
+            const auto& s = race->sexes[sex];
+            out.skeletons[sex] = s.skeleton.empty() ? std::string{} : model_vpath(s.skeleton);
+            out.behaviours[sex] = s.behaviour.empty() ? std::string{} : model_vpath(s.behaviour);
+            for (const auto& part : s.body_parts) {
+                out.body_parts.push_back(WorldRace::BodyPart{
+                    .female = sex == 1,
+                    .index = part.index,
+                    .model = part.model.empty() ? std::string{} : model_vpath(part.model)});
+            }
+            out.head_parts[sex] = global_all(merged, s.head_parts, failed);
+        }
+        out.skin = global(merged, race->skin, failed);
+        out.heights = race->height;
+        out.weights = race->weight;
+        out.flags = race->flags;
+        out.armor_race = global(merged, race->armor_race, failed);
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        races_[out.id] = std::move(out);
+    }
+
+    void on_armor(const record::MergedRecord& merged, io::SpanReader& data,
+                  const record::FormContext& form_ctx) {
+        auto armor = record::parse_armor(data, form_ctx);
+        if (!armor) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        WorldArmor out{.id = merged.form.value,
+                       .editor_id = armor->editor_id,
+                       .slots = armor->body.slots,
+                       .race = global(merged, armor->race, failed),
+                       .addons = global_all(merged, armor->addons, failed)};
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        armors_[out.id] = std::move(out);
+    }
+
+    void on_armor_addon(const record::MergedRecord& merged, io::SpanReader& data,
+                        const record::FormContext& form_ctx) {
+        auto addon = record::parse_armor_addon(data, form_ctx);
+        if (!addon) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        WorldArmorAddon out;
+        out.id = merged.form.value;
+        out.editor_id = addon->editor_id;
+        out.slots = addon->body.slots;
+        out.race = global(merged, addon->race, failed);
+        out.additional_races = global_all(merged, addon->additional_races, failed);
+        out.models = {addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path),
+                      addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path)};
+        out.priorities = {addon->male_priority, addon->female_priority};
+        out.weight_sliders = {addon->male_weight_slider, addon->female_weight_slider};
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        armor_addons_[out.id] = std::move(out);
+    }
+
+    void on_outfit(const record::MergedRecord& merged, io::SpanReader& data,
+                   const record::FormContext& form_ctx) {
+        auto outfit = record::parse_outfit(data, form_ctx);
+        if (!outfit) {
+            ++stats_.parse_errors;
+            return;
+        }
+        bool failed = false;
+        outfits_[merged.form.value] =
+            WorldOutfit{.id = merged.form.value, .items = global_all(merged, outfit->items, failed)};
+        if (failed) {
+            ++stats_.unresolved;
+        }
+    }
+
+    template <typename Entries>
+    void add_leveled(const record::MergedRecord& merged, std::uint8_t flags, std::uint8_t chance_none,
+                     const Entries& entries) {
+        bool failed = false;
+        WorldLeveledList out{.id = merged.form.value,
+                             .type = merged.type.value,
+                             .flags = flags,
+                             .chance_none = chance_none,
+                             .entries = {}};
+        for (const auto& e : entries) {
+            out.entries.push_back(
+                {.level = e.level, .count = e.count, .form = global(merged, e.reference, failed)});
+        }
+        if (failed) {
+            ++stats_.unresolved;
+        }
+        leveled_lists_[out.id] = std::move(out);
+    }
+
+    void on_leveled_item(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx) {
+        auto list = record::parse_leveled_item(data, form_ctx);
+        if (!list) {
+            ++stats_.parse_errors;
+            return;
+        }
+        add_leveled(merged, list->flags, list->chance_none, list->entries);
+    }
+
+    void on_leveled_npc(const record::MergedRecord& merged, io::SpanReader& data,
+                        const record::FormContext& form_ctx) {
+        auto list = record::parse_leveled_npc(data, form_ctx);
+        if (!list) {
+            ++stats_.parse_errors;
+            return;
+        }
+        add_leveled(merged, list->flags, list->chance_none, list->entries);
     }
 
     /// Any other type: keep it as a base if it has a model or scripts. ARMO's
@@ -1056,6 +1278,12 @@ private:
     std::map<std::uint32_t, WorldGlobal> globals_;
     std::vector<WorldActor> actors_;
     std::unordered_map<std::uint32_t, std::vector<WorldNavMesh>> navmeshes_;
+    std::map<std::uint32_t, WorldNpc> npcs_;
+    std::map<std::uint32_t, WorldRace> races_;
+    std::map<std::uint32_t, WorldArmor> armors_;
+    std::map<std::uint32_t, WorldArmorAddon> armor_addons_;
+    std::map<std::uint32_t, WorldOutfit> outfits_;
+    std::map<std::uint32_t, WorldLeveledList> leveled_lists_;
 };
 
 flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>> write_scripts(
@@ -1577,6 +1805,82 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                             static_cast<std::uint8_t>(g.kind), g.value));
         ++stats.globals;
     }
+    // ---- what actors are built from ----
+    const auto strings = [&](const auto& list) {
+        std::vector<flatbuffers::Offset<flatbuffers::String>> offsets;
+        for (const auto& text : list) {
+            offsets.push_back(builder.CreateString(text));
+        }
+        return builder.CreateVector(offsets);
+    };
+    std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
+    for (const auto& [id, n] : sink.npcs()) {
+        std::vector<wfb::NpcItem> items;
+        for (const auto& [form, count] : n.items) {
+            items.emplace_back(form, count);
+        }
+        npcs.push_back(wfb::CreateNpc(builder, n.id, builder.CreateString(n.editor_id),
+                                      builder.CreateString(n.name), n.flags, n.level, n.race,
+                                      n.template_form, n.template_flags, n.skin, n.default_outfit,
+                                      n.sleeping_outfit, n.height, n.weight,
+                                      builder.CreateVector(n.head_parts),
+                                      builder.CreateVectorOfStructs(items),
+                                      builder.CreateString(n.face_model)));
+        ++stats.npcs;
+    }
+    std::vector<flatbuffers::Offset<wfb::Race>> races;
+    for (const auto& [id, r] : sink.races()) {
+        std::vector<flatbuffers::Offset<wfb::RaceBodyPart>> parts;
+        for (const auto& p : r.body_parts) {
+            parts.push_back(wfb::CreateRaceBodyPart(builder, p.female, p.index, builder.CreateString(p.model)));
+        }
+        const std::vector<float> heights(r.heights.begin(), r.heights.end());
+        const std::vector<float> weights(r.weights.begin(), r.weights.end());
+        races.push_back(wfb::CreateRace(builder, r.id, builder.CreateString(r.editor_id),
+                                        strings(r.skeletons), strings(r.behaviours), r.skin,
+                                        builder.CreateVector(heights), builder.CreateVector(weights),
+                                        r.flags, builder.CreateVector(parts),
+                                        builder.CreateVector(r.head_parts[0]),
+                                        builder.CreateVector(r.head_parts[1]), r.armor_race));
+        ++stats.races;
+    }
+    std::vector<flatbuffers::Offset<wfb::Armor>> armors;
+    for (const auto& [id, a] : sink.armors()) {
+        armors.push_back(wfb::CreateArmor(builder, a.id, builder.CreateString(a.editor_id), a.slots,
+                                          a.race, builder.CreateVector(a.addons)));
+        ++stats.armors;
+    }
+    std::vector<flatbuffers::Offset<wfb::ArmorAddon>> addons;
+    for (const auto& [id, a] : sink.armor_addons()) {
+        addons.push_back(wfb::CreateArmorAddon(
+            builder, a.id, builder.CreateString(a.editor_id), a.slots, a.race,
+            builder.CreateVector(a.additional_races), builder.CreateString(a.models[0]),
+            builder.CreateString(a.models[1]), a.priorities[0], a.priorities[1], a.weight_sliders[0],
+            a.weight_sliders[1]));
+        ++stats.armor_addons;
+    }
+    std::vector<flatbuffers::Offset<wfb::Outfit>> outfits;
+    for (const auto& [id, o] : sink.outfits()) {
+        outfits.push_back(wfb::CreateOutfit(builder, o.id, builder.CreateVector(o.items)));
+        ++stats.outfits;
+    }
+    std::vector<flatbuffers::Offset<wfb::LeveledList>> leveled;
+    for (const auto& [id, l] : sink.leveled_lists()) {
+        std::vector<wfb::LeveledEntry> entries;
+        for (const auto& e : l.entries) {
+            entries.emplace_back(e.level, e.count, e.form);
+        }
+        leveled.push_back(wfb::CreateLeveledList(builder, l.id, l.type, l.flags, l.chance_none,
+                                                 builder.CreateVectorOfStructs(entries)));
+        ++stats.leveled_lists;
+    }
+    const auto npcs_off = builder.CreateVector(npcs);
+    const auto races_off = builder.CreateVector(races);
+    const auto armors_off = builder.CreateVector(armors);
+    const auto addons_off = builder.CreateVector(addons);
+    const auto outfits_off = builder.CreateVector(outfits);
+    const auto leveled_off = builder.CreateVector(leveled);
+
     auto& actors = sink.actors();
     std::ranges::sort(actors, {}, &WorldActor::ref);
     std::vector<wfb::ActorRef> fb_actors;
@@ -1622,6 +1926,12 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     wb.add_plugins(plugins_off);
     wb.add_precipitations(precipitations_off);
     wb.add_regions(regions_off);
+    wb.add_npcs(npcs_off);
+    wb.add_races(races_off);
+    wb.add_armors(armors_off);
+    wb.add_armor_addons(addons_off);
+    wb.add_outfits(outfits_off);
+    wb.add_leveled_lists(leveled_off);
     wfb::FinishWorldBuffer(builder, wb.Finish());
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
@@ -2053,6 +2363,96 @@ std::optional<WorldGlobal> WorldFile::global(std::uint32_t id) const {
                        .editor_id = str(g->editor_id()),
                        .kind = static_cast<char>(g->kind()),
                        .value = g->value()};
+}
+
+std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {
+    const auto* n = find_by_id(impl_->root->npcs(), id);
+    if (n == nullptr) {
+        return std::nullopt;
+    }
+    WorldNpc out{.id = n->id(),
+                 .editor_id = str(n->editor_id()),
+                 .name = str(n->name()),
+                 .flags = n->flags(),
+                 .level = n->level(),
+                 .race = n->race(),
+                 .template_form = n->template_(),
+                 .template_flags = n->template_flags(),
+                 .skin = n->skin(),
+                 .default_outfit = n->default_outfit(),
+                 .sleeping_outfit = n->sleeping_outfit(),
+                 .height = n->height(),
+                 .weight = n->weight(),
+                 .head_parts = {},
+                 .items = {},
+                 .face_model = str(n->face_model())};
+    if (const auto* parts = n->head_parts()) {
+        out.head_parts.assign(parts->begin(), parts->end());
+    }
+    if (const auto* items = n->items()) {
+        for (const auto* i : *items) {
+            out.items.emplace_back(i->form(), i->count());
+        }
+    }
+    return out;
+}
+
+std::optional<WorldRace> WorldFile::race(std::uint32_t id) const {
+    const auto* r = find_by_id(impl_->root->races(), id);
+    if (r == nullptr) {
+        return std::nullopt;
+    }
+    WorldRace out;
+    out.id = r->id();
+    out.editor_id = str(r->editor_id());
+    for (flatbuffers::uoffset_t i = 0; i < 2; ++i) {
+        if (r->skeletons() != nullptr && i < r->skeletons()->size()) {
+            out.skeletons[i] = str(r->skeletons()->Get(i));
+        }
+        if (r->behaviours() != nullptr && i < r->behaviours()->size()) {
+            out.behaviours[i] = str(r->behaviours()->Get(i));
+        }
+        if (r->heights() != nullptr && i < r->heights()->size()) {
+            out.heights[i] = r->heights()->Get(i);
+        }
+        if (r->weights() != nullptr && i < r->weights()->size()) {
+            out.weights[i] = r->weights()->Get(i);
+        }
+    }
+    out.skin = r->skin();
+    out.flags = r->flags();
+    out.armor_race = r->armor_race();
+    if (const auto* parts = r->body_parts()) {
+        for (const auto* p : *parts) {
+            out.body_parts.push_back({.female = p->female(), .index = p->index(), .model = str(p->model())});
+        }
+    }
+    if (const auto* m = r->head_parts_male()) {
+        out.head_parts[0].assign(m->begin(), m->end());
+    }
+    if (const auto* f = r->head_parts_female()) {
+        out.head_parts[1].assign(f->begin(), f->end());
+    }
+    return out;
+}
+
+std::optional<WorldArmorAddon> WorldFile::armor_addon(std::uint32_t id) const {
+    const auto* a = find_by_id(impl_->root->armor_addons(), id);
+    if (a == nullptr) {
+        return std::nullopt;
+    }
+    WorldArmorAddon out;
+    out.id = a->id();
+    out.editor_id = str(a->editor_id());
+    out.slots = a->slots();
+    out.race = a->race();
+    if (const auto* races = a->additional_races()) {
+        out.additional_races.assign(races->begin(), races->end());
+    }
+    out.models = {str(a->male_model()), str(a->female_model())};
+    out.priorities = {a->male_priority(), a->female_priority()};
+    out.weight_sliders = {a->male_weight_slider(), a->female_weight_slider()};
+    return out;
 }
 
 std::vector<std::pair<std::string, std::uint32_t>> WorldFile::plugins() const {

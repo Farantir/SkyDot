@@ -87,3 +87,36 @@ func _run(pack_dir: String) -> void:
     expect(absf(turned.dot(want)) > 0.9999, "the head has turned 90 degrees: %s" % turned)
     player.seek(0.0, true)
     expect(absf(skeleton.get_bone_pose_rotation(head).dot(Quaternion())) > 0.9999, "and starts straight")
+
+    _placed_actor(pack)
+
+## The test pack places that actor (0x307) in TestpackInterior: an NPC_ of a
+## race whose skeleton, behaviour folder and skin all point at the files
+## above.
+func _placed_actor(pack: SkydotPack) -> void:
+    var world := pack.open_world()
+    if world == null:
+        expect(false, "world.fb opens")
+        return
+    var cell: int = world.find_cell("TestpackInterior")
+    expect(Array(world.get_cell_actors(cell)) == [0x307], "the interior has one actor")
+    var plan: Dictionary = world.get_actor_plan(0x307)
+    expect(plan.get("missing", "?") == "", "the actor can be built: %s" % plan)
+    expect(plan.get("skeleton", "") == ACTOR + "skeleton.hkx", "skeleton beside the race's NIF: %s" % plan.get("skeleton"))
+    expect(plan.get("idle", "") == ACTOR + "animations/mt_idle.hkx", "idle from the behaviour folder: %s" % plan.get("idle"))
+    expect(Array(plan.get("parts", [])) == [ACTOR + "body.nif"], "the race's skin is its body: %s" % plan.get("parts"))
+    expect(not plan.get("female", true), "male")
+
+    var built := world.build_cell(cell)
+    var stats: Dictionary = built.get_meta("skydot_stats")
+    expect(stats.get("actors", 0) == 1, "build_cell places it: %s" % stats)
+    expect(stats.get("actor_parts", 0) == 1, "with its body on the skeleton")
+    var actor := built.find_child("0x00000307*", false, false)
+    expect(actor != null, "named by its reference")
+    if actor != null:
+        expect(actor.find_child("Skeleton", true, false) is Skeleton3D, "a skeleton")
+        expect(actor.find_child("AnimationPlayer", false, false) is AnimationPlayer, "an idle player")
+        # Facing east (rotation about Z of 90 degrees) and 100 units west.
+        var p: Vector3 = (actor as Node3D).position
+        expect(p.is_equal_approx(SkydotWorld.skyrim_position(Vector3(-100, 0, 0))), "placed 100 units west: %s" % p)
+    built.free()
