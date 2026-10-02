@@ -4,6 +4,7 @@
 #include "world/effect_asset.hpp"
 
 #include <godot_cpp/classes/animatable_body3d.hpp>
+#include <godot_cpp/classes/bone_attachment3d.hpp>
 #include <godot_cpp/classes/box_shape3d.hpp>
 #include <godot_cpp/classes/capsule_shape3d.hpp>
 #include <godot_cpp/classes/cylinder_shape3d.hpp>
@@ -12,6 +13,7 @@
 #include <godot_cpp/classes/convex_polygon_shape3d.hpp>
 #include <godot_cpp/classes/physics_direct_body_state3d.hpp>
 #include <godot_cpp/classes/physics_material.hpp>
+#include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/classes/sphere_shape3d.hpp>
 #include <godot_cpp/classes/static_body3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -301,18 +303,25 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
     return false; // unsupported
 }
 
-void collect(godot::Node* root, godot::Node* node, std::vector<ModelCollision::Body>& out,
-             int depth) {
-    if (depth > 64) {
-        return;
+/// The bethconv block of an extras dictionary, or {}.
+Dictionary bethconv_block(const Variant& extras) {
+    if (extras.get_type() != Variant::DICTIONARY) {
+        return {};
     }
-    Dictionary block = bethconv_extras(node);
+    const Variant block = Dictionary(extras).get("bethconv", Variant());
+    return block.get_type() == Variant::DICTIONARY ? Dictionary(block) : Dictionary();
+}
+
+/// The body in one node's collision extras, if it collides; removes them.
+void take_body(Dictionary block, const godot::NodePath& node, const godot::StringName& bone,
+               std::vector<ModelCollision::Body>& out) {
     const Variant entries = block.get("collision", Variant());
     if (entries.get_type() == Variant::ARRAY) {
         // Every entry of a node comes from its one rigid body.
         const Array list = entries;
         ModelCollision::Body body;
-        body.node = root->get_path_to(node);
+        body.node = node;
+        body.bone = bone;
         Role role = Role::ignored;
         std::int64_t quality = 0;
         for (std::int64_t i = 0; i < list.size(); ++i) {
@@ -349,6 +358,31 @@ void collect(godot::Node* root, godot::Node* node, std::vector<ModelCollision::B
         // The arrays are large and nothing else reads them.
         block.erase("collision");
     }
+}
+
+void collect(godot::Node* root, godot::Node* node, std::vector<ModelCollision::Body>& out,
+             int depth) {
+    if (depth > 64) {
+        return;
+    }
+    const godot::NodePath path = root->get_path_to(node);
+    if (auto* skeleton = godot::Object::cast_to<godot::Skeleton3D>(node)) {
+        // NIF nodes that skin a mesh became bones; their extras are bone
+        // metadata, the root bone's also the skeleton's own. The shapes are
+        // in the bone's space.
+        bool bones = false;
+        for (std::int32_t i = 0; i < skeleton->get_bone_count(); ++i) {
+            if (skeleton->has_bone_meta(i, "extras")) {
+                bones = true;
+                take_body(bethconv_block(skeleton->get_bone_meta(i, "extras")), path,
+                          skeleton->get_bone_name(i), out);
+            }
+        }
+        if (bones) {
+            bethconv_extras(node).erase("collision");
+        }
+    }
+    take_body(bethconv_extras(node), path, godot::StringName(), out);
     for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
         collect(root, node->get_child(i), out, depth + 1);
     }
@@ -451,6 +485,20 @@ int ModelCollision::attach(godot::Node3D* instance) const {
         auto* owner = godot::Object::cast_to<godot::Node3D>(instance->get_node_or_null(body.node));
         if (owner == nullptr) {
             continue;
+        }
+        if (!body.bone.is_empty()) {
+            auto* skeleton = godot::Object::cast_to<godot::Skeleton3D>(owner);
+            if (skeleton == nullptr || skeleton->find_bone(body.bone) < 0) {
+                continue;
+            }
+            auto* attachment = memnew(godot::BoneAttachment3D);
+            attachment->set_name(godot::String(body.bone) + " Collision");
+            skeleton->add_child(attachment);
+            attachment->set_bone_name(body.bone);
+            // Placed now, not only on the skeleton's next pose update: a
+            // dynamic body reads its place when it is added.
+            attachment->set_transform(skeleton->get_bone_global_pose(skeleton->find_bone(body.bone)));
+            owner = attachment;
         }
         godot::CollisionObject3D* object = nullptr;
         switch (body.motion) {

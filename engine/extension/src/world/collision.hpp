@@ -63,6 +63,9 @@ public:
 
     struct Body {
         godot::NodePath node; ///< From the model's root to the owning node.
+        /// When the owner is a NIF node Godot made a bone of: `node` is the
+        /// Skeleton3D and this the bone, which places the shapes.
+        godot::StringName bone;
         Motion motion{Motion::fixed};
         double mass{1.0};
         double friction{0.5};
