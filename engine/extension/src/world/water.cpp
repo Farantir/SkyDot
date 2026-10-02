@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/water.hpp"
+#include "world/materials.hpp"
 
 #include "world/world.hpp"
 
@@ -91,7 +92,7 @@ Color unpack(std::uint32_t rgba) {
 Ref<godot::Shader> WaterMaterials::shader() {
     if (shader_.is_null()) {
         shader_.instantiate();
-        shader_->set_code(k_water_shader);
+        shader_->set_code(godot::String::utf8(with_game_fog(k_water_shader).c_str()));
     }
     return shader_;
 }

@@ -884,6 +884,7 @@ func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 			env.fog_depth_curve = sky_values["fog_power"]
 			env.fog_density = sky_values["fog_max"]
 			env.fog_light_color = sky_values["fog_far_color"]
+			env.set_meta("skydot_fog_near_color", sky_values["fog_near_color"])
 			env.fog_sky_affect = 0.0
 	var node := WorldEnvironment.new()
 	node.environment = env
@@ -902,9 +903,15 @@ func _add_environment(cell: Dictionary) -> void:
 		env.ambient_light_color = lighting["ambient"]
 		env.ambient_light_energy = 1.0
 		if lighting["fog_far"] > lighting["fog_near"]:
+			# Our shaders compute the game's fog from these (SkydotMaterials.sync_fog).
 			env.fog_enabled = true
-			env.fog_light_color = lighting["fog_near_color"]
-			env.fog_density = 0.01
+			env.fog_mode = Environment.FOG_MODE_DEPTH
+			env.fog_depth_begin = lighting["fog_near"]
+			env.fog_depth_end = lighting["fog_far"]
+			env.fog_depth_curve = lighting["fog_power"] if lighting["fog_power"] > 0.0 else 1.0
+			env.fog_density = lighting["fog_max"] if lighting["fog_max"] > 0.0 else 1.0
+			env.fog_light_color = lighting["fog_far_color"]
+			env.set_meta("skydot_fog_near_color", lighting["fog_near_color"])
 	else:
 		env.ambient_light_color = Color(0.3, 0.3, 0.3)
 	var node := WorldEnvironment.new()
@@ -942,7 +949,7 @@ func _apply_look(yaw: float, pitch: float) -> void:
 func _process(delta: float) -> void:
 	if _camera == null:
 		return
-	# Additive effects fade by the fog themselves (SkydotMaterials.sync_fog).
+	# Our shaders compute the fog themselves (SkydotMaterials.sync_fog).
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
 	if _shot_path != "":
 		if _shot_delay > 0.0:

@@ -207,9 +207,6 @@ uniform bool use_falloff = false;
 uniform bool palette_color = false;
 uniform bool palette_alpha = false;
 uniform bool soft_effect = false;
-#ifdef ALPHA_ADD
-global uniform vec4 skydot_fog;
-#endif
 
 #ifdef PARTICLES
 // Camera-facing quads sized by the particle transform's scale and turned by
@@ -305,12 +302,11 @@ void fragment() {
 	ALPHA = 1.0;
 	// Fog would mix the transparent (black) parts towards its colour, and
 	// adding that draws every quad as a square far away. Fade towards black
-	// by Godot's depth fog amount instead (SkydotMaterials::sync_fog).
-	float fog_far = skydot_fog.y > skydot_fog.x ? skydot_fog.y : skydot_fog.x + 1.0;
-	float fog_z = smoothstep(skydot_fog.x, fog_far, length(VERTEX));
-	FOG = vec4(0.0, 0.0, 0.0, clamp(pow(fog_z, skydot_fog.z) * skydot_fog.w, 0.0, 1.0));
+	// by the fog's amount instead.
+	FOG = vec4(0.0, 0.0, 0.0, skydot_game_fog(VERTEX).a);
 #else
 	ALBEDO = to_linear(color);
+	FOG = skydot_game_fog(VERTEX);
 #endif
 #ifdef LIT
 	ROUGHNESS = 1.0;
@@ -353,7 +349,7 @@ std::string lighting_code(bool double_sided, Alpha alpha) {
         defines = "#define ALPHA_BLEND\n";
         modes += ", blend_mix";
     }
-    return "shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_lighting_body;
+    return with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_lighting_body);
 }
 
 std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, bool lit = false) {
@@ -372,7 +368,7 @@ std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, 
     } else if (alpha == Alpha::test) {
         defines += "#define ALPHA_TEST\n";
     }
-    return "shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_effect_body;
+    return with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_effect_body, false);
 }
 
 // The screen texture is already fogged; fogging the copy again drew a pale
@@ -461,14 +457,64 @@ std::int64_t SkydotMaterials::get_shader_count() const {
     return static_cast<std::int64_t>(shaders_.size());
 }
 
+namespace {
+
+constexpr const char* k_game_fog = R"(
+global uniform vec4 skydot_fog; // near, far (metres), power, max
+global uniform vec3 skydot_fog_near_color; // linear
+global uniform vec3 skydot_fog_far_color;
+vec4 skydot_game_fog(vec3 view_vertex) {
+	float far = max(skydot_fog.y, skydot_fog.x + 0.001);
+	float ramp = pow(clamp((length(view_vertex) - skydot_fog.x) / (far - skydot_fog.x), 0.0, 1.0),
+			max(skydot_fog.z, 0.001));
+	return vec4(mix(skydot_fog_near_color, skydot_fog_far_color, ramp), min(ramp, skydot_fog.w));
+}
+)";
+
+} // namespace
+
+std::string with_game_fog(std::string code, bool write_fog) {
+    SkydotMaterials::ensure_fog_globals(); // before anything compiles against them
+    // After the render_mode line, so uniforms and functions follow it.
+    const std::size_t modes = code.find("render_mode");
+    const std::size_t line_end = modes == std::string::npos ? std::string::npos : code.find('\n', modes);
+    if (line_end == std::string::npos) {
+        return code;
+    }
+    code.insert(line_end + 1, k_game_fog);
+    if (!write_fog) {
+        return code;
+    }
+    const std::size_t fragment = code.find("void fragment()");
+    const std::size_t open = fragment == std::string::npos ? std::string::npos : code.find('{', fragment);
+    if (open == std::string::npos) {
+        return code;
+    }
+    int depth = 0;
+    for (std::size_t i = open; i < code.size(); ++i) {
+        if (code[i] == '{') {
+            ++depth;
+        } else if (code[i] == '}' && --depth == 0) {
+            code.insert(i, "\tFOG = skydot_game_fog(VERTEX);\n");
+            break;
+        }
+    }
+    return code;
+}
+
 void SkydotMaterials::ensure_fog_globals() {
     // Once per process (materials are made on worker threads too); listing
     // the existing parameters is editor-only.
     static std::once_flag once;
     std::call_once(once, [] {
         // x begin, y end (metres), z curve, w density: Environment's depth fog.
-        godot::RenderingServer::get_singleton()->global_shader_parameter_add(
-            "skydot_fog", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC4, godot::Vector4(0, 1, 1, 0));
+        auto* rs = godot::RenderingServer::get_singleton();
+        rs->global_shader_parameter_add("skydot_fog", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC4,
+                                        godot::Vector4(0, 1, 1, 0));
+        rs->global_shader_parameter_add("skydot_fog_near_color", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3,
+                                        godot::Vector3());
+        rs->global_shader_parameter_add("skydot_fog_far_color", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3,
+                                        godot::Vector3());
     });
 }
 
@@ -480,7 +526,18 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
         fog = godot::Vector4(environment->get_fog_depth_begin(), environment->get_fog_depth_end(),
                              environment->get_fog_depth_curve(), environment->get_fog_density());
     }
-    godot::RenderingServer::get_singleton()->global_shader_parameter_set("skydot_fog", fog);
+    const Color far = environment.is_valid() ? environment->get_fog_light_color() : Color();
+    const Color near = environment.is_valid()
+                           ? static_cast<Color>(environment->get_meta("skydot_fog_near_color", far))
+                           : far;
+    const auto linear = [](const Color& c) {
+        const Color l = c.srgb_to_linear();
+        return godot::Vector3(l.r, l.g, l.b);
+    };
+    auto* rs = godot::RenderingServer::get_singleton();
+    rs->global_shader_parameter_set("skydot_fog", fog);
+    rs->global_shader_parameter_set("skydot_fog_near_color", linear(near));
+    rs->global_shader_parameter_set("skydot_fog_far_color", linear(far));
 }
 
 Ref<godot::Shader> SkydotMaterials::shader_for(const std::string& code) {

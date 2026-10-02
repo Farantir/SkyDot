@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/lod.hpp"
+#include "world/materials.hpp"
 
 #include "lod_generated.h"
 
@@ -163,7 +164,8 @@ void fragment() {
 Ref<godot::Shader> make_shader(const char* modes, const char* body) {
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(String("shader_type spatial;\nrender_mode ") + modes + ";\n" + k_mask + body);
+    shader->set_code(String::utf8(
+        with_game_fog(std::string("shader_type spatial;\nrender_mode ") + modes + ";\n" + k_mask + body).c_str()));
     return shader;
 }
 

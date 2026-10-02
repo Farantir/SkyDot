@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/terrain.hpp"
+#include "world/materials.hpp"
 
 #include "world/collision.hpp"
 
@@ -113,7 +114,7 @@ void fragment() {
 )";
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(to_godot(code));
+    shader->set_code(to_godot(with_game_fog(code)));
     shaders_.emplace(layers, shader);
     return shader;
 }

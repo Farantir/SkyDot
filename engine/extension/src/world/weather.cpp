@@ -694,6 +694,8 @@ void SkydotWeather::update_sky(double delta) {
     environment_->set_fog_depth_curve(a.fog_power + (b.fog_power - a.fog_power) * t);
     environment_->set_fog_density(std::clamp(a.fog_max + (b.fog_max - a.fog_max) * t, 0.0F, 1.0F));
     environment_->set_fog_light_color(mix(a.fog_far_color, b.fog_far_color));
+    // The near colour, for our shaders' fog (SkydotMaterials::sync_fog).
+    environment_->set_meta("skydot_fog_near_color", mix(a.fog_near_color, b.fog_near_color));
 
     bool day = true;
     const Vector3 towards = sun_direction(day);

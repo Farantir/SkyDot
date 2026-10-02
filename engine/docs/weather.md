@@ -54,3 +54,17 @@ own lighting.
   statics, the aurora and sun damage are not used.
 - Water does not reflect the sky; clouds cast no shadows.
 - The sun's path is a fixed arc east to west; the moons follow the night arc.
+
+## Fog (2026-10-03)
+
+Our shaders (lit, effects, terrain, LOD, water) compute the game's fog
+themselves and write it to `FOG`, which replaces Godot's depth fog:
+`min(max, ((d − near)/(far − near))^power)`, coloured from the near to the
+far fog colour by the same ramp (`with_game_fog`, materials.cpp). Godot's
+own depth fog uses a smoothstep and one colour; with the far colour alone,
+nearby fog whitened everything. The values come through the Environment
+(depth begin/end/curve/density, the far colour as fog light colour, the near
+colour as its `skydot_fog_near_color` meta) via `SkydotMaterials.sync_fog`;
+interiors use their XCLL fog the same way. The formula is from memory of the
+game's shader, not measured: weathers with a low power (SkyrimCloudySN 0.35)
+stay hazy close by. Needs an in-game comparison in the same weather.
