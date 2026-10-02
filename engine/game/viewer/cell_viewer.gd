@@ -598,9 +598,9 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 	if info["parent_activate_only"] and not parent:
 		_note(label + " only responds to its activate parents")
 		return true
-	var level := _papyrus.get_lock_level(ref)
-	if level > 0 and not force and not _pick_locks:
-		_note(label + " is locked (level %d); Shift+F opens it anyway" % level)
+	var level := _papyrus.get_lock_level(ref)  # -1: not locked; 0 is Novice
+	if level >= 0 and not force and not _pick_locks:
+		_note(label + " is locked (level %d, %s); Shift+F opens it anyway" % [level, _lock_name(level)])
 		return true
 	if level >= 0:
 		_papyrus.set_locked(ref, false)
@@ -629,6 +629,16 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 	if _papyrus.get_scripts(ref).is_empty():
 		_note(label + ": nothing happens")
 	return true
+
+
+## XLOC's level as the game names it.
+func _lock_name(level: int) -> String:
+	if level >= 255:
+		return "requires a key"
+	for step in [[100, "Master"], [75, "Expert"], [50, "Adept"], [25, "Apprentice"]]:
+		if level >= step[0]:
+			return step[1]
+	return "Novice"
 
 
 ## The model of reference `ref` among what is built, or null.

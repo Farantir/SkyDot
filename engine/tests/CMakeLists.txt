@@ -111,7 +111,7 @@ if(SKYDOT_TESTPACK)
     set_tests_properties(viewer_locked PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
-        PASS_REGULAR_EXPRESSION "0x00000303 TestpackDoor \\(DOOR\\) is locked \\(level 25\\)"
+        PASS_REGULAR_EXPRESSION "0x00000303 TestpackDoor \\(DOOR\\) is locked \\(level 25, Apprentice\\)"
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;entered TestpackWorld"
         TIMEOUT 120)
     # Picking it from inside opens both doors: back in through 0x213.

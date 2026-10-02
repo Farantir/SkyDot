@@ -49,8 +49,9 @@ acceleration re-rolled eight times a second.
 ## Lights (`SkydotFlicker`)
 
 LIGH flicker flags vary brightness by the intensity amplitude over the flicker
-period (smooth noise) and move the light within half the movement amplitude
-of its place (read as the whole range; a guess, see flicker.cpp); pulse
+period (smooth noise) and move the light within an eighth of the movement
+amplitude of its place (fFlickerMovement, default 8, as a divisor; a guess,
+see flicker.cpp); pulse
 flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
 
 ## Cost

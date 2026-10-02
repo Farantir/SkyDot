@@ -341,7 +341,7 @@ func _check_flicker() -> void:
     var far := 0.0
     for i in 200:
         far = max(far, flicker.offset_at(i * 0.037).length())
-    expect(far <= 0.05 + 1e-6, "movement stays within half its amplitude")
+    expect(far <= 0.1 / 8.0 + 1e-6, "movement stays within an eighth of its amplitude")
     expect(far > 0.0, "and actually moves")
     var pulse := SkydotFlicker.new()
     pulse.configure(0x0080, 1.0, 0.5, 0.0)

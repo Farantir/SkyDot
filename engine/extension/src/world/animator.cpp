@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <numbers>
+#include <vector>
 
 #include "world/effect_asset.hpp"
 #include "world/particles.hpp"
@@ -176,6 +177,31 @@ void SkydotAnimator::bind(const std::shared_ptr<const EffectAsset>& asset, godot
 }
 
 void SkydotAnimator::_ready() {
+    // An emitter that only named clips drive (the forge's hammer sparks, the
+    // sharpening wheel's) waits for one to play, as the game's furniture
+    // does until it is used; unnamed clips drive theirs all the time.
+    if (asset_ != nullptr) {
+        std::vector<char> named(targets_.size(), 0);
+        for (const Clip& clip : asset_->clips) {
+            const bool always = clip.name.is_empty() && clip.autoplay;
+            for (const Channel& ch : clip.channels) {
+                if (ch.prop == Prop::birth_rate || ch.prop == Prop::emitter_active) {
+                    char& state = named[ch.target];
+                    state = always ? 2 : (state == 0 ? 1 : state);
+                }
+            }
+        }
+        for (std::size_t i = 0; i < targets_.size(); ++i) {
+            if (named[i] != 1 || targets_[i].node == nullptr) {
+                continue;
+            }
+            for (std::int32_t c = 0; c < targets_[i].node->get_child_count(); ++c) {
+                if (auto* p = godot::Object::cast_to<SkydotParticles>(targets_[i].node->get_child(c))) {
+                    p->set_active(false);
+                }
+            }
+        }
+    }
     if (asset_ != nullptr && asset_->autoplay_sequence >= 0) {
         play(asset_->clips[static_cast<std::size_t>(asset_->autoplay_sequence)].name);
     }
