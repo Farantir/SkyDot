@@ -119,7 +119,7 @@ void SkydotActor::_ready() {
     }
     set_hold(true);
     // Spread the first walks out.
-    wait_ = rng_->randf_range(2.0F, 15.0F);
+    wait_ = static_cast<double>(rng_->randf_range(2.0F, 15.0F));
 }
 
 godot::String SkydotActor::get_state() const {
@@ -211,7 +211,7 @@ void SkydotActor::think(double delta) {
             stop();
         }
     }
-    wait_ = path_.is_empty() ? rng_->randf_range(1.0F, 3.0F) : rng_->randf_range(6.0F, 20.0F);
+    wait_ = static_cast<double>(path_.is_empty() ? rng_->randf_range(1.0F, 3.0F) : rng_->randf_range(6.0F, 20.0F));
 }
 
 void SkydotActor::steer(double delta) {
@@ -242,7 +242,7 @@ void SkydotActor::steer(double delta) {
     if (stuck_time_ >= k_stuck_window) {
         if (static_cast<double>(here.distance_to(stuck_from_)) < k_stuck_distance) {
             stop();
-            wait_ = rng_->randf_range(3.0F, 8.0F);
+            wait_ = static_cast<double>(rng_->randf_range(3.0F, 8.0F));
         }
         stuck_time_ = 0.0;
         stuck_from_ = here;

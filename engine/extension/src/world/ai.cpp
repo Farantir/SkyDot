@@ -310,7 +310,6 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_actor_state", "ref"), &SkydotAi::get_actor_state);
     ClassDB::bind_method(D_METHOD("get_packages", "ref"), &SkydotAi::get_packages);
     ClassDB::bind_method(D_METHOD("get_destination", "ref"), &SkydotAi::get_destination);
-    BIND_CONSTANT(TIME_SCALE);
     BIND_CONSTANT(PLACE_BUDGET_USEC);
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
@@ -913,7 +912,7 @@ bool SkydotAi::place_one(std::uint32_t ref, bool through_doors) {
                          static_cast<std::int32_t>(std::floor(p.y / k_cell_units))};
     };
     const bool entered = now.space != spot->space || square(now.position) != square(at);
-    world_->set_actor_place(ref, spot->space, at, facing);
+    world_->set_actor_place(ref, spot->space, at, static_cast<double>(facing));
     // Entering a space builds everyone there anyway; only later moves arrive.
     if (through_doors && entered && spot->space == space_ && space_ != 0) {
         m->announced = true;
@@ -1038,7 +1037,8 @@ void SkydotAi::leave(Mind& m, SkydotActor& actor, std::uint32_t door) {
     }
     const auto& p = it->second.second->position();
     const auto space = static_cast<std::uint32_t>(world_->get_cell_space(dest->second.first->id()));
-    world_->set_actor_place(m.ref, space, Vector3(p.x(), p.y(), p.z()), it->second.second->rotation().z());
+    world_->set_actor_place(m.ref, space, Vector3(p.x(), p.y(), p.z()),
+                            static_cast<double>(it->second.second->rotation().z()));
     std::erase(attached_, m.ref);
     m.node = 0;
     m.space = space;

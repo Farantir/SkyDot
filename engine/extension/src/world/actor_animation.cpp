@@ -231,7 +231,7 @@ godot::Ref<godot::Animation> SkydotAnimation::build_clip(const godot::PackedByte
 
     godot::Ref<godot::Animation> anim;
     anim.instantiate();
-    anim->set_length(std::max(clip->duration(), frame_time * static_cast<float>(frames - 1)));
+    anim->set_length(static_cast<double>(std::max(clip->duration(), frame_time * static_cast<float>(frames - 1))));
     anim->set_step(frame_time);
     for (std::uint32_t t = 0; t < tracks; ++t) {
         int bone = static_cast<int>(t);
@@ -303,7 +303,7 @@ godot::Ref<godot::Animation> SkydotAnimation::build_clip(const godot::PackedByte
                     for (int n = 2; anim->has_marker(unique); ++n) {
                         unique = name + "#" + String::num_int64(n);
                     }
-                    anim->add_marker(unique, std::clamp<double>(a->time(), 0.0, anim->get_length()));
+                    anim->add_marker(unique, std::clamp<double>(static_cast<double>(a->time()), 0.0, anim->get_length()));
                 }
             }
         }
