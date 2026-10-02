@@ -134,6 +134,19 @@ const Basis& axis_conversion() {
     return basis;
 }
 
+/// The game places a model by its reference alone: whatever transform the
+/// NIF's root node carries is replaced (Riverwood Trader's corner counter
+/// piece has its root turned 90 degrees and lines up only without it).
+void drop_root_transform(godot::Node3D* model) {
+    auto* axes = godot::Object::cast_to<godot::Node3D>(model->get_node_or_null("bethconv_z_up_to_y_up"));
+    if (axes == nullptr || axes->get_child_count() == 0) {
+        return;
+    }
+    if (auto* nif_root = godot::Object::cast_to<godot::Node3D>(axes->get_child(0))) {
+        nif_root->set_transform(Transform3D());
+    }
+}
+
 } // namespace
 
 // ---- binding --------------------------------------------------------------
@@ -692,6 +705,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                 if (node != nullptr) {
                     node->set_name(name);
                     node->set_transform(transform);
+                    drop_root_transform(node);
                     if (skyrim_materials_) {
                         stats.materials += materials().apply(node);
                     }

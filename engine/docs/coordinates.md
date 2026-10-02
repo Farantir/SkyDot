@@ -27,3 +27,12 @@ The sign of the Z rotation is confirmed visually: Breezehome's wall, floor and
 roof pieces join without gaps. The X/Y order is not yet confirmed; few objects
 in that cell are tilted. Check it against a cell with tilted clutter (fallen
 books, leaning weapons) before relying on it.
+
+## The model's root node
+
+The game places a model by its reference and replaces whatever transform
+the NIF's root node carries; `SkydotWorld` resets that node (the first child
+of `bethconv_z_up_to_y_up`) when it places a reference. The converter keeps
+the transform, so a mesh viewed on its own looks as in NifSkope. Riverwood
+Trader's `CounterCornerIn01` has its root turned 90° about Z: applied, the
+counter broke apart and its clutter floated (shot 2026-10-02 16:20).
