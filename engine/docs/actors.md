@@ -167,18 +167,32 @@ falling or sticking.
 - **Specular.** Skin (shader type 5) and FaceGen heads (4) take their
   specular mask from slot 7 (`_s`). Before, the mask was 1 everywhere and
   their strong, bluish specular (strength 4.5) washed skin pale blue-grey.
-- **SkinTint (5):** the texture times the actor's skin tone, the traits
-  NPC's QNAM (`world.fb` `npcs.skin_tone`); each actor gets its own copy of
-  the material.
+- **Specular flag.** Without SLSF1 Specular (bit 0) a surface gets no
+  highlight at all; most clothing has none. Applying it everywhere made
+  outfits look polished and Faendal wet.
+- **SkinTint (5):** the actor's skin tone, the traits NPC's QNAM
+  (`world.fb` `npcs.skin_tone`), soft-lit onto the texture as the game
+  does, in gamma space: `base² + 2·tint·base·(1 − base)`, so 0.5 keeps the
+  texture. Multiplying instead made Dorthe (tone 0.44, 0.38, 0.34) dark
+  brown. Each actor gets its own copy of the material.
 - **FaceGen (4):** the NPC's tint mask (slot 6,
-  `facegendata/facetint/<plugin>/<id>.dds`) overlaid on the texture.
+  `facegendata/facetint/<plugin>/<id>.dds`), the same soft light.
+- **HairTint (6):** the albedo times `lerp(1, tint, vertex green)`; hair
+  takes no other vertex colour. The tint is the NIF's own hair tint colour
+  (`hair_tint_color` in the extras, pack `mesh/16`), into which the
+  Creation Kit bakes the NPC's hair colour for FaceGen heads. Older packs
+  draw hair untinted (grey).
+- **Blend and test at once** (FaceGen's shaved-hair layers: test at 0):
+  glTF keeps only the mask, which drew the stubble opaque, black at the
+  back of Faendal's head. Such materials blend and discard below the
+  threshold.
 - **Hair** of the FaceGen head (shapes named `Hair…`, hairlines included) is
   hidden under items covering slot 31 (hoods, helmets).
 
-Not compared with the game: skin looks slightly cool and grey. The game
-also lights skin with soft lighting and the subsurface map (`_sk`, slot 2),
-which are not drawn; hair tint (type 6, the NPC's hair colour) is not
-applied either.
+Not compared with the game side by side yet. The game also lights skin
+with soft lighting and the subsurface map (`_sk`, slot 2), which are not
+drawn, and multiplies FaceGen heads by a detail map (slot 3), which is not
+applied.
 
 ## Checking
 
@@ -211,7 +225,7 @@ navmesh.
 
 ## Not done
 
-- Skin: soft lighting and subsurface, hair colour (see above).
+- Skin: soft lighting, subsurface and the FaceGen detail map (see above).
 - Bare feet (`malefeet_1.nif`) rendered white before the skin work, most
   likely the same full-strength specular; not checked again.
 - Weapons and shields, carried or sheathed; inventory beyond the outfit.

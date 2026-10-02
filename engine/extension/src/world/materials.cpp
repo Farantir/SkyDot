@@ -36,6 +36,7 @@ namespace skydot {
 namespace {
 
 // Shader flags (nifly SLSF1_* / SLSF2_*; UESP, BSLightingShaderProperty).
+constexpr std::uint32_t k_sf1_specular = 1u << 0;
 constexpr std::uint32_t k_sf1_vertex_alpha = 1u << 3;
 constexpr std::uint32_t k_sf1_greyscale_to_palette_color = 1u << 4;
 constexpr std::uint32_t k_sf1_greyscale_to_palette_alpha = 1u << 5;
@@ -54,6 +55,7 @@ constexpr std::int64_t k_type_envmap = 1;
 constexpr std::int64_t k_type_glowmap = 2;
 constexpr std::int64_t k_type_face_tint = 4;
 constexpr std::int64_t k_type_skin_tint = 5;
+constexpr std::int64_t k_type_hair_tint = 6;
 
 // NiAlphaProperty flags: bit 0 blending, bits 1-4 source factor, bits 5-8
 // destination factor, bit 9 alpha test. Factor 0 is ONE.
@@ -72,6 +74,7 @@ uniform float emission_strength = 1.0;
 uniform vec2 uv_scale = vec2(1.0);
 uniform vec2 uv_offset = vec2(0.0);
 uniform float alpha_cutoff = 0.5;
+uniform bool blend_test = false; // blended, and below alpha_cutoff discarded
 // Features are uniforms rather than #defines, so the number of shader
 // variants (each compiled once, up front) stays small.
 uniform bool use_vertex_colors = false;
@@ -92,17 +95,24 @@ uniform float env_scale = 1.0;
 uniform bool model_space_normals = false;
 uniform bool use_spec_tex = false;
 uniform sampler2D spec_tex : filter_linear_mipmap, repeat_enable;
-// SkinTint (shader type 5): the actor's skin tone times the texture.
+// SkinTint (shader type 5): the actor's skin tone, and FaceGen (type 4): the
+// NPC's tint mask (slot 6), both soft-lit onto the texture as the game does,
+// in gamma space: base^2 + 2 tint base (1 - base); a tint of 0.5 keeps it.
+// Hence no source_color hints: the values stay in gamma space.
 uniform bool use_skin_tint = false;
-uniform vec3 skin_tint : source_color = vec3(1.0);
-// FaceGen (shader type 4): the NPC's tint mask (slot 6) over the texture.
+uniform vec3 skin_tint = vec3(0.5);
 uniform bool use_face_tint = false;
-uniform sampler2D face_tint_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D face_tint_tex : filter_linear_mipmap, repeat_enable;
+// HairTint (type 6): the hair colour, weighted by the vertex colours' green;
+// hair takes no other vertex colour (its red and blue would darken it).
+uniform bool use_hair_tint = false;
+uniform vec3 hair_tint = vec3(1.0);
 
 varying float spec_mask;
 
-vec3 overlay(vec3 base, vec3 blend) {
-	return mix(2.0 * base * blend, 1.0 - 2.0 * (1.0 - base) * (1.0 - blend), step(0.5, base));
+vec3 soft_tint(vec3 linear_base, vec3 tint) {
+	vec3 base = pow(linear_base, vec3(1.0 / 2.2));
+	return pow(clamp(base * base + 2.0 * tint * base * (1.0 - base), 0.0, 1.0), vec3(2.2));
 }
 
 void fragment() {
@@ -115,10 +125,13 @@ void fragment() {
 		albedo.a *= COLOR.a;
 	}
 	if (use_skin_tint) {
-		albedo.rgb *= skin_tint;
+		albedo.rgb = soft_tint(albedo.rgb, skin_tint);
 	}
 	if (use_face_tint) {
-		albedo.rgb = overlay(albedo.rgb, texture(face_tint_tex, uv).rgb);
+		albedo.rgb = soft_tint(albedo.rgb, texture(face_tint_tex, uv).rgb);
+	}
+	if (use_hair_tint) {
+		albedo.rgb *= pow(mix(vec3(1.0), hair_tint, COLOR.g), vec3(2.2));
 	}
 	vec4 n = texture(normal_tex, uv);
 	if (model_space_normals) {
@@ -156,6 +169,9 @@ void fragment() {
 	ALPHA_SCISSOR_THRESHOLD = alpha_cutoff;
 #endif
 #ifdef ALPHA_BLEND
+	if (blend_test && albedo.a <= alpha_cutoff) {
+		discard;
+	}
 	ALPHA = albedo.a;
 #endif
 }
@@ -560,6 +576,15 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
                    transparency == godot::BaseMaterial3D::TRANSPARENCY_ALPHA_DEPTH_PRE_PASS) {
             alpha = Alpha::blend;
         }
+        // glTF has one mode; a NIF may blend and test at once (FaceGen's
+        // shaved-hair layer: test at 0, so the importer kept an opaque
+        // mask). The game blends, discarding below the threshold.
+        const std::uint32_t alpha_flags = as_u32(extras, "alpha_flags");
+        const bool blend_and_test = static_cast<bool>(extras.get("alpha_property", false)) &&
+                                    (alpha_flags & k_alpha_blend) != 0 && (alpha_flags & k_alpha_test) != 0;
+        if (blend_and_test) {
+            alpha = Alpha::blend;
+        }
         const std::int64_t shader_type = static_cast<std::int64_t>(as_double(extras, "shader_type", 0));
         Ref<godot::Texture> glow;
         if (shader_type == k_type_glowmap || (flags2 & k_sf2_glow_map) != 0) {
@@ -574,7 +599,8 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         const bool env_map = godot::Object::cast_to<godot::Cubemap>(env.ptr()) != nullptr;
 
         out->set_shader(shader_for(lighting_code(double_sided, alpha)));
-        out->set_shader_parameter("use_vertex_colors", (flags2 & k_sf2_vertex_colors) != 0);
+        out->set_shader_parameter("use_vertex_colors",
+                                  (flags2 & k_sf2_vertex_colors) != 0 && shader_type != k_type_hair_tint);
         // On trees, vertex alpha is the wind weight, not opacity.
         out->set_shader_parameter("use_vertex_alpha", (flags1 & k_sf1_vertex_alpha) != 0 &&
                                                           (flags2 & k_sf2_tree_anim) == 0);
@@ -592,6 +618,14 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
             }
         }
         out->set_shader_parameter("use_skin_tint", shader_type == k_type_skin_tint);
+        if (shader_type == k_type_skin_tint) {
+            out->set_shader_parameter("skin_tint", as_vec3(extras, "skin_tint_color", godot::Vector3(0.5, 0.5, 0.5)));
+        }
+        if (shader_type == k_type_hair_tint) {
+            // Packs before mesh/16 have no colour: untinted.
+            out->set_shader_parameter("use_hair_tint", true);
+            out->set_shader_parameter("hair_tint", as_vec3(extras, "hair_tint_color", godot::Vector3(1, 1, 1)));
+        }
         if (shader_type == k_type_face_tint) {
             if (const Ref<godot::Texture> tint = load_texture(slot_path(extras, 6)); tint.is_valid()) {
                 out->set_shader_parameter("use_face_tint", true);
@@ -601,13 +635,20 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("base_color", base->get_albedo());
         out->set_shader_parameter("specular_color",
                                   as_vec3(extras, "specular_color", godot::Vector3(1, 1, 1)));
-        out->set_shader_parameter("specular_strength", as_double(extras, "specular_strength", 1.0));
+        // Without the Specular flag the game draws no highlight at all.
+        out->set_shader_parameter("specular_strength", (flags1 & k_sf1_specular) != 0
+                                                           ? as_double(extras, "specular_strength", 1.0)
+                                                           : 0.0);
         out->set_shader_parameter("glossiness", as_double(extras, "glossiness", 30.0));
         out->set_shader_parameter("emission_color", base->get_emission());
         out->set_shader_parameter("emission_strength", as_double(extras, "emissive_multiple", 1.0));
         out->set_shader_parameter("soft_depth", as_double(extras, "soft_falloff_depth", 10.0) *
                                                     SkydotWorld::UNIT_SCALE);
         out->set_shader_parameter("alpha_cutoff", base->get_alpha_scissor_threshold());
+        if (blend_and_test) {
+            out->set_shader_parameter("blend_test", true);
+            out->set_shader_parameter("alpha_cutoff", as_double(extras, "alpha_cutoff", 0.0));
+        }
         if (glow.is_valid()) {
             out->set_shader_parameter("glow_tex", glow);
         }
