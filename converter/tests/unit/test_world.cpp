@@ -177,6 +177,9 @@ void make_base(const TempDir& dir) {
     ByteWriter stats;
     bethconv::test::write_record(stats, "STAT", 0x0000'0800,
                                  static_payload("BaseWall", "Architecture\\Wall.nif").span());
+    // An editor marker: the header's IsMarker flag (bit 23) reaches Base.
+    bethconv::test::write_record(stats, "STAT", 0x0000'0803,
+                                 static_payload("XMarker", "MarkerX.nif").span(), 0x0080'0000);
     top_group(file, "STAT", stats);
     ByteWriter lights;
     bethconv::test::write_record(lights, "LIGH", 0x0000'0801, light_payload().span());
@@ -592,7 +595,7 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     CHECK(stats->cells == 1);
     CHECK(stats->interior_cells == 1);
     CHECK(stats->refs == 3);
-    CHECK(stats->bases == 7);
+    CHECK(stats->bases == 8);
     CHECK(stats->scripts == 3);
     CHECK(stats->locks == 1);
     CHECK(stats->lights == 1);
@@ -623,6 +626,8 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     REQUIRE(chair.has_value());
     CHECK(chair->model == "meshes/furniture/chair.nif");
     CHECK(file->base(0x0000'0800)->model == "meshes/architecture/wall.nif");
+    CHECK(file->base(0x0000'0800)->record_flags == 0);
+    CHECK(file->base(0x0000'0803)->record_flags == 0x0080'0000);
     // Already prefixed paths are not prefixed again.
     CHECK(file->base(0x0100'0900)->model == "meshes/other.nif");
 

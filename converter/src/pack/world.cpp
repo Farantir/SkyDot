@@ -83,6 +83,7 @@ struct BaseEntry {
     std::optional<WorldLight> light;
     std::uint32_t flags{};
     std::vector<record::Script> scripts;
+    std::uint32_t record_flags{};
 };
 
 /// Per-cell data about its references beyond placement.
@@ -416,6 +417,7 @@ private:
                 },
             .flags = 0,
             .scripts = {},
+            .record_flags = merged.flags,
         };
         bool failed = false;
         bases_[merged.form.value].scripts = global_scripts(merged, std::move(light->scripts), failed);
@@ -645,6 +647,7 @@ private:
             .light = std::nullopt,
             .flags = flags,
             .scripts = global_scripts(merged, std::move(scripts), failed),
+            .record_flags = merged.flags,
         };
         if (failed) {
             ++stats_.unresolved;
@@ -1346,6 +1349,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         bb.add_editor_id(editor_id);
         bb.add_model(model);
         bb.add_flags(base.flags);
+        bb.add_record_flags(base.record_flags);
         if (!base.scripts.empty()) {
             bb.add_scripts(scripts);
         }
@@ -1950,6 +1954,7 @@ std::optional<WorldBase> WorldFile::base(std::uint32_t id) const {
     }
     out.flags = it->flags();
     out.scripts = read_scripts(it->scripts());
+    out.record_flags = it->record_flags();
     return out;
 }
 

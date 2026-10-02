@@ -53,7 +53,7 @@ class SkydotWorld : public godot::RefCounted {
 
 public:
     /// The world.fb format version this engine reads.
-    static constexpr int WORLD_FORMAT_VERSION = 6;
+    static constexpr int WORLD_FORMAT_VERSION = 7;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
 

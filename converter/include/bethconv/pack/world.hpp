@@ -29,7 +29,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 6;
+inline constexpr std::uint32_t k_world_format_version = 7;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -243,6 +243,7 @@ struct WorldBase {
     std::optional<WorldLight> light;
     std::uint32_t flags{}; ///< See world.fbs.
     std::vector<record::Script> scripts; ///< FormIDs in properties are global.
+    std::uint32_t record_flags{}; ///< The record header's; see world.fbs.
 };
 
 struct WorldLandTexture {

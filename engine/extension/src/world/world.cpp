@@ -85,13 +85,24 @@ bool contains_ci(const flatbuffers::String* haystack, const std::string& needle_
     return lower.find(needle_lower) != std::string::npos;
 }
 
-/// Editor-only marker meshes (XMarker, heading markers, idle markers...), which
-/// the game does not render.
-bool is_marker_model(std::string_view model) {
-    const auto slash = model.rfind('/');
-    const auto file = slash == std::string_view::npos ? model : model.substr(slash + 1);
-    return file.find("marker") != std::string_view::npos ||
-           model.find("/markers/") != std::string_view::npos;
+/// Editor markers, which the game does not draw: bases flagged as markers
+/// (XMarker, furniture markers), and the helpers in `meshes/markers/` and
+/// `meshes/marker*.nif` that some unflagged activators use. Not every model
+/// named "marker": crafting stations (BlacksmithForgeMarker.nif,
+/// TanningRackMarker.nif) are seen in the game, and the converter has already
+/// dropped their EditorMarker parts.
+bool is_marker(const wfb::Base& base) {
+    constexpr std::uint32_t k_record_is_marker = 0x00800000;
+    if ((base.record_flags() & k_record_is_marker) != 0) {
+        return true;
+    }
+    const auto* model = base.model();
+    if (model == nullptr) {
+        return false;
+    }
+    const std::string_view path = model->string_view();
+    return path.starts_with("meshes/markers/") ||
+           (path.starts_with("meshes/marker") && path.find('/', 7) == std::string_view::npos);
 }
 
 /// A model's virtual path as the asset cache keys it.
@@ -615,7 +626,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
 
     const auto* model = base->model();
     if (model != nullptr && model->size() != 0) {
-        if (is_marker_model(model->string_view())) {
+        if (is_marker(*base)) {
             ++stats.markers;
         } else {
             const String scene_path = model_path(model->string_view());
@@ -866,7 +877,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
         }
         const auto* base = base_ptr(ref.base());
         const auto* model = base != nullptr ? base->model() : nullptr;
-        if (model == nullptr || model->size() == 0 || is_marker_model(model->string_view())) {
+        if (model == nullptr || model->size() == 0 || is_marker(*base)) {
             return;
         }
         const String path = model_path(model->string_view());
