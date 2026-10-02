@@ -155,7 +155,9 @@ start-game-enabled quests from starting.
 F12 saves a screenshot with a JSON file beside it (Shift+F12 without the text
 overlay; `--shot-dir`, default `user://screenshots`): place, camera in engine
 and game terms, time, weather, viewer options, pack hashes, GPU, and the game
-console commands for the same spot. `--from-shot shot.json` starts there with
+console commands for the same spot. The viewer then pauses and asks what is
+wrong; the answer is stored as the JSON's `note` (Escape skips it,
+`--shot-notes off` never asks). `--from-shot shot.json` starts there with
 time stopped; with `--screenshot out.png` it renders that view again and
 exits (a re-render at Riverwood differed in 0.11% of pixels, from moving
 foliage), which is how a shot becomes a bug report or a regression check.

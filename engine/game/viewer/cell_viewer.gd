@@ -34,6 +34,7 @@
 # F activates what the camera looks at: its scripts run (SkydotPapyrus), a load
 # door leads to its destination, a plain door opens or closes, and references
 # whose activate parent it is are activated in turn. Locked doors stay shut;
+# both doors of a load door share the lock a plugin stores on one of them.
 # Shift+F (or --pick-locks) opens them anyway, and they stay unlocked. Scripts
 # attach as cells are built; what they enable, disable, open and animate shows
 # up here, and the camera's feet walk through their trigger volumes. F5 saves
@@ -47,10 +48,15 @@
 # get the same view again: place, camera (in engine and game terms), time,
 # weather, viewer options, pack, Godot and GPU, and the game console commands
 # for the same spot (GAME-COMPARISON.md). Shift+F12 leaves out the text
-# overlay. They go to --shot-dir (default user://screenshots).
+# overlay. They go to --shot-dir (default user://screenshots). After the
+# capture the viewer pauses and asks what is wrong; Enter stores the text as
+# the JSON's "note" (Shift+Enter for a new line), Escape keeps the shot
+# without one. --shot-notes off skips the question.
 # --from-shot FILE.json starts where such a shot was taken, with time
 # stopped; arguments given as well win (--pack, or --screenshot to render it
 # again and exit).
+# --screenshot, --benchmark, --activate and --no-input runs ignore the keyboard
+# and mouse.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
 # N shows the navmeshes (green, water triangles included) of the built cells;
@@ -94,6 +100,7 @@ var _fly_speed := 20.0
 var _frame_times: Array[float] = []
 var _stream_max_usec := 0  # the slowest streaming step during a benchmark
 var _pick_locks := false
+var _input := true  # false for runs that drive themselves (_ready)
 var _script_activations: Array = []  # --activate: refs still to activate
 var _script_wait := 0
 var _quit_in := -1  # frames until quitting after --activate
@@ -116,6 +123,10 @@ var _navmesh_fill: StandardMaterial3D
 var _navmesh_lines: StandardMaterial3D
 var _overlay: CanvasLayer  # notes and journal; Shift+F12 hides it for a shot
 var _shot_busy := false
+var _shot_note: PanelContainer  # asks for a shot's note
+var _shot_note_text: TextEdit
+var _shot_note_json := ""  # the shot the note goes to
+var _shot_note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 const SHOT_FORMAT := 1
 
 
@@ -126,8 +137,12 @@ func _ready() -> void:
 		if from.is_empty():
 			_fail("cannot read the shot " + _args["from-shot"])
 			return
+		var shot_note: String = from.get("note", "")
+		from.erase("note")
 		from.merge(_args, true)  # the command line wins
 		_args = from
+		if not shot_note.is_empty():
+			print("shot note: ", shot_note)
 	var args := _args
 	_hour = float(args.get("time", "12"))
 	if not args.has("pack") or not (args.has("cell") or args.has("world")):
@@ -189,6 +204,10 @@ func _ready() -> void:
 	if args.has("tiling"):
 		world.terrain_tiling = float(args["tiling"])
 	_pick_locks = args.get("pick-locks", "off") != "off"
+	# Runs that capture, measure or activate on their own ignore the keyboard
+	# and mouse, so a stray touch cannot move the view.
+	_input = not (args.has("screenshot") or args.has("benchmark") or args.has("activate")
+		or args.has("no-input"))
 	if args.has("activate"):
 		for id in args["activate"].split(","):
 			_script_activations.append(id.hex_to_int() if id.begins_with("0x") else int(id))
@@ -216,7 +235,7 @@ func _ready() -> void:
 	_journal.add_theme_constant_override("outline_size", 4)
 	overlay.add_child(_journal)
 	add_child(overlay)
-	if DisplayServer.get_name() != "headless" and not args.has("screenshot") and not args.has("benchmark"):
+	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 	if args.get("quests", "on") != "off":
@@ -288,7 +307,7 @@ func _ready() -> void:
 
 	if args.has("screenshot"):
 		_shot_path = args["screenshot"]
-		if fixed_view:
+		if fixed_view or (args.has("at") and args.has("look")):  # --look: a shot's view
 			_shots.append(null)
 		else:
 			for i in 4:
@@ -577,11 +596,11 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 		return false
 	var label := "0x%08X %s (%s)" % [ref, info["editor_id"], info["type"]]
 	if info["parent_activate_only"] and not parent:
-		print(label, " only responds to its activate parents")
+		_note(label + " only responds to its activate parents")
 		return true
 	var level := _papyrus.get_lock_level(ref)
 	if level > 0 and not force and not _pick_locks:
-		print(label, " is locked (level %d)" % level)
+		_note(label + " is locked (level %d); Shift+F opens it anyway" % level)
 		return true
 	if level >= 0:
 		_papyrus.set_locked(ref, false)
@@ -592,7 +611,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 			_activate(child["cell"], child["ref"], _find_ref_node(child["ref"]), true, true))
 	# A script that blocks activation handles it alone.
 	if _papyrus.is_activation_blocked(ref):
-		print(label, ": activation blocked, only its scripts ran")
+		_note(label + ": activation blocked, only its scripts ran")
 		return true
 	if info["door"] != null:
 		print(label, " leads to 0x%08X" % info["door"]["destination"])
@@ -608,7 +627,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 				print(label, " opens" if open else " closes")
 				return true
 	if _papyrus.get_scripts(ref).is_empty():
-		print(label, ": nothing happens")
+		_note(label + ": nothing happens")
 	return true
 
 
@@ -652,7 +671,7 @@ func _activate_in_view(force: bool) -> void:
 	var to := from - _camera.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(self, from, to)
 	if hit.is_empty():
-		print("nothing to activate")
+		_note("nothing to activate")
 		return
 	_activate(hit["cell"], hit["ref"], hit["node"], force)
 
@@ -875,6 +894,8 @@ func _apply_look(yaw: float, pitch: float) -> void:
 func _process(delta: float) -> void:
 	if _camera == null:
 		return
+	# Additive effects fade by the fog themselves (SkydotMaterials.sync_fog).
+	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
 	if _shot_path != "":
 		_take_screenshots()
 		return
@@ -903,6 +924,10 @@ func _process(delta: float) -> void:
 	if _benchmark > 0.0:
 		_benchmark_frame(delta)
 		return
+	if not _input:
+		_player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
+		_player.set_look(_yaw, _pitch)
+		return
 	var move := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): move.y += 1
 	if Input.is_key_pressed(KEY_S): move.y -= 1
@@ -924,6 +949,8 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not _input:
+		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
 		_apply_look(_yaw - event.relative.x * 0.004,
@@ -1214,6 +1241,70 @@ func _capture_shot(hide_overlay: bool) -> void:
 		return
 	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
 	_note("screenshot: " + ProjectSettings.globalize_path(png))
+	if _args.get("shot-notes", "on") == "off" or DisplayServer.get_name() == "headless":
+		_shot_busy = false
+		return
+	_ask_shot_note(base + ".json")
+
+
+## Pause and ask what the shot shows; `_end_shot_note` stores the answer.
+func _ask_shot_note(json_path: String) -> void:
+	if _shot_note == null:
+		_shot_note = PanelContainer.new()
+		_shot_note.process_mode = Node.PROCESS_MODE_ALWAYS
+		_shot_note.custom_minimum_size = Vector2(640, 0)
+		var box := VBoxContainer.new()
+		var label := Label.new()
+		label.text = "What is wrong in this shot? Enter saves, Shift+Enter new line, Escape skips."
+		box.add_child(label)
+		_shot_note_text = TextEdit.new()
+		_shot_note_text.custom_minimum_size = Vector2(0, 96)
+		_shot_note_text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+		_shot_note_text.gui_input.connect(_shot_note_input)
+		box.add_child(_shot_note_text)
+		_shot_note.add_child(box)
+		_overlay.add_child(_shot_note)
+		_shot_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM,
+			Control.PRESET_MODE_MINSIZE, 24)
+		_shot_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
+		_shot_note.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_shot_note_json = json_path
+	_shot_note_mouse = Input.mouse_mode
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	get_tree().paused = true  # time, weather and the player wait
+	_shot_note_text.text = ""
+	_shot_note.visible = true
+	_shot_note_text.grab_focus()
+
+
+func _shot_note_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	if event.keycode == KEY_ESCAPE:
+		_end_shot_note(false)
+	elif event.keycode in [KEY_ENTER, KEY_KP_ENTER] and not event.shift_pressed:
+		_end_shot_note(true)
+	else:
+		return
+	_shot_note_text.accept_event()
+
+
+func _end_shot_note(save: bool) -> void:
+	var text := _shot_note_text.text.strip_edges()
+	if save and not text.is_empty():
+		var meta = JSON.parse_string(FileAccess.get_file_as_string(_shot_note_json))
+		var file := FileAccess.open(_shot_note_json, FileAccess.WRITE) if meta is Dictionary else null
+		if file != null:
+			meta["note"] = text
+			file.store_string(JSON.stringify(meta, "  ") + "\n")
+			file.close()
+			_note("note saved")
+		else:
+			_note("note not saved: cannot write " + ProjectSettings.globalize_path(_shot_note_json))
+	_shot_note.visible = false
+	_shot_note_text.release_focus()
+	get_tree().paused = false
+	Input.mouse_mode = _shot_note_mouse
 	_shot_busy = false
 
 
@@ -1339,6 +1430,8 @@ func _args_from_shot(path: String) -> Dictionary:
 		out["quests"] = "off"
 	if viewer.get("materials", true) == false:
 		out["materials"] = "off"
+	if not str(shot.get("note", "")).is_empty():
+		out["note"] = shot["note"]
 	return out
 
 
