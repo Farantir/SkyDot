@@ -226,6 +226,27 @@ TEST_CASE("hair and skin tint colours reach the extras only when the shader has 
     CHECK_FALSE(tinted["materials"][0]["extras"]["bethconv"].contains("skin_tint_color"));
 }
 
+TEST_CASE("a BSOrderedNode child carries its place in the draw order", "[gltf][extras]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    REQUIRE(builder.add_shape("cube", bethconv::test::make_cube()) != nullptr);
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "cube.nif");
+    REQUIRE(model.has_value());
+    REQUIRE(model->nodes.size() >= 2);
+    for (const auto& node : model->nodes) {
+        CHECK_FALSE(node.draw_order.has_value());
+    }
+    model->nodes[1].draw_order = 3;
+    const auto json = json_chunk(*bethconv::mesh::write_glb(*model));
+    int found = 0;
+    for (const auto& node : json["nodes"]) {
+        if (node.contains("extras") && node["extras"]["bethconv"].contains("draw_order")) {
+            CHECK(node["extras"]["bethconv"]["draw_order"] == 3);
+            ++found;
+        }
+    }
+    CHECK(found == 1);
+}
+
 TEST_CASE("provenance rides on the root node, because asset extras do not survive",
           "[gltf][extras]") {
     // fastgltf 0.9.0 never writes Category::Asset extras, so provenance there

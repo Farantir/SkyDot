@@ -113,7 +113,7 @@ namespace {
 /// 14: inverse bind matrices include the skinned shape's own placement.
 /// 15: quadratic keys' in and out tangents the right way round.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/16;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/17;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +

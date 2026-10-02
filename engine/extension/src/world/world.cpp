@@ -8,6 +8,7 @@
 #include "world/animator.hpp"
 #include "world/billboard.hpp"
 #include "world/collision.hpp"
+#include "world/effect_asset.hpp"
 #include "world/flicker.hpp"
 #include "world/refs.hpp"
 
@@ -25,6 +26,7 @@
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/time.hpp>
+#include <godot_cpp/classes/visual_instance3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/core/object.hpp>
@@ -146,6 +148,32 @@ void drop_root_transform(godot::Node3D* model) {
         nif_root->set_transform(Transform3D());
     }
 }
+
+/// Metres a BSOrderedNode's child is moved forward per place in its order
+/// when transparent surfaces are sorted: more than the depth between a
+/// flask's glass and the liquid in it.
+constexpr godot::real_t k_draw_order_step = 0.25F;
+
+void offset_sorting(godot::Node* node, godot::real_t offset, int depth) {
+    if (depth > 64) {
+        return;
+    }
+    // A nested ordered node orders its own children within this place.
+    const godot::Variant order = bethconv_extras(node).get("draw_order", godot::Variant());
+    if (order.get_type() == godot::Variant::INT || order.get_type() == godot::Variant::FLOAT) {
+        offset += static_cast<godot::real_t>(static_cast<double>(order)) * k_draw_order_step;
+    }
+    if (auto* visual = godot::Object::cast_to<godot::VisualInstance3D>(node); visual != nullptr && offset != 0) {
+        visual->set_sorting_offset(offset);
+    }
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        offset_sorting(node->get_child(i), offset, depth + 1);
+    }
+}
+
+/// The game draws a BSOrderedNode's children in their order (glass, the
+/// liquid in it, the glass around it), not by depth.
+void apply_draw_order(godot::Node3D* model) { offset_sorting(model, 0, 0); }
 
 } // namespace
 
@@ -706,6 +734,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     node->set_name(name);
                     node->set_transform(transform);
                     drop_root_transform(node);
+                    apply_draw_order(node);
                     if (skyrim_materials_) {
                         stats.materials += materials().apply(node);
                     }

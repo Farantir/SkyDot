@@ -146,6 +146,9 @@ struct Node {
     /// NiBillboardNode mode (nifly BillboardMode); the engine turns the node
     /// towards the camera each frame.
     std::optional<std::uint16_t> billboard_mode;
+    /// Position among a BSOrderedNode's children: the game draws them in
+    /// that order (glass, then the liquid in it), not by depth.
+    std::optional<std::uint32_t> draw_order;
     /// NiAVObject flag bit 0: not drawn until a controller shows it (flames
     /// switched by a NiVisController, emitter meshes).
     bool hidden{false};

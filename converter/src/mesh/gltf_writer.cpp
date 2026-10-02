@@ -876,6 +876,9 @@ private:
                 if (src.billboard_mode.has_value()) {
                     ours["billboard"] = *src.billboard_mode;
                 }
+                if (src.draw_order.has_value()) {
+                    ours["draw_order"] = *src.draw_order;
+                }
                 if (src.referenced) {
                     ours["id"] = i;
                 }

@@ -269,6 +269,8 @@ private:
         }
 
         if (auto* group = dynamic_cast<nifly::NiNode*>(obj)) {
+            const bool ordered = dynamic_cast<nifly::BSOrderedNode*>(obj) != nullptr;
+            std::uint32_t order = 0;
             for (auto& ref : group->childRefs) {
                 auto* child = nif_.GetHeader().GetBlock<nifly::NiAVObject>(ref);
                 if (child == nullptr) {
@@ -286,6 +288,9 @@ private:
                 }
                 const std::size_t child_index = walk(child, depth + 1);
                 model_.nodes[index].children.push_back(child_index);
+                if (ordered) {
+                    model_.nodes[child_index].draw_order = order++;
+                }
             }
         }
         return index;

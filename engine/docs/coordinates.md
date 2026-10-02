@@ -36,3 +36,13 @@ of `bethconv_z_up_to_y_up`) when it places a reference. The converter keeps
 the transform, so a mesh viewed on its own looks as in NifSkope. Riverwood
 Trader's `CounterCornerIn01` has its root turned 90° about Z: applied, the
 counter broke apart and its clutter floated (shot 2026-10-02 16:20).
+
+## Draw order
+
+A BSOrderedNode draws its children in their listed order rather than by
+depth (the alchemy workbench: frame, inner glass, liquid, haze, outer
+glass). The converter tags each child with `draw_order` (pack `mesh/17`);
+`SkydotWorld` moves every visual under it forward by 0.25 m per place when
+transparent surfaces are sorted (`sorting_offset`). Sorted by depth, the
+glass and the liquid inside it swapped with the view, and a potion flared up
+from one side and went dark from the other (shot 2026-10-02 16:22).
