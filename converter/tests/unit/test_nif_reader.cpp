@@ -344,3 +344,31 @@ TEST_CASE("shader flags are read, and refraction is recognized", "[mesh][materia
     CHECK((model->materials[0].shader_flags1 & nifly::SLSF1_REFRACTION) != 0);
     CHECK(model->materials[0].refraction);
 }
+
+TEST_CASE("a skinned shape keeps its placement in the inverse bind matrix", "[mesh][skin]") {
+    // Bethesda bodies sit 120 units up in their shape transform. glTF ignores
+    // a skinned node's transform, so the inverse bind matrix has to carry it:
+    // bone^-1 * shape. With the bone at z 50 and the shape at z 120 that is a
+    // translation of +70; dropping the shape's placement gives -50.
+    for (const auto flavor : {bethconv::test::NifFlavor::le, bethconv::test::NifFlavor::se}) {
+        NifBuilder builder(flavor);
+        auto* bone = builder.add_node("NPC Spine [Spn0]");
+        nifly::MatTransform bone_global;
+        bone_global.translation = nifly::Vector3(0.0f, 0.0f, 50.0f);
+        bone->SetTransformToParent(bone_global);
+        auto* shape = builder.add_shape("body", make_cube());
+        nifly::MatTransform shape_global;
+        shape_global.translation = nifly::Vector3(0.0f, 0.0f, 120.0f);
+        shape->SetTransformToParent(shape_global);
+        builder.add_skin(shape, bone, shape_global, bone_global);
+
+        const auto model = read_nif(builder.bytes(), "body.nif");
+        REQUIRE(model.has_value());
+        REQUIRE(model->skins.size() == 1);
+        REQUIRE(model->skins[0].inverse_bind_matrices.size() == 1);
+        const auto& m = model->skins[0].inverse_bind_matrices[0].m;
+        CHECK_THAT(m[12], Catch::Matchers::WithinAbs(0.0, 1e-4));
+        CHECK_THAT(m[13], Catch::Matchers::WithinAbs(0.0, 1e-4));
+        CHECK_THAT(m[14], Catch::Matchers::WithinAbs(70.0, 1e-4));
+    }
+}

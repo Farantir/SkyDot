@@ -281,7 +281,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/13` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/14` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep` | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -295,7 +295,9 @@ controllers, particle systems and hidden nodes to the extras
 every drag modifier with its axis, `mesh/10` rigid body fields in the
 collision extras (below), `mesh/11` compressed-mesh triangles that follow a
 chunk's strips (they were dropped), `mesh/12` cylinder, strips and plane
-collision shapes, `mesh/13` the texture of sky shaders (stars); the list in
+collision shapes, `mesh/13` the texture of sky shaders (stars), `mesh/14` inverse bind
+matrices that include a skinned shape's own placement (bodies had been 120
+units low); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 

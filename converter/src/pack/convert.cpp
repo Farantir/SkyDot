@@ -104,8 +104,9 @@ namespace {
 /// quality, mass, friction and restitution; nested collision transforms
 /// composed. 11: compressed-mesh triangles listed after a chunk's strips.
 /// 12: cylinder, strips and plane collision shapes. 13: sky shaders' texture.
+/// 14: inverse bind matrices include the skinned shape's own placement.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/13;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/14;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +

@@ -19,6 +19,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace bethconv::test {
@@ -171,6 +172,37 @@ public:
         object->targetRef.index = nif_.GetBlockID(owner);
         owner->collisionRef.index = header.AddBlock(std::move(object));
         return raw;
+    }
+
+    /// Skin every vertex of `shape` fully to `bone`, with the transforms a
+    /// Bethesda exporter writes: global-to-skin is the inverse of the shape's
+    /// placement, skin-to-bone the inverse of the bone's composed with the
+    /// shape's. Both arguments are global (the root is the identity here).
+    void add_skin(nifly::NiShape* shape, nifly::NiNode* bone,
+                  const nifly::MatTransform& shape_global,
+                  const nifly::MatTransform& bone_global) {
+        nif_.CreateSkinning(shape);
+        std::vector<int> bones{static_cast<int>(nif_.GetBlockID(bone))};
+        nif_.SetShapeBoneIDList(shape, bones);
+        nif_.SetShapeTransformGlobalToSkin(shape, shape_global.InverseTransform());
+        nif_.SetShapeTransformSkinToBone(
+            shape, 0, bone_global.InverseTransform().ComposeTransforms(shape_global));
+        const auto count = static_cast<std::uint16_t>(shape->GetNumVertices());
+        const std::string name = shape->name.get();
+        if (dynamic_cast<nifly::BSTriShape*>(shape) != nullptr) {
+            for (std::uint16_t v = 0; v < count; ++v) {
+                std::vector<std::uint8_t> ids{0};
+                std::vector<float> weights{1.0f};
+                nif_.SetShapeVertWeights(name, v, ids, weights);
+            }
+        } else {
+            std::unordered_map<std::uint16_t, float> weights;
+            for (std::uint16_t v = 0; v < count; ++v) {
+                weights[v] = 1.0f;
+            }
+            nif_.SetShapeBoneWeights(name, 0, weights);
+        }
+        nif_.UpdateSkinPartitions(shape);
     }
 
     /// Add `child` to `parent` again by block index, e.g. to create a cycle.

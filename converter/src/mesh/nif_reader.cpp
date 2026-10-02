@@ -942,8 +942,17 @@ private:
             // with the shape's placement they give that matrix.
             nifly::MatTransform global_to_skin;
             nif_.CalcShapeTransformGlobalToSkin(pending.shape, global_to_skin);
-            nifly::MatTransform shape_to_global;
-            nif_.GetNodeTransformToGlobal(model_.nodes[pending.node].name, shape_to_global);
+            // Walk the shape's own parents: nifly's GetNodeTransformToGlobal
+            // only finds NiNodes, so a shape's placement (a body sits 120
+            // units up) would silently drop out. Bounded like walk(), since a
+            // cyclic graph has no top.
+            nifly::MatTransform shape_to_global = pending.shape->GetTransformToParent();
+            std::size_t depth = 0;
+            for (nifly::NiNode* parent = nif_.GetParentNode(pending.shape);
+                 parent != nullptr && depth < k_max_node_depth;
+                 parent = nif_.GetParentNode(parent), ++depth) {
+                shape_to_global = parent->GetTransformToParent().ComposeTransforms(shape_to_global);
+            }
             const nifly::MatTransform shape_to_skin =
                 global_to_skin.ComposeTransforms(shape_to_global);
 
