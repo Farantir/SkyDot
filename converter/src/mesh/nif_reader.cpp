@@ -996,6 +996,32 @@ private:
         }
     }
 
+    /// One bone's weights by vertex. nifly's GetShapeBoneWeights binds a
+    /// reference to the float in its packed SkinWeight for NiSkinData
+    /// (misaligned: UBSan stops there), so that case is read here by value;
+    /// BSTriShape keeps its weights in the vertex data and goes through nifly.
+    void bone_weights(nifly::NiShape* shape, std::uint32_t bone,
+                      std::unordered_map<std::uint16_t, float>& out) const {
+        out.clear();
+        if (dynamic_cast<nifly::BSTriShape*>(shape) != nullptr) {
+            nif_.GetShapeBoneWeights(shape, bone, out);
+            return;
+        }
+        const auto& hdr = nif_.GetHeader();
+        const auto* instance = hdr.GetBlock<nifly::NiSkinInstance>(shape->SkinInstanceRef());
+        const auto* data = instance != nullptr ? hdr.GetBlock(instance->dataRef) : nullptr;
+        if (data == nullptr || bone >= data->numBones || bone >= data->bones.size()) {
+            return;
+        }
+        for (const auto& sw : data->bones[bone].vertexWeights) {
+            const std::uint16_t index = sw.index;
+            const float weight = sw.weight;
+            if (weight >= nifly::EPSILON) {
+                out.emplace(index, weight);
+            }
+        }
+    }
+
     /// NIF weights are per bone (vertex -> weight); glTF wants four per vertex.
     /// The four-influence limit is enforced and counted here.
     void read_skin_weights(const PendingSkin& pending, std::size_t bone_count) {
@@ -1009,7 +1035,7 @@ private:
 
         for (std::uint32_t bone = 0; bone < bone_count; ++bone) {
             std::unordered_map<std::uint16_t, float> weights;
-            nif_.GetShapeBoneWeights(pending.shape, bone, weights);
+            bone_weights(pending.shape, bone, weights);
             for (const auto& [vertex, weight] : weights) {
                 if (vertex >= vcount || weight <= 0.0f) {
                     continue;
