@@ -352,6 +352,9 @@ private:
                    BuildStats& stats, bool include_disabled = false) const;
     /// Initially disabled, following the enable parent chain.
     bool initially_disabled(const bethconv::pack::wfb::Ref& ref) const;
+    /// Surfaces of a placed model with a water shader get the water material
+    /// of `cell`'s water type.
+    void use_water_material(godot::Node* model, std::uint32_t cell) const;
     /// Whether activating a reference of this base can do anything.
     bool activatable(const bethconv::pack::wfb::Base* base, std::uint32_t cell,
                      std::uint32_t ref) const;

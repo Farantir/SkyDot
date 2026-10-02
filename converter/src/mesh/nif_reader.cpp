@@ -152,6 +152,9 @@ ShaderKind kind_of(nifly::NiShader* shader) {
     if (name == "BSEffectShaderProperty") {
         return ShaderKind::effect;
     }
+    if (name == "BSWaterShaderProperty") {
+        return ShaderKind::water;
+    }
     return ShaderKind::other;
 }
 

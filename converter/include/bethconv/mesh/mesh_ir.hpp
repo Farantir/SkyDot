@@ -49,6 +49,7 @@ enum class ShaderKind : std::uint8_t {
     none,      ///< No shader property at all; a placeholder material is emitted.
     lighting,  ///< BSLightingShaderProperty (most shapes).
     effect,    ///< BSEffectShaderProperty -- decals, glow, water, fx planes.
+    water,     ///< BSWaterShaderProperty: placed water (streams, ponds).
     other,     ///< Another BSShaderProperty subclass, not modeled yet.
 };
 

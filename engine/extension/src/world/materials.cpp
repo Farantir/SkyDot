@@ -562,6 +562,12 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         // surface drawn after flames or glows would paint over them. Draw it
         // first among transparent surfaces instead.
         out->set_render_priority(godot::Material::RENDER_PRIORITY_MIN);
+    } else if (kind == "BSWaterShaderProperty") {
+        // Placed water (streams, ponds): SkydotWorld gives it its water
+        // type's material (tagged here); elsewhere it stays translucent blue.
+        out->set_shader(shader_for(lighting_code(false, Alpha::blend)));
+        out->set_shader_parameter("base_color", Color(0.25F, 0.35F, 0.4F, 0.6F));
+        out->set_meta("skydot_water", true);
     } else if (kind == "BSEffectShaderProperty") {
         // The importer gamma-encodes glTF's emissiveFactor; undo that to get
         // the NIF's value back.

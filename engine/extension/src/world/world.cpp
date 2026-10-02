@@ -687,6 +687,33 @@ struct SkydotWorld::BuildStats {
     godot::PackedStringArray missing;
 };
 
+void SkydotWorld::use_water_material(godot::Node* model, std::uint32_t cell) const {
+    godot::TypedArray<godot::Node> meshes = model->find_children("*", "MeshInstance3D", true, false);
+    godot::Ref<godot::ShaderMaterial> water;
+    for (int i = 0; i < meshes.size(); ++i) {
+        auto* instance = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
+        if (instance == nullptr || instance->get_mesh().is_null()) {
+            continue;
+        }
+        for (int s = 0; s < instance->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::Material> m = instance->get_surface_override_material(s);
+            if (m.is_null() || !m->has_meta("skydot_water")) {
+                continue;
+            }
+            if (water.is_null()) {
+                // The activator's own water type (ACTI WNAM) is not in
+                // world.fb yet: the cell's, else its worldspace's.
+                const auto load = [&](const std::string& vpath) -> godot::Ref<godot::Texture> {
+                    return resource(String::utf8(vpath.c_str()));
+                };
+                const auto space = static_cast<std::uint32_t>(get_cell_space(cell));
+                water = water_.material(water_ptr(water_type(space, cell_ptr(cell))), load);
+            }
+            instance->set_surface_override_material(s, water);
+        }
+    }
+}
+
 bool SkydotWorld::initially_disabled(const wfb::Ref& ref) const {
     // A reference with an enable parent takes the parent's state (inverted if
     // flagged); its own flag counts only when the parent is unknown.
@@ -737,6 +764,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     apply_draw_order(node);
                     if (skyrim_materials_) {
                         stats.materials += materials().apply(node);
+                        use_water_material(node, cell);
                     }
                     stats.billboards += SkydotBillboard::attach(node);
                     if (effects_) {

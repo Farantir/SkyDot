@@ -215,11 +215,15 @@ TEST_CASE("hair and skin tint colours reach the extras only when the shader has 
     REQUIRE_FALSE(model->materials.empty());
     CHECK_FALSE(model->materials[0].hair_tint.has_value());
 
-    const auto plain = json_chunk(*bethconv::mesh::write_glb(*model));
+    const auto plain_glb = bethconv::mesh::write_glb(*model);
+    REQUIRE(plain_glb.has_value());
+    const auto plain = json_chunk(*plain_glb);
     CHECK_FALSE(plain["materials"][0]["extras"]["bethconv"].contains("hair_tint_color"));
 
     model->materials[0].hair_tint = bethconv::mesh::Vec3{0.5F, 0.25F, 0.125F};
-    const auto tinted = json_chunk(*bethconv::mesh::write_glb(*model));
+    const auto tinted_glb = bethconv::mesh::write_glb(*model);
+    REQUIRE(tinted_glb.has_value());
+    const auto tinted = json_chunk(*tinted_glb);
     const auto& colour = tinted["materials"][0]["extras"]["bethconv"]["hair_tint_color"];
     REQUIRE(colour.size() == 3);
     CHECK(colour[1].get<double>() == 0.25);
@@ -236,7 +240,9 @@ TEST_CASE("a BSOrderedNode child carries its place in the draw order", "[gltf][e
         CHECK_FALSE(node.draw_order.has_value());
     }
     model->nodes[1].draw_order = 3;
-    const auto json = json_chunk(*bethconv::mesh::write_glb(*model));
+    const auto glb = bethconv::mesh::write_glb(*model);
+    REQUIRE(glb.has_value());
+    const auto json = json_chunk(*glb);
     int found = 0;
     for (const auto& node : json["nodes"]) {
         if (node.contains("extras") && node["extras"]["bethconv"].contains("draw_order")) {

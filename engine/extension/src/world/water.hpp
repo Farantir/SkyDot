@@ -5,7 +5,9 @@
 // of water under the surface (over WATR's fog distance), refraction of what
 // lies below, and a Fresnel blend towards the reflection colour. Not the
 // game's shader: no sky or scene reflection, no sun sparkle, no underwater
-// view.
+// view. Placed water meshes (streams, ponds: BSWaterShaderProperty, pack
+// mesh/18) take the material of their cell's water type; an activator's
+// own type (ACTI WNAM) is not in world.fb yet.
 #pragma once
 
 #include <godot_cpp/classes/shader.hpp>

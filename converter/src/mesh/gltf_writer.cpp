@@ -737,6 +737,7 @@ private:
         j["bethconv"] = {
             {"shader", src.kind == ShaderKind::lighting  ? "BSLightingShaderProperty"
                        : src.kind == ShaderKind::effect  ? "BSEffectShaderProperty"
+                       : src.kind == ShaderKind::water   ? "BSWaterShaderProperty"
                        : src.kind == ShaderKind::none    ? "none"
                                                          : "other"},
             {"shader_type", src.bs_shader_type},
