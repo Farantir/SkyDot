@@ -573,6 +573,8 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
             wanted.erase(entry->vpath);
         } else if (entry->kind == AssetKind::lod) {
             ++result.stats.lod;
+        } else if (entry->kind == AssetKind::animation) {
+            ++result.stats.animations;
         } else {
             ++result.stats.scripts;
         }

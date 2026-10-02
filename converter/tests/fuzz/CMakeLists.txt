@@ -22,7 +22,7 @@ if(BETHCONV_BUILD_FUZZERS AND NOT BETHCONV_HAVE_LIBFUZZER)
         "(-fsanitize=fuzzer). Use the linux-fuzz preset, which selects clang.")
 endif()
 
-set(BETHCONV_FUZZ_TARGETS esm forms bsa nif dds strings snapshot pex lod assets)
+set(BETHCONV_FUZZ_TARGETS esm forms bsa nif dds strings snapshot pex lod assets animation)
 
 foreach(name IN LISTS BETHCONV_FUZZ_TARGETS)
     # The replay build: always available.

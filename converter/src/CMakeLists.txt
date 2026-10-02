@@ -12,7 +12,7 @@ find_package(blake3 CONFIG REQUIRED)
 # formats/schema/records.fbs. flatc comes from the vcpkg port.
 set(BETHCONV_FB_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/bethconv/pack")
 set(BETHCONV_FB_HEADERS "")
-foreach(schema IN ITEMS records world script lod)
+foreach(schema IN ITEMS records world script lod animation)
     set(fbs "${CMAKE_CURRENT_SOURCE_DIR}/../../formats/schema/${schema}.fbs")
     set(header "${BETHCONV_FB_DIR}/${schema}_generated.h")
     add_custom_command(
@@ -58,6 +58,7 @@ add_library(bethconv_core STATIC
     mesh/nif_reader.cpp
     mesh/nif_controllers.cpp
     mesh/gltf_writer.cpp
+    animation/hkx.cpp
     texture/dds.cpp
     texture/mip_tail.cpp
     texture/mip_drop.cpp
@@ -69,6 +70,7 @@ add_library(bethconv_core STATIC
     pack/pack_writer.cpp
     pack/script_asset.cpp
     pack/lod_asset.cpp
+    pack/animation_asset.cpp
     pack/vpath_index.cpp
     pack/pack_view.cpp
     pack/convert.cpp

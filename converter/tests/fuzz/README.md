@@ -13,6 +13,7 @@ One target per reader of untrusted bytes:
 | `fuzz_snapshot` | `pack::Snapshot` open and queries |
 | `fuzz_pex` | `script::parse_pex`, `script::read_pex_script`, and the script asset round trip |
 | `fuzz_lod` | `pack::read_lod_source` as `.lod`, `.lst` and `.btt`, and the LOD asset round trip |
+| `fuzz_animation` | `animation::read_hkx`, sampling every track, and the animation asset round trip |
 
 ## What is checked
 

@@ -9,6 +9,7 @@
 
 #include "../support/dds_builder.hpp"
 #include "../support/esm_builder.hpp"
+#include "../support/hkx_builder.hpp"
 #include "../support/nif_builder.hpp"
 #include "../support/pex_builder.hpp"
 #include "../support/temp_dir.hpp"
@@ -47,6 +48,12 @@ std::vector<std::byte> a_dds() {
     return bethconv::testing::build_dds(DdsSpec{.width = 8, .height = 8, .mips = 4});
 }
 
+std::vector<std::byte> an_hkx() {
+    bethconv::test::HkxBuilder b(8);
+    b.add_skeleton("NPC Root [Root]", {{"NPC Root [Root]", -1, {0, 0, 0}, {0, 0, 0, 1}}});
+    return b.bytes();
+}
+
 std::vector<std::byte> a_pex() {
     return bethconv::testing::build_script(bethconv::testing::empty_script("Fixture"));
 }
@@ -71,7 +78,8 @@ struct Fixture {
         write_file(dir.path() / "scripts/fixture.pex", a_pex());
         // Not converted yet; the manifest must count it.
         write_file(dir.path() / "sound/fixture.fuz", a_dds());
-        write_file(dir.path() / "meshes/actors/fixture.hkx", a_dds());
+        write_file(dir.path() / "sound/fixture.wav", a_dds());
+        write_file(dir.path() / "meshes/actors/fixture.hkx", an_hkx());
         REQUIRE(set.mount_loose(dir.path(), 0).has_value());
     }
 
@@ -144,21 +152,22 @@ TEST_CASE("one pass over a mount produces a whole pack", "[convert]") {
     CHECK(result->pack.meshes == 1);
     CHECK(result->pack.textures == 1);
     CHECK(result->pack.scripts == 1);
+    CHECK(result->pack.animations == 1);
     CHECK(result->pack.failed == 0);
-    CHECK(result->pack.converted == 3);
+    CHECK(result->pack.converted == 4);
 
     // Every pack file.
     CHECK(std::filesystem::exists(pack / "manifest.json"));
     CHECK(std::filesystem::exists(pack / "vpath.idx"));
     CHECK(std::filesystem::exists(pack / "report.json"));
     CHECK(std::filesystem::exists(pack / "records.fb"));
-    CHECK(assets_in(pack).size() == 3);
+    CHECK(assets_in(pack).size() == 4);
 
     REQUIRE(result->snapshot.has_value());
     REQUIRE(result->merge.has_value());
 }
 
-TEST_CASE("assets use the .glb, .dds and .pexfb extensions",
+TEST_CASE("assets use the .glb, .dds, .pexfb and .animfb extensions",
           "[convert]") {
     Fixture fixture;
     TempDir out;
@@ -169,8 +178,9 @@ TEST_CASE("assets use the .glb, .dds and .pexfb extensions",
     for (const auto& name : assets_in(pack)) {
         extensions.insert(name.substr(name.rfind('.')));
     }
-    // `.dds`, not `.ktx2`; scripts decoded into `.pexfb`.
-    CHECK(extensions == std::set<std::string>{".dds", ".glb", ".pexfb"});
+    // `.dds`, not `.ktx2`; scripts decoded into `.pexfb`, Havok files into
+    // `.animfb`.
+    CHECK(extensions == std::set<std::string>{".animfb", ".dds", ".glb", ".pexfb"});
 }
 
 TEST_CASE("an input this pass does not convert is counted, not dropped silently",
@@ -190,7 +200,7 @@ TEST_CASE("an input this pass does not convert is counted, not dropped silently"
     const auto report = read_json(pack / "report.json");
     REQUIRE(report.contains("deferred"));
     CHECK(report["deferred"].contains(".fuz"));
-    CHECK(report["deferred"].contains(".hkx"));
+    CHECK(report["deferred"].contains(".wav"));
     CHECK(report["deferred"].contains(".esm"));
 }
 
@@ -216,7 +226,7 @@ TEST_CASE("each pass can be turned off on its own", "[convert]") {
         CHECK_FALSE(result->snapshot.has_value());
         CHECK_FALSE(std::filesystem::exists(out.path() / "pack" / "records.fb"));
     // Assets-only still writes assets (for re-testing without a merge).
-        CHECK(result->pack.converted == 3);
+        CHECK(result->pack.converted == 4);
     }
 }
 
@@ -268,14 +278,14 @@ TEST_CASE("a settings change renames every asset it could have affected",
 
     const auto a = assets_in(out.path() / "a");
     const auto b = assets_in(out.path() / "b");
-    REQUIRE(a.size() == 3);
-    REQUIRE(b.size() == 3);
+    REQUIRE(a.size() == 4);
+    REQUIRE(b.size() == 4);
 
     // Only the mesh moved: fingerprints are per kind.
     std::vector<std::string> shared;
     std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
                           std::back_inserter(shared));
-    CHECK(shared.size() == 2);
+    CHECK(shared.size() == 3);
     for (const auto& name : shared) {
         CHECK(name.find(".glb") == std::string::npos);
     }
@@ -319,9 +329,9 @@ TEST_CASE("two paths with the same bytes convert once", "[convert]") {
     REQUIRE(result.has_value());
 
     CHECK(result->pack.deduped == 1);
-    CHECK(result->pack.distinct_assets == 3);
-    CHECK(result->pack.index_entries == 4);
-    CHECK(assets_in(pack).size() == 3);
+    CHECK(result->pack.distinct_assets == 4);
+    CHECK(result->pack.index_entries == 5);
+    CHECK(assets_in(pack).size() == 4);
 }
 
 TEST_CASE("the manifest records the order the records came from", "[convert]") {

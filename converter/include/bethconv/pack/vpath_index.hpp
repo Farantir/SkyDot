@@ -32,7 +32,7 @@ namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in the pack layout changes. See
 /// formats/pack-format.md.
-inline constexpr std::uint32_t k_pack_format_version = 5;
+inline constexpr std::uint32_t k_pack_format_version = 6;
 
 /// Asset kind. One extension and one settings fingerprint each.
 enum class AssetKind : std::uint8_t {
@@ -40,11 +40,12 @@ enum class AssetKind : std::uint8_t {
     texture, ///< DDS -> DDS, mip chain completed.
     script,  ///< PEX -> decoded FlatBuffer (formats/schema/script.fbs).
     lod,     ///< .lod/.lst/.btt -> decoded FlatBuffer (formats/schema/lod.fbs).
+    animation, ///< .hkx -> decoded FlatBuffer (formats/schema/animation.fbs).
 };
 
 [[nodiscard]] std::string_view to_string(AssetKind kind) noexcept;
 
-/// Including the dot: ".glb", ".dds", ".pexfb", ".lodfb".
+/// Including the dot: ".glb", ".dds", ".pexfb", ".lodfb", ".animfb".
 [[nodiscard]] std::string_view extension_of(AssetKind kind) noexcept;
 
 /// Inverse of `to_string`. Nullopt for an unknown word, i.e. a pack from a

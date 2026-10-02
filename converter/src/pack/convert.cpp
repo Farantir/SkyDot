@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/convert.hpp"
 
+#include "bethconv/animation/hkx.hpp"
 #include "bethconv/io/mapped_file.hpp"
+#include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/lod_asset.hpp"
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/script/pex.hpp"
@@ -69,6 +71,9 @@ namespace {
     if ((extension == ".btt" || extension == ".lst" || extension == ".lod") && options.convert_lod) {
         return AssetKind::lod;
     }
+    if (extension == ".hkx" && options.convert_animations) {
+        return AssetKind::animation;
+    }
     return std::nullopt;
 }
 
@@ -134,6 +139,10 @@ std::string ConvertOptions::lod_settings() const {
     return "lod/1;decoded";
 }
 
+std::string ConvertOptions::animation_settings() const {
+    return "animation/1;decoded";
+}
+
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                                        const record::LoadOrder& order,
                                        const ConvertOptions& options) {
@@ -143,6 +152,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     pack_options.texture_settings = options.texture_settings();
     pack_options.script_settings = options.script_settings();
     pack_options.lod_settings = options.lod_settings();
+    pack_options.animation_settings = options.animation_settings();
     pack_options.prune_orphans = options.prune_orphans;
     pack_options.layout = options.layout;
 
@@ -416,6 +426,17 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                                                    " bytes after the declared tree blocks skipped"});
             }
             if (auto stored = writer->store(slot, write_lod_asset(*decoded)); !stored) {
+                writer->fail(failure_from(vpath, "write", stored.error()));
+            }
+            break;
+        }
+        case AssetKind::animation: {
+            auto decoded = animation::read_hkx(*bytes, vpath);
+            if (!decoded) {
+                writer->fail(failure_from(vpath, "animation", decoded.error()));
+                break;
+            }
+            if (auto stored = writer->store(slot, write_animation_asset(*decoded)); !stored) {
                 writer->fail(failure_from(vpath, "write", stored.error()));
             }
             break;

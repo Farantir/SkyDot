@@ -43,13 +43,18 @@ tested against real installs:
   functions, bytecode, line numbers) and stored as FlatBuffers; VMAD script
   data decoded on every record that carries it. All vanilla scripts decode;
   `bethconv script --dump` disassembles.
+- **Animations:** Havok packfiles (`.hkx`, LE and SE) read without the Havok
+  SDK: skeletons, spline-compressed and interleaved animations, bindings and
+  annotations, kept as splines in `.animfb` assets. Every vanilla `.hkx`
+  decodes; `bethconv animation` sweeps and samples. See
+  `docs/spikes/hkx.md`.
 - **Merge:** a load order collapsed into one set of forms with every override
   resolved. See `docs/format-notes/merge.md`.
 - **Record snapshot:** the merged world written to an mmap-able `records.fb` and
   read back zero-copy, with form, editor-id, type, child and cell-grid indices.
   `bethconv verify --against` re-runs the merge and compares. See
   `docs/format-notes/snapshot.md`.
-- **Pack:** every NIF, DDS and PEX content-addressed into one blob with an
+- **Pack:** every NIF, DDS, PEX and HKX content-addressed into one blob with an
   index (`--store loose` for a file per asset), plus `manifest.json`,
   `vpath.idx` and a `report.json` listing every failure. See
   `formats/pack-format.md`. A full vanilla SE pack is 7 files and 20 GB,

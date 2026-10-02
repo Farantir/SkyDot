@@ -9,7 +9,8 @@ set(SKYDOT_FB_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated")
 set(SKYDOT_WORLD_HEADER "${SKYDOT_FB_DIR}/world_generated.h")
 set(SKYDOT_SCRIPT_HEADER "${SKYDOT_FB_DIR}/script_generated.h")
 set(SKYDOT_LOD_HEADER "${SKYDOT_FB_DIR}/lod_generated.h")
-foreach(schema IN ITEMS world script lod)
+set(SKYDOT_ANIMATION_HEADER "${SKYDOT_FB_DIR}/animation_generated.h")
+foreach(schema IN ITEMS world script lod animation)
     add_custom_command(
         OUTPUT "${SKYDOT_FB_DIR}/${schema}_generated.h"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${SKYDOT_FB_DIR}"
@@ -33,6 +34,8 @@ target_sources(skydot PRIVATE
     src/assets/pack.hpp
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
+    src/world/actor_animation.cpp
+    src/world/actor_animation.hpp
     src/world/animator.cpp
     src/world/animator.hpp
     src/world/billboard.cpp
@@ -72,7 +75,8 @@ target_sources(skydot PRIVATE
     src/world/world.hpp
     "${SKYDOT_WORLD_HEADER}"
     "${SKYDOT_SCRIPT_HEADER}"
-    "${SKYDOT_LOD_HEADER}")
+    "${SKYDOT_LOD_HEADER}"
+    "${SKYDOT_ANIMATION_HEADER}")
 
 target_include_directories(skydot PRIVATE src "${SKYDOT_FB_DIR}")
 target_include_directories(skydot SYSTEM PRIVATE

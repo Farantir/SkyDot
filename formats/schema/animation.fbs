@@ -1,0 +1,115 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Schema of an animation asset (`.animfb`): one Havok file (`.hkx`), decoded
+// by the converter. It holds whatever skeletons and animations the file has:
+// a skeleton file (`character assets/skeleton.hkx`) has skeletons, an
+// animation file a clip, a behaviour file neither (it is still written, so
+// every path resolves).
+//
+// Values are Skyrim's: Z-up, game units, each bone relative to its parent.
+// Quaternions are x, y, z, w.
+//
+// Clips stay splines (see converter/docs/spikes/hkx.md for why and for the
+// source format). To sample frame f of a clip:
+//
+//   step  = frames_per_block - 1           (neighbouring blocks share a frame)
+//   block = min(f / step, blocks.length - 1)
+//   u     = f - block * step               (local frame, the knots' unit)
+//
+// and evaluate each Channel at u with de Boor's algorithm; normalize
+// rotations afterwards.
+
+namespace bethconv.pack.afb;
+
+/// Havok's hkQsTransform.
+struct QsTransform {
+    tx: float; ty: float; tz: float;
+    rx: float; ry: float; rz: float; rw: float;
+    sx: float; sy: float; sz: float;
+}
+
+table Skeleton {
+    name: string;
+    /// Per bone, -1 for a root. Parents come before their children.
+    parents: [short];
+    bones: [string];
+    reference_pose: [QsTransform];
+    /// Names of the float tracks' targets ("hkFade:AnimObjectA", ...).
+    float_slots: [string];
+}
+
+/// One property of one track in one block.
+///
+/// - `lo` empty: identity (no translation, no rotation, unit scale; 0 for a
+///   float track).
+/// - `knots` empty: the constant `lo`.
+/// - otherwise a B-spline of `degree` over `points.length / lo.length`
+///   control points, knots counting frames within the block. Axis a of point
+///   i is lo[a] + (hi[a] - lo[a]) * points[i * width + a] / 65535.
+///
+/// Width (`lo.length`): 3 translation and scale, 4 rotation, 1 float track.
+table Channel {
+    degree: ubyte;
+    knots: [ubyte];
+    lo: [float];
+    hi: [float];
+    points: [ushort];
+}
+
+table Track {
+    translation: Channel;
+    rotation: Channel;
+    scale: Channel;
+}
+
+table Block {
+    tracks: [Track];
+    floats: [Channel];
+}
+
+table Annotation {
+    time: float;
+    /// "FootLeft", "SoundPlay.NPCHumanFootstep", "HitFrame", ...
+    text: string;
+}
+
+table AnnotationTrack {
+    name: string;
+    annotations: [Annotation];
+}
+
+enum ClipEncoding : ubyte { Spline, Interleaved }
+
+table Clip {
+    encoding: ClipEncoding;
+    duration: float;
+    frame_count: uint;
+    frame_duration: float;
+    frames_per_block: uint;
+    transform_tracks: uint;
+    float_tracks: uint;
+    blocks: [Block];
+    annotations: [AnnotationTrack];
+    /// The binding: the skeleton the clip was made for, the bone each track
+    /// drives (empty: track i drives bone i), the float slot each float track
+    /// drives, and 0 normal / 1 additive blending.
+    skeleton_name: string;
+    track_to_bone: [short];
+    float_to_slot: [short];
+    blend_hint: ubyte;
+    /// Class of an extracted-motion object, not decoded. Skyrim's root motion
+    /// is in the animationdata text files.
+    extracted_motion: string;
+}
+
+table Animation {
+    /// Bumped whenever the meaning of anything here changes.
+    format_version: uint;
+    pointer_size: ubyte;
+    havok_version: string;
+    skeletons: [Skeleton];
+    clips: [Clip];
+}
+
+root_type Animation;
+file_identifier "BAN1";

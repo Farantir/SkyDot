@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.." || exit 2
 
 # Directories that parse untrusted bytes.
 GUARDED=(converter/src/archive converter/src/record converter/src/mesh converter/src/texture
-         converter/src/script converter/src/pack)
+         converter/src/script converter/src/pack converter/src/animation)
 
 # The reader itself, and the mmap wrapper where an OS pointer becomes a span.
 EXEMPT=(converter/src/io/span_reader.cpp converter/src/io/mapped_file.cpp)

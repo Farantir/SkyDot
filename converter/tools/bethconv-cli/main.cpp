@@ -22,6 +22,7 @@
 //   info      summarize a pack
 #include "front_end.hpp"
 
+#include "bethconv/animation/hkx.hpp"
 #include "bethconv/archive/archive_set.hpp"
 #include "bethconv/archive/vpath.hpp"
 #include "bethconv/install/mo2.hpp"
@@ -32,6 +33,7 @@
 #include "bethconv/io/span_stream.hpp"
 #include "bethconv/mesh/gltf_writer.hpp"
 #include "bethconv/mesh/nif_reader.hpp"
+#include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/pack_view.hpp"
 #include "bethconv/pack/snapshot.hpp"
@@ -1561,6 +1563,107 @@ int cmd_script(const std::vector<std::filesystem::path>& sources, std::vector<st
     return failed == 0 ? 0 : 1;
 }
 
+int cmd_animation(const std::vector<std::filesystem::path>& sources, std::vector<std::string> vpaths,
+                  const std::string& filter, int sample_track, bool list_failures) {
+    bethconv::archive::ArchiveSet set;
+    mount_all(set, sources);
+    if (vpaths.empty()) {
+        set.for_each([&](const bethconv::archive::Resolution& entry) {
+            if (entry.vpath.ends_with(".hkx") &&
+                (filter.empty() || entry.vpath.find(filter) != std::string::npos)) {
+                vpaths.push_back(entry.vpath);
+            }
+        });
+        std::ranges::sort(vpaths);
+    }
+    std::size_t files = 0;
+    std::size_t failed = 0;
+    std::size_t skeletons = 0;
+    std::size_t clips = 0;
+    std::size_t interleaved = 0;
+    std::size_t frames = 0;
+    std::size_t multi_block = 0;
+    std::size_t notes = 0;
+    std::size_t round_trip_mismatch = 0;
+    std::uint64_t source_bytes = 0;
+    std::uint64_t asset_bytes = 0;
+    std::map<std::string, std::size_t> errors;
+    std::map<std::string, std::size_t, std::less<>> classes;
+    const auto started = std::chrono::steady_clock::now();
+    for (const auto& vpath : vpaths) {
+        auto bytes = set.read(vpath);
+        ++files;
+        if (!bytes) {
+            ++failed;
+            std::fprintf(stderr, "error: %s\n", bytes.error().to_string().c_str());
+            continue;
+        }
+        source_bytes += bytes->size();
+        auto file = bethconv::animation::read_hkx(*bytes, vpath);
+        if (!file) {
+            ++failed;
+            ++errors[std::string(bethconv::io::to_string(file.error().kind))];
+            if (list_failures) {
+                std::fprintf(stderr, "error: %s\n", file.error().to_string().c_str());
+            }
+            continue;
+        }
+        for (const auto& [name, count] : file->classes) {
+            classes[name] += 1;
+        }
+        skeletons += file->skeletons.size();
+        for (const auto& clip : file->clips) {
+            ++clips;
+            interleaved += clip.encoding == bethconv::animation::ClipEncoding::interleaved ? 1U : 0U;
+            frames += clip.frame_count;
+            multi_block += clip.blocks.size() > 1 ? 1U : 0U;
+            for (const auto& track : clip.annotations) {
+                notes += track.annotations.size();
+            }
+        }
+        const auto asset = bethconv::pack::write_animation_asset(*file);
+        asset_bytes += asset.size();
+        const auto back = bethconv::pack::read_animation_asset(asset, vpath);
+        if (!back || back->clips.size() != file->clips.size() ||
+            back->skeletons.size() != file->skeletons.size()) {
+            ++round_trip_mismatch;
+        }
+        if (sample_track >= 0) {
+            for (std::size_t c = 0; c < file->clips.size(); ++c) {
+                const auto& clip = file->clips[c];
+                std::printf("# %s clip %zu: %u frames, %u tracks\n", vpath.c_str(), c, clip.frame_count,
+                            clip.transform_tracks);
+                for (std::uint32_t f = 0; f < clip.frame_count; ++f) {
+                    const auto t = bethconv::animation::sample(clip, static_cast<std::uint32_t>(sample_track), f);
+                    std::printf("%u %.9g %.9g %.9g %.9g %.9g %.9g %.9g\n", f, static_cast<double>(t.translation[0]),
+                                static_cast<double>(t.translation[1]), static_cast<double>(t.translation[2]),
+                                static_cast<double>(t.rotation[0]), static_cast<double>(t.rotation[1]),
+                                static_cast<double>(t.rotation[2]), static_cast<double>(t.rotation[3]));
+                }
+            }
+        }
+    }
+    const auto elapsed =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    std::printf("%zu files, %zu failed | %zu skeletons, %zu clips (%zu interleaved, %zu with several "
+                "blocks), %zu frames, %zu annotations | %.1f MiB read, %.1f MiB of assets, %zu round-trip "
+                "mismatches | %.1f s\n",
+                files, failed, skeletons, clips, interleaved, multi_block, frames, notes,
+                static_cast<double>(source_bytes) / (1024.0 * 1024.0),
+                static_cast<double>(asset_bytes) / (1024.0 * 1024.0), round_trip_mismatch, elapsed);
+    for (const auto& [kind, count] : errors) {
+        std::printf("  failed: %zu %s\n", count, kind.c_str());
+    }
+    std::printf("files per class:");
+    for (const auto& [name, count] : classes) {
+        if (name.starts_with("hka") || name == "hkRootLevelContainer" || name == "hkbCharacterStringData") {
+            std::printf(" %s %zu", name.c_str(), count);
+        }
+    }
+    std::printf("\n");
+    return failed == 0 && round_trip_mismatch == 0 ? 0 : 1;
+}
+
 int cmd_texture(const std::vector<std::filesystem::path>& sources,
                 std::vector<std::string> vpaths, const std::filesystem::path& list_file,
                 const std::string& filter, const std::filesystem::path& out_dir, bool inspect,
@@ -1929,6 +2032,7 @@ struct ConvertArgs {
     bool no_textures = false;
     bool no_scripts = false;
     bool no_lod = false;
+    bool no_animations = false;
     bool no_mip_fix = false;
     bool no_collision = false;
     bool no_skinning = false;
@@ -2112,6 +2216,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_textures = !args.no_textures;
     options.convert_scripts = !args.no_scripts;
     options.convert_lod = !args.no_lod;
+    options.convert_animations = !args.no_animations;
     options.fix_mip_tail = !args.no_mip_fix;
     options.max_texture_size = args.max_texture_size;
     options.texture_encoding = args.encoding;
@@ -2205,14 +2310,15 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(w.script_errors));
     }
     std::fprintf(text, "  assets        %llu written, %llu deduped, %llu distinct "
-                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD)\n",
+                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD, %llu animations)\n",
                  static_cast<unsigned long long>(stats.converted),
                  static_cast<unsigned long long>(stats.deduped),
                  static_cast<unsigned long long>(stats.distinct_assets),
                  static_cast<unsigned long long>(stats.meshes),
                  static_cast<unsigned long long>(stats.textures),
                  static_cast<unsigned long long>(stats.scripts),
-                 static_cast<unsigned long long>(stats.lod));
+                 static_cast<unsigned long long>(stats.lod),
+                 static_cast<unsigned long long>(stats.animations));
     std::fprintf(text, "                %.1f MiB written, %.1f MiB not re-converted\n",
                  static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
                  static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
@@ -2282,6 +2388,7 @@ int cmd_convert(const ConvertArgs& args) {
                                     {"textures", stats.textures},
                                     {"scripts", stats.scripts},
                                     {"lod", stats.lod},
+                                    {"animations", stats.animations},
                                     {"bytes_written", stats.asset_bytes},
                                     {"store_bytes", stats.store_bytes}}},
             {"textures", ordered_json{{"max_size", args.max_texture_size},
@@ -2770,6 +2877,18 @@ int main(int argc, char** argv) {
     script_cmd->add_option("--filter", script_filter, "Only paths containing this substring");
     script_cmd->add_flag("--dump", script_dump, "Print each script's disassembly");
 
+    std::vector<std::filesystem::path> anim_sources;
+    std::vector<std::string> anim_vpaths;
+    std::string anim_filter;
+    int anim_sample = -1;
+    bool anim_failures = false;
+    auto* anim_cmd = app.add_subcommand("animation", "Decode Havok skeletons and animations (.hkx)");
+    anim_cmd->add_option("--source", anim_sources, "Archive or directory to mount (repeatable)")->required();
+    anim_cmd->add_option("vpath", anim_vpaths, "Files to decode; default every .hkx");
+    anim_cmd->add_option("--filter", anim_filter, "Only paths containing this substring");
+    anim_cmd->add_option("--sample", anim_sample, "Print every frame of this track (translation, rotation)");
+    anim_cmd->add_flag("--failures", anim_failures, "Print each failure");
+
     auto* texture = app.add_subcommand("texture", "Pass DDS textures through, completing the mip chain");
     texture->add_option("--source", texture_sources,
                         "BSA/BA2, loose directory, or .dds file; repeat, in load order")
@@ -2931,6 +3050,7 @@ int main(int argc, char** argv) {
     bool convert_no_textures = false;
     bool convert_no_scripts = false;
     bool convert_no_lod = false;
+    bool convert_no_animations = false;
     bool convert_no_mip_fix = false;
     bool convert_no_collision = false;
     bool convert_no_skinning = false;
@@ -2968,6 +3088,7 @@ int main(int argc, char** argv) {
     convert->add_flag("--no-textures", convert_no_textures, "Skip the DDS pass");
     convert->add_flag("--no-scripts", convert_no_scripts, "Skip the PEX pass");
     convert->add_flag("--no-lod", convert_no_lod, "Skip terrain, object and tree LOD");
+    convert->add_flag("--no-animations", convert_no_animations, "Skip Havok files (.hkx)");
     convert->add_flag("--no-mip-fix", convert_no_mip_fix,
                       "Leave short DDS mip chains alone (control run)");
     convert->add_flag("--no-collision", convert_no_collision, "Do not read Havok shapes");
@@ -3229,6 +3350,9 @@ int main(int argc, char** argv) {
                         mesh_limit, mesh_no_collision, mesh_no_skinning, mesh_keep_z_up,
                         mesh_unit_scale, mesh_verbose);
     }
+    if (anim_cmd->parsed()) {
+        return cmd_animation(anim_sources, anim_vpaths, anim_filter, anim_sample, anim_failures);
+    }
     if (script_cmd->parsed()) {
         return cmd_script(script_sources, script_vpaths, script_filter, script_dump);
     }
@@ -3255,6 +3379,7 @@ int main(int argc, char** argv) {
                                        .no_textures = convert_no_textures,
                                        .no_scripts = convert_no_scripts,
                                        .no_lod = convert_no_lod,
+                                       .no_animations = convert_no_animations,
                                        .no_mip_fix = convert_no_mip_fix,
                                        .no_collision = convert_no_collision,
                                        .no_skinning = convert_no_skinning,

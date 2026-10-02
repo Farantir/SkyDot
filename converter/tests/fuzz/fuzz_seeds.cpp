@@ -7,6 +7,7 @@
 #include "../support/bsa_builder.hpp"
 #include "../support/dds_builder.hpp"
 #include "../support/esm_builder.hpp"
+#include "../support/hkx_builder.hpp"
 #include "../support/lod_builder.hpp"
 #include "../support/nif_builder.hpp"
 #include "../support/pex_builder.hpp"
@@ -444,6 +445,47 @@ void seed_lod(const std::filesystem::path& root) {
     emit(dir, "trees-trailing.btt", trailing);
 }
 
+// ---- HKX ------------------------------------------------------------------
+
+void seed_animation(const std::filesystem::path& root) {
+    using namespace bethconv::test;
+    const auto dir = root / "animation";
+    const std::vector<HkxBone> bones{{"NPC Root [Root]", -1, {0, 0, 0}, {0, 0, 0, 1}},
+                                     {"NPC Spine [Spn0]", 0, {0, 0, 70}, {0, 0, 0, 1}}};
+    HkxClip clip;
+    clip.frames = 300;
+    clip.tracks = 2;
+    clip.float_tracks = 1;
+    clip.track_offsets = true;
+    clip.annotations = {{0.2f, "FootLeft"}};
+    HkxChannel move;
+    move.kind = HkxChannel::Kind::spline;
+    move.knots = {0, 0, 255, 255};
+    move.points = {{0, 0, 0, 0}, {255, 0, 0, 0}};
+    HkxChannel turn = move;
+    turn.points = {{0, 0, 0, 1}, {0, 0, 0.7071f, 0.7071f}};
+    HkxBlock block;
+    block.tracks = {HkxTrack{move, {}}, HkxTrack{HkxChannel::constant({0, 0, 1, 0}), turn}};
+    block.floats = {move};
+    clip.blocks = {block, block};
+    for (const std::uint8_t ptr : {std::uint8_t{4}, std::uint8_t{8}}) {
+        const std::string suffix = ptr == 4 ? "-le.hkx" : "-se.hkx";
+        HkxBuilder skeleton(ptr);
+        skeleton.add_skeleton("NPC Root [Root]", bones, {"hkVis:Shield"});
+        const auto sk = skeleton.bytes();
+        emit(dir, "skeleton" + suffix, sk);
+        emit(dir, "skeleton-truncated" + suffix, truncated(sk, sk.size() / 2));
+        HkxBuilder anim(ptr);
+        anim.add_clip(clip);
+        const auto a = anim.bytes();
+        emit(dir, "clip" + suffix, a);
+        emit(dir, "clip-truncated" + suffix, truncated(a, a.size() - 40));
+        HkxBuilder interleaved(ptr);
+        interleaved.add_interleaved({{{{0, 0, 0}, {0, 0, 0, 1}}}, {{{1, 0, 0}, {0, 0, 0, 1}}}}, 1.0f / 30.0f);
+        emit(dir, "interleaved" + suffix, interleaved.bytes());
+    }
+}
+
 void seed_assets(const std::filesystem::path& root) {
     using namespace bethconv::pack;
     const auto dir = root / "assets";
@@ -478,6 +520,7 @@ int main(int argc, char** argv) {
     seed_pex(root);
     seed_bsa(root);
     seed_lod(root);
+    seed_animation(root);
     seed_assets(root);
     // fuzz_forms shares the esm corpus.
     std::printf("%zu seed(s) under %s\n", written, root.string().c_str());

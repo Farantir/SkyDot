@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "corpus_probe.hpp"
+#include "bethconv/animation/hkx.hpp"
 
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_reader.hpp"
+#include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/pack/snapshot.hpp"
@@ -939,6 +941,46 @@ ScriptFacts probe_scripts(const archive::ArchiveSet& sources) {
             }
         }
         for (const auto b : pack::write_script_asset(*decoded)) {
+            hash = (hash ^ static_cast<std::uint8_t>(b)) * 0x100000001b3ULL;
+        }
+    }
+    facts.asset_hash = hash;
+    return facts;
+}
+
+AnimationFacts probe_animations(const archive::ArchiveSet& sources) {
+    std::vector<std::string> vpaths;
+    sources.for_each([&](const archive::Resolution& entry) {
+        if (entry.vpath.ends_with(".hkx")) {
+            vpaths.push_back(entry.vpath);
+        }
+    });
+    std::ranges::sort(vpaths);
+    AnimationFacts facts;
+    std::uint64_t hash = 0xcbf29ce484222325ULL;
+    for (const auto& vpath : vpaths) {
+        ++facts.files;
+        auto bytes = sources.read(vpath);
+        auto decoded = bytes ? animation::read_hkx(*bytes, vpath)
+                             : io::ParseResult<animation::HkxFile>(std::unexpected(bytes.error()));
+        if (!decoded) {
+            if (decoded.error().kind == io::ErrorKind::unsupported &&
+                decoded.error().detail.find("tagfile") != std::string::npos) {
+                ++facts.tagfiles;
+            } else {
+                ++facts.failed;
+            }
+            continue;
+        }
+        facts.skeletons += decoded->skeletons.size();
+        for (const auto& clip : decoded->clips) {
+            ++facts.clips;
+            facts.frames += clip.frame_count;
+            for (const auto& track : clip.annotations) {
+                facts.annotations += track.annotations.size();
+            }
+        }
+        for (const auto b : pack::write_animation_asset(*decoded)) {
             hash = (hash ^ static_cast<std::uint8_t>(b)) * 0x100000001b3ULL;
         }
     }

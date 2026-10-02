@@ -35,7 +35,7 @@ constexpr const char* k_index_name = "vpath.idx";
 
 // formats/pack-format.md, "vpath.idx": two comment lines, the first naming format
 // and version.
-constexpr const char* k_index_header = "# bethconv vpath index v5";
+constexpr const char* k_index_header = "# bethconv vpath index v6";
 
 // formats/pack-format.md, "records.fb" > "The header": little-endian, 64 bytes,
 // magic `BETHSNAP`, then `format_version` (uint32). Only enough is read to

@@ -47,6 +47,7 @@
 
 #include "../../tests/support/dds_builder.hpp"
 #include "../../tests/support/esm_builder.hpp"
+#include "../../tests/support/hkx_builder.hpp"
 #include "../../tests/support/lod_builder.hpp"
 #include "../../tests/support/nif_builder.hpp"
 #include "../../tests/support/pex_builder.hpp"
@@ -897,6 +898,57 @@ void write_file(const fs::path& path, std::span<const std::byte> bytes) {
 }
 
 /// The synthetic install. Returns the number of files written.
+/// An actor: a three-bone skeleton, a clip that turns the head bone 90
+/// degrees about Z over 10 frames with a "FootLeft" annotation at 0.1 s, and a
+/// cube skinned to the head, placed 120 units up like Skyrim's body parts.
+std::vector<std::byte> actor_skeleton() {
+    bethconv::test::HkxBuilder b(8);
+    b.add_skeleton("NPC Root [Root]", {{"NPC Root [Root]", -1, {0, 0, 0}, {0, 0, 0, 1}},
+                                       {"NPC Spine [Spn0]", 0, {0, 0, 70}, {0, 0, 0, 1}},
+                                       {"NPC Head [Head]", 1, {0, 0, 50}, {0, 0, 0, 1}}});
+    return b.bytes();
+}
+
+std::vector<std::byte> actor_clip() {
+    using bethconv::test::HkxChannel;
+    bethconv::test::HkxClip clip;
+    clip.frames = 11;
+    clip.tracks = 3;
+    clip.skeleton_name = "NPC Root [Root]";
+    clip.annotations = {{0.1f, "FootLeft"}};
+    HkxChannel turn;
+    turn.kind = HkxChannel::Kind::spline;
+    turn.knots = {0, 0, 10, 10};
+    turn.points = {{0, 0, 0, 1}, {0, 0, 0.70710678f, 0.70710678f}};
+    bethconv::test::HkxBlock block;
+    block.tracks = {{HkxChannel::constant({0, 0, 0, 0}), {}},
+                    {HkxChannel::constant({0, 0, 70, 0}), {}},
+                    {HkxChannel::constant({0, 0, 50, 0}), turn}};
+    clip.blocks = {block};
+    bethconv::test::HkxBuilder b(8);
+    b.add_clip(clip);
+    return b.bytes();
+}
+
+std::vector<std::byte> actor_body() {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    auto* root_bone = builder.add_node("NPC Root [Root]");
+    auto* spine = builder.add_node("NPC Spine [Spn0]", root_bone);
+    auto* head = builder.add_node("NPC Head [Head]", spine);
+    nifly::MatTransform spine_t;
+    spine_t.translation = nifly::Vector3(0, 0, 70);
+    spine->SetTransformToParent(spine_t);
+    nifly::MatTransform head_t;
+    head_t.translation = nifly::Vector3(0, 0, 50);
+    head->SetTransformToParent(head_t);
+    auto* shape = builder.add_shape("Body", bethconv::test::make_cube());
+    nifly::MatTransform placed;
+    placed.translation = nifly::Vector3(0, 0, 120);
+    shape->SetTransformToParent(placed);
+    builder.add_skin(shape, head, placed, placed);
+    return builder.bytes();
+}
+
 std::size_t write_data_folder(const fs::path& data) {
     std::size_t files = 0;
     const auto put = [&](const fs::path& rel, std::span<const std::byte> bytes) {
@@ -952,6 +1004,10 @@ std::size_t write_data_folder(const fs::path& data) {
              {1, {{.x = 6000.0F, .y = 1000.0F, .z = 50.0F, .rotation = 1.0F, .scale = 2.0F}}}}));
     put("textures/terrain/testpackworld/trees/testpackworldtreelod.dds",
         bethconv::testing::build_dds(DdsSpec{.width = 8, .height = 8, .mips = 4}));
+
+    put("meshes/testpack/actor/skeleton.hkx", actor_skeleton());
+    put("meshes/testpack/actor/turnhead.hkx", actor_clip());
+    put("meshes/testpack/actor/body.nif", actor_body());
 
     // Not converted; must appear in `report.json`.
     put("sound/testpack/voice.fuz", bethconv::testing::build_pex({}));
@@ -1134,7 +1190,8 @@ int main(int argc, char** argv) {
                   << "assets:    " << result->pack.distinct_assets << " distinct, "
                   << result->pack.index_entries << " index entries ("
                   << result->pack.meshes << " mesh, " << result->pack.textures << " texture, "
-                  << result->pack.scripts << " script, " << result->pack.lod << " LOD)\n"
+                  << result->pack.scripts << " script, " << result->pack.lod << " LOD, "
+                  << result->pack.animations << " animation)\n"
                   << "deduped:   " << result->pack.deduped << "\n"
                   << "deferred:  " << result->pack.deferred << "\n"
                   << "failed:    " << result->pack.failed << "\n"

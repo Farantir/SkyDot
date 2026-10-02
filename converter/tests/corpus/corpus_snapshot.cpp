@@ -172,6 +172,29 @@ void update_scripts(json& install, const archive::ArchiveSet& set) {
     }
 }
 
+/// Every Havok file in the mounted archives.
+void update_animations(json& install, const archive::ArchiveSet& set) {
+    if (!install.contains("animations")) {
+        return;
+    }
+    const auto facts = corpus::probe_animations(set);
+    auto& expected = install.at("animations");
+    expected["files"] = facts.files;
+    expected["tagfiles"] = facts.tagfiles;
+    expected["skeletons"] = facts.skeletons;
+    expected["clips"] = facts.clips;
+    expected["frames"] = facts.frames;
+    expected["annotations"] = facts.annotations;
+    expected["asset_hash"] = facts.asset_hash;
+    std::fprintf(stderr, "  animations: %llu files, %llu failed, %llu skeletons, %llu clips, %llu frames\n",
+                 static_cast<unsigned long long>(facts.files), static_cast<unsigned long long>(facts.failed),
+                 static_cast<unsigned long long>(facts.skeletons), static_cast<unsigned long long>(facts.clips),
+                 static_cast<unsigned long long>(facts.frames));
+    if (facts.failed != 0) {
+        std::fprintf(stderr, "    ^ NOT ZERO on a vanilla install -- recording this is recording a bug.\n");
+    }
+}
+
 /// Field census over the same mount and the plugin pin's list (totals only mean
 /// something over the whole set).
 void update_forms(const std::filesystem::path& dir, json& install,
@@ -572,6 +595,7 @@ void update_archives(const std::filesystem::path& dir, json& install) {
     update_meshes(install, set);
     update_forms(dir, install, set);
     update_scripts(install, set);
+    update_animations(install, set);
     update_merge(dir, install, set);
     update_convert(dir, install, set);
 }

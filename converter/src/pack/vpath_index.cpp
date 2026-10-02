@@ -49,6 +49,7 @@ std::string_view to_string(AssetKind kind) noexcept {
     case AssetKind::texture: return "texture";
     case AssetKind::script: return "script";
     case AssetKind::lod: return "lod";
+    case AssetKind::animation: return "animation";
     }
     return "unknown";
 }
@@ -60,6 +61,7 @@ std::string_view extension_of(AssetKind kind) noexcept {
     case AssetKind::texture: return ".dds";
     case AssetKind::script: return ".pexfb";
     case AssetKind::lod: return ".lodfb";
+    case AssetKind::animation: return ".animfb";
     }
     return "";
 }
@@ -76,6 +78,9 @@ std::optional<AssetKind> kind_from_string(std::string_view name) noexcept {
     }
     if (name == "lod") {
         return AssetKind::lod;
+    }
+    if (name == "animation") {
+        return AssetKind::animation;
     }
     return std::nullopt;
 }

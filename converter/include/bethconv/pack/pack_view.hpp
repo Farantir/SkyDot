@@ -67,6 +67,7 @@ struct ViewStats {
     std::uint64_t textures{};
     std::uint64_t scripts{};
     std::uint64_t lod{};
+    std::uint64_t animations{};
 
     std::uint64_t linked{};  ///< Hard links to pack bytes.
     std::uint64_t copied{};  ///< Copies (requested or as fallback).

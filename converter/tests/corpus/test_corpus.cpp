@@ -637,6 +637,36 @@ TEST_CASE("every script decodes completely, to the same assets", "[corpus]") {
     }
 }
 
+TEST_CASE("every animation file decodes, to the same assets", "[corpus]") {
+    for (const auto& install : expectations().at("installs")) {
+        const auto dir = data_dir(install);
+        if (!dir || !install.contains("animations")) {
+            continue;
+        }
+        INFO(describe(install));
+        std::vector<std::string> names;
+        for (const auto& expected : install.at("archives")) {
+            names.push_back(expected.at("file").get<std::string>());
+        }
+        archive::ArchiveSet set;
+        const auto scan = corpus::probe_archives(*dir, names, set);
+        if (!scan.missing.empty()) {
+            WARN("absent from this install: " << scan.missing.size() << " archive(s)");
+            continue;
+        }
+        const auto facts = corpus::probe_animations(set);
+        const auto& expected = install.at("animations");
+        CHECK(facts.failed == 0);
+        CHECK(facts.files == expected.at("files").get<std::uint64_t>());
+        CHECK(facts.tagfiles == expected.at("tagfiles").get<std::uint64_t>());
+        CHECK(facts.skeletons == expected.at("skeletons").get<std::uint64_t>());
+        CHECK(facts.clips == expected.at("clips").get<std::uint64_t>());
+        CHECK(facts.frames == expected.at("frames").get<std::uint64_t>());
+        CHECK(facts.annotations == expected.at("annotations").get<std::uint64_t>());
+        CHECK(facts.asset_hash == expected.at("asset_hash").get<std::uint64_t>());
+    }
+}
+
 TEST_CASE("the load order collapses into the same flat world", "[corpus]") {
     for (const auto& install : expectations().at("installs")) {
         const auto dir = data_dir(install);

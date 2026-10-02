@@ -1,10 +1,11 @@
-# Pack format v5
+# Pack format v6
 
 The interface between converter and engine. The converter writes packs; the
-engine reads only packs. Everything below is stable in v5. The last section
+engine reads only packs. Everything below is stable in v6. The last section
 lists what is not promised.
 
-v5 stores assets in one blob with an index (or, on request, as loose files)
+v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
+a new kind, `animation`, holding its skeletons and clips. v5 stores assets in one blob with an index (or, on request, as loose files)
 and drops glTF images from meshes: the engine loads packs directly, without a
 Godot import or bake. v4 adds LOD: terrain and object LOD (`.btr`, `.bto`) become meshes, and
 LOD settings and tree LOD (`.lod`, `.lst`, `.btt`) become `.lodfb` assets of
@@ -24,7 +25,7 @@ byte-identical pack.
 
 ## Versioning
 
-`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 5. It
+`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 6. It
 appears in `manifest.json`, `report.json` and, as `k_snapshot_format_version`,
 the `records.fb` header. Each is checked separately so a reader can say which
 file it cannot read.
@@ -44,7 +45,7 @@ pack/
   records.fb                         the merged world, mmap-able
   world.fb                           cells, references, base objects
   assets.idx                         content hash -> offset, size, kind
-  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb bytes)
+  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb bytes)
   vpath.idx                          virtual path -> content hash
   report.json                        every skipped, failed and warned input
 ```
@@ -77,7 +78,7 @@ newline):
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
 | `records` | `file`, `forms`, `bytes`, `hash`; absent without a snapshot |
 | `world` | `file`, `cells`, `refs`, `bases`, `bytes`, `hash`; absent without a snapshot |
-| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `bytes` (written by this run), `dedupe_saved_bytes` |
+| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `animations`, `bytes` (written by this run), `dedupe_saved_bytes` |
 | `store` | `layout` (`blob` or `loose`); for a blob also `index` and `blob` (file names); `bytes` (all stored assets) |
 | `deferred` | extension → count of inputs not converted by this version |
 | `report` | `file`, `failed`, `warnings` |
@@ -246,7 +247,7 @@ Two layouts hold the same assets under the same names.
 | blob_bytes | u64: bytes of the blob the index covers |
 | entries | count × { hash: 32 bytes, offset: u64, size: u64, kind: u8, 7 zero bytes } |
 
-Entries are sorted by hash bytes; kind is 0 mesh, 1 texture, 2 script, 3 lod.
+Entries are sorted by hash bytes; kind is 0 mesh, 1 texture, 2 script, 3 lod, 4 animation.
 Every entry lies inside `blob_bytes`, and nothing follows the last entry; a
 reader refuses an index that breaks either. Entries start on 16-byte
 boundaries, in conversion order (sorted virtual paths), so the blob is
@@ -285,6 +286,7 @@ Per kind, mentioning only settings that affect that kind:
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep` | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
+| animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
 whenever a writer's output changes (a changed option already changes its
@@ -352,17 +354,35 @@ over, except after a `.btt`'s declared blocks (six Solstheim files in SE and
 VR; skipped with a warning). Every LOD file of the three vanilla installs
 converts.
 
+## Animation assets
+
+Every `.hkx` becomes an `.animfb`: a FlatBuffer (identifier `BAN1`, schema
+`formats/schema/animation.fbs`, its own `format_version`, 1) with whatever
+skeletons (`hkaSkeleton`) and clips (`hkaSplineCompressedAnimation` or
+`hkaInterleavedUncompressedAnimation`, with their binding and annotations)
+the file holds. Behaviour graphs and physics are not decoded; their files
+still convert, empty, so every path resolves.
+
+Clips stay B-splines, as Havok stores them: sampled per frame, vanilla SE's
+clips would take 1 GiB, the splines about 130 MiB. The schema's header says
+how to sample. Values are game units, Z-up, each bone relative to its parent.
+The format and its measurements: `converter/docs/spikes/hkx.md`. Every `.hkx`
+of the three vanilla installs converts (SE 7,699 files, 6,126 clips).
+
+Root motion is not in the HKX; Skyrim keeps it in
+`meshes/animationdata/boundanims/*.txt`, not yet converted.
+
 ## `vpath.idx`
 
 Tab-separated, sorted, one line per virtual path, after two comment lines:
 
 ```
-# bethconv vpath index v5
+# bethconv vpath index v6
 # virtual path\tcontent hash\tkind\twinning source
 meshes/clutter/apple01.nif\t3f9c…\tmesh\tSkyrim - Meshes0.bsa
 ```
 
-`kind` is `mesh`, `texture`, `script` or `lod`. An unknown kind means a newer writer;
+`kind` is `mesh`, `texture`, `script`, `lod` or `animation`. An unknown kind means a newer writer;
 say so rather than guess.
 
 Text because it is for debugging mod overrides: people read it and tools diff
@@ -470,7 +490,7 @@ the machine.
 - No hash-table iteration order in files. `vpath.idx` and all `report.json`
   arrays are sorted.
 
-## Not promised in v5
+## Not promised in v6
 
 - **Resolved text.** There is no per-language string file; names cannot be
   resolved from a pack alone.

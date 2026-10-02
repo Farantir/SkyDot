@@ -56,6 +56,8 @@ struct ConvertOptions {
     /// Terrain and object LOD (.btr, .bto) as meshes; tree LOD and LOD settings
     /// (.btt, .lst, .lod) as LOD assets.
     bool convert_lod = true;
+    /// Havok files (.hkx): skeletons and animations as animation assets.
+    bool convert_animations = true;
 
     mesh::ReadOptions mesh_read;
 
@@ -107,6 +109,7 @@ struct ConvertOptions {
     [[nodiscard]] std::string texture_settings() const;
     [[nodiscard]] std::string script_settings() const;
     [[nodiscard]] std::string lod_settings() const;
+    [[nodiscard]] std::string animation_settings() const;
 };
 
 /// Results of `convert`.

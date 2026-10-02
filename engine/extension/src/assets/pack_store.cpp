@@ -149,6 +149,9 @@ std::string_view PackStore::extension_of(std::string_view kind) {
     if (kind == "lod") {
         return ".lodfb";
     }
+    if (kind == "animation") {
+        return ".animfb";
+    }
     return {};
 }
 

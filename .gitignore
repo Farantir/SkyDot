@@ -2,6 +2,7 @@ build/
 vcpkg_installed/
 compile_commands.json
 .cache/
+__pycache__/
 .vscode/
 .idea/
 

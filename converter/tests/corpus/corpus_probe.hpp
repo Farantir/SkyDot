@@ -305,6 +305,22 @@ struct ScriptFacts {
     std::uint64_t asset_hash{};
 };
 
+/// Every `.hkx` in the mounted archives, decoded and written as an animation
+/// asset. `failed` must be zero; `asset_hash` (FNV-1a over the assets in path
+/// order) moves with any change to the reader or the asset format.
+struct AnimationFacts {
+    std::uint64_t files{};
+    std::uint64_t failed{};
+    /// Havok binary tagfiles, a container not read yet (6 in SE's Creation
+    /// Club fishing content). Counted apart so `failed` stays zero.
+    std::uint64_t tagfiles{};
+    std::uint64_t skeletons{};
+    std::uint64_t clips{};
+    std::uint64_t frames{};
+    std::uint64_t annotations{};
+    std::uint64_t asset_hash{};
+};
+
 /// Facts about one `bethconv convert` over a real install.
 ///
 /// A full convert is too slow for ctest (55 s release, minutes under ASan), so
@@ -543,5 +559,6 @@ struct ReadCheck {
 
 /// Decode every script in `sources`.
 [[nodiscard]] ScriptFacts probe_scripts(const archive::ArchiveSet& sources);
+[[nodiscard]] AnimationFacts probe_animations(const archive::ArchiveSet& sources);
 
 } // namespace bethconv::corpus

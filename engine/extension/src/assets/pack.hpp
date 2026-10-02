@@ -3,7 +3,7 @@
 // `SkydotPack`: a mounted bethconv pack.
 //
 // Packs are the only thing this engine reads. Written against
-// formats/pack-format.md (v5) alone, without linking the converter's reader, so
+// formats/pack-format.md (v6) alone, without linking the converter's reader, so
 // it also shows the document is sufficient.
 //
 // `open` checks, in order, and refuses on any failure:
@@ -46,7 +46,7 @@ class SkydotPack : public godot::RefCounted {
 
 public:
     /// The pack format version this engine reads (manifest and vpath.idx).
-    static constexpr int PACK_FORMAT_VERSION = 5;
+    static constexpr int PACK_FORMAT_VERSION = 6;
     /// The records.fb format version this engine reads (its own number, not the
     /// pack's).
     static constexpr int RECORDS_FORMAT_VERSION = 1;

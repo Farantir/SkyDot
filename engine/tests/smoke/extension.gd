@@ -4,7 +4,7 @@
 # pack; runs anywhere.
 extends SceneTree
 
-const k_index_header := "# bethconv vpath index v5\n"
+const k_index_header := "# bethconv vpath index v6\n"
 const k_index_columns := "# virtual path\tcontent hash\tkind\twinning source\n"
 
 var failures := 0
@@ -33,7 +33,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotPack"), "SkydotPack is registered")
     expect(ClassDB.can_instantiate("SkydotPack"), "SkydotPack can be instantiated")
     var pack := SkydotPack.new()
-    expect(pack.PACK_FORMAT_VERSION == 5, "the engine reads pack format v5")
+    expect(pack.PACK_FORMAT_VERSION == 6, "the engine reads pack format v6")
     expect(pack.RECORDS_FORMAT_VERSION == 1, "and records.fb format v1")
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
@@ -129,18 +129,18 @@ func _check_refusals() -> void:
     var v4 := root.path_join("v4")
     _write_pack(v4, 4, k_index_header + k_index_columns)
     expect(pack.open(v4) == ERR_UNAVAILABLE, "a v4 pack is refused")
-    expect(pack.get_error().contains("version 4") and pack.get_error().contains("v5"),
+    expect(pack.get_error().contains("version 4") and pack.get_error().contains("v6"),
            "the refusal names both versions: " + pack.get_error())
     expect(not pack.is_open(), "a refused pack is closed")
 
-    # A v5 manifest whose index header is from another version.
+    # A v6 manifest whose index header is from another version.
     var idx1 := root.path_join("idx1")
-    _write_pack(idx1, 5, "# bethconv vpath index v1\n")
+    _write_pack(idx1, 6, "# bethconv vpath index v1\n")
     expect(pack.open(idx1) == ERR_FILE_UNRECOGNIZED, "an index header this engine does not know")
 
-    # A v5 manifest whose index has more lines than the manifest counted.
+    # A v6 manifest whose index has more lines than the manifest counted.
     var extra := root.path_join("extra")
-    _write_pack(extra, 5, k_index_header + k_index_columns
+    _write_pack(extra, 6, k_index_header + k_index_columns
         + "meshes/a.nif\t" + "0".repeat(64) + "\tmesh\tsrc\n")
     expect(pack.open(extra) == ERR_FILE_CORRUPT, "an index the manifest did not count")
     expect(pack.get_error().contains("1 entries but manifest.json says 0"),
@@ -148,7 +148,7 @@ func _check_refusals() -> void:
 
     # An empty but valid pack: manifest and index both count zero.
     var ok := root.path_join("ok")
-    _write_pack(ok, 5, k_index_header + k_index_columns)
+    _write_pack(ok, 6, k_index_header + k_index_columns)
     expect(pack.open(ok) == OK, "an empty pack opens: " + pack.get_error())
     expect(pack.is_open() and pack.get_index_count() == 0 and not pack.has_records(),
            "and reports itself empty")
@@ -156,7 +156,7 @@ func _check_refusals() -> void:
 
     # A records key whose file carries the wrong magic.
     var badrec := root.path_join("badrec")
-    _write_pack(badrec, 5, k_index_header, true)
+    _write_pack(badrec, 6, k_index_header, true)
     var f := FileAccess.open(badrec.path_join("records.fb"), FileAccess.WRITE)
     f.store_string("NOTASNAP".rpad(64, " "))
     f.close()
@@ -164,7 +164,7 @@ func _check_refusals() -> void:
 
     # Correct magic, unsupported version.
     var rec2 := root.path_join("rec2")
-    _write_pack(rec2, 5, k_index_header, true)
+    _write_pack(rec2, 6, k_index_header, true)
     var header := PackedByteArray()
     header.resize(64)
     for i in 8:
@@ -179,7 +179,7 @@ func _check_refusals() -> void:
 
     # A world key whose file is missing.
     var noworld := root.path_join("noworld")
-    _write_pack(noworld, 5, k_index_header + k_index_columns, false, true)
+    _write_pack(noworld, 6, k_index_header + k_index_columns, false, true)
     expect(pack.open(noworld) == ERR_FILE_NOT_FOUND, "a missing world.fb is refused")
 
     # A damaged world.fb is refused by SkydotWorld.
@@ -193,17 +193,17 @@ func _check_refusals() -> void:
 
     # The blob layout: its index must be there and well formed.
     var noidx := root.path_join("noidx")
-    _write_pack(noidx, 5, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(noidx, 6, k_index_header + k_index_columns, false, false, "blob")
     expect(pack.open(noidx) == ERR_FILE_NOT_FOUND, "a blob pack without assets.idx is refused")
     var badidx := root.path_join("badidx")
-    _write_pack(badidx, 5, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(badidx, 6, k_index_header + k_index_columns, false, false, "blob")
     f = FileAccess.open(badidx.path_join("assets.idx"), FileAccess.WRITE)
     f.store_string("BCAI")
     f.close()
     FileAccess.open(badidx.path_join("assets-0001.blob"), FileAccess.WRITE).close()
     expect(pack.open(badidx) == ERR_FILE_CORRUPT, "a truncated assets.idx is refused")
     var blob := root.path_join("blob")
-    _write_pack(blob, 5, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(blob, 6, k_index_header + k_index_columns, false, false, "blob")
     var index := PackedByteArray()
     index.resize(24)
     for i in 4:
@@ -217,7 +217,7 @@ func _check_refusals() -> void:
     expect(pack.open(blob) == OK, "an empty blob pack opens: " + pack.get_error())
     expect(pack.get_store_layout() == "blob", "and says it is one")
     var odd := root.path_join("odd")
-    _write_pack(odd, 5, k_index_header + k_index_columns, false, false, "zip")
+    _write_pack(odd, 6, k_index_header + k_index_columns, false, false, "zip")
     expect(pack.open(odd) == ERR_FILE_UNRECOGNIZED, "an unknown store layout is refused")
 
 func _write_pack(dir: String, version: int, index_text: String, with_records := false,
