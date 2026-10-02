@@ -204,6 +204,28 @@ TEST_CASE("Bethesda material data is preserved in extras rather than dropped",
     CHECK(extras["texture_slots"]["1"]["role"] == "normal");
 }
 
+TEST_CASE("hair and skin tint colours reach the extras only when the shader has them",
+          "[gltf][material]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    auto* shape = builder.add_shape("cube", bethconv::test::make_cube());
+    REQUIRE(shape != nullptr);
+    builder.add_shader(shape, "textures\\test\\Diffuse.dds", "textures\\test\\Diffuse_n.dds");
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "cube.nif");
+    REQUIRE(model.has_value());
+    REQUIRE_FALSE(model->materials.empty());
+    CHECK_FALSE(model->materials[0].hair_tint.has_value());
+
+    const auto plain = json_chunk(*bethconv::mesh::write_glb(*model));
+    CHECK_FALSE(plain["materials"][0]["extras"]["bethconv"].contains("hair_tint_color"));
+
+    model->materials[0].hair_tint = bethconv::mesh::Vec3{0.5F, 0.25F, 0.125F};
+    const auto tinted = json_chunk(*bethconv::mesh::write_glb(*model));
+    const auto& colour = tinted["materials"][0]["extras"]["bethconv"]["hair_tint_color"];
+    REQUIRE(colour.size() == 3);
+    CHECK(colour[1].get<double>() == 0.25);
+    CHECK_FALSE(tinted["materials"][0]["extras"]["bethconv"].contains("skin_tint_color"));
+}
+
 TEST_CASE("provenance rides on the root node, because asset extras do not survive",
           "[gltf][extras]") {
     // fastgltf 0.9.0 never writes Category::Asset extras, so provenance there

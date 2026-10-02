@@ -87,6 +87,11 @@ struct Material {
     bool model_space_normals{false}; ///< `_msn`: normals in model space.
     bool skin_tinted{false};
     bool face_tinted{false};
+    /// HairTint shaders (type 6): the colour the hair is tinted to. FaceGen
+    /// heads carry the NPC's hair colour here (the Creation Kit bakes it in).
+    std::optional<Vec3> hair_tint;
+    /// SkinTint shaders (type 5): the tint stored in the NIF.
+    std::optional<Vec3> skin_tint;
     bool has_glowmap{false};
     bool has_environment_map{false};
     bool has_backlight{false};

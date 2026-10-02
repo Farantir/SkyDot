@@ -316,7 +316,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/15` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/16` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep` | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -334,7 +334,8 @@ chunk's strips (they were dropped), `mesh/12` cylinder, strips and plane
 collision shapes, `mesh/13` the texture of sky shaders (stars), `mesh/14` inverse bind
 matrices that include a skinned shape's own placement (bodies had been 120
 units low), `mesh/15` quadratic keys' tangents the right way round (steady
-motion had eased in and out at every key); the list in
+motion had eased in and out at every key), `mesh/16` `hair_tint_color` and
+`skin_tint_color` in the material extras (FaceGen hair was grey); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 

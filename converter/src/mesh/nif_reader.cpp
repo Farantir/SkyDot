@@ -540,6 +540,13 @@ private:
 
             mat.base_color.w = shader->GetAlpha();
 
+            if (const auto* ls = dynamic_cast<nifly::BSLightingShaderProperty*>(shader)) {
+                if (mat.bs_shader_type == nifly::BSLSP_HAIRTINT) {
+                    mat.hair_tint = to_vec3(ls->hairTintColor);
+                } else if (mat.bs_shader_type == nifly::BSLSP_SKINTINT) {
+                    mat.skin_tint = to_vec3(ls->skinTintColor);
+                }
+            }
             if (const auto* bs = dynamic_cast<nifly::BSShaderProperty*>(shader)) {
                 mat.shader_flags1 = bs->shaderFlags1;
                 mat.shader_flags2 = bs->shaderFlags2;

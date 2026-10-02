@@ -770,6 +770,14 @@ private:
             {"soft_falloff_depth", json_number(src.soft_falloff_depth)},
             {"texture_slots", std::move(slots)},
         };
+        if (src.hair_tint) {
+            j["bethconv"]["hair_tint_color"] = {json_number(src.hair_tint->x), json_number(src.hair_tint->y),
+                                                json_number(src.hair_tint->z)};
+        }
+        if (src.skin_tint) {
+            j["bethconv"]["skin_tint_color"] = {json_number(src.skin_tint->x), json_number(src.skin_tint->y),
+                                                json_number(src.skin_tint->z)};
+        }
         return j;
     }
 
