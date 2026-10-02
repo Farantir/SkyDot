@@ -198,6 +198,8 @@ private:
     bool disabled(std::uint32_t ref, int depth = 0) const;
     void set_disabled(std::uint32_t ref, bool value);
     bool locked(std::uint32_t ref) const;
+    /// The reference whose lock `ref` uses: itself, or a load door's partner.
+    std::uint32_t lock_holder(std::uint32_t ref) const;
     void register_trigger(std::uint32_t ref, const godot::Dictionary& info);
     static bool contains(const Trigger& t, const godot::Vector3& p);
     godot::Vector3 position_of(std::uint32_t ref) const;

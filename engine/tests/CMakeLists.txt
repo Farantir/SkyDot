@@ -105,12 +105,25 @@ if(SKYDOT_TESTPACK)
     add_test(NAME viewer_locked
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
                      --pack "${SKYDOT_TESTPACK}"
-                     --cell TestpackInterior --activate 0x303,0x213,0x212)
+                     --cell TestpackInterior --activate 0x303)
+    # The lock is stored on the outside door (0x213) only, as plugins do; the
+    # pair shares it, so the inside door does not open either.
     set_tests_properties(viewer_locked PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
-        PASS_REGULAR_EXPRESSION "entered TestpackWorld.*0x00000213 TestpackDoor \\(DOOR\\) is locked \\(level 25\\)"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;entered TestpackInterior.*entered TestpackInterior"
+        PASS_REGULAR_EXPRESSION "0x00000303 TestpackDoor \\(DOOR\\) is locked \\(level 25\\)"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;entered TestpackWorld"
+        TIMEOUT 120)
+    # Picking it from inside opens both doors: back in through 0x213.
+    add_test(NAME viewer_unlocked_pair
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
+                     --pack "${SKYDOT_TESTPACK}" --pick-locks on
+                     --cell TestpackInterior --activate 0x303,0x213)
+    set_tests_properties(viewer_unlocked_pair PROPERTIES
+        LABELS smoke
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "entered TestpackWorld.*0x00000213 TestpackDoor \\(DOOR\\) leads to"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;is locked"
         TIMEOUT 120)
     add_test(NAME viewer_lever
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
@@ -127,7 +140,7 @@ if(SKYDOT_TESTPACK)
     add_test(NAME viewer_from_shot
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
                      --from-shot "${CMAKE_CURRENT_SOURCE_DIR}/smoke/testpack_shot.json"
-                     --pack "${SKYDOT_TESTPACK}" --activate 0x303)
+                     --pack "${SKYDOT_TESTPACK}" --pick-locks on --activate 0x303)
     set_tests_properties(viewer_from_shot PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan

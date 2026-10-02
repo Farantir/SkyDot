@@ -235,7 +235,28 @@ void SkydotPapyrus::set_disabled(std::uint32_t ref, bool value) {
     }
 }
 
+std::uint32_t SkydotPapyrus::lock_holder(std::uint32_t ref) const {
+    // The two doors of a load door share one lock, and the plugin stores it
+    // on one side only (Faendal's house: the inside door). A door without a
+    // lock of its own answers with its partner's.
+    const Dictionary info = ref_info(ref);
+    if (info.get("lock", Variant()).get_type() == Variant::DICTIONARY) {
+        return ref;
+    }
+    const Variant door = info.get("door", Variant());
+    if (door.get_type() != Variant::DICTIONARY) {
+        return ref;
+    }
+    const auto other =
+        static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(door).get("destination", 0)));
+    if (other != 0 && ref_info(other).get("lock", Variant()).get_type() == Variant::DICTIONARY) {
+        return other;
+    }
+    return ref;
+}
+
 bool SkydotPapyrus::locked(std::uint32_t ref) const {
+    ref = lock_holder(ref);
     if (const auto it = locked_.find(ref); it != locked_.end()) {
         return it->second;
     }
@@ -762,7 +783,7 @@ Array SkydotPapyrus::get_triggers() const {
 // ---- state the game layer reads and sets ----------------------------------
 
 std::int64_t SkydotPapyrus::get_lock_level(std::int64_t ref) const {
-    const auto form = static_cast<std::uint32_t>(ref);
+    const auto form = lock_holder(static_cast<std::uint32_t>(ref));
     if (!locked(form)) {
         return -1;
     }
@@ -771,11 +792,14 @@ std::int64_t SkydotPapyrus::get_lock_level(std::int64_t ref) const {
 }
 
 void SkydotPapyrus::set_locked(std::int64_t ref, bool value) {
-    const auto form = static_cast<std::uint32_t>(ref);
+    const auto form = lock_holder(static_cast<std::uint32_t>(ref));
     const bool was = locked(form);
     locked_[form] = value;
     if (was != value) {
         emit_signal("lock_changed", ref, value);
+        if (form != static_cast<std::uint32_t>(ref)) {
+            emit_signal("lock_changed", static_cast<std::int64_t>(form), value);
+        }
     }
 }
 
