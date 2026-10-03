@@ -141,7 +141,10 @@ hidden, without physics and off the navigation map, and switched on when the
 player arrives (outside, cell by cell as they finish). It costs the memory
 of a second place; `--preload-doors off` or O turns it off (`--screenshot`
 and `--benchmark` do not preload). `game/tools/preload_check.gd` times going
-through the nearest door. Time starts at `--time` (default 12) and runs at
+through the nearest door. Going through one fades to black, travels once the
+screen is black, and fades back when the new place is built (outside: the
+cells in range and the LOD), a few frames later so the first slow frame of
+a new place is not seen; the player is held meanwhile. Time starts at `--time` (default 12) and runs at
 `--time-scale` (default 20); `--weather SkyrimClear` keeps one weather,
 otherwise the region's or climate's weathers take turns. T and Shift+T move
 the time by an hour, K changes the weather. `--benchmark 10` flies east and

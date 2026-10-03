@@ -46,6 +46,8 @@
 # a fraction of the time. Actors are added on arrival, where the AI has them
 # then. It costs the memory of a second place; --preload-doors off (or O)
 # turns it off. --screenshot and --benchmark runs do not preload.
+# Going through a load door fades to black, travels, waits until the new
+# place is built (outside: the cells in range and the LOD) and fades back.
 # Start-game-enabled quests start with the viewer (--quests off to skip);
 # --set-stage EDID:STAGE[,EDID:STAGE...] then sets stages. Quest stages,
 # objectives and script notifications show at the top left; J prints the
@@ -132,6 +134,16 @@ var _load_doors := {}  # door ref -> its node, in the place shown
 var _prepared := {}  # the place behind the nearest load door (_prepare_step)
 var _prepare_scan := 0  # frames until looking for the nearest door again
 var _streaming := false  # exterior cells in range still loading
+var _lod_busy := false  # the LOD still has work queued
+const FADE_SECONDS := 0.35
+const FADE_SETTLE_FRAMES := 3  # drawn black after the place is built
+const FADE_TIMEOUT := 15.0  # seconds; fades in even if streaming never ends
+var _fade: ColorRect  # black over everything during a door transition
+var _fade_door := {}  # the door being gone through
+var _fade_phase := 0  # FADE_*
+var _fade_wait := 0.0  # seconds in FADE_WAIT
+var _fade_frames := 0  # frames since the place was built
+enum { FADE_NONE, FADE_OUT, FADE_TRAVEL, FADE_WAIT, FADE_IN }
 var _cell_id := 0  # the interior being shown, or 0 outside
 var _notes: Label  # recent quest and script messages
 var _journal: Label  # J toggles it
@@ -277,6 +289,15 @@ func _ready() -> void:
 	_journal.add_theme_constant_override("outline_size", 4)
 	overlay.add_child(_journal)
 	add_child(overlay)
+	var fade_layer := CanvasLayer.new()
+	fade_layer.layer = 100  # over the notes
+	_fade = ColorRect.new()
+	_fade.color = Color(0, 0, 0, 0)
+	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fade.visible = false
+	fade_layer.add_child(_fade)
+	add_child(fade_layer)
 	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -378,6 +399,7 @@ func _leave() -> void:
 	_lod = null  # freed with _place
 	_load_doors.clear()
 	_streaming = false
+	_lod_busy = false
 	if _path_line != null:
 		_path_line.mesh = null
 	_world.call_deferred("trim_cache")
@@ -533,14 +555,14 @@ func _update_player() -> void:
 	if _world_id != 0:
 		var key := _camera_cell()
 		var cell = _loaded.get(key)
-		_player.hold = not _loaded.has(key) and not _player.fly
+		_player.hold = (not _loaded.has(key) and not _player.fly) or _fade_phase != FADE_NONE
 		var water: Node3D = cell.get_node_or_null("Water") if cell != null else null
 		if water != null:
 			_player.water_height = water.global_position.y
 		else:
 			_player.clear_water()
 	else:
-		_player.hold = false
+		_player.hold = _fade_phase != FADE_NONE
 		_player.clear_water()
 	if _player.hold or _player.fly:
 		return
@@ -713,7 +735,10 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 		return true
 	if info["door"] != null:
 		print(label, " leads to 0x%08X" % info["door"]["destination"])
-		_travel(info["door"])
+		if _input and DisplayServer.get_name() != "headless":
+			_begin_fade(info["door"])
+		else:
+			_travel(info["door"])
 		return true
 	if info["type"] == "DOOR" and node != null:
 		var animator := node.get_node_or_null("SkydotAnimator")
@@ -999,6 +1024,44 @@ func _advance_preparation(budget_usec: int) -> void:
 		print("prepared what is behind 0x%08X in %.0f ms" % [p["door"], (Time.get_ticks_usec() - p["started"]) / 1000.0])
 
 
+## Go through `door` behind a fade to black (_fade_step).
+func _begin_fade(door: Dictionary) -> void:
+	if _fade_phase != FADE_NONE:
+		return
+	_fade_door = door
+	_fade_phase = FADE_OUT
+	_fade.visible = true
+
+
+## The door transition, a step per frame: fade out; travel once a black
+## frame is on screen; wait until the place is built and a few frames are
+## drawn (the first frame of a new place is slow); fade in.
+func _fade_step(delta: float) -> void:
+	match _fade_phase:
+		FADE_OUT:
+			_fade.color.a = minf(1.0, _fade.color.a + delta / FADE_SECONDS)
+			if _fade.color.a >= 1.0:
+				_fade_phase = FADE_TRAVEL  # this frame draws black first
+		FADE_TRAVEL:
+			_travel(_fade_door)
+			_fade_door = {}
+			_fade_phase = FADE_WAIT
+			_fade_wait = 0.0
+			_fade_frames = 0
+		FADE_WAIT:
+			_fade_wait += delta
+			var built := _world_id == 0 or (not _streaming and not _lod_busy)
+			if built:
+				_fade_frames += 1
+			if _fade_frames > FADE_SETTLE_FRAMES or _fade_wait > FADE_TIMEOUT:
+				_fade_phase = FADE_IN
+		FADE_IN:
+			_fade.color.a = maxf(0.0, _fade.color.a - delta / FADE_SECONDS)
+			if _fade.color.a <= 0.0:
+				_fade_phase = FADE_NONE
+				_fade.visible = false
+
+
 ## Free what was built ahead.
 func _drop_prepared() -> void:
 	var p := _prepared
@@ -1192,10 +1255,12 @@ func _process(delta: float) -> void:
 		var stream_started := Time.get_ticks_usec()
 		_streaming = _stream_step()
 		if _lod != null:
-			_lod.update(_camera.global_position, LOD_BUDGET_USEC)
+			_lod_busy = _lod.update(_camera.global_position, LOD_BUDGET_USEC) > 0
 		_stream_max_usec = max(_stream_max_usec, Time.get_ticks_usec() - stream_started)
 	if _preload_doors:
 		_prepare_step()
+	if _fade_phase != FADE_NONE:
+		_fade_step(delta)
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
 		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
@@ -1268,7 +1333,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
 		_capture_shot(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
-		_activate_in_view(event.shift_pressed)
+		if _fade_phase == FADE_NONE:
+			_activate_in_view(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
 		_save_game(QUICKSAVE)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
