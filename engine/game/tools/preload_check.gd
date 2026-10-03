@@ -31,6 +31,9 @@ func _initialize() -> void:
 			_wait = float(argv[i + 1])
 	_viewer = load("res://viewer/cell_viewer.tscn").instantiate()
 	root.add_child(_viewer)
+	# The keyboard and mouse must not move the view during a measurement.
+	_viewer._input = false
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 
 func _process(delta: float) -> bool:
