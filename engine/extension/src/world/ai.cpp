@@ -36,6 +36,8 @@ constexpr std::uint32_t k_player_npc = 0x7;
 constexpr double k_seconds_per_day = 86400.0;
 /// Game seconds between moves of actors that are not built.
 constexpr double k_place_interval = 5.0 * 60.0;
+/// Game seconds within which a pass counts as current (settle_actors).
+constexpr double k_place_fresh = 2.0 * 60.0;
 /// Real seconds between choosing a built actor's package again.
 constexpr double k_think_interval = 1.5;
 /// Game units: close enough to a load door to go through it.
@@ -306,6 +308,8 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_space", "space"), &SkydotAi::set_space);
     ClassDB::bind_method(D_METHOD("get_space"), &SkydotAi::get_space);
     ClassDB::bind_method(D_METHOD("place_actors"), &SkydotAi::place_actors);
+    ClassDB::bind_method(D_METHOD("begin_placing"), &SkydotAi::begin_placing);
+    ClassDB::bind_method(D_METHOD("settle_actors"), &SkydotAi::settle_actors);
     ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotAi::attach_built);
     ClassDB::bind_method(D_METHOD("update", "seconds"), &SkydotAi::update);
     ClassDB::bind_method(D_METHOD("get_actor_state", "ref"), &SkydotAi::get_actor_state);
@@ -847,16 +851,41 @@ std::int64_t SkydotAi::place_actors() {
 
 std::int64_t SkydotAi::place(bool through_doors) {
     since_placed_ = 0.0;
+    return place_from(0, through_doors);
+}
+
+void SkydotAi::begin_placing() {
+    if (root() == nullptr) {
+        return;
+    }
+    since_placed_ = 0.0;
+    placed_ = true;
+    place_cursor_ = 0;
+}
+
+std::int64_t SkydotAi::settle_actors() {
+    if (place_cursor_ != static_cast<std::size_t>(-1)) {
+        // The rest at once, as place_actors would: arriving builds everyone.
+        return place_from(place_cursor_, false);
+    }
+    if (placed_ && since_placed_ < k_place_fresh) {
+        return 0;
+    }
+    return place(false);
+}
+
+std::int64_t SkydotAi::place_from(std::size_t first, bool through_doors) {
     place_cursor_ = static_cast<std::size_t>(-1);
     if (root() == nullptr) {
         return 0;
     }
+    placed_ = true;
     quest_cache_.clear();
     std::int64_t moved = 0;
     batching_ = true;
     pending_locks_.clear();
-    for (const auto ref : persistent_) {
-        moved += place_one(ref, through_doors) ? 1 : 0;
+    for (std::size_t i = first; i < persistent_.size(); ++i) {
+        moved += place_one(persistent_[i], through_doors) ? 1 : 0;
     }
     batching_ = false;
     if (vm_ != nullptr) {
@@ -1016,6 +1045,7 @@ void SkydotAi::update(double seconds) {
     // Those not built: a slice per frame, a whole pass every few game minutes.
     if (place_cursor_ == static_cast<std::size_t>(-1) && since_placed_ >= k_place_interval) {
         since_placed_ = 0.0;
+        placed_ = true;
         place_cursor_ = 0;
     }
     if (place_cursor_ != static_cast<std::size_t>(-1)) {

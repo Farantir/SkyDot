@@ -79,6 +79,14 @@ public:
     /// it. Returns how many were moved. `update` calls it every few game
     /// minutes; call it before building a space.
     std::int64_t place_actors();
+    /// Start a placement pass now, done a slice per `update` like the
+    /// periodic one: call it when a space is about to be entered (the
+    /// viewer: when it prepares what is behind a door).
+    void begin_placing();
+    /// Before building a space instead of `place_actors`: finish a pass under
+    /// way, else place everyone unless a pass started less than two game
+    /// minutes ago. Returns how many moved.
+    std::int64_t settle_actors();
 
     /// Take over the `SkydotActor`s under `root` (as SkydotWorld builds
     /// them). Returns how many.
@@ -197,7 +205,8 @@ private:
     double time_scale_{TIME_SCALE};
     bool drive_{true};
     std::uint32_t space_{};
-    double since_placed_{}; ///< Game seconds since the last place_actors.
+    double since_placed_{}; ///< Game seconds since the last pass started.
+    bool placed_{}; ///< Whether any pass has run.
     std::unordered_map<std::uint32_t, Mind> minds_;
     std::vector<std::uint32_t> persistent_; ///< Persistent actors with packages.
     std::vector<std::uint32_t> attached_;
@@ -210,6 +219,8 @@ private:
     std::size_t place_cursor_{static_cast<std::size_t>(-1)};
     /// Place one actor; returns whether it moved.
     bool place_one(std::uint32_t ref, bool through_doors);
+    /// Place persistent_ from `first` on, at once; returns how many moved.
+    std::int64_t place_from(std::size_t first, bool through_doors);
     /// Per frame and pass: quest states (SkydotPapyrus builds a Dictionary
     /// per call). Static: whether a door has a lock, quests' script names.
     std::unordered_map<std::uint32_t, godot::Dictionary> quest_cache_;

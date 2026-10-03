@@ -398,7 +398,7 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 	var cell := _world.get_cell(cell_id)
 	if _ai != null:
 		_ai.set_space(cell_id)
-		_ai.place_actors()
+		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var root := prepared
 	if root != null:
 		_release(root)
@@ -445,7 +445,7 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 	_cell_id = 0
 	if _ai != null:
 		_ai.set_space(world_id)
-		_ai.place_actors()
+		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var weather := 0
 	if _args.has("weather"):
 		weather = _world.find_weather(_args["weather"])
@@ -931,6 +931,8 @@ func _prepare_step() -> void:
 
 func _new_preparation(door: Dictionary) -> Dictionary:
 	var prepared := {"door": door["ref"], "info": door, "done": false, "started": Time.get_ticks_usec()}
+	if _ai != null:
+		_ai.begin_placing()  # where actors are, worked out over the next frames
 	if door["destination_interior"]:
 		prepared["cell"] = door["destination_cell"]
 		prepared["root"] = null

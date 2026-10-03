@@ -86,9 +86,15 @@ around the camera.
 - A built actor whose cell is freed stays where it was (or where its walk
   was going).
 
-When a space is entered, `place_actors` runs over every persistent actor
-with packages (about 1,570 in SE; 0.5 s in a debug build) before its cells
-are built.
+A pass runs over every persistent actor with packages (1,771 in SE with
+the CC plugins; about 75 ms in a debug build, the first 470 ms) before a
+space's cells are built. `place_actors` does it at once. The viewer instead
+calls `begin_placing` when it starts preparing what is behind a load door,
+which does the pass a slice per `update` (PLACE_BUDGET_USEC), and
+`settle_actors` on arrival: that finishes a pass still under way, does
+nothing if one started less than two game minutes ago, and otherwise
+places everyone as `place_actors`. Going through a prepared door then
+costs no pass at all.
 
 ## Doors
 
