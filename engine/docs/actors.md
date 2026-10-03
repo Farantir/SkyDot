@@ -26,7 +26,9 @@ files, the `.animfb` asset) is in `../converter/docs/spikes/hkx.md` and
   skeleton from the file the clip was made for. Bones parked about 2e7 units
   away (prop slots the clip has nothing for) get no track. Annotations
   (`FootLeft`, `SoundPlay.…`, `HitFrame`) become markers; repeated texts get
-  `#2`, `#3`.
+  `#2`, `#3`. `build_clip_for(asset, skeleton_asset, skeleton_path)` builds
+  the same for the skeleton asset without making a Skeleton3D (C++ only),
+  so the asset cache's workers can do it.
 - `describe(asset)`: skeleton names and per clip duration, frames, tracks and
   annotations, for tools.
 
@@ -38,8 +40,17 @@ does) or wait a frame.
 
 Cells build their placed actors (ACHR) after their references; exterior
 cells include the worldspace's persistent actors standing in them, and their
-models are part of `get_exterior_resources`, so streaming loads them on the
-workers first. `actors = false` (viewer: `--actors off`) builds none.
+models and clips are part of `get_exterior_resources` (interiors:
+`get_cell_resources`), so streaming loads them on the workers first: a clip
+is the asset cache key `AssetCache::clip_key(clip, skeleton)`, sampled into
+an Animation there, not on the main thread when the first actor of a kind is
+built (that cost 12-25 ms per kind). A build keeps what its actors need, and
+models keep their textures, so trimming the cache before the actors are
+placed (leaving a place) does not throw that work away. Which actors a cell builds is
+decided once its references are placed, so a cell built ahead
+(`continue_build_static`, the viewer's door preloading) gets the actors that
+are there when it is finished on arrival. `actors = false` (viewer:
+`--actors off`) builds none.
 
 What an actor is built from is decided from `world.fb` alone
 (`world/actors.cpp`, `get_actor_plan(ref)` shows it):
@@ -63,7 +74,8 @@ What an actor is built from is decided from `world.fb` alone
 - **Idle.** The behaviour project's idle clip (see Locomotion), else in the
   behaviour graph's folder `animations/male|female/mt_idle.hkx`, then
   `animations/mt_idle.hkx`, `idle.hkx`, `idle1.hkx` or `idlestand.hkx`.
-  Played looping; one Animation per (clip, skeleton) for every actor.
+  Played looping; one Animation per (clip, skeleton), cached by the asset
+  cache, for every actor.
 - **Size and facing.** NPC height times the race's height for the sex; only
   the rotation about Z.
 

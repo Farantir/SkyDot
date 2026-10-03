@@ -21,6 +21,9 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
+
+#include <vector>
 
 namespace skydot {
 
@@ -46,6 +49,11 @@ public:
     static godot::Ref<godot::Animation> build_clip(const godot::PackedByteArray& asset,
                                                    godot::Skeleton3D* skeleton,
                                                    const godot::String& skeleton_path);
+    /// The same for the skeleton `build_skeleton` makes from `skeleton_asset`,
+    /// without making it: no node, so any thread may call it.
+    static godot::Ref<godot::Animation> build_clip_for(const godot::PackedByteArray& asset,
+                                                       const godot::PackedByteArray& skeleton_asset,
+                                                       const godot::String& skeleton_path);
 
     /// Move every skinned MeshInstance3D under `model` onto `skeleton`: binds
     /// are matched by bone name (case-insensitive) and recomputed against
@@ -57,6 +65,18 @@ public:
 
 protected:
     static void _bind_methods();
+
+private:
+    /// A skeleton's bones by index, as `build_skeleton` names them.
+    struct Bones {
+        godot::String name;
+        std::vector<godot::String> names;
+        std::vector<int> parents;
+        std::vector<godot::Transform3D> rests;
+    };
+    static Bones read_bones(const godot::PackedByteArray& asset);
+    static godot::Ref<godot::Animation> clip_onto(const godot::PackedByteArray& asset, const Bones& bones,
+                                                  const godot::String& skeleton_path);
 };
 
 } // namespace skydot

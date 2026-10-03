@@ -11,10 +11,12 @@
 
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/classes/texture.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <cstdint>
 #include <memory>
+#include <vector>
 
 namespace skydot {
 
@@ -47,6 +49,11 @@ public:
     }
     const std::shared_ptr<const ModelCollision>& collision() const { return collision_; }
 
+    /// The textures its materials name, held while the model is: trimming
+    /// the asset cache then keeps them for a model loaded ahead and not yet
+    /// placed (materials are set up when it is).
+    void set_textures(std::vector<godot::Ref<godot::Texture>> textures) { textures_ = std::move(textures); }
+
 protected:
     static void _bind_methods();
 
@@ -54,6 +61,7 @@ private:
     godot::Node* template_{nullptr};
     godot::String vpath_;
     std::shared_ptr<const ModelCollision> collision_;
+    std::vector<godot::Ref<godot::Texture>> textures_;
 };
 
 } // namespace skydot

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/asset_cache.hpp"
 
+#include "world/actor_animation.hpp"
 #include "world/collision.hpp"
 
 #include <godot_cpp/classes/cubemap.hpp>
@@ -24,6 +25,8 @@ namespace skydot {
 namespace {
 
 using godot::Ref;
+
+constexpr std::string_view k_clip_prefix = "clip:";
 
 godot::PackedByteArray to_godot(const std::vector<std::uint8_t>& bytes) {
     godot::PackedByteArray out;
@@ -175,7 +178,7 @@ AssetCache::Status AssetCache::request(const std::string& vpath) {
     if (in_flight_.contains(key)) {
         return Status::loading;
     }
-    if (store_->find(key) == nullptr) {
+    if (!loadable(key)) {
         ready_.emplace(key, Ref<godot::Resource>());
         return Status::missing;
     }
@@ -215,6 +218,12 @@ Ref<godot::Resource> AssetCache::get(const std::string& vpath) {
     return it->second;
 }
 
+Ref<godot::Resource> AssetCache::cached(const std::string& vpath) const {
+    std::lock_guard lock(mutex_);
+    const auto it = ready_.find(normalize(vpath));
+    return it != ready_.end() ? it->second : Ref<godot::Resource>();
+}
+
 Ref<SkydotModel> AssetCache::scene(const std::string& vpath) {
     return get(vpath);
 }
@@ -245,7 +254,42 @@ void AssetCache::work() {
     }
 }
 
+std::string AssetCache::clip_key(std::string_view clip, std::string_view skeleton) {
+    return std::string(k_clip_prefix) + normalize(clip) + "|" + normalize(skeleton);
+}
+
+Ref<godot::Animation> AssetCache::clip(const std::string& clip, const std::string& skeleton) {
+    return get(clip_key(clip, skeleton));
+}
+
+bool AssetCache::loadable(const std::string& key) const {
+    if (key.starts_with(k_clip_prefix)) {
+        const auto bar = key.find('|');
+        return bar != std::string::npos &&
+               store_->find(key.substr(k_clip_prefix.size(), bar - k_clip_prefix.size())) != nullptr &&
+               store_->find(key.substr(bar + 1)) != nullptr;
+    }
+    return store_->find(key) != nullptr;
+}
+
+Ref<godot::Resource> AssetCache::load_clip(const std::string& key) const {
+    const auto bar = key.find('|');
+    if (bar == std::string::npos) {
+        return {};
+    }
+    Ref<godot::Animation> clip = SkydotAnimation::build_clip_for(
+        bytes(key.substr(k_clip_prefix.size(), bar - k_clip_prefix.size())), bytes(key.substr(bar + 1)),
+        "bethconv_z_up_to_y_up/Skeleton");
+    if (clip.is_valid()) {
+        clip->set_loop_mode(godot::Animation::LOOP_LINEAR);
+    }
+    return clip;
+}
+
 Ref<godot::Resource> AssetCache::load(const std::string& key) {
+    if (key.starts_with(k_clip_prefix)) {
+        return load_clip(key);
+    }
     const PackStore::Entry* entry = store_->find(key);
     if (entry == nullptr) {
         return {};
@@ -276,9 +320,12 @@ Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath,
     // The textures the materials will ask for, loaded here rather than on the
     // main thread.
     const godot::TypedArray<Ref<godot::Material>> materials = state->get_materials();
+    std::vector<Ref<godot::Texture>> textures;
     for (int64_t i = 0; i < materials.size(); ++i) {
         for (const std::string& path : slot_paths(materials[i])) {
-            (void)texture(path);
+            if (auto t = texture(path); t.is_valid()) {
+                textures.push_back(std::move(t));
+            }
         }
     }
     // Importer defaults: 30 fps, no trimming, immutable tracks removed.
@@ -290,6 +337,7 @@ Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath,
     model.instantiate();
     model->set_collision(ModelCollision::take_from(root));
     model->set_template(root, godot::String::utf8(vpath.c_str()));
+    model->set_textures(std::move(textures));
     return model;
 }
 

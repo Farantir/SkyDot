@@ -193,6 +193,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_refs", "cell_id"), &SkydotWorld::get_refs);
     godot::ClassDB::bind_method(D_METHOD("get_base", "id"), &SkydotWorld::get_base);
     godot::ClassDB::bind_method(D_METHOD("build_cell", "id"), &SkydotWorld::build_cell);
+    godot::ClassDB::bind_method(D_METHOD("begin_cell", "id"), &SkydotWorld::begin_cell);
+    godot::ClassDB::bind_method(D_METHOD("get_cell_resources", "id"), &SkydotWorld::get_cell_resources);
+    godot::ClassDB::bind_method(D_METHOD("request_cell", "id"), &SkydotWorld::request_cell);
     godot::ClassDB::bind_method(D_METHOD("get_quest_count"), &SkydotWorld::get_quest_count);
     godot::ClassDB::bind_method(D_METHOD("has_quest", "id"), &SkydotWorld::has_quest);
     godot::ClassDB::bind_method(D_METHOD("list_quests", "filter"), &SkydotWorld::list_quests);
@@ -224,6 +227,8 @@ void SkydotWorld::_bind_methods() {
                                 &SkydotWorld::begin_exterior);
     godot::ClassDB::bind_method(D_METHOD("continue_build", "root", "budget_usec"),
                                 &SkydotWorld::continue_build);
+    godot::ClassDB::bind_method(D_METHOD("continue_build_static", "root", "budget_usec"),
+                                &SkydotWorld::continue_build_static);
     godot::ClassDB::bind_method(D_METHOD("get_exterior_resources", "world", "x", "y"),
                                 &SkydotWorld::get_exterior_resources);
     godot::ClassDB::bind_method(D_METHOD("request_exterior", "world", "x", "y"),
@@ -869,33 +874,10 @@ godot::Node3D* SkydotWorld::build_ref(std::int64_t cell_id, std::int64_t ref_id)
 }
 
 godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
-    const auto* cell = cell_ptr(id);
-    if (cell == nullptr) {
-        godot::UtilityFunctions::push_error("SkydotWorld: no cell ", hex_id(static_cast<std::uint32_t>(id)));
-        return nullptr;
+    auto* root = begin_cell(id);
+    if (root != nullptr) {
+        continue_build(root, std::numeric_limits<std::int64_t>::max());
     }
-
-    auto* root = memnew(godot::Node3D);
-    root->set_name(cell->editor_id() != nullptr && cell->editor_id()->size() != 0
-                       ? to_godot(cell->editor_id())
-                       : hex_id(cell->id()));
-    BuildStats stats;
-    if (const auto* refs = cell->refs()) {
-        for (const auto* ref : *refs) {
-            place_ref(root, *ref, cell->id(), stats);
-        }
-    }
-    if (actors_) {
-        for (const auto& at : actors_in_cell(cell->id())) {
-            place_actor(root, *at.actor, stats, at.place);
-        }
-    }
-    if (navigation_) {
-        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
-            root->add_child(navmesh);
-        }
-    }
-    root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }
 
@@ -1206,7 +1188,32 @@ std::vector<std::string> SkydotWorld::actor_resources(const wfb::ActorRef& actor
     if ((actor.flags() & k_ref_initially_disabled) != 0) {
         return {};
     }
-    return plan_for(*root_, actor, assets_).parts;
+    auto plan = plan_for(*root_, actor, assets_);
+    std::vector<std::string> out = std::move(plan.parts);
+    if (plan.missing.empty() && !plan.skeleton.empty()) {
+        const auto clips = actor_clips(plan);
+        for (const std::string* file : {&clips.idle, &clips.walk, &clips.run}) {
+            if (!file->empty()) {
+                out.push_back(AssetCache::clip_key(*file, plan.skeleton));
+            }
+        }
+    }
+    return out;
+}
+
+SkydotWorld::ActorClips SkydotWorld::actor_clips(const ActorPlan& plan) const {
+    // The project's idle, walk and run when the pack has animationdata, else
+    // an idle found by file name.
+    const Locomotion& loco = locomotion_of(plan.behaviour);
+    ActorClips out;
+    out.idle = !loco.idle.empty() ? loco.idle.file : plan.idle;
+    if (!loco.walk.empty()) {
+        out.walk = loco.walk.file;
+    }
+    if (!loco.run.empty()) {
+        out.run = loco.run.file;
+    }
+    return out;
 }
 
 const Locomotion& SkydotWorld::locomotion_of(const std::string& behaviour) const {
@@ -1249,19 +1256,12 @@ godot::Dictionary SkydotWorld::get_locomotion(const String& behaviour) const {
     return out;
 }
 
-godot::Ref<godot::Animation> SkydotWorld::actor_clip(const std::string& file, const std::string& skeleton_path,
-                                                     godot::Skeleton3D* skeleton) const {
-    const std::string key = file + "|" + skeleton_path;
-    auto it = clips_.find(key);
-    if (it == clips_.end()) {
-        it = clips_.emplace(key, SkydotAnimation::build_clip(assets_->bytes(file), skeleton,
-                                                               "bethconv_z_up_to_y_up/Skeleton"))
-                 .first;
-        if (it->second.is_valid()) {
-            it->second->set_loop_mode(godot::Animation::LOOP_LINEAR);
-        }
+godot::Ref<godot::Animation> SkydotWorld::actor_clip(const std::string& file,
+                                                     const std::string& skeleton_path) const {
+    if (assets_ == nullptr) {
+        return {};
     }
-    return it->second;
+    return assets_->clip(file, skeleton_path);
 }
 
 godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
@@ -1382,14 +1382,12 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         }
     }
 
-    // Clips: the project's idle, walk and run when the pack has animationdata,
-    // else an idle found by file name.
     const Locomotion& loco = locomotion_of(plan.behaviour);
+    const ActorClips clips = actor_clips(plan);
     godot::Ref<godot::AnimationLibrary> library;
     library.instantiate();
-    const std::string idle = !loco.idle.empty() ? loco.idle.file : plan.idle;
-    if (!idle.empty()) {
-        if (const auto clip = actor_clip(idle, plan.skeleton, skeleton); clip.is_valid()) {
+    if (!clips.idle.empty()) {
+        if (const auto clip = actor_clip(clips.idle, plan.skeleton); clip.is_valid()) {
             library->add_animation("idle", clip);
         }
     }
@@ -1397,14 +1395,14 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
     const double stride = UNIT_SCALE * static_cast<double>(plan.scale);
     double walk_speed = 0.0;
     double run_speed = 0.0;
-    if (!loco.walk.empty()) {
-        if (const auto clip = actor_clip(loco.walk.file, plan.skeleton, skeleton); clip.is_valid()) {
+    if (!clips.walk.empty()) {
+        if (const auto clip = actor_clip(clips.walk, plan.skeleton); clip.is_valid()) {
             library->add_animation("walk", clip);
             walk_speed = static_cast<double>(loco.walk.speed) * stride;
         }
     }
-    if (!loco.run.empty()) {
-        if (const auto clip = actor_clip(loco.run.file, plan.skeleton, skeleton); clip.is_valid()) {
+    if (!clips.run.empty()) {
+        if (const auto clip = actor_clip(clips.run, plan.skeleton); clip.is_valid()) {
             library->add_animation("run", clip);
             run_speed = static_cast<double>(loco.run.speed) * stride;
         }
@@ -1559,44 +1557,71 @@ SkydotMaterials& SkydotWorld::materials() const {
     return *materials_.ptr();
 }
 
+void SkydotWorld::add_ref_resources(const wfb::Ref& ref, godot::PackedStringArray& out) const {
+    if (initially_disabled(ref)) {
+        return;
+    }
+    const auto* base = base_ptr(ref.base());
+    const auto* model = base != nullptr ? base->model() : nullptr;
+    if (model == nullptr || model->size() == 0 || is_marker(*base)) {
+        return;
+    }
+    const String path = model_path(model->string_view());
+    if (!out.has(path)) {
+        out.push_back(path);
+    }
+}
+
+void SkydotWorld::add_actor_resources(const std::vector<ActorAt>& actors, godot::PackedStringArray& out) const {
+    if (!actors_) {
+        return;
+    }
+    for (const auto& at : actors) {
+        for (const auto& part : actor_resources(*at.actor)) {
+            const String path = String::utf8(part.c_str());
+            if (!out.has(path)) {
+                out.push_back(path);
+            }
+        }
+    }
+}
+
+godot::PackedStringArray SkydotWorld::get_cell_resources(std::int64_t id) const {
+    godot::PackedStringArray out;
+    const auto* cell = cell_ptr(id);
+    if (cell == nullptr) {
+        return out;
+    }
+    if (cell->refs() != nullptr) {
+        for (const auto* ref : *cell->refs()) {
+            add_ref_resources(*ref, out);
+        }
+    }
+    add_actor_resources(actors_in_cell(cell->id()), out);
+    return out;
+}
+
+std::int64_t SkydotWorld::request_cell(std::int64_t id) {
+    return request_all(get_cell_resources(id));
+}
+
 godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world, std::int64_t x,
                                                              std::int64_t y) const {
     godot::PackedStringArray out;
     const auto w = static_cast<std::uint32_t>(world);
     const auto gx = static_cast<std::int32_t>(x);
     const auto gy = static_cast<std::int32_t>(y);
-    const auto add_ref = [&](const wfb::Ref& ref) {
-        if (initially_disabled(ref)) {
-            return;
-        }
-        const auto* base = base_ptr(ref.base());
-        const auto* model = base != nullptr ? base->model() : nullptr;
-        if (model == nullptr || model->size() == 0 || is_marker(*base)) {
-            return;
-        }
-        const String path = model_path(model->string_view());
-        if (!out.has(path)) {
-            out.push_back(path);
-        }
-    };
     if (const auto* cell = exterior_ptr(w, gx, gy); cell != nullptr && cell->refs() != nullptr) {
         for (const auto* ref : *cell->refs()) {
-            add_ref(*ref);
+            add_ref_resources(*ref, out);
         }
     }
     if (actors_) {
-        for (const auto& at : actors_in_grid(w, gx, gy)) {
-            for (const auto& part : actor_resources(*at.actor)) {
-                const String path = String::utf8(part.c_str());
-                if (!out.has(path)) {
-                    out.push_back(path);
-                }
-            }
-        }
+        add_actor_resources(actors_in_grid(w, gx, gy), out);
     }
     if (const auto it = persistent_.find(grid_key(w, gx, gy)); it != persistent_.end()) {
         for (const auto* ref : it->second) {
-            add_ref(*ref);
+            add_ref_resources(*ref, out);
         }
     }
     const auto* cell = exterior_ptr(w, gx, gy);
@@ -1625,11 +1650,15 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
 }
 
 std::int64_t SkydotWorld::request_exterior(std::int64_t world, std::int64_t x, std::int64_t y) {
+    return request_all(get_exterior_resources(world, x, y));
+}
+
+std::int64_t SkydotWorld::request_all(const godot::PackedStringArray& paths) {
     if (assets_ == nullptr) {
         return 0;
     }
     std::int64_t waiting = 0;
-    for (const String& path : get_exterior_resources(world, x, y)) {
+    for (const String& path : paths) {
         if (assets_->request(utf8(path)) == AssetCache::Status::loading) {
             ++waiting;
         }
@@ -1802,8 +1831,17 @@ struct SkydotWorld::BuildJob {
     std::vector<ActorAt> actors;
     std::size_t next_actor = 0;
     BuildStats stats;
+    /// Actors are looked up once the references are placed, so a build
+    /// finished later (a place prepared ahead) has them where they are then.
+    bool actors_found = false;
+    bool exterior = false;
+    std::uint32_t cell = 0; ///< The interior, for actors.
+    std::uint32_t world = 0; ///< The worldspace and grid square, for actors.
+    std::int32_t x = 0;
+    std::int32_t y = 0;
     bool terrain = false;
     bool water = false;
+    std::vector<godot::Ref<godot::Resource>> kept; ///< keep_actor_resources
 };
 
 godot::Node3D* SkydotWorld::build_exterior(std::int64_t world, std::int64_t x,
@@ -1825,14 +1863,14 @@ bool SkydotWorld::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
     }
     auto& job = *it->second;
     const auto started = godot::Time::get_singleton()->get_ticks_usec();
-    while (job.next < job.refs.size()) {
-        // At least one reference per call, so every build progresses.
-        if (job.next != 0 && static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec() - started) >
-                                 budget_usec) {
-            return false;
+    if (!place_refs(root, job, started, budget_usec)) {
+        return false;
+    }
+    if (!job.actors_found) {
+        job.actors_found = true;
+        if (actors_) {
+            job.actors = job.exterior ? actors_in_grid(job.world, job.x, job.y) : actors_in_cell(job.cell);
         }
-        const auto& [ref, cell] = job.refs[job.next++];
-        place_ref(root, *ref, cell, job.stats);
     }
     while (job.next_actor < job.actors.size()) {
         if (static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec() - started) > budget_usec) {
@@ -1842,11 +1880,38 @@ bool SkydotWorld::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
         place_actor(root, *at.actor, job.stats, at.place);
     }
     Dictionary out = stats_dictionary(job.stats);
-    out["terrain"] = job.terrain;
-    out["water"] = job.water;
+    if (job.exterior) {
+        out["terrain"] = job.terrain;
+        out["water"] = job.water;
+    }
     root->set_meta("skydot_stats", out);
     jobs_.erase(it);
     return true;
+}
+
+bool SkydotWorld::place_refs(godot::Node3D* root, BuildJob& job, std::uint64_t started,
+                             std::int64_t budget_usec) const {
+    while (job.next < job.refs.size()) {
+        // At least one reference per call, so every build progresses.
+        if (job.next != 0 && static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec() - started) >
+                                 budget_usec) {
+            return false;
+        }
+        const auto& [ref, cell] = job.refs[job.next++];
+        place_ref(root, *ref, cell, job.stats);
+    }
+    return true;
+}
+
+bool SkydotWorld::continue_build_static(godot::Node3D* root, std::int64_t budget_usec) const {
+    if (root == nullptr) {
+        return true;
+    }
+    const auto it = jobs_.find(root->get_instance_id());
+    if (it == jobs_.end()) {
+        return true;
+    }
+    return place_refs(root, *it->second, godot::Time::get_singleton()->get_ticks_usec(), budget_usec);
 }
 
 godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
@@ -1926,6 +1991,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     }
 
     auto job = std::make_shared<BuildJob>();
+    job->exterior = true;
     job->terrain = terrain != nullptr;
     job->water = water;
     if (cell != nullptr && cell->refs() != nullptr) {
@@ -1939,15 +2005,64 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
             job->refs.emplace_back(ref, owner != persistent_cells_.end() ? owner->second : 0);
         }
     }
+    job->world = w;
+    job->x = gx;
+    job->y = gy;
     if (actors_) {
-        job->actors = actors_in_grid(w, gx, gy);
+        keep_actor_resources(*job, actors_in_grid(w, gx, gy));
     }
+    add_job(root, std::move(job));
+    return root;
+}
+
+godot::Node3D* SkydotWorld::begin_cell(std::int64_t id) const {
+    const auto* cell = cell_ptr(id);
+    if (cell == nullptr) {
+        godot::UtilityFunctions::push_error("SkydotWorld: no cell ", hex_id(static_cast<std::uint32_t>(id)));
+        return nullptr;
+    }
+    auto* root = memnew(godot::Node3D);
+    root->set_name(cell->editor_id() != nullptr && cell->editor_id()->size() != 0
+                       ? to_godot(cell->editor_id())
+                       : hex_id(cell->id()));
+    if (navigation_) {
+        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
+            root->add_child(navmesh);
+        }
+    }
+    auto job = std::make_shared<BuildJob>();
+    if (const auto* refs = cell->refs()) {
+        for (const auto* ref : *refs) {
+            job->refs.emplace_back(ref, cell->id());
+        }
+    }
+    job->cell = cell->id();
+    if (actors_) {
+        keep_actor_resources(*job, actors_in_cell(cell->id()));
+    }
+    add_job(root, std::move(job));
+    return root;
+}
+
+void SkydotWorld::keep_actor_resources(BuildJob& job, const std::vector<ActorAt>& actors) const {
+    if (assets_ == nullptr) {
+        return;
+    }
+    for (const auto& at : actors) {
+        for (const auto& key : actor_resources(*at.actor)) {
+            if (auto res = assets_->cached(key); res.is_valid()) {
+                job.kept.push_back(std::move(res));
+            }
+        }
+    }
+}
+
+void SkydotWorld::add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) const {
     // Builds whose roots were freed unfinished are dropped here.
     std::erase_if(jobs_, [](const auto& entry) {
         return godot::ObjectDB::get_instance(entry.first) == nullptr;
     });
     jobs_.emplace(root->get_instance_id(), std::move(job));
-    return root;
 }
 
 } // namespace skydot

@@ -52,6 +52,8 @@ struct Script;
 
 namespace skydot {
 
+struct ActorPlan;
+
 class SkydotWorld : public godot::RefCounted {
     GDCLASS(SkydotWorld, godot::RefCounted)
 
@@ -159,6 +161,13 @@ public:
     /// references and editor markers are skipped; billboard nodes get a
     /// SkydotBillboard. Statistics are stored as node metadata "skydot_stats".
     godot::Node3D* build_cell(std::int64_t id) const;
+    /// The same in steps: navmeshes now, references and actors by
+    /// `continue_build`. Null as build_cell.
+    godot::Node3D* begin_cell(std::int64_t id) const;
+    /// Virtual paths of the resources interior `id` needs, and a request
+    /// for them as `request_exterior`.
+    godot::PackedStringArray get_cell_resources(std::int64_t id) const;
+    std::int64_t request_cell(std::int64_t id);
 
     /// Worldspaces as dictionaries: id, editor_id, parent, land_world (the
     /// worldspace whose terrain it shows), default_water_height (metres or
@@ -177,10 +186,14 @@ public:
     /// The same in steps, so a large cell does not stall a frame: terrain and
     /// water now, references by `continue_build`. Null as build_exterior.
     godot::Node3D* begin_exterior(std::int64_t world, std::int64_t x, std::int64_t y) const;
-    /// Place references of a cell `begin_exterior` returned until
+    /// Place references of a cell `begin_exterior` or `begin_cell` returned until
     /// `budget_usec` is spent. True once all are placed (and "skydot_stats"
     /// is set); also true for a root with no build under way.
     bool continue_build(godot::Node3D* root, std::int64_t budget_usec) const;
+    /// Only the references (models, lights) of such a build; true once they
+    /// are placed. Actors come with the next `continue_build`, from where they
+    /// are then: a place prepared ahead of arriving builds this far.
+    bool continue_build_static(godot::Node3D* root, std::int64_t budget_usec) const;
 
     /// The pack's asset cache, which every model and texture comes from.
     /// Set by SkydotPack::open_world; without it nothing loads.
@@ -347,6 +360,16 @@ private:
 
     struct BuildStats;
     struct BuildJob;
+    void add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) const;
+    /// Hold what `actors` need, if cached, in `job`, so trimming the cache
+    /// before they are placed (leaving a place, cells dropped) keeps it.
+    void keep_actor_resources(BuildJob& job, const std::vector<ActorAt>& actors) const;
+    /// Place `job`'s references until the budget from `started` is spent.
+    bool place_refs(godot::Node3D* root, BuildJob& job, std::uint64_t started, std::int64_t budget_usec) const;
+    /// The model `ref` shows, unless it is disabled or a marker.
+    void add_ref_resources(const bethconv::pack::wfb::Ref& ref, godot::PackedStringArray& out) const;
+    void add_actor_resources(const std::vector<ActorAt>& actors, godot::PackedStringArray& out) const;
+    std::int64_t request_all(const godot::PackedStringArray& paths);
     /// Instance the reference's model and light under `root`.
     void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
                    BuildStats& stats, bool include_disabled = false) const;
@@ -369,8 +392,6 @@ private:
     /// persistent cell by the grid square they stand in.
     std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;
     std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
-    /// Idle clips built once per (clip, skeleton).
-    mutable std::unordered_map<std::string, godot::Ref<godot::Animation>> clips_;
     /// Behaviour project -> its idle, walk and run clips.
     mutable std::unordered_map<std::string, Locomotion> locomotion_;
     bool actor_wander_{true};
@@ -378,11 +399,21 @@ private:
     mutable godot::PackedByteArray animation_single_file_;
     mutable bool animation_single_file_read_{false};
     const Locomotion& locomotion_of(const std::string& behaviour) const;
-    /// The looping clip `file` for `skeleton`, cached; null if it does not build.
-    godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path,
-                                            godot::Skeleton3D* skeleton) const;
+    /// The looping clip `file` for the skeleton asset `skeleton_path`, from
+    /// the asset cache (built on its workers when requested ahead); null if
+    /// it does not build.
+    godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path) const;
+    /// The idle, walk and run clip files an actor of `plan` plays; empty
+    /// where it has none.
+    struct ActorClips {
+        std::string idle;
+        std::string walk;
+        std::string run;
+    };
+    ActorClips actor_clips(const ActorPlan& plan) const;
     void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats,
                      const ActorPlace* place = nullptr) const;
+    /// The actor's models and clips (asset cache keys) to request ahead.
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
     bool collision_{true};
     bool navigation_{true};

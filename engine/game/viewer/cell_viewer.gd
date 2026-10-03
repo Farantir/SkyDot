@@ -40,6 +40,12 @@
 # up here, and the camera's feet walk through their trigger volumes. F5 saves
 # the scripts' state and the place, F9 loads it (user://quicksave.skydot).
 # --save-to FILE saves when an --activate run ends; --load FILE loads at start.
+# Near a load door (within --preload-distance metres, default 15) the place
+# behind it is built ahead, held hidden in the scene (_hold): an interior, or
+# the cells and LOD around the arrival spot outside. Going through then takes
+# a fraction of the time. Actors are added on arrival, where the AI has them
+# then. It costs the memory of a second place; --preload-doors off (or O)
+# turns it off. --screenshot and --benchmark runs do not preload.
 # Start-game-enabled quests start with the viewer (--quests off to skip);
 # --set-stage EDID:STAGE[,EDID:STAGE...] then sets stages. Quest stages,
 # objectives and script notifications show at the top left; J prints the
@@ -119,6 +125,13 @@ var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
 var _lod: SkydotLod  # the worldspace's LOD, or null
+var _preload_doors := true  # build the place behind a near load door ahead
+var _preload_distance := 15.0  # metres
+const PREPARE_BUDGET_USEC := 4000
+var _load_doors := {}  # door ref -> its node, in the place shown
+var _prepared := {}  # the place behind the nearest load door (_prepare_step)
+var _prepare_scan := 0  # frames until looking for the nearest door again
+var _streaming := false  # exterior cells in range still loading
 var _cell_id := 0  # the interior being shown, or 0 outside
 var _notes: Label  # recent quest and script messages
 var _journal: Label  # J toggles it
@@ -231,6 +244,8 @@ func _ready() -> void:
 	if args.has("tiling"):
 		world.terrain_tiling = float(args["tiling"])
 	_pick_locks = args.get("pick-locks", "off") != "off"
+	_preload_doors = args.get("preload-doors", "off" if captures else "on") != "off"
+	_preload_distance = float(args.get("preload-distance", "15"))
 	# Runs that capture, measure or activate on their own ignore the keyboard
 	# and mouse, so a stray touch cannot move the view.
 	_input = not (args.has("screenshot") or args.has("benchmark") or args.has("activate")
@@ -361,27 +376,37 @@ func _leave() -> void:
 	_building.clear()
 	_world_id = 0
 	_lod = null  # freed with _place
+	_load_doors.clear()
+	_streaming = false
 	if _path_line != null:
 		_path_line.mesh = null
 	_world.call_deferred("trim_cache")
 
 
 func _add_to_place(node: Node) -> void:
-	add_child(node)
+	if node.get_parent() == null:
+		add_child(node)
 	_place.append(node)
 
 
 ## Build an interior and put the camera at `at` (a camera position) looking at
 ## `target`, or at eye height in the middle of the cell when `at` is null.
-func _enter_interior(cell_id: int, at, target) -> void:
+## `prepared` is the cell built ahead without its actors (_prepare_step).
+func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 	_leave()
 	_cell_id = cell_id
 	var cell := _world.get_cell(cell_id)
 	if _ai != null:
 		_ai.set_space(cell_id)
 		_ai.place_actors()
-	var root := _world.build_cell(cell_id)
+	var root := prepared
+	if root != null:
+		_release(root)
+		_world.continue_build(root, 1 << 62)  # the actors, where they are now
+	else:
+		root = _world.build_cell(cell_id)
 	_add_to_place(root)
+	_collect_doors(root)
 	if _ai != null:
 		_ai.attach_built(root)
 	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
@@ -411,8 +436,10 @@ func _enter_interior(cell_id: int, at, target) -> void:
 
 
 ## Stream worldspace `world_id` around `at`, looking at `target` (null keeps
-## the current direction). Returns false if it failed.
-func _enter_exterior(world_id: int, at: Vector3, target) -> bool:
+## the current direction). `prepared` holds cells and LOD built ahead
+## (_prepare_step); they finish with their actors as streamed cells do.
+## Returns false if it failed.
+func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool:
 	_leave()
 	_world_id = world_id
 	_cell_id = 0
@@ -429,24 +456,50 @@ func _enter_exterior(world_id: int, at: Vector3, target) -> bool:
 		_add_sky(_world.get_sky(_world_id, _hour, weather), _args.get("shadows", "on") != "off")
 	_camera.far = (_radius + 1) * CELL_UNITS * UNIT_SCALE * 1.5
 	_place_camera(at, target)
-	if _args.get("lod", "on") != "off":
-		var lod := SkydotLod.new()
-		if lod.setup(_pack, _world, world_id) == OK:
-			lod.name = "lod"
-			if _args.has("lod-split"):
-				lod.split_distance = float(_args["lod-split"])
-			if _args.has("tree-distance"):
-				lod.tree_distance = float(_args["tree-distance"])
-			_add_to_place(lod)
-			_lod = lod
-			_camera.far = 40000.0
-		else:
-			print("no LOD: ", lod.get_error())
-			lod.free()
+	var lod: SkydotLod = prepared.get("lod")
+	if lod == null:
+		lod = _make_lod(world_id)
+	if lod != null:
+		_release(lod)
+		_add_to_place(lod)
+		_lod = lod
+		_camera.far = 40000.0
+	# Prepared cells join the streaming ones; each is released when it is
+	# finished (_finish_cell), so their cost is spread over frames, but the
+	# one under the camera at once, for the ground.
+	var cells: Dictionary = prepared.get("cells", {})
+	var centre := _camera_cell()
+	for key in cells:
+		var cell: Node3D = cells[key]
+		if cell == null:
+			_loaded[key] = null
+			continue
+		if key == centre:
+			_release(cell)
+			cell.visible = false  # until _finish_cell
+		_building[key] = cell
 	for w in _world.list_worlds():
 		if w["id"] == world_id:
 			print("entered ", w["editor_id"])
 	return true
+
+
+## The worldspace's LOD, set up as the options say; null if it has none or
+## --lod off.
+func _make_lod(world_id: int) -> SkydotLod:
+	if _args.get("lod", "on") == "off":
+		return null
+	var lod := SkydotLod.new()
+	if lod.setup(_pack, _world, world_id) != OK:
+		print("no LOD: ", lod.get_error())
+		lod.free()
+		return null
+	lod.name = "lod"
+	if _args.has("lod-split"):
+		lod.split_distance = float(_args["lod-split"])
+	if _args.has("tree-distance"):
+		lod.tree_distance = float(_args["tree-distance"])
+	return lod
 
 
 func _place_camera(at: Vector3, target) -> void:
@@ -515,16 +568,23 @@ func _lift_onto_land() -> void:
 
 
 ## Arrive through a load door: its XTEL gives the spot and the facing.
+## What was built ahead for the place behind it is used.
 func _travel(door: Dictionary) -> void:
 	var arrival: Transform3D = door["arrival"]
 	var eye := arrival.origin + Vector3(0, EYE_HEIGHT, 0)
 	var forward := -arrival.basis.z
 	forward.y = 0.0
 	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
+	var prepared := {}
+	if not _prepared.is_empty() and _prepared["info"]["destination"] == door["destination"]:
+		prepared = _prepared
+		_prepared = {}
+		print("using what was prepared (%s)" % ("complete" if prepared["done"] else "in part"))
+	_drop_prepared()
 	if door["destination_interior"]:
-		_enter_interior(door["destination_cell"], eye, target)
+		_enter_interior(door["destination_cell"], eye, target, prepared.get("root"))
 	elif door["destination_world"] != 0:
-		_enter_exterior(door["destination_world"], eye, target)
+		_enter_exterior(door["destination_world"], eye, target, prepared)
 	else:
 		print("door 0x%08X leads nowhere this pack knows" % door["ref"])
 
@@ -538,11 +598,14 @@ func _scripts_loaded(root: Node, cell_id: int) -> void:
 	var scripted := _papyrus.attach_built(root)
 	if scripted > 0:
 		print("scripts: %d references in %s" % [scripted, root.name])
+	# Every change scripts have made so far: apply those to this cell's
+	# references in one walk over it, not a search of the scene for each.
 	var changes := _papyrus.get_disabled_changes()
-	for ref in changes:
-		var node := _find_ref_node(ref)
-		if node != null:
-			_show_ref(node, not changes[ref])
+	if not changes.is_empty():
+		for node in _ref_nodes(root):
+			var ref: int = node.get_meta("skydot_ref")
+			if changes.has(ref):
+				_show_ref(node, not changes[ref])
 
 
 func _on_enable_changed(ref: int, enabled: bool) -> void:
@@ -683,7 +746,7 @@ func _find_ref_node(ref: int) -> Node:
 	pending.append_array(_loaded.values())
 	while not pending.is_empty():
 		var node = pending.pop_back()
-		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion():
+		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion() or node == _lod:
 			continue
 		for child in node.get_children():
 			if child.get_meta("skydot_ref", 0) == ref:
@@ -691,6 +754,19 @@ func _find_ref_node(ref: int) -> Node:
 			if not child.has_meta("skydot_ref") and child.get_child_count() > 0:
 				pending.append(child)
 	return null
+
+
+## The reference nodes under `root` (not those inside another reference).
+func _ref_nodes(root: Node) -> Array[Node]:
+	var out: Array[Node] = []
+	var pending: Array[Node] = [root]
+	while not pending.is_empty():
+		for child in pending.pop_back().get_children():
+			if child.has_meta("skydot_ref"):
+				out.append(child)
+			elif child.get_child_count() > 0:
+				pending.append(child)
+	return out
 
 
 ## --activate: activate the next reference once its model is built; quit
@@ -796,15 +872,166 @@ func _stream_step() -> bool:
 
 
 func _finish_cell(key: Vector2i, cell: Node3D) -> void:
+	if cell.process_mode == Node.PROCESS_MODE_DISABLED:
+		_release(cell)  # prepared behind a door (_hold)
 	cell.visible = true
 	if _ai != null:
 		_ai.attach_built(cell)
 	print("cell ", key, ": ", cell.get_meta("skydot_stats"))
 	_scripts_loaded(cell, _world.get_exterior_cell(_world_id, key.x, key.y))
 	_navmesh_overlay(cell)
+	_collect_doors(cell)
 	if _lod != null:
 		_lod.set_cell_loaded(key.x, key.y, true)
 	_loaded[key] = cell
+
+
+## Remember the load doors among what was just built.
+func _collect_doors(root: Node) -> void:
+	for node in _ref_nodes(root):
+		var ref: int = node.get_meta("skydot_ref")
+		if not _world.get_door(ref).is_empty():
+			_load_doors[ref] = node
+
+
+## Build the place behind the nearest load door ahead, a little each frame
+## while nothing streams here: the destination's resources on the loader's
+## threads, then its references (not its actors) in the scene but held
+## (_hold). Going through that door then only adds the actors. One place is kept; walking
+## away from the door drops it.
+func _prepare_step() -> void:
+	_prepare_scan -= 1
+	if _prepare_scan <= 0:
+		_prepare_scan = 15
+		var feet := _player.global_position
+		var nearest := 0
+		var nearest_distance := _preload_distance
+		var current: int = _prepared.get("door", 0)
+		var current_distance := INF
+		for ref in _load_doors.keys():
+			var node: Node3D = _load_doors[ref]
+			if not is_instance_valid(node) or node.is_queued_for_deletion():
+				_load_doors.erase(ref)
+				continue
+			var distance := node.global_position.distance_to(feet)
+			if ref == current:
+				current_distance = distance
+			if distance < nearest_distance:
+				nearest = ref
+				nearest_distance = distance
+		if nearest != 0 and nearest != current:
+			_drop_prepared()
+			_prepared = _new_preparation(_world.get_door(nearest))
+		elif nearest == 0 and current != 0 and current_distance > _preload_distance * 1.5:
+			_drop_prepared()
+	if _prepared.is_empty() or _prepared["done"] or _streaming:
+		return
+	_advance_preparation(PREPARE_BUDGET_USEC)
+
+
+func _new_preparation(door: Dictionary) -> Dictionary:
+	var prepared := {"door": door["ref"], "info": door, "done": false, "started": Time.get_ticks_usec()}
+	if door["destination_interior"]:
+		prepared["cell"] = door["destination_cell"]
+		prepared["root"] = null
+		return prepared
+	if door["destination_world"] == 0:
+		return {}
+	var world_id: int = door["destination_world"]
+	prepared["world"] = world_id
+	var arrival: Transform3D = door["arrival"]
+	prepared["eye"] = arrival.origin + Vector3(0, EYE_HEIGHT, 0)
+	var p := arrival.origin / UNIT_SCALE
+	var centre := Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
+	var keys: Array[Vector2i] = []
+	for dy in range(-_radius, _radius + 1):
+		for dx in range(-_radius, _radius + 1):
+			keys.append(centre + Vector2i(dx, dy))
+	keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		return (a - centre).length_squared() < (b - centre).length_squared())
+	prepared["keys"] = keys
+	prepared["cells"] = {}  # Vector2i -> Node3D, null where nothing is
+	prepared["placed"] = {}  # cells whose references are all placed
+	prepared["lod"] = _make_lod(world_id)
+	if prepared["lod"] != null:
+		_hold(prepared["lod"])
+	return prepared
+
+
+func _advance_preparation(budget_usec: int) -> void:
+	var started := Time.get_ticks_usec()
+	var p := _prepared
+	if p.has("cell"):
+		if p["root"] == null:
+			if _world.request_cell(p["cell"]) > 0:
+				return
+			p["root"] = _world.begin_cell(p["cell"])
+			if p["root"] != null:
+				_hold(p["root"])
+		p["done"] = _world.continue_build_static(p["root"], budget_usec)
+	else:
+		var complete := true
+		for key in p["keys"]:
+			var left := budget_usec - (Time.get_ticks_usec() - started)
+			if left <= 0:
+				complete = false
+				break
+			if p["placed"].has(key):
+				continue
+			if not p["cells"].has(key):
+				if _world.request_exterior(p["world"], key.x, key.y) != 0:
+					complete = false
+					continue
+				p["cells"][key] = _world.begin_exterior(p["world"], key.x, key.y)
+				if p["cells"][key] != null:
+					_hold(p["cells"][key])
+			var cell: Node3D = p["cells"][key]
+			if cell == null or _world.continue_build_static(cell, left):
+				p["placed"][key] = true
+			else:
+				complete = false
+		if p["lod"] != null and p["lod"].update(p["eye"], LOD_BUDGET_USEC) > 0:
+			complete = false
+		p["done"] = complete
+	if p["done"]:
+		print("prepared what is behind 0x%08X in %.0f ms" % [p["door"], (Time.get_ticks_usec() - p["started"]) / 1000.0])
+
+
+## Free what was built ahead.
+func _drop_prepared() -> void:
+	var p := _prepared
+	_prepared = {}
+	if p.get("root") != null:
+		p["root"].queue_free()
+	for cell in p.get("cells", {}).values():
+		if cell != null:
+			cell.queue_free()
+	if p.get("lod") != null:
+		p["lod"].queue_free()
+
+
+## Put a place being built ahead into the scene, hidden, without physics
+## (disabled bodies are not in the space) and off the navigation map. What
+## Godot creates for its nodes then happens within the preparation's budget,
+## not on arrival.
+func _hold(node: Node3D) -> void:
+	node.visible = false
+	node.process_mode = Node.PROCESS_MODE_DISABLED
+	add_child(node)
+	_set_regions(node, false)
+
+
+## Undo _hold on arrival.
+func _release(node: Node3D) -> void:
+	node.process_mode = Node.PROCESS_MODE_INHERIT
+	node.visible = true
+	_set_regions(node, true)
+
+
+func _set_regions(root: Node, enabled: bool) -> void:
+	for child in root.get_children():
+		if child is NavigationRegion3D:
+			child.enabled = enabled
 
 
 func _benchmark_frame(delta: float) -> void:
@@ -961,10 +1188,12 @@ func _process(delta: float) -> void:
 	_camera.global_position = _player.get_eye_position()
 	if _world_id != 0:
 		var stream_started := Time.get_ticks_usec()
-		_stream_step()
+		_streaming = _stream_step()
 		if _lod != null:
 			_lod.update(_camera.global_position, LOD_BUDGET_USEC)
 		_stream_max_usec = max(_stream_max_usec, Time.get_ticks_usec() - stream_started)
+	if _preload_doors:
+		_prepare_step()
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
 		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
@@ -1029,6 +1258,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
 		_note(_position_text())
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
+		_preload_doors = not _preload_doors
+		if not _preload_doors:
+			_drop_prepared()
+		_note("load doors preload what is behind them" if _preload_doors else "load doors load on use")
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
 		_capture_shot(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:

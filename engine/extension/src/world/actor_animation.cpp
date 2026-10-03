@@ -17,6 +17,7 @@
 #include <array>
 #include <cmath>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace skydot {
@@ -175,11 +176,14 @@ godot::Dictionary SkydotAnimation::describe(const godot::PackedByteArray& asset)
     return out;
 }
 
-godot::Skeleton3D* SkydotAnimation::build_skeleton(const godot::PackedByteArray& asset) {
+/// A skeleton asset's first skeleton as names, parents and rests, named as
+/// `build_skeleton` names its bones. Empty (with an error printed) if the
+/// asset has none.
+SkydotAnimation::Bones SkydotAnimation::read_bones(const godot::PackedByteArray& asset) {
     const auto* root = read_asset(asset);
     if (root == nullptr || root->skeletons() == nullptr || root->skeletons()->size() == 0) {
         godot::UtilityFunctions::push_error("SkydotAnimation: no skeleton in this asset");
-        return nullptr;
+        return {};
     }
     const auto* s = root->skeletons()->Get(0);
     const auto* bones = s->bones();
@@ -188,22 +192,40 @@ godot::Skeleton3D* SkydotAnimation::build_skeleton(const godot::PackedByteArray&
     if (bones == nullptr || parents == nullptr || pose == nullptr || parents->size() != bones->size() ||
         pose->size() != bones->size()) {
         godot::UtilityFunctions::push_error("SkydotAnimation: skeleton bones, parents and poses disagree");
+        return {};
+    }
+    Bones out;
+    out.name = s->name() != nullptr ? String::utf8(s->name()->c_str()) : String("Skeleton");
+    std::unordered_set<std::string> seen;
+    for (flatbuffers::uoffset_t i = 0; i < bones->size(); ++i) {
+        std::string name = bones->Get(i)->str();
+        if (name.empty() || seen.contains(name)) {
+            name = "bone_" + std::to_string(i);
+        }
+        seen.insert(name);
+        out.names.push_back(String::utf8(name.c_str()));
+        const auto parent = parents->Get(i);
+        // The converter checked that parents come first; refuse otherwise.
+        out.parents.push_back(parent >= 0 && parent < static_cast<std::int16_t>(i) ? parent : -1);
+        out.rests.push_back(rest_of(pose->Get(i)));
+    }
+    return out;
+}
+
+godot::Skeleton3D* SkydotAnimation::build_skeleton(const godot::PackedByteArray& asset) {
+    const Bones bones = read_bones(asset);
+    if (bones.names.empty()) {
         return nullptr;
     }
     auto* skeleton = memnew(godot::Skeleton3D);
-    skeleton->set_name(s->name() != nullptr ? String::utf8(s->name()->c_str()) : String("Skeleton"));
-    for (flatbuffers::uoffset_t i = 0; i < bones->size(); ++i) {
-        String name = String::utf8(bones->Get(i)->c_str());
-        if (name.is_empty() || skeleton->find_bone(name) >= 0) {
-            name = "bone_" + String::num_int64(i);
+    skeleton->set_name(bones.name);
+    for (std::size_t i = 0; i < bones.names.size(); ++i) {
+        const auto bone = static_cast<int32_t>(i);
+        skeleton->add_bone(bones.names[i]);
+        if (bones.parents[i] >= 0) {
+            skeleton->set_bone_parent(bone, bones.parents[i]);
         }
-        skeleton->add_bone(name);
-        const auto parent = parents->Get(i);
-        // The converter checked that parents come first; refuse otherwise.
-        if (parent >= 0 && parent < static_cast<std::int16_t>(i)) {
-            skeleton->set_bone_parent(static_cast<int32_t>(i), parent);
-        }
-        skeleton->set_bone_rest(static_cast<int32_t>(i), rest_of(pose->Get(i)));
+        skeleton->set_bone_rest(bone, bones.rests[i]);
     }
     skeleton->reset_bone_poses();
     return skeleton;
@@ -212,9 +234,34 @@ godot::Skeleton3D* SkydotAnimation::build_skeleton(const godot::PackedByteArray&
 godot::Ref<godot::Animation> SkydotAnimation::build_clip(const godot::PackedByteArray& asset,
                                                          godot::Skeleton3D* skeleton,
                                                          const godot::String& skeleton_path) {
+    if (skeleton == nullptr) {
+        godot::UtilityFunctions::push_error("SkydotAnimation: no skeleton");
+        return {};
+    }
+    Bones bones;
+    for (int i = 0; i < skeleton->get_bone_count(); ++i) {
+        bones.names.push_back(skeleton->get_bone_name(i));
+        bones.parents.push_back(skeleton->get_bone_parent(i));
+        bones.rests.push_back(skeleton->get_bone_rest(i));
+    }
+    return clip_onto(asset, bones, skeleton_path);
+}
+
+godot::Ref<godot::Animation> SkydotAnimation::build_clip_for(const godot::PackedByteArray& asset,
+                                                             const godot::PackedByteArray& skeleton_asset,
+                                                             const godot::String& skeleton_path) {
+    const Bones bones = read_bones(skeleton_asset);
+    if (bones.names.empty()) {
+        return {};
+    }
+    return clip_onto(asset, bones, skeleton_path);
+}
+
+godot::Ref<godot::Animation> SkydotAnimation::clip_onto(const godot::PackedByteArray& asset, const Bones& bones,
+                                                        const godot::String& skeleton_path) {
     const auto* root = read_asset(asset);
-    if (root == nullptr || root->clips() == nullptr || root->clips()->size() == 0 || skeleton == nullptr) {
-        godot::UtilityFunctions::push_error("SkydotAnimation: no clip in this asset, or no skeleton");
+    if (root == nullptr || root->clips() == nullptr || root->clips()->size() == 0) {
+        godot::UtilityFunctions::push_error("SkydotAnimation: no clip in this asset");
         return {};
     }
     const auto* clip = root->clips()->Get(0);
@@ -238,13 +285,13 @@ godot::Ref<godot::Animation> SkydotAnimation::build_clip(const godot::PackedByte
         if (binding != nullptr && binding->size() == tracks) {
             bone = binding->Get(t);
         }
-        if (bone < 0 || bone >= skeleton->get_bone_count()) {
+        if (bone < 0 || bone >= static_cast<int>(bones.names.size())) {
             continue;
         }
         std::vector<godot::Vector3> positions(frames);
         std::vector<godot::Quaternion> rotations(frames);
         bool parked = false;
-        const godot::Transform3D rest = skeleton->get_bone_rest(bone);
+        const godot::Transform3D& rest = bones.rests[static_cast<std::size_t>(bone)];
         for (std::uint32_t f = 0; f < frames; ++f) {
             const std::size_t b = std::min<std::size_t>(f / step, blocks->size() - 1);
             const auto* block_tracks = blocks->Get(static_cast<flatbuffers::uoffset_t>(b))->tracks();
@@ -273,7 +320,7 @@ godot::Ref<godot::Animation> SkydotAnimation::build_clip(const godot::PackedByte
         if (parked) {
             continue;
         }
-        const String path = skeleton_path + String(":") + String(skeleton->get_bone_name(bone));
+        const String path = skeleton_path + String(":") + bones.names[static_cast<std::size_t>(bone)];
         // Every track keys the bone, even an identity one (no translation
         // is Havok's zero, not the rest pose): the clip states the whole
         // pose, and a missing key would keep another clip's.

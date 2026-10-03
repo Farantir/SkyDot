@@ -55,7 +55,10 @@ The engine shows interior cells and streams exterior ones. What exists:
   scripts with their property values; `get_door` gives a load door's
   destination and arrival. The viewer walks through load doors between
   interiors and worldspaces, opens and closes plain doors, and keeps locked
-  doors shut.
+  doors shut. Near a load door it builds the place behind it ahead
+  (`begin_cell`/`begin_exterior` with `continue_build_static`, resources by
+  `request_cell`/`request_exterior`), so going through takes a fraction of
+  the time; actors are added on arrival.
 - **Papyrus** (`SkydotPapyrus`, see [`docs/papyrus.md`](docs/papyrus.md)): a
   clean-room VM running the pack's decoded scripts. All 36 opcodes, states,
   properties, arrays, latent waits and animation waits on a cooperative
@@ -131,7 +134,14 @@ godot4.7 --path game res://viewer/cell_viewer.tscn -- \
 ```
 
 Cells build in steps within `--build-budget` microseconds per frame (8000)
-and show once complete. Time starts at `--time` (default 12) and runs at
+and show once complete. Within `--preload-distance` metres (15) of a load
+door, the place behind it (an interior, or the cells and LOD around the
+arrival outside) is built ahead while nothing else streams: in the scene but
+hidden, without physics and off the navigation map, and switched on when the
+player arrives (outside, cell by cell as they finish). It costs the memory
+of a second place; `--preload-doors off` or O turns it off (`--screenshot`
+and `--benchmark` do not preload). `game/tools/preload_check.gd` times going
+through the nearest door. Time starts at `--time` (default 12) and runs at
 `--time-scale` (default 20); `--weather SkyrimClear` keeps one weather,
 otherwise the region's or climate's weathers take turns. T and Shift+T move
 the time by an hour, K changes the weather. `--benchmark 10` flies east and
