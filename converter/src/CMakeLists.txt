@@ -80,6 +80,7 @@ add_library(bethconv_core STATIC
     pack/asset_conversion.cpp
     pack/convert.cpp
     pack/world.cpp
+    pack/world_file.cpp
     script/pex.cpp
     script/pex_script.cpp
     ${BETHCONV_FB_HEADERS}
