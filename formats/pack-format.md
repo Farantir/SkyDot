@@ -152,11 +152,15 @@ only decoded fields would pass every other snapshot test.
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (9; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (10; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
-NPC factions and placed actors' linked references). Format 9 only adds:
+NPC factions and placed actors' linked references, 10 image spaces (IMGS)
+and weathers' and cells' links to them, interior directional ambient with
+lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
+grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
+XLIG). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -316,7 +320,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/18` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/19` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep` | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -337,7 +341,9 @@ units low), `mesh/15` quadratic keys' tangents the right way round (steady
 motion had eased in and out at every key), `mesh/16` `hair_tint_color` and
 `skin_tint_color` in the material extras (FaceGen hair was grey), `mesh/17`
 `draw_order` on the children of a BSOrderedNode (node extras), `mesh/18`
-water shaders named `BSWaterShaderProperty` rather than `other`; the list in
+water shaders named `BSWaterShaderProperty` rather than `other`, `mesh/19`
+`addon` (the BSValueNode's value) on nodes named `AddOnNode...` (node extras;
+candle flames hang there); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 

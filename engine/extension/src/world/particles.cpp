@@ -525,7 +525,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
                                                            num(e, "planar_angle_variation")));
     process->set_shader_parameter("radius", pair(radius, radius_var));
     process->set_shader_parameter("life", pair(life, life_var));
-    process->set_shader_parameter("color", color(e.get("color", Variant())));
+    process->set_shader_parameter("color", shader_rgba(color(e.get("color", Variant()))));
     process->set_shader_parameter("world_space", world_space);
 
     const Variant rotation = block_.get("rotation", Variant());
@@ -666,9 +666,9 @@ void SkydotParticles::build_emitter(Emitter& em) {
         const Variant colors = c.get("colors", Variant());
         if (colors.get_type() == Variant::ARRAY && Array(colors).size() >= 3) {
             const Array list = colors;
-            process->set_shader_parameter("color1", color(list[0]));
-            process->set_shader_parameter("color2", color(list[1]));
-            process->set_shader_parameter("color3", color(list[2]));
+            process->set_shader_parameter("color1", shader_rgba(color(list[0])));
+            process->set_shader_parameter("color2", shader_rgba(color(list[1])));
+            process->set_shader_parameter("color3", shader_rgba(color(list[2])));
         }
     }
     const Variant keys = block_.get("color_keys", Variant());

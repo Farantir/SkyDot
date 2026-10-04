@@ -19,6 +19,7 @@
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/quaternion.hpp>
@@ -66,6 +67,9 @@ protected:
 private:
     struct Target {
         godot::Node3D* node = nullptr;
+        // A skinned model's animated nodes are bones of a Skeleton3D.
+        godot::Skeleton3D* skeleton = nullptr;
+        std::int32_t bone = -1;
         godot::Transform3D rest;
         godot::Quaternion rest_rotation;
         godot::Vector3 rest_scale;
@@ -105,6 +109,7 @@ private:
     void bind_material(Target& target, std::size_t slot);
     void apply_clip(std::size_t clip, double local_time);
     void flush();
+    static godot::Transform3D pose_of(const Target& t);
 };
 
 } // namespace skydot

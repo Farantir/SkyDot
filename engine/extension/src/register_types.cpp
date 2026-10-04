@@ -13,6 +13,7 @@
 #include "world/billboard.hpp"
 #include "world/collision.hpp"
 #include "world/flicker.hpp"
+#include "world/image_space.hpp"
 #include "world/lod.hpp"
 #include "world/particles.hpp"
 #include "world/actor.hpp"
@@ -45,6 +46,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotPlayer);
     GDREGISTER_CLASS(skydot::SkydotActor);
     GDREGISTER_CLASS(skydot::SkydotWeather);
+    GDREGISTER_CLASS(skydot::SkydotImageSpace);
     GDREGISTER_CLASS(skydot::SkydotAi);
 }
 

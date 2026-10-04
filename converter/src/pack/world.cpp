@@ -58,8 +58,15 @@ struct CellEntry {
     float water_height{};
     std::optional<WorldCellLighting> lighting;
     std::uint32_t lighting_template{};
+    std::uint32_t image_space{};
     bool persistent{};
     std::uint32_t water{};
+};
+
+/// LGTM: DATA has XCLL's layout up to the light fade distances (its
+/// directional ambient block is unused); the directional ambient is DALC.
+struct LightingTemplateEntry {
+    WorldCellLighting lighting;
 };
 
 struct TerrainEntry {
@@ -76,6 +83,32 @@ struct LandTextureEntry {
     std::string editor_id;
     std::uint32_t texture_set{};
     std::uint8_t specular{};
+    std::vector<std::uint32_t> grasses;
+};
+
+/// ADDN; see world.fbs `AddonNode`.
+struct AddonEntry {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::int32_t index{};
+    std::string model;
+};
+
+/// GRAS; see world.fbs `Grass`.
+struct GrassEntry {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::string model;
+    std::uint8_t density{};
+    std::uint8_t min_slope{};
+    std::uint8_t max_slope{};
+    std::uint16_t units_from_water{};
+    std::uint32_t water_type{};
+    float position_range{};
+    float height_range{};
+    float color_range{};
+    float wave_period{};
+    std::uint8_t flags{};
 };
 
 struct BaseEntry {
@@ -87,6 +120,17 @@ struct BaseEntry {
     std::uint32_t flags{};
     std::vector<record::Script> scripts;
     std::uint32_t record_flags{};
+    std::uint32_t directional_material{};
+    float directional_max_angle{};
+};
+
+/// MATO; see world.fbs `MaterialObject`.
+struct MaterialObjectEntry {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::string model;
+    std::array<float, 11> data{}; ///< DATA's first 44 bytes
+    std::uint32_t flags{};         ///< DATA's last word; bit 0 single pass
 };
 
 /// Per-cell data about its references beyond placement.
@@ -96,6 +140,7 @@ struct CellExtras {
     std::vector<WorldLink> links;
     std::vector<WorldActivateParent> activate_parents;
     std::vector<WorldPrimitive> primitives;
+    std::vector<WorldLightOverride> light_overrides;
 };
 
 /// Types whose VMAD is followed by fragment data; their scripts only run
@@ -162,7 +207,10 @@ std::optional<WorldCellLighting> decode_xcll(std::span<const std::byte> raw) {
     out.directional_fade = f32();
     (void)f32(); // fog clip distance
     out.fog_power = f32();
-    (void)r.skip(24 + 4 + 4); // directional ambient, specular, fresnel power
+    for (auto& colour : out.directional_ambient) {
+        colour = u32();
+    }
+    (void)r.skip(4 + 4); // specular, fresnel power
     out.fog_far_color = u32();
     out.fog_max = f32();
     out.light_fade_begin = f32();
@@ -170,6 +218,19 @@ std::optional<WorldCellLighting> decode_xcll(std::span<const std::byte> raw) {
     out.inherit = u32();
     return out;
 }
+
+/// XCLL inherit flags (UESP, CELL record): set bits take the value from the
+/// lighting template. The directional ambient goes with the ambient colour.
+constexpr std::uint32_t k_inherit_ambient = 0x1;
+constexpr std::uint32_t k_inherit_directional = 0x2;
+constexpr std::uint32_t k_inherit_fog_color = 0x4;
+constexpr std::uint32_t k_inherit_fog_near = 0x8;
+constexpr std::uint32_t k_inherit_fog_far = 0x10;
+constexpr std::uint32_t k_inherit_rotation = 0x20;
+constexpr std::uint32_t k_inherit_fade = 0x40;
+constexpr std::uint32_t k_inherit_fog_power = 0x100;
+constexpr std::uint32_t k_inherit_fog_max = 0x200;
+constexpr std::uint32_t k_inherit_light_fade = 0x400;
 
 class WorldSink final : public record::MergedRecordSink {
 public:
@@ -200,6 +261,16 @@ public:
             on_climate(merged, data, form_ctx);
         } else if (merged.type == FourCC{"WTHR"}) {
             on_weather(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"IMGS"}) {
+            on_image_space(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"LGTM"}) {
+            on_lighting_template(merged, data);
+        } else if (merged.type == FourCC{"MATO"}) {
+            on_material_object(merged, data);
+        } else if (merged.type == FourCC{"GRAS"}) {
+            on_grass(merged, data);
+        } else if (merged.type == FourCC{"ADDN"}) {
+            on_addon_node(merged, data);
         } else if (merged.type == FourCC{"QUST"}) {
             on_quest(merged, data, form_ctx);
         } else if (merged.type == FourCC{"GLOB"}) {
@@ -272,6 +343,17 @@ public:
     [[nodiscard]] std::map<std::uint32_t, WorldWater>& waters() noexcept { return waters_; }
     [[nodiscard]] std::map<std::uint32_t, WorldClimate>& climates() noexcept { return climates_; }
     [[nodiscard]] std::map<std::uint32_t, WorldWeather>& weathers() noexcept { return weathers_; }
+    [[nodiscard]] std::map<std::uint32_t, WorldImageSpace>& image_spaces() noexcept {
+        return image_spaces_;
+    }
+    [[nodiscard]] const std::map<std::uint32_t, GrassEntry>& grasses() const noexcept { return grasses_; }
+    [[nodiscard]] const std::map<std::uint32_t, AddonEntry>& addons() const noexcept { return addons_; }
+    [[nodiscard]] const std::map<std::uint32_t, MaterialObjectEntry>& material_objects() const noexcept {
+        return material_objects_;
+    }
+    [[nodiscard]] const std::map<std::uint32_t, LightingTemplateEntry>& lighting_templates() const noexcept {
+        return lighting_templates_;
+    }
     [[nodiscard]] std::map<std::uint32_t, WorldPrecipitation>& precipitations() noexcept {
         return precipitations_;
     }
@@ -334,6 +416,7 @@ private:
             .water_height = cell->water_height,
             .lighting = decode_xcll(cell->lighting),
             .lighting_template = global(merged, cell->lighting_template, failed),
+            .image_space = global(merged, cell->image_space, failed),
             .persistent = record::has_flag(merged.flags, record::RecordFlag::persistent),
             .water = global(merged, cell->water, failed),
         };
@@ -385,6 +468,18 @@ private:
                 .ref = out.id,
                 .scripts = global_scripts(merged, std::move(ref->scripts), failed),
             });
+        }
+        if (ref->has_radius || ref->light_data.size() >= 16) {
+            WorldLightOverride light{.ref = out.id, .has_radius = ref->has_radius, .radius = ref->radius};
+            if (ref->light_data.size() >= 16) {
+                io::SpanReader r(ref->light_data, "REFR XLIG");
+                light.has_light_data = true;
+                light.fov = r.get<float>().value_or(0.0F);
+                light.fade = r.get<float>().value_or(0.0F);
+                light.end_distance_cap = r.get<float>().value_or(0.0F);
+                light.shadow_depth_bias = r.get<float>().value_or(0.0F);
+            }
+            extras.light_overrides.push_back(light);
         }
         if (ref->lock) {
             extras.locks.push_back(WorldLock{
@@ -980,9 +1075,15 @@ private:
         std::string mod4;
         std::uint32_t flags = 0;
         record::ScriptData scripts;
+        const bool stat = merged.type == FourCC{"STAT"};
+        float max_angle = 0.0F;
+        std::uint32_t material = 0;
         const auto walked = record::for_each_field(
             data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-                if (field.type == FourCC{"EDID"} && editor_id.empty()) {
+                if (field.type == FourCC{"DNAM"} && stat && body.remaining() >= 8) {
+                    max_angle = body.get<float>().value_or(0.0F);
+                    material = body.get<std::uint32_t>().value_or(0);
+                } else if (field.type == FourCC{"EDID"} && editor_id.empty()) {
                     editor_id = std::string(body.zstring().value_or(""));
                 } else if (field.type == FourCC{"MODL"} && modl.empty() && !armor) {
                     modl = std::string(body.zstring().value_or(""));
@@ -1018,10 +1119,35 @@ private:
             .flags = flags,
             .scripts = global_scripts(merged, std::move(scripts), failed),
             .record_flags = merged.flags,
+            .directional_material = material != 0 ? global(merged, record::FormId{material}, failed) : 0,
+            .directional_max_angle = max_angle,
         };
         if (failed) {
             ++stats_.unresolved;
         }
+    }
+
+    void on_material_object(const record::MergedRecord& merged, io::SpanReader& data) {
+        MaterialObjectEntry out;
+        out.id = merged.form.value;
+        const auto walked = record::for_each_field(
+            data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+                if (field.type == FourCC{"EDID"}) {
+                    out.editor_id = std::string(body.zstring().value_or(""));
+                } else if (field.type == FourCC{"MODL"}) {
+                    out.model = model_vpath(std::string(body.zstring().value_or("")));
+                } else if (field.type == FourCC{"DATA"}) {
+                    for (auto& f : out.data) {
+                        f = body.remaining() >= 4 ? body.get<float>().value_or(0.0F) : 0.0F;
+                    }
+                    out.flags = body.remaining() >= 4 ? body.get<std::uint32_t>().value_or(0) : 0;
+                }
+            });
+        if (!walked) {
+            ++stats_.parse_errors;
+            return;
+        }
+        material_objects_[out.id] = std::move(out);
     }
 
     /// LAND's parent is its CELL. Texture FormIDs are made global; an
@@ -1120,15 +1246,73 @@ private:
             return;
         }
         bool failed = false;
+        std::vector<std::uint32_t> grasses;
+        for (const auto grass : ltex->grasses) {
+            grasses.push_back(global(merged, grass, failed));
+        }
         land_textures_[merged.form.value] = LandTextureEntry{
             .id = merged.form.value,
             .editor_id = ltex->editor_id,
             .texture_set = global(merged, ltex->texture_set, failed),
             .specular = ltex->specular,
+            .grasses = std::move(grasses),
         };
         if (failed) {
             ++stats_.unresolved;
         }
+    }
+
+    void on_addon_node(const record::MergedRecord& merged, io::SpanReader& data) {
+        AddonEntry out;
+        out.id = merged.form.value;
+        bool has_index = false;
+        const auto walked = record::for_each_field(
+            data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+                if (field.type == FourCC{"EDID"}) {
+                    out.editor_id = std::string(body.zstring().value_or(""));
+                } else if (field.type == FourCC{"MODL"}) {
+                    out.model = model_vpath(std::string(body.zstring().value_or("")));
+                } else if (field.type == FourCC{"DATA"} && body.remaining() >= 4) {
+                    out.index = body.get<std::int32_t>().value_or(0);
+                    has_index = true;
+                }
+            });
+        if (!walked || !has_index || out.model.empty()) {
+            ++stats_.parse_errors;
+            return;
+        }
+        addons_[out.id] = std::move(out);
+    }
+
+    void on_grass(const record::MergedRecord& merged, io::SpanReader& data) {
+        GrassEntry out;
+        out.id = merged.form.value;
+        const auto walked = record::for_each_field(
+            data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+                if (field.type == FourCC{"EDID"}) {
+                    out.editor_id = std::string(body.zstring().value_or(""));
+                } else if (field.type == FourCC{"MODL"}) {
+                    out.model = model_vpath(std::string(body.zstring().value_or("")));
+                } else if (field.type == FourCC{"DATA"} && body.remaining() >= 29) {
+                    out.density = body.get<std::uint8_t>().value_or(0);
+                    out.min_slope = body.get<std::uint8_t>().value_or(0);
+                    out.max_slope = body.get<std::uint8_t>().value_or(90);
+                    (void)body.skip(1);
+                    out.units_from_water = body.get<std::uint16_t>().value_or(0);
+                    (void)body.skip(2);
+                    out.water_type = body.get<std::uint32_t>().value_or(0);
+                    out.position_range = body.get<float>().value_or(0.0F);
+                    out.height_range = body.get<float>().value_or(0.0F);
+                    out.color_range = body.get<float>().value_or(0.0F);
+                    out.wave_period = body.get<float>().value_or(0.0F);
+                    out.flags = body.get<std::uint8_t>().value_or(0);
+                }
+            });
+        if (!walked || out.model.empty()) {
+            ++stats_.parse_errors;
+            return;
+        }
+        grasses_[out.id] = std::move(out);
     }
 
     void on_texture_set(const record::MergedRecord& merged, io::SpanReader& data,
@@ -1300,10 +1484,68 @@ private:
         bool failed = false;
         out.precipitation = global(merged, weather->precipitation, failed);
         out.aurora = model_vpath(weather->model.path);
+        for (const auto image_space : weather->image_spaces) {
+            out.image_spaces.push_back(global(merged, image_space, failed));
+        }
         if (failed) {
             ++stats_.unresolved;
         }
         weathers_[out.id] = std::move(out);
+    }
+
+    /// IMGS: HNAM, CNAM and TNAM as floats (see world.fbs `ImageSpace`).
+    void on_image_space(const record::MergedRecord& merged, io::SpanReader& data,
+                        const record::FormContext& form_ctx) {
+        auto image_space = record::parse_image_space(data, form_ctx);
+        if (!image_space) {
+            ++stats_.parse_errors;
+            return;
+        }
+        WorldImageSpace out;
+        out.id = merged.form.value;
+        out.editor_id = image_space->editor_id;
+        const auto floats = [](std::span<const std::byte> raw, std::size_t count) {
+            std::vector<float> values;
+            io::SpanReader r(raw, "IMGS");
+            for (std::size_t i = 0; i < count && r.remaining() >= 4; ++i) {
+                values.push_back(r.get<float>().value_or(0.0F));
+            }
+            return values.size() == count ? values : std::vector<float>{};
+        };
+        out.hdr = floats(image_space->hdr, 9);
+        out.cinematic = floats(image_space->cinematic, 3);
+        out.tint = floats(image_space->tint, 4);
+        image_spaces_[out.id] = std::move(out);
+    }
+
+    /// LGTM (UESP, LGTM record): DATA as XCLL, DALC 32 bytes.
+    void on_lighting_template(const record::MergedRecord& merged, io::SpanReader& data) {
+        LightingTemplateEntry out;
+        bool has_data = false;
+        const auto walked = record::for_each_field(
+            data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+                if (field.type == FourCC{"DATA"}) {
+                    const auto raw = body.bytes(body.remaining());
+                    if (raw) {
+                        if (auto decoded = decode_xcll(*raw)) {
+                            const auto ambient = out.lighting.directional_ambient;
+                            out.lighting = *decoded;
+                            out.lighting.directional_ambient = ambient;
+                            out.lighting.inherit = 0;
+                            has_data = true;
+                        }
+                    }
+                } else if (field.type == FourCC{"DALC"} && body.remaining() >= 24) {
+                    for (auto& colour : out.lighting.directional_ambient) {
+                        colour = body.get<std::uint32_t>().value_or(0);
+                    }
+                }
+            });
+        if (!walked || !has_data) {
+            ++stats_.parse_errors;
+            return;
+        }
+        lighting_templates_[merged.form.value] = std::move(out);
     }
 
     /// Cloud layers: textures (00TX..), speeds (QNAM, RNAM: one byte each,
@@ -1411,6 +1653,11 @@ private:
     std::map<std::uint32_t, WorldWater> waters_;
     std::map<std::uint32_t, WorldClimate> climates_;
     std::map<std::uint32_t, WorldWeather> weathers_;
+    std::map<std::uint32_t, WorldImageSpace> image_spaces_;
+    std::map<std::uint32_t, LightingTemplateEntry> lighting_templates_;
+    std::map<std::uint32_t, MaterialObjectEntry> material_objects_;
+    std::map<std::uint32_t, GrassEntry> grasses_;
+    std::map<std::uint32_t, AddonEntry> addons_;
     std::map<std::uint32_t, WorldPrecipitation> precipitations_;
     std::map<std::uint32_t, WorldRegion> regions_;
     std::unordered_map<std::uint32_t, WorldTerrain> terrains_;
@@ -1521,6 +1768,58 @@ record::Vec3 from_fb(const wfb::Vec3f& v) { return record::Vec3{v.x(), v.y(), v.
 
 } // namespace
 
+/// The lighting of an interior as the game uses it: XCLL with the inherited
+/// values taken from the lighting template, or the template's alone when the
+/// cell has no XCLL. Exteriors keep XCLL as it is.
+std::optional<WorldCellLighting> resolve_lighting(
+    const CellEntry& cell, const std::map<std::uint32_t, LightingTemplateEntry>& templates) {
+    const auto it = templates.find(cell.lighting_template);
+    if ((cell.flags & 0x1u) == 0 || it == templates.end()) {
+        return cell.lighting;
+    }
+    const auto& t = it->second.lighting;
+    if (!cell.lighting) {
+        return t;
+    }
+    WorldCellLighting out = *cell.lighting;
+    const auto inherits = [&](std::uint32_t bit) { return (out.inherit & bit) != 0; };
+    if (inherits(k_inherit_ambient)) {
+        out.ambient = t.ambient;
+        out.directional_ambient = t.directional_ambient;
+    }
+    if (inherits(k_inherit_directional)) {
+        out.directional = t.directional;
+    }
+    if (inherits(k_inherit_fog_color)) {
+        out.fog_near_color = t.fog_near_color;
+        out.fog_far_color = t.fog_far_color;
+    }
+    if (inherits(k_inherit_fog_near)) {
+        out.fog_near = t.fog_near;
+    }
+    if (inherits(k_inherit_fog_far)) {
+        out.fog_far = t.fog_far;
+    }
+    if (inherits(k_inherit_rotation)) {
+        out.directional_rotation_xy = t.directional_rotation_xy;
+        out.directional_rotation_z = t.directional_rotation_z;
+    }
+    if (inherits(k_inherit_fade)) {
+        out.directional_fade = t.directional_fade;
+    }
+    if (inherits(k_inherit_fog_power)) {
+        out.fog_power = t.fog_power;
+    }
+    if (inherits(k_inherit_fog_max)) {
+        out.fog_max = t.fog_max;
+    }
+    if (inherits(k_inherit_light_fade)) {
+        out.light_fade_begin = t.light_fade_begin;
+        out.light_fade_end = t.light_fade_end;
+    }
+    return out;
+}
+
 io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                         const record::LoadOrder& order,
                                         const std::filesystem::path& out) {
@@ -1558,6 +1857,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         std::ranges::stable_sort(extras.links, {}, &WorldLink::ref);
         std::ranges::stable_sort(extras.activate_parents, {}, &WorldActivateParent::ref);
         std::ranges::stable_sort(extras.primitives, {}, &WorldPrimitive::ref);
+        std::ranges::stable_sort(extras.light_overrides, {}, &WorldLightOverride::ref);
         std::vector<flatbuffers::Offset<wfb::RefScripts>> fb_scripts;
         fb_scripts.reserve(extras.scripts.size());
         for (const auto& r : extras.scripts) {
@@ -1590,6 +1890,12 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         const auto links_off = builder.CreateVectorOfStructs(fb_links);
         const auto parents_off = builder.CreateVectorOfStructs(fb_parents);
         const auto primitives_off = builder.CreateVectorOfStructs(fb_primitives);
+        std::vector<wfb::LightOverride> fb_lights;
+        for (const auto& l : extras.light_overrides) {
+            fb_lights.emplace_back(l.ref, l.has_radius, l.radius, l.has_light_data, l.fov, l.fade,
+                                   l.end_distance_cap, l.shadow_depth_bias);
+        }
+        const auto light_overrides_off = builder.CreateVectorOfStructs(fb_lights);
 
         std::vector<flatbuffers::Offset<wfb::NavMesh>> fb_navmeshes;
         if (const auto n = sink.navmeshes().find(id); n != sink.navmeshes().end()) {
@@ -1649,9 +1955,14 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
             stats.terrain_layers += terrain.layers.size();
         }
 
+        const auto resolved = resolve_lighting(cell, sink.lighting_templates());
         std::optional<wfb::CellLighting> lighting;
-        if (cell.lighting) {
-            const auto& l = *cell.lighting;
+        flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> ambient_off;
+        if (resolved) {
+            const auto& l = *resolved;
+            if (std::ranges::any_of(l.directional_ambient, [](std::uint32_t c) { return c != 0; })) {
+                ambient_off = builder.CreateVector(l.directional_ambient.data(), l.directional_ambient.size());
+            }
             lighting = wfb::CellLighting(
                 l.ambient, l.directional, l.fog_near_color, l.fog_far_color, l.fog_near,
                 l.fog_far, l.fog_power, l.fog_max, l.directional_rotation_xy,
@@ -1688,6 +1999,11 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         cb.add_activate_parents(parents_off);
         cb.add_primitives(primitives_off);
         cb.add_navmeshes(navmeshes_off);
+        if (!ambient_off.IsNull()) {
+            cb.add_directional_ambient(ambient_off);
+        }
+        cb.add_image_space(cell.image_space);
+        cb.add_light_overrides(light_overrides_off);
         cells.push_back(cb.Finish());
 
         ++stats.cells;
@@ -1728,6 +2044,10 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         bb.add_model(model);
         bb.add_flags(base.flags);
         bb.add_record_flags(base.record_flags);
+        if (base.directional_material != 0) {
+            bb.add_directional_material(base.directional_material);
+            bb.add_directional_max_angle(base.directional_max_angle);
+        }
         if (!base.scripts.empty()) {
             bb.add_scripts(scripts);
         }
@@ -1774,7 +2094,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
         land_textures.push_back(wfb::CreateLandTexture(
             builder, ltex.id, builder.CreateString(ltex.editor_id),
             builder.CreateString(paths.diffuse), builder.CreateString(paths.normal),
-            ltex.specular));
+            ltex.specular, builder.CreateVector(ltex.grasses)));
         ++stats.land_textures;
     }
 
@@ -1843,8 +2163,26 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
             w.wind_direction_range, w.transition_delta, w.sun_glare, w.sun_damage,
             w.precipitation_begin, w.precipitation_end, w.thunder_begin, w.thunder_end,
             w.thunder_frequency, w.classification, w.lightning_color, w.precipitation,
-            builder.CreateString(w.aurora)));
+            builder.CreateString(w.aurora), builder.CreateVector(w.image_spaces)));
         ++stats.weathers;
+    }
+    std::vector<flatbuffers::Offset<wfb::ImageSpace>> image_spaces;
+    for (const auto& [id, i] : sink.image_spaces()) {
+        image_spaces.push_back(wfb::CreateImageSpace(
+            builder, i.id, builder.CreateString(i.editor_id), builder.CreateVector(i.hdr),
+            builder.CreateVector(i.cinematic), builder.CreateVector(i.tint)));
+        ++stats.image_spaces;
+    }
+    stats.lighting_templates = sink.lighting_templates().size();
+    std::vector<flatbuffers::Offset<wfb::MaterialObject>> material_objects;
+    for (const auto& [id, m] : sink.material_objects()) {
+        const auto& d = m.data;
+        const std::array<float, 3> projection{d[4], d[5], d[6]};
+        const std::array<float, 3> colour{d[8], d[9], d[10]};
+        material_objects.push_back(wfb::CreateMaterialObject(
+            builder, m.id, builder.CreateString(m.editor_id), builder.CreateString(m.model), d[0], d[1],
+            d[2], d[3], builder.CreateVector(projection.data(), projection.size()), d[7],
+            builder.CreateVector(colour.data(), colour.size()), (m.flags & 1U) != 0));
     }
     std::vector<flatbuffers::Offset<wfb::Precipitation>> precipitations;
     for (const auto& [id, p] : sink.precipitations()) {
@@ -2078,6 +2416,22 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     }
     const auto npcs_off = builder.CreateVector(npcs);
     const auto packages_off = builder.CreateVector(packages);
+    const auto image_spaces_off = builder.CreateVector(image_spaces);
+    const auto material_objects_off = builder.CreateVector(material_objects);
+    std::vector<flatbuffers::Offset<wfb::Grass>> grasses;
+    for (const auto& [id, g] : sink.grasses()) {
+        grasses.push_back(wfb::CreateGrass(builder, g.id, builder.CreateString(g.editor_id),
+                                           builder.CreateString(g.model), g.density, g.min_slope,
+                                           g.max_slope, g.units_from_water, g.water_type, g.position_range,
+                                           g.height_range, g.color_range, g.wave_period, g.flags));
+    }
+    const auto grasses_off = builder.CreateVector(grasses);
+    std::vector<flatbuffers::Offset<wfb::AddonNode>> addon_nodes;
+    for (const auto& [id, a] : sink.addons()) {
+        addon_nodes.push_back(wfb::CreateAddonNode(builder, a.id, builder.CreateString(a.editor_id), a.index,
+                                                   builder.CreateString(a.model)));
+    }
+    const auto addon_nodes_off = builder.CreateVector(addon_nodes);
     const auto races_off = builder.CreateVector(races);
     const auto armors_off = builder.CreateVector(armors);
     const auto addons_off = builder.CreateVector(addons);
@@ -2131,6 +2485,10 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     wb.add_regions(regions_off);
     wb.add_npcs(npcs_off);
     wb.add_packages(packages_off);
+    wb.add_image_spaces(image_spaces_off);
+    wb.add_material_objects(material_objects_off);
+    wb.add_grasses(grasses_off);
+    wb.add_addon_nodes(addon_nodes_off);
     wb.add_races(races_off);
     wb.add_armors(armors_off);
     wb.add_armor_addons(addons_off);
@@ -2215,7 +2573,15 @@ WorldCell to_cell(const wfb::Cell& c) {
             .inherit = l->inherit(),
         };
     }
+    if (out.lighting) {
+        if (const auto* d = c.directional_ambient(); d != nullptr && d->size() >= 6) {
+            for (flatbuffers::uoffset_t i = 0; i < 6; ++i) {
+                out.lighting->directional_ambient[i] = d->Get(i);
+            }
+        }
+    }
     out.lighting_template = c.lighting_template();
+    out.image_space = c.image_space();
     out.persistent = c.persistent();
     out.water = c.water();
     if (const auto* refs = c.refs()) {
@@ -2911,6 +3277,29 @@ std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
     return out;
 }
 
+std::optional<WorldImageSpace> WorldFile::image_space(std::uint32_t id) const {
+    const auto* list = impl_->root->image_spaces();
+    if (list == nullptr) {
+        return std::nullopt;
+    }
+    const auto* it = find_sorted(list, id);
+    if (it == nullptr) {
+        return std::nullopt;
+    }
+    WorldImageSpace out;
+    out.id = it->id();
+    out.editor_id = it->editor_id() != nullptr ? it->editor_id()->str() : std::string{};
+    const auto floats = [](const flatbuffers::Vector<float>* v, std::vector<float>& into) {
+        if (v != nullptr) {
+            into.assign(v->begin(), v->end());
+        }
+    };
+    floats(it->hdr(), out.hdr);
+    floats(it->cinematic(), out.cinematic);
+    floats(it->tint(), out.tint);
+    return out;
+}
+
 std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
     const auto* weathers = impl_->root->weathers();
     if (weathers == nullptr) {
@@ -2931,6 +3320,9 @@ std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
     }
     if (const auto* d = it->directional_ambient()) {
         out.directional_ambient.assign(d->begin(), d->end());
+    }
+    if (const auto* i = it->image_spaces()) {
+        out.image_spaces.assign(i->begin(), i->end());
     }
     const auto str = [](const flatbuffers::String* t) { return t != nullptr ? t->str() : std::string{}; };
     if (const auto* clouds = it->clouds()) {

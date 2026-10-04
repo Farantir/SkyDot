@@ -31,6 +31,21 @@ struct Ref {
     enable_parent: uint32;
 }
 
+/// A placed light's own settings (format 10; REFR XRDS and XLIG, xEdit's
+/// names): the radius, added to the LIGH record's, and XLIG's FOV (added to
+/// 90), fade, end distance cap and shadow depth bias. `has_*` say which the
+/// reference has.
+struct LightOverride {
+    ref: uint32;
+    has_radius: bool;
+    radius: float;
+    has_light_data: bool;
+    fov: float;
+    fade: float;
+    end_distance_cap: float;
+    shadow_depth_bias: float;
+}
+
 /// A reference that is a load door: where it leads.
 struct DoorLink {
     ref: uint32;
@@ -236,6 +251,14 @@ table Cell {
     primitives: [Primitive];
     /// Sorted by id.
     navmeshes: [NavMesh];
+    /// Sorted by ref (format 10).
+    light_overrides: [LightOverride];
+    /// Interiors (format 10): the directional ambient of XCLL, or of the
+    /// lighting template where the cell inherits its ambient: x+, x-, y+,
+    /// y-, z+, z-, RGBA bytes. Empty if neither has one.
+    directional_ambient: [uint];
+    /// XCIM, an ImageSpace in `image_spaces`; 0 if none (format 10).
+    image_space: uint32;
 }
 
 /// LIGH DATA and FNAM. Color is RGBA bytes, red in the low byte.
@@ -271,6 +294,30 @@ table Base {
     /// The record header's flags; bit 23 (0x00800000) marks editor markers
     /// (XMarker, furniture markers), which the game does not draw.
     record_flags: uint32;
+    /// STAT DNAM (format 10): the directional material, a MaterialObject in
+    /// `material_objects` (0 if none), and its max angle in degrees.
+    directional_material: uint32;
+    directional_max_angle: float;
+}
+
+/// MATO (format 10): a directional material (snow, sand, moss) projected
+/// onto the up-facing parts of shapes with the Projected UV shader flag.
+/// `model` is a NIF whose first shape's textures are the material's.
+/// DATA (UESP, MATO record; Community Shaders' Lighting.hlsl for use):
+/// falloff scale and bias, noise UV scale, material UV scale, projection
+/// vector, normal dampener, single pass colour (0..1) and its flag.
+table MaterialObject {
+    id: uint32;
+    editor_id: string;
+    model: string;
+    falloff_scale: float;
+    falloff_bias: float;
+    noise_uv_scale: float;
+    material_uv_scale: float;
+    projection: [float];
+    normal_dampener: float;
+    single_pass_color: [float];
+    single_pass: bool;
 }
 
 /// LTEX with its TXST resolved. Paths are normalized virtual paths.
@@ -281,6 +328,39 @@ table LandTexture {
     normal: string;
     /// SNAM, 0..255.
     specular: ubyte;
+    /// GNAM (format 10): Grass records growing on it.
+    grasses: [uint32];
+}
+
+/// ADDN (format 10): the model the game attaches to a mesh's BSValueNode
+/// "AddOnNode" whose value is `index` (mesh extras "addon").
+table AddonNode {
+    id: uint32;
+    editor_id: string;
+    index: int32;
+    model: string;
+}
+
+/// GRAS (format 10; DATA, 32 bytes, UESP GRAS record). `model` is a
+/// normalized virtual path. Slopes in degrees; distances in game units.
+/// `water_type`: 0 above at least, 1 above at most, 2 below at least, 3 below
+/// at most, 4 either at least, 5 either at most, 6 either at most above, 7
+/// either at most below. Flags: 1 vertex lighting, 2 uniform scaling, 4 fit
+/// to slope.
+table Grass {
+    id: uint32;
+    editor_id: string;
+    model: string;
+    density: ubyte;
+    min_slope: ubyte;
+    max_slope: ubyte;
+    units_from_water: ushort;
+    water_type: uint32;
+    position_range: float;
+    height_range: float;
+    color_range: float;
+    wave_period: float;
+    flags: ubyte;
 }
 
 /// One of WATR's three noise layers.
@@ -455,6 +535,22 @@ table Weather {
     precipitation: uint32;
     /// MODL: the aurora, a virtual path.
     aurora: string;
+    /// IMSP (format 10): an ImageSpace per time of day (sunrise, day,
+    /// sunset, night); 0 where none.
+    image_spaces: [uint32];
+}
+
+/// IMGS (format 10): colour grading after lighting. `hdr` is HNAM's nine
+/// floats: eye adapt speed, bloom blur radius, bloom threshold, bloom scale,
+/// receive bloom threshold, white, sunlight scale, sky scale, eye adapt
+/// strength. `cinematic` is CNAM: saturation, brightness, contrast. `tint`
+/// is TNAM: amount, red, green, blue. Empty where the record has none.
+table ImageSpace {
+    id: uint32;
+    editor_id: string;
+    hdr: [float];
+    cinematic: [float];
+    tint: [float];
 }
 
 /// WRLD.
@@ -875,6 +971,14 @@ table World {
     leveled_lists: [LeveledList];
     /// Sorted by id (format 9).
     packages: [Package];
+    /// Sorted by id (format 10).
+    image_spaces: [ImageSpace];
+    /// Sorted by id (format 10).
+    material_objects: [MaterialObject];
+    /// Sorted by id (format 10).
+    grasses: [Grass];
+    /// Sorted by id (format 10).
+    addon_nodes: [AddonNode];
 }
 
 root_type World;

@@ -886,6 +886,9 @@ private:
                 if (src.hidden) {
                     ours["hidden"] = true;
                 }
+                if (src.addon_index.has_value()) {
+                    ours["addon"] = *src.addon_index;
+                }
                 if (!ours.empty()) {
                     extras_.set(fastgltf::Category::Nodes, gltf_node_[i],
                                 nlohmann::json{{"bethconv", std::move(ours)}});

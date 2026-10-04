@@ -16,12 +16,21 @@
 # camera east at --fly-speed m/s (default 20) and prints frame times.
 # Beyond the loaded cells the worldspace's LOD shows (terrain, objects, tree
 # billboards, from the pack's converted LOD); --lod off turns
-# it off, --lod-split and --tree-distance tune it (SkydotLod).
-# --shadows off disables the sun's shadows. Outside, SkydotWeather runs time
-# and weather: --time HOURS (default 12) to start at, --time-scale (game
-# seconds per second, default 20, 0 stops time), --weather EDITOR_ID to keep
-# one weather; otherwise the region's or climate's weathers take turns. T and
-# Shift+T move the time by an hour, K changes the weather.
+# it off, --lod-split and --tree-distance tune it (SkydotLod). [ and ] lower
+# and raise the LOD's detail while running (--lod-split by a quarter each:
+# finer LOD further out); - and = shrink and grow --radius, the full-detail
+# cells around the camera (2 is the game's uGridsToLoad 5). --msaa off|2|4|8 smooths edges (multisampling;
+# default off); M switches between them.
+# --fov DEGREES sets the camera's vertical field of view (default 75; the
+# game's is 50.4 at 16:9). --shadows off disables the sun's shadows.
+# --light-shadows all gives every placed light shadows, not only those whose
+# record asks for them (game, the default). --grass off grows no grass.
+# --image-space off shows the scene's numbers ungraded (no image space).
+# Outside, SkydotWeather runs time and weather: --time HOURS (default 12) to
+# start at, --time-scale (game seconds per second, default 20, 0 stops time),
+# --weather EDITOR_ID to keep one weather; otherwise the region's or
+# climate's weathers take turns. T and Shift+T move the time by an hour, K
+# changes the weather.
 #
 # Controls: the mouse looks (Esc releases it, a click captures it again; the
 # right button looks while released), WASD to move, Shift sprints, Ctrl walks,
@@ -127,6 +136,9 @@ var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
 var _lod: SkydotLod  # the worldspace's LOD, or null
+var _lod_split := 1.5  # SkydotLod.split_distance for every LOD made
+const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
+const MSAA_NAMES := ["off", "2", "4", "8"]
 var _preload_doors := true  # build the place behind a near load door ahead
 var _preload_distance := 15.0  # metres
 const PREPARE_BUDGET_USEC := 4000
@@ -164,6 +176,8 @@ var _shot_note: PanelContainer  # asks for a shot's note
 var _shot_note_text: TextEdit
 var _shot_note_json := ""  # the shot the note goes to
 var _shot_note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
+var _image_space: SkydotImageSpace
+var _cell_image_space := {}  # inside: the cell's IMGS, if it has one
 const SHOT_FORMAT := 1
 
 
@@ -234,6 +248,8 @@ func _ready() -> void:
 		print("%s trigger 0x%08X" % ["entered" if entered else "left", ref]))
 	world.skyrim_materials = args.get("materials", "on") != "off"
 	world.effects = args.get("effects", "on") != "off"
+	world.grass = args.get("grass", "on") != "off"
+	world.all_light_shadows = args.get("light-shadows", "game") == "all"
 	world.collision = args.get("collision", "on") != "off"
 	world.navigation = args.get("navigation", "on") != "off"
 	world.actors = args.get("actors", "on") != "off"
@@ -252,6 +268,9 @@ func _ready() -> void:
 		else:
 			_ai = null
 	_radius = int(args.get("radius", "2"))
+	_lod_split = float(args.get("lod-split", "1.5"))
+	var msaa: int = MSAA_NAMES.find(args.get("msaa", "off"))
+	get_viewport().msaa_3d = MSAA_STEPS[maxi(msaa, 0)]
 	_build_budget_usec = int(args.get("build-budget", "8000"))
 	if args.has("tiling"):
 		world.terrain_tiling = float(args["tiling"])
@@ -268,6 +287,13 @@ func _ready() -> void:
 
 	_camera = Camera3D.new()
 	_camera.near = 0.05
+	# The scene is drawn in the game's gamma space; this grades it as the
+	# game's image space does and hands Godot linear colour (always on).
+	_image_space = SkydotImageSpace.new()
+	_camera.compositor = Compositor.new()
+	_camera.compositor.compositor_effects = [_image_space]
+	if args.has("fov"):  # vertical, degrees
+		_camera.fov = float(args["fov"])
 	add_child(_camera)
 	_player = SkydotPlayer.new()
 	_player.name = "player"
@@ -380,6 +406,9 @@ func _ready() -> void:
 
 ## Remove the current cell or worldspace.
 func _leave() -> void:
+	_cell_image_space = {}
+	if _image_space != null:
+		_image_space.reset_adaptation()
 	if _weather != null and is_instance_valid(_weather):
 		_hour = _weather.hour
 		_day = _weather.day
@@ -517,8 +546,7 @@ func _make_lod(world_id: int) -> SkydotLod:
 		lod.free()
 		return null
 	lod.name = "lod"
-	if _args.has("lod-split"):
-		lod.split_distance = float(_args["lod-split"])
+	lod.split_distance = _lod_split
 	if _args.has("tree-distance"):
 		lod.tree_distance = float(_args["tree-distance"])
 	return lod
@@ -1150,7 +1178,7 @@ func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 	env.background_mode = Environment.BG_SKY
 	env.sky = Sky.new()
 	env.sky.sky_material = material
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	var sun := DirectionalLight3D.new()
 	sun.shadow_enabled = shadows
 	if sky_values.is_empty():
@@ -1164,7 +1192,7 @@ func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 		material.ground_bottom_color = sky_values["sky_lower"]
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		env.ambient_light_color = sky_values["ambient"]
-		sun.light_color = sky_values["sunlight"]
+		SkydotMaterials.set_game_light(sun, sky_values["sunlight"])
 		var towards: Vector3 = sky_values["sun_direction"]
 		sun.look_at_from_position(Vector3.ZERO, -towards,
 			Vector3.UP if abs(towards.y) < 0.99 else Vector3.FORWARD)
@@ -1189,8 +1217,13 @@ func _add_environment(cell: Dictionary) -> void:
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color(0.02, 0.02, 0.02)
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR  # see _image_space
 	var lighting = cell.get("lighting")
+	# Our shaders light with this (SkydotMaterials.sync_fog); XCLL's ambient
+	# colour is the fallback.
+	if cell.get("directional_ambient", []).size() == 6:
+		env.set_meta("skydot_directional_ambient", cell["directional_ambient"])
+	_cell_image_space = _world.get_image_space(cell.get("image_space", 0))
 	if lighting != null:
 		env.ambient_light_color = lighting["ambient"]
 		env.ambient_light_energy = 1.0
@@ -1212,7 +1245,7 @@ func _add_environment(cell: Dictionary) -> void:
 
 	if lighting != null and lighting["directional"] != Color(0, 0, 0):
 		var sun := DirectionalLight3D.new()
-		sun.light_color = lighting["directional"]
+		SkydotMaterials.set_game_light(sun, lighting["directional"])
 		sun.rotation_degrees = Vector3(-float(lighting["directional_rotation_z"]),
 			float(lighting["directional_rotation_xy"]), 0)
 		_add_to_place(sun)
@@ -1243,6 +1276,12 @@ func _process(delta: float) -> void:
 		return
 	# Our shaders compute the fog themselves (SkydotMaterials.sync_fog).
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
+	if _args.get("image-space", "on") == "off":
+		_image_space.clear()
+	elif _weather != null and is_instance_valid(_weather):
+		_image_space.set_image_space(_weather.get_image_space())
+	else:
+		_image_space.set_image_space(_cell_image_space)
 	if _shot_path != "":
 		if _shot_delay > 0.0:
 			_shot_delay -= delta
@@ -1360,6 +1399,23 @@ func _unhandled_input(event: InputEvent) -> void:
 		_note("navmesh shown" if _show_navmesh else "navmesh hidden")
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_G:
 		_path_to_view()
+	elif event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_BRACKETLEFT
+			or event.keycode == KEY_BRACKETRIGHT):
+		_lod_split = clampf(_lod_split * (1.25 if event.keycode == KEY_BRACKETRIGHT else 0.8), 0.5, 16.0)
+		if _lod != null:
+			_lod.split_distance = _lod_split
+		# A level-8 quad splits into level-4 ones within split times 8 cells.
+		_note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * 4096 * 0.0142875])
+	elif event is InputEventKey and event.pressed and not event.echo and _world_id != 0 and (event.keycode == KEY_MINUS
+			or event.keycode == KEY_EQUAL):
+		_radius = clampi(_radius + (1 if event.keycode == KEY_EQUAL else -1), 1, 8)
+		if _lod == null:
+			_camera.far = (_radius + 1) * CELL_UNITS * UNIT_SCALE * 1.5
+		_note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
+		var next: int = (MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % MSAA_STEPS.size()
+		get_viewport().msaa_3d = MSAA_STEPS[next]
+		_note("MSAA " + ("off" if next == 0 else MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_player.fly = not _player.fly
 		if not _player.fly:
@@ -1802,6 +1858,8 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"navmesh_shown": _show_navmesh,
 			"lod": _lod != null,
 			"radius": _radius,
+			"lod_split": _lod_split,
+			"msaa": MSAA_NAMES[maxi(MSAA_STEPS.find(get_viewport().msaa_3d), 0)],
 			"quests": _args.get("quests", "on") != "off",
 			"overlay_hidden": overlay_hidden,
 		},
@@ -1851,6 +1909,10 @@ func _args_from_shot(path: String) -> Dictionary:
 		out["walk"] = "off"
 	if viewer.has("radius"):
 		out["radius"] = str(viewer["radius"])
+	if viewer.has("lod_split"):
+		out["lod-split"] = str(viewer["lod_split"])
+	if viewer.has("msaa"):
+		out["msaa"] = str(viewer["msaa"])
 	if viewer.get("quests", true) == false:
 		out["quests"] = "off"
 	if viewer.get("materials", true) == false:

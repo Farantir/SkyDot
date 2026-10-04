@@ -62,7 +62,7 @@ bool skydot_masked(vec3 world) {
 // Terrain LOD: one texture per quad and a model-space normal map in the NIF's
 // axes (x east, y north, z up); the node transform carries it to Godot's.
 constexpr const char* k_terrain = R"(
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_disable;
+uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_disable;
 uniform sampler2D normal_tex : filter_linear_mipmap, repeat_disable;
 uniform bool has_normal = false;
 
@@ -87,7 +87,7 @@ void fragment() {
 // Object LOD: the atlas (or a landscape texture for "HD" pieces) times the
 // vertex colour, and a tangent-space normal map in the DirectX convention.
 constexpr const char* k_object = R"(
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform bool has_normal = false;
 
@@ -110,7 +110,7 @@ void fragment() {
 )";
 
 constexpr const char* k_water = R"(
-uniform vec4 color : source_color = vec4(0.10, 0.17, 0.20, 1.0);
+uniform vec4 color = vec4(0.10, 0.17, 0.20, 1.0);
 
 void vertex() {
 	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -130,7 +130,7 @@ void fragment() {
 // carries the base (origin) and the size (basis lengths); INSTANCE_CUSTOM the
 // atlas rectangle.
 constexpr const char* k_tree = R"(
-uniform sampler2D atlas : source_color, filter_linear_mipmap, repeat_disable;
+uniform sampler2D atlas : filter_linear_mipmap, repeat_disable;
 
 void vertex() {
 	vec3 origin = MODEL_MATRIX[3].xyz;
@@ -165,7 +165,7 @@ Ref<godot::Shader> make_shader(const char* modes, const char* body) {
     Ref<godot::Shader> shader;
     shader.instantiate();
     shader->set_code(String::utf8(
-        with_game_fog(std::string("shader_type spatial;\nrender_mode ") + modes + ";\n" + k_mask + body).c_str()));
+        with_game_ambient(with_game_fog(std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n" + k_mask + body)).c_str()));
     return shader;
 }
 

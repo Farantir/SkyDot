@@ -72,7 +72,7 @@ Ref<godot::Shader> TerrainBuilder::shader_for(int layers) {
         return it->second;
     }
     std::string code = R"(shader_type spatial;
-render_mode cull_back;
+render_mode cull_back, diffuse_lambert;
 
 // Game-style layering: each additional layer is mixed over the result by its
 // per-vertex opacity (CUSTOM0 holds layers 1-4, CUSTOM1 layers 5-6).
@@ -83,7 +83,7 @@ varying vec2 weights_b;
     for (int i = 0; i < layers; ++i) {
         const std::string n = std::to_string(i);
         code += "uniform sampler2D albedo_" + n +
-                " : source_color, filter_linear_mipmap_anisotropic, repeat_enable;\n";
+                " : filter_linear_mipmap_anisotropic, repeat_enable;\n";
         code += "uniform sampler2D normal_" + n +
                 " : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;\n";
     }
@@ -114,7 +114,7 @@ void fragment() {
 )";
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(to_godot(with_game_fog(code)));
+    shader->set_code(to_godot(with_game_ambient(with_game_fog(code))));
     shaders_.emplace(layers, shader);
     return shader;
 }
@@ -288,8 +288,7 @@ godot::Node3D* TerrainBuilder::build(const wfb::Terrain& terrain,
                     const auto base = static_cast<flatbuffers::uoffset_t>((y * k_grid + x) * 3);
                     colour = Color(static_cast<float>(colours->Get(base)) / 255.0F,
                                    static_cast<float>(colours->Get(base + 1)) / 255.0F,
-                                   static_cast<float>(colours->Get(base + 2)) / 255.0F)
-                                 .srgb_to_linear();
+                                   static_cast<float>(colours->Get(base + 2)) / 255.0F);
                 }
                 vertex_colours.push_back(colour);
                 const auto& w = weights[static_cast<std::size_t>(row * k_quadrant_grid + column)];

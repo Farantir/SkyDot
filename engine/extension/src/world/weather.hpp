@@ -69,6 +69,11 @@ public:
     void set_shadows(bool enabled);
     bool get_shadows() const { return shadows_; }
 
+    /// The image space now ("hdr", "cinematic", "tint" as in
+    /// SkydotWorld.get_image_space), blended between the times of day and
+    /// weathers; empty if the weathers have none.
+    godot::Dictionary get_image_space() const;
+
     /// weather, previous, transition (0-1), hour, day, daylight, region (the
     /// REGN deciding, or 0), precipitation (0-1, how much is falling),
     /// lightning (seconds since the last flash, or -1), clouds (visible
@@ -88,6 +93,12 @@ private:
         godot::Color upper, lower, horizon, ambient, sunlight, sun, stars, fog_near_color,
             fog_far_color;
         float fog_near{}, fog_far{}, fog_power{1}, fog_max{1};
+        /// DALC: x+, x-, y+, y-, z+, z- (the game's axes).
+        std::array<godot::Color, 6> directional_ambient{};
+        bool has_directional_ambient = false;
+        /// The image space: HNAM (9), CNAM (3), TNAM (4), in that order.
+        std::array<float, 16> image_space{};
+        bool has_image_space = false;
     };
     Sky sky_of(const Weather* weather) const;
     const Weather* weather_ptr(std::int64_t id) const;

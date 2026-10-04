@@ -15,6 +15,7 @@
 #include "world_generated.h"
 
 #include <godot_cpp/classes/animation_library.hpp>
+#include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/light3d.hpp>
@@ -61,6 +62,10 @@ namespace {
 constexpr std::uint32_t k_light_negative = 0x0004;
 constexpr std::uint32_t k_light_off_by_default = 0x0020;
 constexpr std::uint32_t k_light_spot = 0x0400;
+// Shadow casters (UESP, LIGH DATA flags); a hemisphere shadow light is drawn
+// as an omni light with shadows.
+constexpr std::uint32_t k_light_spot_shadow = 0x0800;
+constexpr std::uint32_t k_light_shadow = 0x0800 | 0x1000 | 0x2000;
 
 // Ref flags (world.fbs).
 constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -190,6 +195,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("list_cells", "filter", "interior_only"),
                                 &SkydotWorld::list_cells);
     godot::ClassDB::bind_method(D_METHOD("get_cell", "id"), &SkydotWorld::get_cell);
+    godot::ClassDB::bind_method(D_METHOD("get_image_space", "id"), &SkydotWorld::get_image_space);
     godot::ClassDB::bind_method(D_METHOD("get_refs", "cell_id"), &SkydotWorld::get_refs);
     godot::ClassDB::bind_method(D_METHOD("get_base", "id"), &SkydotWorld::get_base);
     godot::ClassDB::bind_method(D_METHOD("build_cell", "id"), &SkydotWorld::build_cell);
@@ -256,6 +262,15 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_effects", "enabled"), &SkydotWorld::set_effects);
     godot::ClassDB::bind_method(D_METHOD("get_effects"), &SkydotWorld::get_effects);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "effects"), "set_effects", "get_effects");
+    godot::ClassDB::bind_method(D_METHOD("set_all_light_shadows", "enabled"), &SkydotWorld::set_all_light_shadows);
+    godot::ClassDB::bind_method(D_METHOD("get_all_light_shadows"), &SkydotWorld::get_all_light_shadows);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "all_light_shadows"), "set_all_light_shadows",
+                 "get_all_light_shadows");
+    godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("apply_light_shadows", "root", "all"),
+                                       &SkydotWorld::apply_light_shadows);
+    godot::ClassDB::bind_method(D_METHOD("set_grass", "enabled"), &SkydotWorld::set_grass);
+    godot::ClassDB::bind_method(D_METHOD("get_grass"), &SkydotWorld::get_grass);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "grass"), "set_grass", "get_grass");
     godot::ClassDB::bind_method(D_METHOD("set_actors", "enabled"), &SkydotWorld::set_actors);
     godot::ClassDB::bind_method(D_METHOD("get_actors"), &SkydotWorld::get_actors);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actors"), "set_actors", "get_actors");
@@ -579,6 +594,43 @@ Dictionary SkydotWorld::get_cell(std::int64_t id) const {
     } else {
         out["lighting"] = godot::Variant();
     }
+    // Format 10: the directional ambient (XCLL, or its lighting template's)
+    // as six Colors, x+, x-, y+, y-, z+, z-; and the image space.
+    godot::Array ambient;
+    if (const auto* d = cell->directional_ambient(); d != nullptr && d->size() >= 6) {
+        for (flatbuffers::uoffset_t i = 0; i < 6; ++i) {
+            ambient.push_back(unpack_color(d->Get(i)));
+        }
+    }
+    out["directional_ambient"] = ambient;
+    out["image_space"] = static_cast<std::int64_t>(cell->image_space());
+    return out;
+}
+
+Dictionary SkydotWorld::get_image_space(std::int64_t id) const {
+    Dictionary out;
+    const auto* list = root_ != nullptr ? root_->image_spaces() : nullptr;
+    const auto* is = list != nullptr && id != 0
+                         ? find_sorted(list, static_cast<std::uint32_t>(id),
+                                       [](const wfb::ImageSpace* i) { return i->id(); })
+                         : nullptr;
+    if (is == nullptr) {
+        return out;
+    }
+    const auto floats = [](const flatbuffers::Vector<float>* v) {
+        godot::PackedFloat32Array a;
+        if (v != nullptr) {
+            for (const float f : *v) {
+                a.push_back(f);
+            }
+        }
+        return a;
+    };
+    out["id"] = static_cast<std::int64_t>(is->id());
+    out["editor_id"] = to_godot(is->editor_id());
+    out["hdr"] = floats(is->hdr());
+    out["cinematic"] = floats(is->cinematic());
+    out["tint"] = floats(is->tint());
     return out;
 }
 
@@ -770,6 +822,10 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     if (skyrim_materials_) {
                         stats.materials += materials().apply(node);
                         use_water_material(node, cell);
+                        use_directional_material(node, *base);
+                    }
+                    if (skyrim_materials_ && effects_) {
+                        stats.effects += attach_addons(node);
                     }
                     stats.billboards += SkydotBillboard::attach(node);
                     if (effects_) {
@@ -800,26 +856,56 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             return;
         }
         godot::Light3D* light = nullptr;
+        godot::Transform3D placed = transform.orthonormalized();
+        // The reference's own settings over the record's: XRDS adds to the
+        // radius (vanilla interiors mostly shrink it: 512 - 261 in the inn),
+        // XLIG's fade multiplies the brightness (0.5 on the farmhouse lights,
+        // 2 on their fire lights) and its FOV adds to a spotlight's. Fade as
+        // a factor matched five comparison shots best (total error 0.070,
+        // against 0.098 as an offset and 0.114 ignored; COMPARISON-SHOTS.md).
+        const wfb::LightOverride* own = nullptr;
+        if (const auto* c = cell_ptr(cell); c != nullptr && c->light_overrides() != nullptr) {
+            own = find_sorted(c->light_overrides(), ref.id(), [](const wfb::LightOverride* o) { return o->ref(); });
+        }
+        float radius = static_cast<float>(l->radius());
+        if (own != nullptr && own->has_radius()) {
+            radius = std::max(radius + own->radius(), 1.0F);
+        }
+        float fade = l->fade() > 0.0F ? l->fade() : 1.0F;
+        float fov = l->fov();
+        if (own != nullptr && own->has_light_data()) {
+            fade *= own->fade();
+            fov += own->fov();
+        }
+        const auto range = static_cast<float>(static_cast<double>(radius) * UNIT_SCALE);
         if ((l->flags() & k_light_spot) != 0) {
             auto* spot = memnew(godot::SpotLight3D);
-            spot->set_param(godot::Light3D::PARAM_RANGE,
-                            static_cast<float>(l->radius() * UNIT_SCALE));
-            spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE,
-                            std::clamp(l->fov() / 2.0F, 1.0F, 89.0F));
+            spot->set_param(godot::Light3D::PARAM_RANGE, range);
+            spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE, std::clamp(fov / 2.0F, 1.0F, 89.0F));
+            spot->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
+            spot->set_shadow(all_light_shadows_ || (l->flags() & k_light_spot_shadow) != 0);
+            spot->set_meta("skydot_game_shadow", (l->flags() & k_light_spot_shadow) != 0);
             light = spot;
         } else {
             auto* omni = memnew(godot::OmniLight3D);
-            omni->set_param(godot::Light3D::PARAM_RANGE,
-                            static_cast<float>(l->radius() * UNIT_SCALE));
-            omni->set_param(godot::Light3D::PARAM_ATTENUATION,
-                            l->falloff_exponent() > 0.0F ? l->falloff_exponent() : 1.0F);
+            omni->set_param(godot::Light3D::PARAM_RANGE, range);
+            // The game fades a light by 1 - (d / radius)^2 (Community
+            // Shaders, Lighting.hlsl); Godot's window alone, (1 - (d /
+            // range)^4)^2, is within 0.13 of it. A distance exponent on top
+            // left fires dim a few metres away.
+            omni->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
+            // Every light casts shadows: the game keeps lights out of
+            // neighbouring rooms with its rooms and portals, which SkyDot
+            // lacks; without shadows they light through walls (comparison
+            // shot ref22: an inn room twice as bright as the game's).
+            omni->set_shadow(all_light_shadows_ || (l->flags() & k_light_shadow) != 0);
+            omni->set_meta("skydot_game_shadow", (l->flags() & k_light_shadow) != 0);
             light = omni;
         }
         light->set_name(name + String(" light"));
-        light->set_color(unpack_color(l->color()));
-        light->set_param(godot::Light3D::PARAM_ENERGY, l->fade() > 0.0F ? l->fade() : 1.0F);
+        SkydotMaterials::set_game_light(light, unpack_color(l->color()) * std::max(fade, 0.0F));
         light->set_negative((l->flags() & k_light_negative) != 0);
-        light->set_transform(transform.orthonormalized());
+        light->set_transform(placed);
         if (effects_ && (l->flags() & SkydotFlicker::ANY) != 0) {
             auto* flicker = memnew(SkydotFlicker);
             flicker->set_name("SkydotFlicker");
@@ -831,6 +917,223 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         }
         root->add_child(light);
         ++stats.lights;
+    }
+}
+
+std::int64_t SkydotWorld::apply_light_shadows(godot::Node* root, bool all) {
+    if (root == nullptr) {
+        return 0;
+    }
+    std::int64_t changed = 0;
+    const godot::TypedArray<godot::Node> lights = root->find_children("*", "Light3D", true, false);
+    for (int64_t i = 0; i < lights.size(); ++i) {
+        auto* light = godot::Object::cast_to<godot::Light3D>(lights[i]);
+        if (light == nullptr || !light->has_meta("skydot_game_shadow")) {
+            continue;
+        }
+        const bool shadow = all || static_cast<bool>(light->get_meta("skydot_game_shadow"));
+        if (light->has_shadow() != shadow) {
+            light->set_shadow(shadow);
+            ++changed;
+        }
+    }
+    return changed;
+}
+
+std::int64_t SkydotWorld::attach_addons(godot::Node* model) const {
+    std::call_once(addon_index_once_, [this] {
+        if (const auto* list = root_ != nullptr ? root_->addon_nodes() : nullptr) {
+            for (const auto* a : *list) {
+                if (a->model() != nullptr && a->model()->size() != 0) {
+                    addon_models_.emplace(a->index(), a->model()->str());
+                }
+            }
+        }
+    });
+    if (addon_models_.empty()) {
+        return 0;
+    }
+    std::int64_t attached = 0;
+    const godot::TypedArray<godot::Node> nodes = model->find_children("AddOnNode*", "Node3D", true, false);
+    for (int64_t i = 0; i < nodes.size(); ++i) {
+        auto* node = godot::Object::cast_to<godot::Node3D>(nodes[i]);
+        if (node == nullptr || !node->has_meta("extras")) {
+            continue;
+        }
+        const godot::Variant extras = node->get_meta("extras");
+        const godot::Variant block = extras.get_type() == godot::Variant::DICTIONARY ? Dictionary(extras).get("bethconv", godot::Variant())
+                                                                       : godot::Variant();
+        const godot::Variant index = block.get_type() == godot::Variant::DICTIONARY ? Dictionary(block).get("addon", godot::Variant())
+                                                                      : godot::Variant();
+        if (index.get_type() != godot::Variant::INT && index.get_type() != godot::Variant::FLOAT) {
+            continue;
+        }
+        const auto found = addon_models_.find(static_cast<std::int32_t>(static_cast<std::int64_t>(index)));
+        if (found == addon_models_.end()) {
+            continue;
+        }
+        const godot::Ref<SkydotModel> scene = resource(model_path(found->second));
+        auto* addon = scene.is_valid() ? godot::Object::cast_to<godot::Node3D>(scene->instantiate()) : nullptr;
+        if (addon == nullptr) {
+            continue;
+        }
+        addon->set_name("AddOn");
+        drop_root_transform(addon);
+        apply_draw_order(addon);
+        materials().apply(addon);
+        SkydotBillboard::attach(addon);
+        SkydotAnimator::attach(addon, materials_);
+        // The AddOnNode sits in the model's NIF space (under its axis and
+        // unit conversion), and the addon brings its own conversion: hang it
+        // from the model's root where the AddOnNode is, without converting
+        // twice.
+        godot::Transform3D at;
+        for (godot::Node* n = node; n != nullptr && n != model; n = n->get_parent()) {
+            if (auto* spatial = godot::Object::cast_to<godot::Node3D>(n)) {
+                at = spatial->get_transform() * at;
+            }
+        }
+        if (auto* own = godot::Object::cast_to<godot::Node3D>(addon->get_node_or_null("bethconv_z_up_to_y_up"))) {
+            at = at * own->get_transform().affine_inverse();
+        }
+        addon->set_transform(at);
+        model->add_child(addon);
+        ++attached;
+    }
+    return attached;
+}
+
+GrassModel SkydotWorld::grass_model(const wfb::Grass& grass) const {
+    const std::scoped_lock lock(grass_mutex_);
+    if (auto it = grass_models_.find(grass.id()); it != grass_models_.end()) {
+        return it->second;
+    }
+    GrassModel out;
+    const auto* model = grass.model();
+    godot::Ref<SkydotModel> scene;
+    if (model != nullptr && model->size() != 0) {
+        scene = resource(model_path(model->string_view()));
+    }
+    godot::Node* node = scene.is_valid() ? scene->instantiate() : nullptr;
+    if (node != nullptr) {
+        materials().apply(node);
+        const godot::TypedArray<godot::Node> meshes = node->find_children("*", "MeshInstance3D", true, false);
+        for (int64_t i = 0; i < meshes.size() && out.mesh.is_null(); ++i) {
+            auto* instance = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
+            if (instance == nullptr || instance->get_mesh().is_null()) {
+                continue;
+            }
+            // The mesh's place inside the model, and its converted materials
+            // on a copy (a MultiMesh draws the mesh's own materials).
+            for (godot::Node* n = instance; n != nullptr && n != node; n = n->get_parent()) {
+                if (auto* spatial = godot::Object::cast_to<godot::Node3D>(n)) {
+                    out.local = spatial->get_transform() * out.local;
+                }
+            }
+            godot::Ref<godot::ArrayMesh> copy = instance->get_mesh()->duplicate();
+            if (copy.is_valid()) {
+                for (int s = 0; s < copy->get_surface_count(); ++s) {
+                    if (const godot::Ref<godot::ShaderMaterial> m = instance->get_surface_override_material(s); m.is_valid()) {
+                        // The game draws grass with its grass shader, whose
+                        // vertex alpha is the wind's weight, not opacity.
+                        godot::Ref<godot::ShaderMaterial> own = m->duplicate();
+                        own->set_shader_parameter("use_vertex_alpha", false);
+                        copy->surface_set_material(s, own);
+                    }
+                }
+                out.mesh = copy;
+            }
+        }
+        memdelete(node);
+    }
+    grass_models_.emplace(grass.id(), out);
+    return out;
+}
+
+const ProjectedMaterial* SkydotWorld::projected_material(std::uint32_t id) const {
+    const std::scoped_lock lock(projected_mutex_);
+    if (auto it = projected_.find(id); it != projected_.end()) {
+        return it->second ? &*it->second : nullptr;
+    }
+    const auto* list = root_ != nullptr ? root_->material_objects() : nullptr;
+    const auto* mato = list != nullptr ? find_sorted(list, id, [](const wfb::MaterialObject* m) { return m->id(); })
+                                       : nullptr;
+    if (mato == nullptr) {
+        projected_.emplace(id, std::nullopt);
+        return nullptr;
+    }
+    ProjectedMaterial out;
+    // The material's textures are those of its model's first shape. Single
+    // pass materials (the common snow) are one colour, as the game's shader
+    // draws them without projected textures.
+    if (const auto* model = mato->model(); !mato->single_pass() && model != nullptr && model->size() != 0) {
+        const godot::Ref<SkydotModel> scene = resource(model_path(model->string_view()));
+        if (scene.is_valid()) {
+            godot::Node* node = scene->instantiate();
+            const godot::TypedArray<godot::Node> meshes = node != nullptr
+                ? node->find_children("*", "MeshInstance3D", true, false)
+                : godot::TypedArray<godot::Node>();
+            for (int64_t i = 0; i < meshes.size() && out.albedo.is_null(); ++i) {
+                auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
+                if (mesh == nullptr || mesh->get_mesh().is_null() || mesh->get_mesh()->get_surface_count() == 0) {
+                    continue;
+                }
+                const godot::Ref<godot::ShaderMaterial> converted =
+                    materials().convert(mesh->get_mesh()->surface_get_material(0));
+                if (converted.is_valid()) {
+                    out.albedo = converted->get_shader_parameter("albedo_tex");
+                }
+            }
+            if (node != nullptr) {
+                memdelete(node);
+            }
+        }
+    }
+    const auto scale = static_cast<float>(UNIT_SCALE);
+    const auto per_metre = [&](float units) { return units > 0.0F ? 1.0F / (units * scale) : 0.0F; };
+    out.params = godot::Vector4(mato->falloff_scale(), mato->falloff_bias(), per_metre(mato->noise_uv_scale()),
+                                per_metre(mato->material_uv_scale()));
+    // Projected along the vector: faces turned against it take the material
+    // (snow's is straight down).
+    if (const auto* p = mato->projection(); p != nullptr && p->size() >= 3) {
+        const Vector3 game(-p->Get(0), -p->Get(1), -p->Get(2));
+        const Vector3 world(game.x, game.z, -game.y);
+        if (world.length() > 0.001F) {
+            out.direction = world.normalized();
+        }
+    }
+    Vector3 colour(1, 1, 1);
+    if (const auto* c = mato->single_pass_color(); c != nullptr && c->size() >= 3 &&
+                                                   (c->Get(0) > 0.0F || c->Get(1) > 0.0F || c->Get(2) > 0.0F)) {
+        colour = Vector3(c->Get(0), c->Get(1), c->Get(2));
+    }
+    out.color = colour;
+    out.normal_dampener = mato->normal_dampener();
+    return &*projected_.emplace(id, out).first->second;
+}
+
+void SkydotWorld::use_directional_material(godot::Node* model, const wfb::Base& base) const {
+    if (base.directional_material() == 0) {
+        return;
+    }
+    const ProjectedMaterial* with = projected_material(base.directional_material());
+    if (with == nullptr) {
+        return;
+    }
+    const godot::TypedArray<godot::Node> meshes = model->find_children("*", "MeshInstance3D", true, false);
+    for (int64_t i = 0; i < meshes.size(); ++i) {
+        auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
+        if (mesh == nullptr || mesh->get_mesh().is_null()) {
+            continue;
+        }
+        for (int s = 0; s < mesh->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::ShaderMaterial> current = mesh->get_surface_override_material(s);
+            const godot::Ref<godot::ShaderMaterial> replaced =
+                materials().projected(current, base.directional_material(), *with);
+            if (replaced != current) {
+                mesh->set_surface_override_material(s, replaced);
+            }
+        }
     }
 }
 
@@ -1376,7 +1679,7 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
             const godot::Ref<godot::ShaderMaterial> m = mesh->get_surface_override_material(s);
             if (m.is_valid() && static_cast<bool>(m->get_shader_parameter("use_skin_tint"))) {
                 godot::Ref<godot::ShaderMaterial> own = m->duplicate();
-                own->set_shader_parameter("skin_tint", tone);
+                own->set_shader_parameter("skin_tint", shader_rgb(tone));
                 mesh->set_surface_override_material(s, own);
             }
         }
@@ -1635,6 +1938,22 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
     const auto* land = exterior_ptr(land_world(w), gx, gy);
     if (land != nullptr && land->terrain() != nullptr && land->terrain()->layers() != nullptr) {
         for (const auto* layer : *land->terrain()->layers()) {
+            // The grass growing on it (build_grass), loaded ahead too.
+            const auto* textures = grass_ ? root_->land_textures() : nullptr;
+            const auto* t = textures != nullptr && layer->texture() != 0
+                                ? find_sorted(textures, layer->texture(), [](const wfb::LandTexture* l) { return l->id(); })
+                                : nullptr;
+            if (t != nullptr && t->grasses() != nullptr && root_->grasses() != nullptr) {
+                for (const auto id : *t->grasses()) {
+                    const auto* g = find_sorted(root_->grasses(), id, [](const wfb::Grass* entry) { return entry->id(); });
+                    if (g != nullptr && g->model() != nullptr && g->model()->size() != 0) {
+                        const String path = model_path(g->model()->string_view());
+                        if (!out.has(path)) {
+                            out.push_back(path);
+                        }
+                    }
+                }
+            }
             for (const auto& vpath : land_texture_paths(layer->texture())) {
                 if (vpath.empty()) {
                     continue;
@@ -1982,6 +2301,38 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
                                                static_cast<float>(static_cast<double>(water_height) * UNIT_SCALE),
                                                -side / 2));
         root->add_child(surface);
+    }
+
+    if (terrain != nullptr && grass_ && skyrim_materials_) {
+        GrassInputs grass;
+        grass.terrain = terrain;
+        grass.grid_x = gx;
+        grass.grid_y = gy;
+        grass.has_water = water;
+        grass.water_height = water_height;
+        grass.grasses_of = [this](std::uint32_t ltex) {
+            std::vector<const wfb::Grass*> out;
+            const auto* textures = root_->land_textures();
+            const auto* list = root_->grasses();
+            const auto* t = textures != nullptr && ltex != 0
+                                ? find_sorted(textures, ltex, [](const wfb::LandTexture* l) { return l->id(); })
+                                : nullptr;
+            if (t == nullptr || t->grasses() == nullptr || list == nullptr) {
+                return out;
+            }
+            for (const auto id : *t->grasses()) {
+                if (const auto* g = find_sorted(list, id, [](const wfb::Grass* entry) { return entry->id(); })) {
+                    out.push_back(g);
+                }
+            }
+            return out;
+        };
+        grass.model_of = [this](const wfb::Grass& g) { return grass_model(g); };
+        std::int64_t placed = 0;
+        if (auto* node = build_grass(grass, placed)) {
+            node->set_position(corner);
+            root->add_child(node);
+        }
     }
 
     if (cell != nullptr && navigation_) {

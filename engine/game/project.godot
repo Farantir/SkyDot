@@ -18,6 +18,18 @@ window/size/viewport_height=800
 [rendering]
 
 renderer/rendering_method="forward_plus"
+; No light limit: the game's (7 point lights per object, 4 of them shadowed)
+; was a limit of its renderer, not wanted here. Forward+ has no per-object
+; limit; these raise its per-view ones well past the busiest vanilla
+; interior (DLC1Arkngthamz01: 122 lights, all flagged for shadows).
+; Clustered: lights, decals and probes in view (default 512).
+limits/cluster_builder/max_clustered_elements=4096
+; Shadowed omni and spot lights in view: 4 + 16 + 64 + 256 = 340 (default
+; 88), same 4096 atlas, so no more memory; small lights get small tiles.
+lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=2
+lights_and_shadows/positional_shadow/atlas_quadrant_1_subdiv=3
+lights_and_shadows/positional_shadow/atlas_quadrant_2_subdiv=4
+lights_and_shadows/positional_shadow/atlas_quadrant_3_subdiv=5
 
 [physics]
 

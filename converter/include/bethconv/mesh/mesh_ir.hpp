@@ -150,6 +150,9 @@ struct Node {
     /// Position among a BSOrderedNode's children: the game draws them in
     /// that order (glass, then the liquid in it), not by depth.
     std::optional<std::uint32_t> draw_order;
+    /// BSValueNode named "AddOnNode...": the game attaches the model of the
+    /// ADDN record with this index here (candle flames, smoke).
+    std::optional<std::int32_t> addon_index;
     /// NiAVObject flag bit 0: not drawn until a controller shows it (flames
     /// switched by a NiVisController, emitter meshes).
     bool hidden{false};

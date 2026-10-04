@@ -3,9 +3,9 @@
 // Water surfaces from world.fb's `Water` (WATR): three noise layers scrolling
 // with their wind direction and speed, a shallow-to-deep colour by the depth
 // of water under the surface (over WATR's fog distance), refraction of what
-// lies below, and a Fresnel blend towards the reflection colour. Not the
-// game's shader: no sky or scene reflection, no sun sparkle, no underwater
-// view. Placed water meshes (streams, ponds: BSWaterShaderProperty, pack
+// lies below, a Fresnel blend towards the reflection (the sky's colour, or
+// the scene where a short screen-space march finds it) and the sun's glint
+// (WATR's sun specular power). No underwater view. Placed water meshes (streams, ponds: BSWaterShaderProperty, pack
 // mesh/18) take the material of their cell's water type; an activator's
 // own type (ACTI WNAM) is not in world.fb yet.
 #pragma once

@@ -46,6 +46,34 @@ std::unordered_map<std::uint64_t, std::uint64_t>& shared_writes() {
     return frames;
 }
 
+/// Bones carrying the converter's node ids (glTF node extras become bone
+/// meta when the importer turns skinned nodes into a Skeleton3D).
+void bones_by_id(godot::Node* node,
+                 std::unordered_map<std::int64_t, std::pair<godot::Skeleton3D*, std::int32_t>>& out) {
+    if (auto* skeleton = godot::Object::cast_to<godot::Skeleton3D>(node)) {
+        for (std::int32_t b = 0; b < skeleton->get_bone_count(); ++b) {
+            if (!skeleton->has_bone_meta(b, "extras")) {
+                continue;
+            }
+            const Variant extras = skeleton->get_bone_meta(b, "extras");
+            if (extras.get_type() != Variant::DICTIONARY) {
+                continue;
+            }
+            const Variant block = Dictionary(extras).get("bethconv", Variant());
+            if (block.get_type() != Variant::DICTIONARY) {
+                continue;
+            }
+            const Variant id = Dictionary(block).get("id", Variant());
+            if (id.get_type() == Variant::INT || id.get_type() == Variant::FLOAT) {
+                out.try_emplace(static_cast<std::int64_t>(id), skeleton, b);
+            }
+        }
+    }
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        bones_by_id(node->get_child(i), out);
+    }
+}
+
 enum Dirty : std::uint32_t {
     k_uv_offset = 1u << 0,
     k_uv_scale = 1u << 1,
@@ -87,6 +115,20 @@ template <typename T>
 T param(const Ref<godot::ShaderMaterial>& m, const char* name, T fallback) {
     const Variant v = m->get_shader_parameter(name);
     return v.get_type() == Variant(fallback).get_type() ? static_cast<T>(v) : fallback;
+}
+
+/// Colours are stored as vectors (see shader_rgba in materials.hpp).
+godot::Color param_color(const Ref<godot::ShaderMaterial>& m, const char* name, godot::Color fallback) {
+    const Variant v = m->get_shader_parameter(name);
+    if (v.get_type() == Variant::VECTOR4) {
+        const Vector4 c = v;
+        return {c.x, c.y, c.z, c.w};
+    }
+    if (v.get_type() == Variant::VECTOR3) {
+        const Vector3 c = v;
+        return {c.x, c.y, c.z, fallback.a};
+    }
+    return v.get_type() == Variant::COLOR ? static_cast<godot::Color>(v) : fallback;
 }
 
 float param_float(const Ref<godot::ShaderMaterial>& m, const char* name, float fallback) {
@@ -162,6 +204,8 @@ std::int64_t SkydotAnimator::attach(godot::Node* root, const Ref<SkydotMaterials
 void SkydotAnimator::bind(const std::shared_ptr<const EffectAsset>& asset, godot::Node* root) {
     asset_ = asset;
     const auto nodes = nodes_by_id(root);
+    std::unordered_map<std::int64_t, std::pair<godot::Skeleton3D*, std::int32_t>> bones;
+    bones_by_id(root, bones);
     targets_.assign(asset->ids.size(), Target{});
     for (std::size_t i = 0; i < asset->ids.size(); ++i) {
         const auto it = nodes.find(asset->ids[i]);
@@ -170,9 +214,15 @@ void SkydotAnimator::bind(const std::shared_ptr<const EffectAsset>& asset, godot
         t.node = node;
         if (node != nullptr) {
             t.rest = node->get_transform();
-            t.rest_rotation = t.rest.basis.get_rotation_quaternion();
-            t.rest_scale = t.rest.basis.get_scale();
+        } else if (const auto b = bones.find(asset->ids[i]); b != bones.end()) {
+            t.skeleton = b->second.first;
+            t.bone = b->second.second;
+            t.rest = t.skeleton->get_bone_pose(t.bone);
+        } else {
+            continue;
         }
+        t.rest_rotation = t.rest.basis.get_rotation_quaternion();
+        t.rest_scale = t.rest.basis.get_scale();
     }
 }
 
@@ -309,7 +359,9 @@ void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
     for (const Channel& ch : clip.channels) {
         Target& t = targets_[ch.target];
         const std::size_t slot = ch.target;
-        if (t.node == nullptr) {
+        // Bones take transforms only.
+        const bool transform = ch.prop >= Prop::translation && ch.prop <= Prop::scale;
+        if (t.node == nullptr && (t.skeleton == nullptr || !transform)) {
             continue;
         }
         ch.sample(local_time, v);
@@ -416,14 +468,8 @@ void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
                 t.dirty |= k_falloff;
                 break;
             case Prop::emissive_color: {
-                // Lighting materials hold the importer's gamma-encoded colour
-                // (see SkydotMaterials), effect materials the NIF's own.
-                Color c(v[0], v[1], v[2], t.emission.a);
-                if (!t.effect) {
-                    c = c.linear_to_srgb();
-                    c.a = t.emission.a;
-                }
-                t.emission = c;
+                // Materials hold the NIF's own colour (see SkydotMaterials).
+                t.emission = Color(v[0], v[1], v[2], t.emission.a);
                 t.dirty |= k_emission;
                 break;
             }
@@ -485,10 +531,10 @@ void SkydotAnimator::bind_material(Target& t, std::size_t slot) {
     t.effect = m->get_shader_parameter("falloff_params").get_type() == Variant::VECTOR4;
     t.uv_offset = param(m, "uv_offset", Vector2(0, 0));
     t.uv_scale = param(m, "uv_scale", Vector2(1, 1));
-    t.emission = param(m, "emission_color", Color(1, 1, 1, 1));
+    t.emission = param_color(m, "emission_color", Color(1, 1, 1, 1));
     t.emission_strength = param_float(m, "emission_strength", 1.0f);
     t.falloff = param(m, "falloff_params", Vector4(1, 1, 0, 0));
-    t.base_color = param(m, "base_color", Color(1, 1, 1, 1));
+    t.base_color = param_color(m, "base_color", Color(1, 1, 1, 1));
     t.glossiness = param_float(m, "glossiness", 30.0f);
     t.specular_strength = param_float(m, "specular_strength", 1.0f);
     t.specular_color = param(m, "specular_color", Vector3(1, 1, 1));
@@ -496,21 +542,32 @@ void SkydotAnimator::bind_material(Target& t, std::size_t slot) {
     t.alpha_cutoff = param_float(m, "alpha_cutoff", 0.5f);
 }
 
+godot::Transform3D SkydotAnimator::pose_of(const Target& t) {
+    Quaternion q = t.has_rotation ? t.rotation : t.rest_rotation;
+    if (t.has_euler) {
+        // X first, then Y, then Z, as Gamebryo composes them.
+        q = Quaternion(Vector3(0, 0, 1), t.euler.z) * Quaternion(Vector3(0, 1, 0), t.euler.y) *
+            Quaternion(Vector3(1, 0, 0), t.euler.x);
+    }
+    const Vector3 scale = t.has_scale ? Vector3(t.scale, t.scale, t.scale) : t.rest_scale;
+    const Vector3 origin = t.has_translation ? t.translation : t.rest.origin;
+    return {godot::Basis(q).scaled(scale), origin};
+}
+
 void SkydotAnimator::flush() {
     for (Target& t : targets_) {
+        if (t.skeleton != nullptr) {
+            if (t.has_translation || t.has_rotation || t.has_euler || t.has_scale) {
+                t.skeleton->set_bone_pose(t.bone, pose_of(t));
+                t.has_translation = t.has_rotation = t.has_euler = t.has_scale = false;
+            }
+            continue;
+        }
         if (t.node == nullptr) {
             continue;
         }
         if (t.has_translation || t.has_rotation || t.has_euler || t.has_scale) {
-            Quaternion q = t.has_rotation ? t.rotation : t.rest_rotation;
-            if (t.has_euler) {
-                // X first, then Y, then Z, as Gamebryo composes them.
-                q = Quaternion(Vector3(0, 0, 1), t.euler.z) * Quaternion(Vector3(0, 1, 0), t.euler.y) *
-                    Quaternion(Vector3(1, 0, 0), t.euler.x);
-            }
-            const Vector3 scale = t.has_scale ? Vector3(t.scale, t.scale, t.scale) : t.rest_scale;
-            const Vector3 origin = t.has_translation ? t.translation : t.rest.origin;
-            t.node->set_transform(godot::Transform3D(godot::Basis(q).scaled(scale), origin));
+            t.node->set_transform(pose_of(t));
             t.has_translation = t.has_rotation = t.has_euler = t.has_scale = false;
         }
         if (t.dirty != 0 && t.material.is_valid() && t.shared) {
@@ -531,7 +588,8 @@ void SkydotAnimator::flush() {
                 m->set_shader_parameter("uv_scale", t.uv_scale);
             }
             if ((t.dirty & k_emission) != 0) {
-                m->set_shader_parameter("emission_color", t.emission);
+                m->set_shader_parameter("emission_color", t.effect ? Variant(shader_rgba(t.emission))
+                                                                   : Variant(shader_rgb(t.emission)));
             }
             if ((t.dirty & k_emission_strength) != 0) {
                 m->set_shader_parameter("emission_strength", t.emission_strength);
@@ -540,7 +598,7 @@ void SkydotAnimator::flush() {
                 m->set_shader_parameter("falloff_params", t.falloff);
             }
             if ((t.dirty & k_base_color) != 0) {
-                m->set_shader_parameter("base_color", t.base_color);
+                m->set_shader_parameter("base_color", shader_rgba(t.base_color));
             }
             if ((t.dirty & k_glossiness) != 0) {
                 m->set_shader_parameter("glossiness", t.glossiness);

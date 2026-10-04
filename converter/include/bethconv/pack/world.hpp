@@ -30,7 +30,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 9;
+inline constexpr std::uint32_t k_world_format_version = 10;
 
 /// Ref flag bits (see world.fbs).
 inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
@@ -76,6 +76,9 @@ struct WorldStats {
     std::uint64_t leveled_lists{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
+    /// IMGS and LGTM (format 10).
+    std::uint64_t image_spaces{};
+    std::uint64_t lighting_templates{};
     /// Navmeshes whose parent is not a cell; not included.
     std::uint64_t orphan_navmeshes{};
     /// References whose base or other FormIDs could not be resolved; the
@@ -128,6 +131,18 @@ struct WorldLock {
     std::uint32_t key{};
 };
 
+/// See world.fbs `LightOverride`.
+struct WorldLightOverride {
+    std::uint32_t ref{};
+    bool has_radius{};
+    float radius{};
+    bool has_light_data{};
+    float fov{};
+    float fade{};
+    float end_distance_cap{};
+    float shadow_depth_bias{};
+};
+
 struct WorldLink {
     std::uint32_t ref{};
     std::uint32_t keyword{};
@@ -161,6 +176,8 @@ struct WorldCellLighting {
     float light_fade_begin{};
     float light_fade_end{};
     std::uint32_t inherit{};
+    /// x+, x-, y+, y-, z+, z-, RGBA bytes; all 0 if unknown.
+    std::array<std::uint32_t, 6> directional_ambient{};
 };
 
 struct WorldTerrainLayer {
@@ -216,6 +233,7 @@ struct WorldCell {
     float water_height{};
     std::optional<WorldCellLighting> lighting;
     std::uint32_t lighting_template{};
+    std::uint32_t image_space{}; ///< XCIM
     std::vector<WorldRef> refs;
     std::vector<WorldDoor> doors;
     std::optional<WorldTerrain> terrain;
@@ -350,6 +368,17 @@ struct WorldWeather {
     std::uint32_t lightning_color{};
     std::uint32_t precipitation{};
     std::string aurora;
+    /// IMSP: sunrise, day, sunset, night; empty if none.
+    std::vector<std::uint32_t> image_spaces;
+};
+
+/// See world.fbs `ImageSpace`.
+struct WorldImageSpace {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::vector<float> hdr;
+    std::vector<float> cinematic;
+    std::vector<float> tint;
 };
 
 /// See world.fbs `Precipitation`.
@@ -605,6 +634,7 @@ public:
     [[nodiscard]] std::optional<WorldWater> water(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldClimate> climate(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldWeather> weather(std::uint32_t id) const;
+    [[nodiscard]] std::optional<WorldImageSpace> image_space(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldPrecipitation> precipitation(std::uint32_t id) const;
     /// Regions with weather data.
     [[nodiscard]] std::vector<WorldRegion> regions() const;

@@ -313,6 +313,7 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                 take(failure, read_formid(body), out.light_ref);
             } else if (field.type == FourCC{"XRDS"}) {
                 take(failure, body.get<float>(), out.radius);
+                out.has_radius = true;
             } else if (field.type == FourCC{"XLCM"}) {
                 take(failure, body.get<std::int32_t>(), out.count);
             } else if (field.type == FourCC{"XLKR"}) {

@@ -16,6 +16,8 @@ leaves models and lights still.
 - Signals: `text_key(clip, key)` as a sequence passes a text key,
   `finished(clip)` when a clamped one ends.
 - Models more than 250 m from the camera hold still.
+- A skinned model's animated nodes are bones once imported (the cairn
+  banners); their ids come from the bone meta and clips pose the bones.
 - Euler keys compose X, then Y, then Z; checked against rest poses (door,
   chest, fire, waterwheel), which equal their first or last keys.
 
@@ -42,6 +44,10 @@ acceleration re-rolled eight times a second.
 - Additive effects write their own fog (`SkydotMaterials.sync_fog`, the
   `skydot_fog` global): Godot's fog would turn their black, transparent parts
   fog-coloured and add them, so every particle was a square far away.
+- Multiplying shapes (NiAlphaProperty source ZERO and destination
+  SRC_COLOR, or DEST_COLOR and ZERO) darken what is behind by their colour:
+  the contact shadows under clutter, doors and Nordic halls, and gems. Fog
+  fades them towards white. Drawn with the mix blend they were white rings.
 - Falloff angle controllers key degrees; the property holds cosines.
 - Particles sampling one atlas cell stop at the mip where the cell is 16
   texels wide, below which the game's mips blur the cells together.
@@ -49,8 +55,8 @@ acceleration re-rolled eight times a second.
 ## Lights (`SkydotFlicker`)
 
 LIGH flicker flags vary brightness by the intensity amplitude over the flicker
-period (smooth noise) and move the light within an eighth of the movement
-amplitude of its place (fFlickerMovement, default 8, as a divisor; a guess,
+period (smooth noise) and move the light within a 64th of the movement
+amplitude of its place (about 1 cm for a torch; the game's scale is unknown,
 see flicker.cpp); pulse
 flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
 

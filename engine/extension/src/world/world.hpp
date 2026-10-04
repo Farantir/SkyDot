@@ -11,6 +11,7 @@
 
 #include "assets/asset_cache.hpp"
 #include "world/locomotion.hpp"
+#include "world/grass.hpp"
 #include "world/materials.hpp"
 #include "world/navmesh.hpp"
 #include "world/terrain.hpp"
@@ -60,7 +61,7 @@ class SkydotWorld : public godot::RefCounted {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int WORLD_FORMAT_VERSION = 9;
+    static constexpr int WORLD_FORMAT_VERSION = 10;
     static constexpr int WORLD_FORMAT_VERSION_MIN = 8;
     /// Metres per game unit, as used by the converter's mesh writer.
     static constexpr double UNIT_SCALE = 0.0142875;
@@ -83,6 +84,9 @@ public:
     /// (Vector2i or null), water_height (metres), lighting (Dictionary or null),
     /// ref_count, door_count.
     godot::Dictionary get_cell(std::int64_t id) const;
+    /// An IMGS: id, editor_id, hdr (nine floats), cinematic (three), tint
+    /// (four); see world.fbs. Empty if there is none.
+    godot::Dictionary get_image_space(std::int64_t id) const;
     /// The cell's references: id, base, transform (Godot space), scale,
     /// disabled, persistent, enable_parent.
     godot::Array get_refs(std::int64_t cell_id) const;
@@ -241,6 +245,18 @@ public:
     /// animator.hpp). On by default.
     void set_effects(bool enabled);
     bool get_effects() const;
+    /// Shadows on every placed light, not only those whose record asks for
+    /// them (LIGH shadow flags; the default). For lights built from now on;
+    /// apply_light_shadows changes those already placed.
+    void set_all_light_shadows(bool enabled) { all_light_shadows_ = enabled; }
+    bool get_all_light_shadows() const { return all_light_shadows_; }
+    /// Set the shadows of the lights placed under `root` as the setting
+    /// says: all of them, or only those the records flag. Returns how many
+    /// changed.
+    static std::int64_t apply_light_shadows(godot::Node* root, bool all);
+    /// Grass on exterior terrain (GRAS); on by default.
+    void set_grass(bool enabled) { grass_ = enabled; }
+    bool get_grass() const { return grass_; }
 
     /// Build placed actors (ACHR) in cells: body, worn outfit and head on
     /// an animated skeleton (see actors.hpp). On by default.
@@ -378,6 +394,11 @@ private:
     /// Surfaces of a placed model with a water shader get the water material
     /// of `cell`'s water type.
     void use_water_material(godot::Node* model, std::uint32_t cell) const;
+    /// Surfaces of a placed model with the Projected UV flag get `base`'s
+    /// directional material (STAT DNAM), if it has one.
+    void use_directional_material(godot::Node* model, const bethconv::pack::wfb::Base& base) const;
+    /// MATO `id` as the lighting shader takes it; null if there is none.
+    const ProjectedMaterial* projected_material(std::uint32_t id) const;
     /// Whether activating a reference of this base can do anything.
     bool activatable(const bethconv::pack::wfb::Base* base, std::uint32_t cell,
                      std::uint32_t ref) const;
@@ -387,6 +408,8 @@ private:
     godot::PackedByteArray bytes_;
     bool skyrim_materials_{true};
     bool effects_{true};
+    bool grass_{true};
+    bool all_light_shadows_{false};
     bool actors_{true};
     /// Placed actors by interior or exterior cell; those of a worldspace's
     /// persistent cell by the grid square they stand in.
@@ -448,6 +471,17 @@ private:
     /// Builds under way, by root instance id.
     mutable std::unordered_map<std::uint64_t, std::shared_ptr<BuildJob>> jobs_;
     mutable WaterMaterials water_;
+    /// Attach the ADDN models (candle flames, smoke) to `model`'s
+    /// AddOnNodes (mesh extras "addon"). Returns how many.
+    std::int64_t attach_addons(godot::Node* model) const;
+    mutable std::once_flag addon_index_once_;
+    mutable std::unordered_map<std::int32_t, std::string> addon_models_;
+    /// A grass's model for instancing (grass.hpp), loaded once.
+    GrassModel grass_model(const bethconv::pack::wfb::Grass& grass) const;
+    mutable std::mutex grass_mutex_;
+    mutable std::unordered_map<std::uint32_t, GrassModel> grass_models_;
+    mutable std::mutex projected_mutex_;
+    mutable std::unordered_map<std::uint32_t, std::optional<ProjectedMaterial>> projected_;
     std::shared_ptr<AssetCache> assets_;
     double terrain_tiling_{8.0};
 };

@@ -57,6 +57,8 @@ target_sources(skydot PRIVATE
     src/world/effect_asset.cpp
     src/world/effect_asset.hpp
     src/world/flicker.cpp
+    src/world/grass.cpp
+    src/world/image_space.cpp
     src/world/flicker.hpp
     src/world/water.cpp
     src/world/water.hpp

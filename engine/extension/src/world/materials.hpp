@@ -18,6 +18,7 @@
 #pragma once
 
 #include <godot_cpp/classes/environment.hpp>
+#include <godot_cpp/classes/light3d.hpp>
 
 #include "assets/asset_cache.hpp"
 
@@ -31,7 +32,9 @@
 #include <godot_cpp/variant/dictionary.hpp>
 
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,6 +50,34 @@ struct EffectAsset;
 /// to FOG, which replaces Godot's.
 std::string with_game_fog(std::string code, bool write_fog = true);
 
+/// `code` (a lit spatial shader, already through with_game_fog) lit by the
+/// game's directional ambient instead of Godot's: ambient_light_disabled,
+/// and fragment() ends by adding ALBEDO * skydot_ambient(normal) to
+/// EMISSION. The normal is NORMAL as it stands there, so shaders that set
+/// NORMAL_MAP get their vertex normal's ambient.
+std::string with_game_ambient(std::string code);
+
+/// A colour for a shader uniform, as the game's numbers: Godot sRGB-decodes
+/// Color values for every vec3/vec4 uniform, hint or not, so colours go to
+/// our shaders as vectors.
+inline godot::Vector4 shader_rgba(const godot::Color& c) { return {c.r, c.g, c.b, c.a}; }
+inline godot::Vector3 shader_rgb(const godot::Color& c) { return {c.r, c.g, c.b}; }
+
+// Rendering happens in the game's gamma space, as Skyrim does: textures
+// (no source_color), vertex colours, light, ambient and fog colours are the
+// game's numbers, lighting adds them up as the game does, and the image
+// space pass (SkydotImageSpace) turns the result into display colour. Godot
+// converts the colours of lights and environments from sRGB; these undo it.
+
+/// A directional material (MATO) as the lighting shader takes it.
+struct ProjectedMaterial {
+    godot::Ref<godot::Texture> albedo;   ///< null: one colour
+    godot::Vector4 params;               ///< falloff scale, falloff bias, noise and texture repeats per metre
+    godot::Vector3 direction{0, 1, 0};   ///< faces turned this way (Godot's world axes) take it
+    godot::Vector3 color{1, 1, 1};
+    float normal_dampener = 0.0F;
+};
+
 class SkydotMaterials : public godot::RefCounted {
     GDCLASS(SkydotMaterials, godot::RefCounted)
 
@@ -61,6 +92,11 @@ public:
     /// The converted material for one source material, or null if it carries
     /// no `bethconv` extras.
     godot::Ref<godot::Material> convert(const godot::Ref<godot::Material>& source);
+
+    /// `material` (converted) with directional material `with` (cached under
+    /// `key`) if its shape has the Projected UV flag; else `material`.
+    godot::Ref<godot::ShaderMaterial> projected(const godot::Ref<godot::ShaderMaterial>& material,
+                                                std::uint32_t key, const ProjectedMaterial& with);
 
     /// The camera-facing effect material for a particle system, from the
     /// material block the converter writes with it.
@@ -97,8 +133,17 @@ public:
     /// colour and the near colour from its "skydot_fog_near_color" meta.
     /// Call when the fog changes, or once a frame.
     static void sync_fog(const godot::Ref<godot::Environment>& environment);
+    /// Also copies the environment's "skydot_directional_ambient" meta (six
+    /// Colors in the game's gamma space, x+, x-, y+, y-, z+, z- in the game's
+    /// axes) into the ambient our shaders use, or, without it, its ambient
+    /// light colour from every side.
     /// Register those parameters (no fog) if they are not yet.
     static void ensure_fog_globals();
+    /// Set `light` so that shaders see `gamma` (a game colour, any
+    /// brightness) as its light: Godot's colour and energy.
+    static void set_game_light(godot::Light3D* light, const godot::Color& gamma);
+    /// The colour Godot turns into `gamma` (for Environment colours, at most 1).
+    static godot::Color game_color(const godot::Color& gamma);
 
 private:
     godot::Ref<godot::Shader> shader_for(const std::string& code);
@@ -108,6 +153,8 @@ private:
     godot::Ref<godot::Texture> load_texture(const godot::String& vpath);
 
     std::shared_ptr<AssetCache> assets_;
+    std::mutex projected_mutex_;
+    std::map<std::pair<std::uint64_t, std::uint32_t>, godot::Ref<godot::ShaderMaterial>> projected_;
     std::unordered_map<std::uint64_t, godot::Ref<godot::Material>> materials_;
     std::unordered_map<std::string, godot::Ref<godot::Shader>> shaders_;
     std::vector<godot::Ref<godot::ShaderMaterial>> warm_;

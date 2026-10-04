@@ -279,6 +279,7 @@ struct Reference {
     FormId emittance;        ///< XEMI, the light source whose colour this takes.
     FormId light_ref;        ///< XLRT / XLRM room-and-light markers use these too.
     float radius{};          ///< XRDS, 4 bytes on 11,148.
+    bool has_radius{};       ///< XRDS present (0 is a value).
     std::int32_t count{};    ///< XLCM, a levelled-list or stack count.
 
     /// XLKR, 8 bytes 12,467 times and 4 bytes 10 times (keyword omitted).

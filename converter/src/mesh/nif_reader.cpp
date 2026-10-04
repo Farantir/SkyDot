@@ -249,6 +249,10 @@ private:
         }
 
         model_.nodes[index].hidden = (obj->flags & 1u) != 0;
+        if (const auto* value = dynamic_cast<nifly::BSValueNode*>(obj);
+            value != nullptr && model_.nodes[index].name.starts_with("AddOnNode")) {
+            model_.nodes[index].addon_index = value->value;
+        }
         if (auto* shape = dynamic_cast<nifly::NiShape*>(obj)) {
             read_shape(shape, index);
         }

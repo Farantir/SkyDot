@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/weather.hpp"
+
+#include "world/materials.hpp"
 #include "world/fb_search.hpp"
 
 #include "assets/model.hpp"
@@ -47,14 +49,16 @@ void vertex() {
 
 constexpr const char* k_sky_shader = R"(
 shader_type sky;
-uniform vec3 upper : source_color;
-uniform vec3 horizon : source_color;
-uniform vec3 lower : source_color;
-uniform vec3 flash_color : source_color;
+uniform vec3 upper;
+uniform vec3 horizon;
+uniform vec3 lower;
+uniform vec3 flash_color;
 uniform float flash = 0.0;
 void sky() {
 	float y = EYEDIR.y;
-	vec3 c = y >= 0.0 ? mix(horizon, upper, sqrt(clamp(y, 0.0, 1.0)))
+	// The horizon colour reaches well up: at 53 degrees the game's sky is
+	// about halfway to the upper colour (comparison shot ref11).
+	vec3 c = y >= 0.0 ? mix(horizon, upper, clamp(y * y, 0.0, 1.0))
 	                  : mix(horizon, lower, sqrt(clamp(-y, 0.0, 1.0)));
 	COLOR = c + flash_color * flash;
 }
@@ -64,14 +68,14 @@ void sky() {
 constexpr const char* k_cloud_shader = R"(
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
-uniform sampler2D tex_a : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D tex_b : source_color, filter_linear_mipmap, repeat_enable;
-uniform vec4 color_a : source_color = vec4(0.0);
-uniform vec4 color_b : source_color = vec4(0.0);
+uniform sampler2D tex_a : filter_linear_mipmap, repeat_enable;
+uniform sampler2D tex_b : filter_linear_mipmap, repeat_enable;
+uniform vec4 color_a = vec4(0.0);
+uniform vec4 color_b = vec4(0.0);
 uniform vec2 offset_a;
 uniform vec2 offset_b;
 uniform float mix_t = 1.0;
-uniform vec3 flash_color : source_color;
+uniform vec3 flash_color;
 uniform float flash = 0.0;
 %FAR%
 void fragment() {
@@ -89,13 +93,13 @@ void fragment() {
 )";
 
 /// Stars, the sun and its glare add light; the moons cover what is behind.
-/// Star textures have no alpha (their colour is the light); the sun's and
-/// the moons' shapes are in their alpha.
+/// Every shape is in its texture's alpha: the constellation textures' colour
+/// is a nebula under transparent texels, only the stars are opaque.
 constexpr const char* k_sprite_shader = R"(
 shader_type spatial;
 render_mode unshaded, %BLEND%, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
-uniform sampler2D tex : source_color, filter_linear_mipmap;
-uniform vec4 tint : source_color = vec4(1.0);
+uniform sampler2D tex : filter_linear_mipmap;
+uniform vec4 tint = vec4(1.0);
 uniform bool use_alpha = true;
 %FAR%
 void fragment() {
@@ -111,8 +115,8 @@ void fragment() {
 constexpr const char* k_precipitation_shader = R"(
 shader_type spatial;
 render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
-uniform sampler2D tex : source_color, filter_linear_mipmap;
-uniform vec4 tint : source_color = vec4(1.0);
+uniform sampler2D tex : filter_linear_mipmap;
+uniform vec4 tint = vec4(1.0);
 uniform float alpha_gain = 1.0;
 uniform int frames_h = 1;
 uniform int frames_v = 1;
@@ -448,6 +452,73 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
         out.fog_power = mix(4, 5);
         out.fog_max = mix(6, 7);
     }
+    if (const auto* dalc = weather->directional_ambient(); dalc != nullptr && dalc->size() >= 28) {
+        for (int side = 0; side < 6; ++side) {
+            const auto at = [&](int time) {
+                return unpack(dalc->Get(static_cast<flatbuffers::uoffset_t>(time * 7 + side)));
+            };
+            out.directional_ambient[static_cast<std::size_t>(side)] = at(from).lerp(at(to), t);
+        }
+        out.has_directional_ambient = true;
+    }
+    if (const auto* ids = weather->image_spaces(); ids != nullptr && ids->size() >= 4 &&
+        world_->root_->image_spaces() != nullptr) {
+        const auto values = [&](int time, std::array<float, 16>& into) {
+            const auto* is = find_sorted(world_->root_->image_spaces(),
+                                         ids->Get(static_cast<flatbuffers::uoffset_t>(time)),
+                                         [](const bethconv::pack::wfb::ImageSpace* i) { return i->id(); });
+            // Neutral where a part is missing: white 1, saturation,
+            // brightness and contrast 1, no tint.
+            into = {0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1};
+            if (is == nullptr) {
+                return false;
+            }
+            const auto copy = [&](const flatbuffers::Vector<float>* v, std::size_t offset, std::size_t count) {
+                if (v != nullptr && v->size() >= count) {
+                    for (std::size_t i = 0; i < count; ++i) {
+                        into[offset + i] = v->Get(static_cast<flatbuffers::uoffset_t>(i));
+                    }
+                }
+            };
+            copy(is->hdr(), 0, 9);
+            copy(is->cinematic(), 9, 3);
+            copy(is->tint(), 12, 4);
+            return true;
+        };
+        std::array<float, 16> a{};
+        std::array<float, 16> b{};
+        const bool has_a = values(from, a);
+        const bool has_b = values(to, b);
+        if (has_a || has_b) {
+            for (std::size_t i = 0; i < 16; ++i) {
+                out.image_space[i] = a[i] + (b[i] - a[i]) * t;
+            }
+            out.has_image_space = true;
+        }
+    }
+    return out;
+}
+
+godot::Dictionary SkydotWeather::get_image_space() const {
+    const Sky a = sky_of(weather_ptr(from_));
+    const Sky b = sky_of(weather_ptr(to_));
+    if (!a.has_image_space && !b.has_image_space) {
+        return {};
+    }
+    const auto t = static_cast<float>(transition_);
+    const Sky& one = a.has_image_space ? a : b;
+    const Sky& two = b.has_image_space ? b : a;
+    godot::PackedFloat32Array hdr;
+    godot::PackedFloat32Array cinematic;
+    godot::PackedFloat32Array tint;
+    for (std::size_t i = 0; i < 16; ++i) {
+        const float v = one.image_space[i] + (two.image_space[i] - one.image_space[i]) * t;
+        (i < 9 ? hdr : i < 12 ? cinematic : tint).push_back(v);
+    }
+    Dictionary out;
+    out["hdr"] = hdr;
+    out["cinematic"] = cinematic;
+    out["tint"] = tint;
     return out;
 }
 
@@ -493,7 +564,9 @@ void SkydotWeather::build() {
     sky_material_->set_shader(make_shader(k_sky_shader));
     sky->set_material(sky_material_);
     environment_->set_sky(sky);
-    environment_->set_tonemapper(godot::Environment::TONE_MAPPER_FILMIC);
+    // SkydotImageSpace grades the gamma-space scene and hands over linear
+    // colour; Godot only encodes it.
+    environment_->set_tonemapper(godot::Environment::TONE_MAPPER_LINEAR);
     environment_->set_ambient_source(godot::Environment::AMBIENT_SOURCE_COLOR);
     environment_->set_fog_enabled(true);
     environment_->set_fog_mode(godot::Environment::FOG_MODE_DEPTH);
@@ -558,7 +631,6 @@ void SkydotWeather::build_sky_objects() {
             auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(v);
             const Ref<godot::Mesh> geometry = mesh->get_mesh();
             auto m = material_from(additive, -128);
-            m->set_shader_parameter("use_alpha", false);
             const auto star_texture =
                 geometry.is_valid() && geometry->get_surface_count() > 0
                     ? texture(slot0(geometry->surface_get_material(0)))
@@ -673,19 +745,33 @@ void SkydotWeather::update_sky(double delta) {
         flash = std::exp(-since_flash_ * 10.0);
     }
     const Color flash_color = to != nullptr ? unpack(to->lightning_color()) : Color(1, 1, 1);
-    sky_material_->set_shader_parameter("upper", mix(a.upper, b.upper));
-    sky_material_->set_shader_parameter("horizon", mix(a.horizon, b.horizon));
-    sky_material_->set_shader_parameter("lower", mix(a.lower, b.lower));
+    sky_material_->set_shader_parameter("upper", shader_rgb(mix(a.upper, b.upper)));
+    sky_material_->set_shader_parameter("horizon", shader_rgb(mix(a.horizon, b.horizon)));
+    sky_material_->set_shader_parameter("lower", shader_rgb(mix(a.lower, b.lower)));
     sky_material_->set_shader_parameter("flash", flash);
-    sky_material_->set_shader_parameter("flash_color", flash_color);
+    sky_material_->set_shader_parameter("flash_color", shader_rgb(flash_color));
     for (auto& layer : layers_) {
         if (layer.material.is_valid()) {
             layer.material->set_shader_parameter("flash", flash);
-            layer.material->set_shader_parameter("flash_color", flash_color);
+            layer.material->set_shader_parameter("flash_color", shader_rgb(flash_color));
         }
     }
 
-    environment_->set_ambient_light_color(mix(a.ambient, b.ambient) + flash_color * static_cast<float>(flash) * 0.5F);
+    const Color flash_light = flash_color * static_cast<float>(flash) * 0.5F;
+    environment_->set_ambient_light_color(mix(a.ambient, b.ambient) + flash_light);
+    // The game lights with the directional ambient (DALC), not NAM0's
+    // ambient colour; that one stays for weathers without DALC.
+    if (a.has_directional_ambient || b.has_directional_ambient) {
+        godot::Array sides;
+        for (std::size_t i = 0; i < 6; ++i) {
+            const Color x = a.has_directional_ambient ? a.directional_ambient[i] : b.directional_ambient[i];
+            const Color y = b.has_directional_ambient ? b.directional_ambient[i] : x;
+            sides.push_back(mix(x, y) + flash_light);
+        }
+        environment_->set_meta("skydot_directional_ambient", sides);
+    } else if (environment_->has_meta("skydot_directional_ambient")) {
+        environment_->remove_meta("skydot_directional_ambient");
+    }
     const float fog_near = a.fog_near + (b.fog_near - a.fog_near) * t;
     const float fog_far = a.fog_far + (b.fog_far - a.fog_far) * t;
     environment_->set_fog_depth_begin(static_cast<float>(static_cast<double>(fog_near) * SkydotWorld::UNIT_SCALE));
@@ -699,7 +785,15 @@ void SkydotWeather::update_sky(double delta) {
 
     bool day = true;
     const Vector3 towards = sun_direction(day);
-    light_->set_color(mix(a.sunlight, b.sunlight));
+    // The image space's sunlight scale (HNAM) brightens the sun against
+    // the ambient.
+    const auto sun_scale = [](const Sky& s) { return s.has_image_space ? s.image_space[6] : 1.0F; };
+    const float scale = sun_scale(a) + (sun_scale(b) - sun_scale(a)) * t;
+    SkydotMaterials::set_game_light(light_, mix(a.sunlight, b.sunlight) * scale);
+    environment_->set_meta("skydot_sun_direction", towards.normalized());
+    environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
+    environment_->set_meta("skydot_sky_upper", shader_rgb(mix(a.upper, b.upper)));
+    environment_->set_meta("skydot_sky_horizon", shader_rgb(mix(a.horizon, b.horizon)));
     light_->look_at_from_position(Vector3(), -towards, std::abs(towards.y) < 0.99F ? Vector3(0, 1, 0) : Vector3(0, 0, -1));
 }
 
@@ -716,7 +810,7 @@ void SkydotWeather::update_clouds(double delta) {
             const auto* clouds = w != nullptr ? w->clouds() : nullptr;
             const char* name = slot == 0 ? "color_a" : "color_b";
             if (clouds == nullptr || i >= clouds->size() || layer.texture[slot].is_empty()) {
-                layer.material->set_shader_parameter(name, Color(0, 0, 0, 0));
+                layer.material->set_shader_parameter(name, godot::Vector4());
                 continue;
             }
             const auto* c = clouds->Get(static_cast<flatbuffers::uoffset_t>(i));
@@ -734,7 +828,7 @@ void SkydotWeather::update_clouds(double delta) {
                 alpha = x + (y - x) * t;
             }
             colour.a = alpha;
-            layer.material->set_shader_parameter(name, colour);
+            layer.material->set_shader_parameter(name, shader_rgba(colour));
             layer.material->set_shader_parameter(slot == 0 ? "offset_a" : "offset_b", layer.offset[slot]);
         }
         layer.material->set_shader_parameter("mix_t", static_cast<float>(transition_));
@@ -767,18 +861,17 @@ void SkydotWeather::update_sky_objects() {
     };
 
     // The data gives full white at night and fades it with the time of day;
-    // added at full strength, the galaxy and constellations outshine the sky.
-    // 0.3 times the square of the darkness is a guess pending a comparison
-    // with the game.
+    // the square of the darkness keeps them out of the dusk sky longer (a
+    // guess pending a comparison with the game).
     int from_key = 0;
     int to_key = 0;
     float key_t = 0.0F;
     time_keys(from_key, to_key, key_t);
     const auto weight = [](int time) { return time == 1 ? 1.0F : time == 3 ? 0.0F : 0.5F; };
     const float dark = 1.0F - (weight(from_key) + (weight(to_key) - weight(from_key)) * key_t);
-    const Color stars = a.stars.lerp(b.stars, t) * (0.3F * dark * dark);
+    const Color stars = a.stars.lerp(b.stars, t) * (dark * dark);
     for (const auto& m : stars_) {
-        m->set_shader_parameter("tint", Color(stars.r, stars.g, stars.b, 1.0F));
+        m->set_shader_parameter("tint", shader_rgba(Color(stars.r, stars.g, stars.b, 1.0F)));
     }
 
     sun_->set_visible(day);
@@ -786,12 +879,12 @@ void SkydotWeather::update_sky_objects() {
     if (day) {
         place(sun_, towards, 4.0F);
         place(glare_, towards, 30.0F);
-        sun_material_->set_shader_parameter("tint", a.sun.lerp(b.sun, t));
+        sun_material_->set_shader_parameter("tint", shader_rgba(a.sun.lerp(b.sun, t)));
         const float glare_a = from != nullptr ? from->sun_glare() : 0.0F;
         const float glare_b = to != nullptr ? to->sun_glare() : 0.0F;
         Color glare = a.sun.lerp(b.sun, t);
         glare.a = glare_a + (glare_b - glare_a) * t;
-        glare_material_->set_shader_parameter("tint", glare);
+        glare_material_->set_shader_parameter("tint", shader_rgba(glare));
     }
 
     // The moons: at night, near where the sun would be; their phase changes
@@ -923,7 +1016,7 @@ void SkydotWeather::update_precipitation() {
     if (quad.is_valid()) {
         const Ref<godot::ShaderMaterial> material = quad->get_material();
         if (material.is_valid()) {
-            material->set_shader_parameter("tint", Color(light.r, light.g, light.b, 0.8F));
+            material->set_shader_parameter("tint", shader_rgba(Color(light.r, light.g, light.b, 0.8F)));
         }
     }
 }
@@ -973,6 +1066,7 @@ void SkydotWeather::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_shadows", "enabled"), &SkydotWeather::set_shadows);
     godot::ClassDB::bind_method(D_METHOD("get_shadows"), &SkydotWeather::get_shadows);
     godot::ClassDB::bind_method(D_METHOD("get_state"), &SkydotWeather::get_state);
+    godot::ClassDB::bind_method(D_METHOD("get_image_space"), &SkydotWeather::get_image_space);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "hour"), "set_hour", "get_hour");
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::INT, "day"), "set_day", "get_day");
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "time_scale"), "set_time_scale", "get_time_scale");

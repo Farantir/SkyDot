@@ -22,6 +22,8 @@
 #include <godot_cpp/variant/vector4.hpp>
 #include <godot_cpp/variant/packed_vector4_array.hpp>
 
+#include <algorithm>
+#include <array>
 #include <mutex>
 
 using godot::Array;
@@ -63,13 +65,13 @@ constexpr std::uint32_t k_alpha_blend = 1u << 0;
 constexpr std::uint32_t k_alpha_test = 1u << 9;
 
 constexpr const char* k_lighting_body = R"(
-uniform sampler2D albedo_tex : source_color, filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
-uniform vec4 base_color : source_color = vec4(1.0);
+uniform vec4 base_color = vec4(1.0);
 uniform vec3 specular_color = vec3(1.0);
 uniform float specular_strength = 1.0;
 uniform float glossiness = 30.0;
-uniform vec3 emission_color : source_color = vec3(0.0);
+uniform vec3 emission_color = vec3(0.0);
 uniform float emission_strength = 1.0;
 uniform vec2 uv_scale = vec2(1.0);
 uniform vec2 uv_offset = vec2(0.0);
@@ -81,10 +83,10 @@ uniform bool use_vertex_colors = false;
 uniform bool use_vertex_alpha = false;
 uniform bool own_emit = false;
 uniform bool use_glow_map = false;
-uniform sampler2D glow_tex : source_color, filter_linear_mipmap, repeat_enable;
+uniform sampler2D glow_tex : filter_linear_mipmap, repeat_enable;
 uniform bool use_env_map = false;
 uniform bool use_env_mask = false;
-uniform samplerCube env_tex : source_color, filter_linear_mipmap;
+uniform samplerCube env_tex : filter_linear_mipmap;
 uniform sampler2D env_mask_tex : filter_linear_mipmap, repeat_enable;
 uniform float env_scale = 1.0;
 // Model-space normal maps (bodies, heads): the normal in the NIF's axes is
@@ -98,7 +100,6 @@ uniform sampler2D spec_tex : filter_linear_mipmap, repeat_enable;
 // SkinTint (shader type 5): the actor's skin tone, and FaceGen (type 4): the
 // NPC's tint mask (slot 6), both soft-lit onto the texture as the game does,
 // in gamma space: base^2 + 2 tint base (1 - base); a tint of 0.5 keeps it.
-// Hence no source_color hints: the values stay in gamma space.
 uniform bool use_skin_tint = false;
 uniform vec3 skin_tint = vec3(0.5);
 uniform bool use_face_tint = false;
@@ -108,11 +109,39 @@ uniform sampler2D face_tint_tex : filter_linear_mipmap, repeat_enable;
 uniform bool use_hair_tint = false;
 uniform vec3 hair_tint = vec3(1.0);
 
+// Directional material (STAT DNAM -> MATO) on Projected UV shapes: snow on
+// what faces up. The game's weight (Community Shaders, Lighting.hlsl):
+// -falloff_scale * noise + (dot(world normal, direction) * vertex alpha -
+// falloff_bias), blended by smoothstep(0, 1, 5 (0.1 + weight)). The game's
+// noise texture is the engine's own; value noise stands in.
+uniform bool use_projection = false;
+uniform bool proj_textured = false;
+uniform sampler2D proj_albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform vec4 proj_params = vec4(0.0); // falloff scale, falloff bias, noise and texture repeats per metre
+uniform vec3 proj_direction = vec3(0.0, 1.0, 0.0);
+uniform vec3 proj_color = vec3(1.0);
+uniform float proj_normal_dampener = 0.0;
+
 varying float spec_mask;
 
-vec3 soft_tint(vec3 linear_base, vec3 tint) {
-	vec3 base = pow(linear_base, vec3(1.0 / 2.2));
-	return pow(clamp(base * base + 2.0 * tint * base * (1.0 - base), 0.0, 1.0), vec3(2.2));
+float proj_hash(vec3 p) {
+	p = fract(p * 0.3183099 + 0.1);
+	p *= 17.0;
+	return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+
+float proj_noise(vec3 x) {
+	vec3 i = floor(x);
+	vec3 f = fract(x);
+	f = f * f * (3.0 - 2.0 * f);
+	return mix(mix(mix(proj_hash(i), proj_hash(i + vec3(1, 0, 0)), f.x),
+	               mix(proj_hash(i + vec3(0, 1, 0)), proj_hash(i + vec3(1, 1, 0)), f.x), f.y),
+	           mix(mix(proj_hash(i + vec3(0, 0, 1)), proj_hash(i + vec3(1, 0, 1)), f.x),
+	               mix(proj_hash(i + vec3(0, 1, 1)), proj_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+vec3 soft_tint(vec3 base, vec3 tint) {
+	return clamp(base * base + 2.0 * tint * base * (1.0 - base), 0.0, 1.0);
 }
 
 void fragment() {
@@ -131,7 +160,7 @@ void fragment() {
 		albedo.rgb = soft_tint(albedo.rgb, texture(face_tint_tex, uv).rgb);
 	}
 	if (use_hair_tint) {
-		albedo.rgb *= pow(mix(vec3(1.0), hair_tint, COLOR.g), vec3(2.2));
+		albedo.rgb *= mix(vec3(1.0), hair_tint, COLOR.g);
 	}
 	vec4 n = texture(normal_tex, uv);
 	if (model_space_normals) {
@@ -140,8 +169,31 @@ void fragment() {
 		spec_mask = use_spec_tex ? texture(spec_tex, uv).r : 0.0;
 	} else {
 		// Skyrim normal maps use the DirectX convention (green points down).
-		NORMAL_MAP = vec3(n.r, 1.0 - n.g, n.b);
+		// Applied here rather than through NORMAL_MAP, so the ambient
+		// (with_game_ambient) sees the mapped normal too.
+		vec2 m = vec2(n.r * 2.0 - 1.0, 1.0 - n.g * 2.0);
+		NORMAL = normalize(TANGENT * m.x + BINORMAL * m.y
+				+ NORMAL * sqrt(max(0.0, 1.0 - dot(m, m))));
 		spec_mask = use_spec_tex ? texture(spec_tex, uv).r : n.a;
+	}
+	if (use_projection) {
+		vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
+		vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+		float weight = -proj_params.x * proj_noise(world_pos * proj_params.z)
+				+ dot(world_normal, proj_direction) * COLOR.a - proj_params.y;
+		if (proj_textured) {
+			float amount = smoothstep(0.0, 1.0, 5.0 * (0.1 + weight));
+			vec3 tri = pow(abs(world_normal), vec3(4.0));
+			tri /= max(dot(tri, vec3(1.0)), 0.0001);
+			vec3 p = world_pos * proj_params.w;
+			vec3 snow = texture(proj_albedo_tex, p.zy).rgb * tri.x + texture(proj_albedo_tex, p.xz).rgb * tri.y
+					+ texture(proj_albedo_tex, p.xy).rgb * tri.z;
+			albedo.rgb = mix(albedo.rgb, snow * proj_color, amount);
+			NORMAL = normalize(mix(NORMAL, normalize(NORMAL + (VIEW_MATRIX * vec4(proj_direction, 0.0)).xyz),
+					amount * proj_normal_dampener));
+		} else if (weight > 0.0) {
+			albedo.rgb = proj_color;
+		}
 	}
 	METALLIC = 0.0;
 	ROUGHNESS = 1.0;
@@ -152,7 +204,9 @@ void fragment() {
 		EMISSION = albedo.rgb * emission_color * emission_strength;
 	}
 	if (use_glow_map) {
-		EMISSION = texture(glow_tex, uv).rgb * emission_color * emission_strength;
+		// Like own emit, the game adds the glow to the light the texture
+		// takes (Community Shaders, Lighting.hlsl: diffuseColor += emitColor).
+		EMISSION = albedo.rgb * texture(glow_tex, uv).rgb * emission_color * emission_strength;
 	}
 	if (use_env_map) {
 		// Added to the albedo, so lit like it; masked by the environment mask
@@ -187,10 +241,8 @@ void light() {
 )";
 
 constexpr const char* k_effect_body = R"(
-// Skyrim computes and blends effects in gamma space, Godot in linear space.
-// Colours here stay in gamma space (no source_color hints) and are linearized
-// at the end; additive output is premultiplied first, which matches the game
-// exactly over dark backgrounds.
+// Skyrim computes and blends effects in gamma space, and so does the scene
+// here (see materials.hpp); additive output is premultiplied, as the game's.
 uniform sampler2D source_tex : filter_linear_mipmap, repeat_enable;
 uniform sampler2D palette_tex : filter_linear, repeat_disable;
 uniform sampler2D depth_tex : hint_depth_texture;
@@ -246,10 +298,6 @@ void light() {
 }
 #endif
 
-vec3 to_linear(vec3 c) {
-	c = max(c, vec3(0.0));
-	return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
-}
 
 // Follows the game's effect pixel shader as reverse-engineered by Community
 // Shaders (Effect.hlsl); NifSkope's version leaves the texture alpha out of the
@@ -298,14 +346,18 @@ void fragment() {
 	}
 	color *= emission_strength;
 #ifdef ALPHA_ADD
-	ALBEDO = to_linear(color * alpha);
+	ALBEDO = max(color * alpha, vec3(0.0));
 	ALPHA = 1.0;
 	// Fog would mix the transparent (black) parts towards its colour, and
 	// adding that draws every quad as a square far away. Fade towards black
 	// by the fog's amount instead.
 	FOG = vec4(0.0, 0.0, 0.0, skydot_game_fog(VERTEX).a);
+#elif defined(ALPHA_MUL)
+	// The framebuffer times the colour (contact shadows under clutter);
+	// alpha takes no part. Fog fades it towards white, which changes nothing.
+	ALBEDO = mix(max(color, vec3(0.0)), vec3(1.0), skydot_game_fog(VERTEX).a);
 #else
-	ALBEDO = to_linear(color);
+	ALBEDO = max(color, vec3(0.0));
 	FOG = skydot_game_fog(VERTEX);
 #endif
 #ifdef LIT
@@ -336,7 +388,7 @@ void fragment() {
 }
 )";
 
-enum class Alpha { none, test, blend, add };
+enum class Alpha { none, test, blend, add, mul };
 
 /// The shader code of each variant. Everything else is a uniform, so these
 /// are all the shaders materials ever need (see SkydotMaterials::warm_up).
@@ -348,8 +400,11 @@ std::string lighting_code(bool double_sided, Alpha alpha) {
     } else if (alpha == Alpha::blend) {
         defines = "#define ALPHA_BLEND\n";
         modes += ", blend_mix";
+    } else if (alpha == Alpha::mul) {
+        modes += ", depth_draw_never, blend_mul, fog_disabled";
     }
-    return with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_lighting_body);
+    return with_game_ambient(
+        with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_lighting_body));
 }
 
 std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, bool lit = false) {
@@ -362,13 +417,17 @@ std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, 
     if (alpha == Alpha::add) {
         modes += ", depth_draw_never, blend_add";
         defines += "#define ALPHA_ADD\n";
+    } else if (alpha == Alpha::mul) {
+        modes += ", depth_draw_never, blend_mul, fog_disabled";
+        defines += "#define ALPHA_MUL\n";
     } else if (alpha == Alpha::blend) {
         modes += ", depth_draw_never, blend_mix";
         defines += "#define ALPHA_BLEND\n";
     } else if (alpha == Alpha::test) {
         defines += "#define ALPHA_TEST\n";
     }
-    return with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_effect_body, false);
+    std::string code = with_game_fog("shader_type spatial;\nrender_mode " + modes + ";\n" + defines + k_effect_body, false);
+    return lit ? with_game_ambient(std::move(code)) : code;
 }
 
 // The screen texture is already fogged; fogging the copy again drew a pale
@@ -382,6 +441,15 @@ std::string refraction_code(bool double_sided) {
 std::uint32_t as_u32(const Dictionary& d, const char* key) {
     const Variant v = d.get(key, 0);
     return static_cast<std::uint32_t>(static_cast<std::int64_t>(static_cast<double>(v)));
+}
+
+/// NiAlphaProperty blending the framebuffer by the shape's colour: source
+/// ZERO and destination SRC_COLOR, or DEST_COLOR and ZERO (factors 1, 2, 4).
+bool multiplies(std::uint32_t alpha_flags) {
+    const std::uint32_t source = (alpha_flags >> 1) & 0xFu;
+    const std::uint32_t destination = (alpha_flags >> 5) & 0xFu;
+    return (alpha_flags & k_alpha_blend) != 0 &&
+           ((source == 1 && destination == 2) || (source == 4 && destination == 1));
 }
 
 double as_double(const Dictionary& d, const char* key, double fallback) {
@@ -443,6 +511,10 @@ void SkydotMaterials::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("warm_up"), &SkydotMaterials::warm_up);
     godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("sync_fog", "environment"),
                                        &SkydotMaterials::sync_fog);
+    godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("set_game_light", "light", "gamma"),
+                                       &SkydotMaterials::set_game_light);
+    godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("game_color", "gamma"),
+                                       &SkydotMaterials::game_color);
     godot::ClassDB::bind_method(D_METHOD("convert", "source"), &SkydotMaterials::convert);
     godot::ClassDB::bind_method(D_METHOD("get_material_count"),
                                 &SkydotMaterials::get_material_count);
@@ -461,8 +533,18 @@ namespace {
 
 constexpr const char* k_game_fog = R"(
 global uniform vec4 skydot_fog; // near, far (metres), power, max
-global uniform vec3 skydot_fog_near_color; // linear
+global uniform vec3 skydot_fog_near_color; // the game's (gamma) colours
 global uniform vec3 skydot_fog_far_color;
+// The game's directional ambient (DALC) as its shaders get it: per colour
+// channel a linear function of the world normal (Godot's axes) plus a
+// constant, so mul(DirectionalAmbient, float4(normal, 1)).
+global uniform vec4 skydot_ambient_r;
+global uniform vec4 skydot_ambient_g;
+global uniform vec4 skydot_ambient_b;
+vec3 skydot_ambient(vec3 world_normal) {
+	vec4 n = vec4(world_normal, 1.0);
+	return max(vec3(dot(skydot_ambient_r, n), dot(skydot_ambient_g, n), dot(skydot_ambient_b, n)), vec3(0.0));
+}
 vec4 skydot_game_fog(vec3 view_vertex) {
 	float far = max(skydot_fog.y, skydot_fog.x + 0.001);
 	float ramp = pow(clamp((length(view_vertex) - skydot_fog.x) / (far - skydot_fog.x), 0.0, 1.0),
@@ -515,6 +597,13 @@ void SkydotMaterials::ensure_fog_globals() {
                                         godot::Vector3());
         rs->global_shader_parameter_add("skydot_fog_far_color", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3,
                                         godot::Vector3());
+        for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon"}) {
+            rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3, godot::Vector3());
+        }
+        for (const char* name : {"skydot_ambient_r", "skydot_ambient_g", "skydot_ambient_b"}) {
+            rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC4,
+                                            godot::Vector4(0, 0, 0, 0.3F));
+        }
     });
 }
 
@@ -530,14 +619,83 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
     const Color near = environment.is_valid()
                            ? static_cast<Color>(environment->get_meta("skydot_fog_near_color", far))
                            : far;
-    const auto linear = [](const Color& c) {
-        const Color l = c.srgb_to_linear();
-        return godot::Vector3(l.r, l.g, l.b);
-    };
+    const auto vec = [](const Color& c) { return godot::Vector3(c.r, c.g, c.b); };
     auto* rs = godot::RenderingServer::get_singleton();
     rs->global_shader_parameter_set("skydot_fog", fog);
-    rs->global_shader_parameter_set("skydot_fog_near_color", linear(near));
-    rs->global_shader_parameter_set("skydot_fog_far_color", linear(far));
+    rs->global_shader_parameter_set("skydot_fog_near_color", vec(near));
+    rs->global_shader_parameter_set("skydot_fog_far_color", vec(far));
+    // The sun and sky as water reflects them (SkydotWeather sets these
+    // metas; inside there is no sun).
+    for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon"}) {
+        const godot::StringName key = name;
+        const Variant v = environment.is_valid() && environment->has_meta(key) ? environment->get_meta(key) : Variant();
+        rs->global_shader_parameter_set(key, v.get_type() == Variant::VECTOR3 ? static_cast<godot::Vector3>(v)
+                                                                             : godot::Vector3());
+    }
+
+    // Six colours, one per side; the game's convention (checked on 84
+    // weathers: z- is the bright one in 71) is that a side's colour is light
+    // travelling that way, so a surface facing +z takes z-. Per channel the
+    // shaders get a linear function of the normal: half the difference of
+    // the two sides per axis and the mean of all six.
+    std::array<Color, 6> sides;
+    const Variant meta = environment.is_valid() && environment->has_meta("skydot_directional_ambient")
+                             ? environment->get_meta("skydot_directional_ambient")
+                             : Variant();
+    if (meta.get_type() == Variant::ARRAY && static_cast<Array>(meta).size() >= 6) {
+        const Array a = meta;
+        for (int i = 0; i < 6; ++i) {
+            sides[static_cast<std::size_t>(i)] = a[i];
+        }
+    } else {
+        sides.fill(environment.is_valid() ? environment->get_ambient_light_color() : Color(0.3F, 0.3F, 0.3F));
+    }
+    for (int channel = 0; channel < 3; ++channel) {
+        const auto side = [&](int i) { return sides[static_cast<std::size_t>(i)][channel]; };
+        const godot::Vector3 game((side(0) - side(1)) * 0.5F, (side(2) - side(3)) * 0.5F,
+                                  (side(4) - side(5)) * 0.5F);
+        const godot::Vector3 world(game.x, game.z, -game.y); // the game's z up to Godot's y up
+        const float mean = (side(0) + side(1) + side(2) + side(3) + side(4) + side(5)) / 6.0F;
+        static const char* const names[] = {"skydot_ambient_r", "skydot_ambient_g", "skydot_ambient_b"};
+        rs->global_shader_parameter_set(names[channel], godot::Vector4(world.x, world.y, world.z, mean));
+    }
+}
+
+Color SkydotMaterials::game_color(const Color& gamma) {
+    return Color(std::clamp(gamma.r, 0.0F, 1.0F), std::clamp(gamma.g, 0.0F, 1.0F),
+                 std::clamp(gamma.b, 0.0F, 1.0F), gamma.a)
+        .linear_to_srgb();
+}
+
+void SkydotMaterials::set_game_light(godot::Light3D* light, const Color& gamma) {
+    if (light == nullptr) {
+        return;
+    }
+    const float peak = std::max({gamma.r, gamma.g, gamma.b, 1.0F});
+    light->set_color(game_color(Color(gamma.r / peak, gamma.g / peak, gamma.b / peak)));
+    light->set_param(godot::Light3D::PARAM_ENERGY, peak);
+}
+
+std::string with_game_ambient(std::string code) {
+    const std::size_t modes = code.find("render_mode ");
+    if (modes != std::string::npos) {
+        code.insert(modes + 12, "ambient_light_disabled, ");
+    }
+    const std::size_t fragment = code.find("void fragment()");
+    const std::size_t open = fragment == std::string::npos ? std::string::npos : code.find('{', fragment);
+    if (open == std::string::npos) {
+        return code;
+    }
+    int depth = 0;
+    for (std::size_t i = open; i < code.size(); ++i) {
+        if (code[i] == '{') {
+            ++depth;
+        } else if (code[i] == '}' && --depth == 0) {
+            code.insert(i, "\tEMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);\n");
+            break;
+        }
+    }
+    return code;
 }
 
 Ref<godot::Shader> SkydotMaterials::shader_for(const std::string& code) {
@@ -623,7 +781,7 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         // Placed water (streams, ponds): SkydotWorld gives it its water
         // type's material (tagged here); elsewhere it stays translucent blue.
         out->set_shader(shader_for(lighting_code(false, Alpha::blend)));
-        out->set_shader_parameter("base_color", Color(0.25F, 0.35F, 0.4F, 0.6F));
+        out->set_shader_parameter("base_color", shader_rgba(Color(0.25F, 0.35F, 0.4F, 0.6F)));
         out->set_meta("skydot_water", true);
     } else if (kind == "BSEffectShaderProperty") {
         // The importer gamma-encodes glTF's emissiveFactor; undo that to get
@@ -648,6 +806,9 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         if (blend_and_test) {
             alpha = Alpha::blend;
         }
+        if (static_cast<bool>(extras.get("alpha_property", false)) && multiplies(alpha_flags)) {
+            alpha = Alpha::mul; // gems, stained glass
+        }
         const std::int64_t shader_type = static_cast<std::int64_t>(as_double(extras, "shader_type", 0));
         Ref<godot::Texture> glow;
         if (shader_type == k_type_glowmap || (flags2 & k_sf2_glow_map) != 0) {
@@ -668,6 +829,14 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("use_vertex_alpha", (flags1 & k_sf1_vertex_alpha) != 0 &&
                                                           (flags2 & k_sf2_tree_anim) == 0);
         out->set_shader_parameter("use_glow_map", glow.is_valid());
+        // A STAT's directional material lands on its shapes whether or not
+        // they have the Projected UV flag: Nordic towers share one model
+        // between the snowy and the bare STAT, without the flag, and only
+        // the snowy one shows snow in the game (comparison shot ref14).
+        // Skin and FaceGen are left alone.
+        if (!model_space && shader_type != k_type_skin_tint && shader_type != k_type_face_tint) {
+            out->set_meta("skydot_projected_uv", true); // see projected()
+        }
         out->set_shader_parameter("own_emit", glow.is_null() && (flags1 & k_sf1_own_emit) != 0);
         out->set_shader_parameter("albedo_tex", albedo);
         out->set_shader_parameter("normal_tex", normal_map);
@@ -695,7 +864,9 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
                 out->set_shader_parameter("face_tint_tex", tint);
             }
         }
-        out->set_shader_parameter("base_color", base->get_albedo());
+        // The importer gamma-encodes glTF's factors; the shaders want the
+        // NIF's numbers (see materials.hpp).
+        out->set_shader_parameter("base_color", shader_rgba(base->get_albedo().srgb_to_linear()));
         out->set_shader_parameter("specular_color",
                                   as_vec3(extras, "specular_color", godot::Vector3(1, 1, 1)));
         // Without the Specular flag the game draws no highlight at all.
@@ -703,7 +874,7 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
                                                            ? as_double(extras, "specular_strength", 1.0)
                                                            : 0.0);
         out->set_shader_parameter("glossiness", as_double(extras, "glossiness", 30.0));
-        out->set_shader_parameter("emission_color", base->get_emission());
+        out->set_shader_parameter("emission_color", shader_rgb(base->get_emission().srgb_to_linear()));
         out->set_shader_parameter("emission_strength", as_double(extras, "emissive_multiple", 1.0));
         out->set_shader_parameter("soft_depth", as_double(extras, "soft_falloff_depth", 10.0) *
                                                     SkydotWorld::UNIT_SCALE);
@@ -736,6 +907,30 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
     return result;
 }
 
+Ref<godot::ShaderMaterial> SkydotMaterials::projected(const Ref<godot::ShaderMaterial>& material,
+                                                      std::uint32_t key, const ProjectedMaterial& with) {
+    if (material.is_null() || !material->has_meta("skydot_projected_uv")) {
+        return material;
+    }
+    const std::pair<std::uint64_t, std::uint32_t> id{material->get_instance_id(), key};
+    const std::scoped_lock lock(projected_mutex_);
+    if (auto it = projected_.find(id); it != projected_.end()) {
+        return it->second;
+    }
+    Ref<godot::ShaderMaterial> out = material->duplicate();
+    out->set_shader_parameter("use_projection", true);
+    out->set_shader_parameter("proj_textured", with.albedo.is_valid());
+    if (with.albedo.is_valid()) {
+        out->set_shader_parameter("proj_albedo_tex", with.albedo);
+    }
+    out->set_shader_parameter("proj_params", with.params);
+    out->set_shader_parameter("proj_direction", with.direction);
+    out->set_shader_parameter("proj_color", with.color);
+    out->set_shader_parameter("proj_normal_dampener", with.normal_dampener);
+    projected_.emplace(id, out);
+    return out;
+}
+
 void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
                                        const Dictionary& extras, bool double_sided,
                                        bool particles, const Ref<godot::Texture>& source,
@@ -746,7 +941,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
     const bool blend = (alpha_flags & k_alpha_blend) != 0;
     const bool test = (alpha_flags & k_alpha_test) != 0;
     const std::uint32_t destination = (alpha_flags >> 5) & 0xFu;
-    const Alpha alpha = blend ? (destination == 0 ? Alpha::add : Alpha::blend)
+    const Alpha alpha = blend ? (multiplies(alpha_flags) ? Alpha::mul : destination == 0 ? Alpha::add : Alpha::blend)
                               : (test ? Alpha::test : Alpha::none);
     const Ref<godot::Texture> palette = load_texture(slot_path(extras, 3));
     const bool lit = (flags2 & k_sf2_effect_lighting) != 0;
@@ -768,7 +963,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
         emission = Color(1, 1, 1);
     }
     emission.a = static_cast<float>(as_double(extras, "emissive_alpha", 1.0));
-    out->set_shader_parameter("emission_color", emission);
+    out->set_shader_parameter("emission_color", shader_rgba(emission));
     const godot::Vector3 f01 = as_vec3(extras, "falloff", godot::Vector3(1, 1, 0));
     const Variant falloff = extras.get("falloff", Variant());
     const double stop_opacity = falloff.get_type() == Variant::ARRAY && Array(falloff).size() >= 4
@@ -865,11 +1060,11 @@ Ref<godot::Shader> SkydotMaterials::particles_process_shader() {
 
 std::int64_t SkydotMaterials::warm_up() {
     for (const bool double_sided : {false, true}) {
-        for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend}) {
+        for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::mul}) {
             shader_for(lighting_code(double_sided, alpha));
         }
         for (const bool lit : {false, true}) {
-            for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::add}) {
+            for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::add, Alpha::mul}) {
                 shader_for(effect_code(double_sided, alpha, false, lit));
                 if (double_sided) {
                     shader_for(effect_code(true, alpha, true, lit));
