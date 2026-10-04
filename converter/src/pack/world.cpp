@@ -295,7 +295,7 @@ public:
             on_package(merged, data, form_ctx);
         } else if (merged.type == FourCC{"FLST"}) {
             on_form_list(merged, data, form_ctx);
-        } else if (merged.type != FourCC{"LAND"} && merged.type != FourCC{"INFO"}) {
+        } else if (merged.type != FourCC{"INFO"}) {
             // These are bases too (placed armor, scripted NPCs); read twice.
             io::SpanReader copy = data;
             if (merged.type == FourCC{"NPC_"}) {

@@ -45,15 +45,13 @@ namespace {
 /// Pass one: index every wanted record and decide winners.
 class IndexPass final : public RecordSink {
 public:
-    IndexPass(MergedWorld& world, const LoadOrder& order, std::size_t plugin,
+    IndexPass(const LoadOrder& order, std::size_t plugin,
               const std::function<bool(FourCC)>& wants,
               std::vector<MergedRecord>& records,
               std::unordered_map<std::uint32_t, std::uint32_t>& by_form,
               MergeStats& stats, const std::function<void(std::string)>& note)
-        : world_(world), order_(order), plugin_(plugin), wants_(wants), records_(records),
-          by_form_(by_form), stats_(stats), note_(note) {
-        (void)world_;
-    }
+        : order_(order), plugin_(plugin), wants_(wants), records_(records),
+          by_form_(by_form), stats_(stats), note_(note) {}
 
     void on_record(const RecordContext& ctx, io::SpanReader&) override {
         const auto type = ctx.header.type;
@@ -143,7 +141,6 @@ public:
     void set_continue_on_error(bool value) noexcept { continue_on_error_ = value; }
 
 private:
-    MergedWorld& world_;
     const LoadOrder& order_;
     std::size_t plugin_;
     const std::function<bool(FourCC)>& wants_;
@@ -250,8 +247,7 @@ MergedWorld MergedWorld::build(const LoadOrder& order, const MergeOptions& optio
             }
         }
 
-        IndexPass pass(world, order, i, wants, world.records_, world.by_form_, world.stats_,
-                       note);
+        IndexPass pass(order, i, wants, world.records_, world.by_form_, world.stats_, note);
         pass.set_continue_on_error(options.continue_on_error);
         (void)plugin->scan(pass);
     }
