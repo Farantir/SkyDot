@@ -9,6 +9,7 @@ add_executable(bethconv_unit_tests
     test_record_plugin.cpp
     test_load_order.cpp
     test_install.cpp
+    test_inputs.cpp
     test_vpath.cpp
     test_archive_set.cpp
     test_byte_writer.cpp

@@ -35,6 +35,7 @@
 #include "bethconv/mesh/nif_reader.hpp"
 #include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/convert.hpp"
+#include "bethconv/pack/inputs.hpp"
 #include "bethconv/pack/pack_view.hpp"
 #include "bethconv/pack/snapshot.hpp"
 #include "bethconv/pack/vpath_index.hpp"
@@ -161,35 +162,11 @@ int cmd_records(const std::vector<std::filesystem::path>& paths, bool stats,
 /// Mount every archive and loose dir given, in order; later mounts win ties.
 int mount_all(bethconv::archive::ArchiveSet& set,
               const std::vector<std::filesystem::path>& paths) {
-    int failures = 0;
-    int priority = 0;
-    std::error_code ec;
-    for (const auto& path : paths) {
-        // An unreadable path is not a directory; mount_archive then says why.
-        const auto count = std::filesystem::is_directory(path, ec)
-                               ? set.mount_loose(path, priority)
-                               : set.mount_archive(path, priority);
-        if (!count) {
-            std::fprintf(stderr, "warning: skipping %s: %s\n",
-                         path.filename().string().c_str(),
-                         count.error().to_string().c_str());
-            ++failures;
-        }
-        ++priority;
+    const auto failures = bethconv::pack::mount_sources(set, paths);
+    for (const auto& failure : failures) {
+        std::fprintf(stderr, "warning: skipping %s\n", failure.c_str());
     }
-    return failures;
-}
-
-/// Adapt an archive set to strings.hpp's fetch callback, so the record layer
-/// does not depend on the archive layer.
-bethconv::record::StringFetch fetch_from(const bethconv::archive::ArchiveSet& set) {
-    return [&set](std::string_view vpath) -> std::optional<std::vector<std::byte>> {
-        auto bytes = set.read(vpath);
-        if (!bytes) {
-            return std::nullopt;
-        }
-        return std::move(*bytes);
-    };
+    return static_cast<int>(failures.size());
 }
 
 int cmd_forms(const std::vector<std::filesystem::path>& paths,
@@ -222,7 +199,7 @@ int cmd_forms(const std::vector<std::filesystem::path>& paths,
         if (have_sources && plugin->header().is_localized()) {
             std::vector<bethconv::io::ParseError> problems;
             strings = bethconv::record::load_string_source(
-                fetch_from(set), plugin->name(), language, &problems);
+                bethconv::pack::string_fetch(set), plugin->name(), language, &problems);
             for (const auto& problem : problems) {
                 std::fprintf(stderr, "warning: %s\n", problem.to_string().c_str());
             }
@@ -258,8 +235,8 @@ int cmd_strings(const std::vector<std::filesystem::path>& sources,
     std::size_t repaired = 0;
     for (const auto& name : plugins) {
         std::vector<bethconv::io::ParseError> problems;
-        const auto source =
-            bethconv::record::load_string_source(fetch_from(set), name, language, &problems);
+        const auto source = bethconv::record::load_string_source(
+            bethconv::pack::string_fetch(set), name, language, &problems);
         for (const auto& problem : problems) {
             std::fprintf(stderr, "error: %s\n", problem.to_string().c_str());
         }
@@ -510,7 +487,7 @@ int cmd_snapshot(const std::filesystem::path& data_dir, const std::filesystem::p
         } else {
             (void)mount_all(set, sources);
         }
-        options.strings = fetch_from(set);
+        options.strings = bethconv::pack::string_fetch(set);
     }
 
     const auto started = std::chrono::steady_clock::now();
@@ -822,7 +799,7 @@ int cmd_verify(const std::filesystem::path& path, std::size_t cells,
         (void)mount_data_folder(set, against);
         record::MergeOptions options;
         options.language = std::string(snapshot->language());
-        options.strings = fetch_from(set);
+        options.strings = bethconv::pack::string_fetch(set);
         const auto world = record::MergedWorld::build(*order, options);
 
         std::size_t missing = 0;
@@ -855,22 +832,10 @@ int cmd_merge(const std::filesystem::path& data_dir, const std::filesystem::path
               const std::vector<std::filesystem::path>& sources, const std::string& language,
               const std::vector<std::string>& type_names, std::size_t sample,
               const std::vector<std::string>& lookups, bool no_strings, bool no_second_pass) {
-    bethconv::record::LoadOrderOptions lo_options;
-    std::optional<bethconv::record::LoadOrder> order;
-    if (list_file.empty()) {
-        auto built = bethconv::record::LoadOrder::from_directory(data_dir, lo_options);
-        if (!built) {
-            std::fprintf(stderr, "error: %s\n", built.error().to_string().c_str());
-            return 1;
-        }
-        order = std::move(*built);
-    } else {
-        auto list = bethconv::record::read_plugin_list(list_file);
-        if (!list) {
-            std::fprintf(stderr, "error: %s\n", list.error().to_string().c_str());
-            return 1;
-        }
-        order = bethconv::record::LoadOrder::build(data_dir, *list, lo_options);
+    auto order = build_order(data_dir, list_file);
+    if (!order) {
+        std::fprintf(stderr, "error: %s\n", order.error().to_string().c_str());
+        return 1;
     }
 
     std::printf("%zu plugins in the order, %zu problems\n", order->entries().size(),
@@ -895,7 +860,7 @@ int cmd_merge(const std::filesystem::path& data_dir, const std::filesystem::path
     bethconv::record::MergeOptions options;
     options.language = language;
     if (!no_strings) {
-        options.strings = fetch_from(set);
+        options.strings = bethconv::pack::string_fetch(set);
     }
     for (const auto& name : type_names) {
         if (name.size() != 4) {
@@ -2087,108 +2052,67 @@ int cmd_convert(const ConvertArgs& args) {
     }
 
     // ---- what to mount and the load order ---------------------------------
-    bethconv::pack::InputRecord input;
-    input.kind = args.mo2.empty() ? "data" : "mo2";
-    input.edition = std::string(bethconv::install::to_string(bethconv::install::identify(args.data_dir)));
-    input.data = path_text(args.data_dir);
+    std::function<void(std::size_t, std::size_t)> mounted;
+    if (args.json) {
+        mounted = [&seconds](std::size_t done, std::size_t total) {
+            emit(ordered_json{{"event", "progress"},
+                              {"phase", "mount"},
+                              {"done", done},
+                              {"total", total},
+                              {"elapsed", seconds()}});
+        };
+    }
+    auto prepared = bethconv::pack::prepare_inputs(
+        bethconv::pack::InputSpec{.data_dir = args.data_dir,
+                                  .list_file = args.list_file,
+                                  .mo2 = args.mo2,
+                                  .mo2_profile = args.mo2_profile,
+                                  .sources = args.sources},
+        mounted);
+    if (!prepared) {
+        return fail(1, prepared.error().to_string());
+    }
+    auto& input = prepared->input;
+    const auto& order = prepared->order;
+    const auto& set = prepared->set;
 
-    bethconv::install::MountPlan plan;
-    if (!args.mo2.empty()) {
-        auto instance = bethconv::install::read_mo2_instance(args.mo2);
-        if (!instance) {
-            return fail(1, instance.error().to_string());
-        }
-        auto profile = bethconv::install::read_mo2_profile(*instance, args.mo2_profile);
-        if (!profile) {
-            return fail(1, profile.error().to_string());
-        }
-        if (instance->edition != bethconv::install::Edition::unknown) {
-            input.edition = std::string(bethconv::install::to_string(instance->edition));
-        }
-        input.mo2_instance = path_text(instance->dir);
-        input.mo2_profile = profile->name;
-        input.mods = profile->mods.size();
-        input.plugin_list = path_text(profile->plugins_file);
-        plan = bethconv::install::plan_mo2(args.data_dir, *instance, *profile);
+    if (const auto& profile = prepared->profile) {
         std::fprintf(text, "profile %s: %zu mods enabled, %zu disabled, %zu missing\n",
                      profile->name.c_str(), profile->mods.size(), profile->disabled,
                      profile->missing.size());
         for (const auto& name : profile->missing) {
             std::fprintf(text, "  missing mod folder: %s\n", name.c_str());
         }
-    } else if (args.sources.empty()) {
-        plan = bethconv::install::plan_data_folder(args.data_dir);
     }
-    if (!args.list_file.empty()) {
-        auto list = bethconv::record::read_plugin_list(args.list_file);
-        if (!list) {
-            return fail(1, list.error().to_string());
-        }
-        plan.plugins = std::move(*list);
-        input.plugin_list = path_text(args.list_file);
-    }
-
-    std::optional<bethconv::record::LoadOrder> order;
-    if (plan.plugins) {
-        auto dirs = plan.plugin_dirs;
-        if (dirs.empty()) {
-            dirs.push_back(args.data_dir);
-        }
-        bethconv::record::LoadOrderOptions order_options;
-        order_options.always_loaded = bethconv::install::creation_club_plugins(args.data_dir);
-        order = bethconv::record::LoadOrder::build(dirs, *plan.plugins, order_options);
-    } else {
-        auto built = build_order(args.data_dir, {});
-        if (!built) {
-            return fail(1, built.error().to_string());
-        }
-        order = std::move(*built);
-    }
-    std::fprintf(text, "%zu plugins in the order, %zu problems\n", order->entries().size(),
-                 order->problems().size());
-    for (const auto& problem : order->problems()) {
+    std::fprintf(text, "%zu plugins in the order, %zu problems\n", order.entries().size(),
+                 order.problems().size());
+    for (const auto& problem : order.problems()) {
         std::fprintf(text, "  %s\n", problem.to_string().c_str());
     }
-
-    bethconv::archive::ArchiveSet set;
-    std::vector<std::string> mount_failures;
-    if (!args.sources.empty() && args.mo2.empty()) {
-        (void)mount_all(set, args.sources);
-    } else {
-        std::function<void(std::size_t, std::size_t)> mounted;
-        if (args.json) {
-            mounted = [&seconds](std::size_t done, std::size_t total) {
-                emit(ordered_json{{"event", "progress"},
-                                  {"phase", "mount"},
-                                  {"done", done},
-                                  {"total", total},
-                                  {"elapsed", seconds()}});
-            };
-        }
-        mount_failures = bethconv::install::mount(set, plan, mounted);
-        for (const auto& failure : mount_failures) {
-            std::fprintf(stderr, "warning: skipping %s\n", failure.c_str());
-        }
-        std::fprintf(text, "mounted %zu archives and %zu folders\n", plan.archives.size(),
-                     plan.loose.size());
+    for (const auto& failure : prepared->mount_failures) {
+        std::fprintf(stderr, "warning: skipping %s\n", failure.c_str());
     }
-    if (!plan.unloaded_archives.empty()) {
+    if (const auto& plan = prepared->plan) {
+        std::fprintf(text, "mounted %zu archives and %zu folders\n", plan->archives.size(),
+                     plan->loose.size());
+    }
+    if (!prepared->unloaded_archives.empty()) {
         std::fprintf(text, "%zu mod archives not mounted: no loaded plugin is named like them\n",
-                     plan.unloaded_archives.size());
+                     prepared->unloaded_archives.size());
     }
     std::fprintf(text, "%zu unique virtual paths\n", set.unique_paths());
 
     if (args.json) {
         auto problems = ordered_json::array();
-        for (const auto& problem : order->problems()) {
+        for (const auto& problem : order.problems()) {
             problems.push_back(problem.to_string());
         }
         auto failures = ordered_json::array();
-        for (const auto& failure : mount_failures) {
+        for (const auto& failure : prepared->mount_failures) {
             failures.push_back(failure);
         }
         auto unloaded = ordered_json::array();
-        for (const auto& path : plan.unloaded_archives) {
+        for (const auto& path : prepared->unloaded_archives) {
             unloaded.push_back(path_text(path));
         }
         emit(ordered_json{{"event", "start"},
@@ -2202,7 +2126,7 @@ int cmd_convert(const ConvertArgs& args) {
                                                  {"mo2_instance", input.mo2_instance},
                                                  {"mo2_profile", bethconv::io::json_text(input.mo2_profile)},
                                                  {"mods", input.mods}}},
-                          {"plugins", order->entries().size()},
+                          {"plugins", order.entries().size()},
                           {"load_order_problems", std::move(problems)},
                           {"sources", set.sources().size()},
                           {"mount_failures", std::move(failures)},
@@ -2255,7 +2179,7 @@ int cmd_convert(const ConvertArgs& args) {
         };
     }
 
-    auto result = bethconv::pack::convert(set, *order, options);
+    auto result = bethconv::pack::convert(set, order, options);
     if (!args.quiet && !args.json) {
         std::printf("\r%-40s\r", "");
     }

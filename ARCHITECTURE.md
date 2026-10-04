@@ -182,8 +182,8 @@ The library is layered. Each layer only uses the layers below it:
                       tools/bethconv-cli   tools/testpack
                                \              /
                                 v            v
-   pack/      convert, pack_writer, asset_store, content_hash, vpath_index,
-              snapshot_writer/reader (records.fb), world (world.fb),
+   pack/      convert, inputs, pack_writer, asset_store, content_hash,
+              vpath_index, snapshot_writer/reader (records.fb), world (world.fb),
               script_asset, lod_asset, animation_asset, pack_view
      |           |             |              |             |
      v           v             v              v             v
@@ -417,6 +417,15 @@ ids, playback speed, root motion). Both become `.animfb` assets
 (`formats/schema/animation.fbs`).
 
 ### 5.10 `pack/`: assembling a pack
+
+**`prepare_inputs()`** (`pack/inputs.cpp`) decides what the install is before
+`convert()` runs. From an `InputSpec` (the Data folder, a plugin list file, an
+MO2 instance and profile, or explicit sources) it builds the mount plan and
+the load order (with the Creation Club plugins), mounts the plan, and fills the
+manifest's `input` record. The load-order problems, mount failures and
+unloaded archives come back for the caller to print; the CLI's `convert`
+calls it and only prints. `string_fetch(set)` hands a mounted set to the merge
+as its string-table source.
 
 **`convert()`** (`pack/convert.cpp`) runs everything over one mounted
 install:

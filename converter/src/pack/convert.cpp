@@ -5,6 +5,7 @@
 #include "bethconv/animation/hkx.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/pack/animation_asset.hpp"
+#include "bethconv/pack/inputs.hpp"
 #include "bethconv/pack/lod_asset.hpp"
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/script/pex.hpp"
@@ -192,14 +193,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     if (options.write_records) {
         record::MergeOptions merge_options;
         merge_options.language = options.language;
-        merge_options.strings = [&set](std::string_view vpath)
-            -> std::optional<std::vector<std::byte>> {
-            auto bytes = set.read(vpath);
-            if (!bytes) {
-                return std::nullopt;
-            }
-            return std::move(*bytes);
-        };
+        merge_options.strings = string_fetch(set);
 
         report("merge", 0, order.entries().size());
         const auto world = record::MergedWorld::build(order, merge_options);
