@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/snapshot.hpp"
 
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/pack/records_generated.h"
 
 #include <flatbuffers/verifier.h>
@@ -191,9 +192,8 @@ io::ParseResult<std::unique_ptr<Snapshot::Impl>> Snapshot::Impl::build(
     // Every FlatBuffers accessor follows offsets from the file, so the whole
     // buffer (offsets, vector lengths, strings) is verified before any
     // accessor is called.
-    flatbuffers::Verifier verifier(
-        static_cast<const std::uint8_t*>(static_cast<const void*>(index_bytes->data())),
-        index_bytes->size());
+    const auto index_u8 = io::as_u8(*index_bytes);
+    flatbuffers::Verifier verifier(index_u8.data(), index_u8.size());
     if (!fb::VerifySnapshotBuffer(verifier)) {
         return index_reader.fail(io::ErrorKind::corrupt,
                                  "the index did not verify as a records.fb");

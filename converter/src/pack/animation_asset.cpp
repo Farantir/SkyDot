@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/animation_asset.hpp"
 
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/pack/animation_generated.h"
 
@@ -54,7 +55,7 @@ std::vector<std::byte> finish(const flatbuffers::FlatBufferBuilder& b) {
 /// The verified root, or why not.
 io::ParseResult<const afb::Animation*> verified(std::span<const std::byte> bytes, std::string_view origin) {
     io::SpanReader reader(bytes, origin);
-    const auto* raw = static_cast<const std::uint8_t*>(static_cast<const void*>(bytes.data()));
+    const auto* raw = io::as_u8(bytes).data();
     flatbuffers::Verifier verifier(raw, bytes.size());
     if (bytes.empty() || !afb::VerifyAnimationBuffer(verifier)) {
         return reader.fail(io::ErrorKind::corrupt, "not a valid animation asset");

@@ -53,5 +53,17 @@ if [[ -n "$ptr_hits" ]]; then
     status=1
 fi
 
+# A reinterpret_cast spelled as two static_casts through void*. Single casts to
+# void* for C APIs (blake3) are fine; only the pair is a byte overlay.
+# One line only: a cast split across lines is not seen.
+double_hits=$(git grep --untracked -nE 'static_cast<[^()]*\*>\(\s*static_cast<(const )?void\s*\*>' -- "${existing[@]}" "${exempt_args[@]}" 2>/dev/null)
+if [[ -n "$double_hits" ]]; then
+    echo "check-raw-access: reinterpret_cast spelled as two static_casts through void*:" >&2
+    echo "$double_hits" >&2
+    echo >&2
+    echo "Use bethconv::io::as_u8 / as_chars (bethconv/io/byte_view.hpp)." >&2
+    status=1
+fi
+
 [[ $status -eq 0 ]] && echo "check-raw-access: clean (${#existing[@]} guarded dirs)"
 exit $status

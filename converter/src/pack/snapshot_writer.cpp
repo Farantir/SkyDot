@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/snapshot.hpp"
 
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/io/byte_writer.hpp"
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/types.hpp"
@@ -11,6 +12,8 @@
 #include <cstdio>
 #include <fstream>
 #include <map>
+#include <ostream>
+#include <span>
 #include <string>
 #include <utility>
 #include <vector>
@@ -28,6 +31,11 @@ void hash_into(std::uint64_t& hash, std::span<const std::byte> bytes) noexcept {
         hash ^= static_cast<std::uint8_t>(b);
         hash *= k_fnv_prime;
     }
+}
+
+/// Writes bytes we own as they are; no size comes from a file.
+void write_all(std::ostream& out, std::span<const char> chars) {
+    out.write(chars.data(), static_cast<std::streamsize>(chars.size()));
 }
 
 /// Status bits (mirrored in `records.fbs` and the reader). One byte instead of
@@ -106,9 +114,7 @@ public:
 
 private:
     void write_bytes(std::span<const std::byte> bytes) {
-        // Writes bytes we own to a stream; no size comes from a file.
-        out_.write(static_cast<const char*>(static_cast<const void*>(bytes.data())),
-                   static_cast<std::streamsize>(bytes.size()));
+        write_all(out_, io::as_chars(bytes));
     }
 
     /// Read EDID and an exterior CELL's XCLC by scanning the field list, without
@@ -206,8 +212,7 @@ io::ParseResult<SnapshotStats> write_snapshot(const record::MergedWorld& world,
 
     // Placeholder header, overwritten at the end.
     const auto placeholder = render_header(SnapshotHeader{});
-    file.write(static_cast<const char*>(static_cast<const void*>(placeholder.data())),
-               static_cast<std::streamsize>(placeholder.size()));
+    write_all(file, io::as_chars(placeholder));
 
     WriteSink sink(file, stats);
     world.for_each_record(sink);
@@ -318,8 +323,8 @@ io::ParseResult<SnapshotStats> write_snapshot(const record::MergedWorld& world,
     for (std::uint64_t i = blob_end; i < fb_offset; ++i) {
         file.put('\0');
     }
-    file.write(static_cast<const char*>(static_cast<const void*>(builder.GetBufferPointer())),
-               static_cast<std::streamsize>(builder.GetSize()));
+    write_all(file, io::as_chars(std::span<const std::uint8_t>(builder.GetBufferPointer(),
+                                                               builder.GetSize())));
     if (!file) {
         return fail(out, io::ErrorKind::corrupt, "write failed while writing the index");
     }
@@ -335,8 +340,7 @@ io::ParseResult<SnapshotStats> write_snapshot(const record::MergedWorld& world,
     };
     const auto rendered = render_header(header);
     file.seekp(0);
-    file.write(static_cast<const char*>(static_cast<const void*>(rendered.data())),
-               static_cast<std::streamsize>(rendered.size()));
+    write_all(file, io::as_chars(rendered));
     file.close();
     if (!file) {
         return fail(out, io::ErrorKind::corrupt, "write failed while finalizing the header");

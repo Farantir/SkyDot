@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/lod_asset.hpp"
 
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/pack/lod_generated.h"
 
 #include <utility>
@@ -172,7 +173,7 @@ std::vector<std::byte> write_lod_asset(const LodData& data) {
 
 io::ParseResult<LodData> read_lod_asset(std::span<const std::byte> bytes, std::string_view origin) {
     io::SpanReader reader(bytes, origin);
-    const auto* raw = static_cast<const std::uint8_t*>(static_cast<const void*>(bytes.data()));
+    const auto* raw = io::as_u8(bytes).data();
     flatbuffers::Verifier verifier(raw, bytes.size());
     if (bytes.empty() || !lfb::VerifyLodBuffer(verifier)) {
         return reader.fail(io::ErrorKind::corrupt, "not a valid LOD asset");

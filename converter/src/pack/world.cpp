@@ -2,6 +2,7 @@
 #include "bethconv/pack/world.hpp"
 
 #include "bethconv/archive/vpath.hpp"
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_stream.hpp"
 #include "bethconv/record/field_walk.hpp"
@@ -2527,8 +2528,7 @@ namespace {
 io::ParseResult<const wfb::World*> verify_world(std::span<const std::byte> bytes,
                                                 std::string_view origin) {
     io::SpanReader reader(bytes, origin);
-    const std::span<const std::uint8_t> raw(
-        static_cast<const std::uint8_t*>(static_cast<const void*>(bytes.data())), bytes.size());
+    const std::span<const std::uint8_t> raw = io::as_u8(bytes);
     flatbuffers::Verifier verifier(raw.data(), raw.size());
     if (!wfb::VerifyWorldBuffer(verifier)) {
         return reader.fail(io::ErrorKind::corrupt, "not a valid world.fb");

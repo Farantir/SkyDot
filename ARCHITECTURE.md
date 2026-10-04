@@ -116,7 +116,7 @@ code looks like:
 | --- | --- |
 | **Clean room**: never decompile the game. Sources are UESP, xEdit definitions and observed bytes. | Every non-obvious constant cites its source in a comment, often with how many vanilla records were measured ("12 bytes on all 9,720 STATs"). |
 | **No Bethesda bytes in git** | `tools/ci/check-no-game-data.sh` rejects game file extensions and large binaries. Tests use synthetic builders (`converter/tests/support/*_builder.hpp`) and a generated test pack. |
-| **All untrusted input through `SpanReader`** | Converter parsers never do pointer arithmetic on file buffers. `tools/ci/check-raw-access.sh` greps the parser directories for `reinterpret_cast`, `memcpy` and `.data() +`. |
+| **All untrusted input through `SpanReader`** | Converter parsers never do pointer arithmetic on file buffers. `tools/ci/check-raw-access.sh` greps the parser directories for `reinterpret_cast` (also as a `static_cast` pair through `void*`), `memcpy` and `.data() +`. |
 | **Malformed input is never fatal** | Parsers return `ParseResult<T>` (`std::expected<T, ParseError>`). A bad file becomes a line in `report.json`; it never aborts the run. Exceptions are only for programmer errors. |
 | **Deterministic output** | No timestamps; sorted indices; same input gives a byte-identical pack (`converter/tests/testpack/determinism.cmake` checks it). |
 | **Engine reads packs only** | No ESM/NIF/BSA/DDS parser in `engine/`. If the engine needs data, the pack format grows, versioned in `formats/`, and both halves change in one commit. |
