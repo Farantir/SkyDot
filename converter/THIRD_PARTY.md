@@ -31,7 +31,6 @@ Versions come from the `builtin-baseline` in `vcpkg.json`.
 | `blake3` | 1.8.6 | CC0 / Apache-2.0 | Content hashing |
 | `flatbuffers` | 25.12.19 | Apache-2.0 | `records.fb` |
 | `catch2` | 3.15.3 | BSL-1.0 | Unit tests |
-| `zstd`, `meshoptimizer` | — | BSD-3-Clause / MIT | Declared, not used yet |
 
 `flatc` from the `flatbuffers` port compiles `formats/schema/records.fbs` at build
 time. The generated header is not committed.

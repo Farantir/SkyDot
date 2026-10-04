@@ -6,46 +6,24 @@
   "license": "GPL-3.0-or-later",
   "builtin-baseline": "127402f1c75bb3d5ff6bce04b285faa4930a5aca",
   "dependencies": [
+    "blake3",
     "cli11",
+    {
+      "name": "directx-headers",
+      "platform": "windows"
+    },
+    "fastgltf",
+    "flatbuffers",
     "lz4",
     "nlohmann-json",
-    "zlib",
-    "zstd"
+    "rsm-bsa",
+    "zlib"
   ],
   "features": {
-    "archives": {
-      "description": "BSA/BA2 archive support",
-      "dependencies": [
-        "rsm-bsa",
-        {
-          "name": "directx-headers",
-          "platform": "windows"
-        }
-      ]
-    },
-    "hashing": {
-      "description": "BLAKE3 content hashing for the pack format",
-      "dependencies": [
-        "blake3"
-      ]
-    },
     "tests": {
       "description": "Unit test suite",
       "dependencies": [
         "catch2"
-      ]
-    },
-    "meshes": {
-      "description": "glTF writing and mesh optimization",
-      "dependencies": [
-        "fastgltf",
-        "meshoptimizer"
-      ]
-    },
-    "pack": {
-      "description": "FlatBuffers record snapshot",
-      "dependencies": [
-        "flatbuffers"
       ]
     }
   }
