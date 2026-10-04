@@ -7,6 +7,12 @@
 // Positions and rotations are in Skyrim's own space: Z-up, game units,
 // rotation in radians. The engine converts them.
 //
+// A vector said to be sorted by `id` or `ref` has that field marked `(key)`: its
+// values are unique and in increasing order, and flatc generates `LookupByKey`
+// for the vector. Vectors sorted by a field that can repeat (a reference's
+// linked references, activate parents and primitives) have no key; search
+// them for the range of one reference.
+//
 // A flag word is a `bit_flags` enum, named for the field or the record it
 // belongs to: the values in an enum are bit numbers, flatc turns them into
 // masks, and both halves test bits by these names. The words are mostly
@@ -33,7 +39,7 @@ enum RefFlags : uint32 (bit_flags) {
 
 /// One placed reference (REFR). Deleted references are not included.
 struct Ref {
-    id: uint32;
+    id: uint32 (key);
     /// The placed base record (a `Base` in `bases`, if it has a model or light).
     base: uint32;
     position: Vec3f;
@@ -49,7 +55,7 @@ struct Ref {
 /// 90), fade, end distance cap and shadow depth bias. `has_*` say which the
 /// reference has.
 struct LightOverride {
-    ref: uint32;
+    ref: uint32 (key);
     has_radius: bool;
     radius: float;
     has_light_data: bool;
@@ -61,7 +67,7 @@ struct LightOverride {
 
 /// A reference that is a load door: where it leads.
 struct DoorLink {
-    ref: uint32;
+    ref: uint32 (key);
     destination: uint32;
     position: Vec3f;
     rotation: Vec3f;
@@ -69,7 +75,7 @@ struct DoorLink {
 
 /// XLOC. Level 0-100, 255 needs the key.
 struct Lock {
-    ref: uint32;
+    ref: uint32 (key);
     level: ubyte;
     /// Bit 2: levelled lock.
     flags: ubyte;
@@ -135,7 +141,7 @@ table Script {
 
 /// VMAD of one reference.
 table RefScripts {
-    ref: uint32;
+    ref: uint32 (key);
     scripts: [Script];
 }
 
@@ -237,7 +243,7 @@ struct NavDoor {
 
 /// NAVM: a cell's navmesh. Positions are in Skyrim's space, as everywhere.
 table NavMesh {
-    id: uint32;
+    id: uint32 (key);
     vertices: [Vec3f];
     triangles: [NavTriangle];
     links: [NavLink];
@@ -259,7 +265,7 @@ enum CellFlags : uint16 (bit_flags) {
 }
 
 table Cell {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// Worldspace for exterior cells, 0 for interiors.
     world: uint32;
@@ -283,7 +289,8 @@ table Cell {
     /// like the real cell there, but holds the persistent references of the
     /// whole worldspace; place them by position.
     persistent: bool;
-    /// These are all sorted by ref.
+    /// These are all sorted by ref; a reference has one entry in `scripts` and
+    /// `locks`, and any number in the others.
     scripts: [RefScripts];
     locks: [Lock];
     links: [LinkedRef];
@@ -343,7 +350,7 @@ enum RecordFlags : uint32 (bit_flags) {
 /// A base record that references can place: anything with a model or scripts,
 /// plus lights.
 table Base {
-    id: uint32;
+    id: uint32 (key);
     type: uint32;
     editor_id: string;
     /// Normalized virtual path (`meshes/...`), or empty. For ARMO the world
@@ -370,7 +377,7 @@ table Base {
 /// falloff scale and bias, noise UV scale, material UV scale, projection
 /// vector, normal dampener, single pass colour (0..1) and its flag.
 table MaterialObject {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     model: string;
     falloff_scale: float;
@@ -385,7 +392,7 @@ table MaterialObject {
 
 /// LTEX with its TXST resolved. Paths are normalized virtual paths.
 table LandTexture {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     diffuse: string;
     normal: string;
@@ -398,7 +405,7 @@ table LandTexture {
 /// ADDN (format 10): the model the game attaches to a mesh's BSValueNode
 /// "AddOnNode" whose value is `index` (mesh extras "addon").
 table AddonNode {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     index: int32;
     model: string;
@@ -417,7 +424,7 @@ enum GrassFlags : ubyte (bit_flags) {
 /// at most, 4 either at least, 5 either at most, 6 either at most above, 7
 /// either at most below.
 table Grass {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     model: string;
     density: ubyte;
@@ -445,7 +452,7 @@ struct WaterLayer {
 /// WATR: the visual part of DNAM (source: UESP, WATR record; offsets checked
 /// against Skyrim.esm). Colours are RGBA bytes, red in the low byte.
 table Water {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// ANAM, 0..100.
     opacity: ubyte;
@@ -476,7 +483,7 @@ struct ClimateWeather {
 
 /// CLMT. Times are hours (TNAM stores 10-minute steps).
 table Climate {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     weathers: [ClimateWeather];
     sunrise_begin: float;
@@ -516,7 +523,7 @@ table CloudLayer {
 
 /// SPGD: rain or snow particles.
 table Precipitation {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// ICON, a virtual path: an atlas of subtextures_x by subtextures_y.
     texture: string;
@@ -554,7 +561,7 @@ table RegionArea {
 /// REGN with a weather list (RDAT type 3). Where its areas cover the
 /// player, the region with the highest priority picks the weather.
 table Region {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     world: uint32;
     areas: [RegionArea];
@@ -577,7 +584,7 @@ enum WeatherClass : ubyte (bit_flags) {
 /// WTHR, the parts that light a scene. Times of day are sunrise, day,
 /// sunset, night, in that order. Colours are RGBA bytes, red in the low byte.
 table Weather {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// NAM0: 17 colours x 4 times, index colour * 4 + time. Colours in order:
     /// sky upper, fog near, unknown, ambient, sunlight, sun, stars, sky lower,
@@ -623,7 +630,7 @@ table Weather {
 /// strength. `cinematic` is CNAM: saturation, brightness, contrast. `tint`
 /// is TNAM: amount, red, green, blue. Empty where the record has none.
 table ImageSpace {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     hdr: [float];
     cinematic: [float];
@@ -637,7 +644,7 @@ enum ParentFlags : uint16 (bit_flags) {
 
 /// WRLD.
 table Worldspace {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// WNAM; 0 if none.
     parent: uint32;
@@ -749,7 +756,7 @@ enum QuestFlags : uint16 (bit_flags) {
 
 /// QUST.
 table Quest {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     name: string;
     flags: QuestFlags;
@@ -771,7 +778,7 @@ table Quest {
 
 /// GLOB. `kind` is FNAM: 's' short, 'l' long, 'f' float.
 table Global {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     kind: ubyte;
     value: float;
@@ -779,7 +786,7 @@ table Global {
 
 /// A placed actor (ACHR). Not built yet; quest aliases name them.
 struct ActorRef {
-    ref: uint32;
+    ref: uint32 (key);
     /// The NPC_.
     base: uint32;
     cell: uint32;
@@ -799,7 +806,7 @@ table RaceBodyPart {
 /// RACE: what an actor of this race is built from. Paths are normalized
 /// virtual paths. Per-sex vectors hold male, then female.
 table Race {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     /// ANAM: the skeleton NIF; its animation skeleton is the `.hkx` of the
     /// same name beside it.
@@ -822,7 +829,7 @@ table Race {
 
 /// ARMO: an item worn. Bit n of `slots` is body slot 30 + n.
 table Armor {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     slots: uint32;
     race: uint32;
@@ -833,7 +840,7 @@ table Armor {
 /// ARMA: one race's model of an armor. Weight slider bit 1 (2) means the
 /// model has `_0` (thin) and `_1` (heavy) variants; the path names `_1`.
 table ArmorAddon {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     slots: uint32;
     race: uint32;
@@ -848,7 +855,7 @@ table ArmorAddon {
 
 /// OTFT: ARMO and LVLI.
 table Outfit {
-    id: uint32;
+    id: uint32 (key);
     items: [uint32];
 }
 
@@ -868,7 +875,7 @@ enum LeveledListFlags : ubyte (bit_flags) {
 
 /// LVLI or LVLN.
 table LeveledList {
-    id: uint32;
+    id: uint32 (key);
     type: uint32;
     flags: LeveledListFlags;
     chance_none: ubyte;
@@ -906,7 +913,7 @@ enum NpcTemplateFlags : uint16 (bit_flags) {
 
 /// NPC_: what an actor base looks like and wears.
 table Npc {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     name: string;
     flags: NpcFlags;
@@ -1036,7 +1043,7 @@ enum PackageFlags : uint32 (bit_flags) {
 /// template's `branches` with the template's `inputs` overridden by its own,
 /// by key.
 table Package {
-    id: uint32;
+    id: uint32 (key);
     editor_id: string;
     type: ubyte;
     flags: PackageFlags;

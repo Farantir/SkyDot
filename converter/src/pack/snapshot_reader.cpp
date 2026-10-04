@@ -304,27 +304,14 @@ std::optional<FormView> Snapshot::find(record::FormId id) const {
     if (!impl_) {
         return std::nullopt;
     }
-    // Binary search; the writer sorts by id (see records.fbs and
-    // test_snapshot.cpp).
+    // `forms` is sorted by its (key), id; the writer sorts it (see records.fbs
+    // and test_snapshot.cpp).
     const auto* forms = impl_->root->forms();
-    if (forms == nullptr) {
+    const auto* form = forms != nullptr ? forms->LookupByKey(id.value) : nullptr;
+    if (form == nullptr) {
         return std::nullopt;
     }
-    std::size_t low = 0;
-    std::size_t high = forms->size();
-    while (low < high) {
-        const std::size_t mid = low + (high - low) / 2;
-        const auto value = forms->Get(static_cast<flatbuffers::uoffset_t>(mid))->id();
-        if (value == id.value) {
-            return impl_->view(*forms->Get(static_cast<flatbuffers::uoffset_t>(mid)));
-        }
-        if (value < id.value) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
-    }
-    return std::nullopt;
+    return impl_->view(*form);
 }
 
 std::optional<record::FormId> Snapshot::find_editor_id(std::string_view name) const {
@@ -375,27 +362,11 @@ std::span<const std::uint32_t> Snapshot::of_type(io::FourCC type) const {
         return {};
     }
     const auto* types = impl_->root->types();
-    if (types == nullptr) {
+    const auto* span = types != nullptr ? types->LookupByKey(type.value) : nullptr;
+    if (span == nullptr || span->forms() == nullptr) {
         return {};
     }
-    std::size_t low = 0;
-    std::size_t high = types->size();
-    while (low < high) {
-        const std::size_t mid = low + (high - low) / 2;
-        const auto* span = types->Get(static_cast<flatbuffers::uoffset_t>(mid));
-        if (span->type() == type.value) {
-            if (span->forms() == nullptr) {
-                return {};
-            }
-            return {span->forms()->data(), span->forms()->size()};
-        }
-        if (span->type() < type.value) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
-    }
-    return {};
+    return {span->forms()->data(), span->forms()->size()};
 }
 
 std::span<const std::uint32_t> Snapshot::children_of(record::FormId parent) const {
@@ -403,27 +374,11 @@ std::span<const std::uint32_t> Snapshot::children_of(record::FormId parent) cons
         return {};
     }
     const auto* lists = impl_->root->children();
-    if (lists == nullptr) {
+    const auto* list = lists != nullptr ? lists->LookupByKey(parent.value) : nullptr;
+    if (list == nullptr || list->children() == nullptr) {
         return {};
     }
-    std::size_t low = 0;
-    std::size_t high = lists->size();
-    while (low < high) {
-        const std::size_t mid = low + (high - low) / 2;
-        const auto* list = lists->Get(static_cast<flatbuffers::uoffset_t>(mid));
-        if (list->parent() == parent.value) {
-            if (list->children() == nullptr) {
-                return {};
-            }
-            return {list->children()->data(), list->children()->size()};
-        }
-        if (list->parent() < parent.value) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
-    }
-    return {};
+    return {list->children()->data(), list->children()->size()};
 }
 
 std::optional<record::FormId> Snapshot::cell_at(record::FormId world, std::int32_t x,
@@ -435,30 +390,17 @@ std::optional<record::FormId> Snapshot::cell_at(record::FormId world, std::int32
     if (worlds == nullptr) {
         return std::nullopt;
     }
-    const fb::WorldGrid* grid = nullptr;
-    std::size_t low = 0;
-    std::size_t high = worlds->size();
-    while (low < high) {
-        const std::size_t mid = low + (high - low) / 2;
-        const auto* candidate = worlds->Get(static_cast<flatbuffers::uoffset_t>(mid));
-        if (candidate->world() == world.value) {
-            grid = candidate;
-            break;
-        }
-        if (candidate->world() < world.value) {
-            low = mid + 1;
-        } else {
-            high = mid;
-        }
-    }
+    const auto* grid = worlds->LookupByKey(world.value);
     if (grid == nullptr || grid->cells() == nullptr) {
         return std::nullopt;
     }
 
+    // Two cells can share a square (the writer counts them), so GridCell.key
+    // is no `(key)` in records.fbs and this search stays by hand.
     const auto key = grid_key(x, y);
     const auto* cells = grid->cells();
-    low = 0;
-    high = cells->size();
+    std::size_t low = 0;
+    std::size_t high = cells->size();
     while (low < high) {
         const std::size_t mid = low + (high - low) / 2;
         const auto* cell = cells->Get(static_cast<flatbuffers::uoffset_t>(mid));

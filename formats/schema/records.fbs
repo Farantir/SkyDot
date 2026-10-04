@@ -20,8 +20,9 @@ struct Form {
     /// Payload offset in the blob (64-bit; see above).
     payload_offset: uint64;
 
-    /// Global FormID; the only identity downstream code uses.
-    id: uint32;
+    /// Global FormID; the only identity downstream code uses. `forms` is
+    /// sorted by it and it is unique, so it is the `(key)`.
+    id: uint32 (key);
 
     /// Record type FourCC, in file byte order.
     type: uint32;
@@ -51,7 +52,8 @@ struct Form {
 
 /// One exterior cell in its worldspace grid. `key` packs XCLC's two int32 as
 /// `(int64(x) << 32) | uint32(y)` so lookup is a binary search. Both
-/// coordinates can be negative.
+/// coordinates can be negative. Two cells can share a square, so `key` is not
+/// unique and not a `(key)`.
 struct GridCell {
     key: int64;
     cell: uint32;
@@ -59,20 +61,20 @@ struct GridCell {
 
 /// The exterior cells of one worldspace, sorted by `key`.
 table WorldGrid {
-    world: uint32;
+    world: uint32 (key);
     cells: [GridCell];
 }
 
 /// All forms of one record type, sorted.
 table TypeSpan {
-    type: uint32;
+    type: uint32 (key);
     forms: [uint32];
 }
 
 /// Forms whose `parent` is `parent`, sorted. Duplicates Form.parent so cell
 /// contents are one binary search instead of a scan.
 table ChildList {
-    parent: uint32;
+    parent: uint32 (key);
     children: [uint32];
 }
 

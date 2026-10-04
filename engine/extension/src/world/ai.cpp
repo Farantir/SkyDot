@@ -157,7 +157,7 @@ public:
             return 0.0;
         }
         const auto& w = *root;
-        const auto* actor = find_sorted(w.actors(), subject, [](const wfb::ActorRef* a) { return a->ref(); });
+        const auto* actor = lookup(w.actors(), subject);
         const std::uint32_t npc = subject == k_player_ref ? k_player_npc : actor != nullptr ? actor->base() : 0;
         const auto quest = [&](const char* key) -> Variant {
             if (ai_.vm_ == nullptr) {
@@ -359,7 +359,7 @@ SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
         return &it->second;
     }
     const auto* a = root() != nullptr
-                        ? find_sorted(root()->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); })
+                        ? lookup(root()->actors(), ref)
                         : nullptr;
     if (a == nullptr) {
         return nullptr;
@@ -421,7 +421,7 @@ std::optional<SkydotAi::Spot> SkydotAi::ref_spot(std::uint32_t ref) const {
     if (c == nullptr) {
         return std::nullopt;
     }
-    const auto* r = find_sorted(c->refs(), ref, [](const wfb::Ref* x) { return x->id(); });
+    const auto* r = lookup(c->refs(), ref);
     if (r == nullptr) {
         return std::nullopt;
     }
@@ -439,7 +439,7 @@ SkydotAi::Spot SkydotAi::actor_spot(const Mind& m) const {
 SkydotAi::Spot SkydotAi::editor_spot(const Mind& m) const {
     const auto* root_fb = root();
     const auto* a = root_fb != nullptr
-                        ? find_sorted(root_fb->actors(), m.ref, [](const wfb::ActorRef* r) { return r->ref(); })
+                        ? lookup(root_fb->actors(), m.ref)
                         : nullptr;
     if (a == nullptr) {
         return actor_spot(m);
@@ -453,7 +453,7 @@ std::uint32_t SkydotAi::linked_ref(std::uint32_t ref, std::uint32_t keyword) con
         return 0;
     }
     std::uint32_t cell = 0;
-    if (const auto* a = find_sorted(root()->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); })) {
+    if (const auto* a = lookup(root()->actors(), ref)) {
         cell = a->cell();
     } else {
         cell = static_cast<std::uint32_t>(world_->get_ref_cell(ref));

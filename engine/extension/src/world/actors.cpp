@@ -19,22 +19,22 @@ constexpr int k_max_depth = 8;
 constexpr std::uint32_t k_lvln = 0x4E4C564C; // "LVLN"
 
 const wfb::Npc* npc_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.npcs(), id, [](const wfb::Npc* n) { return n->id(); });
+    return lookup(w.npcs(), id);
 }
 const wfb::Race* race_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.races(), id, [](const wfb::Race* r) { return r->id(); });
+    return lookup(w.races(), id);
 }
 const wfb::Armor* armor_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.armors(), id, [](const wfb::Armor* a) { return a->id(); });
+    return lookup(w.armors(), id);
 }
 const wfb::ArmorAddon* addon_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.armor_addons(), id, [](const wfb::ArmorAddon* a) { return a->id(); });
+    return lookup(w.armor_addons(), id);
 }
 const wfb::LeveledList* list_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.leveled_lists(), id, [](const wfb::LeveledList* l) { return l->id(); });
+    return lookup(w.leveled_lists(), id);
 }
 const wfb::Outfit* outfit_of(const wfb::World& w, std::uint32_t id) {
-    return find_sorted(w.outfits(), id, [](const wfb::Outfit* o) { return o->id(); });
+    return lookup(w.outfits(), id);
 }
 
 /// One entry of a leveled list, the same every time for this reference:

@@ -119,7 +119,10 @@ container, the inner one the schema.
 
 `formats/schema/records.fbs` is normative. `Form` is a struct (47 MiB instead of
 ~130 MiB as tables at 1.18M forms), so editor ids and payloads are referenced
-from it. `forms` is sorted by `id`, unique and binary-searchable.
+from it. `forms` is sorted by `id`, unique and binary-searchable: `id` is the
+schema's `(key)`, so readers use flatc's `LookupByKey`. So are the
+keys of `types` (`type`), `children` (`parent`) and `worlds` (`world`); the
+cells of a worldspace's grid can share a square, so `GridCell.key` is not one.
 
 Indices: `forms` (id → form), `editor_ids`/`editor_id_forms` (parallel arrays
 sorted by name), `types` (type → sorted forms), `children` (parent → sorted
@@ -163,6 +166,12 @@ grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
+
+A vector said to be sorted by `id` or `ref` has that field marked `(key)` in
+`world.fbs`: unique, increasing, and found with flatc's `LookupByKey`. A
+cell's linked references, activate parents and primitives are sorted by `ref`
+too, but a reference can have several, so they have no key and a reader looks
+for the run of one reference.
 
 Flag words are `bit_flags` enums in the schema, and the fields have the enum as
 their type, the integer type they always had, so the bytes do not change.

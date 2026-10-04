@@ -396,7 +396,7 @@ std::string Package::editor_id() const {
 }
 
 const wfb::Package* find_package(const wfb::World& world, std::uint32_t id) {
-    return find_sorted(world.packages(), id, [](const wfb::Package* p) { return p->id(); });
+    return lookup(world.packages(), id);
 }
 
 Package resolve_package(const wfb::World& world, std::uint32_t id) {

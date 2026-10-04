@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Binary search over a sorted FlatBuffers vector by index. MSVC warns (an
-// error here) inside std::lower_bound over FlatBuffers' iterators, whose
-// 32-bit size type narrows its 64-bit difference type.
+// Searching a FlatBuffers vector that is sorted by a field. When the field is
+// unique the schema marks it `(key)` and flatc generates `LookupByKey`;
+// `lookup` calls it. A field that can repeat has no key, and
+// `first_at_least` finds where the run of one value starts. By index: MSVC
+// warns (an error here) inside std::lower_bound over FlatBuffers' iterators,
+// whose 32-bit size type narrows its 64-bit difference type.
 #pragma once
 
 #include <flatbuffers/flatbuffers.h>
@@ -10,6 +13,13 @@
 #include <cstdint>
 
 namespace skydot {
+
+/// The element whose `(key)` field is `key`, or null; also when the pack has
+/// no such vector (`list` is null).
+template <typename Vector, typename Key>
+auto lookup(const Vector* list, Key key) -> decltype(list->LookupByKey(key)) {
+    return list != nullptr ? list->LookupByKey(key) : nullptr;
+}
 
 /// Index of the first element whose `key_of` is not less than `key`;
 /// `list->size()` if none. `list` must not be null.
@@ -26,17 +36,6 @@ flatbuffers::uoffset_t first_at_least(const Vector* list, std::uint32_t key, Key
         }
     }
     return lo;
-}
-
-/// The element with exactly this key, or null.
-template <typename Vector, typename KeyOf>
-auto find_sorted(const Vector* list, std::uint32_t key, KeyOf key_of)
-    -> decltype(list->Get(0)) {
-    if (list == nullptr) {
-        return nullptr;
-    }
-    const auto i = first_at_least(list, key, key_of);
-    return i < list->size() && key_of(list->Get(i)) == key ? list->Get(i) : nullptr;
 }
 
 } // namespace skydot

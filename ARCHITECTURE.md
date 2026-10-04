@@ -657,8 +657,10 @@ and calls `build_indexes()`:
 - built lazily on first use: `ref_cells_`, `actor_of_`, locomotion, add-on
   node models, grass models, projected (MATO) materials.
 
-Lookups by id binary-search the sorted FlatBuffer vectors
-(`world/fb_search.hpp`).
+Lookups by id are flatc's `LookupByKey` (the schema marks the sorted vectors'
+ids `(key)`); `lookup` in `world/fb_search.hpp` also tolerates an absent
+vector, and `first_at_least` there finds the run of one reference in the
+vectors that can hold several (links, activate parents, primitives).
 
 **Queries for scripts and tools** return `Dictionary`/`Array`: `list_cells`,
 `get_cell`, `get_refs`, `get_base`, `get_door`, `get_ref_info`, `pick_ref`

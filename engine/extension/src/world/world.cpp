@@ -438,7 +438,7 @@ const wfb::Cell* SkydotWorld::cell_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    return find_sorted(cells, key, [](const wfb::Cell* c) { return c->id(); });
+    return lookup(cells, key);
 }
 
 const wfb::Worldspace* SkydotWorld::world_ptr(std::int64_t id) const {
@@ -447,7 +447,7 @@ const wfb::Worldspace* SkydotWorld::world_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    return find_sorted(worlds, key, [](const wfb::Worldspace* w) { return w->id(); });
+    return lookup(worlds, key);
 }
 
 const wfb::Cell* SkydotWorld::exterior_ptr(std::uint32_t world, std::int32_t x,
@@ -463,7 +463,7 @@ const wfb::Water* SkydotWorld::water_ptr(std::uint32_t id) const {
     if (waters == nullptr || id == 0) {
         return nullptr;
     }
-    return find_sorted(waters, id, [](const wfb::Water* w) { return w->id(); });
+    return lookup(waters, id);
 }
 
 std::uint32_t SkydotWorld::water_type(std::uint32_t world, const wfb::Cell* cell) const {
@@ -489,7 +489,7 @@ const wfb::Base* SkydotWorld::base_ptr(std::int64_t id) const {
         return nullptr;
     }
     const auto key = static_cast<std::uint32_t>(id);
-    return find_sorted(bases, key, [](const wfb::Base* b) { return b->id(); });
+    return lookup(bases, key);
 }
 
 std::int64_t SkydotWorld::find_cell(const String& editor_id) const {
@@ -584,10 +584,7 @@ Dictionary SkydotWorld::get_cell(std::int64_t id) const {
 Dictionary SkydotWorld::get_image_space(std::int64_t id) const {
     Dictionary out;
     const auto* list = root_ != nullptr ? root_->image_spaces() : nullptr;
-    const auto* is = list != nullptr && id != 0
-                         ? find_sorted(list, static_cast<std::uint32_t>(id),
-                                       [](const wfb::ImageSpace* i) { return i->id(); })
-                         : nullptr;
+    const auto* is = id != 0 ? lookup(list, static_cast<std::uint32_t>(id)) : nullptr;
     if (is == nullptr) {
         return out;
     }
@@ -839,7 +836,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         // against 0.098 as an offset and 0.114 ignored; COMPARISON-SHOTS.md).
         const wfb::LightOverride* own = nullptr;
         if (const auto* c = cell_ptr(cell); c != nullptr && c->light_overrides() != nullptr) {
-            own = find_sorted(c->light_overrides(), ref.id(), [](const wfb::LightOverride* o) { return o->ref(); });
+            own = lookup(c->light_overrides(), ref.id());
         }
         float radius = static_cast<float>(l->radius());
         if (own != nullptr && own->has_radius()) {
@@ -1032,8 +1029,7 @@ const ProjectedMaterial* SkydotWorld::projected_material(std::uint32_t id) const
         return it->second ? &*it->second : nullptr;
     }
     const auto* list = root_ != nullptr ? root_->material_objects() : nullptr;
-    const auto* mato = list != nullptr ? find_sorted(list, id, [](const wfb::MaterialObject* m) { return m->id(); })
-                                       : nullptr;
+    const auto* mato = lookup(list, id);
     if (mato == nullptr) {
         projected_.emplace(id, std::nullopt);
         return nullptr;
@@ -1140,7 +1136,7 @@ godot::Node3D* SkydotWorld::build_ref(std::int64_t cell_id, std::int64_t ref_id)
         return nullptr;
     }
     const auto id = static_cast<std::uint32_t>(ref_id);
-    const auto* it = find_sorted(refs, id, [](const wfb::Ref* r) { return r->id(); });
+    const auto* it = lookup(refs, id);
     if (it == nullptr) {
         return nullptr;
     }
@@ -1207,7 +1203,7 @@ std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_cell(std::uint32_t cell
     }
     if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
         for (const auto ref : it->second) {
-            const auto* a = find_sorted(root_->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); });
+            const auto* a = lookup(root_->actors(), ref);
             if (a != nullptr && placed_bucket(*a) != bucket) {
                 out.push_back({a, &actor_places_.at(ref)});
             }
@@ -1240,7 +1236,7 @@ std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_grid(std::uint32_t worl
     }
     if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
         for (const auto ref : it->second) {
-            const auto* a = find_sorted(root_->actors(), ref, [](const wfb::ActorRef* r) { return r->ref(); });
+            const auto* a = lookup(root_->actors(), ref);
             if (a != nullptr && placed_bucket(*a) != bucket) {
                 out.push_back({a, &actor_places_.at(ref)});
             }
@@ -1287,8 +1283,8 @@ std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
     Dictionary out;
-    const auto* a = find_sorted(root_ != nullptr ? root_->actors() : nullptr, static_cast<std::uint32_t>(ref),
-                                [](const wfb::ActorRef* r) { return r->ref(); });
+    const auto* a =
+        root_ != nullptr ? lookup(root_->actors(), static_cast<std::uint32_t>(ref)) : nullptr;
     if (a == nullptr) {
         return out;
     }
@@ -1460,9 +1456,7 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
 }
 
 const wfb::ActorRef* actor_ptr(const wfb::World* root, std::int64_t ref) {
-    return root != nullptr ? find_sorted(root->actors(), static_cast<std::uint32_t>(ref),
-                                         [](const wfb::ActorRef* a) { return a->ref(); })
-                           : nullptr;
+    return root != nullptr ? lookup(root->actors(), static_cast<std::uint32_t>(ref)) : nullptr;
 }
 
 } // namespace
@@ -1601,7 +1595,7 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
     }
     skeleton->set_name("Skeleton");
 
-    const auto* npc = find_sorted(root_->npcs(), plan.npc, [](const wfb::Npc* n) { return n->id(); });
+    const auto* npc = lookup(root_->npcs(), plan.npc);
     auto* node = memnew(SkydotActor);
     node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
@@ -1818,7 +1812,7 @@ std::array<std::string, 2> SkydotWorld::land_texture_paths(std::uint32_t id) con
     if (id == 0 || ltex == nullptr) {
         return {TerrainBuilder::k_default_texture, ""};
     }
-    const auto* it = find_sorted(ltex, id, [](const wfb::LandTexture* l) { return l->id(); });
+    const auto* it = lookup(ltex, id);
     if (it == nullptr) {
         return {TerrainBuilder::k_default_texture, ""};
     }
@@ -1920,12 +1914,10 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
         for (const auto* layer : *land->terrain()->layers()) {
             // The grass growing on it (build_grass), loaded ahead too.
             const auto* textures = grass_ ? root_->land_textures() : nullptr;
-            const auto* t = textures != nullptr && layer->texture() != 0
-                                ? find_sorted(textures, layer->texture(), [](const wfb::LandTexture* l) { return l->id(); })
-                                : nullptr;
+            const auto* t = layer->texture() != 0 ? lookup(textures, layer->texture()) : nullptr;
             if (t != nullptr && t->grasses() != nullptr && root_->grasses() != nullptr) {
                 for (const auto id : *t->grasses()) {
-                    const auto* g = find_sorted(root_->grasses(), id, [](const wfb::Grass* entry) { return entry->id(); });
+                    const auto* g = lookup(root_->grasses(), id);
                     if (g != nullptr && g->model() != nullptr && g->model()->size() != 0) {
                         const String path = model_path(g->model()->string_view());
                         if (!out.has(path)) {
@@ -2001,22 +1993,19 @@ Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t we
     if (ws == nullptr || climates == nullptr || weathers == nullptr) {
         return out;
     }
-    const auto find = [](const auto* list, std::uint32_t id) -> decltype(list->Get(0)) {
-        return find_sorted(list, id, [](const auto* e) { return e->id(); });
-    };
-    const wfb::Climate* climate = find(climates, ws->climate());
+    const wfb::Climate* climate = lookup(climates, ws->climate());
     if (climate == nullptr && ws->parent() != 0) {
         if (const auto* parent = world_ptr(ws->parent())) {
-            climate = find(climates, parent->climate());
+            climate = lookup(climates, parent->climate());
         }
     }
     const wfb::Weather* weather =
-        weather_id != 0 ? find(weathers, static_cast<std::uint32_t>(weather_id)) : nullptr;
+        weather_id != 0 ? lookup(weathers, static_cast<std::uint32_t>(weather_id)) : nullptr;
     if (weather == nullptr && climate != nullptr && climate->weathers() != nullptr) {
         std::int32_t best = -1;
         for (const auto* entry : *climate->weathers()) {
             if (entry->chance() > best) {
-                if (const auto* w = find(weathers, entry->weather())) {
+                if (const auto* w = lookup(weathers, entry->weather())) {
                     weather = w;
                     best = entry->chance();
                 }
@@ -2294,14 +2283,12 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
             std::vector<const wfb::Grass*> out;
             const auto* textures = root_->land_textures();
             const auto* list = root_->grasses();
-            const auto* t = textures != nullptr && ltex != 0
-                                ? find_sorted(textures, ltex, [](const wfb::LandTexture* l) { return l->id(); })
-                                : nullptr;
+            const auto* t = ltex != 0 ? lookup(textures, ltex) : nullptr;
             if (t == nullptr || t->grasses() == nullptr || list == nullptr) {
                 return out;
             }
             for (const auto id : *t->grasses()) {
-                if (const auto* g = find_sorted(list, id, [](const wfb::Grass* entry) { return entry->id(); })) {
+                if (const auto* g = lookup(list, id)) {
                     out.push_back(g);
                 }
             }

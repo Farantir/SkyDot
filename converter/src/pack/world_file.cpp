@@ -17,24 +17,11 @@ namespace {
 
 using record::FormId;
 
-/// The entry of a vector sorted by id with this id, or null. By index: MSVC
-/// warns about std::lower_bound over FlatBuffers' 32-bit iterators.
+/// The entry of a vector whose `(key)` is `id` (the schema marks them), or
+/// null; also for a file without the vector.
 template <typename T>
-const T* find_sorted(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uint32_t id) {
-    if (list == nullptr) {
-        return nullptr;
-    }
-    flatbuffers::uoffset_t lo = 0;
-    flatbuffers::uoffset_t hi = list->size();
-    while (lo < hi) {
-        const flatbuffers::uoffset_t mid = lo + (hi - lo) / 2;
-        if (list->Get(mid)->id() < id) {
-            lo = mid + 1;
-        } else {
-            hi = mid;
-        }
-    }
-    return lo < list->size() && list->Get(lo)->id() == id ? list->Get(lo) : nullptr;
+const T* lookup(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uint32_t id) {
+    return list != nullptr ? list->LookupByKey(id) : nullptr;
 }
 
 std::vector<record::Script> read_scripts(
@@ -345,11 +332,7 @@ std::size_t WorldFile::base_count() const noexcept {
 }
 
 std::optional<WorldCell> WorldFile::cell(std::uint32_t id) const {
-    const auto* cells = impl_->root->cells();
-    if (cells == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(cells, id);
+    const auto* it = lookup(impl_->root->cells(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -379,11 +362,7 @@ std::optional<WorldCell> WorldFile::cell_by_editor_id(std::string_view editor_id
 }
 
 std::optional<WorldBase> WorldFile::base(std::uint32_t id) const {
-    const auto* bases = impl_->root->bases();
-    if (bases == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(bases, id);
+    const auto* it = lookup(impl_->root->bases(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -420,14 +399,6 @@ namespace {
 
 std::string str(const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string{}; }
 
-template <typename T>
-const T* find_by_id(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uint32_t id) {
-    if (list == nullptr) {
-        return nullptr;
-    }
-    return find_sorted(list, id);
-}
-
 } // namespace
 
 std::size_t WorldFile::quest_count() const noexcept {
@@ -436,7 +407,7 @@ std::size_t WorldFile::quest_count() const noexcept {
 }
 
 std::optional<WorldQuest> WorldFile::quest(std::uint32_t id) const {
-    const auto* q = find_by_id(impl_->root->quests(), id);
+    const auto* q = lookup(impl_->root->quests(), id);
     if (q == nullptr) {
         return std::nullopt;
     }
@@ -503,7 +474,7 @@ std::optional<WorldQuest> WorldFile::quest(std::uint32_t id) const {
 }
 
 std::optional<WorldGlobal> WorldFile::global(std::uint32_t id) const {
-    const auto* g = find_by_id(impl_->root->globals(), id);
+    const auto* g = lookup(impl_->root->globals(), id);
     if (g == nullptr) {
         return std::nullopt;
     }
@@ -514,7 +485,7 @@ std::optional<WorldGlobal> WorldFile::global(std::uint32_t id) const {
 }
 
 std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {
-    const auto* n = find_by_id(impl_->root->npcs(), id);
+    const auto* n = lookup(impl_->root->npcs(), id);
     if (n == nullptr) {
         return std::nullopt;
     }
@@ -591,7 +562,7 @@ std::size_t WorldFile::package_count() const noexcept {
 }
 
 std::optional<WorldPackage> WorldFile::package(std::uint32_t id) const {
-    const auto* p = find_by_id(impl_->root->packages(), id);
+    const auto* p = lookup(impl_->root->packages(), id);
     if (p == nullptr) {
         return std::nullopt;
     }
@@ -657,7 +628,7 @@ std::optional<WorldPackage> WorldFile::package(std::uint32_t id) const {
 }
 
 std::optional<WorldRace> WorldFile::race(std::uint32_t id) const {
-    const auto* r = find_by_id(impl_->root->races(), id);
+    const auto* r = lookup(impl_->root->races(), id);
     if (r == nullptr) {
         return std::nullopt;
     }
@@ -696,7 +667,7 @@ std::optional<WorldRace> WorldFile::race(std::uint32_t id) const {
 }
 
 std::optional<WorldArmorAddon> WorldFile::armor_addon(std::uint32_t id) const {
-    const auto* a = find_by_id(impl_->root->armor_addons(), id);
+    const auto* a = lookup(impl_->root->armor_addons(), id);
     if (a == nullptr) {
         return std::nullopt;
     }
@@ -767,11 +738,7 @@ std::vector<Worldspace> WorldFile::worldspaces() const {
 }
 
 std::optional<WorldLandTexture> WorldFile::land_texture(std::uint32_t id) const {
-    const auto* ltex = impl_->root->land_textures();
-    if (ltex == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(ltex, id);
+    const auto* it = lookup(impl_->root->land_textures(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -786,11 +753,7 @@ std::optional<WorldLandTexture> WorldFile::land_texture(std::uint32_t id) const 
 }
 
 std::optional<WorldWater> WorldFile::water(std::uint32_t id) const {
-    const auto* waters = impl_->root->waters();
-    if (waters == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(waters, id);
+    const auto* it = lookup(impl_->root->waters(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -828,11 +791,7 @@ std::optional<WorldWater> WorldFile::water(std::uint32_t id) const {
 }
 
 std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
-    const auto* climates = impl_->root->climates();
-    if (climates == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(climates, id);
+    const auto* it = lookup(impl_->root->climates(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -856,11 +815,7 @@ std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
 }
 
 std::optional<WorldImageSpace> WorldFile::image_space(std::uint32_t id) const {
-    const auto* list = impl_->root->image_spaces();
-    if (list == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(list, id);
+    const auto* it = lookup(impl_->root->image_spaces(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -879,11 +834,7 @@ std::optional<WorldImageSpace> WorldFile::image_space(std::uint32_t id) const {
 }
 
 std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
-    const auto* weathers = impl_->root->weathers();
-    if (weathers == nullptr) {
-        return std::nullopt;
-    }
-    const auto* it = find_sorted(weathers, id);
+    const auto* it = lookup(impl_->root->weathers(), id);
     if (it == nullptr) {
         return std::nullopt;
     }
@@ -940,7 +891,7 @@ std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
 }
 
 std::optional<WorldPrecipitation> WorldFile::precipitation(std::uint32_t id) const {
-    const auto* it = find_sorted(impl_->root->precipitations(), id);
+    const auto* it = lookup(impl_->root->precipitations(), id);
     if (it == nullptr) {
         return std::nullopt;
     }

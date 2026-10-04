@@ -25,14 +25,6 @@ String text(const flatbuffers::String* s) {
     return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
 }
 
-template <typename T>
-const T* by_id(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::uint32_t id) {
-    if (list == nullptr) {
-        return nullptr;
-    }
-    return find_sorted(list, id, [](const T* e) { return e->id(); });
-}
-
 String fourcc_text(std::uint32_t v) {
     if (v == 0) {
         return {};
@@ -52,7 +44,7 @@ std::int64_t SkydotWorld::get_quest_count() const {
 }
 
 bool SkydotWorld::has_quest(std::int64_t id) const {
-    return by_id(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
+    return lookup(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
 }
 
 Array SkydotWorld::list_quests(const String& filter) const {
@@ -94,7 +86,7 @@ std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
 
 Dictionary SkydotWorld::get_quest(std::int64_t id) const {
     Dictionary out;
-    const auto* q = by_id(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* q = lookup(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id));
     if (q == nullptr) {
         return out;
     }
@@ -197,7 +189,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_global(std::int64_t id) const {
     Dictionary out;
-    const auto* g = by_id(root_ != nullptr ? root_->globals() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* g = lookup(root_ != nullptr ? root_->globals() : nullptr, static_cast<std::uint32_t>(id));
     if (g == nullptr) {
         return out;
     }
@@ -216,7 +208,7 @@ Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
         return out;
     }
     const auto id = static_cast<std::uint32_t>(ref);
-    const auto* it = find_sorted(actors, id, [](const wfb::ActorRef* a) { return a->ref(); });
+    const auto* it = lookup(actors, id);
     if (it == nullptr) {
         return out;
     }

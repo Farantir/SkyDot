@@ -63,7 +63,8 @@ bool usable_type(std::uint32_t type) {
     return std::ranges::find(k_types, type) != std::end(k_types);
 }
 
-/// Elements of a struct vector sorted by `ref()` that belong to `ref`.
+/// Elements of a struct vector sorted by `ref()` that belong to `ref`: for the
+/// vectors a reference can have several entries in.
 template <typename T>
 std::vector<const T*> by_ref(const flatbuffers::Vector<const T*>* list, std::uint32_t ref) {
     std::vector<const T*> out;
@@ -78,19 +79,11 @@ std::vector<const T*> by_ref(const flatbuffers::Vector<const T*>* list, std::uin
 }
 
 const wfb::RefScripts* ref_scripts(const wfb::Cell& cell, std::uint32_t ref) {
-    const auto* list = cell.scripts();
-    if (list == nullptr) {
-        return nullptr;
-    }
-    return find_sorted(list, ref, [](const wfb::RefScripts* r) { return r->ref(); });
+    return lookup(cell.scripts(), ref);
 }
 
 const wfb::Ref* find_ref(const wfb::Cell& cell, std::uint32_t id) {
-    const auto* refs = cell.refs();
-    if (refs == nullptr) {
-        return nullptr;
-    }
-    return find_sorted(refs, id, [](const wfb::Ref* r) { return r->id(); });
+    return lookup(cell.refs(), id);
 }
 
 Variant object_value(const wfb::ScriptObject& object) {
@@ -325,14 +318,13 @@ Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) 
         out["primitive"] = primitive;
     }
 
-    const auto locks = by_ref(cell->locks(), id);
-    if (locks.empty()) {
-        out["lock"] = Variant();
-    } else {
+    if (const auto* locked = lookup(cell->locks(), id)) {
         Dictionary lock;
-        lock["level"] = static_cast<std::int64_t>(locks.front()->level());
-        lock["key"] = static_cast<std::int64_t>(locks.front()->key());
+        lock["level"] = static_cast<std::int64_t>(locked->level());
+        lock["key"] = static_cast<std::int64_t>(locked->key());
         out["lock"] = lock;
+    } else {
+        out["lock"] = Variant();
     }
     const Dictionary door = get_door(id);
     out["door"] = door.is_empty() ? Variant() : Variant(door);

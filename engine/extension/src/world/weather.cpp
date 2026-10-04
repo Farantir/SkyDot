@@ -236,9 +236,7 @@ godot::Error SkydotWeather::setup(const Ref<SkydotWorld>& pack_world, std::int64
     }
     const auto climate_of = [&](std::uint32_t id) -> const wfb::Climate* {
         const auto* ws = world_->world_ptr(id);
-        return ws != nullptr ? find_sorted(world_->root_->climates(), ws->climate(),
-                                           [](const wfb::Climate* c) { return c->id(); })
-                             : nullptr;
+        return ws != nullptr ? lookup(world_->root_->climates(), ws->climate()) : nullptr;
     };
     climate_ = climate_of(world_id_);
     if (climate_ == nullptr) {
@@ -267,8 +265,7 @@ const SkydotWeather::Weather* SkydotWeather::weather_ptr(std::int64_t id) const 
     if (world_.is_null() || world_->root_ == nullptr || id == 0) {
         return nullptr;
     }
-    return find_sorted(world_->root_->weathers(), static_cast<std::uint32_t>(id),
-                       [](const Weather* w) { return w->id(); });
+    return lookup(world_->root_->weathers(), static_cast<std::uint32_t>(id));
 }
 
 void SkydotWeather::set_weather(std::int64_t weather, double seconds) {
@@ -469,9 +466,8 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
     if (const auto* ids = weather->image_spaces(); ids != nullptr && ids->size() >= 4 &&
         world_->root_->image_spaces() != nullptr) {
         const auto values = [&](int time, std::array<float, 16>& into) {
-            const auto* is = find_sorted(world_->root_->image_spaces(),
-                                         ids->Get(static_cast<flatbuffers::uoffset_t>(time)),
-                                         [](const bethconv::pack::wfb::ImageSpace* i) { return i->id(); });
+            const auto* is = lookup(world_->root_->image_spaces(),
+                                    ids->Get(static_cast<flatbuffers::uoffset_t>(time)));
             // Neutral where a part is missing: white 1, saturation,
             // brightness and contrast 1, no tint.
             into = {0, 0, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1};
@@ -921,9 +917,7 @@ void SkydotWeather::configure_precipitation(const Weather* weather) {
         return;
     }
     particles_for_ = id;
-    const auto* p = id != 0 ? find_sorted(world_->root_->precipitations(), id,
-                                          [](const wfb::Precipitation* e) { return e->id(); })
-                            : nullptr;
+    const auto* p = id != 0 ? lookup(world_->root_->precipitations(), id) : nullptr;
     if (p == nullptr) {
         particles_->set_emitting(false);
         return;
