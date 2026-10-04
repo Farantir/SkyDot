@@ -141,12 +141,6 @@ jobs:
         with:
           submodules: true
 
-      - name: The converter's test pack
-        uses: actions/download-artifact@v4
-        with:
-          name: testpack
-          path: ${{ github.workspace }}/testpack
-
       - name: Godot editor (headless runs only; the smoke tests are editor runs)
         if: runner.os == 'Linux'
         run: |
@@ -182,7 +176,18 @@ jobs:
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }} -- -k 0
 
-      - name: Test
+      # Native tests of skydot_core: no editor, no test pack, so they run
+      # before the pack is fetched and report even if the converter job failed.
+      - name: Unit tests
+        run: ctest --preset ${{ matrix.preset }} -L unit
+
+      - name: The converter's test pack
+        uses: actions/download-artifact@v4
+        with:
+          name: testpack
+          path: ${{ github.workspace }}/testpack
+
+      - name: Smoke tests
         env:
           SKYDOT_TESTPACK_REQUIRE: "1"
-        run: ctest --preset ${{ matrix.preset }}
+        run: ctest --preset ${{ matrix.preset }} -LE unit

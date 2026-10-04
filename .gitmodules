@@ -10,3 +10,6 @@
 [submodule "converter/extern/bc7enc_rdo"]
 	path = converter/extern/bc7enc_rdo
 	url = https://github.com/richgel999/bc7enc_rdo
+[submodule "engine/extern/catch2"]
+	path = engine/extern/catch2
+	url = https://github.com/catchorg/Catch2

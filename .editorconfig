@@ -39,7 +39,7 @@ indent_style = space
 indent_style = tab
 
 # Submodules keep their own style.
-[{engine/extern/{flatbuffers,godot-cpp},converter/extern/{bc7enc_rdo,nifly}}/**]
+[{engine/extern/{catch2,flatbuffers,godot-cpp},converter/extern/{bc7enc_rdo,nifly}}/**]
 charset = unset
 end_of_line = unset
 insert_final_newline = unset

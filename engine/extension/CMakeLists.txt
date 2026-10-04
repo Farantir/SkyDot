@@ -21,6 +21,47 @@ foreach(schema IN ITEMS world script lod animation)
         VERBATIM)
 endforeach()
 
+# One target runs flatc: the extension and skydot_core both read the headers,
+# and a rule listed in two targets can run twice at once.
+add_custom_target(skydot_flatbuffers DEPENDS
+    "${SKYDOT_WORLD_HEADER}"
+    "${SKYDOT_SCRIPT_HEADER}"
+    "${SKYDOT_LOD_HEADER}"
+    "${SKYDOT_ANIMATION_HEADER}")
+
+# The sources that do not touch Godot: the Papyrus VM and its saves, AI
+# packages, actor plans and virtual paths. A static library, so the unit tests
+# (tests/unit) link the code the extension runs without godot-cpp. Nothing in
+# it may include a godot-cpp header: that would stop the tests building.
+add_library(skydot_core STATIC
+    src/assets/vpath.cpp
+    src/assets/vpath.hpp
+    src/vm/save.cpp
+    src/vm/script_class.cpp
+    src/vm/script_class.hpp
+    src/vm/value.hpp
+    src/vm/vm.cpp
+    src/vm/vm.hpp
+    src/world/actors.cpp
+    src/world/actors.hpp
+    src/world/packages.cpp
+    src/world/packages.hpp)
+add_dependencies(skydot_core skydot_flatbuffers)
+target_include_directories(skydot_core PUBLIC src "${SKYDOT_FB_DIR}")
+target_include_directories(skydot_core SYSTEM PUBLIC
+    "${CMAKE_SOURCE_DIR}/extern/flatbuffers/include")
+target_link_libraries(skydot_core PRIVATE skydot::warnings)
+# Compiled like the extension: the flags godot-cpp passes on (-fno-gnu-unique
+# for hot reload, the MSVC exception setting), but not its include path.
+target_compile_options(skydot_core PRIVATE
+    "$<TARGET_PROPERTY:godot-cpp,INTERFACE_COMPILE_OPTIONS>")
+target_compile_definitions(skydot_core PRIVATE
+    "$<TARGET_PROPERTY:godot-cpp,INTERFACE_COMPILE_DEFINITIONS>")
+set_target_properties(skydot_core PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+    POSITION_INDEPENDENT_CODE ON)
+
 add_library(skydot SHARED)
 
 target_sources(skydot PRIVATE
@@ -34,17 +75,11 @@ target_sources(skydot PRIVATE
     src/assets/pack.hpp
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
-    src/assets/vpath.cpp
-    src/assets/vpath.hpp
     src/world/actor.cpp
     src/world/actor.hpp
     src/world/actor_animation.cpp
-    src/world/actors.cpp
-    src/world/actors.hpp
     src/world/ai.cpp
     src/world/ai.hpp
-    src/world/packages.cpp
-    src/world/packages.hpp
     src/world/actor_animation.hpp
     src/world/animator.cpp
     src/world/locomotion.cpp
@@ -75,27 +110,18 @@ target_sources(skydot PRIVATE
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp
-    src/vm/save.cpp
-    src/vm/script_class.cpp
-    src/vm/script_class.hpp
-    src/vm/value.hpp
-    src/vm/vm.cpp
-    src/vm/vm.hpp
     src/world/world.cpp
     src/world/refs.cpp
     src/world/lod.cpp
     src/world/lod.hpp
     src/world/quests.cpp
-    src/world/world.hpp
-    "${SKYDOT_WORLD_HEADER}"
-    "${SKYDOT_SCRIPT_HEADER}"
-    "${SKYDOT_LOD_HEADER}"
-    "${SKYDOT_ANIMATION_HEADER}")
+    src/world/world.hpp)
+add_dependencies(skydot skydot_flatbuffers)
 
 target_include_directories(skydot PRIVATE src "${SKYDOT_FB_DIR}")
 target_include_directories(skydot SYSTEM PRIVATE
     "${CMAKE_SOURCE_DIR}/extern/flatbuffers/include")
-target_link_libraries(skydot PRIVATE godot::cpp skydot::warnings)
+target_link_libraries(skydot PRIVATE skydot_core godot::cpp skydot::warnings)
 
 get_target_property(_godotcpp_suffix godot-cpp GODOTCPP_SUFFIX)
 

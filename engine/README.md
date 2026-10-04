@@ -88,6 +88,9 @@ The engine shows interior cells and streams exterior ones. What exists:
   functions.
 - **Cell viewer** (`game/viewer/`): flatscreen fly camera, or four screenshots
   and exit.
+- **Unit tests** (`tests/unit/`, Catch2): the Papyrus VM and its saves, AI
+  packages, actor plans and virtual paths, native and in milliseconds. Their
+  inputs (scripts, `world.fb`) are built in memory.
 - **Smoke tests** (headless editor runs): the extension loads; each refusal
   path is triggered with files the test writes; the converter's test pack is
   mounted and queried; its four meshes and its textures (a cube map among
@@ -204,13 +207,14 @@ the end of such a run, `--load FILE` loads at the start. Add
 
 Needs CMake ≥ 3.28, Ninja, a C++20 compiler, Python 3 (for godot-cpp's binding
 generator) and a Godot 4.7 editor on `PATH` as `godot4.7`, `godot4` or `godot`
-(or `$GODOT`).
+(or `$GODOT`). The unit tests need no editor.
 
 ```sh
 git submodule update --init
 cmake --preset linux-debug
 cmake --build --preset linux-debug     # -> game/bin/libskydot.linux.template_debug.x86_64.so
-ctest --preset linux-debug             # 14 tests, 21 with the converter's test pack
+ctest --preset linux-debug             # unit tests, then 14 smoke tests, 21 with the converter's test pack
+ctest --preset linux-debug -L unit     # only the unit tests: no editor, no test pack
 ../tools/ci/check-no-game-data.sh
 ```
 
@@ -273,11 +277,13 @@ game/                     the Godot project (.gdextension, project.godot, glue)
   packtool/               the pack tool (main scene): convert, list, view
   viewer/                 cell viewer
   tools/                  headless checks against a real pack
+tests/unit/               Catch2 tests of skydot_core, the Godot-free sources
 tests/smoke/              headless editor runs, registered with ctest
 tools/ci/                 repository checks
 docs/godot-notes.md       observations about the editor and bindings
 extern/godot-cpp          submodule, master, bindings for 4.7
 extern/flatbuffers        submodule, v25.12.19 (headers and flatc)
+extern/catch2             submodule, v3.16.0 (the unit tests)
 ```
 
 ## Licence

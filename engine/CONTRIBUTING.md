@@ -67,8 +67,11 @@ copied or linked.
   cmake --build --preset linux-debug && ctest --preset linux-debug
   ../tools/ci/check-no-game-data.sh
   ```
-- Tests are headless editor runs (`tests/smoke/`). Each refusal path gets a test
-  that triggers it with a file the test writes; new reported numbers are checked
+- Code that does not touch Godot goes in `skydot_core` (see
+  `extension/CMakeLists.txt`) and is covered by Catch2 tests in `tests/unit/`,
+  which build their inputs in memory and need no editor. Anything else is a
+  headless editor run (`tests/smoke/`). Each refusal path gets a test that
+  triggers it with a file the test writes; new reported numbers are checked
   against the test pack (see `converter/tools/testpack/main.cpp`).
 - Record hard-won facts about the editor and bindings in `docs/godot-notes.md`,
   with version and date.

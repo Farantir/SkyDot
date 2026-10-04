@@ -14,7 +14,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
-option(SKYDOT_BUILD_TESTS "Register the headless Godot smoke tests with ctest" ON)
+option(SKYDOT_BUILD_TESTS "Build the unit tests and register them and the headless Godot smoke tests with ctest" ON)
 option(SKYDOT_WERROR "Treat warnings as errors" ON)
 
 # godot-cpp options; set before add_subdirectory, since godotcpp_options()
@@ -44,5 +44,10 @@ add_subdirectory(extension)
 
 if(SKYDOT_BUILD_TESTS)
     enable_testing()
+    # Catch2 for the unit tests; SYSTEM keeps its headers out of our warnings.
+    set(CATCH_INSTALL_DOCS OFF CACHE BOOL "" FORCE)
+    set(CATCH_INSTALL_EXTRAS OFF CACHE BOOL "" FORCE)
+    add_subdirectory(extern/catch2 EXCLUDE_FROM_ALL SYSTEM)
+    list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/extern/catch2/extras")
     add_subdirectory(tests)
 endif()

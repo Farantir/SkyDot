@@ -1,5 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
+# Native unit tests of the Godot-free half. They come first: the lookup below
+# returns when there is no editor, and they need none.
+add_subdirectory(unit)
+
 # Headless Godot runs: the test is the editor actually loading the library.
 # Each script in smoke/ is a SceneTree that exits with its error count.
 #
