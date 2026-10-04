@@ -81,7 +81,7 @@ SkyDot/
 ├── converter/                        bethconv
 │   ├── include/bethconv/<layer>/     public headers (~7,900 lines)
 │   ├── src/<layer>/                  implementation (~22,400 lines)
-│   ├── tools/bethconv-cli/           the `bethconv` command (~3,900 lines)
+│   ├── tools/bethconv-cli/           the `bethconv` command (~4,600 lines)
 │   ├── tools/testpack/               synthetic test pack generator (~2,000)
 │   ├── tests/                        unit, corpus, fuzz, testpack (~22,200)
 │   ├── docs/                         ADRs, format notes, spikes (~4,100)
@@ -515,17 +515,20 @@ structs. The engine does *not* use it; it reads the FlatBuffer directly.
 
 ### 5.12 The CLI (`tools/bethconv-cli/`)
 
-`main.cpp` registers about 20 CLI11 subcommands: `convert`, `detect`, `mo2`,
-`target`, `info`, `cell`, `view`, `verify`, `scan`, `extract`, `mesh`,
-`texture`, `script`, `animation`, `records`, `forms`, `strings`, `merge`,
-`snapshot`, `loadorder`, `probe`. `front_end.*` holds the commands a
-graphical front end needs (`detect`, `mo2`, `target`, `info`), the
-output-target verdict (`check_target`), the JSON shapes and
-`k_json_version`. With `--json`, `detect`,
-`mo2`, `target`, `info`, `cell` and `convert` print machine-readable JSON
-(`converter/docs/cli-json.md`). `convert --json` streams one event per line
-(`start`, `progress` per phase, `result`/`error`); the pack tool reads that
-stream.
+`main.cpp` sets up the CLI11 app and calls one `register_<name>` per
+subcommand: `convert`, `detect`, `mo2`, `target`, `info`, `cell`, `view`,
+`verify`, `scan`, `extract`, `mesh`, `texture`, `script`, `animation`,
+`records`, `forms`, `strings`, `merge`, `snapshot`, `loadorder`, `probe`. Each
+lives in `commands/<name>.cpp` with its args struct, its `cmd_*` function and
+its options; what several share (mounting, the load order `merge`,
+`snapshot` and `verify` agree on, the output-target check, the exit status) is
+in `common.*`. `front_end.*` holds the commands a graphical front end needs
+(`detect`, `mo2`, `target`, `info`), the output-target verdict
+(`check_target`), the JSON shapes and `k_json_version`. With `--json`,
+`detect`, `mo2`, `target`, `info`, `cell` and `convert` print
+machine-readable JSON (`converter/docs/cli-json.md`). `convert --json` streams
+one event per line (`start`, `progress` per phase, `result`/`error`); the pack
+tool reads that stream.
 
 ---
 

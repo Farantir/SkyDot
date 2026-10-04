@@ -7,9 +7,9 @@
 //   target   whether a folder is a good place for a pack
 //   info     what a pack holds and how much of its blob is stale
 //
-// `convert --json` (main.cpp) reports progress as JSON lines too. Every JSON
-// document is one line on stdout; human-readable text goes to stderr then.
-// The shapes are documented in docs/cli-json.md.
+// `convert --json` (commands/convert.cpp) reports progress as JSON lines too.
+// Every JSON document is one line on stdout; human-readable text goes to
+// stderr then. The shapes are documented in docs/cli-json.md.
 #pragma once
 
 #include "bethconv/install/game_install.hpp"
