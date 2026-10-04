@@ -552,6 +552,23 @@ TEST_CASE("array opcodes: create, length, find from either end", "[vm][arrays]")
 
 // ---- values -----------------------------------------------------------------
 
+TEST_CASE("an array cannot hold an array, so none can hold itself", "[vm][arrays][errors]") {
+    // Run() tries to store an array in itself, then prints it: with the cycle
+    // that would never end.
+    auto run = global_function("run", {}, {{"list", "Int[]"}, {"text", "String"}}, "String");
+    run.add(Op::array_create, {ident("list"), integer(2)})
+        .add(Op::array_setelement, {ident("list"), integer(0), ident("list")})
+        .add(Op::strcat, {ident("text"), ident("list"), str("")})
+        .add(Op::return_, {ident("text")});
+    Rig rig;
+    rig.add(script("Nest", {run}));
+
+    CHECK(rig.call("nest", "run").s == "[0, 0]");
+    CHECK(rig.vm.errors() == 1);
+    REQUIRE(rig.log.size() == 1);
+    CHECK_THAT(rig.log[0], ContainsSubstring("cannot hold an array"));
+}
+
 TEST_CASE("values: defaults, truth, text and conversions", "[vm][values]") {
     Rig rig;
     using skydot::vm::Vm;

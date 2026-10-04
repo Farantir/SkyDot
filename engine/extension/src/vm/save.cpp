@@ -13,7 +13,8 @@
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
-// first time it appears, so shared arrays stay shared.
+// first time it appears, so shared arrays stay shared. An array holds no
+// arrays, as in Papyrus; a save that nests them is refused.
 //
 // Loading treats the bytes as untrusted: every read is bounds-checked, and a
 // frame is only restored if its function exists, its registers match and its
@@ -319,7 +320,10 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
             auto array = std::make_shared<Array>(n);
             arrays[id] = array;
             for (auto& e : *array) {
-                if (!read_value(e)) {
+                // Papyrus arrays hold no arrays, so a save has no cycle to
+                // follow; one that does (an array holding itself, or two
+                // holding each other) would send to_string around forever.
+                if (!read_value(e) || e.kind == Kind::array) {
                     return false;
                 }
             }

@@ -954,8 +954,12 @@ bool Vm::step(Thread& thread) {
         const auto index = as_int(read(fr, a + 1));
         if (arr.kind != Kind::array || index < 0 || static_cast<std::size_t>(index) >= arr.array->size()) {
             error(where(fr) + ": array index " + std::to_string(index) + " out of range");
+        } else if (Value element = read(fr, a + 2); element.kind == Kind::array) {
+            // Papyrus has no arrays of arrays; one could hold itself, and
+            // to_string would never return.
+            error(where(fr) + ": an array cannot hold an array");
         } else {
-            (*arr.array)[static_cast<std::size_t>(index)] = read(fr, a + 2);
+            (*arr.array)[static_cast<std::size_t>(index)] = std::move(element);
         }
         return next();
     }

@@ -11,8 +11,10 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 using namespace skydot::testing;
@@ -360,5 +362,93 @@ TEST_CASE("a save of other scripts than the pack's is refused", "[vm][save][erro
         CHECK_FALSE(changed.vm.load(bytes, error));
         CHECK_THAT(error, ContainsSubstring("saver"));
         CHECK(changed.vm.instances(0x10).empty());
+    }
+}
+
+namespace {
+
+using Bytes = std::vector<std::uint8_t>;
+
+void put_u32(Bytes& out, std::uint32_t v) {
+    for (int s = 0; s < 32; s += 8) {
+        out.push_back(static_cast<std::uint8_t>((v >> s) & 0xFFU));
+    }
+}
+
+/// A hand-written save: one instance of `Holder` (form 0x10) whose only
+/// variable is `list`, and no threads, results or timers. `value` is the
+/// bytes of that variable's value.
+Bytes holder_save(const Bytes& value) {
+    Bytes out;
+    const auto text = [&](std::string_view t) {
+        put_u32(out, static_cast<std::uint32_t>(t.size()));
+        out.insert(out.end(), t.begin(), t.end());
+    };
+    out.insert(out.end(), {'S', 'K', 'P', 'V'});
+    put_u32(out, 1);                     // version
+    out.insert(out.end(), 8 + 8 + 8, 0); // time, next thread, random state
+    put_u32(out, 1);                     // instances
+    put_u32(out, 0x10);
+    text("holder");
+    text("");
+    put_u32(out, 1); // variable levels
+    text("holder");
+    put_u32(out, 1); // variables
+    out.insert(out.end(), value.begin(), value.end());
+    put_u32(out, 0); // threads
+    put_u32(out, 0); // results
+    put_u32(out, 0); // timers
+    return out;
+}
+
+/// An array value (kind 6, its id, its element count) followed by the
+/// elements' bytes. An id seen before is written alone, as `array_ref`.
+Bytes array_of(std::uint32_t id, std::uint32_t count, const Bytes& elements) {
+    Bytes out{6};
+    put_u32(out, id);
+    put_u32(out, count);
+    out.insert(out.end(), elements.begin(), elements.end());
+    return out;
+}
+
+Bytes array_ref(std::uint32_t id) {
+    Bytes out{6};
+    put_u32(out, id);
+    return out;
+}
+
+Bytes int_value(std::uint32_t v) {
+    Bytes out{1};
+    put_u32(out, v);
+    return out;
+}
+
+} // namespace
+
+// An array that holds itself, or two that hold each other, made
+// Vm::to_string recurse until the stack ran out. Papyrus has no arrays of
+// arrays, so a save with one is not from the game and is refused.
+TEST_CASE("a save whose arrays hold arrays is refused", "[vm][save][errors]") {
+    SaverRig s(script("Holder", {}, {{"list", "Int[]"}}), false);
+
+    SECTION("an array holding itself") { check_refused_and_empty(s.vm(), holder_save(array_of(0, 1, array_ref(0)))); }
+    SECTION("two arrays holding each other") {
+        check_refused_and_empty(s.vm(), holder_save(array_of(0, 1, array_of(1, 1, array_ref(0)))));
+    }
+    SECTION("an array holding another, with no cycle") {
+        check_refused_and_empty(s.vm(), holder_save(array_of(0, 1, array_of(1, 1, int_value(5)))));
+    }
+    SECTION("the same layout with plain elements loads") {
+        Bytes elements = int_value(5);
+        const Bytes second = int_value(6);
+        elements.insert(elements.end(), second.begin(), second.end());
+        std::string error;
+        REQUIRE(s.vm().load(holder_save(array_of(0, 2, elements)), error));
+        auto* holder = s.vm().instance(0x10, "holder");
+        REQUIRE(holder != nullptr);
+        const auto list = s.vm().get_variable(holder, "list");
+        REQUIRE(list.kind == Kind::array);
+        REQUIRE(list.array->size() == 2);
+        CHECK(list.array->at(1).i == 6);
     }
 }
