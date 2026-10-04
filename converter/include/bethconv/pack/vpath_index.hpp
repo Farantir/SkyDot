@@ -8,9 +8,11 @@
 // shared layout vocabulary (asset kinds, extensions, paths) live here so both
 // sides use one implementation.
 //
-//     # bethconv vpath index v1
+//     # bethconv vpath index v6
 //     # virtual path\tcontent hash\tkind\twinning source
 //     meshes/clutter/apple01.nif\t3f9c...\tmesh\tSkyrim - Meshes0.bsa
+//
+// The version is `k_pack_format_version`, shown here as 6.
 //
 // Tab-separated, sorted, one line per virtual path. Text because it is used to
 // debug mod overrides (which archive won, did it change), so people read it and

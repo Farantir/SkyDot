@@ -111,7 +111,10 @@ namespace {
 /// composed. 11: compressed-mesh triangles listed after a chunk's strips.
 /// 12: cylinder, strips and plane collision shapes. 13: sky shaders' texture.
 /// 14: inverse bind matrices include the skinned shape's own placement.
-/// 15: quadratic keys' in and out tangents the right way round.
+/// 15: quadratic keys' in and out tangents the right way round. 16: hair and
+/// skin tint colours in the material extras. 17: BSOrderedNode children's draw
+/// order. 18: BSWaterShaderProperty named instead of "other". 19: AddOnNode
+/// indices in the node extras.
 std::string ConvertOptions::mesh_settings() const {
     return "mesh/19;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
