@@ -1,132 +1,35 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/world.hpp"
 
-#include "bethconv/archive/vpath.hpp"
-#include "bethconv/io/byte_view.hpp"
-#include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_stream.hpp"
-#include "bethconv/record/field_walk.hpp"
-#include "bethconv/record/forms.hpp"
-#include "bethconv/record/forms_actor.hpp"
-#include "bethconv/record/forms_game.hpp"
-#include "bethconv/record/forms_object.hpp"
-#include "bethconv/record/forms_world.hpp"
-#include "bethconv/record/types.hpp"
 
-#include "world/actors.hpp"
-#include "world/ai.hpp"
-#include "world/bases.hpp"
-#include "world/context.hpp"
-#include "world/environment.hpp"
-#include "world/fb_write.hpp"
-#include "world/places.hpp"
-#include "world/quests.hpp"
+#include "world/sink.hpp"
 
 #include "bethconv/pack/world_generated.h"
 
-#include <algorithm>
-#include <cctype>
-#include <cstdio>
-#include <map>
+#include <cstdint>
+#include <span>
 #include <string>
-#include <unordered_map>
-#include <utility>
+#include <vector>
 
 namespace bethconv::pack {
-namespace {
-
-using detail::model_vpath;
-using detail::texture_vpath;
-using detail::write_scripts;
-using io::FourCC;
-using record::FormId;
-
-class WorldSink final : public record::MergedRecordSink {
-public:
-    explicit WorldSink(const record::LoadOrder& order)
-        : shared_(order),
-          places_(shared_),
-          bases_(shared_),
-          environment_(shared_),
-          quests_(shared_),
-          actors_(shared_),
-          ai_(shared_) {}
-
-    void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
-                   io::SpanReader& data, const record::FormContext& form_ctx) override {
-        if (merged.deleted) {
-            return;
-        }
-        if (merged.type == FourCC{"CELL"} || merged.type == FourCC{"REFR"} ||
-            merged.type == FourCC{"ACHR"} || merged.type == FourCC{"LAND"} ||
-            merged.type == FourCC{"NAVM"} || merged.type == FourCC{"LGTM"}) {
-            places_.collect(merged, ctx, data, form_ctx);
-        } else if (merged.type == FourCC{"LIGH"} || merged.type == FourCC{"MATO"} ||
-                   merged.type == FourCC{"ADDN"} || merged.type == FourCC{"TXST"} ||
-                   merged.type == FourCC{"LTEX"} || merged.type == FourCC{"GRAS"}) {
-            bases_.collect(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"WRLD"} || merged.type == FourCC{"WATR"} ||
-                   merged.type == FourCC{"CLMT"} || merged.type == FourCC{"WTHR"} ||
-                   merged.type == FourCC{"SPGD"} || merged.type == FourCC{"REGN"} ||
-                   merged.type == FourCC{"IMGS"}) {
-            environment_.collect(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"QUST"} || merged.type == FourCC{"GLOB"}) {
-            quests_.collect(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"RACE"} || merged.type == FourCC{"ARMA"} ||
-                   merged.type == FourCC{"OTFT"} || merged.type == FourCC{"LVLI"}) {
-            actors_.collect(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"PACK"} || merged.type == FourCC{"FLST"}) {
-            ai_.collect(merged, data, form_ctx);
-        } else if (merged.type != FourCC{"INFO"}) {
-            // These are bases too (placed armor, scripted NPCs); read twice.
-            io::SpanReader copy = data;
-            if (merged.type == FourCC{"NPC_"} || merged.type == FourCC{"ARMO"} ||
-                merged.type == FourCC{"LVLN"}) {
-                actors_.collect(merged, copy, form_ctx);
-            }
-            bases_.collect_generic(merged, data);
-        }
-    }
-
-    [[nodiscard]] WorldStats& stats() noexcept { return shared_.stats(); }
-    [[nodiscard]] detail::PlaceCollector& places() noexcept { return places_; }
-    [[nodiscard]] detail::BaseCollector& bases() noexcept { return bases_; }
-    [[nodiscard]] detail::EnvironmentCollector& environment() noexcept { return environment_; }
-    [[nodiscard]] detail::QuestCollector& quests() noexcept { return quests_; }
-    [[nodiscard]] detail::ActorCollector& actors() noexcept { return actors_; }
-    [[nodiscard]] detail::AiCollector& ai() noexcept { return ai_; }
-
-private:
-    // ---- what actors are built from -------------------------------------
-
-    detail::CollectContext shared_;
-    detail::PlaceCollector places_;
-    detail::BaseCollector bases_;
-    detail::EnvironmentCollector environment_;
-    detail::QuestCollector quests_;
-    detail::ActorCollector actors_;
-    detail::AiCollector ai_;
-};
-
-} // namespace
 
 io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                         const record::LoadOrder& order,
                                         const std::filesystem::path& out) {
-    WorldSink sink(order);
+    detail::WorldSink sink(order);
     world.for_each_record(sink);
     auto& stats = sink.stats();
 
     flatbuffers::FlatBufferBuilder builder(1u << 20);
 
+    // The builder lays bytes out in the order tables, strings and vectors are
+    // created, so this sequence (the write_* calls and the CreateVector calls
+    // that follow them) is what keeps world.fb's bytes stable.
     const auto cells = sink.places().write_cells(builder);
-
     const auto bases = sink.bases().write_bases(builder);
-
     const auto worlds = sink.environment().write_worlds(builder);
-
     const auto land_textures = sink.bases().write_land_textures(builder);
-
     const auto waters = sink.environment().write_waters(builder);
     const auto climates = sink.environment().write_climates(builder);
     const auto weathers = sink.environment().write_weathers(builder);
@@ -134,10 +37,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto material_objects = sink.bases().write_material_objects(builder);
     const auto precipitations = sink.environment().write_precipitations(builder);
     const auto regions = sink.environment().write_regions(builder);
-
     const auto quests = sink.quests().write_quests(builder);
     const auto globals = sink.quests().write_globals(builder);
-    // ---- what actors are built from ----
     const auto npcs = sink.actors().write_npcs(builder, sink.ai().form_lists());
     const auto packages = sink.ai().write_packages(builder);
     const auto races = sink.actors().write_races(builder);

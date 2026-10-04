@@ -479,7 +479,8 @@ convert(set, order, options)
   and cell-grid indices). It is memory-mappable and verified on read.
   `bethconv verify --against` re-runs the merge and compares. The engine
   currently reads only its header.
-- **`world.fb`** (`pack/world.*`): the engine's database; see 5.11.
+- **`world.fb`** (`pack/world.cpp`, `pack/world/`, `pack/world_file.cpp`): the
+  engine's database; see 5.11.
 - **LOD assets** (`pack/lod_asset.*`): `.lod` settings, `.lst` tree types and
   `.btt` tree instances decoded into `.lodfb`. `.btr`/`.bto` LOD meshes are
   NIFs and convert as meshes.
@@ -489,30 +490,40 @@ convert(set, order, options)
 
 ### 5.11 `world.fb`: how the engine's database is made
 
-`write_world` (`pack/world.cpp`) runs one more merge pass with a `WorldSink`.
-FormIDs *inside* payloads are plugin-local, and only during the merge is it
-known which plugin each winning record came from, which decides how to
-resolve them (`WorldSink::global(merged, local)`).
+`write_world` (`pack/world.cpp`) runs one more merge pass with a `WorldSink`
+(`pack/world/sink.*`). FormIDs *inside* payloads are plugin-local, and only
+during the merge is it known which plugin each winning record came from,
+which decides how to resolve them (`CollectContext::global(merged, local)`,
+`pack/world/context.*`, shared by every collector).
 
-1. **Collect.** `WorldSink::on_record` dispatches on the record type. There
-   are about 30 handlers: CELL, REFR, ACHR, LIGH, LAND, WRLD, LTEX, TXST,
-   WATR, CLMT, WTHR, SPGD, REGN, QUST, GLOB, NAVM, RACE, ARMO, ARMA, OTFT,
-   LVLI, LVLN, NPC_, PACK, FLST, and IMGS, LGTM, MATO, GRAS,
-   ADDN. Any other type with a model is collected as a generic base
-   (`on_other`). Each handler parses with the `record::parse_*` function,
-   resolves FormIDs, and stores a `World*` struct in an id-keyed map. A
+1. **Collect.** `WorldSink::on_record` switches on the record type and hands
+   the record to the collector that owns it. There is one per domain, in
+   `pack/world/`, each with `collect()` for its types, its own id-keyed maps
+   of `World*` structs, and `write_*` functions for its tables:
+   `places` (CELL, REFR, ACHR, LAND, NAVM, LGTM), `bases` (LIGH, MATO, ADDN,
+   TXST, LTEX, GRAS, and any other type with a model or scripts as a generic
+   base), `environment` (WRLD, WATR, CLMT, WTHR, SPGD, REGN, IMGS), `quests`
+   (QUST, GLOB), `actors` (NPC_, RACE, ARMO, ARMA, OTFT, LVLI, LVLN) and `ai`
+   (PACK, FLST). NPC_, ARMO and LVLN are also read as generic bases, from a
+   copy of the reader; INFO is skipped. Each handler parses with the
+   `record::parse_*` function, resolves FormIDs, and stores the result. A
    REFR's extras (scripts, locks, linked refs, activate parents, primitives,
    light overrides, load-door links) are stored per parent cell.
 2. **Derive.** Interior lighting is resolved against its lighting template
    (`resolve_lighting`, XCLL inherit flags), default package
-   lists are expanded, and so on.
+   lists are expanded, and so on. What a writer needs from another domain
+   (the NPCs' package lists, from `ai`) is passed in by const reference.
 3. **Write.** Every collection is written sorted by id, so the engine can
    binary-search it, and the root `World` table gets `format_version`
-   (`k_world_format_version`, 10 in the working tree).
+   (`k_world_format_version`, 10 in the working tree). FlatBuffers lays bytes
+   out in the order tables, strings and vectors are created, so the sequence
+   of collector calls in `write_world` is part of what makes the file's bytes
+   reproducible.
 
-`WorldFile` (the same file, reading side) is used by the CLI (`bethconv
-cell`) and the tests. It copies FlatBuffer tables back into the `World*`
-structs. The engine does *not* use it; it reads the FlatBuffer directly.
+`WorldFile` (`pack/world_file.cpp`, the reading side) is used by the CLI
+(`bethconv cell`) and the tests. It copies FlatBuffer tables back into the
+`World*` structs. The engine does *not* use it; it reads the FlatBuffer
+directly.
 
 ### 5.12 The CLI (`tools/bethconv-cli/`)
 
@@ -1020,7 +1031,7 @@ Readers refuse unknown versions and say which numbers they read.
 
 | I want to… | Look at |
 | --- | --- |
-| add a field the engine needs from a record | `record/forms_*.hpp` (struct + `parse_*`), `pack/world.cpp` (`WorldSink` handler + write), `formats/schema/world.fbs`, bump `k_world_format_version`, `pack/world.hpp` (`WorldFile` if the CLI should show it), engine reader, `formats/pack-format.md` |
+| add a field the engine needs from a record | `record/forms_*.hpp` (struct + `parse_*`), `pack/world/<domain>.cpp` (the collector's handler + `write_*`), `formats/schema/world.fbs`, bump `k_world_format_version`, `pack/world.hpp` and `pack/world_file.cpp` (`WorldFile`, if the CLI should show it), engine reader, `formats/pack-format.md` |
 | support a new asset kind | `pack/vpath_index.hpp` (`AssetKind`), `pack/convert.cpp` (`kind_of`, the switch, a settings fingerprint), `pack/pack_writer.*`, `formats/pack-format.md`, engine `PackStore::extension_of` and `AssetCache::load` |
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
