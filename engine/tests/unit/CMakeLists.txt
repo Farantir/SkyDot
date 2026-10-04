@@ -5,6 +5,13 @@
 include(Catch)
 
 add_executable(skydot_core_tests
+    support/script_builder.cpp
+    support/script_builder.hpp
+    support/vm_rig.cpp
+    support/vm_rig.hpp
+    test_vm.cpp
+    test_vm_objects.cpp
+    test_vm_threads.cpp
     test_vpath.cpp
 )
 target_link_libraries(skydot_core_tests
