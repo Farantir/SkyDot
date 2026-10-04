@@ -560,19 +560,20 @@ TEST_CASE("a script asset that is not one, or is of another version, is refused"
     CHECK_THAT(why, ContainsSubstring("reads 1"));
 }
 
-// BUG: read_function checks the string index of identifier and string
-// arguments only, but a failing callstatic reads strings_[args[a].data()] for
-// its class and function whatever type the argument has (vm.cpp, "no global
-// function"). A script asset that names either by a literal is loaded, and
-// running it indexes the string table with the literal: out of bounds
-// (script_class.hpp promises that running a class never does). Real PEX never
-// does this, but packs are untrusted files. Refusing it when the class loads
-// is the check the header describes; guarding the message would do as well,
-// and this test would then change.
-TEST_CASE("a call that names its class or function by a literal is refused", "[vm][script][!shouldfail]") {
-    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {integer(1000), ident("Run"), ident("r")})).empty());
-    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {ident("Util"), integer(1000), ident("r")})).empty());
-    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {ident("Util"), floating(1.0F), ident("r")})).empty());
+// A failing callstatic prints its class and function from the string table,
+// so the loader insists both are names: a literal would index the table with
+// its value (out of bounds, and script_class.hpp promises that running a class
+// never does). Real PEX never does this, but packs are untrusted files.
+TEST_CASE("a call that names its class or function by a literal is refused", "[vm][script]") {
+    for (const auto& call : {
+             with_instruction(Op::callstatic, {integer(1000), ident("Run"), ident("r")}),
+             with_instruction(Op::callstatic, {ident("Util"), integer(1000), ident("r")}),
+             with_instruction(Op::callstatic, {ident("Util"), floating(1.0F), ident("r")}),
+         }) {
+        CHECK_THAT(refusal(call), ContainsSubstring("by a literal"));
+    }
+    // A name given as a string is still a name.
+    CHECK(refusal(with_instruction(Op::callstatic, {str("Util"), str("Run"), ident("r")})).empty());
 }
 
 TEST_CASE("loading checks what the interpreter will follow", "[vm][script]") {

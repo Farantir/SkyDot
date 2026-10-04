@@ -183,6 +183,18 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
             error = out.name + ": malformed instruction " + std::to_string(i);
             return false;
         }
+        // A failing callstatic prints both names from the string table, so
+        // they must be names, not literals whose value would index it.
+        if (static_cast<Op>(op) == Op::callstatic) {
+            for (std::uint32_t n = begin; n < begin + 2; ++n) {
+                const auto type = f.args()->Get(n)->type();
+                if (type != k_identifier && type != k_string) {
+                    error = out.name + ": instruction " + std::to_string(i) +
+                            " names its class or function by a literal";
+                    return false;
+                }
+            }
+        }
         out.ops.push_back(static_cast<Op>(op));
         out.offsets.push_back(begin);
     }
