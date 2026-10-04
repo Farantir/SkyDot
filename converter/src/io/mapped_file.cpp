@@ -4,6 +4,7 @@
 // OS pointer becomes a span.
 #include "bethconv/io/mapped_file.hpp"
 
+#include <cerrno>
 #include <system_error>
 #include <utility>
 
@@ -20,13 +21,18 @@
 namespace bethconv::io {
 namespace {
 
-ParseError os_error(const std::filesystem::path& path, std::string what) {
+/// The calling thread's last OS error. Read it before closing anything: a
+/// close can overwrite it.
+int last_os_error() noexcept {
 #if defined(_WIN32)
-    const auto code = static_cast<int>(::GetLastError());
-    const std::error_code ec(code, std::system_category());
+    return static_cast<int>(::GetLastError());
 #else
-    const std::error_code ec(errno, std::system_category());
+    return errno;
 #endif
+}
+
+ParseError os_error(const std::filesystem::path& path, std::string what, int code) {
+    const std::error_code ec(code, std::system_category());
     return ParseError{
         .origin = path.string(),
         .offset = 0,
@@ -85,26 +91,29 @@ ParseResult<MappedFile> MappedFile::open(const std::filesystem::path& path) {
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr,
                                 OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE) {
-        return std::unexpected(os_error(path, "CreateFileW"));
+        return std::unexpected(os_error(path, "CreateFileW", last_os_error()));
     }
     LARGE_INTEGER file_size{};
     if (::GetFileSizeEx(file, &file_size) == 0) {
+        const int code = last_os_error();
         ::CloseHandle(file);
-        return std::unexpected(os_error(path, "GetFileSizeEx"));
+        return std::unexpected(os_error(path, "GetFileSizeEx", code));
     }
     if (file_size.QuadPart == 0) {
         ::CloseHandle(file);
         return out; // empty file, empty span
     }
     HANDLE mapping = ::CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    const int mapping_error = last_os_error();
     ::CloseHandle(file);
     if (mapping == nullptr) {
-        return std::unexpected(os_error(path, "CreateFileMappingW"));
+        return std::unexpected(os_error(path, "CreateFileMappingW", mapping_error));
     }
     const void* view = ::MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
     if (view == nullptr) {
+        const int code = last_os_error();
         ::CloseHandle(mapping);
-        return std::unexpected(os_error(path, "MapViewOfFile"));
+        return std::unexpected(os_error(path, "MapViewOfFile", code));
     }
     out.handle_ = mapping;
     out.data_ = std::span(static_cast<const std::byte*>(view),
@@ -112,12 +121,13 @@ ParseResult<MappedFile> MappedFile::open(const std::filesystem::path& path) {
 #else
     const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
     if (fd < 0) {
-        return std::unexpected(os_error(path, "open"));
+        return std::unexpected(os_error(path, "open", last_os_error()));
     }
     struct stat st{};
     if (::fstat(fd, &st) != 0) {
+        const int code = last_os_error();
         ::close(fd);
-        return std::unexpected(os_error(path, "fstat"));
+        return std::unexpected(os_error(path, "fstat", code));
     }
     if (!S_ISREG(st.st_mode)) {
         ::close(fd);
@@ -132,9 +142,10 @@ ParseResult<MappedFile> MappedFile::open(const std::filesystem::path& path) {
         return out; // empty file, empty span
     }
     void* view = ::mmap(nullptr, len, PROT_READ, MAP_PRIVATE, fd, 0);
+    const int map_error = last_os_error();
     ::close(fd); // the mapping keeps its own reference
     if (view == MAP_FAILED) {
-        return std::unexpected(os_error(path, "mmap"));
+        return std::unexpected(os_error(path, "mmap", map_error));
     }
     // Files are read front to back.
     ::madvise(view, len, MADV_SEQUENTIAL);
