@@ -59,4 +59,12 @@ target_link_libraries(bethconv_unit_tests
     PRIVATE bethconv::core bethconv::warnings Catch2::Catch2WithMain ZLIB::ZLIB lz4::lz4 bsa::bsa
             nifly fastgltf::fastgltf nlohmann_json::nlohmann_json)
 
+# GCC 16 flags nlohmann/json.hpp:1400 as a null dereference once it is inlined
+# into this file, which is a false positive (GCC 14 in CI is clean). Only this
+# source; the library keeps the full warning set.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    set_source_files_properties(test_gltf_writer.cpp PROPERTIES
+        COMPILE_OPTIONS -Wno-null-dereference)
+endif()
+
 catch_discover_tests(bethconv_unit_tests)
