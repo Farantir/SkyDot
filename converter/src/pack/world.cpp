@@ -18,6 +18,7 @@
 #include "world/environment.hpp"
 #include "world/fb_write.hpp"
 #include "world/places.hpp"
+#include "world/quests.hpp"
 
 #include "bethconv/pack/world_generated.h"
 
@@ -41,7 +42,11 @@ using record::FormId;
 class WorldSink final : public record::MergedRecordSink {
 public:
     explicit WorldSink(const record::LoadOrder& order)
-        : shared_(order), places_(shared_), bases_(shared_), environment_(shared_) {}
+        : shared_(order),
+          places_(shared_),
+          bases_(shared_),
+          environment_(shared_),
+          quests_(shared_) {}
 
     void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
                    io::SpanReader& data, const record::FormContext& form_ctx) override {
@@ -61,10 +66,8 @@ public:
                    merged.type == FourCC{"SPGD"} || merged.type == FourCC{"REGN"} ||
                    merged.type == FourCC{"IMGS"}) {
             environment_.collect(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"QUST"}) {
-            on_quest(merged, data, form_ctx);
-        } else if (merged.type == FourCC{"GLOB"}) {
-            on_global(merged, data, form_ctx);
+        } else if (merged.type == FourCC{"QUST"} || merged.type == FourCC{"GLOB"}) {
+            quests_.collect(merged, data, form_ctx);
         } else if (merged.type == FourCC{"RACE"}) {
             on_race(merged, data, form_ctx);
         } else if (merged.type == FourCC{"ARMA"}) {
@@ -110,109 +113,9 @@ public:
     }
     [[nodiscard]] detail::BaseCollector& bases() noexcept { return bases_; }
     [[nodiscard]] detail::EnvironmentCollector& environment() noexcept { return environment_; }
-    [[nodiscard]] std::map<std::uint32_t, WorldQuest>& quests() noexcept { return quests_; }
-    [[nodiscard]] std::map<std::uint32_t, WorldGlobal>& globals() noexcept { return globals_; }
+    [[nodiscard]] detail::QuestCollector& quests() noexcept { return quests_; }
 
 private:
-    void on_quest(const record::MergedRecord& merged, io::SpanReader& data,
-                  const record::FormContext& form_ctx) {
-        auto q = record::parse_quest(data, form_ctx);
-        if (!q) {
-            ++shared_.stats().parse_errors;
-            return;
-        }
-        bool failed = false;
-        WorldQuest out{
-            .id = merged.form.value,
-            .editor_id = q->editor_id,
-            .name = q->name.text,
-            .flags = q->flags,
-            .priority = q->priority,
-            .type = q->type,
-            .event = q->event.value,
-            .scripts = shared_.global_scripts(merged, std::move(q->scripts), failed),
-            .fragment_script = q->fragments.script,
-            .fragments = {},
-            .stages = {},
-            .objectives = {},
-            .aliases = {},
-        };
-        for (const auto& f : q->fragments.fragments) {
-            out.fragments.push_back(WorldQuestFragment{
-                .stage = f.stage, .log_entry = f.log_entry, .function = f.function});
-            if (out.fragment_script.empty()) {
-                out.fragment_script = f.script;
-            }
-        }
-        std::ranges::stable_sort(out.fragments, [](const auto& a, const auto& b) {
-            return std::pair{a.stage, a.log_entry} < std::pair{b.stage, b.log_entry};
-        });
-        for (const auto& stage : q->stages) {
-            auto& s = out.stages.emplace_back();
-            s.index = stage.index;
-            s.flags = stage.flags;
-            for (const auto& entry : stage.log) {
-                s.log.push_back(WorldQuestLogEntry{
-                    .flags = entry.flags,
-                    .text = entry.text.text,
-                    .conditions = static_cast<std::uint16_t>(entry.conditions.raw.size())});
-            }
-        }
-        std::ranges::stable_sort(out.stages, {}, &WorldQuestStage::index);
-        for (const auto& objective : q->objectives) {
-            auto& o = out.objectives.emplace_back();
-            o.index = objective.index;
-            o.flags = objective.flags;
-            o.text = objective.text.text;
-            for (const auto& target : objective.targets) {
-                o.targets.push_back(target.alias);
-            }
-        }
-        for (const auto& alias : q->aliases) {
-            WorldQuestAlias a{
-                .id = alias.id,
-                .name = alias.name,
-                .location = alias.location,
-                .flags = alias.flags,
-                .forced = shared_.global(merged, alias.location ? alias.specific_location
-                                                        : alias.forced_ref,
-                                 failed),
-                .unique_actor = shared_.global(merged, alias.unique_actor, failed),
-                .external_quest = shared_.global(merged, alias.external_quest, failed),
-                .external_alias = alias.external_alias,
-                .created_object = shared_.global(merged, alias.created_object, failed),
-                .create_at = alias.create_at,
-                .conditions = static_cast<std::uint16_t>(alias.conditions.raw.size()),
-                .display_name = shared_.global(merged, alias.display_name, failed),
-                .scripts = {},
-            };
-            for (auto& attached : q->fragments.aliases) {
-                if (attached.alias.alias >= 0 &&
-                    static_cast<std::uint32_t>(attached.alias.alias) == alias.id) {
-                    record::ScriptData data_for_alias;
-                    data_for_alias.scripts = std::move(attached.scripts);
-                    a.scripts = shared_.global_scripts(merged, std::move(data_for_alias), failed);
-                }
-            }
-            out.aliases.push_back(std::move(a));
-        }
-        if (failed) {
-            ++shared_.stats().unresolved;
-        }
-        quests_[out.id] = std::move(out);
-    }
-
-    void on_global(const record::MergedRecord& merged, io::SpanReader& data,
-                   const record::FormContext& form_ctx) {
-        auto g = record::parse_global(data, form_ctx);
-        if (!g) {
-            ++shared_.stats().parse_errors;
-            return;
-        }
-        globals_[merged.form.value] = WorldGlobal{
-            .id = merged.form.value, .editor_id = g->editor_id, .kind = g->kind, .value = g->value};
-    }
-
     // ---- what actors are built from -------------------------------------
 
     /// The precomputed FaceGen head: named by the plugin owning the form and
@@ -530,8 +433,7 @@ private:
     detail::PlaceCollector places_;
     detail::BaseCollector bases_;
     detail::EnvironmentCollector environment_;
-    std::map<std::uint32_t, WorldQuest> quests_;
-    std::map<std::uint32_t, WorldGlobal> globals_;
+    detail::QuestCollector quests_;
     std::map<std::uint32_t, WorldNpc> npcs_;
     std::map<std::uint32_t, WorldRace> races_;
     std::map<std::uint32_t, WorldArmor> armors_;
@@ -569,89 +471,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto precipitations = sink.environment().write_precipitations(builder);
     const auto regions = sink.environment().write_regions(builder);
 
-    std::vector<flatbuffers::Offset<wfb::Quest>> quests;
-    for (const auto& [id, q] : sink.quests()) {
-        std::vector<flatbuffers::Offset<wfb::QuestFragment>> fragments;
-        for (const auto& f : q.fragments) {
-            fragments.push_back(wfb::CreateQuestFragment(builder, f.stage, f.log_entry,
-                                                         builder.CreateString(f.function)));
-        }
-        std::vector<flatbuffers::Offset<wfb::QuestStage>> stages;
-        for (const auto& stage : q.stages) {
-            std::vector<flatbuffers::Offset<wfb::QuestLogEntry>> log;
-            for (const auto& e : stage.log) {
-                log.push_back(wfb::CreateQuestLogEntry(builder, e.flags,
-                                                       builder.CreateString(e.text),
-                                                       e.conditions));
-            }
-            stages.push_back(wfb::CreateQuestStage(builder, stage.index, stage.flags,
-                                                   builder.CreateVector(log)));
-        }
-        std::vector<flatbuffers::Offset<wfb::QuestObjective>> objectives;
-        for (const auto& o : q.objectives) {
-            objectives.push_back(wfb::CreateQuestObjective(builder, o.index, o.flags,
-                                                           builder.CreateString(o.text),
-                                                           builder.CreateVector(o.targets)));
-        }
-        std::vector<flatbuffers::Offset<wfb::QuestAlias>> aliases;
-        for (const auto& a : q.aliases) {
-            const auto name = builder.CreateString(a.name);
-            const auto scripts = a.scripts.empty() ? 0 : write_scripts(builder, a.scripts);
-            stats.scripts += a.scripts.size();
-            wfb::QuestAliasBuilder ab(builder);
-            ab.add_id(a.id);
-            ab.add_name(name);
-            ab.add_location(a.location);
-            ab.add_flags(a.flags);
-            ab.add_forced(a.forced);
-            ab.add_unique_actor(a.unique_actor);
-            ab.add_external_quest(a.external_quest);
-            ab.add_external_alias(a.external_alias);
-            ab.add_created_object(a.created_object);
-            ab.add_create_at(a.create_at);
-            ab.add_conditions(a.conditions);
-            ab.add_display_name(a.display_name);
-            if (!a.scripts.empty()) {
-                ab.add_scripts(scripts);
-            }
-            aliases.push_back(ab.Finish());
-        }
-        stats.quest_aliases += q.aliases.size();
-        stats.quest_fragments += q.fragments.size();
-        stats.scripts += q.scripts.size();
-        const auto editor_id = builder.CreateString(q.editor_id);
-        const auto name = builder.CreateString(q.name);
-        const auto scripts = q.scripts.empty() ? 0 : write_scripts(builder, q.scripts);
-        const auto fragment_script = builder.CreateString(q.fragment_script);
-        const auto fragments_off = builder.CreateVector(fragments);
-        const auto stages_off = builder.CreateVector(stages);
-        const auto objectives_off = builder.CreateVector(objectives);
-        const auto aliases_off = builder.CreateVector(aliases);
-        wfb::QuestBuilder qb(builder);
-        qb.add_id(q.id);
-        qb.add_editor_id(editor_id);
-        qb.add_name(name);
-        qb.add_flags(q.flags);
-        qb.add_priority(q.priority);
-        qb.add_type(q.type);
-        qb.add_event(q.event);
-        if (!q.scripts.empty()) {
-            qb.add_scripts(scripts);
-        }
-        qb.add_fragment_script(fragment_script);
-        qb.add_fragments(fragments_off);
-        qb.add_stages(stages_off);
-        qb.add_objectives(objectives_off);
-        qb.add_aliases(aliases_off);
-        quests.push_back(qb.Finish());
-        ++stats.quests;
-    }
-    std::vector<flatbuffers::Offset<wfb::Global>> globals;
-    for (const auto& [id, g] : sink.globals()) {
-        globals.push_back(wfb::CreateGlobal(builder, g.id, builder.CreateString(g.editor_id),
-                                            static_cast<std::uint8_t>(g.kind), g.value));
-        ++stats.globals;
-    }
+    const auto quests = sink.quests().write_quests(builder);
+    const auto globals = sink.quests().write_globals(builder);
     // ---- what actors are built from ----
     const auto strings = [&](const auto& list) {
         std::vector<flatbuffers::Offset<flatbuffers::String>> offsets;
