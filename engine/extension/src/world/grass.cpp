@@ -2,7 +2,6 @@
 #include "world/grass.hpp"
 
 #include "world/terrain.hpp"
-#include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
 #include "skydot_formats/units.hpp"
@@ -161,7 +160,7 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
         return quadrant.base;
     };
 
-    const auto scale = static_cast<float>(SkydotWorld::UNIT_SCALE);
+    const auto scale = static_cast<float>(formats::k_metres_per_unit);
     const auto cx = static_cast<std::uint32_t>(in.grid_x);
     const auto cy = static_cast<std::uint32_t>(in.grid_y);
     std::unordered_map<const wfb::Grass*, std::vector<Transform3D>> instances;

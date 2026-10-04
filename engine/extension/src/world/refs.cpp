@@ -4,7 +4,9 @@
 // picking the reference the player looks at.
 #include "world/refs.hpp"
 #include "world/collision.hpp"
+#include "world/coordinates.hpp"
 #include "world/fb_search.hpp"
+#include "world/text.hpp"
 #include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
@@ -45,10 +47,6 @@ String type_name(std::uint32_t type) {
                            static_cast<char>((type >> 16) & 0xFF),
                            static_cast<char>((type >> 24) & 0xFF), 0};
     return String(chars);
-}
-
-String to_godot(const flatbuffers::String* s) {
-    return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
 }
 
 /// Types the player can use without a script: doors, activators, containers,

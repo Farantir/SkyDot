@@ -114,6 +114,8 @@ target_sources(skydot PRIVATE
     src/world/navmesh.cpp
     src/world/weather.cpp
     src/world/collision.hpp
+    src/world/coordinates.cpp
+    src/world/coordinates.hpp
     src/world/effect_asset.cpp
     src/world/effect_asset.hpp
     src/world/flicker.cpp
@@ -124,6 +126,7 @@ target_sources(skydot PRIVATE
     src/world/water.hpp
     src/world/terrain.cpp
     src/world/terrain.hpp
+    src/world/text.hpp
     src/world/materials.cpp
     src/world/materials.hpp
     src/world/particles.cpp

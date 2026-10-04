@@ -4,8 +4,7 @@
 
 #include "world/collision.hpp"
 
-#include "world/world.hpp"
-
+#include "skydot_formats/units.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/array_mesh.hpp>
@@ -203,7 +202,7 @@ godot::Node3D* TerrainBuilder::build(const wfb::Terrain& terrain,
     const auto* colours = terrain.colours();
     const bool has_colours =
         colours != nullptr && colours->size() == static_cast<flatbuffers::uoffset_t>(k_grid * k_grid * 3);
-    const auto scale = static_cast<float>(SkydotWorld::UNIT_SCALE);
+    const auto scale = static_cast<float>(formats::k_metres_per_unit);
 
     auto* root = memnew(godot::Node3D);
     root->set_name("Terrain");

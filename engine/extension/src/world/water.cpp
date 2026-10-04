@@ -2,8 +2,7 @@
 #include "world/water.hpp"
 #include "world/materials.hpp"
 
-#include "world/world.hpp"
-
+#include "skydot_formats/units.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/variant/color.hpp>
@@ -161,7 +160,7 @@ Ref<godot::ShaderMaterial> WaterMaterials::material(const wfb::Water* water,
     out.instantiate();
     out->set_shader(shader());
     if (water != nullptr) {
-        const auto scale = static_cast<float>(SkydotWorld::UNIT_SCALE);
+        const auto scale = static_cast<float>(formats::k_metres_per_unit);
         out->set_shader_parameter("shallow_color", shader_rgb(unpack(water->shallow_color())));
         out->set_shader_parameter("deep_color", shader_rgb(unpack(water->deep_color())));
         out->set_shader_parameter("reflection_color", shader_rgb(unpack(water->reflection_color())));

@@ -4,6 +4,7 @@
 // The quest system itself is in SkydotPapyrus (vm/quests.cpp).
 #include "world/refs.hpp"
 #include "world/fb_search.hpp"
+#include "world/text.hpp"
 #include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
@@ -20,10 +21,6 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 
 namespace {
-
-String text(const flatbuffers::String* s) {
-    return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
-}
 
 String fourcc_text(std::uint32_t v) {
     if (v == 0) {
@@ -55,14 +52,14 @@ Array SkydotWorld::list_quests(const String& filter) const {
     }
     const String needle = filter.to_lower();
     for (const auto* q : *quests) {
-        const String editor_id = text(q->editor_id());
+        const String editor_id = to_godot(q->editor_id());
         if (!needle.is_empty() && !editor_id.to_lower().contains(needle)) {
             continue;
         }
         Dictionary entry;
         entry["id"] = static_cast<std::int64_t>(q->id());
         entry["editor_id"] = editor_id;
-        entry["name"] = text(q->name());
+        entry["name"] = to_godot(q->name());
         entry["start_game_enabled"] =
             formats::has_flag(q->flags(), wfb::QuestFlags::start_game_enabled);
         out.push_back(entry);
@@ -77,7 +74,7 @@ std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
     }
     const String wanted = editor_id.to_lower();
     for (const auto* q : *quests) {
-        if (text(q->editor_id()).to_lower() == wanted) {
+        if (to_godot(q->editor_id()).to_lower() == wanted) {
             return q->id();
         }
     }
@@ -91,8 +88,8 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
         return out;
     }
     out["id"] = static_cast<std::int64_t>(q->id());
-    out["editor_id"] = text(q->editor_id());
-    out["name"] = text(q->name());
+    out["editor_id"] = to_godot(q->editor_id());
+    out["name"] = to_godot(q->name());
     out["flags"] = static_cast<std::int64_t>(q->flags());
     out["priority"] = static_cast<std::int64_t>(q->priority());
     out["type"] = static_cast<std::int64_t>(q->type());
@@ -102,7 +99,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
     out["allow_repeated_stages"] =
         formats::has_flag(q->flags(), wfb::QuestFlags::allow_repeated_stages);
     out["scripts"] = script_list(q->scripts(), false);
-    out["fragment_script"] = text(q->fragment_script());
+    out["fragment_script"] = to_godot(q->fragment_script());
 
     Array fragments;
     if (const auto* list = q->fragments()) {
@@ -110,7 +107,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
             Dictionary entry;
             entry["stage"] = static_cast<std::int64_t>(f->stage());
             entry["log_entry"] = static_cast<std::int64_t>(f->log_entry());
-            entry["function"] = text(f->function());
+            entry["function"] = to_godot(f->function());
             fragments.push_back(entry);
         }
     }
@@ -132,7 +129,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
                         formats::has_flag(e->flags(), wfb::LogEntryFlags::completes_quest);
                     entry["fails_quest"] =
                         formats::has_flag(e->flags(), wfb::LogEntryFlags::fails_quest);
-                    entry["text"] = text(e->text());
+                    entry["text"] = to_godot(e->text());
                     entry["conditions"] = static_cast<std::int64_t>(e->conditions());
                     log.push_back(entry);
                 }
@@ -149,7 +146,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
             Dictionary objective;
             objective["index"] = static_cast<std::int64_t>(o->index());
             objective["flags"] = static_cast<std::int64_t>(o->flags());
-            objective["text"] = text(o->text());
+            objective["text"] = to_godot(o->text());
             Array targets;
             if (const auto* t = o->targets()) {
                 for (const auto alias : *t) {
@@ -167,7 +164,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
         for (const auto* a : *list) {
             Dictionary alias;
             alias["id"] = static_cast<std::int64_t>(a->id());
-            alias["name"] = text(a->name());
+            alias["name"] = to_godot(a->name());
             alias["location"] = a->location();
             alias["flags"] = static_cast<std::int64_t>(a->flags());
             alias["optional"] = formats::has_flag(a->flags(), wfb::AliasFlags::optional);
@@ -194,7 +191,7 @@ Dictionary SkydotWorld::get_global(std::int64_t id) const {
         return out;
     }
     out["id"] = static_cast<std::int64_t>(g->id());
-    out["editor_id"] = text(g->editor_id());
+    out["editor_id"] = to_godot(g->editor_id());
     const char kind[2] = {static_cast<char>(g->kind()), 0};
     out["kind"] = String(kind);
     out["value"] = static_cast<double>(g->value());
@@ -229,7 +226,7 @@ std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plug
     }
     const String wanted = plugin.to_lower();
     for (const auto* p : *plugins) {
-        if (text(p->name()).to_lower() == wanted) {
+        if (to_godot(p->name()).to_lower() == wanted) {
             const std::uint32_t mask = p->light() ? 0xFFFu : 0xFFFFFFu;
             return p->prefix() | (static_cast<std::uint32_t>(id) & mask);
         }

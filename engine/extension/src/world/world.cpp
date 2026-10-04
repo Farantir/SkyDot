@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/world.hpp"
+#include "world/coordinates.hpp"
 #include "world/fb_search.hpp"
+#include "world/text.hpp"
 
 #include "world/actor.hpp"
 #include "world/actor_animation.hpp"
@@ -67,21 +69,6 @@ constexpr wfb::LightFlags k_light_shadow = wfb::LightFlags::spot_shadow |
                                            wfb::LightFlags::hemisphere_shadow |
                                            wfb::LightFlags::omni_shadow;
 
-/// RGBA bytes packed little-endian (red in the low byte); alpha is unused.
-Color unpack_color(std::uint32_t rgba) {
-    return Color(static_cast<float>(rgba & 0xFFu) / 255.0F,
-                 static_cast<float>((rgba >> 8) & 0xFFu) / 255.0F,
-                 static_cast<float>((rgba >> 16) & 0xFFu) / 255.0F);
-}
-
-String hex_id(std::uint32_t id) {
-    return String("0x") + String::num_uint64(id, 16, true).lpad(8, "0");
-}
-
-String to_godot(const flatbuffers::String* s) {
-    return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
-}
-
 bool contains_ci(const flatbuffers::String* haystack, const std::string& needle_lower) {
     if (haystack == nullptr) {
         return false;
@@ -122,12 +109,6 @@ constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 
 /// XCLW values this large mean "no water here".
 constexpr float k_no_water = 1.0e30F;
-
-/// Z-up to Y-up: -90 degrees about X, as the converter's mesh writer does.
-const Basis& axis_conversion() {
-    static const Basis basis(Vector3(1, 0, 0), -std::numbers::pi_v<godot::real_t> / 2);
-    return basis;
-}
 
 /// The game places a model by its reference alone: whatever transform the
 /// NIF's root node carries is replaced (Riverwood Trader's corner counter
@@ -525,26 +506,13 @@ Dictionary SkydotWorld::get_base(std::int64_t id) const {
 
 // ---- coordinates ----------------------------------------------------------
 
-Vector3 SkydotWorld::skyrim_position(const Vector3& position) {
-    return axis_conversion().xform(position * static_cast<godot::real_t>(UNIT_SCALE));
-}
+Vector3 SkydotWorld::skyrim_position(const Vector3& position) { return skydot::skyrim_position(position); }
 
-Vector3 SkydotWorld::godot_to_skyrim(const Vector3& position) {
-    return axis_conversion().transposed().xform(position) / static_cast<godot::real_t>(UNIT_SCALE);
-}
+Vector3 SkydotWorld::godot_to_skyrim(const Vector3& position) { return skydot::godot_to_skyrim(position); }
 
 Transform3D SkydotWorld::skyrim_transform(const Vector3& position, const Vector3& rotation,
                                           double scale) {
-    // Skyrim rotations are clockwise (negative in a right-handed frame) and
-    // applied Z first, then Y, then X; see docs/coordinates.md.
-    const Basis rx(Vector3(1, 0, 0), -rotation.x);
-    const Basis ry(Vector3(0, 1, 0), -rotation.y);
-    const Basis rz(Vector3(0, 0, 1), -rotation.z);
-    const Basis skyrim = rx * ry * rz;
-    const Basis& c = axis_conversion();
-    Basis basis = c * skyrim * c.transposed();
-    basis.scale(Vector3(1, 1, 1) * static_cast<godot::real_t>(scale));
-    return Transform3D(basis, skyrim_position(position));
+    return skydot::skyrim_transform(position, rotation, scale);
 }
 
 // ---- building ---------------------------------------------------------------
@@ -1514,15 +1482,6 @@ std::int64_t SkydotWorld::get_exterior_cell(std::int64_t world, std::int64_t x,
                                     static_cast<std::int32_t>(y));
     return cell != nullptr ? cell->id() : 0;
 }
-
-namespace {
-
-std::string utf8(const String& s) {
-    const auto bytes = s.utf8();
-    return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
-}
-
-} // namespace
 
 std::array<std::string, 2> SkydotWorld::land_texture_paths(std::uint32_t id) const {
     const auto* ltex = world_fb() != nullptr ? world_fb()->land_textures() : nullptr;

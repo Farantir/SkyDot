@@ -3,7 +3,8 @@
 
 #include "world/effect_asset.hpp"
 #include "world/particles.hpp"
-#include "world/world.hpp"
+
+#include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/base_material3d.hpp>
 #include <godot_cpp/classes/cubemap.hpp>
@@ -877,7 +878,7 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("emission_color", shader_rgb(base->get_emission().srgb_to_linear()));
         out->set_shader_parameter("emission_strength", as_double(extras, "emissive_multiple", 1.0));
         out->set_shader_parameter("soft_depth", as_double(extras, "soft_falloff_depth", 10.0) *
-                                                    SkydotWorld::UNIT_SCALE);
+                                                    formats::k_metres_per_unit);
         out->set_shader_parameter("alpha_cutoff", base->get_alpha_scissor_threshold());
         if (blend_and_test) {
             out->set_shader_parameter("blend_test", true);
@@ -973,7 +974,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
                               godot::Vector4(f01.x, f01.y, f01.z, static_cast<float>(stop_opacity)));
     out->set_shader_parameter("emission_strength", as_double(extras, "emissive_multiple", 1.0));
     out->set_shader_parameter("soft_depth", as_double(extras, "soft_falloff_depth", 10.0) *
-                                                SkydotWorld::UNIT_SCALE);
+                                                formats::k_metres_per_unit);
     out->set_shader_parameter("uv_scale", as_vec2(extras, "uv_scale", godot::Vector2(1, 1)));
     out->set_shader_parameter("uv_offset", as_vec2(extras, "uv_offset", godot::Vector2(0, 0)));
 }

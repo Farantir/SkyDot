@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/navmesh.hpp"
 
-#include "world/world.hpp"
+#include "world/coordinates.hpp"
+#include "world/text.hpp"
 
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
@@ -50,7 +51,7 @@ std::optional<Lists> lists(const wfb::NavMesh& nav) {
 
 godot::Vector3 vertex(const Vertices& vertices, std::uint32_t i) {
     const auto* v = vertices.Get(i);
-    return SkydotWorld::skyrim_position(godot::Vector3(v->x(), v->y(), v->z()));
+    return skyrim_position(godot::Vector3(v->x(), v->y(), v->z()));
 }
 
 std::array<std::uint16_t, 3> corners(const wfb::NavTriangle& t) { return {t.v0(), t.v1(), t.v2()}; }
@@ -59,10 +60,6 @@ std::array<std::uint16_t, 3> corners(const wfb::NavTriangle& t) { return {t.v0()
 float setting(const char* name, float fallback) {
     const auto value = godot::ProjectSettings::get_singleton()->get_setting(name, fallback);
     return static_cast<float>(static_cast<double>(value));
-}
-
-godot::String hex_id(std::uint32_t id) {
-    return godot::String("0x") + godot::String::num_uint64(id, 16, true).lpad(8, "0");
 }
 
 } // namespace
