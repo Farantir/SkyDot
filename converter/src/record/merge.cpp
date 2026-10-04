@@ -107,23 +107,27 @@ public:
             return;
         }
 
-        // Walking in load order, so this later writer wins.
         MergedRecord& existing = records_[slot->second];
+        if (existing.type != type) {
+            // A type change is not applied: the first writer stays the winner,
+            // so pass two never hands a payload to the wrong type's parser.
+            ++stats_.type_conflicts;
+            note_(global->to_string() + ": " + existing.type.to_string() + " in " +
+                  order_.entries()[existing.winner].name + " overridden as " +
+                  type.to_string() + " in " + order_.entries()[plugin_].name +
+                  "; keeping the first");
+            return;
+        }
+
+        // Walking in load order, so this later writer wins.
         ++existing.overrides;
         ++stats_.collapsed;
         existing.winner = static_cast<std::uint32_t>(plugin_);
         existing.flags = ctx.header.flags;
         existing.deleted = ctx.header.is_deleted();
-        // The last writer also decides the parent. A type change is not
-        // applied: the first type is kept and the mismatch reported.
+        // The last writer also decides the parent.
         if (parent.value != 0) {
             existing.parent = parent;
-        }
-        if (existing.type != type) {
-            note_(global->to_string() + ": " + existing.type.to_string() + " in " +
-                  order_.entries()[existing.winner].name + " overridden as " +
-                  type.to_string() + " in " + order_.entries()[plugin_].name +
-                  "; keeping the first");
         }
         if (owns_it) {
             existing.injected = false;
@@ -300,6 +304,9 @@ std::string MergedWorld::report() const {
     out << stats_.deleted << " deleted, " << stats_.injected << " injected, "
         << stats_.unresolved << " unresolved, " << stats_.unparented << " unparented, "
         << stats_.errors << " structural errors\n";
+    if (stats_.type_conflicts != 0) {
+        out << stats_.type_conflicts << " records ignored for changing a form's type\n";
+    }
     if (stats_.string_tables != 0) {
         out << stats_.string_tables << " plugins with string tables, "
             << stats_.strings_repaired << " entries repaired\n";

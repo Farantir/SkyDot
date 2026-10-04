@@ -68,6 +68,9 @@ struct MergeStats {
     std::uint64_t injected{};   ///< Forms no plugin that wrote them owns.
     std::uint64_t unresolved{}; ///< Records whose FormID would not remap.
     std::uint64_t unparented{}; ///< Records whose parent group label would not remap.
+    /// Records ignored because they wrote a known form under another type; the
+    /// first writer's type and payload stand.
+    std::uint64_t type_conflicts{};
     std::uint64_t errors{};     ///< Structural errors from the plugin walks.
     /// Plugins that failed to open during the merge. Normally 0, since
     /// LoadOrder::build already drops unreadable plugins; covers files vanishing

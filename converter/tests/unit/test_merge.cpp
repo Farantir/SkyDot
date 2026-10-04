@@ -7,7 +7,7 @@
 //   * a deleting override;
 //   * a record injected into a master's FormID space;
 //   * a FormID naming a missing master, which must cost exactly one record;
-//   * an override with a different record type.
+//   * an override with a different record type, which is ignored.
 #include "bethconv/record/merge.hpp"
 
 #include "../support/esm_builder.hpp"
@@ -424,6 +424,60 @@ TEST_CASE("an override that changes a record's type is reported, not applied",
     REQUIRE_FALSE(world.problems().empty());
     CHECK(world.problems().front().find("STAT") != std::string::npos);
     CHECK(world.problems().front().find("DOOR") != std::string::npos);
+}
+
+TEST_CASE("a form that changes type keeps its first writer", "[record][merge]") {
+    // Applying the later record's flags and payload under the first type would
+    // hand an ACTI body to a STAT parser; the later record must not count at all.
+    TempDir dir;
+    make_plugin(dir, "Base.esm", k_flag_master, {},
+                {{.type = "STAT", .form_id = 0x0000'0800, .editor_id = "the-static"}});
+    make_plugin(dir, "Confused.esp", 0, {"Base.esm"},
+                {{.type = "ACTI",
+                  .form_id = 0x0000'0800,
+                  .editor_id = "the-activator",
+                  .flags = k_flag_deleted}});
+
+    const auto order = LoadOrder::build(dir.path(), listed({"Base.esm", "Confused.esp"}), plain());
+    const auto world = MergedWorld::build(order);
+
+    CHECK(world.stats().visited == 2);
+    CHECK(world.stats().forms == 1);
+    CHECK(world.stats().collapsed == 0);
+    CHECK(world.stats().deleted == 0);
+    CHECK(world.stats().type_conflicts == 1);
+    CHECK(world.report().find("ignored for changing a form's type") != std::string::npos);
+
+    const auto* record = world.find(FormId{0x0000'0800});
+    REQUIRE(record != nullptr);
+    CHECK(record->type == FourCC{"STAT"});
+    CHECK(record->winner == 0); // Base.esm
+    CHECK(record->overrides == 0);
+    CHECK(record->flags == 0);
+    CHECK_FALSE(record->deleted);
+
+    // The note names the plugin that wrote the kept type, not the ignored one.
+    REQUIRE(world.problems().size() == 1);
+    CHECK(world.problems().front().find("STAT in Base.esm") != std::string::npos);
+    CHECK(world.problems().front().find("ACTI in Confused.esp") != std::string::npos);
+
+    // The second pass hands the sink the first writer's bytes.
+    Collector collector;
+    world.for_each_record(collector);
+    REQUIRE(collector.seen.size() == 1);
+    CHECK(collector.seen.front().type == "STAT");
+    CHECK(collector.seen.front().editor_id == "the-static");
+}
+
+TEST_CASE("a clean merge does not mention type conflicts", "[record][merge]") {
+    TempDir dir;
+    make_plugin(dir, "Base.esm", k_flag_master, {},
+                {{.type = "STAT", .form_id = 0x0000'0800, .editor_id = "a"}});
+    const auto order = LoadOrder::build(dir.path(), listed({"Base.esm"}), plain());
+    const auto world = MergedWorld::build(order);
+
+    CHECK(world.stats().type_conflicts == 0);
+    CHECK(world.report().find("changing a form's type") == std::string::npos);
 }
 
 // ---- parents --------------------------------------------------------------
