@@ -341,6 +341,7 @@ Error SkydotWorld::open(const String& path) {
                         String::num_int64(WORLD_FORMAT_VERSION) + ")");
     }
     data_ = std::move(data);
+    placement_ = ActorPlacement(data_);
     return godot::OK;
 }
 
@@ -1005,158 +1006,32 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
 
 // ---- where actors are ---------------------------------------------------
 
-std::uint64_t SkydotWorld::place_bucket(const ActorPlace& place) const {
-    const auto* cell = data().cell_ptr(place.space);
-    if (cell != nullptr && formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
-        return place.space; // An interior: its id (grid keys have a world above bit 32).
-    }
-    const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
-    const auto y = static_cast<std::int32_t>(std::floor(place.position.y / k_cell_units));
-    return grid_key(place.space, x, y);
-}
-
-std::uint64_t SkydotWorld::placed_bucket(const wfb::ActorRef& actor) const {
-    const auto* cell = data().cell_ptr(actor.cell());
-    if (cell == nullptr) {
-        return 0;
-    }
-    if (formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0) {
-        return cell->id();
-    }
-    const auto x = static_cast<std::int32_t>(std::floor(actor.position().x() / k_cell_units));
-    const auto y = static_cast<std::int32_t>(std::floor(actor.position().y() / k_cell_units));
-    return grid_key(cell->world(), x, y);
-}
-
-std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_cell(std::uint32_t cell) const {
-    std::vector<ActorAt> out;
-    const auto bucket = static_cast<std::uint64_t>(cell);
-    const auto stays = [&](const wfb::ActorRef* a) {
-        const auto it = actor_places_.find(a->ref());
-        return it == actor_places_.end() || place_bucket(it->second) == bucket;
-    };
-    if (const auto* placed = data().cell_actors(cell)) {
-        for (const auto* a : *placed) {
-            // An exterior cell's own actors are bucketed by its grid square;
-            // interiors by the cell.
-            if (actor_places_.contains(a->ref())) {
-                if (placed_bucket(*a) == bucket && stays(a)) {
-                    out.push_back({a, &actor_places_.at(a->ref())});
-                }
-                continue;
-            }
-            out.push_back({a, nullptr});
-        }
-    }
-    if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
-        for (const auto ref : it->second) {
-            const auto* a = data().actor_ptr(ref);
-            if (a != nullptr && placed_bucket(*a) != bucket) {
-                out.push_back({a, &actor_places_.at(ref)});
-            }
-        }
-    }
-    return out;
-}
-
-std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_grid(std::uint32_t world, std::int32_t x,
-                                                              std::int32_t y) const {
-    std::vector<ActorAt> out;
-    const auto bucket = grid_key(world, x, y);
-    const auto add_placed = [&](const std::vector<const wfb::ActorRef*>& list) {
-        for (const auto* a : list) {
-            const auto it = actor_places_.find(a->ref());
-            if (it == actor_places_.end()) {
-                out.push_back({a, nullptr});
-            } else if (place_bucket(it->second) == bucket) {
-                out.push_back({a, &it->second});
-            }
-        }
-    };
-    if (const auto* cell = data().exterior_ptr(world, x, y)) {
-        if (const auto* placed = data().cell_actors(cell->id())) {
-            add_placed(*placed);
-        }
-    }
-    if (const auto* placed = data().persistent_actors(world, x, y)) {
-        add_placed(*placed);
-    }
-    if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
-        for (const auto ref : it->second) {
-            const auto* a = data().actor_ptr(ref);
-            if (a != nullptr && placed_bucket(*a) != bucket) {
-                out.push_back({a, &actor_places_.at(ref)});
-            }
-        }
-    }
-    return out;
-}
-
 void SkydotWorld::set_actor_place(std::int64_t ref, std::int64_t space, const Vector3& position,
                                   double rotation_z) {
-    clear_actor_place(ref);
-    const auto id = static_cast<std::uint32_t>(ref);
-    const ActorPlace place{static_cast<std::uint32_t>(space), position, static_cast<float>(rotation_z)};
-    actor_places_[id] = place;
-    moved_in_[place_bucket(place)].push_back(id);
+    placement_.set_place(static_cast<std::uint32_t>(ref), static_cast<std::uint32_t>(space), position,
+                         static_cast<float>(rotation_z));
 }
 
 void SkydotWorld::clear_actor_place(std::int64_t ref) {
-    const auto id = static_cast<std::uint32_t>(ref);
-    const auto it = actor_places_.find(id);
-    if (it == actor_places_.end()) {
-        return;
-    }
-    if (const auto in = moved_in_.find(place_bucket(it->second)); in != moved_in_.end()) {
-        std::erase(in->second, id);
-    }
-    actor_places_.erase(it);
+    placement_.clear_place(static_cast<std::uint32_t>(ref));
 }
 
-void SkydotWorld::clear_actor_places() {
-    actor_places_.clear();
-    moved_in_.clear();
-}
+void SkydotWorld::clear_actor_places() { placement_.clear_places(); }
 
-std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
-    const auto* cell = data().cell_ptr(id);
-    if (cell == nullptr) {
-        return 0;
-    }
-    return formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0
-               ? cell->id()
-               : cell->world();
-}
+std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const { return data().cell_space(id); }
 
 Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
     Dictionary out;
-    const auto* a = data().actor_ptr(ref);
-    if (a == nullptr) {
+    const auto where = placement_.where(static_cast<std::uint32_t>(ref));
+    if (!where) {
         return out;
     }
-    ActorPlace place{static_cast<std::uint32_t>(get_cell_space(a->cell())),
-                     Vector3(a->position().x(), a->position().y(), a->position().z()), a->rotation().z()};
-    const auto it = actor_places_.find(a->ref());
-    if (it != actor_places_.end()) {
-        place = it->second;
-    }
-    const auto* space = data().cell_ptr(place.space);
-    const bool interior =
-        space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
-    std::uint32_t cell = interior ? place.space : 0;
-    if (!interior) {
-        const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
-        const auto y = static_cast<std::int32_t>(std::floor(place.position.y / k_cell_units));
-        if (const auto* c = data().exterior_ptr(place.space, x, y)) {
-            cell = c->id();
-        }
-    }
-    out["space"] = static_cast<std::int64_t>(place.space);
-    out["interior"] = interior;
-    out["cell"] = static_cast<std::int64_t>(cell);
-    out["position"] = place.position;
-    out["rotation_z"] = static_cast<double>(place.rotation_z);
-    out["moved"] = it != actor_places_.end();
+    out["space"] = static_cast<std::int64_t>(where->place.space);
+    out["interior"] = where->interior;
+    out["cell"] = static_cast<std::int64_t>(where->cell);
+    out["position"] = where->place.position;
+    out["rotation_z"] = static_cast<double>(where->place.rotation_z);
+    out["moved"] = where->moved;
     return out;
 }
 
@@ -1409,14 +1284,13 @@ godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) const {
     auto* root = memnew(godot::Node3D);
     root->set_name(hex_id(actor->ref()));
     BuildStats stats;
-    const auto moved = actor_places_.find(actor->ref());
-    place_actor(root, *actor, stats, moved != actor_places_.end() ? &moved->second : nullptr);
+    place_actor(root, *actor, stats, placement_.moved_place(actor->ref()));
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }
 
 void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats,
-                              const ActorPlace* place) const {
+                              const ActorPlacement::Place* place) const {
     if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         ++stats.disabled;
         return;
@@ -1692,7 +1566,7 @@ void SkydotWorld::add_ref_resources(const wfb::Ref& ref, godot::PackedStringArra
     }
 }
 
-void SkydotWorld::add_actor_resources(const std::vector<ActorAt>& actors, godot::PackedStringArray& out) const {
+void SkydotWorld::add_actor_resources(const std::vector<ActorPlacement::ActorAt>& actors, godot::PackedStringArray& out) const {
     if (!actors_) {
         return;
     }
@@ -1717,7 +1591,7 @@ godot::PackedStringArray SkydotWorld::get_cell_resources(std::int64_t id) const 
             add_ref_resources(*ref, out);
         }
     }
-    add_actor_resources(actors_in_cell(cell->id()), out);
+    add_actor_resources(placement_.actors_in_cell(cell->id()), out);
     return out;
 }
 
@@ -1737,7 +1611,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
         }
     }
     if (actors_) {
-        add_actor_resources(actors_in_grid(w, gx, gy), out);
+        add_actor_resources(placement_.actors_in_grid(w, gx, gy), out);
     }
     if (const auto* persistent = data().persistent_refs(w, gx, gy)) {
         for (const auto* ref : *persistent) {
@@ -1959,7 +1833,7 @@ struct SkydotWorld::BuildJob {
     std::vector<std::pair<const wfb::Ref*, std::uint32_t>> refs;
     std::size_t next = 0;
     /// Actors, placed after the references.
-    std::vector<ActorAt> actors;
+    std::vector<ActorPlacement::ActorAt> actors;
     std::size_t next_actor = 0;
     BuildStats stats;
     /// Actors are looked up once the references are placed, so a build
@@ -2000,7 +1874,8 @@ bool SkydotWorld::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
     if (!job.actors_found) {
         job.actors_found = true;
         if (actors_) {
-            job.actors = job.exterior ? actors_in_grid(job.world, job.x, job.y) : actors_in_cell(job.cell);
+            job.actors = job.exterior ? placement_.actors_in_grid(job.world, job.x, job.y)
+                                          : placement_.actors_in_cell(job.cell);
         }
     }
     while (job.next_actor < job.actors.size()) {
@@ -2170,7 +2045,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     job->x = gx;
     job->y = gy;
     if (actors_) {
-        keep_actor_resources(*job, actors_in_grid(w, gx, gy));
+        keep_actor_resources(*job, placement_.actors_in_grid(w, gx, gy));
     }
     add_job(root, std::move(job));
     return root;
@@ -2199,13 +2074,13 @@ godot::Node3D* SkydotWorld::begin_cell(std::int64_t id) const {
     }
     job->cell = cell->id();
     if (actors_) {
-        keep_actor_resources(*job, actors_in_cell(cell->id()));
+        keep_actor_resources(*job, placement_.actors_in_cell(cell->id()));
     }
     add_job(root, std::move(job));
     return root;
 }
 
-void SkydotWorld::keep_actor_resources(BuildJob& job, const std::vector<ActorAt>& actors) const {
+void SkydotWorld::keep_actor_resources(BuildJob& job, const std::vector<ActorPlacement::ActorAt>& actors) const {
     if (assets_ == nullptr) {
         return;
     }

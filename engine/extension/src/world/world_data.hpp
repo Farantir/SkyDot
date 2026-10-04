@@ -90,6 +90,9 @@ public:
     /// The worldspace whose terrain `world` shows: its parent when PNAM bit 0
     /// (use land data) is set.
     std::uint32_t land_world(std::uint32_t world) const;
+    /// The space of a cell: itself for an interior, its worldspace outside; 0
+    /// if there is no such cell.
+    std::uint32_t cell_space(std::int64_t cell) const;
     /// The water type of exterior cell (x, y): its XCWT, else the worldspace's.
     std::uint32_t water_type(std::uint32_t world, const bethconv::pack::wfb::Cell* cell) const;
     /// The load door `ref` as its link, or null.

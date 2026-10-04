@@ -11,6 +11,7 @@
 
 #include "assets/asset_cache.hpp"
 #include "world/locomotion.hpp"
+#include "world/actor_placement.hpp"
 #include "world/grass.hpp"
 #include "world/materials.hpp"
 #include "world/navmesh.hpp"
@@ -337,28 +338,6 @@ private:
     friend class SkydotWeather;
     friend class SkydotAi;
 
-    struct ActorPlace {
-        std::uint32_t space{};
-        godot::Vector3 position;
-        float rotation_z{};
-    };
-    /// A placed actor and, if it was moved, where it is now.
-    struct ActorAt {
-        const bethconv::pack::wfb::ActorRef* actor{};
-        const ActorPlace* place{};
-    };
-    /// The actors that are in an interior cell (`cell`) or an exterior grid
-    /// square now: those placed there that were not moved elsewhere, and
-    /// those moved there.
-    std::vector<ActorAt> actors_in_cell(std::uint32_t cell) const;
-    std::vector<ActorAt> actors_in_grid(std::uint32_t world, std::int32_t x, std::int32_t y) const;
-    /// The bucket a place falls in: an interior cell id, or a grid key.
-    std::uint64_t place_bucket(const ActorPlace& place) const;
-    std::uint64_t placed_bucket(const bethconv::pack::wfb::ActorRef& actor) const;
-    std::unordered_map<std::uint32_t, ActorPlace> actor_places_;
-    /// Bucket -> actors moved into it.
-    std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> moved_in_;
-
     godot::Error fail(godot::Error code, const godot::String& why);
     const WorldData& data() const { return *data_; }
     /// The verified root; null while closed.
@@ -374,12 +353,12 @@ private:
     void add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) const;
     /// Hold what `actors` need, if cached, in `job`, so trimming the cache
     /// before they are placed (leaving a place, cells dropped) keeps it.
-    void keep_actor_resources(BuildJob& job, const std::vector<ActorAt>& actors) const;
+    void keep_actor_resources(BuildJob& job, const std::vector<ActorPlacement::ActorAt>& actors) const;
     /// Place `job`'s references until the budget from `started` is spent.
     bool place_refs(godot::Node3D* root, BuildJob& job, std::uint64_t started, std::int64_t budget_usec) const;
     /// The model `ref` shows, unless it is disabled or a marker.
     void add_ref_resources(const bethconv::pack::wfb::Ref& ref, godot::PackedStringArray& out) const;
-    void add_actor_resources(const std::vector<ActorAt>& actors, godot::PackedStringArray& out) const;
+    void add_actor_resources(const std::vector<ActorPlacement::ActorAt>& actors, godot::PackedStringArray& out) const;
     std::int64_t request_all(const godot::PackedStringArray& paths);
     /// Instance the reference's model and light under `root`.
     void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
@@ -399,6 +378,8 @@ private:
 
     /// The open world.fb; a closed WorldData until `open` succeeds.
     std::shared_ptr<const WorldData> data_{std::make_shared<const WorldData>()};
+    /// Where actors are, when not where the editor placed them.
+    ActorPlacement placement_{data_};
     bool skyrim_materials_{true};
     bool effects_{true};
     bool grass_{true};
@@ -424,7 +405,7 @@ private:
     };
     ActorClips actor_clips(const ActorPlan& plan) const;
     void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats,
-                     const ActorPlace* place = nullptr) const;
+                     const ActorPlacement::Place* place = nullptr) const;
     /// The actor's models and clips (asset cache keys) to request ahead.
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
     bool collision_{true};

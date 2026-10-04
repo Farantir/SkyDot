@@ -97,6 +97,8 @@ target_sources(skydot PRIVATE
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
     src/world/actor.cpp
+    src/world/actor_placement.cpp
+    src/world/actor_placement.hpp
     src/world/actor.hpp
     src/world/actor_animation.cpp
     src/world/ai.cpp

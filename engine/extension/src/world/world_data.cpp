@@ -162,6 +162,15 @@ std::uint32_t WorldData::land_world(std::uint32_t world) const {
     return world;
 }
 
+std::uint32_t WorldData::cell_space(std::int64_t id) const {
+    const auto* cell = cell_ptr(id);
+    if (cell == nullptr) {
+        return 0;
+    }
+    return formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0 ? cell->id()
+                                                                                          : cell->world();
+}
+
 std::uint32_t WorldData::water_type(std::uint32_t world, const wfb::Cell* cell) const {
     if (cell != nullptr && cell->water() != 0) {
         return cell->water();
