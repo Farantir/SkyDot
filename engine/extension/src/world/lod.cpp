@@ -171,11 +171,13 @@ Ref<godot::Shader> make_shader(const char* modes, const char* body) {
 
 /// A verified LOD asset's root, or null.
 const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {
-    flatbuffers::Verifier verifier(bytes.ptr(), static_cast<std::size_t>(bytes.size()));
-    if (bytes.is_empty() || !lfb::VerifyLodBuffer(verifier)) {
+    // An empty array may have no data pointer; the root is read only if it has.
+    const auto* data = bytes.ptr();
+    flatbuffers::Verifier verifier(data, static_cast<std::size_t>(bytes.size()));
+    if (data == nullptr || bytes.is_empty() || !lfb::VerifyLodBuffer(verifier)) {
         return nullptr;
     }
-    const auto* root = lfb::GetLod(bytes.ptr());
+    const auto* root = lfb::GetLod(data);
     return root->format_version() == k_lod_format ? root : nullptr;
 }
 
@@ -226,25 +228,24 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
             names.push_back(String(w["editor_id"]).to_lower());
         }
     }
-    const lfb::Lod* settings = nullptr;
+    const lfb::LodSettings* s = nullptr;
     godot::PackedByteArray bytes;
     for (const auto& name : names) {
         bytes = pack->get_bytes(String("lodsettings/") + name + String(".lod"));
         if (bytes.is_empty()) {
             continue;
         }
-        settings = read_lod(bytes);
-        if (settings != nullptr && settings->settings() != nullptr) {
+        const auto* lod = read_lod(bytes);
+        s = lod != nullptr ? lod->settings() : nullptr;
+        if (s != nullptr) {
             name_ = name;
             break;
         }
-        settings = nullptr;
     }
-    if (settings == nullptr) {
+    if (s == nullptr) {
         error_ = "no LOD settings for this worldspace";
         return godot::ERR_FILE_NOT_FOUND;
     }
-    const auto* s = settings->settings();
     south_west_x_ = s->south_west_x();
     south_west_y_ = s->south_west_y();
     stride_ = s->stride();
@@ -480,7 +481,8 @@ void SkydotLod::add_trees(godot::Node3D* parent, const Quad& q, Shown& stats) {
     }
     const auto bytes = pack_->get_bytes(vpath(q, "btt"));
     const auto* lod = read_lod(bytes);
-    if (lod == nullptr || lod->trees() == nullptr || lod->trees()->size() == 0) {
+    const auto* tree_list = lod != nullptr ? lod->trees() : nullptr;
+    if (tree_list == nullptr || tree_list->size() == 0) {
         return;
     }
     Ref<godot::ArrayMesh>& quad = tree_quad_;
@@ -505,7 +507,7 @@ void SkydotLod::add_trees(godot::Node3D* parent, const Quad& q, Shown& stats) {
     multi->set_use_custom_data(true);
     multi->set_mesh(quad);
     std::vector<const lfb::TreeInstance*> trees;
-    for (const auto* t : *lod->trees()) {
+    for (const auto* t : *tree_list) {
         if (tree_types_.contains(t->type())) {
             trees.push_back(t);
         }

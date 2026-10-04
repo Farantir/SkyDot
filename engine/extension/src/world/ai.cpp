@@ -157,7 +157,12 @@ public:
     Host(SkydotAi& ai, Mind& m) : ai_(ai), m_(m) {}
 
     double function_value(const wfb::Condition& c, std::uint32_t subject) override {
-        const auto& w = *ai_.root();
+        // Minds exist only after a setup with an open world, which stays open.
+        const auto* root = ai_.root();
+        if (root == nullptr) {
+            return 0.0;
+        }
+        const auto& w = *root;
         const auto* actor = find_sorted(w.actors(), subject, [](const wfb::ActorRef* a) { return a->ref(); });
         const std::uint32_t npc = subject == k_player_ref ? k_player_npc : actor != nullptr ? actor->base() : 0;
         const auto quest = [&](const char* key) -> Variant {
@@ -329,10 +334,11 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     persistent_.clear();
     attached_.clear();
     doors_.clear();
-    if (world.is_null() || !world->is_open()) {
+    const auto* root_fb = root(); // Null unless the world is valid and open.
+    if (root_fb == nullptr) {
         return godot::ERR_UNCONFIGURED;
     }
-    const auto& w = *root();
+    const auto& w = *root_fb;
     if (w.actors() != nullptr) {
         for (const auto* a : *w.actors()) {
             if ((a->flags() & k_ref_persistent) != 0 && (a->flags() & k_ref_initially_disabled) == 0 &&
@@ -431,7 +437,10 @@ SkydotAi::Spot SkydotAi::actor_spot(const Mind& m) const {
 }
 
 SkydotAi::Spot SkydotAi::editor_spot(const Mind& m) const {
-    const auto* a = find_sorted(root()->actors(), m.ref, [](const wfb::ActorRef* r) { return r->ref(); });
+    const auto* root_fb = root();
+    const auto* a = root_fb != nullptr
+                        ? find_sorted(root_fb->actors(), m.ref, [](const wfb::ActorRef* r) { return r->ref(); })
+                        : nullptr;
     if (a == nullptr) {
         return actor_spot(m);
     }

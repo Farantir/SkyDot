@@ -19,14 +19,16 @@ namespace afb = bethconv::pack::afb;
 constexpr std::uint32_t k_animation_format = 1;
 
 const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
-    if (bytes.is_empty()) {
+    // An empty array may have no data pointer; the root is read only if it has.
+    const auto* data = bytes.ptr();
+    if (data == nullptr || bytes.is_empty()) {
         return nullptr;
     }
-    flatbuffers::Verifier verifier(bytes.ptr(), static_cast<std::size_t>(bytes.size()));
+    flatbuffers::Verifier verifier(data, static_cast<std::size_t>(bytes.size()));
     if (!afb::VerifyAnimationBuffer(verifier)) {
         return nullptr;
     }
-    const auto* root = afb::GetAnimation(bytes.ptr());
+    const auto* root = afb::GetAnimation(data);
     return root->format_version() == k_animation_format ? root : nullptr;
 }
 
@@ -170,8 +172,10 @@ Locomotion find_locomotion(const std::string& behaviour,
                 continue;
             }
             for (const auto* g : *graph->clip_generators()) {
-                if (g->name() != nullptr && g->animation() != nullptr) {
-                    generators.emplace(ascii_lower(g->name()->str()), normalize_path(folder + g->animation()->str()));
+                const auto* name = g->name();
+                const auto* animation = g->animation();
+                if (name != nullptr && animation != nullptr) {
+                    generators.emplace(ascii_lower(name->str()), normalize_path(folder + animation->str()));
                 }
             }
         }

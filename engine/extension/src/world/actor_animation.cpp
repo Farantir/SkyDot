@@ -34,11 +34,13 @@ constexpr float k_parked = 1.0e5f;
 int g_missing_bones = 0;
 
 const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
-    flatbuffers::Verifier verifier(bytes.ptr(), static_cast<std::size_t>(bytes.size()));
-    if (bytes.is_empty() || !afb::VerifyAnimationBuffer(verifier)) {
+    // An empty array may have no data pointer; the root is read only if it has.
+    const auto* data = bytes.ptr();
+    flatbuffers::Verifier verifier(data, static_cast<std::size_t>(bytes.size()));
+    if (data == nullptr || bytes.is_empty() || !afb::VerifyAnimationBuffer(verifier)) {
         return nullptr;
     }
-    const auto* root = afb::GetAnimation(bytes.ptr());
+    const auto* root = afb::GetAnimation(data);
     return root->format_version() == k_animation_format ? root : nullptr;
 }
 

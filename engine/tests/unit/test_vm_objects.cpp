@@ -162,6 +162,16 @@ TEST_CASE("a script extends another: variables per class, overrides, callparent"
     CHECK(rig.vm.load_class("dog")->derives_from(rig.vm.load_class("animal")));
     CHECK_FALSE(rig.vm.load_class("animal")->derives_from(rig.vm.load_class("dog")));
 
+    // A variable is found by the class that declares it and its index, and by
+    // nothing else; the property opcodes treat null as "no such variable".
+    const auto* animal = rig.vm.load_class("animal");
+    REQUIRE(dog->variable(animal, 0) != nullptr);
+    CHECK(dog->variable(animal, 0)->i == 4);
+    CHECK(dog->variable(rig.vm.load_class("dog"), 0)->i == 2);
+    CHECK(dog->variable(animal, 1) == nullptr);
+    CHECK(dog->variable(rig.vm.load_class("zoo"), 0) == nullptr);
+    CHECK(dog->variable(nullptr, 0) == nullptr);
+
     // The override wins; callparent reaches the original; a method only the
     // parent has still calls the override of its own class's method.
     CHECK(rig.call(dog, "speak").s == "animal woof");

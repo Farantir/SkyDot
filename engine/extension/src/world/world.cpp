@@ -334,11 +334,13 @@ Error SkydotWorld::open(const String& path) {
     // it was, closed and without indexes.
     godot::PackedByteArray bytes = godot::FileAccess::get_file_as_bytes(path);
     const auto size = static_cast<std::size_t>(bytes.size());
-    flatbuffers::Verifier verifier(bytes.ptr(), size);
-    if (size == 0 || !wfb::VerifyWorldBuffer(verifier)) {
+    // An empty array may have no data pointer; the root is read only if it has.
+    const auto* data = bytes.ptr();
+    flatbuffers::Verifier verifier(data, size);
+    if (data == nullptr || size == 0 || !wfb::VerifyWorldBuffer(verifier)) {
         return fail(godot::ERR_FILE_CORRUPT, path + String(" is not a valid world.fb"));
     }
-    const auto version = wfb::GetWorld(bytes.ptr())->format_version();
+    const auto version = wfb::GetWorld(data)->format_version();
     if (version < WORLD_FORMAT_VERSION_MIN || version > WORLD_FORMAT_VERSION) {
         return fail(godot::ERR_FILE_UNRECOGNIZED,
                     String("world.fb format version ") + String::num_int64(version) +

@@ -308,22 +308,26 @@ std::vector<std::pair<std::uint32_t, std::int32_t>> SkydotWeather::offered(std::
     std::vector<std::pair<std::uint32_t, std::int32_t>> out;
     region = 0;
     auto* cam = camera();
-    if (cam != nullptr && world_->root_->regions() != nullptr) {
+    // The list is read once (the checks and the loop must see the same one).
+    const auto* regions = world_->root_->regions();
+    if (cam != nullptr && regions != nullptr) {
         const Vector3 at = SkydotWorld::godot_to_skyrim(cam->get_global_position());
         const auto* ws = world_->world_ptr(world_id_);
         const std::uint32_t parent = ws != nullptr ? ws->parent() : 0;
         int best = -1;
-        for (const auto* r : *world_->root_->regions()) {
+        for (const auto* r : *regions) {
+            const auto* weathers = r->weathers();
+            const auto* areas = r->areas();
             if ((r->world() != world_id_ && (parent == 0 || r->world() != parent)) ||
-                r->weathers() == nullptr || r->weather_priority() <= best || r->areas() == nullptr) {
+                weathers == nullptr || r->weather_priority() <= best || areas == nullptr) {
                 continue;
             }
-            for (const auto* area : *r->areas()) {
+            for (const auto* area : *areas) {
                 if (inside(area->points(), at.x, at.y)) {
                     best = r->weather_priority();
                     region = r->id();
                     out.clear();
-                    for (const auto* w : *r->weathers()) {
+                    for (const auto* w : *weathers) {
                         out.emplace_back(w->weather(), w->chance());
                     }
                     break;

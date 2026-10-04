@@ -13,6 +13,8 @@
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <optional>
+
 namespace wfb = bethconv::pack::wfb;
 
 namespace skydot {
@@ -20,8 +22,29 @@ namespace {
 
 constexpr std::uint16_t k_water = 0x0200;
 
-godot::Vector3 vertex(const wfb::NavMesh& nav, std::uint32_t i) {
-    const auto* v = nav.vertices()->Get(i);
+using Vertices = flatbuffers::Vector<const wfb::Vec3f*>;
+using Triangles = flatbuffers::Vector<const wfb::NavTriangle*>;
+
+/// A navigation mesh's vertex and triangle lists, when it has both and at
+/// least one triangle. Read once: the accessors read the buffer on every call,
+/// so a check and a later use would be two reads, and the compiler cannot
+/// tell that the second finds what the first did.
+struct Lists {
+    const Vertices& vertices;
+    const Triangles& triangles;
+};
+
+std::optional<Lists> lists(const wfb::NavMesh& nav) {
+    const auto* vertices = nav.vertices();
+    const auto* triangles = nav.triangles();
+    if (vertices == nullptr || triangles == nullptr || triangles->size() == 0) {
+        return std::nullopt;
+    }
+    return Lists{*vertices, *triangles};
+}
+
+godot::Vector3 vertex(const Vertices& vertices, std::uint32_t i) {
+    const auto* v = vertices.Get(i);
     return SkydotWorld::skyrim_position(godot::Vector3(v->x(), v->y(), v->z()));
 }
 
@@ -37,10 +60,6 @@ godot::String hex_id(std::uint32_t id) {
     return godot::String("0x") + godot::String::num_uint64(id, 16, true).lpad(8, "0");
 }
 
-bool valid(const wfb::NavMesh& nav) {
-    return nav.vertices() != nullptr && nav.triangles() != nullptr && nav.triangles()->size() != 0;
-}
-
 } // namespace
 
 godot::Ref<godot::NavigationMesh> navigation_mesh(const wfb::NavMesh& nav) {
@@ -48,16 +67,17 @@ godot::Ref<godot::NavigationMesh> navigation_mesh(const wfb::NavMesh& nav) {
     mesh.instantiate();
     mesh->set_cell_size(setting("navigation/3d/default_cell_size", 0.25F));
     mesh->set_cell_height(setting("navigation/3d/default_cell_height", 0.25F));
-    if (!valid(nav)) {
+    const auto in = lists(nav);
+    if (!in) {
         return mesh;
     }
     godot::PackedVector3Array vertices;
-    vertices.resize(nav.vertices()->size());
-    for (flatbuffers::uoffset_t i = 0; i < nav.vertices()->size(); ++i) {
-        vertices.set(i, vertex(nav, i));
+    vertices.resize(in->vertices.size());
+    for (flatbuffers::uoffset_t i = 0; i < in->vertices.size(); ++i) {
+        vertices.set(i, vertex(in->vertices, i));
     }
     mesh->set_vertices(vertices);
-    for (const auto* t : *nav.triangles()) {
+    for (const auto* t : in->triangles) {
         godot::PackedInt32Array polygon;
         for (const auto v : corners(*t)) {
             polygon.push_back(v);
@@ -68,20 +88,22 @@ godot::Ref<godot::NavigationMesh> navigation_mesh(const wfb::NavMesh& nav) {
 }
 
 godot::Vector3 triangle_centre(const wfb::NavMesh& nav, std::int64_t index) {
-    if (!valid(nav) || index < 0 || index >= static_cast<std::int64_t>(nav.triangles()->size())) {
+    const auto in = lists(nav);
+    if (!in || index < 0 || index >= static_cast<std::int64_t>(in->triangles.size())) {
         return {};
     }
-    const auto c = corners(*nav.triangles()->Get(static_cast<flatbuffers::uoffset_t>(index)));
-    return (vertex(nav, c[0]) + vertex(nav, c[1]) + vertex(nav, c[2])) / 3.0F;
+    const auto c = corners(*in->triangles.Get(static_cast<flatbuffers::uoffset_t>(index)));
+    return (vertex(in->vertices, c[0]) + vertex(in->vertices, c[1]) + vertex(in->vertices, c[2])) / 3.0F;
 }
 
 godot::Vector3 edge_middle(const wfb::NavMesh& nav, std::int64_t index, int edge) {
-    if (!valid(nav) || index < 0 || index >= static_cast<std::int64_t>(nav.triangles()->size())) {
+    const auto in = lists(nav);
+    if (!in || index < 0 || index >= static_cast<std::int64_t>(in->triangles.size())) {
         return {};
     }
-    const auto c = corners(*nav.triangles()->Get(static_cast<flatbuffers::uoffset_t>(index)));
+    const auto c = corners(*in->triangles.Get(static_cast<flatbuffers::uoffset_t>(index)));
     const auto k = static_cast<std::size_t>(edge % 3);
-    return (vertex(nav, c[k]) + vertex(nav, c[(k + 1) % 3])) / 2.0F;
+    return (vertex(in->vertices, c[k]) + vertex(in->vertices, c[(k + 1) % 3])) / 2.0F;
 }
 
 namespace {
@@ -89,18 +111,20 @@ namespace {
 /// Each link of `nav`: the edge it leaves from and the triangle it reaches.
 template <typename Visit>
 void for_each_link(const wfb::NavMesh& nav, const NavIndex& index, Visit&& visit) {
-    if (!valid(nav) || nav.links() == nullptr) {
+    const auto in = lists(nav);
+    const auto* links = nav.links();
+    if (!in || links == nullptr) {
         return;
     }
-    for (flatbuffers::uoffset_t i = 0; i < nav.triangles()->size(); ++i) {
-        const auto* t = nav.triangles()->Get(i);
+    for (flatbuffers::uoffset_t i = 0; i < in->triangles.size(); ++i) {
+        const auto* t = in->triangles.Get(i);
         const std::array<std::int16_t, 3> edges{t->e0(), t->e1(), t->e2()};
         for (int k = 0; k < 3; ++k) {
             if ((t->flags() & (1U << k)) == 0 || edges[static_cast<std::size_t>(k)] < 0 ||
-                edges[static_cast<std::size_t>(k)] >= static_cast<std::int32_t>(nav.links()->size())) {
+                edges[static_cast<std::size_t>(k)] >= static_cast<std::int32_t>(links->size())) {
                 continue;
             }
-            const auto* link = nav.links()->Get(static_cast<flatbuffers::uoffset_t>(edges[static_cast<std::size_t>(k)]));
+            const auto* link = links->Get(static_cast<flatbuffers::uoffset_t>(edges[static_cast<std::size_t>(k)]));
             const auto target = index.find(link->navmesh());
             const wfb::NavMesh* other = target != index.end() ? target->second.first : nullptr;
             const wfb::Cell* other_cell = target != index.end() ? target->second.second : nullptr;
@@ -121,7 +145,7 @@ godot::Node3D* build_navmeshes(const wfb::Cell& cell, const NavIndex& index) {
     auto* root = memnew(godot::Node3D);
     root->set_name("Navmesh");
     for (const auto* nav : *navmeshes) {
-        if (!valid(*nav)) {
+        if (!lists(*nav)) {
             continue;
         }
         auto* region = memnew(godot::NavigationRegion3D);

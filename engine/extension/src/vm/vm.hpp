@@ -50,6 +50,10 @@ struct Instance {
     std::vector<std::pair<const ScriptClass*, std::vector<Value>>> vars;
 
     std::vector<Value>* vars_of(const ScriptClass* c);
+    /// Variable `index` of class `c`, or null if the instance has no list for
+    /// `c` or the list is shorter. Every class in the instance's chain has
+    /// one (attach), so for those it is null only for a bad index.
+    Value* variable(const ScriptClass* c, std::size_t index);
 };
 
 struct Frame {

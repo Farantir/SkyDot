@@ -125,6 +125,11 @@ std::vector<Value>* Instance::vars_of(const ScriptClass* c) {
     return nullptr;
 }
 
+Value* Instance::variable(const ScriptClass* c, std::size_t index) {
+    auto* values = vars_of(c);
+    return values != nullptr && index < values->size() ? &(*values)[index] : nullptr;
+}
+
 // ---- classes and instances ------------------------------------------------
 
 void Vm::bind(std::string_view cls, std::string_view fn, Native native) {
@@ -233,8 +238,11 @@ bool Vm::set_property(Instance* instance, std::string_view name, Value value) {
             continue;
         }
         if (p->auto_var) {
-            (*instance->vars_of(c))[*p->auto_var] = cast(value, p->type);
-            return true;
+            auto* var = instance->variable(c, *p->auto_var);
+            if (var != nullptr) {
+                *var = cast(value, p->type);
+            }
+            return var != nullptr;
         }
         if (p->setter != nullptr) {
             start({p->setter, instance}, Value::object(instance->form, instance->cls, instance),
@@ -882,11 +890,14 @@ bool Vm::step(Thread& thread) {
                 }
                 const Value self = Value::object(object.form, i->cls, i);
                 if (p->auto_var) {
-                    auto& var = (*i->vars_of(c))[*p->auto_var];
+                    auto* var = i->variable(c, *p->auto_var);
+                    if (var == nullptr) {
+                        break;
+                    }
                     if (get) {
-                        write(fr, a + 2, var);
+                        write(fr, a + 2, *var);
                     } else {
-                        var = cast(read(fr, a + 2), p->type);
+                        *var = cast(read(fr, a + 2), p->type);
                     }
                     return next();
                 }
