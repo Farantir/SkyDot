@@ -213,7 +213,7 @@ generator) and a Godot 4.7 editor on `PATH` as `godot4.7`, `godot4` or `godot`
 git submodule update --init
 cmake --preset linux-debug
 cmake --build --preset linux-debug     # -> game/bin/libskydot.linux.template_debug.x86_64.so
-ctest --preset linux-debug             # unit tests, then 14 smoke tests, 21 with the converter's test pack
+ctest --preset linux-debug             # the unit tests and 14 smoke tests (21 with the converter's test pack)
 ctest --preset linux-debug -L unit     # only the unit tests: no editor, no test pack
 ../tools/ci/check-no-game-data.sh
 ```
