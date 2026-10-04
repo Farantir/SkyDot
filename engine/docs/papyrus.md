@@ -31,6 +31,8 @@ other VM's code was read, so it stays GPL-3.0.
 - Runtime errors (None objects, bad indices, division by zero, missing
   functions, unbound natives) are logged and give None or 0; the script
   continues, as in the game. Missing `On...` functions are not errors.
+- Int arithmetic wraps at 32 bits, as the game's native VM does: `INT_MAX + 1`
+  is `INT_MIN`, `INT_MIN / -1` is `INT_MIN` and `INT_MIN % -1` is 0.
 
 ## Objects and dispatch
 

@@ -13,6 +13,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 #include <catch2/generators/catch_generators.hpp>
 
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -76,6 +77,43 @@ TEST_CASE("integer arithmetic", "[vm][opcodes]") {
     const auto sum = rig.call("ints", "add", {Float(2.9F), Int(1)});
     CHECK(sum.kind == Kind::integer);
     CHECK(sum.i == 3);
+}
+
+// Ints are 32-bit two's complement and wrap, as in the game's native VM; none
+// of this may be undefined behaviour, and INT_MIN / -1 must not trap.
+TEST_CASE("integer arithmetic wraps around at 32 bits", "[vm][opcodes]") {
+    constexpr std::int32_t lo = std::numeric_limits<std::int32_t>::min();
+    constexpr std::int32_t hi = std::numeric_limits<std::int32_t>::max();
+    Rig rig;
+    rig.add(script("Wrap", {binary("add", Op::iadd, "Int", "Int", "Int"),
+                            binary("sub", Op::isub, "Int", "Int", "Int"),
+                            binary("mul", Op::imul, "Int", "Int", "Int"),
+                            binary("div", Op::idiv, "Int", "Int", "Int"),
+                            binary("mod", Op::imod, "Int", "Int", "Int"),
+                            unary("neg", Op::ineg, "Int", "Int")}));
+
+    CHECK(rig.call("wrap", "add", {Int(hi), Int(1)}).i == lo);
+    CHECK(rig.call("wrap", "add", {Int(lo), Int(-1)}).i == hi);
+    CHECK(rig.call("wrap", "sub", {Int(lo), Int(1)}).i == hi);
+    CHECK(rig.call("wrap", "sub", {Int(hi), Int(-1)}).i == lo);
+    CHECK(rig.call("wrap", "mul", {Int(hi), Int(2)}).i == -2);
+    CHECK(rig.call("wrap", "mul", {Int(65536), Int(65536)}).i == 0);
+    CHECK(rig.call("wrap", "mul", {Int(lo), Int(-1)}).i == lo);
+    CHECK(rig.call("wrap", "neg", {Int(lo)}).i == lo);
+    CHECK(rig.call("wrap", "neg", {Int(hi)}).i == lo + 1);
+
+    // x86's idiv traps on INT_MIN / -1; the game's result is INT_MIN, and the
+    // remainder is 0.
+    CHECK(rig.call("wrap", "div", {Int(lo), Int(-1)}).i == lo);
+    CHECK(rig.call("wrap", "mod", {Int(lo), Int(-1)}).i == 0);
+    CHECK(rig.call("wrap", "div", {Int(hi), Int(-1)}).i == -hi);
+    CHECK(rig.call("wrap", "mod", {Int(hi), Int(-1)}).i == 0);
+    CHECK(rig.call("wrap", "div", {Int(-7), Int(-1)}).i == 7);
+    CHECK(rig.call("wrap", "div", {Int(lo), Int(2)}).i == lo / 2);
+    // Division truncates toward zero and the remainder takes the dividend's sign.
+    CHECK(rig.call("wrap", "div", {Int(-7), Int(2)}).i == -3);
+    CHECK(rig.call("wrap", "mod", {Int(-7), Int(2)}).i == -1);
+    CHECK(rig.vm.errors() == 0);
 }
 
 TEST_CASE("float arithmetic", "[vm][opcodes]") {

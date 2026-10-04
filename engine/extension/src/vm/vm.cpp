@@ -33,6 +33,30 @@ float as_float(const Value& v) {
     }
 }
 
+// Papyrus ints are 32-bit two's complement and wrap, as in the game's native
+// VM. Signed overflow is undefined in C++ (and INT_MIN / -1 traps on x86), so
+// the arithmetic runs on the unsigned bits.
+std::int32_t wrap(std::uint32_t bits) { return static_cast<std::int32_t>(bits); }
+
+std::int32_t int_add(std::int32_t x, std::int32_t y) {
+    return wrap(static_cast<std::uint32_t>(x) + static_cast<std::uint32_t>(y));
+}
+
+std::int32_t int_sub(std::int32_t x, std::int32_t y) {
+    return wrap(static_cast<std::uint32_t>(x) - static_cast<std::uint32_t>(y));
+}
+
+std::int32_t int_mul(std::int32_t x, std::int32_t y) {
+    return wrap(static_cast<std::uint32_t>(x) * static_cast<std::uint32_t>(y));
+}
+
+std::int32_t int_neg(std::int32_t x) { return wrap(0U - static_cast<std::uint32_t>(x)); }
+
+/// `y` is not 0. Dividing by -1 is a negation (INT_MIN stays INT_MIN) and
+/// leaves no remainder.
+std::int32_t int_div(std::int32_t x, std::int32_t y) { return y == -1 ? int_neg(x) : x / y; }
+std::int32_t int_mod(std::int32_t x, std::int32_t y) { return y == -1 ? 0 : x % y; }
+
 bool is_number(const Value& v) { return v.kind == Kind::integer || v.kind == Kind::floating; }
 
 int compare_text(std::string_view a, std::string_view b) {
@@ -698,14 +722,18 @@ bool Vm::step(Thread& thread) {
         ++fr.pc;
         return true;
     };
+    const auto int_op = [&](std::int32_t (*op)(std::int32_t, std::int32_t)) {
+        write(fr, a, Value::integer(op(as_int(read(fr, a + 1)), as_int(read(fr, a + 2)))));
+        return next();
+    };
 
     switch (fn.ops[fr.pc]) {
     case Op::nop: return next();
-    case Op::iadd: write(fr, a, Value::integer(as_int(read(fr, a + 1)) + as_int(read(fr, a + 2)))); return next();
+    case Op::iadd: return int_op(int_add);
     case Op::fadd: write(fr, a, Value::floating(as_float(read(fr, a + 1)) + as_float(read(fr, a + 2)))); return next();
-    case Op::isub: write(fr, a, Value::integer(as_int(read(fr, a + 1)) - as_int(read(fr, a + 2)))); return next();
+    case Op::isub: return int_op(int_sub);
     case Op::fsub: write(fr, a, Value::floating(as_float(read(fr, a + 1)) - as_float(read(fr, a + 2)))); return next();
-    case Op::imul: write(fr, a, Value::integer(as_int(read(fr, a + 1)) * as_int(read(fr, a + 2)))); return next();
+    case Op::imul: return int_op(int_mul);
     case Op::fmul: write(fr, a, Value::floating(as_float(read(fr, a + 1)) * as_float(read(fr, a + 2)))); return next();
     case Op::idiv:
     case Op::imod: {
@@ -715,7 +743,7 @@ bool Vm::step(Thread& thread) {
             error(where(fr) + ": integer division by zero");
             write(fr, a, Value::integer(0));
         } else {
-            write(fr, a, Value::integer(fn.ops[fr.pc] == Op::idiv ? x / y : x % y));
+            write(fr, a, Value::integer(fn.ops[fr.pc] == Op::idiv ? int_div(x, y) : int_mod(x, y)));
         }
         return next();
     }
@@ -730,7 +758,7 @@ bool Vm::step(Thread& thread) {
         return next();
     }
     case Op::not_: write(fr, a, Value::boolean(!truthy(read(fr, a + 1)))); return next();
-    case Op::ineg: write(fr, a, Value::integer(-as_int(read(fr, a + 1)))); return next();
+    case Op::ineg: write(fr, a, Value::integer(int_neg(as_int(read(fr, a + 1))))); return next();
     case Op::fneg: write(fr, a, Value::floating(-as_float(read(fr, a + 1)))); return next();
     case Op::assign: write(fr, a, read(fr, a + 1)); return next();
     case Op::cast: write(fr, a, cast(read(fr, a + 1), type_of(fr, a))); return next();
