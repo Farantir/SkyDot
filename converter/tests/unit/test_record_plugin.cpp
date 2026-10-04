@@ -7,6 +7,7 @@
 #include "bethconv/record/plugin.hpp"
 
 #include "../support/esm_builder.hpp"
+#include "../support/temp_dir.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -18,28 +19,22 @@ using namespace bethconv::test;
 
 namespace {
 
-/// Writes a byte stream to a temp file so Plugin::open can map it.
+/// Writes a byte stream to a temp file so Plugin::open can map it. The file
+/// sits in a TempDir: ctest runs each test case as its own process, and a
+/// per-process counter in a shared directory made two of them collide.
 class TempPlugin {
 public:
-    explicit TempPlugin(std::span<const std::byte> bytes) {
-        path_ = std::filesystem::temp_directory_path() /
-                ("bethconv_plugin_" + std::to_string(counter_++) + ".esp");
+    explicit TempPlugin(std::span<const std::byte> bytes) : path_(dir_ / "plugin.esp") {
         std::ofstream out(path_, std::ios::binary);
         out.write(reinterpret_cast<const char*>(bytes.data()),
                   static_cast<std::streamsize>(bytes.size()));
     }
-    ~TempPlugin() {
-        std::error_code ec;
-        std::filesystem::remove(path_, ec);
-    }
-    TempPlugin(const TempPlugin&) = delete;
-    TempPlugin& operator=(const TempPlugin&) = delete;
 
     [[nodiscard]] const std::filesystem::path& path() const { return path_; }
 
 private:
+    TempDir dir_;
     std::filesystem::path path_;
-    static inline int counter_ = 0;
 };
 
 /// Collects everything it is given, so a test can assert on the traversal.

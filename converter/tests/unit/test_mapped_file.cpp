@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/io/mapped_file.hpp"
 
+#include "../support/temp_dir.hpp"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstdio>
@@ -11,27 +13,17 @@ using namespace bethconv::io;
 
 namespace {
 
-/// Writes a temp file and removes it on scope exit.
+/// Writes a temp file and removes it on scope exit. It sits in a TempDir so
+/// parallel ctest processes cannot share a name.
 class TempFile {
 public:
-    explicit TempFile(std::string_view contents) {
-        path_ = std::filesystem::temp_directory_path() /
-                ("bethconv_test_" + std::to_string(counter_++) + ".bin");
-        std::ofstream out(path_, std::ios::binary);
-        out.write(contents.data(), static_cast<std::streamsize>(contents.size()));
-    }
-    ~TempFile() {
-        std::error_code ec;
-        std::filesystem::remove(path_, ec);
-    }
-    TempFile(const TempFile&) = delete;
-    TempFile& operator=(const TempFile&) = delete;
+    explicit TempFile(std::string_view contents) : path_(dir_.write("file.bin", contents)) {}
 
     [[nodiscard]] const std::filesystem::path& path() const { return path_; }
 
 private:
+    bethconv::test::TempDir dir_;
     std::filesystem::path path_;
-    static inline int counter_ = 0;
 };
 
 } // namespace
