@@ -474,14 +474,15 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     }
     for (const auto& source : set.sources()) {
         std::error_code ec;
-        const auto size = std::filesystem::is_directory(source.path)
-                              ? 0
-                              : std::filesystem::file_size(source.path, ec);
+        // An unreadable path is not a directory, so file_size reports the
+        // failure (size 0) and the hash comes back empty.
+        const bool is_directory = std::filesystem::is_directory(source.path, ec);
+        const auto size = is_directory ? 0 : std::filesystem::file_size(source.path, ec);
         manifest.sources.push_back(
             SourceRecord{.name = source.name,
                          .kind = std::string(archive::to_string(source.kind)),
                          .bytes = ec ? 0 : size,
-                         .hash = options.hash_archives && !std::filesystem::is_directory(source.path)
+                         .hash = options.hash_archives && !is_directory
                                      ? hash_file(source.path, options.converter)
                                      : std::nullopt});
     }
