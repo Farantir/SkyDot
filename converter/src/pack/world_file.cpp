@@ -6,6 +6,7 @@
 #include "bethconv/record/types.hpp"
 
 #include "bethconv/pack/world_generated.h"
+#include "skydot_formats/flags.hpp"
 
 #include <algorithm>
 #include <string>
@@ -48,7 +49,7 @@ std::vector<record::Script> read_scripts(
         if (const auto* name = s->name()) {
             script.name = name->str();
         }
-        script.status = s->status();
+        script.status = static_cast<std::uint8_t>(s->status());
         if (const auto* properties = s->properties()) {
             for (const auto* p : *properties) {
                 record::ScriptProperty property;
@@ -1003,7 +1004,8 @@ std::optional<WorldCell> WorldFile::cell_at_grid(std::uint32_t world, std::int32
     }
     for (const auto* c : *cells) {
         if (c->world() == world && c->has_grid() && c->grid_x() == x && c->grid_y() == y &&
-            (c->flags() & 0x1u) == 0 && !c->persistent()) {
+            !skydot::formats::has_flag(c->flags(), wfb::CellFlags::interior) &&
+            !c->persistent()) {
             return to_cell(*c);
         }
     }

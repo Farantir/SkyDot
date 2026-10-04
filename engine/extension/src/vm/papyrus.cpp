@@ -607,23 +607,24 @@ std::int64_t SkydotPapyrus::attach_scripts(std::uint32_t form, const Array& scri
     // Base scripts first; a reference's entry of the same name overrides its
     // status and property values.
     std::vector<std::string> order;
-    std::map<std::string, std::pair<std::int64_t, Dictionary>> merged;
+    std::map<std::string, std::pair<bool, Dictionary>> merged; // removed, properties
     for (std::int64_t i = 0; i < scripts.size(); ++i) {
         const Dictionary s = scripts[i];
         const std::string name = utf8(s["name"]);
         const std::string key = vm::to_lower(name);
-        auto [it, fresh] = merged.try_emplace(key, std::pair<std::int64_t, Dictionary>{0, Dictionary()});
+        auto [it, fresh] =
+            merged.try_emplace(key, std::pair<bool, Dictionary>{false, Dictionary()});
         if (fresh) {
             order.push_back(name);
         }
-        it->second.first = s["status"];
+        it->second.first = s["removed"];
         it->second.second.merge(s["properties"], true);
     }
     std::int64_t count = 0;
     for (const auto& name : order) {
-        const auto& [status, properties] = merged[vm::to_lower(name)];
-        if ((status & 0x2) != 0) {
-            continue; // removed
+        const auto& [removed, properties] = merged[vm::to_lower(name)];
+        if (removed) {
+            continue;
         }
         auto* instance = vm_->attach(form, name);
         if (instance == nullptr) {

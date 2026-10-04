@@ -164,17 +164,32 @@ XLIG). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
-- `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags,
-  grid, water height, decoded XCLL lighting (92-byte form only), lighting
+Flag words are `bit_flags` enums in the schema, and the fields have the enum as
+their type, the integer type they always had, so the bytes do not change.
+`world.fbs` has `RefFlags` (references and placed actors), `CellFlags`,
+`LightFlags`, `NavTriangleFlags`, `ParentFlags`, `WeatherClass`, `QuestFlags`,
+`StageFlags`, `LogEntryFlags`, `AliasFlags`, `NpcFlags`, `NpcTemplateFlags`,
+`LeveledListFlags`, `PackageFlags`, `BranchFlags`, `GrassFlags`, `RecordFlags`
+and `ScriptStatus`, and `ConditionFlags` for the low bits of a condition's type
+byte (the field stays a plain byte, since the comparison is in the top three);
+`script.fbs` has `FunctionFlags` and `PropertyFlags`. The values in an enum
+are bit numbers. The words are the plugin's own, as stored: an enum names the
+bits one of the two halves acts on, and the others can be set. Both halves
+test bits by these names, through `has_flag` in
+`formats/include/skydot_formats/flags.hpp`.
+
+- `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags
+  (`CellFlags`), grid, water height, decoded XCLL lighting (92-byte form only), lighting
   template, the cell's references (sorted by id) and load doors, its terrain,
   and whether it is its worldspace's persistent cell.
 - A reference: base, position and rotation in Skyrim space (Z-up, game units,
-  radians), scale, flags (initially disabled, persistent, enable-opposite,
-  activated only by its activate parents), enable parent. Deleted references
+  radians), scale, flags (`RefFlags`: initially disabled, persistent,
+  enable-opposite, activated only by its activate parents), enable parent. Deleted references
   are omitted. Placed actors (ACHR) are listed separately.
 - Per cell, sorted by id: its navmeshes (NAVM's NVNM): vertices in Skyrim
-  space, triangles with their neighbours per edge and flags (water, door,
-  preferred), edge links into other navmeshes (portals across cell borders,
+  space, triangles with their neighbours per edge and flags
+  (`NavTriangleFlags`: edge is a link, preferred, water, in front of a door),
+  edge links into other navmeshes (portals across cell borders,
   ledges), and the triangles in front of doors. The search grid and the
   cover triangle list are left out.
 - Per cell, sorted by reference: scripts (VMAD), locks (XLOC), linked
@@ -182,8 +197,9 @@ global: resolved through the winning plugin's master list.
   (XAPR) and primitive volumes (XPRM).
 - Scripts, on references and bases: name, status, and properties by name with
   their type, status and values. Object properties are global FormIDs, with an
-  alias index when they name a quest alias. Status as stored (UESP: 0 local,
-  1 inherited, 2 removed, 3 inherited and removed).
+  alias index when they name a quest alias. Status as stored, a
+  `ScriptStatus` (UESP: 0 local, 1 inherited, 2 removed, 3 inherited and
+  removed).
 - `bases`, sorted by id: every record with a model (`MODL`; for ARMO the world
   model `MOD2`, else `MOD4`, since its `MODL` is an armature FormID) as a
   normalized virtual path (`meshes/...`) or with scripts, and every LIGH with
@@ -232,8 +248,8 @@ global: resolved through the winning plugin's master list.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.
-- `worlds`, sorted by id: WRLD with parent and parent flags (bit 0: the land
-  comes from the parent), DATA flags, default land and water height, water
+- `worlds`, sorted by id: WRLD with parent and parent flags (`ParentFlags`:
+  `land_data`, the land comes from the parent), DATA flags, default land and water height, water
   type and bounds.
 - `land_textures`, sorted by id: LTEX with its TXST's diffuse and normal map
   as virtual paths, and its specular value.

@@ -42,7 +42,7 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
         .id = merged.form.value,
         .editor_id = q->editor_id,
         .name = q->name.text,
-        .flags = q->flags,
+        .flags = static_cast<wfb::QuestFlags>(q->flags),
         .priority = q->priority,
         .type = q->type,
         .event = q->event.value,
@@ -66,10 +66,10 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
     for (const auto& stage : q->stages) {
         auto& s = out.stages.emplace_back();
         s.index = stage.index;
-        s.flags = stage.flags;
+        s.flags = static_cast<wfb::StageFlags>(stage.flags);
         for (const auto& entry : stage.log) {
             s.log.push_back(WorldQuestLogEntry{
-                .flags = entry.flags,
+                .flags = static_cast<wfb::LogEntryFlags>(entry.flags),
                 .text = entry.text.text,
                 .conditions = static_cast<std::uint16_t>(entry.conditions.raw.size())});
         }
@@ -89,7 +89,7 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
             .id = alias.id,
             .name = alias.name,
             .location = alias.location,
-            .flags = alias.flags,
+            .flags = static_cast<wfb::AliasFlags>(alias.flags),
             .forced = shared_.global(merged,
                                      alias.location ? alias.specific_location : alias.forced_ref,
                                      failed),

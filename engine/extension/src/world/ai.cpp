@@ -6,6 +6,7 @@
 #include "world/actors.hpp"
 #include "world/fb_search.hpp"
 #include "vm/papyrus.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -29,8 +30,6 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 namespace {
 
-constexpr std::uint32_t k_ref_initially_disabled = 0x1;
-constexpr std::uint32_t k_ref_persistent = 0x2;
 constexpr std::uint32_t k_player_ref = 0x14;
 constexpr std::uint32_t k_player_npc = 0x7;
 constexpr double k_seconds_per_day = 86400.0;
@@ -58,11 +57,6 @@ constexpr double k_min_search = 512.0;
 /// Interiors are searched whole for "in cell" locations; outside this far.
 constexpr double k_cell_radius = 1024.0;
 constexpr float k_cell_units = 4096.0F;
-
-/// PKDT general flags (xEdit, wbPackageFlags).
-constexpr std::uint32_t k_unlock_at_start = 0x40;
-constexpr std::uint32_t k_unlock_at_end = 0x80;
-constexpr std::uint32_t k_use_preferred_speed = 0x2000;
 
 /// PLDT location types and PTDA target types (world.fbs).
 enum Location : std::int32_t {
@@ -178,7 +172,8 @@ public:
             return subject == c.param1() ? 1.0 : 0.0;
         case fn_get_in_faction:
         case fn_get_faction_rank: {
-            const auto* n = npc != 0 ? resolve_npc(w, npc, k_template_factions, subject) : nullptr;
+            const auto* n =
+                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_factions, subject) : nullptr;
             if (n != nullptr && n->factions() != nullptr) {
                 for (const auto* f : *n->factions()) {
                     if (f->faction() == c.param1()) {
@@ -189,12 +184,15 @@ public:
             return c.function() == fn_get_in_faction ? 0.0 : -1.0;
         }
         case fn_get_is_race: {
-            const auto* n = npc != 0 ? resolve_npc(w, npc, 0x0001, subject) : nullptr;
+            const auto* n =
+                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_traits, subject) : nullptr;
             return n != nullptr && n->race() == c.param1() ? 1.0 : 0.0;
         }
         case fn_get_is_sex: {
-            const auto* n = npc != 0 ? resolve_npc(w, npc, 0x0001, subject) : nullptr;
-            const std::uint32_t sex = n != nullptr ? (n->flags() & 0x1u) : 0;
+            const auto* n =
+                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_traits, subject) : nullptr;
+            const bool female = n != nullptr && formats::has_flag(n->flags(), wfb::NpcFlags::female);
+            const std::uint32_t sex = female ? 1 : 0;
             return sex == c.param1() ? 1.0 : 0.0;
         }
         case fn_get_stage:
@@ -232,7 +230,8 @@ public:
         case fn_get_distance: {
             const Spot here = subject == m_.ref ? ai_.actor_spot(m_) : ai_.ref_spot(subject).value_or(Spot{});
             const auto* space = ai_.world_->cell_ptr(here.space);
-            const bool interior = space != nullptr && (space->flags() & 0x1u) != 0;
+            const bool interior =
+                space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
             if (c.function() == fn_is_in_interior) {
                 return interior ? 1.0 : 0.0;
             }
@@ -341,7 +340,8 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     const auto& w = *root_fb;
     if (w.actors() != nullptr) {
         for (const auto* a : *w.actors()) {
-            if ((a->flags() & k_ref_persistent) != 0 && (a->flags() & k_ref_initially_disabled) == 0 &&
+            if (formats::has_flag(a->flags(), wfb::RefFlags::persistent) &&
+                !formats::has_flag(a->flags(), wfb::RefFlags::initially_disabled) &&
                 !ai::package_list(w, a->base(), a->ref()).empty()) {
                 persistent_.push_back(a->ref());
             }
@@ -367,7 +367,7 @@ SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
     Mind m;
     m.ref = ref;
     m.npc = a->base();
-    m.persistent = (a->flags() & k_ref_persistent) != 0;
+    m.persistent = formats::has_flag(a->flags(), wfb::RefFlags::persistent);
     m.dice = 0x9E3779B97F4A7C15ull ^ (static_cast<std::uint64_t>(ref) * 0xBF58476D1CE4E5B9ull);
     m.think = static_cast<double>(ref % 97) / 97.0 * k_think_interval;
     return &minds_.emplace(ref, std::move(m)).first->second;
@@ -554,7 +554,7 @@ std::optional<SkydotAi::Spot> SkydotAi::target_spot(Mind& m, const wfb::PackageI
 std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uint32_t value) const {
     std::vector<const wfb::Cell*> cells;
     const auto* space = world_->cell_ptr(around.space);
-    if (space != nullptr && (space->flags() & 0x1u) != 0) {
+    if (space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior)) {
         cells.push_back(space);
     } else {
         const auto reach = static_cast<float>(around.radius);
@@ -598,7 +598,8 @@ std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uin
             continue;
         }
         for (const auto* r : *cell->refs()) {
-            if ((r->flags() & k_ref_initially_disabled) != 0 || !matches(world_->base_ptr(r->base()))) {
+            if (formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) ||
+                !matches(world_->base_ptr(r->base()))) {
                 continue;
             }
             const Vector3 p(r->position().x(), r->position().y(), r->position().z());
@@ -762,7 +763,8 @@ void SkydotAi::set_doors_locked(const Spot& spot, bool locked) {
         return;
     }
     const auto* space = world_->cell_ptr(spot.space);
-    const bool interior = space != nullptr && (space->flags() & 0x1u) != 0;
+    const bool interior =
+        space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
     for (const auto& [door, to] : doors_of(spot.space)) {
         (void)to;
         if (!interior) {
@@ -814,7 +816,8 @@ bool SkydotAi::choose(Mind& m) {
 
 void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
     if (previous != 0) {
-        if (const auto* p = ai::find_package(*root(), previous); p != nullptr && (p->flags() & k_unlock_at_end) != 0) {
+        const auto* p = ai::find_package(*root(), previous);
+        if (p != nullptr && formats::has_flag(p->flags(), wfb::PackageFlags::unlock_doors_at_end)) {
             set_doors_locked(actor_spot(m), false);
         }
     }
@@ -835,7 +838,7 @@ void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
     const auto pkg = ai::resolve_package(*root(), m.package);
     Host host(*this, m);
     m.steps = ai::plan_steps(pkg, host, m.ref, [&]() { return roll(m); });
-    if ((pkg.own->flags() & k_unlock_at_start) != 0) {
+    if (formats::has_flag(pkg.own->flags(), wfb::PackageFlags::unlock_doors_at_start)) {
         set_doors_locked(actor_spot(m), false);
     }
     if (m.node == 0) {
@@ -1151,7 +1154,9 @@ bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, d
         return false;
     }
     const auto* pkg = ai::find_package(*root(), m.package);
-    const bool run = pkg != nullptr && (pkg->flags() & k_use_preferred_speed) != 0 && pkg->speed() == 2;
+    const bool run = pkg != nullptr &&
+                     formats::has_flag(pkg->flags(), wfb::PackageFlags::preferred_speed) &&
+                     pkg->speed() == 2;
     if (actor.walk_to(SkydotWorld::skyrim_position(to), run)) {
         ++m.walks;
         m.failures = 0;

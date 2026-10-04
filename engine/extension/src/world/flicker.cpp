@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/flicker.hpp"
 
+#include "skydot_formats/flags.hpp"
+
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -11,6 +13,12 @@
 namespace skydot {
 
 namespace {
+
+namespace wfb = bethconv::pack::wfb;
+
+constexpr auto k_slow = wfb::LightFlags::flicker_slow | wfb::LightFlags::pulse_slow;
+constexpr auto k_pulsing = wfb::LightFlags::pulse | wfb::LightFlags::pulse_slow;
+constexpr auto k_wandering = wfb::LightFlags::flicker | wfb::LightFlags::flicker_slow;
 
 double hash(double x) {
     const double s = std::sin(x * 127.1 + 311.7) * 43758.5453;
@@ -41,16 +49,16 @@ constexpr double k_flicker_movement = 64.0;
 
 void SkydotFlicker::configure(std::int64_t flags, double period, double intensity,
                               double movement) {
-    flags_ = static_cast<std::uint32_t>(flags);
-    const bool slow = (flags_ & (FLICKER_SLOW | PULSE_SLOW)) != 0;
+    flags_ = static_cast<wfb::LightFlags>(flags);
+    const bool slow = formats::has_flag(flags_, k_slow);
     period_ = period > 0.0 ? period : (slow ? 1.0 : 0.2);
     intensity_ = intensity;
-    movement_ = (flags_ & (FLICKER | FLICKER_SLOW)) != 0 ? movement : 0.0;
+    movement_ = formats::has_flag(flags_, k_wandering) ? movement : 0.0;
 }
 
 double SkydotFlicker::factor_at(double seconds) const {
     const double x = seconds / period_ + seed_;
-    if ((flags_ & (PULSE | PULSE_SLOW)) != 0) {
+    if (formats::has_flag(flags_, k_pulsing)) {
         return 1.0 + intensity_ * std::sin(2.0 * std::numbers::pi * x);
     }
     return 1.0 + intensity_ * (2.0 * noise(x) - 1.0);
@@ -82,7 +90,7 @@ void SkydotFlicker::_ready() {
                      static_cast<double>(p.z) * 2.1) *
                 1000.0;
     }
-    set_process(flags_ != 0);
+    set_process(flags_ != wfb::LightFlags::NONE);
 }
 
 void SkydotFlicker::_process(double /*delta*/) {

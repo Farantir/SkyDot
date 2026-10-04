@@ -6,6 +6,12 @@
 //
 // Positions and rotations are in Skyrim's own space: Z-up, game units,
 // rotation in radians. The engine converts them.
+//
+// A flag word is a `bit_flags` enum, named for the field or the record it
+// belongs to: the values in an enum are bit numbers, flatc turns them into
+// masks, and both halves test bits by these names. The words are mostly
+// the plugin's own, as stored, so a bit can be set that the enum does not
+// name; only bits one of the halves acts on are named.
 
 namespace bethconv.pack.wfb;
 
@@ -13,6 +19,16 @@ struct Vec3f {
     x: float;
     y: float;
     z: float;
+}
+
+/// `Ref.flags` and `ActorRef.flags`.
+enum RefFlags : uint32 (bit_flags) {
+    initially_disabled,
+    persistent,
+    /// The enable state is the opposite of `enable_parent`'s.
+    enable_opposite,
+    /// Only activate parents can activate it (XAPD).
+    parent_activate_only
 }
 
 /// One placed reference (REFR). Deleted references are not included.
@@ -23,10 +39,7 @@ struct Ref {
     position: Vec3f;
     rotation: Vec3f;
     scale: float;
-    /// Bit 0: initially disabled. Bit 1: persistent. Bit 2: enable state is the
-    /// opposite of `enable_parent`'s. Bit 3: only activate parents can
-    /// activate it (XAPD).
-    flags: uint32;
+    flags: RefFlags;
     /// 0 if none.
     enable_parent: uint32;
 }
@@ -108,10 +121,15 @@ table ScriptProperty {
     floats: [float];
 }
 
+/// `Script.status`: 0 local, 1 inherited, 2 removed, 3 inherited and removed.
+enum ScriptStatus : ubyte (bit_flags) {
+    inherited,
+    removed
+}
+
 table Script {
     name: string;
-    /// 0 local, 1 inherited, 2 removed, 3 inherited and removed.
-    status: ubyte;
+    status: ScriptStatus;
     properties: [ScriptProperty];
 }
 
@@ -173,6 +191,17 @@ table Terrain {
     layers: [TerrainLayer];
 }
 
+/// `NavTriangle.flags`; the others are as stored.
+enum NavTriangleFlags : uint16 (bit_flags) {
+    /// Edge k (v0-v1, v1-v2, v2-v0) is a link: see `NavTriangle.e0`.
+    edge0_link,
+    edge1_link,
+    edge2_link,
+    preferred = 6,
+    water = 9,
+    in_front_of_door = 10
+}
+
 /// A navmesh triangle (NVNM). Vertices index the navmesh's `vertices`.
 struct NavTriangle {
     v0: ushort;
@@ -183,9 +212,7 @@ struct NavTriangle {
     e0: short;
     e1: short;
     e2: short;
-    /// Bits 0-2: edge k is a link. Bit 6 preferred, 9 water, 10 in front of a
-    /// door. Others as stored.
-    flags: ushort;
+    flags: NavTriangleFlags;
     /// As stored; per-edge cover, not decoded.
     cover: ushort;
 }
@@ -217,13 +244,26 @@ table NavMesh {
     doors: [NavDoor];
 }
 
+/// `Cell.flags`: CELL DATA flags, as stored (source: UESP, CELL record).
+enum CellFlags : uint16 (bit_flags) {
+    interior,
+    /// The cell has water at `water_height`.
+    has_water,
+    /// Interiors only.
+    cant_travel_from_here,
+    no_lod_water,
+    public_area = 5,
+    hand_changed,
+    show_sky,
+    use_sky_lighting
+}
+
 table Cell {
     id: uint32;
     editor_id: string;
     /// Worldspace for exterior cells, 0 for interiors.
     world: uint32;
-    /// CELL DATA flags (bit 0: interior).
-    flags: uint16;
+    flags: CellFlags;
     has_grid: bool;
     grid_x: int32;
     grid_y: int32;
@@ -261,11 +301,29 @@ table Cell {
     image_space: uint32;
 }
 
+/// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A
+/// hemisphere shadow light has no direction of its own; the engine draws it as
+/// an omni light with shadows.
+enum LightFlags : uint32 (bit_flags) {
+    dynamic,
+    can_be_carried,
+    negative,
+    flicker,
+    off_by_default = 5,
+    flicker_slow,
+    pulse,
+    pulse_slow,
+    spot_light = 10,
+    spot_shadow,
+    hemisphere_shadow,
+    omni_shadow
+}
+
 /// LIGH DATA and FNAM. Color is RGBA bytes, red in the low byte.
 struct LightData {
     radius: uint32;
     color: uint32;
-    flags: uint32;
+    flags: LightFlags;
     falloff_exponent: float;
     fov: float;
     near_clip: float;
@@ -273,6 +331,13 @@ struct LightData {
     flicker_period: float;
     flicker_intensity: float;
     flicker_movement: float;
+}
+
+/// `Base.record_flags`: the record header's flags, of which one is named.
+enum RecordFlags : uint32 (bit_flags) {
+    /// Editor markers (XMarker, furniture markers): the game does not draw
+    /// them.
+    editor_marker = 23
 }
 
 /// A base record that references can place: anything with a model or scripts,
@@ -291,9 +356,7 @@ table Base {
     flags: uint32;
     /// VMAD.
     scripts: [Script];
-    /// The record header's flags; bit 23 (0x00800000) marks editor markers
-    /// (XMarker, furniture markers), which the game does not draw.
-    record_flags: uint32;
+    record_flags: RecordFlags;
     /// STAT DNAM (format 10): the directional material, a MaterialObject in
     /// `material_objects` (0 if none), and its max angle in degrees.
     directional_material: uint32;
@@ -341,12 +404,18 @@ table AddonNode {
     model: string;
 }
 
+/// `Grass.flags`.
+enum GrassFlags : ubyte (bit_flags) {
+    vertex_lighting,
+    uniform_scaling,
+    fit_to_slope
+}
+
 /// GRAS (format 10; DATA, 32 bytes, UESP GRAS record). `model` is a
 /// normalized virtual path. Slopes in degrees; distances in game units.
 /// `water_type`: 0 above at least, 1 above at most, 2 below at least, 3 below
 /// at most, 4 either at least, 5 either at most, 6 either at most above, 7
-/// either at most below. Flags: 1 vertex lighting, 2 uniform scaling, 4 fit
-/// to slope.
+/// either at most below.
 table Grass {
     id: uint32;
     editor_id: string;
@@ -360,7 +429,7 @@ table Grass {
     height_range: float;
     color_range: float;
     wave_period: float;
-    flags: ubyte;
+    flags: GrassFlags;
 }
 
 /// One of WATR's three noise layers.
@@ -495,6 +564,16 @@ table Region {
     weather_override: bool;
 }
 
+/// `Weather.classification`.
+enum WeatherClass : ubyte (bit_flags) {
+    pleasant,
+    cloudy,
+    rainy,
+    snow,
+    sky_statics_always_visible,
+    sky_statics_follow_sun
+}
+
 /// WTHR, the parts that light a scene. Times of day are sunrise, day,
 /// sunset, night, in that order. Colours are RGBA bytes, red in the low byte.
 table Weather {
@@ -526,9 +605,7 @@ table Weather {
     thunder_begin: float;
     thunder_end: float;
     thunder_frequency: float;
-    /// Bit 0 pleasant, 1 cloudy, 2 rainy, 3 snow, 4 sky statics always
-    /// visible, 5 sky statics follow the sun.
-    classification: ubyte;
+    classification: WeatherClass;
     /// RGB, red in the low byte.
     lightning_color: uint;
     /// MNAM, a Precipitation; 0 if none.
@@ -553,14 +630,19 @@ table ImageSpace {
     tint: [float];
 }
 
+/// `Worldspace.parent_flags`: PNAM, which properties come from the parent.
+enum ParentFlags : uint16 (bit_flags) {
+    land_data
+}
+
 /// WRLD.
 table Worldspace {
     id: uint32;
     editor_id: string;
     /// WNAM; 0 if none.
     parent: uint32;
-    /// PNAM: which properties come from the parent. Bit 0: land data.
-    parent_flags: ushort;
+    /// PNAM.
+    parent_flags: ParentFlags;
     /// DATA flags.
     flags: ubyte;
     /// DNAM; the land and water height of cells without LAND or XCLW.
@@ -578,20 +660,31 @@ table Worldspace {
     max_y: float;
 }
 
+/// `QuestLogEntry.flags`.
+enum LogEntryFlags : ubyte (bit_flags) {
+    completes_quest,
+    fails_quest
+}
+
 /// A journal entry of a quest stage (QSDT, CNAM).
 table QuestLogEntry {
-    /// Bit 0: completes the quest. Bit 1: fails it.
-    flags: ubyte;
+    flags: LogEntryFlags;
     text: string;
     /// CTDA count. Conditions choose among a stage's entries; the engine does
     /// not evaluate them.
     conditions: ushort;
 }
 
+/// `QuestStage.flags`.
+enum StageFlags : ubyte (bit_flags) {
+    start_up = 1,
+    shut_down
+}
+
 table QuestStage {
     index: ushort;
-    /// INDX. Bit 1: start-up stage. Bit 2: shut-down stage.
-    flags: ubyte;
+    /// INDX.
+    flags: StageFlags;
     log: [QuestLogEntry];
 }
 
@@ -613,6 +706,13 @@ table QuestFragment {
     function: string;
 }
 
+/// `QuestAlias.flags`: FNAM (source: UESP, QUST record).
+enum AliasFlags : uint32 (bit_flags) {
+    optional = 1,
+    allow_disabled = 7,
+    initially_disabled = 15
+}
+
 /// A quest alias, in the order the quest fills them. How it is filled is the
 /// first that applies: `forced` (ALFR, or ALFL for a location alias),
 /// `unique_actor`, `external_quest`/`external_alias`, `created_object` at
@@ -623,9 +723,7 @@ table QuestAlias {
     name: string;
     /// A location alias (ALLS) rather than a reference alias (ALST).
     location: bool;
-    /// FNAM. Bit 1: optional. Bit 7: allow disabled. Bit 15: initially
-    /// disabled. (Source: UESP, QUST record.)
-    flags: uint32;
+    flags: AliasFlags;
     forced: uint32;
     /// An NPC_; the alias takes its one placed actor.
     unique_actor: uint32;
@@ -642,14 +740,19 @@ table QuestAlias {
     scripts: [Script];
 }
 
+/// `Quest.flags`: DNAM (source: UESP, QUST record).
+enum QuestFlags : uint16 (bit_flags) {
+    start_game_enabled,
+    allow_repeated_stages = 3,
+    run_once = 8
+}
+
 /// QUST.
 table Quest {
     id: uint32;
     editor_id: string;
     name: string;
-    /// DNAM. Bit 0: start game enabled. Bit 3: allow repeated stages. Bit 8:
-    /// run once. (Source: UESP, QUST record.)
-    flags: ushort;
+    flags: QuestFlags;
     priority: ubyte;
     type: uint32;
     /// ENAM: the story manager event as a four-character code, or 0.
@@ -682,8 +785,7 @@ struct ActorRef {
     cell: uint32;
     position: Vec3f;
     rotation: Vec3f;
-    /// As `Ref.flags`.
-    flags: uint32;
+    flags: RefFlags;
 }
 
 /// One sex's body part of a race (RACE NAM1 section): INDX 0 upper body,
@@ -756,12 +858,19 @@ struct LeveledEntry {
     form: uint32;
 }
 
-/// LVLI or LVLN. LVLF flags: 1 from all levels, 2 each entry (LVLI), 4 use
-/// all.
+/// `LeveledList.flags`: LVLF.
+enum LeveledListFlags : ubyte (bit_flags) {
+    from_all_levels,
+    /// LVLI only.
+    each_entry,
+    use_all
+}
+
+/// LVLI or LVLN.
 table LeveledList {
     id: uint32;
     type: uint32;
-    flags: ubyte;
+    flags: LeveledListFlags;
     chance_none: ubyte;
     entries: [LeveledEntry];
 }
@@ -777,19 +886,35 @@ struct NpcFaction {
     rank: int;
 }
 
+/// `Npc.flags`: ACBS flags.
+enum NpcFlags : uint32 (bit_flags) {
+    female,
+    essential,
+    unique = 5
+}
+
+/// `Npc.template_flags`: which parts of an actor come from its template
+/// (ACBS template flags; source: xEdit, wbTemplateFlags).
+enum NpcTemplateFlags : uint16 (bit_flags) {
+    use_traits,
+    use_factions = 2,
+    use_ai_packages = 5,
+    use_inventory = 8,
+    /// DPLT's default package list.
+    use_package_list = 10
+}
+
 /// NPC_: what an actor base looks like and wears.
 table Npc {
     id: uint32;
     editor_id: string;
     name: string;
-    /// ACBS flags: 1 female, 2 essential, 0x20 unique, …
-    flags: uint32;
+    flags: NpcFlags;
     level: uint16;
     race: uint32;
-    /// TPLT (an NPC_ or LVLN) and which parts come from it (ACBS template
-    /// flags: 1 traits, 0x100 inventory, …).
+    /// TPLT (an NPC_ or LVLN) and which parts come from it.
     template: uint32;
-    template_flags: uint16;
+    template_flags: NpcTemplateFlags;
     /// WNAM: overrides the race's skin.
     skin: uint32;
     default_outfit: uint32;
@@ -813,14 +938,25 @@ table Npc {
     factions: [NpcFaction];
 }
 
+/// The low bits of `Condition.type`.
+enum ConditionFlags : ubyte (bit_flags) {
+    /// OR with the next condition.
+    or_next,
+    use_aliases,
+    /// Compare with the GLOB `value_global`.
+    use_global,
+    use_package_data,
+    /// Swap subject and target.
+    swap_subject_target
+}
+
 /// A CTDA condition. FormID parameters (by the function's parameter types)
 /// are global; everything else is raw. Source: xEdit's wbConditions; see
 /// `bethconv/record/conditions.hpp` for the function table.
 table Condition {
     /// The comparison in the top three bits (0 ==, 1 !=, 2 >, 3 >=, 4 <,
-    /// 5 <=); flags 0x01 OR with the next, 0x02 use aliases, 0x04 compare
-    /// with the GLOB `value_global`, 0x08 use package data, 0x10 swap subject
-    /// and target.
+    /// 5 <=) and `ConditionFlags` below them. A plain byte, not the enum: it
+    /// holds a number too.
     type: ubyte;
     function: ushort;
     value: float;
@@ -863,6 +999,11 @@ table PackageInput {
     target_count: int;
 }
 
+/// `PackageBranch.flags`: PRCB flags.
+enum BranchFlags : uint32 (bit_flags) {
+    repeat_when_complete
+}
+
 /// A node of a template's procedure tree, in pre-order: a node with
 /// `children` > 0 (Sequence, Stack, Simultaneous, Random, …) is followed by
 /// that many subtrees; a `Procedure` node is a leaf running `procedure`.
@@ -870,8 +1011,7 @@ table PackageBranch {
     type: string;
     conditions: [Condition];
     children: uint32;
-    /// PRCB flags. Bit 0: repeat when complete.
-    flags: uint32;
+    flags: BranchFlags;
     procedure: string;
     success_completes: bool;
     /// The data input keys the procedure reads, in its own parameter order.
@@ -882,6 +1022,16 @@ table PackageBranch {
     speed: byte = -1;
 }
 
+/// `Package.flags`: PKDT general flags (source: xEdit, wbPackageFlags).
+enum PackageFlags : uint32 (bit_flags) {
+    must_complete = 2,
+    unlock_doors_at_start = 6,
+    unlock_doors_at_end,
+    once_per_day = 10,
+    preferred_speed = 13,
+    wear_sleep_outfit = 29
+}
+
 /// PACK: an AI package (type 18) or a template (19). A package runs its
 /// template's `branches` with the template's `inputs` overridden by its own,
 /// by key.
@@ -889,10 +1039,7 @@ table Package {
     id: uint32;
     editor_id: string;
     type: ubyte;
-    /// PKDT general flags. 0x4 must complete, 0x40/0x80 unlock doors at
-    /// start/end, 0x400 once per day, 0x20000000 wear sleep outfit, …
-    /// (Source: xEdit, wbPackageFlags.)
-    flags: uint32;
+    flags: PackageFlags;
     interrupt_override: ubyte;
     /// 0 walk, 1 jog, 2 run, 3 fast walk.
     speed: ubyte;

@@ -32,7 +32,8 @@ flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>> write
         }
         const auto name = builder.CreateString(script.name);
         const auto properties_off = builder.CreateVector(properties);
-        out.push_back(wfb::CreateScript(builder, name, script.status, properties_off));
+        const auto status = static_cast<wfb::ScriptStatus>(script.status);
+        out.push_back(wfb::CreateScript(builder, name, status, properties_off));
     }
     return builder.CreateVector(out);
 }

@@ -71,7 +71,7 @@ NpcSpec& npc_of(WorldSpec& spec, std::uint32_t id) {
 
 TEST_CASE("a plan names the race, the skeleton for the sex and the size", "[actors]") {
     auto spec = humans();
-    spec.npcs.push_back({.id = 2, .flags = 1, .race = k_human, .height = 1.1F}); // female
+    spec.npcs.push_back({.id = 2, .flags = wfb::NpcFlags::female, .race = k_human, .height = 1.1F}); // female
     spec.npcs.push_back({.id = 3, .race = k_human, .height = 1.1F});
 
     const auto male = plan(spec, 1);
@@ -97,7 +97,7 @@ TEST_CASE("a race with one skeleton gives it to both sexes", "[actors]") {
     auto spec = humans();
     spec.races[0].skeletons = {k_skeleton + ".nif"};
     spec.races[0].heights = {};
-    spec.npcs.push_back({.id = 2, .flags = 1, .race = k_human, .height = 2.0F});
+    spec.npcs.push_back({.id = 2, .flags = wfb::NpcFlags::female, .race = k_human, .height = 2.0F});
     const auto female = plan(spec, 2);
     CHECK(female.female);
     CHECK(female.skeleton == k_skeleton + ".hkx");
@@ -139,9 +139,9 @@ namespace {
 /// 1.5 tall).
 WorldSpec chain() {
     auto spec = humans();
-    spec.npcs = {{.id = 1, .race = k_human, .template_id = 2, .template_flags = k_use_traits},
-                 {.id = 2, .race = k_human, .template_id = 3, .template_flags = k_use_traits},
-                 {.id = 3, .flags = 1, .race = k_human, .height = 1.5F}};
+    spec.npcs = {{.id = 1, .race = k_human, .template_id = 2, .template_flags = wfb::NpcTemplateFlags::use_traits},
+                 {.id = 2, .race = k_human, .template_id = 3, .template_flags = wfb::NpcTemplateFlags::use_traits},
+                 {.id = 3, .flags = wfb::NpcFlags::female, .race = k_human, .height = 1.5F}};
     return spec;
 }
 
@@ -156,20 +156,20 @@ TEST_CASE("an NPC takes its traits down the template chain while the flag is set
 
     // Where a link does not take traits, the chain stops there.
     auto stops = chain();
-    npc_of(stops, 2).template_flags = 0;
+    npc_of(stops, 2).template_flags = wfb::NpcTemplateFlags::NONE;
     CHECK(plan(stops, 1).npc == 2);
     CHECK_FALSE(plan(stops, 1).female);
 
     // And an NPC without the flag is itself, whatever its template.
     auto own = chain();
-    npc_of(own, 1).template_flags = 0;
+    npc_of(own, 1).template_flags = wfb::NpcTemplateFlags::NONE;
     CHECK(plan(own, 1).npc == 1);
 }
 
 TEST_CASE("template chains that loop or lead nowhere end", "[actors][templates]") {
     auto spec = chain();
     npc_of(spec, 3).template_id = 1;
-    npc_of(spec, 3).template_flags = k_use_traits;
+    npc_of(spec, 3).template_flags = wfb::NpcTemplateFlags::use_traits;
     CHECK(plan(spec, 1).missing.empty());
 
     auto itself = chain();
@@ -190,9 +190,9 @@ TEST_CASE("traits and the outfit come from templates independently", "[actors][t
     spec.addons = {{.id = 0x300, .slots = k_body, .race = k_human, .male_model = "armor/cuirass.nif"}};
     spec.outfits = {{.id = 0x400, .items = {0x210}}};
     // 1 is its own person, in the outfit of 2; 3 is in 2's person, in its own clothes.
-    spec.npcs = {{.id = 1, .race = k_human, .template_id = 2, .template_flags = k_use_inventory},
-                 {.id = 2, .flags = 1, .race = k_human, .default_outfit = 0x400},
-                 {.id = 3, .race = k_human, .template_id = 2, .template_flags = k_use_traits}};
+    spec.npcs = {{.id = 1, .race = k_human, .template_id = 2, .template_flags = wfb::NpcTemplateFlags::use_inventory},
+                 {.id = 2, .flags = wfb::NpcFlags::female, .race = k_human, .default_outfit = 0x400},
+                 {.id = 3, .race = k_human, .template_id = 2, .template_flags = wfb::NpcTemplateFlags::use_traits}};
     const auto pack = pack_with({"armor/cuirass.nif"});
 
     const auto dressed = plan(spec, 1, pack);
@@ -209,7 +209,7 @@ TEST_CASE("traits and the outfit come from templates independently", "[actors][t
 TEST_CASE("a leveled list picks one entry, the same every time for a reference", "[actors][templates][leveled]") {
     // 1 takes its traits from the NPC list 0x500: 2, 3 or 4, different people.
     auto spec = humans();
-    spec.npcs = {{.id = 1, .race = k_human, .template_id = 0x500, .template_flags = k_use_traits},
+    spec.npcs = {{.id = 1, .race = k_human, .template_id = 0x500, .template_flags = wfb::NpcTemplateFlags::use_traits},
                  {.id = 2, .race = k_human},
                  {.id = 3, .race = k_human},
                  {.id = 4, .race = k_human}};
@@ -224,14 +224,14 @@ TEST_CASE("a leveled list picks one entry, the same every time for a reference",
         CHECK((first.npc == 2 || first.npc == 3 || first.npc == 4));
         // Again, as after a reload: the same one.
         CHECK(skydot::plan_actor(*world, 1, ref, exists).npc == first.npc);
-        CHECK(skydot::resolve_npc(*world, 1, k_use_traits, ref)->id() == first.npc);
+        CHECK(skydot::resolve_npc(*world, 1, wfb::NpcTemplateFlags::use_traits, ref)->id() == first.npc);
         picked.insert(first.npc);
     }
     // Different references get different people, not one for them all.
     CHECK(picked.size() >= 2);
 
     // Without the flag nothing is taken from the list.
-    CHECK(skydot::resolve_npc(*world, 1, k_use_inventory, 0xA00)->id() == 1);
+    CHECK(skydot::resolve_npc(*world, 1, wfb::NpcTemplateFlags::use_inventory, 0xA00)->id() == 1);
 }
 
 TEST_CASE("a placed base may be a leveled list, and lists may nest", "[actors][templates][leveled]") {
@@ -252,11 +252,11 @@ TEST_CASE("a placed base may be a leveled list, and lists may nest", "[actors][t
 
 TEST_CASE("resolve_npc gives the NPC a flag leads to, or null for something that is none", "[actors][templates]") {
     const BuiltWorld world(chain());
-    REQUIRE(skydot::resolve_npc(*world, 1, k_use_traits, 0x800) != nullptr);
-    CHECK(skydot::resolve_npc(*world, 1, k_use_traits, 0x800)->id() == 3);
-    CHECK(skydot::resolve_npc(*world, 3, k_use_traits, 0x800)->id() == 3);
-    CHECK(skydot::resolve_npc(*world, 1, k_use_inventory, 0x800)->id() == 1);
-    CHECK(skydot::resolve_npc(*world, 99, k_use_traits, 0x800) == nullptr);
+    REQUIRE(skydot::resolve_npc(*world, 1, wfb::NpcTemplateFlags::use_traits, 0x800) != nullptr);
+    CHECK(skydot::resolve_npc(*world, 1, wfb::NpcTemplateFlags::use_traits, 0x800)->id() == 3);
+    CHECK(skydot::resolve_npc(*world, 3, wfb::NpcTemplateFlags::use_traits, 0x800)->id() == 3);
+    CHECK(skydot::resolve_npc(*world, 1, wfb::NpcTemplateFlags::use_inventory, 0x800)->id() == 1);
+    CHECK(skydot::resolve_npc(*world, 99, wfb::NpcTemplateFlags::use_traits, 0x800) == nullptr);
 }
 
 // ---- what is worn -----------------------------------------------------------
@@ -370,7 +370,7 @@ TEST_CASE("an addon fits the race it names, its additional races, or the race's 
 TEST_CASE("an addon's model is the sex's, else the other's", "[actors][worn]") {
     auto spec = dressed({k_cuirass});
     auto& addon = *std::ranges::find(spec.addons, 0x311U, &AddonSpec::id);
-    npc_of(spec, 1).flags = 1; // female
+    npc_of(spec, 1).flags = wfb::NpcFlags::female;
     const Paths pack = pack_with({"armor/cuirass.nif", "armor/cuirass_f.nif"});
 
     addon.male_model = "armor/cuirass.nif";
@@ -379,7 +379,7 @@ TEST_CASE("an addon's model is the sex's, else the other's", "[actors][worn]") {
     addon.female_model = "";
     CHECK(plan(spec, 1, pack).parts == List{"armor/cuirass.nif"});
 
-    npc_of(spec, 1).flags = 0;
+    npc_of(spec, 1).flags = wfb::NpcFlags::NONE;
     addon.male_model = "";
     addon.female_model = "armor/cuirass_f.nif";
     CHECK(plan(spec, 1, pack).parts == List{"armor/cuirass_f.nif"});
@@ -422,7 +422,7 @@ TEST_CASE("models the pack lacks are left out, and a model is listed once", "[ac
 
 TEST_CASE("the FaceGen head is the traits NPC's, when the pack has it", "[actors][worn]") {
     auto spec = dressed({k_cuirass});
-    spec.npcs.push_back({.id = 2, .race = k_human, .template_id = 3, .template_flags = k_use_traits});
+    spec.npcs.push_back({.id = 2, .race = k_human, .template_id = 3, .template_flags = wfb::NpcTemplateFlags::use_traits});
     spec.npcs.push_back({.id = 3, .race = k_human, .face_model = "facegeom/three.nif"});
     npc_of(spec, 1).face_model = "facegeom/one.nif";
     const auto pack = pack_with({"facegeom/one.nif", "facegeom/three.nif"});
@@ -444,7 +444,8 @@ TEST_CASE("the FaceGen head is the traits NPC's, when the pack has it", "[actors
 TEST_CASE("an outfit entry that is a leveled list is resolved by the actor's level, or worn whole",
           "[actors][worn][leveled]") {
     const auto pack = pack_with(k_models);
-    const auto worn_at = [&](std::uint8_t flags, std::uint16_t level, std::uint32_t ref = 0x800) {
+    const auto worn_at = [&](wfb::LeveledListFlags flags, std::uint16_t level,
+                             std::uint32_t ref = 0x800) {
         auto spec = dressed({0x600});
         spec.leveled_lists = {{.id = 0x600, .flags = flags, .entries = {{1, k_cuirass}, {20, k_boots}}}};
         npc_of(spec, 1).level = level;
@@ -454,21 +455,21 @@ TEST_CASE("an outfit entry that is a leveled list is resolved by the actor's lev
 
     // Only entries at or below the level are candidates: at 5, the cuirass.
     for (std::uint32_t ref = 0x800; ref < 0x810; ++ref) {
-        const auto parts = worn_at(0, 5, ref);
+        const auto parts = worn_at(wfb::LeveledListFlags::NONE, 5, ref);
         CHECK(has(parts, "armor/cuirass.nif"));
         CHECK_FALSE(has(parts, "armor/boots.nif"));
     }
     // At 25 either, the same one for a reference every time.
     std::set<bool> cuirass_seen;
     for (std::uint32_t ref = 0x800; ref < 0x840; ++ref) {
-        const auto parts = worn_at(0, 25, ref);
+        const auto parts = worn_at(wfb::LeveledListFlags::NONE, 25, ref);
         CHECK(has(parts, "armor/cuirass.nif") != has(parts, "armor/boots.nif"));
-        CHECK(worn_at(0, 25, ref) == parts);
+        CHECK(worn_at(wfb::LeveledListFlags::NONE, 25, ref) == parts);
         cuirass_seen.insert(has(parts, "armor/cuirass.nif"));
     }
     CHECK(cuirass_seen.size() == 2);
     // With "use all" the list is every entry.
-    const auto all = worn_at(skydot::testing::k_use_all, 5);
+    const auto all = worn_at(wfb::LeveledListFlags::use_all, 5);
     CHECK(has(all, "armor/cuirass.nif"));
     CHECK(has(all, "armor/boots.nif"));
 }
@@ -479,7 +480,7 @@ TEST_CASE("the idle is the first clip the race's behaviour folder has", "[actors
     const std::string animations = "meshes/actors/character/animations/";
     const auto idle_of = [&](std::vector<std::string> clips, bool female = false) {
         auto spec = humans();
-        npc_of(spec, 1).flags = female ? 1U : 0U;
+        npc_of(spec, 1).flags = female ? wfb::NpcFlags::female : wfb::NpcFlags::NONE;
         Paths pack = pack_with();
         pack.insert(clips.begin(), clips.end());
         return plan(spec, 1, pack).idle;

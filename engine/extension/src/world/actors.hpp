@@ -5,8 +5,8 @@
 // the skeleton and idle that animate it. `SkydotWorld` builds it.
 //
 // Rules (from the game's data; see docs/actors.md):
-// - Template flags pick what comes from TPLT: traits (1) give race, sex,
-//   skin, height, weight and face; inventory (0x100) the outfit. A leveled
+// - Template flags pick what comes from TPLT: traits give race, sex,
+//   skin, height, weight and face; inventory the outfit. A leveled
 //   list (LVLN, LVLI) picks one entry, the same every time for a reference.
 // - Worn: the outfit's armor. Its slots hide the skin's addons that overlap
 //   them; the rest of the skin (body, hands, feet) stays.
@@ -41,16 +41,12 @@ struct ActorPlan {
     bool hide_hair{};
 };
 
-/// NPC_ template flags (ACBS; source: xEdit, wbTemplateFlags).
-inline constexpr std::uint16_t k_template_factions = 0x0004;
-inline constexpr std::uint16_t k_template_ai_packages = 0x0020;
-inline constexpr std::uint16_t k_template_package_list = 0x0400;
-
 /// The NPC_ that supplies what `flag` covers for `npc` placed as `ref`:
 /// TPLT followed while the flag is set, leveled lists picked as plan_actor
 /// picks them. Null if `npc` is no NPC_.
 const bethconv::pack::wfb::Npc* resolve_npc(const bethconv::pack::wfb::World& world,
-                                            std::uint32_t npc, std::uint16_t flag,
+                                            std::uint32_t npc,
+                                            bethconv::pack::wfb::NpcTemplateFlags flag,
                                             std::uint32_t ref);
 
 /// `exists(vpath)` says whether the pack has an asset.

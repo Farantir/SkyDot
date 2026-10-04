@@ -2,6 +2,7 @@
 #include "vm/script_class.hpp"
 
 #include "assets/vpath.hpp"
+#include "skydot_formats/flags.hpp"
 
 namespace skydot::vm {
 
@@ -110,7 +111,7 @@ bool ScriptClass::read(std::string& error) {
             }
             Property property{.name = lower_[p->name()], .type = lower_[p->type()], .auto_var = {},
                               .getter = nullptr, .setter = nullptr};
-            if ((p->flags() & 0x4u) != 0) {
+            if (formats::has_flag(p->flags(), sfb::PropertyFlags::is_auto)) {
                 if (!ok(p->auto_var())) {
                     error = "property variable outside the string table";
                     return false;
@@ -150,8 +151,8 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
         return false;
     }
     out.return_type = lower_[f.return_type()];
-    out.global = (f.flags() & 0x1u) != 0;
-    out.native = (f.flags() & 0x2u) != 0;
+    out.global = formats::has_flag(f.flags(), sfb::FunctionFlags::global);
+    out.native = formats::has_flag(f.flags(), sfb::FunctionFlags::native);
     for (const auto* list : {f.params(), f.locals()}) {
         if (list == nullptr) {
             continue;

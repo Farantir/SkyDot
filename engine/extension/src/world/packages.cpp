@@ -4,6 +4,8 @@
 #include "world/actors.hpp"
 #include "world/fb_search.hpp"
 
+#include "skydot_formats/flags.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -26,9 +28,10 @@ constexpr int k_minutes_per_day = 24 * 60;
 constexpr int k_max_chain = 8;
 constexpr std::int32_t k_no_key = 255;
 
-/// CTDA type byte (see world.fbs, Condition).
-constexpr std::uint8_t k_or = 0x01;
-constexpr std::uint8_t k_use_global = 0x04;
+/// The flags in the CTDA type byte, below the comparison (world.fbs, Condition).
+wfb::ConditionFlags flags_of(const wfb::Condition& c) {
+    return static_cast<wfb::ConditionFlags>(c.type());
+}
 constexpr std::uint32_t k_run_on_subject = 0;
 constexpr std::uint32_t k_run_on_target = 1;
 constexpr std::uint32_t k_run_on_reference = 2;
@@ -71,8 +74,9 @@ bool evaluate(const wfb::Condition& c, ConditionHost& host, std::uint32_t actor)
         break;
     }
     const double value = host.function_value(c, subject);
-    const double with = (c.type() & k_use_global) != 0 ? host.global_value(c.value_global())
-                                                         : static_cast<double>(c.value());
+    const double with = formats::has_flag(flags_of(c), wfb::ConditionFlags::use_global)
+                            ? host.global_value(c.value_global())
+                            : static_cast<double>(c.value());
     return compare(value, c.type(), with);
 }
 
@@ -357,7 +361,7 @@ bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Conditio
     for (const auto* c : *list) {
         any = evaluate(*c, host, actor) || any;
         open = true;
-        if ((c->type() & k_or) == 0) {
+        if (!formats::has_flag(flags_of(*c), wfb::ConditionFlags::or_next)) {
             all = all && any;
             any = false;
             open = false;
@@ -465,7 +469,8 @@ std::vector<Step> plan_steps(const Package& pkg, ConditionHost& host, std::uint3
 
 bool repeats(const Package& pkg) {
     const auto* branches = pkg.tree != nullptr ? pkg.tree->branches() : nullptr;
-    return branches != nullptr && branches->size() != 0 && (branches->Get(0)->flags() & 0x1u) != 0;
+    return branches != nullptr && branches->size() != 0 &&
+           formats::has_flag(branches->Get(0)->flags(), wfb::BranchFlags::repeat_when_complete);
 }
 
 std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t npc, std::uint32_t actor) {
@@ -480,10 +485,10 @@ std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t n
             }
         }
     };
-    if (const auto* n = resolve_npc(world, npc, k_template_ai_packages, actor)) {
+    if (const auto* n = resolve_npc(world, npc, wfb::NpcTemplateFlags::use_ai_packages, actor)) {
         add(n->packages());
     }
-    if (const auto* n = resolve_npc(world, npc, k_template_package_list, actor)) {
+    if (const auto* n = resolve_npc(world, npc, wfb::NpcTemplateFlags::use_package_list, actor)) {
         add(n->default_packages());
     }
     return out;

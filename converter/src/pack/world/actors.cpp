@@ -78,11 +78,11 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.id = merged.form.value;
     out.editor_id = npc->editor_id;
     out.name = npc->name.text;
-    out.flags = npc->flags;
+    out.flags = static_cast<wfb::NpcFlags>(npc->flags);
     out.level = npc->level;
     out.race = shared_.global(merged, npc->race, failed);
     out.template_form = shared_.global(merged, npc->npc_template, failed);
-    out.template_flags = npc->template_flags;
+    out.template_flags = static_cast<wfb::NpcTemplateFlags>(npc->template_flags);
     out.skin = shared_.global(merged, npc->worn_armor, failed);
     out.default_outfit = shared_.global(merged, npc->default_outfit, failed);
     out.sleeping_outfit = shared_.global(merged, npc->sleeping_outfit, failed);
@@ -204,7 +204,7 @@ void ActorCollector::add_leveled(const record::MergedRecord& merged, std::uint8_
     bool failed = false;
     WorldLeveledList out{.id = merged.form.value,
                          .type = merged.type.value,
-                         .flags = flags,
+                         .flags = static_cast<wfb::LeveledListFlags>(flags),
                          .chance_none = chance_none,
                          .entries = {}};
     for (const auto& e : entries) {

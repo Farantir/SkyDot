@@ -6,6 +6,7 @@
 
 #include "assets/model.hpp"
 
+#include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/base_material3d.hpp>
@@ -734,8 +735,8 @@ void SkydotWeather::update_sky(double delta) {
     // transition. Frequency 255 means none; lower is more often (a guess:
     // a flash every 4 to 44 seconds).
     double flash = 0.0;
-    if (to != nullptr && (to->classification() & 0x4) != 0 && to->thunder_frequency() < 0.999F &&
-        transition_ >= static_cast<double>(to->thunder_begin())) {
+    if (to != nullptr && formats::has_flag(to->classification(), wfb::WeatherClass::rainy) &&
+        to->thunder_frequency() < 0.999F && transition_ >= static_cast<double>(to->thunder_begin())) {
         lightning_timer_ -= delta;
         if (lightning_timer_ <= 0.0) {
             std::exponential_distribution<double> wait(1.0 / (4.0 + 40.0 * static_cast<double>(to->thunder_frequency())));

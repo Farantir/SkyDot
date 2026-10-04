@@ -97,15 +97,18 @@ add_library(bethconv_core STATIC
 add_dependencies(bethconv_core bethconv_records_fbs)
 add_library(bethconv::core ALIAS bethconv_core)
 
+# pack/world.hpp has the generated flag enums in its structs, so the generated
+# headers and FlatBuffers are public; pack/snapshot.hpp still hides them behind
+# a pImpl. formats/include/ is the vocabulary both halves share.
 target_include_directories(bethconv_core
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
-    # Private: pack/snapshot.hpp hides FlatBuffers behind a pImpl.
-    PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/generated")
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../formats/include>
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>)
 
 target_link_libraries(bethconv_core
     PRIVATE bethconv::warnings ZLIB::ZLIB lz4::lz4 bsa::bsa nifly fastgltf::fastgltf nlohmann_json::nlohmann_json
-            flatbuffers::flatbuffers BLAKE3::blake3 bc7enc
-    PUBLIC bethconv::sanitizers)
+            BLAKE3::blake3 bc7enc
+    PUBLIC bethconv::sanitizers flatbuffers::flatbuffers)
 
 # install/game_install.cpp reads Steam's and the games' registry keys.
 if(WIN32)

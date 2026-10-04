@@ -28,7 +28,7 @@ struct CellEntry {
     std::uint32_t id{};
     std::string editor_id;
     std::uint32_t world{};
-    std::uint16_t flags{};
+    wfb::CellFlags flags{};
     std::optional<record::Cell::Grid> grid;
     float water_height{};
     std::optional<WorldCellLighting> lighting;

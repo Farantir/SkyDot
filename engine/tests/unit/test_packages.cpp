@@ -429,7 +429,7 @@ TEST_CASE("a template chain that loops ends", "[ai][packages]") {
 
 TEST_CASE("a tree repeats when its root says so", "[ai][packages]") {
     BranchSpec repeating = sequence({procedure("Travel")});
-    repeating.flags = 1;
+    repeating.flags = wfb::BranchFlags::repeat_when_complete;
     const BuiltWorld world(WorldSpec{.packages = {{.id = 1, .tree = repeating},
                                                   {.id = 2, .tree = sequence({procedure("Travel")})},
                                                   {.id = 3}}});
@@ -580,9 +580,9 @@ TEST_CASE("no package that applies gives 0", "[ai][choose]") {
 TEST_CASE("the template flags lead to the NPC whose packages count", "[ai][choose]") {
     // A's template is B. The "AI packages" flag takes the PKID list from B;
     // the "default package list" flag takes DPLT from B too.
-    const std::uint16_t k_packages = 0x0020;
-    const std::uint16_t k_defaults = 0x0400;
-    const auto list_for = [&](std::uint16_t flags) {
+    constexpr auto k_packages = wfb::NpcTemplateFlags::use_ai_packages;
+    constexpr auto k_defaults = wfb::NpcTemplateFlags::use_package_list;
+    const auto list_for = [&](wfb::NpcTemplateFlags flags) {
         const BuiltWorld world(WorldSpec{
             .npcs = {{.id = 1, .template_id = 2, .template_flags = flags, .packages = {10}, .default_packages = {20}},
                      {.id = 2, .packages = {11}, .default_packages = {21}}},
@@ -590,12 +590,12 @@ TEST_CASE("the template flags lead to the NPC whose packages count", "[ai][choos
         return ai::package_list(*world, 1, k_actor);
     };
     using List = std::vector<std::uint32_t>;
-    CHECK(list_for(0) == List{10, 20});
+    CHECK(list_for(wfb::NpcTemplateFlags::NONE) == List{10, 20});
     CHECK(list_for(k_packages) == List{11, 20});
     CHECK(list_for(k_defaults) == List{10, 21});
     CHECK(list_for(k_packages | k_defaults) == List{11, 21});
     // Traits and the like do not move packages.
-    CHECK(list_for(skydot::testing::k_use_traits | skydot::testing::k_use_inventory) == List{10, 20});
+    CHECK(list_for(wfb::NpcTemplateFlags::use_traits | wfb::NpcTemplateFlags::use_inventory) == List{10, 20});
 }
 
 TEST_CASE("a list names each package once, in order", "[ai][choose]") {
@@ -607,7 +607,7 @@ TEST_CASE("a list names each package once, in order", "[ai][choose]") {
 
 TEST_CASE("an NPC from a leveled list of NPCs has the packages of the one picked for its actor", "[ai][choose]") {
     const BuiltWorld world(WorldSpec{
-        .npcs = {{.id = 1, .template_id = 50, .template_flags = 0x0020, .packages = {10}},
+        .npcs = {{.id = 1, .template_id = 50, .template_flags = wfb::NpcTemplateFlags::use_ai_packages, .packages = {10}},
                  {.id = 2, .packages = {11}},
                  {.id = 3, .packages = {12}}},
         .leveled_lists = {{.id = 50, .type = k_lvln, .entries = {{1, 2}, {1, 3}}}},

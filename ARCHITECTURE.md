@@ -77,7 +77,8 @@ SkyDot/
 ├── ARCHITECTURE.md                   this file
 ├── formats/                          ~2,000 lines: THE CONTRACT
 │   ├── pack-format.md                the pack, versioned (v6)
-│   └── schema/*.fbs                  records, world, script, lod, animation
+│   ├── schema/*.fbs                  records, world, script, lod, animation
+│   └── include/skydot_formats/       C++ headers both halves share (vocabulary only)
 ├── converter/                        bethconv
 │   ├── include/bethconv/<layer>/     public headers (~7,900 lines)
 │   ├── src/<layer>/                  implementation (~22,400 lines)
@@ -143,7 +144,11 @@ code looks like:
 - `src/CMakeLists.txt` builds one static library, `bethconv_core`, and runs
   `flatc` on every schema in `formats/schema/` at build time, so generated
   headers cannot drift from the schemas. FlatBuffers types are kept out of
-  the public headers (pImpl in `pack/snapshot.hpp`, `pack/world.hpp`).
+  most public headers (pImpl in `pack/snapshot.hpp`); `pack/world.hpp` includes
+  the generated `world_generated.h` because its structs hold the schema's flag
+  enums (`wfb::RefFlags`, `wfb::CellFlags`, ...), so that header and
+  FlatBuffers are public to `bethconv_core`'s users. `formats/include/` is on
+  the include path of both halves.
 - `tools/` builds the `bethconv` CLI and `bethconv-testpack` on top of the
   library.
 

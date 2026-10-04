@@ -3,6 +3,8 @@
 
 #include "world/fb_search.hpp"
 
+#include "skydot_formats/flags.hpp"
+
 #include <algorithm>
 
 namespace skydot {
@@ -10,16 +12,11 @@ namespace {
 
 namespace wfb = bethconv::pack::wfb;
 
-constexpr std::uint16_t k_use_traits = 0x0001;
-constexpr std::uint16_t k_use_inventory = 0x0100;
-constexpr std::uint32_t k_female = 0x1;
 /// Body slot 31 (bit 1): hair. Hoods and helmets cover it.
 constexpr std::uint32_t k_slot_hair = 0x2;
 /// Templates and leveled lists nest; vanilla stays far below this.
 constexpr int k_max_depth = 8;
 constexpr std::uint32_t k_lvln = 0x4E4C564C; // "LVLN"
-/// LVLF: 4 use all, give every entry rather than one.
-constexpr std::uint8_t k_use_all = 0x04;
 
 const wfb::Npc* npc_of(const wfb::World& w, std::uint32_t id) {
     return find_sorted(w.npcs(), id, [](const wfb::Npc* n) { return n->id(); });
@@ -65,9 +62,10 @@ std::uint32_t pick(const wfb::LeveledList& list, std::uint32_t ref, std::uint16_
 }
 
 /// Follow TPLT while the NPC takes `flag` from its template.
-const wfb::Npc* resolve(const wfb::World& w, const wfb::Npc* npc, std::uint16_t flag, std::uint32_t ref) {
+const wfb::Npc* resolve(const wfb::World& w, const wfb::Npc* npc, wfb::NpcTemplateFlags flag,
+                        std::uint32_t ref) {
     for (int depth = 0; npc != nullptr && depth < k_max_depth; ++depth) {
-        if ((npc->template_flags() & flag) == 0 || npc->template_() == 0) {
+        if (!formats::has_flag(npc->template_flags(), flag) || npc->template_() == 0) {
             return npc;
         }
         std::uint32_t next = npc->template_();
@@ -124,7 +122,8 @@ void worn_items(const wfb::World& w, std::uint32_t id, std::uint32_t ref, std::u
     if (list == nullptr || list->entries() == nullptr) {
         return;
     }
-    if ((list->flags() & k_use_all) != 0) {
+    // Give every entry rather than one.
+    if (formats::has_flag(list->flags(), wfb::LeveledListFlags::use_all)) {
         for (const auto* e : *list->entries()) {
             worn_items(w, e->form(), ref, level, out, depth + 1);
         }
@@ -162,7 +161,8 @@ std::string with_extension(const std::string& path, const char* ext) {
 
 } // namespace
 
-const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, std::uint16_t flag, std::uint32_t ref) {
+const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, wfb::NpcTemplateFlags flag,
+                            std::uint32_t ref) {
     return resolve(w, npc_of(w, npc), flag, ref);
 }
 
@@ -183,15 +183,15 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
         plan.missing = "no NPC_";
         return plan;
     }
-    const auto* traits = resolve(w, npc, k_use_traits, ref);
-    const auto* inventory = resolve(w, npc, k_use_inventory, ref);
+    const auto* traits = resolve(w, npc, wfb::NpcTemplateFlags::use_traits, ref);
+    const auto* inventory = resolve(w, npc, wfb::NpcTemplateFlags::use_inventory, ref);
     plan.npc = traits->id();
     if (const auto* tone = traits->skin_tone(); tone != nullptr && tone->size() == 3) {
         for (flatbuffers::uoffset_t i = 0; i < 3; ++i) {
             plan.skin_tone[i] = tone->Get(i);
         }
     }
-    plan.female = (traits->flags() & k_female) != 0;
+    plan.female = formats::has_flag(traits->flags(), wfb::NpcFlags::female);
     const std::size_t sex = plan.female ? 1 : 0;
     const auto* race = race_of(w, traits->race());
     if (race == nullptr) {

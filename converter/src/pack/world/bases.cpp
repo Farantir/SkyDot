@@ -18,6 +18,17 @@ namespace {
 
 using io::FourCC;
 
+static_assert(same_bit(wfb::LightFlags::dynamic, record::Light::Flag::dynamic) &&
+              same_bit(wfb::LightFlags::can_be_carried, record::Light::Flag::can_be_carried) &&
+              same_bit(wfb::LightFlags::negative, record::Light::Flag::negative) &&
+              same_bit(wfb::LightFlags::flicker, record::Light::Flag::flicker) &&
+              same_bit(wfb::LightFlags::off_by_default, record::Light::Flag::off_by_default) &&
+              same_bit(wfb::LightFlags::flicker_slow, record::Light::Flag::flicker_slow) &&
+              same_bit(wfb::LightFlags::pulse, record::Light::Flag::pulse) &&
+              same_bit(wfb::LightFlags::pulse_slow, record::Light::Flag::pulse_slow) &&
+              same_bit(wfb::LightFlags::spot_light, record::Light::Flag::spot_light) &&
+              same_bit(wfb::LightFlags::spot_shadow, record::Light::Flag::spot_shadow));
+
 /// Types whose VMAD is followed by fragment data; their scripts only run
 /// through systems that do not exist yet.
 bool has_fragments(FourCC type) {
@@ -69,7 +80,7 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
             WorldLight{
                 .radius = light->radius,
                 .color = light->colour,
-                .flags = light->light_flags,
+                .flags = static_cast<wfb::LightFlags>(light->light_flags),
                 .falloff_exponent = light->falloff_exponent,
                 .fov = light->fov,
                 .near_clip = light->near_clip,
@@ -80,7 +91,7 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
             },
         .flags = 0,
         .scripts = {},
-        .record_flags = merged.flags,
+        .record_flags = static_cast<wfb::RecordFlags>(merged.flags),
     };
     bool failed = false;
     bases_[merged.form.value].scripts =
@@ -146,7 +157,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         .light = std::nullopt,
         .flags = flags,
         .scripts = shared_.global_scripts(merged, std::move(scripts), failed),
-        .record_flags = merged.flags,
+        .record_flags = static_cast<wfb::RecordFlags>(merged.flags),
         .directional_material =
             material != 0 ? shared_.global(merged, record::FormId{material}, failed) : 0,
         .directional_max_angle = max_angle,
@@ -246,7 +257,7 @@ void BaseCollector::on_grass(const record::MergedRecord& merged, io::SpanReader&
                 out.height_range = body.get<float>().value_or(0.0F);
                 out.color_range = body.get<float>().value_or(0.0F);
                 out.wave_period = body.get<float>().value_or(0.0F);
-                out.flags = body.get<std::uint8_t>().value_or(0);
+                out.flags = static_cast<wfb::GrassFlags>(body.get<std::uint8_t>().value_or(0));
             }
         });
     if (!walked || out.model.empty()) {

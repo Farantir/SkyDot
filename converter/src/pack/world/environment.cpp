@@ -91,7 +91,7 @@ void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io:
         .id = merged.form.value,
         .editor_id = w->editor_id,
         .parent = shared_.global(merged, w->parent, failed),
-        .parent_flags = w->parent_flags,
+        .parent_flags = static_cast<wfb::ParentFlags>(w->parent_flags),
         .flags = w->flags,
         .defaults = std::nullopt,
         .water = shared_.global(merged, w->water, failed),
@@ -253,7 +253,7 @@ void EnvironmentCollector::on_weather(const record::MergedRecord& merged, io::Sp
         out.thunder_begin = unit(d[8]);
         out.thunder_end = unit(d[9]);
         out.thunder_frequency = unit(d[10]);
-        out.classification = d[11];
+        out.classification = static_cast<wfb::WeatherClass>(d[11]);
         out.lightning_color = static_cast<std::uint32_t>(d[12]) |
                               (static_cast<std::uint32_t>(d[13]) << 8) |
                               (static_cast<std::uint32_t>(d[14]) << 16);

@@ -53,8 +53,9 @@ flatbuffers::Offset<wfb::Package> package(Fbb& fbb, const PackageSpec& p) {
     if (p.tree) {
         branches(fbb, *p.tree, tree);
     }
-    return wfb::CreatePackageDirect(fbb, p.id, some(p.editor_id), p.type, 0, 0, 0, 0, p.month, p.day_of_week, p.date,
-                                    p.hour, p.minute, p.duration, some(cs), p.template_id, some(inputs), some(tree));
+    return wfb::CreatePackageDirect(fbb, p.id, some(p.editor_id), p.type, wfb::PackageFlags::NONE, 0, 0, 0,
+                                    p.month, p.day_of_week, p.date, p.hour, p.minute, p.duration, some(cs),
+                                    p.template_id, some(inputs), some(tree));
 }
 
 } // namespace

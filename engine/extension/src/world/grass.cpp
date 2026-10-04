@@ -4,6 +4,7 @@
 #include "world/terrain.hpp"
 #include "world/world.hpp"
 
+#include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/multi_mesh.hpp>
@@ -201,11 +202,12 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
                 }
                 const float size = std::max(
                     1.0F + (random01(cx, cy, ux * 4096 + uy, salt + 3) * 2 - 1) * grass->height_range(), 0.1F);
-                const bool uniform = (grass->flags() & 0x2u) != 0;
+                const bool uniform =
+                    formats::has_flag(grass->flags(), wfb::GrassFlags::uniform_scaling);
                 const float yaw = random01(cx, cy, ux * 4096 + uy, salt + 4) * 2 * std::numbers::pi_v<float>;
                 Basis basis = Basis(Vector3(0, 1, 0), yaw).scaled(uniform ? Vector3(size, size, size)
                                                                           : Vector3(1, size, 1));
-                if ((grass->flags() & 0x4u) != 0) {
+                if (formats::has_flag(grass->flags(), wfb::GrassFlags::fit_to_slope)) {
                     // Lean with the ground: turn up onto the normal.
                     const Vector3 axis = Vector3(0, 1, 0).cross(normal);
                     if (axis.length() > 0.0001F) {

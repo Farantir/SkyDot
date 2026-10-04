@@ -24,8 +24,8 @@ namespace wfb = bethconv::pack::wfb;
 
 /// CTDA's type byte: the comparison in the top three bits, flags below.
 enum Compare : std::uint8_t { eq = 0 << 5, ne = 1 << 5, gt = 2 << 5, ge = 3 << 5, lt = 4 << 5, le = 5 << 5 };
-inline constexpr std::uint8_t k_or = 0x01;
-inline constexpr std::uint8_t k_use_global = 0x04;
+inline constexpr auto k_or = static_cast<std::uint8_t>(wfb::ConditionFlags::or_next);
+inline constexpr auto k_use_global = static_cast<std::uint8_t>(wfb::ConditionFlags::use_global);
 /// CTDA run-on values.
 inline constexpr std::uint32_t k_on_subject = 0;
 inline constexpr std::uint32_t k_on_target = 1;
@@ -73,8 +73,8 @@ struct BranchSpec {
     std::vector<ConditionSpec> conditions = {};
     /// The data input keys a procedure reads.
     std::vector<std::uint8_t> inputs = {};
-    /// PRCB flags; bit 0 repeats the tree when it is done.
-    std::uint32_t flags = 0;
+    /// PRCB flags: `repeat_when_complete` repeats the tree when it is done.
+    wfb::BranchFlags flags = {};
     std::vector<BranchSpec> children = {};
 };
 
@@ -125,18 +125,13 @@ struct PackageSpec {
 
 // ---- actors -----------------------------------------------------------------
 
-/// ACBS template flags.
-inline constexpr std::uint16_t k_use_traits = 0x0001;
-inline constexpr std::uint16_t k_use_inventory = 0x0100;
-
 struct NpcSpec {
     std::uint32_t id;
-    /// ACBS flags; 1 is female.
-    std::uint32_t flags = 0;
+    wfb::NpcFlags flags = {};
     std::uint16_t level = 0;
     std::uint32_t race = 0;
     std::uint32_t template_id = 0;
-    std::uint16_t template_flags = 0;
+    wfb::NpcTemplateFlags template_flags = {};
     std::uint32_t skin = 0;
     std::uint32_t default_outfit = 0;
     float height = 0.0F;
@@ -185,12 +180,11 @@ struct OutfitSpec {
 
 /// "LVLN" as the record type a leveled list of NPCs carries.
 inline constexpr std::uint32_t k_lvln = 0x4E4C564C;
-inline constexpr std::uint8_t k_use_all = 0x04;
 
 struct LeveledListSpec {
     std::uint32_t id;
     std::uint32_t type = 0;
-    std::uint8_t flags = 0;
+    wfb::LeveledListFlags flags = {};
     /// Entries as (level, form).
     std::vector<std::pair<std::uint16_t, std::uint32_t>> entries = {};
 };

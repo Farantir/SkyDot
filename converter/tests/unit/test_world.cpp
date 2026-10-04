@@ -7,6 +7,7 @@
 
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include "../support/esm_builder.hpp"
 #include "../support/temp_dir.hpp"
@@ -626,8 +627,8 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     REQUIRE(chair.has_value());
     CHECK(chair->model == "meshes/furniture/chair.nif");
     CHECK(file->base(0x0000'0800)->model == "meshes/architecture/wall.nif");
-    CHECK(file->base(0x0000'0800)->record_flags == 0);
-    CHECK(file->base(0x0000'0803)->record_flags == 0x0080'0000);
+    CHECK(file->base(0x0000'0800)->record_flags == pack::wfb::RecordFlags::NONE);
+    CHECK(file->base(0x0000'0803)->record_flags == pack::wfb::RecordFlags::editor_marker);
     // Already prefixed paths are not prefixed again.
     CHECK(file->base(0x0100'0900)->model == "meshes/other.nif");
 
@@ -657,7 +658,8 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     REQUIRE(cell->activate_parents.size() == 1);
     CHECK(cell->activate_parents[0].parent == 0x0200'0B01);
     CHECK(cell->activate_parents[0].delay == 0.5F);
-    CHECK((cell->refs[1].flags & pack::k_ref_parent_activate_only) != 0);
+    CHECK(skydot::formats::has_flag(cell->refs[1].flags,
+                                    pack::wfb::RefFlags::parent_activate_only));
     REQUIRE(cell->primitives.size() == 1);
     CHECK(cell->primitives[0].bounds.x == 64.0F);
     CHECK(cell->primitives[0].type == 1);
@@ -724,7 +726,8 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(nav.vertices[2] == record::Vec3{0, 128, 32});
     REQUIRE(nav.triangles.size() == 1);
     CHECK(nav.triangles[0].edges == std::array<std::int16_t, 3>{-1, -1, 0});
-    CHECK(nav.triangles[0].flags == 0x0404);
+    CHECK(nav.triangles[0].flags == (pack::wfb::NavTriangleFlags::edge2_link |
+                                     pack::wfb::NavTriangleFlags::in_front_of_door));
     REQUIRE(nav.links.size() == 1);
     CHECK(nav.links[0].navmesh == 0x0000'0D04);
     REQUIRE(nav.doors.size() == 1);
@@ -806,7 +809,7 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(weather->clouds[0].speed_y == 0.0F);
     CHECK(weather->clouds[1].colors[2] == (1u | (2u << 8)));
     CHECK(weather->clouds[1].alphas[3] == 0.75F);
-    CHECK(weather->classification == 4); // rainy
+    CHECK(weather->classification == pack::wfb::WeatherClass::rainy);
     CHECK(weather->wind_speed == 0.2F);
     CHECK(weather->wind_direction == 90.0F);
     CHECK(weather->lightning_color == 0x001E140Au);
@@ -995,7 +998,7 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     const auto quest = file->quest(0x0200'0D00);
     REQUIRE(quest.has_value());
     CHECK(quest->editor_id == "TestQuest");
-    CHECK(quest->flags == 0x0001);
+    CHECK(quest->flags == pack::wfb::QuestFlags::start_game_enabled);
     CHECK(quest->priority == 50);
     REQUIRE(quest->scripts.size() == 1);
     CHECK(quest->scripts[0].properties[0].objects[0].form == record::FormId{0x0200'0C00});
@@ -1004,7 +1007,7 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(quest->fragments[0].stage == 10);
     CHECK(quest->fragments[0].function == "Fragment_0");
     REQUIRE(quest->stages.size() == 1);
-    CHECK(quest->stages[0].flags == 0x02);
+    CHECK(quest->stages[0].flags == pack::wfb::StageFlags::start_up);
     CHECK(quest->stages[0].log.at(0).text == "Begun.");
     REQUIRE(quest->aliases.size() == 2);
     CHECK(quest->aliases[0].name == "Guard");
@@ -1232,7 +1235,7 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     const auto npc = file->npc(0x0200'0E30);
     REQUIRE(npc.has_value());
     CHECK(npc->editor_id == "TestNpc");
-    CHECK((npc->flags & 1) == 1);
+    CHECK(skydot::formats::has_flag(npc->flags, pack::wfb::NpcFlags::female));
     CHECK(npc->race == 0x0200'0E00);
     CHECK(npc->default_outfit == 0x0200'0E20);
     CHECK(npc->height == 1.05F);
@@ -1265,7 +1268,7 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     REQUIRE(pack.has_value());
     CHECK(pack->editor_id == "TestSandbox8x4");
     CHECK(pack->type == 18);
-    CHECK(pack->flags == 0x4);
+    CHECK(pack->flags == pack::wfb::PackageFlags::must_complete);
     CHECK(pack->schedule.hour == 8);
     CHECK(pack->schedule.duration == 240);
     CHECK(pack->template_package == 0x0200'0E41);

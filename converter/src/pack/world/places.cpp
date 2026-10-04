@@ -7,6 +7,7 @@
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/forms.hpp"
 #include "bethconv/record/forms_world.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -18,6 +19,17 @@ namespace bethconv::pack::detail {
 namespace {
 
 using io::FourCC;
+using skydot::formats::has_flag;
+
+static_assert(same_bit(wfb::CellFlags::interior, record::Cell::Flag::interior) &&
+              same_bit(wfb::CellFlags::has_water, record::Cell::Flag::has_water) &&
+              same_bit(wfb::CellFlags::cant_travel_from_here,
+                       record::Cell::Flag::cant_travel_from_here) &&
+              same_bit(wfb::CellFlags::no_lod_water, record::Cell::Flag::no_lod_water) &&
+              same_bit(wfb::CellFlags::public_area, record::Cell::Flag::public_area) &&
+              same_bit(wfb::CellFlags::hand_changed, record::Cell::Flag::hand_changed) &&
+              same_bit(wfb::CellFlags::show_sky, record::Cell::Flag::show_sky) &&
+              same_bit(wfb::CellFlags::use_sky_lighting, record::Cell::Flag::use_sky_lighting));
 
 /// VHGT: a float offset, 33 x 33 signed deltas, 3 bytes of padding.
 std::optional<std::pair<float, std::vector<std::int8_t>>> decode_vhgt(
@@ -88,7 +100,7 @@ constexpr std::uint32_t k_inherit_light_fade = 0x400;
 std::optional<WorldCellLighting> resolve_lighting(
     const CellEntry& cell, const std::map<std::uint32_t, LightingTemplateEntry>& templates) {
     const auto it = templates.find(cell.lighting_template);
-    if ((cell.flags & 0x1u) == 0 || it == templates.end()) {
+    if (!has_flag(cell.flags, wfb::CellFlags::interior) || it == templates.end()) {
         return cell.lighting;
     }
     const auto& t = it->second.lighting;
@@ -232,7 +244,7 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
         .id = merged.form.value,
         .editor_id = cell->editor_id,
         .world = cell->is_interior() ? 0 : merged.parent.value,
-        .flags = cell->flags,
+        .flags = static_cast<wfb::CellFlags>(cell->flags),
         .grid = cell->grid,
         .water_height = cell->water_height,
         .lighting = decode_xcll(cell->lighting),
@@ -266,23 +278,23 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         .position = ref->position,
         .rotation = ref->rotation,
         .scale = ref->scale,
-        .flags = 0,
+        .flags = {},
         .enable_parent = 0,
     };
     if (ref->initially_disabled) {
-        out.flags |= k_ref_initially_disabled;
+        out.flags |= wfb::RefFlags::initially_disabled;
     }
     if (ref->persistent) {
-        out.flags |= k_ref_persistent;
+        out.flags |= wfb::RefFlags::persistent;
     }
     if (ref->enable_parent) {
         out.enable_parent = shared_.global(merged, ref->enable_parent->parent, failed);
         if (ref->enable_parent->set_enable_state_opposite()) {
-            out.flags |= k_ref_enable_opposite;
+            out.flags |= wfb::RefFlags::enable_opposite;
         }
     }
     if ((ref->activate_parent_flags & 0x01u) != 0) {
-        out.flags |= k_ref_parent_activate_only;
+        out.flags |= wfb::RefFlags::parent_activate_only;
     }
     auto& extras = extras_[merged.parent.value];
     if (!ref->scripts.empty()) {
@@ -425,13 +437,13 @@ void PlaceCollector::on_actor(const record::MergedRecord& merged,
         .cell = merged.parent.value,
         .position = actor->position,
         .rotation = actor->rotation,
-        .flags = 0,
+        .flags = {},
     };
     if (actor->initially_disabled) {
-        out.flags |= k_ref_initially_disabled;
+        out.flags |= wfb::RefFlags::initially_disabled;
     }
     if (actor->persistent) {
-        out.flags |= k_ref_persistent;
+        out.flags |= wfb::RefFlags::persistent;
     }
     // Packages walk to linked references (beds, work markers, patrols).
     for (const auto& link : actor->linked_references) {
@@ -470,7 +482,8 @@ void PlaceCollector::on_navmesh(const record::MergedRecord& merged, io::SpanRead
     out.vertices = std::move(geometry->vertices);
     out.triangles.reserve(geometry->triangles.size());
     for (const auto& t : geometry->triangles) {
-        out.triangles.push_back({.vertices = t.vertices, .edges = t.edges, .flags = t.flags,
+        out.triangles.push_back({.vertices = t.vertices, .edges = t.edges,
+                                 .flags = static_cast<wfb::NavTriangleFlags>(t.flags),
                                  .cover = t.cover});
     }
     for (const auto& l : geometry->edge_links) {
@@ -657,7 +670,7 @@ std::vector<flatbuffers::Offset<wfb::Cell>> PlaceCollector::write_cells(
         cells.push_back(cb.Finish());
 
         ++stats.cells;
-        if ((cell.flags & 0x1u) != 0) {
+        if (has_flag(cell.flags, wfb::CellFlags::interior)) {
             ++stats.interior_cells;
         }
     }

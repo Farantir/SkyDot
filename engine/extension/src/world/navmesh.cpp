@@ -3,6 +3,7 @@
 
 #include "world/world.hpp"
 
+#include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/navigation_link3d.hpp>
@@ -13,6 +14,7 @@
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <array>
 #include <optional>
 
 namespace wfb = bethconv::pack::wfb;
@@ -20,7 +22,10 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 namespace {
 
-constexpr std::uint16_t k_water = 0x0200;
+/// The flag of each edge that says it leads into another navmesh.
+constexpr std::array<wfb::NavTriangleFlags, 3> k_edge_link{wfb::NavTriangleFlags::edge0_link,
+                                                           wfb::NavTriangleFlags::edge1_link,
+                                                           wfb::NavTriangleFlags::edge2_link};
 
 using Vertices = flatbuffers::Vector<const wfb::Vec3f*>;
 using Triangles = flatbuffers::Vector<const wfb::NavTriangle*>;
@@ -120,7 +125,8 @@ void for_each_link(const wfb::NavMesh& nav, const NavIndex& index, Visit&& visit
         const auto* t = in->triangles.Get(i);
         const std::array<std::int16_t, 3> edges{t->e0(), t->e1(), t->e2()};
         for (int k = 0; k < 3; ++k) {
-            if ((t->flags() & (1U << k)) == 0 || edges[static_cast<std::size_t>(k)] < 0 ||
+            if (!formats::has_flag(t->flags(), k_edge_link[static_cast<std::size_t>(k)]) ||
+                edges[static_cast<std::size_t>(k)] < 0 ||
                 edges[static_cast<std::size_t>(k)] >= static_cast<std::int32_t>(links->size())) {
                 continue;
             }
@@ -181,7 +187,7 @@ godot::Dictionary navmesh_info(const wfb::NavMesh& nav, const wfb::Cell& cell,
     if (nav.triangles() != nullptr) {
         for (const auto* t : *nav.triangles()) {
             ++triangles;
-            water += (t->flags() & k_water) != 0 ? 1 : 0;
+            water += formats::has_flag(t->flags(), wfb::NavTriangleFlags::water) ? 1 : 0;
         }
     }
     out["triangles"] = triangles;

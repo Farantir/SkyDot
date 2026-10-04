@@ -59,7 +59,7 @@ struct GrassEntry {
     float height_range{};
     float color_range{};
     float wave_period{};
-    std::uint8_t flags{};
+    wfb::GrassFlags flags{};
 };
 
 struct BaseEntry {
@@ -70,7 +70,7 @@ struct BaseEntry {
     std::optional<WorldLight> light;
     std::uint32_t flags{};
     std::vector<record::Script> scripts;
-    std::uint32_t record_flags{};
+    wfb::RecordFlags record_flags{};
     std::uint32_t directional_material{};
     float directional_max_angle{};
 };

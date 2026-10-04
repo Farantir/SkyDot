@@ -80,10 +80,16 @@ flatbuffers::Offset<sfb::Function> function(flatbuffers::FlatBufferBuilder& fbb,
         }
         offsets.push_back(static_cast<std::uint32_t>(args.size()));
     }
-    return sfb::CreateFunctionDirect(
-        fbb, strings.index(name), strings.index(f.return_type), 0,
-        static_cast<std::uint8_t>((f.global ? 1U : 0U) | (f.native ? 2U : 0U)), &params, &locals, &ops,
-        &offsets, &args, f.lines.empty() ? nullptr : &f.lines);
+    auto flags = sfb::FunctionFlags::NONE;
+    if (f.global) {
+        flags |= sfb::FunctionFlags::global;
+    }
+    if (f.native) {
+        flags |= sfb::FunctionFlags::native;
+    }
+    return sfb::CreateFunctionDirect(fbb, strings.index(name), strings.index(f.return_type), 0, flags,
+                                     &params, &locals, &ops, &offsets, &args,
+                                     f.lines.empty() ? nullptr : &f.lines);
 }
 
 } // namespace
@@ -121,8 +127,16 @@ std::vector<std::uint8_t> build_script(const ScriptSpec& spec) {
         if (p.setter) {
             setter = function(fbb, strings, *p.setter, p.name);
         }
-        const std::uint8_t flags = static_cast<std::uint8_t>(
-            (p.getter ? 1U : 0U) | (p.setter ? 2U : 0U) | (p.auto_var.empty() ? 0U : 4U));
+        auto flags = sfb::PropertyFlags::NONE;
+        if (p.getter) {
+            flags |= sfb::PropertyFlags::has_getter;
+        }
+        if (p.setter) {
+            flags |= sfb::PropertyFlags::has_setter;
+        }
+        if (!p.auto_var.empty()) {
+            flags |= sfb::PropertyFlags::is_auto;
+        }
         properties.push_back(sfb::CreateProperty(
             fbb, strings.index(p.name), strings.index(p.type), 0, flags,
             p.auto_var.empty() ? std::uint16_t{0} : strings.index(p.auto_var), getter, setter));

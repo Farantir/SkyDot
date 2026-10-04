@@ -21,13 +21,19 @@ struct NameType {
     type: ushort;
 }
 
+/// `Function.flags`.
+enum FunctionFlags : ubyte (bit_flags) {
+    /// Static.
+    global,
+    native
+}
+
 table Function {
     /// The property's name for getters and setters.
     name: ushort;
     return_type: ushort;
     user_flags: uint32;
-    /// Bit 0 global (static), bit 1 native.
-    flags: ubyte;
+    flags: FunctionFlags;
     params: [NameType];
     locals: [NameType];
     /// Instruction i is opcodes[i] with args[arg_offsets[i] .. arg_offsets[i + 1]];
@@ -53,12 +59,19 @@ struct Variable {
     initial: Value;
 }
 
+/// `Property.flags`.
+enum PropertyFlags : ubyte (bit_flags) {
+    has_getter,
+    has_setter,
+    /// An auto property, backed by `auto_var`.
+    is_auto
+}
+
 table Property {
     name: ushort;
     type: ushort;
     user_flags: uint32;
-    /// Bit 0 has a getter, bit 1 a setter, bit 2 auto (backed by `auto_var`).
-    flags: ubyte;
+    flags: PropertyFlags;
     auto_var: ushort;
     getter: Function;
     setter: Function;

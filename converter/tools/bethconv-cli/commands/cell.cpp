@@ -7,6 +7,7 @@
 #include "bethconv/pack/vpath_index.hpp"
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/forms.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -64,9 +65,7 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
             return 1;
         }
     }
-    // Bit 0 of PNAM: land data comes from the parent.
-    const std::uint32_t land_world =
-        (ws->parent != 0 && (ws->parent_flags & 0x1u) != 0) ? ws->parent : ws->id;
+    const std::uint32_t land_world = ws->uses_parent_land() ? ws->parent : ws->id;
 
     std::vector<bethconv::pack::WorldRef> refs;
     std::set<std::uint32_t> land_textures;
@@ -145,8 +144,11 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
 
 void print_scripts(const std::vector<bethconv::record::Script>& scripts) {
     using bethconv::record::ScriptPropertyType;
+    namespace wfb = bethconv::pack::wfb;
     for (const auto& script : scripts) {
-        std::printf("    %s%s\n", script.name.c_str(), (script.status & 0x2u) != 0 ? " (removed)" : "");
+        const bool removed = skydot::formats::has_flag(static_cast<wfb::ScriptStatus>(script.status),
+                                                       wfb::ScriptStatus::removed);
+        std::printf("    %s%s\n", script.name.c_str(), removed ? " (removed)" : "");
         for (const auto& p : script.properties) {
             std::string value;
             for (const auto& o : p.objects) {
@@ -223,7 +225,7 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                 {"id", w.id},
                 {"editor_id", bethconv::io::json_text(w.editor_id)},
                 {"parent", w.parent},
-                {"uses_parent_land", w.parent != 0 && (w.parent_flags & 0x1u) != 0},
+                {"uses_parent_land", w.uses_parent_land()},
                 {"bounds", {w.bounds[0], w.bounds[1], w.bounds[2], w.bounds[3]}}});
         }
         bethconv::cli::emit(ordered_json{{"json_version", bethconv::cli::k_json_version},
@@ -251,7 +253,7 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
         for (const auto& w : world->worldspaces()) {
             std::printf("0x%08X  %-28s parent 0x%08X%s  bounds (%.0f %.0f)-(%.0f %.0f)\n", w.id,
                         w.editor_id.c_str(), w.parent,
-                        (w.parent != 0 && (w.parent_flags & 0x1u) != 0) ? " (its land)" : "",
+                        w.uses_parent_land() ? " (its land)" : "",
                         static_cast<double>(w.bounds[0]), static_cast<double>(w.bounds[1]),
                         static_cast<double>(w.bounds[2]), static_cast<double>(w.bounds[3]));
         }
@@ -339,7 +341,10 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                     base->type.to_string().c_str(), base->editor_id.c_str(),
                     static_cast<double>(ref.position.x), static_cast<double>(ref.position.y),
                     static_cast<double>(ref.position.z), static_cast<double>(ref.scale),
-                    (ref.flags & bethconv::pack::k_ref_initially_disabled) != 0 ? " disabled" : "",
+                    skydot::formats::has_flag(ref.flags,
+                                              bethconv::pack::wfb::RefFlags::initially_disabled)
+                        ? " disabled"
+                        : "",
                     base->light ? "(light)" : base->model.c_str());
     }
     if (no_base != 0) {

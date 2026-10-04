@@ -12,6 +12,7 @@
 #include "world/flicker.hpp"
 #include "world/refs.hpp"
 
+#include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/animation_library.hpp>
@@ -58,19 +59,11 @@ namespace skydot {
 
 namespace {
 
-// LIGH DATA flags (UESP, LIGH record).
-constexpr std::uint32_t k_light_negative = 0x0004;
-constexpr std::uint32_t k_light_off_by_default = 0x0020;
-constexpr std::uint32_t k_light_spot = 0x0400;
-// Shadow casters (UESP, LIGH DATA flags); a hemisphere shadow light is drawn
-// as an omni light with shadows.
-constexpr std::uint32_t k_light_spot_shadow = 0x0800;
-constexpr std::uint32_t k_light_shadow = 0x0800 | 0x1000 | 0x2000;
-
-// Ref flags (world.fbs).
-constexpr std::uint32_t k_ref_initially_disabled = 0x1;
-constexpr std::uint32_t k_ref_persistent = 0x2;
-constexpr std::uint32_t k_ref_enable_opposite = 0x4;
+// Shadow casters among the lights (the hemisphere shadow light is drawn as an
+// omni light with shadows).
+constexpr wfb::LightFlags k_light_shadow = wfb::LightFlags::spot_shadow |
+                                           wfb::LightFlags::hemisphere_shadow |
+                                           wfb::LightFlags::omni_shadow;
 
 /// RGBA bytes packed little-endian (red in the low byte); alpha is unused.
 Color unpack_color(std::uint32_t rgba) {
@@ -105,8 +98,7 @@ bool contains_ci(const flatbuffers::String* haystack, const std::string& needle_
 /// TanningRackMarker.nif) are seen in the game, and the converter has already
 /// dropped their EditorMarker parts.
 bool is_marker(const wfb::Base& base) {
-    constexpr std::uint32_t k_record_is_marker = 0x00800000;
-    if ((base.record_flags() & k_record_is_marker) != 0) {
+    if (formats::has_flag(base.record_flags(), wfb::RecordFlags::editor_marker)) {
         return true;
     }
     const auto* model = base.model();
@@ -365,7 +357,8 @@ void SkydotWorld::build_indexes() {
             if (cell == nullptr) {
                 continue;
             }
-            if (cell->persistent() && cell->world() != 0 && (cell->flags() & 0x1u) == 0) {
+            if (cell->persistent() && cell->world() != 0 &&
+                !formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
                 const auto x = static_cast<std::int32_t>(std::floor(a->position().x() / k_cell_units));
                 const auto y = static_cast<std::int32_t>(std::floor(a->position().y() / k_cell_units));
                 persistent_actors_[grid_key(cell->world(), x, y)].push_back(a);
@@ -406,7 +399,7 @@ void SkydotWorld::build_indexes() {
                 activate_children_.emplace(p->parent(), std::tuple{p->ref(), cell->id(), p->delay()});
             }
         }
-        if ((cell->flags() & 0x1u) != 0 || cell->world() == 0) {
+        if (formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0) {
             continue;
         }
         if (cell->persistent()) {
@@ -483,7 +476,8 @@ std::uint32_t SkydotWorld::water_type(std::uint32_t world, const wfb::Cell* cell
 
 std::uint32_t SkydotWorld::land_world(std::uint32_t world) const {
     const auto* w = world_ptr(world);
-    if (w != nullptr && w->parent() != 0 && (w->parent_flags() & 0x1u) != 0) {
+    if (w != nullptr && w->parent() != 0 &&
+        formats::has_flag(w->parent_flags(), wfb::ParentFlags::land_data)) {
         return w->parent();
     }
     return world;
@@ -521,7 +515,7 @@ Array SkydotWorld::list_cells(const String& filter, bool interior_only) const {
     const auto needle = filter.to_lower().utf8();
     const std::string needle_str(needle.get_data(), static_cast<std::size_t>(needle.length()));
     for (const auto* cell : *cells) {
-        const bool interior = (cell->flags() & 0x1u) != 0;
+        const bool interior = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
         if (interior_only && !interior) {
             continue;
         }
@@ -546,7 +540,7 @@ Dictionary SkydotWorld::get_cell(std::int64_t id) const {
     }
     out["id"] = static_cast<std::int64_t>(cell->id());
     out["editor_id"] = to_godot(cell->editor_id());
-    out["interior"] = (cell->flags() & 0x1u) != 0;
+    out["interior"] = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
     out["world"] = static_cast<std::int64_t>(cell->world());
     out["grid"] = cell->has_grid() ? godot::Variant(godot::Vector2i(cell->grid_x(), cell->grid_y()))
                                    : godot::Variant();
@@ -630,7 +624,7 @@ Array SkydotWorld::get_refs(std::int64_t cell_id) const {
                                               Vector3(r.x(), r.y(), r.z()), static_cast<double>(ref->scale()));
         entry["scale"] = ref->scale();
         entry["disabled"] = initially_disabled(*ref);
-        entry["persistent"] = (ref->flags() & k_ref_persistent) != 0;
+        entry["persistent"] = formats::has_flag(ref->flags(), wfb::RefFlags::persistent);
         entry["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
         out.push_back(entry);
     }
@@ -761,10 +755,10 @@ bool SkydotWorld::initially_disabled(const wfb::Ref& ref) const {
         if (it == enable_parents_.end()) {
             break;
         }
-        opposite ^= (r->flags() & k_ref_enable_opposite) != 0;
+        opposite ^= formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
         r = it->second;
     }
-    return ((r->flags() & k_ref_initially_disabled) != 0) != opposite;
+    return formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) != opposite;
 }
 
 void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint32_t cell,
@@ -832,7 +826,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
     }
 
     if (const auto* l = base->light(); l != nullptr && base->has_light()) {
-        if ((l->flags() & k_light_off_by_default) != 0) {
+        if (formats::has_flag(l->flags(), wfb::LightFlags::off_by_default)) {
             return;
         }
         godot::Light3D* light = nullptr;
@@ -858,13 +852,14 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             fov += own->fov();
         }
         const auto range = static_cast<float>(static_cast<double>(radius) * UNIT_SCALE);
-        if ((l->flags() & k_light_spot) != 0) {
+        if (formats::has_flag(l->flags(), wfb::LightFlags::spot_light)) {
             auto* spot = memnew(godot::SpotLight3D);
             spot->set_param(godot::Light3D::PARAM_RANGE, range);
             spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE, std::clamp(fov / 2.0F, 1.0F, 89.0F));
             spot->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
-            spot->set_shadow(all_light_shadows_ || (l->flags() & k_light_spot_shadow) != 0);
-            spot->set_meta("skydot_game_shadow", (l->flags() & k_light_spot_shadow) != 0);
+            const bool spot_shadow = formats::has_flag(l->flags(), wfb::LightFlags::spot_shadow);
+            spot->set_shadow(all_light_shadows_ || spot_shadow);
+            spot->set_meta("skydot_game_shadow", spot_shadow);
             light = spot;
         } else {
             auto* omni = memnew(godot::OmniLight3D);
@@ -878,18 +873,19 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             // neighbouring rooms with its rooms and portals, which SkyDot
             // lacks; without shadows they light through walls (comparison
             // shot ref22: an inn room twice as bright as the game's).
-            omni->set_shadow(all_light_shadows_ || (l->flags() & k_light_shadow) != 0);
-            omni->set_meta("skydot_game_shadow", (l->flags() & k_light_shadow) != 0);
+            omni->set_shadow(all_light_shadows_ || formats::has_flag(l->flags(), k_light_shadow));
+            omni->set_meta("skydot_game_shadow", formats::has_flag(l->flags(), k_light_shadow));
             light = omni;
         }
         light->set_name(name + String(" light"));
         SkydotMaterials::set_game_light(light, unpack_color(l->color()) * std::max(fade, 0.0F));
-        light->set_negative((l->flags() & k_light_negative) != 0);
+        light->set_negative(formats::has_flag(l->flags(), wfb::LightFlags::negative));
         light->set_transform(placed);
-        if (effects_ && (l->flags() & SkydotFlicker::ANY) != 0) {
+        if (effects_ && formats::has_flag(l->flags(), SkydotFlicker::ANY)) {
             auto* flicker = memnew(SkydotFlicker);
             flicker->set_name("SkydotFlicker");
-            flicker->configure(l->flags(), static_cast<double>(l->flicker_period()),
+            flicker->configure(static_cast<std::int64_t>(l->flags()),
+                               static_cast<double>(l->flicker_period()),
                                static_cast<double>(l->flicker_intensity()),
                                static_cast<double>(l->flicker_movement()) * UNIT_SCALE);
             light->add_child(flicker);
@@ -1168,7 +1164,7 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
 
 std::uint64_t SkydotWorld::place_bucket(const ActorPlace& place) const {
     const auto* cell = cell_ptr(place.space);
-    if (cell != nullptr && (cell->flags() & 0x1u) != 0) {
+    if (cell != nullptr && formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
         return place.space; // An interior: its id (grid keys have a world above bit 32).
     }
     const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
@@ -1181,7 +1177,7 @@ std::uint64_t SkydotWorld::placed_bucket(const wfb::ActorRef& actor) const {
     if (cell == nullptr) {
         return 0;
     }
-    if ((cell->flags() & 0x1u) != 0 || cell->world() == 0) {
+    if (formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0) {
         return cell->id();
     }
     const auto x = static_cast<std::int32_t>(std::floor(actor.position().x() / k_cell_units));
@@ -1284,7 +1280,9 @@ std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
     if (cell == nullptr) {
         return 0;
     }
-    return (cell->flags() & 0x1u) != 0 || cell->world() == 0 ? cell->id() : cell->world();
+    return formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0
+               ? cell->id()
+               : cell->world();
 }
 
 Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
@@ -1301,7 +1299,8 @@ Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
         place = it->second;
     }
     const auto* space = cell_ptr(place.space);
-    const bool interior = space != nullptr && (space->flags() & 0x1u) != 0;
+    const bool interior =
+        space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
     std::uint32_t cell = interior ? place.space : 0;
     if (!interior) {
         const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
@@ -1367,7 +1366,8 @@ Vector3 closest_on_triangle(const Vector3& p, const Vector3& a, const Vector3& b
 Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& position, double reach) const {
     std::vector<const wfb::Cell*> cells;
     const auto* s = cell_ptr(space);
-    if (s != nullptr && ((s->flags() & 0x1u) != 0 || s->world() == 0)) {
+    if (s != nullptr &&
+        (formats::has_flag(s->flags(), wfb::CellFlags::interior) || s->world() == 0)) {
         cells.push_back(s);
     } else {
         // The cell the point is in, and its neighbours only as far as `reach`.
@@ -1468,7 +1468,7 @@ const wfb::ActorRef* actor_ptr(const wfb::World* root, std::int64_t ref) {
 } // namespace
 
 std::vector<std::string> SkydotWorld::actor_resources(const wfb::ActorRef& actor) const {
-    if ((actor.flags() & k_ref_initially_disabled) != 0) {
+    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         return {};
     }
     auto plan = plan_for(*root_, actor, assets_);
@@ -1581,7 +1581,7 @@ godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) const {
 
 void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats,
                               const ActorPlace* place) const {
-    if ((actor.flags() & k_ref_initially_disabled) != 0) {
+    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         ++stats.disabled;
         return;
     }
@@ -2254,7 +2254,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     // worldspace default.
     bool water = false;
     float water_height = 0.0F;
-    if (cell != nullptr && (cell->flags() & 0x2u) != 0 &&
+    if (cell != nullptr && formats::has_flag(cell->flags(), wfb::CellFlags::has_water) &&
         std::abs(cell->water_height()) < k_no_water) {
         water = true;
         water_height = cell->water_height();

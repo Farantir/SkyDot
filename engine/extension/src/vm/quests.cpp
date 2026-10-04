@@ -29,10 +29,6 @@ constexpr std::uint8_t k_displayed = 0x1;
 constexpr std::uint8_t k_completed = 0x2;
 constexpr std::uint8_t k_failed = 0x4;
 
-// Log entry flags (world.fbs).
-constexpr std::int64_t k_log_complete = 0x1;
-constexpr std::int64_t k_log_fail = 0x2;
-
 } // namespace
 
 const Dictionary& SkydotPapyrus::quest_info(std::uint32_t quest) const {
@@ -209,7 +205,6 @@ bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {
     // so the first entry and its fragment are taken.
     const Array log = stage["log"];
     const Dictionary entry = log.is_empty() ? Dictionary() : Dictionary(log[0]);
-    const auto flags = static_cast<std::int64_t>(entry.get("flags", 0));
     const Array fragments = info["fragments"];
     String function;
     for (std::int64_t i = 0; i < fragments.size(); ++i) {
@@ -227,10 +222,10 @@ bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {
         }
     }
     emit_signal("quest_stage", id, index, entry.get("text", String()));
-    if ((flags & k_log_complete) != 0) {
+    if (static_cast<bool>(entry.get("completes_quest", false))) {
         state.completed = true;
     }
-    if ((flags & k_log_fail) != 0) {
+    if (static_cast<bool>(entry.get("fails_quest", false))) {
         state.failed = true;
     }
     if (static_cast<bool>(stage["shut_down"])) {

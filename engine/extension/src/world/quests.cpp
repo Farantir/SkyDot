@@ -6,6 +6,8 @@
 #include "world/fb_search.hpp"
 #include "world/world.hpp"
 
+#include "skydot_formats/flags.hpp"
+
 #include <algorithm>
 
 using godot::Array;
@@ -18,14 +20,6 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 
 namespace {
-
-// DNAM and stage flags (world.fbs).
-constexpr std::uint32_t k_start_game_enabled = 0x0001;
-constexpr std::uint32_t k_allow_repeated_stages = 0x0008;
-constexpr std::uint32_t k_run_once = 0x0100;
-constexpr std::uint32_t k_stage_start_up = 0x02;
-constexpr std::uint32_t k_stage_shut_down = 0x04;
-constexpr std::uint32_t k_alias_optional = 0x0002;
 
 String text(const flatbuffers::String* s) {
     return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
@@ -77,7 +71,8 @@ Array SkydotWorld::list_quests(const String& filter) const {
         entry["id"] = static_cast<std::int64_t>(q->id());
         entry["editor_id"] = editor_id;
         entry["name"] = text(q->name());
-        entry["start_game_enabled"] = (q->flags() & k_start_game_enabled) != 0;
+        entry["start_game_enabled"] =
+            formats::has_flag(q->flags(), wfb::QuestFlags::start_game_enabled);
         out.push_back(entry);
     }
     return out;
@@ -110,9 +105,10 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
     out["priority"] = static_cast<std::int64_t>(q->priority());
     out["type"] = static_cast<std::int64_t>(q->type());
     out["event"] = fourcc_text(q->event());
-    out["start_game_enabled"] = (q->flags() & k_start_game_enabled) != 0;
-    out["run_once"] = (q->flags() & k_run_once) != 0;
-    out["allow_repeated_stages"] = (q->flags() & k_allow_repeated_stages) != 0;
+    out["start_game_enabled"] = formats::has_flag(q->flags(), wfb::QuestFlags::start_game_enabled);
+    out["run_once"] = formats::has_flag(q->flags(), wfb::QuestFlags::run_once);
+    out["allow_repeated_stages"] =
+        formats::has_flag(q->flags(), wfb::QuestFlags::allow_repeated_stages);
     out["scripts"] = script_list(q->scripts(), false);
     out["fragment_script"] = text(q->fragment_script());
 
@@ -133,13 +129,17 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
         for (const auto* st : *list) {
             Dictionary stage;
             stage["index"] = static_cast<std::int64_t>(st->index());
-            stage["start_up"] = (st->flags() & k_stage_start_up) != 0;
-            stage["shut_down"] = (st->flags() & k_stage_shut_down) != 0;
+            stage["start_up"] = formats::has_flag(st->flags(), wfb::StageFlags::start_up);
+            stage["shut_down"] = formats::has_flag(st->flags(), wfb::StageFlags::shut_down);
             Array log;
             if (const auto* entries = st->log()) {
                 for (const auto* e : *entries) {
                     Dictionary entry;
                     entry["flags"] = static_cast<std::int64_t>(e->flags());
+                    entry["completes_quest"] =
+                        formats::has_flag(e->flags(), wfb::LogEntryFlags::completes_quest);
+                    entry["fails_quest"] =
+                        formats::has_flag(e->flags(), wfb::LogEntryFlags::fails_quest);
                     entry["text"] = text(e->text());
                     entry["conditions"] = static_cast<std::int64_t>(e->conditions());
                     log.push_back(entry);
@@ -178,7 +178,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
             alias["name"] = text(a->name());
             alias["location"] = a->location();
             alias["flags"] = static_cast<std::int64_t>(a->flags());
-            alias["optional"] = (a->flags() & k_alias_optional) != 0;
+            alias["optional"] = formats::has_flag(a->flags(), wfb::AliasFlags::optional);
             alias["forced"] = static_cast<std::int64_t>(a->forced());
             alias["unique_actor"] = static_cast<std::int64_t>(a->unique_actor());
             alias["external_quest"] = static_cast<std::int64_t>(a->external_quest());
@@ -225,8 +225,8 @@ Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
     out["cell"] = static_cast<std::int64_t>(it->cell());
     out["position"] = vec(it->position());
     out["rotation"] = vec(it->rotation());
-    out["disabled"] = (it->flags() & 0x1u) != 0;
-    out["persistent"] = (it->flags() & 0x2u) != 0;
+    out["disabled"] = formats::has_flag(it->flags(), wfb::RefFlags::initially_disabled);
+    out["persistent"] = formats::has_flag(it->flags(), wfb::RefFlags::persistent);
     return out;
 }
 

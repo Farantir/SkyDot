@@ -43,7 +43,8 @@ flatbuffers::Offset<sfb::Function> write_function(flatbuffers::FlatBufferBuilder
     const auto offsets = b.CreateVector(f.arg_offsets);
     const auto args_off = b.CreateVectorOfStructs(args);
     const auto lines = b.CreateVector(f.lines);
-    return sfb::CreateFunction(b, f.name, f.return_type, f.user_flags, f.flags, params, locals, ops,
+    return sfb::CreateFunction(b, f.name, f.return_type, f.user_flags,
+                               static_cast<sfb::FunctionFlags>(f.flags), params, locals, ops,
                                offsets, args_off, lines);
 }
 
@@ -52,7 +53,7 @@ PexFunction read_function(const sfb::Function& f) {
     out.name = f.name();
     out.return_type = f.return_type();
     out.user_flags = f.user_flags();
-    out.flags = f.flags();
+    out.flags = static_cast<std::uint8_t>(f.flags());
     const auto list = [](const flatbuffers::Vector<const sfb::NameType*>* v) {
         std::vector<script::PexNameType> r;
         if (v != nullptr) {
@@ -98,7 +99,8 @@ std::vector<std::byte> write_script_asset(const PexScript& script) {
         for (const auto& p : o.properties) {
             const auto getter = p.getter ? write_function(b, *p.getter) : 0;
             const auto setter = p.setter ? write_function(b, *p.setter) : 0;
-            properties.push_back(sfb::CreateProperty(b, p.name, p.type, p.user_flags, p.flags,
+            properties.push_back(sfb::CreateProperty(b, p.name, p.type, p.user_flags,
+                                                     static_cast<sfb::PropertyFlags>(p.flags),
                                                      p.auto_var, getter, setter));
         }
         std::vector<flatbuffers::Offset<sfb::State>> states;
@@ -187,7 +189,7 @@ io::ParseResult<PexScript> read_script_asset(std::span<const std::byte> bytes,
                     property.name = p->name();
                     property.type = p->type();
                     property.user_flags = p->user_flags();
-                    property.flags = p->flags();
+                    property.flags = static_cast<std::uint8_t>(p->flags());
                     property.auto_var = p->auto_var();
                     if (p->getter() != nullptr) {
                         property.getter = read_function(*p->getter());

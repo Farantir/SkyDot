@@ -9,11 +9,13 @@
 #pragma once
 
 #include "bethconv/io/parse_error.hpp"
+#include "bethconv/pack/world_generated.h"
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/vmad.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include <array>
 #include <cstddef>
@@ -31,12 +33,6 @@ namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
 inline constexpr std::uint32_t k_world_format_version = 10;
-
-/// Ref flag bits (see world.fbs).
-inline constexpr std::uint32_t k_ref_initially_disabled = 0x1;
-inline constexpr std::uint32_t k_ref_persistent = 0x2;
-inline constexpr std::uint32_t k_ref_enable_opposite = 0x4;
-inline constexpr std::uint32_t k_ref_parent_activate_only = 0x8;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -107,7 +103,7 @@ struct WorldRef {
     record::Vec3 position;
     record::Vec3 rotation;
     float scale{1.0F};
-    std::uint32_t flags{};
+    wfb::RefFlags flags{};
     std::uint32_t enable_parent{};
 };
 
@@ -205,7 +201,7 @@ struct WorldNavMesh {
     struct Triangle {
         std::array<std::uint16_t, 3> vertices{};
         std::array<std::int16_t, 3> edges{};
-        std::uint16_t flags{};
+        wfb::NavTriangleFlags flags{};
         std::uint16_t cover{};
     };
     struct Link {
@@ -228,7 +224,7 @@ struct WorldCell {
     std::uint32_t id{};
     std::string editor_id;
     std::uint32_t world{};
-    std::uint16_t flags{};
+    wfb::CellFlags flags{};
     std::optional<std::array<std::int32_t, 2>> grid;
     float water_height{};
     std::optional<WorldCellLighting> lighting;
@@ -247,13 +243,15 @@ struct WorldCell {
     std::vector<WorldPrimitive> primitives;
     std::vector<WorldNavMesh> navmeshes; ///< Sorted by id.
 
-    [[nodiscard]] bool interior() const noexcept { return (flags & 0x1u) != 0; }
+    [[nodiscard]] bool interior() const noexcept {
+        return skydot::formats::has_flag(flags, wfb::CellFlags::interior);
+    }
 };
 
 struct WorldLight {
     std::uint32_t radius{};
     std::uint32_t color{};
-    std::uint32_t flags{};
+    wfb::LightFlags flags{};
     float falloff_exponent{};
     float fov{};
     float near_clip{};
@@ -271,7 +269,7 @@ struct WorldBase {
     std::optional<WorldLight> light;
     std::uint32_t flags{}; ///< See world.fbs.
     std::vector<record::Script> scripts; ///< FormIDs in properties are global.
-    std::uint32_t record_flags{}; ///< The record header's; see world.fbs.
+    wfb::RecordFlags record_flags{}; ///< The record header's.
 };
 
 struct WorldLandTexture {
@@ -313,12 +311,17 @@ struct Worldspace {
     std::uint32_t id{};
     std::string editor_id;
     std::uint32_t parent{};
-    std::uint16_t parent_flags{};
+    wfb::ParentFlags parent_flags{};
     std::uint8_t flags{};
     std::optional<std::array<float, 2>> defaults; ///< Land, water height.
     std::uint32_t water{};
     std::uint32_t climate{};
     std::array<float, 4> bounds{}; ///< min x, min y, max x, max y
+
+    /// The land of this worldspace is its parent's.
+    [[nodiscard]] bool uses_parent_land() const noexcept {
+        return parent != 0 && skydot::formats::has_flag(parent_flags, wfb::ParentFlags::land_data);
+    }
 };
 
 /// See world.fbs `Climate`.
@@ -364,7 +367,7 @@ struct WorldWeather {
     float thunder_begin{};
     float thunder_end{};
     float thunder_frequency{};
-    std::uint8_t classification{};
+    wfb::WeatherClass classification{};
     std::uint32_t lightning_color{};
     std::uint32_t precipitation{};
     std::string aurora;
@@ -422,7 +425,7 @@ struct WorldQuestAlias {
     std::uint32_t id{};
     std::string name;
     bool location{};
-    std::uint32_t flags{};
+    wfb::AliasFlags flags{};
     std::uint32_t forced{};
     std::uint32_t unique_actor{};
     std::uint32_t external_quest{};
@@ -434,13 +437,13 @@ struct WorldQuestAlias {
     std::vector<record::Script> scripts;
 };
 struct WorldQuestLogEntry {
-    std::uint8_t flags{};
+    wfb::LogEntryFlags flags{};
     std::string text;
     std::uint16_t conditions{};
 };
 struct WorldQuestStage {
     std::uint16_t index{};
-    std::uint8_t flags{};
+    wfb::StageFlags flags{};
     std::vector<WorldQuestLogEntry> log;
 };
 struct WorldQuestObjective {
@@ -458,7 +461,7 @@ struct WorldQuest {
     std::uint32_t id{};
     std::string editor_id;
     std::string name;
-    std::uint16_t flags{};
+    wfb::QuestFlags flags{};
     std::uint8_t priority{};
     std::uint32_t type{};
     std::uint32_t event{};
@@ -480,11 +483,11 @@ struct WorldNpc {
     std::uint32_t id{};
     std::string editor_id;
     std::string name;
-    std::uint32_t flags{}; ///< ACBS; 1 female.
+    wfb::NpcFlags flags{}; ///< ACBS.
     std::uint16_t level{};
     std::uint32_t race{};
     std::uint32_t template_form{};
-    std::uint16_t template_flags{};
+    wfb::NpcTemplateFlags template_flags{};
     std::uint32_t skin{};
     std::uint32_t default_outfit{};
     std::uint32_t sleeping_outfit{};
@@ -505,7 +508,7 @@ struct WorldPackage {
     std::uint32_t id{};
     std::string editor_id{};
     std::uint8_t type{};
-    std::uint32_t flags{};
+    wfb::PackageFlags flags{};
     std::uint8_t interrupt_override{};
     std::uint8_t speed{};
     std::uint16_t interrupt_flags{};
@@ -525,7 +528,7 @@ struct WorldPackage {
         std::string type{};
         std::vector<record::Condition> conditions{};
         std::uint32_t children{};
-        std::uint32_t flags{};
+        wfb::BranchFlags flags{};
         std::string procedure{};
         bool success_completes{};
         std::vector<std::uint8_t> inputs{};
@@ -591,7 +594,7 @@ struct WorldOutfit {
 struct WorldLeveledList {
     std::uint32_t id{};
     std::uint32_t type{}; ///< LVLI or LVLN as a FourCC value.
-    std::uint8_t flags{};
+    wfb::LeveledListFlags flags{};
     std::uint8_t chance_none{};
     struct Entry {
         std::uint16_t level{};
@@ -607,7 +610,7 @@ struct WorldActor {
     std::uint32_t cell{};
     record::Vec3 position;
     record::Vec3 rotation;
-    std::uint32_t flags{};
+    wfb::RefFlags flags{};
 };
 
 /// A verified `world.fb`. Lookups copy into the structs above.

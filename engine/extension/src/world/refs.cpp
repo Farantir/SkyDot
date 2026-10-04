@@ -7,6 +7,8 @@
 #include "world/fb_search.hpp"
 #include "world/world.hpp"
 
+#include "skydot_formats/flags.hpp"
+
 #include <godot_cpp/classes/mesh.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
@@ -48,10 +50,6 @@ String type_name(std::uint32_t type) {
 String to_godot(const flatbuffers::String* s) {
     return s == nullptr ? String() : String::utf8(s->c_str(), static_cast<int>(s->size()));
 }
-
-// Ref flags (world.fbs).
-constexpr std::uint32_t k_ref_enable_opposite = 0x4;
-constexpr std::uint32_t k_ref_parent_activate_only = 0x8;
 
 /// Types the player can use without a script: doors, activators, containers,
 /// furniture, flora and items.
@@ -221,6 +219,7 @@ Array script_list(const ScriptVector* scripts, bool from_ref) {
         Dictionary script;
         script["name"] = to_godot(s->name());
         script["status"] = static_cast<std::int64_t>(s->status());
+        script["removed"] = formats::has_flag(s->status(), wfb::ScriptStatus::removed);
         script["from_ref"] = from_ref;
         Dictionary properties;
         if (s->properties() != nullptr) {
@@ -284,7 +283,8 @@ Dictionary SkydotWorld::get_door(std::int64_t ref) const {
     out["destination_cell"] = static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->id() : 0);
     out["destination_world"] =
         static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->world() : 0);
-    out["destination_interior"] = dest_cell != nullptr && (dest_cell->flags() & 0x1u) != 0;
+    out["destination_interior"] =
+        dest_cell != nullptr && formats::has_flag(dest_cell->flags(), wfb::CellFlags::interior);
     const auto& p = link->position();
     const auto& r = link->rotation();
     out["arrival"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(r.x(), r.y(), r.z()), 1.0);
@@ -306,10 +306,11 @@ Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) 
     out["type"] = base != nullptr ? type_name(base->type()) : String();
     out["editor_id"] = base != nullptr ? to_godot(base->editor_id()) : String();
     out["activatable"] = activatable(base, cell->id(), id);
-    out["parent_activate_only"] = (ref->flags() & k_ref_parent_activate_only) != 0;
+    out["parent_activate_only"] =
+        formats::has_flag(ref->flags(), wfb::RefFlags::parent_activate_only);
     out["disabled"] = initially_disabled(*ref);
     out["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
-    out["enable_opposite"] = (ref->flags() & k_ref_enable_opposite) != 0;
+    out["enable_opposite"] = formats::has_flag(ref->flags(), wfb::RefFlags::enable_opposite);
     out["position"] = Vector3(ref->position().x(), ref->position().y(), ref->position().z());
     out["rotation"] = Vector3(ref->rotation().x(), ref->rotation().y(), ref->rotation().z());
     out["scale"] = ref->scale();
