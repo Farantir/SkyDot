@@ -80,7 +80,8 @@ around the camera.
   a few at a time, `update`) puts each persistent actor at the place of the
   last step of its plan that has one (a sandbox: somewhere within half its
   radius; snapped to the navmesh). Cells built afterwards build it there
-  (`SkydotWorld.set_actor_place`). An actor whose package brings it into the
+  (`ActorPlacement::set_place`, which `SkydotWorld.set_actor_place` forwards
+  to). An actor whose package brings it into the
   space on screen from elsewhere appears at the door it comes through
   (`actor_arrived`; the viewer builds it) and walks on.
 - A built actor whose cell is freed stays where it was (or where its walk

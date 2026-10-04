@@ -562,7 +562,7 @@ tool reads that stream.
 | `vpath.idx` | `PackWriter` | `PackStore::read_index` | game path → content hash, kind, winning source |
 | `assets.idx` + `assets-NNNN.blob` | `AssetStore` | `PackStore::open_blob` (mmap) | asset bytes by hash |
 | `records.fb` | `write_snapshot` | header only | every merged form with its raw fields |
-| `world.fb` | `write_world` | `SkydotWorld::open` | cells, refs, bases, terrain, weather, quests, actors, AI, ... |
+| `world.fb` | `write_world` | `SkydotWorld::open` -> `WorldData::open` (mmap) | cells, refs, bases, terrain, weather, quests, actors, AI, ... |
 | `report.json` | `PackWriter` | pack tool | failures and warnings |
 
 Asset kinds and their bytes:
@@ -592,7 +592,7 @@ at the SCENE level:
 | --- | --- | --- |
 | `SkydotPack` (RefCounted) | `assets/pack.*` | mounts a pack, checks every version and count, loads models, textures and bytes, opens `SkydotWorld` |
 | `SkydotModel` (Resource) | `assets/model.*` | a converted mesh as a node-tree template, instanced by duplication |
-| `SkydotWorld` (RefCounted) | `world/world.*`, `refs.cpp`, `quests.cpp`, `actors.cpp` | world.fb queries, cell and exterior building, actors' places, resources |
+| `SkydotWorld` (RefCounted) | `world/world.*`, `refs.cpp`, `quests.cpp`, `actors.cpp` | the class scripts talk to: world.fb queries, cell and exterior building, resources; holds a `WorldData` and an `ActorPlacement` (7.3) |
 | `SkydotMaterials` (RefCounted) | `world/materials.*` | Skyrim-style shader materials, fog sync, shader warm-up |
 | `SkydotAnimator` (Node) | `world/animator.*` | plays the clips in a model's extras |
 | `SkydotParticles` (Node3D) | `world/particles.*` | NiParticleSystem as GPUParticles3D |
@@ -648,17 +648,49 @@ renderer creates resources without locking.
 
 ### 7.3 `SkydotWorld`: the world database and the builder
 
-**Opening.** `open(path)` reads `world.fb` into a `PackedByteArray`, verifies
-it with the FlatBuffers verifier, checks `format_version` (8–10 accepted)
-and calls `build_indexes()`:
+`SkydotWorld` is the class GDScript talks to. It holds two parts of its own
+(`world/world_data.*`, `world/actor_placement.*`) and everything else
+(queries, builders, settings) is still in it:
+
+```
+SkydotWorld ── data_       std::shared_ptr<const WorldData>: the file and its indexes
+            └─ placement_  ActorPlacement: where SkydotAi has moved actors
+```
+
+**`WorldData`: the file, read-only.** `SkydotWorld::open(path)` refuses a
+second open (a world is opened once; `SkydotPack::open_world` makes a new
+object), then builds a fresh `WorldData` and keeps it only if it opened. Its
+`open` memory-maps `world.fb` (`assets/mapped_file.*`, the mapping the asset
+blob uses; `res://` and `user://` paths are globalized first), verifies it
+with the FlatBuffers verifier, checks `format_version` (8-10 accepted) and
+builds every index once:
 
 - `exteriors_`: (world, x, y) → exterior cell;
 - `persistent_`: a worldspace's persistent cell references bucketed by the
   grid square they stand in, so an exterior build includes them;
 - `doors_`, `activate_children_`, `enable_children_`, `enable_parents_`,
-  `navmeshes_`, `cell_actors_`, `persistent_actors_`;
-- built lazily on first use: `ref_cells_`, `actor_of_`, locomotion, add-on
-  node models, grass models, projected (MATO) materials.
+  `navmeshes_`, `cell_actors_`, `persistent_actors_`, `actor_of_` (NPC →
+  its lowest placed actor).
+
+It also offers the lookups the rest of the engine uses (`cell_ptr`,
+`base_ptr`, `world_ptr`, `exterior_ptr`, `water_ptr`, `land_world`,
+`water_type`, `door_ptr`, `initially_disabled`, ...). Nothing in it changes
+after `open`, so it is shared by `const` reference: `SkydotWorld::data()`
+hands it to `SkydotAi` and `SkydotWeather`, which have no other access to
+the world's internals. A closed `WorldData` (before `open` succeeds) answers
+every query with nothing.
+
+Still built lazily on first use, in `SkydotWorld`: `ref_cells_` (reading
+every reference takes most of a second on the SE pack, so not in `open`),
+locomotion, add-on node models, grass models, projected (MATO) materials.
+
+**`ActorPlacement`: where actors are.** The editor's places come from
+`WorldData`; the ones `SkydotAi` has moved actors to are kept here
+(`places_` by actor, bucketed by the interior cell or grid square they
+fall in). `actors_in_cell`/`actors_in_grid` answer which actors stand in a
+place *now*: those placed there and not moved away, plus those moved in. The
+bound `set_actor_place`, `clear_actor_place(s)` and `get_actor_place` of
+`SkydotWorld` forward to it; C++ callers use `SkydotWorld::placement()`.
 
 Lookups by id are flatc's `LookupByKey` (the schema marks the sorted vectors'
 ids `(key)`); `lookup` in `world/fb_search.hpp` also tolerates an absent
@@ -684,8 +716,8 @@ begin_cell(id) / begin_exterior(world, x, y)       immediate:
 continue_build(root, budget_usec)                   repeated per frame:
    place_refs: place_ref() for each ref until the budget is spent
                (at least one per call)
-   then, once: which actors stand here *now* (actors_in_cell/grid, which
-               honours SkydotAi's moves), place_actor() each within budget
+   then, once: which actors stand here *now* (ActorPlacement::actors_in_cell/
+               grid, which honour SkydotAi's moves), place_actor() each within budget
    done:       "skydot_stats" meta on the root; the job is dropped
 continue_build_static(root, budget)                 refs only (preloading)
 ```
@@ -811,7 +843,7 @@ into steps. `SkydotAi` runs them against its clock:
 - for *built* actors it steers `SkydotActor` (travel, sandbox, sit/sleep at
   furniture, patrol along linked refs, lock/unlock doors);
 - for *unbuilt* persistent actors it moves their stored place
-  (`SkydotWorld::set_actor_place`), in slices (`begin_placing`,
+  (`ActorPlacement::set_place`), in slices (`begin_placing`,
   `settle_actors`), so later builds put them where their schedule says;
 - actors arriving in the shown space appear at the door they come through.
 
@@ -927,7 +959,10 @@ One ~1,900-line script that is in effect the game loop. It handles:
 - `game/tools/*.gd`: headless or windowed measurement drivers against a real
   pack (`preload_check`, `door_check`, `collision_check`, `nav_check`,
   `actor_check`, `ai_run`, ...). They set `viewer._input = false` so the
-  user's mouse does not interfere.
+  user's mouse does not interfere. `scene_dump` is a scene oracle: it
+  builds interiors and exterior blocks, pauses the tree and prints a canonical
+  text dump of every node, so a refactor of the builders is proved by
+  diffing two dumps.
 - `engine/tests/smoke/*.gd`: headless editor runs registered with ctest (see
   section 12).
 
@@ -1000,6 +1035,7 @@ One ~1,900-line script that is in effect the game loop. It handles:
 | Converter | Single-threaded pipeline; `bc_encode` uses worker threads per texture level | none needed |
 | `AssetCache` | 1–4 `std::thread` workers (half the cores, max 4) plus the caller | `mutex_` around `ready_`, `in_flight_`, `queue_`; `get` never blocks on a worker, so occasionally an asset is loaded twice and the first result is kept |
 | Worker loads | create Godot objects (`GLTFDocument`, `ImageTexture`, `Animation`) off the main thread | Godot's resource-creation thread safety; headless mode loads on the caller instead |
+| `WorldData` | any thread: immutable after `open` | none needed |
 | `SkydotWorld` | main thread only, except caches the workers' materials touch | `grass_mutex_`, `projected_mutex_`, `std::once_flag` for the add-on index |
 | `SkydotMaterials` | main thread; shader variants cached | `projected_mutex_` |
 | `SkydotImageSpace` | render thread (compositor) | `mutex_` |
