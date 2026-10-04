@@ -67,7 +67,8 @@ public:
     static constexpr double UNIT_SCALE = 0.0142875;
 
     /// Read and verify a world.fb. On failure the world stays closed and
-    /// `get_error` explains.
+    /// `get_error` explains. A world opens once: a second call is refused
+    /// with ERR_ALREADY_IN_USE (every index points into the open file).
     godot::Error open(const godot::String& path);
     bool is_open() const;
     godot::String get_error() const;

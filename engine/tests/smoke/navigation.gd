@@ -71,6 +71,12 @@ func _run(pack_dir: String) -> void:
             var from: Vector3 = SkydotWorld.godot_to_skyrim(link["from"])
             expect(from.is_equal_approx(Vector3(4096, 2048, 256)), "the link leaves the border: %s" % from)
     expect(world.get_navmesh(0x223).get("cell") == east_id, "navmeshes are found by id")
+    # A world opens once: its indexes point into the open file, so opening
+    # again (here a file that is no world.fb) is refused and changes nothing.
+    expect(world.open(pack_dir.path_join("manifest.json")) == ERR_ALREADY_IN_USE,
+           "an open world refuses a second open")
+    expect(world.is_open() and world.get_navmesh(0x223).get("cell") == east_id,
+           "and keeps its world")
     expect(world.get_navmesh(0x999).is_empty(), "an unknown navmesh is empty")
     var inside: Array = world.get_navmeshes(world.find_cell("TestpackInterior"))
     expect(inside.size() == 1 and inside[0]["doors"].size() == 1 and inside[0]["doors"][0]["door"] == 0x303,

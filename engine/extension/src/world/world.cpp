@@ -314,67 +314,45 @@ void SkydotWorld::_bind_methods() {
 
 Error SkydotWorld::fail(Error code, const String& why) {
     error_ = why;
-    root_ = nullptr;
-    bytes_ = godot::PackedByteArray();
-    exteriors_.clear();
-    persistent_.clear();
-    persistent_cells_.clear();
-    doors_.clear();
-    ref_cells_.clear();
-    activate_children_.clear();
-    actor_of_.clear();
-    locomotion_.clear();
-    animation_single_file_ = godot::PackedByteArray();
-    animation_single_file_read_ = false;
     godot::UtilityFunctions::push_error("SkydotWorld: ", why);
     return code;
 }
 
 Error SkydotWorld::open(const String& path) {
-    root_ = nullptr;
+    // Every index, cache and build under way points into the open buffer, so
+    // a world is opened once; SkydotPack::open_world makes a new one.
+    if (root_ != nullptr) {
+        return fail(godot::ERR_ALREADY_IN_USE,
+                    String("this SkydotWorld already has a world.fb open; open ") + path +
+                        " with a new SkydotWorld");
+    }
     error_ = String();
     if (!godot::FileAccess::file_exists(path)) {
         return fail(godot::ERR_FILE_NOT_FOUND, String("no world.fb at ") + path);
     }
-    bytes_ = godot::FileAccess::get_file_as_bytes(path);
-    const auto* data = bytes_.ptr();
-    const auto size = static_cast<std::size_t>(bytes_.size());
-    flatbuffers::Verifier verifier(data, size);
+    // Verified before anything keeps it: a refused file leaves the world as
+    // it was, closed and without indexes.
+    godot::PackedByteArray bytes = godot::FileAccess::get_file_as_bytes(path);
+    const auto size = static_cast<std::size_t>(bytes.size());
+    flatbuffers::Verifier verifier(bytes.ptr(), size);
     if (size == 0 || !wfb::VerifyWorldBuffer(verifier)) {
         return fail(godot::ERR_FILE_CORRUPT, path + String(" is not a valid world.fb"));
     }
-    const auto* root = wfb::GetWorld(data);
-    if (root->format_version() < WORLD_FORMAT_VERSION_MIN || root->format_version() > WORLD_FORMAT_VERSION) {
+    const auto version = wfb::GetWorld(bytes.ptr())->format_version();
+    if (version < WORLD_FORMAT_VERSION_MIN || version > WORLD_FORMAT_VERSION) {
         return fail(godot::ERR_FILE_UNRECOGNIZED,
-                    String("world.fb format version ") +
-                        String::num_int64(root->format_version()) +
+                    String("world.fb format version ") + String::num_int64(version) +
                         " is not one this engine reads (it reads " +
                         String::num_int64(WORLD_FORMAT_VERSION_MIN) + " to " +
                         String::num_int64(WORLD_FORMAT_VERSION) + ")");
     }
-    root_ = root;
+    bytes_ = std::move(bytes);
+    root_ = wfb::GetWorld(bytes_.ptr());
     build_indexes();
     return godot::OK;
 }
 
 void SkydotWorld::build_indexes() {
-    actor_of_.clear();
-    locomotion_.clear();
-    animation_single_file_ = godot::PackedByteArray();
-    animation_single_file_read_ = false;
-    exteriors_.clear();
-    persistent_.clear();
-    persistent_cells_.clear();
-    doors_.clear();
-    ref_cells_.clear();
-    activate_children_.clear();
-    enable_children_.clear();
-    enable_parents_.clear();
-    navmeshes_.clear();
-    cell_actors_.clear();
-    persistent_actors_.clear();
-    actor_places_.clear();
-    moved_in_.clear();
     const auto* cells = root_->cells();
     if (cells == nullptr) {
         return;
