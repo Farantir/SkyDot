@@ -231,12 +231,12 @@ godot::Error SkydotWeather::setup(const Ref<SkydotWorld>& pack_world, std::int64
     world_id_ = static_cast<std::uint32_t>(world);
     camera_ = camera != nullptr ? godot::ObjectID(camera->get_instance_id()) : godot::ObjectID();
     climate_ = nullptr;
-    if (world_.is_null() || world_->data().root() == nullptr || world_->data().root()->climates() == nullptr) {
+    if (world_fb() == nullptr || world_fb()->climates() == nullptr) {
         return godot::ERR_UNCONFIGURED;
     }
     const auto climate_of = [&](std::uint32_t id) -> const wfb::Climate* {
         const auto* ws = world_->data().world_ptr(id);
-        return ws != nullptr ? lookup(world_->data().root()->climates(), ws->climate()) : nullptr;
+        return ws != nullptr ? lookup(world_fb()->climates(), ws->climate()) : nullptr;
     };
     climate_ = climate_of(world_id_);
     if (climate_ == nullptr) {
@@ -259,13 +259,17 @@ godot::Error SkydotWeather::setup(const Ref<SkydotWorld>& pack_world, std::int64
     return godot::OK;
 }
 
+const wfb::World* SkydotWeather::world_fb() const {
+    return world_.is_valid() ? world_->data().root() : nullptr;
+}
+
 void SkydotWeather::set_hour(double hour) { hour_ = std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0); }
 
 const SkydotWeather::Weather* SkydotWeather::weather_ptr(std::int64_t id) const {
-    if (world_.is_null() || world_->data().root() == nullptr || id == 0) {
+    if (world_fb() == nullptr || id == 0) {
         return nullptr;
     }
-    return lookup(world_->data().root()->weathers(), static_cast<std::uint32_t>(id));
+    return lookup(world_fb()->weathers(), static_cast<std::uint32_t>(id));
 }
 
 void SkydotWeather::set_weather(std::int64_t weather, double seconds) {
@@ -307,7 +311,7 @@ std::vector<std::pair<std::uint32_t, std::int32_t>> SkydotWeather::offered(std::
     region = 0;
     auto* cam = camera();
     // The list is read once (the checks and the loop must see the same one).
-    const auto* regions = world_->data().root()->regions();
+    const auto* regions = world_fb()->regions();
     if (cam != nullptr && regions != nullptr) {
         const Vector3 at = SkydotWorld::godot_to_skyrim(cam->get_global_position());
         const auto* ws = world_->data().world_ptr(world_id_);
@@ -464,9 +468,9 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
         out.has_directional_ambient = true;
     }
     if (const auto* ids = weather->image_spaces(); ids != nullptr && ids->size() >= 4 &&
-        world_->data().root()->image_spaces() != nullptr) {
+        world_fb()->image_spaces() != nullptr) {
         const auto values = [&](int time, std::array<float, 16>& into) {
-            const auto* is = lookup(world_->data().root()->image_spaces(),
+            const auto* is = lookup(world_fb()->image_spaces(),
                                     ids->Get(static_cast<flatbuffers::uoffset_t>(time)));
             // Neutral where a part is missing: white 1, saturation,
             // brightness and contrast 1, no tint.
@@ -917,7 +921,7 @@ void SkydotWeather::configure_precipitation(const Weather* weather) {
         return;
     }
     particles_for_ = id;
-    const auto* p = id != 0 ? lookup(world_->data().root()->precipitations(), id) : nullptr;
+    const auto* p = id != 0 ? lookup(world_fb()->precipitations(), id) : nullptr;
     if (p == nullptr) {
         particles_->set_emitting(false);
         return;

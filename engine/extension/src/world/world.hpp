@@ -331,20 +331,24 @@ public:
     /// Godot space (metres) back to a Skyrim position (game units).
     static godot::Vector3 godot_to_skyrim(const godot::Vector3& position);
 
+    // For the other subsystems (SkydotAi, SkydotWeather); C++ only, not bound.
+    /// The open world.fb and its indexes; a closed WorldData until `open`
+    /// succeeds.
+    const WorldData& data() const { return *data_; }
+    /// Where actors are, when not where the editor placed them.
+    ActorPlacement& placement() { return placement_; }
+    const ActorPlacement& placement() const { return placement_; }
+    /// A resource from the cache, else loaded now (and cached).
+    godot::Ref<godot::Resource> resource(const godot::String& vpath) const;
+
 protected:
     static void _bind_methods();
 
 private:
-    friend class SkydotWeather;
-    friend class SkydotAi;
-
     godot::Error fail(godot::Error code, const godot::String& why);
-    const WorldData& data() const { return *data_; }
     /// The verified root; null while closed.
     const bethconv::pack::wfb::World* world_fb() const { return data_->root(); }
     std::array<std::string, 2> land_texture_paths(std::uint32_t ltex) const;
-    /// A resource from the cache, else loaded now (and cached).
-    godot::Ref<godot::Resource> resource(const godot::String& vpath) const;
     /// materials_, created on first use and attached to the asset cache.
     SkydotMaterials& materials() const;
 

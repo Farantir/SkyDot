@@ -412,10 +412,8 @@ std::optional<SkydotAi::Spot> SkydotAi::ref_spot(std::uint32_t ref) const {
     if (const auto it = minds_.find(ref); it != minds_.end() && it->second.node != 0) {
         return Spot{it->second.space, it->second.last, 0.0F, 0.0, ref};
     }
-    const Dictionary place = world_->get_actor_place(ref);
-    if (!place.is_empty()) {
-        return Spot{static_cast<std::uint32_t>(static_cast<std::int64_t>(place["space"])),
-                    place["position"], static_cast<float>(static_cast<double>(place["rotation_z"])), 0.0, ref};
+    if (const auto where = world_->placement().where(ref)) {
+        return Spot{where->place.space, where->place.position, where->place.rotation_z, 0.0, ref};
     }
     const auto cell = static_cast<std::uint32_t>(world_->get_ref_cell(ref));
     const auto* c = world_->data().cell_ptr(cell);
@@ -426,7 +424,7 @@ std::optional<SkydotAi::Spot> SkydotAi::ref_spot(std::uint32_t ref) const {
     if (r == nullptr) {
         return std::nullopt;
     }
-    return Spot{static_cast<std::uint32_t>(world_->get_cell_space(cell)),
+    return Spot{world_->data().cell_space(cell),
                 Vector3(r->position().x(), r->position().y(), r->position().z()), r->rotation().z(), 0.0, ref};
 }
 
@@ -445,7 +443,7 @@ SkydotAi::Spot SkydotAi::editor_spot(const Mind& m) const {
     if (a == nullptr) {
         return actor_spot(m);
     }
-    return Spot{static_cast<std::uint32_t>(world_->get_cell_space(a->cell())),
+    return Spot{world_->data().cell_space(a->cell()),
                 Vector3(a->position().x(), a->position().y(), a->position().z()), a->rotation().z(), 0.0, 0};
 }
 
@@ -681,14 +679,14 @@ const std::vector<std::pair<std::uint32_t, std::uint32_t>>& SkydotAi::doors_of(s
     auto& out = doors_[space];
     const auto& doors = world_->data().doors();
     for (const auto& [door, entry] : doors) {
-        if (static_cast<std::uint32_t>(world_->get_cell_space(entry.first->id())) != space) {
+        if (world_->data().cell_space(entry.first->id()) != space) {
             continue;
         }
         const auto dest = doors.find(entry.second->destination());
         if (dest == doors.end()) {
             continue;
         }
-        out.emplace_back(door, static_cast<std::uint32_t>(world_->get_cell_space(dest->second.first->id())));
+        out.emplace_back(door, world_->data().cell_space(dest->second.first->id()));
     }
     std::sort(out.begin(), out.end());
     return out;
@@ -956,7 +954,7 @@ bool SkydotAi::place_one(std::uint32_t ref, bool through_doors) {
                          static_cast<std::int32_t>(std::floor(p.y / k_cell_units))};
     };
     const bool entered = now.space != spot->space || square(now.position) != square(at);
-    world_->set_actor_place(ref, spot->space, at, static_cast<double>(facing));
+    world_->placement().set_place(ref, spot->space, at, facing);
     // Entering a space builds everyone there anyway; only later moves arrive.
     if (through_doors && entered && spot->space == space_ && space_ != 0) {
         m->announced = true;
@@ -983,9 +981,9 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
                 continue;
             }
             m->node = actor->get_instance_id();
-            const Dictionary place = world_->get_actor_place(ref);
-            m->space = static_cast<std::uint32_t>(static_cast<std::int64_t>(place.get("space", 0)));
-            m->last = place.get("position", Vector3());
+            const auto where = world_->placement().where(ref);
+            m->space = where ? where->place.space : 0;
+            m->last = where ? where->place.position : Vector3();
             if (std::find(attached_.begin(), attached_.end(), ref) == attached_.end()) {
                 attached_.push_back(ref);
             }
@@ -1023,7 +1021,7 @@ void SkydotAi::detach(Mind& m) {
     if (m.target && m.target->space == m.space && m.door == 0) {
         at = world_->nearest_nav_point(m.space, m.target->position, 512.0);
     }
-    world_->set_actor_place(m.ref, m.space, at, 0.0);
+    world_->placement().set_place(m.ref, m.space, at, 0.0F);
 }
 
 void SkydotAi::update(double seconds) {
@@ -1091,9 +1089,9 @@ void SkydotAi::leave(Mind& m, SkydotActor& actor, std::uint32_t door) {
         return;
     }
     const auto& p = it->second.second->position();
-    const auto space = static_cast<std::uint32_t>(world_->get_cell_space(dest->second.first->id()));
-    world_->set_actor_place(m.ref, space, Vector3(p.x(), p.y(), p.z()),
-                            static_cast<double>(it->second.second->rotation().z()));
+    const auto space = world_->data().cell_space(dest->second.first->id());
+    world_->placement().set_place(m.ref, space, Vector3(p.x(), p.y(), p.z()),
+                                  it->second.second->rotation().z());
     std::erase(attached_, m.ref);
     m.node = 0;
     m.space = space;

@@ -29,6 +29,7 @@
 namespace bethconv::pack::wfb {
 struct Weather;
 struct Climate;
+struct World;
 } // namespace bethconv::pack::wfb
 
 namespace skydot {
@@ -122,6 +123,8 @@ private:
     godot::Vector3 sun_direction(bool& day) const;
 
     godot::Ref<SkydotWorld> world_;
+    /// The world's root; null if there is no world or it is closed.
+    const bethconv::pack::wfb::World* world_fb() const;
     std::uint32_t world_id_{};
     const bethconv::pack::wfb::Climate* climate_{};
     godot::ObjectID camera_;
