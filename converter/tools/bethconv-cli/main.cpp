@@ -163,8 +163,10 @@ int mount_all(bethconv::archive::ArchiveSet& set,
               const std::vector<std::filesystem::path>& paths) {
     int failures = 0;
     int priority = 0;
+    std::error_code ec;
     for (const auto& path : paths) {
-        const auto count = std::filesystem::is_directory(path)
+        // An unreadable path is not a directory; mount_archive then says why.
+        const auto count = std::filesystem::is_directory(path, ec)
                                ? set.mount_loose(path, priority)
                                : set.mount_archive(path, priority);
         if (!count) {
@@ -1256,8 +1258,9 @@ int cmd_mesh(const std::vector<std::filesystem::path>& sources,
     bethconv::archive::ArchiveSet set;
     std::vector<std::filesystem::path> mounts;
     std::vector<std::filesystem::path> loose_nifs;
+    std::error_code ec;
     for (const auto& source : sources) {
-        if (!std::filesystem::is_directory(source) && source.extension() == ".nif") {
+        if (!std::filesystem::is_directory(source, ec) && source.extension() == ".nif") {
             loose_nifs.push_back(source);
         } else {
             mounts.push_back(source);
@@ -1683,8 +1686,9 @@ int cmd_texture(const std::vector<std::filesystem::path>& sources,
     bethconv::archive::ArchiveSet set;
     std::vector<std::filesystem::path> mounts;
     std::vector<std::filesystem::path> loose_textures;
+    std::error_code ec;
     for (const auto& source : sources) {
-        if (!std::filesystem::is_directory(source) && source.extension() == ".dds") {
+        if (!std::filesystem::is_directory(source, ec) && source.extension() == ".dds") {
             loose_textures.push_back(source);
         } else {
             mounts.push_back(source);

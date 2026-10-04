@@ -101,13 +101,15 @@ scan_loose(const std::filesystem::path& root) {
     std::error_code ec;
     for (std::filesystem::directory_iterator bucket(root / "assets", ec), end;
          !ec && bucket != end; bucket.increment(ec)) {
-        if (!bucket->is_directory()) {
+        // An entry that cannot be statted is neither a bucket nor an asset.
+        std::error_code kind;
+        if (!bucket->is_directory(kind)) {
             continue;
         }
         std::error_code inner;
         for (std::filesystem::directory_iterator file(bucket->path(), inner), last;
              !inner && file != last; file.increment(inner)) {
-            if (file->is_regular_file()) {
+            if (file->is_regular_file(kind)) {
                 present.insert(file->path().stem().string());
             }
         }
@@ -474,13 +476,14 @@ io::ParseResult<StoreStats> AssetStore::finish(const std::unordered_set<std::str
         std::error_code ec;
         for (std::filesystem::directory_iterator bucket(root_ / "assets", ec), end;
              !ec && bucket != end; bucket.increment(ec)) {
-            if (!bucket->is_directory()) {
+            std::error_code kind;
+            if (!bucket->is_directory(kind)) {
                 continue;
             }
             std::error_code inner;
             for (std::filesystem::directory_iterator file(bucket->path(), inner), last;
                  !inner && file != last; file.increment(inner)) {
-                if (!file->is_regular_file()) {
+                if (!file->is_regular_file(kind)) {
                     continue;
                 }
                 const auto hex = file->path().stem().string();
