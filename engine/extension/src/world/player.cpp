@@ -40,6 +40,10 @@ constexpr double k_float_depth = 0.1;
 constexpr double k_leave_water = 0.25;
 // How far past a step's edge the feet go when climbing it.
 constexpr godot::real_t k_step_overlap = 0.08F;
+// The shortest motion tested for a step in the way.
+constexpr godot::real_t k_step_probe = 0.05F;
+// How much further each try reaches when the first lands on a steep face.
+constexpr godot::real_t k_step_reach = 0.05F;
 
 } // namespace
 
@@ -258,14 +262,23 @@ void SkydotPlayer::swim(double delta) {
 
 bool SkydotPlayer::step_up(double delta) {
     const Vector3 v = get_velocity();
-    const Vector3 motion = Vector3(v.x, 0, v.z) * r(delta);
+    Vector3 motion = Vector3(v.x, 0, v.z) * r(delta);
     if (motion.length_squared() < 1e-8F) {
         return false;
+    }
+    // Blocked by a step, the slide stops the body, and the next tick's motion
+    // (accelerating from rest, a few mm) is shorter than test_move's margin:
+    // it would find nothing in the way while move_and_slide still blocks.
+    if (motion.length() < k_step_probe) {
+        motion = motion.normalized() * k_step_probe;
     }
     const Transform3D from = get_global_transform();
     Ref<godot::KinematicCollision3D> hit;
     hit.instantiate();
-    if (!test_move(from, motion, hit)) {
+    // Along the floor, or ground rising towards the step is hit first and
+    // taken for a walkable slope.
+    const Vector3 along = is_on_floor() ? motion.slide(get_floor_normal()) : motion;
+    if (!test_move(from, along, hit)) {
         return false; // nothing in the way
     }
     if (static_cast<double>(hit->get_normal().y) >= std::cos(max_slope_)) {
@@ -289,28 +302,34 @@ bool SkydotPlayer::step_up(double delta) {
     const Vector3 dir = motion.normalized();
     Vector3 to_contact = hit->get_position() - from.origin;
     to_contact.y = 0;
-    const real_t reach = std::clamp(to_contact.dot(dir) - r(radius_) + k_step_overlap,
+    const real_t first = std::clamp(to_contact.dot(dir) - r(radius_) + k_step_overlap,
                                     motion.length(), r(radius_));
     const Transform3D raised = from.translated(rise);
-    const Vector3 forward = dir * reach;
-    if (test_move(raised, forward)) {
-        return false; // a wall, or a step too shallow to stand on
+    // A step's front may itself be a steep slope (Nordic stairs: 54 degrees,
+    // 18 cm high): reaching just past the contact lands on that slope, so
+    // reach further, up to the body's width, until the feet rest on the top.
+    for (real_t reach = first; reach <= first + r(2.0 * radius_); reach += k_step_reach) {
+        const Vector3 forward = dir * reach;
+        if (test_move(raised, forward)) {
+            return false; // a wall, or a step too shallow to stand on
+        }
+        const Transform3D moved = raised.translated(forward);
+        Ref<godot::KinematicCollision3D> down;
+        down.instantiate();
+        if (!test_move(moved, Vector3(0, -rise.y - 0.05F, 0), down)) {
+            return false; // nothing to stand on
+        }
+        if (static_cast<double>(down->get_normal().y) < std::cos(max_slope_)) {
+            continue;
+        }
+        const Vector3 landed = moved.origin + down->get_travel();
+        if (landed.y - from.origin.y < 0.01F) {
+            return false;
+        }
+        set_global_position(landed);
+        return true;
     }
-    const Transform3D moved = raised.translated(forward);
-    Ref<godot::KinematicCollision3D> down;
-    down.instantiate();
-    if (!test_move(moved, Vector3(0, -rise.y - 0.05F, 0), down)) {
-        return false; // nothing to stand on
-    }
-    if (static_cast<double>(down->get_normal().y) < std::cos(max_slope_)) {
-        return false;
-    }
-    const Vector3 landed = moved.origin + down->get_travel();
-    if (landed.y - from.origin.y < 0.01F) {
-        return false;
-    }
-    set_global_position(landed);
-    return true;
+    return false;
 }
 
 void SkydotPlayer::push_bodies(const Vector3& velocity) {
