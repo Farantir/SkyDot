@@ -36,7 +36,7 @@ void SkydotFlicker::_bind_methods() {
 }
 
 namespace {
-constexpr double k_flicker_movement = 8.0;
+constexpr double k_flicker_movement = 64.0;
 } // namespace
 
 void SkydotFlicker::configure(std::int64_t flags, double period, double intensity,
@@ -64,10 +64,11 @@ godot::Vector3 SkydotFlicker::offset_at(double seconds) const {
     const godot::Vector3 wander(static_cast<float>(2.0 * noise(x + 17.0) - 1.0),
                                 static_cast<float>(2.0 * noise(x + 43.0) - 1.0),
                                 static_cast<float>(2.0 * noise(x + 71.0) - 1.0));
-    // The Creation Kit scales the amplitude by the setting fFlickerMovement,
-    // which no plugin sets; its known default (Oblivion's) is 8. Read as a
-    // divisor, a torch's 48 units move it within 6 (9 cm): the game's torches
-    // stay in their sconces. Not checked against the game.
+    // The game's scale for the amplitude is unknown (fFlickerMovement, which
+    // no plugin sets). Oblivion's default 8 as a divisor moved a torch's 48
+    // units within 9 cm, and a lantern's light swung the shadows of its own
+    // cage across the scene (user report, 2026-10-04). 64 keeps it within
+    // about 1 cm. Not measured in the game.
     return wander.limit_length(1.0F) * static_cast<float>(movement_ / k_flicker_movement);
 }
 
