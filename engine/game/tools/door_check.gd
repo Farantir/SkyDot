@@ -12,11 +12,11 @@
 # Exits 1 if a body lags its door or the walk ends short of --walk metres.
 extends SceneTree
 
-const UNIT := 0.0142875 # metres per game unit
 const OPEN_TICK := 10
 const CHECK_TICK := 250 # the clips take about 2 s
 const WALK_TICKS := 120
 
+var _unit := SkydotWorld.unit_scale() # metres per game unit
 var _world: SkydotWorld
 var _args := {}
 var _cell := 0
@@ -49,7 +49,7 @@ func _initialize() -> void:
 ## The spot in engine metres.
 func _spot() -> Vector3:
 	var at: PackedStringArray = String(_args.get("--at", "-790,-278,0")).split(",")
-	return Vector3(float(at[0]), float(at[2]), -float(at[1])) * UNIT
+	return Vector3(float(at[0]), float(at[2]), -float(at[1])) * _unit
 
 func _refs(node: Node) -> Array:
 	var out := []
@@ -69,7 +69,7 @@ func _animated_bodies(node: Node) -> Array:
 	return out
 
 func _find_doors() -> void:
-	var reach := float(_args.get("--range", "400")) * UNIT
+	var reach := float(_args.get("--range", "400")) * _unit
 	for node in _refs(get_root()):
 		var info: Dictionary = _world.get_ref_info(_cell, node.get_meta("skydot_ref"))
 		if info.get("type", "") != "DOOR" or info["door"] != null:

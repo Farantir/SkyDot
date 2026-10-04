@@ -10,7 +10,9 @@
 Conversion, as in bethconv's mesh writer:
 
 - axes: rotate -90° about X, so Skyrim `(x, y, z)` becomes Godot `(x, z, -y)`;
-- scale: 0.0142875 m per game unit (64 units per yard).
+- scale: 0.0142875 m per game unit (64 units per yard), which scripts read as
+  `SkydotWorld.unit_scale()`; an exterior cell is `SkydotWorld.CELL_UNITS`
+  (4096) units square.
 
 Converted meshes carry this conversion in their root node. A reference
 is placed with `C · T · C⁻¹`, where `T` is its Skyrim transform and `C` the

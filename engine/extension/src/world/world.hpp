@@ -64,8 +64,11 @@ public:
     /// (before AI packages) still reads; its actors have no packages.
     static constexpr int WORLD_FORMAT_VERSION = 10;
     static constexpr int WORLD_FORMAT_VERSION_MIN = 8;
-    /// Metres per game unit, as used by the converter's mesh writer.
+    /// Metres per game unit, as used by the converter's mesh writer; scripts
+    /// read it with `unit_scale()`.
     static constexpr double UNIT_SCALE = formats::k_metres_per_unit;
+    /// Game units along the side of an exterior cell.
+    static constexpr int CELL_UNITS = formats::k_cell_units;
 
     /// Read and verify a world.fb. On failure the world stays closed and
     /// `get_error` explains. A world opens once: a second call is refused
@@ -321,6 +324,8 @@ public:
     /// navmesh_info in navmesh.hpp). Empty if there is no such navmesh.
     godot::Dictionary get_navmesh(std::int64_t id) const;
 
+    /// Metres per game unit.
+    static double unit_scale() { return UNIT_SCALE; }
     /// Skyrim position (game units), rotation (radians) and scale to a Godot
     /// transform.
     static godot::Transform3D skyrim_transform(const godot::Vector3& position,

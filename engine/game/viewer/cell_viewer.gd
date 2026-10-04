@@ -110,8 +110,8 @@ var _shot_delay := 0.0  # seconds the world runs before --screenshot captures
 var _frames := 0
 var _shot_index := 0
 
-const CELL_UNITS := 4096.0
-const UNIT_SCALE := 0.0142875  # metres per game unit, as the converter uses
+const CELL_UNITS := SkydotWorld.CELL_UNITS  # game units along a cell, as the converter uses
+var _unit_scale := SkydotWorld.unit_scale()  # metres per game unit
 var _build_budget_usec := 8000  # per frame for streaming cells in
 const LOD_BUDGET_USEC := 3000
 const EYE_HEIGHT := 1.7
@@ -505,7 +505,7 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 			return false
 	if not _start_weather(weather):
 		_add_sky(_world.get_sky(_world_id, _hour, weather), _args.get("shadows", "on") != "off")
-	_camera.far = (_radius + 1) * CELL_UNITS * UNIT_SCALE * 1.5
+	_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
 	_place_camera(at, target)
 	var lod: SkydotLod = prepared.get("lod")
 	if lod == null:
@@ -853,7 +853,7 @@ func _activate_in_view(force: bool) -> void:
 
 ## The camera's cell in the worldspace grid.
 func _camera_cell() -> Vector2i:
-	var p := _camera.position / UNIT_SCALE
+	var p := _camera.position / _unit_scale
 	return Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
 
 
@@ -996,7 +996,7 @@ func _new_preparation(door: Dictionary) -> Dictionary:
 	prepared["world"] = world_id
 	var arrival: Transform3D = door["arrival"]
 	prepared["eye"] = arrival.origin + Vector3(0, EYE_HEIGHT, 0)
-	var p := arrival.origin / UNIT_SCALE
+	var p := arrival.origin / _unit_scale
 	var centre := Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
 	var keys: Array[Vector2i] = []
 	for dy in range(-_radius, _radius + 1):
@@ -1405,12 +1405,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _lod != null:
 			_lod.split_distance = _lod_split
 		# A level-8 quad splits into level-4 ones within split times 8 cells.
-		_note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * 4096 * 0.0142875])
+		_note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * CELL_UNITS * _unit_scale])
 	elif event is InputEventKey and event.pressed and not event.echo and _world_id != 0 and (event.keycode == KEY_MINUS
 			or event.keycode == KEY_EQUAL):
 		_radius = clampi(_radius + (1 if event.keycode == KEY_EQUAL else -1), 1, 8)
 		if _lod == null:
-			_camera.far = (_radius + 1) * CELL_UNITS * UNIT_SCALE * 1.5
+			_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
 		_note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		var next: int = (MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % MSAA_STEPS.size()

@@ -35,7 +35,7 @@ func _initialize() -> void:
 	root.add_child(actor)
 	var units := Node3D.new()
 	units.name = "bethconv_z_up_to_y_up"
-	units.transform = Transform3D(Basis(Vector3.RIGHT, -PI / 2).scaled(Vector3.ONE * 0.014287), Vector3.ZERO)
+	units.transform = Transform3D(Basis(Vector3.RIGHT, -PI / 2).scaled(Vector3.ONE * SkydotWorld.unit_scale()), Vector3.ZERO)
 	actor.add_child(units)
 	var skeleton: Skeleton3D = SkydotAnimation.build_skeleton(pack.get_bytes(CHARACTER + "character assets/skeleton.hkx"))
 	if skeleton == null:

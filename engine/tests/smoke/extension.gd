@@ -55,7 +55,7 @@ func _check_path_arithmetic() -> void:
     expect(SkydotPack.model_vpath("meshes\\Clutter\\Apple01.nif") == "meshes/clutter/apple01.nif",
            "a MODL field that already says meshes/ is left alone")
     expect(SkydotPack.model_vpath("") == "", "an empty MODL is empty")
-    # The converter's rules (converter/src/archive/vpath.cpp), byte for byte.
+    # The converter's rules (formats/include/skydot_formats/vpath.hpp), byte for byte.
     expect(SkydotPack.model_vpath("Meshes\\Ä\\Pot.nif") == "meshes/Ä/pot.nif",
            "letters above ASCII keep their case, ASCII ones do not")
     expect(SkydotPack.normalize_vpath("\\.\\Meshes//.//Clutter\\\\Apple01.NIF\\") == "meshes/clutter/apple01.nif",
@@ -113,6 +113,8 @@ func _check_billboards() -> void:
 ## no converter output).
 func _check_coordinates() -> void:
     const S := 0.0142875
+    expect(is_equal_approx(SkydotWorld.unit_scale(), S), "scripts read the unit scale from the extension")
+    expect(SkydotWorld.CELL_UNITS == 4096, "and the cell side")
     var p := SkydotWorld.skyrim_position(Vector3(100, 200, 300))
     expect(p.is_equal_approx(Vector3(100, 300, -200) * S), "Z-up game units to Y-up metres: %s" % p)
     # +90 degrees about Skyrim Z turns clockwise seen from above: local X

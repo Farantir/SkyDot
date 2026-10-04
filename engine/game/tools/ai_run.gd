@@ -58,8 +58,8 @@ func _initialize() -> void:
         var started := Time.get_ticks_usec()
         print("placed: ", _ai.place_actors(), " in %.1f ms" % ((Time.get_ticks_usec() - started) / 1000.0))
         var at: PackedStringArray = String(args.get("--at", "0,0")).split(",")
-        var gx := floori(float(at[0]) / 4096.0)
-        var gy := floori(float(at[1]) / 4096.0)
+        var gx := floori(float(at[0]) / SkydotWorld.CELL_UNITS)
+        var gy := floori(float(at[1]) / SkydotWorld.CELL_UNITS)
         for dx in range(-1, 2):
             for dy in range(-1, 2):
                 var cell := _world.build_exterior(_space, gx + dx, gy + dy)
@@ -100,7 +100,8 @@ func _arrived(ref: int) -> void:
         parent = _cells.get(Vector2i.ZERO)
     else:
         var p: Vector3 = place["position"]
-        parent = _cells.get(Vector2i(floori(p.x / 4096.0), floori(p.y / 4096.0)))
+        parent = _cells.get(Vector2i(floori(p.x / SkydotWorld.CELL_UNITS),
+                floori(p.y / SkydotWorld.CELL_UNITS)))
     if parent == null:
         print("%6.1fs 0x%08X arrives where nothing is built" % [_elapsed, ref])
         return

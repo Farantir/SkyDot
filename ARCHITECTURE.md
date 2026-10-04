@@ -851,7 +851,8 @@ The VM is in `engine/extension/src/vm/` and documented in
 Skyrim is Z-up in game units; Godot is Y-up in metres. The conversion is a
 −90° rotation about X and 0.0142875 m per unit
 (`formats/include/skydot_formats/units.hpp`, with the cell size and the Havok
-scale). A Skyrim point (x, y, z)
+scale; scripts read them as `SkydotWorld.unit_scale()` and
+`SkydotWorld.CELL_UNITS`, so no script spells them). A Skyrim point (x, y, z)
 becomes (x, z, −y)·s. A reference's rotation is `Rx(−x)·Ry(−y)·Rz(−z)`, and it
 is placed with `C·T·C⁻¹` (`engine/docs/coordinates.md`). An exterior cell is
 4,096 units square; its grid square is `floor(pos / 4096)`.

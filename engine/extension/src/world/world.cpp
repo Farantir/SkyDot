@@ -292,6 +292,8 @@ void SkydotWorld::_bind_methods() {
                                        &SkydotWorld::wake_clutter);
     godot::ClassDB::bind_method(D_METHOD("get_navmeshes", "cell"), &SkydotWorld::get_navmeshes);
     godot::ClassDB::bind_method(D_METHOD("get_navmesh", "id"), &SkydotWorld::get_navmesh);
+    godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("unit_scale"),
+                                       &SkydotWorld::unit_scale);
     godot::ClassDB::bind_static_method("SkydotWorld",
                                        D_METHOD("skyrim_transform", "position", "rotation", "scale"),
                                        &SkydotWorld::skyrim_transform);
@@ -301,6 +303,7 @@ void SkydotWorld::_bind_methods() {
                                        &SkydotWorld::godot_to_skyrim);
     BIND_CONSTANT(WORLD_FORMAT_VERSION);
     BIND_CONSTANT(WORLD_FORMAT_VERSION_MIN);
+    BIND_CONSTANT(CELL_UNITS);
 }
 
 // ---- opening --------------------------------------------------------------

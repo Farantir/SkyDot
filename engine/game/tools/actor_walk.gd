@@ -34,8 +34,8 @@ func _initialize() -> void:
     if args.has("--world"):
         var ws: int = _world.find_world(args["--world"])
         var at: PackedStringArray = String(args.get("--at", "0,0")).split(",")
-        var gx := floori(float(at[0]) / 4096.0)
-        var gy := floori(float(at[1]) / 4096.0)
+        var gx := floori(float(at[0]) / SkydotWorld.CELL_UNITS)
+        var gy := floori(float(at[1]) / SkydotWorld.CELL_UNITS)
         _root = Node3D.new()
         for dx in range(-1, 2):
             for dy in range(-1, 2):

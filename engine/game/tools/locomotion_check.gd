@@ -7,7 +7,7 @@
 #   godot4.7 --headless --path game --script res://tools/locomotion_check.gd -- --pack <pack>
 extends SceneTree
 
-const UNIT_SCALE := 0.0142875
+var _unit_scale := SkydotWorld.unit_scale()
 
 func _initialize() -> void:
     var argv := OS.get_cmdline_user_args()
@@ -44,7 +44,7 @@ func _initialize() -> void:
             elif gait == "idle":
                 line += "  %s: %s" % [gait, g["name"]]
             else:
-                line += "  %s: %s %.2f m/s" % [gait, g["name"], g["speed"] * UNIT_SCALE]
+                line += "  %s: %s %.2f m/s" % [gait, g["name"], g["speed"] * _unit_scale]
         print(line)
         if l["walk"]["file"] != "":
             moving += uses[behaviour]
