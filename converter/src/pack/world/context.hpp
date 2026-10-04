@@ -14,9 +14,13 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace bethconv::pack::detail {
+
+/// FLST id -> the FormIDs it lists, made global.
+using FormLists = std::unordered_map<std::uint32_t, std::vector<std::uint32_t>>;
 
 class CollectContext {
 public:
