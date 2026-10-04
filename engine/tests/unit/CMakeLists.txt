@@ -11,6 +11,7 @@ add_executable(skydot_core_tests
     support/vm_rig.hpp
     test_vm.cpp
     test_vm_objects.cpp
+    test_vm_save.cpp
     test_vm_threads.cpp
     test_vpath.cpp
 )
