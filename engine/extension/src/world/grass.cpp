@@ -5,6 +5,7 @@
 #include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/units.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/multi_mesh.hpp>
@@ -25,7 +26,7 @@ namespace skydot {
 
 namespace {
 
-constexpr float k_cell_units = 4096.0F;
+constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 constexpr float k_spacing = k_cell_units / 32.0F; // between height samples
 constexpr float k_grass_grid = 20.0F;             // iMinGrassSize
 constexpr float k_fade_start = 7000.0F;           // fGrassStartFadeDistance

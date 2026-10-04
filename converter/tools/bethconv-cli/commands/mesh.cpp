@@ -287,7 +287,7 @@ struct MeshArgs {
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
-    float unit_scale = 0.0142875f;
+    float unit_scale = bethconv::mesh::k_default_unit_scale;
     bool verbose = false;
     bool allow_slow_target = false;
 };
@@ -314,7 +314,7 @@ void register_mesh(CLI::App& app) {
     mesh->add_flag("--keep-z-up", args->keep_z_up, "Leave the model in NIF axes");
     mesh->add_option("--unit-scale", args->unit_scale,
                      "Metres per game unit; 1 leaves game units alone")
-        ->default_val(0.0142875f);
+        ->default_val(bethconv::mesh::k_default_unit_scale);
     mesh->add_flag("-v,--verbose", args->verbose, "Print per-file detail while converting");
     mesh->callback([args] {
         if (!args->out.empty() && !output_target_ok(args->out, true, args->allow_slow_target)) {

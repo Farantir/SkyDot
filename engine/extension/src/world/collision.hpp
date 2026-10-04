@@ -16,9 +16,11 @@
 //   that the model follows; it starts frozen, so clutter stays where the
 //   game put it until something touches it.
 //
-// Shapes are in game units (Havok units times 69.99124), the unit of the
-// nodes they hang off.
+// Shapes are in game units (Havok units times `k_havok_scale`), the unit of
+// the nodes they hang off.
 #pragma once
+
+#include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/physics_direct_body_state3d.hpp>
@@ -46,7 +48,7 @@ inline constexpr std::uint32_t solid = world | clutter | terrain;
 } // namespace physics_layer
 
 /// Game units per Havok unit in Skyrim (LE and SE).
-inline constexpr godot::real_t k_havok_scale = 69.99124F;
+inline constexpr godot::real_t k_havok_scale = static_cast<godot::real_t>(formats::k_havok_scale);
 
 class ModelCollision {
 public:

@@ -13,6 +13,7 @@
 #include "world/refs.hpp"
 
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/units.hpp"
 #include "world_generated.h"
 
 #include <godot_cpp/classes/animation_library.hpp>
@@ -116,7 +117,7 @@ String model_path(std::string_view model) {
 }
 
 /// Game units per exterior cell side.
-constexpr float k_cell_units = 4096.0F;
+constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 
 /// XCLW values this large mean "no water here".
 constexpr float k_no_water = 1.0e30F;

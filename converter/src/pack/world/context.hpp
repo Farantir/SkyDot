@@ -10,6 +10,7 @@
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/types.hpp"
 #include "bethconv/record/vmad.hpp"
+#include "skydot_formats/vpath.hpp"
 
 #include <cstdint>
 #include <string>
@@ -49,10 +50,9 @@ private:
 };
 
 /// MODL values are relative to `Data\meshes\`, though some plugins include the
-/// prefix. Returns a normalized virtual path.
-[[nodiscard]] std::string model_vpath(std::string_view modl);
-
-/// TXST paths are relative to `Data\textures\`, like MODL to meshes.
-[[nodiscard]] std::string texture_vpath(std::string_view path);
+/// prefix, and TXST paths to `Data\textures\`: normalized virtual paths, the
+/// engine's rule (formats/include/skydot_formats/vpath.hpp).
+using skydot::formats::model_vpath;
+using skydot::formats::texture_vpath;
 
 } // namespace bethconv::pack::detail

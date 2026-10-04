@@ -291,10 +291,13 @@ reporting comes for free). `read(path)` returns the bytes, decompressed
 loose file. On Linux, loose files are reopened under their on-disk
 spelling, because the virtual path is lowercased.
 
-`vpath.cpp`'s `normalize_vpath` is the canonical form of a game path:
-lowercased in ASCII only (locale-independent, matching Bethesda's hashing),
-forward slashes, no leading or duplicate separators, no `.` segments.
-`is_safe_relative` guards every write of a vpath under an output directory.
+`normalize_vpath` is the canonical form of a game path: lowercased in ASCII
+only (locale-independent, matching Bethesda's hashing), forward slashes, no
+leading or duplicate separators, no `.` segments. It lives in
+`formats/include/skydot_formats/vpath.hpp`, which the engine includes too, so
+the converter's index and the engine's lookups cannot spell a path
+differently (`archive/vpath.hpp` re-exports it). `is_safe_relative` guards
+every write of a vpath under an output directory.
 
 ### 5.5 `record/`: plugins, records, the load order and the merge
 
@@ -846,7 +849,9 @@ The VM is in `engine/extension/src/vm/` and documented in
 ### 7.10 Coordinates
 
 Skyrim is Z-up in game units; Godot is Y-up in metres. The conversion is a
-−90° rotation about X and 0.0142875 m per unit. A Skyrim point (x, y, z)
+−90° rotation about X and 0.0142875 m per unit
+(`formats/include/skydot_formats/units.hpp`, with the cell size and the Havok
+scale). A Skyrim point (x, y, z)
 becomes (x, z, −y)·s. A reference's rotation is `Rx(−x)·Ry(−y)·Rz(−z)`, and it
 is placed with `C·T·C⁻¹` (`engine/docs/coordinates.md`). An exterior cell is
 4,096 units square; its grid square is `floor(pos / 4096)`.
@@ -1039,7 +1044,7 @@ Readers refuse unknown versions and say which numbers they read.
 | I want to… | Look at |
 | --- | --- |
 | add a field the engine needs from a record | `record/forms_*.hpp` (struct + `parse_*`), `pack/world/<domain>.cpp` (the collector's handler + `write_*`), `formats/schema/world.fbs`, bump `k_world_format_version`, `pack/world.hpp` and `pack/world_file.cpp` (`WorldFile`, if the CLI should show it), engine reader, `formats/pack-format.md` |
-| support a new asset kind | `pack/vpath_index.hpp` (`AssetKind`), `pack/convert.cpp` (`kind_of`, the switch, a settings fingerprint), `pack/pack_writer.*`, `formats/pack-format.md`, engine `PackStore::extension_of` and `AssetCache::load` |
+| support a new asset kind | `formats/include/skydot_formats/asset_kind.hpp` (`AssetKind`, its word and extension), `pack/convert.cpp` (`kind_of`, the switch, a settings fingerprint), `pack/pack_writer.*`, `formats/pack-format.md`, engine `AssetCache::load` |
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
 | change how a reference is placed | `SkydotWorld::place_ref` (`engine/extension/src/world/world.cpp`) |

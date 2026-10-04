@@ -2,6 +2,7 @@
 #include "world/lod.hpp"
 #include "world/materials.hpp"
 
+#include "skydot_formats/units.hpp"
 #include "lod_generated.h"
 
 #include <godot_cpp/classes/array_mesh.hpp>
@@ -33,7 +34,7 @@ namespace skydot {
 
 namespace {
 
-constexpr double k_cell_units = 4096.0;
+constexpr auto k_cell_units = static_cast<double>(formats::k_cell_units);
 constexpr std::uint32_t k_lod_format = 1;
 
 std::string utf8(const String& s) {
@@ -46,12 +47,13 @@ constexpr const char* k_mask = R"(
 uniform sampler2D skydot_cell_mask : filter_nearest, repeat_disable;
 uniform vec2 skydot_mask_origin;
 uniform float skydot_mask_size = 1.0;
-uniform float skydot_unit_scale = 0.0142875;
+uniform float skydot_unit_scale;
+uniform float skydot_cell_units;
 varying vec3 skydot_world;
 
 bool skydot_masked(vec3 world) {
 	vec2 game = vec2(world.x, -world.z) / skydot_unit_scale;
-	vec2 cell = floor(game / 4096.0) - skydot_mask_origin;
+	vec2 cell = floor(game / skydot_cell_units) - skydot_mask_origin;
 	if (any(lessThan(cell, vec2(0.0))) || any(greaterThanEqual(cell, vec2(skydot_mask_size)))) {
 		return false;
 	}
@@ -297,6 +299,7 @@ void SkydotLod::apply_mask(const Ref<godot::ShaderMaterial>& m) const {
                                                                  static_cast<float>(south_west_y_)));
     m->set_shader_parameter("skydot_mask_size", static_cast<float>(stride_));
     m->set_shader_parameter("skydot_unit_scale", SkydotWorld::UNIT_SCALE);
+    m->set_shader_parameter("skydot_cell_units", k_cell_units);
 }
 
 void SkydotLod::set_cell_loaded(std::int64_t x, std::int64_t y, bool loaded) {

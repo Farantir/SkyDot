@@ -411,7 +411,7 @@ std::optional<MeshFacts> probe_mesh(const archive::ArchiveSet& set, const std::s
     // The CLI defaults, spelled out: glb_hash depends on them.
     const mesh::WriteOptions options{
         .convert_to_y_up = true,
-        .unit_scale = 0.0142875f,
+        .unit_scale = mesh::k_default_unit_scale,
         .texture_refs = mesh::TextureRefs::source_paths,
         .write_extras = true,
     };
@@ -553,7 +553,7 @@ std::optional<ConvertFacts> probe_convert(const std::filesystem::path& data_dir,
     options.mesh_read.read_collision = true;
     options.mesh_read.read_skinning = true;
     options.mesh_write.convert_to_y_up = true;
-    options.mesh_write.unit_scale = 0.0142875f;
+    options.mesh_write.unit_scale = mesh::k_default_unit_scale;
     // No glTF images, as in a pack. Part of the mesh fingerprint, so part of
     // every name in `index_hash`.
     options.mesh_write.texture_refs = mesh::TextureRefs::none;

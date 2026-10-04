@@ -4,9 +4,10 @@
 // the hash of their source bytes (pack/asset_store.hpp), so this is the only
 // way to find an asset by its game path.
 //
-// pack_writer.cpp writes it and pack_view.cpp reads it; the format and the
-// shared layout vocabulary (asset kinds, extensions, paths) live here so both
-// sides use one implementation.
+// pack_writer.cpp writes it and pack_view.cpp reads it; the format lives here
+// so both sides use one implementation. The asset kinds, extensions and
+// paths are formats/include/skydot_formats/asset_kind.hpp, shared with the
+// engine.
 //
 //     # bethconv vpath index v6
 //     # virtual path\tcontent hash\tkind\twinning source
@@ -22,6 +23,7 @@
 #pragma once
 
 #include "bethconv/io/parse_error.hpp"
+#include "skydot_formats/asset_kind.hpp"
 
 #include <cstdint>
 #include <filesystem>
@@ -36,27 +38,11 @@ namespace bethconv::pack {
 /// formats/pack-format.md.
 inline constexpr std::uint32_t k_pack_format_version = 6;
 
-/// Asset kind. One extension and one settings fingerprint each.
-enum class AssetKind : std::uint8_t {
-    mesh,    ///< NIF -> GLB.
-    texture, ///< DDS -> DDS, mip chain completed.
-    script,  ///< PEX -> decoded FlatBuffer (formats/schema/script.fbs).
-    lod,     ///< .lod/.lst/.btt -> decoded FlatBuffer (formats/schema/lod.fbs).
-    animation, ///< .hkx, animationdata .txt -> decoded FlatBuffer (formats/schema/animation.fbs).
-};
-
-[[nodiscard]] std::string_view to_string(AssetKind kind) noexcept;
-
-/// Including the dot: ".glb", ".dds", ".pexfb", ".lodfb", ".animfb".
-[[nodiscard]] std::string_view extension_of(AssetKind kind) noexcept;
-
-/// Inverse of `to_string`. Nullopt for an unknown word, i.e. a pack from a
-/// newer converter.
-[[nodiscard]] std::optional<AssetKind> kind_from_string(std::string_view name) noexcept;
-
-/// `assets/<bb>/<hex><ext>` with forward slashes on every platform, since it
-/// is compared with paths read from disk.
-[[nodiscard]] std::string asset_relative_path(std::string_view hex, AssetKind kind);
+using skydot::formats::AssetKind;
+using skydot::formats::asset_relative_path;
+using skydot::formats::extension_of;
+using skydot::formats::kind_from_string;
+using skydot::formats::to_string;
 
 /// One line of the index.
 struct VpathEntry {

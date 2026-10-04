@@ -440,11 +440,7 @@ String SkydotPack::normalize_vpath(const String& path) {
 }
 
 String SkydotPack::model_vpath(const String& modl) {
-    const String normalized = normalize_vpath(modl);
-    if (normalized.is_empty() || normalized.begins_with("meshes/")) {
-        return normalized;
-    }
-    return "meshes/" + normalized;
+    return to_godot(formats::model_vpath(to_std(modl)));
 }
 
 } // namespace skydot

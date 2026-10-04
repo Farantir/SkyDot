@@ -43,57 +43,6 @@ namespace {
 
 } // namespace
 
-std::string_view to_string(AssetKind kind) noexcept {
-    switch (kind) {
-    case AssetKind::mesh: return "mesh";
-    case AssetKind::texture: return "texture";
-    case AssetKind::script: return "script";
-    case AssetKind::lod: return "lod";
-    case AssetKind::animation: return "animation";
-    }
-    return "unknown";
-}
-
-std::string_view extension_of(AssetKind kind) noexcept {
-    switch (kind) {
-    // DDS, not KTX2: textures are passed through.
-    case AssetKind::mesh: return ".glb";
-    case AssetKind::texture: return ".dds";
-    case AssetKind::script: return ".pexfb";
-    case AssetKind::lod: return ".lodfb";
-    case AssetKind::animation: return ".animfb";
-    }
-    return "";
-}
-
-std::optional<AssetKind> kind_from_string(std::string_view name) noexcept {
-    if (name == "mesh") {
-        return AssetKind::mesh;
-    }
-    if (name == "texture") {
-        return AssetKind::texture;
-    }
-    if (name == "script") {
-        return AssetKind::script;
-    }
-    if (name == "lod") {
-        return AssetKind::lod;
-    }
-    if (name == "animation") {
-        return AssetKind::animation;
-    }
-    return std::nullopt;
-}
-
-std::string asset_relative_path(std::string_view hex, AssetKind kind) {
-    std::string out = "assets/";
-    out += hex.substr(0, std::min<std::size_t>(2, hex.size()));
-    out += '/';
-    out += hex;
-    out += extension_of(kind);
-    return out;
-}
-
 std::string index_header() {
     return "# bethconv vpath index v" + std::to_string(k_pack_format_version) + "\n"
            "# virtual path\tcontent hash\tkind\twinning source\n";

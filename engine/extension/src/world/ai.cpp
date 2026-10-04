@@ -7,6 +7,7 @@
 #include "world/fb_search.hpp"
 #include "vm/papyrus.hpp"
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -56,7 +57,7 @@ constexpr int k_max_route = 6;
 constexpr double k_min_search = 512.0;
 /// Interiors are searched whole for "in cell" locations; outside this far.
 constexpr double k_cell_radius = 1024.0;
-constexpr float k_cell_units = 4096.0F;
+constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 
 /// PLDT location types and PTDA target types (world.fbs).
 enum Location : std::int32_t {

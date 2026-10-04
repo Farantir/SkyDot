@@ -42,6 +42,7 @@
 // `report.json`.
 #include "bethconv/archive/archive_set.hpp"
 #include "bethconv/pack/asset_store.hpp"
+#include "bethconv/mesh/mesh_ir.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 #include "bethconv/pack/snapshot.hpp"
@@ -1096,7 +1097,7 @@ std::vector<std::byte> a_nif(bethconv::test::NifFlavor flavor, const std::string
     if (collision != Collision::none) {
         // A box around the cube: 12 game units in Havok units.
         auto box = std::make_unique<nifly::bhkBoxShape>();
-        const float half = 12.0F / 69.99124F;
+        const float half = 12.0F / bethconv::mesh::k_havok_scale;
         box->dimensions = nifly::Vector3(half, half, half);
         bethconv::test::NifBuilder::Body body;
         if (collision == Collision::clutter) {

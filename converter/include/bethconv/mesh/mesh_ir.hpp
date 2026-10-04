@@ -12,6 +12,8 @@
 // PBR and what goes to `extras`.
 #pragma once
 
+#include "skydot_formats/units.hpp"
+
 #include <array>
 #include <cstdint>
 #include <optional>
@@ -307,10 +309,10 @@ enum class CollisionKind : std::uint8_t {
 };
 
 /// Game units per Havok unit in Skyrim.
-inline constexpr float k_havok_scale = 69.99124f;
+inline constexpr float k_havok_scale = static_cast<float>(skydot::formats::k_havok_scale);
 
 /// One collision shape in the target node's frame, in Havok units (game units
-/// divided by 69.99124). Goes to `extras`, never glTF geometry (which would
+/// divided by `k_havok_scale`). Goes to `extras`, never glTF geometry (which would
 /// render); the engine builds physics shapes from it.
 struct CollisionShape {
     CollisionKind kind{CollisionKind::unsupported};

@@ -8,6 +8,7 @@
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/forms.hpp"
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/units.hpp"
 
 #include <CLI/CLI.hpp>
 
@@ -31,7 +32,7 @@ namespace bethconv::cli {
 namespace {
 
 /// Game units per exterior cell side.
-constexpr float k_cell_units = 4096.0F;
+constexpr float k_cell_units = static_cast<float>(skydot::formats::k_cell_units);
 
 /// The exterior region `grid` +- `radius` of worldspace `world_name`: its
 /// cells, the persistent references positioned inside it, and terrain (from

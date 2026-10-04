@@ -16,6 +16,7 @@
 #include "world/navmesh.hpp"
 #include "world/terrain.hpp"
 #include "world/water.hpp"
+#include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -64,7 +65,7 @@ public:
     static constexpr int WORLD_FORMAT_VERSION = 10;
     static constexpr int WORLD_FORMAT_VERSION_MIN = 8;
     /// Metres per game unit, as used by the converter's mesh writer.
-    static constexpr double UNIT_SCALE = 0.0142875;
+    static constexpr double UNIT_SCALE = formats::k_metres_per_unit;
 
     /// Read and verify a world.fb. On failure the world stays closed and
     /// `get_error` explains. A world opens once: a second call is refused

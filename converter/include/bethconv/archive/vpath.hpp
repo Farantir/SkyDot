@@ -5,17 +5,20 @@
 // archive layer uses the normalized form.
 #pragma once
 
+#include "skydot_formats/vpath.hpp"
+
 #include <string>
 #include <string_view>
 
 namespace bethconv::archive {
 
 /// Lowercase ASCII, forward slashes, no leading slash, no duplicate separators,
-/// no `.` components.
+/// no `.` components. The engine looks paths up with the same function
+/// (formats/include/skydot_formats/vpath.hpp).
 ///
 /// ASCII-only because Bethesda's hashing is ASCII; locale-aware lowercasing
 /// would make lookups locale-dependent (Turkish dotless i).
-[[nodiscard]] std::string normalize_vpath(std::string_view path);
+using skydot::formats::normalize_vpath;
 
 /// True if `path` is already in canonical form.
 [[nodiscard]] bool is_normalized(std::string_view path);

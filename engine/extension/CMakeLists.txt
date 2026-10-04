@@ -35,7 +35,6 @@ add_custom_target(skydot_flatbuffers DEPENDS
 # packages, actor plans and virtual paths. Nothing in them may include a
 # godot-cpp header: that would stop the unit tests building.
 set(SKYDOT_CORE_SOURCES
-    src/assets/vpath.cpp
     src/assets/vpath.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp

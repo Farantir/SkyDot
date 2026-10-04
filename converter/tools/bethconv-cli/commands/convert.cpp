@@ -4,6 +4,7 @@
 #include "front_end.hpp"
 
 #include "bethconv/io/json_text.hpp"
+#include "bethconv/mesh/gltf_writer.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/inputs.hpp"
 #include "bethconv/texture/bc_encode.hpp"
@@ -45,7 +46,7 @@ struct ConvertArgs {
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
-    float unit_scale = 0.0142875f;
+    float unit_scale = bethconv::mesh::k_default_unit_scale;
     std::uint32_t max_texture_size = 0;
     bethconv::texture::Encoding encoding = bethconv::texture::Encoding::keep;
     bool hash_archives = false;
@@ -400,7 +401,7 @@ struct ConvertCli {
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
-    float unit_scale = 0.0142875f;
+    float unit_scale = bethconv::mesh::k_default_unit_scale;
     bool hash_archives = false;
     bool prune = false;
     std::string store = "blob";
@@ -447,7 +448,7 @@ void register_convert(CLI::App& app) {
     convert->add_flag("--no-skinning", args->no_skinning, "Do not read skin data");
     convert->add_flag("--keep-z-up", args->keep_z_up, "Leave meshes in NIF space");
     convert->add_option("--unit-scale", args->unit_scale, "Metres per game unit")
-        ->default_val(0.0142875f);
+        ->default_val(bethconv::mesh::k_default_unit_scale);
     convert->add_flag("--hash-sources", args->hash_archives,
                       "Hash every mounted archive into the manifest, not only the plugins");
     convert->add_flag("--prune", args->prune,

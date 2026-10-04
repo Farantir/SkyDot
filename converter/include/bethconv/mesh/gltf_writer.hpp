@@ -13,6 +13,7 @@
 
 #include "bethconv/io/parse_error.hpp"
 #include "bethconv/mesh/mesh_ir.hpp"
+#include "skydot_formats/units.hpp"
 
 #include <cstddef>
 #include <filesystem>
@@ -33,14 +34,17 @@ enum class TextureRefs : std::uint8_t {
     source_paths,
 };
 
+/// Metres per game unit (64 units per yard); the engine reads the same number
+/// (formats/include/skydot_formats/units.hpp).
+inline constexpr float k_default_unit_scale = static_cast<float>(skydot::formats::k_metres_per_unit);
+
 struct WriteOptions {
     /// Rotate Z-up to Y-up at the root. Off keeps NIF space, for comparisons
     /// with the source.
     bool convert_to_y_up = true;
 
-    /// Metres per game unit (64 units per yard = 0.0142875). Applied at the
-    /// root.
-    float unit_scale = 0.0142875f;
+    /// Metres per game unit. Applied at the root.
+    float unit_scale = k_default_unit_scale;
 
     TextureRefs texture_refs = TextureRefs::source_paths;
 

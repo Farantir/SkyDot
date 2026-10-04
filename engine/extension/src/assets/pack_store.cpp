@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/pack_store.hpp"
 
+#include "skydot_formats/asset_kind.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -137,22 +139,8 @@ bool MappedFile::open(const std::string& path, std::string& error) {
 // ---- PackStore ------------------------------------------------------------
 
 std::string_view PackStore::extension_of(std::string_view kind) {
-    if (kind == "mesh") {
-        return ".glb";
-    }
-    if (kind == "texture") {
-        return ".dds";
-    }
-    if (kind == "script") {
-        return ".pexfb";
-    }
-    if (kind == "lod") {
-        return ".lodfb";
-    }
-    if (kind == "animation") {
-        return ".animfb";
-    }
-    return {};
+    const auto known = formats::kind_from_string(kind);
+    return known ? formats::extension_of(*known) : std::string_view{};
 }
 
 bool PackStore::read_index(std::string_view text, std::string_view header, std::string& error) {
@@ -253,11 +241,11 @@ const PackStore::Entry* PackStore::find(const std::string& normalized_vpath) con
 }
 
 std::string PackStore::loose_path(const Entry& entry) const {
-    const std::string_view ext = extension_of(entry.kind);
-    if (blob_ != nullptr || ext.empty()) {
+    const auto kind = formats::kind_from_string(entry.kind);
+    if (blob_ != nullptr || !kind) {
         return {};
     }
-    return loose_dir_ + "/assets/" + entry.hash.substr(0, 2) + "/" + entry.hash + std::string(ext);
+    return loose_dir_ + "/" + formats::asset_relative_path(entry.hash, *kind);
 }
 
 std::optional<std::vector<std::uint8_t>> PackStore::read(const std::string& normalized_vpath) const {
