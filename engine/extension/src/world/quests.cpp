@@ -40,16 +40,16 @@ Vector3 vec(const wfb::Vec3f& v) { return {v.x(), v.y(), v.z()}; }
 } // namespace
 
 std::int64_t SkydotWorld::get_quest_count() const {
-    return root_ != nullptr && root_->quests() != nullptr ? root_->quests()->size() : 0;
+    return world_fb() != nullptr && world_fb()->quests() != nullptr ? world_fb()->quests()->size() : 0;
 }
 
 bool SkydotWorld::has_quest(std::int64_t id) const {
-    return lookup(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
+    return lookup(world_fb() != nullptr ? world_fb()->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
 }
 
 Array SkydotWorld::list_quests(const String& filter) const {
     Array out;
-    const auto* quests = root_ != nullptr ? root_->quests() : nullptr;
+    const auto* quests = world_fb() != nullptr ? world_fb()->quests() : nullptr;
     if (quests == nullptr) {
         return out;
     }
@@ -71,7 +71,7 @@ Array SkydotWorld::list_quests(const String& filter) const {
 }
 
 std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
-    const auto* quests = root_ != nullptr ? root_->quests() : nullptr;
+    const auto* quests = world_fb() != nullptr ? world_fb()->quests() : nullptr;
     if (quests == nullptr) {
         return 0;
     }
@@ -86,7 +86,7 @@ std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
 
 Dictionary SkydotWorld::get_quest(std::int64_t id) const {
     Dictionary out;
-    const auto* q = lookup(root_ != nullptr ? root_->quests() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* q = lookup(world_fb() != nullptr ? world_fb()->quests() : nullptr, static_cast<std::uint32_t>(id));
     if (q == nullptr) {
         return out;
     }
@@ -189,7 +189,7 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_global(std::int64_t id) const {
     Dictionary out;
-    const auto* g = lookup(root_ != nullptr ? root_->globals() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* g = lookup(world_fb() != nullptr ? world_fb()->globals() : nullptr, static_cast<std::uint32_t>(id));
     if (g == nullptr) {
         return out;
     }
@@ -203,7 +203,7 @@ Dictionary SkydotWorld::get_global(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
     Dictionary out;
-    const auto* actors = root_ != nullptr ? root_->actors() : nullptr;
+    const auto* actors = world_fb() != nullptr ? world_fb()->actors() : nullptr;
     if (actors == nullptr) {
         return out;
     }
@@ -223,7 +223,7 @@ Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
 }
 
 std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plugin) const {
-    const auto* plugins = root_ != nullptr ? root_->plugins() : nullptr;
+    const auto* plugins = world_fb() != nullptr ? world_fb()->plugins() : nullptr;
     if (plugins == nullptr) {
         return 0;
     }
@@ -238,22 +238,11 @@ std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plug
 }
 
 std::int64_t SkydotWorld::find_actor_of(std::int64_t npc) const {
-    const auto* actors = root_ != nullptr ? root_->actors() : nullptr;
-    if (actors == nullptr) {
-        return 0;
-    }
-    if (actor_of_.empty()) {
-        // Sorted by ref, so the first seen is the lowest.
-        for (const auto* a : *actors) {
-            actor_of_.try_emplace(a->base(), a->ref());
-        }
-    }
-    const auto it = actor_of_.find(static_cast<std::uint32_t>(npc));
-    return it != actor_of_.end() ? it->second : 0;
+    return data().actor_of(static_cast<std::uint32_t>(npc));
 }
 
 std::int64_t SkydotWorld::find_npc(const String& editor_id) const {
-    const auto* npcs = root_ != nullptr ? root_->npcs() : nullptr;
+    const auto* npcs = world_fb() != nullptr ? world_fb()->npcs() : nullptr;
     if (npcs == nullptr) {
         return 0;
     }

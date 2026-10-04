@@ -249,30 +249,26 @@ bool SkydotWorld::activatable(const wfb::Base* base, std::uint32_t cell, std::ui
                             (base->scripts() != nullptr && base->scripts()->size() != 0))) {
         return true;
     }
-    if (doors_.contains(ref)) {
+    if (data().doors().contains(ref)) {
         return true;
     }
-    const auto* c = cell_ptr(cell);
+    const auto* c = data().cell_ptr(cell);
     return c != nullptr && ref_scripts(*c, ref) != nullptr;
-}
-
-const wfb::DoorLink* SkydotWorld::door_ptr(std::uint32_t ref) const {
-    const auto it = doors_.find(ref);
-    return it != doors_.end() ? it->second.second : nullptr;
 }
 
 Dictionary SkydotWorld::get_door(std::int64_t ref) const {
     Dictionary out;
-    const auto it = doors_.find(static_cast<std::uint32_t>(ref));
-    if (it == doors_.end()) {
+    const auto& doors = data().doors();
+    const auto it = doors.find(static_cast<std::uint32_t>(ref));
+    if (it == doors.end()) {
         return out;
     }
     const auto& [cell, link] = it->second;
     out["ref"] = static_cast<std::int64_t>(link->ref());
     out["cell"] = static_cast<std::int64_t>(cell->id());
     out["destination"] = static_cast<std::int64_t>(link->destination());
-    const auto dest = doors_.find(link->destination());
-    const wfb::Cell* dest_cell = dest != doors_.end() ? dest->second.first : nullptr;
+    const auto dest = doors.find(link->destination());
+    const wfb::Cell* dest_cell = dest != doors.end() ? dest->second.first : nullptr;
     out["destination_cell"] = static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->id() : 0);
     out["destination_world"] =
         static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->world() : 0);
@@ -286,13 +282,13 @@ Dictionary SkydotWorld::get_door(std::int64_t ref) const {
 
 Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) const {
     Dictionary out;
-    const auto* cell = cell_ptr(cell_id);
+    const auto* cell = data().cell_ptr(cell_id);
     const auto id = static_cast<std::uint32_t>(ref_id);
     const auto* ref = cell != nullptr ? find_ref(*cell, id) : nullptr;
     if (ref == nullptr) {
         return out;
     }
-    const auto* base = base_ptr(ref->base());
+    const auto* base = data().base_ptr(ref->base());
     out["id"] = static_cast<std::int64_t>(id);
     out["cell"] = static_cast<std::int64_t>(cell->id());
     out["base"] = static_cast<std::int64_t>(ref->base());
@@ -301,7 +297,7 @@ Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) 
     out["activatable"] = activatable(base, cell->id(), id);
     out["parent_activate_only"] =
         formats::has_flag(ref->flags(), wfb::RefFlags::parent_activate_only);
-    out["disabled"] = initially_disabled(*ref);
+    out["disabled"] = data().initially_disabled(*ref);
     out["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
     out["enable_opposite"] = formats::has_flag(ref->flags(), wfb::RefFlags::enable_opposite);
     out["position"] = Vector3(ref->position().x(), ref->position().y(), ref->position().z());
@@ -455,7 +451,7 @@ Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const V
 }
 
 std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const {
-    const auto* cells = root_ != nullptr ? root_->cells() : nullptr;
+    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
     if (cells == nullptr) {
         return 0;
     }
@@ -477,13 +473,7 @@ std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const {
 
 godot::PackedInt64Array SkydotWorld::get_enable_children(std::int64_t ref) const {
     godot::PackedInt64Array out;
-    const auto [begin, end] = enable_children_.equal_range(static_cast<std::uint32_t>(ref));
-    std::vector<std::uint32_t> children;
-    for (auto it = begin; it != end; ++it) {
-        children.push_back(it->second);
-    }
-    std::ranges::sort(children);
-    for (const auto child : children) {
+    for (const auto child : data().enable_children(static_cast<std::uint32_t>(ref))) {
         out.push_back(child);
     }
     return out;
@@ -491,13 +481,7 @@ godot::PackedInt64Array SkydotWorld::get_enable_children(std::int64_t ref) const
 
 Array SkydotWorld::get_activate_children(std::int64_t ref) const {
     Array out;
-    const auto [begin, end] = activate_children_.equal_range(static_cast<std::uint32_t>(ref));
-    std::vector<std::tuple<std::uint32_t, std::uint32_t, float>> children;
-    for (auto it = begin; it != end; ++it) {
-        children.push_back(it->second);
-    }
-    std::ranges::sort(children); // the multimap's order is unspecified
-    for (const auto& [child, cell, delay] : children) {
+    for (const auto& [child, cell, delay] : data().activate_children(static_cast<std::uint32_t>(ref))) {
         Dictionary entry;
         entry["ref"] = static_cast<std::int64_t>(child);
         entry["cell"] = static_cast<std::int64_t>(cell);
@@ -509,12 +493,12 @@ Array SkydotWorld::get_activate_children(std::int64_t ref) const {
 
 godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell_id) const {
     godot::PackedInt64Array out;
-    const auto* cell = cell_ptr(cell_id);
+    const auto* cell = data().cell_ptr(cell_id);
     if (cell == nullptr || cell->refs() == nullptr) {
         return out;
     }
     for (const auto* ref : *cell->refs()) {
-        const auto* base = base_ptr(ref->base());
+        const auto* base = data().base_ptr(ref->base());
         const bool base_scripted = base != nullptr && base->scripts() != nullptr && base->scripts()->size() != 0;
         if (base_scripted || ref_scripts(*cell, ref->id()) != nullptr) {
             out.push_back(ref->id());

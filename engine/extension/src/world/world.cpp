@@ -122,12 +122,6 @@ constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 /// XCLW values this large mean "no water here".
 constexpr float k_no_water = 1.0e30F;
 
-std::uint64_t grid_key(std::uint32_t world, std::int32_t x, std::int32_t y) {
-    return (static_cast<std::uint64_t>(world) << 32) |
-           (static_cast<std::uint64_t>(static_cast<std::uint16_t>(x)) << 16) |
-           static_cast<std::uint64_t>(static_cast<std::uint16_t>(y));
-}
-
 /// Z-up to Y-up: -90 degrees about X, as the converter's mesh writer does.
 const Basis& axis_conversion() {
     static const Basis basis(Vector3(1, 0, 0), -std::numbers::pi_v<godot::real_t> / 2);
@@ -317,7 +311,7 @@ Error SkydotWorld::fail(Error code, const String& why) {
 Error SkydotWorld::open(const String& path) {
     // Every index, cache and build under way points into the open buffer, so
     // a world is opened once; SkydotPack::open_world makes a new one.
-    if (root_ != nullptr) {
+    if (data_->is_open()) {
         return fail(godot::ERR_ALREADY_IN_USE,
                     String("this SkydotWorld already has a world.fb open; open ") + path +
                         " with a new SkydotWorld");
@@ -328,176 +322,35 @@ Error SkydotWorld::open(const String& path) {
     }
     // Verified before anything keeps it: a refused file leaves the world as
     // it was, closed and without indexes.
-    godot::PackedByteArray bytes = godot::FileAccess::get_file_as_bytes(path);
-    const auto size = static_cast<std::size_t>(bytes.size());
-    // An empty array may have no data pointer; the root is read only if it has.
-    const auto* data = bytes.ptr();
-    flatbuffers::Verifier verifier(data, size);
-    if (data == nullptr || size == 0 || !wfb::VerifyWorldBuffer(verifier)) {
+    auto data = std::make_shared<WorldData>();
+    const auto opened = data->open(godot::FileAccess::get_file_as_bytes(path));
+    if (opened.status == WorldData::Status::corrupt) {
         return fail(godot::ERR_FILE_CORRUPT, path + String(" is not a valid world.fb"));
     }
-    const auto version = wfb::GetWorld(data)->format_version();
-    if (version < WORLD_FORMAT_VERSION_MIN || version > WORLD_FORMAT_VERSION) {
+    if (opened.status == WorldData::Status::unsupported) {
         return fail(godot::ERR_FILE_UNRECOGNIZED,
-                    String("world.fb format version ") + String::num_int64(version) +
+                    String("world.fb format version ") + String::num_int64(opened.version) +
                         " is not one this engine reads (it reads " +
                         String::num_int64(WORLD_FORMAT_VERSION_MIN) + " to " +
                         String::num_int64(WORLD_FORMAT_VERSION) + ")");
     }
-    bytes_ = std::move(bytes);
-    root_ = wfb::GetWorld(bytes_.ptr());
-    build_indexes();
+    data_ = std::move(data);
     return godot::OK;
 }
 
-void SkydotWorld::build_indexes() {
-    const auto* cells = root_->cells();
-    if (cells == nullptr) {
-        return;
-    }
-    if (const auto* actors = root_->actors()) {
-        for (const auto* a : *actors) {
-            const auto* cell = cell_ptr(a->cell());
-            if (cell == nullptr) {
-                continue;
-            }
-            if (cell->persistent() && cell->world() != 0 &&
-                !formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
-                const auto x = static_cast<std::int32_t>(std::floor(a->position().x() / k_cell_units));
-                const auto y = static_cast<std::int32_t>(std::floor(a->position().y() / k_cell_units));
-                persistent_actors_[grid_key(cell->world(), x, y)].push_back(a);
-            } else {
-                cell_actors_[cell->id()].push_back(a);
-            }
-        }
-    }
-    for (const auto* cell : *cells) {
-        if (const auto* navmeshes = cell->navmeshes()) {
-            for (const auto* nav : *navmeshes) {
-                navmeshes_.emplace(nav->id(), std::pair{nav, cell});
-            }
-        }
-        if (const auto* refs = cell->refs()) {
-            for (const auto* ref : *refs) {
-                if (ref->enable_parent() != 0) {
-                    enable_children_.emplace(ref->enable_parent(), ref->id());
-                }
-            }
-        }
-    }
-    for (const auto* cell : *cells) {
-        if (const auto* refs = cell->refs()) {
-            for (const auto* ref : *refs) {
-                if (enable_children_.contains(ref->id())) {
-                    enable_parents_.emplace(ref->id(), ref);
-                }
-            }
-        }
-        if (const auto* doors = cell->doors()) {
-            for (const auto* door : *doors) {
-                doors_.emplace(door->ref(), std::pair{cell, door});
-            }
-        }
-        if (const auto* parents = cell->activate_parents()) {
-            for (const auto* p : *parents) {
-                activate_children_.emplace(p->parent(), std::tuple{p->ref(), cell->id(), p->delay()});
-            }
-        }
-        if (formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0) {
-            continue;
-        }
-        if (cell->persistent()) {
-            persistent_cells_.emplace(cell->world(), cell->id());
-            if (const auto* refs = cell->refs()) {
-                for (const auto* ref : *refs) {
-                    const auto x = static_cast<std::int32_t>(
-                        std::floor(ref->position().x() / k_cell_units));
-                    const auto y = static_cast<std::int32_t>(
-                        std::floor(ref->position().y() / k_cell_units));
-                    persistent_[grid_key(cell->world(), x, y)].push_back(ref);
-                }
-            }
-        } else if (cell->has_grid()) {
-            exteriors_.emplace(grid_key(cell->world(), cell->grid_x(), cell->grid_y()), cell);
-        }
-    }
-}
-
-bool SkydotWorld::is_open() const { return root_ != nullptr; }
+bool SkydotWorld::is_open() const { return data_->is_open(); }
 String SkydotWorld::get_error() const { return error_; }
 
 std::int64_t SkydotWorld::get_cell_count() const {
-    return root_ != nullptr && root_->cells() != nullptr ? root_->cells()->size() : 0;
+    return world_fb() != nullptr && world_fb()->cells() != nullptr ? world_fb()->cells()->size() : 0;
 }
 
 std::int64_t SkydotWorld::get_base_count() const {
-    return root_ != nullptr && root_->bases() != nullptr ? root_->bases()->size() : 0;
-}
-
-// ---- lookups --------------------------------------------------------------
-
-const wfb::Cell* SkydotWorld::cell_ptr(std::int64_t id) const {
-    const auto* cells = root_ != nullptr ? root_->cells() : nullptr;
-    if (cells == nullptr) {
-        return nullptr;
-    }
-    const auto key = static_cast<std::uint32_t>(id);
-    return lookup(cells, key);
-}
-
-const wfb::Worldspace* SkydotWorld::world_ptr(std::int64_t id) const {
-    const auto* worlds = root_ != nullptr ? root_->worlds() : nullptr;
-    if (worlds == nullptr) {
-        return nullptr;
-    }
-    const auto key = static_cast<std::uint32_t>(id);
-    return lookup(worlds, key);
-}
-
-const wfb::Cell* SkydotWorld::exterior_ptr(std::uint32_t world, std::int32_t x,
-                                           std::int32_t y) const {
-    const auto it = exteriors_.find(grid_key(world, x, y));
-    return it != exteriors_.end() ? it->second : nullptr;
-}
-
-/// The worldspace whose terrain `world` shows: its parent when PNAM bit 0
-/// (use land data) is set.
-const wfb::Water* SkydotWorld::water_ptr(std::uint32_t id) const {
-    const auto* waters = root_ != nullptr ? root_->waters() : nullptr;
-    if (waters == nullptr || id == 0) {
-        return nullptr;
-    }
-    return lookup(waters, id);
-}
-
-std::uint32_t SkydotWorld::water_type(std::uint32_t world, const wfb::Cell* cell) const {
-    if (cell != nullptr && cell->water() != 0) {
-        return cell->water();
-    }
-    const auto* w = world_ptr(world);
-    return w != nullptr ? w->water() : 0;
-}
-
-std::uint32_t SkydotWorld::land_world(std::uint32_t world) const {
-    const auto* w = world_ptr(world);
-    if (w != nullptr && w->parent() != 0 &&
-        formats::has_flag(w->parent_flags(), wfb::ParentFlags::land_data)) {
-        return w->parent();
-    }
-    return world;
-}
-
-const wfb::Base* SkydotWorld::base_ptr(std::int64_t id) const {
-    const auto* bases = root_ != nullptr ? root_->bases() : nullptr;
-    if (bases == nullptr) {
-        return nullptr;
-    }
-    const auto key = static_cast<std::uint32_t>(id);
-    return lookup(bases, key);
+    return world_fb() != nullptr && world_fb()->bases() != nullptr ? world_fb()->bases()->size() : 0;
 }
 
 std::int64_t SkydotWorld::find_cell(const String& editor_id) const {
-    const auto* cells = root_ != nullptr ? root_->cells() : nullptr;
+    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
     if (cells == nullptr) {
         return 0;
     }
@@ -512,7 +365,7 @@ std::int64_t SkydotWorld::find_cell(const String& editor_id) const {
 
 Array SkydotWorld::list_cells(const String& filter, bool interior_only) const {
     Array out;
-    const auto* cells = root_ != nullptr ? root_->cells() : nullptr;
+    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
     if (cells == nullptr) {
         return out;
     }
@@ -538,7 +391,7 @@ Array SkydotWorld::list_cells(const String& filter, bool interior_only) const {
 
 Dictionary SkydotWorld::get_cell(std::int64_t id) const {
     Dictionary out;
-    const auto* cell = cell_ptr(id);
+    const auto* cell = data().cell_ptr(id);
     if (cell == nullptr) {
         return out;
     }
@@ -587,7 +440,7 @@ Dictionary SkydotWorld::get_cell(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_image_space(std::int64_t id) const {
     Dictionary out;
-    const auto* list = root_ != nullptr ? root_->image_spaces() : nullptr;
+    const auto* list = world_fb() != nullptr ? world_fb()->image_spaces() : nullptr;
     const auto* is = id != 0 ? lookup(list, static_cast<std::uint32_t>(id)) : nullptr;
     if (is == nullptr) {
         return out;
@@ -611,7 +464,7 @@ Dictionary SkydotWorld::get_image_space(std::int64_t id) const {
 
 Array SkydotWorld::get_refs(std::int64_t cell_id) const {
     Array out;
-    const auto* cell = cell_ptr(cell_id);
+    const auto* cell = data().cell_ptr(cell_id);
     if (cell == nullptr || cell->refs() == nullptr) {
         return out;
     }
@@ -624,7 +477,7 @@ Array SkydotWorld::get_refs(std::int64_t cell_id) const {
         entry["transform"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()),
                                               Vector3(r.x(), r.y(), r.z()), static_cast<double>(ref->scale()));
         entry["scale"] = ref->scale();
-        entry["disabled"] = initially_disabled(*ref);
+        entry["disabled"] = data().initially_disabled(*ref);
         entry["persistent"] = formats::has_flag(ref->flags(), wfb::RefFlags::persistent);
         entry["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
         out.push_back(entry);
@@ -634,7 +487,7 @@ Array SkydotWorld::get_refs(std::int64_t cell_id) const {
 
 Dictionary SkydotWorld::get_base(std::int64_t id) const {
     Dictionary out;
-    const auto* base = base_ptr(id);
+    const auto* base = data().base_ptr(id);
     if (base == nullptr) {
         return out;
     }
@@ -739,37 +592,21 @@ void SkydotWorld::use_water_material(godot::Node* model, std::uint32_t cell) con
                     return resource(String::utf8(vpath.c_str()));
                 };
                 const auto space = static_cast<std::uint32_t>(get_cell_space(cell));
-                water = water_.material(water_ptr(water_type(space, cell_ptr(cell))), load);
+                water = water_.material(data().water_ptr(data().water_type(space, data().cell_ptr(cell))), load);
             }
             instance->set_surface_override_material(s, water);
         }
     }
 }
 
-bool SkydotWorld::initially_disabled(const wfb::Ref& ref) const {
-    // A reference with an enable parent takes the parent's state (inverted if
-    // flagged); its own flag counts only when the parent is unknown.
-    const wfb::Ref* r = &ref;
-    bool opposite = false;
-    for (int depth = 0; depth < 16 && r->enable_parent() != 0; ++depth) {
-        const auto it = enable_parents_.find(r->enable_parent());
-        if (it == enable_parents_.end()) {
-            break;
-        }
-        opposite ^= formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
-        r = it->second;
-    }
-    return formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) != opposite;
-}
-
 void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint32_t cell,
                             BuildStats& stats, bool include_disabled) const {
     ++stats.refs;
-    if (!include_disabled && initially_disabled(ref)) {
+    if (!include_disabled && data().initially_disabled(ref)) {
         ++stats.disabled;
         return;
     }
-    const auto* base = base_ptr(ref.base());
+    const auto* base = data().base_ptr(ref.base());
     if (base == nullptr) {
         ++stats.no_base;
         return;
@@ -810,7 +647,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     tag_ref(node, ref.id(), cell, activatable(base, cell, ref.id()));
                     // Doors that swing rather than lead somewhere: actors open
                     // them in their way (SkydotActor).
-                    if (base != nullptr && door_type(base->type()) && !doors_.contains(ref.id())) {
+                    if (base != nullptr && door_type(base->type()) && !data().doors().contains(ref.id())) {
                         node->set_meta("skydot_plain_door", true);
                     }
                     // Last, so material and effect passes never see the bodies.
@@ -839,7 +676,7 @@ void SkydotWorld::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         // a factor matched five comparison shots best (total error 0.070,
         // against 0.098 as an offset and 0.114 ignored; COMPARISON-SHOTS.md).
         const wfb::LightOverride* own = nullptr;
-        if (const auto* c = cell_ptr(cell); c != nullptr && c->light_overrides() != nullptr) {
+        if (const auto* c = data().cell_ptr(cell); c != nullptr && c->light_overrides() != nullptr) {
             own = lookup(c->light_overrides(), ref.id());
         }
         float radius = static_cast<float>(l->radius());
@@ -919,7 +756,7 @@ std::int64_t SkydotWorld::apply_light_shadows(godot::Node* root, bool all) {
 
 std::int64_t SkydotWorld::attach_addons(godot::Node* model) const {
     std::call_once(addon_index_once_, [this] {
-        if (const auto* list = root_ != nullptr ? root_->addon_nodes() : nullptr) {
+        if (const auto* list = world_fb() != nullptr ? world_fb()->addon_nodes() : nullptr) {
             for (const auto* a : *list) {
                 if (a->model() != nullptr && a->model()->size() != 0) {
                     addon_models_.emplace(a->index(), a->model()->str());
@@ -1032,7 +869,7 @@ const ProjectedMaterial* SkydotWorld::projected_material(std::uint32_t id) const
     if (auto it = projected_.find(id); it != projected_.end()) {
         return it->second ? &*it->second : nullptr;
     }
-    const auto* list = root_ != nullptr ? root_->material_objects() : nullptr;
+    const auto* list = world_fb() != nullptr ? world_fb()->material_objects() : nullptr;
     const auto* mato = lookup(list, id);
     if (mato == nullptr) {
         projected_.emplace(id, std::nullopt);
@@ -1134,7 +971,7 @@ Dictionary SkydotWorld::stats_dictionary(const BuildStats& stats) const {
 }
 
 godot::Node3D* SkydotWorld::build_ref(std::int64_t cell_id, std::int64_t ref_id) const {
-    const auto* cell = cell_ptr(cell_id);
+    const auto* cell = data().cell_ptr(cell_id);
     const auto* refs = cell != nullptr ? cell->refs() : nullptr;
     if (refs == nullptr) {
         return nullptr;
@@ -1163,7 +1000,7 @@ godot::Node3D* SkydotWorld::build_cell(std::int64_t id) const {
 // ---- where actors are ---------------------------------------------------
 
 std::uint64_t SkydotWorld::place_bucket(const ActorPlace& place) const {
-    const auto* cell = cell_ptr(place.space);
+    const auto* cell = data().cell_ptr(place.space);
     if (cell != nullptr && formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
         return place.space; // An interior: its id (grid keys have a world above bit 32).
     }
@@ -1173,7 +1010,7 @@ std::uint64_t SkydotWorld::place_bucket(const ActorPlace& place) const {
 }
 
 std::uint64_t SkydotWorld::placed_bucket(const wfb::ActorRef& actor) const {
-    const auto* cell = cell_ptr(actor.cell());
+    const auto* cell = data().cell_ptr(actor.cell());
     if (cell == nullptr) {
         return 0;
     }
@@ -1192,8 +1029,8 @@ std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_cell(std::uint32_t cell
         const auto it = actor_places_.find(a->ref());
         return it == actor_places_.end() || place_bucket(it->second) == bucket;
     };
-    if (const auto it = cell_actors_.find(cell); it != cell_actors_.end()) {
-        for (const auto* a : it->second) {
+    if (const auto* placed = data().cell_actors(cell)) {
+        for (const auto* a : *placed) {
             // An exterior cell's own actors are bucketed by its grid square;
             // interiors by the cell.
             if (actor_places_.contains(a->ref())) {
@@ -1207,7 +1044,7 @@ std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_cell(std::uint32_t cell
     }
     if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
         for (const auto ref : it->second) {
-            const auto* a = lookup(root_->actors(), ref);
+            const auto* a = data().actor_ptr(ref);
             if (a != nullptr && placed_bucket(*a) != bucket) {
                 out.push_back({a, &actor_places_.at(ref)});
             }
@@ -1230,17 +1067,17 @@ std::vector<SkydotWorld::ActorAt> SkydotWorld::actors_in_grid(std::uint32_t worl
             }
         }
     };
-    if (const auto* cell = exterior_ptr(world, x, y)) {
-        if (const auto it = cell_actors_.find(cell->id()); it != cell_actors_.end()) {
-            add_placed(it->second);
+    if (const auto* cell = data().exterior_ptr(world, x, y)) {
+        if (const auto* placed = data().cell_actors(cell->id())) {
+            add_placed(*placed);
         }
     }
-    if (const auto it = persistent_actors_.find(bucket); it != persistent_actors_.end()) {
-        add_placed(it->second);
+    if (const auto* placed = data().persistent_actors(world, x, y)) {
+        add_placed(*placed);
     }
     if (const auto it = moved_in_.find(bucket); it != moved_in_.end()) {
         for (const auto ref : it->second) {
-            const auto* a = lookup(root_->actors(), ref);
+            const auto* a = data().actor_ptr(ref);
             if (a != nullptr && placed_bucket(*a) != bucket) {
                 out.push_back({a, &actor_places_.at(ref)});
             }
@@ -1276,7 +1113,7 @@ void SkydotWorld::clear_actor_places() {
 }
 
 std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
-    const auto* cell = cell_ptr(id);
+    const auto* cell = data().cell_ptr(id);
     if (cell == nullptr) {
         return 0;
     }
@@ -1287,8 +1124,7 @@ std::int64_t SkydotWorld::get_cell_space(std::int64_t id) const {
 
 Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
     Dictionary out;
-    const auto* a =
-        root_ != nullptr ? lookup(root_->actors(), static_cast<std::uint32_t>(ref)) : nullptr;
+    const auto* a = data().actor_ptr(ref);
     if (a == nullptr) {
         return out;
     }
@@ -1298,14 +1134,14 @@ Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
     if (it != actor_places_.end()) {
         place = it->second;
     }
-    const auto* space = cell_ptr(place.space);
+    const auto* space = data().cell_ptr(place.space);
     const bool interior =
         space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
     std::uint32_t cell = interior ? place.space : 0;
     if (!interior) {
         const auto x = static_cast<std::int32_t>(std::floor(place.position.x / k_cell_units));
         const auto y = static_cast<std::int32_t>(std::floor(place.position.y / k_cell_units));
-        if (const auto* c = exterior_ptr(place.space, x, y)) {
+        if (const auto* c = data().exterior_ptr(place.space, x, y)) {
             cell = c->id();
         }
     }
@@ -1365,7 +1201,7 @@ Vector3 closest_on_triangle(const Vector3& p, const Vector3& a, const Vector3& b
 
 Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& position, double reach) const {
     std::vector<const wfb::Cell*> cells;
-    const auto* s = cell_ptr(space);
+    const auto* s = data().cell_ptr(space);
     if (s != nullptr &&
         (formats::has_flag(s->flags(), wfb::CellFlags::interior) || s->world() == 0)) {
         cells.push_back(s);
@@ -1378,7 +1214,7 @@ Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& positi
         const auto y1 = static_cast<std::int32_t>(std::floor((position.y + r) / k_cell_units));
         for (auto y = y0; y <= y1; ++y) {
             for (auto x = x0; x <= x1; ++x) {
-                if (const auto* c = exterior_ptr(static_cast<std::uint32_t>(space), x, y)) {
+                if (const auto* c = data().exterior_ptr(static_cast<std::uint32_t>(space), x, y)) {
                     cells.push_back(c);
                 }
             }
@@ -1459,17 +1295,13 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
     return out;
 }
 
-const wfb::ActorRef* actor_ptr(const wfb::World* root, std::int64_t ref) {
-    return root != nullptr ? lookup(root->actors(), static_cast<std::uint32_t>(ref)) : nullptr;
-}
-
 } // namespace
 
 std::vector<std::string> SkydotWorld::actor_resources(const wfb::ActorRef& actor) const {
     if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         return {};
     }
-    auto plan = plan_for(*root_, actor, assets_);
+    auto plan = plan_for(*world_fb(), actor, assets_);
     std::vector<std::string> out = std::move(plan.parts);
     if (plan.missing.empty() && !plan.skeleton.empty()) {
         const auto clips = actor_clips(plan);
@@ -1546,17 +1378,17 @@ godot::Ref<godot::Animation> SkydotWorld::actor_clip(const std::string& file,
 }
 
 godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
-    const auto* actor = actor_ptr(root_, ref);
+    const auto* actor = data().actor_ptr(ref);
     if (actor == nullptr) {
         return {};
     }
-    return plan_dictionary(plan_for(*root_, *actor, assets_));
+    return plan_dictionary(plan_for(*world_fb(), *actor, assets_));
 }
 
 godot::PackedInt64Array SkydotWorld::get_cell_actors(std::int64_t cell) const {
     godot::PackedInt64Array out;
-    if (const auto it = cell_actors_.find(static_cast<std::uint32_t>(cell)); it != cell_actors_.end()) {
-        for (const auto* a : it->second) {
+    if (const auto* actors = data().cell_actors(static_cast<std::uint32_t>(cell))) {
+        for (const auto* a : *actors) {
             out.push_back(a->ref());
         }
     }
@@ -1564,7 +1396,7 @@ godot::PackedInt64Array SkydotWorld::get_cell_actors(std::int64_t cell) const {
 }
 
 godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) const {
-    const auto* actor = actor_ptr(root_, ref);
+    const auto* actor = data().actor_ptr(ref);
     if (actor == nullptr) {
         return nullptr;
     }
@@ -1583,7 +1415,7 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         ++stats.disabled;
         return;
     }
-    const auto plan = plan_for(*root_, actor, assets_);
+    const auto plan = plan_for(*world_fb(), actor, assets_);
     const auto fail = [&](const String& why) {
         const std::int64_t n = stats.actor_failures.get(why, 0);
         stats.actor_failures[why] = n + 1;
@@ -1599,7 +1431,7 @@ void SkydotWorld::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
     }
     skeleton->set_name("Skeleton");
 
-    const auto* npc = lookup(root_->npcs(), plan.npc);
+    const auto* npc = lookup(world_fb()->npcs(), plan.npc);
     auto* node = memnew(SkydotActor);
     node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
@@ -1738,29 +1570,30 @@ std::int64_t SkydotWorld::wake_clutter(godot::Node* root, const Vector3& centre,
 
 godot::Array SkydotWorld::get_navmeshes(std::int64_t cell_id) const {
     Array out;
-    const auto* cell = cell_ptr(cell_id);
+    const auto* cell = data().cell_ptr(cell_id);
     if (cell == nullptr || cell->navmeshes() == nullptr) {
         return out;
     }
     for (const auto* nav : *cell->navmeshes()) {
-        out.push_back(navmesh_info(*nav, *cell, navmeshes_));
+        out.push_back(navmesh_info(*nav, *cell, data().navmeshes()));
     }
     return out;
 }
 
 Dictionary SkydotWorld::get_navmesh(std::int64_t id) const {
-    const auto it = navmeshes_.find(static_cast<std::uint32_t>(id));
-    if (it == navmeshes_.end()) {
+    const auto& index = data().navmeshes();
+    const auto it = index.find(static_cast<std::uint32_t>(id));
+    if (it == index.end()) {
         return {};
     }
-    return navmesh_info(*it->second.first, *it->second.second, navmeshes_);
+    return navmesh_info(*it->second.first, *it->second.second, index);
 }
 
 // ---- exteriors ------------------------------------------------------------
 
 Array SkydotWorld::list_worlds() const {
     Array out;
-    const auto* worlds = root_ != nullptr ? root_->worlds() : nullptr;
+    const auto* worlds = world_fb() != nullptr ? world_fb()->worlds() : nullptr;
     if (worlds == nullptr) {
         return out;
     }
@@ -1769,7 +1602,7 @@ Array SkydotWorld::list_worlds() const {
         entry["id"] = static_cast<std::int64_t>(w->id());
         entry["editor_id"] = to_godot(w->editor_id());
         entry["parent"] = static_cast<std::int64_t>(w->parent());
-        entry["land_world"] = static_cast<std::int64_t>(land_world(w->id()));
+        entry["land_world"] = static_cast<std::int64_t>(data().land_world(w->id()));
         entry["default_water_height"] =
             w->has_defaults() ? godot::Variant(static_cast<double>(w->default_water_height()) *
                                                UNIT_SCALE)
@@ -1782,7 +1615,7 @@ Array SkydotWorld::list_worlds() const {
 }
 
 std::int64_t SkydotWorld::find_world(const String& editor_id) const {
-    const auto* worlds = root_ != nullptr ? root_->worlds() : nullptr;
+    const auto* worlds = world_fb() != nullptr ? world_fb()->worlds() : nullptr;
     if (worlds == nullptr) {
         return 0;
     }
@@ -1797,7 +1630,7 @@ std::int64_t SkydotWorld::find_world(const String& editor_id) const {
 
 std::int64_t SkydotWorld::get_exterior_cell(std::int64_t world, std::int64_t x,
                                             std::int64_t y) const {
-    const auto* cell = exterior_ptr(static_cast<std::uint32_t>(world), static_cast<std::int32_t>(x),
+    const auto* cell = data().exterior_ptr(static_cast<std::uint32_t>(world), static_cast<std::int32_t>(x),
                                     static_cast<std::int32_t>(y));
     return cell != nullptr ? cell->id() : 0;
 }
@@ -1812,7 +1645,7 @@ std::string utf8(const String& s) {
 } // namespace
 
 std::array<std::string, 2> SkydotWorld::land_texture_paths(std::uint32_t id) const {
-    const auto* ltex = root_ != nullptr ? root_->land_textures() : nullptr;
+    const auto* ltex = world_fb() != nullptr ? world_fb()->land_textures() : nullptr;
     if (id == 0 || ltex == nullptr) {
         return {TerrainBuilder::k_default_texture, ""};
     }
@@ -1839,10 +1672,10 @@ SkydotMaterials& SkydotWorld::materials() const {
 }
 
 void SkydotWorld::add_ref_resources(const wfb::Ref& ref, godot::PackedStringArray& out) const {
-    if (initially_disabled(ref)) {
+    if (data().initially_disabled(ref)) {
         return;
     }
-    const auto* base = base_ptr(ref.base());
+    const auto* base = data().base_ptr(ref.base());
     const auto* model = base != nullptr ? base->model() : nullptr;
     if (model == nullptr || model->size() == 0 || is_marker(*base)) {
         return;
@@ -1869,7 +1702,7 @@ void SkydotWorld::add_actor_resources(const std::vector<ActorAt>& actors, godot:
 
 godot::PackedStringArray SkydotWorld::get_cell_resources(std::int64_t id) const {
     godot::PackedStringArray out;
-    const auto* cell = cell_ptr(id);
+    const auto* cell = data().cell_ptr(id);
     if (cell == nullptr) {
         return out;
     }
@@ -1892,7 +1725,7 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
     const auto w = static_cast<std::uint32_t>(world);
     const auto gx = static_cast<std::int32_t>(x);
     const auto gy = static_cast<std::int32_t>(y);
-    if (const auto* cell = exterior_ptr(w, gx, gy); cell != nullptr && cell->refs() != nullptr) {
+    if (const auto* cell = data().exterior_ptr(w, gx, gy); cell != nullptr && cell->refs() != nullptr) {
         for (const auto* ref : *cell->refs()) {
             add_ref_resources(*ref, out);
         }
@@ -1900,28 +1733,28 @@ godot::PackedStringArray SkydotWorld::get_exterior_resources(std::int64_t world,
     if (actors_) {
         add_actor_resources(actors_in_grid(w, gx, gy), out);
     }
-    if (const auto it = persistent_.find(grid_key(w, gx, gy)); it != persistent_.end()) {
-        for (const auto* ref : it->second) {
+    if (const auto* persistent = data().persistent_refs(w, gx, gy)) {
+        for (const auto* ref : *persistent) {
             add_ref_resources(*ref, out);
         }
     }
-    const auto* cell = exterior_ptr(w, gx, gy);
-    if (const auto* water = water_ptr(water_type(w, cell));
+    const auto* cell = data().exterior_ptr(w, gx, gy);
+    if (const auto* water = data().water_ptr(data().water_type(w, cell));
         water != nullptr && water->noise() != nullptr && water->noise()->size() != 0) {
         const String path = String::utf8(water->noise()->Get(0)->c_str());
         if (!out.has(path)) {
             out.push_back(path);
         }
     }
-    const auto* land = exterior_ptr(land_world(w), gx, gy);
+    const auto* land = data().exterior_ptr(data().land_world(w), gx, gy);
     if (land != nullptr && land->terrain() != nullptr && land->terrain()->layers() != nullptr) {
         for (const auto* layer : *land->terrain()->layers()) {
             // The grass growing on it (build_grass), loaded ahead too.
-            const auto* textures = grass_ ? root_->land_textures() : nullptr;
+            const auto* textures = grass_ ? world_fb()->land_textures() : nullptr;
             const auto* t = layer->texture() != 0 ? lookup(textures, layer->texture()) : nullptr;
-            if (t != nullptr && t->grasses() != nullptr && root_->grasses() != nullptr) {
+            if (t != nullptr && t->grasses() != nullptr && world_fb()->grasses() != nullptr) {
                 for (const auto id : *t->grasses()) {
-                    const auto* g = lookup(root_->grasses(), id);
+                    const auto* g = lookup(world_fb()->grasses(), id);
                     if (g != nullptr && g->model() != nullptr && g->model()->size() != 0) {
                         const String path = model_path(g->model()->string_view());
                         if (!out.has(path)) {
@@ -1976,7 +1809,7 @@ void SkydotWorld::trim_cache() {
 }
 
 std::int64_t SkydotWorld::find_weather(const String& editor_id) const {
-    const auto* weathers = root_ != nullptr ? root_->weathers() : nullptr;
+    const auto* weathers = world_fb() != nullptr ? world_fb()->weathers() : nullptr;
     if (weathers == nullptr) {
         return 0;
     }
@@ -1991,15 +1824,15 @@ std::int64_t SkydotWorld::find_weather(const String& editor_id) const {
 
 Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t weather_id) const {
     Dictionary out;
-    const auto* ws = world_ptr(world);
-    const auto* climates = root_ != nullptr ? root_->climates() : nullptr;
-    const auto* weathers = root_ != nullptr ? root_->weathers() : nullptr;
+    const auto* ws = data().world_ptr(world);
+    const auto* climates = world_fb() != nullptr ? world_fb()->climates() : nullptr;
+    const auto* weathers = world_fb() != nullptr ? world_fb()->weathers() : nullptr;
     if (ws == nullptr || climates == nullptr || weathers == nullptr) {
         return out;
     }
     const wfb::Climate* climate = lookup(climates, ws->climate());
     if (climate == nullptr && ws->parent() != 0) {
-        if (const auto* parent = world_ptr(ws->parent())) {
+        if (const auto* parent = data().world_ptr(ws->parent())) {
             climate = lookup(climates, parent->climate());
         }
     }
@@ -2211,9 +2044,9 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     const auto w = static_cast<std::uint32_t>(world);
     const auto gx = static_cast<std::int32_t>(x);
     const auto gy = static_cast<std::int32_t>(y);
-    const auto* cell = exterior_ptr(w, gx, gy);
-    const std::uint32_t land = land_world(w);
-    const auto* land_cell = exterior_ptr(land, gx, gy);
+    const auto* cell = data().exterior_ptr(w, gx, gy);
+    const std::uint32_t land = data().land_world(w);
+    const auto* land_cell = data().exterior_ptr(land, gx, gy);
     const wfb::Terrain* terrain = land_cell != nullptr ? land_cell->terrain() : nullptr;
     if (cell == nullptr && terrain == nullptr) {
         return nullptr;
@@ -2233,7 +2066,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
             terrain_->set_collision(collision_);
         }
         const auto neighbours = [&](int dx, int dy) {
-            const auto* n = exterior_ptr(land, gx + dx, gy + dy);
+            const auto* n = data().exterior_ptr(land, gx + dx, gy + dy);
             return n != nullptr && n->terrain() != nullptr ? TerrainBuilder::heights(*n->terrain())
                                                            : std::vector<float>{};
         };
@@ -2252,7 +2085,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         water = true;
         water_height = cell->water_height();
     } else if (cell == nullptr) {
-        if (const auto* ws = world_ptr(w); ws != nullptr && ws->has_defaults()) {
+        if (const auto* ws = data().world_ptr(w); ws != nullptr && ws->has_defaults()) {
             water = true;
             water_height = ws->default_water_height();
         }
@@ -2261,7 +2094,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         const auto load = [&](const std::string& vpath) -> godot::Ref<godot::Texture> {
             return resource(String::utf8(vpath.c_str()));
         };
-        const auto material = water_.material(water_ptr(water_type(w, cell)), load);
+        const auto material = water_.material(data().water_ptr(data().water_type(w, cell)), load);
         godot::Ref<godot::PlaneMesh> plane;
         plane.instantiate();
         const auto side = static_cast<float>(static_cast<double>(k_cell_units) * UNIT_SCALE);
@@ -2285,8 +2118,8 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
         grass.water_height = water_height;
         grass.grasses_of = [this](std::uint32_t ltex) {
             std::vector<const wfb::Grass*> out;
-            const auto* textures = root_->land_textures();
-            const auto* list = root_->grasses();
+            const auto* textures = world_fb()->land_textures();
+            const auto* list = world_fb()->grasses();
             const auto* t = ltex != 0 ? lookup(textures, ltex) : nullptr;
             if (t == nullptr || t->grasses() == nullptr || list == nullptr) {
                 return out;
@@ -2307,7 +2140,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
     }
 
     if (cell != nullptr && navigation_) {
-        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
+        if (auto* navmesh = build_navmeshes(*cell, data().navmeshes())) {
             root->add_child(navmesh);
         }
     }
@@ -2321,10 +2154,10 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
             job->refs.emplace_back(ref, cell->id());
         }
     }
-    if (const auto it = persistent_.find(grid_key(w, gx, gy)); it != persistent_.end()) {
-        const auto owner = persistent_cells_.find(w);
-        for (const auto* ref : it->second) {
-            job->refs.emplace_back(ref, owner != persistent_cells_.end() ? owner->second : 0);
+    if (const auto* persistent = data().persistent_refs(w, gx, gy)) {
+        const auto owner = data().persistent_cell(w);
+        for (const auto* ref : *persistent) {
+            job->refs.emplace_back(ref, owner);
         }
     }
     job->world = w;
@@ -2338,7 +2171,7 @@ godot::Node3D* SkydotWorld::begin_exterior(std::int64_t world, std::int64_t x,
 }
 
 godot::Node3D* SkydotWorld::begin_cell(std::int64_t id) const {
-    const auto* cell = cell_ptr(id);
+    const auto* cell = data().cell_ptr(id);
     if (cell == nullptr) {
         godot::UtilityFunctions::push_error("SkydotWorld: no cell ", hex_id(static_cast<std::uint32_t>(id)));
         return nullptr;
@@ -2348,7 +2181,7 @@ godot::Node3D* SkydotWorld::begin_cell(std::int64_t id) const {
                        ? to_godot(cell->editor_id())
                        : hex_id(cell->id()));
     if (navigation_) {
-        if (auto* navmesh = build_navmeshes(*cell, navmeshes_)) {
+        if (auto* navmesh = build_navmeshes(*cell, data().navmeshes())) {
             root->add_child(navmesh);
         }
     }

@@ -230,7 +230,7 @@ public:
         case fn_get_in_cell:
         case fn_get_distance: {
             const Spot here = subject == m_.ref ? ai_.actor_spot(m_) : ai_.ref_spot(subject).value_or(Spot{});
-            const auto* space = ai_.world_->cell_ptr(here.space);
+            const auto* space = ai_.world_->data().cell_ptr(here.space);
             const bool interior =
                 space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
             if (c.function() == fn_is_in_interior) {
@@ -352,7 +352,7 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
 }
 
 const wfb::World* SkydotAi::root() const {
-    return world_.is_valid() ? world_->root_ : nullptr;
+    return world_.is_valid() ? world_->data().root() : nullptr;
 }
 
 SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
@@ -418,7 +418,7 @@ std::optional<SkydotAi::Spot> SkydotAi::ref_spot(std::uint32_t ref) const {
                     place["position"], static_cast<float>(static_cast<double>(place["rotation_z"])), 0.0, ref};
     }
     const auto cell = static_cast<std::uint32_t>(world_->get_ref_cell(ref));
-    const auto* c = world_->cell_ptr(cell);
+    const auto* c = world_->data().cell_ptr(cell);
     if (c == nullptr) {
         return std::nullopt;
     }
@@ -459,7 +459,7 @@ std::uint32_t SkydotAi::linked_ref(std::uint32_t ref, std::uint32_t keyword) con
     } else {
         cell = static_cast<std::uint32_t>(world_->get_ref_cell(ref));
     }
-    const auto* c = world_->cell_ptr(cell);
+    const auto* c = world_->data().cell_ptr(cell);
     const auto* links = c != nullptr ? c->links() : nullptr;
     if (links == nullptr) {
         return 0;
@@ -554,7 +554,7 @@ std::optional<SkydotAi::Spot> SkydotAi::target_spot(Mind& m, const wfb::PackageI
 
 std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uint32_t value) const {
     std::vector<const wfb::Cell*> cells;
-    const auto* space = world_->cell_ptr(around.space);
+    const auto* space = world_->data().cell_ptr(around.space);
     if (space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior)) {
         cells.push_back(space);
     } else {
@@ -565,7 +565,7 @@ std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uin
         const auto y1 = static_cast<std::int32_t>(std::floor((around.position.y + reach) / k_cell_units));
         for (auto y = y0; y <= y1; ++y) {
             for (auto x = x0; x <= x1; ++x) {
-                if (const auto* c = world_->exterior_ptr(around.space, x, y)) {
+                if (const auto* c = world_->data().exterior_ptr(around.space, x, y)) {
                     cells.push_back(c);
                 }
             }
@@ -600,7 +600,7 @@ std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uin
         }
         for (const auto* r : *cell->refs()) {
             if (formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) ||
-                !matches(world_->base_ptr(r->base()))) {
+                !matches(world_->data().base_ptr(r->base()))) {
                 continue;
             }
             const Vector3 p(r->position().x(), r->position().y(), r->position().z());
@@ -679,12 +679,13 @@ const std::vector<std::pair<std::uint32_t, std::uint32_t>>& SkydotAi::doors_of(s
         return it->second;
     }
     auto& out = doors_[space];
-    for (const auto& [door, entry] : world_->doors_) {
+    const auto& doors = world_->data().doors();
+    for (const auto& [door, entry] : doors) {
         if (static_cast<std::uint32_t>(world_->get_cell_space(entry.first->id())) != space) {
             continue;
         }
-        const auto dest = world_->doors_.find(entry.second->destination());
-        if (dest == world_->doors_.end()) {
+        const auto dest = doors.find(entry.second->destination());
+        if (dest == doors.end()) {
             continue;
         }
         out.emplace_back(door, static_cast<std::uint32_t>(world_->get_cell_space(dest->second.first->id())));
@@ -753,8 +754,9 @@ bool SkydotAi::has_lock(std::uint32_t door) const {
     if (lock_of(door)) {
         return true;
     }
-    const auto it = world_->doors_.find(door);
-    const bool out = lock_of(door) || (it != world_->doors_.end() && lock_of(it->second.second->destination()));
+    const auto& doors = world_->data().doors();
+    const auto it = doors.find(door);
+    const bool out = lock_of(door) || (it != doors.end() && lock_of(it->second.second->destination()));
     lock_cache_[door] = out;
     return out;
 }
@@ -763,7 +765,7 @@ void SkydotAi::set_doors_locked(const Spot& spot, bool locked) {
     if (vm_ == nullptr || spot.space == 0) {
         return;
     }
-    const auto* space = world_->cell_ptr(spot.space);
+    const auto* space = world_->data().cell_ptr(spot.space);
     const bool interior =
         space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
     for (const auto& [door, to] : doors_of(spot.space)) {
@@ -941,7 +943,8 @@ bool SkydotAi::place_one(std::uint32_t ref, bool through_doors) {
         // Coming into the space on screen: through the door it uses.
         const auto [first, last] = route(now.space, space_);
         (void)first;
-        if (const auto it = world_->doors_.find(last); last != 0 && it != world_->doors_.end()) {
+        const auto& doors = world_->data().doors();
+        if (const auto it = doors.find(last); last != 0 && it != doors.end()) {
             const auto& p = it->second.second->position();
             at = Vector3(p.x(), p.y(), p.z());
             facing = it->second.second->rotation().z();
@@ -1081,10 +1084,10 @@ void SkydotAi::next_step(Mind& m) {
 }
 
 void SkydotAi::leave(Mind& m, SkydotActor& actor, std::uint32_t door) {
-    const auto it = world_->doors_.find(door);
-    const auto dest = it != world_->doors_.end() ? world_->doors_.find(it->second.second->destination())
-                                                 : world_->doors_.end();
-    if (it == world_->doors_.end() || dest == world_->doors_.end()) {
+    const auto& doors = world_->data().doors();
+    const auto it = doors.find(door);
+    const auto dest = it != doors.end() ? doors.find(it->second.second->destination()) : doors.end();
+    if (it == doors.end() || dest == doors.end()) {
         return;
     }
     const auto& p = it->second.second->position();

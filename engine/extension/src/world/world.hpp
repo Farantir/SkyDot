@@ -16,6 +16,7 @@
 #include "world/navmesh.hpp"
 #include "world/terrain.hpp"
 #include "world/water.hpp"
+#include "world/world_data.hpp"
 #include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/animation.hpp>
@@ -36,19 +37,14 @@
 #include <cstdint>
 #include <string>
 #include <memory>
-#include <tuple>
 #include <unordered_map>
 #include <vector>
 
 namespace bethconv::pack::wfb {
 struct World;
-struct Cell;
 struct Base;
 struct Ref;
 struct ActorRef;
-struct Worldspace;
-struct Water;
-struct DoorLink;
 struct Script;
 } // namespace bethconv::pack::wfb
 
@@ -60,10 +56,9 @@ class SkydotWorld : public godot::RefCounted {
     GDCLASS(SkydotWorld, godot::RefCounted)
 
 public:
-    /// The world.fb format version this engine writes against. Format 8
-    /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int WORLD_FORMAT_VERSION = 10;
-    static constexpr int WORLD_FORMAT_VERSION_MIN = 8;
+    /// The world.fb format versions this engine reads (see WorldData).
+    static constexpr int WORLD_FORMAT_VERSION = WorldData::FORMAT_VERSION;
+    static constexpr int WORLD_FORMAT_VERSION_MIN = WorldData::FORMAT_VERSION_MIN;
     /// Metres per game unit, as used by the converter's mesh writer; scripts
     /// read it with `unit_scale()`.
     static constexpr double UNIT_SCALE = formats::k_metres_per_unit;
@@ -365,16 +360,9 @@ private:
     std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> moved_in_;
 
     godot::Error fail(godot::Error code, const godot::String& why);
-    const bethconv::pack::wfb::Cell* cell_ptr(std::int64_t id) const;
-    const bethconv::pack::wfb::Base* base_ptr(std::int64_t id) const;
-    const bethconv::pack::wfb::Worldspace* world_ptr(std::int64_t id) const;
-    const bethconv::pack::wfb::Cell* exterior_ptr(std::uint32_t world, std::int32_t x,
-                                                   std::int32_t y) const;
-    std::uint32_t land_world(std::uint32_t world) const;
-    const bethconv::pack::wfb::Water* water_ptr(std::uint32_t id) const;
-    /// The water type of exterior cell (x, y): its XCWT, else the worldspace's.
-    std::uint32_t water_type(std::uint32_t world, const bethconv::pack::wfb::Cell* cell) const;
-    void build_indexes();
+    const WorldData& data() const { return *data_; }
+    /// The verified root; null while closed.
+    const bethconv::pack::wfb::World* world_fb() const { return data_->root(); }
     std::array<std::string, 2> land_texture_paths(std::uint32_t ltex) const;
     /// A resource from the cache, else loaded now (and cached).
     godot::Ref<godot::Resource> resource(const godot::String& vpath) const;
@@ -396,8 +384,6 @@ private:
     /// Instance the reference's model and light under `root`.
     void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
                    BuildStats& stats, bool include_disabled = false) const;
-    /// Initially disabled, following the enable parent chain.
-    bool initially_disabled(const bethconv::pack::wfb::Ref& ref) const;
     /// Surfaces of a placed model with a water shader get the water material
     /// of `cell`'s water type.
     void use_water_material(godot::Node* model, std::uint32_t cell) const;
@@ -409,19 +395,15 @@ private:
     /// Whether activating a reference of this base can do anything.
     bool activatable(const bethconv::pack::wfb::Base* base, std::uint32_t cell,
                      std::uint32_t ref) const;
-    const bethconv::pack::wfb::DoorLink* door_ptr(std::uint32_t ref) const;
     godot::Dictionary stats_dictionary(const BuildStats& stats) const;
 
-    godot::PackedByteArray bytes_;
+    /// The open world.fb; a closed WorldData until `open` succeeds.
+    std::shared_ptr<const WorldData> data_{std::make_shared<const WorldData>()};
     bool skyrim_materials_{true};
     bool effects_{true};
     bool grass_{true};
     bool all_light_shadows_{false};
     bool actors_{true};
-    /// Placed actors by interior or exterior cell; those of a worldspace's
-    /// persistent cell by the grid square they stand in.
-    std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;
-    std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
     /// Behaviour project -> its idle, walk and run clips.
     mutable std::unordered_map<std::string, Locomotion> locomotion_;
     bool actor_wander_{true};
@@ -448,32 +430,11 @@ private:
     bool collision_{true};
     bool navigation_{true};
     mutable godot::Ref<SkydotMaterials> materials_;
-    const bethconv::pack::wfb::World* root_{};
     godot::String error_;
 
-    /// (world, x, y) -> exterior cell, persistent cells excluded.
-    std::unordered_map<std::uint64_t, const bethconv::pack::wfb::Cell*> exteriors_;
-    /// (world, x, y) -> persistent references positioned in that cell.
-    std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::Ref*>> persistent_;
-    NavIndex navmeshes_;
-    /// Worldspace -> its persistent cell.
-    std::unordered_map<std::uint32_t, std::uint32_t> persistent_cells_;
-    /// (ref, cell) sorted by ref; built on first use.
+    /// (ref, cell) sorted by ref; built on first use (a second of reading
+    /// every reference in the file, so not in WorldData::open).
     mutable std::vector<std::pair<std::uint32_t, std::uint32_t>> ref_cells_;
-    /// Activate parent -> (child, cell, delay).
-    std::unordered_multimap<std::uint32_t, std::tuple<std::uint32_t, std::uint32_t, float>>
-        activate_children_;
-    /// Enable parent -> its enable children.
-    std::unordered_multimap<std::uint32_t, std::uint32_t> enable_children_;
-    /// Enable parents by id.
-    std::unordered_map<std::uint32_t, const bethconv::pack::wfb::Ref*> enable_parents_;
-    /// NPC_ -> its lowest placed actor; built on first use.
-    mutable std::unordered_map<std::uint32_t, std::uint32_t> actor_of_;
-    /// Load door ref -> the cell holding it and its link.
-    std::unordered_map<std::uint32_t,
-                       std::pair<const bethconv::pack::wfb::Cell*,
-                                 const bethconv::pack::wfb::DoorLink*>>
-        doors_;
     mutable std::unique_ptr<TerrainBuilder> terrain_;
     /// Builds under way, by root instance id.
     mutable std::unordered_map<std::uint64_t, std::shared_ptr<BuildJob>> jobs_;

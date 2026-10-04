@@ -130,6 +130,8 @@ target_sources(skydot PRIVATE
     src/vm/papyrus.hpp
     src/vm/quests.cpp
     src/world/world.cpp
+    src/world/world_data.cpp
+    src/world/world_data.hpp
     src/world/refs.cpp
     src/world/lod.cpp
     src/world/lod.hpp
