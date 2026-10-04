@@ -81,6 +81,7 @@ add_library(bethconv_core STATIC
     pack/convert.cpp
     pack/world.cpp
     pack/world/actors.cpp
+    pack/world/ai.cpp
     pack/world/bases.cpp
     pack/world/context.cpp
     pack/world/environment.cpp
