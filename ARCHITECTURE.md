@@ -913,10 +913,11 @@ One ~1,900-line script that is in effect the game loop. It handles:
 ### 9.1 `bethconv convert --data …/Data -o pack`
 
 1. `check_target`: refuse a FUSE or rotational target for loose output.
-2. Build the mount plan (Data, or Data + MO2 profile) and the load order
-   (`LoadOrder::build` from the profile's or the game's `plugins.txt`, with
-   CC plugins hoisted).
-3. `install::mount`: archives, then loose folders, increasing priority.
+2. `pack::prepare_inputs`: build the mount plan (Data, or Data + MO2
+   profile) and the load order (`LoadOrder::build` from the profile's or the
+   game's `plugins.txt`, with CC plugins hoisted).
+3. The same call mounts the plan with `install::mount`: archives, then loose
+   folders, increasing priority.
 4. `pack::convert`:
    - merge pass 1 → `MergedWorld`;
    - pass 2 → `records.fb`;
