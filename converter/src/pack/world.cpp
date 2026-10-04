@@ -13,6 +13,9 @@
 #include "bethconv/record/forms_world.hpp"
 #include "bethconv/record/types.hpp"
 
+#include "world/context.hpp"
+#include "world/fb_write.hpp"
+
 #include "bethconv/pack/world_generated.h"
 
 #include <algorithm>
@@ -26,6 +29,10 @@
 namespace bethconv::pack {
 namespace {
 
+using detail::model_vpath;
+using detail::texture_vpath;
+using detail::to_fb;
+using detail::write_scripts;
 using io::FourCC;
 using record::FormId;
 
@@ -130,25 +137,6 @@ bool has_fragments(FourCC type) {
            type == FourCC{"SCEN"} || type == FourCC{"PERK"};
 }
 
-/// MODL values are relative to `Data\meshes\`, though some plugins include the
-/// prefix. Returns a normalized virtual path.
-std::string model_vpath(std::string_view modl) {
-    std::string path = archive::normalize_vpath(modl);
-    if (path.empty() || path.starts_with("meshes/")) {
-        return path;
-    }
-    return "meshes/" + path;
-}
-
-/// TXST paths are relative to `Data\textures\`, like MODL to meshes.
-std::string texture_vpath(std::string_view path) {
-    std::string out = archive::normalize_vpath(path);
-    if (out.empty() || out.starts_with("textures/")) {
-        return out;
-    }
-    return "textures/" + out;
-}
-
 /// VHGT: a float offset, 33 x 33 signed deltas, 3 bytes of padding.
 std::optional<std::pair<float, std::vector<std::int8_t>>> decode_vhgt(
     std::span<const std::byte> raw) {
@@ -214,7 +202,7 @@ constexpr std::uint32_t k_inherit_light_fade = 0x400;
 
 class WorldSink final : public record::MergedRecordSink {
 public:
-    explicit WorldSink(const record::LoadOrder& order) : order_(order) {}
+    explicit WorldSink(const record::LoadOrder& order) : shared_(order) {}
 
     void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
                    io::SpanReader& data, const record::FormContext& form_ctx) override {
@@ -289,7 +277,7 @@ public:
         }
     }
 
-    [[nodiscard]] WorldStats& stats() noexcept { return stats_; }
+    [[nodiscard]] WorldStats& stats() noexcept { return shared_.stats(); }
     [[nodiscard]] std::map<std::uint32_t, WorldNpc>& npcs() noexcept { return npcs_; }
     [[nodiscard]] std::map<std::uint32_t, WorldRace>& races() noexcept { return races_; }
     [[nodiscard]] std::map<std::uint32_t, WorldArmor>& armors() noexcept { return armors_; }
@@ -352,38 +340,11 @@ public:
     }
 
 private:
-    /// A FormID from inside the winning record's payload, made global. 0 (and
-    /// counted) if it cannot be resolved.
-    std::uint32_t global(const record::MergedRecord& merged, FormId local, bool& failed) {
-        if (local.is_null()) {
-            return 0;
-        }
-        auto resolved = order_.resolve(merged.winner, local);
-        if (!resolved) {
-            failed = true;
-            return 0;
-        }
-        return resolved->value;
-    }
-
-    /// Script data with object properties made global.
-    std::vector<record::Script> global_scripts(const record::MergedRecord& merged,
-                                               record::ScriptData data, bool& failed) {
-        for (auto& script : data.scripts) {
-            for (auto& property : script.properties) {
-                for (auto& object : property.objects) {
-                    object.form = FormId{global(merged, object.form, failed)};
-                }
-            }
-        }
-        return std::move(data.scripts);
-    }
-
     void on_cell(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx) {
         auto cell = record::parse_cell(data, form_ctx);
         if (!cell) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -395,13 +356,13 @@ private:
             .grid = cell->grid,
             .water_height = cell->water_height,
             .lighting = decode_xcll(cell->lighting),
-            .lighting_template = global(merged, cell->lighting_template, failed),
-            .image_space = global(merged, cell->image_space, failed),
+            .lighting_template = shared_.global(merged, cell->lighting_template, failed),
+            .image_space = shared_.global(merged, cell->image_space, failed),
             .persistent = record::has_flag(merged.flags, record::RecordFlag::persistent),
-            .water = global(merged, cell->water, failed),
+            .water = shared_.global(merged, cell->water, failed),
         };
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         cells_[entry.id] = std::move(entry);
     }
@@ -410,17 +371,17 @@ private:
                       io::SpanReader& data, const record::FormContext& form_ctx) {
         auto ref = record::parse_reference(ctx.header, data, form_ctx);
         if (!ref) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         if (merged.parent.is_null()) {
-            ++stats_.orphan_refs;
+            ++shared_.stats().orphan_refs;
             return;
         }
         bool failed = false;
         WorldRef out{
             .id = merged.form.value,
-            .base = global(merged, ref->base, failed),
+            .base = shared_.global(merged, ref->base, failed),
             .position = ref->position,
             .rotation = ref->rotation,
             .scale = ref->scale,
@@ -434,7 +395,7 @@ private:
             out.flags |= k_ref_persistent;
         }
         if (ref->enable_parent) {
-            out.enable_parent = global(merged, ref->enable_parent->parent, failed);
+            out.enable_parent = shared_.global(merged, ref->enable_parent->parent, failed);
             if (ref->enable_parent->set_enable_state_opposite()) {
                 out.flags |= k_ref_enable_opposite;
             }
@@ -446,7 +407,7 @@ private:
         if (!ref->scripts.empty()) {
             extras.scripts.push_back(WorldRefScripts{
                 .ref = out.id,
-                .scripts = global_scripts(merged, std::move(ref->scripts), failed),
+                .scripts = shared_.global_scripts(merged, std::move(ref->scripts), failed),
             });
         }
         if (ref->has_radius || ref->light_data.size() >= 16) {
@@ -466,20 +427,20 @@ private:
                 .ref = out.id,
                 .level = ref->lock->level,
                 .flags = ref->lock->flags,
-                .key = global(merged, ref->lock->key, failed),
+                .key = shared_.global(merged, ref->lock->key, failed),
             });
         }
         for (const auto& link : ref->linked_references) {
             extras.links.push_back(WorldLink{
                 .ref = out.id,
-                .keyword = global(merged, link.keyword, failed),
-                .target = global(merged, link.target, failed),
+                .keyword = shared_.global(merged, link.keyword, failed),
+                .target = shared_.global(merged, link.target, failed),
             });
         }
         for (const auto& parent : ref->activate_parents) {
             extras.activate_parents.push_back(WorldActivateParent{
                 .ref = out.id,
-                .parent = global(merged, parent.ref, failed),
+                .parent = shared_.global(merged, parent.ref, failed),
                 .delay = parent.delay,
             });
         }
@@ -493,13 +454,13 @@ private:
         if (ref->teleport) {
             doors_[merged.parent.value].push_back(WorldDoor{
                 .ref = out.id,
-                .destination = global(merged, ref->teleport->destination_door, failed),
+                .destination = shared_.global(merged, ref->teleport->destination_door, failed),
                 .position = ref->teleport->position,
                 .rotation = ref->teleport->rotation,
             });
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         refs_[merged.parent.value].push_back(out);
     }
@@ -508,7 +469,7 @@ private:
                   const record::FormContext& form_ctx) {
         auto light = record::parse_light(data, form_ctx);
         if (!light) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bases_[merged.form.value] = BaseEntry{
@@ -534,9 +495,9 @@ private:
             .record_flags = merged.flags,
         };
         bool failed = false;
-        bases_[merged.form.value].scripts = global_scripts(merged, std::move(light->scripts), failed);
+        bases_[merged.form.value].scripts = shared_.global_scripts(merged, std::move(light->scripts), failed);
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
     }
 
@@ -544,7 +505,7 @@ private:
                   const record::FormContext& form_ctx) {
         auto q = record::parse_quest(data, form_ctx);
         if (!q) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -556,7 +517,7 @@ private:
             .priority = q->priority,
             .type = q->type,
             .event = q->event.value,
-            .scripts = global_scripts(merged, std::move(q->scripts), failed),
+            .scripts = shared_.global_scripts(merged, std::move(q->scripts), failed),
             .fragment_script = q->fragments.script,
             .fragments = {},
             .stages = {},
@@ -600,16 +561,16 @@ private:
                 .name = alias.name,
                 .location = alias.location,
                 .flags = alias.flags,
-                .forced = global(merged, alias.location ? alias.specific_location
+                .forced = shared_.global(merged, alias.location ? alias.specific_location
                                                         : alias.forced_ref,
                                  failed),
-                .unique_actor = global(merged, alias.unique_actor, failed),
-                .external_quest = global(merged, alias.external_quest, failed),
+                .unique_actor = shared_.global(merged, alias.unique_actor, failed),
+                .external_quest = shared_.global(merged, alias.external_quest, failed),
                 .external_alias = alias.external_alias,
-                .created_object = global(merged, alias.created_object, failed),
+                .created_object = shared_.global(merged, alias.created_object, failed),
                 .create_at = alias.create_at,
                 .conditions = static_cast<std::uint16_t>(alias.conditions.raw.size()),
-                .display_name = global(merged, alias.display_name, failed),
+                .display_name = shared_.global(merged, alias.display_name, failed),
                 .scripts = {},
             };
             for (auto& attached : q->fragments.aliases) {
@@ -617,13 +578,13 @@ private:
                     static_cast<std::uint32_t>(attached.alias.alias) == alias.id) {
                     record::ScriptData data_for_alias;
                     data_for_alias.scripts = std::move(attached.scripts);
-                    a.scripts = global_scripts(merged, std::move(data_for_alias), failed);
+                    a.scripts = shared_.global_scripts(merged, std::move(data_for_alias), failed);
                 }
             }
             out.aliases.push_back(std::move(a));
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         quests_[out.id] = std::move(out);
     }
@@ -632,7 +593,7 @@ private:
                    const record::FormContext& form_ctx) {
         auto g = record::parse_global(data, form_ctx);
         if (!g) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         globals_[merged.form.value] = WorldGlobal{
@@ -643,17 +604,17 @@ private:
                   io::SpanReader& data, const record::FormContext& form_ctx) {
         auto actor = record::parse_actor_reference(ctx.header, data, form_ctx);
         if (!actor) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         if (merged.parent.is_null()) {
-            ++stats_.orphan_refs;
+            ++shared_.stats().orphan_refs;
             return;
         }
         bool failed = false;
         WorldActor out{
             .ref = merged.form.value,
-            .base = global(merged, actor->base, failed),
+            .base = shared_.global(merged, actor->base, failed),
             .cell = merged.parent.value,
             .position = actor->position,
             .rotation = actor->rotation,
@@ -669,12 +630,12 @@ private:
         for (const auto& link : actor->linked_references) {
             extras_[merged.parent.value].links.push_back(WorldLink{
                 .ref = out.ref,
-                .keyword = global(merged, link.keyword, failed),
-                .target = global(merged, link.target, failed),
+                .keyword = shared_.global(merged, link.keyword, failed),
+                .target = shared_.global(merged, link.target, failed),
             });
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         actors_.push_back(out);
     }
@@ -684,16 +645,16 @@ private:
                     const record::FormContext& form_ctx) {
         auto navm = record::parse_nav_mesh(data, form_ctx);
         if (!navm) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         auto geometry = record::decode_nav_mesh_geometry(navm->geometry);
         if (!geometry) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         if (merged.parent.is_null()) {
-            ++stats_.orphan_navmeshes;
+            ++shared_.stats().orphan_navmeshes;
             return;
         }
         bool failed = false;
@@ -707,34 +668,24 @@ private:
         }
         for (const auto& l : geometry->edge_links) {
             out.links.push_back({.type = l.type,
-                                 .navmesh = global(merged, l.navmesh, failed),
+                                 .navmesh = shared_.global(merged, l.navmesh, failed),
                                  .triangle = l.triangle});
         }
         for (const auto& d : geometry->doors) {
-            out.doors.push_back({.triangle = d.triangle, .door = global(merged, d.door, failed)});
+            out.doors.push_back({.triangle = d.triangle, .door = shared_.global(merged, d.door, failed)});
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         navmeshes_[merged.parent.value].push_back(std::move(out));
     }
 
     // ---- what actors are built from -------------------------------------
 
-    std::vector<std::uint32_t> global_all(const record::MergedRecord& merged,
-                                          const std::vector<FormId>& forms, bool& failed) {
-        std::vector<std::uint32_t> out;
-        out.reserve(forms.size());
-        for (const FormId f : forms) {
-            out.push_back(global(merged, f, failed));
-        }
-        return out;
-    }
-
     /// The precomputed FaceGen head: named by the plugin owning the form and
     /// the form's id within it.
     std::string face_model(const record::MergedRecord& merged) const {
-        const auto& entries = order_.entries();
+        const auto& entries = shared_.order().entries();
         if (merged.owner >= entries.size()) {
             return {};
         }
@@ -752,7 +703,7 @@ private:
                 const record::FormContext& form_ctx) {
         auto npc = record::parse_npc(data, form_ctx);
         if (!npc) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -762,27 +713,27 @@ private:
         out.name = npc->name.text;
         out.flags = npc->flags;
         out.level = npc->level;
-        out.race = global(merged, npc->race, failed);
-        out.template_form = global(merged, npc->npc_template, failed);
+        out.race = shared_.global(merged, npc->race, failed);
+        out.template_form = shared_.global(merged, npc->npc_template, failed);
         out.template_flags = npc->template_flags;
-        out.skin = global(merged, npc->worn_armor, failed);
-        out.default_outfit = global(merged, npc->default_outfit, failed);
-        out.sleeping_outfit = global(merged, npc->sleeping_outfit, failed);
+        out.skin = shared_.global(merged, npc->worn_armor, failed);
+        out.default_outfit = shared_.global(merged, npc->default_outfit, failed);
+        out.sleeping_outfit = shared_.global(merged, npc->sleeping_outfit, failed);
         out.height = npc->height;
         out.weight = npc->weight;
-        out.head_parts = global_all(merged, npc->head_parts, failed);
-        out.packages = global_all(merged, npc->packages, failed);
-        out.default_package_list = global(merged, npc->default_package_list, failed);
+        out.head_parts = shared_.global_all(merged, npc->head_parts, failed);
+        out.packages = shared_.global_all(merged, npc->packages, failed);
+        out.default_package_list = shared_.global(merged, npc->default_package_list, failed);
         for (const auto& f : npc->factions) {
-            out.factions.emplace_back(global(merged, f.faction, failed), f.rank);
+            out.factions.emplace_back(shared_.global(merged, f.faction, failed), f.rank);
         }
         for (const auto& item : npc->items) {
-            out.items.emplace_back(global(merged, item.item, failed), item.count);
+            out.items.emplace_back(shared_.global(merged, item.item, failed), item.count);
         }
         out.face_model = face_model(merged);
         out.skin_tone = {npc->skin_red, npc->skin_green, npc->skin_blue};
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         npcs_[out.id] = std::move(out);
     }
@@ -791,7 +742,7 @@ private:
                  const record::FormContext& form_ctx) {
         auto race = record::parse_race(data, form_ctx);
         if (!race) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -808,15 +759,15 @@ private:
                     .index = part.index,
                     .model = part.model.empty() ? std::string{} : model_vpath(part.model)});
             }
-            out.head_parts[sex] = global_all(merged, s.head_parts, failed);
+            out.head_parts[sex] = shared_.global_all(merged, s.head_parts, failed);
         }
-        out.skin = global(merged, race->skin, failed);
+        out.skin = shared_.global(merged, race->skin, failed);
         out.heights = race->height;
         out.weights = race->weight;
         out.flags = race->flags;
-        out.armor_race = global(merged, race->armor_race, failed);
+        out.armor_race = shared_.global(merged, race->armor_race, failed);
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         races_[out.id] = std::move(out);
     }
@@ -825,17 +776,17 @@ private:
                   const record::FormContext& form_ctx) {
         auto armor = record::parse_armor(data, form_ctx);
         if (!armor) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
         WorldArmor out{.id = merged.form.value,
                        .editor_id = armor->editor_id,
                        .slots = armor->body.slots,
-                       .race = global(merged, armor->race, failed),
-                       .addons = global_all(merged, armor->addons, failed)};
+                       .race = shared_.global(merged, armor->race, failed),
+                       .addons = shared_.global_all(merged, armor->addons, failed)};
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         armors_[out.id] = std::move(out);
     }
@@ -844,7 +795,7 @@ private:
                         const record::FormContext& form_ctx) {
         auto addon = record::parse_armor_addon(data, form_ctx);
         if (!addon) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -852,14 +803,14 @@ private:
         out.id = merged.form.value;
         out.editor_id = addon->editor_id;
         out.slots = addon->body.slots;
-        out.race = global(merged, addon->race, failed);
-        out.additional_races = global_all(merged, addon->additional_races, failed);
+        out.race = shared_.global(merged, addon->race, failed);
+        out.additional_races = shared_.global_all(merged, addon->additional_races, failed);
         out.models = {addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path),
                       addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path)};
         out.priorities = {addon->male_priority, addon->female_priority};
         out.weight_sliders = {addon->male_weight_slider, addon->female_weight_slider};
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         armor_addons_[out.id] = std::move(out);
     }
@@ -868,14 +819,14 @@ private:
                    const record::FormContext& form_ctx) {
         auto outfit = record::parse_outfit(data, form_ctx);
         if (!outfit) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
         outfits_[merged.form.value] =
-            WorldOutfit{.id = merged.form.value, .items = global_all(merged, outfit->items, failed)};
+            WorldOutfit{.id = merged.form.value, .items = shared_.global_all(merged, outfit->items, failed)};
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
     }
 
@@ -890,10 +841,10 @@ private:
                              .entries = {}};
         for (const auto& e : entries) {
             out.entries.push_back(
-                {.level = e.level, .count = e.count, .form = global(merged, e.reference, failed)});
+                {.level = e.level, .count = e.count, .form = shared_.global(merged, e.reference, failed)});
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         leveled_lists_[out.id] = std::move(out);
     }
@@ -903,28 +854,28 @@ private:
                       const record::FormContext& form_ctx) {
         auto list = record::parse_form_list(data, form_ctx);
         if (!list) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
-        form_lists_[merged.form.value] = global_all(merged, list->forms, failed);
+        form_lists_[merged.form.value] = shared_.global_all(merged, list->forms, failed);
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
     }
 
     /// A condition with its FormID parameters made global.
     record::Condition global_condition(const record::MergedRecord& merged, record::Condition c,
                                        bool& failed) {
-        c.value_global = FormId{global(merged, c.value_global, failed)};
+        c.value_global = FormId{shared_.global(merged, c.value_global, failed)};
         if (c.run_on == record::Condition::k_run_on_reference) {
-            c.reference = FormId{global(merged, c.reference, failed)};
+            c.reference = FormId{shared_.global(merged, c.reference, failed)};
         }
         if (record::condition_param_is_form(c, 1)) {
-            c.param1 = global(merged, FormId{c.param1}, failed);
+            c.param1 = shared_.global(merged, FormId{c.param1}, failed);
         }
         if (record::condition_param_is_form(c, 2)) {
-            c.param2 = global(merged, FormId{c.param2}, failed);
+            c.param2 = shared_.global(merged, FormId{c.param2}, failed);
         }
         return c;
     }
@@ -942,7 +893,7 @@ private:
                     const record::FormContext& form_ctx) {
         auto pack = record::parse_package(data, form_ctx);
         if (!pack) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -956,15 +907,15 @@ private:
             .interrupt_flags = pack->interrupt_flags,
             .schedule = pack->schedule,
             .conditions = global_conditions(merged, std::move(pack->conditions), failed),
-            .template_package = global(merged, pack->template_package, failed),
+            .template_package = shared_.global(merged, pack->template_package, failed),
             .idle_flags = pack->idle_flags,
             .idle_timer = pack->idle_timer,
-            .idles = global_all(merged, pack->idles, failed),
-            .owner_quest = global(merged, pack->owner_quest, failed),
-            .combat_style = global(merged, pack->combat_style, failed),
-            .on_begin_idle = global(merged, pack->on_begin.idle, failed),
-            .on_end_idle = global(merged, pack->on_end.idle, failed),
-            .on_change_idle = global(merged, pack->on_change.idle, failed),
+            .idles = shared_.global_all(merged, pack->idles, failed),
+            .owner_quest = shared_.global(merged, pack->owner_quest, failed),
+            .combat_style = shared_.global(merged, pack->combat_style, failed),
+            .on_begin_idle = shared_.global(merged, pack->on_begin.idle, failed),
+            .on_end_idle = shared_.global(merged, pack->on_end.idle, failed),
+            .on_change_idle = shared_.global(merged, pack->on_change.idle, failed),
         };
         for (const auto& in : pack->inputs) {
             WorldPackage::Input w{.key = in.key, .type = in.type};
@@ -981,14 +932,14 @@ private:
                 w.location = *in.location;
                 const auto t = w.location.type;
                 if (t == 0 || t == 1 || t == 4 || t == 6) {
-                    w.location.value = global(merged, FormId{w.location.value}, failed);
+                    w.location.value = shared_.global(merged, FormId{w.location.value}, failed);
                 }
             }
             if (in.target) {
                 w.target = *in.target;
                 const auto t = w.target.type;
                 if (t == 0 || t == 1 || t == 3) {
-                    w.target.value = global(merged, FormId{w.target.value}, failed);
+                    w.target.value = shared_.global(merged, FormId{w.target.value}, failed);
                 }
             }
             for (const auto& named : pack->public_inputs) {
@@ -1017,7 +968,7 @@ private:
             out.branches.push_back(std::move(w));
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         packages_[out.id] = std::move(out);
     }
@@ -1026,7 +977,7 @@ private:
                          const record::FormContext& form_ctx) {
         auto list = record::parse_leveled_item(data, form_ctx);
         if (!list) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         add_leveled(merged, list->flags, list->chance_none, list->entries);
@@ -1036,7 +987,7 @@ private:
                         const record::FormContext& form_ctx) {
         auto list = record::parse_leveled_npc(data, form_ctx);
         if (!list) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         add_leveled(merged, list->flags, list->chance_none, list->entries);
@@ -1077,12 +1028,12 @@ private:
                     if (auto read = record::read_script_data(body)) {
                         scripts = std::move(*read);
                     } else {
-                        ++stats_.script_errors;
+                        ++shared_.stats().script_errors;
                     }
                 }
             });
         if (!walked) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         const std::string& path = !modl.empty() ? modl : !mod2.empty() ? mod2 : mod4;
@@ -1097,13 +1048,13 @@ private:
             .model = path.empty() ? std::string{} : model_vpath(path),
             .light = std::nullopt,
             .flags = flags,
-            .scripts = global_scripts(merged, std::move(scripts), failed),
+            .scripts = shared_.global_scripts(merged, std::move(scripts), failed),
             .record_flags = merged.flags,
-            .directional_material = material != 0 ? global(merged, record::FormId{material}, failed) : 0,
+            .directional_material = material != 0 ? shared_.global(merged, record::FormId{material}, failed) : 0,
             .directional_max_angle = max_angle,
         };
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
     }
 
@@ -1124,7 +1075,7 @@ private:
                 }
             });
         if (!walked) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         material_objects_[out.id] = std::move(out);
@@ -1136,7 +1087,7 @@ private:
                  const record::FormContext& form_ctx) {
         auto land = record::parse_landscape(data, form_ctx);
         if (!land) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         auto heights = decode_vhgt(land->heights);
@@ -1155,7 +1106,7 @@ private:
         }
         for (const auto& base : land->base_layers) {
             terrain.layers.push_back(WorldTerrainLayer{
-                .texture = global(merged, base.texture, failed),
+                .texture = shared_.global(merged, base.texture, failed),
                 .quadrant = base.quadrant,
                 .layer = -1,
                 .points = {},
@@ -1164,7 +1115,7 @@ private:
         }
         for (const auto& extra : land->additional_layers) {
             WorldTerrainLayer layer{
-                .texture = global(merged, extra.texture, failed),
+                .texture = shared_.global(merged, extra.texture, failed),
                 .quadrant = extra.quadrant,
                 .layer = extra.layer,
                 .points = {},
@@ -1185,7 +1136,7 @@ private:
             return std::pair{a.quadrant, a.layer} < std::pair{b.quadrant, b.layer};
         });
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         terrains_[merged.parent.value] = std::move(terrain);
     }
@@ -1194,26 +1145,26 @@ private:
                        const record::FormContext& form_ctx) {
         auto w = record::parse_worldspace(data, form_ctx);
         if (!w) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
         Worldspace out{
             .id = merged.form.value,
             .editor_id = w->editor_id,
-            .parent = global(merged, w->parent, failed),
+            .parent = shared_.global(merged, w->parent, failed),
             .parent_flags = w->parent_flags,
             .flags = w->flags,
             .defaults = std::nullopt,
-            .water = global(merged, w->water, failed),
-            .climate = global(merged, w->climate, failed),
+            .water = shared_.global(merged, w->water, failed),
+            .climate = shared_.global(merged, w->climate, failed),
             .bounds = {w->min_x, w->min_y, w->max_x, w->max_y},
         };
         if (w->default_land_height && w->default_water_height) {
             out.defaults = std::array{*w->default_land_height, *w->default_water_height};
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         worlds_[out.id] = std::move(out);
     }
@@ -1222,23 +1173,23 @@ private:
                          const record::FormContext& form_ctx) {
         auto ltex = record::parse_land_texture(data, form_ctx);
         if (!ltex) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
         std::vector<std::uint32_t> grasses;
         for (const auto grass : ltex->grasses) {
-            grasses.push_back(global(merged, grass, failed));
+            grasses.push_back(shared_.global(merged, grass, failed));
         }
         land_textures_[merged.form.value] = LandTextureEntry{
             .id = merged.form.value,
             .editor_id = ltex->editor_id,
-            .texture_set = global(merged, ltex->texture_set, failed),
+            .texture_set = shared_.global(merged, ltex->texture_set, failed),
             .specular = ltex->specular,
             .grasses = std::move(grasses),
         };
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
     }
 
@@ -1258,7 +1209,7 @@ private:
                 }
             });
         if (!walked || !has_index || out.model.empty()) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         addons_[out.id] = std::move(out);
@@ -1289,7 +1240,7 @@ private:
                 }
             });
         if (!walked || out.model.empty()) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         grasses_[out.id] = std::move(out);
@@ -1299,7 +1250,7 @@ private:
                         const record::FormContext& form_ctx) {
         auto txst = record::parse_texture_set(data, form_ctx);
         if (!txst) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         texture_sets_[merged.form.value] = TextureSetEntry{
@@ -1362,7 +1313,7 @@ private:
                 }
             });
         if (!walked) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         waters_[out.id] = std::move(out);
@@ -1372,7 +1323,7 @@ private:
                     const record::FormContext& form_ctx) {
         auto climate = record::parse_climate(data, form_ctx);
         if (!climate) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         bool failed = false;
@@ -1380,7 +1331,7 @@ private:
         out.id = merged.form.value;
         out.editor_id = climate->editor_id;
         for (const auto& entry : climate->weathers) {
-            out.weathers.emplace_back(global(merged, entry.weather, failed), entry.chance);
+            out.weathers.emplace_back(shared_.global(merged, entry.weather, failed), entry.chance);
         }
         const auto hours = [](std::uint8_t steps) { return static_cast<float>(steps) / 6.0F; };
         out.sun = {hours(climate->sunrise_begin), hours(climate->sunrise_end),
@@ -1395,7 +1346,7 @@ private:
         out.moons = static_cast<std::uint8_t>(((moons >> 6) & 1U) | (((moons >> 7) & 1U) << 1));
         out.phase_length = static_cast<std::uint8_t>(moons & 0x3FU);
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         climates_[out.id] = std::move(out);
     }
@@ -1406,7 +1357,7 @@ private:
                     const record::FormContext& form_ctx) {
         auto weather = record::parse_weather(data, form_ctx);
         if (!weather) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         WorldWeather out;
@@ -1462,13 +1413,13 @@ private:
             out.wind_direction_range = static_cast<float>(d[18]) * 180.0F / 256.0F;
         }
         bool failed = false;
-        out.precipitation = global(merged, weather->precipitation, failed);
+        out.precipitation = shared_.global(merged, weather->precipitation, failed);
         out.aurora = model_vpath(weather->model.path);
         for (const auto image_space : weather->image_spaces) {
-            out.image_spaces.push_back(global(merged, image_space, failed));
+            out.image_spaces.push_back(shared_.global(merged, image_space, failed));
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         weathers_[out.id] = std::move(out);
     }
@@ -1478,7 +1429,7 @@ private:
                         const record::FormContext& form_ctx) {
         auto image_space = record::parse_image_space(data, form_ctx);
         if (!image_space) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         WorldImageSpace out;
@@ -1522,7 +1473,7 @@ private:
                 }
             });
         if (!walked || !has_data) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         lighting_templates_[merged.form.value] = std::move(out);
@@ -1561,7 +1512,7 @@ private:
                           const record::FormContext& form_ctx) {
         auto spgd = record::parse_shader_particle_geometry(data, form_ctx);
         if (!spgd) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         precipitations_[merged.form.value] = WorldPrecipitation{
@@ -1589,7 +1540,7 @@ private:
                    const record::FormContext& form_ctx) {
         auto region = record::parse_region(data, form_ctx);
         if (!region) {
-            ++stats_.parse_errors;
+            ++shared_.stats().parse_errors;
             return;
         }
         constexpr std::uint32_t k_weather = 3;
@@ -1597,7 +1548,7 @@ private:
         WorldRegion out;
         out.id = merged.form.value;
         out.editor_id = region->editor_id;
-        out.world = global(merged, region->worldspace, failed);
+        out.world = shared_.global(merged, region->worldspace, failed);
         for (const auto& entry : region->entries) {
             if (entry.type != k_weather || entry.weathers.empty()) {
                 continue;
@@ -1605,9 +1556,9 @@ private:
             out.weather_priority = entry.priority;
             out.weather_override = (entry.flags & 0x1U) != 0;
             for (const auto& w : entry.weathers) {
-                out.weathers.push_back({.weather = global(merged, w.weather, failed),
+                out.weathers.push_back({.weather = shared_.global(merged, w.weather, failed),
                                         .chance = w.chance,
-                                        .global = global(merged, w.global, failed)});
+                                        .global = shared_.global(merged, w.global, failed)});
             }
         }
         if (out.weathers.empty()) {
@@ -1623,13 +1574,12 @@ private:
             out.areas.push_back(std::move(points));
         }
         if (failed) {
-            ++stats_.unresolved;
+            ++shared_.stats().unresolved;
         }
         regions_[out.id] = std::move(out);
     }
 
-    const record::LoadOrder& order_;
-    WorldStats stats_;
+    detail::CollectContext shared_;
     std::map<std::uint32_t, WorldWater> waters_;
     std::map<std::uint32_t, WorldClimate> climates_;
     std::map<std::uint32_t, WorldWeather> weathers_;
@@ -1662,42 +1612,6 @@ private:
     std::map<std::uint32_t, WorldPackage> packages_;
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> form_lists_;
 };
-
-flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>> write_scripts(
-    flatbuffers::FlatBufferBuilder& builder, const std::vector<record::Script>& scripts) {
-    std::vector<flatbuffers::Offset<wfb::Script>> out;
-    out.reserve(scripts.size());
-    for (const auto& script : scripts) {
-        std::vector<flatbuffers::Offset<wfb::ScriptProperty>> properties;
-        properties.reserve(script.properties.size());
-        for (const auto& p : script.properties) {
-            std::vector<wfb::ScriptObject> objects;
-            objects.reserve(p.objects.size());
-            for (const auto& o : p.objects) {
-                objects.emplace_back(o.form.value, o.alias);
-            }
-            std::vector<flatbuffers::Offset<flatbuffers::String>> strings;
-            strings.reserve(p.strings.size());
-            for (const auto& text : p.strings) {
-                strings.push_back(builder.CreateString(text));
-            }
-            const auto name = builder.CreateString(p.name);
-            const auto objects_off = objects.empty() ? 0 : builder.CreateVectorOfStructs(objects);
-            const auto strings_off = strings.empty() ? 0 : builder.CreateVector(strings);
-            const auto ints_off = p.integers.empty() ? 0 : builder.CreateVector(p.integers);
-            const auto floats_off = p.floats.empty() ? 0 : builder.CreateVector(p.floats);
-            properties.push_back(wfb::CreateScriptProperty(
-                builder, name, static_cast<std::uint8_t>(p.type), p.status, objects_off,
-                strings_off, ints_off, floats_off));
-        }
-        const auto name = builder.CreateString(script.name);
-        const auto properties_off = builder.CreateVector(properties);
-        out.push_back(wfb::CreateScript(builder, name, script.status, properties_off));
-    }
-    return builder.CreateVector(out);
-}
-
-wfb::Vec3f to_fb(const record::Vec3& v) { return wfb::Vec3f(v.x, v.y, v.z); }
 
 } // namespace
 
