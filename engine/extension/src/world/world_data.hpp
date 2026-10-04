@@ -1,20 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // `WorldData`: a pack's `world.fb` (formats/pack-format.md, schema
-// formats/schema/world.fbs) as the engine reads it: the verified bytes and the
-// indexes built over them once, in `open`. Nothing changes afterwards, so one
+// formats/schema/world.fbs) as the engine reads it: the file, memory-mapped and
+// verified, and the indexes built over it once, in `open`. Nothing changes afterwards, so one
 // can be shared by everything that reads the world
 // (`std::shared_ptr<const WorldData>`), from any thread. A closed one answers
 // every query with nothing.
 #pragma once
 
+#include "assets/mapped_file.hpp"
 #include "world/navmesh.hpp"
 #include "skydot_formats/units.hpp"
 
-#include <godot_cpp/variant/packed_byte_array.hpp>
-
 #include <cmath>
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <tuple>
 #include <unordered_map>
 #include <vector>
@@ -54,22 +55,25 @@ public:
 
     enum class Status {
         ok,
+        unreadable,  ///< The file could not be mapped; `error` says why.
         corrupt,     ///< Empty, or the FlatBuffers verifier refused it.
         unsupported, ///< A format version outside FORMAT_VERSION_MIN..FORMAT_VERSION.
     };
     struct OpenResult {
         Status status{};
-        int version{}; ///< The file's format version, if it verified.
+        int version{};     ///< The file's format version, if it verified.
+        std::string error; ///< For `unreadable`.
     };
 
     WorldData() = default;
     WorldData(const WorldData&) = delete;
     WorldData& operator=(const WorldData&) = delete;
 
-    /// Verify `bytes` and index them. A refused file leaves this closed and
-    /// empty. Once only: every index points into the bytes this keeps, so
-    /// open a new WorldData for another file.
-    OpenResult open(godot::PackedByteArray bytes);
+    /// Map the file at `path` (UTF-8, native), verify it and index it. A
+    /// refused file leaves this closed and empty. Once only: every index
+    /// points into the mapping this keeps, so open a new WorldData for another
+    /// file.
+    OpenResult open(const std::string& path);
     bool is_open() const { return root_ != nullptr; }
     /// The verified root; null while closed.
     const bethconv::pack::wfb::World* root() const { return root_; }
@@ -124,7 +128,7 @@ public:
 private:
     void build_indexes();
 
-    godot::PackedByteArray bytes_;
+    std::unique_ptr<MappedFile> map_;
     const bethconv::pack::wfb::World* root_{};
 
     /// (world, x, y) -> exterior cell, persistent cells excluded.

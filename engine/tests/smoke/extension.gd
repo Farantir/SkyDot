@@ -205,6 +205,10 @@ func _check_refusals() -> void:
     var world := SkydotWorld.new()
     expect(world.open(junk) == ERR_FILE_CORRUPT, "a damaged world.fb is refused")
     expect(not world.is_open(), "and stays closed")
+    var empty_fb := root.path_join("empty.fb")
+    FileAccess.open(empty_fb, FileAccess.WRITE).close()
+    expect(world.open(empty_fb) == ERR_FILE_CORRUPT, "an empty world.fb is refused")
+    expect(world.get_error().contains("empty.fb"), "and the error names it")
 
     # The blob layout: its index must be there and well formed.
     var noidx := root.path_join("noidx")

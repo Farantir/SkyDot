@@ -26,6 +26,7 @@
 #include <godot_cpp/classes/plane_mesh.hpp>
 #include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/packed_scene.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/time.hpp>
@@ -320,10 +321,15 @@ Error SkydotWorld::open(const String& path) {
     if (!godot::FileAccess::file_exists(path)) {
         return fail(godot::ERR_FILE_NOT_FOUND, String("no world.fb at ") + path);
     }
-    // Verified before anything keeps it: a refused file leaves the world as
-    // it was, closed and without indexes.
+    // Mapped from where it lies on disk, so a res:// or user:// path is
+    // turned into one. Verified before anything keeps it: a refused file
+    // leaves the world as it was, closed and without indexes.
     auto data = std::make_shared<WorldData>();
-    const auto opened = data->open(godot::FileAccess::get_file_as_bytes(path));
+    const auto native = godot::ProjectSettings::get_singleton()->globalize_path(path).utf8();
+    const auto opened = data->open(std::string(native.get_data(), static_cast<std::size_t>(native.length())));
+    if (opened.status == WorldData::Status::unreadable) {
+        return fail(godot::ERR_FILE_CANT_OPEN, String::utf8(opened.error.c_str()));
+    }
     if (opened.status == WorldData::Status::corrupt) {
         return fail(godot::ERR_FILE_CORRUPT, path + String(" is not a valid world.fb"));
     }

@@ -11,22 +11,26 @@ namespace wfb = bethconv::pack::wfb;
 
 namespace skydot {
 
-WorldData::OpenResult WorldData::open(godot::PackedByteArray bytes) {
-    const auto size = static_cast<std::size_t>(bytes.size());
-    // An empty array may have no data pointer; the root is read only if it has.
-    const auto* data = bytes.ptr();
-    flatbuffers::Verifier verifier(data, size);
-    if (data == nullptr || size == 0 || !wfb::VerifyWorldBuffer(verifier)) {
-        return {Status::corrupt, 0};
+WorldData::OpenResult WorldData::open(const std::string& path) {
+    auto map = std::make_unique<MappedFile>();
+    std::string error;
+    if (!map->open(path, error)) {
+        return {Status::unreadable, 0, std::move(error)};
     }
-    const auto version = static_cast<int>(wfb::GetWorld(data)->format_version());
+    const auto bytes = map->bytes();
+    // An empty file maps to no data at all; the root is read only if it has.
+    flatbuffers::Verifier verifier(bytes.data(), bytes.size());
+    if (bytes.empty() || !wfb::VerifyWorldBuffer(verifier)) {
+        return {Status::corrupt, 0, {}};
+    }
+    const auto version = static_cast<int>(wfb::GetWorld(bytes.data())->format_version());
     if (version < FORMAT_VERSION_MIN || version > FORMAT_VERSION) {
-        return {Status::unsupported, version};
+        return {Status::unsupported, version, {}};
     }
-    bytes_ = std::move(bytes);
-    root_ = wfb::GetWorld(bytes_.ptr());
+    map_ = std::move(map);
+    root_ = wfb::GetWorld(bytes.data());
     build_indexes();
-    return {Status::ok, version};
+    return {Status::ok, version, {}};
 }
 
 void WorldData::build_indexes() {
