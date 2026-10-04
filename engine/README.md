@@ -7,7 +7,10 @@ memory-mappable record snapshot) on your machine; this engine reads only that.
 ## What this is not
 
 - **Not a way to play Skyrim**, and not soon. The first goal is walking
-  through one city in VR: no NPCs, combat, quests or scripts.
+  through one city in VR, and the VR shell does not exist yet: the viewer is a
+  flatscreen window. Actors go about their AI packages and quest scripts run,
+  but there is no combat, dialogue or inventory, most actor natives are
+  missing, and quests do not evaluate conditions.
 - **No SKSE plugins.** They are native DLLs hooking the original executable.
 - **No behavior or animation mods.** Havok behavior graphs are not
   interpreted; Nemesis, Pandora, DAR/OAR and MCO have nothing to run on.
@@ -25,7 +28,7 @@ The engine shows interior cells and streams exterior ones. What exists:
 - **`SkydotPack`**: mounts a bethconv pack. Reads `manifest.json`, the
   `records.fb` header, `vpath.idx` and the asset store (one memory-mapped
   blob, or loose files) per
-  [`formats/pack-format.md`](../formats/pack-format.md) v5, and refuses
+  [`formats/pack-format.md`](../formats/pack-format.md) v6, and refuses
   unknown versions with both numbers in the message.
 - **Assets load straight from the pack**, no import or bake: meshes through
   Godot's runtime glTF loader, DDS textures as they are (block-compressed,
@@ -59,6 +62,16 @@ The engine shows interior cells and streams exterior ones. What exists:
   (`begin_cell`/`begin_exterior` with `continue_build_static`, resources by
   `request_cell`/`request_exterior`), so going through takes a fraction of
   the time; actors are added on arrival.
+- **Actors** (see [`docs/actors.md`](docs/actors.md)): placed NPCs and
+  creatures stand dressed in their outfits (skeleton, body parts, FaceGen
+  head, skin tint) and walk the navmesh at the speed of their walk and run
+  clips, opening plain doors on the way. Clips are chosen by name; Havok
+  behaviour graphs are not interpreted.
+- **AI packages** (`SkydotAi`, see [`docs/ai.md`](docs/ai.md)): an actor's
+  schedule and conditions pick its package, and its procedures run against a
+  game clock: actors walk to work, home, the inn and to bed, through load
+  doors, sandbox, patrol and travel. They only walk up to a bed or chair, and
+  following, escorting and fighting are not done: the actor stands.
 - **Papyrus** (`SkydotPapyrus`, see [`docs/papyrus.md`](docs/papyrus.md)): a
   clean-room VM running the pack's decoded scripts. All 36 opcodes, states,
   properties, arrays, latent waits and animation waits on a cooperative
@@ -70,7 +83,9 @@ The engine shows interior cells and streams exterior ones. What exists:
 - **Quests**: start-game-enabled quests start with the viewer; aliases fill
   from forced references, unique actors and other quests' aliases and carry
   their scripts; stages run their fragments; objectives, journal text and
-  globals are tracked and saved. Conditions are not evaluated yet.
+  globals are tracked and saved. Quest conditions (alias fills, log entries)
+  are not evaluated yet; AI packages answer about two dozen condition
+  functions.
 - **Cell viewer** (`game/viewer/`): flatscreen fly camera, or four screenshots
   and exit.
 - **Smoke tests** (headless editor runs): the extension loads; each refusal
@@ -82,8 +97,9 @@ The engine shows interior cells and streams exterior ones. What exists:
   its quest starts, fills its alias with the lever and moves on when the lever
   is pulled.
 
-Not yet: NPCs, most Papyrus natives (actors, dialogue),
-conditions, the VR shell.
+Not yet: combat, dialogue and scenes, inventories, weapons, furniture use
+(actors stand next to beds and chairs), most Papyrus natives (actors, form
+lists, inventories), quest conditions, behaviour graphs, the VR shell.
 
 ### The pack tool
 
@@ -165,9 +181,10 @@ P shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting. Placed NPCs and creatures stand
-dressed in their outfits and wander around where they were placed, walking
-the navmesh, until AI packages are read (`--wander off` keeps them in their
-idle, `--actors off` builds none; see `docs/actors.md`). `--shot-delay
+dressed in their outfits and follow their AI packages, walking the navmesh
+(`--ai off` keeps them where they were placed, wandering about it; `--wander
+off` keeps them in their idle, `--actors off` builds none; see
+`docs/actors.md` and `docs/ai.md`). `--shot-delay
 SECONDS` lets the world run before a `--screenshot`.
 F12 saves a screenshot with a JSON file beside it (Shift+F12 without the text
 overlay; `--shot-dir`, default `user://screenshots`): place, camera in engine
@@ -193,7 +210,7 @@ generator) and a Godot 4.7 editor on `PATH` as `godot4.7`, `godot4` or `godot`
 git submodule update --init
 cmake --preset linux-debug
 cmake --build --preset linux-debug     # -> game/bin/libskydot.linux.template_debug.x86_64.so
-ctest --preset linux-debug             # 7 tests, 12 with the converter's test pack
+ctest --preset linux-debug             # 14 tests, 21 with the converter's test pack
 ../tools/ci/check-no-game-data.sh
 ```
 
@@ -209,7 +226,7 @@ open on `game/` reloads the library. Only tested headlessly so far.
 ### Converter output for the tests
 
 Most tests need converter output: without it the pack tests are skipped and
-the five viewer tests are not registered. Build the converter's test pack (no
+the seven viewer tests are not registered. Build the converter's test pack (no
 Bethesda data):
 
 ```sh
@@ -234,7 +251,7 @@ with a window (the viewer, `--screenshot`, `--benchmark`).
 ```gdscript
 var pack := SkydotPack.new()
 if pack.open("/path/to/pack") != OK:
-    push_error(pack.get_error())      # e.g. "pack format version 2 is not one this engine reads (it reads v1)"
+    push_error(pack.get_error())      # e.g. "pack format version 5 is not one this engine reads (it reads v6): <path>"
     return
 var vpath := SkydotPack.model_vpath("Clutter\\Apple01.nif")   # "meshes/clutter/apple01.nif"
 var model := pack.load_scene(vpath)                           # SkydotModel, or null

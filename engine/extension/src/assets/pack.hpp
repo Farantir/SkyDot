@@ -8,7 +8,7 @@
 //
 // `open` checks, in order, and refuses on any failure:
 //
-//   manifest.json   `pack_format_version` must be 5
+//   manifest.json   `pack_format_version` must be 6
 //   records.fb      64-byte header, magic and version (if the manifest's
 //                   `records` key is present)
 //   world.fb        exists (if the manifest's `world` key is present)
