@@ -30,10 +30,9 @@ add_custom_target(skydot_flatbuffers DEPENDS
     "${SKYDOT_ANIMATION_HEADER}")
 
 # The sources that do not touch Godot: the Papyrus VM and its saves, AI
-# packages, actor plans and virtual paths. A static library, so the unit tests
-# (tests/unit) link the code the extension runs without godot-cpp. Nothing in
-# it may include a godot-cpp header: that would stop the tests building.
-add_library(skydot_core STATIC
+# packages, actor plans and virtual paths. Nothing in them may include a
+# godot-cpp header: that would stop the unit tests building.
+set(SKYDOT_CORE_SOURCES
     src/assets/vpath.cpp
     src/assets/vpath.hpp
     src/vm/save.cpp
@@ -46,13 +45,21 @@ add_library(skydot_core STATIC
     src/world/actors.hpp
     src/world/packages.cpp
     src/world/packages.hpp)
-add_dependencies(skydot_core skydot_flatbuffers)
-target_include_directories(skydot_core PUBLIC src "${SKYDOT_FB_DIR}")
-target_include_directories(skydot_core SYSTEM PUBLIC
-    "${CMAKE_SOURCE_DIR}/extern/flatbuffers/include")
-target_link_libraries(skydot_core PRIVATE skydot::warnings)
-# Compiled like the extension: the flags godot-cpp passes on (-fno-gnu-unique
-# for hot reload, the MSVC exception setting), but not its include path.
+
+# Both copies read the same headers and need flatc's output first.
+function(skydot_core_library name)
+    add_library(${name} STATIC ${SKYDOT_CORE_SOURCES})
+    add_dependencies(${name} skydot_flatbuffers)
+    target_include_directories(${name} PUBLIC src "${SKYDOT_FB_DIR}")
+    target_include_directories(${name} SYSTEM PUBLIC
+        "${CMAKE_SOURCE_DIR}/extern/flatbuffers/include")
+    target_link_libraries(${name} PRIVATE skydot::warnings)
+endfunction()
+
+# skydot_core goes into the extension, so it is compiled like it: the flags
+# godot-cpp passes on (-fno-gnu-unique for hot reload; _HAS_EXCEPTIONS=0 on
+# MSVC), but not its include path.
+skydot_core_library(skydot_core)
 target_compile_options(skydot_core PRIVATE
     "$<TARGET_PROPERTY:godot-cpp,INTERFACE_COMPILE_OPTIONS>")
 target_compile_definitions(skydot_core PRIVATE
@@ -61,6 +68,17 @@ set_target_properties(skydot_core PROPERTIES
     CXX_VISIBILITY_PRESET hidden
     VISIBILITY_INLINES_HIDDEN ON
     POSITION_INDEPENDENT_CODE ON)
+
+# The unit tests (tests/unit) link their own copy of the same sources, built
+# like the tests: without godot-cpp's flags. On MSVC those turn exceptions off
+# (_HAS_EXCEPTIONS=0; GCC and clang keep -fno-exceptions to godot-cpp itself),
+# but Catch2 and the tests need them on, and one binary must not mix the two:
+# the STL's inline functions differ with the setting, so the linker would keep
+# one of two incompatible definitions. Compiling six files twice costs less
+# than that.
+if(SKYDOT_BUILD_TESTS)
+    skydot_core_library(skydot_core_testable)
+endif()
 
 add_library(skydot SHARED)
 
