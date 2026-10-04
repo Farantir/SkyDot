@@ -134,11 +134,19 @@ public:
     }
 
 private:
+    /// The node's steps, or nothing if its conditions fail.
     std::optional<std::vector<Step>> flatten(std::size_t index) {
-        const Node& node = nodes_[index];
-        if (!conditions_pass(node.branch->conditions(), host_, actor_)) {
+        if (!conditions_pass(nodes_[index].branch->conditions(), host_, actor_)) {
             return std::nullopt;
         }
+        return expand(index);
+    }
+
+    /// The steps of a node whose conditions have passed. A Random node asks
+    /// its children's to find the open ones, and the picked one must not be
+    /// asked again: GetRandomPercent can answer differently the second time.
+    std::vector<Step> expand(std::size_t index) {
+        const Node& node = nodes_[index];
         const std::string_view type = sv(node.branch->type());
         std::vector<Step> out;
         if (type == "Procedure" || node.children.empty()) {
@@ -150,7 +158,7 @@ private:
         if (type == "Stacked") {
             for (const auto child : node.children) {
                 if (auto steps = flatten(child)) {
-                    return steps;
+                    return std::move(*steps);
                 }
             }
             return out;
@@ -167,7 +175,7 @@ private:
             }
             const auto pick = std::min(open.size() - 1,
                                        static_cast<std::size_t>(dice_() * static_cast<double>(open.size())));
-            return flatten(open[pick]).value_or(out);
+            return expand(open[pick]);
         }
         if (type == "Simultaneous") {
             std::vector<Step> all;

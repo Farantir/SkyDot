@@ -851,13 +851,10 @@ TEST_CASE("a sequence and a stacked node ask each branch's conditions once", "[a
     CHECK(in_stack.asked == 1);
 }
 
-// BUG: Planner::flatten for a Random node asks each child's conditions to
-// find the open ones, then flatten() asks the picked child's again. A
-// condition that answers differently (GetRandomPercent, which the engine
-// answers with the dice) can pass the first time and fail the second, and the
-// node gives no steps although a child was open. docs/ai.md and the header:
-// "Branch conditions are evaluated then, not again" and "once".
-TEST_CASE("a random node asks each child's conditions once", "[ai][plan][!shouldfail]") {
+// A Random node asks each child's conditions to find the open ones; the picked
+// child is then expanded without asking again, as docs/ai.md says, since a
+// condition like GetRandomPercent can answer differently the second time.
+TEST_CASE("a random node asks each child's conditions once", "[ai][plan]") {
     FlakyHost host;
     const auto steps = plan_with(host, random_of({procedure("Travel", {}, {condition(k_true, eq, 1.0F)})}));
     CHECK(names(steps) == Names{"Travel"});
