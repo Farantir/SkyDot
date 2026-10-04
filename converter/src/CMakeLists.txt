@@ -82,6 +82,7 @@ add_library(bethconv_core STATIC
     pack/world.cpp
     pack/world/context.cpp
     pack/world/fb_write.cpp
+    pack/world/places.cpp
     pack/world_file.cpp
     script/pex.cpp
     script/pex_script.cpp
