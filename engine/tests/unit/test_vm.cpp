@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 using namespace skydot::testing;
@@ -116,13 +117,24 @@ TEST_CASE("division by zero is an error and gives 0; the script goes on", "[vm][
 
 TEST_CASE("comparisons: numbers, strings without case, none and objects", "[vm][opcodes]") {
     Rig rig;
+    // eq_ii, lt_ii ... for Int and Int, Float and Float, Int and Float, String
+    // and String, and objects.
+    struct Operands {
+        const char* suffix;
+        const char* type_a;
+        const char* type_b;
+    };
+    const std::vector<Operands> operands{{"ii", "Int", "Int"},
+                                         {"ff", "Float", "Float"},
+                                         {"if", "Int", "Float"},
+                                         {"ss", "String", "String"},
+                                         {"oo", "ObjectReference", "ObjectReference"}};
+    const std::vector<std::pair<std::string, Op>> comparisons{
+        {"eq", Op::cmp_eq}, {"lt", Op::cmp_lt}, {"le", Op::cmp_le}, {"gt", Op::cmp_gt}, {"ge", Op::cmp_ge}};
     std::vector<FunctionSpec> functions;
-    for (const auto& [suffix, type_a, type_b] : {std::tuple{"ii", "Int", "Int"}, {"ff", "Float", "Float"},
-                                                  {"if", "Int", "Float"}, {"ss", "String", "String"},
-                                                  {"oo", "ObjectReference", "ObjectReference"}}) {
-        for (const auto& [name, op] : {std::pair{"eq", Op::cmp_eq}, {"lt", Op::cmp_lt}, {"le", Op::cmp_le},
-                                       {"gt", Op::cmp_gt}, {"ge", Op::cmp_ge}}) {
-            functions.push_back(binary(std::string(name) + "_" + suffix, op, type_a, type_b, "Bool"));
+    for (const auto& o : operands) {
+        for (const auto& [name, op] : comparisons) {
+            functions.push_back(binary(name + "_" + o.suffix, op, o.type_a, o.type_b, "Bool"));
         }
     }
     rig.add(script("Compare", functions));

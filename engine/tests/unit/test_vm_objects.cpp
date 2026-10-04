@@ -467,6 +467,14 @@ TEST_CASE("a class the pack lacks or cannot read is refused once, with a reason"
     // walk instead of looping.
     CHECK(rig.vm.load_class("orphan") == nullptr);
     CHECK(rig.vm.load_class("loop") == nullptr);
+    ScriptSpec ping = script("Ping", {});
+    ping.parent = "Pong";
+    ScriptSpec pong = script("Pong", {});
+    pong.parent = "Ping";
+    rig.add(ping);
+    rig.add(pong);
+    CHECK(rig.vm.load_class("ping") == nullptr);
+    CHECK(rig.vm.load_class("pong") == nullptr);
 }
 
 // ---- script assets ----------------------------------------------------------
@@ -550,6 +558,21 @@ TEST_CASE("a script asset that is not one, or is of another version, is refused"
     const auto why = refusal(other);
     CHECK_THAT(why, ContainsSubstring("2"));
     CHECK_THAT(why, ContainsSubstring("reads 1"));
+}
+
+// BUG: read_function checks the string index of identifier and string
+// arguments only, but a failing callstatic reads strings_[args[a].data()] for
+// its class and function whatever type the argument has (vm.cpp, "no global
+// function"). A script asset that names either by a literal is loaded, and
+// running it indexes the string table with the literal: out of bounds
+// (script_class.hpp promises that running a class never does). Real PEX never
+// does this, but packs are untrusted files. Refusing it when the class loads
+// is the check the header describes; guarding the message would do as well,
+// and this test would then change.
+TEST_CASE("a call that names its class or function by a literal is refused", "[vm][script][!shouldfail]") {
+    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {integer(1000), ident("Run"), ident("r")})).empty());
+    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {ident("Util"), integer(1000), ident("r")})).empty());
+    CHECK_FALSE(refusal(with_instruction(Op::callstatic, {ident("Util"), floating(1.0F), ident("r")})).empty());
 }
 
 TEST_CASE("loading checks what the interpreter will follow", "[vm][script]") {
