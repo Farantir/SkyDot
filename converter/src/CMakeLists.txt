@@ -80,6 +80,7 @@ add_library(bethconv_core STATIC
     pack/asset_conversion.cpp
     pack/convert.cpp
     pack/world.cpp
+    pack/world/bases.cpp
     pack/world/context.cpp
     pack/world/fb_write.cpp
     pack/world/places.cpp
