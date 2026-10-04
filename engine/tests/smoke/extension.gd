@@ -55,6 +55,19 @@ func _check_path_arithmetic() -> void:
     expect(SkydotPack.model_vpath("meshes\\Clutter\\Apple01.nif") == "meshes/clutter/apple01.nif",
            "a MODL field that already says meshes/ is left alone")
     expect(SkydotPack.model_vpath("") == "", "an empty MODL is empty")
+    # The converter's rules (converter/src/archive/vpath.cpp), byte for byte.
+    expect(SkydotPack.model_vpath("Meshes\\Ä\\Pot.nif") == "meshes/Ä/pot.nif",
+           "letters above ASCII keep their case, ASCII ones do not")
+    expect(SkydotPack.normalize_vpath("\\.\\Meshes//.//Clutter\\\\Apple01.NIF\\") == "meshes/clutter/apple01.nif",
+           "normalize: duplicate separators, ./ segments, a leading and a trailing separator")
+    expect(SkydotPack.normalize_vpath("meshes/../a/./b/.") == "meshes/../a/b",
+           "normalize: .. is kept, a trailing . goes")
+    expect(SkydotPack.normalize_vpath("meshes/.hidden/..x/a.b") == "meshes/.hidden/..x/a.b",
+           "normalize: dots inside a name stay")
+    expect(SkydotPack.normalize_vpath("İSTANBUL\\Iı.nif") == "İstanbul/iı.nif",
+           "normalize: Turkish dotless i and dotted capital I are not Unicode-lowered")
+    expect(SkydotPack.normalize_vpath("") == "" and SkydotPack.normalize_vpath("/\\./") == "",
+           "normalize: nothing in, nothing out")
 
 ## Billboard nodes, marked the way the importer keeps glTF node extras.
 func _check_billboards() -> void:

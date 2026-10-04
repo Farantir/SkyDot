@@ -2,10 +2,10 @@
 #include "world/locomotion.hpp"
 
 #include "animation_generated.h"
+#include "assets/vpath.hpp"
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <cmath>
 #include <string_view>
 #include <unordered_map>
@@ -30,20 +30,13 @@ const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
     return root->format_version() == k_animation_format ? root : nullptr;
 }
 
-std::string lower(std::string_view s) {
-    std::string out(s);
-    std::transform(out.begin(), out.end(), out.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return out;
-}
-
 bool contains(const std::string& s, std::string_view what) {
     return s.find(what) != std::string::npos;
 }
 
 /// A clip name without a trailing ".hkx" (some idles are named after files).
 std::string bare(std::string name) {
-    name = lower(name);
+    name = ascii_lower(name);
     if (name.ends_with(".hkx")) {
         name.resize(name.size() - 4);
     }
@@ -52,7 +45,7 @@ std::string bare(std::string name) {
 
 /// "walk forward" (or run) with no side, pace or stance.
 bool is_gait(const std::string& name, std::string_view gait) {
-    const std::string n = lower(name);
+    const std::string n = ascii_lower(name);
     const std::string g(gait);
     if (!contains(n, g + "forward") && !contains(n, g + "f") && !contains(n, g + "_f")) {
         return false;
@@ -86,7 +79,7 @@ struct Motion {
 } // namespace
 
 std::string normalize_path(const std::string& path) {
-    std::string s = lower(path);
+    std::string s = ascii_lower(path);
     std::replace(s.begin(), s.end(), '\\', '/');
     std::vector<std::string> parts;
     std::size_t start = 0;
@@ -150,7 +143,7 @@ Locomotion find_locomotion(const std::string& behaviour,
         single_bytes = bytes("meshes/animationdatasinglefile.txt");
         if (const auto* single = read_asset(single_bytes); single != nullptr && single->projects() != nullptr) {
             for (const auto* p : *single->projects()) {
-                if (p->name() != nullptr && lower(p->name()->str()) == project) {
+                if (p->name() != nullptr && ascii_lower(p->name()->str()) == project) {
                     files = p->files();
                     clips = p->clips();
                     motion_list = p->motions();
@@ -178,7 +171,7 @@ Locomotion find_locomotion(const std::string& behaviour,
             }
             for (const auto* g : *graph->clip_generators()) {
                 if (g->name() != nullptr && g->animation() != nullptr) {
-                    generators.emplace(lower(g->name()->str()), normalize_path(folder + g->animation()->str()));
+                    generators.emplace(ascii_lower(g->name()->str()), normalize_path(folder + g->animation()->str()));
                 }
             }
         }
@@ -202,7 +195,7 @@ Locomotion find_locomotion(const std::string& behaviour,
         GaitClip g;
         g.name = c.name() != nullptr ? c.name()->str() : std::string();
         g.playback = c.speed() > 0.0F ? c.speed() : 1.0F;
-        if (const auto it = generators.find(lower(g.name)); it != generators.end()) {
+        if (const auto it = generators.find(ascii_lower(g.name)); it != generators.end()) {
             g.file = it->second;
         }
         if (const auto it = motions.find(c.animation()); it != motions.end() && it->second.duration > 0.0F) {

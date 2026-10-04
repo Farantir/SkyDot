@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/ai.hpp"
 
+#include "assets/vpath.hpp"
 #include "world/actor.hpp"
 #include "world/actors.hpp"
 #include "world/fb_search.hpp"
@@ -13,7 +14,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cctype>
 #include <deque>
 #include <numbers>
 #include <set>
@@ -130,9 +130,7 @@ bool contains_any(const flatbuffers::String* text, std::initializer_list<std::st
     if (text == nullptr) {
         return false;
     }
-    std::string lower(text->string_view());
-    std::transform(lower.begin(), lower.end(), lower.begin(),
-                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    const std::string lower = ascii_lower(text->string_view());
     return std::any_of(words.begin(), words.end(),
                        [&](std::string_view w) { return lower.find(w) != std::string::npos; });
 }

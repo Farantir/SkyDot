@@ -50,9 +50,6 @@ public:
     AssetCache(const AssetCache&) = delete;
     AssetCache& operator=(const AssetCache&) = delete;
 
-    /// Lowercase, forward slashes, no leading slash.
-    static std::string normalize(std::string_view vpath);
-
     /// Queue `vpath` for the workers if it is not cached or queued.
     Status request(const std::string& vpath);
 

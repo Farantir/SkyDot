@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/asset_cache.hpp"
 
+#include "assets/vpath.hpp"
 #include "world/actor_animation.hpp"
 #include "world/collision.hpp"
 
@@ -17,7 +18,6 @@
 #include <godot_cpp/variant/typed_array.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cstring>
 
 namespace skydot {
@@ -114,23 +114,13 @@ AssetCache::~AssetCache() {
     }
 }
 
-std::string AssetCache::normalize(std::string_view vpath) {
-    std::string out;
-    out.reserve(vpath.size());
-    for (const char c : vpath) {
-        out.push_back(c == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-    }
-    const auto first = out.find_first_not_of('/');
-    return first == std::string::npos ? std::string() : out.substr(first);
-}
-
 bool AssetCache::has(const std::string& vpath) const {
-    return store_->find(normalize(vpath)) != nullptr;
+    return store_->find(normalize_vpath(vpath)) != nullptr;
 }
 
 godot::PackedByteArray AssetCache::bytes(const std::string& vpath) const {
     godot::PackedByteArray out;
-    if (const auto data = store_->read(normalize(vpath))) {
+    if (const auto data = store_->read(normalize_vpath(vpath))) {
         out.resize(static_cast<std::int64_t>(data->size()));
         std::copy(data->begin(), data->end(), out.ptrw());
     }
@@ -167,7 +157,7 @@ void AssetCache::start_workers() {
 }
 
 AssetCache::Status AssetCache::request(const std::string& vpath) {
-    const std::string key = normalize(vpath);
+    const std::string key = normalize_vpath(vpath);
     if (!threaded_) {
         return get(key).is_valid() ? Status::ready : Status::missing;
     }
@@ -190,7 +180,7 @@ AssetCache::Status AssetCache::request(const std::string& vpath) {
 }
 
 Ref<godot::Resource> AssetCache::get(const std::string& vpath) {
-    const std::string key = normalize(vpath);
+    const std::string key = normalize_vpath(vpath);
     // Never wait for a worker: a worker creating GPU resources can itself wait
     // for the main thread, so the caller loads the asset too and the first
     // result is kept.
@@ -220,7 +210,7 @@ Ref<godot::Resource> AssetCache::get(const std::string& vpath) {
 
 Ref<godot::Resource> AssetCache::cached(const std::string& vpath) const {
     std::lock_guard lock(mutex_);
-    const auto it = ready_.find(normalize(vpath));
+    const auto it = ready_.find(normalize_vpath(vpath));
     return it != ready_.end() ? it->second : Ref<godot::Resource>();
 }
 
@@ -255,7 +245,7 @@ void AssetCache::work() {
 }
 
 std::string AssetCache::clip_key(std::string_view clip, std::string_view skeleton) {
-    return std::string(k_clip_prefix) + normalize(clip) + "|" + normalize(skeleton);
+    return std::string(k_clip_prefix) + normalize_vpath(clip) + "|" + normalize_vpath(skeleton);
 }
 
 Ref<godot::Animation> AssetCache::clip(const std::string& clip, const std::string& skeleton) {

@@ -92,8 +92,10 @@ public:
     godot::String get_hash(const godot::String& vpath) const;
     godot::String get_source(const godot::String& vpath) const;
 
-    /// Lowercase, forward slashes, no leading slash (vpath.idx spelling), for
-    /// paths from record fields with backslashes and arbitrary case.
+    /// The vpath.idx spelling (assets/vpath.hpp): ASCII lowercase, forward
+    /// slashes, no leading, repeated or trailing ones, for paths from record
+    /// fields with backslashes and arbitrary case. Letters above ASCII keep
+    /// their case, as in the index.
     static godot::String normalize_vpath(const godot::String& path);
 
     /// Virtual path for a MODL value. Model paths are relative to

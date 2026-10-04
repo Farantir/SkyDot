@@ -73,6 +73,10 @@ func _run(pack_dir: String) -> void:
     expect(pack.get_bytes("Meshes\\TestPack\\Cube_SE.nif") == pack.get_bytes("meshes/testpack/cube_se.nif"),
            "lookup normalizes")
     expect(pack.has(SkydotPack.model_vpath("testpack\\cube_se.nif")), "a MODL field resolves through model_vpath")
+    expect(pack.get_bytes("\\Meshes\\.\\TestPack//Cube_SE.nif\\") == pack.get_bytes("meshes/testpack/cube_se.nif"),
+           "lookup drops a leading and a trailing separator, repeated ones and ./ segments")
+    expect(SkydotPack.model_vpath("Meshes\\Ä\\Pot.nif") == "meshes/Ä/pot.nif",
+           "a MODL field with a letter above ASCII keeps its case")
 
     # Missing paths give nothing, not a crash or a guess.
     expect(not pack.has("meshes/testpack/nope.nif") and pack.get_bytes("meshes/testpack/nope.nif").is_empty(),

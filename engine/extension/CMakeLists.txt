@@ -34,6 +34,8 @@ target_sources(skydot PRIVATE
     src/assets/pack.hpp
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
+    src/assets/vpath.cpp
+    src/assets/vpath.hpp
     src/world/actor.cpp
     src/world/actor.hpp
     src/world/actor_animation.cpp

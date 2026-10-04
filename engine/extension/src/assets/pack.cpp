@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/pack.hpp"
 
+#include "assets/vpath.hpp"
+
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/file_access.hpp>
@@ -434,11 +436,7 @@ String SkydotPack::get_source(const String& vpath) const {
 // ---- path arithmetic ------------------------------------------------------
 
 String SkydotPack::normalize_vpath(const String& path) {
-    String out = path.replace("\\", "/").to_lower();
-    while (out.begins_with("/")) {
-        out = out.substr(1);
-    }
-    return out;
+    return to_godot(skydot::normalize_vpath(to_std(path)));
 }
 
 String SkydotPack::model_vpath(const String& modl) {

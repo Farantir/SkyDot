@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/script_class.hpp"
 
-#include <algorithm>
+#include "assets/vpath.hpp"
 
 namespace skydot::vm {
 
@@ -21,13 +21,7 @@ constexpr std::uint8_t k_bool = 5;
 
 } // namespace
 
-std::string to_lower(std::string_view text) {
-    std::string out(text);
-    std::ranges::transform(out, out.begin(), [](unsigned char c) {
-        return static_cast<char>((c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c);
-    });
-    return out;
-}
+std::string to_lower(std::string_view text) { return ascii_lower(text); }
 
 std::unique_ptr<ScriptClass> ScriptClass::load(std::vector<std::uint8_t> bytes, std::string& error) {
     auto out = std::unique_ptr<ScriptClass>(new ScriptClass());
