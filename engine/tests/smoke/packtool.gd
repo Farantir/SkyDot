@@ -5,7 +5,9 @@
 # checkout): a real `convert --json` of an empty Data folder through
 # BethconvCli's pipes, `target`/`info`/`cell` queries on the result, and the
 # whole tool built headless with its settings in the scratch folder. No game
-# data is needed: an empty folder converts to an empty pack.
+# data is needed: an empty folder converts to an empty pack. Last, a shell that
+# closes its pipes and exits a second later, to check the main loop keeps
+# running while BethconvCli waits for the exit code (not on Windows).
 extends SceneTree
 
 var failures := 0
@@ -17,6 +19,11 @@ var answers := {}
 var tool: Node = null
 var step := 0
 var deadline := 0
+var lingering := BethconvCli.new()
+var lingering_code := -1
+var lingering_done := false
+var last_frame := 0
+var longest_frame := 0
 
 
 func _init() -> void:
@@ -133,12 +140,43 @@ func _process(_delta: float) -> bool:
                     "the pack is read at start-up: %s" % row.get_tooltip_text(1))
                 tool.queue_free()
                 cli.shutdown()
+                if not _start_lingering():
+                    print("smoke_packtool: failures=", failures)
+                    quit(failures)
+                    return true
+                last_frame = now
+                deadline = now + 15000
+                step = 5
+            elif now > deadline:
+                return _give_up("the tool's detection")
+        5:
+            longest_frame = maxi(longest_frame, now - last_frame)
+            last_frame = now
+            if lingering_done:
+                expect(lingering_code == 7, "the exit code arrives: %d" % lingering_code)
+                # Sleeping in the wait would make one frame last the whole second.
+                expect(longest_frame < 500, "the main loop runs while the exit is awaited: " \
+                    + "longest frame %d ms" % longest_frame)
                 print("smoke_packtool: failures=", failures)
                 quit(failures)
                 return true
             elif now > deadline:
-                return _give_up("the tool's detection")
+                return _give_up("the exit code")
     return false
+
+
+## `/bin/sh` closes its pipes at once and exits with 7 after a second, so
+## BethconvCli's readers end long before the process does.
+func _start_lingering() -> bool:
+    if OS.get_name() == "Windows":
+        return false
+    lingering.path = "/bin/sh"
+    lingering.finished.connect(func(code: int) -> void:
+        lingering_code = code
+        lingering_done = true)
+    var started := lingering.start(PackedStringArray(["-c", "exec >&- 2>&-; sleep 1; exit 7"]))
+    expect(started, "the lingering process starts")
+    return started
 
 
 func _pack_row(path: String) -> TreeItem:

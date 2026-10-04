@@ -19,6 +19,11 @@ signal event(data: Dictionary)
 signal log_line(text: String)
 signal finished(exit_code: int)
 
+## How long `finished` waits for a process whose pipes have closed to exit, and
+## how often it looks.
+const EXIT_WAIT_MSEC := 5000
+const EXIT_POLL_SECONDS := 0.02
+
 ## The binary in use; empty when none was found.
 var path := ""
 
@@ -154,13 +159,22 @@ func _reader_done() -> void:
 	for thread in _readers:
 		thread.wait_to_finish()
 	_readers.clear()
-	var pid := _pid
+	# Both pipes closed: the process is exiting. Its code is a moment away.
+	_await_exit(_pid, Time.get_ticks_msec() + EXIT_WAIT_MSEC)
+
+
+## Poll with a timer instead of sleeping: this runs on the main thread, and the
+## window must keep drawing until the process is gone (or `deadline` passes,
+## then the code is whatever the OS reports). `_pid` stays set meanwhile, so
+## the job still counts as running and cannot be started twice.
+func _await_exit(pid: int, deadline: int) -> void:
+	if _pid != pid:  # shutdown() gave up on this job
+		return
+	if OS.is_process_running(pid) and Time.get_ticks_msec() < deadline:
+		var tree: SceneTree = Engine.get_main_loop()
+		tree.create_timer(EXIT_POLL_SECONDS).timeout.connect(_await_exit.bind(pid, deadline))
+		return
 	_pid = -1
-	# Both pipes closed: the process is exiting. Wait briefly for its code.
-	var waited := 0
-	while OS.is_process_running(pid) and waited < 5000:
-		OS.delay_msec(10)
-		waited += 10
 	finished.emit(OS.get_process_exit_code(pid))
 
 
@@ -172,6 +186,7 @@ func cancel() -> void:
 ## Join the threads before the object goes away.
 func shutdown() -> void:
 	cancel()
+	_pid = -1
 	for thread in _readers + _queries:
 		if thread.is_started():
 			thread.wait_to_finish()
