@@ -77,6 +77,7 @@ add_library(bethconv_core STATIC
     pack/vpath_index.cpp
     pack/pack_view.cpp
     pack/inputs.cpp
+    pack/asset_conversion.cpp
     pack/convert.cpp
     pack/world.cpp
     script/pex.cpp

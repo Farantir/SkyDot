@@ -443,7 +443,8 @@ convert(set, order, options)
  │   ├─ bytes = set.read(vpath)
  │   ├─ slot = writer.reserve(vpath, kind, bytes, source)   <- content hash
  │   ├─ if slot.already_present: writer.reuse(slot); continue  (dedupe)
- │   └─ convert by kind, writer.store(slot, output) | writer.fail(...) | writer.warn(...)
+ │   ├─ converted = convert_<kind>(bytes, vpath, options)   (pack/asset_conversion.cpp)
+ │   └─ writer.warn(...) per warning; then writer.fail(...) or writer.store(slot, ...)
  └─ writer.finish(manifest)  -> assets.idx, vpath.idx, manifest.json, report.json
 ```
 

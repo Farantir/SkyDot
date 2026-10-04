@@ -38,6 +38,7 @@ add_executable(bethconv_unit_tests
     test_pack_writer.cpp
     test_pack_view.cpp
     test_convert.cpp
+    test_convert_assets.cpp
     test_deflate.cpp
     test_world.cpp
 )

@@ -1,17 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/convert.hpp"
 
+#include "asset_conversion.hpp"
+
 #include "bethconv/animation/animation_data.hpp"
-#include "bethconv/animation/hkx.hpp"
 #include "bethconv/io/mapped_file.hpp"
-#include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/inputs.hpp"
-#include "bethconv/pack/lod_asset.hpp"
-#include "bethconv/pack/script_asset.hpp"
-#include "bethconv/script/pex.hpp"
-#include "bethconv/texture/dds.hpp"
-#include "bethconv/texture/mip_drop.hpp"
-#include "bethconv/texture/mip_tail.hpp"
 
 #include <algorithm>
 #include <array>
@@ -77,14 +71,6 @@ namespace {
         return AssetKind::animation;
     }
     return std::nullopt;
-}
-
-[[nodiscard]] PackFailure failure_from(std::string_view vpath, std::string_view stage,
-                                       const io::ParseError& error) {
-    return PackFailure{.vpath = std::string(vpath),
-                       .stage = std::string(stage),
-                       .kind = std::string(io::to_string(error.kind)),
-                       .detail = error.to_string()};
 }
 
 /// Hash a file on disk for the manifest, without holding it.
@@ -280,176 +266,39 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
             continue;
         }
 
+        AssetConversion converted;
         switch (*kind) {
-        case AssetKind::mesh: {
-            auto model = mesh::read_nif(*bytes, vpath, options.mesh_read);
-            if (!model) {
-                writer->fail(failure_from(vpath, "mesh", model.error()));
-                break;
-            }
-            for (const auto& warning : model->warnings) {
-                writer->warn(PackWarning{.vpath = vpath, .detail = warning});
-            }
-            auto glb = mesh::write_glb(*model, options.mesh_write);
-            if (!glb) {
-                writer->fail(failure_from(vpath, "mesh", glb.error()));
-                break;
-            }
-            if (auto stored = writer->store(slot, *glb); !stored) {
-                writer->fail(failure_from(vpath, "write", stored.error()));
-            }
+        case AssetKind::mesh:
+            converted = convert_mesh(*bytes, vpath, options);
+            break;
+        case AssetKind::texture:
+            converted = convert_texture(*bytes, vpath, options);
+            break;
+        case AssetKind::script:
+            converted = convert_script(*bytes, vpath);
+            break;
+        case AssetKind::lod:
+            converted = convert_lod(*bytes, vpath, extension);
+            break;
+        case AssetKind::animation:
+            converted = convert_animation(*bytes, vpath);
             break;
         }
-        case AssetKind::texture: {
-            auto info = texture::parse_dds(*bytes, vpath);
-            if (!info) {
-                writer->fail(failure_from(vpath, "texture", info.error()));
-                break;
-            }
-            std::span<const std::byte> payload = *bytes;
-            texture::SizeLimit limit;
-            if (options.max_texture_size != 0) {
-                auto limited = texture::limit_size(*bytes, *info, options.max_texture_size, vpath);
-                if (!limited) {
-                    writer->fail(failure_from(vpath, "texture", limited.error()));
-                    break;
-                }
-                limit = std::move(*limited);
-                if (limit.outcome == texture::DropOutcome::shrunk) {
-                    // The tail fix below works on the smaller file.
-                    auto smaller = texture::parse_dds(limit.data, vpath);
-                    if (!smaller) {
-                        writer->fail(failure_from(vpath, "texture", smaller.error()));
-                        break;
-                    }
-                    info = std::move(smaller);
-                    payload = limit.data;
-                    ++result.textures_shrunk;
-                    result.texture_bytes_saved += limit.saved_bytes;
-                } else if (limit.outcome != texture::DropOutcome::fits) {
-                    ++result.textures_kept_large;
-                    writer->warn(PackWarning{
-                        .vpath = vpath,
-                        .detail = "kept at " + std::to_string(info->width) + "x" +
-                                  std::to_string(info->height) + ", over the " +
-                                  std::to_string(options.max_texture_size) + " px limit (" +
-                                  std::string(texture::to_string(limit.outcome)) + ")"});
-                }
-            }
-            texture::Encoded encoded;
-            if (options.texture_encoding != texture::Encoding::keep &&
-                !info->layout.block_compressed) {
-                // Normal maps by Skyrim's naming: tangent (_n) and model space (_msn).
-                const bool normal_map = vpath.ends_with("_n.dds") || vpath.ends_with("_msn.dds");
-                auto enc = texture::encode_uncompressed(payload, *info, options.texture_encoding,
-                                                        normal_map, vpath);
-                if (!enc) {
-                    writer->fail(failure_from(vpath, "texture", enc.error()));
-                    break;
-                }
-                encoded = std::move(*enc);
-                if (encoded.outcome == texture::EncodeOutcome::encoded) {
-                    auto compressed = texture::parse_dds(encoded.data, vpath);
-                    if (!compressed) {
-                        writer->fail(failure_from(vpath, "texture", compressed.error()));
-                        break;
-                    }
-                    result.texture_bytes_saved +=
-                        payload.size() > encoded.data.size() ? payload.size() - encoded.data.size() : 0;
-                    info = std::move(compressed);
-                    payload = encoded.data;
-                    ++result.textures_encoded;
-                } else if (encoded.outcome == texture::EncodeOutcome::unsupported) {
-                    ++result.textures_not_encoded;
-                    writer->warn(PackWarning{.vpath = vpath,
-                                             .detail = "left uncompressed: " + encoded.reason});
-                }
-            }
-            texture::TailFix fix;
-            if (options.fix_mip_tail) {
-                auto completed = texture::complete_mip_tail(payload, *info, vpath);
-                if (!completed) {
-                    writer->fail(failure_from(vpath, "texture", completed.error()));
-                    break;
-                }
-                fix = std::move(*completed);
-                if (fix.outcome == texture::TailOutcome::completed) {
-                    payload = fix.data;
-                }
-                if (fix.dropped_bytes != 0) {
-                    writer->warn(PackWarning{
-                        .vpath = vpath,
-                        .detail = std::to_string(fix.dropped_bytes) +
-                                  " bytes past the declared surfaces were dropped"});
-                }
-            }
-            if (auto stored = writer->store(slot, payload); !stored) {
-                writer->fail(failure_from(vpath, "write", stored.error()));
-            }
-            break;
+
+        for (auto& warning : converted.warnings) {
+            writer->warn(std::move(warning));
         }
-        case AssetKind::script: {
-            auto info = script::parse_pex(*bytes, vpath);
-            if (!info) {
-                writer->fail(failure_from(vpath, "script", info.error()));
-                break;
-            }
-            if (!info->convertible()) {
-                // Valid PEX for another game: reported, not packed.
-                writer->fail(PackFailure{
-                    .vpath = vpath,
-                    .stage = "script",
-                    .kind = std::string(io::to_string(io::ErrorKind::unsupported)),
-                    .detail = "compiled for " + std::string(to_string(info->game)) +
-                              " (gameID " + std::to_string(info->game_id) + "), not skyrim"});
-                break;
-            }
-            auto decoded = script::read_pex_script(*bytes, vpath);
-            if (!decoded) {
-                writer->fail(failure_from(vpath, "script", decoded.error()));
-                break;
-            }
-            if (auto stored = writer->store(slot, write_script_asset(*decoded)); !stored) {
-                writer->fail(failure_from(vpath, "write", stored.error()));
-            }
-            break;
+        result.textures_shrunk += converted.textures.shrunk;
+        result.textures_kept_large += converted.textures.kept_large;
+        result.texture_bytes_saved += converted.textures.bytes_saved;
+        result.textures_encoded += converted.textures.encoded;
+        result.textures_not_encoded += converted.textures.not_encoded;
+        if (converted.failure) {
+            writer->fail(std::move(*converted.failure));
+            continue;
         }
-        case AssetKind::lod: {
-            auto decoded = read_lod_source(*bytes, extension, vpath);
-            if (!decoded) {
-                writer->fail(failure_from(vpath, "lod", decoded.error()));
-                break;
-            }
-            if (decoded->trailing_bytes != 0) {
-                writer->warn(PackWarning{.vpath = vpath,
-                                         .detail = std::to_string(decoded->trailing_bytes) +
-                                                   " bytes after the declared tree blocks skipped"});
-            }
-            if (auto stored = writer->store(slot, write_lod_asset(*decoded)); !stored) {
-                writer->fail(failure_from(vpath, "write", stored.error()));
-            }
-            break;
-        }
-        case AssetKind::animation: {
-            if (animation::is_animation_data(vpath)) {
-                auto data = animation::read_animation_data(*bytes, vpath);
-                if (!data) {
-                    writer->fail(failure_from(vpath, "animation", data.error()));
-                } else if (auto stored = writer->store(slot, write_animation_asset(*data)); !stored) {
-                    writer->fail(failure_from(vpath, "write", stored.error()));
-                }
-                break;
-            }
-            auto decoded = animation::read_hkx(*bytes, vpath);
-            if (!decoded) {
-                writer->fail(failure_from(vpath, "animation", decoded.error()));
-                break;
-            }
-            if (auto stored = writer->store(slot, write_animation_asset(*decoded)); !stored) {
-                writer->fail(failure_from(vpath, "write", stored.error()));
-            }
-            break;
-        }
+        if (auto stored = writer->store(slot, converted.asset(*bytes)); !stored) {
+            writer->fail(failure_from(vpath, "write", stored.error()));
         }
     }
     report("assets", work.size(), work.size());
