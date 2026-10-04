@@ -6,9 +6,11 @@
 #include "bethconv/install/mount_plan.hpp"
 #include "bethconv/pack/inputs.hpp"
 
+#include <charconv>
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -55,6 +57,39 @@ bethconv::io::ParseResult<bethconv::record::LoadOrder> build_order(
         return std::unexpected(std::move(list).error());
     }
     return bethconv::record::LoadOrder::build(data_dir, *list);
+}
+
+std::optional<std::uint32_t> parse_u32(std::string_view text, int base) {
+    if (text.size() > 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X') &&
+        (base == 0 || base == 16)) {
+        text.remove_prefix(2);
+        base = 16;
+    } else if (base == 0) {
+        base = text.size() > 1 && text[0] == '0' ? 8 : 10;
+    }
+    std::uint32_t value = 0;
+    const char* const end = text.data() + text.size();
+    const auto [stop, error] = std::from_chars(text.data(), end, value, base);
+    if (error != std::errc{} || stop != end) {
+        return std::nullopt;
+    }
+    return value;
+}
+
+std::optional<std::vector<std::uint32_t>> parse_ids(const std::vector<std::string>& texts,
+                                                    const char* option) {
+    std::vector<std::uint32_t> ids;
+    ids.reserve(texts.size());
+    for (const auto& text : texts) {
+        const auto id = parse_u32(text);
+        if (!id) {
+            std::fprintf(stderr, "error: %s takes numbers (0x1A2B or decimal), got \"%s\"\n",
+                         option, text.c_str());
+            return std::nullopt;
+        }
+        ids.push_back(*id);
+    }
+    return ids;
 }
 
 std::vector<std::string> read_vpath_list(const std::filesystem::path& path, bool& ok) {

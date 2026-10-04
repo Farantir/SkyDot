@@ -292,7 +292,12 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
 
     std::optional<bethconv::pack::WorldCell> cell;
     if (which.starts_with("0x") || which.starts_with("0X")) {
-        cell = world->cell(static_cast<std::uint32_t>(std::stoul(which, nullptr, 16)));
+        const auto id = parse_u32(which, 16);
+        if (!id) {
+            std::fprintf(stderr, "error: '%s' is not a cell FormID\n", which.c_str());
+            return 2;
+        }
+        cell = world->cell(*id);
     } else {
         cell = world->cell_by_editor_id(which);
     }

@@ -152,6 +152,10 @@ int cmd_merge(const std::filesystem::path& data_dir, const std::filesystem::path
               const std::vector<std::filesystem::path>& sources, const std::string& language,
               const std::vector<std::string>& type_names, std::size_t sample,
               const std::vector<std::string>& lookups, bool no_strings, bool no_second_pass) {
+    const auto lookup_ids = parse_ids(lookups, "--find");
+    if (!lookup_ids) {
+        return 2;
+    }
     auto order = build_order(data_dir, list_file);
     if (!order) {
         std::fprintf(stderr, "error: %s\n", order.error().to_string().c_str());
@@ -201,8 +205,7 @@ int cmd_merge(const std::filesystem::path& data_dir, const std::filesystem::path
 
     std::printf("\n%s\nmerged in %.1fs\n", world.report().c_str(), merged_at);
 
-    for (const auto& lookup : lookups) {
-        const auto value = static_cast<std::uint32_t>(std::stoul(lookup, nullptr, 0));
+    for (const auto value : *lookup_ids) {
         const auto* found = world.find(bethconv::record::FormId{value});
         if (found == nullptr) {
             std::printf("\n%s: not in the merged world\n",

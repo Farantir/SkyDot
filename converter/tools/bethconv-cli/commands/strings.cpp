@@ -22,6 +22,10 @@ namespace {
 int cmd_strings(const std::vector<std::filesystem::path>& sources,
                 const std::vector<std::string>& plugins, const std::string& language,
                 std::size_t list_count, const std::vector<std::string>& lookups) {
+    const auto lookup_ids = parse_ids(lookups, "--id");
+    if (!lookup_ids) {
+        return 2;
+    }
     bethconv::archive::ArchiveSet set;
     (void)mount_all(set, sources);
 
@@ -62,9 +66,7 @@ int cmd_strings(const std::vector<std::filesystem::path>& sources,
             repaired += stats.repaired;
         }
 
-        for (const auto& lookup : lookups) {
-            // Accept hex (0x1A2B) and decimal; ids appear both ways.
-            const auto id = static_cast<std::uint32_t>(std::stoul(lookup, nullptr, 0));
+        for (const auto id : *lookup_ids) {
             bool found = false;
             for (const auto kind : bethconv::record::k_string_kinds) {
                 if (const auto* text = source.find(id, kind)) {

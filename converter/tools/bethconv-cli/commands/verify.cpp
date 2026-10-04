@@ -31,6 +31,11 @@ int cmd_verify(const std::filesystem::path& path, std::size_t cells,
                const std::vector<std::string>& lookups, bool deep, bool verbose) {
     using namespace bethconv;
 
+    const auto lookup_ids = parse_ids(lookups, "--find");
+    if (!lookup_ids) {
+        return 2;
+    }
+
     auto snapshot = pack::Snapshot::open(path);
     if (!snapshot) {
         std::fprintf(stderr, "error: %s\n", snapshot.error().to_string().c_str());
@@ -38,8 +43,8 @@ int cmd_verify(const std::filesystem::path& path, std::size_t cells,
     }
 
     // `--find`: what the written snapshot says about a form (cf. `merge --find`).
-    for (const auto& lookup : lookups) {
-        const auto id = record::FormId{static_cast<std::uint32_t>(std::stoul(lookup, nullptr, 0))};
+    for (const auto value : *lookup_ids) {
+        const auto id = record::FormId{value};
         const auto form = snapshot->find(id);
         if (!form) {
             std::printf("\n%s: not in this snapshot\n", id.to_string().c_str());
