@@ -9,6 +9,9 @@ add_executable(skydot_core_tests
     support/script_builder.hpp
     support/vm_rig.cpp
     support/vm_rig.hpp
+    support/world_builder.cpp
+    support/world_builder.hpp
+    test_packages.cpp
     test_vm.cpp
     test_vm_objects.cpp
     test_vm_save.cpp
