@@ -18,7 +18,7 @@ if(NOT SKYDOT_GODOT)
     message(WARNING
         "skydot: no Godot binary found (looked for godot4.7, godot4, godot; set "
         "SKYDOT_GODOT or \$GODOT). The smoke tests are not registered, and "
-        "`ctest` will report that no tests ran.")
+        "`ctest` runs the unit tests only.")
     return()
 endif()
 
