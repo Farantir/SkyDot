@@ -97,12 +97,9 @@
 # lights still, for comparison.
 extends Node3D
 
-var _camera: Camera3D
-var _player: SkydotPlayer  # the camera follows its eyes
-var _last_ground := Vector3.ZERO  # where the player last stood
-var _ground_check := 0  # frames until checking the player is not under the land
-var _yaw := 0.0
-var _pitch := 0.0
+var _rig: PlayerRig
+var _camera: Camera3D  # _rig's
+var _player: SkydotPlayer  # _rig's; the camera follows its eyes
 var _speed := 3.0
 var _shots: Array = []
 var _shot_path := ""
@@ -114,7 +111,6 @@ const CELL_UNITS := SkydotWorld.CELL_UNITS  # game units along a cell, as the co
 var _unit_scale := SkydotWorld.unit_scale()  # metres per game unit
 var _build_budget_usec := 8000  # per frame for streaming cells in
 const LOD_BUDGET_USEC := 3000
-const EYE_HEIGHT := 1.7
 const REACH := 2.6  # metres the camera can activate from
 var _settings: ViewerSettings
 var _world: SkydotWorld
@@ -257,20 +253,12 @@ func _ready() -> void:
 	_input = settings.interactive
 	_script_activations = settings.activate.duplicate()
 
-	_camera = Camera3D.new()
-	_camera.near = 0.05
-	# The scene is drawn in the game's gamma space; this grades it as the
-	# game's image space does and hands Godot linear colour (always on).
 	_image_space = SkydotImageSpace.new()
-	_camera.compositor = Compositor.new()
-	_camera.compositor.compositor_effects = [_image_space]
-	if settings.has_fov:  # vertical, degrees
-		_camera.fov = settings.fov
+	_rig = PlayerRig.new(settings, _image_space)
+	_rig.fell_through.connect(func() -> void: _debug.note("fell through the world: flying (V walks)"))
+	_camera = _rig.camera
+	_player = _rig.player
 	add_child(_camera)
-	_player = SkydotPlayer.new()
-	_player.name = "player"
-	_player.eye_height = EYE_HEIGHT
-	_player.fly = settings.fly
 	add_child(_player)
 	_debug = DebugOverlay.new()
 	_debug.setup(self, world, _papyrus, _ai, _camera, _player)
@@ -317,7 +305,7 @@ func _ready() -> void:
 		if not _enter_exterior(world_id, at, target):
 			return
 		if settings.has_look:
-			_apply_look(settings.look_yaw, settings.look_pitch)
+			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		_speed = 10.0
 		if settings.has_benchmark:
 			_benchmark = settings.benchmark
@@ -350,7 +338,7 @@ func _ready() -> void:
 	else:
 		_enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
 	if settings.has_look:
-		_apply_look(settings.look_yaw, settings.look_pitch)
+		_rig.apply_look(settings.look_yaw, settings.look_pitch)
 	if not settings.load_path.is_empty():
 		_load_game(settings.load_path)
 
@@ -361,7 +349,7 @@ func _ready() -> void:
 		else:
 			for i in 4:
 				_shots.append(i * PI / 2.0)
-			_apply_look(_shots[0], -0.15)
+			_rig.apply_look(_shots[0], -0.15)
 
 
 ## Remove the current cell or worldspace.
@@ -423,10 +411,10 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 	_camera.far = 500.0
 	var spawn = _interior_spawn(cell_id) if at == null and not _player.fly else null
 	if spawn != null:
-		var eye: Vector3 = spawn.origin + Vector3(0, EYE_HEIGHT, 0)
+		var eye: Vector3 = spawn.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
 		var forward: Vector3 = -spawn.basis.z
 		forward.y = 0.0
-		_place_camera(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
+		_rig.place_camera(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
 	elif at == null:
 		if not _player.fly:
 			_player.fly = true
@@ -434,11 +422,11 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 		var bounds := _mesh_bounds(root)
 		print("bounds: ", bounds)
 		var eye := bounds.get_center()
-		eye.y = bounds.position.y + min(EYE_HEIGHT, bounds.size.y * 0.5)
-		_place_camera(eye, null)
-		_apply_look(0.0, 0.0)
+		eye.y = bounds.position.y + min(PlayerRig.EYE_HEIGHT, bounds.size.y * 0.5)
+		_rig.place_camera(eye, null)
+		_rig.apply_look(0.0, 0.0)
 	else:
-		_place_camera(at, target)
+		_rig.place_camera(at, target)
 	print("entered ", cell["editor_id"])
 
 
@@ -462,7 +450,7 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 	if not _start_weather(weather):
 		_add_sky(_world.get_sky(_world_id, _clock.hour, weather), _settings.shadows)
 	_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
-	_place_camera(at, target)
+	_rig.place_camera(at, target)
 	var lod: SkydotLod = prepared.get("lod")
 	if lod == null:
 		lod = _make_lod(world_id)
@@ -508,18 +496,6 @@ func _make_lod(world_id: int) -> SkydotLod:
 	return lod
 
 
-func _place_camera(at: Vector3, target) -> void:
-	_camera.position = at
-	if target != null:
-		_camera.look_at(target)
-	_yaw = _camera.rotation.y
-	_pitch = _camera.rotation.x
-	# A little above the spot, so feet placed on a floor do not start in it.
-	_player.teleport(at - Vector3(0, EYE_HEIGHT - 0.05, 0))
-	_last_ground = _player.global_position
-	_ground_check = 3
-
-
 ## Where the game puts the player entering interior `cell_id`: the arrival
 ## spot of a door elsewhere that leads to one of its doors, or null.
 func _interior_spawn(cell_id: int):
@@ -548,36 +524,14 @@ func _update_player() -> void:
 	else:
 		_player.hold = _fade_phase != FADE_NONE
 		_player.clear_water()
-	if _player.hold or _player.fly:
-		return
-	if _ground_check > 0:
-		_ground_check -= 1
-		if _ground_check == 0:
-			_lift_onto_land()
-	if _player.is_on_floor():
-		_last_ground = _player.global_position
-	elif _last_ground.y - _player.global_position.y > 200.0:
-		_player.teleport(_last_ground)
-		_player.fly = true
-		_debug.note("fell through the world: flying (V walks)")
-
-
-## A spot given in game units may be under the terrain; put the feet on it.
-func _lift_onto_land() -> void:
-	var feet := _player.global_position
-	var query := PhysicsRayQueryParameters3D.create(feet + Vector3(0, 2000, 0), feet,
-		SkydotPlayer.LAYER_TERRAIN)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if not hit.is_empty():
-		_player.teleport(hit["position"] + Vector3(0, 0.05, 0))
-		_last_ground = _player.global_position
+	_rig.track()
 
 
 ## Arrive through a load door: its XTEL gives the spot and the facing.
 ## What was built ahead for the place behind it is used.
 func _travel(door: Dictionary) -> void:
 	var arrival: Transform3D = door["arrival"]
-	var eye := arrival.origin + Vector3(0, EYE_HEIGHT, 0)
+	var eye := arrival.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
 	var forward := -arrival.basis.z
 	forward.y = 0.0
 	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
@@ -951,7 +905,7 @@ func _new_preparation(door: Dictionary) -> Dictionary:
 	var world_id: int = door["destination_world"]
 	prepared["world"] = world_id
 	var arrival: Transform3D = door["arrival"]
-	prepared["eye"] = arrival.origin + Vector3(0, EYE_HEIGHT, 0)
+	prepared["eye"] = arrival.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
 	var p := arrival.origin / _unit_scale
 	var centre := Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
 	var keys: Array[Vector2i] = []
@@ -1217,12 +1171,6 @@ func _mesh_bounds(root: Node) -> AABB:
 	return bounds
 
 
-func _apply_look(yaw: float, pitch: float) -> void:
-	_yaw = yaw
-	_pitch = pitch
-	_camera.rotation = Vector3(_pitch, _yaw, 0)
-
-
 func _process(delta: float) -> void:
 	if _camera == null:
 		return
@@ -1241,7 +1189,7 @@ func _process(delta: float) -> void:
 		_take_screenshots()
 		return
 	_update_player()
-	_camera.global_position = _player.get_eye_position()
+	_rig.follow()
 	if _world_id != 0:
 		var stream_started := Time.get_ticks_usec()
 		_streaming = _stream_step()
@@ -1274,7 +1222,7 @@ func _process(delta: float) -> void:
 		return
 	if not _input:
 		_player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
-		_player.set_look(_yaw, _pitch)
+		_player.set_look(_rig.yaw, _rig.pitch)
 		return
 	var move := Vector2.ZERO
 	if Input.is_key_pressed(KEY_W): move.y += 1
@@ -1293,7 +1241,7 @@ func _process(delta: float) -> void:
 		gait = SkydotPlayer.WALK
 	_player.fly_speed = _speed
 	_player.set_input(move, vertical, gait)
-	_player.set_look(_yaw, _pitch)
+	_player.set_look(_rig.yaw, _rig.pitch)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1301,14 +1249,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
-		_apply_look(_yaw - event.relative.x * 0.004,
-			clamp(_pitch - event.relative.y * 0.004, -1.5, 1.5))
+		_rig.apply_look(_rig.yaw - event.relative.x * 0.004,
+			clamp(_rig.pitch - event.relative.y * 0.004, -1.5, 1.5))
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not captured:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
-		_debug.note(_debug.position_text(_yaw, _pitch))
+		_debug.note(_debug.position_text(_rig.yaw, _rig.pitch))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
 		_preload_doors = not _preload_doors
 		if not _preload_doors:
@@ -1357,10 +1305,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
 		_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
-		_player.fly = not _player.fly
-		if not _player.fly:
-			_last_ground = _player.global_position
-		_debug.note("flying" if _player.fly else "walking")
+		_debug.note("flying" if _rig.toggle_fly() else "walking")
 
 
 ## An actor the AI brought into the place on screen: build it where its
@@ -1394,8 +1339,8 @@ func _save_game(path: String) -> void:
 		"cell": _cell_id,
 		"world": _world_id,
 		"position": _camera.position,
-		"yaw": _yaw,
-		"pitch": _pitch,
+		"yaw": _rig.yaw,
+		"pitch": _rig.pitch,
 	}
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
@@ -1421,7 +1366,7 @@ func _load_game(path: String) -> bool:
 		_enter_exterior(int(state["world"]), state["position"], null)
 	else:
 		_enter_interior(int(state["cell"]), state["position"], null)
-	_apply_look(float(state["yaw"]), float(state["pitch"]))
+	_rig.apply_look(float(state["yaw"]), float(state["pitch"]))
 	print("loaded ", path)
 	return true
 
@@ -1442,7 +1387,7 @@ func _take_screenshots() -> void:
 		get_tree().quit(0)
 		return
 	if _shots[0] != null:
-		_apply_look(_shots[0], -0.15)
+		_rig.apply_look(_shots[0], -0.15)
 	_frames = 20
 
 
@@ -1548,8 +1493,8 @@ func _end_shot_note(save: bool) -> void:
 ## Everything needed to come back to this view, in the viewer or the game.
 func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	var eye := SkydotWorld.godot_to_skyrim(_camera.global_position)
-	var heading := fposmod(-rad_to_deg(_yaw), 360.0)
-	var tilt := -rad_to_deg(_pitch)
+	var heading := fposmod(-rad_to_deg(_rig.yaw), 360.0)
+	var tilt := -rad_to_deg(_rig.pitch)
 	var place := {}
 	var console: Array[String] = []
 	if _world_id != 0:
@@ -1596,7 +1541,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		"camera": {
 			"game": {"x": eye.x, "y": eye.y, "z": eye.z, "heading": heading, "tilt": tilt},
 			"engine": {"position": [_camera.global_position.x, _camera.global_position.y,
-				_camera.global_position.z], "yaw": _yaw, "pitch": _pitch},
+				_camera.global_position.z], "yaw": _rig.yaw, "pitch": _rig.pitch},
 			"fov": _camera.fov,
 			"resolution": [int(size.x), int(size.y)],
 		},
