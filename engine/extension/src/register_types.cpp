@@ -20,6 +20,7 @@
 #include "ai/ai.hpp"
 #include "physics/player.hpp"
 #include "render/weather.hpp"
+#include "session/clock.hpp"
 #include "world/world.hpp"
 
 #include <gdextension_interface.h>
@@ -48,6 +49,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotWeather);
     GDREGISTER_CLASS(skydot::SkydotImageSpace);
     GDREGISTER_CLASS(skydot::SkydotAi);
+    GDREGISTER_CLASS(skydot::SkydotClock);
 }
 
 void skydot_uninitialize(godot::ModuleInitializationLevel level) {

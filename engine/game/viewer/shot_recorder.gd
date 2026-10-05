@@ -19,7 +19,7 @@ var _world: SkydotWorld
 var _rig: PlayerRig
 var _place: Place
 var _streamer: WorldStreamer
-var _clock: GameClock
+var _clock: SkydotClock
 var _debug: DebugOverlay  # notes; the text F12 may hide; the note dialog goes in it
 # --screenshot
 var _path := ""
@@ -36,7 +36,7 @@ var _note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 
 
 func _init(host: Node3D, settings: ViewerSettings, world: SkydotWorld, rig: PlayerRig, place: Place,
-		streamer: WorldStreamer, clock: GameClock, debug: DebugOverlay) -> void:
+		streamer: WorldStreamer, clock: SkydotClock, debug: DebugOverlay) -> void:
 	_host = host
 	_settings = settings
 	_world = world

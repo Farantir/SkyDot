@@ -97,9 +97,10 @@
 # lights still, for comparison.
 #
 # This script only puts the viewer together and runs its frame; the parts are
-# next to it: ViewerSettings (the options), GameClock, PlayerRig and
-# PlayerInput, WorldStreamer, DoorPreloader, Place and PlaceTransition,
-# ScriptBridge, SaveService, ShotRecorder, DebugOverlay and BenchmarkRun.
+# next to it: ViewerSettings (the options), PlayerRig and PlayerInput,
+# WorldStreamer, DoorPreloader, Place and PlaceTransition, ScriptBridge,
+# SaveService, ShotRecorder, DebugOverlay and BenchmarkRun. The time of day
+# (SkydotClock) is the engine's.
 extends Node3D
 
 var _settings: ViewerSettings
@@ -108,7 +109,7 @@ var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
 var _image_space: SkydotImageSpace
-var _clock: GameClock
+var _clock: SkydotClock
 var _rig: PlayerRig
 var _streamer: WorldStreamer
 var _preloader: DoorPreloader
@@ -140,7 +141,8 @@ func _ready() -> void:
 	if not _settings.error.is_empty():
 		_fail(_settings.error)
 		return
-	_clock = GameClock.new(_settings.time, _settings.time_scale, _settings.captures)
+	_clock = SkydotClock.new()
+	_clock.setup(_settings.time, _settings.time_scale, _settings.captures)
 	if not _open_world():
 		return
 	_create_components()

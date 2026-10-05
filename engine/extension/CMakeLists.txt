@@ -32,7 +32,8 @@ add_custom_target(skydot_flatbuffers DEPENDS
     "${SKYDOT_ANIMATION_HEADER}")
 
 # The sources that do not touch Godot: the Papyrus VM and its saves, AI
-# packages, actor plans, virtual paths and file mappings. Nothing in them may include a
+# packages, actor plans, the game clock's arithmetic, virtual paths and file
+# mappings. Nothing in them may include a
 # godot-cpp header: that would stop the unit tests building.
 set(SKYDOT_CORE_SOURCES
     src/ai/packages.cpp
@@ -42,6 +43,8 @@ set(SKYDOT_CORE_SOURCES
     src/assets/vpath.hpp
     src/data/actors.cpp
     src/data/actors.hpp
+    src/session/game_time.cpp
+    src/session/game_time.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
@@ -100,6 +103,8 @@ add_library(skydot SHARED)
 #   world/    SkydotWorld, the class scripts talk to: a facade over data/ and
 #             build/, and the read-only queries it answers
 #   ai/       AI packages and SkydotAi, which drive actors against a game clock
+#   session/  what every front end needs of a running game: SkydotClock
+#             (the time of day handed between weather and AI)
 #   vm/       the Papyrus VM and its binding to the world
 #   assets/   the pack: mounting, the asset cache, models
 # Not yet strictly layered: render/lod and render/weather take a SkydotWorld
@@ -166,6 +171,8 @@ target_sources(skydot PRIVATE
     src/render/water.cpp
     src/render/water.hpp
     src/render/weather.cpp
+    src/session/clock.cpp
+    src/session/clock.hpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

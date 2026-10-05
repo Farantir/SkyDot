@@ -2,7 +2,7 @@
 #
 # ViewerSettings: the viewer's options parsed once into typed fields, from
 # the command line or from a shot's JSON (--from-shot, the command line
-# wins), and the parts of GameClock that need no running world. Needs no pack.
+# wins), and the parts of SkydotClock that need no running world. Needs no pack.
 extends SceneTree
 
 var failures := 0
@@ -124,7 +124,8 @@ func _from_shot() -> void:
     expect(parse(["--from-shot", path]).error.begins_with("cannot read the shot"), "another format is refused")
 
 func _clock() -> void:
-    var clock := GameClock.new(9.5, 20.0, false)
+    var clock := SkydotClock.new()
+    clock.setup(9.5, 20.0, false)
     expect(clock.hour == 9.5 and clock.day == 0 and not clock.has_weather(), "kept time before any place")
     expect(clock.shift(1.0) == "", "nothing keeps the time without a weather or an AI")
     var state := clock.describe()

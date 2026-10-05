@@ -29,13 +29,13 @@ var _host: Node3D  # the place's nodes are added here
 var _settings: ViewerSettings
 var _rig: PlayerRig
 var _ai: SkydotAi  # null with --ai off
-var _clock: GameClock
+var _clock: SkydotClock
 var _streamer: WorldStreamer
 var _preloader: DoorPreloader
 
 
 func _init(world: SkydotWorld, host: Node3D, settings: ViewerSettings, rig: PlayerRig, ai: SkydotAi,
-		clock: GameClock, streamer: WorldStreamer, preloader: DoorPreloader) -> void:
+		clock: SkydotClock, streamer: WorldStreamer, preloader: DoorPreloader) -> void:
 	_world = world
 	_host = host
 	_settings = settings
