@@ -28,21 +28,12 @@ using godot::Ref;
 
 constexpr std::string_view k_clip_prefix = "clip:";
 
-godot::PackedByteArray to_godot(const std::vector<std::uint8_t>& bytes) {
-    godot::PackedByteArray out;
-    out.resize(static_cast<std::int64_t>(bytes.size()));
-    if (!bytes.empty()) {
-        std::memcpy(out.ptrw(), bytes.data(), bytes.size());
-    }
-    return out;
-}
-
-std::uint32_t u32(const std::vector<std::uint8_t>& b, std::size_t at) {
+std::uint32_t u32(const std::uint8_t* b, std::size_t at) {
     return static_cast<std::uint32_t>(b[at]) | static_cast<std::uint32_t>(b[at + 1]) << 8 |
            static_cast<std::uint32_t>(b[at + 2]) << 16 | static_cast<std::uint32_t>(b[at + 3]) << 24;
 }
 
-void put_u32(std::vector<std::uint8_t>& b, std::size_t at, std::uint32_t v) {
+void put_u32(std::uint8_t* b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) {
         b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (8 * i));
     }
@@ -57,10 +48,10 @@ constexpr std::uint32_t k_caps2_cubemap = 0x200;
 constexpr std::uint32_t k_caps2_all_faces = 0xFE00;
 constexpr std::uint32_t k_dx10_misc_cube = 0x4;
 
-godot::Ref<godot::Image> image_from_dds(const std::vector<std::uint8_t>& dds) {
+godot::Ref<godot::Image> image_from_dds(const godot::PackedByteArray& dds) {
     Ref<godot::Image> image;
     image.instantiate();
-    if (image->load_dds_from_buffer(to_godot(dds)) != godot::Error::OK) {
+    if (image->load_dds_from_buffer(dds) != godot::Error::OK) {
         return {};
     }
     return image;
@@ -119,10 +110,16 @@ bool AssetCache::has(const std::string& vpath) const {
 }
 
 godot::PackedByteArray AssetCache::bytes(const std::string& vpath) const {
+    return read_bytes(*store_, normalize_vpath(vpath));
+}
+
+godot::PackedByteArray AssetCache::read_bytes(const PackStore& store, const std::string& normalized_vpath) {
     godot::PackedByteArray out;
-    if (const auto data = store_->read(normalize_vpath(vpath))) {
-        out.resize(static_cast<std::int64_t>(data->size()));
-        std::copy(data->begin(), data->end(), out.ptrw());
+    if (!store.read_into(normalized_vpath, [&out](std::size_t size) {
+            out.resize(static_cast<std::int64_t>(size));
+            return size != 0 ? out.ptrw() : nullptr; // ptrw of an empty array is out of range
+        })) {
+        out.clear();
     }
     return out;
 }
@@ -284,27 +281,26 @@ Ref<godot::Resource> AssetCache::load(const std::string& key) {
     if (entry == nullptr) {
         return {};
     }
-    const auto bytes = store_->read(key);
-    if (!bytes) {
+    const godot::PackedByteArray bytes = read_bytes(*store_, key);
+    if (bytes.is_empty()) {
         return {};
     }
     if (entry->kind == "mesh") {
-        return load_scene(key, *bytes);
+        return load_scene(key, bytes);
     }
     if (entry->kind == "texture") {
-        return texture_from_dds(*bytes);
+        return texture_from_dds(bytes);
     }
     return {};
 }
 
-Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath,
-                                            const std::vector<std::uint8_t>& glb) {
+Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath, const godot::PackedByteArray& glb) {
     Ref<godot::GLTFDocument> document;
     document.instantiate();
     Ref<godot::GLTFState> state;
     state.instantiate();
     // Pack meshes carry no glTF images; the base path is never used.
-    if (document->append_from_buffer(to_godot(glb), "", state) != godot::Error::OK) {
+    if (document->append_from_buffer(glb, "", state) != godot::Error::OK) {
         return {};
     }
     // The textures the materials will ask for, loaded here rather than on the
@@ -331,15 +327,19 @@ Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath,
     return model;
 }
 
-Ref<godot::Texture> AssetCache::texture_from_dds(const std::vector<std::uint8_t>& dds) {
-    if (dds.size() < k_dds_header || dds[0] != 'D' || dds[1] != 'D' || dds[2] != 'S' ||
-        dds[3] != ' ') {
+Ref<godot::Texture> AssetCache::texture_from_dds(const godot::PackedByteArray& dds) {
+    const auto size = static_cast<std::size_t>(dds.size());
+    if (size < k_dds_header) {
         return {};
     }
-    const bool dx10 = u32(dds, 84) == 0x30315844; // "DX10"
+    const std::uint8_t* in = dds.ptr();
+    if (in[0] != 'D' || in[1] != 'D' || in[2] != 'S' || in[3] != ' ') {
+        return {};
+    }
+    const bool dx10 = u32(in, 84) == 0x30315844; // "DX10"
     const std::size_t data_start = dx10 ? k_dds_dx10_header : k_dds_header;
-    const bool cube = (u32(dds, 112) & k_caps2_cubemap) != 0 ||
-                      (dx10 && dds.size() >= data_start && (u32(dds, 136) & k_dx10_misc_cube) != 0);
+    const bool cube = (u32(in, 112) & k_caps2_cubemap) != 0 ||
+                      (dx10 && size >= data_start && (u32(in, 136) & k_dx10_misc_cube) != 0);
     if (!cube) {
         const Ref<godot::Image> image = image_from_dds(dds);
         return image.is_valid() ? Ref<godot::Texture>(godot::ImageTexture::create_from_image(image))
@@ -348,20 +348,22 @@ Ref<godot::Texture> AssetCache::texture_from_dds(const std::vector<std::uint8_t>
 
     // A cube map is six faces, each a full mip chain, in +X -X +Y -Y +Z -Z
     // order (Godot's Cubemap order too). Load each as a 2D DDS.
-    if (dds.size() <= data_start || (dds.size() - data_start) % 6 != 0) {
+    if (size <= data_start || (size - data_start) % 6 != 0) {
         return {};
     }
-    const std::size_t face_bytes = (dds.size() - data_start) / 6;
+    const std::size_t face_bytes = (size - data_start) / 6;
     godot::TypedArray<Ref<godot::Image>> faces;
     for (std::size_t face = 0; face < 6; ++face) {
-        std::vector<std::uint8_t> one(dds.begin(), dds.begin() + static_cast<std::ptrdiff_t>(data_start));
-        put_u32(one, 112, u32(one, 112) & ~(k_caps2_cubemap | k_caps2_all_faces));
+        godot::PackedByteArray one;
+        one.resize(static_cast<std::int64_t>(data_start + face_bytes));
+        std::uint8_t* out = one.ptrw();
+        std::memcpy(out, in, data_start);
+        std::memcpy(out + data_start, in + data_start + face * face_bytes, face_bytes);
+        put_u32(out, 112, u32(out, 112) & ~(k_caps2_cubemap | k_caps2_all_faces));
         if (dx10) {
-            put_u32(one, 136, u32(one, 136) & ~k_dx10_misc_cube);
-            put_u32(one, 140, 1); // arraySize
+            put_u32(out, 136, u32(out, 136) & ~k_dx10_misc_cube);
+            put_u32(out, 140, 1); // arraySize
         }
-        const auto begin = dds.begin() + static_cast<std::ptrdiff_t>(data_start + face * face_bytes);
-        one.insert(one.end(), begin, begin + static_cast<std::ptrdiff_t>(face_bytes));
         const Ref<godot::Image> image = image_from_dds(one);
         if (image.is_null()) {
             return {};

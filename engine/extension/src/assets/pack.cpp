@@ -15,7 +15,6 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
 
-#include <cstring>
 #include <span>
 #include <string_view>
 
@@ -330,16 +329,10 @@ bool SkydotPack::has(const String& vpath) const {
 }
 
 PackedByteArray SkydotPack::get_bytes(const String& vpath) const {
-    PackedByteArray out;
     if (!open_ || store_ == nullptr) {
-        return out;
+        return {};
     }
-    const auto bytes = store_->read(to_std(normalize_vpath(vpath)));
-    if (bytes && !bytes->empty()) {
-        out.resize(static_cast<std::int64_t>(bytes->size()));
-        std::memcpy(out.ptrw(), bytes->data(), bytes->size());
-    }
-    return out;
+    return AssetCache::read_bytes(*store_, to_std(normalize_vpath(vpath)));
 }
 
 godot::Ref<SkydotModel> SkydotPack::load_scene(const String& vpath) const {

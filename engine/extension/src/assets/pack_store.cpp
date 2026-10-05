@@ -3,9 +3,9 @@
 
 #include "skydot_formats/asset_kind.hpp"
 
+#include <cstring>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 
 namespace skydot {
 
@@ -150,27 +150,42 @@ std::string PackStore::loose_path(const Entry& entry) const {
     return loose_dir_ + "/" + formats::asset_relative_path(entry.hash, *kind);
 }
 
-std::optional<std::vector<std::uint8_t>> PackStore::read(const std::string& normalized_vpath) const {
+bool PackStore::read_into(const std::string& normalized_vpath, const Allocate& allocate) const {
     const Entry* entry = find(normalized_vpath);
     if (entry == nullptr || extension_of(entry->kind).empty()) {
-        return std::nullopt;
+        return false;
     }
     if (blob_ != nullptr) {
         const auto it = blob_entries_.find(entry->hash);
         if (it == blob_entries_.end()) {
-            return std::nullopt;
+            return false;
         }
         const auto bytes = blob_->bytes().subspan(it->second.offset, it->second.size);
-        return std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+        std::uint8_t* room = allocate(bytes.size());
+        if (!bytes.empty()) {
+            std::memcpy(room, bytes.data(), bytes.size());
+        }
+        return true;
     }
     const std::string path = loose_path(*entry);
     // UTF-8 to a native path, so Windows does not read it as the ANSI codepage.
     const std::u8string utf8(path.begin(), path.end());
-    std::ifstream in(std::filesystem::path(utf8), std::ios::binary);
+    std::ifstream in(std::filesystem::path(utf8), std::ios::binary | std::ios::ate);
     if (!in) {
-        return std::nullopt;
+        return false;
     }
-    return std::vector<std::uint8_t>(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    const std::streamoff end = in.tellg();
+    if (end < 0) {
+        return false;
+    }
+    const auto size = static_cast<std::size_t>(end);
+    in.seekg(0);
+    std::uint8_t* room = allocate(size);
+    if (size == 0) {
+        return true;
+    }
+    in.read(reinterpret_cast<char*>(room), static_cast<std::streamsize>(size));
+    return static_cast<std::size_t>(in.gcount()) == size;
 }
 
 } // namespace skydot

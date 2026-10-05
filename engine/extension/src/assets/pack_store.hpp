@@ -5,19 +5,19 @@
 // store"). Immutable after `open`; every query is safe from any thread.
 //
 // The blob is memory-mapped; a read copies one asset's bytes out of the
-// mapping. Loose packs read the asset's file.
+// mapping, straight into the buffer the caller supplies. Loose packs read the
+// asset's file into it.
 #pragma once
 
 #include "assets/mapped_file.hpp"
 
 #include <cstdint>
+#include <functional>
 #include <memory>
-#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
-#include <vector>
 
 namespace skydot {
 
@@ -46,9 +46,13 @@ public:
     [[nodiscard]] std::size_t unknown_kinds() const { return unknown_kinds_; }
     [[nodiscard]] bool is_blob() const { return blob_ != nullptr; }
 
-    /// The asset's bytes, or nullopt if the path is absent, its kind unknown,
-    /// or its file unreadable.
-    [[nodiscard]] std::optional<std::vector<std::uint8_t>> read(const std::string& normalized_vpath) const;
+    /// Where `read_into` puts an asset's bytes: given their count, returns room
+    /// for that many (it may be null if the count is 0).
+    using Allocate = std::function<std::uint8_t*(std::size_t)>;
+    /// Copy the asset's bytes into the room `allocate` makes for them, once.
+    /// False if the path is absent, its kind unknown or its file unreadable
+    /// (`allocate` may have been called; the caller drops what it made).
+    [[nodiscard]] bool read_into(const std::string& normalized_vpath, const Allocate& allocate) const;
 
     /// The loose file for a path; "" for the blob layout.
     [[nodiscard]] std::string loose_path(const Entry& entry) const;

@@ -78,15 +78,18 @@ public:
 
     /// Build a texture from DDS bytes: a Cubemap for cube maps, else an
     /// ImageTexture. Null if Godot cannot read them.
-    static godot::Ref<godot::Texture> texture_from_dds(const std::vector<std::uint8_t>& dds);
+    static godot::Ref<godot::Texture> texture_from_dds(const godot::PackedByteArray& dds);
+
+    /// An asset's bytes, copied once from the store into a buffer of Godot's
+    /// own; empty if `normalized_vpath` is absent.
+    static godot::PackedByteArray read_bytes(const PackStore& store, const std::string& normalized_vpath);
 
 private:
     godot::Ref<godot::Resource> load(const std::string& vpath);
     /// Whether `key` (an asset path or a clip key) names something to load.
     [[nodiscard]] bool loadable(const std::string& key) const;
     godot::Ref<godot::Resource> load_clip(const std::string& key) const;
-    godot::Ref<godot::Resource> load_scene(const std::string& vpath,
-                                           const std::vector<std::uint8_t>& glb);
+    godot::Ref<godot::Resource> load_scene(const std::string& vpath, const godot::PackedByteArray& glb);
     void start_workers();
     void work();
 

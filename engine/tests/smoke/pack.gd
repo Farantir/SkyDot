@@ -82,10 +82,60 @@ func _run(pack_dir: String) -> void:
     expect(pack.get_kind("meshes/testpack/nope.nif") == "", "and has no kind")
     expect(pack.load_scene("meshes/testpack/nope.nif") == null, "and no scene")
 
+    _check_loose(pack_dir, pack)
     _check_world(pack)
 
     pack.close()
     expect(not pack.is_open() and not pack.has("meshes/testpack/cube_se.nif"), "closed is closed")
+
+## The same pack with its assets as loose files (`assets/<first two hex>/<hex><ext>`):
+## every path gives the bytes the blob gives, a texture and a cube map load, an
+## empty file is an empty asset and a missing one is none.
+func _check_loose(pack_dir: String, pack: SkydotPack) -> void:
+    const EXTENSIONS := {"mesh": ".glb", "texture": ".dds", "script": ".pexfb", "lod": ".lodfb", "animation": ".animfb"}
+    var scratch := OS.get_environment("SKYDOT_SCRATCH")
+    if scratch == "":
+        scratch = OS.get_user_data_dir().path_join("smoke")
+    var dir := scratch.path_join("loose_pack")
+    DirAccess.make_dir_recursive_absolute(dir)
+    var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(pack_dir.path_join("manifest.json")))
+    manifest["store"] = {"layout": "loose"}
+    var index := FileAccess.get_file_as_string(pack_dir.path_join("vpath.idx"))
+    var vpaths: Array[String] = []
+    for line in index.split("\n"):
+        if line == "" or line.begins_with("#"):
+            continue
+        var fields := line.split("\t")
+        var hash := fields[1]
+        var file := dir.path_join("assets").path_join(hash.substr(0, 2)).path_join(hash + EXTENSIONS[fields[2]])
+        DirAccess.make_dir_recursive_absolute(file.get_base_dir())
+        if fields[0] == "scripts/testpackleverscript.pex":
+            DirAccess.remove_absolute(file)  # its file is missing
+            continue
+        var asset := FileAccess.open(file, FileAccess.WRITE)
+        if fields[0] != "scripts/testpack/fixture.pex":  # that one is an empty file
+            asset.store_buffer(pack.get_bytes(fields[0]))
+            vpaths.append(fields[0])
+        asset.close()
+    for name in ["vpath.idx", "world.fb"]:
+        DirAccess.copy_absolute(pack_dir.path_join(name), dir.path_join(name))
+    var out := FileAccess.open(dir.path_join("manifest.json"), FileAccess.WRITE)
+    out.store_string(JSON.stringify(manifest, "  ") + "\n")
+    out.close()
+
+    var loose := SkydotPack.new()
+    expect(loose.open(dir) == OK, "the loose copy opens: " + loose.get_error())
+    expect(loose.get_store_layout() == "loose", "and says it is loose")
+    for vpath in vpaths:
+        expect(loose.get_bytes(vpath) == pack.get_bytes(vpath), "loose bytes of " + vpath)
+    expect(loose.has("scripts/testpack/fixture.pex") and loose.get_bytes("scripts/testpack/fixture.pex").is_empty(),
+           "an empty file is an empty asset")
+    expect(loose.has("scripts/testpackleverscript.pex") and loose.get_bytes("scripts/testpackleverscript.pex").is_empty(),
+           "a missing file gives no bytes")
+    expect(loose.load_texture("textures/testpack/cube.dds") is ImageTexture, "a loose DDS loads as a texture")
+    expect(loose.load_texture("textures/testpack/sky.dds") is Cubemap, "a loose cube map loads as a Cubemap")
+    expect(loose.load_scene("meshes/testpack/cube_se.nif") != null, "a loose GLB loads as a scene")
+    loose.close()
 
 func _check_world(pack: SkydotPack) -> void:
     expect(pack.has_world(), "the test pack carries world.fb")
