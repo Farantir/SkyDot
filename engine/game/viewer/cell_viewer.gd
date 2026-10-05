@@ -50,7 +50,7 @@
 # the scripts' state and the place, F9 loads it (user://quicksave.skydot).
 # --save-to FILE saves when an --activate run ends; --load FILE loads at start.
 # Near a load door (within --preload-distance metres, default 15) the place
-# behind it is built ahead, held hidden in the scene (HeldPlace): an interior, or
+# behind it is built ahead, held hidden in the scene (SkydotStreamer): an interior, or
 # the cells and LOD around the arrival spot outside. Going through then takes
 # a fraction of the time. Actors are added on arrival, where the AI has them
 # then. It costs the memory of a second place; --preload-doors off (or O)
@@ -97,10 +97,10 @@
 # lights still, for comparison.
 #
 # This script only puts the viewer together and runs its frame; the parts are
-# next to it: ViewerSettings (the options), PlayerRig and PlayerInput,
-# WorldStreamer, DoorPreloader, Place and PlaceTransition, ScriptBridge,
-# SaveService, ShotRecorder, DebugOverlay and BenchmarkRun. The time of day
-# (SkydotClock) is the engine's.
+# next to it: ViewerSettings (the options), PlayerRig and PlayerInput, Place
+# and PlaceTransition, ScriptBridge, SaveService, ShotRecorder, DebugOverlay
+# and BenchmarkRun. The time of day (SkydotClock) and the streaming of the
+# world with its door preloading (SkydotStreamer) are the engine's.
 extends Node3D
 
 var _settings: ViewerSettings
@@ -111,8 +111,7 @@ var _ai: SkydotAi  # null with --ai off
 var _image_space: SkydotImageSpace
 var _clock: SkydotClock
 var _rig: PlayerRig
-var _streamer: WorldStreamer
-var _preloader: DoorPreloader
+var _streamer: SkydotStreamer
 var _place: Place
 var _transition: PlaceTransition
 var _bridge: ScriptBridge
@@ -196,21 +195,19 @@ func _create_components() -> void:
 	_rig.fell_through.connect(func() -> void: _debug.note("fell through the world: flying (V walks)"))
 	add_child(_rig.camera)
 	add_child(_rig.player)
-	_streamer = WorldStreamer.new(_world, _pack, self, _rig.camera, _ai, _settings)
-	_streamer.cell_finished.connect(_on_cell_built)
-	_preloader = DoorPreloader.new(_world, self, _streamer, _ai, _settings)
+	_make_streamer()
 	_debug = DebugOverlay.new()
 	_debug.setup(self, _world, _papyrus, _ai, _rig.camera, _rig.player)
 	add_child(_debug)
-	_place = Place.new(_world, self, _settings, _rig, _ai, _clock, _streamer, _preloader)
-	_place.built.connect(_on_cell_built)
+	_place = Place.new(_world, self, _settings, _rig, _ai, _clock, _streamer)
+	_place.built.connect(_on_interior_built)
 	_place.left.connect(_image_space.reset_adaptation)
 	_place.left.connect(_debug.clear_path)
 	_place.message.connect(_debug.note)
 	_place.failed.connect(_fail)
 	if _ai != null:
 		_ai.actor_arrived.connect(_place.on_actor_arrived)
-	_transition = PlaceTransition.new(_place, _preloader, _streamer)
+	_transition = PlaceTransition.new(_place, _streamer)
 	_transition.interactive = _input
 	add_child(_transition)
 	_controls = PlayerInput.new(_rig)
@@ -224,6 +221,23 @@ func _create_components() -> void:
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
 	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
 	_controls.capture_mouse()
+
+
+## The streaming of exterior cells and the building ahead behind load doors,
+## as the options say.
+func _make_streamer() -> void:
+	_streamer = SkydotStreamer.new()
+	_streamer.setup(_world, _pack, self, _rig.camera, _ai)
+	_streamer.radius = _settings.radius
+	_streamer.build_budget_usec = _settings.build_budget_usec
+	_streamer.lod_enabled = _settings.lod
+	_streamer.lod_split = _settings.lod_split
+	if _settings.has_tree_distance:
+		_streamer.set_tree_distance(_settings.tree_distance)
+	_streamer.eye_height = PlayerRig.EYE_HEIGHT
+	_streamer.preload_enabled = _settings.preload_doors
+	_streamer.preload_distance = _settings.preload_distance
+	_streamer.cell_finished.connect(_on_cell_built)
 
 
 ## Start the quests and enter the place the options name.
@@ -309,8 +323,7 @@ func _process(delta: float) -> void:
 	_rig.track()
 	_rig.follow()
 	_streamer.update()
-	if _preloader.enabled:
-		_preloader.step(_rig.player.global_position)
+	_streamer.preload_step(_rig.player.global_position)
 	if _transition.is_fading():
 		_transition.step(delta)
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
@@ -350,12 +363,18 @@ func _sync_image_space() -> void:
 		_image_space.set_image_space(_place.interior_image_space)
 
 
-## A cell was built and shown (streamed or an interior): its scripts attach,
-## the navmesh overlay and the load doors are brought up to date.
+## A cell was built and shown (streamed or an interior): its scripts attach and
+## the navmesh overlay is brought up to date.
 func _on_cell_built(cell: Node3D, cell_id: int) -> void:
 	_bridge.scripts_loaded(cell, cell_id)
 	_debug.navmesh_overlay(cell)
-	_preloader.register(Place.ref_nodes(cell))
+
+
+## The streamer registers the load doors of the cells it builds; an interior is
+## built by the place.
+func _on_interior_built(cell: Node3D, cell_id: int) -> void:
+	_on_cell_built(cell, cell_id)
+	_streamer.register_doors(cell)
 
 
 func _on_actor_left(ref: int, _door: int) -> void:
@@ -368,7 +387,7 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.SHOW_POSITION:
 			_debug.note(_debug.position_text(_rig.yaw, _rig.pitch))
 		PlayerInput.TOGGLE_PRELOAD:
-			_debug.note("load doors preload what is behind them" if _preloader.toggle() else "load doors load on use")
+			_debug.note("load doors preload what is behind them" if _streamer.toggle_preload() else "load doors load on use")
 		PlayerInput.TAKE_SHOT:
 			_shots.capture(shift)
 		PlayerInput.ACTIVATE:
@@ -394,21 +413,32 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.SHOW_PATH:
 			_debug.path_to_view()
 		PlayerInput.LOD_DETAIL_DOWN:
-			_debug.note(_streamer.scale_lod_split(0.8))
+			_debug.note(_lod_text(_streamer.scale_lod_split(0.8)))
 		PlayerInput.LOD_DETAIL_UP:
-			_debug.note(_streamer.scale_lod_split(1.25))
+			_debug.note(_lod_text(_streamer.scale_lod_split(1.25)))
 		PlayerInput.RADIUS_DOWN:
 			if _streamer.world_id != 0:
-				_debug.note(_streamer.change_radius(-1))
+				_debug.note(_radius_text(_streamer.change_radius(-1)))
 		PlayerInput.RADIUS_UP:
 			if _streamer.world_id != 0:
-				_debug.note(_streamer.change_radius(1))
+				_debug.note(_radius_text(_streamer.change_radius(1)))
 		PlayerInput.CYCLE_MSAA:
 			var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
 			get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
 			_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 		PlayerInput.TOGGLE_FLY:
 			_debug.note("flying" if _rig.toggle_fly() else "walking")
+
+
+## [ and ]: what to tell the user about the LOD's detail. A level-8 quad splits
+## into level-4 ones within split times 8 cells.
+func _lod_text(split: float) -> String:
+	return "LOD detail %.2f (finest LOD within %.0f m)" % [split, split * 8 * SkydotWorld.CELL_UNITS * SkydotWorld.unit_scale()]
+
+
+## - and =: what to tell the user about the cells in full detail.
+func _radius_text(radius: int) -> String:
+	return "full detail within %d cells (%d x %d)" % [radius, 2 * radius + 1, 2 * radius + 1]
 
 
 func _fail(message: String) -> void:

@@ -22,13 +22,11 @@ var _door := {}  # the door being gone through
 var _wait := 0.0  # seconds in WAIT
 var _frames := 0  # frames since the place was built
 var _place: Place
-var _preloader: DoorPreloader
-var _streamer: WorldStreamer
+var _streamer: SkydotStreamer
 
 
-func _init(place: Place, preloader: DoorPreloader, streamer: WorldStreamer) -> void:
+func _init(place: Place, streamer: SkydotStreamer) -> void:
 	_place = place
-	_preloader = preloader
 	_streamer = streamer
 	layer = 100  # over the notes
 	_fade = ColorRect.new()
@@ -95,7 +93,7 @@ func travel(door: Dictionary) -> void:
 	var forward := -arrival.basis.z
 	forward.y = 0.0
 	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
-	var prepared := _preloader.take(door)
+	var prepared := _streamer.take_prepared(door)
 	if door["destination_interior"]:
 		_place.enter_interior(door["destination_cell"], eye, target, prepared.root if prepared != null else null)
 	elif door["destination_world"] != 0:

@@ -10,11 +10,11 @@ const FORMAT := 1
 
 var _papyrus: SkydotPapyrus
 var _place: Place
-var _streamer: WorldStreamer
+var _streamer: SkydotStreamer
 var _rig: PlayerRig
 
 
-func _init(papyrus: SkydotPapyrus, place: Place, streamer: WorldStreamer, rig: PlayerRig) -> void:
+func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: PlayerRig) -> void:
 	_papyrus = papyrus
 	_place = place
 	_streamer = streamer

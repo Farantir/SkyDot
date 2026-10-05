@@ -18,7 +18,7 @@ var _settings: ViewerSettings
 var _world: SkydotWorld
 var _rig: PlayerRig
 var _place: Place
-var _streamer: WorldStreamer
+var _streamer: SkydotStreamer
 var _clock: SkydotClock
 var _debug: DebugOverlay  # notes; the text F12 may hide; the note dialog goes in it
 # --screenshot
@@ -36,7 +36,7 @@ var _note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 
 
 func _init(host: Node3D, settings: ViewerSettings, world: SkydotWorld, rig: PlayerRig, place: Place,
-		streamer: WorldStreamer, clock: SkydotClock, debug: DebugOverlay) -> void:
+		streamer: SkydotStreamer, clock: SkydotClock, debug: DebugOverlay) -> void:
 	_host = host
 	_settings = settings
 	_world = world
@@ -197,7 +197,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		for w in _world.list_worlds():
 			if w["id"] == _streamer.world_id:
 				world_name = w["editor_id"]
-		var grid := Vector2i(floori(eye.x / WorldStreamer.CELL_UNITS), floori(eye.y / WorldStreamer.CELL_UNITS))
+		var grid := Vector2i(floori(eye.x / SkydotWorld.CELL_UNITS), floori(eye.y / SkydotWorld.CELL_UNITS))
 		place = {"kind": "exterior", "world": world_name, "world_id": "0x%08X" % _streamer.world_id,
 			"grid": [grid.x, grid.y]}
 		console.append("cow %s %d %d" % [world_name, grid.x, grid.y])

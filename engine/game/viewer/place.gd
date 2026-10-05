@@ -30,12 +30,11 @@ var _settings: ViewerSettings
 var _rig: PlayerRig
 var _ai: SkydotAi  # null with --ai off
 var _clock: SkydotClock
-var _streamer: WorldStreamer
-var _preloader: DoorPreloader
+var _streamer: SkydotStreamer
 
 
 func _init(world: SkydotWorld, host: Node3D, settings: ViewerSettings, rig: PlayerRig, ai: SkydotAi,
-		clock: SkydotClock, streamer: WorldStreamer, preloader: DoorPreloader) -> void:
+		clock: SkydotClock, streamer: SkydotStreamer) -> void:
 	_world = world
 	_host = host
 	_settings = settings
@@ -43,7 +42,6 @@ func _init(world: SkydotWorld, host: Node3D, settings: ViewerSettings, rig: Play
 	_ai = ai
 	_clock = clock
 	_streamer = streamer
-	_preloader = preloader
 
 
 ## The reference nodes under `root` (not those inside another reference).
@@ -89,14 +87,13 @@ func leave() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	nodes.clear()
-	_streamer.clear()  # its LOD is freed with the nodes
-	_preloader.clear_doors()
+	_streamer.clear()  # its LOD is freed with the nodes, its load doors forgotten
 	_world.call_deferred("trim_cache")
 
 
 ## Build an interior and put the camera at `at` (a camera position) looking at
 ## `target`, or at eye height in the middle of the cell when `at` is null.
-## `prepared` is the cell built ahead without its actors (DoorPreloader).
+## `prepared` is the cell built ahead without its actors (SkydotStreamer).
 func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = null) -> void:
 	leave()
 	cell_id = id
@@ -106,7 +103,7 @@ func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = nu
 		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var root := prepared
 	if root != null:
-		HeldPlace.release(root)
+		SkydotStreamer.release_held(root)
 		_world.continue_build(root, 1 << 62)  # the actors, where they are now
 	else:
 		root = _world.build_cell(id)
@@ -140,10 +137,10 @@ func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = nu
 
 ## Stream worldspace `world_id` around `at`, looking at `target` (null keeps
 ## the current direction). `prepared` holds cells and LOD built ahead
-## (DoorPreloader); they finish with their actors as streamed cells do.
+## (SkydotStreamer); they finish with their actors as streamed cells do.
 ## Returns false if it failed.
 func enter_exterior(world_id: int, at: Vector3, target: Variant,
-		prepared: DoorPreloader.Preparation = null) -> bool:
+		prepared: SkydotPreparation = null) -> bool:
 	leave()
 	_streamer.start(world_id)
 	cell_id = 0
@@ -164,11 +161,11 @@ func enter_exterior(world_id: int, at: Vector3, target: Variant,
 	if lod == null:
 		lod = _streamer.make_lod(world_id)
 	if lod != null:
-		HeldPlace.release(lod)
+		SkydotStreamer.release_held(lod)
 		add(lod)
 		_streamer.lod = lod
 		_rig.camera.far = 40000.0
-	_streamer.adopt(prepared.cells if prepared != null else {})
+	_streamer.adopt(prepared)
 	for w in _world.list_worlds():
 		if w["id"] == world_id:
 			print("entered ", w["editor_id"])
@@ -187,8 +184,8 @@ func on_actor_arrived(ref: int) -> void:
 			parent = nodes[0]
 	elif where["space"] == _streamer.world_id:
 		var p: Vector3 = where["position"]
-		parent = _streamer.loaded.get(Vector2i(floori(p.x / WorldStreamer.CELL_UNITS),
-			floori(p.y / WorldStreamer.CELL_UNITS)))
+		parent = _streamer.get_loaded_cell(Vector2i(floori(p.x / SkydotWorld.CELL_UNITS),
+			floori(p.y / SkydotWorld.CELL_UNITS)))
 	if parent == null:
 		return
 	var node := _world.build_actor(ref)

@@ -21,6 +21,7 @@
 #include "physics/player.hpp"
 #include "render/weather.hpp"
 #include "session/clock.hpp"
+#include "session/streamer.hpp"
 #include "world/world.hpp"
 
 #include <gdextension_interface.h>
@@ -50,6 +51,8 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotImageSpace);
     GDREGISTER_CLASS(skydot::SkydotAi);
     GDREGISTER_CLASS(skydot::SkydotClock);
+    GDREGISTER_CLASS(skydot::SkydotPreparation);
+    GDREGISTER_CLASS(skydot::SkydotStreamer);
 }
 
 void skydot_uninitialize(godot::ModuleInitializationLevel level) {

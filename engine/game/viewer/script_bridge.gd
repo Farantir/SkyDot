@@ -25,13 +25,13 @@ var _host: Node3D  # the scene's root, where picking and waking clutter start
 var _camera: Camera3D
 var _settings: ViewerSettings
 var _place: Place
-var _streamer: WorldStreamer
+var _streamer: SkydotStreamer
 var _debug: DebugOverlay
 var _transition: PlaceTransition
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
-		settings: ViewerSettings, place: Place, streamer: WorldStreamer, debug: DebugOverlay,
+		settings: ViewerSettings, place: Place, streamer: SkydotStreamer, debug: DebugOverlay,
 		transition: PlaceTransition) -> void:
 	_world = world
 	_papyrus = papyrus
@@ -258,7 +258,7 @@ func _lock_name(level: int) -> String:
 ## The model of reference `ref` among what is built, or null.
 func find_ref_node(ref: int) -> Node:
 	var pending: Array = _place.nodes.duplicate()
-	pending.append_array(_streamer.loaded.values())
+	pending.append_array(_streamer.get_loaded_cells())
 	while not pending.is_empty():
 		var node = pending.pop_back()
 		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion() or node == _streamer.lod:

@@ -103,8 +103,9 @@ add_library(skydot SHARED)
 #   world/    SkydotWorld, the class scripts talk to: a facade over data/ and
 #             build/, and the read-only queries it answers
 #   ai/       AI packages and SkydotAi, which drive actors against a game clock
-#   session/  what every front end needs of a running game: SkydotClock
-#             (the time of day handed between weather and AI)
+#   session/  what every front end needs of a running game: SkydotStreamer
+#             (streaming a worldspace, building ahead behind load doors) and
+#             SkydotClock (the time of day handed between weather and AI)
 #   vm/       the Papyrus VM and its binding to the world
 #   assets/   the pack: mounting, the asset cache, models
 # Not yet strictly layered: render/lod and render/weather take a SkydotWorld
@@ -173,6 +174,11 @@ target_sources(skydot PRIVATE
     src/render/weather.cpp
     src/session/clock.cpp
     src/session/clock.hpp
+    src/session/held_place.cpp
+    src/session/held_place.hpp
+    src/session/preload.cpp
+    src/session/streamer.cpp
+    src/session/streamer.hpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

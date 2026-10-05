@@ -47,8 +47,9 @@ func _process(delta: float) -> bool:
 		var nearest := 0
 		var best := INF
 		var eye: Vector3 = _viewer._rig.player.global_position
-		for ref in _viewer._preloader.load_doors:
-			var d: float = _viewer._preloader.load_doors[ref].global_position.distance_to(eye)
+		var doors: Dictionary = _viewer._streamer.get_load_doors()
+		for ref in doors:
+			var d: float = doors[ref].global_position.distance_to(eye)
 			if d < best:
 				best = d
 				nearest = ref
@@ -57,13 +58,14 @@ func _process(delta: float) -> bool:
 			quit(1)
 			return true
 		_door = _viewer._world.get_door(nearest)
-		_viewer._rig.player.teleport(_viewer._preloader.load_doors[nearest].global_position + Vector3(0, 0.1, 0))
+		_viewer._rig.player.teleport(doors[nearest].global_position + Vector3(0, 0.1, 0))
 		print("preload_check: door 0x%08X, %.1f m away, leads to %s" % [nearest, best,
 			SkydotWorld.godot_to_skyrim(_door["arrival"].origin)])
 		return false
 	if not _travelled:
 		_waited += delta
-		var done: bool = _viewer._preloader.current != null and _viewer._preloader.current.done
+		var preparing: SkydotPreparation = _viewer._streamer.get_preparation()
+		var done: bool = preparing != null and preparing.done
 		if not done and _waited < _wait:
 			return false
 		var started := Time.get_ticks_usec()
