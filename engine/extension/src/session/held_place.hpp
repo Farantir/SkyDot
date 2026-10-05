@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // A place built ahead of its use is held: in the scene, hidden, without
-// physics (disabled bodies are not in the space) and off the navigation map.
+// physics (disabled bodies are not in the space) and with its own navigation
+// regions off the map (see set_regions in held_place.cpp for which).
 // What Godot creates for its nodes then happens within the preparation's
 // budget, not on arrival. The streamer holds what it prepares behind a door;
 // the places and the streamer release it.

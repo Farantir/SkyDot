@@ -6,6 +6,9 @@
 namespace skydot::held_place {
 namespace {
 
+/// Only `root`'s own children, as the viewer's HeldPlace did. A cell keeps its
+/// regions under a "Navmesh" node, so those are not reached: they stay on the
+/// navigation map while the cell is held.
 void set_regions(godot::Node3D* root, bool enabled) {
     for (std::int32_t i = 0; i < root->get_child_count(); ++i) {
         if (auto* region = godot::Object::cast_to<godot::NavigationRegion3D>(root->get_child(i))) {
