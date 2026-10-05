@@ -155,18 +155,11 @@ var _fade_wait := 0.0  # seconds in FADE_WAIT
 var _fade_frames := 0  # frames since the place was built
 enum { FADE_NONE, FADE_OUT, FADE_TRAVEL, FADE_WAIT, FADE_IN }
 var _cell_id := 0  # the interior being shown, or 0 outside
-var _notes: Label  # recent quest and script messages
-var _journal: Label  # J toggles it
-var _note_lines: Array = []  # [text, seconds left]
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
 var _clock: GameClock
-var _show_navmesh := false  # N toggles the navmesh overlay
-var _path_line: MeshInstance3D  # G draws a path here
-var _navmesh_fill: StandardMaterial3D
-var _navmesh_lines: StandardMaterial3D
-var _overlay: CanvasLayer  # notes and journal; Shift+F12 hides it for a shot
+var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shot_busy := false
 var _shot_note: PanelContainer  # asks for a shot's note
 var _shot_note_text: TextEdit
@@ -215,18 +208,18 @@ func _ready() -> void:
 			_on_play_animation(ref, "Open" if open else "Close"))
 	_papyrus.lock_changed.connect(func(ref: int, locked: bool) -> void:
 		print("0x%08X %s by script" % [ref, "locked" if locked else "unlocked"]))
-	_papyrus.message.connect(func(text: String, _box: bool) -> void: _note(text))
+	_papyrus.message.connect(func(text: String, _box: bool) -> void: _debug.note(text))
 	_papyrus.quest_started.connect(func(quest: int) -> void:
 		if _quests_ready:
-			print("quest started: ", _quest_name(quest)))
+			print("quest started: ", _debug.quest_name(quest)))
 	# Only stages with journal text reach the screen, as in the game.
 	_papyrus.quest_stage.connect(func(quest: int, stage: int, text: String) -> void:
 		if text != "":
-			_note("%s: %s" % [_quest_name(quest), text])
+			_debug.note("%s: %s" % [_debug.quest_name(quest), text])
 		elif _quests_ready:
-			print("%s: stage %d" % [_quest_name(quest), stage]))
+			print("%s: stage %d" % [_debug.quest_name(quest), stage]))
 	_papyrus.objective_changed.connect(func(quest: int, index: int, state: String, text: String) -> void:
-		_note("%s objective %d %s: %s" % [_quest_name(quest), index, state, text]))
+		_debug.note("%s objective %d %s: %s" % [_debug.quest_name(quest), index, state, text]))
 	_papyrus.effect_shader.connect(func(shader: int, ref: int, playing: bool) -> void:
 		print("effect shader 0x%08X %s on 0x%08X (not drawn yet)" % [shader, "plays" if playing else "stops", ref]))
 	_papyrus.trigger.connect(func(ref: int, _actor: int, entered: bool) -> void:
@@ -279,20 +272,9 @@ func _ready() -> void:
 	_player.eye_height = EYE_HEIGHT
 	_player.fly = settings.fly
 	add_child(_player)
-	var overlay := CanvasLayer.new()
-	_overlay = overlay
-	_notes = Label.new()
-	_notes.position = Vector2(16, 16)
-	_notes.add_theme_color_override("font_outline_color", Color.BLACK)
-	_notes.add_theme_constant_override("outline_size", 4)
-	overlay.add_child(_notes)
-	_journal = Label.new()
-	_journal.position = Vector2(16, 16)
-	_journal.visible = false
-	_journal.add_theme_color_override("font_outline_color", Color.BLACK)
-	_journal.add_theme_constant_override("outline_size", 4)
-	overlay.add_child(_journal)
-	add_child(overlay)
+	_debug = DebugOverlay.new()
+	_debug.setup(self, world, _papyrus, _ai, _camera, _player)
+	add_child(_debug)
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 100  # over the notes
 	_fade = ColorRect.new()
@@ -404,8 +386,7 @@ func _leave() -> void:
 	_load_doors.clear()
 	_streaming = false
 	_lod_busy = false
-	if _path_line != null:
-		_path_line.mesh = null
+	_debug.clear_path()
 	_world.call_deferred("trim_cache")
 
 
@@ -437,7 +418,7 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 		_ai.attach_built(root)
 	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
 	_scripts_loaded(root, cell_id)
-	_navmesh_overlay(root)
+	_debug.navmesh_overlay(root)
 	_add_environment(cell)
 	_camera.far = 500.0
 	var spawn = _interior_spawn(cell_id) if at == null and not _player.fly else null
@@ -578,7 +559,7 @@ func _update_player() -> void:
 	elif _last_ground.y - _player.global_position.y > 200.0:
 		_player.teleport(_last_ground)
 		_player.fly = true
-		_note("fell through the world: flying (V walks)")
+		_debug.note("fell through the world: flying (V walks)")
 
 
 ## A spot given in game units may be under the terrain; put the feet on it.
@@ -719,11 +700,11 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 		return false
 	var label := "0x%08X %s (%s)" % [ref, info["editor_id"], info["type"]]
 	if info["parent_activate_only"] and not parent:
-		_note(label + " only responds to its activate parents")
+		_debug.note(label + " only responds to its activate parents")
 		return true
 	var level := _papyrus.get_lock_level(ref)  # -1: not locked; 0 is Novice
 	if level >= 0 and not force and not _pick_locks:
-		_note(label + " is locked (level %d, %s); Shift+F opens it anyway" % [level, _lock_name(level)])
+		_debug.note(label + " is locked (level %d, %s); Shift+F opens it anyway" % [level, _lock_name(level)])
 		return true
 	if level >= 0:
 		_papyrus.set_locked(ref, false)
@@ -734,7 +715,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 			_activate(child["cell"], child["ref"], _find_ref_node(child["ref"]), true, true))
 	# A script that blocks activation handles it alone.
 	if _papyrus.is_activation_blocked(ref):
-		_note(label + ": activation blocked, only its scripts ran")
+		_debug.note(label + ": activation blocked, only its scripts ran")
 		return true
 	if info["door"] != null:
 		print(label, " leads to 0x%08X" % info["door"]["destination"])
@@ -754,7 +735,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 				print(label, " opens" if open else " closes")
 				return true
 	if _papyrus.get_scripts(ref).is_empty():
-		_note(label + ": nothing happens")
+		_debug.note(label + ": nothing happens")
 	return true
 
 
@@ -821,7 +802,7 @@ func _activate_in_view(force: bool) -> void:
 	var to := from - _camera.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(self, from, to)
 	if hit.is_empty():
-		_note("nothing to activate")
+		_debug.note("nothing to activate")
 		return
 	_activate(hit["cell"], hit["ref"], hit["node"], force)
 
@@ -907,7 +888,7 @@ func _finish_cell(key: Vector2i, cell: Node3D) -> void:
 		_ai.attach_built(cell)
 	print("cell ", key, ": ", cell.get_meta("skydot_stats"))
 	_scripts_loaded(cell, _world.get_exterior_cell(_world_id, key.x, key.y))
-	_navmesh_overlay(cell)
+	_debug.navmesh_overlay(cell)
 	_collect_doors(cell)
 	if _lod != null:
 		_lod.set_cell_loaded(key.x, key.y, true)
@@ -1138,7 +1119,7 @@ func _start_weather(weather: int) -> bool:
 		node.set_weather(weather, 0.0)
 	_clock.bind_weather(node)
 	node.weather_changed.connect(func(_id: int) -> void:
-		_note("weather: " + str(node.get_state()["editor_id"])))
+		_debug.note("weather: " + str(node.get_state()["editor_id"])))
 	print("weather: ", node.get_state()["editor_id"])
 	return true
 
@@ -1277,7 +1258,7 @@ func _process(delta: float) -> void:
 	if _ai != null:
 		_clock.sync(_benchmark > 0.0)
 		_ai.update(delta)
-	_age_notes(delta)
+	_debug.age(delta)
 	if _quit_in >= 0:
 		_quit_in -= 1
 		if _quit_in < 0:
@@ -1327,12 +1308,12 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
-		_note(_position_text())
+		_debug.note(_debug.position_text(_yaw, _pitch))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
 		_preload_doors = not _preload_doors
 		if not _preload_doors:
 			_drop_prepared()
-		_note("load doors preload what is behind them" if _preload_doors else "load doors load on use")
+		_debug.note("load doors preload what is behind them" if _preload_doors else "load doors load on use")
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
 		_capture_shot(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
@@ -1343,45 +1324,43 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
 		_load_game(QUICKSAVE)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_J:
-		_print_journal()
+		_debug.toggle_journal()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_player.jump()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T:
 		var time_text := _clock.shift(-1.0 if event.shift_pressed else 1.0)
 		if not time_text.is_empty():
-			_note(time_text)
+			_debug.note(time_text)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
-		_inspect_actor()
+		_debug.inspect_actor()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _clock.has_weather():
 		_clock.weather.next_weather()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
-		_show_navmesh = not _show_navmesh
-		_navmesh_overlay(self)
-		_note("navmesh shown" if _show_navmesh else "navmesh hidden")
+		_debug.toggle_navmesh()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_G:
-		_path_to_view()
+		_debug.path_to_view()
 	elif event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_BRACKETLEFT
 			or event.keycode == KEY_BRACKETRIGHT):
 		_lod_split = clampf(_lod_split * (1.25 if event.keycode == KEY_BRACKETRIGHT else 0.8), 0.5, 16.0)
 		if _lod != null:
 			_lod.split_distance = _lod_split
 		# A level-8 quad splits into level-4 ones within split times 8 cells.
-		_note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * CELL_UNITS * _unit_scale])
+		_debug.note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * CELL_UNITS * _unit_scale])
 	elif event is InputEventKey and event.pressed and not event.echo and _world_id != 0 and (event.keycode == KEY_MINUS
 			or event.keycode == KEY_EQUAL):
 		_radius = clampi(_radius + (1 if event.keycode == KEY_EQUAL else -1), 1, 8)
 		if _lod == null:
 			_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
-		_note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
+		_debug.note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
 		get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
-		_note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
+		_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_player.fly = not _player.fly
 		if not _player.fly:
 			_last_ground = _player.global_position
-		_note("flying" if _player.fly else "walking")
+		_debug.note("flying" if _player.fly else "walking")
 
 
 ## An actor the AI brought into the place on screen: build it where its
@@ -1405,180 +1384,6 @@ func _on_actor_arrived(ref: int) -> void:
 	parent.add_child(node)
 	if _ai != null:
 		_ai.attach_built(node)
-
-
-## Tell what the actor nearest the camera is doing (its AI package).
-func _inspect_actor() -> void:
-	if _ai == null:
-		_note("no AI (--ai off)")
-		return
-	var best: SkydotActor = null
-	var best_d := 8.0
-	for actor in get_tree().root.find_children("*", "SkydotActor", true, false):
-		var d: float = actor.global_position.distance_to(_camera.global_position)
-		if d < best_d:
-			best_d = d
-			best = actor
-	if best == null:
-		_note("no actor within 8 m")
-		return
-	var ref: int = best.get_meta("skydot_ref", 0)
-	var state := _ai.get_actor_state(ref)
-	var text := "%s: %s (%s), %s, step %d of %s" % [best.name, state.get("package_editor_id", "-"),
-		state.get("template", ""), state.get("procedure", "-"), int(state.get("step", 0)) + 1,
-		",".join(state.get("steps", []))]
-	_note(text)
-	print(text, " ", state)
-
-
-## Show or hide the navmeshes under `root` as a translucent overlay, built
-## once per region.
-func _navmesh_overlay(root: Node) -> void:
-	for region in root.find_children("*", "NavigationRegion3D", true, false):
-		var overlay: Node3D = region.get_node_or_null("Overlay")
-		if overlay != null:
-			overlay.visible = _show_navmesh
-		elif _show_navmesh:
-			region.add_child(_navmesh_mesh(region.navigation_mesh))
-
-
-func _navmesh_mesh(nav: NavigationMesh) -> MeshInstance3D:
-	if _navmesh_fill == null:
-		_navmesh_fill = StandardMaterial3D.new()
-		_navmesh_fill.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		_navmesh_fill.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-		_navmesh_fill.cull_mode = BaseMaterial3D.CULL_DISABLED
-		_navmesh_fill.albedo_color = Color(0.1, 0.9, 0.3, 0.3)
-		_navmesh_lines = _navmesh_fill.duplicate()
-		_navmesh_lines.albedo_color = Color(0.2, 1.0, 0.4, 0.9)
-	var lift := Vector3(0, 0.03, 0)  # above the ground it lies on
-	var vertices := nav.get_vertices()
-	var faces := PackedVector3Array()
-	var edges := PackedVector3Array()
-	for i in nav.get_polygon_count():
-		var polygon := nav.get_polygon(i)
-		for k in polygon.size():
-			faces.append(vertices[polygon[k]] + lift)
-			edges.append(vertices[polygon[k]] + lift)
-			edges.append(vertices[polygon[(k + 1) % polygon.size()]] + lift)
-	var mesh := ArrayMesh.new()
-	for part in [[faces, Mesh.PRIMITIVE_TRIANGLES, _navmesh_fill], [edges, Mesh.PRIMITIVE_LINES, _navmesh_lines]]:
-		var arrays := []
-		arrays.resize(Mesh.ARRAY_MAX)
-		arrays[Mesh.ARRAY_VERTEX] = part[0]
-		mesh.add_surface_from_arrays(part[1], arrays)
-		mesh.surface_set_material(mesh.get_surface_count() - 1, part[2])
-	var instance := MeshInstance3D.new()
-	instance.name = "Overlay"
-	instance.mesh = mesh
-	instance.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	return instance
-
-
-## A path from the feet to the navmesh point closest to the view ray (G).
-func _path_to_view() -> void:
-	var map := get_world_3d().navigation_map
-	var eye := _camera.global_position
-	var end := eye - _camera.global_transform.basis.z * 300.0
-	# Aim with physics where there is collision; the navigation map's own
-	# segment test returns the origin when the segment misses.
-	var hit := get_world_3d().direct_space_state.intersect_ray(
-		PhysicsRayQueryParameters3D.create(eye, end, 0xFFFFFFFF, [_player.get_rid()]))
-	var target := NavigationServer3D.map_get_closest_point(map, hit["position"]) if not hit.is_empty() \
-		else NavigationServer3D.map_get_closest_point_to_segment(map, eye, end, false)
-	var path := NavigationServer3D.map_get_path(map, _player.global_position, target, true)
-	if _path_line == null:
-		_path_line = MeshInstance3D.new()
-		_path_line.name = "Path"
-		_path_line.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var material := StandardMaterial3D.new()
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.albedo_color = Color(1.0, 0.8, 0.1)
-		material.no_depth_test = true
-		_path_line.material_override = material
-		add_child(_path_line)
-	var line := ImmediateMesh.new()
-	if path.size() >= 2:
-		line.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-		for point in path:
-			line.surface_add_vertex(point + Vector3(0, 0.1, 0))
-		line.surface_end()
-	_path_line.mesh = line
-	if path.size() < 2:
-		_note("no path")
-		return
-	var length := 0.0
-	for k in range(1, path.size()):
-		length += path[k - 1].distance_to(path[k])
-	var short := path[path.size() - 1].distance_to(target)
-	_note("path: %d points, %.1f m%s" % [path.size(), length,
-		"" if short < 0.5 else ", ends %.1f m short" % short])
-
-
-func _quest_name(quest: int) -> String:
-	var info := _world.get_quest(quest)
-	var name: String = info.get("name", "")
-	return name if name != "" else info.get("editor_id", "0x%08X" % quest)
-
-
-## Show a line at the top left for a few seconds, and print it.
-func _note(text: String) -> void:
-	print(text)
-	_note_lines.append([text, NOTE_SECONDS])
-	if _note_lines.size() > 6:
-		_note_lines.pop_front()
-	_notes.text = "\n".join(_note_lines.map(func(l): return l[0]))
-
-
-func _age_notes(delta: float) -> void:
-	if _note_lines.is_empty():
-		return
-	for line in _note_lines:
-		line[1] -= delta
-	var before := _note_lines.size()
-	_note_lines = _note_lines.filter(func(l): return l[1] > 0.0)
-	if _note_lines.size() != before:
-		_notes.text = "\n".join(_note_lines.map(func(l): return l[0]))
-
-
-## Running quests with their stage and the objectives they show.
-## Toggle the journal on screen: running quests with displayed objectives, as
-## the game's journal lists them. The console gets every running quest.
-func _print_journal() -> void:
-	if _journal.visible:
-		_journal.visible = false
-		_notes.visible = true
-		return
-	var running := _papyrus.get_running_quests()
-	print("journal: %d running quests" % running.size())
-	var lines: Array[String] = []
-	for quest in running:
-		var state := _papyrus.get_quest_state(quest)
-		var info := _world.get_quest(quest)
-		var shown: Array = []
-		for o in info.get("objectives", []):
-			var s: Dictionary = state["objectives"].get(o["index"], {})
-			if s.get("displayed", false) and not s.get("completed", false):
-				shown.append(o["text"])
-		print("  %s (0x%08X) stage %d%s" % [_quest_name(quest), quest, state["stage"],
-			("  -> " + "; ".join(shown)) if not shown.is_empty() else ""])
-		if not shown.is_empty():
-			lines.append("%s  (stage %d)" % [_quest_name(quest), state["stage"]])
-			for text in shown:
-				lines.append("    " + text)
-	lines.push_front("Journal: %d quests with objectives, %d running (J closes)" % [
-		lines.filter(func(l: String) -> bool: return not l.begins_with(" ")).size(), running.size()])
-	_journal.text = "\n".join(lines)
-	_journal.visible = true
-	_notes.visible = false
-
-
-## The camera in the game's terms: position in game units (as
-## `player.getpos`) and angles in degrees (as `player.getangle z` and `x`).
-func _position_text() -> String:
-	var p := SkydotWorld.godot_to_skyrim(_camera.global_position)
-	return "at %.0f,%.0f,%.0f  look %.0f,%.0f" % [p.x, p.y, p.z,
-		fposmod(-rad_to_deg(_yaw), 360.0), -rad_to_deg(_pitch)]
 
 
 ## The scripts' state and where the camera is.
@@ -1648,10 +1453,10 @@ func _capture_shot(hide_overlay: bool) -> void:
 		return
 	_shot_busy = true
 	if hide_overlay:
-		_overlay.visible = false
+		_debug.visible = false
 		await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
-	_overlay.visible = true
+	_debug.visible = true
 	var dir := _settings.shot_dir
 	DirAccess.make_dir_recursive_absolute(dir)
 	var stem := dir.path_join("shot_" + Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_"))
@@ -1668,11 +1473,11 @@ func _capture_shot(hide_overlay: bool) -> void:
 		file.close()
 	var png := base + ".png"
 	if image == null:  # headless: nothing is rendered, the JSON still helps
-		_note("screenshot: no image here, wrote " + ProjectSettings.globalize_path(base + ".json"))
+		_debug.note("screenshot: no image here, wrote " + ProjectSettings.globalize_path(base + ".json"))
 		_shot_busy = false
 		return
 	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
-	_note("screenshot: " + ProjectSettings.globalize_path(png))
+	_debug.note("screenshot: " + ProjectSettings.globalize_path(png))
 	if not _settings.shot_notes or DisplayServer.get_name() == "headless":
 		_shot_busy = false
 		return
@@ -1695,7 +1500,7 @@ func _ask_shot_note(json_path: String) -> void:
 		_shot_note_text.gui_input.connect(_shot_note_input)
 		box.add_child(_shot_note_text)
 		_shot_note.add_child(box)
-		_overlay.add_child(_shot_note)
+		_debug.add_child(_shot_note)
 		_shot_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM,
 			Control.PRESET_MODE_MINSIZE, 24)
 		_shot_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -1730,9 +1535,9 @@ func _end_shot_note(save: bool) -> void:
 			meta["note"] = text
 			file.store_string(JSON.stringify(meta, "  ") + "\n")
 			file.close()
-			_note("note saved")
+			_debug.note("note saved")
 		else:
-			_note("note not saved: cannot write " + ProjectSettings.globalize_path(_shot_note_json))
+			_debug.note("note not saved: cannot write " + ProjectSettings.globalize_path(_shot_note_json))
 	_shot_note.visible = false
 	_shot_note_text.release_focus()
 	get_tree().paused = false
@@ -1805,7 +1610,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"navigation": _world.navigation,
 			"actors": _world.actors,
 			"wander": _world.actor_wander,
-			"navmesh_shown": _show_navmesh,
+			"navmesh_shown": _debug.show_navmesh,
 			"lod": _lod != null,
 			"radius": _radius,
 			"lod_split": _lod_split,
