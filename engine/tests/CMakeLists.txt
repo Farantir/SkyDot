@@ -93,6 +93,7 @@ skydot_smoke_test(smoke_ai ai.gd)
 skydot_smoke_test(smoke_physics physics.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
+skydot_smoke_test(smoke_shaders shaders.gd)
 skydot_smoke_test(smoke_packtool packtool.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
