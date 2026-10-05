@@ -515,30 +515,44 @@ which decides how to resolve them (`CollectContext::global(merged, local)`,
 1. **Collect.** `WorldSink::on_record` switches on the record type and hands
    the record to the collector that owns it. There is one per domain, in
    `pack/world/`, each with `collect()` for its types, its own id-keyed maps
-   of `World*` structs, and `write_*` functions for its tables:
+   of flatc's object types (`wfb::CellT`, `wfb::NpcT`, ...; `world.fbs` is
+   generated with `--gen-object-api`, so a table's fields are declared once,
+   in the schema), and `finish()`, which hands its tables to the root:
    `places` (CELL, REFR, ACHR, LAND, NAVM, LGTM), `bases` (LIGH, MATO, ADDN,
    TXST, LTEX, GRAS, and any other type with a model or scripts as a generic
    base), `environment` (WRLD, WATR, CLMT, WTHR, SPGD, REGN, IMGS), `quests`
    (QUST, GLOB), `actors` (NPC_, RACE, ARMO, ARMA, OTFT, LVLI, LVLN) and `ai`
    (PACK, FLST). NPC_, ARMO and LVLN are also read as generic bases, from a
    copy of the reader; INFO is skipped. Each handler parses with the
-   `record::parse_*` function, resolves FormIDs, and stores the result. A
+   `record::parse_*` function, resolves FormIDs, and fills the object. A
    REFR's extras (scripts, locks, linked refs, activate parents, primitives,
-   light overrides, load-door links) are stored per parent cell.
+   light overrides, load-door links) go into its parent cell's object. What a
+   table does not hold stays in a small private struct beside it: a land
+   texture's TXST, an NPC's DPLT, a cell's XCLL until its lighting template
+   is known.
 2. **Derive.** Interior lighting is resolved against its lighting template
    (`resolve_lighting`, XCLL inherit flags), default package
    lists are expanded, and so on. What a writer needs from another domain
    (the NPCs' package lists, from `ai`) is passed in by const reference.
-3. **Write.** Every collection is written sorted by id, so the engine can
-   binary-search it, and the root `World` table gets `format_version`
-   (`k_world_format_version`, 10 in the working tree). FlatBuffers lays bytes
-   out in the order tables, strings and vectors are created, so the sequence
-   of collector calls in `write_world` is part of what makes the file's bytes
-   reproducible.
+3. **Write.** Each collector's `finish(root)` moves its tables into a
+   `wfb::WorldT`, sorted by id (they are `std::map`s), so the engine can
+   binary-search them. `write_world` then packs the vectors of the root one
+   after the other with the generated `Pack` and creates the `World` table
+   with `format_version` (`k_world_format_version`, 10 in the working tree).
+   FlatBuffers lays bytes out in the order tables, strings and vectors are
+   created, so that order is what makes the file's bytes reproducible. flatc
+   runs with `--force-empty`, so a string or vector an object holds empty is
+   written empty, as the hand-written writers did. The exception is the
+   package tables (`AiCollector::write_packages`): the engine takes an absent
+   `PackageBranch.procedure` or `Condition.string2` to mean there is none,
+   and `Pack` cannot leave a string out, so they are written by hand from the
+   objects.
 
 `WorldFile` (`pack/world_file.cpp`, the reading side) is used by the CLI
-(`bethconv cell`) and the tests. It copies FlatBuffer tables back into the
-`World*` structs. The engine does *not* use it; it reads the FlatBuffer
+(`bethconv cell`) and the tests. A lookup `UnPack`s the table into its object
+type (`std::optional<wfb::CellT>`, ...); the few helpers with logic are free
+functions over those types (`is_interior`, `terrain_heights`,
+`uses_parent_land`). The engine does *not* use it; it reads the FlatBuffer
 directly.
 
 ### 5.12 The CLI (`tools/bethconv-cli/`)
@@ -1151,7 +1165,7 @@ Readers refuse unknown versions and say which numbers they read.
 
 | I want to… | Look at |
 | --- | --- |
-| add a field the engine needs from a record | `record/forms_*.hpp` (struct + `parse_*`), `pack/world/<domain>.cpp` (the collector's handler + `write_*`), `formats/schema/world.fbs`, bump `k_world_format_version`, `pack/world.hpp` and `pack/world_file.cpp` (`WorldFile`, if the CLI should show it), engine reader, `formats/pack-format.md` |
+| add a field the engine needs from a record | `record/forms_*.hpp` (struct + `parse_*`), `pack/world/<domain>.cpp` (the collector's handler: one assignment to the object's new field), `formats/schema/world.fbs`, bump `k_world_format_version`, engine reader, `formats/pack-format.md`. The writer, `WorldFile` and the CLI take the field from the generated object type; only a package, input, branch or condition field also goes into `AiCollector::write_packages`. A new table also needs a line in its collector's `finish()` and one in `write_world` |
 | support a new asset kind | `formats/include/skydot_formats/asset_kind.hpp` (`AssetKind`, its word and extension), `pack/convert.cpp` (`kind_of`, the switch, a settings fingerprint), `pack/pack_writer.*`, `formats/pack-format.md`, engine `AssetCache::load` |
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
