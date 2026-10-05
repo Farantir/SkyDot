@@ -100,7 +100,7 @@ extends Node3D
 var _rig: PlayerRig
 var _camera: Camera3D  # _rig's
 var _player: SkydotPlayer  # _rig's; the camera follows its eyes
-var _speed := 3.0
+var _controls: PlayerInput
 var _shots: ShotRecorder
 
 var _settings: ViewerSettings
@@ -117,6 +117,8 @@ var _input := true:
 		_input = value
 		if _transition != null:
 			_transition.interactive = value
+		if _controls != null:
+			_controls.enabled = value
 var _quit_in := -1  # frames until quitting after --activate
 var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
@@ -203,14 +205,17 @@ func _ready() -> void:
 	_transition = PlaceTransition.new(_place, _preloader, _streamer)
 	_transition.interactive = _input
 	add_child(_transition)
+	_controls = PlayerInput.new(_rig)
+	_controls.enabled = _input
+	_controls.command.connect(_on_command)
+	add_child(_controls)
 	_bridge = ScriptBridge.new(world, _papyrus, self, _camera, settings, _place, _streamer, _debug,
 		_transition)
 	_bridge.activations_finished.connect(func() -> void: _quit_in = 5)  # let scripts run first
 	_bridge.failed.connect(_fail)
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
 	_shots = ShotRecorder.new(self, settings, world, _rig, _place, _streamer, _clock, _debug)
-	if DisplayServer.get_name() != "headless" and _input:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_controls.capture_mouse()
 
 	if settings.quests:
 		var started := _papyrus.start_game_enabled_quests()
@@ -243,7 +248,7 @@ func _ready() -> void:
 			return
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
-		_speed = 10.0
+		_controls.fly_speed = 10.0
 		if settings.has_benchmark:
 			_benchmark = settings.benchmark
 			_streamer.max_usec = 0
@@ -353,82 +358,56 @@ func _process(delta: float) -> void:
 	if _benchmark > 0.0:
 		_benchmark_frame(delta)
 		return
-	if not _input:
-		_player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
-		_player.set_look(_rig.yaw, _rig.pitch)
-		return
-	var move := Vector2.ZERO
-	if Input.is_key_pressed(KEY_W): move.y += 1
-	if Input.is_key_pressed(KEY_S): move.y -= 1
-	if Input.is_key_pressed(KEY_A): move.x -= 1
-	if Input.is_key_pressed(KEY_D): move.x += 1
-	var vertical := 0.0
-	if Input.is_key_pressed(KEY_E) or (Input.is_key_pressed(KEY_SPACE) and _player.is_swimming()):
-		vertical += 1
-	if Input.is_key_pressed(KEY_Q):
-		vertical -= 1
-	var gait := SkydotPlayer.RUN
-	if Input.is_key_pressed(KEY_SHIFT):
-		gait = SkydotPlayer.SPRINT
-	elif Input.is_key_pressed(KEY_CTRL):
-		gait = SkydotPlayer.WALK
-	_player.fly_speed = _speed
-	_player.set_input(move, vertical, gait)
-	_player.set_look(_rig.yaw, _rig.pitch)
+	_controls.apply()
 
 
-func _unhandled_input(event: InputEvent) -> void:
-	if not _input:
-		return
-	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
-	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
-		_rig.apply_look(_rig.yaw - event.relative.x * 0.004,
-			clamp(_rig.pitch - event.relative.y * 0.004, -1.5, 1.5))
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not captured:
-		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_P:
-		_debug.note(_debug.position_text(_rig.yaw, _rig.pitch))
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
-		_debug.note("load doors preload what is behind them" if _preloader.toggle() else "load doors load on use")
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
-		_shots.capture(event.shift_pressed)
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
-		if not _transition.is_fading():
-			_bridge.activate_in_view(event.shift_pressed)
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
-		_saves.save(SaveService.QUICKSAVE)
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
-		_saves.load_game(SaveService.QUICKSAVE)
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_J:
-		_debug.toggle_journal()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
-		_player.jump()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T:
-		var time_text := _clock.shift(-1.0 if event.shift_pressed else 1.0)
-		if not time_text.is_empty():
-			_debug.note(time_text)
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
-		_debug.inspect_actor()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _clock.has_weather():
-		_clock.weather.next_weather()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
-		_debug.toggle_navmesh()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_G:
-		_debug.path_to_view()
-	elif event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_BRACKETLEFT
-			or event.keycode == KEY_BRACKETRIGHT):
-		_debug.note(_streamer.scale_lod_split(1.25 if event.keycode == KEY_BRACKETRIGHT else 0.8))
-	elif event is InputEventKey and event.pressed and not event.echo and _streamer.world_id != 0 and (event.keycode == KEY_MINUS
-			or event.keycode == KEY_EQUAL):
-		_debug.note(_streamer.change_radius(1 if event.keycode == KEY_EQUAL else -1))
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
-		var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
-		get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
-		_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
-		_debug.note("flying" if _rig.toggle_fly() else "walking")
+## A key that is not about the player's body.
+func _on_command(action: StringName, shift: bool) -> void:
+	match action:
+		PlayerInput.SHOW_POSITION:
+			_debug.note(_debug.position_text(_rig.yaw, _rig.pitch))
+		PlayerInput.TOGGLE_PRELOAD:
+			_debug.note("load doors preload what is behind them" if _preloader.toggle() else "load doors load on use")
+		PlayerInput.TAKE_SHOT:
+			_shots.capture(shift)
+		PlayerInput.ACTIVATE:
+			if not _transition.is_fading():
+				_bridge.activate_in_view(shift)  # Shift opens locks
+		PlayerInput.QUICK_SAVE:
+			_saves.save(SaveService.QUICKSAVE)
+		PlayerInput.QUICK_LOAD:
+			_saves.load_game(SaveService.QUICKSAVE)
+		PlayerInput.SHOW_JOURNAL:
+			_debug.toggle_journal()
+		PlayerInput.CHANGE_TIME:
+			var time_text := _clock.shift(-1.0 if shift else 1.0)
+			if not time_text.is_empty():
+				_debug.note(time_text)
+		PlayerInput.INSPECT_ACTOR:
+			_debug.inspect_actor()
+		PlayerInput.NEXT_WEATHER:
+			if _clock.has_weather():
+				_clock.weather.next_weather()
+		PlayerInput.TOGGLE_NAVMESH:
+			_debug.toggle_navmesh()
+		PlayerInput.SHOW_PATH:
+			_debug.path_to_view()
+		PlayerInput.LOD_DETAIL_DOWN:
+			_debug.note(_streamer.scale_lod_split(0.8))
+		PlayerInput.LOD_DETAIL_UP:
+			_debug.note(_streamer.scale_lod_split(1.25))
+		PlayerInput.RADIUS_DOWN:
+			if _streamer.world_id != 0:
+				_debug.note(_streamer.change_radius(-1))
+		PlayerInput.RADIUS_UP:
+			if _streamer.world_id != 0:
+				_debug.note(_streamer.change_radius(1))
+		PlayerInput.CYCLE_MSAA:
+			var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
+			get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
+			_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
+		PlayerInput.TOGGLE_FLY:
+			_debug.note("flying" if _rig.toggle_fly() else "walking")
 
 
 func _fail(message: String) -> void:
