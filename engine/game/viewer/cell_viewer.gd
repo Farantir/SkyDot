@@ -128,8 +128,8 @@ var _pack: SkydotPack
 var _preloader: DoorPreloader
 var _transition: PlaceTransition
 var _bridge: ScriptBridge
+var _saves: SaveService
 const NOTE_SECONDS := 8.0
-const QUICKSAVE := "user://quicksave.skydot"
 var _clock: GameClock
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shot_busy := false
@@ -217,6 +217,7 @@ func _ready() -> void:
 		_transition)
 	_bridge.activations_finished.connect(func() -> void: _quit_in = 5)  # let scripts run first
 	_bridge.failed.connect(_fail)
+	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
 	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -279,7 +280,7 @@ func _ready() -> void:
 	if settings.has_look:
 		_rig.apply_look(settings.look_yaw, settings.look_pitch)
 	if not settings.load_path.is_empty():
-		_load_game(settings.load_path)
+		_saves.load_game(settings.load_path)
 
 	if settings.has_screenshot:
 		_shot_path = settings.screenshot
@@ -356,7 +357,7 @@ func _process(delta: float) -> void:
 		_quit_in -= 1
 		if _quit_in < 0:
 			if not _settings.save_to.is_empty():
-				_save_game(_settings.save_to)
+				_saves.save(_settings.save_to)
 			get_tree().quit(0)
 		return
 	if _bridge.has_activations():
@@ -410,9 +411,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not _transition.is_fading():
 			_bridge.activate_in_view(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
-		_save_game(QUICKSAVE)
+		_saves.save(SaveService.QUICKSAVE)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F9:
-		_load_game(QUICKSAVE)
+		_saves.load_game(SaveService.QUICKSAVE)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_J:
 		_debug.toggle_journal()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
@@ -441,46 +442,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_debug.note("flying" if _rig.toggle_fly() else "walking")
-
-
-## The scripts' state and where the camera is.
-func _save_game(path: String) -> void:
-	var state := {
-		"format": 1,
-		"papyrus": _papyrus.save_state(),
-		"cell": _place.cell_id,
-		"world": _streamer.world_id,
-		"position": _camera.position,
-		"yaw": _rig.yaw,
-		"pitch": _rig.pitch,
-	}
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
-		printerr("cannot save to ", path)
-		return
-	file.store_buffer(var_to_bytes(state))
-	print("saved ", path)
-
-
-func _load_game(path: String) -> bool:
-	if not FileAccess.file_exists(path):
-		printerr("no save at ", path)
-		return false
-	var state = bytes_to_var(FileAccess.get_file_as_bytes(path))
-	if typeof(state) != TYPE_DICTIONARY or state.get("format", 0) != 1 \
-			or typeof(state.get("papyrus")) != TYPE_PACKED_BYTE_ARRAY:
-		printerr("not a save: ", path)
-		return false
-	if _papyrus.load_state(state["papyrus"]) != OK:
-		printerr("cannot load the scripts' state: ", _papyrus.get_last_error())
-		return false
-	if int(state.get("world", 0)) != 0:
-		_place.enter_exterior(int(state["world"]), state["position"], null)
-	else:
-		_place.enter_interior(int(state["cell"]), state["position"], null)
-	_rig.apply_look(float(state["yaw"]), float(state["pitch"]))
-	print("loaded ", path)
-	return true
 
 
 func _take_screenshots() -> void:
