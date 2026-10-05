@@ -63,13 +63,13 @@ private:
                    const record::FormContext& form_ctx);
 
     CollectContext& shared_;
-    std::map<std::uint32_t, Worldspace> worlds_;
-    std::map<std::uint32_t, WorldWater> waters_;
-    std::map<std::uint32_t, WorldClimate> climates_;
-    std::map<std::uint32_t, WorldWeather> weathers_;
-    std::map<std::uint32_t, WorldImageSpace> image_spaces_;
-    std::map<std::uint32_t, WorldPrecipitation> precipitations_;
-    std::map<std::uint32_t, WorldRegion> regions_;
+    std::map<std::uint32_t, wfb::WorldspaceT> worlds_;
+    std::map<std::uint32_t, wfb::WaterT> waters_;
+    std::map<std::uint32_t, wfb::ClimateT> climates_;
+    std::map<std::uint32_t, wfb::WeatherT> weathers_;
+    std::map<std::uint32_t, wfb::ImageSpaceT> image_spaces_;
+    std::map<std::uint32_t, wfb::PrecipitationT> precipitations_;
+    std::map<std::uint32_t, wfb::RegionT> regions_;
 };
 
 } // namespace bethconv::pack::detail
