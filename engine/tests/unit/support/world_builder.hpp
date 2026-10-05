@@ -185,8 +185,14 @@ struct LeveledListSpec {
     std::uint32_t id;
     std::uint32_t type = 0;
     wfb::LeveledListFlags flags = {};
-    /// Entries as (level, form).
-    std::vector<std::pair<std::uint16_t, std::uint32_t>> entries = {};
+    /// Entries as {level, form}. A struct, not a pair: pair's converting
+    /// constructor narrows int literals inside the STL, which MSVC warns
+    /// about there.
+    struct Entry {
+        std::uint16_t level;
+        std::uint32_t form;
+    };
+    std::vector<Entry> entries = {};
 };
 
 // ---- the file ---------------------------------------------------------------

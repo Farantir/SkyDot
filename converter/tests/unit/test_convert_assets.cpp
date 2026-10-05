@@ -97,7 +97,7 @@ struct Run {
                                                     std::string_view vpath) {
     std::vector<std::string> details;
     for (const auto& warning : report["warnings"]) {
-        if (warning["vpath"] == vpath) {
+        if (warning["vpath"].get<std::string>() == vpath) {
             details.push_back(warning["detail"]);
         }
     }
@@ -232,7 +232,10 @@ TEST_CASE("a file that cannot be converted is a failure with its stage, not an a
     CHECK(result.first_failures.size() == 5);
 
     std::vector<std::pair<std::string, std::string>> failed; // vpath, stage
-    for (const auto& failure : run.report()["failures"]) {
+    // Named: a range-for over a member of a temporary only keeps the
+    // temporary alive from C++23 on (GCC 14 frees it first).
+    const auto report = run.report();
+    for (const auto& failure : report["failures"]) {
         failed.emplace_back(failure["vpath"], failure["stage"]);
     }
     CHECK(failed == std::vector<std::pair<std::string, std::string>>{

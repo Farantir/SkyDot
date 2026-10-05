@@ -436,7 +436,7 @@ godot::Dictionary SkydotWeather::get_image_space() const {
     godot::PackedFloat32Array tint;
     for (std::size_t i = 0; i < 16; ++i) {
         const float v = one.image_space[i] + (two.image_space[i] - one.image_space[i]) * t;
-        (i < 9 ? hdr : i < 12 ? cinematic : tint).push_back(v);
+        (i < 9 ? hdr : i < 12 ? cinematic : tint).push_back(static_cast<double>(v));
     }
     Dictionary out;
     out["hdr"] = hdr;

@@ -194,7 +194,7 @@ Dictionary get_image_space(const WorldData& data, std::int64_t id) {
         godot::PackedFloat32Array a;
         if (v != nullptr) {
             for (const float f : *v) {
-                a.push_back(f);
+                a.push_back(static_cast<double>(f));
             }
         }
         return a;

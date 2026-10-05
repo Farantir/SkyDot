@@ -101,7 +101,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     for (const auto& l : by_id(spec.leveled_lists)) {
         std::vector<wfb::LeveledEntry> entries;
         for (const auto& [level, form] : l.entries) {
-            entries.emplace_back(level, 1, form);
+            entries.emplace_back(level, std::uint16_t{1}, form);
         }
         lists.push_back(wfb::CreateLeveledListDirect(fbb, l.id, l.type, l.flags, 0, some(entries)));
     }

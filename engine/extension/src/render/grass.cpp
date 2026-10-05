@@ -139,12 +139,11 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
         const int iy = static_cast<int>(ly);
         const float tx = lx - static_cast<float>(ix);
         const float ty = ly - static_cast<float>(iy);
-        constexpr int side = TerrainBuilder::k_quadrant_grid;
         std::vector<float> share(quadrant.layers.size() + 1, 0.0F);
         float rest = 1.0F; // of what lies under the layers above
         for (std::size_t i = quadrant.layers.size(); i-- > 0;) {
             const auto& o = quadrant.layers[i].second;
-            const auto at = [&](int gx, int gy) { return o[static_cast<std::size_t>(gy * side + gx)]; };
+            const auto at = [&](int gx, int gy) { return o[static_cast<std::size_t>(gy * TerrainBuilder::k_quadrant_grid + gx)]; };
             const float w = (at(ix, iy) * (1 - tx) + at(ix + 1, iy) * tx) * (1 - ty) +
                             (at(ix, iy + 1) * (1 - tx) + at(ix + 1, iy + 1) * tx) * ty;
             share[i + 1] = rest * w;
