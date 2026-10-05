@@ -29,8 +29,10 @@ public:
     /// FLST: kept to expand NPCs' default package lists.
     [[nodiscard]] const FormLists& form_lists() const noexcept { return form_lists_; }
 
-    /// The packages, in id order, into `world`.
-    void finish(wfb::WorldT& world);
+    /// The packages, in id order. Written by hand rather than packed, see
+    /// ai.cpp.
+    [[nodiscard]] flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Package>>>
+    write_packages(flatbuffers::FlatBufferBuilder& builder);
 
 private:
     void on_form_list(const record::MergedRecord& merged, io::SpanReader& data,

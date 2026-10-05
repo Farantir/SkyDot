@@ -8,6 +8,7 @@
 #include "bethconv/record/forms_game.hpp"
 
 #include <memory>
+#include <string>
 #include <utility>
 
 namespace bethconv::pack::detail {
@@ -43,6 +44,32 @@ std::vector<std::unique_ptr<wfb::ConditionT>> global_conditions(
         t->string2 = c.string2;
     }
     return out;
+}
+
+/// The string `text` in the buffer, or nothing if it is empty. The package
+/// tables are written by hand, not with CreatePackage(builder, &object): Pack
+/// writes every string, and the engine takes an absent `Condition.string2` or
+/// `PackageBranch.procedure` to mean there is none (an empty `procedure` would
+/// be a step that does nothing instead of no step).
+flatbuffers::Offset<flatbuffers::String> optional_string(flatbuffers::FlatBufferBuilder& builder,
+                                                         const std::string& text) {
+    return text.empty() ? flatbuffers::Offset<flatbuffers::String>()
+                        : builder.CreateString(text);
+}
+
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>> write_conditions(
+    flatbuffers::FlatBufferBuilder& builder,
+    const std::vector<std::unique_ptr<wfb::ConditionT>>& list) {
+    std::vector<flatbuffers::Offset<wfb::Condition>> offsets;
+    offsets.reserve(list.size());
+    for (const auto& c : list) {
+        const auto string1 = optional_string(builder, c->string1);
+        const auto string2 = optional_string(builder, c->string2);
+        offsets.push_back(wfb::CreateCondition(builder, c->type, c->function, c->value,
+                                               c->value_global, c->param1, c->param2, c->run_on,
+                                               c->reference, c->param3, string1, string2));
+    }
+    return builder.CreateVector(offsets);
 }
 
 } // namespace
@@ -165,9 +192,44 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
     packages_[out.id] = std::move(out);
 }
 
-void AiCollector::finish(wfb::WorldT& world) {
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Package>>>
+AiCollector::write_packages(flatbuffers::FlatBufferBuilder& builder) {
+    std::vector<flatbuffers::Offset<wfb::Package>> packages;
+    packages.reserve(packages_.size());
+    for (const auto& [id, p] : packages_) {
+        const auto editor_id = builder.CreateString(p.editor_id);
+        const auto conditions = write_conditions(builder, p.conditions);
+        std::vector<flatbuffers::Offset<wfb::PackageInput>> inputs;
+        inputs.reserve(p.inputs.size());
+        for (const auto& in : p.inputs) {
+            const auto type = builder.CreateString(in->type);
+            const auto name = optional_string(builder, in->name);
+            inputs.push_back(wfb::CreatePackageInput(
+                builder, in->key, type, name, in->number, in->location_type, in->location_value,
+                in->location_radius, in->target_type, in->target_value, in->target_count));
+        }
+        std::vector<flatbuffers::Offset<wfb::PackageBranch>> branches;
+        branches.reserve(p.branches.size());
+        for (const auto& b : p.branches) {
+            const auto type = builder.CreateString(b->type);
+            const auto branch_conditions = write_conditions(builder, b->conditions);
+            const auto procedure = optional_string(builder, b->procedure);
+            const auto keys = builder.CreateVector(b->inputs);
+            branches.push_back(wfb::CreatePackageBranch(
+                builder, type, branch_conditions, b->children, b->flags, procedure,
+                b->success_completes, keys, b->set_flags, b->clear_flags, b->speed));
+        }
+        const auto inputs_off = builder.CreateVector(inputs);
+        const auto branches_off = builder.CreateVector(branches);
+        const auto idles = builder.CreateVector(p.idles);
+        packages.push_back(wfb::CreatePackage(
+            builder, p.id, editor_id, p.type, p.flags, p.interrupt_override, p.speed,
+            p.interrupt_flags, p.month, p.day_of_week, p.date, p.hour, p.minute, p.duration,
+            conditions, p.template_, inputs_off, branches_off, p.idle_flags, p.idle_timer, idles,
+            p.owner_quest, p.combat_style, p.on_begin_idle, p.on_end_idle, p.on_change_idle));
+    }
     shared_.stats().packages += packages_.size();
-    move_into(world.packages, packages_);
+    return builder.CreateVector(packages);
 }
 
 } // namespace bethconv::pack::detail
