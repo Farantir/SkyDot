@@ -100,7 +100,7 @@ SkyDot/
 │   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
 │   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
 │   ├── extension/src/register_types.*  GDExtension entry point
-│   ├── game/                         Godot project: pack tool, viewer, tools (~5,000)
+│   ├── game/                         Godot project: pack tool, viewer, tools (~5,900)
 │   ├── game/shaders/                 the shaders, as text files the render/ code assembles (~1,200)
 │   ├── tests/smoke/                  headless Godot tests (~2,400)
 │   ├── docs/                         subsystem notes (~1,100)
@@ -977,41 +977,48 @@ child process (`bethconv.gd`):
 - `ui.gd`: small helpers that build controls in code. There are no `.tscn`
   pages besides the root.
 
-### 8.2 Cell viewer (`game/viewer/cell_viewer.gd`)
+### 8.2 Cell viewer (`game/viewer/`)
 
-One ~1,900-line script that is in effect the game loop. It handles:
+`cell_viewer.gd` is the composition root and the frame loop: about 300
+lines of code, and the documentation of every option in its header. It opens
+the pack and world, creates `SkydotPapyrus`, `SkydotAi` and
+`SkydotImageSpace`, makes the parts below, starts the start-game quests and
+enters the place the options name (an interior, at the arrival spot of the
+door leading in, or an exterior). Each part is a class with typed state and a
+small API. None has a `_process` of its own: the root calls them in the order
+the frame needs, as the one script did before.
 
-- **Arguments**: `--pack`, `--cell` / `--world --at --target`, many toggles
-  (materials, effects, collision, navigation, actors, AI, quests, LOD,
-  grass, weather, time, image space), `--screenshot`, `--benchmark`,
-  `--from-shot`, `--activate`, `--save-to`/`--load`.
-- **Setup**: opens the pack and world, creates `SkydotPapyrus`, `SkydotAi`,
-  `SkydotImageSpace`, starts start-game quests, enters an interior (at the
-  arrival spot of the door leading in) or an exterior.
-- **Exterior streaming** (`_stream_step`, every frame): drops cells outside
-  radius+1, continues in-progress builds nearest first within
-  `--build-budget` µs, then requests and begins up to four new cells whose
-  resources are ready. A finished cell gets its AI actors, scripts
-  (`_scripts_loaded`), navmesh overlay and load doors registered, and its
-  LOD masked.
-- **Load-door preloading** (`_prepare_step`): within 15 m of a load door it
-  builds the place behind it in the background (`begin_*` +
-  `continue_build_static`, held hidden, without physics and navigation), so
-  going through costs a fraction.
-- **Door transitions** (`_begin_fade`/`_fade_step`): fade out, travel on a
-  black frame, wait until built plus a few frames, fade in.
-- **Per frame** (`_process`): fog sync, image space, player and camera,
-  streaming, LOD, preparation, fade, Papyrus (`update_actor` for triggers,
-  `update`), the clock hand-off between `SkydotWeather` (outside) and
-  `SkydotAi` (inside), notes, scripted activations, benchmark, input.
-- **Script bridge**: `_on_enable_changed`, `_on_play_animation`,
-  `_on_havok_impulse`, `_on_motion_type`, `_activate` (locks, load doors,
-  plain doors, scripts).
-- **Saves** (F5/F9): VM state plus place.
-- **Shots** (F12): PNG + JSON (place, camera in engine and game terms, time,
-  weather, options, pack hashes, GPU, console commands, and a note the user
-  types). `--from-shot` reproduces a shot.
-- **Debug UI**: journal, notes, navmesh overlay, path drawing, position.
+| File | Class | What it owns |
+| --- | --- | --- |
+| `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
+| `game_clock.gd` | `GameClock` | the time of day. Outside `SkydotWeather` runs it, inside `SkydotAi`'s clock does; the clock hands it over when a place is left (`release_weather`), every frame (`sync`) and for T (`shift`), and says it for shots (`describe`) |
+| `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
+| `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot` (the same logical keys as before), so a gamepad or VR shell can map its own events to them |
+| `world_streamer.gd` | `WorldStreamer` | the exterior: dropping, loading and finishing cells nearest first within `--build-budget` µs, the LOD and its masking, the camera's cell, radius and LOD detail keys, holding the player while the ground is built; `cell_finished` signal |
+| `door_preloader.gd` | `DoorPreloader` | the load doors of the place shown and, near one, the place behind it built in the background (`Preparation`, a typed class) |
+| `held_place.gd` | `HeldPlace` | `hold`/`release`: a place built ahead is in the scene, hidden, without physics and off the navigation map |
+| `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in; signals `built`, `left`, `message`, `failed` |
+| `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the preloader built |
+| `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, quests, messages), `activate` (locks, load doors, plain doors, scripts, activate parents), finding a reference's node, the `--activate` run |
+| `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the VM state plus the place and camera |
+| `shot_recorder.gd` | `ShotRecorder` | F12 shots (PNG and JSON with place, camera in engine and game terms, time, weather, options, pack hashes, GPU, console commands and the note the user types), `--screenshot`, `--shot-delay` |
+| `debug_overlay.gd` | `DebugOverlay` | a `CanvasLayer`: notes, journal, navmesh overlay, path drawing, position text, actor inspection |
+| `benchmark_run.gd` | `BenchmarkRun` | `--benchmark`: the flight and its frame statistics |
+
+Per frame (`_process`): fog sync and image space; during a `--screenshot`
+run only the shots; then the player held or tracked and the camera following
+it, `WorldStreamer.update` (cells, LOD), `DoorPreloader.step`,
+`PlaceTransition.step`, Papyrus (`update_actor` for triggers, `update`), the
+clock hand-off and `SkydotAi.update`, the notes' age, the countdown that
+quits an `--activate` run, scripted activations, the benchmark, then input.
+
+The parts do not know the root. What a built cell needs next (scripts, navmesh
+overlay, load door registration) is the root's `_on_cell_built`, connected to
+`WorldStreamer.cell_finished` and `Place.built`; notes and failures are
+signals. `_input = false` (tools set it) turns off `PlayerInput` and the
+door fades. `WorldStreamer`, `DoorPreloader` and `GameClock` run every frame
+and every front end needs them, so they are the parts to move into C++ when
+the VR shell starts.
 
 ### 8.3 Tools and tests
 
@@ -1053,9 +1060,10 @@ One ~1,900-line script that is in effect the game loop. It handles:
 
 1. `SkydotPack.open` checks the pack and mounts the store; `open_world()`
    reads and indexes `world.fb`.
-2. The viewer creates `SkydotWeather` (sky, light, fog), `SkydotLod`,
-   `SkydotPapyrus` (start-game quests start), `SkydotAi` and the player.
-3. Each frame `_stream_step` requests the 5×5 cells around the camera (their
+2. The viewer creates `SkydotPapyrus`, `SkydotAi` and the player rig;
+   `_start_game` starts the start-game quests; `Place.enter_exterior` creates
+   `SkydotWeather` (sky, light, fog) and `SkydotLod`.
+3. Each frame `WorldStreamer.step` requests the 5×5 cells around the camera (their
    models, textures, land textures and actor clips load on the cache's
    workers), then begins and continues builds within 8 ms per frame. LOD
    fills the rest and masks loaded cells. The player is held until the
@@ -1064,27 +1072,29 @@ One ~1,900-line script that is in effect the game loop. It handles:
 ### 9.3 Pulling a lever
 
 1. F → `pick_ref` finds the lever's reference from the camera ray.
-2. `_activate` checks the lock, then `SkydotPapyrus.activate(ref,
+2. `ScriptBridge.activate` checks the lock, then `SkydotPapyrus.activate(ref,
    activator)`, which sends `OnActivate` to the reference's scripts (and
    its aliases').
 3. The script calls `PlayAnimationAndWait` (latent: the thread waits for a
    text key, with a timeout) and `Enable()`/`Disable()` on linked refs.
 4. SkydotPapyrus updates its world view and emits `play_animation` and
-   `enable_changed`. The viewer plays the clip on the lever's
+   `enable_changed`. `ScriptBridge` plays the clip on the lever's
    `SkydotAnimator`; its `text_key` and `finished` signals call
    `SkydotPapyrus.notify_animation_event`, which wakes the waiting script
-   thread. The viewer also shows or hides the nodes and wakes clutter that
+   thread. `ScriptBridge` also shows or hides the nodes and wakes clutter that
    rested on them.
 
 ### 9.4 Going through a load door
 
 1. While the player is near the door, the place behind it has been prepared
-   (`_prepare_step`).
-2. Activating the door calls `_begin_fade(door)`: fade out, then `_travel`.
-   The current place is freed, the prepared one released (or built now),
-   the player put at the arrival transform, the weather and LOD switched,
-   and actors placed (`SkydotAi.begin_placing`/`settle_actors`, then
-   `continue_build` places them).
+   (`DoorPreloader.step`).
+2. Activating the door calls `PlaceTransition.go(door)`: fade out
+   (`begin_fade`), then `travel`; with no one at the keyboard, `travel` at
+   once. `Place.leave` frees the current place, the prepared one
+   (`DoorPreloader.take`) is released (or built now), the player is put at
+   the arrival transform, the weather and LOD are switched, and actors are
+   placed (`SkydotAi.begin_placing`/`settle_actors`, then `continue_build`
+   places them).
 3. After the build is complete and a few frames have been drawn, fade in.
 
 ---
@@ -1117,7 +1127,7 @@ Several version numbers move independently:
 | Script, LOD, animation assets | `format_version` in each root table | 1 / per schema | their schema changes |
 | Asset settings fingerprints | `ConvertOptions::*_settings()` (`mesh/19`, `texture/1`, `script/2`, `lod/1`, `animation/2`) | — | a writer's output changes for unchanged input (renames assets, no format change) |
 | CLI JSON | `cli::k_json_version` | — | the JSON the pack tool reads changes |
-| Shot JSON | `SHOT_FORMAT` in the viewer | 1 | the F12 metadata changes |
+| Shot JSON | `ViewerSettings.SHOT_FORMAT` | 1 | the F12 metadata changes |
 
 Readers refuse unknown versions and say which numbers they read.
 
@@ -1148,7 +1158,8 @@ Readers refuse unknown versions and say which numbers they read.
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
 | change a shader | the file in `engine/game/shaders/` (its header comment names the C++ that assembles it; `game/shaders/README.md`); what the C++ adds per variant is in `render/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` |
 | add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
-| change streaming or door transitions | `game/viewer/cell_viewer.gd` (`_stream_step`, `_prepare_step`, `_fade_step`) |
+| change streaming or door transitions | `game/viewer/` (`world_streamer.gd`, `door_preloader.gd`, `place_transition.gd`, `place.gd`) |
+| change a viewer key | the action in `game/project.godot` (`[input]`), `player_input.gd`, and the dispatcher `_on_command` in `cell_viewer.gd` |
 | change what the pack tool shows | `game/packtool/*.gd`, `converter/docs/cli-json.md` |
 
 ---

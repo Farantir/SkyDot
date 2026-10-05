@@ -171,7 +171,9 @@ the time by an hour, K changes the weather. `--benchmark 10` flies east and
 prints frame times (pass `--disable-vsync` to Godot when the window is not
 visible, or the compositor throttles it).
 
-The mouse looks (Esc releases it, a click captures it again). You walk with
+The mouse looks (Esc releases it, a click captures it again). The keys are
+InputMap actions (`game/project.godot`, read by `viewer/player_input.gd`), so a
+gamepad or VR shell can map its own events to them. You walk with
 collision: WASD moves, Shift sprints, Ctrl walks, Space jumps (and swims up in
 water); V toggles flying through everything (Q/E down/up, Shift faster).
 `--walk off` starts flying, `--collision off` builds no physics bodies;
@@ -284,7 +286,7 @@ extension/src/            the GDExtension, C++20
   vm/                     the Papyrus VM and SkydotPapyrus
 game/                     the Godot project (.gdextension, project.godot, glue)
   packtool/               the pack tool (main scene): convert, list, view
-  viewer/                 cell viewer
+  viewer/                 cell viewer: cell_viewer.gd puts it together, its parts sit beside it (ARCHITECTURE.md 8.2)
   tools/                  headless checks against a real pack
 tests/unit/               Catch2 tests of skydot_core, the Godot-free sources
 tests/smoke/              headless editor runs, registered with ctest
