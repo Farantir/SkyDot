@@ -12,6 +12,7 @@
 #include "assets/asset_cache.hpp"
 #include "world/actor_placement.hpp"
 #include "world/cell_builder.hpp"
+#include "world/queries.hpp"
 #include "world/world_data.hpp"
 #include "skydot_formats/units.hpp"
 
@@ -126,7 +127,7 @@ public:
     /// References whose enable state follows `ref`'s: Array of ref ids.
     godot::PackedInt64Array get_enable_children(std::int64_t ref) const;
 
-    // Quests, globals and placed actors (world/quests.cpp).
+    // Quests, globals and placed actors (world/queries_quests.cpp).
     std::int64_t get_quest_count() const;
     bool has_quest(std::int64_t id) const;
     /// Quests whose editor id contains `filter` (case-insensitive): id,
@@ -341,8 +342,6 @@ protected:
 
 private:
     godot::Error fail(godot::Error code, const godot::String& why);
-    /// The verified root; null while closed.
-    const bethconv::pack::wfb::World* world_fb() const { return data_->root(); }
 
     /// The open world.fb; a closed WorldData until `open` succeeds.
     std::shared_ptr<const WorldData> data_{std::make_shared<const WorldData>()};
@@ -352,9 +351,7 @@ private:
     CellBuilder builder_{data_, placement_};
     godot::String error_;
 
-    /// (ref, cell) sorted by ref; built on first use (a second of reading
-    /// every reference in the file, so not in WorldData::open).
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> ref_cells_;
+    queries::RefCellIndex ref_cells_;
 };
 
 } // namespace skydot

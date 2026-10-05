@@ -1,57 +1,25 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/world.hpp"
 #include "world/coordinates.hpp"
-#include "world/fb_search.hpp"
-#include "world/text.hpp"
-
 #include "world/collision.hpp"
+#include "world/queries.hpp"
 #include "world/refs.hpp"
-
-#include "skydot_formats/flags.hpp"
-#include "skydot_formats/units.hpp"
-#include "world_generated.h"
+#include "world/text.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/core/class_db.hpp>
-#include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
-#include <godot_cpp/variant/vector2i.hpp>
-
-#include <algorithm>
-#include <cmath>
-#include <numbers>
 
 using godot::Array;
-using godot::Color;
 using godot::Dictionary;
 using godot::Error;
 using godot::String;
 using godot::Transform3D;
 using godot::Vector3;
 
-namespace wfb = bethconv::pack::wfb;
-
 namespace skydot {
-
-namespace {
-
-bool contains_ci(const flatbuffers::String* haystack, const std::string& needle_lower) {
-    if (haystack == nullptr) {
-        return false;
-    }
-    std::string lower(haystack->string_view());
-    std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
-        return static_cast<char>((c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c);
-    });
-    return lower.find(needle_lower) != std::string::npos;
-}
-
-/// Game units per exterior cell side.
-constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
-
-} // namespace
 
 // ---- binding --------------------------------------------------------------
 
@@ -232,179 +200,68 @@ Error SkydotWorld::open(const String& path) {
 bool SkydotWorld::is_open() const { return data_->is_open(); }
 String SkydotWorld::get_error() const { return error_; }
 
-std::int64_t SkydotWorld::get_cell_count() const {
-    return world_fb() != nullptr && world_fb()->cells() != nullptr ? world_fb()->cells()->size() : 0;
-}
+// ---- reading world.fb (queries_*.cpp) --------------------------------------
 
-std::int64_t SkydotWorld::get_base_count() const {
-    return world_fb() != nullptr && world_fb()->bases() != nullptr ? world_fb()->bases()->size() : 0;
-}
-
-std::int64_t SkydotWorld::find_cell(const String& editor_id) const {
-    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
-    if (cells == nullptr) {
-        return 0;
-    }
-    const auto wanted = editor_id.to_lower();
-    for (const auto* cell : *cells) {
-        if (cell->editor_id() != nullptr && to_godot(cell->editor_id()).to_lower() == wanted) {
-            return cell->id();
-        }
-    }
-    return 0;
-}
-
+std::int64_t SkydotWorld::get_cell_count() const { return queries::get_cell_count(data()); }
+std::int64_t SkydotWorld::get_base_count() const { return queries::get_base_count(data()); }
+std::int64_t SkydotWorld::find_cell(const String& editor_id) const { return queries::find_cell(data(), editor_id); }
 Array SkydotWorld::list_cells(const String& filter, bool interior_only) const {
-    Array out;
-    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
-    if (cells == nullptr) {
-        return out;
-    }
-    const auto needle = filter.to_lower().utf8();
-    const std::string needle_str(needle.get_data(), static_cast<std::size_t>(needle.length()));
-    for (const auto* cell : *cells) {
-        const bool interior = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
-        if (interior_only && !interior) {
-            continue;
-        }
-        if (!needle_str.empty() && !contains_ci(cell->editor_id(), needle_str)) {
-            continue;
-        }
-        Dictionary entry;
-        entry["id"] = static_cast<std::int64_t>(cell->id());
-        entry["editor_id"] = to_godot(cell->editor_id());
-        entry["interior"] = interior;
-        entry["ref_count"] = static_cast<std::int64_t>(cell->refs() ? cell->refs()->size() : 0);
-        out.push_back(entry);
-    }
-    return out;
+    return queries::list_cells(data(), filter, interior_only);
+}
+Dictionary SkydotWorld::get_cell(std::int64_t id) const { return queries::get_cell(data(), id); }
+Dictionary SkydotWorld::get_image_space(std::int64_t id) const { return queries::get_image_space(data(), id); }
+Array SkydotWorld::get_refs(std::int64_t cell_id) const { return queries::get_refs(data(), cell_id); }
+Dictionary SkydotWorld::get_base(std::int64_t id) const { return queries::get_base(data(), id); }
+Dictionary SkydotWorld::get_door(std::int64_t ref) const { return queries::get_door(data(), ref); }
+Dictionary SkydotWorld::get_ref_info(std::int64_t cell, std::int64_t ref) const {
+    return queries::get_ref_info(data(), cell, ref);
+}
+Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const Vector3& to) const {
+    return skydot::pick_ref(root, from, to);
+}
+godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell) const {
+    return queries::get_scripted_refs(data(), cell);
+}
+std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) { return ref_cells_.cell_of(data(), ref); }
+Array SkydotWorld::get_activate_children(std::int64_t ref) const {
+    return queries::get_activate_children(data(), ref);
+}
+godot::PackedInt64Array SkydotWorld::get_enable_children(std::int64_t ref) const {
+    return queries::get_enable_children(data(), ref);
 }
 
-Dictionary SkydotWorld::get_cell(std::int64_t id) const {
-    Dictionary out;
-    const auto* cell = data().cell_ptr(id);
-    if (cell == nullptr) {
-        return out;
-    }
-    out["id"] = static_cast<std::int64_t>(cell->id());
-    out["editor_id"] = to_godot(cell->editor_id());
-    out["interior"] = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
-    out["world"] = static_cast<std::int64_t>(cell->world());
-    out["grid"] = cell->has_grid() ? godot::Variant(godot::Vector2i(cell->grid_x(), cell->grid_y()))
-                                   : godot::Variant();
-    out["water_height"] = static_cast<double>(cell->water_height()) * UNIT_SCALE;
-    out["ref_count"] = static_cast<std::int64_t>(cell->refs() ? cell->refs()->size() : 0);
-    out["door_count"] = static_cast<std::int64_t>(cell->doors() ? cell->doors()->size() : 0);
-    out["lighting_template"] = static_cast<std::int64_t>(cell->lighting_template());
-    if (const auto* l = cell->lighting(); l != nullptr && cell->has_lighting()) {
-        Dictionary lighting;
-        lighting["ambient"] = unpack_color(l->ambient());
-        lighting["directional"] = unpack_color(l->directional());
-        lighting["directional_rotation_xy"] = l->directional_rotation_xy();
-        lighting["directional_rotation_z"] = l->directional_rotation_z();
-        lighting["directional_fade"] = l->directional_fade();
-        lighting["fog_near_color"] = unpack_color(l->fog_near_color());
-        lighting["fog_far_color"] = unpack_color(l->fog_far_color());
-        lighting["fog_near"] = static_cast<double>(l->fog_near()) * UNIT_SCALE;
-        lighting["fog_far"] = static_cast<double>(l->fog_far()) * UNIT_SCALE;
-        lighting["fog_power"] = l->fog_power();
-        lighting["fog_max"] = l->fog_max();
-        lighting["light_fade_begin"] = static_cast<double>(l->light_fade_begin()) * UNIT_SCALE;
-        lighting["light_fade_end"] = static_cast<double>(l->light_fade_end()) * UNIT_SCALE;
-        lighting["inherit"] = static_cast<std::int64_t>(l->inherit());
-        out["lighting"] = lighting;
-    } else {
-        out["lighting"] = godot::Variant();
-    }
-    // Format 10: the directional ambient (XCLL, or its lighting template's)
-    // as six Colors, x+, x-, y+, y-, z+, z-; and the image space.
-    godot::Array ambient;
-    if (const auto* d = cell->directional_ambient(); d != nullptr && d->size() >= 6) {
-        for (flatbuffers::uoffset_t i = 0; i < 6; ++i) {
-            ambient.push_back(unpack_color(d->Get(i)));
-        }
-    }
-    out["directional_ambient"] = ambient;
-    out["image_space"] = static_cast<std::int64_t>(cell->image_space());
-    return out;
+std::int64_t SkydotWorld::get_quest_count() const { return queries::get_quest_count(data()); }
+bool SkydotWorld::has_quest(std::int64_t id) const { return queries::has_quest(data(), id); }
+Array SkydotWorld::list_quests(const String& filter) const { return queries::list_quests(data(), filter); }
+std::int64_t SkydotWorld::find_quest(const String& editor_id) const { return queries::find_quest(data(), editor_id); }
+Dictionary SkydotWorld::get_quest(std::int64_t id) const { return queries::get_quest(data(), id); }
+Dictionary SkydotWorld::get_global(std::int64_t id) const { return queries::get_global(data(), id); }
+Dictionary SkydotWorld::get_actor(std::int64_t ref) const { return queries::get_actor(data(), ref); }
+std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plugin) const {
+    return queries::get_form_from_file(data(), id, plugin);
+}
+std::int64_t SkydotWorld::find_actor_of(std::int64_t npc) const { return queries::find_actor_of(data(), npc); }
+std::int64_t SkydotWorld::find_npc(const String& editor_id) const { return queries::find_npc(data(), editor_id); }
+
+Array SkydotWorld::list_worlds() const { return queries::list_worlds(data()); }
+std::int64_t SkydotWorld::find_world(const String& editor_id) const { return queries::find_world(data(), editor_id); }
+std::int64_t SkydotWorld::get_exterior_cell(std::int64_t world, std::int64_t x, std::int64_t y) const {
+    return queries::get_exterior_cell(data(), world, x, y);
+}
+std::int64_t SkydotWorld::find_weather(const String& editor_id) const {
+    return queries::find_weather(data(), editor_id);
+}
+Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t weather) const {
+    return queries::get_sky(data(), world, hour, weather);
 }
 
-Dictionary SkydotWorld::get_image_space(std::int64_t id) const {
-    Dictionary out;
-    const auto* list = world_fb() != nullptr ? world_fb()->image_spaces() : nullptr;
-    const auto* is = id != 0 ? lookup(list, static_cast<std::uint32_t>(id)) : nullptr;
-    if (is == nullptr) {
-        return out;
-    }
-    const auto floats = [](const flatbuffers::Vector<float>* v) {
-        godot::PackedFloat32Array a;
-        if (v != nullptr) {
-            for (const float f : *v) {
-                a.push_back(f);
-            }
-        }
-        return a;
-    };
-    out["id"] = static_cast<std::int64_t>(is->id());
-    out["editor_id"] = to_godot(is->editor_id());
-    out["hdr"] = floats(is->hdr());
-    out["cinematic"] = floats(is->cinematic());
-    out["tint"] = floats(is->tint());
-    return out;
+godot::PackedInt64Array SkydotWorld::get_cell_actors(std::int64_t cell) const {
+    return queries::get_cell_actors(data(), cell);
 }
-
-Array SkydotWorld::get_refs(std::int64_t cell_id) const {
-    Array out;
-    const auto* cell = data().cell_ptr(cell_id);
-    if (cell == nullptr || cell->refs() == nullptr) {
-        return out;
-    }
-    for (const auto* ref : *cell->refs()) {
-        const auto& p = ref->position();
-        const auto& r = ref->rotation();
-        Dictionary entry;
-        entry["id"] = static_cast<std::int64_t>(ref->id());
-        entry["base"] = static_cast<std::int64_t>(ref->base());
-        entry["transform"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()),
-                                              Vector3(r.x(), r.y(), r.z()), static_cast<double>(ref->scale()));
-        entry["scale"] = ref->scale();
-        entry["disabled"] = data().initially_disabled(*ref);
-        entry["persistent"] = formats::has_flag(ref->flags(), wfb::RefFlags::persistent);
-        entry["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
-        out.push_back(entry);
-    }
-    return out;
-}
-
-Dictionary SkydotWorld::get_base(std::int64_t id) const {
-    Dictionary out;
-    const auto* base = data().base_ptr(id);
-    if (base == nullptr) {
-        return out;
-    }
-    const auto type = base->type();
-    const char chars[5] = {static_cast<char>(type & 0xFF), static_cast<char>((type >> 8) & 0xFF),
-                           static_cast<char>((type >> 16) & 0xFF),
-                           static_cast<char>((type >> 24) & 0xFF), 0};
-    out["id"] = static_cast<std::int64_t>(base->id());
-    out["type"] = String(chars);
-    out["editor_id"] = to_godot(base->editor_id());
-    out["model"] = to_godot(base->model());
-    if (const auto* l = base->light(); l != nullptr && base->has_light()) {
-        Dictionary light;
-        light["radius"] = static_cast<double>(l->radius()) * UNIT_SCALE;
-        light["color"] = unpack_color(l->color());
-        light["flags"] = static_cast<std::int64_t>(l->flags());
-        light["falloff_exponent"] = l->falloff_exponent();
-        light["fov"] = l->fov();
-        light["fade"] = l->fade();
-        out["light"] = light;
-    } else {
-        out["light"] = godot::Variant();
-    }
-    out["flags"] = static_cast<std::int64_t>(base->flags());
-    out["scripts"] = script_list(base->scripts(), false);
-    return out;
+Array SkydotWorld::get_navmeshes(std::int64_t cell) const { return queries::get_navmeshes(data(), cell); }
+Dictionary SkydotWorld::get_navmesh(std::int64_t id) const { return queries::get_navmesh(data(), id); }
+Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& position, double reach) const {
+    return queries::nearest_nav_point(data(), space, position, reach);
 }
 
 // ---- coordinates ----------------------------------------------------------
@@ -498,117 +355,6 @@ Dictionary SkydotWorld::get_actor_place(std::int64_t ref) const {
     return out;
 }
 
-namespace {
-
-/// The point of triangle (a, b, c) nearest `p` (Ericson, Real-Time Collision
-/// Detection, 5.1.5).
-using godot::real_t;
-
-Vector3 closest_on_triangle(const Vector3& p, const Vector3& a, const Vector3& b, const Vector3& c) {
-    const Vector3 ab = b - a;
-    const Vector3 ac = c - a;
-    const Vector3 ap = p - a;
-    const real_t d1 = ab.dot(ap);
-    const real_t d2 = ac.dot(ap);
-    if (d1 <= 0 && d2 <= 0) {
-        return a;
-    }
-    const Vector3 bp = p - b;
-    const real_t d3 = ab.dot(bp);
-    const real_t d4 = ac.dot(bp);
-    if (d3 >= 0 && d4 <= d3) {
-        return b;
-    }
-    const real_t vc = d1 * d4 - d3 * d2;
-    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
-        return a + ab * (d1 / (d1 - d3));
-    }
-    const Vector3 cp = p - c;
-    const real_t d5 = ab.dot(cp);
-    const real_t d6 = ac.dot(cp);
-    if (d6 >= 0 && d5 <= d6) {
-        return c;
-    }
-    const real_t vb = d5 * d2 - d1 * d6;
-    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
-        return a + ac * (d2 / (d2 - d6));
-    }
-    const real_t va = d3 * d6 - d5 * d4;
-    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
-        return b + (c - b) * ((d4 - d3) / ((d4 - d3) + (d5 - d6)));
-    }
-    const real_t denom = 1 / (va + vb + vc);
-    return a + ab * (vb * denom) + ac * (vc * denom);
-}
-
-} // namespace
-
-Vector3 SkydotWorld::nearest_nav_point(std::int64_t space, const Vector3& position, double reach) const {
-    std::vector<const wfb::Cell*> cells;
-    const auto* s = data().cell_ptr(space);
-    if (s != nullptr &&
-        (formats::has_flag(s->flags(), wfb::CellFlags::interior) || s->world() == 0)) {
-        cells.push_back(s);
-    } else {
-        // The cell the point is in, and its neighbours only as far as `reach`.
-        const auto r = static_cast<float>(reach);
-        const auto x0 = static_cast<std::int32_t>(std::floor((position.x - r) / k_cell_units));
-        const auto x1 = static_cast<std::int32_t>(std::floor((position.x + r) / k_cell_units));
-        const auto y0 = static_cast<std::int32_t>(std::floor((position.y - r) / k_cell_units));
-        const auto y1 = static_cast<std::int32_t>(std::floor((position.y + r) / k_cell_units));
-        for (auto y = y0; y <= y1; ++y) {
-            for (auto x = x0; x <= x1; ++x) {
-                if (const auto* c = data().exterior_ptr(static_cast<std::uint32_t>(space), x, y)) {
-                    cells.push_back(c);
-                }
-            }
-        }
-    }
-    Vector3 best = position;
-    auto best_d = static_cast<godot::real_t>(reach * reach);
-    for (const auto* cell : cells) {
-        const auto* navs = cell->navmeshes();
-        if (navs == nullptr) {
-            continue;
-        }
-        for (const auto* nav : *navs) {
-            const auto* verts = nav->vertices();
-            const auto* tris = nav->triangles();
-            if (verts == nullptr || tris == nullptr) {
-                continue;
-            }
-            const auto vertex = [&](std::int32_t i) {
-                const auto* v = verts->Get(static_cast<flatbuffers::uoffset_t>(i));
-                return Vector3(v->x(), v->y(), v->z());
-            };
-            const auto n = static_cast<std::int32_t>(verts->size());
-            for (const auto* t : *tris) {
-                if (t->v0() >= n || t->v1() >= n || t->v2() >= n) {
-                    continue;
-                }
-                const Vector3 a = vertex(t->v0());
-                const Vector3 b = vertex(t->v1());
-                const Vector3 c = vertex(t->v2());
-                // Its box is no nearer than the best so far: skip the exact test.
-                const godot::real_t dx = std::max({std::min({a.x, b.x, c.x}) - position.x, godot::real_t(0),
-                                                   position.x - std::max({a.x, b.x, c.x})});
-                const godot::real_t dy = std::max({std::min({a.y, b.y, c.y}) - position.y, godot::real_t(0),
-                                                   position.y - std::max({a.y, b.y, c.y})});
-                if (dx * dx + dy * dy > best_d) {
-                    continue;
-                }
-                const Vector3 q = closest_on_triangle(position, a, b, c);
-                const godot::real_t d = q.distance_squared_to(position);
-                if (d < best_d) {
-                    best_d = d;
-                    best = q;
-                }
-            }
-        }
-    }
-    return best;
-}
-
 // ---- actors -------------------------------------------------------------
 
 namespace {
@@ -661,209 +407,7 @@ godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
     return plan_dictionary(builder_.actor_plan(*actor));
 }
 
-godot::PackedInt64Array SkydotWorld::get_cell_actors(std::int64_t cell) const {
-    godot::PackedInt64Array out;
-    if (const auto* actors = data().cell_actors(static_cast<std::uint32_t>(cell))) {
-        for (const auto* a : *actors) {
-            out.push_back(a->ref());
-        }
-    }
-    return out;
-}
-
 std::int64_t SkydotWorld::wake_clutter(godot::Node* root, const Vector3& centre, double radius) {
     return skydot::wake_clutter(root, centre, static_cast<godot::real_t>(radius));
 }
-
-godot::Array SkydotWorld::get_navmeshes(std::int64_t cell_id) const {
-    Array out;
-    const auto* cell = data().cell_ptr(cell_id);
-    if (cell == nullptr || cell->navmeshes() == nullptr) {
-        return out;
-    }
-    for (const auto* nav : *cell->navmeshes()) {
-        out.push_back(navmesh_info(*nav, *cell, data().navmeshes()));
-    }
-    return out;
-}
-
-Dictionary SkydotWorld::get_navmesh(std::int64_t id) const {
-    const auto& index = data().navmeshes();
-    const auto it = index.find(static_cast<std::uint32_t>(id));
-    if (it == index.end()) {
-        return {};
-    }
-    return navmesh_info(*it->second.first, *it->second.second, index);
-}
-
-// ---- exteriors ------------------------------------------------------------
-
-Array SkydotWorld::list_worlds() const {
-    Array out;
-    const auto* worlds = world_fb() != nullptr ? world_fb()->worlds() : nullptr;
-    if (worlds == nullptr) {
-        return out;
-    }
-    for (const auto* w : *worlds) {
-        Dictionary entry;
-        entry["id"] = static_cast<std::int64_t>(w->id());
-        entry["editor_id"] = to_godot(w->editor_id());
-        entry["parent"] = static_cast<std::int64_t>(w->parent());
-        entry["land_world"] = static_cast<std::int64_t>(data().land_world(w->id()));
-        entry["default_water_height"] =
-            w->has_defaults() ? godot::Variant(static_cast<double>(w->default_water_height()) *
-                                               UNIT_SCALE)
-                              : godot::Variant();
-        entry["bounds"] = godot::Rect2(w->min_x(), w->min_y(), w->max_x() - w->min_x(),
-                                       w->max_y() - w->min_y());
-        out.push_back(entry);
-    }
-    return out;
-}
-
-std::int64_t SkydotWorld::find_world(const String& editor_id) const {
-    const auto* worlds = world_fb() != nullptr ? world_fb()->worlds() : nullptr;
-    if (worlds == nullptr) {
-        return 0;
-    }
-    const String wanted = editor_id.to_lower();
-    for (const auto* w : *worlds) {
-        if (to_godot(w->editor_id()).to_lower() == wanted) {
-            return w->id();
-        }
-    }
-    return 0;
-}
-
-std::int64_t SkydotWorld::get_exterior_cell(std::int64_t world, std::int64_t x,
-                                            std::int64_t y) const {
-    const auto* cell = data().exterior_ptr(static_cast<std::uint32_t>(world), static_cast<std::int32_t>(x),
-                                    static_cast<std::int32_t>(y));
-    return cell != nullptr ? cell->id() : 0;
-}
-
-std::int64_t SkydotWorld::find_weather(const String& editor_id) const {
-    const auto* weathers = world_fb() != nullptr ? world_fb()->weathers() : nullptr;
-    if (weathers == nullptr) {
-        return 0;
-    }
-    const String wanted = editor_id.to_lower();
-    for (const auto* w : *weathers) {
-        if (to_godot(w->editor_id()).to_lower() == wanted) {
-            return w->id();
-        }
-    }
-    return 0;
-}
-
-Dictionary SkydotWorld::get_sky(std::int64_t world, double hour, std::int64_t weather_id) const {
-    Dictionary out;
-    const auto* ws = data().world_ptr(world);
-    const auto* climates = world_fb() != nullptr ? world_fb()->climates() : nullptr;
-    const auto* weathers = world_fb() != nullptr ? world_fb()->weathers() : nullptr;
-    if (ws == nullptr || climates == nullptr || weathers == nullptr) {
-        return out;
-    }
-    const wfb::Climate* climate = lookup(climates, ws->climate());
-    if (climate == nullptr && ws->parent() != 0) {
-        if (const auto* parent = data().world_ptr(ws->parent())) {
-            climate = lookup(climates, parent->climate());
-        }
-    }
-    const wfb::Weather* weather =
-        weather_id != 0 ? lookup(weathers, static_cast<std::uint32_t>(weather_id)) : nullptr;
-    if (weather == nullptr && climate != nullptr && climate->weathers() != nullptr) {
-        std::int32_t best = -1;
-        for (const auto* entry : *climate->weathers()) {
-            if (entry->chance() > best) {
-                if (const auto* w = lookup(weathers, entry->weather())) {
-                    weather = w;
-                    best = entry->chance();
-                }
-            }
-        }
-    }
-    const auto* colors = weather != nullptr ? weather->colors() : nullptr;
-    if (colors == nullptr || colors->size() < 68) {
-        return out;
-    }
-
-    // Times of day: sunrise, day, sunset, night. Keys at the start, middle and
-    // end of sunrise and sunset; linear in between.
-    float sun[4] = {5.5F, 10.0F, 16.0F, 20.5F};
-    if (climate != nullptr) {
-        sun[0] = climate->sunrise_begin();
-        sun[1] = climate->sunrise_end();
-        sun[2] = climate->sunset_begin();
-        sun[3] = climate->sunset_end();
-    }
-    const float h = static_cast<float>(std::fmod(std::fmod(hour, 24.0) + 24.0, 24.0));
-    struct Key {
-        float hour;
-        int time;
-    };
-    const Key keys[] = {{sun[0], 3},
-                        {(sun[0] + sun[1]) / 2, 0},
-                        {sun[1], 1},
-                        {sun[2], 1},
-                        {(sun[2] + sun[3]) / 2, 2},
-                        {sun[3], 3}};
-    int from = 3;
-    int to = 3;
-    float t = 0.0F;
-    for (std::size_t i = 0; i + 1 < std::size(keys); ++i) {
-        if (h >= keys[i].hour && h <= keys[i + 1].hour) {
-            from = keys[i].time;
-            to = keys[i + 1].time;
-            const float span = keys[i + 1].hour - keys[i].hour;
-            t = span > 0.0F ? (h - keys[i].hour) / span : 0.0F;
-            break;
-        }
-    }
-    const auto colour = [&](int index) {
-        const Color a = unpack_color(colors->Get(static_cast<flatbuffers::uoffset_t>(index * 4 + from)));
-        const Color b = unpack_color(colors->Get(static_cast<flatbuffers::uoffset_t>(index * 4 + to)));
-        return a.lerp(b, t);
-    };
-    const auto weight = [](int time) { return time == 1 ? 1.0F : time == 3 ? 0.0F : 0.5F; };
-    const float daylight = weight(from) + (weight(to) - weight(from)) * t;
-
-    out["weather"] = to_godot(weather->editor_id());
-    out["sky_upper"] = colour(0);
-    out["fog_near_color"] = colour(1);
-    out["ambient"] = colour(3);
-    out["sunlight"] = colour(4);
-    out["sky_lower"] = colour(7);
-    out["horizon"] = colour(8);
-    out["fog_far_color"] = colour(12);
-    out["daylight"] = daylight;
-    if (const auto* fog = weather->fog(); fog != nullptr && fog->size() >= 8) {
-        const auto mix = [&](flatbuffers::uoffset_t day, flatbuffers::uoffset_t night) {
-            return static_cast<double>(fog->Get(night) + (fog->Get(day) - fog->Get(night)) * daylight);
-        };
-        out["fog_near"] = mix(0, 2) * UNIT_SCALE;
-        out["fog_far"] = mix(1, 3) * UNIT_SCALE;
-        out["fog_power"] = mix(4, 5);
-        out["fog_max"] = mix(6, 7);
-    }
-
-    // The sun rises in the east (+X), peaks in the south (+Z) and sets in the
-    // west; between sunset and sunrise the moon takes its place.
-    const float pi = std::numbers::pi_v<float>;
-    const bool day = h >= sun[0] && h <= sun[3];
-    float phase = 0.0F;
-    if (day) {
-        phase = (h - sun[0]) / std::max(sun[3] - sun[0], 0.1F);
-    } else {
-        const float night_length = 24.0F - (sun[3] - sun[0]);
-        phase = std::fmod(h - sun[3] + 24.0F, 24.0F) / std::max(night_length, 0.1F);
-    }
-    const float azimuth = pi * phase; // 0 east, pi west
-    const float elevation = std::sin(pi * phase) * pi * 0.38F + 0.05F;
-    out["sun_direction"] = Vector3(std::cos(azimuth) * std::cos(elevation), std::sin(elevation),
-                                   std::sin(azimuth) * std::cos(elevation))
-                               .normalized();
-    return out;
-}
-
 } // namespace skydot

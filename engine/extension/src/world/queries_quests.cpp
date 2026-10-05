@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// SkydotWorld: quests, globals and placed actors as world.fb carries them.
-// The quest system itself is in SkydotPapyrus (vm/quests.cpp).
-#include "world/refs.hpp"
+// Quests, globals and placed actors as world.fb carries them. The quest
+// system itself is in SkydotPapyrus (vm/quests.cpp).
+#include "world/queries.hpp"
 #include "world/fb_search.hpp"
+#include "world/refs.hpp"
 #include "world/text.hpp"
-#include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
 
@@ -18,7 +18,7 @@ using godot::Vector3;
 
 namespace wfb = bethconv::pack::wfb;
 
-namespace skydot {
+namespace skydot::queries {
 
 namespace {
 
@@ -36,17 +36,17 @@ Vector3 vec(const wfb::Vec3f& v) { return {v.x(), v.y(), v.z()}; }
 
 } // namespace
 
-std::int64_t SkydotWorld::get_quest_count() const {
-    return world_fb() != nullptr && world_fb()->quests() != nullptr ? world_fb()->quests()->size() : 0;
+std::int64_t get_quest_count(const WorldData& data) {
+    return data.root() != nullptr && data.root()->quests() != nullptr ? data.root()->quests()->size() : 0;
 }
 
-bool SkydotWorld::has_quest(std::int64_t id) const {
-    return lookup(world_fb() != nullptr ? world_fb()->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
+bool has_quest(const WorldData& data, std::int64_t id) {
+    return lookup(data.root() != nullptr ? data.root()->quests() : nullptr, static_cast<std::uint32_t>(id)) != nullptr;
 }
 
-Array SkydotWorld::list_quests(const String& filter) const {
+Array list_quests(const WorldData& data, const String& filter) {
     Array out;
-    const auto* quests = world_fb() != nullptr ? world_fb()->quests() : nullptr;
+    const auto* quests = data.root() != nullptr ? data.root()->quests() : nullptr;
     if (quests == nullptr) {
         return out;
     }
@@ -67,8 +67,8 @@ Array SkydotWorld::list_quests(const String& filter) const {
     return out;
 }
 
-std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
-    const auto* quests = world_fb() != nullptr ? world_fb()->quests() : nullptr;
+std::int64_t find_quest(const WorldData& data, const String& editor_id) {
+    const auto* quests = data.root() != nullptr ? data.root()->quests() : nullptr;
     if (quests == nullptr) {
         return 0;
     }
@@ -81,9 +81,9 @@ std::int64_t SkydotWorld::find_quest(const String& editor_id) const {
     return 0;
 }
 
-Dictionary SkydotWorld::get_quest(std::int64_t id) const {
+Dictionary get_quest(const WorldData& data, std::int64_t id) {
     Dictionary out;
-    const auto* q = lookup(world_fb() != nullptr ? world_fb()->quests() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* q = lookup(data.root() != nullptr ? data.root()->quests() : nullptr, static_cast<std::uint32_t>(id));
     if (q == nullptr) {
         return out;
     }
@@ -184,9 +184,9 @@ Dictionary SkydotWorld::get_quest(std::int64_t id) const {
     return out;
 }
 
-Dictionary SkydotWorld::get_global(std::int64_t id) const {
+Dictionary get_global(const WorldData& data, std::int64_t id) {
     Dictionary out;
-    const auto* g = lookup(world_fb() != nullptr ? world_fb()->globals() : nullptr, static_cast<std::uint32_t>(id));
+    const auto* g = lookup(data.root() != nullptr ? data.root()->globals() : nullptr, static_cast<std::uint32_t>(id));
     if (g == nullptr) {
         return out;
     }
@@ -198,9 +198,9 @@ Dictionary SkydotWorld::get_global(std::int64_t id) const {
     return out;
 }
 
-Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
+Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     Dictionary out;
-    const auto* actors = world_fb() != nullptr ? world_fb()->actors() : nullptr;
+    const auto* actors = data.root() != nullptr ? data.root()->actors() : nullptr;
     if (actors == nullptr) {
         return out;
     }
@@ -219,8 +219,8 @@ Dictionary SkydotWorld::get_actor(std::int64_t ref) const {
     return out;
 }
 
-std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plugin) const {
-    const auto* plugins = world_fb() != nullptr ? world_fb()->plugins() : nullptr;
+std::int64_t get_form_from_file(const WorldData& data, std::int64_t id, const String& plugin) {
+    const auto* plugins = data.root() != nullptr ? data.root()->plugins() : nullptr;
     if (plugins == nullptr) {
         return 0;
     }
@@ -234,12 +234,12 @@ std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plug
     return 0;
 }
 
-std::int64_t SkydotWorld::find_actor_of(std::int64_t npc) const {
-    return data().actor_of(static_cast<std::uint32_t>(npc));
+std::int64_t find_actor_of(const WorldData& data, std::int64_t npc) {
+    return data.actor_of(static_cast<std::uint32_t>(npc));
 }
 
-std::int64_t SkydotWorld::find_npc(const String& editor_id) const {
-    const auto* npcs = world_fb() != nullptr ? world_fb()->npcs() : nullptr;
+std::int64_t find_npc(const WorldData& data, const String& editor_id) {
+    const auto* npcs = data.root() != nullptr ? data.root()->npcs() : nullptr;
     if (npcs == nullptr) {
         return 0;
     }
@@ -252,4 +252,4 @@ std::int64_t SkydotWorld::find_npc(const String& editor_id) const {
     return 0;
 }
 
-} // namespace skydot
+} // namespace skydot::queries

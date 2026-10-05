@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// SkydotWorld: doors, scripts and the other data activation needs, and
-// picking the reference the player looks at.
+// What a reference does beyond being placed: its scripts as Dictionaries,
+// the metadata that marks a placed model, whether activating it can do
+// anything, and picking the reference the player looks at.
 #include "world/refs.hpp"
 #include "world/world_data.hpp"
 #include "world/collision.hpp"
 #include "world/coordinates.hpp"
 #include "world/fb_search.hpp"
 #include "world/text.hpp"
-#include "world/world.hpp"
 
 #include "skydot_formats/flags.hpp"
 
@@ -43,13 +43,6 @@ constexpr std::uint32_t fourcc(const char (&tag)[5]) {
            (static_cast<std::uint32_t>(tag[2]) << 16) | (static_cast<std::uint32_t>(tag[3]) << 24);
 }
 
-String type_name(std::uint32_t type) {
-    const char chars[5] = {static_cast<char>(type & 0xFF), static_cast<char>((type >> 8) & 0xFF),
-                           static_cast<char>((type >> 16) & 0xFF),
-                           static_cast<char>((type >> 24) & 0xFF), 0};
-    return String(chars);
-}
-
 /// Types the player can use without a script: doors, activators, containers,
 /// furniture, flora and items.
 bool usable_type(std::uint32_t type) {
@@ -60,29 +53,6 @@ bool usable_type(std::uint32_t type) {
         fourcc("SCRL"),
     };
     return std::ranges::find(k_types, type) != std::end(k_types);
-}
-
-/// Elements of a struct vector sorted by `ref()` that belong to `ref`: for the
-/// vectors a reference can have several entries in.
-template <typename T>
-std::vector<const T*> by_ref(const flatbuffers::Vector<const T*>* list, std::uint32_t ref) {
-    std::vector<const T*> out;
-    if (list == nullptr) {
-        return out;
-    }
-    for (auto i = first_at_least(list, ref, [](const T* e) { return e->ref(); });
-         i < list->size() && list->Get(i)->ref() == ref; ++i) {
-        out.push_back(list->Get(i));
-    }
-    return out;
-}
-
-const wfb::RefScripts* ref_scripts(const wfb::Cell& cell, std::uint32_t ref) {
-    return lookup(cell.scripts(), ref);
-}
-
-const wfb::Ref* find_ref(const wfb::Cell& cell, std::uint32_t id) {
-    return lookup(cell.refs(), id);
 }
 
 Variant object_value(const wfb::ScriptObject& object) {
@@ -255,100 +225,6 @@ bool activatable(const WorldData& data, const wfb::Base* base, std::uint32_t cel
     return c != nullptr && ref_scripts(*c, ref) != nullptr;
 }
 
-Dictionary SkydotWorld::get_door(std::int64_t ref) const {
-    Dictionary out;
-    const auto& doors = data().doors();
-    const auto it = doors.find(static_cast<std::uint32_t>(ref));
-    if (it == doors.end()) {
-        return out;
-    }
-    const auto& [cell, link] = it->second;
-    out["ref"] = static_cast<std::int64_t>(link->ref());
-    out["cell"] = static_cast<std::int64_t>(cell->id());
-    out["destination"] = static_cast<std::int64_t>(link->destination());
-    const auto dest = doors.find(link->destination());
-    const wfb::Cell* dest_cell = dest != doors.end() ? dest->second.first : nullptr;
-    out["destination_cell"] = static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->id() : 0);
-    out["destination_world"] =
-        static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->world() : 0);
-    out["destination_interior"] =
-        dest_cell != nullptr && formats::has_flag(dest_cell->flags(), wfb::CellFlags::interior);
-    const auto& p = link->position();
-    const auto& r = link->rotation();
-    out["arrival"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(r.x(), r.y(), r.z()), 1.0);
-    return out;
-}
-
-Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) const {
-    Dictionary out;
-    const auto* cell = data().cell_ptr(cell_id);
-    const auto id = static_cast<std::uint32_t>(ref_id);
-    const auto* ref = cell != nullptr ? find_ref(*cell, id) : nullptr;
-    if (ref == nullptr) {
-        return out;
-    }
-    const auto* base = data().base_ptr(ref->base());
-    out["id"] = static_cast<std::int64_t>(id);
-    out["cell"] = static_cast<std::int64_t>(cell->id());
-    out["base"] = static_cast<std::int64_t>(ref->base());
-    out["type"] = base != nullptr ? type_name(base->type()) : String();
-    out["editor_id"] = base != nullptr ? to_godot(base->editor_id()) : String();
-    out["activatable"] = activatable(data(), base, cell->id(), id);
-    out["parent_activate_only"] =
-        formats::has_flag(ref->flags(), wfb::RefFlags::parent_activate_only);
-    out["disabled"] = data().initially_disabled(*ref);
-    out["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
-    out["enable_opposite"] = formats::has_flag(ref->flags(), wfb::RefFlags::enable_opposite);
-    out["position"] = Vector3(ref->position().x(), ref->position().y(), ref->position().z());
-    out["rotation"] = Vector3(ref->rotation().x(), ref->rotation().y(), ref->rotation().z());
-    out["scale"] = ref->scale();
-    const auto primitives = by_ref(cell->primitives(), id);
-    if (primitives.empty()) {
-        out["primitive"] = Variant();
-    } else {
-        Dictionary primitive;
-        const auto& b = primitives.front()->bounds();
-        primitive["bounds"] = Vector3(b.x(), b.y(), b.z());
-        primitive["type"] = static_cast<std::int64_t>(primitives.front()->type());
-        out["primitive"] = primitive;
-    }
-
-    if (const auto* locked = lookup(cell->locks(), id)) {
-        Dictionary lock;
-        lock["level"] = static_cast<std::int64_t>(locked->level());
-        lock["key"] = static_cast<std::int64_t>(locked->key());
-        out["lock"] = lock;
-    } else {
-        out["lock"] = Variant();
-    }
-    const Dictionary door = get_door(id);
-    out["door"] = door.is_empty() ? Variant() : Variant(door);
-
-    Array links;
-    for (const auto* link : by_ref(cell->links(), id)) {
-        Dictionary entry;
-        entry["keyword"] = static_cast<std::int64_t>(link->keyword());
-        entry["target"] = static_cast<std::int64_t>(link->target());
-        links.push_back(entry);
-    }
-    out["links"] = links;
-    Array parents;
-    for (const auto* parent : by_ref(cell->activate_parents(), id)) {
-        Dictionary entry;
-        entry["parent"] = static_cast<std::int64_t>(parent->parent());
-        entry["delay"] = static_cast<double>(parent->delay());
-        parents.push_back(entry);
-    }
-    out["activate_parents"] = parents;
-
-    Array scripts = script_list(base != nullptr ? base->scripts() : nullptr, false);
-    if (const auto* own = ref_scripts(*cell, id)) {
-        scripts.append_array(script_list(own->scripts(), true));
-    }
-    out["scripts"] = scripts;
-    return out;
-}
-
 namespace {
 
 /// The reference node a physics body belongs to, or null.
@@ -387,7 +263,7 @@ std::pair<godot::Object*, double> first_body(godot::Node* root, const Vector3& f
 
 } // namespace
 
-Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const Vector3& to) const {
+Dictionary pick_ref(godot::Node* root, const Vector3& from, const Vector3& to) {
     Dictionary out;
     if (root == nullptr) {
         return out;
@@ -444,63 +320,6 @@ Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const V
                 out["distance"] = distance;
                 out["position"] = hit;
             }
-        }
-    }
-    return out;
-}
-
-std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) {
-    const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
-    if (cells == nullptr) {
-        return 0;
-    }
-    if (ref_cells_.empty()) {
-        for (const auto* cell : *cells) {
-            if (const auto* refs = cell->refs()) {
-                for (const auto* r : *refs) {
-                    ref_cells_.emplace_back(r->id(), cell->id());
-                }
-            }
-        }
-        std::ranges::sort(ref_cells_);
-    }
-    const auto id = static_cast<std::uint32_t>(ref);
-    const auto it = std::lower_bound(ref_cells_.begin(), ref_cells_.end(),
-                                     std::pair<std::uint32_t, std::uint32_t>{id, 0});
-    return it != ref_cells_.end() && it->first == id ? it->second : 0;
-}
-
-godot::PackedInt64Array SkydotWorld::get_enable_children(std::int64_t ref) const {
-    godot::PackedInt64Array out;
-    for (const auto child : data().enable_children(static_cast<std::uint32_t>(ref))) {
-        out.push_back(child);
-    }
-    return out;
-}
-
-Array SkydotWorld::get_activate_children(std::int64_t ref) const {
-    Array out;
-    for (const auto& [child, cell, delay] : data().activate_children(static_cast<std::uint32_t>(ref))) {
-        Dictionary entry;
-        entry["ref"] = static_cast<std::int64_t>(child);
-        entry["cell"] = static_cast<std::int64_t>(cell);
-        entry["delay"] = static_cast<double>(delay);
-        out.push_back(entry);
-    }
-    return out;
-}
-
-godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell_id) const {
-    godot::PackedInt64Array out;
-    const auto* cell = data().cell_ptr(cell_id);
-    if (cell == nullptr || cell->refs() == nullptr) {
-        return out;
-    }
-    for (const auto* ref : *cell->refs()) {
-        const auto* base = data().base_ptr(ref->base());
-        const bool base_scripted = base != nullptr && base->scripts() != nullptr && base->scripts()->size() != 0;
-        if (base_scripted || ref_scripts(*cell, ref->id()) != nullptr) {
-            out.push_back(ref->id());
         }
     }
     return out;

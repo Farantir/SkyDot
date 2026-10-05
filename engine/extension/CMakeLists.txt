@@ -147,7 +147,11 @@ target_sources(skydot PRIVATE
     src/world/refs.cpp
     src/world/lod.cpp
     src/world/lod.hpp
-    src/world/quests.cpp
+    src/world/queries.hpp
+    src/world/queries_cells.cpp
+    src/world/queries_quests.cpp
+    src/world/queries_refs.cpp
+    src/world/queries_sky.cpp
     src/world/world.hpp)
 add_dependencies(skydot skydot_flatbuffers)
 
