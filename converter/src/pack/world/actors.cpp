@@ -10,6 +10,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -74,14 +75,14 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
         return;
     }
     bool failed = false;
-    WorldNpc out;
+    wfb::NpcT out;
     out.id = merged.form.value;
     out.editor_id = npc->editor_id;
     out.name = npc->name.text;
     out.flags = static_cast<wfb::NpcFlags>(npc->flags);
     out.level = npc->level;
     out.race = shared_.global(merged, npc->race, failed);
-    out.template_form = shared_.global(merged, npc->npc_template, failed);
+    out.template_ = shared_.global(merged, npc->npc_template, failed);
     out.template_flags = static_cast<wfb::NpcTemplateFlags>(npc->template_flags);
     out.skin = shared_.global(merged, npc->worn_armor, failed);
     out.default_outfit = shared_.global(merged, npc->default_outfit, failed);
@@ -90,7 +91,7 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.weight = npc->weight;
     out.head_parts = shared_.global_all(merged, npc->head_parts, failed);
     out.packages = shared_.global_all(merged, npc->packages, failed);
-    out.default_package_list = shared_.global(merged, npc->default_package_list, failed);
+    default_package_lists_[out.id] = shared_.global(merged, npc->default_package_list, failed);
     for (const auto& f : npc->factions) {
         out.factions.emplace_back(shared_.global(merged, f.faction, failed), f.rank);
     }
@@ -113,24 +114,27 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
         return;
     }
     bool failed = false;
-    WorldRace out;
+    wfb::RaceT out;
     out.id = merged.form.value;
     out.editor_id = race->editor_id;
+    out.skeletons.resize(2);
+    out.behaviours.resize(2);
     for (std::size_t sex = 0; sex < 2; ++sex) {
         const auto& s = race->sexes[sex];
         out.skeletons[sex] = s.skeleton.empty() ? std::string{} : model_vpath(s.skeleton);
         out.behaviours[sex] = s.behaviour.empty() ? std::string{} : model_vpath(s.behaviour);
         for (const auto& part : s.body_parts) {
-            out.body_parts.push_back(WorldRace::BodyPart{
-                .female = sex == 1,
-                .index = part.index,
-                .model = part.model.empty() ? std::string{} : model_vpath(part.model)});
+            auto& p = out.body_parts.emplace_back(std::make_unique<wfb::RaceBodyPartT>());
+            p->female = sex == 1;
+            p->index = part.index;
+            p->model = part.model.empty() ? std::string{} : model_vpath(part.model);
         }
-        out.head_parts[sex] = shared_.global_all(merged, s.head_parts, failed);
+        (sex == 0 ? out.head_parts_male : out.head_parts_female) =
+            shared_.global_all(merged, s.head_parts, failed);
     }
     out.skin = shared_.global(merged, race->skin, failed);
-    out.heights = race->height;
-    out.weights = race->weight;
+    out.heights.assign(race->height.begin(), race->height.end());
+    out.weights.assign(race->weight.begin(), race->weight.end());
     out.flags = race->flags;
     out.armor_race = shared_.global(merged, race->armor_race, failed);
     if (failed) {
@@ -147,11 +151,12 @@ void ActorCollector::on_armor(const record::MergedRecord& merged, io::SpanReader
         return;
     }
     bool failed = false;
-    WorldArmor out{.id = merged.form.value,
-                   .editor_id = armor->editor_id,
-                   .slots = armor->body.slots,
-                   .race = shared_.global(merged, armor->race, failed),
-                   .addons = shared_.global_all(merged, armor->addons, failed)};
+    wfb::ArmorT out;
+    out.id = merged.form.value;
+    out.editor_id = armor->editor_id;
+    out.slots = armor->body.slots;
+    out.race = shared_.global(merged, armor->race, failed);
+    out.addons = shared_.global_all(merged, armor->addons, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -166,16 +171,19 @@ void ActorCollector::on_armor_addon(const record::MergedRecord& merged, io::Span
         return;
     }
     bool failed = false;
-    WorldArmorAddon out;
+    wfb::ArmorAddonT out;
     out.id = merged.form.value;
     out.editor_id = addon->editor_id;
     out.slots = addon->body.slots;
     out.race = shared_.global(merged, addon->race, failed);
     out.additional_races = shared_.global_all(merged, addon->additional_races, failed);
-    out.models = {addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path),
-                  addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path)};
-    out.priorities = {addon->male_priority, addon->female_priority};
-    out.weight_sliders = {addon->male_weight_slider, addon->female_weight_slider};
+    out.male_model = addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path);
+    out.female_model =
+        addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path);
+    out.male_priority = addon->male_priority;
+    out.female_priority = addon->female_priority;
+    out.male_weight_slider = addon->male_weight_slider;
+    out.female_weight_slider = addon->female_weight_slider;
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -190,9 +198,10 @@ void ActorCollector::on_outfit(const record::MergedRecord& merged, io::SpanReade
         return;
     }
     bool failed = false;
-    outfits_[merged.form.value] =
-        WorldOutfit{.id = merged.form.value,
-                    .items = shared_.global_all(merged, outfit->items, failed)};
+    wfb::OutfitT out;
+    out.id = merged.form.value;
+    out.items = shared_.global_all(merged, outfit->items, failed);
+    outfits_[out.id] = std::move(out);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -202,15 +211,13 @@ template <typename Entries>
 void ActorCollector::add_leveled(const record::MergedRecord& merged, std::uint8_t flags,
                                  std::uint8_t chance_none, const Entries& entries) {
     bool failed = false;
-    WorldLeveledList out{.id = merged.form.value,
-                         .type = merged.type.value,
-                         .flags = static_cast<wfb::LeveledListFlags>(flags),
-                         .chance_none = chance_none,
-                         .entries = {}};
+    wfb::LeveledListT out;
+    out.id = merged.form.value;
+    out.type = merged.type.value;
+    out.flags = static_cast<wfb::LeveledListFlags>(flags);
+    out.chance_none = chance_none;
     for (const auto& e : entries) {
-        out.entries.push_back({.level = e.level,
-                               .count = e.count,
-                               .form = shared_.global(merged, e.reference, failed)});
+        out.entries.emplace_back(e.level, e.count, shared_.global(merged, e.reference, failed));
     }
     if (failed) {
         ++shared_.stats().unresolved;
@@ -239,120 +246,73 @@ void ActorCollector::on_leveled_npc(const record::MergedRecord& merged, io::Span
 }
 
 std::vector<flatbuffers::Offset<wfb::Npc>> ActorCollector::write_npcs(
-    flatbuffers::FlatBufferBuilder& builder,
-    const FormLists& form_lists) {
-    auto& stats = shared_.stats();
-    // DPLT names an FLST of packages.
-    const auto default_packages = [&](const WorldNpc& n) {
-        const auto found = form_lists.find(n.default_package_list);
-        return found != form_lists.end() ? found->second : std::vector<std::uint32_t>{};
-    };
+    flatbuffers::FlatBufferBuilder& builder, const FormLists& form_lists) {
     std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
-    for (const auto& [id, n] : npcs_) {
-        std::vector<wfb::NpcItem> items;
-        for (const auto& [form, count] : n.items) {
-            items.emplace_back(form, count);
+    npcs.reserve(npcs_.size());
+    for (auto& [id, n] : npcs_) {
+        // DPLT names an FLST of packages.
+        if (const auto list = form_lists.find(default_package_lists_[id]);
+            list != form_lists.end()) {
+            n.default_packages = list->second;
         }
-        std::vector<wfb::NpcFaction> factions;
-        for (const auto& [faction, rank] : n.factions) {
-            factions.emplace_back(faction, rank);
-        }
-        npcs.push_back(wfb::CreateNpc(builder, n.id, builder.CreateString(n.editor_id),
-                                      builder.CreateString(n.name), n.flags, n.level, n.race,
-                                      n.template_form, n.template_flags, n.skin, n.default_outfit,
-                                      n.sleeping_outfit, n.height, n.weight,
-                                      builder.CreateVector(n.head_parts),
-                                      builder.CreateVectorOfStructs(items),
-                                      builder.CreateString(n.face_model),
-                                      builder.CreateVector(std::vector<float>(n.skin_tone.begin(), n.skin_tone.end())),
-                                      builder.CreateVector(n.packages),
-                                      builder.CreateVector(default_packages(n)),
-                                      builder.CreateVectorOfStructs(factions)));
-        ++stats.npcs;
+        npcs.push_back(wfb::CreateNpc(builder, &n));
     }
+    shared_.stats().npcs += npcs_.size();
     return npcs;
 }
 
 std::vector<flatbuffers::Offset<wfb::Race>> ActorCollector::write_races(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
-    const auto strings = [&](const auto& list) {
-        std::vector<flatbuffers::Offset<flatbuffers::String>> offsets;
-        for (const auto& text : list) {
-            offsets.push_back(builder.CreateString(text));
-        }
-        return builder.CreateVector(offsets);
-    };
     std::vector<flatbuffers::Offset<wfb::Race>> races;
+    races.reserve(races_.size());
     for (const auto& [id, r] : races_) {
-        std::vector<flatbuffers::Offset<wfb::RaceBodyPart>> parts;
-        for (const auto& p : r.body_parts) {
-            parts.push_back(wfb::CreateRaceBodyPart(builder, p.female, p.index, builder.CreateString(p.model)));
-        }
-        const std::vector<float> heights(r.heights.begin(), r.heights.end());
-        const std::vector<float> weights(r.weights.begin(), r.weights.end());
-        races.push_back(wfb::CreateRace(builder, r.id, builder.CreateString(r.editor_id),
-                                        strings(r.skeletons), strings(r.behaviours), r.skin,
-                                        builder.CreateVector(heights), builder.CreateVector(weights),
-                                        r.flags, builder.CreateVector(parts),
-                                        builder.CreateVector(r.head_parts[0]),
-                                        builder.CreateVector(r.head_parts[1]), r.armor_race));
-        ++stats.races;
+        races.push_back(wfb::CreateRace(builder, &r));
     }
+    shared_.stats().races += races_.size();
     return races;
 }
 
 std::vector<flatbuffers::Offset<wfb::Armor>> ActorCollector::write_armors(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::Armor>> armors;
+    armors.reserve(armors_.size());
     for (const auto& [id, a] : armors_) {
-        armors.push_back(wfb::CreateArmor(builder, a.id, builder.CreateString(a.editor_id), a.slots,
-                                          a.race, builder.CreateVector(a.addons)));
-        ++stats.armors;
+        armors.push_back(wfb::CreateArmor(builder, &a));
     }
+    shared_.stats().armors += armors_.size();
     return armors;
 }
 
 std::vector<flatbuffers::Offset<wfb::ArmorAddon>> ActorCollector::write_armor_addons(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::ArmorAddon>> addons;
+    addons.reserve(armor_addons_.size());
     for (const auto& [id, a] : armor_addons_) {
-        addons.push_back(wfb::CreateArmorAddon(
-            builder, a.id, builder.CreateString(a.editor_id), a.slots, a.race,
-            builder.CreateVector(a.additional_races), builder.CreateString(a.models[0]),
-            builder.CreateString(a.models[1]), a.priorities[0], a.priorities[1], a.weight_sliders[0],
-            a.weight_sliders[1]));
-        ++stats.armor_addons;
+        addons.push_back(wfb::CreateArmorAddon(builder, &a));
     }
+    shared_.stats().armor_addons += armor_addons_.size();
     return addons;
 }
 
 std::vector<flatbuffers::Offset<wfb::Outfit>> ActorCollector::write_outfits(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::Outfit>> outfits;
+    outfits.reserve(outfits_.size());
     for (const auto& [id, o] : outfits_) {
-        outfits.push_back(wfb::CreateOutfit(builder, o.id, builder.CreateVector(o.items)));
-        ++stats.outfits;
+        outfits.push_back(wfb::CreateOutfit(builder, &o));
     }
+    shared_.stats().outfits += outfits_.size();
     return outfits;
 }
 
 std::vector<flatbuffers::Offset<wfb::LeveledList>> ActorCollector::write_leveled_lists(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::LeveledList>> leveled;
+    leveled.reserve(leveled_lists_.size());
     for (const auto& [id, l] : leveled_lists_) {
-        std::vector<wfb::LeveledEntry> entries;
-        for (const auto& e : l.entries) {
-            entries.emplace_back(e.level, e.count, e.form);
-        }
-        leveled.push_back(wfb::CreateLeveledList(builder, l.id, l.type, l.flags, l.chance_none,
-                                                 builder.CreateVectorOfStructs(entries)));
-        ++stats.leveled_lists;
+        leveled.push_back(wfb::CreateLeveledList(builder, &l));
     }
+    shared_.stats().leveled_lists += leveled_lists_.size();
     return leveled;
 }
 

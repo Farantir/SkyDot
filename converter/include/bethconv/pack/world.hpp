@@ -217,31 +217,6 @@ struct WorldNavMesh {
     std::vector<Door> doors;
 };
 
-/// NPC_ as written to world.fb; FormIDs global.
-struct WorldNpc {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::string name;
-    wfb::NpcFlags flags{}; ///< ACBS.
-    std::uint16_t level{};
-    std::uint32_t race{};
-    std::uint32_t template_form{};
-    wfb::NpcTemplateFlags template_flags{};
-    std::uint32_t skin{};
-    std::uint32_t default_outfit{};
-    std::uint32_t sleeping_outfit{};
-    float height{};
-    float weight{};
-    std::vector<std::uint32_t> head_parts;
-    std::vector<std::pair<std::uint32_t, std::int32_t>> items;
-    std::string face_model;
-    std::array<float, 3> skin_tone{1, 1, 1};
-    std::vector<std::uint32_t> packages{};         ///< PKID
-    std::vector<std::uint32_t> default_packages{}; ///< DPLT's FLST, expanded.
-    std::uint32_t default_package_list{};          ///< DPLT; not written.
-    std::vector<std::pair<std::uint32_t, std::int32_t>> factions{}; ///< SNAM: faction, rank.
-};
-
 /// PACK as written to world.fb; FormIDs global (see world.fbs, Package).
 struct WorldPackage {
     std::uint32_t id{};
@@ -284,63 +259,6 @@ struct WorldPackage {
     std::uint32_t on_begin_idle{};
     std::uint32_t on_end_idle{};
     std::uint32_t on_change_idle{};
-};
-
-/// RACE as written to world.fb; index 0 male, 1 female.
-struct WorldRace {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::array<std::string, 2> skeletons;
-    std::array<std::string, 2> behaviours;
-    std::uint32_t skin{};
-    std::array<float, 2> heights{1, 1};
-    std::array<float, 2> weights{1, 1};
-    std::uint32_t flags{};
-    struct BodyPart {
-        bool female{};
-        std::uint32_t index{};
-        std::string model;
-    };
-    std::vector<BodyPart> body_parts;
-    std::array<std::vector<std::uint32_t>, 2> head_parts;
-    std::uint32_t armor_race{};
-};
-
-struct WorldArmor {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::uint32_t slots{};
-    std::uint32_t race{};
-    std::vector<std::uint32_t> addons;
-};
-
-struct WorldArmorAddon {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::uint32_t slots{};
-    std::uint32_t race{};
-    std::vector<std::uint32_t> additional_races;
-    std::array<std::string, 2> models;
-    std::array<std::uint8_t, 2> priorities{};
-    std::array<std::uint8_t, 2> weight_sliders{};
-};
-
-struct WorldOutfit {
-    std::uint32_t id{};
-    std::vector<std::uint32_t> items;
-};
-
-struct WorldLeveledList {
-    std::uint32_t id{};
-    std::uint32_t type{}; ///< LVLI or LVLN as a FourCC value.
-    wfb::LeveledListFlags flags{};
-    std::uint8_t chance_none{};
-    struct Entry {
-        std::uint16_t level{};
-        std::uint16_t count{};
-        std::uint32_t form{};
-    };
-    std::vector<Entry> entries;
 };
 
 struct WorldActor {

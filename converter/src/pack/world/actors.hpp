@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <map>
+#include <unordered_map>
 #include <vector>
 
 namespace bethconv::pack::detail {
@@ -68,12 +69,14 @@ private:
                      std::uint8_t chance_none, const Entries& entries);
 
     CollectContext& shared_;
-    std::map<std::uint32_t, WorldNpc> npcs_;
-    std::map<std::uint32_t, WorldRace> races_;
-    std::map<std::uint32_t, WorldArmor> armors_;
-    std::map<std::uint32_t, WorldArmorAddon> armor_addons_;
-    std::map<std::uint32_t, WorldOutfit> outfits_;
-    std::map<std::uint32_t, WorldLeveledList> leveled_lists_;
+    std::map<std::uint32_t, wfb::NpcT> npcs_;
+    /// NPC id -> its DPLT, an FLST of packages; it is not in the table.
+    std::unordered_map<std::uint32_t, std::uint32_t> default_package_lists_;
+    std::map<std::uint32_t, wfb::RaceT> races_;
+    std::map<std::uint32_t, wfb::ArmorT> armors_;
+    std::map<std::uint32_t, wfb::ArmorAddonT> armor_addons_;
+    std::map<std::uint32_t, wfb::OutfitT> outfits_;
+    std::map<std::uint32_t, wfb::LeveledListT> leveled_lists_;
 };
 
 } // namespace bethconv::pack::detail
