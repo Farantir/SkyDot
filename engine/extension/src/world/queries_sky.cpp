@@ -7,6 +7,7 @@
 #include "world_generated.h"
 
 #include <godot_cpp/variant/color.hpp>
+#include <godot_cpp/variant/variant.hpp>
 
 #include <algorithm>
 #include <cmath>

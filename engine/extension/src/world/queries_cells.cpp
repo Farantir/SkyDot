@@ -2,6 +2,7 @@
 #include "world/queries.hpp"
 #include "world/coordinates.hpp"
 #include "world/fb_search.hpp"
+#include "world/navmesh.hpp"
 #include "world/refs.hpp"
 #include "world/text.hpp"
 

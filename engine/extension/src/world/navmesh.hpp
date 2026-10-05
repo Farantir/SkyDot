@@ -5,6 +5,8 @@
 // docs/navigation.md.
 #pragma once
 
+#include "world/world_data.hpp"
+
 #include <godot_cpp/classes/navigation_mesh.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref.hpp>
@@ -21,11 +23,6 @@ struct NavMesh;
 } // namespace bethconv::pack::wfb
 
 namespace skydot {
-
-/// Every navmesh by id, with the cell holding it.
-using NavIndex =
-    std::unordered_map<std::uint32_t,
-                       std::pair<const bethconv::pack::wfb::NavMesh*, const bethconv::pack::wfb::Cell*>>;
 
 /// The navigation mesh of one navmesh in Godot space. Triangles keep their
 /// order: Skyrim's face up, as Godot's do.

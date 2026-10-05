@@ -9,7 +9,6 @@
 #pragma once
 
 #include "assets/mapped_file.hpp"
-#include "world/navmesh.hpp"
 #include "skydot_formats/units.hpp"
 
 #include <cmath>
@@ -18,6 +17,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace bethconv::pack::wfb {
@@ -29,9 +29,15 @@ struct ActorRef;
 struct Worldspace;
 struct Water;
 struct DoorLink;
+struct NavMesh;
 } // namespace bethconv::pack::wfb
 
 namespace skydot {
+
+/// Every navmesh by id, with the cell holding it.
+using NavIndex =
+    std::unordered_map<std::uint32_t,
+                       std::pair<const bethconv::pack::wfb::NavMesh*, const bethconv::pack::wfb::Cell*>>;
 
 /// Key of exterior grid square (x, y) of a worldspace: the worldspace above
 /// bit 32, then the square's coordinates as 16 bits each.
