@@ -101,11 +101,7 @@ var _rig: PlayerRig
 var _camera: Camera3D  # _rig's
 var _player: SkydotPlayer  # _rig's; the camera follows its eyes
 var _speed := 3.0
-var _shots: Array = []
-var _shot_path := ""
-var _shot_delay := 0.0  # seconds the world runs before --screenshot captures
-var _frames := 0
-var _shot_index := 0
+var _shots: ShotRecorder
 
 var _settings: ViewerSettings
 var _world: SkydotWorld
@@ -132,11 +128,6 @@ var _saves: SaveService
 const NOTE_SECONDS := 8.0
 var _clock: GameClock
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
-var _shot_busy := false
-var _shot_note: PanelContainer  # asks for a shot's note
-var _shot_note_text: TextEdit
-var _shot_note_json := ""  # the shot the note goes to
-var _shot_note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 var _image_space: SkydotImageSpace
 
 
@@ -171,7 +162,6 @@ func _ready() -> void:
 	world.collision = settings.collision
 	world.navigation = settings.navigation
 	world.actors = settings.actors
-	_shot_delay = settings.shot_delay
 	world.actor_wander = settings.wander
 	if settings.ai:
 		_ai = SkydotAi.new()
@@ -218,6 +208,7 @@ func _ready() -> void:
 	_bridge.activations_finished.connect(func() -> void: _quit_in = 5)  # let scripts run first
 	_bridge.failed.connect(_fail)
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
+	_shots = ShotRecorder.new(self, settings, world, _rig, _place, _streamer, _clock, _debug)
 	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -263,8 +254,7 @@ func _ready() -> void:
 			_streamer.load_everything()
 			if _streamer.lod != null:
 				print("lod: ", _streamer.lod.get_stats())
-			_shot_path = settings.screenshot
-			_shots.append(null)
+			_shots.begin_run(settings.screenshot, [NAN])
 		return
 
 	var cell_id := world.find_cell(settings.cell)
@@ -283,13 +273,13 @@ func _ready() -> void:
 		_saves.load_game(settings.load_path)
 
 	if settings.has_screenshot:
-		_shot_path = settings.screenshot
 		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
-			_shots.append(null)
+			_shots.begin_run(settings.screenshot, [NAN])
 		else:
+			var yaws: Array[float] = []
 			for i in 4:
-				_shots.append(i * PI / 2.0)
-			_rig.apply_look(_shots[0], -0.15)
+				yaws.append(i * PI / 2.0)
+			_shots.begin_run(settings.screenshot, yaws)
 
 
 ## Hold the player while the ground under it is still being built, keep its
@@ -333,11 +323,8 @@ func _process(delta: float) -> void:
 		_image_space.set_image_space(_clock.weather.get_image_space())
 	else:
 		_image_space.set_image_space(_place.interior_image_space)
-	if _shot_path != "":
-		if _shot_delay > 0.0:
-			_shot_delay -= delta
-			return
-		_take_screenshots()
+	if _shots.is_running():
+		_shots.step(delta)
 		return
 	_update_player()
 	_rig.follow()
@@ -406,7 +393,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_O:
 		_debug.note("load doors preload what is behind them" if _preloader.toggle() else "load doors load on use")
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
-		_capture_shot(event.shift_pressed)
+		_shots.capture(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
 		if not _transition.is_fading():
 			_bridge.activate_in_view(event.shift_pressed)
@@ -442,211 +429,6 @@ func _unhandled_input(event: InputEvent) -> void:
 		_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_debug.note("flying" if _rig.toggle_fly() else "walking")
-
-
-func _take_screenshots() -> void:
-	# Let shaders compile and textures stream in before capturing.
-	_frames += 1
-	if _frames < 30:
-		return
-	var index := _shot_index
-	_shot_index += 1
-	var image := get_viewport().get_texture().get_image()
-	var path := _shot_path.get_basename() + "_%d.png" % index
-	image.save_png(path)
-	print("screenshot: ", path)
-	_shots.pop_front()
-	if _shots.is_empty():
-		get_tree().quit(0)
-		return
-	if _shots[0] != null:
-		_rig.apply_look(_shots[0], -0.15)
-	_frames = 20
-
-
-## F12: the frame as a PNG and a JSON file describing it. The PNG is written
-## on a worker thread so the frame does not hitch.
-func _capture_shot(hide_overlay: bool) -> void:
-	if _shot_busy:
-		return
-	_shot_busy = true
-	if hide_overlay:
-		_debug.visible = false
-		await RenderingServer.frame_post_draw
-	var image := get_viewport().get_texture().get_image()
-	_debug.visible = true
-	var dir := _settings.shot_dir
-	DirAccess.make_dir_recursive_absolute(dir)
-	var stem := dir.path_join("shot_" + Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_"))
-	var base := stem
-	var n := 2
-	while FileAccess.file_exists(base + ".png") or FileAccess.file_exists(base + ".json"):
-		base = "%s_%d" % [stem, n]
-		n += 1
-	var meta := _shot_metadata(hide_overlay)
-	meta["image"] = (base + ".png").get_file()
-	var file := FileAccess.open(base + ".json", FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify(meta, "  ") + "\n")
-		file.close()
-	var png := base + ".png"
-	if image == null:  # headless: nothing is rendered, the JSON still helps
-		_debug.note("screenshot: no image here, wrote " + ProjectSettings.globalize_path(base + ".json"))
-		_shot_busy = false
-		return
-	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
-	_debug.note("screenshot: " + ProjectSettings.globalize_path(png))
-	if not _settings.shot_notes or DisplayServer.get_name() == "headless":
-		_shot_busy = false
-		return
-	_ask_shot_note(base + ".json")
-
-
-## Pause and ask what the shot shows; `_end_shot_note` stores the answer.
-func _ask_shot_note(json_path: String) -> void:
-	if _shot_note == null:
-		_shot_note = PanelContainer.new()
-		_shot_note.process_mode = Node.PROCESS_MODE_ALWAYS
-		_shot_note.custom_minimum_size = Vector2(640, 0)
-		var box := VBoxContainer.new()
-		var label := Label.new()
-		label.text = "What is wrong in this shot? Enter saves, Shift+Enter new line, Escape skips."
-		box.add_child(label)
-		_shot_note_text = TextEdit.new()
-		_shot_note_text.custom_minimum_size = Vector2(0, 96)
-		_shot_note_text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-		_shot_note_text.gui_input.connect(_shot_note_input)
-		box.add_child(_shot_note_text)
-		_shot_note.add_child(box)
-		_debug.add_child(_shot_note)
-		_shot_note.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM,
-			Control.PRESET_MODE_MINSIZE, 24)
-		_shot_note.grow_horizontal = Control.GROW_DIRECTION_BOTH
-		_shot_note.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_shot_note_json = json_path
-	_shot_note_mouse = Input.mouse_mode
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	get_tree().paused = true  # time, weather and the player wait
-	_shot_note_text.text = ""
-	_shot_note.visible = true
-	_shot_note_text.grab_focus()
-
-
-func _shot_note_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
-	if event.keycode == KEY_ESCAPE:
-		_end_shot_note(false)
-	elif event.keycode in [KEY_ENTER, KEY_KP_ENTER] and not event.shift_pressed:
-		_end_shot_note(true)
-	else:
-		return
-	_shot_note_text.accept_event()
-
-
-func _end_shot_note(save: bool) -> void:
-	var text := _shot_note_text.text.strip_edges()
-	if save and not text.is_empty():
-		var meta = JSON.parse_string(FileAccess.get_file_as_string(_shot_note_json))
-		var file := FileAccess.open(_shot_note_json, FileAccess.WRITE) if meta is Dictionary else null
-		if file != null:
-			meta["note"] = text
-			file.store_string(JSON.stringify(meta, "  ") + "\n")
-			file.close()
-			_debug.note("note saved")
-		else:
-			_debug.note("note not saved: cannot write " + ProjectSettings.globalize_path(_shot_note_json))
-	_shot_note.visible = false
-	_shot_note_text.release_focus()
-	get_tree().paused = false
-	Input.mouse_mode = _shot_note_mouse
-	_shot_busy = false
-
-
-## Everything needed to come back to this view, in the viewer or the game.
-func _shot_metadata(overlay_hidden: bool) -> Dictionary:
-	var eye := SkydotWorld.godot_to_skyrim(_camera.global_position)
-	var heading := fposmod(-rad_to_deg(_rig.yaw), 360.0)
-	var tilt := -rad_to_deg(_rig.pitch)
-	var place := {}
-	var console: Array[String] = []
-	if _streamer.world_id != 0:
-		var world_name := ""
-		for w in _world.list_worlds():
-			if w["id"] == _streamer.world_id:
-				world_name = w["editor_id"]
-		var grid := Vector2i(floori(eye.x / WorldStreamer.CELL_UNITS), floori(eye.y / WorldStreamer.CELL_UNITS))
-		place = {"kind": "exterior", "world": world_name, "world_id": "0x%08X" % _streamer.world_id,
-			"grid": [grid.x, grid.y]}
-		console.append("cow %s %d %d" % [world_name, grid.x, grid.y])
-	else:
-		var cell := _world.get_cell(_place.cell_id)
-		place = {"kind": "interior", "cell": cell.get("editor_id", ""), "cell_id": "0x%08X" % _place.cell_id}
-		console.append("coc " + str(cell.get("editor_id", "")))
-	# The game's getpos is at the feet; the first-person eye is about 120
-	# units higher (GAME-COMPARISON.md).
-	console.append_array(["player.setpos x %.0f" % eye.x, "player.setpos y %.0f" % eye.y,
-		"player.setpos z %.0f" % (eye.z - 120.0), "player.setangle z %.0f" % heading,
-		"player.setangle x %.0f" % tilt])
-	var weather := {}
-	if _clock.has_weather():
-		var running := _clock.weather
-		var state := running.get_state()
-		weather = {"id": "0x%08X" % int(state.get("weather", 0)), "editor_id": state.get("editor_id", ""),
-			"transition": state.get("transition", 1.0), "auto": running.auto_weather}
-		console.append("set gamehour to %.2f" % running.hour)
-		if int(state.get("weather", 0)) != 0:
-			console.append("sw %X" % int(state["weather"]))
-	console.append("tm")
-	var pack_dir := _settings.pack
-	var manifest = JSON.parse_string(FileAccess.get_file_as_string(pack_dir.path_join("manifest.json")))
-	var pack := {"path": ProjectSettings.globalize_path(pack_dir)}
-	if manifest is Dictionary:
-		pack["converter"] = manifest.get("converter", "")
-		pack["records_hash"] = manifest.get("records", {}).get("hash", "")
-		pack["world_hash"] = manifest.get("world", {}).get("hash", "")
-		pack["input"] = manifest.get("input", {})
-	var size := get_viewport().get_visible_rect().size
-	return {
-		"format": ViewerSettings.SHOT_FORMAT,
-		"taken": Time.get_datetime_string_from_system(),
-		"place": place,
-		"camera": {
-			"game": {"x": eye.x, "y": eye.y, "z": eye.z, "heading": heading, "tilt": tilt},
-			"engine": {"position": [_camera.global_position.x, _camera.global_position.y,
-				_camera.global_position.z], "yaw": _rig.yaw, "pitch": _rig.pitch},
-			"fov": _camera.fov,
-			"resolution": [int(size.x), int(size.y)],
-		},
-		"time": _clock.describe(),
-		"weather": weather,
-		"viewer": {
-			"flying": _player.fly,
-			"materials": _world.skyrim_materials,
-			"effects": _world.effects,
-			"collision": _world.collision,
-			"navigation": _world.navigation,
-			"actors": _world.actors,
-			"wander": _world.actor_wander,
-			"navmesh_shown": _debug.show_navmesh,
-			"lod": _streamer.lod != null,
-			"radius": _streamer.radius,
-			"lod_split": _streamer.lod_split,
-			"msaa": ViewerSettings.MSAA_NAMES[maxi(ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d), 0)],
-			"quests": _settings.quests,
-			"overlay_hidden": overlay_hidden,
-		},
-		"pack": pack,
-		"system": {
-			"godot": Engine.get_version_info()["string"],
-			"os": OS.get_name(),
-			"renderer": RenderingServer.get_current_rendering_method(),
-			"gpu": RenderingServer.get_video_adapter_name(),
-			"gpu_vendor": RenderingServer.get_video_adapter_vendor(),
-			"driver": RenderingServer.get_video_adapter_api_version(),
-		},
-		"game_console": console,
-	}
 
 
 func _fail(message: String) -> void:
