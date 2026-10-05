@@ -217,34 +217,6 @@ struct WorldNavMesh {
     std::vector<Door> doors;
 };
 
-struct WorldCell {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::uint32_t world{};
-    wfb::CellFlags flags{};
-    std::optional<std::array<std::int32_t, 2>> grid;
-    float water_height{};
-    std::optional<WorldCellLighting> lighting;
-    std::uint32_t lighting_template{};
-    std::uint32_t image_space{}; ///< XCIM
-    std::vector<WorldRef> refs;
-    std::vector<WorldDoor> doors;
-    std::optional<WorldTerrain> terrain;
-    bool persistent{}; ///< See world.fbs.
-    std::uint32_t water{}; ///< XCWT, 0 for the worldspace's water.
-    /// All sorted by ref.
-    std::vector<WorldRefScripts> scripts;
-    std::vector<WorldLock> locks;
-    std::vector<WorldLink> links;
-    std::vector<WorldActivateParent> activate_parents;
-    std::vector<WorldPrimitive> primitives;
-    std::vector<WorldNavMesh> navmeshes; ///< Sorted by id.
-
-    [[nodiscard]] bool interior() const noexcept {
-        return skydot::formats::has_flag(flags, wfb::CellFlags::interior);
-    }
-};
-
 struct WorldLight {
     std::uint32_t radius{};
     std::uint32_t color{};
@@ -256,25 +228,6 @@ struct WorldLight {
     float flicker_period{};
     float flicker_intensity{};
     float flicker_movement{};
-};
-
-struct WorldBase {
-    std::uint32_t id{};
-    io::FourCC type{};
-    std::string editor_id;
-    std::string model;
-    std::optional<WorldLight> light;
-    std::uint32_t flags{}; ///< See world.fbs.
-    std::vector<record::Script> scripts; ///< FormIDs in properties are global.
-    wfb::RecordFlags record_flags{}; ///< The record header's.
-};
-
-struct WorldLandTexture {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::string diffuse;
-    std::string normal;
-    std::uint8_t specular{};
 };
 
 /// See world.fbs `Water`.
