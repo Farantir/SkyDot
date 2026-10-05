@@ -111,7 +111,7 @@ const REACH := 2.6  # metres the camera can activate from
 var _settings: ViewerSettings
 var _world: SkydotWorld
 var _streamer: WorldStreamer
-var _place: Array[Node] = []  # everything the current cell or worldspace added
+var _place: Place
 var _benchmark := 0.0
 var _fly_speed := 20.0
 var _frame_times: Array[float] = []
@@ -133,7 +133,6 @@ var _fade_phase := 0  # FADE_*
 var _fade_wait := 0.0  # seconds in FADE_WAIT
 var _fade_frames := 0  # frames since the place was built
 enum { FADE_NONE, FADE_OUT, FADE_TRAVEL, FADE_WAIT, FADE_IN }
-var _cell_id := 0  # the interior being shown, or 0 outside
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
@@ -145,7 +144,6 @@ var _shot_note_text: TextEdit
 var _shot_note_json := ""  # the shot the note goes to
 var _shot_note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 var _image_space: SkydotImageSpace
-var _cell_image_space := {}  # inside: the cell's IMGS, if it has one
 
 
 func _ready() -> void:
@@ -217,7 +215,6 @@ func _ready() -> void:
 		if _ai.setup(world, _papyrus) == OK:
 			_clock.attach_ai(_ai)
 			_ai.drive = world.actor_wander
-			_ai.actor_arrived.connect(_on_actor_arrived)
 			_ai.actor_left.connect(func(ref: int, _door: int) -> void:
 				print("0x%08X leaves through a door" % ref))
 		else:
@@ -244,6 +241,14 @@ func _ready() -> void:
 	_debug = DebugOverlay.new()
 	_debug.setup(self, world, _papyrus, _ai, _camera, _player)
 	add_child(_debug)
+	_place = Place.new(world, self, settings, _rig, _ai, _clock, _streamer, _preloader)
+	_place.built.connect(_on_cell_finished)
+	_place.left.connect(_image_space.reset_adaptation)
+	_place.left.connect(_debug.clear_path)
+	_place.message.connect(_debug.note)
+	_place.failed.connect(_fail)
+	if _ai != null:
+		_ai.actor_arrived.connect(_place.on_actor_arrived)
 	var fade_layer := CanvasLayer.new()
 	fade_layer.layer = 100  # over the notes
 	_fade = ColorRect.new()
@@ -283,7 +288,7 @@ func _ready() -> void:
 		print("warm_up: %d shader variants in %.0f ms" % [variants, (Time.get_ticks_usec() - started) / 1000.0])
 		var at := SkydotWorld.skyrim_position(settings.at)
 		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
-		if not _enter_exterior(world_id, at, target):
+		if not _place.enter_exterior(world_id, at, target):
 			return
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
@@ -308,10 +313,10 @@ func _ready() -> void:
 		return
 	var fixed_view := settings.has_at and settings.has_target
 	if fixed_view:
-		_enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at),
+		_place.enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at),
 			SkydotWorld.skyrim_position(settings.target))
 	else:
-		_enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
+		_place.enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
 	if settings.has_look:
 		_rig.apply_look(settings.look_yaw, settings.look_pitch)
 	if not settings.load_path.is_empty():
@@ -325,123 +330,6 @@ func _ready() -> void:
 			for i in 4:
 				_shots.append(i * PI / 2.0)
 			_rig.apply_look(_shots[0], -0.15)
-
-
-## Remove the current cell or worldspace.
-func _leave() -> void:
-	_cell_image_space = {}
-	if _image_space != null:
-		_image_space.reset_adaptation()
-	_clock.release_weather()
-	for node in _place:
-		if is_instance_valid(node):
-			node.queue_free()
-	_place.clear()
-	_streamer.clear()  # its LOD is freed with _place
-	_preloader.clear_doors()
-	_debug.clear_path()
-	_world.call_deferred("trim_cache")
-
-
-func _add_to_place(node: Node) -> void:
-	if node.get_parent() == null:
-		add_child(node)
-	_place.append(node)
-
-
-## Build an interior and put the camera at `at` (a camera position) looking at
-## `target`, or at eye height in the middle of the cell when `at` is null.
-## `prepared` is the cell built ahead without its actors (_prepare_step).
-func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
-	_leave()
-	_cell_id = cell_id
-	var cell := _world.get_cell(cell_id)
-	if _ai != null:
-		_ai.set_space(cell_id)
-		_ai.settle_actors()  # a pass begun when preparing, or a full one
-	var root := prepared
-	if root != null:
-		HeldPlace.release(root)
-		_world.continue_build(root, 1 << 62)  # the actors, where they are now
-	else:
-		root = _world.build_cell(cell_id)
-	_add_to_place(root)
-	_preloader.register(_ref_nodes(root))
-	if _ai != null:
-		_ai.attach_built(root)
-	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
-	_scripts_loaded(root, cell_id)
-	_debug.navmesh_overlay(root)
-	_add_environment(cell)
-	_camera.far = 500.0
-	var spawn = _interior_spawn(cell_id) if at == null and not _player.fly else null
-	if spawn != null:
-		var eye: Vector3 = spawn.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
-		var forward: Vector3 = -spawn.basis.z
-		forward.y = 0.0
-		_rig.place_camera(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
-	elif at == null:
-		if not _player.fly:
-			_player.fly = true
-			print("no door leads into %s: flying (V walks)" % cell["editor_id"])
-		var bounds := _mesh_bounds(root)
-		print("bounds: ", bounds)
-		var eye := bounds.get_center()
-		eye.y = bounds.position.y + min(PlayerRig.EYE_HEIGHT, bounds.size.y * 0.5)
-		_rig.place_camera(eye, null)
-		_rig.apply_look(0.0, 0.0)
-	else:
-		_rig.place_camera(at, target)
-	print("entered ", cell["editor_id"])
-
-
-## Stream worldspace `world_id` around `at`, looking at `target` (null keeps
-## the current direction). `prepared` holds cells and LOD built ahead
-## (_prepare_step); they finish with their actors as streamed cells do.
-## Returns false if it failed.
-func _enter_exterior(world_id: int, at: Vector3, target, prepared: DoorPreloader.Preparation = null) -> bool:
-	_leave()
-	_streamer.start(world_id)
-	_cell_id = 0
-	if _ai != null:
-		_ai.set_space(world_id)
-		_ai.settle_actors()  # a pass begun when preparing, or a full one
-	var weather := 0
-	if not _settings.weather.is_empty():
-		weather = _world.find_weather(_settings.weather)
-		if weather == 0:
-			_fail("no weather named " + _settings.weather)
-			return false
-	if not _start_weather(weather):
-		_add_sky(_world.get_sky(_streamer.world_id, _clock.hour, weather), _settings.shadows)
-	_camera.far = _streamer.view_distance()
-	_rig.place_camera(at, target)
-	var lod: SkydotLod = prepared.lod if prepared != null else null
-	if lod == null:
-		lod = _streamer.make_lod(world_id)
-	if lod != null:
-		HeldPlace.release(lod)
-		_add_to_place(lod)
-		_streamer.lod = lod
-		_camera.far = 40000.0
-	_streamer.adopt(prepared.cells if prepared != null else {})
-	for w in _world.list_worlds():
-		if w["id"] == world_id:
-			print("entered ", w["editor_id"])
-	return true
-
-
-## Where the game puts the player entering interior `cell_id`: the arrival
-## spot of a door elsewhere that leads to one of its doors, or null.
-func _interior_spawn(cell_id: int):
-	for ref in _world.get_refs(cell_id):
-		var door := _world.get_door(ref["id"])
-		if door.is_empty():
-			continue
-		var back := _world.get_door(door["destination"])
-		if not back.is_empty() and back["destination_cell"] == cell_id:
-			return back["arrival"]
-	return null
 
 
 ## Hold the player while the ground under it is still being built, keep its
@@ -461,9 +349,9 @@ func _travel(door: Dictionary) -> void:
 	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
 	var prepared := _preloader.take(door)
 	if door["destination_interior"]:
-		_enter_interior(door["destination_cell"], eye, target, prepared.root if prepared != null else null)
+		_place.enter_interior(door["destination_cell"], eye, target, prepared.root if prepared != null else null)
 	elif door["destination_world"] != 0:
-		_enter_exterior(door["destination_world"], eye, target, prepared)
+		_place.enter_exterior(door["destination_world"], eye, target, prepared)
 	else:
 		print("door 0x%08X leads nowhere this pack knows" % door["ref"])
 
@@ -481,7 +369,7 @@ func _scripts_loaded(root: Node, cell_id: int) -> void:
 	# references in one walk over it, not a search of the scene for each.
 	var changes := _papyrus.get_disabled_changes()
 	if not changes.is_empty():
-		for node in _ref_nodes(root):
+		for node in Place.ref_nodes(root):
 			var ref: int = node.get_meta("skydot_ref")
 			if changes.has(ref):
 				_show_ref(node, not changes[ref])
@@ -498,7 +386,7 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 		# Initially disabled references are not built with their cell.
 		var holder := _world.build_ref(_world.get_ref_cell(ref), ref)
 		if holder != null:
-			_add_to_place(holder)
+			_place.add(holder)
 
 
 ## Enable or disable a built reference: shown and solid, or neither (a
@@ -510,7 +398,7 @@ func _show_ref(node: Node, enabled: bool) -> void:
 
 ## Clutter resting on or against `node` falls once it is gone or moves.
 func _wake_around(node: Node) -> void:
-	var bounds := _mesh_bounds(node)
+	var bounds := Place.mesh_bounds(node)
 	if bounds.size != Vector3.ZERO:
 		SkydotWorld.wake_clutter(self, bounds.get_center(), bounds.size.length() / 2 + 0.5)
 
@@ -624,7 +512,7 @@ func _lock_name(level: int) -> String:
 
 ## The model of reference `ref` among what is built, or null.
 func _find_ref_node(ref: int) -> Node:
-	var pending: Array = _place.duplicate()
+	var pending: Array = _place.nodes.duplicate()
 	pending.append_array(_streamer.loaded.values())
 	while not pending.is_empty():
 		var node = pending.pop_back()
@@ -636,19 +524,6 @@ func _find_ref_node(ref: int) -> Node:
 			if not child.has_meta("skydot_ref") and child.get_child_count() > 0:
 				pending.append(child)
 	return null
-
-
-## The reference nodes under `root` (not those inside another reference).
-func _ref_nodes(root: Node) -> Array[Node]:
-	var out: Array[Node] = []
-	var pending: Array[Node] = [root]
-	while not pending.is_empty():
-		for child in pending.pop_back().get_children():
-			if child.has_meta("skydot_ref"):
-				out.append(child)
-			elif child.get_child_count() > 0:
-				pending.append(child)
-	return out
 
 
 ## --activate: activate the next reference once its model is built; quit
@@ -685,7 +560,7 @@ func _activate_in_view(force: bool) -> void:
 func _on_cell_finished(cell: Node3D, cell_id: int) -> void:
 	_scripts_loaded(cell, cell_id)
 	_debug.navmesh_overlay(cell)
-	_preloader.register(_ref_nodes(cell))
+	_preloader.register(Place.ref_nodes(cell))
 
 
 ## Go through `door` behind a fade to black (_fade_step).
@@ -741,125 +616,6 @@ func _benchmark_frame(delta: float) -> void:
 	get_tree().quit(0)
 
 
-## Sky colours, sun or moon, ambient light and depth fog from get_sky; a
-## neutral daylight setup if the worldspace has no climate.
-## Time and weather outside (SkydotWeather): the climate's or region's
-## weathers in turn, unless --weather fixes one. False if the worldspace has
-## no climate.
-func _start_weather(weather: int) -> bool:
-	var node := SkydotWeather.new()
-	node.name = "weather"
-	_clock.configure(node)  # hour, day and speed
-	node.shadows = _settings.shadows
-	if weather != 0:
-		node.auto_weather = false
-	_add_to_place(node)
-	if node.setup(_world, _streamer.world_id, _camera) != OK:
-		_place.erase(node)
-		node.queue_free()
-		return false
-	if weather != 0:
-		node.set_weather(weather, 0.0)
-	_clock.bind_weather(node)
-	node.weather_changed.connect(func(_id: int) -> void:
-		_debug.note("weather: " + str(node.get_state()["editor_id"])))
-	print("weather: ", node.get_state()["editor_id"])
-	return true
-
-
-func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
-	var material := ProceduralSkyMaterial.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_SKY
-	env.sky = Sky.new()
-	env.sky.sky_material = material
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	var sun := DirectionalLight3D.new()
-	sun.shadow_enabled = shadows
-	if sky_values.is_empty():
-		env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-		sun.rotation_degrees = Vector3(-40, 30, 0)
-	else:
-		print("sky: ", sky_values["weather"], ", daylight ", sky_values["daylight"])
-		material.sky_top_color = sky_values["sky_upper"]
-		material.sky_horizon_color = sky_values["horizon"]
-		material.ground_horizon_color = sky_values["horizon"]
-		material.ground_bottom_color = sky_values["sky_lower"]
-		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-		env.ambient_light_color = sky_values["ambient"]
-		SkydotMaterials.set_game_light(sun, sky_values["sunlight"])
-		var towards: Vector3 = sky_values["sun_direction"]
-		sun.look_at_from_position(Vector3.ZERO, -towards,
-			Vector3.UP if abs(towards.y) < 0.99 else Vector3.FORWARD)
-		if sky_values.has("fog_far"):
-			env.fog_enabled = true
-			env.fog_mode = Environment.FOG_MODE_DEPTH
-			env.fog_depth_begin = sky_values["fog_near"]
-			env.fog_depth_end = sky_values["fog_far"]
-			env.fog_depth_curve = sky_values["fog_power"]
-			env.fog_density = sky_values["fog_max"]
-			env.fog_light_color = sky_values["fog_far_color"]
-			env.set_meta("skydot_fog_near_color", sky_values["fog_near_color"])
-			env.fog_sky_affect = 0.0
-	var node := WorldEnvironment.new()
-	node.environment = env
-	_add_to_place(node)
-	_add_to_place(sun)
-
-
-func _add_environment(cell: Dictionary) -> void:
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.02, 0.02, 0.02)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR  # see _image_space
-	var lighting = cell.get("lighting")
-	# Our shaders light with this (SkydotMaterials.sync_fog); XCLL's ambient
-	# colour is the fallback.
-	if cell.get("directional_ambient", []).size() == 6:
-		env.set_meta("skydot_directional_ambient", cell["directional_ambient"])
-	_cell_image_space = _world.get_image_space(cell.get("image_space", 0))
-	if lighting != null:
-		env.ambient_light_color = lighting["ambient"]
-		env.ambient_light_energy = 1.0
-		if lighting["fog_far"] > lighting["fog_near"]:
-			# Our shaders compute the game's fog from these (SkydotMaterials.sync_fog).
-			env.fog_enabled = true
-			env.fog_mode = Environment.FOG_MODE_DEPTH
-			env.fog_depth_begin = lighting["fog_near"]
-			env.fog_depth_end = lighting["fog_far"]
-			env.fog_depth_curve = lighting["fog_power"] if lighting["fog_power"] > 0.0 else 1.0
-			env.fog_density = lighting["fog_max"] if lighting["fog_max"] > 0.0 else 1.0
-			env.fog_light_color = lighting["fog_far_color"]
-			env.set_meta("skydot_fog_near_color", lighting["fog_near_color"])
-	else:
-		env.ambient_light_color = Color(0.3, 0.3, 0.3)
-	var node := WorldEnvironment.new()
-	node.environment = env
-	_add_to_place(node)
-
-	if lighting != null and lighting["directional"] != Color(0, 0, 0):
-		var sun := DirectionalLight3D.new()
-		SkydotMaterials.set_game_light(sun, lighting["directional"])
-		sun.rotation_degrees = Vector3(-float(lighting["directional_rotation_z"]),
-			float(lighting["directional_rotation_xy"]), 0)
-		_add_to_place(sun)
-
-
-func _mesh_bounds(root: Node) -> AABB:
-	var bounds := AABB()
-	var first := true
-	for node in root.find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		var box := mesh.global_transform * mesh.get_aabb()
-		if first:
-			bounds = box
-			first = false
-		else:
-			bounds = bounds.merge(box)
-	return bounds
-
-
 func _process(delta: float) -> void:
 	if _camera == null:
 		return
@@ -870,7 +626,7 @@ func _process(delta: float) -> void:
 	elif _clock.has_weather():
 		_image_space.set_image_space(_clock.weather.get_image_space())
 	else:
-		_image_space.set_image_space(_cell_image_space)
+		_image_space.set_image_space(_place.interior_image_space)
 	if _shot_path != "":
 		if _shot_delay > 0.0:
 			_shot_delay -= delta
@@ -982,35 +738,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		_debug.note("flying" if _rig.toggle_fly() else "walking")
 
 
-## An actor the AI brought into the place on screen: build it where its
-## place now is, if that part of the world is built.
-func _on_actor_arrived(ref: int) -> void:
-	var place := _world.get_actor_place(ref)
-	if place.is_empty():
-		return
-	var parent: Node = null
-	if _streamer.world_id == 0:
-		if place["space"] == _cell_id and not _place.is_empty():
-			parent = _place[0]
-	elif place["space"] == _streamer.world_id:
-		var p: Vector3 = place["position"]
-		parent = _streamer.loaded.get(Vector2i(floori(p.x / WorldStreamer.CELL_UNITS), floori(p.y / WorldStreamer.CELL_UNITS)))
-	if parent == null:
-		return
-	var node := _world.build_actor(ref)
-	if node == null:
-		return
-	parent.add_child(node)
-	if _ai != null:
-		_ai.attach_built(node)
-
-
 ## The scripts' state and where the camera is.
 func _save_game(path: String) -> void:
 	var state := {
 		"format": 1,
 		"papyrus": _papyrus.save_state(),
-		"cell": _cell_id,
+		"cell": _place.cell_id,
 		"world": _streamer.world_id,
 		"position": _camera.position,
 		"yaw": _rig.yaw,
@@ -1037,9 +770,9 @@ func _load_game(path: String) -> bool:
 		printerr("cannot load the scripts' state: ", _papyrus.get_last_error())
 		return false
 	if int(state.get("world", 0)) != 0:
-		_enter_exterior(int(state["world"]), state["position"], null)
+		_place.enter_exterior(int(state["world"]), state["position"], null)
 	else:
-		_enter_interior(int(state["cell"]), state["position"], null)
+		_place.enter_interior(int(state["cell"]), state["position"], null)
 	_rig.apply_look(float(state["yaw"]), float(state["pitch"]))
 	print("loaded ", path)
 	return true
@@ -1181,8 +914,8 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"grid": [grid.x, grid.y]}
 		console.append("cow %s %d %d" % [world_name, grid.x, grid.y])
 	else:
-		var cell := _world.get_cell(_cell_id)
-		place = {"kind": "interior", "cell": cell.get("editor_id", ""), "cell_id": "0x%08X" % _cell_id}
+		var cell := _world.get_cell(_place.cell_id)
+		place = {"kind": "interior", "cell": cell.get("editor_id", ""), "cell_id": "0x%08X" % _place.cell_id}
 		console.append("coc " + str(cell.get("editor_id", "")))
 	# The game's getpos is at the feet; the first-person eye is about 120
 	# units higher (GAME-COMPARISON.md).
