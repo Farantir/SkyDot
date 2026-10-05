@@ -217,19 +217,6 @@ struct WorldNavMesh {
     std::vector<Door> doors;
 };
 
-struct WorldLight {
-    std::uint32_t radius{};
-    std::uint32_t color{};
-    wfb::LightFlags flags{};
-    float falloff_exponent{};
-    float fov{};
-    float near_clip{};
-    float fade{};
-    float flicker_period{};
-    float flicker_intensity{};
-    float flicker_movement{};
-};
-
 /// NPC_ as written to world.fb; FormIDs global.
 struct WorldNpc {
     std::uint32_t id{};

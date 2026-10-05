@@ -10,6 +10,8 @@
 #include "bethconv/record/forms_world.hpp"
 
 #include <algorithm>
+#include <array>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -71,34 +73,23 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
         ++shared_.stats().parse_errors;
         return;
     }
-    bases_[merged.form.value] = BaseEntry{
-        .id = merged.form.value,
-        .type = merged.type.value,
-        .editor_id = light->editor_id,
-        .model = light->model.path.empty() ? std::string{} : model_vpath(light->model.path),
-        .light =
-            WorldLight{
-                .radius = light->radius,
-                .color = light->colour,
-                .flags = static_cast<wfb::LightFlags>(light->light_flags),
-                .falloff_exponent = light->falloff_exponent,
-                .fov = light->fov,
-                .near_clip = light->near_clip,
-                .fade = light->fade,
-                .flicker_period = light->flicker_period,
-                .flicker_intensity = light->flicker_intensity_amplitude,
-                .flicker_movement = light->flicker_movement_amplitude,
-            },
-        .flags = 0,
-        .scripts = {},
-        .record_flags = static_cast<wfb::RecordFlags>(merged.flags),
-    };
     bool failed = false;
-    bases_[merged.form.value].scripts =
-        shared_.global_scripts(merged, light->scripts, failed);
+    wfb::BaseT out;
+    out.id = merged.form.value;
+    out.type = merged.type.value;
+    out.editor_id = light->editor_id;
+    out.model = light->model.path.empty() ? std::string{} : model_vpath(light->model.path);
+    out.has_light = true;
+    out.light = std::make_unique<wfb::LightData>(
+        light->radius, light->colour, static_cast<wfb::LightFlags>(light->light_flags),
+        light->falloff_exponent, light->fov, light->near_clip, light->fade, light->flicker_period,
+        light->flicker_intensity_amplitude, light->flicker_movement_amplitude);
+    out.scripts = shared_.global_scripts(merged, light->scripts, failed);
+    out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
     if (failed) {
         ++shared_.stats().unresolved;
     }
+    bases_[out.id] = std::move(out);
 }
 
 /// Any other type: keep it as a base if it has a model or scripts. ARMO's
@@ -149,27 +140,31 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         return;
     }
     bool failed = false;
-    bases_[merged.form.value] = BaseEntry{
-        .id = merged.form.value,
-        .type = merged.type.value,
-        .editor_id = std::move(editor_id),
-        .model = path.empty() ? std::string{} : model_vpath(path),
-        .light = std::nullopt,
-        .flags = flags,
-        .scripts = shared_.global_scripts(merged, scripts, failed),
-        .record_flags = static_cast<wfb::RecordFlags>(merged.flags),
-        .directional_material =
-            material != 0 ? shared_.global(merged, record::FormId{material}, failed) : 0,
-        .directional_max_angle = max_angle,
-    };
+    wfb::BaseT out;
+    out.id = merged.form.value;
+    out.type = merged.type.value;
+    out.editor_id = std::move(editor_id);
+    out.model = path.empty() ? std::string{} : model_vpath(path);
+    out.flags = flags;
+    out.scripts = shared_.global_scripts(merged, scripts, failed);
+    out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
+    if (material != 0) {
+        out.directional_material = shared_.global(merged, record::FormId{material}, failed);
+    }
+    if (out.directional_material != 0) {
+        out.directional_max_angle = max_angle;
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }
+    bases_[out.id] = std::move(out);
 }
 
 void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data) {
-    MaterialObjectEntry out;
+    wfb::MaterialObjectT out;
     out.id = merged.form.value;
+    out.projection.assign(3, 0.0F);
+    out.single_pass_color.assign(3, 0.0F);
     const auto walked = record::for_each_field(
         data, [&](const record::FieldHeader& field, io::SpanReader& body) {
             if (field.type == FourCC{"EDID"}) {
@@ -177,10 +172,20 @@ void BaseCollector::on_material_object(const record::MergedRecord& merged, io::S
             } else if (field.type == FourCC{"MODL"}) {
                 out.model = model_vpath(std::string(body.zstring().value_or("")));
             } else if (field.type == FourCC{"DATA"}) {
-                for (auto& f : out.data) {
+                std::array<float, 11> d{};
+                for (auto& f : d) {
                     f = body.remaining() >= 4 ? body.get<float>().value_or(0.0F) : 0.0F;
                 }
-                out.flags = body.remaining() >= 4 ? body.get<std::uint32_t>().value_or(0) : 0;
+                const std::uint32_t flags =
+                    body.remaining() >= 4 ? body.get<std::uint32_t>().value_or(0) : 0;
+                out.falloff_scale = d[0];
+                out.falloff_bias = d[1];
+                out.noise_uv_scale = d[2];
+                out.material_uv_scale = d[3];
+                out.projection = {d[4], d[5], d[6]};
+                out.normal_dampener = d[7];
+                out.single_pass_color = {d[8], d[9], d[10]};
+                out.single_pass = (flags & 1U) != 0;
             }
         });
     if (!walked) {
@@ -202,20 +207,20 @@ void BaseCollector::on_land_texture(const record::MergedRecord& merged, io::Span
     for (const auto grass : ltex->grasses) {
         grasses.push_back(shared_.global(merged, grass, failed));
     }
-    land_textures_[merged.form.value] = LandTextureEntry{
-        .id = merged.form.value,
-        .editor_id = ltex->editor_id,
-        .texture_set = shared_.global(merged, ltex->texture_set, failed),
-        .specular = ltex->specular,
-        .grasses = std::move(grasses),
-    };
+    LandTextureEntry out;
+    out.table.id = merged.form.value;
+    out.table.editor_id = ltex->editor_id;
+    out.table.specular = ltex->specular;
+    out.table.grasses = std::move(grasses);
+    out.texture_set = shared_.global(merged, ltex->texture_set, failed);
+    land_textures_[merged.form.value] = std::move(out);
     if (failed) {
         ++shared_.stats().unresolved;
     }
 }
 
 void BaseCollector::on_addon_node(const record::MergedRecord& merged, io::SpanReader& data) {
-    AddonEntry out;
+    wfb::AddonNodeT out;
     out.id = merged.form.value;
     bool has_index = false;
     const auto walked = record::for_each_field(
@@ -237,7 +242,7 @@ void BaseCollector::on_addon_node(const record::MergedRecord& merged, io::SpanRe
 }
 
 void BaseCollector::on_grass(const record::MergedRecord& merged, io::SpanReader& data) {
-    GrassEntry out;
+    wfb::GrassT out;
     out.id = merged.form.value;
     const auto walked = record::for_each_field(
         data, [&](const record::FieldHeader& field, io::SpanReader& body) {
@@ -286,37 +291,11 @@ std::vector<flatbuffers::Offset<wfb::Base>> BaseCollector::write_bases(
     std::vector<flatbuffers::Offset<wfb::Base>> bases;
     bases.reserve(bases_.size());
     for (const auto& [id, base] : bases_) {
-        const auto editor_id = builder.CreateString(base.editor_id);
-        const auto model = builder.CreateString(base.model);
-        const auto scripts = base.scripts.empty() ? 0 : write_scripts(builder, base.scripts);
+        bases.push_back(wfb::CreateBase(builder, &base));
         stats.scripts += base.scripts.size();
-        std::optional<wfb::LightData> light;
-        if (base.light) {
-            const auto& l = *base.light;
-            light = wfb::LightData(l.radius, l.color, l.flags, l.falloff_exponent, l.fov,
-                                   l.near_clip, l.fade, l.flicker_period, l.flicker_intensity,
-                                   l.flicker_movement);
-        }
-        wfb::BaseBuilder bb(builder);
-        bb.add_id(base.id);
-        bb.add_type(base.type);
-        bb.add_editor_id(editor_id);
-        bb.add_model(model);
-        bb.add_flags(base.flags);
-        bb.add_record_flags(base.record_flags);
-        if (base.directional_material != 0) {
-            bb.add_directional_material(base.directional_material);
-            bb.add_directional_max_angle(base.directional_max_angle);
-        }
-        if (!base.scripts.empty()) {
-            bb.add_scripts(scripts);
-        }
-        if (light) {
-            bb.add_has_light(true);
-            bb.add_light(&*light);
+        if (base.has_light) {
             ++stats.lights;
         }
-        bases.push_back(bb.Finish());
         ++stats.bases;
     }
     return bases;
@@ -324,34 +303,25 @@ std::vector<flatbuffers::Offset<wfb::Base>> BaseCollector::write_bases(
 
 std::vector<flatbuffers::Offset<wfb::LandTexture>> BaseCollector::write_land_textures(
     flatbuffers::FlatBufferBuilder& builder) {
-    auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::LandTexture>> land_textures;
-    for (const auto& [id, ltex] : land_textures_) {
-        TextureSetEntry paths;
-        if (const auto t = texture_sets_.find(ltex.texture_set);
-            t != texture_sets_.end()) {
-            paths = t->second;
+    land_textures.reserve(land_textures_.size());
+    for (auto& [id, ltex] : land_textures_) {
+        if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
+            ltex.table.diffuse = t->second.diffuse;
+            ltex.table.normal = t->second.normal;
         }
-        land_textures.push_back(wfb::CreateLandTexture(
-            builder, ltex.id, builder.CreateString(ltex.editor_id),
-            builder.CreateString(paths.diffuse), builder.CreateString(paths.normal),
-            ltex.specular, builder.CreateVector(ltex.grasses)));
-        ++stats.land_textures;
+        land_textures.push_back(wfb::CreateLandTexture(builder, &ltex.table));
     }
+    shared_.stats().land_textures += land_textures_.size();
     return land_textures;
 }
 
 std::vector<flatbuffers::Offset<wfb::MaterialObject>> BaseCollector::write_material_objects(
     flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<wfb::MaterialObject>> material_objects;
+    material_objects.reserve(material_objects_.size());
     for (const auto& [id, m] : material_objects_) {
-        const auto& d = m.data;
-        const std::array<float, 3> projection{d[4], d[5], d[6]};
-        const std::array<float, 3> colour{d[8], d[9], d[10]};
-        material_objects.push_back(wfb::CreateMaterialObject(
-            builder, m.id, builder.CreateString(m.editor_id), builder.CreateString(m.model), d[0], d[1],
-            d[2], d[3], builder.CreateVector(projection.data(), projection.size()), d[7],
-            builder.CreateVector(colour.data(), colour.size()), (m.flags & 1U) != 0));
+        material_objects.push_back(wfb::CreateMaterialObject(builder, &m));
     }
     return material_objects;
 }
@@ -359,11 +329,9 @@ std::vector<flatbuffers::Offset<wfb::MaterialObject>> BaseCollector::write_mater
 std::vector<flatbuffers::Offset<wfb::Grass>> BaseCollector::write_grasses(
     flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<wfb::Grass>> grasses;
+    grasses.reserve(grasses_.size());
     for (const auto& [id, g] : grasses_) {
-        grasses.push_back(wfb::CreateGrass(builder, g.id, builder.CreateString(g.editor_id),
-                                           builder.CreateString(g.model), g.density, g.min_slope,
-                                           g.max_slope, g.units_from_water, g.water_type, g.position_range,
-                                           g.height_range, g.color_range, g.wave_period, g.flags));
+        grasses.push_back(wfb::CreateGrass(builder, &g));
     }
     return grasses;
 }
@@ -371,9 +339,9 @@ std::vector<flatbuffers::Offset<wfb::Grass>> BaseCollector::write_grasses(
 std::vector<flatbuffers::Offset<wfb::AddonNode>> BaseCollector::write_addon_nodes(
     flatbuffers::FlatBufferBuilder& builder) {
     std::vector<flatbuffers::Offset<wfb::AddonNode>> addon_nodes;
+    addon_nodes.reserve(addons_.size());
     for (const auto& [id, a] : addons_) {
-        addon_nodes.push_back(wfb::CreateAddonNode(builder, a.id, builder.CreateString(a.editor_id), a.index,
-                                                   builder.CreateString(a.model)));
+        addon_nodes.push_back(wfb::CreateAddonNode(builder, &a));
     }
     return addon_nodes;
 }

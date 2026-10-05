@@ -12,13 +12,9 @@
 #include "bethconv/pack/world_generated.h"
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/merge.hpp"
-#include "bethconv/record/vmad.hpp"
 
-#include <array>
 #include <cstdint>
 #include <map>
-#include <memory>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -30,59 +26,11 @@ struct TextureSetEntry {
     std::string normal;
 };
 
+/// An LTEX: the table, and the TXST it names, whose paths fill the table in when
+/// every record has been read.
 struct LandTextureEntry {
-    std::uint32_t id{};
-    std::string editor_id;
+    wfb::LandTextureT table;
     std::uint32_t texture_set{};
-    std::uint8_t specular{};
-    std::vector<std::uint32_t> grasses;
-};
-
-/// ADDN; see world.fbs `AddonNode`.
-struct AddonEntry {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::int32_t index{};
-    std::string model;
-};
-
-/// GRAS; see world.fbs `Grass`.
-struct GrassEntry {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::string model;
-    std::uint8_t density{};
-    std::uint8_t min_slope{};
-    std::uint8_t max_slope{};
-    std::uint16_t units_from_water{};
-    std::uint32_t water_type{};
-    float position_range{};
-    float height_range{};
-    float color_range{};
-    float wave_period{};
-    wfb::GrassFlags flags{};
-};
-
-struct BaseEntry {
-    std::uint32_t id{};
-    std::uint32_t type{};
-    std::string editor_id;
-    std::string model;
-    std::optional<WorldLight> light;
-    std::uint32_t flags{};
-    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
-    wfb::RecordFlags record_flags{};
-    std::uint32_t directional_material{};
-    float directional_max_angle{};
-};
-
-/// MATO; see world.fbs `MaterialObject`.
-struct MaterialObjectEntry {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::string model;
-    std::array<float, 11> data{}; ///< DATA's first 44 bytes
-    std::uint32_t flags{};         ///< DATA's last word; bit 0 single pass
 };
 
 class BaseCollector {
@@ -125,10 +73,10 @@ private:
                         const record::FormContext& form_ctx);
 
     CollectContext& shared_;
-    std::map<std::uint32_t, BaseEntry> bases_;
-    std::map<std::uint32_t, MaterialObjectEntry> material_objects_;
-    std::map<std::uint32_t, GrassEntry> grasses_;
-    std::map<std::uint32_t, AddonEntry> addons_;
+    std::map<std::uint32_t, wfb::BaseT> bases_;
+    std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;
+    std::map<std::uint32_t, wfb::GrassT> grasses_;
+    std::map<std::uint32_t, wfb::AddonNodeT> addons_;
     std::map<std::uint32_t, LandTextureEntry> land_textures_;
     std::unordered_map<std::uint32_t, TextureSetEntry> texture_sets_;
 };
