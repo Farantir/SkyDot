@@ -47,7 +47,7 @@ AssetConversion convert_mesh(std::span<const std::byte> source, std::string_view
 }
 
 AssetConversion convert_texture(std::span<const std::byte> source, std::string_view vpath,
-                                const ConvertOptions& options) {
+                                const ConvertOptions& options, unsigned encode_threads) {
     AssetConversion out;
     const auto fail = [&](const io::ParseError& error) {
         out.failure = failure_from(vpath, "texture", error);
@@ -91,7 +91,7 @@ AssetConversion convert_texture(std::span<const std::byte> source, std::string_v
         // Normal maps by Skyrim's naming: tangent (_n) and model space (_msn).
         const bool normal_map = vpath.ends_with("_n.dds") || vpath.ends_with("_msn.dds");
         auto enc = texture::encode_uncompressed(payload, *info, options.texture_encoding,
-                                                normal_map, vpath);
+                                                normal_map, vpath, encode_threads);
         if (!enc) {
             return fail(enc.error());
         }

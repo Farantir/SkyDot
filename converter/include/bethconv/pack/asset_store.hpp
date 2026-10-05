@@ -106,6 +106,9 @@ public:
     [[nodiscard]] std::uint32_t generation() const noexcept { return index_.generation; }
     [[nodiscard]] bool contains(const ContentHash& hash) const;
 
+    /// The hash of every asset in the store, in no particular order.
+    [[nodiscard]] std::vector<ContentHash> hashes() const;
+
     [[nodiscard]] io::ParseResult<void> put(const ContentHash& hash, AssetKind kind,
                                             std::span<const std::byte> bytes);
 

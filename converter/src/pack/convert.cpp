@@ -2,6 +2,7 @@
 #include "bethconv/pack/convert.hpp"
 
 #include "asset_conversion.hpp"
+#include "ordered_pool.hpp"
 
 #include "bethconv/animation/animation_data.hpp"
 #include "bethconv/io/mapped_file.hpp"
@@ -9,11 +10,18 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <cstdio>
+#include <functional>
+#include <mutex>
+#include <optional>
 #include <span>
 #include <system_error>
 #include <string>
+#include <thread>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace bethconv::pack {
 namespace {
@@ -83,6 +91,231 @@ namespace {
     // No settings: a source hash names the input and must not change with
     // conversion options.
     return content_hash(mapped->bytes(), converter, "source");
+}
+
+/// Hash-table key over the digest: BLAKE3 output is already uniform.
+struct DigestHasher {
+    [[nodiscard]] std::size_t operator()(const ContentHash& hash) const noexcept {
+        std::uint64_t value = 0;
+        for (std::size_t i = 0; i < 8; ++i) {
+            value |= std::to_integer<std::uint64_t>(hash.bytes[i]) << (8 * i);
+        }
+        return static_cast<std::size_t>(value);
+    }
+};
+
+/// Which assets an input need not convert, for threads that run ahead of the
+/// writer: the pack had them before the run, or an input earlier in the work
+/// list has them. It is only a saving. The writer decides again, in work-list
+/// order, with the store itself, and converts what was skipped for an earlier
+/// input that then failed.
+class Claims {
+public:
+    /// `stored`: the assets the pack had before the run.
+    explicit Claims(const std::vector<ContentHash>& stored) {
+        owner_.reserve(stored.size());
+        for (const auto& hash : stored) {
+            owner_.emplace(hash, 0);
+        }
+    }
+
+    /// True if the pack or an input before `index` has this asset. Otherwise
+    /// `index` becomes its owner: a lower index claiming later takes over, so
+    /// the first input in the list always converts and the later ones skip.
+    [[nodiscard]] bool taken(const ContentHash& hash, std::size_t index) {
+        const std::lock_guard lock(mutex_);
+        const auto [it, inserted] = owner_.try_emplace(hash, index + 1);
+        if (inserted) {
+            return false;
+        }
+        if (it->second <= index) {
+            return true;
+        }
+        it->second = index + 1;
+        return false;
+    }
+
+private:
+    std::mutex mutex_;
+    /// Owner's index plus one; 0 for assets from before the run.
+    std::unordered_map<ContentHash, std::size_t, DigestHasher> owner_;
+};
+
+/// One work item after everything that needs no pack writer: read, hashed and,
+/// unless its asset was taken, converted.
+struct Prepared {
+    std::string_view extension; ///< Of the work item's path.
+    std::optional<AssetKind> kind; ///< Empty: this pass does not convert it.
+    std::optional<PackFailure> read_failure;
+    std::string source_name;
+    ContentHash hash;
+    std::uint64_t source_bytes{};
+    /// The source, kept only when the asset is those bytes (a texture that
+    /// needed no edit); every other asset is `converted->bytes`.
+    std::vector<std::byte> source;
+    /// Empty if the asset was taken.
+    std::optional<AssetConversion> converted;
+
+    /// What this holds, for the pool's memory budget.
+    [[nodiscard]] std::uint64_t weight() const noexcept {
+        return source.size() + (converted ? converted->bytes.size() : 0);
+    }
+};
+
+[[nodiscard]] AssetConversion convert_bytes(AssetKind kind, std::span<const std::byte> bytes,
+                                            std::string_view vpath, std::string_view extension,
+                                            const ConvertOptions& options,
+                                            unsigned encode_threads) {
+    switch (kind) {
+    case AssetKind::mesh:
+        return convert_mesh(bytes, vpath, options);
+    case AssetKind::texture:
+        return convert_texture(bytes, vpath, options, encode_threads);
+    case AssetKind::script:
+        return convert_script(bytes, vpath);
+    case AssetKind::lod:
+        return convert_lod(bytes, vpath, extension);
+    case AssetKind::animation:
+        return convert_animation(bytes, vpath);
+    }
+    return {};
+}
+
+/// Read, hash and convert one work item. `taken(hash, index)` says whether its
+/// asset needs no conversion. Touches the writer only to hash, so any thread
+/// may run it.
+template <typename Taken>
+[[nodiscard]] Prepared prepare(const archive::ArchiveSet& set, const PackWriter& writer,
+                               const ConvertOptions& options, unsigned encode_threads,
+                               const std::string& vpath, std::size_t index, Taken&& taken) {
+    Prepared out;
+    out.extension = extension_of_vpath(vpath);
+    out.kind = kind_of(vpath, out.extension, options);
+    if (!out.kind) {
+        // Not converted: counted in the manifest, never read.
+        return out;
+    }
+    auto bytes = set.read(vpath);
+    if (!bytes) {
+        out.read_failure = failure_from(vpath, "read", bytes.error());
+        return out;
+    }
+    if (const auto resolution = set.resolve(vpath)) {
+        out.source_name = set.sources()[resolution->winner].name;
+    }
+    out.hash = writer.hash_of(*out.kind, *bytes);
+    out.source_bytes = bytes->size();
+    if (taken(out.hash, index)) {
+        return out;
+    }
+    out.converted = convert_bytes(*out.kind, *bytes, vpath, out.extension, options, encode_threads);
+    if (out.converted->passthrough) {
+        out.source = std::move(*bytes);
+    }
+    return out;
+}
+
+constexpr unsigned k_max_jobs = 64;
+
+/// The threads to use for `items` inputs: the request, else every core.
+[[nodiscard]] unsigned effective_jobs(unsigned requested, std::size_t items) {
+    const unsigned wanted = requested != 0 ? requested : std::thread::hardware_concurrency();
+    const unsigned capped = std::clamp(wanted, 1U, k_max_jobs);
+    return static_cast<unsigned>(std::clamp<std::size_t>(items, 1, capped));
+}
+
+/// The asset passes: every input in `work`, in order, into `writer`. With more
+/// than one job the reading, hashing and converting run ahead on a pool and
+/// the writer takes the results in order; the writer's calls, and so the pack,
+/// are the same as with one.
+void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& options,
+                    const std::vector<std::string>& work, PackWriter& writer,
+                    ConvertResult& result) {
+    const unsigned jobs = effective_jobs(options.jobs, work.size());
+    result.jobs = jobs;
+    // Several conversions at once already use every core; the block
+    // compression need not add threads of its own.
+    const unsigned encode_threads = jobs > 1 ? 1U : 0U;
+
+    std::optional<Claims> claims;
+    std::optional<OrderedPool<Prepared>> pool;
+    if (jobs > 1) {
+        claims.emplace(writer.stored_hashes());
+        pool.emplace(
+            work.size(), jobs, OrderedPool<Prepared>::Limits{},
+            [&](std::size_t index) {
+                return prepare(set, writer, options, encode_threads, work[index], index,
+                               [&](const ContentHash& hash, std::size_t at) {
+                                   return claims->taken(hash, at);
+                               });
+            },
+            [](const Prepared& item) { return item.weight(); });
+    }
+
+    std::uint64_t done = 0;
+    for (std::size_t index = 0; index < work.size(); ++index) {
+        const std::string& vpath = work[index];
+        ++done;
+        if (options.progress && options.progress_interval != 0 &&
+            done % options.progress_interval == 0) {
+            options.progress("assets", done, work.size());
+        }
+
+        Prepared item = pool ? pool->next()
+                             : prepare(set, writer, options, encode_threads, vpath, index,
+                                       [&](const ContentHash& hash, std::size_t) {
+                                           return writer.contains(hash);
+                                       });
+        if (!item.kind) {
+            writer.defer(item.extension.empty() ? "<none>" : item.extension);
+            continue;
+        }
+        if (item.read_failure) {
+            writer.fail(std::move(*item.read_failure));
+            continue;
+        }
+
+        const auto slot =
+            writer.reserve(vpath, *item.kind, item.hash, item.source_bytes, item.source_name);
+        if (slot.already_present) {
+            writer.reuse(slot);
+            continue;
+        }
+        if (!item.converted) {
+            // Skipped for an earlier input with the same bytes, which did not
+            // store its asset (its conversion failed). A single thread would
+            // have converted this one too.
+            auto bytes = set.read(vpath);
+            if (!bytes) {
+                writer.fail(failure_from(vpath, "read", bytes.error()));
+                continue;
+            }
+            item.converted = convert_bytes(*item.kind, *bytes, vpath, item.extension, options, 0);
+            if (item.converted->passthrough) {
+                item.source = std::move(*bytes);
+            }
+        }
+
+        AssetConversion& converted = *item.converted;
+        for (auto& warning : converted.warnings) {
+            writer.warn(std::move(warning));
+        }
+        result.textures_shrunk += converted.textures.shrunk;
+        result.textures_kept_large += converted.textures.kept_large;
+        result.texture_bytes_saved += converted.textures.bytes_saved;
+        result.textures_encoded += converted.textures.encoded;
+        result.textures_not_encoded += converted.textures.not_encoded;
+        if (converted.failure) {
+            writer.fail(std::move(*converted.failure));
+            continue;
+        }
+        if (auto stored = writer.store(slot, converted.asset(item.source)); !stored) {
+            writer.fail(failure_from(vpath, "write", stored.error()));
+        }
+    }
+    if (options.progress) {
+        options.progress("assets", work.size(), work.size());
+    }
 }
 
 } // namespace
@@ -224,74 +457,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     result.considered = work.size();
 
     // ---- the asset passes ---------------------------------------------
-    std::uint64_t done = 0;
-    for (const std::string& vpath : work) {
-        ++done;
-        if (options.progress_interval != 0 && done % options.progress_interval == 0) {
-            report("assets", done, work.size());
-        }
-
-        const auto extension = extension_of_vpath(vpath);
-        const auto kind = kind_of(vpath, extension, options);
-        if (!kind) {
-            // Not converted: counted in the manifest, never read.
-            writer->defer(extension.empty() ? "<none>" : extension);
-            continue;
-        }
-
-        auto bytes = set.read(vpath);
-        if (!bytes) {
-            writer->fail(failure_from(vpath, "read", bytes.error()));
-            continue;
-        }
-
-        std::string source_name;
-        if (const auto resolution = set.resolve(vpath)) {
-            source_name = set.sources()[resolution->winner].name;
-        }
-
-        const auto slot = writer->reserve(vpath, *kind, *bytes, source_name);
-        if (slot.already_present) {
-            writer->reuse(slot);
-            continue;
-        }
-
-        AssetConversion converted;
-        switch (*kind) {
-        case AssetKind::mesh:
-            converted = convert_mesh(*bytes, vpath, options);
-            break;
-        case AssetKind::texture:
-            converted = convert_texture(*bytes, vpath, options);
-            break;
-        case AssetKind::script:
-            converted = convert_script(*bytes, vpath);
-            break;
-        case AssetKind::lod:
-            converted = convert_lod(*bytes, vpath, extension);
-            break;
-        case AssetKind::animation:
-            converted = convert_animation(*bytes, vpath);
-            break;
-        }
-
-        for (auto& warning : converted.warnings) {
-            writer->warn(std::move(warning));
-        }
-        result.textures_shrunk += converted.textures.shrunk;
-        result.textures_kept_large += converted.textures.kept_large;
-        result.texture_bytes_saved += converted.textures.bytes_saved;
-        result.textures_encoded += converted.textures.encoded;
-        result.textures_not_encoded += converted.textures.not_encoded;
-        if (converted.failure) {
-            writer->fail(std::move(*converted.failure));
-            continue;
-        }
-        if (auto stored = writer->store(slot, converted.asset(*bytes)); !stored) {
-            writer->fail(failure_from(vpath, "write", stored.error()));
-        }
-    }
-    report("assets", work.size(), work.size());
+    convert_assets(set, options, work, *writer, result);
 
     // ---- the manifest -------------------------------------------------
     // Hashing every plugin and writing the indexes (and pruning) takes seconds

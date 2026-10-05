@@ -205,10 +205,25 @@ public:
     /// Path for `world.fb`.
     [[nodiscard]] std::filesystem::path world_path() const;
 
+    /// The name `source` gets as an asset of `kind`. Reads nothing the other
+    /// calls change, so any thread may hash while the writer stores.
+    [[nodiscard]] ContentHash hash_of(AssetKind kind, std::span<const std::byte> source) const;
+
+    /// Whether the store has the asset named `hash`.
+    [[nodiscard]] bool contains(const ContentHash& hash) const;
+
+    /// The names of every asset the store has.
+    [[nodiscard]] std::vector<ContentHash> stored_hashes() const;
+
     /// Hash `source` and check whether its asset already exists. The index
     /// entry is written later by `store` or `reuse`.
     [[nodiscard]] AssetSlot reserve(std::string_view vpath, AssetKind kind,
                                     std::span<const std::byte> source,
+                                    std::string_view source_name);
+
+    /// The same for a source hashed already (`hash_of`) and `source_bytes` long.
+    [[nodiscard]] AssetSlot reserve(std::string_view vpath, AssetKind kind,
+                                    const ContentHash& hash, std::uint64_t source_bytes,
                                     std::string_view source_name);
 
     /// Write converted bytes for a slot `reserve` reported as absent.

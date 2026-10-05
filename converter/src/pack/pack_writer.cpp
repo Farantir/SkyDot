@@ -62,18 +62,31 @@ std::string PackWriter::settings_for(AssetKind kind) const {
     return {};
 }
 
+ContentHash PackWriter::hash_of(AssetKind kind, std::span<const std::byte> source) const {
+    return content_hash(source, options_.converter, settings_for(kind));
+}
+
+bool PackWriter::contains(const ContentHash& hash) const { return store_.contains(hash); }
+
+std::vector<ContentHash> PackWriter::stored_hashes() const { return store_.hashes(); }
+
 AssetSlot PackWriter::reserve(std::string_view vpath, AssetKind kind,
                               std::span<const std::byte> source, std::string_view source_name) {
+    return reserve(vpath, kind, hash_of(kind, source), source.size(), source_name);
+}
+
+AssetSlot PackWriter::reserve(std::string_view vpath, AssetKind kind, const ContentHash& hash,
+                              std::uint64_t source_bytes, std::string_view source_name) {
     AssetSlot slot;
     slot.kind = kind;
-    slot.hash = content_hash(source, options_.converter, settings_for(kind));
+    slot.hash = hash;
     slot.already_present = store_.contains(slot.hash);
     slot.vpath = std::string(vpath);
     slot.source = std::string(source_name);
-    slot.source_bytes = source.size();
+    slot.source_bytes = source_bytes;
 
     ++stats_.inputs;
-    stats_.source_bytes += source.size();
+    stats_.source_bytes += source_bytes;
     return slot;
 }
 

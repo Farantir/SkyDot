@@ -363,6 +363,24 @@ bool AssetStore::contains(const ContentHash& hash) const {
                                         : present_.contains(hash.hex());
 }
 
+std::vector<ContentHash> AssetStore::hashes() const {
+    std::vector<ContentHash> out;
+    if (layout_ == StoreLayout::blob) {
+        out.reserve(index_.entries.size());
+        for (const auto& entry : index_.entries) {
+            out.push_back(entry.hash);
+        }
+        return out;
+    }
+    out.reserve(present_.size());
+    for (const auto& hex : present_) {
+        if (const auto hash = parse_hex_hash(hex)) {
+            out.push_back(*hash);
+        }
+    }
+    return out;
+}
+
 io::ParseResult<void> AssetStore::put(const ContentHash& hash, AssetKind kind,
                                       std::span<const std::byte> bytes) {
     std::string hex = hash.hex();

@@ -36,6 +36,7 @@ struct ConvertArgs {
     std::string language;
     std::string filter;
     std::size_t limit = 0;
+    unsigned jobs = 0;
     bool no_world = false;
     bool no_meshes = false;
     bool no_textures = false;
@@ -194,6 +195,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.mesh_write.unit_scale = args.unit_scale;
     options.filter = args.filter;
     options.limit = args.limit;
+    options.jobs = args.jobs;
     options.hash_archives = args.hash_archives;
     options.prune_orphans = args.prune;
     options.layout = args.layout;
@@ -324,7 +326,8 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(stats.orphaned_assets),
                      args.prune ? " -- pruned" : " -- pass --prune to remove them");
     }
-    std::fprintf(text, "in %.1fs\n", elapsed);
+    std::fprintf(text, "in %.1fs (%u thread%s)\n", elapsed, result->jobs,
+                 result->jobs == 1 ? "" : "s");
 
     // Show a few failures on the terminal; the full list is in report.json.
     if (stats.failed != 0) {
@@ -348,6 +351,7 @@ int cmd_convert(const ConvertArgs& args) {
             {"json_version", bethconv::cli::k_json_version},
             {"exit", exit_code},
             {"elapsed", elapsed},
+            {"jobs", result->jobs},
             {"out", path_text(args.out)},
             {"forms", result->merge ? result->merge->forms : 0},
             {"cells", result->world ? result->world->cells : 0},
@@ -388,6 +392,7 @@ struct ConvertCli {
     std::string language{std::string(bethconv::record::k_default_language)};
     std::string filter;
     std::size_t limit = 0;
+    unsigned jobs = 0;
     bool no_world = false;
     bool no_meshes = false;
     bool no_textures = false;
@@ -433,6 +438,10 @@ void register_convert(CLI::App& app) {
                         "Only convert virtual paths containing this substring");
     convert->add_option("--limit", args->limit, "Stop after this many inputs")
         ->default_val(0);
+    convert->add_option("-j,--jobs", args->jobs,
+                        "Threads converting assets (default: every core; 1: one thread). The "
+                        "pack is the same bytes either way")
+        ->check(CLI::Range(0U, 64U));
     // --no-records is the old name, from when records.fb was written beside world.fb.
     convert->add_flag("--no-world,--no-records", args->no_world, "Skip the merge and world.fb");
     convert->add_flag("--no-meshes", args->no_meshes, "Skip the NIF pass");
@@ -487,6 +496,7 @@ void register_convert(CLI::App& app) {
                                                 .language = args->language,
                                                 .filter = args->filter,
                                                 .limit = args->limit,
+                                                .jobs = args->jobs,
                                                 .no_world = args->no_world,
                                                 .no_meshes = args->no_meshes,
                                                 .no_textures = args->no_textures,

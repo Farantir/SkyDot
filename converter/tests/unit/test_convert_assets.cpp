@@ -13,6 +13,7 @@
 
 #include "../support/dds_builder.hpp"
 #include "../support/lod_builder.hpp"
+#include "../support/nif_builder.hpp"
 #include "../support/pex_builder.hpp"
 #include "../support/temp_dir.hpp"
 
@@ -21,6 +22,8 @@
 
 #include <algorithm>
 #include <fstream>
+#include <iterator>
+#include <map>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -102,6 +105,19 @@ struct Run {
         }
     }
     return details;
+}
+
+/// Every file under `root` by relative path, with its bytes.
+[[nodiscard]] std::map<std::string, std::string> files_under(const std::filesystem::path& root) {
+    std::map<std::string, std::string> files;
+    for (const auto& entry : std::filesystem::recursive_directory_iterator(root)) {
+        if (entry.is_regular_file()) {
+            std::ifstream in(entry.path(), std::ios::binary);
+            files[std::filesystem::relative(entry.path(), root).generic_string()] =
+                std::string(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+        }
+    }
+    return files;
 }
 
 constexpr std::size_t k_dds_header = 128; // magic and the 124-byte header
@@ -276,4 +292,97 @@ TEST_CASE("bytes after a tree LOD file's blocks are skipped and reported", "[con
     const auto skipped = warnings_for(run.report(), "meshes/terrain/world/trees/world.4.0.0.btt");
     REQUIRE(skipped.size() == 1);
     CHECK(skipped[0] == "3 bytes after the declared tree blocks skipped");
+}
+
+TEST_CASE("the pack is the same bytes on one thread, three and eight", "[convert][threads]") {
+    Run run;
+    const auto nif = [](int n) {
+        bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+        auto* shape = builder.add_shape("Cube" + std::to_string(n), bethconv::test::make_cube());
+        builder.add_shader(shape, "textures/t" + std::to_string(n) + ".dds",
+                           "textures/t" + std::to_string(n) + "_n.dds");
+        return builder.bytes();
+    };
+    const auto script = [](int n) {
+        return bethconv::testing::build_script(
+            bethconv::testing::empty_script("S" + std::to_string(n)));
+    };
+    const auto rgba = [](std::uint32_t side, bool cube) {
+        return bethconv::testing::build_dds(
+            DdsSpec{.width = side, .height = side, .mips = 3, .fourcc = bethconv::io::FourCC{},
+                    .rgb_bit_count = 32, .cubemap = cube});
+    };
+
+    // More tiny scripts than the pool's window, so its slots are reused.
+    for (int n = 0; n < 1100; ++n) {
+        run.add("scripts/gen" + std::to_string(n) + ".pex", script(n));
+    }
+    for (int n = 0; n < 60; ++n) {
+        const std::string id = std::to_string(n);
+        run.add("meshes/m" + id + ".nif", nif(n));
+        // The same bytes under names sorting before and after the first.
+        run.add("meshes/a_copy" + id + ".nif", nif(n));
+        run.add("meshes/z_copy" + id + ".nif", nif(n));
+        run.add("textures/t" + id + ".dds",
+                bethconv::testing::build_dds(
+                    DdsSpec{.width = 8 + 4 * static_cast<std::uint32_t>(n % 7), .height = 8,
+                            .mips = 2}));
+        run.add("textures/u" + id + ".dds", rgba(16, false));
+        run.add("textures/u" + id + "_n.dds", rgba(16, false));
+        // Warnings name the path of the input that was converted.
+        run.add("textures/cube" + id + ".dds", rgba(8, true));
+        run.add("textures/cube" + id + "_n.dds", rgba(8, true));
+    }
+    // Inputs that fail, twice with the same bytes: each is converted and
+    // reported, as on one thread.
+    run.add("meshes/bad.nif", junk());
+    run.add("meshes/bad_copy.nif", junk());
+    run.add("scripts/bad.pex", junk());
+    run.add("sound/voice.wav", junk());
+    run.options.texture_encoding = bethconv::texture::Encoding::bc7;
+
+    for (const auto layout : {StoreLayout::blob, StoreLayout::loose}) {
+        run.options.layout = layout;
+        std::map<std::string, std::string> first;
+        std::uint64_t first_converted = 0;
+        int attempt = 0;
+        for (const unsigned jobs : {1U, 3U, 8U, 8U}) {
+            run.options.jobs = jobs;
+            run.options.out = run.out / (std::string(to_string(layout)) + std::to_string(++attempt));
+            const auto result = run.go();
+            CHECK(result.jobs == jobs);
+            CHECK(result.pack.failed == 3);
+            CHECK(result.pack.deduped > 0);
+            auto files = files_under(run.pack());
+            if (first.empty()) {
+                first = std::move(files);
+                first_converted = result.pack.converted;
+                continue;
+            }
+            CHECK(result.pack.converted == first_converted);
+            CHECK(files.size() == first.size());
+            for (const auto& [name, bytes] : first) {
+                const bool same = files.contains(name) && files.at(name) == bytes;
+                INFO(name << " with " << jobs << " jobs, " << to_string(layout));
+                CHECK(same);
+            }
+        }
+
+        // Run again over the last pack: it has every asset, so nothing is
+        // converted, and the assets and the index do not change (the report
+        // and manifest count what this run wrote).
+        const auto again = run.go();
+        CHECK(again.pack.converted == 0);
+        CHECK(again.pack.failed == 3);
+        const auto after = files_under(run.pack());
+        CHECK(after.size() == first.size());
+        for (const auto& [name, bytes] : first) {
+            if (name == "report.json" || name == "manifest.json") {
+                continue;
+            }
+            const bool same = after.contains(name) && after.at(name) == bytes;
+            INFO(name << " after a second run, " << to_string(layout));
+            CHECK(same);
+        }
+    }
 }

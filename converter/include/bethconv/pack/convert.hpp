@@ -16,6 +16,10 @@
 //
 // The work list is sorted, so `--limit` runs are reproducible. Timings go to the
 // progress callback, never into the pack.
+//
+// Reading, hashing and converting run on several threads, and the pack writer
+// takes their results in work-list order, so the pack is the same bytes
+// whatever the thread count (`ConvertOptions::jobs`).
 #pragma once
 
 #include "bethconv/archive/archive_set.hpp"
@@ -95,6 +99,10 @@ struct ConvertOptions {
     /// Where asset bytes go: one blob (default) or a file per asset.
     StoreLayout layout = StoreLayout::blob;
 
+    /// Threads reading, hashing and converting inputs: 0 uses every core (at
+    /// most 64), 1 does it all on the calling thread. Never changes the pack.
+    unsigned jobs = 0;
+
     /// Called every `progress_interval` inputs and at the end of each phase.
     /// Terminal output only.
     std::function<void(const std::string& phase, std::uint64_t done,
@@ -120,6 +128,7 @@ struct ConvertResult {
     std::uint64_t sources{};      ///< Mounted archives and loose directories.
     std::uint64_t unique_paths{}; ///< Distinct virtual paths in the mount.
     std::uint64_t considered{};   ///< Paths passing the filter and limit.
+    unsigned jobs{};              ///< Threads the asset passes used.
 
     std::uint64_t textures_shrunk{};     ///< Lost top levels to max_texture_size.
     std::uint64_t textures_kept_large{}; ///< Over the limit with no smaller level.

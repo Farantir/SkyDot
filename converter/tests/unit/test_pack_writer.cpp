@@ -356,6 +356,38 @@ TEST_CASE("reopening a pack skips what is already there", "[pack]") {
     CHECK(stats->orphaned_assets == 0);
 }
 
+TEST_CASE("an asset can be hashed ahead of reserving it, and a reopened pack lists its hashes",
+          "[pack]") {
+    // What convert()'s threads use: hash on any thread, reserve on the writer's.
+    const auto layout = GENERATE(StoreLayout::blob, StoreLayout::loose);
+    CAPTURE(to_string(layout));
+    TempDir dir;
+    ContentHash stored;
+    {
+        auto writer = PackWriter::create(dir / "pack", default_options(layout));
+        REQUIRE(writer.has_value());
+        const auto source = bytes_of("source");
+        stored = writer->hash_of(AssetKind::mesh, source);
+        CHECK_FALSE(writer->contains(stored));
+
+        const auto slot = writer->reserve("meshes/a.nif", AssetKind::mesh, stored, source.size(),
+                                          "Fixture.bsa");
+        CHECK(slot.hash == writer->reserve("meshes/b.nif", AssetKind::mesh, source, "").hash);
+        CHECK_FALSE(slot.already_present);
+        REQUIRE(writer->store(slot, bytes_of("converted")).has_value());
+        CHECK(writer->contains(stored));
+        // The kind is part of the name.
+        CHECK_FALSE(stored == writer->hash_of(AssetKind::texture, source));
+        REQUIRE(writer->finish(default_manifest()).has_value());
+    }
+
+    auto again = PackWriter::create(dir / "pack", default_options(layout));
+    REQUIRE(again.has_value());
+    const auto hashes = again->stored_hashes();
+    REQUIRE(hashes.size() == 1);
+    CHECK(hashes[0] == stored);
+}
+
 TEST_CASE("a changed settings fingerprint does not reuse the old asset", "[pack]") {
     // An option that changes output but not source must change the name, or
     // the second run reuses the first run's bytes.

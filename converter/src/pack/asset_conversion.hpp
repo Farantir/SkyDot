@@ -59,9 +59,12 @@ struct AssetConversion {
 [[nodiscard]] AssetConversion convert_mesh(std::span<const std::byte> source,
                                            std::string_view vpath, const ConvertOptions& options);
 
+/// `encode_threads` is for the block compression: 0 uses every core, so a caller
+/// that already runs one conversion per core passes 1.
 [[nodiscard]] AssetConversion convert_texture(std::span<const std::byte> source,
                                               std::string_view vpath,
-                                              const ConvertOptions& options);
+                                              const ConvertOptions& options,
+                                              unsigned encode_threads);
 
 [[nodiscard]] AssetConversion convert_script(std::span<const std::byte> source,
                                              std::string_view vpath);
