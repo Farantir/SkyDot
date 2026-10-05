@@ -8,7 +8,7 @@ it.
 
 | Directory | What |
 | --- | --- |
-| [`converter/`](converter) | `bethconv`: game install -> pack (glTF meshes, DDS textures, decoded scripts, record and world snapshots) |
+| [`converter/`](converter) | `bethconv`: game install -> pack (glTF meshes, DDS textures, decoded scripts, the world's cells and objects) |
 | [`engine/`](engine) | `skydot`: a GDExtension and viewer that load packs |
 | [`formats/`](formats) | the pack format both sides agree on, and its FlatBuffers schemas |
 | [`tools/ci/`](tools/ci) | repository checks, also run as a pre-commit hook |

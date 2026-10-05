@@ -39,7 +39,7 @@ against each other:
             |  bethconv  (converter/, C++23, a CLI and a static library)
             v
   a pack directory                         formats/pack-format.md (v6)
-  (manifest.json, records.fb, world.fb,    FlatBuffers schemas in
+  (manifest.json, world.fb,                FlatBuffers schemas in
    assets.idx + assets-0001.blob,          formats/schema/
    vpath.idx, report.json)
             |
@@ -53,9 +53,9 @@ against each other:
 - **bethconv** reads Bethesda formats (BSA archives, ESM records, NIF meshes,
   DDS textures, PEX scripts, HKX animations, LOD files). It merges the load
   order into one set of forms and writes a *pack*: glTF meshes, DDS textures
-  passed through, decoded scripts and animations as FlatBuffers, and two
-  FlatBuffer databases (`records.fb` with every merged form, `world.fb` with
-  what the engine needs to build places).
+  passed through, decoded scripts and animations as FlatBuffers, and one
+  FlatBuffer database (`world.fb`, with what the engine needs to build
+  places).
 - **skydot** reads only packs. It is a GDExtension, a shared library loaded
   by Godot, that registers classes such as `SkydotPack`, `SkydotWorld` and
   `SkydotPapyrus`. GDScript in `engine/game/` uses those classes to build a
@@ -77,7 +77,7 @@ SkyDot/
 ├── ARCHITECTURE.md                   this file
 ├── formats/                          ~2,000 lines: THE CONTRACT
 │   ├── pack-format.md                the pack, versioned (v6)
-│   ├── schema/*.fbs                  records, world, script, lod, animation
+│   ├── schema/*.fbs                  world, script, lod, animation
 │   └── include/skydot_formats/       C++ headers both halves share (vocabulary only)
 ├── converter/                        bethconv
 │   ├── include/bethconv/<layer>/     public headers (~7,900 lines)
@@ -142,7 +142,7 @@ code looks like:
   only for `std::expected`), vcpkg in manifest mode (`converter/vcpkg.json`,
   pinned by `builtin-baseline`).
 - Dependencies: rsm-bsa (archives), nifly (NIF, git submodule), fastgltf (glTF
-  writing), FlatBuffers (snapshot and world database, `flatc` from vcpkg),
+  writing), FlatBuffers (the world database and the script, LOD and animation assets, `flatc` from vcpkg),
   BLAKE3 (content hashes), zlib and LZ4 (decompression), nlohmann-json
   (manifest, report, CLI JSON), CLI11 (argument parsing), bc7enc_rdo (BC7/BC1
   encoding, submodule), Catch2 (tests).
@@ -152,10 +152,10 @@ code looks like:
 - `src/CMakeLists.txt` builds one static library, `bethconv_core`, and runs
   `flatc` on every schema in `formats/schema/` at build time, so generated
   headers cannot drift from the schemas. FlatBuffers types are kept out of
-  most public headers (pImpl in `pack/snapshot.hpp`); `pack/world.hpp` includes
-  the generated `world_generated.h` because its structs hold the schema's flag
-  enums (`wfb::RefFlags`, `wfb::CellFlags`, ...), so that header and
-  FlatBuffers are public to `bethconv_core`'s users. `formats/include/` is on
+  public headers, except `pack/world.hpp`, which includes the generated
+  `world_generated.h` because its structs hold the schema's flag enums
+  (`wfb::RefFlags`, `wfb::CellFlags`, ...), so that header and FlatBuffers are
+  public to `bethconv_core`'s users. `formats/include/` is on
   the include path of both halves.
 - `tools/` builds the `bethconv` CLI and `bethconv-testpack` on top of the
   library.
@@ -196,7 +196,7 @@ The library is layered. Each layer only uses the layers below it:
                                \              /
                                 v            v
    pack/      convert, inputs, pack_writer, asset_store, content_hash,
-              vpath_index, snapshot_writer/reader (records.fb), world (world.fb),
+              vpath_index, world (world.fb),
               script_asset, lod_asset, animation_asset, pack_view
      |           |             |              |             |
      v           v             v              v             v
@@ -449,10 +449,9 @@ install:
 ```
 convert(set, order, options)
  ├─ PackWriter::create(out)                       opens/creates the pack dir
- ├─ if write_records:
+ ├─ if write_world:
  │   ├─ MergedWorld::build(order)                 merge pass 1 (index)
- │   ├─ write_snapshot(world, ...)  -> records.fb merge pass 2 (payloads)
- │   └─ write_world(world, ...)     -> world.fb   merge pass 3 (WorldSink)
+ │   └─ write_world(world, ...)     -> world.fb   merge pass 2 (WorldSink)
  ├─ work = every vpath in the mount (filtered, sorted, limited)
  ├─ for each vpath (sequential):
  │   ├─ kind_of(extension) -> mesh | texture | script | lod | animation | deferred
@@ -485,16 +484,9 @@ convert(set, order, options)
 - **`manifest.json`**: pack format version, converter, language, input
   (Data folder or MO2 instance and profile, so the pack tool can rebuild),
   texture profile, load order, source hashes (plugins always, archives on
-  request), summaries of records and world.
+  request), a summary of the world.
 - **`report.json`**: every failure (vpath, stage, error kind, detail), every
   warning, and unconverted files counted by extension.
-- **`records.fb`** (`pack/snapshot_*`): a 64-byte header (`BETHSNAP`,
-  version), then a blob of every winning record's field bytes (64-bit
-  offsets, because SE's payloads alone are 527 MiB), then a FlatBuffer index
-  (form → type, flags, parent, plugin, payload span; editor-id, type, child
-  and cell-grid indices). It is memory-mappable and verified on read.
-  `bethconv verify --against` re-runs the merge and compares. The engine
-  currently reads only its header.
 - **`world.fb`** (`pack/world.cpp`, `pack/world/`, `pack/world_file.cpp`): the
   engine's database; see 5.11.
 - **LOD assets** (`pack/lod_asset.*`): `.lod` settings, `.lst` tree types and
@@ -506,7 +498,7 @@ convert(set, order, options)
 
 ### 5.11 `world.fb`: how the engine's database is made
 
-`write_world` (`pack/world.cpp`) runs one more merge pass with a `WorldSink`
+`write_world` (`pack/world.cpp`) runs the merge's second pass with a `WorldSink`
 (`pack/world/sink.*`). FormIDs *inside* payloads are plugin-local, and only
 during the merge is it known which plugin each winning record came from,
 which decides how to resolve them (`CollectContext::global(merged, local)`,
@@ -559,11 +551,11 @@ directly.
 
 `main.cpp` sets up the CLI11 app and calls one `register_<name>` per
 subcommand: `convert`, `detect`, `mo2`, `target`, `info`, `cell`, `view`,
-`verify`, `scan`, `extract`, `mesh`, `texture`, `script`, `animation`,
-`records`, `forms`, `strings`, `merge`, `snapshot`, `loadorder`, `probe`. Each
+`scan`, `extract`, `mesh`, `texture`, `script`, `animation`,
+`records`, `forms`, `strings`, `merge`, `loadorder`, `probe`. Each
 lives in `commands/<name>.cpp` with its args struct, its `cmd_*` function and
-its options; what several share (mounting, the load order `merge`,
-`snapshot` and `verify` agree on, the output-target check, the exit status) is
+its options; what several share (mounting, the load order, the
+output-target check, the exit status) is
 in `common.*`. `front_end.*` holds the commands a graphical front end needs
 (`detect`, `mo2`, `target`, `info`), the output-target verdict
 (`check_target`), the JSON shapes and `k_json_version`. With `--json`,
@@ -583,7 +575,6 @@ tool reads that stream.
 | `manifest.json` | `PackWriter::finish` | `SkydotPack::open` | versions, inputs, load order, summaries; the engine checks `pack_format_version == 6` and the index counts |
 | `vpath.idx` | `PackWriter` | `PackStore::read_index` | game path → content hash, kind, winning source |
 | `assets.idx` + `assets-NNNN.blob` | `AssetStore` | `PackStore::open_blob` (mmap) | asset bytes by hash |
-| `records.fb` | `write_snapshot` | header only | every merged form with its raw fields |
 | `world.fb` | `write_world` | `SkydotWorld::open` -> `WorldData::open` (mmap) | cells, refs, bases, terrain, weather, quests, actors, AI, ... |
 | `report.json` | `PackWriter` | pack tool | failures and warnings |
 
@@ -648,7 +639,6 @@ packages, and the whole `vm::` namespace (`vm.*`, `script_class.*`,
 ```
 SkydotPack::open(dir)
   ├─ manifest.json: pack_format_version == 6, store kind, counts
-  ├─ records.fb header (BETHSNAP, version) if listed
   ├─ world.fb exists if listed
   └─ PackStore: vpath.idx (header line, 4 tab fields, 64-hex hashes)
                 assets.idx + blob (mmap; every entry inside the blob)  | loose dir
@@ -1062,8 +1052,7 @@ the VR shell starts.
    folders, increasing priority.
 4. `pack::convert`:
    - merge pass 1 → `MergedWorld`;
-   - pass 2 → `records.fb`;
-   - pass 3 (`WorldSink`) → `world.fb`;
+   - pass 2 (`WorldSink`) → `world.fb`;
    - every winning vpath, sorted: hash, dedupe, convert by kind, store in
      the blob;
    - `finish`: `assets.idx` replaced atomically, `vpath.idx`,
@@ -1136,7 +1125,6 @@ Several version numbers move independently:
 | What | Where | Value (working tree) | Bumped when |
 | --- | --- | --- | --- |
 | Pack format | `k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`), manifest, `vpath.idx` header; engine `SkydotPack::PACK_FORMAT_VERSION` | 6 | the pack layout's meaning changes |
-| `records.fb` | `k_snapshot_format_version` (header) | per `snapshot.hpp` | `records.fbs` or the header changes |
 | `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 10 | `world.fbs` meaning changes |
 | Script, LOD, animation assets | `format_version` in each root table | 1 / per schema | their schema changes |
 | Asset settings fingerprints | `ConvertOptions::*_settings()` (`mesh/19`, `texture/1`, `script/2`, `lod/1`, `animation/2`) | — | a writer's output changes for unchanged input (renames assets, no format change) |
@@ -1153,7 +1141,7 @@ Readers refuse unknown versions and say which numbers they read.
 | --- | --- | --- |
 | Unit (Catch2) | `converter/tests/unit/` | every layer, with synthetic inputs from `tests/support/*_builder.hpp` (ESM, BSA, NIF, DDS, PEX, HKX, strings, LOD); about 400 ctest entries under ASan/UBSan |
 | Corpus | `converter/tests/corpus/` | real installs from `$SKYRIM_DATA_{LE,SE,VR}`, recording only counts, versions and hashes (`corpus-expectations.json`); skipped when unset |
-| Fuzz | `converter/tests/fuzz/` | libFuzzer targets for ESM, BSA, NIF, DDS, PEX, HKX, strings, snapshot, LOD, assets, forms; also replayed as normal tests with seeds |
+| Fuzz | `converter/tests/fuzz/` | libFuzzer targets for ESM, BSA, NIF, DDS, PEX, HKX, strings, LOD, assets, forms; also replayed as normal tests with seeds |
 | Test pack | `converter/tools/testpack/`, `tests/testpack/` | a complete synthetic pack (meshes, a cube map, cells, doors, a lock, a lever with scripts, a quest); a determinism check builds it twice and compares |
 | Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool; the viewer's typed options (`viewer_settings.gd`, no pack) |
 | Viewer runs | `engine/tests/CMakeLists.txt` | the viewer walks through doors, locked doors, a lever, `--from-shot`, save and load |

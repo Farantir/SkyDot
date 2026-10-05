@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Schema of `world.fb`: what the engine needs to build cells, decoded by the
-// converter. Every FormID in here is global (resolved through the load order),
-// unlike FormIDs inside `records.fb` payloads, which are plugin-local.
+// converter. Every FormID in here is global (resolved through the load order).
 //
 // Positions and rotations are in Skyrim's own space: Z-up, game units,
 // rotation in radians. The engine converts them.

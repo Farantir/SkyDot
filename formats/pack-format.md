@@ -13,27 +13,28 @@ Godot import or bake. v4 adds LOD: terrain and object LOD (`.btr`, `.bto`) becom
 LOD settings and tree LOD (`.lod`, `.lst`, `.btt`) become `.lodfb` assets of
 a new kind, `lod`. v3 decodes scripts: a script asset is a `.pexfb` FlatBuffer instead of the
 original `.pex`. v2 added `world.fb` (cells, references and base objects,
-decoded and with global FormIDs) and the manifest's `world` key, and corrected
-v1's claim that FormIDs inside `records.fb` payloads are global: they never
-were.
+decoded and with global FormIDs) and the manifest's `world` key.
+
+v6 packs written by earlier converters may also contain `records.fb` and a
+manifest `records` key; readers ignore both, whether or not the file is there.
 
 ## Overview
 
 A pack is a directory. Assets are named by a hash of their source bytes;
-`vpath.idx` maps game paths to those hashes. `records.fb` holds the load order
-already merged into one set of forms, so the engine never sees plugins, mod
-indices or overrides. `world.fb` holds what the engine needs to build cells. No file contains a timestamp, and the same input gives a
-byte-identical pack.
+`vpath.idx` maps game paths to those hashes. `world.fb` holds the load order
+already merged into what the engine needs to build cells, so the engine never
+sees plugins, mod indices or overrides. No file contains a timestamp, and the
+same input gives a byte-identical pack.
 
 ## Versioning
 
 `k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 6. It
-appears in `manifest.json`, `report.json` and, as `k_snapshot_format_version`,
-the `records.fb` header. Each is checked separately so a reader can say which
-file it cannot read.
+appears in `manifest.json`, `report.json` and the `vpath.idx` header, and
+`world.fb` carries a `format_version` of its own. Each is checked separately so
+a reader can say which file it cannot read.
 
 Readers refuse unknown versions; they never read what they recognize and skip
-the rest. `Snapshot::open` returns `ErrorKind::unsupported` with both numbers.
+the rest. `WorldFile::open` returns `ErrorKind::unsupported` with both numbers.
 
 Writers bump the version whenever the meaning of anything here changes, even if
 parsers would not notice. Settings fingerprints (below) are separate: they
@@ -44,7 +45,6 @@ rename assets without changing the format.
 ```
 pack/
   manifest.json                      what the pack is and what built it
-  records.fb                         the merged world, mmap-able
   world.fb                           cells, references, base objects
   assets.idx                         content hash -> offset, size, kind
   assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb bytes)
@@ -57,9 +57,8 @@ With `--store loose`, `assets.idx` and the blob are replaced by
 manifest's `store` key says which; readers support both. An asset-less pack
 has an index with no entries and an empty blob (or an empty `assets/`).
 
-`records.fb` and `world.fb` may be absent (asset-only pack). The `records` and
-`world` keys in `manifest.json` decide: if present, the file must exist and
-match its `hash`.
+`world.fb` may be absent (asset-only pack). The `world` key in `manifest.json`
+decides: if present, the file must exist and match its `hash`.
 
 There is no `.ktx2`: the headless-bake spike showed DDS passthrough works (see
 `converter/docs/spikes/headless-bake.md`).
@@ -71,86 +70,20 @@ newline):
 
 | Key | Content |
 | --- | --- |
-| `pack_format_version` | `5` |
+| `pack_format_version` | `6` |
 | `converter` | writer name and version |
 | `language` | language used to resolve strings |
 | `textures` | how textures were converted: `max_size` (largest side in pixels, 0 for full size; larger textures lost their top mip levels), `complete_mip_chains`, and `uncompressed` (`keep`, `bc7` or `compact`: what happened to textures the game stores uncompressed; BC7 files carry a DX10 header, format 98); absent when textures were not converted |
 | `input` | optional: what the pack was converted from, so it can be converted again: `kind` (`data` or `mo2`), `edition`, `data` (the Data folder), `plugin_list`, and for `mo2` also `mo2_instance`, `mo2_profile`, `mods`. Local paths; nothing reads it but front ends |
 | `load_order` | plugin filenames in order |
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
-| `records` | `file`, `forms`, `bytes`, `hash`; absent without a snapshot |
-| `world` | `file`, `cells`, `refs`, `bases`, `bytes`, `hash`; absent without a snapshot |
+| `world` | `file`, `cells`, `refs`, `bases`, `bytes`, `hash`; absent for an asset-only pack |
 | `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `animations`, `bytes` (written by this run), `dedupe_saved_bytes` |
 | `store` | `layout` (`blob` or `loose`); for a blob also `index` and `blob` (file names); `bytes` (all stored assets) |
 | `deferred` | extension → count of inputs not converted by this version |
 | `report` | `file`, `failed`, `warnings` |
 
-`load_order` is provenance only; the engine must not depend on it. A form's
-`winner` and `owner` index into it for `bethconv verify` and debugging.
-
-## `records.fb`
-
-```
-[ 64-byte header ][ payload blob ][ FlatBuffer ]
-```
-
-The blob comes first because it is written while the merge streams; the index
-is built after. Payloads are outside the FlatBuffer because FlatBuffers use
-32-bit offsets (2 GiB max) and vanilla SE's payloads alone are 527 MiB. The
-blob uses 64-bit offsets; only the index must fit.
-
-### Header
-
-Little-endian, 64 bytes, magic `BETHSNAP`, then `format_version`, `fb_offset`,
-`fb_bytes`, `blob_offset`, `blob_bytes`, `form_count`, `blob_hash`, and
-reserved space for later fields.
-
-`blob_hash` is FNV-1a over the blob. It detects truncation, not tampering.
-`verify --deep` checks it; `open` does not.
-
-The payload blob follows the header at `blob_offset` 64; the FlatBuffer (the
-index) follows the blob at `fb_offset`, padded with zero bytes to a multiple of
-8, because FlatBuffers reads its fields in place. A reader refuses a
-misaligned `fb_offset` (snapshots written before 2026-10-01 have one). The
-FlatBuffer has its own identifier, `BSN1`; the outer magic names the
-container, the inner one the schema.
-
-### Schema
-
-`formats/schema/records.fbs` is normative. `Form` is a struct (47 MiB instead of
-~130 MiB as tables at 1.18M forms), so editor ids and payloads are referenced
-from it. `forms` is sorted by `id`, unique and binary-searchable: `id` is the
-schema's `(key)`, so readers use flatc's `LookupByKey`. So are the
-keys of `types` (`type`), `children` (`parent`) and `worlds` (`world`); the
-cells of a worldspace's grid can share a square, so `GridCell.key` is not one.
-
-Indices: `forms` (id → form), `editor_ids`/`editor_id_forms` (parallel arrays
-sorted by name), `types` (type → sorted forms), `children` (parent → sorted
-forms), `worlds` (worldspace → exterior cells sorted by
-`(int64(x) << 32) | uint32(y)`).
-
-`children` duplicates each form's `parent` so cell contents need no scan.
-
-### Payloads are the record's field block, verbatim
-
-A form's payload is the winning record's entire field block: every field in file
-order with its header, decoded or not.
-
-- Undecoded fields are present and findable by tag. There are many: REFR alone
-  has 43 undecoded field types (`XRGD` 8,601 occurrences, `INAM` 4,525), CELL
-  9, WRLD 11. Keeping them means decoding them later needs no format change.
-- Compressed records are stored inflated.
-
-Payloads are not normalized. FormIDs inside them are plugin-local, as written
-by the winning plugin, and the pack does not carry the master lists needed to
-resolve them; use `world.fb` for anything that needs resolved references.
-(Only each form's own id and `parent` are global.) String fields keep the
-`.STRINGS` index; `manifest.json`'s `language` names the table, which the pack
-does not include.
-
-`tests/unit/test_snapshot.cpp` checks this for compressed and uncompressed
-records carrying `XRGD`, `VMAD`, `XAPR` and an unknown tag. A writer that kept
-only decoded fields would pass every other snapshot test.
+`load_order` is provenance only; the engine must not depend on it.
 
 ## `world.fb`
 
@@ -581,7 +514,6 @@ the machine.
   resolved from a pack alone.
 - **A view.** `bethconv view` builds a derived tree for glTF-only consumers. It
   is optional; put nothing in a pack that only the view can find.
-- **Decoded fields.** Only that the bytes are present.
 - **All Havok shapes.** `bhkCylinderShape`, `bhkNiTriStripsShape` and
   `bhkPlaneShape` are `CollisionKind::unsupported` with their block name.
   Consumers must handle that kind.
@@ -601,8 +533,6 @@ Paths relative to `converter/`; schemas in `formats/schema/`.
 | `assets.idx`, the blob, loose files | `include/bethconv/pack/asset_store.hpp` |
 | `vpath.idx`, asset paths, kinds | `include/bethconv/pack/vpath_index.hpp` |
 | content hash | `include/bethconv/pack/content_hash.hpp` |
-| `records.fb` container and reader | `include/bethconv/pack/snapshot.hpp` |
-| `records.fb` schema | `formats/schema/records.fbs` |
 | `world.fb` writer and reader | `include/bethconv/pack/world.hpp` |
 | `world.fb` schema | `formats/schema/world.fbs` |
 | script assets | `include/bethconv/pack/script_asset.hpp`, `formats/schema/script.fbs` |

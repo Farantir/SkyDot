@@ -1,7 +1,7 @@
 # bethconv
 
 An ahead-of-time converter from a Bethesda game install to open formats: glTF
-meshes, DDS textures, and a queryable record snapshot.
+meshes, DDS textures, and a queryable world (cells, references, base objects).
 
 It is a library and a CLI, and it does not depend on any engine. It is built
 alongside a Godot engine, but the output works just as well from Bevy, Unity,
@@ -50,14 +50,10 @@ tested against real installs:
   `docs/spikes/hkx.md`.
 - **Merge:** a load order collapsed into one set of forms with every override
   resolved. See `docs/format-notes/merge.md`.
-- **Record snapshot:** the merged world written to an mmap-able `records.fb` and
-  read back zero-copy, with form, editor-id, type, child and cell-grid indices.
-  `bethconv verify --against` re-runs the merge and compares. See
-  `docs/format-notes/snapshot.md`.
 - **Pack:** every NIF, DDS, PEX and HKX content-addressed into one blob with an
   index (`--store loose` for a file per asset), plus `manifest.json`,
   `vpath.idx` and a `report.json` listing every failure. See
-  `formats/pack-format.md`. A full vanilla SE pack is 7 files and 20 GB,
+  `formats/pack-format.md`. A full vanilla SE pack is 6 files and 20 GB,
   written in under a minute.
 - **Slow targets refused:** commands that write many files (`convert --store
   loose`, `view`, `mesh`, `texture`, `extract`) refuse a FUSE filesystem

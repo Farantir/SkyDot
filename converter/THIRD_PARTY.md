@@ -29,11 +29,11 @@ Versions come from the `builtin-baseline` in `vcpkg.json`.
 | `rsm-bsa` | 4.1.0 | MIT | BSA reading |
 | `fastgltf` | 0.9.0 | MIT | glTF writing |
 | `blake3` | 1.8.6 | CC0 / Apache-2.0 | Content hashing |
-| `flatbuffers` | 25.12.19 | Apache-2.0 | `records.fb` |
+| `flatbuffers` | 25.12.19 | Apache-2.0 | `world.fb` and the script, LOD and animation assets |
 | `catch2` | 3.15.3 | BSL-1.0 | Unit tests |
 
-`flatc` from the `flatbuffers` port compiles `formats/schema/records.fbs` at build
-time. The generated header is not committed.
+`flatc` from the `flatbuffers` port compiles `formats/schema/*.fbs` at build
+time. The generated headers are not committed.
 
 ## Known defects
 
