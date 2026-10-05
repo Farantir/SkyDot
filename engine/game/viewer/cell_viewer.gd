@@ -107,22 +107,14 @@ var _shot_delay := 0.0  # seconds the world runs before --screenshot captures
 var _frames := 0
 var _shot_index := 0
 
-const CELL_UNITS := SkydotWorld.CELL_UNITS  # game units along a cell, as the converter uses
-var _unit_scale := SkydotWorld.unit_scale()  # metres per game unit
-var _build_budget_usec := 8000  # per frame for streaming cells in
-const LOD_BUDGET_USEC := 3000
 const REACH := 2.6  # metres the camera can activate from
 var _settings: ViewerSettings
 var _world: SkydotWorld
-var _world_id := 0  # the worldspace being streamed, or 0 inside
-var _radius := 2
-var _loaded := {}  # Vector2i -> Node3D (null if nothing is there)
-var _building := {}  # Vector2i -> Node3D built in steps, hidden until done
+var _streamer: WorldStreamer
 var _place: Array[Node] = []  # everything the current cell or worldspace added
 var _benchmark := 0.0
 var _fly_speed := 20.0
 var _frame_times: Array[float] = []
-var _stream_max_usec := 0  # the slowest streaming step during a benchmark
 var _pick_locks := false
 var _input := true  # false for runs that drive themselves (_ready)
 var _script_activations: Array = []  # --activate: refs still to activate
@@ -131,16 +123,12 @@ var _quit_in := -1  # frames until quitting after --activate
 var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
-var _lod: SkydotLod  # the worldspace's LOD, or null
-var _lod_split := 1.5  # SkydotLod.split_distance for every LOD made
 var _preload_doors := true  # build the place behind a near load door ahead
 var _preload_distance := 15.0  # metres
 const PREPARE_BUDGET_USEC := 4000
 var _load_doors := {}  # door ref -> its node, in the place shown
 var _prepared := {}  # the place behind the nearest load door (_prepare_step)
 var _prepare_scan := 0  # frames until looking for the nearest door again
-var _streaming := false  # exterior cells in range still loading
-var _lod_busy := false  # the LOD still has work queued
 const FADE_SECONDS := 0.35
 const FADE_SETTLE_FRAMES := 3  # drawn black after the place is built
 const FADE_TIMEOUT := 15.0  # seconds; fades in even if streaming never ends
@@ -239,10 +227,7 @@ func _ready() -> void:
 				print("0x%08X leaves through a door" % ref))
 		else:
 			_ai = null
-	_radius = settings.radius
-	_lod_split = settings.lod_split
 	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[settings.msaa_index]
-	_build_budget_usec = settings.build_budget_usec
 	if settings.has_tiling:
 		world.terrain_tiling = settings.tiling
 	_pick_locks = settings.pick_locks
@@ -260,6 +245,8 @@ func _ready() -> void:
 	_player = _rig.player
 	add_child(_camera)
 	add_child(_player)
+	_streamer = WorldStreamer.new(world, pack, self, _camera, _ai, settings)
+	_streamer.cell_finished.connect(_on_cell_finished)
 	_debug = DebugOverlay.new()
 	_debug.setup(self, world, _papyrus, _ai, _camera, _player)
 	add_child(_debug)
@@ -309,20 +296,14 @@ func _ready() -> void:
 		_speed = 10.0
 		if settings.has_benchmark:
 			_benchmark = settings.benchmark
-			_stream_max_usec = 0
+			_streamer.max_usec = 0
 			_fly_speed = settings.fly_speed
-			while _stream_step():
-				OS.delay_msec(5)
-			while _lod != null and _lod.update(_camera.global_position, 1000000) > 0:
-				OS.delay_msec(5)
+			_streamer.load_everything()
 		if settings.has_screenshot:
 			# Everything in range first, so the capture is complete.
-			while _stream_step():
-				OS.delay_msec(5)
-			while _lod != null and _lod.update(_camera.global_position, 1000000) > 0:
-				OS.delay_msec(5)
-			if _lod != null:
-				print("lod: ", _lod.get_stats())
+			_streamer.load_everything()
+			if _streamer.lod != null:
+				print("lod: ", _streamer.lod.get_stats())
 			_shot_path = settings.screenshot
 			_shots.append(null)
 		return
@@ -362,18 +343,8 @@ func _leave() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	_place.clear()
-	for key in _loaded:
-		if _loaded[key] != null:
-			_loaded[key].queue_free()
-	_loaded.clear()
-	for key in _building:
-		_building[key].queue_free()
-	_building.clear()
-	_world_id = 0
-	_lod = null  # freed with _place
+	_streamer.clear()  # its LOD is freed with _place
 	_load_doors.clear()
-	_streaming = false
-	_lod_busy = false
 	_debug.clear_path()
 	_world.call_deferred("trim_cache")
 
@@ -396,7 +367,7 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var root := prepared
 	if root != null:
-		_release(root)
+		HeldPlace.release(root)
 		_world.continue_build(root, 1 << 62)  # the actors, where they are now
 	else:
 		root = _world.build_cell(cell_id)
@@ -436,7 +407,7 @@ func _enter_interior(cell_id: int, at, target, prepared: Node3D = null) -> void:
 ## Returns false if it failed.
 func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool:
 	_leave()
-	_world_id = world_id
+	_streamer.start(world_id)
 	_cell_id = 0
 	if _ai != null:
 		_ai.set_space(world_id)
@@ -448,52 +419,22 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 			_fail("no weather named " + _settings.weather)
 			return false
 	if not _start_weather(weather):
-		_add_sky(_world.get_sky(_world_id, _clock.hour, weather), _settings.shadows)
-	_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
+		_add_sky(_world.get_sky(_streamer.world_id, _clock.hour, weather), _settings.shadows)
+	_camera.far = _streamer.view_distance()
 	_rig.place_camera(at, target)
 	var lod: SkydotLod = prepared.get("lod")
 	if lod == null:
-		lod = _make_lod(world_id)
+		lod = _streamer.make_lod(world_id)
 	if lod != null:
-		_release(lod)
+		HeldPlace.release(lod)
 		_add_to_place(lod)
-		_lod = lod
+		_streamer.lod = lod
 		_camera.far = 40000.0
-	# Prepared cells join the streaming ones; each is released when it is
-	# finished (_finish_cell), so their cost is spread over frames, but the
-	# one under the camera at once, for the ground.
-	var cells: Dictionary = prepared.get("cells", {})
-	var centre := _camera_cell()
-	for key in cells:
-		var cell: Node3D = cells[key]
-		if cell == null:
-			_loaded[key] = null
-			continue
-		if key == centre:
-			_release(cell)
-			cell.visible = false  # until _finish_cell
-		_building[key] = cell
+	_streamer.adopt(prepared.get("cells", {}))
 	for w in _world.list_worlds():
 		if w["id"] == world_id:
 			print("entered ", w["editor_id"])
 	return true
-
-
-## The worldspace's LOD, set up as the options say; null if it has none or
-## --lod off.
-func _make_lod(world_id: int) -> SkydotLod:
-	if not _settings.lod:
-		return null
-	var lod := SkydotLod.new()
-	if lod.setup(_pack, _world, world_id) != OK:
-		print("no LOD: ", lod.get_error())
-		lod.free()
-		return null
-	lod.name = "lod"
-	lod.split_distance = _lod_split
-	if _settings.has_tree_distance:
-		lod.tree_distance = _settings.tree_distance
-	return lod
 
 
 ## Where the game puts the player entering interior `cell_id`: the arrival
@@ -512,18 +453,7 @@ func _interior_spawn(cell_id: int):
 ## Hold the player while the ground under it is still being built, keep its
 ## water level, and catch it if it falls through the world.
 func _update_player() -> void:
-	if _world_id != 0:
-		var key := _camera_cell()
-		var cell = _loaded.get(key)
-		_player.hold = (not _loaded.has(key) and not _player.fly) or _fade_phase != FADE_NONE
-		var water: Node3D = cell.get_node_or_null("Water") if cell != null else null
-		if water != null:
-			_player.water_height = water.global_position.y
-		else:
-			_player.clear_water()
-	else:
-		_player.hold = _fade_phase != FADE_NONE
-		_player.clear_water()
+	_streamer.hold_player(_player, _fade_phase != FADE_NONE)
 	_rig.track()
 
 
@@ -706,10 +636,10 @@ func _lock_name(level: int) -> String:
 ## The model of reference `ref` among what is built, or null.
 func _find_ref_node(ref: int) -> Node:
 	var pending: Array = _place.duplicate()
-	pending.append_array(_loaded.values())
+	pending.append_array(_streamer.loaded.values())
 	while not pending.is_empty():
 		var node = pending.pop_back()
-		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion() or node == _lod:
+		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion() or node == _streamer.lod:
 			continue
 		for child in node.get_children():
 			if child.get_meta("skydot_ref", 0) == ref:
@@ -761,92 +691,12 @@ func _activate_in_view(force: bool) -> void:
 	_activate(hit["cell"], hit["ref"], hit["node"], force)
 
 
-## The camera's cell in the worldspace grid.
-func _camera_cell() -> Vector2i:
-	var p := _camera.position / _unit_scale
-	return Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
-
-
-## Drop cells out of range, then load cells in range nearest first: their
-## scenes and textures on the loader's threads, the build itself here in steps
-## within a frame budget. A cell stays hidden until its build is done, then
-## shows, masks its LOD and attaches its scripts at once. Returns false when
-## every cell in range is loaded.
-func _stream_step() -> bool:
-	var centre := _camera_cell()
-	var dropped := false
-	for key in _loaded.keys():
-		var offset: Vector2i = key - centre
-		if max(abs(offset.x), abs(offset.y)) > _radius + 1:
-			if _loaded[key] != null:
-				_loaded[key].queue_free()
-				dropped = true
-				if _lod != null:
-					_lod.set_cell_loaded(key.x, key.y, false)
-			_loaded.erase(key)
-	for key in _building.keys():
-		var offset: Vector2i = key - centre
-		if max(abs(offset.x), abs(offset.y)) > _radius + 1:
-			_building[key].queue_free()
-			_building.erase(key)
-	if dropped:
-		_world.call_deferred("trim_cache")
-
-	var nearest := func(a: Vector2i, b: Vector2i) -> bool:
-		return (a - centre).length_squared() < (b - centre).length_squared()
-	var started := Time.get_ticks_usec()
-	var building: Array = _building.keys()
-	building.sort_custom(nearest)
-	for key in building:
-		var left := _build_budget_usec - (Time.get_ticks_usec() - started)
-		if left <= 0:
-			return true
-		if _world.continue_build(_building[key], left):
-			_finish_cell(key, _building[key])
-			_building.erase(key)
-
-	var wanted: Array[Vector2i] = []
-	for dy in range(-_radius, _radius + 1):
-		for dx in range(-_radius, _radius + 1):
-			var key := centre + Vector2i(dx, dy)
-			if not _loaded.has(key) and not _building.has(key):
-				wanted.append(key)
-	if wanted.is_empty():
-		return not _building.is_empty()
-	wanted.sort_custom(nearest)
-
-	for key in wanted.slice(0, 4):
-		if _world.request_exterior(_world_id, key.x, key.y) != 0:
-			continue
-		var left := _build_budget_usec - (Time.get_ticks_usec() - started)
-		if left <= 0:
-			break
-		var cell := _world.begin_exterior(_world_id, key.x, key.y)
-		if cell == null:
-			_loaded[key] = null
-			continue
-		cell.visible = false
-		add_child(cell)
-		if _world.continue_build(cell, left):
-			_finish_cell(key, cell)
-		else:
-			_building[key] = cell
-	return true
-
-
-func _finish_cell(key: Vector2i, cell: Node3D) -> void:
-	if cell.process_mode == Node.PROCESS_MODE_DISABLED:
-		_release(cell)  # prepared behind a door (_hold)
-	cell.visible = true
-	if _ai != null:
-		_ai.attach_built(cell)
-	print("cell ", key, ": ", cell.get_meta("skydot_stats"))
-	_scripts_loaded(cell, _world.get_exterior_cell(_world_id, key.x, key.y))
+## A streamed cell is built and shown: its scripts attach, the navmesh
+## overlay and the load doors are brought up to date.
+func _on_cell_finished(cell: Node3D, cell_id: int) -> void:
+	_scripts_loaded(cell, cell_id)
 	_debug.navmesh_overlay(cell)
 	_collect_doors(cell)
-	if _lod != null:
-		_lod.set_cell_loaded(key.x, key.y, true)
-	_loaded[key] = cell
 
 
 ## Remember the load doors among what was just built.
@@ -887,7 +737,7 @@ func _prepare_step() -> void:
 			_prepared = _new_preparation(_world.get_door(nearest))
 		elif nearest == 0 and current != 0 and current_distance > _preload_distance * 1.5:
 			_drop_prepared()
-	if _prepared.is_empty() or _prepared["done"] or _streaming:
+	if _prepared.is_empty() or _prepared["done"] or _streamer.streaming:
 		return
 	_advance_preparation(PREPARE_BUDGET_USEC)
 
@@ -906,20 +756,19 @@ func _new_preparation(door: Dictionary) -> Dictionary:
 	prepared["world"] = world_id
 	var arrival: Transform3D = door["arrival"]
 	prepared["eye"] = arrival.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
-	var p := arrival.origin / _unit_scale
-	var centre := Vector2i(floori(p.x / CELL_UNITS), floori(-p.z / CELL_UNITS))
+	var centre := WorldStreamer.cell_at(arrival.origin)
 	var keys: Array[Vector2i] = []
-	for dy in range(-_radius, _radius + 1):
-		for dx in range(-_radius, _radius + 1):
+	for dy in range(-_streamer.radius, _streamer.radius + 1):
+		for dx in range(-_streamer.radius, _streamer.radius + 1):
 			keys.append(centre + Vector2i(dx, dy))
 	keys.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
 		return (a - centre).length_squared() < (b - centre).length_squared())
 	prepared["keys"] = keys
 	prepared["cells"] = {}  # Vector2i -> Node3D, null where nothing is
 	prepared["placed"] = {}  # cells whose references are all placed
-	prepared["lod"] = _make_lod(world_id)
+	prepared["lod"] = _streamer.make_lod(world_id)
 	if prepared["lod"] != null:
-		_hold(prepared["lod"])
+		HeldPlace.hold(self, prepared["lod"])
 	return prepared
 
 
@@ -932,7 +781,7 @@ func _advance_preparation(budget_usec: int) -> void:
 				return
 			p["root"] = _world.begin_cell(p["cell"])
 			if p["root"] != null:
-				_hold(p["root"])
+				HeldPlace.hold(self, p["root"])
 		p["done"] = _world.continue_build_static(p["root"], budget_usec)
 	else:
 		var complete := true
@@ -949,13 +798,13 @@ func _advance_preparation(budget_usec: int) -> void:
 					continue
 				p["cells"][key] = _world.begin_exterior(p["world"], key.x, key.y)
 				if p["cells"][key] != null:
-					_hold(p["cells"][key])
+					HeldPlace.hold(self, p["cells"][key])
 			var cell: Node3D = p["cells"][key]
 			if cell == null or _world.continue_build_static(cell, left):
 				p["placed"][key] = true
 			else:
 				complete = false
-		if p["lod"] != null and p["lod"].update(p["eye"], LOD_BUDGET_USEC) > 0:
+		if p["lod"] != null and p["lod"].update(p["eye"], WorldStreamer.LOD_BUDGET_USEC) > 0:
 			complete = false
 		p["done"] = complete
 	if p["done"]:
@@ -988,7 +837,7 @@ func _fade_step(delta: float) -> void:
 			_fade_frames = 0
 		FADE_WAIT:
 			_fade_wait += delta
-			var built := _world_id == 0 or (not _streaming and not _lod_busy)
+			var built := _streamer.world_id == 0 or (not _streamer.streaming and not _streamer.lod_busy)
 			if built:
 				_fade_frames += 1
 			if _fade_frames > FADE_SETTLE_FRAMES or _fade_wait > FADE_TIMEOUT:
@@ -1013,30 +862,6 @@ func _drop_prepared() -> void:
 		p["lod"].queue_free()
 
 
-## Put a place being built ahead into the scene, hidden, without physics
-## (disabled bodies are not in the space) and off the navigation map. What
-## Godot creates for its nodes then happens within the preparation's budget,
-## not on arrival.
-func _hold(node: Node3D) -> void:
-	node.visible = false
-	node.process_mode = Node.PROCESS_MODE_DISABLED
-	add_child(node)
-	_set_regions(node, false)
-
-
-## Undo _hold on arrival.
-func _release(node: Node3D) -> void:
-	node.process_mode = Node.PROCESS_MODE_INHERIT
-	node.visible = true
-	_set_regions(node, true)
-
-
-func _set_regions(root: Node, enabled: bool) -> void:
-	for child in root.get_children():
-		if child is NavigationRegion3D:
-			child.enabled = enabled
-
-
 func _benchmark_frame(delta: float) -> void:
 	_frame_times.append(delta * 1000.0)
 	_player.teleport(_player.global_position + Vector3(_fly_speed * delta, 0, 0))
@@ -1048,7 +873,7 @@ func _benchmark_frame(delta: float) -> void:
 	var pick := func(q: float) -> float: return sorted[int(q * (sorted.size() - 1))]
 	print("benchmark: %d frames, median %.1f ms, p99 %.1f ms, max %.1f ms, over 33 ms: %d, slowest streaming step %.1f ms"
 		% [sorted.size(), pick.call(0.5), pick.call(0.99), sorted[-1],
-		   sorted.filter(func(t: float) -> bool: return t > 33.0).size(), _stream_max_usec / 1000.0])
+		   sorted.filter(func(t: float) -> bool: return t > 33.0).size(), _streamer.max_usec / 1000.0])
 	get_tree().quit(0)
 
 
@@ -1065,7 +890,7 @@ func _start_weather(weather: int) -> bool:
 	if weather != 0:
 		node.auto_weather = false
 	_add_to_place(node)
-	if node.setup(_world, _world_id, _camera) != OK:
+	if node.setup(_world, _streamer.world_id, _camera) != OK:
 		_place.erase(node)
 		node.queue_free()
 		return false
@@ -1190,12 +1015,7 @@ func _process(delta: float) -> void:
 		return
 	_update_player()
 	_rig.follow()
-	if _world_id != 0:
-		var stream_started := Time.get_ticks_usec()
-		_streaming = _stream_step()
-		if _lod != null:
-			_lod_busy = _lod.update(_camera.global_position, LOD_BUDGET_USEC) > 0
-		_stream_max_usec = max(_stream_max_usec, Time.get_ticks_usec() - stream_started)
+	_streamer.update()
 	if _preload_doors:
 		_prepare_step()
 	if _fade_phase != FADE_NONE:
@@ -1289,17 +1109,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_debug.path_to_view()
 	elif event is InputEventKey and event.pressed and not event.echo and (event.keycode == KEY_BRACKETLEFT
 			or event.keycode == KEY_BRACKETRIGHT):
-		_lod_split = clampf(_lod_split * (1.25 if event.keycode == KEY_BRACKETRIGHT else 0.8), 0.5, 16.0)
-		if _lod != null:
-			_lod.split_distance = _lod_split
-		# A level-8 quad splits into level-4 ones within split times 8 cells.
-		_debug.note("LOD detail %.2f (finest LOD within %.0f m)" % [_lod_split, _lod_split * 8 * CELL_UNITS * _unit_scale])
-	elif event is InputEventKey and event.pressed and not event.echo and _world_id != 0 and (event.keycode == KEY_MINUS
+		_debug.note(_streamer.scale_lod_split(1.25 if event.keycode == KEY_BRACKETRIGHT else 0.8))
+	elif event is InputEventKey and event.pressed and not event.echo and _streamer.world_id != 0 and (event.keycode == KEY_MINUS
 			or event.keycode == KEY_EQUAL):
-		_radius = clampi(_radius + (1 if event.keycode == KEY_EQUAL else -1), 1, 8)
-		if _lod == null:
-			_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
-		_debug.note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
+		_debug.note(_streamer.change_radius(1 if event.keycode == KEY_EQUAL else -1))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
 		var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
 		get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
@@ -1315,12 +1128,12 @@ func _on_actor_arrived(ref: int) -> void:
 	if place.is_empty():
 		return
 	var parent: Node = null
-	if _world_id == 0:
+	if _streamer.world_id == 0:
 		if place["space"] == _cell_id and not _place.is_empty():
 			parent = _place[0]
-	elif place["space"] == _world_id:
+	elif place["space"] == _streamer.world_id:
 		var p: Vector3 = place["position"]
-		parent = _loaded.get(Vector2i(floori(p.x / CELL_UNITS), floori(p.y / CELL_UNITS)))
+		parent = _streamer.loaded.get(Vector2i(floori(p.x / WorldStreamer.CELL_UNITS), floori(p.y / WorldStreamer.CELL_UNITS)))
 	if parent == null:
 		return
 	var node := _world.build_actor(ref)
@@ -1337,7 +1150,7 @@ func _save_game(path: String) -> void:
 		"format": 1,
 		"papyrus": _papyrus.save_state(),
 		"cell": _cell_id,
-		"world": _world_id,
+		"world": _streamer.world_id,
 		"position": _camera.position,
 		"yaw": _rig.yaw,
 		"pitch": _rig.pitch,
@@ -1497,13 +1310,13 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	var tilt := -rad_to_deg(_rig.pitch)
 	var place := {}
 	var console: Array[String] = []
-	if _world_id != 0:
+	if _streamer.world_id != 0:
 		var world_name := ""
 		for w in _world.list_worlds():
-			if w["id"] == _world_id:
+			if w["id"] == _streamer.world_id:
 				world_name = w["editor_id"]
-		var grid := Vector2i(floori(eye.x / CELL_UNITS), floori(eye.y / CELL_UNITS))
-		place = {"kind": "exterior", "world": world_name, "world_id": "0x%08X" % _world_id,
+		var grid := Vector2i(floori(eye.x / WorldStreamer.CELL_UNITS), floori(eye.y / WorldStreamer.CELL_UNITS))
+		place = {"kind": "exterior", "world": world_name, "world_id": "0x%08X" % _streamer.world_id,
 			"grid": [grid.x, grid.y]}
 		console.append("cow %s %d %d" % [world_name, grid.x, grid.y])
 	else:
@@ -1556,9 +1369,9 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"actors": _world.actors,
 			"wander": _world.actor_wander,
 			"navmesh_shown": _debug.show_navmesh,
-			"lod": _lod != null,
-			"radius": _radius,
-			"lod_split": _lod_split,
+			"lod": _streamer.lod != null,
+			"radius": _streamer.radius,
+			"lod_split": _streamer.lod_split,
 			"msaa": ViewerSettings.MSAA_NAMES[maxi(ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d), 0)],
 			"quests": _settings.quests,
 			"overlay_hidden": overlay_hidden,

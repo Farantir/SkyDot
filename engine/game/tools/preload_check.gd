@@ -72,7 +72,7 @@ func _process(delta: float) -> bool:
 		_travelled = true
 		_last = Time.get_ticks_usec()
 		return false
-	if _settled.is_empty() and _after.size() < 300 and (_viewer._streaming or _after.size() < 30):
+	if _settled.is_empty() and _after.size() < 300 and (_viewer._streamer.streaming or _after.size() < 30):
 		_after.append(frame_ms)
 		return false
 	_settled.append(frame_ms)
