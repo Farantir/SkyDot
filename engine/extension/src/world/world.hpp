@@ -120,8 +120,8 @@ public:
     godot::Node3D* build_ref(std::int64_t cell, std::int64_t ref);
     /// References of `cell` whose base or own VMAD names scripts, sorted.
     godot::PackedInt64Array get_scripted_refs(std::int64_t cell) const;
-    /// The cell holding reference `ref`, or 0. The first call builds the index.
-    std::int64_t get_ref_cell(std::int64_t ref);
+    /// The cell holding reference `ref`, or 0.
+    std::int64_t get_ref_cell(std::int64_t ref) const;
     /// References activated when `ref` is: Array of ref, cell, delay.
     godot::Array get_activate_children(std::int64_t ref) const;
     /// References whose enable state follows `ref`'s: Array of ref ids.
@@ -350,8 +350,6 @@ private:
     /// Builds cells and holds the settings and caches that go with it.
     CellBuilder builder_{data_, placement_};
     godot::String error_;
-
-    queries::RefCellIndex ref_cells_;
 };
 
 } // namespace skydot

@@ -32,8 +32,8 @@ add_custom_target(skydot_flatbuffers DEPENDS
     "${SKYDOT_ANIMATION_HEADER}")
 
 # The sources that do not touch Godot: the Papyrus VM and its saves, AI
-# packages, actor plans, the game clock's arithmetic, virtual paths and file
-# mappings. Nothing in them may include a
+# packages, actor plans, the world.fb reader, the game clock's arithmetic,
+# virtual paths and file mappings. Nothing in them may include a
 # godot-cpp header: that would stop the unit tests building.
 set(SKYDOT_CORE_SOURCES
     src/ai/packages.cpp
@@ -43,6 +43,8 @@ set(SKYDOT_CORE_SOURCES
     src/assets/vpath.hpp
     src/data/actors.cpp
     src/data/actors.hpp
+    src/data/world_data.cpp
+    src/data/world_data.hpp
     src/session/game_time.cpp
     src/session/game_time.hpp
     src/vm/save.cpp
@@ -142,8 +144,6 @@ target_sources(skydot PRIVATE
     src/data/coordinates.cpp
     src/data/coordinates.hpp
     src/data/text.hpp
-    src/data/world_data.cpp
-    src/data/world_data.hpp
     src/nav/navmesh.cpp
     src/physics/collision.cpp
     src/physics/collision.hpp

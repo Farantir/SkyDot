@@ -103,6 +103,8 @@ public:
     std::uint32_t water_type(std::uint32_t world, const bethconv::pack::wfb::Cell* cell) const;
     /// The load door `ref` as its link, or null.
     const bethconv::pack::wfb::DoorLink* door_ptr(std::uint32_t ref) const;
+    /// The cell holding reference `ref`, or 0.
+    std::int64_t cell_of_ref(std::int64_t ref) const;
 
     // ---- indexes -----------------------------------------------------------
     /// Load door ref -> the cell holding it and its link.
@@ -154,6 +156,9 @@ private:
     /// Enable parents by id.
     std::unordered_map<std::uint32_t, const bethconv::pack::wfb::Ref*> enable_parents_;
     DoorIndex doors_;
+    /// Every reference with the cell holding it, `ref << 32 | cell`, sorted by
+    /// ref.
+    std::vector<std::uint64_t> ref_cells_;
     /// Placed actors by interior or exterior cell; those of a worldspace's
     /// persistent cell by the grid square they stand in.
     std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;

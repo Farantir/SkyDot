@@ -2,6 +2,7 @@
 #include "world_builder.hpp"
 
 #include <algorithm>
+#include <set>
 #include <stdexcept>
 
 namespace skydot::testing {
@@ -63,6 +64,18 @@ flatbuffers::Offset<wfb::Package> package(Fbb& fbb, const PackageSpec& p) {
 BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     Fbb fbb;
 
+    std::vector<flatbuffers::Offset<wfb::Cell>> cells;
+    for (const auto& c : by_id(spec.cells)) {
+        std::vector<wfb::Ref> refs;
+        for (const std::uint32_t id : std::set(c.refs.begin(), c.refs.end())) {
+            refs.emplace_back(id, 0, wfb::Vec3f(), wfb::Vec3f(), 1.0F, wfb::RefFlags{}, 0);
+        }
+        const auto refs_v = fbb.CreateVectorOfStructs(refs);
+        wfb::CellBuilder cell(fbb);
+        cell.add_id(c.id);
+        cell.add_refs(refs_v);
+        cells.push_back(cell.Finish());
+    }
     std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
     for (const auto& n : by_id(spec.npcs)) {
         npcs.push_back(wfb::CreateNpcDirect(fbb, n.id, nullptr, nullptr, n.flags, n.level, n.race, n.template_id,
@@ -110,6 +123,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         packages.push_back(package(fbb, p));
     }
 
+    const auto cells_v = fbb.CreateVector(cells);
     const auto npcs_v = fbb.CreateVector(npcs);
     const auto races_v = fbb.CreateVector(races);
     const auto armors_v = fbb.CreateVector(armors);
@@ -119,6 +133,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto packages_v = fbb.CreateVector(packages);
     wfb::WorldBuilder world(fbb);
     world.add_format_version(10);
+    world.add_cells(cells_v);
     world.add_npcs(npcs_v);
     world.add_races(races_v);
     world.add_armors(armors_v);

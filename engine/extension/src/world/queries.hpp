@@ -50,20 +50,6 @@ godot::PackedInt64Array get_enable_children(const WorldData& data, std::int64_t 
 godot::Array get_activate_children(const WorldData& data, std::int64_t ref);
 godot::PackedInt64Array get_scripted_refs(const WorldData& data, std::int64_t cell_id);
 
-/// The cell holding each reference, for `get_ref_cell`. Built on first use
-/// (a second of reading every reference in the file, so not in
-/// WorldData::open), which is why asking changes it.
-class RefCellIndex {
-public:
-    /// The cell holding `ref`, or 0.
-    std::int64_t cell_of(const WorldData& data, std::int64_t ref);
-
-private:
-    bool built_{false};
-    /// (ref, cell) sorted by ref.
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> entries_;
-};
-
 // ---- quests, globals, placed actors, NPCs (queries_quests.cpp) ------------
 std::int64_t get_quest_count(const WorldData& data);
 bool has_quest(const WorldData& data, std::int64_t id);

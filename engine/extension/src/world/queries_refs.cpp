@@ -147,28 +147,6 @@ Dictionary get_ref_info(const WorldData& data, std::int64_t cell_id, std::int64_
     return out;
 }
 
-std::int64_t RefCellIndex::cell_of(const WorldData& data, std::int64_t ref) {
-    const auto* cells = data.root() != nullptr ? data.root()->cells() : nullptr;
-    if (cells == nullptr) {
-        return 0;
-    }
-    if (!built_) {
-        for (const auto* cell : *cells) {
-            if (const auto* refs = cell->refs()) {
-                for (const auto* r : *refs) {
-                    entries_.emplace_back(r->id(), cell->id());
-                }
-            }
-        }
-        std::ranges::sort(entries_);
-        built_ = true;
-    }
-    const auto id = static_cast<std::uint32_t>(ref);
-    const auto it = std::lower_bound(entries_.begin(), entries_.end(),
-                                     std::pair<std::uint32_t, std::uint32_t>{id, 0});
-    return it != entries_.end() && it->first == id ? it->second : 0;
-}
-
 godot::PackedInt64Array get_enable_children(const WorldData& data, std::int64_t ref) {
     godot::PackedInt64Array out;
     for (const auto child : data.enable_children(static_cast<std::uint32_t>(ref))) {

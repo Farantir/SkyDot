@@ -680,9 +680,8 @@ point at the new file.
 ```
 SkydotWorld ── data_       std::shared_ptr<const WorldData>: the file and its indexes
             ├─ placement_  ActorPlacement: where SkydotAi has moved actors
-            ├─ builder_    CellBuilder: builds cells; owns jobs, caches, BuildOptions
-            │               └─ decorator_  Decorator: what is done to a placed model
-            └─ ref_cells_  queries::RefCellIndex: reference -> cell, built on first ask
+            └─ builder_    CellBuilder: builds cells; owns jobs, caches, BuildOptions
+                            └─ decorator_  Decorator: what is done to a placed model
 ```
 
 The read-only calls (`list_cells`, `get_cell`, `get_ref_info`, `get_sky`,
@@ -692,8 +691,8 @@ the world and a method of `SkydotWorld` that is not const is one that
 builds, loads or fills a cache. (The CONST flag of `build_cell`,
 `begin_cell`, `begin_exterior`, `continue_build*`, `build_ref`,
 `build_actor`, `get_cell_resources`, `get_exterior_resources`,
-`get_locomotion` and `get_ref_cell` is therefore gone from ClassDB; nothing
-else in the class list changed.)
+and `get_locomotion` is therefore gone from ClassDB; nothing else in the
+class list changed.)
 
 **`WorldData`: the file, read-only.** `SkydotWorld::open(path)` refuses a
 second open (a world is opened once; `SkydotPack::open_world` makes a new
@@ -708,7 +707,9 @@ builds every index once:
   grid square they stand in, so an exterior build includes them;
 - `doors_`, `activate_children_`, `enable_children_`, `enable_parents_`,
   `navmeshes_`, `cell_actors_`, `persistent_actors_`, `actor_of_` (NPC →
-  its lowest placed actor).
+  its lowest placed actor);
+- `ref_cells_`: every reference with the cell holding it, sorted by
+  reference (a radix sort, 8 ms on the SE pack), for `cell_of_ref`.
 
 It also offers the lookups the rest of the engine uses (`cell_ptr`,
 `base_ptr`, `world_ptr`, `exterior_ptr`, `water_ptr`, `land_world`,
@@ -718,11 +719,10 @@ hands it to `SkydotAi` and `SkydotWeather`, which have no other access to
 the world's internals. A closed `WorldData` (before `open` succeeds) answers
 every query with nothing.
 
-Still built lazily on first use: `ref_cells_` in `SkydotWorld` (reading
-every reference takes most of a second on the SE pack, so not in `open`), and
-in `CellBuilder` the locomotion clips, grass models and the terrain builder,
-in `Decorator` the add-on node models and projected (MATO) materials. Each
-belongs to the object that fills it, which is not const where it changes.
+Still built lazily on first use: in `CellBuilder` the locomotion clips, grass
+models and the terrain builder, in `Decorator` the add-on node models and
+projected (MATO) materials. Each belongs to the object that fills it, which
+is not const where it changes.
 
 **`ActorPlacement`: where actors are.** The editor's places come from
 `WorldData`; the ones `SkydotAi` has moved actors to are kept here

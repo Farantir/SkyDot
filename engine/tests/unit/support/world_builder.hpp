@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // A small writer for world.fb (formats/schema/world.fbs): just the NPCs, races,
-// armor, leveled lists and AI packages the engine's pure logic reads, built
+// armor, leveled lists, AI packages and the cells' references the engine's
+// pure logic reads, built
 // with the generated builder API from plain structs. Every vector the schema
 // says is sorted by id is sorted here, so tests list records in any order.
 //
@@ -197,7 +198,16 @@ struct LeveledListSpec {
 
 // ---- the file ---------------------------------------------------------------
 
+// ---- cells ------------------------------------------------------------------
+
+struct CellSpec {
+    std::uint32_t id;
+    /// The references placed in it, in any order.
+    std::vector<std::uint32_t> refs = {};
+};
+
 struct WorldSpec {
+    std::vector<CellSpec> cells = {};
     std::vector<NpcSpec> npcs = {};
     std::vector<RaceSpec> races = {};
     std::vector<ArmorSpec> armors = {};
@@ -216,6 +226,8 @@ public:
 
     [[nodiscard]] const wfb::World& operator*() const { return *world_; }
     [[nodiscard]] const wfb::World* operator->() const { return world_; }
+    /// The file's bytes, to write out for something that opens a path.
+    [[nodiscard]] const std::vector<std::uint8_t>& bytes() const { return bytes_; }
 
 private:
     std::vector<std::uint8_t> bytes_;

@@ -22,6 +22,7 @@ add_executable(skydot_core_tests
     test_vm_save.cpp
     test_vm_threads.cpp
     test_vpath.cpp
+    test_world_data.cpp
 )
 target_link_libraries(skydot_core_tests
     PRIVATE skydot_core_testable skydot::warnings Catch2::Catch2WithMain)
