@@ -420,287 +420,38 @@ std::optional<WorldBase> WorldFile::base(std::uint32_t id) const {
     return out;
 }
 
-namespace {
-
-std::string str(const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string{}; }
-
-} // namespace
-
 std::size_t WorldFile::quest_count() const noexcept {
     const auto* quests = impl_->root->quests();
     return quests == nullptr ? 0 : quests->size();
 }
 
-std::optional<WorldQuest> WorldFile::quest(std::uint32_t id) const {
-    const auto* q = lookup(impl_->root->quests(), id);
-    if (q == nullptr) {
-        return std::nullopt;
-    }
-    WorldQuest out;
-    out.id = q->id();
-    out.editor_id = str(q->editor_id());
-    out.name = str(q->name());
-    out.flags = q->flags();
-    out.priority = q->priority();
-    out.type = q->type();
-    out.event = q->event();
-    out.scripts = read_scripts(q->scripts());
-    out.fragment_script = str(q->fragment_script());
-    if (const auto* fragments = q->fragments()) {
-        for (const auto* f : *fragments) {
-            out.fragments.push_back(WorldQuestFragment{
-                .stage = f->stage(), .log_entry = f->log_entry(), .function = str(f->function())});
-        }
-    }
-    if (const auto* stages = q->stages()) {
-        for (const auto* st : *stages) {
-            auto& stage = out.stages.emplace_back();
-            stage.index = st->index();
-            stage.flags = st->flags();
-            if (const auto* log = st->log()) {
-                for (const auto* e : *log) {
-                    stage.log.push_back(WorldQuestLogEntry{
-                        .flags = e->flags(), .text = str(e->text()), .conditions = e->conditions()});
-                }
-            }
-        }
-    }
-    if (const auto* objectives = q->objectives()) {
-        for (const auto* o : *objectives) {
-            auto& objective = out.objectives.emplace_back();
-            objective.index = o->index();
-            objective.flags = o->flags();
-            objective.text = str(o->text());
-            if (const auto* targets = o->targets()) {
-                objective.targets.assign(targets->begin(), targets->end());
-            }
-        }
-    }
-    if (const auto* aliases = q->aliases()) {
-        for (const auto* a : *aliases) {
-            out.aliases.push_back(WorldQuestAlias{
-                .id = a->id(),
-                .name = str(a->name()),
-                .location = a->location(),
-                .flags = a->flags(),
-                .forced = a->forced(),
-                .unique_actor = a->unique_actor(),
-                .external_quest = a->external_quest(),
-                .external_alias = a->external_alias(),
-                .created_object = a->created_object(),
-                .create_at = a->create_at(),
-                .conditions = a->conditions(),
-                .display_name = a->display_name(),
-                .scripts = read_scripts(a->scripts()),
-            });
-        }
-    }
-    return out;
+std::optional<wfb::QuestT> WorldFile::quest(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->quests(), id));
 }
 
 std::optional<wfb::GlobalT> WorldFile::global(std::uint32_t id) const {
     return unpack(lookup(impl_->root->globals(), id));
 }
 
-std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {
-    const auto* n = lookup(impl_->root->npcs(), id);
-    if (n == nullptr) {
-        return std::nullopt;
-    }
-    WorldNpc out{.id = n->id(),
-                 .editor_id = str(n->editor_id()),
-                 .name = str(n->name()),
-                 .flags = n->flags(),
-                 .level = n->level(),
-                 .race = n->race(),
-                 .template_form = n->template_(),
-                 .template_flags = n->template_flags(),
-                 .skin = n->skin(),
-                 .default_outfit = n->default_outfit(),
-                 .sleeping_outfit = n->sleeping_outfit(),
-                 .height = n->height(),
-                 .weight = n->weight(),
-                 .head_parts = {},
-                 .items = {},
-                 .face_model = str(n->face_model())};
-    if (const auto* parts = n->head_parts()) {
-        out.head_parts.assign(parts->begin(), parts->end());
-    }
-    if (const auto* items = n->items()) {
-        for (const auto* i : *items) {
-            out.items.emplace_back(i->form(), i->count());
-        }
-    }
-    if (const auto* tone = n->skin_tone(); tone != nullptr && tone->size() == 3) {
-        out.skin_tone = {tone->Get(0), tone->Get(1), tone->Get(2)};
-    }
-    if (const auto* list = n->packages()) {
-        out.packages.assign(list->begin(), list->end());
-    }
-    if (const auto* list = n->default_packages()) {
-        out.default_packages.assign(list->begin(), list->end());
-    }
-    if (const auto* list = n->factions()) {
-        for (const auto* f : *list) {
-            out.factions.emplace_back(f->faction(), f->rank());
-        }
-    }
-    return out;
+std::optional<wfb::NpcT> WorldFile::npc(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->npcs(), id));
 }
-
-namespace {
-
-std::vector<record::Condition> read_conditions(
-    const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list) {
-    std::vector<record::Condition> out;
-    if (list == nullptr) {
-        return out;
-    }
-    for (const auto* c : *list) {
-        out.push_back(record::Condition{.type = c->type(),
-                                        .value = c->value(),
-                                        .value_global = FormId{c->value_global()},
-                                        .function = c->function(),
-                                        .param1 = c->param1(),
-                                        .param2 = c->param2(),
-                                        .run_on = c->run_on(),
-                                        .reference = FormId{c->reference()},
-                                        .param3 = c->param3(),
-                                        .string1 = str(c->string1()),
-                                        .string2 = str(c->string2())});
-    }
-    return out;
-}
-
-} // namespace
 
 std::size_t WorldFile::package_count() const noexcept {
     const auto* list = impl_->root->packages();
     return list != nullptr ? list->size() : 0;
 }
 
-std::optional<WorldPackage> WorldFile::package(std::uint32_t id) const {
-    const auto* p = lookup(impl_->root->packages(), id);
-    if (p == nullptr) {
-        return std::nullopt;
-    }
-    WorldPackage out{.id = p->id(),
-                     .editor_id = str(p->editor_id()),
-                     .type = p->type(),
-                     .flags = p->flags(),
-                     .interrupt_override = p->interrupt_override(),
-                     .speed = p->speed(),
-                     .interrupt_flags = p->interrupt_flags(),
-                     .schedule = {.month = p->month(),
-                                  .day_of_week = p->day_of_week(),
-                                  .date = p->date(),
-                                  .hour = p->hour(),
-                                  .minute = p->minute(),
-                                  .duration = p->duration()},
-                     .conditions = read_conditions(p->conditions()),
-                     .template_package = p->template_(),
-                     .idle_flags = p->idle_flags(),
-                     .idle_timer = p->idle_timer(),
-                     .owner_quest = p->owner_quest(),
-                     .combat_style = p->combat_style(),
-                     .on_begin_idle = p->on_begin_idle(),
-                     .on_end_idle = p->on_end_idle(),
-                     .on_change_idle = p->on_change_idle()};
-    if (const auto* list = p->inputs()) {
-        for (const auto* in : *list) {
-            out.inputs.push_back(WorldPackage::Input{
-                .key = in->key(),
-                .type = str(in->type()),
-                .name = str(in->name()),
-                .number = in->number(),
-                .location = {.type = in->location_type(),
-                             .value = in->location_value(),
-                             .radius = in->location_radius()},
-                .target = {.type = in->target_type(),
-                           .value = in->target_value(),
-                           .count = in->target_count()}});
-        }
-    }
-    if (const auto* list = p->branches()) {
-        for (const auto* b : *list) {
-            WorldPackage::Branch branch{.type = str(b->type()),
-                                        .conditions = read_conditions(b->conditions()),
-                                        .children = b->children(),
-                                        .flags = b->flags(),
-                                        .procedure = str(b->procedure()),
-                                        .success_completes = b->success_completes(),
-                                        .inputs = {},
-                                        .set_flags = b->set_flags(),
-                                        .clear_flags = b->clear_flags(),
-                                        .speed = b->speed()};
-            if (const auto* keys = b->inputs()) {
-                branch.inputs.assign(keys->begin(), keys->end());
-            }
-            out.branches.push_back(std::move(branch));
-        }
-    }
-    if (const auto* idles = p->idles()) {
-        out.idles.assign(idles->begin(), idles->end());
-    }
-    return out;
+std::optional<wfb::PackageT> WorldFile::package(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->packages(), id));
 }
 
-std::optional<WorldRace> WorldFile::race(std::uint32_t id) const {
-    const auto* r = lookup(impl_->root->races(), id);
-    if (r == nullptr) {
-        return std::nullopt;
-    }
-    WorldRace out;
-    out.id = r->id();
-    out.editor_id = str(r->editor_id());
-    for (flatbuffers::uoffset_t i = 0; i < 2; ++i) {
-        if (r->skeletons() != nullptr && i < r->skeletons()->size()) {
-            out.skeletons[i] = str(r->skeletons()->Get(i));
-        }
-        if (r->behaviours() != nullptr && i < r->behaviours()->size()) {
-            out.behaviours[i] = str(r->behaviours()->Get(i));
-        }
-        if (r->heights() != nullptr && i < r->heights()->size()) {
-            out.heights[i] = r->heights()->Get(i);
-        }
-        if (r->weights() != nullptr && i < r->weights()->size()) {
-            out.weights[i] = r->weights()->Get(i);
-        }
-    }
-    out.skin = r->skin();
-    out.flags = r->flags();
-    out.armor_race = r->armor_race();
-    if (const auto* parts = r->body_parts()) {
-        for (const auto* p : *parts) {
-            out.body_parts.push_back({.female = p->female(), .index = p->index(), .model = str(p->model())});
-        }
-    }
-    if (const auto* m = r->head_parts_male()) {
-        out.head_parts[0].assign(m->begin(), m->end());
-    }
-    if (const auto* f = r->head_parts_female()) {
-        out.head_parts[1].assign(f->begin(), f->end());
-    }
-    return out;
+std::optional<wfb::RaceT> WorldFile::race(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->races(), id));
 }
 
-std::optional<WorldArmorAddon> WorldFile::armor_addon(std::uint32_t id) const {
-    const auto* a = lookup(impl_->root->armor_addons(), id);
-    if (a == nullptr) {
-        return std::nullopt;
-    }
-    WorldArmorAddon out;
-    out.id = a->id();
-    out.editor_id = str(a->editor_id());
-    out.slots = a->slots();
-    out.race = a->race();
-    if (const auto* races = a->additional_races()) {
-        out.additional_races.assign(races->begin(), races->end());
-    }
-    out.models = {str(a->male_model()), str(a->female_model())};
-    out.priorities = {a->male_priority(), a->female_priority()};
-    out.weight_sliders = {a->male_weight_slider(), a->female_weight_slider()};
-    return out;
+std::optional<wfb::ArmorAddonT> WorldFile::armor_addon(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->armor_addons(), id));
 }
 
 std::vector<wfb::PluginT> WorldFile::plugins() const { return unpack_all(impl_->root->plugins()); }

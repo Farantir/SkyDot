@@ -1424,8 +1424,8 @@ int main(int argc, char** argv) {
         }
         const auto quest = world->quest(0x0000'0150);
         if (!quest || quest->scripts.size() != 2 || quest->fragments.size() != 2 ||
-            quest->aliases.size() != 1 || quest->aliases[0].forced != 0x0000'0304 ||
-            quest->aliases[0].scripts.size() != 1 || !world->global(0x0000'0140)) {
+            quest->aliases.size() != 1 || quest->aliases[0]->forced != 0x0000'0304 ||
+            quest->aliases[0]->scripts.size() != 1 || !world->global(0x0000'0140)) {
             std::cerr << "world.fb: the quest or its global is wrong\n";
             return EXIT_FAILURE;
         }
@@ -1441,8 +1441,8 @@ int main(int argc, char** argv) {
         const auto work = world->package(0x0000'0172);
         const auto templ = world->package(0x0000'0170);
         if (!npc || npc->packages != std::vector<std::uint32_t>{0x0000'0172, 0x0000'0171} || !work ||
-            work->template_package != 0x0000'0170 || work->schedule.hour != 8 || !templ ||
-            templ->branches.size() != 4 || templ->branches[3].procedure != "Sandbox") {
+            work->template_ != 0x0000'0170 || work->hour != 8 || !templ ||
+            templ->branches.size() != 4 || templ->branches[3]->procedure != "Sandbox") {
             std::cerr << "world.fb: the AI packages are wrong\n";
             return EXIT_FAILURE;
         }

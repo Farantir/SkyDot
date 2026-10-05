@@ -1001,21 +1001,21 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(quest->flags == pack::wfb::QuestFlags::start_game_enabled);
     CHECK(quest->priority == 50);
     REQUIRE(quest->scripts.size() == 1);
-    CHECK(quest->scripts[0].properties[0].objects[0].form == record::FormId{0x0200'0C00});
+    CHECK(quest->scripts[0]->properties[0]->objects[0].form() == 0x0200'0C00);
     CHECK(quest->fragment_script == "QF_TestQuest");
     REQUIRE(quest->fragments.size() == 1);
-    CHECK(quest->fragments[0].stage == 10);
-    CHECK(quest->fragments[0].function == "Fragment_0");
+    CHECK(quest->fragments[0]->stage == 10);
+    CHECK(quest->fragments[0]->function == "Fragment_0");
     REQUIRE(quest->stages.size() == 1);
-    CHECK(quest->stages[0].flags == pack::wfb::StageFlags::start_up);
-    CHECK(quest->stages[0].log.at(0).text == "Begun.");
+    CHECK(quest->stages[0]->flags == pack::wfb::StageFlags::start_up);
+    CHECK(quest->stages[0]->log.at(0)->text == "Begun.");
     REQUIRE(quest->aliases.size() == 2);
-    CHECK(quest->aliases[0].name == "Guard");
-    CHECK(quest->aliases[0].forced == 0x0200'0B01);
-    REQUIRE(quest->aliases[0].scripts.size() == 1);
-    CHECK(quest->aliases[0].scripts[0].name == "TestAliasScript");
-    CHECK(quest->aliases[1].unique_actor == 0x0000'0900);
-    CHECK(quest->aliases[1].scripts.empty());
+    CHECK(quest->aliases[0]->name == "Guard");
+    CHECK(quest->aliases[0]->forced == 0x0200'0B01);
+    REQUIRE(quest->aliases[0]->scripts.size() == 1);
+    CHECK(quest->aliases[0]->scripts[0]->name == "TestAliasScript");
+    CHECK(quest->aliases[1]->unique_actor == 0x0000'0900);
+    CHECK(quest->aliases[1]->scripts.empty());
 
     const auto counter = file->global(0x0200'0C00);
     REQUIRE(counter.has_value());
@@ -1239,52 +1239,52 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(npc->race == 0x0200'0E00);
     CHECK(npc->default_outfit == 0x0200'0E20);
     CHECK(npc->height == 1.05F);
-    CHECK(npc->skin_tone == std::array<float, 3>{0.9F, 0.75F, 0.6F});
+    CHECK(npc->skin_tone == std::vector<float>{0.9F, 0.75F, 0.6F});
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
 
     const auto race = file->race(0x0200'0E00);
     REQUIRE(race.has_value());
     CHECK(race->skin == 0x0200'0E10);
-    CHECK(race->skeletons[0] == "meshes/actors/character/character assets/skeleton.nif");
-    CHECK(race->skeletons[1] == "meshes/actors/character/character assets female/skeleton_female.nif");
-    CHECK(race->behaviours[0] == "meshes/actors/character/defaultmale.hkx");
-    CHECK(race->heights[1] == 0.95F);
+    CHECK(race->skeletons.at(0) == "meshes/actors/character/character assets/skeleton.nif");
+    CHECK(race->skeletons.at(1) == "meshes/actors/character/character assets female/skeleton_female.nif");
+    CHECK(race->behaviours.at(0) == "meshes/actors/character/defaultmale.hkx");
+    CHECK(race->heights.at(1) == 0.95F);
 
     const auto addon = file->armor_addon(0x0200'0E11);
     REQUIRE(addon.has_value());
     CHECK(addon->race == 0x0200'0E00);
     CHECK(addon->slots == 4);
-    CHECK(addon->models[1] == "meshes/actors/character/character assets/femalebody_1.nif");
+    CHECK(addon->female_model == "meshes/actors/character/character assets/femalebody_1.nif");
 
     CHECK(stats->packages == 1);
     CHECK(npc->packages == std::vector<std::uint32_t>{0x0200'0E40});
     CHECK(npc->default_packages == std::vector<std::uint32_t>{0x0200'0E40, 0x0000'0901});
     REQUIRE(npc->factions.size() == 1);
-    CHECK(npc->factions[0].first == 0x0000'0A10);
-    CHECK(npc->factions[0].second == 2);
+    CHECK(npc->factions[0].faction() == 0x0000'0A10);
+    CHECK(npc->factions[0].rank() == 2);
     CHECK(file->package_count() == 1);
     const auto pack = file->package(0x0200'0E40);
     REQUIRE(pack.has_value());
     CHECK(pack->editor_id == "TestSandbox8x4");
     CHECK(pack->type == 18);
     CHECK(pack->flags == pack::wfb::PackageFlags::must_complete);
-    CHECK(pack->schedule.hour == 8);
-    CHECK(pack->schedule.duration == 240);
-    CHECK(pack->template_package == 0x0200'0E41);
+    CHECK(pack->hour == 8);
+    CHECK(pack->duration == 240);
+    CHECK(pack->template_ == 0x0200'0E41);
     REQUIRE(pack->conditions.size() == 1);
-    CHECK(pack->conditions[0].function == 72);
-    CHECK(pack->conditions[0].param1 == 0x0200'0E30);
+    CHECK(pack->conditions[0]->function == 72);
+    CHECK(pack->conditions[0]->param1 == 0x0200'0E30);
     REQUIRE(pack->inputs.size() == 3);
-    CHECK(pack->inputs[0].key == 0);
-    CHECK(pack->inputs[0].location.type == 0);
-    CHECK(pack->inputs[0].location.value == 0x0200'0E30);
-    CHECK(pack->inputs[0].location.radius == 300);
-    CHECK(pack->inputs[0].target.type == -1);
-    CHECK(pack->inputs[1].key == 3);
-    CHECK(pack->inputs[1].target.type == 2);
-    CHECK(pack->inputs[1].target.value == 27); // an object type stays as it is
-    CHECK(pack->inputs[2].type == "Int");
-    CHECK(pack->inputs[2].number == 7.0F);
+    CHECK(pack->inputs[0]->key == 0);
+    CHECK(pack->inputs[0]->location_type == 0);
+    CHECK(pack->inputs[0]->location_value == 0x0200'0E30);
+    CHECK(pack->inputs[0]->location_radius == 300);
+    CHECK(pack->inputs[0]->target_type == -1);
+    CHECK(pack->inputs[1]->key == 3);
+    CHECK(pack->inputs[1]->target_type == 2);
+    CHECK(pack->inputs[1]->target_value == 27); // an object type stays as it is
+    CHECK(pack->inputs[2]->type == "Int");
+    CHECK(pack->inputs[2]->number == 7.0F);
     CHECK(pack->branches.empty());
 }

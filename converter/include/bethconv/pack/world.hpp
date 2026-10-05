@@ -650,14 +650,14 @@ public:
     /// Regions with weather data.
     [[nodiscard]] std::vector<wfb::RegionT> regions() const;
     [[nodiscard]] std::size_t quest_count() const noexcept;
-    [[nodiscard]] std::optional<WorldQuest> quest(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::QuestT> quest(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::GlobalT> global(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::ActorRef> actors() const;
-    [[nodiscard]] std::optional<WorldNpc> npc(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldPackage> package(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::NpcT> npc(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::PackageT> package(std::uint32_t id) const;
     [[nodiscard]] std::size_t package_count() const noexcept;
-    [[nodiscard]] std::optional<WorldRace> race(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldArmorAddon> armor_addon(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::RaceT> race(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::ArmorAddonT> armor_addon(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.
