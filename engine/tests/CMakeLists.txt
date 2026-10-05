@@ -67,16 +67,22 @@ set_tests_properties(smoke_scan PROPERTIES
     TIMEOUT 300
     FIXTURES_SETUP godot_scan)
 
+# A script error aborts the check it happens in without counting a failure,
+# and a shader that Godot cannot compile is only logged: both fail the test.
+# smoke_shaders makes one on purpose, to see that it is reported, and looks for
+# the others itself.
 function(skydot_smoke_test name script)
+    set(_errors "SCRIPT ERROR|SHADER ERROR")
+    if(ARGC GREATER 2)
+        set(_errors "${ARGV2}")
+    endif()
     add_test(NAME "${name}"
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/${script}")
     set_tests_properties("${name}" PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         SKIP_RETURN_CODE 77
-        # A script error aborts the check it happens in without counting a
-        # failure.
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR"
+        FAIL_REGULAR_EXPRESSION "${_errors}"
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch;SKYDOT_BETHCONV=${SKYDOT_BETHCONV}")
 endfunction()
@@ -93,7 +99,7 @@ skydot_smoke_test(smoke_ai ai.gd)
 skydot_smoke_test(smoke_physics physics.gd)
 skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
-skydot_smoke_test(smoke_shaders shaders.gd)
+skydot_smoke_test(smoke_shaders shaders.gd "SCRIPT ERROR")
 skydot_smoke_test(smoke_viewer_settings viewer_settings.gd)
 skydot_smoke_test(smoke_packtool packtool.gd)
 
@@ -109,7 +115,7 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         PASS_REGULAR_EXPRESSION "entered TestpackInterior.*leads to 0x00000213.*entered TestpackWorld.*leads to 0x00000303.*entered TestpackInterior"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;never appeared"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;never appeared"
         TIMEOUT 120)
     add_test(NAME viewer_locked
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
@@ -122,7 +128,7 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         PASS_REGULAR_EXPRESSION "0x00000303 TestpackDoor \\(DOOR\\) is locked \\(level 25, Apprentice\\)"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;entered TestpackWorld"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;entered TestpackWorld"
         TIMEOUT 120)
     # Picking it from inside opens both doors: back in through 0x213.
     add_test(NAME viewer_unlocked_pair
@@ -133,7 +139,7 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         PASS_REGULAR_EXPRESSION "entered TestpackWorld.*0x00000213 TestpackDoor \\(DOOR\\) leads to"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;is locked"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;is locked"
         TIMEOUT 120)
     add_test(NAME viewer_lever
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
@@ -143,7 +149,7 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         PASS_REGULAR_EXPRESSION "scripts: 1 references.*lever pulled 1.*0x00000301 disabled by script.*lever pulled 2.*0x00000301 enabled by script"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;never appeared;Papyrus:"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;never appeared;Papyrus:"
         TIMEOUT 120)
     # A viewer screenshot's JSON (F12) brings the viewer back to its place;
     # --pack given on the command line wins over the shot's.
@@ -155,7 +161,7 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
         PASS_REGULAR_EXPRESSION "entered TestpackInterior.*leads to 0x00000213"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;cannot read the shot"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;cannot read the shot"
         TIMEOUT 120)
     # Pull the lever, save, then load in a fresh run and pull it again: the
     # count and the cube's state must carry over.
@@ -169,7 +175,7 @@ if(SKYDOT_TESTPACK)
         FIXTURES_REQUIRED godot_scan
         FIXTURES_SETUP viewer_saved
         PASS_REGULAR_EXPRESSION "lever pulled 1.*saved "
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;Papyrus:"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;Papyrus:"
         TIMEOUT 120)
     add_test(NAME viewer_load
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
@@ -179,6 +185,6 @@ if(SKYDOT_TESTPACK)
         LABELS smoke
         FIXTURES_REQUIRED "godot_scan;viewer_saved"
         PASS_REGULAR_EXPRESSION "loaded .*lever pulled 2.*0x00000301 enabled by script"
-        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;Papyrus:;cannot load"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;Papyrus:;cannot load"
         TIMEOUT 120)
 endif()
