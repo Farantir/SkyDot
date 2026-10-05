@@ -140,10 +140,16 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
     // initialised, which attach_quest_scripts does for quests named before
     // they start.
     vm_->send_event(quest, "OnInit", {});
-    for (const auto& [handle, key] : handle_alias_) {
-        if (key.first == quest) {
-            vm_->send_event(handle, "OnInit", {});
-        }
+    // The quest's alias objects in the order they were made: their handles
+    // rise, and alias_handles_ is sorted by quest.
+    std::vector<std::uint32_t> handles;
+    for (auto it = alias_handles_.lower_bound({quest, 0}); it != alias_handles_.end() && it->first.first == quest;
+         ++it) {
+        handles.push_back(it->second);
+    }
+    std::ranges::sort(handles);
+    for (const auto handle : handles) {
+        vm_->send_event(handle, "OnInit", {});
     }
     emit_signal("quest_started", id);
     const Array stages = info["stages"];
