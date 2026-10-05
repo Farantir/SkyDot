@@ -15,11 +15,12 @@
 #include "assets/asset_cache.hpp"
 #include "world/actor_placement.hpp"
 #include "world/actors.hpp"
+#include "world/build_options.hpp"
+#include "world/decoration.hpp"
 #include "world/grass.hpp"
 #include "world/locomotion.hpp"
 #include "world/materials.hpp"
 #include "world/terrain.hpp"
-#include "world/water.hpp"
 #include "world/world_data.hpp"
 
 #include <godot_cpp/classes/animation.hpp>
@@ -34,7 +35,6 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -47,30 +47,6 @@ struct Grass;
 } // namespace bethconv::pack::wfb
 
 namespace skydot {
-
-/// What is built; SkydotWorld's settings. Read when a cell is built, so a
-/// change applies from the next build.
-struct BuildOptions {
-    /// Replace imported materials with Skyrim-style shader materials (see
-    /// materials.hpp).
-    bool skyrim_materials{true};
-    /// Play models' controllers and particle systems and flicker lights.
-    bool effects{true};
-    /// Grass on exterior terrain (GRAS).
-    bool grass{true};
-    /// Shadows on every light, not only those whose record asks for them.
-    bool all_light_shadows{false};
-    /// Placed actors (ACHR).
-    bool actors{true};
-    /// Actors walk around their place while no AI packages are read.
-    bool actor_wander{true};
-    /// Physics bodies for models and terrain.
-    bool collision{true};
-    /// Navmeshes as navigation regions.
-    bool navigation{true};
-    /// Land texture repeats per cell side.
-    double terrain_tiling{8.0};
-};
 
 class CellBuilder {
 public:
@@ -143,8 +119,7 @@ private:
 
     const WorldData& data() const { return *data_; }
     const bethconv::pack::wfb::World* world_fb() const { return data_->root(); }
-    /// materials_, created on first use and attached to the asset cache.
-    SkydotMaterials& materials();
+    SkydotMaterials& materials() { return decorator_.materials(); }
     /// terrain_, made on first use and again when the tiling changed.
     TerrainBuilder& terrain_builder();
     std::array<std::string, 2> land_texture_paths(std::uint32_t ltex) const;
@@ -162,17 +137,6 @@ private:
     /// Instance the reference's model and light under `root`.
     void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
                    BuildStats& stats, bool include_disabled = false);
-    /// Surfaces of a placed model with a water shader get the water material
-    /// of `cell`'s water type.
-    void use_water_material(godot::Node* model, std::uint32_t cell);
-    /// Surfaces of a placed model with the Projected UV flag get `base`'s
-    /// directional material (STAT DNAM), if it has one.
-    void use_directional_material(godot::Node* model, const bethconv::pack::wfb::Base& base);
-    /// MATO `id` as the lighting shader takes it; null if there is none.
-    const ProjectedMaterial* projected_material(std::uint32_t id);
-    /// Attach the ADDN models (candle flames, smoke) to `model`'s AddOnNodes
-    /// (mesh extras "addon"). Returns how many.
-    std::int64_t attach_addons(godot::Node* model);
     /// A grass's model for instancing (grass.hpp), loaded once.
     GrassModel grass_model(const bethconv::pack::wfb::Grass& grass);
     godot::Dictionary stats_dictionary(const BuildStats& stats) const;
@@ -202,17 +166,14 @@ private:
     /// Builds under way, by root instance id.
     std::unordered_map<std::uint64_t, std::shared_ptr<BuildJob>> jobs_;
 
+    /// What is done to every instanced model, and the caches that go with it.
+    Decorator decorator_;
+
     // What building keeps between cells.
-    godot::Ref<SkydotMaterials> materials_;
     std::unique_ptr<TerrainBuilder> terrain_;
     double terrain_tiling_built_{};
-    WaterMaterials water_;
-    std::once_flag addon_index_once_;
-    std::unordered_map<std::int32_t, std::string> addon_models_;
     std::mutex grass_mutex_;
     std::unordered_map<std::uint32_t, GrassModel> grass_models_;
-    std::mutex projected_mutex_;
-    std::unordered_map<std::uint32_t, std::optional<ProjectedMaterial>> projected_;
     /// Behaviour project -> its idle, walk and run clips.
     std::unordered_map<std::string, Locomotion> locomotion_;
     /// meshes/animationdatasinglefile.txt, read once for every project it holds.

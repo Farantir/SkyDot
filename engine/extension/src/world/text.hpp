@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 namespace skydot {
 
@@ -24,6 +25,11 @@ inline godot::String to_godot(const flatbuffers::String* s) {
 inline std::string utf8(const godot::String& s) {
     const auto bytes = s.utf8();
     return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
+}
+
+/// A model's virtual path as the asset cache keys it.
+inline godot::String model_path(std::string_view model) {
+    return godot::String::utf8(model.data(), static_cast<int>(model.size()));
 }
 
 /// A form id as "0x0001A2B3".

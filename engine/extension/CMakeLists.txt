@@ -110,6 +110,7 @@ target_sources(skydot PRIVATE
     src/world/animator.hpp
     src/world/billboard.cpp
     src/world/billboard.hpp
+    src/world/build_options.hpp
     src/world/cell_builder.cpp
     src/world/cell_builder.hpp
     src/world/collision.cpp
@@ -118,6 +119,8 @@ target_sources(skydot PRIVATE
     src/world/collision.hpp
     src/world/coordinates.cpp
     src/world/coordinates.hpp
+    src/world/decoration.cpp
+    src/world/decoration.hpp
     src/world/effect_asset.cpp
     src/world/effect_asset.hpp
     src/world/flicker.cpp

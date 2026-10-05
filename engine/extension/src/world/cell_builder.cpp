@@ -7,10 +7,6 @@
 #include "world/actor.hpp"
 #include "world/actor_animation.hpp"
 #include "world/actors.hpp"
-#include "world/animator.hpp"
-#include "world/billboard.hpp"
-#include "world/collision.hpp"
-#include "world/effect_asset.hpp"
 #include "world/flicker.hpp"
 #include "world/navmesh.hpp"
 #include "world/refs.hpp"
@@ -29,7 +25,6 @@
 #include <godot_cpp/classes/omni_light3d.hpp>
 #include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/time.hpp>
-#include <godot_cpp/classes/visual_instance3d.hpp>
 #include <godot_cpp/core/object.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -40,7 +35,6 @@
 #include <cmath>
 #include <limits>
 #include <numbers>
-#include <string_view>
 
 using godot::Dictionary;
 using godot::String;
@@ -78,55 +72,12 @@ bool is_marker(const wfb::Base& base) {
            (path.starts_with("meshes/marker") && path.find('/', 7) == std::string_view::npos);
 }
 
-/// A model's virtual path as the asset cache keys it.
-String model_path(std::string_view model) {
-    return String::utf8(model.data(), static_cast<int>(model.size()));
-}
-
 /// Game units per exterior cell side.
 constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 
 /// XCLW values this large mean "no water here".
 constexpr float k_no_water = 1.0e30F;
 
-/// The game places a model by its reference alone: whatever transform the
-/// NIF's root node carries is replaced (Riverwood Trader's corner counter
-/// piece has its root turned 90 degrees and lines up only without it).
-void drop_root_transform(godot::Node3D* model) {
-    auto* axes = godot::Object::cast_to<godot::Node3D>(model->get_node_or_null("bethconv_z_up_to_y_up"));
-    if (axes == nullptr || axes->get_child_count() == 0) {
-        return;
-    }
-    if (auto* nif_root = godot::Object::cast_to<godot::Node3D>(axes->get_child(0))) {
-        nif_root->set_transform(Transform3D());
-    }
-}
-
-/// Metres a BSOrderedNode's child is moved forward per place in its order
-/// when transparent surfaces are sorted: more than the depth between a
-/// flask's glass and the liquid in it.
-constexpr godot::real_t k_draw_order_step = 0.25F;
-
-void offset_sorting(godot::Node* node, godot::real_t offset, int depth) {
-    if (depth > 64) {
-        return;
-    }
-    // A nested ordered node orders its own children within this place.
-    const godot::Variant order = bethconv_extras(node).get("draw_order", godot::Variant());
-    if (order.get_type() == godot::Variant::INT || order.get_type() == godot::Variant::FLOAT) {
-        offset += static_cast<godot::real_t>(static_cast<double>(order)) * k_draw_order_step;
-    }
-    if (auto* visual = godot::Object::cast_to<godot::VisualInstance3D>(node); visual != nullptr && offset != 0) {
-        visual->set_sorting_offset(offset);
-    }
-    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
-        offset_sorting(node->get_child(i), offset, depth + 1);
-    }
-}
-
-/// The game draws a BSOrderedNode's children in their order (glass, the
-/// liquid in it, the glass around it), not by depth.
-void apply_draw_order(godot::Node3D* model) { offset_sorting(model, 0, 0); }
 
 skydot::ActorPlan plan_for(const wfb::World& world, const wfb::ActorRef& actor,
                            const std::shared_ptr<AssetCache>& assets) {
@@ -137,11 +88,17 @@ skydot::ActorPlan plan_for(const wfb::World& world, const wfb::ActorRef& actor,
 } // namespace
 
 CellBuilder::CellBuilder(std::shared_ptr<const WorldData> data, ActorPlacement& placement)
-    : data_(std::move(data)), placement_(placement) {}
+    : data_(std::move(data)), placement_(placement), decorator_(data_, options_) {}
 
-void CellBuilder::open(std::shared_ptr<const WorldData> data) { data_ = std::move(data); }
+void CellBuilder::open(std::shared_ptr<const WorldData> data) {
+    data_ = data;
+    decorator_.open(std::move(data));
+}
 
-void CellBuilder::set_assets(std::shared_ptr<AssetCache> assets) { assets_ = std::move(assets); }
+void CellBuilder::set_assets(std::shared_ptr<AssetCache> assets) {
+    assets_ = assets;
+    decorator_.set_assets(std::move(assets));
+}
 
 TerrainBuilder& CellBuilder::terrain_builder() {
     // Made again when the tiling changed: its materials are made for one.
@@ -156,18 +113,16 @@ TerrainBuilder& CellBuilder::terrain_builder() {
 
 ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor, assets_); }
 
-struct CellBuilder::BuildStats {
+/// What a build counts; the models' own counts (materials, billboards, effects, bodies) are
+/// DecorationStats'.
+struct CellBuilder::BuildStats : DecorationStats {
     std::int64_t refs = 0;
     std::int64_t placed = 0;
     std::int64_t lights = 0;
     std::int64_t markers = 0;
     std::int64_t disabled = 0;
     std::int64_t no_base = 0;
-    std::int64_t materials = 0;
-    std::int64_t billboards = 0;
-    std::int64_t effects = 0;
     std::int64_t flickers = 0;
-    std::int64_t bodies = 0;
     std::int64_t actors = 0;
     std::int64_t actor_parts = 0;
     /// Actors not built, by reason ("no NPC_", "no animation skeleton …").
@@ -195,33 +150,6 @@ struct CellBuilder::BuildJob {
     bool water = false;
     std::vector<godot::Ref<godot::Resource>> kept; ///< keep_actor_resources
 };
-
-void CellBuilder::use_water_material(godot::Node* model, std::uint32_t cell) {
-    godot::TypedArray<godot::Node> meshes = model->find_children("*", "MeshInstance3D", true, false);
-    godot::Ref<godot::ShaderMaterial> water;
-    for (int i = 0; i < meshes.size(); ++i) {
-        auto* instance = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
-        if (instance == nullptr || instance->get_mesh().is_null()) {
-            continue;
-        }
-        for (int s = 0; s < instance->get_mesh()->get_surface_count(); ++s) {
-            const godot::Ref<godot::Material> m = instance->get_surface_override_material(s);
-            if (m.is_null() || !m->has_meta("skydot_water")) {
-                continue;
-            }
-            if (water.is_null()) {
-                // The activator's own water type (ACTI WNAM) is not in
-                // world.fb yet: the cell's, else its worldspace's.
-                const auto load = [&](const std::string& vpath) -> godot::Ref<godot::Texture> {
-                    return resource(String::utf8(vpath.c_str()));
-                };
-                const auto space = static_cast<std::uint32_t>(data().cell_space(cell));
-                water = water_.material(data().water_ptr(data().water_type(space, data().cell_ptr(cell))), load);
-            }
-            instance->set_surface_override_material(s, water);
-        }
-    }
-}
 
 void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint32_t cell,
                             BuildStats& stats, bool include_disabled) {
@@ -253,31 +181,8 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                 if (node != nullptr) {
                     node->set_name(name);
                     node->set_transform(transform);
-                    drop_root_transform(node);
-                    apply_draw_order(node);
-                    if (options_.skyrim_materials) {
-                        stats.materials += materials().apply(node);
-                        use_water_material(node, cell);
-                        use_directional_material(node, *base);
-                    }
-                    if (options_.skyrim_materials && options_.effects) {
-                        stats.effects += attach_addons(node);
-                    }
-                    stats.billboards += SkydotBillboard::attach(node);
-                    if (options_.effects) {
-                        (void)materials();
-                        stats.effects += SkydotAnimator::attach(node, materials_);
-                    }
-                    tag_ref(node, ref.id(), cell, activatable(data(), base, cell, ref.id()));
-                    // Doors that swing rather than lead somewhere: actors open
-                    // them in their way (SkydotActor).
-                    if (base != nullptr && door_type(base->type()) && !data().doors().contains(ref.id())) {
-                        node->set_meta("skydot_plain_door", true);
-                    }
-                    // Last, so material and effect passes never see the bodies.
-                    if (const auto& collision = scene->collision(); collision && options_.collision) {
-                        stats.bodies += collision->attach(node);
-                    }
+                    Decoration decoration{stats, &ref, base, cell, scene.ptr()};
+                    decorator_.decorate(node, decoration);
                     root->add_child(node);
                     ++stats.placed;
                 }
@@ -378,69 +283,6 @@ std::int64_t CellBuilder::apply_light_shadows(godot::Node* root, bool all) {
     return changed;
 }
 
-std::int64_t CellBuilder::attach_addons(godot::Node* model) {
-    std::call_once(addon_index_once_, [this] {
-        if (const auto* list = world_fb() != nullptr ? world_fb()->addon_nodes() : nullptr) {
-            for (const auto* a : *list) {
-                if (a->model() != nullptr && a->model()->size() != 0) {
-                    addon_models_.emplace(a->index(), a->model()->str());
-                }
-            }
-        }
-    });
-    if (addon_models_.empty()) {
-        return 0;
-    }
-    std::int64_t attached = 0;
-    const godot::TypedArray<godot::Node> nodes = model->find_children("AddOnNode*", "Node3D", true, false);
-    for (int64_t i = 0; i < nodes.size(); ++i) {
-        auto* node = godot::Object::cast_to<godot::Node3D>(nodes[i]);
-        if (node == nullptr || !node->has_meta("extras")) {
-            continue;
-        }
-        const godot::Variant extras = node->get_meta("extras");
-        const godot::Variant block = extras.get_type() == godot::Variant::DICTIONARY ? Dictionary(extras).get("bethconv", godot::Variant())
-                                                                       : godot::Variant();
-        const godot::Variant index = block.get_type() == godot::Variant::DICTIONARY ? Dictionary(block).get("addon", godot::Variant())
-                                                                      : godot::Variant();
-        if (index.get_type() != godot::Variant::INT && index.get_type() != godot::Variant::FLOAT) {
-            continue;
-        }
-        const auto found = addon_models_.find(static_cast<std::int32_t>(static_cast<std::int64_t>(index)));
-        if (found == addon_models_.end()) {
-            continue;
-        }
-        const godot::Ref<SkydotModel> scene = resource(model_path(found->second));
-        auto* addon = scene.is_valid() ? godot::Object::cast_to<godot::Node3D>(scene->instantiate()) : nullptr;
-        if (addon == nullptr) {
-            continue;
-        }
-        addon->set_name("AddOn");
-        drop_root_transform(addon);
-        apply_draw_order(addon);
-        materials().apply(addon);
-        SkydotBillboard::attach(addon);
-        SkydotAnimator::attach(addon, materials_);
-        // The AddOnNode sits in the model's NIF space (under its axis and
-        // unit conversion), and the addon brings its own conversion: hang it
-        // from the model's root where the AddOnNode is, without converting
-        // twice.
-        godot::Transform3D at;
-        for (godot::Node* n = node; n != nullptr && n != model; n = n->get_parent()) {
-            if (auto* spatial = godot::Object::cast_to<godot::Node3D>(n)) {
-                at = spatial->get_transform() * at;
-            }
-        }
-        if (auto* own = godot::Object::cast_to<godot::Node3D>(addon->get_node_or_null("bethconv_z_up_to_y_up"))) {
-            at = at * own->get_transform().affine_inverse();
-        }
-        addon->set_transform(at);
-        model->add_child(addon);
-        ++attached;
-    }
-    return attached;
-}
-
 GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
     const std::scoped_lock lock(grass_mutex_);
     if (auto it = grass_models_.find(grass.id()); it != grass_models_.end()) {
@@ -486,92 +328,6 @@ GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
     }
     grass_models_.emplace(grass.id(), out);
     return out;
-}
-
-const ProjectedMaterial* CellBuilder::projected_material(std::uint32_t id) {
-    const std::scoped_lock lock(projected_mutex_);
-    if (auto it = projected_.find(id); it != projected_.end()) {
-        return it->second ? &*it->second : nullptr;
-    }
-    const auto* list = world_fb() != nullptr ? world_fb()->material_objects() : nullptr;
-    const auto* mato = lookup(list, id);
-    if (mato == nullptr) {
-        projected_.emplace(id, std::nullopt);
-        return nullptr;
-    }
-    ProjectedMaterial out;
-    // The material's textures are those of its model's first shape. Single
-    // pass materials (the common snow) are one colour, as the game's shader
-    // draws them without projected textures.
-    if (const auto* model = mato->model(); !mato->single_pass() && model != nullptr && model->size() != 0) {
-        const godot::Ref<SkydotModel> scene = resource(model_path(model->string_view()));
-        if (scene.is_valid()) {
-            godot::Node* node = scene->instantiate();
-            const godot::TypedArray<godot::Node> meshes = node != nullptr
-                ? node->find_children("*", "MeshInstance3D", true, false)
-                : godot::TypedArray<godot::Node>();
-            for (int64_t i = 0; i < meshes.size() && out.albedo.is_null(); ++i) {
-                auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
-                if (mesh == nullptr || mesh->get_mesh().is_null() || mesh->get_mesh()->get_surface_count() == 0) {
-                    continue;
-                }
-                const godot::Ref<godot::ShaderMaterial> converted =
-                    materials().convert(mesh->get_mesh()->surface_get_material(0));
-                if (converted.is_valid()) {
-                    out.albedo = converted->get_shader_parameter("albedo_tex");
-                }
-            }
-            if (node != nullptr) {
-                memdelete(node);
-            }
-        }
-    }
-    const auto scale = static_cast<float>(formats::k_metres_per_unit);
-    const auto per_metre = [&](float units) { return units > 0.0F ? 1.0F / (units * scale) : 0.0F; };
-    out.params = godot::Vector4(mato->falloff_scale(), mato->falloff_bias(), per_metre(mato->noise_uv_scale()),
-                                per_metre(mato->material_uv_scale()));
-    // Projected along the vector: faces turned against it take the material
-    // (snow's is straight down).
-    if (const auto* p = mato->projection(); p != nullptr && p->size() >= 3) {
-        const Vector3 game(-p->Get(0), -p->Get(1), -p->Get(2));
-        const Vector3 world(game.x, game.z, -game.y);
-        if (world.length() > 0.001F) {
-            out.direction = world.normalized();
-        }
-    }
-    Vector3 colour(1, 1, 1);
-    if (const auto* c = mato->single_pass_color(); c != nullptr && c->size() >= 3 &&
-                                                   (c->Get(0) > 0.0F || c->Get(1) > 0.0F || c->Get(2) > 0.0F)) {
-        colour = Vector3(c->Get(0), c->Get(1), c->Get(2));
-    }
-    out.color = colour;
-    out.normal_dampener = mato->normal_dampener();
-    return &*projected_.emplace(id, out).first->second;
-}
-
-void CellBuilder::use_directional_material(godot::Node* model, const wfb::Base& base) {
-    if (base.directional_material() == 0) {
-        return;
-    }
-    const ProjectedMaterial* with = projected_material(base.directional_material());
-    if (with == nullptr) {
-        return;
-    }
-    const godot::TypedArray<godot::Node> meshes = model->find_children("*", "MeshInstance3D", true, false);
-    for (int64_t i = 0; i < meshes.size(); ++i) {
-        auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(meshes[i]);
-        if (mesh == nullptr || mesh->get_mesh().is_null()) {
-            continue;
-        }
-        for (int s = 0; s < mesh->get_mesh()->get_surface_count(); ++s) {
-            const godot::Ref<godot::ShaderMaterial> current = mesh->get_surface_override_material(s);
-            const godot::Ref<godot::ShaderMaterial> replaced =
-                materials().projected(current, base.directional_material(), *with);
-            if (replaced != current) {
-                mesh->set_surface_override_material(s, replaced);
-            }
-        }
-    }
 }
 
 Dictionary CellBuilder::stats_dictionary(const BuildStats& stats) const {
@@ -739,10 +495,7 @@ godot::Node3D* CellBuilder::begin_exterior(std::int64_t world, std::int64_t x,
         }
     }
     if (water) {
-        const auto load = [&](const std::string& vpath) -> godot::Ref<godot::Texture> {
-            return resource(String::utf8(vpath.c_str()));
-        };
-        const auto material = water_.material(data().water_ptr(data().water_type(w, cell)), load);
+        const auto material = decorator_.water_material(data().water_ptr(data().water_type(w, cell)));
         godot::Ref<godot::PlaneMesh> plane;
         plane.instantiate();
         const auto side = static_cast<float>(static_cast<double>(k_cell_units) * formats::k_metres_per_unit);
@@ -1113,17 +866,7 @@ std::array<std::string, 2> CellBuilder::land_texture_paths(std::uint32_t id) con
     return {str(it->diffuse()), str(it->normal())};
 }
 
-godot::Ref<godot::Resource> CellBuilder::resource(const String& vpath) const {
-    return assets_ != nullptr ? assets_->get(utf8(vpath)) : godot::Ref<godot::Resource>();
-}
-
-SkydotMaterials& CellBuilder::materials() {
-    if (materials_.is_null()) {
-        materials_.instantiate();
-        materials_->set_assets(assets_);
-    }
-    return *materials_.ptr();
-}
+godot::Ref<godot::Resource> CellBuilder::resource(const String& vpath) const { return decorator_.resource(vpath); }
 
 void CellBuilder::add_ref_resources(const wfb::Ref& ref, godot::PackedStringArray& out) const {
     if (data().initially_disabled(ref)) {
@@ -1264,8 +1007,7 @@ void CellBuilder::trim_cache() {
 
 std::int64_t CellBuilder::warm_up() {
     terrain_builder().warm_up();
-    water_.warm_up();
-    return materials().warm_up() + TerrainBuilder::k_max_layers + 1;
+    return decorator_.warm_up() + TerrainBuilder::k_max_layers + 1;
 }
 
 } // namespace skydot
