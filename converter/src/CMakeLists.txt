@@ -105,13 +105,15 @@ add_library(bethconv_core STATIC
 add_dependencies(bethconv_core bethconv_records_fbs)
 add_library(bethconv::core ALIAS bethconv_core)
 
-# pack/world.hpp has the generated flag enums in its structs, so the generated
-# headers and FlatBuffers are public; pack/snapshot.hpp still hides them behind
-# a pImpl. formats/include/ is the vocabulary both halves share.
+# pack/world.hpp returns the generated object types, so the generated headers
+# and FlatBuffers are public; pack/snapshot.hpp still hides them behind a
+# pImpl. formats/include/ is the vocabulary both halves share. The generated
+# headers are flatc's code, so they stay out of the warning set.
 target_include_directories(bethconv_core
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../formats/include>
-           $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>)
+           $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../formats/include>)
+target_include_directories(bethconv_core SYSTEM
+    PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>)
 
 target_link_libraries(bethconv_core
     PRIVATE bethconv::warnings ZLIB::ZLIB lz4::lz4 bsa::bsa nifly fastgltf::fastgltf nlohmann_json::nlohmann_json
