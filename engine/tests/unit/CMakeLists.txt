@@ -18,6 +18,7 @@ add_executable(skydot_core_tests
     test_mapped_file.cpp
     test_packages.cpp
     test_vm.cpp
+    test_vm_bench.cpp
     test_vm_objects.cpp
     test_vm_save.cpp
     test_vm_threads.cpp
