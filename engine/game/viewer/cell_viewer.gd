@@ -116,7 +116,7 @@ var _build_budget_usec := 8000  # per frame for streaming cells in
 const LOD_BUDGET_USEC := 3000
 const EYE_HEIGHT := 1.7
 const REACH := 2.6  # metres the camera can activate from
-var _args: Dictionary
+var _settings: ViewerSettings
 var _world: SkydotWorld
 var _world_id := 0  # the worldspace being streamed, or 0 inside
 var _radius := 2
@@ -137,8 +137,6 @@ var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
 var _lod: SkydotLod  # the worldspace's LOD, or null
 var _lod_split := 1.5  # SkydotLod.split_distance for every LOD made
-const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
-const MSAA_NAMES := ["off", "2", "4", "8"]
 var _preload_doors := true  # build the place behind a near load door ahead
 var _preload_distance := 15.0  # metres
 const PREPARE_BUDGET_USEC := 4000
@@ -178,34 +176,23 @@ var _shot_note_json := ""  # the shot the note goes to
 var _shot_note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
 var _image_space: SkydotImageSpace
 var _cell_image_space := {}  # inside: the cell's IMGS, if it has one
-const SHOT_FORMAT := 1
 
 
 func _ready() -> void:
-	_args = _parse_args(OS.get_cmdline_user_args())
-	if _args.has("from-shot"):
-		var from := _args_from_shot(_args["from-shot"])
-		if from.is_empty():
-			_fail("cannot read the shot " + _args["from-shot"])
-			return
-		var shot_note: String = from.get("note", "")
-		from.erase("note")
-		from.merge(_args, true)  # the command line wins
-		_args = from
-		if not shot_note.is_empty():
-			print("shot note: ", shot_note)
-	var args := _args
-	_hour = float(args.get("time", "12"))
-	if not args.has("pack") or not (args.has("cell") or args.has("world")):
-		_fail("usage: -- --pack DIR (--cell EDITOR_ID | --world EDITOR_ID --at X,Y,Z)"
-			+ " [--screenshot out.png]")
+	_settings = ViewerSettings.from_arguments(OS.get_cmdline_user_args())
+	var settings := _settings
+	if not settings.shot_note.is_empty():
+		print("shot note: ", settings.shot_note)
+	if not settings.error.is_empty():
+		_fail(settings.error)
 		return
+	_hour = settings.time
 
 	var pack := SkydotPack.new()
-	if pack.open(args["pack"]) != OK:
+	if pack.open(settings.pack) != OK:
 		_fail(pack.get_error())
 		return
-	if args.has("pck"):
+	if settings.has_pck:
 		push_warning("--pck is ignored: packs load directly, there is no bake any more")
 	var world := pack.open_world()
 	if world == null:
@@ -246,44 +233,39 @@ func _ready() -> void:
 		print("effect shader 0x%08X %s on 0x%08X (not drawn yet)" % [shader, "plays" if playing else "stops", ref]))
 	_papyrus.trigger.connect(func(ref: int, _actor: int, entered: bool) -> void:
 		print("%s trigger 0x%08X" % ["entered" if entered else "left", ref]))
-	world.skyrim_materials = args.get("materials", "on") != "off"
-	world.effects = args.get("effects", "on") != "off"
-	world.grass = args.get("grass", "on") != "off"
-	world.all_light_shadows = args.get("light-shadows", "game") == "all"
-	world.collision = args.get("collision", "on") != "off"
-	world.navigation = args.get("navigation", "on") != "off"
-	world.actors = args.get("actors", "on") != "off"
-	_shot_delay = float(args.get("shot-delay", "0"))
-	var captures := args.has("screenshot") or args.has("benchmark")
-	world.actor_wander = args.get("wander", "off" if captures else "on") != "off"
-	if args.get("ai", "on") != "off":
+	world.skyrim_materials = settings.materials
+	world.effects = settings.effects
+	world.grass = settings.grass
+	world.all_light_shadows = settings.all_light_shadows
+	world.collision = settings.collision
+	world.navigation = settings.navigation
+	world.actors = settings.actors
+	_shot_delay = settings.shot_delay
+	world.actor_wander = settings.wander
+	if settings.ai:
 		_ai = SkydotAi.new()
 		if _ai.setup(world, _papyrus) == OK:
 			_ai.days = _day + _hour / 24.0
 			_ai.drive = world.actor_wander
-			_ai.time_scale = 0.0 if captures else float(args.get("time-scale", "20"))
+			_ai.time_scale = 0.0 if settings.captures else settings.time_scale
 			_ai.actor_arrived.connect(_on_actor_arrived)
 			_ai.actor_left.connect(func(ref: int, _door: int) -> void:
 				print("0x%08X leaves through a door" % ref))
 		else:
 			_ai = null
-	_radius = int(args.get("radius", "2"))
-	_lod_split = float(args.get("lod-split", "1.5"))
-	var msaa: int = MSAA_NAMES.find(args.get("msaa", "off"))
-	get_viewport().msaa_3d = MSAA_STEPS[maxi(msaa, 0)]
-	_build_budget_usec = int(args.get("build-budget", "8000"))
-	if args.has("tiling"):
-		world.terrain_tiling = float(args["tiling"])
-	_pick_locks = args.get("pick-locks", "off") != "off"
-	_preload_doors = args.get("preload-doors", "off" if captures else "on") != "off"
-	_preload_distance = float(args.get("preload-distance", "15"))
+	_radius = settings.radius
+	_lod_split = settings.lod_split
+	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[settings.msaa_index]
+	_build_budget_usec = settings.build_budget_usec
+	if settings.has_tiling:
+		world.terrain_tiling = settings.tiling
+	_pick_locks = settings.pick_locks
+	_preload_doors = settings.preload_doors
+	_preload_distance = settings.preload_distance
 	# Runs that capture, measure or activate on their own ignore the keyboard
 	# and mouse, so a stray touch cannot move the view.
-	_input = not (args.has("screenshot") or args.has("benchmark") or args.has("activate")
-		or args.has("no-input"))
-	if args.has("activate"):
-		for id in args["activate"].split(","):
-			_script_activations.append(id.hex_to_int() if id.begins_with("0x") else int(id))
+	_input = settings.interactive
+	_script_activations = settings.activate.duplicate()
 
 	_camera = Camera3D.new()
 	_camera.near = 0.05
@@ -292,14 +274,13 @@ func _ready() -> void:
 	_image_space = SkydotImageSpace.new()
 	_camera.compositor = Compositor.new()
 	_camera.compositor.compositor_effects = [_image_space]
-	if args.has("fov"):  # vertical, degrees
-		_camera.fov = float(args["fov"])
+	if settings.has_fov:  # vertical, degrees
+		_camera.fov = settings.fov
 	add_child(_camera)
 	_player = SkydotPlayer.new()
 	_player.name = "player"
 	_player.eye_height = EYE_HEIGHT
-	_player.fly = args.get("walk", "on") == "off" or args.get("collision", "on") == "off" \
-		or args.has("benchmark") or args.has("screenshot")
+	_player.fly = settings.fly
 	add_child(_player)
 	var overlay := CanvasLayer.new()
 	_overlay = overlay
@@ -327,12 +308,12 @@ func _ready() -> void:
 	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
-	if args.get("quests", "on") != "off":
+	if settings.quests:
 		var started := _papyrus.start_game_enabled_quests()
 		print("quests: %d of %d started with the game" % [started, world.get_quest_count()])
 	_quests_ready = true
-	if args.has("set-stage"):
-		for item in args["set-stage"].split(","):
+	if not settings.set_stage.is_empty():
+		for item in settings.set_stage.split(","):
 			var parts: PackedStringArray = item.split(":")
 			var quest := world.find_quest(parts[0])
 			if quest == 0 or parts.size() != 2:
@@ -341,33 +322,33 @@ func _ready() -> void:
 			if not _papyrus.set_stage(quest, int(parts[1])):
 				print("%s: stage %s refused" % [parts[0], parts[1]])
 
-	if args.has("world"):
-		var world_id := world.find_world(args["world"])
+	if not settings.world.is_empty():
+		var world_id := world.find_world(settings.world)
 		if world_id == 0:
-			_fail("no worldspace named " + args["world"])
+			_fail("no worldspace named " + settings.world)
 			return
-		if not args.has("at"):
+		if not settings.has_at:
 			_fail("--world needs --at X,Y,Z")
 			return
 		var started := Time.get_ticks_usec()
 		var variants := world.warm_up()
 		print("warm_up: %d shader variants in %.0f ms" % [variants, (Time.get_ticks_usec() - started) / 1000.0])
-		var at := SkydotWorld.skyrim_position(_vec3(args["at"]))
-		var target = SkydotWorld.skyrim_position(_vec3(args["target"])) if args.has("target") else null
+		var at := SkydotWorld.skyrim_position(settings.at)
+		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
 		if not _enter_exterior(world_id, at, target):
 			return
-		if args.has("look"):
-			_look_game(args["look"])
+		if settings.has_look:
+			_apply_look(settings.look_yaw, settings.look_pitch)
 		_speed = 10.0
-		if args.has("benchmark"):
-			_benchmark = float(args["benchmark"])
+		if settings.has_benchmark:
+			_benchmark = settings.benchmark
 			_stream_max_usec = 0
-			_fly_speed = float(args.get("fly-speed", "20"))
+			_fly_speed = settings.fly_speed
 			while _stream_step():
 				OS.delay_msec(5)
 			while _lod != null and _lod.update(_camera.global_position, 1000000) > 0:
 				OS.delay_msec(5)
-		if args.has("screenshot"):
+		if settings.has_screenshot:
 			# Everything in range first, so the capture is complete.
 			while _stream_step():
 				OS.delay_msec(5)
@@ -375,28 +356,28 @@ func _ready() -> void:
 				OS.delay_msec(5)
 			if _lod != null:
 				print("lod: ", _lod.get_stats())
-			_shot_path = args["screenshot"]
+			_shot_path = settings.screenshot
 			_shots.append(null)
 		return
 
-	var cell_id := world.find_cell(args["cell"])
+	var cell_id := world.find_cell(settings.cell)
 	if cell_id == 0:
-		_fail("no cell named " + args["cell"])
+		_fail("no cell named " + settings.cell)
 		return
-	var fixed_view := args.has("at") and args.has("target")
+	var fixed_view := settings.has_at and settings.has_target
 	if fixed_view:
-		_enter_interior(cell_id, SkydotWorld.skyrim_position(_vec3(args["at"])),
-			SkydotWorld.skyrim_position(_vec3(args["target"])))
+		_enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at),
+			SkydotWorld.skyrim_position(settings.target))
 	else:
-		_enter_interior(cell_id, SkydotWorld.skyrim_position(_vec3(args["at"])) if args.has("at") else null, null)
-	if args.has("look"):
-		_look_game(args["look"])
-	if args.has("load"):
-		_load_game(args["load"])
+		_enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
+	if settings.has_look:
+		_apply_look(settings.look_yaw, settings.look_pitch)
+	if not settings.load_path.is_empty():
+		_load_game(settings.load_path)
 
-	if args.has("screenshot"):
-		_shot_path = args["screenshot"]
-		if fixed_view or (args.has("at") and args.has("look")):  # --look: a shot's view
+	if settings.has_screenshot:
+		_shot_path = settings.screenshot
+		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
 			_shots.append(null)
 		else:
 			for i in 4:
@@ -498,13 +479,13 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 		_ai.set_space(world_id)
 		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var weather := 0
-	if _args.has("weather"):
-		weather = _world.find_weather(_args["weather"])
+	if not _settings.weather.is_empty():
+		weather = _world.find_weather(_settings.weather)
 		if weather == 0:
-			_fail("no weather named " + _args["weather"])
+			_fail("no weather named " + _settings.weather)
 			return false
 	if not _start_weather(weather):
-		_add_sky(_world.get_sky(_world_id, _hour, weather), _args.get("shadows", "on") != "off")
+		_add_sky(_world.get_sky(_world_id, _hour, weather), _settings.shadows)
 	_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
 	_place_camera(at, target)
 	var lod: SkydotLod = prepared.get("lod")
@@ -538,7 +519,7 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 ## The worldspace's LOD, set up as the options say; null if it has none or
 ## --lod off.
 func _make_lod(world_id: int) -> SkydotLod:
-	if _args.get("lod", "on") == "off":
+	if not _settings.lod:
 		return null
 	var lod := SkydotLod.new()
 	if lod.setup(_pack, _world, world_id) != OK:
@@ -547,8 +528,8 @@ func _make_lod(world_id: int) -> SkydotLod:
 		return null
 	lod.name = "lod"
 	lod.split_distance = _lod_split
-	if _args.has("tree-distance"):
-		lod.tree_distance = float(_args["tree-distance"])
+	if _settings.has_tree_distance:
+		lod.tree_distance = _settings.tree_distance
 	return lod
 
 
@@ -1153,9 +1134,8 @@ func _start_weather(weather: int) -> bool:
 	node.hour = _hour
 	node.day = _day
 	# Screenshots and benchmarks stand still.
-	var still := _args.has("screenshot") or _args.has("benchmark")
-	node.time_scale = 0.0 if still else float(_args.get("time-scale", "20"))
-	node.shadows = _args.get("shadows", "on") != "off"
+	node.time_scale = 0.0 if _settings.captures else _settings.time_scale
+	node.shadows = _settings.shadows
 	if weather != 0:
 		node.auto_weather = false
 	_add_to_place(node)
@@ -1276,7 +1256,7 @@ func _process(delta: float) -> void:
 		return
 	# Our shaders compute the fog themselves (SkydotMaterials.sync_fog).
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
-	if _args.get("image-space", "on") == "off":
+	if not _settings.image_space:
 		_image_space.clear()
 	elif _weather != null and is_instance_valid(_weather):
 		_image_space.set_image_space(_weather.get_image_space())
@@ -1309,7 +1289,7 @@ func _process(delta: float) -> void:
 			_ai.time_scale = 0.0
 			_ai.days = _weather.day + _weather.hour / 24.0
 		else:
-			_ai.time_scale = float(_args.get("time-scale", "20")) if _shot_path == "" and _benchmark <= 0.0 else 0.0
+			_ai.time_scale = _settings.time_scale if _shot_path == "" and _benchmark <= 0.0 else 0.0
 			_hour = _ai.get_hour()
 			_day = int(_ai.days)
 		_ai.update(delta)
@@ -1317,8 +1297,8 @@ func _process(delta: float) -> void:
 	if _quit_in >= 0:
 		_quit_in -= 1
 		if _quit_in < 0:
-			if _args.has("save-to"):
-				_save_game(_args["save-to"])
+			if not _settings.save_to.is_empty():
+				_save_game(_settings.save_to)
 			get_tree().quit(0)
 		return
 	if not _script_activations.is_empty():
@@ -1413,9 +1393,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
 		_note("full detail within %d cells (%d x %d)" % [_radius, 2 * _radius + 1, 2 * _radius + 1])
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_M:
-		var next: int = (MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % MSAA_STEPS.size()
-		get_viewport().msaa_3d = MSAA_STEPS[next]
-		_note("MSAA " + ("off" if next == 0 else MSAA_NAMES[next] + "x"))
+		var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
+		get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
+		_note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_V:
 		_player.fly = not _player.fly
 		if not _player.fly:
@@ -1620,14 +1600,6 @@ func _position_text() -> String:
 		fposmod(-rad_to_deg(_yaw), 360.0), -rad_to_deg(_pitch)]
 
 
-## Face the way the game's angles say: "Z,X" in degrees, Z clockwise from
-## north, X positive looking down.
-func _look_game(text: String) -> void:
-	var parts := text.split(",")
-	var pitch := -deg_to_rad(float(parts[1])) if parts.size() > 1 else 0.0
-	_apply_look(-deg_to_rad(float(parts[0])), pitch)
-
-
 ## The scripts' state and where the camera is.
 func _save_game(path: String) -> void:
 	var state := {
@@ -1699,7 +1671,7 @@ func _capture_shot(hide_overlay: bool) -> void:
 		await RenderingServer.frame_post_draw
 	var image := get_viewport().get_texture().get_image()
 	_overlay.visible = true
-	var dir: String = _args.get("shot-dir", "user://screenshots")
+	var dir := _settings.shot_dir
 	DirAccess.make_dir_recursive_absolute(dir)
 	var stem := dir.path_join("shot_" + Time.get_datetime_string_from_system().replace(":", "").replace("-", "").replace("T", "_"))
 	var base := stem
@@ -1720,7 +1692,7 @@ func _capture_shot(hide_overlay: bool) -> void:
 		return
 	WorkerThreadPool.add_task(func() -> void: image.save_png(png))
 	_note("screenshot: " + ProjectSettings.globalize_path(png))
-	if _args.get("shot-notes", "on") == "off" or DisplayServer.get_name() == "headless":
+	if not _settings.shot_notes or DisplayServer.get_name() == "headless":
 		_shot_busy = false
 		return
 	_ask_shot_note(base + ".json")
@@ -1825,7 +1797,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	else:
 		time = {"hour": _hour, "day": _day}  # inside: kept for when one leaves
 	console.append("tm")
-	var pack_dir: String = _args.get("pack", "")
+	var pack_dir := _settings.pack
 	var manifest = JSON.parse_string(FileAccess.get_file_as_string(pack_dir.path_join("manifest.json")))
 	var pack := {"path": ProjectSettings.globalize_path(pack_dir)}
 	if manifest is Dictionary:
@@ -1835,7 +1807,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		pack["input"] = manifest.get("input", {})
 	var size := get_viewport().get_visible_rect().size
 	return {
-		"format": SHOT_FORMAT,
+		"format": ViewerSettings.SHOT_FORMAT,
 		"taken": Time.get_datetime_string_from_system(),
 		"place": place,
 		"camera": {
@@ -1859,8 +1831,8 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"lod": _lod != null,
 			"radius": _radius,
 			"lod_split": _lod_split,
-			"msaa": MSAA_NAMES[maxi(MSAA_STEPS.find(get_viewport().msaa_3d), 0)],
-			"quests": _args.get("quests", "on") != "off",
+			"msaa": ViewerSettings.MSAA_NAMES[maxi(ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d), 0)],
+			"quests": _settings.quests,
 			"overlay_hidden": overlay_hidden,
 		},
 		"pack": pack,
@@ -1874,70 +1846,6 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		},
 		"game_console": console,
 	}
-
-
-## Viewer arguments that come back to a shot's view (--from-shot), with time
-## stopped there. {} if the file is not a shot.
-func _args_from_shot(path: String) -> Dictionary:
-	if not FileAccess.file_exists(path):
-		return {}
-	var shot = JSON.parse_string(FileAccess.get_file_as_string(path))
-	if not shot is Dictionary or int(shot.get("format", 0)) != SHOT_FORMAT:
-		return {}
-	var out := {}
-	var pack_path: String = shot.get("pack", {}).get("path", "")
-	if not pack_path.is_empty():
-		out["pack"] = pack_path
-	var place: Dictionary = shot.get("place", {})
-	var game: Dictionary = shot.get("camera", {}).get("game", {})
-	if place.get("kind") == "exterior":
-		out["world"] = place.get("world", "")
-	else:
-		out["cell"] = place.get("cell", "")
-	if not game.is_empty():
-		out["at"] = "%f,%f,%f" % [game["x"], game["y"], game["z"]]
-		out["look"] = "%f,%f" % [game["heading"], game["tilt"]]
-	var time: Dictionary = shot.get("time", {})
-	if time.has("hour"):
-		out["time"] = str(time["hour"])
-	out["time-scale"] = "0"
-	var weather: Dictionary = shot.get("weather", {})
-	if not str(weather.get("editor_id", "")).is_empty():
-		out["weather"] = weather["editor_id"]
-	var viewer: Dictionary = shot.get("viewer", {})
-	if viewer.get("flying", false):
-		out["walk"] = "off"
-	if viewer.has("radius"):
-		out["radius"] = str(viewer["radius"])
-	if viewer.has("lod_split"):
-		out["lod-split"] = str(viewer["lod_split"])
-	if viewer.has("msaa"):
-		out["msaa"] = str(viewer["msaa"])
-	if viewer.get("quests", true) == false:
-		out["quests"] = "off"
-	if viewer.get("materials", true) == false:
-		out["materials"] = "off"
-	if not str(shot.get("note", "")).is_empty():
-		out["note"] = shot["note"]
-	return out
-
-
-func _vec3(text: String) -> Vector3:
-	var parts := text.split(",")
-	return Vector3(float(parts[0]), float(parts[1]), float(parts[2]))
-
-
-func _parse_args(list: PackedStringArray) -> Dictionary:
-	var out := {}
-	var i := 0
-	while i < list.size():
-		var key := list[i]
-		if key.begins_with("--") and i + 1 < list.size():
-			out[key.substr(2)] = list[i + 1]
-			i += 2
-		else:
-			i += 1
-	return out
 
 
 func _fail(message: String) -> void:
