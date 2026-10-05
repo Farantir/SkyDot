@@ -18,17 +18,28 @@ std::uint32_t CollectContext::global(const record::MergedRecord& merged, record:
     return resolved->value;
 }
 
-std::vector<record::Script> CollectContext::global_scripts(const record::MergedRecord& merged,
-                                                           record::ScriptData data,
-                                                           bool& failed) const {
-    for (auto& script : data.scripts) {
-        for (auto& property : script.properties) {
-            for (auto& object : property.objects) {
-                object.form = record::FormId{global(merged, object.form, failed)};
+std::vector<std::unique_ptr<wfb::ScriptT>> CollectContext::global_scripts(
+    const record::MergedRecord& merged, const record::ScriptData& data, bool& failed) const {
+    std::vector<std::unique_ptr<wfb::ScriptT>> out;
+    out.reserve(data.scripts.size());
+    for (const auto& script : data.scripts) {
+        auto& s = out.emplace_back(std::make_unique<wfb::ScriptT>());
+        s->name = script.name;
+        s->status = static_cast<wfb::ScriptStatus>(script.status);
+        for (const auto& p : script.properties) {
+            auto& t = s->properties.emplace_back(std::make_unique<wfb::ScriptPropertyT>());
+            t->name = p.name;
+            t->type = static_cast<std::uint8_t>(p.type);
+            t->status = p.status;
+            for (const auto& o : p.objects) {
+                t->objects.emplace_back(global(merged, o.form, failed), o.alias);
             }
+            t->strings = p.strings;
+            t->ints = p.integers;
+            t->floats = p.floats;
         }
     }
-    return std::move(data.scripts);
+    return out;
 }
 
 std::vector<std::uint32_t> CollectContext::global_all(const record::MergedRecord& merged,

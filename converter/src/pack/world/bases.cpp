@@ -95,7 +95,7 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
     };
     bool failed = false;
     bases_[merged.form.value].scripts =
-        shared_.global_scripts(merged, std::move(light->scripts), failed);
+        shared_.global_scripts(merged, light->scripts, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -156,7 +156,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         .model = path.empty() ? std::string{} : model_vpath(path),
         .light = std::nullopt,
         .flags = flags,
-        .scripts = shared_.global_scripts(merged, std::move(scripts), failed),
+        .scripts = shared_.global_scripts(merged, scripts, failed),
         .record_flags = static_cast<wfb::RecordFlags>(merged.flags),
         .directional_material =
             material != 0 ? shared_.global(merged, record::FormId{material}, failed) : 0,

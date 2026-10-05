@@ -19,7 +19,9 @@ foreach(schema IN ITEMS records world script lod animation)
     set(header "${BETHCONV_FB_DIR}/${schema}_generated.h")
     set(flatc_flags --cpp --cpp-std c++17 --scoped-enums)
     if(schema STREQUAL "world")
-        list(APPEND flatc_flags --gen-object-api)
+        # --force-empty: Pack writes a string or vector the object holds empty,
+        # as the hand-written writers did, instead of leaving it out.
+        list(APPEND flatc_flags --gen-object-api --force-empty)
     endif()
     add_custom_command(
         OUTPUT "${header}"

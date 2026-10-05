@@ -17,6 +17,7 @@
 #include <array>
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -69,7 +70,7 @@ struct BaseEntry {
     std::string model;
     std::optional<WorldLight> light;
     std::uint32_t flags{};
-    std::vector<record::Script> scripts;
+    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
     wfb::RecordFlags record_flags{};
     std::uint32_t directional_material{};
     float directional_max_angle{};

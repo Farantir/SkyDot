@@ -9,6 +9,7 @@
 #include "bethconv/record/vmad.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -23,7 +24,8 @@ template <typename Pack, typename Record>
 }
 
 [[nodiscard]] flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>>
-write_scripts(flatbuffers::FlatBufferBuilder& builder, const std::vector<record::Script>& scripts);
+write_scripts(flatbuffers::FlatBufferBuilder& builder,
+              const std::vector<std::unique_ptr<wfb::ScriptT>>& scripts);
 
 [[nodiscard]] wfb::Vec3f to_fb(const record::Vec3& v);
 

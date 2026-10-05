@@ -300,7 +300,7 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
     if (!ref->scripts.empty()) {
         extras.scripts.push_back(WorldRefScripts{
             .ref = out.id,
-            .scripts = shared_.global_scripts(merged, std::move(ref->scripts), failed),
+            .scripts = shared_.global_scripts(merged, ref->scripts, failed),
         });
     }
     if (ref->has_radius || ref->light_data.size() >= 16) {

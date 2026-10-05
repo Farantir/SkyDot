@@ -46,7 +46,7 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
         .priority = q->priority,
         .type = q->type,
         .event = q->event.value,
-        .scripts = shared_.global_scripts(merged, std::move(q->scripts), failed),
+        .scripts = shared_.global_scripts(merged, q->scripts, failed),
         .fragment_script = q->fragments.script,
         .fragments = {},
         .stages = {},
@@ -107,7 +107,7 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
                 static_cast<std::uint32_t>(attached.alias.alias) == alias.id) {
                 record::ScriptData data_for_alias;
                 data_for_alias.scripts = std::move(attached.scripts);
-                a.scripts = shared_.global_scripts(merged, std::move(data_for_alias), failed);
+                a.scripts = shared_.global_scripts(merged, data_for_alias, failed);
             }
         }
         out.aliases.push_back(std::move(a));

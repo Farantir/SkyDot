@@ -6,6 +6,7 @@
 #pragma once
 
 #include "bethconv/pack/world.hpp"
+#include "bethconv/pack/world_generated.h"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/types.hpp"
@@ -13,6 +14,7 @@
 #include "skydot_formats/vpath.hpp"
 
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -35,10 +37,9 @@ public:
     [[nodiscard]] std::uint32_t global(const record::MergedRecord& merged, record::FormId local,
                                        bool& failed) const;
 
-    /// Script data with object properties made global.
-    [[nodiscard]] std::vector<record::Script> global_scripts(const record::MergedRecord& merged,
-                                                             record::ScriptData data,
-                                                             bool& failed) const;
+    /// Script data as world.fb's tables, with object properties made global.
+    [[nodiscard]] std::vector<std::unique_ptr<wfb::ScriptT>> global_scripts(
+        const record::MergedRecord& merged, const record::ScriptData& data, bool& failed) const;
 
     [[nodiscard]] std::vector<std::uint32_t> global_all(const record::MergedRecord& merged,
                                                         const std::vector<record::FormId>& forms,

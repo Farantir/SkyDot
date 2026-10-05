@@ -117,7 +117,7 @@ struct WorldDoor {
 /// Scripts of one reference. FormIDs in properties are global.
 struct WorldRefScripts {
     std::uint32_t ref{};
-    std::vector<record::Script> scripts;
+    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
 };
 
 struct WorldLock {
@@ -384,7 +384,7 @@ struct WorldQuestAlias {
     std::uint32_t create_at{};
     std::uint16_t conditions{};
     std::uint32_t display_name{};
-    std::vector<record::Script> scripts;
+    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
 };
 struct WorldQuestLogEntry {
     wfb::LogEntryFlags flags{};
@@ -415,7 +415,7 @@ struct WorldQuest {
     std::uint8_t priority{};
     std::uint32_t type{};
     std::uint32_t event{};
-    std::vector<record::Script> scripts;
+    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
     std::string fragment_script;
     std::vector<WorldQuestFragment> fragments;
     std::vector<WorldQuestStage> stages;
