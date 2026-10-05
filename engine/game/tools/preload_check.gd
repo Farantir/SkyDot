@@ -12,7 +12,7 @@
 # streams, then 120 settled frames. Exits 1 if no load door is in the place.
 extends SceneTree
 
-var _viewer: Node
+var _viewer  # the viewer scene, driven through its script variables
 var _frames := 0
 var _door := {}
 var _waited := 0.0
