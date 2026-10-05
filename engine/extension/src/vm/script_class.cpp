@@ -80,6 +80,9 @@ std::unique_ptr<ScriptClass> ScriptClass::load(std::vector<std::uint8_t> bytes, 
 
 bool ScriptClass::read(std::string& error) {
     if (const auto* strings = root_->strings()) {
+        strings_.reserve(strings->size());
+        lower_.reserve(strings->size());
+        lower_hash_.reserve(strings->size());
         for (const auto* s : *strings) {
             strings_.push_back(s->str());
             lower_.push_back(to_lower(strings_.back()));
@@ -245,6 +248,9 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
         out.offsets.push_back(begin);
     }
     out.offsets.push_back(count == 0 ? 0 : f.arg_offsets()->Get(static_cast<flatbuffers::uoffset_t>(count)));
+    // An identifier resolves once per function, however often it is used.
+    std::vector<Slot> resolved(strings_.size());
+    std::vector<bool> is_resolved(strings_.size(), false);
     for (std::size_t a = 0; a < nargs; ++a) {
         const auto* v = f.args()->Get(static_cast<flatbuffers::uoffset_t>(a));
         if (v->type() > k_bool || ((v->type() == k_identifier || v->type() == k_string) && !ok(v->data()))) {
@@ -253,7 +259,9 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
         }
         out.args.push_back(*v);
         Slot slot;
-        if (v->type() == k_identifier) {
+        if (v->type() == k_identifier && is_resolved[v->data()]) {
+            slot = resolved[v->data()];
+        } else if (v->type() == k_identifier) {
             const auto& id = lower_[v->data()];
             slot = {Slot::Type::name, v->data()};
             for (std::uint32_t r = 0; r < out.reg_names.size(); ++r) {
@@ -275,6 +283,8 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
             } else if (slot.type == Slot::Type::name && id == "::state") {
                 slot = {Slot::Type::state, 0};
             }
+            resolved[v->data()] = slot;
+            is_resolved[v->data()] = true;
         }
         if (v->type() != k_identifier) {
             slot = {Slot::Type::literal, static_cast<std::uint32_t>(out.literals.size())};
