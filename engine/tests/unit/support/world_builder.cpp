@@ -68,7 +68,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     for (const auto& c : by_id(spec.cells)) {
         std::vector<wfb::Ref> refs;
         for (const std::uint32_t id : std::set(c.refs.begin(), c.refs.end())) {
-            refs.emplace_back(id, 0, wfb::Vec3f(), wfb::Vec3f(), 1.0F, wfb::RefFlags{}, 0);
+            refs.emplace_back(id, std::uint32_t{0}, wfb::Vec3f(), wfb::Vec3f(), 1.0F, wfb::RefFlags{}, std::uint32_t{0});
         }
         const auto refs_v = fbb.CreateVectorOfStructs(refs);
         wfb::CellBuilder cell(fbb);
