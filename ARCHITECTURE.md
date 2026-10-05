@@ -93,14 +93,15 @@ SkyDot/
 │   ├── extension/src/data/           world.fb as read: WorldData, helpers, ActorPlan (~900)
 │   ├── extension/src/build/          CellBuilder, model decoration, reference helpers (~2,100)
 │   ├── extension/src/world/          SkydotWorld and its queries (~1,900)
-│   ├── extension/src/render/         materials, terrain, water, grass, LOD, weather, effects (~7,300)
+│   ├── extension/src/render/         materials, terrain, water, grass, LOD, weather, effects (~6,500)
 │   ├── extension/src/physics/        collision bodies, the player (~1,250)
 │   ├── extension/src/actors/         actors, their animation, locomotion, places (~1,600)
 │   ├── extension/src/nav/            navigation regions (~270)
 │   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
 │   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
 │   ├── extension/src/register_types.*  GDExtension entry point
-│   ├── game/                         Godot project: pack tool, viewer, tools (~4,700)
+│   ├── game/                         Godot project: pack tool, viewer, tools (~5,000)
+│   ├── game/shaders/                 the shaders, as text files the render/ code assembles (~1,200)
 │   ├── tests/smoke/                  headless Godot tests (~2,400)
 │   ├── docs/                         subsystem notes (~1,100)
 │   └── extern/                       submodules: godot-cpp, flatbuffers
@@ -802,11 +803,32 @@ caller begins a build only when nothing would load on the main thread.
     falloff, blend modes;
   - *refraction*.
 
-  Shaders are generated as strings in C++ (`k_lighting_body`,
-  `k_effect_body`, ...), specialised with `#define`-style prefixes per
-  feature set, and cached per variant. `warm_up()` compiles every variant
-  up front. Converted materials are cached per source material, so
-  instances share them.
+  The shader code is in files (the next bullet); C++ prepends
+  `shader_type`, `render_mode` and `#define` lines per feature set, adds the
+  fog and ambient, and caches a `Shader` per variant. `warm_up()` creates
+  every variant up front. Converted materials are cached per source
+  material, so instances share them.
+- **Shader files** (`game/shaders/`, `render/shader_source.*`). Every
+  shader's text lives in `engine/game/shaders/`, not in C++ strings:
+  `.gdshader` for a whole shader, `.gdshaderinc` for a fragment the C++ puts
+  after other text, `.comp` for the image space's GLSL. `shader_source::load`
+  reads `res://shaders/<name>` through `FileAccess` once per process, cuts
+  the `/* ... */` header comment each file starts with (it says which C++
+  assembles the file), and reports a missing file with `push_error` and an
+  empty shader. The code that assembles variants is unchanged:
+  `lighting_code`, `effect_code`, `with_game_fog` and `with_game_ambient` in
+  `materials.cpp` (the fog and ambient lines they insert are still C++),
+  `TerrainBuilder::shader_code` (two `%LAYER_...%` marker lines in the file
+  are filled per layer count), `WaterMaterials::shader_code`, `lod_code` in
+  `lod.cpp`, and `weather.cpp`, `particles.cpp` and `image_space.cpp`. The
+  files are plain text, not imported, so they work headless and ride in the
+  `.pck` (the `.comp` files need a non-resource filter in an export preset).
+  `SkydotMaterials.shader_sources()` returns the final code of every shader
+  the engine can produce, and `game/tools/shader_dump.gd` prints a hash of
+  each: moving shader text is proved by identical dumps before and after
+  (`smoke_shaders` checks that none is empty). The next step is Godot's own
+  `#include` and `#define`; that changes the code strings, so only
+  `--from-shot` re-renders can verify it (`game/shaders/README.md`).
 - **Gamma-space lighting.** Light colours and blending follow the game's
   gamma-space arithmetic (`set_game_light`). The
   `SkydotImageSpace` compositor effect then applies the game's ISHDR
@@ -999,7 +1021,9 @@ One ~1,900-line script that is in effect the game loop. It handles:
   user's mouse does not interfere. `scene_dump` is a scene oracle: it
   builds interiors and exterior blocks, pauses the tree and prints a canonical
   text dump of every node, so a refactor of the builders is proved by
-  diffing two dumps.
+  diffing two dumps. `shader_dump` is the shader oracle: it hashes the code of
+  every shader the engine can produce, including those no scene reaches (sky,
+  LOD, particles, image space).
 - `engine/tests/smoke/*.gd`: headless editor runs registered with ctest (see
   section 12).
 
@@ -1107,7 +1131,7 @@ Readers refuse unknown versions and say which numbers they read.
 | Corpus | `converter/tests/corpus/` | real installs from `$SKYRIM_DATA_{LE,SE,VR}`, recording only counts, versions and hashes (`corpus-expectations.json`); skipped when unset |
 | Fuzz | `converter/tests/fuzz/` | libFuzzer targets for ESM, BSA, NIF, DDS, PEX, HKX, strings, snapshot, LOD, assets, forms; also replayed as normal tests with seeds |
 | Test pack | `converter/tools/testpack/`, `tests/testpack/` | a complete synthetic pack (meshes, a cube map, cells, doors, a lock, a lever with scripts, a quest); a determinism check builds it twice and compares |
-| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, pack tool |
+| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool |
 | Viewer runs | `engine/tests/CMakeLists.txt` | the viewer walks through doors, locked doors, a lever, `--from-shot`, save and load |
 | Visual | F12 shots and `COMPARISON-SHOTS.md` (outside the repo) | rendering compared with game screenshots by hand |
 
@@ -1122,7 +1146,7 @@ Readers refuse unknown versions and say which numbers they read.
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
-| change a shader | the `k_*` string constants in `render/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` (all in `render/`) |
+| change a shader | the file in `engine/game/shaders/` (its header comment names the C++ that assembles it; `game/shaders/README.md`); what the C++ adds per variant is in `render/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` |
 | add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
 | change streaming or door transitions | `game/viewer/cell_viewer.gd` (`_stream_step`, `_prepare_step`, `_fade_step`) |
 | change what the pack tool shows | `game/packtool/*.gd`, `converter/docs/cli-json.md` |

@@ -44,7 +44,8 @@ The engine shows interior cells and streams exterior ones. What exists:
   lightning), and distant LOD beyond the loaded cells (terrain,
   objects, tree billboards; `SkydotLod`, see [`docs/lod.md`](docs/lod.md)).
 - **Materials** (`SkydotMaterials`): Skyrim-style lighting, effect and
-  refraction shaders; billboards.
+  refraction shaders (all shaders are text files in `game/shaders/`, see its
+  README); billboards.
 - **Effects** (`SkydotAnimator`, `SkydotParticles`, `SkydotFlicker`, see
   [`docs/effects.md`](docs/effects.md)): controllers and sequences (flames,
   glows, UV scrolling, doors, waterwheels), particle systems, flickering
@@ -213,7 +214,7 @@ generator) and a Godot 4.7 editor on `PATH` as `godot4.7`, `godot4` or `godot`
 git submodule update --init
 cmake --preset linux-debug
 cmake --build --preset linux-debug     # -> game/bin/libskydot.linux.template_debug.x86_64.so
-ctest --preset linux-debug             # the unit tests and 14 smoke tests (21 with the converter's test pack)
+ctest --preset linux-debug             # the unit tests and 15 smoke tests (22 with the converter's test pack)
 ctest --preset linux-debug -L unit     # only the unit tests: no editor, no test pack
 ../tools/ci/check-no-game-data.sh
 ```
