@@ -2,6 +2,7 @@
 #include "render/weather.hpp"
 
 #include "render/materials.hpp"
+#include "render/shader_source.hpp"
 #include "data/fb_search.hpp"
 
 #include "assets/model.hpp"
@@ -40,118 +41,20 @@ namespace {
 constexpr int k_cloud_layers = 29;
 /// UV per real second at a stored speed of 1 (the byte at 254). A guess.
 constexpr float k_cloud_scroll = 0.02F;
-/// Sky objects sit just in front of the far plane (depth is reversed).
-constexpr const char* k_far = R"(
-void vertex() {
-	POSITION = PROJECTION_MATRIX * MODELVIEW_MATRIX * vec4(VERTEX, 1.0);
-	POSITION.z = POSITION.w * 0.000001;
-}
-)";
 
-constexpr const char* k_sky_shader = R"(
-shader_type sky;
-uniform vec3 upper;
-uniform vec3 horizon;
-uniform vec3 lower;
-uniform vec3 flash_color;
-uniform float flash = 0.0;
-void sky() {
-	float y = EYEDIR.y;
-	// The horizon colour reaches well up: at 53 degrees the game's sky is
-	// about halfway to the upper colour (comparison shot ref11).
-	vec3 c = y >= 0.0 ? mix(horizon, upper, clamp(y * y, 0.0, 1.0))
-	                  : mix(horizon, lower, sqrt(clamp(-y, 0.0, 1.0)));
-	COLOR = c + flash_color * flash;
+/// The shader file `name`, as the text Godot takes.
+String source(const char* name) {
+    const std::string& code = shader_source::load(name);
+    return String::utf8(code.c_str(), static_cast<int>(code.size()));
 }
-)";
-
-/// Two weathers' textures for one layer, cross-faded by `mix_t`.
-constexpr const char* k_cloud_shader = R"(
-shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
-uniform sampler2D tex_a : filter_linear_mipmap, repeat_enable;
-uniform sampler2D tex_b : filter_linear_mipmap, repeat_enable;
-uniform vec4 color_a = vec4(0.0);
-uniform vec4 color_b = vec4(0.0);
-uniform vec2 offset_a;
-uniform vec2 offset_b;
-uniform float mix_t = 1.0;
-uniform vec3 flash_color;
-uniform float flash = 0.0;
-%FAR%
-void fragment() {
-	vec4 a = texture(tex_a, UV + offset_a) * color_a;
-	vec4 b = texture(tex_b, UV + offset_b) * color_b;
-	float wa = a.a * (1.0 - mix_t);
-	float wb = b.a * mix_t;
-	float alpha = wa + wb;
-	vec3 rgb = alpha > 0.0001 ? (a.rgb * wa + b.rgb * wb) / alpha : vec3(0.0);
-	// The dome's vertex colours are (1, 0, 0, fade): only the alpha means
-	// anything.
-	ALBEDO = rgb + flash_color * flash * 0.5;
-	ALPHA = clamp(alpha * COLOR.a, 0.0, 1.0);
-}
-)";
-
-/// Stars, the sun and its glare add light; the moons cover what is behind.
-/// Every shape is in its texture's alpha: the constellation textures' colour
-/// is a nebula under transparent texels, only the stars are opaque.
-constexpr const char* k_sprite_shader = R"(
-shader_type spatial;
-render_mode unshaded, %BLEND%, depth_draw_never, cull_disabled, fog_disabled, shadows_disabled;
-uniform sampler2D tex : filter_linear_mipmap;
-uniform vec4 tint = vec4(1.0);
-uniform bool use_alpha = true;
-%FAR%
-void fragment() {
-	vec4 c = texture(tex, UV);
-	ALBEDO = c.rgb * tint.rgb;
-	ALPHA = clamp((use_alpha ? c.a : 1.0) * tint.a * COLOR.a, 0.0, 1.0);
-}
-)";
-
-/// Rain and snow: camera-facing (rain turns about the vertical only), a
-/// random frame of the atlas, the texture's alpha raised by `alpha_gain`
-/// (the rain texture's peaks at 0.37).
-constexpr const char* k_precipitation_shader = R"(
-shader_type spatial;
-render_mode unshaded, blend_mix, depth_draw_never, cull_disabled, shadows_disabled;
-uniform sampler2D tex : filter_linear_mipmap;
-uniform vec4 tint = vec4(1.0);
-uniform float alpha_gain = 1.0;
-uniform int frames_h = 1;
-uniform int frames_v = 1;
-uniform bool upright = false;
-void vertex() {
-	mat4 world = MODEL_MATRIX;
-	vec3 scale = vec3(length(world[0].xyz), length(world[1].xyz), length(world[2].xyz));
-	if (upright) {
-		vec3 side = normalize(cross(vec3(0.0, 1.0, 0.0), INV_VIEW_MATRIX[2].xyz));
-		vec3 back = cross(side, vec3(0.0, 1.0, 0.0));
-		world = mat4(vec4(side * scale.x, 0.0), vec4(0.0, scale.y, 0.0, 0.0), vec4(back * scale.z, 0.0), world[3]);
-	} else {
-		float a = INSTANCE_CUSTOM.x;
-		mat4 spin = mat4(vec4(cos(a), -sin(a), 0.0, 0.0), vec4(sin(a), cos(a), 0.0, 0.0),
-		                 vec4(0.0, 0.0, 1.0, 0.0), vec4(0.0, 0.0, 0.0, 1.0));
-		world = mat4(vec4(normalize(INV_VIEW_MATRIX[0].xyz) * scale.x, 0.0),
-		             vec4(normalize(INV_VIEW_MATRIX[1].xyz) * scale.y, 0.0),
-		             vec4(normalize(INV_VIEW_MATRIX[2].xyz) * scale.z, 0.0), world[3]) * spin;
-	}
-	MODELVIEW_MATRIX = VIEW_MATRIX * world;
-	float h = float(max(frames_h, 1));
-	float v = float(max(frames_v, 1));
-	float frame = min(floor(INSTANCE_CUSTOM.z * h * v), h * v - 1.0);
-	UV = UV / vec2(h, v) + vec2(mod(frame, h) / h, floor(frame / h) / v);
-}
-void fragment() {
-	vec4 c = texture(tex, UV);
-	ALBEDO = tint.rgb * c.rgb;
-	ALPHA = clamp(c.a * alpha_gain * tint.a * COLOR.a, 0.0, 1.0);
-}
-)";
 
 String finished(String code) {
-    return code.replace("%FAR%", k_far);
+    return code.replace("%FAR%", source("far_plane.gdshaderinc"));
+}
+
+/// The shader of the sprites (stars, sun, moons) blending as `blend`.
+String sprite_code(const char* blend) {
+    return source("sprite.gdshader").replace("%BLEND%", blend);
 }
 
 Ref<godot::Shader> make_shader(String code) {
@@ -226,11 +129,11 @@ const char* const k_phases[8] = {"full",     "three_wan", "half_wan", "one_wan",
 
 Dictionary SkydotWeather::shader_codes() {
     Dictionary out;
-    out["sky"] = finished(k_sky_shader);
-    out["clouds"] = finished(k_cloud_shader);
-    out["sprite_add"] = finished(String(k_sprite_shader).replace("%BLEND%", "blend_add"));
-    out["sprite_mix"] = finished(String(k_sprite_shader).replace("%BLEND%", "blend_mix"));
-    out["precipitation"] = finished(k_precipitation_shader);
+    out["sky"] = finished(source("sky.gdshader"));
+    out["clouds"] = finished(source("clouds.gdshader"));
+    out["sprite_add"] = finished(sprite_code("blend_add"));
+    out["sprite_mix"] = finished(sprite_code("blend_mix"));
+    out["precipitation"] = finished(source("precipitation.gdshader"));
     return out;
 }
 
@@ -581,7 +484,7 @@ void SkydotWeather::build() {
     Ref<godot::Sky> sky;
     sky.instantiate();
     sky_material_.instantiate();
-    sky_material_->set_shader(make_shader(k_sky_shader));
+    sky_material_->set_shader(make_shader(source("sky.gdshader")));
     sky->set_material(sky_material_);
     environment_->set_sky(sky);
     // SkydotImageSpace grades the gamma-space scene and hands over linear
@@ -624,7 +527,7 @@ void SkydotWeather::build_clouds() {
     }
     clouds->set_name("Clouds");
     dome_->add_child(clouds);
-    const auto shader = make_shader(k_cloud_shader);
+    const auto shader = make_shader(source("clouds.gdshader"));
     // Shapes in file order; layer i is the i-th.
     const auto meshes = clouds->find_children("*", "MeshInstance3D", true, false);
     for (std::int64_t i = 0; i < meshes.size() && i < k_cloud_layers; ++i) {
@@ -639,8 +542,8 @@ void SkydotWeather::build_clouds() {
 }
 
 void SkydotWeather::build_sky_objects() {
-    const auto additive = make_shader(String(k_sprite_shader).replace("%BLEND%", "blend_add"));
-    const auto blended = make_shader(String(k_sprite_shader).replace("%BLEND%", "blend_mix"));
+    const auto additive = make_shader(sprite_code("blend_add"));
+    const auto blended = make_shader(sprite_code("blend_mix"));
 
     // Stars: the climate's model, each shape with its own texture.
     const Ref<SkydotModel> stars = world_->resource(str(climate_->sky()));
@@ -984,7 +887,7 @@ void SkydotWeather::configure_precipitation(const Weather* weather) {
     Ref<godot::QuadMesh> quad;
     quad.instantiate();
     quad->set_size(Vector2(p->size_x(), p->size_y()) * (p->type() == 0 ? 40.0F : 10.0F) * s);
-    auto material = material_from(make_shader(k_precipitation_shader), 0);
+    auto material = material_from(make_shader(source("precipitation.gdshader")), 0);
     material->set_shader_parameter("tex", texture(str(p->texture())));
     material->set_shader_parameter("frames_h", static_cast<std::int32_t>(std::max<std::uint32_t>(p->subtextures_x(), 1)));
     material->set_shader_parameter("frames_v", static_cast<std::int32_t>(std::max<std::uint32_t>(p->subtextures_y(), 1)));

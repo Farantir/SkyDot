@@ -20,6 +20,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -30,7 +31,7 @@ class SkydotParticles : public godot::Node3D {
 
 public:
     /// The process shader every system shares.
-    static const char* process_shader_code();
+    static const std::string& process_shader_code();
 
     /// `block` is one entry of the converter's `particles`; `nodes` maps its
     /// node ids to the instantiated model's nodes.
