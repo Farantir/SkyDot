@@ -2,7 +2,12 @@
 #include "render/materials.hpp"
 
 #include "render/effect_asset.hpp"
+#include "render/image_space.hpp"
+#include "render/lod.hpp"
 #include "render/particles.hpp"
+#include "render/terrain.hpp"
+#include "render/water.hpp"
+#include "render/weather.hpp"
 
 #include "skydot_formats/units.hpp"
 
@@ -510,6 +515,8 @@ void SkydotMaterials::_bind_methods() {
     using godot::D_METHOD;
     godot::ClassDB::bind_method(D_METHOD("apply", "root"), &SkydotMaterials::apply);
     godot::ClassDB::bind_method(D_METHOD("warm_up"), &SkydotMaterials::warm_up);
+    godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("shader_sources"),
+                                       &SkydotMaterials::shader_sources);
     godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("sync_fog", "environment"),
                                        &SkydotMaterials::sync_fog);
     godot::ClassDB::bind_static_method(get_class_static(), D_METHOD("set_game_light", "light", "gamma"),
@@ -1057,6 +1064,36 @@ Ref<godot::ShaderMaterial> SkydotMaterials::particle_material_for(const String& 
 
 Ref<godot::Shader> SkydotMaterials::particles_process_shader() {
     return shader_for(SkydotParticles::process_shader_code());
+}
+
+Dictionary SkydotMaterials::shader_sources() {
+    Dictionary out;
+    const auto add = [&out](const std::string& name, const std::string& code) {
+        out[String::utf8(name.c_str(), static_cast<int>(name.size()))] =
+            String::utf8(code.c_str(), static_cast<int>(code.size()));
+    };
+    const std::pair<Alpha, const char*> alphas[] = {
+        {Alpha::none, "none"}, {Alpha::test, "test"}, {Alpha::blend, "blend"}, {Alpha::add, "add"}, {Alpha::mul, "mul"}};
+    for (const bool double_sided : {false, true}) {
+        const std::string side = double_sided ? "double" : "single";
+        for (const auto& [alpha, alpha_name] : alphas) {
+            add("lighting_" + side + "_" + alpha_name, lighting_code(double_sided, alpha));
+            for (const bool particles : {false, true}) {
+                for (const bool lit : {false, true}) {
+                    add("effect_" + side + "_" + alpha_name + (particles ? "_particles" : "") + (lit ? "_lit" : "_unlit"),
+                        effect_code(double_sided, alpha, particles, lit));
+                }
+            }
+        }
+        add("refraction_" + side, refraction_code(double_sided));
+    }
+    add("particles_process", SkydotParticles::process_shader_code());
+    out.merge(TerrainBuilder::shader_codes());
+    out.merge(WaterMaterials::shader_codes());
+    out.merge(SkydotLod::shader_codes());
+    out.merge(SkydotWeather::shader_codes());
+    out.merge(SkydotImageSpace::shader_codes());
+    return out;
 }
 
 std::int64_t SkydotMaterials::warm_up() {

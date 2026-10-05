@@ -15,6 +15,7 @@
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
 #include <godot_cpp/classes/texture.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <array>
@@ -59,12 +60,16 @@ public:
     /// Create the shader for every layer count now (see SkydotMaterials::warm_up).
     void warm_up();
 
+    /// The code of every shader terrain can use, by name.
+    static godot::Dictionary shader_codes();
+
     /// Texture repeats per cell side.
     void set_tiling(float repeats) { tiling_ = repeats; }
     /// Whether terrain gets a physics body.
     void set_collision(bool enabled) { collision_ = enabled; }
 
 private:
+    static std::string shader_code(int layers);
     godot::Ref<godot::Shader> shader_for(int layers);
     godot::Ref<godot::Texture> texture(const std::string& vpath);
     godot::Ref<godot::ShaderMaterial> material_for(const std::vector<std::array<std::string, 2>>& layers);

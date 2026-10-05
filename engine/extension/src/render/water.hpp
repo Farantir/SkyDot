@@ -12,6 +12,7 @@
 
 #include <godot_cpp/classes/shader.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 
 #include <cstdint>
 #include <functional>
@@ -36,7 +37,11 @@ public:
     /// Create the shader and a material now (see SkydotMaterials::warm_up).
     void warm_up();
 
+    /// The code of the water shader, by name.
+    static godot::Dictionary shader_codes();
+
 private:
+    static std::string shader_code();
     godot::Ref<godot::Shader> shader();
 
     godot::Ref<godot::Shader> shader_;

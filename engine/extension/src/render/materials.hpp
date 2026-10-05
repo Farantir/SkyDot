@@ -119,6 +119,10 @@ public:
     /// Returns the number of variants.
     std::int64_t warm_up();
 
+    /// The code of every shader the engine can produce (material variants,
+    /// terrain, water, LOD, weather, particles, image space), by name.
+    static godot::Dictionary shader_sources();
+
     /// Converted materials and shader variants so far.
     std::int64_t get_material_count() const;
     std::int64_t get_shader_count() const;

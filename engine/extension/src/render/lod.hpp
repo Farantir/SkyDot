@@ -71,6 +71,9 @@ public:
     /// loaded_cells.
     godot::Dictionary get_stats() const;
 
+    /// The code of every LOD shader, by name.
+    static godot::Dictionary shader_codes();
+
 protected:
     static void _bind_methods();
 

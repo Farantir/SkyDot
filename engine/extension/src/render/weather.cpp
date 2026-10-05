@@ -150,11 +150,14 @@ void fragment() {
 }
 )";
 
+String finished(String code) {
+    return code.replace("%FAR%", k_far);
+}
+
 Ref<godot::Shader> make_shader(String code) {
-    code = code.replace("%FAR%", k_far);
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(code);
+    shader->set_code(finished(code));
     return shader;
 }
 
@@ -220,6 +223,16 @@ const char* const k_phases[8] = {"full",     "three_wan", "half_wan", "one_wan",
                                  "new",      "one_wax",   "half_wax", "three_wax"};
 
 } // namespace
+
+Dictionary SkydotWeather::shader_codes() {
+    Dictionary out;
+    out["sky"] = finished(k_sky_shader);
+    out["clouds"] = finished(k_cloud_shader);
+    out["sprite_add"] = finished(String(k_sprite_shader).replace("%BLEND%", "blend_add"));
+    out["sprite_mix"] = finished(String(k_sprite_shader).replace("%BLEND%", "blend_mix"));
+    out["precipitation"] = finished(k_precipitation_shader);
+    return out;
+}
 
 godot::Camera3D* SkydotWeather::camera() const {
     return godot::Object::cast_to<godot::Camera3D>(godot::ObjectDB::get_instance(camera_));

@@ -66,10 +66,7 @@ std::vector<float> TerrainBuilder::heights(const wfb::Terrain& terrain) {
     return out;
 }
 
-Ref<godot::Shader> TerrainBuilder::shader_for(int layers) {
-    if (auto it = shaders_.find(layers); it != shaders_.end()) {
-        return it->second;
-    }
+std::string TerrainBuilder::shader_code(int layers) {
     std::string code = R"(shader_type spatial;
 render_mode cull_back, diffuse_lambert;
 
@@ -111,9 +108,24 @@ void fragment() {
 	SPECULAR = 0.2;
 }
 )";
+    return with_game_ambient(with_game_fog(code));
+}
+
+godot::Dictionary TerrainBuilder::shader_codes() {
+    godot::Dictionary out;
+    for (int layers = 1; layers <= k_max_layers; ++layers) {
+        out[String("terrain_") + String::num_int64(layers)] = to_godot(shader_code(layers));
+    }
+    return out;
+}
+
+Ref<godot::Shader> TerrainBuilder::shader_for(int layers) {
+    if (auto it = shaders_.find(layers); it != shaders_.end()) {
+        return it->second;
+    }
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(to_godot(with_game_ambient(with_game_fog(code))));
+    shader->set_code(to_godot(shader_code(layers)));
     shaders_.emplace(layers, shader);
     return shader;
 }

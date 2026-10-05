@@ -163,11 +163,14 @@ void fragment() {
 }
 )";
 
+std::string lod_code(const char* modes, const char* body) {
+    return with_game_ambient(with_game_fog(std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n" + k_mask + body));
+}
+
 Ref<godot::Shader> make_shader(const char* modes, const char* body) {
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(String::utf8(
-        with_game_ambient(with_game_fog(std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n" + k_mask + body)).c_str()));
+    shader->set_code(String::utf8(lod_code(modes, body).c_str()));
     return shader;
 }
 
@@ -184,6 +187,15 @@ const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {
 }
 
 } // namespace
+
+Dictionary SkydotLod::shader_codes() {
+    Dictionary out;
+    out["lod_terrain"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_terrain).c_str());
+    out["lod_object"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_object).c_str());
+    out["lod_water"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_water).c_str());
+    out["lod_tree"] = String::utf8(lod_code("cull_disabled, depth_draw_opaque", k_tree).c_str());
+    return out;
+}
 
 void SkydotLod::_bind_methods() {
     using godot::D_METHOD;

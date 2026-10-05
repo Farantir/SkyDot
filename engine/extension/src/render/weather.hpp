@@ -83,6 +83,9 @@ public:
 
     void _process(double delta) override;
 
+    /// The code of every weather shader, by name.
+    static godot::Dictionary shader_codes();
+
 protected:
     static void _bind_methods();
 

@@ -195,6 +195,14 @@ SkydotImageSpace::~SkydotImageSpace() {
     free_pipelines();
 }
 
+Dictionary SkydotImageSpace::shader_codes() {
+    Dictionary out;
+    out["image_space_reduce"] = godot::String::utf8(k_reduce);
+    out["image_space_adapt"] = godot::String::utf8(k_adapt);
+    out["image_space_grade"] = godot::String::utf8(k_grade);
+    return out;
+}
+
 void SkydotImageSpace::set_image_space(const Dictionary& image_space) {
     Params p;
     const godot::Variant hdr = image_space.get("hdr", godot::Variant());

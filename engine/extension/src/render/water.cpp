@@ -135,10 +135,18 @@ Color unpack(std::uint32_t rgba) {
 
 } // namespace
 
+std::string WaterMaterials::shader_code() { return with_game_fog(k_water_shader); }
+
+godot::Dictionary WaterMaterials::shader_codes() {
+    godot::Dictionary out;
+    out["water"] = godot::String::utf8(shader_code().c_str());
+    return out;
+}
+
 Ref<godot::Shader> WaterMaterials::shader() {
     if (shader_.is_null()) {
         shader_.instantiate();
-        shader_->set_code(godot::String::utf8(with_game_fog(k_water_shader).c_str()));
+        shader_->set_code(godot::String::utf8(shader_code().c_str()));
     }
     return shader_;
 }

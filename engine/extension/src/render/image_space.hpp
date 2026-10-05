@@ -50,6 +50,9 @@ public:
 
     void _render_callback(int32_t type, godot::RenderData* data) override;
 
+    /// The source of every compute shader, by name.
+    static godot::Dictionary shader_codes();
+
 protected:
     static void _bind_methods();
 
