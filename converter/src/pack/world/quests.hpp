@@ -39,8 +39,8 @@ private:
                    const record::FormContext& form_ctx);
 
     CollectContext& shared_;
-    std::map<std::uint32_t, WorldQuest> quests_;
-    std::map<std::uint32_t, WorldGlobal> globals_;
+    std::map<std::uint32_t, wfb::QuestT> quests_;
+    std::map<std::uint32_t, wfb::GlobalT> globals_;
 };
 
 } // namespace bethconv::pack::detail

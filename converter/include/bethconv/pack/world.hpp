@@ -370,64 +370,6 @@ struct WorldRegion {
     bool weather_override{};
 };
 
-/// See world.fbs `Quest` and its parts.
-struct WorldQuestAlias {
-    std::uint32_t id{};
-    std::string name;
-    bool location{};
-    wfb::AliasFlags flags{};
-    std::uint32_t forced{};
-    std::uint32_t unique_actor{};
-    std::uint32_t external_quest{};
-    std::int32_t external_alias{-1};
-    std::uint32_t created_object{};
-    std::uint32_t create_at{};
-    std::uint16_t conditions{};
-    std::uint32_t display_name{};
-    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
-};
-struct WorldQuestLogEntry {
-    wfb::LogEntryFlags flags{};
-    std::string text;
-    std::uint16_t conditions{};
-};
-struct WorldQuestStage {
-    std::uint16_t index{};
-    wfb::StageFlags flags{};
-    std::vector<WorldQuestLogEntry> log;
-};
-struct WorldQuestObjective {
-    std::uint16_t index{};
-    std::uint32_t flags{};
-    std::string text;
-    std::vector<std::int32_t> targets;
-};
-struct WorldQuestFragment {
-    std::uint16_t stage{};
-    std::int32_t log_entry{};
-    std::string function;
-};
-struct WorldQuest {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::string name;
-    wfb::QuestFlags flags{};
-    std::uint8_t priority{};
-    std::uint32_t type{};
-    std::uint32_t event{};
-    std::vector<std::unique_ptr<wfb::ScriptT>> scripts;
-    std::string fragment_script;
-    std::vector<WorldQuestFragment> fragments;
-    std::vector<WorldQuestStage> stages;
-    std::vector<WorldQuestObjective> objectives;
-    std::vector<WorldQuestAlias> aliases;
-};
-struct WorldGlobal {
-    std::uint32_t id{};
-    std::string editor_id;
-    char kind{};
-    float value{};
-};
 /// NPC_ as written to world.fb; FormIDs global.
 struct WorldNpc {
     std::uint32_t id{};
