@@ -4,6 +4,8 @@
 #include "assets/vpath.hpp"
 #include "skydot_formats/flags.hpp"
 
+#include <bit>
+
 namespace skydot::vm {
 
 namespace {
@@ -23,6 +25,38 @@ constexpr std::uint8_t k_bool = 5;
 } // namespace
 
 std::string to_lower(std::string_view text) { return ascii_lower(text); }
+
+TypeKind type_kind(std::string_view type) {
+    if (type == "int") {
+        return TypeKind::integer;
+    }
+    if (type == "float") {
+        return TypeKind::floating;
+    }
+    if (type == "bool") {
+        return TypeKind::boolean;
+    }
+    if (type == "string") {
+        return TypeKind::string;
+    }
+    if (type.ends_with("[]")) {
+        return TypeKind::array;
+    }
+    return type == "none" ? TypeKind::none : TypeKind::object;
+}
+
+Value default_of(TypeKind kind) {
+    switch (kind) {
+    case TypeKind::integer: return Value::integer(0);
+    case TypeKind::floating: return Value::floating(0.0F);
+    case TypeKind::boolean: return Value::boolean(false);
+    case TypeKind::string: {
+        static const auto k_empty = std::make_shared<const std::string>();
+        return Value::text(k_empty);
+    }
+    default: return {};
+    }
+}
 
 std::unique_ptr<ScriptClass> ScriptClass::load(std::vector<std::uint8_t> bytes, std::string& error) {
     auto out = std::unique_ptr<ScriptClass>(new ScriptClass());
@@ -49,6 +83,7 @@ bool ScriptClass::read(std::string& error) {
         for (const auto* s : *strings) {
             strings_.push_back(s->str());
             lower_.push_back(to_lower(strings_.back()));
+            lower_hash_.push_back(name_hash(lower_.back()));
         }
     }
     const auto ok = [&](std::uint32_t index) { return index < strings_.size(); };
@@ -76,7 +111,8 @@ bool ScriptClass::read(std::string& error) {
                 error = "variable outside the string table";
                 return false;
             }
-            variables_.push_back({.name = lower_[v->name()], .type = lower_[v->type()], .initial = initial});
+            variables_.push_back({.name = lower_[v->name()], .type = lower_[v->type()], .initial = initial,
+                                  .kind = type_kind(lower_[v->type()])});
         }
     }
     if (const auto* states = o->states()) {
@@ -99,7 +135,12 @@ bool ScriptClass::read(std::string& error) {
                 }
                 engine_type_ = engine_type_ || fn->native;
                 fn->state = lower_[s->name()];
-                functions_[lower_[s->name()] + '\x1F' + fn->name] = std::move(fn);
+                const Name state = lower_name(s->name());
+                const Name name = lower_name(f->name());
+                function_table_.put(function_hash(state, name), fn.get(), [&](const Function& other) {
+                    return other.state == state.text && other.name == name.text;
+                });
+                functions_.push_back(std::move(fn));
             }
         }
     }
@@ -110,7 +151,7 @@ bool ScriptClass::read(std::string& error) {
                 return false;
             }
             Property property{.name = lower_[p->name()], .type = lower_[p->type()], .auto_var = {},
-                              .getter = nullptr, .setter = nullptr};
+                              .getter = nullptr, .setter = nullptr, .kind = type_kind(lower_[p->type()])};
             if (formats::has_flag(p->flags(), sfb::PropertyFlags::is_auto)) {
                 if (!ok(p->auto_var())) {
                     error = "property variable outside the string table";
@@ -135,7 +176,9 @@ bool ScriptClass::read(std::string& error) {
                 (handler == p->getter() ? property.getter : property.setter) = fn.get();
                 handlers_.push_back(std::move(fn));
             }
-            properties_[property.name] = std::move(property);
+            const auto& stored = (properties_[property.name] = std::move(property));
+            property_table_.put(name_hash(stored.name), &stored,
+                                [&](const Property& other) { return other.name == stored.name; });
         }
     }
     return true;
@@ -164,6 +207,8 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
             }
             out.reg_names.push_back(lower_[nt->name()]);
             out.reg_types.push_back(lower_[nt->type()]);
+            out.reg_kinds.push_back(type_kind(out.reg_types.back()));
+            out.reg_defaults.push_back(default_of(out.reg_kinds.back()));
         }
         if (list == f.params()) {
             out.param_count = static_cast<std::uint32_t>(out.reg_names.size());
@@ -231,6 +276,10 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
                 slot = {Slot::Type::state, 0};
             }
         }
+        if (v->type() != k_identifier) {
+            slot = {Slot::Type::literal, static_cast<std::uint32_t>(out.literals.size())};
+            out.literals.push_back(literal(*v));
+        }
         out.slots.push_back(slot);
     }
     // Jumps: the last argument is a relative offset to an instruction or the end.
@@ -251,18 +300,24 @@ bool ScriptClass::read_function(const sfb::Function& f, std::string_view name, F
     return true;
 }
 
-const Function* ScriptClass::find(std::string_view state, std::string_view name) const {
-    std::string key;
-    key.reserve(state.size() + 1 + name.size());
-    key.append(state).push_back('\x1F');
-    key.append(name);
-    const auto it = functions_.find(key);
-    return it != functions_.end() ? it->second.get() : nullptr;
+Value ScriptClass::literal(const sfb::Value& v) const {
+    switch (v.type()) {
+    case k_string: return Value::string(strings_[v.data()]);
+    case 3: return Value::integer(static_cast<std::int32_t>(v.data()));
+    case 4: return Value::floating(std::bit_cast<float>(v.data()));
+    case k_bool: return Value::boolean(v.data() != 0);
+    default: return {};
+    }
 }
 
-const Property* ScriptClass::property(std::string_view name) const {
-    const auto it = properties_.find(name);
-    return it != properties_.end() ? &it->second : nullptr;
+const Function* ScriptClass::find(const Name& state, const Name& name) const {
+    return function_table_.find(function_hash(state, name), [&](const Function& f) {
+        return f.name == name.text && f.state == state.text;
+    });
+}
+
+const Property* ScriptClass::property(const Name& name) const {
+    return property_table_.find(name.hash, [&](const Property& p) { return p.name == name.text; });
 }
 
 bool ScriptClass::derives_from(const ScriptClass* other) const noexcept {

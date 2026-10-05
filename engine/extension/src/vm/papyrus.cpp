@@ -280,13 +280,14 @@ void SkydotPapyrus::bind_natives() {
     using vm::NativeResult;
     using vm::Value;
     auto& v = *vm_;
-    const auto arg = [](NativeCall& c, std::size_t i) -> Value {
-        return i < c.args.size() ? c.args[i] : Value{};
+    const auto arg = [](NativeCall& c, std::size_t i) -> const Value& {
+        static const Value none;
+        return i < c.args.size() ? c.args[i] : none;
     };
     const auto result = [](Value value) { return NativeResult{.value = std::move(value), .wait = -1.0}; };
     const auto number = [](const Value& x) {
-        return x.kind == vm::Kind::floating ? static_cast<double>(x.f)
-                                            : (x.kind == vm::Kind::integer ? static_cast<double>(x.i) : 0.0);
+        return x.kind() == vm::Kind::floating ? static_cast<double>(x.f())
+                                            : (x.kind() == vm::Kind::integer ? static_cast<double>(x.i()) : 0.0);
     };
 
     // ---- Debug, Utility, Game
@@ -316,8 +317,8 @@ void SkydotPapyrus::bind_natives() {
     });
     // Both bounds inclusive, as documented for RandomInt.
     v.bind("Utility", "RandomInt", [arg, result](NativeCall& c) {
-        auto lo = c.args.empty() ? 0 : arg(c, 0).i;
-        auto hi = c.args.size() < 2 ? 100 : arg(c, 1).i;
+        auto lo = c.args.empty() ? 0 : arg(c, 0).i();
+        auto hi = c.args.size() < 2 ? 100 : arg(c, 1).i();
         if (lo > hi) {
             std::swap(lo, hi);
         }
@@ -336,51 +337,51 @@ void SkydotPapyrus::bind_natives() {
 
     // ---- Form: identity and update timers
     v.bind("Form", "GetFormID", [result](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(c.self.form)));
+        return result(Value::integer(static_cast<std::int32_t>(c.self.form())));
     });
     const auto updates = [arg, number](NativeCall& c, bool repeat) {
-        if (c.self.instance == nullptr) {
+        if (c.self.instance() == nullptr) {
             c.vm.error("RegisterForUpdate needs a script to send OnUpdate to");
             return NativeResult{};
         }
         const double interval = std::max(0.0, number(arg(c, 0)));
-        c.vm.register_update(c.self.instance, interval, repeat ? std::max(interval, 0.001) : 0.0);
+        c.vm.register_update(c.self.instance(), interval, repeat ? std::max(interval, 0.001) : 0.0);
         return NativeResult{};
     };
     v.bind("Form", "RegisterForSingleUpdate", [updates](NativeCall& c) { return updates(c, false); });
     v.bind("Form", "RegisterForUpdate", [updates](NativeCall& c) { return updates(c, true); });
     v.bind("Form", "UnregisterForUpdate", [](NativeCall& c) {
-        if (c.self.instance != nullptr) {
-            c.vm.unregister_update(c.self.instance);
+        if (c.self.instance() != nullptr) {
+            c.vm.unregister_update(c.self.instance());
         }
         return NativeResult{};
     });
 
     // ---- ObjectReference: enable state
     v.bind("ObjectReference", "Enable", [this](NativeCall& c) {
-        set_disabled(c.self.form, false);
+        set_disabled(c.self.form(), false);
         return NativeResult{};
     });
     v.bind("ObjectReference", "Disable", [this](NativeCall& c) {
-        set_disabled(c.self.form, true);
+        set_disabled(c.self.form(), true);
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsDisabled", [this, result](NativeCall& c) {
-        return result(Value::boolean(disabled(c.self.form)));
+        return result(Value::boolean(disabled(c.self.form())));
     });
     v.bind("ObjectReference", "IsEnabled", [this, result](NativeCall& c) {
-        return result(Value::boolean(!disabled(c.self.form)));
+        return result(Value::boolean(!disabled(c.self.form())));
     });
     // Built by the game layer and not disabled; unloading is not tracked.
     v.bind("ObjectReference", "Is3DLoaded", [this, result](NativeCall& c) {
-        return result(Value::boolean(built_.contains(c.self.form) && !disabled(c.self.form)));
+        return result(Value::boolean(built_.contains(c.self.form()) && !disabled(c.self.form())));
     });
 
     // ---- links, base, place
     // The link with this keyword (None: the link without one).
     v.bind("ObjectReference", "GetLinkedRef", [this, arg, result](NativeCall& c) {
-        const std::uint32_t keyword = arg(c, 0).kind == vm::Kind::object ? arg(c, 0).form : 0;
-        const Array links = ref_info(c.self.form).get("links", Array());
+        const std::uint32_t keyword = arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0;
+        const Array links = ref_info(c.self.form()).get("links", Array());
         for (std::int64_t i = 0; i < links.size(); ++i) {
             const Dictionary link = links[i];
             if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
@@ -391,44 +392,44 @@ void SkydotPapyrus::bind_natives() {
         return NativeResult{};
     });
     v.bind("ObjectReference", "GetBaseObject", [this, result](NativeCall& c) {
-        const std::int64_t base = ref_info(c.self.form).get("base", 0);
+        const std::int64_t base = ref_info(c.self.form()).get("base", 0);
         return result(c.vm.object(static_cast<std::uint32_t>(base), "Form"));
     });
     for (const char axis : {'X', 'Y', 'Z'}) {
         const auto index = static_cast<int>(axis - 'X');
         v.bind("ObjectReference", std::string("GetPosition") + axis, [this, index, result](NativeCall& c) {
-            return result(Value::floating(static_cast<float>(position_of(c.self.form)[index])));
+            return result(Value::floating(static_cast<float>(position_of(c.self.form())[index])));
         });
         // Degrees, as the game reports them.
         v.bind("ObjectReference", std::string("GetAngle") + axis, [this, index, result](NativeCall& c) {
-            const Vector3 r = ref_info(c.self.form).get("rotation", Vector3());
+            const Vector3 r = ref_info(c.self.form()).get("rotation", Vector3());
             return result(Value::floating(static_cast<float>(static_cast<double>(r[index]) * 180.0 / std::numbers::pi)));
         });
     }
     v.bind("ObjectReference", "GetScale", [this, result](NativeCall& c) {
-        return result(Value::floating(static_cast<float>(static_cast<double>(ref_info(c.self.form).get("scale", 1.0)))));
+        return result(Value::floating(static_cast<float>(static_cast<double>(ref_info(c.self.form()).get("scale", 1.0)))));
     });
     v.bind("ObjectReference", "GetDistance", [this, arg, result](NativeCall& c) {
-        if (arg(c, 0).kind != vm::Kind::object) {
+        if (arg(c, 0).kind() != vm::Kind::object) {
             return result(Value::floating(0.0F));
         }
         return result(Value::floating(
-            static_cast<float>(position_of(c.self.form).distance_to(position_of(arg(c, 0).form)))));
+            static_cast<float>(position_of(c.self.form()).distance_to(position_of(arg(c, 0).form())))));
     });
 
     // ---- animation
     v.bind("ObjectReference", "PlayAnimation", [this, arg, result](NativeCall& c) {
-        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form),
+        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form()),
                     to_godot(vm::Vm::to_string(arg(c, 0))));
         return result(Value::boolean(true));
     });
     // Waits for the named event (a text key of the animation) or a timeout.
     v.bind("ObjectReference", "PlayAnimationAndWait", [this, arg](NativeCall& c) {
-        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form),
+        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form()),
                     to_godot(vm::Vm::to_string(arg(c, 0))));
         return NativeResult{.value = Value::boolean(true),
                             .wait = ANIMATION_TIMEOUT,
-                            .wait_for = "anim:" + std::to_string(c.self.form) + ":" + vm::Vm::to_string(arg(c, 1))};
+                            .wait_for = "anim:" + std::to_string(c.self.form()) + ":" + vm::Vm::to_string(arg(c, 1))};
     });
     // Physics dependencies between animated objects; nothing to do without physics.
     v.bind("ObjectReference", "AddDependentAnimatedObjectReference",
@@ -441,33 +442,33 @@ void SkydotPapyrus::bind_natives() {
     v.bind("ObjectReference", "ApplyHavokImpulse", [this, arg, number](NativeCall& c) {
         const Vector3 direction(static_cast<float>(number(arg(c, 0))), static_cast<float>(number(arg(c, 1))),
                                 static_cast<float>(number(arg(c, 2))));
-        emit_signal("havok_impulse", static_cast<std::int64_t>(c.self.form), direction, number(arg(c, 3)));
+        emit_signal("havok_impulse", static_cast<std::int64_t>(c.self.form()), direction, number(arg(c, 3)));
         return NativeResult{};
     });
     // ObjectReference.psc: 1 dynamic, 2 sphere, 3 box, 6 thin box inertia
     // (all moving), 4 keyframed, 5 fixed, 7 character.
     v.bind("ObjectReference", "SetMotionType", [this, arg](NativeCall& c) {
-        emit_signal("motion_type_changed", static_cast<std::int64_t>(c.self.form),
-                    static_cast<std::int64_t>(arg(c, 0).i));
+        emit_signal("motion_type_changed", static_cast<std::int64_t>(c.self.form()),
+                    static_cast<std::int64_t>(arg(c, 0).i()));
         return NativeResult{};
     });
 
     // ---- activation
     v.bind("ObjectReference", "Activate", [this, arg, result](NativeCall& c) {
-        emit_signal("activate_requested", static_cast<std::int64_t>(c.self.form),
-                    static_cast<std::int64_t>(arg(c, 0).form), vm::Vm::truthy(arg(c, 1)));
+        emit_signal("activate_requested", static_cast<std::int64_t>(c.self.form()),
+                    static_cast<std::int64_t>(arg(c, 0).form()), vm::Vm::truthy(arg(c, 1)));
         return result(Value::boolean(true));
     });
     v.bind("ObjectReference", "BlockActivation", [this, arg](NativeCall& c) {
         if (c.args.empty() || vm::Vm::truthy(arg(c, 0))) {
-            blocked_.insert(c.self.form);
+            blocked_.insert(c.self.form());
         } else {
-            blocked_.erase(c.self.form);
+            blocked_.erase(c.self.form());
         }
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsActivationBlocked", [this, result](NativeCall& c) {
-        return result(Value::boolean(blocked_.contains(c.self.form)));
+        return result(Value::boolean(blocked_.contains(c.self.form())));
     });
     // No actors use furniture yet.
     v.bind("ObjectReference", "IsFurnitureInUse", [result](NativeCall&) { return result(Value::boolean(false)); });
@@ -476,39 +477,39 @@ void SkydotPapyrus::bind_natives() {
 
     // ---- doors and locks
     v.bind("ObjectReference", "GetOpenState", [this, result](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(get_open_state(c.self.form))));
+        return result(Value::integer(static_cast<std::int32_t>(get_open_state(c.self.form()))));
     });
     v.bind("ObjectReference", "SetOpen", [this, arg](NativeCall& c) {
         const bool open = c.args.empty() || vm::Vm::truthy(arg(c, 0));
-        set_open_state(c.self.form, open ? k_open : k_closed);
-        emit_signal("open_changed", static_cast<std::int64_t>(c.self.form), open);
+        set_open_state(c.self.form(), open ? k_open : k_closed);
+        emit_signal("open_changed", static_cast<std::int64_t>(c.self.form()), open);
         return NativeResult{};
     });
     v.bind("ObjectReference", "Lock", [this, arg](NativeCall& c) {
-        set_locked(c.self.form, c.args.empty() || vm::Vm::truthy(arg(c, 0)));
+        set_locked(c.self.form(), c.args.empty() || vm::Vm::truthy(arg(c, 0)));
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsLocked", [this, result](NativeCall& c) {
-        return result(Value::boolean(locked(c.self.form)));
+        return result(Value::boolean(locked(c.self.form())));
     });
     v.bind("ObjectReference", "GetLockLevel", [this, result](NativeCall& c) {
-        const auto level = get_lock_level(c.self.form);
+        const auto level = get_lock_level(c.self.form());
         return result(Value::integer(static_cast<std::int32_t>(level < 0 ? 0 : level)));
     });
 
     // ---- triggers and effects
     v.bind("ObjectReference", "GetTriggerObjectCount", [this, result](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(get_trigger_count(c.self.form))));
+        return result(Value::integer(static_cast<std::int32_t>(get_trigger_count(c.self.form()))));
     });
     // Effect shaders are not drawn yet; the game layer is told.
     v.bind("EffectShader", "Play", [this, arg](NativeCall& c) {
-        emit_signal("effect_shader", static_cast<std::int64_t>(c.self.form),
-                    static_cast<std::int64_t>(arg(c, 0).form), true);
+        emit_signal("effect_shader", static_cast<std::int64_t>(c.self.form()),
+                    static_cast<std::int64_t>(arg(c, 0).form()), true);
         return NativeResult{};
     });
     v.bind("EffectShader", "Stop", [this, arg](NativeCall& c) {
-        emit_signal("effect_shader", static_cast<std::int64_t>(c.self.form),
-                    static_cast<std::int64_t>(arg(c, 0).form), false);
+        emit_signal("effect_shader", static_cast<std::int64_t>(c.self.form()),
+                    static_cast<std::int64_t>(arg(c, 0).form()), false);
         return NativeResult{};
     });
 }
@@ -568,16 +569,16 @@ vm::Value SkydotPapyrus::to_value(const Variant& v, std::string_view type, std::
 }
 
 Variant SkydotPapyrus::to_variant(const vm::Value& v) const {
-    switch (v.kind) {
+    switch (v.kind()) {
     case vm::Kind::none: return {};
-    case vm::Kind::integer: return v.i;
-    case vm::Kind::floating: return v.f;
-    case vm::Kind::boolean: return v.b;
-    case vm::Kind::string: return to_godot(v.s);
-    case vm::Kind::object: return static_cast<std::int64_t>(v.form);
+    case vm::Kind::integer: return v.i();
+    case vm::Kind::floating: return v.f();
+    case vm::Kind::boolean: return v.b();
+    case vm::Kind::string: return to_godot(v.s());
+    case vm::Kind::object: return static_cast<std::int64_t>(v.form());
     case vm::Kind::array: {
         Array out;
-        for (const auto& e : *v.array) {
+        for (const auto& e : *v.array()) {
             out.push_back(to_variant(e));
         }
         return out;
@@ -1111,7 +1112,7 @@ Array SkydotPapyrus::get_scripts(std::int64_t ref) const {
     for (const auto* i : vm_->instances(static_cast<std::uint32_t>(ref))) {
         Dictionary entry;
         entry["name"] = to_godot(i->cls->name());
-        entry["state"] = to_godot(i->state);
+        entry["state"] = to_godot(i->state());
         out.push_back(entry);
     }
     return out;

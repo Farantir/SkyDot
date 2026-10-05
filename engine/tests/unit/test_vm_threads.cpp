@@ -112,7 +112,7 @@ TEST_CASE("a wait counts from when the native ran, and the result comes after it
     rig.vm.update(0.25);
     const auto result = rig.vm.take_result(thread);
     REQUIRE(result.has_value());
-    CHECK(result->i == 7);
+    CHECK(result->i() == 7);
     // A result is taken once.
     CHECK_FALSE(rig.vm.take_result(thread).has_value());
 }

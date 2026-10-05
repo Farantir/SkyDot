@@ -90,7 +90,7 @@ TEST_CASE("a save carries a suspended thread into a fresh VM, which finishes it 
     REQUIRE(thread != 0);
     a.vm().update(1.0); // Run is inside Step now, waiting until 6.0
     REQUIRE(a.vm().thread_count() == 1);
-    CHECK(a.variable("label").s == "running");
+    CHECK(a.variable("label").s() == "running");
     const auto bytes = a.vm().save();
 
     SaverRig b(saver(), false);
@@ -103,20 +103,20 @@ TEST_CASE("a save carries a suspended thread into a fresh VM, which finishes it 
     // What the first VM had when it was saved.
     CHECK(b.vm().time() == 1.0);
     CHECK(b.vm().thread_count() == 1);
-    CHECK(b.variable("label").s == "running");
-    CHECK(b.variable("total").i == 0);
-    CHECK(b.variable("ratio").f == 0.1F);
-    CHECK(b.variable("armed").b);
-    REQUIRE(b.variable("list").kind == Kind::array);
-    CHECK(b.variable("list").array->size() == 3);
-    CHECK(b.variable("list").array->at(0).i == 10);
+    CHECK(b.variable("label").s() == "running");
+    CHECK(b.variable("total").i() == 0);
+    CHECK(b.variable("ratio").f() == 0.1F);
+    CHECK(b.variable("armed").b());
+    REQUIRE(b.variable("list").kind() == Kind::array);
+    CHECK(b.variable("list").array()->size() == 3);
+    CHECK(b.variable("list").array()->at(0).i() == 10);
 
     // The object variable names the loaded instance, not the saved one.
     const auto me = b.variable("me");
-    CHECK(me.kind == Kind::object);
-    CHECK(me.form == 0x10);
-    CHECK(me.instance == b.instance);
-    CHECK(me.cls == b.vm().load_class("saver"));
+    CHECK(me.kind() == Kind::object);
+    CHECK(me.form() == 0x10);
+    CHECK(me.instance() == b.instance);
+    CHECK(me.cls() == b.vm().load_class("saver"));
 
     // Still waiting just short of the wake-up time, in both.
     for (auto* r : {&a, &b}) {
@@ -129,13 +129,13 @@ TEST_CASE("a save carries a suspended thread into a fresh VM, which finishes it 
         r->vm().update(0.5);
         CHECK(r->rig.notes == std::vector<std::string>{"done"});
         CHECK(r->vm().thread_count() == 0);
-        CHECK(r->variable("total").i == 101);
-        CHECK(r->variable("list").array->at(0).i == 10);
-        CHECK(r->variable("list").array->at(1).i == 0);
-        CHECK(r->variable("list").array->at(2).i == 7);
+        CHECK(r->variable("total").i() == 101);
+        CHECK(r->variable("list").array()->at(0).i() == 10);
+        CHECK(r->variable("list").array()->at(1).i() == 0);
+        CHECK(r->variable("list").array()->at(2).i() == 7);
         const auto result = r->vm().take_result(thread);
         REQUIRE(result.has_value());
-        CHECK(result->i == 101);
+        CHECK(result->i() == 101);
         CHECK(r->vm().errors() == 0);
     }
 }
@@ -165,7 +165,7 @@ TEST_CASE("two VMs that did the same save the same bytes", "[vm][save]") {
 
 TEST_CASE("a save carries states, timers, results, the clock and thread numbering", "[vm][save]") {
     SaverRig a;
-    a.instance->state = "angry";
+    a.instance->set_state("angry");
     a.vm().update(2.0);
     a.vm().register_update(a.instance, 1.0, 2.0); // due at 3, 5, 7...
     // A call that has finished, its result not yet taken.
@@ -180,7 +180,7 @@ TEST_CASE("a save carries states, timers, results, the clock and thread numberin
     REQUIRE(b.vm().load(bytes, error));
     b.instance = b.vm().instance(0x10, "saver");
     REQUIRE(b.instance != nullptr);
-    CHECK(b.instance->state == "angry");
+    CHECK(b.instance->state() == "angry");
     CHECK(b.vm().time() == 12.0);
 
     // The timer is the one registered: OnUpdate is not due again before 13...
@@ -214,7 +214,7 @@ TEST_CASE("a finished call's result survives a save until it is taken", "[vm][sa
     REQUIRE(b.vm.load(bytes, error));
     const auto result = b.vm.take_result(thread);
     REQUIRE(result.has_value());
-    CHECK(result->i == 42);
+    CHECK(result->i() == 42);
 }
 
 TEST_CASE("random numbers repeat from one VM to another, and from a save", "[vm][random]") {
@@ -447,8 +447,8 @@ TEST_CASE("a save whose arrays hold arrays is refused", "[vm][save][errors]") {
         auto* holder = s.vm().instance(0x10, "holder");
         REQUIRE(holder != nullptr);
         const auto list = s.vm().get_variable(holder, "list");
-        REQUIRE(list.kind == Kind::array);
-        REQUIRE(list.array->size() == 2);
-        CHECK(list.array->at(1).i == 6);
+        REQUIRE(list.kind() == Kind::array);
+        REQUIRE(list.array()->size() == 2);
+        CHECK(list.array()->at(1).i() == 6);
     }
 }

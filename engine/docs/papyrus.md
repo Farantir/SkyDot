@@ -10,7 +10,8 @@ other VM's code was read, so it stays GPL-3.0.
 | File | Role |
 | --- | --- |
 | `vm/script_class.*` | One script: verified, indices checked, identifiers resolved to registers, variables, `self` or `::State` once at load |
-| `vm/value.hpp` | Values; arrays are shared, everything else copied |
+| `vm/value.hpp` | Values: 24 bytes, a kind and what it needs; arrays and strings are shared, everything else copied |
+| `vm/name.hpp` | Names with their hash, and the hash table functions and properties are found in |
 | `vm/vm.*` | Instances, threads, the interpreter, the scheduler, timers, native binding |
 | `vm/save.cpp` | The VM's save format |
 | `vm/papyrus.*` | `SkydotPapyrus`: the VM bound to a pack and `SkydotWorld`, the engine's natives, triggers, saves |
@@ -28,6 +29,11 @@ other VM's code was read, so it stays GPL-3.0.
   included (a seeded generator whose state is saved).
 - `RegisterForSingleUpdate`/`RegisterForUpdate` set one timer per script;
   when it is due, OnUpdate goes to that script alone.
+- Names are hashed once: a script's when it loads, an instance's state when
+  it is set (kept as the script wrote it, which `GetState` returns, with a
+  lowercase key beside it). A `callstatic` instruction remembers what it
+  resolved to and a native its binding; operands are read in place, not
+  copied.
 - Runtime errors (None objects, bad indices, division by zero, missing
   functions, unbound natives) are logged and give None or 0; the script
   continues, as in the game. Missing `On...` functions are not errors.

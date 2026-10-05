@@ -64,19 +64,19 @@ TEST_CASE("integer arithmetic", "[vm][opcodes]") {
                             binary("mod", Op::imod, "Int", "Int", "Int"),
                             unary("neg", Op::ineg, "Int", "Int")}));
 
-    CHECK(rig.call("ints", "add", {Int(7), Int(5)}).i == 12);
-    CHECK(rig.call("ints", "sub", {Int(7), Int(10)}).i == -3);
-    CHECK(rig.call("ints", "mul", {Int(6), Int(7)}).i == 42);
-    CHECK(rig.call("ints", "div", {Int(17), Int(5)}).i == 3);
-    CHECK(rig.call("ints", "mod", {Int(17), Int(5)}).i == 2);
-    CHECK(rig.call("ints", "neg", {Int(9)}).i == -9);
+    CHECK(rig.call("ints", "add", {Int(7), Int(5)}).i() == 12);
+    CHECK(rig.call("ints", "sub", {Int(7), Int(10)}).i() == -3);
+    CHECK(rig.call("ints", "mul", {Int(6), Int(7)}).i() == 42);
+    CHECK(rig.call("ints", "div", {Int(17), Int(5)}).i() == 3);
+    CHECK(rig.call("ints", "mod", {Int(17), Int(5)}).i() == 2);
+    CHECK(rig.call("ints", "neg", {Int(9)}).i() == -9);
     CHECK(rig.vm.errors() == 0);
 
     // The result is an Int whatever the operands were: a Float argument is
     // converted to the parameter's type first.
     const auto sum = rig.call("ints", "add", {Float(2.9F), Int(1)});
-    CHECK(sum.kind == Kind::integer);
-    CHECK(sum.i == 3);
+    CHECK(sum.kind() == Kind::integer);
+    CHECK(sum.i() == 3);
 }
 
 // Ints are 32-bit two's complement and wrap, as in the game's native VM; none
@@ -92,27 +92,27 @@ TEST_CASE("integer arithmetic wraps around at 32 bits", "[vm][opcodes]") {
                             binary("mod", Op::imod, "Int", "Int", "Int"),
                             unary("neg", Op::ineg, "Int", "Int")}));
 
-    CHECK(rig.call("wrap", "add", {Int(hi), Int(1)}).i == lo);
-    CHECK(rig.call("wrap", "add", {Int(lo), Int(-1)}).i == hi);
-    CHECK(rig.call("wrap", "sub", {Int(lo), Int(1)}).i == hi);
-    CHECK(rig.call("wrap", "sub", {Int(hi), Int(-1)}).i == lo);
-    CHECK(rig.call("wrap", "mul", {Int(hi), Int(2)}).i == -2);
-    CHECK(rig.call("wrap", "mul", {Int(65536), Int(65536)}).i == 0);
-    CHECK(rig.call("wrap", "mul", {Int(lo), Int(-1)}).i == lo);
-    CHECK(rig.call("wrap", "neg", {Int(lo)}).i == lo);
-    CHECK(rig.call("wrap", "neg", {Int(hi)}).i == lo + 1);
+    CHECK(rig.call("wrap", "add", {Int(hi), Int(1)}).i() == lo);
+    CHECK(rig.call("wrap", "add", {Int(lo), Int(-1)}).i() == hi);
+    CHECK(rig.call("wrap", "sub", {Int(lo), Int(1)}).i() == hi);
+    CHECK(rig.call("wrap", "sub", {Int(hi), Int(-1)}).i() == lo);
+    CHECK(rig.call("wrap", "mul", {Int(hi), Int(2)}).i() == -2);
+    CHECK(rig.call("wrap", "mul", {Int(65536), Int(65536)}).i() == 0);
+    CHECK(rig.call("wrap", "mul", {Int(lo), Int(-1)}).i() == lo);
+    CHECK(rig.call("wrap", "neg", {Int(lo)}).i() == lo);
+    CHECK(rig.call("wrap", "neg", {Int(hi)}).i() == lo + 1);
 
     // x86's idiv traps on INT_MIN / -1; the game's result is INT_MIN, and the
     // remainder is 0.
-    CHECK(rig.call("wrap", "div", {Int(lo), Int(-1)}).i == lo);
-    CHECK(rig.call("wrap", "mod", {Int(lo), Int(-1)}).i == 0);
-    CHECK(rig.call("wrap", "div", {Int(hi), Int(-1)}).i == -hi);
-    CHECK(rig.call("wrap", "mod", {Int(hi), Int(-1)}).i == 0);
-    CHECK(rig.call("wrap", "div", {Int(-7), Int(-1)}).i == 7);
-    CHECK(rig.call("wrap", "div", {Int(lo), Int(2)}).i == lo / 2);
+    CHECK(rig.call("wrap", "div", {Int(lo), Int(-1)}).i() == lo);
+    CHECK(rig.call("wrap", "mod", {Int(lo), Int(-1)}).i() == 0);
+    CHECK(rig.call("wrap", "div", {Int(hi), Int(-1)}).i() == -hi);
+    CHECK(rig.call("wrap", "mod", {Int(hi), Int(-1)}).i() == 0);
+    CHECK(rig.call("wrap", "div", {Int(-7), Int(-1)}).i() == 7);
+    CHECK(rig.call("wrap", "div", {Int(lo), Int(2)}).i() == lo / 2);
     // Division truncates toward zero and the remainder takes the dividend's sign.
-    CHECK(rig.call("wrap", "div", {Int(-7), Int(2)}).i == -3);
-    CHECK(rig.call("wrap", "mod", {Int(-7), Int(2)}).i == -1);
+    CHECK(rig.call("wrap", "div", {Int(-7), Int(2)}).i() == -3);
+    CHECK(rig.call("wrap", "mod", {Int(-7), Int(2)}).i() == -1);
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -124,16 +124,16 @@ TEST_CASE("float arithmetic", "[vm][opcodes]") {
                               binary("div", Op::fdiv, "Float", "Float", "Float"),
                               unary("neg", Op::fneg, "Float", "Float")}));
 
-    CHECK(rig.call("floats", "add", {Float(1.5F), Float(2.25F)}).f == 3.75F);
-    CHECK(rig.call("floats", "sub", {Float(1.5F), Float(2.0F)}).f == -0.5F);
-    CHECK(rig.call("floats", "mul", {Float(1.5F), Float(4.0F)}).f == 6.0F);
-    CHECK(rig.call("floats", "div", {Float(1.0F), Float(4.0F)}).f == 0.25F);
-    CHECK(rig.call("floats", "neg", {Float(2.5F)}).f == -2.5F);
+    CHECK(rig.call("floats", "add", {Float(1.5F), Float(2.25F)}).f() == 3.75F);
+    CHECK(rig.call("floats", "sub", {Float(1.5F), Float(2.0F)}).f() == -0.5F);
+    CHECK(rig.call("floats", "mul", {Float(1.5F), Float(4.0F)}).f() == 6.0F);
+    CHECK(rig.call("floats", "div", {Float(1.0F), Float(4.0F)}).f() == 0.25F);
+    CHECK(rig.call("floats", "neg", {Float(2.5F)}).f() == -2.5F);
 
     // An Int argument is a Float inside.
     const auto sum = rig.call("floats", "add", {Int(2), Int(3)});
-    CHECK(sum.kind == Kind::floating);
-    CHECK(sum.f == 5.0F);
+    CHECK(sum.kind() == Kind::floating);
+    CHECK(sum.f() == 5.0F);
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -143,11 +143,11 @@ TEST_CASE("division by zero is an error and gives 0; the script goes on", "[vm][
                             binary("imod", Op::imod, "Int", "Int", "Int"),
                             binary("fdiv", Op::fdiv, "Float", "Float", "Float")}));
 
-    CHECK(rig.call("zero", "idiv", {Int(5), Int(0)}).i == 0);
+    CHECK(rig.call("zero", "idiv", {Int(5), Int(0)}).i() == 0);
     CHECK(rig.vm.errors() == 1);
-    CHECK(rig.call("zero", "imod", {Int(5), Int(0)}).i == 0);
+    CHECK(rig.call("zero", "imod", {Int(5), Int(0)}).i() == 0);
     CHECK(rig.vm.errors() == 2);
-    CHECK(rig.call("zero", "fdiv", {Float(5.0F), Float(0.0F)}).f == 0.0F);
+    CHECK(rig.call("zero", "fdiv", {Float(5.0F), Float(0.0F)}).f() == 0.0F);
     CHECK(rig.vm.errors() == 3);
     REQUIRE(rig.log.size() == 3);
     CHECK_THAT(rig.log[0], ContainsSubstring("division by zero"));
@@ -177,7 +177,7 @@ TEST_CASE("comparisons: numbers, strings without case, none and objects", "[vm][
     }
     rig.add(script("Compare", functions));
     const auto test = [&](const char* fn, Value a, Value b) {
-        return rig.call("compare", fn, {std::move(a), std::move(b)}).b;
+        return rig.call("compare", fn, {std::move(a), std::move(b)}).b();
     };
 
     CHECK(test("eq_ii", Int(3), Int(3)));
@@ -226,23 +226,23 @@ TEST_CASE("not, strcat and cast convert as Papyrus does", "[vm][opcodes]") {
                                unary("to_str", Op::cast, "Float", "String"),
                                unary("to_bool", Op::cast, "Int", "Bool")}));
 
-    CHECK(rig.call("convert", "not_int", {Int(0)}).b);
-    CHECK_FALSE(rig.call("convert", "not_int", {Int(7)}).b);
-    CHECK(rig.call("convert", "not_str", {String("")}).b);
-    CHECK_FALSE(rig.call("convert", "not_str", {String("x")}).b);
+    CHECK(rig.call("convert", "not_int", {Int(0)}).b());
+    CHECK_FALSE(rig.call("convert", "not_int", {Int(7)}).b());
+    CHECK(rig.call("convert", "not_str", {String("")}).b());
+    CHECK_FALSE(rig.call("convert", "not_str", {String("x")}).b());
 
     // Values are written as Papyrus prints them: six decimals, True/False.
-    CHECK(rig.call("convert", "cat_if", {Int(5), Float(1.5F)}).s == "51.500000");
-    CHECK(rig.call("convert", "cat_bs", {Bool(true), String("!")}).s == "True!");
-    CHECK(rig.call("convert", "cat_bs", {Bool(false), String("!")}).s == "False!");
+    CHECK(rig.call("convert", "cat_if", {Int(5), Float(1.5F)}).s() == "51.500000");
+    CHECK(rig.call("convert", "cat_bs", {Bool(true), String("!")}).s() == "True!");
+    CHECK(rig.call("convert", "cat_bs", {Bool(false), String("!")}).s() == "False!");
 
-    CHECK(rig.call("convert", "to_float", {Int(3)}).f == 3.0F);
-    CHECK(rig.call("convert", "to_int", {Float(3.9F)}).i == 3);
-    CHECK(rig.call("convert", "to_int", {Float(-3.9F)}).i == -3);
-    CHECK(rig.call("convert", "to_int_str", {String("42")}).i == 42);
-    CHECK(rig.call("convert", "to_str", {Float(0.5F)}).s == "0.500000");
-    CHECK(rig.call("convert", "to_bool", {Int(2)}).b);
-    CHECK_FALSE(rig.call("convert", "to_bool", {Int(0)}).b);
+    CHECK(rig.call("convert", "to_float", {Int(3)}).f() == 3.0F);
+    CHECK(rig.call("convert", "to_int", {Float(3.9F)}).i() == 3);
+    CHECK(rig.call("convert", "to_int", {Float(-3.9F)}).i() == -3);
+    CHECK(rig.call("convert", "to_int_str", {String("42")}).i() == 42);
+    CHECK(rig.call("convert", "to_str", {Float(0.5F)}).s() == "0.500000");
+    CHECK(rig.call("convert", "to_bool", {Int(2)}).b());
+    CHECK_FALSE(rig.call("convert", "to_bool", {Int(0)}).b());
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -272,12 +272,12 @@ TEST_CASE("jumps make loops and branches", "[vm][opcodes][jumps]") {
 
     Rig rig;
     rig.add(script("Loops", {sum, max}));
-    CHECK(rig.call("loops", "sum", {Int(10)}).i == 55);
-    CHECK(rig.call("loops", "sum", {Int(100)}).i == 5050);
+    CHECK(rig.call("loops", "sum", {Int(10)}).i() == 55);
+    CHECK(rig.call("loops", "sum", {Int(100)}).i() == 5050);
     // The loop's first test already jumps out.
-    CHECK(rig.call("loops", "sum", {Int(0)}).i == 0);
-    CHECK(rig.call("loops", "max", {Int(3), Int(9)}).i == 9);
-    CHECK(rig.call("loops", "max", {Int(9), Int(3)}).i == 9);
+    CHECK(rig.call("loops", "sum", {Int(0)}).i() == 0);
+    CHECK(rig.call("loops", "max", {Int(3), Int(9)}).i() == 9);
+    CHECK(rig.call("loops", "max", {Int(9), Int(3)}).i() == 9);
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -300,13 +300,13 @@ TEST_CASE("a function calls a function of its script: arguments in, result out",
 
     Rig rig;
     rig.add(script("Calls", {add, add_three, twice, quad}));
-    CHECK(rig.call("calls", "addthree", {Int(4)}).i == 7);
+    CHECK(rig.call("calls", "addthree", {Int(4)}).i() == 7);
 
     auto* instance = rig.vm.attach(0x20, "calls");
     REQUIRE(instance != nullptr);
-    CHECK(rig.call(instance, "quad", {Int(5)}).i == 20);
+    CHECK(rig.call(instance, "quad", {Int(5)}).i() == 20);
     // Names are case-insensitive.
-    CHECK(rig.call(instance, "QUAD", {Int(1)}).i == 4);
+    CHECK(rig.call(instance, "QUAD", {Int(1)}).i() == 4);
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -329,7 +329,7 @@ TEST_CASE("calls nest on a stack of their own, which is bounded", "[vm][calls]")
 
     Rig rig;
     rig.add(script("Deep", {sum_to, forever}));
-    CHECK(rig.call("deep", "sumto", {Int(300)}).i == 45150);
+    CHECK(rig.call("deep", "sumto", {Int(300)}).i() == 45150);
     CHECK(rig.vm.errors() == 0);
 
     // Past the frame limit the call fails with an error and the thread winds
@@ -479,13 +479,13 @@ TEST_CASE("arrays are shared by reference", "[vm][arrays]") {
     rig.add(lists());
 
     // Fill writes the caller's array; an alias writes the same one.
-    CHECK(rig.call("lists", "roundtrip").i == 4207);
+    CHECK(rig.call("lists", "roundtrip").i() == 4207);
 
     // A native or the host passing an array in gets it changed.
     auto array = std::make_shared<skydot::vm::Array>(3, Int(0));
     rig.call("lists", "fill", {Value::make_array(array)});
-    CHECK(array->at(0).i == 42);
-    CHECK(array->at(1).i == 0);
+    CHECK(array->at(0).i() == 42);
+    CHECK(array->at(1).i() == 0);
 
     // A script variable's array is the one the script goes on writing to.
     auto* instance = rig.vm.attach(0xA0, "lists");
@@ -493,12 +493,12 @@ TEST_CASE("arrays are shared by reference", "[vm][arrays]") {
     CHECK(rig.vm.get_variable(instance, "list").is_none());
     rig.call(instance, "init");
     const auto before = rig.vm.get_variable(instance, "list");
-    REQUIRE(before.kind == Kind::array);
-    REQUIRE(before.array->size() == 2);
-    CHECK(before.array->at(0).i == 0);
+    REQUIRE(before.kind() == Kind::array);
+    REQUIRE(before.array()->size() == 2);
+    CHECK(before.array()->at(0).i() == 0);
     rig.call(instance, "poke");
-    CHECK(before.array->at(0).i == 9);
-    CHECK(rig.vm.get_variable(instance, "list").array == before.array);
+    CHECK(before.array()->at(0).i() == 9);
+    CHECK(rig.vm.get_variable(instance, "list").array() == before.array());
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -507,12 +507,12 @@ TEST_CASE("array opcodes: create, length, find from either end", "[vm][arrays]")
     rig.add(lists());
 
     const auto made = rig.call("lists", "make");
-    REQUIRE(made.kind == Kind::array);
-    REQUIRE(made.array->size() == 4);
-    CHECK(made.array->at(3).i == 9);
+    REQUIRE(made.kind() == Kind::array);
+    REQUIRE(made.array()->size() == 4);
+    CHECK(made.array()->at(3).i() == 9);
 
     const auto search = [&](const char* fn, int x, int from) {
-        return rig.call("lists", fn, {Value::make_array(made.array), Int(x), Int(from)}).i;
+        return rig.call("lists", fn, {Value::make_array(made.array()), Int(x), Int(from)}).i();
     };
     const auto find = [&](int x, int from) { return search("find", x, from); };
     const auto rfind = [&](int x, int from) { return search("rfind", x, from); };
@@ -527,23 +527,23 @@ TEST_CASE("array opcodes: create, length, find from either end", "[vm][arrays]")
     CHECK(rfind(7, -1) == 1);
     CHECK(rfind(8, -1) == -1);
 
-    CHECK(rig.call("lists", "length", {made}).i == 4);
+    CHECK(rig.call("lists", "length", {made}).i() == 4);
     // A None array has no elements.
-    CHECK(rig.call("lists", "length", {Value{}}).i == 0);
+    CHECK(rig.call("lists", "length", {Value{}}).i() == 0);
 
     // New elements are the type's default.
     const auto ints = rig.call("lists", "create", {Int(3)});
-    REQUIRE(ints.kind == Kind::array);
-    REQUIRE(ints.array->size() == 3);
-    CHECK(ints.array->at(2).kind == Kind::integer);
-    CHECK(ints.array->at(2).i == 0);
+    REQUIRE(ints.kind() == Kind::array);
+    REQUIRE(ints.array()->size() == 3);
+    CHECK(ints.array()->at(2).kind() == Kind::integer);
+    CHECK(ints.array()->at(2).i() == 0);
     const auto texts = rig.call("lists", "createtext", {Int(2)});
-    REQUIRE(texts.array->size() == 2);
-    CHECK(texts.array->at(1).kind == Kind::string);
-    CHECK(texts.array->at(1).s.empty());
+    REQUIRE(texts.array()->size() == 2);
+    CHECK(texts.array()->at(1).kind() == Kind::string);
+    CHECK(texts.array()->at(1).s().empty());
 
     // Papyrus arrays hold up to 128 elements.
-    CHECK(rig.call("lists", "create", {Int(128)}).array->size() == 128);
+    CHECK(rig.call("lists", "create", {Int(128)}).array()->size() == 128);
     CHECK(rig.vm.errors() == 0);
     CHECK(rig.call("lists", "create", {Int(129)}).is_none());
     CHECK(rig.call("lists", "create", {Int(-1)}).is_none());
@@ -563,7 +563,7 @@ TEST_CASE("an array cannot hold an array, so none can hold itself", "[vm][arrays
     Rig rig;
     rig.add(script("Nest", {run}));
 
-    CHECK(rig.call("nest", "run").s == "[0, 0]");
+    CHECK(rig.call("nest", "run").s() == "[0, 0]");
     CHECK(rig.vm.errors() == 1);
     REQUIRE(rig.log.size() == 1);
     CHECK_THAT(rig.log[0], ContainsSubstring("cannot hold an array"));
@@ -573,11 +573,11 @@ TEST_CASE("values: defaults, truth, text and conversions", "[vm][values]") {
     Rig rig;
     using skydot::vm::Vm;
 
-    CHECK(Vm::default_for("int").kind == Kind::integer);
-    CHECK(Vm::default_for("float").kind == Kind::floating);
-    CHECK(Vm::default_for("bool").kind == Kind::boolean);
-    CHECK_FALSE(Vm::default_for("bool").b);
-    CHECK(Vm::default_for("string").kind == Kind::string);
+    CHECK(Vm::default_for("int").kind() == Kind::integer);
+    CHECK(Vm::default_for("float").kind() == Kind::floating);
+    CHECK(Vm::default_for("bool").kind() == Kind::boolean);
+    CHECK_FALSE(Vm::default_for("bool").b());
+    CHECK(Vm::default_for("string").kind() == Kind::string);
     CHECK(Vm::default_for("objectreference").is_none());
     CHECK(Vm::default_for("int[]").is_none());
 
@@ -606,15 +606,15 @@ TEST_CASE("values: defaults, truth, text and conversions", "[vm][values]") {
     CHECK(Vm::to_string(rig.vm.object(0x1A, "ObjectReference")) == "[ObjectReference <0000001A>]");
     CHECK(Vm::to_string(Value::object(0xABCDEF01, nullptr)) == "[Form <ABCDEF01>]");
 
-    CHECK(rig.vm.cast(Float(3.9F), "int").i == 3);
-    CHECK(rig.vm.cast(Bool(true), "int").i == 1);
-    CHECK(rig.vm.cast(String("42"), "int").i == 42);
-    CHECK(rig.vm.cast(String("nonsense"), "int").i == 0);
-    CHECK(rig.vm.cast(Int(2), "float").f == 2.0F);
-    CHECK(rig.vm.cast(String("2.5"), "float").f == 2.5F);
-    CHECK(rig.vm.cast(String("x"), "bool").b);
-    CHECK_FALSE(rig.vm.cast(Int(0), "bool").b);
-    CHECK(rig.vm.cast(Int(7), "string").s == "7");
+    CHECK(rig.vm.cast(Float(3.9F), "int").i() == 3);
+    CHECK(rig.vm.cast(Bool(true), "int").i() == 1);
+    CHECK(rig.vm.cast(String("42"), "int").i() == 42);
+    CHECK(rig.vm.cast(String("nonsense"), "int").i() == 0);
+    CHECK(rig.vm.cast(Int(2), "float").f() == 2.0F);
+    CHECK(rig.vm.cast(String("2.5"), "float").f() == 2.5F);
+    CHECK(rig.vm.cast(String("x"), "bool").b());
+    CHECK_FALSE(rig.vm.cast(Int(0), "bool").b());
+    CHECK(rig.vm.cast(Int(7), "string").s() == "7");
     // Something that is not an array does not become one.
     CHECK(rig.vm.cast(Int(1), "int[]").is_none());
     CHECK(rig.vm.cast(Value{}, "objectreference").is_none());

@@ -122,27 +122,27 @@ struct SaveContext {
 };
 
 void write_value(Writer& w, SaveContext& ctx, const Value& v) {
-    w.u8(static_cast<std::uint8_t>(v.kind));
-    switch (v.kind) {
+    w.u8(static_cast<std::uint8_t>(v.kind()));
+    switch (v.kind()) {
     case Kind::none: break;
-    case Kind::integer: w.u32(static_cast<std::uint32_t>(v.i)); break;
-    case Kind::floating: w.u32(std::bit_cast<std::uint32_t>(v.f)); break;
-    case Kind::boolean: w.u8(v.b ? 1 : 0); break;
-    case Kind::string: w.text(v.s); break;
+    case Kind::integer: w.u32(static_cast<std::uint32_t>(v.i())); break;
+    case Kind::floating: w.u32(std::bit_cast<std::uint32_t>(v.f())); break;
+    case Kind::boolean: w.u8(v.b() ? 1 : 0); break;
+    case Kind::string: w.text(v.s()); break;
     case Kind::object: {
-        w.u32(v.form);
-        w.text(v.cls != nullptr ? v.cls->key() : std::string{});
-        const auto it = ctx.instance_index.find(v.instance);
+        w.u32(v.form());
+        w.text(v.cls() != nullptr ? v.cls()->key() : std::string{});
+        const auto it = ctx.instance_index.find(v.instance());
         w.u32(it != ctx.instance_index.end() ? it->second : k_no_instance);
         break;
     }
     case Kind::array: {
         const auto [it, fresh] = ctx.array_ids.try_emplace(
-            v.array.get(), static_cast<std::uint32_t>(ctx.array_ids.size()));
+            v.array().get(), static_cast<std::uint32_t>(ctx.array_ids.size()));
         w.u32(it->second);
         if (fresh) {
-            w.u32(static_cast<std::uint32_t>(v.array->size()));
-            for (const auto& e : *v.array) {
+            w.u32(static_cast<std::uint32_t>(v.array()->size()));
+            for (const auto& e : *v.array()) {
                 write_value(w, ctx, e);
             }
         }
@@ -184,7 +184,7 @@ std::vector<std::uint8_t> Vm::save() const {
     for (const auto* i : all) {
         w.u32(i->form);
         w.text(i->cls->key());
-        w.text(i->state);
+        w.text(i->state());
     }
     for (const auto* i : all) {
         w.u32(static_cast<std::uint32_t>(i->vars.size()));
@@ -264,45 +264,53 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         if (!r.u8(kind) || kind > static_cast<std::uint8_t>(Kind::array)) {
             return false;
         }
-        v = Value{};
-        v.kind = static_cast<Kind>(kind);
         std::uint32_t n = 0;
-        switch (v.kind) {
-        case Kind::none: return true;
+        switch (static_cast<Kind>(kind)) {
+        case Kind::none: v = Value{}; return true;
         case Kind::integer:
             if (!r.u32(n)) {
                 return false;
             }
-            v.i = static_cast<std::int32_t>(n);
+            v = Value::integer(static_cast<std::int32_t>(n));
             return true;
         case Kind::floating:
             if (!r.u32(n)) {
                 return false;
             }
-            v.f = std::bit_cast<float>(n);
+            v = Value::floating(std::bit_cast<float>(n));
             return true;
         case Kind::boolean: {
             std::uint8_t b = 0;
             if (!r.u8(b)) {
                 return false;
             }
-            v.b = b != 0;
+            v = Value::boolean(b != 0);
             return true;
         }
-        case Kind::string: return r.text(v.s);
-        case Kind::object: {
-            std::string cls;
-            std::uint32_t instance = 0;
-            if (!r.u32(v.form) || !r.text(cls) || !r.u32(instance)) {
+        case Kind::string: {
+            std::string text;
+            if (!r.text(text)) {
                 return false;
             }
-            v.cls = cls.empty() ? nullptr : load_class(cls);
+            v = Value::string(std::move(text));
+            return true;
+        }
+        case Kind::object: {
+            std::uint32_t form = 0;
+            std::string cls;
+            std::uint32_t instance = 0;
+            if (!r.u32(form) || !r.text(cls) || !r.u32(instance)) {
+                return false;
+            }
+            const ScriptClass* seen_as = cls.empty() ? nullptr : load_class(cls);
+            Instance* attached = nullptr;
             if (instance != k_no_instance) {
                 if (instance >= index.size()) {
                     return false;
                 }
-                v.instance = index[instance];
+                attached = index[instance];
             }
+            v = Value::object(form, seen_as, attached);
             return true;
         }
         case Kind::array: {
@@ -311,7 +319,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 return false;
             }
             if (const auto it = arrays.find(id); it != arrays.end()) {
-                v.array = it->second;
+                v = Value::make_array(it->second);
                 return true;
             }
             if (id != arrays.size() || !r.count(n, 1)) {
@@ -323,11 +331,11 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 // Papyrus arrays hold no arrays, so a save has no cycle to
                 // follow; one that does (an array holding itself, or two
                 // holding each other) would send to_string around forever.
-                if (!read_value(e) || e.kind == Kind::array) {
+                if (!read_value(e) || e.kind() == Kind::array) {
                     return false;
                 }
             }
-            v.array = std::move(array);
+            v = Value::make_array(std::move(array));
             return true;
         }
         }
@@ -370,7 +378,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         if (instance == nullptr) {
             return fail("the save attaches script " + cls + ", which does not load");
         }
-        instance->state = std::move(state);
+        instance->set_state(std::move(state));
         index.push_back(instance);
     }
     for (auto* instance : index) {

@@ -99,7 +99,7 @@ SkyDot/
 │   ├── extension/src/nav/            navigation regions (~270)
 │   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
 │   ├── extension/src/session/        SkydotStreamer (world streaming, door preloading), SkydotClock (~1,300)
-│   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
+│   ├── extension/src/vm/             Papyrus VM and its binding (~4,600)
 │   ├── extension/src/register_types.*  GDExtension entry point
 │   ├── game/                         Godot project: pack tool, viewer, tools (~5,500)
 │   ├── game/shaders/                 the shaders, as text files Godot's preprocessor assembles (~1,300)

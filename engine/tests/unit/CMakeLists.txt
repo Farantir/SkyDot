@@ -22,6 +22,7 @@ add_executable(skydot_core_tests
     test_vm_objects.cpp
     test_vm_save.cpp
     test_vm_threads.cpp
+    test_vm_value.cpp
     test_vpath.cpp
     test_world_data.cpp
 )

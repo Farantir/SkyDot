@@ -141,13 +141,13 @@ TEST_CASE("the interpreter", "[.bench][vm]") {
     REQUIRE(rig.vm.attach(0x41, "actor") != nullptr);
 
     const auto before = rig.vm.instructions();
-    CHECK(rig.call("bench", "int_loop", {Int(k_loops)}).kind == skydot::vm::Kind::integer);
-    CHECK(rig.call("bench", "string_loop", {Int(k_loops)}).s == "Skyrim / Whiterun");
-    CHECK(rig.call("bench", "array_loop", {Int(k_loops)}).i == k_loops - 1);
-    CHECK(rig.call("bench", "native_loop", {Int(k_loops)}).i == 3 * (k_loops - 1));
-    CHECK(rig.call(instance, "method_loop", {Int(k_loops)}).kind == skydot::vm::Kind::integer);
-    CHECK(rig.call(instance, "property_loop", {Int(k_loops)}).kind == skydot::vm::Kind::integer);
-    CHECK(rig.call(instance, "state_loop", {Int(k_loops)}).kind == skydot::vm::Kind::integer);
+    CHECK(rig.call("bench", "int_loop", {Int(k_loops)}).kind() == skydot::vm::Kind::integer);
+    CHECK(rig.call("bench", "string_loop", {Int(k_loops)}).s() == "Skyrim / Whiterun");
+    CHECK(rig.call("bench", "array_loop", {Int(k_loops)}).i() == k_loops - 1);
+    CHECK(rig.call("bench", "native_loop", {Int(k_loops)}).i() == 3 * (k_loops - 1));
+    CHECK(rig.call(instance, "method_loop", {Int(k_loops)}).kind() == skydot::vm::Kind::integer);
+    CHECK(rig.call(instance, "property_loop", {Int(k_loops)}).kind() == skydot::vm::Kind::integer);
+    CHECK(rig.call(instance, "state_loop", {Int(k_loops)}).kind() == skydot::vm::Kind::integer);
     CHECK(rig.vm.errors() == 0);
     WARN("instructions for one pass of everything: " << rig.vm.instructions() - before);
 

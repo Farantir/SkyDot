@@ -27,31 +27,31 @@ Rig::Rig() {
                        native_function("Wait", {{"seconds", "Float"}}),
                        native_function("WaitFor", {{"key", "String"}, {"timeout", "Float"}})}});
     vm.bind("Util", "Note", [this](NativeCall& c) {
-        notes.push_back(c.args.at(0).s);
+        notes.push_back(c.args.at(0).s());
         return NativeResult{};
     });
     vm.bind("Util", "NoteInt", [this](NativeCall& c) {
-        notes.push_back(std::to_string(c.args.at(0).i));
+        notes.push_back(std::to_string(c.args.at(0).i()));
         return NativeResult{};
     });
     vm.bind("Util", "Triple", [](NativeCall& c) {
-        return NativeResult{.value = Value::integer(c.args.at(0).i * 3)};
+        return NativeResult{.value = Value::integer(c.args.at(0).i() * 3)};
     });
     vm.bind("Util", "Echo", [this](NativeCall& c) {
         echoes.push_back(c.args);
         return NativeResult{};
     });
     vm.bind("Util", "Wait", [](NativeCall& c) {
-        return NativeResult{.value = {}, .wait = static_cast<double>(c.args.at(0).f)};
+        return NativeResult{.value = {}, .wait = static_cast<double>(c.args.at(0).f())};
     });
     vm.bind("Util", "WaitFor", [](NativeCall& c) {
-        return NativeResult{.value = {}, .wait = static_cast<double>(c.args.at(1).f), .wait_for = c.args.at(0).s};
+        return NativeResult{.value = {}, .wait = static_cast<double>(c.args.at(1).f()), .wait_for = c.args.at(0).s()};
     });
 
     add({.name = "ObjectReference",
          .functions = {native_function("GetFormID", {}, "Int", false)}});
     vm.bind("ObjectReference", "GetFormID", [](NativeCall& c) {
-        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(c.self.form))};
+        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(c.self.form()))};
     });
 }
 

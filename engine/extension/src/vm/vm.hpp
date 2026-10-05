@@ -45,7 +45,6 @@ namespace skydot::vm {
 struct Instance {
     const ScriptClass* cls = nullptr;
     std::uint32_t form = 0;
-    std::string state; ///< Lowercase; "" is the default state.
     /// Variables per class in the chain, most derived first.
     std::vector<std::pair<const ScriptClass*, std::vector<Value>>> vars;
 
@@ -54,6 +53,18 @@ struct Instance {
     /// `c` or the list is shorter. Every class in the instance's chain has
     /// one (attach), so for those it is null only for a bad index.
     Value* variable(const ScriptClass* c, std::size_t index);
+
+    /// The current state as a script last named it ("" is the default state),
+    /// which `GetState` gives back, and in lowercase, which lookups use.
+    [[nodiscard]] const std::string& state() const noexcept { return state_.s(); }
+    [[nodiscard]] Name state_key() const noexcept { return {state_key_, state_hash_}; }
+    [[nodiscard]] const Value& state_value() const noexcept { return state_; }
+    void set_state(std::string name);
+
+private:
+    Value state_ = default_of(TypeKind::string);
+    std::string state_key_;
+    std::size_t state_hash_ = name_hash("");
 };
 
 struct Frame {
@@ -167,6 +178,8 @@ public:
     [[nodiscard]] static Value default_for(std::string_view type);
     [[nodiscard]] Value cast(const Value& v, std::string_view type);
     [[nodiscard]] static std::string to_string(const Value& v);
+    /// `to_string(v)` appended to `out`.
+    static void append_text(std::string& out, const Value& v);
     [[nodiscard]] static bool truthy(const Value& v);
     /// An object value for `form` seen as class `cls` (any case).
     [[nodiscard]] Value object(std::uint32_t form, std::string_view cls);
@@ -180,16 +193,27 @@ private:
     };
     /// `name` for an object seen as `cls`: in an attached script derived from
     /// `cls`, else in `cls`'s own chain.
-    Found find_method(const Value& object, std::string_view name);
-    /// Look `name` up from class `start` upward, in `state` then the default.
-    static const Function* find_in_chain(const ScriptClass* start, std::string_view state,
-                                         std::string_view name);
+    Found find_method(const Value& object, const Name& name);
+    /// The class `name` (any case), loading it if needed.
+    const ScriptClass* class_named(std::string_view name);
+    /// The instances attached to `form`, in attach order.
+    const std::vector<std::unique_ptr<Instance>>& attached(std::uint32_t form) const;
+    /// `v` as a value of the declared type `type`, whose kind is `kind`.
+    Value convert(const Value& v, TypeKind kind, std::string_view type);
+    /// Look `name` up from class `start` upward, in `state` (lowercase) then the default.
+    static const Function* find_in_chain(const ScriptClass* start, const Name& state, const Name& name);
 
     std::uint64_t start(Found found, Value self, std::vector<Value> args, bool keep_result);
     void fire_timers();
     /// Push a frame for `fn`; returns false (logged) if the call cannot run.
     bool push(Thread& thread, const Function* fn, Instance* instance, Value self,
               std::vector<Value> args, int result_arg);
+    /// The same, its arguments being the top frame's current instruction's
+    /// from argument `first` on.
+    bool push_call(Thread& thread, const Function* fn, Instance* instance, Value self, std::uint32_t first,
+                   int result_arg);
+    /// The binding of native `fn`, or null if there is none yet.
+    const Native* native_of(const Function* fn);
     void run(Thread& thread);
     /// Execute one instruction of the top frame. False once the thread must
     /// stop for this update (it finished or waits).
@@ -198,8 +222,12 @@ private:
     bool call_native(Thread& thread, const Function* fn, Value self, std::vector<Value> args,
                      int result_arg);
 
-    Value read(Frame& frame, std::uint32_t arg);
+    /// The value of argument `arg` of the frame's instruction, where it lives:
+    /// valid until the frame or the value it reads changes.
+    const Value& peek(Frame& frame, std::uint32_t arg);
+    const Value& peek_other(Frame& frame, std::uint32_t arg);
     void write(Frame& frame, std::uint32_t arg, Value value);
+    void write_other(Frame& frame, std::uint32_t arg, Value value);
     [[nodiscard]] std::string_view type_of(const Frame& frame, std::uint32_t arg) const;
     [[nodiscard]] std::string where(const Frame& frame) const;
 
@@ -208,6 +236,7 @@ private:
     std::map<std::string, std::unique_ptr<ScriptClass>, std::less<>> classes_;
     std::set<std::string, std::less<>> missing_;
     std::unordered_map<std::string, Native> natives_;
+    std::unordered_map<const Function*, const Native*> resolved_natives_;
     std::set<std::string, std::less<>> unbound_logged_;
     std::unordered_map<std::uint32_t, std::vector<std::unique_ptr<Instance>>> instances_;
     std::vector<std::unique_ptr<Thread>> threads_;

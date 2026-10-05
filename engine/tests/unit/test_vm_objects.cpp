@@ -39,21 +39,21 @@ TEST_CASE("an attached script starts with its variables, its auto state and no O
     auto* instance = rig.vm.attach(0x40, "FRESH");
     REQUIRE(instance != nullptr);
     CHECK(instance->form == 0x40);
-    CHECK(instance->state == "idle");
+    CHECK(instance->state() == "idle");
     CHECK(rig.vm.instance(0x40, "fresh") == instance);
     CHECK(rig.vm.instances(0x40) == std::vector{instance});
     CHECK(rig.vm.instances(0x41).empty());
 
-    CHECK(rig.vm.get_variable(instance, "count").i == 5);
+    CHECK(rig.vm.get_variable(instance, "count").i() == 5);
     const auto ratio = rig.vm.get_variable(instance, "RATIO");
-    CHECK(ratio.kind == Kind::floating);
-    CHECK(ratio.f == 2.0F);
-    CHECK(rig.vm.get_variable(instance, "label").s == "box");
-    CHECK(rig.vm.get_variable(instance, "armed").b);
+    CHECK(ratio.kind() == Kind::floating);
+    CHECK(ratio.f() == 2.0F);
+    CHECK(rig.vm.get_variable(instance, "label").s() == "box");
+    CHECK(rig.vm.get_variable(instance, "armed").b());
     const auto plain = rig.vm.get_variable(instance, "plain");
-    CHECK(plain.kind == Kind::integer);
-    CHECK(plain.i == 0);
-    CHECK(rig.vm.get_variable(instance, "text").kind == Kind::string);
+    CHECK(plain.kind() == Kind::integer);
+    CHECK(plain.i() == 0);
+    CHECK(rig.vm.get_variable(instance, "text").kind() == Kind::string);
     CHECK(rig.vm.get_variable(instance, "target").is_none());
     CHECK(rig.vm.get_variable(instance, "nosuchvariable").is_none());
 
@@ -99,23 +99,23 @@ TEST_CASE("properties: auto ones are variables, others run their getter and sett
 
     // A script reads and writes an auto property as its variable.
     rig.call(instance, "bump");
-    CHECK(rig.vm.get_variable(instance, "::counter_var").i == 6);
+    CHECK(rig.vm.get_variable(instance, "::counter_var").i() == 6);
 
     // Set the way VMAD does: an auto property's variable directly, converted
     // to the property's type.
     CHECK(rig.vm.set_property(instance, "COUNTER", Float(7.9F)));
     const auto counter = rig.vm.get_variable(instance, "::counter_var");
-    CHECK(counter.kind == Kind::integer);
-    CHECK(counter.i == 7);
+    CHECK(counter.kind() == Kind::integer);
+    CHECK(counter.i() == 7);
 
     // Any other property goes through its setter, on a thread of its own.
     CHECK(rig.vm.set_property(instance, "doubled", Int(10)));
-    CHECK(rig.vm.get_variable(instance, "half").i == 0);
+    CHECK(rig.vm.get_variable(instance, "half").i() == 0);
     rig.vm.update(0.0);
-    CHECK(rig.vm.get_variable(instance, "half").i == 5);
-    CHECK(rig.call(instance, "readdoubled").i == 10);
+    CHECK(rig.vm.get_variable(instance, "half").i() == 5);
+    CHECK(rig.call(instance, "readdoubled").i() == 10);
     rig.call(instance, "writedoubled", {Int(40)});
-    CHECK(rig.vm.get_variable(instance, "half").i == 20);
+    CHECK(rig.vm.get_variable(instance, "half").i() == 20);
 
     CHECK_FALSE(rig.vm.set_property(instance, "nosuchproperty", Int(1)));
     CHECK(rig.vm.errors() == 0);
@@ -156,8 +156,8 @@ TEST_CASE("a script extends another: variables per class, overrides, callparent"
 
     // The instance holds the variables of every class in its chain.
     CHECK(dog->vars.size() == 2);
-    CHECK(rig.vm.get_variable(dog, "tricks").i == 2);
-    CHECK(rig.vm.get_variable(dog, "legs").i == 4);
+    CHECK(rig.vm.get_variable(dog, "tricks").i() == 2);
+    CHECK(rig.vm.get_variable(dog, "legs").i() == 4);
     CHECK(rig.vm.load_class("dog")->parent() == rig.vm.load_class("animal"));
     CHECK(rig.vm.load_class("dog")->derives_from(rig.vm.load_class("animal")));
     CHECK_FALSE(rig.vm.load_class("animal")->derives_from(rig.vm.load_class("dog")));
@@ -166,16 +166,16 @@ TEST_CASE("a script extends another: variables per class, overrides, callparent"
     // nothing else; the property opcodes treat null as "no such variable".
     const auto* animal = rig.vm.load_class("animal");
     REQUIRE(dog->variable(animal, 0) != nullptr);
-    CHECK(dog->variable(animal, 0)->i == 4);
-    CHECK(dog->variable(rig.vm.load_class("dog"), 0)->i == 2);
+    CHECK(dog->variable(animal, 0)->i() == 4);
+    CHECK(dog->variable(rig.vm.load_class("dog"), 0)->i() == 2);
     CHECK(dog->variable(animal, 1) == nullptr);
     CHECK(dog->variable(rig.vm.load_class("zoo"), 0) == nullptr);
     CHECK(dog->variable(nullptr, 0) == nullptr);
 
     // The override wins; callparent reaches the original; a method only the
     // parent has still calls the override of its own class's method.
-    CHECK(rig.call(dog, "speak").s == "animal woof");
-    CHECK(rig.call(dog, "describe").s == "animal woof");
+    CHECK(rig.call(dog, "speak").s() == "animal woof");
+    CHECK(rig.call(dog, "describe").s() == "animal woof");
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -187,23 +187,23 @@ TEST_CASE("a call on an object runs the attached script derived from the class i
     const auto seen_as_animal = [&](std::uint32_t form) { return rig.vm.object(form, "Animal"); };
 
     // A Dog seen as an Animal still barks (and the parameter's type keeps it).
-    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x50)}).s == "animal woof");
-    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x51)}).s == "animal");
+    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x50)}).s() == "animal woof");
+    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x51)}).s() == "animal");
     // Nothing attached: the class's own function.
-    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x52)}).s == "animal");
+    CHECK(rig.call("zoo", "introduce", {seen_as_animal(0x52)}).s() == "animal");
     CHECK(rig.vm.errors() == 0);
 
     // Casting to a script type finds the attached instance or gives None;
     // casting to an engine type keeps the form.
     const auto dog = rig.vm.cast(seen_as_animal(0x50), "dog");
-    CHECK(dog.kind == Kind::object);
-    CHECK(dog.form == 0x50);
-    CHECK(dog.instance == rig.vm.instance(0x50, "dog"));
+    CHECK(dog.kind() == Kind::object);
+    CHECK(dog.form() == 0x50);
+    CHECK(dog.instance() == rig.vm.instance(0x50, "dog"));
     CHECK(rig.vm.cast(seen_as_animal(0x51), "dog").is_none());
     CHECK(rig.vm.cast(seen_as_animal(0x52), "dog").is_none());
     const auto reference = rig.vm.cast(seen_as_animal(0x52), "objectreference");
-    CHECK(reference.kind == Kind::object);
-    CHECK(reference.form == 0x52);
+    CHECK(reference.kind() == Kind::object);
+    CHECK(reference.form() == 0x52);
 }
 
 namespace {
@@ -257,32 +257,36 @@ TEST_CASE("states: ::State and GotoState change which function runs", "[vm][stat
     REQUIRE(instance != nullptr);
 
     // Attached in the auto state, whose functions run.
-    CHECK(instance->state == "idle");
-    CHECK(rig.call(instance, "describe").s == "idle");
-    CHECK(rig.call(instance, "getstate").s == "idle");
+    CHECK(instance->state() == "idle");
+    CHECK(rig.call(instance, "describe").s() == "idle");
+    CHECK(rig.call(instance, "getstate").s() == "idle");
     CHECK(rig.notes.empty());
 
     // OnEndState goes to the state being left, OnBeginState to the new one.
     rig.call(instance, "gotostate", {String("busy")});
-    CHECK(instance->state == "busy");
+    CHECK(instance->state() == "busy");
     CHECK(rig.notes == std::vector<std::string>{"end idle for busy", "begin busy from idle"});
-    CHECK(rig.call(instance, "describe").s == "busy");
+    CHECK(rig.call(instance, "describe").s() == "busy");
 
     // A function the state lacks is the default state's.
-    CHECK(rig.call(instance, "common").i == 1);
+    CHECK(rig.call(instance, "common").i() == 1);
 
     // The default state is the empty name; it has no state handlers, and a
     // missing On... function is no error.
     rig.notes.clear();
     rig.call(instance, "gotostate", {String("")});
-    CHECK(instance->state.empty());
+    CHECK(instance->state().empty());
     CHECK(rig.notes == std::vector<std::string>{"end busy for "});
-    CHECK(rig.call(instance, "describe").s == "default");
+    CHECK(rig.call(instance, "describe").s() == "default");
     CHECK(rig.vm.errors() == 0);
 
-    // State names are case-insensitive.
+    // State names are case-insensitive, and GetState gives the name as the
+    // script wrote it.
     rig.call(instance, "gotostate", {String("IDLE")});
-    CHECK(rig.call(instance, "describe").s == "idle");
+    CHECK(rig.call(instance, "describe").s() == "idle");
+    CHECK(rig.call(instance, "getstate").s() == "IDLE");
+    CHECK(instance->state() == "IDLE");
+    CHECK(instance->state_key().text == "idle");
 }
 
 TEST_CASE("states decide which events an instance handles", "[vm][states][events]") {
@@ -365,22 +369,22 @@ TEST_CASE("a bound native receives its arguments as its parameter types and retu
     Rig rig;
     rig.add(script("Natives", {run}));
 
-    CHECK(rig.call("natives", "run").i == 42);
+    CHECK(rig.call("natives", "run").i() == 42);
     REQUIRE(rig.echoes.size() == 2);
     REQUIRE(rig.echoes[0].size() == 4);
-    CHECK(rig.echoes[0][0].kind == Kind::string);
-    CHECK(rig.echoes[0][0].s == "hi");
-    CHECK(rig.echoes[0][1].i == 3);
-    CHECK(rig.echoes[0][2].kind == Kind::floating); // the Int 4 became a Float
-    CHECK(rig.echoes[0][2].f == 4.0F);
-    CHECK(rig.echoes[0][3].kind == Kind::boolean);
-    CHECK(rig.echoes[0][3].b);
-    CHECK(rig.echoes[1][0].kind == Kind::string);
-    CHECK(rig.echoes[1][0].s == "7");
-    CHECK(rig.echoes[1][1].kind == Kind::integer);
-    CHECK(rig.echoes[1][1].i == 2);
-    CHECK(rig.echoes[1][2].f == 5.0F);
-    CHECK_FALSE(rig.echoes[1][3].b);
+    CHECK(rig.echoes[0][0].kind() == Kind::string);
+    CHECK(rig.echoes[0][0].s() == "hi");
+    CHECK(rig.echoes[0][1].i() == 3);
+    CHECK(rig.echoes[0][2].kind() == Kind::floating); // the Int 4 became a Float
+    CHECK(rig.echoes[0][2].f() == 4.0F);
+    CHECK(rig.echoes[0][3].kind() == Kind::boolean);
+    CHECK(rig.echoes[0][3].b());
+    CHECK(rig.echoes[1][0].kind() == Kind::string);
+    CHECK(rig.echoes[1][0].s() == "7");
+    CHECK(rig.echoes[1][1].kind() == Kind::integer);
+    CHECK(rig.echoes[1][1].i() == 2);
+    CHECK(rig.echoes[1][2].f() == 5.0F);
+    CHECK_FALSE(rig.echoes[1][3].b());
     CHECK(rig.vm.errors() == 0);
 }
 
@@ -400,8 +404,8 @@ TEST_CASE("a native method is given the object it was called on", "[vm][natives]
 
     auto* instance = rig.vm.attach(0x1234, "ref");
     REQUIRE(instance != nullptr);
-    CHECK(rig.call(instance, "id").i == 0x1234);
-    CHECK(rig.call("prober", "probe", {rig.vm.object(0x77, "ObjectReference")}).i == 0x77);
+    CHECK(rig.call(instance, "id").i() == 0x1234);
+    CHECK(rig.call("prober", "probe", {rig.vm.object(0x77, "ObjectReference")}).i() == 0x77);
     CHECK(rig.vm.errors() == 0);
 }
 
