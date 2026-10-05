@@ -590,6 +590,14 @@ carry the conversion in their root node; the engine converts placements
 
 ## 7. The engine extension (skydot)
 
+The sources under `engine/extension/src/` are grouped by what depends on what,
+bottom up: `data/` (world.fb as read), `nav/`, `render/`, `physics/`,
+`actors/`, `build/` (cell building), `world/` (`SkydotWorld`), then `ai/` and
+`vm/` on top, with `assets/` for the pack. `extension/CMakeLists.txt` lists
+each and the few places where the layering is not clean yet (`render/lod` and
+`render/weather` take a `SkydotWorld`; `assets/` includes `physics/` and
+`actors/`).
+
 ### 7.1 Entry point and classes
 
 `register_types.cpp` exports `skydot_library_init` and registers its classes
@@ -655,14 +663,27 @@ renderer creates resources without locking.
 
 ### 7.3 `SkydotWorld`: the world database and the builder
 
-`SkydotWorld` is the class GDScript talks to. It holds two parts of its own
-(`data/world_data.*`, `actors/actor_placement.*`) and everything else
-(queries, builders, settings) is still in it:
+`SkydotWorld` (`world/world.*`) is the class GDScript talks to, and little
+more: its bound methods forward to three parts it holds, and `open` makes them
+point at the new file.
 
 ```
 SkydotWorld ── data_       std::shared_ptr<const WorldData>: the file and its indexes
-            └─ placement_  ActorPlacement: where SkydotAi has moved actors
+            ├─ placement_  ActorPlacement: where SkydotAi has moved actors
+            ├─ builder_    CellBuilder: builds cells; owns jobs, caches, BuildOptions
+            │               └─ decorator_  Decorator: what is done to a placed model
+            └─ ref_cells_  queries::RefCellIndex: reference -> cell, built on first ask
 ```
+
+The read-only calls (`list_cells`, `get_cell`, `get_ref_info`, `get_sky`,
+`get_quest`, ...) are free functions over a `const WorldData&` in
+`world/queries_*.cpp`, declared in `queries.hpp`, so a query cannot change
+the world and a method of `SkydotWorld` that is not const is one that
+builds, loads or fills a cache. (The CONST flag of `build_cell`,
+`begin_cell`, `begin_exterior`, `continue_build*`, `build_ref`,
+`build_actor`, `get_cell_resources`, `get_exterior_resources`,
+`get_locomotion` and `get_ref_cell` is therefore gone from ClassDB; nothing
+else in the class list changed.)
 
 **`WorldData`: the file, read-only.** `SkydotWorld::open(path)` refuses a
 second open (a world is opened once; `SkydotPack::open_world` makes a new
@@ -687,9 +708,11 @@ hands it to `SkydotAi` and `SkydotWeather`, which have no other access to
 the world's internals. A closed `WorldData` (before `open` succeeds) answers
 every query with nothing.
 
-Still built lazily on first use, in `SkydotWorld`: `ref_cells_` (reading
-every reference takes most of a second on the SE pack, so not in `open`),
-locomotion, add-on node models, grass models, projected (MATO) materials.
+Still built lazily on first use: `ref_cells_` in `SkydotWorld` (reading
+every reference takes most of a second on the SE pack, so not in `open`), and
+in `CellBuilder` the locomotion clips, grass models and the terrain builder,
+in `Decorator` the add-on node models and projected (MATO) materials. Each
+belongs to the object that fills it, which is not const where it changes.
 
 **`ActorPlacement`: where actors are.** The editor's places come from
 `WorldData`; the ones `SkydotAi` has moved actors to are kept here
@@ -706,11 +729,13 @@ vectors that can hold several (links, activate parents, primitives).
 
 **Queries for scripts and tools** return `Dictionary`/`Array`: `list_cells`,
 `get_cell`, `get_refs`, `get_base`, `get_door`, `get_ref_info`, `pick_ref`
-(ray against physics bodies, then model bounds), `get_quest`, `get_actor`,
-`get_navmesh`, `get_sky` (weather colours at an hour), and more.
+(ray against physics bodies, then model bounds; `build/refs.cpp`, it reads
+no world data), `get_quest`, `get_actor`, `get_navmesh`, `get_sky` (weather
+colours at an hour), and more.
 
-**Building is incremental.** Building a cell can take tens of milliseconds,
-so it is split into a cheap begin and budgeted continue calls:
+**Building is incremental.** `CellBuilder` (`build/cell_builder.*`) builds
+cells; a cell can take tens of milliseconds, so it is split into a cheap
+begin and budgeted continue calls:
 
 ```
 begin_cell(id) / begin_exterior(world, x, y)       immediate:
@@ -735,24 +760,29 @@ land texture and actor clip a place needs; `request_cell`/`request_exterior`
 queue them on the asset cache and return how many are still pending, so a
 caller begins a build only when nothing would load on the main thread.
 
-**`place_ref`**: placing one reference:
+**`place_ref`** (`CellBuilder`): placing one reference:
 
 1. Skip it if it is initially disabled, following the enable-parent chain
    with its "opposite" flags (up to 16 deep).
 2. Look up its base. If the base has a model and is not an editor marker:
    - instance the `SkydotModel` and apply the reference transform
      `C·T·C⁻¹` (`skyrim_transform`);
-   - reset the NIF root's own transform (the game ignores it);
-   - apply BSOrderedNode draw order (`sorting_offset`);
-   - with Skyrim materials: replace materials (`SkydotMaterials::apply`),
-     water surfaces (cell water type), projected/directional material
-     (STAT DNAM → MATO);
-   - with effects: attach add-on nodes (ADDN models such as candle flames),
-     `SkydotAnimator` (clips) and particles;
-   - attach billboards;
-   - tag the node with ref/cell/activatable metadata for picking and
-     scripts, and mark plain doors for actors;
-   - attach collision bodies last, so material passes never see them.
+   - decorate it (`Decorator::decorate`, `build/decoration.cpp`): one
+     ordered table of steps, each checking its own `BuildOptions` setting:
+     1. reset the NIF root's own transform (the game ignores it);
+     2. apply BSOrderedNode draw order (`sorting_offset`);
+     3. with Skyrim materials: replace materials (`SkydotMaterials::apply`);
+     4. water surfaces (cell water type);
+     5. projected/directional material (STAT DNAM → MATO);
+     6. with Skyrim materials and effects: add-on nodes (ADDN models such
+        as candle flames; each goes through the same table, without steps
+        4-6 and 9-11);
+     7. billboards;
+     8. with effects: `SkydotAnimator` (clips) and particles;
+     9. tag the node with ref/cell/activatable metadata for picking and
+        scripts;
+     10. mark plain doors for actors;
+     11. collision bodies last, so material and effect passes never see them.
 3. If the base is a light: an `OmniLight3D` or `SpotLight3D` whose radius
    and fade combine the LIGH record with the reference's own XRDS/XLIG
    overrides, shadow flags (or all shadows if configured), negative lights,
