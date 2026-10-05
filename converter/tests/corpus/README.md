@@ -25,7 +25,7 @@ corpus harness: visited 3 install(s) skyrim-le skyrim-se skyrim-vr
 
 Set `BETHCONV_CORPUS_REQUIRE=1` to make "visited nothing" a failure.
 
-All three installs take about 410 s under ASan. The merge pin is the largest
+All three installs take about 500 s under ASan. The merge pin is the largest
 part: it merges each install and writes `world.fb` from the result, reopens
 it and hashes its bytes (the writer is deterministic, so the hash moves only
 when its output does). The field definitions and plugin walks come next.
@@ -39,13 +39,25 @@ tree blocks and atlas.
 After an intended behavior change:
 
 ```sh
-./build/linux-debug-asan/tests/corpus/bethconv-corpus-snapshot \
-    > tests/corpus/corpus-expectations.json
+build/linux-release/tests/corpus/bethconv-corpus-snapshot > /tmp/expectations.json
+mv /tmp/expectations.json tests/corpus/corpus-expectations.json
 ```
 
 The existing file is also the input: it lists installs, plugins, archives and
 known-bad entries. Only measured values are replaced; installs that are not
-configured keep their old numbers.
+configured keep their old numbers. Do not redirect straight into
+`corpus-expectations.json`: the shell truncates it before the tool reads it.
+
+The release build writes the same bytes as the ASan one (checked on
+2026-10-05) and takes about 45 s for the three installs instead of 500 s, so
+regenerate with it and let the ASan run (`ctest`, above) confirm.
+
+To tell which commit moved a value, check out the commit in a worktree
+(`git worktree add --detach`, with `converter/extern`'s submodules copied in),
+build `bethconv-corpus-snapshot` with `linux-release` (about 30 s per commit
+once built) and compare its output with the file. A run at the commit that last
+regenerated the file must reproduce every pin; if it does not, the install
+changed.
 
 Read the diff. Be suspicious of an unintended `records` or
 `type_histogram_hash` change, and of a shrinking `expected_read_failures`
@@ -271,6 +283,28 @@ Strings are pinned as hashes so no game text is committed.
 
 To pick forms for a new install, leave `forms` empty and run the snapshot tool;
 it prints one candidate per class.
+
+### The `world` pin
+
+Its counts come from reopening `world.fb`; `bytes` and `hash` move whenever the
+writer's layout does, even when the data is the same. The object API's `Pack`
+(2026-10-05) writes 317,620 empty vectors on SE that the hand-written writer
+left out: +1.8 MB, same content. To check that, convert the same install at
+both commits, dump the two files with
+`flatc --json --strict-json --raw-binary --defaults-json` against one schema
+and compare after dropping empty arrays and trailing commas (the SE dump is
+3 GB, so use a tmpfs with room).
+
+Two values are easy to misread:
+
+- `bases` leaves out MATO, ADDN and GRAS since format 10: they have tables of
+  their own (SE: 92 ADDN + 33 GRAS + 37 MATO with a model = 162 fewer).
+- `parse_errors` is 5 on every install, not 0. Skyrim.esm has five LGTM
+  records in the pre-1.70 XCLL layout (`0x0007545E`, `0x000660A3`,
+  `0x000B9F59`, `0x000A0F40` with 72 bytes of DATA, `0x0007BA87` with 64) that
+  `decode_xcll` does not read, and the lighting-template collector counts a
+  template without decodable DATA as a parse error. It is the data, not a
+  reader failure; a different number means the collector or the decoder moved.
 
 ## Load-order pins
 
