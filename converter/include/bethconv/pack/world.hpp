@@ -10,14 +10,10 @@
 
 #include "bethconv/io/parse_error.hpp"
 #include "bethconv/pack/world_generated.h"
-#include "bethconv/record/field_reader.hpp"
-#include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
-#include "bethconv/record/vmad.hpp"
 #include "skydot_formats/flags.hpp"
 
-#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
@@ -26,7 +22,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <utility>
 #include <vector>
 
 namespace bethconv::pack {

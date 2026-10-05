@@ -3,7 +3,7 @@
 
 #include "bethconv/io/byte_view.hpp"
 #include "bethconv/io/mapped_file.hpp"
-#include "bethconv/record/types.hpp"
+#include "bethconv/io/span_reader.hpp"
 
 #include "bethconv/pack/world_generated.h"
 #include "skydot_formats/flags.hpp"
@@ -14,8 +14,6 @@
 
 namespace bethconv::pack {
 namespace {
-
-using record::FormId;
 
 /// The entry of a vector whose `(key)` is `id` (the schema marks them), or
 /// null; also for a file without the vector.
