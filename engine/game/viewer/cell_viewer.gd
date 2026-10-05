@@ -116,7 +116,13 @@ var _benchmark := 0.0
 var _fly_speed := 20.0
 var _frame_times: Array[float] = []
 var _pick_locks := false
-var _input := true  # false for runs that drive themselves (_ready)
+## Off for runs that drive themselves (tools set it): the keyboard and mouse
+## are ignored and doors travel without a fade.
+var _input := true:
+	set(value):
+		_input = value
+		if _transition != null:
+			_transition.interactive = value
 var _script_activations: Array = []  # --activate: refs still to activate
 var _script_wait := 0
 var _quit_in := -1  # frames until quitting after --activate
@@ -124,15 +130,7 @@ var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # null with --ai off
 var _pack: SkydotPack
 var _preloader: DoorPreloader
-const FADE_SECONDS := 0.35
-const FADE_SETTLE_FRAMES := 3  # drawn black after the place is built
-const FADE_TIMEOUT := 15.0  # seconds; fades in even if streaming never ends
-var _fade: ColorRect  # black over everything during a door transition
-var _fade_door := {}  # the door being gone through
-var _fade_phase := 0  # FADE_*
-var _fade_wait := 0.0  # seconds in FADE_WAIT
-var _fade_frames := 0  # frames since the place was built
-enum { FADE_NONE, FADE_OUT, FADE_TRAVEL, FADE_WAIT, FADE_IN }
+var _transition: PlaceTransition
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
@@ -249,15 +247,9 @@ func _ready() -> void:
 	_place.failed.connect(_fail)
 	if _ai != null:
 		_ai.actor_arrived.connect(_place.on_actor_arrived)
-	var fade_layer := CanvasLayer.new()
-	fade_layer.layer = 100  # over the notes
-	_fade = ColorRect.new()
-	_fade.color = Color(0, 0, 0, 0)
-	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fade.visible = false
-	fade_layer.add_child(_fade)
-	add_child(fade_layer)
+	_transition = PlaceTransition.new(_place, _preloader, _streamer)
+	_transition.interactive = _input
+	add_child(_transition)
 	if DisplayServer.get_name() != "headless" and _input:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
@@ -335,25 +327,8 @@ func _ready() -> void:
 ## Hold the player while the ground under it is still being built, keep its
 ## water level, and catch it if it falls through the world.
 func _update_player() -> void:
-	_streamer.hold_player(_player, _fade_phase != FADE_NONE)
+	_streamer.hold_player(_player, _transition.is_fading())
 	_rig.track()
-
-
-## Arrive through a load door: its XTEL gives the spot and the facing.
-## What was built ahead for the place behind it is used.
-func _travel(door: Dictionary) -> void:
-	var arrival: Transform3D = door["arrival"]
-	var eye := arrival.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
-	var forward := -arrival.basis.z
-	forward.y = 0.0
-	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
-	var prepared := _preloader.take(door)
-	if door["destination_interior"]:
-		_place.enter_interior(door["destination_cell"], eye, target, prepared.root if prepared != null else null)
-	elif door["destination_world"] != 0:
-		_place.enter_exterior(door["destination_world"], eye, target, prepared)
-	else:
-		print("door 0x%08X leads nowhere this pack knows" % door["ref"])
 
 
 ## Attach the scripts of what was just built (OnInit once, OnLoad each time),
@@ -480,10 +455,7 @@ func _activate(cell: int, ref: int, node: Node, force: bool, parent := false) ->
 		return true
 	if info["door"] != null:
 		print(label, " leads to 0x%08X" % info["door"]["destination"])
-		if _input and DisplayServer.get_name() != "headless":
-			_begin_fade(info["door"])
-		else:
-			_travel(info["door"])
+		_transition.go(info["door"])
 		return true
 	if info["type"] == "DOOR" and node != null:
 		var animator := node.get_node_or_null("SkydotAnimator")
@@ -563,44 +535,6 @@ func _on_cell_finished(cell: Node3D, cell_id: int) -> void:
 	_preloader.register(Place.ref_nodes(cell))
 
 
-## Go through `door` behind a fade to black (_fade_step).
-func _begin_fade(door: Dictionary) -> void:
-	if _fade_phase != FADE_NONE:
-		return
-	_fade_door = door
-	_fade_phase = FADE_OUT
-	_fade.visible = true
-
-
-## The door transition, a step per frame: fade out; travel once a black
-## frame is on screen; wait until the place is built and a few frames are
-## drawn (the first frame of a new place is slow); fade in.
-func _fade_step(delta: float) -> void:
-	match _fade_phase:
-		FADE_OUT:
-			_fade.color.a = minf(1.0, _fade.color.a + delta / FADE_SECONDS)
-			if _fade.color.a >= 1.0:
-				_fade_phase = FADE_TRAVEL  # this frame draws black first
-		FADE_TRAVEL:
-			_travel(_fade_door)
-			_fade_door = {}
-			_fade_phase = FADE_WAIT
-			_fade_wait = 0.0
-			_fade_frames = 0
-		FADE_WAIT:
-			_fade_wait += delta
-			var built := _streamer.world_id == 0 or (not _streamer.streaming and not _streamer.lod_busy)
-			if built:
-				_fade_frames += 1
-			if _fade_frames > FADE_SETTLE_FRAMES or _fade_wait > FADE_TIMEOUT:
-				_fade_phase = FADE_IN
-		FADE_IN:
-			_fade.color.a = maxf(0.0, _fade.color.a - delta / FADE_SECONDS)
-			if _fade.color.a <= 0.0:
-				_fade_phase = FADE_NONE
-				_fade.visible = false
-
-
 func _benchmark_frame(delta: float) -> void:
 	_frame_times.append(delta * 1000.0)
 	_player.teleport(_player.global_position + Vector3(_fly_speed * delta, 0, 0))
@@ -638,8 +572,8 @@ func _process(delta: float) -> void:
 	_streamer.update()
 	if _preloader.enabled:
 		_preloader.step(_player.global_position)
-	if _fade_phase != FADE_NONE:
-		_fade_step(delta)
+	if _transition.is_fading():
+		_transition.step(delta)
 	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
 		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
@@ -702,7 +636,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F12:
 		_capture_shot(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F:
-		if _fade_phase == FADE_NONE:
+		if not _transition.is_fading():
 			_activate_in_view(event.shift_pressed)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F5:
 		_save_game(QUICKSAVE)

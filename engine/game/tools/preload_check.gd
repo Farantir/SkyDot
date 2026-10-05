@@ -67,7 +67,7 @@ func _process(delta: float) -> bool:
 		if not done and _waited < _wait:
 			return false
 		var started := Time.get_ticks_usec()
-		_viewer._travel(_door)
+		_viewer._transition.travel(_door)
 		_travel_ms = (Time.get_ticks_usec() - started) / 1000.0
 		_travelled = true
 		_last = Time.get_ticks_usec()
