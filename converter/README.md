@@ -54,7 +54,9 @@ tested against real installs:
   index (`--store loose` for a file per asset), plus `manifest.json`,
   `vpath.idx` and a `report.json` listing every failure. See
   `formats/pack-format.md`. A full vanilla SE pack is 6 files and 20 GB,
-  written in under a minute.
+  written in about 20 s on 12 cores, 47 s with `--jobs 1`. Assets are read,
+  hashed and converted on `--jobs N` threads (default every core); the pack is
+  the same bytes for any `N`.
 - **Slow targets refused:** commands that write many files (`convert --store
   loose`, `view`, `mesh`, `texture`, `extract`) refuse a FUSE filesystem
   (NTFS through ntfs-3g) or a spinning disk unless given `--allow-slow-target`;

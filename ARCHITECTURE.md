@@ -454,16 +454,41 @@ convert(set, order, options)
  │   ├─ MergedWorld::build(order)                 merge pass 1 (index)
  │   └─ write_world(world, ...)     -> world.fb   merge pass 2 (WorldSink)
  ├─ work = every vpath in the mount (filtered, sorted, limited)
- ├─ for each vpath (sequential):
- │   ├─ kind_of(extension) -> mesh | texture | script | lod | animation | deferred
- │   ├─ bytes = set.read(vpath)
- │   ├─ slot = writer.reserve(vpath, kind, bytes, source)   <- content hash
- │   ├─ if slot.already_present: writer.reuse(slot); continue  (dedupe)
- │   ├─ converted = convert_<kind>(bytes, vpath, options)   (pack/asset_conversion.cpp)
- │   └─ writer.warn(...) per warning; then writer.fail(...) or writer.store(slot, ...)
+ ├─ for each vpath, in order (a pool of `jobs` threads runs ahead of one writer):
+ │   ├─ pool:   prepare(vpath)
+ │   │   ├─ kind_of(extension) -> mesh | texture | script | lod | animation | deferred
+ │   │   ├─ bytes = set.read(vpath)
+ │   │   ├─ hash = writer.hash_of(kind, bytes)                  <- content hash
+ │   │   ├─ if claims.taken(hash): stop (the pack or an earlier input has it)
+ │   │   └─ converted = convert_<kind>(bytes, vpath, options)   (pack/asset_conversion.cpp)
+ │   └─ writer: slot = writer.reserve(vpath, kind, hash, ...)   (results taken in work-list order)
+ │       ├─ if slot.already_present: writer.reuse(slot); continue  (dedupe)
+ │       └─ writer.warn(...) per warning; then writer.fail(...) or writer.store(slot, ...)
  └─ writer.finish(manifest)  -> assets.idx, vpath.idx, manifest.json, report.json
 ```
 
+- **Threads** (`convert_assets()` in `pack/convert.cpp`, `pack/ordered_pool.hpp`):
+  reading, hashing and converting are pure functions of one input, so
+  `--jobs N` threads (default every core, at most 64) run them ahead while the
+  single `PackWriter` takes the results strictly in work-list order. The pack is
+  the same bytes for any `N` (blob, `assets.idx`, `vpath.idx`, manifest and
+  report); `--jobs 1` runs the same functions on the calling thread. The
+  pool is bounded: a thread starts an input only within 1,024 of the writer's
+  position and holds a finished result back while the waiting ones weigh more
+  than 256 MiB (except the one the writer is waiting for), so memory stays at a
+  few hundred MB whatever the textures. Dedupe survives the reordering in two
+  steps: threads skip an input whose hash the pack had before the run or an
+  earlier input has (`Claims`, a mutexed map, one lock per input), and the
+  writer decides again with the store itself. An input skipped for an earlier
+  one that then failed is read and converted again on the writer's thread, as
+  a single thread would have. `bc_encode`'s own per-level threads are used
+  only when `jobs` is 1; with a pool each conversion encodes on its own thread.
+  Not threaded: the merge and `world.fb` (about 6 s of a vanilla SE run), and
+  the writer's `store`, one `write` per asset in order, which keeps a
+  textures-only run at 7.7 s (15 s on one thread) however many threads there
+  are. Vanilla SE on 12 cores: the full convert takes about 20 s instead of
+  47 s, meshes alone 6 s instead of 27 s. One thread spent about half the asset
+  time converting meshes and the rest reading, hashing and storing.
 - **Content hash** (`pack/content_hash.*`): BLAKE3 over the length-prefixed
   *source bytes*, converter version and a per-kind *settings fingerprint*
   (`ConvertOptions::mesh_settings()` and so on, e.g. `mesh/19;collision=1;…`).
@@ -1183,7 +1208,7 @@ viewer's `ViewerSettings` fill their options in `_make_streamer` and
 
 | Where | Threads | Shared state and protection |
 | --- | --- | --- |
-| Converter | Single-threaded pipeline; `bc_encode` uses worker threads per texture level | none needed |
+| Converter | `jobs` pool threads read, hash and convert inputs (`OrderedPool`); the caller is the single writer of the pack; the merge and `world.fb` run on the caller; `bc_encode` splits a texture level over threads only with `--jobs 1` | `OrderedPool`: one mutex and two condition variables (window and memory bound, results in order); `Claims`: a mutex around its hash map. The rest is const or per call: `ArchiveSet::read` (mapped archives, per-call zlib/LZ4 state), the per-kind converters, `PackWriter::hash_of`, nifly's factory (a function-local static) and the encoders' tables (`std::call_once`) |
 | `AssetCache` | 1–4 `std::thread` workers (half the cores, max 4) plus the caller | `mutex_` around `ready_`, `in_flight_`, `queue_`; `get` never blocks on a worker, so occasionally an asset is loaded twice and the first result is kept |
 | Worker loads | create Godot objects (`GLTFDocument`, `ImageTexture`, `Animation`) off the main thread | Godot's resource-creation thread safety; headless mode loads on the caller instead |
 | `WorldData` | any thread: immutable after `open` | none needed |

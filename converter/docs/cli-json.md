@@ -126,7 +126,7 @@ Events, one per line, in this order:
  "plugins": 295, "load_order_problems": [], "sources": 494, "mount_failures": [],
  "unloaded_archives": [".../UHDAP - MusicHQ.bsa"], "unique_paths": 231219}
 {"event": "progress", "phase": "assets", "done": 2500, "total": 3000, "elapsed": 120.7}
-{"event": "done", "json_version": 1, "exit": 0, "elapsed": 121.3, "out": "/packs/fus",
+{"event": "done", "json_version": 1, "exit": 0, "elapsed": 121.3, "jobs": 12, "out": "/packs/fus",
  "forms": 1274726, "cells": 74028, "refs": 931207, "bases": 35822,
  "assets": {"written": ..., "deduped": ..., "distinct": ..., "meshes": ..., "textures": ...,
             "scripts": ..., "lod": ..., "bytes_written": ..., "store_bytes": ...},
@@ -138,6 +138,10 @@ Events, one per line, in this order:
 ```
 
 - `elapsed` is seconds since the command started.
+- `jobs`: the threads that read, hashed and converted assets (`--jobs`; the
+  default is every core, at most 64). The pack does not depend on it. The
+  `assets` progress events count inputs whose results the writer has taken, in
+  work-list order, so they still advance steadily.
 - `forms`, `cells`, `refs` and `bases`: the merged load order's forms and the
   counts in `world.fb`; all 0 with `--no-world`.
 - `unloaded_archives`: archives in mod folders that no loaded plugin is named
