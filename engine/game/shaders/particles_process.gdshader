@@ -1,9 +1,7 @@
 /* The process shader every particle system shares (see render/particles.hpp).
  *
- * SkydotParticles::process_shader_code() in render/particles.cpp gives this as it
- * is; SkydotMaterials::particles_process_shader() makes the one Shader of it.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * A whole shader that SkydotMaterials::particles_process_shader() in render/materials.cpp
+ * loads as it is.
  */
 shader_type particles;
 render_mode disable_force;

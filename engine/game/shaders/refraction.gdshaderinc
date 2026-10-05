@@ -1,12 +1,18 @@
 /* The refraction shader: lighting shapes with SLSF1_REFRACTION (see render/materials.hpp).
  *
- * refraction_code() in render/materials.cpp puts this after
+ * Not a whole shader: refraction_code() in render/materials.cpp makes a stub for each variant,
  *     shader_type spatial;
- *     render_mode cull_back | cull_disabled, unshaded, fog_disabled, depth_draw_never, blend_mix;
- * Nothing else is added: the screen texture is already fogged.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ *     [#define SKYDOT_DOUBLE_SIDED]
+ *     #include "res://shaders/refraction.gdshaderinc"
+ * It has no fog (the screen texture is already fogged; fogging the copy again drew a pale
+ * veil in the shape of heat-haze planes) and no game_fog.gdshaderinc.
  */
+#ifdef SKYDOT_DOUBLE_SIDED
+render_mode cull_disabled;
+#else
+render_mode cull_back;
+#endif
+render_mode unshaded, fog_disabled, depth_draw_never, blend_mix;
 
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;

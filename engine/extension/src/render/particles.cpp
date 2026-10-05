@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/particles.hpp"
-#include "render/shader_source.hpp"
 
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -118,8 +117,6 @@ double scale_of(const godot::Basis& basis) {
 }
 
 } // namespace
-
-const std::string& SkydotParticles::process_shader_code() { return shader_source::load("particles_process.gdshader"); }
 
 void SkydotParticles::_bind_methods() {
     using godot::D_METHOD;

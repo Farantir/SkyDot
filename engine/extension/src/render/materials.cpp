@@ -32,6 +32,7 @@
 #include <algorithm>
 #include <array>
 #include <mutex>
+#include <vector>
 
 using godot::Array;
 using godot::Color;
@@ -73,54 +74,47 @@ constexpr std::uint32_t k_alpha_test = 1u << 9;
 
 enum class Alpha { none, test, blend, add, mul };
 
-/// The shader code of each variant. Everything else is a uniform, so these
-/// are all the shaders materials ever need (see SkydotMaterials::warm_up).
+/// The shader code of each variant: a stub that Godot's preprocessor expands
+/// (shader_source::variant). Everything else is a uniform, so these are all
+/// the shaders materials ever need (see SkydotMaterials::warm_up).
+std::vector<std::string> sided(bool double_sided) {
+    return double_sided ? std::vector<std::string>{"SKYDOT_DOUBLE_SIDED"} : std::vector<std::string>{};
+}
+
 std::string lighting_code(bool double_sided, Alpha alpha) {
-    std::string modes = double_sided ? "cull_disabled" : "cull_back";
-    std::string defines;
+    std::vector<std::string> defines = sided(double_sided);
     if (alpha == Alpha::test) {
-        defines = "#define ALPHA_TEST\n";
+        defines.emplace_back("SKYDOT_ALPHA_TEST");
     } else if (alpha == Alpha::blend) {
-        defines = "#define ALPHA_BLEND\n";
-        modes += ", blend_mix";
+        defines.emplace_back("SKYDOT_ALPHA_BLEND");
     } else if (alpha == Alpha::mul) {
-        modes += ", depth_draw_never, blend_mul, fog_disabled";
+        defines.emplace_back("SKYDOT_ALPHA_MUL");
     }
-    const std::string head = "shader_type spatial;\nrender_mode " + modes + ";\n" + defines;
-    return with_game_ambient(with_game_fog(head + shader_source::load("lighting.gdshaderinc")));
+    return shader_source::variant("lighting.gdshaderinc", defines);
 }
 
 std::string effect_code(bool double_sided, Alpha alpha, bool particles = false, bool lit = false) {
-    std::string modes = double_sided ? "cull_disabled" : "cull_back";
-    modes += lit ? ", specular_disabled" : ", unshaded";
-    std::string defines = particles ? "#define PARTICLES\n" : "";
+    std::vector<std::string> defines = sided(double_sided);
+    if (particles) {
+        defines.emplace_back("SKYDOT_PARTICLES");
+    }
     if (lit) {
-        defines += "#define LIT\n";
+        defines.emplace_back("SKYDOT_LIT");
     }
     if (alpha == Alpha::add) {
-        modes += ", depth_draw_never, blend_add";
-        defines += "#define ALPHA_ADD\n";
+        defines.emplace_back("SKYDOT_ALPHA_ADD");
     } else if (alpha == Alpha::mul) {
-        modes += ", depth_draw_never, blend_mul, fog_disabled";
-        defines += "#define ALPHA_MUL\n";
+        defines.emplace_back("SKYDOT_ALPHA_MUL");
     } else if (alpha == Alpha::blend) {
-        modes += ", depth_draw_never, blend_mix";
-        defines += "#define ALPHA_BLEND\n";
+        defines.emplace_back("SKYDOT_ALPHA_BLEND");
     } else if (alpha == Alpha::test) {
-        defines += "#define ALPHA_TEST\n";
+        defines.emplace_back("SKYDOT_ALPHA_TEST");
     }
-    const std::string head = "shader_type spatial;\nrender_mode " + modes + ";\n" + defines;
-    std::string code = with_game_fog(head + shader_source::load("effect.gdshaderinc"), false);
-    return lit ? with_game_ambient(std::move(code)) : code;
+    return shader_source::variant("effect.gdshaderinc", defines);
 }
 
-// The screen texture is already fogged; fogging the copy again drew a pale
-// veil in the shape of heat-haze planes.
 std::string refraction_code(bool double_sided) {
-    return std::string("shader_type spatial;\nrender_mode ") +
-           (double_sided ? "cull_disabled" : "cull_back") +
-           ", unshaded, fog_disabled, depth_draw_never, blend_mix;\n" +
-           shader_source::load("refraction.gdshaderinc");
+    return shader_source::variant("refraction.gdshaderinc", sided(double_sided));
 }
 
 std::uint32_t as_u32(const Dictionary& d, const char* key) {
@@ -216,35 +210,6 @@ std::int64_t SkydotMaterials::get_shader_count() const {
     return static_cast<std::int64_t>(shaders_.size());
 }
 
-std::string with_game_fog(std::string code, bool write_fog) {
-    SkydotMaterials::ensure_fog_globals(); // before anything compiles against them
-    // After the render_mode line, so uniforms and functions follow it.
-    const std::size_t modes = code.find("render_mode");
-    const std::size_t line_end = modes == std::string::npos ? std::string::npos : code.find('\n', modes);
-    if (line_end == std::string::npos) {
-        return code;
-    }
-    code.insert(line_end + 1, shader_source::load("game_fog.gdshaderinc"));
-    if (!write_fog) {
-        return code;
-    }
-    const std::size_t fragment = code.find("void fragment()");
-    const std::size_t open = fragment == std::string::npos ? std::string::npos : code.find('{', fragment);
-    if (open == std::string::npos) {
-        return code;
-    }
-    int depth = 0;
-    for (std::size_t i = open; i < code.size(); ++i) {
-        if (code[i] == '{') {
-            ++depth;
-        } else if (code[i] == '}' && --depth == 0) {
-            code.insert(i, "\tFOG = skydot_game_fog(VERTEX);\n");
-            break;
-        }
-    }
-    return code;
-}
-
 void SkydotMaterials::ensure_fog_globals() {
     // Once per process (materials are made on worker threads too); listing
     // the existing parameters is editor-only.
@@ -335,28 +300,6 @@ void SkydotMaterials::set_game_light(godot::Light3D* light, const Color& gamma) 
     const float peak = std::max({gamma.r, gamma.g, gamma.b, 1.0F});
     light->set_color(game_color(Color(gamma.r / peak, gamma.g / peak, gamma.b / peak)));
     light->set_param(godot::Light3D::PARAM_ENERGY, peak);
-}
-
-std::string with_game_ambient(std::string code) {
-    const std::size_t modes = code.find("render_mode ");
-    if (modes != std::string::npos) {
-        code.insert(modes + 12, "ambient_light_disabled, ");
-    }
-    const std::size_t fragment = code.find("void fragment()");
-    const std::size_t open = fragment == std::string::npos ? std::string::npos : code.find('{', fragment);
-    if (open == std::string::npos) {
-        return code;
-    }
-    int depth = 0;
-    for (std::size_t i = open; i < code.size(); ++i) {
-        if (code[i] == '{') {
-            ++depth;
-        } else if (code[i] == '}' && --depth == 0) {
-            code.insert(i, "\tEMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);\n");
-            break;
-        }
-    }
-    return code;
 }
 
 Ref<godot::Shader> SkydotMaterials::shader_for(const std::string& code) {
@@ -716,7 +659,13 @@ Ref<godot::ShaderMaterial> SkydotMaterials::particle_material_for(const String& 
 }
 
 Ref<godot::Shader> SkydotMaterials::particles_process_shader() {
-    return shader_for(SkydotParticles::process_shader_code());
+    // Kept with the variants (warm_up), under its file name: the stubs' keys
+    // are code, which starts with shader_type.
+    Ref<godot::Shader>& shader = shaders_["particles_process.gdshader"];
+    if (shader.is_null()) {
+        shader = shader_source::shader("particles_process.gdshader");
+    }
+    return shader;
 }
 
 Dictionary SkydotMaterials::shader_sources() {
@@ -740,7 +689,7 @@ Dictionary SkydotMaterials::shader_sources() {
         }
         add("refraction_" + side, refraction_code(double_sided));
     }
-    add("particles_process", SkydotParticles::process_shader_code());
+    out["particles_process"] = shader_source::code("particles_process.gdshader");
     out.merge(TerrainBuilder::shader_codes());
     out.merge(WaterMaterials::shader_codes());
     out.merge(SkydotLod::shader_codes());

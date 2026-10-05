@@ -1,17 +1,17 @@
 /* The game's fog and directional ambient, as globals and functions.
  *
- * with_game_fog() in render/materials.cpp inserts this after the render_mode line
- * of every shader that has fog (materials, terrain, water, LOD) and, unless the
- * shader writes FOG itself, ends fragment() with
- *     FOG = skydot_game_fog(VERTEX);
- * with_game_ambient() adds, for lit shaders, ambient_light_disabled to the render
- * modes and, at the end of fragment(),
- *     EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
- * The ambient part is here, not in its own file, because both are inserted
- * together and in this order.
- * SkydotMaterials::sync_fog() sets the global uniforms.
+ * skydot_game_fog(VERTEX) is Skyrim's fog: min(max, ((distance - near) / (far - near))^power),
+ * coloured from the near to the far fog colour by the same ramp. Godot's depth fog differs
+ * (smoothstep, one colour).
  *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * Included by every shader that has them (lighting, effect, terrain, water, LOD): its fragment()
+ * writes FOG = skydot_game_fog(VERTEX); (effect, which fades by blend mode, writes its own) and,
+ * if it is lit, ends with
+ *     EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+ * with ambient_light_disabled in its render modes, so the game's ambient replaces Godot's.
+ * The ambient is here, not in its own file, because they always come together.
+ * SkydotMaterials::sync_fog() sets the global uniforms, and SkydotMaterials::ensure_fog_globals()
+ * must have registered them before any of these shaders compiles.
  */
 
 global uniform vec4 skydot_fog; // near, far (metres), power, max

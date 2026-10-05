@@ -30,9 +30,6 @@ class SkydotParticles : public godot::Node3D {
     GDCLASS(SkydotParticles, godot::Node3D)
 
 public:
-    /// The process shader every system shares.
-    static const std::string& process_shader_code();
-
     /// `block` is one entry of the converter's `particles`; `nodes` maps its
     /// node ids to the instantiated model's nodes.
     void setup(const godot::Dictionary& block, const godot::Ref<godot::ShaderMaterial>& draw,

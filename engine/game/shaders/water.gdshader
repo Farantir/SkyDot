@@ -1,13 +1,12 @@
 /* The water shader: the game's water (see render/water.hpp).
  *
- * WaterMaterials::shader_code() in render/water.cpp passes this through
- * with_game_fog(): game_fog.gdshaderinc goes after the render_mode line and
- * fragment() ends with a FOG line.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * A whole shader that WaterMaterials::shader() loads as it is. Unlit, with the game's fog
+ * (game_fog.gdshaderinc).
  */
 shader_type spatial;
 render_mode unshaded, cull_disabled, blend_mix, depth_draw_never;
+
+#include "res://shaders/game_fog.gdshaderinc"
 
 // The game's water (Community Shaders, Water.hlsl), in the scene's gamma
 // space: what lies below, refracted, gives way to the shallow-to-deep colour
@@ -108,4 +107,5 @@ void fragment() {
 	ALBEDO = color;
 	// Fade in over the first 10 cm, so shorelines do not show a hard edge.
 	ALPHA = clamp(thickness / 0.1, 0.0, 1.0);
+	FOG = skydot_game_fog(VERTEX);
 }

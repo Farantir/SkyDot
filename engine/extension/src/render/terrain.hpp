@@ -69,6 +69,7 @@ public:
     void set_collision(bool enabled) { collision_ = enabled; }
 
 private:
+    /// The stub of the variant for `layers` layers (terrain.gdshaderinc).
     static std::string shader_code(int layers);
     godot::Ref<godot::Shader> shader_for(int layers);
     godot::Ref<godot::Texture> texture(const std::string& vpath);

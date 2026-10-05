@@ -22,7 +22,6 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
-#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -44,18 +43,6 @@ constexpr int k_last = TerrainBuilder::k_grid - 1;
 
 String to_godot(const std::string& s) {
     return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
-
-/// `code` with the line `marker` (`%NAME%`) replaced by `text`.
-void fill(std::string& code, const std::string& marker, const std::string& text) {
-    const std::size_t at = code.find(marker + "\n");
-    if (at == std::string::npos) {
-        if (!code.empty()) { // an empty file has been reported already
-            godot::UtilityFunctions::push_error("TerrainBuilder: terrain.gdshader has no line ", marker.c_str());
-        }
-        return;
-    }
-    code.replace(at, marker.size() + 1, text);
 }
 
 } // namespace
@@ -81,26 +68,7 @@ std::vector<float> TerrainBuilder::heights(const wfb::Terrain& terrain) {
 }
 
 std::string TerrainBuilder::shader_code(int layers) {
-    std::string samplers;
-    for (int i = 0; i < layers; ++i) {
-        const std::string n = std::to_string(i);
-        samplers += "uniform sampler2D albedo_" + n +
-                    " : filter_linear_mipmap_anisotropic, repeat_enable;\n";
-        samplers += "uniform sampler2D normal_" + n +
-                    " : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;\n";
-    }
-    std::string mixes;
-    for (int i = 1; i < layers; ++i) {
-        const std::string n = std::to_string(i);
-        const std::string w = i <= 4 ? "weights_a[" + std::to_string(i - 1) + "]"
-                                     : "weights_b[" + std::to_string(i - 5) + "]";
-        mixes += "\talbedo = mix(albedo, texture(albedo_" + n + ", uv).rgb, " + w + ");\n";
-        mixes += "\tn = mix(n, texture(normal_" + n + ", uv).rgb, " + w + ");\n";
-    }
-    std::string code = shader_source::load("terrain.gdshader");
-    fill(code, "%LAYER_SAMPLERS%", samplers);
-    fill(code, "%LAYER_MIXES%", mixes);
-    return with_game_ambient(with_game_fog(code));
+    return shader_source::variant("terrain.gdshaderinc", {"SKYDOT_LAYERS " + std::to_string(layers)});
 }
 
 godot::Dictionary TerrainBuilder::shader_codes() {

@@ -41,7 +41,6 @@ public:
     static godot::Dictionary shader_codes();
 
 private:
-    static std::string shader_code();
     godot::Ref<godot::Shader> shader();
 
     godot::Ref<godot::Shader> shader_;

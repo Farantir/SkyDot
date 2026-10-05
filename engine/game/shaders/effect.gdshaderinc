@@ -1,17 +1,32 @@
 /* The effect shader: BSEffectShaderProperty (see render/materials.hpp).
  *
- * effect_code() in render/materials.cpp puts this after
+ * Not a whole shader: effect_code() in render/materials.cpp makes a stub for each variant,
  *     shader_type spatial;
- *     render_mode cull_back | cull_disabled, unshaded | specular_disabled
- *                 [, depth_draw_never, blend_add | blend_mix | blend_mul];
- *     [#define PARTICLES] [#define LIT] [#define ALPHA_ADD | ALPHA_MUL | ALPHA_BLEND | ALPHA_TEST]
- * (blend_mul also adds fog_disabled; the defines follow the blend mode),
- * then with_game_fog() inserts game_fog.gdshaderinc after the render_mode line (this
- * shader writes FOG itself), and for #define LIT with_game_ambient() adds
- * ambient_light_disabled to the render modes and an EMISSION line at the end of fragment().
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ *     [#define SKYDOT_DOUBLE_SIDED] [#define SKYDOT_PARTICLES] [#define SKYDOT_LIT]
+ *     [#define SKYDOT_ALPHA_ADD | #define SKYDOT_ALPHA_MUL | #define SKYDOT_ALPHA_BLEND | #define SKYDOT_ALPHA_TEST]
+ *     #include "res://shaders/effect.gdshaderinc"
+ * and the render modes below follow from the defines. The shader writes FOG itself;
+ * SKYDOT_LIT effects get the game's directional ambient instead of Godot's (game_fog.gdshaderinc).
  */
+#ifdef SKYDOT_DOUBLE_SIDED
+render_mode cull_disabled;
+#else
+render_mode cull_back;
+#endif
+#ifdef SKYDOT_LIT
+render_mode specular_disabled, ambient_light_disabled;
+#else
+render_mode unshaded;
+#endif
+#if defined(SKYDOT_ALPHA_ADD)
+render_mode depth_draw_never, blend_add;
+#elif defined(SKYDOT_ALPHA_MUL)
+render_mode depth_draw_never, blend_mul, fog_disabled;
+#elif defined(SKYDOT_ALPHA_BLEND)
+render_mode depth_draw_never, blend_mix;
+#endif
+
+#include "res://shaders/game_fog.gdshaderinc"
 
 // Skyrim computes and blends effects in gamma space, and so does the scene
 // here (see materials.hpp); additive output is premultiplied, as the game's.
@@ -32,7 +47,7 @@ uniform bool palette_color = false;
 uniform bool palette_alpha = false;
 uniform bool soft_effect = false;
 
-#ifdef PARTICLES
+#ifdef SKYDOT_PARTICLES
 // Camera-facing quads sized by the particle transform's scale and turned by
 // INSTANCE_CUSTOM.x; INSTANCE_CUSTOM.z picks a sub-texture rectangle
 // (u, width, v, height).
@@ -60,7 +75,7 @@ void vertex() {
 }
 #endif
 
-#ifdef LIT
+#ifdef SKYDOT_LIT
 // Effect_Lighting: the scene's lights tint the effect (mountain clouds take the
 // weather's ambient and sun) instead of it glowing at full strength. Wrapped,
 // so the side away from the sun is dimmer but not black.
@@ -77,7 +92,7 @@ void light() {
 void fragment() {
 	vec2 source_uv = UV * uv_scale + uv_offset;
 	vec4 source = texture(source_tex, source_uv);
-#ifdef PARTICLES
+#ifdef SKYDOT_PARTICLES
 	// A sub-texture is one cell of an atlas, and the game's own small mips
 	// blur the cells into each other: from 16 texels a cell down, its
 	// transparent border fills in and far particles turn into squares.
@@ -117,14 +132,14 @@ void fragment() {
 		alpha = texture(palette_tex, vec2(source.a, clamp(alpha, 0.0, 1.0))).a;
 	}
 	color *= emission_strength;
-#ifdef ALPHA_ADD
+#ifdef SKYDOT_ALPHA_ADD
 	ALBEDO = max(color * alpha, vec3(0.0));
 	ALPHA = 1.0;
 	// Fog would mix the transparent (black) parts towards its colour, and
 	// adding that draws every quad as a square far away. Fade towards black
 	// by the fog's amount instead.
 	FOG = vec4(0.0, 0.0, 0.0, skydot_game_fog(VERTEX).a);
-#elif defined(ALPHA_MUL)
+#elif defined(SKYDOT_ALPHA_MUL)
 	// The framebuffer times the colour (contact shadows under clutter);
 	// alpha takes no part. Fog fades it towards white, which changes nothing.
 	ALBEDO = mix(max(color, vec3(0.0)), vec3(1.0), skydot_game_fog(VERTEX).a);
@@ -132,15 +147,18 @@ void fragment() {
 	ALBEDO = max(color, vec3(0.0));
 	FOG = skydot_game_fog(VERTEX);
 #endif
-#ifdef LIT
+#ifdef SKYDOT_LIT
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 #endif
-#ifdef ALPHA_TEST
+#ifdef SKYDOT_ALPHA_TEST
 	ALPHA = alpha;
 	ALPHA_SCISSOR_THRESHOLD = alpha_cutoff;
 #endif
-#ifdef ALPHA_BLEND
+#ifdef SKYDOT_ALPHA_BLEND
 	ALPHA = alpha;
+#endif
+#ifdef SKYDOT_LIT
+	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 #endif
 }

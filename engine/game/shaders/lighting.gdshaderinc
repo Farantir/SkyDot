@@ -1,16 +1,26 @@
 /* The lighting shader: BSLightingShaderProperty (see render/materials.hpp).
  *
- * lighting_code() in render/materials.cpp puts this after
+ * Not a whole shader: lighting_code() in render/materials.cpp makes a stub for each variant,
  *     shader_type spatial;
- *     render_mode cull_back | cull_disabled [, blend_mix | depth_draw_never, blend_mul, fog_disabled];
- *     [#define ALPHA_TEST | #define ALPHA_BLEND]
- * (the optional parts for alpha test, alpha blend and multiply),
- * then with_game_fog() inserts game_fog.gdshaderinc after the render_mode line and
- * ends fragment() with a FOG line, and with_game_ambient() adds ambient_light_disabled
- * to the render modes and an EMISSION line at the end of fragment().
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ *     [#define SKYDOT_DOUBLE_SIDED]
+ *     [#define SKYDOT_ALPHA_TEST | #define SKYDOT_ALPHA_BLEND | #define SKYDOT_ALPHA_MUL]
+ *     #include "res://shaders/lighting.gdshaderinc"
+ * and the render modes below follow from the defines. The game's fog is written to FOG,
+ * and the game's directional ambient replaces Godot's (game_fog.gdshaderinc).
  */
+#ifdef SKYDOT_DOUBLE_SIDED
+render_mode cull_disabled;
+#else
+render_mode cull_back;
+#endif
+#if defined(SKYDOT_ALPHA_BLEND)
+render_mode blend_mix;
+#elif defined(SKYDOT_ALPHA_MUL)
+render_mode depth_draw_never, blend_mul, fog_disabled;
+#endif
+render_mode ambient_light_disabled;
+
+#include "res://shaders/game_fog.gdshaderinc"
 
 uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
@@ -117,7 +127,7 @@ void fragment() {
 	} else {
 		// Skyrim normal maps use the DirectX convention (green points down).
 		// Applied here rather than through NORMAL_MAP, so the ambient
-		// (with_game_ambient) sees the mapped normal too.
+		// (skydot_ambient below) sees the mapped normal too.
 		vec2 m = vec2(n.r * 2.0 - 1.0, 1.0 - n.g * 2.0);
 		NORMAL = normalize(TANGENT * m.x + BINORMAL * m.y
 				+ NORMAL * sqrt(max(0.0, 1.0 - dot(m, m))));
@@ -165,16 +175,18 @@ void fragment() {
 		albedo.rgb += texture(env_tex, reflected).rgb * env_scale * env_mask;
 	}
 	ALBEDO = albedo.rgb;
-#ifdef ALPHA_TEST
+#ifdef SKYDOT_ALPHA_TEST
 	ALPHA = albedo.a;
 	ALPHA_SCISSOR_THRESHOLD = alpha_cutoff;
 #endif
-#ifdef ALPHA_BLEND
+#ifdef SKYDOT_ALPHA_BLEND
 	if (blend_test && albedo.a <= alpha_cutoff) {
 		discard;
 	}
 	ALPHA = albedo.a;
 #endif
+	FOG = skydot_game_fog(VERTEX);
+	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
 void light() {

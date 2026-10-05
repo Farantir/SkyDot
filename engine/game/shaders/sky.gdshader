@@ -1,9 +1,7 @@
 /* The sky shader (see render/weather.hpp).
  *
- * SkydotWeather::build() in render/weather.cpp uses this as it is, as the
+ * A whole shader that SkydotWeather::build() in render/weather.cpp loads as it is, as the
  * environment's sky; SkydotWeather sets the uniforms.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
  */
 
 shader_type sky;

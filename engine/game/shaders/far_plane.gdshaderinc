@@ -1,9 +1,6 @@
 /* Sky objects sit just in front of the far plane (depth is reversed).
  *
- * make_shader() in render/weather.cpp replaces the line %FAR% of clouds.gdshader and
- * sprite.gdshader with this.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * Included by clouds.gdshader and sprite.gdshaderinc.
  */
 
 void vertex() {

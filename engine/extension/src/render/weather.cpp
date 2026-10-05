@@ -42,28 +42,6 @@ constexpr int k_cloud_layers = 29;
 /// UV per real second at a stored speed of 1 (the byte at 254). A guess.
 constexpr float k_cloud_scroll = 0.02F;
 
-/// The shader file `name`, as the text Godot takes.
-String source(const char* name) {
-    const std::string& code = shader_source::load(name);
-    return String::utf8(code.c_str(), static_cast<int>(code.size()));
-}
-
-String finished(String code) {
-    return code.replace("%FAR%", source("far_plane.gdshaderinc"));
-}
-
-/// The shader of the sprites (stars, sun, moons) blending as `blend`.
-String sprite_code(const char* blend) {
-    return source("sprite.gdshader").replace("%BLEND%", blend);
-}
-
-Ref<godot::Shader> make_shader(String code) {
-    Ref<godot::Shader> shader;
-    shader.instantiate();
-    shader->set_code(finished(code));
-    return shader;
-}
-
 Ref<godot::ShaderMaterial> material_from(const Ref<godot::Shader>& shader, int priority) {
     Ref<godot::ShaderMaterial> m;
     m.instantiate();
@@ -129,11 +107,11 @@ const char* const k_phases[8] = {"full",     "three_wan", "half_wan", "one_wan",
 
 Dictionary SkydotWeather::shader_codes() {
     Dictionary out;
-    out["sky"] = finished(source("sky.gdshader"));
-    out["clouds"] = finished(source("clouds.gdshader"));
-    out["sprite_add"] = finished(sprite_code("blend_add"));
-    out["sprite_mix"] = finished(sprite_code("blend_mix"));
-    out["precipitation"] = finished(source("precipitation.gdshader"));
+    out["sky"] = shader_source::code("sky.gdshader");
+    out["clouds"] = shader_source::code("clouds.gdshader");
+    out["sprite_add"] = shader_source::code("sprite_add.gdshader");
+    out["sprite_mix"] = shader_source::code("sprite_mix.gdshader");
+    out["precipitation"] = shader_source::code("precipitation.gdshader");
     return out;
 }
 
@@ -484,7 +462,7 @@ void SkydotWeather::build() {
     Ref<godot::Sky> sky;
     sky.instantiate();
     sky_material_.instantiate();
-    sky_material_->set_shader(make_shader(source("sky.gdshader")));
+    sky_material_->set_shader(shader_source::shader("sky.gdshader"));
     sky->set_material(sky_material_);
     environment_->set_sky(sky);
     // SkydotImageSpace grades the gamma-space scene and hands over linear
@@ -527,7 +505,7 @@ void SkydotWeather::build_clouds() {
     }
     clouds->set_name("Clouds");
     dome_->add_child(clouds);
-    const auto shader = make_shader(source("clouds.gdshader"));
+    const auto shader = shader_source::shader("clouds.gdshader");
     // Shapes in file order; layer i is the i-th.
     const auto meshes = clouds->find_children("*", "MeshInstance3D", true, false);
     for (std::int64_t i = 0; i < meshes.size() && i < k_cloud_layers; ++i) {
@@ -542,8 +520,8 @@ void SkydotWeather::build_clouds() {
 }
 
 void SkydotWeather::build_sky_objects() {
-    const auto additive = make_shader(sprite_code("blend_add"));
-    const auto blended = make_shader(sprite_code("blend_mix"));
+    const auto additive = shader_source::shader("sprite_add.gdshader");
+    const auto blended = shader_source::shader("sprite_mix.gdshader");
 
     // Stars: the climate's model, each shape with its own texture.
     const Ref<SkydotModel> stars = world_->resource(str(climate_->sky()));
@@ -887,7 +865,7 @@ void SkydotWeather::configure_precipitation(const Weather* weather) {
     Ref<godot::QuadMesh> quad;
     quad.instantiate();
     quad->set_size(Vector2(p->size_x(), p->size_y()) * (p->type() == 0 ? 40.0F : 10.0F) * s);
-    auto material = material_from(make_shader(source("precipitation.gdshader")), 0);
+    auto material = material_from(shader_source::shader("precipitation.gdshader"), 0);
     material->set_shader_parameter("tex", texture(str(p->texture())));
     material->set_shader_parameter("frames_h", static_cast<std::int32_t>(std::max<std::uint32_t>(p->subtextures_x(), 1)));
     material->set_shader_parameter("frames_v", static_cast<std::int32_t>(std::max<std::uint32_t>(p->subtextures_y(), 1)));

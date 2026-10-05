@@ -43,20 +43,6 @@ namespace skydot {
 
 struct EffectAsset;
 
-/// `code` (a spatial shader) with Skyrim's fog: `skydot_game_fog(VERTEX)`
-/// is min(max, ((distance - near) / (far - near))^power), coloured from the
-/// near to the far fog colour by the same ramp. Godot's depth fog differs
-/// (smoothstep, one colour). With `write_fog`, fragment() ends by writing it
-/// to FOG, which replaces Godot's.
-std::string with_game_fog(std::string code, bool write_fog = true);
-
-/// `code` (a lit spatial shader, already through with_game_fog) lit by the
-/// game's directional ambient instead of Godot's: ambient_light_disabled,
-/// and fragment() ends by adding ALBEDO * skydot_ambient(normal) to
-/// EMISSION. The normal is NORMAL as it stands there, so shaders that set
-/// NORMAL_MAP get their vertex normal's ambient.
-std::string with_game_ambient(std::string code);
-
 /// A colour for a shader uniform, as the game's numbers: Godot sRGB-decodes
 /// Color values for every vec3/vec4 uniform, hint or not, so colours go to
 /// our shaders as vectors.
@@ -132,7 +118,7 @@ protected:
 
 public:
     /// Copy `environment`'s depth fog into the global shader parameters our
-    /// shaders compute the game's fog from (with_game_fog): begin, end,
+    /// shaders compute the game's fog from (game_fog.gdshaderinc): begin, end,
     /// curve (power) and density (max), the far colour from its fog light
     /// colour and the near colour from its "skydot_fog_near_color" meta.
     /// Call when the fog changes, or once a frame.

@@ -4,16 +4,14 @@
  * carries the base (origin) and the size (basis lengths); INSTANCE_CUSTOM the
  * atlas rectangle.
  *
- * lod_code() in render/lod.cpp builds the shader from
- *     shader_type spatial;
- *     render_mode diffuse_lambert, cull_disabled, depth_draw_opaque;
- * then lod_mask.gdshaderinc, then this file; then with_game_fog() inserts
- * game_fog.gdshaderinc after the render_mode line and ends fragment() with a FOG
- * line, and with_game_ambient() adds ambient_light_disabled to the render modes and
- * an EMISSION line at the end of fragment().
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * A whole shader that SkydotLod loads as it is. It discards over loaded cells
+ * (lod_mask.gdshaderinc), is lit by the game's ambient and has its fog (game_fog.gdshaderinc).
  */
+shader_type spatial;
+render_mode diffuse_lambert, cull_disabled, depth_draw_opaque, ambient_light_disabled;
+
+#include "res://shaders/game_fog.gdshaderinc"
+#include "res://shaders/lod_mask.gdshaderinc"
 
 uniform sampler2D atlas : filter_linear_mipmap, repeat_disable;
 
@@ -43,4 +41,6 @@ void fragment() {
 	ALBEDO = c.rgb;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
+	FOG = skydot_game_fog(VERTEX);
+	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }

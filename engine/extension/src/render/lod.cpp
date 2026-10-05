@@ -43,26 +43,6 @@ std::string utf8(const String& s) {
     return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
 }
 
-/// A LOD shader: the shared mask and the shader file `body`, with `modes` as
-/// its render modes.
-std::string lod_code(const char* modes, const char* body) {
-    const std::string head = std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n";
-    return with_game_ambient(
-        with_game_fog(head + shader_source::load("lod_mask.gdshaderinc") + shader_source::load(body)));
-}
-
-std::string terrain_code() { return lod_code("cull_back, depth_draw_opaque", "lod_terrain.gdshaderinc"); }
-std::string object_code() { return lod_code("cull_back, depth_draw_opaque", "lod_object.gdshaderinc"); }
-std::string water_code() { return lod_code("cull_back, depth_draw_opaque", "lod_water.gdshaderinc"); }
-std::string tree_code() { return lod_code("cull_disabled, depth_draw_opaque", "lod_tree.gdshaderinc"); }
-
-Ref<godot::Shader> make_shader(const std::string& code) {
-    Ref<godot::Shader> shader;
-    shader.instantiate();
-    shader->set_code(String::utf8(code.c_str()));
-    return shader;
-}
-
 /// A verified LOD asset's root, or null.
 const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {
     // An empty array may have no data pointer; the root is read only if it has.
@@ -79,10 +59,10 @@ const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {
 
 Dictionary SkydotLod::shader_codes() {
     Dictionary out;
-    out["lod_terrain"] = String::utf8(terrain_code().c_str());
-    out["lod_object"] = String::utf8(object_code().c_str());
-    out["lod_water"] = String::utf8(water_code().c_str());
-    out["lod_tree"] = String::utf8(tree_code().c_str());
+    out["lod_terrain"] = shader_source::code("lod_terrain.gdshader");
+    out["lod_object"] = shader_source::code("lod_object.gdshader");
+    out["lod_water"] = shader_source::code("lod_water.gdshader");
+    out["lod_tree"] = shader_source::code("lod_tree.gdshader");
     return out;
 }
 
@@ -178,10 +158,10 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     mask_ = godot::ImageTexture::create_from_image(mask_image_);
     loaded_cells_ = 0;
 
-    terrain_shader_ = make_shader(terrain_code());
-    object_shader_ = make_shader(object_code());
-    water_shader_ = make_shader(water_code());
-    tree_shader_ = make_shader(tree_code());
+    terrain_shader_ = shader_source::shader("lod_terrain.gdshader");
+    object_shader_ = shader_source::shader("lod_object.gdshader");
+    water_shader_ = shader_source::shader("lod_water.gdshader");
+    tree_shader_ = shader_source::shader("lod_tree.gdshader");
     water_material_.instantiate();
     water_material_->set_shader(water_shader_);
     apply_mask(water_material_);

@@ -1,11 +1,8 @@
 /* LOD shaders: discard over cells built at full detail (see render/lod.hpp).
  *
- * Shared by every LOD shader: lod_code() in render/lod.cpp puts this after the
- * render_mode line and before the shader's own file (lod_terrain, lod_object, lod_water,
- * lod_tree). It declares skydot_world, which their vertex() sets.
+ * Included by every LOD shader (lod_terrain, lod_object, lod_water, lod_tree .gdshader) after
+ * game_fog.gdshaderinc. It declares skydot_world, which their vertex() sets.
  * SkydotLod::apply_mask() sets the uniforms.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
  */
 
 uniform sampler2D skydot_cell_mask : filter_nearest, repeat_disable;

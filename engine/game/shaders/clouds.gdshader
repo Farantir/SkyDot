@@ -1,9 +1,6 @@
 /* Cloud layers: two weathers' textures for one layer, cross-faded by `mix_t`.
  *
- * make_shader() in render/weather.cpp replaces the line %FAR% with far_plane.gdshaderinc.
- * SkydotWeather::build_clouds() makes one material of it per cloud layer.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * SkydotWeather::build_clouds() in render/weather.cpp makes one material of it per cloud layer.
  */
 
 shader_type spatial;
@@ -17,7 +14,7 @@ uniform vec2 offset_b;
 uniform float mix_t = 1.0;
 uniform vec3 flash_color;
 uniform float flash = 0.0;
-%FAR%
+#include "res://shaders/far_plane.gdshaderinc"
 void fragment() {
 	vec4 a = texture(tex_a, UV + offset_a) * color_a;
 	vec4 b = texture(tex_b, UV + offset_b) * color_b;

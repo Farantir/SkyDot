@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The shader oracle: prints the final code of every shader the engine can
-# produce (SkydotMaterials.shader_sources: material variants, terrain, water,
-# LOD, weather, particles, image space), one line per shader, sorted by name:
-# name, SHA-256 of the code, its length in characters. Two dumps differ only
-# if some shader's code differs, so moving shader source around proves itself
-# by diffing before and after. Needs no pack.
+# The shader inventory: prints the code of every shader the engine can produce
+# (SkydotMaterials.shader_sources: material variants, terrain, water, LOD,
+# weather, particles, image space), one line per shader, sorted by name: name,
+# SHA-256 of the code, its length in characters. The code of a variant is the
+# stub the C++ gives Godot (`shader_type`, `#define`s, `#include`) and that of
+# a whole shader its file as written, so two dumps differ if a variant's defines
+# or a shader file's text differ, and not if only an included file changed.
+# What Godot's preprocessor makes of them shows only when rendered
+# (game/shaders/README.md). Needs no pack.
 #
 #   godot4.7 --headless --path game --script res://tools/shader_dump.gd -- \
 #       [--out FILE] [--texts DIR]

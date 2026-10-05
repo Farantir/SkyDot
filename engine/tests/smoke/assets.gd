@@ -178,10 +178,10 @@ func _check_exterior(world: SkydotWorld) -> void:
     expect(textured == 4, "every quadrant has its base texture")
     var q0 := (quadrants[0] as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
     # Its second layer is the default texture, which the test pack lacks, so
-    # check the shader rather than the texture.
-    expect(q0.shader.code.contains("uniform sampler2D albedo_1"), "quadrant 0 has a second layer")
+    # check the shader (a stub that names the layer count) rather than the texture.
+    expect(q0.shader.code.contains("#define SKYDOT_LAYERS 2\n"), "quadrant 0 has a second layer")
     var q1 := (quadrants[1] as MeshInstance3D).mesh.surface_get_material(0) as ShaderMaterial
-    expect(not q1.shader.code.contains("albedo_1"), "quadrant 1 has only its base")
+    expect(q1.shader.code.contains("#define SKYDOT_LAYERS 1\n"), "quadrant 1 has only its base")
     # The slope rises 8 units per vertex eastward: the east half spans
     # 128 to 256 units.
     var east := (quadrants[1] as MeshInstance3D).get_aabb()

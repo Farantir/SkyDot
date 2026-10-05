@@ -4,9 +4,8 @@
  * atlas, the texture's alpha raised by `alpha_gain` (the rain texture's peaks
  * at 0.37).
  *
- * SkydotWeather::configure_precipitation() in render/weather.cpp uses this as it is.
- *
- * This comment is not part of the shader code: the loader cuts it off (README.md).
+ * A whole shader that SkydotWeather::configure_precipitation() in render/weather.cpp loads
+ * as it is.
  */
 
 shader_type spatial;
