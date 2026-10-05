@@ -217,50 +217,6 @@ struct WorldNavMesh {
     std::vector<Door> doors;
 };
 
-/// PACK as written to world.fb; FormIDs global (see world.fbs, Package).
-struct WorldPackage {
-    std::uint32_t id{};
-    std::string editor_id{};
-    std::uint8_t type{};
-    wfb::PackageFlags flags{};
-    std::uint8_t interrupt_override{};
-    std::uint8_t speed{};
-    std::uint16_t interrupt_flags{};
-    record::Package::Schedule schedule{};
-    std::vector<record::Condition> conditions{};
-    std::uint32_t template_package{};
-    struct Input {
-        std::int8_t key{-1};
-        std::string type{};
-        std::string name{};
-        float number{};
-        record::Package::Location location{};///< type -1 if absent.
-        record::Package::Target target{};///< type -1 if absent.
-    };
-    std::vector<Input> inputs{};
-    struct Branch {
-        std::string type{};
-        std::vector<record::Condition> conditions{};
-        std::uint32_t children{};
-        wfb::BranchFlags flags{};
-        std::string procedure{};
-        bool success_completes{};
-        std::vector<std::uint8_t> inputs{};
-        std::uint32_t set_flags{};
-        std::uint32_t clear_flags{};
-        std::int8_t speed{-1};
-    };
-    std::vector<Branch> branches{};
-    std::uint8_t idle_flags{};
-    float idle_timer{};
-    std::vector<std::uint32_t> idles{};
-    std::uint32_t owner_quest{};
-    std::uint32_t combat_style{};
-    std::uint32_t on_begin_idle{};
-    std::uint32_t on_end_idle{};
-    std::uint32_t on_change_idle{};
-};
-
 struct WorldActor {
     std::uint32_t ref{};
     std::uint32_t base{};

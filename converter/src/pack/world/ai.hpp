@@ -39,7 +39,7 @@ private:
                     const record::FormContext& form_ctx);
 
     CollectContext& shared_;
-    std::map<std::uint32_t, WorldPackage> packages_;
+    std::map<std::uint32_t, wfb::PackageT> packages_;
     FormLists form_lists_;
 };
 
