@@ -707,9 +707,9 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     const auto worlds = file->worldspaces();
     REQUIRE(worlds.size() == 1);
     CHECK(worlds[0].editor_id == "LandWorld");
-    REQUIRE(worlds[0].defaults.has_value());
-    CHECK((*worlds[0].defaults)[0] == -2048.0F);
-    CHECK((*worlds[0].defaults)[1] == -14000.0F);
+    REQUIRE(worlds[0].has_defaults);
+    CHECK(worlds[0].default_land_height == -2048.0F);
+    CHECK(worlds[0].default_water_height == -14000.0F);
 
     // The persistent cell shares (0, 0) but is not the cell at (0, 0).
     CHECK(file->cell(0x0000'0D01)->persistent);
@@ -770,8 +770,8 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(river->deep_color == 0x0000002Cu); // alpha byte masked off
     CHECK(river->reflectivity == 20.0F);
     CHECK(river->fog_far == 36.0F);
-    CHECK(river->layers[1].wind_speed == 116.0F);
-    CHECK(river->layers[2].uv_scale == 180.0F);
+    CHECK(river->layers[1].wind_speed() == 116.0F);
+    CHECK(river->layers[2].uv_scale() == 180.0F);
     CHECK(river->reflection_magnitude == 196.0F);
     REQUIRE(river->noise.size() == 3);
     CHECK(river->noise[0] == "textures/water/defaultwater.dds");
@@ -780,10 +780,10 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     const auto climate = file->climate(0x0000'0C04);
     REQUIRE(climate.has_value());
     REQUIRE(climate->weathers.size() == 1);
-    CHECK(climate->weathers[0].first == 0x0000'0C03);
-    CHECK(climate->weathers[0].second == 100);
-    CHECK(climate->sun[0] == 5.5F);
-    CHECK(climate->sun[3] == 20.5F);
+    CHECK(climate->weathers[0].weather() == 0x0000'0C03);
+    CHECK(climate->weathers[0].chance() == 100);
+    CHECK(climate->sunrise_begin == 5.5F);
+    CHECK(climate->sunset_end == 20.5F);
     const auto weather = file->weather(0x0000'0C03);
     REQUIRE(weather.has_value());
     REQUIRE(weather->colors.size() == 68);
@@ -801,14 +801,14 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(climate->phase_length == 3);
 
     REQUIRE(weather->clouds.size() == 29);
-    CHECK(weather->clouds[0].texture == "textures/sky/clouds01.dds");
-    CHECK(weather->clouds[0].enabled);
-    CHECK_FALSE(weather->clouds[1].enabled); // NAM1 bit 1
-    CHECK_FALSE(weather->clouds[2].enabled); // no texture
-    CHECK(weather->clouds[0].speed_x == 1.0F);
-    CHECK(weather->clouds[0].speed_y == 0.0F);
-    CHECK(weather->clouds[1].colors[2] == (1u | (2u << 8)));
-    CHECK(weather->clouds[1].alphas[3] == 0.75F);
+    CHECK(weather->clouds[0]->texture == "textures/sky/clouds01.dds");
+    CHECK(weather->clouds[0]->enabled);
+    CHECK_FALSE(weather->clouds[1]->enabled); // NAM1 bit 1
+    CHECK_FALSE(weather->clouds[2]->enabled); // no texture
+    CHECK(weather->clouds[0]->speed_x == 1.0F);
+    CHECK(weather->clouds[0]->speed_y == 0.0F);
+    CHECK(weather->clouds[1]->colors[2] == (1u | (2u << 8)));
+    CHECK(weather->clouds[1]->alphas[3] == 0.75F);
     CHECK(weather->classification == pack::wfb::WeatherClass::rainy);
     CHECK(weather->wind_speed == 0.2F);
     CHECK(weather->wind_direction == 90.0F);
@@ -832,9 +832,9 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(regions[0].weather_priority == 60);
     CHECK(regions[0].weather_override);
     REQUIRE(regions[0].areas.size() == 1);
-    CHECK(regions[0].areas[0].size() == 8);
+    CHECK(regions[0].areas[0]->points.size() == 8);
     REQUIRE(regions[0].weathers.size() == 1);
-    CHECK((regions[0].weathers[0].weather == 0x0000'0C03 && regions[0].weathers[0].chance == 80));
+    CHECK((regions[0].weathers[0].weather() == 0x0000'0C03 && regions[0].weathers[0].chance() == 80));
 }
 
 namespace {
@@ -1024,10 +1024,10 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
 
     const auto actors = file->actors();
     REQUIRE(actors.size() == 1);
-    CHECK(actors[0].ref == 0x0200'0B01);
-    CHECK(actors[0].base == 0x0000'0900);
-    CHECK(actors[0].cell == 0x0200'0B00);
-    CHECK(actors[0].rotation.z == 0.5F);
+    CHECK(actors[0].ref() == 0x0200'0B01);
+    CHECK(actors[0].base() == 0x0000'0900);
+    CHECK(actors[0].cell() == 0x0200'0B00);
+    CHECK(actors[0].rotation().z() == 0.5F);
     // A placed actor's linked references are its cell's, like a reference's.
     const auto room = file->cell(0x0200'0B00);
     REQUIRE(room.has_value());
@@ -1038,8 +1038,8 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
 
     const auto plugins = file->plugins();
     REQUIRE(plugins.size() == 3);
-    CHECK(plugins[2].first == "Quests.esp");
-    CHECK(plugins[2].second == 0x0200'0000u);
+    CHECK(plugins[2].name == "Quests.esp");
+    CHECK(plugins[2].prefix == 0x0200'0000u);
 }
 
 namespace {

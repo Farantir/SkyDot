@@ -66,7 +66,7 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
             return 1;
         }
     }
-    const std::uint32_t land_world = ws->uses_parent_land() ? ws->parent : ws->id;
+    const std::uint32_t land_world = bethconv::pack::uses_parent_land(*ws) ? ws->parent : ws->id;
 
     std::vector<bethconv::pack::WorldRef> refs;
     std::set<std::uint32_t> land_textures;
@@ -226,8 +226,8 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                 {"id", w.id},
                 {"editor_id", bethconv::io::json_text(w.editor_id)},
                 {"parent", w.parent},
-                {"uses_parent_land", w.uses_parent_land()},
-                {"bounds", {w.bounds[0], w.bounds[1], w.bounds[2], w.bounds[3]}}});
+                {"uses_parent_land", bethconv::pack::uses_parent_land(w)},
+                {"bounds", {w.min_x, w.min_y, w.max_x, w.max_y}}});
         }
         bethconv::cli::emit(ordered_json{{"json_version", bethconv::cli::k_json_version},
                                          {"worlds", std::move(spaces)}});
@@ -254,9 +254,9 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
         for (const auto& w : world->worldspaces()) {
             std::printf("0x%08X  %-28s parent 0x%08X%s  bounds (%.0f %.0f)-(%.0f %.0f)\n", w.id,
                         w.editor_id.c_str(), w.parent,
-                        w.uses_parent_land() ? " (its land)" : "",
-                        static_cast<double>(w.bounds[0]), static_cast<double>(w.bounds[1]),
-                        static_cast<double>(w.bounds[2]), static_cast<double>(w.bounds[3]));
+                        bethconv::pack::uses_parent_land(w) ? " (its land)" : "",
+                        static_cast<double>(w.min_x), static_cast<double>(w.min_y),
+                        static_cast<double>(w.max_x), static_cast<double>(w.max_y));
         }
         return 0;
     }

@@ -35,6 +35,20 @@ std::optional<typename T::NativeTableType> unpack(const T* table) {
     return out;
 }
 
+/// Every table of `list` copied out as its object type.
+template <typename T>
+std::vector<typename T::NativeTableType> unpack_all(
+    const flatbuffers::Vector<flatbuffers::Offset<T>>* list) {
+    std::vector<typename T::NativeTableType> out;
+    if (list != nullptr) {
+        out.reserve(list->size());
+        for (const auto* table : *list) {
+            table->UnPackTo(&out.emplace_back());
+        }
+    }
+    return out;
+}
+
 std::vector<record::Script> read_scripts(
     const flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>* scripts) {
     std::vector<record::Script> out;
@@ -689,267 +703,48 @@ std::optional<WorldArmorAddon> WorldFile::armor_addon(std::uint32_t id) const {
     return out;
 }
 
-std::vector<std::pair<std::string, std::uint32_t>> WorldFile::plugins() const {
-    std::vector<std::pair<std::string, std::uint32_t>> out;
-    if (const auto* plugins = impl_->root->plugins()) {
-        for (const auto* p : *plugins) {
-            out.emplace_back(str(p->name()), p->prefix());
-        }
-    }
-    return out;
-}
+std::vector<wfb::PluginT> WorldFile::plugins() const { return unpack_all(impl_->root->plugins()); }
 
-std::vector<WorldActor> WorldFile::actors() const {
-    std::vector<WorldActor> out;
+std::vector<wfb::ActorRef> WorldFile::actors() const {
+    std::vector<wfb::ActorRef> out;
     if (const auto* actors = impl_->root->actors()) {
         out.reserve(actors->size());
         for (const auto* a : *actors) {
-            out.push_back(WorldActor{.ref = a->ref(),
-                                     .base = a->base(),
-                                     .cell = a->cell(),
-                                     .position = from_fb(a->position()),
-                                     .rotation = from_fb(a->rotation()),
-                                     .flags = a->flags()});
+            out.push_back(*a);
         }
     }
     return out;
 }
 
-std::vector<Worldspace> WorldFile::worldspaces() const {
-    std::vector<Worldspace> out;
-    const auto* worlds = impl_->root->worlds();
-    if (worlds == nullptr) {
-        return out;
-    }
-    for (const auto* w : *worlds) {
-        Worldspace ws{
-            .id = w->id(),
-            .editor_id = w->editor_id() != nullptr ? w->editor_id()->str() : std::string{},
-            .parent = w->parent(),
-            .parent_flags = w->parent_flags(),
-            .flags = w->flags(),
-            .defaults = std::nullopt,
-            .water = w->water(),
-            .climate = w->climate(),
-            .bounds = {w->min_x(), w->min_y(), w->max_x(), w->max_y()},
-        };
-        if (w->has_defaults()) {
-            ws.defaults = std::array{w->default_land_height(), w->default_water_height()};
-        }
-        out.push_back(std::move(ws));
-    }
-    return out;
+std::vector<wfb::WorldspaceT> WorldFile::worldspaces() const {
+    return unpack_all(impl_->root->worlds());
 }
 
-std::optional<WorldLandTexture> WorldFile::land_texture(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->land_textures(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    const auto str = [](const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string{}; };
-    return WorldLandTexture{
-        .id = it->id(),
-        .editor_id = str(it->editor_id()),
-        .diffuse = str(it->diffuse()),
-        .normal = str(it->normal()),
-        .specular = it->specular(),
-    };
+std::optional<wfb::LandTextureT> WorldFile::land_texture(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->land_textures(), id));
 }
 
-std::optional<WorldWater> WorldFile::water(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->waters(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    WorldWater out;
-    out.id = it->id();
-    out.editor_id = it->editor_id() != nullptr ? it->editor_id()->str() : std::string{};
-    out.opacity = it->opacity();
-    out.flags = it->flags();
-    out.shallow_color = it->shallow_color();
-    out.deep_color = it->deep_color();
-    out.reflection_color = it->reflection_color();
-    out.sun_specular_power = it->sun_specular_power();
-    out.reflectivity = it->reflectivity();
-    out.fresnel = it->fresnel();
-    out.fog_near = it->fog_near();
-    out.fog_far = it->fog_far();
-    out.specular_power = it->specular_power();
-    out.refraction_magnitude = it->refraction_magnitude();
-    out.reflection_magnitude = it->reflection_magnitude();
-    if (const auto* layers = it->layers()) {
-        for (flatbuffers::uoffset_t i = 0; i < layers->size() && i < 3; ++i) {
-            const auto* l = layers->Get(i);
-            out.layers[i] = WorldWater::Layer{.wind_direction = l->wind_direction(),
-                                              .wind_speed = l->wind_speed(),
-                                              .uv_scale = l->uv_scale(),
-                                              .amplitude = l->amplitude()};
-        }
-    }
-    if (const auto* noise = it->noise()) {
-        for (const auto* path : *noise) {
-            out.noise.push_back(path->str());
-        }
-    }
-    return out;
+std::optional<wfb::WaterT> WorldFile::water(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->waters(), id));
 }
 
-std::optional<WorldClimate> WorldFile::climate(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->climates(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    WorldClimate out;
-    out.id = it->id();
-    out.editor_id = it->editor_id() != nullptr ? it->editor_id()->str() : std::string{};
-    if (const auto* entries = it->weathers()) {
-        for (const auto* e : *entries) {
-            out.weathers.emplace_back(e->weather(), e->chance());
-        }
-    }
-    out.sun = {it->sunrise_begin(), it->sunrise_end(), it->sunset_begin(), it->sunset_end()};
-    out.sun_texture = it->sun_texture() != nullptr ? it->sun_texture()->str() : std::string{};
-    out.sun_glare_texture =
-        it->sun_glare_texture() != nullptr ? it->sun_glare_texture()->str() : std::string{};
-    out.sky = it->sky() != nullptr ? it->sky()->str() : std::string{};
-    out.volatility = it->volatility();
-    out.moons = it->moons();
-    out.phase_length = it->phase_length();
-    return out;
+std::optional<wfb::ClimateT> WorldFile::climate(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->climates(), id));
 }
 
-std::optional<WorldImageSpace> WorldFile::image_space(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->image_spaces(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    WorldImageSpace out;
-    out.id = it->id();
-    out.editor_id = it->editor_id() != nullptr ? it->editor_id()->str() : std::string{};
-    const auto floats = [](const flatbuffers::Vector<float>* v, std::vector<float>& into) {
-        if (v != nullptr) {
-            into.assign(v->begin(), v->end());
-        }
-    };
-    floats(it->hdr(), out.hdr);
-    floats(it->cinematic(), out.cinematic);
-    floats(it->tint(), out.tint);
-    return out;
+std::optional<wfb::ImageSpaceT> WorldFile::image_space(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->image_spaces(), id));
 }
 
-std::optional<WorldWeather> WorldFile::weather(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->weathers(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    WorldWeather out;
-    out.id = it->id();
-    out.editor_id = it->editor_id() != nullptr ? it->editor_id()->str() : std::string{};
-    if (const auto* c = it->colors()) {
-        out.colors.assign(c->begin(), c->end());
-    }
-    if (const auto* f = it->fog()) {
-        out.fog.assign(f->begin(), f->end());
-    }
-    if (const auto* d = it->directional_ambient()) {
-        out.directional_ambient.assign(d->begin(), d->end());
-    }
-    if (const auto* i = it->image_spaces()) {
-        out.image_spaces.assign(i->begin(), i->end());
-    }
-    const auto str = [](const flatbuffers::String* t) { return t != nullptr ? t->str() : std::string{}; };
-    if (const auto* clouds = it->clouds()) {
-        for (const auto* c : *clouds) {
-            WorldCloudLayer layer;
-            layer.texture = str(c->texture());
-            layer.speed_x = c->speed_x();
-            layer.speed_y = c->speed_y();
-            for (flatbuffers::uoffset_t t = 0; t < 4; ++t) {
-                if (c->colors() != nullptr && t < c->colors()->size()) {
-                    layer.colors[t] = c->colors()->Get(t);
-                }
-                if (c->alphas() != nullptr && t < c->alphas()->size()) {
-                    layer.alphas[t] = c->alphas()->Get(t);
-                }
-            }
-            layer.enabled = c->enabled();
-            out.clouds.push_back(std::move(layer));
-        }
-    }
-    out.wind_speed = it->wind_speed();
-    out.wind_direction = it->wind_direction();
-    out.wind_direction_range = it->wind_direction_range();
-    out.transition_delta = it->transition_delta();
-    out.sun_glare = it->sun_glare();
-    out.sun_damage = it->sun_damage();
-    out.precipitation_begin = it->precipitation_begin();
-    out.precipitation_end = it->precipitation_end();
-    out.thunder_begin = it->thunder_begin();
-    out.thunder_end = it->thunder_end();
-    out.thunder_frequency = it->thunder_frequency();
-    out.classification = it->classification();
-    out.lightning_color = it->lightning_color();
-    out.precipitation = it->precipitation();
-    out.aurora = str(it->aurora());
-    return out;
+std::optional<wfb::WeatherT> WorldFile::weather(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->weathers(), id));
 }
 
-std::optional<WorldPrecipitation> WorldFile::precipitation(std::uint32_t id) const {
-    const auto* it = lookup(impl_->root->precipitations(), id);
-    if (it == nullptr) {
-        return std::nullopt;
-    }
-    const auto str = [](const flatbuffers::String* t) { return t != nullptr ? t->str() : std::string{}; };
-    return WorldPrecipitation{
-        .id = it->id(),
-        .editor_id = str(it->editor_id()),
-        .texture = str(it->texture()),
-        .gravity_velocity = it->gravity_velocity(),
-        .rotation_velocity = it->rotation_velocity(),
-        .size_x = it->size_x(),
-        .size_y = it->size_y(),
-        .center_offset_min = it->center_offset_min(),
-        .center_offset_max = it->center_offset_max(),
-        .rotation_range = it->rotation_range(),
-        .subtextures_x = it->subtextures_x(),
-        .subtextures_y = it->subtextures_y(),
-        .type = it->type(),
-        .box_size = it->box_size(),
-        .density = it->density(),
-    };
+std::optional<wfb::PrecipitationT> WorldFile::precipitation(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->precipitations(), id));
 }
 
-std::vector<WorldRegion> WorldFile::regions() const {
-    std::vector<WorldRegion> out;
-    const auto* regions = impl_->root->regions();
-    if (regions == nullptr) {
-        return out;
-    }
-    for (const auto* r : *regions) {
-        WorldRegion region;
-        region.id = r->id();
-        region.editor_id = r->editor_id() != nullptr ? r->editor_id()->str() : std::string{};
-        region.world = r->world();
-        if (const auto* areas = r->areas()) {
-            for (const auto* a : *areas) {
-                region.areas.emplace_back();
-                if (a->points() != nullptr) {
-                    region.areas.back().assign(a->points()->begin(), a->points()->end());
-                }
-            }
-        }
-        if (const auto* weathers = r->weathers()) {
-            for (const auto* w : *weathers) {
-                region.weathers.push_back(
-                    {.weather = w->weather(), .chance = w->chance(), .global = w->global()});
-            }
-        }
-        region.weather_priority = r->weather_priority();
-        region.weather_override = r->weather_override();
-        out.push_back(std::move(region));
-    }
-    return out;
-}
+std::vector<wfb::RegionT> WorldFile::regions() const { return unpack_all(impl_->root->regions()); }
 
 std::optional<WorldCell> WorldFile::cell_at_grid(std::uint32_t world, std::int32_t x,
                                                  std::int32_t y) const {

@@ -613,6 +613,12 @@ struct WorldActor {
     wfb::RefFlags flags{};
 };
 
+/// The land of this worldspace is its parent's.
+[[nodiscard]] inline bool uses_parent_land(const wfb::WorldspaceT& world) noexcept {
+    return world.parent != 0 &&
+           skydot::formats::has_flag(world.parent_flags, wfb::ParentFlags::land_data);
+}
+
 /// A verified `world.fb`. Lookups copy a table out as flatc's object type
 /// (`wfb::CellT` for `wfb::Cell`, and so on), so a field added to world.fbs
 /// reads here without an edit.
@@ -634,26 +640,26 @@ public:
     /// Case-insensitive editor id match; linear.
     [[nodiscard]] std::optional<WorldCell> cell_by_editor_id(std::string_view editor_id) const;
     [[nodiscard]] std::optional<WorldBase> base(std::uint32_t id) const;
-    [[nodiscard]] std::vector<Worldspace> worldspaces() const;
-    [[nodiscard]] std::optional<WorldLandTexture> land_texture(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldWater> water(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldClimate> climate(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldWeather> weather(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldImageSpace> image_space(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldPrecipitation> precipitation(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::WorldspaceT> worldspaces() const;
+    [[nodiscard]] std::optional<wfb::LandTextureT> land_texture(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::WaterT> water(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::ClimateT> climate(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::WeatherT> weather(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::ImageSpaceT> image_space(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::PrecipitationT> precipitation(std::uint32_t id) const;
     /// Regions with weather data.
-    [[nodiscard]] std::vector<WorldRegion> regions() const;
+    [[nodiscard]] std::vector<wfb::RegionT> regions() const;
     [[nodiscard]] std::size_t quest_count() const noexcept;
     [[nodiscard]] std::optional<WorldQuest> quest(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::GlobalT> global(std::uint32_t id) const;
-    [[nodiscard]] std::vector<WorldActor> actors() const;
+    [[nodiscard]] std::vector<wfb::ActorRef> actors() const;
     [[nodiscard]] std::optional<WorldNpc> npc(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldPackage> package(std::uint32_t id) const;
     [[nodiscard]] std::size_t package_count() const noexcept;
     [[nodiscard]] std::optional<WorldRace> race(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldArmorAddon> armor_addon(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
-    [[nodiscard]] std::vector<std::pair<std::string, std::uint32_t>> plugins() const;
+    [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.
     [[nodiscard]] std::optional<WorldCell> cell_at_grid(std::uint32_t world, std::int32_t x,
                                                          std::int32_t y) const;
