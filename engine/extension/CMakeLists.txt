@@ -110,6 +110,8 @@ target_sources(skydot PRIVATE
     src/world/animator.hpp
     src/world/billboard.cpp
     src/world/billboard.hpp
+    src/world/cell_builder.cpp
+    src/world/cell_builder.hpp
     src/world/collision.cpp
     src/world/navmesh.cpp
     src/world/weather.cpp

@@ -13,6 +13,8 @@
 
 namespace skydot {
 
+class WorldData;
+
 using ScriptVector = flatbuffers::Vector<flatbuffers::Offset<bethconv::pack::wfb::Script>>;
 
 /// Scripts as SkydotWorld::get_ref_info describes them.
@@ -22,6 +24,12 @@ godot::Array script_list(const ScriptVector* scripts, bool from_ref);
 /// "skydot_cell"). Activatable ones also get "skydot_activatable" and their
 /// bounds in the node's own space ("skydot_bounds"), for pick_ref.
 void tag_ref(godot::Node3D* node, std::uint32_t ref, std::uint32_t cell, bool activatable);
+
+/// Whether activating a reference of `base` (null if it has none) can do
+/// anything: its type is usable, or it or the reference has scripts, or it is
+/// a load door.
+bool activatable(const WorldData& data, const bethconv::pack::wfb::Base* base, std::uint32_t cell,
+                 std::uint32_t ref);
 
 /// Whether a base of record type `type` is a door (DOOR).
 bool door_type(std::uint32_t type);

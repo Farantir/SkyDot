@@ -3,6 +3,7 @@
 // SkydotWorld: doors, scripts and the other data activation needs, and
 // picking the reference the player looks at.
 #include "world/refs.hpp"
+#include "world/world_data.hpp"
 #include "world/collision.hpp"
 #include "world/coordinates.hpp"
 #include "world/fb_search.hpp"
@@ -242,15 +243,15 @@ void tag_ref(godot::Node3D* node, std::uint32_t ref, std::uint32_t cell, bool ac
     node->set_meta("skydot_bounds", bounds);
 }
 
-bool SkydotWorld::activatable(const wfb::Base* base, std::uint32_t cell, std::uint32_t ref) const {
+bool activatable(const WorldData& data, const wfb::Base* base, std::uint32_t cell, std::uint32_t ref) {
     if (base != nullptr && (usable_type(base->type()) ||
                             (base->scripts() != nullptr && base->scripts()->size() != 0))) {
         return true;
     }
-    if (data().doors().contains(ref)) {
+    if (data.doors().contains(ref)) {
         return true;
     }
-    const auto* c = data().cell_ptr(cell);
+    const auto* c = data.cell_ptr(cell);
     return c != nullptr && ref_scripts(*c, ref) != nullptr;
 }
 
@@ -292,7 +293,7 @@ Dictionary SkydotWorld::get_ref_info(std::int64_t cell_id, std::int64_t ref_id) 
     out["base"] = static_cast<std::int64_t>(ref->base());
     out["type"] = base != nullptr ? type_name(base->type()) : String();
     out["editor_id"] = base != nullptr ? to_godot(base->editor_id()) : String();
-    out["activatable"] = activatable(base, cell->id(), id);
+    out["activatable"] = activatable(data(), base, cell->id(), id);
     out["parent_activate_only"] =
         formats::has_flag(ref->flags(), wfb::RefFlags::parent_activate_only);
     out["disabled"] = data().initially_disabled(*ref);
@@ -448,7 +449,7 @@ Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const V
     return out;
 }
 
-std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const {
+std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) {
     const auto* cells = world_fb() != nullptr ? world_fb()->cells() : nullptr;
     if (cells == nullptr) {
         return 0;

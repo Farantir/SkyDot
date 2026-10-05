@@ -10,13 +10,8 @@
 #pragma once
 
 #include "assets/asset_cache.hpp"
-#include "world/locomotion.hpp"
 #include "world/actor_placement.hpp"
-#include "world/grass.hpp"
-#include "world/materials.hpp"
-#include "world/navmesh.hpp"
-#include "world/terrain.hpp"
-#include "world/water.hpp"
+#include "world/cell_builder.hpp"
 #include "world/world_data.hpp"
 #include "skydot_formats/units.hpp"
 
@@ -121,11 +116,11 @@ public:
                                const godot::Vector3& to) const;
     /// Build one reference of `cell` under a new Node3D, even if it starts
     /// disabled (for a script enabling it). Null if there is no such reference.
-    godot::Node3D* build_ref(std::int64_t cell, std::int64_t ref) const;
+    godot::Node3D* build_ref(std::int64_t cell, std::int64_t ref);
     /// References of `cell` whose base or own VMAD names scripts, sorted.
     godot::PackedInt64Array get_scripted_refs(std::int64_t cell) const;
     /// The cell holding reference `ref`, or 0. The first call builds the index.
-    std::int64_t get_ref_cell(std::int64_t ref) const;
+    std::int64_t get_ref_cell(std::int64_t ref);
     /// References activated when `ref` is: Array of ref, cell, delay.
     godot::Array get_activate_children(std::int64_t ref) const;
     /// References whose enable state follows `ref`'s: Array of ref ids.
@@ -165,13 +160,13 @@ public:
     /// for references with one, lights for LIGH bases. Initially disabled
     /// references and editor markers are skipped; billboard nodes get a
     /// SkydotBillboard. Statistics are stored as node metadata "skydot_stats".
-    godot::Node3D* build_cell(std::int64_t id) const;
+    godot::Node3D* build_cell(std::int64_t id);
     /// The same in steps: navmeshes now, references and actors by
     /// `continue_build`. Null as build_cell.
-    godot::Node3D* begin_cell(std::int64_t id) const;
+    godot::Node3D* begin_cell(std::int64_t id);
     /// Virtual paths of the resources interior `id` needs, and a request
     /// for them as `request_exterior`.
-    godot::PackedStringArray get_cell_resources(std::int64_t id) const;
+    godot::PackedStringArray get_cell_resources(std::int64_t id);
     std::int64_t request_cell(std::int64_t id);
 
     /// Worldspaces as dictionaries: id, editor_id, parent, land_world (the
@@ -187,27 +182,27 @@ public:
     /// persistent references positioned in it. Works without a CELL record if
     /// there is terrain. Statistics as for build_cell, plus "terrain" and
     /// "water". Null if there is neither a cell nor terrain.
-    godot::Node3D* build_exterior(std::int64_t world, std::int64_t x, std::int64_t y) const;
+    godot::Node3D* build_exterior(std::int64_t world, std::int64_t x, std::int64_t y);
     /// The same in steps, so a large cell does not stall a frame: terrain and
     /// water now, references by `continue_build`. Null as build_exterior.
-    godot::Node3D* begin_exterior(std::int64_t world, std::int64_t x, std::int64_t y) const;
+    godot::Node3D* begin_exterior(std::int64_t world, std::int64_t x, std::int64_t y);
     /// Place references of a cell `begin_exterior` or `begin_cell` returned until
     /// `budget_usec` is spent. True once all are placed (and "skydot_stats"
     /// is set); also true for a root with no build under way.
-    bool continue_build(godot::Node3D* root, std::int64_t budget_usec) const;
+    bool continue_build(godot::Node3D* root, std::int64_t budget_usec);
     /// Only the references (models, lights) of such a build; true once they
     /// are placed. Actors come with the next `continue_build`, from where they
     /// are then: a place prepared ahead of arriving builds this far.
-    bool continue_build_static(godot::Node3D* root, std::int64_t budget_usec) const;
+    bool continue_build_static(godot::Node3D* root, std::int64_t budget_usec);
 
     /// The pack's asset cache, which every model and texture comes from.
     /// Set by SkydotPack::open_world; without it nothing loads.
-    void set_assets(std::shared_ptr<AssetCache> assets) { assets_ = std::move(assets); }
+    void set_assets(std::shared_ptr<AssetCache> assets) { builder_.set_assets(std::move(assets)); }
 
     /// Virtual paths of the resources (models, land and water textures)
     /// exterior cell (x, y) of `world` needs.
     godot::PackedStringArray get_exterior_resources(std::int64_t world, std::int64_t x,
-                                                    std::int64_t y) const;
+                                                    std::int64_t y);
     /// Start loading those resources on the asset cache's threads. Returns how
     /// many are still pending; 0 means build_exterior will not load anything
     /// itself. Call again to poll.
@@ -249,33 +244,33 @@ public:
     /// Shadows on every placed light, not only those whose record asks for
     /// them (LIGH shadow flags; the default). For lights built from now on;
     /// apply_light_shadows changes those already placed.
-    void set_all_light_shadows(bool enabled) { all_light_shadows_ = enabled; }
-    bool get_all_light_shadows() const { return all_light_shadows_; }
+    void set_all_light_shadows(bool enabled) { builder_.options().all_light_shadows = enabled; }
+    bool get_all_light_shadows() const { return builder_.options().all_light_shadows; }
     /// Set the shadows of the lights placed under `root` as the setting
     /// says: all of them, or only those the records flag. Returns how many
     /// changed.
     static std::int64_t apply_light_shadows(godot::Node* root, bool all);
     /// Grass on exterior terrain (GRAS); on by default.
-    void set_grass(bool enabled) { grass_ = enabled; }
-    bool get_grass() const { return grass_; }
+    void set_grass(bool enabled) { builder_.options().grass = enabled; }
+    bool get_grass() const { return builder_.options().grass; }
 
     /// Build placed actors (ACHR) in cells: body, worn outfit and head on
     /// an animated skeleton (see actors.hpp). On by default.
-    void set_actors(bool enabled) { actors_ = enabled; }
-    bool get_actors() const { return actors_; }
+    void set_actors(bool enabled) { builder_.options().actors = enabled; }
+    bool get_actors() const { return builder_.options().actors; }
     /// The plan for placed actor `ref` (keys: npc, race, female, scale,
     /// skeleton, idle, parts, missing), for tools and tests.
     godot::Dictionary get_actor_plan(std::int64_t ref) const;
     /// Actors walk around their place while no AI packages are read (see
     /// actor.hpp). On by default; off, they stand in their idle.
-    void set_actor_wander(bool enabled) { actor_wander_ = enabled; }
-    bool get_actor_wander() const { return actor_wander_; }
+    void set_actor_wander(bool enabled) { builder_.options().actor_wander = enabled; }
+    bool get_actor_wander() const { return builder_.options().actor_wander; }
     /// The clips that move actors of a behaviour project (keys: idle, walk,
     /// run, each with name, file, playback, speed in game units per second;
     /// missing).
-    godot::Dictionary get_locomotion(const godot::String& behaviour) const;
+    godot::Dictionary get_locomotion(const godot::String& behaviour);
     /// Build placed actor `ref` alone, at its place; null if it has none.
-    godot::Node3D* build_actor(std::int64_t ref) const;
+    godot::Node3D* build_actor(std::int64_t ref);
     /// The placed actors (ACHR refs) of an interior or exterior cell, as
     /// placed in the editor.
     godot::PackedInt64Array get_cell_actors(std::int64_t cell) const;
@@ -303,7 +298,7 @@ public:
     /// Give models and terrain physics bodies (see collision.hpp). On by
     /// default.
     void set_collision(bool enabled);
-    bool get_collision() const { return collision_; }
+    bool get_collision() const { return builder_.options().collision; }
 
     /// Wake frozen clutter under `root` within `radius` metres of `centre`
     /// (Godot space), as when what it rests on is disabled or moves. Returns
@@ -312,8 +307,8 @@ public:
 
     /// Give cells their navmeshes as navigation regions (see navmesh.hpp). On
     /// by default.
-    void set_navigation(bool enabled) { navigation_ = enabled; }
-    bool get_navigation() const { return navigation_; }
+    void set_navigation(bool enabled) { builder_.options().navigation = enabled; }
+    bool get_navigation() const { return builder_.options().navigation; }
     /// The cell's navmeshes, as get_navmesh describes them.
     godot::Array get_navmeshes(std::int64_t cell) const;
     /// One navmesh: id, cell, vertices, triangles, water, links and doors (see
@@ -348,95 +343,18 @@ private:
     godot::Error fail(godot::Error code, const godot::String& why);
     /// The verified root; null while closed.
     const bethconv::pack::wfb::World* world_fb() const { return data_->root(); }
-    std::array<std::string, 2> land_texture_paths(std::uint32_t ltex) const;
-    /// materials_, created on first use and attached to the asset cache.
-    SkydotMaterials& materials() const;
-
-    struct BuildStats;
-    struct BuildJob;
-    void add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) const;
-    /// Hold what `actors` need, if cached, in `job`, so trimming the cache
-    /// before they are placed (leaving a place, cells dropped) keeps it.
-    void keep_actor_resources(BuildJob& job, const std::vector<ActorPlacement::ActorAt>& actors) const;
-    /// Place `job`'s references until the budget from `started` is spent.
-    bool place_refs(godot::Node3D* root, BuildJob& job, std::uint64_t started, std::int64_t budget_usec) const;
-    /// The model `ref` shows, unless it is disabled or a marker.
-    void add_ref_resources(const bethconv::pack::wfb::Ref& ref, godot::PackedStringArray& out) const;
-    void add_actor_resources(const std::vector<ActorPlacement::ActorAt>& actors, godot::PackedStringArray& out) const;
-    std::int64_t request_all(const godot::PackedStringArray& paths);
-    /// Instance the reference's model and light under `root`.
-    void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
-                   BuildStats& stats, bool include_disabled = false) const;
-    /// Surfaces of a placed model with a water shader get the water material
-    /// of `cell`'s water type.
-    void use_water_material(godot::Node* model, std::uint32_t cell) const;
-    /// Surfaces of a placed model with the Projected UV flag get `base`'s
-    /// directional material (STAT DNAM), if it has one.
-    void use_directional_material(godot::Node* model, const bethconv::pack::wfb::Base& base) const;
-    /// MATO `id` as the lighting shader takes it; null if there is none.
-    const ProjectedMaterial* projected_material(std::uint32_t id) const;
-    /// Whether activating a reference of this base can do anything.
-    bool activatable(const bethconv::pack::wfb::Base* base, std::uint32_t cell,
-                     std::uint32_t ref) const;
-    godot::Dictionary stats_dictionary(const BuildStats& stats) const;
 
     /// The open world.fb; a closed WorldData until `open` succeeds.
     std::shared_ptr<const WorldData> data_{std::make_shared<const WorldData>()};
     /// Where actors are, when not where the editor placed them.
     ActorPlacement placement_{data_};
-    bool skyrim_materials_{true};
-    bool effects_{true};
-    bool grass_{true};
-    bool all_light_shadows_{false};
-    bool actors_{true};
-    /// Behaviour project -> its idle, walk and run clips.
-    mutable std::unordered_map<std::string, Locomotion> locomotion_;
-    bool actor_wander_{true};
-    /// meshes/animationdatasinglefile.txt, read once for every project it holds.
-    mutable godot::PackedByteArray animation_single_file_;
-    mutable bool animation_single_file_read_{false};
-    const Locomotion& locomotion_of(const std::string& behaviour) const;
-    /// The looping clip `file` for the skeleton asset `skeleton_path`, from
-    /// the asset cache (built on its workers when requested ahead); null if
-    /// it does not build.
-    godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path) const;
-    /// The idle, walk and run clip files an actor of `plan` plays; empty
-    /// where it has none.
-    struct ActorClips {
-        std::string idle;
-        std::string walk;
-        std::string run;
-    };
-    ActorClips actor_clips(const ActorPlan& plan) const;
-    void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats,
-                     const ActorPlacement::Place* place = nullptr) const;
-    /// The actor's models and clips (asset cache keys) to request ahead.
-    std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor) const;
-    bool collision_{true};
-    bool navigation_{true};
-    mutable godot::Ref<SkydotMaterials> materials_;
+    /// Builds cells and holds the settings and caches that go with it.
+    CellBuilder builder_{data_, placement_};
     godot::String error_;
 
     /// (ref, cell) sorted by ref; built on first use (a second of reading
     /// every reference in the file, so not in WorldData::open).
-    mutable std::vector<std::pair<std::uint32_t, std::uint32_t>> ref_cells_;
-    mutable std::unique_ptr<TerrainBuilder> terrain_;
-    /// Builds under way, by root instance id.
-    mutable std::unordered_map<std::uint64_t, std::shared_ptr<BuildJob>> jobs_;
-    mutable WaterMaterials water_;
-    /// Attach the ADDN models (candle flames, smoke) to `model`'s
-    /// AddOnNodes (mesh extras "addon"). Returns how many.
-    std::int64_t attach_addons(godot::Node* model) const;
-    mutable std::once_flag addon_index_once_;
-    mutable std::unordered_map<std::int32_t, std::string> addon_models_;
-    /// A grass's model for instancing (grass.hpp), loaded once.
-    GrassModel grass_model(const bethconv::pack::wfb::Grass& grass) const;
-    mutable std::mutex grass_mutex_;
-    mutable std::unordered_map<std::uint32_t, GrassModel> grass_models_;
-    mutable std::mutex projected_mutex_;
-    mutable std::unordered_map<std::uint32_t, std::optional<ProjectedMaterial>> projected_;
-    std::shared_ptr<AssetCache> assets_;
-    double terrain_tiling_{8.0};
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> ref_cells_;
 };
 
 } // namespace skydot
