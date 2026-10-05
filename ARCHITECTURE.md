@@ -101,7 +101,7 @@ SkyDot/
 │   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
 │   ├── extension/src/register_types.*  GDExtension entry point
 │   ├── game/                         Godot project: pack tool, viewer, tools (~5,900)
-│   ├── game/shaders/                 the shaders, as text files the render/ code assembles (~1,200)
+│   ├── game/shaders/                 the shaders, as text files Godot's preprocessor assembles (~1,300)
 │   ├── tests/smoke/                  headless Godot tests (~2,400)
 │   ├── docs/                         subsystem notes (~1,100)
 │   └── extern/                       submodules: godot-cpp, flatbuffers
@@ -807,39 +807,44 @@ caller begins a build only when nothing would load on the main thread.
     falloff, blend modes;
   - *refraction*.
 
-  The shader code is in files (the next bullet); C++ prepends
-  `shader_type`, `render_mode` and `#define` lines per feature set, adds the
-  fog and ambient, and caches a `Shader` per variant. `warm_up()` creates
-  every variant up front. Converted materials are cached per source
-  material, so instances share them.
+  The shader code is in files (the next bullet); C++ picks the variant, gives
+  Godot a stub (`shader_type`, `#define`s, `#include`) and caches a `Shader`
+  per variant. `warm_up()` creates every variant up front. Converted
+  materials are cached per source material, so instances share them.
 - **Shader files** (`game/shaders/`, `render/shader_source.*`). Every
-  shader's text lives in `engine/game/shaders/`, not in C++ strings:
-  `.gdshader` for a whole shader, `.gdshaderinc` for a fragment the C++ puts
-  after other text, `.comp` for the image space's GLSL. `shader_source::load`
-  reads `res://shaders/<name>` through `FileAccess` once per process, cuts
-  the `/* ... */` header comment each file starts with (it says which C++
-  assembles the file), and reports a missing file with `push_error` and an
-  empty shader. The code that assembles variants is unchanged:
-  `lighting_code`, `effect_code`, `with_game_fog` and `with_game_ambient` in
-  `materials.cpp` (the fog and ambient lines they insert are still C++),
-  `TerrainBuilder::shader_code` (two `%LAYER_...%` marker lines in the file
-  are filled per layer count), `WaterMaterials::shader_code`, `lod_code` in
-  `lod.cpp`, and `weather.cpp`, `particles.cpp` and `image_space.cpp`. The
-  files are plain text, not imported, so they work headless and ride in the
-  `.pck` (the `.comp` files need a non-resource filter in an export preset).
-  `SkydotMaterials.shader_sources()` returns the final code of every shader
-  the engine can produce, and `game/tools/shader_dump.gd` prints a hash of
-  each: moving shader text is proved by identical dumps before and after
-  (`smoke_shaders` checks that none is empty). The next step is Godot's own
-  `#include` and `#define`; that changes the code strings, so only
-  `--from-shot` re-renders can verify it (`game/shaders/README.md`).
+  shader's text lives in `engine/game/shaders/`, not in C++ strings, and
+  Godot's own preprocessor (`#include`, `#define`, `#ifdef`, `#if`) puts the
+  pieces together. A shader without variants is a `.gdshader` that
+  `shader_source::shader` loads through `ResourceLoader` (sky, clouds, the
+  sprites, precipitation, water, the four LOD shaders, the particles' process
+  shader); it `#include`s `game_fog.gdshaderinc`, `lod_mask.gdshaderinc` or
+  `far_plane.gdshaderinc` where it needs them. A shader with variants is a
+  `.gdshaderinc` fragment and a stub the C++ writes with
+  `shader_source::variant`: `lighting_code`, `effect_code` and
+  `refraction_code` in `materials.cpp` choose `SKYDOT_ALPHA_*`,
+  `SKYDOT_DOUBLE_SIDED`, `SKYDOT_LIT` and `SKYDOT_PARTICLES`, and
+  `TerrainBuilder::shader_code` a `SKYDOT_LAYERS` of 1 to 7; the fragment's
+  `#ifdef`s and `#if`s pick its render modes and code. The fog and the
+  game's ambient are in the shaders too (an include, a `FOG` line, an
+  `EMISSION` line, `ambient_light_disabled`). The `.comp` files of the image
+  space are GLSL for `RenderingDevice`, which has no such preprocessor;
+  `shader_source::load` reads their text. The files are plain Godot resources,
+  not imported, so they work headless and ride in the `.pck` (the `.comp`
+  files need a non-resource filter in an export preset).
+  `SkydotMaterials.shader_sources()` returns the code of every shader the
+  engine can produce, a stub or a `.gdshader`'s own text, and
+  `smoke_shaders` has Godot parse and type-check each (no `SHADER ERROR`);
+  `game/tools/shader_compile.gd` does it on a GPU. Because Godot expands the
+  includes, a change is proved by `--from-shot` re-renders, not by hashes
+  (`game/tools/shader_dump.gd` lists which variants exist and what they
+  define; `game/shaders/README.md`).
 - **Gamma-space lighting.** Light colours and blending follow the game's
   gamma-space arithmetic (`set_game_light`). The
   `SkydotImageSpace` compositor effect then applies the game's ISHDR
   tone-mapping maths and hands Godot linear colour. Without that pass the
   gamma-space numbers would show too bright.
 - **Fog.** The engine's shaders compute the game's fog formula themselves
-  (`with_game_fog`) and write `FOG`. Values reach them through the
+  (`game_fog.gdshaderinc`) and write `FOG`. Values reach them through the
   Environment via `SkydotMaterials::sync_fog`, called every frame.
 - **Terrain** (`render/terrain.*`): LAND heights and normals, VTXT layer
   blending per vertex, land textures by LTEX → TXST; one mesh per quadrant.
@@ -1158,7 +1163,7 @@ Readers refuse unknown versions and say which numbers they read.
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
-| change a shader | the file in `engine/game/shaders/` (its header comment names the C++ that assembles it; `game/shaders/README.md`); what the C++ adds per variant is in `render/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` |
+| change a shader | the file in `engine/game/shaders/` (its header comment says how it is used and which defines it takes; `game/shaders/README.md`); the variants and their defines are chosen in `render/materials.cpp` and `terrain.cpp`, the other shaders are loaded whole by `render/water.cpp`, `lod.cpp`, `weather.cpp`, `materials.cpp` (particles); check with `smoke_shaders`, `game/tools/shader_compile.gd` and `--from-shot` re-renders |
 | add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
 | change streaming or door transitions | `game/viewer/` (`world_streamer.gd`, `door_preloader.gd`, `place_transition.gd`, `place.gd`) |
 | change a viewer key | the action in `game/project.godot` (`[input]`), `player_input.gd`, and the dispatcher `_on_command` in `cell_viewer.gd` |

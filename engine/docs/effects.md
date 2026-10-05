@@ -24,7 +24,7 @@ leaves models and lights still.
 ## Particles (`SkydotParticles`)
 
 One `GPUParticles3D` per emitter under the system's node, with one process
-shader for all (`SkydotParticles::process_shader_code`) and the effect
+shader for all (`particles_process.gdshader`) and the effect
 shader's particle variant for drawing (camera-facing quads, spin, sub-texture
 rectangles). Built on entering the tree, since emitter, gravity and particle
 space depend on global transforms. Amount is the peak birth rate times the
