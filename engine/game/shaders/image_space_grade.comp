@@ -1,0 +1,35 @@
+/* Image space, pass 3: the game's grade, in place (see render/image_space.hpp).
+ *
+ * Compute shader, see image_space_reduce.comp. compile() in render/image_space.cpp
+ * uses this as it is.
+ *
+ * This comment is not part of the shader code: the loader cuts it off (README.md).
+ */
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rgba16f, set = 0, binding = 0) uniform restrict image2D color_image;
+layout(set = 0, binding = 1, std430) restrict readonly buffer Average { float adapted; float current; };
+layout(push_constant, std430) uniform Params {
+	vec4 tint;      // rgb, amount
+	vec4 cinematic; // saturation, brightness, contrast, Reinhard p
+	ivec4 size;
+} pc;
+const vec3 W = vec3(0.2125, 0.7154, 0.0721);
+void main() {
+	ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+	if (p.x >= pc.size.x || p.y >= pc.size.y) {
+		return;
+	}
+	vec4 c = imageLoad(color_image, p);
+	vec3 col = max(c.rgb, vec3(0.0));
+	float l = dot(col, W);
+	if (l > 0.0) {
+		col *= (l * pc.cinematic.w + 1.0) / (l + 1.0);
+	}
+	float bl = dot(col, W);
+	vec3 tinted = pc.cinematic.y * mix(mix(vec3(bl), col, pc.cinematic.x), bl * pc.tint.rgb, pc.tint.a);
+	vec3 o = clamp(mix(vec3(adapted), tinted, pc.cinematic.z), 0.0, 1.0);
+	// Godot's Linear tonemapper encodes to sRGB: give it what encodes to o.
+	o = mix(o / 12.92, pow((o + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), o));
+	imageStore(color_image, p, vec4(o, c.a));
+}

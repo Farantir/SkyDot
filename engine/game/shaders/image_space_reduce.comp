@@ -1,0 +1,41 @@
+/* Image space, pass 1: the frame's luminance, summed per workgroup (see render/image_space.hpp).
+ *
+ * Compute shader (GLSL 450, compiled at run time through RenderingDevice, not
+ * imported: that is why the extension is not .glsl). Each thread sums 4x4 pixels, a
+ * 16x16 group 64x64 (k_reduce_tile in render/image_space.cpp). compile() in
+ * render/image_space.cpp uses this as it is.
+ *
+ * This comment is not part of the shader code: the loader cuts it off (README.md).
+ */
+#version 450
+layout(local_size_x = 16, local_size_y = 16) in;
+layout(rgba16f, set = 0, binding = 0) uniform restrict readonly image2D color_image;
+layout(set = 0, binding = 1, std430) restrict writeonly buffer Partials { float sums[]; };
+layout(push_constant, std430) uniform Params { ivec4 size_groups; } pc;
+shared float tile[256];
+void main() {
+	ivec2 base = ivec2(gl_GlobalInvocationID.xy) * 4;
+	float sum = 0.0;
+	for (int y = 0; y < 4; ++y) {
+		for (int x = 0; x < 4; ++x) {
+			ivec2 p = base + ivec2(x, y);
+			if (p.x < pc.size_groups.x && p.y < pc.size_groups.y) {
+				// The game clamps to 0..50 before averaging.
+				vec3 c = clamp(imageLoad(color_image, p).rgb, 0.0, 50.0);
+				sum += dot(c, vec3(0.2125, 0.7154, 0.0721));
+			}
+		}
+	}
+	uint i = gl_LocalInvocationIndex;
+	tile[i] = sum;
+	barrier();
+	for (uint s = 128u; s > 0u; s >>= 1u) {
+		if (i < s) {
+			tile[i] += tile[i + s];
+		}
+		barrier();
+	}
+	if (i == 0u) {
+		sums[gl_WorkGroupID.y * uint(pc.size_groups.z) + gl_WorkGroupID.x] = tile[0];
+	}
+}

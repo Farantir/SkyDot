@@ -1,0 +1,42 @@
+/* Image space, pass 2: the eye's adapted mean luminance (see render/image_space.hpp).
+ *
+ * Compute shader, see image_space_reduce.comp. compile() in render/image_space.cpp
+ * uses this as it is.
+ *
+ * push constant p: x partial count, y pixel count, z adaptation rate this frame,
+ * w reset. The step is the game's (ISHDR DOWNADAPT): rate times the difference, at
+ * least 1/256 and at most the difference.
+ *
+ * This comment is not part of the shader code: the loader cuts it off (README.md).
+ */
+#version 450
+layout(local_size_x = 256) in;
+layout(set = 0, binding = 0, std430) restrict readonly buffer Partials { float sums[]; };
+layout(set = 0, binding = 1, std430) restrict buffer Average { float adapted; float current; };
+layout(push_constant, std430) uniform Params { vec4 p; } pc;
+shared float acc[256];
+void main() {
+	uint i = gl_LocalInvocationIndex;
+	float s = 0.0;
+	for (uint k = i; k < uint(pc.p.x); k += 256u) {
+		s += sums[k];
+	}
+	acc[i] = s;
+	barrier();
+	for (uint step = 128u; step > 0u; step >>= 1u) {
+		if (i < step) {
+			acc[i] += acc[i + step];
+		}
+		barrier();
+	}
+	if (i == 0u) {
+		float mean = acc[0] / max(pc.p.y, 1.0);
+		current = mean;
+		if (pc.p.w > 0.5 || !(adapted > 0.0)) {
+			adapted = mean;
+		} else {
+			float d = mean - adapted;
+			adapted += sign(d) * min(max(abs(pc.p.z * d), 0.00390625), abs(d));
+		}
+	}
+}

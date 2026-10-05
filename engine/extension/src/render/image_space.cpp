@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/image_space.hpp"
+#include "render/shader_source.hpp"
 
 #include <godot_cpp/classes/rd_shader_source.hpp>
 #include <godot_cpp/classes/rd_shader_spirv.hpp>
@@ -32,116 +33,22 @@ namespace {
 // Each thread sums 4x4 pixels, a 16x16 group 64x64.
 constexpr int k_reduce_tile = 64;
 
-constexpr const char* k_reduce = R"(#version 450
-layout(local_size_x = 16, local_size_y = 16) in;
-layout(rgba16f, set = 0, binding = 0) uniform restrict readonly image2D color_image;
-layout(set = 0, binding = 1, std430) restrict writeonly buffer Partials { float sums[]; };
-layout(push_constant, std430) uniform Params { ivec4 size_groups; } pc;
-shared float tile[256];
-void main() {
-	ivec2 base = ivec2(gl_GlobalInvocationID.xy) * 4;
-	float sum = 0.0;
-	for (int y = 0; y < 4; ++y) {
-		for (int x = 0; x < 4; ++x) {
-			ivec2 p = base + ivec2(x, y);
-			if (p.x < pc.size_groups.x && p.y < pc.size_groups.y) {
-				// The game clamps to 0..50 before averaging.
-				vec3 c = clamp(imageLoad(color_image, p).rgb, 0.0, 50.0);
-				sum += dot(c, vec3(0.2125, 0.7154, 0.0721));
-			}
-		}
-	}
-	uint i = gl_LocalInvocationIndex;
-	tile[i] = sum;
-	barrier();
-	for (uint s = 128u; s > 0u; s >>= 1u) {
-		if (i < s) {
-			tile[i] += tile[i + s];
-		}
-		barrier();
-	}
-	if (i == 0u) {
-		sums[gl_WorkGroupID.y * uint(pc.size_groups.z) + gl_WorkGroupID.x] = tile[0];
-	}
-}
-)";
-
-// x: partial count, y: pixel count, z: adaptation rate this frame, w: reset.
-// The step is the game's (ISHDR DOWNADAPT): rate times the difference, at
-// least 1/256 and at most the difference.
-constexpr const char* k_adapt = R"(#version 450
-layout(local_size_x = 256) in;
-layout(set = 0, binding = 0, std430) restrict readonly buffer Partials { float sums[]; };
-layout(set = 0, binding = 1, std430) restrict buffer Average { float adapted; float current; };
-layout(push_constant, std430) uniform Params { vec4 p; } pc;
-shared float acc[256];
-void main() {
-	uint i = gl_LocalInvocationIndex;
-	float s = 0.0;
-	for (uint k = i; k < uint(pc.p.x); k += 256u) {
-		s += sums[k];
-	}
-	acc[i] = s;
-	barrier();
-	for (uint step = 128u; step > 0u; step >>= 1u) {
-		if (i < step) {
-			acc[i] += acc[i + step];
-		}
-		barrier();
-	}
-	if (i == 0u) {
-		float mean = acc[0] / max(pc.p.y, 1.0);
-		current = mean;
-		if (pc.p.w > 0.5 || !(adapted > 0.0)) {
-			adapted = mean;
-		} else {
-			float d = mean - adapted;
-			adapted += sign(d) * min(max(abs(pc.p.z * d), 0.00390625), abs(d));
-		}
-	}
-}
-)";
-
-constexpr const char* k_grade = R"(#version 450
-layout(local_size_x = 8, local_size_y = 8) in;
-layout(rgba16f, set = 0, binding = 0) uniform restrict image2D color_image;
-layout(set = 0, binding = 1, std430) restrict readonly buffer Average { float adapted; float current; };
-layout(push_constant, std430) uniform Params {
-	vec4 tint;      // rgb, amount
-	vec4 cinematic; // saturation, brightness, contrast, Reinhard p
-	ivec4 size;
-} pc;
-const vec3 W = vec3(0.2125, 0.7154, 0.0721);
-void main() {
-	ivec2 p = ivec2(gl_GlobalInvocationID.xy);
-	if (p.x >= pc.size.x || p.y >= pc.size.y) {
-		return;
-	}
-	vec4 c = imageLoad(color_image, p);
-	vec3 col = max(c.rgb, vec3(0.0));
-	float l = dot(col, W);
-	if (l > 0.0) {
-		col *= (l * pc.cinematic.w + 1.0) / (l + 1.0);
-	}
-	float bl = dot(col, W);
-	vec3 tinted = pc.cinematic.y * mix(mix(vec3(bl), col, pc.cinematic.x), bl * pc.tint.rgb, pc.tint.a);
-	vec3 o = clamp(mix(vec3(adapted), tinted, pc.cinematic.z), 0.0, 1.0);
-	// Godot's Linear tonemapper encodes to sRGB: give it what encodes to o.
-	o = mix(o / 12.92, pow((o + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), o));
-	imageStore(color_image, p, vec4(o, c.a));
-}
-)";
-
 RenderingDevice* device() {
     auto* rs = godot::RenderingServer::get_singleton();
     return rs != nullptr ? rs->get_rendering_device() : nullptr;
 }
 
-RID compile(RenderingDevice* rd, const char* code, const char* name) {
+/// The text Godot takes of the compute shader file `file`.
+godot::String source_of(const char* file) {
+    const std::string& code = shader_source::load(file);
+    return godot::String::utf8(code.c_str(), static_cast<int>(code.size()));
+}
+
+RID compile(RenderingDevice* rd, const char* file, const char* name) {
     Ref<godot::RDShaderSource> source;
     source.instantiate();
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
-    source->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE, code);
+    source->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE, source_of(file));
     const Ref<godot::RDShaderSPIRV> spirv = rd->shader_compile_spirv_from_source(source);
     if (spirv.is_null()) {
         return {};
@@ -197,9 +104,9 @@ SkydotImageSpace::~SkydotImageSpace() {
 
 Dictionary SkydotImageSpace::shader_codes() {
     Dictionary out;
-    out["image_space_reduce"] = godot::String::utf8(k_reduce);
-    out["image_space_adapt"] = godot::String::utf8(k_adapt);
-    out["image_space_grade"] = godot::String::utf8(k_grade);
+    out["image_space_reduce"] = source_of("image_space_reduce.comp");
+    out["image_space_adapt"] = source_of("image_space_adapt.comp");
+    out["image_space_grade"] = source_of("image_space_grade.comp");
     return out;
 }
 
@@ -245,9 +152,9 @@ bool SkydotImageSpace::ensure_pipelines() {
     if (rd == nullptr) {
         return false;
     }
-    reduce_shader_ = compile(rd, k_reduce, "skydot_image_space_reduce");
-    adapt_shader_ = compile(rd, k_adapt, "skydot_image_space_adapt");
-    grade_shader_ = compile(rd, k_grade, "skydot_image_space_grade");
+    reduce_shader_ = compile(rd, "image_space_reduce.comp", "skydot_image_space_reduce");
+    adapt_shader_ = compile(rd, "image_space_adapt.comp", "skydot_image_space_adapt");
+    grade_shader_ = compile(rd, "image_space_grade.comp", "skydot_image_space_grade");
     if (!reduce_shader_.is_valid() || !adapt_shader_.is_valid() || !grade_shader_.is_valid()) {
         failed_ = true;
         free_pipelines();
