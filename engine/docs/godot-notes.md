@@ -75,3 +75,10 @@ Two traps:
 A GLB without a binary chunk (780 of 33,235 vanilla SE meshes, all without
 geometry) logs "Reading less data than requested" from the glTF reader; it is
 harmless.
+
+The cache keeps its own 1 to 4 `std::thread` workers: as `WorkerThreadPool`
+tasks (4.7, 2026-10-05; one per asset, and as up to four looping tasks, with
+`AssetCache::get` taking over unstarted work as before) loading the Riverwood
+5x5 block through `request_exterior` took 5 to 9 % longer (median of 15 runs,
+479 -> 501 ms and 468 -> 499 ms, 12 cores), while the viewer's
+`--benchmark 20` and `preload_check.gd` came out the same.
