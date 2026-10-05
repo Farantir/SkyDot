@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -34,7 +35,7 @@ static_assert(same_bit(wfb::CellFlags::interior, record::Cell::Flag::interior) &
 /// VHGT: a float offset, 33 x 33 signed deltas, 3 bytes of padding.
 std::optional<std::pair<float, std::vector<std::int8_t>>> decode_vhgt(
     std::span<const std::byte> raw) {
-    constexpr std::size_t count = WorldTerrain::k_grid * WorldTerrain::k_grid;
+    constexpr std::size_t count = k_terrain_grid * k_terrain_grid;
     if (raw.size() < 4 + count) {
         return std::nullopt;
     }
@@ -50,12 +51,12 @@ std::optional<std::pair<float, std::vector<std::int8_t>>> decode_vhgt(
 
 /// XCLL, 92-byte layout (source: UESP, CELL record, XCLL). The 64-byte pre-1.70
 /// form is not decoded.
-std::optional<WorldCellLighting> decode_xcll(std::span<const std::byte> raw) {
+std::optional<Lighting> decode_xcll(std::span<const std::byte> raw) {
     if (raw.size() < 92) {
         return std::nullopt;
     }
     io::SpanReader r(raw, "XCLL");
-    WorldCellLighting out;
+    Lighting out;
     const auto u32 = [&]() { return r.get<std::uint32_t>().value_or(0); };
     const auto i32 = [&]() { return r.get<std::int32_t>().value_or(0); };
     const auto f32 = [&]() { return r.get<float>().value_or(0.0F); };
@@ -97,17 +98,17 @@ constexpr std::uint32_t k_inherit_light_fade = 0x400;
 /// The lighting of an interior as the game uses it: XCLL with the inherited
 /// values taken from the lighting template, or the template's alone when the
 /// cell has no XCLL. Exteriors keep XCLL as it is.
-std::optional<WorldCellLighting> resolve_lighting(
-    const CellEntry& cell, const std::map<std::uint32_t, LightingTemplateEntry>& templates) {
-    const auto it = templates.find(cell.lighting_template);
-    if (!has_flag(cell.flags, wfb::CellFlags::interior) || it == templates.end()) {
-        return cell.lighting;
+std::optional<Lighting> resolve_lighting(
+    const CellEntry& entry, const std::map<std::uint32_t, LightingTemplateEntry>& templates) {
+    const auto it = templates.find(entry.cell.lighting_template);
+    if (!has_flag(entry.cell.flags, wfb::CellFlags::interior) || it == templates.end()) {
+        return entry.xcll;
     }
     const auto& t = it->second.lighting;
-    if (!cell.lighting) {
+    if (!entry.xcll) {
         return t;
     }
-    WorldCellLighting out = *cell.lighting;
+    Lighting out = *entry.xcll;
     const auto inherits = [&](std::uint32_t bit) { return (out.inherit & bit) != 0; };
     if (inherits(k_inherit_ambient)) {
         out.ambient = t.ambient;
@@ -146,62 +147,11 @@ std::optional<WorldCellLighting> resolve_lighting(
     return out;
 }
 
-/// A cell's navmeshes in id order.
-std::vector<flatbuffers::Offset<wfb::NavMesh>> write_navmeshes(
-    flatbuffers::FlatBufferBuilder& builder, std::vector<WorldNavMesh>& navmeshes,
-    WorldStats& stats) {
-    std::vector<flatbuffers::Offset<wfb::NavMesh>> out;
-    std::ranges::sort(navmeshes, {}, &WorldNavMesh::id);
-    for (const auto& nav : navmeshes) {
-        std::vector<wfb::Vec3f> vertices;
-        vertices.reserve(nav.vertices.size());
-        for (const auto& v : nav.vertices) {
-            vertices.push_back(to_fb(v));
-        }
-        std::vector<wfb::NavTriangle> triangles;
-        triangles.reserve(nav.triangles.size());
-        for (const auto& t : nav.triangles) {
-            triangles.emplace_back(t.vertices[0], t.vertices[1], t.vertices[2],
-                                   t.edges[0], t.edges[1], t.edges[2], t.flags, t.cover);
-        }
-        std::vector<wfb::NavLink> nav_links;
-        for (const auto& l : nav.links) {
-            nav_links.emplace_back(l.type, l.navmesh, l.triangle);
-        }
-        std::vector<wfb::NavDoor> nav_doors;
-        for (const auto& d : nav.doors) {
-            nav_doors.emplace_back(d.triangle, d.door);
-        }
-        const auto v_off = builder.CreateVectorOfStructs(vertices);
-        const auto t_off = builder.CreateVectorOfStructs(triangles);
-        const auto l_off = builder.CreateVectorOfStructs(nav_links);
-        const auto d_off = builder.CreateVectorOfStructs(nav_doors);
-        out.push_back(wfb::CreateNavMesh(builder, nav.id, v_off, t_off, l_off, d_off));
-        ++stats.navmeshes;
-        stats.nav_triangles += nav.triangles.size();
-    }
-    return out;
-}
-
-/// A cell's terrain: heights, vertex colours and texture layers.
-flatbuffers::Offset<wfb::Terrain> write_terrain(flatbuffers::FlatBufferBuilder& builder,
-                                                const WorldTerrain& terrain, WorldStats& stats) {
-    std::vector<flatbuffers::Offset<wfb::TerrainLayer>> layers;
-    layers.reserve(terrain.layers.size());
-    for (const auto& layer : terrain.layers) {
-        const auto points = builder.CreateVector(layer.points);
-        const auto opacity = builder.CreateVector(layer.opacity);
-        layers.push_back(wfb::CreateTerrainLayer(builder, layer.texture, layer.quadrant,
-                                                 layer.layer, points, opacity));
-    }
-    const auto deltas = builder.CreateVector(terrain.height_deltas);
-    const auto colours = builder.CreateVector(terrain.colours);
-    const auto layers_off = builder.CreateVector(layers);
-    const auto out =
-        wfb::CreateTerrain(builder, terrain.height_offset, deltas, colours, layers_off);
-    ++stats.terrains;
-    stats.terrain_layers += terrain.layers.size();
-    return out;
+wfb::CellLighting to_fb(const Lighting& l) {
+    return wfb::CellLighting(l.ambient, l.directional, l.fog_near_color, l.fog_far_color,
+                             l.fog_near, l.fog_far, l.fog_power, l.fog_max,
+                             l.directional_rotation_xy, l.directional_rotation_z,
+                             l.directional_fade, l.light_fade_begin, l.light_fade_end, l.inherit);
 }
 
 } // namespace
@@ -240,23 +190,27 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
         return;
     }
     bool failed = false;
-    CellEntry entry{
-        .id = merged.form.value,
-        .editor_id = cell->editor_id,
-        .world = cell->is_interior() ? 0 : merged.parent.value,
-        .flags = static_cast<wfb::CellFlags>(cell->flags),
-        .grid = cell->grid,
-        .water_height = cell->water_height,
-        .lighting = decode_xcll(cell->lighting),
-        .lighting_template = shared_.global(merged, cell->lighting_template, failed),
-        .image_space = shared_.global(merged, cell->image_space, failed),
-        .persistent = record::has_flag(merged.flags, record::RecordFlag::persistent),
-        .water = shared_.global(merged, cell->water, failed),
-    };
+    auto& entry = cells_[merged.form.value];
+    entry.has_record = true;
+    entry.xcll = decode_xcll(cell->lighting);
+    auto& out = entry.cell;
+    out.id = merged.form.value;
+    out.editor_id = cell->editor_id;
+    out.world = cell->is_interior() ? 0 : merged.parent.value;
+    out.flags = static_cast<wfb::CellFlags>(cell->flags);
+    if (cell->grid) {
+        out.has_grid = true;
+        out.grid_x = cell->grid->x;
+        out.grid_y = cell->grid->y;
+    }
+    out.water_height = cell->water_height;
+    out.lighting_template = shared_.global(merged, cell->lighting_template, failed);
+    out.image_space = shared_.global(merged, cell->image_space, failed);
+    out.persistent = record::has_flag(merged.flags, record::RecordFlag::persistent);
+    out.water = shared_.global(merged, cell->water, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
-    cells_[entry.id] = std::move(entry);
 }
 
 void PlaceCollector::on_reference(const record::MergedRecord& merged,
@@ -272,90 +226,72 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         return;
     }
     bool failed = false;
-    WorldRef out{
-        .id = merged.form.value,
-        .base = shared_.global(merged, ref->base, failed),
-        .position = ref->position,
-        .rotation = ref->rotation,
-        .scale = ref->scale,
-        .flags = {},
-        .enable_parent = 0,
-    };
+    auto& cell = cells_[merged.parent.value].cell;
+    const std::uint32_t id = merged.form.value;
+    wfb::RefFlags flags{};
+    std::uint32_t enable_parent = 0;
     if (ref->initially_disabled) {
-        out.flags |= wfb::RefFlags::initially_disabled;
+        flags |= wfb::RefFlags::initially_disabled;
     }
     if (ref->persistent) {
-        out.flags |= wfb::RefFlags::persistent;
+        flags |= wfb::RefFlags::persistent;
     }
     if (ref->enable_parent) {
-        out.enable_parent = shared_.global(merged, ref->enable_parent->parent, failed);
+        enable_parent = shared_.global(merged, ref->enable_parent->parent, failed);
         if (ref->enable_parent->set_enable_state_opposite()) {
-            out.flags |= wfb::RefFlags::enable_opposite;
+            flags |= wfb::RefFlags::enable_opposite;
         }
     }
     if ((ref->activate_parent_flags & 0x01u) != 0) {
-        out.flags |= wfb::RefFlags::parent_activate_only;
+        flags |= wfb::RefFlags::parent_activate_only;
     }
-    auto& extras = extras_[merged.parent.value];
+    cell.refs.emplace_back(id, shared_.global(merged, ref->base, failed), to_fb(ref->position),
+                           to_fb(ref->rotation), ref->scale, flags, enable_parent);
     if (!ref->scripts.empty()) {
-        extras.scripts.push_back(WorldRefScripts{
-            .ref = out.id,
-            .scripts = shared_.global_scripts(merged, ref->scripts, failed),
-        });
+        auto& scripts = cell.scripts.emplace_back(std::make_unique<wfb::RefScriptsT>());
+        scripts->ref = id;
+        scripts->scripts = shared_.global_scripts(merged, ref->scripts, failed);
     }
     if (ref->has_radius || ref->light_data.size() >= 16) {
-        WorldLightOverride light{.ref = out.id, .has_radius = ref->has_radius, .radius = ref->radius};
+        bool has_light_data = false;
+        float fov = 0.0F;
+        float fade = 0.0F;
+        float end_distance_cap = 0.0F;
+        float shadow_depth_bias = 0.0F;
         if (ref->light_data.size() >= 16) {
             io::SpanReader r(ref->light_data, "REFR XLIG");
-            light.has_light_data = true;
-            light.fov = r.get<float>().value_or(0.0F);
-            light.fade = r.get<float>().value_or(0.0F);
-            light.end_distance_cap = r.get<float>().value_or(0.0F);
-            light.shadow_depth_bias = r.get<float>().value_or(0.0F);
+            has_light_data = true;
+            fov = r.get<float>().value_or(0.0F);
+            fade = r.get<float>().value_or(0.0F);
+            end_distance_cap = r.get<float>().value_or(0.0F);
+            shadow_depth_bias = r.get<float>().value_or(0.0F);
         }
-        extras.light_overrides.push_back(light);
+        cell.light_overrides.emplace_back(id, ref->has_radius, ref->radius, has_light_data, fov,
+                                          fade, end_distance_cap, shadow_depth_bias);
     }
     if (ref->lock) {
-        extras.locks.push_back(WorldLock{
-            .ref = out.id,
-            .level = ref->lock->level,
-            .flags = ref->lock->flags,
-            .key = shared_.global(merged, ref->lock->key, failed),
-        });
+        cell.locks.emplace_back(id, ref->lock->level, ref->lock->flags,
+                                shared_.global(merged, ref->lock->key, failed));
     }
     for (const auto& link : ref->linked_references) {
-        extras.links.push_back(WorldLink{
-            .ref = out.id,
-            .keyword = shared_.global(merged, link.keyword, failed),
-            .target = shared_.global(merged, link.target, failed),
-        });
+        cell.links.emplace_back(id, shared_.global(merged, link.keyword, failed),
+                                shared_.global(merged, link.target, failed));
     }
     for (const auto& parent : ref->activate_parents) {
-        extras.activate_parents.push_back(WorldActivateParent{
-            .ref = out.id,
-            .parent = shared_.global(merged, parent.ref, failed),
-            .delay = parent.delay,
-        });
+        cell.activate_parents.emplace_back(id, shared_.global(merged, parent.ref, failed),
+                                           parent.delay);
     }
     if (ref->primitive) {
-        extras.primitives.push_back(WorldPrimitive{
-            .ref = out.id,
-            .bounds = ref->primitive->bounds,
-            .type = ref->primitive->type,
-        });
+        cell.primitives.emplace_back(id, to_fb(ref->primitive->bounds), ref->primitive->type);
     }
     if (ref->teleport) {
-        doors_[merged.parent.value].push_back(WorldDoor{
-            .ref = out.id,
-            .destination = shared_.global(merged, ref->teleport->destination_door, failed),
-            .position = ref->teleport->position,
-            .rotation = ref->teleport->rotation,
-        });
+        cell.doors.emplace_back(id,
+                                shared_.global(merged, ref->teleport->destination_door, failed),
+                                to_fb(ref->teleport->position), to_fb(ref->teleport->rotation));
     }
     if (failed) {
         ++shared_.stats().unresolved;
     }
-    refs_[merged.parent.value].push_back(out);
 }
 
 /// LAND's parent is its CELL. Texture FormIDs are made global; an
@@ -372,50 +308,44 @@ void PlaceCollector::on_land(const record::MergedRecord& merged, io::SpanReader&
         return;
     }
     bool failed = false;
-    WorldTerrain terrain;
-    terrain.height_offset = heights->first;
-    terrain.height_deltas = std::move(heights->second);
+    auto terrain = std::make_unique<wfb::TerrainT>();
+    terrain->height_offset = heights->first;
+    terrain->height_deltas = std::move(heights->second);
     if (land->vertex_colours.size() == record::Landscape::k_vnml_size) {
-        terrain.colours.reserve(land->vertex_colours.size());
+        terrain->colours.reserve(land->vertex_colours.size());
         for (const std::byte b : land->vertex_colours) {
-            terrain.colours.push_back(static_cast<std::uint8_t>(b));
+            terrain->colours.push_back(static_cast<std::uint8_t>(b));
         }
     }
     for (const auto& base : land->base_layers) {
-        terrain.layers.push_back(WorldTerrainLayer{
-            .texture = shared_.global(merged, base.texture, failed),
-            .quadrant = base.quadrant,
-            .layer = -1,
-            .points = {},
-            .opacity = {},
-        });
+        auto& layer = terrain->layers.emplace_back(std::make_unique<wfb::TerrainLayerT>());
+        layer->texture = shared_.global(merged, base.texture, failed);
+        layer->quadrant = base.quadrant;
+        layer->layer = -1;
     }
     for (const auto& extra : land->additional_layers) {
-        WorldTerrainLayer layer{
-            .texture = shared_.global(merged, extra.texture, failed),
-            .quadrant = extra.quadrant,
-            .layer = extra.layer,
-            .points = {},
-            .opacity = {},
-        };
+        auto layer = std::make_unique<wfb::TerrainLayerT>();
+        layer->texture = shared_.global(merged, extra.texture, failed);
+        layer->quadrant = extra.quadrant;
+        layer->layer = extra.layer;
         // VTXT, 8 bytes a point: vertex index, an unknown word, opacity.
         io::SpanReader r(extra.alpha_map, "VTXT");
         while (r.remaining() >= record::Landscape::k_alpha_point_size) {
             const auto point = r.get<std::uint16_t>().value_or(0);
             (void)r.get<std::uint16_t>();
             const float opacity = std::clamp(r.get<float>().value_or(0.0F), 0.0F, 1.0F);
-            layer.points.push_back(point);
-            layer.opacity.push_back(static_cast<std::uint8_t>(opacity * 255.0F + 0.5F));
+            layer->points.push_back(point);
+            layer->opacity.push_back(static_cast<std::uint8_t>(opacity * 255.0F + 0.5F));
         }
-        terrain.layers.push_back(std::move(layer));
+        terrain->layers.push_back(std::move(layer));
     }
-    std::ranges::stable_sort(terrain.layers, [](const auto& a, const auto& b) {
-        return std::pair{a.quadrant, a.layer} < std::pair{b.quadrant, b.layer};
+    std::ranges::stable_sort(terrain->layers, [](const auto& a, const auto& b) {
+        return std::pair{a->quadrant, a->layer} < std::pair{b->quadrant, b->layer};
     });
     if (failed) {
         ++shared_.stats().unresolved;
     }
-    terrains_[merged.parent.value] = std::move(terrain);
+    cells_[merged.parent.value].cell.terrain = std::move(terrain);
 }
 
 void PlaceCollector::on_actor(const record::MergedRecord& merged,
@@ -431,32 +361,25 @@ void PlaceCollector::on_actor(const record::MergedRecord& merged,
         return;
     }
     bool failed = false;
-    WorldActor out{
-        .ref = merged.form.value,
-        .base = shared_.global(merged, actor->base, failed),
-        .cell = merged.parent.value,
-        .position = actor->position,
-        .rotation = actor->rotation,
-        .flags = {},
-    };
+    const std::uint32_t id = merged.form.value;
+    wfb::RefFlags flags{};
     if (actor->initially_disabled) {
-        out.flags |= wfb::RefFlags::initially_disabled;
+        flags |= wfb::RefFlags::initially_disabled;
     }
     if (actor->persistent) {
-        out.flags |= wfb::RefFlags::persistent;
+        flags |= wfb::RefFlags::persistent;
     }
+    actors_.emplace_back(id, shared_.global(merged, actor->base, failed), merged.parent.value,
+                         to_fb(actor->position), to_fb(actor->rotation), flags);
     // Packages walk to linked references (beds, work markers, patrols).
     for (const auto& link : actor->linked_references) {
-        extras_[merged.parent.value].links.push_back(WorldLink{
-            .ref = out.ref,
-            .keyword = shared_.global(merged, link.keyword, failed),
-            .target = shared_.global(merged, link.target, failed),
-        });
+        cells_[merged.parent.value].cell.links.emplace_back(
+            id, shared_.global(merged, link.keyword, failed),
+            shared_.global(merged, link.target, failed));
     }
     if (failed) {
         ++shared_.stats().unresolved;
     }
-    actors_.push_back(out);
 }
 
 /// NAVM's parent is its CELL. Edge link and door FormIDs are made global.
@@ -477,28 +400,28 @@ void PlaceCollector::on_navmesh(const record::MergedRecord& merged, io::SpanRead
         return;
     }
     bool failed = false;
-    WorldNavMesh out;
-    out.id = merged.form.value;
-    out.vertices = std::move(geometry->vertices);
-    out.triangles.reserve(geometry->triangles.size());
+    auto out = std::make_unique<wfb::NavMeshT>();
+    out->id = merged.form.value;
+    out->vertices.reserve(geometry->vertices.size());
+    for (const auto& v : geometry->vertices) {
+        out->vertices.push_back(to_fb(v));
+    }
+    out->triangles.reserve(geometry->triangles.size());
     for (const auto& t : geometry->triangles) {
-        out.triangles.push_back({.vertices = t.vertices, .edges = t.edges,
-                                 .flags = static_cast<wfb::NavTriangleFlags>(t.flags),
-                                 .cover = t.cover});
+        out->triangles.emplace_back(t.vertices[0], t.vertices[1], t.vertices[2], t.edges[0],
+                                    t.edges[1], t.edges[2],
+                                    static_cast<wfb::NavTriangleFlags>(t.flags), t.cover);
     }
     for (const auto& l : geometry->edge_links) {
-        out.links.push_back({.type = l.type,
-                             .navmesh = shared_.global(merged, l.navmesh, failed),
-                             .triangle = l.triangle});
+        out->links.emplace_back(l.type, shared_.global(merged, l.navmesh, failed), l.triangle);
     }
     for (const auto& d : geometry->doors) {
-        out.doors.push_back(
-            {.triangle = d.triangle, .door = shared_.global(merged, d.door, failed)});
+        out->doors.emplace_back(d.triangle, shared_.global(merged, d.door, failed));
     }
     if (failed) {
         ++shared_.stats().unresolved;
     }
-    navmeshes_[merged.parent.value].push_back(std::move(out));
+    cells_[merged.parent.value].cell.navmeshes.push_back(std::move(out));
 }
 
 /// LGTM (UESP, LGTM record): DATA as XCLL, DALC 32 bytes.
@@ -537,152 +460,56 @@ std::vector<flatbuffers::Offset<wfb::Cell>> PlaceCollector::write_cells(
     auto& stats = shared_.stats();
     std::vector<flatbuffers::Offset<wfb::Cell>> cells;
     cells.reserve(cells_.size());
-    for (auto& [id, cell] : cells_) { // std::map: sorted by id
-        auto& refs = refs_[id];
-        std::ranges::sort(refs, {}, &WorldRef::id);
-        auto& doors = doors_[id];
-        std::ranges::sort(doors, {}, &WorldDoor::ref);
+    for (auto& [id, entry] : cells_) { // std::map: sorted by id
+        auto& cell = entry.cell;
+        if (!entry.has_record) {
+            // References and navmeshes whose parent is not a cell record.
+            stats.orphan_refs += cell.refs.size();
+            stats.orphan_navmeshes += cell.navmeshes.size();
+            continue;
+        }
+        std::ranges::sort(cell.refs, {}, &wfb::Ref::id);
+        std::ranges::sort(cell.doors, {}, &wfb::DoorLink::ref);
+        std::ranges::stable_sort(cell.scripts, {}, [](const auto& s) { return s->ref; });
+        std::ranges::stable_sort(cell.locks, {}, &wfb::Lock::ref);
+        std::ranges::stable_sort(cell.links, {}, &wfb::LinkedRef::ref);
+        std::ranges::stable_sort(cell.activate_parents, {}, &wfb::ActivateParent::ref);
+        std::ranges::stable_sort(cell.primitives, {}, &wfb::Primitive::ref);
+        std::ranges::stable_sort(cell.light_overrides, {}, &wfb::LightOverride::ref);
+        std::ranges::sort(cell.navmeshes, {}, [](const auto& n) { return n->id; });
 
-        std::vector<wfb::Ref> fb_refs;
-        fb_refs.reserve(refs.size());
-        for (const auto& r : refs) {
-            fb_refs.emplace_back(r.id, r.base, to_fb(r.position), to_fb(r.rotation), r.scale,
-                                 r.flags, r.enable_parent);
+        stats.refs += cell.refs.size();
+        stats.doors += cell.doors.size();
+        for (const auto& r : cell.scripts) {
+            stats.scripts += r->scripts.size();
         }
-        std::vector<wfb::DoorLink> fb_doors;
-        fb_doors.reserve(doors.size());
-        for (const auto& d : doors) {
-            fb_doors.emplace_back(d.ref, d.destination, to_fb(d.position), to_fb(d.rotation));
+        stats.locks += cell.locks.size();
+        stats.links += cell.links.size();
+        stats.activate_parents += cell.activate_parents.size();
+        stats.primitives += cell.primitives.size();
+        for (const auto& nav : cell.navmeshes) {
+            ++stats.navmeshes;
+            stats.nav_triangles += nav->triangles.size();
         }
-        stats.refs += refs.size();
-        stats.doors += doors.size();
-
-        auto& extras = extras_[id];
-        std::ranges::stable_sort(extras.scripts, {}, &WorldRefScripts::ref);
-        std::ranges::stable_sort(extras.locks, {}, &WorldLock::ref);
-        std::ranges::stable_sort(extras.links, {}, &WorldLink::ref);
-        std::ranges::stable_sort(extras.activate_parents, {}, &WorldActivateParent::ref);
-        std::ranges::stable_sort(extras.primitives, {}, &WorldPrimitive::ref);
-        std::ranges::stable_sort(extras.light_overrides, {}, &WorldLightOverride::ref);
-        std::vector<flatbuffers::Offset<wfb::RefScripts>> fb_scripts;
-        fb_scripts.reserve(extras.scripts.size());
-        for (const auto& r : extras.scripts) {
-            fb_scripts.push_back(
-                wfb::CreateRefScripts(builder, r.ref, write_scripts(builder, r.scripts)));
-            stats.scripts += r.scripts.size();
-        }
-        std::vector<wfb::Lock> fb_locks;
-        for (const auto& l : extras.locks) {
-            fb_locks.emplace_back(l.ref, l.level, l.flags, l.key);
-        }
-        std::vector<wfb::LinkedRef> fb_links;
-        for (const auto& l : extras.links) {
-            fb_links.emplace_back(l.ref, l.keyword, l.target);
-        }
-        std::vector<wfb::ActivateParent> fb_parents;
-        for (const auto& a : extras.activate_parents) {
-            fb_parents.emplace_back(a.ref, a.parent, a.delay);
-        }
-        std::vector<wfb::Primitive> fb_primitives;
-        for (const auto& p : extras.primitives) {
-            fb_primitives.emplace_back(p.ref, to_fb(p.bounds), p.type);
-        }
-        stats.locks += fb_locks.size();
-        stats.links += fb_links.size();
-        stats.activate_parents += fb_parents.size();
-        stats.primitives += fb_primitives.size();
-        const auto scripts_off = builder.CreateVector(fb_scripts);
-        const auto locks_off = builder.CreateVectorOfStructs(fb_locks);
-        const auto links_off = builder.CreateVectorOfStructs(fb_links);
-        const auto parents_off = builder.CreateVectorOfStructs(fb_parents);
-        const auto primitives_off = builder.CreateVectorOfStructs(fb_primitives);
-        std::vector<wfb::LightOverride> fb_lights;
-        for (const auto& l : extras.light_overrides) {
-            fb_lights.emplace_back(l.ref, l.has_radius, l.radius, l.has_light_data, l.fov, l.fade,
-                                   l.end_distance_cap, l.shadow_depth_bias);
-        }
-        const auto light_overrides_off = builder.CreateVectorOfStructs(fb_lights);
-
-        std::vector<flatbuffers::Offset<wfb::NavMesh>> fb_navmeshes;
-        if (const auto n = navmeshes_.find(id); n != navmeshes_.end()) {
-            fb_navmeshes = write_navmeshes(builder, n->second, stats);
-        }
-        const auto navmeshes_off = builder.CreateVector(fb_navmeshes);
-
-        const auto editor_id = builder.CreateString(cell.editor_id);
-        const auto refs_off = builder.CreateVectorOfStructs(fb_refs);
-        const auto doors_off = builder.CreateVectorOfStructs(fb_doors);
-
-        flatbuffers::Offset<wfb::Terrain> terrain_off;
-        if (const auto t = terrains_.find(id); t != terrains_.end()) {
-            terrain_off = write_terrain(builder, t->second, stats);
+        if (cell.terrain) {
+            ++stats.terrains;
+            stats.terrain_layers += cell.terrain->layers.size();
         }
 
-        const auto resolved = resolve_lighting(cell, lighting_templates_);
-        std::optional<wfb::CellLighting> lighting;
-        flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> ambient_off;
-        if (resolved) {
-            const auto& l = *resolved;
-            if (std::ranges::any_of(l.directional_ambient, [](std::uint32_t c) { return c != 0; })) {
-                ambient_off = builder.CreateVector(l.directional_ambient.data(), l.directional_ambient.size());
+        if (const auto resolved = resolve_lighting(entry, lighting_templates_)) {
+            cell.has_lighting = true;
+            cell.lighting = std::make_unique<wfb::CellLighting>(to_fb(*resolved));
+            if (std::ranges::any_of(resolved->directional_ambient,
+                                    [](std::uint32_t c) { return c != 0; })) {
+                cell.directional_ambient.assign(resolved->directional_ambient.begin(),
+                                                resolved->directional_ambient.end());
             }
-            lighting = wfb::CellLighting(
-                l.ambient, l.directional, l.fog_near_color, l.fog_far_color, l.fog_near,
-                l.fog_far, l.fog_power, l.fog_max, l.directional_rotation_xy,
-                l.directional_rotation_z, l.directional_fade, l.light_fade_begin,
-                l.light_fade_end, l.inherit);
         }
-
-        wfb::CellBuilder cb(builder);
-        cb.add_id(cell.id);
-        cb.add_editor_id(editor_id);
-        cb.add_world(cell.world);
-        cb.add_flags(cell.flags);
-        if (cell.grid) {
-            cb.add_has_grid(true);
-            cb.add_grid_x(cell.grid->x);
-            cb.add_grid_y(cell.grid->y);
-        }
-        cb.add_water_height(cell.water_height);
-        if (lighting) {
-            cb.add_has_lighting(true);
-            cb.add_lighting(&*lighting);
-        }
-        cb.add_lighting_template(cell.lighting_template);
-        cb.add_refs(refs_off);
-        cb.add_doors(doors_off);
-        if (!terrain_off.IsNull()) {
-            cb.add_terrain(terrain_off);
-        }
-        cb.add_persistent(cell.persistent);
-        cb.add_water(cell.water);
-        cb.add_scripts(scripts_off);
-        cb.add_locks(locks_off);
-        cb.add_links(links_off);
-        cb.add_activate_parents(parents_off);
-        cb.add_primitives(primitives_off);
-        cb.add_navmeshes(navmeshes_off);
-        if (!ambient_off.IsNull()) {
-            cb.add_directional_ambient(ambient_off);
-        }
-        cb.add_image_space(cell.image_space);
-        cb.add_light_overrides(light_overrides_off);
-        cells.push_back(cb.Finish());
+        cells.push_back(wfb::CreateCell(builder, &cell));
 
         ++stats.cells;
         if (has_flag(cell.flags, wfb::CellFlags::interior)) {
             ++stats.interior_cells;
-        }
-    }
-    // References whose parent is not a cell record.
-    for (const auto& [parent, refs] : refs_) {
-        if (!cells_.contains(parent)) {
-            stats.orphan_refs += refs.size();
-        }
-    }
-    for (const auto& [parent, navmeshes] : navmeshes_) {
-        if (!cells_.contains(parent)) {
-            stats.orphan_navmeshes += navmeshes.size();
         }
     }
     stats.lighting_templates = lighting_templates_.size();
@@ -691,15 +518,9 @@ std::vector<flatbuffers::Offset<wfb::Cell>> PlaceCollector::write_cells(
 
 flatbuffers::Offset<flatbuffers::Vector<const wfb::ActorRef*>> PlaceCollector::write_actors(
     flatbuffers::FlatBufferBuilder& builder) {
-    std::ranges::sort(actors_, {}, &WorldActor::ref);
-    std::vector<wfb::ActorRef> fb_actors;
-    fb_actors.reserve(actors_.size());
-    for (const auto& a : actors_) {
-        fb_actors.emplace_back(a.ref, a.base, a.cell, to_fb(a.position), to_fb(a.rotation),
-                               a.flags);
-    }
-    shared_.stats().actors += fb_actors.size();
-    return builder.CreateVectorOfStructs(fb_actors);
+    std::ranges::sort(actors_, {}, &wfb::ActorRef::ref);
+    shared_.stats().actors += actors_.size();
+    return builder.CreateVectorOfStructs(actors_);
 }
 
 } // namespace bethconv::pack::detail

@@ -15,43 +15,51 @@
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/plugin.hpp"
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <optional>
-#include <string>
-#include <unordered_map>
 #include <vector>
 
 namespace bethconv::pack::detail {
 
+/// XCLL as a cell and a lighting template give it. wfb::CellLighting is
+/// read-only, and the directional ambient belongs to the cell table, not to
+/// that struct, so merging the two works on this.
+struct Lighting {
+    std::uint32_t ambient{};
+    std::uint32_t directional{};
+    std::uint32_t fog_near_color{};
+    std::uint32_t fog_far_color{};
+    float fog_near{};
+    float fog_far{};
+    float fog_power{};
+    float fog_max{};
+    std::int32_t directional_rotation_xy{};
+    std::int32_t directional_rotation_z{};
+    float directional_fade{};
+    float light_fade_begin{};
+    float light_fade_end{};
+    std::uint32_t inherit{};
+    /// x+, x-, y+, y-, z+, z-, RGBA bytes; all 0 if unknown.
+    std::array<std::uint32_t, 6> directional_ambient{};
+};
+
+/// A cell: its table, which the CELL record fills in and its children (the
+/// references, navmeshes and land that name it as their parent) add to, and
+/// the XCLL, which is resolved against the lighting templates once every
+/// record is in.
 struct CellEntry {
-    std::uint32_t id{};
-    std::string editor_id;
-    std::uint32_t world{};
-    wfb::CellFlags flags{};
-    std::optional<record::Cell::Grid> grid;
-    float water_height{};
-    std::optional<WorldCellLighting> lighting;
-    std::uint32_t lighting_template{};
-    std::uint32_t image_space{};
-    bool persistent{};
-    std::uint32_t water{};
+    wfb::CellT cell;
+    std::optional<Lighting> xcll;
+    /// False if only children named the cell: they are orphans.
+    bool has_record{};
 };
 
 /// LGTM: DATA has XCLL's layout up to the light fade distances (its
 /// directional ambient block is unused); the directional ambient is DALC.
 struct LightingTemplateEntry {
-    WorldCellLighting lighting;
-};
-
-/// Per-cell data about its references beyond placement.
-struct CellExtras {
-    std::vector<WorldRefScripts> scripts;
-    std::vector<WorldLock> locks;
-    std::vector<WorldLink> links;
-    std::vector<WorldActivateParent> activate_parents;
-    std::vector<WorldPrimitive> primitives;
-    std::vector<WorldLightOverride> light_overrides;
+    Lighting lighting;
 };
 
 class PlaceCollector {
@@ -86,13 +94,8 @@ private:
 
     CollectContext& shared_;
     std::map<std::uint32_t, CellEntry> cells_;
-    std::unordered_map<std::uint32_t, std::vector<WorldRef>> refs_;
-    std::unordered_map<std::uint32_t, std::vector<WorldDoor>> doors_;
-    std::unordered_map<std::uint32_t, CellExtras> extras_;
-    std::unordered_map<std::uint32_t, WorldTerrain> terrains_;
-    std::unordered_map<std::uint32_t, std::vector<WorldNavMesh>> navmeshes_;
     std::map<std::uint32_t, LightingTemplateEntry> lighting_templates_;
-    std::vector<WorldActor> actors_;
+    std::vector<wfb::ActorRef> actors_;
 };
 
 } // namespace bethconv::pack::detail
