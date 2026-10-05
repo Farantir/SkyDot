@@ -1000,7 +1000,8 @@ preload_step(feet)          once a frame, after update
     exterior: the cells around the arrival, nearest first (request_exterior,
               begin_exterior, continue_build_static), then the LOD
   a place built ahead is held (held_place.*): in the scene, hidden, process
-  mode disabled, so without physics
+  mode disabled, so without physics, and every navigation region and link
+  under it disabled, so off the navigation map
 ```
 
 What the front end does around it: `clear()` leaves a worldspace (frees the

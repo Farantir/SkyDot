@@ -138,6 +138,24 @@ func _streaming(pack: SkydotPack, world: SkydotWorld, world_id: int, camera: Cam
     expect(streamer.world_id == 0 and streamer.get_loaded_cells().is_empty(), "cleared")
     camera.position = SkydotWorld.skyrim_position(Vector3(0, 0, 300))
 
+## The navigation server takes what a region was set to a frame or two later.
+func _navigation_synced() -> void:
+    for i in 3:
+        await physics_frame
+
+## Every navigation region and link under `place` (a cell keeps them under its
+## "Navmesh" node) is `enabled`, in the node and on the navigation server.
+## Returns how many regions it found.
+func _expect_navigation(place: Node, enabled: bool) -> int:
+    var state := "on the map" if enabled else "off the map"
+    var regions := place.find_children("*", "NavigationRegion3D", true, false)
+    for region: NavigationRegion3D in regions:
+        expect(region.enabled == enabled and NavigationServer3D.region_get_enabled(region.get_rid()) == enabled,
+            "%s: region %s is %s" % [place.name, region.name, state])
+    for link: NavigationLink3D in place.find_children("*", "NavigationLink3D", true, false):
+        expect(link.enabled == enabled, "%s: a link is %s" % [place.name, state])
+    return regions.size()
+
 func _preloading(pack: SkydotPack, world: SkydotWorld, world_id: int, camera: Camera3D) -> void:
     var host := Node3D.new()
     root.add_child(host)
@@ -164,10 +182,14 @@ func _preloading(pack: SkydotPack, world: SkydotWorld, world_id: int, camera: Ca
     var prepared := streamer.get_preparation()
     expect(prepared != null and prepared.done and prepared.door == 0x303 and prepared.destination == 0x213
         and not prepared.interior, "the world behind the door is prepared")
+    await _navigation_synced()
+    var held_regions := 0
     for held in host.get_children():
         if held != cell:
             expect(held.process_mode == Node.PROCESS_MODE_DISABLED and not held.visible,
                 "a place built ahead is held: " + str(held.name))
+            held_regions += _expect_navigation(held, false)
+    expect(held_regions > 0, "the held cells have navigation regions: %d" % held_regions)
 
     # Going through it hands the preparation over once; a door elsewhere gets nothing.
     expect(streamer.take_prepared(world.get_door(0x213)) == null and streamer.get_preparation() == null,
@@ -187,8 +209,10 @@ func _preloading(pack: SkydotPack, world: SkydotWorld, world_id: int, camera: Ca
     _finished.clear()
     _stream_all(streamer)
     expect(not _finished.is_empty(), "prepared cells are announced when finished")
+    await _navigation_synced()
     for loaded in streamer.get_loaded_cells():
         expect(loaded.process_mode == Node.PROCESS_MODE_INHERIT and loaded.visible, "and released")
+        _expect_navigation(loaded, true)
 
     expect(not streamer.toggle_preload() and not streamer.preload_enabled, "preloading off")
     expect(streamer.toggle_preload(), "and on")
