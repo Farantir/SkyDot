@@ -613,7 +613,9 @@ struct WorldActor {
     wfb::RefFlags flags{};
 };
 
-/// A verified `world.fb`. Lookups copy into the structs above.
+/// A verified `world.fb`. Lookups copy a table out as flatc's object type
+/// (`wfb::CellT` for `wfb::Cell`, and so on), so a field added to world.fbs
+/// reads here without an edit.
 class WorldFile {
 public:
     WorldFile(WorldFile&&) noexcept;
@@ -643,7 +645,7 @@ public:
     [[nodiscard]] std::vector<WorldRegion> regions() const;
     [[nodiscard]] std::size_t quest_count() const noexcept;
     [[nodiscard]] std::optional<WorldQuest> quest(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldGlobal> global(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::GlobalT> global(std::uint32_t id) const;
     [[nodiscard]] std::vector<WorldActor> actors() const;
     [[nodiscard]] std::optional<WorldNpc> npc(std::uint32_t id) const;
     [[nodiscard]] std::optional<WorldPackage> package(std::uint32_t id) const;

@@ -1019,7 +1019,7 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
 
     const auto counter = file->global(0x0200'0C00);
     REQUIRE(counter.has_value());
-    CHECK(counter->kind == 's');
+    CHECK(counter->kind == static_cast<std::uint8_t>('s'));
     CHECK(counter->value == 7.0F);
 
     const auto actors = file->actors();

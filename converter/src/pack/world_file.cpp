@@ -24,6 +24,17 @@ const T* lookup(const flatbuffers::Vector<flatbuffers::Offset<T>>* list, std::ui
     return list != nullptr ? list->LookupByKey(id) : nullptr;
 }
 
+/// `table` copied out as its object type, or nothing for null.
+template <typename T>
+std::optional<typename T::NativeTableType> unpack(const T* table) {
+    if (table == nullptr) {
+        return std::nullopt;
+    }
+    std::optional<typename T::NativeTableType> out(std::in_place);
+    table->UnPackTo(&*out);
+    return out;
+}
+
 std::vector<record::Script> read_scripts(
     const flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>* scripts) {
     std::vector<record::Script> out;
@@ -473,15 +484,8 @@ std::optional<WorldQuest> WorldFile::quest(std::uint32_t id) const {
     return out;
 }
 
-std::optional<WorldGlobal> WorldFile::global(std::uint32_t id) const {
-    const auto* g = lookup(impl_->root->globals(), id);
-    if (g == nullptr) {
-        return std::nullopt;
-    }
-    return WorldGlobal{.id = g->id(),
-                       .editor_id = str(g->editor_id()),
-                       .kind = static_cast<char>(g->kind()),
-                       .value = g->value()};
+std::optional<wfb::GlobalT> WorldFile::global(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->globals(), id));
 }
 
 std::optional<WorldNpc> WorldFile::npc(std::uint32_t id) const {

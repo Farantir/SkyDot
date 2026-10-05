@@ -9,16 +9,22 @@ find_package(flatbuffers CONFIG REQUIRED)
 find_package(blake3 CONFIG REQUIRED)
 
 # records_generated.h is generated at build time so it cannot drift from
-# formats/schema/records.fbs. flatc comes from the vcpkg port.
+# formats/schema/records.fbs. flatc comes from the vcpkg port. world.fb's
+# readers and writers use the object API (the XT types and Pack/UnPack), so a
+# table's field is declared once, in world.fbs.
 set(BETHCONV_FB_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/bethconv/pack")
 set(BETHCONV_FB_HEADERS "")
 foreach(schema IN ITEMS records world script lod animation)
     set(fbs "${CMAKE_CURRENT_SOURCE_DIR}/../../formats/schema/${schema}.fbs")
     set(header "${BETHCONV_FB_DIR}/${schema}_generated.h")
+    set(flatc_flags --cpp --cpp-std c++17 --scoped-enums)
+    if(schema STREQUAL "world")
+        list(APPEND flatc_flags --gen-object-api)
+    endif()
     add_custom_command(
         OUTPUT "${header}"
         COMMAND "${CMAKE_COMMAND}" -E make_directory "${BETHCONV_FB_DIR}"
-        COMMAND flatbuffers::flatc --cpp --cpp-std c++17 --scoped-enums
+        COMMAND flatbuffers::flatc ${flatc_flags}
                 -o "${BETHCONV_FB_DIR}" "${fbs}"
         DEPENDS "${fbs}" flatbuffers::flatc
         COMMENT "flatc: ${schema}.fbs -> ${schema}_generated.h"
