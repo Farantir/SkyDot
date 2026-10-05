@@ -39,13 +39,6 @@ constexpr const char* k_index_name = "vpath.idx";
 // and version.
 constexpr const char* k_index_header = "# bethconv vpath index v6";
 
-// formats/pack-format.md, "records.fb" > "The header": little-endian, 64 bytes,
-// magic `BETHSNAP`, then `format_version` (uint32). Only enough is read to
-// check the version.
-constexpr std::string_view k_snapshot_magic = "BETHSNAP";
-constexpr std::int64_t k_snapshot_header_size = 64;
-constexpr std::int64_t k_snapshot_version_offset = 8;
-
 std::string to_std(const String& s) {
     return std::string(s.utf8().get_data());
 }
@@ -82,7 +75,6 @@ void SkydotPack::_bind_methods() {
     using godot::D_METHOD;
 
     BIND_CONSTANT(PACK_FORMAT_VERSION);
-    BIND_CONSTANT(RECORDS_FORMAT_VERSION);
 
     ClassDB::bind_method(D_METHOD("open", "pack_dir"), &SkydotPack::open);
     ClassDB::bind_method(D_METHOD("close"), &SkydotPack::close);
@@ -90,10 +82,8 @@ void SkydotPack::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_path"), &SkydotPack::get_path);
     ClassDB::bind_method(D_METHOD("get_error"), &SkydotPack::get_error);
 
-    ClassDB::bind_method(D_METHOD("has_records"), &SkydotPack::has_records);
     ClassDB::bind_method(D_METHOD("has_world"), &SkydotPack::has_world);
     ClassDB::bind_method(D_METHOD("open_world"), &SkydotPack::open_world);
-    ClassDB::bind_method(D_METHOD("get_form_count"), &SkydotPack::get_form_count);
     ClassDB::bind_method(D_METHOD("get_asset_count"), &SkydotPack::get_asset_count);
     ClassDB::bind_method(D_METHOD("get_index_count"), &SkydotPack::get_index_count);
     ClassDB::bind_method(D_METHOD("get_unknown_kind_count"), &SkydotPack::get_unknown_kind_count);
@@ -137,11 +127,6 @@ Error SkydotPack::open(const String& pack_dir) {
     if (const Error e = read_manifest(path_.path_join(k_manifest_name)); e != Error::OK) {
         return e;
     }
-    if (has_records_) {
-        if (const Error e = read_records_header(path_.path_join("records.fb")); e != Error::OK) {
-            return e;
-        }
-    }
     if (has_world_ && !FileAccess::file_exists(path_.path_join("world.fb"))) {
         return refuse(Error::ERR_FILE_NOT_FOUND, "manifest.json names world.fb, which is missing");
     }
@@ -159,9 +144,7 @@ Error SkydotPack::open(const String& pack_dir) {
 
 void SkydotPack::close() {
     open_ = false;
-    has_records_ = false;
     has_world_ = false;
-    form_count_ = 0;
     asset_count_ = 0;
     index_count_ = 0;
     unknown_kind_count_ = 0;
@@ -197,19 +180,8 @@ Error SkydotPack::read_manifest(const String& path) {
                           + String::num_int64(PACK_FORMAT_VERSION) + "): " + path_);
     }
 
-    // formats/pack-format.md: the `records` key decides; if present, the file it
-    // names must exist.
-    has_records_ = manifest.has("records");
-    if (has_records_) {
-        const Variant records = manifest["records"];
-        if (records.get_type() != Variant::DICTIONARY
-            || !read_count(Dictionary(records), "forms", form_count_)) {
-            return refuse(Error::ERR_FILE_CORRUPT,
-                          "manifest.json names records but not how many forms they hold");
-        }
-    }
-
-    // The `world` key, like `records`, decides whether world.fb exists.
+    // formats/pack-format.md: the `world` key decides whether world.fb exists. A
+    // `records` key (and a records.fb) from an earlier converter is ignored.
     has_world_ = manifest.has("world");
 
     if (!manifest.has("assets") || Variant(manifest["assets"]).get_type() != Variant::DICTIONARY) {
@@ -236,34 +208,6 @@ Error SkydotPack::read_manifest(const String& path) {
     } else if (layout_ != "loose") {
         return refuse(Error::ERR_FILE_UNRECOGNIZED,
                       "asset store layout '" + layout_ + "' is not one this engine reads");
-    }
-    return Error::OK;
-}
-
-Error SkydotPack::read_records_header(const String& path) {
-    const godot::Ref<FileAccess> file = FileAccess::open(path, FileAccess::READ);
-    if (file.is_null()) {
-        return refuse(Error::ERR_FILE_NOT_FOUND,
-                      "manifest.json names records.fb but it is not there: " + path);
-    }
-    const PackedByteArray header = file->get_buffer(k_snapshot_header_size);
-    if (header.size() < k_snapshot_header_size) {
-        return refuse(Error::ERR_FILE_CORRUPT,
-                      "records.fb is " + String::num_int64(header.size())
-                          + " bytes, shorter than its own header");
-    }
-
-    for (std::int64_t i = 0; i < static_cast<std::int64_t>(k_snapshot_magic.size()); ++i) {
-        if (header[i] != static_cast<std::uint8_t>(k_snapshot_magic[static_cast<std::size_t>(i)])) {
-            return refuse(Error::ERR_FILE_UNRECOGNIZED, "records.fb does not start with BETHSNAP");
-        }
-    }
-    const std::int64_t version = header.decode_u32(k_snapshot_version_offset);
-    if (version != RECORDS_FORMAT_VERSION) {
-        return refuse(Error::ERR_UNAVAILABLE,
-                      "records.fb format version " + String::num_int64(version)
-                          + " is not one this engine reads (it reads v"
-                          + String::num_int64(RECORDS_FORMAT_VERSION) + "): " + path);
     }
     return Error::OK;
 }
@@ -343,10 +287,6 @@ String SkydotPack::get_error() const {
     return error_;
 }
 
-bool SkydotPack::has_records() const {
-    return has_records_;
-}
-
 bool SkydotPack::has_world() const {
     return has_world_;
 }
@@ -364,10 +304,6 @@ godot::Ref<SkydotWorld> SkydotPack::open_world() {
         return {};
     }
     return world;
-}
-
-std::int64_t SkydotPack::get_form_count() const {
-    return form_count_;
 }
 
 std::int64_t SkydotPack::get_asset_count() const {

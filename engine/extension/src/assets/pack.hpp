@@ -9,8 +9,6 @@
 // `open` checks, in order, and refuses on any failure:
 //
 //   manifest.json   `pack_format_version` must be 6
-//   records.fb      64-byte header, magic and version (if the manifest's
-//                   `records` key is present)
 //   world.fb        exists (if the manifest's `world` key is present)
 //   vpath.idx       header line, and a line count equal to the manifest's
 //                   `assets.index_entries`
@@ -18,12 +16,13 @@
 //                   `store` key)
 //
 // A refusal leaves the pack closed; `get_error()` and the error log give one
-// sentence with the numbers. Unknown versions are always refused.
+// sentence with the numbers. Unknown versions are always refused. A `records`
+// key or a `records.fb` from an earlier converter is ignored.
 //
 // Assets load straight from the pack (assets/asset_cache.hpp): `load_scene`
 // for a mesh, `load_texture` for a DDS, `get_bytes` for anything; no import
 // step. `open_world` reads world.fb (cells, references, bases) and shares the
-// cache. Reading `records.fb` beyond its header is not implemented yet.
+// cache.
 #pragma once
 
 #include "assets/asset_cache.hpp"
@@ -47,9 +46,6 @@ class SkydotPack : public godot::RefCounted {
 public:
     /// The pack format version this engine reads (manifest and vpath.idx).
     static constexpr int PACK_FORMAT_VERSION = 6;
-    /// The records.fb format version this engine reads (its own number, not the
-    /// pack's).
-    static constexpr int RECORDS_FORMAT_VERSION = 1;
 
     /// Mount a pack directory. On refusal the pack stays closed, `get_error`
     /// explains, and the return code gives the category.
@@ -61,12 +57,10 @@ public:
     godot::String get_error() const;
 
     /// From manifest.json, so available without opening the files.
-    bool has_records() const;
     bool has_world() const;
     /// The pack's world.fb, opened and verified; null (with `get_error`) if
     /// the pack has none or it is damaged.
     godot::Ref<SkydotWorld> open_world();
-    std::int64_t get_form_count() const;
     std::int64_t get_asset_count() const;
     std::int64_t get_index_count() const;
     /// vpath.idx lines with a kind this version does not know (from a newer
@@ -114,7 +108,6 @@ private:
     godot::Error report(godot::Error code, const godot::String& why);
     godot::Error refuse(godot::Error code, const godot::String& why);
     godot::Error read_manifest(const godot::String& path);
-    godot::Error read_records_header(const godot::String& path);
     godot::Error read_index(const godot::String& path);
     godot::Error open_store();
 
@@ -124,9 +117,7 @@ private:
     godot::String error_;
     bool open_{false};
 
-    bool has_records_{false};
     bool has_world_{false};
-    std::int64_t form_count_{0};
     std::int64_t asset_count_{0};
     std::int64_t index_count_{0};
     std::int64_t unknown_kind_count_{0};

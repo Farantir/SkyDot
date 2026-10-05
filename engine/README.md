@@ -2,7 +2,7 @@
 
 A Godot 4 engine for packs produced by [bethconv](../converter). The converter
 turns a Bethesda game install into open formats (glTF meshes, DDS textures, a
-memory-mappable record snapshot) on your machine; this engine reads only that.
+memory-mappable world database) on your machine; this engine reads only that.
 
 ## What this is not
 
@@ -25,9 +25,8 @@ The engine shows interior cells and streams exterior ones. What exists:
 - **The GDExtension** (`extension/`): godot-cpp, CMake presets for Linux and
   Windows (debug and release), hot reload in debug. The library builds into
   `game/bin/`.
-- **`SkydotPack`**: mounts a bethconv pack. Reads `manifest.json`, the
-  `records.fb` header, `vpath.idx` and the asset store (one memory-mapped
-  blob, or loose files) per
+- **`SkydotPack`**: mounts a bethconv pack. Reads `manifest.json`,
+  `vpath.idx` and the asset store (one memory-mapped blob, or loose files) per
   [`formats/pack-format.md`](../formats/pack-format.md) v6, and refuses
   unknown versions with both numbers in the message.
 - **Assets load straight from the pack**, no import or bake: meshes through

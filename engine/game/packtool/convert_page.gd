@@ -31,7 +31,6 @@ const ENCODINGS := [
 const PHASES := {
 	"mount": "Reading archives and mod folders",
 	"merge": "Merging plugins",
-	"records": "Writing records.fb",
 	"world": "Writing world.fb",
 	"assets": "Converting meshes, textures and scripts",
 	"finish": "Hashing plugins and writing the index",
@@ -183,7 +182,7 @@ func setup(tool) -> void:
 		for r in _advanced_rows:
 			r.visible = on)
 	PackToolUi.row(conversion, "", _advanced_check)
-	_filter_edit = PackToolUi.line_edit("e.g. meshes/weapons/ (records are always converted)")
+	_filter_edit = PackToolUi.line_edit("e.g. meshes/weapons/ (the world is always converted)")
 	_advanced_rows.append(PackToolUi.row(conversion, "Only paths with", _filter_edit))
 	_limit_spin = SpinBox.new()
 	_limit_spin.max_value = 10000000
@@ -632,11 +631,11 @@ func _on_event(data: Dictionary) -> void:
 		"done":
 			_saw_result = true
 			var a: Dictionary = data["assets"]
-			_summary.text = ("Done in %s: %d forms, %d cells; %d assets written, %d unchanged "
-				+ "(%s in the store). %d failed, %d warnings.") % [
-				_duration(data["elapsed"]), data["forms"], data["cells"], a["written"],
-				a["deduped"], BethconvCli.format_bytes(a["store_bytes"]), data["failed"],
-				data["warnings"]]
+			_summary.text = ("Done in %s: %d cells, %d references, %d base objects; %d assets "
+				+ "written, %d unchanged (%s in the store). %d failed, %d warnings.") % [
+				_duration(data["elapsed"]), data["cells"], data["refs"], data["bases"],
+				a["written"], a["deduped"], BethconvCli.format_bytes(a["store_bytes"]),
+				data["failed"], data["warnings"]]
 			_summary.add_theme_color_override("font_color",
 				PackToolUi.COLORS["ok" if data["failed"] == 0 else "warn"])
 			var t: Dictionary = data.get("textures", {})

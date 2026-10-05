@@ -217,7 +217,7 @@ builds the vanilla male (body, hands, feet, head) on the human skeleton,
 prints the left foot's travel per clip (walk: 0.51 m stride, lifted to
 0.22 m; idle: planted) and with `--out` renders a contact sheet per clip.
 A pack with only `meshes/actors/character/` converts in about 6 s
-(`bethconv convert --filter meshes/actors/character/ --no-records`).
+(`bethconv convert --filter meshes/actors/character/ --no-world`).
 `smoke_animation` covers the same on the test pack's three-bone actor.
 
 ```sh

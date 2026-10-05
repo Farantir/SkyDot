@@ -201,6 +201,8 @@ func _check_convert() -> void:
         expect(phases.has(phase), "progress reports " + phase)
     var done: Dictionary = events.back() if not events.is_empty() else {}
     expect(done.get("forms", -1) == 0, "an empty folder has no forms")
+    expect(done.get("cells", -1) == 0 and done.get("refs", -1) == 0 and done.get("bases", -1) == 0,
+           "and an empty world")
     expect(done.get("json_version", 0) == 1, "json_version 1")
 
 

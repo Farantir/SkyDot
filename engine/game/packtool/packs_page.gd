@@ -225,8 +225,9 @@ func _on_selected() -> void:
 	var manifest: Dictionary = info["manifest"]
 	var input: Dictionary = manifest.get("input", {})
 	var lines := PackedStringArray()
-	lines.append("%s; %d forms, %d cells." % [manifest.get("converter", "?"),
-		manifest.get("records", {}).get("forms", 0), manifest.get("world", {}).get("cells", 0)])
+	var world: Dictionary = manifest.get("world", {})
+	lines.append("%s; %d cells, %d references, %d base objects." % [manifest.get("converter", "?"),
+		world.get("cells", 0), world.get("refs", 0), world.get("bases", 0)])
 	if input.is_empty():
 		lines.append("Converted before packs recorded their inputs; \"Update…\" needs the inputs chosen again.")
 	else:
@@ -327,7 +328,8 @@ func _launch() -> void:
 # ---- deleting ---------------------------------------------------------------
 
 ## Files a pack consists of (formats/pack-format.md). Nothing else in the
-## folder is touched.
+## folder is touched. `records.fb` is only in packs written by earlier
+## converters.
 const PACK_FILES := ["manifest.json", "records.fb", "world.fb", "vpath.idx", "assets.idx", "report.json"]
 
 

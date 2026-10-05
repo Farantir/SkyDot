@@ -225,7 +225,6 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	var pack := {"path": ProjectSettings.globalize_path(pack_dir)}
 	if manifest is Dictionary:
 		pack["converter"] = manifest.get("converter", "")
-		pack["records_hash"] = manifest.get("records", {}).get("hash", "")
 		pack["world_hash"] = manifest.get("world", {}).get("hash", "")
 		pack["input"] = manifest.get("input", {})
 	var size := _host.get_viewport().get_visible_rect().size

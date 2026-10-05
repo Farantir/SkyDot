@@ -34,7 +34,6 @@ func _check_registered() -> void:
     expect(ClassDB.can_instantiate("SkydotPack"), "SkydotPack can be instantiated")
     var pack := SkydotPack.new()
     expect(pack.PACK_FORMAT_VERSION == 6, "the engine reads pack format v6")
-    expect(pack.RECORDS_FORMAT_VERSION == 1, "and records.fb format v1")
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
     expect(ClassDB.class_exists("SkydotBillboard"), "SkydotBillboard is registered")
@@ -165,21 +164,27 @@ func _check_refusals() -> void:
     var ok := root.path_join("ok")
     _write_pack(ok, 6, k_index_header + k_index_columns)
     expect(pack.open(ok) == OK, "an empty pack opens: " + pack.get_error())
-    expect(pack.is_open() and pack.get_index_count() == 0 and not pack.has_records(),
+    expect(pack.is_open() and pack.get_index_count() == 0 and not pack.has_world(),
            "and reports itself empty")
     expect(pack.get_error() == "", "a successful open clears the error")
 
-    # A records key whose file carries the wrong magic.
+    # Packs from earlier converters name a records.fb in a `records` key. Nothing
+    # reads it any more: the key and the file are ignored, even a missing or
+    # damaged file.
+    var norec := root.path_join("norec")
+    _write_pack(norec, 6, k_index_header + k_index_columns, true)
+    expect(pack.open(norec) == OK, "a records key whose file is missing is ignored: " + pack.get_error())
+    expect(pack.is_open() and pack.get_error() == "", "and the pack is open")
+
     var badrec := root.path_join("badrec")
-    _write_pack(badrec, 6, k_index_header, true)
+    _write_pack(badrec, 6, k_index_header + k_index_columns, true)
     var f := FileAccess.open(badrec.path_join("records.fb"), FileAccess.WRITE)
     f.store_string("NOTASNAP".rpad(64, " "))
     f.close()
-    expect(pack.open(badrec) == ERR_FILE_UNRECOGNIZED, "records.fb without its magic")
+    expect(pack.open(badrec) == OK, "a records.fb without its magic is ignored: " + pack.get_error())
 
-    # Correct magic, unsupported version.
     var rec2 := root.path_join("rec2")
-    _write_pack(rec2, 6, k_index_header, true)
+    _write_pack(rec2, 6, k_index_header + k_index_columns, true)
     var header := PackedByteArray()
     header.resize(64)
     for i in 8:
@@ -188,9 +193,8 @@ func _check_refusals() -> void:
     f = FileAccess.open(rec2.path_join("records.fb"), FileAccess.WRITE)
     f.store_buffer(header)
     f.close()
-    expect(pack.open(rec2) == ERR_UNAVAILABLE, "records.fb v2 is refused")
-    expect(pack.get_error().contains("records.fb format version 2"),
-           "and says which file: " + pack.get_error())
+    expect(pack.open(rec2) == OK, "so is one of a version this engine never read: " + pack.get_error())
+    expect(not pack.has_world(), "and a records key does not make a world")
 
     # A world key whose file is missing.
     var noworld := root.path_join("noworld")
