@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// FlatBuffers pieces the collectors' write functions share. Private to
+// What the collectors share for world.fb's generated types. Private to
 // pack/world/.
 #pragma once
 
 #include "bethconv/pack/world_generated.h"
 #include "bethconv/record/field_reader.hpp"
-#include "bethconv/record/vmad.hpp"
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -23,9 +23,14 @@ template <typename Pack, typename Record>
     return std::to_underlying(pack) == std::to_underlying(record);
 }
 
-[[nodiscard]] flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Script>>>
-write_scripts(flatbuffers::FlatBufferBuilder& builder,
-              const std::vector<std::unique_ptr<wfb::ScriptT>>& scripts);
+/// `tables` (keyed by id) moved into `out`, in key order.
+template <typename T>
+void move_into(std::vector<std::unique_ptr<T>>& out, std::map<std::uint32_t, T>& tables) {
+    out.reserve(tables.size());
+    for (auto& [id, table] : tables) {
+        out.push_back(std::make_unique<T>(std::move(table)));
+    }
+}
 
 [[nodiscard]] wfb::Vec3f to_fb(const record::Vec3& v);
 

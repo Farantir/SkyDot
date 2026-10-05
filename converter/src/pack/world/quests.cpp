@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "quests.hpp"
 
+#include "fb_write.hpp"
+
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/record/forms_game.hpp"
 
@@ -124,33 +126,20 @@ void QuestCollector::on_global(const record::MergedRecord& merged, io::SpanReade
     globals_[out.id] = std::move(out);
 }
 
-std::vector<flatbuffers::Offset<wfb::Quest>> QuestCollector::write_quests(
-    flatbuffers::FlatBufferBuilder& builder) {
+void QuestCollector::finish(wfb::WorldT& world) {
     auto& stats = shared_.stats();
-    std::vector<flatbuffers::Offset<wfb::Quest>> quests;
-    quests.reserve(quests_.size());
     for (const auto& [id, q] : quests_) {
-        quests.push_back(wfb::CreateQuest(builder, &q));
         stats.scripts += q.scripts.size();
         for (const auto& a : q.aliases) {
             stats.scripts += a->scripts.size();
         }
         stats.quest_aliases += q.aliases.size();
         stats.quest_fragments += q.fragments.size();
-        ++stats.quests;
     }
-    return quests;
-}
-
-std::vector<flatbuffers::Offset<wfb::Global>> QuestCollector::write_globals(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Global>> globals;
-    globals.reserve(globals_.size());
-    for (const auto& [id, g] : globals_) {
-        globals.push_back(wfb::CreateGlobal(builder, &g));
-    }
-    shared_.stats().globals += globals_.size();
-    return globals;
+    stats.quests += quests_.size();
+    stats.globals += globals_.size();
+    move_into(world.quests, quests_);
+    move_into(world.globals, globals_);
 }
 
 } // namespace bethconv::pack::detail

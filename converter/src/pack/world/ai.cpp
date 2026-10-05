@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ai.hpp"
 
+#include "fb_write.hpp"
+
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/record/conditions.hpp"
 #include "bethconv/record/forms_game.hpp"
@@ -163,15 +165,9 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
     packages_[out.id] = std::move(out);
 }
 
-std::vector<flatbuffers::Offset<wfb::Package>> AiCollector::write_packages(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Package>> packages;
-    packages.reserve(packages_.size());
-    for (const auto& [id, p] : packages_) {
-        packages.push_back(wfb::CreatePackage(builder, &p));
-    }
+void AiCollector::finish(wfb::WorldT& world) {
     shared_.stats().packages += packages_.size();
-    return packages;
+    move_into(world.packages, packages_);
 }
 
 } // namespace bethconv::pack::detail

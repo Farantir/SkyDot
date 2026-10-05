@@ -455,11 +455,9 @@ void PlaceCollector::on_lighting_template(const record::MergedRecord& merged,
     lighting_templates_[merged.form.value] = std::move(out);
 }
 
-std::vector<flatbuffers::Offset<wfb::Cell>> PlaceCollector::write_cells(
-    flatbuffers::FlatBufferBuilder& builder) {
+void PlaceCollector::finish(wfb::WorldT& world) {
     auto& stats = shared_.stats();
-    std::vector<flatbuffers::Offset<wfb::Cell>> cells;
-    cells.reserve(cells_.size());
+    world.cells.reserve(cells_.size());
     for (auto& [id, entry] : cells_) { // std::map: sorted by id
         auto& cell = entry.cell;
         if (!entry.has_record) {
@@ -505,22 +503,16 @@ std::vector<flatbuffers::Offset<wfb::Cell>> PlaceCollector::write_cells(
                                                 resolved->directional_ambient.end());
             }
         }
-        cells.push_back(wfb::CreateCell(builder, &cell));
-
         ++stats.cells;
         if (has_flag(cell.flags, wfb::CellFlags::interior)) {
             ++stats.interior_cells;
         }
+        world.cells.push_back(std::make_unique<wfb::CellT>(std::move(cell)));
     }
     stats.lighting_templates = lighting_templates_.size();
-    return cells;
-}
-
-flatbuffers::Offset<flatbuffers::Vector<const wfb::ActorRef*>> PlaceCollector::write_actors(
-    flatbuffers::FlatBufferBuilder& builder) {
     std::ranges::sort(actors_, {}, &wfb::ActorRef::ref);
-    shared_.stats().actors += actors_.size();
-    return builder.CreateVectorOfStructs(actors_);
+    stats.actors += actors_.size();
+    world.actors = std::move(actors_);
 }
 
 } // namespace bethconv::pack::detail

@@ -44,22 +44,9 @@ public:
     /// Any other type: kept as a base if it has a model or scripts.
     void collect_generic(const record::MergedRecord& merged, io::SpanReader& data);
 
-    /// The bases, in id order.
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Base>> write_bases(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    /// The land textures with their texture set's paths, in id order.
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::LandTexture>> write_land_textures(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::MaterialObject>> write_material_objects(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Grass>> write_grasses(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::AddonNode>> write_addon_nodes(
-        flatbuffers::FlatBufferBuilder& builder);
+    /// The bases, land textures (with their texture set's paths), material
+    /// objects, grasses and addon nodes, each in id order, into `world`.
+    void finish(wfb::WorldT& world);
 
 private:
     void on_light(const record::MergedRecord& merged, io::SpanReader& data,

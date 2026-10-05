@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actors.hpp"
 
+#include "fb_write.hpp"
+
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/record/forms_actor.hpp"
 #include "bethconv/record/forms_game.hpp"
@@ -245,75 +247,27 @@ void ActorCollector::on_leveled_npc(const record::MergedRecord& merged, io::Span
     add_leveled(merged, list->flags, list->chance_none, list->entries);
 }
 
-std::vector<flatbuffers::Offset<wfb::Npc>> ActorCollector::write_npcs(
-    flatbuffers::FlatBufferBuilder& builder, const FormLists& form_lists) {
-    std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
-    npcs.reserve(npcs_.size());
+void ActorCollector::finish(wfb::WorldT& world, const FormLists& form_lists) {
+    auto& stats = shared_.stats();
     for (auto& [id, n] : npcs_) {
         // DPLT names an FLST of packages.
         if (const auto list = form_lists.find(default_package_lists_[id]);
             list != form_lists.end()) {
             n.default_packages = list->second;
         }
-        npcs.push_back(wfb::CreateNpc(builder, &n));
     }
-    shared_.stats().npcs += npcs_.size();
-    return npcs;
-}
-
-std::vector<flatbuffers::Offset<wfb::Race>> ActorCollector::write_races(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Race>> races;
-    races.reserve(races_.size());
-    for (const auto& [id, r] : races_) {
-        races.push_back(wfb::CreateRace(builder, &r));
-    }
-    shared_.stats().races += races_.size();
-    return races;
-}
-
-std::vector<flatbuffers::Offset<wfb::Armor>> ActorCollector::write_armors(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Armor>> armors;
-    armors.reserve(armors_.size());
-    for (const auto& [id, a] : armors_) {
-        armors.push_back(wfb::CreateArmor(builder, &a));
-    }
-    shared_.stats().armors += armors_.size();
-    return armors;
-}
-
-std::vector<flatbuffers::Offset<wfb::ArmorAddon>> ActorCollector::write_armor_addons(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::ArmorAddon>> addons;
-    addons.reserve(armor_addons_.size());
-    for (const auto& [id, a] : armor_addons_) {
-        addons.push_back(wfb::CreateArmorAddon(builder, &a));
-    }
-    shared_.stats().armor_addons += armor_addons_.size();
-    return addons;
-}
-
-std::vector<flatbuffers::Offset<wfb::Outfit>> ActorCollector::write_outfits(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Outfit>> outfits;
-    outfits.reserve(outfits_.size());
-    for (const auto& [id, o] : outfits_) {
-        outfits.push_back(wfb::CreateOutfit(builder, &o));
-    }
-    shared_.stats().outfits += outfits_.size();
-    return outfits;
-}
-
-std::vector<flatbuffers::Offset<wfb::LeveledList>> ActorCollector::write_leveled_lists(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::LeveledList>> leveled;
-    leveled.reserve(leveled_lists_.size());
-    for (const auto& [id, l] : leveled_lists_) {
-        leveled.push_back(wfb::CreateLeveledList(builder, &l));
-    }
-    shared_.stats().leveled_lists += leveled_lists_.size();
-    return leveled;
+    stats.npcs += npcs_.size();
+    stats.races += races_.size();
+    stats.armors += armors_.size();
+    stats.armor_addons += armor_addons_.size();
+    stats.outfits += outfits_.size();
+    stats.leveled_lists += leveled_lists_.size();
+    move_into(world.npcs, npcs_);
+    move_into(world.races, races_);
+    move_into(world.armors, armors_);
+    move_into(world.armor_addons, armor_addons_);
+    move_into(world.outfits, outfits_);
+    move_into(world.leveled_lists, leveled_lists_);
 }
 
 } // namespace bethconv::pack::detail

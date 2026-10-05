@@ -28,25 +28,10 @@ public:
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
-    /// The NPCs, in id order. An NPC's default package list is an FLST; its
+    /// The NPCs, races, armors, armor addons, outfits and leveled lists, each
+    /// in id order, into `world`. An NPC's default package list is an FLST; its
     /// packages are expanded from `form_lists`.
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Npc>> write_npcs(
-        flatbuffers::FlatBufferBuilder& builder, const FormLists& form_lists);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Race>> write_races(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Armor>> write_armors(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::ArmorAddon>> write_armor_addons(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Outfit>> write_outfits(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::LeveledList>> write_leveled_lists(
-        flatbuffers::FlatBufferBuilder& builder);
+    void finish(wfb::WorldT& world, const FormLists& form_lists);
 
 private:
     void on_npc(const record::MergedRecord& merged, io::SpanReader& data,

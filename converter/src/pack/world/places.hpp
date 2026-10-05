@@ -71,13 +71,9 @@ public:
                  io::SpanReader& data, const record::FormContext& form_ctx);
 
     /// Every cell with its references, doors, extras, navmeshes, terrain and
-    /// lighting, in id order.
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Cell>> write_cells(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    /// The placed actors, sorted by reference.
-    [[nodiscard]] flatbuffers::Offset<flatbuffers::Vector<const wfb::ActorRef*>> write_actors(
-        flatbuffers::FlatBufferBuilder& builder);
+    /// lighting, in id order, and the placed actors, sorted by reference, into
+    /// `world`.
+    void finish(wfb::WorldT& world);
 
 private:
     void on_cell(const record::MergedRecord& merged, io::SpanReader& data,

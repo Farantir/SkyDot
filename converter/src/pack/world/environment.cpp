@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "environment.hpp"
 
+#include "fb_write.hpp"
+
 #include "bethconv/archive/vpath.hpp"
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/record/field_walk.hpp"
@@ -371,81 +373,22 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
     regions_[out.id] = std::move(out);
 }
 
-std::vector<flatbuffers::Offset<wfb::Worldspace>> EnvironmentCollector::write_worlds(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Worldspace>> worlds;
-    worlds.reserve(worlds_.size());
-    for (const auto& [id, w] : worlds_) {
-        worlds.push_back(wfb::CreateWorldspace(builder, &w));
-    }
-    shared_.stats().worlds += worlds_.size();
-    return worlds;
-}
-
-std::vector<flatbuffers::Offset<wfb::Water>> EnvironmentCollector::write_waters(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Water>> waters;
-    waters.reserve(waters_.size());
-    for (const auto& [id, w] : waters_) {
-        waters.push_back(wfb::CreateWater(builder, &w));
-    }
-    shared_.stats().waters += waters_.size();
-    return waters;
-}
-
-std::vector<flatbuffers::Offset<wfb::Climate>> EnvironmentCollector::write_climates(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Climate>> climates;
-    climates.reserve(climates_.size());
-    for (const auto& [id, c] : climates_) {
-        climates.push_back(wfb::CreateClimate(builder, &c));
-    }
-    shared_.stats().climates += climates_.size();
-    return climates;
-}
-
-std::vector<flatbuffers::Offset<wfb::Weather>> EnvironmentCollector::write_weathers(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Weather>> weathers;
-    weathers.reserve(weathers_.size());
-    for (const auto& [id, w] : weathers_) {
-        weathers.push_back(wfb::CreateWeather(builder, &w));
-    }
-    shared_.stats().weathers += weathers_.size();
-    return weathers;
-}
-
-std::vector<flatbuffers::Offset<wfb::ImageSpace>> EnvironmentCollector::write_image_spaces(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::ImageSpace>> image_spaces;
-    image_spaces.reserve(image_spaces_.size());
-    for (const auto& [id, i] : image_spaces_) {
-        image_spaces.push_back(wfb::CreateImageSpace(builder, &i));
-    }
-    shared_.stats().image_spaces += image_spaces_.size();
-    return image_spaces;
-}
-
-std::vector<flatbuffers::Offset<wfb::Precipitation>> EnvironmentCollector::write_precipitations(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Precipitation>> precipitations;
-    precipitations.reserve(precipitations_.size());
-    for (const auto& [id, p] : precipitations_) {
-        precipitations.push_back(wfb::CreatePrecipitation(builder, &p));
-    }
-    shared_.stats().precipitations += precipitations_.size();
-    return precipitations;
-}
-
-std::vector<flatbuffers::Offset<wfb::Region>> EnvironmentCollector::write_regions(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Region>> regions;
-    regions.reserve(regions_.size());
-    for (const auto& [id, r] : regions_) {
-        regions.push_back(wfb::CreateRegion(builder, &r));
-    }
-    shared_.stats().regions += regions_.size();
-    return regions;
+void EnvironmentCollector::finish(wfb::WorldT& world) {
+    auto& stats = shared_.stats();
+    stats.worlds += worlds_.size();
+    stats.waters += waters_.size();
+    stats.climates += climates_.size();
+    stats.weathers += weathers_.size();
+    stats.image_spaces += image_spaces_.size();
+    stats.precipitations += precipitations_.size();
+    stats.regions += regions_.size();
+    move_into(world.worlds, worlds_);
+    move_into(world.waters, waters_);
+    move_into(world.climates, climates_);
+    move_into(world.weathers, weathers_);
+    move_into(world.image_spaces, image_spaces_);
+    move_into(world.precipitations, precipitations_);
+    move_into(world.regions, regions_);
 }
 
 } // namespace bethconv::pack::detail

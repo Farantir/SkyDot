@@ -285,65 +285,27 @@ void BaseCollector::on_texture_set(const record::MergedRecord& merged, io::SpanR
     };
 }
 
-std::vector<flatbuffers::Offset<wfb::Base>> BaseCollector::write_bases(
-    flatbuffers::FlatBufferBuilder& builder) {
+void BaseCollector::finish(wfb::WorldT& world) {
     auto& stats = shared_.stats();
-    std::vector<flatbuffers::Offset<wfb::Base>> bases;
-    bases.reserve(bases_.size());
     for (const auto& [id, base] : bases_) {
-        bases.push_back(wfb::CreateBase(builder, &base));
         stats.scripts += base.scripts.size();
         if (base.has_light) {
             ++stats.lights;
         }
-        ++stats.bases;
     }
-    return bases;
-}
-
-std::vector<flatbuffers::Offset<wfb::LandTexture>> BaseCollector::write_land_textures(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::LandTexture>> land_textures;
-    land_textures.reserve(land_textures_.size());
+    stats.bases += bases_.size();
+    stats.land_textures += land_textures_.size();
+    move_into(world.bases, bases_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;
             ltex.table.normal = t->second.normal;
         }
-        land_textures.push_back(wfb::CreateLandTexture(builder, &ltex.table));
+        world.land_textures.push_back(std::make_unique<wfb::LandTextureT>(std::move(ltex.table)));
     }
-    shared_.stats().land_textures += land_textures_.size();
-    return land_textures;
-}
-
-std::vector<flatbuffers::Offset<wfb::MaterialObject>> BaseCollector::write_material_objects(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::MaterialObject>> material_objects;
-    material_objects.reserve(material_objects_.size());
-    for (const auto& [id, m] : material_objects_) {
-        material_objects.push_back(wfb::CreateMaterialObject(builder, &m));
-    }
-    return material_objects;
-}
-
-std::vector<flatbuffers::Offset<wfb::Grass>> BaseCollector::write_grasses(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::Grass>> grasses;
-    grasses.reserve(grasses_.size());
-    for (const auto& [id, g] : grasses_) {
-        grasses.push_back(wfb::CreateGrass(builder, &g));
-    }
-    return grasses;
-}
-
-std::vector<flatbuffers::Offset<wfb::AddonNode>> BaseCollector::write_addon_nodes(
-    flatbuffers::FlatBufferBuilder& builder) {
-    std::vector<flatbuffers::Offset<wfb::AddonNode>> addon_nodes;
-    addon_nodes.reserve(addons_.size());
-    for (const auto& [id, a] : addons_) {
-        addon_nodes.push_back(wfb::CreateAddonNode(builder, &a));
-    }
-    return addon_nodes;
+    move_into(world.material_objects, material_objects_);
+    move_into(world.grasses, grasses_);
+    move_into(world.addon_nodes, addons_);
 }
 
 } // namespace bethconv::pack::detail

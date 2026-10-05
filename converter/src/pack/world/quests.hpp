@@ -26,11 +26,8 @@ public:
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Quest>> write_quests(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Global>> write_globals(
-        flatbuffers::FlatBufferBuilder& builder);
+    /// The quests and globals, in id order, into `world`.
+    void finish(wfb::WorldT& world);
 
 private:
     void on_quest(const record::MergedRecord& merged, io::SpanReader& data,

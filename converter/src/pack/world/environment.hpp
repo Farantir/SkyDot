@@ -26,26 +26,9 @@ public:
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Worldspace>> write_worlds(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Water>> write_waters(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Climate>> write_climates(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Weather>> write_weathers(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::ImageSpace>> write_image_spaces(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Precipitation>> write_precipitations(
-        flatbuffers::FlatBufferBuilder& builder);
-
-    [[nodiscard]] std::vector<flatbuffers::Offset<wfb::Region>> write_regions(
-        flatbuffers::FlatBufferBuilder& builder);
+    /// The worldspaces, waters, climates, weathers, image spaces,
+    /// precipitations and regions, each in id order, into `world`.
+    void finish(wfb::WorldT& world);
 
 private:
     void on_worldspace(const record::MergedRecord& merged, io::SpanReader& data,
