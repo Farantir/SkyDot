@@ -206,7 +206,10 @@ TEST_CASE("an MO2 profile's mods mount lowest priority first, plugins from their
     CHECK(prepared->input.mo2_instance == io::path_text(dir / "MO2"));
     CHECK(prepared->input.mo2_profile == "Main");
     CHECK(prepared->input.mods == 2);
-    CHECK(prepared->input.plugin_list == io::path_text(dir / "MO2/profiles/Main/plugins.txt"));
+    // Joined by component: compared as text, "MO2/profiles" would not match
+    // the backslashes Windows joins with.
+    CHECK(prepared->input.plugin_list ==
+          io::path_text(dir / "MO2" / "profiles" / "Main" / "plugins.txt"));
 }
 
 TEST_CASE("an MO2 profile can be named, and a bad one or a bad instance is an error",
