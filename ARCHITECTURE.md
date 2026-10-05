@@ -98,11 +98,12 @@ SkyDot/
 │   ├── extension/src/actors/         actors, their animation, locomotion, places (~1,600)
 │   ├── extension/src/nav/            navigation regions (~270)
 │   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
+│   ├── extension/src/session/        SkydotStreamer (world streaming, door preloading), SkydotClock (~1,300)
 │   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
 │   ├── extension/src/register_types.*  GDExtension entry point
-│   ├── game/                         Godot project: pack tool, viewer, tools (~5,900)
+│   ├── game/                         Godot project: pack tool, viewer, tools (~5,500)
 │   ├── game/shaders/                 the shaders, as text files Godot's preprocessor assembles (~1,300)
-│   ├── tests/smoke/                  headless Godot tests (~2,400)
+│   ├── tests/smoke/                  headless Godot tests (~2,600)
 │   ├── docs/                         subsystem notes (~1,100)
 │   └── extern/                       submodules: godot-cpp, flatbuffers
 ├── tools/ci/                         repository guards, pre-commit hook
@@ -598,8 +599,8 @@ carry the conversion in their root node; the engine converts placements
 
 The sources under `engine/extension/src/` are grouped by what depends on what,
 bottom up: `data/` (world.fb as read), `nav/`, `render/`, `physics/`,
-`actors/`, `build/` (cell building), `world/` (`SkydotWorld`), then `ai/` and
-`vm/` on top, with `assets/` for the pack. `extension/CMakeLists.txt` lists
+`actors/`, `build/` (cell building), `world/` (`SkydotWorld`), then `ai/`,
+`session/` and `vm/` on top, with `assets/` for the pack. `extension/CMakeLists.txt` lists
 each and the few places where the layering is not clean yet (`render/lod` and
 `render/weather` take a `SkydotWorld`; `assets/` includes `physics/` and
 `actors/`).
@@ -627,12 +628,16 @@ at the SCENE level:
 | `SkydotActor` (SkydotPlayer) | `actors/actor.*` | a placed NPC that walks paths, opens doors |
 | `SkydotAnimation` (RefCounted) | `actors/actor_animation.*` | skeletons and clips from `.animfb`, skinning onto skeletons |
 | `SkydotAi` (RefCounted) | `ai/ai.*`, `packages.*` | AI packages against a game clock |
+| `SkydotStreamer` (RefCounted) | `session/streamer.cpp`, `preload.cpp` | streams a worldspace's exterior cells and LOD around the camera and builds the place behind a near load door ahead (7.11) |
+| `SkydotPreparation` (RefCounted) | `session/streamer.*` | the place behind a load door, built ahead, and how far along it is |
+| `SkydotClock` (RefCounted) | `session/clock.*`, `game_time.*` | the time of day, handed between the weather outside and the AI inside (7.11) |
 | `SkydotPapyrus` (RefCounted) | `vm/papyrus.*`, `vm/quests.cpp`, `vm/save.cpp` | the Papyrus VM bound to the world |
 
 Non-Godot helpers: `AssetCache`, `PackStore`, `TerrainBuilder`,
 `WaterMaterials`, `ModelCollision`, `NavIndex`, `ActorPlan`, `Locomotion`,
-packages, and the whole `vm::` namespace (`vm.*`, `script_class.*`,
-`value.hpp`, `save.cpp`), which does not depend on Godot at all.
+packages, `session::GameTime` (the clock's arithmetic) and the whole `vm::`
+namespace (`vm.*`, `script_class.*`, `value.hpp`, `save.cpp`), which does not
+depend on Godot at all.
 
 ### 7.2 Assets: from pack bytes to Godot resources
 
@@ -957,6 +962,72 @@ becomes (x, z, −y)·s. A reference's rotation is `Rx(−x)·Ry(−y)·Rz(−z)
 is placed with `C·T·C⁻¹` (`engine/docs/coordinates.md`). An exterior cell is
 4,096 units square; its grid square is `floor(pos / 4096)`.
 
+### 7.11 Session: streaming, door preloading and the clock
+
+`session/` is what every front end needs of a running game, so none of them
+writes it again: the flatscreen viewer drives it today, a VR shell or a game
+would the same way. Both classes are `RefCounted` objects with no `_process`
+of their own. The front end calls them from its frame, in the order the frame
+needs, and enters and leaves places itself (it owns the camera, the
+weather node and the scene).
+
+**`SkydotStreamer`** keeps a worldspace around the camera (`streamer.cpp`) and
+builds the place behind a load door ahead (`preload.cpp`). `setup` gives it
+the world, the pack, the node cells are added to, the camera and the AI (null
+with the AI off); the options are properties (`radius`, `build_budget_usec`,
+`lod_enabled`, `lod_split`, `preload_enabled`, `preload_distance`, ...). It
+holds nodes by instance id, since the scene owns them.
+
+```
+update()                    once a frame inside a worldspace
+  step()   drop cells beyond radius + 1 (queue_free, LOD mask off, trim_cache)
+           continue the builds under way, nearest first, within
+           build_budget_usec (stable order: ties keep the order begun)
+           request_exterior the 4 nearest cells wanted; begin those whose
+           resources are loaded (hidden, added to the host) and continue them
+           in the budget left
+  finish   a cell whose build is done: released if held, shown, AI actors
+           attached, signal cell_finished(cell, cell_id), its load doors
+           registered, LOD masked there
+  lod.update(camera, 3 ms)
+preload_step(feet)          once a frame, after update
+  every 15 frames look for the nearest registered load door within
+  preload_distance; a new one drops the old preparation and begins one
+  (SkydotPreparation; the AI starts placing actors); walking 1.5x the
+  distance away drops it
+  while nothing streams (and the preparation is not done), within 4 ms:
+    interior: request_cell, begin_cell, continue_build_static
+    exterior: the cells around the arrival, nearest first (request_exterior,
+              begin_exterior, continue_build_static), then the LOD
+  a place built ahead is held (held_place.*): in the scene, hidden, process
+  mode disabled, so without physics
+```
+
+What the front end does around it: `clear()` leaves a worldspace (frees the
+cells, forgets its load doors); `start(world_id)` begins one; `make_lod` makes
+the LOD, which the front end adds to the scene and hands back (`lod`); going
+through a door, `take_prepared(door)` returns the `SkydotPreparation` (its
+`root` for an interior, its LOD and cells for an exterior), `release_held`
+undoes the hold, and `adopt(prepared)` hands the held cells to the streamer,
+which finishes them with their actors as it does its own, the one under the
+camera at once, for the ground. `register_doors(cell)` is for cells the
+streamer did not build (an interior). `hold_player` holds the player while the
+ground under it is built and gives it the water level of its cell. What a
+finished cell needs that belongs to the front end (scripts, overlays) hangs on
+`cell_finished`.
+
+**`SkydotClock`** is the one owner of the time of day. Outside `SkydotWeather`
+runs it (hour and day); inside `SkydotAi`'s clock does (days passed, the
+fraction is the hour). The clock hands the time over: `configure` gives a
+weather about to start the kept hour, day and speed, `release_weather` keeps
+the weather's time as its place is left, `attach_ai` starts the AI at the kept
+time, and `sync` (every frame before the AI updates) makes the AI follow the
+weather, stopped, outside, and keeps the AI's time, running at the clock's
+scale (stopped while benchmarking), inside. `shift` moves the time by hours
+(T), `describe` says it for a shot. The arithmetic is `session/game_time.*`
+in `skydot_core`, with Catch2 tests (`tests/unit/test_game_time.cpp`). The
+weather and the AI keep advancing their own time; the clock does not tick.
+
 ---
 
 ## 8. The Godot project (GDScript)
@@ -990,24 +1061,21 @@ child process (`bethconv.gd`):
 
 `cell_viewer.gd` is the composition root and the frame loop: about 300
 lines of code, and the documentation of every option in its header. It opens
-the pack and world, creates `SkydotPapyrus`, `SkydotAi` and
-`SkydotImageSpace`, makes the parts below, starts the start-game quests and
-enters the place the options name (an interior, at the arrival spot of the
-door leading in, or an exterior). Each part is a class with typed state and a
-small API. None has a `_process` of its own: the root calls them in the order
-the frame needs, as the one script did before.
+the pack and world, creates `SkydotPapyrus`, `SkydotAi`, `SkydotImageSpace`,
+`SkydotClock` and `SkydotStreamer` (the last two are engine classes, 7.11),
+makes the parts below, starts the start-game quests and enters the place the
+options name (an interior, at the arrival spot of the door leading in, or an
+exterior). Each part is a class with typed state and a small API. None has a
+`_process` of its own: the root calls them in the order the frame needs, as
+the one script did before.
 
 | File | Class | What it owns |
 | --- | --- | --- |
 | `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
-| `game_clock.gd` | `GameClock` | the time of day. Outside `SkydotWeather` runs it, inside `SkydotAi`'s clock does; the clock hands it over when a place is left (`release_weather`), every frame (`sync`) and for T (`shift`), and says it for shots (`describe`) |
 | `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
 | `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot` (the same logical keys as before), so a gamepad or VR shell can map its own events to them |
-| `world_streamer.gd` | `WorldStreamer` | the exterior: dropping, loading and finishing cells nearest first within `--build-budget` µs, the LOD and its masking, the camera's cell, radius and LOD detail keys, holding the player while the ground is built; `cell_finished` signal |
-| `door_preloader.gd` | `DoorPreloader` | the load doors of the place shown and, near one, the place behind it built in the background (`Preparation`, a typed class) |
-| `held_place.gd` | `HeldPlace` | `hold`/`release`: a place built ahead is in the scene, hidden, without physics and off the navigation map |
 | `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in; signals `built`, `left`, `message`, `failed` |
-| `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the preloader built |
+| `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the streamer built ahead |
 | `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, quests, messages), `activate` (locks, load doors, plain doors, scripts, activate parents), finding a reference's node, the `--activate` run |
 | `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the VM state plus the place and camera |
 | `shot_recorder.gd` | `ShotRecorder` | F12 shots (PNG and JSON with place, camera in engine and game terms, time, weather, options, pack hashes, GPU, console commands and the note the user types), `--screenshot`, `--shot-delay` |
@@ -1016,18 +1084,21 @@ the frame needs, as the one script did before.
 
 Per frame (`_process`): fog sync and image space; during a `--screenshot`
 run only the shots; then the player held or tracked and the camera following
-it, `WorldStreamer.update` (cells, LOD), `DoorPreloader.step`,
+it, `SkydotStreamer.update` (cells, LOD), `SkydotStreamer.preload_step`,
 `PlaceTransition.step`, Papyrus (`update_actor` for triggers, `update`), the
 clock hand-off and `SkydotAi.update`, the notes' age, the countdown that
 quits an `--activate` run, scripted activations, the benchmark, then input.
 
 The parts do not know the root. What a built cell needs next (scripts, navmesh
-overlay, load door registration) is the root's `_on_cell_built`, connected to
-`WorldStreamer.cell_finished` and `Place.built`; notes and failures are
-signals. `_input = false` (tools set it) turns off `PlayerInput` and the
-door fades. `WorldStreamer`, `DoorPreloader` and `GameClock` run every frame
-and every front end needs them, so they are the parts to move into C++ when
-the VR shell starts.
+overlay) is the root's `_on_cell_built`, connected to
+`SkydotStreamer.cell_finished` and, for an interior (whose load doors the
+root registers with the streamer, which registers those of the cells it builds
+itself), `Place.built`; notes and failures are signals. `_input = false`
+(tools set it) turns off `PlayerInput` and the door fades. The streaming, the
+door preloading and the clock run every frame and every front end needs them,
+so they are engine classes (7.11) that a VR shell uses as the viewer does; the
+viewer's `ViewerSettings` fill their options in `_make_streamer` and
+`_ready`.
 
 ### 8.3 Tools and tests
 
@@ -1071,7 +1142,7 @@ the VR shell starts.
 2. The viewer creates `SkydotPapyrus`, `SkydotAi` and the player rig;
    `_start_game` starts the start-game quests; `Place.enter_exterior` creates
    `SkydotWeather` (sky, light, fog) and `SkydotLod`.
-3. Each frame `WorldStreamer.step` requests the 5×5 cells around the camera (their
+3. Each frame `SkydotStreamer.step` requests the 5×5 cells around the camera (their
    models, textures, land textures and actor clips load on the cache's
    workers), then begins and continues builds within 8 ms per frame. LOD
    fills the rest and masks loaded cells. The player is held until the
@@ -1095,11 +1166,11 @@ the VR shell starts.
 ### 9.4 Going through a load door
 
 1. While the player is near the door, the place behind it has been prepared
-   (`DoorPreloader.step`).
+   (`SkydotStreamer.preload_step`).
 2. Activating the door calls `PlaceTransition.go(door)`: fade out
    (`begin_fade`), then `travel`; with no one at the keyboard, `travel` at
    once. `Place.leave` frees the current place, the prepared one
-   (`DoorPreloader.take`) is released (or built now), the player is put at
+   (`SkydotStreamer.take_prepared`) is released (or built now), the player is put at
    the arrival transform, the weather and LOD are switched, and actors are
    placed (`SkydotAi.begin_placing`/`settle_actors`, then `continue_build`
    places them).
@@ -1148,7 +1219,7 @@ Readers refuse unknown versions and say which numbers they read.
 | Corpus | `converter/tests/corpus/` | real installs from `$SKYRIM_DATA_{LE,SE,VR}`, recording only counts, versions and hashes (`corpus-expectations.json`); skipped when unset |
 | Fuzz | `converter/tests/fuzz/` | libFuzzer targets for ESM, BSA, NIF, DDS, PEX, HKX, strings, LOD, assets, forms; also replayed as normal tests with seeds |
 | Test pack | `converter/tools/testpack/`, `tests/testpack/` | a complete synthetic pack (meshes, a cube map, cells, doors, a lock, a lever with scripts, a quest); a determinism check builds it twice and compares |
-| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool; the viewer's typed options (`viewer_settings.gd`, no pack) |
+| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool; the viewer's typed options (`viewer_settings.gd`, no pack); the clock and the streamer (`session.gd`) |
 | Viewer runs | `engine/tests/CMakeLists.txt` | the viewer walks through doors, locked doors, a lever, `--from-shot`, save and load |
 | Visual | F12 shots and `COMPARISON-SHOTS.md` (outside the repo) | rendering compared with game screenshots by hand |
 
@@ -1165,7 +1236,9 @@ Readers refuse unknown versions and say which numbers they read.
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
 | change a shader | the file in `engine/game/shaders/` (its header comment says how it is used and which defines it takes; `game/shaders/README.md`); the variants and their defines are chosen in `render/materials.cpp` and `terrain.cpp`, the other shaders are loaded whole by `render/water.cpp`, `lod.cpp`, `weather.cpp`, `materials.cpp` (particles); check with `smoke_shaders`, `game/tools/shader_compile.gd` and `--from-shot` re-renders |
 | add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
-| change streaming or door transitions | `game/viewer/` (`world_streamer.gd`, `door_preloader.gd`, `place_transition.gd`, `place.gd`) |
+| change streaming or door preloading | `engine/extension/src/session/` (`streamer.cpp`: streaming, `preload.cpp`: building ahead, `held_place.*`), 7.11 |
+| change door transitions | `game/viewer/` (`place_transition.gd`, `place.gd`) |
+| change how the time of day is handed between weather and AI | `session/game_time.*` (the rules, with unit tests), `session/clock.cpp` |
 | change a viewer key | the action in `game/project.godot` (`[input]`), `player_input.gd`, and the dispatcher `_on_command` in `cell_viewer.gd` |
 | change what the pack tool shows | `game/packtool/*.gd`, `converter/docs/cli-json.md` |
 

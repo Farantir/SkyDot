@@ -282,6 +282,7 @@ extension/src/            the GDExtension, C++20
   build/                  CellBuilder: cells built from data, and the decoration of models
   world/                  SkydotWorld (a facade over data/ and build/) and its queries
   ai/                     AI packages, SkydotAi
+  session/                SkydotStreamer (world streaming, building ahead behind load doors), SkydotClock
   vm/                     the Papyrus VM and SkydotPapyrus
 game/                     the Godot project (.gdextension, project.godot, glue)
   packtool/               the pack tool (main scene): convert, list, view
