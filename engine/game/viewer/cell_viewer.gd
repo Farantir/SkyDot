@@ -161,9 +161,7 @@ var _note_lines: Array = []  # [text, seconds left]
 var _quests_ready := false  # after the start-game quests have started
 const NOTE_SECONDS := 8.0
 const QUICKSAVE := "user://quicksave.skydot"
-var _weather: SkydotWeather  # outside only
-var _hour := 12.0  # kept while inside
-var _day := 0
+var _clock: GameClock
 var _show_navmesh := false  # N toggles the navmesh overlay
 var _path_line: MeshInstance3D  # G draws a path here
 var _navmesh_fill: StandardMaterial3D
@@ -186,7 +184,7 @@ func _ready() -> void:
 	if not settings.error.is_empty():
 		_fail(settings.error)
 		return
-	_hour = settings.time
+	_clock = GameClock.new(settings.time, settings.time_scale, settings.captures)
 
 	var pack := SkydotPack.new()
 	if pack.open(settings.pack) != OK:
@@ -245,9 +243,8 @@ func _ready() -> void:
 	if settings.ai:
 		_ai = SkydotAi.new()
 		if _ai.setup(world, _papyrus) == OK:
-			_ai.days = _day + _hour / 24.0
+			_clock.attach_ai(_ai)
 			_ai.drive = world.actor_wander
-			_ai.time_scale = 0.0 if settings.captures else settings.time_scale
 			_ai.actor_arrived.connect(_on_actor_arrived)
 			_ai.actor_left.connect(func(ref: int, _door: int) -> void:
 				print("0x%08X leaves through a door" % ref))
@@ -390,10 +387,7 @@ func _leave() -> void:
 	_cell_image_space = {}
 	if _image_space != null:
 		_image_space.reset_adaptation()
-	if _weather != null and is_instance_valid(_weather):
-		_hour = _weather.hour
-		_day = _weather.day
-	_weather = null
+	_clock.release_weather()
 	for node in _place:
 		if is_instance_valid(node):
 			node.queue_free()
@@ -485,7 +479,7 @@ func _enter_exterior(world_id: int, at: Vector3, target, prepared := {}) -> bool
 			_fail("no weather named " + _settings.weather)
 			return false
 	if not _start_weather(weather):
-		_add_sky(_world.get_sky(_world_id, _hour, weather), _settings.shadows)
+		_add_sky(_world.get_sky(_world_id, _clock.hour, weather), _settings.shadows)
 	_camera.far = (_radius + 1) * CELL_UNITS * _unit_scale * 1.5
 	_place_camera(at, target)
 	var lod: SkydotLod = prepared.get("lod")
@@ -1131,10 +1125,7 @@ func _benchmark_frame(delta: float) -> void:
 func _start_weather(weather: int) -> bool:
 	var node := SkydotWeather.new()
 	node.name = "weather"
-	node.hour = _hour
-	node.day = _day
-	# Screenshots and benchmarks stand still.
-	node.time_scale = 0.0 if _settings.captures else _settings.time_scale
+	_clock.configure(node)  # hour, day and speed
 	node.shadows = _settings.shadows
 	if weather != 0:
 		node.auto_weather = false
@@ -1145,7 +1136,7 @@ func _start_weather(weather: int) -> bool:
 		return false
 	if weather != 0:
 		node.set_weather(weather, 0.0)
-	_weather = node
+	_clock.bind_weather(node)
 	node.weather_changed.connect(func(_id: int) -> void:
 		_note("weather: " + str(node.get_state()["editor_id"])))
 	print("weather: ", node.get_state()["editor_id"])
@@ -1258,8 +1249,8 @@ func _process(delta: float) -> void:
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
 	if not _settings.image_space:
 		_image_space.clear()
-	elif _weather != null and is_instance_valid(_weather):
-		_image_space.set_image_space(_weather.get_image_space())
+	elif _clock.has_weather():
+		_image_space.set_image_space(_clock.weather.get_image_space())
 	else:
 		_image_space.set_image_space(_cell_image_space)
 	if _shot_path != "":
@@ -1284,14 +1275,7 @@ func _process(delta: float) -> void:
 		SkydotWorld.godot_to_skyrim(_player.global_position))
 	_papyrus.update(delta)
 	if _ai != null:
-		# Outside the weather keeps the time; inside the AI's clock does.
-		if _weather != null and is_instance_valid(_weather):
-			_ai.time_scale = 0.0
-			_ai.days = _weather.day + _weather.hour / 24.0
-		else:
-			_ai.time_scale = _settings.time_scale if _shot_path == "" and _benchmark <= 0.0 else 0.0
-			_hour = _ai.get_hour()
-			_day = int(_ai.days)
+		_clock.sync(_benchmark > 0.0)
 		_ai.update(delta)
 	_age_notes(delta)
 	if _quit_in >= 0:
@@ -1362,17 +1346,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		_print_journal()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		_player.jump()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T and _weather != null:
-		_weather.hour = fmod(_weather.hour + (-1.0 if event.shift_pressed else 1.0) + 24.0, 24.0)
-		_note("%02d:%02d" % [int(_weather.hour), int(fmod(_weather.hour, 1.0) * 60)])
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T and _ai != null:
-		_ai.days = maxf(0.0, _ai.days + (-1.0 if event.shift_pressed else 1.0) / 24.0)
-		_hour = _ai.get_hour()
-		_note("%02d:%02d" % [int(_hour), int(fmod(_hour, 1.0) * 60)])
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_T:
+		var time_text := _clock.shift(-1.0 if event.shift_pressed else 1.0)
+		if not time_text.is_empty():
+			_note(time_text)
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_I:
 		_inspect_actor()
-	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _weather != null:
-		_weather.next_weather()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_K and _clock.has_weather():
+		_clock.weather.next_weather()
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_N:
 		_show_navmesh = not _show_navmesh
 		_navmesh_overlay(self)
@@ -1784,18 +1765,15 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	console.append_array(["player.setpos x %.0f" % eye.x, "player.setpos y %.0f" % eye.y,
 		"player.setpos z %.0f" % (eye.z - 120.0), "player.setangle z %.0f" % heading,
 		"player.setangle x %.0f" % tilt])
-	var time := {}
 	var weather := {}
-	if _weather != null and is_instance_valid(_weather):
-		var state := _weather.get_state()
-		time = {"hour": _weather.hour, "day": _weather.day, "time_scale": _weather.time_scale}
+	if _clock.has_weather():
+		var running := _clock.weather
+		var state := running.get_state()
 		weather = {"id": "0x%08X" % int(state.get("weather", 0)), "editor_id": state.get("editor_id", ""),
-			"transition": state.get("transition", 1.0), "auto": _weather.auto_weather}
-		console.append("set gamehour to %.2f" % _weather.hour)
+			"transition": state.get("transition", 1.0), "auto": running.auto_weather}
+		console.append("set gamehour to %.2f" % running.hour)
 		if int(state.get("weather", 0)) != 0:
 			console.append("sw %X" % int(state["weather"]))
-	else:
-		time = {"hour": _hour, "day": _day}  # inside: kept for when one leaves
 	console.append("tm")
 	var pack_dir := _settings.pack
 	var manifest = JSON.parse_string(FileAccess.get_file_as_string(pack_dir.path_join("manifest.json")))
@@ -1817,7 +1795,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"fov": _camera.fov,
 			"resolution": [int(size.x), int(size.y)],
 		},
-		"time": time,
+		"time": _clock.describe(),
 		"weather": weather,
 		"viewer": {
 			"flying": _player.fly,
