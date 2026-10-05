@@ -68,7 +68,7 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
     }
     const std::uint32_t land_world = bethconv::pack::uses_parent_land(*ws) ? ws->parent : ws->id;
 
-    std::vector<bethconv::pack::WorldRef> refs;
+    std::vector<bethconv::pack::wfb::Ref> refs;
     std::set<std::uint32_t> land_textures;
     std::set<std::uint32_t> waters;
     if (ws->water != 0) {
@@ -76,22 +76,23 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
     }
     std::size_t cells = 0;
     std::size_t terrains = 0;
-    const auto inside = [&](const bethconv::record::Vec3& p) {
-        const int gx = static_cast<int>(std::floor(p.x / k_cell_units));
-        const int gy = static_cast<int>(std::floor(p.y / k_cell_units));
+    const auto inside = [&](const bethconv::pack::wfb::Vec3f& p) {
+        const int gx = static_cast<int>(std::floor(p.x() / k_cell_units));
+        const int gy = static_cast<int>(std::floor(p.y() / k_cell_units));
         return std::abs(gx - cx) <= radius && std::abs(gy - cy) <= radius;
     };
     for (std::size_t i = 0; i < world.cell_count(); ++i) {
         const auto cell = world.cell_at(i);
-        if (!cell || cell->interior() || !cell->grid) {
+        if (!cell || bethconv::pack::is_interior(*cell) || !cell->has_grid) {
             continue;
         }
         if (cell->world == ws->id && cell->persistent) {
             std::ranges::copy_if(cell->refs, std::back_inserter(refs),
-                                 [&](const auto& r) { return inside(r.position); });
+                                 [&](const auto& r) { return inside(r.position()); });
             continue;
         }
-        const auto [gx, gy] = *cell->grid;
+        const int gx = cell->grid_x;
+        const int gy = cell->grid_y;
         if (std::abs(gx - cx) > radius || std::abs(gy - cy) > radius) {
             continue;
         }
@@ -105,7 +106,7 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
         if (cell->world == land_world && cell->terrain) {
             ++terrains;
             for (const auto& layer : cell->terrain->layers) {
-                land_textures.insert(layer.texture);
+                land_textures.insert(layer->texture);
             }
         }
     }
@@ -113,7 +114,7 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
     if (models) {
         std::set<std::string> unique;
         for (const auto& ref : refs) {
-            if (const auto base = world.base(ref.base); base && !base->model.empty()) {
+            if (const auto base = world.base(ref.base()); base && !base->model.empty()) {
                 unique.insert(base->model);
             }
         }
@@ -143,33 +144,32 @@ int cmd_cell_region(const bethconv::pack::WorldFile& world, const std::string& w
     return 0;
 }
 
-void print_scripts(const std::vector<bethconv::record::Script>& scripts) {
-    using bethconv::record::ScriptPropertyType;
+void print_scripts(const std::vector<std::unique_ptr<bethconv::pack::wfb::ScriptT>>& scripts) {
     namespace wfb = bethconv::pack::wfb;
     for (const auto& script : scripts) {
-        const bool removed = skydot::formats::has_flag(static_cast<wfb::ScriptStatus>(script.status),
-                                                       wfb::ScriptStatus::removed);
-        std::printf("    %s%s\n", script.name.c_str(), removed ? " (removed)" : "");
-        for (const auto& p : script.properties) {
+        const bool removed =
+            skydot::formats::has_flag(script->status, wfb::ScriptStatus::removed);
+        std::printf("    %s%s\n", script->name.c_str(), removed ? " (removed)" : "");
+        for (const auto& p : script->properties) {
             std::string value;
-            for (const auto& o : p.objects) {
+            for (const auto& o : p->objects) {
                 char buffer[32];
-                std::snprintf(buffer, sizeof(buffer), o.alias >= 0 ? " 0x%08X:%d" : " 0x%08X",
-                              o.form.value, o.alias);
+                std::snprintf(buffer, sizeof(buffer), o.alias() >= 0 ? " 0x%08X:%d" : " 0x%08X",
+                              o.form(), o.alias());
                 value += buffer;
             }
-            for (const auto& text : p.strings) {
+            for (const auto& text : p->strings) {
                 value += " \"" + text + "\"";
             }
-            for (const auto i : p.integers) {
+            for (const auto i : p->ints) {
                 value += " " + std::to_string(i);
             }
-            for (const auto f : p.floats) {
+            for (const auto f : p->floats) {
                 char buffer[32];
                 std::snprintf(buffer, sizeof(buffer), " %g", static_cast<double>(f));
                 value += buffer;
             }
-            std::printf("      %s =%s\n", p.name.c_str(), value.c_str());
+            std::printf("      %s =%s\n", p->name.c_str(), value.c_str());
         }
     }
 }
@@ -242,7 +242,7 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
             }
             cells.push_back(ordered_json{{"id", cell->id},
                                          {"editor_id", bethconv::io::json_text(cell->editor_id)},
-                                         {"interior", cell->interior()},
+                                         {"interior", bethconv::pack::is_interior(*cell)},
                                          {"refs", cell->refs.size()}});
         }
         bethconv::cli::emit(ordered_json{{"json_version", bethconv::cli::k_json_version},
@@ -285,15 +285,15 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                 continue;
             }
             std::printf("0x%08X  %-9s %5zu refs  %s\n", cell->id,
-                        cell->interior() ? "interior" : "exterior", cell->refs.size(),
-                        cell->editor_id.c_str());
+                        bethconv::pack::is_interior(*cell) ? "interior" : "exterior",
+                        cell->refs.size(), cell->editor_id.c_str());
             ++shown;
         }
         std::printf("%zu of %zu cells\n", shown, world->cell_count());
         return 0;
     }
 
-    std::optional<bethconv::pack::WorldCell> cell;
+    std::optional<bethconv::pack::wfb::CellT> cell;
     if (which.starts_with("0x") || which.starts_with("0X")) {
         const auto id = parse_u32(which, 16);
         if (!id) {
@@ -312,7 +312,7 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
     if (models) {
         std::set<std::string> unique;
         for (const auto& ref : cell->refs) {
-            if (const auto base = world->base(ref.base); base && !base->model.empty()) {
+            if (const auto base = world->base(ref.base()); base && !base->model.empty()) {
                 unique.insert(base->model);
             }
         }
@@ -323,53 +323,53 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
     }
 
     std::printf("0x%08X %s  %s  %zu refs, %zu doors\n", cell->id, cell->editor_id.c_str(),
-                cell->interior() ? "interior" : "exterior", cell->refs.size(),
+                bethconv::pack::is_interior(*cell) ? "interior" : "exterior", cell->refs.size(),
                 cell->doors.size());
-    if (cell->lighting) {
+    if (cell->has_lighting && cell->lighting) {
         std::printf("  lighting: ambient %08X directional %08X fog %.0f-%.0f\n",
-                    cell->lighting->ambient, cell->lighting->directional,
-                    static_cast<double>(cell->lighting->fog_near),
-                    static_cast<double>(cell->lighting->fog_far));
+                    cell->lighting->ambient(), cell->lighting->directional(),
+                    static_cast<double>(cell->lighting->fog_near()),
+                    static_cast<double>(cell->lighting->fog_far()));
     }
     std::size_t no_base = 0;
     for (const auto& ref : cell->refs) {
-        const auto base = world->base(ref.base);
+        const auto base = world->base(ref.base());
         if (!base) {
             ++no_base;
             continue;
         }
-        std::printf("  0x%08X %s %-28s pos (%.0f %.0f %.0f) scale %.2f%s  %s\n", ref.id,
-                    base->type.to_string().c_str(), base->editor_id.c_str(),
-                    static_cast<double>(ref.position.x), static_cast<double>(ref.position.y),
-                    static_cast<double>(ref.position.z), static_cast<double>(ref.scale),
-                    skydot::formats::has_flag(ref.flags,
+        std::printf("  0x%08X %s %-28s pos (%.0f %.0f %.0f) scale %.2f%s  %s\n", ref.id(),
+                    bethconv::io::FourCC(base->type).to_string().c_str(), base->editor_id.c_str(),
+                    static_cast<double>(ref.position().x()), static_cast<double>(ref.position().y()),
+                    static_cast<double>(ref.position().z()), static_cast<double>(ref.scale()),
+                    skydot::formats::has_flag(ref.flags(),
                                               bethconv::pack::wfb::RefFlags::initially_disabled)
                         ? " disabled"
                         : "",
-                    base->light ? "(light)" : base->model.c_str());
+                    base->has_light ? "(light)" : base->model.c_str());
     }
     if (no_base != 0) {
         std::printf("  %zu refs place a base with no model or light\n", no_base);
     }
     for (const auto& door : cell->doors) {
-        std::printf("  door 0x%08X -> 0x%08X at (%.0f %.0f %.0f)\n", door.ref, door.destination,
-                    static_cast<double>(door.position.x), static_cast<double>(door.position.y),
-                    static_cast<double>(door.position.z));
+        std::printf("  door 0x%08X -> 0x%08X at (%.0f %.0f %.0f)\n", door.ref(), door.destination(),
+                    static_cast<double>(door.position().x()), static_cast<double>(door.position().y()),
+                    static_cast<double>(door.position().z()));
     }
     for (const auto& lock : cell->locks) {
-        std::printf("  lock 0x%08X level %u key 0x%08X\n", lock.ref, lock.level, lock.key);
+        std::printf("  lock 0x%08X level %u key 0x%08X\n", lock.ref(), lock.level(), lock.key());
     }
     for (const auto& link : cell->links) {
-        std::printf("  link 0x%08X -> 0x%08X keyword 0x%08X\n", link.ref, link.target,
-                    link.keyword);
+        std::printf("  link 0x%08X -> 0x%08X keyword 0x%08X\n", link.ref(), link.target(),
+                    link.keyword());
     }
     for (const auto& parent : cell->activate_parents) {
-        std::printf("  activate parent 0x%08X of 0x%08X delay %.2f\n", parent.parent, parent.ref,
-                    static_cast<double>(parent.delay));
+        std::printf("  activate parent 0x%08X of 0x%08X delay %.2f\n", parent.parent(), parent.ref(),
+                    static_cast<double>(parent.delay()));
     }
     std::set<std::uint32_t> scripted_bases;
     for (const auto& ref : cell->refs) {
-        if (const auto base = world->base(ref.base); base && !base->scripts.empty()) {
+        if (const auto base = world->base(ref.base()); base && !base->scripts.empty()) {
             scripted_bases.insert(base->id);
         }
     }
@@ -378,8 +378,8 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
         print_scripts(world->base(id)->scripts);
     }
     for (const auto& ref : cell->scripts) {
-        std::printf("  ref 0x%08X:\n", ref.ref);
-        print_scripts(ref.scripts);
+        std::printf("  ref 0x%08X:\n", ref->ref);
+        print_scripts(ref->scripts);
     }
     return 0;
 }

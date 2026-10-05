@@ -608,20 +608,20 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     // The cell itself: local 0x01000B00, global 0x02000B00.
     const auto cell = file->cell(0x0200'0B00);
     REQUIRE(cell.has_value());
-    CHECK(cell->interior());
+    CHECK(pack::is_interior(*cell));
     CHECK(cell->editor_id == "ModRoom");
     CHECK(file->cell_by_editor_id("modroom")->id == 0x0200'0B00);
     REQUIRE(cell->refs.size() == 3);
 
     // Local 0x01000A00 in Mod.esp is Mod.esp's own record: global 0x02000A00,
     // not 0x01000A00 (which would be Other.esm's space).
-    CHECK(cell->refs[0].id == 0x0200'0B01);
-    CHECK(cell->refs[0].base == 0x0000'0800);
-    CHECK(cell->refs[1].base == 0x0200'0A00);
-    CHECK(cell->refs[1].scale == 2.0F);
-    CHECK(cell->refs[1].position.x == 20.0F);
-    CHECK(cell->refs[1].rotation.z == 1.5F);
-    CHECK(cell->refs[2].base == 0x0000'0801);
+    CHECK(cell->refs[0].id() == 0x0200'0B01);
+    CHECK(cell->refs[0].base() == 0x0000'0800);
+    CHECK(cell->refs[1].base() == 0x0200'0A00);
+    CHECK(cell->refs[1].scale() == 2.0F);
+    CHECK(cell->refs[1].position().x() == 20.0F);
+    CHECK(cell->refs[1].rotation().z() == 1.5F);
+    CHECK(cell->refs[2].base() == 0x0000'0801);
 
     const auto chair = file->base(0x0200'0A00);
     REQUIRE(chair.has_value());
@@ -636,44 +636,43 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
 
     const auto light = file->base(0x0000'0801);
     REQUIRE(light.has_value());
-    REQUIRE(light->light.has_value());
-    CHECK(light->light->radius == 256);
-    CHECK(light->light->color == 0x0080'40FFu);
+    REQUIRE((light->has_light && light->light));
+    CHECK(light->light->radius() == 256);
+    CHECK(light->light->color() == 0x0080'40FFu);
 
     // Scripts and the rest of the chair reference's extras, with every
     // FormID made global.
     REQUIRE(cell->scripts.size() == 1);
-    CHECK(cell->scripts[0].ref == 0x0200'0B02);
-    REQUIRE(cell->scripts[0].scripts.size() == 1);
-    const auto& lever = cell->scripts[0].scripts[0];
+    CHECK(cell->scripts[0]->ref == 0x0200'0B02);
+    REQUIRE(cell->scripts[0]->scripts.size() == 1);
+    const auto& lever = *cell->scripts[0]->scripts[0];
     CHECK(lever.name == "TestLever");
     REQUIRE(lever.properties.size() == 2);
-    CHECK(lever.properties[0].objects.at(0).form == record::FormId{0x0200'0B01});
-    CHECK(lever.properties[1].integers == std::vector<std::int32_t>{3});
+    CHECK(lever.properties[0]->objects.at(0).form() == 0x0200'0B01);
+    CHECK(lever.properties[1]->ints == std::vector<std::int32_t>{3});
     REQUIRE(cell->locks.size() == 1);
-    CHECK(cell->locks[0].level == 255);
-    CHECK(cell->locks[0].key == 0x0200'0A00);
+    CHECK(cell->locks[0].level() == 255);
+    CHECK(cell->locks[0].key() == 0x0200'0A00);
     REQUIRE(cell->links.size() == 1);
-    CHECK(cell->links[0].target == 0x0200'0B03);
+    CHECK(cell->links[0].target() == 0x0200'0B03);
     REQUIRE(cell->activate_parents.size() == 1);
-    CHECK(cell->activate_parents[0].parent == 0x0200'0B01);
-    CHECK(cell->activate_parents[0].delay == 0.5F);
-    CHECK(skydot::formats::has_flag(cell->refs[1].flags,
+    CHECK(cell->activate_parents[0].parent() == 0x0200'0B01);
+    CHECK(cell->activate_parents[0].delay() == 0.5F);
+    CHECK(skydot::formats::has_flag(cell->refs[1].flags(),
                                     pack::wfb::RefFlags::parent_activate_only));
     REQUIRE(cell->primitives.size() == 1);
-    CHECK(cell->primitives[0].bounds.x == 64.0F);
-    CHECK(cell->primitives[0].type == 1);
+    CHECK(cell->primitives[0].bounds().x() == 64.0F);
+    CHECK(cell->primitives[0].type() == 1);
 
     const auto door = file->base(0x0200'0A01);
     REQUIRE(door.has_value());
     CHECK(door->flags == 0x02);
     REQUIRE(door->scripts.size() == 1);
-    CHECK(door->scripts[0].properties[0].objects.at(0).form == record::FormId{0x0000'0800});
+    CHECK(door->scripts[0]->properties[0]->objects.at(0).form() == 0x0000'0800);
     const auto trigger = file->base(0x0200'0A02);
     REQUIRE(trigger.has_value());
     CHECK(trigger->model.empty());
-    CHECK(trigger->scripts.at(0).properties[0].objects.at(0).form ==
-          record::FormId{0x0200'0A01});
+    CHECK(trigger->scripts.at(0)->properties[0]->objects.at(0).form() == 0x0200'0A01);
 }
 
 TEST_CASE("world.fb is refused when damaged", "[pack][world]") {
@@ -720,22 +719,23 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK_FALSE(file->cell_at_grid(0x0000'0D00, 1, 0).has_value());
 
     REQUIRE(cell->navmeshes.size() == 1);
-    const auto& nav = cell->navmeshes[0];
+    const auto& nav = *cell->navmeshes[0];
     CHECK(nav.id == 0x0000'0D04);
     REQUIRE(nav.vertices.size() == 3);
-    CHECK(nav.vertices[2] == record::Vec3{0, 128, 32});
+    CHECK((nav.vertices[2].x() == 0 && nav.vertices[2].y() == 128 && nav.vertices[2].z() == 32));
     REQUIRE(nav.triangles.size() == 1);
-    CHECK(nav.triangles[0].edges == std::array<std::int16_t, 3>{-1, -1, 0});
-    CHECK(nav.triangles[0].flags == (pack::wfb::NavTriangleFlags::edge2_link |
-                                     pack::wfb::NavTriangleFlags::in_front_of_door));
+    CHECK((nav.triangles[0].e0() == -1 && nav.triangles[0].e1() == -1 &&
+           nav.triangles[0].e2() == 0));
+    CHECK(nav.triangles[0].flags() == (pack::wfb::NavTriangleFlags::edge2_link |
+                                       pack::wfb::NavTriangleFlags::in_front_of_door));
     REQUIRE(nav.links.size() == 1);
-    CHECK(nav.links[0].navmesh == 0x0000'0D04);
+    CHECK(nav.links[0].navmesh() == 0x0000'0D04);
     REQUIRE(nav.doors.size() == 1);
-    CHECK(nav.doors[0].door == 0x0000'0D10);
+    CHECK(nav.doors[0].door() == 0x0000'0D10);
     CHECK(file->cell(0x0000'0D01)->navmeshes.empty());
 
-    REQUIRE(cell->terrain.has_value());
-    const auto heights = cell->terrain->heights();
+    REQUIRE(cell->terrain);
+    const auto heights = pack::terrain_heights(*cell->terrain);
     REQUIRE(heights.size() == 33 * 33);
     CHECK(heights[0] == 24.0F);
     CHECK(heights[1] == 16.0F);
@@ -746,11 +746,11 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
 
     const auto& layers = cell->terrain->layers;
     REQUIRE(layers.size() == 3);
-    CHECK((layers[0].quadrant == 0 && layers[0].layer == 0 && layers[0].texture == 0x0000'0C01));
-    CHECK((layers[1].quadrant == 0 && layers[1].layer == 1 && layers[1].texture == 0));
-    CHECK(layers[1].points == std::vector<std::uint16_t>{5, 288});
-    CHECK(layers[1].opacity == std::vector<std::uint8_t>{128, 255});
-    CHECK((layers[2].quadrant == 2 && layers[2].layer == -1));
+    CHECK((layers[0]->quadrant == 0 && layers[0]->layer == 0 && layers[0]->texture == 0x0000'0C01));
+    CHECK((layers[1]->quadrant == 0 && layers[1]->layer == 1 && layers[1]->texture == 0));
+    CHECK(layers[1]->points == std::vector<std::uint16_t>{5, 288});
+    CHECK(layers[1]->opacity == std::vector<std::uint8_t>{128, 255});
+    CHECK((layers[2]->quadrant == 2 && layers[2]->layer == -1));
 
     const auto dirt = file->land_texture(0x0000'0C01);
     REQUIRE(dirt.has_value());
@@ -1032,9 +1032,9 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     const auto room = file->cell(0x0200'0B00);
     REQUIRE(room.has_value());
     REQUIRE(room->links.size() == 1);
-    CHECK(room->links[0].ref == 0x0200'0B01);
-    CHECK(room->links[0].keyword == 0x0000'0A00);
-    CHECK(room->links[0].target == 0x0200'0B01);
+    CHECK(room->links[0].ref() == 0x0200'0B01);
+    CHECK(room->links[0].keyword() == 0x0000'0A00);
+    CHECK(room->links[0].target() == 0x0200'0B01);
 
     const auto plugins = file->plugins();
     REQUIRE(plugins.size() == 3);

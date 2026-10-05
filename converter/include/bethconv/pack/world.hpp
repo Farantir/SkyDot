@@ -191,9 +191,6 @@ struct WorldTerrain {
     std::vector<std::int8_t> height_deltas;
     std::vector<std::uint8_t> colours;
     std::vector<WorldTerrainLayer> layers;
-
-    /// Heights in game units, row-major from the south-west corner.
-    [[nodiscard]] std::vector<float> heights() const;
 };
 
 /// See world.fbs `NavMesh`.
@@ -613,6 +610,16 @@ struct WorldActor {
     wfb::RefFlags flags{};
 };
 
+/// The vertices along one side of a cell's terrain grid.
+inline constexpr std::size_t k_terrain_grid = 33;
+
+/// Heights in game units, row-major from the south-west corner.
+[[nodiscard]] std::vector<float> terrain_heights(const wfb::TerrainT& terrain);
+
+[[nodiscard]] inline bool is_interior(const wfb::CellT& cell) noexcept {
+    return skydot::formats::has_flag(cell.flags, wfb::CellFlags::interior);
+}
+
 /// The land of this worldspace is its parent's.
 [[nodiscard]] inline bool uses_parent_land(const wfb::WorldspaceT& world) noexcept {
     return world.parent != 0 &&
@@ -635,11 +642,11 @@ public:
 
     [[nodiscard]] std::size_t cell_count() const noexcept;
     [[nodiscard]] std::size_t base_count() const noexcept;
-    [[nodiscard]] std::optional<WorldCell> cell(std::uint32_t id) const;
-    [[nodiscard]] std::optional<WorldCell> cell_at(std::size_t index) const;
+    [[nodiscard]] std::optional<wfb::CellT> cell(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::CellT> cell_at(std::size_t index) const;
     /// Case-insensitive editor id match; linear.
-    [[nodiscard]] std::optional<WorldCell> cell_by_editor_id(std::string_view editor_id) const;
-    [[nodiscard]] std::optional<WorldBase> base(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::CellT> cell_by_editor_id(std::string_view editor_id) const;
+    [[nodiscard]] std::optional<wfb::BaseT> base(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::WorldspaceT> worldspaces() const;
     [[nodiscard]] std::optional<wfb::LandTextureT> land_texture(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::WaterT> water(std::uint32_t id) const;
@@ -661,8 +668,8 @@ public:
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.
-    [[nodiscard]] std::optional<WorldCell> cell_at_grid(std::uint32_t world, std::int32_t x,
-                                                         std::int32_t y) const;
+    [[nodiscard]] std::optional<wfb::CellT> cell_at_grid(std::uint32_t world, std::int32_t x,
+                                                        std::int32_t y) const;
 
 private:
     class Impl;

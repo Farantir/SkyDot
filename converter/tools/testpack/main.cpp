@@ -1389,10 +1389,10 @@ int main(int argc, char** argv) {
             const auto cell = world->cell_at(i);
             for (const auto& ref : cell->refs) {
                 ++world_refs;
-                const auto base = world->base(ref.base);
+                const auto base = world->base(ref.base());
                 if (!base) {
-                    std::cerr << "world.fb: reference " << ref.id << " places unknown base "
-                              << ref.base << "\n";
+                    std::cerr << "world.fb: reference " << ref.id() << " places unknown base "
+                              << ref.base() << "\n";
                     return EXIT_FAILURE;
                 }
                 if (!base->model.empty() && index->find(base->model) == nullptr) {
@@ -1415,8 +1415,8 @@ int main(int argc, char** argv) {
         // The door pair leads both ways, and the lever carries its script.
         const auto inside = world->cell(0x0000'0300);
         const auto lever = world->base(0x0000'0104);
-        if (!inside || inside->doors.size() != 1 || inside->doors[0].destination != 0x0000'0213 ||
-            origin->doors.size() != 1 || origin->doors[0].destination != 0x0000'0303 ||
+        if (!inside || inside->doors.size() != 1 || inside->doors[0].destination() != 0x0000'0213 ||
+            origin->doors.size() != 1 || origin->doors[0].destination() != 0x0000'0303 ||
             origin->locks.size() != 1 || inside->scripts.size() != 1 ||
             inside->links.size() != 1 || !lever || lever->scripts.size() != 1) {
             std::cerr << "world.fb: the doors, lock or lever script are wrong\n";
@@ -1431,9 +1431,9 @@ int main(int argc, char** argv) {
         }
         const auto east = world->cell(0x0000'0220);
         if (origin->navmeshes.size() != 1 || !east || east->navmeshes.size() != 1 ||
-            inside->navmeshes.size() != 1 || inside->navmeshes[0].doors.size() != 1 ||
-            origin->navmeshes[0].links.size() != 1 ||
-            origin->navmeshes[0].links[0].navmesh != east->navmeshes[0].id) {
+            inside->navmeshes.size() != 1 || inside->navmeshes[0]->doors.size() != 1 ||
+            origin->navmeshes[0]->links.size() != 1 ||
+            origin->navmeshes[0]->links[0].navmesh() != east->navmeshes[0]->id) {
             std::cerr << "world.fb: the navmeshes are wrong\n";
             return EXIT_FAILURE;
         }
