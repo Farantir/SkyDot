@@ -14,9 +14,6 @@
 #include "../support/strings_builder.hpp"
 
 #include "bethconv/pack/asset_store.hpp"
-#include "bethconv/pack/snapshot.hpp"
-#include "bethconv/record/load_order.hpp"
-#include "bethconv/record/merge.hpp"
 
 #include <algorithm>
 #include <cstdio>
@@ -318,63 +315,6 @@ void seed_esm(const std::filesystem::path& root) {
     }
 }
 
-// ---- record snapshot ------------------------------------------------------
-
-/// A real `records.fb`, built through the actual plugin → merge → write
-/// pipeline so the seed has the shape the reader will see.
-void seed_snapshot(const std::filesystem::path& root) {
-    const auto dir = root / "snapshot";
-    const auto scratch = root / ".snapshot-build";
-    std::filesystem::create_directories(scratch);
-
-    {
-        const auto plugin = build_plugin(0x00000001, false);
-        std::ofstream out(scratch / "Seed.esm", std::ios::binary);
-        out.write(reinterpret_cast<const char*>(plugin.data()),
-                  static_cast<std::streamsize>(plugin.size()));
-    }
-
-    const auto order = bethconv::record::LoadOrder::from_directory(scratch);
-    if (!order) {
-        std::filesystem::remove_all(scratch);
-        return;
-    }
-    const auto world = bethconv::record::MergedWorld::build(*order);
-    const auto path = scratch / "records.fb";
-    if (!bethconv::pack::write_snapshot(world, *order, path)) {
-        std::filesystem::remove_all(scratch);
-        return;
-    }
-
-    std::vector<std::byte> bytes;
-    {
-        std::ifstream in(path, std::ios::binary);
-        char c = 0;
-        while (in.get(c)) {
-            bytes.push_back(static_cast<std::byte>(c));
-        }
-    }
-    std::filesystem::remove_all(scratch);
-    if (bytes.size() < 64) {
-        return;
-    }
-
-    emit(dir, "plain.fb", bytes);
-    emit(dir, "header-only.fb", truncated(bytes, 64));
-    emit(dir, "truncated-blob.fb", truncated(bytes, 96));
-    // Cut before the index, so the header bounds check must reject it before
-    // the verifier runs.
-    emit(dir, "no-index.fb", truncated(bytes, bytes.size() / 2));
-
-    // A header whose section size is wrong. Must be rejected on arithmetic
-    // before FlatBuffers sees any byte.
-    auto lying = bytes;
-    for (std::size_t i = 0; i < 8; ++i) {
-        lying[24 + i] = static_cast<std::byte>(0xFF); // fb_bytes
-    }
-    emit(dir, "index-longer-than-file.fb", lying);
-}
-
 // ---- NIF ------------------------------------------------------------------
 
 void seed_nif(const std::filesystem::path& root) {
@@ -515,7 +455,6 @@ int main(int argc, char** argv) {
     seed_dds(root);
     seed_strings(root);
     seed_esm(root);
-    seed_snapshot(root);
     seed_nif(root);
     seed_pex(root);
     seed_bsa(root);

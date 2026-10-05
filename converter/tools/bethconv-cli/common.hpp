@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// What several subcommands share: mounting, the load order `merge`, `snapshot`
-// and `verify` agree on, lists of virtual paths, the output-target check and
-// the exit status.
+// What several subcommands share: mounting, the load order `merge` builds,
+// lists of virtual paths, the output-target check and the exit status.
 #pragma once
 
 #include "bethconv/archive/archive_set.hpp"
@@ -37,7 +36,7 @@ int mount_all(archive::ArchiveSet& set, const std::vector<std::filesystem::path>
 /// `strings/` paths have more than one provider rather than assuming none.
 std::size_t mount_data_folder(archive::ArchiveSet& set, const std::filesystem::path& data_dir);
 
-/// Build a load order as `merge` does, so `snapshot` and `merge` always agree.
+/// Build a load order from `list_file`, or from the Data folder when it is empty.
 io::ParseResult<record::LoadOrder> build_order(const std::filesystem::path& data_dir,
                                                const std::filesystem::path& list_file);
 

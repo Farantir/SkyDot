@@ -36,7 +36,7 @@ struct ConvertArgs {
     std::string language;
     std::string filter;
     std::size_t limit = 0;
-    bool no_records = false;
+    bool no_world = false;
     bool no_meshes = false;
     bool no_textures = false;
     bool no_scripts = false;
@@ -179,7 +179,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.converter = std::string("bethconv ") + BETHCONV_VERSION;
     options.language = args.language;
     options.input = std::move(input);
-    options.write_records = !args.no_records;
+    options.write_world = !args.no_world;
     options.convert_meshes = !args.no_meshes;
     options.convert_textures = !args.no_textures;
     options.convert_scripts = !args.no_scripts;
@@ -230,11 +230,6 @@ int cmd_convert(const ConvertArgs& args) {
 
     const auto& stats = result->pack;
     std::fprintf(text, "\nwrote %s\n", args.out.string().c_str());
-    if (result->snapshot) {
-        std::fprintf(text, "  records.fb    %llu forms, %.1f MiB\n",
-                     static_cast<unsigned long long>(result->snapshot->forms),
-                     static_cast<double>(result->snapshot->file_bytes) / (1024.0 * 1024.0));
-    }
     if (result->world) {
         const auto& w = *result->world;
         std::fprintf(text, "  world.fb      %llu cells, %llu refs, %llu worldspaces, %llu with terrain "
@@ -354,8 +349,10 @@ int cmd_convert(const ConvertArgs& args) {
             {"exit", exit_code},
             {"elapsed", elapsed},
             {"out", path_text(args.out)},
-            {"forms", result->snapshot ? result->snapshot->forms : 0},
+            {"forms", result->merge ? result->merge->forms : 0},
             {"cells", result->world ? result->world->cells : 0},
+            {"refs", result->world ? result->world->refs : 0},
+            {"bases", result->world ? result->world->bases : 0},
             {"assets", ordered_json{{"written", stats.converted},
                                     {"deduped", stats.deduped},
                                     {"distinct", stats.distinct_assets},
@@ -391,7 +388,7 @@ struct ConvertCli {
     std::string language{std::string(bethconv::record::k_default_language)};
     std::string filter;
     std::size_t limit = 0;
-    bool no_records = false;
+    bool no_world = false;
     bool no_meshes = false;
     bool no_textures = false;
     bool no_scripts = false;
@@ -436,7 +433,8 @@ void register_convert(CLI::App& app) {
                         "Only convert virtual paths containing this substring");
     convert->add_option("--limit", args->limit, "Stop after this many inputs")
         ->default_val(0);
-    convert->add_flag("--no-records", args->no_records, "Skip the merge and records.fb");
+    // --no-records is the old name, from when records.fb was written beside world.fb.
+    convert->add_flag("--no-world,--no-records", args->no_world, "Skip the merge and world.fb");
     convert->add_flag("--no-meshes", args->no_meshes, "Skip the NIF pass");
     convert->add_flag("--no-textures", args->no_textures, "Skip the DDS pass");
     convert->add_flag("--no-scripts", args->no_scripts, "Skip the PEX pass");
@@ -489,7 +487,7 @@ void register_convert(CLI::App& app) {
                                                 .language = args->language,
                                                 .filter = args->filter,
                                                 .limit = args->limit,
-                                                .no_records = args->no_records,
+                                                .no_world = args->no_world,
                                                 .no_meshes = args->no_meshes,
                                                 .no_textures = args->no_textures,
                                                 .no_scripts = args->no_scripts,

@@ -27,7 +27,6 @@ int main(int argc, char** argv) {
     register_forms(app);
     register_strings(app);
     register_merge(app);
-    register_snapshot(app);
     register_convert(app);
     register_detect(app);
     register_mo2(app);
@@ -35,7 +34,6 @@ int main(int argc, char** argv) {
     register_info(app);
     register_cell(app);
     register_view(app);
-    register_verify(app);
     register_scan(app);
     register_extract(app);
     register_mesh(app);

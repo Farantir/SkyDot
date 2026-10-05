@@ -8,13 +8,13 @@ find_package(flatbuffers CONFIG REQUIRED)
 # Content hashing for the pack.
 find_package(blake3 CONFIG REQUIRED)
 
-# records_generated.h is generated at build time so it cannot drift from
-# formats/schema/records.fbs. flatc comes from the vcpkg port. world.fb's
+# The *_generated.h headers are generated at build time so they cannot drift
+# from formats/schema/*.fbs. flatc comes from the vcpkg port. world.fb's
 # readers and writers use the object API (the XT types and Pack/UnPack), so a
 # table's field is declared once, in world.fbs.
 set(BETHCONV_FB_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/bethconv/pack")
 set(BETHCONV_FB_HEADERS "")
-foreach(schema IN ITEMS records world script lod animation)
+foreach(schema IN ITEMS world script lod animation)
     set(fbs "${CMAKE_CURRENT_SOURCE_DIR}/../../formats/schema/${schema}.fbs")
     set(header "${BETHCONV_FB_DIR}/${schema}_generated.h")
     set(flatc_flags --cpp --cpp-std c++17 --scoped-enums)
@@ -33,7 +33,7 @@ foreach(schema IN ITEMS records world script lod animation)
         VERBATIM)
     list(APPEND BETHCONV_FB_HEADERS "${header}")
 endforeach()
-add_custom_target(bethconv_records_fbs DEPENDS ${BETHCONV_FB_HEADERS})
+add_custom_target(bethconv_fbs DEPENDS ${BETHCONV_FB_HEADERS})
 
 add_library(bethconv_core STATIC
     io/span_reader.cpp
@@ -74,8 +74,6 @@ add_library(bethconv_core STATIC
     texture/mip_tail.cpp
     texture/mip_drop.cpp
     texture/bc_encode.cpp
-    pack/snapshot_writer.cpp
-    pack/snapshot_reader.cpp
     pack/content_hash.cpp
     pack/asset_store.cpp
     pack/pack_writer.cpp
@@ -102,13 +100,13 @@ add_library(bethconv_core STATIC
     script/pex_script.cpp
     ${BETHCONV_FB_HEADERS}
 )
-add_dependencies(bethconv_core bethconv_records_fbs)
+add_dependencies(bethconv_core bethconv_fbs)
 add_library(bethconv::core ALIAS bethconv_core)
 
 # pack/world.hpp returns the generated object types, so the generated headers
-# and FlatBuffers are public; pack/snapshot.hpp still hides them behind a
-# pImpl. formats/include/ is the vocabulary both halves share. The generated
-# headers are flatc's code, so they stay out of the warning set.
+# and FlatBuffers are public. formats/include/ is the vocabulary both halves
+# share. The generated headers are flatc's code, so they stay out of the
+# warning set.
 target_include_directories(bethconv_core
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../formats/include>)

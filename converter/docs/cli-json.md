@@ -86,7 +86,7 @@ stops unless given `--allow-slow-target`), for each asset layout.
 ```json
 {"json_version": 1, "path": "/packs/se", "plugins": 10,
  "manifest": {"pack_format_version": 5, "converter": "bethconv 0.0.1", "input": {...}, ...},
- "disk": {"files": 7, "bytes": ...},
+ "disk": {"files": 6, "bytes": ...},
  "blob": {"bytes": ..., "entries": ..., "live_entries": ..., "live_bytes": ...,
           "stale_bytes": ...}}
 ```
@@ -114,7 +114,7 @@ Events, one per line, in this order:
 1. `progress` with phase `mount`, once per mounted archive or folder (an MO2
    profile on a slow disk takes most of a minute).
 2. `start`: what is about to be converted.
-3. `progress` for the phases `merge` (start and end only), `records`, `world`,
+3. `progress` for the phases `merge` (start and end only), `world`,
    `assets` (every 250 files), `finish` (hashing plugins, writing indexes).
 4. `done`, or `error` at any point.
 
@@ -127,7 +127,7 @@ Events, one per line, in this order:
  "unloaded_archives": [".../UHDAP - MusicHQ.bsa"], "unique_paths": 231219}
 {"event": "progress", "phase": "assets", "done": 2500, "total": 3000, "elapsed": 120.7}
 {"event": "done", "json_version": 1, "exit": 0, "elapsed": 121.3, "out": "/packs/fus",
- "forms": 1274726, "cells": 74028,
+ "forms": 1274726, "cells": 74028, "refs": 931207, "bases": 35822,
  "assets": {"written": ..., "deduped": ..., "distinct": ..., "meshes": ..., "textures": ...,
             "scripts": ..., "lod": ..., "bytes_written": ..., "store_bytes": ...},
  "textures": {"max_size": 0, "shrunk": 0, "kept_large": 0, "uncompressed": "keep",
@@ -138,6 +138,8 @@ Events, one per line, in this order:
 ```
 
 - `elapsed` is seconds since the command started.
+- `forms`, `cells`, `refs` and `bases`: the merged load order's forms and the
+  counts in `world.fb`; all 0 with `--no-world`.
 - `unloaded_archives`: archives in mod folders that no loaded plugin is named
   after; the game does not load them, so they are not mounted
   (`install/mount_plan.hpp`).

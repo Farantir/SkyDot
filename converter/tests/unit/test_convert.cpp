@@ -58,7 +58,7 @@ std::vector<std::byte> a_pex() {
     return bethconv::testing::build_script(bethconv::testing::empty_script("Fixture"));
 }
 
-/// A minimal plugin, so `convert` has a load order for records.fb.
+/// A minimal plugin, so `convert` has a load order for world.fb.
 void write_plugin(const std::filesystem::path& path, const std::vector<std::string>& masters) {
     bethconv::test::ByteWriter file;
     bethconv::test::write_tes4(file, 0, masters);
@@ -160,11 +160,17 @@ TEST_CASE("one pass over a mount produces a whole pack", "[convert]") {
     CHECK(std::filesystem::exists(pack / "manifest.json"));
     CHECK(std::filesystem::exists(pack / "vpath.idx"));
     CHECK(std::filesystem::exists(pack / "report.json"));
-    CHECK(std::filesystem::exists(pack / "records.fb"));
+    CHECK(std::filesystem::exists(pack / "world.fb"));
     CHECK(assets_in(pack).size() == 4);
 
-    REQUIRE(result->snapshot.has_value());
+    REQUIRE(result->world.has_value());
     REQUIRE(result->merge.has_value());
+
+    // The manifest names the world and no other record file.
+    const auto manifest = read_json(pack / "manifest.json");
+    CHECK(manifest.contains("world"));
+    CHECK_FALSE(manifest.contains("records"));
+    CHECK_FALSE(std::filesystem::exists(pack / "records.fb"));
 }
 
 TEST_CASE("assets use the .glb, .dds, .pexfb and .animfb extensions",
@@ -192,7 +198,7 @@ TEST_CASE("an input this pass does not convert is counted, not dropped silently"
     REQUIRE(result.has_value());
 
     // Three: the plugin itself is a loose file the asset pass does not convert,
-    // so `.esm` shows up in the deferred counts. records.fb comes from the load
+    // so `.esm` shows up in the deferred counts. world.fb comes from the load
     // order, not this walk.
     CHECK(result->pack.deferred == 3);
     CHECK(result->pack.deferred_kinds == 3);
@@ -218,16 +224,32 @@ TEST_CASE("each pass can be turned off on its own", "[convert]") {
         CHECK(result->pack.scripts == 1);
     }
 
-    SECTION("no records") {
+    SECTION("no world") {
         auto options = options_for(out.path() / "pack");
-        options.write_records = false;
+        options.write_world = false;
         const auto result = convert(fixture.set, fixture.order(), options);
         REQUIRE(result.has_value());
-        CHECK_FALSE(result->snapshot.has_value());
-        CHECK_FALSE(std::filesystem::exists(out.path() / "pack" / "records.fb"));
-    // Assets-only still writes assets (for re-testing without a merge).
+        CHECK_FALSE(result->world.has_value());
+        CHECK_FALSE(result->merge.has_value());
+        CHECK_FALSE(std::filesystem::exists(out.path() / "pack" / "world.fb"));
+        CHECK_FALSE(read_json(out.path() / "pack" / "manifest.json").contains("world"));
+        // Assets-only still writes assets (for re-testing without a merge).
         CHECK(result->pack.converted == 4);
     }
+}
+
+TEST_CASE("rebuilding a pack from an earlier converter drops its records.fb", "[convert]") {
+    Fixture fixture;
+    TempDir out;
+    const auto pack = out.path() / "pack";
+
+    // What converters before this one left beside world.fb.
+    write_file(pack / "records.fb", std::vector<std::byte>(64, std::byte{0}));
+    REQUIRE(std::filesystem::exists(pack / "records.fb"));
+
+    REQUIRE(convert(fixture.set, fixture.order(), options_for(pack)).has_value());
+    CHECK_FALSE(std::filesystem::exists(pack / "records.fb"));
+    CHECK(std::filesystem::exists(pack / "world.fb"));
 }
 
 TEST_CASE("the filter and the limit decide the work list, reproducibly",
@@ -345,7 +367,7 @@ TEST_CASE("the manifest records the order the records came from", "[convert]") {
     REQUIRE(manifest["load_order"].size() == 1);
     CHECK(manifest["load_order"][0] == "Fixture.esm");
 
-    // The plugin is always hashed (records.fb depends on it).
+    // The plugin is always hashed (world.fb depends on it).
     bool plugin_hashed = false;
     for (const auto& source : manifest["source_hashes"]) {
         if (source["kind"] == "plugin") {

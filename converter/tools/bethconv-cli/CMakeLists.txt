@@ -20,11 +20,9 @@ add_executable(bethconv_cli
     commands/records.cpp
     commands/scan.cpp
     commands/script.cpp
-    commands/snapshot.cpp
     commands/strings.cpp
     commands/target.cpp
     commands/texture.cpp
-    commands/verify.cpp
     commands/view.cpp)
 find_package(nlohmann_json CONFIG REQUIRED)
 set_target_properties(bethconv_cli PROPERTIES OUTPUT_NAME bethconv)

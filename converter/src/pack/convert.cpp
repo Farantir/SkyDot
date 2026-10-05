@@ -154,6 +154,11 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         return std::unexpected(writer.error());
     }
 
+    // Packs written by earlier converters carry a `records.fb`, which nothing
+    // reads and this run's manifest no longer names. Rebuilding one drops it.
+    std::error_code stale_ec;
+    std::filesystem::remove(options.out / "records.fb", stale_ec);
+
     ConvertResult result;
     result.sources = set.sources().size();
     result.unique_paths = set.unique_paths();
@@ -175,8 +180,8 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         }
     };
 
-    // ---- records.fb ---------------------------------------------------
-    if (options.write_records) {
+    // ---- world.fb -----------------------------------------------------
+    if (options.write_world) {
         record::MergeOptions merge_options;
         merge_options.language = options.language;
         merge_options.strings = string_fetch(set);
@@ -186,22 +191,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         result.merge = world.stats();
         report("merge", order.entries().size(), order.entries().size());
 
-        auto stats = write_snapshot(
-            world, order, writer->records_path(),
-            SnapshotOptions{.converter = options.converter, .language = options.language});
-        if (!stats) {
-            return std::unexpected(stats.error());
-        }
-        result.snapshot = *stats;
-
-        // Hashed so manifest.json can be checked without re-running the merge.
-        auto records_hash = hash_file(writer->records_path(), options.converter);
-        manifest.records = RecordsRecord{.forms = stats->forms,
-                                         .file_bytes = stats->file_bytes,
-                                         .hash = records_hash.value_or(ContentHash{})};
-        report("records", stats->forms, stats->forms);
-
-        // world.fb needs its own merge pass: payload FormIDs are resolved
+        // write_world is the merge's second pass: payload FormIDs are resolved
         // through each winning plugin's master list.
         auto world_stats = write_world(world, order, writer->world_path());
         if (!world_stats) {
@@ -311,7 +301,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
         manifest.load_order.push_back(entry.name);
         std::error_code ec;
         const auto size = std::filesystem::file_size(entry.path, ec);
-        // Plugins are always hashed: records.fb depends on exactly these bytes.
+        // Plugins are always hashed: world.fb depends on exactly these bytes.
         manifest.sources.push_back(
             SourceRecord{.name = entry.name,
                          .kind = "plugin",

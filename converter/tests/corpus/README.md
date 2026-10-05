@@ -26,10 +26,9 @@ corpus harness: visited 3 install(s) skyrim-le skyrim-se skyrim-vr
 Set `BETHCONV_CORPUS_REQUIRE=1` to make "visited nothing" a failure.
 
 All three installs take about 410 s under ASan. The merge pin is the largest
-part: it merges each install and writes `records.fb` and `world.fb` from the
-result, reopens both and hashes their bytes (the two writers are
-deterministic, so a hash moves only when their output does). The field
-definitions and plugin walks come next.
+part: it merges each install and writes `world.fb` from the result, reopens
+it and hashes its bytes (the writer is deterministic, so the hash moves only
+when its output does). The field definitions and plugin walks come next.
 
 Beyond the merge, the pins cover the LOD pass: `terrain-lod` converts
 Tamriel's level-32 terrain LOD and its textures, `tree-lod` its tree list,
@@ -181,7 +180,7 @@ pinned, with the filter stored next to the results:
   texture slots contain spaces plus the 13 textures they use, so 96 escaped URIs
   resolve. Identical on all installs.
 
-About 13 s total. `records.fb` is not written; the merge and snapshot are pinned
+About 13 s total. The merge and `world.fb` are skipped; they are pinned
 separately.
 
 The converter string is fixed to `bethconv-corpus`, not the version, because

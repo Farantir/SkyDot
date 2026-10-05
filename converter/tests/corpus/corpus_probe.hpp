@@ -236,15 +236,14 @@ struct MergeFacts {
 
     std::vector<MergedFormFacts> forms_pinned;
 
-    /// `records.fb` and `world.fb` written from this world into the probe's
-    /// scratch directory and opened again. Each is pinned by its counts and
-    /// an FNV-1a over its bytes (both writers are deterministic). Empty if
-    /// writing or reopening failed.
-    std::vector<std::pair<std::string, std::uint64_t>> snapshot;
+    /// `world.fb` written from this world into the probe's scratch directory
+    /// and opened again, pinned by its counts and an FNV-1a over its bytes (the
+    /// writer is deterministic). Empty if writing or reopening failed.
     std::vector<std::pair<std::string, std::uint64_t>> world;
 
-    /// One candidate form per class the merge can produce, printed by the
-    /// snapshot tool when an install has no `forms` list yet. Not compared.
+    /// One candidate form per class the merge can produce, printed by
+    /// `bethconv-corpus-snapshot` when an install has no `forms` list yet. Not
+    /// compared.
     std::vector<std::string> suggestions;
 };
 
@@ -518,8 +517,8 @@ struct ReadCheck {
 /// Run every asset pass over `set` into `out` and summarize the pack.
 ///
 /// `out` must be empty: PackWriter reuses existing assets, which would turn a
-/// second run into all `deduped`. `records.fb` is not written; merge and
-/// snapshot are pinned separately.
+/// second run into all `deduped`. `world.fb` is not written; the merge and the
+/// world are pinned separately.
 ///
 /// Options are spelled out because asset names depend on them. The converter
 /// string is fixed instead of `BETHCONV_VERSION`, since a version bump renames
@@ -549,8 +548,7 @@ struct ReadCheck {
 /// `pinned` lists global FormIDs (hex text) to record. Unknown ones come back
 /// with `present` false instead of being dropped.
 ///
-/// `scratch` receives `records.fb` and `world.fb` for the snapshot and world
-/// pins; empty skips them.
+/// `scratch` receives `world.fb` for the world pin; empty skips it.
 [[nodiscard]] std::optional<MergeFacts> probe_merge(const std::filesystem::path& data_dir,
                                                     const archive::ArchiveSet& sources,
                                                     const std::vector<std::string>& pinned,

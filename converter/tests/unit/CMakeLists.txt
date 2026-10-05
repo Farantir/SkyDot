@@ -31,7 +31,6 @@ add_executable(bethconv_unit_tests
     test_animation_data.cpp
     test_strings.cpp
     test_merge.cpp
-    test_snapshot.cpp
     test_pex.cpp
     test_pex_script.cpp
     test_content_hash.cpp

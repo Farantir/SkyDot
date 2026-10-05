@@ -36,9 +36,9 @@ Mod files contain truncated archives, wrong sizes and offsets past EOF. No raw
 pointer arithmetic, no `reinterpret_cast` over a file buffer, no `memcpy` with a
 size read from the file. Use `bethconv::io::SpanReader`;
 `../tools/ci/check-raw-access.sh` enforces it. If `SpanReader` cannot express what
-you need, extend it. To hand bytes to an API that wants `uint8_t` or `char`
-(FlatBuffers, iostreams), use `io::as_u8` / `io::as_chars` from `byte_view.hpp`;
-a `static_cast` pair through `void*` is a `reinterpret_cast` and is rejected too.
+you need, extend it. To hand bytes to an API that wants `uint8_t`
+(FlatBuffers), use `io::as_u8` from `byte_view.hpp`; a `static_cast` pair
+through `void*` is a `reinterpret_cast` and is rejected too.
 
 ### Malformed input is never fatal
 

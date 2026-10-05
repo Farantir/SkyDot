@@ -111,7 +111,7 @@ struct Fixture {
         options.out = out;
         options.layout = layout;
         options.converter = "bethconv-test";
-        options.write_records = false;
+        options.write_world = false;
         auto result = convert(set, order(), options);
         REQUIRE(result.has_value());
         REQUIRE(result->pack.failed == 0);
@@ -325,7 +325,7 @@ TEST_CASE("two meshes with one hash at one depth are written once", "[view]") {
     ConvertOptions convert_options;
     convert_options.out = pack;
     convert_options.converter = "bethconv-test";
-    convert_options.write_records = false;
+    convert_options.write_world = false;
     REQUIRE(convert(set, order, convert_options).has_value());
 
     ViewOptions options;

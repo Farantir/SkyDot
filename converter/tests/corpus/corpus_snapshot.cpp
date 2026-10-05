@@ -316,17 +316,14 @@ void update_merge(const std::filesystem::path& dir, json& install,
     expected["problems"] = facts->problems;
     expected["string_tables"] = facts->string_tables;
     expected["type_counts_hash"] = facts->type_counts_hash;
-    for (const auto& [name, pin] : {std::pair{"snapshot", &facts->snapshot},
-                                    std::pair{"world", &facts->world}}) {
-        if (pin->empty()) {
-            std::fprintf(stderr, "  merge: %s was not written or does not reopen\n", name);
-            continue;
+    if (facts->world.empty()) {
+        std::fprintf(stderr, "  merge: world.fb was not written or does not reopen\n");
+    } else {
+        json world = json::object();
+        for (const auto& [key, value] : facts->world) {
+            world[key] = value;
         }
-        json out = json::object();
-        for (const auto& [key, value] : *pin) {
-            out[key] = value;
-        }
-        expected[name] = std::move(out);
+        expected["world"] = std::move(world);
     }
 
     for (const auto& form : facts->forms_pinned) {

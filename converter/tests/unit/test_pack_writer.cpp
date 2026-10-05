@@ -266,8 +266,11 @@ TEST_CASE("the manifest carries the load order and the source hashes", "[pack]")
                                             .hash = content_hash(bytes_of("esm"), "c", "source")});
     manifest.sources.push_back(
         SourceRecord{.name = "Skyrim - Meshes0.bsa", .kind = "tes4", .bytes = 7, .hash = std::nullopt});
-    manifest.records = RecordsRecord{
-        .forms = 1178001, .file_bytes = 616, .hash = content_hash(bytes_of("fb"), "c", "source")};
+    manifest.world = WorldRecord{.cells = 73725,
+                                 .refs = 864815,
+                                 .bases = 32814,
+                                 .file_bytes = 616,
+                                 .hash = content_hash(bytes_of("fb"), "c", "source")};
 
     REQUIRE(writer->finish(manifest).has_value());
     const auto doc = nlohmann::json::parse(read_text(dir / "pack" / "manifest.json"));
@@ -277,7 +280,9 @@ TEST_CASE("the manifest carries the load order and the source hashes", "[pack]")
     CHECK(doc["source_hashes"][0].contains("hash"));
     // An unhashed archive has no `hash` key, not a zero value.
     CHECK_FALSE(doc["source_hashes"][1].contains("hash"));
-    CHECK(doc["records"]["forms"] == 1178001);
+    CHECK(doc["world"]["cells"] == 73725);
+    CHECK(doc["world"]["file"] == "world.fb");
+    CHECK_FALSE(doc.contains("records"));
 }
 
 TEST_CASE("two identical runs produce byte-identical packs", "[pack]") {

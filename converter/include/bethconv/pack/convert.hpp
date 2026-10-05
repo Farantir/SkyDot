@@ -2,7 +2,7 @@
 //
 // `bethconv convert`: all passes over one mounted install, into one pack.
 //
-//   1. `records.fb`: merge and snapshot.
+//   1. `world.fb`: merge and write.
 //   2. Every `.nif`, `.dds` and `.pex` in the mount, content-addressed into
 //      `assets/` and deduplicated by source hash before conversion.
 //   3. `manifest.json`, `vpath.idx`, `report.json`.
@@ -22,7 +22,6 @@
 #include "bethconv/mesh/gltf_writer.hpp"
 #include "bethconv/mesh/nif_reader.hpp"
 #include "bethconv/pack/pack_writer.hpp"
-#include "bethconv/pack/snapshot.hpp"
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
@@ -47,8 +46,8 @@ struct ConvertOptions {
     /// Written to the manifest's `input` key; affects nothing else.
     std::optional<InputRecord> input;
 
-    /// Write `records.fb`. Off for asset-only runs.
-    bool write_records = true;
+    /// Merge the load order and write `world.fb`. Off for asset-only runs.
+    bool write_world = true;
 
     bool convert_meshes = true;
     bool convert_textures = true;
@@ -115,7 +114,6 @@ struct ConvertOptions {
 /// Results of `convert`.
 struct ConvertResult {
     PackStats pack;
-    std::optional<SnapshotStats> snapshot;
     std::optional<WorldStats> world;
     std::optional<record::MergeStats> merge;
 

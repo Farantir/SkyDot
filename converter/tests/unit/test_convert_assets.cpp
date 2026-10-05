@@ -42,7 +42,7 @@ using Bytes = std::vector<std::byte>;
     return bytes;
 }
 
-/// Loose files under one directory, mounted, converted without records.
+/// Loose files under one directory, mounted, converted without the merge.
 struct Run {
     TempDir dir;
     TempDir out;
@@ -51,7 +51,7 @@ struct Run {
     Run() {
         options.out = out / "pack";
         options.converter = "bethconv-test";
-        options.write_records = false;
+        options.write_world = false;
     }
 
     void add(const std::string& vpath, const Bytes& bytes) const {

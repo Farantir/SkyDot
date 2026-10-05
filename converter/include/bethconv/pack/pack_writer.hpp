@@ -4,7 +4,6 @@
 //
 //     pack/
 //       manifest.json         version, converter, load order, source hashes
-//       records.fb            record snapshot (written by pack/snapshot)
 //       world.fb              cells, references, base objects (pack/world)
 //       assets.idx, assets-<gen>.blob         assets, content-addressed (pack/asset_store)
 //       (or assets/<bb>/<hash>.<ext> with the loose layout)
@@ -77,15 +76,6 @@ struct SourceRecord {
     std::optional<ContentHash> hash; ///< Always for plugins; optional for archives.
 };
 
-/// Summary of `records.fb` for the manifest, so a consumer can check it without
-/// opening it.
-struct RecordsRecord {
-    std::uint64_t forms{};
-    std::uint64_t file_bytes{};
-    ContentHash hash;
-};
-
-/// Manifest fields this layer cannot determine itself.
 /// Summary of `world.fb` for the manifest.
 struct WorldRecord {
     std::uint64_t cells{};
@@ -122,7 +112,6 @@ struct PackManifest {
     std::optional<TextureRecord> textures;
     std::vector<std::string> load_order;
     std::vector<SourceRecord> sources;
-    std::optional<RecordsRecord> records;
     std::optional<WorldRecord> world;
 };
 
@@ -213,8 +202,6 @@ public:
 
     [[nodiscard]] const std::filesystem::path& root() const noexcept { return root_; }
 
-    /// Path for `records.fb`.
-    [[nodiscard]] std::filesystem::path records_path() const;
     /// Path for `world.fb`.
     [[nodiscard]] std::filesystem::path world_path() const;
 

@@ -49,7 +49,6 @@ io::ParseResult<PackWriter> PackWriter::create(const std::filesystem::path& root
     return writer;
 }
 
-std::filesystem::path PackWriter::records_path() const { return root_ / "records.fb"; }
 std::filesystem::path PackWriter::world_path() const { return root_ / "world.fb"; }
 
 std::string PackWriter::settings_for(AssetKind kind) const {
@@ -269,12 +268,6 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     }
     doc["source_hashes"] = std::move(sources);
 
-    if (manifest.records) {
-        doc["records"] = ordered_json{{"file", "records.fb"},
-                                      {"forms", manifest.records->forms},
-                                      {"bytes", manifest.records->file_bytes},
-                                      {"hash", manifest.records->hash.hex()}};
-    }
     if (manifest.world) {
         doc["world"] = ordered_json{{"file", "world.fb"},
                                     {"cells", manifest.world->cells},

@@ -61,7 +61,7 @@ if [[ -n "$double_hits" ]]; then
     echo "check-raw-access: reinterpret_cast spelled as two static_casts through void*:" >&2
     echo "$double_hits" >&2
     echo >&2
-    echo "Use bethconv::io::as_u8 / as_chars (bethconv/io/byte_view.hpp)." >&2
+    echo "Use bethconv::io::as_u8 (bethconv/io/byte_view.hpp)." >&2
     status=1
 fi
 

@@ -766,18 +766,14 @@ TEST_CASE("the load order collapses into the same flat world", "[corpus]") {
             CHECK(form.name_from_table == want.at("name_from_table").get<bool>());
         }
 
-        // records.fb and world.fb from this world: written, reopened, and the
-        // same counts and bytes as recorded.
-        for (const auto& [name, pin] : {std::pair{"snapshot", &facts->snapshot},
-                                        std::pair{"world", &facts->world}}) {
-            INFO(name);
-            REQUIRE_FALSE(pin->empty());
-            const auto& want = expected.at(name);
-            REQUIRE(want.size() == pin->size());
-            for (const auto& [key, value] : *pin) {
-                INFO(key);
-                CHECK(value == want.at(key).get<std::uint64_t>());
-            }
+        // world.fb from this world: written, reopened, and the same counts and
+        // bytes as recorded.
+        REQUIRE_FALSE(facts->world.empty());
+        const auto& want = expected.at("world");
+        REQUIRE(want.size() == facts->world.size());
+        for (const auto& [key, value] : facts->world) {
+            INFO(key);
+            CHECK(value == want.at(key).get<std::uint64_t>());
         }
     }
 }

@@ -12,13 +12,11 @@
 //   loadorder resolve plugins.txt into an indexed load order
 //   strings   read a plugin's .STRINGS tables
 //   merge     collapse a load order into one flat world
-//   snapshot  write the flat world to records.fb
 //   extract   pull virtual paths out of the archive set
 //   mesh      convert NIFs to glTF, or report what is in them
 //   texture   pass DDS through, completing the mip chain
 //   script    decode compiled Papyrus scripts
 //   animation decode Havok skeletons and animations
-//   verify    re-read records.fb and check what it claims
 //   convert   produce a pack
 //   view      materialize a pack as a directory tree
 //   cell      inspect cells in a pack's world.fb
@@ -39,13 +37,11 @@ void register_scan(CLI::App& app);
 void register_loadorder(CLI::App& app);
 void register_strings(CLI::App& app);
 void register_merge(CLI::App& app);
-void register_snapshot(CLI::App& app);
 void register_extract(CLI::App& app);
 void register_mesh(CLI::App& app);
 void register_texture(CLI::App& app);
 void register_script(CLI::App& app);
 void register_animation(CLI::App& app);
-void register_verify(CLI::App& app);
 void register_convert(CLI::App& app);
 void register_view(CLI::App& app);
 void register_cell(CLI::App& app);

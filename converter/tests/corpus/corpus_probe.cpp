@@ -8,7 +8,6 @@
 #include "bethconv/pack/animation_asset.hpp"
 #include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/script_asset.hpp"
-#include "bethconv/pack/snapshot.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/form_census.hpp"
@@ -543,8 +542,8 @@ std::optional<ConvertFacts> probe_convert(const std::filesystem::path& data_dir,
     // asset and would turn every release red.
     options.converter = "bethconv-corpus";
     options.language = std::string(record::k_default_language);
-    // Merge and snapshot are pinned separately and are the expensive part.
-    options.write_records = false;
+    // The merge and world.fb are pinned separately and are the expensive part.
+    options.write_world = false;
     options.convert_meshes = true;
     options.convert_textures = true;
     options.convert_scripts = true;
@@ -733,7 +732,6 @@ std::optional<MergeFacts> probe_merge(const std::filesystem::path& data_dir,
         .problems = world.problems().size(),
         .type_counts_hash = fnv1a(render_type_counts(world.type_counts())),
         .forms_pinned = {},
-        .snapshot = {},
         .world = {},
         .suggestions = suggest_forms(world),
     };
@@ -774,19 +772,6 @@ std::optional<MergeFacts> probe_merge(const std::filesystem::path& data_dir,
             }
             return fnv1a(mapped->bytes());
         };
-        const auto records = scratch / "records.fb";
-        if (const auto written = pack::write_snapshot(world, *order, records)) {
-            const auto reopened = pack::Snapshot::open(records);
-            const auto hash = file_hash(records);
-            if (reopened && hash) {
-                facts.snapshot = {{"forms", written->forms},
-                                  {"payload_bytes", written->payload_bytes},
-                                  {"editor_ids", written->editor_ids},
-                                  {"types", written->types},
-                                  {"bytes", std::filesystem::file_size(records)},
-                                  {"hash", *hash}};
-            }
-        }
         const auto world_path = scratch / "world.fb";
         if (const auto w = pack::write_world(world, *order, world_path)) {
             const auto reopened = pack::WorldFile::open(world_path);

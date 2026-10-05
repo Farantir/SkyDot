@@ -5,7 +5,7 @@
 // contains no Bethesda bytes and can be shared freely.
 //
 // It is built through `pack::convert`, the production path, so it has a real
-// manifest, `vpath.idx`, `records.fb` (with a real merge) and `report.json`,
+// manifest, `vpath.idx`, `world.fb` (with a real merge) and `report.json`,
 // and follows every format change. Inputs come from the builders in
 // tests/support/, the same ones the converter's tests use.
 //
@@ -45,7 +45,6 @@
 #include "bethconv/mesh/mesh_ir.hpp"
 #include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/vpath_index.hpp"
-#include "bethconv/pack/snapshot.hpp"
 #include "bethconv/pack/world.hpp"
 #include "bethconv/record/load_order.hpp"
 
@@ -1337,16 +1336,6 @@ int main(int argc, char** argv) {
         // ---- verify the output --------------------------------------------
         // A broken test pack would be debugged in the engine, so reopen it
         // through the consumer-side readers.
-        const auto snapshot = bethconv::pack::Snapshot::open(pack_dir / "records.fb");
-        if (!snapshot) {
-            std::cerr << "the pack's own records.fb does not reopen: "
-                      << snapshot.error().detail << "\n";
-            return EXIT_FAILURE;
-        }
-        if (!snapshot->blob_intact()) {
-            std::cerr << "the pack's own records.fb fails its blob hash\n";
-            return EXIT_FAILURE;
-        }
 
         // Every `vpath.idx` line must name an asset that exists.
         const auto index = bethconv::pack::VpathIndex::read(pack_dir / "vpath.idx");
@@ -1452,8 +1441,8 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "pack:      " << pack_dir << "\n"
-                  << "forms:     " << result->snapshot->forms << " in "
-                  << result->snapshot->file_bytes << " bytes\n"
+                  << "forms:     " << result->merge->forms << "; world.fb "
+                  << result->world->file_bytes << " bytes\n"
                   << "assets:    " << result->pack.distinct_assets << " distinct, "
                   << result->pack.index_entries << " index entries ("
                   << result->pack.meshes << " mesh, " << result->pack.textures << " texture, "
@@ -1463,8 +1452,7 @@ int main(int argc, char** argv) {
                   << "deferred:  " << result->pack.deferred << "\n"
                   << "failed:    " << result->pack.failed << "\n"
                   << "warnings:  " << result->pack.warnings << "\n"
-                  << "verified:  records.fb reopens, blob hash matches, all "
-                  << index->entries().size() << " vpath.idx entries resolve, "
+                  << "verified:  all " << index->entries().size() << " vpath.idx entries resolve, "
                   << world_refs << " world.fb references place known bases, terrain and navmeshes resolve\n";
 
         // Every input is meant to convert; a failure means the pack is broken.
