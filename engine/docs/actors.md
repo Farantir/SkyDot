@@ -53,7 +53,7 @@ are there when it is finished on arrival. `actors = false` (viewer:
 `--actors off`) builds none.
 
 What an actor is built from is decided from `world.fb` alone
-(`world/actors.cpp`, `get_actor_plan(ref)` shows it):
+(`data/actors.cpp`, `get_actor_plan(ref)` shows it):
 
 - **Templates.** TPLT chains are followed while the NPC takes traits (race,
   sex, skin, height, weight, face) or inventory (the outfit) from them. A
@@ -83,7 +83,7 @@ What an actor is built from is decided from `world.fb` alone
 builds it. In the Sleeping Giant Inn every actor stands dressed in its outfit
 in the idle.
 
-## Locomotion (`world/locomotion.*`)
+## Locomotion (`actors/locomotion.*`)
 
 Which clips move an actor, and how fast, is looked up by clip name in its
 race's behaviour project, without interpreting the behaviour graph (PLAN.md).

@@ -90,7 +90,14 @@ SkyDot/
 │   └── cmake/, CMakePresets.json, vcpkg.json
 ├── engine/                           skydot
 │   ├── extension/src/assets/         pack mounting, asset cache (~1,600)
-│   ├── extension/src/world/          everything built from world.fb (~16,500)
+│   ├── extension/src/data/           world.fb as read: WorldData, helpers, ActorPlan (~900)
+│   ├── extension/src/build/          CellBuilder, model decoration, reference helpers (~2,100)
+│   ├── extension/src/world/          SkydotWorld and its queries (~1,900)
+│   ├── extension/src/render/         materials, terrain, water, grass, LOD, weather, effects (~7,300)
+│   ├── extension/src/physics/        collision bodies, the player (~1,250)
+│   ├── extension/src/actors/         actors, their animation, locomotion, places (~1,600)
+│   ├── extension/src/nav/            navigation regions (~270)
+│   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
 │   ├── extension/src/vm/             Papyrus VM and its binding (~4,100)
 │   ├── extension/src/register_types.*  GDExtension entry point
 │   ├── game/                         Godot project: pack tool, viewer, tools (~4,700)
@@ -592,20 +599,20 @@ at the SCENE level:
 | --- | --- | --- |
 | `SkydotPack` (RefCounted) | `assets/pack.*` | mounts a pack, checks every version and count, loads models, textures and bytes, opens `SkydotWorld` |
 | `SkydotModel` (Resource) | `assets/model.*` | a converted mesh as a node-tree template, instanced by duplication |
-| `SkydotWorld` (RefCounted) | `world/world.*`, `refs.cpp`, `quests.cpp`, `actors.cpp` | the class scripts talk to: world.fb queries, cell and exterior building, resources; holds a `WorldData` and an `ActorPlacement` (7.3) |
-| `SkydotMaterials` (RefCounted) | `world/materials.*` | Skyrim-style shader materials, fog sync, shader warm-up |
-| `SkydotAnimator` (Node) | `world/animator.*` | plays the clips in a model's extras |
-| `SkydotParticles` (Node3D) | `world/particles.*` | NiParticleSystem as GPUParticles3D |
-| `SkydotFlicker` (Node) | `world/flicker.*` | flickering and pulsing lights |
-| `SkydotBillboard` (Node) | `world/billboard.*` | NiBillboardNode |
-| `SkydotLod` (Node3D) | `world/lod.*` | distant terrain, object and tree LOD |
-| `SkydotWeather` (Node3D) | `world/weather.*` | time of day, weather, sky, clouds, sun, moons, stars, precipitation, lightning |
-| `SkydotImageSpace` (CompositorEffect) | `world/image_space.*` | IMGS as a compositor effect (tone mapping, saturation, tint, contrast, eye adaptation) |
-| `SkydotDynamicBody` (RigidBody3D) | `world/collision.*` | movable clutter |
-| `SkydotPlayer` (CharacterBody3D) | `world/player.*` | the walking player |
-| `SkydotActor` (SkydotPlayer) | `world/actor.*` | a placed NPC that walks paths, opens doors |
-| `SkydotAnimation` (RefCounted) | `world/actor_animation.*` | skeletons and clips from `.animfb`, skinning onto skeletons |
-| `SkydotAi` (RefCounted) | `world/ai.*`, `packages.*` | AI packages against a game clock |
+| `SkydotWorld` (RefCounted) | `world/world.*`, `world/queries*.cpp`, `build/cell_builder.*` | the class scripts talk to: world.fb queries, cell and exterior building, resources; holds a `WorldData` and an `ActorPlacement` (7.3) |
+| `SkydotMaterials` (RefCounted) | `render/materials.*` | Skyrim-style shader materials, fog sync, shader warm-up |
+| `SkydotAnimator` (Node) | `render/animator.*` | plays the clips in a model's extras |
+| `SkydotParticles` (Node3D) | `render/particles.*` | NiParticleSystem as GPUParticles3D |
+| `SkydotFlicker` (Node) | `render/flicker.*` | flickering and pulsing lights |
+| `SkydotBillboard` (Node) | `render/billboard.*` | NiBillboardNode |
+| `SkydotLod` (Node3D) | `render/lod.*` | distant terrain, object and tree LOD |
+| `SkydotWeather` (Node3D) | `render/weather.*` | time of day, weather, sky, clouds, sun, moons, stars, precipitation, lightning |
+| `SkydotImageSpace` (CompositorEffect) | `render/image_space.*` | IMGS as a compositor effect (tone mapping, saturation, tint, contrast, eye adaptation) |
+| `SkydotDynamicBody` (RigidBody3D) | `physics/collision.*` | movable clutter |
+| `SkydotPlayer` (CharacterBody3D) | `physics/player.*` | the walking player |
+| `SkydotActor` (SkydotPlayer) | `actors/actor.*` | a placed NPC that walks paths, opens doors |
+| `SkydotAnimation` (RefCounted) | `actors/actor_animation.*` | skeletons and clips from `.animfb`, skinning onto skeletons |
+| `SkydotAi` (RefCounted) | `ai/ai.*`, `packages.*` | AI packages against a game clock |
 | `SkydotPapyrus` (RefCounted) | `vm/papyrus.*`, `vm/quests.cpp`, `vm/save.cpp` | the Papyrus VM bound to the world |
 
 Non-Godot helpers: `AssetCache`, `PackStore`, `TerrainBuilder`,
@@ -649,7 +656,7 @@ renderer creates resources without locking.
 ### 7.3 `SkydotWorld`: the world database and the builder
 
 `SkydotWorld` is the class GDScript talks to. It holds two parts of its own
-(`world/world_data.*`, `world/actor_placement.*`) and everything else
+(`data/world_data.*`, `actors/actor_placement.*`) and everything else
 (queries, builders, settings) is still in it:
 
 ```
@@ -693,7 +700,7 @@ bound `set_actor_place`, `clear_actor_place(s)` and `get_actor_place` of
 `SkydotWorld` forward to it; C++ callers use `SkydotWorld::placement()`.
 
 Lookups by id are flatc's `LookupByKey` (the schema marks the sorted vectors'
-ids `(key)`); `lookup` in `world/fb_search.hpp` also tolerates an absent
+ids `(key)`); `lookup` in `data/fb_search.hpp` also tolerates an absent
 vector, and `first_at_least` there finds the run of one reference in the
 vectors that can hold several (links, activate parents, primitives).
 
@@ -710,7 +717,7 @@ begin_cell(id) / begin_exterior(world, x, y)       immediate:
    exterior: terrain (TerrainBuilder: one mesh per quadrant, layer blending,
              normals using neighbour cells' edges, collision shape),
              water plane (WaterMaterials by WATR), grass,
-   both:     navigation regions (navmesh.cpp),
+   both:     navigation regions (nav/navmesh.cpp),
    both:     a BuildJob {refs to place, actors later, stats, kept resources}
              registered under the root's instance id
 continue_build(root, budget_usec)                   repeated per frame:
@@ -753,7 +760,7 @@ caller begins a build only when nothing would load on the main thread.
 
 ### 7.4 Rendering
 
-- **Materials** (`world/materials.*`). Godot's glTF importer produces
+- **Materials** (`render/materials.*`). Godot's glTF importer produces
   `StandardMaterial3D`s; `SkydotMaterials::apply` replaces each with a
   `ShaderMaterial` from one of three families, driven by
   `extras.bethconv`:
@@ -778,19 +785,19 @@ caller begins a build only when nothing would load on the main thread.
 - **Fog.** The engine's shaders compute the game's fog formula themselves
   (`with_game_fog`) and write `FOG`. Values reach them through the
   Environment via `SkydotMaterials::sync_fog`, called every frame.
-- **Terrain** (`world/terrain.*`): LAND heights and normals, VTXT layer
+- **Terrain** (`render/terrain.*`): LAND heights and normals, VTXT layer
   blending per vertex, land textures by LTEX → TXST; one mesh per quadrant.
-- **Water** (`world/water.*`): WATR noise layers, depth colour, refraction,
+- **Water** (`render/water.*`): WATR noise layers, depth colour, refraction,
   Fresnel to the sky or a short screen-space reflection march, sun glint.
-- **LOD** (`world/lod.*`, `engine/docs/lod.md`): a quadtree over the
+- **LOD** (`render/lod.*`, `engine/docs/lod.md`): a quadtree over the
   worldspace's LOD grid (4/8/16/32-cell quads), terrain and object LOD
   meshes, tree billboards as MultiMesh. A per-cell mask texture lets the
   LOD shaders discard fragments over loaded full-detail cells.
-- **Weather** (`world/weather.*`, `engine/docs/weather.md`): region or
+- **Weather** (`render/weather.*`, `engine/docs/weather.md`): region or
   climate weather choice, cross-fades, sky gradient, 29 cloud layers on
   `clouds.nif`, sun, moons with phases, stars, GPU rain and snow, lightning.
   It also owns the outdoor clock.
-- **Grass** (`world/grass.*`): GRAS per land texture, grid
+- **Grass** (`render/grass.*`): GRAS per land texture, grid
   placement by density, slope and water limits, MultiMesh per type and cell.
 - **Effects**: `SkydotAnimator` plays unnamed clips on the shared clock
   (every copy flickers in step) and named sequences on request (`Open`,
@@ -810,7 +817,7 @@ against bodies first, then model bounds.
 
 ### 7.6 Navigation
 
-`world/navmesh.*` turns each NAVM into a `NavigationRegion3D`. Portals
+`nav/navmesh.*` turns each NAVM into a `NavigationRegion3D`. Portals
 between cells are joined by Godot's edge connection margin (1 m, set in
 `project.godot`), ledges become `NavigationLink3D`s, and the cell size is
 0.01 m so nearby vertices are not merged (`engine/docs/navigation.md`).
@@ -819,14 +826,14 @@ between cells are joined by Godot's edge connection margin (1 m, set in
 
 Building an actor (`engine/docs/actors.md`):
 
-1. `actors.cpp` makes an `ActorPlan` from `world.fb` alone: it follows the
+1. `data/actors.cpp` makes an `ActorPlan` from `world.fb` alone: it follows the
    template chains, picks deterministically from leveled lists, and
    determines race and sex, skeleton (`.hkx`), outfit armor, skin addons
    where nothing worn covers the slot, the FaceGen head, and weight
    variants.
 2. `SkydotAnimation` builds the `Skeleton3D` from the skeleton asset and
    moves each converted body part's skinned meshes onto it.
-3. `locomotion.cpp` finds the idle, walk and run clips by name in the race's
+3. `actors/locomotion.cpp` finds the idle, walk and run clips by name in the race's
    behaviour project, with root-motion speed from `animationdata`. Clips
    come from the asset cache (`clip:` keys, sampled on workers).
 4. The result is a `SkydotActor` (a `SkydotPlayer` steered by itself): it
@@ -835,7 +842,7 @@ Building an actor (`engine/docs/actors.md`):
 
 ### 7.8 AI packages
 
-`world/packages.*` reads PACK records from `world.fb`. For each actor it
+`ai/packages.*` reads PACK records from `world.fb`. For each actor it
 picks the first package whose schedule (PSDT) and conditions (CTDA) pass,
 and flattens its procedure tree (Sequence, Stacked, Random, Simultaneous)
 into steps. `SkydotAi` runs them against its clock:
@@ -1084,8 +1091,8 @@ Readers refuse unknown versions and say which numbers they read.
 | support a new asset kind | `formats/include/skydot_formats/asset_kind.hpp` (`AssetKind`, its word and extension), `pack/convert.cpp` (`kind_of`, the switch, a settings fingerprint), `pack/pack_writer.*`, `formats/pack-format.md`, engine `AssetCache::load` |
 | change how a NIF converts | `mesh/nif_reader.cpp`, `nif_controllers.cpp`, `gltf_writer.cpp`; bump `mesh/N` in `ConvertOptions::mesh_settings` |
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
-| change how a reference is placed | `SkydotWorld::place_ref` (`engine/extension/src/world/world.cpp`) |
-| change a shader | the `k_*` string constants in `world/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` |
+| change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
+| change a shader | the `k_*` string constants in `render/materials.cpp`, `terrain.cpp`, `water.cpp`, `lod.cpp`, `weather.cpp`, `particles.cpp`, `image_space.cpp` (all in `render/`) |
 | add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
 | change streaming or door transitions | `game/viewer/cell_viewer.gd` (`_stream_step`, `_prepare_step`, `_fade_step`) |
 | change what the pack tool shows | `game/packtool/*.gd`, `converter/docs/cli-json.md` |

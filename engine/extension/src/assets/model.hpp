@@ -36,7 +36,7 @@ public:
     godot::Node* instantiate() const;
 
     /// Give a copy made by `instantiate` its physics bodies (see
-    /// world/collision.hpp). Returns how many; 0 if nothing collides.
+    /// physics/collision.hpp). Returns how many; 0 if nothing collides.
     std::int64_t attach_collision(godot::Node* instance) const;
     /// Bodies each instance gets.
     std::int64_t get_body_count() const;

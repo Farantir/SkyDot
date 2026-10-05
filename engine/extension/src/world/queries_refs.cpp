@@ -2,10 +2,10 @@
 //
 // What activating a reference involves: doors, scripts, links.
 #include "world/queries.hpp"
-#include "world/coordinates.hpp"
-#include "world/fb_search.hpp"
-#include "world/refs.hpp"
-#include "world/text.hpp"
+#include "data/coordinates.hpp"
+#include "data/fb_search.hpp"
+#include "build/refs.hpp"
+#include "data/text.hpp"
 
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"

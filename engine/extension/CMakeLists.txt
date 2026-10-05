@@ -35,19 +35,19 @@ add_custom_target(skydot_flatbuffers DEPENDS
 # packages, actor plans, virtual paths and file mappings. Nothing in them may include a
 # godot-cpp header: that would stop the unit tests building.
 set(SKYDOT_CORE_SOURCES
+    src/ai/packages.cpp
+    src/ai/packages.hpp
     src/assets/mapped_file.cpp
     src/assets/mapped_file.hpp
     src/assets/vpath.hpp
+    src/data/actors.cpp
+    src/data/actors.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
     src/vm/value.hpp
     src/vm/vm.cpp
-    src/vm/vm.hpp
-    src/world/actors.cpp
-    src/world/actors.hpp
-    src/world/packages.cpp
-    src/world/packages.hpp)
+    src/vm/vm.hpp)
 
 # Both copies read the same headers and need flatc's output first.
 function(skydot_core_library name)
@@ -85,9 +85,40 @@ endif()
 
 add_library(skydot SHARED)
 
+# The sources by what they depend on, from the bottom up:
+#   data/     world.fb as the engine reads it: WorldData and its indexes, the
+#             FlatBuffers helpers, conversions to Godot's types and space, and
+#             what is decided from the records alone (ActorPlan)
+#   nav/      navigation regions from the navmeshes
+#   render/   what draws: materials and shaders, terrain, water, grass, LOD,
+#             weather, image space, particles, animators, lights, billboards
+#   physics/  collision bodies, the walking player
+#   actors/   a placed NPC: its node, animation, locomotion clips, and where
+#             it is now (ActorPlacement)
+#   build/    CellBuilder: builds cells from data/ out of render/, physics/,
+#             actors/ and nav/, and the steps that decorate a placed model
+#   world/    SkydotWorld, the class scripts talk to: a facade over data/ and
+#             build/, and the read-only queries it answers
+#   ai/       AI packages and SkydotAi, which drive actors against a game clock
+#   vm/       the Papyrus VM and its binding to the world
+#   assets/   the pack: mounting, the asset cache, models
+# Not yet strictly layered: render/lod and render/weather take a SkydotWorld
+# (as ai/ and vm/ do), so they depend on world/ although world/ builds with
+# render/; and assets/ includes physics/ and actors/ for the collision and clips
+# its models and animations build to.
 target_sources(skydot PRIVATE
     src/register_types.cpp
     src/register_types.hpp
+    src/actors/actor.cpp
+    src/actors/actor.hpp
+    src/actors/actor_animation.cpp
+    src/actors/actor_animation.hpp
+    src/actors/actor_placement.cpp
+    src/actors/actor_placement.hpp
+    src/actors/locomotion.cpp
+    src/actors/locomotion.hpp
+    src/ai/ai.cpp
+    src/ai/ai.hpp
     src/assets/asset_cache.cpp
     src/assets/asset_cache.hpp
     src/assets/model.cpp
@@ -96,62 +127,52 @@ target_sources(skydot PRIVATE
     src/assets/pack.hpp
     src/assets/pack_store.cpp
     src/assets/pack_store.hpp
-    src/world/actor.cpp
-    src/world/actor_placement.cpp
-    src/world/actor_placement.hpp
-    src/world/actor.hpp
-    src/world/actor_animation.cpp
-    src/world/ai.cpp
-    src/world/ai.hpp
-    src/world/actor_animation.hpp
-    src/world/animator.cpp
-    src/world/locomotion.cpp
-    src/world/locomotion.hpp
-    src/world/animator.hpp
-    src/world/billboard.cpp
-    src/world/billboard.hpp
-    src/world/build_options.hpp
-    src/world/cell_builder.cpp
-    src/world/cell_builder.hpp
-    src/world/collision.cpp
-    src/world/navmesh.cpp
-    src/world/weather.cpp
-    src/world/collision.hpp
-    src/world/coordinates.cpp
-    src/world/coordinates.hpp
-    src/world/decoration.cpp
-    src/world/decoration.hpp
-    src/world/effect_asset.cpp
-    src/world/effect_asset.hpp
-    src/world/flicker.cpp
-    src/world/grass.cpp
-    src/world/image_space.cpp
-    src/world/flicker.hpp
-    src/world/water.cpp
-    src/world/water.hpp
-    src/world/terrain.cpp
-    src/world/terrain.hpp
-    src/world/text.hpp
-    src/world/materials.cpp
-    src/world/materials.hpp
-    src/world/particles.cpp
-    src/world/particles.hpp
-    src/world/player.cpp
-    src/world/player.hpp
+    src/build/build_options.hpp
+    src/build/cell_builder.cpp
+    src/build/cell_builder.hpp
+    src/build/decoration.cpp
+    src/build/decoration.hpp
+    src/build/refs.cpp
+    src/data/coordinates.cpp
+    src/data/coordinates.hpp
+    src/data/text.hpp
+    src/data/world_data.cpp
+    src/data/world_data.hpp
+    src/nav/navmesh.cpp
+    src/physics/collision.cpp
+    src/physics/collision.hpp
+    src/physics/player.cpp
+    src/physics/player.hpp
+    src/render/animator.cpp
+    src/render/animator.hpp
+    src/render/billboard.cpp
+    src/render/billboard.hpp
+    src/render/effect_asset.cpp
+    src/render/effect_asset.hpp
+    src/render/flicker.cpp
+    src/render/flicker.hpp
+    src/render/grass.cpp
+    src/render/image_space.cpp
+    src/render/lod.cpp
+    src/render/lod.hpp
+    src/render/materials.cpp
+    src/render/materials.hpp
+    src/render/particles.cpp
+    src/render/particles.hpp
+    src/render/terrain.cpp
+    src/render/terrain.hpp
+    src/render/water.cpp
+    src/render/water.hpp
+    src/render/weather.cpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp
-    src/world/world.cpp
-    src/world/world_data.cpp
-    src/world/world_data.hpp
-    src/world/refs.cpp
-    src/world/lod.cpp
-    src/world/lod.hpp
     src/world/queries.hpp
     src/world/queries_cells.cpp
     src/world/queries_quests.cpp
     src/world/queries_refs.cpp
     src/world/queries_sky.cpp
+    src/world/world.cpp
     src/world/world.hpp)
 add_dependencies(skydot skydot_flatbuffers)
 

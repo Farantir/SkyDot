@@ -3,9 +3,9 @@
 // Quests, globals and placed actors as world.fb carries them. The quest
 // system itself is in SkydotPapyrus (vm/quests.cpp).
 #include "world/queries.hpp"
-#include "world/fb_search.hpp"
-#include "world/refs.hpp"
-#include "world/text.hpp"
+#include "data/fb_search.hpp"
+#include "build/refs.hpp"
+#include "data/text.hpp"
 
 #include "skydot_formats/flags.hpp"
 

@@ -10,10 +10,10 @@
 #pragma once
 
 #include "assets/asset_cache.hpp"
-#include "world/actor_placement.hpp"
-#include "world/cell_builder.hpp"
+#include "actors/actor_placement.hpp"
+#include "build/cell_builder.hpp"
 #include "world/queries.hpp"
-#include "world/world_data.hpp"
+#include "data/world_data.hpp"
 #include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/animation.hpp>

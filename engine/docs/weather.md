@@ -1,6 +1,6 @@
 # Weather
 
-`SkydotWeather` (`world/weather.*`) runs an exterior's sky: time of day,
+`SkydotWeather` (`render/weather.*`) runs an exterior's sky: time of day,
 weather choice and fades, sky colours, light, fog, clouds, sun, moons, stars,
 rain and snow, lightning. The viewer adds one outside; interiors keep their
 own lighting.
@@ -60,7 +60,7 @@ own lighting.
 Our shaders (lit, effects, terrain, LOD, water) compute the game's fog
 themselves and write it to `FOG`, which replaces Godot's depth fog:
 `min(max, ((d − near)/(far − near))^power)`, coloured from the near to the
-far fog colour by the same ramp (`with_game_fog`, materials.cpp). Godot's
+far fog colour by the same ramp (`with_game_fog`, render/materials.cpp). Godot's
 own depth fog uses a smoothstep and one colour; with the far colour alone,
 nearby fog whitened everything. The values come through the Environment
 (depth begin/end/curve/density, the far colour as fog light colour, the near

@@ -6,7 +6,7 @@ converter decodes NVNM into `world.fb` (`../formats/pack-format.md`), and
 under a node named `Navmesh`. `navigation = false` (viewer:
 `--navigation off`) builds none.
 
-## Regions (`world/navmesh.*`)
+## Regions (`nav/navmesh.*`)
 
 - Vertices are converted like everything else (`coordinates.md`); triangles
   keep their order. Every vanilla triangle faces up (counter-clockwise seen

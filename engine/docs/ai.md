@@ -1,8 +1,8 @@
 # AI packages
 
-How placed actors spend their day: `world/packages.*` reads AI packages
+How placed actors spend their day: `ai/packages.*` reads AI packages
 (PACK) from `world.fb` (format 9, see `formats/pack-format.md`), and
-`SkydotAi` (`world/ai.*`) runs them against a game clock. Walking itself is
+`SkydotAi` (`ai/ai.*`) runs them against a game clock. Walking itself is
 `SkydotActor` (`actors.md`).
 
 ## Which package runs

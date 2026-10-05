@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// What a placed actor is built from (world/actors.cpp), decided from world.fb
+// What a placed actor is built from (data/actors.cpp), decided from world.fb
 // alone, as docs/actors.md describes: template chains, leveled lists that
 // pick the same entry every time for a reference, the skeleton, the outfit
 // and the skin worn over it, and the models and idle that come with them.
@@ -8,7 +8,7 @@
 // for the pack.
 #include "support/world_builder.hpp"
 
-#include "world/actors.hpp"
+#include "data/actors.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>

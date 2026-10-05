@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/world.hpp"
-#include "world/coordinates.hpp"
-#include "world/collision.hpp"
+#include "data/coordinates.hpp"
+#include "physics/collision.hpp"
 #include "world/queries.hpp"
-#include "world/refs.hpp"
-#include "world/text.hpp"
+#include "build/refs.hpp"
+#include "data/text.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/project_settings.hpp>

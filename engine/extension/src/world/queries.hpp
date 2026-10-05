@@ -7,7 +7,7 @@
 // answers every one with nothing (an empty Dictionary or Array, 0).
 #pragma once
 
-#include "world/world_data.hpp"
+#include "data/world_data.hpp"
 
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/queries.hpp"
-#include "world/fb_search.hpp"
-#include "world/text.hpp"
+#include "data/fb_search.hpp"
+#include "data/text.hpp"
 
 #include "skydot_formats/units.hpp"
 #include "world_generated.h"

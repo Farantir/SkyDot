@@ -2,8 +2,8 @@
 #include "assets/asset_cache.hpp"
 
 #include "assets/vpath.hpp"
-#include "world/actor_animation.hpp"
-#include "world/collision.hpp"
+#include "actors/actor_animation.hpp"
+#include "physics/collision.hpp"
 
 #include <godot_cpp/classes/cubemap.hpp>
 #include <godot_cpp/classes/gltf_document.hpp>

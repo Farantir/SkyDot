@@ -272,7 +272,15 @@ extension/src/            the GDExtension, C++20
   assets/pack.*           SkydotPack
   assets/pack_store.*     vpath.idx and asset bytes (blob or loose)
   assets/asset_cache.*    models and textures built from those bytes
-  world/world.*           SkydotWorld
+  data/                   world.fb as read (WorldData), FlatBuffers helpers, coordinates, ActorPlan
+  nav/                    navigation regions from navmeshes
+  render/                 materials, terrain, water, grass, LOD, weather, effects
+  physics/                collision bodies, the player
+  actors/                 SkydotActor, animation, locomotion, where actors are
+  build/                  CellBuilder: cells built from data, and the decoration of models
+  world/                  SkydotWorld (a facade over data/ and build/) and its queries
+  ai/                     AI packages, SkydotAi
+  vm/                     the Papyrus VM and SkydotPapyrus
 game/                     the Godot project (.gdextension, project.godot, glue)
   packtool/               the pack tool (main scene): convert, list, view
   viewer/                 cell viewer

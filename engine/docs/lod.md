@@ -1,6 +1,6 @@
 # Distant LOD
 
-`SkydotLod` (`extension/src/world/lod.*`) shows a worldspace's LOD beyond the
+`SkydotLod` (`extension/src/render/lod.*`) shows a worldspace's LOD beyond the
 cells loaded at full detail: the game's terrain LOD (`.btr`), object LOD
 (`.bto`) and tree LOD (`.btt` with the `.lst` billboard list), as the
 converter carries them (`../formats/pack-format.md`, "LOD").

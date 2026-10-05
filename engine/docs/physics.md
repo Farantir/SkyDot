@@ -5,7 +5,7 @@ converter keeps in mesh extras (`../formats/pack-format.md`, "Collision in
 meshes"). `SkydotWorld` attaches bodies when it places a model;
 `collision = false` (viewer: `--collision off`) builds none.
 
-## Bodies (`world/collision.*`)
+## Bodies (`physics/collision.*`)
 
 - Parsed once per model on the loader's thread (`ModelCollision::take_from`),
   which also drops the collision arrays from the template's extras. Godot

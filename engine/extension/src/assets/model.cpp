@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/model.hpp"
 
-#include "world/collision.hpp"
+#include "physics/collision.hpp"
 
 #include <godot_cpp/classes/node3d.hpp>
 

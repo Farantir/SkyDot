@@ -57,7 +57,7 @@ acceleration re-rolled eight times a second.
 LIGH flicker flags vary brightness by the intensity amplitude over the flicker
 period (smooth noise) and move the light within a 64th of the movement
 amplitude of its place (about 1 cm for a torch; the game's scale is unknown,
-see flicker.cpp); pulse
+see render/flicker.cpp); pulse
 flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
 
 ## Cost

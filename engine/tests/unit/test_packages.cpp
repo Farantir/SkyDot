@@ -1,14 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// AI packages (world/packages.cpp) as docs/ai.md describes them: which package
+// AI packages (ai/packages.cpp) as docs/ai.md describes them: which package
 // an actor runs at a time of day ("Which package runs") and what a package
 // does ("What a package does", the procedure tree flattened into steps). The
 // world.fb is built in memory (support/world_builder.hpp); conditions are
 // answered by a host the test fills in. Everything goes through the public
-// API of world/packages.hpp.
+// API of ai/packages.hpp.
 #include "support/world_builder.hpp"
 
-#include "world/packages.hpp"
+#include "ai/packages.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
