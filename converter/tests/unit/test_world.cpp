@@ -1288,3 +1288,238 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(pack->inputs[2]->number == 7.0F);
     CHECK(pack->branches.empty());
 }
+
+namespace {
+
+constexpr std::uint32_t k_lt_full = 0x0000'0A01;   // LGTM, 92-byte DATA, DALC 32
+constexpr std::uint32_t k_lt_to_spec = 0x0000'0A02; // 72-byte DATA, DALC 24
+constexpr std::uint32_t k_lt_to_ambient = 0x0000'0A03; // 64-byte DATA, DALC 24
+constexpr std::uint32_t k_lt_bad = 0x0000'0A04;     // 80-byte DATA: no layout
+
+/// The first `size` bytes of the 92-byte lighting layout of XCLL and LGTM DATA
+/// (UESP, CELL XCLL and LGTM DATA; xEdit's definitions): the shorter layouts
+/// of Skyrim.esm are prefixes of it.
+ByteWriter lighting_bytes(std::size_t size, std::uint32_t ambient, float fog_near,
+                          std::uint32_t inherit = 0) {
+    ByteWriter all;
+    all.u32(ambient);
+    all.u32(0x0011'2233); // directional
+    all.u32(0x0040'3020); // fog near colour
+    all.f32(fog_near);
+    all.f32(3000.0F); // fog far
+    all.u32(10);      // rotation XY
+    all.u32(90);      // rotation Z
+    all.f32(0.5F);    // directional fade
+    all.f32(100.0F);  // fog clip distance
+    all.f32(0.7F);    // fog power
+    for (std::uint32_t i = 1; i <= 6; ++i) {
+        all.u32(0x00A0'0000 + i); // directional ambient x+ .. z-
+    }
+    all.u32(0x00AB'CDEF); // specular
+    all.f32(1.0F);        // fresnel power
+    all.u32(0x0060'4050); // fog far colour
+    all.f32(0.6F);        // fog max
+    all.f32(200.0F);      // light fade begin
+    all.f32(800.0F);      // light fade end
+    all.u32(inherit);
+    ByteWriter cut;
+    cut.raw(all.span().first(size));
+    return cut;
+}
+
+void lighting_template(ByteWriter& group, std::uint32_t id, std::string_view editor_id,
+                       std::size_t data_size, std::size_t dalc_size, std::uint32_t ambient) {
+    ByteWriter payload;
+    ByteWriter edid;
+    edid.zstring(editor_id);
+    bethconv::test::write_field(payload, "EDID", edid);
+    bethconv::test::write_field(payload, "DATA", lighting_bytes(data_size, ambient, 500.0F));
+    ByteWriter dalc;
+    for (std::uint32_t i = 1; i <= 6; ++i) {
+        dalc.u32(0x00B0'0000 + i);
+    }
+    dalc.u32(0x0001'0203); // specular
+    dalc.f32(1.0F);        // fresnel power
+    ByteWriter cut;
+    cut.raw(dalc.span().first(dalc_size));
+    bethconv::test::write_field(payload, "DALC", cut);
+    bethconv::test::write_record(group, "LGTM", id, payload.span());
+}
+
+/// An interior CELL; `xcll_size` 0 leaves the XCLL out, `tmpl` 0 the LTMP.
+void lit_cell(ByteWriter& group, std::uint32_t id, std::string_view editor_id,
+              std::size_t xcll_size, std::uint32_t inherit, std::uint32_t tmpl) {
+    ByteWriter payload = cell_payload(editor_id);
+    if (xcll_size != 0) {
+        bethconv::test::write_field(payload, "XCLL",
+                                    lighting_bytes(xcll_size, 0x0000'0011, 250.0F, inherit));
+    }
+    if (tmpl != 0) {
+        ByteWriter ltmp;
+        ltmp.u32(tmpl);
+        bethconv::test::write_field(payload, "LTMP", ltmp);
+    }
+    bethconv::test::write_record(group, "CELL", id, payload.span());
+}
+
+/// Lighting.esm: four lighting templates (92, 72, 64 and 80 bytes of DATA) and
+/// interiors that use them.
+void make_lighting(const TempDir& dir) {
+    ByteWriter file;
+    bethconv::test::write_tes4(file, 0x1, {});
+    ByteWriter templates;
+    lighting_template(templates, k_lt_full, "FullTemplate", 92, 32, 0x0000'0101);
+    lighting_template(templates, k_lt_to_spec, "SpecTemplate", 72, 24, 0x0000'0202);
+    lighting_template(templates, k_lt_to_ambient, "AmbientTemplate", 64, 24, 0x0000'0303);
+    lighting_template(templates, k_lt_bad, "BadTemplate", 80, 32, 0x0000'0404);
+    top_group(file, "LGTM", templates);
+
+    constexpr std::uint32_t all_inherited = 0x0000'07FF;
+    ByteWriter cells;
+    lit_cell(cells, 0x0000'0B01, "OwnFull", 92, 0, 0);
+    lit_cell(cells, 0x0000'0B02, "OwnToSpecular", 72, 0, 0);
+    lit_cell(cells, 0x0000'0B03, "OwnToAmbient", 64, 0, 0);
+    lit_cell(cells, 0x0000'0B04, "OwnBadSize", 80, 0, 0);
+    lit_cell(cells, 0x0000'0B05, "NoLighting", 0, 0, 0);
+    lit_cell(cells, 0x0000'0B06, "OnlyFull", 0, 0, k_lt_full);
+    lit_cell(cells, 0x0000'0B07, "OnlyToSpecular", 0, 0, k_lt_to_spec);
+    lit_cell(cells, 0x0000'0B08, "OnlyToAmbient", 0, 0, k_lt_to_ambient);
+    lit_cell(cells, 0x0000'0B09, "InheritsToAmbient", 92, all_inherited, k_lt_to_ambient);
+    lit_cell(cells, 0x0000'0B0A, "InheritsFull", 92, all_inherited, k_lt_full);
+    lit_cell(cells, 0x0000'0B0B, "OnlyBad", 0, 0, k_lt_bad);
+    lit_cell(cells, 0x0000'0B0C, "OwnTooShort", 40, 0, 0);
+    ByteWriter sub_block;
+    bethconv::test::write_group(sub_block, 0, 3, cells.span());
+    ByteWriter block;
+    bethconv::test::write_group(block, 0, 2, sub_block.span());
+    top_group(file, "CELL", block);
+    save(dir, "Lighting.esm", file);
+}
+
+} // namespace
+
+TEST_CASE("world.fb decodes the 64, 72 and 92-byte lighting layouts", "[pack][world][lighting]") {
+    const TempDir dir;
+    make_lighting(dir);
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "Lighting.esm", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto out = dir / "world.fb";
+    const auto stats = pack::write_world(world, order, out);
+    REQUIRE(stats.has_value());
+    CHECK(stats->cells == 12);
+    CHECK(stats->lighting_templates == 3);
+    // The template and the cell whose DATA/XCLL has no layout: 80 bytes of
+    // LGTM DATA, 80 and 40 of XCLL.
+    CHECK(stats->parse_errors == 3);
+
+    const auto file = pack::WorldFile::open(out);
+    REQUIRE(file.has_value());
+    const auto cell = [&](std::string_view editor_id) {
+        const auto found = file->cell_by_editor_id(editor_id);
+        REQUIRE(found.has_value());
+        return *found;
+    };
+
+    // 92 bytes: every field is read.
+    const auto full = cell("OwnFull");
+    REQUIRE(full.has_lighting);
+    CHECK(full.lighting->ambient() == 0x11);
+    CHECK(full.lighting->directional() == 0x0011'2233);
+    CHECK(full.lighting->fog_near_color() == 0x0040'3020);
+    CHECK(full.lighting->fog_near() == 250.0F);
+    CHECK(full.lighting->fog_far() == 3000.0F);
+    CHECK(full.lighting->directional_rotation_xy() == 10);
+    CHECK(full.lighting->directional_rotation_z() == 90);
+    CHECK(full.lighting->directional_fade() == 0.5F);
+    CHECK(full.lighting->fog_power() == 0.7F);
+    CHECK(full.lighting->fog_far_color() == 0x0060'4050);
+    CHECK(full.lighting->fog_max() == 0.6F);
+    CHECK(full.lighting->light_fade_begin() == 200.0F);
+    CHECK(full.lighting->light_fade_end() == 800.0F);
+    REQUIRE(full.directional_ambient.size() == 6);
+    CHECK(full.directional_ambient[0] == 0x00A0'0001);
+    CHECK(full.directional_ambient[5] == 0x00A0'0006);
+
+    // 72 and 64 bytes: what is there is read as in the full layout, what is
+    // not is neutral (fog far colour = near colour, fog max 1, no fade
+    // distances, nothing inherited).
+    for (const auto name : {"OwnToSpecular", "OwnToAmbient"}) {
+        const auto c = cell(name);
+        REQUIRE(c.has_lighting);
+        CHECK(c.lighting->ambient() == 0x11);
+        CHECK(c.lighting->directional() == 0x0011'2233);
+        CHECK(c.lighting->fog_near() == 250.0F);
+        CHECK(c.lighting->fog_far() == 3000.0F);
+        CHECK(c.lighting->directional_rotation_z() == 90);
+        CHECK(c.lighting->directional_fade() == 0.5F);
+        CHECK(c.lighting->fog_power() == 0.7F);
+        CHECK(c.lighting->fog_near_color() == 0x0040'3020);
+        CHECK(c.lighting->fog_far_color() == 0x0040'3020);
+        CHECK(c.lighting->fog_max() == 1.0F);
+        CHECK(c.lighting->light_fade_begin() == 0.0F);
+        CHECK(c.lighting->light_fade_end() == 0.0F);
+        CHECK(c.lighting->inherit() == 0);
+        REQUIRE(c.directional_ambient.size() == 6);
+        CHECK(c.directional_ambient[0] == 0x00A0'0001);
+    }
+
+    // A size that is no layout is no lighting; the cell is still there.
+    CHECK_FALSE(cell("OwnBadSize").has_lighting);
+    CHECK_FALSE(cell("OwnTooShort").has_lighting);
+    CHECK_FALSE(cell("NoLighting").has_lighting);
+
+    // A cell without XCLL takes its template's, whatever the template's DATA
+    // size; the directional ambient is the DALC (24 or 32 bytes), not the
+    // template's own block.
+    const auto only_full = cell("OnlyFull");
+    REQUIRE(only_full.has_lighting);
+    CHECK(only_full.lighting->ambient() == 0x0101);
+    CHECK(only_full.lighting->fog_near() == 500.0F);
+    CHECK(only_full.lighting->fog_far_color() == 0x0060'4050);
+    CHECK(only_full.lighting->fog_max() == 0.6F);
+    CHECK(only_full.lighting->light_fade_end() == 800.0F);
+    CHECK(only_full.lighting->inherit() == 0);
+    REQUIRE(only_full.directional_ambient.size() == 6);
+    CHECK(only_full.directional_ambient[0] == 0x00B0'0001);
+    for (const auto& [name, ambient] :
+         {std::pair{"OnlyToSpecular", 0x0202U}, std::pair{"OnlyToAmbient", 0x0303U}}) {
+        const auto c = cell(name);
+        REQUIRE(c.has_lighting);
+        CHECK(c.lighting->ambient() == ambient);
+        CHECK(c.lighting->directional() == 0x0011'2233);
+        CHECK(c.lighting->fog_near() == 500.0F);
+        CHECK(c.lighting->fog_far_color() == c.lighting->fog_near_color());
+        CHECK(c.lighting->fog_max() == 1.0F);
+        CHECK(c.lighting->light_fade_begin() == 0.0F);
+        CHECK(c.lighting->light_fade_end() == 0.0F);
+        CHECK(c.lighting->inherit() == 0);
+        REQUIRE(c.directional_ambient.size() == 6);
+        CHECK(c.directional_ambient[0] == 0x00B0'0001);
+        CHECK(c.directional_ambient[5] == 0x00B0'0006);
+    }
+
+    // An XCLL that inherits everything gets the template's values, the
+    // neutral ones of a short template included.
+    const auto inherits = cell("InheritsToAmbient");
+    REQUIRE(inherits.has_lighting);
+    CHECK(inherits.lighting->ambient() == 0x0303);
+    CHECK(inherits.lighting->fog_near() == 500.0F);
+    CHECK(inherits.lighting->fog_near_color() == 0x0040'3020);
+    CHECK(inherits.lighting->fog_far_color() == 0x0040'3020);
+    CHECK(inherits.lighting->fog_max() == 1.0F);
+    CHECK(inherits.lighting->light_fade_begin() == 0.0F);
+    CHECK(inherits.lighting->light_fade_end() == 0.0F);
+    REQUIRE(inherits.directional_ambient.size() == 6);
+    CHECK(inherits.directional_ambient[0] == 0x00B0'0001);
+    const auto inherits_full = cell("InheritsFull");
+    REQUIRE(inherits_full.has_lighting);
+    CHECK(inherits_full.lighting->ambient() == 0x0101);
+    CHECK(inherits_full.lighting->fog_max() == 0.6F);
+    CHECK(inherits_full.lighting->light_fade_begin() == 200.0F);
+
+    // A template with no layout is none: the cell keeps what it has.
+    CHECK_FALSE(cell("OnlyBad").has_lighting);
+}

@@ -56,8 +56,9 @@ struct CellEntry {
     bool has_record{};
 };
 
-/// LGTM: DATA has XCLL's layout up to the light fade distances (its
-/// directional ambient block is unused); the directional ambient is DALC.
+/// LGTM: DATA has XCLL's layouts, 92, 72 or 64 bytes, up to the light fade
+/// distances (its directional ambient block is unused, and it has no inherit
+/// flags); the directional ambient is DALC.
 struct LightingTemplateEntry {
     Lighting lighting;
 };

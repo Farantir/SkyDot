@@ -144,8 +144,12 @@ table RefScripts {
     scripts: [Script];
 }
 
-/// Decoded XCLL (92-byte form). Colors are RGBA bytes packed little-endian
-/// (red in the low byte). Source: UESP, CELL record, XCLL.
+/// Decoded XCLL, from its 92-byte form or the 72 and 64-byte forms that
+/// Skyrim.esm also has. A shorter form lacks the fog far colour, fog max, light
+/// fade distances and inherit flags, which read as: fog far colour = fog near
+/// colour, fog max 1, fade distances 0 and 0, no inherit flags. Colors are RGBA
+/// bytes packed little-endian (red in the low byte). Source: UESP, CELL record,
+/// XCLL; xEdit's definitions for the shorter forms.
 struct CellLighting {
     ambient: uint32;
     directional: uint32;

@@ -121,9 +121,12 @@ test bits by these names, through `has_flag` in
 `formats/include/skydot_formats/flags.hpp`.
 
 - `cells`, sorted by id: editor id, worldspace (0 for interiors), DATA flags
-  (`CellFlags`), grid, water height, decoded XCLL lighting (92-byte form only), lighting
-  template, the cell's references (sorted by id) and load doors, its terrain,
-  and whether it is its worldspace's persistent cell.
+  (`CellFlags`), grid, water height, decoded XCLL lighting (the 92-byte form
+  and the 72 and 64-byte forms that Skyrim.esm also has; what a shorter one
+  lacks reads as neutral: fog far colour = fog near colour, fog max 1, no
+  light fade distances, no inherit flags), lighting template, the cell's
+  references (sorted by id) and load doors, its terrain, and whether it is its
+  worldspace's persistent cell.
 - A reference: base, position and rotation in Skyrim space (Z-up, game units,
   radians), scale, flags (`RefFlags`: initially disabled, persistent,
   enable-opposite, activated only by its activate parents), enable parent. Deleted references

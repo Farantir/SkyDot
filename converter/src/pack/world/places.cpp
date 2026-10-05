@@ -49,10 +49,53 @@ std::optional<std::pair<float, std::vector<std::int8_t>>> decode_vhgt(
     return std::pair{offset, std::move(deltas)};
 }
 
-/// XCLL, 92-byte layout (source: UESP, CELL record, XCLL). The 64-byte pre-1.70
-/// form is not decoded.
+/// XCLL (CELL) and DATA (LGTM) come in three sizes, each a prefix of the full
+/// 92-byte layout:
+///   0..40   ambient, directional, fog near colour, fog near, fog far,
+///           directional rotation XY and Z, directional fade, fog clip
+///           distance, fog power
+///   40..64  the directional ambient colours x+, x-, y+, y-, z+, z-
+///   64..72  specular colour, fresnel power
+///   72..92  fog far colour, fog max, light fade begin and end, and a u32 (the
+///           inherit flags in a CELL; unknown in an LGTM, 0 on all 92 full
+///           ones in Skyrim.esm)
+/// Sources: UESP, CELL record, XCLL ("92 byte structure"; "this field has only
+/// 64 bytes in NavMeshGenCellDUPLICATE001") and LGTM record, DATA (the same
+/// fields); xEdit's wbDefinitionsTES5.pas, where both structs have the member
+/// order above and are optional from the fog far colour on, and the ambient
+/// colours struct (wbAmbientColors) is optional from its specular colour (the
+/// LGTM definition says "WindhelmLightingTemplate [LGTM:0007BA87] only find
+/// 24"). Measured with `bethconv records --field-sizes`: XCLL is 92 bytes on
+/// 589 and 64 on one (NavMeshGenCellDUPLICATE001, 0x00000025) in Skyrim.esm,
+/// LE, SE and VR alike; LGTM DATA is 92 bytes on 92, 72 on four (0x0007545E,
+/// 0x000660A3, 0x000B9F59, 0x000A0F40) and 64 on one (0x0007BA87) of its 97.
+/// The other vanilla masters and the 612 plugins in the FUS mod folders add
+/// only 92-byte ones.
+///
+/// What a short layout leaves out reads as a neutral value, so it looks like a
+/// full layout with these (no source says what the game uses; the choices come
+/// from the 92-byte data in Skyrim.esm):
+///   fog far colour = fog near colour: a short layout has one fog colour, and
+///     the two are equal on 460 of the 589 cells, so the fog keeps its colour
+///     with distance.
+///   fog max = 1: the commonest value (526 of 589 XCLL, 36 of 92 LGTM), and a
+///     clamp that lets the fog reach full opacity at its far distance.
+///   light fade begin and end = 0: no fade distances, as on 507 of 589 XCLL.
+///   inherit flags = 0: the cell takes nothing from its template.
+/// The specular colour and fresnel power are not kept (not in the schema, and
+/// the engine does not use them).
+///
+/// Another size is nullopt, for the caller to count: xEdit's optional members
+/// would also end a struct at 68, 76, 80, 84 or 88, but no data has them.
+/// Larger than 92 is read as 92, as it always was.
+constexpr std::size_t k_lighting_to_ambient = 64;
+constexpr std::size_t k_lighting_to_specular = 72;
+constexpr std::size_t k_lighting_full = 92;
+
 std::optional<Lighting> decode_xcll(std::span<const std::byte> raw) {
-    if (raw.size() < 92) {
+    const std::size_t size = raw.size();
+    if (size != k_lighting_to_ambient && size != k_lighting_to_specular &&
+        size < k_lighting_full) {
         return std::nullopt;
     }
     io::SpanReader r(raw, "XCLL");
@@ -73,7 +116,17 @@ std::optional<Lighting> decode_xcll(std::span<const std::byte> raw) {
     for (auto& colour : out.directional_ambient) {
         colour = u32();
     }
+    if (size == k_lighting_to_ambient) {
+        out.fog_far_color = out.fog_near_color;
+        out.fog_max = 1.0F;
+        return out;
+    }
     (void)r.skip(4 + 4); // specular, fresnel power
+    if (size == k_lighting_to_specular) {
+        out.fog_far_color = out.fog_near_color;
+        out.fog_max = 1.0F;
+        return out;
+    }
     out.fog_far_color = u32();
     out.fog_max = f32();
     out.light_fade_begin = f32();
@@ -193,6 +246,9 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
     auto& entry = cells_[merged.form.value];
     entry.has_record = true;
     entry.xcll = decode_xcll(cell->lighting);
+    if (!cell->lighting.empty() && !entry.xcll) {
+        ++shared_.stats().parse_errors; // an XCLL of no known size
+    }
     auto& out = entry.cell;
     out.id = merged.form.value;
     out.editor_id = cell->editor_id;
@@ -424,7 +480,11 @@ void PlaceCollector::on_navmesh(const record::MergedRecord& merged, io::SpanRead
     cells_[merged.parent.value].cell.navmeshes.push_back(std::move(out));
 }
 
-/// LGTM (UESP, LGTM record): DATA as XCLL, DALC 32 bytes.
+/// LGTM (UESP, LGTM record): DATA as XCLL, in any of its sizes (see
+/// decode_xcll); DALC is 32 bytes (the six directional ambient colours, a
+/// specular colour and a fresnel power; xEdit, wbAmbientColors) on 92 of the 97
+/// in Skyrim.esm and 24 (the colours alone, xEdit marks the rest optional) on
+/// the 5 whose DATA is short.
 void PlaceCollector::on_lighting_template(const record::MergedRecord& merged,
                                           io::SpanReader& data) {
     LightingTemplateEntry out;
