@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/lod.hpp"
 #include "render/materials.hpp"
+#include "render/shader_source.hpp"
 
 #include "skydot_formats/units.hpp"
 #include "lod_generated.h"
@@ -42,135 +43,23 @@ std::string utf8(const String& s) {
     return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
 }
 
-// Shared by every LOD shader: discard over cells built at full detail.
-constexpr const char* k_mask = R"(
-uniform sampler2D skydot_cell_mask : filter_nearest, repeat_disable;
-uniform vec2 skydot_mask_origin;
-uniform float skydot_mask_size = 1.0;
-uniform float skydot_unit_scale;
-uniform float skydot_cell_units;
-varying vec3 skydot_world;
-
-bool skydot_masked(vec3 world) {
-	vec2 game = vec2(world.x, -world.z) / skydot_unit_scale;
-	vec2 cell = floor(game / skydot_cell_units) - skydot_mask_origin;
-	if (any(lessThan(cell, vec2(0.0))) || any(greaterThanEqual(cell, vec2(skydot_mask_size)))) {
-		return false;
-	}
-	return texture(skydot_cell_mask, (cell + 0.5) / skydot_mask_size).r > 0.5;
-}
-)";
-
-// Terrain LOD: one texture per quad and a model-space normal map in the NIF's
-// axes (x east, y north, z up); the node transform carries it to Godot's.
-constexpr const char* k_terrain = R"(
-uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_disable;
-uniform sampler2D normal_tex : filter_linear_mipmap, repeat_disable;
-uniform bool has_normal = false;
-
-void vertex() {
-	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-void fragment() {
-	if (skydot_masked(skydot_world)) {
-		discard;
-	}
-	ALBEDO = texture(albedo_tex, UV).rgb;
-	if (has_normal) {
-		vec3 n = texture(normal_tex, UV).rgb * 2.0 - 1.0;
-		NORMAL = normalize((VIEW_MATRIX * (MODEL_MATRIX * vec4(n, 0.0))).xyz);
-	}
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.1;
-}
-)";
-
-// Object LOD: the atlas (or a landscape texture for "HD" pieces) times the
-// vertex colour, and a tangent-space normal map in the DirectX convention.
-constexpr const char* k_object = R"(
-uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
-uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
-uniform bool has_normal = false;
-
-void vertex() {
-	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-void fragment() {
-	if (skydot_masked(skydot_world)) {
-		discard;
-	}
-	ALBEDO = texture(albedo_tex, UV).rgb * COLOR.rgb;
-	if (has_normal) {
-		vec4 n = texture(normal_tex, UV);
-		NORMAL_MAP = vec3(n.r, 1.0 - n.g, n.b);
-	}
-	ROUGHNESS = 0.9;
-	SPECULAR = 0.2;
-}
-)";
-
-constexpr const char* k_water = R"(
-uniform vec4 color = vec4(0.10, 0.17, 0.20, 1.0);
-
-void vertex() {
-	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
-}
-
-void fragment() {
-	if (skydot_masked(skydot_world)) {
-		discard;
-	}
-	ALBEDO = color.rgb;
-	ROUGHNESS = 0.1;
-	SPECULAR = 0.6;
-}
-)";
-
-// Trees: upright billboards turned to the camera. The instance transform
-// carries the base (origin) and the size (basis lengths); INSTANCE_CUSTOM the
-// atlas rectangle.
-constexpr const char* k_tree = R"(
-uniform sampler2D atlas : filter_linear_mipmap, repeat_disable;
-
-void vertex() {
-	vec3 origin = MODEL_MATRIX[3].xyz;
-	float w = length(MODEL_MATRIX[0].xyz);
-	float h = length(MODEL_MATRIX[1].xyz);
-	vec3 to_camera = CAMERA_POSITION_WORLD - origin;
-	to_camera.y = 0.0;
-	vec3 facing = length(to_camera) > 0.001 ? normalize(to_camera) : vec3(0.0, 0.0, 1.0);
-	vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), facing));
-	vec3 world = origin + right * VERTEX.x * w + vec3(0.0, VERTEX.y * h, 0.0);
-	skydot_world = world;
-	POSITION = PROJECTION_MATRIX * (VIEW_MATRIX * vec4(world, 1.0));
-	NORMAL = (VIEW_MATRIX * vec4(facing, 0.0)).xyz;
-	UV = mix(INSTANCE_CUSTOM.xy, INSTANCE_CUSTOM.zw, UV);
-}
-
-void fragment() {
-	if (skydot_masked(skydot_world)) {
-		discard;
-	}
-	vec4 c = texture(atlas, UV);
-	if (c.a < 0.5) {
-		discard;
-	}
-	ALBEDO = c.rgb;
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.0;
-}
-)";
-
+/// A LOD shader: the shared mask and the shader file `body`, with `modes` as
+/// its render modes.
 std::string lod_code(const char* modes, const char* body) {
-    return with_game_ambient(with_game_fog(std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n" + k_mask + body));
+    const std::string head = std::string("shader_type spatial;\nrender_mode diffuse_lambert, ") + modes + ";\n";
+    return with_game_ambient(
+        with_game_fog(head + shader_source::load("lod_mask.gdshaderinc") + shader_source::load(body)));
 }
 
-Ref<godot::Shader> make_shader(const char* modes, const char* body) {
+std::string terrain_code() { return lod_code("cull_back, depth_draw_opaque", "lod_terrain.gdshaderinc"); }
+std::string object_code() { return lod_code("cull_back, depth_draw_opaque", "lod_object.gdshaderinc"); }
+std::string water_code() { return lod_code("cull_back, depth_draw_opaque", "lod_water.gdshaderinc"); }
+std::string tree_code() { return lod_code("cull_disabled, depth_draw_opaque", "lod_tree.gdshaderinc"); }
+
+Ref<godot::Shader> make_shader(const std::string& code) {
     Ref<godot::Shader> shader;
     shader.instantiate();
-    shader->set_code(String::utf8(lod_code(modes, body).c_str()));
+    shader->set_code(String::utf8(code.c_str()));
     return shader;
 }
 
@@ -190,10 +79,10 @@ const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {
 
 Dictionary SkydotLod::shader_codes() {
     Dictionary out;
-    out["lod_terrain"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_terrain).c_str());
-    out["lod_object"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_object).c_str());
-    out["lod_water"] = String::utf8(lod_code("cull_back, depth_draw_opaque", k_water).c_str());
-    out["lod_tree"] = String::utf8(lod_code("cull_disabled, depth_draw_opaque", k_tree).c_str());
+    out["lod_terrain"] = String::utf8(terrain_code().c_str());
+    out["lod_object"] = String::utf8(object_code().c_str());
+    out["lod_water"] = String::utf8(water_code().c_str());
+    out["lod_tree"] = String::utf8(tree_code().c_str());
     return out;
 }
 
@@ -289,10 +178,10 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     mask_ = godot::ImageTexture::create_from_image(mask_image_);
     loaded_cells_ = 0;
 
-    terrain_shader_ = make_shader("cull_back, depth_draw_opaque", k_terrain);
-    object_shader_ = make_shader("cull_back, depth_draw_opaque", k_object);
-    water_shader_ = make_shader("cull_back, depth_draw_opaque", k_water);
-    tree_shader_ = make_shader("cull_disabled, depth_draw_opaque", k_tree);
+    terrain_shader_ = make_shader(terrain_code());
+    object_shader_ = make_shader(object_code());
+    water_shader_ = make_shader(water_code());
+    tree_shader_ = make_shader(tree_code());
     water_material_.instantiate();
     water_material_->set_shader(water_shader_);
     apply_mask(water_material_);

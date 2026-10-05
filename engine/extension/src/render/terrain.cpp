@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/terrain.hpp"
 #include "render/materials.hpp"
+#include "render/shader_source.hpp"
 
 #include "physics/collision.hpp"
 
@@ -21,6 +22,7 @@
 #include <godot_cpp/variant/packed_int32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -42,6 +44,18 @@ constexpr int k_last = TerrainBuilder::k_grid - 1;
 
 String to_godot(const std::string& s) {
     return String::utf8(s.c_str(), static_cast<int>(s.size()));
+}
+
+/// `code` with the line `marker` (`%NAME%`) replaced by `text`.
+void fill(std::string& code, const std::string& marker, const std::string& text) {
+    const std::size_t at = code.find(marker + "\n");
+    if (at == std::string::npos) {
+        if (!code.empty()) { // an empty file has been reported already
+            godot::UtilityFunctions::push_error("TerrainBuilder: terrain.gdshader has no line ", marker.c_str());
+        }
+        return;
+    }
+    code.replace(at, marker.size() + 1, text);
 }
 
 } // namespace
@@ -67,47 +81,25 @@ std::vector<float> TerrainBuilder::heights(const wfb::Terrain& terrain) {
 }
 
 std::string TerrainBuilder::shader_code(int layers) {
-    std::string code = R"(shader_type spatial;
-render_mode cull_back, diffuse_lambert;
-
-// Game-style layering: each additional layer is mixed over the result by its
-// per-vertex opacity (CUSTOM0 holds layers 1-4, CUSTOM1 layers 5-6).
-uniform float tiling = 8.0;
-varying vec4 weights_a;
-varying vec2 weights_b;
-)";
+    std::string samplers;
     for (int i = 0; i < layers; ++i) {
         const std::string n = std::to_string(i);
-        code += "uniform sampler2D albedo_" + n +
-                " : filter_linear_mipmap_anisotropic, repeat_enable;\n";
-        code += "uniform sampler2D normal_" + n +
-                " : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;\n";
+        samplers += "uniform sampler2D albedo_" + n +
+                    " : filter_linear_mipmap_anisotropic, repeat_enable;\n";
+        samplers += "uniform sampler2D normal_" + n +
+                    " : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;\n";
     }
-    code += R"(
-void vertex() {
-	weights_a = CUSTOM0;
-	weights_b = CUSTOM1.xy;
-}
-
-void fragment() {
-	vec2 uv = UV * tiling;
-	vec3 albedo = texture(albedo_0, uv).rgb;
-	vec3 n = texture(normal_0, uv).rgb;
-)";
+    std::string mixes;
     for (int i = 1; i < layers; ++i) {
         const std::string n = std::to_string(i);
         const std::string w = i <= 4 ? "weights_a[" + std::to_string(i - 1) + "]"
                                      : "weights_b[" + std::to_string(i - 5) + "]";
-        code += "\talbedo = mix(albedo, texture(albedo_" + n + ", uv).rgb, " + w + ");\n";
-        code += "\tn = mix(n, texture(normal_" + n + ", uv).rgb, " + w + ");\n";
+        mixes += "\talbedo = mix(albedo, texture(albedo_" + n + ", uv).rgb, " + w + ");\n";
+        mixes += "\tn = mix(n, texture(normal_" + n + ", uv).rgb, " + w + ");\n";
     }
-    code += R"(	ALBEDO = albedo * COLOR.rgb;
-	// Skyrim normal maps are DirectX-style (green points down).
-	NORMAL_MAP = vec3(n.r, 1.0 - n.g, n.b);
-	ROUGHNESS = 1.0;
-	SPECULAR = 0.2;
-}
-)";
+    std::string code = shader_source::load("terrain.gdshader");
+    fill(code, "%LAYER_SAMPLERS%", samplers);
+    fill(code, "%LAYER_MIXES%", mixes);
     return with_game_ambient(with_game_fog(code));
 }
 
