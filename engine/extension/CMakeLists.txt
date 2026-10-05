@@ -159,6 +159,8 @@ target_sources(skydot PRIVATE
     src/render/materials.hpp
     src/render/particles.cpp
     src/render/particles.hpp
+    src/render/shader_source.cpp
+    src/render/shader_source.hpp
     src/render/terrain.cpp
     src/render/terrain.hpp
     src/render/water.cpp

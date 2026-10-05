@@ -38,6 +38,11 @@ indent_style = space
 [engine/game/tools/{actor_check,door_check,preload_check}.gd]
 indent_style = tab
 
+# Shaders under engine/game/shaders/ use tabs, as Godot's shader editor does,
+# and keep the layout they had as C++ string literals.
+[engine/game/shaders/*.{gdshader,gdshaderinc,comp}]
+indent_style = tab
+
 # Submodules keep their own style.
 [{engine/extern/{catch2,flatbuffers,godot-cpp},converter/extern/{bc7enc_rdo,nifly}}/**]
 charset = unset
