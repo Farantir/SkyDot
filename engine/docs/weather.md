@@ -71,7 +71,7 @@ stay hazy close by. Needs an in-game comparison in the same weather.
 
 ## Sun light steps
 
-The sun's `DirectionalLight3D` turns in steps of 0.1 degrees, not every frame
+The sun's `DirectionalLight3D` turns in steps of 0.5 degrees (one every 6 s at time scale 20), not every frame
 (`SkydotWeather::update_sky`). Turning it continuously shifted every shadow
 edge a little each frame and the edges shimmered. The sky's sun sprite and the
 shaders' sun direction stay smooth.
