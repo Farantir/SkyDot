@@ -8,6 +8,7 @@
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/forms.hpp"
 #include "bethconv/record/forms_world.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include <algorithm>
 #include <array>
@@ -21,6 +22,7 @@ namespace bethconv::pack::detail {
 namespace {
 
 using io::FourCC;
+using skydot::formats::has_flag;
 
 /// Cloud layers: textures (00TX..), speeds (QNAM, RNAM: one byte each,
 /// 127 still), colours by time (PNAM, RGBA), alphas by time (JNAM) and
@@ -106,10 +108,43 @@ void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io:
     out.min_y = w->min_y;
     out.max_x = w->max_x;
     out.max_y = w->max_y;
+    take_large_lists(merged, *w, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
     worlds_[out.id] = std::move(out);
+}
+
+/// A WRLD's RNAM lists replace those of the same cell from earlier versions: a
+/// plugin that changes a worldspace's large references lists only the cells it
+/// changed (Update.esm's Tamriel has 191 of Skyrim.esm's 8,455, Dawnguard's
+/// 298), and an empty list empties the cell.
+void EnvironmentCollector::take_large_lists(const record::MergedRecord& merged,
+                                            const record::Worldspace& w, bool& failed) {
+    auto& cells = large_entries_[merged.form.value];
+    for (const auto& list : w.large_refs) {
+        auto& entries = cells[{list.grid_y, list.grid_x}];
+        entries.clear();
+        for (const auto& entry : list.refs) {
+            entries.push_back({shared_.global(merged, entry.ref, failed), list.grid_y,
+                               list.grid_x, entry.grid_y, entry.grid_x});
+        }
+    }
+}
+
+void EnvironmentCollector::collect_large_refs(const record::MergedRecord& merged,
+                                              io::SpanReader& data,
+                                              const record::FormContext& form_ctx) {
+    auto w = record::parse_worldspace(data, form_ctx);
+    if (!w) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    take_large_lists(merged, *w, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
 }
 
 /// WATR is not one of the record layer's types; only what rendering needs
@@ -373,7 +408,104 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
     regions_[out.id] = std::move(out);
 }
 
+/// The worldspace's large references, from the winning WRLD's RNAM lists and
+/// the references of the merged cells (the winning REFR of each). Choices:
+///  - A reference is kept only if a merged cell of this worldspace holds it:
+///    one that is deleted (not in any cell), moved to another worldspace, or
+///    absent from the load order is dropped and counted.
+///  - One that is initially disabled is dropped: nothing in the pack says it
+///    is ever enabled, and the engine does not run enable-state scripts for
+///    it. A REFR record in a later plugin that clears the flag wins, so it
+///    stays; the XESP enable parent is carried for the engine instead.
+///  - The placement is the winner's, not RNAM's: a plugin that moves a large
+///    reference moves it here too. The lists per cell stay the ones the
+///    Creation Kit made for the original position, as the game's do.
+///  - The lists come from every version of the WRLD (take_large_lists), a cell
+///    decided by the last plugin that lists it.
+void EnvironmentCollector::resolve_large_refs(const wfb::WorldT& world, wfb::WorldspaceT& out,
+                                              const std::map<std::pair<std::int16_t, std::int16_t>,
+                                                             std::vector<LargeEntry>>& lists) {
+    if (lists.empty()) {
+        return;
+    }
+    // The references of this worldspace's cells, by id.
+    std::map<std::uint32_t, const wfb::Ref*> placed;
+    for (const auto& cell : world.cells) {
+        if (cell->world != out.id) {
+            continue;
+        }
+        for (const auto& ref : cell->refs) {
+            placed.emplace(ref.id(), &ref);
+        }
+    }
+    auto& stats = shared_.stats();
+    std::map<std::uint32_t, std::uint32_t> index; // ref id -> index in out.large_refs
+    std::map<std::pair<std::int16_t, std::int16_t>, std::vector<std::uint32_t>> cell_lists;
+    std::map<std::uint32_t, bool> dropped;
+    for (const auto& [list_cell, entries] : lists) {
+    for (const auto& entry : entries) {
+        auto found = index.find(entry.ref);
+        if (found == index.end()) {
+            if (dropped.contains(entry.ref)) {
+                continue;
+            }
+            const auto at = placed.find(entry.ref);
+            if (at == placed.end()) {
+                dropped.emplace(entry.ref, true);
+                ++stats.large_refs_dropped;
+                continue;
+            }
+            const wfb::Ref& ref = *at->second;
+            if (has_flag(ref.flags(), wfb::RefFlags::initially_disabled)) {
+                dropped.emplace(entry.ref, true);
+                ++stats.large_refs_dropped;
+                continue;
+            }
+            found = index.emplace(entry.ref, static_cast<std::uint32_t>(out.large_refs.size()))
+                        .first;
+            out.large_refs.emplace_back(ref.id(), ref.base(), ref.position(), ref.rotation(),
+                                        ref.scale(), ref.flags(), ref.enable_parent(),
+                                        entry.cell_x, entry.cell_y);
+        }
+        cell_lists[list_cell].push_back(found->second);
+    }
+    }
+    // Indices follow ids once the references are sorted by id; sort them and
+    // renumber.
+    std::vector<std::uint32_t> order(out.large_refs.size());
+    for (std::uint32_t i = 0; i < order.size(); ++i) {
+        order[i] = i;
+    }
+    std::ranges::sort(order, [&](std::uint32_t a, std::uint32_t b) {
+        return out.large_refs[a].id() < out.large_refs[b].id();
+    });
+    std::vector<std::uint32_t> renumber(order.size());
+    std::vector<wfb::LargeRef> sorted;
+    sorted.reserve(order.size());
+    for (std::uint32_t i = 0; i < order.size(); ++i) {
+        renumber[order[i]] = i;
+        sorted.push_back(out.large_refs[order[i]]);
+    }
+    out.large_refs = std::move(sorted);
+    for (auto& [cell, refs] : cell_lists) { // std::map: ordered by (y, x)
+        for (auto& r : refs) {
+            r = renumber[r];
+        }
+        std::ranges::sort(refs);
+        refs.erase(std::unique(refs.begin(), refs.end()), refs.end());
+        out.large_cells.emplace_back(cell.second, cell.first,
+                                     static_cast<std::uint32_t>(out.large_cell_refs.size()),
+                                     static_cast<std::uint32_t>(refs.size()));
+        out.large_cell_refs.insert(out.large_cell_refs.end(), refs.begin(), refs.end());
+    }
+    stats.large_refs += out.large_refs.size();
+    stats.large_ref_cells += out.large_cells.size();
+}
+
 void EnvironmentCollector::finish(wfb::WorldT& world) {
+    for (auto& [id, out] : worlds_) {
+        resolve_large_refs(world, out, large_entries_[id]);
+    }
     auto& stats = shared_.stats();
     stats.worlds += worlds_.size();
     stats.waters += waters_.size();

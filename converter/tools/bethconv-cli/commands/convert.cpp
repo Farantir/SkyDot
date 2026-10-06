@@ -265,6 +265,10 @@ int cmd_convert(const ConvertArgs& args) {
         std::fprintf(text, "                %llu precipitation types, %llu regions with weather\n",
                      static_cast<unsigned long long>(w.precipitations),
                      static_cast<unsigned long long>(w.regions));
+        std::fprintf(text, "                %llu large references in %llu cell lists (%llu dropped)\n",
+                     static_cast<unsigned long long>(w.large_refs),
+                     static_cast<unsigned long long>(w.large_ref_cells),
+                     static_cast<unsigned long long>(w.large_refs_dropped));
         std::fprintf(text, "                %llu navmeshes (%llu triangles, %llu orphaned)\n",
                      static_cast<unsigned long long>(w.navmeshes),
                      static_cast<unsigned long long>(w.nav_triangles),

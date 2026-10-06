@@ -88,7 +88,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (10; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (11; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -96,7 +96,7 @@ NPC factions and placed actors' linked references, 10 image spaces (IMGS)
 and weathers' and cells' links to them, interior directional ambient with
 lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
-XLIG). Format 9 only adds:
+XLIG, 11 large references (WRLD RNAM), per worldspace). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -195,7 +195,26 @@ test bits by these names, through `has_flag` in
   form by plugin and object id.
 - `worlds`, sorted by id: WRLD with parent and parent flags (`ParentFlags`:
   `land_data`, the land comes from the parent), DATA flags, default land and water height, water
-  type and bounds.
+  type and bounds, and its large references (format 11). In the game, cells
+  out to `uLargeRefLODGridSize` beyond the loaded ones draw their large
+  references (rocks, cliffs, large buildings: the Creation Kit lists the
+  references whose bounds exceed `fLargeRefMinSize` in the WRLD's RNAM fields,
+  one per cell) as full models, and object LOD takes over past them.
+  `large_refs` (sorted by id) holds each such reference once with its
+  placement as a cell's `Ref` has it, and the cell it stands in; `large_cells`
+  (sorted by cell_y, cell_x) says, per cell of the grid, which of them to draw
+  there: `count` indices into `large_refs` from `large_cell_refs[first]`. A
+  cell's list holds the references that stand in it and those of neighbouring
+  cells whose bounds reach into it. RNAM layout (checked against REFR positions
+  on all 160,247 entries of Skyrim.esm's Tamriel): per cell, int16 Y, int16 X,
+  uint32 n, then n of FormID, int16 Y, int16 X (the reference's own cell).
+  A plugin's WRLD override lists only the cells it changes (Update.esm's
+  Tamriel 191 of 8,455), so the converter takes each cell's list from the last
+  plugin that lists it (an empty list empties the cell); the rest of the WRLD
+  is the winner's as usual. A listed reference is left out if it is deleted,
+  initially disabled, in another worldspace or not in the load order; its
+  placement is its winning REFR's. A reference with an enable parent is kept,
+  with `enable_parent` and the flags, for the engine to evaluate.
 - `land_textures`, sorted by id: LTEX with its TXST's diffuse and normal map
   as virtual paths, and its specular value.
 - `waters`, sorted by id: WATR's visual values (opacity, shallow, deep and

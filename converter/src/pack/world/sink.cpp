@@ -8,6 +8,13 @@ using io::FourCC;
 
 } // namespace
 
+void WorldSink::on_superseded(const record::MergedRecord& merged, const record::RecordContext&,
+                              io::SpanReader& data, const record::FormContext& form_ctx) {
+    if (!merged.deleted) {
+        environment_.collect_large_refs(merged, data, form_ctx);
+    }
+}
+
 void WorldSink::on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
                           io::SpanReader& data, const record::FormContext& form_ctx) {
     if (merged.deleted) {

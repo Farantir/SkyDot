@@ -645,6 +645,39 @@ enum ParentFlags : uint16 (bit_flags) {
     land_data
 }
 
+/// A reference drawn as a large reference (format 11): one of the worldspace's
+/// RNAM entries (the Creation Kit's list of references whose bounds exceed
+/// fLargeRefMinSize), with its placement as `Ref` has it so the engine need
+/// not find the reference in its cell. Only the winning record's references
+/// are here: a deleted reference, one that is initially disabled, one whose
+/// cell or worldspace is not the worldspace's, and one not found are left out.
+/// Its enable parent (and `enable_opposite`) is kept for the engine to
+/// evaluate; `flags` is `Ref.flags`.
+struct LargeRef {
+    id: uint32 (key);
+    base: uint32;
+    position: Vec3f;
+    rotation: Vec3f;
+    scale: float;
+    flags: RefFlags;
+    enable_parent: uint32;
+    /// The cell the reference stands in (RNAM's entry cell).
+    cell_x: short;
+    cell_y: short;
+}
+
+/// The large references of one cell of the large-reference grid: the
+/// `count` entries of `Worldspace.large_cell_refs` from `first`. A cell's
+/// list holds the references that stand in it and those of its neighbours
+/// whose bounds reach into it, so drawing the lists of the cells in range,
+/// each reference once, draws everything that is visible there.
+struct LargeRefCell {
+    cell_x: short;
+    cell_y: short;
+    first: uint32;
+    count: uint32;
+}
+
 /// WRLD.
 table Worldspace {
     id: uint32 (key);
@@ -668,6 +701,13 @@ table Worldspace {
     min_y: float;
     max_x: float;
     max_y: float;
+    /// RNAM (format 11): the worldspace's large references, sorted by id, and
+    /// their lists per cell, sorted by cell_y then cell_x. Every cell has at
+    /// least one reference. `large_cell_refs` holds indices into `large_refs`,
+    /// ascending within a cell's range. Empty for a worldspace with none.
+    large_refs: [LargeRef];
+    large_cells: [LargeRefCell];
+    large_cell_refs: [uint32];
 }
 
 /// `QuestLogEntry.flags`.

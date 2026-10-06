@@ -169,7 +169,17 @@ public:
             return; // Already counted in pass one.
         }
         const MergedRecord* merged = world_.find(*global);
-        if (merged == nullptr || merged->winner != plugin_) {
+        if (merged == nullptr) {
+            return;
+        }
+        if (merged->winner != plugin_) {
+            if (sink_.wants_superseded(ctx.header.type)) {
+                MergedRecord version = *merged;
+                version.winner = static_cast<std::uint32_t>(plugin_);
+                version.flags = ctx.header.flags;
+                version.deleted = ctx.header.is_deleted();
+                sink_.on_superseded(version, ctx, data, form_ctx_);
+            }
             return;
         }
         sink_.on_record(*merged, ctx, data, form_ctx_);

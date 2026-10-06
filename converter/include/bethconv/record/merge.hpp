@@ -111,6 +111,18 @@ public:
     virtual void on_record(const MergedRecord& merged, const RecordContext& ctx,
                            io::SpanReader& data, const FormContext& form_ctx) = 0;
 
+    /// Whether `on_superseded` wants records of this type.
+    [[nodiscard]] virtual bool wants_superseded(FourCC) const { return false; }
+
+    /// A record some plugin wrote that a later plugin overrides, for the few
+    /// types whose fields add up across the load order instead of the winner
+    /// replacing the rest (WRLD's RNAM: later plugins list only the cells they
+    /// change). Called in load order, before the winner's `on_record`.
+    /// `merged` is the form's, except that `winner` is the plugin that wrote
+    /// this version, so the payload's FormIDs resolve through its masters.
+    virtual void on_superseded(const MergedRecord&, const RecordContext&, io::SpanReader&,
+                               const FormContext&) {}
+
     virtual bool on_error(const io::ParseError&) { return true; }
 
     /// Where to report unhandled and over-long fields; null for no census.

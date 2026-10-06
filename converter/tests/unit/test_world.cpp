@@ -1523,3 +1523,168 @@ TEST_CASE("world.fb decodes the 64, 72 and 92-byte lighting layouts", "[pack][wo
     // A template with no layout is none: the cell keeps what it has.
     CHECK_FALSE(cell("OnlyBad").has_lighting);
 }
+
+namespace {
+
+/// LargeWorld.esm: one exterior cell with four references, A (0xE10) and D
+/// (0xE13) plain, B (0xE11) initially disabled and C (0xE12) deleted, and a
+/// WRLD whose RNAM lists A, B, C, D and a reference that does not exist (E,
+/// 0xE14) for the cell (0, 0), and D then A for the cell x 1, y 0.
+void make_large_refs(const TempDir& dir) {
+    ByteWriter file;
+    bethconv::test::write_tes4(file, 0x1, {});
+
+    const std::uint32_t world = 0x0000'0E00;
+    const std::uint32_t real = 0x0000'0E02;
+    ByteWriter cell_payload;
+    ByteWriter cell_id;
+    cell_id.zstring("LargeCell");
+    bethconv::test::write_field(cell_payload, "EDID", cell_id);
+    ByteWriter xclc;
+    xclc.u32(0);
+    xclc.u32(0);
+    xclc.u32(0);
+    bethconv::test::write_field(cell_payload, "XCLC", xclc);
+
+    ByteWriter refs;
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E10, refr_payload(0x0000'0800, 1.0F, 1.0F).span());
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E11, refr_payload(0x0000'0800, 2.0F, 1.0F).span(),
+                                 0x800);
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E12, ByteWriter{}.span(), 0x20);
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E13, refr_payload(0x0000'0800, 4.0F, 2.0F).span());
+    ByteWriter temporary;
+    bethconv::test::write_group(temporary, real, 9, refs.span());
+    ByteWriter real_children;
+    bethconv::test::write_group(real_children, real, 6, temporary.span());
+    ByteWriter cells;
+    bethconv::test::write_record(cells, "CELL", real, cell_payload.span());
+    cells.raw(real_children.span());
+    ByteWriter sub_block;
+    bethconv::test::write_group(sub_block, 0, 5, cells.span());
+    ByteWriter block;
+    bethconv::test::write_group(block, 0, 4, sub_block.span());
+
+    ByteWriter wrld;
+    ByteWriter edid;
+    edid.zstring("LargeWorld");
+    bethconv::test::write_field(wrld, "EDID", edid);
+    const auto rnam = [&](std::int16_t y, std::int16_t x,
+                          std::initializer_list<std::uint32_t> list) {
+        ByteWriter field;
+        field.u16(static_cast<std::uint16_t>(y));
+        field.u16(static_cast<std::uint16_t>(x));
+        field.u32(static_cast<std::uint32_t>(list.size()));
+        for (const auto ref : list) {
+            field.u32(ref);
+            field.u16(0);
+            field.u16(0);
+        }
+        bethconv::test::write_field(wrld, "RNAM", field);
+    };
+    rnam(0, 0, {0x0E10, 0x0E11, 0x0E12, 0x0E13, 0x0E14});
+    rnam(0, 1, {0x0E13, 0x0E10});
+    ByteWriter worlds;
+    bethconv::test::write_record(worlds, "WRLD", world, wrld.span());
+    ByteWriter world_children;
+    bethconv::test::write_group(world_children, world, 1, block.span());
+    worlds.raw(world_children.span());
+    top_group(file, "WRLD", worlds);
+    save(dir, "LargeWorld.esm", file);
+}
+
+} // namespace
+
+TEST_CASE("world.fb lists a worldspace's large references, without deleted or disabled ones",
+          "[pack][world][large]") {
+    const TempDir dir;
+    make_large_refs(dir);
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "LargeWorld.esm", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list,
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto out = dir / "world.fb";
+    const auto stats = pack::write_world(world, order, out);
+    REQUIRE(stats.has_value());
+    CHECK(stats->parse_errors == 0);
+    CHECK(stats->large_refs == 2);
+    CHECK(stats->large_ref_cells == 2);
+    CHECK(stats->large_refs_dropped == 3); // disabled, deleted and missing
+
+    const auto file = pack::WorldFile::open(out);
+    REQUIRE(file.has_value());
+    const auto worlds = file->worldspaces();
+    REQUIRE(worlds.size() == 1);
+    const auto& w = worlds[0];
+    REQUIRE(w.large_refs.size() == 2);
+    CHECK(w.large_refs[0].id() == 0x0000'0E10);
+    CHECK(w.large_refs[0].position().x() == 1.0F);
+    CHECK(w.large_refs[1].id() == 0x0000'0E13);
+    CHECK(w.large_refs[1].scale() == 2.0F);
+    CHECK(w.large_refs[1].base() == 0x0000'0800);
+    REQUIRE(w.large_cells.size() == 2);
+    CHECK((w.large_cells[0].cell_x() == 0 && w.large_cells[0].cell_y() == 0));
+    CHECK((w.large_cells[0].first() == 0 && w.large_cells[0].count() == 2));
+    CHECK((w.large_cells[1].cell_x() == 1 && w.large_cells[1].cell_y() == 0));
+    CHECK((w.large_cells[1].first() == 2 && w.large_cells[1].count() == 2));
+    CHECK(w.large_cell_refs == std::vector<std::uint32_t>{0, 1, 0, 1});
+}
+
+TEST_CASE("a later plugin's WRLD RNAM lists replace only the cells it lists",
+          "[pack][world][large]") {
+    const TempDir dir;
+    make_large_refs(dir);
+    // LargeOver.esp overrides the worldspace, listing only three cells: (0, 0)
+    // emptied, (x 1, y 0) now D alone, and (x 2, y 0) new, with A.
+    {
+        ByteWriter file;
+        bethconv::test::write_tes4(file, 0, {"LargeWorld.esm"});
+        ByteWriter wrld;
+        const auto rnam = [&](std::int16_t y, std::int16_t x,
+                              std::initializer_list<std::uint32_t> list) {
+            ByteWriter field;
+            field.u16(static_cast<std::uint16_t>(y));
+            field.u16(static_cast<std::uint16_t>(x));
+            field.u32(static_cast<std::uint32_t>(list.size()));
+            for (const auto ref : list) {
+                field.u32(ref);
+                field.u16(0);
+                field.u16(0);
+            }
+            bethconv::test::write_field(wrld, "RNAM", field);
+        };
+        rnam(0, 0, {});
+        rnam(0, 1, {0x0E13});
+        rnam(0, 2, {0x0E10});
+        ByteWriter worlds;
+        bethconv::test::write_record(worlds, "WRLD", 0x0000'0E00, wrld.span());
+        top_group(file, "WRLD", worlds);
+        save(dir, "LargeOver.esp", file);
+    }
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "LargeWorld.esm", .active = true});
+    list.plugins.push_back(record::ListedPlugin{.name = "LargeOver.esp", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list,
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto out = dir / "world.fb";
+    const auto stats = pack::write_world(world, order, out);
+    REQUIRE(stats.has_value());
+    CHECK(stats->parse_errors == 0);
+    CHECK(stats->large_refs == 2);
+    CHECK(stats->large_ref_cells == 2);
+    CHECK(stats->large_refs_dropped == 0);
+
+    const auto file = pack::WorldFile::open(out);
+    REQUIRE(file.has_value());
+    const auto worlds = file->worldspaces();
+    REQUIRE(worlds.size() == 1);
+    const auto& w = worlds[0];
+    REQUIRE(w.large_refs.size() == 2);
+    REQUIRE(w.large_cells.size() == 2);
+    CHECK((w.large_cells[0].cell_x() == 1 && w.large_cells[0].count() == 1));
+    CHECK((w.large_cells[1].cell_x() == 2 && w.large_cells[1].count() == 1));
+    CHECK(w.large_cell_refs == std::vector<std::uint32_t>{1, 0});
+}

@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 10;
+inline constexpr std::uint32_t k_world_format_version = 11;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -70,6 +70,12 @@ struct WorldStats {
     /// IMGS and LGTM (format 10).
     std::uint64_t image_spaces{};
     std::uint64_t lighting_templates{};
+    /// Large references (format 11): kept, the cell lists they appear in, and
+    /// RNAM entries dropped because the reference is deleted, absent,
+    /// initially disabled or in another worldspace (each reference once).
+    std::uint64_t large_refs{};
+    std::uint64_t large_ref_cells{};
+    std::uint64_t large_refs_dropped{};
     /// Navmeshes whose parent is not a cell; not included.
     std::uint64_t orphan_navmeshes{};
     /// References whose base or other FormIDs could not be resolved; the

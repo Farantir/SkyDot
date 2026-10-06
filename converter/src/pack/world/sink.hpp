@@ -39,6 +39,13 @@ public:
     void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
                    io::SpanReader& data, const record::FormContext& form_ctx) override;
 
+    /// WRLD only: the large-reference lists of every version add up.
+    [[nodiscard]] bool wants_superseded(record::FourCC type) const override {
+        return type == record::FourCC{"WRLD"};
+    }
+    void on_superseded(const record::MergedRecord& merged, const record::RecordContext& ctx,
+                       io::SpanReader& data, const record::FormContext& form_ctx) override;
+
     [[nodiscard]] WorldStats& stats() noexcept { return shared_.stats(); }
     [[nodiscard]] PlaceCollector& places() noexcept { return places_; }
     [[nodiscard]] BaseCollector& bases() noexcept { return bases_; }
