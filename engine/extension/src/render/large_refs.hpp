@@ -69,24 +69,34 @@ public:
 
     /// wanted, shown, pending, candidates (drawable among those chosen),
     /// skipped (by reason: "disabled", "no base", "no model", "marker",
-    /// "failed"), built_by_cells, marked_cells, selections, select_usec (the
-    /// slowest).
+    /// "failed"), marked_cells, selections, and the slowest select_usec,
+    /// drop_usec, build_usec and marks_usec of an update.
     godot::Dictionary get_stats() const;
 
 protected:
     static void _bind_methods();
 
 private:
-    /// What a large reference draws, found once.
+    /// What a large reference draws, found once, and where it is in the
+    /// layer's lifecycle.
     struct Info {
         std::string model; ///< Asset cache key; empty if it draws nothing.
         const char* reason = nullptr;
+        std::int32_t cell_x = 0; ///< The square it stands in.
+        std::int32_t cell_y = 0;
+        double x = 0.0; ///< Game units.
+        double y = 0.0;
+        godot::Node3D* node = nullptr; ///< Built, once it is.
+        std::uint64_t wanted = 0;      ///< The selection (`generation_`) that chose it.
     };
-    const Info& info(std::uint32_t index);
+    Info& info(std::uint32_t index);
+    /// The infos of the references listed for square (x, y), found once.
+    const std::vector<Info*>& list(std::int32_t x, std::int32_t y);
     void select(std::int32_t cx, std::int32_t cy, double x, double y);
     void update_marks(std::int32_t cx, std::int32_t cy);
     bool built(std::int32_t x, std::int32_t y) const;
-    bool drawn_or_skipped(std::uint32_t index);
+    /// Nothing more to draw for `i` here: built, not drawable, or its own cell draws it.
+    bool settled(const Info& i) const { return i.node != nullptr || i.model.empty() || built(i.cell_x, i.cell_y); }
     static void no_shadows(godot::Node* node);
     static std::uint64_t key(std::int32_t x, std::int32_t y) {
         return static_cast<std::uint64_t>(static_cast<std::uint32_t>(x)) << 32 | static_cast<std::uint32_t>(y);
@@ -104,21 +114,28 @@ private:
     std::int32_t cell_x_ = 0;
     std::int32_t cell_y_ = 0;
     bool placed_ = false;
+    std::uint64_t generation_ = 0;
 
+    /// By reference index; node-based, so pointers to the values stay valid.
     std::unordered_map<std::uint32_t, Info> infos_;
+    std::unordered_map<std::uint64_t, std::vector<Info*>> lists_;
     /// Chosen drawable references, nearest the camera (when chosen) first.
-    std::vector<std::uint32_t> candidates_;
-    std::unordered_set<std::uint32_t> wanted_;
-    std::unordered_map<std::uint32_t, godot::Node3D*> shown_;
-    /// Models held while wanted, by asset cache key (null once failed).
+    std::vector<std::pair<std::uint32_t, Info*>> candidates_;
+    std::unordered_map<std::uint32_t, Info*> shown_;
+    /// Models held, by asset cache key (null once failed).
     std::unordered_map<std::string, godot::Ref<godot::Resource>> models_;
-    std::set<std::string> requested_;
     /// Cells marked on the LOD.
     std::set<std::pair<std::int32_t, std::int32_t>> marked_;
 
     std::int64_t selections_ = 0;
+    /// The slowest of each part of an update, in microseconds.
     std::int64_t select_usec_ = 0;
-    std::int64_t built_by_cells_ = 0;
+    std::int64_t drop_usec_ = 0;
+    std::int64_t build_usec_ = 0;
+    std::int64_t marks_usec_ = 0;
+    std::int64_t select_total_ = 0;
+    std::int64_t marks_total_ = 0;
+    std::int64_t marks_runs_ = 0;
     std::int64_t pending_ = 0;
     std::unordered_map<std::string, std::int64_t> skipped_;
 };

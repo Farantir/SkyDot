@@ -166,7 +166,7 @@ private:
     SkydotLargeRefs* large_refs_ = nullptr;
     bool large_refs_enabled_ = true;
     std::int64_t large_ref_radius_ = 5;
-    std::int64_t large_ref_budget_usec_ = 2000; ///< Per update for building large references.
+    std::int64_t large_ref_budget_usec_ = 1000; ///< Per update for building large references.
     std::int64_t world_id_ = 0;
     godot::Ref<godot::Image> mask_image_;
     godot::Ref<godot::ImageTexture> mask_;

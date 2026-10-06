@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
+#include <unordered_set>
 
 using godot::Dictionary;
 using godot::Ref;
@@ -75,7 +77,7 @@ void SkydotLargeRefs::set_cell_built(std::int64_t x, std::int64_t y, bool is_bui
 
 bool SkydotLargeRefs::built(std::int32_t x, std::int32_t y) const { return built_cells_.contains(key(x, y)); }
 
-const SkydotLargeRefs::Info& SkydotLargeRefs::info(std::uint32_t index) {
+SkydotLargeRefs::Info& SkydotLargeRefs::info(std::uint32_t index) {
     const auto found = infos_.find(index);
     if (found != infos_.end()) {
         return found->second;
@@ -87,6 +89,10 @@ const SkydotLargeRefs::Info& SkydotLargeRefs::info(std::uint32_t index) {
             const auto bytes = model.utf8();
             out.model.assign(bytes.get_data(), static_cast<std::size_t>(bytes.length()));
         }
+        out.cell_x = ref->cell_x();
+        out.cell_y = ref->cell_y();
+        out.x = static_cast<double>(ref->position().x());
+        out.y = static_cast<double>(ref->position().y());
     } else {
         out.reason = "no base";
     }
@@ -96,72 +102,82 @@ const SkydotLargeRefs::Info& SkydotLargeRefs::info(std::uint32_t index) {
     return infos_.emplace(index, std::move(out)).first->second;
 }
 
+const std::vector<SkydotLargeRefs::Info*>& SkydotLargeRefs::list(std::int32_t x, std::int32_t y) {
+    const auto k = key(x, y);
+    const auto found = lists_.find(k);
+    if (found != lists_.end()) {
+        return found->second;
+    }
+    std::vector<std::uint32_t> indices;
+    world_->data().large_cell_refs(world_id_, x, y, indices);
+    std::vector<Info*> infos;
+    infos.reserve(indices.size());
+    for (const std::uint32_t index : indices) {
+        infos.push_back(&info(index));
+    }
+    return lists_.emplace(k, std::move(infos)).first->second;
+}
+
 void SkydotLargeRefs::select(std::int32_t cx, std::int32_t cy, double x, double y) {
     const auto started = now_usec();
     const auto chosen = large_refs::select(world_->data(), world_id_, cx, cy, static_cast<std::int32_t>(radius_),
                                            [this](std::int32_t gx, std::int32_t gy) { return built(gx, gy); });
-    candidates_.clear();
-    wanted_.clear();
-    for (const std::uint32_t index : chosen) {
-        if (!info(index).model.empty()) {
-            candidates_.push_back(index);
-        }
-    }
-    const auto distance = [&](std::uint32_t index) {
-        const auto& p = world_->data().large_ref(world_id_, index)->position();
-        const double dx = static_cast<double>(p.x()) - x;
-        const double dy = static_cast<double>(p.y()) - y;
-        return dx * dx + dy * dy;
+    ++generation_;
+    struct Ranked {
+        double distance;
+        std::uint32_t index;
+        Info* info;
     };
-    std::vector<std::pair<double, std::uint32_t>> order;
-    order.reserve(candidates_.size());
-    for (const std::uint32_t index : candidates_) {
-        order.emplace_back(distance(index), index);
+    std::vector<Ranked> ranked;
+    ranked.reserve(chosen.size());
+    for (const std::uint32_t index : chosen) {
+        Info& i = info(index);
+        if (i.model.empty()) {
+            continue;
+        }
+        i.wanted = generation_;
+        const double dx = i.x - x;
+        const double dy = i.y - y;
+        ranked.push_back({dx * dx + dy * dy, index, &i});
     }
-    std::ranges::sort(order);
-    for (std::size_t i = 0; i < order.size(); ++i) {
-        candidates_[i] = order[i].second;
-        wanted_.insert(order[i].second);
+    std::ranges::sort(ranked, {}, &Ranked::distance);
+    candidates_.clear();
+    candidates_.reserve(ranked.size());
+    for (const Ranked& r : ranked) {
+        candidates_.emplace_back(r.index, r.info);
     }
-    // Models load on the asset cache's threads, all asked for at once.
+    // Models load on the asset cache's threads, all asked for at once (the
+    // cache skips what it has or has queued).
     if (const auto assets = pack_->assets()) {
-        for (const std::uint32_t index : candidates_) {
-            const std::string& model = info(index).model;
-            if (requested_.insert(model).second) {
-                assets->request(model);
+        for (const auto& [index, i] : candidates_) {
+            if (!models_.contains(i->model)) {
+                assets->request(i->model);
             }
         }
     }
-    // What nothing wants any more lets go of its model.
-    std::set<std::string> needed;
-    for (const std::uint32_t index : candidates_) {
-        needed.insert(info(index).model);
+    // What nothing wants any more lets go of its model, now and then.
+    if (models_.size() > candidates_.size() + 64) {
+        std::unordered_set<std::string_view> needed;
+        for (const auto& [index, i] : candidates_) {
+            needed.insert(i->model);
+        }
+        std::erase_if(models_, [&](const auto& e) {
+            return !needed.contains(e.first) && (e.second.is_null() || e.second->get_reference_count() <= 1);
+        });
     }
-    std::erase_if(models_, [&](const auto& e) {
-        return !needed.contains(e.first) && (e.second.is_null() || e.second->get_reference_count() <= 1);
-    });
-    std::erase_if(requested_, [&](const std::string& m) { return !needed.contains(m) && !models_.contains(m); });
     ++selections_;
-    select_usec_ = std::max(select_usec_, now_usec() - started);
-}
-
-bool SkydotLargeRefs::drawn_or_skipped(std::uint32_t index) {
-    if (shown_.contains(index) || info(index).model.empty()) {
-        return true;
-    }
-    const auto* ref = world_->data().large_ref(world_id_, index);
-    return ref == nullptr || built(ref->cell_x(), ref->cell_y());
+    const auto took = now_usec() - started;
+    select_usec_ = std::max(select_usec_, took);
+    select_total_ += took;
 }
 
 void SkydotLargeRefs::update_marks(std::int32_t cx, std::int32_t cy) {
     std::set<std::pair<std::int32_t, std::int32_t>> now;
-    std::vector<std::uint32_t> list;
     const auto radius = static_cast<std::int32_t>(radius_);
     for (std::int32_t y = cy - radius; y <= cy + radius; ++y) {
         for (std::int32_t x = cx - radius; x <= cx + radius; ++x) {
-            list.clear();
-            world_->data().large_cell_refs(world_id_, x, y, list);
-            if (std::ranges::all_of(list, [this](std::uint32_t index) { return drawn_or_skipped(index); })) {
+            const auto& infos = list(x, y);
+            if (std::ranges::all_of(infos, [this](const Info* i) { return settled(*i); })) {
                 now.emplace(x, y);
             }
         }
@@ -209,76 +225,90 @@ std::int64_t SkydotLargeRefs::update(const Vector3& camera, std::int64_t budget_
         marks_dirty_ = true;
     }
 
+    const auto dropping = now_usec();
+    // Those a built cell now draws go at once (else two are drawn); those out
+    // of range go a few at a time, since freeing hundreds in a frame stalls it.
+    constexpr int k_far_drops_per_update = 24;
+    int far_drops = 0;
+    std::int64_t kept = 0;
     for (auto it = shown_.begin(); it != shown_.end();) {
-        if (wanted_.contains(it->first)) {
+        if (it->second->wanted == generation_) {
             ++it;
             continue;
         }
-        it->second->queue_free();
+        if (!built(it->second->cell_x, it->second->cell_y) && ++far_drops > k_far_drops_per_update) {
+            ++kept;
+            ++it;
+            continue;
+        }
+        it->second->node->queue_free();
+        it->second->node = nullptr;
         it = shown_.erase(it);
         marks_dirty_ = true;
     }
+    drop_usec_ = std::max(drop_usec_, now_usec() - dropping);
 
     const auto started = now_usec();
     const auto assets = pack_->assets();
-    pending_ = 0;
-    for (const std::uint32_t index : candidates_) {
-        if (shown_.contains(index)) {
+    pending_ = kept; // still to drop
+    for (const auto& [index, i] : candidates_) {
+        if (i->node != nullptr) {
             continue;
         }
-        const std::string& model = info(index).model;
-        if (model.empty()) {
+        if (i->model.empty()) {
             continue; // failed meanwhile
         }
-        auto held = models_.find(model);
+        auto held = models_.find(i->model);
         if (held == models_.end()) {
-            if (assets != nullptr && assets->request(model) == AssetCache::Status::loading) {
+            if (assets != nullptr && assets->request(i->model) == AssetCache::Status::loading) {
                 ++pending_;
                 continue;
             }
-            held = models_.emplace(model, assets != nullptr ? assets->get(model) : Ref<godot::Resource>()).first;
+            held = models_.emplace(i->model, assets != nullptr ? assets->get(i->model) : Ref<godot::Resource>()).first;
         }
-        if (held->second.is_null()) {
-            infos_[index].model.clear();
-            infos_[index].reason = "failed";
-            ++skipped_["failed"];
-            marks_dirty_ = true;
-            continue;
+        godot::Node3D* node = nullptr;
+        if (held->second.is_valid()) {
+            if (now_usec() - started > budget_usec) {
+                ++pending_;
+                continue;
+            }
+            node = world_->build_large_ref(*world_->data().large_ref(world_id_, index));
         }
-        if (now_usec() - started > budget_usec) {
-            ++pending_;
-            continue;
-        }
-        godot::Node3D* node = world_->build_large_ref(*world_->data().large_ref(world_id_, index));
         if (node == nullptr) {
-            infos_[index].model.clear();
-            infos_[index].reason = "failed";
+            i->model.clear();
+            i->reason = "failed";
             ++skipped_["failed"];
             marks_dirty_ = true;
             continue;
         }
         no_shadows(node);
         add_child(node);
-        shown_.emplace(index, node);
+        i->node = node;
+        shown_.emplace(index, i);
         marks_dirty_ = true;
     }
 
+    build_usec_ = std::max(build_usec_, now_usec() - started);
     if (marks_dirty_) {
+        const auto marking = now_usec();
         update_marks(cx, cy);
         marks_dirty_ = false;
+        marks_usec_ = std::max(marks_usec_, now_usec() - marking);
+        marks_total_ += now_usec() - marking;
+        ++marks_runs_;
     }
     return pending_;
 }
 
 void SkydotLargeRefs::clear() {
-    for (const auto& [index, node] : shown_) {
-        node->queue_free();
+    for (const auto& [index, i] : shown_) {
+        i->node->queue_free();
+        i->node = nullptr;
     }
     shown_.clear();
     candidates_.clear();
-    wanted_.clear();
+    ++generation_;
     models_.clear();
-    requested_.clear();
     if (lod_ != nullptr) {
         for (const auto& c : marked_) {
             lod_->set_cell_large_refs(c.first, c.second, false);
@@ -298,6 +328,12 @@ Dictionary SkydotLargeRefs::get_stats() const {
     out["marked_cells"] = static_cast<std::int64_t>(marked_.size());
     out["selections"] = selections_;
     out["select_usec"] = select_usec_;
+    out["select_avg"] = selections_ > 0 ? select_total_ / selections_ : 0;
+    out["marks_avg"] = marks_runs_ > 0 ? marks_total_ / marks_runs_ : 0;
+    out["marks_runs"] = marks_runs_;
+    out["drop_usec"] = drop_usec_;
+    out["build_usec"] = build_usec_;
+    out["marks_usec"] = marks_usec_;
     out["models"] = static_cast<std::int64_t>(models_.size());
     Dictionary skipped;
     for (const auto& [reason, count] : skipped_) {

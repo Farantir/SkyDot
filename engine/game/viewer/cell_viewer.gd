@@ -351,6 +351,8 @@ func _process(delta: float) -> void:
 		return
 	if _benchmark.is_running():
 		if _benchmark.frame(delta, _rig.player, _streamer.max_usec):
+			if _streamer.lod != null:
+				print("lod: ", _streamer.lod.get_stats())
 			get_tree().quit(0)
 		return
 	_controls.apply()
