@@ -412,13 +412,14 @@ decoding:
   textures stored uncompressed (mostly terrain LOD), level by level, using
   bc7enc_rdo on several threads. Textures that are already compressed are
   never re-encoded.
-- `alpha_coverage`: for textures a material alpha-tests, each lower mip level's
-  alpha is rescaled so the fraction of texels at or above the test threshold
-  keeps level 0's value (Castano's alpha coverage). Which textures, and at
+- `alpha_coverage`: for textures a material alpha-tests, a lower mip level
+  whose fraction of texels at or above the test threshold fell below level 0's
+  gets its alpha rescaled to restore it (Castano's alpha coverage; `exact`
+  mode also lowers thickened levels). Which textures, and at
   which threshold, comes from the meshes: `pack/alpha_usage.*` reads every mesh
   of the mount once before the textures and tallies each material's diffuse slot
   and its NiAlphaProperty. The threshold is part of the texture's recipe, so
-  only those textures change name (`--no-alpha-coverage` is the control run).
+  only those textures change name (`--alpha-coverage off` is the control run).
   See `docs/format-notes/dds-textures.md`.
 
 ### 5.8 `script/`: PEX → `.pexfb`

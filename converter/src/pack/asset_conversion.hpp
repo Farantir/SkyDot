@@ -34,6 +34,8 @@ struct TextureCounters {
     std::uint64_t coverage_unchanged{};
     std::uint64_t coverage_single_level{};
     std::uint64_t coverage_unsupported{};
+    std::uint64_t coverage_raised{};   ///< Adjusted textures with a level that had thinned.
+    std::uint64_t coverage_lowered{};  ///< ... with a level that had thickened.
 };
 
 struct AssetConversion {

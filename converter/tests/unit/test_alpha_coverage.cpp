@@ -82,10 +82,11 @@ std::vector<std::byte> dxt5_file(std::uint32_t mips) {
     return file;
 }
 
-CoverageFix run(const std::vector<std::byte>& file, std::uint32_t threshold = k_threshold) {
+CoverageFix run(const std::vector<std::byte>& file, std::uint32_t threshold = k_threshold,
+                CoverageMode mode = CoverageMode::exact) {
     auto info = parse_dds(file, "t.dds");
     REQUIRE(info.has_value());
-    auto fix = preserve_alpha_coverage(file, *info, threshold, "t.dds");
+    auto fix = preserve_alpha_coverage(file, *info, threshold, "t.dds", mode);
     REQUIRE(fix.has_value());
     return std::move(*fix);
 }
@@ -223,4 +224,62 @@ TEST_CASE("a truncated file is an error, not a crash", "[texture][coverage]") {
     file.resize(file.size() - 40);
     auto fix = preserve_alpha_coverage(file, *info, k_threshold, "t.dds");
     CHECK_FALSE(fix.has_value());
+}
+
+namespace {
+
+/// Like `rgba_file`, but level 1 is thicker than level 0: three quarters of its
+/// texels are at or above the threshold, against half in level 0.
+std::vector<std::byte> thickened_rgba_file() {
+    auto file = rgba_file();
+    std::size_t at = k_dds_header_size + 16 * 16 * 4;
+    for (std::uint32_t i = 0; i < 8 * 8; ++i, at += 4) {
+        constexpr std::uint8_t alphas[4] = {255, 200, 150, 0};
+        file[at + 3] = static_cast<std::byte>(alphas[i % 4]);
+    }
+    return file;
+}
+
+} // namespace
+
+TEST_CASE("exact lowers a thickened level, floor leaves it", "[texture][coverage]") {
+    const auto file = thickened_rgba_file();
+    const CoverageFix exact = run(file);
+    REQUIRE(exact.outcome == CoverageOutcome::adjusted);
+    CHECK(exact.before[1] == Catch::Approx(0.75));
+    CHECK(exact.lowered);
+    CHECK(exact.after[1] == Catch::Approx(0.5).margin(0.02));
+
+    const CoverageFix floor = run(file, k_threshold, CoverageMode::floor);
+    // Level 1 stays; the thinned levels below it are still raised.
+    CHECK(floor.scale[1] == 1.0F);
+    CHECK(floor.after[1] == Catch::Approx(0.75));
+    CHECK_FALSE(floor.lowered);
+}
+
+TEST_CASE("floor raises a thinned level like exact does", "[texture][coverage]") {
+    const auto file = rgba_file();
+    const CoverageFix floor = run(file, k_threshold, CoverageMode::floor);
+    REQUIRE(floor.outcome == CoverageOutcome::adjusted);
+    CHECK(floor.raised);
+    CHECK_FALSE(floor.lowered);
+    CHECK(floor.after[1] == Catch::Approx(0.5));
+    CHECK(floor.after[2] == Catch::Approx(0.5));
+}
+
+TEST_CASE("floor on chains that only thicken changes nothing", "[texture][coverage]") {
+    auto file = rgba_file();
+    // Levels 2..4 clear as well: nothing thins, level 1 thickens.
+    std::size_t at = k_dds_header_size + 16 * 16 * 4;
+    for (std::uint32_t i = 0; i < 8 * 8; ++i, at += 4) {
+        file[at + 3] = std::byte{255};
+    }
+    for (std::uint32_t level = 2; level < 5; ++level) {
+        for (std::uint32_t i = 0; i < (16U >> level) * (16U >> level); ++i, at += 4) {
+            file[at + 3] = i % 2 == 0 ? std::byte{255} : std::byte{0};
+        }
+    }
+    const CoverageFix floor = run(file, k_threshold, CoverageMode::floor);
+    CHECK(floor.outcome == CoverageOutcome::unchanged);
+    CHECK(floor.data.empty());
 }

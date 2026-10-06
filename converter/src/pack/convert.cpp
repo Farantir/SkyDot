@@ -221,7 +221,8 @@ template <typename Taken>
         out.source_name = set.sources()[resolution->winner].name;
     }
     const auto threshold = threshold_of(thresholds, *out.kind, vpath);
-    out.hash = threshold ? writer.hash_of(*out.kind, *bytes, coverage_recipe(*threshold))
+    out.hash = threshold ? writer.hash_of(*out.kind, *bytes,
+                                                  coverage_recipe(*threshold, options.alpha_coverage))
                          : writer.hash_of(*out.kind, *bytes);
     out.source_bytes = bytes->size();
     if (taken(out.hash, index)) {
@@ -330,6 +331,8 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
         result.alpha_coverage.unchanged += converted.textures.coverage_unchanged;
         result.alpha_coverage.single_level += converted.textures.coverage_single_level;
         result.alpha_coverage.unsupported += converted.textures.coverage_unsupported;
+        result.alpha_coverage.raised += converted.textures.coverage_raised;
+        result.alpha_coverage.lowered += converted.textures.coverage_lowered;
         if (converted.failure) {
             writer.fail(std::move(*converted.failure));
             continue;
@@ -370,6 +373,24 @@ std::string ConvertOptions::mesh_settings() const {
            "scale=" + fixed_float(mesh_write.unit_scale) + ";" +
            flag("extras", mesh_write.write_extras) + ";" +
            "refs=" + std::to_string(static_cast<int>(mesh_write.texture_refs));
+}
+
+std::string_view to_string(AlphaCoverage mode) noexcept {
+    switch (mode) {
+    case AlphaCoverage::off: return "off";
+    case AlphaCoverage::floor: return "floor";
+    case AlphaCoverage::exact: return "exact";
+    }
+    return "?";
+}
+
+std::optional<AlphaCoverage> alpha_coverage_from_string(std::string_view text) noexcept {
+    for (const auto mode : {AlphaCoverage::off, AlphaCoverage::floor, AlphaCoverage::exact}) {
+        if (text == to_string(mode)) {
+            return mode;
+        }
+    }
+    return std::nullopt;
 }
 
 std::string ConvertOptions::texture_settings() const {
@@ -488,11 +509,12 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     // Before the textures: their recipe (and so their asset name) depends on
     // how the meshes use them.
     AlphaUsage usage;
-    const bool scan_alpha = options.alpha_coverage && options.convert_textures;
+    const bool scan_alpha = options.alpha_coverage != AlphaCoverage::off && options.convert_textures;
     if (scan_alpha) {
         report("alpha-scan", 0, 1);
         usage = scan_alpha_usage(set, options.jobs);
         result.alpha_coverage = usage.summary;
+        result.alpha_coverage.mode = std::string(to_string(options.alpha_coverage));
         report("alpha-scan", 1, 1);
     }
 

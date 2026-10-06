@@ -35,9 +35,16 @@
 #include <functional>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace bethconv::pack {
+
+/// How alpha-tested textures' mips keep their coverage (texture/alpha_coverage.hpp).
+enum class AlphaCoverage : std::uint8_t { off, floor, exact };
+
+[[nodiscard]] std::string_view to_string(AlphaCoverage mode) noexcept;
+[[nodiscard]] std::optional<AlphaCoverage> alpha_coverage_from_string(std::string_view text) noexcept;
 
 struct ConvertOptions {
     std::filesystem::path out;
@@ -85,7 +92,7 @@ struct ConvertOptions {
     /// precedes the textures. Off is the control run. The threshold a texture is
     /// treated at is part of its asset name, so toggling re-converts exactly
     /// those textures.
-    bool alpha_coverage = true;
+    AlphaCoverage alpha_coverage = AlphaCoverage::floor;
 
     /// Block-compress uncompressed textures (texture/bc_encode.hpp). Part of
     /// the texture fingerprint unless `keep`.

@@ -133,6 +133,9 @@ struct AlphaCoverageRecord {
     std::uint64_t unchanged{};
     std::uint64_t single_level{};
     std::uint64_t unsupported{};
+    std::uint64_t raised{};  ///< Of the adjusted: a level had thinned and got more alpha.
+    std::uint64_t lowered{}; ///< ... a level had thickened and got less (exact mode only).
+    std::string mode;        ///< "exact" or "floor".
 
     std::vector<Conflict> conflicts; ///< Sorted by vpath.
     /// Every treated texture and the threshold its coverage is kept at, by vpath.

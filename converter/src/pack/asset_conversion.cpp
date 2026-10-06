@@ -138,13 +138,20 @@ AssetConversion convert_texture(std::span<const std::byte> source, std::string_v
         if (!current) {
             return fail(current.error());
         }
-        auto kept = texture::preserve_alpha_coverage(payload, *current, *alpha_threshold, vpath);
+        auto kept = texture::preserve_alpha_coverage(
+            payload, *current, *alpha_threshold, vpath,
+            options.alpha_coverage == AlphaCoverage::floor ? texture::CoverageMode::floor
+                                                           : texture::CoverageMode::exact);
         if (!kept) {
             return fail(kept.error());
         }
         coverage = std::move(*kept);
         switch (coverage.outcome) {
-        case texture::CoverageOutcome::adjusted: ++out.textures.coverage_adjusted; break;
+        case texture::CoverageOutcome::adjusted:
+            ++out.textures.coverage_adjusted;
+            out.textures.coverage_raised += coverage.raised ? 1 : 0;
+            out.textures.coverage_lowered += coverage.lowered ? 1 : 0;
+            break;
         case texture::CoverageOutcome::unchanged: ++out.textures.coverage_unchanged; break;
         case texture::CoverageOutcome::single_level: ++out.textures.coverage_single_level; break;
         case texture::CoverageOutcome::unsupported: ++out.textures.coverage_unsupported; break;

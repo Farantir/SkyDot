@@ -12,6 +12,7 @@
 #pragma once
 
 #include "bethconv/archive/archive_set.hpp"
+#include "bethconv/pack/convert.hpp"
 #include "bethconv/pack/pack_writer.hpp"
 
 #include <cstdint>
@@ -36,6 +37,6 @@ struct AlphaUsage {
 
 /// The part of a texture's recipe that its threshold makes, hashed into its
 /// asset name; `cov/1` is bumped when the pass's output changes.
-[[nodiscard]] std::string coverage_recipe(std::uint32_t threshold);
+[[nodiscard]] std::string coverage_recipe(std::uint32_t threshold, AlphaCoverage mode);
 
 } // namespace bethconv::pack

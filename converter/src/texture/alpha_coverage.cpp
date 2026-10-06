@@ -318,6 +318,14 @@ struct Levels {
 
 } // namespace
 
+std::string_view to_string(CoverageMode mode) noexcept {
+    switch (mode) {
+    case CoverageMode::exact: return "exact";
+    case CoverageMode::floor: return "floor";
+    }
+    return "?";
+}
+
 std::string_view to_string(CoverageOutcome outcome) noexcept {
     switch (outcome) {
     case CoverageOutcome::adjusted: return "adjusted";
@@ -350,7 +358,7 @@ io::ParseResult<std::vector<double>> measure_alpha_coverage(std::span<const std:
 
 io::ParseResult<CoverageFix> preserve_alpha_coverage(std::span<const std::byte> file,
                                                      const DdsInfo& info, std::uint32_t threshold,
-                                                     std::string_view origin) {
+                                                     std::string_view origin, CoverageMode mode) {
     CoverageFix fix;
     const auto unsupported = [&](std::string why) {
         fix.outcome = CoverageOutcome::unsupported;
@@ -400,9 +408,10 @@ io::ParseResult<CoverageFix> preserve_alpha_coverage(std::span<const std::byte> 
     for (std::size_t l = 1; l < levels.planes.size(); ++l) {
         Plane& plane = levels.planes[l];
         const std::uint32_t cut = pick_cut(hists[l], threshold, target, total(plane));
-        if (cut == threshold) {
-            continue;
+        if (cut == threshold || (mode == CoverageMode::floor && cut > threshold)) {
+            continue; // holds, or is thicker than level 0 and may stay so
         }
+        (cut < threshold ? fix.raised : fix.lowered) = true;
         fix.scale[l] = static_cast<float>(threshold) / static_cast<float>(cut);
         for (auto& a : plane.alpha) {
             const std::uint32_t scaled = (std::uint32_t{a} * threshold + cut / 2) / cut;

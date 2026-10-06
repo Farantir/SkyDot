@@ -34,6 +34,17 @@
 
 namespace bethconv::texture {
 
+/// What to do with a level whose coverage is off. Vanilla Skyrim's own chains
+/// mostly drift upwards (distant foliage thickens, which also hides its
+/// shimmer); matching level 0 exactly thins them to the density of the full
+/// size texture, with all its detail.
+enum class CoverageMode : std::uint8_t {
+    exact, ///< Every level takes level 0's coverage, up or down.
+    floor, ///< Only levels that fell below it are raised; thicker ones stay.
+};
+
+[[nodiscard]] std::string_view to_string(CoverageMode mode) noexcept;
+
 enum class CoverageOutcome : std::uint8_t {
     adjusted,     ///< At least one level got new alpha; `data` is the new file.
     unchanged,    ///< Coverage already holds (or is 0 or 1 everywhere).
@@ -52,6 +63,9 @@ struct CoverageFix {
     std::vector<double> after;
     /// Alpha scale applied per level (1 = untouched).
     std::vector<float> scale;
+    /// Some level got more alpha (it had thinned), some got less (it had thickened).
+    bool raised = false;
+    bool lowered = false;
     /// The new file; only for `adjusted`.
     std::vector<std::byte> data;
 };
@@ -63,10 +77,11 @@ struct CoverageFix {
     std::string_view origin);
 
 /// Rescale the alpha of levels 1.. so each has level 0's coverage at
-/// `threshold`. `info` must come from parse_dds() on the same bytes.
+/// `threshold` (`mode` says which levels). `info` must come from parse_dds() on the same bytes.
 [[nodiscard]] io::ParseResult<CoverageFix> preserve_alpha_coverage(std::span<const std::byte> file,
                                                                    const DdsInfo& info,
                                                                    std::uint32_t threshold,
-                                                                   std::string_view origin);
+                                                                   std::string_view origin,
+                                                                   CoverageMode mode = CoverageMode::exact);
 
 } // namespace bethconv::texture

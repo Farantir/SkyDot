@@ -235,10 +235,25 @@ RGBA is written in place; DXT1/BC1 (one-bit alpha), cubemaps and arrays are
 left as they are (counted as unsupported). Levels already within 0.2 percentage
 points are not rewritten. It runs last, on the chain as it will be stored.
 
+Two modes (`--alpha-coverage floor|exact|off`):
+
+- `exact`: every level takes level 0's coverage, up or down.
+- `floor` (default): only levels that fell *below* level 0's coverage are
+  raised. Vanilla Skyrim's chains mostly drift the other way: the mips of
+  most of these textures thicken (the swordfern below goes from 27.5% at
+  level 0 to 56% at level 7), which makes distant foliage a denser, steadier
+  mass. `exact` thins it to the density of the full-size texture, with all its
+  needle-sized detail, and in the viewer that flickers more (2x the second
+  difference of luminance on distant pines, 0.03 degrees per frame; see
+  engine/game/shaders/README.md). `floor` never makes a chain thinner than the
+  game's own, so it cannot cost anything and still fixes the textures that thin
+  (mod textures made with plain box filters). On vanilla SE, 361 of the 972
+  treated textures have a level that thinned.
+
 The treatment is part of the texture's *recipe*: its content hash adds
-`;cov/1;t=<threshold>`, so changing the threshold or the pass re-converts
-exactly the textures it concerns and the rest keep their names;
-`--no-alpha-coverage` is the control run.
+`;cov/1;t=<threshold>` (`;floor` in that mode), so changing the threshold, the
+mode or the pass re-converts exactly the textures it concerns and the rest
+keep their names; `--alpha-coverage off` is the control run.
 
 `bethconv texture --coverage N` prints coverage per level before and after for
 the given textures. Vanilla SE (all 10 plugins, 33,423 meshes): 980 diffuse

@@ -305,7 +305,7 @@ Per kind, mentioning only settings that affect that kind:
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
 | mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/19` |
-| texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep`; for a texture some material alpha-tests, `;cov/1;t=<threshold>` (alpha coverage mips) | `texture/1` |
+| texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep`; for a texture some material alpha-tests, `;cov/1;t=<threshold>`, plus `;floor` in the default mode (alpha coverage mips) | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 | animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
@@ -510,7 +510,7 @@ GLBs placed outside the pack root also carry a `../` prefix for their depth.
 
 Same formatting as the manifest. Keys: `pack_format_version`, `totals`,
 `bytes`, `assets`, `failures` (uncapped; `vpath`, `stage`, `kind`, `detail`),
-`warnings`, `deferred`, and `alpha_coverage` unless `--no-alpha-coverage`
+`warnings`, `deferred`, and `alpha_coverage` unless `--alpha-coverage off`
 (which textures the materials alpha-test: counts, the thresholds in conflict
 and every treated texture with its threshold; see
 `converter/docs/format-notes/dds-textures.md`).

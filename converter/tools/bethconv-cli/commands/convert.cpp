@@ -44,7 +44,7 @@ struct ConvertArgs {
     bool no_lod = false;
     bool no_animations = false;
     bool no_mip_fix = false;
-    bool no_alpha_coverage = false;
+    bethconv::pack::AlphaCoverage alpha_coverage = bethconv::pack::AlphaCoverage::floor;
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
@@ -188,7 +188,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_lod = !args.no_lod;
     options.convert_animations = !args.no_animations;
     options.fix_mip_tail = !args.no_mip_fix;
-    options.alpha_coverage = !args.no_alpha_coverage;
+    options.alpha_coverage = args.alpha_coverage;
     options.max_texture_size = args.max_texture_size;
     options.texture_encoding = args.encoding;
     options.mesh_read.read_collision = !args.no_collision;
@@ -307,7 +307,7 @@ int cmd_convert(const ConvertArgs& args) {
                      std::string(bethconv::texture::to_string(args.encoding)).c_str(),
                      static_cast<unsigned long long>(result->textures_not_encoded));
     }
-    if (!args.no_alpha_coverage && !args.no_textures) {
+    if (args.alpha_coverage != bethconv::pack::AlphaCoverage::off && !args.no_textures) {
         const auto& a = result->alpha_coverage;
         std::fprintf(text, "  alpha tests   %llu textures alpha-tested by %llu materials in %llu meshes "
                      "(%llu with conflicting thresholds, %llu also in another slot, %llu only blended); "
@@ -319,9 +319,11 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(a.textures_shared_slot),
                      static_cast<unsigned long long>(a.textures_blend_only),
                      static_cast<unsigned long long>(a.textures_treated));
-        std::fprintf(text, "                coverage mips: %llu adjusted, %llu already held, %llu "
-                     "unsupported format, %llu single level (this run)\n",
-                     static_cast<unsigned long long>(a.adjusted),
+        std::fprintf(text, "                coverage mips (%s): %llu adjusted (%llu had thinned, %llu thickened), "
+                     "%llu already held, %llu unsupported format, %llu single level (this run)\n",
+                     a.mode.c_str(), static_cast<unsigned long long>(a.adjusted),
+                     static_cast<unsigned long long>(a.raised),
+                     static_cast<unsigned long long>(a.lowered),
                      static_cast<unsigned long long>(a.unchanged),
                      static_cast<unsigned long long>(a.unsupported),
                      static_cast<unsigned long long>(a.single_level));
@@ -400,12 +402,15 @@ int cmd_convert(const ConvertArgs& args) {
                                       {"not_encoded", result->textures_not_encoded},
                                       {"bytes_saved", result->texture_bytes_saved}}},
             {"alpha_coverage",
-             ordered_json{{"enabled", !args.no_alpha_coverage && !args.no_textures},
+             ordered_json{{"enabled", args.alpha_coverage != bethconv::pack::AlphaCoverage::off && !args.no_textures},
                           {"meshes_scanned", result->alpha_coverage.meshes_scanned},
                           {"textures_alpha_tested", result->alpha_coverage.textures_alpha_tested},
                           {"textures_conflicting", result->alpha_coverage.textures_conflicting},
                           {"textures_treated", result->alpha_coverage.textures_treated},
+                          {"mode", result->alpha_coverage.mode},
                           {"adjusted", result->alpha_coverage.adjusted},
+                          {"raised", result->alpha_coverage.raised},
+                          {"lowered", result->alpha_coverage.lowered},
                           {"unchanged", result->alpha_coverage.unchanged},
                           {"unsupported", result->alpha_coverage.unsupported}}},
             {"failed", stats.failed},
@@ -434,7 +439,7 @@ struct ConvertCli {
     bool no_lod = false;
     bool no_animations = false;
     bool no_mip_fix = false;
-    bool no_alpha_coverage = false;
+    std::string alpha_coverage{"floor"};
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
@@ -486,9 +491,11 @@ void register_convert(CLI::App& app) {
     convert->add_flag("--no-animations", args->no_animations, "Skip Havok files (.hkx)");
     convert->add_flag("--no-mip-fix", args->no_mip_fix,
                       "Leave short DDS mip chains alone (control run)");
-    convert->add_flag("--no-alpha-coverage", args->no_alpha_coverage,
-                      "Do not keep the coverage of alpha-tested textures through their mip "
-                      "levels (control run; saves reading every mesh first)");
+    convert->add_option("--alpha-coverage", args->alpha_coverage,
+                        "Alpha-tested textures' mips and their coverage: floor (default: levels that "
+                        "thinned are raised to level 0's), exact (every level takes level 0's, "
+                        "thickened ones too), off (control run; saves reading every mesh first)")
+        ->check(CLI::IsMember({"off", "floor", "exact"}));
     convert->add_flag("--no-collision", args->no_collision, "Do not read Havok shapes");
     convert->add_flag("--no-skinning", args->no_skinning, "Do not read skin data");
     convert->add_flag("--keep-z-up", args->keep_z_up, "Leave meshes in NIF space");
@@ -542,7 +549,7 @@ void register_convert(CLI::App& app) {
                                                 .no_lod = args->no_lod,
                                                 .no_animations = args->no_animations,
                                                 .no_mip_fix = args->no_mip_fix,
-                                                .no_alpha_coverage = args->no_alpha_coverage,
+                                                .alpha_coverage = *bethconv::pack::alpha_coverage_from_string(args->alpha_coverage),
                                                 .no_collision = args->no_collision,
                                                 .no_skinning = args->no_skinning,
                                                 .keep_z_up = args->keep_z_up,

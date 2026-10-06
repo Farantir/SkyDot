@@ -91,8 +91,8 @@ void tally_model(const mesh::Model& model, Tally& tally) {
 
 constexpr std::uint32_t k_lod_tree_threshold = 128; // 0.5, as lod_tree.gdshader
 
-std::string coverage_recipe(std::uint32_t threshold) {
-    return ";cov/1;t=" + std::to_string(threshold);
+std::string coverage_recipe(std::uint32_t threshold, AlphaCoverage mode) {
+    return ";cov/1;t=" + std::to_string(threshold) + (mode == AlphaCoverage::floor ? ";floor" : "");
 }
 
 AlphaUsage scan_alpha_usage(const archive::ArchiveSet& set, unsigned jobs) {

@@ -480,7 +480,7 @@ TEST_CASE("the coverage treatment is part of the asset's recipe", "[convert][tex
 
     // Off, over the same pack: a different recipe, so a new asset, and the
     // texture is the source's bytes again.
-    run.options.alpha_coverage = false;
+    run.options.alpha_coverage = AlphaCoverage::off;
     const auto off = run.go();
     CHECK(off.pack.converted >= 1);
     CHECK(off.alpha_coverage.textures_treated == 0);
@@ -490,10 +490,31 @@ TEST_CASE("the coverage treatment is part of the asset's recipe", "[convert][tex
     CHECK(run.stored("textures/leaf.dds") == thinning_dxt5());
 
     // On again: the first asset is still there and is reused.
-    run.options.alpha_coverage = true;
+    run.options.alpha_coverage = AlphaCoverage::floor;
     const auto again = run.go();
     CHECK(again.pack.converted == 0);
     const auto back = VpathIndex::read(run.pack() / "vpath.idx");
     REQUIRE(back.has_value());
     CHECK(back->find("textures/leaf.dds")->hex == with);
+}
+
+TEST_CASE("floor and exact are different recipes of the same texture", "[convert][texture][coverage]") {
+    Run run;
+    run.add("meshes/foliage.nif", foliage_nif());
+    run.add("textures/leaf.dds", thinning_dxt5());
+    run.options.alpha_coverage = AlphaCoverage::exact;
+    const auto exact = run.go();
+    CHECK(exact.alpha_coverage.mode == "exact");
+    CHECK(exact.alpha_coverage.raised == 1);
+    const auto exact_index = VpathIndex::read(run.pack() / "vpath.idx");
+    REQUIRE(exact_index.has_value());
+    const std::string exact_hash = exact_index->find("textures/leaf.dds")->hex;
+
+    run.options.alpha_coverage = AlphaCoverage::floor;
+    const auto floor = run.go();
+    CHECK(floor.alpha_coverage.mode == "floor");
+    CHECK(floor.pack.converted >= 1);
+    const auto floor_index = VpathIndex::read(run.pack() / "vpath.idx");
+    REQUIRE(floor_index.has_value());
+    CHECK(floor_index->find("textures/leaf.dds")->hex != exact_hash);
 }
