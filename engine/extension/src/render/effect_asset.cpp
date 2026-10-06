@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/effect_asset.hpp"
 
+#include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
@@ -139,7 +140,11 @@ void scan(godot::Node* node, std::unordered_map<std::int64_t, godot::Node*>& out
     const Dictionary extras = bethconv_extras(node);
     if (!extras.is_empty()) {
         const Variant id = extras.get("id", Variant());
-        if (id.get_type() == Variant::INT || id.get_type() == Variant::FLOAT) {
+        // The importer copies one joint's extras onto the Skeleton3D itself
+        // (the cairn banner's carries its Top02 bone's id); that node is not
+        // the animated one, the bone is (see bones_by_id in the animator).
+        if ((id.get_type() == Variant::INT || id.get_type() == Variant::FLOAT) &&
+            godot::Object::cast_to<godot::Skeleton3D>(node) == nullptr) {
             out.try_emplace(static_cast<std::int64_t>(id), node);
         }
         if (static_cast<bool>(extras.get("hidden", false))) {
