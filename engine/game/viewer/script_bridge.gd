@@ -130,11 +130,25 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 		if not enabled:
 			_wake_around(node)
 		_show_ref(node, enabled)
-	elif enabled:
+	elif enabled and _in_place(ref):
 		# Initially disabled references are not built with their cell.
 		var holder := _world.build_ref(_world.get_ref_cell(ref), ref)
 		if holder != null:
 			_place.add(holder)
+
+
+## Whether the place on screen is where reference `ref` is: its interior, or
+## its worldspace. A script may enable a reference elsewhere (the Cidhna Mine
+## silver ore, while outside); that is not drawn here, where its interior
+## coordinates would put it in the sky.
+func _in_place(ref: int) -> bool:
+	var cell := _world.get_ref_cell(ref)
+	var info := _world.get_cell(cell)
+	if info.is_empty():
+		return false
+	if info["interior"]:
+		return _streamer.world_id == 0 and cell == _place.cell_id
+	return _streamer.world_id != 0 and info["world"] == _streamer.world_id
 
 
 ## Enable or disable a built reference: shown and solid, or neither (a
