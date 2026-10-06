@@ -14,6 +14,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -204,9 +205,33 @@ struct CellSpec {
     std::uint32_t id;
     /// The references placed in it, in any order.
     std::vector<std::uint32_t> refs = {};
+    /// More references, flagged initially disabled.
+    std::vector<std::uint32_t> disabled_refs = {};
+};
+
+/// A large reference (format 11) standing in grid square (x, y), whose bounds
+/// also reach into the squares of `reaches`.
+struct LargeRefSpec {
+    std::uint32_t id;
+    std::uint32_t base = 0;
+    std::int16_t x = 0;
+    std::int16_t y = 0;
+    std::vector<std::pair<std::int16_t, std::int16_t>> reaches = {};
+    std::uint32_t enable_parent = 0;
+    wfb::RefFlags flags = {};
+};
+
+/// A worldspace with large references; the builder derives the per-square
+/// lists from the references' own squares and `reaches`.
+struct WorldspaceSpec {
+    std::uint32_t id;
+    std::vector<LargeRefSpec> large_refs = {};
 };
 
 struct WorldSpec {
+    /// The file's format version; 11 when worldspaces carry large references.
+    int format_version = 10;
+    std::vector<WorldspaceSpec> worlds = {};
     std::vector<CellSpec> cells = {};
     std::vector<NpcSpec> npcs = {};
     std::vector<RaceSpec> races = {};

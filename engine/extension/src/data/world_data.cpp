@@ -287,6 +287,78 @@ bool WorldData::initially_disabled(const wfb::Ref& ref) const {
     return formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) != opposite;
 }
 
+bool WorldData::initially_disabled(const wfb::LargeRef& ref) const {
+    // As for a placed reference: the enable parent's state, inverted if
+    // flagged, found through the cell holding the parent.
+    bool opposite = formats::has_flag(ref.flags(), wfb::RefFlags::enable_opposite);
+    std::uint32_t parent = ref.enable_parent();
+    if (parent == 0) {
+        return formats::has_flag(ref.flags(), wfb::RefFlags::initially_disabled);
+    }
+    const wfb::Ref* r = nullptr;
+    for (int depth = 0; depth < 16 && parent != 0; ++depth) {
+        const auto* cell = cell_ptr(cell_of_ref(parent));
+        const wfb::Ref* found = cell != nullptr ? lookup(cell->refs(), parent) : nullptr;
+        if (found == nullptr) {
+            break; // an unknown parent: the last known one decides
+        }
+        r = found;
+        parent = r->enable_parent();
+        if (parent != 0) {
+            opposite ^= formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
+        }
+    }
+    if (r == nullptr) {
+        return formats::has_flag(ref.flags(), wfb::RefFlags::initially_disabled);
+    }
+    return formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) != opposite;
+}
+
+std::uint32_t WorldData::large_ref_count(std::uint32_t world) const {
+    const auto* w = world_ptr(world);
+    return w != nullptr && w->large_refs() != nullptr ? w->large_refs()->size() : 0;
+}
+
+const wfb::LargeRef* WorldData::large_ref(std::uint32_t world, std::uint32_t index) const {
+    const auto* w = world_ptr(world);
+    const auto* refs = w != nullptr ? w->large_refs() : nullptr;
+    return refs != nullptr && index < refs->size() ? refs->Get(index) : nullptr;
+}
+
+void WorldData::large_cell_refs(std::uint32_t world, std::int32_t x, std::int32_t y,
+                                std::vector<std::uint32_t>& out) const {
+    const auto* w = world_ptr(world);
+    const auto* cells = w != nullptr ? w->large_cells() : nullptr;
+    const auto* list = w != nullptr ? w->large_cell_refs() : nullptr;
+    if (cells == nullptr || list == nullptr) {
+        return;
+    }
+    // Sorted by (cell_y, cell_x).
+    flatbuffers::uoffset_t lo = 0;
+    flatbuffers::uoffset_t hi = cells->size();
+    while (lo < hi) {
+        const flatbuffers::uoffset_t mid = lo + (hi - lo) / 2;
+        const auto* c = cells->Get(mid);
+        if (std::pair{static_cast<std::int32_t>(c->cell_y()), static_cast<std::int32_t>(c->cell_x())} <
+            std::pair{y, x}) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    if (lo >= cells->size()) {
+        return;
+    }
+    const auto* c = cells->Get(lo);
+    if (c->cell_x() != x || c->cell_y() != y) {
+        return;
+    }
+    const std::uint64_t end = std::min<std::uint64_t>(std::uint64_t{c->first()} + c->count(), list->size());
+    for (std::uint64_t i = c->first(); i < end; ++i) {
+        out.push_back(list->Get(static_cast<flatbuffers::uoffset_t>(i)));
+    }
+}
+
 const std::vector<const wfb::ActorRef*>* WorldData::cell_actors(std::uint32_t cell) const {
     const auto it = cell_actors_.find(cell);
     return it != cell_actors_.end() ? &it->second : nullptr;

@@ -25,6 +25,8 @@ struct World;
 struct Cell;
 struct Base;
 struct Ref;
+struct LargeRef;
+struct LargeRefCell;
 struct ActorRef;
 struct Worldspace;
 struct Water;
@@ -127,6 +129,19 @@ public:
     std::vector<std::uint32_t> enable_children(std::uint32_t ref) const;
     /// Initially disabled, following the enable parent chain.
     bool initially_disabled(const bethconv::pack::wfb::Ref& ref) const;
+    /// Initially disabled, as a large reference's own flags and enable parent
+    /// (a placed reference, found in its cell) say.
+    bool initially_disabled(const bethconv::pack::wfb::LargeRef& ref) const;
+
+    // ---- large references (format 11) ----------------------------------------
+    /// How many large references `world` has; 0 for a pack of an older format.
+    std::uint32_t large_ref_count(std::uint32_t world) const;
+    /// Large reference `index` (into the worldspace's `large_refs`), or null.
+    const bethconv::pack::wfb::LargeRef* large_ref(std::uint32_t world, std::uint32_t index) const;
+    /// The large references in or reaching into grid square (x, y): their
+    /// indices, appended to `out`, ascending. Nothing if the square has none.
+    void large_cell_refs(std::uint32_t world, std::int32_t x, std::int32_t y,
+                         std::vector<std::uint32_t>& out) const;
     /// Placed actors of an interior or exterior cell; null if none. Those of a
     /// worldspace's persistent cell are by the grid square they stand in.
     const std::vector<const bethconv::pack::wfb::ActorRef*>* cell_actors(std::uint32_t cell) const;

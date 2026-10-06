@@ -43,6 +43,8 @@ set(SKYDOT_CORE_SOURCES
     src/assets/vpath.hpp
     src/data/actors.cpp
     src/data/actors.hpp
+    src/data/large_refs.cpp
+    src/data/large_refs.hpp
     src/data/world_data.cpp
     src/data/world_data.hpp
     src/session/game_time.cpp

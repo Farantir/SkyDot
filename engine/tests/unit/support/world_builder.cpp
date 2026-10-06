@@ -2,7 +2,9 @@
 #include "world_builder.hpp"
 
 #include <algorithm>
+#include <map>
 #include <set>
+#include <utility>
 #include <stdexcept>
 
 namespace skydot::testing {
@@ -67,8 +69,15 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     std::vector<flatbuffers::Offset<wfb::Cell>> cells;
     for (const auto& c : by_id(spec.cells)) {
         std::vector<wfb::Ref> refs;
-        for (const std::uint32_t id : std::set(c.refs.begin(), c.refs.end())) {
-            refs.emplace_back(id, std::uint32_t{0}, wfb::Vec3f(), wfb::Vec3f(), 1.0F, wfb::RefFlags{}, std::uint32_t{0});
+        std::map<std::uint32_t, wfb::RefFlags> placed;
+        for (const std::uint32_t id : c.refs) {
+            placed[id] = wfb::RefFlags{};
+        }
+        for (const std::uint32_t id : c.disabled_refs) {
+            placed[id] = wfb::RefFlags::initially_disabled;
+        }
+        for (const auto& [id, flags] : placed) {
+            refs.emplace_back(id, std::uint32_t{0}, wfb::Vec3f(), wfb::Vec3f(), 1.0F, flags, std::uint32_t{0});
         }
         const auto refs_v = fbb.CreateVectorOfStructs(refs);
         wfb::CellBuilder cell(fbb);
@@ -123,7 +132,41 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         packages.push_back(package(fbb, p));
     }
 
+    std::vector<flatbuffers::Offset<wfb::Worldspace>> worlds;
+    for (const auto& w : by_id(spec.worlds)) {
+        std::vector<wfb::LargeRef> refs;
+        std::map<std::pair<std::int16_t, std::int16_t>, std::vector<std::uint32_t>> per_square; // by (y, x)
+        for (const auto& r : by_id(w.large_refs)) {
+            refs.emplace_back(r.id, r.base, wfb::Vec3f(), wfb::Vec3f(), 1.0F, r.flags, r.enable_parent, r.x, r.y);
+        }
+        for (std::uint32_t index = 0; index < refs.size(); ++index) {
+            const auto& r = refs[index];
+            std::set<std::pair<std::int16_t, std::int16_t>> squares{{r.cell_y(), r.cell_x()}};
+            for (const auto& spec_ref : w.large_refs) {
+                if (spec_ref.id == r.id()) {
+                    for (const auto& [x, y] : spec_ref.reaches) {
+                        squares.emplace(y, x);
+                    }
+                }
+            }
+            for (const auto& square : squares) {
+                per_square[square].push_back(index);
+            }
+        }
+        std::vector<wfb::LargeRefCell> large_cells;
+        std::vector<std::uint32_t> large_cell_refs;
+        for (const auto& [square, list] : per_square) {
+            large_cells.emplace_back(square.second, square.first, static_cast<std::uint32_t>(large_cell_refs.size()),
+                                     static_cast<std::uint32_t>(list.size()));
+            large_cell_refs.insert(large_cell_refs.end(), list.begin(), list.end());
+        }
+        worlds.push_back(wfb::CreateWorldspaceDirect(fbb, w.id, nullptr, 0, wfb::ParentFlags{}, 0, false, 0.0F, 0.0F, 0,
+                                                     0, 0.0F, 0.0F, 0.0F, 0.0F, refs.empty() ? nullptr : &refs, some(large_cells),
+                                                     some(large_cell_refs)));
+    }
+
     const auto cells_v = fbb.CreateVector(cells);
+    const auto worlds_v = fbb.CreateVector(worlds);
     const auto npcs_v = fbb.CreateVector(npcs);
     const auto races_v = fbb.CreateVector(races);
     const auto armors_v = fbb.CreateVector(armors);
@@ -132,7 +175,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto lists_v = fbb.CreateVector(lists);
     const auto packages_v = fbb.CreateVector(packages);
     wfb::WorldBuilder world(fbb);
-    world.add_format_version(10);
+    world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
+    world.add_worlds(worlds_v);
     world.add_cells(cells_v);
     world.add_npcs(npcs_v);
     world.add_races(races_v);
