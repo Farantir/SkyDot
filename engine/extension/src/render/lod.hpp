@@ -129,6 +129,8 @@ private:
     };
     std::unordered_map<std::uint32_t, TreeType> tree_types_;
     godot::Ref<godot::Texture2D> tree_atlas_;
+    /// textures/terrain/noise.dds, the detail laid over terrain LOD; null without it.
+    godot::Ref<godot::Texture2D> noise_;
 
     std::map<Quad, Shown> shown_;
     /// Threaded loads: path -> resource, null once failed; absent while not

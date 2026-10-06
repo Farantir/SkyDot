@@ -153,6 +153,10 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     tree_atlas_ = pack->load_texture(String("textures/terrain/") + name_ + String("/trees/") + name_ +
                                      String("treelod.dds"));
 
+    noise_ = pack->has(String("textures/terrain/noise.dds"))
+                 ? Ref<godot::Texture2D>(pack->load_texture(String("textures/terrain/noise.dds")))
+                 : Ref<godot::Texture2D>();
+
     mask_image_ = godot::Image::create_empty(stride_, stride_, false, godot::Image::FORMAT_R8);
     mask_image_->fill(godot::Color(0, 0, 0));
     mask_ = godot::ImageTexture::create_from_image(mask_image_);
@@ -292,6 +296,10 @@ Ref<godot::ShaderMaterial> SkydotLod::material(const Ref<godot::Shader>& shader,
     m->set_shader_parameter("albedo_tex", albedo);
     m->set_shader_parameter("normal_tex", normal);
     m->set_shader_parameter("has_normal", normal.is_valid());
+    if (shader == terrain_shader_) {
+        m->set_shader_parameter("noise_tex", noise_);
+        m->set_shader_parameter("has_noise", noise_.is_valid());
+    }
     apply_mask(m);
     materials_.emplace(key, m);
     return m;
