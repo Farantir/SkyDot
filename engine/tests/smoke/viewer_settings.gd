@@ -78,6 +78,10 @@ func _captures() -> void:
     expect(a.has_activate and a.activate == wanted, "activations: %s" % [a.activate])
     expect(not a.interactive and not a.captures, "activating ignores input, but is no capture")
     expect(parse(["--pack", "p", "--cell", "C", "--no-input", "x"]).interactive == false, "--no-input")
+    var flagged := parse(["--pack", "p", "--world", "W", "--no-input", "--radius", "4", "--screenshot", "out.png"])
+    expect(not flagged.interactive and flagged.radius == 4, "--no-input does not swallow --radius")
+    expect(flagged.has_screenshot and flagged.screenshot == "out.png", "--no-input does not swallow --screenshot")
+    expect(not parse(["--pack", "p", "--cell", "C", "--no-input", "--lod", "off"]).lod, "--no-input does not swallow --lod")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,
             "a key without a value is skipped")
 

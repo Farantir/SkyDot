@@ -72,7 +72,7 @@
 # --from-shot FILE.json starts where such a shot was taken, with time
 # stopped; arguments given as well win (--pack, or --screenshot to render it
 # again and exit).
-# --screenshot, --benchmark, --activate and --no-input runs ignore the keyboard
+# --screenshot, --benchmark, --activate and --no-input (a flag: it takes no value) runs ignore the keyboard
 # and mouse.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).

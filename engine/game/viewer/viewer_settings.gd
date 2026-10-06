@@ -9,6 +9,8 @@ extends RefCounted
 
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
+## Options without a value: the next token is another option, not theirs.
+const FLAGS := ["no-input"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 
 ## Why the options cannot be used; empty when they can.
@@ -203,7 +205,10 @@ static func _split(list: PackedStringArray) -> Dictionary:
 	var i := 0
 	while i < list.size():
 		var key := list[i]
-		if key.begins_with("--") and i + 1 < list.size():
+		if key.begins_with("--") and key.substr(2) in FLAGS:
+			out[key.substr(2)] = ""
+			i += 1
+		elif key.begins_with("--") and i + 1 < list.size():
 			out[key.substr(2)] = list[i + 1]
 			i += 2
 		else:
