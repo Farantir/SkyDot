@@ -88,9 +88,14 @@ enum Dirty : std::uint32_t {
     k_alpha_cutoff = 1u << 10,
 };
 
+/// Nodes the NIF marks hidden stay hidden, except the intact stage of a
+/// destructible (BSDamageStage's DamageStage0): the game shows the stage the
+/// reference is in, and every reference starts at 0. Without this a barricade
+/// or siege wall was solid but invisible.
 void hide_marked(godot::Node* node) {
     if (auto* n = godot::Object::cast_to<godot::Node3D>(node)) {
-        if (static_cast<bool>(bethconv_extras(n).get("hidden", false))) {
+        if (static_cast<bool>(bethconv_extras(n).get("hidden", false)) &&
+            n->get_name() != godot::StringName("DamageStage0")) {
             n->set_visible(false);
         }
     }
