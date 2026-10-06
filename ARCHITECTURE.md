@@ -930,6 +930,10 @@ Building an actor (`engine/docs/actors.md`):
 4. The result is a `SkydotActor` (a `SkydotPlayer` steered by itself): it
    walks navigation paths with the animation speed matched to its motion,
    opens plain doors in its way, and wanders when no package drives it.
+   It works at a level of detail set by its distance to the camera: near
+   (80 m) every frame, middle (160 m) and far at a lower rate for animation,
+   physics and AI, and with no animation off screen; a standing one only
+   checks the floor once a second.
 
 ### 7.8 AI packages
 

@@ -168,6 +168,45 @@ all three actors walk and stay on the floor; around Riverwood 13 of 13
 (guards, chickens, a dog, a cow, a horse) wander for a minute without
 falling or sticking.
 
+## Level of detail (`SkydotActor`)
+
+Every actor in every loaded cell used to get its full per-frame work: the
+AnimationPlayer's pose (about 80 bones each), `move_and_slide`, the AI. With a
+full-detail radius of 3 there are a hundred or more of them, and at the
+Whiterun plains' viewpoint that was 47 ms a frame (debug build) against 6 ms
+without actors: animation about 26 ms, character physics about 17 ms, the AI
+under 1 ms. Now the camera's distance sets a level, worked out every 0.1 s
+(staggered per actor, with 10% hysteresis at the borders). The game does the
+same with its process levels: actors near the player run fully, the others
+less often.
+
+| Level | Distance | Animation | Physics, AI |
+| --- | --- | --- | --- |
+| 0 near | under 80 m (a cell and a bit: what a radius of 1 shows) | the AnimationPlayer runs by itself, every frame | every physics tick, AI every frame: as before |
+| 1 middle | 80-160 m | advanced by hand 15 times a second, not at all off screen | 20 steps a second, AI every 0.2 s |
+| 2 far | beyond 160 m | 7.5 times a second, not at all off screen | 10 steps a second, AI every 0.5 s |
+
+- A level above 0 steps with the time since its last step: `move_and_slide`
+  covers velocity times one tick, so `SkydotPlayer::walk` gives it that many
+  times the velocity; the turn, the stuck check and wander timers get the
+  longer time, and a corner counts as reached within a step's distance, so a
+  run at 10 steps a second does not circle it.
+- An actor standing on the floor (no path, not held) steps once a second:
+  gravity and the floor under it are checked, nothing else moves. Starting a
+  walk (`walk_to`, `stop`) wakes it for the next tick.
+- Off screen means the feet, middle and head are all outside the camera's
+  frustum. Near actors are never held still, behind the camera as well: they
+  cast shadows into view. Off-screen actors of the other levels keep the pose
+  they had (or the clip's first), and go on from there when they come into
+  view, at most 0.1 s later.
+- Without a camera (headless runs, tests) every actor is near.
+- The AI chooses packages again every 1.5 s near, 3 s at the middle level and
+  6 s far.
+
+Not part of it: the 250 m cut-off of `SkydotAnimator` (doors, banners, fires)
+and a frustum test for those; the actors' skinning, which the renderer
+already skips off screen.
+
 ## Skin and faces (`SkydotMaterials`)
 
 - **Model-space normals.** Bodies, hands, feet and FaceGen heads carry

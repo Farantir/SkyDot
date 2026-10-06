@@ -27,7 +27,9 @@ passes runs:
 Packages given by quest aliases (ALPC) and scenes are not read yet: an actor
 does what its NPC_ says, not what a running quest wants of it.
 
-Packages are chosen again every 1.5 s for built actors, and every five game
+Packages are chosen again every 1.5 s for built actors (3 s and 6 s for those
+at the middle and far level of detail, `actors.md`; their steps are also
+updated every 0.2 s and 0.5 s instead of every frame), and every five game
 minutes for the others.
 
 ## What a package does
