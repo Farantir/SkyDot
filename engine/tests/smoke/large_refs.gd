@@ -141,6 +141,24 @@ func _with(pack_dir: String) -> void:
             shadows += 1
     expect(shadows == 0, "and casts no shadows (%d do)" % shadows)
 
+    # The LOD's object shapes made of large references (named ...LargeRef)
+    # are the ones the second mask state hides; the other shapes are not.
+    var flagged := 0
+    var others := 0
+    for mi in lod.find_children("*", "MeshInstance3D", true, false):
+        var m := mi as MeshInstance3D
+        if m.get_surface_override_material_count() == 0 or not m.get_surface_override_material(0) is ShaderMaterial:
+            continue
+        if (m.get_surface_override_material(0) as ShaderMaterial).shader.code.find("large_ref_shape") < 0:
+            continue  # terrain and water
+        if (m.get_surface_override_material(0) as ShaderMaterial).get_shader_parameter("large_ref_shape"):
+            flagged += 1
+            expect(String(m.name).to_lower().contains("largeref"), "flagged shapes are named LargeRef: " + m.name)
+        else:
+            others += 1
+            expect(not String(m.name).to_lower().contains("largeref"), "others are not: " + m.name)
+    expect(flagged > 0 and others > 0, "LargeRef object shapes are told from the rest: %d and %d" % [flagged, others])
+
     # A built cell draws its own: the layer lets go of what stands there.
     var shown_before: int = lr["shown"]
     var own := 0
