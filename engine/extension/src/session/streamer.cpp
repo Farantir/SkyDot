@@ -95,6 +95,8 @@ void SkydotStreamer::_bind_methods() {
     SKYDOT_PROPERTY(build_budget_usec, INT);
     SKYDOT_PROPERTY(lod_split, FLOAT);
     SKYDOT_PROPERTY(lod_enabled, BOOL);
+    SKYDOT_PROPERTY(large_refs, BOOL);
+    SKYDOT_PROPERTY(large_ref_radius, INT);
     SKYDOT_PROPERTY(eye_height, FLOAT);
     SKYDOT_PROPERTY(preload_enabled, BOOL);
     SKYDOT_PROPERTY(preload_distance, FLOAT);
@@ -160,6 +162,20 @@ godot::Camera3D* SkydotStreamer::camera() const {
     return godot::Object::cast_to<godot::Camera3D>(godot::ObjectDB::get_instance(camera_));
 }
 
+void SkydotStreamer::set_large_refs(bool enabled) {
+    large_refs_ = enabled;
+    if (SkydotLod* lod = get_lod()) {
+        lod->set_large_refs(enabled);
+    }
+}
+
+void SkydotStreamer::set_large_ref_radius(std::int64_t cells) {
+    large_ref_radius_ = std::clamp<std::int64_t>(cells, 0, 32);
+    if (SkydotLod* lod = get_lod()) {
+        lod->set_large_ref_radius(large_ref_radius_);
+    }
+}
+
 void SkydotStreamer::set_lod(SkydotLod* lod) { lod_ = lod != nullptr ? lod->get_instance_id() : 0; }
 
 SkydotLod* SkydotStreamer::get_lod() const {
@@ -220,6 +236,8 @@ SkydotLod* SkydotStreamer::make_lod(std::int64_t id) {
         return nullptr;
     }
     auto* made = memnew(SkydotLod);
+    made->set_large_ref_radius(large_ref_radius_);
+    made->set_large_refs(large_refs_); // before setup, which makes the layer
     if (made->setup(pack_, world_, id) != godot::OK) {
         godot::UtilityFunctions::print("no LOD: ", made->get_error());
         memdelete(made);

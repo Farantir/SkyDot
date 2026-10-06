@@ -161,6 +161,8 @@ target_sources(skydot PRIVATE
     src/render/flicker.hpp
     src/render/grass.cpp
     src/render/image_space.cpp
+    src/render/large_refs.cpp
+    src/render/large_refs.hpp
     src/render/lod.cpp
     src/render/lod.hpp
     src/render/materials.cpp

@@ -12,6 +12,9 @@
 //
 // Where full-detail cells are loaded (`set_cell_loaded`), LOD must not draw:
 // every LOD shader discards fragments over cells marked in a per-cell mask.
+// Where large references are drawn as models (SkydotLargeRefs, a child), only
+// the object shapes the game's LOD made of them (named ...LargeRef) are
+// hidden: the mask has a second state for that.
 #pragma once
 
 #include "assets/pack.hpp"
@@ -39,6 +42,8 @@
 
 namespace skydot {
 
+class SkydotLargeRefs;
+
 class SkydotLod : public godot::Node3D {
     GDCLASS(SkydotLod, godot::Node3D)
 
@@ -58,6 +63,19 @@ public:
     /// Full-detail cell (x, y) is built (or dropped): LOD hides there.
     void set_cell_loaded(std::int64_t x, std::int64_t y, bool loaded);
     void clear_loaded_cells();
+    /// Large references are all drawn as models for the cells around (x, y),
+    /// or no longer: the object shapes made of large references hide there.
+    void set_cell_large_refs(std::int64_t x, std::int64_t y, bool drawn);
+
+    /// Draw the worldspace's large references (pack format 11) out to
+    /// `large_ref_radius` cells from the camera, beyond the cells at full
+    /// detail. On by default where the pack has them; radius 5 by default.
+    void set_large_refs(bool enabled);
+    bool get_large_refs() const { return large_refs_enabled_; }
+    void set_large_ref_radius(std::int64_t cells);
+    std::int64_t get_large_ref_radius() const { return large_ref_radius_; }
+    /// The layer, or null (off, or the worldspace has none).
+    SkydotLargeRefs* get_large_ref_layer() const { return large_refs_; }
 
     /// A quad of L cells splits while the camera is within this many times L
     /// cells of it. Default 1.5.
@@ -68,7 +86,7 @@ public:
     double get_tree_distance() const;
 
     /// levels (level -> quads shown), objects, tree_quads, trees, pending,
-    /// loaded_cells.
+    /// loaded_cells, and large_refs (SkydotLargeRefs::get_stats) when on.
     godot::Dictionary get_stats() const;
 
     /// The code of every LOD shader, by name.
@@ -103,10 +121,10 @@ private:
     bool loaded(const godot::String& path);
     godot::Node3D* build(const Quad& q, bool trees, Shown& stats);
     void add_trees(godot::Node3D* parent, const Quad& q, Shown& stats);
-    void retexture(godot::Node* node, bool terrain, bool water);
+    void retexture(godot::Node* node, bool terrain, bool water, bool large_ref = false);
     godot::Ref<godot::ShaderMaterial> material(const godot::Ref<godot::Shader>& shader,
                                                const godot::Ref<godot::Texture2D>& albedo,
-                                               const godot::Ref<godot::Texture2D>& normal);
+                                               const godot::Ref<godot::Texture2D>& normal, bool large_ref = false);
     void apply_mask(const godot::Ref<godot::ShaderMaterial>& m) const;
     [[nodiscard]] godot::String vpath(const Quad& q, const char* kind) const;
 
@@ -140,6 +158,16 @@ private:
     /// Vpaths the pack lacks, so their quads count as built.
     mutable std::unordered_map<std::string, bool> exists_;
 
+    /// What the mask shows of cell (x, y): 1 full detail built, 0.5 large
+    /// references drawn, else 0. Kept per cell so each can change on its own.
+    void write_mask(std::int32_t px, std::int32_t py);
+    void make_large_refs();
+    std::vector<std::uint8_t> mask_flags_; ///< bit 0 loaded, bit 1 large references drawn.
+    SkydotLargeRefs* large_refs_ = nullptr;
+    bool large_refs_enabled_ = true;
+    std::int64_t large_ref_radius_ = 5;
+    std::int64_t large_ref_budget_usec_ = 2000; ///< Per update for building large references.
+    std::int64_t world_id_ = 0;
     godot::Ref<godot::Image> mask_image_;
     godot::Ref<godot::ImageTexture> mask_;
     bool mask_dirty_ = false;

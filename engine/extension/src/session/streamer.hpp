@@ -119,6 +119,14 @@ public:
     bool get_lod_enabled() const { return lod_enabled_; }
     /// SkydotLod.tree_distance for every LOD made; unset keeps the LOD's own.
     void set_tree_distance(double cells) { tree_distance_ = cells; }
+    /// Large references (pack format 11) drawn as models between the cells at
+    /// full detail and the LOD, out to this many cells; see SkydotLargeRefs.
+    /// On by default where the pack has them, to 5 cells. Applies to the LOD
+    /// shown and to those made.
+    void set_large_refs(bool enabled);
+    bool get_large_refs() const { return large_refs_; }
+    void set_large_ref_radius(std::int64_t cells);
+    std::int64_t get_large_ref_radius() const { return large_ref_radius_; }
     /// Metres from the feet to the eyes, for the camera's place on arrival.
     void set_eye_height(double metres) { eye_height_ = metres; }
     double get_eye_height() const { return eye_height_; }
@@ -233,6 +241,8 @@ private:
     double lod_split_ = 1.5;
     bool lod_enabled_ = true;
     std::optional<double> tree_distance_;
+    bool large_refs_ = true;
+    std::int64_t large_ref_radius_ = 5;
     double eye_height_ = 1.7;
     bool preload_enabled_ = true;
     double preload_distance_ = 15.0;

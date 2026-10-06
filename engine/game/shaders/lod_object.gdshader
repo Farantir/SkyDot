@@ -15,13 +15,17 @@ render_mode diffuse_lambert, cull_back, depth_draw_opaque, ambient_light_disable
 uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform bool has_normal = false;
+/* A shape the game's LOD made of a large reference (named ...LargeRef): hidden also where
+ * the cell's large references are drawn as models. */
+uniform bool large_ref_shape = false;
 
 void vertex() {
 	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
 void fragment() {
-	if (skydot_masked(skydot_world)) {
+	float mask = skydot_mask_state(skydot_world);
+	if (mask > 0.75 || (large_ref_shape && mask > 0.25)) {
 		discard;
 	}
 	ALBEDO = texture(albedo_tex, UV).rgb * COLOR.rgb;

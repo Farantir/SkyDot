@@ -14,6 +14,7 @@
 #include "physics/collision.hpp"
 #include "render/flicker.hpp"
 #include "render/image_space.hpp"
+#include "render/large_refs.hpp"
 #include "render/lod.hpp"
 #include "render/particles.hpp"
 #include "actors/actor.hpp"
@@ -44,6 +45,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotPack);
     GDREGISTER_CLASS(skydot::SkydotPapyrus);
     GDREGISTER_CLASS(skydot::SkydotLod);
+    GDREGISTER_CLASS(skydot::SkydotLargeRefs);
     GDREGISTER_CLASS(skydot::SkydotDynamicBody);
     GDREGISTER_CLASS(skydot::SkydotPlayer);
     GDREGISTER_CLASS(skydot::SkydotActor);

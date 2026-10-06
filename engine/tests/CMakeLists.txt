@@ -34,6 +34,12 @@ endif()
 set(SKYDOT_TESTPACK "${_default_testpack}" CACHE PATH
     "A pack directory written by bethconv-testpack; empty skips the pack tests")
 
+# A pack of world.fb format 11 with large references (a Skyrim SE conversion
+# with Tamriel and its LOD): smoke_large_refs runs the layer against it. Empty
+# runs that test's pack-free half only.
+set(SKYDOT_LARGE_REF_PACK "$ENV{SKYDOT_LARGE_REF_PACK}" CACHE PATH
+    "A format 11 pack with large references; empty skips the layer test")
+
 # The pack tool's smoke test runs a real bethconv: by default the sibling
 # checkout's build (release first); the environment variable wins.
 set(_default_bethconv "$ENV{SKYDOT_BETHCONV}")
@@ -84,7 +90,7 @@ function(skydot_smoke_test name script)
         SKIP_RETURN_CODE 77
         FAIL_REGULAR_EXPRESSION "${_errors}"
         TIMEOUT 300
-        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch;SKYDOT_BETHCONV=${SKYDOT_BETHCONV}")
+        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK};SKYDOT_LARGE_REF_PACK=${SKYDOT_LARGE_REF_PACK};SKYDOT_SCRATCH=${CMAKE_CURRENT_BINARY_DIR}/scratch;SKYDOT_BETHCONV=${SKYDOT_BETHCONV}")
 endfunction()
 
 skydot_smoke_test(smoke_extension extension.gd)
@@ -93,6 +99,7 @@ skydot_smoke_test(smoke_assets assets.gd)
 skydot_smoke_test(smoke_papyrus papyrus.gd)
 skydot_smoke_test(smoke_quests quests.gd)
 skydot_smoke_test(smoke_lod lod.gd)
+skydot_smoke_test(smoke_large_refs large_refs.gd)
 skydot_smoke_test(smoke_animation animation.gd)
 skydot_smoke_test(smoke_actors actors.gd)
 skydot_smoke_test(smoke_ai ai.gd)

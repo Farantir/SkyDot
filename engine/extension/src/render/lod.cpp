@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/lod.hpp"
+#include "render/large_refs.hpp"
 #include "render/materials.hpp"
 #include "render/shader_source.hpp"
 
@@ -73,6 +74,12 @@ void SkydotLod::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("update", "camera", "budget_usec"), &SkydotLod::update);
     godot::ClassDB::bind_method(D_METHOD("set_cell_loaded", "x", "y", "loaded"), &SkydotLod::set_cell_loaded);
     godot::ClassDB::bind_method(D_METHOD("clear_loaded_cells"), &SkydotLod::clear_loaded_cells);
+    godot::ClassDB::bind_method(D_METHOD("set_cell_large_refs", "x", "y", "drawn"), &SkydotLod::set_cell_large_refs);
+    godot::ClassDB::bind_method(D_METHOD("set_large_refs", "enabled"), &SkydotLod::set_large_refs);
+    godot::ClassDB::bind_method(D_METHOD("get_large_refs"), &SkydotLod::get_large_refs);
+    godot::ClassDB::bind_method(D_METHOD("set_large_ref_radius", "cells"), &SkydotLod::set_large_ref_radius);
+    godot::ClassDB::bind_method(D_METHOD("get_large_ref_radius"), &SkydotLod::get_large_ref_radius);
+    godot::ClassDB::bind_method(D_METHOD("get_large_ref_layer"), &SkydotLod::get_large_ref_layer);
     godot::ClassDB::bind_method(D_METHOD("set_split_distance", "factor"), &SkydotLod::set_split_distance);
     godot::ClassDB::bind_method(D_METHOD("get_split_distance"), &SkydotLod::get_split_distance);
     godot::ClassDB::bind_method(D_METHOD("set_tree_distance", "cells"), &SkydotLod::set_tree_distance);
@@ -82,6 +89,9 @@ void SkydotLod::_bind_methods() {
                  "get_split_distance");
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "tree_distance"), "set_tree_distance",
                  "get_tree_distance");
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "large_refs"), "set_large_refs", "get_large_refs");
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::INT, "large_ref_radius"), "set_large_ref_radius",
+                 "get_large_ref_radius");
 }
 
 godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld>& world,
@@ -93,6 +103,7 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     }
     pack_ = pack;
     world_ = world;
+    world_id_ = world_id;
 
     // The worldspace's own LOD, else that of the one whose land it shows.
     std::vector<String> names;
@@ -160,6 +171,7 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     mask_image_ = godot::Image::create_empty(stride_, stride_, false, godot::Image::FORMAT_R8);
     mask_image_->fill(godot::Color(0, 0, 0));
     mask_ = godot::ImageTexture::create_from_image(mask_image_);
+    mask_flags_.assign(static_cast<std::size_t>(stride_) * static_cast<std::size_t>(stride_), 0);
     loaded_cells_ = 0;
 
     terrain_shader_ = shader_source::shader("lod_terrain.gdshader");
@@ -173,7 +185,47 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     tree_material_->set_shader(tree_shader_);
     tree_material_->set_shader_parameter("atlas", tree_atlas_);
     apply_mask(tree_material_);
+    make_large_refs();
     return godot::OK;
+}
+
+void SkydotLod::make_large_refs() {
+    if (large_refs_enabled_ && large_refs_ == nullptr && world_.is_valid() && stride_ > 0) {
+        auto* layer = memnew(SkydotLargeRefs);
+        if (layer->setup(pack_, world_, world_id_, this) != godot::OK) {
+            memdelete(layer);
+            return;
+        }
+        layer->set_name("large_refs");
+        layer->set_radius(large_ref_radius_);
+        for (std::int32_t y = 0; y < stride_; ++y) {
+            for (std::int32_t x = 0; x < stride_; ++x) {
+                if ((mask_flags_[static_cast<std::size_t>(y) * static_cast<std::size_t>(stride_) + static_cast<std::size_t>(x)] & 1) != 0) {
+                    layer->set_cell_built(x + south_west_x_, y + south_west_y_, true);
+                }
+            }
+        }
+        add_child(layer);
+        large_refs_ = layer;
+    }
+}
+
+void SkydotLod::set_large_refs(bool enabled) {
+    large_refs_enabled_ = enabled;
+    if (enabled) {
+        make_large_refs();
+    } else if (large_refs_ != nullptr) {
+        large_refs_->clear();
+        large_refs_->queue_free();
+        large_refs_ = nullptr;
+    }
+}
+
+void SkydotLod::set_large_ref_radius(std::int64_t cells) {
+    large_ref_radius_ = std::clamp<std::int64_t>(cells, 0, 32);
+    if (large_refs_ != nullptr) {
+        large_refs_->set_radius(large_ref_radius_);
+    }
 }
 
 String SkydotLod::get_error() const { return error_; }
@@ -187,7 +239,19 @@ void SkydotLod::apply_mask(const Ref<godot::ShaderMaterial>& m) const {
     m->set_shader_parameter("skydot_cell_units", k_cell_units);
 }
 
+void SkydotLod::write_mask(std::int32_t px, std::int32_t py) {
+    const std::uint8_t flags = mask_flags_[static_cast<std::size_t>(py) * static_cast<std::size_t>(stride_) + static_cast<std::size_t>(px)];
+    // 1: full detail built (every LOD shape hides), 0.5: large references
+    // drawn (only the shapes made of them hide).
+    const float state = (flags & 1) != 0 ? 1.0F : ((flags & 2) != 0 ? 0.5F : 0.0F);
+    mask_image_->set_pixel(px, py, godot::Color(state, state, state));
+    mask_dirty_ = true;
+}
+
 void SkydotLod::set_cell_loaded(std::int64_t x, std::int64_t y, bool loaded) {
+    if (large_refs_ != nullptr) {
+        large_refs_->set_cell_built(x, y, loaded);
+    }
     if (mask_image_.is_null()) {
         return;
     }
@@ -196,20 +260,43 @@ void SkydotLod::set_cell_loaded(std::int64_t x, std::int64_t y, bool loaded) {
     if (px < 0 || py < 0 || px >= stride_ || py >= stride_) {
         return;
     }
-    const bool was = mask_image_->get_pixel(px, py).r > 0.5F;
+    std::uint8_t& flags = mask_flags_[static_cast<std::size_t>(py) * static_cast<std::size_t>(stride_) + static_cast<std::size_t>(px)];
+    const bool was = (flags & 1) != 0;
     if (was == loaded) {
         return;
     }
-    mask_image_->set_pixel(px, py, loaded ? godot::Color(1, 1, 1) : godot::Color(0, 0, 0));
+    flags = static_cast<std::uint8_t>(loaded ? (flags | 1) : (flags & ~1));
     loaded_cells_ = loaded ? loaded_cells_ + 1 : loaded_cells_ - 1;
-    mask_dirty_ = true;
+    write_mask(px, py);
+}
+
+void SkydotLod::set_cell_large_refs(std::int64_t x, std::int64_t y, bool drawn) {
+    if (mask_image_.is_null()) {
+        return;
+    }
+    const auto px = static_cast<std::int32_t>(x - south_west_x_);
+    const auto py = static_cast<std::int32_t>(y - south_west_y_);
+    if (px < 0 || py < 0 || px >= stride_ || py >= stride_) {
+        return;
+    }
+    std::uint8_t& flags = mask_flags_[static_cast<std::size_t>(py) * static_cast<std::size_t>(stride_) + static_cast<std::size_t>(px)];
+    if (((flags & 2) != 0) == drawn) {
+        return;
+    }
+    flags = static_cast<std::uint8_t>(drawn ? (flags | 2) : (flags & ~2));
+    write_mask(px, py);
 }
 
 void SkydotLod::clear_loaded_cells() {
     if (mask_image_.is_valid()) {
+        std::ranges::fill(mask_flags_, std::uint8_t{0});
         mask_image_->fill(godot::Color(0, 0, 0));
         loaded_cells_ = 0;
         mask_dirty_ = true;
+    }
+    if (large_refs_ != nullptr) {
+        large_refs_->clear();
+        large_refs_->set_radius(large_ref_radius_);
     }
 }
 
@@ -284,9 +371,9 @@ void SkydotLod::select(const Quad& q, double cx, double cy, std::set<Quad>& out)
 
 Ref<godot::ShaderMaterial> SkydotLod::material(const Ref<godot::Shader>& shader,
                                                 const Ref<godot::Texture2D>& albedo,
-                                                const Ref<godot::Texture2D>& normal) {
+                                                const Ref<godot::Texture2D>& normal, bool large_ref) {
     const auto id = [](const auto& r) { return r.is_valid() ? static_cast<std::int64_t>(r->get_instance_id()) : 0; };
-    const auto key = std::pair{id(albedo) * 4 + (shader == terrain_shader_ ? 1 : 2), id(normal)};
+    const auto key = std::pair{id(albedo) * 4 + (shader == terrain_shader_ ? 1 : large_ref ? 3 : 2), id(normal)};
     if (const auto it = materials_.find(key); it != materials_.end()) {
         return it->second;
     }
@@ -301,6 +388,8 @@ Ref<godot::ShaderMaterial> SkydotLod::material(const Ref<godot::Shader>& shader,
         m->set_shader_parameter("has_noise", noise_.is_valid());
     }
     apply_mask(m);
+    // The shapes the game's LOD made of large references hide where those are drawn.
+    m->set_shader_parameter("large_ref_shape", large_ref);
     materials_.emplace(key, m);
     return m;
 }
@@ -334,8 +423,10 @@ String slot_path(const Ref<godot::Material>& material, int slot) {
 
 } // namespace
 
-void SkydotLod::retexture(godot::Node* node, bool terrain, bool water) {
+void SkydotLod::retexture(godot::Node* node, bool terrain, bool water, bool large_ref) {
     const bool is_water = water || String(node->get_name()).to_lower() == "water";
+    // Shapes named ...LargeRef (obj-LargeRef, objHD-LargeRef, objsnowHD-LargeRef).
+    large_ref = large_ref || String(node->get_name()).to_lower().contains("largeref");
     if (auto* mi = godot::Object::cast_to<godot::MeshInstance3D>(node); mi != nullptr && mi->get_mesh().is_valid()) {
         const auto surfaces = mi->get_mesh()->get_surface_count();
         for (std::int32_t i = 0; i < surfaces; ++i) {
@@ -358,12 +449,12 @@ void SkydotLod::retexture(godot::Node* node, bool terrain, bool water) {
                 const String path = slot_path(base, 1);
                 normal = path.is_empty() ? Ref<godot::Texture2D>() : Ref<godot::Texture2D>(pack_->load_texture(path));
             }
-            mi->set_surface_override_material(i, material(terrain ? terrain_shader_ : object_shader_, albedo, normal));
+            mi->set_surface_override_material(i, material(terrain ? terrain_shader_ : object_shader_, albedo, normal, large_ref));
         }
         mi->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
     }
     for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
-        retexture(node->get_child(i), terrain, is_water);
+        retexture(node->get_child(i), terrain, is_water, large_ref);
     }
 }
 
@@ -467,10 +558,6 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
     if (stride_ <= 0) {
         return 0;
     }
-    if (mask_dirty_) {
-        mask_->update(mask_image_);
-        mask_dirty_ = false;
-    }
     const Vector3 game = SkydotWorld::godot_to_skyrim(camera);
     const double cx = static_cast<double>(game.x) / k_cell_units;
     const double cy = static_cast<double>(game.y) / k_cell_units;
@@ -563,6 +650,14 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
             ++it;
         }
     }
+    if (large_refs_ != nullptr) {
+        // After what hides under loaded cells: its marks go to the mask below.
+        pending += large_refs_->update(camera, large_ref_budget_usec_);
+    }
+    if (mask_dirty_) {
+        mask_->update(mask_image_);
+        mask_dirty_ = false;
+    }
     // Drop loaded scenes no quad holds and no wanted quad still needs.
     if (resources_.size() > 2 * wanted.size() + 64) {
         std::set<std::string> needed;
@@ -602,6 +697,9 @@ Dictionary SkydotLod::get_stats() const {
     out["trees"] = trees;
     out["pending"] = static_cast<std::int64_t>(pending_.size());
     out["loaded_cells"] = static_cast<std::int64_t>(loaded_cells_);
+    if (large_refs_ != nullptr) {
+        out["large_refs"] = large_refs_->get_stats();
+    }
     return out;
 }
 
