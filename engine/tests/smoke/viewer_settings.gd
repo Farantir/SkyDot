@@ -38,7 +38,7 @@ func _defaults() -> void:
     expect(s.interactive and not s.captures, "interactive")
     expect(not s.has_at and not s.has_target and not s.has_look and not s.has_fov, "nothing placed")
     expect(s.large_refs and s.large_ref_radius == 5, "large references out to 5 cells")
-    expect(s.msaa_index == 0 and s.shot_dir == "user://screenshots" and s.shot_notes, "shot and msaa defaults")
+    expect(s.msaa_index == 2 and s.aa_index == 0 and s.shot_dir == "user://screenshots" and s.shot_notes, "shot, msaa (4x) and aa defaults")
 
 func _options() -> void:
     var s := parse(["--pack", "p", "--world", "W", "--at", "1,2,3", "--target", "4,5,6.5",

@@ -12,6 +12,9 @@ const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X,
 ## Options without a value: the next token is another option, not theirs.
 const FLAGS := ["no-input"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
+## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
+const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
+const AA_NAMES := ["off", "fxaa", "smaa"]
 
 ## Why the options cannot be used; empty when they can.
 var error := ""
@@ -60,7 +63,8 @@ var weather := ""  # keep this one; empty: they take turns
 # The view.
 var radius := 2  # cells around the camera built in full
 var lod_split := 1.5
-var msaa_index := 0  # into MSAA_STEPS
+var msaa_index := 2  # into MSAA_STEPS: 4x
+var aa_index := 0  # into AA_STEPS
 var has_fov := false
 var fov := 75.0  # degrees, vertical
 var fly := false  # starts flying through everything
@@ -157,7 +161,8 @@ func _read(args: Dictionary) -> void:
 
 	radius = args.get("radius", "2").to_int()
 	lod_split = args.get("lod-split", "1.5").to_float()
-	msaa_index = maxi(MSAA_NAMES.find(args.get("msaa", "off")), 0)
+	msaa_index = maxi(MSAA_NAMES.find(args.get("msaa", "4")), 0)
+	aa_index = maxi(AA_NAMES.find(args.get("aa", "off")), 0)
 	has_fov = args.has("fov")
 	fov = args.get("fov", "75").to_float()
 	fly = args.get("walk", "on") == "off" or not collision or captures
@@ -261,6 +266,8 @@ static func _arguments_from_shot(path: String) -> Dictionary:
 		out["lod-split"] = str(viewer["lod_split"])
 	if viewer.has("msaa"):
 		out["msaa"] = str(viewer["msaa"])
+	if viewer.has("aa"):
+		out["aa"] = str(viewer["aa"])
 	if viewer.get("quests", true) == false:
 		out["quests"] = "off"
 	if viewer.get("materials", true) == false:

@@ -24,7 +24,10 @@
 # format 11) show as models out to --large-ref-radius cells (default 5, the
 # game's uLargeRefLODGridSize 11); --large-refs off shows only the LOD there
 # (SkydotLargeRefs, engine/docs/lod.md). --msaa off|2|4|8 smooths edges (multisampling;
-# default off); M switches between them.
+# default 4, about 0.3 ms at 1080p); M switches between them. Alpha-tested leaves
+# are antialiased by it too (alpha to coverage). --aa off|fxaa|smaa adds a
+# screen-space pass over the frame (default off; it is not temporal: nothing
+# smears between frames).
 # --fov DEGREES sets the camera's vertical field of view (default 75; the
 # game's is 50.4 at 16:9). --shadows off disables the sun's shadows.
 # --light-shadows all gives every placed light shadows, not only those whose
@@ -183,6 +186,7 @@ func _open_world() -> bool:
 		else:
 			_ai = null
 	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
+	get_viewport().screen_space_aa = ViewerSettings.AA_STEPS[_settings.aa_index]
 	if _settings.has_tiling:
 		_world.terrain_tiling = _settings.tiling
 	# Runs that capture, measure or activate on their own ignore the keyboard
