@@ -42,6 +42,7 @@
 namespace bethconv::pack::wfb {
 struct Base;
 struct Ref;
+struct LargeRef;
 struct ActorRef;
 struct Grass;
 } // namespace bethconv::pack::wfb
@@ -87,6 +88,15 @@ public:
     /// One reference of `cell`, even if it starts disabled. Null if there is
     /// no such reference.
     godot::Node3D* build_ref(std::int64_t cell, std::int64_t ref);
+    /// The model path (asset cache key) a large reference draws, or empty if
+    /// it draws nothing: initially disabled, no base, no model, or a marker.
+    /// `reason` (may be null) gets what kept it out: "disabled", "no base",
+    /// "no model", "marker".
+    godot::String large_ref_model(const bethconv::pack::wfb::LargeRef& ref, const char** reason = nullptr) const;
+    /// A large reference's model, placed and given its materials, for looking
+    /// at only: no collision, effects, lights or scripts. Null if its model is
+    /// not loaded (see `large_ref_model`).
+    godot::Node3D* build_large_ref(const bethconv::pack::wfb::LargeRef& ref);
     /// Placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref);
 

@@ -7,6 +7,9 @@
 //   drop the NIF root's transform, draw order, Skyrim materials, water
 //   material, directional material, add-on nodes, billboards, animators, tags
 //   for activation, plain-door mark, collision.
+// A visual-only model (Decoration::visual_only) takes only the steps that change
+// how it looks: root transform, draw order, materials, directional material,
+// billboards and animators.
 //
 // The steps and their order are the table in `Decorator::decorate`. An add-on's model
 // (a candle's flame) goes through the same list without the steps that only
@@ -63,6 +66,10 @@ struct Decoration {
     std::uint32_t cell{};
     /// What the node was instanced from, for its collision.
     const SkydotModel* scene{};
+    /// A model only to be seen (a large reference drawn beyond the cells at
+    /// full detail): `base` is set, `ref` is null, and only the steps that
+    /// change how it looks run: no water, add-ons, tags or collision.
+    bool visual_only{};
 };
 
 class Decorator {

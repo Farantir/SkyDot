@@ -369,6 +369,52 @@ godot::Node3D* CellBuilder::build_ref(std::int64_t cell_id, std::int64_t ref_id)
     return root;
 }
 
+godot::String CellBuilder::large_ref_model(const wfb::LargeRef& ref, const char** reason) const {
+    const auto refuse = [&](const char* why) {
+        if (reason != nullptr) {
+            *reason = why;
+        }
+        return String();
+    };
+    if (data().initially_disabled(ref)) {
+        return refuse("disabled");
+    }
+    const auto* base = data().base_ptr(ref.base());
+    if (base == nullptr) {
+        return refuse("no base");
+    }
+    const auto* model = base->model();
+    if (model == nullptr || model->size() == 0) {
+        return refuse("no model");
+    }
+    if (is_marker(*base)) {
+        return refuse("marker");
+    }
+    return model_path(model->string_view());
+}
+
+godot::Node3D* CellBuilder::build_large_ref(const wfb::LargeRef& ref) {
+    const String path = large_ref_model(ref);
+    const auto* base = data().base_ptr(ref.base());
+    if (path.is_empty() || base == nullptr) {
+        return nullptr;
+    }
+    const godot::Ref<SkydotModel> scene = resource(path);
+    auto* node = scene.is_valid() ? godot::Object::cast_to<godot::Node3D>(scene->instantiate()) : nullptr;
+    if (node == nullptr) {
+        return nullptr;
+    }
+    const auto& p = ref.position();
+    const auto& r = ref.rotation();
+    node->set_name(hex_id(ref.id()));
+    node->set_transform(skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(r.x(), r.y(), r.z()),
+                                         static_cast<double>(ref.scale())));
+    DecorationStats stats;
+    Decoration decoration{stats, nullptr, base, 0, scene.ptr(), true};
+    decorator_.decorate(node, decoration);
+    return node;
+}
+
 godot::Node3D* CellBuilder::build_cell(std::int64_t id) {
     auto* root = begin_cell(id);
     if (root != nullptr) {

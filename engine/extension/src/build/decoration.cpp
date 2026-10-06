@@ -80,6 +80,8 @@ struct Decorator::Steps {
         Step run;
         /// Whether an add-on's model takes the step too.
         bool for_addon;
+        /// Whether a visual-only model takes it.
+        bool visual;
     };
 
     static void drop_root(Decorator&, godot::Node3D* node, Decoration&) { drop_root_transform(node); }
@@ -197,20 +199,24 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
     // The one order. Add-on models take the steps marked true. Collision is
     // last, so material and effect passes never see the bodies.
     static constexpr Steps::Entry k_steps[] = {
-        {Steps::drop_root, true},
-        {Steps::draw_order, true},
-        {Steps::skyrim_materials, true},
-        {Steps::water, false},
-        {Steps::directional, false},
-        {Steps::addons, false},
-        {Steps::billboards, true},
-        {Steps::animators, true},
-        {Steps::tag, false},
-        {Steps::plain_door, false},
-        {Steps::collision, false},
+        {Steps::drop_root, true, true},
+        {Steps::draw_order, true, true},
+        {Steps::skyrim_materials, true, true},
+        {Steps::water, false, false},
+        {Steps::directional, false, true},
+        {Steps::addons, false, false},
+        {Steps::billboards, true, true},
+        {Steps::animators, true, true},
+        {Steps::tag, false, false},
+        {Steps::plain_door, false, false},
+        {Steps::collision, false, false},
     };
     for (const auto& step : k_steps) {
-        if (step.for_addon || decoration.ref != nullptr) {
+        if (decoration.visual_only) {
+            if (step.visual) {
+                step.run(*this, node, decoration);
+            }
+        } else if (step.for_addon || decoration.ref != nullptr) {
             step.run(*this, node, decoration);
         }
     }

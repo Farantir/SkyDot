@@ -4,6 +4,7 @@
 #include "world/queries.hpp"
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
+#include "data/large_refs.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
 
@@ -179,6 +180,38 @@ godot::PackedInt64Array get_scripted_refs(const WorldData& data, std::int64_t ce
         if (base_scripted || ref_scripts(*cell, ref->id()) != nullptr) {
             out.push_back(ref->id());
         }
+    }
+    return out;
+}
+
+std::int64_t get_large_ref_count(const WorldData& data, std::int64_t world) {
+    return data.large_ref_count(static_cast<std::uint32_t>(world));
+}
+
+Array get_large_refs(const WorldData& data, std::int64_t world, std::int64_t x, std::int64_t y,
+                     std::int64_t radius) {
+    Array out;
+    const auto w = static_cast<std::uint32_t>(world);
+    if (radius < 0 || radius > 64) {
+        return out;
+    }
+    // The union of the lists around (x, y), each reference once (as the engine draws them).
+    const auto indices = large_refs::select(data, w, static_cast<std::int32_t>(x), static_cast<std::int32_t>(y),
+                                            static_cast<std::int32_t>(radius), {});
+    for (const std::uint32_t index : indices) {
+        const auto* ref = data.large_ref(w, index);
+        Dictionary entry;
+        entry["ref"] = static_cast<std::int64_t>(ref->id());
+        entry["base"] = static_cast<std::int64_t>(ref->base());
+        entry["position"] = Vector3(ref->position().x(), ref->position().y(), ref->position().z());
+        entry["rotation"] = Vector3(ref->rotation().x(), ref->rotation().y(), ref->rotation().z());
+        entry["scale"] = static_cast<double>(ref->scale());
+        entry["cell"] = godot::Vector2i(ref->cell_x(), ref->cell_y());
+        entry["enable_parent"] = static_cast<std::int64_t>(ref->enable_parent());
+        entry["disabled"] = data.initially_disabled(*ref);
+        // The cell holding the reference as a normal reference, 0 if none.
+        entry["in_cell"] = data.cell_of_ref(ref->id());
+        out.push_back(entry);
     }
     return out;
 }

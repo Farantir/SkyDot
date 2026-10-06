@@ -41,6 +41,7 @@ namespace bethconv::pack::wfb {
 struct World;
 struct Base;
 struct Ref;
+struct LargeRef;
 struct ActorRef;
 struct Script;
 } // namespace bethconv::pack::wfb
@@ -126,6 +127,15 @@ public:
     godot::Array get_activate_children(std::int64_t ref) const;
     /// References whose enable state follows `ref`'s: Array of ref ids.
     godot::PackedInt64Array get_enable_children(std::int64_t ref) const;
+    /// Large references (world.fb format 11; none in older packs): how many
+    /// `world` has, and those drawn for a camera in grid square (x, y) out to
+    /// `radius` squares, each once (the union of the squares' lists):
+    /// ref, base, position and rotation (game units, radians), scale, cell
+    /// (Vector2i, where it stands), enable_parent, disabled (by its enable
+    /// parent) and in_cell (the cell that also holds it as a normal reference,
+    /// 0 if none).
+    std::int64_t get_large_ref_count(std::int64_t world) const;
+    godot::Array get_large_refs(std::int64_t world, std::int64_t x, std::int64_t y, std::int64_t radius) const;
 
     // Quests, globals and placed actors (world/queries_quests.cpp).
     std::int64_t get_quest_count() const;
@@ -195,6 +205,14 @@ public:
     /// are placed. Actors come with the next `continue_build`, from where they
     /// are then: a place prepared ahead of arriving builds this far.
     bool continue_build_static(godot::Node3D* root, std::int64_t budget_usec);
+
+    /// Large references (world.fb format 11), for SkydotLargeRefs: the model a
+    /// large reference draws (empty for none; `reason` as in CellBuilder) and
+    /// the reference as a node to look at.
+    godot::String large_ref_model(const bethconv::pack::wfb::LargeRef& ref, const char** reason = nullptr) const {
+        return builder_.large_ref_model(ref, reason);
+    }
+    godot::Node3D* build_large_ref(const bethconv::pack::wfb::LargeRef& ref) { return builder_.build_large_ref(ref); }
 
     /// The pack's asset cache, which every model and texture comes from.
     /// Set by SkydotPack::open_world; without it nothing loads.

@@ -49,6 +49,9 @@ godot::Dictionary get_ref_info(const WorldData& data, std::int64_t cell_id, std:
 godot::PackedInt64Array get_enable_children(const WorldData& data, std::int64_t ref);
 godot::Array get_activate_children(const WorldData& data, std::int64_t ref);
 godot::PackedInt64Array get_scripted_refs(const WorldData& data, std::int64_t cell_id);
+std::int64_t get_large_ref_count(const WorldData& data, std::int64_t world);
+godot::Array get_large_refs(const WorldData& data, std::int64_t world, std::int64_t x, std::int64_t y,
+                            std::int64_t radius);
 
 // ---- quests, globals, placed actors, NPCs (queries_quests.cpp) ------------
 std::int64_t get_quest_count(const WorldData& data);

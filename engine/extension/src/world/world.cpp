@@ -60,6 +60,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_scripted_refs", "cell"), &SkydotWorld::get_scripted_refs);
     godot::ClassDB::bind_method(D_METHOD("get_activate_children", "ref"),
                                 &SkydotWorld::get_activate_children);
+    godot::ClassDB::bind_method(D_METHOD("get_large_ref_count", "world"), &SkydotWorld::get_large_ref_count);
+    godot::ClassDB::bind_method(D_METHOD("get_large_refs", "world", "x", "y", "radius"),
+                                &SkydotWorld::get_large_refs);
     godot::ClassDB::bind_method(D_METHOD("get_enable_children", "ref"),
                                 &SkydotWorld::get_enable_children);
     godot::ClassDB::bind_method(D_METHOD("list_worlds"), &SkydotWorld::list_worlds);
@@ -225,6 +228,13 @@ godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell) const 
 std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const { return data().cell_of_ref(ref); }
 Array SkydotWorld::get_activate_children(std::int64_t ref) const {
     return queries::get_activate_children(data(), ref);
+}
+std::int64_t SkydotWorld::get_large_ref_count(std::int64_t world) const {
+    return queries::get_large_ref_count(data(), world);
+}
+godot::Array SkydotWorld::get_large_refs(std::int64_t world, std::int64_t x, std::int64_t y,
+                                         std::int64_t radius) const {
+    return queries::get_large_refs(data(), world, x, y, radius);
 }
 godot::PackedInt64Array SkydotWorld::get_enable_children(std::int64_t ref) const {
     return queries::get_enable_children(data(), ref);
