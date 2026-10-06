@@ -412,6 +412,14 @@ decoding:
   textures stored uncompressed (mostly terrain LOD), level by level, using
   bc7enc_rdo on several threads. Textures that are already compressed are
   never re-encoded.
+- `alpha_coverage`: for textures a material alpha-tests, each lower mip level's
+  alpha is rescaled so the fraction of texels at or above the test threshold
+  keeps level 0's value (Castano's alpha coverage). Which textures, and at
+  which threshold, comes from the meshes: `pack/alpha_usage.*` reads every mesh
+  of the mount once before the textures and tallies each material's diffuse slot
+  and its NiAlphaProperty. The threshold is part of the texture's recipe, so
+  only those textures change name (`--no-alpha-coverage` is the control run).
+  See `docs/format-notes/dds-textures.md`.
 
 ### 5.8 `script/`: PEX → `.pexfb`
 
@@ -454,6 +462,7 @@ convert(set, order, options)
  │   ├─ MergedWorld::build(order)                 merge pass 1 (index)
  │   └─ write_world(world, ...)     -> world.fb   merge pass 2 (WorldSink)
  ├─ work = every vpath in the mount (filtered, sorted, limited)
+ ├─ scan_alpha_usage(set)        every mesh once -> diffuse vpath -> alpha-test threshold
  ├─ for each vpath, in order (a pool of `jobs` threads runs ahead of one writer):
  │   ├─ pool:   prepare(vpath)
  │   │   ├─ kind_of(extension) -> mesh | texture | script | lod | animation | deferred

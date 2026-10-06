@@ -44,6 +44,7 @@ struct ConvertArgs {
     bool no_lod = false;
     bool no_animations = false;
     bool no_mip_fix = false;
+    bool no_alpha_coverage = false;
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
@@ -187,6 +188,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_lod = !args.no_lod;
     options.convert_animations = !args.no_animations;
     options.fix_mip_tail = !args.no_mip_fix;
+    options.alpha_coverage = !args.no_alpha_coverage;
     options.max_texture_size = args.max_texture_size;
     options.texture_encoding = args.encoding;
     options.mesh_read.read_collision = !args.no_collision;
@@ -305,6 +307,25 @@ int cmd_convert(const ConvertArgs& args) {
                      std::string(bethconv::texture::to_string(args.encoding)).c_str(),
                      static_cast<unsigned long long>(result->textures_not_encoded));
     }
+    if (!args.no_alpha_coverage && !args.no_textures) {
+        const auto& a = result->alpha_coverage;
+        std::fprintf(text, "  alpha tests   %llu textures alpha-tested by %llu materials in %llu meshes "
+                     "(%llu with conflicting thresholds, %llu also in another slot, %llu only blended); "
+                     "%llu treated\n",
+                     static_cast<unsigned long long>(a.textures_alpha_tested),
+                     static_cast<unsigned long long>(a.materials_alpha_tested),
+                     static_cast<unsigned long long>(a.meshes_scanned),
+                     static_cast<unsigned long long>(a.textures_conflicting),
+                     static_cast<unsigned long long>(a.textures_shared_slot),
+                     static_cast<unsigned long long>(a.textures_blend_only),
+                     static_cast<unsigned long long>(a.textures_treated));
+        std::fprintf(text, "                coverage mips: %llu adjusted, %llu already held, %llu "
+                     "unsupported format, %llu single level (this run)\n",
+                     static_cast<unsigned long long>(a.adjusted),
+                     static_cast<unsigned long long>(a.unchanged),
+                     static_cast<unsigned long long>(a.unsupported),
+                     static_cast<unsigned long long>(a.single_level));
+    }
     if (args.max_texture_size != 0) {
         std::fprintf(text, "  textures      %llu limited to %u px (%.1f MiB saved), %llu kept larger "
                      "(no smaller level stored; listed in report.json)\n",
@@ -378,6 +399,15 @@ int cmd_convert(const ConvertArgs& args) {
                                       {"encoded", result->textures_encoded},
                                       {"not_encoded", result->textures_not_encoded},
                                       {"bytes_saved", result->texture_bytes_saved}}},
+            {"alpha_coverage",
+             ordered_json{{"enabled", !args.no_alpha_coverage && !args.no_textures},
+                          {"meshes_scanned", result->alpha_coverage.meshes_scanned},
+                          {"textures_alpha_tested", result->alpha_coverage.textures_alpha_tested},
+                          {"textures_conflicting", result->alpha_coverage.textures_conflicting},
+                          {"textures_treated", result->alpha_coverage.textures_treated},
+                          {"adjusted", result->alpha_coverage.adjusted},
+                          {"unchanged", result->alpha_coverage.unchanged},
+                          {"unsupported", result->alpha_coverage.unsupported}}},
             {"failed", stats.failed},
             {"warnings", stats.warnings},
             {"orphaned_assets", stats.orphaned_assets},
@@ -404,6 +434,7 @@ struct ConvertCli {
     bool no_lod = false;
     bool no_animations = false;
     bool no_mip_fix = false;
+    bool no_alpha_coverage = false;
     bool no_collision = false;
     bool no_skinning = false;
     bool keep_z_up = false;
@@ -455,6 +486,9 @@ void register_convert(CLI::App& app) {
     convert->add_flag("--no-animations", args->no_animations, "Skip Havok files (.hkx)");
     convert->add_flag("--no-mip-fix", args->no_mip_fix,
                       "Leave short DDS mip chains alone (control run)");
+    convert->add_flag("--no-alpha-coverage", args->no_alpha_coverage,
+                      "Do not keep the coverage of alpha-tested textures through their mip "
+                      "levels (control run; saves reading every mesh first)");
     convert->add_flag("--no-collision", args->no_collision, "Do not read Havok shapes");
     convert->add_flag("--no-skinning", args->no_skinning, "Do not read skin data");
     convert->add_flag("--keep-z-up", args->keep_z_up, "Leave meshes in NIF space");
@@ -508,6 +542,7 @@ void register_convert(CLI::App& app) {
                                                 .no_lod = args->no_lod,
                                                 .no_animations = args->no_animations,
                                                 .no_mip_fix = args->no_mip_fix,
+                                                .no_alpha_coverage = args->no_alpha_coverage,
                                                 .no_collision = args->no_collision,
                                                 .no_skinning = args->no_skinning,
                                                 .keep_z_up = args->keep_z_up,

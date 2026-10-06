@@ -132,6 +132,9 @@ Events, one per line, in this order:
             "scripts": ..., "lod": ..., "bytes_written": ..., "store_bytes": ...},
  "textures": {"max_size": 0, "shrunk": 0, "kept_large": 0, "uncompressed": "keep",
               "encoded": 0, "not_encoded": 0, "bytes_saved": 0},
+ "alpha_coverage": {"enabled": true, "meshes_scanned": 33423, "textures_alpha_tested": 980,
+                    "textures_conflicting": 115, "textures_treated": 968, "adjusted": 801,
+                    "unchanged": 92, "unsupported": 46},
  "failed": 0, "warnings": 0, "orphaned_assets": 0, "pruned": false,
  "first_failures": [{"vpath": "...", "stage": "mesh", "detail": "..."}]}
 {"event": "error", "json_version": 1, "message": "...", "exit": 2}
@@ -152,6 +155,12 @@ Events, one per line, in this order:
   warning in `report.json`); with `--encode-uncompressed`, how many
   uncompressed textures were block-compressed and how many were left so
   (cubemaps, volumes; also warnings); `bytes_saved` counts both.
+- `alpha_coverage`: the alpha-test scan and what it did (`report.json` has the
+  full account). `meshes_scanned` is every mesh of the mount, read once before the
+  textures; `textures_treated` got coverage-preserving mips, of which `adjusted`
+  were rewritten, `unchanged` already held, `unsupported` are one-bit (DXT1) or
+  otherwise cannot be scaled. The last three count this run's conversions, so an
+  incremental run shows only what it redid.
 - `exit` 1 in `done` means some files failed (they are in `report.json`); the
   pack is still written. Exit 2 is a refused output folder.
 

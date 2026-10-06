@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/pack/convert.hpp"
 
+#include "alpha_usage.hpp"
 #include "asset_conversion.hpp"
 #include "ordered_pool.hpp"
 
@@ -165,12 +166,13 @@ struct Prepared {
 [[nodiscard]] AssetConversion convert_bytes(AssetKind kind, std::span<const std::byte> bytes,
                                             std::string_view vpath, std::string_view extension,
                                             const ConvertOptions& options,
-                                            unsigned encode_threads) {
+                                            unsigned encode_threads,
+                                            std::optional<std::uint32_t> alpha_threshold) {
     switch (kind) {
     case AssetKind::mesh:
         return convert_mesh(bytes, vpath, options);
     case AssetKind::texture:
-        return convert_texture(bytes, vpath, options, encode_threads);
+        return convert_texture(bytes, vpath, options, encode_threads, alpha_threshold);
     case AssetKind::script:
         return convert_script(bytes, vpath);
     case AssetKind::lod:
@@ -181,13 +183,28 @@ struct Prepared {
     return {};
 }
 
+/// The alpha-test threshold a texture's coverage mips are kept at, if its
+/// materials gave it one.
+[[nodiscard]] std::optional<std::uint32_t> threshold_of(const AlphaThresholds* thresholds,
+                                                        AssetKind kind, const std::string& vpath) {
+    if (thresholds == nullptr || kind != AssetKind::texture) {
+        return std::nullopt;
+    }
+    const auto found = thresholds->find(vpath);
+    if (found == thresholds->end()) {
+        return std::nullopt;
+    }
+    return found->second;
+}
+
 /// Read, hash and convert one work item. `taken(hash, index)` says whether its
 /// asset needs no conversion. Touches the writer only to hash, so any thread
 /// may run it.
 template <typename Taken>
 [[nodiscard]] Prepared prepare(const archive::ArchiveSet& set, const PackWriter& writer,
                                const ConvertOptions& options, unsigned encode_threads,
-                               const std::string& vpath, std::size_t index, Taken&& taken) {
+                               const AlphaThresholds* thresholds, const std::string& vpath,
+                               std::size_t index, Taken&& taken) {
     Prepared out;
     out.extension = extension_of_vpath(vpath);
     out.kind = kind_of(vpath, out.extension, options);
@@ -203,12 +220,15 @@ template <typename Taken>
     if (const auto resolution = set.resolve(vpath)) {
         out.source_name = set.sources()[resolution->winner].name;
     }
-    out.hash = writer.hash_of(*out.kind, *bytes);
+    const auto threshold = threshold_of(thresholds, *out.kind, vpath);
+    out.hash = threshold ? writer.hash_of(*out.kind, *bytes, coverage_recipe(*threshold))
+                         : writer.hash_of(*out.kind, *bytes);
     out.source_bytes = bytes->size();
     if (taken(out.hash, index)) {
         return out;
     }
-    out.converted = convert_bytes(*out.kind, *bytes, vpath, out.extension, options, encode_threads);
+    out.converted =
+        convert_bytes(*out.kind, *bytes, vpath, out.extension, options, encode_threads, threshold);
     if (out.converted->passthrough) {
         out.source = std::move(*bytes);
     }
@@ -229,8 +249,8 @@ constexpr unsigned k_max_jobs = 64;
 /// the writer takes the results in order; the writer's calls, and so the pack,
 /// are the same as with one.
 void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& options,
-                    const std::vector<std::string>& work, PackWriter& writer,
-                    ConvertResult& result) {
+                    const AlphaThresholds* thresholds, const std::vector<std::string>& work,
+                    PackWriter& writer, ConvertResult& result) {
     const unsigned jobs = effective_jobs(options.jobs, work.size());
     result.jobs = jobs;
     // Several conversions at once already use every core; the block
@@ -244,7 +264,7 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
         pool.emplace(
             work.size(), jobs, OrderedPool<Prepared>::Limits{},
             [&](std::size_t index) {
-                return prepare(set, writer, options, encode_threads, work[index], index,
+                return prepare(set, writer, options, encode_threads, thresholds, work[index], index,
                                [&](const ContentHash& hash, std::size_t at) {
                                    return claims->taken(hash, at);
                                });
@@ -262,7 +282,7 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
         }
 
         Prepared item = pool ? pool->next()
-                             : prepare(set, writer, options, encode_threads, vpath, index,
+                             : prepare(set, writer, options, encode_threads, thresholds, vpath, index,
                                        [&](const ContentHash& hash, std::size_t) {
                                            return writer.contains(hash);
                                        });
@@ -290,7 +310,8 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
                 writer.fail(failure_from(vpath, "read", bytes.error()));
                 continue;
             }
-            item.converted = convert_bytes(*item.kind, *bytes, vpath, item.extension, options, 0);
+            item.converted = convert_bytes(*item.kind, *bytes, vpath, item.extension, options, 0,
+                                           threshold_of(thresholds, *item.kind, vpath));
             if (item.converted->passthrough) {
                 item.source = std::move(*bytes);
             }
@@ -305,6 +326,10 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
         result.texture_bytes_saved += converted.textures.bytes_saved;
         result.textures_encoded += converted.textures.encoded;
         result.textures_not_encoded += converted.textures.not_encoded;
+        result.alpha_coverage.adjusted += converted.textures.coverage_adjusted;
+        result.alpha_coverage.unchanged += converted.textures.coverage_unchanged;
+        result.alpha_coverage.single_level += converted.textures.coverage_single_level;
+        result.alpha_coverage.unsupported += converted.textures.coverage_unsupported;
         if (converted.failure) {
             writer.fail(std::move(*converted.failure));
             continue;
@@ -349,6 +374,9 @@ std::string ConvertOptions::mesh_settings() const {
 
 std::string ConvertOptions::texture_settings() const {
     // The limit only when set, so full-size packs keep their asset names.
+    // The alpha coverage pass adds its threshold to the recipe of the textures
+    // it treats (alpha_usage.hpp), so it is not part of this fingerprint and
+    // the other textures keep their names.
     return "texture/1;" + flag("mip_tail", fix_mip_tail) +
            (max_texture_size != 0 ? ";max=" + std::to_string(max_texture_size) : std::string()) +
            (texture_encoding != texture::Encoding::keep
@@ -456,8 +484,23 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     }
     result.considered = work.size();
 
+    // ---- which textures are alpha-tested ---------------------------------
+    // Before the textures: their recipe (and so their asset name) depends on
+    // how the meshes use them.
+    AlphaUsage usage;
+    const bool scan_alpha = options.alpha_coverage && options.convert_textures;
+    if (scan_alpha) {
+        report("alpha-scan", 0, 1);
+        usage = scan_alpha_usage(set, options.jobs);
+        result.alpha_coverage = usage.summary;
+        report("alpha-scan", 1, 1);
+    }
+
     // ---- the asset passes ---------------------------------------------
-    convert_assets(set, options, work, *writer, result);
+    convert_assets(set, options, scan_alpha ? &usage.thresholds : nullptr, work, *writer, result);
+    if (scan_alpha) {
+        manifest.alpha_coverage = result.alpha_coverage;
+    }
 
     // ---- the manifest -------------------------------------------------
     // Hashing every plugin and writing the indexes (and pruning) takes seconds

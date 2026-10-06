@@ -79,6 +79,14 @@ struct ConvertOptions {
     /// Part of the texture fingerprint when set.
     std::uint32_t max_texture_size = 0;
 
+    /// Keep the coverage of alpha-tested textures through their mip levels
+    /// (texture/alpha_coverage.hpp). Which textures are alpha-tested is read
+    /// from every mesh's materials first, so an extra pass over the meshes
+    /// precedes the textures. Off is the control run. The threshold a texture is
+    /// treated at is part of its asset name, so toggling re-converts exactly
+    /// those textures.
+    bool alpha_coverage = true;
+
     /// Block-compress uncompressed textures (texture/bc_encode.hpp). Part of
     /// the texture fingerprint unless `keep`.
     texture::Encoding texture_encoding = texture::Encoding::keep;
@@ -135,6 +143,9 @@ struct ConvertResult {
     std::uint64_t texture_bytes_saved{};
     std::uint64_t textures_encoded{};    ///< Uncompressed ones block-compressed.
     std::uint64_t textures_not_encoded{}; ///< Uncompressed but left so (cubemaps, ...).
+
+    /// Alpha-tested textures and what the coverage pass did (empty if off).
+    AlphaCoverageRecord alpha_coverage;
 
     /// The first few failures, for the terminal; `report.json` has all.
     std::vector<PackFailure> first_failures;

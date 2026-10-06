@@ -34,6 +34,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace bethconv::pack {
@@ -105,11 +106,46 @@ struct TextureRecord {
     std::string uncompressed{"keep"}; ///< texture::to_string(Encoding).
 };
 
+/// Which textures are alpha-tested, found from the meshes' materials, and what
+/// the coverage pass did with them (`report.json`'s "alpha_coverage").
+struct AlphaCoverageRecord {
+    /// A texture used with more than one alpha-test threshold.
+    struct Conflict {
+        std::string vpath;
+        std::vector<std::pair<std::uint32_t, std::uint32_t>> uses; ///< threshold, materials
+        std::uint32_t chosen{};
+    };
+
+    std::uint64_t meshes_scanned{};
+    std::uint64_t meshes_failed{};
+    std::uint64_t materials_alpha_tested{}; ///< Materials with NiAlphaProperty testing on.
+    std::uint64_t materials_tested_and_blended{}; ///< Of those, also blending.
+    std::uint64_t textures_alpha_tested{};  ///< Diffuse textures one of them uses.
+    std::uint64_t textures_conflicting{};   ///< ... with more than one threshold.
+    std::uint64_t textures_blend_only{};    ///< Diffuse textures only ever blended.
+    std::uint64_t textures_tested_and_blended{};
+    std::uint64_t textures_shared_slot{};   ///< Tested, but also in another slot (not treated).
+    std::uint64_t textures_treated{};       ///< Given a threshold for the coverage pass.
+    std::uint64_t lod_tree_atlases{};       ///< Of those, tree LOD atlases (no mesh names them).
+
+    // What the pass did to the treated textures it converted in this run.
+    std::uint64_t adjusted{};
+    std::uint64_t unchanged{};
+    std::uint64_t single_level{};
+    std::uint64_t unsupported{};
+
+    std::vector<Conflict> conflicts; ///< Sorted by vpath.
+    /// Every treated texture and the threshold its coverage is kept at, by vpath.
+    std::vector<std::pair<std::string, std::uint32_t>> treated;
+};
+
 struct PackManifest {
     std::string converter;   ///< "bethconv 0.0.1". Also hashed into every asset.
     std::string language;
     std::optional<InputRecord> input;
     std::optional<TextureRecord> textures;
+    /// Written to report.json when set.
+    std::optional<AlphaCoverageRecord> alpha_coverage;
     std::vector<std::string> load_order;
     std::vector<SourceRecord> sources;
     std::optional<WorldRecord> world;
@@ -208,6 +244,11 @@ public:
     /// The name `source` gets as an asset of `kind`. Reads nothing the other
     /// calls change, so any thread may hash while the writer stores.
     [[nodiscard]] ContentHash hash_of(AssetKind kind, std::span<const std::byte> source) const;
+
+    /// The same for an asset whose recipe has a part that depends on the input's
+    /// path (`recipe`, e.g. the alpha threshold a texture gets coverage mips for).
+    [[nodiscard]] ContentHash hash_of(AssetKind kind, std::span<const std::byte> source,
+                                      std::string_view recipe) const;
 
     /// Whether the store has the asset named `hash`.
     [[nodiscard]] bool contains(const ContentHash& hash) const;

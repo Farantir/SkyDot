@@ -30,6 +30,10 @@ struct TextureCounters {
     std::uint64_t bytes_saved{};
     std::uint64_t encoded{};     ///< Uncompressed ones block-compressed.
     std::uint64_t not_encoded{}; ///< Uncompressed but left so (cubemaps, ...).
+    std::uint64_t coverage_adjusted{};     ///< Alpha mips rescaled (alpha_coverage.hpp).
+    std::uint64_t coverage_unchanged{};
+    std::uint64_t coverage_single_level{};
+    std::uint64_t coverage_unsupported{};
 };
 
 struct AssetConversion {
@@ -60,11 +64,14 @@ struct AssetConversion {
                                            std::string_view vpath, const ConvertOptions& options);
 
 /// `encode_threads` is for the block compression: 0 uses every core, so a caller
-/// that already runs one conversion per core passes 1.
+/// that already runs one conversion per core passes 1. `alpha_threshold` is the
+/// alpha test threshold (1..255) the materials using the texture share; with it
+/// the mips keep their coverage at that threshold.
 [[nodiscard]] AssetConversion convert_texture(std::span<const std::byte> source,
                                               std::string_view vpath,
                                               const ConvertOptions& options,
-                                              unsigned encode_threads);
+                                              unsigned encode_threads,
+                                              std::optional<std::uint32_t> alpha_threshold = {});
 
 [[nodiscard]] AssetConversion convert_script(std::span<const std::byte> source,
                                              std::string_view vpath);

@@ -9,6 +9,7 @@
 #include "bethconv/pack/lod_asset.hpp"
 #include "bethconv/pack/script_asset.hpp"
 #include "bethconv/script/pex.hpp"
+#include "bethconv/texture/alpha_coverage.hpp"
 #include "bethconv/texture/dds.hpp"
 #include "bethconv/texture/mip_drop.hpp"
 #include "bethconv/texture/mip_tail.hpp"
@@ -47,7 +48,8 @@ AssetConversion convert_mesh(std::span<const std::byte> source, std::string_view
 }
 
 AssetConversion convert_texture(std::span<const std::byte> source, std::string_view vpath,
-                                const ConvertOptions& options, unsigned encode_threads) {
+                                const ConvertOptions& options, unsigned encode_threads,
+                                std::optional<std::uint32_t> alpha_threshold) {
     AssetConversion out;
     const auto fail = [&](const io::ParseError& error) {
         out.failure = failure_from(vpath, "texture", error);
@@ -129,9 +131,31 @@ AssetConversion convert_texture(std::span<const std::byte> source, std::string_v
                           " bytes past the declared surfaces were dropped"});
         }
     }
-    // `payload` is the last edit that applied: the completed chain, else the
-    // encoding, else the smaller file, else the source untouched.
-    if (fix.outcome == texture::TailOutcome::completed) {
+    texture::CoverageFix coverage;
+    if (alpha_threshold) {
+        // Last: it works on the chain as it will be stored.
+        auto current = texture::parse_dds(payload, vpath);
+        if (!current) {
+            return fail(current.error());
+        }
+        auto kept = texture::preserve_alpha_coverage(payload, *current, *alpha_threshold, vpath);
+        if (!kept) {
+            return fail(kept.error());
+        }
+        coverage = std::move(*kept);
+        switch (coverage.outcome) {
+        case texture::CoverageOutcome::adjusted: ++out.textures.coverage_adjusted; break;
+        case texture::CoverageOutcome::unchanged: ++out.textures.coverage_unchanged; break;
+        case texture::CoverageOutcome::single_level: ++out.textures.coverage_single_level; break;
+        case texture::CoverageOutcome::unsupported: ++out.textures.coverage_unsupported; break;
+        }
+    }
+    // `payload` is the last edit that applied: the coverage mips, else the
+    // completed chain, else the encoding, else the smaller file, else the source
+    // untouched.
+    if (coverage.outcome == texture::CoverageOutcome::adjusted) {
+        out.bytes = std::move(coverage.data);
+    } else if (fix.outcome == texture::TailOutcome::completed) {
         out.bytes = std::move(fix.data);
     } else if (encoded.outcome == texture::EncodeOutcome::encoded) {
         out.bytes = std::move(encoded.data);

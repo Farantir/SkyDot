@@ -66,6 +66,14 @@ ContentHash PackWriter::hash_of(AssetKind kind, std::span<const std::byte> sourc
     return content_hash(source, options_.converter, settings_for(kind));
 }
 
+ContentHash PackWriter::hash_of(AssetKind kind, std::span<const std::byte> source,
+                                std::string_view recipe) const {
+    if (recipe.empty()) {
+        return hash_of(kind, source);
+    }
+    return content_hash(source, options_.converter, settings_for(kind) + std::string(recipe));
+}
+
 bool PackWriter::contains(const ContentHash& hash) const { return store_.contains(hash); }
 
 std::vector<ContentHash> PackWriter::stored_hashes() const { return store_.hashes(); }
@@ -210,6 +218,43 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
         {"lod", stats_.lod}, {"animations", stats_.animations}};
 
     // Uncapped: large broken load orders are where the full list matters.
+    if (manifest.alpha_coverage) {
+        const auto& a = *manifest.alpha_coverage;
+        ordered_json conflicts = ordered_json::array();
+        for (const auto& c : a.conflicts) {
+            ordered_json uses = ordered_json::object();
+            for (const auto& [threshold, count] : c.uses) {
+                uses[std::to_string(threshold)] = count;
+            }
+            conflicts.push_back(ordered_json{{"vpath", json_text(c.vpath)},
+                                             {"chosen", c.chosen},
+                                             {"materials_per_threshold", std::move(uses)}});
+        }
+        ordered_json treated = ordered_json::object();
+        for (const auto& [vpath, threshold] : a.treated) {
+            treated[json_text(vpath)] = threshold;
+        }
+        report["alpha_coverage"] = ordered_json{
+            {"meshes_scanned", a.meshes_scanned},
+            {"meshes_failed", a.meshes_failed},
+            {"materials_alpha_tested", a.materials_alpha_tested},
+            {"materials_tested_and_blended", a.materials_tested_and_blended},
+            {"textures_alpha_tested", a.textures_alpha_tested},
+            {"textures_conflicting_thresholds", a.textures_conflicting},
+            {"textures_blend_only", a.textures_blend_only},
+            {"textures_tested_and_blended", a.textures_tested_and_blended},
+            {"textures_shared_slot_not_treated", a.textures_shared_slot},
+            {"textures_treated", a.textures_treated},
+            {"lod_tree_atlases", a.lod_tree_atlases},
+            {"converted_this_run",
+             ordered_json{{"adjusted", a.adjusted},
+                          {"unchanged", a.unchanged},
+                          {"single_level", a.single_level},
+                          {"unsupported", a.unsupported}}},
+            {"conflicts", std::move(conflicts)},
+            {"treated", std::move(treated)}};
+    }
+
     auto failures = ordered_json::array();
     for (const auto& failure : failures_) {
         failures.push_back(ordered_json{{"vpath", json_text(failure.vpath)},

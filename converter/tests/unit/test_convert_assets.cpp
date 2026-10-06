@@ -386,3 +386,114 @@ TEST_CASE("the pack is the same bytes on one thread, three and eight", "[convert
         }
     }
 }
+
+namespace {
+
+/// A complete 16x16 DXT5 chain whose upper levels thin out: half the
+/// blocks opaque in level 0, a row of blocks at alpha 90 (under a threshold of
+/// 128) in level 1.
+[[nodiscard]] Bytes thinning_dxt5() {
+    auto file = bethconv::testing::build_dds(
+        DdsSpec{.width = 16, .height = 16, .mips = 5, .fourcc = bethconv::io::FourCC{"DXT5"}});
+    std::size_t at = 128;
+    for (std::uint32_t level = 0; level < 5; ++level) {
+        const std::uint32_t blocks = std::max(1U, (16U >> level) / 4);
+        for (std::uint32_t by = 0; by < blocks; ++by) {
+            for (std::uint32_t bx = 0; bx < blocks; ++bx, at += 16) {
+                std::uint8_t alpha = 0;
+                if (level == 0) {
+                    alpha = bx < 2 ? 255 : 0;
+                } else if (level == 1) {
+                    alpha = by < 1 ? 90 : 0;
+                }
+                for (std::size_t i = 0; i < 8; ++i) {
+                    file[at + i] = std::byte{0};
+                }
+                file[at] = static_cast<std::byte>(alpha);
+                file[at + 1] = static_cast<std::byte>(alpha);
+            }
+        }
+    }
+    return file;
+}
+
+[[nodiscard]] Bytes foliage_nif() {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    auto* leaf = builder.add_shape("Leaf", bethconv::test::make_cube());
+    builder.add_shader(leaf, "Textures\\Leaf.dds", "textures/leaf_n.dds");
+    builder.add_alpha(leaf, 0x0200 | 0x0001, 128); // test and blend: a cut-out
+    auto* glass = builder.add_shape("Glass", bethconv::test::make_cube());
+    builder.add_shader(glass, "textures/glass.dds");
+    builder.add_alpha(glass, 0x0001, 0); // blend only
+    auto* gloss = builder.add_shape("Shared", bethconv::test::make_cube());
+    builder.add_shader(gloss, "textures/shared.dds");
+    builder.add_alpha(gloss, 0x0200, 128);
+    auto* other = builder.add_shape("Other", bethconv::test::make_cube());
+    builder.add_shader(other, "textures/other.dds", "textures/shared.dds"); // as a normal map
+    return builder.bytes();
+}
+
+} // namespace
+
+TEST_CASE("only textures a material alpha-tests keep their coverage through the mips",
+          "[convert][texture][coverage]") {
+    Run run;
+    const Bytes thin = thinning_dxt5();
+    run.add("meshes/foliage.nif", foliage_nif());
+    run.add("textures/leaf.dds", thin);
+    run.add("textures/leaf_n.dds", thin);
+    run.add("textures/glass.dds", thin);
+    run.add("textures/shared.dds", thin);
+    run.add("textures/other.dds", thin);
+    run.add("textures/unused.dds", thin);
+
+    const auto result = run.go();
+    const auto& a = result.alpha_coverage;
+    CHECK(a.meshes_scanned == 1);
+    CHECK(a.textures_alpha_tested == 2);   // leaf and shared
+    CHECK(a.textures_blend_only == 1);     // glass
+    CHECK(a.textures_shared_slot == 1);    // shared is also a normal map
+    CHECK(a.textures_treated == 1);
+    CHECK(a.textures_conflicting == 0);
+    CHECK(a.adjusted == 1);
+
+    CHECK(run.stored("textures/leaf.dds") != thin);
+    CHECK(run.stored("textures/leaf.dds").size() == thin.size());
+    for (const char* untouched : {"textures/leaf_n.dds", "textures/glass.dds", "textures/shared.dds",
+                                  "textures/other.dds", "textures/unused.dds"}) {
+        INFO(untouched);
+        CHECK(run.stored(untouched) == thin);
+    }
+    const auto report = run.report();
+    CHECK(report["alpha_coverage"]["treated"]["textures/leaf.dds"] == 128);
+    CHECK(report["alpha_coverage"]["textures_treated"] == 1);
+}
+
+TEST_CASE("the coverage treatment is part of the asset's recipe", "[convert][texture][coverage]") {
+    Run run;
+    run.add("meshes/foliage.nif", foliage_nif());
+    run.add("textures/leaf.dds", thinning_dxt5());
+    (void)run.go();
+    const auto treated = VpathIndex::read(run.pack() / "vpath.idx");
+    REQUIRE(treated.has_value());
+    const std::string with = treated->find("textures/leaf.dds")->hex;
+
+    // Off, over the same pack: a different recipe, so a new asset, and the
+    // texture is the source's bytes again.
+    run.options.alpha_coverage = false;
+    const auto off = run.go();
+    CHECK(off.pack.converted >= 1);
+    CHECK(off.alpha_coverage.textures_treated == 0);
+    const auto plain = VpathIndex::read(run.pack() / "vpath.idx");
+    REQUIRE(plain.has_value());
+    CHECK(plain->find("textures/leaf.dds")->hex != with);
+    CHECK(run.stored("textures/leaf.dds") == thinning_dxt5());
+
+    // On again: the first asset is still there and is reused.
+    run.options.alpha_coverage = true;
+    const auto again = run.go();
+    CHECK(again.pack.converted == 0);
+    const auto back = VpathIndex::read(run.pack() / "vpath.idx");
+    REQUIRE(back.has_value());
+    CHECK(back->find("textures/leaf.dds")->hex == with);
+}
