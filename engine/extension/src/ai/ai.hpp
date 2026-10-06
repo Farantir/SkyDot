@@ -139,6 +139,7 @@ private:
         int failures{};                  ///< Path requests that failed in a row.
         int walks{};                     ///< Walks started towards the current spot.
         double think{};                  ///< Seconds before the package is chosen again.
+        double idle{};                   ///< Seconds since the actor was last updated (far actors wait).
         std::vector<godot::Vector3> patrol; ///< Patrol markers (Skyrim space).
         std::size_t patrol_next{};
         std::map<std::int32_t, std::uint32_t> lists; ///< ObjectList key -> found ref.

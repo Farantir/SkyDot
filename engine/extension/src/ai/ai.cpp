@@ -371,6 +371,7 @@ SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
     m.persistent = formats::has_flag(a->flags(), wfb::RefFlags::persistent);
     m.dice = 0x9E3779B97F4A7C15ull ^ (static_cast<std::uint64_t>(ref) * 0xBF58476D1CE4E5B9ull);
     m.think = static_cast<double>(ref % 97) / 97.0 * k_think_interval;
+    m.idle = static_cast<double>(ref % 89) / 89.0 * SkydotActor::ai_interval(2);
     return &minds_.emplace(ref, std::move(m)).first->second;
 }
 
@@ -1045,13 +1046,22 @@ void SkydotAi::update(double seconds) {
             continue;
         }
         m->last = SkydotWorld::godot_to_skyrim(actor->get_global_position());
-        m->think -= seconds;
+        // Actors far from the camera wait between updates (the game's lower
+        // process levels): the time since the last one is what they get.
+        const std::int32_t lod = actor->get_lod();
+        m->idle += seconds;
+        if (m->idle < SkydotActor::ai_interval(lod)) {
+            continue;
+        }
+        const double elapsed = m->idle;
+        m->idle = 0.0;
+        m->think -= elapsed;
         if (m->think <= 0.0) {
-            m->think = k_think_interval;
+            m->think = k_think_interval * (lod == 0 ? 1.0 : lod == 1 ? 2.0 : 4.0);
             choose(*m);
         }
         if (drive_ && m->package != 0) {
-            steer(*m, *actor, seconds);
+            steer(*m, *actor, elapsed);
         }
     }
     // Those not built: a slice per frame, a whole pass every few game minutes.
