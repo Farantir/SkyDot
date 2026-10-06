@@ -241,6 +241,38 @@ io::ParseResult<Worldspace> parse_worldspace(io::SpanReader& data, const FormCon
                 if (!failure) {
                     out.centre_cell = std::pair{x, y};
                 }
+            } else if (field.type == FourCC{"RNAM"}) {
+                Worldspace::LargeRefCell cell;
+                take(failure, body.get<std::int16_t>(), cell.grid_y);
+                take(failure, body.get<std::int16_t>(), cell.grid_x);
+                std::uint32_t declared{};
+                take(failure, body.get<std::uint32_t>(), declared);
+                if (!failure) {
+                    // The count must match the payload exactly, not be
+                    // trusted for an allocation.
+                    auto count =
+                        entry_count(body, Worldspace::k_large_ref_entry_size, "WRLD RNAM");
+                    if (!count) {
+                        failure = std::move(count).error();
+                    } else if (*count != declared) {
+                        failure = io::ParseError{.origin = std::string(body.origin()),
+                                                 .offset = body.absolute_position(),
+                                                 .kind = io::ErrorKind::corrupt,
+                                                 .detail = "WRLD RNAM: count disagrees with size"};
+                    }
+                }
+                for (std::size_t i = 0; !failure && i < declared; ++i) {
+                    Worldspace::LargeRefCell::Entry entry;
+                    take(failure, read_formid(body), entry.ref);
+                    take(failure, body.get<std::int16_t>(), entry.grid_y);
+                    take(failure, body.get<std::int16_t>(), entry.grid_x);
+                    if (!failure) {
+                        cell.refs.push_back(entry);
+                    }
+                }
+                if (!failure) {
+                    out.large_refs.push_back(std::move(cell));
+                }
             } else if (field.type == FourCC{"NAM0"}) {
                 take(failure, body.get<float>(), out.min_x);
                 take(failure, body.get<float>(), out.min_y);

@@ -863,6 +863,69 @@ TEST_CASE("WRLD WCTR is two int16 cell coordinates, not two floats",
     CHECK(tally.leftover().empty());
 }
 
+namespace {
+
+ByteWriter large_ref_field(std::int16_t y, std::int16_t x, std::uint32_t declared,
+                           std::initializer_list<std::uint32_t> refs) {
+    ByteWriter rnam;
+    rnam.u16(static_cast<std::uint16_t>(y));
+    rnam.u16(static_cast<std::uint16_t>(x));
+    rnam.u32(declared);
+    for (const std::uint32_t ref : refs) {
+        rnam.u32(ref);
+        rnam.u16(static_cast<std::uint16_t>(y));
+        rnam.u16(static_cast<std::uint16_t>(x));
+    }
+    return rnam;
+}
+
+} // namespace
+
+TEST_CASE("WRLD RNAM is a cell with its large references, one field per cell",
+          "[record][forms][wrld]") {
+    ByteWriter payload;
+    write_field(payload, "RNAM", large_ref_field(-3, 7, 2, {0x00100001, 0x00100002}));
+    write_field(payload, "RNAM", large_ref_field(4, -5, 0, {}));
+
+    Tally tally;
+    auto reader = reader_over(payload);
+    const auto wrld = record::parse_worldspace(reader, {.localized = false, .tally = &tally});
+    REQUIRE(wrld.has_value());
+    REQUIRE(wrld->large_refs.size() == 2);
+    CHECK(wrld->large_refs[0].grid_y == -3);
+    CHECK(wrld->large_refs[0].grid_x == 7);
+    REQUIRE(wrld->large_refs[0].refs.size() == 2);
+    CHECK(wrld->large_refs[0].refs[1].ref.value == 0x00100002);
+    CHECK(wrld->large_refs[0].refs[1].grid_y == -3);
+    CHECK(wrld->large_refs[0].refs[1].grid_x == 7);
+    CHECK(wrld->large_refs[1].grid_y == 4);
+    CHECK(wrld->large_refs[1].refs.empty());
+    CHECK(tally.leftover().empty());
+}
+
+TEST_CASE("a WRLD RNAM whose count disagrees with its size is an error",
+          "[record][forms][wrld]") {
+    for (const std::uint32_t declared : {1U, 3U, 0xFFFFFFFFU}) {
+        ByteWriter payload;
+        write_field(payload, "RNAM", large_ref_field(1, 2, declared, {0x00100001, 0x00100002}));
+        auto reader = reader_over(payload);
+        const auto wrld = record::parse_worldspace(reader, {.localized = false, .tally = nullptr});
+        CHECK_FALSE(wrld.has_value());
+    }
+}
+
+TEST_CASE("a truncated WRLD RNAM header is an error", "[record][forms][wrld]") {
+    ByteWriter payload;
+    ByteWriter rnam;
+    rnam.u16(1);
+    rnam.u16(2);
+    write_field(payload, "RNAM", rnam);
+    auto reader = reader_over(payload);
+    const auto wrld = record::parse_worldspace(reader, {.localized = false, .tally = nullptr});
+    REQUIRE_FALSE(wrld.has_value());
+    CHECK(wrld.error().kind == io::ErrorKind::truncated);
+}
+
 TEST_CASE("a truncated WRLD DNAM leaves both heights unset",
           "[record][forms][wrld]") {
     ByteWriter payload;
