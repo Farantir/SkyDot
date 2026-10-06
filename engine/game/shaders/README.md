@@ -80,6 +80,25 @@ in the `.pck` (see "Exports"). Restart to see an edit.
   of each of its seven layers in `#if SKYDOT_LAYERS > n` blocks.
 - **Tabs**, as the shader editor writes them (`.editorconfig`).
 
+## Temporal stability (no TAA)
+
+The picture is not temporally filtered, so nothing in a frame may depend on
+a sub-pixel position in a way that flips between frames. In
+`lighting.gdshaderinc`:
+
+- **Alpha test** (`SKYDOT_ALPHA_TEST`) writes `ALPHA` sharpened to about one
+  pixel, `(a - cutoff) / fwidth(a) + 0.5`, and uses `alpha_to_coverage`, so
+  with MSAA (the viewer's default, 4x) leaf edges get partial coverage. A
+  scissor threshold of 0.01 (chosen) stays set: Godot's shadow pass only
+  discards by scissor, and without it leaves would cast no shadow.
+- **Projected snow** weighs the up-facing term with the vertex normal, not
+  the normal-mapped one (that made snow flip per texel on rock), and softens
+  the blend over `fwidth` of the weight.
+
+Measured with a camera turn of 0.03 degrees per frame and the mean absolute
+second difference of luminance (what a linear motion cannot explain), see the
+commit messages.
+
 ## Changing a shader
 
 Edit the file and start the game. Three checks, each of which finds something
