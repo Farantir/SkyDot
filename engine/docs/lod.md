@@ -27,11 +27,17 @@ streaming shows no gaps. Objects that cross a cell border are cut there.
 
 ## Shading
 
-- Terrain: the quad's own texture and its model-space normal map (NIF axes,
-  carried to Godot's by the node transform). The flat LOD water shape gets a
+- Terrain: the quad's own texture and its model-space normal map. Its NIF
+  normal is (red, blue, green) * 2 - 1: "up" is in green. Found by comparing
+  the map with the mesh's vertex normals over five quads and every channel
+  order and sign (mean dot 0.79 to 0.91, runner-up 0.57 to 0.74; not higher
+  because the mesh is decimated), and carried to Godot's axes by the node
+  transform. The flat LOD water shape gets a
   plain water colour.
 - Objects: the atlas (or landscape texture for "HD" pieces) times the vertex
-  colour, with the tangent-space normal map in the DirectX convention.
+  colour, with the tangent-space normal map in the DirectX convention (the
+  maps are blue-dominant, mean (0.44, 0.44, 0.84), and the meshes carry
+  tangents, so they are tangent-space; the green sign is not measured).
 - Trees: one MultiMesh per quad of camera-facing billboards, sized by the tree
   list times the instance scale, cut from the atlas by its rectangle, alpha
   tested at 0.5.
@@ -41,7 +47,6 @@ median frame 1.7 ms without LOD, 3.3 ms with.
 
 ## Not checked against the game
 
-- The model-space normal map's channel order (x east, y north, z up).
 - Split distances and tree distance: chosen, not taken from the game's INI.
 - LOD water colour (fixed, not the worldspace's WATR).
 - Cracks where LOD terrain meets full terrain; none were visible around
