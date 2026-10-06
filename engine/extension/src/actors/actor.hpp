@@ -16,10 +16,17 @@
 // progress (another actor, a ledge the path did not know). A closed plain
 // door in its way it opens, waits for, and closes again once past it
 // (`door_toggled` tells, for SkydotPapyrus's open state).
+//
+// Level of detail, by distance to the camera (the game does the same with its
+// high, middle and low process levels): near actors (about a cell) are
+// processed every frame; farther ones step their physics and AI at a lower
+// rate, animate at a lower rate while on screen and not at all off screen,
+// and a standing one only checks the ground once a second. `get_lod`.
 #pragma once
 
 #include "physics/player.hpp"
 
+#include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/random_number_generator.hpp>
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 
@@ -56,7 +63,14 @@ public:
     /// Facing about +Y, radians, as `SkydotPlayer.set_look` takes it.
     void face(double yaw);
 
+    /// Level of detail: 0 near (everything every frame), 1 middle, 2 far.
+    /// Near without a camera.
+    std::int32_t get_lod() const { return lod_; }
+    /// Seconds the AI waits between its updates of an actor at `lod`.
+    static double ai_interval(std::int32_t lod);
+
     void _ready() override;
+    void _process(double delta) override;
     void _physics_process(double delta) override;
 
 protected:
@@ -68,7 +82,10 @@ private:
     void think(double delta);
     void steer(double delta);
     void animate();
-    bool find_ground();
+    void update_lod();
+    void animate_lod(double delta);
+    godot::AnimationPlayer* player() const;
+    bool find_ground(double delta);
     /// Open a closed plain door within reach along `dir`; true if it did.
     bool open_door_ahead(const godot::Vector3& dir);
     /// Close the doors it opened once it is past them.
@@ -89,6 +106,14 @@ private:
     bool home_set_{false};
     double ground_wait_{0.0};
     godot::String playing_;
+    std::int32_t lod_{0};
+    bool on_screen_{true};
+    double lod_wait_{0.0};     ///< Seconds before the level is worked out again.
+    double anim_wait_{0.0};    ///< Seconds since the animation last advanced.
+    double step_wait_{0.0};    ///< Seconds since the physics last stepped.
+    bool wake_{false};         ///< Step at the next tick, whatever the level of detail.
+    bool posed_{false};        ///< The animation has been applied at least once.
+    bool manual_{false};       ///< The AnimationPlayer is advanced by hand.
     double door_probe_{0.0}; ///< Seconds before the next look for a door.
     double door_wait_{0.0};  ///< Seconds left standing while a door opens.
     struct OpenedDoor {

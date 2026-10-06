@@ -97,8 +97,66 @@ func _run(pack_dir: String) -> void:
     expect(actor.get_state() == "idle" and anim.current_animation == "idle",
            "and idles: %s, %s" % [actor.get_state(), anim.current_animation])
     expect(absf(end.y) < 0.1, "on the floor: %f" % end.y)
+    expect(actor.get_lod() == 0 and anim.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE,
+           "without a camera it is at full detail")
 
+    await _lod(actor, anim)
     _finish()
+
+# Level of detail: the camera's distance sets how often an actor steps,
+# animates and is looked after by the AI; it still gets where it walks.
+func _lod(actor: SkydotActor, anim: AnimationPlayer) -> void:
+    var cam := Camera3D.new()
+    root.add_child(cam)
+    cam.current = true
+    var spot := actor.global_position
+    var chest := spot + Vector3(0, 1, 0)
+
+    cam.look_at_from_position(spot + Vector3(0, 1.7, 5), chest)
+    await ticks(10)
+    expect(actor.get_lod() == 0, "5 m away: near, %d" % actor.get_lod())
+    cam.look_at_from_position(spot + Vector3(0, 1.7, 110), chest)
+    await ticks(30)
+    expect(actor.get_lod() == 1, "110 m away: middle, %d" % actor.get_lod())
+    expect(anim.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL,
+           "the middle level advances the animation by hand")
+    cam.look_at_from_position(spot + Vector3(0, 1.7, 200), chest)
+    await ticks(30)
+    expect(actor.get_lod() == 2, "200 m away: far, %d" % actor.get_lod())
+
+    # On screen it animates, at a lower rate; looking away it holds still.
+    var before := anim.current_animation_position
+    await ticks(60)
+    expect(not is_equal_approx(anim.current_animation_position, before), "far and in view it animates")
+    cam.look_at_from_position(spot + Vector3(0, 1.7, 200), spot + Vector3(0, 1.7, 400))
+    await ticks(30)
+    before = anim.current_animation_position
+    await ticks(60)
+    expect(is_equal_approx(anim.current_animation_position, before), "far and out of view it holds still")
+    expect(actor.get_state() == "idle", "still idle: %s" % actor.get_state())
+    expect(actor.global_position.distance_to(spot) < 0.01, "a standing actor stays where it is")
+
+    # Far, it still walks the whole way, at its speed, and goes back to idle.
+    var target := spot + Vector3(3, 0, -4)
+    var path_ok := actor.walk_to(target, false)
+    expect(path_ok, "a far actor gets a path")
+    await ticks(30)
+    expect(actor.get_state() == "walk", "a far actor walks: %s" % actor.get_state())
+    var speed := Vector2(actor.velocity.x, actor.velocity.z).length()
+    expect(speed > 0.5 and speed < 1.2, "at about 1 m/s: %f" % speed)
+    var goal := actor.get_path()[-1]  # the target, put on the navmesh
+    await ticks(420)
+    var left := Vector2(actor.global_position.x - goal.x, actor.global_position.z - goal.z).length()
+    expect(left < 0.6, "far, it arrives (%.2f m off)" % left)
+    expect(actor.get_state() == "idle", "and idles: %s" % actor.get_state())
+    expect(absf(actor.global_position.y) < 0.1, "on the floor: %f" % actor.global_position.y)
+
+    # Back near, everything runs by itself again.
+    cam.look_at_from_position(actor.global_position + Vector3(0, 1.7, 5), actor.global_position)
+    await ticks(30)
+    expect(actor.get_lod() == 0 and anim.callback_mode_process == AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_IDLE,
+           "back near: full detail")
+    cam.queue_free()
 
 func _finish() -> void:
     print("smoke_actors: failures=", failures)

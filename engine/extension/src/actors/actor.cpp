@@ -5,9 +5,11 @@
 #include "physics/collision.hpp"
 
 #include <godot_cpp/classes/animation_player.hpp>
+#include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/navigation_server3d.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
 #include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
+#include <godot_cpp/classes/viewport.hpp>
 #include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -53,6 +55,24 @@ constexpr double k_door_close_distance = 2.0;
 constexpr std::int64_t k_door_open = 1;
 constexpr std::int64_t k_door_closed = 3;
 
+/// Level of detail (see actor.hpp). Distances to the camera in metres: a cell
+/// is 57.6 m wide, so near is a cell and a bit (what a radius of 1 shows), and
+/// the level is left only 10% past the border so that an actor walking along
+/// it does not flip back and forth. Seconds between steps of the physics, and
+/// between advances of the animation (the clips are sampled at 30 fps).
+constexpr double k_lod_near = 80.0;
+constexpr double k_lod_far = 160.0;
+constexpr double k_lod_hysteresis = 0.1;
+constexpr double k_lod_interval = 0.1;
+constexpr double k_mid_step = 1.0 / 20.0;
+constexpr double k_far_step = 1.0 / 10.0;
+/// A standing actor only checks that the ground is still there.
+constexpr double k_stand_step = 1.0;
+constexpr double k_mid_anim = 1.0 / 15.0;
+constexpr double k_far_anim = 1.0 / 7.5;
+constexpr double k_mid_ai = 0.2;
+constexpr double k_far_ai = 0.5;
+
 /// The placed model a collision object belongs to: its nearest ancestor
 /// with a reference.
 godot::Node3D* model_of(godot::Object* collider) {
@@ -97,6 +117,7 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_wander_radius", "value"), &SkydotActor::set_wander_radius);
     ClassDB::bind_method(D_METHOD("get_wander_radius"), &SkydotActor::get_wander_radius);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wander_radius"), "set_wander_radius", "get_wander_radius");
+    ClassDB::bind_method(D_METHOD("get_lod"), &SkydotActor::get_lod);
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
 }
@@ -146,6 +167,86 @@ void SkydotActor::_ready() {
     set_hold(true);
     // Spread the first walks out.
     wait_ = static_cast<double>(rng_->randf_range(2.0F, 15.0F));
+    // And the work of the levels of detail, so that actors do not all step,
+    // animate and look at the camera in the same frame.
+    ground_wait_ = static_cast<double>(rng_->randf_range(0.0F, static_cast<float>(k_ground_poll)));
+    lod_wait_ = static_cast<double>(rng_->randf_range(0.0F, static_cast<float>(k_lod_interval)));
+    step_wait_ = static_cast<double>(rng_->randf_range(0.0F, static_cast<float>(k_far_step)));
+    anim_wait_ = static_cast<double>(rng_->randf_range(0.0F, static_cast<float>(k_far_anim)));
+    set_process(true);
+}
+
+double SkydotActor::ai_interval(std::int32_t lod) {
+    return lod <= 0 ? 0.0 : lod == 1 ? k_mid_ai : k_far_ai;
+}
+
+godot::AnimationPlayer* SkydotActor::player() const {
+    return godot::Object::cast_to<godot::AnimationPlayer>(get_node_or_null("AnimationPlayer"));
+}
+
+void SkydotActor::update_lod() {
+    const godot::Viewport* viewport = get_viewport();
+    const godot::Camera3D* camera = viewport != nullptr ? viewport->get_camera_3d() : nullptr;
+    if (camera == nullptr) {
+        lod_ = 0;
+        on_screen_ = true;
+        return;
+    }
+    const Vector3 feet = get_global_position();
+    const double d = static_cast<double>(feet.distance_to(camera->get_global_position()));
+    const double near = lod_ == 0 ? k_lod_near * (1.0 + k_lod_hysteresis) : k_lod_near;
+    const double far = lod_ == 2 ? k_lod_far : k_lod_far * (1.0 - k_lod_hysteresis);
+    lod_ = d < near ? 0 : d < far ? 1 : 2;
+    // On screen: its feet, middle or head are in view (a body's width at the
+    // screen's edge is a sliver). Near actors stay as they are: behind the
+    // camera they still cast shadows into view.
+    const Vector3 up(0, r(get_height()), 0);
+    on_screen_ = lod_ == 0 || camera->is_position_in_frustum(feet) ||
+                 camera->is_position_in_frustum(feet + up * 0.5F) ||
+                 camera->is_position_in_frustum(feet + up);
+}
+
+void SkydotActor::animate_lod(double delta) {
+    godot::AnimationPlayer* anim = player();
+    if (anim == nullptr) {
+        return;
+    }
+    // Near actors' players run themselves; the others are advanced here, at
+    // a rate that falls with distance, and not while off screen.
+    const bool by_hand = lod_ > 0;
+    if (by_hand != manual_) {
+        manual_ = by_hand;
+        anim->set_callback_mode_process(manual_ ? godot::AnimationMixer::ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
+                                                : godot::AnimationMixer::ANIMATION_CALLBACK_MODE_PROCESS_IDLE);
+        if (manual_ && !posed_) {
+            // Never in view while near: show the clip's first pose at least.
+            anim->advance(0.0);
+            posed_ = true;
+        }
+        anim_wait_ = 0.0;
+    }
+    if (!manual_) {
+        posed_ = true;
+        return;
+    }
+    if (!on_screen_) {
+        anim_wait_ = 0.0;
+        return;
+    }
+    anim_wait_ += delta;
+    if (anim_wait_ >= (lod_ == 1 ? k_mid_anim : k_far_anim)) {
+        anim->advance(anim_wait_);
+        anim_wait_ = 0.0;
+    }
+}
+
+void SkydotActor::_process(double delta) {
+    lod_wait_ -= delta;
+    if (lod_wait_ <= 0.0) {
+        lod_wait_ = k_lod_interval;
+        update_lod();
+    }
+    animate_lod(delta);
 }
 
 godot::String SkydotActor::get_state() const {
@@ -179,6 +280,7 @@ bool SkydotActor::walk_to(const Vector3& target, bool run) {
         return false;
     }
     path_ = path;
+    wake_ = true;
     corner_ = 1;
     run_ = run;
     stuck_time_ = 0.0;
@@ -187,13 +289,14 @@ bool SkydotActor::walk_to(const Vector3& target, bool run) {
 }
 
 void SkydotActor::stop() {
+    wake_ = true;
     path_.clear();
     corner_ = 0;
     set_input(godot::Vector2(), 0.0, WALK);
 }
 
-bool SkydotActor::find_ground() {
-    ground_wait_ -= get_physics_process_delta_time();
+bool SkydotActor::find_ground(double delta) {
+    ground_wait_ -= delta;
     if (ground_wait_ > 0.0 || !is_inside_tree()) {
         return false;
     }
@@ -248,7 +351,11 @@ void SkydotActor::steer(double delta) {
     const Vector3 here = get_global_position();
     Vector3 to = path_[corner_] - here;
     to.y = 0;
-    while (static_cast<double>(to.length()) < k_corner_reach) {
+    // A step of a lower rate may carry it further than the usual reach.
+    const Vector3 v = get_velocity();
+    const double reach =
+        std::max(k_corner_reach, static_cast<double>(Vector3(v.x, 0, v.z).length()) * delta);
+    while (static_cast<double>(to.length()) < reach) {
         if (++corner_ >= path_.size()) {
             stop();
             return;
@@ -347,8 +454,8 @@ void SkydotActor::close_doors(double delta) {
 }
 
 void SkydotActor::animate() {
-    auto* player = godot::Object::cast_to<godot::AnimationPlayer>(get_node_or_null("AnimationPlayer"));
-    if (player == nullptr) {
+    godot::AnimationPlayer* anim = player();
+    if (anim == nullptr) {
         return;
     }
     const Vector3 v = get_velocity();
@@ -356,28 +463,44 @@ void SkydotActor::animate() {
     godot::String want = "idle";
     double clip = 0.0;
     if (speed >= k_idle_speed) {
-        if (run_ && clip_run_ > 0.0 && player->has_animation("run")) {
+        if (run_ && clip_run_ > 0.0 && anim->has_animation("run")) {
             want = "run";
             clip = clip_run_;
-        } else if (player->has_animation("walk")) {
+        } else if (anim->has_animation("walk")) {
             want = "walk";
             clip = clip_walk_;
         }
     }
-    if (!player->has_animation(want)) {
+    if (!anim->has_animation(want)) {
         return;
     }
     // Feet keep pace with the ground: the clip plays as fast as the body moves.
-    player->set_speed_scale(clip > 0.0 ? r(std::clamp(speed / clip, 0.5, 2.0)) : 1.0F);
-    if (want != playing_ || !player->is_playing()) {
-        player->play(want, k_blend);
+    anim->set_speed_scale(clip > 0.0 ? r(std::clamp(speed / clip, 0.5, 2.0)) : 1.0F);
+    if (want != playing_ || !anim->is_playing()) {
+        anim->play(want, k_blend);
         playing_ = want;
     }
 }
 
-void SkydotActor::_physics_process(double delta) {
+void SkydotActor::_physics_process(double engine_delta) {
+    // Level of detail: a farther actor steps less often, and then for the
+    // time since its last step. A standing one only looks for ground.
+    double delta = engine_delta;
+    if (lod_ > 0) {
+        step_wait_ += engine_delta;
+        const Vector3 v = get_velocity();
+        const bool standing = !get_hold() && path_.is_empty() && is_on_floor() &&
+                              static_cast<double>(Vector3(v.x, 0, v.z).length()) < k_idle_speed;
+        const double every = standing ? k_stand_step : lod_ == 1 ? k_mid_step : k_far_step;
+        if (step_wait_ < every && !wake_) {
+            return;
+        }
+        delta = step_wait_;
+    }
+    step_wait_ = 0.0;
+    wake_ = false;
     if (get_hold()) {
-        if (find_ground()) {
+        if (find_ground(delta)) {
             set_hold(false);
         }
     } else {
