@@ -65,6 +65,8 @@ var radius := 2  # cells around the camera built in full
 var lod_split := 1.5
 var msaa_index := 2  # into MSAA_STEPS: 4x
 var aa_index := 0  # into AA_STEPS
+var foliage_bias := 0.5  # mip levels blurrier for alpha-tested trees and grass
+var render_scale := 1.0  # of the window; above 1 draws bigger and averages down (supersampling)
 var has_fov := false
 var fov := 75.0  # degrees, vertical
 var fly := false  # starts flying through everything
@@ -163,6 +165,8 @@ func _read(args: Dictionary) -> void:
 	lod_split = args.get("lod-split", "1.5").to_float()
 	msaa_index = maxi(MSAA_NAMES.find(args.get("msaa", "4")), 0)
 	aa_index = maxi(AA_NAMES.find(args.get("aa", "off")), 0)
+	foliage_bias = clampf(args.get("foliage-bias", "0.5").to_float(), 0.0, 4.0)
+	render_scale = clampf(args.get("render-scale", "1").to_float(), 1.0, 2.0)
 	has_fov = args.has("fov")
 	fov = args.get("fov", "75").to_float()
 	fly = args.get("walk", "on") == "off" or not collision or captures
@@ -268,6 +272,10 @@ static func _arguments_from_shot(path: String) -> Dictionary:
 		out["msaa"] = str(viewer["msaa"])
 	if viewer.has("aa"):
 		out["aa"] = str(viewer["aa"])
+	if viewer.has("foliage_bias"):
+		out["foliage-bias"] = str(viewer["foliage_bias"])
+	if viewer.has("render_scale"):
+		out["render-scale"] = str(viewer["render_scale"])
 	if viewer.get("quests", true) == false:
 		out["quests"] = "off"
 	if viewer.get("materials", true) == false:

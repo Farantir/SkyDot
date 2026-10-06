@@ -27,7 +27,11 @@
 # default 4, about 0.3 ms at 1080p); M switches between them. Alpha-tested leaves
 # are antialiased by it too (alpha to coverage). --aa off|fxaa|smaa adds a
 # screen-space pass over the frame (default off; it is not temporal: nothing
-# smears between frames).
+# smears between frames). --foliage-bias LEVELS (default 0.5) samples the albedo of
+# alpha-tested trees and grass that many mip levels blurrier, which steadies thin
+# leaves at a distance. --render-scale 1..2 (default 1) draws the 3D scene that
+# many times larger per side and averages it down: supersampling, the quality
+# ceiling to compare against, at the cost of the pixels (2 is four times).
 # --fov DEGREES sets the camera's vertical field of view (default 75; the
 # game's is 50.4 at 16:9). --shadows off disables the sun's shadows.
 # --light-shadows all gives every placed light shadows, not only those whose
@@ -187,6 +191,8 @@ func _open_world() -> bool:
 			_ai = null
 	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
 	get_viewport().screen_space_aa = ViewerSettings.AA_STEPS[_settings.aa_index]
+	get_viewport().scaling_3d_scale = _settings.render_scale
+	_world.foliage_bias = _settings.foliage_bias
 	if _settings.has_tiling:
 		_world.terrain_tiling = _settings.tiling
 	# Runs that capture, measure or activate on their own ignore the keyboard
