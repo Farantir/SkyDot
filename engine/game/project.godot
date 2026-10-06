@@ -164,6 +164,7 @@ release_mouse={
 [rendering]
 
 renderer/rendering_method="forward_plus"
+textures/default_filters/anisotropic_filtering_level=4
 ; No light limit: the game's (7 point lights per object, 4 of them shadowed)
 ; was a limit of its renderer, not wanted here. Forward+ has no per-object
 ; limit; these raise its per-view ones well past the busiest vanilla
