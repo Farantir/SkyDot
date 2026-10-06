@@ -242,6 +242,17 @@ void SkydotPlayer::walk(double delta) {
         set_velocity(Vector3(v.x, 0, v.z));
         return;
     }
+    // A tick that stands for several (an actor stepping at a lower rate)
+    // moves as far as they would have: move_and_slide covers velocity times
+    // one tick, so it is given that many times the velocity.
+    const double dt = get_physics_process_delta_time();
+    const double ticks = dt > 0.0 && delta > dt * 1.5 ? delta / dt : 1.0;
+    if (ticks > 1.0) {
+        set_velocity(v * r(ticks));
+        move_and_slide();
+        set_velocity(get_velocity() / r(ticks));
+        return;
+    }
     move_and_slide();
 }
 
@@ -303,7 +314,7 @@ bool SkydotPlayer::step_up(double delta) {
     Vector3 to_contact = hit->get_position() - from.origin;
     to_contact.y = 0;
     const real_t first = std::clamp(to_contact.dot(dir) - r(radius_) + k_step_overlap,
-                                    motion.length(), r(radius_));
+                                    motion.length(), std::max(r(radius_), motion.length()));
     const Transform3D raised = from.translated(rise);
     // A step's front may itself be a steep slope (Nordic stairs: 54 degrees,
     // 18 cm high): reaching just past the contact lands on that slope, so
