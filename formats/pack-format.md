@@ -214,7 +214,11 @@ test bits by these names, through `has_flag` in
   is the winner's as usual. A listed reference is left out if it is deleted,
   initially disabled, in another worldspace or not in the load order; its
   placement is its winning REFR's. A reference with an enable parent is kept,
-  with `enable_parent` and the flags, for the engine to evaluate.
+  with `enable_parent` and the flags, for the engine to evaluate. `flags` has
+`visible_when_distant`, the REFR's record flag 0x8000, and a base's
+`record_flags` has it too: in Skyrim.esm's object LOD (`.bto`) those large
+references are already drawn, as the shapes named `...-LargeRef`, and the others
+are not (measured on SE, level 4).
 - `land_textures`, sorted by id: LTEX with its TXST's diffuse and normal map
   as virtual paths, and its specular value.
 - `waters`, sorted by id: WATR's visual values (opacity, shallow, deep and

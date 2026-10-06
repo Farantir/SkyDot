@@ -33,7 +33,10 @@ enum RefFlags : uint32 (bit_flags) {
     /// The enable state is the opposite of `enable_parent`'s.
     enable_opposite,
     /// Only activate parents can activate it (XAPD).
-    parent_activate_only
+    parent_activate_only,
+    /// The REFR's record flag 0x8000: the reference is in object LOD (format
+    /// 11). A reference's base can have the same flag (`RecordFlags`).
+    visible_when_distant
 }
 
 /// One placed reference (REFR). Deleted references are not included.
@@ -347,6 +350,8 @@ struct LightData {
 enum RecordFlags : uint32 (bit_flags) {
     /// Editor markers (XMarker, furniture markers): the game does not draw
     /// them.
+    /// STAT and the like: the object is in object LOD (format 11).
+    visible_when_distant = 15,
     editor_marker = 23
 }
 

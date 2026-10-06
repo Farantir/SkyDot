@@ -1551,7 +1551,8 @@ void make_large_refs(const TempDir& dir) {
     bethconv::test::write_record(refs, "REFR", 0x0000'0E11, refr_payload(0x0000'0800, 2.0F, 1.0F).span(),
                                  0x800);
     bethconv::test::write_record(refs, "REFR", 0x0000'0E12, ByteWriter{}.span(), 0x20);
-    bethconv::test::write_record(refs, "REFR", 0x0000'0E13, refr_payload(0x0000'0800, 4.0F, 2.0F).span());
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E13, refr_payload(0x0000'0800, 4.0F, 2.0F).span(),
+                                 0x8000);
     ByteWriter temporary;
     bethconv::test::write_group(temporary, real, 9, refs.span());
     ByteWriter real_children;
@@ -1622,6 +1623,8 @@ TEST_CASE("world.fb lists a worldspace's large references, without deleted or di
     CHECK(w.large_refs[0].position().x() == 1.0F);
     CHECK(w.large_refs[1].id() == 0x0000'0E13);
     CHECK(w.large_refs[1].scale() == 2.0F);
+    CHECK(skydot::formats::has_flag(w.large_refs[1].flags(), pack::wfb::RefFlags::visible_when_distant));
+    CHECK_FALSE(skydot::formats::has_flag(w.large_refs[0].flags(), pack::wfb::RefFlags::visible_when_distant));
     CHECK(w.large_refs[1].base() == 0x0000'0800);
     REQUIRE(w.large_cells.size() == 2);
     CHECK((w.large_cells[0].cell_x() == 0 && w.large_cells[0].cell_y() == 0));
