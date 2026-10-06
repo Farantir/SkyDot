@@ -695,7 +695,17 @@ void SkydotWeather::update_sky(double delta) {
     environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
     environment_->set_meta("skydot_sky_upper", shader_rgb(mix(a.upper, b.upper)));
     environment_->set_meta("skydot_sky_horizon", shader_rgb(mix(a.horizon, b.horizon)));
-    light_->look_at_from_position(Vector3(), -towards, std::abs(towards.y) < 0.99F ? Vector3(0, 1, 0) : Vector3(0, 0, -1));
+    // The light turns in steps, not every frame: a continuously turning sun
+    // moves every shadow edge a little each frame, and the edges shimmer as
+    // the shadow map's texels are re-sampled. 0.1 degrees is chosen: a step
+    // moves a shadow 3.5 cm at 20 m, and at the default time scale (20) it
+    // comes every 1.2 s.
+    constexpr float k_sun_step_cos = 0.99999848F; // cos(0.1 degrees)
+    const Vector3 direction = towards.normalized();
+    if (light_towards_.dot(direction) < k_sun_step_cos) {
+        light_towards_ = direction;
+        light_->look_at_from_position(Vector3(), -direction, std::abs(direction.y) < 0.99F ? Vector3(0, 1, 0) : Vector3(0, 0, -1));
+    }
 }
 
 void SkydotWeather::update_clouds(double delta) {

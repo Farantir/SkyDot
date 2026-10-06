@@ -153,6 +153,7 @@ private:
     godot::Ref<godot::Environment> environment_;
     godot::Ref<godot::ShaderMaterial> sky_material_;
     godot::DirectionalLight3D* light_{};
+    godot::Vector3 light_towards_{}; // where the sun light points from, in steps (see update_sky)
     godot::Node3D* dome_{};          ///< Follows the camera.
     struct Layer {
         godot::Ref<godot::ShaderMaterial> material;

@@ -68,3 +68,10 @@ colour as its `skydot_fog_near_color` meta) via `SkydotMaterials.sync_fog`;
 interiors use their XCLL fog the same way. The formula is from memory of the
 game's shader, not measured: weathers with a low power (SkyrimCloudySN 0.35)
 stay hazy close by. Needs an in-game comparison in the same weather.
+
+## Sun light steps
+
+The sun's `DirectionalLight3D` turns in steps of 0.1 degrees, not every frame
+(`SkydotWeather::update_sky`). Turning it continuously shifted every shadow
+edge a little each frame and the edges shimmered. The sky's sun sprite and the
+shaders' sun direction stay smooth.
