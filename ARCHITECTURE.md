@@ -646,6 +646,7 @@ at the SCENE level:
 | `SkydotFlicker` (Node) | `render/flicker.*` | flickering and pulsing lights |
 | `SkydotBillboard` (Node) | `render/billboard.*` | NiBillboardNode |
 | `SkydotLod` (Node3D) | `render/lod.*` | distant terrain, object and tree LOD |
+| `SkydotLargeRefs` (Node3D) | `render/large_refs.*` | large references drawn as models between the full-detail cells and the LOD; a child of `SkydotLod` |
 | `SkydotWeather` (Node3D) | `render/weather.*` | time of day, weather, sky, clouds, sun, moons, stars, precipitation, lightning |
 | `SkydotImageSpace` (CompositorEffect) | `render/image_space.*` | IMGS as a compositor effect (tone mapping, saturation, tint, contrast, eye adaptation) |
 | `SkydotDynamicBody` (RigidBody3D) | `physics/collision.*` | movable clutter |
@@ -884,6 +885,16 @@ caller begins a build only when nothing would load on the main thread.
   worldspace's LOD grid (4/8/16/32-cell quads), terrain and object LOD
   meshes, tree billboards as MultiMesh. A per-cell mask texture lets the
   LOD shaders discard fragments over loaded full-detail cells.
+- **Large references** (`render/large_refs.*`, `data/large_refs.*`,
+  `engine/docs/lod.md`; pack format 11): beyond the full-detail cells, out to
+  `large_ref_radius` (default 5, the game's uLargeRefLODGridSize 11), the
+  references the converter lists per worldspace as large (cliffs, rocks, big
+  buildings) are built as visual-only models (`Decoration::visual_only`: the
+  cell builder's materials, no collision, lights, add-ons or scripts) by a
+  layer under `SkydotLod`. The choice is pure (`large_refs::select`: the union
+  of the lists of the cells in range, each once, minus those standing in a built
+  cell). The mask's second state (0.5) hides the object-LOD shapes named
+  `...LargeRef` where the layer has drawn a cell's large references.
 - **Weather** (`render/weather.*`, `engine/docs/weather.md`): region or
   climate weather choice, cross-fades, sky gradient, 29 cloud layers on
   `clouds.nif`, sun, moons with phases, stars, GPU rain and snow, lightning.
@@ -1018,7 +1029,7 @@ update()                    once a frame inside a worldspace
   finish   a cell whose build is done: released if held, shown, AI actors
            attached, signal cell_finished(cell, cell_id), its load doors
            registered, LOD masked there
-  lod.update(camera, 3 ms)
+  lod.update(camera, 3 ms)  (quads, then the large-reference layer, 2 ms)
 preload_step(feet)          once a frame, after update
   every 15 frames look for the nearest registered load door within
   preload_distance; a new one drops the old preparation and begins one
@@ -1231,7 +1242,7 @@ Several version numbers move independently:
 | What | Where | Value (working tree) | Bumped when |
 | --- | --- | --- | --- |
 | Pack format | `k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`), manifest, `vpath.idx` header; engine `SkydotPack::PACK_FORMAT_VERSION` | 6 | the pack layout's meaning changes |
-| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 10 | `world.fbs` meaning changes |
+| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 11 | `world.fbs` meaning changes |
 | Script, LOD, animation assets | `format_version` in each root table | 1 / per schema | their schema changes |
 | Asset settings fingerprints | `ConvertOptions::*_settings()` (`mesh/19`, `texture/1`, `script/2`, `lod/1`, `animation/2`) | — | a writer's output changes for unchanged input (renames assets, no format change) |
 | CLI JSON | `cli::k_json_version` | — | the JSON the pack tool reads changes |

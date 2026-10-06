@@ -22,8 +22,55 @@ quads, 114 with object LOD and about 7,700 trees.
 
 LOD and full-detail cells overlap. The viewer marks each cell it has built
 (`set_cell_loaded`) in a one-byte-per-cell mask texture; every LOD shader
-discards fragments over marked cells. Cells not yet built keep their LOD, so
+discards fragments over cells marked 1. Cells not yet built keep their LOD, so
 streaming shows no gaps. Objects that cross a cell border are cut there.
+
+The mask has a second state, 0.5: the cell's large references are drawn as
+models (next section), so only the object shapes made of them are discarded.
+
+## Large references
+
+The game draws, from the full-detail cells (uGridsToLoad 5, radius 2) out to
+uLargeRefLODGridSize (11, radius 5), the references the Creation Kit lists as
+large (bounds above fLargeRefMinSize: cliffs, rocks, big buildings) as full
+models, seen only. Beyond that only object LOD shows them. Without this layer
+rocks and cliffs a cell or two outside the full-detail radius were missing.
+
+`SkydotLargeRefs` (`render/large_refs.*`, a child of `SkydotLod`) reads them
+from pack format 11 (`world.fb` per worldspace `large_refs`, with `large_cells`
+holding for each grid square the references standing in it or reaching into
+it; an older pack has none and the layer is not made). Each update:
+
+1. `large_refs::select` (`data/large_refs.*`, pure): the union of the lists of
+   the squares within `radius` (Chebyshev) of the camera's square, each
+   reference once, minus those whose own square is built at full detail (that
+   cell builds them: they are ordinary references of their cell). Squares inside
+   the full-detail radius are in the union on purpose: a reference stays drawn
+   until its cell is built, so moving opens no holes.
+2. References that draw nothing are skipped and counted: initially disabled
+   (own flag, or the enable parent's state, as the cell builder evaluates it,
+   found through the parent's cell), no base, base without a model, editor
+   markers.
+3. Models load on the asset cache's threads, all asked for at once; instances
+   are built nearest first within 2 ms a frame, through the cell builder's
+   decoration (`Decoration::visual_only`: root transform, draw order,
+   materials, projected snow material, billboards, animated textures; no
+   collision, lights, add-ons, scripts or tags), so they look as in a full
+   cell. Shadows are off (the game casts none from distant objects either).
+4. The LOD hides what object LOD already draws of them. In the vanilla `.bto`
+   the large references with the visible-when-distant flag are separate shapes
+   named `obj-LargeRef`, `objHD-LargeRef` or `objsnowHD-LargeRef` (others
+   `Obj`, `Obj2`, ...). Those shapes get a material with `large_ref_shape` set
+   and discard where the mask is 0.5 or 1. A cell is marked 0.5 once every
+   reference in its list is built, is not drawable, or stands in a built cell.
+
+Not hidden: a LargeRef shape that spills into a cell just beyond the radius
+whose own list is not drawn (a one-cell fringe, at most a sliver of coincident
+surfaces). `--large-refs off` and `--large-ref-radius N` (viewer),
+`SkydotStreamer.large_refs` / `large_ref_radius` and `SkydotLod.large_refs` /
+`large_ref_radius` control it; `get_stats()` of the LOD has a `large_refs`
+entry (wanted, shown, pending, marked cells, skipped by reason).
+`SkydotWorld.get_large_refs(world, x, y, radius)` is the query.
 
 ## Shading
 
