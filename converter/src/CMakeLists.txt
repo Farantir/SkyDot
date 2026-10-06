@@ -74,7 +74,9 @@ add_library(bethconv_core STATIC
     texture/mip_tail.cpp
     texture/mip_drop.cpp
     texture/bc_encode.cpp
+    texture/alpha_coverage.cpp
     pack/content_hash.cpp
+    pack/alpha_usage.cpp
     pack/asset_store.cpp
     pack/pack_writer.cpp
     pack/script_asset.cpp

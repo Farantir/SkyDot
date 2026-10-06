@@ -6,6 +6,7 @@
 #include "bethconv/archive/vpath.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/span_stream.hpp"
+#include "bethconv/texture/alpha_coverage.hpp"
 #include "bethconv/texture/dds.hpp"
 #include "bethconv/texture/mip_tail.hpp"
 
@@ -54,7 +55,8 @@ struct TextureTally {
 int cmd_texture(const std::vector<std::filesystem::path>& sources,
                 std::vector<std::string> vpaths, const std::filesystem::path& list_file,
                 const std::string& filter, const std::filesystem::path& out_dir, bool inspect,
-                bool no_fix, std::size_t limit, bool verbose, bool quiet) {
+                bool no_fix, std::size_t limit, bool verbose, bool quiet,
+                std::uint32_t coverage_threshold) {
     // A list file lets thousands of paths share one mount (nine minutes one
     // process at a time vs. 4.3 s in one).
     if (!list_file.empty()) {
@@ -163,12 +165,44 @@ int cmd_texture(const std::vector<std::filesystem::path>& sources,
             std::printf("\n");
         }
 
+        const bool rebuilt = fix.outcome == bethconv::texture::TailOutcome::completed;
+        std::span<const std::byte> payload = rebuilt ? std::span<const std::byte>(fix.data)
+                                                     : bytes;
+        bethconv::texture::CoverageFix coverage;
+        if (coverage_threshold != 0) {
+            // On the chain as it will be stored.
+            auto stored = bethconv::texture::parse_dds(payload, origin);
+            auto kept = stored ? bethconv::texture::preserve_alpha_coverage(
+                                     payload, *stored, coverage_threshold, origin)
+                               : std::unexpected(stored.error());
+            if (!kept) {
+                ++tally.failed;
+                std::fprintf(stderr, "error: %s\n", kept.error().to_string().c_str());
+                return;
+            }
+            coverage = std::move(*kept);
+            if (!quiet) {
+                std::printf("%s: coverage at alpha >= %u: %s %s\n", std::string(origin).c_str(),
+                            coverage_threshold,
+                            std::string(to_string(coverage.outcome)).c_str(),
+                            coverage.reason.c_str());
+                const auto line = [](const char* label, const std::vector<double>& v) {
+                    std::printf("    %-7s", label);
+                    for (const double x : v) {
+                        std::printf(" %5.1f", x * 100.0);
+                    }
+                    std::printf("  (%% per mip)\n");
+                };
+                line("before", coverage.before);
+                if (coverage.outcome == bethconv::texture::CoverageOutcome::adjusted) {
+                    line("after", coverage.after);
+                    payload = coverage.data;
+                }
+            }
+        }
         if (inspect || out_dir.empty()) {
             return;
         }
-        const bool rebuilt = fix.outcome == bethconv::texture::TailOutcome::completed;
-        const std::span<const std::byte> payload = rebuilt ? std::span<const std::byte>(fix.data)
-                                                           : bytes;
         std::string error;
         if (!bethconv::io::write_file(out_dir / out_name, payload, error)) {
             ++tally.failed;
@@ -261,6 +295,7 @@ struct TextureArgs {
     bool verbose = false;
     bool quiet = false;
     bool allow_slow_target = false;
+    std::uint32_t coverage = 0;
 };
 
 } // namespace
@@ -281,6 +316,10 @@ void register_texture(CLI::App& app) {
     texture->add_option("-o,--out", args->out, "Write .dds files under this directory");
     texture->add_flag("--allow-slow-target", args->allow_slow_target, k_allow_slow_help);
     texture->add_flag("--inspect", args->inspect, "Census only; write nothing");
+    texture->add_option("--coverage", args->coverage,
+                        "Keep the coverage of alpha >= N (1..255) through the mips, and print "
+                        "the coverage per mip level before and after")
+        ->check(CLI::Range(1, 255));
     texture->add_flag("--no-fix", args->no_fix,
                       "Copy verbatim; do not complete short mip chains");
     texture->add_option("--limit", args->limit, "Stop after this many files")->default_val(0);
@@ -293,7 +332,7 @@ void register_texture(CLI::App& app) {
         }
         set_exit_status(cmd_texture(args->sources, args->vpaths, args->list, args->filter,
                                     args->out, args->inspect, args->no_fix, args->limit,
-                                    args->verbose, args->quiet));
+                                    args->verbose, args->quiet, args->coverage));
     });
 }
 

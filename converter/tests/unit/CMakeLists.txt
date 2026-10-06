@@ -21,6 +21,7 @@ add_executable(bethconv_unit_tests
     test_mip_tail.cpp
     test_mip_drop.cpp
     test_bc_encode.cpp
+    test_alpha_coverage.cpp
     test_forms.cpp
     test_forms_actor.cpp
     test_package.cpp
