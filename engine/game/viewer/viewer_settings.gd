@@ -43,6 +43,8 @@ var ai := true
 var has_tiling := false
 var tiling := 0.0  # land texture repeats per cell
 var lod := true
+var large_refs := true  # large references as models beyond the cells in full
+var large_ref_radius := 5  # cells (the game's uLargeRefLODGridSize 11 is radius 5)
 var has_tree_distance := false
 var tree_distance := 0.0
 var shadows := true  # the sun's, outside
@@ -141,6 +143,8 @@ func _read(args: Dictionary) -> void:
 	has_tiling = args.has("tiling")
 	tiling = args.get("tiling", "0").to_float()
 	lod = args.get("lod", "on") != "off"
+	large_refs = args.get("large-refs", "on") != "off"
+	large_ref_radius = args.get("large-ref-radius", "5").to_int()
 	has_tree_distance = args.has("tree-distance")
 	tree_distance = args.get("tree-distance", "0").to_float()
 	shadows = args.get("shadows", "on") != "off"
@@ -249,6 +253,10 @@ static func _arguments_from_shot(path: String) -> Dictionary:
 		out["walk"] = "off"
 	if viewer.has("radius"):
 		out["radius"] = str(viewer["radius"])
+	if viewer.has("large_refs"):
+		out["large-refs"] = "on" if viewer["large_refs"] else "off"
+	if viewer.has("large_ref_radius"):
+		out["large-ref-radius"] = str(viewer["large_ref_radius"])
 	if viewer.has("lod_split"):
 		out["lod-split"] = str(viewer["lod_split"])
 	if viewer.has("msaa"):

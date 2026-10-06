@@ -253,6 +253,8 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"lod": _streamer.lod != null,
 			"radius": _streamer.radius,
 			"lod_split": _streamer.lod_split,
+			"large_refs": _streamer.large_refs,
+			"large_ref_radius": _streamer.large_ref_radius,
 			"msaa": ViewerSettings.MSAA_NAMES[maxi(ViewerSettings.MSAA_STEPS.find(_host.get_viewport().msaa_3d), 0)],
 			"quests": _settings.quests,
 			"overlay_hidden": overlay_hidden,

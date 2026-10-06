@@ -19,7 +19,11 @@
 # it off, --lod-split and --tree-distance tune it (SkydotLod). [ and ] lower
 # and raise the LOD's detail while running (--lod-split by a quarter each:
 # finer LOD further out); - and = shrink and grow --radius, the full-detail
-# cells around the camera (2 is the game's uGridsToLoad 5). --msaa off|2|4|8 smooths edges (multisampling;
+# cells around the camera (2 is the game's uGridsToLoad 5). Between them and
+# the LOD the worldspace's large references (cliffs, rocks, big buildings; pack
+# format 11) show as models out to --large-ref-radius cells (default 5, the
+# game's uLargeRefLODGridSize 11); --large-refs off shows only the LOD there
+# (SkydotLargeRefs, engine/docs/lod.md). --msaa off|2|4|8 smooths edges (multisampling;
 # default off); M switches between them.
 # --fov DEGREES sets the camera's vertical field of view (default 75; the
 # game's is 50.4 at 16:9). --shadows off disables the sun's shadows.
@@ -232,6 +236,8 @@ func _make_streamer() -> void:
 	_streamer.build_budget_usec = _settings.build_budget_usec
 	_streamer.lod_enabled = _settings.lod
 	_streamer.lod_split = _settings.lod_split
+	_streamer.large_refs = _settings.large_refs
+	_streamer.large_ref_radius = _settings.large_ref_radius
 	if _settings.has_tree_distance:
 		_streamer.set_tree_distance(_settings.tree_distance)
 	_streamer.eye_height = PlayerRig.EYE_HEIGHT

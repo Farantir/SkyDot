@@ -37,6 +37,7 @@ func _defaults() -> void:
     expect(not s.pick_locks and not s.fly and not s.all_light_shadows, "locks hold, walks")
     expect(s.interactive and not s.captures, "interactive")
     expect(not s.has_at and not s.has_target and not s.has_look and not s.has_fov, "nothing placed")
+    expect(s.large_refs and s.large_ref_radius == 5, "large references out to 5 cells")
     expect(s.msaa_index == 0 and s.shot_dir == "user://screenshots" and s.shot_notes, "shot and msaa defaults")
 
 func _options() -> void:
@@ -46,7 +47,8 @@ func _options() -> void:
             "--materials", "off", "--light-shadows", "all", "--preload-distance", "30",
             "--pick-locks", "on", "--weather", "SkyrimClear", "--build-budget", "4000",
             "--tiling", "2.5", "--tree-distance", "3", "--shadows", "off", "--image-space", "off",
-            "--quests", "off", "--set-stage", "Q:10", "--preload-doors", "off", "--pck", "x"])
+            "--quests", "off", "--set-stage", "Q:10", "--preload-doors", "off", "--pck", "x",
+            "--large-refs", "off", "--large-ref-radius", "3"])
     expect(s.error == "" and s.world == "W" and s.cell == "", "a worldspace")
     expect(s.has_at and s.at == Vector3(1, 2, 3), "at in game units")
     expect(s.has_target and s.target == Vector3(4, 5, 6.5), "target in game units")
@@ -63,6 +65,7 @@ func _options() -> void:
     expect(s.has_tiling and s.tiling == 2.5 and s.has_tree_distance and s.tree_distance == 3.0, "lod options")
     expect(not s.shadows and not s.image_space and not s.quests and s.set_stage == "Q:10", "more switches")
     expect(s.has_pck, "--pck is noticed")
+    expect(not s.large_refs and s.large_ref_radius == 3, "large reference options")
 
 func _captures() -> void:
     var s := parse(["--pack", "p", "--cell", "C", "--screenshot", "out.png"])
@@ -82,6 +85,8 @@ func _captures() -> void:
     expect(not flagged.interactive and flagged.radius == 4, "--no-input does not swallow --radius")
     expect(flagged.has_screenshot and flagged.screenshot == "out.png", "--no-input does not swallow --screenshot")
     expect(not parse(["--pack", "p", "--cell", "C", "--no-input", "--lod", "off"]).lod, "--no-input does not swallow --lod")
+    var last := parse(["--pack", "p", "--world", "W", "--large-refs", "off", "--large-ref-radius", "7", "--no-input"])
+    expect(not last.large_refs and last.large_ref_radius == 7 and not last.interactive, "--no-input last")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,
             "a key without a value is skipped")
 
@@ -109,7 +114,7 @@ func _from_shot() -> void:
         "camera": {"game": {"x": 1, "y": 2, "z": 3, "heading": 90, "tilt": 10}},
         "time": {"hour": 9.5, "day": 3}, "weather": {"editor_id": "SkyrimClear"},
         "viewer": {"flying": true, "radius": 4, "lod_split": 2.0, "msaa": "4", "quests": false,
-            "materials": false},
+            "materials": false, "large_refs": false, "large_ref_radius": 4},
         "pack": {"path": "/some/pack"}}))
     file.close()
     var s := parse(["--from-shot", path, "--radius", "1"])
@@ -121,6 +126,8 @@ func _from_shot() -> void:
     expect(s.weather == "SkyrimClear" and s.fly and not s.quests and not s.materials, "options of the shot")
     expect(s.radius == 1, "the command line wins over the shot: %d" % s.radius)
     expect(s.lod_split == 2.0 and s.msaa_index == 2, "the rest of the shot's options")
+    expect(not s.large_refs and s.large_ref_radius == 4, "the shot's large reference options")
+    expect(parse(["--from-shot", path, "--large-refs", "on"]).large_refs, "--large-refs wins over the shot's")
     expect(parse(["--from-shot", path, "--pack", "mine"]).pack == "mine", "--pack wins over the shot's")
     file = FileAccess.open(path, FileAccess.WRITE)
     file.store_string(JSON.stringify({"format": 99}))
