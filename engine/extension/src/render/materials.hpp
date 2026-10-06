@@ -129,6 +129,9 @@ public:
     /// light colour from every side.
     /// Register those parameters (no fog) if they are not yet.
     static void ensure_fog_globals();
+    /// Mip levels added to the albedo lookups of foliage materials (the
+    /// "foliage" uniform of lighting.gdshaderinc), for all of them at once.
+    static void set_foliage_bias(float bias);
     /// Set `light` so that shaders see `gamma` (a game colour, any
     /// brightness) as its light: Godot's colour and energy.
     static void set_game_light(godot::Light3D* light, const godot::Color& gamma);

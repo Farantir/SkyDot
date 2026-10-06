@@ -26,6 +26,12 @@ render_mode alpha_to_coverage;
 #include "res://shaders/game_fog.gdshaderinc"
 
 uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+// Foliage (alpha-tested trees, grass) samples its albedo this many mip levels
+// blurrier: the alpha test of a thin leaf aliases at the level the pixel asks
+// for, and a coarser one is steadier. The bias is one global (--foliage-bias),
+// the flag is per material (materials.cpp).
+global uniform float skydot_foliage_bias;
+uniform bool foliage = false;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 base_color = vec4(1.0);
 uniform vec3 specular_color = vec3(1.0);
@@ -108,7 +114,7 @@ vec3 soft_tint(vec3 base, vec3 tint) {
 
 void fragment() {
 	vec2 uv = UV * uv_scale + uv_offset;
-	vec4 albedo = texture(albedo_tex, uv) * base_color;
+	vec4 albedo = texture(albedo_tex, uv, foliage ? skydot_foliage_bias : 0.0) * base_color;
 	if (use_vertex_colors) {
 		albedo.rgb *= COLOR.rgb;
 	}
@@ -148,7 +154,6 @@ void fragment() {
 			float x = 5.0 * (0.1 + weight);
 			float w = max(1.0, fwidth(x));
 			float t = clamp((x - 0.5) / w + 0.5, 0.0, 1.0);
-	ALPHA_SCISSOR_THRESHOLD = 0.01;
 			float amount = t * t * (3.0 - 2.0 * t);
 			vec3 tri = pow(abs(world_normal), vec3(4.0));
 			tri /= max(dot(tri, vec3(1.0)), 0.0001);
@@ -188,6 +193,9 @@ void fragment() {
 	ALBEDO = albedo.rgb;
 #ifdef SKYDOT_ALPHA_TEST
 	ALPHA = clamp((albedo.a - alpha_cutoff) / max(fwidth(albedo.a), 0.0001) + 0.5, 0.0, 1.0);
+	// Not the cutoff: that is in ALPHA already. This only keeps the pass from
+	// drawing (and the shadow pass from casting) the fully clear texels.
+	ALPHA_SCISSOR_THRESHOLD = 0.01;
 #endif
 #ifdef SKYDOT_ALPHA_BLEND
 	if (blend_test && albedo.a <= alpha_cutoff) {

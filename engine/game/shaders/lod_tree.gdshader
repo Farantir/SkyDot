@@ -8,7 +8,7 @@
  * (lod_mask.gdshaderinc), is lit by the game's ambient and has its fog (game_fog.gdshaderinc).
  */
 shader_type spatial;
-render_mode diffuse_lambert, cull_disabled, depth_draw_opaque, ambient_light_disabled;
+render_mode diffuse_lambert, cull_disabled, depth_draw_opaque, ambient_light_disabled, alpha_to_coverage;
 
 #include "res://shaders/game_fog.gdshaderinc"
 #include "res://shaders/lod_mask.gdshaderinc"
@@ -35,9 +35,10 @@ void fragment() {
 		discard;
 	}
 	vec4 c = texture(atlas, UV);
-	if (c.a < 0.5) {
-		discard;
-	}
+	// Alpha test at 0.5, one pixel wide, as lighting.gdshaderinc does: with MSAA
+	// the edge gets partial coverage instead of flipping per pixel.
+	ALPHA = clamp((c.a - 0.5) / max(fwidth(c.a), 0.0001) + 0.5, 0.0, 1.0);
+	ALPHA_SCISSOR_THRESHOLD = 0.01;
 	ALBEDO = c.rgb;
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;

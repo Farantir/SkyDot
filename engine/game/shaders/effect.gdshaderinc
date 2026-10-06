@@ -18,6 +18,9 @@ render_mode specular_disabled, ambient_light_disabled;
 #else
 render_mode unshaded;
 #endif
+#ifdef SKYDOT_ALPHA_TEST
+render_mode alpha_to_coverage;
+#endif
 #if defined(SKYDOT_ALPHA_ADD)
 render_mode depth_draw_never, blend_add;
 #elif defined(SKYDOT_ALPHA_MUL)
@@ -152,8 +155,8 @@ void fragment() {
 	SPECULAR = 0.0;
 #endif
 #ifdef SKYDOT_ALPHA_TEST
-	ALPHA = alpha;
-	ALPHA_SCISSOR_THRESHOLD = alpha_cutoff;
+	ALPHA = clamp((alpha - alpha_cutoff) / max(fwidth(alpha), 0.0001) + 0.5, 0.0, 1.0);
+	ALPHA_SCISSOR_THRESHOLD = 0.01;
 #endif
 #ifdef SKYDOT_ALPHA_BLEND
 	ALPHA = alpha;

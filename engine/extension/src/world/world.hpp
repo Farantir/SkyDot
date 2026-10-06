@@ -251,6 +251,10 @@ public:
     void set_terrain_tiling(double repeats);
     double get_terrain_tiling() const;
 
+    /// Mip levels added to foliage's albedo lookups (see lighting.gdshaderinc).
+    void set_foliage_bias(double bias);
+    double get_foliage_bias() const;
+
     /// Replace imported materials with Skyrim-style shader materials in
     /// `build_cell` (see materials.hpp). On by default.
     void set_skyrim_materials(bool enabled);
@@ -367,6 +371,7 @@ private:
     ActorPlacement placement_{data_};
     /// Builds cells and holds the settings and caches that go with it.
     CellBuilder builder_{data_, placement_};
+    double foliage_bias_ = 0.5;
     godot::String error_;
 };
 

@@ -86,18 +86,31 @@ The picture is not temporally filtered, so nothing in a frame may depend on
 a sub-pixel position in a way that flips between frames. In
 `lighting.gdshaderinc`:
 
-- **Alpha test** (`SKYDOT_ALPHA_TEST`) writes `ALPHA` sharpened to about one
+- **Alpha test** (`SKYDOT_ALPHA_TEST`, in `lighting.gdshaderinc`, `effect.gdshaderinc`
+  and, as a fixed 0.5, `lod_tree.gdshader`) writes `ALPHA` sharpened to about one
   pixel, `(a - cutoff) / fwidth(a) + 0.5`, and uses `alpha_to_coverage`, so
-  with MSAA (the viewer's default, 4x) leaf edges get partial coverage. A
-  scissor threshold of 0.01 (chosen) stays set: Godot's shadow pass only
-  discards by scissor, and without it leaves would cast no shadow.
+  with MSAA (the viewer's default, 4x) leaf edges get partial coverage. The
+  scissor threshold, `ALPHA_SCISSOR_THRESHOLD = 0.01`, must be set in the same
+  branch: the shadow pass only discards by scissor (without it leaves cast no
+  shadow). An earlier version had that line inside the snow block, so no leaf
+  ever set it, and with it missing distant pines rendered thin and see-through
+  (shot comparisons in the commit message; why Godot does that is not
+  documented); setting it again more than halved the measured flicker of pines
+  and grass.
+- **Foliage mip bias** (`foliage`, `skydot_foliage_bias`, `--foliage-bias`):
+  alpha-tested trees (the tree animation shader flag) and grass sample their
+  albedo that many mip levels blurrier. Default 0.5: about 10% less measured
+  flicker; 1 gives 18% and visibly softens grass close up, 2 turns it to mush.
 - **Projected snow** weighs the up-facing term with the vertex normal, not
   the normal-mapped one (that made snow flip per texel on rock), and softens
   the blend over `fwidth` of the weight.
 
 Measured with a camera turn of 0.03 degrees per frame and the mean absolute
 second difference of luminance (what a linear motion cannot explain), see the
-commit messages.
+commit messages. That number also falls when the picture is blurrier, so it is
+read together with a second one: the same second difference of the frame minus a
+2x supersampled render of the same view (`--render-scale 2`), which leaves
+only the aliasing noise.
 
 ## Changing a shader
 

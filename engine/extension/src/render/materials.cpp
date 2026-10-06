@@ -226,11 +226,18 @@ void SkydotMaterials::ensure_fog_globals() {
         for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon"}) {
             rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3, godot::Vector3());
         }
+        rs->global_shader_parameter_add("skydot_foliage_bias", godot::RenderingServer::GLOBAL_VAR_TYPE_FLOAT,
+                                        0.5F);
         for (const char* name : {"skydot_ambient_r", "skydot_ambient_g", "skydot_ambient_b"}) {
             rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC4,
                                             godot::Vector4(0, 0, 0, 0.3F));
         }
     });
+}
+
+void SkydotMaterials::set_foliage_bias(float bias) {
+    ensure_fog_globals();
+    godot::RenderingServer::get_singleton()->global_shader_parameter_set("skydot_foliage_bias", bias);
 }
 
 void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
@@ -433,6 +440,9 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("use_vertex_alpha", (flags1 & k_sf1_vertex_alpha) != 0 &&
                                                           (flags2 & k_sf2_tree_anim) == 0);
         out->set_shader_parameter("use_glow_map", glow.is_valid());
+        // Thin cut-out foliage: trees (their shader flag) share the bias; grass
+        // gets it where its materials are copied (cell_builder.cpp).
+        out->set_shader_parameter("foliage", alpha == Alpha::test && (flags2 & k_sf2_tree_anim) != 0);
         // A STAT's directional material lands on its shapes whether or not
         // they have the Projected UV flag: Nordic towers share one model
         // between the snowy and the bare STAT, without the flag, and only

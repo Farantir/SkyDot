@@ -318,6 +318,7 @@ GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
                         // vertex alpha is the wind's weight, not opacity.
                         godot::Ref<godot::ShaderMaterial> own = m->duplicate();
                         own->set_shader_parameter("use_vertex_alpha", false);
+                        own->set_shader_parameter("foliage", true);
                         copy->surface_set_material(s, own);
                     }
                 }

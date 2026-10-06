@@ -95,6 +95,10 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_terrain_tiling"), &SkydotWorld::get_terrain_tiling);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "terrain_tiling"),
                  "set_terrain_tiling", "get_terrain_tiling");
+    godot::ClassDB::bind_method(D_METHOD("set_foliage_bias", "levels"), &SkydotWorld::set_foliage_bias);
+    godot::ClassDB::bind_method(D_METHOD("get_foliage_bias"), &SkydotWorld::get_foliage_bias);
+    ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "foliage_bias"), "set_foliage_bias",
+                 "get_foliage_bias");
     godot::ClassDB::bind_method(D_METHOD("set_skyrim_materials", "enabled"),
                                 &SkydotWorld::set_skyrim_materials);
     godot::ClassDB::bind_method(D_METHOD("get_skyrim_materials"),
@@ -289,6 +293,11 @@ Transform3D SkydotWorld::skyrim_transform(const Vector3& position, const Vector3
 
 void SkydotWorld::set_skyrim_materials(bool enabled) { builder_.options().skyrim_materials = enabled; }
 bool SkydotWorld::get_skyrim_materials() const { return builder_.options().skyrim_materials; }
+void SkydotWorld::set_foliage_bias(double bias) {
+    foliage_bias_ = bias;
+    SkydotMaterials::set_foliage_bias(static_cast<float>(bias));
+}
+double SkydotWorld::get_foliage_bias() const { return foliage_bias_; }
 void SkydotWorld::set_effects(bool enabled) { builder_.options().effects = enabled; }
 bool SkydotWorld::get_effects() const { return builder_.options().effects; }
 void SkydotWorld::set_collision(bool enabled) { builder_.options().collision = enabled; }
