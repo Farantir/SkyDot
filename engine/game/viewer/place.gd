@@ -256,6 +256,8 @@ func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 		env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 		env.ambient_light_color = sky_values["ambient"]
 		SkydotMaterials.set_game_light(sun, sky_values["sunlight"])
+		var sunlight: Color = sky_values["sunlight"]
+		env.set_meta("skydot_effect_light", Vector3(sunlight.r, sunlight.g, sunlight.b))
 		var towards: Vector3 = sky_values["sun_direction"]
 		sun.look_at_from_position(Vector3.ZERO, -towards,
 			Vector3.UP if abs(towards.y) < 0.99 else Vector3.FORWARD)
@@ -288,6 +290,8 @@ func _add_environment(cell: Dictionary) -> void:
 		env.set_meta("skydot_directional_ambient", cell["directional_ambient"])
 	interior_image_space = _world.get_image_space(cell.get("image_space", 0))
 	if lighting != null:
+		var directional: Color = lighting["directional"]
+		env.set_meta("skydot_effect_light", Vector3(directional.r, directional.g, directional.b))
 		env.ambient_light_color = lighting["ambient"]
 		env.ambient_light_energy = 1.0
 		if lighting["fog_far"] > lighting["fog_near"]:

@@ -703,6 +703,9 @@ void SkydotWeather::update_sky(double delta) {
     SkydotMaterials::set_game_light(light_, mix(a.sunlight, b.sunlight) * scale);
     environment_->set_meta("skydot_sun_direction", towards.normalized());
     environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
+    // Lit effects take the weather's sunlight as it is: no image-space scale,
+    // and the moonlight at night (see effect.gdshaderinc).
+    environment_->set_meta("skydot_effect_light", shader_rgb(mix(a.sunlight, b.sunlight)));
     environment_->set_meta("skydot_sky_upper", shader_rgb(mix(a.upper, b.upper)));
     environment_->set_meta("skydot_sky_horizon", shader_rgb(mix(a.horizon, b.horizon)));
     // The light turns in steps, not every frame: a continuously turning sun

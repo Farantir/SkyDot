@@ -114,6 +114,7 @@ func _set_up_sheet() -> void:
     server.global_shader_parameter_set("skydot_ambient_b", Vector4(-0.1, 0.1, 0.3, 0.3))
     server.global_shader_parameter_set("skydot_sun_direction", Vector3(0.3, 0.8, 0.5).normalized())
     server.global_shader_parameter_set("skydot_sun_color", Vector3(1.0, 0.9, 0.7))
+    server.global_shader_parameter_set("skydot_effect_light", Vector3(0.8, 0.75, 0.7))
     server.global_shader_parameter_set("skydot_sky_upper", Vector3(0.3, 0.5, 0.9))
     server.global_shader_parameter_set("skydot_sky_horizon", Vector3(0.7, 0.8, 0.9))
 

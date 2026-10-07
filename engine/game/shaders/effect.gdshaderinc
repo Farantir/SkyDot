@@ -6,7 +6,7 @@
  *     [#define SKYDOT_ALPHA_ADD | #define SKYDOT_ALPHA_MUL | #define SKYDOT_ALPHA_BLEND | #define SKYDOT_ALPHA_TEST]
  *     #include "res://shaders/effect.gdshaderinc"
  * and the render modes below follow from the defines. The shader writes FOG itself;
- * SKYDOT_LIT effects get the game's directional ambient instead of Godot's (game_fog.gdshaderinc).
+ * SKYDOT_LIT effects take one light colour, not Godot's lighting (see light() below).
  */
 #ifdef SKYDOT_DOUBLE_SIDED
 render_mode cull_disabled;
@@ -79,12 +79,16 @@ void vertex() {
 #endif
 
 #ifdef SKYDOT_LIT
-// Effect_Lighting: the scene's lights tint the effect (mountain clouds take the
-// weather's ambient and sun) instead of it glowing at full strength. Wrapped,
-// so the side away from the sun is dimmer but not black.
+// Effect_Lighting: the game multiplies the colour by one light colour,
+// DLightColor plus each point light's fade, with no N.L (Community Shaders,
+// Effect.hlsl). Its DLightColor is not known; 0.45 + the weather's sunlight
+// as it is (no image-space scale, the moonlight at night) fits the game's
+// waterfalls at 7, 10, 18, 20 and 23 h (comparison-renders/game-refs-2026-10-07).
+global uniform vec3 skydot_effect_light;
 void light() {
-	float wrap = clamp(dot(NORMAL, LIGHT) * 0.5 + 0.5, 0.0, 1.0);
-	DIFFUSE_LIGHT += wrap * ATTENUATION * LIGHT_COLOR / PI;
+	if (!LIGHT_IS_DIRECTIONAL) {
+		DIFFUSE_LIGHT += ATTENUATION * LIGHT_COLOR / PI;
+	}
 }
 #endif
 
@@ -162,6 +166,6 @@ void fragment() {
 	ALPHA = alpha;
 #endif
 #ifdef SKYDOT_LIT
-	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	EMISSION += ALBEDO * (vec3(0.45) + skydot_effect_light);
 #endif
 }
