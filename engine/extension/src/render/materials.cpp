@@ -266,11 +266,12 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
                                                                              : godot::Vector3());
     }
 
-    // Six colours, one per side; the game's convention (checked on 84
-    // weathers: z- is the bright one in 71) is that a side's colour is light
-    // travelling that way, so a surface facing +z takes z-. Per channel the
-    // shaders get a linear function of the normal: half the difference of
-    // the two sides per axis and the mean of all six.
+    // Six colours, one per side; a side's colour is light travelling that
+    // way, so a surface facing +z takes z-. Per channel the shaders get a
+    // linear function of the normal: half of minus side minus plus side per
+    // axis and the mean of all six. Read back from the game's own matrix
+    // (BSShaderManager::State::directionalAmbientTransform, SkyrimRemote
+    // `@ambient`) for a weather and an interior's XCLL.
     std::array<Color, 6> sides;
     const Variant meta = environment.is_valid() && environment->has_meta("skydot_directional_ambient")
                              ? environment->get_meta("skydot_directional_ambient")
@@ -285,8 +286,8 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
     }
     for (int channel = 0; channel < 3; ++channel) {
         const auto side = [&](int i) { return sides[static_cast<std::size_t>(i)][channel]; };
-        const godot::Vector3 game((side(0) - side(1)) * 0.5F, (side(2) - side(3)) * 0.5F,
-                                  (side(4) - side(5)) * 0.5F);
+        const godot::Vector3 game((side(1) - side(0)) * 0.5F, (side(3) - side(2)) * 0.5F,
+                                  (side(5) - side(4)) * 0.5F);
         const godot::Vector3 world(game.x, game.z, -game.y); // the game's z up to Godot's y up
         const float mean = (side(0) + side(1) + side(2) + side(3) + side(4) + side(5)) / 6.0F;
         static const char* const names[] = {"skydot_ambient_r", "skydot_ambient_g", "skydot_ambient_b"};
