@@ -85,6 +85,8 @@ var load_path := ""  # loads at start
 var has_screenshot := false
 var screenshot := ""
 var shot_delay := 0.0  # seconds the world runs before --screenshot captures
+var shot_frames := 1  # --screenshot of one view: consecutive frames to save (an effect over time)
+var shot_every := 1  # of those, every this many rendered frames
 var has_benchmark := false
 var benchmark := 0.0  # seconds
 var fly_speed := 20.0  # m/s during the benchmark
@@ -179,6 +181,8 @@ func _read(args: Dictionary) -> void:
 	save_to = args.get("save-to", "")
 	load_path = args.get("load", "")
 	shot_delay = args.get("shot-delay", "0").to_float()
+	shot_frames = maxi(args.get("shot-frames", "1").to_int(), 1)
+	shot_every = maxi(args.get("shot-every", "1").to_int(), 1)
 	fly_speed = args.get("fly-speed", "20").to_float()
 	shot_dir = args.get("shot-dir", "user://screenshots")
 	shot_notes = args.get("shot-notes", "on") != "off"

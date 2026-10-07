@@ -40,6 +40,7 @@ func _defaults() -> void:
     expect(s.large_refs and s.large_ref_radius == 5, "large references out to 5 cells")
     expect(s.msaa_index == 2 and s.aa_index == 0 and s.shot_dir == "user://screenshots" and s.shot_notes, "shot, msaa (4x) and aa defaults")
     expect(is_equal_approx(s.foliage_bias, 0.5) and s.render_scale == 1.0, "foliage bias and render scale defaults")
+    expect(s.shot_frames == 1 and s.shot_every == 1, "one shot frame by default")
 
 func _options() -> void:
     var s := parse(["--pack", "p", "--world", "W", "--at", "1,2,3", "--target", "4,5,6.5",
@@ -50,7 +51,7 @@ func _options() -> void:
             "--tiling", "2.5", "--tree-distance", "3", "--shadows", "off", "--image-space", "off",
             "--quests", "off", "--set-stage", "Q:10", "--preload-doors", "off", "--pck", "x",
             "--large-refs", "off", "--large-ref-radius", "3", "--foliage-bias", "1.5",
-            "--render-scale", "1.5"])
+            "--render-scale", "1.5", "--shot-frames", "60", "--shot-every", "2"])
     expect(s.error == "" and s.world == "W" and s.cell == "", "a worldspace")
     expect(s.has_at and s.at == Vector3(1, 2, 3), "at in game units")
     expect(s.has_target and s.target == Vector3(4, 5, 6.5), "target in game units")
@@ -71,6 +72,9 @@ func _options() -> void:
     expect(s.foliage_bias == 1.5 and s.render_scale == 1.5, "foliage bias and render scale")
     expect(parse(["--pack", "p", "--cell", "C", "--render-scale", "9", "--foliage-bias", "-2"]).render_scale == 2.0,
             "render scale stops at 2")
+    expect(s.shot_frames == 60 and s.shot_every == 2, "frame series")
+    expect(parse(["--pack", "p", "--cell", "C", "--shot-frames", "0", "--shot-every", "-1"]).shot_every == 1,
+            "a frame series takes at least every frame")
 
 func _captures() -> void:
     var s := parse(["--pack", "p", "--cell", "C", "--screenshot", "out.png"])

@@ -7,6 +7,10 @@
 # the text overlay. After the capture the viewer pauses and asks what is
 # wrong; Enter stores the text as the JSON's "note".
 # --screenshot FILE takes its shots on its own (FILE_0.png, ...) and quits.
+# With --shot-frames N (one view) it saves N frames instead, every
+# --shot-every rendered frames (FILE_0000.png, ...), to follow an effect over
+# time; run godot with --fixed-fps so a frame is the same time step as the
+# game's capture (SkyrimRemote's @screenshot NAME every K count N).
 class_name ShotRecorder
 extends RefCounted
 
@@ -27,6 +31,7 @@ var _views: Array[float] = []  # yaw of each shot still to take; NAN keeps the v
 var _delay := 0.0  # seconds the world runs before the first shot
 var _frames := 0
 var _index := 0
+var _pending: Array[int] = []  # --shot-frames: PNG writes still running
 # F12
 var _busy := false
 var _dialog: PanelContainer  # asks for a shot's note
@@ -71,6 +76,9 @@ func step(delta: float) -> void:
 	_frames += 1
 	if _frames < SETTLE_FRAMES:
 		return
+	if _views.size() == 1 and _settings.shot_frames > 1:
+		_step_series()
+		return
 	var index := _index
 	_index += 1
 	var image := _host.get_viewport().get_texture().get_image()
@@ -84,6 +92,23 @@ func step(delta: float) -> void:
 	if not is_nan(_views[0]):
 		_rig.apply_look(_views[0], LOOK_PITCH)
 	_frames = 20  # the next shot waits ten frames
+
+
+## --shot-frames: one frame of the series every --shot-every frames, then quit.
+## The PNGs are written on worker threads so the frame rate stays even.
+func _step_series() -> void:
+	if (_frames - SETTLE_FRAMES) % _settings.shot_every != 0:
+		return
+	var image := _host.get_viewport().get_texture().get_image()
+	var path := _path.get_basename() + "_%04d.png" % _index
+	_index += 1
+	_pending.append(WorkerThreadPool.add_task(func() -> void: image.save_png(path)))
+	if _index < _settings.shot_frames:
+		return
+	for task in _pending:
+		WorkerThreadPool.wait_for_task_completion(task)
+	print("screenshots: %d frames, %s_0000.png .. %s" % [_index, _path.get_basename(), path.get_file()])
+	_host.get_tree().quit(0)
 
 
 ## F12: the frame as a PNG and a JSON file describing it. The PNG is written
