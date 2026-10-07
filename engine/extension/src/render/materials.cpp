@@ -736,6 +736,26 @@ std::int64_t SkydotMaterials::warm_up() {
     return static_cast<std::int64_t>(shaders_.size());
 }
 
+namespace {
+
+/// The NIF shape has no BSShaderProperty at all (bethconv writes shader "none").
+bool has_no_shader_property(const Ref<godot::Material>& source) {
+    if (source.is_null() || !source->has_meta("extras")) {
+        return false;
+    }
+    const Variant extras = source->get_meta("extras");
+    if (extras.get_type() != Variant::DICTIONARY) {
+        return false;
+    }
+    const Variant block = Dictionary(extras).get("bethconv", Variant());
+    if (block.get_type() != Variant::DICTIONARY) {
+        return false;
+    }
+    return Dictionary(block).get("shader", String()) == Variant(String("none"));
+}
+
+} // namespace
+
 std::int64_t SkydotMaterials::apply(godot::Node* root) {
     if (root == nullptr) {
         return 0;
@@ -748,6 +768,19 @@ std::int64_t SkydotMaterials::apply(godot::Node* root) {
         const Ref<godot::Mesh> mesh = instance->get_mesh();
         if (mesh.is_null()) {
             continue;
+        }
+        // A shape with no shader property is not drawn by the game (the water
+        // current planes of FXWaterfallBodySlope are such shapes); drawing
+        // them as default lit white laid opaque white sheets over rapids.
+        if (mesh->get_surface_count() > 0) {
+            bool all_unshaded = true;
+            for (int s = 0; s < mesh->get_surface_count() && all_unshaded; ++s) {
+                all_unshaded = has_no_shader_property(mesh->surface_get_material(s));
+            }
+            if (all_unshaded) {
+                instance->set_visible(false);
+                continue;
+            }
         }
         for (int s = 0; s < mesh->get_surface_count(); ++s) {
             const Ref<godot::Material> replacement = convert(mesh->surface_get_material(s));
