@@ -79,7 +79,9 @@ void look(float age, float lifetime, vec4 ud1, vec4 ud2, inout mat4 xf, inout ve
 	if (grow_fade.y > 0.0) {
 		s *= clamp((lifetime - age) / grow_fade.y, 0.0, 1.0);
 	}
-	float quad = 2.0 * s * ud1.w;
+	// The quad is radius wide, not twice the radius as NifSkope draws it: the
+	// game's waterfall spray (195052) shows droplet clusters of this size.
+	float quad = s * ud1.w;
 	xf[0] = vec4(quad, 0.0, 0.0, 0.0);
 	xf[1] = vec4(0.0, quad, 0.0, 0.0);
 	xf[2] = vec4(0.0, 0.0, quad, 0.0);
