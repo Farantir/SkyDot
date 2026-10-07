@@ -157,6 +157,8 @@ target_sources(skydot PRIVATE
     src/render/billboard.hpp
     src/render/effect_asset.cpp
     src/render/effect_asset.hpp
+    src/render/emittance.cpp
+    src/render/emittance.hpp
     src/render/flicker.cpp
     src/render/flicker.hpp
     src/render/grass.cpp

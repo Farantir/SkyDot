@@ -60,6 +60,19 @@ amplitude of its place (about 1 cm for a torch; the game's scale is unknown,
 see render/flicker.cpp); pulse
 flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
 
+## Lights that follow a weather (`SkydotEmittance`)
+
+A light reference with XEMI (7,045 in Skyrim.esm) names a region, and the light
+takes the sunlight colour of that region's weather: its own colour times it,
+looked up twice a second at the running time of day. The vanilla street fires
+and window lights use the `FXWthrInvert*` weathers, whose sunlight is black by
+day and sunrise, 70% at sunset and white at night, so they burn from dusk and
+are off by day (the Whiterun brazier at 13:12 lit nothing in the game's frame;
+the converter dropped XEMI, so SkyDot lit the facade white). The cave
+weathers carry coloured sunlight and tint their lights. Without a running
+weather (interiors) the light is left as it is. Needs a pack of world.fb
+format 12.
+
 ## Cost
 
 Riverwood flythrough (5x5 cells, debug build of the extension): median frame

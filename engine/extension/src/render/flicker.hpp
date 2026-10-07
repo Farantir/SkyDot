@@ -27,6 +27,9 @@ public:
     /// `flags` are the light's LightFlags; `movement` is in metres.
     void configure(std::int64_t flags, double period, double intensity, double movement);
 
+    /// The brightness the flicker varies around, when something else changes it.
+    void set_base_energy(double energy) { base_energy_ = energy; }
+
     /// Brightness factor and offset at `seconds`; also used by tests.
     double factor_at(double seconds) const;
     godot::Vector3 offset_at(double seconds) const;

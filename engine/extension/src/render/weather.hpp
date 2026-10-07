@@ -81,6 +81,11 @@ public:
     /// layers).
     godot::Dictionary get_state() const;
 
+    /// `weather`'s sunlight colour at the running time of day (black if the
+    /// pack has no such weather).
+    godot::Color sunlight_of(std::int64_t weather) const;
+
+    void _ready() override;
     void _process(double delta) override;
 
     /// The code of every weather shader, by name.

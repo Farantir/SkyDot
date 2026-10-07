@@ -252,6 +252,9 @@ Dictionary get_base(const WorldData& data, std::int64_t id) {
         light["falloff_exponent"] = l->falloff_exponent();
         light["fov"] = l->fov();
         light["fade"] = l->fade();
+        light["flicker_period"] = l->flicker_period();
+        light["flicker_intensity"] = l->flicker_intensity();
+        light["flicker_movement"] = l->flicker_movement();
         out["light"] = light;
     } else {
         out["light"] = godot::Variant();

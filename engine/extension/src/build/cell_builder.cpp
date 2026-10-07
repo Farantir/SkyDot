@@ -7,6 +7,7 @@
 #include "actors/actor.hpp"
 #include "actors/actor_animation.hpp"
 #include "data/actors.hpp"
+#include "render/emittance.hpp"
 #include "render/flicker.hpp"
 #include "nav/navmesh.hpp"
 #include "build/refs.hpp"
@@ -123,6 +124,7 @@ struct CellBuilder::BuildStats : DecorationStats {
     std::int64_t disabled = 0;
     std::int64_t no_base = 0;
     std::int64_t flickers = 0;
+    std::int64_t emitters = 0;
     std::int64_t actors = 0;
     std::int64_t actor_parts = 0;
     /// Actors not built, by reason ("no NPC_", "no animation skeleton …").
@@ -258,6 +260,27 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             light->add_child(flicker);
             ++stats.flickers;
         }
+        // XEMI: the colour comes from a region's weather (day/night lights).
+        if (options_.effects) {
+            if (const auto* c = data().cell_ptr(cell); c != nullptr && c->light_emitters() != nullptr) {
+                const auto* e = lookup(c->light_emitters(), ref.id());
+                const auto* regions = data().root()->regions();
+                const auto* region = e != nullptr && regions != nullptr ? lookup(regions, e->source()) : nullptr;
+                if (region != nullptr && region->weathers() != nullptr && region->weathers()->size() > 0) {
+                    godot::PackedInt64Array weathers;
+                    godot::PackedInt64Array chances;
+                    for (const auto* w : *region->weathers()) {
+                        weathers.push_back(w->weather());
+                        chances.push_back(w->chance());
+                    }
+                    auto* emittance = memnew(SkydotEmittance);
+                    emittance->set_name("SkydotEmittance");
+                    emittance->configure(unpack_color(l->color()) * std::max(fade, 0.0F), weathers, chances);
+                    light->add_child(emittance);
+                    ++stats.emitters;
+                }
+            }
+        }
         root->add_child(light);
         ++stats.lights;
     }
@@ -344,6 +367,7 @@ Dictionary CellBuilder::stats_dictionary(const BuildStats& stats) const {
     out["billboards"] = stats.billboards;
     out["effects"] = stats.effects;
     out["flickers"] = stats.flickers;
+    out["emitters"] = stats.emitters;
     out["bodies"] = stats.bodies;
     out["actors"] = stats.actors;
     out["actor_parts"] = stats.actor_parts;

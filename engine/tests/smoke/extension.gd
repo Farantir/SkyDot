@@ -37,7 +37,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
     expect(ClassDB.class_exists("SkydotBillboard"), "SkydotBillboard is registered")
-    for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker"]:
+    for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker", "SkydotEmittance"]:
         expect(ClassDB.class_exists(name), name + " is registered")
     expect(not pack.is_open(), "a new pack is closed")
     expect(not pack.has("meshes/anything.nif") and pack.get_bytes("meshes/anything.nif").is_empty(),
@@ -372,3 +372,8 @@ func _check_flicker() -> void:
     expect(pulse.offset_at(0.3) == Vector3.ZERO, "and does not move")
     flicker.free()
     pulse.free()
+    # A light that follows a region's weather keeps its colour where no weather runs.
+    var emittance := SkydotEmittance.new()
+    emittance.configure(Color(0.9, 0.7, 0.4), PackedInt64Array([0x8282A]), PackedInt64Array([100]))
+    expect(emittance.tint() == Color(1, 1, 1, 1), "an emittance without a weather does not tint")
+    emittance.free()

@@ -119,6 +119,16 @@ godot::Camera3D* SkydotWeather::camera() const {
     return godot::Object::cast_to<godot::Camera3D>(godot::ObjectDB::get_instance(camera_));
 }
 
+godot::Color SkydotWeather::sunlight_of(std::int64_t weather) const {
+    const Weather* found = weather_ptr(weather);
+    return found != nullptr ? sky_of(found).sunlight : godot::Color(1, 1, 1);
+}
+
+void SkydotWeather::_ready() {
+    // Lights that follow a region's weather (SkydotEmittance) find it here.
+    add_to_group("skydot_weather");
+}
+
 godot::Error SkydotWeather::setup(const Ref<SkydotWorld>& pack_world, std::int64_t world,
                                   godot::Camera3D* camera) {
     world_ = pack_world;

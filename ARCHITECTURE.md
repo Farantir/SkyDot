@@ -832,7 +832,8 @@ caller begins a build only when nothing would load on the main thread.
 3. If the base is a light: an `OmniLight3D` or `SpotLight3D` whose radius
    and fade combine the LIGH record with the reference's own XRDS/XLIG
    overrides, shadow flags (or all shadows if configured), negative lights,
-   and an optional `SkydotFlicker` child.
+   an optional `SkydotFlicker` child, and for a light with an XEMI region
+   a `SkydotEmittance` child that tints it with that region's weather.
 
 ### 7.4 Rendering
 
