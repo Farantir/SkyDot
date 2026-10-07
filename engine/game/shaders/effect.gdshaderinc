@@ -122,7 +122,9 @@ void fragment() {
 	}
 	float alpha_mult = emission_color.a * emission_color.a;
 	vec3 color = source.rgb * vertex.rgb * emission_color.rgb;
-	float alpha = source.a * vertex.a * falloff * alpha_mult;
+	// With greyscale to palette alpha the texture's alpha picks the palette
+	// column only, not the row (Community Shaders, Effect.hlsl).
+	float alpha = (palette_alpha ? 1.0 : source.a) * vertex.a * falloff * alpha_mult;
 	if (soft_effect) {
 		// Fade where the surface nears the geometry behind it.
 		float depth = texture(depth_tex, SCREEN_UV).r;
@@ -134,8 +136,10 @@ void fragment() {
 				clamp(vertex.r * emission_color.r, 0.0, 1.0))).rgb;
 	}
 	if (palette_alpha) {
-		// The row is the whole alpha so far, the texture's included, so
-		// blurred mips of thin detail stay near the transparent corner.
+		// The row is the alpha so far, without the texture's: with it, the
+		// waterfall foam (fxwaterfallbodyslope) fell to the gradient's clear
+		// rows in patches and the sheet under it showed twice the game's
+		// contrast.
 		alpha = texture(palette_tex, vec2(source.a, clamp(alpha, 0.0, 1.0))).a;
 	}
 	color *= emission_strength;
