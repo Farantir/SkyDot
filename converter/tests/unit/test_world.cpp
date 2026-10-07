@@ -157,6 +157,9 @@ ByteWriter scripted_refr_payload() {
     }
     xprm.u32(1);
     bethconv::test::write_field(payload, "XPRM", xprm);
+    ByteWriter xemi;
+    xemi.u32(0x0100'0B03);
+    bethconv::test::write_field(payload, "XEMI", xemi);
     return payload;
 }
 
@@ -663,6 +666,9 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     REQUIRE(cell->primitives.size() == 1);
     CHECK(cell->primitives[0].bounds().x() == 64.0F);
     CHECK(cell->primitives[0].type() == 1);
+    REQUIRE(cell->light_emitters.size() == 1);
+    CHECK(cell->light_emitters[0].ref() == 0x0200'0B02);
+    CHECK(cell->light_emitters[0].source() == 0x0200'0B03);
 
     const auto door = file->base(0x0200'0A01);
     REQUIRE(door.has_value());

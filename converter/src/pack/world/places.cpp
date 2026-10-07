@@ -328,6 +328,9 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         cell.light_overrides.emplace_back(id, ref->has_radius, ref->radius, has_light_data, fov,
                                           fade, end_distance_cap, shadow_depth_bias);
     }
+    if (!ref->emittance.is_null()) {
+        cell.light_emitters.emplace_back(id, shared_.global(merged, ref->emittance, failed));
+    }
     if (ref->lock) {
         cell.locks.emplace_back(id, ref->lock->level, ref->lock->flags,
                                 shared_.global(merged, ref->lock->key, failed));
@@ -537,6 +540,7 @@ void PlaceCollector::finish(wfb::WorldT& world) {
         std::ranges::stable_sort(cell.activate_parents, {}, &wfb::ActivateParent::ref);
         std::ranges::stable_sort(cell.primitives, {}, &wfb::Primitive::ref);
         std::ranges::stable_sort(cell.light_overrides, {}, &wfb::LightOverride::ref);
+        std::ranges::stable_sort(cell.light_emitters, {}, &wfb::LightEmitter::ref);
         std::ranges::sort(cell.navmeshes, {}, [](const auto& n) { return n->id; });
 
         stats.refs += cell.refs.size();

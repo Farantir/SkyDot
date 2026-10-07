@@ -67,6 +67,16 @@ struct LightOverride {
     shadow_depth_bias: float;
 }
 
+/// A placed light that takes its colour from a region's weather (format 12;
+/// REFR XEMI). Vanilla uses it to switch street fires and window lights with
+/// the time of day: the region's only weather has a black sunlight colour by
+/// day and a white one at night, and the light is its own colour times that
+/// (the cave weathers carry blue and warm ones). `source` is a REGN.
+struct LightEmitter {
+    ref: uint32 (key);
+    source: uint32;
+}
+
 /// A reference that is a load door: where it leads.
 struct DoorLink {
     ref: uint32 (key);
@@ -312,6 +322,8 @@ table Cell {
     directional_ambient: [uint];
     /// XCIM, an ImageSpace in `image_spaces`; 0 if none (format 10).
     image_space: uint32;
+    /// Sorted by ref (format 12).
+    light_emitters: [LightEmitter];
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A

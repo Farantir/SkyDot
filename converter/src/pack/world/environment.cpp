@@ -238,8 +238,12 @@ void EnvironmentCollector::on_climate(const record::MergedRecord& merged, io::Sp
     climates_[out.id] = std::move(out);
 }
 
-/// NAM0 is 17 x 4 RGBA colours (272 bytes); FNAM eight floats; DALC 32
-/// bytes per time of day, the 24-byte form padded with black.
+constexpr std::size_t k_short_colours = 224;
+
+/// NAM0 is 17 x 4 RGBA colours (272 bytes), or 14 (224 bytes, up to Sky
+/// Statics) in the FX weathers that only tint lights (FXWthrInvertLights*,
+/// observed in Skyrim.esm), whose missing colours are black; FNAM eight
+/// floats; DALC 32 bytes per time of day, the 24-byte form padded with black.
 void EnvironmentCollector::on_weather(const record::MergedRecord& merged, io::SpanReader& data,
                                       const record::FormContext& form_ctx) {
     auto weather = record::parse_weather(data, form_ctx);
@@ -257,8 +261,10 @@ void EnvironmentCollector::on_weather(const record::MergedRecord& merged, io::Sp
             into.push_back(r.get<T>().value_or(T{}));
         }
     };
-    if (weather->weather_colours.size() >= 272) {
-        words(weather->weather_colours, 68, out.colors);
+    if (weather->weather_colours.size() >= k_short_colours) {
+        words(weather->weather_colours, std::min<std::size_t>(weather->weather_colours.size() / 4, 68),
+              out.colors);
+        out.colors.resize(68, 0);
     }
     if (weather->fog_distance.size() >= 32) {
         words(weather->fog_distance, 8, out.fog);
