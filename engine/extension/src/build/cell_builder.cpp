@@ -256,7 +256,8 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             flicker->configure(static_cast<std::int64_t>(l->flags()),
                                static_cast<double>(l->flicker_period()),
                                static_cast<double>(l->flicker_intensity()),
-                               static_cast<double>(l->flicker_movement()) * formats::k_metres_per_unit);
+                               static_cast<double>(l->flicker_movement()) * formats::k_metres_per_unit,
+                               static_cast<double>(fade));
             light->add_child(flicker);
             ++stats.flickers;
         }

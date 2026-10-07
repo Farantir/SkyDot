@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // `SkydotFlicker`: animates its parent light as LIGH's flicker and pulse flags
-// ask: brightness varies by the intensity amplitude over the flicker period
-// (smooth noise for flicker, a sine for pulse), and flickering lights wander
-// within a 64th of the movement amplitude of their place.
+// ask: brightness dims below the fade by up to the intensity amplitude over
+// the flicker period (smooth noise for flicker, a sine for pulse), and
+// flickering lights wander within a 64th of the movement amplitude of their
+// place.
 #pragma once
 
 #include "world_generated.h"
@@ -24,8 +25,11 @@ public:
         bethconv::pack::wfb::LightFlags::flicker | bethconv::pack::wfb::LightFlags::flicker_slow |
         bethconv::pack::wfb::LightFlags::pulse | bethconv::pack::wfb::LightFlags::pulse_slow;
 
-    /// `flags` are the light's LightFlags; `movement` is in metres.
-    void configure(std::int64_t flags, double period, double intensity, double movement);
+    /// `flags` are the light's LightFlags; `inverse_period` is LIGH's 1/period
+    /// (0: a default); `intensity` dims below `fade`, the light's own fade;
+    /// `movement` is in metres.
+    void configure(std::int64_t flags, double inverse_period, double intensity, double movement,
+                   double fade = 1.0);
 
     /// The brightness the flicker varies around, when something else changes it.
     void set_base_energy(double energy) { base_energy_ = energy; }
@@ -43,10 +47,11 @@ protected:
 private:
     bethconv::pack::wfb::LightFlags flags_{};
     double period_ = 0.2;
-    double intensity_ = 0.0;
+    double depth_ = 0.0; // how far below full brightness it dims, 0..1
     double movement_ = 0.0;
     double seed_ = 0.0;
     double base_energy_ = 1.0;
+    double elapsed_ = 0.0; // engine seconds since _ready: frame deltas, so --fixed-fps and pausing hold
     godot::Vector3 base_position_;
 };
 

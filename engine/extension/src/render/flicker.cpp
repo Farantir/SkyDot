@@ -4,9 +4,9 @@
 #include "skydot_formats/flags.hpp"
 
 #include <godot_cpp/classes/light3d.hpp>
-#include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/class_db.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -37,8 +37,8 @@ double noise(double x) {
 
 void SkydotFlicker::_bind_methods() {
     using godot::D_METHOD;
-    godot::ClassDB::bind_method(D_METHOD("configure", "flags", "period", "intensity", "movement"),
-                                &SkydotFlicker::configure);
+    godot::ClassDB::bind_method(D_METHOD("configure", "flags", "inverse_period", "intensity", "movement", "fade"),
+                                &SkydotFlicker::configure, DEFVAL(1.0));
     godot::ClassDB::bind_method(D_METHOD("factor_at", "seconds"), &SkydotFlicker::factor_at);
     godot::ClassDB::bind_method(D_METHOD("offset_at", "seconds"), &SkydotFlicker::offset_at);
 }
@@ -47,21 +47,26 @@ namespace {
 constexpr double k_flicker_movement = 64.0;
 } // namespace
 
-void SkydotFlicker::configure(std::int64_t flags, double period, double intensity,
-                              double movement) {
+void SkydotFlicker::configure(std::int64_t flags, double inverse_period, double intensity,
+                              double movement, double fade) {
     flags_ = static_cast<wfb::LightFlags>(flags);
     const bool slow = formats::has_flag(flags_, k_slow);
-    period_ = period > 0.0 ? period : (slow ? 1.0 : 0.2);
-    intensity_ = intensity;
+    // LIGH stores 1/period (UESP, Mod File Format/LIGH): the Whiterun street
+    // fires' 0.05 is a 20 s cycle. Read as seconds it made them jump every
+    // frame (comparison series 194712 at night, 2026-10-07).
+    period_ = inverse_period > 0.0 ? 1.0 / inverse_period : (slow ? 1.0 : 0.2);
+    // The intensity amplitude is how far the light dims below its fade (the
+    // Creation Kit's Light page), so relative to the fade, and never brighter.
+    depth_ = std::clamp(intensity / (fade > 0.0 ? fade : 1.0), 0.0, 1.0);
     movement_ = formats::has_flag(flags_, k_wandering) ? movement : 0.0;
 }
 
 double SkydotFlicker::factor_at(double seconds) const {
     const double x = seconds / period_ + seed_;
     if (formats::has_flag(flags_, k_pulsing)) {
-        return 1.0 + intensity_ * std::sin(2.0 * std::numbers::pi * x);
+        return 1.0 - depth_ * (0.5 + 0.5 * std::sin(2.0 * std::numbers::pi * x));
     }
-    return 1.0 + intensity_ * (2.0 * noise(x) - 1.0);
+    return 1.0 - depth_ * noise(x);
 }
 
 godot::Vector3 SkydotFlicker::offset_at(double seconds) const {
@@ -93,12 +98,15 @@ void SkydotFlicker::_ready() {
     set_process(flags_ != wfb::LightFlags::NONE);
 }
 
-void SkydotFlicker::_process(double /*delta*/) {
+void SkydotFlicker::_process(double delta) {
     auto* light = godot::Object::cast_to<godot::Light3D>(get_parent());
     if (light == nullptr) {
         return;
     }
-    const double now = static_cast<double>(godot::Time::get_singleton()->get_ticks_usec()) / 1e6;
+    // Engine time, not the wall clock: a frame series rendered at a fixed
+    // frame rate then shows the flicker at its real speed.
+    elapsed_ += delta;
+    const double now = elapsed_;
     light->set_param(godot::Light3D::PARAM_ENERGY,
                      static_cast<float>(std::max(base_energy_ * factor_at(now), 0.0)));
     if (movement_ > 0.0) {

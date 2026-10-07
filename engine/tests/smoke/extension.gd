@@ -352,14 +352,14 @@ func _check_effects() -> void:
 
 func _check_flicker() -> void:
     var flicker := SkydotFlicker.new()
-    flicker.configure(0x0008, 0.2, 0.3, 0.1)
+    flicker.configure(0x0008, 5.0, 0.3, 0.1)
     var lo := 10.0
     var hi := -10.0
     for i in 200:
         var f := flicker.factor_at(i * 0.037)
         lo = min(lo, f)
         hi = max(hi, f)
-    expect(lo >= 0.7 - 1e-6 and hi <= 1.3 + 1e-6, "flicker stays within its amplitude")
+    expect(lo >= 0.7 - 1e-6 and hi <= 1.0 + 1e-6, "flicker dims within its amplitude, never brighter")
     expect(hi - lo > 0.2, "and actually varies")
     var far := 0.0
     for i in 200:
@@ -368,8 +368,18 @@ func _check_flicker() -> void:
     expect(far > 0.0, "and actually moves")
     var pulse := SkydotFlicker.new()
     pulse.configure(0x0080, 1.0, 0.5, 0.0)
-    expect(is_equal_approx(pulse.factor_at(0.25) - pulse.factor_at(0.75), 1.0), "a pulse is a sine")
+    expect(is_equal_approx(pulse.factor_at(0.75) - pulse.factor_at(0.25), 0.5), "a pulse is a sine")
     expect(pulse.offset_at(0.3) == Vector3.ZERO, "and does not move")
+    # A Whiterun street fire: 1/period 0.05 (20 s), amplitude 1 below fade 3.
+    var fire := SkydotFlicker.new()
+    fire.configure(0x0009, 0.05, 1.0, 0.0, 3.0)
+    var fire_lo := 10.0
+    var fire_step := 0.0
+    for i in 600:
+        fire_lo = min(fire_lo, fire.factor_at(i * 0.1))
+        fire_step = max(fire_step, absf(fire.factor_at(i * 0.1 + 1.0 / 60.0) - fire.factor_at(i * 0.1)))
+    expect(fire_lo >= 2.0 / 3.0 - 1e-6, "a street fire dims to two thirds at most")
+    expect(fire_step < 0.01, "and drifts slowly rather than jumping each frame")
     flicker.free()
     pulse.free()
     # A light that follows a region's weather keeps its colour where no weather runs.

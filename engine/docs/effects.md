@@ -54,11 +54,16 @@ acceleration re-rolled eight times a second.
 
 ## Lights (`SkydotFlicker`)
 
-LIGH flicker flags vary brightness by the intensity amplitude over the flicker
-period (smooth noise) and move the light within a 64th of the movement
-amplitude of its place (about 1 cm for a torch; the game's scale is unknown,
-see render/flicker.cpp); pulse
-flags use a sine. Periods of 0 become 0.2 s, or 1 s for the slow flags.
+LIGH flicker flags dim the light below its fade by up to the intensity
+amplitude (in fade units, so relative depth = amplitude / fade) over the
+flicker period (smooth noise), and move the light within a 64th of the
+movement amplitude of its place (about 1 cm for a torch; the game's scale is
+unknown, see render/flicker.cpp); pulse flags use a sine. LIGH stores 1/period:
+the Whiterun street fires' 0.05 is a 20 s cycle with amplitude 1 below fade 3,
+so they drift between 67% and 100% (the game's wall next to one varied by
+about 5% over 2 s). A stored 0 becomes 0.2 s, or 1 s for the slow flags. The
+flicker runs on engine time, so a `--fixed-fps` frame series shows it at its
+real speed.
 
 ## Lights that follow a weather (`SkydotEmittance`)
 
