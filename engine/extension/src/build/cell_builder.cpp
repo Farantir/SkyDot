@@ -267,10 +267,11 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                 const auto* e = lookup(c->light_emitters(), ref.id());
                 const auto* regions = data().root()->regions();
                 const auto* region = e != nullptr && regions != nullptr ? lookup(regions, e->source()) : nullptr;
-                if (region != nullptr && region->weathers() != nullptr && region->weathers()->size() > 0) {
+                const auto* list = region != nullptr ? region->weathers() : nullptr;
+                if (list != nullptr && list->size() > 0) {
                     godot::PackedInt64Array weathers;
                     godot::PackedInt64Array chances;
-                    for (const auto* w : *region->weathers()) {
+                    for (const auto* w : *list) {
                         weathers.push_back(w->weather());
                         chances.push_back(w->chance());
                     }
