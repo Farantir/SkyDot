@@ -2,6 +2,7 @@
 #include "world/queries.hpp"
 #include "data/fb_search.hpp"
 #include "data/text.hpp"
+#include "render/sun_path.hpp"
 
 #include "skydot_formats/units.hpp"
 #include "world_generated.h"
@@ -11,7 +12,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <numbers>
 
 using godot::Color;
 using godot::Dictionary;
@@ -127,22 +127,8 @@ Dictionary get_sky(const WorldData& data, std::int64_t world, double hour, std::
         out["fog_max"] = mix(6, 7);
     }
 
-    // The sun rises in the east (+X), peaks in the south (+Z) and sets in the
-    // west; between sunset and sunrise the moon takes its place.
-    const float pi = std::numbers::pi_v<float>;
-    const bool day = h >= sun[0] && h <= sun[3];
-    float phase = 0.0F;
-    if (day) {
-        phase = (h - sun[0]) / std::max(sun[3] - sun[0], 0.1F);
-    } else {
-        const float night_length = 24.0F - (sun[3] - sun[0]);
-        phase = std::fmod(h - sun[3] + 24.0F, 24.0F) / std::max(night_length, 0.1F);
-    }
-    const float azimuth = pi * phase; // 0 east, pi west
-    const float elevation = std::sin(pi * phase) * pi * 0.38F + 0.05F;
-    out["sun_direction"] = Vector3(std::cos(azimuth) * std::cos(elevation), std::sin(elevation),
-                                   std::sin(azimuth) * std::cos(elevation))
-                               .normalized();
+    // Towards the light that shades the world (the moon's at night).
+    out["sun_direction"] = sun_path(h, sun).light;
     return out;
 }
 

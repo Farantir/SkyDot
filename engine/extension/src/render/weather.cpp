@@ -433,28 +433,15 @@ godot::Dictionary SkydotWeather::get_image_space() const {
     return out;
 }
 
-Vector3 SkydotWeather::sun_direction(bool& day) const {
-    float sun[4] = {5.5F, 10.0F, 16.0F, 20.5F};
+SunPath SkydotWeather::sun() const {
+    float times[4] = {5.5F, 10.0F, 16.0F, 20.5F};
     if (climate_ != nullptr) {
-        sun[0] = climate_->sunrise_begin();
-        sun[3] = climate_->sunset_end();
+        times[0] = climate_->sunrise_begin();
+        times[1] = climate_->sunrise_end();
+        times[2] = climate_->sunset_begin();
+        times[3] = climate_->sunset_end();
     }
-    const auto h = static_cast<float>(hour_);
-    const float pi = std::numbers::pi_v<float>;
-    day = h >= sun[0] && h <= sun[3];
-    float phase = 0.0F;
-    if (day) {
-        phase = (h - sun[0]) / std::max(sun[3] - sun[0], 0.1F);
-    } else {
-        const float night = 24.0F - (sun[3] - sun[0]);
-        phase = std::fmod(h - sun[3] + 24.0F, 24.0F) / std::max(night, 0.1F);
-    }
-    // East (+X) to west through the south (+Z), as SkydotWorld.get_sky.
-    const float azimuth = pi * phase;
-    const float elevation = std::sin(pi * phase) * pi * 0.38F + 0.05F;
-    return Vector3(std::cos(azimuth) * std::cos(elevation), std::sin(elevation),
-                   std::sin(azimuth) * std::cos(elevation))
-        .normalized();
+    return sun_path(static_cast<float>(hour_), times);
 }
 
 // ---- building ---------------------------------------------------------------
@@ -694,8 +681,9 @@ void SkydotWeather::update_sky(double delta) {
     // The near colour, for our shaders' fog (SkydotMaterials::sync_fog).
     environment_->set_meta("skydot_fog_near_color", mix(a.fog_near_color, b.fog_near_color));
 
-    bool day = true;
-    const Vector3 towards = sun_direction(day);
+    const SunPath sun_now = sun();
+    const bool day = sun_now.up;
+    const Vector3 towards = sun_now.light;
     // The image space's sunlight scale (HNAM) brightens the sun against
     // the ambient.
     const auto sun_scale = [](const Sky& s) { return s.has_image_space ? s.image_space[6] : 1.0F; };
@@ -766,8 +754,9 @@ void SkydotWeather::update_sky_objects() {
     const Sky a = sky_of(from);
     const Sky b = sky_of(to);
     const auto t = static_cast<float>(transition_);
-    bool day = true;
-    const Vector3 towards = sun_direction(day);
+    const SunPath sun_now = sun();
+    const bool day = sun_now.up;
+    const Vector3 towards = sun_now.disc;
     auto* cam = camera();
     if (cam == nullptr) {
         return;

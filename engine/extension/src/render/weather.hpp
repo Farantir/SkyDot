@@ -8,6 +8,8 @@
 // around the camera, and lightning. See docs/weather.md.
 #pragma once
 
+#include "render/sun_path.hpp"
+
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/camera3d.hpp>
@@ -128,7 +130,8 @@ private:
     /// the two keys around it.
     void time_keys(int& from, int& to, float& t) const;
     godot::Ref<godot::Texture2D> texture(const godot::String& vpath) const;
-    godot::Vector3 sun_direction(bool& day) const;
+    /// The sun now, from the climate's times (see sun_path.hpp).
+    SunPath sun() const;
 
     godot::Ref<SkydotWorld> world_;
     /// The world's root; null if there is no world or it is closed.
