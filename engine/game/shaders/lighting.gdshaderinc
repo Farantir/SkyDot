@@ -80,8 +80,10 @@ uniform vec3 hair_tint = vec3(1.0);
 // -falloff_scale * noise + (dot(world normal, direction) * vertex alpha -
 // falloff_bias), blended by smoothstep(0, 1, 5 (0.1 + weight)). The game's
 // noise texture is the engine's own; value noise stands in. The normal is the
-// vertex normal, not the mapped one, and the blend is softened over a pixel
-// (fwidth): a threshold on a per-texel normal flips between frames.
+// mapped one, as Community Shaders' worldNormal is (with the smooth vertex
+// normal of a low-poly cliff the whole upward face took the material as one
+// blob, where the game has snow settling on the normal map's detail), and the
+// blend is softened over a pixel (fwidth).
 uniform bool use_projection = false;
 uniform bool proj_textured = false;
 uniform sampler2D proj_albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
@@ -131,7 +133,6 @@ void fragment() {
 		albedo.rgb *= mix(vec3(1.0), hair_tint, COLOR.g);
 	}
 	vec4 n = texture(normal_tex, uv);
-	vec3 geometry_normal = NORMAL;
 	if (model_space_normals) {
 		vec3 m = n.rgb * 2.0 - 1.0;
 		NORMAL = normalize((VIEW_MATRIX * (MODEL_MATRIX * vec4(m.r, m.b, m.g, 0.0))).xyz);
@@ -147,7 +148,7 @@ void fragment() {
 	}
 	if (use_projection) {
 		vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
-		vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(geometry_normal, 0.0)).xyz);
+		vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 		float weight = -proj_params.x * proj_noise(world_pos * proj_params.z)
 				+ dot(world_normal, proj_direction) * COLOR.a - proj_params.y;
 		if (proj_textured) {
