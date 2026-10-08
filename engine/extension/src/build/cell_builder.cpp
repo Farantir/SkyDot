@@ -54,6 +54,10 @@ constexpr wfb::LightFlags k_light_shadow = wfb::LightFlags::spot_shadow |
                                            wfb::LightFlags::hemisphere_shadow |
                                            wfb::LightFlags::omni_shadow;
 
+// A placed light's brightness per unit of fade (record fade + XLIG offset),
+// fitted on single game lights and the interior comparison shots.
+constexpr float k_light_fade_scale = 0.6F;
+
 /// Editor markers, which the game does not draw: bases flagged as markers
 /// (XMarker, furniture markers), and the helpers in `meshes/markers/` and
 /// `meshes/marker*.nif` that some unflagged activators use. Not every model
@@ -202,10 +206,13 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         godot::Transform3D placed = transform.orthonormalized();
         // The reference's own settings over the record's: XRDS adds to the
         // radius (vanilla interiors mostly shrink it: 512 - 261 in the inn),
-        // XLIG's fade multiplies the brightness (0.5 on the farmhouse lights,
-        // 2 on their fire lights) and its FOV adds to a spotlight's. Fade as
-        // a factor matched five comparison shots best (total error 0.070,
-        // against 0.098 as an offset and 0.114 ignored; COMPARISON-SHOTS.md).
+        // XLIG's fade adds to the record's (0.5 on the farmhouse lights, 2 on
+        // their fire lights, 0.1 on one in Sven's house) and its FOV adds to
+        // a spotlight's. Measured with single lights left on in the game
+        // (game-refs-2026-10-08): the three came out 0.95, 1.7 and 0.55 times
+        // the light's colour, i.e. 0.5-0.63 of base + offset; as a factor
+        // they would be 0.5, 2 and 0.1. The interior refs agree (grid error
+        // 29.5 as a factor, 26.2 with k_light_fade_scale).
         const wfb::LightOverride* own = nullptr;
         if (const auto* c = data().cell_ptr(cell); c != nullptr && c->light_overrides() != nullptr) {
             own = lookup(c->light_overrides(), ref.id());
@@ -217,9 +224,10 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         float fade = l->fade() > 0.0F ? l->fade() : 1.0F;
         float fov = l->fov();
         if (own != nullptr && own->has_light_data()) {
-            fade *= own->fade();
+            fade += own->fade();
             fov += own->fov();
         }
+        fade *= k_light_fade_scale;
         const auto range = static_cast<float>(static_cast<double>(radius) * formats::k_metres_per_unit);
         if (formats::has_flag(l->flags(), wfb::LightFlags::spot_light)) {
             auto* spot = memnew(godot::SpotLight3D);
