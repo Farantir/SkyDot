@@ -98,7 +98,8 @@
 # idle where their packages put them; --screenshot and --benchmark runs keep
 # them still unless --wander on; --shot-delay SECONDS lets the world run that
 # long before a --screenshot is taken; --shot-frames N [--shot-every K] saves
-# N frames of one view instead (see shot_recorder.gd). Inside, time runs too (--time-scale);
+# N frames of one view instead (see shot_recorder.gd); --hide-refs ID[,ID...]
+# (hex form IDs) hides those references in them, as the game's `disable`. Inside, time runs too (--time-scale);
 # T and Shift+T move it there as well. I tells what the nearest actor's
 # package is.
 # --at X,Y,Z --target X,Y,Z (Skyrim game units, as `bethconv cell` prints)

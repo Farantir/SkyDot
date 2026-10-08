@@ -75,6 +75,8 @@ func step(delta: float) -> void:
 	# Let shaders compile and textures stream in before capturing.
 	_frames += 1
 	if _frames < SETTLE_FRAMES:
+		if _frames == SETTLE_FRAMES - 1 and not _settings.hide_refs.is_empty():
+			_hide_refs(_host)
 		return
 	if _views.size() == 1 and _settings.shot_frames > 1:
 		_step_series()
@@ -298,3 +300,12 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		},
 		"game_console": console,
 	}
+
+
+## --hide-refs: hides the references with those form IDs.
+func _hide_refs(node: Node) -> void:
+	if node is Node3D and _settings.hide_refs.has(node.get_meta("skydot_ref", 0)):
+		node.visible = false
+		return
+	for child in node.get_children():
+		_hide_refs(child)
