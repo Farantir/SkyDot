@@ -594,6 +594,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
                                                 formats::k_metres_per_unit);
     out->set_shader_parameter("uv_scale", as_vec2(extras, "uv_scale", godot::Vector2(1, 1)));
     out->set_shader_parameter("uv_offset", as_vec2(extras, "uv_offset", godot::Vector2(0, 0)));
+    out->set_shader_parameter("lighting_influence", as_double(extras, "lighting_influence", 0.55));
 }
 
 Ref<godot::ShaderMaterial> SkydotMaterials::particle_material(const Dictionary& extras) {

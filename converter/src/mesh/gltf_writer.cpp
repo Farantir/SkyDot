@@ -769,6 +769,7 @@ private:
             {"falloff", nlohmann::json::array({json_number(src.falloff.x), json_number(src.falloff.y),
                                                json_number(src.falloff.z), json_number(src.falloff.w)})},
             {"soft_falloff_depth", json_number(src.soft_falloff_depth)},
+            {"lighting_influence", json_number(src.lighting_influence)},
             {"texture_slots", std::move(slots)},
         };
         if (src.hair_tint) {

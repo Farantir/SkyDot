@@ -115,6 +115,9 @@ struct Material {
     /// start/stop opacity. Only meaningful with SLSF1_USE_FALLOFF.
     Vec4 falloff{1.0f, 1.0f, 0.0f, 0.0f};
     float soft_falloff_depth{};
+    /// BSEffectShaderProperty lighting influence (0..1): how far Effect_Lighting
+    /// moves the colour from unlit to lit.
+    float lighting_influence{};
 };
 
 /// One drawable shape: a triangle list with per-vertex attributes. Every

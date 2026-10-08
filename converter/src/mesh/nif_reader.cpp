@@ -576,6 +576,9 @@ private:
                 mat.falloff = Vec4{effect->falloffStartAngle, effect->falloffStopAngle,
                                    effect->falloffStartOpacity, effect->falloffStopOpacity};
                 mat.soft_falloff_depth = effect->softFalloffDepth;
+                // nifly reads clamp mode, lighting influence, env map min LOD
+                // and an unused byte as one uint32.
+                mat.lighting_influence = static_cast<float>((effect->textureClampMode >> 8) & 0xffu) / 255.0f;
             }
             mat.emissive_strength = multiple > 0.0f ? multiple : 1.0f;
             mat.textures = std::move(slots);
