@@ -60,6 +60,11 @@ Ref<godot::ShaderMaterial> WaterMaterials::material(const wfb::Water* water,
     Ref<godot::ShaderMaterial> out;
     out.instantiate();
     out->set_shader(shader());
+    // Water refracts the screen texture, which holds only opaque geometry, and
+    // writes depth: drawn first among transparent surfaces, it neither paints
+    // over the mist and spray above it (waterfall skirts) nor lets what lies
+    // below show through on top of it.
+    out->set_render_priority(godot::Material::RENDER_PRIORITY_MIN);
     if (water != nullptr) {
         const auto scale = static_cast<float>(formats::k_metres_per_unit);
         out->set_shader_parameter("shallow_color", shader_rgb(unpack(water->shallow_color())));

@@ -4,7 +4,7 @@
  * (game_fog.gdshaderinc).
  */
 shader_type spatial;
-render_mode unshaded, cull_disabled, blend_mix, depth_draw_never;
+render_mode unshaded, cull_disabled, blend_mix, depth_draw_always;
 
 #include "res://shaders/game_fog.gdshaderinc"
 
