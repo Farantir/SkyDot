@@ -296,10 +296,13 @@ const ProjectedMaterial* Decorator::projected_material(std::uint32_t id) {
     const auto per_metre = [&](float units) { return units > 0.0F ? 1.0F / (units * scale) : 0.0F; };
     out.params = godot::Vector4(mato->falloff_scale(), mato->falloff_bias(), per_metre(mato->noise_uv_scale()),
                                 per_metre(mato->material_uv_scale()));
-    // Projected along the vector: faces turned against it take the material
-    // (snow's is straight down).
+    // Projected along the vector: faces turned against it take the material,
+    // except that x keeps its sign. Measured at 194341 (MATO vector -0.40,
+    // -0.41, -0.81; game shot with the material red and the noise ~0): the
+    // snowed faces lean north-west, not north-east (mask IoU 0.61 vs 0.51;
+    // a bias change alone stays at 0.51). Why the engine does this is unknown.
     if (const auto* p = mato->projection(); p != nullptr && p->size() >= 3) {
-        const Vector3 game(-p->Get(0), -p->Get(1), -p->Get(2));
+        const Vector3 game(p->Get(0), -p->Get(1), -p->Get(2));
         const Vector3 world(game.x, game.z, -game.y);
         if (world.length() > 0.001F) {
             out.direction = world.normalized();
