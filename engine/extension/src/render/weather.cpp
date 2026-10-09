@@ -48,7 +48,10 @@ constexpr float k_cloud_scroll = 0.02F;
 /// are unexplained (an exposure SkyDot lacks?). The clouds keep their
 /// colours: scaled by the sky's factor, overcast, rainy and foggy skies came
 /// out 20-60 levels too dark (game shots of 8 weathers at 5 hours,
-/// comparison-renders/game-refs-2026-10-10, 2026-10-10).
+/// comparison-renders/game-refs-2026-10-10, 2026-10-10). The sky's factor
+/// was refitted with the dome's colour profile (sky.gdshader) on game shots
+/// of two clear weathers at four hours, volumetric lighting off (o_*,
+/// 2026-10-09).
 constexpr float k_sun_fit = 0.75F;
 // Volumetric lighting colour = scale * VOLI intensity * mix(NAM0 sunlight,
 // VOLI custom colour, contribution). Fitted 2026-10-09 on game shots of five
@@ -57,7 +60,7 @@ constexpr float k_sun_fit = 0.75F;
 // image_space.cpp.
 constexpr float k_volumetric_scale = 0.134F;
 constexpr float k_ambient_fit = 0.7F;
-constexpr float k_sky_fit = 0.75F;
+constexpr float k_sky_fit = 0.86F;
 
 Ref<godot::ShaderMaterial> material_from(const Ref<godot::Shader>& shader, int priority) {
     Ref<godot::ShaderMaterial> m;
