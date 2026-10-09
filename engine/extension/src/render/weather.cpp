@@ -41,6 +41,14 @@ namespace {
 constexpr int k_cloud_layers = 29;
 /// UV per real second at a stored speed of 1 (the byte at 254). A guess.
 constexpr float k_cloud_scroll = 0.02F;
+/// The weather's sun, directional ambient and sky (with its clouds) as the
+/// game shows them: fractions fitted on game shots of five exteriors with
+/// volumetric lighting off and a neutral grade (2026-10-09). The game's sky
+/// shader scales the sky and clouds by a factor of its own (Sky.hlsl's
+/// VParams), the others are unexplained (an exposure SkyDot lacks?).
+constexpr float k_sun_fit = 0.75F;
+constexpr float k_ambient_fit = 0.7F;
+constexpr float k_sky_fit = 0.75F;
 
 Ref<godot::ShaderMaterial> material_from(const Ref<godot::Shader>& shader, int priority) {
     Ref<godot::ShaderMaterial> m;
@@ -643,9 +651,9 @@ void SkydotWeather::update_sky(double delta) {
         flash = std::exp(-since_flash_ * 10.0);
     }
     const Color flash_color = to != nullptr ? unpack(to->lightning_color()) : Color(1, 1, 1);
-    sky_material_->set_shader_parameter("upper", shader_rgb(mix(a.upper, b.upper)));
-    sky_material_->set_shader_parameter("horizon", shader_rgb(mix(a.horizon, b.horizon)));
-    sky_material_->set_shader_parameter("lower", shader_rgb(mix(a.lower, b.lower)));
+    sky_material_->set_shader_parameter("upper", shader_rgb(mix(a.upper, b.upper) * k_sky_fit));
+    sky_material_->set_shader_parameter("horizon", shader_rgb(mix(a.horizon, b.horizon) * k_sky_fit));
+    sky_material_->set_shader_parameter("lower", shader_rgb(mix(a.lower, b.lower) * k_sky_fit));
     sky_material_->set_shader_parameter("flash", flash);
     sky_material_->set_shader_parameter("flash_color", shader_rgb(flash_color));
     for (auto& layer : layers_) {
@@ -656,7 +664,7 @@ void SkydotWeather::update_sky(double delta) {
     }
 
     const Color flash_light = flash_color * static_cast<float>(flash) * 0.5F;
-    environment_->set_ambient_light_color(mix(a.ambient, b.ambient) + flash_light);
+    environment_->set_ambient_light_color(mix(a.ambient, b.ambient) * k_ambient_fit + flash_light);
     // The game lights with the directional ambient (DALC), not NAM0's
     // ambient colour; that one stays for weathers without DALC.
     if (a.has_directional_ambient || b.has_directional_ambient) {
@@ -664,7 +672,7 @@ void SkydotWeather::update_sky(double delta) {
         for (std::size_t i = 0; i < 6; ++i) {
             const Color x = a.has_directional_ambient ? a.directional_ambient[i] : b.directional_ambient[i];
             const Color y = b.has_directional_ambient ? b.directional_ambient[i] : x;
-            sides.push_back(mix(x, y) + flash_light);
+            sides.push_back(mix(x, y) * k_ambient_fit + flash_light);
         }
         environment_->set_meta("skydot_directional_ambient", sides);
     } else if (environment_->has_meta("skydot_directional_ambient")) {
@@ -687,7 +695,7 @@ void SkydotWeather::update_sky(double delta) {
     // The image space's sunlight scale (HNAM) brightens the sun against
     // the ambient.
     const auto sun_scale = [](const Sky& s) { return s.has_image_space ? s.image_space[6] : 1.0F; };
-    const float scale = sun_scale(a) + (sun_scale(b) - sun_scale(a)) * t;
+    const float scale = (sun_scale(a) + (sun_scale(b) - sun_scale(a)) * t) * k_sun_fit;
     SkydotMaterials::set_game_light(light_, mix(a.sunlight, b.sunlight) * scale);
     environment_->set_meta("skydot_sun_direction", towards.normalized());
     environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
@@ -739,6 +747,7 @@ void SkydotWeather::update_clouds(double delta) {
                 const float y = c->alphas()->Get(static_cast<flatbuffers::uoffset_t>(to));
                 alpha = x + (y - x) * t;
             }
+            colour = colour * k_sky_fit;
             colour.a = alpha;
             layer.material->set_shader_parameter(name, shader_rgba(colour));
             layer.material->set_shader_parameter(slot == 0 ? "offset_a" : "offset_b", layer.offset[slot]);

@@ -82,11 +82,12 @@ void vertex() {
 // Effect_Lighting: the game moves the colour from unlit towards colour x one
 // light colour by the material's lighting influence, lerp(c, c * L, i), where
 // L is DLightColor plus each point light's fade, with no N.L (Community
-// Shaders, Effect.hlsl). DLightColor is not known; 1.5 x the weather's
+// Shaders, Effect.hlsl). DLightColor is not known; 1.1 x the weather's
 // sunlight as it is (no image-space scale, the moonlight at night) fits the
-// game's waterfalls at 7, 10, 18, 20 and 23 h (comparison-renders/
-// game-refs-2026-10-07) and the five exterior references. Adding the ambient
-// does not: it fixes one waterfall's colour and breaks the other's.
+// five exterior references without volumetric lighting (game-refs-2026-10-09/
+// fxnovl_*; 1.5 fitted the waterfalls with it, game-refs-2026-10-07, whose
+// haze it took in). Adding the ambient does not: it fixes one waterfall's
+// colour and breaks the other's.
 global uniform vec3 skydot_effect_light;
 uniform float lighting_influence = 0.55;
 void light() {
@@ -174,6 +175,6 @@ void fragment() {
 	ALPHA = alpha;
 #endif
 #ifdef SKYDOT_LIT
-	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * 1.5 * skydot_effect_light);
+	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * 1.1 * skydot_effect_light);
 #endif
 }
