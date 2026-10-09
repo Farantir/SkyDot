@@ -118,11 +118,10 @@ void SkydotImageSpace::set_image_space(const Dictionary& image_space) {
     const float white = value(hdr, 5, 1.0F);
     p.reinhard = white > 0.0F ? 1.0F / (white * white) : 1.0F;
     p.adapt_speed = value(hdr, 0, 0.0F);
-    // Capped at 1: with Update.esm's clear day (1.5) three comparison shots
-    // came out half again as saturated as the game's, while its brightness
-    // and contrast matched them; at 1 the saturation matched too
-    // (COMPARISON-SHOTS.md). The game's handling of values over 1 is unknown.
-    p.saturation = std::min(value(cinematic, 0, 1.0F), 1.0F);
+    // As it is, over 1 too: the game feeds the grade the IMGS saturation
+    // unchanged (SkyrimRemote @imagespace: ClearTU's 2.0 at Whiterun, 2026-10-09).
+    // The earlier cap at 1 was fitted on shots whose weather was not read back.
+    p.saturation = value(cinematic, 0, 1.0F);
     p.brightness = value(cinematic, 1, 1.0F);
     p.contrast = value(cinematic, 2, 1.0F);
     p.tint = godot::Color(value(tint, 1, 1.0F), value(tint, 2, 1.0F), value(tint, 3, 1.0F),
