@@ -196,6 +196,50 @@ TEST_CASE("an empty FormID array is empty, not an error", "[record][forms][field
     CHECK(forms->empty());
 }
 
+// ---- VOLI -----------------------------------------------------------------
+
+TEST_CASE("VOLI is read as its eleven floats", "[record][forms][voli]") {
+    // VLClearDay, 0x1000D51 in Update.esm.
+    ByteWriter payload;
+    ByteWriter edid;
+    edid.zstring("VLClearDay");
+    write_field(payload, "EDID", edid);
+    const std::pair<const char*, float> fields[] = {
+        {"CNAM", 2.0F},  {"DNAM", 0.0F},  {"ENAM", 1.0F},  {"FNAM", 0.5F},
+        {"GNAM", 0.25F}, {"HNAM", 0.3F},  {"INAM", 10.0F}, {"JNAM", 15.0F},
+        {"KNAM", 0.3F},  {"LNAM", 0.85F}, {"MNAM", 0.75F}, {"NNAM", 40.0F}};
+    for (const auto& [name, value] : fields) {
+        ByteWriter w;
+        w.f32(value);
+        write_field(payload, name, w);
+    }
+    Tally tally;
+    auto reader = reader_over(payload);
+    const auto voli =
+        record::parse_volumetric_lighting(reader, {.localized = false, .tally = &tally});
+    REQUIRE(voli.has_value());
+    CHECK(voli->editor_id == "VLClearDay");
+    CHECK(voli->intensity == 2.0F);
+    CHECK(voli->custom_color_contribution == 0.0F);
+    CHECK(voli->red == 1.0F);
+    CHECK(voli->green == 0.5F);
+    CHECK(voli->blue == 0.25F);
+    CHECK(voli->density_size == 10.0F);
+    CHECK(voli->phase_scattering == 0.75F);
+    CHECK(voli->sampling_range_factor == 40.0F);
+    CHECK(tally.leftover().empty());
+    CHECK(tally.unhandled().empty());
+}
+
+TEST_CASE("a VOLI float cut short fails the record", "[record][forms][voli]") {
+    ByteWriter payload;
+    ByteWriter cnam;
+    cnam.u8(1);
+    write_field(payload, "CNAM", cnam);
+    auto reader = reader_over(payload);
+    CHECK_FALSE(record::parse_volumetric_lighting(reader, {.localized = false}).has_value());
+}
+
 // ---- STAT -----------------------------------------------------------------
 
 TEST_CASE("STAT DNAM is read at both the sizes Bethesda wrote", "[record][forms][stat]") {
@@ -942,9 +986,9 @@ TEST_CASE("a truncated WRLD DNAM leaves both heights unset",
 // ---- the type set ---------------------------------------------------------
 
 TEST_CASE("the defined-type set and its lookup agree", "[record][forms]") {
-    // 6 + 15 + 11 + 10 + 5. Pinned so a new definition missing from the list fails
+    // 6 + 15 + 12 + 10 + 5. Pinned so a new definition missing from the list fails
     // here.
-    CHECK(record::defined_types().size() == 47);
+    CHECK(record::defined_types().size() == 48);
     for (const auto type : record::defined_types()) {
         CHECK(record::is_defined_type(type));
     }

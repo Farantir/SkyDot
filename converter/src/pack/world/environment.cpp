@@ -78,6 +78,9 @@ void EnvironmentCollector::collect(const record::MergedRecord& merged, io::SpanR
     case FourCC{"IMGS"}.value:
         on_image_space(merged, data, form_ctx);
         break;
+    case FourCC{"VOLI"}.value:
+        on_volumetric_lighting(merged, data, form_ctx);
+        break;
     default:
         break;
     }
@@ -311,6 +314,9 @@ void EnvironmentCollector::on_weather(const record::MergedRecord& merged, io::Sp
     for (const auto image_space : weather->image_spaces) {
         out.image_spaces.push_back(shared_.global(merged, image_space, failed));
     }
+    for (const auto voli : weather->volumetric_lighting) {
+        out.volumetric_lighting.push_back(shared_.global(merged, voli, failed));
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -340,6 +346,33 @@ void EnvironmentCollector::on_image_space(const record::MergedRecord& merged, io
     out.cinematic = floats(image_space->cinematic, 3);
     out.tint = floats(image_space->tint, 4);
     image_spaces_[out.id] = std::move(out);
+}
+
+/// VOLI: the floats, as they are (see world.fbs `VolumetricLighting`).
+void EnvironmentCollector::on_volumetric_lighting(const record::MergedRecord& merged,
+                                                  io::SpanReader& data,
+                                                  const record::FormContext& form_ctx) {
+    auto voli = record::parse_volumetric_lighting(data, form_ctx);
+    if (!voli) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::VolumetricLightingT out;
+    out.id = merged.form.value;
+    out.editor_id = voli->editor_id;
+    out.intensity = voli->intensity;
+    out.custom_color_contribution = voli->custom_color_contribution;
+    out.red = voli->red;
+    out.green = voli->green;
+    out.blue = voli->blue;
+    out.density_contribution = voli->density_contribution;
+    out.density_size = voli->density_size;
+    out.density_wind_speed = voli->density_wind_speed;
+    out.density_falling_speed = voli->density_falling_speed;
+    out.phase_contribution = voli->phase_contribution;
+    out.phase_scattering = voli->phase_scattering;
+    out.sampling_range_factor = voli->sampling_range_factor;
+    volumetric_lightings_[out.id] = std::move(out);
 }
 
 void EnvironmentCollector::on_precipitation(const record::MergedRecord& merged,
@@ -525,6 +558,7 @@ void EnvironmentCollector::finish(wfb::WorldT& world) {
     move_into(world.climates, climates_);
     move_into(world.weathers, weathers_);
     move_into(world.image_spaces, image_spaces_);
+    move_into(world.volumetric_lightings, volumetric_lightings_);
     move_into(world.precipitations, precipitations_);
     move_into(world.regions, regions_);
 }

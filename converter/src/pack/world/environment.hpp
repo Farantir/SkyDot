@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// WRLD, WATR, CLMT, WTHR, SPGD, REGN and IMGS: the worldspaces and what makes
+// WRLD, WATR, CLMT, WTHR, SPGD, REGN, IMGS and VOLI: the worldspaces and what makes
 // their weather, water and look. Private to pack/world/.
 #pragma once
 
@@ -46,6 +46,8 @@ private:
                     const record::FormContext& form_ctx);
     void on_image_space(const record::MergedRecord& merged, io::SpanReader& data,
                         const record::FormContext& form_ctx);
+    void on_volumetric_lighting(const record::MergedRecord& merged, io::SpanReader& data,
+                                const record::FormContext& form_ctx);
     void on_precipitation(const record::MergedRecord& merged, io::SpanReader& data,
                           const record::FormContext& form_ctx);
     void on_region(const record::MergedRecord& merged, io::SpanReader& data,
@@ -78,6 +80,7 @@ private:
     std::map<std::uint32_t, wfb::ClimateT> climates_;
     std::map<std::uint32_t, wfb::WeatherT> weathers_;
     std::map<std::uint32_t, wfb::ImageSpaceT> image_spaces_;
+    std::map<std::uint32_t, wfb::VolumetricLightingT> volumetric_lightings_;
     std::map<std::uint32_t, wfb::PrecipitationT> precipitations_;
     std::map<std::uint32_t, wfb::RegionT> regions_;
 };

@@ -176,6 +176,51 @@ io::ParseResult<ImageSpace> parse_image_space(io::SpanReader& data, const FormCo
     return out;
 }
 
+io::ParseResult<VolumetricLightingRecord> parse_volumetric_lighting(io::SpanReader& data,
+                                                                    const FormContext& ctx) {
+    VolumetricLightingRecord out;
+    const auto walked = walk_fields(
+        data, FourCC{"VOLI"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            const auto number = [&](float& into) { take(failure, body.get<float>(), into); };
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"CNAM"}) {
+                number(out.intensity);
+            } else if (field.type == FourCC{"DNAM"}) {
+                number(out.custom_color_contribution);
+            } else if (field.type == FourCC{"ENAM"}) {
+                number(out.red);
+            } else if (field.type == FourCC{"FNAM"}) {
+                number(out.green);
+            } else if (field.type == FourCC{"GNAM"}) {
+                number(out.blue);
+            } else if (field.type == FourCC{"HNAM"}) {
+                number(out.density_contribution);
+            } else if (field.type == FourCC{"INAM"}) {
+                number(out.density_size);
+            } else if (field.type == FourCC{"JNAM"}) {
+                number(out.density_wind_speed);
+            } else if (field.type == FourCC{"KNAM"}) {
+                number(out.density_falling_speed);
+            } else if (field.type == FourCC{"LNAM"}) {
+                number(out.phase_contribution);
+            } else if (field.type == FourCC{"MNAM"}) {
+                number(out.phase_scattering);
+            } else if (field.type == FourCC{"NNAM"}) {
+                number(out.sampling_range_factor);
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<Climate> parse_climate(io::SpanReader& data, const FormContext& ctx) {
     Climate out;
     const auto walked = walk_fields(

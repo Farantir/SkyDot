@@ -411,7 +411,7 @@ std::span<const FourCC> defined_types() noexcept {
         FourCC{"KEYM"}, FourCC{"ALCH"}, FourCC{"AMMO"}, FourCC{"WEAP"},
         FourCC{"PROJ"}, FourCC{"IDLM"}, FourCC{"LVLN"},
         // forms_world.cpp
-        FourCC{"LTEX"}, FourCC{"IMGS"}, FourCC{"CLMT"}, FourCC{"WTHR"},
+        FourCC{"LTEX"}, FourCC{"IMGS"}, FourCC{"VOLI"}, FourCC{"CLMT"}, FourCC{"WTHR"},
         FourCC{"REGN"}, FourCC{"LCTN"}, FourCC{"LAND"}, FourCC{"NAVM"},
         FourCC{"NAVI"}, FourCC{"ACHR"}, FourCC{"SPGD"},
         // forms_game.cpp

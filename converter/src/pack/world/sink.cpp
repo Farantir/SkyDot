@@ -44,6 +44,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"SPGD"}.value:
     case FourCC{"REGN"}.value:
     case FourCC{"IMGS"}.value:
+    case FourCC{"VOLI"}.value:
         environment_.collect(merged, data, form_ctx);
         break;
     case FourCC{"QUST"}.value:

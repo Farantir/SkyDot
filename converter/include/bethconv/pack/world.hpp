@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 12;
+inline constexpr std::uint32_t k_world_format_version = 13;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -141,6 +141,8 @@ public:
     [[nodiscard]] std::optional<wfb::ClimateT> climate(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::WeatherT> weather(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImageSpaceT> image_space(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::VolumetricLightingT>
+    volumetric_lighting(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::PrecipitationT> precipitation(std::uint32_t id) const;
     /// Regions with weather data.
     [[nodiscard]] std::vector<wfb::RegionT> regions() const;

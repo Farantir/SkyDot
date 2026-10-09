@@ -382,9 +382,28 @@ void make_land(const TempDir& dir) {
     ByteWriter mnam;
     mnam.u32(0x0000'0C05);
     bethconv::test::write_field(wthr, "MNAM", mnam);
+    ByteWriter hnam;
+    for (const std::uint32_t form : {0u, 0x0000'0C7Fu, 0u, 0u}) {
+        hnam.u32(form);
+    }
+    bethconv::test::write_field(wthr, "HNAM", hnam);
     ByteWriter wthrs;
     bethconv::test::write_record(wthrs, "WTHR", 0x0000'0C03, wthr.span());
     top_group(file, "WTHR", wthrs);
+
+    // VOLI: the weather's daytime volumetric lighting.
+    ByteWriter voli;
+    ByteWriter voli_id;
+    voli_id.zstring("VLTest");
+    bethconv::test::write_field(voli, "EDID", voli_id);
+    for (const char* name : {"CNAM", "DNAM", "ENAM", "FNAM", "GNAM"}) {
+        ByteWriter f;
+        f.f32(name[0] == 'C' ? 2.0F : 0.5F);
+        bethconv::test::write_field(voli, name, f);
+    }
+    ByteWriter volis;
+    bethconv::test::write_record(volis, "VOLI", 0x0000'0C7F, voli.span());
+    top_group(file, "VOLI", volis);
 
     // SPGD: rain, in the 48-byte form.
     ByteWriter spgd;
@@ -820,6 +839,14 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(weather->wind_direction == 90.0F);
     CHECK(weather->lightning_color == 0x001E140Au);
     CHECK(weather->precipitation == 0x0000'0C05);
+    REQUIRE(weather->volumetric_lighting.size() == 4);
+    CHECK(weather->volumetric_lighting[0] == 0);
+    CHECK(weather->volumetric_lighting[1] == 0x0000'0C7F);
+    const auto voli = file->volumetric_lighting(0x0000'0C7F);
+    REQUIRE(voli.has_value());
+    CHECK(voli->editor_id == "VLTest");
+    CHECK(voli->intensity == 2.0F);
+    CHECK(voli->blue == 0.5F);
 
     CHECK(stats->precipitations == 1);
     const auto rain = file->precipitation(0x0000'0C05);

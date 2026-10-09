@@ -65,6 +65,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto climates = pack_all(builder, root.climates);
     const auto weathers = pack_all(builder, root.weathers);
     const auto image_spaces = pack_all(builder, root.image_spaces);
+    const auto volumetric_lightings = pack_all(builder, root.volumetric_lightings);
     const auto material_objects = pack_all(builder, root.material_objects);
     const auto precipitations = pack_all(builder, root.precipitations);
     const auto regions = pack_all(builder, root.regions);
@@ -86,7 +87,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   climates, weathers, cells, bases, quests, globals, actors,
                                   plugins, precipitations, regions, npcs, races, armors,
                                   armor_addons, outfits, leveled_lists, packages, image_spaces,
-                                  material_objects, grasses, addon_nodes));
+                                  material_objects, grasses, addon_nodes, volumetric_lightings));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

@@ -58,6 +58,7 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"LVLN"}, &run<parse_leveled_npc>},
     {FourCC{"LTEX"}, &run<parse_land_texture>},
     {FourCC{"IMGS"}, &run<parse_image_space>},
+    {FourCC{"VOLI"}, &run<parse_volumetric_lighting>},
     {FourCC{"CLMT"}, &run<parse_climate>},
     {FourCC{"WTHR"}, &run<parse_weather>},
     {FourCC{"REGN"}, &run<parse_region>},

@@ -642,6 +642,32 @@ table Weather {
     /// IMSP (format 10): an ImageSpace per time of day (sunrise, day,
     /// sunset, night); 0 where none.
     image_spaces: [uint32];
+    /// HNAM (format 13): a VolumetricLighting per time of day (sunrise, day,
+    /// sunset, night); 0 where none.
+    volumetric_lighting: [uint32];
+}
+
+/// VOLI (format 13, Update.esm only): volumetric lighting. The floats are the
+/// subrecords as they are: CNAM `intensity`, DNAM `custom_color_contribution`,
+/// ENAM/FNAM/GNAM the custom colour (0..1), and the rest. The engine uses
+/// intensity, custom colour and its contribution only; the density, phase
+/// function and range factor fields are stored but unused.
+table VolumetricLighting {
+    id: uint32 (key);
+    editor_id: string;
+    intensity: float;
+    custom_color_contribution: float;
+    red: float;
+    green: float;
+    blue: float;
+    /// Unused by the engine.
+    density_contribution: float;
+    density_size: float;
+    density_wind_speed: float;
+    density_falling_speed: float;
+    phase_contribution: float;
+    phase_scattering: float;
+    sampling_range_factor: float;
 }
 
 /// IMGS (format 10): colour grading after lighting. `hdr` is HNAM's nine
@@ -1193,6 +1219,8 @@ table World {
     grasses: [Grass];
     /// Sorted by id (format 10).
     addon_nodes: [AddonNode];
+    /// Sorted by id (format 13).
+    volumetric_lightings: [VolumetricLighting];
 }
 
 root_type World;

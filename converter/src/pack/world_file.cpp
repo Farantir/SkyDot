@@ -246,6 +246,10 @@ std::optional<wfb::ImageSpaceT> WorldFile::image_space(std::uint32_t id) const {
     return unpack(lookup(impl_->root->image_spaces(), id));
 }
 
+std::optional<wfb::VolumetricLightingT> WorldFile::volumetric_lighting(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->volumetric_lightings(), id));
+}
+
 std::optional<wfb::WeatherT> WorldFile::weather(std::uint32_t id) const {
     return unpack(lookup(impl_->root->weathers(), id));
 }

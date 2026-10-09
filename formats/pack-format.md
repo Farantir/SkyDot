@@ -88,7 +88,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (12; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (13; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -97,7 +97,8 @@ and weathers' and cells' links to them, interior directional ambient with
 lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
-the region whose weather's sunlight colour tints the light). Format 9 only adds:
+the region whose weather's sunlight colour tints the light, 13 volumetric
+lighting (VOLI) and weathers' links to it (WTHR HNAM)). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 

@@ -41,6 +41,24 @@ struct LandTexture {
     std::uint32_t inam{};
 };
 
+/// VOLI: volumetric lighting of a weather and time of day. In Update.esm only.
+/// Every subrecord is one float32.
+struct VolumetricLightingRecord {
+    std::string editor_id;
+    float intensity{};                ///< CNAM
+    float custom_color_contribution{};///< DNAM
+    float red{};                      ///< ENAM, custom colour 0..1
+    float green{};                    ///< FNAM
+    float blue{};                     ///< GNAM
+    float density_contribution{};     ///< HNAM
+    float density_size{};             ///< INAM
+    float density_wind_speed{};       ///< JNAM
+    float density_falling_speed{};    ///< KNAM
+    float phase_contribution{};       ///< LNAM
+    float phase_scattering{};         ///< MNAM
+    float sampling_range_factor{};    ///< NNAM
+};
+
 /// IMGS: an image space (color grading). 506 in SE.
 struct ImageSpace {
     std::string editor_id;
@@ -435,6 +453,8 @@ struct ActorReference {
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<ImageSpace> parse_image_space(io::SpanReader& data,
                                                             const FormContext& ctx);
+[[nodiscard]] io::ParseResult<VolumetricLightingRecord>
+parse_volumetric_lighting(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Climate> parse_climate(io::SpanReader& data,
                                                      const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Weather> parse_weather(io::SpanReader& data,
