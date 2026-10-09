@@ -85,9 +85,8 @@ uniform vec3 hair_tint = vec3(1.0);
 // on the normal map's detail).
 // Single pass materials (proj_snow) use the engine's textures: the noise is
 // projectednoise.dds sampled at the model-space position (xy, game units) over
-// the material's noise scale, the snow diffuse and the normal with its detail
-// map are laid over it at fixed tilings (the game's INI defaults), and the
-// normal blends with the rock's by the same amount. Without those textures
+// the material's noise scale, and the snow diffuse is laid over it at a fixed
+// tiling (the game's INI default). Without those textures
 // (proj_snow off) the snow is one colour, softened over a pixel (fwidth),
 // with value noise on the world position.
 uniform bool use_projection = false;
@@ -150,6 +149,7 @@ void fragment() {
 		albedo.rgb *= mix(vec3(1.0), hair_tint, COLOR.g);
 	}
 	vec3 geo_normal = NORMAL;
+	float snow_rim = 0.0;
 	vec4 n = texture(normal_tex, uv);
 	if (model_space_normals) {
 		vec3 m = n.rgb * 2.0 - 1.0;
@@ -174,14 +174,15 @@ void fragment() {
 		if (proj_snow) {
 			float t1 = clamp(5.0 * (0.1 + weight), 0.0, 1.0);
 			float amount = t1 * t1 * (3.0 - 2.0 * t1);
-			vec3 pn = texture(proj_normal_tex, 0.2 * noise_uv).xyz * 2.0 - 1.0;
-			vec3 d = texture(proj_detail_tex, 0.8 * noise_uv).xyz;
-			vec3 tmp = normalize(vec3(2.0 * d.x + pn.x - 1.0, 2.0 * d.y + pn.y - 1.0, (2.0 * d.z - 1.0) * pn.z));
-			vec2 sm = vec2(tmp.x, -tmp.y); // DirectX convention, like the rock's
-			vec3 snow_normal = normalize(TANGENT * sm.x + BINORMAL * sm.y
-					+ geo_normal * sqrt(max(0.0, 1.0 - dot(sm, sm))));
 			albedo.rgb = mix(albedo.rgb, texture(proj_diffuse_tex, 0.2 * noise_uv).rgb * proj_color, amount);
-			NORMAL = normalize(mix(NORMAL, snow_normal, amount));
+			// The snow's own normal map does not light it: Lighting.hlsl
+			// lights with modelNormal, taken before the blend, so the snow
+			// keeps the rock's mapped normal. The rim light (improved snow,
+			// GetSnowSpecularColor; fSnowRimLightIntensity 0.3, geometry /
+			// normal powers 3 / 2) goes to the snow buffer and is added in
+			// image space where there is snow.
+			snow_rim = 0.3 * amount * pow(1.0 - clamp(dot(geo_normal, VIEW), 0.0, 1.0), 3.0)
+					* pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 2.0);
 		} else if (proj_textured) {
 			float x = 5.0 * (0.1 + weight);
 			float w = max(1.0, fwidth(x));
@@ -237,6 +238,7 @@ void fragment() {
 #endif
 	FOG = skydot_game_fog(VERTEX);
 	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	EMISSION += vec3(snow_rim);
 }
 
 void light() {
