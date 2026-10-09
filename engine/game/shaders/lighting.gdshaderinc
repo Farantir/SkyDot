@@ -78,12 +78,18 @@ uniform vec3 hair_tint = vec3(1.0);
 // Directional material (STAT DNAM -> MATO) on Projected UV shapes: snow on
 // what faces up. The game's weight (Community Shaders, Lighting.hlsl):
 // -falloff_scale * noise + (dot(world normal, direction) * vertex alpha -
-// falloff_bias), blended by smoothstep(0, 1, 5 (0.1 + weight)). The game's
-// noise texture is the engine's own; value noise stands in. The normal is the
-// mapped one, as Community Shaders' worldNormal is (with the smooth vertex
-// normal of a low-poly cliff the whole upward face took the material as one
-// blob, where the game has snow settling on the normal map's detail), and the
-// blend is softened over a pixel (fwidth).
+// falloff_bias), blended by smoothstep(0, 1, 5 (0.1 + weight)). The direction
+// is in world space; the normal is the mapped one, as Community Shaders'
+// worldNormal is (with the smooth vertex normal of a low-poly cliff the whole
+// upward face took the material as one blob, where the game has snow settling
+// on the normal map's detail).
+// Single pass materials (proj_snow) use the engine's textures: the noise is
+// projectednoise.dds sampled at the model-space position (xy, game units) over
+// the material's noise scale, the snow diffuse and the normal with its detail
+// map are laid over it at fixed tilings (the game's INI defaults), and the
+// normal blends with the rock's by the same amount. Without those textures
+// (proj_snow off) the snow is one colour, softened over a pixel (fwidth),
+// with value noise on the world position.
 uniform bool use_projection = false;
 uniform bool proj_textured = false;
 uniform sampler2D proj_albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
@@ -91,8 +97,19 @@ uniform vec4 proj_params = vec4(0.0); // falloff scale, falloff bias, noise and 
 uniform vec3 proj_direction = vec3(0.0, 1.0, 0.0);
 uniform vec3 proj_color = vec3(1.0);
 uniform float proj_normal_dampener = 0.0;
+uniform bool proj_snow = false;
+uniform float proj_noise_scale = 50.0; // game units per noise texture repeat
+uniform sampler2D proj_noise_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D proj_diffuse_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D proj_normal_tex : filter_linear_mipmap_anisotropic, repeat_enable;
+uniform sampler2D proj_detail_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 
 varying float spec_mask;
+varying vec3 model_pos; // the shape's own coordinates (the NIF's, in game units)
+
+void vertex() {
+	model_pos = VERTEX;
+}
 
 float proj_hash(vec3 p) {
 	p = fract(p * 0.3183099 + 0.1);
@@ -132,6 +149,7 @@ void fragment() {
 	if (use_hair_tint) {
 		albedo.rgb *= mix(vec3(1.0), hair_tint, COLOR.g);
 	}
+	vec3 geo_normal = NORMAL;
 	vec4 n = texture(normal_tex, uv);
 	if (model_space_normals) {
 		vec3 m = n.rgb * 2.0 - 1.0;
@@ -149,9 +167,22 @@ void fragment() {
 	if (use_projection) {
 		vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
 		vec3 world_normal = normalize((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
-		float weight = -proj_params.x * proj_noise(world_pos * proj_params.z)
+		vec2 noise_uv = model_pos.xy / max(proj_noise_scale, 0.0001);
+		float noise = proj_snow ? texture(proj_noise_tex, noise_uv).r : proj_noise(world_pos * proj_params.z);
+		float weight = -proj_params.x * noise
 				+ dot(world_normal, proj_direction) * COLOR.a - proj_params.y;
-		if (proj_textured) {
+		if (proj_snow) {
+			float t1 = clamp(5.0 * (0.1 + weight), 0.0, 1.0);
+			float amount = t1 * t1 * (3.0 - 2.0 * t1);
+			vec3 pn = texture(proj_normal_tex, 0.2 * noise_uv).xyz * 2.0 - 1.0;
+			vec3 d = texture(proj_detail_tex, 0.8 * noise_uv).xyz;
+			vec3 tmp = normalize(vec3(2.0 * d.x + pn.x - 1.0, 2.0 * d.y + pn.y - 1.0, (2.0 * d.z - 1.0) * pn.z));
+			vec2 sm = vec2(tmp.x, -tmp.y); // DirectX convention, like the rock's
+			vec3 snow_normal = normalize(TANGENT * sm.x + BINORMAL * sm.y
+					+ geo_normal * sqrt(max(0.0, 1.0 - dot(sm, sm))));
+			albedo.rgb = mix(albedo.rgb, texture(proj_diffuse_tex, 0.2 * noise_uv).rgb * proj_color, amount);
+			NORMAL = normalize(mix(NORMAL, snow_normal, amount));
+		} else if (proj_textured) {
 			float x = 5.0 * (0.1 + weight);
 			float w = max(1.0, fwidth(x));
 			float t = clamp((x - 0.5) / w + 0.5, 0.0, 1.0);

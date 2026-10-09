@@ -545,6 +545,16 @@ Ref<godot::ShaderMaterial> SkydotMaterials::projected(const Ref<godot::ShaderMat
     out->set_shader_parameter("proj_direction", with.direction);
     out->set_shader_parameter("proj_color", with.color);
     out->set_shader_parameter("proj_normal_dampener", with.normal_dampener);
+    const bool snow = with.snow_noise.is_valid() && with.snow_diffuse.is_valid() &&
+                      with.snow_normal.is_valid() && with.snow_detail.is_valid();
+    out->set_shader_parameter("proj_snow", snow);
+    if (snow) {
+        out->set_shader_parameter("proj_noise_tex", with.snow_noise);
+        out->set_shader_parameter("proj_diffuse_tex", with.snow_diffuse);
+        out->set_shader_parameter("proj_normal_tex", with.snow_normal);
+        out->set_shader_parameter("proj_detail_tex", with.snow_detail);
+        out->set_shader_parameter("proj_noise_scale", with.noise_units);
+    }
     projected_.emplace(id, out);
     return out;
 }

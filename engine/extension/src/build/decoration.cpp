@@ -258,9 +258,17 @@ const ProjectedMaterial* Decorator::projected_material(std::uint32_t id) {
         return nullptr;
     }
     ProjectedMaterial out;
-    // The material's textures are those of its model's first shape. Single
-    // pass materials (the common snow) are one colour, as the game's shader
-    // draws them without projected textures.
+    // Single pass materials (the common snow) take the engine's projected
+    // textures (noise, diffuse, normal and its detail) and the material's
+    // colour; the noise is as large as the material says, in game units.
+    // The others use the albedo of their model's first shape.
+    if (mato->single_pass() && assets_ != nullptr) {
+        out.snow_noise = assets_->texture("textures/effects/projectednoise.dds");
+        out.snow_diffuse = assets_->texture("textures/effects/projecteddiffuse.dds");
+        out.snow_normal = assets_->texture("textures/effects/projectednormal.dds");
+        out.snow_detail = assets_->texture("textures/effects/projectednormaldetail.dds");
+        out.noise_units = mato->noise_uv_scale() > 0.0F ? mato->noise_uv_scale() : 50.0F;
+    }
     if (const auto* model = mato->model(); !mato->single_pass() && model != nullptr && model->size() != 0) {
         const godot::Ref<SkydotModel> scene = resource(model_path(model->string_view()));
         if (scene.is_valid()) {

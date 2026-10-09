@@ -62,6 +62,10 @@ struct ProjectedMaterial {
     godot::Vector3 direction{0, 1, 0};   ///< faces turned this way (Godot's world axes) take it
     godot::Vector3 color{1, 1, 1};
     float normal_dampener = 0.0F;
+    /// Single pass materials: the engine's projected snow textures (all four,
+    /// or the snow is `color` flat) and the noise's size in game units.
+    godot::Ref<godot::Texture> snow_noise, snow_diffuse, snow_normal, snow_detail;
+    float noise_units = 50.0F;
 };
 
 class SkydotMaterials : public godot::RefCounted {
