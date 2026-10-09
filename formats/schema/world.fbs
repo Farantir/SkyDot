@@ -492,6 +492,24 @@ table Water {
     layers: [WaterLayer];
     /// NNAM (or NAM2..NAM4) noise textures as virtual paths.
     noise: [string];
+    /// DNAM 132: above-water fog amount.
+    fog_amount: float;
+    /// DNAM 96.
+    noise_falloff: float;
+    /// DNAM 200.
+    sun_sparkle_magnitude: float;
+    /// DNAM 204.
+    sun_specular_magnitude: float;
+    /// DNAM 224.
+    sun_sparkle_power: float;
+    /// DNAM 208: depth control of reflections.
+    depth_reflections: float;
+    /// DNAM 212.
+    depth_refraction: float;
+    /// DNAM 216.
+    depth_normals: float;
+    /// DNAM 220.
+    depth_specular: float;
 }
 
 struct ClimateWeather {

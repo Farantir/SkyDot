@@ -73,9 +73,18 @@ Ref<godot::ShaderMaterial> WaterMaterials::material(const wfb::Water* water,
         out->set_shader_parameter("fresnel_amount", water->fresnel());
         out->set_shader_parameter("reflectivity", water->reflectivity());
         out->set_shader_parameter("sun_specular_power", water->sun_specular_power());
-        if (water->fog_far() > water->fog_near()) {
-            out->set_shader_parameter("fog_far", water->fog_far() * scale);
-        }
+        out->set_shader_parameter("fog_near", water->fog_near() * scale);
+        out->set_shader_parameter("fog_far", water->fog_far() * scale);
+        out->set_shader_parameter("fog_amount", water->fog_amount());
+        out->set_shader_parameter("refraction_magnitude", water->refraction_magnitude() * scale);
+        out->set_shader_parameter("reflection_magnitude", water->reflection_magnitude());
+        out->set_shader_parameter("sun_sparkle_magnitude", water->sun_sparkle_magnitude());
+        out->set_shader_parameter("sun_specular_magnitude", water->sun_specular_magnitude());
+        out->set_shader_parameter("sun_sparkle_power", water->sun_sparkle_power());
+        out->set_shader_parameter("depth_control",
+                                  Vector4(water->depth_reflections(), water->depth_refraction(),
+                                          water->depth_normals(), water->depth_specular()));
+        out->set_shader_parameter("noise_falloff", water->noise_falloff() * scale);
         if (const auto* layers = water->layers()) {
             for (flatbuffers::uoffset_t i = 0; i < layers->size() && i < 3; ++i) {
                 const auto* l = layers->Get(i);

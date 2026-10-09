@@ -198,6 +198,15 @@ void EnvironmentCollector::on_water(const record::MergedRecord& merged, io::Span
                 out.refraction_magnitude = f32(152);
                 out.specular_power = f32(156);
                 out.reflection_magnitude = f32(196);
+                out.noise_falloff = f32(96);
+                out.fog_amount = f32(132);
+                out.sun_sparkle_magnitude = f32(200);
+                out.sun_specular_magnitude = f32(204);
+                out.depth_reflections = f32(208);
+                out.depth_refraction = f32(212);
+                out.depth_normals = f32(216);
+                out.depth_specular = f32(220);
+                out.sun_sparkle_power = f32(224);
             }
         });
     if (!walked) {

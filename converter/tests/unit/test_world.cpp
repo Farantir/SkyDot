@@ -798,6 +798,15 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(river->layers[1].wind_speed() == 116.0F);
     CHECK(river->layers[2].uv_scale() == 180.0F);
     CHECK(river->reflection_magnitude == 196.0F);
+    CHECK(river->noise_falloff == 96.0F);
+    CHECK(river->fog_amount == 132.0F);
+    CHECK(river->sun_sparkle_magnitude == 200.0F);
+    CHECK(river->sun_specular_magnitude == 204.0F);
+    CHECK(river->depth_reflections == 208.0F);
+    CHECK(river->depth_refraction == 212.0F);
+    CHECK(river->depth_normals == 216.0F);
+    CHECK(river->depth_specular == 220.0F);
+    CHECK(river->sun_sparkle_power == 224.0F);
     REQUIRE(river->noise.size() == 3);
     CHECK(river->noise[0] == "textures/water/defaultwater.dds");
 
