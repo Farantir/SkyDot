@@ -41,11 +41,14 @@ namespace {
 constexpr int k_cloud_layers = 29;
 /// UV per real second at a stored speed of 1 (the byte at 254). A guess.
 constexpr float k_cloud_scroll = 0.02F;
-/// The weather's sun, directional ambient and sky (with its clouds) as the
-/// game shows them: fractions fitted on game shots of five exteriors with
-/// volumetric lighting off and a neutral grade (2026-10-09). The game's sky
-/// shader scales the sky and clouds by a factor of its own (Sky.hlsl's
-/// VParams), the others are unexplained (an exposure SkyDot lacks?).
+/// The weather's sun, directional ambient and sky colours as the game shows
+/// them: fractions fitted on game shots of five exteriors with volumetric
+/// lighting off and a neutral grade (2026-10-09). The game's sky shader
+/// scales the sky by a factor of its own (Sky.hlsl's VParams), the others
+/// are unexplained (an exposure SkyDot lacks?). The clouds keep their
+/// colours: scaled by the sky's factor, overcast, rainy and foggy skies came
+/// out 20-60 levels too dark (game shots of 8 weathers at 5 hours,
+/// comparison-renders/game-refs-2026-10-10, 2026-10-10).
 constexpr float k_sun_fit = 0.75F;
 // Volumetric lighting colour = scale * VOLI intensity * mix(NAM0 sunlight,
 // VOLI custom colour, contribution). Fitted 2026-10-09 on game shots of five
@@ -792,7 +795,6 @@ void SkydotWeather::update_clouds(double delta) {
                 const float y = c->alphas()->Get(static_cast<flatbuffers::uoffset_t>(to));
                 alpha = x + (y - x) * t;
             }
-            colour = colour * k_sky_fit;
             colour.a = alpha;
             layer.material->set_shader_parameter(name, shader_rgba(colour));
             layer.material->set_shader_parameter(slot == 0 ? "offset_a" : "offset_b", layer.offset[slot]);
