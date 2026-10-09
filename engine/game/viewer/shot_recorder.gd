@@ -302,9 +302,13 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	}
 
 
-## --hide-refs: hides the references with those form IDs.
+## --hide-refs: hides the references with those form IDs. Lights carry no
+## skydot_ref; they are named after their reference ("0x00082887 NAME light").
 func _hide_refs(node: Node) -> void:
 	if node is Node3D and _settings.hide_refs.has(node.get_meta("skydot_ref", 0)):
+		node.visible = false
+		return
+	if node is Light3D and _settings.hide_refs.has(String(node.name).get_slice(" ", 0).hex_to_int()):
 		node.visible = false
 		return
 	for child in node.get_children():
