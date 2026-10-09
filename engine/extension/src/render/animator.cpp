@@ -5,6 +5,7 @@
 #include <numbers>
 #include <vector>
 
+#include "render/billboard.hpp"
 #include "render/effect_asset.hpp"
 #include "render/particles.hpp"
 
@@ -574,6 +575,16 @@ void SkydotAnimator::flush() {
         if (t.has_translation || t.has_rotation || t.has_euler || t.has_scale) {
             t.node->set_transform(pose_of(t));
             t.has_translation = t.has_rotation = t.has_euler = t.has_scale = false;
+            // The pose has the node's rest rotation; a billboard node must
+            // face the camera again. Otherwise the Whiterun brazier's glow
+            // card (FXfireWithEmbers01, a scale pulse on its billboard node)
+            // showed its authored orientation, oblique and off the fire, and
+            // added almost nothing over the basket where the game draws a
+            // bright halo (game-refs-2026-10-11, brazier_noglow.txt).
+            if (auto* billboard =
+                    godot::Object::cast_to<SkydotBillboard>(t.node->get_node_or_null("SkydotBillboard"))) {
+                billboard->face_camera();
+            }
         }
         if (t.dirty != 0 && t.material.is_valid() && t.shared) {
             const std::uint64_t frame = godot::Engine::get_singleton()->get_process_frames();

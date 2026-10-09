@@ -96,6 +96,9 @@ void SkydotBillboard::face_camera() {
 
     const Node3D* above = target->get_parent_node_3d();
     const Basis rest = above != nullptr ? above->get_global_basis() * rest_.basis : rest_.basis;
+    // The scale as it is now: an animator may pulse it (SkydotAnimator).
+    const Basis now =
+        above != nullptr ? above->get_global_basis() * target->get_basis() : target->get_basis();
     const godot::Transform3D view = camera->get_global_transform();
     const Vector3 to_camera = view.origin - target->get_global_position();
 
@@ -126,7 +129,7 @@ void SkydotBillboard::face_camera() {
     default:
         break;
     }
-    target->set_global_basis(facing.scaled_local(rest.get_scale()));
+    target->set_global_basis(facing.scaled_local(now.get_scale()));
 }
 
 } // namespace skydot
