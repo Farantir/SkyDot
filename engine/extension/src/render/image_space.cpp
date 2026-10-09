@@ -3,9 +3,11 @@
 #include "render/shader_source.hpp"
 
 #include <godot_cpp/classes/rd_shader_source.hpp>
+#include <godot_cpp/classes/rd_sampler_state.hpp>
 #include <godot_cpp/classes/rd_shader_spirv.hpp>
 #include <godot_cpp/classes/rd_uniform.hpp>
 #include <godot_cpp/classes/render_scene_buffers_rd.hpp>
+#include <godot_cpp/classes/render_scene_data.hpp>
 #include <godot_cpp/classes/rendering_device.hpp>
 #include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/time.hpp>
@@ -32,6 +34,14 @@ namespace {
 
 // Each thread sums 4x4 pixels, a 16x16 group 64x64.
 constexpr int k_reduce_tile = 64;
+
+// Volumetric lighting factor f(d) = 1 - exp(-(max(d - start, 0) / scale)^exponent),
+// d in metres; fitted 2026-10-09 on game shots of five exteriors (VL on minus
+// VL off, neutral grade; comparison-renders/game-refs-2026-10-09/nv_n_* vs
+// nn_n_*). The colour's own scale is k_volumetric_scale in weather.cpp.
+constexpr float k_volumetric_start = 2.8F;
+constexpr float k_volumetric_range = 23.0F;
+constexpr float k_volumetric_exponent = 0.635F;
 
 RenderingDevice* device() {
     auto* rs = godot::RenderingServer::get_singleton();
@@ -106,6 +116,7 @@ Dictionary SkydotImageSpace::shader_codes() {
     Dictionary out;
     out["image_space_reduce"] = source_of("image_space_reduce.comp");
     out["image_space_adapt"] = source_of("image_space_adapt.comp");
+    out["image_space_volumetric"] = source_of("image_space_volumetric.comp");
     out["image_space_grade"] = source_of("image_space_grade.comp");
     return out;
 }
@@ -126,6 +137,9 @@ void SkydotImageSpace::set_image_space(const Dictionary& image_space) {
     p.contrast = value(cinematic, 2, 1.0F);
     p.tint = godot::Color(value(tint, 1, 1.0F), value(tint, 2, 1.0F), value(tint, 3, 1.0F),
                           value(tint, 0, 0.0F));
+    const godot::Variant volumetric = image_space.get("volumetric", godot::Variant());
+    p.volumetric = godot::Color(value(volumetric, 0, 0.0F), value(volumetric, 1, 0.0F),
+                                value(volumetric, 2, 0.0F), 0.0F);
     const std::scoped_lock lock(mutex_);
     p.reset = params_.reset;
     params_ = p;
@@ -154,7 +168,8 @@ bool SkydotImageSpace::ensure_pipelines() {
     reduce_shader_ = compile(rd, "image_space_reduce.comp", "skydot_image_space_reduce");
     adapt_shader_ = compile(rd, "image_space_adapt.comp", "skydot_image_space_adapt");
     grade_shader_ = compile(rd, "image_space_grade.comp", "skydot_image_space_grade");
-    if (!reduce_shader_.is_valid() || !adapt_shader_.is_valid() || !grade_shader_.is_valid()) {
+    volumetric_shader_ = compile(rd, "image_space_volumetric.comp", "skydot_image_space_volumetric");
+    if (!volumetric_shader_.is_valid() || !reduce_shader_.is_valid() || !adapt_shader_.is_valid() || !grade_shader_.is_valid()) {
         failed_ = true;
         free_pipelines();
         return false;
@@ -162,6 +177,12 @@ bool SkydotImageSpace::ensure_pipelines() {
     reduce_pipeline_ = rd->compute_pipeline_create(reduce_shader_);
     adapt_pipeline_ = rd->compute_pipeline_create(adapt_shader_);
     grade_pipeline_ = rd->compute_pipeline_create(grade_shader_);
+    volumetric_pipeline_ = rd->compute_pipeline_create(volumetric_shader_);
+    Ref<godot::RDSamplerState> nearest;
+    nearest.instantiate();
+    nearest->set_min_filter(RenderingDevice::SAMPLER_FILTER_NEAREST);
+    nearest->set_mag_filter(RenderingDevice::SAMPLER_FILTER_NEAREST);
+    depth_sampler_ = rd->sampler_create(nearest);
     const float zero[4] = {0, 0, 0, 0};
     average_ = rd->storage_buffer_create(16, bytes(zero, 4));
     return true;
@@ -173,13 +194,13 @@ void SkydotImageSpace::free_pipelines() {
         return;
     }
     // Pipelines go with their shaders.
-    for (RID* rid : {&partials_, &average_, &reduce_shader_, &adapt_shader_, &grade_shader_}) {
+    for (RID* rid : {&partials_, &average_, &depth_sampler_, &volumetric_shader_, &reduce_shader_, &adapt_shader_, &grade_shader_}) {
         if (rid->is_valid()) {
             rd->free_rid(*rid);
             *rid = RID();
         }
     }
-    reduce_pipeline_ = adapt_pipeline_ = grade_pipeline_ = RID();
+    reduce_pipeline_ = adapt_pipeline_ = grade_pipeline_ = volumetric_pipeline_ = RID();
     partial_capacity_ = 0;
 }
 
@@ -221,6 +242,9 @@ void SkydotImageSpace::_render_callback(int32_t type, godot::RenderData* data) {
     // a quarter of a second).
     const auto rate = static_cast<float>(std::clamp(static_cast<double>(p.adapt_speed) * 0.1 * dt, 0.0, 1.0));
 
+    godot::RenderSceneData* scene_data = data->get_render_scene_data();
+    const bool haze = scene_data != nullptr && volumetric_pipeline_.is_valid() &&
+                      (p.volumetric.r > 0.0F || p.volumetric.g > 0.0F || p.volumetric.b > 0.0F);
     for (std::uint32_t view = 0; view < buffers->get_view_count(); ++view) {
         const RID color = buffers->get_color_layer(view);
         const auto image = uniform(RenderingDevice::UNIFORM_TYPE_IMAGE, 0, color);
@@ -240,6 +264,35 @@ void SkydotImageSpace::_render_callback(int32_t type, godot::RenderData* data) {
         std::memcpy(reduce_bytes, reduce_pc, sizeof(reduce_pc));
 
         const std::int64_t list = rd->compute_list_begin();
+        if (haze) {
+            const godot::Projection inverse = scene_data->get_view_projection(view).inverse();
+            float pc[24];
+            for (int column = 0; column < 4; ++column) {
+                for (int row = 0; row < 4; ++row) {
+                    pc[column * 4 + row] = static_cast<float>(inverse.columns[column][row]);
+                }
+            }
+            const float rest[4] = {p.volumetric.r, p.volumetric.g, p.volumetric.b, 0.0F};
+            std::memcpy(&pc[16], rest, sizeof(rest));
+            const float curve[4] = {k_volumetric_start, k_volumetric_range, k_volumetric_exponent, 0.0F};
+            std::memcpy(&pc[20], curve, sizeof(curve));
+            float haze_bytes[28];
+            std::memcpy(haze_bytes, pc, sizeof(pc));
+            const std::int32_t haze_size[4] = {size.x, size.y, 0, 0};
+            std::memcpy(&haze_bytes[24], haze_size, sizeof(haze_size));
+            Ref<godot::RDUniform> depth;
+            depth.instantiate();
+            depth->set_uniform_type(RenderingDevice::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE);
+            depth->set_binding(1);
+            depth->add_id(depth_sampler_);
+            depth->add_id(buffers->get_depth_layer(view));
+            rd->compute_list_bind_compute_pipeline(list, volumetric_pipeline_);
+            rd->compute_list_bind_uniform_set(list, uniform_set(volumetric_shader_, image, depth), 0);
+            rd->compute_list_set_push_constant(list, bytes(haze_bytes, 28), 112);
+            rd->compute_list_dispatch(list, static_cast<std::uint32_t>((size.x + 7) / 8),
+                                      static_cast<std::uint32_t>((size.y + 7) / 8), 1);
+            rd->compute_list_add_barrier(list);
+        }
         rd->compute_list_bind_compute_pipeline(list, reduce_pipeline_);
         rd->compute_list_bind_uniform_set(
             list, uniform_set(reduce_shader_, image, uniform(RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER, 1, partials_)), 0);

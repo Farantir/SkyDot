@@ -37,6 +37,7 @@
 # --light-shadows all gives every placed light shadows, not only those whose
 # record asks for them (game, the default). --grass off grows no grass.
 # --image-space off shows the scene's numbers ungraded (no image space).
+# --volumetric off leaves out the weather's volumetric lighting haze (default on).
 # Outside, SkydotWeather runs time and weather: --time HOURS (default 12) to
 # start at, --time-scale (game seconds per second, default 20, 0 stops time),
 # --weather EDITOR_ID to keep one weather; otherwise the region's or
@@ -378,7 +379,10 @@ func _sync_image_space() -> void:
 	if not _settings.image_space:
 		_image_space.clear()
 	elif _clock.has_weather():
-		_image_space.set_image_space(_clock.weather.get_image_space())
+		var space := _clock.weather.get_image_space()
+		if not _settings.volumetric:
+			space.erase("volumetric")
+		_image_space.set_image_space(space)
 	else:
 		_image_space.set_image_space(_place.interior_image_space)
 

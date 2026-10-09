@@ -47,6 +47,12 @@ constexpr float k_cloud_scroll = 0.02F;
 /// shader scales the sky and clouds by a factor of its own (Sky.hlsl's
 /// VParams), the others are unexplained (an exposure SkyDot lacks?).
 constexpr float k_sun_fit = 0.75F;
+// Volumetric lighting colour = scale * VOLI intensity * mix(NAM0 sunlight,
+// VOLI custom colour, contribution). Fitted 2026-10-09 on game shots of five
+// exteriors (VL on minus VL off, neutral grade; comparison-renders/
+// game-refs-2026-10-09/nv_n_* vs nn_n_*). The distance falloff is in
+// image_space.cpp.
+constexpr float k_volumetric_scale = 0.134F;
 constexpr float k_ambient_fit = 0.7F;
 constexpr float k_sky_fit = 0.75F;
 
@@ -415,6 +421,35 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
             out.has_image_space = true;
         }
     }
+    // Volumetric lighting (VOLI, WTHR HNAM): intensity and custom colour are
+    // blended over the times of day, then scaled into the colour the scene
+    // gets. Density, phase function and range factor are not used.
+    const auto* volis = world_fb() != nullptr ? world_fb()->volumetric_lightings() : nullptr;
+    if (const auto* ids = weather->volumetric_lighting();
+        ids != nullptr && ids->size() >= 4 && volis != nullptr) {
+        // intensity, custom contribution, custom r, g, b
+        const auto values = [&](int time, std::array<float, 5>& into) {
+            const auto* v = lookup(volis, ids->Get(static_cast<flatbuffers::uoffset_t>(time)));
+            into = {};
+            if (v == nullptr) {
+                return;
+            }
+            into = {v->intensity(), v->custom_color_contribution(), v->red(), v->green(), v->blue()};
+        };
+        std::array<float, 5> a{};
+        std::array<float, 5> b{};
+        values(from, a);
+        values(to, b);
+        std::array<float, 5> v{};
+        for (std::size_t i = 0; i < 5; ++i) {
+            v[i] = a[i] + (b[i] - a[i]) * t;
+        }
+        const float sunlight[3] = {out.sunlight.r, out.sunlight.g, out.sunlight.b};
+        for (std::size_t i = 0; i < 3; ++i) {
+            const float mixed = sunlight[i] + (v[2 + i] - sunlight[i]) * v[1];
+            out.volumetric[i] = k_volumetric_scale * v[0] * mixed;
+        }
+    }
     return out;
 }
 
@@ -438,6 +473,16 @@ godot::Dictionary SkydotWeather::get_image_space() const {
     out["hdr"] = hdr;
     out["cinematic"] = cinematic;
     out["tint"] = tint;
+    godot::PackedFloat32Array volumetric;
+    bool any_volumetric = false;
+    for (std::size_t i = 0; i < 3; ++i) {
+        const float v = a.volumetric[i] + (b.volumetric[i] - a.volumetric[i]) * t;
+        any_volumetric = any_volumetric || v > 0.0F;
+        volumetric.push_back(static_cast<double>(v));
+    }
+    if (any_volumetric) {
+        out["volumetric"] = volumetric;
+    }
     return out;
 }
 

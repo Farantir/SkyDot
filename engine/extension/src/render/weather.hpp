@@ -74,7 +74,8 @@ public:
 
     /// The image space now ("hdr", "cinematic", "tint" as in
     /// SkydotWorld.get_image_space), blended between the times of day and
-    /// weathers; empty if the weathers have none.
+    /// weathers; empty if the weathers have none. "volumetric" (r, g, b) is the
+    /// colour volumetric lighting adds to the far scene, absent if zero.
     godot::Dictionary get_image_space() const;
 
     /// weather, previous, transition (0-1), hour, day, daylight, region (the
@@ -110,6 +111,9 @@ private:
         /// The image space: HNAM (9), CNAM (3), TNAM (4), in that order.
         std::array<float, 16> image_space{};
         bool has_image_space = false;
+        /// The volumetric lighting colour that is added to the scene (gamma
+        /// numbers), 0 where the weather has none.
+        std::array<float, 3> volumetric{};
     };
     Sky sky_of(const Weather* weather) const;
     const Weather* weather_ptr(std::int64_t id) const;

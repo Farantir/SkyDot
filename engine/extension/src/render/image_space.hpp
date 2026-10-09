@@ -17,6 +17,13 @@
 // y is not documented) and adds bloom; neither is done here. The adapted
 // mean follows the frame's at the image space's eye adapt speed.
 //
+// Volumetric lighting (VOLI) comes first, as a screen-space additive haze: a
+// near-neutral colour, the same for every pixel of one distance, grows with
+// the view-space distance d from the depth buffer and is full on the sky.
+// The grade's mean, and so the eye adaptation, includes it. Measured, not
+// the game's algorithm; see weather.cpp and image_space.cpp for the constants.
+// It is skipped where the image space has no "volumetric" colour (interiors).
+//
 // The pass must run on every frame of a SkyDot scene, also with a neutral
 // image space: without it the gamma-space numbers would reach the screen as
 // if they were linear, too bright.
@@ -41,7 +48,8 @@ public:
 
     /// Take an image space as SkydotWorld.get_image_space or
     /// SkydotWeather.get_image_space give it: "hdr" (nine floats),
-    /// "cinematic" (three), "tint" (four). Missing parts are neutral.
+    /// "cinematic" (three), "tint" (four), and optionally "volumetric" (the
+    /// r, g, b the haze adds). Missing parts are neutral.
     void set_image_space(const godot::Dictionary& image_space);
     /// Neutral: the scene's numbers go to the screen unchanged.
     void clear();
@@ -64,6 +72,7 @@ private:
         float reinhard = 1.0F;
         godot::Color tint{1, 1, 1, 0}; ///< rgb and amount in alpha
         float adapt_speed = 0.0F;      ///< HNAM eye adapt speed
+        godot::Color volumetric{0, 0, 0, 0};
         bool reset = true;
     };
 
@@ -74,6 +83,8 @@ private:
     Params params_;
     double last_ticks_ = 0.0;
 
+    godot::RID volumetric_shader_, volumetric_pipeline_;
+    godot::RID depth_sampler_;
     godot::RID reduce_shader_, reduce_pipeline_;
     godot::RID adapt_shader_, adapt_pipeline_;
     godot::RID grade_shader_, grade_pipeline_;

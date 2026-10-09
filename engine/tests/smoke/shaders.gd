@@ -58,7 +58,8 @@ func _run() -> void:
     var sources := SkydotMaterials.shader_sources()
     for name in ["lighting_single_none", "effect_double_add_particles_lit", "refraction_double",
             "particles_process", "terrain_1", "terrain_7", "water", "lod_terrain", "lod_tree", "sky",
-            "clouds", "sprite_add", "precipitation", "image_space_reduce", "image_space_grade"]:
+            "clouds", "sprite_add", "precipitation", "image_space_reduce", "image_space_grade",
+            "image_space_volumetric"]:
         expect(sources.has(name), "the shader " + name + " is listed")
     var placeholder := RegEx.create_from_string("%[A-Z_]+%")
     var comment := RegEx.create_from_string("(?s)^\\s*/\\*.*?\\*/")

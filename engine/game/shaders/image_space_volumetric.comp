@@ -1,0 +1,36 @@
+/* Image space, pass 0: volumetric lighting as an additive haze (see render/image_space.hpp).
+ *
+ * Compute shader, see image_space_reduce.comp. compile() in render/image_space.cpp
+ * uses this as it is.
+ *
+ * Adds colour * f(d) to the scene, d the view-space distance in metres from the
+ * depth buffer (reversed Z: 0 is the far plane, the sky), f = 1 on the sky.
+ *
+ * This comment is not part of the shader code: the loader cuts it off (README.md).
+ */
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(rgba16f, set = 0, binding = 0) uniform restrict image2D color_image;
+layout(set = 0, binding = 1) uniform sampler2D depth_texture;
+layout(push_constant, std430) uniform Params {
+	mat4 inv_projection;
+	vec4 color;  // rgb
+	vec4 curve;  // start (m), scale (m), exponent
+	ivec4 size;
+} pc;
+void main() {
+	ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+	if (p.x >= pc.size.x || p.y >= pc.size.y) {
+		return;
+	}
+	float depth = texelFetch(depth_texture, p, 0).r;
+	float f = 1.0;
+	if (depth > 0.0) {
+		vec2 ndc = (vec2(p) + 0.5) / vec2(pc.size.xy) * 2.0 - 1.0;
+		vec4 v = pc.inv_projection * vec4(ndc, depth, 1.0);
+		float d = length(v.xyz / v.w);
+		f = 1.0 - exp(-pow(max(d - pc.curve.x, 0.0) / pc.curve.y, pc.curve.z));
+	}
+	vec4 c = imageLoad(color_image, p);
+	imageStore(color_image, p, vec4(c.rgb + pc.color.rgb * f, c.a));
+}

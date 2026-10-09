@@ -49,7 +49,7 @@ in the `.pck` (see "Exports"). Restart to see an edit.
 | `sprite_add.gdshader`, `sprite_mix.gdshader`, `sprite.gdshaderinc` | stars, sun and moons: two blend modes of one body | `SkydotWeather`, `weather.cpp` |
 | `far_plane.gdshaderinc` | sky objects sit just in front of the far plane, included by clouds and sprites | the shaders |
 | `particles_process.gdshader` | the process shader of every particle system | `SkydotMaterials::particles_process_shader()` |
-| `image_space_reduce.comp`, `image_space_adapt.comp`, `image_space_grade.comp` | the image space passes (GLSL 450 compute) | `compile()`, `image_space.cpp` |
+| `image_space_volumetric.comp`, `image_space_reduce.comp`, `image_space_adapt.comp`, `image_space_grade.comp` | the image space passes (the first adds volumetric lighting) (GLSL 450 compute) | `compile()`, `image_space.cpp` |
 
 ## Conventions
 
