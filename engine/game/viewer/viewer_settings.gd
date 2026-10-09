@@ -52,6 +52,7 @@ var has_tree_distance := false
 var tree_distance := 0.0
 var shadows := true  # the sun's, outside
 var image_space := true
+var neutral_grade := false  # --image-space neutral
 var volumetric := true  # the weather's volumetric lighting haze
 var quests := true
 var set_stage := ""  # EDID:STAGE[,EDID:STAGE...]
@@ -159,6 +160,7 @@ func _read(args: Dictionary) -> void:
 	tree_distance = args.get("tree-distance", "0").to_float()
 	shadows = args.get("shadows", "on") != "off"
 	image_space = args.get("image-space", "on") != "off"
+	neutral_grade = args.get("image-space", "on") == "neutral"
 	volumetric = args.get("volumetric", "on") != "off"
 	quests = args.get("quests", "on") != "off"
 	set_stage = args.get("set-stage", "")

@@ -36,7 +36,10 @@
 # game's is 50.4 at 16:9). --shadows off disables the sun's shadows.
 # --light-shadows all gives every placed light shadows, not only those whose
 # record asks for them (game, the default). --grass off grows no grass.
-# --image-space off shows the scene's numbers ungraded (no image space).
+# --image-space off shows the scene's numbers ungraded (no image space);
+# --image-space neutral keeps its tone mapping and eye adaptation but grades
+# neutrally (saturation, brightness, contrast 1, no tint), as the game's frame
+# with SkyrimRemote's `@imagespace sat=1 bright=1 contrast=1 tint_amount=0`.
 # --volumetric off leaves out the weather's volumetric lighting haze (default on).
 # Outside, SkydotWeather runs time and weather: --time HOURS (default 12) to
 # start at, --time-scale (game seconds per second, default 20, 0 stops time),
@@ -372,19 +375,24 @@ func _process(delta: float) -> void:
 
 
 ## The image space the camera grades with: the weather's outside, the cell's
-## inside, none with --image-space off. Our shaders compute the fog
-## themselves.
+## inside, none with --image-space off, a neutral grade with --image-space
+## neutral. Our shaders compute the fog themselves.
 func _sync_image_space() -> void:
 	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
 	if not _settings.image_space:
 		_image_space.clear()
-	elif _clock.has_weather():
-		var space := _clock.weather.get_image_space()
-		if not _settings.volumetric:
-			space.erase("volumetric")
-		_image_space.set_image_space(space)
 	else:
-		_image_space.set_image_space(_place.interior_image_space)
+		var space: Dictionary
+		if _clock.has_weather():
+			space = _clock.weather.get_image_space()
+			if not _settings.volumetric:
+				space.erase("volumetric")
+		else:
+			space = _place.interior_image_space.duplicate()
+		if _settings.neutral_grade:
+			space.erase("cinematic")
+			space.erase("tint")
+		_image_space.set_image_space(space)
 
 
 ## A cell was built and shown (streamed or an interior): its scripts attach and
