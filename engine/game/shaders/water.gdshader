@@ -57,10 +57,12 @@ const vec3 SPARKLE_FACING = vec3(-0.099, 0.99, 0.099);
 // one our lighting uses: fitted on 194857's pre-grade game frame (the share
 // of sparkle pixels above 0.3..0.8 matches at 9).
 const float SUN_FIT = 9.0;
-// How much of the reflected scene shows (the game's WaterParams.w on its
-// cubemap, and its SSR fraction): fitted on 194857 against the graded game
-// frame (grid error 8.0 at 1.0 on the fallbacks only, 6.9 at 0.3 on all).
-const float CUBEMAP_FIT = 0.3;
+// The game's framebuffer range (WaterParams.w), which scales both the
+// reflected scene (cubemap, and here the SSR too) and the refracted view
+// below: fitted on 194857 against the graded game frame (grid error 8.0 at
+// 1.0 on the reflection fallbacks only, 6.9 at 0.3 on all reflections, 5.5
+// with the refraction as well; 194938's pool floor goes dark as in the game).
+const float FRAMEBUFFER_RANGE_FIT = 0.3;
 
 varying vec3 world_pos;
 
@@ -125,14 +127,14 @@ void fragment() {
 	vec3 water = mix(shallow_color, deep_color, distance_mul.y);
 	float fog_range = max(fog_far - fog_near, 0.01);
 	float fogged = 1.0 - pow(clamp((far - distance_mul.x * far) / fog_range, 0.0, 1.0), max(fog_amount, 0.0001));
-	vec3 diffuse = mix(refracted, water, fogged);
+	vec3 diffuse = mix(refracted * FRAMEBUFFER_RANGE_FIT, water, fogged);
 
 	// Reflection along a normal flattened by the reflection magnitude: the
 	// sky, or the scene where a short march through the depth buffer hits it.
 	vec3 reflect_normal = normalize(world_normal * reflection_magnitude + vec3(0.0, 1.0 - reflection_magnitude, 0.0));
 	vec3 world_reflected = reflect(world_view, reflect_normal);
 	vec3 reflected = (VIEW_MATRIX * vec4(world_reflected, 0.0)).xyz;
-	vec3 environment = sky(world_reflected) * CUBEMAP_FIT;
+	vec3 environment = sky(world_reflected) * FRAMEBUFFER_RANGE_FIT;
 	vec3 p = VERTEX;
 	float step_length = max(0.2, length(VERTEX) * 0.02);
 	for (int i = 0; i < 24; ++i) {
@@ -143,7 +145,7 @@ void fragment() {
 			// Left through the top: what the frame shows along its top edge
 			// above stands in for the game's cubemap (a gorge's cliff, else
 			// the sky), blurred.
-			environment = textureLod(screen_tex, vec2(uv.x, 0.0), 4.0).rgb * CUBEMAP_FIT;
+			environment = textureLod(screen_tex, vec2(uv.x, 0.0), 4.0).rgb * FRAMEBUFFER_RANGE_FIT;
 			break;
 		}
 		if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || p.z > -0.05) {
@@ -152,7 +154,7 @@ void fragment() {
 		float scene_z = scene_at(uv, INV_PROJECTION_MATRIX).z;
 		if (scene_z > p.z && scene_z - p.z < step_length * 2.0) {
 			float edge = smoothstep(0.0, 0.1, min(min(uv.x, 1.0 - uv.x), min(uv.y, 1.0 - uv.y)));
-			environment = mix(environment, textureLod(screen_tex, uv, 0.0).rgb * CUBEMAP_FIT, edge);
+			environment = mix(environment, textureLod(screen_tex, uv, 0.0).rgb * FRAMEBUFFER_RANGE_FIT, edge);
 			break;
 		}
 		step_length *= 1.15;
