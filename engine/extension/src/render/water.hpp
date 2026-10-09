@@ -5,7 +5,9 @@
 // of water under the surface (over WATR's fog distance), refraction of what
 // lies below, a Fresnel blend towards the reflection (the sky's colour, or
 // the scene where a short screen-space march finds it) and the sun's glint
-// (WATR's sun specular power). No underwater view. Placed water meshes (streams, ponds: BSWaterShaderProperty, pack
+// (WATR's sun specular power). Exterior cells with a flowmap
+// (textures/water/<plugin>/flow.X.Y.dds) take their normal from it instead
+// (Water.hlsl's FLOWMAP path, see Decorator::cell_water_material). No underwater view. Placed water meshes (streams, ponds: BSWaterShaderProperty, pack
 // mesh/18) take the material of their cell's water type; an activator's
 // own type (ACTI WNAM) is not in world.fb yet.
 #pragma once

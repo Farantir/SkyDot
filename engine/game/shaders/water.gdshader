@@ -43,6 +43,15 @@ uniform sampler2D noise_tex : hint_normal, filter_linear_mipmap, repeat_enable;
 uniform vec4 layer_0 = vec4(27.0, 0.0, 0.02, 0.7);
 uniform vec4 layer_1 = vec4(96.0, 0.0, 0.01, 0.6);
 uniform vec4 layer_2 = vec4(7.0, 0.0, 0.1, 0.5);
+// The cell's flowmap (textures/water/<plugin>/flow.X.Y.dds, 64 x 64 per cell,
+// north row first): rg the flow's rotation (sin, cos), b the tiling term, a
+// the scroll; and the water's flow normals (WATR NAM4), tiled along it.
+uniform bool flow_enabled = false;
+uniform sampler2D flow_tex : filter_nearest, repeat_disable;
+uniform sampler2D flow_normals_tex : filter_linear_mipmap, repeat_enable;
+// The cell's grid position, x east and y south (cells), for flow UVs that run
+// on across cell borders.
+uniform vec2 flow_cell = vec2(0.0);
 uniform sampler2D depth_tex : hint_depth_texture;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
 global uniform vec3 skydot_sun_direction; // towards the sun, world
@@ -64,10 +73,57 @@ const float SUN_FIT = 9.0;
 // with the refraction as well; 194938's pool floor goes dark as in the game).
 const float FRAMEBUFFER_RANGE_FIT = 0.3;
 
+// A cell's side in metres (4096 units).
+const float CELL_SIDE = 58.5216;
+// The game's flowmap scroll timer (ReflectionColor.w) per second: game
+// seconds at the default timescale, 20. Measured on the Riverwood river
+// (game-refs-2026-10-13 rw_open_seq): the pattern's screen motion fits 15..23.
+const float FLOW_TIME_SCALE = 20.0;
+
 varying vec3 world_pos;
+// The point's place in its cell, x east and y south, 0..1 (the cell water
+// plane's own coordinates; the game's TexCoord0).
+varying vec2 cell_uv;
 
 void vertex() {
 	world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
+	cell_uv = VERTEX.xz / CELL_SIDE + 0.5;
+}
+
+// One flowmap sample's normal (Water.hlsl GetFlowmapNormal): the flow normals
+// tiled 64 times per cell, scaled by the b term, rotated by the texel's flow
+// and scrolled along it; xy the map's normal, z the b term.
+vec3 flowmap_normal(vec2 shift, float multiplier, float offset) {
+	vec4 flow = textureLod(flow_tex, cell_uv + shift, 0.0);
+	vec2 v = 64.0 * (flow_cell + cell_uv) * sqrt(1.01 - flow.z);
+	vec2 sc = flow.xy * 2.0 - 1.0;
+	// transpose(float2x2(sc.x, sc.y, -sc.y, sc.x)) * v
+	v = vec2(sc.x * v.x - sc.y * v.y, sc.y * v.x + sc.x * v.y);
+	vec2 scroll = vec2(multiplier * 0.001 * TIME * FLOW_TIME_SCALE * flow.w, 0.0);
+	vec2 uv = offset + v - scroll;
+	vec2 dx = dFdx(uv);
+	vec2 dy = dFdy(uv);
+	float mip = clamp(0.5 * log2(max(max(dot(dx, dx), dot(dy, dy)), 1e-12)), 0.0, 5.0);
+	vec2 scaled = offset + v * exp2(-mip) - scroll;
+	return vec3(textureLod(flow_normals_tex, scaled, mip).xy, flow.z);
+}
+
+// The flowmap's normal (Water.hlsl GetWaterNormal, FLOWMAP): four samples,
+// each half a flowmap texel apart, blended by where the point lies in its
+// texel; in the map's frame (z up), y south as layer_sample's.
+vec3 flow_normal(float depth_normals) {
+	vec2 shift = vec2(1.0 / 128.0);
+	vec2 mul = 1.0 - abs(fract(cell_uv * 64.0) * 2.0 - 1.0);
+	vec3 n0 = flowmap_normal(shift, 9.92, 0.0);
+	vec3 n1 = flowmap_normal(vec2(0.0, shift.y), 10.64, 0.27);
+	vec3 n2 = flowmap_normal(vec2(0.0), 8.0, 0.0);
+	vec3 n3 = flowmap_normal(vec2(shift.x, 0.0), 8.48, 0.62);
+	vec2 weighted = mul.y * (mul.x * n2.xy + (1.0 - mul.x) * n3.xy)
+			+ (1.0 - mul.y) * (mul.x * n1.xy + (1.0 - mul.x) * n0.xy);
+	vec2 denominator = sqrt(mul * mul + (1.0 - mul) * (1.0 - mul));
+	vec2 xy = (weighted - 0.5) / (denominator.x * denominator.y) * max(0.4, depth_normals);
+	// The game reads the map's y as north.
+	return vec3(xy.x, -xy.y, sqrt(max(1.0 - dot(xy, xy), 0.0)));
 }
 
 // One layer's normal map sample, in the map's frame (z up).
@@ -107,6 +163,10 @@ void fragment() {
 	vec3 n = vec3(0.0, 0.0, 1.0) + layer_0.w * (layer_sample(layer_0) + vec3(-1.0, -1.0, -2.0))
 			+ layer_1.w * (layer_sample(layer_1) - 1.0) + layer_2.w * (layer_sample(layer_2) - 1.0);
 	n = normalize(mix(vec3(0.0, 0.0, 1.0), normalize(n), depth.z));
+	if (flow_enabled) {
+		// Near the camera the flowmap's normal stands alone (distanceFactor 1).
+		n = normalize(flow_normal(depth.z));
+	}
 	vec3 world_normal = normalize(vec3(n.x, n.z, n.y));
 	vec3 normal = normalize((VIEW_MATRIX * vec4(world_normal, 0.0)).xyz);
 

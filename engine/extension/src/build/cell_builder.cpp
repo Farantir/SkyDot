@@ -576,7 +576,19 @@ godot::Node3D* CellBuilder::begin_exterior(std::int64_t world, std::int64_t x,
         }
     }
     if (water) {
-        const auto material = decorator_.water_material(data().water_ptr(data().water_type(w, cell)));
+        // The worldspace's plugin names the folder of its flowmaps.
+        std::string plugin;
+        if (const auto* plugins = world_fb()->plugins()) {
+            for (const auto* p : *plugins) {
+                const std::uint32_t mask = p->light() ? 0xFFFFF000u : 0xFF000000u;
+                if (p->name() != nullptr && (w & mask) == p->prefix()) {
+                    plugin = p->name()->str();
+                    break;
+                }
+            }
+        }
+        const auto material =
+            decorator_.cell_water_material(data().water_ptr(data().water_type(w, cell)), plugin, gx, gy);
         godot::Ref<godot::PlaneMesh> plane;
         plane.instantiate();
         const auto side = static_cast<float>(static_cast<double>(k_cell_units) * formats::k_metres_per_unit);

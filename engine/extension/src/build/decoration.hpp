@@ -94,6 +94,12 @@ public:
     /// The material of a water type (null for a default look), shared by
     /// placed water and the exterior's water plane.
     godot::Ref<godot::ShaderMaterial> water_material(const bethconv::pack::wfb::Water* water);
+    /// The material of exterior cell (x, y)'s water plane: the water type's,
+    /// with the cell's flowmap (textures/water/<plugin>/flow.X.Y.dds, the
+    /// worldspace's plugin) and the type's flow normals (WATR NAM4, else
+    /// textures/water/riverflow.dds) if the pack has them.
+    godot::Ref<godot::ShaderMaterial> cell_water_material(const bethconv::pack::wfb::Water* water,
+                                                          const std::string& plugin, int x, int y);
     /// Compile the material and water shader variants now. Returns how many.
     std::int64_t warm_up();
 

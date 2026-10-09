@@ -18,6 +18,9 @@
 #include <godot_cpp/classes/visual_instance3d.hpp>
 #include <godot_cpp/core/object.hpp>
 
+#include <algorithm>
+#include <cctype>
+#include <string>
 #include <string_view>
 
 using godot::Dictionary;
@@ -239,6 +242,39 @@ godot::Ref<godot::ShaderMaterial> Decorator::water_material(const wfb::Water* wa
         return resource(String::utf8(vpath.c_str()));
     };
     return water_.material(water, load);
+}
+
+godot::Ref<godot::ShaderMaterial> Decorator::cell_water_material(const wfb::Water* water,
+                                                                 const std::string& plugin, int x, int y) {
+    godot::Ref<godot::ShaderMaterial> base = water_material(water);
+    if (assets_ == nullptr || plugin.empty()) {
+        return base;
+    }
+    // Most river types (Update.esm's among them) name no flow normals; the
+    // pack's riverflow.dds stands in for the game's default.
+    std::string normals_path = "textures/water/riverflow.dds";
+    if (const auto* noise = water != nullptr ? water->noise() : nullptr;
+        noise != nullptr && noise->size() > 3 && noise->Get(3)->size() != 0) {
+        normals_path = noise->Get(3)->str();
+    }
+    std::string flow = "textures/water/" + plugin + "/flow." + std::to_string(x) + "." + std::to_string(y) + ".dds";
+    std::transform(flow.begin(), flow.end(), flow.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    if (!assets_->has(flow)) {
+        return base;
+    }
+    const godot::Ref<godot::Resource> flow_tex = resource(String::utf8(flow.c_str()));
+    const godot::Ref<godot::Resource> normals = resource(String::utf8(normals_path.c_str()));
+    if (flow_tex.is_null() || normals.is_null()) {
+        return base;
+    }
+    godot::Ref<godot::ShaderMaterial> out = base->duplicate();
+    out->set_shader_parameter("flow_enabled", true);
+    out->set_shader_parameter("flow_tex", flow_tex);
+    out->set_shader_parameter("flow_normals_tex", normals);
+    // The flowmap's rows run north to south.
+    out->set_shader_parameter("flow_cell", godot::Vector2(static_cast<float>(x), static_cast<float>(-(y + 1))));
+    return out;
 }
 
 std::int64_t Decorator::warm_up() {
