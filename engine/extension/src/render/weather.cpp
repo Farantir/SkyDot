@@ -139,9 +139,9 @@ godot::Camera3D* SkydotWeather::camera() const {
     return godot::Object::cast_to<godot::Camera3D>(godot::ObjectDB::get_instance(camera_));
 }
 
-godot::Color SkydotWeather::sunlight_of(std::int64_t weather) const {
+godot::Color SkydotWeather::effect_light_of(std::int64_t weather) const {
     const Weather* found = weather_ptr(weather);
-    return found != nullptr ? sky_of(found).sunlight : godot::Color(1, 1, 1);
+    return found != nullptr ? sky_of(found).effect_light : godot::Color(1, 1, 1);
 }
 
 void SkydotWeather::_ready() {
@@ -373,6 +373,7 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
     out.stars = colour(6);
     out.lower = colour(7);
     out.horizon = colour(8);
+    out.effect_light = colour(9);
     out.fog_far_color = colour(12);
     const auto weight = [](int time) { return time == 1 ? 1.0F : time == 3 ? 0.0F : 0.5F; };
     const float daylight = weight(from) + (weight(to) - weight(from)) * t;

@@ -84,9 +84,9 @@ public:
     /// layers).
     godot::Dictionary get_state() const;
 
-    /// `weather`'s sunlight colour at the running time of day (black if the
-    /// pack has no such weather).
-    godot::Color sunlight_of(std::int64_t weather) const;
+    /// `weather`'s Effect Lighting colour (NAM0 index 9) at the running time
+    /// of day (white if the pack has no such weather).
+    godot::Color effect_light_of(std::int64_t weather) const;
 
     void _ready() override;
     void _process(double delta) override;
@@ -102,8 +102,8 @@ private:
 
     /// One weather's sky at the current time.
     struct Sky {
-        godot::Color upper, lower, horizon, ambient, sunlight, sun, stars, fog_near_color,
-            fog_far_color;
+        godot::Color upper, lower, horizon, ambient, sunlight, sun, stars, effect_light,
+            fog_near_color, fog_far_color;
         float fog_near{}, fog_far{}, fog_power{1}, fog_max{1};
         /// DALC: x+, x-, y+, y-, z+, z- (the game's axes).
         std::array<godot::Color, 6> directional_ambient{};

@@ -68,13 +68,16 @@ real speed.
 ## Lights that follow a weather (`SkydotEmittance`)
 
 A light reference with XEMI (7,045 in Skyrim.esm) names a region, and the light
-takes the sunlight colour of that region's weather: its own colour times it,
-looked up twice a second at the running time of day. The vanilla street fires
-and window lights use the `FXWthrInvert*` weathers, whose sunlight is black by
-day and sunrise, 70% at sunset and white at night, so they burn from dusk and
-are off by day (the Whiterun brazier at 13:12 lit nothing in the game's frame;
-the converter dropped XEMI, so SkyDot lit the facade white). The cave
-weathers carry coloured sunlight and tint their lights. Without a running
+takes the Effect Lighting colour (NAM0 index 9) of that region's weather: its
+own colour times it, looked up twice a second at the running time of day. The
+vanilla street fires and window lights use the `FXWthrInvert*` weathers. Their
+sunlight is black by day and white at night, but that is not what the game
+uses: the Whiterun brazier's light, disabled and enabled in the game
+(`game-refs-2026-10-11`, `brazier_toggle.txt`), lights the facade by day as well
+as at night, dimmer and more orange than its own colour. FXWthrInvertLightsWhiterun's
+Effect Lighting (83/60/34 by day, 238/184/70 at night) reproduces what it adds
+by day within a few levels; at night SkyDot's is about 1.3x the game's. The
+light's own colour alone (no XEMI) was 3x too bright by day. Without a running
 weather (interiors) the light is left as it is. Needs a pack of world.fb
 format 12.
 

@@ -53,7 +53,7 @@ godot::Color SkydotEmittance::tint() {
     for (const auto& [id, chance] : weathers_) {
         // A list whose chances are all 0 still names its weathers.
         const double w = static_cast<double>(chance) + 1e-3;
-        const godot::Color c = weather->sunlight_of(id);
+        const godot::Color c = weather->effect_light_of(id);
         r += static_cast<double>(c.r) * w;
         g += static_cast<double>(c.g) * w;
         b += static_cast<double>(c.b) * w;

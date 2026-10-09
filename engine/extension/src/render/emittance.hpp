@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// `SkydotEmittance`: tints its parent light with the sunlight colour of a
-// region's weather, as a reference's XEMI asks (REFR XEMI names a REGN; the
-// pack lists it as a `LightEmitter`). Vanilla switches street fires and window
-// lights with the time of day this way: the region's only weather has a black
-// sunlight colour by day and a white one at night, so the light is dark by day
-// and burns at dusk (the Whiterun brazier, shot 2026-10-06). The cave weathers
-// carry coloured sunlight instead, which tints the light. The light is its own
-// colour times the weather's sunlight colour; with no weather running (an
-// interior) it stays as it is.
+// `SkydotEmittance`: tints its parent light with the Effect Lighting colour
+// (NAM0 index 9) of a region's weather, as a reference's XEMI asks (REFR XEMI
+// names a REGN; the pack lists it as a `LightEmitter`). The Whiterun street
+// fires name FXWthrInvertLightsWhiterun: dim orange by day (83/60/34), bright
+// orange at night (238/184/70). Its sunlight colour is black by day, but the
+// game's brazier light is on by day: disabling it there takes 13/6/0 off the
+// whole frame at 13:12 (34/21/10 off the wall next to it), and SkyDot's light
+// times Effect Lighting takes 16/8/1 (34/18/4); at 22:00 the game 20/14/2,
+// SkyDot 27/19/5 (game-refs-2026-10-11, brazier_toggle.txt). The light is its
+// own colour times that colour; with no weather running (an interior) it stays
+// as it is.
 #pragma once
 
 #include <godot_cpp/classes/node.hpp>
@@ -32,7 +34,7 @@ public:
     void configure(const godot::Color& gamma, const godot::PackedInt64Array& weathers,
                    const godot::PackedInt64Array& chances);
 
-    /// The tint now: the chance-weighted mean of the weathers' sunlight colour
+    /// The tint now: the chance-weighted mean of the weathers' Effect Lighting colour
     /// at the running time of day, or white if no weather runs.
     godot::Color tint();
 
