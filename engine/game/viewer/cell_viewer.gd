@@ -243,6 +243,8 @@ func _create_components() -> void:
 	_bridge.failed.connect(_fail)
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
 	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
+	if _settings.has_screenshot:
+		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"
 	_controls.capture_mouse()
 
 
