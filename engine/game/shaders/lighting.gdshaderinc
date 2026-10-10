@@ -60,9 +60,9 @@ uniform sampler2D soft_light_tex : filter_linear_mipmap, repeat_enable;
 uniform bool grass = false;
 // RunGrass.hlsl scales diffuse and ambient by a per-instance brightness
 // (InstanceData1.w) whose source is not known. Fitted to game refs (Riverwood
-// 4,-12 at 12.2 h: grass pixels 83/96/60 vs the game's 81/90/57; near view
-// 76/86/40 vs 73/80/38). With 1.0 the grass is about 2.5 times too bright.
-uniform float grass_brightness = 0.35;
+// 4,-12 at 12.2 h, with the land ambient: grass pixels 79/90/55 vs the game's
+// 81/90/57). With 1.0 the grass is about 3 times too bright.
+uniform float grass_brightness = 0.32;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 base_color = vec4(1.0);
 uniform vec3 specular_color = vec3(1.0);
@@ -310,8 +310,10 @@ void fragment() {
 	ALPHA = albedo.a;
 #endif
 	FOG = skydot_game_fog(VERTEX);
-	// Grass: RunGrass.hlsl's ambient is flat (the constant term).
-	EMISSION += ALBEDO * skydot_ambient(grass ? vec3(0.0) : (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// Grass: RunGrass.hlsl's ambient is one colour per draw, taken here as an
+	// up-facing land surface's (skydot_land_ambient).
+	EMISSION += ALBEDO * (grass ? skydot_land_ambient(vec3(0.0, 1.0, 0.0))
+							   : skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz));
 	EMISSION += vec3(snow_rim);
 	soft_rim_color = vec3(0.0);
 	if (use_soft_light || use_rim_light) {

@@ -57,5 +57,5 @@ void fragment() {
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.1;
 	FOG = skydot_game_fog(VERTEX);
-	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	EMISSION += ALBEDO * skydot_land_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }

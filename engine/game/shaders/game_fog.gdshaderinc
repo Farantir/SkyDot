@@ -27,6 +27,16 @@ vec3 skydot_ambient(vec3 world_normal) {
 	vec4 n = vec4(world_normal, 1.0);
 	return max(vec3(dot(skydot_ambient_r, n), dot(skydot_ambient_g, n), dot(skydot_ambient_b, n)), vec3(0.0));
 }
+// The land (terrain, LOD terrain) and grass take the vertical term the other
+// way round: an up-facing ground takes the z- colour, the bright sky-like one,
+// as the game's own matrix (SkyrimRemote `@ambient`) reads. Objects keep z+
+// (interior floors came out twice as bright with z-, see materials.cpp). Game
+// shots of bare ground (grass hidden): Riverwood and the tundra at 5,-5 are
+// pale yellow, z+ gives them a dim cyan ambient (0.15/0.30/0.33 at noon in
+// SkyrimClear) and a dark olive ground.
+vec3 skydot_land_ambient(vec3 world_normal) {
+	return skydot_ambient(vec3(world_normal.x, -world_normal.y, world_normal.z));
+}
 vec4 skydot_game_fog(vec3 view_vertex) {
 	float far = max(skydot_fog.y, skydot_fog.x + 0.001);
 	float ramp = pow(clamp((length(view_vertex) - skydot_fog.x) / (far - skydot_fog.x), 0.0, 1.0),

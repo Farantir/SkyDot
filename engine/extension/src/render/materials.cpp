@@ -278,6 +278,8 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
     // twice as bright as the game's (ref21 floor 43 vs 23, with this sign
     // 23), and all five interior and four of five exterior comparison shots
     // move away from the game (grid error 29.4 -> 46.1 and 75.3 -> 85.2).
+    // The land and grass do take z- for up (skydot_land_ambient in
+    // game_fog.gdshaderinc): game shots of bare ground say so.
     std::array<Color, 6> sides;
     const Variant meta = environment.is_valid() && environment->has_meta("skydot_directional_ambient")
                              ? environment->get_meta("skydot_directional_ambient")
