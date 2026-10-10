@@ -30,7 +30,7 @@ namespace {
 
 constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 constexpr float k_spacing = k_cell_units / 32.0F; // between height samples
-constexpr float k_grass_grid = 20.0F;             // iMinGrassSize
+constexpr float k_grass_grid = 20.0F;             // iMinGrassSize (Skyrim.ini default)
 constexpr float k_fade_start = 7000.0F;           // fGrassStartFadeDistance
 constexpr float k_fade_range = 1000.0F;
 
@@ -167,28 +167,51 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
     const auto cy = static_cast<std::uint32_t>(in.grid_y);
     std::unordered_map<const wfb::Grass*, std::vector<Transform3D>> instances;
     std::unordered_map<std::uint32_t, std::vector<const wfb::Grass*>> grasses;
-    const int points = static_cast<int>(k_cell_units / k_grass_grid);
-    for (int py = 0; py < points; ++py) {
-        for (int px = 0; px < points; ++px) {
-            const auto ux = static_cast<std::uint32_t>(px);
-            const auto uy = static_cast<std::uint32_t>(py);
-            const float gx = (static_cast<float>(px) + 0.5F) * k_grass_grid;
-            const float gy = (static_cast<float>(py) + 0.5F) * k_grass_grid;
-            const std::uint32_t ltex = texture_at(gx, gy, random01(cx, cy, ux * 4096 + uy, 1));
-            auto found = grasses.find(ltex);
-            if (found == grasses.end()) {
-                found = grasses.emplace(ltex, in.grasses_of(ltex)).first;
+    const auto grasses_on = [&](std::uint32_t ltex) -> const std::vector<const wfb::Grass*>& {
+        auto found = grasses.find(ltex);
+        if (found == grasses.end()) {
+            found = grasses.emplace(ltex, in.grasses_of(ltex)).first;
+        }
+        return found->second;
+    };
+    // Every grass of the cell's textures, in the order they first appear.
+    std::vector<const wfb::Grass*> kinds;
+    const auto add_kinds = [&](std::uint32_t ltex) {
+        for (const wfb::Grass* g : grasses_on(ltex)) {
+            if (std::find(kinds.begin(), kinds.end(), g) == kinds.end()) {
+                kinds.push_back(g);
             }
-            for (std::size_t g = 0; g < found->second.size(); ++g) {
-                const wfb::Grass* grass = found->second[g];
-                const auto salt = static_cast<std::uint32_t>(g) * 16 + 2;
-                if (random01(cx, cy, ux * 4096 + uy, salt) * 100.0F >= static_cast<float>(grass->density())) {
+        }
+    };
+    for (const Quadrant& quadrant : layers) {
+        add_kinds(quadrant.base);
+        for (const auto& layer : quadrant.layers) {
+            add_kinds(layer.first);
+        }
+    }
+    for (const wfb::Grass* grass : kinds) {
+        // Each grass on a grid of its own size, at least iMinGrassSize.
+        const float spacing = std::max(k_grass_grid, grass->bound_radius());
+        const auto points = static_cast<std::uint32_t>(k_cell_units / spacing);
+        const auto kind = static_cast<std::uint32_t>(grass->id());
+        for (std::uint32_t uy = 0; uy < points; ++uy) {
+            for (std::uint32_t ux = 0; ux < points; ++ux) {
+                const std::uint32_t point = ux * 4096 + uy;
+                const float gx = (static_cast<float>(ux) + 0.5F) * spacing;
+                const float gy = (static_cast<float>(uy) + 0.5F) * spacing;
+                const std::uint32_t ltex = texture_at(gx, gy, random01(cx, cy, point, kind * 16 + 1));
+                const auto& here = grasses_on(ltex);
+                if (std::find(here.begin(), here.end(), grass) == here.end()) {
+                    continue;
+                }
+                const std::uint32_t salt = kind * 16 + 2;
+                if (random01(cx, cy, point, salt) * 100.0F >= static_cast<float>(grass->density())) {
                     continue;
                 }
                 const float range = grass->position_range();
-                const float x = std::clamp(gx + (random01(cx, cy, ux * 4096 + uy, salt + 1) * 2 - 1) * range, 0.0F,
+                const float x = std::clamp(gx + (random01(cx, cy, point, salt + 1) * 2 - 1) * range, 0.0F,
                                            k_cell_units);
-                const float y = std::clamp(gy + (random01(cx, cy, ux * 4096 + uy, salt + 2) * 2 - 1) * range, 0.0F,
+                const float y = std::clamp(gy + (random01(cx, cy, point, salt + 2) * 2 - 1) * range, 0.0F,
                                            k_cell_units);
                 const float h = height_at(x, y);
                 const float dx = (height_at(x + 16, y) - height_at(x - 16, y)) / 32.0F;
@@ -203,10 +226,10 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
                     continue;
                 }
                 const float size = std::max(
-                    1.0F + (random01(cx, cy, ux * 4096 + uy, salt + 3) * 2 - 1) * grass->height_range(), 0.1F);
+                    1.0F + (random01(cx, cy, point, salt + 3) * 2 - 1) * grass->height_range(), 0.1F);
                 const bool uniform =
                     formats::has_flag(grass->flags(), wfb::GrassFlags::uniform_scaling);
-                const float yaw = random01(cx, cy, ux * 4096 + uy, salt + 4) * 2 * std::numbers::pi_v<float>;
+                const float yaw = random01(cx, cy, point, salt + 4) * 2 * std::numbers::pi_v<float>;
                 Basis basis = Basis(Vector3(0, 1, 0), yaw).scaled(uniform ? Vector3(size, size, size)
                                                                           : Vector3(1, size, 1));
                 if (formats::has_flag(grass->flags(), wfb::GrassFlags::fit_to_slope)) {

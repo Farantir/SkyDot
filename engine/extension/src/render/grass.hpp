@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Grass on exterior terrain from world.fb's `Grass` records (GRAS) and the
-// grass lists of land textures (LTEX GNAM), as the game grows it: points on
-// a grid over the cell (iMinGrassSize, 20 units), each grass of the land
-// texture showing there taking a point with its density as the chance,
+// grass lists of land textures (LTEX GNAM), as the game grows it: each grass
+// on a grid over the cell as fine as its size (the bound radius from its
+// OBND) but at least iMinGrassSize (20 units), taking a point where the land
+// texture showing there lists it, with its density as the chance,
 // within its slope and water distance limits, moved by its position range,
 // scaled by its height range, turned at random and, with "fit to slope",
 // leaned with the ground. The texture at a point is picked by the layers'
