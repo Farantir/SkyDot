@@ -117,6 +117,7 @@ func _set_up_sheet() -> void:
     server.global_shader_parameter_set("skydot_effect_light", Vector3(0.8, 0.75, 0.7))
     server.global_shader_parameter_set("skydot_sky_upper", Vector3(0.3, 0.5, 0.9))
     server.global_shader_parameter_set("skydot_sky_horizon", Vector3(0.7, 0.8, 0.9))
+    server.global_shader_parameter_set("skydot_sky_lower", Vector3(0.5, 0.6, 0.8))
 
 
 ## Shows `shader` on the `index`th object of a grid, as the kind of resource

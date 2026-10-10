@@ -53,11 +53,14 @@ uniform sampler2D flow_normals_tex : filter_linear_mipmap, repeat_enable;
 // on across cell borders.
 uniform vec2 flow_cell = vec2(0.0);
 uniform sampler2D depth_tex : hint_depth_texture;
-uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap;
+uniform sampler2D screen_tex : hint_screen_texture, filter_linear;
 global uniform vec3 skydot_sun_direction; // towards the sun, world
 global uniform vec3 skydot_sun_color;     // the game's, with the image space's scale; 0 inside
 global uniform vec3 skydot_sky_upper;
 global uniform vec3 skydot_sky_horizon;
+global uniform vec3 skydot_sky_lower;
+
+#include "res://shaders/sky_dome.gdshaderinc"
 
 // The sparkle's facet direction, the game's (-0.099, -0.099, 0.99) with
 // Skyrim's north as Godot's -Z.
@@ -133,11 +136,6 @@ vec3 layer_sample(vec4 layer) {
 	return texture(noise_tex, world_pos.xz / max(layer.x, 0.01) + wind).xyz * 2.0;
 }
 
-vec3 sky(vec3 direction) {
-	float y = max(direction.y, 0.0);
-	return mix(skydot_sky_horizon, skydot_sky_upper, clamp(y * y, 0.0, 1.0));
-}
-
 // The scene's view-space position under a screen point.
 vec3 scene_at(vec2 uv, mat4 inv_projection) {
 	float d = texture(depth_tex, uv).r;
@@ -190,24 +188,19 @@ void fragment() {
 	vec3 diffuse = mix(refracted * FRAMEBUFFER_RANGE_FIT, water, fogged);
 
 	// Reflection along a normal flattened by the reflection magnitude: the
-	// sky, or the scene where a short march through the depth buffer hits it.
+	// sky dome (the game's cubemap; its colour changes fastest just above the
+	// horizon, where the ripples' reflections land, so they show), or the
+	// scene where a short march through the depth buffer hits it.
 	vec3 reflect_normal = normalize(world_normal * reflection_magnitude + vec3(0.0, 1.0 - reflection_magnitude, 0.0));
 	vec3 world_reflected = reflect(world_view, reflect_normal);
 	vec3 reflected = (VIEW_MATRIX * vec4(world_reflected, 0.0)).xyz;
-	vec3 environment = sky(world_reflected) * FRAMEBUFFER_RANGE_FIT;
+	vec3 environment = sky_dome(world_reflected, skydot_sky_upper, skydot_sky_horizon, skydot_sky_lower) * FRAMEBUFFER_RANGE_FIT;
 	vec3 p = VERTEX;
 	float step_length = max(0.2, length(VERTEX) * 0.02);
 	for (int i = 0; i < 24; ++i) {
 		p += reflected * step_length;
 		vec4 clip = PROJECTION_MATRIX * vec4(p, 1.0);
 		vec2 uv = clip.xy / clip.w * 0.5 + 0.5;
-		if (uv.y < 0.0 && uv.x >= 0.0 && uv.x <= 1.0 && p.z <= -0.05) {
-			// Left through the top: what the frame shows along its top edge
-			// above stands in for the game's cubemap (a gorge's cliff, else
-			// the sky), blurred.
-			environment = textureLod(screen_tex, vec2(uv.x, 0.0), 4.0).rgb * FRAMEBUFFER_RANGE_FIT;
-			break;
-		}
 		if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || p.z > -0.05) {
 			break;
 		}

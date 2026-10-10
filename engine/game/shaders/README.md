@@ -46,6 +46,7 @@ in the `.pck` (see "Exports"). Restart to see an edit.
 | `lod_terrain`, `lod_object`, `lod_water`, `lod_tree` `.gdshader` | LOD terrain, objects, water, trees | `SkydotLod`, `lod.cpp` |
 | `lod_mask.gdshaderinc` | discard over loaded cells, included by the LOD shaders | the LOD shaders |
 | `sky.gdshader`, `clouds.gdshader`, `precipitation.gdshader` | weather | `SkydotWeather`, `weather.cpp` |
+| `sky_dome.gdshaderinc` | the sky dome's colour along a direction, included by the sky and by water (its reflection) | the shaders |
 | `sprite_add.gdshader`, `sprite_mix.gdshader`, `sprite.gdshaderinc` | stars, sun and moons: two blend modes of one body | `SkydotWeather`, `weather.cpp` |
 | `far_plane.gdshaderinc` | sky objects sit just in front of the far plane, included by clouds and sprites | the shaders |
 | `particles_process.gdshader` | the process shader of every particle system | `SkydotMaterials::particles_process_shader()` |

@@ -223,7 +223,7 @@ void SkydotMaterials::ensure_fog_globals() {
                                         godot::Vector3());
         rs->global_shader_parameter_add("skydot_fog_far_color", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3,
                                         godot::Vector3());
-        for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_effect_light"}) {
+        for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
             rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3, godot::Vector3());
         }
         rs->global_shader_parameter_add("skydot_foliage_bias", godot::RenderingServer::GLOBAL_VAR_TYPE_FLOAT,
@@ -259,7 +259,7 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
     rs->global_shader_parameter_set("skydot_fog_far_color", vec(far));
     // The sun and sky as water reflects them, and the light lit effects
     // take (SkydotWeather sets these metas; inside there is no sun).
-    for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_effect_light"}) {
+    for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
         const godot::StringName key = name;
         const Variant v = environment.is_valid() && environment->has_meta(key) ? environment->get_meta(key) : Variant();
         rs->global_shader_parameter_set(key, v.get_type() == Variant::VECTOR3 ? static_cast<godot::Vector3>(v)
