@@ -857,7 +857,11 @@ void SkydotWeather::update_sky_objects() {
     time_keys(from_key, to_key, key_t);
     const auto weight = [](int time) { return time == 1 ? 1.0F : time == 3 ? 0.0F : 0.5F; };
     const float dark = 1.0F - (weight(from_key) + (weight(to_key) - weight(from_key)) * key_t);
-    const Color stars = a.stars.lerp(b.stars, t) * (dark * dark);
+    // Stars, sun and glare are scaled as the sky too (VParams in Sky.hlsl,
+    // see the moons below): the stars of the Masser view at 22 h came out
+    // 1.16x the game's peak brightness without it (game-refs-2026-10-10/
+    // masser22_clear, 2026-10-10).
+    const Color stars = a.stars.lerp(b.stars, t) * (dark * dark) * k_sky_fit;
     for (const auto& m : stars_) {
         m->set_shader_parameter("tint", shader_rgba(Color(stars.r, stars.g, stars.b, 1.0F)));
     }
@@ -867,10 +871,12 @@ void SkydotWeather::update_sky_objects() {
     if (day) {
         place(sun_, towards, 4.0F);
         place(glare_, towards, 30.0F);
-        sun_material_->set_shader_parameter("tint", shader_rgba(a.sun.lerp(b.sun, t)));
+        Color sun = a.sun.lerp(b.sun, t) * k_sky_fit;
+        sun.a = 1.0F;
+        sun_material_->set_shader_parameter("tint", shader_rgba(sun));
         const float glare_a = from != nullptr ? from->sun_glare() : 0.0F;
         const float glare_b = to != nullptr ? to->sun_glare() : 0.0F;
-        Color glare = a.sun.lerp(b.sun, t);
+        Color glare = sun;
         glare.a = glare_a + (glare_b - glare_a) * t;
         glare_material_->set_shader_parameter("tint", shader_rgba(glare));
     }
