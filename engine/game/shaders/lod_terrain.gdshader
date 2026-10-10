@@ -13,10 +13,14 @@
  * baked from the full one.
  *
  * Detail: the game lays textures/terrain/noise.dds (grey, mean 0.215, tiling) over
- * terrain LOD. How the game weights and tiles it is not known here, so it is a
- * mean-preserving modulation of the albedo with chosen constants: noise_strength
- * of its deviation from noise_mean (the texture's measured mean), one tile per
- * noise_tile_metres of ground. Mipmaps average it out with distance.
+ * terrain LOD and darkens it on the way (Lighting.hlsl LODLANDNOISE,
+ * GetLodLandBlendParameter / GetLodLandBlendMultiplier): albedo x
+ * 0.8333 * (b * (0.37 - noise) + noise) + 0.37, noise sampled at the quad's
+ * UV x 3, b = 0.8 x smoothstep of the albedo's brightness (snow). On dark land
+ * that is about 0.55 on average, on snow about 0.65: why the LOD textures are
+ * brighter than the full terrain's. Measured 2026-10-10 on game shot
+ * lodnovl_171528 (volumetric lighting off): far plain 114/126/115 -> 82/101/101,
+ * game 78/90/81.
  *
  * A whole shader that SkydotLod loads as it is. It discards over loaded cells
  * (lod_mask.gdshaderinc), is lit by the game's ambient and has its fog (game_fog.gdshaderinc).
@@ -32,9 +36,6 @@ uniform sampler2D normal_tex : filter_linear_mipmap, repeat_disable;
 uniform bool has_normal = false;
 uniform sampler2D noise_tex : filter_linear_mipmap, repeat_enable;
 uniform bool has_noise = false;
-uniform float noise_mean = 0.215;
-uniform float noise_strength = 0.5;
-uniform float noise_tile_metres = 128.0;
 
 void vertex() {
 	skydot_world = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -46,8 +47,12 @@ void fragment() {
 	}
 	ALBEDO = texture(albedo_tex, UV).rgb;
 	if (has_noise) {
-		float noise = texture(noise_tex, skydot_world.xz / noise_tile_metres).r;
-		ALBEDO *= 1.0 + noise_strength * (noise / noise_mean - 1.0);
+		// Lighting.hlsl LODLANDNOISE: GetLodLandBlendParameter and
+		// GetLodLandBlendMultiplier, the noise sampled at the quad's UV x 3.
+		float noise = texture(noise_tex, UV * 3.0).r;
+		float bright = clamp(1.6666666 * (dot(ALBEDO, vec3(0.55)) - 0.4), 0.0, 1.0);
+		bright = bright * bright * (3.0 - 2.0 * bright) * 0.8;
+		ALBEDO *= 0.8333333 * (bright * (0.37 - noise) + noise) + 0.37;
 	}
 	if (has_normal) {
 		vec3 t = texture(normal_tex, UV).rgb * 2.0 - 1.0;
