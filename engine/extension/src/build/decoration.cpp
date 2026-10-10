@@ -19,9 +19,11 @@
 #include <godot_cpp/core/object.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using godot::Dictionary;
 using godot::String;
@@ -95,6 +97,7 @@ struct Decorator::Steps {
         }
     }
     static void water(Decorator& self, godot::Node3D* model, Decoration& d);
+    static void alternate_textures(Decorator& self, godot::Node3D* model, Decoration& d);
     static void directional(Decorator& self, godot::Node3D* model, Decoration& d);
     static void addons(Decorator& self, godot::Node3D* node, Decoration& d) {
         if (self.options_.skyrim_materials && self.options_.effects) {
@@ -158,6 +161,77 @@ void Decorator::Steps::water(Decorator& self, godot::Node3D* model, Decoration& 
     }
 }
 
+/// A shape name as Godot keeps it as a node name, lower case.
+std::string node_key(std::string_view name) {
+    std::string out(name);
+    for (char& c : out) {
+        if (c == '.' || c == ':' || c == '@' || c == '/' || c == '"' || c == '%') {
+            c = '_';
+        }
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+/// The mesh instances of a model in tree order, which is the NIF's shape order.
+void collect_instances(godot::Node* node, std::vector<godot::MeshInstance3D*>& out) {
+    if (auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(node)) {
+        out.push_back(mesh);
+    }
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        collect_instances(node->get_child(i), out);
+    }
+}
+
+/// Shapes the base record's MODS names get its texture set's textures (a
+/// banner's cloth: Whiterun's banners share the plain banner's model). The
+/// shape is found by name, else by its 3D index.
+void Decorator::Steps::alternate_textures(Decorator& self, godot::Node3D* model, Decoration& d) {
+    if (!self.options_.skyrim_materials || d.base == nullptr) {
+        return;
+    }
+    const auto* alternates = d.base->alternate_textures();
+    if (alternates == nullptr || alternates->size() == 0) {
+        return;
+    }
+    std::vector<godot::MeshInstance3D*> meshes;
+    collect_instances(model, meshes);
+    for (const auto* alt : *alternates) {
+        const auto* paths = alt->textures();
+        if (paths == nullptr) {
+            continue;
+        }
+        std::array<std::string, 8> textures;
+        for (std::size_t i = 0; i < textures.size() && i < paths->size(); ++i) {
+            if (const auto* path = paths->Get(static_cast<flatbuffers::uoffset_t>(i)); path != nullptr) {
+                textures[i] = path->str();
+            }
+        }
+        const std::string wanted = node_key(alt->shape() != nullptr ? alt->shape()->str() : std::string());
+        godot::MeshInstance3D* target = nullptr;
+        for (auto* mesh : meshes) {
+            if (node_key(utf8(String(mesh->get_name()))) == wanted) {
+                target = mesh;
+                break;
+            }
+        }
+        if (target == nullptr && alt->index() >= 0 && static_cast<std::size_t>(alt->index()) < meshes.size()) {
+            target = meshes[static_cast<std::size_t>(alt->index())];
+        }
+        if (target == nullptr || target->get_mesh().is_null()) {
+            continue;
+        }
+        for (int s = 0; s < target->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::ShaderMaterial> current = target->get_surface_override_material(s);
+            const godot::Ref<godot::ShaderMaterial> replaced = self.materials().alternate(current, textures);
+            if (replaced != current) {
+                target->set_surface_override_material(s, replaced);
+                ++d.stats.materials;
+            }
+        }
+    }
+}
+
 /// Surfaces of a placed model with the Projected UV flag get its base's
 /// directional material (STAT DNAM), if it has one.
 void Decorator::Steps::directional(Decorator& self, godot::Node3D* model, Decoration& d) {
@@ -206,6 +280,7 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
         {Steps::draw_order, true, true},
         {Steps::skyrim_materials, true, true},
         {Steps::water, false, false},
+        {Steps::alternate_textures, false, true},
         {Steps::directional, false, true},
         {Steps::addons, false, false},
         {Steps::billboards, true, true},

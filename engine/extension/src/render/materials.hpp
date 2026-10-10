@@ -31,6 +31,7 @@
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -87,6 +88,12 @@ public:
     /// `key`) if its shape has the Projected UV flag; else `material`.
     godot::Ref<godot::ShaderMaterial> projected(const godot::Ref<godot::ShaderMaterial>& material,
                                                 std::uint32_t key, const ProjectedMaterial& with);
+
+    /// `material` (converted) built again with the non-empty slots of
+    /// `textures` (a texture set's TX00..TX07, virtual paths) in place of its
+    /// own; shared by every caller with the same material and set.
+    godot::Ref<godot::ShaderMaterial> alternate(const godot::Ref<godot::ShaderMaterial>& material,
+                                                const std::array<std::string, 8>& textures);
 
     /// A copy of a converted alpha-tested lighting material (grass) that is
     /// drawn with the transparent surfaces, after the water, so the water
@@ -148,6 +155,9 @@ public:
     static godot::Color game_color(const godot::Color& gamma);
 
 private:
+    /// The conversion itself; `replaced` (a texture set's paths) overrides slots.
+    godot::Ref<godot::Material> build(const godot::Ref<godot::Material>& source,
+                                      const std::array<std::string, 8>* replaced);
     godot::Ref<godot::Shader> shader_for(const std::string& code);
     void configure_effect(const godot::Ref<godot::ShaderMaterial>& out,
                           const godot::Dictionary& extras, bool double_sided, bool particles,
@@ -158,6 +168,7 @@ private:
     std::mutex projected_mutex_;
     std::map<std::pair<std::uint64_t, std::uint32_t>, godot::Ref<godot::ShaderMaterial>> projected_;
     std::unordered_map<std::uint64_t, godot::Ref<godot::Material>> materials_;
+    std::unordered_map<std::string, godot::Ref<godot::ShaderMaterial>> alternates_;
     std::unordered_map<std::string, godot::Ref<godot::Shader>> shaders_;
     std::vector<godot::Ref<godot::ShaderMaterial>> warm_;
     std::unordered_map<std::string, godot::Ref<godot::Texture>> textures_;

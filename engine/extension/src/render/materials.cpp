@@ -361,18 +361,53 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
     if (auto it = materials_.find(id); it != materials_.end()) {
         return it->second;
     }
+    Ref<godot::Material> result = build(source, nullptr);
+    materials_.emplace(id, result);
+    return result;
+}
+
+Ref<godot::ShaderMaterial> SkydotMaterials::alternate(const Ref<godot::ShaderMaterial>& material,
+                                                      const std::array<std::string, 8>& textures) {
+    if (material.is_null() || !material->has_meta("skydot_source")) {
+        return material;
+    }
+    const Ref<godot::Material> source = material->get_meta("skydot_source");
+    if (source.is_null()) {
+        return material;
+    }
+    std::string key = std::to_string(source->get_instance_id());
+    for (const std::string& path : textures) {
+        key += '|';
+        key += path;
+    }
+    const std::scoped_lock lock(projected_mutex_);
+    if (auto it = alternates_.find(key); it != alternates_.end()) {
+        return it->second;
+    }
+    Ref<godot::ShaderMaterial> out = build(source, &textures);
+    alternates_.emplace(key, out);
+    return out;
+}
+
+Ref<godot::Material> SkydotMaterials::build(const Ref<godot::Material>& source,
+                                            const std::array<std::string, 8>* replaced) {
+    // A texture set's non-empty slots stand in for the source's own.
+    const auto slot_path = [replaced](const Dictionary& extras, int slot) {
+        if (replaced != nullptr && !(*replaced)[static_cast<std::size_t>(slot)].empty()) {
+            return String::utf8((*replaced)[static_cast<std::size_t>(slot)].c_str());
+        }
+        return skydot::slot_path(extras, slot);
+    };
 
     Ref<godot::Material> result;
     const Ref<godot::BaseMaterial3D> base = source;
     const Variant extras_meta =
         source->has_meta("extras") ? source->get_meta("extras") : Variant();
     if (base.is_null() || extras_meta.get_type() != Variant::DICTIONARY) {
-        materials_.emplace(id, result);
         return result;
     }
     const Variant block = Dictionary(extras_meta).get("bethconv", Variant());
     if (block.get_type() != Variant::DICTIONARY) {
-        materials_.emplace(id, result);
         return result;
     }
     const Dictionary extras = block;
@@ -548,8 +583,8 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         out->set_shader_parameter("alpha_cutoff", base->get_alpha_scissor_threshold());
     }
 
+    out->set_meta("skydot_source", source);
     result = out;
-    materials_.emplace(id, result);
     return result;
 }
 
