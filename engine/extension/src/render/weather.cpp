@@ -61,6 +61,16 @@ constexpr float k_sun_fit = 0.75F;
 constexpr float k_volumetric_scale = 0.134F;
 constexpr float k_ambient_fit = 0.7F;
 constexpr float k_sky_fit = 0.86F;
+// Fog colours as the game shows them: the weather's fog near/far colours x
+// k_fog_fit on a sunny weather's image space (HNAM sunlight scale 2.8 and
+// more), 1 on a dull one (scale 1: fog, overcast, rain), linear in between.
+// Fitted 2026-10-10 on game shots of the four LOD cameras and the tundra
+// (comparison-renders/game-refs-2026-10-17, volumetric lighting on and off:
+// distant land and mountains 20-40 levels too bright) against the weather
+// grid, where a flat 0.78 made SkyrimFog and overcast rain 6 levels darker
+// (they are already too dark). Likely the same missing exposure as
+// k_sun_fit / k_ambient_fit / k_sky_fit, all fitted on sunny weathers.
+constexpr float k_fog_fit = 0.78F;
 
 Ref<godot::ShaderMaterial> material_from(const Ref<godot::Shader>& shader, int priority) {
     Ref<godot::ShaderMaterial> m;
@@ -747,17 +757,19 @@ void SkydotWeather::update_sky(double delta) {
         static_cast<float>(static_cast<double>(std::max(fog_far, fog_near + 1.0F)) * SkydotWorld::UNIT_SCALE));
     environment_->set_fog_depth_curve(a.fog_power + (b.fog_power - a.fog_power) * t);
     environment_->set_fog_density(std::clamp(a.fog_max + (b.fog_max - a.fog_max) * t, 0.0F, 1.0F));
-    environment_->set_fog_light_color(mix(a.fog_far_color, b.fog_far_color));
+    // The image space's sunlight scale (HNAM) brightens the sun against
+    // the ambient.
+    const auto sun_scale = [](const Sky& s) { return s.has_image_space ? s.image_space[6] : 1.0F; };
+    const float sunlight_scale = sun_scale(a) + (sun_scale(b) - sun_scale(a)) * t;
+    const float fog_fit = 1.0F + (k_fog_fit - 1.0F) * std::clamp((sunlight_scale - 1.0F) / 1.8F, 0.0F, 1.0F);
+    environment_->set_fog_light_color(mix(a.fog_far_color, b.fog_far_color) * fog_fit);
     // The near colour, for our shaders' fog (SkydotMaterials::sync_fog).
-    environment_->set_meta("skydot_fog_near_color", mix(a.fog_near_color, b.fog_near_color));
+    environment_->set_meta("skydot_fog_near_color", mix(a.fog_near_color, b.fog_near_color) * fog_fit);
 
     const SunPath sun_now = sun();
     const bool day = sun_now.up;
     const Vector3 towards = sun_now.light;
-    // The image space's sunlight scale (HNAM) brightens the sun against
-    // the ambient.
-    const auto sun_scale = [](const Sky& s) { return s.has_image_space ? s.image_space[6] : 1.0F; };
-    const float scale = (sun_scale(a) + (sun_scale(b) - sun_scale(a)) * t) * k_sun_fit;
+    const float scale = sunlight_scale * k_sun_fit;
     SkydotMaterials::set_game_light(light_, mix(a.sunlight, b.sunlight) * scale);
     environment_->set_meta("skydot_sun_direction", towards.normalized());
     environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
