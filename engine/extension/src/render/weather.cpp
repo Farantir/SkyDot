@@ -883,8 +883,11 @@ void SkydotWeather::update_sky_objects() {
     const char* names[2] = {"masser", "secunda"};
     const MoonParams* params[2] = {&k_masser, &k_secunda};
     const double game_hours = static_cast<double>(day_) * 24.0 + hour_;
-    Color moon = a.moon.lerp(b.moon, t);
-    Color shadow = a.upper.lerp(b.upper, t);
+    // Both scaled as the sky: Sky.hlsl's VParams multiplies every textured
+    // sky object, the moons too (Masser at 22 h came out 1.15x the game's
+    // without it, 2026-10-10), and the shadow disc has to match the dome.
+    Color moon = a.moon.lerp(b.moon, t) * k_sky_fit;
+    Color shadow = a.upper.lerp(b.upper, t) * k_sky_fit;
     // The shadow fades in over 2.5 hours after the sun disc sets and out
     // before it rises (SkyrimClimate, evening measured: alpha 0 at 18:30,
     // 0.2 at 19:00, 0.8 at 20:30, 1 at 21:00; the morning assumed mirrored).
