@@ -76,7 +76,7 @@ private:
     godot::Ref<godot::ShaderMaterial> material_for(const std::vector<std::array<std::string, 2>>& layers);
 
     std::shared_ptr<AssetCache> assets_;
-    float tiling_{8.0F};
+    float tiling_{24.0F};
     bool collision_{true};
     std::unordered_map<int, godot::Ref<godot::Shader>> shaders_;
     std::unordered_map<std::string, godot::Ref<godot::Texture>> textures_;

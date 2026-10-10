@@ -24,8 +24,11 @@ struct BuildOptions {
     bool collision{true};
     /// Navmeshes as navigation regions.
     bool navigation{true};
-    /// Land texture repeats per cell side.
-    double terrain_tiling{8.0};
+    /// Land texture repeats per cell side. 24 as in the game: Lighting.hlsl
+    /// maps the land UV onto a 4-cell LOD texture with a factor of 1/96, and
+    /// top-down game shots of Riverwood match 24 (flower spots per area and
+    /// their size; 8 drew each texture three times too large).
+    double terrain_tiling{24.0};
 };
 
 } // namespace skydot

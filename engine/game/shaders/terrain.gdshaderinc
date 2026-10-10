@@ -15,7 +15,7 @@ render_mode cull_back, diffuse_lambert, ambient_light_disabled;
 
 // Game-style layering: each additional layer is mixed over the result by its
 // per-vertex opacity (CUSTOM0 holds layers 1-4, CUSTOM1 layers 5-6).
-uniform float tiling = 8.0;
+uniform float tiling = 24.0;
 varying vec4 weights_a;
 varying vec2 weights_b;
 uniform sampler2D albedo_0 : filter_linear_mipmap_anisotropic, repeat_enable;
