@@ -353,6 +353,9 @@ struct Model {
     std::vector<Material> materials;
     std::vector<Skin> skins;
     std::vector<CollisionShape> collision;
+    /// Trigger volumes (bhkSimpleShapePhantom): box or sphere shapes only,
+    /// same units and frame as `collision`; `layer` is the phantom's filter.
+    std::vector<CollisionShape> phantoms;
     std::vector<AnimationClip> animations;
     std::vector<ParticleSystem> particles;
 

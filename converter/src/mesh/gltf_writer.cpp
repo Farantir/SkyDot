@@ -551,9 +551,10 @@ private:
     /// Collision for the node that owns the bhkCollisionObject, not one
     /// model-level block, so multi-body NIFs (ragdolls: one per limb) keep
     /// their per-node transforms.
-    [[nodiscard]] nlohmann::json collision_json_for(std::string_view node_name) const {
+    [[nodiscard]] nlohmann::json collision_json_for(std::string_view node_name,
+                                                    bool phantoms = false) const {
         nlohmann::json shapes = nlohmann::json::array();
-        for (const CollisionShape& shape : model_.collision) {
+        for (const CollisionShape& shape : phantoms ? model_.phantoms : model_.collision) {
             if (shape.target_node != node_name) {
                 continue;
             }
@@ -876,6 +877,10 @@ private:
                 nlohmann::json collision = collision_json_for(src.name);
                 if (!collision.empty()) {
                     ours["collision"] = std::move(collision);
+                }
+                nlohmann::json phantoms = collision_json_for(src.name, true);
+                if (!phantoms.empty()) {
+                    ours["phantoms"] = std::move(phantoms);
                 }
                 if (src.billboard_mode.has_value()) {
                     ours["billboard"] = *src.billboard_mode;

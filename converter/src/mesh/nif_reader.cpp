@@ -607,6 +607,11 @@ private:
         if (collision == nullptr) {
             return;
         }
+        if (auto* phantom =
+                nif_.GetHeader().GetBlock<nifly::bhkSimpleShapePhantom>(collision->bodyRef)) {
+            read_phantom(*phantom, node_name);
+            return;
+        }
         auto* body = nif_.GetHeader().GetBlock<nifly::bhkRigidBody>(collision->bodyRef);
         if (body == nullptr) {
             return;
@@ -631,6 +636,29 @@ private:
             ctx.transform.rotation = quat_to_matrix(body->rotation);
         }
         read_collision_shape(shape, ctx, 0);
+    }
+
+    /// A trigger volume: the phantom's own transform and its box or sphere,
+    /// seen through transform shapes. Other shapes are skipped with a warning.
+    void read_phantom(const nifly::bhkSimpleShapePhantom& phantom, const std::string& node_name) {
+        CollisionContext ctx;
+        ctx.node_name = node_name;
+        ctx.layer = phantom.collisionFilter.layer;
+        ctx.transform = mat_transform_of(phantom.transform);
+        const std::size_t before = model_.collision.size();
+        read_collision_shape(nif_.GetHeader().GetBlock<nifly::bhkShape>(phantom.shapeRef), ctx,
+                             0);
+        // The shared reader appends to `collision`; move the leaves over.
+        for (std::size_t i = before; i < model_.collision.size(); ++i) {
+            CollisionShape& shape = model_.collision[i];
+            if (shape.kind == CollisionKind::box || shape.kind == CollisionKind::sphere) {
+                model_.phantoms.push_back(std::move(shape));
+            } else {
+                model_.warnings.push_back("node '" + node_name + "': phantom shape " +
+                                          shape.block_name + " not supported as a trigger");
+            }
+        }
+        model_.collision.resize(before);
     }
 
     struct CollisionContext {

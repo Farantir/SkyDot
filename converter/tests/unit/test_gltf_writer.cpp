@@ -517,6 +517,41 @@ TEST_CASE("collision keeps the rigid body's layer, quality, mass and friction",
     CHECK_THAT(shape["radius"].get<double>(), Catch::Matchers::WithinAbs(0.05, 1e-6));
 }
 
+TEST_CASE("a phantom becomes a trigger volume, not collision", "[mesh][nif][collision]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    auto box = std::make_unique<nifly::bhkBoxShape>();
+    box->dimensions = nifly::Vector3(1.0f, 2.0f, 0.5f);
+    builder.add_phantom(std::move(box), 15, nifly::Vector3(1.0f, 0.0f, 0.0f),
+                        nifly::Vector3(0.0f, 3.0f, 0.0f));
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "plate.nif");
+    REQUIRE(model.has_value());
+    CHECK(model->collision.empty());
+    REQUIRE(model->phantoms.size() == 1);
+    const auto& p = model->phantoms[0];
+    CHECK(p.kind == bethconv::mesh::CollisionKind::box);
+    CHECK(p.layer == 15);
+    CHECK_THAT(p.transform.translation.x, Catch::Matchers::WithinAbs(1.0, 1e-6));
+    CHECK_THAT(p.transform.translation.y, Catch::Matchers::WithinAbs(3.0, 1e-6));
+    CHECK_THAT(p.half_extents.y, Catch::Matchers::WithinAbs(2.0, 1e-6));
+
+    auto glb = bethconv::mesh::write_glb(*model, {});
+    REQUIRE(glb.has_value());
+    bool found = false;
+    for (const auto& node : json_chunk(*glb)["nodes"]) {
+        if (node.contains("extras") && node["extras"]["bethconv"].contains("phantoms")) {
+            const auto& list = node["extras"]["bethconv"]["phantoms"];
+            REQUIRE(list.size() == 1);
+            CHECK(list[0]["kind"] == "box");
+            CHECK(list[0]["layer"] == 15);
+            CHECK_FALSE(node["extras"]["bethconv"].contains("collision"));
+            found = true;
+        }
+    }
+    CHECK(found);
+}
+
 TEST_CASE("a transform shape inside a bhkRigidBodyT adds to the body's transform",
           "[mesh][nif][collision]") {
     bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);

@@ -182,6 +182,24 @@ int cmd_mesh(const std::vector<std::filesystem::path>& sources,
                     print_bounds(shape.vertices, bethconv::mesh::k_havok_scale);
                 }
             }
+            for (const auto& phantom : model->phantoms) {
+                const auto u = [](float v) {
+                    return static_cast<double>(v * bethconv::mesh::k_havok_scale);
+                };
+                const auto& t = phantom.transform.translation;
+                if (phantom.kind == bethconv::mesh::CollisionKind::box) {
+                    std::printf("    phantom box node='%s' layer=%u at (%.1f %.1f %.1f) "
+                                "half (%.1f %.1f %.1f)\n",
+                                phantom.target_node.c_str(), static_cast<unsigned>(phantom.layer),
+                                u(t.x), u(t.y), u(t.z), u(phantom.half_extents.x),
+                                u(phantom.half_extents.y), u(phantom.half_extents.z));
+                } else {
+                    std::printf("    phantom sphere node='%s' layer=%u at (%.1f %.1f %.1f) "
+                                "radius %.1f\n",
+                                phantom.target_node.c_str(), static_cast<unsigned>(phantom.layer),
+                                u(t.x), u(t.y), u(t.z), u(phantom.radius));
+                }
+            }
             for (const auto& clip : model->animations) {
                 std::printf("    clip '%s'%s %.2f-%.2fs x%.2f, %zu channels\n",
                             clip.name.c_str(), clip.autoplay ? " autoplay" : "",

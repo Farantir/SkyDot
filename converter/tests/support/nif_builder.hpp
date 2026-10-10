@@ -174,6 +174,35 @@ public:
         return raw;
     }
 
+    /// Give `target` (or the root) a bhkSPCollisionObject whose bhkSimpleShapePhantom
+    /// (filter `layer`, translated by `phantom_offset`, Havok units) holds `shape`
+    /// behind a bhkTransformShape translated by `offset`.
+    template <typename ShapeType>
+    void add_phantom(std::unique_ptr<ShapeType> shape, std::uint8_t layer,
+                     nifly::Vector3 phantom_offset, nifly::Vector3 offset,
+                     nifly::NiAVObject* target = nullptr) {
+        auto& header = nif_.GetHeader();
+        std::uint32_t shape_index = header.AddBlock(std::move(shape));
+        auto transform = std::make_unique<nifly::bhkTransformShape>();
+        transform->shapeRef.index = shape_index;
+        transform->xform[3] = offset.x;
+        transform->xform[7] = offset.y;
+        transform->xform[11] = offset.z;
+        shape_index = header.AddBlock(std::move(transform));
+        auto phantom = std::make_unique<nifly::bhkSimpleShapePhantom>();
+        phantom->shapeRef.index = shape_index;
+        phantom->collisionFilter.layer = layer;
+        phantom->transform[3] = phantom_offset.x;
+        phantom->transform[7] = phantom_offset.y;
+        phantom->transform[11] = phantom_offset.z;
+        const auto phantom_index = header.AddBlock(std::move(phantom));
+        nifly::NiAVObject* owner = target != nullptr ? target : nif_.GetRootNode();
+        auto object = std::make_unique<nifly::bhkSPCollisionObject>();
+        object->bodyRef.index = phantom_index;
+        object->targetRef.index = nif_.GetBlockID(owner);
+        owner->collisionRef.index = header.AddBlock(std::move(object));
+    }
+
     /// Skin every vertex of `shape` fully to `bone`, with the transforms a
     /// Bethesda exporter writes: global-to-skin is the inverse of the shape's
     /// placement, skin-to-bone the inverse of the bone's composed with the

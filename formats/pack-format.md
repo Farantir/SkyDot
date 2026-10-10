@@ -329,7 +329,7 @@ motion had eased in and out at every key), `mesh/16` `hair_tint_color` and
 `draw_order` on the children of a BSOrderedNode (node extras), `mesh/18`
 water shaders named `BSWaterShaderProperty` rather than `other`, `mesh/19`
 `addon` (the BSValueNode's value) on nodes named `AddOnNode...` (node extras;
-candle flames hang there); the list in
+candle flames hang there), `mesh/22` `extras.bethconv.phantoms` (trigger volumes, below); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 
@@ -486,6 +486,15 @@ often says `5` (box stabilized); `quality_type` is the one to read. Vanilla SE:
 static architecture is layer 1 with quality 0, animated statics layer 2 with
 quality 1, clutter layer 4 with quality 4. (nif.xml numbers the quality from 1
 for fixed; the data does not fit that.)
+
+### Phantom trigger volumes in meshes
+
+A node whose `bhkSPCollisionObject` points at a `bhkSimpleShapePhantom` (pressure
+plates, trigger boxes) carries `extras.bethconv.phantoms` instead of
+`collision`: entries in the same format (`kind` is only `box` or `sphere`,
+`layer` is the phantom's collision filter, `transform` composes the phantom's own
+4x4 with every transform shape above the leaf, Havok units, node frame). Other
+phantom shapes are skipped with a converter warning.
 
 ### Path encodings differ between `vpath.idx` and GLB URIs
 
