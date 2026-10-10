@@ -75,6 +75,8 @@ func step(delta: float) -> void:
 	# Let shaders compile and textures stream in before capturing.
 	_frames += 1
 	if _frames < SETTLE_FRAMES:
+		if _frames == SETTLE_FRAMES - 1:
+			_debug.refresh_perf()  # drawn by the time of the shot, even if under a second passed
 		if _frames == SETTLE_FRAMES - 1 and not _settings.hide_refs.is_empty():
 			_hide_refs(_host)
 		return
@@ -83,6 +85,7 @@ func step(delta: float) -> void:
 		return
 	var index := _index
 	_index += 1
+	print("perf: ", JSON.stringify(_debug.perf))
 	var image := _host.get_viewport().get_texture().get_image()
 	var path := _path.get_basename() + "_%d.png" % index
 	image.save_png(path)
@@ -213,6 +216,13 @@ func _end_note(save: bool) -> void:
 
 
 ## Everything needed to come back to this view, in the viewer or the game.
+func _perf_block() -> Dictionary:
+	var p: Dictionary = _debug.perf
+	return {"fps": p.get("fps", 0.0), "frame_ms_mean": p.get("frame_ms_mean", 0.0),
+		"frame_ms_max": p.get("frame_ms_max", 0.0), "draw_calls": p.get("draw_calls", 0),
+		"primitives": p.get("primitives", 0)}
+
+
 func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 	var eye := SkydotWorld.godot_to_skyrim(_rig.camera.global_position)
 	var heading := fposmod(-rad_to_deg(_rig.yaw), 360.0)
@@ -288,6 +298,8 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"aa": ViewerSettings.AA_NAMES[maxi(ViewerSettings.AA_STEPS.find(_host.get_viewport().screen_space_aa), 0)],
 			"quests": _settings.quests,
 			"overlay_hidden": overlay_hidden,
+			"perf_overlay": _debug.show_perf,
+			"perf": _perf_block(),
 		},
 		"pack": pack,
 		"system": {

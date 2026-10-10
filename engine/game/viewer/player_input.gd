@@ -36,6 +36,7 @@ const CHANGE_TIME := &"change_time"
 const INSPECT_ACTOR := &"inspect_actor"
 const NEXT_WEATHER := &"next_weather"
 const TOGGLE_NAVMESH := &"toggle_navmesh"
+const TOGGLE_PERF := &"toggle_perf"
 const SHOW_PATH := &"show_path"
 const LOD_DETAIL_DOWN := &"lod_detail_down"
 const LOD_DETAIL_UP := &"lod_detail_up"
@@ -45,7 +46,7 @@ const CYCLE_MSAA := &"cycle_msaa"
 const TOGGLE_FLY := &"toggle_fly"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down

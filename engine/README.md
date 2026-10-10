@@ -182,7 +182,9 @@ or `--pick-locks on` ignores locks. F5 saves the scripts' state and the place,
 F9 loads it. J shows the journal; quest stages and objectives show at the top
 left. N shows the navmeshes, G draws a path from the feet to where the
 camera looks (`--navigation off` builds none; see `docs/navigation.md`).
-P shows the camera's position and facing in the game's terms, and
+F3 toggles the performance line at the top right (fps, frame time mean and
+max over a second, draw calls, primitives, objects; also in a shot's JSON, and
+`--screenshot` prints it as `perf:`). P shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting. Placed NPCs and creatures stand

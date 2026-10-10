@@ -91,6 +91,9 @@
 # and mouse.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
+# F3 shows or hides the performance line at the top right (fps, frame time
+# mean and max over the last second, draw calls, primitives, objects). It is in
+# the shot JSON's "viewer.perf", and --screenshot prints it as a "perf:" line.
 # N shows the navmeshes (green, water triangles included) of the built cells;
 # G asks the navigation map for a path from the feet to the navmesh point the
 # camera looks at and draws it (--navigation off builds no navmeshes).
@@ -338,6 +341,7 @@ func _process(delta: float) -> void:
 	if _rig == null:
 		return
 	_sync_image_space()
+	_debug.sample_perf(delta)
 	if _shots.is_running():
 		_shots.step(delta)
 		return
@@ -442,6 +446,8 @@ func _on_command(action: StringName, shift: bool) -> void:
 				_clock.weather.next_weather()
 		PlayerInput.TOGGLE_NAVMESH:
 			_debug.toggle_navmesh()
+		PlayerInput.TOGGLE_PERF:
+			_debug.toggle_perf()
 		PlayerInput.SHOW_PATH:
 			_debug.path_to_view()
 		PlayerInput.LOD_DETAIL_DOWN:

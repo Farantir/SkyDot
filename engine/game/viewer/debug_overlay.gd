@@ -3,13 +3,20 @@
 # What the viewer shows about itself: the notes at the top left (quest and
 # script messages, hints), the journal (J), the navmesh overlay (N), a path
 # from the feet to the view (G), the camera's position (P) and what the
-# nearest actor does (I). A CanvasLayer, so one `visible` hides the text for a
+# nearest actor does (I), and a line of frame rate, frame time and draw
+# counts at the top right (F3). A CanvasLayer, so one `visible` hides the text for a
 # shot; the 3D parts are added to `host`.
 class_name DebugOverlay
 extends CanvasLayer
 
 const NOTE_SECONDS := 8.0
 const NOTE_LINES := 6
+
+## F3 toggles the performance line.
+var show_perf := true
+## The last window's numbers: fps, frame_ms_mean, frame_ms_max, draw_calls,
+## primitives, objects. Empty until a window has passed.
+var perf := {}
 
 ## N toggles the navmesh overlay.
 var show_navmesh := false
@@ -22,6 +29,10 @@ var _camera: Camera3D
 var _player: SkydotPlayer
 var _notes: Label  # recent quest and script messages
 var _journal: Label  # J toggles it
+var _perf_label: Label  # F3 toggles it
+var _perf_time := 0.0  # seconds in the current window
+var _perf_frames := 0
+var _perf_max := 0.0  # slowest frame of the window, seconds
 var _lines: Array[Line] = []
 var _path_line: MeshInstance3D  # G draws a path here
 var _navmesh_fill: StandardMaterial3D
@@ -44,6 +55,15 @@ func _init() -> void:
 	_journal = _make_label()
 	_journal.visible = false
 	add_child(_journal)
+	_perf_label = _make_label()
+	_perf_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	_perf_label.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	_perf_label.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_perf_label.position = Vector2.ZERO
+	_perf_label.offset_left = -16.0
+	_perf_label.offset_right = -16.0
+	_perf_label.offset_top = 16.0
+	add_child(_perf_label)
 
 
 func setup(host: Node3D, world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi,
@@ -71,6 +91,49 @@ func note(text: String) -> void:
 	if _lines.size() > NOTE_LINES:
 		_lines.pop_front()
 	_show_lines()
+
+
+## Every frame: add it to the performance window; once a second the line is
+## rewritten from the window.
+func sample_perf(delta: float) -> void:
+	_perf_time += delta
+	_perf_frames += 1
+	_perf_max = maxf(_perf_max, delta)
+	if _perf_time >= 1.0:
+		refresh_perf()
+
+
+## Close the window now (needs at least one frame) and show its numbers.
+func refresh_perf() -> void:
+	if _perf_frames == 0:
+		return
+	perf = {
+		"fps": snappedf(_perf_frames / _perf_time, 0.1),
+		"frame_ms_mean": snappedf(_perf_time / _perf_frames * 1000.0, 0.01),
+		"frame_ms_max": snappedf(_perf_max * 1000.0, 0.01),
+		"draw_calls": int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)),
+		"primitives": int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)),
+		"objects": int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)),
+	}
+	_perf_time = 0.0
+	_perf_frames = 0
+	_perf_max = 0.0
+	_perf_label.text = perf_text()
+
+
+## The performance numbers in one line.
+func perf_text() -> String:
+	if perf.is_empty():
+		return ""
+	return "%.0f fps  %.1f ms (max %.1f)  %d draws  %d prims  %d objects" % [
+		perf["fps"], perf["frame_ms_mean"], perf["frame_ms_max"], perf["draw_calls"],
+		perf["primitives"], perf["objects"]]
+
+
+## F3: show or hide the performance line.
+func toggle_perf() -> void:
+	show_perf = not show_perf
+	_perf_label.visible = show_perf
 
 
 ## Let the notes grow old.
