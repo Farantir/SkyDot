@@ -58,6 +58,11 @@ uniform float rim_light_power = 2.0;
 uniform sampler2D soft_light_tex : filter_linear_mipmap, repeat_enable;
 // Grass: the game draws it with its own shader (RunGrass.hlsl).
 uniform bool grass = false;
+// RunGrass.hlsl scales diffuse and ambient by a per-instance brightness
+// (InstanceData1.w) whose source is not known. Fitted to game refs (Riverwood
+// 4,-12 at 12.2 h: grass pixels 83/96/60 vs the game's 81/90/57; near view
+// 76/86/40 vs 73/80/38). With 1.0 the grass is about 2.5 times too bright.
+uniform float grass_brightness = 0.35;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 base_color = vec4(1.0);
 uniform vec3 specular_color = vec3(1.0);
@@ -132,9 +137,11 @@ uniform sampler2D proj_detail_tex : filter_linear_mipmap_anisotropic, repeat_ena
 varying float spec_mask;
 varying vec3 soft_rim_color;
 varying vec3 model_pos; // the shape's own coordinates (the NIF's, in game units)
+varying vec3 grass_up; // world space: the instance's up axis (RunGrass.hlsl's instance normal)
 
 void vertex() {
 	model_pos = VERTEX;
+	grass_up = grass ? normalize((MODEL_MATRIX * vec4(0.0, 0.0, 1.0, 0.0)).xyz) : vec3(0.0, 1.0, 0.0);
 }
 
 float proj_hash(vec3 p) {
@@ -192,7 +199,7 @@ void fragment() {
 	}
 #ifdef SKYDOT_DOUBLE_SIDED
 	// The game does not turn the normal round on back faces; Godot does.
-	// (Grass keeps Godot's: its lighting is RunGrass.hlsl's, not modelled yet.)
+	// (Grass replaces the normal below.)
 	vec3 face = FRONT_FACING || grass ? vec3(1.0) : vec3(-1.0);
 	NORMAL *= face;
 	TANGENT *= face;
@@ -213,6 +220,12 @@ void fragment() {
 		NORMAL = normalize(TANGENT * m.x + BINORMAL * m.y
 				+ NORMAL * sqrt(max(0.0, 1.0 - dot(m, m))));
 		spec_mask = use_spec_tex ? texture(spec_tex, uv).r : n.a;
+	}
+	if (grass) {
+		// RunGrass.hlsl: lit with one normal per instance (its up axis, which
+		// follows the slope with "fit to slope"), no normal map, no specular.
+		NORMAL = normalize((VIEW_MATRIX * vec4(grass_up, 0.0)).xyz);
+		spec_mask = 0.0;
 	}
 	if (use_projection) {
 		vec3 world_pos = (INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz;
@@ -273,7 +286,7 @@ void fragment() {
 		float env_mask = use_env_mask ? texture(env_mask_tex, uv).r : n.a;
 		albedo.rgb += texture(env_tex, reflected).rgb * env_scale * env_mask;
 	}
-	ALBEDO = albedo.rgb;
+	ALBEDO = albedo.rgb * (grass ? grass_brightness : 1.0);
 #ifdef SKYDOT_ALPHA_TEST
 	ALPHA = clamp((albedo.a - alpha_cutoff) / max(fwidth(albedo.a), 0.0001) + 0.5, 0.0, 1.0);
 	if (IN_SHADOW_PASS) {
@@ -297,7 +310,8 @@ void fragment() {
 	ALPHA = albedo.a;
 #endif
 	FOG = skydot_game_fog(VERTEX);
-	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
+	// Grass: RunGrass.hlsl's ambient is flat (the constant term).
+	EMISSION += ALBEDO * skydot_ambient(grass ? vec3(0.0) : (INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	EMISSION += vec3(snow_rim);
 	soft_rim_color = vec3(0.0);
 	if (use_soft_light || use_rim_light) {
