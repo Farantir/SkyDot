@@ -324,6 +324,10 @@ table Cell {
     image_space: uint32;
     /// Sorted by ref (format 12).
     light_emitters: [LightEmitter];
+    /// XCCM, a Region in `regions` (format 17): the region whose weather
+    /// fills the sky seen through the openings of an interior with the
+    /// show_sky flag; 0 if none.
+    sky_region: uint32;
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A

@@ -546,6 +546,9 @@ void make_land(const TempDir& dir) {
             xcwt.u32(water);
             bethconv::test::write_field(payload, "XCWT", xcwt);
         }
+        ByteWriter xccm;
+        xccm.u32(0x0000'0C06);
+        bethconv::test::write_field(payload, "XCCM", xccm);
         return payload;
     };
 
@@ -835,6 +838,7 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
 
     CHECK(stats->waters == 1);
     CHECK(cell->water == 0x0000'0C02);
+    CHECK(cell->sky_region == 0x0000'0C06);
     const auto river = file->water(0x0000'0C02);
     REQUIRE(river.has_value());
     CHECK(river->editor_id == "LandRiver");

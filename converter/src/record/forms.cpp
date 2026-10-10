@@ -167,6 +167,8 @@ io::ParseResult<Cell> parse_cell(io::SpanReader& data, const FormContext& ctx) {
                 take(failure, read_formid(body), out.water);
             } else if (field.type == FourCC{"XCIM"}) {
                 take(failure, read_formid(body), out.image_space);
+            } else if (field.type == FourCC{"XCCM"}) {
+                take(failure, read_formid(body), out.sky_region);
             } else if (field.type == FourCC{"XCMO"}) {
                 take(failure, read_formid(body), out.music);
             } else if (field.type == FourCC{"XCAS"}) {

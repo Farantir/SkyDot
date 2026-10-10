@@ -147,6 +147,7 @@ struct Cell {
     FormId location;             ///< XLCN
     FormId water;                ///< XCWT
     FormId image_space;          ///< XCIM
+    FormId sky_region;           ///< XCCM, a REGN whose weather fills the sky of a "show sky" interior.
     FormId music;                ///< XCMO
     FormId acoustic_space;       ///< XCAS
     FormId encounter_zone;       ///< XEZN
