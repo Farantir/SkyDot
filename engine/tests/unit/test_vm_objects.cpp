@@ -179,6 +179,34 @@ TEST_CASE("a script extends another: variables per class, overrides, callparent"
     CHECK(rig.vm.errors() == 0);
 }
 
+TEST_CASE("a child script starts in its parent's auto state and names its parent's variables",
+          "[vm][dispatch][states]") {
+    Rig rig;
+    // Parent: auto state Armed, variable "::fuse_var".
+    auto read = method("Read", {}, {}, "Int", "armed");
+    read.add(Op::return_, {integer(7)});
+    ScriptSpec parent = script("Trap", {read}, {{"::fuse_var", "Int", integer(3)}});
+    parent.auto_state = "Armed";
+    rig.add(parent);
+
+    // Child: no auto state of its own; reads and writes the parent's variable.
+    auto bump = method("Bump", {}, {{"r", "Int"}}, "Int");
+    bump.add(Op::iadd, {ident("::fuse_var"), ident("::fuse_var"), integer(1)})
+        .add(Op::assign, {ident("r"), ident("::fuse_var")})
+        .add(Op::return_, {ident("r")});
+    ScriptSpec child = script("Wall", {bump});
+    child.parent = "Trap";
+    rig.add(child);
+
+    auto* wall = rig.vm.attach(0x60, "wall");
+    REQUIRE(wall != nullptr);
+    CHECK(wall->state() == "armed");
+    CHECK(rig.call(wall, "bump").i() == 4);
+    CHECK(rig.call(wall, "read").i() == 7);
+    CHECK(rig.vm.get_variable(wall, "::fuse_var").i() == 4);
+    CHECK(rig.vm.errors() == 0);
+}
+
 TEST_CASE("a call on an object runs the attached script derived from the class it is seen as", "[vm][dispatch]") {
     Rig rig;
     add_zoo(rig);

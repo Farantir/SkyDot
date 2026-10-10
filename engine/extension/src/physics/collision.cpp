@@ -390,6 +390,58 @@ void collect(godot::Node* root, godot::Node* node, std::vector<ModelCollision::B
 
 } // namespace
 
+namespace {
+
+void collect_phantoms(godot::Node* node, const Transform3D& to_root, Array& out, int depth) {
+    if (depth > 64) {
+        return;
+    }
+    Transform3D here = to_root;
+    if (const auto* spatial = godot::Object::cast_to<godot::Node3D>(node)) {
+        here = to_root * spatial->get_transform();
+    }
+    Dictionary block = bethconv_extras(node);
+    const Variant entries = block.get("phantoms", Variant());
+    if (entries.get_type() == Variant::ARRAY) {
+        const Array list = entries;
+        for (std::int64_t i = 0; i < list.size(); ++i) {
+            if (list[i].get_type() != Variant::DICTIONARY) {
+                continue;
+            }
+            ModelCollision::Shape shape;
+            if (!parse_shape(list[i], shape) || (shape.kind != ModelCollision::Kind::box &&
+                                                 shape.kind != ModelCollision::Kind::sphere)) {
+                continue;
+            }
+            const bool sphere = shape.kind == ModelCollision::Kind::sphere;
+            Dictionary entry;
+            entry["kind"] = sphere ? "sphere" : "box";
+            entry["transform"] = here * shape.transform;
+            entry["half"] = sphere ? Vector3(shape.radius, shape.radius, shape.radius)
+                                   : shape.half_extents;
+            entry["layer"] = static_cast<std::int64_t>(number(Dictionary(list[i]), "layer"));
+            out.push_back(entry);
+        }
+        block.erase("phantoms");
+    }
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        collect_phantoms(node->get_child(i), here, out, depth + 1);
+    }
+}
+
+} // namespace
+
+void tag_phantoms(godot::Node* root) {
+    if (root == nullptr) {
+        return;
+    }
+    Array out;
+    collect_phantoms(root, Transform3D(), out, 0);
+    if (!out.is_empty()) {
+        root->set_meta(k_phantoms_meta, out);
+    }
+}
+
 std::shared_ptr<ModelCollision> ModelCollision::take_from(godot::Node* root) {
     if (root == nullptr) {
         return {};

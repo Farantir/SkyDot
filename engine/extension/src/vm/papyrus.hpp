@@ -27,12 +27,14 @@
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
@@ -41,6 +43,7 @@
 #include <memory>
 #include <set>
 #include <unordered_map>
+#include <vector>
 
 namespace skydot {
 
@@ -155,7 +158,15 @@ protected:
     static void _bind_methods();
 
 private:
+    /// A volume taken from the referenced model's phantom (a pressure plate's).
+    struct Volume {
+        godot::Transform3D to_local; ///< Godot space to the volume's frame, game units.
+        godot::Vector3 half;         ///< Half extents; x is the radius of a sphere.
+        bool sphere = false;
+    };
     struct Trigger {
+        bool primitive = true; ///< XPRM box or sphere; false if only `volumes` apply.
+        std::vector<Volume> volumes;
         godot::Vector3 origin;
         godot::Basis to_local; ///< Skyrim space to the volume's axes, scale removed.
         godot::Vector3 half;   ///< Half extents; x is the radius of a sphere.
@@ -201,7 +212,9 @@ private:
     /// The reference whose lock `ref` uses: itself, or a load door's partner.
     std::uint32_t lock_holder(std::uint32_t ref) const;
     void register_trigger(std::uint32_t ref, const godot::Dictionary& info);
+    void register_phantoms(std::uint32_t ref, godot::Node3D* node);
     static bool contains(const Trigger& t, const godot::Vector3& p);
+    static bool contains(const Volume& v, const godot::Vector3& p);
     godot::Vector3 position_of(std::uint32_t ref) const;
     void reset();
 

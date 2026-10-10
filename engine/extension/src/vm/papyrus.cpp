@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/papyrus.hpp"
 
+#include "data/coordinates.hpp"
+#include "physics/collision.hpp"
+
 #include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -668,6 +672,13 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
             const std::int64_t ref = child->get_meta("skydot_ref");
             built_.insert(static_cast<std::uint32_t>(ref));
             attach(child->get_meta("skydot_cell"), ref);
+            if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
+                register_phantoms(static_cast<std::uint32_t>(ref),
+                                  godot::Object::cast_to<godot::Node3D>(child));
+            }
+            // The game sends these as a reference's cell attaches, before OnLoad.
+            dispatch(static_cast<std::uint32_t>(ref), "OnCellAttach", {});
+            dispatch(static_cast<std::uint32_t>(ref), "OnCellLoad", {});
             dispatch(static_cast<std::uint32_t>(ref), "OnLoad", {});
             if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
                 ++scripted;
@@ -732,10 +743,64 @@ void SkydotPapyrus::register_trigger(std::uint32_t ref, const Dictionary& info) 
     t.to_local = (rx * ry * rz).transposed();
     t.half = Vector3(p["bounds"]) * scale;
     t.type = type;
+    if (const auto old = triggers_.find(ref); old != triggers_.end()) {
+        t.volumes = std::move(old->second.volumes);
+    }
     triggers_[ref] = std::move(t);
 }
 
+bool SkydotPapyrus::contains(const Volume& v, const Vector3& p) {
+    const Vector3 local = v.to_local.xform(skydot::skyrim_position(p));
+    if (v.sphere) {
+        return local.length() <= v.half.x;
+    }
+    return std::abs(local.x) <= v.half.x && std::abs(local.y) <= v.half.y &&
+           std::abs(local.z) <= v.half.z;
+}
+
+// The model's phantoms (see physics/collision.hpp) become volumes of the ref
+// that carries the model. `node` is the built reference; its transform is the
+// placement, like an XPRM trigger's.
+void SkydotPapyrus::register_phantoms(std::uint32_t ref, godot::Node3D* node) {
+    if (node == nullptr || !node->has_meta(k_phantoms_meta)) {
+        return;
+    }
+    const Variant meta = node->get_meta(k_phantoms_meta);
+    if (meta.get_type() != Variant::ARRAY) {
+        return;
+    }
+    std::vector<Volume> volumes;
+    const godot::Array list = meta;
+    for (std::int64_t i = 0; i < list.size(); ++i) {
+        if (list[i].get_type() != Variant::DICTIONARY) {
+            continue;
+        }
+        const Dictionary d = list[i];
+        Volume v;
+        v.to_local = (node->get_transform() * godot::Transform3D(d["transform"])).affine_inverse();
+        v.half = d["half"];
+        v.sphere = String(d["kind"]) == "sphere";
+        volumes.push_back(v);
+    }
+    if (volumes.empty()) {
+        return;
+    }
+    auto [it, fresh] = triggers_.try_emplace(ref);
+    if (fresh) {
+        it->second.primitive = false;
+    }
+    it->second.volumes = std::move(volumes);
+}
+
 bool SkydotPapyrus::contains(const Trigger& t, const Vector3& p) {
+    for (const Volume& v : t.volumes) {
+        if (contains(v, p)) {
+            return true;
+        }
+    }
+    if (!t.primitive) {
+        return false;
+    }
     const Vector3 local = t.to_local.xform(p - t.origin);
     if (t.type == k_sphere) {
         return local.length() <= t.half.x;

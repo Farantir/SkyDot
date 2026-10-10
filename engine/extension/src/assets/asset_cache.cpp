@@ -322,6 +322,7 @@ Ref<godot::Resource> AssetCache::load_scene(const std::string& vpath, const godo
     Ref<SkydotModel> model;
     model.instantiate();
     model->set_collision(ModelCollision::take_from(root));
+    tag_phantoms(root);
     model->set_template(root, godot::String::utf8(vpath.c_str()));
     model->set_textures(std::move(textures));
     return model;

@@ -215,7 +215,14 @@ Instance* Vm::attach(std::uint32_t form, std::string_view class_name) {
     auto instance = std::make_unique<Instance>();
     instance->cls = cls;
     instance->form = form;
-    instance->set_state(cls->auto_state());
+    // A script without an auto state of its own starts in its parent's
+    // (PressurePlate extends TrapTriggerBase, whose Inactive state has the
+    // trigger handlers).
+    const ScriptClass* stated = cls;
+    while (stated->auto_state().empty() && stated->parent() != nullptr) {
+        stated = stated->parent();
+    }
+    instance->set_state(stated->auto_state());
     for (const auto* c = cls; c != nullptr; c = c->parent()) {
         std::vector<Value> values;
         for (const auto& v : c->variables()) {
@@ -594,6 +601,33 @@ const Value& Vm::peek(Frame& frame, std::uint32_t arg) {
     return peek_other(frame, arg);
 }
 
+namespace {
+
+/// A variable the function's class does not declare but a parent does (the
+/// backing variable of a parent's auto property, which child scripts name
+/// directly), in the frame's instance. Null if there is none.
+Value* inherited_variable(Instance* instance, const Function& fn, const Slot& slot,
+                          const Variable** declared = nullptr) {
+    if (instance == nullptr || slot.type != Slot::Type::name) {
+        return nullptr;
+    }
+    const std::string& id = fn.owner->lower(slot.index);
+    for (const ScriptClass* c = fn.owner->parent(); c != nullptr; c = c->parent()) {
+        const auto& list = c->variables();
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            if (list[i].name == id) {
+                if (declared != nullptr) {
+                    *declared = &list[i];
+                }
+                return instance->variable(c, i);
+            }
+        }
+    }
+    return nullptr;
+}
+
+} // namespace
+
 const Value& Vm::peek_other(Frame& frame, std::uint32_t arg) {
     const Function& fn = *frame.fn;
     const Slot& slot = fn.slots[arg];
@@ -601,6 +635,11 @@ const Value& Vm::peek_other(Frame& frame, std::uint32_t arg) {
     case Slot::Type::var:
         if (auto* vars = frame.instance != nullptr ? frame.instance->vars_of(fn.owner) : nullptr) {
             return (*vars)[slot.index];
+        }
+        break;
+    case Slot::Type::name:
+        if (const Value* inherited = inherited_variable(frame.instance, fn, slot)) {
+            return *inherited;
         }
         break;
     case Slot::Type::self: return frame.self;
@@ -634,6 +673,12 @@ void Vm::write_other(Frame& frame, std::uint32_t arg, Value value) {
             return;
         }
         break;
+    case Slot::Type::name:
+        if (Value* inherited = inherited_variable(frame.instance, fn, slot)) {
+            *inherited = std::move(value);
+            return;
+        }
+        break;
     case Slot::Type::state:
         if (frame.instance != nullptr) {
             frame.instance->set_state(to_string(value));
@@ -653,6 +698,20 @@ std::string_view Vm::type_of(const Frame& frame, std::uint32_t arg) const {
     case Slot::Type::var: return fn.owner->variables()[slot.index].type;
     case Slot::Type::state: return "string";
     case Slot::Type::self: return fn.owner->key();
+    case Slot::Type::name: {
+        const Variable* declared = nullptr;
+        // Only the declaration is needed, not the instance's value.
+        for (const ScriptClass* c = fn.owner->parent(); c != nullptr && declared == nullptr;
+             c = c->parent()) {
+            for (const Variable& v : c->variables()) {
+                if (v.name == fn.owner->lower(slot.index)) {
+                    declared = &v;
+                    break;
+                }
+            }
+        }
+        return declared != nullptr ? std::string_view(declared->type) : std::string_view();
+    }
     default: return {};
     }
 }

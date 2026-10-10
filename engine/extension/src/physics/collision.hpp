@@ -94,6 +94,18 @@ private:
     mutable std::vector<std::vector<godot::Ref<godot::Shape3D>>> made_;
 };
 
+/// Meta on a model's root, set when its mesh has phantom trigger volumes
+/// (formats/pack-format.md, "Phantom trigger volumes in meshes"): an Array of
+/// Dictionaries {kind: "box"|"sphere", transform: Transform3D, half: Vector3,
+/// layer: int}. `transform` places the volume in the root's frame (the model's
+/// own units, so it includes the converter's scale and axis change); `half` is
+/// in the volume's frame, game units (a sphere's radius is its x).
+inline constexpr const char* k_phantoms_meta = "skydot_phantoms";
+
+/// Move the phantom extras of the tree under `root` onto its meta. Touches no
+/// server; safe on a worker.
+void tag_phantoms(godot::Node* root);
+
 /// Movable clutter. Placed under the model's owning node but simulated in
 /// world space; it moves `model` (the reference's root) along. Frozen as
 /// placed until `wake`: the player wakes what it walks into, and woken
