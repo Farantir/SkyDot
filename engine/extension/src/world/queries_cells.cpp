@@ -180,6 +180,8 @@ Dictionary get_cell(const WorldData& data, std::int64_t id) {
     }
     out["directional_ambient"] = ambient;
     out["image_space"] = static_cast<std::int64_t>(cell->image_space());
+    out["sky_region"] = static_cast<std::int64_t>(cell->sky_region());
+    out["show_sky"] = formats::has_flag(cell->flags(), wfb::CellFlags::show_sky);
     return out;
 }
 

@@ -277,6 +277,38 @@ func _add_sky(sky_values: Dictionary, shadows: bool) -> void:
 	add(sun)
 
 
+## An interior with the "show sky" flag draws the weather of its sky region
+## (XCCM) through its openings: a sky-only SkydotWeather whose Sky is the
+## background of `env`. The interior's lighting and reflections stay its own.
+func _add_interior_sky(cell: Dictionary, env: Environment) -> void:
+	var region := int(cell.get("sky_region", 0))
+	if not cell.get("show_sky", false) or region == 0:
+		return
+	var weather := 0
+	if not _settings.weather.is_empty():
+		weather = _world.find_weather(_settings.weather)
+		if weather == 0:
+			failed.emit("no weather named " + _settings.weather)
+	var node := SkydotWeather.new()
+	node.name = "weather"
+	_clock.configure(node)  # hour, day and speed
+	if weather != 0:
+		node.auto_weather = false
+	add(node)
+	if node.setup_sky(_world, region, _rig.camera) != OK:
+		nodes.erase(node)
+		node.queue_free()
+		return
+	if weather != 0:
+		node.set_weather(weather, 0.0)
+	_clock.bind_weather(node)
+	env.background_mode = Environment.BG_SKY
+	env.sky = node.get_sky()
+	env.fog_sky_affect = 0.0
+	env.reflected_light_source = Environment.REFLECTION_SOURCE_DISABLED
+	print("interior sky: ", node.get_state()["editor_id"])
+
+
 func _add_environment(cell: Dictionary) -> void:
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
@@ -306,6 +338,7 @@ func _add_environment(cell: Dictionary) -> void:
 			env.set_meta("skydot_fog_near_color", lighting["fog_near_color"])
 	else:
 		env.ambient_light_color = Color(0.3, 0.3, 0.3)
+	_add_interior_sky(cell, env)
 	var node := WorldEnvironment.new()
 	node.environment = env
 	add(node)

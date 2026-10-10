@@ -46,6 +46,20 @@ own lighting.
   4 to 44 s (a guess from that frequency), brightening the sky, clouds and
   ambient in the lightning colour; signal `lightning`.
 
+## Interiors that show the sky
+
+A cell with the "show sky" flag (DATA 0x80) and an XCCM names a region
+(`sky_region`, world format 17) whose weather fills the openings of the
+interior (the Bleak Falls Barrow cave-ins). `Place` makes a sky-only
+`SkydotWeather` with `setup_sky(world, region, camera)`: the weathers are always
+that region's, the camera's position does not matter, and the climate of the
+region's worldspace gives sun, stars and moons. It draws only the sky (Sky
+resource, clouds, stars, sun, moons); it has no WorldEnvironment, sun light or
+precipitation, is not in the group `skydot_weather`, and leaves ambient, fog and
+the image space to the cell (XCLL, XCIM). `Place` puts `get_sky()` on the cell's
+environment as the background, with sky reflections off. The clock runs the
+time and `--weather` fixes the weather as outside.
+
 ## Not done
 
 - No game-frame comparison: star brightness, cloud speed, rain and snow

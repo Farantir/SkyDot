@@ -161,6 +161,38 @@ void SkydotWeather::_ready() {
 
 godot::Error SkydotWeather::setup(const Ref<SkydotWorld>& pack_world, std::int64_t world,
                                   godot::Camera3D* camera) {
+    return configure(pack_world, world, camera);
+}
+
+godot::Error SkydotWeather::setup_sky(const Ref<SkydotWorld>& pack_world, std::int64_t region,
+                                      godot::Camera3D* camera) {
+    if (pack_world.is_null() || pack_world->data().root() == nullptr) {
+        return godot::ERR_UNCONFIGURED;
+    }
+    const auto* regions = pack_world->data().root()->regions();
+    const wfb::Region* found = nullptr;
+    if (regions != nullptr) {
+        for (const auto* r : *regions) {
+            if (r->id() == static_cast<std::uint32_t>(region)) {
+                found = r;
+                break;
+            }
+        }
+    }
+    if (found == nullptr) {
+        return godot::ERR_DOES_NOT_EXIST;
+    }
+    sky_only_ = true;
+    fixed_region_ = found->id();
+    // Interiors have no business with lights that follow the weather.
+    if (is_in_group("skydot_weather")) {
+        remove_from_group("skydot_weather");
+    }
+    return configure(pack_world, found->world(), camera);
+}
+
+godot::Error SkydotWeather::configure(const Ref<SkydotWorld>& pack_world, std::int64_t world,
+                                      godot::Camera3D* camera) {
     world_ = pack_world;
     world_id_ = static_cast<std::uint32_t>(world);
     camera_ = camera != nullptr ? godot::ObjectID(camera->get_instance_id()) : godot::ObjectID();
@@ -245,7 +277,23 @@ void SkydotWeather::set_weather(std::int64_t weather, double seconds) {
 std::vector<std::pair<std::uint32_t, std::int32_t>> SkydotWeather::offered(std::uint32_t& region) const {
     std::vector<std::pair<std::uint32_t, std::int32_t>> out;
     region = 0;
-    auto* cam = camera();
+    if (sky_only_) {
+        region = fixed_region_;
+        const auto* fixed = world_fb() != nullptr ? world_fb()->regions() : nullptr;
+        if (fixed != nullptr) {
+            for (const auto* r : *fixed) {
+                if (r->id() == fixed_region_ && r->weathers() != nullptr) {
+                    for (const auto* w : *r->weathers()) {
+                        out.emplace_back(w->weather(), w->chance());
+                    }
+                }
+            }
+        }
+        if (!out.empty()) {
+            return out;
+        }
+    }
+    auto* cam = sky_only_ ? nullptr : camera();
     // The list is read once (the checks and the loop must see the same one).
     const auto* fb = world_fb();
     const auto* regions = fb != nullptr ? fb->regions() : nullptr;
@@ -525,14 +573,32 @@ Ref<godot::Texture2D> SkydotWeather::texture(const String& vpath) const {
 }
 
 void SkydotWeather::build() {
-    environment_.instantiate();
-    environment_->set_background(godot::Environment::BG_SKY);
-    Ref<godot::Sky> sky;
-    sky.instantiate();
+    sky_.instantiate();
     sky_material_.instantiate();
     sky_material_->set_shader(shader_source::shader("sky.gdshader"));
-    sky->set_material(sky_material_);
-    environment_->set_sky(sky);
+    sky_->set_material(sky_material_);
+    if (!sky_only_) {
+        build_environment();
+    }
+    dome_ = memnew(godot::Node3D);
+    dome_->set_name("Sky");
+    add_child(dome_);
+    build_clouds();
+    build_sky_objects();
+
+    if (!sky_only_) {
+        particles_ = memnew(godot::GPUParticles3D);
+        particles_->set_name("Precipitation");
+        particles_->set_use_local_coordinates(false);
+        particles_->set_emitting(false);
+        add_child(particles_);
+    }
+}
+
+void SkydotWeather::build_environment() {
+    environment_.instantiate();
+    environment_->set_background(godot::Environment::BG_SKY);
+    environment_->set_sky(sky_);
     // SkydotImageSpace grades the gamma-space scene and hands over linear
     // colour; Godot only encodes it.
     environment_->set_tonemapper(godot::Environment::TONE_MAPPER_LINEAR);
@@ -549,18 +615,6 @@ void SkydotWeather::build() {
     light_->set_name("Sun");
     light_->set_shadow(shadows_);
     add_child(light_);
-
-    dome_ = memnew(godot::Node3D);
-    dome_->set_name("Sky");
-    add_child(dome_);
-    build_clouds();
-    build_sky_objects();
-
-    particles_ = memnew(godot::GPUParticles3D);
-    particles_->set_name("Precipitation");
-    particles_->set_use_local_coordinates(false);
-    particles_->set_emitting(false);
-    add_child(particles_);
 }
 
 void SkydotWeather::build_clouds() {
@@ -693,7 +747,9 @@ void SkydotWeather::_process(double delta) {
     update_sky(delta);
     update_clouds(delta);
     update_sky_objects();
-    update_precipitation();
+    if (particles_ != nullptr) {
+        update_precipitation();
+    }
 }
 
 void SkydotWeather::update_sky(double delta) {
@@ -735,6 +791,9 @@ void SkydotWeather::update_sky(double delta) {
         }
     }
 
+    if (environment_.is_null()) {
+        return; // Sky-only: nothing but the sky itself.
+    }
     const Color flash_light = flash_color * static_cast<float>(flash) * 0.5F;
     environment_->set_ambient_light_color(mix(a.ambient, b.ambient) * k_ambient_fit + flash_light);
     // The game lights with the directional ambient (DALC), not NAM0's
@@ -788,7 +847,7 @@ void SkydotWeather::update_sky(double delta) {
     // default time scale (20) it comes every 6 s.
     constexpr float k_sun_step_cos = 0.99996192F; // cos(0.5 degrees)
     const Vector3 direction = towards.normalized();
-    if (light_towards_.dot(direction) < k_sun_step_cos) {
+    if (light_ != nullptr && light_towards_.dot(direction) < k_sun_step_cos) {
         light_towards_ = direction;
         light_->look_at_from_position(Vector3(), -direction, std::abs(direction.y) < 0.99F ? Vector3(0, 1, 0) : Vector3(0, 0, -1));
     }
@@ -1082,6 +1141,9 @@ godot::Dictionary SkydotWeather::get_state() const {
 void SkydotWeather::_bind_methods() {
     using godot::D_METHOD;
     godot::ClassDB::bind_method(D_METHOD("setup", "world", "world_id", "camera"), &SkydotWeather::setup);
+    godot::ClassDB::bind_method(D_METHOD("setup_sky", "world", "region", "camera"), &SkydotWeather::setup_sky);
+    godot::ClassDB::bind_method(D_METHOD("is_sky_only"), &SkydotWeather::is_sky_only);
+    godot::ClassDB::bind_method(D_METHOD("get_sky"), &SkydotWeather::get_sky);
     godot::ClassDB::bind_method(D_METHOD("set_hour", "hour"), &SkydotWeather::set_hour);
     godot::ClassDB::bind_method(D_METHOD("get_hour"), &SkydotWeather::get_hour);
     godot::ClassDB::bind_method(D_METHOD("set_day", "day"), &SkydotWeather::set_day);

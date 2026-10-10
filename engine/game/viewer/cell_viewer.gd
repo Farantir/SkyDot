@@ -389,7 +389,8 @@ func _sync_image_space() -> void:
 		_image_space.clear()
 	else:
 		var space: Dictionary
-		if _clock.has_weather():
+		# A sky seen from an interior ("show sky") does not grade the cell.
+		if _clock.has_weather() and not _clock.weather.is_sky_only():
 			space = _clock.weather.get_image_space()
 			if not _settings.volumetric:
 				space.erase("volumetric")

@@ -6,6 +6,13 @@
 // the sky gradient, sun or moon light, ambient and fog, the weather's cloud
 // layers on meshes/sky/clouds.nif, stars, the sun and the moons, rain or snow
 // around the camera, and lightning. See docs/weather.md.
+//
+// setup_sky() makes a sky-only weather for an interior with the "show sky"
+// flag: the weathers of one fixed region (the cell's XCCM) rotate, and only the
+// sky shows (Sky resource, clouds, stars, sun, moons). It has no environment,
+// sun light or precipitation of its own, is not in the group "skydot_weather",
+// and sets nothing on the caller's environment: the caller puts get_sky() on
+// its own.
 #pragma once
 
 #include "render/sun_path.hpp"
@@ -19,6 +26,7 @@
 #include <godot_cpp/classes/mesh_instance3d.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/shader_material.hpp>
+#include <godot_cpp/classes/sky.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/core/object_id.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -45,6 +53,15 @@ public:
     /// no climate.
     godot::Error setup(const godot::Ref<SkydotWorld>& pack_world, std::int64_t world,
                        godot::Camera3D* camera);
+
+    /// Sky-only mode (see the header comment): the sky of region `region`
+    /// (a REGN), whose worldspace's climate gives sun, stars and moons.
+    godot::Error setup_sky(const godot::Ref<SkydotWorld>& pack_world, std::int64_t region,
+                           godot::Camera3D* camera);
+    bool is_sky_only() const { return sky_only_; }
+    /// The Sky resource the weather draws with (sky-only mode: for the
+    /// caller's environment).
+    godot::Ref<godot::Sky> get_sky() const { return sky_; }
 
     /// Hours, 0-24.
     void set_hour(double hour);
@@ -122,7 +139,10 @@ private:
     std::vector<std::pair<std::uint32_t, std::int32_t>> offered(std::uint32_t& region) const;
     std::uint32_t pick(const std::vector<std::pair<std::uint32_t, std::int32_t>>& list);
 
+    godot::Error configure(const godot::Ref<SkydotWorld>& pack_world, std::int64_t world,
+                           godot::Camera3D* camera);
     void build();
+    void build_environment();
     void build_clouds();
     void build_sky_objects();
     void update_sky(double delta);
@@ -162,9 +182,12 @@ private:
     double precipitation_{0.0};
     std::mt19937 random_{0x5D07u};
 
-    godot::Ref<godot::Environment> environment_;
+    bool sky_only_{};
+    std::uint32_t fixed_region_{}; ///< Sky-only mode: the region whose weathers are offered.
+    godot::Ref<godot::Sky> sky_;
+    godot::Ref<godot::Environment> environment_; ///< Invalid in sky-only mode.
     godot::Ref<godot::ShaderMaterial> sky_material_;
-    godot::DirectionalLight3D* light_{};
+    godot::DirectionalLight3D* light_{}; ///< Null in sky-only mode.
     godot::Vector3 light_towards_{}; // where the sun light points from, in steps (see update_sky)
     godot::Node3D* dome_{};          ///< Follows the camera.
     struct Layer {
@@ -183,7 +206,7 @@ private:
     std::array<godot::MeshInstance3D*, 2> moon_shadows_{};
     godot::MeshInstance3D* sun_{};
     godot::MeshInstance3D* glare_{};
-    godot::GPUParticles3D* particles_{};
+    godot::GPUParticles3D* particles_{}; ///< Null in sky-only mode.
     std::uint32_t particles_for_{}; ///< The precipitation the particles show.
 };
 
