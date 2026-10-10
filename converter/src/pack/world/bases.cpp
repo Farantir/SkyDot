@@ -67,6 +67,47 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     }
 }
 
+void BaseCollector::keep_alternates(const record::MergedRecord& merged,
+                                    std::span<const std::byte> mods) {
+    if (mods.empty()) {
+        return;
+    }
+    io::SpanReader in(mods, "MODS");
+    const auto count = in.get<std::uint32_t>();
+    if (!count) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    std::vector<PendingAlternate> list;
+    for (std::uint32_t i = 0; i < *count; ++i) {
+        const auto length = in.get<std::uint32_t>();
+        if (!length || *length > in.remaining()) {
+            ++shared_.stats().parse_errors;
+            break;
+        }
+        PendingAlternate entry;
+        if (const auto name = in.bytes(*length)) {
+            entry.shape.assign(reinterpret_cast<const char*>(name->data()), name->size());
+        }
+        const auto txst = in.get<std::uint32_t>();
+        const auto index = in.get<std::int32_t>();
+        if (!txst || !index) {
+            ++shared_.stats().parse_errors;
+            break;
+        }
+        entry.index = *index;
+        entry.texture_set = shared_.global(merged, record::FormId{*txst}, failed);
+        list.push_back(std::move(entry));
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    if (!list.empty()) {
+        pending_alternates_[merged.form.value] = std::move(list);
+    }
+}
+
 void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
     auto light = record::parse_light(data, form_ctx);
@@ -80,6 +121,7 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
     out.type = merged.type.value;
     out.editor_id = light->editor_id;
     out.model = light->model.path.empty() ? std::string{} : model_vpath(light->model.path);
+    keep_alternates(merged, light->model.alternate_textures);
     out.has_light = true;
     out.light = std::make_unique<wfb::LightData>(
         light->radius, light->colour, static_cast<wfb::LightFlags>(light->light_flags),
@@ -104,6 +146,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     std::string modl;
     std::string mod2;
     std::string mod4;
+    std::vector<std::byte> mods;
     std::uint32_t flags = 0;
     record::ScriptData scripts;
     const bool stat = merged.type == FourCC{"STAT"};
@@ -118,6 +161,10 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 editor_id = std::string(body.zstring().value_or(""));
             } else if (field.type == FourCC{"MODL"} && modl.empty() && !armor) {
                 modl = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"MODS"} && mods.empty()) {
+                if (const auto raw = body.bytes(body.remaining())) {
+                    mods.assign(raw->begin(), raw->end());
+                }
             } else if (field.type == FourCC{"MOD2"} && mod2.empty()) {
                 mod2 = std::string(body.zstring().value_or(""));
             } else if (field.type == FourCC{"MOD4"} && mod4.empty() && armor) {
@@ -146,6 +193,9 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     out.type = merged.type.value;
     out.editor_id = std::move(editor_id);
     out.model = path.empty() ? std::string{} : model_vpath(path);
+    if (!armor && !modl.empty()) {
+        keep_alternates(merged, mods);
+    }
     out.flags = flags;
     out.scripts = shared_.global_scripts(merged, scripts, failed);
     out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
@@ -289,10 +339,15 @@ void BaseCollector::on_texture_set(const record::MergedRecord& merged, io::SpanR
         ++shared_.stats().parse_errors;
         return;
     }
-    texture_sets_[merged.form.value] = TextureSetEntry{
-        .diffuse = texture_vpath(txst->textures[0]),
-        .normal = texture_vpath(txst->textures[1]),
-    };
+    TextureSetEntry entry;
+    entry.diffuse = texture_vpath(txst->textures[0]);
+    entry.normal = texture_vpath(txst->textures[1]);
+    for (std::size_t i = 0; i < entry.textures.size(); ++i) {
+        if (!txst->textures[i].empty()) {
+            entry.textures[i] = texture_vpath(txst->textures[i]);
+        }
+    }
+    texture_sets_[merged.form.value] = std::move(entry);
 }
 
 void BaseCollector::finish(wfb::WorldT& world) {
@@ -305,6 +360,23 @@ void BaseCollector::finish(wfb::WorldT& world) {
     }
     stats.bases += bases_.size();
     stats.land_textures += land_textures_.size();
+    for (auto& [id, list] : pending_alternates_) {
+        const auto base = bases_.find(id);
+        if (base == bases_.end()) {
+            continue;
+        }
+        for (const auto& pending : list) {
+            const auto set = texture_sets_.find(pending.texture_set);
+            if (set == texture_sets_.end()) {
+                continue;
+            }
+            auto alt = std::make_unique<wfb::AlternateTextureT>();
+            alt->shape = pending.shape;
+            alt->index = pending.index;
+            alt->textures.assign(set->second.textures.begin(), set->second.textures.end());
+            base->second.alternate_textures.push_back(std::move(alt));
+        }
+    }
     move_into(world.bases, bases_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {

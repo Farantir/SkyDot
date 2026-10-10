@@ -388,6 +388,20 @@ table Base {
     /// `material_objects` (0 if none), and its max angle in degrees.
     directional_material: uint32;
     directional_max_angle: float;
+    /// MODS (format 16): the shapes of `model` whose textures the record
+    /// replaces with a texture set's.
+    alternate_textures: [AlternateTexture];
+}
+
+/// One MODS entry (format 16): the shape named `shape` (3D index `index`, the
+/// fallback when no shape has the name) of the base's model takes the texture
+/// set's textures.
+table AlternateTexture {
+    shape: string;
+    index: int32;
+    /// The TXST's TX00..TX07 as normalized virtual paths (`textures/...`), in
+    /// TXST order, empty for a slot the set does not fill. Always 8 entries.
+    textures: [string];
 }
 
 /// MATO (format 10): a directional material (snow, sand, moss) projected

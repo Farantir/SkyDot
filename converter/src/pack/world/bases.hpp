@@ -17,6 +17,8 @@
 #include <map>
 #include <string>
 #include <unordered_map>
+#include <array>
+#include <span>
 #include <vector>
 
 namespace bethconv::pack::detail {
@@ -24,6 +26,15 @@ namespace bethconv::pack::detail {
 struct TextureSetEntry {
     std::string diffuse;
     std::string normal;
+    /// All of TX00..TX07 as normalized virtual paths, empty if absent.
+    std::array<std::string, 8> textures;
+};
+
+/// One MODS entry whose TXST is not resolved yet (global FormID).
+struct PendingAlternate {
+    std::string shape;
+    std::int32_t index{};
+    std::uint32_t texture_set{};
 };
 
 /// An LTEX: the table, and the TXST it names, whose paths fill the table in when
@@ -49,6 +60,8 @@ public:
     void finish(wfb::WorldT& world);
 
 private:
+    /// Reads a MODS field's bytes; the entries wait for their texture sets.
+    void keep_alternates(const record::MergedRecord& merged, std::span<const std::byte> mods);
     void on_light(const record::MergedRecord& merged, io::SpanReader& data,
                   const record::FormContext& form_ctx);
     void on_material_object(const record::MergedRecord& merged, io::SpanReader& data);
@@ -66,6 +79,7 @@ private:
     std::map<std::uint32_t, wfb::AddonNodeT> addons_;
     std::map<std::uint32_t, LandTextureEntry> land_textures_;
     std::unordered_map<std::uint32_t, TextureSetEntry> texture_sets_;
+    std::map<std::uint32_t, std::vector<PendingAlternate>> pending_alternates_;
 };
 
 } // namespace bethconv::pack::detail

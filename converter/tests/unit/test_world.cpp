@@ -281,6 +281,21 @@ void make_land(const TempDir& dir) {
     bethconv::test::write_record(txsts, "TXST", 0x0000'0C00, txst_payload.span());
     top_group(file, "TXST", txsts);
 
+    // A STAT whose MODS swaps the shape "Banner1" (3D index 0) to that TXST.
+    ByteWriter banner = static_payload("AltBanner", "Clutter\\Banners\\Banner.nif");
+    ByteWriter mods;
+    mods.u32(1);
+    mods.u32(7);
+    for (const char c : std::string_view{"Banner1"}) {
+        mods.u8(static_cast<std::uint8_t>(c));
+    }
+    mods.u32(0x0000'0C00);
+    mods.u32(0);
+    bethconv::test::write_field(banner, "MODS", mods);
+    ByteWriter banners;
+    bethconv::test::write_record(banners, "STAT", 0x0000'0C0A, banner.span());
+    top_group(file, "STAT", banners);
+
     ByteWriter ltex_payload;
     ByteWriter edid;
     edid.zstring("LDirt");
@@ -884,6 +899,15 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     REQUIRE(weather->volumetric_lighting.size() == 4);
     CHECK(weather->volumetric_lighting[0] == 0);
     CHECK(weather->volumetric_lighting[1] == 0x0000'0C7F);
+    const auto banner = file->base(0x0000'0C0A);
+    REQUIRE(banner.has_value());
+    REQUIRE(banner->alternate_textures.size() == 1);
+    CHECK(banner->alternate_textures[0]->shape == "Banner1");
+    CHECK(banner->alternate_textures[0]->index == 0);
+    REQUIRE(banner->alternate_textures[0]->textures.size() == 8);
+    CHECK(banner->alternate_textures[0]->textures[0] == "textures/landscape/dirt01.dds");
+    CHECK(banner->alternate_textures[0]->textures[1] == "textures/landscape/dirt01_n.dds");
+    CHECK(banner->alternate_textures[0]->textures[2].empty());
     const auto grass = file->grass(0x0000'0C09);
     REQUIRE(grass.has_value());
     CHECK(grass->density == 64);
