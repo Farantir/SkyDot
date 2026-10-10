@@ -81,10 +81,13 @@ std::vector<std::string> sided(bool double_sided) {
     return double_sided ? std::vector<std::string>{"SKYDOT_DOUBLE_SIDED"} : std::vector<std::string>{};
 }
 
-std::string lighting_code(bool double_sided, Alpha alpha) {
+std::string lighting_code(bool double_sided, Alpha alpha, bool after_water = false) {
     std::vector<std::string> defines = sided(double_sided);
     if (alpha == Alpha::test) {
         defines.emplace_back("SKYDOT_ALPHA_TEST");
+        if (after_water) {
+            defines.emplace_back("SKYDOT_AFTER_WATER");
+        }
     } else if (alpha == Alpha::blend) {
         defines.emplace_back("SKYDOT_ALPHA_BLEND");
     } else if (alpha == Alpha::mul) {
@@ -313,6 +316,13 @@ void SkydotMaterials::set_game_light(godot::Light3D* light, const Color& gamma) 
     light->set_param(godot::Light3D::PARAM_ENERGY, peak);
 }
 
+Ref<godot::ShaderMaterial> SkydotMaterials::after_water(const Ref<godot::ShaderMaterial>& material) {
+    Ref<godot::ShaderMaterial> out = material->duplicate();
+    const bool double_sided = material->has_meta("skydot_double_sided") && static_cast<bool>(material->get_meta("skydot_double_sided"));
+    out->set_shader(shader_for(lighting_code(double_sided, Alpha::test, true)));
+    return out;
+}
+
 Ref<godot::Shader> SkydotMaterials::shader_for(const std::string& code) {
     ensure_fog_globals();
     auto it = shaders_.find(code);
@@ -438,6 +448,7 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         const bool env_map = godot::Object::cast_to<godot::Cubemap>(env.ptr()) != nullptr;
 
         out->set_shader(shader_for(lighting_code(double_sided, alpha)));
+        out->set_meta("skydot_double_sided", double_sided);
         out->set_shader_parameter("use_vertex_colors",
                                   (flags2 & k_sf2_vertex_colors) != 0 && shader_type != k_type_hair_tint);
         // On trees, vertex alpha is the wind weight, not opacity.
@@ -705,6 +716,9 @@ Dictionary SkydotMaterials::shader_sources() {
         const std::string side = double_sided ? "double" : "single";
         for (const auto& [alpha, alpha_name] : alphas) {
             add("lighting_" + side + "_" + alpha_name, lighting_code(double_sided, alpha));
+            if (alpha == Alpha::test) {
+                add("lighting_" + side + "_test_after_water", lighting_code(double_sided, alpha, true));
+            }
             for (const bool particles : {false, true}) {
                 for (const bool lit : {false, true}) {
                     add("effect_" + side + "_" + alpha_name + (particles ? "_particles" : "") + (lit ? "_lit" : "_unlit"),
@@ -728,6 +742,7 @@ std::int64_t SkydotMaterials::warm_up() {
         for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::mul}) {
             shader_for(lighting_code(double_sided, alpha));
         }
+        shader_for(lighting_code(double_sided, Alpha::test, true));
         for (const bool lit : {false, true}) {
             for (const Alpha alpha : {Alpha::none, Alpha::test, Alpha::blend, Alpha::add, Alpha::mul}) {
                 shader_for(effect_code(double_sided, alpha, false, lit));

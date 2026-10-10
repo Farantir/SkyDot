@@ -88,6 +88,11 @@ public:
     godot::Ref<godot::ShaderMaterial> projected(const godot::Ref<godot::ShaderMaterial>& material,
                                                 std::uint32_t key, const ProjectedMaterial& with);
 
+    /// A copy of a converted alpha-tested lighting material (grass) that is
+    /// drawn with the transparent surfaces, after the water, so the water
+    /// hides it where it lies under the surface.
+    godot::Ref<godot::ShaderMaterial> after_water(const godot::Ref<godot::ShaderMaterial>& material);
+
     /// The camera-facing effect material for a particle system, from the
     /// material block the converter writes with it.
     godot::Ref<godot::ShaderMaterial> particle_material(const godot::Dictionary& extras);

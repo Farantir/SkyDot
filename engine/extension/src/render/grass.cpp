@@ -12,8 +12,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <numbers>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace wfb = bethconv::pack::wfb;
 
@@ -228,24 +231,51 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
         if (model.mesh.is_null()) {
             continue;
         }
-        godot::Ref<godot::MultiMesh> multimesh;
-        multimesh.instantiate();
-        multimesh->set_transform_format(godot::MultiMesh::TRANSFORM_3D);
-        multimesh->set_mesh(model.mesh);
-        multimesh->set_instance_count(static_cast<int32_t>(transforms.size()));
-        for (std::size_t i = 0; i < transforms.size(); ++i) {
-            multimesh->set_instance_transform(static_cast<int32_t>(i), transforms[i] * model.local);
+        // Blades whose top is under the water go to a mesh drawn after the
+        // water, which then hides them (the game draws grass after the water).
+        const godot::AABB box = model.mesh->get_aabb();
+        const float surface = in.water_height * scale;
+        std::vector<godot::Transform3D> dry;
+        std::vector<godot::Transform3D> wet;
+        for (const godot::Transform3D& t : transforms) {
+            bool submerged = in.has_water;
+            if (submerged) {
+                const godot::Transform3D placed_at = t * model.local;
+                float top = -std::numeric_limits<float>::infinity();
+                for (int corner = 0; corner < 8; ++corner) {
+                    top = std::max(top, placed_at.xform(box.get_endpoint(corner)).y);
+                }
+                submerged = top < surface;
+            }
+            (submerged ? wet : dry).push_back(t * model.local);
         }
-        auto* node = memnew(godot::MultiMeshInstance3D);
-        node->set_name(godot::String::utf8(grass->editor_id() != nullptr ? grass->editor_id()->c_str() : "grass"));
-        node->set_multimesh(multimesh);
-        node->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
-        // Per cell: the fade starts where the cell's far edge is that far.
-        node->set_visibility_range_end((k_fade_start + k_cell_units * 0.7F) * scale);
-        node->set_visibility_range_end_margin(k_fade_range * scale);
-        node->set_visibility_range_fade_mode(godot::GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
-        root->add_child(node);
-        placed += static_cast<std::int64_t>(transforms.size());
+        const std::string name = grass->editor_id() != nullptr ? grass->editor_id()->c_str() : "grass";
+        const auto add_group = [&](const std::vector<godot::Transform3D>& placed_transforms,
+                                   const godot::Ref<godot::Mesh>& mesh, const char* suffix) {
+            if (placed_transforms.empty()) {
+                return;
+            }
+            godot::Ref<godot::MultiMesh> multimesh;
+            multimesh.instantiate();
+            multimesh->set_transform_format(godot::MultiMesh::TRANSFORM_3D);
+            multimesh->set_mesh(mesh);
+            multimesh->set_instance_count(static_cast<int32_t>(placed_transforms.size()));
+            for (std::size_t i = 0; i < placed_transforms.size(); ++i) {
+                multimesh->set_instance_transform(static_cast<int32_t>(i), placed_transforms[i]);
+            }
+            auto* node = memnew(godot::MultiMeshInstance3D);
+            node->set_name(godot::String::utf8((name + suffix).c_str()));
+            node->set_multimesh(multimesh);
+            node->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
+            // Per cell: the fade starts where the cell's far edge is that far.
+            node->set_visibility_range_end((k_fade_start + k_cell_units * 0.7F) * scale);
+            node->set_visibility_range_end_margin(k_fade_range * scale);
+            node->set_visibility_range_fade_mode(godot::GeometryInstance3D::VISIBILITY_RANGE_FADE_SELF);
+            root->add_child(node);
+            placed += static_cast<std::int64_t>(placed_transforms.size());
+        };
+        add_group(dry, model.mesh, "");
+        add_group(wet, model.submerged_mesh.is_valid() ? model.submerged_mesh : model.mesh, " (submerged)");
     }
     if (root->get_child_count() == 0) {
         memdelete(root);

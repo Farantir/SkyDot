@@ -344,7 +344,8 @@ GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
                 }
             }
             godot::Ref<godot::ArrayMesh> copy = instance->get_mesh()->duplicate();
-            if (copy.is_valid()) {
+            godot::Ref<godot::ArrayMesh> under = instance->get_mesh()->duplicate();
+            if (copy.is_valid() && under.is_valid()) {
                 for (int s = 0; s < copy->get_surface_count(); ++s) {
                     if (const godot::Ref<godot::ShaderMaterial> m = instance->get_surface_override_material(s); m.is_valid()) {
                         // The game draws grass with its grass shader, whose
@@ -353,9 +354,11 @@ GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
                         own->set_shader_parameter("use_vertex_alpha", false);
                         own->set_shader_parameter("foliage", true);
                         copy->surface_set_material(s, own);
+                        under->surface_set_material(s, materials().after_water(own));
                     }
                 }
                 out.mesh = copy;
+                out.submerged_mesh = under;
             }
         }
         memdelete(node);

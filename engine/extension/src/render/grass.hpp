@@ -9,7 +9,8 @@
 // leaned with the ground. The texture at a point is picked by the layers'
 // blended opacity there, as the terrain shader blends them.
 //
-// One MultiMeshInstance3D per grass type and cell, faded out from 100 m
+// One MultiMeshInstance3D per grass type and cell (a second one for the
+// blades fully under water, drawn after the water so it hides them), faded out from 100 m
 // (fGrassStartFadeDistance, 7000 units). Not done: wind (wave period),
 // colour range, vertex lighting.
 #pragma once
@@ -33,6 +34,9 @@ namespace skydot {
 /// the transform of that mesh inside the model.
 struct GrassModel {
     godot::Ref<godot::Mesh> mesh;
+    /// The same with materials drawn after the water, for instances that lie
+    /// under its surface.
+    godot::Ref<godot::Mesh> submerged_mesh;
     godot::Transform3D local;
 };
 

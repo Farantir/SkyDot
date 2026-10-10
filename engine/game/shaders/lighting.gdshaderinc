@@ -4,6 +4,7 @@
  *     shader_type spatial;
  *     [#define SKYDOT_DOUBLE_SIDED]
  *     [#define SKYDOT_ALPHA_TEST | #define SKYDOT_ALPHA_BLEND | #define SKYDOT_ALPHA_MUL]
+ *     [#define SKYDOT_AFTER_WATER]   (with ALPHA_TEST: drawn blended, after the water)
  *     #include "res://shaders/lighting.gdshaderinc"
  * and the render modes below follow from the defines. The game's fog is written to FOG,
  * and the game's directional ambient replaces Godot's (game_fog.gdshaderinc).
@@ -20,7 +21,13 @@ render_mode depth_draw_never, blend_mul, fog_disabled;
 #endif
 render_mode ambient_light_disabled;
 #ifdef SKYDOT_ALPHA_TEST
+#ifdef SKYDOT_AFTER_WATER
+// Grass under water: in the transparent pass, where the water (drawn first,
+// writing depth) hides it, as in the game.
+render_mode depth_draw_always;
+#else
 render_mode alpha_to_coverage;
+#endif
 #endif
 
 #include "res://shaders/game_fog.gdshaderinc"
@@ -226,9 +233,16 @@ void fragment() {
 	ALBEDO = albedo.rgb;
 #ifdef SKYDOT_ALPHA_TEST
 	ALPHA = clamp((albedo.a - alpha_cutoff) / max(fwidth(albedo.a), 0.0001) + 0.5, 0.0, 1.0);
+#ifdef SKYDOT_AFTER_WATER
+	// No scissor threshold: it would keep the material in the opaque pass.
+	if (ALPHA < 0.01) {
+		discard;
+	}
+#else
 	// Not the cutoff: that is in ALPHA already. This only keeps the pass from
 	// drawing (and the shadow pass from casting) the fully clear texels.
 	ALPHA_SCISSOR_THRESHOLD = 0.01;
+#endif
 #endif
 #ifdef SKYDOT_ALPHA_BLEND
 	if (blend_test && albedo.a <= alpha_cutoff) {
