@@ -226,7 +226,7 @@ void SkydotMaterials::ensure_fog_globals() {
                                         godot::Vector3());
         rs->global_shader_parameter_add("skydot_fog_far_color", godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3,
                                         godot::Vector3());
-        for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
+        for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_light_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
             rs->global_shader_parameter_add(name, godot::RenderingServer::GLOBAL_VAR_TYPE_VEC3, godot::Vector3());
         }
         rs->global_shader_parameter_add("skydot_foliage_bias", godot::RenderingServer::GLOBAL_VAR_TYPE_FLOAT,
@@ -262,7 +262,7 @@ void SkydotMaterials::sync_fog(const Ref<godot::Environment>& environment) {
     rs->global_shader_parameter_set("skydot_fog_far_color", vec(far));
     // The sun and sky as water reflects them, and the light lit effects
     // take (SkydotWeather sets these metas; inside there is no sun).
-    for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
+    for (const char* name : {"skydot_sun_direction", "skydot_sun_color", "skydot_light_color", "skydot_sky_upper", "skydot_sky_horizon", "skydot_sky_lower", "skydot_effect_light"}) {
         const godot::StringName key = name;
         const Variant v = environment.is_valid() && environment->has_meta(key) ? environment->get_meta(key) : Variant();
         rs->global_shader_parameter_set(key, v.get_type() == Variant::VECTOR3 ? static_cast<godot::Vector3>(v)
@@ -458,6 +458,21 @@ Ref<godot::Material> SkydotMaterials::convert(const Ref<godot::Material>& source
         // Thin cut-out foliage: trees (their shader flag) share the bias; grass
         // gets it where its materials are copied (cell_builder.cpp).
         out->set_shader_parameter("foliage", alpha == Alpha::test && (flags2 & k_sf2_tree_anim) != 0);
+        // Soft and rim lighting take their colour from texture slot 2; the
+        // strengths are the material's lighting effects 1 and 2 (packs from
+        // before mesh version 21 lack them: nifly's defaults).
+        const bool soft_light = static_cast<bool>(extras.get("has_softlight", false));
+        const bool rim_light = static_cast<bool>(extras.get("has_rimlight", false));
+        if (soft_light || rim_light) {
+            const Ref<godot::Texture> soft_rim = load_texture(slot_path(extras, 2));
+            if (soft_rim.is_valid()) {
+                out->set_shader_parameter("soft_light_tex", soft_rim);
+                out->set_shader_parameter("use_soft_light", soft_light);
+                out->set_shader_parameter("use_rim_light", rim_light);
+                out->set_shader_parameter("soft_lighting", as_double(extras, "soft_lighting", 0.3));
+                out->set_shader_parameter("rim_light_power", as_double(extras, "rim_light_power", 2.0));
+            }
+        }
         // A STAT's directional material lands on its shapes whether or not
         // they have the Projected UV flag: Nordic towers share one model
         // between the snowy and the bare STAT, without the flag, and only

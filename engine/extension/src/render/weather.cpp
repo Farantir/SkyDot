@@ -761,6 +761,8 @@ void SkydotWeather::update_sky(double delta) {
     SkydotMaterials::set_game_light(light_, mix(a.sunlight, b.sunlight) * scale);
     environment_->set_meta("skydot_sun_direction", towards.normalized());
     environment_->set_meta("skydot_sun_color", shader_rgb(mix(a.sunlight, b.sunlight) * (day ? scale : 0.0F)));
+    // The directional light as it is, sun or moon (soft and rim lighting).
+    environment_->set_meta("skydot_light_color", shader_rgb(mix(a.sunlight, b.sunlight) * scale));
     // Lit effects take the weather's sunlight as it is: no image-space scale,
     // and the moonlight at night (see effect.gdshaderinc).
     environment_->set_meta("skydot_effect_light", shader_rgb(mix(a.sunlight, b.sunlight)));

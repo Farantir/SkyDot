@@ -353,6 +353,9 @@ GrassModel CellBuilder::grass_model(const wfb::Grass& grass) {
                         godot::Ref<godot::ShaderMaterial> own = m->duplicate();
                         own->set_shader_parameter("use_vertex_alpha", false);
                         own->set_shader_parameter("foliage", true);
+                        own->set_shader_parameter("grass", true);
+                        own->set_shader_parameter("use_soft_light", false);
+                        own->set_shader_parameter("use_rim_light", false);
                         copy->surface_set_material(s, own);
                         under->surface_set_material(s, materials().after_water(own));
                     }

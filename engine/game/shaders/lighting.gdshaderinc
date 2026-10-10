@@ -39,6 +39,25 @@ uniform sampler2D albedo_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 // the flag is per material (materials.cpp).
 global uniform float skydot_foliage_bias;
 uniform bool foliage = false;
+// The directional light (sun or moon) without its shadow, for soft and rim
+// lighting: Lighting.hlsl adds both with nsDirLightColor, the unshadowed
+// light. Zero inside.
+global uniform vec3 skydot_sun_direction;
+global uniform vec3 skydot_light_color;
+// Soft lighting (SLSF2 Soft_Lighting) wraps the light round the surface, rim
+// lighting (Rim_Lighting) adds it at grazing angles against the light; both
+// tinted by the soft/rim light map (texture slot 2, on trees the diffuse
+// itself). Lighting.hlsl, GetSoftLightMultiplier / GetRimLightMultiplier:
+// soft_lighting is the material's lighting effect 1 (pines 8.0, so their
+// needles take the sun on every side and in their own shadow), rim power its
+// lighting effect 2.
+uniform bool use_soft_light = false;
+uniform float soft_lighting = 0.3;
+uniform bool use_rim_light = false;
+uniform float rim_light_power = 2.0;
+uniform sampler2D soft_light_tex : filter_linear_mipmap, repeat_enable;
+// Grass: the game draws it with its own shader (RunGrass.hlsl).
+uniform bool grass = false;
 uniform sampler2D normal_tex : hint_normal, filter_linear_mipmap_anisotropic, repeat_enable;
 uniform vec4 base_color = vec4(1.0);
 uniform vec3 specular_color = vec3(1.0);
@@ -111,6 +130,7 @@ uniform sampler2D proj_normal_tex : filter_linear_mipmap_anisotropic, repeat_ena
 uniform sampler2D proj_detail_tex : filter_linear_mipmap_anisotropic, repeat_enable;
 
 varying float spec_mask;
+varying vec3 soft_rim_color;
 varying vec3 model_pos; // the shape's own coordinates (the NIF's, in game units)
 
 void vertex() {
@@ -131,6 +151,21 @@ float proj_noise(vec3 x) {
 	               mix(proj_hash(i + vec3(0, 1, 0)), proj_hash(i + vec3(1, 1, 0)), f.x), f.y),
 	           mix(mix(proj_hash(i + vec3(0, 0, 1)), proj_hash(i + vec3(1, 0, 1)), f.x),
 	               mix(proj_hash(i + vec3(0, 1, 1)), proj_hash(i + vec3(1, 1, 1)), f.x), f.y), f.z);
+}
+
+float soft_light(float angle) {
+	float p = clamp((soft_lighting + angle) / (1.0 + soft_lighting), 0.0, 1.0);
+	float c = clamp(angle, 0.0, 1.0);
+	return clamp(p * p * (3.0 - 2.0 * p) - c * c * (3.0 - 2.0 * c), 0.0, 1.0);
+}
+
+// normal, view and light in one space; the light points towards the light.
+float soft_rim_light(vec3 normal, vec3 view, vec3 light) {
+	float m = use_soft_light ? soft_light(dot(normal, light)) : 0.0;
+	if (use_rim_light) {
+		m += pow(1.0 - clamp(dot(normal, view), 0.0, 1.0), rim_light_power) * clamp(dot(view, -light), 0.0, 1.0);
+	}
+	return m;
 }
 
 vec3 soft_tint(vec3 base, vec3 tint) {
@@ -155,6 +190,14 @@ void fragment() {
 	if (use_hair_tint) {
 		albedo.rgb *= mix(vec3(1.0), hair_tint, COLOR.g);
 	}
+#ifdef SKYDOT_DOUBLE_SIDED
+	// The game does not turn the normal round on back faces; Godot does.
+	// (Grass keeps Godot's: its lighting is RunGrass.hlsl's, not modelled yet.)
+	vec3 face = FRONT_FACING || grass ? vec3(1.0) : vec3(-1.0);
+	NORMAL *= face;
+	TANGENT *= face;
+	BINORMAL *= face;
+#endif
 	vec3 geo_normal = NORMAL;
 	float snow_rim = 0.0;
 	vec4 n = texture(normal_tex, uv);
@@ -233,6 +276,9 @@ void fragment() {
 	ALBEDO = albedo.rgb;
 #ifdef SKYDOT_ALPHA_TEST
 	ALPHA = clamp((albedo.a - alpha_cutoff) / max(fwidth(albedo.a), 0.0001) + 0.5, 0.0, 1.0);
+	if (IN_SHADOW_PASS) {
+		ALPHA = step(alpha_cutoff, albedo.a);
+	}
 #ifdef SKYDOT_AFTER_WATER
 	// No scissor threshold: it would keep the material in the opaque pass.
 	if (ALPHA < 0.01) {
@@ -253,11 +299,23 @@ void fragment() {
 	FOG = skydot_game_fog(VERTEX);
 	EMISSION += ALBEDO * skydot_ambient((INV_VIEW_MATRIX * vec4(NORMAL, 0.0)).xyz);
 	EMISSION += vec3(snow_rim);
+	soft_rim_color = vec3(0.0);
+	if (use_soft_light || use_rim_light) {
+		soft_rim_color = texture(soft_light_tex, uv).rgb;
+		vec3 sun = (VIEW_MATRIX * vec4(skydot_sun_direction, 0.0)).xyz;
+		if (dot(sun, sun) > 0.0) {
+			EMISSION += ALBEDO * soft_rim_color * skydot_light_color * soft_rim_light(NORMAL, VIEW, normalize(sun));
+		}
+	}
 }
 
 void light() {
 	float ndotl = clamp(dot(NORMAL, LIGHT), 0.0, 1.0);
 	DIFFUSE_LIGHT += ndotl * ATTENUATION * LIGHT_COLOR / PI;
+	if (!LIGHT_IS_DIRECTIONAL && (use_soft_light || use_rim_light)) {
+		// The sun's share is in fragment(), unshadowed.
+		DIFFUSE_LIGHT += soft_rim_color * soft_rim_light(NORMAL, VIEW, LIGHT) * ATTENUATION * LIGHT_COLOR / PI;
+	}
 	vec3 half_vector = normalize(VIEW + LIGHT);
 	float highlight = pow(clamp(dot(NORMAL, half_vector), 0.0, 1.0), max(glossiness, 1.0));
 	SPECULAR_LIGHT += highlight * spec_mask * specular_strength * specular_color
