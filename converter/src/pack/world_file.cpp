@@ -250,6 +250,10 @@ std::optional<wfb::VolumetricLightingT> WorldFile::volumetric_lighting(std::uint
     return unpack(lookup(impl_->root->volumetric_lightings(), id));
 }
 
+std::optional<wfb::GrassT> WorldFile::grass(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->grasses(), id));
+}
+
 std::optional<wfb::WeatherT> WorldFile::weather(std::uint32_t id) const {
     return unpack(lookup(impl_->root->weathers(), id));
 }

@@ -405,6 +405,39 @@ void make_land(const TempDir& dir) {
     bethconv::test::write_record(volis, "VOLI", 0x0000'0C7F, voli.span());
     top_group(file, "VOLI", volis);
 
+    // GRAS: object bounds 6 x 8 x 24 (radius 13) and its DATA.
+    ByteWriter gras;
+    ByteWriter gras_id;
+    gras_id.zstring("LandGrass");
+    bethconv::test::write_field(gras, "EDID", gras_id);
+    ByteWriter gras_bounds;
+    for (const int v : {-3, -4, 0, 3, 4, 24}) {
+        gras_bounds.u16(static_cast<std::uint16_t>(static_cast<std::int16_t>(v)));
+    }
+    bethconv::test::write_field(gras, "OBND", gras_bounds);
+    ByteWriter gras_model;
+    gras_model.zstring("Landscape\\Grass\\Test.nif");
+    bethconv::test::write_field(gras, "MODL", gras_model);
+    ByteWriter gras_data;
+    gras_data.u8(64);
+    gras_data.u8(0);
+    gras_data.u8(45);
+    gras_data.u8(0);
+    gras_data.u16(0);
+    gras_data.u16(0);
+    gras_data.u32(0);
+    for (const float v : {30.0F, 0.38F, 0.2F, 350.0F}) {
+        gras_data.f32(v);
+    }
+    gras_data.u8(6);
+    gras_data.u8(0);
+    gras_data.u8(0);
+    gras_data.u8(0);
+    bethconv::test::write_field(gras, "DATA", gras_data);
+    ByteWriter grases;
+    bethconv::test::write_record(grases, "GRAS", 0x0000'0C09, gras.span());
+    top_group(file, "GRAS", grases);
+
     // SPGD: rain, in the 48-byte form.
     ByteWriter spgd;
     ByteWriter spgd_id;
@@ -851,6 +884,13 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     REQUIRE(weather->volumetric_lighting.size() == 4);
     CHECK(weather->volumetric_lighting[0] == 0);
     CHECK(weather->volumetric_lighting[1] == 0x0000'0C7F);
+    const auto grass = file->grass(0x0000'0C09);
+    REQUIRE(grass.has_value());
+    CHECK(grass->density == 64);
+    CHECK(grass->max_slope == 45);
+    CHECK(grass->position_range == 30.0F);
+    CHECK(grass->bound_radius == 13.0F);
+    CHECK(grass->model == "meshes/landscape/grass/test.nif");
     const auto voli = file->volumetric_lighting(0x0000'0C7F);
     REQUIRE(voli.has_value());
     CHECK(voli->editor_id == "VLTest");

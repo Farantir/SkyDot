@@ -457,6 +457,10 @@ table Grass {
     color_range: float;
     wave_period: float;
     flags: GrassFlags;
+    /// Game units: half the diagonal of the object bounds (OBND), 0 without
+    /// them. The game grows each grass on a grid of this size, at least
+    /// iMinGrassSize (format 15).
+    bound_radius: float;
 }
 
 /// One of WATR's three noise layers.

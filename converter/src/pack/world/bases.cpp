@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <utility>
@@ -250,6 +251,15 @@ void BaseCollector::on_grass(const record::MergedRecord& merged, io::SpanReader&
                 out.editor_id = std::string(body.zstring().value_or(""));
             } else if (field.type == FourCC{"MODL"}) {
                 out.model = model_vpath(std::string(body.zstring().value_or("")));
+            } else if (field.type == FourCC{"OBND"} && body.remaining() >= 12) {
+                std::array<float, 6> b{};
+                for (float& v : b) {
+                    v = static_cast<float>(body.get<std::int16_t>().value_or(0));
+                }
+                const float dx = b[3] - b[0];
+                const float dy = b[4] - b[1];
+                const float dz = b[5] - b[2];
+                out.bound_radius = 0.5F * std::sqrt(dx * dx + dy * dy + dz * dz);
             } else if (field.type == FourCC{"DATA"} && body.remaining() >= 29) {
                 out.density = body.get<std::uint8_t>().value_or(0);
                 out.min_slope = body.get<std::uint8_t>().value_or(0);
