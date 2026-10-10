@@ -118,6 +118,10 @@ struct Material {
     /// BSEffectShaderProperty lighting influence (0..1): how far Effect_Lighting
     /// moves the colour from unlit to lit.
     float lighting_influence{};
+    /// BSLightingShaderProperty lighting effect 1 (soft lighting wrap, the
+    /// game's fSubSurfaceLightRolloff) and 2 (rim light power).
+    float soft_lighting{0.3f};
+    float rim_light_power{2.0f};
 };
 
 /// One drawable shape: a triangle list with per-vertex attributes. Every

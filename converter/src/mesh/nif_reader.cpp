@@ -549,6 +549,8 @@ private:
             mat.has_backlight = shader->HasBacklight();
             mat.has_rimlight = shader->HasRimlight();
             mat.has_softlight = shader->HasSoftlight();
+            mat.soft_lighting = shader->GetSoftlight();
+            mat.rim_light_power = shader->GetRimlightPower();
 
             mat.base_color.w = shader->GetAlpha();
 

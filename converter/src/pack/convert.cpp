@@ -363,9 +363,9 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
 /// skin tint colours in the material extras. 17: BSOrderedNode children's draw
 /// order. 18: BSWaterShaderProperty named instead of "other". 19: AddOnNode
 /// indices in the node extras. 20: effect lighting influence in the material
-/// extras.
+/// extras. 21: soft lighting and rim light power in the material extras.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/20;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/21;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +
