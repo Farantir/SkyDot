@@ -1,4 +1,4 @@
-/* Stars, the sun and its glare: they add light.
+/* Stars, the sun, its glare and the moons: they add light.
  *
  * The sprite shader (sprite.gdshaderinc) blended as blend_add.
  */

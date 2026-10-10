@@ -103,7 +103,7 @@ private:
     /// One weather's sky at the current time.
     struct Sky {
         godot::Color upper, lower, horizon, ambient, sunlight, sun, stars, effect_light,
-            fog_near_color, fog_far_color;
+            fog_near_color, fog_far_color, moon;
         float fog_near{}, fog_far{}, fog_power{1}, fog_max{1};
         /// DALC: x+, x-, y+, y-, z+, z- (the game's axes).
         std::array<godot::Color, 6> directional_ambient{};
@@ -179,6 +179,8 @@ private:
     godot::Ref<godot::ShaderMaterial> glare_material_;
     std::array<godot::Ref<godot::ShaderMaterial>, 2> moon_materials_;
     std::array<godot::MeshInstance3D*, 2> moons_{};
+    std::array<godot::Ref<godot::ShaderMaterial>, 2> moon_shadow_materials_;
+    std::array<godot::MeshInstance3D*, 2> moon_shadows_{};
     godot::MeshInstance3D* sun_{};
     godot::MeshInstance3D* glare_{};
     godot::GPUParticles3D* particles_{};

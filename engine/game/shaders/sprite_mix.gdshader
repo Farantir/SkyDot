@@ -1,4 +1,4 @@
-/* The moons: they cover what is behind.
+/* The moons' shadows: they cover what is behind (the stars).
  *
  * The sprite shader (sprite.gdshaderinc) blended as blend_mix.
  */

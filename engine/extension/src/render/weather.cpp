@@ -374,6 +374,7 @@ SkydotWeather::Sky SkydotWeather::sky_of(const Weather* weather) const {
     out.lower = colour(7);
     out.horizon = colour(8);
     out.effect_light = colour(9);
+    out.moon = colour(16);
     out.fog_far_color = colour(12);
     const auto weight = [](int time) { return time == 1 ? 1.0F : time == 3 ? 0.0F : 0.5F; };
     const float daylight = weight(from) + (weight(to) - weight(from)) * t;
@@ -617,14 +618,23 @@ void SkydotWeather::build_sky_objects() {
         dome_->add_child(node);
         return node;
     };
-    sun_material_ = material_from(additive, -126);
+    sun_material_ = material_from(additive, -125);
     sun_material_->set_shader_parameter("tex", texture(str(climate_->sun_texture())));
     sun_ = quad("Sun", sun_material_);
-    glare_material_ = material_from(additive, -125);
+    glare_material_ = material_from(additive, -124);
     glare_material_->set_shader_parameter("tex", texture(str(climate_->sun_glare_texture())));
     glare_ = quad("Glare", glare_material_);
+    // Each moon is added over its shadow: the full disc in the sky's colour,
+    // which hides the stars behind the moon (the game's moon shadow mesh).
+    // By day the shadow is gone and the moon, in the day's dark moon colour,
+    // adds next to nothing to the sky (as in game shots of Secunda at 17:00).
     for (std::size_t i = 0; i < 2; ++i) {
-        moon_materials_[i] = material_from(blended, -127);
+        const char* name = i == 0 ? "masser" : "secunda";
+        moon_shadow_materials_[i] = material_from(blended, -127);
+        moon_shadow_materials_[i]->set_shader_parameter(
+            "tex", texture(String("textures/sky/") + name + "_full.dds"));
+        moon_shadows_[i] = quad(i == 0 ? "MasserShadow" : "SecundaShadow", moon_shadow_materials_[i]);
+        moon_materials_[i] = material_from(additive, -126);
         moons_[i] = quad(i == 0 ? "Masser" : "Secunda", moon_materials_[i]);
     }
 }
@@ -825,12 +835,16 @@ void SkydotWeather::update_sky_objects() {
     // Sprites at an arbitrary distance: the shader puts them at the far
     // plane, so only their angular size matters.
     constexpr float k_distance = 10.0F;
-    const auto place = [&](godot::MeshInstance3D* node, const Vector3& direction, float degrees) {
+    // `up`: the texture's up; world up unless given.
+    const auto place = [&](godot::MeshInstance3D* node, const Vector3& direction, float degrees,
+                           const Vector3& up = Vector3()) {
         const float size = 2.0F * k_distance * std::tan(degrees * std::numbers::pi_v<float> / 360.0F);
         const Vector3 at = direction.normalized() * k_distance;
         node->set_position(at);
         node->look_at(dome_->get_global_position() + at * 2.0F,
-                      std::abs(direction.normalized().y) < 0.99F ? Vector3(0, 1, 0) : Vector3(0, 0, 1));
+                      up != Vector3() ? up
+                      : std::abs(direction.normalized().y) < 0.99F ? Vector3(0, 1, 0)
+                                                                   : Vector3(0, 0, 1));
         node->set_scale(Vector3(size, size, size));
     };
 
@@ -861,25 +875,47 @@ void SkydotWeather::update_sky_objects() {
         glare_material_->set_shader_parameter("tint", shader_rgba(glare));
     }
 
-    // The moons: at night, near where the sun would be; their phase changes
-    // every phase_length days.
+    // The moons on their measured paths (render/sun_path.hpp), in the
+    // weather's moon colour (NAM0 Moon Glare, the game's moon blend colour),
+    // by day too; their phase changes every phase_length days.
     const int length = std::max<int>(climate_->phase_length(), 1);
     const int phase = static_cast<int>((day_ / length) % 8);
     const char* names[2] = {"masser", "secunda"};
-    const float sizes[2] = {14.0F, 6.0F};
-    const float shift[2] = {0.25F, -0.2F};
+    const MoonParams* params[2] = {&k_masser, &k_secunda};
+    const double game_hours = static_cast<double>(day_) * 24.0 + hour_;
+    Color moon = a.moon.lerp(b.moon, t);
+    Color shadow = a.upper.lerp(b.upper, t);
+    // The shadow fades in over 2.5 hours after the sun disc sets and out
+    // before it rises (SkyrimClimate, evening measured: alpha 0 at 18:30,
+    // 0.2 at 19:00, 0.8 at 20:30, 1 at 21:00; the morning assumed mirrored).
+    const float rise = (climate_->sunrise_begin() + climate_->sunrise_end()) * 0.5F - 0.25F;
+    const float set = (climate_->sunset_begin() + climate_->sunset_end()) * 0.5F + 0.25F;
+    const auto h = static_cast<float>(hour_);
+    constexpr float k_shadow_hours = 2.5F;
+    const float night = sun_now.up ? 0.0F
+                                   : std::clamp(std::min(std::fmod(h - set + 24.0F, 24.0F),
+                                                         std::fmod(rise - h + 24.0F, 24.0F)) /
+                                                    k_shadow_hours,
+                                                0.0F, 1.0F);
     for (std::size_t i = 0; i < 2; ++i) {
-        const bool shown = !day && (climate_->moons() & (1U << i)) != 0;
+        const MoonPath path = moon_path(game_hours, *params[i]);
+        const bool shown = path.alpha > 0.0F && (climate_->moons() & (1U << i)) != 0;
         moons_[i]->set_visible(shown);
+        moon_shadows_[i]->set_visible(shown);
         if (!shown) {
             continue;
         }
-        const Vector3 direction = (towards + Vector3(shift[i], 0.05F, -shift[i])).normalized();
-        place(moons_[i], direction, sizes[i]);
-        const String path = String("textures/sky/") + names[i] + "_" + k_phases[phase] + ".dds";
-        if (String(moon_materials_[i]->get_meta("skydot_texture", String())) != path) {
-            moon_materials_[i]->set_meta("skydot_texture", path);
-            moon_materials_[i]->set_shader_parameter("tex", texture(path));
+        const float degrees = moon_degrees(*params[i]);
+        place(moon_shadows_[i], path.direction, degrees, path.up);
+        place(moons_[i], path.direction, degrees, path.up);
+        moon.a = path.alpha;
+        moon_materials_[i]->set_shader_parameter("tint", shader_rgba(moon));
+        shadow.a = path.alpha * night;
+        moon_shadow_materials_[i]->set_shader_parameter("tint", shader_rgba(shadow));
+        const String path_name = String("textures/sky/") + names[i] + "_" + k_phases[phase] + ".dds";
+        if (String(moon_materials_[i]->get_meta("skydot_texture", String())) != path_name) {
+            moon_materials_[i]->set_meta("skydot_texture", path_name);
+            moon_materials_[i]->set_shader_parameter("tex", texture(path_name));
         }
     }
 }

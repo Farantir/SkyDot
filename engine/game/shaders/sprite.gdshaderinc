@@ -1,9 +1,9 @@
-/* Stars, the sun and its glare add light; the moons cover what is behind.
+/* Stars, the sun, its glare and the moons add light; the moons' shadows cover what is behind.
  *
  * Every shape is in its texture's alpha: the constellation textures' colour
  * is a nebula under transparent texels, only the stars are opaque.
  *
- * The body of sprite_add.gdshader (stars, sun, glare) and sprite_mix.gdshader (moons),
+ * The body of sprite_add.gdshader (stars, sun, glare, moons) and sprite_mix.gdshader (moon shadows),
  * which differ in their blend mode. SkydotWeather::build_sky_objects() in render/weather.cpp
  * makes their materials.
  */
