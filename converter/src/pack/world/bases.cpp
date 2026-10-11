@@ -263,6 +263,7 @@ void BaseCollector::on_land_texture(const record::MergedRecord& merged, io::Span
     out.table.editor_id = ltex->editor_id;
     out.table.specular = ltex->specular;
     out.table.grasses = std::move(grasses);
+    out.table.snow = (ltex->inam & 1U) != 0;
     out.texture_set = shared_.global(merged, ltex->texture_set, failed);
     land_textures_[merged.form.value] = std::move(out);
     if (failed) {

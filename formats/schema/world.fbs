@@ -438,6 +438,8 @@ table LandTexture {
     specular: ubyte;
     /// GNAM (format 10): Grass records growing on it.
     grasses: [uint32];
+    /// INAM bit 0 (format 18): a snow texture; it does not compete for grass.
+    snow: bool;
 }
 
 /// ADDN (format 10): the model the game attaches to a mesh's BSValueNode

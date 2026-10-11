@@ -306,6 +306,9 @@ void make_land(const TempDir& dir) {
     ByteWriter snam;
     snam.u8(30);
     bethconv::test::write_field(ltex_payload, "SNAM", snam);
+    ByteWriter inam;
+    inam.u32(1);
+    bethconv::test::write_field(ltex_payload, "INAM", inam);
     ByteWriter ltexs;
     bethconv::test::write_record(ltexs, "LTEX", 0x0000'0C01, ltex_payload.span());
     top_group(file, "LTEX", ltexs);
@@ -834,6 +837,7 @@ TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][wor
     CHECK(dirt->diffuse == "textures/landscape/dirt01.dds");
     CHECK(dirt->normal == "textures/landscape/dirt01_n.dds");
     CHECK(dirt->specular == 30);
+    CHECK(dirt->snow);
     CHECK_FALSE(file->land_texture(0x0000'0C00).has_value());
 
     CHECK(stats->waters == 1);
