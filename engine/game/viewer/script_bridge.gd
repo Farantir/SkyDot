@@ -81,7 +81,8 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 
 func _on_activate_requested(ref: int, _activator: int, _default_only: bool) -> void:
 	var node := find_ref_node(ref)
-	call_deferred("activate", _world.get_ref_cell(ref), ref, node, true)
+	# Parent-activate-only stops the player, not a script's Activate.
+	call_deferred("activate", _world.get_ref_cell(ref), ref, node, true, true)
 
 
 func _on_open_changed(ref: int, open: bool) -> void:
