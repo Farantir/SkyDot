@@ -28,6 +28,8 @@ var _place: Place
 var _streamer: SkydotStreamer
 var _debug: DebugOverlay
 var _transition: PlaceTransition
+## The pack, for behaviour graphs (set by the viewer once it has opened it).
+var pack: SkydotPack
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
@@ -200,6 +202,8 @@ func _on_motion_type(ref: int, motion_type: int) -> void:
 
 func _on_play_animation(ref: int, animation: String) -> void:
 	var node := find_ref_node(ref)
+	if node != null and _behavior_event(node, ref, animation):
+		return
 	var animator := node.get_node_or_null("SkydotAnimator") if node != null else null
 	if animator == null or not animator.play(animation):
 		print("0x%08X has no %s animation" % [ref, animation])
@@ -212,6 +216,24 @@ func _on_play_animation(ref: int, animation: String) -> void:
 			_papyrus.notify_animation_event(ref, key))
 		animator.finished.connect(func(clip: String) -> void:
 			_papyrus.notify_animation_event(ref, clip))
+
+
+## Send `event` to the Havok behaviour graph of `node`'s model (swinging wall
+## traps), starting it on first use. Events the graph raises release scripts
+## waiting in PlayAnimationAndWait. False if the model has no graph or the
+## graph takes no such event.
+func _behavior_event(node: Node, ref: int, event: String) -> bool:
+	var player: Node = node.find_child("SkydotBehavior", true, false)
+	if player == null:
+		if node.has_meta("skydot_no_behavior") or pack == null:
+			return false
+		player = SkydotBehavior.attach(node, pack, ref)
+		if player == null:
+			node.set_meta("skydot_no_behavior", true)
+			return false
+		player.event_raised.connect(func(name: String) -> void:
+			_papyrus.notify_animation_event(ref, name))
+	return player.send_event(event)
 
 
 ## What activating reference `ref` in `cell` does. `node` is its model, if

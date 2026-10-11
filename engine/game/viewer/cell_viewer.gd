@@ -240,6 +240,7 @@ func _create_components() -> void:
 	add_child(_controls)
 	_bridge = ScriptBridge.new(_world, _papyrus, self, _rig.camera, _settings, _place, _streamer, _debug,
 		_transition)
+	_bridge.pack = _pack
 	_bridge.activations_finished.connect(func() -> void: _quit_in = 5)  # let scripts run first
 	_bridge.failed.connect(_fail)
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)

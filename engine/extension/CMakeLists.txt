@@ -36,6 +36,8 @@ add_custom_target(skydot_flatbuffers DEPENDS
 # virtual paths and file mappings. Nothing in them may include a
 # godot-cpp header: that would stop the unit tests building.
 set(SKYDOT_CORE_SOURCES
+    src/actors/behavior_machine.cpp
+    src/actors/behavior_machine.hpp
     src/ai/packages.cpp
     src/ai/packages.hpp
     src/assets/mapped_file.cpp
@@ -125,6 +127,8 @@ target_sources(skydot PRIVATE
     src/actors/actor_animation.hpp
     src/actors/actor_placement.cpp
     src/actors/actor_placement.hpp
+    src/actors/behavior_player.cpp
+    src/actors/behavior_player.hpp
     src/actors/locomotion.cpp
     src/actors/locomotion.hpp
     src/ai/ai.cpp

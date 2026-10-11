@@ -16,7 +16,7 @@ namespace {
 
 namespace afb = bethconv::pack::afb;
 
-constexpr std::uint32_t k_animation_format = 1;
+constexpr std::uint32_t k_animation_format = 2;
 
 const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
     // An empty array may have no data pointer; the root is read only if it has.

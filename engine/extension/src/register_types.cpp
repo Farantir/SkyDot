@@ -9,6 +9,7 @@
 #include "assets/pack.hpp"
 #include "vm/papyrus.hpp"
 #include "actors/actor_animation.hpp"
+#include "actors/behavior_player.hpp"
 #include "render/animator.hpp"
 #include "render/billboard.hpp"
 #include "physics/collision.hpp"
@@ -43,6 +44,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotParticles);
     GDREGISTER_CLASS(skydot::SkydotAnimator);
     GDREGISTER_CLASS(skydot::SkydotAnimation);
+    GDREGISTER_CLASS(skydot::SkydotBehavior);
     GDREGISTER_CLASS(skydot::SkydotMaterials);
     GDREGISTER_CLASS(skydot::SkydotWorld);
     GDREGISTER_CLASS(skydot::SkydotModel);
