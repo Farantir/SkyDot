@@ -497,6 +497,8 @@ void SkydotParticles::build_emitter(Emitter& em) {
     }
 
     auto* particles = memnew(godot::GPUParticles3D);
+    // Effect particles cast no shadows in the game (effect shader).
+    particles->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
     particles->set_name("Emitter");
     particles->set_amount(static_cast<std::int32_t>(amount));
     particles->set_lifetime(max_life);

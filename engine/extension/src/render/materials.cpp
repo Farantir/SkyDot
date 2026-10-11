@@ -638,6 +638,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
     const Ref<godot::Texture> palette = load_texture(slot_path(extras, 3));
     const bool lit = (flags2 & k_sf2_effect_lighting) != 0;
     out->set_shader(shader_for(effect_code(double_sided, alpha, particles, lit)));
+    out->set_meta("skydot_effect", true);
     out->set_shader_parameter("palette_color", (flags1 & k_sf1_greyscale_to_palette_color) != 0 &&
                                                    palette.is_valid());
     out->set_shader_parameter("palette_alpha", (flags1 & k_sf1_greyscale_to_palette_alpha) != 0 &&
@@ -866,12 +867,20 @@ std::int64_t SkydotMaterials::apply(godot::Node* root) {
                 continue;
             }
         }
+        bool all_effects = mesh->get_surface_count() > 0;
         for (int s = 0; s < mesh->get_surface_count(); ++s) {
             const Ref<godot::Material> replacement = convert(mesh->surface_get_material(s));
             if (replacement.is_valid()) {
                 instance->set_surface_override_material(s, replacement);
                 ++converted;
             }
+            all_effects = all_effects && replacement.is_valid() && replacement->has_meta("skydot_effect");
+        }
+        // The game's effect shader draws no shadows (fire, glow cards, mist).
+        // Godot would cast them from these shapes, and as most of them move,
+        // every shadowed light near one drew its shadow map again each frame.
+        if (all_effects) {
+            instance->set_cast_shadows_setting(godot::GeometryInstance3D::SHADOW_CASTING_SETTING_OFF);
         }
     }
     return converted;
