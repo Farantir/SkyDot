@@ -147,6 +147,8 @@ private:
     /// Instance the reference's model and light under `root`.
     void place_ref(godot::Node3D* root, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell,
                    BuildStats& stats, bool include_disabled = false);
+    /// Give the reference's lit effect shapes its XEMI light's colour (effect.gdshaderinc).
+    void apply_effect_emittance(godot::Node3D* node, const bethconv::pack::wfb::Ref& ref, std::uint32_t cell);
     /// A grass's model for instancing (grass.hpp), loaded once.
     GrassModel grass_model(const bethconv::pack::wfb::Grass& grass);
     godot::Dictionary stats_dictionary(const BuildStats& stats) const;

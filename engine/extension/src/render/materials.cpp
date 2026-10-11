@@ -53,6 +53,7 @@ constexpr std::uint32_t k_sf1_greyscale_to_palette_alpha = 1u << 5;
 constexpr std::uint32_t k_sf1_use_falloff = 1u << 6;
 constexpr std::uint32_t k_sf1_environment_mapping = 1u << 7;
 constexpr std::uint32_t k_sf1_own_emit = 1u << 22;
+constexpr std::uint32_t k_sf1_external_emittance = 1u << 29;
 constexpr std::uint32_t k_sf1_soft_effect = 1u << 30;
 constexpr std::uint32_t k_sf2_double_sided = 1u << 4;
 constexpr std::uint32_t k_sf2_vertex_colors = 1u << 5;
@@ -668,6 +669,7 @@ void SkydotMaterials::configure_effect(const Ref<godot::ShaderMaterial>& out,
     out->set_shader_parameter("uv_scale", as_vec2(extras, "uv_scale", godot::Vector2(1, 1)));
     out->set_shader_parameter("uv_offset", as_vec2(extras, "uv_offset", godot::Vector2(0, 0)));
     out->set_shader_parameter("lighting_influence", as_double(extras, "lighting_influence", 0.55));
+    out->set_shader_parameter("external_emittance", (flags1 & k_sf1_external_emittance) != 0);
 }
 
 Ref<godot::ShaderMaterial> SkydotMaterials::particle_material(const Dictionary& extras) {

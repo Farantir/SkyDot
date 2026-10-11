@@ -81,19 +81,28 @@ void vertex() {
 #ifdef SKYDOT_LIT
 // Effect_Lighting: the game moves the colour from unlit towards colour x one
 // light colour by the material's lighting influence, lerp(c, c * L, i), where
-// L is DLightColor plus each point light's fade, with no N.L (Community
-// Shaders, Effect.hlsl). DLightColor is not known; 1.1 x the weather's
-// sunlight as it is (no image-space scale, the moonlight at night) fits the
-// five exterior references without volumetric lighting (game-refs-2026-10-09/
-// fxnovl_*; 1.5 fitted the waterfalls with it, game-refs-2026-10-07, whose
-// haze it took in). Adding the ambient does not: it fixes one waterfall's
-// colour and breaks the other's.
+// L is DLightColor plus point light colours, with no N.L (Community Shaders,
+// Effect.hlsl). DLightColor is not known; 1.1 x the weather's sunlight as it
+// is (no image-space scale, the moonlight at night) fits the five exterior
+// references without volumetric lighting (game-refs-2026-10-09/fxnovl_*; 1.5
+// fitted the waterfalls with it, game-refs-2026-10-07, whose haze it took
+// in). Adding the ambient does not: it fixes one waterfall's colour and breaks
+// the other's. Interiors have none (place.gd).
+// The point light is the reference's own emittance, for shapes flagged
+// External_Emittance (XEMI naming a LIGH: its colour x fade,
+// effect_emittance), not the lights around it: in Bleak Falls Barrow
+// (game-refs-2026-10-19/s31_212820*) disabling the torch 190 units from the
+// mist FXFog01 changes the mist by 4/1/0 in the frame's centre, where the mist
+// adds 28/19/11 in the hue of its XEMI light (FXLightBleakDraugrTorch
+// 190/131/65); SkyDot now 21/15/10 there (it was 41/31/22 with the scene's
+// lights, which also lit the cobwebs the game hardly shows). SkyDot's mist
+// still covers about five times the game's area (open).
 global uniform vec3 skydot_effect_light;
 uniform float lighting_influence = 0.55;
+uniform bool external_emittance = false;
+instance uniform vec3 effect_emittance = vec3(0.0);
+// All light comes through EMISSION; the scene's lights add nothing.
 void light() {
-	if (!LIGHT_IS_DIRECTIONAL) {
-		DIFFUSE_LIGHT += lighting_influence * ATTENUATION * LIGHT_COLOR / PI;
-	}
 }
 #endif
 
@@ -175,6 +184,6 @@ void fragment() {
 	ALPHA = alpha;
 #endif
 #ifdef SKYDOT_LIT
-	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * 1.1 * skydot_effect_light);
+	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * (1.1 * skydot_effect_light + (external_emittance ? effect_emittance : vec3(0.0))));
 #endif
 }

@@ -18,6 +18,7 @@
 
 #include <godot_cpp/classes/animation_library.hpp>
 #include <godot_cpp/classes/array_mesh.hpp>
+#include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/mesh_instance3d.hpp>
@@ -189,6 +190,7 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     node->set_transform(transform);
                     Decoration decoration{stats, &ref, base, cell, scene.ptr()};
                     decorator_.decorate(node, decoration);
+                    apply_effect_emittance(node, ref, cell);
                     root->add_child(node);
                     ++stats.placed;
                 }
@@ -293,6 +295,31 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         }
         root->add_child(light);
         ++stats.lights;
+    }
+}
+
+void CellBuilder::apply_effect_emittance(godot::Node3D* node, const wfb::Ref& ref, std::uint32_t cell) {
+    // XEMI naming a light: lit effect shaders take its colour x fade as their
+    // point light (effect.gdshaderinc). A region's (weather emittance) is
+    // handled with the reference's own light in place_ref.
+    const auto* c = data().cell_ptr(cell);
+    if (!options_.effects || c == nullptr || c->light_emitters() == nullptr) {
+        return;
+    }
+    const auto* e = lookup(c->light_emitters(), ref.id());
+    const auto* source = e != nullptr ? data().base_ptr(e->source()) : nullptr;
+    const auto* l = source != nullptr && source->has_light() ? source->light() : nullptr;
+    if (l == nullptr) {
+        return;
+    }
+    const float fade = l->fade() > 0.0F ? l->fade() : 1.0F;
+    const godot::Color colour = unpack_color(l->color()) * fade;
+    const godot::Vector3 emittance(colour.r, colour.g, colour.b);
+    const godot::TypedArray<godot::Node> shapes = node->find_children("*", "GeometryInstance3D", true, false);
+    for (int64_t i = 0; i < shapes.size(); ++i) {
+        if (auto* shape = godot::Object::cast_to<godot::GeometryInstance3D>(shapes[i])) {
+            shape->set_instance_shader_parameter("effect_emittance", emittance);
+        }
     }
 }
 
