@@ -221,7 +221,7 @@ func _on_play_animation(ref: int, animation: String) -> void:
 ## Send `event` to the Havok behaviour graph of `node`'s model (swinging wall
 ## traps), starting it on first use. Events the graph raises release scripts
 ## waiting in PlayAnimationAndWait. False if the model has no graph or the
-## graph takes no such event.
+## graph takes no such event or the state it reaches plays no Havok clip.
 func _behavior_event(node: Node, ref: int, event: String) -> bool:
 	var player: Node = node.find_child("SkydotBehavior", true, false)
 	if player == null:

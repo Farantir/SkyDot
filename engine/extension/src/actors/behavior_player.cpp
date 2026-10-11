@@ -240,7 +240,11 @@ bool SkydotBehavior::send_event(const String& event) {
     machine_->send(String(event).utf8().get_data(), out);
     report(out);
     apply();
-    return !out.changes.empty();
+    // Taken only when the graph now plays a Havok clip: states driven by
+    // other generators (BGSGamebryoSequenceGenerator on doors, not read) leave
+    // the event to the model's own NIF animations.
+    const BehaviorState* state = machine_->state();
+    return !out.changes.empty() && state != nullptr && state->clip >= 0;
 }
 
 String SkydotBehavior::get_state() const {
