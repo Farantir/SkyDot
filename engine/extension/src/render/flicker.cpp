@@ -2,6 +2,7 @@
 #include "render/flicker.hpp"
 
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/units.hpp"
 
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
@@ -53,6 +54,16 @@ namespace {
 // in units with 4 wanders per period gives 11/13/19/29% and 2.6%; once per
 // period, 0.4%.
 constexpr double k_wanders_per_period = 4.0;
+
+// The drawn light follows its wander in steps of this many units (2.9 cm).
+// Moving a Godot light costs render CPU every time (it is re-paired with the
+// geometry in its range, and a shadowed light redraws its cube map): at
+// Bleak Falls 181647 (45 flickering lights) moving them every frame cost
+// 1.9 ms of an 11.3 ms frame. A wander of at most this amplitude is not drawn
+// at all (the interior torches BleakFallsDraugrTorch01, movement 1, are the
+// shadowed ones there); larger ones move every few frames, a step being
+// smaller than the 3.8% per 0.1 s the lantern 0xB6246 changes in the game.
+constexpr double k_drawn_step_units = 2.0;
 } // namespace
 
 void SkydotFlicker::configure(std::int64_t flags, double inverse_period, double intensity,
@@ -66,7 +77,10 @@ void SkydotFlicker::configure(std::int64_t flags, double inverse_period, double 
     // The intensity amplitude is how far the light dims below its fade (the
     // Creation Kit's Light page), so relative to the fade, and never brighter.
     depth_ = std::clamp(intensity / (fade > 0.0 ? fade : 1.0), 0.0, 1.0);
-    movement_ = formats::has_flag(flags_, k_wandering) ? movement : 0.0;
+    movement_ = formats::has_flag(flags_, k_wandering) &&
+                        movement > k_drawn_step_units * formats::k_metres_per_unit + 1e-9
+                    ? movement
+                    : 0.0;
 }
 
 double SkydotFlicker::factor_at(double seconds) const {
@@ -117,7 +131,12 @@ void SkydotFlicker::_process(double delta) {
     light->set_param(godot::Light3D::PARAM_ENERGY,
                      static_cast<float>(std::max(base_energy_ * factor_at(now), 0.0)));
     if (movement_ > 0.0) {
-        light->set_position(base_position_ + offset_at(now));
+        const godot::Vector3 offset = offset_at(now);
+        if (static_cast<double>(offset.distance_to(drawn_offset_)) >=
+            k_drawn_step_units * formats::k_metres_per_unit) {
+            drawn_offset_ = offset;
+            light->set_position(base_position_ + offset);
+        }
     }
 }
 

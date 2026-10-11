@@ -53,6 +53,7 @@ private:
     double base_energy_ = 1.0;
     double elapsed_ = 0.0; // engine seconds since _ready: frame deltas, so --fixed-fps and pausing hold
     godot::Vector3 base_position_;
+    godot::Vector3 drawn_offset_; // where the light is drawn, relative to base_position_
 };
 
 } // namespace skydot

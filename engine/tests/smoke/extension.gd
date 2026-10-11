@@ -367,6 +367,12 @@ func _check_flicker() -> void:
         far = max(far, flicker.offset_at(i * 0.037).length())
     expect(far <= 0.1 + 1e-6, "movement stays within its amplitude")
     expect(far > 0.0, "and actually moves")
+    # A Bleak Falls torch: movement 1 unit (1.4 cm) is not drawn, so its
+    # shadow cube map is not redrawn every frame.
+    var torch := SkydotFlicker.new()
+    torch.configure(0x0008, 5.0, 0.3, 0.0142875)
+    expect(torch.offset_at(0.3) == Vector3.ZERO and torch.offset_at(1.7) == Vector3.ZERO,
+           "a wander of a unit or two is not drawn")
     var pulse := SkydotFlicker.new()
     pulse.configure(0x0080, 1.0, 0.5, 0.0)
     expect(is_equal_approx(pulse.factor_at(0.75) - pulse.factor_at(0.25), 0.5), "a pulse is a sine")
