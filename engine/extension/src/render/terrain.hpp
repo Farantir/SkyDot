@@ -3,7 +3,7 @@
 // Terrain from world.fb's `Terrain` table (formats/pack-format.md): one
 // mesh per cell quadrant, since each quadrant has its own texture layers (a
 // base plus up to six in vanilla). Layers are blended per vertex like the
-// game: each additional layer is mixed over the result by its VTXT opacity.
+// game: each additional layer adds its VTXT opacity as a weight, the base takes 1 - sum.
 //
 // Normals are computed from the heights, using the neighbouring cells' edge
 // rows where they exist so that cells meet without seams.
