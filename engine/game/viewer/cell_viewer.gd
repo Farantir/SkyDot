@@ -347,6 +347,12 @@ func _process(delta: float) -> void:
 	_sync_image_space()
 	_debug.sample_perf(delta)
 	if _shots.is_running():
+		if _settings.shot_frames > 1:
+			# A frame series shows what scripts do over time (a trap swinging
+			# when the feet reach its plate); single shots stay still.
+			_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
+				SkydotWorld.godot_to_skyrim(_rig.player.global_position))
+			_papyrus.update(delta)
 		_shots.step(delta)
 		return
 	_streamer.hold_player(_rig.player, _transition.is_fading())
