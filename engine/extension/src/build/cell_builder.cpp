@@ -59,6 +59,14 @@ constexpr wfb::LightFlags k_light_shadow = wfb::LightFlags::spot_shadow |
 // fitted on single game lights and the interior comparison shots.
 constexpr float k_light_fade_scale = 0.6F;
 
+// An effect's XEMI light colour per unit of fade, fitted on Bleak Falls
+// Barrow's mist FXFog01 (game-refs-2026-10-20 seq_212820*, SkyDot at the
+// game's texture phase, where the mist maps correlate 0.975): with SkyDot's
+// own alpha the game's mist fits one colour, 85/60/39, over dark and bright
+// walls alike (alpha within 10%); SkyDot's was 104/77/49 at 1.0. Not
+// k_light_fade_scale: at 0.6 the mist came out 62/46/29.
+constexpr float k_effect_emittance_scale = 0.8F;
+
 /// Editor markers, which the game does not draw: bases flagged as markers
 /// (XMarker, furniture markers), and the helpers in `meshes/markers/` and
 /// `meshes/marker*.nif` that some unflagged activators use. Not every model
@@ -307,9 +315,10 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
 }
 
 void CellBuilder::apply_effect_emittance(godot::Node3D* node, const wfb::Ref& ref, std::uint32_t cell) {
-    // XEMI naming a light: lit effect shaders take its colour x fade as their
-    // point light (effect.gdshaderinc). A region's (weather emittance) is
-    // handled with the reference's own light in place_ref.
+    // XEMI naming a light: lit effect shaders take its colour x fade x
+    // k_effect_emittance_scale as their point light (effect.gdshaderinc). A
+    // region's (weather emittance) is handled with the reference's own light
+    // in place_ref.
     const auto* c = data().cell_ptr(cell);
     if (!options_.effects || c == nullptr || c->light_emitters() == nullptr) {
         return;
@@ -320,7 +329,7 @@ void CellBuilder::apply_effect_emittance(godot::Node3D* node, const wfb::Ref& re
     if (l == nullptr) {
         return;
     }
-    const float fade = l->fade() > 0.0F ? l->fade() : 1.0F;
+    const float fade = (l->fade() > 0.0F ? l->fade() : 1.0F) * k_effect_emittance_scale;
     const godot::Color colour = unpack_color(l->color()) * fade;
     const godot::Vector3 emittance(colour.r, colour.g, colour.b);
     const godot::TypedArray<godot::Node> shapes = node->find_children("*", "GeometryInstance3D", true, false);
