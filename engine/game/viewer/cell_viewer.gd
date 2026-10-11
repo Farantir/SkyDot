@@ -92,7 +92,8 @@
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
 # F3 shows or hides the performance line at the top right (fps, frame time
-# mean and max over the last second, draw calls, primitives, objects). It is in
+# mean and max over the last second, the renderer's CPU and GPU time and the
+# physics time per frame, draw calls, primitives, objects). It is in
 # the shot JSON's "viewer.perf", and --screenshot prints it as a "perf:" line.
 # N shows the navmeshes (green, water triangles included) of the built cells;
 # G asks the navigation map for a path from the feet to the navmesh point the

@@ -33,6 +33,11 @@ var _perf_label: Label  # F3 toggles it
 var _perf_time := 0.0  # seconds in the current window
 var _perf_frames := 0
 var _perf_max := 0.0  # slowest frame of the window, seconds
+# Sums over the window, milliseconds: physics, the renderer's CPU side (frame
+# setup and the viewport's draw calls) and its GPU time. The rest of a frame is
+# mostly the nodes' _process (scripts, animators, flicker, AI).
+var _perf_sums := {"physics_ms": 0.0, "render_cpu_ms": 0.0, "gpu_ms": 0.0}
+var _perf_rid := RID()
 var _lines: Array[Line] = []
 var _path_line: MeshInstance3D  # G draws a path here
 var _navmesh_fill: StandardMaterial3D
@@ -96,9 +101,16 @@ func note(text: String) -> void:
 ## Every frame: add it to the performance window; once a second the line is
 ## rewritten from the window.
 func sample_perf(delta: float) -> void:
+	if not _perf_rid.is_valid():
+		_perf_rid = get_viewport().get_viewport_rid()
+		RenderingServer.viewport_set_measure_render_time(_perf_rid, true)
 	_perf_time += delta
 	_perf_frames += 1
 	_perf_max = maxf(_perf_max, delta)
+	_perf_sums["physics_ms"] += Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0
+	_perf_sums["render_cpu_ms"] += RenderingServer.get_frame_setup_time_cpu() \
+			+ RenderingServer.viewport_get_measured_render_time_cpu(_perf_rid)
+	_perf_sums["gpu_ms"] += RenderingServer.viewport_get_measured_render_time_gpu(_perf_rid)
 	if _perf_time >= 1.0:
 		refresh_perf()
 
@@ -115,6 +127,9 @@ func refresh_perf() -> void:
 		"primitives": int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)),
 		"objects": int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_OBJECTS_IN_FRAME)),
 	}
+	for key in _perf_sums:
+		perf[key] = snappedf(_perf_sums[key] / _perf_frames, 0.01)
+		_perf_sums[key] = 0.0
 	_perf_time = 0.0
 	_perf_frames = 0
 	_perf_max = 0.0
@@ -125,8 +140,9 @@ func refresh_perf() -> void:
 func perf_text() -> String:
 	if perf.is_empty():
 		return ""
-	return "%.0f fps  %.1f ms (max %.1f)  %d draws  %d prims  %d objects" % [
-		perf["fps"], perf["frame_ms_mean"], perf["frame_ms_max"], perf["draw_calls"],
+	return "%.0f fps  %.1f ms (max %.1f)  render %.1f  gpu %.1f  physics %.1f ms  %d draws  %d prims  %d objects" % [
+		perf["fps"], perf["frame_ms_mean"], perf["frame_ms_max"], perf.get("render_cpu_ms", 0.0),
+		perf.get("gpu_ms", 0.0), perf.get("physics_ms", 0.0), perf["draw_calls"],
 		perf["primitives"], perf["objects"]]
 
 

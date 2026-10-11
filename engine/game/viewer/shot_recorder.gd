@@ -220,7 +220,8 @@ func _perf_block() -> Dictionary:
 	var p: Dictionary = _debug.perf
 	return {"fps": p.get("fps", 0.0), "frame_ms_mean": p.get("frame_ms_mean", 0.0),
 		"frame_ms_max": p.get("frame_ms_max", 0.0), "draw_calls": p.get("draw_calls", 0),
-		"primitives": p.get("primitives", 0)}
+		"primitives": p.get("primitives", 0), "render_cpu_ms": p.get("render_cpu_ms", 0.0),
+		"gpu_ms": p.get("gpu_ms", 0.0), "physics_ms": p.get("physics_ms", 0.0)}
 
 
 func _shot_metadata(overlay_hidden: bool) -> Dictionary:
