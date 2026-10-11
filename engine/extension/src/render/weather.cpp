@@ -45,7 +45,11 @@ constexpr float k_cloud_scroll = 0.02F;
 /// them: fractions fitted on game shots of five exteriors with volumetric
 /// lighting off and a neutral grade (2026-10-09). The game's sky shader
 /// scales the sky by a factor of its own (Sky.hlsl's VParams), the others
-/// are unexplained (an exposure SkyDot lacks?). The clouds keep their
+/// are unexplained. Not an eye-adaptation exposure: the game's frames do not
+/// change with the image space's eye adapt strength (0, 1, 5, 20; clear, fog,
+/// rain and dusk, comparison-renders/game-refs-2026-10-19/ea_*, 2026-10-11),
+/// and against neutral game frames the near ground matches on every weather
+/// while only the sky and fog band differs. The clouds keep their
 /// colours: scaled by the sky's factor, overcast, rainy and foggy skies came
 /// out 20-60 levels too dark (game shots of 8 weathers at 5 hours,
 /// comparison-renders/game-refs-2026-10-10, 2026-10-10). The sky's factor
@@ -68,8 +72,8 @@ constexpr float k_sky_fit = 0.86F;
 // (comparison-renders/game-refs-2026-10-17, volumetric lighting on and off:
 // distant land and mountains 20-40 levels too bright) against the weather
 // grid, where a flat 0.78 made SkyrimFog and overcast rain 6 levels darker
-// (they are already too dark). Likely the same missing exposure as
-// k_sun_fit / k_ambient_fit / k_sky_fit, all fitted on sunny weathers.
+// (they are already too dark). Not a missing exposure (see k_sun_fit): the
+// fog and rain gap is in the sky and fog band only.
 constexpr float k_fog_fit = 0.78F;
 
 Ref<godot::ShaderMaterial> material_from(const Ref<godot::Shader>& shader, int priority) {
