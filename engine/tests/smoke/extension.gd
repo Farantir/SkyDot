@@ -20,6 +20,7 @@ func _process(_delta: float) -> bool:
     _check_billboards()
     _check_effects()
     _check_flicker()
+    _check_shadow_budget()
     print("smoke_extension: failures=", failures)
     quit(failures)
     return true
@@ -37,7 +38,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
     expect(ClassDB.class_exists("SkydotBillboard"), "SkydotBillboard is registered")
-    for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker", "SkydotEmittance"]:
+    for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker", "SkydotEmittance", "SkydotShadowBudget"]:
         expect(ClassDB.class_exists(name), name + " is registered")
     expect(not pack.is_open(), "a new pack is closed")
     expect(not pack.has("meshes/anything.nif") and pack.get_bytes("meshes/anything.nif").is_empty(),
@@ -387,3 +388,49 @@ func _check_flicker() -> void:
     emittance.configure(Color(0.9, 0.7, 0.4), PackedInt64Array([0x8282A]), PackedInt64Array([100]))
     expect(emittance.tint() == Color(1, 1, 1, 1), "an emittance without a weather does not tint")
     emittance.free()
+
+# Four lights at a time cast shadows, the nearest the camera, as in the game.
+func _check_shadow_budget() -> void:
+    var root := Node3D.new()
+    get_root().add_child(root)
+    var budget := SkydotShadowBudget.new()
+    budget.set_process(false)
+    root.add_child(budget)
+    var lights: Array[OmniLight3D] = []
+    for i in 7:
+        var light := OmniLight3D.new()
+        light.position = Vector3(float(i + 1) * 5.0, 0, 0)
+        light.shadow_enabled = true
+        light.add_to_group("skydot_shadow_lights")
+        root.add_child(light)
+        lights.append(light)
+    var outside := OmniLight3D.new()  # not below the budget's parent
+    outside.add_to_group("skydot_shadow_lights")
+    outside.shadow_enabled = true
+    get_root().add_child(outside)
+    lights[1].visible = false
+    var shadowed := budget.update_from(Vector3.ZERO)
+    var on := lights.map(func(l): return l.shadow_enabled)
+    expect(shadowed == 4 and on == [true, false, true, true, true, false, false],
+           "the four nearest visible lights cast shadows: %s" % [on])
+    expect(outside.shadow_enabled, "lights of other cells are left alone")
+    # From x = 33 the lights at 25..35 are nearest; 20 (13 m) stays over 15
+    # (18 m), the one at 5 (28 m) goes.
+    budget.update_from(Vector3(33, 0, 0))
+    on = lights.map(func(l): return l.shadow_enabled)
+    expect(on == [false, false, false, true, true, true, true], "the choice follows the camera: %s" % [on])
+    # A light a little nearer than a shadowed one does not take its shadow
+    # (from 24.8 the light at 15 is 9.8 m away, the one at 35 10.2 m); one
+    # nearer by more than a metre does (from 22.4: 7.4 m against 12.6 m).
+    for l in lights:
+        l.visible = true
+    budget.update_from(Vector3(24.8, 0, 0))
+    on = lights.map(func(l): return l.shadow_enabled)
+    expect(on == [false, false, false, true, true, true, true], "about as near keeps the old choice: %s" % [on])
+    budget.update_from(Vector3(22.4, 0, 0))
+    on = lights.map(func(l): return l.shadow_enabled)
+    expect(on == [false, false, true, true, true, true, false], "clearly nearer takes the shadow: %s" % [on])
+    budget.set_active(false)
+    expect(not budget.is_active(), "the budget can stand down (--light-shadows all)")
+    outside.free()
+    root.free()

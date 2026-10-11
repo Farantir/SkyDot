@@ -14,6 +14,7 @@
 #include "physics/collision.hpp"
 #include "render/emittance.hpp"
 #include "render/flicker.hpp"
+#include "render/shadow_budget.hpp"
 #include "render/image_space.hpp"
 #include "render/large_refs.hpp"
 #include "render/lod.hpp"
@@ -38,6 +39,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotBillboard);
     GDREGISTER_CLASS(skydot::SkydotFlicker);
     GDREGISTER_CLASS(skydot::SkydotEmittance);
+    GDREGISTER_CLASS(skydot::SkydotShadowBudget);
     GDREGISTER_CLASS(skydot::SkydotParticles);
     GDREGISTER_CLASS(skydot::SkydotAnimator);
     GDREGISTER_CLASS(skydot::SkydotAnimation);

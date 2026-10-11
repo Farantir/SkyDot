@@ -170,6 +170,8 @@ target_sources(skydot PRIVATE
     src/render/materials.cpp
     src/render/materials.hpp
     src/render/particles.cpp
+    src/render/shadow_budget.cpp
+    src/render/shadow_budget.hpp
     src/render/particles.hpp
     src/render/shader_source.cpp
     src/render/shader_source.hpp

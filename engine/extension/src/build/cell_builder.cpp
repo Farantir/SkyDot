@@ -9,6 +9,7 @@
 #include "data/actors.hpp"
 #include "render/emittance.hpp"
 #include "render/flicker.hpp"
+#include "render/shadow_budget.hpp"
 #include "nav/navmesh.hpp"
 #include "build/refs.hpp"
 
@@ -252,7 +253,7 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE, std::clamp(fov / 2.0F, 1.0F, 89.0F));
             spot->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
             const bool spot_shadow = interior && formats::has_flag(l->flags(), wfb::LightFlags::spot_shadow);
-            spot->set_shadow(options_.all_light_shadows || spot_shadow);
+            spot->set_shadow(options_.all_light_shadows);
             spot->set_meta("skydot_game_shadow", spot_shadow);
             light = spot;
         } else {
@@ -263,16 +264,23 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             // range)^4)^2, is within 0.13 of it. A distance exponent on top
             // left fires dim a few metres away.
             omni->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
-            // Every light casts shadows: the game keeps lights out of
-            // neighbouring rooms with its rooms and portals, which SkyDot
-            // lacks; without shadows they light through walls (comparison
-            // shot ref22: an inn room twice as bright as the game's).
+            // Shadow-flagged interior lights cast shadows, four at a time
+            // (SkydotShadowBudget). Without shadows lights shine through walls
+            // into neighbouring rooms, which the game's rooms and portals
+            // (SkyDot lacks them) would also stop (comparison shot ref22: an
+            // inn room twice as bright as the game's); with the four nearest
+            // shadowed, refs 20-24 render as with all of them.
             const bool omni_shadow = interior && formats::has_flag(l->flags(), k_light_shadow);
-            omni->set_shadow(options_.all_light_shadows || omni_shadow);
+            omni->set_shadow(options_.all_light_shadows);
             omni->set_meta("skydot_game_shadow", omni_shadow);
             light = omni;
         }
         light->set_name(name + String(" light"));
+        // Shadow-flagged lights get their shadow from the cell's
+        // SkydotShadowBudget: the game shadows four at a time.
+        if (static_cast<bool>(light->get_meta("skydot_game_shadow"))) {
+            light->add_to_group(SkydotShadowBudget::GROUP);
+        }
         SkydotMaterials::set_game_light(light, unpack_color(l->color()) * std::max(fade, 0.0F));
         light->set_negative(formats::has_flag(l->flags(), wfb::LightFlags::negative));
         light->set_transform(placed);
@@ -351,10 +359,19 @@ std::int64_t CellBuilder::apply_light_shadows(godot::Node* root, bool all) {
         if (light == nullptr || !light->has_meta("skydot_game_shadow")) {
             continue;
         }
-        const bool shadow = all || static_cast<bool>(light->get_meta("skydot_game_shadow"));
-        if (light->has_shadow() != shadow) {
-            light->set_shadow(shadow);
+        // Without `all`, the budget gives the shadow-flagged lights theirs.
+        if (!all && light->has_shadow()) {
+            light->set_shadow(false);
             ++changed;
+        } else if (all && !light->has_shadow()) {
+            light->set_shadow(true);
+            ++changed;
+        }
+    }
+    const godot::TypedArray<godot::Node> budgets = root->find_children("*", "SkydotShadowBudget", true, false);
+    for (int64_t i = 0; i < budgets.size(); ++i) {
+        if (auto* budget = godot::Object::cast_to<SkydotShadowBudget>(budgets[i])) {
+            budget->set_active(!all);
         }
     }
     return changed;
@@ -728,6 +745,12 @@ godot::Node3D* CellBuilder::begin_cell(std::int64_t id) {
     root->set_name(cell->editor_id() != nullptr && cell->editor_id()->size() != 0
                        ? to_godot(cell->editor_id())
                        : hex_id(cell->id()));
+    if (formats::has_flag(cell->flags(), wfb::CellFlags::interior)) {
+        auto* budget = memnew(SkydotShadowBudget);
+        budget->set_name("SkydotShadowBudget");
+        budget->set_active(!options_.all_light_shadows);
+        root->add_child(budget);
+    }
     if (options_.navigation) {
         if (auto* navmesh = build_navmeshes(*cell, data().navmeshes())) {
             root->add_child(navmesh);
