@@ -65,8 +65,6 @@ private:
     std::unique_ptr<BehaviorMachine> machine_;
     std::vector<ClipPose> poses_;
     std::int64_t ref_{};
-    int applied_clip_{-2};
-    float applied_time_{-1.0F};
 };
 
 } // namespace skydot

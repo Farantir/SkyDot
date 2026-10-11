@@ -210,12 +210,9 @@ void SkydotBehavior::apply() {
     if (clip < 0 || static_cast<std::size_t>(clip) >= poses_.size()) {
         return;
     }
+    // Written every frame, a held pose too: the model's NIF animator writes
+    // its autoplay sequences (rest keys) to the same nodes every frame.
     const float time = machine_->clip_time();
-    if (clip == applied_clip_ && time == applied_time_) {
-        return;
-    }
-    applied_clip_ = clip;
-    applied_time_ = time;
     const ClipPose& pose = poses_[static_cast<std::size_t>(clip)];
     if (!pose.animation.is_valid()) {
         return;
