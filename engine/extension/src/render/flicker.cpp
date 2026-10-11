@@ -44,7 +44,15 @@ void SkydotFlicker::_bind_methods() {
 }
 
 namespace {
-constexpr double k_flicker_movement = 64.0;
+// The wander picks a new direction this many times per flicker period.
+// Fitted on the lantern light 0xB6246 (LIGH 0x2EE00: 1/period 0.25,
+// movement 48; game-refs-2026-10-21 seq_212520{,_nolight}, 6 s): its share of
+// the wall 69 units away swings 2-11 levels while the ground under it stays
+// within +-1, and the frame's 8x8 cells vary by 9/15/21/27% (quartiles and
+// 90th percentile) with frame steps of 3.8% per 0.1 s. The record's movement
+// in units with 4 wanders per period gives 11/13/19/29% and 2.6%; once per
+// period, 0.4%.
+constexpr double k_wanders_per_period = 4.0;
 } // namespace
 
 void SkydotFlicker::configure(std::int64_t flags, double inverse_period, double intensity,
@@ -73,16 +81,15 @@ godot::Vector3 SkydotFlicker::offset_at(double seconds) const {
     if (movement_ <= 0.0) {
         return {};
     }
-    const double x = seconds / period_ + seed_;
+    const double x = seconds / period_ * k_wanders_per_period + seed_;
     const godot::Vector3 wander(static_cast<float>(2.0 * noise(x + 17.0) - 1.0),
                                 static_cast<float>(2.0 * noise(x + 43.0) - 1.0),
                                 static_cast<float>(2.0 * noise(x + 71.0) - 1.0));
-    // The game's scale for the amplitude is unknown (fFlickerMovement, which
-    // no plugin sets). Oblivion's default 8 as a divisor moved a torch's 48
-    // units within 9 cm, and a lantern's light swung the shadows of its own
-    // cage across the scene (user report, 2026-10-04). 64 keeps it within
-    // about 1 cm. Not measured in the game.
-    return wander.limit_length(1.0F) * static_cast<float>(movement_ / k_flicker_movement);
+    // The record's movement amplitude, in units (metres here). A 64th of it
+    // (session 2026-10-04: a lantern swung the shadows of its own cage) was
+    // from outdoor light shadows the game does not draw; the interior
+    // torches move by 1 unit (BleakFallsDraugrTorch01).
+    return wander.limit_length(1.0F) * static_cast<float>(movement_);
 }
 
 void SkydotFlicker::_ready() {
