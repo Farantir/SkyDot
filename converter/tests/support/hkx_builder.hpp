@@ -67,6 +67,27 @@ struct HkxBlock {
     std::vector<HkxChannel> floats; ///< constant or spline, width 1.
 };
 
+struct HkxTrigger {
+    float time{};
+    std::int32_t event{};
+    bool relative_to_end{};
+};
+
+struct HkxTransition {
+    std::int32_t event{};
+    std::int32_t to_state{};
+    std::string condition; ///< hkbExpressionCondition when not empty.
+};
+
+struct HkxState {
+    std::int32_t id{};
+    std::string name;
+    std::size_t generator{static_cast<std::size_t>(-1)}; ///< add_clip_generator's result.
+    std::vector<std::int32_t> enter_events;
+    std::vector<std::int32_t> exit_events;
+    std::vector<HkxTransition> transitions;
+};
+
 struct HkxClip {
     std::uint32_t frames{};
     std::uint32_t frames_per_block{256};
@@ -183,11 +204,109 @@ public:
     }
 
     /// hkbClipGenerator: name and animation file; the rest left zero.
-    void add_clip_generator(const std::string& name, const std::string& animation) {
+    std::size_t add_clip_generator(const std::string& name, const std::string& animation) {
         const bool wide = P_ == 8;
         const std::size_t o = object("hkbClipGenerator", wide ? 152 : 104);
         string_ptr(o + (wide ? 56 : 32), name);
         string_ptr(o + (wide ? 72 : 40), animation);
+        return o;
+    }
+
+    /// An SE hkbClipGenerator with its playback members and triggers.
+    std::size_t add_clip_generator(const std::string& name, const std::string& animation,
+                                   std::int8_t mode, float speed, float start_time,
+                                   float user_fraction, const std::vector<HkxTrigger>& triggers) {
+        const std::size_t o = add_clip_generator(name, animation);
+        put<float>(o + 96, start_time);
+        put<float>(o + 100, speed);
+        put<float>(o + 108, user_fraction);
+        put<std::int8_t>(o + 114, mode);
+        if (!triggers.empty()) {
+            const std::size_t t = object("hkbClipTriggerArray", 16 + 16);
+            const std::size_t items = blob(triggers.size() * 32, 16);
+            for (std::size_t i = 0; i < triggers.size(); ++i) {
+                put<float>(items + 32 * i, triggers[i].time);
+                put<std::int32_t>(items + 32 * i + 8, triggers[i].event);
+                put<std::uint8_t>(items + 32 * i + 24, triggers[i].relative_to_end ? 1 : 0);
+            }
+            array(t + 16, items, triggers.size());
+            pointer(o + 80, t);
+        }
+        return o;
+    }
+
+    /// hkbBehaviorGraphStringData (SE only): event names at +16, variables at +48.
+    void add_behavior_strings(const std::vector<std::string>& events,
+                              const std::vector<std::string>& variables) {
+        const std::size_t o = object("hkbBehaviorGraphStringData", 64);
+        const auto fill = [&](std::size_t at, const std::vector<std::string>& names) {
+            if (names.empty()) {
+                return;
+            }
+            const std::size_t d = blob(names.size() * 8, 16);
+            for (std::size_t i = 0; i < names.size(); ++i) {
+                string_ptr(d + 8 * i, names[i]);
+            }
+            array(at, d, names.size());
+        };
+        fill(o + 16, events);
+        fill(o + 48, variables);
+    }
+
+    /// hkbStateMachine (SE only) with its states; transitions of `wildcard`
+    /// are the machine's wildcard transitions.
+    void add_state_machine(const std::string& name, std::int32_t start_state,
+                           const std::vector<HkxState>& states,
+                           const std::vector<HkxTransition>& wildcard = {}) {
+        const std::size_t o = object("hkbStateMachine", 176);
+        string_ptr(o + 56, name);
+        put<std::int32_t>(o + 104, start_state);
+        const auto events_of = [&](std::size_t at, const std::vector<std::int32_t>& ids) {
+            if (ids.empty()) {
+                return;
+            }
+            const std::size_t a = object("hkbStateMachineEventPropertyArray", 32);
+            const std::size_t d = blob(ids.size() * 16, 16);
+            for (std::size_t i = 0; i < ids.size(); ++i) {
+                put<std::int32_t>(d + 16 * i, ids[i]);
+            }
+            array(a + 16, d, ids.size());
+            pointer(at, a);
+        };
+        const auto transitions_of = [&](std::size_t at, const std::vector<HkxTransition>& list) {
+            if (list.empty()) {
+                return;
+            }
+            const std::size_t a = object("hkbStateMachineTransitionInfoArray", 32);
+            const std::size_t d = blob(list.size() * 72, 16);
+            for (std::size_t i = 0; i < list.size(); ++i) {
+                put<std::int32_t>(d + 72 * i + 48, list[i].event);
+                put<std::int32_t>(d + 72 * i + 52, list[i].to_state);
+                if (!list[i].condition.empty()) {
+                    const std::size_t c = object("hkbExpressionCondition", 32);
+                    string_ptr(c + 16, list[i].condition);
+                    pointer(d + 72 * i + 40, c);
+                }
+            }
+            array(a + 16, d, list.size());
+            pointer(at, a);
+        };
+        const std::size_t table = blob(states.size() * 8, 16);
+        for (std::size_t i = 0; i < states.size(); ++i) {
+            const HkxState& st = states[i];
+            const std::size_t info = object("hkbStateMachineStateInfo", 120);
+            events_of(info + 64, st.enter_events);
+            events_of(info + 72, st.exit_events);
+            transitions_of(info + 80, st.transitions);
+            if (st.generator != static_cast<std::size_t>(-1)) {
+                pointer(info + 88, st.generator);
+            }
+            string_ptr(info + 96, st.name);
+            put<std::int32_t>(info + 104, st.id);
+            pointer(table + 8 * i, info);
+        }
+        array(o + 144, table, states.size());
+        transitions_of(o + 160, wildcard);
     }
 
     void add_clip(const HkxClip& clip) {

@@ -364,9 +364,10 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
 /// order. 18: BSWaterShaderProperty named instead of "other". 19: AddOnNode
 /// indices in the node extras. 20: effect lighting influence in the material
 /// extras. 21: soft lighting and rim light power in the material extras.
-/// 22: phantom trigger volumes in the node extras.
+/// 22: phantom trigger volumes in the node extras. 23: behaviour graph file
+/// (BSBehaviorGraphExtraData) in the root extras.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/22;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/23;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +

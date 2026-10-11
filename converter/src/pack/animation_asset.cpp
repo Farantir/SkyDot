@@ -163,13 +163,60 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
     for (const auto& g : file.clip_generators) {
         const auto name = b.CreateString(g.name);
         const auto animation = b.CreateString(g.animation);
-        generators.push_back(afb::CreateClipGenerator(b, name, animation));
+        std::vector<flatbuffers::Offset<afb::ClipTrigger>> triggers;
+        for (const auto& t : g.triggers) {
+            triggers.push_back(afb::CreateClipTrigger(b, t.time, t.event, t.relative_to_end));
+        }
+        const auto triggers_off = triggers.empty() ? 0 : b.CreateVector(triggers).o;
+        afb::ClipGeneratorBuilder gb(b);
+        gb.add_name(name);
+        gb.add_animation(animation);
+        gb.add_mode(g.mode);
+        gb.add_playback_speed(g.playback_speed);
+        gb.add_start_time(g.start_time);
+        gb.add_user_controlled_fraction(g.user_controlled_fraction);
+        if (triggers_off != 0) {
+            gb.add_triggers(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<afb::ClipTrigger>>>(triggers_off));
+        }
+        generators.push_back(gb.Finish());
+    }
+
+    const auto transitions_of = [&](const std::vector<animation::StateTransition>& list) {
+        std::vector<flatbuffers::Offset<afb::StateTransition>> out;
+        for (const auto& t : list) {
+            const auto condition = b.CreateString(t.condition);
+            out.push_back(afb::CreateStateTransition(b, t.event, t.to_state, t.has_condition, condition));
+        }
+        return b.CreateVector(out);
+    };
+    std::vector<flatbuffers::Offset<afb::BehaviorGraph>> graphs;
+    for (const auto& graph : file.behavior_graphs) {
+        std::vector<flatbuffers::Offset<afb::StateMachine>> machines;
+        for (const auto& m : graph.state_machines) {
+            std::vector<flatbuffers::Offset<afb::BehaviorState>> states;
+            for (const auto& st : m.states) {
+                const auto name = b.CreateString(st.name);
+                const auto enter = b.CreateVector(st.enter_events);
+                const auto exit = b.CreateVector(st.exit_events);
+                const auto transitions = transitions_of(st.transitions);
+                states.push_back(afb::CreateBehaviorState(b, st.id, name, st.generator, enter, exit, transitions));
+            }
+            const auto name = b.CreateString(m.name);
+            const auto states_off = b.CreateVector(states);
+            const auto wildcard = transitions_of(m.wildcard_transitions);
+            machines.push_back(afb::CreateStateMachine(b, name, m.start_state, states_off, wildcard));
+        }
+        const auto events = b.CreateVectorOfStrings(graph.event_names);
+        const auto variables = b.CreateVectorOfStrings(graph.variable_names);
+        const auto machines_off = b.CreateVector(machines);
+        graphs.push_back(afb::CreateBehaviorGraph(b, events, variables, machines_off));
     }
 
     const auto skeletons_off = b.CreateVector(skeletons);
     const auto clips_off = b.CreateVector(clips);
     const auto characters_off = characters.empty() ? 0 : b.CreateVector(characters).o;
     const auto generators_off = generators.empty() ? 0 : b.CreateVector(generators).o;
+    const auto graphs_off = graphs.empty() ? 0 : b.CreateVector(graphs).o;
     const auto version = b.CreateString(file.version);
     afb::AnimationBuilder ab(b);
     ab.add_format_version(k_animation_format_version);
@@ -177,6 +224,9 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
     ab.add_havok_version(version);
     ab.add_skeletons(skeletons_off);
     ab.add_clips(clips_off);
+    if (graphs_off != 0) {
+        ab.add_behavior_graphs(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<afb::BehaviorGraph>>>(graphs_off));
+    }
     if (characters_off != 0) {
         ab.add_characters(characters_off);
     }
@@ -425,7 +475,69 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
     }
     if (const auto* generators = root->clip_generators()) {
         for (const auto* g : *generators) {
-            out.clip_generators.push_back(animation::ClipGenerator{text(g->name()), text(g->animation())});
+            animation::ClipGenerator cg;
+            cg.name = text(g->name());
+            cg.animation = text(g->animation());
+            cg.mode = g->mode();
+            cg.playback_speed = g->playback_speed();
+            cg.start_time = g->start_time();
+            cg.user_controlled_fraction = g->user_controlled_fraction();
+            if (const auto* triggers = g->triggers()) {
+                for (const auto* t : *triggers) {
+                    cg.triggers.push_back(animation::ClipTrigger{t->time(), t->event(), t->relative_to_end()});
+                }
+            }
+            out.clip_generators.push_back(std::move(cg));
+        }
+    }
+    const auto read_transitions = [](const auto* list, std::vector<animation::StateTransition>& to) {
+        if (list == nullptr) {
+            return;
+        }
+        for (const auto* t : *list) {
+            to.push_back(animation::StateTransition{t->event(), t->to_state(), t->has_condition(), text(t->condition())});
+        }
+    };
+    const auto read_ints = [](const auto* list, std::vector<std::int32_t>& to) {
+        if (list != nullptr) {
+            to.assign(list->begin(), list->end());
+        }
+    };
+    if (const auto* graphs = root->behavior_graphs()) {
+        for (const auto* g : *graphs) {
+            animation::BehaviorGraph graph;
+            if (const auto* names = g->event_names()) {
+                for (const auto* n : *names) {
+                    graph.event_names.push_back(text(n));
+                }
+            }
+            if (const auto* names = g->variable_names()) {
+                for (const auto* n : *names) {
+                    graph.variable_names.push_back(text(n));
+                }
+            }
+            if (const auto* machines = g->state_machines()) {
+                for (const auto* m : *machines) {
+                    animation::StateMachine machine;
+                    machine.name = text(m->name());
+                    machine.start_state = m->start_state();
+                    read_transitions(m->wildcard_transitions(), machine.wildcard_transitions);
+                    if (const auto* states = m->states()) {
+                        for (const auto* st : *states) {
+                            animation::BehaviorState state;
+                            state.id = st->id();
+                            state.name = text(st->name());
+                            state.generator = st->generator();
+                            read_ints(st->enter_events(), state.enter_events);
+                            read_ints(st->exit_events(), state.exit_events);
+                            read_transitions(st->transitions(), state.transitions);
+                            machine.states.push_back(std::move(state));
+                        }
+                    }
+                    graph.state_machines.push_back(std::move(machine));
+                }
+            }
+            out.behavior_graphs.push_back(std::move(graph));
         }
     }
     return out;

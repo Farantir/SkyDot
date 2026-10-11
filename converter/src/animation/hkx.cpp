@@ -394,7 +394,115 @@ Character read_character(Packfile& pf, std::size_t a) {
 /// on every vanilla behaviour (SE 9,973, LE 7,947 clip generators).
 ClipGenerator read_clip_generator(Packfile& pf, std::size_t a) {
     const bool wide = pf.ptr() == 8;
-    return ClipGenerator{pf.string(a + (wide ? 56 : 32)), pf.string(a + (wide ? 72 : 40))};
+    ClipGenerator g;
+    g.name = pf.string(a + (wide ? 56 : 32));
+    g.animation = pf.string(a + (wide ? 72 : 40));
+    if (!wide) {
+        // The 4-byte layout of the playback members is not measured.
+        return g;
+    }
+    Bytes& b = pf.bytes();
+    // Offsets measured on behavior00.hkx of the wall traps (SE).
+    g.start_time = b.at<float>(a + 96);
+    g.playback_speed = b.at<float>(a + 100);
+    g.user_controlled_fraction = b.at<float>(a + 108);
+    g.mode = b.at<std::int8_t>(a + 114);
+    // hkbClipTriggerArray at +80: hkArray at +16 of 32-byte hkbClipTrigger.
+    if (const auto triggers = pf.pointer(a + 80)) {
+        const auto list = pf.array(*triggers + 16, 32, "clip triggers");
+        for (std::size_t i = 0; i < list.count && b.ok(); ++i) {
+            const std::size_t t = list.data + i * 32;
+            const bool annotation = b.at<std::uint8_t>(t + 26) != 0;
+            if (annotation) {
+                continue;
+            }
+            g.triggers.push_back(ClipTrigger{b.at<float>(t), b.at<std::int32_t>(t + 8),
+                                             b.at<std::uint8_t>(t + 24) != 0});
+        }
+    }
+    return g;
+}
+
+std::vector<std::string> string_array(Packfile& pf, std::size_t at, const char* what) {
+    std::vector<std::string> out;
+    const auto list = pf.array(at, pf.ptr(), what);
+    for (std::size_t i = 0; i < list.count; ++i) {
+        out.push_back(pf.string(list.data + i * pf.ptr()));
+    }
+    return out;
+}
+
+/// hkbStateMachineEventPropertyArray at the pointer stored at `at`: event ids.
+std::vector<std::int32_t> event_properties(Packfile& pf, std::size_t at) {
+    std::vector<std::int32_t> out;
+    const auto target = pf.pointer(at);
+    if (!target) {
+        return out;
+    }
+    const auto list = pf.array(*target + 16, 16, "state event properties");
+    for (std::size_t i = 0; i < list.count; ++i) {
+        out.push_back(pf.bytes().at<std::int32_t>(list.data + i * 16));
+    }
+    return out;
+}
+
+/// hkbStateMachineTransitionInfoArray at the pointer stored at `at`.
+std::vector<StateTransition> transition_infos(Packfile& pf, std::size_t at) {
+    std::vector<StateTransition> out;
+    const auto target = pf.pointer(at);
+    if (!target) {
+        return out;
+    }
+    const auto list = pf.array(*target + 16, 72, "state transitions");
+    Bytes& b = pf.bytes();
+    for (std::size_t i = 0; i < list.count && b.ok(); ++i) {
+        const std::size_t t = list.data + i * 72;
+        StateTransition tr;
+        tr.event = b.at<std::int32_t>(t + 48);
+        tr.to_state = b.at<std::int32_t>(t + 52);
+        if (const auto condition = pf.pointer(t + 40)) {
+            tr.has_condition = true;
+            // hkbExpressionCondition: expression hkStringPtr at +16; other
+            // condition classes have no text.
+            const std::string* cls = pf.class_of(*condition);
+            if (cls != nullptr && *cls == "hkbExpressionCondition") {
+                tr.condition = pf.string(*condition + 16);
+            }
+        }
+        out.push_back(std::move(tr));
+    }
+    return out;
+}
+
+/// hkbStateMachine and its states (8-byte pointers only, measured on
+/// behavior00.hkx of the wall traps; the 4-byte layout is unmeasured, so SE
+/// files only). `generators` maps clip generator objects to their index.
+StateMachine read_state_machine(Packfile& pf, std::size_t a,
+                                const std::map<std::size_t, std::int32_t>& generators) {
+    Bytes& b = pf.bytes();
+    StateMachine m;
+    m.name = pf.string(a + 56);
+    m.start_state = b.at<std::int32_t>(a + 104);
+    const auto states = pf.array(a + 144, 8, "state machine states");
+    for (std::size_t i = 0; i < states.count && b.ok(); ++i) {
+        const auto info = pf.pointer(states.data + i * 8);
+        if (!info) {
+            continue;
+        }
+        BehaviorState s;
+        s.enter_events = event_properties(pf, *info + 64);
+        s.exit_events = event_properties(pf, *info + 72);
+        s.transitions = transition_infos(pf, *info + 80);
+        if (const auto generator = pf.pointer(*info + 88)) {
+            const auto it = generators.find(*generator);
+            s.generator = it == generators.end() ? -1 : it->second;
+        }
+        s.name = pf.string(*info + 96);
+        s.id = b.at<std::int32_t>(*info + 104);
+        m.states.push_back(std::move(s));
+    }
+    m.wildcard_transitions = transition_infos(pf, a + 160);
+    return m;
 }
 
 // ---- spline-compressed blocks ------------------------------------------
@@ -988,11 +1096,35 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
         }
         out.characters.push_back(read_character(pf, a));
     }
+    std::map<std::size_t, std::int32_t> generator_index;
     for (const std::size_t a : pf.objects_of("hkbClipGenerator")) {
         if (!b.ok()) {
             break;
         }
+        generator_index[a] = static_cast<std::int32_t>(out.clip_generators.size());
         out.clip_generators.push_back(read_clip_generator(pf, a));
+    }
+    for (const std::size_t a : pf.objects_of("hkbBehaviorGraphStringData")) {
+        if (!b.ok()) {
+            break;
+        }
+        // hkbBehaviorGraphStringData: eventNames at +16, variableNames at +48
+        // with 8-byte pointers (4-byte layout unmeasured, names only there).
+        BehaviorGraph graph;
+        if (pf.ptr() == 8) {
+            graph.event_names = string_array(pf, a + 16, "behaviour event names");
+            graph.variable_names = string_array(pf, a + 48, "behaviour variable names");
+        }
+        out.behavior_graphs.push_back(std::move(graph));
+    }
+    if (pf.ptr() == 8 && !out.behavior_graphs.empty()) {
+        for (const std::size_t a : pf.objects_of("hkbStateMachine")) {
+            if (!b.ok()) {
+                break;
+            }
+            out.behavior_graphs.front().state_machines.push_back(
+                read_state_machine(pf, a, generator_index));
+        }
     }
     std::vector<Binding> bindings;
     for (const std::size_t a : pf.objects_of("hkaAnimationBinding")) {

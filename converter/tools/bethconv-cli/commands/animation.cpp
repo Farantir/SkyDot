@@ -23,8 +23,55 @@
 namespace bethconv::cli {
 namespace {
 
+void print_behavior(const bethconv::animation::HkxFile& file, const std::string& vpath) {
+    for (const auto& graph : file.behavior_graphs) {
+        const auto event_name = [&](std::int32_t id) {
+            return id >= 0 && static_cast<std::size_t>(id) < graph.event_names.size()
+                       ? graph.event_names[static_cast<std::size_t>(id)]
+                       : std::string("#") + std::to_string(id);
+        };
+        const auto print_transitions = [&](const char* indent,
+                                           const std::vector<bethconv::animation::StateTransition>& list) {
+            for (const auto& t : list) {
+                std::printf("%s%s -> %d%s%s\n", indent, event_name(t.event).c_str(), t.to_state,
+                            t.has_condition ? " if " : "", t.condition.c_str());
+            }
+        };
+        std::printf("# %s: %zu events, %zu variables\n", vpath.c_str(), graph.event_names.size(),
+                    graph.variable_names.size());
+        for (std::size_t i = 0; i < graph.event_names.size(); ++i) {
+            std::printf("  event %zu %s\n", i, graph.event_names[i].c_str());
+        }
+        for (const auto& m : graph.state_machines) {
+            std::printf("  machine '%s' start %d, %zu states\n", m.name.c_str(), m.start_state, m.states.size());
+            print_transitions("    wildcard ", m.wildcard_transitions);
+            for (const auto& st : m.states) {
+                std::printf("    state %d '%s'", st.id, st.name.c_str());
+                if (st.generator >= 0) {
+                    const auto& g = file.clip_generators[static_cast<std::size_t>(st.generator)];
+                    std::printf(" clip '%s' (%s) mode %d speed %g start %g user %g", g.name.c_str(),
+                                g.animation.c_str(), g.mode, static_cast<double>(g.playback_speed),
+                                static_cast<double>(g.start_time), static_cast<double>(g.user_controlled_fraction));
+                    for (const auto& t : g.triggers) {
+                        std::printf(" [%s%g %s]", t.relative_to_end ? "end-" : "t ", static_cast<double>(t.time),
+                                    event_name(t.event).c_str());
+                    }
+                }
+                for (const auto id : st.enter_events) {
+                    std::printf(" enter:%s", event_name(id).c_str());
+                }
+                for (const auto id : st.exit_events) {
+                    std::printf(" exit:%s", event_name(id).c_str());
+                }
+                std::printf("\n");
+                print_transitions("      ", st.transitions);
+            }
+        }
+    }
+}
+
 int cmd_animation(const std::vector<std::filesystem::path>& sources, std::vector<std::string> vpaths,
-                  const std::string& filter, int sample_track, bool list_failures) {
+                  const std::string& filter, int sample_track, bool list_failures, bool show_behavior) {
     bethconv::archive::ArchiveSet set;
     mount_all(set, sources);
     if (vpaths.empty()) {
@@ -81,6 +128,9 @@ int cmd_animation(const std::vector<std::filesystem::path>& sources, std::vector
                 notes += track.annotations.size();
             }
         }
+        if (show_behavior) {
+            print_behavior(*file, vpath);
+        }
         const auto asset = bethconv::pack::write_animation_asset(*file);
         asset_bytes += asset.size();
         const auto back = bethconv::pack::read_animation_asset(asset, vpath);
@@ -130,6 +180,7 @@ struct AnimationArgs {
     std::string filter;
     int sample = -1;
     bool failures = false;
+    bool behavior = false;
 };
 
 } // namespace
@@ -145,9 +196,10 @@ void register_animation(CLI::App& app) {
     anim_cmd->add_option("--sample", args->sample,
                          "Print every frame of this track (translation, rotation)");
     anim_cmd->add_flag("--failures", args->failures, "Print each failure");
+    anim_cmd->add_flag("--behavior", args->behavior, "Print behaviour graphs: events and state machines");
     anim_cmd->callback([args] {
         set_exit_status(cmd_animation(args->sources, args->vpaths, args->filter, args->sample,
-                                      args->failures));
+                                      args->failures, args->behavior));
     });
 }
 

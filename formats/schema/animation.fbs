@@ -131,6 +131,50 @@ table Character {
 table ClipGenerator {
     name: string;
     animation: string;
+    /// Added later: 0 single play, 1 looping, 2 user controlled, 3 ping-pong.
+    mode: byte;
+    playback_speed: float = 1.0;
+    start_time: float;
+    user_controlled_fraction: float;
+    triggers: [ClipTrigger];
+}
+
+/// An event a clip raises at `time` seconds (counted back from the clip's
+/// end when relative_to_end). `event` indexes BehaviorGraph.event_names.
+table ClipTrigger {
+    time: float;
+    event: int;
+    relative_to_end: bool;
+}
+
+table StateTransition {
+    event: int;
+    to_state: int;
+    has_condition: bool;
+    condition: string;
+}
+
+table BehaviorState {
+    id: int;
+    name: string;
+    /// Index into Animation.clip_generators, -1 for other generators.
+    generator: int = -1;
+    enter_events: [int];
+    exit_events: [int];
+    transitions: [StateTransition];
+}
+
+table StateMachine {
+    name: string;
+    start_state: int;
+    states: [BehaviorState];
+    wildcard_transitions: [StateTransition];
+}
+
+table BehaviorGraph {
+    event_names: [string];
+    variable_names: [string];
+    state_machines: [StateMachine];
 }
 
 /// A clip generator of a behaviour project, as the animationdata files list
@@ -184,6 +228,7 @@ table Animation {
     /// The single file's projects, sorted by lowercase name.
     projects: [Project];
     clip_generators: [ClipGenerator];
+    behavior_graphs: [BehaviorGraph];
 }
 
 root_type Animation;

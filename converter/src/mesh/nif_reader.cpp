@@ -1173,6 +1173,12 @@ io::ParseResult<Model> read_nif(std::span<const std::byte> bytes, std::string_vi
 
         Reader reader(nif, model, options);
         reader.run();
+        for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
+            if (const auto* graph = nif.GetHeader().GetBlock<nifly::BSBehaviorGraphExtraData>(i)) {
+                model.behavior_graph = graph->behaviorGraphFile.get();
+                break;
+            }
+        }
     } catch (const std::exception& e) {
         return std::unexpected(
             fail(origin, ErrorKind::corrupt, std::format("nifly threw: {}", e.what())));

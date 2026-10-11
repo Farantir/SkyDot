@@ -292,3 +292,81 @@ TEST_CASE("an animation asset reads back what was written", "[animation][pack]")
     broken.resize(broken.size() / 2);
     CHECK_FALSE(bethconv::pack::read_animation_asset(broken, "broken.animfb").has_value());
 }
+
+TEST_CASE("a behaviour graph's events, clip generators and state machine are read", "[animation][hkx]") {
+    using bethconv::test::HkxState;
+    using bethconv::test::HkxTransition;
+    using bethconv::test::HkxTrigger;
+    // A synthetic cut of a swinging-trap graph, with the real one's event ids.
+    const std::vector<std::string> events = {
+        "SoundStop.A", "SoundPlay.A", "90For", "Trans", "Done", "90Back", "TransStop", "Rearm",
+        "TransStart", "180For", "180Back", "270For", "270Back", "HardReset", "90End", "270End",
+        "180End", "90Half", "180Half", "270Half", "TransHalf", "SoundPlay.B", "SoundStop.B"};
+    HkxBuilder b(8);
+    b.add_behavior_strings(events, {"BPlayerNear"});
+    const auto start = b.add_clip_generator("StartFor", "Animations\\90For.hkx", 2, 1.0f, 0.0f, 0.25f, {});
+    const auto swing = b.add_clip_generator("180For", "Animations\\180For.hkx", 0, 0.8f, 0.0f, 0.0f,
+                                            {{0.0f, 1, false}, {0.0f, 4, true}, {0.0f, 3, true}, {0.5f, 0, false}});
+    b.add_state_machine("Behavior00", 0,
+                        {HkxState{0, "Start", start, {}, {}, {{2, 7, ""}, {9, 2, ""}, {11, 3, ""}}},
+                         HkxState{2, "180For", swing, {}, {}, {{3, 9, ""}}},
+                         HkxState{4, "StopGapIdle", static_cast<std::size_t>(-1), {6}, {5}, {{7, 8, "!BPlayerNear"}}}},
+                        {{13, 0, ""}});
+    const auto bytes = b.bytes();
+    const auto read = read_hkx(bytes, "behavior00.hkx");
+    REQUIRE(read.has_value());
+    const auto check = [](const bethconv::animation::HkxFile& file) {
+        REQUIRE(file.behavior_graphs.size() == 1);
+        const auto& g = file.behavior_graphs[0];
+        REQUIRE(g.event_names.size() == 23);
+        CHECK(g.event_names[9] == "180For");
+        CHECK(g.event_names[22] == "SoundStop.B");
+        CHECK(g.variable_names == std::vector<std::string>{"BPlayerNear"});
+        REQUIRE(g.state_machines.size() == 1);
+        const auto& m = g.state_machines[0];
+        CHECK(m.name == "Behavior00");
+        CHECK(m.start_state == 0);
+        REQUIRE(m.states.size() == 3);
+        CHECK(m.states[0].name == "Start");
+        REQUIRE(m.states[0].transitions.size() == 3);
+        CHECK(m.states[0].transitions[1].event == 9);
+        CHECK(m.states[0].transitions[1].to_state == 2);
+        CHECK_FALSE(m.states[0].transitions[1].has_condition);
+        REQUIRE(m.states[0].generator >= 0);
+        const auto& first = file.clip_generators[static_cast<std::size_t>(m.states[0].generator)];
+        CHECK(first.name == "StartFor");
+        CHECK(first.mode == 2);
+        CHECK(first.user_controlled_fraction == 0.25f);
+        const auto& second = file.clip_generators[static_cast<std::size_t>(m.states[1].generator)];
+        CHECK(second.animation == "Animations\\180For.hkx");
+        CHECK(second.mode == 0);
+        CHECK(second.playback_speed == 0.8f);
+        REQUIRE(second.triggers.size() == 4);
+        CHECK(second.triggers[1].event == 4);
+        CHECK(second.triggers[1].relative_to_end);
+        CHECK(second.triggers[3].time == 0.5f);
+        CHECK(m.states[2].generator == -1);
+        CHECK(m.states[2].enter_events == std::vector<std::int32_t>{6});
+        CHECK(m.states[2].exit_events == std::vector<std::int32_t>{5});
+        REQUIRE(m.states[2].transitions.size() == 1);
+        CHECK(m.states[2].transitions[0].has_condition);
+        CHECK(m.states[2].transitions[0].condition == "!BPlayerNear");
+        REQUIRE(m.wildcard_transitions.size() == 1);
+        CHECK(m.wildcard_transitions[0].event == 13);
+    };
+    check(*read);
+    const auto asset = bethconv::pack::write_animation_asset(*read);
+    const auto back = bethconv::pack::read_animation_asset(asset, "behavior00.animfb");
+    REQUIRE(back.has_value());
+    check(*back);
+}
+
+TEST_CASE("state machines of 4-byte files are left empty", "[animation][hkx]") {
+    HkxBuilder b(4);
+    b.add_clip_generator("Idle", "Animations\\Idle.hkx");
+    const auto read = read_hkx(b.bytes(), "behavior.hkx");
+    REQUIRE(read.has_value());
+    CHECK(read->behavior_graphs.empty());
+    REQUIRE(read->clip_generators.size() == 1);
+    CHECK(read->clip_generators[0].name == "Idle");
+}

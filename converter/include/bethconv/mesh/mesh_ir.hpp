@@ -346,6 +346,9 @@ struct Model {
     std::string source;          ///< Virtual path, for diagnostics and extras.
     std::string nif_version;     ///< Version string as the file states it.
     std::uint32_t nif_stream{};  ///< User version 2: 83 = LE, 100 = SE/VR.
+    /// BSBehaviorGraphExtraData: the behaviour graph file, as stored
+    /// (`Traps\WallTrap\WallTrapCW\WallTraps.hkx`); empty when there is none.
+    std::string behavior_graph;
 
     std::vector<Node> nodes;
     std::vector<std::size_t> roots;

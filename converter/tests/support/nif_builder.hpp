@@ -174,6 +174,14 @@ public:
         return raw;
     }
 
+    /// A BSBehaviorGraphExtraData on the root.
+    void add_behavior_graph(const std::string& file) {
+        auto extra = std::make_unique<nifly::BSBehaviorGraphExtraData>();
+        extra->name = nifly::NiStringRef(std::string("BGED"));
+        extra->behaviorGraphFile = nifly::NiStringRef(file);
+        nif_.GetRootNode()->extraDataRefs.AddBlockRef(nif_.GetHeader().AddBlock(std::move(extra)));
+    }
+
     /// Give `target` (or the root) a bhkSPCollisionObject whose bhkSimpleShapePhantom
     /// (filter `layer`, translated by `phantom_offset`, Havok units) holds `shape`
     /// behind a bhkTransformShape translated by `offset`.

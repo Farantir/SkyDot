@@ -335,6 +335,9 @@ private:
             }
             j["bethconv"]["warnings"] = std::move(warnings);
         }
+        if (!model_.behavior_graph.empty()) {
+            j["bethconv"]["behavior_graph"] = json_text(model_.behavior_graph);
+        }
         if (!model_.animations.empty()) {
             nlohmann::json clips = nlohmann::json::array();
             for (const AnimationClip& clip : model_.animations) {

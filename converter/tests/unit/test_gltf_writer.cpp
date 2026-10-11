@@ -552,6 +552,25 @@ TEST_CASE("a phantom becomes a trigger volume, not collision", "[mesh][nif][coll
     CHECK(found);
 }
 
+TEST_CASE("a behaviour graph extra data becomes root extras", "[mesh][nif]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    builder.add_shape("cube", bethconv::test::make_cube());
+    builder.add_behavior_graph("Traps\\WallTrap\\WallTraps.hkx");
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "trap.nif");
+    REQUIRE(model.has_value());
+    CHECK(model->behavior_graph == "Traps\\WallTrap\\WallTraps.hkx");
+    auto glb = bethconv::mesh::write_glb(*model, {});
+    REQUIRE(glb.has_value());
+    bool found = false;
+    for (const auto& node : json_chunk(*glb)["nodes"]) {
+        if (node.contains("extras") && node["extras"]["bethconv"].contains("behavior_graph")) {
+            CHECK(node["extras"]["bethconv"]["behavior_graph"] == "Traps\\WallTrap\\WallTraps.hkx");
+            found = true;
+        }
+    }
+    CHECK(found);
+}
+
 TEST_CASE("a transform shape inside a bhkRigidBodyT adds to the body's transform",
           "[mesh][nif][collision]") {
     bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);

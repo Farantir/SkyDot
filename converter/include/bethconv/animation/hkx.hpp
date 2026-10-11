@@ -135,9 +135,54 @@ struct Character {
 /// hkbClipGenerator, from a behaviour graph: a clip's name (as the
 /// animationdata files and behaviour events call it) and the animation file
 /// it plays, relative to the behaviour project's folder.
+struct ClipTrigger {
+    float time{};
+    std::int32_t event{-1}; ///< Index into BehaviorGraph::event_names.
+    bool relative_to_end{}; ///< `time` counts back from the clip's end.
+};
+
 struct ClipGenerator {
     std::string name;
     std::string animation;
+    /// 0 single play, 1 looping, 2 user controlled, 3 ping-pong.
+    std::int8_t mode{};
+    float playback_speed{1.0f};
+    float start_time{};
+    float user_controlled_fraction{};
+    std::vector<ClipTrigger> triggers;
+};
+
+struct StateTransition {
+    std::int32_t event{-1}; ///< Index into BehaviorGraph::event_names.
+    std::int32_t to_state{-1}; ///< A state id.
+    bool has_condition{};
+    std::string condition; ///< Expression text of an hkbExpressionCondition.
+};
+
+struct BehaviorState {
+    std::int32_t id{};
+    std::string name;
+    /// Index into HkxFile::clip_generators; -1 for any other generator.
+    std::int32_t generator{-1};
+    std::vector<std::int32_t> enter_events;
+    std::vector<std::int32_t> exit_events;
+    std::vector<StateTransition> transitions;
+};
+
+/// hkbStateMachine. Only read from 8-byte-pointer files (SE); the 4-byte
+/// layout is not measured, there the list stays empty.
+struct StateMachine {
+    std::string name;
+    std::int32_t start_state{};
+    std::vector<BehaviorState> states;
+    std::vector<StateTransition> wildcard_transitions;
+};
+
+/// hkbBehaviorGraphStringData names plus the state machines.
+struct BehaviorGraph {
+    std::vector<std::string> event_names;
+    std::vector<std::string> variable_names;
+    std::vector<StateMachine> state_machines;
 };
 
 struct HkxFile {
@@ -147,6 +192,8 @@ struct HkxFile {
     std::vector<Clip> clips;
     std::vector<Character> characters;
     std::vector<ClipGenerator> clip_generators;
+    /// Present when the file has hkbBehaviorGraphStringData.
+    std::vector<BehaviorGraph> behavior_graphs;
     /// Every object's class, counted, including those not read.
     std::map<std::string, std::uint32_t, std::less<>> classes;
 };

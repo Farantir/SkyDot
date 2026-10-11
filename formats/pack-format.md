@@ -329,7 +329,9 @@ motion had eased in and out at every key), `mesh/16` `hair_tint_color` and
 `draw_order` on the children of a BSOrderedNode (node extras), `mesh/18`
 water shaders named `BSWaterShaderProperty` rather than `other`, `mesh/19`
 `addon` (the BSValueNode's value) on nodes named `AddOnNode...` (node extras;
-candle flames hang there), `mesh/22` `extras.bethconv.phantoms` (trigger volumes, below); the list in
+candle flames hang there), `mesh/22` `extras.bethconv.phantoms` (trigger volumes, below), `mesh/23`
+`extras.bethconv.behavior_graph` (the `BSBehaviorGraphExtraData` file path,
+as stored, on the root node next to the provenance); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 
@@ -387,13 +389,17 @@ converts.
 ## Animation assets
 
 Every `.hkx` becomes an `.animfb`: a FlatBuffer (identifier `BAN1`, schema
-`formats/schema/animation.fbs`, its own `format_version`, 1) with whatever
+`formats/schema/animation.fbs`, its own `format_version`, 2) with whatever
 skeletons (`hkaSkeleton`) and clips (`hkaSplineCompressedAnimation` or
 `hkaInterleavedUncompressedAnimation`, with their binding and annotations)
 the file holds, a behaviour character's names (`hkbCharacterStringData`)
-and a behaviour graph's clip generators (`hkbClipGenerator`: clip name and
-the animation file it plays). The rest of behaviour graphs and physics is
-not decoded; such files still convert, so every path resolves.
+and a behaviour graph's clip generators (`hkbClipGenerator`: clip name, the
+animation file it plays, play mode, speed, start time, user-controlled
+fraction and event triggers), its event and variable names and its state
+machines (`hkbStateMachine`: states with their generator, enter and exit
+events and transitions; SE files only, the 4-byte layout is not measured;
+format 2). Other generators, blends, modifiers and physics are not
+decoded; such files still convert, so every path resolves.
 
 Clips stay B-splines, as Havok stores them: sampled per frame, vanilla SE's
 clips would take 1 GiB, the splines about 130 MiB. The schema's header says
