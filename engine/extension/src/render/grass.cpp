@@ -46,8 +46,8 @@ float random01(std::uint32_t a, std::uint32_t b, std::uint32_t c, std::uint32_t 
     return static_cast<float>(h >> 8) / 16777216.0F;
 }
 
-/// The texture layers of one quadrant: the base and, mixed over it in order,
-/// the additional ones with their opacity per vertex (17 x 17).
+/// The texture layers of one quadrant: the base and, summed with it (the base
+/// takes 1 - sum), the additional ones with their opacity per vertex (17 x 17).
 struct Quadrant {
     std::uint32_t base = 0;
     std::vector<std::pair<std::uint32_t, std::vector<float>>> layers;
@@ -143,16 +143,17 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
         const float tx = lx - static_cast<float>(ix);
         const float ty = ly - static_cast<float>(iy);
         std::vector<float> share(quadrant.layers.size() + 1, 0.0F);
-        float rest = 1.0F; // of what lies under the layers above
-        for (std::size_t i = quadrant.layers.size(); i-- > 0;) {
+        float sum = 0.0F; // the layers' opacities add up; the base takes the rest
+        for (std::size_t i = 0; i < quadrant.layers.size(); ++i) {
             const auto& o = quadrant.layers[i].second;
             const auto at = [&](int gx, int gy) { return o[static_cast<std::size_t>(gy * TerrainBuilder::k_quadrant_grid + gx)]; };
             const float w = (at(ix, iy) * (1 - tx) + at(ix + 1, iy) * tx) * (1 - ty) +
                             (at(ix, iy + 1) * (1 - tx) + at(ix + 1, iy + 1) * tx) * ty;
-            share[i + 1] = rest * w;
-            rest *= 1.0F - w;
+            share[i + 1] = w;
+            sum += w;
         }
-        share[0] = rest;
+        share[0] = std::max(1.0F - sum, 0.0F);
+        pick *= share[0] + sum;
         for (std::size_t i = 0; i < share.size(); ++i) {
             pick -= share[i];
             if (pick < 0.0F) {
