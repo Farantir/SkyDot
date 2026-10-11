@@ -230,13 +230,20 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             fov += own->fov();
         }
         fade *= k_light_fade_scale;
+        // The game draws local lights' shadows in interiors only: outdoors the
+        // sun has the shadow maps (game-refs-2026-10-20 s33_212520: the
+        // lantern light 0xB6246, flagged omni shadow and 12 units under its
+        // lantern, lights the wall above it without any shadow of the lantern).
+        const auto* in_cell = data().cell_ptr(cell);
+        const bool interior =
+            in_cell != nullptr && formats::has_flag(in_cell->flags(), wfb::CellFlags::interior);
         const auto range = static_cast<float>(static_cast<double>(radius) * formats::k_metres_per_unit);
         if (formats::has_flag(l->flags(), wfb::LightFlags::spot_light)) {
             auto* spot = memnew(godot::SpotLight3D);
             spot->set_param(godot::Light3D::PARAM_RANGE, range);
             spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE, std::clamp(fov / 2.0F, 1.0F, 89.0F));
             spot->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
-            const bool spot_shadow = formats::has_flag(l->flags(), wfb::LightFlags::spot_shadow);
+            const bool spot_shadow = interior && formats::has_flag(l->flags(), wfb::LightFlags::spot_shadow);
             spot->set_shadow(options_.all_light_shadows || spot_shadow);
             spot->set_meta("skydot_game_shadow", spot_shadow);
             light = spot;
@@ -252,8 +259,9 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
             // neighbouring rooms with its rooms and portals, which SkyDot
             // lacks; without shadows they light through walls (comparison
             // shot ref22: an inn room twice as bright as the game's).
-            omni->set_shadow(options_.all_light_shadows || formats::has_flag(l->flags(), k_light_shadow));
-            omni->set_meta("skydot_game_shadow", formats::has_flag(l->flags(), k_light_shadow));
+            const bool omni_shadow = interior && formats::has_flag(l->flags(), k_light_shadow);
+            omni->set_shadow(options_.all_light_shadows || omni_shadow);
+            omni->set_meta("skydot_game_shadow", omni_shadow);
             light = omni;
         }
         light->set_name(name + String(" light"));
