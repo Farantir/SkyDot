@@ -31,6 +31,10 @@ namespace {
 constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 constexpr float k_spacing = k_cell_units / 32.0F; // between height samples
 constexpr float k_grass_grid = 20.0F;             // iMinGrassSize (Skyrim.ini default)
+// Grid spacing as a share of a grass's bound radius. A fit to game shots (tundra
+// views 185736/tundra28 needed denser tundra grass, the Riverwood top view stays
+// within ~10%); the mechanism is unknown.
+constexpr float k_grid_radius_share = 0.7F;
 constexpr float k_fade_start = 7000.0F;           // fGrassStartFadeDistance
 constexpr float k_fade_range = 1000.0F;
 
@@ -153,6 +157,23 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
             sum += w;
         }
         share[0] = std::max(1.0F - sum, 0.0F);
+        // Snow textures do not compete for grass unless nothing else is there.
+        if (in.is_snow) {
+            float rest = 0.0F;
+            for (std::size_t i = 0; i < share.size(); ++i) {
+                if (!in.is_snow(i == 0 ? quadrant.base : quadrant.layers[i - 1].first)) {
+                    rest += share[i];
+                }
+            }
+            if (rest > 0.0F) {
+                for (std::size_t i = 0; i < share.size(); ++i) {
+                    if (in.is_snow(i == 0 ? quadrant.base : quadrant.layers[i - 1].first)) {
+                        share[i] = 0.0F;
+                    }
+                }
+                sum = rest - share[0];
+            }
+        }
         pick *= share[0] + sum;
         for (std::size_t i = 0; i < share.size(); ++i) {
             pick -= share[i];
@@ -192,7 +213,7 @@ godot::Node3D* build_grass(const GrassInputs& in, std::int64_t& placed) {
     }
     for (const wfb::Grass* grass : kinds) {
         // Each grass on a grid of its own size, at least iMinGrassSize.
-        const float spacing = std::max(k_grass_grid, grass->bound_radius());
+        const float spacing = std::max(k_grass_grid, k_grid_radius_share * grass->bound_radius());
         const auto points = static_cast<std::uint32_t>(k_cell_units / spacing);
         const auto kind = static_cast<std::uint32_t>(grass->id());
         for (std::uint32_t uy = 0; uy < points; ++uy) {

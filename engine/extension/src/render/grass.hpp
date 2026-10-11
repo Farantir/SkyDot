@@ -50,6 +50,8 @@ struct GrassInputs {
     bool has_water = false;
     /// The Grass records growing on a land texture (0: the default one).
     std::function<std::vector<const bethconv::pack::wfb::Grass*>(std::uint32_t ltex)> grasses_of;
+    /// Whether a land texture is snow (INAM bit 0); may be empty.
+    std::function<bool(std::uint32_t ltex)> is_snow;
     /// The model of a grass, or a null mesh if it cannot be loaded.
     std::function<GrassModel(const bethconv::pack::wfb::Grass& grass)> model_of;
 };

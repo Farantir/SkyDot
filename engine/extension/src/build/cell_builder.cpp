@@ -643,6 +643,10 @@ godot::Node3D* CellBuilder::begin_exterior(std::int64_t world, std::int64_t x,
         grass.grid_y = gy;
         grass.has_water = water;
         grass.water_height = water_height;
+        grass.is_snow = [this](std::uint32_t ltex) {
+            const auto* t = ltex != 0 ? lookup(world_fb()->land_textures(), ltex) : nullptr;
+            return t != nullptr && t->snow();
+        };
         grass.grasses_of = [this](std::uint32_t ltex) {
             std::vector<const wfb::Grass*> out;
             const auto* textures = world_fb()->land_textures();
