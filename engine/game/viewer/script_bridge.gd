@@ -267,6 +267,10 @@ func activate(cell: int, ref: int, node: Node, force: bool, parent := false) -> 
 		print(label, " leads to 0x%08X" % info["door"]["destination"])
 		_transition.go(info["door"])
 		return true
+	# A lever is furniture: using it pushes it (the player's push animation,
+	# which sends Lever_PlayerPush in the game, does not exist yet).
+	if info["type"] == "FURN" and node != null and _behavior_event(node, ref, "LeverPushStart"):
+		return true
 	if info["type"] == "DOOR" and node != null:
 		var animator := node.get_node_or_null("SkydotAnimator")
 		if animator != null:
