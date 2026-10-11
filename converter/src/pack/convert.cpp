@@ -418,7 +418,9 @@ std::string ConvertOptions::lod_settings() const {
 
 std::string ConvertOptions::animation_settings() const {
     // 2: behaviour characters and clip generators; animationdata text files.
-    return "animation/2;decoded";
+    // 3: clip playback and triggers, behaviour events and state machines
+    // (animation asset format 2).
+    return "animation/3;decoded";
 }
 
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
