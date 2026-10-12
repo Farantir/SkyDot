@@ -130,6 +130,14 @@ int cmd_animation(const std::vector<std::filesystem::path>& sources, std::vector
         }
         if (show_behavior) {
             print_behavior(*file, vpath);
+            if (!file->behavior_graphs.empty()) {
+                // Generator kinds the graph uses, read or not (finding 14's survey).
+                std::printf("  classes:");
+                for (const auto& [name, count] : file->classes) {
+                    std::printf(" %s x%u", name.c_str(), count);
+                }
+                std::printf("\n");
+            }
         }
         const auto asset = bethconv::pack::write_animation_asset(*file);
         asset_bytes += asset.size();
