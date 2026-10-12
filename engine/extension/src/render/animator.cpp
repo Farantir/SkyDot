@@ -271,12 +271,13 @@ void SkydotAnimator::_process(double delta) {
     const auto* root = godot::Object::cast_to<godot::Node3D>(get_parent());
     const godot::Viewport* viewport = get_viewport();
     const godot::Camera3D* camera = viewport != nullptr ? viewport->get_camera_3d() : nullptr;
-    if (root != nullptr && camera != nullptr &&
-        static_cast<double>(root->get_global_position().distance_to(
-            camera->get_global_position())) > k_max_distance) {
-        return;
-    }
-    evaluate(static_cast<double>(godot::Time::get_singleton()->get_ticks_usec()) / 1e6, clip_time_);
+    // Far away only the poses are skipped: time passes and the text keys and
+    // `finished` still fire, so scripts waiting on them do not depend on
+    // what is drawn.
+    const bool near = root == nullptr || camera == nullptr ||
+                      static_cast<double>(root->get_global_position().distance_to(camera->get_global_position())) <=
+                          k_max_distance;
+    step(static_cast<double>(godot::Time::get_singleton()->get_ticks_usec()) / 1e6, clip_time_, near);
 }
 
 bool SkydotAnimator::play(const String& clip) {
@@ -284,7 +285,8 @@ bool SkydotAnimator::play(const String& clip) {
         return false;
     }
     for (std::size_t i = 0; i < asset_->clips.size(); ++i) {
-        if (!clip.is_empty() && asset_->clips[i].name == clip) {
+        // The game's event names are not case-sensitive.
+        if (!clip.is_empty() && asset_->clips[i].name.nocasecmp_to(clip) == 0) {
             playing_ = static_cast<int>(i);
             clip_time_ = 0.0;
             finished_ = false;
@@ -323,14 +325,24 @@ std::int64_t SkydotAnimator::get_channel_count() const {
     return count;
 }
 
-void SkydotAnimator::evaluate(double seconds, double seconds_into_clip) {
+void SkydotAnimator::mask_nodes(const std::vector<godot::Node3D*>& owned) {
+    for (Target& t : targets_) {
+        t.masked = t.node != nullptr && std::ranges::find(owned, t.node) != owned.end();
+    }
+}
+
+void SkydotAnimator::evaluate(double seconds, double seconds_into_clip) { step(seconds, seconds_into_clip, true); }
+
+void SkydotAnimator::step(double seconds, double seconds_into_clip, bool pose) {
     if (asset_ == nullptr) {
         return;
     }
-    for (std::size_t i = 0; i < asset_->clips.size(); ++i) {
-        const Clip& clip = asset_->clips[i];
-        if (clip.name.is_empty() && clip.autoplay) {
-            apply_clip(i, clip.local_time(seconds));
+    if (pose) {
+        for (std::size_t i = 0; i < asset_->clips.size(); ++i) {
+            const Clip& clip = asset_->clips[i];
+            if (clip.name.is_empty() && clip.autoplay) {
+                apply_clip(i, clip.local_time(seconds));
+            }
         }
     }
     if (playing_ >= 0) {
@@ -338,7 +350,9 @@ void SkydotAnimator::evaluate(double seconds, double seconds_into_clip) {
         // A sequence starts at its start time, whatever its phase.
         const double now =
             clip.local_time((clip.start - clip.phase) / clip.frequency + seconds_into_clip);
-        apply_clip(static_cast<std::size_t>(playing_), now);
+        if (pose) {
+            apply_clip(static_cast<std::size_t>(playing_), now);
+        }
         const String name = clip.name;
         const double before = last_local_;
         for (const auto& [time, text] : clip.text_keys) {
@@ -356,7 +370,9 @@ void SkydotAnimator::evaluate(double seconds, double seconds_into_clip) {
             emit_signal("finished", name);
         }
     }
-    flush();
+    if (pose) {
+        flush();
+    }
 }
 
 void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
@@ -371,6 +387,10 @@ void SkydotAnimator::apply_clip(std::size_t index, double local_time) {
             continue;
         }
         ch.sample(local_time, v);
+        // A node a behaviour graph poses is not ours to move.
+        if (t.masked && transform) {
+            continue;
+        }
         switch (ch.prop) {
         case Prop::translation:
             t.has_translation = true;

@@ -19,6 +19,7 @@ func _init() -> void:
 func _process(_delta: float) -> bool:
     _check_billboards()
     _check_effects()
+    _check_one_owner()
     _check_flicker()
     _check_shadow_budget()
     print("smoke_extension: failures=", failures)
@@ -264,6 +265,82 @@ func _write_pack(dir: String, version: int, index_text: String, with_records := 
     f = FileAccess.open(dir.path_join("vpath.idx"), FileAccess.WRITE)
     f.store_string(index_text)
     f.close()
+
+## A behaviour graph and the NIF animator on one model: the graph is in its
+## start state at once, owns the nodes its clips pose (the animator leaves
+## them alone), takes events before the NIF clips, and a state without a
+## clip holds the pose.
+func _check_one_owner() -> void:
+    var root := Node3D.new()
+    var pivot := Node3D.new()
+    root.add_child(pivot)
+    var arm := Node3D.new()
+    arm.name = "Arm"
+    arm.rotation.z = 0.3  # not the graph's start pose
+    arm.set_meta("extras", {"bethconv": {"id": 1}})
+    pivot.add_child(arm)
+    var free := Node3D.new()
+    free.name = "Free"
+    free.set_meta("extras", {"bethconv": {"id": 2}})
+    pivot.add_child(free)
+    pivot.set_meta("extras", {"bethconv": {
+        "source": "meshes/test/owner.nif",
+        "animations": [
+            {"name": "Open", "autoplay": false, "cycle": "clamp", "frequency": 1.0, "phase": 0.0,
+             "start": 0.0, "stop": 1.0, "channels": [
+                {"node": 1, "property": "rotation_z", "interp": "linear", "components": 1,
+                 "times": [0.0, 1.0], "values": [0.0, -1.5]},
+                {"node": 2, "property": "rotation_z", "interp": "linear", "components": 1,
+                 "times": [0.0, 1.0], "values": [0.0, -1.5]}]}]}})
+    expect(SkydotAnimator.attach(root, SkydotMaterials.new()) == 1, "the NIF clip attaches")
+    var animator: SkydotAnimator = root.get_node("SkydotAnimator")
+
+    var rest := Animation.new()
+    var rest_track := rest.add_track(Animation.TYPE_ROTATION_3D)
+    rest.track_set_path(rest_track, NodePath("b:Arm"))
+    rest.rotation_track_insert_key(rest_track, 0.0, Quaternion())
+    rest.length = 1.0
+    var swing := Animation.new()
+    var swing_track := swing.add_track(Animation.TYPE_ROTATION_3D)
+    swing.track_set_path(swing_track, NodePath("b:Arm"))
+    swing.rotation_track_insert_key(swing_track, 0.0, Quaternion())
+    swing.rotation_track_insert_key(swing_track, 1.0, Quaternion(Vector3(0, 0, 1), 0.5))
+    swing.length = 1.0
+    var behavior := SkydotBehavior.attach_graph(root, {
+        "start": 1,
+        "clips": [{"name": "Rest", "mode": 2, "animation": rest},
+                  {"name": "Swing", "mode": 0, "animation": swing, "triggers": [[0.5, "Mid"]]}],
+        "states": [{"id": 1, "name": "Rest", "clip": 0, "transitions": [["Swing", 2]]},
+                   {"id": 2, "name": "Swing", "clip": 1, "transitions": [["Hold", 3]]},
+                   {"id": 3, "name": "Held", "clip": -1, "transitions": []}]}, 7)
+    expect(behavior != null, "a behaviour attaches")
+    if behavior == null:
+        return
+    var raised: Array = []
+    behavior.event_raised.connect(func(event: String) -> void: raised.append(event))
+    expect(behavior.get_state() == "Rest", "it starts in its start state")
+    expect(is_zero_approx(arm.rotation.z), "whose pose shows at once, not the NIF rest pose")
+
+    # The NIF clip runs on what the graph does not pose.
+    expect(SkydotBehavior.play_event(root, "open"), "an event the graph ignores plays the NIF clip, in any case")
+    animator.evaluate(0.0, 1.0)
+    expect(is_equal_approx(free.rotation.z, -1.5), "on the node the graph does not own")
+    expect(is_zero_approx(arm.rotation.z), "and leaves the graph's node alone")
+
+    expect(SkydotBehavior.play_event(root, "Swing"), "the graph takes its event first")
+    behavior.advance(0.6)
+    expect(raised == ["Mid"], "its trigger is raised: %s" % [raised])
+    behavior.advance(1.0)
+    expect(is_equal_approx(arm.rotation.z, 0.5), "it swings to the end")
+    # Not "played": with no Havok clip the NIF animator gets the event too.
+    behavior.send_event("Hold")
+    expect(behavior.get_state() == "Held", "into a state without a clip")
+    behavior.advance(2.0)
+    animator.evaluate(0.0, 1.0)
+    expect(is_equal_approx(arm.rotation.z, 0.5), "which holds the pose, whatever the NIF clip does")
+    expect(not SkydotBehavior.play_event(root, "Missing"), "an event nothing knows plays nothing")
+    root.free()
+
 
 ## A model with the converter's effect extras: a clock-driven UV scroll and
 ## flame visibility, a named door sequence, a hidden node and one particle

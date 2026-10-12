@@ -82,6 +82,9 @@ struct BehaviorChange {
 struct BehaviorOutput {
     std::vector<std::string> events;       ///< Raised by the graph (not the ones sent in).
     std::vector<BehaviorChange> changes;
+    /// Set by `send`: the state, or the wildcards, have a transition for the
+    /// event, even one to the state already current (which changes nothing).
+    bool accepted{};
 };
 
 class BehaviorMachine {
@@ -97,6 +100,11 @@ public:
     /// The clip to pose and the time within it, in clip seconds. -1 for no clip.
     [[nodiscard]] int clip() const;
     [[nodiscard]] float clip_time() const { return time_; }
+    /// The clip to pose and its time: the current clip's, or, in a state
+    /// without a clip, the last one that played and where it stopped (the
+    /// pose is held). -1 before any clip played.
+    [[nodiscard]] int pose_clip() const { return clip() >= 0 ? clip() : held_clip_; }
+    [[nodiscard]] float pose_time() const { return clip() >= 0 ? time_ : held_time_; }
     [[nodiscard]] const BehaviorState* state() const;
     [[nodiscard]] const BehaviorDef& def() const { return def_; }
 
@@ -104,11 +112,13 @@ private:
     [[nodiscard]] int find_state(int id) const;
     void change(int index, std::string_view cause, BehaviorOutput& out);
     void raise(std::string event, bool echo, BehaviorOutput& out);
-    void drain(BehaviorOutput& out);
+    void drain(BehaviorOutput& out, bool* first_matched = nullptr);
 
     BehaviorDef def_;
     int current_{-1};
     float time_{};
+    int held_clip_{-1}; ///< The last clip played, for states without one.
+    float held_time_{};
     bool backwards_{}; ///< Ping-pong.
     std::vector<bool> fired_;
     struct Pending {

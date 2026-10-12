@@ -46,10 +46,13 @@ public:
     /// particle materials. Returns the number of clips plus particle systems.
     static std::int64_t attach(godot::Node* root, const godot::Ref<SkydotMaterials>& materials);
 
-    /// Start a named clip from its beginning; unnamed clips keep running.
-    /// Returns false if there is no such clip.
+    /// Start a named clip (any letter case) from its beginning; unnamed clips
+    /// keep running. Returns false if there is no such clip.
     bool play(const godot::String& clip);
     void stop();
+    /// The nodes a behaviour graph poses: this animator leaves their
+    /// transforms alone (visibility and shader clips still run).
+    void mask_nodes(const std::vector<godot::Node3D*>& owned);
     godot::String get_playing() const;
     godot::PackedStringArray get_clip_names() const;
     std::int64_t get_channel_count() const;
@@ -70,6 +73,7 @@ private:
         // A skinned model's animated nodes are bones of a Skeleton3D.
         godot::Skeleton3D* skeleton = nullptr;
         std::int32_t bone = -1;
+        bool masked = false; ///< Posed by a behaviour graph, not by clips.
         godot::Transform3D rest;
         godot::Quaternion rest_rotation;
         godot::Vector3 rest_scale;
@@ -107,6 +111,8 @@ private:
 
     void bind(const std::shared_ptr<const EffectAsset>& asset, godot::Node* root);
     void bind_material(Target& target, std::size_t slot);
+    /// One evaluation; without `pose` only time passes (text keys, `finished`).
+    void step(double seconds, double seconds_into_clip, bool pose);
     void apply_clip(std::size_t clip, double local_time);
     void flush();
     static godot::Transform3D pose_of(const Target& t);

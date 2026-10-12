@@ -28,8 +28,6 @@ var _place: Place
 var _streamer: SkydotStreamer
 var _debug: DebugOverlay
 var _transition: PlaceTransition
-## The pack, for behaviour graphs (set by the viewer once it has opened it).
-var pack: SkydotPack
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
@@ -203,38 +201,42 @@ func _on_motion_type(ref: int, motion_type: int) -> void:
 
 func _on_play_animation(ref: int, animation: String) -> void:
 	var node := find_ref_node(ref)
-	if node != null and _behavior_event(node, ref, animation):
-		return
-	var animator := node.get_node_or_null("SkydotAnimator") if node != null else null
-	if animator == null or not animator.play(animation):
-		print("0x%08X has no %s animation" % [ref, animation])
-		return
+	if node == null:
+		print("0x%08X is not built, so it plays no %s animation" % [ref, animation])
+	elif not _play_event(node, ref, animation):
+		var graph := node.find_child("SkydotBehavior", true, false)
+		if graph != null:
+			print("0x%08X: its behaviour graph (state %s) and its clips ignore %s" % [ref, graph.get_state(), animation])
+		else:
+			print("0x%08X has no %s animation" % [ref, animation])
+
+
+## The one way an animation event reaches a placed model: its behaviour
+## graph, else the NIF clip of that name. What the model then raises (a text
+## key, the clip's end, a graph event) releases scripts waiting in
+## PlayAnimationAndWait. False if nothing played.
+func _play_event(node: Node, ref: int, event: String) -> bool:
+	_connect_notifies(node, ref)
+	if not SkydotBehavior.play_event(node, event):
+		return false
 	_wake_around(node)
-	# PlayAnimationAndWait waits for a text key or the clip's end.
-	if not animator.has_meta("skydot_notifies"):
-		animator.set_meta("skydot_notifies", true)
+	return true
+
+
+func _connect_notifies(node: Node, ref: int) -> void:
+	if node.has_meta("skydot_notifies"):
+		return
+	node.set_meta("skydot_notifies", true)
+	var animator := node.get_node_or_null("SkydotAnimator")
+	if animator != null:
 		animator.text_key.connect(func(_clip: String, key: String) -> void:
 			_papyrus.notify_animation_event(ref, key))
 		animator.finished.connect(func(clip: String) -> void:
 			_papyrus.notify_animation_event(ref, clip))
-
-
-## Send `event` to the Havok behaviour graph of `node`'s model (swinging wall
-## traps), starting it on first use. Events the graph raises release scripts
-## waiting in PlayAnimationAndWait. False if the model has no graph or the
-## graph takes no such event or the state it reaches plays no Havok clip.
-func _behavior_event(node: Node, ref: int, event: String) -> bool:
-	var player: Node = node.find_child("SkydotBehavior", true, false)
-	if player == null:
-		if node.has_meta("skydot_no_behavior") or pack == null:
-			return false
-		player = SkydotBehavior.attach(node, pack, ref)
-		if player == null:
-			node.set_meta("skydot_no_behavior", true)
-			return false
+	var player := node.find_child("SkydotBehavior", true, false)
+	if player != null:
 		player.event_raised.connect(func(name: String) -> void:
 			_papyrus.notify_animation_event(ref, name))
-	return player.send_event(event)
 
 
 ## What activating reference `ref` in `cell` does. `node` is its model, if
@@ -269,7 +271,7 @@ func activate(cell: int, ref: int, node: Node, force: bool, parent := false) -> 
 		return true
 	# A lever is furniture: using it pushes it (the player's push animation,
 	# which sends Lever_PlayerPush in the game, does not exist yet).
-	if info["type"] == "FURN" and node != null and _behavior_event(node, ref, "LeverPushStart"):
+	if info["type"] == "FURN" and node != null and _play_event(node, ref, "LeverPushStart"):
 		return true
 	if info["type"] == "DOOR" and node != null:
 		var animator := node.get_node_or_null("SkydotAnimator")

@@ -139,6 +139,10 @@ void BehaviorMachine::change(int index, std::string_view cause, BehaviorOutput& 
     if (current_ >= 0) {
         const BehaviorState& old = def_.states[static_cast<std::size_t>(current_)];
         from = old.name;
+        if (old.clip >= 0) {
+            held_clip_ = old.clip;
+            held_time_ = time_;
+        }
         for (const auto& e : old.exit_events) {
             raise(e, true, out);
         }
@@ -160,7 +164,7 @@ void BehaviorMachine::change(int index, std::string_view cause, BehaviorOutput& 
     }
 }
 
-void BehaviorMachine::drain(BehaviorOutput& out) {
+void BehaviorMachine::drain(BehaviorOutput& out, bool* first_matched) {
     for (int guard = 0; !queue_.empty() && guard < k_max_chain; ++guard) {
         const std::string event = std::move(queue_.front().event);
         queue_.erase(queue_.begin());
@@ -183,6 +187,9 @@ void BehaviorMachine::drain(BehaviorOutput& out) {
                 }
             }
         }
+        if (guard == 0 && first_matched != nullptr) {
+            *first_matched = taken != nullptr;
+        }
         if (taken == nullptr) {
             continue;
         }
@@ -197,7 +204,7 @@ void BehaviorMachine::drain(BehaviorOutput& out) {
 
 void BehaviorMachine::send(std::string_view event, BehaviorOutput& out) {
     raise(std::string(event), false, out);
-    drain(out);
+    drain(out, &out.accepted);
 }
 
 void BehaviorMachine::advance(float seconds, BehaviorOutput& out) {
@@ -211,17 +218,40 @@ void BehaviorMachine::advance(float seconds, BehaviorOutput& out) {
     }
     const float length = clip.duration;
     const float step = seconds * clip.speed;
+    // Triggers whose time has come, earliest first; the ones of a clip that
+    // wraps or turns fire up to its end before the next lap starts over.
+    const auto fire = [&](float until) {
+        struct Due {
+            float at;
+            std::size_t index;
+        };
+        std::vector<Due> due;
+        for (std::size_t i = 0; i < clip.triggers.size(); ++i) {
+            const BehaviorTrigger& t = clip.triggers[i];
+            const float at = t.relative_to_end ? length + t.time : t.time;
+            if (!fired_[i] && at <= until + 1e-6F) {
+                fired_[i] = true;
+                due.push_back({at, i});
+            }
+        }
+        std::ranges::stable_sort(due, {}, &Due::at);
+        for (const Due& d : due) {
+            raise(clip.triggers[d.index].event, true, out);
+        }
+    };
     if (clip.mode == 0 || length <= 0.0F) {
         time_ = length > 0.0F ? std::min(time_ + step, length) : 0.0F;
     } else if (clip.mode == 1) {
         time_ += step;
         if (time_ >= length) {
+            fire(length);
             time_ = std::fmod(time_, length);
             fired_.assign(fired_.size(), false);
         }
     } else {
         time_ += backwards_ ? -step : step;
         if (time_ >= length) {
+            fire(length);
             time_ = std::max(0.0F, 2.0F * length - time_);
             backwards_ = true;
             fired_.assign(fired_.size(), false);
@@ -231,25 +261,7 @@ void BehaviorMachine::advance(float seconds, BehaviorOutput& out) {
             fired_.assign(fired_.size(), false);
         }
     }
-    // Triggers whose time has come, earliest first. The ones of a looped
-    // clip that wrapped fire again on the next lap.
-    struct Due {
-        float at;
-        std::size_t index;
-    };
-    std::vector<Due> due;
-    for (std::size_t i = 0; i < clip.triggers.size(); ++i) {
-        const BehaviorTrigger& t = clip.triggers[i];
-        const float at = t.relative_to_end ? length + t.time : t.time;
-        if (!fired_[i] && at <= time_ + 1e-6F) {
-            fired_[i] = true;
-            due.push_back({at, i});
-        }
-    }
-    std::ranges::stable_sort(due, {}, &Due::at);
-    for (const Due& d : due) {
-        raise(clip.triggers[d.index].event, true, out);
-    }
+    fire(time_);
     drain(out);
 }
 

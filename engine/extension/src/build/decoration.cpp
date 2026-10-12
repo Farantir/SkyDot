@@ -2,6 +2,7 @@
 #include "build/decoration.hpp"
 
 #include "assets/model.hpp"
+#include "actors/behavior_player.hpp"
 #include "render/animator.hpp"
 #include "render/billboard.hpp"
 #include "physics/collision.hpp"
@@ -112,6 +113,16 @@ struct Decorator::Steps {
             (void)self.materials(); // The animators take the Ref, so it must exist.
             d.stats.effects += SkydotAnimator::attach(node, self.materials_);
         }
+    }
+    /// A model with a Havok behaviour graph (traps, levers) starts in the
+    /// graph's start state and has its nodes posed by it from the first frame.
+    static void behavior(Decorator& self, godot::Node3D* node, Decoration& d) {
+        if (self.assets_ == nullptr) {
+            return;
+        }
+        const AssetCache& assets = *self.assets_;
+        SkydotBehavior::attach_from(
+            node, [&assets](const std::string& vpath) { return assets.bytes(vpath); }, static_cast<std::int64_t>(d.ref->id()));
     }
     static void tag(Decorator& self, godot::Node3D* node, Decoration& d) {
         tag_ref(node, d.ref->id(), d.cell, activatable(*self.data_, d.base, d.cell, d.ref->id()));
@@ -285,6 +296,7 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
         {Steps::addons, false, false},
         {Steps::billboards, true, true},
         {Steps::animators, true, true},
+        {Steps::behavior, false, false},
         {Steps::tag, false, false},
         {Steps::plain_door, false, false},
         {Steps::collision, false, false},

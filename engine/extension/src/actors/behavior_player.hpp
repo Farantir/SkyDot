@@ -13,6 +13,11 @@
 // the NIF's node transforms. The node is a child of the model's root and
 // steps itself.
 //
+// The graph is attached when the model is built, so its start state shows from
+// the first frame, and it owns the nodes its clips pose: the model's
+// SkydotAnimator skips those (SkydotAnimator::mask_nodes). A state without a
+// clip holds the pose of the clip before it.
+//
 // Events the graph raises (clip triggers, state enter/exit) go out as the
 // `event_raised` signal for Papyrus' PlayAnimationAndWait.
 #pragma once
@@ -22,9 +27,14 @@
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
+#include <functional>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace skydot {
@@ -38,11 +48,29 @@ public:
     /// from `pack`. Starts in the graph's start state.
     static godot::Node* attach(godot::Node* model, godot::Object* pack, std::int64_t ref);
 
+    /// An asset's bytes by normalised virtual path; empty if absent.
+    using BytesFn = std::function<godot::PackedByteArray(const std::string& vpath)>;
+    /// As `attach`, with the assets from `bytes`; for the model builder.
+    static SkydotBehavior* attach_from(godot::Node* model, const BytesFn& bytes, std::int64_t ref);
+    /// A graph given in memory (tests, tools): `start` (state id), `states`
+    /// [{id, name, clip, transitions: [[event, to_state id]]}] and `clips`
+    /// [{name, mode, animation: Animation (tracks "x:<node name>"),
+    /// triggers: [[seconds, event]]}]. Null if `model` has a behaviour.
+    static SkydotBehavior* attach_graph(godot::Node* model, const godot::Dictionary& graph, std::int64_t ref);
+
+    /// The one entry point for animation events on a placed model: its
+    /// behaviour graph if it takes the event into a Havok clip, else its NIF
+    /// animator's clip of that name (any letter case). False if neither
+    /// plays anything.
+    static bool play_event(godot::Node* model, const godot::String& event);
+
     /// Send an event by name. Returns whether the current state, or the
     /// wildcard transitions, take it.
     bool send_event(const godot::String& event);
     [[nodiscard]] godot::String get_state() const;
 
+    /// Let `seconds` pass (what _process does each frame).
+    void advance(double seconds);
     void _process(double delta) override;
 
 protected:
@@ -59,6 +87,9 @@ private:
         std::vector<Target> targets;
     };
 
+    void bind_tracks(ClipPose& pose, const std::unordered_map<std::string, godot::Node3D*>& nodes);
+    /// Takes the machine over, masks the NIF animator and starts.
+    void finish(godot::Node* model, BehaviorDef def);
     void apply();
     void report(const BehaviorOutput& out);
 

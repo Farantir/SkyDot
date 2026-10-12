@@ -171,6 +171,61 @@ TEST_CASE("looping and ping-pong clips keep their time inside the clip", "[behav
     CHECK(m.clip_time() == Approx(1.5F)); // Turned at 2 s, 0.5 s back.
 }
 
+TEST_CASE("a trigger late in a looping clip fires before the wrap, not skipped", "[behavior]") {
+    BehaviorDef def;
+    def.start_state = 1;
+    def.clips = {{"loop", "a.hkx", 1, 1.0F, 0.0F, 0.0F, {{1.5F, "Late", false}, {-0.0F, "End", true}}, 2.0F}};
+    def.states = {{1, "Loop", 0, {}, {}, {}}};
+    BehaviorMachine m(std::move(def));
+    BehaviorOutput out;
+    m.start(out);
+    m.advance(1.0F, out);
+    CHECK(out.events.empty());
+    m.advance(1.5F, out); // 1.0 -> 2.5: passes 1.5 and the end, wraps to 0.5.
+    CHECK(m.clip_time() == Approx(0.5F));
+    CHECK(std::ranges::count(out.events, "Late") == 1);
+    CHECK(std::ranges::count(out.events, "End") == 1);
+    m.advance(1.5F, out); // 0.5 -> 2.0: the next lap's triggers.
+    CHECK(std::ranges::count(out.events, "Late") == 2);
+}
+
+TEST_CASE("a state without a clip holds the pose of the clip before it", "[behavior]") {
+    BehaviorDef def;
+    def.start_state = 1;
+    def.clips = {{"swing", "a.hkx", 0, 1.0F, 0.0F, 0.0F, {}, 2.0F}};
+    def.states = {{1, "Swing", 0, {}, {}, {{"Stop", 2}}}, {2, "Held", -1, {}, {}, {{"Again", 1}}}};
+    BehaviorMachine m(std::move(def));
+    BehaviorOutput out;
+    m.start(out);
+    CHECK(m.pose_clip() == 0);
+    m.advance(1.25F, out);
+    m.send("Stop", out);
+    CHECK(m.clip() == -1);
+    CHECK(m.pose_clip() == 0);
+    CHECK(m.pose_time() == Approx(1.25F));
+    m.advance(1.0F, out);
+    CHECK(m.pose_time() == Approx(1.25F));
+    m.send("Again", out);
+    CHECK(m.pose_time() == Approx(0.0F));
+}
+
+TEST_CASE("an event to the state already current is accepted, and changes nothing", "[behavior]") {
+    BehaviorDef def;
+    def.start_state = 1;
+    def.clips = {{"closed", "a.hkx", 1, 1.0F, 0.0F, 0.0F, {}, 1.0F}};
+    def.states = {{1, "Closed", 0, {}, {}, {{"close", 1}}}};
+    BehaviorMachine m(std::move(def));
+    BehaviorOutput out;
+    m.start(out);
+    BehaviorOutput sent;
+    m.send("Close", sent);
+    CHECK(sent.accepted);
+    CHECK(sent.changes.empty());
+    BehaviorOutput unknown;
+    m.send("Nothing", unknown);
+    CHECK_FALSE(unknown.accepted);
+}
+
 TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavior]") {
     namespace afb = bethconv::pack::afb;
     flatbuffers::FlatBufferBuilder b;
