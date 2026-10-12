@@ -120,6 +120,8 @@ public:
     /// This class's function `name` in `state` ("" for the default state).
     [[nodiscard]] const Function* find(const Name& state, const Name& name) const;
     [[nodiscard]] const std::vector<Variable>& variables() const noexcept { return variables_; }
+    /// Every function declared in a state (property accessors are not among them).
+    [[nodiscard]] const std::vector<std::unique_ptr<Function>>& functions() const noexcept { return functions_; }
     [[nodiscard]] const Property* property(const Name& name) const;
     /// Whether the class declares native functions, i.e. is a type the
     /// engine provides (Form, ObjectReference, Debug...), not a script that

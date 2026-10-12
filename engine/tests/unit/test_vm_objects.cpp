@@ -690,3 +690,37 @@ TEST_CASE("loading checks what the interpreter will follow", "[vm][script]") {
     CHECK_THAT(refusal(with_instruction(Op::assign, {raw_ident(999), integer(1)})), ContainsSubstring("string table"));
     CHECK_THAT(refusal(script("Subject", {}, {{"v", "Int", raw_ident(999)}})), ContainsSubstring("string table"));
 }
+
+TEST_CASE("the census counts the natives scripts call by call instruction, through the type of the object", "[vm][natives][census]") {
+    Rig rig;
+    rig.add({.name = "Gaps", .functions = {native_function("Hit", {}, "Int"), native_function("Miss", {}, "Int")}});
+    rig.vm.bind("Gaps", "Hit", [](skydot::vm::NativeCall&) { return skydot::vm::NativeResult{}; });
+    rig.vm.ignore("Gaps", "Miss");
+    // ObjectReference.GetFormID called through a child class: counted for the class that declares it.
+    auto run = global_function("run", {{"o", "Ref"}}, {{"r", "Int"}}, "Int");
+    run.add(Op::callstatic, {ident("Gaps"), ident("Hit"), ident("r")})
+        .add(Op::callstatic, {ident("Gaps"), ident("Hit"), ident("r")})
+        .add(Op::callstatic, {ident("Gaps"), ident("Miss"), ident("r")})
+        .add(Op::callmethod, {ident("GetFormID"), ident("o"), ident("r")})
+        .add(Op::return_, {ident("r")});
+    ScriptSpec reference = script("Ref", {});
+    reference.parent = "ObjectReference";
+    rig.add(reference);
+    rig.add(script("Caller", {run}));
+
+    const auto entries = rig.vm.census({"caller", "ref", "nosuchscript"});
+    REQUIRE(entries.size() == 3);
+    CHECK(entries[0].cls == "gaps");
+    CHECK(entries[0].fn == "hit");
+    CHECK(entries[0].sites == 2);
+    CHECK(entries[0].bound);
+    CHECK_FALSE(entries[0].ignored);
+    CHECK(entries[1].fn == "miss");
+    CHECK(entries[1].sites == 1);
+    CHECK_FALSE(entries[1].bound);
+    CHECK(entries[1].ignored);
+    CHECK(entries[2].cls == "objectreference");
+    CHECK(entries[2].fn == "getformid");
+    CHECK(entries[2].sites == 1);
+    CHECK(entries[2].bound);
+}

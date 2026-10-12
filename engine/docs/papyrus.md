@@ -14,7 +14,10 @@ other VM's code was read, so it stays GPL-3.0.
 | `vm/name.hpp` | Names with their hash, and the hash table functions and properties are found in |
 | `vm/vm.*` | Instances, threads, the interpreter, the scheduler, timers, native binding |
 | `vm/save.cpp` | The VM's save format |
-| `vm/papyrus.*` | `SkydotPapyrus`: the VM bound to a pack and `SkydotWorld`, the engine's natives, triggers, saves |
+| `vm/papyrus.*` | `SkydotPapyrus`: the VM bound to a pack and `SkydotWorld`, triggers, saves; `bind_natives` registers the natives from one table |
+| `vm/natives_<class>.cpp` | The natives of one class each (`debug`, `utility`, `game`, `form`, `objectreference`, `effectshader`, `quest`), the intended no-ops (`noop`), and `world`, written against `WorldAccess` |
+| `vm/world_access.hpp` | `WorldAccess`: typed questions natives ask the world (base form, linked ref, player level), so a native needs no Dictionary and a test no pack |
+| `vm/census.cpp` | `Vm::census`: which natives a set of scripts call |
 | `vm/quests.cpp` | Quests, aliases, stages, objectives, globals |
 
 ## Execution
@@ -36,7 +39,8 @@ other VM's code was read, so it stays GPL-3.0.
   copied.
 - Runtime errors (None objects, bad indices, division by zero, missing
   functions, unbound natives) are logged and give None or 0; the script
-  continues, as in the game. Missing `On...` functions are not errors.
+  continues, as in the game. An unbound native gives the default of its
+  declared return type (0, 0.0, False, "", None for objects and arrays). Missing `On...` functions are not errors.
 - Int arithmetic wraps at 32 bits, as the game's native VM does: `INT_MAX + 1`
   is `INT_MIN`, `INT_MIN / -1` is `INT_MIN` and `INT_MIN % -1` is 0.
 
@@ -126,7 +130,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
-| ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
 | EffectShader | `Play`, `Stop` |
 | Quest | `Start`, `Stop`, `Reset`, `IsRunning`, `IsStopped`, `IsStarting`, `IsStopping`, `IsCompleted`, `CompleteQuest`, `GetStage`, `GetCurrentStageID`, `SetStage`, `SetCurrentStageID`, `GetStageDone`, `IsStageDone`, `IsActive`, `SetActive`, `GetAlias`, `SetObjectiveDisplayed/Completed/Failed`, `IsObjectiveDisplayed/Completed/Failed`, `CompleteAllObjectives`, `FailAllObjectives`, `UpdateCurrentInstanceGlobal`, `PrepareForReinitializing` |
 | Alias | `GetOwningQuest`, `GetID`, `GetName`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
@@ -156,12 +160,82 @@ No-ops, because what they control does not exist yet: dependent animated
 objects (constraints), furniture in use (always false), favours. Effect shaders
 are signalled, not drawn.
 
+Adding a native: bind it in `vm/natives_<class>.cpp` (a member of
+`SkydotPapyrus` when it changes the world or reads the Dictionaries) or, for
+one that only asks the world a question, in `vm/natives_world.cpp` against
+`WorldAccess`, which a unit test can fake. Register a new file in the table
+in `SkydotPapyrus::bind_natives`. A native nobody bound warns once, by name,
+and gives the default of its return type. These are bound as silent no-ops
+(`vm/natives_noop.cpp`), because nothing in the engine raises what they
+register for or shows what they do:
+
+- `RegisterForSleep`, `RegisterForLOS`, `RegisterForSingleLOSGain/Lost`,
+  `RegisterForTrackedStatsEvent` and their `Unregister...` (on `Form`,
+  `Alias`, `ActiveMagicEffect`): no sleeping, line of sight or stats events.
+- `Keyword.SendStoryEvent(AndWait)`: no story manager; returns False.
+- `Game.ShakeCamera`, `ShakeController`, `AddAchievement`, `IncrementStat`.
+
+Not on the list, though they are registrations: `RegisterForAnimationEvent`
+(actors' events will come) and the `...GameTime` timers.
+
 A probe over Bleak Falls Barrow 01 and 02, Breezehome, the Sleeping Giant,
 Dragonsreach and the Blue Palace (184 scripted references, 46 triggers,
 `OnInit` and `OnLoad`, then Bleak Falls' pillar-puzzle lever) reaches no
 unbound native. Starting vanilla SE's start-game-enabled quests and running
 a minute reaches about 40 unbound natives, mostly on actors, form lists and
 inventories, which do not exist yet.
+
+## Census
+
+`game/tools/papyrus_census.gd` reads the code of every script in a pack
+(nothing runs) and lists the natives they call with the number of call
+instructions that reach each. The callee is found from the declared type of
+the object, so `actor.GetLinkedRef()` counts for `ObjectReference`. Each
+native is bound, ignored (a silent no-op) or unbound.
+
+```
+godot4.7 --headless --path game --script res://tools/papyrus_census.gd -- \
+    --pack <pack> [--top 40] [--all on]
+```
+
+`--all on` adds a table of every native called. Rerun it after binding
+natives and update the numbers below.
+
+Skyrim SE pack, 14,325 scripts (2026-10-12):
+
+| | Natives | Call sites |
+| --- | ---: | ---: |
+| Called | 549 | 65,685 |
+| Bound | 80 | 35,229 |
+| Ignored (no-op) | 18 | 494 |
+| Unbound | 451 | 29,962 |
+
+Unbound natives with most call sites (the first are quest topic and scene
+plumbing, then inventory, movement and actor state, which are the work
+still to come):
+
+| Native | Call sites |
+| --- | ---: |
+| `TopicInfo.GetOwningQuest` | 6,494 |
+| `ObjectReference.AddItem` | 1,374 |
+| `ObjectReference.MoveTo` | 1,291 |
+| `Actor.EvaluatePackage` | 1,282 |
+| `Scene.GetOwningQuest` | 1,007 |
+| `Scene.Start` | 942 |
+| `ObjectReference.RemoveItem` | 870 |
+| `ObjectReference.PlaceAtMe` | 609 |
+| `Actor.RemoveFromFaction` | 536 |
+| `Scene.Stop` | 486 |
+| `Message.Show` | 456 |
+| `Sound.Play` | 425 |
+| `Actor.IsDead` | 424 |
+| `ObjectReference.GetItemCount` | 410 |
+| `Actor.StartCombat` | 331 |
+| `Actor.PlayIdle` | 327 |
+| `ObjectReference.DisableNoWait` | 326 |
+| `Actor.RemoveSpell` | 322 |
+| `Actor.SetActorValue` | 301 |
+| `Actor.AddSpell` | 288 |
 
 ## Saving
 

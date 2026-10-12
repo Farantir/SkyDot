@@ -77,6 +77,10 @@ public:
     /// Attach every scripted reference of `cell`, built or not (triggers have
     /// no model). Returns how many references got scripts.
     std::int64_t attach_cell(std::int64_t cell);
+    /// The natives called from the scripts named in `classes` (see
+    /// `Vm::census`): an Array of Dictionaries with `class`, `function`,
+    /// `sites`, `bound` and `ignored`.
+    godot::Array census(const godot::PackedStringArray& classes);
     /// Send OnActivate(activator) to `ref`'s scripts. Returns how many ran.
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
     /// How a reference is activated (activate_ref's `source`).

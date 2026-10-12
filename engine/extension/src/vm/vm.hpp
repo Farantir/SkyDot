@@ -129,6 +129,21 @@ public:
     [[nodiscard]] bool is_bound(const Function* fn);
     [[nodiscard]] bool is_ignored(const Function* fn) const;
 
+    /// One native that scripts call.
+    struct CensusEntry {
+        std::string cls;      ///< The class that declares it, lowercase.
+        std::string fn;       ///< Lowercase.
+        std::size_t sites = 0; ///< Call instructions reaching it in the scanned scripts.
+        bool bound = false;
+        bool ignored = false;
+    };
+    /// The natives called from the scripts `classes` (loaded as needed), by
+    /// call sites. The callee is found from the static type of the object
+    /// (the declared type of its register, variable or the script itself), so
+    /// a call through a base type counts for the native it names. Sorted by
+    /// class and name.
+    [[nodiscard]] std::vector<CensusEntry> census(const std::vector<std::string>& classes);
+
     /// The class named `name` with its parents, loading them if needed; null
     /// if it or a parent is missing or invalid (logged once).
     const ScriptClass* load_class(std::string_view name);

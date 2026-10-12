@@ -65,6 +65,7 @@ void SkydotPapyrus::_bind_methods() {
     BIND_CONSTANT(ACTIVATE_PLAYER);
     BIND_CONSTANT(ACTIVATE_SCRIPT);
     BIND_CONSTANT(ACTIVATE_PARENT);
+    godot::ClassDB::bind_method(D_METHOD("census", "classes"), &SkydotPapyrus::census);
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
@@ -524,6 +525,24 @@ std::int64_t SkydotPapyrus::attach_cell(std::int64_t cell) {
         count += attach(cell, refs[i]) > 0 ? 1 : 0;
     }
     return count;
+}
+
+Array SkydotPapyrus::census(const godot::PackedStringArray& classes) {
+    std::vector<std::string> names;
+    for (const String& name : classes) {
+        names.push_back(utf8(name));
+    }
+    Array out;
+    for (const auto& entry : vm_->census(names)) {
+        Dictionary row;
+        row["class"] = to_godot(entry.cls);
+        row["function"] = to_godot(entry.fn);
+        row["sites"] = static_cast<std::int64_t>(entry.sites);
+        row["bound"] = entry.bound;
+        row["ignored"] = entry.ignored;
+        out.push_back(row);
+    }
+    return out;
 }
 
 std::int64_t SkydotPapyrus::activate(std::int64_t ref, std::int64_t activator) {
