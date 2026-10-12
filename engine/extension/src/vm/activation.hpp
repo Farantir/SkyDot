@@ -8,9 +8,17 @@
 //   - A locked reference refuses the player unless it picks the lock (the
 //     force flag); scripts and parents are not refused, and none of them
 //     unlocks it. Only the player's pick does.
+//   - The player's use of furniture with a behaviour graph that raises
+//     ObjectActivated takes effect when the graph says so: the scripts and
+//     activate children wait (PendingActivations). A second use meanwhile is
+//     ignored.
 #pragma once
 
+#include <cstdint>
+#include <map>
+#include <optional>
 #include <string>
+#include <string_view>
 
 namespace skydot {
 
@@ -30,6 +38,28 @@ struct ActivationRequest {
 [[nodiscard]] ActivationGate activation_gate(const ActivationRequest& request);
 /// Whether the activation picks the lock open as it goes.
 [[nodiscard]] bool activation_unlocks(const ActivationRequest& request);
+/// Whether an activation of a reference of record `type` waits for the
+/// graph's ObjectActivated: the player's use of furniture whose graph raises it.
+[[nodiscard]] bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises);
+
+/// Activations waiting for their ObjectActivated, one per reference.
+class PendingActivations {
+public:
+    struct Entry {
+        std::int64_t activator{};
+        bool default_only{};
+    };
+    /// False if `ref` is already pending (the use is ignored).
+    bool begin(std::uint32_t ref, Entry entry);
+    /// Take the entry of `ref`, if it waits.
+    std::optional<Entry> take(std::uint32_t ref);
+    [[nodiscard]] bool pending(std::uint32_t ref) const { return entries_.count(ref) != 0; }
+    void clear() { entries_.clear(); }
+
+private:
+    std::map<std::uint32_t, Entry> entries_;
+};
+
 /// XLOC's level as the game names it.
 [[nodiscard]] std::string lock_level_name(int level);
 

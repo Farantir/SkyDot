@@ -319,6 +319,8 @@ func _check_one_owner() -> void:
     var raised: Array = []
     behavior.event_raised.connect(func(event: String) -> void: raised.append(event))
     expect(behavior.get_state() == "Rest", "it starts in its start state")
+    expect(behavior.raises_event("Mid") and not behavior.raises_event("ObjectActivated"),
+           "it knows the events its clips raise")
     expect(is_zero_approx(arm.rotation.z), "whose pose shows at once, not the NIF rest pose")
 
     # The NIF clip runs on what the graph does not pose.

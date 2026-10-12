@@ -260,7 +260,7 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 	if outcome["scripts"] > 0:
 		print(label, " runs ", ", ".join(_papyrus.get_scripts(ref).map(func(s): return s["name"])))
 	match outcome["kind"]:
-		"parent_only", "blocked":
+		"parent_only", "blocked", "busy":
 			_debug.note(outcome["note"])
 			return
 		"locked":
@@ -273,6 +273,9 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 		"furniture":
 			if node != null and _play_event(node, ref, outcome["event"]):
 				return
+			# The graph will not raise ObjectActivated: the use counts now.
+			if outcome.get("deferred", false):
+				_papyrus.complete_activation(ref)
 		"toggle_open":
 			if node != null and _toggle_open(node, ref, label):
 				return

@@ -2,6 +2,7 @@
 #include "vm/papyrus.hpp"
 
 #include "data/coordinates.hpp"
+#include "actors/behavior_player.hpp"
 #include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
@@ -70,6 +71,7 @@ void SkydotPapyrus::_bind_methods() {
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
+    godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
     godot::ClassDB::bind_method(D_METHOD("notify_animation_event", "ref", "event"),
                                 &SkydotPapyrus::notify_animation_event);
     godot::ClassDB::bind_method(D_METHOD("update_actor", "actor", "position"),
@@ -176,6 +178,7 @@ void SkydotPapyrus::reset() {
     attached_.clear();
     disabled_.clear();
     blocked_.clear();
+    pending_activations_.clear();
     open_.clear();
     locked_.clear();
     triggers_.clear();
@@ -592,24 +595,22 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
     if (activation_unlocks(request)) {
         set_locked(ref, false);
     }
-    if (!default_only) {
-        out["scripts"] = activate(ref, activator != 0 ? activator : PLAYER_REF);
-    }
-    // A script that blocks activation handles it alone, and its activate
-    // children stay quiet.
-    if (is_activation_blocked(ref)) {
-        out["kind"] = "blocked";
-        out["note"] = label + String(": activation blocked, only its scripts ran");
+    // A lever with a behaviour graph activates when the graph says so: the
+    // scripts and activate children wait for its ObjectActivated.
+    if (activation_waits_for_graph(utf8(String(info["type"])), request.source, graph_raises_activation(form))) {
+        if (!pending_activations_.begin(form, {activator != 0 ? activator : PLAYER_REF, default_only})) {
+            out["kind"] = "busy";
+            out["note"] = label + String(" is still being used");
+            return out;
+        }
+        out["kind"] = "furniture";
+        out["event"] = "LeverPushStart";
+        out["deferred"] = true;
+        out["note"] = label + String(": nothing happens");
         return out;
     }
-    // Activate children run on the VM's clock, as whoever activated the parent.
-    const Array children = world_->get_activate_children(ref);
-    for (std::int64_t i = 0; i < children.size(); ++i) {
-        const Dictionary child = children[i];
-        vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
-                      static_cast<std::uint32_t>(static_cast<std::int64_t>(child["ref"])),
-                      static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
-                      static_cast<std::uint32_t>(ActivationSource::parent));
+    if (!run_activation(form, label, activator, default_only, out)) {
+        return out;
     }
     out["kind"] = "none";
     const Variant door = info.get("door", Variant());
@@ -628,6 +629,59 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
     return out;
 }
 
+// OnActivate, the blocked check and the activate children: what an activation
+// does once it is going ahead. False if scripts blocked it (`out` says so).
+bool SkydotPapyrus::run_activation(std::uint32_t form, const String& label, std::int64_t activator,
+                                   bool default_only, Dictionary& out) {
+    if (!default_only) {
+        out["scripts"] = activate(form, activator != 0 ? activator : PLAYER_REF);
+    }
+    // A script that blocks activation handles it alone, and its activate
+    // children stay quiet.
+    if (is_activation_blocked(form)) {
+        out["kind"] = "blocked";
+        out["note"] = label + String(": activation blocked, only its scripts ran");
+        return false;
+    }
+    // Activate children run on the VM's clock, as whoever activated the parent.
+    const Array children = world_->get_activate_children(form);
+    for (std::int64_t i = 0; i < children.size(); ++i) {
+        const Dictionary child = children[i];
+        vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
+                      static_cast<std::uint32_t>(static_cast<std::int64_t>(child["ref"])),
+                      static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
+                      static_cast<std::uint32_t>(ActivationSource::parent));
+    }
+    return true;
+}
+
+bool SkydotPapyrus::graph_raises_activation(std::uint32_t form) const {
+    godot::Node* node = ref_nodes::find(form);
+    if (node == nullptr) {
+        return false;
+    }
+    const auto* graph = godot::Object::cast_to<SkydotBehavior>(node->find_child("SkydotBehavior", true, false));
+    return graph != nullptr && graph->raises_event("ObjectActivated");
+}
+
+void SkydotPapyrus::complete_activation(std::int64_t ref) {
+    const auto form = static_cast<std::uint32_t>(ref);
+    const auto taken = pending_activations_.take(form);
+    if (!taken) {
+        return;
+    }
+    const PendingActivations::Entry pending = *taken;
+    Dictionary out;
+    out["ref"] = ref;
+    out["kind"] = "none";
+    out["scripts"] = 0;
+    out["note"] = String();
+    const Dictionary info = ref_info(form);
+    out["label"] = String("0x%08X %s (%s)") % Array::make(ref, info.get("editor_id", ""), info.get("type", ""));
+    run_activation(form, out["label"], pending.activator, pending.default_only, out);
+    emit_signal("activation_outcome", ref, out);
+}
+
 std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, const Array& args) {
     std::vector<vm::Value> values;
     for (std::int64_t i = 0; i < args.size(); ++i) {
@@ -637,6 +691,9 @@ std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, co
 }
 
 void SkydotPapyrus::notify_animation_event(std::int64_t ref, const String& event) {
+    if (event == String("ObjectActivated")) {
+        complete_activation(ref);
+    }
     vm_->notify("anim:" + std::to_string(static_cast<std::uint32_t>(ref)) + ":" + utf8(event));
 }
 

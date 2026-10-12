@@ -24,6 +24,7 @@
 
 #include "assets/pack.hpp"
 #include "vm/vm.hpp"
+#include "vm/activation.hpp"
 #include "vm/world_access.hpp"
 #include "world/world.hpp"
 
@@ -100,6 +101,13 @@ public:
     /// and the children arrive the same way through `activation_outcome`.
     godot::Dictionary activate_ref(std::int64_t ref, std::int64_t activator, bool default_only,
                                    std::int64_t source, bool force);
+    /// Finish an activation that activate_ref left pending (`deferred` in its
+    /// outcome, kind furniture): the player used a piece of furniture whose
+    /// behaviour graph raises ObjectActivated, and its scripts and activate
+    /// children wait for that event (notify_animation_event). The host calls
+    /// this when the graph will not get there, e.g. it refused the event.
+    /// The result arrives through `activation_outcome`. Nothing pending: no-op.
+    void complete_activation(std::int64_t ref);
     /// Whether the model of `ref` is built and it is not disabled.
     bool is_3d_loaded(std::uint32_t ref) const;
     bool is_3d_loaded_i(std::int64_t ref) const { return is_3d_loaded(static_cast<std::uint32_t>(ref)); }
@@ -263,6 +271,10 @@ private:
     std::set<std::uint32_t> attached_;
     std::map<std::uint32_t, bool> disabled_;
     std::set<std::uint32_t> blocked_;
+    PendingActivations pending_activations_;
+    bool run_activation(std::uint32_t form, const godot::String& label, std::int64_t activator, bool default_only,
+                        godot::Dictionary& out);
+    bool graph_raises_activation(std::uint32_t form) const;
     std::map<std::uint32_t, std::int64_t> open_;
     std::map<std::uint32_t, bool> locked_;
     std::map<std::uint32_t, Trigger> triggers_;

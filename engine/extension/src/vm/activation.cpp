@@ -36,4 +36,22 @@ std::string lock_level_name(int level) {
     return "Novice";
 }
 
+bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises) {
+    return type == "FURN" && source == ActivationSource::player && graph_raises;
+}
+
+bool PendingActivations::begin(std::uint32_t ref, Entry entry) {
+    return entries_.emplace(ref, entry).second;
+}
+
+std::optional<PendingActivations::Entry> PendingActivations::take(std::uint32_t ref) {
+    const auto found = entries_.find(ref);
+    if (found == entries_.end()) {
+        return std::nullopt;
+    }
+    const Entry entry = found->second;
+    entries_.erase(found);
+    return entry;
+}
+
 } // namespace skydot

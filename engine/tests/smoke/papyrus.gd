@@ -135,6 +135,11 @@ func _check_activation(vm: SkydotPapyrus) -> void:
     vm.update(0.0)
     expect(vm.get_variable(0x304, "TestpackLeverScript", "Pulls") == pulls_before + 1, "once")
     expect(vm.activate_ref(0x9999999, player, false, 0, false)["kind"] == "missing", "an unknown reference is missing")
+    # Not furniture with a graph: nothing waits, and completing nothing is harmless.
+    expect(not outcome.get("deferred", false), "an activator is not deferred")
+    vm.complete_activation(0x304)
+    vm.update(0.0)
+    expect(vm.get_variable(0x304, "TestpackLeverScript", "Pulls") == pulls_before + 1, "nothing was pending")
 
     # 0x213 is locked (level 25); its partner 0x303 shares the lock.
     expect(vm.get_lock_level(0x213) == 25, "the outside door starts locked")

@@ -298,6 +298,29 @@ void SkydotBehavior::finish(godot::Node* model, BehaviorDef def) {
     set_process(true);
 }
 
+bool SkydotBehavior::raises_event(const godot::String& event) const {
+    if (!machine_) {
+        return false;
+    }
+    const std::string name = event.utf8().get_data();
+    const auto same = [&](const std::string& other) { return other == name; };
+    const BehaviorDef& def = machine_->def();
+    for (const BehaviorClip& clip : def.clips) {
+        for (const BehaviorTrigger& trigger : clip.triggers) {
+            if (same(trigger.event)) {
+                return true;
+            }
+        }
+    }
+    for (const BehaviorState& state : def.states) {
+        if (std::any_of(state.enter_events.begin(), state.enter_events.end(), same) ||
+            std::any_of(state.exit_events.begin(), state.exit_events.end(), same)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void SkydotBehavior::report(const BehaviorOutput& out) {
     for (const BehaviorChange& change : out.changes) {
         char line[256];
@@ -393,6 +416,7 @@ void SkydotBehavior::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("send_event", "event"), &SkydotBehavior::send_event);
     godot::ClassDB::bind_method(godot::D_METHOD("advance", "seconds"), &SkydotBehavior::advance);
     godot::ClassDB::bind_method(godot::D_METHOD("get_state"), &SkydotBehavior::get_state);
+    godot::ClassDB::bind_method(godot::D_METHOD("raises_event", "event"), &SkydotBehavior::raises_event);
     ADD_SIGNAL(godot::MethodInfo("event_raised", godot::PropertyInfo(godot::Variant::STRING, "event")));
 }
 

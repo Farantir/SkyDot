@@ -50,3 +50,25 @@ TEST_CASE("lock levels have the game's names", "[activation]") {
     CHECK(lock_level_name(100) == "Master");
     CHECK(lock_level_name(255) == "requires a key");
 }
+
+TEST_CASE("furniture waits for its graph's ObjectActivated, only for the player", "[activation]") {
+    CHECK(activation_waits_for_graph("FURN", ActivationSource::player, true));
+    CHECK_FALSE(activation_waits_for_graph("FURN", ActivationSource::player, false)); // no such event: at once
+    CHECK_FALSE(activation_waits_for_graph("FURN", ActivationSource::script, true));
+    CHECK_FALSE(activation_waits_for_graph("FURN", ActivationSource::parent, true));
+    CHECK_FALSE(activation_waits_for_graph("ACTI", ActivationSource::player, true));
+}
+
+TEST_CASE("a pending activation is taken once, and a second use meanwhile is refused", "[activation]") {
+    PendingActivations pending;
+    CHECK(pending.begin(0xAA8C3, {0x14, false}));
+    CHECK(pending.pending(0xAA8C3));
+    CHECK_FALSE(pending.begin(0xAA8C3, {0x14, true}));
+    CHECK_FALSE(pending.take(0x1234).has_value());
+    const auto entry = pending.take(0xAA8C3);
+    REQUIRE(entry.has_value());
+    CHECK(entry->activator == 0x14);
+    CHECK_FALSE(entry->default_only);
+    CHECK_FALSE(pending.take(0xAA8C3).has_value());
+    CHECK(pending.begin(0xAA8C3, {0x14, false})); // usable again
+}

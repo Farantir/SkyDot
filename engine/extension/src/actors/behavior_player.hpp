@@ -68,6 +68,8 @@ public:
     /// wildcard transitions, take it.
     bool send_event(const godot::String& event);
     [[nodiscard]] godot::String get_state() const;
+    /// Whether the graph can raise `event` (a clip trigger or a state's notify).
+    [[nodiscard]] bool raises_event(const godot::String& event) const;
 
     /// Let `seconds` pass (what _process does each frame).
     void advance(double seconds);
