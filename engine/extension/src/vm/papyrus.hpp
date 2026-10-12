@@ -24,6 +24,7 @@
 
 #include "assets/pack.hpp"
 #include "vm/vm.hpp"
+#include "vm/world_access.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
@@ -205,6 +206,7 @@ private:
     void bind_effectshader_natives();
     void bind_quest_natives();
     void bind_noop_natives();
+    void bind_world_natives();
     struct QuestState {
         bool running = false;
         bool started = false; ///< Has ever started.
@@ -248,6 +250,9 @@ private:
     void reset();
     void install_scheduled_handler();
 
+    /// Typed questions about the world for natives (vm/world_access.hpp).
+    struct Access;
+    std::unique_ptr<vm::WorldAccess> access_;
     std::unique_ptr<vm::Vm> vm_;
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotWorld> world_;

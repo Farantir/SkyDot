@@ -53,12 +53,14 @@ set(SKYDOT_CORE_SOURCES
     src/session/game_time.hpp
     src/vm/activation.cpp
     src/vm/activation.hpp
+    src/vm/natives_world.cpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
     src/vm/value.hpp
     src/vm/vm.cpp
-    src/vm/vm.hpp)
+    src/vm/vm.hpp
+    src/vm/world_access.hpp)
 
 # Both copies read the same headers and need flatc's output first.
 function(skydot_core_library name)

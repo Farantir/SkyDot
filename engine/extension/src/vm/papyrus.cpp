@@ -6,6 +6,7 @@
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
 #include "vm/natives_common.hpp"
+#include "vm/natives_world.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -296,6 +297,35 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     return info.get("position", Vector3());
 }
 
+/// The world as natives ask about it: the Dictionaries behind it stay private
+/// to SkydotPapyrus.
+struct SkydotPapyrus::Access final : vm::WorldAccess {
+    explicit Access(const SkydotPapyrus& owner) : owner_(owner) {}
+
+    std::uint32_t base_form(std::uint32_t ref) const override {
+        return static_cast<std::uint32_t>(static_cast<std::int64_t>(owner_.ref_info(ref).get("base", 0)));
+    }
+    std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
+        const Array links = owner_.ref_info(ref).get("links", Array());
+        for (std::int64_t i = 0; i < links.size(); ++i) {
+            const Dictionary link = links[i];
+            if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
+                return static_cast<std::uint32_t>(static_cast<std::int64_t>(link["target"]));
+            }
+        }
+        return 0;
+    }
+    std::int32_t player_level() const override { return 1; }
+
+private:
+    const SkydotPapyrus& owner_;
+};
+
+void SkydotPapyrus::bind_world_natives() {
+    access_ = std::make_unique<Access>(*this);
+    vm::bind_world_natives(*vm_, *access_);
+}
+
 void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
     using Registration = void (SkydotPapyrus::*)();
@@ -308,6 +338,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_effectshader_natives,
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
+        &SkydotPapyrus::bind_world_natives,
     };
     for (const Registration registration : table) {
         (this->*registration)();
