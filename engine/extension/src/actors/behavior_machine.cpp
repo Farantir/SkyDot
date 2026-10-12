@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <utility>
 
 namespace skydot {
 namespace {
@@ -22,8 +23,8 @@ constexpr int k_max_chain = 64; ///< Events handled in one step, against loops.
 
 } // namespace
 
-BehaviorDef behavior_from_asset(const afb::Animation& asset) {
-    BehaviorDef def;
+BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
+    BehaviorGraphDef def;
     const auto* graphs = asset.behavior_graphs();
     if (graphs == nullptr || graphs->size() == 0) {
         return def;
@@ -67,36 +68,78 @@ BehaviorDef behavior_from_asset(const afb::Animation& asset) {
             def.clips.push_back(std::move(clip));
         }
     }
-    const auto* machine = machines->Get(0);
-    def.start_state = machine->start_state();
-    transitions(machine->wildcard_transitions(), def.wildcard);
-    if (const auto* states = machine->states()) {
-        for (const auto* s : *states) {
-            BehaviorState state;
-            state.id = s->id();
-            state.name = s->name() != nullptr ? s->name()->str() : std::string();
-            state.clip = s->generator();
-            if (state.clip >= static_cast<int>(def.clips.size())) {
-                state.clip = -1;
-            }
-            if (const auto* ids = s->enter_events()) {
-                for (const auto id : *ids) {
-                    state.enter_events.push_back(event_name(id));
+    const auto machine_count = static_cast<int>(machines->size());
+    for (const auto* machine : *machines) {
+        BehaviorDef m;
+        m.start_state = machine->start_state();
+        transitions(machine->wildcard_transitions(), m.wildcard);
+        if (const auto* states = machine->states()) {
+            for (const auto* s : *states) {
+                BehaviorState state;
+                state.id = s->id();
+                state.name = s->name() != nullptr ? s->name()->str() : std::string();
+                state.clip = s->generator();
+                if (state.clip >= static_cast<int>(def.clips.size())) {
+                    state.clip = -1;
                 }
-            }
-            if (const auto* ids = s->exit_events()) {
-                for (const auto id : *ids) {
-                    state.exit_events.push_back(event_name(id));
+                state.sequence = s->sequence() != nullptr ? s->sequence()->str() : std::string();
+                if (const auto* nested = s->nested_machines()) {
+                    for (const auto id : *nested) {
+                        if (id >= 0 && id < machine_count) {
+                            state.nested.push_back(id);
+                        }
+                    }
                 }
+                if (const auto* ids = s->enter_events()) {
+                    for (const auto id : *ids) {
+                        state.enter_events.push_back(event_name(id));
+                    }
+                }
+                if (const auto* ids = s->exit_events()) {
+                    for (const auto id : *ids) {
+                        state.exit_events.push_back(event_name(id));
+                    }
+                }
+                transitions(s->transitions(), state.transitions);
+                m.states.push_back(std::move(state));
             }
-            transitions(s->transitions(), state.transitions);
-            def.states.push_back(std::move(state));
         }
+        def.machines.push_back(std::move(m));
+    }
+    if (const auto* roots = graph->root_machines()) {
+        for (const auto id : *roots) {
+            if (id >= 0 && id < machine_count) {
+                def.roots.push_back(id);
+            }
+        }
+    }
+    if (def.roots.empty()) {
+        def.roots.push_back(0); // an older asset, or a root that is not a machine
     }
     return def;
 }
 
+BehaviorDef behavior_from_asset(const afb::Animation& asset) {
+    BehaviorGraphDef graph = behavior_graph_from_asset(asset);
+    if (graph.machines.empty()) {
+        return {};
+    }
+    BehaviorDef def = std::move(graph.machines[static_cast<std::size_t>(graph.roots.front())]);
+    def.clips = std::move(graph.clips);
+    return def;
+}
+
 BehaviorMachine::BehaviorMachine(BehaviorDef def) : def_(std::move(def)) {}
+
+void BehaviorMachine::stop() {
+    current_ = -1;
+    time_ = 0.0F;
+    held_clip_ = -1;
+    held_time_ = 0.0F;
+    backwards_ = false;
+    fired_.clear();
+    queue_.clear();
+}
 
 int BehaviorMachine::find_state(int id) const {
     for (std::size_t i = 0; i < def_.states.size(); ++i) {
@@ -158,7 +201,7 @@ void BehaviorMachine::change(int index, std::string_view cause, BehaviorOutput& 
     } else {
         fired_.clear();
     }
-    out.changes.push_back({from, now.name, std::string(cause)});
+    out.changes.push_back({from, now.name, std::string(cause), now.sequence, 0});
     for (const auto& e : now.enter_events) {
         raise(e, true, out);
     }
@@ -263,6 +306,133 @@ void BehaviorMachine::advance(float seconds, BehaviorOutput& out) {
     }
     fire(time_);
     drain(out);
+}
+
+// ---- BehaviorSet ----------------------------------------------------------
+
+namespace {
+constexpr int k_max_broadcast = 64; ///< Events passed between machines in one step, against loops.
+} // namespace
+
+BehaviorSet::BehaviorSet(BehaviorGraphDef def) : def_(std::move(def)) {
+    for (BehaviorDef& machine : def_.machines) {
+        BehaviorDef copy = machine;
+        copy.clips = def_.clips;
+        machines_.emplace_back(std::move(copy));
+    }
+    running_.assign(machines_.size(), false);
+}
+
+std::vector<int> BehaviorSet::running() const {
+    std::vector<int> out;
+    for (std::size_t i = 0; i < running_.size(); ++i) {
+        if (running_[i]) {
+            out.push_back(static_cast<int>(i));
+        }
+    }
+    return out;
+}
+
+void BehaviorSet::merge(int machine, BehaviorOutput& part, BehaviorOutput& out) {
+    for (BehaviorChange& change : part.changes) {
+        change.machine = machine;
+        out.changes.push_back(std::move(change));
+    }
+    for (std::string& event : part.events) {
+        out.events.push_back(std::move(event));
+    }
+    out.accepted = out.accepted || part.accepted;
+}
+
+void BehaviorSet::refresh(BehaviorOutput& out) {
+    for (int round = 0; round < 8; ++round) {
+        std::vector<bool> wanted(machines_.size(), false);
+        for (const int root : def_.roots) {
+            if (root >= 0 && static_cast<std::size_t>(root) < wanted.size()) {
+                wanted[static_cast<std::size_t>(root)] = true;
+            }
+        }
+        for (std::size_t i = 0; i < machines_.size(); ++i) {
+            const BehaviorState* state = running_[i] ? machines_[i].state() : nullptr;
+            if (state != nullptr) {
+                for (const int id : state->nested) {
+                    wanted[static_cast<std::size_t>(id)] = true;
+                }
+            }
+        }
+        bool changed = false;
+        for (std::size_t i = 0; i < machines_.size(); ++i) {
+            if (wanted[i] && !running_[i]) {
+                running_[i] = true;
+                BehaviorOutput part;
+                machines_[i].start(part);
+                merge(static_cast<int>(i), part, out);
+                changed = true;
+            } else if (!wanted[i] && running_[i]) {
+                running_[i] = false;
+                machines_[i].stop();
+                changed = true;
+            }
+        }
+        if (!changed) {
+            return;
+        }
+    }
+}
+
+void BehaviorSet::start(BehaviorOutput& out) { refresh(out); }
+
+void BehaviorSet::send(std::string_view event, BehaviorOutput& out) {
+    struct Item {
+        std::string event;
+        int from; ///< -1: from outside.
+    };
+    std::vector<Item> work{{std::string(event), -1}};
+    for (int guard = 0; !work.empty() && guard < k_max_broadcast; ++guard) {
+        const Item item = std::move(work.front());
+        work.erase(work.begin());
+        for (std::size_t i = 0; i < machines_.size(); ++i) {
+            if (!running_[i] || static_cast<int>(i) == item.from) {
+                continue;
+            }
+            BehaviorOutput part;
+            machines_[i].send(item.event, part);
+            for (const std::string& raised : part.events) {
+                work.push_back({raised, static_cast<int>(i)});
+            }
+            merge(static_cast<int>(i), part, out);
+        }
+    }
+    refresh(out);
+}
+
+void BehaviorSet::advance(float seconds, BehaviorOutput& out) {
+    std::vector<std::pair<std::string, int>> raised;
+    for (std::size_t i = 0; i < machines_.size(); ++i) {
+        if (!running_[i]) {
+            continue;
+        }
+        BehaviorOutput part;
+        machines_[i].advance(seconds, part);
+        for (const std::string& event : part.events) {
+            raised.emplace_back(event, static_cast<int>(i));
+        }
+        merge(static_cast<int>(i), part, out);
+    }
+    // What one machine raises, the others hear.
+    BehaviorOutput heard;
+    for (const auto& [event, from] : raised) {
+        for (std::size_t i = 0; i < machines_.size(); ++i) {
+            if (running_[i] && static_cast<int>(i) != from) {
+                BehaviorOutput part;
+                machines_[i].send(event, part);
+                merge(static_cast<int>(i), part, heard);
+            }
+        }
+    }
+    out.changes.insert(out.changes.end(), heard.changes.begin(), heard.changes.end());
+    out.events.insert(out.events.end(), heard.events.begin(), heard.events.end());
+    refresh(out);
 }
 
 } // namespace skydot

@@ -310,9 +310,10 @@ func _check_one_owner() -> void:
         "start": 1,
         "clips": [{"name": "Rest", "mode": 2, "animation": rest},
                   {"name": "Swing", "mode": 0, "animation": swing, "triggers": [[0.5, "Mid"]]}],
-        "states": [{"id": 1, "name": "Rest", "clip": 0, "transitions": [["Swing", 2]]},
+        "states": [{"id": 1, "name": "Rest", "clip": 0, "transitions": [["Swing", 2], ["Unlock", 4]]},
+                   {"id": 4, "name": "Opening", "clip": -1, "sequence": "Open", "transitions": []},
                    {"id": 2, "name": "Swing", "clip": 1, "transitions": [["Hold", 3]]},
-                   {"id": 3, "name": "Held", "clip": -1, "transitions": []}]}, 7)
+                   {"id": 3, "name": "Held", "clip": -1, "transitions": [["Unlock", 4]]}]}, 7)
     expect(behavior != null, "a behaviour attaches")
     if behavior == null:
         return
@@ -341,6 +342,10 @@ func _check_one_owner() -> void:
     animator.evaluate(0.0, 1.0)
     expect(is_equal_approx(arm.rotation.z, 0.5), "which holds the pose, whatever the NIF clip does")
     expect(not SkydotBehavior.play_event(root, "Missing"), "an event nothing knows plays nothing")
+    # A state with a sequence plays that NIF sequence through the animator.
+    var second := SkydotBehavior.play_event(root, "Unlock")
+    expect(second and behavior.get_state() == "Opening", "a sequence state is entered: %s" % behavior.get_state())
+    expect(animator.get_playing() == "Open", "and its sequence plays: %s" % animator.get_playing())
     root.free()
 
 

@@ -272,3 +272,70 @@ TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavio
     CHECK(def.clips[0].triggers[0].event == "Done");
     CHECK(def.clips[0].triggers[0].relative_to_end);
 }
+
+namespace {
+
+/// The swinging blade's graph: a root machine whose only state runs two
+/// machines side by side. One plays Havok clip 0, the other NIF sequences.
+BehaviorGraphDef blade_graph() {
+    BehaviorGraphDef def;
+    def.clips = {{"Clip", "c.hkx", 0, 1.0F, 0.0F, 0.0F, {{0.0F, "Apex", true}}, 1.0F}};
+    BehaviorDef root;
+    root.start_state = 0;
+    root.states = {{0, "State05", -1, {}, {}, {}, "", {1, 2}}};
+    BehaviorDef clips;
+    clips.start_state = 0;
+    clips.states = {{0, "Rest", -1, {}, {}, {{"Single", 1}}}, {1, "Swing", 0, {}, {}, {{"Reset", 0}}}};
+    BehaviorDef sequences;
+    sequences.start_state = 3;
+    sequences.states = {{3, "Idle", -1, {}, {}, {{"Loop", 4}, {"Apex", 5}}, "playanim01"},
+                        {4, "Loop", -1, {}, {}, {{"Reset", 3}, {"Apex", 5}}, "playanim02"},
+                        {5, "Hit", -1, {}, {}, {{"Reset", 3}}, "playanim03"}};
+    def.machines = {root, clips, sequences};
+    def.roots = {0};
+    return def;
+}
+
+} // namespace
+
+TEST_CASE("a state that runs machines starts them side by side, and its events go to all", "[behavior]") {
+    BehaviorSet set(blade_graph());
+    BehaviorOutput out;
+    set.start(out);
+    CHECK(set.running() == std::vector<int>{0, 1, 2});
+    std::vector<std::string> entered;
+    for (const auto& change : out.changes) {
+        entered.push_back(change.to);
+        if (change.to == "Idle") {
+            CHECK(change.sequence == "playanim01");
+            CHECK(change.machine == 2);
+        }
+    }
+    CHECK(entered == std::vector<std::string>{"State05", "Rest", "Idle"});
+
+    out = {};
+    set.send("Loop", out); // only the sequence machine has it
+    REQUIRE(out.changes.size() == 1);
+    CHECK(out.changes[0].to == "Loop");
+    CHECK(out.changes[0].sequence == "playanim02");
+    CHECK(set.machine(1).state()->name == "Rest");
+
+    out = {};
+    set.send("Single", out); // the clip machine takes it; the clip's trigger then reaches the other
+    CHECK(set.machine(1).state()->name == "Swing");
+    out = {};
+    set.advance(1.5F, out);
+    CHECK(has(out.events, "Apex"));
+    CHECK(set.machine(2).state()->name == "Hit");
+    CHECK(set.machine(2).state()->sequence == "playanim03");
+}
+
+TEST_CASE("a graph's roots are the machines that run; others wait to be named", "[behavior]") {
+    BehaviorGraphDef def = blade_graph();
+    def.roots = {1, 2};
+    BehaviorSet set(def);
+    BehaviorOutput out;
+    set.start(out);
+    CHECK(set.running() == std::vector<int>{1, 2});
+    CHECK(set.machine(0).state() == nullptr);
+}

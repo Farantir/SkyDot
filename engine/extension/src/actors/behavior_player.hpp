@@ -67,6 +67,7 @@ public:
     /// Send an event by name. Returns whether the current state, or the
     /// wildcard transitions, take it.
     bool send_event(const godot::String& event);
+    /// The current states of the running machines, comma separated.
     [[nodiscard]] godot::String get_state() const;
     /// Whether the graph can raise `event` (a clip trigger or a state's notify).
     [[nodiscard]] bool raises_event(const godot::String& event) const;
@@ -91,11 +92,15 @@ private:
 
     void bind_tracks(ClipPose& pose, const std::unordered_map<std::string, godot::Node3D*>& nodes);
     /// Takes the machine over, masks the NIF animator and starts.
-    void finish(godot::Node* model, BehaviorDef def);
+    void finish(godot::Node* model, BehaviorGraphDef def);
     void apply();
+    void apply_machine(const BehaviorMachine& machine);
     void report(const BehaviorOutput& out);
 
-    std::unique_ptr<BehaviorMachine> machine_;
+    std::unique_ptr<BehaviorSet> set_;
+    godot::Node* model_{}; ///< The model this graph plays on (its parent).
+    bool has_sequence(const std::string& name) const;
+    void play_sequence(const std::string& name);
     std::vector<ClipPose> poses_;
     std::int64_t ref_{};
 };

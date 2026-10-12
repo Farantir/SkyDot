@@ -30,7 +30,7 @@ namespace {
 namespace afb = bethconv::pack::afb;
 using godot::String;
 
-constexpr std::uint32_t k_animation_format = 2;
+constexpr std::uint32_t k_animation_format = 3;
 
 const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
     const auto* data = bytes.ptr();
@@ -166,8 +166,8 @@ SkydotBehavior* SkydotBehavior::attach_from(godot::Node* model, const BytesFn& b
         }
         return nullptr;
     }
-    BehaviorDef def = behavior_from_asset(*behavior_asset);
-    if (def.states.empty()) {
+    BehaviorGraphDef def = behavior_graph_from_asset(*behavior_asset);
+    if (std::ranges::all_of(def.machines, [](const BehaviorDef& m) { return m.states.empty(); })) {
         return nullptr;
     }
 
@@ -214,8 +214,9 @@ SkydotBehavior* SkydotBehavior::attach_graph(godot::Node* model, const godot::Di
     auto* player = memnew(SkydotBehavior);
     player->set_name("SkydotBehavior");
     player->ref_ = ref;
-    BehaviorDef def;
-    def.start_state = static_cast<int>(graph.get("start", 0));
+    BehaviorGraphDef def;
+    BehaviorDef machine;
+    machine.start_state = static_cast<int>(graph.get("start", 0));
     for (const godot::Variant& c : godot::Array(graph.get("clips", godot::Array()))) {
         const godot::Dictionary clip = c;
         ClipPose pose;
@@ -239,13 +240,16 @@ SkydotBehavior* SkydotBehavior::attach_graph(godot::Node* model, const godot::Di
         out.id = static_cast<int>(state.get("id", 0));
         out.name = std::string(String(state.get("name", "")).utf8().get_data());
         out.clip = static_cast<int>(state.get("clip", -1));
+        out.sequence = std::string(String(state.get("sequence", "")).utf8().get_data());
         for (const godot::Variant& t : godot::Array(state.get("transitions", godot::Array()))) {
             const godot::Array transition = t;
             out.transitions.push_back({std::string(String(transition[0]).utf8().get_data()),
                                        static_cast<int>(transition[1])});
         }
-        def.states.push_back(std::move(out));
+        machine.states.push_back(std::move(out));
     }
+    def.machines.push_back(std::move(machine));
+    def.roots = {0};
     player->finish(model, std::move(def));
     return player;
 }
@@ -277,9 +281,14 @@ void SkydotBehavior::bind_tracks(ClipPose& pose, const std::unordered_map<std::s
     }
 }
 
-void SkydotBehavior::finish(godot::Node* model, BehaviorDef def) {
-    machine_ = std::make_unique<BehaviorMachine>(std::move(def));
-    // The model's NIF animator leaves the nodes this graph poses to it.
+void SkydotBehavior::finish(godot::Node* model, BehaviorGraphDef def) {
+    model_ = model;
+    const bool sequences = std::ranges::any_of(def.machines, [](const BehaviorDef& m) {
+        return std::ranges::any_of(m.states, [](const BehaviorState& s) { return !s.sequence.empty(); });
+    });
+    set_ = std::make_unique<BehaviorSet>(std::move(def));
+    // The model's NIF animator leaves the nodes this graph poses to it, and,
+    // if the graph plays its sequences, starts none of its own.
     std::vector<godot::Node3D*> owned;
     for (const ClipPose& pose : poses_) {
         for (const Target& target : pose.targets) {
@@ -288,23 +297,26 @@ void SkydotBehavior::finish(godot::Node* model, BehaviorDef def) {
     }
     if (auto* animator = godot::Object::cast_to<SkydotAnimator>(model->get_node_or_null("SkydotAnimator"))) {
         animator->mask_nodes(owned);
+        if (sequences) {
+            animator->set_autoplay_enabled(false);
+        }
     }
     model->add_child(this);
     // The start state shows from the first frame.
     BehaviorOutput out;
-    machine_->start(out);
+    set_->start(out);
     report(out);
     apply();
     set_process(true);
 }
 
 bool SkydotBehavior::raises_event(const godot::String& event) const {
-    if (!machine_) {
+    if (!set_) {
         return false;
     }
     const std::string name = event.utf8().get_data();
     const auto same = [&](const std::string& other) { return other == name; };
-    const BehaviorDef& def = machine_->def();
+    const BehaviorGraphDef& def = set_->def();
     for (const BehaviorClip& clip : def.clips) {
         for (const BehaviorTrigger& trigger : clip.triggers) {
             if (same(trigger.event)) {
@@ -312,13 +324,41 @@ bool SkydotBehavior::raises_event(const godot::String& event) const {
             }
         }
     }
-    for (const BehaviorState& state : def.states) {
-        if (std::any_of(state.enter_events.begin(), state.enter_events.end(), same) ||
-            std::any_of(state.exit_events.begin(), state.exit_events.end(), same)) {
+    for (const BehaviorDef& machine : def.machines) {
+        for (const BehaviorState& state : machine.states) {
+            if (std::any_of(state.enter_events.begin(), state.enter_events.end(), same) ||
+                std::any_of(state.exit_events.begin(), state.exit_events.end(), same)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+bool SkydotBehavior::has_sequence(const std::string& name) const {
+    const auto* animator = godot::Object::cast_to<SkydotAnimator>(
+        model_ != nullptr ? model_->get_node_or_null("SkydotAnimator") : nullptr);
+    if (animator == nullptr) {
+        return false;
+    }
+    const String wanted = String::utf8(name.c_str());
+    for (const String& clip : animator->get_clip_names()) {
+        if (clip.nocasecmp_to(wanted) == 0) {
             return true;
         }
     }
     return false;
+}
+
+void SkydotBehavior::play_sequence(const std::string& name) {
+    auto* animator = godot::Object::cast_to<SkydotAnimator>(
+        model_ != nullptr ? model_->get_node_or_null("SkydotAnimator") : nullptr);
+    if (animator == nullptr || !animator->play(String::utf8(name.c_str()))) {
+        if (first_report(std::to_string(ref_) + "|sequence|" + name)) {
+            godot::UtilityFunctions::print(String("0x%08X behaviour: the model has no sequence %s") %
+                                           godot::Array::make(ref_, String::utf8(name.c_str())));
+        }
+    }
 }
 
 void SkydotBehavior::report(const BehaviorOutput& out) {
@@ -329,23 +369,34 @@ void SkydotBehavior::report(const BehaviorOutput& out) {
                       change.event.empty() ? "start" : change.event.c_str());
         godot::UtilityFunctions::print(String::utf8(line));
     }
+    for (const BehaviorChange& change : out.changes) {
+        if (!change.sequence.empty()) {
+            play_sequence(change.sequence);
+        }
+    }
     for (const std::string& event : out.events) {
         emit_signal("event_raised", String::utf8(event.c_str()));
     }
 }
 
 void SkydotBehavior::apply() {
-    if (!machine_) {
+    if (!set_) {
         return;
     }
+    for (const int index : set_->running()) {
+        apply_machine(set_->machine(index));
+    }
+}
+
+void SkydotBehavior::apply_machine(const BehaviorMachine& machine) {
     // A state without a clip holds the last pose: nothing else writes these nodes.
-    const int clip = machine_->pose_clip();
+    const int clip = machine.pose_clip();
     if (clip < 0 || static_cast<std::size_t>(clip) >= poses_.size()) {
         return;
     }
     // Written every frame, a held pose too: the model's NIF animator writes
     // its autoplay sequences (rest keys) to the same nodes every frame.
-    const float time = machine_->pose_time();
+    const float time = machine.pose_time();
     const ClipPose& pose = poses_[static_cast<std::size_t>(clip)];
     if (!pose.animation.is_valid()) {
         return;
@@ -363,18 +414,26 @@ void SkydotBehavior::apply() {
 }
 
 bool SkydotBehavior::send_event(const String& event) {
-    if (!machine_) {
+    if (!set_) {
         return false;
     }
     BehaviorOutput out;
-    machine_->send(String(event).utf8().get_data(), out);
+    set_->send(String(event).utf8().get_data(), out);
     report(out);
     apply();
-    // Taken only when the graph now plays a Havok clip: states driven by
-    // other generators (BGSGamebryoSequenceGenerator on doors, not read) leave
-    // the event to the model's own NIF animations.
-    const BehaviorState* state = machine_->state();
-    return (!out.changes.empty() || out.accepted) && state != nullptr && state->clip >= 0;
+    if (out.changes.empty() && !out.accepted) {
+        return false;
+    }
+    // Taken only when the graph now plays something: a Havok clip or a NIF
+    // sequence of the model. Other states leave the event to the model's own
+    // NIF animations.
+    for (const int index : set_->running()) {
+        const BehaviorState* state = set_->machine(index).state();
+        if (state != nullptr && (state->clip >= 0 || (!state->sequence.empty() && has_sequence(state->sequence)))) {
+            return true;
+        }
+    }
+    return false;
 }
 
 bool SkydotBehavior::play_event(godot::Node* model, const String& event) {
@@ -390,18 +449,25 @@ bool SkydotBehavior::play_event(godot::Node* model, const String& event) {
 }
 
 String SkydotBehavior::get_state() const {
-    const BehaviorState* state = machine_ ? machine_->state() : nullptr;
-    return state != nullptr ? String::utf8(state->name.c_str()) : String();
+    std::string names;
+    if (set_) {
+        for (const int index : set_->running()) {
+            if (const BehaviorState* state = set_->machine(index).state()) {
+                names += (names.empty() ? "" : ",") + state->name;
+            }
+        }
+    }
+    return String::utf8(names.c_str());
 }
 
 void SkydotBehavior::_process(double delta) { advance(delta); }
 
 void SkydotBehavior::advance(double delta) {
-    if (!machine_) {
+    if (!set_) {
         return;
     }
     BehaviorOutput out;
-    machine_->advance(static_cast<float>(delta), out);
+    set_->advance(static_cast<float>(delta), out);
     report(out);
     apply();
 }

@@ -53,6 +53,9 @@ public:
     /// The nodes a behaviour graph poses: this animator leaves their
     /// transforms alone (visibility and shader clips still run).
     void mask_nodes(const std::vector<godot::Node3D*>& owned);
+    /// Whether the animator starts the model's autoplay sequence itself on
+    /// load; a behaviour graph that plays sequences turns it off.
+    void set_autoplay_enabled(bool enabled) { autoplay_enabled_ = enabled; }
     godot::String get_playing() const;
     godot::PackedStringArray get_clip_names() const;
     std::int64_t get_channel_count() const;
@@ -108,6 +111,7 @@ private:
     double clip_time_ = 0.0;
     double last_local_ = -1.0; ///< Clip time last evaluated; -1 before the first.
     bool finished_ = false;
+    bool autoplay_enabled_ = true;
 
     void bind(const std::shared_ptr<const EffectAsset>& asset, godot::Node* root);
     void bind_material(Target& target, std::size_t slot);

@@ -26,7 +26,7 @@ namespace {
 namespace afb = bethconv::pack::afb;
 using godot::String;
 
-constexpr std::uint32_t k_animation_format = 2;
+constexpr std::uint32_t k_animation_format = 3;
 constexpr std::uint8_t k_max_degree = 7;
 /// A translation this far out is a prop bone parked out of sight.
 constexpr float k_parked = 1.0e5f;

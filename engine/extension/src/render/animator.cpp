@@ -258,7 +258,7 @@ void SkydotAnimator::_ready() {
             }
         }
     }
-    if (asset_ != nullptr && asset_->autoplay_sequence >= 0) {
+    if (asset_ != nullptr && autoplay_enabled_ && asset_->autoplay_sequence >= 0) {
         play(asset_->clips[static_cast<std::size_t>(asset_->autoplay_sequence)].name);
     }
     set_process(true);

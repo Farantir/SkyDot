@@ -58,6 +58,11 @@ struct BehaviorState {
     std::vector<std::string> enter_events;
     std::vector<std::string> exit_events;
     std::vector<BehaviorTransition> transitions;
+    /// A NIF controller sequence the state plays (BGSGamebryoSequenceGenerator).
+    std::string sequence{};
+    /// Machines (indexes into BehaviorGraphDef::machines) that run side by
+    /// side while this state is current.
+    std::vector<int> nested{};
 };
 
 struct BehaviorDef {
@@ -67,15 +72,30 @@ struct BehaviorDef {
     std::vector<BehaviorClip> clips;
 };
 
-/// The first state machine of the first behaviour graph of an animation
-/// asset; events are named, clips are the graph's clip generators. Empty
-/// `states` when the asset has none (or was converted from LE).
+/// A behaviour graph: its state machines (each without clips of its own),
+/// the clips they share, and the machines that run from the start.
+struct BehaviorGraphDef {
+    std::vector<BehaviorClip> clips;
+    std::vector<BehaviorDef> machines;
+    std::vector<int> roots;
+};
+
+/// The first behaviour graph of an animation asset; events are named, clips
+/// are the graph's clip generators. Empty `machines` when the asset has none
+/// (or was converted from LE). A graph that names no root runs its first
+/// machine.
+[[nodiscard]] BehaviorGraphDef behavior_graph_from_asset(const bethconv::pack::afb::Animation& asset);
+
+/// The first root machine of `behavior_graph_from_asset`, with the clips.
+/// Empty `states` when the asset has none.
 [[nodiscard]] BehaviorDef behavior_from_asset(const bethconv::pack::afb::Animation& asset);
 
 struct BehaviorChange {
     std::string from;
     std::string to;
     std::string event; ///< What caused it.
+    std::string sequence; ///< The entered state's NIF sequence, if it has one.
+    int machine{};        ///< Set by BehaviorSet.
 };
 
 /// What a step produced, in order.
@@ -107,6 +127,8 @@ public:
     [[nodiscard]] float pose_time() const { return clip() >= 0 ? time_ : held_time_; }
     [[nodiscard]] const BehaviorState* state() const;
     [[nodiscard]] const BehaviorDef& def() const { return def_; }
+    /// Leave the machine unstarted again (its state is forgotten, no events).
+    void stop();
 
 private:
     [[nodiscard]] int find_state(int id) const;
@@ -125,6 +147,33 @@ private:
         std::string event;
     };
     std::vector<Pending> queue_;
+};
+
+/// The machines of a graph: the roots run from the start, side by side;
+/// a machine named in the current state of a running one runs while that
+/// state is current. Events go to every running machine.
+class BehaviorSet {
+public:
+    explicit BehaviorSet(BehaviorGraphDef def);
+
+    void start(BehaviorOutput& out);
+    void send(std::string_view event, BehaviorOutput& out);
+    void advance(float seconds, BehaviorOutput& out);
+
+    [[nodiscard]] const BehaviorGraphDef& def() const { return def_; }
+    [[nodiscard]] std::size_t machine_count() const { return machines_.size(); }
+    /// Machines running now, in index order.
+    [[nodiscard]] std::vector<int> running() const;
+    [[nodiscard]] const BehaviorMachine& machine(int index) const { return machines_[static_cast<std::size_t>(index)]; }
+
+private:
+    /// Start machines that became wanted, stop those no longer wanted.
+    void refresh(BehaviorOutput& out);
+    void merge(int machine, BehaviorOutput& part, BehaviorOutput& out);
+
+    BehaviorGraphDef def_;
+    std::vector<BehaviorMachine> machines_;
+    std::vector<bool> running_;
 };
 
 } // namespace skydot
