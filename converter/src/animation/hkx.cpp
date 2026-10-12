@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cmath>
 #include <optional>
+#include <set>
 #include <unordered_map>
 #include <utility>
 
@@ -474,11 +475,54 @@ std::vector<StateTransition> transition_infos(Packfile& pf, std::size_t at) {
     return out;
 }
 
+/// BGSGamebryoSequenceGenerator (Skyrim's own class): hkbGenerator, then
+/// pSequence at +72 (the NIF controller sequence's name), eBlendModeFunction
+/// (int8) at +80 and fPercent at +84. Measured on the wall traps' Behavior02;
+/// the node's name is at +56 as for every hkbNode.
+std::string read_sequence_generator(Packfile& pf, std::size_t a) {
+    return pf.string(a + 72);
+}
+
+/// What the generators of a graph are: state machines (by index) and
+/// blenders, whose children are generators in turn.
+struct GeneratorKinds {
+    std::map<std::size_t, std::string> sequences; ///< Sequence generator -> its sequence name.
+    std::map<std::size_t, std::int32_t> machines;
+    std::set<std::size_t> blenders;
+};
+
+/// The state machines that run side by side under `generator`: itself if it
+/// is one, the machines of a blender's children (blenders nest). hkbBlender-
+/// Generator: children hkArray at +96; hkbBlenderGeneratorChild: generator
+/// pointer at +48.
+void root_machines(Packfile& pf, std::size_t generator, const GeneratorKinds& kinds,
+                   std::vector<std::int32_t>& out, int depth = 0) {
+    if (const auto machine = kinds.machines.find(generator); machine != kinds.machines.end()) {
+        out.push_back(machine->second);
+        return;
+    }
+    if (depth > 8 || !kinds.blenders.contains(generator)) {
+        return;
+    }
+    const auto children = pf.array(generator + 96, 8, "blender children");
+    for (std::size_t i = 0; i < children.count && pf.bytes().ok(); ++i) {
+        const auto child = pf.pointer(children.data + i * 8);
+        if (!child) {
+            continue;
+        }
+        if (const auto inner = pf.pointer(*child + 48)) {
+            root_machines(pf, *inner, kinds, out, depth + 1);
+        }
+    }
+}
+
 /// hkbStateMachine and its states (8-byte pointers only, measured on
 /// behavior00.hkx of the wall traps; the 4-byte layout is unmeasured, so SE
-/// files only). `generators` maps clip generator objects to their index.
+/// files only). `generators` maps clip generator objects to their index,
+/// `kinds` the other generators a state may run.
 StateMachine read_state_machine(Packfile& pf, std::size_t a,
-                                const std::map<std::size_t, std::int32_t>& generators) {
+                                const std::map<std::size_t, std::int32_t>& generators,
+                                const GeneratorKinds& kinds) {
     Bytes& b = pf.bytes();
     StateMachine m;
     m.name = pf.string(a + 56);
@@ -496,6 +540,10 @@ StateMachine read_state_machine(Packfile& pf, std::size_t a,
         if (const auto generator = pf.pointer(*info + 88)) {
             const auto it = generators.find(*generator);
             s.generator = it == generators.end() ? -1 : it->second;
+            if (const auto sequence = kinds.sequences.find(*generator); sequence != kinds.sequences.end()) {
+                s.sequence = sequence->second;
+            }
+            root_machines(pf, *generator, kinds, s.nested_machines);
         }
         s.name = pf.string(*info + 96);
         s.id = b.at<std::int32_t>(*info + 104);
@@ -1118,12 +1166,29 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
         out.behavior_graphs.push_back(std::move(graph));
     }
     if (pf.ptr() == 8 && !out.behavior_graphs.empty()) {
+        GeneratorKinds kinds;
+        for (const std::size_t a : pf.objects_of("BGSGamebryoSequenceGenerator")) {
+            kinds.sequences[a] = read_sequence_generator(pf, a);
+        }
+        for (const std::size_t a : pf.objects_of("hkbStateMachine")) {
+            kinds.machines[a] = static_cast<std::int32_t>(kinds.machines.size());
+        }
+        for (const std::size_t a : pf.objects_of("hkbBlenderGenerator")) {
+            kinds.blenders.insert(a);
+        }
+        BehaviorGraph& graph = out.behavior_graphs.front();
         for (const std::size_t a : pf.objects_of("hkbStateMachine")) {
             if (!b.ok()) {
                 break;
             }
-            out.behavior_graphs.front().state_machines.push_back(
-                read_state_machine(pf, a, generator_index));
+            graph.state_machines.push_back(read_state_machine(pf, a, generator_index, kinds));
+        }
+        // hkbBehaviorGraph: the root generator pointer is at +128.
+        for (const std::size_t a : pf.objects_of("hkbBehaviorGraph")) {
+            if (const auto root = pf.pointer(a + 128); root && b.ok()) {
+                root_machines(pf, *root, kinds, graph.root_machines);
+            }
+            break;
         }
     }
     std::vector<Binding> bindings;

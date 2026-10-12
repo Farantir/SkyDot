@@ -255,7 +255,7 @@ public:
 
     /// hkbStateMachine (SE only) with its states; transitions of `wildcard`
     /// are the machine's wildcard transitions.
-    void add_state_machine(const std::string& name, std::int32_t start_state,
+    std::size_t add_state_machine(const std::string& name, std::int32_t start_state,
                            const std::vector<HkxState>& states,
                            const std::vector<HkxTransition>& wildcard = {}) {
         const std::size_t o = object("hkbStateMachine", 176);
@@ -307,6 +307,38 @@ public:
         }
         array(o + 144, table, states.size());
         transitions_of(o + 160, wildcard);
+        return o;
+    }
+
+    /// BGSGamebryoSequenceGenerator (SE): name at +56, sequence at +72,
+    /// blend mode at +80, percent at +84.
+    std::size_t add_sequence_generator(const std::string& name, const std::string& sequence) {
+        const std::size_t o = object("BGSGamebryoSequenceGenerator", 96);
+        string_ptr(o + 56, name);
+        string_ptr(o + 72, sequence);
+        put<float>(o + 84, 1.0f);
+        return o;
+    }
+
+    /// hkbBlenderGenerator (SE) over `generators`: children array at +96,
+    /// each an hkbBlenderGeneratorChild with its generator at +48.
+    std::size_t add_blender(const std::vector<std::size_t>& generators) {
+        const std::size_t o = object("hkbBlenderGenerator", 160);
+        const std::size_t table = blob(generators.size() * 8, 16);
+        for (std::size_t i = 0; i < generators.size(); ++i) {
+            const std::size_t child = object("hkbBlenderGeneratorChild", 80);
+            pointer(child + 48, generators[i]);
+            put<float>(child + 64, 1.0f);
+            pointer(table + 8 * i, child);
+        }
+        array(o + 96, table, generators.size());
+        return o;
+    }
+
+    /// hkbBehaviorGraph (SE) whose root generator is `root`, at +128.
+    void add_behavior_graph(std::size_t root) {
+        const std::size_t o = object("hkbBehaviorGraph", 160);
+        pointer(o + 128, root);
     }
 
     void add_clip(const HkxClip& clip) {

@@ -42,6 +42,12 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
         for (std::size_t i = 0; i < graph.event_names.size(); ++i) {
             std::printf("  event %zu %s\n", i, graph.event_names[i].c_str());
         }
+        std::printf("  root machines:");
+        for (const auto id : graph.root_machines) {
+            const auto index = static_cast<std::size_t>(id);
+            std::printf(" %d '%s'", id, index < graph.state_machines.size() ? graph.state_machines[index].name.c_str() : "?");
+        }
+        std::printf("\n");
         for (const auto& m : graph.state_machines) {
             std::printf("  machine '%s' start %d, %zu states\n", m.name.c_str(), m.start_state, m.states.size());
             print_transitions("    wildcard ", m.wildcard_transitions);
@@ -55,6 +61,15 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
                     for (const auto& t : g.triggers) {
                         std::printf(" [%s%g %s]", t.relative_to_end ? "end-" : "t ", static_cast<double>(t.time),
                                     event_name(t.event).c_str());
+                    }
+                }
+                if (!st.sequence.empty()) {
+                    std::printf(" sequence '%s'", st.sequence.c_str());
+                }
+                if (!st.nested_machines.empty()) {
+                    std::printf(" runs machines");
+                    for (const auto id : st.nested_machines) {
+                        std::printf(" %d", id);
                     }
                 }
                 for (const auto id : st.enter_events) {

@@ -361,6 +361,56 @@ TEST_CASE("a behaviour graph's events, clip generators and state machine are rea
     check(*back);
 }
 
+TEST_CASE("sequence generators, nested machines and the root of a graph are read", "[animation][hkx]") {
+    using bethconv::test::HkxState;
+    HkxBuilder b(8);
+    b.add_behavior_strings({"Loop", "Single"}, {});
+    const auto idle = b.add_sequence_generator("Gamebryo SequenceGenerator00", "playanim01");
+    const auto swing = b.add_sequence_generator("Gamebryo SequenceGenerator01", "playanim02");
+    const auto inner0 = b.add_state_machine("Inner0", 0, {HkxState{0, "Rest", idle, {}, {}, {}}});
+    const auto inner1 = b.add_state_machine("Inner1", 3, {HkxState{3, "Swing", swing, {}, {}, {}}});
+    const auto blender = b.add_blender({inner0, inner1});
+    const auto outer = b.add_state_machine("Outer", 0, {HkxState{0, "Both", blender, {}, {}, {}}});
+    b.add_behavior_graph(outer);
+    const auto read = read_hkx(b.bytes(), "behavior.hkx");
+    REQUIRE(read.has_value());
+    const auto check = [](const bethconv::animation::HkxFile& file) {
+        REQUIRE(file.behavior_graphs.size() == 1);
+        const auto& g = file.behavior_graphs[0];
+        REQUIRE(g.state_machines.size() == 3);
+        std::map<std::string, std::int32_t> index;
+        for (std::size_t i = 0; i < g.state_machines.size(); ++i) {
+            index[g.state_machines[i].name] = static_cast<std::int32_t>(i);
+        }
+        CHECK(g.root_machines == std::vector<std::int32_t>{index["Outer"]});
+        const auto& outer_machine = g.state_machines[static_cast<std::size_t>(index["Outer"])];
+        CHECK(outer_machine.states[0].nested_machines ==
+              std::vector<std::int32_t>{index["Inner0"], index["Inner1"]});
+        CHECK(outer_machine.states[0].sequence.empty());
+        const auto& rest = g.state_machines[static_cast<std::size_t>(index["Inner0"])].states[0];
+        CHECK(rest.sequence == "playanim01");
+        CHECK(rest.generator == -1);
+        CHECK(rest.nested_machines.empty());
+        CHECK(g.state_machines[static_cast<std::size_t>(index["Inner1"])].states[0].sequence == "playanim02");
+    };
+    check(*read);
+    const auto back = bethconv::pack::read_animation_asset(bethconv::pack::write_animation_asset(*read), "b.animfb");
+    REQUIRE(back.has_value());
+    check(*back);
+}
+
+TEST_CASE("a graph whose root is a blender runs the machines of its children", "[animation][hkx]") {
+    HkxBuilder b(8);
+    b.add_behavior_strings({}, {});
+    const auto a = b.add_state_machine("A", 0, {});
+    const auto c = b.add_state_machine("C", 0, {});
+    b.add_behavior_graph(b.add_blender({a, c}));
+    const auto read = read_hkx(b.bytes(), "behavior.hkx");
+    REQUIRE(read.has_value());
+    REQUIRE(read->behavior_graphs.size() == 1);
+    CHECK(read->behavior_graphs[0].root_machines.size() == 2);
+}
+
 TEST_CASE("state machines of 4-byte files are left empty", "[animation][hkx]") {
     HkxBuilder b(4);
     b.add_clip_generator("Idle", "Animations\\Idle.hkx");

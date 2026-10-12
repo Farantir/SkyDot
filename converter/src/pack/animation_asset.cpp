@@ -199,7 +199,8 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
                 const auto enter = b.CreateVector(st.enter_events);
                 const auto exit = b.CreateVector(st.exit_events);
                 const auto transitions = transitions_of(st.transitions);
-                states.push_back(afb::CreateBehaviorState(b, st.id, name, st.generator, enter, exit, transitions));
+                states.push_back(afb::CreateBehaviorState(b, st.id, name, st.generator, enter, exit, transitions,
+                                                         b.CreateString(st.sequence), b.CreateVector(st.nested_machines)));
             }
             const auto name = b.CreateString(m.name);
             const auto states_off = b.CreateVector(states);
@@ -209,7 +210,7 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
         const auto events = b.CreateVectorOfStrings(graph.event_names);
         const auto variables = b.CreateVectorOfStrings(graph.variable_names);
         const auto machines_off = b.CreateVector(machines);
-        graphs.push_back(afb::CreateBehaviorGraph(b, events, variables, machines_off));
+        graphs.push_back(afb::CreateBehaviorGraph(b, events, variables, machines_off, b.CreateVector(graph.root_machines)));
     }
 
     const auto skeletons_off = b.CreateVector(skeletons);
@@ -516,6 +517,7 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
                     graph.variable_names.push_back(text(n));
                 }
             }
+            read_ints(g->root_machines(), graph.root_machines);
             if (const auto* machines = g->state_machines()) {
                 for (const auto* m : *machines) {
                     animation::StateMachine machine;
@@ -528,6 +530,8 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
                             state.id = st->id();
                             state.name = text(st->name());
                             state.generator = st->generator();
+                            state.sequence = text(st->sequence());
+                            read_ints(st->nested_machines(), state.nested_machines);
                             read_ints(st->enter_events(), state.enter_events);
                             read_ints(st->exit_events(), state.exit_events);
                             read_transitions(st->transitions(), state.transitions);

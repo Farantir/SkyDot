@@ -162,6 +162,12 @@ table BehaviorState {
     enter_events: [int];
     exit_events: [int];
     transitions: [StateTransition];
+    /// Added in format 3: the NIF controller sequence this state plays
+    /// (BGSGamebryoSequenceGenerator), by name, and the machines its generator
+    /// runs side by side (a machine, or a blender's child machines; indexes
+    /// into BehaviorGraph.state_machines).
+    sequence: string;
+    nested_machines: [int];
 }
 
 table StateMachine {
@@ -175,6 +181,9 @@ table BehaviorGraph {
     event_names: [string];
     variable_names: [string];
     state_machines: [StateMachine];
+    /// Added in format 3: the machines that run side by side (indexes into
+    /// state_machines); empty = only the first.
+    root_machines: [int];
 }
 
 /// A clip generator of a behaviour project, as the animationdata files list

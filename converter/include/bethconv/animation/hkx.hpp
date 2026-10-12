@@ -10,7 +10,9 @@
 // interleaved animations with their annotations, a behaviour character's
 // names (hkbCharacterStringData) and a behaviour graph's clip generators
 // (hkbClipGenerator: clip name -> animation file; the animationdata text
-// files give the same names root motion, see animation_data.hpp). The rest of
+// files give the same names root motion, see animation_data.hpp), their
+// BGSGamebryoSequenceGenerator (a NIF sequence name) and the machines under
+// the root generator. The rest of
 // behaviour graphs, physics and everything else are counted by class and
 // skipped.
 //
@@ -164,6 +166,12 @@ struct BehaviorState {
     std::string name;
     /// Index into HkxFile::clip_generators; -1 for any other generator.
     std::int32_t generator{-1};
+    /// The NIF controller sequence a BGSGamebryoSequenceGenerator plays
+    /// (the state's generator); empty for other generators.
+    std::string sequence;
+    /// Indexes into BehaviorGraph::state_machines of the machines the state's
+    /// generator runs side by side (a machine, or a blender's child machines).
+    std::vector<std::int32_t> nested_machines;
     std::vector<std::int32_t> enter_events;
     std::vector<std::int32_t> exit_events;
     std::vector<StateTransition> transitions;
@@ -183,6 +191,11 @@ struct BehaviorGraph {
     std::vector<std::string> event_names;
     std::vector<std::string> variable_names;
     std::vector<StateMachine> state_machines;
+    /// Indexes into state_machines of the machines that run side by side: the
+    /// root generator if it is a machine, else the machines of the children
+    /// of the root hkbBlenderGenerator (blender weights are not read). Empty
+    /// when the root is anything else, or the layout is 4-byte.
+    std::vector<std::int32_t> root_machines;
 };
 
 struct HkxFile {
