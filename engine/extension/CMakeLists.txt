@@ -195,6 +195,13 @@ target_sources(skydot PRIVATE
     src/session/preload.cpp
     src/session/streamer.cpp
     src/session/streamer.hpp
+    src/vm/natives_debug.cpp
+    src/vm/natives_effectshader.cpp
+    src/vm/natives_form.cpp
+    src/vm/natives_game.cpp
+    src/vm/natives_objectreference.cpp
+    src/vm/natives_quest.cpp
+    src/vm/natives_utility.cpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

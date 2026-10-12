@@ -196,6 +196,12 @@ private:
     };
 
     void bind_natives();
+    void bind_debug_natives();
+    void bind_utility_natives();
+    void bind_game_natives();
+    void bind_form_natives();
+    void bind_objectreference_natives();
+    void bind_effectshader_natives();
     void bind_quest_natives();
     struct QuestState {
         bool running = false;
