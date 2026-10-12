@@ -141,7 +141,8 @@ shows XPRM bounds doubled. Not checked against the game.
 Activation is decided in the engine: `activate_ref(ref, activator,
 default_only, source, force)` (source player, script or parent) applies the
 rules of `vm/activation.hpp`, runs OnActivate with the real activator unless
-`default_only`, schedules the activate children on the VM's clock (saved with
+`default_only`, schedules the activate children on the VM's clock (the parent
+is their activator, as trap scripts expect; saved with
 it) unless a script blocks activation, and returns an outcome the host
 applies (door, furniture, toggle_open, or a note). A script's `Activate` and
 the children arrive as `activation_outcome`.

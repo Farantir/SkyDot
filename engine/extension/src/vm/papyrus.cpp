@@ -655,14 +655,15 @@ bool SkydotPapyrus::run_activation(std::uint32_t form, const String& label, std:
         out["note"] = label + String(": activation blocked, only its scripts ran");
         return false;
     }
-    // Activate children run on the VM's clock, as whoever activated the parent.
+    // Activate children run on the VM's clock, activated by the parent: trap
+    // scripts read the parent's trigger type from their activator (BladeTrap
+    // casts it to TrapTriggerBase; a pull chain's type 2 stops the blades).
     const Array children = world_->get_activate_children(form);
     for (std::int64_t i = 0; i < children.size(); ++i) {
         const Dictionary child = children[i];
         vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
                       static_cast<std::uint32_t>(static_cast<std::int64_t>(child["ref"])),
-                      static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
-                      static_cast<std::uint32_t>(ActivationSource::parent));
+                      form, static_cast<std::uint32_t>(ActivationSource::parent));
     }
     return true;
 }
