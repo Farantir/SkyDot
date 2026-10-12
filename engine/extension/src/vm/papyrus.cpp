@@ -814,6 +814,11 @@ void SkydotPapyrus::update_actor(std::int64_t actor, const Vector3& position) {
         if (in == was) {
             continue;
         }
+        // A disabled trigger notices no one (the E3 demo's set-stage boxes on
+        // the way to Bleak Falls would start its quest and swap the barrow door).
+        if (in && disabled(ref)) {
+            continue;
+        }
         if (in) {
             t.inside.insert(form);
         } else {
