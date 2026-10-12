@@ -84,6 +84,8 @@ public:
     godot::Array census(const godot::PackedStringArray& classes);
     /// Send OnActivate(activator) to `ref`'s scripts. Returns how many ran.
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
+    /// Put `count` of `item` into `owner`'s inventory (the viewer's --give).
+    void add_item(std::int64_t owner, std::int64_t item, std::int64_t count);
     /// How a reference is activated (activate_ref's `source`).
     static constexpr std::int64_t ACTIVATE_PLAYER = 0;
     static constexpr std::int64_t ACTIVATE_SCRIPT = 1;

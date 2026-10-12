@@ -20,6 +20,15 @@ bool activation_unlocks(const ActivationRequest& request) {
     return request.source == ActivationSource::player && request.lock_level >= 0 && request.force;
 }
 
+bool activation_picks_up(std::string_view type) {
+    for (const std::string_view item : {"ALCH", "AMMO", "ARMO", "BOOK", "INGR", "KEYM", "MISC", "SLGM", "SCRL", "WEAP"}) {
+        if (type == item) {
+            return true;
+        }
+    }
+    return false;
+}
+
 std::string lock_level_name(int level) {
     if (level >= 255) {
         return "requires a key";

@@ -72,3 +72,12 @@ TEST_CASE("a pending activation is taken once, and a second use meanwhile is ref
     CHECK_FALSE(pending.take(0xAA8C3).has_value());
     CHECK(pending.begin(0xAA8C3, {0x14, false})); // usable again
 }
+
+TEST_CASE("loose items are picked up, other records are not", "[activation]") {
+    for (const char* type : {"ALCH", "AMMO", "ARMO", "BOOK", "INGR", "KEYM", "MISC", "SLGM", "SCRL", "WEAP"}) {
+        CHECK(activation_picks_up(type));
+    }
+    for (const char* type : {"DOOR", "FURN", "CONT", "ACTI", "NPC_", "STAT", ""}) {
+        CHECK_FALSE(activation_picks_up(type));
+    }
+}

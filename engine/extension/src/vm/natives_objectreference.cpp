@@ -168,6 +168,33 @@ void SkydotPapyrus::bind_objectreference_natives() {
         return result(Value::integer(static_cast<std::int32_t>(level < 0 ? 0 : level)));
     });
 
+    // ---- inventory (bound here, reached from Actor through the parent class)
+    // A FormList is not looked into (its forms are not reachable from here):
+    // it counts as nothing and adds or removes nothing.
+    v.bind("ObjectReference", "GetItemCount", [this, arg, result](NativeCall& c) {
+        if (arg(c, 0).kind() != vm::Kind::object) {
+            return result(Value::integer(0));
+        }
+        return result(Value::integer(static_cast<std::int32_t>(vm_->inventory().count(c.self.form(), arg(c, 0).form()))));
+    });
+    v.bind("ObjectReference", "AddItem", [this, arg](NativeCall& c) {
+        if (arg(c, 0).kind() == vm::Kind::object) {
+            vm_->inventory().add(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+        }
+        return NativeResult{};
+    });
+    // Moves the items to `other` if given, else they are gone.
+    v.bind("ObjectReference", "RemoveItem", [this, arg](NativeCall& c) {
+        if (arg(c, 0).kind() == vm::Kind::object) {
+            const std::int64_t taken =
+                vm_->inventory().remove(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+            if (arg(c, 3).kind() == vm::Kind::object) {
+                vm_->inventory().add(arg(c, 3).form(), arg(c, 0).form(), taken);
+            }
+        }
+        return NativeResult{};
+    });
+
     // ---- triggers and effects
     v.bind("ObjectReference", "GetTriggerObjectCount", [this, result](NativeCall& c) {
         return result(Value::integer(static_cast<std::int32_t>(get_trigger_count(c.self.form()))));

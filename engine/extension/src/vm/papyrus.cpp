@@ -69,6 +69,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("census", "classes"), &SkydotPapyrus::census);
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
+    godot::ClassDB::bind_method(D_METHOD("add_item", "owner", "item", "count"), &SkydotPapyrus::add_item);
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
@@ -614,6 +615,17 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
     }
     out["kind"] = "none";
     const Variant door = info.get("door", Variant());
+    if (activation_picks_up(utf8(String(info["type"])))) {
+        // Loose items go into the activator's inventory (XCNT is not in the
+        // reference info yet: one of them).
+        const auto count = static_cast<std::int64_t>(info.get("count", 1));
+        vm_->inventory().add(static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
+                             static_cast<std::uint32_t>(static_cast<std::int64_t>(info["base"])), std::max<std::int64_t>(count, 1));
+        set_disabled(form, true);
+        out["kind"] = "pickup";
+        out["note"] = label + String(": picked up");
+        return out;
+    }
     if (door.get_type() == Variant::DICTIONARY) {
         out["kind"] = "door";
         out["door"] = door;
@@ -680,6 +692,10 @@ void SkydotPapyrus::complete_activation(std::int64_t ref) {
     out["label"] = String("0x%08X %s (%s)") % Array::make(ref, info.get("editor_id", ""), info.get("type", ""));
     run_activation(form, out["label"], pending.activator, pending.default_only, out);
     emit_signal("activation_outcome", ref, out);
+}
+
+void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
+    vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
 }
 
 std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, const Array& args) {

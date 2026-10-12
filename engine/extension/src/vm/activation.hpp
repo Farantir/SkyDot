@@ -12,6 +12,9 @@
 //     ObjectActivated takes effect when the graph says so: the scripts and
 //     activate children wait (PendingActivations). A second use meanwhile is
 //     ignored.
+//   - An actor that activates a loose item (an ALCH, AMMO, ARMO, BOOK, INGR,
+//     KEYM, MISC, SLGM, SCRL or WEAP reference) picks it up, unless scripts
+//     blocked the activation.
 #pragma once
 
 #include <cstdint>
@@ -41,6 +44,9 @@ struct ActivationRequest {
 /// Whether an activation of a reference of record `type` waits for the
 /// graph's ObjectActivated: the player's use of furniture whose graph raises it.
 [[nodiscard]] bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises);
+
+/// Whether a reference of record `type` is a loose item an activator picks up.
+[[nodiscard]] bool activation_picks_up(std::string_view type);
 
 /// Activations waiting for their ObjectActivated, one per reference.
 class PendingActivations {
