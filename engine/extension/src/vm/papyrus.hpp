@@ -77,6 +77,9 @@ public:
     std::int64_t attach_cell(std::int64_t cell);
     /// Send OnActivate(activator) to `ref`'s scripts. Returns how many ran.
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
+    /// Whether the model of `ref` is built and it is not disabled.
+    bool is_3d_loaded(std::uint32_t ref) const;
+    bool is_3d_loaded_i(std::int64_t ref) const { return is_3d_loaded(static_cast<std::uint32_t>(ref)); }
     /// Send any event with arguments (ints are passed as ObjectReference).
     std::int64_t send_event(std::int64_t ref, const godot::String& event, const godot::Array& args);
     /// An animation event (a text key or a finished clip) on `ref`, for
@@ -222,8 +225,6 @@ private:
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotWorld> world_;
     std::set<std::uint32_t> attached_;
-    /// References whose model attach_built has seen.
-    std::set<std::uint32_t> built_;
     std::map<std::uint32_t, bool> disabled_;
     std::set<std::uint32_t> blocked_;
     std::map<std::uint32_t, std::int64_t> open_;

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+#include "build/ref_nodes.hpp"
 #include "world/world.hpp"
 #include "data/coordinates.hpp"
 #include "physics/collision.hpp"
@@ -56,6 +57,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_ref_info", "cell", "ref"), &SkydotWorld::get_ref_info);
     godot::ClassDB::bind_method(D_METHOD("pick_ref", "root", "from", "to"), &SkydotWorld::pick_ref);
     godot::ClassDB::bind_method(D_METHOD("get_ref_cell", "ref"), &SkydotWorld::get_ref_cell);
+    godot::ClassDB::bind_method(D_METHOD("find_ref_node", "ref"), &SkydotWorld::find_ref_node);
     godot::ClassDB::bind_method(D_METHOD("build_ref", "cell", "ref"), &SkydotWorld::build_ref);
     godot::ClassDB::bind_method(D_METHOD("get_scripted_refs", "cell"), &SkydotWorld::get_scripted_refs);
     godot::ClassDB::bind_method(D_METHOD("get_activate_children", "ref"),
@@ -228,6 +230,9 @@ Dictionary SkydotWorld::pick_ref(godot::Node* root, const Vector3& from, const V
 }
 godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell) const {
     return queries::get_scripted_refs(data(), cell);
+}
+godot::Node* SkydotWorld::find_ref_node(std::int64_t ref) const {
+    return ref_nodes::find(static_cast<std::uint32_t>(ref));
 }
 std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const { return data().cell_of_ref(ref); }
 Array SkydotWorld::get_activate_children(std::int64_t ref) const {

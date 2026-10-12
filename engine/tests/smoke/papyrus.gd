@@ -114,11 +114,30 @@ func _run(pack_dir: String) -> void:
     _check_triggers(vm, world)
     _check_timers_and_natives(vm)
     _check_save(vm, pack, world)
+    _check_loaded_state(vm, world, interior)
 
     # Missing classes and functions are reported, not fatal.
     expect(vm.call_global("NoSuchScript", "Run", []) == 0, "an unknown class starts nothing")
     expect(vm.get_error_count() == 1, "and is logged once: %d" % vm.get_error_count())
     print("smoke_papyrus: %d instructions, %.1f s of VM time" % [vm.get_instruction_count(), vm.get_time()])
+
+## Is3DLoaded follows the node registry: built, then gone when the node is freed
+## (or leaves the tree).
+func _check_loaded_state(vm: SkydotPapyrus, world: SkydotWorld, interior: int) -> void:
+    expect(world.find_ref_node(0x304) == null and not vm.is_3d_loaded(0x304), "nothing is built yet")
+    var holder := world.build_ref(interior, 0x304)
+    expect(holder != null, "the lever builds")
+    if holder == null:
+        return
+    var node := world.find_ref_node(0x304)
+    expect(node != null and holder.is_ancestor_of(node) and vm.is_3d_loaded(0x304), "its model is registered and loaded")
+    # tree_exiting removes it (a scene tree is not running here to leave).
+    expect(node.get_signal_connection_list("tree_exiting").size() == 1, "its exit from the tree is watched")
+    holder.free()
+    holder = world.build_ref(interior, 0x304)
+    expect(vm.is_3d_loaded(0x304), "built again, it is loaded")
+    holder.free()
+    expect(world.find_ref_node(0x304) == null and not vm.is_3d_loaded(0x304), "a freed model is gone")
 
 ## The trigger box is 128 units wide, 300 units south of the origin, turned
 ## 45 degrees: a point 80 units east of its centre is inside only if the turn

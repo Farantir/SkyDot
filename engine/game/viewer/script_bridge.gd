@@ -301,18 +301,7 @@ func _lock_name(level: int) -> String:
 
 ## The model of reference `ref` among what is built, or null.
 func find_ref_node(ref: int) -> Node:
-	var pending: Array = _place.nodes.duplicate()
-	pending.append_array(_streamer.get_loaded_cells())
-	while not pending.is_empty():
-		var node = pending.pop_back()
-		if node == null or not is_instance_valid(node) or node.is_queued_for_deletion() or node == _streamer.lod:
-			continue
-		for child in node.get_children():
-			if child.get_meta("skydot_ref", 0) == ref:
-				return child
-			if not child.has_meta("skydot_ref") and child.get_child_count() > 0:
-				pending.append(child)
-	return null
+	return _world.find_ref_node(ref)
 
 
 func has_activations() -> bool:

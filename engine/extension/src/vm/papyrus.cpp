@@ -2,6 +2,7 @@
 #include "vm/papyrus.hpp"
 
 #include "data/coordinates.hpp"
+#include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
@@ -58,6 +59,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("attach", "cell", "ref"), &SkydotPapyrus::attach);
     godot::ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotPapyrus::attach_built);
     godot::ClassDB::bind_method(D_METHOD("attach_cell", "cell"), &SkydotPapyrus::attach_cell);
+    godot::ClassDB::bind_method(D_METHOD("is_3d_loaded", "ref"), &SkydotPapyrus::is_3d_loaded_i);
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
@@ -154,7 +156,6 @@ SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) {}
 
 void SkydotPapyrus::reset() {
     attached_.clear();
-    built_.clear();
     disabled_.clear();
     blocked_.clear();
     open_.clear();
@@ -376,9 +377,10 @@ void SkydotPapyrus::bind_natives() {
     v.bind("ObjectReference", "IsEnabled", [this, result](NativeCall& c) {
         return result(Value::boolean(!disabled(c.self.form())));
     });
-    // Built by the game layer and not disabled; unloading is not tracked.
+    // Its model is built (the registry forgets nodes as they leave the tree)
+    // and it is not disabled.
     v.bind("ObjectReference", "Is3DLoaded", [this, result](NativeCall& c) {
-        return result(Value::boolean(built_.contains(c.self.form()) && !disabled(c.self.form())));
+        return result(Value::boolean(is_3d_loaded(c.self.form())));
     });
 
     // ---- links, base, place
@@ -673,7 +675,6 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
                 continue;
             }
             const std::int64_t ref = child->get_meta("skydot_ref");
-            built_.insert(static_cast<std::uint32_t>(ref));
             attach(child->get_meta("skydot_cell"), ref);
             if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
                 register_phantoms(static_cast<std::uint32_t>(ref),
@@ -707,6 +708,10 @@ std::int64_t SkydotPapyrus::activate(std::int64_t ref, std::int64_t activator) {
     return static_cast<std::int64_t>(dispatch(
         static_cast<std::uint32_t>(ref), "OnActivate",
         {vm_->object(static_cast<std::uint32_t>(activator), "ObjectReference")}));
+}
+
+bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
+    return ref_nodes::find(ref) != nullptr && !disabled(ref);
 }
 
 std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, const Array& args) {

@@ -146,6 +146,8 @@ target_sources(skydot PRIVATE
     src/build/cell_builder.hpp
     src/build/decoration.cpp
     src/build/decoration.hpp
+    src/build/ref_nodes.cpp
+    src/build/ref_nodes.hpp
     src/build/refs.cpp
     src/data/coordinates.cpp
     src/data/coordinates.hpp

@@ -4,6 +4,8 @@
 // the metadata that marks a placed model, whether activating it can do
 // anything, and picking the reference the player looks at.
 #include "build/refs.hpp"
+
+#include "build/ref_nodes.hpp"
 #include "data/world_data.hpp"
 #include "physics/collision.hpp"
 #include "data/coordinates.hpp"
@@ -200,6 +202,7 @@ bool door_type(std::uint32_t type) { return type == fourcc("DOOR"); }
 void tag_ref(godot::Node3D* node, std::uint32_t ref, std::uint32_t cell, bool activatable) {
     node->set_meta("skydot_ref", static_cast<std::int64_t>(ref));
     node->set_meta("skydot_cell", static_cast<std::int64_t>(cell));
+    ref_nodes::add(ref, node);
     if (!activatable) {
         return;
     }
