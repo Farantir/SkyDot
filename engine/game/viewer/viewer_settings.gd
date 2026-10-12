@@ -84,6 +84,7 @@ var activate: Array[int] = []  # references to activate in turn, then quit
 var has_activate := false
 var activate_wait := 0  # frames between two --activate references (0: next frame)
 var quit_after := -1  # frames after the last --activate before quitting (-1: 5)
+var give: Array[Vector2i] = []  # (form id, count) the player starts with (--give)
 var save_to := ""  # saves when the --activate run ends
 var load_path := ""  # loads at start
 var has_screenshot := false
@@ -142,6 +143,11 @@ func _read(args: Dictionary) -> void:
 	if has_activate:
 		for id in args["activate"].split(","):
 			activate.append(id.hex_to_int() if id.begins_with("0x") else id.to_int())
+	for entry: String in args.get("give", "").split(",", false):
+		var cut := entry.find("x", 2)  # 0xFORMxN: the count follows the second x
+		var form_text := entry if cut < 0 else entry.substr(0, cut)
+		var form: int = form_text.hex_to_int() if form_text.begins_with("0x") else form_text.to_int()
+		give.append(Vector2i(form, maxi(1, entry.substr(cut + 1).to_int()) if cut >= 0 else 1))
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	interactive = not (captures or has_activate or args.has("no-input"))

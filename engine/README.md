@@ -207,7 +207,8 @@ previous one led to, and exits; it runs headless. `--activate-wait FRAMES`
 waits that many frames between two references and `--quit-after FRAMES`
 quits that many frames after the last (default 5), so delayed activations
 and animations play out. `--save-to FILE` saves at
-the end of such a run, `--load FILE` loads at the start. Add
+the end of such a run, `--load FILE` loads at the start. `--give 0xFORM[xN],...`
+puts items into the player's inventory at the start (like `player.additem`). Add
 `--screenshot out.png` to render four views and exit.
 
 ## Build and run

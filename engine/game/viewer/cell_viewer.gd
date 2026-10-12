@@ -94,6 +94,8 @@
 # --activate-wait FRAMES waits that many frames between two of them, for
 # scripts and animations to play out; --quit-after FRAMES quits that many
 # frames after the last (default 5).
+# --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
+# at the start, after --load (like player.additem).
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
 # physics time per frame, draw calls, primitives, objects). It is in
@@ -333,6 +335,8 @@ func _start_game() -> void:
 		_rig.apply_look(settings.look_yaw, settings.look_pitch)
 	if not settings.load_path.is_empty():
 		_saves.load_game(settings.load_path)
+	for item in settings.give:
+		_papyrus.add_item(SkydotPapyrus.PLAYER_REF, item.x, item.y)
 
 	if settings.has_screenshot:
 		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
