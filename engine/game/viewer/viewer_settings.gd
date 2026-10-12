@@ -82,6 +82,8 @@ var preload_distance := 15.0  # metres
 # Runs that drive themselves.
 var activate: Array[int] = []  # references to activate in turn, then quit
 var has_activate := false
+var activate_wait := 0  # frames between two --activate references (0: next frame)
+var quit_after := -1  # frames after the last --activate before quitting (-1: 5)
 var save_to := ""  # saves when the --activate run ends
 var load_path := ""  # loads at start
 var has_screenshot := false
@@ -140,6 +142,8 @@ func _read(args: Dictionary) -> void:
 	if has_activate:
 		for id in args["activate"].split(","):
 			activate.append(id.hex_to_int() if id.begins_with("0x") else id.to_int())
+	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
+	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	interactive = not (captures or has_activate or args.has("no-input"))
 
 	materials = args.get("materials", "on") != "off"

@@ -19,6 +19,7 @@ signal failed(text: String)
 var quests_ready := false
 var _activations: Array[int] = []  # --activate: refs still to activate
 var _wait := 0  # frames the first of them has been missing
+var _gap := 0  # frames to pass before the next of them (--activate-wait)
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
 var _host: Node3D  # the scene's root, where picking and waking clutter start
@@ -323,6 +324,9 @@ func has_activations() -> bool:
 func run_activation() -> void:
 	if _activations.is_empty():
 		return
+	if _gap > 0:
+		_gap -= 1
+		return
 	var ref: int = _activations[0]
 	var node := find_ref_node(ref)
 	if node == null:
@@ -333,6 +337,7 @@ func run_activation() -> void:
 	_wait = 0
 	_activations.pop_front()
 	activate(node.get_meta("skydot_cell"), ref, node, false)
+	_gap = _settings.activate_wait
 	if _activations.is_empty():
 		activations_finished.emit()
 

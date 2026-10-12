@@ -203,7 +203,10 @@ time stopped; with `--screenshot out.png` it renders that view again and
 exits (a re-render at Riverwood differed in 0.11% of pixels, from moving
 foliage), which is how a shot becomes a bug report or a regression check.
 `--activate 0xREF,0xREF` activates references in turn, each in the place the
-previous one led to, and exits; it runs headless. `--save-to FILE` saves at
+previous one led to, and exits; it runs headless. `--activate-wait FRAMES`
+waits that many frames between two references and `--quit-after FRAMES`
+quits that many frames after the last (default 5), so delayed activations
+and animations play out. `--save-to FILE` saves at
 the end of such a run, `--load FILE` loads at the start. Add
 `--screenshot out.png` to render four views and exit.
 

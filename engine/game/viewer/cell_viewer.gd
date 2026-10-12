@@ -91,6 +91,9 @@
 # and mouse.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
 # place the previous one led to, then quits (for tests; works headless).
+# --activate-wait FRAMES waits that many frames between two of them, for
+# scripts and animations to play out; --quit-after FRAMES quits that many
+# frames after the last (default 5).
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
 # physics time per frame, draw calls, primitives, objects). It is in
@@ -240,7 +243,8 @@ func _create_components() -> void:
 	add_child(_controls)
 	_bridge = ScriptBridge.new(_world, _papyrus, self, _rig.camera, _settings, _place, _streamer, _debug,
 		_transition)
-	_bridge.activations_finished.connect(func() -> void: _quit_in = 5)  # let scripts run first
+	_bridge.activations_finished.connect(func() -> void:  # let scripts run first
+		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_bridge.failed.connect(_fail)
 	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
 	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
