@@ -174,6 +174,15 @@ func _check_timers_and_natives(vm: SkydotPapyrus) -> void:
     expect(not vm.take_result(timeout)["done"], "without the event it waits")
     expect(finish(vm, timeout, 10.0) == true, "until the timeout")
 
+    # A handler that reports the event synchronously must still wake the wait.
+    var sync_handler := func(ref: int, _anim: String) -> void: vm.notify_animation_event(ref, "done")
+    vm.play_animation.connect(sync_handler)
+    var quick := vm.call_method(timer, "TestpackTimerScript", "Animate", [])
+    vm.update(0.0)
+    vm.update(0.1)
+    expect(vm.take_result(quick)["done"], "an event raised while the animation starts still ends the wait")
+    vm.play_animation.disconnect(sync_handler)
+
     expect(vm.get_lock_level(timer) == -1 and not vm.is_activation_blocked(timer), "unlocked, unblocked")
     finish(vm, vm.call_method(timer, "TestpackTimerScript", "Guard", []))
     expect(vm.is_activation_blocked(timer), "BlockActivation blocks")

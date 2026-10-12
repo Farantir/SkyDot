@@ -428,12 +428,15 @@ void SkydotPapyrus::bind_natives() {
         return result(Value::boolean(true));
     });
     // Waits for the named event (a text key of the animation) or a timeout.
+    // The signal goes out after the wait is armed: a handler that reports the
+    // event synchronously would otherwise be lost.
     v.bind("ObjectReference", "PlayAnimationAndWait", [this, arg](NativeCall& c) {
-        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form()),
-                    to_godot(vm::Vm::to_string(arg(c, 0))));
+        const auto form = static_cast<std::int64_t>(c.self.form());
+        const String animation = to_godot(vm::Vm::to_string(arg(c, 0)));
         return NativeResult{.value = Value::boolean(true),
                             .wait = ANIMATION_TIMEOUT,
-                            .wait_for = "anim:" + std::to_string(c.self.form()) + ":" + vm::Vm::to_string(arg(c, 1))};
+                            .wait_for = "anim:" + std::to_string(c.self.form()) + ":" + vm::Vm::to_string(arg(c, 1)),
+                            .after = [this, form, animation] { emit_signal("play_animation", form, animation); }};
     });
     // Physics dependencies between animated objects; nothing to do without physics.
     v.bind("ObjectReference", "AddDependentAnimatedObjectReference",

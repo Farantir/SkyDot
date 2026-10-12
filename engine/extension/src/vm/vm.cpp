@@ -801,11 +801,20 @@ bool Vm::call_native(Thread& thread, const Function* fn, Value self, std::vector
     if (!result.wait_for.empty()) {
         thread.wait_for = to_lower(result.wait_for);
         thread.wake_at = time_ + (result.wait >= 0.0 ? result.wait : 1.0e9);
+        if (result.after) {
+            result.after();
+        }
         return false;
     }
     if (result.wait >= 0.0) {
         thread.wake_at = time_ + result.wait;
+        if (result.after) {
+            result.after();
+        }
         return false;
+    }
+    if (result.after) {
+        result.after();
     }
     return true;
 }

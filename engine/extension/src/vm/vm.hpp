@@ -104,6 +104,9 @@ struct NativeResult {
     double wait = -1.0;
     /// With `wait` as the timeout: suspend until `Vm::notify` names this.
     std::string wait_for = {};
+    /// Runs once the thread's wait is armed, so what it raises (an event
+    /// delivered synchronously) reaches that wait instead of getting lost.
+    std::function<void()> after = {};
 };
 
 using Native = std::function<NativeResult(NativeCall&)>;
