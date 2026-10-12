@@ -450,7 +450,34 @@ void Vm::fire_timers() {
     }
 }
 
+void Vm::schedule(double delay, std::string kind, std::uint32_t a, std::uint32_t b, std::uint32_t c) {
+    scheduled_.push_back({time_ + std::max(0.0, delay), std::move(kind), a, b, c});
+}
+
+void Vm::fire_scheduled() {
+    // Handlers may schedule more: those due now run in this pass too.
+    for (bool again = true; again;) {
+        again = false;
+        std::vector<Scheduled> due;
+        for (auto it = scheduled_.begin(); it != scheduled_.end();) {
+            if (it->due <= time_) {
+                due.push_back(std::move(*it));
+                it = scheduled_.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        for (const auto& d : due) {
+            again = true;
+            if (scheduled_handler_) {
+                scheduled_handler_(d.kind, d.a, d.b, d.c);
+            }
+        }
+    }
+}
+
 void Vm::clear() {
+    scheduled_.clear();
     threads_.clear();
     results_.clear();
     timers_.clear();
@@ -460,6 +487,7 @@ void Vm::clear() {
 void Vm::update(double seconds) {
     time_ += seconds;
     fire_timers();
+    fire_scheduled();
     // Threads started while running are appended and run in this update too.
     for (std::size_t i = 0; i < threads_.size(); ++i) {
         auto& t = *threads_[i];

@@ -14,6 +14,7 @@ add_executable(skydot_core_tests
     support/world_builder.cpp
     support/world_builder.hpp
     test_actors.cpp
+    test_activation.cpp
     test_behavior.cpp
     test_game_time.cpp
     test_large_refs.cpp

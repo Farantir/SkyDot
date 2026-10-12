@@ -164,6 +164,15 @@ public:
     void notify(std::string_view key);
     /// Send OnUpdate to `instance` after `delay` seconds, and every `interval`
     /// seconds after that if positive. Replaces its earlier registration.
+    /// A host call due after `delay` seconds of VM time: the host's own work
+    /// (an activate child) kept with the VM's clock and saved with it. When
+    /// due, `handler` gets (kind, a, b, c) as scheduled.
+    using ScheduledHandler = std::function<void(const std::string& kind, std::uint32_t a, std::uint32_t b,
+                                                std::uint32_t c)>;
+    void set_scheduled_handler(ScheduledHandler handler) { scheduled_handler_ = std::move(handler); }
+    void schedule(double delay, std::string kind, std::uint32_t a, std::uint32_t b = 0, std::uint32_t c = 0);
+    [[nodiscard]] std::size_t scheduled_count() const noexcept { return scheduled_.size(); }
+
     void register_update(Instance* instance, double delay, double interval);
     void unregister_update(Instance* instance);
     /// The VM's random numbers; seeded, so runs repeat.
@@ -250,6 +259,14 @@ private:
         double interval = 0.0;
     };
     std::vector<Timer> timers_;
+    struct Scheduled {
+        double due = 0.0;
+        std::string kind;
+        std::uint32_t a = 0, b = 0, c = 0;
+    };
+    std::vector<Scheduled> scheduled_;
+    ScheduledHandler scheduled_handler_;
+    void fire_scheduled();
     std::uint64_t rng_ = 0x9E3779B97F4A7C15ULL;
     std::uint64_t next_thread_ = 1;
     std::uint64_t budget_ = 100000;

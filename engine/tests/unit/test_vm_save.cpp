@@ -297,10 +297,10 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
     SECTION("a version this engine does not read") {
-        bytes[4] = 2;
+        bytes[4] = 3;
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
-        CHECK_THAT(error, ContainsSubstring("version 2"));
+        CHECK_THAT(error, ContainsSubstring("version 3"));
     }
     SECTION("bytes after the end") {
         bytes.push_back(0);
@@ -451,4 +451,31 @@ TEST_CASE("a save whose arrays hold arrays is refused", "[vm][save][errors]") {
         REQUIRE(list.array()->size() == 2);
         CHECK(list.array()->at(1).i() == 6);
     }
+}
+
+TEST_CASE("host calls scheduled on the VM's clock are saved and run once due", "[vm][save]") {
+    SaverRig a(saver(), false);
+    std::vector<std::string> ran;
+    const auto record = [&ran](const std::string& kind, std::uint32_t x, std::uint32_t y, std::uint32_t z) {
+        ran.push_back(kind + ":" + std::to_string(x) + ":" + std::to_string(y) + ":" + std::to_string(z));
+    };
+    a.vm().set_scheduled_handler(record);
+    a.vm().schedule(2.0, "activate", 7, 20, 2);
+    a.vm().schedule(0.0, "activate", 8, 20, 1);
+    a.vm().update(0.5);
+    REQUIRE(ran == std::vector<std::string>{"activate:8:20:1"});
+    REQUIRE(a.vm().scheduled_count() == 1);
+    const auto bytes = a.vm().save();
+
+    SaverRig b(saver(), false);
+    ran.clear();
+    b.vm().set_scheduled_handler(record);
+    std::string error;
+    REQUIRE(b.vm().load(bytes, error));
+    CHECK(b.vm().scheduled_count() == 1);
+    b.vm().update(1.0);
+    CHECK(ran.empty());
+    b.vm().update(1.0);
+    CHECK(ran == std::vector<std::string>{"activate:7:20:2"});
+    CHECK(b.vm().scheduled_count() == 0);
 }

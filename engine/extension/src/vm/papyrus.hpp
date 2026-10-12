@@ -77,9 +77,27 @@ public:
     std::int64_t attach_cell(std::int64_t cell);
     /// Send OnActivate(activator) to `ref`'s scripts. Returns how many ran.
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
+    /// How a reference is activated (activate_ref's `source`).
+    static constexpr std::int64_t ACTIVATE_PLAYER = 0;
+    static constexpr std::int64_t ACTIVATE_SCRIPT = 1;
+    static constexpr std::int64_t ACTIVATE_PARENT = 2;
+
+    /// The whole of an activation, minus what only the host can do: the rules
+    /// of vm/activation.hpp (parent-only, locks), then OnActivate with
+    /// `activator` as akActionRef (not with `default_only`), then the
+    /// activate children on the VM's clock (not if scripts block activation),
+    /// as the same activator. Returns the outcome: `kind` is one of missing,
+    /// parent_only, locked, blocked (the host shows `note`), door (with `door`
+    /// data), furniture (with `event`), toggle_open or none (the host applies
+    /// it; `note` is for when it cannot); `label` names the reference and
+    /// `scripts` counts the OnActivate handlers that ran. A script's Activate
+    /// and the children arrive the same way through `activation_outcome`.
+    godot::Dictionary activate_ref(std::int64_t ref, std::int64_t activator, bool default_only,
+                                   std::int64_t source, bool force);
     /// Whether the model of `ref` is built and it is not disabled.
     bool is_3d_loaded(std::uint32_t ref) const;
     bool is_3d_loaded_i(std::int64_t ref) const { return is_3d_loaded(static_cast<std::uint32_t>(ref)); }
+    std::int64_t get_scheduled_count() const { return static_cast<std::int64_t>(vm_->scheduled_count()); }
     /// Send any event with arguments (ints are passed as ObjectReference).
     std::int64_t send_event(std::int64_t ref, const godot::String& event, const godot::Array& args);
     /// An animation event (a text key or a finished clip) on `ref`, for
@@ -220,6 +238,7 @@ private:
     static bool contains(const Volume& v, const godot::Vector3& p);
     godot::Vector3 position_of(std::uint32_t ref) const;
     void reset();
+    void install_scheduled_handler();
 
     std::unique_ptr<vm::Vm> vm_;
     godot::Ref<SkydotPack> pack_;

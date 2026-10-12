@@ -134,8 +134,16 @@ shows XPRM bounds doubled. Not checked against the game.
 | LocationAlias | `GetLocation`, `ForceLocationTo`, `Clear` |
 | GlobalVariable | `GetValue`, `SetValue` |
 
+Activation is decided in the engine: `activate_ref(ref, activator,
+default_only, source, force)` (source player, script or parent) applies the
+rules of `vm/activation.hpp`, runs OnActivate with the real activator unless
+`default_only`, schedules the activate children on the VM's clock (saved with
+it) unless a script blocks activation, and returns an outcome the host
+applies (door, furniture, toggle_open, or a note). A script's `Activate` and
+the children arrive as `activation_outcome`.
+
 World changes are signals: `enable_changed`, `play_animation`,
-`activate_requested`, `open_changed`, `lock_changed`, `effect_shader`,
+`activation_outcome`, `open_changed`, `lock_changed`, `effect_shader`,
 `message`, `trigger`, `havok_impulse`, `motion_type_changed`, and for
 quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
 The viewer shows or builds the reference, plays the animation on its

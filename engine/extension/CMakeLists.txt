@@ -51,6 +51,8 @@ set(SKYDOT_CORE_SOURCES
     src/data/world_data.hpp
     src/session/game_time.cpp
     src/session/game_time.hpp
+    src/vm/activation.cpp
+    src/vm/activation.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp

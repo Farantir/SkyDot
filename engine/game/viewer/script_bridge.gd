@@ -48,7 +48,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_papyrus.play_animation.connect(_on_play_animation)
 	_papyrus.havok_impulse.connect(_on_havok_impulse)
 	_papyrus.motion_type_changed.connect(_on_motion_type)
-	_papyrus.activate_requested.connect(_on_activate_requested)
+	_papyrus.activation_outcome.connect(_on_activation_outcome)
 	_papyrus.open_changed.connect(_on_open_changed)
 	_papyrus.lock_changed.connect(_on_lock_changed)
 	_papyrus.message.connect(_on_message)
@@ -76,12 +76,6 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 			var ref: int = node.get_meta("skydot_ref")
 			if changes.has(ref):
 				_show_ref(node, not changes[ref])
-
-
-func _on_activate_requested(ref: int, _activator: int, _default_only: bool) -> void:
-	var node := find_ref_node(ref)
-	# Parent-activate-only stops the player, not a script's Activate.
-	call_deferred("activate", _world.get_ref_cell(ref), ref, node, true, true)
 
 
 func _on_open_changed(ref: int, open: bool) -> void:
@@ -240,63 +234,64 @@ func _connect_notifies(node: Node, ref: int) -> void:
 			_papyrus.notify_animation_event(ref, name))
 
 
-## What activating reference `ref` in `cell` does. `node` is its model, if
-## built. `parent` activations ignore the parent-only flag. Returns false if
-## the reference could not be found.
-func activate(cell: int, ref: int, node: Node, force: bool, parent := false) -> bool:
-	var info := _world.get_ref_info(cell, ref)
-	if info.is_empty():
+## The player's activation of reference `ref`: SkydotPapyrus.activate_ref
+## decides (parent-only, locks, scripts, activate children) and this applies
+## what it asks of the scene. `force` picks locks. Returns false if the
+## reference could not be found.
+func activate(_cell: int, ref: int, _node: Node, force: bool) -> bool:
+	var outcome := _papyrus.activate_ref(ref, SkydotPapyrus.PLAYER_REF, false,
+		SkydotPapyrus.ACTIVATE_PLAYER, force or _settings.pick_locks)
+	if outcome["kind"] == "missing":
 		return false
-	var label := "0x%08X %s (%s)" % [ref, info["editor_id"], info["type"]]
-	if info["parent_activate_only"] and not parent:
-		_debug.note(label + " only responds to its activate parents")
-		return true
-	var level := _papyrus.get_lock_level(ref)  # -1: not locked; 0 is Novice
-	if level >= 0 and not force and not _settings.pick_locks:
-		_debug.note(label + " is locked (level %d, %s); Shift+F opens it anyway" % [level, _lock_name(level)])
-		return true
-	if level >= 0:
-		_papyrus.set_locked(ref, false)
-	if _papyrus.activate(ref) > 0:
-		print(label, " runs ", ", ".join(_papyrus.get_scripts(ref).map(func(s): return s["name"])))
-	for child in _world.get_activate_children(ref):
-		_host.get_tree().create_timer(child["delay"]).timeout.connect(func() -> void:
-			activate(child["cell"], child["ref"], find_ref_node(child["ref"]), true, true))
-	# A script that blocks activation handles it alone.
-	if _papyrus.is_activation_blocked(ref):
-		_debug.note(label + ": activation blocked, only its scripts ran")
-		return true
-	if info["door"] != null:
-		print(label, " leads to 0x%08X" % info["door"]["destination"])
-		_transition.go(info["door"])
-		return true
-	# A lever is furniture: using it pushes it (the player's push animation,
-	# which sends Lever_PlayerPush in the game, does not exist yet).
-	if info["type"] == "FURN" and node != null and _play_event(node, ref, "LeverPushStart"):
-		return true
-	if info["type"] == "DOOR" and node != null:
-		var animator := node.get_node_or_null("SkydotAnimator")
-		if animator != null:
-			var open: bool = not node.get_meta("skydot_open", false)
-			if animator.play("Open" if open else "Close"):
-				node.set_meta("skydot_open", open)
-				node.remove_meta("skydot_opened_by")  # an actor no longer closes it
-				_papyrus.set_open_state(ref, 1 if open else 3)
-				print(label, " opens" if open else " closes")
-				return true
-	if _papyrus.get_scripts(ref).is_empty():
-		_debug.note(label + ": nothing happens")
+	_apply_outcome(outcome, force)
 	return true
 
 
-## XLOC's level as the game names it.
-func _lock_name(level: int) -> String:
-	if level >= 255:
-		return "requires a key"
-	for step in [[100, "Master"], [75, "Expert"], [50, "Adept"], [25, "Apprentice"]]:
-		if level >= step[0]:
-			return step[1]
-	return "Novice"
+## A script's Activate or an activate child, once the VM has run it.
+func _on_activation_outcome(_ref: int, outcome: Dictionary) -> void:
+	_apply_outcome(outcome, false)
+
+
+## Do what an activation outcome asks of the scene and say what it noted.
+func _apply_outcome(outcome: Dictionary, picked := false) -> void:
+	var ref: int = outcome["ref"]
+	var label: String = outcome.get("label", "")
+	var node := find_ref_node(ref)
+	if outcome["scripts"] > 0:
+		print(label, " runs ", ", ".join(_papyrus.get_scripts(ref).map(func(s): return s["name"])))
+	match outcome["kind"]:
+		"parent_only", "blocked":
+			_debug.note(outcome["note"])
+			return
+		"locked":
+			_debug.note(outcome["note"] + "; Shift+F opens it anyway")
+			return
+		"door":
+			print(label, " leads to 0x%08X" % outcome["door"]["destination"])
+			_transition.go(outcome["door"])
+			return
+		"furniture":
+			if node != null and _play_event(node, ref, outcome["event"]):
+				return
+		"toggle_open":
+			if node != null and _toggle_open(node, ref, label):
+				return
+	if _papyrus.get_scripts(ref).is_empty():
+		_debug.note(outcome["note"])
+
+
+func _toggle_open(node: Node, ref: int, label: String) -> bool:
+	var animator := node.get_node_or_null("SkydotAnimator")
+	if animator == null:
+		return false
+	var open: bool = not node.get_meta("skydot_open", false)
+	if not animator.play("Open" if open else "Close"):
+		return false
+	node.set_meta("skydot_open", open)
+	node.remove_meta("skydot_opened_by")  # an actor no longer closes it
+	_papyrus.set_open_state(ref, 1 if open else 3)
+	print(label, " opens" if open else " closes")
+	return true
 
 
 ## The model of reference `ref` among what is built, or null.

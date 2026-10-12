@@ -10,6 +10,7 @@
 //              result argument)
 //   results:   u32 count; thread id, value
 //   timers:    u32 count; instance, due, interval
+//   scheduled: (version 2) u32 count; due, kind, a, b, c
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
@@ -30,7 +31,8 @@ namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 1;
+constexpr std::uint32_t k_version = 2; // 2: scheduled host calls after the timers
+constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
 
 class Writer {
@@ -245,6 +247,14 @@ std::vector<std::uint8_t> Vm::save() const {
         w.f64(t.due);
         w.f64(t.interval);
     }
+    w.u32(static_cast<std::uint32_t>(scheduled_.size()));
+    for (const auto& d : scheduled_) {
+        w.f64(d.due);
+        w.text(d.kind);
+        w.u32(d.a);
+        w.u32(d.b);
+        w.u32(d.c);
+    }
     return w.out;
 }
 
@@ -352,7 +362,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
     if (std::memcmp(magic, "SKPV", 4) != 0 || !r.u32(version)) {
         return fail("not a VM save");
     }
-    if (version != k_version) {
+    if (version < k_version_min || version > k_version) {
         return fail("VM save version " + std::to_string(version) + " is not one this engine reads (it reads " +
                     std::to_string(k_version) + ")");
     }
@@ -504,6 +514,18 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         }
         t.instance = index[instance];
         timers_.push_back(t);
+    }
+    if (version >= 2) {
+        if (!r.count(count, 24)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < count; ++n) {
+            Scheduled d;
+            if (!r.f64(d.due) || !r.text(d.kind) || !r.u32(d.a) || !r.u32(d.b) || !r.u32(d.c)) {
+                return fail("truncated VM save");
+            }
+            scheduled_.push_back(std::move(d));
+        }
     }
     if (!r.at_end()) {
         return fail("bytes after the end of the VM save");

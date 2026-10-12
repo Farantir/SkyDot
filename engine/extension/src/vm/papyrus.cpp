@@ -4,6 +4,7 @@
 #include "data/coordinates.hpp"
 #include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
+#include "vm/activation.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/classes/node3d.hpp>
@@ -11,6 +12,7 @@
 #include <godot_cpp/core/math.hpp>
 #include <godot_cpp/variant/utility_functions.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <numbers>
 
@@ -59,7 +61,13 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("attach", "cell", "ref"), &SkydotPapyrus::attach);
     godot::ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotPapyrus::attach_built);
     godot::ClassDB::bind_method(D_METHOD("attach_cell", "cell"), &SkydotPapyrus::attach_cell);
+    godot::ClassDB::bind_method(D_METHOD("activate_ref", "ref", "activator", "default_only", "source", "force"),
+                                &SkydotPapyrus::activate_ref);
     godot::ClassDB::bind_method(D_METHOD("is_3d_loaded", "ref"), &SkydotPapyrus::is_3d_loaded_i);
+    godot::ClassDB::bind_method(D_METHOD("get_scheduled_count"), &SkydotPapyrus::get_scheduled_count);
+    BIND_CONSTANT(ACTIVATE_PLAYER);
+    BIND_CONSTANT(ACTIVATE_SCRIPT);
+    BIND_CONSTANT(ACTIVATE_PARENT);
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
@@ -126,9 +134,10 @@ void SkydotPapyrus::_bind_methods() {
                                  PropertyInfo(Variant::FLOAT, "magnitude")));
     ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "motion_type")));
-    ADD_SIGNAL(godot::MethodInfo("activate_requested", PropertyInfo(Variant::INT, "ref"),
-                                 PropertyInfo(Variant::INT, "activator"),
-                                 PropertyInfo(Variant::BOOL, "default_only")));
+    // A script's or an activate parent's activation, once the VM ran it: the
+    // outcome as activate_ref describes it.
+    ADD_SIGNAL(godot::MethodInfo("activation_outcome", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::DICTIONARY, "outcome")));
     ADD_SIGNAL(godot::MethodInfo("open_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::BOOL, "open")));
     ADD_SIGNAL(godot::MethodInfo("lock_changed", PropertyInfo(Variant::INT, "ref"),
@@ -152,7 +161,18 @@ void SkydotPapyrus::_bind_methods() {
     BIND_CONSTANT(ALIAS_HANDLE_BASE);
 }
 
-SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) {}
+SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) { install_scheduled_handler(); }
+
+/// Host calls scheduled on the VM's clock: the activations of Activate and of
+/// activate children.
+void SkydotPapyrus::install_scheduled_handler() {
+    vm_->set_scheduled_handler([this](const std::string& kind, std::uint32_t a, std::uint32_t b, std::uint32_t c) {
+        if (kind == "activate") {
+            const Dictionary outcome = activate_ref(a, b, (c & 0x100u) != 0, c & 0xFFu, false);
+            emit_signal("activation_outcome", static_cast<std::int64_t>(a), outcome);
+        }
+    });
+}
 
 void SkydotPapyrus::reset() {
     attached_.clear();
@@ -181,6 +201,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     pack_ = pack;
     world_ = world;
     vm_ = std::make_unique<vm::Vm>();
+    install_scheduled_handler();
     reset();
     // Scripts keep their virtual paths: class Foo is scripts/foo.pex.
     vm_->set_loader([this](const std::string& key) -> std::optional<std::vector<std::uint8_t>> {
@@ -464,8 +485,10 @@ void SkydotPapyrus::bind_natives() {
 
     // ---- activation
     v.bind("ObjectReference", "Activate", [this, arg, result](NativeCall& c) {
-        emit_signal("activate_requested", static_cast<std::int64_t>(c.self.form()),
-                    static_cast<std::int64_t>(arg(c, 0).form()), vm::Vm::truthy(arg(c, 1)));
+        // Next VM update, on the VM's clock (and in its saves), not inside this call.
+        const std::uint32_t activator = arg(c, 0).form() != 0 ? arg(c, 0).form() : static_cast<std::uint32_t>(PLAYER_REF);
+        vm_->schedule(0.0, "activate", c.self.form(), activator,
+                      static_cast<std::uint32_t>(ActivationSource::script) | (vm::Vm::truthy(arg(c, 1)) ? 0x100u : 0u));
         return result(Value::boolean(true));
     });
     v.bind("ObjectReference", "BlockActivation", [this, arg](NativeCall& c) {
@@ -712,6 +735,79 @@ std::int64_t SkydotPapyrus::activate(std::int64_t ref, std::int64_t activator) {
 
 bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
     return ref_nodes::find(ref) != nullptr && !disabled(ref);
+}
+
+// The rules are in vm/activation.hpp; this runs them and what follows.
+Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator, bool default_only,
+                                       std::int64_t source, bool force) {
+    Dictionary out;
+    out["ref"] = ref;
+    out["kind"] = "missing";
+    out["note"] = String();
+    out["scripts"] = 0;
+    const auto form = static_cast<std::uint32_t>(ref);
+    const Dictionary info = ref_info(form);
+    if (info.is_empty()) {
+        return out;
+    }
+    const String label = String("0x%08X %s (%s)") % Array::make(ref, info["editor_id"], info["type"]);
+    out["label"] = label;
+    ActivationRequest request;
+    request.source = static_cast<ActivationSource>(std::clamp<std::int64_t>(source, 0, 2));
+    request.parent_activate_only = static_cast<bool>(info.get("parent_activate_only", false));
+    request.lock_level = static_cast<int>(get_lock_level(ref));
+    request.force = force;
+    switch (activation_gate(request)) {
+    case ActivationGate::parent_only:
+        out["kind"] = "parent_only";
+        out["note"] = label + String(" only responds to its activate parents");
+        return out;
+    case ActivationGate::locked:
+        out["kind"] = "locked";
+        out["lock_level"] = request.lock_level;
+        out["note"] = String("%s is locked (level %d, %s)") %
+                      Array::make(label, request.lock_level, String::utf8(lock_level_name(request.lock_level).c_str()));
+        return out;
+    case ActivationGate::pass:
+        break;
+    }
+    if (activation_unlocks(request)) {
+        set_locked(ref, false);
+    }
+    if (!default_only) {
+        out["scripts"] = activate(ref, activator != 0 ? activator : PLAYER_REF);
+    }
+    // A script that blocks activation handles it alone, and its activate
+    // children stay quiet.
+    if (is_activation_blocked(ref)) {
+        out["kind"] = "blocked";
+        out["note"] = label + String(": activation blocked, only its scripts ran");
+        return out;
+    }
+    // Activate children run on the VM's clock, as whoever activated the parent.
+    const Array children = world_->get_activate_children(ref);
+    for (std::int64_t i = 0; i < children.size(); ++i) {
+        const Dictionary child = children[i];
+        vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
+                      static_cast<std::uint32_t>(static_cast<std::int64_t>(child["ref"])),
+                      static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
+                      static_cast<std::uint32_t>(ActivationSource::parent));
+    }
+    out["kind"] = "none";
+    const Variant door = info.get("door", Variant());
+    if (door.get_type() == Variant::DICTIONARY) {
+        out["kind"] = "door";
+        out["door"] = door;
+    } else if (String(info["type"]) == "FURN") {
+        // A lever is furniture: using it pushes it (the player's push
+        // animation, which sends Lever_PlayerPush in the game, does not exist).
+        out["kind"] = "furniture";
+        out["event"] = "LeverPushStart";
+    } else if (String(info["type"]) == "DOOR") {
+        out["kind"] = "toggle_open";
+    }
+    out["note"] = label + String(": nothing happens"); // if the host can do nothing with `kind`
+    return out;
 }
 
 std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, const Array& args) {

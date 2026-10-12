@@ -114,12 +114,40 @@ func _run(pack_dir: String) -> void:
     _check_triggers(vm, world)
     _check_timers_and_natives(vm)
     _check_save(vm, pack, world)
+    _check_activation(vm)
     _check_loaded_state(vm, world, interior)
 
     # Missing classes and functions are reported, not fatal.
     expect(vm.call_global("NoSuchScript", "Run", []) == 0, "an unknown class starts nothing")
     expect(vm.get_error_count() == 1, "and is logged once: %d" % vm.get_error_count())
     print("smoke_papyrus: %d instructions, %.1f s of VM time" % [vm.get_instruction_count(), vm.get_time()])
+
+## activate_ref: default_only, locks by source, and the sources' difference.
+func _check_activation(vm: SkydotPapyrus) -> void:
+    var player := SkydotPapyrus.PLAYER_REF
+    var pulls_before: int = vm.get_variable(0x304, "TestpackLeverScript", "Pulls")
+    var outcome := vm.activate_ref(0x304, player, true, SkydotPapyrus.ACTIVATE_PLAYER, false)
+    expect(outcome["scripts"] == 0, "default processing only skips OnActivate")
+    vm.update(0.0)
+    expect(vm.get_variable(0x304, "TestpackLeverScript", "Pulls") == pulls_before, "so the lever is not pulled")
+    outcome = vm.activate_ref(0x304, player, false, SkydotPapyrus.ACTIVATE_PLAYER, false)
+    expect(outcome["scripts"] == 1, "and the full activation runs it")
+    vm.update(0.0)
+    expect(vm.get_variable(0x304, "TestpackLeverScript", "Pulls") == pulls_before + 1, "once")
+    expect(vm.activate_ref(0x9999999, player, false, 0, false)["kind"] == "missing", "an unknown reference is missing")
+
+    # 0x213 is locked (level 25); its partner 0x303 shares the lock.
+    expect(vm.get_lock_level(0x213) == 25, "the outside door starts locked")
+    outcome = vm.activate_ref(0x213, player, false, SkydotPapyrus.ACTIVATE_PLAYER, false)
+    expect(outcome["kind"] == "locked" and "Apprentice" in outcome["note"], "the player is refused: %s" % [outcome])
+    outcome = vm.activate_ref(0x213, player, false, SkydotPapyrus.ACTIVATE_SCRIPT, false)
+    expect(outcome["kind"] == "door" and outcome["door"]["destination"] == 0x303, "a script goes through")
+    outcome = vm.activate_ref(0x213, player, false, SkydotPapyrus.ACTIVATE_PARENT, true)
+    expect(outcome["kind"] == "door", "so does an activate parent, even with the pick flag")
+    expect(vm.get_lock_level(0x213) == 25 and vm.get_lock_level(0x303) == 25, "and neither unlocks it")
+    outcome = vm.activate_ref(0x213, player, false, SkydotPapyrus.ACTIVATE_PLAYER, true)
+    expect(outcome["kind"] == "door" and vm.get_lock_level(0x213) == -1, "the player's pick does")
+    vm.set_locked(0x213, true)
 
 ## Is3DLoaded follows the node registry: built, then gone when the node is freed
 ## (or leaves the tree).
