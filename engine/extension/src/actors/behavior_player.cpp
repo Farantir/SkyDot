@@ -109,8 +109,10 @@ SkydotBehavior* SkydotBehavior::attach_from(godot::Node* model, const BytesFn& b
     const std::string folder = path.substr(0, slash + 1);
     const std::string project = path.substr(slash + 1, dot - slash - 1);
 
-    // The character: the project file's "Characters\..." entry. Each way to
-    // miss it is its own message.
+    // The character: the project file entry that reads as a character. Most
+    // projects keep it in "Characters\...", some elsewhere (the puzzle door's
+    // "LargeCharacters\...", "BaseDoorCharacters\..."). Each way to miss it is
+    // its own message.
     const auto say = [&](const char* what) {
         if (!first_report(project + what)) {
             return;
@@ -130,7 +132,7 @@ SkydotBehavior* SkydotBehavior::attach_from(godot::Node* model, const BytesFn& b
     }
     for (const auto* f : *proj->project_files()) {
         const std::string file = normalize_path(f->str());
-        if (!file.starts_with("characters/")) {
+        if (file.find("characters/") == std::string::npos) {
             continue;
         }
         project_listed = true;
