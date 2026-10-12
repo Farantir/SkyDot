@@ -54,6 +54,8 @@ set(SKYDOT_CORE_SOURCES
     src/vm/activation.cpp
     src/vm/activation.hpp
     src/vm/census.cpp
+    src/vm/inventory.cpp
+    src/vm/inventory.hpp
     src/vm/natives_world.cpp
     src/vm/save.cpp
     src/vm/script_class.cpp

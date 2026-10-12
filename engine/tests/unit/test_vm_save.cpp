@@ -6,6 +6,7 @@
 // docs/papyrus.md ("Saving"): loading treats the bytes as untrusted, and a save
 // whose frames do not match the scripts is refused.
 #include "support/vm_rig.hpp"
+#include "vm/inventory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
@@ -297,10 +298,10 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
     SECTION("a version this engine does not read") {
-        bytes[4] = 3;
+        bytes[4] = 4;
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
-        CHECK_THAT(error, ContainsSubstring("version 3"));
+        CHECK_THAT(error, ContainsSubstring("version 4"));
     }
     SECTION("bytes after the end") {
         bytes.push_back(0);
@@ -478,4 +479,55 @@ TEST_CASE("host calls scheduled on the VM's clock are saved and run once due", "
     b.vm().update(1.0);
     CHECK(ran == std::vector<std::string>{"activate:7:20:2"});
     CHECK(b.vm().scheduled_count() == 0);
+}
+
+TEST_CASE("inventories add, remove and count per owner", "[vm][inventory]") {
+    skydot::vm::Inventory inv;
+    CHECK(inv.count(0x14, 0x39647) == 0);
+    inv.add(0x14, 0x39647, 2);
+    inv.add(0x14, 0x39647, 1);
+    inv.add(0x14, 0x1, 0); // nothing to add
+    CHECK(inv.count(0x14, 0x39647) == 3);
+    CHECK(inv.count(0x15, 0x39647) == 0);
+    CHECK(inv.remove(0x14, 0x39647, 2) == 2);
+    CHECK(inv.remove(0x14, 0x39647, 5) == 1); // clamped at what was there
+    CHECK(inv.count(0x14, 0x39647) == 0);
+    CHECK(inv.remove(0x14, 0x39647, 1) == 0);
+    CHECK(inv.owners().empty());
+}
+
+TEST_CASE("an inventory is part of the VM save, and a version 2 save loads with none", "[vm][save][inventory]") {
+    skydot::vm::Vm a;
+    a.inventory().add(0x14, 0x39647, 3);
+    a.inventory().add(0x14, 0x0F, 100);
+    a.inventory().add(0x4E2B9, 0x39647, 1);
+    const auto bytes = a.save();
+    skydot::vm::Vm b;
+    b.inventory().add(0x99, 0x1, 1); // replaced by the load
+    std::string error;
+    REQUIRE(b.load(bytes, error));
+    CHECK(b.inventory().count(0x14, 0x39647) == 3);
+    CHECK(b.inventory().count(0x14, 0x0F) == 100);
+    CHECK(b.inventory().count(0x4E2B9, 0x39647) == 1);
+    CHECK(b.inventory().count(0x99, 0x1) == 0);
+
+    SECTION("a cut inventory is refused") {
+        auto cut = bytes;
+        cut.pop_back();
+        skydot::vm::Vm c;
+        CHECK_FALSE(c.load(cut, error));
+    }
+    SECTION("version 2") {
+        Bytes v2;
+        v2.insert(v2.end(), {'S', 'K', 'P', 'V'});
+        put_u32(v2, 2);
+        v2.insert(v2.end(), 8 + 8 + 8, 0);
+        for (int i = 0; i < 5; ++i) { // instances, threads, results, timers, scheduled
+            put_u32(v2, 0);
+        }
+        skydot::vm::Vm d;
+        d.inventory().add(0x14, 0x1, 1);
+        REQUIRE(d.load(v2, error));
+        CHECK(d.inventory().owners().empty());
+    }
 }

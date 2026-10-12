@@ -11,6 +11,8 @@
 //   results:   u32 count; thread id, value
 //   timers:    u32 count; instance, due, interval
 //   scheduled: (version 2) u32 count; due, kind, a, b, c
+//   inventory: (version 3) u32 owner count; per owner: owner ref, u32 item
+//              count, then item form, i64 count each
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
@@ -31,7 +33,7 @@ namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 2; // 2: scheduled host calls after the timers
+constexpr std::uint32_t k_version = 3; // 2: scheduled host calls after the timers; 3: inventories
 constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
 
@@ -254,6 +256,15 @@ std::vector<std::uint8_t> Vm::save() const {
         w.u32(d.a);
         w.u32(d.b);
         w.u32(d.c);
+    }
+    w.u32(static_cast<std::uint32_t>(inventory_.owners().size()));
+    for (const auto& [owner, items] : inventory_.owners()) {
+        w.u32(owner);
+        w.u32(static_cast<std::uint32_t>(items.size()));
+        for (const auto& [item, count] : items) {
+            w.u32(item);
+            w.u64(static_cast<std::uint64_t>(count));
+        }
     }
     return w.out;
 }
@@ -525,6 +536,26 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 return fail("truncated VM save");
             }
             scheduled_.push_back(std::move(d));
+        }
+    }
+    if (version >= 3) {
+        std::uint32_t owners = 0;
+        if (!r.count(owners, 8)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < owners; ++n) {
+            std::uint32_t owner = 0, items = 0;
+            if (!r.u32(owner) || !r.count(items, 12)) {
+                return fail("truncated VM save");
+            }
+            for (std::uint32_t k = 0; k < items; ++k) {
+                std::uint32_t item = 0;
+                std::uint64_t amount = 0;
+                if (!r.u32(item) || !r.u64(amount)) {
+                    return fail("truncated VM save");
+                }
+                inventory_.add(owner, item, static_cast<std::int64_t>(amount));
+            }
         }
     }
     if (!r.at_end()) {

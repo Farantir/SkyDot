@@ -26,6 +26,7 @@
 // up the class chain.
 #pragma once
 
+#include "vm/inventory.hpp"
 #include "vm/script_class.hpp"
 #include "vm/value.hpp"
 
@@ -200,6 +201,10 @@ public:
     /// The VM's random numbers; seeded, so runs repeat.
     std::uint32_t random();
 
+    /// What references carry; saved with the VM.
+    Inventory& inventory() noexcept { return inventory_; }
+    [[nodiscard]] const Inventory& inventory() const noexcept { return inventory_; }
+
     /// Everything the scripts would need to carry on, as bytes.
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Replace all state with a save. On failure the VM is left empty and
@@ -291,6 +296,7 @@ private:
         std::uint32_t a = 0, b = 0, c = 0;
     };
     std::vector<Scheduled> scheduled_;
+    Inventory inventory_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();
     std::uint64_t rng_ = 0x9E3779B97F4A7C15ULL;
