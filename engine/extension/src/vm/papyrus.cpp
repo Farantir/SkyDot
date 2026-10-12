@@ -307,6 +307,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_objectreference_natives,
         &SkydotPapyrus::bind_effectshader_natives,
         &SkydotPapyrus::bind_quest_natives,
+        &SkydotPapyrus::bind_noop_natives,
     };
     for (const Registration registration : table) {
         (this->*registration)();

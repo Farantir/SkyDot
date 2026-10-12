@@ -132,6 +132,23 @@ void Vm::bind(std::string_view cls, std::string_view fn, Native native) {
     natives_[to_lower(cls) + "." + to_lower(fn)] = std::move(native);
 }
 
+void Vm::ignore(std::string_view cls, std::string_view fn) {
+    ignored_.insert(to_lower(cls) + "." + to_lower(fn));
+}
+
+bool Vm::is_bound(const Function* fn) { return native_of(fn) != nullptr; }
+
+bool Vm::is_ignored(const Function* fn) const {
+    return ignored_.contains(fn->owner->key() + "." + fn->name);
+}
+
+Value Vm::unbound_result(const Function* fn) {
+    if (!is_ignored(fn) && unbound_logged_.insert(fn->owner->key() + "." + fn->name).second) {
+        error("native " + fn->owner->name() + "." + fn->name + " is not bound");
+    }
+    return default_of(type_kind(fn->return_type));
+}
+
 void Vm::error(const std::string& message) {
     ++errors_;
     if (log_) {
@@ -345,7 +362,8 @@ std::uint64_t Vm::start(Found found, Value self, std::vector<Value> args, bool k
         std::vector<Value> converted = std::move(args);
         NativeCall call{*this, *thread, std::move(self), converted};
         const Native* native = native_of(found.fn);
-        const NativeResult result = native != nullptr ? (*native)(call) : NativeResult{};
+        const NativeResult result =
+            native != nullptr ? (*native)(call) : NativeResult{.value = unbound_result(found.fn), .wait = -1.0};
         if (keep_result) {
             results_[id] = result.value;
         }
@@ -818,8 +836,8 @@ bool Vm::call_native(Thread& thread, const Function* fn, Value self, std::vector
         }
         NativeCall call{*this, thread, std::move(self), args};
         result = (*native)(call);
-    } else if (const auto key = fn->owner->key() + "." + fn->name; unbound_logged_.insert(key).second) {
-        error("native " + fn->owner->name() + "." + fn->name + " is not bound");
+    } else {
+        result.value = unbound_result(fn);
     }
     Frame& frame = thread.frames.back();
     if (result_arg >= 0) {

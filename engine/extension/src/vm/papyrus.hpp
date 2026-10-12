@@ -33,6 +33,7 @@
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <godot_cpp/variant/transform3d.hpp>
 #include <godot_cpp/variant/variant.hpp>
@@ -203,6 +204,7 @@ private:
     void bind_objectreference_natives();
     void bind_effectshader_natives();
     void bind_quest_natives();
+    void bind_noop_natives();
     struct QuestState {
         bool running = false;
         bool started = false; ///< Has ever started.

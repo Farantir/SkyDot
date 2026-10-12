@@ -121,6 +121,13 @@ public:
 
     /// Bind `cls.fn` (any case). Replaces an earlier binding.
     void bind(std::string_view cls, std::string_view fn, Native native);
+    /// Mark `cls.fn` as a native that is meant to do nothing: it is not
+    /// logged when called and gives the default of its return type, like any
+    /// native nobody bound.
+    void ignore(std::string_view cls, std::string_view fn);
+    /// Whether a native of `fn`'s class and name is bound, or `ignore`d.
+    [[nodiscard]] bool is_bound(const Function* fn);
+    [[nodiscard]] bool is_ignored(const Function* fn) const;
 
     /// The class named `name` with its parents, loading them if needed; null
     /// if it or a parent is missing or invalid (logged once).
@@ -250,6 +257,10 @@ private:
     std::unordered_map<std::string, Native> natives_;
     std::unordered_map<const Function*, const Native*> resolved_natives_;
     std::set<std::string, std::less<>> unbound_logged_;
+    std::set<std::string, std::less<>> ignored_;
+    /// The result of calling a native nobody bound: logged once unless
+    /// ignored, then the default of its declared return type.
+    Value unbound_result(const Function* fn);
     std::unordered_map<std::uint32_t, std::vector<std::unique_ptr<Instance>>> instances_;
     std::vector<std::unique_ptr<Thread>> threads_;
     std::unordered_map<std::uint64_t, Value> results_;

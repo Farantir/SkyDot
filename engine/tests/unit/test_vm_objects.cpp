@@ -437,7 +437,8 @@ TEST_CASE("a native method is given the object it was called on", "[vm][natives]
     CHECK(rig.vm.errors() == 0);
 }
 
-TEST_CASE("a native nobody bound is logged once and gives None; the script goes on", "[vm][natives][errors]") {
+TEST_CASE("a native nobody bound is logged once and gives the default of its return type; the script goes on",
+          "[vm][natives][errors]") {
     Rig rig;
     rig.add({.name = "Gaps", .functions = {native_function("Missing", {}, "Int")}});
     // Function Run() global: Missing() twice, then a note
@@ -448,12 +449,65 @@ TEST_CASE("a native nobody bound is logged once and gives None; the script goes 
     run.add(Op::return_, {ident("r")});
     rig.add(script("Caller", {run}));
 
-    CHECK(rig.call("caller", "run").is_none());
+    const auto value = rig.call("caller", "run");
+    CHECK(value.kind() == Kind::integer);
+    CHECK(value.i() == 0);
     CHECK(rig.notes == std::vector<std::string>{"went on"});
     CHECK(rig.vm.errors() == 1);
     REQUIRE(rig.log.size() == 1);
     CHECK_THAT(rig.log[0], ContainsSubstring("not bound"));
     CHECK_THAT(rig.log[0], ContainsSubstring("Gaps"));
+}
+
+TEST_CASE("an unbound native gives 0, 0.0, False, an empty string or None as it is declared", "[vm][natives][errors]") {
+    Rig rig;
+    rig.add({.name = "Gaps",
+             .functions = {native_function("GetInt", {}, "Int"), native_function("GetFloat", {}, "Float"),
+                           native_function("GetBool", {}, "Bool"), native_function("GetString", {}, "String"),
+                           native_function("GetObject", {}, "ObjectReference"),
+                           native_function("GetArray", {}, "Form[]"), native_function("Nothing", {}, "None")}});
+    const std::vector<std::pair<const char*, const char*>> cases = {
+        {"GetInt", "Int"}, {"GetFloat", "Float"}, {"GetBool", "Bool"}, {"GetString", "String"},
+        {"GetObject", "ObjectReference"}, {"GetArray", "Form[]"}};
+    std::vector<FunctionSpec> callers;
+    for (const auto& [native, type] : cases) {
+        auto fn = global_function(std::string("call") + native, {}, {{"r", type}}, type);
+        fn.add(Op::callstatic, {ident("Gaps"), ident(native), ident("r")}).add(Op::return_, {ident("r")});
+        callers.push_back(std::move(fn));
+    }
+    rig.add(script("Caller", callers));
+
+    const auto as_int = rig.call("caller", "callGetInt");
+    CHECK(as_int.kind() == Kind::integer);
+    CHECK(as_int.i() == 0);
+    const auto as_float = rig.call("caller", "callGetFloat");
+    CHECK(as_float.kind() == Kind::floating);
+    CHECK(as_float.f() == 0.0F);
+    const auto as_bool = rig.call("caller", "callGetBool");
+    CHECK(as_bool.kind() == Kind::boolean);
+    CHECK_FALSE(as_bool.b());
+    const auto as_string = rig.call("caller", "callGetString");
+    CHECK(as_string.kind() == Kind::string);
+    CHECK(as_string.s().empty());
+    CHECK(rig.call("caller", "callGetObject").is_none());
+    CHECK(rig.call("caller", "callGetArray").is_none());
+    CHECK(rig.vm.errors() == 6); // one warning per native
+}
+
+TEST_CASE("a native marked as a no-op is silent and gives the default of its return type", "[vm][natives]") {
+    Rig rig;
+    rig.add({.name = "Gaps", .functions = {native_function("Quiet", {}, "Int"), native_function("Loud", {}, "Int")}});
+    auto run = global_function("run", {}, {{"r", "Int"}, {"s", "Int"}}, "Int");
+    run.add(Op::callstatic, {ident("Gaps"), ident("Quiet"), ident("r")})
+        .add(Op::callstatic, {ident("Gaps"), ident("Quiet"), ident("r")})
+        .add(Op::callstatic, {ident("Gaps"), ident("Loud"), ident("s")})
+        .add(Op::return_, {ident("r")});
+    rig.add(script("Caller", {run}));
+    rig.vm.ignore("GAPS", "quiet");
+
+    CHECK(rig.call("caller", "run").i() == 0);
+    REQUIRE(rig.log.size() == 1);
+    CHECK_THAT(rig.log[0], ContainsSubstring("loud"));
 }
 
 // ---- loading classes --------------------------------------------------------

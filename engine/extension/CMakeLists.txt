@@ -199,6 +199,7 @@ target_sources(skydot PRIVATE
     src/vm/natives_effectshader.cpp
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
+    src/vm/natives_noop.cpp
     src/vm/natives_objectreference.cpp
     src/vm/natives_quest.cpp
     src/vm/natives_utility.cpp
