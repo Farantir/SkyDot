@@ -853,6 +853,22 @@ godot::Ref<godot::Animation> CellBuilder::actor_clip(const std::string& file,
     return assets_->clip(file, skeleton_path);
 }
 
+godot::Node3D* CellBuilder::build_model(const godot::String& vpath) {
+    if (vpath.is_empty()) {
+        return nullptr;
+    }
+    const godot::Ref<SkydotModel> scene = resource(model_path(vpath.utf8().get_data()));
+    auto* node = scene.is_valid() ? godot::Object::cast_to<godot::Node3D>(scene->instantiate()) : nullptr;
+    if (node == nullptr) {
+        return nullptr;
+    }
+    DecorationStats stats;
+    Decoration decoration{stats, nullptr, nullptr, 0, scene.ptr()};
+    decoration.standalone = true;
+    decorator_.decorate(node, decoration);
+    return node;
+}
+
 godot::Node3D* CellBuilder::build_actor(std::int64_t ref) {
     const auto* actor = data().actor_ptr(ref);
     if (actor == nullptr) {

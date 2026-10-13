@@ -230,6 +230,8 @@ Dictionary get_projectile(const WorldData& data, std::int64_t id) {
     out["range"] = static_cast<double>(proj->range());
     out["collision_radius"] = static_cast<double>(proj->collision_radius());
     out["lifetime"] = static_cast<double>(proj->lifetime());
+    out["muzzle_flash_model"] = proj->muzzle_flash_model() != nullptr ? String::utf8(proj->muzzle_flash_model()->c_str()) : String();
+    out["muzzle_flash_duration"] = static_cast<double>(proj->muzzle_flash_duration());
     const auto* base = lookup(root->bases(), key);
     out["model"] = base != nullptr && base->model() != nullptr ? String::utf8(base->model()->c_str()) : String();
     return out;

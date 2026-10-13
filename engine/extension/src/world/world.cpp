@@ -61,6 +61,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_ref_cell", "ref"), &SkydotWorld::get_ref_cell);
     godot::ClassDB::bind_method(D_METHOD("find_ref_node", "ref"), &SkydotWorld::find_ref_node);
     godot::ClassDB::bind_method(D_METHOD("build_ref", "cell", "ref"), &SkydotWorld::build_ref);
+    godot::ClassDB::bind_method(D_METHOD("build_model", "vpath"), &SkydotWorld::build_model);
     godot::ClassDB::bind_method(D_METHOD("get_scripted_refs", "cell"), &SkydotWorld::get_scripted_refs);
     godot::ClassDB::bind_method(D_METHOD("get_activate_children", "ref"),
                                 &SkydotWorld::get_activate_children);
@@ -330,6 +331,7 @@ bool SkydotWorld::continue_build_static(godot::Node3D* root, std::int64_t budget
 godot::Node3D* SkydotWorld::build_ref(std::int64_t cell, std::int64_t ref) {
     return builder_.build_ref(cell, ref);
 }
+godot::Node3D* SkydotWorld::build_model(const String& vpath) { return builder_.build_model(vpath); }
 godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) { return builder_.build_actor(ref); }
 
 godot::PackedStringArray SkydotWorld::get_cell_resources(std::int64_t id) {

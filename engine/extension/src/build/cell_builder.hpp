@@ -97,6 +97,10 @@ public:
     /// at only: no collision, effects, lights or scripts. Null if its model is
     /// not loaded (see `large_ref_model`).
     godot::Node3D* build_large_ref(const bethconv::pack::wfb::LargeRef& ref);
+    /// A model that belongs to no reference (a projectile, a muzzle flash),
+    /// instanced and given its materials, add-ons, particles and animators.
+    /// No collision, tags or scripts. Null if it is not in the pack.
+    godot::Node3D* build_model(const godot::String& vpath);
     /// Placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref);
 

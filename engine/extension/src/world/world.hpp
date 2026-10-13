@@ -119,6 +119,8 @@ public:
     /// Build one reference of `cell` under a new Node3D, even if it starts
     /// disabled (for a script enabling it). Null if there is no such reference.
     godot::Node3D* build_ref(std::int64_t cell, std::int64_t ref);
+    /// A model of no reference with materials, add-ons, particles and animators (projectiles).
+    godot::Node3D* build_model(const godot::String& vpath);
     /// References of `cell` whose base or own VMAD names scripts, sorted.
     godot::PackedInt64Array get_scripted_refs(std::int64_t cell) const;
     /// The node standing for `ref` among what is built (null if unbuilt or

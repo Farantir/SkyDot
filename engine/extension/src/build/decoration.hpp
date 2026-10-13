@@ -70,6 +70,9 @@ struct Decoration {
     /// full detail): `base` is set, `ref` is null, and only the steps that
     /// change how it looks run: no water, add-ons, tags or collision.
     bool visual_only{};
+    /// A model that is no reference's (a projectile, a muzzle flash): the
+    /// steps that need a reference are skipped, the add-ons are attached.
+    bool standalone{};
 };
 
 class Decorator {

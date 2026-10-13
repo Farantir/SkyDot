@@ -88,6 +88,8 @@ struct Decorator::Steps {
         bool for_addon;
         /// Whether a visual-only model takes it.
         bool visual;
+        /// Whether a standalone model (no reference) takes it too.
+        bool standalone = false;
     };
 
     static void drop_root(Decorator&, godot::Node3D* node, Decoration&) { drop_root_transform(node); }
@@ -293,7 +295,7 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
         {Steps::water, false, false},
         {Steps::alternate_textures, false, true},
         {Steps::directional, false, true},
-        {Steps::addons, false, false},
+        {Steps::addons, false, false, true},
         {Steps::billboards, true, true},
         {Steps::animators, true, true},
         {Steps::behavior, false, false},
@@ -306,7 +308,7 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
             if (step.visual) {
                 step.run(*this, node, decoration);
             }
-        } else if (step.for_addon || decoration.ref != nullptr) {
+        } else if (step.for_addon || decoration.ref != nullptr || (decoration.standalone && step.standalone)) {
             step.run(*this, node, decoration);
         }
     }
