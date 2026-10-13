@@ -156,24 +156,11 @@ func _cold_start(model: Node) -> void:
 		emitter.set_warm_start(false)
 
 
-## A projectile that cannot be picked up is gone on impact: its meshes (dart,
-## trail) are hidden and its emitters stop, and the node is freed once the
-## particles already alive have faded.
+## A projectile that cannot be picked up is gone on impact, with its trail and
+## smoke: it is removed on the next physics step.
 func _vanish(shot: Dictionary) -> void:
-	var node: Node3D = shot["node"]
-	_hide_meshes(node)
-	for emitter in node.find_children("*", "SkydotParticles", true, false):
-		emitter.set_active(false)
-	shot["age"] = STUCK_SECONDS - FLASH_FADE_SECONDS
-
-
-func _hide_meshes(node: Node) -> void:
-	for child in node.get_children():
-		if child.get_class() == "SkydotParticles":
-			continue
-		if child is MeshInstance3D:
-			child.visible = false
-		_hide_meshes(child)
+	(shot["node"] as Node3D).visible = false
+	shot["age"] = STUCK_SECONDS + 1.0
 
 
 func _remove(index: int) -> void:
