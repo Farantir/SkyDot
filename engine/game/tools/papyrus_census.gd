@@ -5,8 +5,10 @@
 # nothing runs). Natives marked "ignored" are meant to do nothing.
 #
 #   godot4.7 --headless --path game --script res://tools/papyrus_census.gd -- \
-#       --pack <pack> [--top 40] [--all on]
+#       --pack <pack> [--top 40] [--all on] [--classes <file>]
 #
+# `--classes` names a file with one script class per line to read instead of
+# every script in the pack; their parents are read too.
 # Prints the totals and the unbound natives with most call sites first;
 # `--all on` lists the bound ones too, as a markdown table.
 extends SceneTree
@@ -30,6 +32,10 @@ func _initialize() -> void:
     # vpath.idx: path, hash, kind, source, tab separated; scripts/<class>.pex.
     var classes := PackedStringArray()
     var index := FileAccess.open(String(args["--pack"]).path_join("vpath.idx"), FileAccess.READ)
+    if args.has("--classes"):
+        index = null
+        for line in FileAccess.get_file_as_string(args["--classes"]).split("\n", false):
+            classes.append(line.strip_edges())
     while index != null and not index.eof_reached():
         var path := index.get_line().get_slice("\t", 0)
         if path.begins_with("scripts/") and path.ends_with(".pex") and path.count("/") == 1:

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // `Vm::census`: which natives a set of scripts call, found by reading their
-// code instead of running it.
+// code instead of running it. The parents of the named classes are read too,
+// each class once.
 #include "vm/vm.hpp"
 
 #include <algorithm>
 #include <map>
+#include <set>
 #include <tuple>
 
 namespace skydot::vm {
@@ -69,17 +71,17 @@ std::vector<Vm::CensusEntry> Vm::census(const std::vector<std::string>& classes)
             }
         }
     };
+    std::set<const ScriptClass*> seen;
     for (const std::string& name : classes) {
-        const ScriptClass* cls = class_named(name);
-        if (cls == nullptr) {
-            continue;
-        }
-        for (const auto& fn : cls->functions()) {
-            if (!fn->native) {
-                scan(*fn);
+        for (const ScriptClass* cls = class_named(name); cls != nullptr && seen.insert(cls).second;
+             cls = cls->parent()) {
+            for (const auto& fn : cls->functions()) {
+                if (!fn->native) {
+                    scan(*fn);
+                }
             }
+            // Hand-written property accessors are not scanned.
         }
-        // Hand-written property accessors are not scanned.
     }
     std::vector<CensusEntry> out;
     for (const auto& [fn, count] : sites) {
