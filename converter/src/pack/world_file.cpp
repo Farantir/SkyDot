@@ -250,6 +250,18 @@ std::optional<wfb::ProjectileT> WorldFile::projectile(std::uint32_t id) const {
     return unpack(lookup(impl_->root->projectiles(), id));
 }
 
+std::optional<wfb::SoundDescriptorT> WorldFile::sound_descriptor(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->sound_descriptors(), id));
+}
+
+std::optional<wfb::SoundMarkerT> WorldFile::sound_marker(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->sound_markers(), id));
+}
+
+std::optional<wfb::SoundOutputModelT> WorldFile::sound_output_model(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->sound_output_models(), id));
+}
+
 std::optional<wfb::ImageSpaceT> WorldFile::image_space(std::uint32_t id) const {
     return unpack(lookup(impl_->root->image_spaces(), id));
 }

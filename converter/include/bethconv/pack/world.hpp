@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 20;
+inline constexpr std::uint32_t k_world_format_version = 21;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -68,6 +68,10 @@ struct WorldStats {
     /// AMMO and PROJ (format 19).
     std::uint64_t ammos{};
     std::uint64_t projectiles{};
+    /// SNDR, SOUN and SOPM (format 21).
+    std::uint64_t sound_descriptors{};
+    std::uint64_t sound_markers{};
+    std::uint64_t sound_output_models{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -161,6 +165,9 @@ public:
     [[nodiscard]] std::optional<wfb::ArmorAddonT> armor_addon(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::AmmoT> ammo(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ProjectileT> projectile(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::SoundMarkerT> sound_marker(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::SoundOutputModelT> sound_output_model(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

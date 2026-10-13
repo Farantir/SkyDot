@@ -68,6 +68,15 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"PROJ"}.value:
         on_projectile(merged, data, form_ctx);
         break;
+    case FourCC{"SNDR"}.value:
+        on_sound_descriptor(merged, data, form_ctx);
+        break;
+    case FourCC{"SOUN"}.value:
+        on_sound_marker(merged, data, form_ctx);
+        break;
+    case FourCC{"SOPM"}.value:
+        on_sound_output_model(merged, data);
+        break;
     default:
         break;
     }
@@ -190,7 +199,8 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         return;
     }
     const std::string& path = !modl.empty() ? modl : !mod2.empty() ? mod2 : mod4;
-    if (path.empty() && scripts.empty()) {
+    // A sound marker has no model but is a base, so its placed references resolve.
+    if (path.empty() && scripts.empty() && merged.type != FourCC{"SOUN"}) {
         return;
     }
     bool failed = false;
@@ -257,6 +267,102 @@ void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanRe
         out.muzzle_flash_model = model_vpath(projectile->muzzle_flash_model);
     }
     projectiles_[out.id] = std::move(out);
+}
+
+/// SNDR. Field layouts checked against Skyrim.esm: ANAM file names (relative
+/// to Data\\Sound, with or without that prefix), CNAM type, GNAM category,
+/// ONAM output model, LNAM 4 bytes (byte 1 looping), BNAM 6 bytes.
+void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::SpanReader& data,
+                                        const record::FormContext&) {
+    wfb::SoundDescriptorT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"ANAM"}) {
+                if (auto path = sound_vpath(body.zstring().value_or("")); !path.empty()) {
+                    out.files.push_back(std::move(path));
+                }
+            } else if (field.type == FourCC{"CNAM"}) {
+                out.descriptor_type = body.get<std::uint32_t>().value_or(0);
+            } else if (field.type == FourCC{"GNAM"}) {
+                out.category = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
+            } else if (field.type == FourCC{"ONAM"}) {
+                out.output_model = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
+            } else if (field.type == FourCC{"LNAM"} && body.remaining() >= 2) {
+                (void)body.get<std::uint8_t>();
+                out.looping = body.get<std::uint8_t>().value_or(0);
+            } else if (field.type == FourCC{"BNAM"} && body.remaining() >= 6) {
+                out.frequency_shift = static_cast<std::int8_t>(body.get<std::uint8_t>().value_or(0));
+                out.frequency_variance = static_cast<std::int8_t>(body.get<std::uint8_t>().value_or(0));
+                out.priority = body.get<std::uint8_t>().value_or(0);
+                out.db_variance = body.get<std::uint8_t>().value_or(0);
+                out.static_attenuation = body.get<std::uint16_t>().value_or(0);
+            }
+        });
+    if (!walked) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    sound_descriptors_[out.id] = std::move(out);
+}
+
+/// SOUN: EDID and SDSC. The old inline sound (FNAM, SNDD) is not read.
+void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext&) {
+    wfb::SoundMarkerT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"SDSC"}) {
+                out.descriptor = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
+            }
+        });
+    if (!walked) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    sound_markers_[out.id] = std::move(out);
+}
+
+/// SOPM: NAM1 (byte 0 flags), MNAM type, ANAM 20 bytes: 4 reserved, min and
+/// max distance floats, 5 curve bytes, 3 reserved.
+void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data) {
+    wfb::SoundOutputModelT out;
+    out.id = merged.form.value;
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"NAM1"}) {
+                out.flags = body.get<std::uint8_t>().value_or(0);
+            } else if (field.type == FourCC{"MNAM"}) {
+                out.type = body.get<std::uint32_t>().value_or(0);
+            } else if (field.type == FourCC{"ANAM"} && body.remaining() >= 20) {
+                (void)body.skip(4);
+                out.min_distance = body.get<float>().value_or(0.0F);
+                out.max_distance = body.get<float>().value_or(0.0F);
+                for (int i = 0; i < 5; ++i) {
+                    out.curve.push_back(body.get<std::uint8_t>().value_or(0));
+                }
+            }
+        });
+    if (!walked) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    sound_output_models_[out.id] = std::move(out);
 }
 
 void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data) {
@@ -410,6 +516,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.bases += bases_.size();
     stats.ammos += ammos_.size();
     stats.projectiles += projectiles_.size();
+    stats.sound_descriptors += sound_descriptors_.size();
+    stats.sound_markers += sound_markers_.size();
+    stats.sound_output_models += sound_output_models_.size();
     stats.land_textures += land_textures_.size();
     for (auto& [id, list] : pending_alternates_) {
         const auto base = bases_.find(id);
@@ -431,6 +540,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.bases, bases_);
     move_into(world.ammos, ammos_);
     move_into(world.projectiles, projectiles_);
+    move_into(world.sound_descriptors, sound_descriptors_);
+    move_into(world.sound_markers, sound_markers_);
+    move_into(world.sound_output_models, sound_output_models_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;

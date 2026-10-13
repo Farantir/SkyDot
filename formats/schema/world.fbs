@@ -1245,6 +1245,55 @@ table Plugin {
     light: bool;
 }
 
+/// SNDR (format 21): a sound descriptor. `files` are normalized virtual paths
+/// of sound assets (`sound/fx/...`), in ANAM order; the engine plays a random
+/// one. Layouts checked against Skyrim.esm: CNAM is the descriptor type
+/// (0x1EEF540A standard; anything else is compound and has no files of its
+/// own), GNAM the category (SNCT), ONAM the output model (SOPM), LNAM four
+/// bytes of which byte 1 is the looping type, BNAM six bytes.
+table SoundDescriptor {
+    id: uint32 (key);
+    editor_id: string;
+    files: [string];
+    /// The SOPM in `sound_output_models`, 0 if none.
+    output_model: uint32;
+    category: uint32;
+    /// CNAM as stored.
+    descriptor_type: uint32;
+    /// LNAM byte 1: 0 none, 0x08 loop, 0x10 envelope fast, 0x20 envelope slow.
+    looping: uint8;
+    /// BNAM: percent frequency shift and variance, priority, dB variance,
+    /// static attenuation in hundredths of a dB.
+    frequency_shift: int8;
+    frequency_variance: int8;
+    priority: uint8;
+    db_variance: uint8;
+    static_attenuation: uint16;
+}
+
+/// SOUN (format 21): a sound marker, placed in cells (ambient loops).
+table SoundMarker {
+    id: uint32 (key);
+    editor_id: string;
+    /// SDSC: the SNDR in `sound_descriptors`.
+    descriptor: uint32;
+}
+
+/// SOPM (format 21): how a sound is placed in space. NAM1 byte 0 holds the
+/// flags (bit 0 attenuates with distance); MNAM is the type (0 positional,
+/// 1 defined speaker output); ANAM is 4 reserved bytes, min and max distance
+/// as floats in game units, five curve bytes (percent volume at evenly
+/// spaced distances) and 3 reserved bytes.
+table SoundOutputModel {
+    id: uint32 (key);
+    editor_id: string;
+    flags: uint8;
+    type: uint32;
+    min_distance: float;
+    max_distance: float;
+    curve: [ubyte];
+}
+
 table World {
     format_version: uint32;
     /// Sorted by id.
@@ -1301,6 +1350,12 @@ table World {
     ammos: [Ammo];
     /// Sorted by id (format 19).
     projectiles: [Projectile];
+    /// Sorted by id (format 21).
+    sound_descriptors: [SoundDescriptor];
+    /// Sorted by id (format 21).
+    sound_markers: [SoundMarker];
+    /// Sorted by id (format 21).
+    sound_output_models: [SoundOutputModel];
 }
 
 root_type World;

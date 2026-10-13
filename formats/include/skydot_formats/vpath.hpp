@@ -92,4 +92,14 @@ namespace skydot::formats {
     return under_folder(path, "textures/");
 }
 
+/// An SNDR file name is relative to `Data\sound\`, but plugins also write
+/// `Data\Sound\...` and `\Data\Sound\...`: the normalized virtual path.
+[[nodiscard]] inline std::string sound_vpath(std::string_view path) {
+    std::string out = normalize_vpath(path);
+    if (out.starts_with("data/")) {
+        out.erase(0, 5);
+    }
+    return under_folder(out, "sound/");
+}
+
 } // namespace skydot::formats

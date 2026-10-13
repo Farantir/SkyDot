@@ -80,6 +80,9 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto leveled_lists = pack_all(builder, root.leveled_lists);
     const auto ammos = pack_all(builder, root.ammos);
     const auto projectiles = pack_all(builder, root.projectiles);
+    const auto sound_descriptors = pack_all(builder, root.sound_descriptors);
+    const auto sound_markers = pack_all(builder, root.sound_markers);
+    const auto sound_output_models = pack_all(builder, root.sound_output_models);
     const auto grasses = pack_all(builder, root.grasses);
     const auto addon_nodes = pack_all(builder, root.addon_nodes);
     const auto plugins = pack_all(builder, root.plugins);
@@ -90,7 +93,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   plugins, precipitations, regions, npcs, races, armors,
                                   armor_addons, outfits, leveled_lists, packages, image_spaces,
                                   material_objects, grasses, addon_nodes, volumetric_lightings, ammos,
-                                  projectiles));
+                                  projectiles, sound_descriptors, sound_markers,
+                                  sound_output_models));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

@@ -1260,6 +1260,48 @@ void make_actors(const TempDir& dir) {
     bethconv::test::write_record(ammos, "AMMO", 0x0100'0E61, ammo.span());
     top_group(file, "AMMO", ammos);
 
+    ByteWriter sopm;
+    field_text(sopm, "EDID", "TestSOM3D");
+    field_u32(sopm, "NAM1", 0x2300'0001);
+    field_u32(sopm, "MNAM", 0);
+    ByteWriter sopm_anam;
+    sopm_anam.u32(0x00FA'9D80);
+    sopm_anam.f32(300.0F);
+    sopm_anam.f32(4000.0F);
+    for (const int c : {100, 70, 35, 15, 0, 0, 0, 0}) {
+        sopm_anam.u8(static_cast<std::uint8_t>(c));
+    }
+    bethconv::test::write_field(sopm, "ANAM", sopm_anam);
+    ByteWriter sopms;
+    bethconv::test::write_record(sopms, "SOPM", 0x0100'0E72, sopm.span());
+    top_group(file, "SOPM", sopms);
+
+    ByteWriter sndr;
+    field_text(sndr, "EDID", "TestLeverPullSD");
+    field_u32(sndr, "CNAM", 0x1EEF'540A);
+    field_u32(sndr, "GNAM", 0x0100'0E73);
+    field_text(sndr, "ANAM", "\\Data\\Sound\\FX\\OBJ\\Pull_01.wav");
+    field_text(sndr, "ANAM", "FX\\OBJ\\Pull_02.wav");
+    field_u32(sndr, "ONAM", 0x0100'0E72);
+    field_u32(sndr, "LNAM", 0x0000'0801);
+    ByteWriter bnam;
+    bnam.u8(0xFE); // -2 %
+    bnam.u8(5);
+    bnam.u8(0x80);
+    bnam.u8(3);
+    bnam.u16(132);
+    bethconv::test::write_field(sndr, "BNAM", bnam);
+    ByteWriter sndrs;
+    bethconv::test::write_record(sndrs, "SNDR", 0x0100'0E70, sndr.span());
+    top_group(file, "SNDR", sndrs);
+
+    ByteWriter soun;
+    field_text(soun, "EDID", "TestDrips");
+    field_u32(soun, "SDSC", 0x0100'0E70);
+    ByteWriter souns;
+    bethconv::test::write_record(souns, "SOUN", 0x0100'0E71, soun.span());
+    top_group(file, "SOUN", souns);
+
     ByteWriter npc;
     field_text(npc, "EDID", "TestNpc");
     ByteWriter acbs;
@@ -1396,6 +1438,37 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(npc->skin_tone == std::vector<float>{0.9F, 0.75F, 0.6F});
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
+
+    CHECK(stats->sound_descriptors == 1);
+    CHECK(stats->sound_markers == 1);
+    CHECK(stats->sound_output_models == 1);
+    const auto sndr_out = file->sound_descriptor(0x0200'0E70);
+    REQUIRE(sndr_out.has_value());
+    CHECK(sndr_out->editor_id == "TestLeverPullSD");
+    CHECK(sndr_out->files == std::vector<std::string>{"sound/fx/obj/pull_01.wav", "sound/fx/obj/pull_02.wav"});
+    CHECK(sndr_out->output_model == 0x0200'0E72);
+    CHECK(sndr_out->category == 0x0200'0E73);
+    CHECK(sndr_out->descriptor_type == 0x1EEF'540A);
+    CHECK(sndr_out->looping == 0x08);
+    CHECK(sndr_out->frequency_shift == -2);
+    CHECK(sndr_out->frequency_variance == 5);
+    CHECK(sndr_out->priority == 0x80);
+    CHECK(sndr_out->db_variance == 3);
+    CHECK(sndr_out->static_attenuation == 132);
+    const auto soun_out = file->sound_marker(0x0200'0E71);
+    REQUIRE(soun_out.has_value());
+    CHECK(soun_out->editor_id == "TestDrips");
+    CHECK(soun_out->descriptor == 0x0200'0E70);
+    const auto soun_base = file->base(0x0200'0E71);
+    REQUIRE(soun_base.has_value()); // placed markers resolve
+    CHECK(soun_base->model.empty());
+    const auto sopm_out = file->sound_output_model(0x0200'0E72);
+    REQUIRE(sopm_out.has_value());
+    CHECK(sopm_out->flags == 1);
+    CHECK(sopm_out->type == 0);
+    CHECK(sopm_out->min_distance == 300.0F);
+    CHECK(sopm_out->max_distance == 4000.0F);
+    CHECK(sopm_out->curve == std::vector<std::uint8_t>{100, 70, 35, 15, 0});
 
     CHECK(stats->ammos == 1);
     CHECK(stats->projectiles == 1);
