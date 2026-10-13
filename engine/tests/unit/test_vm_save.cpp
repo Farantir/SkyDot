@@ -298,10 +298,10 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
     SECTION("a version this engine does not read") {
-        bytes[4] = 4;
+        bytes[4] = 5;
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
-        CHECK_THAT(error, ContainsSubstring("version 4"));
+        CHECK_THAT(error, ContainsSubstring("version 5"));
     }
     SECTION("bytes after the end") {
         bytes.push_back(0);
@@ -529,5 +529,47 @@ TEST_CASE("an inventory is part of the VM save, and a version 2 save loads with 
         d.inventory().add(0x14, 0x1, 1);
         REQUIRE(d.load(v2, error));
         CHECK(d.inventory().owners().empty());
+    }
+}
+
+TEST_CASE("animation states are part of the VM save; version 3 saves load with none", "[vm][save][animation]") {
+    skydot::vm::Vm a;
+    a.set_animation_state(0x3B9F1, {1, 2, 3, 4});
+    a.set_animation_state(0x77, {9});
+    const auto bytes = a.save();
+    skydot::vm::Vm b;
+    b.set_animation_state(0x99, {5}); // replaced by the load
+    std::string error;
+    REQUIRE(b.load(bytes, error));
+    REQUIRE(b.animation_states().size() == 2);
+    CHECK(b.animation_states().at(0x3B9F1) == std::vector<std::uint8_t>{1, 2, 3, 4});
+    CHECK(b.animation_states().at(0x77) == std::vector<std::uint8_t>{9});
+
+    SECTION("a truncated section is refused") {
+        auto cut = bytes;
+        cut.pop_back();
+        skydot::vm::Vm c;
+        CHECK_FALSE(c.load(cut, error));
+    }
+    SECTION("a length beyond the bytes is refused") {
+        auto bad = bytes;
+        // Last record: ref(4) length(4) 1 byte; point its length far out.
+        bad[bad.size() - 5] = 0xFF;
+        bad[bad.size() - 4] = 0xFF;
+        skydot::vm::Vm c;
+        CHECK_FALSE(c.load(bad, error));
+    }
+    SECTION("version 3") {
+        Bytes v3;
+        v3.insert(v3.end(), {'S', 'K', 'P', 'V'});
+        put_u32(v3, 3);
+        v3.insert(v3.end(), 8 + 8 + 8, 0);
+        for (int i = 0; i < 6; ++i) { // instances, threads, results, timers, scheduled, inventory
+            put_u32(v3, 0);
+        }
+        skydot::vm::Vm d;
+        d.set_animation_state(0x1, {1});
+        REQUIRE(d.load(v3, error));
+        CHECK(d.animation_states().empty());
     }
 }

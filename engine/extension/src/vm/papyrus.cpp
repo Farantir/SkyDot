@@ -113,6 +113,9 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::get_global_value);
     godot::ClassDB::bind_method(D_METHOD("set_global_value", "global", "value"),
                                 &SkydotPapyrus::set_global_value);
+    godot::ClassDB::bind_method(D_METHOD("set_animation_state", "ref", "bytes"),
+                                &SkydotPapyrus::set_animation_state);
+    godot::ClassDB::bind_method(D_METHOD("get_animation_state", "ref"), &SkydotPapyrus::get_animation_state);
     godot::ClassDB::bind_method(D_METHOD("save_state"), &SkydotPapyrus::save_state);
     godot::ClassDB::bind_method(D_METHOD("load_state", "bytes"), &SkydotPapyrus::load_state);
     godot::ClassDB::bind_method(D_METHOD("get_last_error"), &SkydotPapyrus::get_last_error);
@@ -905,6 +908,23 @@ bool SkydotPapyrus::is_ref_disabled(std::int64_t ref) const {
 }
 
 // ---- saving ---------------------------------------------------------------
+
+void SkydotPapyrus::set_animation_state(std::int64_t ref, const godot::PackedByteArray& bytes) {
+    const auto* data = bytes.ptr();
+    vm_->set_animation_state(static_cast<std::uint32_t>(ref),
+                             data != nullptr ? std::vector<std::uint8_t>(data, data + bytes.size())
+                                             : std::vector<std::uint8_t>{});
+}
+
+godot::PackedByteArray SkydotPapyrus::get_animation_state(std::int64_t ref) const {
+    godot::PackedByteArray out;
+    const auto& all = vm_->animation_states();
+    if (const auto it = all.find(static_cast<std::uint32_t>(ref)); it != all.end()) {
+        out.resize(static_cast<std::int64_t>(it->second.size()));
+        std::copy(it->second.begin(), it->second.end(), out.ptrw());
+    }
+    return out;
+}
 
 godot::PackedByteArray SkydotPapyrus::save_state() const {
     Dictionary state;

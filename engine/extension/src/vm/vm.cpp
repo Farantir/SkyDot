@@ -496,6 +496,7 @@ void Vm::fire_scheduled() {
 
 void Vm::clear() {
     inventory_.clear();
+    animation_states_.clear();
     scheduled_.clear();
     threads_.clear();
     results_.clear();

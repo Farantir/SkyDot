@@ -205,6 +205,19 @@ public:
     Inventory& inventory() noexcept { return inventory_; }
     [[nodiscard]] const Inventory& inventory() const noexcept { return inventory_; }
 
+    /// Opaque per-reference animation state (a behaviour graph's snapshot),
+    /// kept and saved for the host; the VM does not look into it.
+    void set_animation_state(std::uint32_t ref, std::vector<std::uint8_t> bytes) {
+        if (bytes.empty()) {
+            animation_states_.erase(ref);
+        } else {
+            animation_states_[ref] = std::move(bytes);
+        }
+    }
+    [[nodiscard]] const std::map<std::uint32_t, std::vector<std::uint8_t>>& animation_states() const noexcept {
+        return animation_states_;
+    }
+
     /// Everything the scripts would need to carry on, as bytes.
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Replace all state with a save. On failure the VM is left empty and
@@ -297,6 +310,7 @@ private:
     };
     std::vector<Scheduled> scheduled_;
     Inventory inventory_;
+    std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();
     std::uint64_t rng_ = 0x9E3779B97F4A7C15ULL;

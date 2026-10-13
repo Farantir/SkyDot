@@ -13,6 +13,8 @@
 //   scheduled: (version 2) u32 count; due, kind, a, b, c
 //   inventory: (version 3) u32 owner count; per owner: owner ref, u32 item
 //              count, then item form, i64 count each
+//   animation: (version 4) u32 count; per reference: ref, u32 length, that
+//              many bytes (a behaviour graph's snapshot; opaque to the VM)
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
@@ -33,7 +35,8 @@ namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 3; // 2: scheduled host calls after the timers; 3: inventories
+constexpr std::uint32_t k_version = 4; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states
+constexpr std::uint32_t k_max_animation_state = 1U << 20; ///< Bytes per reference, against corrupt lengths.
 constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
 
@@ -265,6 +268,12 @@ std::vector<std::uint8_t> Vm::save() const {
             w.u32(item);
             w.u64(static_cast<std::uint64_t>(count));
         }
+    }
+    w.u32(static_cast<std::uint32_t>(animation_states_.size()));
+    for (const auto& [ref, bytes] : animation_states_) {
+        w.u32(ref);
+        w.u32(static_cast<std::uint32_t>(bytes.size()));
+        w.out.insert(w.out.end(), bytes.begin(), bytes.end());
     }
     return w.out;
 }
@@ -556,6 +565,25 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 }
                 inventory_.add(owner, item, static_cast<std::int64_t>(amount));
             }
+        }
+    }
+    if (version >= 4) {
+        std::uint32_t refs = 0;
+        if (!r.count(refs, 8)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < refs; ++n) {
+            std::uint32_t ref = 0, length = 0;
+            if (!r.u32(ref) || !r.count(length, 1) || length > k_max_animation_state) {
+                return fail("truncated VM save");
+            }
+            std::vector<std::uint8_t> state(length);
+            for (auto& b : state) {
+                if (!r.u8(b)) {
+                    return fail("truncated VM save");
+                }
+            }
+            set_animation_state(ref, std::move(state));
         }
     }
     if (!r.at_end()) {

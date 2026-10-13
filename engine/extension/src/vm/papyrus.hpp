@@ -180,6 +180,12 @@ public:
     double get_global_value(std::int64_t global) const;
     void set_global_value(std::int64_t global, double value);
 
+    /// A reference's behaviour graph snapshot (opaque bytes), kept and saved
+    /// with the VM; empty `bytes` forgets it.
+    void set_animation_state(std::int64_t ref, const godot::PackedByteArray& bytes);
+    /// The snapshot set for `ref`, empty if none.
+    godot::PackedByteArray get_animation_state(std::int64_t ref) const;
+
     /// Everything scripts and their view of the world need to carry on.
     godot::PackedByteArray save_state() const;
     /// Replace the current state with a save. Scripts must be the same.
