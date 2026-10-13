@@ -60,6 +60,7 @@ void SkydotPapyrus::bind_objectreference_natives() {
         }
         emit_signal("ref_moved", static_cast<std::int64_t>(ref), position, rotation);
         disabled_.erase(ref);
+        clear_destruction(ref);
         set_disabled(ref, static_cast<bool>(ref_info(ref).get("disabled", false)));
         return NativeResult{};
     });

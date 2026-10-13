@@ -82,6 +82,7 @@ var preload_distance := 15.0  # metres
 # Runs that drive themselves.
 var activate: Array[int] = []  # references to activate in turn, then quit
 var has_activate := false
+var damage: Array[Vector2] = []  # --damage 0xREF=AMOUNT: DamageObject calls after the activations
 var activate_wait := 0  # frames between two --activate references (0: next frame)
 var quit_after := -1  # frames after the last --activate before quitting (-1: 5)
 var give: Array[Vector2i] = []  # (form id, count) the player starts with (--give)
@@ -143,6 +144,12 @@ func _read(args: Dictionary) -> void:
 	if has_activate:
 		for id in args["activate"].split(","):
 			activate.append(id.hex_to_int() if id.begins_with("0x") else id.to_int())
+	for entry: String in args.get("damage", "").split(",", false):
+		var eq := entry.find("=")
+		var ref_text := entry if eq < 0 else entry.substr(0, eq)
+		var ref: int = ref_text.hex_to_int() if ref_text.begins_with("0x") else ref_text.to_int()
+		damage.append(Vector2(ref, entry.substr(eq + 1).to_float() if eq >= 0 else 1.0))
+		has_activate = true  # a run with damage ends by itself
 	for entry: String in args.get("give", "").split(",", false):
 		var cut := entry.find("x", 2)  # 0xFORMxN: the count follows the second x
 		var form_text := entry if cut < 0 else entry.substr(0, cut)

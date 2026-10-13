@@ -181,6 +181,12 @@ public:
     godot::Dictionary get_form_list(std::int64_t id) const;
     /// editor_id, title, text, box, buttons; empty if `id` is not a message.
     godot::Dictionary get_message(std::int64_t id) const;
+    /// health, flags, stages (see queries_forms.cpp); empty if the base is not destructible.
+    godot::Dictionary get_destruction(std::int64_t base) const;
+    /// model, sounds, placed_object, force, damage, radius...; empty if `id` is not an explosion.
+    godot::Dictionary get_explosion(std::int64_t id) const;
+    /// Make `node` the node of runtime reference `ref` (PlaceAtMe's), for find_ref_node.
+    void tag_runtime_ref(std::int64_t ref, std::int64_t cell, godot::Node3D* node) const;
     /// SOPM: id, editor_id, flags (bit 0: attenuates with distance), type,
     /// min_distance and max_distance (game units), curve (5 bytes). Empty if
     /// not an output model.

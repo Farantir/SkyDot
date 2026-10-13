@@ -17,6 +17,10 @@
 //              many bytes (a behaviour graph's snapshot; opaque to the VM)
 //   form lists: (version 5) u32 list count; per list: list form, u32 count,
 //              then the forms added to it, in order
+//   placed:    (version 6) u32 next id, u32 count; per kept reference: id,
+//              base, cell, f64 x3 position, f64 x3 rotation, f64 scale
+//   destruction: (version 6) u32 count; per reference: ref, f64 damage, i32
+//              stage (as u32), u8 destroyed
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
@@ -29,6 +33,7 @@
 // different scripts fails instead of running the wrong code.
 #include "vm/vm.hpp"
 
+#include <algorithm>
 #include <bit>
 #include <cstring>
 #include <map>
@@ -37,7 +42,7 @@ namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 5; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states; 5: form lists
+constexpr std::uint32_t k_version = 6; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states; 5: form lists; 6: placed references and destruction
 constexpr std::uint32_t k_max_animation_state = 1U << 20; ///< Bytes per reference, against corrupt lengths.
 constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
@@ -284,6 +289,34 @@ std::vector<std::uint8_t> Vm::save() const {
         for (const auto form : added) {
             w.u32(form);
         }
+    }
+    std::uint32_t kept = 0;
+    for (const auto& [id, ref] : placed_.refs()) {
+        kept += ref.transient ? 0U : 1U;
+    }
+    w.u32(placed_.next());
+    w.u32(kept);
+    for (const auto& [id, ref] : placed_.refs()) {
+        if (ref.transient) {
+            continue;
+        }
+        w.u32(id);
+        w.u32(ref.base);
+        w.u32(ref.cell);
+        for (const double v : ref.position) {
+            w.f64(v);
+        }
+        for (const double v : ref.rotation) {
+            w.f64(v);
+        }
+        w.f64(ref.scale);
+    }
+    w.u32(static_cast<std::uint32_t>(destruction_.states().size()));
+    for (const auto& [ref, state] : destruction_.states()) {
+        w.u32(ref);
+        w.f64(state.damage);
+        w.u32(static_cast<std::uint32_t>(state.stage));
+        w.u8(state.destroyed ? 1 : 0);
     }
     return w.out;
 }
@@ -613,6 +646,44 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 }
                 form_lists_.add(list, form);
             }
+        }
+    }
+    if (version >= 6) {
+        std::uint32_t next = 0, kept = 0;
+        if (!r.u32(next) || !r.count(kept, 12 + 7 * 8)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < kept; ++n) {
+            std::uint32_t id = 0;
+            PlacedRef ref;
+            bool ok = r.u32(id) && r.u32(ref.base) && r.u32(ref.cell);
+            for (double& v : ref.position) {
+                ok = ok && r.f64(v);
+            }
+            for (double& v : ref.rotation) {
+                ok = ok && r.f64(v);
+            }
+            ok = ok && r.f64(ref.scale);
+            if (!ok) {
+                return fail("truncated VM save");
+            }
+            placed_.restore(id, ref);
+        }
+        placed_.set_next(std::max(next, placed_.next()));
+        std::uint32_t states = 0;
+        if (!r.count(states, 17)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < states; ++n) {
+            std::uint32_t ref = 0, stage = 0;
+            std::uint8_t destroyed = 0;
+            DestructionState state;
+            if (!r.u32(ref) || !r.f64(state.damage) || !r.u32(stage) || !r.u8(destroyed)) {
+                return fail("truncated VM save");
+            }
+            state.stage = static_cast<std::int32_t>(stage);
+            state.destroyed = destroyed != 0;
+            destruction_.set(ref, state);
         }
     }
     if (!r.at_end()) {

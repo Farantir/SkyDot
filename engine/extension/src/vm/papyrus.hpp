@@ -149,6 +149,18 @@ public:
     bool is_ref_disabled(std::int64_t ref) const;
     /// References whose enabled state scripts changed: ref -> disabled.
     godot::Dictionary get_disabled_changes() const;
+    /// Take a PlaceAtMe reference out of the world (`ref_deleted`); the game
+    /// layer calls it when an effect has run its course. No-op for any other.
+    void remove_placed(std::int64_t ref);
+    /// DamageObject from the host (the viewer's --damage).
+    void damage_ref(std::int64_t ref, double amount) { damage_object(static_cast<std::uint32_t>(ref), amount); }
+    /// The game layer built the node of a placed reference: OnCellAttach,
+    /// OnCellLoad and OnLoad. Returns how many handlers ran.
+    std::int64_t ref_built(std::int64_t ref);
+    /// The base form of a reference, placed or runtime; 0 if unknown.
+    std::int64_t get_ref_base(std::int64_t ref) const {
+        return static_cast<std::int64_t>(ref_info(static_cast<std::uint32_t>(ref)).get("base", 0));
+    }
     bool is_activation_blocked(std::int64_t ref) const;
     /// The lock level if `ref` is locked, else -1.
     std::int64_t get_lock_level(std::int64_t ref) const;
@@ -234,6 +246,7 @@ private:
     void bind_quest_natives();
     void bind_noop_natives();
     void bind_world_natives();
+    void bind_runtime_natives();
     struct QuestState {
         bool running = false;
         bool started = false; ///< Has ever started.
@@ -264,6 +277,18 @@ private:
                                 std::uint32_t owner_quest);
     godot::Variant to_variant(const vm::Value& v) const;
     godot::Dictionary ref_info(std::uint32_t ref) const;
+    /// ref_info for a PlaceAtMe reference: its base's scripts, where it was put.
+    godot::Dictionary placed_info(const vm::PlacedRef& placed) const;
+    /// The cell a reference is in, placed or runtime; 0 if unknown.
+    std::uint32_t cell_of(std::uint32_t ref) const;
+    /// PlaceAtMe: a new runtime reference of `base` where `source` is.
+    std::uint32_t place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled);
+    /// The base's DEST (get_destruction), empty if `ref` is not destructible.
+    godot::Dictionary destruction_of(std::uint32_t ref) const;
+    /// DamageObject: open the stages the damage reaches and send
+    /// OnDestructionStageChanged.
+    void damage_object(std::uint32_t ref, double amount);
+    void clear_destruction(std::uint32_t ref);
     bool disabled(std::uint32_t ref, int depth = 0) const;
     void set_disabled(std::uint32_t ref, bool value);
     bool locked(std::uint32_t ref) const;

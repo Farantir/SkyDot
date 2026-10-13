@@ -118,6 +118,10 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_animation_state", "ref", "bytes"),
                                 &SkydotPapyrus::set_animation_state);
     godot::ClassDB::bind_method(D_METHOD("get_animation_state", "ref"), &SkydotPapyrus::get_animation_state);
+    godot::ClassDB::bind_method(D_METHOD("remove_placed", "ref"), &SkydotPapyrus::remove_placed);
+    godot::ClassDB::bind_method(D_METHOD("damage_ref", "ref", "amount"), &SkydotPapyrus::damage_ref);
+    godot::ClassDB::bind_method(D_METHOD("ref_built", "ref"), &SkydotPapyrus::ref_built);
+    godot::ClassDB::bind_method(D_METHOD("get_ref_base", "ref"), &SkydotPapyrus::get_ref_base);
     godot::ClassDB::bind_method(D_METHOD("save_state"), &SkydotPapyrus::save_state);
     godot::ClassDB::bind_method(D_METHOD("load_state", "bytes"), &SkydotPapyrus::load_state);
     godot::ClassDB::bind_method(D_METHOD("get_last_error"), &SkydotPapyrus::get_last_error);
@@ -156,6 +160,19 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("ref_moved", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::VECTOR3, "position"),
                                  PropertyInfo(Variant::VECTOR3, "rotation")));
+    // PlaceAtMe: a runtime reference of `base` in `cell` at a position (Skyrim
+    // space) and rotation (radians) for the game layer to build; ref_deleted
+    // when it goes (Delete, an effect that ended, a loaded save).
+    ADD_SIGNAL(godot::MethodInfo("ref_placed", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::INT, "base"), PropertyInfo(Variant::INT, "cell"),
+                                 PropertyInfo(Variant::VECTOR3, "position"),
+                                 PropertyInfo(Variant::VECTOR3, "rotation"),
+                                 PropertyInfo(Variant::FLOAT, "scale"), PropertyInfo(Variant::BOOL, "disabled")));
+    ADD_SIGNAL(godot::MethodInfo("ref_deleted", PropertyInfo(Variant::INT, "ref")));
+    // A destructible reference opened a stage with a model: the game layer
+    // swaps to it ("" and stage 0: back to the base's own model).
+    ADD_SIGNAL(godot::MethodInfo("destruction_model", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::STRING, "model"), PropertyInfo(Variant::INT, "stage")));
     ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "motion_type")));
     // A script's or an activate parent's activation, once the VM ran it: the
@@ -246,11 +263,20 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     return godot::OK;
 }
 
+namespace {
+Vector3 vec3(const double (&v)[3]) {
+    return Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
+}
+} // namespace
+
 // ---- the world as scripts see it ----------------------------------------------
 
 Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
     if (world_.is_null()) {
         return {};
+    }
+    if (const auto* placed = vm_->placed().find(ref)) {
+        return placed_info(*placed);
     }
     return world_->get_ref_info(world_->get_ref_cell(ref), ref);
 }
@@ -356,7 +382,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         return 0;
     }
     std::uint32_t parent_cell(std::uint32_t ref) const override {
-        return owner_.world_.is_null() ? 0 : static_cast<std::uint32_t>(owner_.world_->get_ref_cell(ref));
+        return owner_.cell_of(ref);
     }
     bool cell_interior(std::uint32_t cell) const override {
         return !owner_.world_.is_null() && static_cast<bool>(owner_.world_->get_cell(cell).get("interior", false));
@@ -425,6 +451,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
+        &SkydotPapyrus::bind_runtime_natives,
     };
     for (const Registration registration : table) {
         (this->*registration)();
@@ -1142,7 +1169,14 @@ godot::Error SkydotPapyrus::load_state(const godot::PackedByteArray& bytes) {
     const godot::PackedByteArray packed = state["vm"];
     const std::vector<std::uint8_t> vm_bytes(packed.ptr(), packed.ptr() + packed.size());
     std::string why;
+    std::vector<std::uint32_t> gone;
+    for (const auto& [id, placed] : vm_->placed().refs()) {
+        gone.push_back(id);
+    }
     reset();
+    for (const auto id : gone) {
+        emit_signal("ref_deleted", static_cast<std::int64_t>(id));
+    }
     if (!vm_->load(vm_bytes, why)) {
         return fail(to_godot(why));
     }
@@ -1228,6 +1262,12 @@ godot::Error SkydotPapyrus::load_state(const godot::PackedByteArray& bytes) {
         }
         each(state["globals"], [&](const Variant& k, const Variant& v) { globals_[ref_of(k)] = v; });
         next_alias_handle_ = ref_of(state["next_alias_handle"]);
+    }
+    // The kept placed references are built again.
+    for (const auto& [id, placed] : vm_->placed().refs()) {
+        emit_signal("ref_placed", static_cast<std::int64_t>(id), static_cast<std::int64_t>(placed.base),
+                    static_cast<std::int64_t>(placed.cell), vec3(placed.position), vec3(placed.rotation),
+                    placed.scale, disabled(id));
     }
     last_error_ = String();
     return godot::OK;

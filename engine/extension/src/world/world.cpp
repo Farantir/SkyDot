@@ -56,6 +56,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_base_keywords", "base"), &SkydotWorld::get_base_keywords);
     godot::ClassDB::bind_method(D_METHOD("get_form_list", "id"), &SkydotWorld::get_form_list);
     godot::ClassDB::bind_method(D_METHOD("get_message", "id"), &SkydotWorld::get_message);
+    godot::ClassDB::bind_method(D_METHOD("get_destruction", "base"), &SkydotWorld::get_destruction);
+    godot::ClassDB::bind_method(D_METHOD("get_explosion", "id"), &SkydotWorld::get_explosion);
+    godot::ClassDB::bind_method(D_METHOD("tag_runtime_ref", "ref", "cell", "node"), &SkydotWorld::tag_runtime_ref);
     godot::ClassDB::bind_method(D_METHOD("get_sound_output_model", "id"), &SkydotWorld::get_sound_output_model);
     godot::ClassDB::bind_method(D_METHOD("get_ammo", "id"), &SkydotWorld::get_ammo);
     godot::ClassDB::bind_method(D_METHOD("get_projectile", "id"), &SkydotWorld::get_projectile);
@@ -275,6 +278,16 @@ std::int64_t SkydotWorld::find_keyword(const String& editor_id) const { return q
 godot::PackedInt64Array SkydotWorld::get_base_keywords(std::int64_t base) const { return queries::get_base_keywords(data(), base); }
 Dictionary SkydotWorld::get_form_list(std::int64_t id) const { return queries::get_form_list(data(), id); }
 Dictionary SkydotWorld::get_message(std::int64_t id) const { return queries::get_message(data(), id); }
+Dictionary SkydotWorld::get_destruction(std::int64_t base) const { return queries::get_destruction(data(), base); }
+Dictionary SkydotWorld::get_explosion(std::int64_t id) const { return queries::get_explosion(data(), id); }
+void SkydotWorld::tag_runtime_ref(std::int64_t ref, std::int64_t cell, godot::Node3D* node) const {
+    if (node == nullptr) {
+        return;
+    }
+    node->set_meta("skydot_ref", ref);
+    node->set_meta("skydot_cell", cell);
+    ref_nodes::add(static_cast<std::uint32_t>(ref), node);
+}
 Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return queries::get_sound_output_model(data(), id); }
 Dictionary SkydotWorld::get_ammo(std::int64_t id) const { return queries::get_ammo(data(), id); }
 Dictionary SkydotWorld::get_projectile(std::int64_t id) const { return queries::get_projectile(data(), id); }

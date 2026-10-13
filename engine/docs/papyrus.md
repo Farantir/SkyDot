@@ -130,7 +130,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `HasKeyword` (a reference answers for its base's KWDA; only bases that world.fb has, i.e. with a model or scripts, carry keywords), `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
-| ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `PlaceAtMe`, `Delete`, `DeleteWhenAble`, `DamageObject`, `ClearDestruction`, `SetDestroyed`, `IsDestroyed`, `GetCurrentDestructionStage`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
 | Keyword | `GetKeyword` (by editor id, any case; KYWD table of world.fb) |
 | FormList | `GetSize`, `GetAt`, `Find`, `HasForm` (the FLST's forms, then those added; nested lists are not looked into), `AddForm`, `RemoveAddedForm`, `Revert` (the additions are `Vm::form_lists`, saved with the VM) |
 | Message | `Show` (MESG text, `%.0f`-style placeholders filled from the arguments; signal `message`; returns 0, the first button), `ShowAsHelpMessage` (as a notification) |
@@ -153,7 +153,7 @@ it) unless a script blocks activation, and returns an outcome the host
 applies (door, furniture, toggle_open, or a note). A script's `Activate` and
 the children arrive as `activation_outcome`.
 
-World changes are signals: `enable_changed`, `ref_moved`, `play_animation`,
+World changes are signals: `enable_changed`, `ref_moved`, `ref_placed`, `ref_deleted`, `destruction_model`, `play_animation`,
 `activation_outcome`, `open_changed`, `lock_changed`, `effect_shader`,
 `message`, `trigger`, `havok_impulse`, `fire_weapon`, `play_sound`, `stop_sound`, `sound_volume`, `motion_type_changed`, and for
 quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
@@ -193,6 +193,42 @@ unbound native. Starting vanilla SE's start-game-enabled quests and running
 a minute reaches about 40 unbound natives, mostly on actors and
 inventories, which do not exist yet.
 
+### Run-time references and destruction
+
+`PlaceAtMe(form, count, persist, disabled)` makes `count` references (at most
+64) of `form` at the caller's position, rotation and scale and in its cell,
+and returns the last. Their ids are runtime ids from 0xFF001000. The VM keeps
+them (`Vm::placed`, `vm/runtime_refs.hpp`; base, cell, transform) and the
+base's scripts attach to them, OnInit at once and OnLoad (with OnCellAttach,
+OnCellLoad) when the game layer reports the node built (`ref_built`).
+`ref_placed(ref, base, cell, position, rotation, scale, disabled)` makes
+`game/game/placed.gd` build the node from the base's model with
+`SkydotWorld.build_model`, tag it for `find_ref_node` and report it built.
+`Delete` and `DeleteWhenAble` remove a placed reference (`ref_deleted`); on a
+reference from the editor they only disable it. Persist is ignored; placed
+actors have no model, so nothing is drawn for them (warned once).
+
+An EXPL (world.fb format 23) as `form` is an explosion: a transient reference
+that is not saved. The VM plays the record's sound at it (`play_sound`), the
+game layer plays the model's controllers and particles once, stops the
+emitters after 1.5 s and has the VM remove the reference (`remove_placed`)
+after 5 s. That life is fixed: the animator does not report how long its
+controllers run. No damage, force, light, impact data or placed object yet.
+Placed references are saved with the VM (save version 6; version 5 still
+loads) and built again when a save loads; `load_state` removes the old ones.
+
+Destruction uses the base's DEST. `DamageObject(d)` takes health off (it
+never goes below 0); the stage number is the count of stages opened, 0 when
+intact, and a stage opens when the remaining health has fallen to its
+`health_percent`. Each stage opened by a blow takes effect in order: its
+model replaces the reference's (`destruction_model(ref, model, stage)`; the
+game layer swaps the node), its explosion is placed, flag 2 disables the
+reference and flag 4 marks it destroyed (cap damage and ignore external
+damage are not applied). Then the scripts get
+`OnDestructionStageChanged(old, current)`. `ClearDestruction` (and `Reset`)
+forget the damage and bring back the base's model. State is saved with the VM
+(`Vm::destruction`). Self-damage per second and debris are not applied.
+
 ## Census
 
 `game/tools/papyrus_census.gd` reads the code of every script in a pack
@@ -214,9 +250,9 @@ Skyrim SE pack, 14,325 scripts (2026-10-13):
 | | Natives | Call sites |
 | --- | ---: | ---: |
 | Called | 549 | 65,685 |
-| Bound | 104 | 40,200 |
+| Bound | 110 | 41,205 |
 | Ignored (no-op) | 19 | 499 |
-| Unbound | 426 | 24,986 |
+| Unbound | 420 | 23,981 |
 
 Unbound natives with most call sites (the first are quest topic and scene
 plumbing, then movement and actor state, which are the work still to come):
@@ -228,7 +264,6 @@ plumbing, then movement and actor state, which are the work still to come):
 | `Actor.EvaluatePackage` | 1,282 |
 | `Scene.GetOwningQuest` | 1,007 |
 | `Scene.Start` | 942 |
-| `ObjectReference.PlaceAtMe` | 609 |
 | `Actor.RemoveFromFaction` | 536 |
 | `Scene.Stop` | 486 |
 | `Actor.IsDead` | 424 |
@@ -242,7 +277,8 @@ plumbing, then movement and actor state, which are the work still to come):
 | `Actor.IsInFaction` | 285 |
 | `Spell.Cast` | 277 |
 | `Actor.SetRelationshipRank` | 272 |
-| `ObjectReference.Delete` | 255 |
+| `Actor.SetGhost` | 222 |
+| `VisualEffect.Play` | 216 |
 
 ## Saving
 

@@ -298,10 +298,10 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
     SECTION("a version this engine does not read") {
-        bytes[4] = 6;
+        bytes[4] = 7;
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
-        CHECK_THAT(error, ContainsSubstring("version 6"));
+        CHECK_THAT(error, ContainsSubstring("version 7"));
     }
     SECTION("bytes after the end") {
         bytes.push_back(0);
@@ -596,10 +596,49 @@ TEST_CASE("forms added to lists are part of the VM save; version 4 saves load wi
     // A save without the section (version 4) ends after the animation states.
     skydot::vm::Vm empty;
     const auto plain = empty.save();
-    Bytes older(plain.begin(), plain.end() - 4); // drop the empty list count
+    Bytes older(plain.begin(), plain.end() - 16); // drop the empty list, placed and destruction sections
     older[4] = 4;                                // the version, little-endian
     skydot::vm::Vm d;
     d.form_lists().add(0x1, 0x2);
     REQUIRE(d.load(older, error));
     CHECK(d.form_lists().lists().empty());
+}
+
+TEST_CASE("placed references and destruction are part of the VM save; version 5 saves load with none", "[vm][save][placed]") {
+    skydot::vm::Vm a;
+    skydot::vm::PlacedRef rock{.base = 0x1234, .cell = 0x77};
+    rock.position[0] = 10.5;
+    rock.rotation[2] = 1.25;
+    const auto kept = a.placed().add(rock);
+    skydot::vm::PlacedRef puff = rock;
+    puff.transient = true;
+    const auto effect = a.placed().add(puff);
+    a.destruction().set(0x9B0EC, {.damage = 10.0, .stage = 1, .destroyed = false});
+    const auto bytes = a.save();
+
+    skydot::vm::Vm b;
+    b.placed().add(rock); // replaced by the load
+    std::string error;
+    REQUIRE(b.load(bytes, error));
+    REQUIRE(b.placed().refs().size() == 1); // effects are not kept
+    const auto* loaded = b.placed().find(kept);
+    REQUIRE(loaded != nullptr);
+    CHECK(loaded->base == 0x1234);
+    CHECK(loaded->cell == 0x77);
+    CHECK(loaded->position[0] == 10.5);
+    CHECK(loaded->rotation[2] == 1.25);
+    CHECK(b.placed().find(effect) == nullptr);
+    CHECK(b.placed().add(rock) > effect); // ids are not reused
+    CHECK(b.destruction().get(0x9B0EC).stage == 1);
+    CHECK(b.destruction().get(0x9B0EC).damage == 10.0);
+
+    skydot::vm::Vm empty;
+    auto plain = empty.save();
+    Bytes older(plain.begin(), plain.end() - 12); // drop the placed and destruction sections
+    older[4] = 5;
+    skydot::vm::Vm c;
+    c.destruction().set(1, {.damage = 1.0, .stage = 1});
+    REQUIRE(c.load(older, error));
+    CHECK(c.placed().refs().empty());
+    CHECK(c.destruction().states().empty());
 }

@@ -31,6 +31,8 @@ var _debug: DebugOverlay
 var _transition: PlaceTransition
 var _projectiles: Projectiles
 var _sounds: Sounds
+var _placed: PlacedRefs
+var _damages: Array[Vector2] = []
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
@@ -49,7 +51,10 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	host.add_child(_projectiles)
 	_sounds = Sounds.new(world, pack, find_ref_node)
 	host.add_child(_sounds)
+	_placed = PlacedRefs.new(world, papyrus)
+	host.add_child(_placed)
 	_activations.assign(settings.activate)
+	_damages.assign(settings.damage)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.ref_moved.connect(_on_ref_moved)
 	_papyrus.play_animation.connect(_on_play_animation)
@@ -360,16 +365,17 @@ func find_ref_node(ref: int) -> Node:
 
 
 func has_activations() -> bool:
-	return not _activations.is_empty()
+	return not _activations.is_empty() or not _damages.is_empty()
 
 
 ## --activate: activate the next reference once its model is built; quit
 ## when all are done or one never appears.
 func run_activation() -> void:
-	if _activations.is_empty():
-		return
 	if _gap > 0:
 		_gap -= 1
+		return
+	if _activations.is_empty():
+		_run_damage()
 		return
 	var ref: int = _activations[0]
 	var node := find_ref_node(ref)
@@ -382,7 +388,17 @@ func run_activation() -> void:
 	_activations.pop_front()
 	activate(node.get_meta("skydot_cell"), ref, node, false)
 	_gap = _settings.activate_wait
-	if _activations.is_empty():
+	if _activations.is_empty() and _damages.is_empty():
+		activations_finished.emit()
+
+
+## --damage: the next DamageObject, once the activations are done.
+func _run_damage() -> void:
+	var entry: Vector2 = _damages.pop_front()
+	print("damage 0x%08X by %s" % [int(entry.x), entry.y])
+	_papyrus.damage_ref(int(entry.x), entry.y)
+	_gap = _settings.activate_wait
+	if _damages.is_empty():
 		activations_finished.emit()
 
 

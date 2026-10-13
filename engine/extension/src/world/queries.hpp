@@ -71,6 +71,8 @@ std::int64_t find_keyword(const WorldData& data, const godot::String& editor_id)
 godot::PackedInt64Array get_base_keywords(const WorldData& data, std::int64_t base);
 godot::Dictionary get_form_list(const WorldData& data, std::int64_t id);
 godot::Dictionary get_message(const WorldData& data, std::int64_t id);
+godot::Dictionary get_destruction(const WorldData& data, std::int64_t base);
+godot::Dictionary get_explosion(const WorldData& data, std::int64_t id);
 
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
 godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);

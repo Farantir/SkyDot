@@ -56,6 +56,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/census.cpp
     src/vm/inventory.cpp
     src/vm/inventory.hpp
+    src/vm/runtime_refs.hpp
     src/vm/natives_world.cpp
     src/vm/save.cpp
     src/vm/script_class.cpp
@@ -207,6 +208,7 @@ target_sources(skydot PRIVATE
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
     src/vm/natives_noop.cpp
+    src/vm/papyrus_runtime.cpp
     src/vm/natives_objectreference.cpp
     src/vm/natives_quest.cpp
     src/vm/natives_utility.cpp

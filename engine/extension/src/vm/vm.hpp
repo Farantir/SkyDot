@@ -28,6 +28,7 @@
 
 #include "vm/form_lists.hpp"
 #include "vm/inventory.hpp"
+#include "vm/runtime_refs.hpp"
 #include "vm/script_class.hpp"
 #include "vm/value.hpp"
 
@@ -208,6 +209,11 @@ public:
     /// What scripts added to form lists; saved with the VM.
     FormListAdditions& form_lists() noexcept { return form_lists_; }
     [[nodiscard]] const FormListAdditions& form_lists() const noexcept { return form_lists_; }
+    /// References PlaceAtMe made, and destruction state; saved with the VM.
+    PlacedRefs& placed() noexcept { return placed_; }
+    [[nodiscard]] const PlacedRefs& placed() const noexcept { return placed_; }
+    DestructionStates& destruction() noexcept { return destruction_; }
+    [[nodiscard]] const DestructionStates& destruction() const noexcept { return destruction_; }
 
     /// Opaque per-reference animation state (a behaviour graph's snapshot),
     /// kept and saved for the host; the VM does not look into it.
@@ -315,6 +321,8 @@ private:
     std::vector<Scheduled> scheduled_;
     Inventory inventory_;
     FormListAdditions form_lists_;
+    PlacedRefs placed_;
+    DestructionStates destruction_;
     std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();
