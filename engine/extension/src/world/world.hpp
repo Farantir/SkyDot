@@ -158,6 +158,14 @@ public:
     godot::Dictionary get_quest(std::int64_t id) const;
     /// id, editor_id, kind ("s", "l" or "f"), value. Empty if not a global.
     godot::Dictionary get_global(std::int64_t id) const;
+    /// AMMO: id, projectile (a PROJ id), flags, model (virtual path or empty).
+    /// Empty if not an ammo.
+    godot::Dictionary get_ammo(std::int64_t id) const;
+    /// PROJ: id, type (1 missile, 2 lobber, 4 beam, 8 flame, 0x10 cone, 0x20
+    /// barrier, 0x40 arrow), flags, gravity (multiplier), speed and range and
+    /// collision_radius (game units), lifetime (seconds), model. Empty if not
+    /// a projectile.
+    godot::Dictionary get_projectile(std::int64_t id) const;
     /// A placed actor (ACHR): ref, base, cell, position, rotation (Skyrim
     /// space), disabled, persistent. Empty if `ref` is none.
     godot::Dictionary get_actor(std::int64_t ref) const;

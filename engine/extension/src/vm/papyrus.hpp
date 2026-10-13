@@ -218,6 +218,7 @@ private:
     void bind_form_natives();
     void bind_objectreference_natives();
     void bind_effectshader_natives();
+    void bind_weapon_natives();
     void bind_quest_natives();
     void bind_noop_natives();
     void bind_world_natives();

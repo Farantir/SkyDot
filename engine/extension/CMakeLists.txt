@@ -202,6 +202,7 @@ target_sources(skydot PRIVATE
     src/session/streamer.hpp
     src/vm/natives_debug.cpp
     src/vm/natives_effectshader.cpp
+    src/vm/natives_weapon.cpp
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
     src/vm/natives_noop.cpp

@@ -29,11 +29,12 @@ var _place: Place
 var _streamer: SkydotStreamer
 var _debug: DebugOverlay
 var _transition: PlaceTransition
+var _projectiles: Projectiles
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
 		settings: ViewerSettings, place: Place, streamer: SkydotStreamer, debug: DebugOverlay,
-		transition: PlaceTransition) -> void:
+		transition: PlaceTransition, pack: SkydotPack) -> void:
 	_world = world
 	_papyrus = papyrus
 	_host = host
@@ -43,6 +44,8 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_streamer = streamer
 	_debug = debug
 	_transition = transition
+	_projectiles = Projectiles.new(world, pack, find_ref_node)
+	host.add_child(_projectiles)
 	_activations.assign(settings.activate)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.play_animation.connect(_on_play_animation)
@@ -56,6 +59,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_papyrus.quest_stage.connect(_on_quest_stage)
 	_papyrus.objective_changed.connect(_on_objective_changed)
 	_papyrus.effect_shader.connect(_on_effect_shader)
+	_papyrus.fire_weapon.connect(_projectiles.fire)
 	_papyrus.trigger.connect(_on_trigger)
 
 

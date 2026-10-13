@@ -132,6 +132,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
 | EffectShader | `Play`, `Stop` |
+| Weapon | `Fire` (signal `fire_weapon`: the game layer launches the ammo's projectile, `game/game/projectiles.gd`) |
 | Quest | `Start`, `Stop`, `Reset`, `IsRunning`, `IsStopped`, `IsStarting`, `IsStopping`, `IsCompleted`, `CompleteQuest`, `GetStage`, `GetCurrentStageID`, `SetStage`, `SetCurrentStageID`, `GetStageDone`, `IsStageDone`, `IsActive`, `SetActive`, `GetAlias`, `SetObjectiveDisplayed/Completed/Failed`, `IsObjectiveDisplayed/Completed/Failed`, `CompleteAllObjectives`, `FailAllObjectives`, `UpdateCurrentInstanceGlobal`, `PrepareForReinitializing` |
 | Alias | `GetOwningQuest`, `GetID`, `GetName`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ReferenceAlias | `GetReference`, `GetRef`, `GetActorReference`, `GetActorRef`, `ForceRefTo`, `ForceRefIfEmpty`, `Clear` |
@@ -149,7 +150,7 @@ the children arrive as `activation_outcome`.
 
 World changes are signals: `enable_changed`, `play_animation`,
 `activation_outcome`, `open_changed`, `lock_changed`, `effect_shader`,
-`message`, `trigger`, `havok_impulse`, `motion_type_changed`, and for
+`message`, `trigger`, `havok_impulse`, `fire_weapon`, `motion_type_changed`, and for
 quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
 The viewer shows or builds the reference, plays the animation on its
 `SkydotAnimator` (whose text keys and finished clips come back through

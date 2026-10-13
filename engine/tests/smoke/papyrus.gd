@@ -109,6 +109,14 @@ func _run(pack_dir: String) -> void:
     finish(vm, vm.call_method(0x304, "TestpackLeverScript", "SetMotionType", [1, true]))
     expect(physics == [[0x304, Vector3(0, 0, 1), 50.0], [0x304, 1]],
            "impulses and motion types reach the game layer: %s" % [physics])
+    # Weapon.Fire reaches the game layer with the weapon, the source and the ammo
+    # (None here: scripts cannot be handed references from outside).
+    var fired := []
+    vm.fire_weapon.connect(func(weapon: int, source: int, ammo: int) -> void:
+        fired.append([weapon, source, ammo]))
+    var weapon := vm.create_instance("TestpackFireScript")
+    finish(vm, vm.call_method(weapon, "TestpackFireScript", "Shoot", []))
+    expect(fired == [[weapon, 0, 0]], "Weapon.Fire emits fire_weapon: %s" % [fired])
     expect(vm.get_error_count() == 0, "nothing went wrong so far")
 
     _check_triggers(vm, world)

@@ -198,6 +198,43 @@ Dictionary get_global(const WorldData& data, std::int64_t id) {
     return out;
 }
 
+Dictionary get_ammo(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* root = data.root();
+    const auto key = static_cast<std::uint32_t>(id);
+    const auto* ammo = lookup(root != nullptr ? root->ammos() : nullptr, key);
+    if (ammo == nullptr) {
+        return out;
+    }
+    out["id"] = static_cast<std::int64_t>(ammo->id());
+    out["projectile"] = static_cast<std::int64_t>(ammo->projectile());
+    out["flags"] = static_cast<std::int64_t>(ammo->flags());
+    const auto* base = lookup(root->bases(), key);
+    out["model"] = base != nullptr && base->model() != nullptr ? String::utf8(base->model()->c_str()) : String();
+    return out;
+}
+
+Dictionary get_projectile(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* root = data.root();
+    const auto key = static_cast<std::uint32_t>(id);
+    const auto* proj = lookup(root != nullptr ? root->projectiles() : nullptr, key);
+    if (proj == nullptr) {
+        return out;
+    }
+    out["id"] = static_cast<std::int64_t>(proj->id());
+    out["type"] = static_cast<std::int64_t>(proj->type());
+    out["flags"] = static_cast<std::int64_t>(proj->flags());
+    out["gravity"] = static_cast<double>(proj->gravity());
+    out["speed"] = static_cast<double>(proj->speed());
+    out["range"] = static_cast<double>(proj->range());
+    out["collision_radius"] = static_cast<double>(proj->collision_radius());
+    out["lifetime"] = static_cast<double>(proj->lifetime());
+    const auto* base = lookup(root->bases(), key);
+    out["model"] = base != nullptr && base->model() != nullptr ? String::utf8(base->model()->c_str()) : String();
+    return out;
+}
+
 Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     Dictionary out;
     const auto* actors = data.root() != nullptr ? data.root()->actors() : nullptr;

@@ -133,6 +133,10 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("havok_impulse", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::VECTOR3, "direction"),
                                  PropertyInfo(Variant::FLOAT, "magnitude")));
+    // Weapon.Fire: the weapon, the source reference and the ammo (0 for None).
+    ADD_SIGNAL(godot::MethodInfo("fire_weapon", PropertyInfo(Variant::INT, "weapon"),
+                                 PropertyInfo(Variant::INT, "source"),
+                                 PropertyInfo(Variant::INT, "ammo")));
     ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "motion_type")));
     // A script's or an activate parent's activation, once the VM ran it: the
@@ -341,6 +345,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_form_natives,
         &SkydotPapyrus::bind_objectreference_natives,
         &SkydotPapyrus::bind_effectshader_natives,
+        &SkydotPapyrus::bind_weapon_natives,
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,

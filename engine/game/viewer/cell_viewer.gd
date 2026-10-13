@@ -244,7 +244,7 @@ func _create_components() -> void:
 	_controls.command.connect(_on_command)
 	add_child(_controls)
 	_bridge = ScriptBridge.new(_world, _papyrus, self, _rig.camera, _settings, _place, _streamer, _debug,
-		_transition)
+		_transition, _pack)
 	_bridge.activations_finished.connect(func() -> void:  # let scripts run first
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_bridge.failed.connect(_fail)
@@ -360,6 +360,8 @@ func _process(delta: float) -> void:
 			_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
 				SkydotWorld.godot_to_skyrim(_rig.player.global_position))
 			_papyrus.update(delta)
+			if _bridge.has_activations():
+				_bridge.run_activation()  # --activate inside the series
 		_shots.step(delta)
 		return
 	_streamer.hold_player(_rig.player, _transition.is_fading())

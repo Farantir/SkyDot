@@ -60,6 +60,8 @@ godot::Array list_quests(const WorldData& data, const godot::String& filter);
 std::int64_t find_quest(const WorldData& data, const godot::String& editor_id);
 godot::Dictionary get_quest(const WorldData& data, std::int64_t id);
 godot::Dictionary get_global(const WorldData& data, std::int64_t id);
+godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
+godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);
 godot::Dictionary get_actor(const WorldData& data, std::int64_t ref);
 std::int64_t get_form_from_file(const WorldData& data, std::int64_t id, const godot::String& plugin);
 std::int64_t find_actor_of(const WorldData& data, std::int64_t npc);

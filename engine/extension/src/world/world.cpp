@@ -48,6 +48,8 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("find_quest", "editor_id"), &SkydotWorld::find_quest);
     godot::ClassDB::bind_method(D_METHOD("get_quest", "id"), &SkydotWorld::get_quest);
     godot::ClassDB::bind_method(D_METHOD("get_global", "id"), &SkydotWorld::get_global);
+    godot::ClassDB::bind_method(D_METHOD("get_ammo", "id"), &SkydotWorld::get_ammo);
+    godot::ClassDB::bind_method(D_METHOD("get_projectile", "id"), &SkydotWorld::get_projectile);
     godot::ClassDB::bind_method(D_METHOD("get_actor", "ref"), &SkydotWorld::get_actor);
     godot::ClassDB::bind_method(D_METHOD("find_actor_of", "npc"), &SkydotWorld::find_actor_of);
     godot::ClassDB::bind_method(D_METHOD("find_npc", "editor_id"), &SkydotWorld::find_npc);
@@ -255,6 +257,8 @@ Array SkydotWorld::list_quests(const String& filter) const { return queries::lis
 std::int64_t SkydotWorld::find_quest(const String& editor_id) const { return queries::find_quest(data(), editor_id); }
 Dictionary SkydotWorld::get_quest(std::int64_t id) const { return queries::get_quest(data(), id); }
 Dictionary SkydotWorld::get_global(std::int64_t id) const { return queries::get_global(data(), id); }
+Dictionary SkydotWorld::get_ammo(std::int64_t id) const { return queries::get_ammo(data(), id); }
+Dictionary SkydotWorld::get_projectile(std::int64_t id) const { return queries::get_projectile(data(), id); }
 Dictionary SkydotWorld::get_actor(std::int64_t ref) const { return queries::get_actor(data(), ref); }
 std::int64_t SkydotWorld::get_form_from_file(std::int64_t id, const String& plugin) const {
     return queries::get_form_from_file(data(), id, plugin);
