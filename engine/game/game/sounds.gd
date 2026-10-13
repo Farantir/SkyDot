@@ -11,8 +11,12 @@
 # attenuate with distance plays non-positionally (AudioStreamPlayer), as does a
 # sound without a source. Every player is a child of its source node, so it is
 # freed with it; only a sound without a source lives under this node. Frequency shift and variance become pitch, static
-# attenuation and dB variance become volume. A descriptor that loops (LNAM
-# 0x08) loops the whole clip; the envelope kinds (0x10, 0x20) play once for now.
+# attenuation and dB variance become volume. Positional volume follows the
+# SOPM's curve: five volume percentages spaced evenly from the min to the max
+# distance (before the min the first, past the max the sound is out of range).
+# Out of range, a loop is held until the listener comes back and a one-shot does
+# not start. The listener is `listener`, else the viewport's current camera.
+# A descriptor that loops (LNAM 0x08) loops the whole clip; the envelope kinds (0x10, 0x20) play once for now.
 # Compound descriptors (CNAM other than 0x1EEF540A) are not played: they pick
 # other descriptors by conditions.
 #
@@ -32,9 +36,12 @@ const LOOP := 0x08  # SNDR LNAM byte 1
 ## Instances the game layer starts itself count from here; Sound.Play's are
 ## numbered by SkydotPapyrus from 1.
 const FIRST_OWN_INSTANCE := 1 << 20
-## Without an output model: where a positional sound starts to fade and stops, metres.
-const DEFAULT_UNIT := 4.0
-const DEFAULT_MAX := 60.0
+## Without an output model: where a positional sound starts to fade and stops,
+## game units, and the shape of the fade (most vanilla SOPMs).
+const DEFAULT_MIN := 150.0
+const DEFAULT_MAX := 2000.0
+const DEFAULT_CURVE: Array[int] = [100, 50, 20, 5, 0]
+const SILENT_DB := -80.0
 const EVENT_PREFIX := "soundplay."
 const KEY_PREFIX := "sound:"
 
@@ -45,7 +52,9 @@ var _streams := {}  # vpath -> AudioStreamWAV, or null if it cannot be played
 var _looped := {}  # vpath -> the same stream, set to loop
 var _by_name := {}  # lowercase editor id -> SNDR id, 0 if there is none
 var _models := {}  # SOPM id -> its dictionary
-var _live := {}  # instance -> {player, base_db}
+## Where sounds are heard from; null: the viewport's current camera.
+var listener: Node3D
+var _live := {}  # instance -> {name, player, base_db, user_db, positional, loops, min, max, curve}
 var _next_instance := FIRST_OWN_INSTANCE
 var _warned := {}
 
@@ -104,7 +113,8 @@ func set_volume(instance: int, volume: float) -> void:
 	var entry: Dictionary = _live.get(instance, {})
 	if entry.is_empty() or not is_instance_valid(entry["player"]):
 		return
-	entry["player"].volume_db = entry["base_db"] + linear_to_db(maxf(volume, 0.0))
+	entry["user_db"] = linear_to_db(maxf(volume, 0.0))
+	_update(entry)
 
 
 func is_playing(instance: int) -> bool:
@@ -204,16 +214,24 @@ func _start(descriptor: Dictionary, node: Node, ref: int, instance: int) -> bool
 		var loops: bool = int(descriptor["looping"]) & LOOP != 0
 		var stream := _stream(file, loops)
 		if stream != null:
-			_play_stream(descriptor, stream, file, node, ref, instance)
-			return true
+			return _play_stream(descriptor, stream, file, node, ref, instance)
 	_fail.call_deferred(instance)
 	return false
 
 
 func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, node: Node,
-		ref: int, instance: int) -> void:
+		ref: int, instance: int) -> bool:
 	var model := _model(descriptor["output_model"])
 	var positional := node is Node3D and (model.is_empty() or int(model["flags"]) & FLAG_ATTENUATES != 0)
+	var loops: bool = int(descriptor["looping"]) & LOOP != 0
+	var range_min := DEFAULT_MIN if model.is_empty() else float(model["min_distance"])
+	var range_max := DEFAULT_MAX if model.is_empty() else float(model["max_distance"])
+	var curve: Array = DEFAULT_CURVE if model.is_empty() or model["curve"].size() != 5 \
+		else Array(model["curve"])
+	if positional and not loops and _distance(node as Node3D) > range_max:
+		print("sound %s ref 0x%08X out of range" % [descriptor["editor_id"], ref])
+		_fail.call_deferred(instance)
+		return false
 	var player: Node
 	var shift := float(descriptor["frequency_shift"])
 	var spread := float(descriptor["frequency_variance"])
@@ -222,10 +240,9 @@ func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, 
 		- randf_range(0.0, float(descriptor["db_variance"]))
 	if positional:
 		var p := AudioStreamPlayer3D.new()
-		var scale_m := SkydotWorld.unit_scale()
-		p.unit_size = maxf(float(model.get("min_distance", 0.0)) * scale_m, 0.1) if not model.is_empty() else DEFAULT_UNIT
-		p.max_distance = float(model["max_distance"]) * scale_m if not model.is_empty() else DEFAULT_MAX
-		p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_INVERSE_DISTANCE
+		# Volume over distance is ours (_update); Godot only pans and cuts off.
+		p.attenuation_model = AudioStreamPlayer3D.ATTENUATION_DISABLED
+		p.max_distance = range_max * SkydotWorld.unit_scale()
 		p.pitch_scale = pitch
 		p.volume_db = db
 		p.stream = stream
@@ -236,12 +253,72 @@ func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, 
 		p.volume_db = db
 		p.stream = stream
 		player = p
-	_live[instance] = {"player": player, "base_db": db}
+	var entry := {"name": "%s ref 0x%08X" % [descriptor["editor_id"], ref], "player": player, "base_db": db, "user_db": 0.0, "positional": positional,
+		"loops": loops, "min": range_min, "max": range_max, "curve": curve, "held": false, "at": 0.0}
+	_live[instance] = entry
 	player.finished.connect(_ended.bind(instance))
 	player.tree_exiting.connect(_ended.bind(instance))
 	(node if node != null else self).add_child(player)
-	player.play()
+	if positional and loops and _distance(node as Node3D) > range_max:
+		entry["held"] = true  # out of range: starts when the listener comes near
+		print("sound %s held, out of range" % entry["name"])
+	else:
+		player.play()
+	_update(entry)
 	print("sound %s %s ref 0x%08X %s" % [descriptor["editor_id"], file, ref, "3d" if positional else "2d"])
+	return true
+
+
+func _process(_delta: float) -> void:
+	for entry: Dictionary in _live.values():
+		if entry["positional"]:
+			_update(entry)
+
+
+## Volume from the distance curve; a loop out of range is held (stopped, its
+## position kept) until the listener comes back.
+func _update(entry: Dictionary) -> void:
+	var player: Node = entry["player"]
+	if not is_instance_valid(player) or not player.is_inside_tree():
+		return
+	var db: float = entry["base_db"] + entry["user_db"]
+	if entry["positional"]:
+		var distance := _distance(player as Node3D)
+		var out_of_range: bool = distance > entry["max"]
+		if entry["loops"] and out_of_range != entry["held"]:
+			# Stopped, not paused: a stopped player is not mixed, and a 3D
+			# player drops stream_paused when its playback starts a tick late.
+			entry["held"] = out_of_range
+			if out_of_range:
+				entry["at"] = player.get_playback_position()
+				player.stop()
+			else:
+				player.play(entry["at"])
+			print("sound %s %s" % [entry["name"], "held, out of range" if out_of_range else "resumed"])
+		var gain := 0.0 if out_of_range else _curve_gain(entry, distance)
+		db += linear_to_db(gain) if gain > 0.0 else SILENT_DB
+	player.volume_db = maxf(db, SILENT_DB)
+
+
+## The SOPM curve at `distance` game units: a volume factor 0..1.
+static func _curve_gain(entry: Dictionary, distance: float) -> float:
+	var curve: Array = entry["curve"]
+	var span: float = entry["max"] - entry["min"]
+	if distance <= entry["min"] or span <= 0.0:
+		return curve[0] / 100.0
+	var at := minf((distance - entry["min"]) / span, 1.0) * 4.0
+	var i := mini(int(at), 3)
+	return lerpf(curve[i], curve[i + 1], at - i) / 100.0
+
+
+## From the listener to `node`, game units; 0 without a listener.
+func _distance(node: Node3D) -> float:
+	var ear: Node3D = listener if is_instance_valid(listener) else null
+	if ear == null and is_inside_tree():
+		ear = get_viewport().get_camera_3d()
+	if ear == null or not node.is_inside_tree():
+		return 0.0
+	return ear.global_position.distance_to(node.global_position) / SkydotWorld.unit_scale()
 
 
 ## A playing instance ended (or its node left the tree): once per instance.
