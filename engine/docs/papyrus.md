@@ -129,8 +129,11 @@ shows XPRM bounds doubled. Not checked against the game.
 | Debug | `Trace`, `Notification`, `MessageBox` |
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
-| Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
+| Form | `GetFormID`, `HasKeyword` (a reference answers for its base's KWDA; only bases that world.fb has, i.e. with a model or scripts, carry keywords), `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| Keyword | `GetKeyword` (by editor id, any case; KYWD table of world.fb) |
+| FormList | `GetSize`, `GetAt`, `Find`, `HasForm` (the FLST's forms, then those added; nested lists are not looked into), `AddForm`, `RemoveAddedForm`, `Revert` (the additions are `Vm::form_lists`, saved with the VM) |
+| Message | `Show` (MESG text, `%.0f`-style placeholders filled from the arguments; signal `message`; returns 0, the first button), `ShowAsHelpMessage` (as a notification) |
 | Cell | `IsInterior`, `IsAttached` (its references were handed to the VM; a cell never detaches) |
 | EffectShader | `Play`, `Stop` |
 | Sound | `Play` (signal `play_sound`: sound, source reference, instance id; the game layer plays it, `game/game/sounds.gd`), `PlayAndWait` (waits for `notify_sound_finished(instance)`, which the game layer sends when the clip ends, or 30 s), `StopInstance` (signal `stop_sound`), `SetInstanceVolume` (signal `sound_volume`) |
@@ -187,7 +190,7 @@ A probe over Bleak Falls Barrow 01 and 02, Breezehome, the Sleeping Giant,
 Dragonsreach and the Blue Palace (184 scripted references, 46 triggers,
 `OnInit` and `OnLoad`, then Bleak Falls' pillar-puzzle lever) reaches no
 unbound native. Starting vanilla SE's start-game-enabled quests and running
-a minute reaches about 40 unbound natives, mostly on actors, form lists and
+a minute reaches about 40 unbound natives, mostly on actors and
 inventories, which do not exist yet.
 
 ## Census
@@ -211,9 +214,9 @@ Skyrim SE pack, 14,325 scripts (2026-10-13):
 | | Natives | Call sites |
 | --- | ---: | ---: |
 | Called | 549 | 65,685 |
-| Bound | 87 | 38,408 |
-| Ignored (no-op) | 18 | 494 |
-| Unbound | 444 | 26,783 |
+| Bound | 104 | 40,200 |
+| Ignored (no-op) | 19 | 499 |
+| Unbound | 426 | 24,986 |
 
 Unbound natives with most call sites (the first are quest topic and scene
 plumbing, then movement and actor state, which are the work still to come):
@@ -228,11 +231,9 @@ plumbing, then movement and actor state, which are the work still to come):
 | `ObjectReference.PlaceAtMe` | 609 |
 | `Actor.RemoveFromFaction` | 536 |
 | `Scene.Stop` | 486 |
-| `Message.Show` | 456 |
 | `Actor.IsDead` | 424 |
 | `Actor.StartCombat` | 331 |
 | `Actor.PlayIdle` | 327 |
-| `ObjectReference.DisableNoWait` | 326 |
 | `Actor.RemoveSpell` | 322 |
 | `Actor.SetActorValue` | 301 |
 | `Actor.AddSpell` | 288 |
@@ -240,6 +241,8 @@ plumbing, then movement and actor state, which are the work still to come):
 | `ObjectReference.AddToMap` | 287 |
 | `Actor.IsInFaction` | 285 |
 | `Spell.Cast` | 277 |
+| `Actor.SetRelationshipRank` | 272 |
+| `ObjectReference.Delete` | 255 |
 
 ## Saving
 
@@ -265,7 +268,9 @@ records it when it changes, when its cell unloads and before a save, so an
 opened gate stays open after F9 and after leaving the cell and coming back.
 A snapshot that does not fit the graph is ignored and the graph starts over.
 
-Not saved: the world's own state outside scripts (none is simulated yet).
+Forms added to form lists are saved as VM save version 5 (versions 1 to 4 still load).
+
+Not saved: where `Reset` or a later move put a reference (the view of it is a signal to the game layer), the world's own state outside scripts (none is simulated yet).
 
 ## Assumptions not checked against the game
 

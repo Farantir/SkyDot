@@ -15,6 +15,8 @@
 //              count, then item form, i64 count each
 //   animation: (version 4) u32 count; per reference: ref, u32 length, that
 //              many bytes (a behaviour graph's snapshot; opaque to the VM)
+//   form lists: (version 5) u32 list count; per list: list form, u32 count,
+//              then the forms added to it, in order
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
@@ -35,7 +37,7 @@ namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 4; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states
+constexpr std::uint32_t k_version = 5; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states; 5: form lists
 constexpr std::uint32_t k_max_animation_state = 1U << 20; ///< Bytes per reference, against corrupt lengths.
 constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
@@ -274,6 +276,14 @@ std::vector<std::uint8_t> Vm::save() const {
         w.u32(ref);
         w.u32(static_cast<std::uint32_t>(bytes.size()));
         w.out.insert(w.out.end(), bytes.begin(), bytes.end());
+    }
+    w.u32(static_cast<std::uint32_t>(form_lists_.lists().size()));
+    for (const auto& [list, added] : form_lists_.lists()) {
+        w.u32(list);
+        w.u32(static_cast<std::uint32_t>(added.size()));
+        for (const auto form : added) {
+            w.u32(form);
+        }
     }
     return w.out;
 }
@@ -584,6 +594,25 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
                 }
             }
             set_animation_state(ref, std::move(state));
+        }
+    }
+    if (version >= 5) {
+        std::uint32_t lists = 0;
+        if (!r.count(lists, 8)) {
+            return fail("truncated VM save");
+        }
+        for (std::uint32_t n = 0; n < lists; ++n) {
+            std::uint32_t list = 0, forms = 0;
+            if (!r.u32(list) || !r.count(forms, 4)) {
+                return fail("truncated VM save");
+            }
+            for (std::uint32_t k = 0; k < forms; ++k) {
+                std::uint32_t form = 0;
+                if (!r.u32(form)) {
+                    return fail("truncated VM save");
+                }
+                form_lists_.add(list, form);
+            }
         }
     }
     if (!r.at_end()) {

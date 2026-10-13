@@ -26,6 +26,7 @@
 // up the class chain.
 #pragma once
 
+#include "vm/form_lists.hpp"
 #include "vm/inventory.hpp"
 #include "vm/script_class.hpp"
 #include "vm/value.hpp"
@@ -204,6 +205,9 @@ public:
     /// What references carry; saved with the VM.
     Inventory& inventory() noexcept { return inventory_; }
     [[nodiscard]] const Inventory& inventory() const noexcept { return inventory_; }
+    /// What scripts added to form lists; saved with the VM.
+    FormListAdditions& form_lists() noexcept { return form_lists_; }
+    [[nodiscard]] const FormListAdditions& form_lists() const noexcept { return form_lists_; }
 
     /// Opaque per-reference animation state (a behaviour graph's snapshot),
     /// kept and saved for the host; the VM does not look into it.
@@ -310,6 +314,7 @@ private:
     };
     std::vector<Scheduled> scheduled_;
     Inventory inventory_;
+    FormListAdditions form_lists_;
     std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();

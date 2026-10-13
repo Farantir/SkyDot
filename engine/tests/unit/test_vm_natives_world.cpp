@@ -26,6 +26,20 @@ struct FakeWorld final : skydot::vm::WorldAccess {
     std::uint32_t parent_cell(std::uint32_t ref) const override { return ref == 1 ? 0x100 : 0; }
     bool cell_interior(std::uint32_t cell) const override { return cell == 0x100; }
     bool cell_attached(std::uint32_t cell) const override { return cell == 0x100; }
+    bool has_keyword(std::uint32_t form, std::uint32_t keyword) const override {
+        return (form == 1 || form == 0x700) && keyword == 0x500; // reference 1 and its base 0x700
+    }
+    std::uint32_t find_keyword(const std::string& editor_id) const override {
+        return editor_id == "TestKeyword" ? 0x500 : 0;
+    }
+    bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const override {
+        if (list != 0x600) {
+            return false;
+        }
+        forms = {0x10, 0x20};
+        return true;
+    }
+    bool message(std::uint32_t, skydot::vm::MessageText&) const override { return false; }
     std::int32_t player_level() const override { return 7; }
 };
 
@@ -104,4 +118,90 @@ TEST_CASE("GetParentCell gives the cell form, which knows whether it is an inter
     CHECK(rig.call("caller", "interior", {placed}).b());
     CHECK(rig.call("caller", "attached", {placed}).b());
     CHECK(rig.vm.errors() == 0);
+}
+
+TEST_CASE("message placeholders take the arguments in order", "[vm][natives]") {
+    using skydot::vm::format_message;
+    CHECK(format_message("Pulled %.0f of %.0f", {2.0, 3.0}) == "Pulled 2 of 3");
+    CHECK(format_message("%.1f%% done", {42.25}) == "42.2% done");
+    CHECK(format_message("%d items", {7.0}) == "7 items");
+    CHECK(format_message("%.0f and %.0f", {1.0}) == "1 and 0"); // missing arguments are 0
+    CHECK(format_message("100% sure, %s", {}) == "100% sure, %s"); // not a placeholder
+    CHECK(format_message("no placeholders", {5.0}) == "no placeholders");
+}
+
+TEST_CASE("keywords and form lists are bound by the world natives", "[vm][natives][formlist]") {
+    const FakeWorld world;
+    Rig rig;
+    rig.add({.name = "Form",
+             .functions = {native_function("HasKeyword", {{"k", "Keyword"}}, "Bool", false),
+                           native_function("GetFormID", {}, "Int", false)}});
+    rig.add({.name = "Keyword", .functions = {native_function("GetKeyword", {{"id", "String"}}, "Keyword", true)}});
+    rig.add({.name = "FormList",
+             .functions = {native_function("GetSize", {}, "Int", false),
+                           native_function("GetAt", {{"i", "Int"}}, "Form", false),
+                           native_function("Find", {{"f", "Form"}}, "Int", false),
+                           native_function("HasForm", {{"f", "Form"}}, "Bool", false),
+                           native_function("AddForm", {{"f", "Form"}}, "None", false),
+                           native_function("RemoveAddedForm", {{"f", "Form"}}, "None", false),
+                           native_function("Revert", {}, "None", false)}});
+    skydot::vm::bind_world_natives(rig.vm, world);
+    rig.vm.bind("Form", "GetFormID", [](skydot::vm::NativeCall& c) {
+        return skydot::vm::NativeResult{.value = Int(static_cast<std::int32_t>(c.self.form()))};
+    });
+
+    auto keyed = global_function("keyed", {{"f", "Form"}, {"name", "String"}}, {{"k", "Keyword"}, {"r", "Bool"}}, "Bool");
+    keyed.add(Op::callstatic, {ident("Keyword"), ident("GetKeyword"), ident("k"), ident("name")})
+        .add(Op::callmethod, {ident("HasKeyword"), ident("f"), ident("r"), ident("k")})
+        .add(Op::return_, {ident("r")});
+    auto size = global_function("size", {{"l", "FormList"}}, {{"r", "Int"}}, "Int");
+    size.add(Op::callmethod, {ident("GetSize"), ident("l"), ident("r")}).add(Op::return_, {ident("r")});
+    auto at = global_function("at", {{"l", "FormList"}, {"i", "Int"}}, {{"f", "Form"}, {"r", "Int"}}, "Int");
+    at.add(Op::callmethod, {ident("GetAt"), ident("l"), ident("f"), ident("i")})
+        .add(Op::callmethod, {ident("GetFormID"), ident("f"), ident("r")})
+        .add(Op::return_, {ident("r")});
+    auto find = global_function("find", {{"l", "FormList"}, {"f", "Form"}}, {{"r", "Int"}}, "Int");
+    find.add(Op::callmethod, {ident("Find"), ident("l"), ident("r"), ident("f")}).add(Op::return_, {ident("r")});
+    auto has = global_function("has", {{"l", "FormList"}, {"f", "Form"}}, {{"r", "Bool"}}, "Bool");
+    has.add(Op::callmethod, {ident("HasForm"), ident("l"), ident("r"), ident("f")}).add(Op::return_, {ident("r")});
+    auto add = global_function("add", {{"l", "FormList"}, {"f", "Form"}}, {}, "None");
+    add.add(Op::callmethod, {ident("AddForm"), ident("l"), ident("::NoneVar"), ident("f")}).add(Op::return_, {none()});
+    auto remove = global_function("remove", {{"l", "FormList"}, {"f", "Form"}}, {}, "None");
+    remove.add(Op::callmethod, {ident("RemoveAddedForm"), ident("l"), ident("::NoneVar"), ident("f")}).add(Op::return_, {none()});
+    auto revert = global_function("revert", {{"l", "FormList"}}, {}, "None");
+    revert.add(Op::callmethod, {ident("Revert"), ident("l"), ident("::NoneVar")}).add(Op::return_, {none()});
+    rig.add(script("Caller", {keyed, size, at, find, has, add, remove, revert}));
+
+    SECTION("a reference has its base's keywords") {
+        const bool k = rig.call("caller", "keyed", {rig.vm.object(1, "ObjectReference"), String("TestKeyword")}).b();
+        CAPTURE(rig.log);
+        CHECK(k);
+        CHECK(rig.call("caller", "keyed", {rig.vm.object(0x700, "Form"), String("TestKeyword")}).b());
+        CHECK_FALSE(rig.call("caller", "keyed", {rig.vm.object(2, "Form"), String("TestKeyword")}).b());
+    }
+    SECTION("a list holds the world's forms, then those added") {
+        const auto list = rig.vm.object(0x600, "FormList");
+        const auto three = rig.vm.object(0x30, "Form");
+        CHECK(rig.call("caller", "size", {list}).i() == 2);
+        CHECK(rig.call("caller", "at", {list, Int(1)}).i() == 0x20);
+        CHECK(rig.call("caller", "find", {list, rig.vm.object(0x20, "Form")}).i() == 1);
+        CHECK(rig.call("caller", "find", {list, three}).i() == -1);
+        CHECK_FALSE(rig.call("caller", "has", {list, three}).b());
+
+        rig.call("caller", "add", {list, three});
+        rig.call("caller", "add", {list, three});          // once
+        rig.call("caller", "add", {list, rig.vm.object(0x10, "Form")}); // already there
+        CHECK(rig.call("caller", "size", {list}).i() == 3);
+        CHECK(rig.call("caller", "at", {list, Int(2)}).i() == 0x30);
+        CHECK(rig.call("caller", "has", {list, three}).b());
+
+        rig.call("caller", "remove", {list, rig.vm.object(0x10, "Form")}); // the world's stays
+        rig.call("caller", "remove", {list, three});
+        CHECK(rig.call("caller", "size", {list}).i() == 2);
+        rig.call("caller", "add", {list, three});
+        rig.call("caller", "revert", {list});
+        CHECK(rig.call("caller", "size", {list}).i() == 2);
+        CAPTURE(rig.log);
+        CHECK(rig.vm.errors() == 0);
+    }
 }

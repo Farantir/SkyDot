@@ -218,6 +218,7 @@ target_sources(skydot PRIVATE
     src/world/queries_quests.cpp
     src/world/queries_refs.cpp
     src/world/queries_sound.cpp
+    src/world/queries_forms.cpp
     src/world/queries_sky.cpp
     src/world/world.cpp
     src/world/world.hpp)

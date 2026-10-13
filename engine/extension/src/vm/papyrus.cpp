@@ -362,6 +362,43 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         return !owner_.world_.is_null() && static_cast<bool>(owner_.world_->get_cell(cell).get("interior", false));
     }
     bool cell_attached(std::uint32_t cell) const override { return owner_.attached_cells_.contains(cell); }
+    bool has_keyword(std::uint32_t form, std::uint32_t keyword) const override {
+        if (owner_.world_.is_null()) {
+            return false;
+        }
+        // A reference answers for its base; anything else is taken for a base.
+        const auto placed = static_cast<std::uint32_t>(static_cast<std::int64_t>(owner_.ref_info(form).get("base", 0)));
+        const godot::PackedInt64Array keywords = owner_.world_->get_base_keywords(placed != 0 ? placed : form);
+        return keywords.has(static_cast<std::int64_t>(keyword));
+    }
+    std::uint32_t find_keyword(const std::string& editor_id) const override {
+        return owner_.world_.is_null() ? 0 : static_cast<std::uint32_t>(owner_.world_->find_keyword(to_godot(editor_id)));
+    }
+    bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const override {
+        const Dictionary info = owner_.world_.is_null() ? Dictionary() : owner_.world_->get_form_list(list);
+        if (info.is_empty()) {
+            return false;
+        }
+        const godot::PackedInt64Array ids = info["forms"];
+        for (const std::int64_t id : ids) {
+            forms.push_back(static_cast<std::uint32_t>(id));
+        }
+        return true;
+    }
+    bool message(std::uint32_t id, vm::MessageText& out) const override {
+        const Dictionary info = owner_.world_.is_null() ? Dictionary() : owner_.world_->get_message(id);
+        if (info.is_empty()) {
+            return false;
+        }
+        out.title = utf8(info["title"]);
+        out.text = utf8(info["text"]);
+        out.box = info["box"];
+        const Array buttons = info["buttons"];
+        for (std::int64_t i = 0; i < buttons.size(); ++i) {
+            out.buttons.push_back(utf8(buttons[i]));
+        }
+        return true;
+    }
     std::int32_t player_level() const override { return 1; }
 
 private:

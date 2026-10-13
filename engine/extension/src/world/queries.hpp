@@ -65,6 +65,13 @@ std::int64_t find_sound_descriptor(const WorldData& data, const godot::String& e
 std::int64_t find_sound_marker(const WorldData& data, const godot::String& editor_id);
 godot::Dictionary get_sound_marker(const WorldData& data, std::int64_t id);
 godot::Dictionary get_sound_output_model(const WorldData& data, std::int64_t id);
+
+// ---- keywords, form lists, messages (queries_forms.cpp) -------------------
+std::int64_t find_keyword(const WorldData& data, const godot::String& editor_id);
+godot::PackedInt64Array get_base_keywords(const WorldData& data, std::int64_t base);
+godot::Dictionary get_form_list(const WorldData& data, std::int64_t id);
+godot::Dictionary get_message(const WorldData& data, std::int64_t id);
+
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
 godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);
 godot::Dictionary get_actor(const WorldData& data, std::int64_t ref);

@@ -8,8 +8,19 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+#include <vector>
 
 namespace skydot::vm {
+
+/// A MESG: `title` (FULL), `text` (DESC) with its %f placeholders, and whether
+/// it is a message box rather than a notification, with its buttons' texts.
+struct MessageText {
+    std::string title;
+    std::string text;
+    bool box = false;
+    std::vector<std::string> buttons;
+};
 
 class WorldAccess {
 public:
@@ -26,6 +37,15 @@ public:
     [[nodiscard]] virtual bool cell_interior(std::uint32_t cell) const = 0;
     /// Whether `cell` is loaded (its references were handed to the VM).
     [[nodiscard]] virtual bool cell_attached(std::uint32_t cell) const = 0;
+    /// Whether `form` has `keyword`: a base form by its KWDA, a reference by
+    /// its base's (references carry none of their own).
+    [[nodiscard]] virtual bool has_keyword(std::uint32_t form, std::uint32_t keyword) const = 0;
+    /// The KYWD with this editor id (any case); 0 if none.
+    [[nodiscard]] virtual std::uint32_t find_keyword(const std::string& editor_id) const = 0;
+    /// The forms of FLST `list` into `forms`; false if `list` is not one.
+    [[nodiscard]] virtual bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const = 0;
+    /// MESG `id` into `out`; false if it is not one.
+    [[nodiscard]] virtual bool message(std::uint32_t id, MessageText& out) const = 0;
     /// The player's level; 1 until the player has stats.
     [[nodiscard]] virtual std::int32_t player_level() const = 0;
 };

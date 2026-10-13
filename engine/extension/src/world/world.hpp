@@ -173,6 +173,14 @@ public:
     std::int64_t find_sound_marker(const godot::String& editor_id) const;
     /// SOUN: id, editor_id, descriptor (an SNDR id). Empty if not a marker.
     godot::Dictionary get_sound_marker(std::int64_t id) const;
+    /// The KYWD with this editor id (case-insensitive), 0 if none.
+    std::int64_t find_keyword(const godot::String& editor_id) const;
+    /// A base's KWDA, as keyword ids.
+    godot::PackedInt64Array get_base_keywords(std::int64_t base) const;
+    /// editor_id, forms (ids); empty if `id` is not a form list.
+    godot::Dictionary get_form_list(std::int64_t id) const;
+    /// editor_id, title, text, box, buttons; empty if `id` is not a message.
+    godot::Dictionary get_message(std::int64_t id) const;
     /// SOPM: id, editor_id, flags (bit 0: attenuates with distance), type,
     /// min_distance and max_distance (game units), curve (5 bytes). Empty if
     /// not an output model.

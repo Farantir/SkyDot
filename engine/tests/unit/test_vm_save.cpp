@@ -298,10 +298,10 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
     SECTION("a version this engine does not read") {
-        bytes[4] = 5;
+        bytes[4] = 6;
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
-        CHECK_THAT(error, ContainsSubstring("version 5"));
+        CHECK_THAT(error, ContainsSubstring("version 6"));
     }
     SECTION("bytes after the end") {
         bytes.push_back(0);
@@ -572,4 +572,34 @@ TEST_CASE("animation states are part of the VM save; version 3 saves load with n
         REQUIRE(d.load(v3, error));
         CHECK(d.animation_states().empty());
     }
+}
+
+TEST_CASE("forms added to lists are part of the VM save; version 4 saves load with none", "[vm][save][formlist]") {
+    skydot::vm::Vm a;
+    a.form_lists().add(0x600, 0x30);
+    a.form_lists().add(0x600, 0x31);
+    a.form_lists().add(0x601, 0x32);
+    const auto bytes = a.save();
+    skydot::vm::Vm b;
+    b.form_lists().add(0x99, 0x1); // replaced by the load
+    std::string error;
+    REQUIRE(b.load(bytes, error));
+    CHECK(b.form_lists().added(0x600) == std::vector<std::uint32_t>{0x30, 0x31});
+    CHECK(b.form_lists().added(0x601) == std::vector<std::uint32_t>{0x32});
+    CHECK(b.form_lists().added(0x99).empty());
+
+    auto cut = bytes;
+    cut.pop_back();
+    skydot::vm::Vm c;
+    CHECK_FALSE(c.load(cut, error));
+
+    // A save without the section (version 4) ends after the animation states.
+    skydot::vm::Vm empty;
+    const auto plain = empty.save();
+    Bytes older(plain.begin(), plain.end() - 4); // drop the empty list count
+    older[4] = 4;                                // the version, little-endian
+    skydot::vm::Vm d;
+    d.form_lists().add(0x1, 0x2);
+    REQUIRE(d.load(older, error));
+    CHECK(d.form_lists().lists().empty());
 }
