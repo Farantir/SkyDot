@@ -398,6 +398,38 @@ table Base {
     /// KWDA (format 22): Keywords in `keywords`, for the bases that are in
     /// this table anyway (a model or scripts); a reference has none of its own.
     keywords: [uint32];
+    /// DEST with its stages (format 23); absent if the record has none.
+    destruction: Destruction;
+}
+
+/// DEST, DSTD and DMDL (format 23). A stage opens when the object's health
+/// has fallen to `health_percent` of `Destruction.health`; the stages are in
+/// record order, and the script-side stage number is the count of stages
+/// opened (0: intact, 1: the first stage, ...).
+table Destruction {
+    health: int32;
+    /// DEST byte 5.
+    flags: ubyte;
+    stages: [DestructionStage];
+}
+
+table DestructionStage {
+    /// DSTD byte 0.
+    health_percent: ubyte;
+    /// DSTD byte 1.
+    index: ubyte;
+    /// DSTD byte 2: the model-damage stage.
+    damage_stage: ubyte;
+    /// DSTD byte 3: 1 cap damage, 2 disable, 4 destroy, 8 ignore external damage.
+    flags: ubyte;
+    self_damage_per_second: int32;
+    /// An Explosion in `explosions`, 0 if none.
+    explosion: uint32;
+    /// A debris form (DEBR, not in this file), 0 if none.
+    debris: uint32;
+    debris_count: int32;
+    /// DMDL as a normalized virtual path, empty if the stage keeps the model.
+    model: string;
 }
 
 /// One MODS entry (format 16): the shape named `shape` (3D index `index`, the
@@ -1328,6 +1360,28 @@ table Message {
     buttons: [string];
 }
 
+/// EXPL (format 23); DATA is 52 bytes: light, sound 1 (inside the radius),
+/// sound 2, impact data set, placed object, spawn projectile, force, damage,
+/// radius, image space radius, vertical offset multiplier, flags, sound level.
+/// All forms are global ids; 0 if none. An explosion is also a `bases` entry,
+/// so references to it resolve.
+table Explosion {
+    id: uint32 (key);
+    editor_id: string;
+    /// Normalized virtual path, or empty.
+    model: string;
+    light: uint32;
+    sound: uint32;
+    sound_far: uint32;
+    impact_data: uint32;
+    placed_object: uint32;
+    projectile: uint32;
+    force: float;
+    damage: float;
+    radius: float;
+    flags: uint32;
+}
+
 table World {
     format_version: uint32;
     /// Sorted by id.
@@ -1396,6 +1450,8 @@ table World {
     form_lists: [FormList];
     /// Sorted by id (format 22).
     messages: [Message];
+    /// Sorted by id (format 23).
+    explosions: [Explosion];
 }
 
 root_type World;

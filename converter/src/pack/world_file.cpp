@@ -262,6 +262,10 @@ std::optional<wfb::SoundOutputModelT> WorldFile::sound_output_model(std::uint32_
     return unpack(lookup(impl_->root->sound_output_models(), id));
 }
 
+std::optional<wfb::ExplosionT> WorldFile::explosion(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->explosions(), id));
+}
+
 std::optional<wfb::KeywordT> WorldFile::keyword(std::uint32_t id) const {
     return unpack(lookup(impl_->root->keywords(), id));
 }

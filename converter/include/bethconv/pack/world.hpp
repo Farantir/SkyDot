@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 22;
+inline constexpr std::uint32_t k_world_format_version = 23;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -76,6 +76,8 @@ struct WorldStats {
     std::uint64_t keywords{};
     std::uint64_t form_lists{};
     std::uint64_t messages{};
+    /// EXPL (format 23).
+    std::uint64_t explosions{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -172,6 +174,7 @@ public:
     [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundMarkerT> sound_marker(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundOutputModelT> sound_output_model(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::ExplosionT> explosion(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::KeywordT> keyword(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::FormListT> form_list(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::MessageT> message(std::uint32_t id) const;

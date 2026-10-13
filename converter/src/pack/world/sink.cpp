@@ -70,6 +70,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         bases_.collect(merged, data, form_ctx);
         break;
     case FourCC{"SOUN"}.value:
+    case FourCC{"EXPL"}.value:
     case FourCC{"AMMO"}.value:
     case FourCC{"PROJ"}.value:
         // Bases too (the model); the flight data is read from a copy.

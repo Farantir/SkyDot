@@ -1417,6 +1417,54 @@ void make_actors(const TempDir& dir) {
     bethconv::test::write_record(keyed_group, "ACTI", 0x0100'0E81, keyed.span());
     top_group(file, "ACTI", keyed_group);
 
+    ByteWriter breakable;
+    field_text(breakable, "EDID", "TestBreakable");
+    field_text(breakable, "MODL", "Test\\\\Lamp.nif");
+    ByteWriter dest;
+    dest.u32(100);
+    dest.u8(2);
+    dest.u8(0);
+    dest.u16(0);
+    bethconv::test::write_field(breakable, "DEST", dest);
+    for (const int stage : {1, 2}) {
+        ByteWriter dstd;
+        dstd.u8(stage == 1 ? 90 : 0); // health percent
+        dstd.u8(static_cast<std::uint8_t>(stage - 1));
+        dstd.u8(static_cast<std::uint8_t>(stage));
+        dstd.u8(stage == 2 ? 6 : 0); // disable, destroy on the last
+        dstd.u32(0);
+        dstd.u32(stage == 2 ? 0x0100'0E83 : 0); // explosion
+        dstd.u32(0);
+        dstd.u32(0);
+        bethconv::test::write_field(breakable, "DSTD", dstd);
+        if (stage == 1) {
+            field_text(breakable, "DMDL", "Test\\\\LampFalling.nif");
+        }
+        bethconv::test::write_field(breakable, "DSTF", ByteWriter{});
+    }
+    ByteWriter breakables;
+    bethconv::test::write_record(breakables, "ACTI", 0x0100'0E84, breakable.span());
+    top_group(file, "ACTI", breakables);
+
+    ByteWriter expl;
+    field_text(expl, "EDID", "TestBoom");
+    field_text(expl, "MODL", "Effects\\Boom.nif");
+    ByteWriter expl_data;
+    for (const std::uint32_t id : {0x0100'0E85u, 0x0100'0E70u, 0u, 0u, 0x0100'0E81u, 0u}) {
+        expl_data.u32(id);
+    }
+    expl_data.f32(1.0F);
+    expl_data.f32(50.0F);
+    expl_data.f32(256.0F);
+    expl_data.f32(0.0F);
+    expl_data.f32(0.0F);
+    expl_data.u32(0x2);
+    expl_data.u32(0);
+    bethconv::test::write_field(expl, "DATA", expl_data);
+    ByteWriter expls;
+    bethconv::test::write_record(expls, "EXPL", 0x0100'0E83, expl.span());
+    top_group(file, "EXPL", expls);
+
     ByteWriter mesg;
     field_text(mesg, "EDID", "TestMessage");
     field_text(mesg, "DESC", "Pulled %.0f of %.0f");
@@ -1468,6 +1516,24 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
 
+    CHECK(stats->explosions == 1);
+    const auto boom = file->explosion(0x0200'0E83);
+    REQUIRE(boom.has_value());
+    CHECK(boom->editor_id == "TestBoom");
+    CHECK(boom->model == "meshes/effects/boom.nif");
+    CHECK(boom->sound == 0x0200'0E70);
+    CHECK(boom->placed_object == 0x0200'0E81);
+    CHECK(boom->radius == 256.0F);
+    CHECK(boom->flags == 0x2);
+    const auto breakable = file->base(0x0200'0E84);
+    REQUIRE(breakable.has_value());
+    REQUIRE(breakable->destruction != nullptr);
+    CHECK(breakable->destruction->health == 100);
+    REQUIRE(breakable->destruction->stages.size() == 2);
+    CHECK(breakable->destruction->stages[0]->health_percent == 90);
+    CHECK(breakable->destruction->stages[0]->model == "meshes/test/lampfalling.nif");
+    CHECK(breakable->destruction->stages[1]->flags == 6);
+    CHECK(breakable->destruction->stages[1]->explosion == 0x0200'0E83);
     CHECK(stats->keywords == 1);
     CHECK(stats->form_lists == 1);
     CHECK(stats->messages == 1);

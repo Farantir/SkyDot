@@ -83,6 +83,9 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"SOPM"}.value:
         on_sound_output_model(merged, data);
         break;
+    case FourCC{"EXPL"}.value:
+        on_explosion(merged, data);
+        break;
     default:
         break;
     }
@@ -175,6 +178,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     std::uint32_t material = 0;
     record::KeywordList keywords;
     std::optional<io::ParseError> keyword_failure;
+    record::Destruction destruction;
     const auto walked = record::for_each_field(
         data, [&](const record::FieldHeader& field, io::SpanReader& body) {
             if (field.type == FourCC{"DNAM"} && stat && body.remaining() >= 8) {
@@ -196,6 +200,8 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 flags = body.get<std::uint8_t>().value_or(0);
             } else if (record::read_keyword_field(keywords, field, body, keyword_failure)) {
                 // KSIZ and KWDA
+            } else if (record::read_destruction_field(destruction, field, body, keyword_failure)) {
+                // DEST, DSTD, DMDL...
             } else if (field.type == FourCC{"VMAD"} && scripted) {
                 if (auto read = record::read_script_data(body)) {
                     scripts = std::move(*read);
@@ -224,6 +230,27 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     }
     out.flags = flags;
     out.keywords = shared_.global_all(merged, keywords.keywords, failed);
+    if (!destruction.empty()) {
+        auto dest = std::make_unique<wfb::DestructionT>();
+        dest->health = destruction.health;
+        dest->flags = destruction.flags;
+        for (const auto& stage : destruction.stages) {
+            auto st = std::make_unique<wfb::DestructionStageT>();
+            st->health_percent = stage.health_percent;
+            st->index = stage.index;
+            st->damage_stage = stage.damage_stage;
+            st->flags = stage.stage_flags;
+            st->self_damage_per_second = stage.self_damage_per_second;
+            st->explosion = shared_.global(merged, stage.explosion, failed);
+            st->debris = shared_.global(merged, stage.debris, failed);
+            st->debris_count = stage.debris_count;
+            if (!stage.model.path.empty()) {
+                st->model = model_vpath(stage.model.path);
+            }
+            dest->stages.push_back(std::move(st));
+        }
+        out.destruction = std::move(dest);
+    }
     out.scripts = shared_.global_scripts(merged, scripts, failed);
     out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
     if (material != 0) {
@@ -345,6 +372,49 @@ void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::Span
         ++shared_.stats().unresolved;
     }
     sound_markers_[out.id] = std::move(out);
+}
+
+/// EXPL: MODL and DATA (52 bytes: light, two sounds, impact data set, placed
+/// object, projectile, then force, damage, radius, image space radius,
+/// vertical offset multiplier floats, flags and sound level).
+void BaseCollector::on_explosion(const record::MergedRecord& merged, io::SpanReader& data) {
+    wfb::ExplosionT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"MODL"} && out.model.empty()) {
+                const auto path = std::string(body.zstring().value_or(""));
+                out.model = path.empty() ? std::string{} : model_vpath(path);
+            } else if (field.type == FourCC{"DATA"} && body.remaining() >= 48) {
+                const auto form = [&] {
+                    return shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
+                };
+                out.light = form();
+                out.sound = form();
+                out.sound_far = form();
+                out.impact_data = form();
+                out.placed_object = form();
+                out.projectile = form();
+                out.force = body.get<float>().value_or(0.0F);
+                out.damage = body.get<float>().value_or(0.0F);
+                out.radius = body.get<float>().value_or(0.0F);
+                (void)body.skip(8); // image space radius, vertical offset multiplier
+                if (body.remaining() >= 4) {
+                    out.flags = body.get<std::uint32_t>().value_or(0);
+                }
+            }
+        });
+    if (!walked) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    explosions_[out.id] = std::move(out);
 }
 
 /// KYWD: only the editor id, which `Keyword.GetKeyword` looks up.
@@ -587,6 +657,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.sound_descriptors += sound_descriptors_.size();
     stats.sound_markers += sound_markers_.size();
     stats.sound_output_models += sound_output_models_.size();
+    stats.explosions += explosions_.size();
     stats.keywords += keywords_.size();
     stats.messages += messages_.size();
     stats.land_textures += land_textures_.size();
@@ -613,6 +684,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.sound_descriptors, sound_descriptors_);
     move_into(world.sound_markers, sound_markers_);
     move_into(world.sound_output_models, sound_output_models_);
+    move_into(world.explosions, explosions_);
     move_into(world.keywords, keywords_);
     move_into(world.messages, messages_);
     for (auto& [id, ltex] : land_textures_) {
