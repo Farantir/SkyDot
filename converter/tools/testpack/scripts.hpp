@@ -105,6 +105,10 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                    function("OnActivate", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerEnter", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerLeave", "None", {{"akActionRef", "ObjectReference"}}, {}, {})}));
+    out.emplace_back(
+        "scripts/weapon.pex",
+        one_state("Weapon", "Form",
+                  {native("Fire", "None", {{"akSource", "ObjectReference"}, {"akAmmo", "Form"}})}));
     out.emplace_back("scripts/debug.pex",
                      one_state("Debug", "",
                                {native("Trace", "None",
@@ -162,6 +166,17 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
             {{.name = "::Target_var", .type = "ObjectReference", .initial = none()},
              {.name = "Pulls", .type = "Int", .initial = integer(0)}},
             {{.name = "Target", .type = "ObjectReference", .auto_var = "::Target_var"}}));
+
+    // Scriptname TestpackFireScript extends Weapon
+    // Function Shoot()
+    //     Fire(None, None)
+    // EndFunction
+    out.emplace_back(
+        "scripts/testpackfirescript.pex",
+        one_state("TestpackFireScript", "Weapon",
+                  {function("Shoot", "None", {}, {{"::NoneVar", "None"}},
+                            {ins(op_callmethod, {ident("Fire"), ident("self"), ident("::NoneVar")},
+                                 {none(), none()})})}));
 
     // Scriptname TestpackVmScript: global functions covering the opcodes.
     out.emplace_back(

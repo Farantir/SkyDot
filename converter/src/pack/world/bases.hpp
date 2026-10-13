@@ -48,7 +48,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX or GRAS; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO or PROJ; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -69,6 +69,10 @@ private:
                          const record::FormContext& form_ctx);
     void on_addon_node(const record::MergedRecord& merged, io::SpanReader& data);
     void on_grass(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_ammo(const record::MergedRecord& merged, io::SpanReader& data,
+                 const record::FormContext& form_ctx);
+    void on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
+                       const record::FormContext& form_ctx);
     void on_texture_set(const record::MergedRecord& merged, io::SpanReader& data,
                         const record::FormContext& form_ctx);
 
@@ -77,6 +81,8 @@ private:
     std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;
     std::map<std::uint32_t, wfb::GrassT> grasses_;
     std::map<std::uint32_t, wfb::AddonNodeT> addons_;
+    std::map<std::uint32_t, wfb::AmmoT> ammos_;
+    std::map<std::uint32_t, wfb::ProjectileT> projectiles_;
     std::map<std::uint32_t, LandTextureEntry> land_textures_;
     std::unordered_map<std::uint32_t, TextureSetEntry> texture_sets_;
     std::map<std::uint32_t, std::vector<PendingAlternate>> pending_alternates_;

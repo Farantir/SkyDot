@@ -78,6 +78,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto armor_addons = pack_all(builder, root.armor_addons);
     const auto outfits = pack_all(builder, root.outfits);
     const auto leveled_lists = pack_all(builder, root.leveled_lists);
+    const auto ammos = pack_all(builder, root.ammos);
+    const auto projectiles = pack_all(builder, root.projectiles);
     const auto grasses = pack_all(builder, root.grasses);
     const auto addon_nodes = pack_all(builder, root.addon_nodes);
     const auto plugins = pack_all(builder, root.plugins);
@@ -87,7 +89,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   climates, weathers, cells, bases, quests, globals, actors,
                                   plugins, precipitations, regions, npcs, races, armors,
                                   armor_addons, outfits, leveled_lists, packages, image_spaces,
-                                  material_objects, grasses, addon_nodes, volumetric_lightings));
+                                  material_objects, grasses, addon_nodes, volumetric_lightings, ammos,
+                                  projectiles));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

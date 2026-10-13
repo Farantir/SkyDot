@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 18;
+inline constexpr std::uint32_t k_world_format_version = 19;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -65,6 +65,9 @@ struct WorldStats {
     std::uint64_t armor_addons{};
     std::uint64_t outfits{};
     std::uint64_t leveled_lists{};
+    /// AMMO and PROJ (format 19).
+    std::uint64_t ammos{};
+    std::uint64_t projectiles{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -156,6 +159,8 @@ public:
     [[nodiscard]] std::size_t package_count() const noexcept;
     [[nodiscard]] std::optional<wfb::RaceT> race(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ArmorAddonT> armor_addon(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::AmmoT> ammo(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::ProjectileT> projectile(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

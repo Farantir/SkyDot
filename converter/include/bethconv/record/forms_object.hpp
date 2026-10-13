@@ -18,6 +18,7 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -349,6 +350,23 @@ struct Projectile {
     std::vector<std::byte> muzzle_flash_hashes;///< NAM2, a MODT-shaped block.
     std::uint32_t sound_level{};               ///< VNAM
 };
+
+/// The part of a PROJ DATA that flight needs. Offsets (SE; the 84 and 88 byte
+/// variants agree up to `lifetime`): u16 flags, u16 type, then floats gravity
+/// (4), speed (8), range (12), collision radius (72), lifetime (76).
+struct ProjectileFlight {
+    std::uint16_t flags{};
+    /// 1 missile, 2 lobber, 4 beam, 8 flame, 0x10 cone, 0x20 barrier, 0x40 arrow.
+    std::uint16_t type{};
+    float gravity{};  ///< Multiplier of the world's gravity.
+    float speed{};    ///< Game units per second.
+    float range{};    ///< Game units.
+    float collision_radius{};
+    float lifetime{}; ///< Seconds.
+};
+
+/// Nullopt if `data` is shorter than 80 bytes.
+[[nodiscard]] std::optional<ProjectileFlight> projectile_flight(std::span<const std::byte> data);
 
 /// IDLM: an idle marker where an actor plays an animation. 94 in SE.
 struct IdleMarker {

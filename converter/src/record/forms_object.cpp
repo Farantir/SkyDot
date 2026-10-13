@@ -513,6 +513,23 @@ io::ParseResult<Projectile> parse_projectile(io::SpanReader& data, const FormCon
     return out;
 }
 
+std::optional<ProjectileFlight> projectile_flight(std::span<const std::byte> data) {
+    if (data.size() < 80) {
+        return std::nullopt;
+    }
+    io::SpanReader in(data, "PROJ DATA");
+    ProjectileFlight out;
+    out.flags = in.get<std::uint16_t>().value_or(0);
+    out.type = in.get<std::uint16_t>().value_or(0);
+    out.gravity = in.get<float>().value_or(0.0F);
+    out.speed = in.get<float>().value_or(0.0F);
+    out.range = in.get<float>().value_or(0.0F);
+    (void)in.bytes(56); // light .. cone spread
+    out.collision_radius = in.get<float>().value_or(0.0F);
+    out.lifetime = in.get<float>().value_or(0.0F);
+    return out;
+}
+
 io::ParseResult<IdleMarker> parse_idle_marker(io::SpanReader& data, const FormContext& ctx) {
     IdleMarker out;
     const BaseObjectFields into{.editor_id = &out.editor_id, .bounds = &out.bounds};

@@ -62,6 +62,12 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"GRAS"}.value:
         on_grass(merged, data);
         break;
+    case FourCC{"AMMO"}.value:
+        on_ammo(merged, data, form_ctx);
+        break;
+    case FourCC{"PROJ"}.value:
+        on_projectile(merged, data, form_ctx);
+        break;
     default:
         break;
     }
@@ -209,6 +215,44 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         ++shared_.stats().unresolved;
     }
     bases_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_ammo(const record::MergedRecord& merged, io::SpanReader& data,
+                            const record::FormContext& form_ctx) {
+    auto ammo = record::parse_ammo(data, form_ctx);
+    if (!ammo) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::AmmoT out;
+    out.id = merged.form.value;
+    out.projectile = shared_.global(merged, ammo->projectile, failed);
+    out.flags = ammo->flags;
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    ammos_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
+                                  const record::FormContext& form_ctx) {
+    auto projectile = record::parse_projectile(data, form_ctx);
+    const auto flight = projectile ? record::projectile_flight(projectile->data) : std::nullopt;
+    if (!flight) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::ProjectileT out;
+    out.id = merged.form.value;
+    out.type = flight->type;
+    out.flags = flight->flags;
+    out.gravity = flight->gravity;
+    out.speed = flight->speed;
+    out.range = flight->range;
+    out.collision_radius = flight->collision_radius;
+    out.lifetime = flight->lifetime;
+    projectiles_[out.id] = std::move(out);
 }
 
 void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data) {
@@ -360,6 +404,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
         }
     }
     stats.bases += bases_.size();
+    stats.ammos += ammos_.size();
+    stats.projectiles += projectiles_.size();
     stats.land_textures += land_textures_.size();
     for (auto& [id, list] : pending_alternates_) {
         const auto base = bases_.find(id);
@@ -379,6 +425,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
         }
     }
     move_into(world.bases, bases_);
+    move_into(world.ammos, ammos_);
+    move_into(world.projectiles, projectiles_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;

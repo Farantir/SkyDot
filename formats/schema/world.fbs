@@ -1205,6 +1205,36 @@ table Package {
 /// A plugin of the load order and where its forms live: a form of this
 /// plugin with object id `n` is `prefix | n`, `n` masked to 24 bits (12 for a
 /// light plugin). For Game.GetFormFromFile.
+/// AMMO (format 19): what a fired weapon launches. The model is the base of
+/// the same id in `bases`.
+table Ammo {
+    id: uint32 (key);
+    /// The PROJ in `projectiles`.
+    projectile: uint32;
+    /// DATA flags: bit 0 ignores normal weapon resistance, 1 non-playable,
+    /// 2 non-bolt (arrow).
+    flags: uint32;
+}
+
+/// PROJ (format 19): flight data from DATA. The model is the base of the same
+/// id in `bases`.
+table Projectile {
+    id: uint32 (key);
+    /// 1 missile, 2 lobber, 4 beam, 8 flame, 0x10 cone, 0x20 barrier, 0x40 arrow.
+    type: uint16;
+    flags: uint16;
+    /// Multiplier of the world's gravity.
+    gravity: float;
+    /// Game units per second.
+    speed: float;
+    /// Game units.
+    range: float;
+    /// Game units.
+    collision_radius: float;
+    /// Seconds.
+    lifetime: float;
+}
+
 table Plugin {
     name: string;
     prefix: uint32;
@@ -1263,6 +1293,10 @@ table World {
     addon_nodes: [AddonNode];
     /// Sorted by id (format 13).
     volumetric_lightings: [VolumetricLighting];
+    /// Sorted by id (format 19).
+    ammos: [Ammo];
+    /// Sorted by id (format 19).
+    projectiles: [Projectile];
 }
 
 root_type World;

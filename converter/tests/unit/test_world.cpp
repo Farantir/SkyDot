@@ -1220,6 +1220,41 @@ void make_actors(const TempDir& dir) {
     bethconv::test::write_record(outfits, "OTFT", 0x0100'0E20, outfit.span());
     top_group(file, "OTFT", outfits);
 
+    ByteWriter proj;
+    field_text(proj, "EDID", "TestDartProjectile");
+    field_text(proj, "MODL", "Weapons\\Dart\\DartProjectile.nif");
+    ByteWriter proj_data;
+    proj_data.u16(0x0001);
+    proj_data.u16(0x0040); // arrow
+    proj_data.f32(0.5F);   // gravity
+    proj_data.f32(6000.0F); // speed
+    proj_data.f32(9000.0F); // range
+    for (int i = 0; i < 14; ++i) { // light .. cone spread
+        proj_data.u32(0);
+    }
+    proj_data.f32(4.0F);  // collision radius
+    proj_data.f32(30.0F); // lifetime
+    for (int i = 0; i < 3; ++i) { // relaunch, decal, layer
+        proj_data.u32(0);
+    }
+    bethconv::test::write_field(proj, "DATA", proj_data);
+    ByteWriter projs;
+    bethconv::test::write_record(projs, "PROJ", 0x0100'0E60, proj.span());
+    top_group(file, "PROJ", projs);
+
+    ByteWriter ammo;
+    field_text(ammo, "EDID", "TestDart");
+    ByteWriter ammo_data;
+    ammo_data.u32(0x0100'0E60);
+    ammo_data.u32(0x2);
+    ammo_data.f32(1.0F);
+    ammo_data.u32(1);
+    ammo_data.f32(0.1F);
+    bethconv::test::write_field(ammo, "DATA", ammo_data);
+    ByteWriter ammos;
+    bethconv::test::write_record(ammos, "AMMO", 0x0100'0E61, ammo.span());
+    top_group(file, "AMMO", ammos);
+
     ByteWriter npc;
     field_text(npc, "EDID", "TestNpc");
     ByteWriter acbs;
@@ -1356,6 +1391,25 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(npc->skin_tone == std::vector<float>{0.9F, 0.75F, 0.6F});
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
+
+    CHECK(stats->ammos == 1);
+    CHECK(stats->projectiles == 1);
+    const auto ammo = file->ammo(0x0200'0E61);
+    REQUIRE(ammo.has_value());
+    CHECK(ammo->projectile == 0x0200'0E60);
+    CHECK(ammo->flags == 0x2);
+    const auto projectile = file->projectile(0x0200'0E60);
+    REQUIRE(projectile.has_value());
+    CHECK(projectile->type == 0x40);
+    CHECK(projectile->gravity == 0.5F);
+    CHECK(projectile->speed == 6000.0F);
+    CHECK(projectile->range == 9000.0F);
+    CHECK(projectile->collision_radius == 4.0F);
+    CHECK(projectile->lifetime == 30.0F);
+    // Both are bases too, for their models.
+    const auto proj_base = file->base(0x0200'0E60);
+    REQUIRE(proj_base.has_value());
+    CHECK(proj_base->model == "meshes/weapons/dart/dartprojectile.nif");
 
     const auto race = file->race(0x0200'0E00);
     REQUIRE(race.has_value());

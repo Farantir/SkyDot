@@ -242,6 +242,14 @@ std::optional<wfb::ClimateT> WorldFile::climate(std::uint32_t id) const {
     return unpack(lookup(impl_->root->climates(), id));
 }
 
+std::optional<wfb::AmmoT> WorldFile::ammo(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->ammos(), id));
+}
+
+std::optional<wfb::ProjectileT> WorldFile::projectile(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->projectiles(), id));
+}
+
 std::optional<wfb::ImageSpaceT> WorldFile::image_space(std::uint32_t id) const {
     return unpack(lookup(impl_->root->image_spaces(), id));
 }
