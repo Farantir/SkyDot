@@ -117,6 +117,15 @@ func _run(pack_dir: String) -> void:
     var weapon := vm.create_instance("TestpackFireScript")
     finish(vm, vm.call_method(weapon, "TestpackFireScript", "Shoot", []))
     expect(fired == [[weapon, 0, 0]], "Weapon.Fire emits fire_weapon: %s" % [fired])
+    # Sound.Play hands out instance ids and emits play_sound; PlayAndWait waits
+    # for notify_sound_finished.
+    var played := []
+    vm.play_sound.connect(func(sound: int, source: int, instance: int) -> void:
+        played.append([sound, source, instance]))
+    var clicker := vm.create_instance("TestpackSoundScript")
+    finish(vm, vm.call_method(clicker, "TestpackSoundScript", "Click", []))
+    finish(vm, vm.call_method(clicker, "TestpackSoundScript", "Click", []))
+    expect(played == [[clicker, 0, 1], [clicker, 0, 2]], "Sound.Play emits play_sound with instances: %s" % [played])
     expect(vm.get_error_count() == 0, "nothing went wrong so far")
 
     _check_triggers(vm, world)

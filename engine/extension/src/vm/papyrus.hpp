@@ -58,6 +58,8 @@ public:
     static constexpr std::int64_t PLAYER_REF = 0x14;
     /// Seconds PlayAnimationAndWait waits for its event before carrying on.
     static constexpr double ANIMATION_TIMEOUT = 10.0;
+    /// Sound.PlayAndWait gives up on a clip that never reports its end (a loop).
+    static constexpr double SOUND_TIMEOUT = 30.0;
     /// Alias handles are form ids from here up, above those create_instance
     /// hands out.
     static constexpr std::int64_t ALIAS_HANDLE_BASE = 0xFF800000;
@@ -119,6 +121,9 @@ public:
     /// An animation event (a text key or a finished clip) on `ref`, for
     /// PlayAnimationAndWait.
     void notify_animation_event(std::int64_t ref, const godot::String& event);
+    /// A sound instance (play_sound's third argument) has ended, for
+    /// Sound.PlayAndWait.
+    void notify_sound_finished(std::int64_t instance);
     /// Move `actor` to `position` (Skyrim space, game units): OnTriggerEnter
     /// and OnTriggerLeave for the trigger volumes it crosses.
     void update_actor(std::int64_t actor, const godot::Vector3& position);
@@ -225,6 +230,7 @@ private:
     void bind_objectreference_natives();
     void bind_effectshader_natives();
     void bind_weapon_natives();
+    void bind_sound_natives();
     void bind_quest_natives();
     void bind_noop_natives();
     void bind_world_natives();
@@ -275,6 +281,8 @@ private:
     struct Access;
     std::unique_ptr<vm::WorldAccess> access_;
     std::unique_ptr<vm::Vm> vm_;
+    /// The next playback instance Sound.Play hands out (1, 2, ...).
+    std::int64_t next_sound_instance_ = 1;
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotWorld> world_;
     std::set<std::uint32_t> attached_;

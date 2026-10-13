@@ -75,6 +75,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
     godot::ClassDB::bind_method(D_METHOD("notify_animation_event", "ref", "event"),
                                 &SkydotPapyrus::notify_animation_event);
+    godot::ClassDB::bind_method(D_METHOD("notify_sound_finished", "instance"),
+                                &SkydotPapyrus::notify_sound_finished);
     godot::ClassDB::bind_method(D_METHOD("update_actor", "actor", "position"),
                                 &SkydotPapyrus::update_actor);
     godot::ClassDB::bind_method(D_METHOD("update", "seconds"), &SkydotPapyrus::update);
@@ -140,6 +142,15 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("fire_weapon", PropertyInfo(Variant::INT, "weapon"),
                                  PropertyInfo(Variant::INT, "source"),
                                  PropertyInfo(Variant::INT, "ammo")));
+    // Sound.Play and PlayAndWait: the SNDR or SOUN, the source reference (0 for
+    // None) and the playback instance; StopInstance and SetInstanceVolume name
+    // an instance.
+    ADD_SIGNAL(godot::MethodInfo("play_sound", PropertyInfo(Variant::INT, "sound"),
+                                 PropertyInfo(Variant::INT, "source"),
+                                 PropertyInfo(Variant::INT, "instance")));
+    ADD_SIGNAL(godot::MethodInfo("stop_sound", PropertyInfo(Variant::INT, "instance")));
+    ADD_SIGNAL(godot::MethodInfo("sound_volume", PropertyInfo(Variant::INT, "instance"),
+                                 PropertyInfo(Variant::FLOAT, "volume")));
     ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "motion_type")));
     // A script's or an activate parent's activation, once the VM ran it: the
@@ -349,6 +360,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_objectreference_natives,
         &SkydotPapyrus::bind_effectshader_natives,
         &SkydotPapyrus::bind_weapon_natives,
+        &SkydotPapyrus::bind_sound_natives,
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
@@ -720,6 +732,10 @@ void SkydotPapyrus::notify_animation_event(std::int64_t ref, const String& event
         complete_activation(ref);
     }
     vm_->notify("anim:" + std::to_string(static_cast<std::uint32_t>(ref)) + ":" + utf8(event));
+}
+
+void SkydotPapyrus::notify_sound_finished(std::int64_t instance) {
+    vm_->notify("sound:" + std::to_string(instance));
 }
 
 // ---- triggers -------------------------------------------------------------

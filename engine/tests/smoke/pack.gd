@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Mounts the pack from `bethconv-testpack` and queries it. Expected numbers
-# come from that tool (converter/tools/testpack/main.cpp: 44 forms, 38 distinct
-# assets, 42 index entries) and change with it.
+# come from that tool (converter/tools/testpack/main.cpp: 47 forms, 41 distinct
+# assets, 45 index entries) and change with it.
 extends SceneTree
 
 var failures := 0
@@ -32,8 +32,8 @@ func _run(pack_dir: String) -> void:
     if not pack.is_open():
         return
 
-    expect(pack.get_asset_count() == 38, "38 distinct assets, got %d" % pack.get_asset_count())
-    expect(pack.get_index_count() == 42, "42 index entries, got %d" % pack.get_index_count())
+    expect(pack.get_asset_count() == 41, "41 distinct assets, got %d" % pack.get_asset_count())
+    expect(pack.get_index_count() == 45, "45 index entries, got %d" % pack.get_index_count())
     expect(pack.get_unknown_kind_count() == 0, "every kind is one this engine knows")
 
     expect(pack.get_store_layout() == "blob", "the test pack keeps its assets in a blob")
@@ -92,7 +92,7 @@ func _run(pack_dir: String) -> void:
 ## every path gives the bytes the blob gives, a texture and a cube map load, an
 ## empty file is an empty asset and a missing one is none.
 func _check_loose(pack_dir: String, pack: SkydotPack) -> void:
-    const EXTENSIONS := {"mesh": ".glb", "texture": ".dds", "script": ".pexfb", "lod": ".lodfb", "animation": ".animfb"}
+    const EXTENSIONS := {"mesh": ".glb", "texture": ".dds", "script": ".pexfb", "lod": ".lodfb", "animation": ".animfb", "sound": ".wav"}
     var scratch := OS.get_environment("SKYDOT_SCRATCH")
     if scratch == "":
         scratch = OS.get_user_data_dir().path_join("smoke")
@@ -144,7 +144,26 @@ func _check_world(pack: SkydotPack) -> void:
     if world == null:
         return
     expect(world.get_cell_count() == 4, "4 cells, got %d" % world.get_cell_count())
-    expect(world.get_base_count() == 7, "7 bases, got %d" % world.get_base_count())
+    expect(world.get_base_count() == 8, "8 bases, got %d" % world.get_base_count())
+
+    # Sound: SNDR with both file spellings normalized, its SOPM, and the SOUN.
+    var sound_id := world.find_sound_descriptor("TESTPACKCLICKSD")
+    var sound := world.get_sound_descriptor(sound_id)
+    expect(sound_id != 0 and sound.get("editor_id") == "TestpackClickSD", "a descriptor by editor id, any case")
+    expect(sound.get("files") == ["sound/testpack/click.wav", "sound/testpack/click.wav"],
+           "descriptor files are sound assets: %s" % [sound.get("files")])
+    expect(pack.get_kind("sound/testpack/click.wav") == "sound", "the file is a sound asset")
+    expect(sound.get("looping") == 0x08 and sound.get("static_attenuation") == 132 and sound.get("priority") == 0x80,
+           "looping and BNAM: %s" % [sound])
+    var model := world.get_sound_output_model(sound.get("output_model", 0))
+    expect(model.get("flags") == 1 and model.get("max_distance") == 4000.0 and model.get("min_distance") == 300.0
+           and model.get("curve") == PackedByteArray([100, 70, 35, 15, 0]), "output model: %s" % [model])
+    var marker_id := world.find_sound_descriptor("nosuchsound")
+    expect(marker_id == 0, "no descriptor, no id")
+    var click_bytes := pack.get_bytes("sound/testpack/click.wav")
+    var click := AudioStreamWAV.load_from_buffer(click_bytes)
+    expect(click != null and click.format == AudioStreamWAV.FORMAT_16_BITS and click.data.size() == 8,
+           "Godot reads the passed-through wav")
 
     var id := world.find_cell("testpackinterior")
     expect(id != 0, "the interior is found by editor id, any case")

@@ -160,6 +160,23 @@ public:
     godot::Dictionary get_quest(std::int64_t id) const;
     /// id, editor_id, kind ("s", "l" or "f"), value. Empty if not a global.
     godot::Dictionary get_global(std::int64_t id) const;
+    /// SNDR: id, editor_id, files (virtual paths of sound assets), output_model
+    /// (a SOPM id or 0), category, descriptor_type (0x1EEF540A is standard; the
+    /// engine plays only those), looping (0 none, 0x08 loop, 0x10 and 0x20
+    /// envelopes), frequency_shift and frequency_variance (percent),
+    /// priority, db_variance, static_attenuation (hundredths of a dB). Empty
+    /// if not a descriptor.
+    godot::Dictionary get_sound_descriptor(std::int64_t id) const;
+    /// The SNDR with this editor id, case-insensitive; 0 if none.
+    std::int64_t find_sound_descriptor(const godot::String& editor_id) const;
+    /// The SOUN with this editor id, case-insensitive; 0 if none.
+    std::int64_t find_sound_marker(const godot::String& editor_id) const;
+    /// SOUN: id, editor_id, descriptor (an SNDR id). Empty if not a marker.
+    godot::Dictionary get_sound_marker(std::int64_t id) const;
+    /// SOPM: id, editor_id, flags (bit 0: attenuates with distance), type,
+    /// min_distance and max_distance (game units), curve (5 bytes). Empty if
+    /// not an output model.
+    godot::Dictionary get_sound_output_model(std::int64_t id) const;
     /// AMMO: id, projectile (a PROJ id), flags, model (virtual path or empty).
     /// Empty if not an ammo.
     godot::Dictionary get_ammo(std::int64_t id) const;

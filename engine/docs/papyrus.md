@@ -15,7 +15,7 @@ other VM's code was read, so it stays GPL-3.0.
 | `vm/vm.*` | Instances, threads, the interpreter, the scheduler, timers, native binding |
 | `vm/save.cpp` | The VM's save format |
 | `vm/papyrus.*` | `SkydotPapyrus`: the VM bound to a pack and `SkydotWorld`, triggers, saves; `bind_natives` registers the natives from one table |
-| `vm/natives_<class>.cpp` | The natives of one class each (`debug`, `utility`, `game`, `form`, `objectreference`, `effectshader`, `quest`), the intended no-ops (`noop`), and `world`, written against `WorldAccess` |
+| `vm/natives_<class>.cpp` | The natives of one class each (`debug`, `utility`, `game`, `form`, `objectreference`, `effectshader`, `weapon`, `sound`, `quest`), the intended no-ops (`noop`), and `world`, written against `WorldAccess` |
 | `vm/world_access.hpp` | `WorldAccess`: typed questions natives ask the world (base form, linked ref, player level), so a native needs no Dictionary and a test no pack |
 | `vm/census.cpp` | `Vm::census`: which natives a set of scripts call |
 | `vm/quests.cpp` | Quests, aliases, stages, objectives, globals |
@@ -132,6 +132,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
 | EffectShader | `Play`, `Stop` |
+| Sound | `Play` (signal `play_sound`: sound, source reference, instance id; the game layer plays it, `game/game/sounds.gd`), `PlayAndWait` (waits for `notify_sound_finished(instance)`, which the game layer sends when the clip ends, or 30 s), `StopInstance` (signal `stop_sound`), `SetInstanceVolume` (signal `sound_volume`) |
 | Weapon | `Fire` (signal `fire_weapon`: the game layer launches the ammo's projectile, `game/game/projectiles.gd`) |
 | Quest | `Start`, `Stop`, `Reset`, `IsRunning`, `IsStopped`, `IsStarting`, `IsStopping`, `IsCompleted`, `CompleteQuest`, `GetStage`, `GetCurrentStageID`, `SetStage`, `SetCurrentStageID`, `GetStageDone`, `IsStageDone`, `IsActive`, `SetActive`, `GetAlias`, `SetObjectiveDisplayed/Completed/Failed`, `IsObjectiveDisplayed/Completed/Failed`, `CompleteAllObjectives`, `FailAllObjectives`, `UpdateCurrentInstanceGlobal`, `PrepareForReinitializing` |
 | Alias | `GetOwningQuest`, `GetID`, `GetName`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
@@ -150,7 +151,7 @@ the children arrive as `activation_outcome`.
 
 World changes are signals: `enable_changed`, `play_animation`,
 `activation_outcome`, `open_changed`, `lock_changed`, `effect_shader`,
-`message`, `trigger`, `havok_impulse`, `fire_weapon`, `motion_type_changed`, and for
+`message`, `trigger`, `havok_impulse`, `fire_weapon`, `play_sound`, `stop_sound`, `sound_volume`, `motion_type_changed`, and for
 quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
 The viewer shows or builds the reference, plays the animation on its
 `SkydotAnimator` (whose text keys and finished clips come back through
@@ -203,41 +204,40 @@ godot4.7 --headless --path game --script res://tools/papyrus_census.gd -- \
 `--all on` adds a table of every native called. Rerun it after binding
 natives and update the numbers below.
 
-Skyrim SE pack, 14,325 scripts (2026-10-12):
+Skyrim SE pack, 14,325 scripts (2026-10-13):
 
 | | Natives | Call sites |
 | --- | ---: | ---: |
 | Called | 549 | 65,685 |
-| Bound | 80 | 35,229 |
+| Bound | 87 | 38,408 |
 | Ignored (no-op) | 18 | 494 |
-| Unbound | 451 | 29,962 |
+| Unbound | 444 | 26,783 |
 
 Unbound natives with most call sites (the first are quest topic and scene
-plumbing, then inventory, movement and actor state, which are the work
-still to come):
+plumbing, then movement and actor state, which are the work still to come):
 
 | Native | Call sites |
 | --- | ---: |
 | `TopicInfo.GetOwningQuest` | 6,494 |
-| `ObjectReference.AddItem` | 1,374 |
 | `ObjectReference.MoveTo` | 1,291 |
 | `Actor.EvaluatePackage` | 1,282 |
 | `Scene.GetOwningQuest` | 1,007 |
 | `Scene.Start` | 942 |
-| `ObjectReference.RemoveItem` | 870 |
 | `ObjectReference.PlaceAtMe` | 609 |
 | `Actor.RemoveFromFaction` | 536 |
 | `Scene.Stop` | 486 |
 | `Message.Show` | 456 |
-| `Sound.Play` | 425 |
 | `Actor.IsDead` | 424 |
-| `ObjectReference.GetItemCount` | 410 |
 | `Actor.StartCombat` | 331 |
 | `Actor.PlayIdle` | 327 |
 | `ObjectReference.DisableNoWait` | 326 |
 | `Actor.RemoveSpell` | 322 |
 | `Actor.SetActorValue` | 301 |
 | `Actor.AddSpell` | 288 |
+| `Actor.Kill` | 287 |
+| `ObjectReference.AddToMap` | 287 |
+| `Actor.IsInFaction` | 285 |
+| `Spell.Cast` | 277 |
 
 ## Saving
 

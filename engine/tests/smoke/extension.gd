@@ -186,7 +186,7 @@ func _check_refusals() -> void:
     expect(pack.open(badrec) == OK, "a records.fb without its magic is ignored: " + pack.get_error())
 
     var rec2 := root.path_join("rec2")
-    _write_pack(rec2, 6, k_index_header + k_index_columns, true)
+    _write_pack(rec2, 7, k_index_header + k_index_columns, true)
     var header := PackedByteArray()
     header.resize(64)
     for i in 8:

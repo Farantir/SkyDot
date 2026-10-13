@@ -48,6 +48,11 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("find_quest", "editor_id"), &SkydotWorld::find_quest);
     godot::ClassDB::bind_method(D_METHOD("get_quest", "id"), &SkydotWorld::get_quest);
     godot::ClassDB::bind_method(D_METHOD("get_global", "id"), &SkydotWorld::get_global);
+    godot::ClassDB::bind_method(D_METHOD("get_sound_descriptor", "id"), &SkydotWorld::get_sound_descriptor);
+    godot::ClassDB::bind_method(D_METHOD("find_sound_descriptor", "editor_id"), &SkydotWorld::find_sound_descriptor);
+    godot::ClassDB::bind_method(D_METHOD("find_sound_marker", "editor_id"), &SkydotWorld::find_sound_marker);
+    godot::ClassDB::bind_method(D_METHOD("get_sound_marker", "id"), &SkydotWorld::get_sound_marker);
+    godot::ClassDB::bind_method(D_METHOD("get_sound_output_model", "id"), &SkydotWorld::get_sound_output_model);
     godot::ClassDB::bind_method(D_METHOD("get_ammo", "id"), &SkydotWorld::get_ammo);
     godot::ClassDB::bind_method(D_METHOD("get_projectile", "id"), &SkydotWorld::get_projectile);
     godot::ClassDB::bind_method(D_METHOD("get_actor", "ref"), &SkydotWorld::get_actor);
@@ -258,6 +263,11 @@ Array SkydotWorld::list_quests(const String& filter) const { return queries::lis
 std::int64_t SkydotWorld::find_quest(const String& editor_id) const { return queries::find_quest(data(), editor_id); }
 Dictionary SkydotWorld::get_quest(std::int64_t id) const { return queries::get_quest(data(), id); }
 Dictionary SkydotWorld::get_global(std::int64_t id) const { return queries::get_global(data(), id); }
+Dictionary SkydotWorld::get_sound_descriptor(std::int64_t id) const { return queries::get_sound_descriptor(data(), id); }
+std::int64_t SkydotWorld::find_sound_descriptor(const String& editor_id) const { return queries::find_sound_descriptor(data(), editor_id); }
+std::int64_t SkydotWorld::find_sound_marker(const String& editor_id) const { return queries::find_sound_marker(data(), editor_id); }
+Dictionary SkydotWorld::get_sound_marker(std::int64_t id) const { return queries::get_sound_marker(data(), id); }
+Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return queries::get_sound_output_model(data(), id); }
 Dictionary SkydotWorld::get_ammo(std::int64_t id) const { return queries::get_ammo(data(), id); }
 Dictionary SkydotWorld::get_projectile(std::int64_t id) const { return queries::get_projectile(data(), id); }
 Dictionary SkydotWorld::get_actor(std::int64_t ref) const { return queries::get_actor(data(), ref); }

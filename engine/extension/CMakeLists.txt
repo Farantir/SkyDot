@@ -202,6 +202,7 @@ target_sources(skydot PRIVATE
     src/session/streamer.hpp
     src/vm/natives_debug.cpp
     src/vm/natives_effectshader.cpp
+    src/vm/natives_sound.cpp
     src/vm/natives_weapon.cpp
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
@@ -216,6 +217,7 @@ target_sources(skydot PRIVATE
     src/world/queries_cells.cpp
     src/world/queries_quests.cpp
     src/world/queries_refs.cpp
+    src/world/queries_sound.cpp
     src/world/queries_sky.cpp
     src/world/world.cpp
     src/world/world.hpp)
