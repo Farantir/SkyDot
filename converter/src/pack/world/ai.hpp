@@ -29,6 +29,9 @@ public:
     /// FLST: kept to expand NPCs' default package lists.
     [[nodiscard]] const FormLists& form_lists() const noexcept { return form_lists_; }
 
+    /// FLST as world.fb's form_lists.
+    void finish(wfb::WorldT& world);
+
     /// The packages, in id order. Written by hand rather than packed, see
     /// ai.cpp.
     [[nodiscard]] flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Package>>>
@@ -43,6 +46,7 @@ private:
     CollectContext& shared_;
     std::map<std::uint32_t, wfb::PackageT> packages_;
     FormLists form_lists_;
+    std::map<std::uint32_t, wfb::FormListT> lists_;
 };
 
 } // namespace bethconv::pack::detail

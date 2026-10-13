@@ -262,6 +262,18 @@ std::optional<wfb::SoundOutputModelT> WorldFile::sound_output_model(std::uint32_
     return unpack(lookup(impl_->root->sound_output_models(), id));
 }
 
+std::optional<wfb::KeywordT> WorldFile::keyword(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->keywords(), id));
+}
+
+std::optional<wfb::FormListT> WorldFile::form_list(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->form_lists(), id));
+}
+
+std::optional<wfb::MessageT> WorldFile::message(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->messages(), id));
+}
+
 std::optional<wfb::ImageSpaceT> WorldFile::image_space(std::uint32_t id) const {
     return unpack(lookup(impl_->root->image_spaces(), id));
 }

@@ -395,6 +395,9 @@ table Base {
     /// MODS (format 16): the shapes of `model` whose textures the record
     /// replaces with a texture set's.
     alternate_textures: [AlternateTexture];
+    /// KWDA (format 22): Keywords in `keywords`, for the bases that are in
+    /// this table anyway (a model or scripts); a reference has none of its own.
+    keywords: [uint32];
 }
 
 /// One MODS entry (format 16): the shape named `shape` (3D index `index`, the
@@ -1294,6 +1297,37 @@ table SoundOutputModel {
     curve: [ubyte];
 }
 
+/// KYWD (format 22): `Keyword.GetKeyword` finds one by editor id.
+table Keyword {
+    id: uint32 (key);
+    editor_id: string;
+}
+
+/// FLST (format 22): the forms of LNAM, as global ids, in order.
+table FormList {
+    id: uint32 (key);
+    editor_id: string;
+    forms: [uint32];
+}
+
+/// `Message.flags` (MESG DNAM).
+enum MessageFlags : uint32 (bit_flags) {
+    message_box,
+    auto_display
+}
+
+/// MESG (format 22): `title` is FULL, `text` DESC (localized strings,
+/// resolved), `buttons` the ITXT of each button in order. A message with
+/// the message_box flag is shown as a box with buttons, else as a notification.
+table Message {
+    id: uint32 (key);
+    editor_id: string;
+    title: string;
+    text: string;
+    flags: MessageFlags;
+    buttons: [string];
+}
+
 table World {
     format_version: uint32;
     /// Sorted by id.
@@ -1356,6 +1390,12 @@ table World {
     sound_markers: [SoundMarker];
     /// Sorted by id (format 21).
     sound_output_models: [SoundOutputModel];
+    /// Sorted by id (format 22).
+    keywords: [Keyword];
+    /// Sorted by id (format 22).
+    form_lists: [FormList];
+    /// Sorted by id (format 22).
+    messages: [Message];
 }
 
 root_type World;

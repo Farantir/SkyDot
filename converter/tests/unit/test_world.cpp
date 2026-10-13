@@ -1398,6 +1398,35 @@ void make_actors(const TempDir& dir) {
     ByteWriter lists;
     bethconv::test::write_record(lists, "FLST", 0x0100'0E50, flst.span());
     top_group(file, "FLST", lists);
+
+    ByteWriter kywd;
+    field_text(kywd, "EDID", "TestKeyword");
+    ByteWriter kywds;
+    bethconv::test::write_record(kywds, "KYWD", 0x0100'0E80, kywd.span());
+    top_group(file, "KYWD", kywds);
+
+    ByteWriter keyed;
+    field_text(keyed, "EDID", "TestKeyed");
+    field_text(keyed, "MODL", "Test\\Keyed.nif");
+    field_u32(keyed, "KSIZ", 2);
+    ByteWriter kwda;
+    kwda.u32(0x0100'0E80);
+    kwda.u32(0x0000'0901); // in Base.esm's space
+    bethconv::test::write_field(keyed, "KWDA", kwda);
+    ByteWriter keyed_group;
+    bethconv::test::write_record(keyed_group, "ACTI", 0x0100'0E81, keyed.span());
+    top_group(file, "ACTI", keyed_group);
+
+    ByteWriter mesg;
+    field_text(mesg, "EDID", "TestMessage");
+    field_text(mesg, "DESC", "Pulled %.0f of %.0f");
+    field_text(mesg, "FULL", "Keyhole");
+    field_u32(mesg, "DNAM", 1);
+    field_text(mesg, "ITXT", "Use");
+    field_text(mesg, "ITXT", "Leave");
+    ByteWriter mesgs;
+    bethconv::test::write_record(mesgs, "MESG", 0x0100'0E82, mesg.span());
+    top_group(file, "MESG", mesgs);
     save(dir, "Actors.esp", file);
 }
 
@@ -1438,6 +1467,26 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(npc->skin_tone == std::vector<float>{0.9F, 0.75F, 0.6F});
     // Named by the defining plugin and the form's id within it.
     CHECK(npc->face_model == "meshes/actors/character/facegendata/facegeom/actors.esp/00000e30.nif");
+
+    CHECK(stats->keywords == 1);
+    CHECK(stats->form_lists == 1);
+    CHECK(stats->messages == 1);
+    const auto keyword = file->keyword(0x0200'0E80);
+    REQUIRE(keyword.has_value());
+    CHECK(keyword->editor_id == "TestKeyword");
+    const auto keyed = file->base(0x0200'0E81);
+    REQUIRE(keyed.has_value());
+    CHECK(keyed->keywords == std::vector<std::uint32_t>{0x0200'0E80, 0x0000'0901});
+    const auto flst_out = file->form_list(0x0200'0E50);
+    REQUIRE(flst_out.has_value());
+    CHECK(flst_out->editor_id == "TestDefaultPackages");
+    CHECK(flst_out->forms == std::vector<std::uint32_t>{0x0200'0E40, 0x0000'0901});
+    const auto message = file->message(0x0200'0E82);
+    REQUIRE(message.has_value());
+    CHECK(message->title == "Keyhole");
+    CHECK(message->text == "Pulled %.0f of %.0f");
+    CHECK(skydot::formats::has_flag(message->flags, pack::wfb::MessageFlags::message_box));
+    CHECK(message->buttons == std::vector<std::string>{"Use", "Leave"});
 
     CHECK(stats->sound_descriptors == 1);
     CHECK(stats->sound_markers == 1);

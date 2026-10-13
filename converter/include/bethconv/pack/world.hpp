@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 21;
+inline constexpr std::uint32_t k_world_format_version = 22;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -72,6 +72,10 @@ struct WorldStats {
     std::uint64_t sound_descriptors{};
     std::uint64_t sound_markers{};
     std::uint64_t sound_output_models{};
+    /// KYWD, FLST and MESG (format 22).
+    std::uint64_t keywords{};
+    std::uint64_t form_lists{};
+    std::uint64_t messages{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -168,6 +172,9 @@ public:
     [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundMarkerT> sound_marker(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundOutputModelT> sound_output_model(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::KeywordT> keyword(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::FormListT> form_list(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::MessageT> message(std::uint32_t id) const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

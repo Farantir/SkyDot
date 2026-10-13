@@ -48,7 +48,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN or SOPM; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD or MESG; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -75,6 +75,9 @@ private:
                              const record::FormContext& form_ctx);
     void on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
+    void on_keyword(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_message(const record::MergedRecord& merged, io::SpanReader& data,
+                    const record::FormContext& form_ctx);
     void on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data);
     void on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
                        const record::FormContext& form_ctx);
@@ -91,6 +94,8 @@ private:
     std::map<std::uint32_t, wfb::SoundDescriptorT> sound_descriptors_;
     std::map<std::uint32_t, wfb::SoundMarkerT> sound_markers_;
     std::map<std::uint32_t, wfb::SoundOutputModelT> sound_output_models_;
+    std::map<std::uint32_t, wfb::KeywordT> keywords_;
+    std::map<std::uint32_t, wfb::MessageT> messages_;
     std::map<std::uint32_t, LandTextureEntry> land_textures_;
     std::unordered_map<std::uint32_t, TextureSetEntry> texture_sets_;
     std::map<std::uint32_t, std::vector<PendingAlternate>> pending_alternates_;

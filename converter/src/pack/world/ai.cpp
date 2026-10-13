@@ -98,9 +98,19 @@ void AiCollector::on_form_list(const record::MergedRecord& merged, io::SpanReade
     }
     bool failed = false;
     form_lists_[merged.form.value] = shared_.global_all(merged, list->forms, failed);
+    wfb::FormListT out;
+    out.id = merged.form.value;
+    out.editor_id = list->editor_id;
+    out.forms = form_lists_[merged.form.value];
+    lists_[out.id] = std::move(out);
     if (failed) {
         ++shared_.stats().unresolved;
     }
+}
+
+void AiCollector::finish(wfb::WorldT& world) {
+    shared_.stats().form_lists += lists_.size();
+    move_into(world.form_lists, lists_);
 }
 
 void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader& data,

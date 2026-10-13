@@ -44,6 +44,12 @@ bool has_fragments(FourCC type) {
 void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& data,
                             const record::FormContext& form_ctx) {
     switch (merged.type.value) {
+    case FourCC{"KYWD"}.value:
+        on_keyword(merged, data);
+        break;
+    case FourCC{"MESG"}.value:
+        on_message(merged, data, form_ctx);
+        break;
     case FourCC{"LIGH"}.value:
         on_light(merged, data, form_ctx);
         break;
@@ -167,6 +173,8 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     const bool stat = merged.type == FourCC{"STAT"};
     float max_angle = 0.0F;
     std::uint32_t material = 0;
+    record::KeywordList keywords;
+    std::optional<io::ParseError> keyword_failure;
     const auto walked = record::for_each_field(
         data, [&](const record::FieldHeader& field, io::SpanReader& body) {
             if (field.type == FourCC{"DNAM"} && stat && body.remaining() >= 8) {
@@ -186,6 +194,8 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 mod4 = std::string(body.zstring().value_or(""));
             } else if (field.type == FourCC{"FNAM"} && door) {
                 flags = body.get<std::uint8_t>().value_or(0);
+            } else if (record::read_keyword_field(keywords, field, body, keyword_failure)) {
+                // KSIZ and KWDA
             } else if (field.type == FourCC{"VMAD"} && scripted) {
                 if (auto read = record::read_script_data(body)) {
                     scripts = std::move(*read);
@@ -194,7 +204,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 }
             }
         });
-    if (!walked) {
+    if (!walked || keyword_failure) {
         ++shared_.stats().parse_errors;
         return;
     }
@@ -213,6 +223,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         keep_alternates(merged, mods);
     }
     out.flags = flags;
+    out.keywords = shared_.global_all(merged, keywords.keywords, failed);
     out.scripts = shared_.global_scripts(merged, scripts, failed);
     out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
     if (material != 0) {
@@ -334,6 +345,63 @@ void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::Span
         ++shared_.stats().unresolved;
     }
     sound_markers_[out.id] = std::move(out);
+}
+
+/// KYWD: only the editor id, which `Keyword.GetKeyword` looks up.
+void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReader& data) {
+    wfb::KeywordT out;
+    out.id = merged.form.value;
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            }
+        });
+    if (!walked) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    keywords_[out.id] = std::move(out);
+}
+
+/// MESG: FULL title, DESC text, DNAM flags (bit 0 message box, bit 1 auto
+/// display), ITXT one per button. Display time, icon, quest and the buttons'
+/// conditions are left out.
+void BaseCollector::on_message(const record::MergedRecord& merged, io::SpanReader& data,
+                               const record::FormContext& form_ctx) {
+    wfb::MessageT out;
+    out.id = merged.form.value;
+    std::optional<io::ParseError> failure;
+    const auto text = [&](const record::FieldHeader& field, io::SpanReader& body,
+                          record::StringKind kind) {
+        auto read = record::read_lstring(body, form_ctx, FourCC{"MESG"}, field.type, kind);
+        if (!read) {
+            if (!failure) {
+                failure = std::move(read).error();
+            }
+            return std::string{};
+        }
+        return read->text;
+    };
+    const auto walked = record::for_each_field(
+        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
+            if (field.type == FourCC{"EDID"}) {
+                out.editor_id = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"FULL"}) {
+                out.title = text(field, body, record::StringKind::plain);
+            } else if (field.type == FourCC{"DESC"}) {
+                out.text = text(field, body, record::StringKind::description);
+            } else if (field.type == FourCC{"ITXT"}) {
+                out.buttons.push_back(text(field, body, record::StringKind::plain));
+            } else if (field.type == FourCC{"DNAM"}) {
+                out.flags = static_cast<wfb::MessageFlags>(body.get<std::uint32_t>().value_or(0));
+            }
+        });
+    if (!walked || failure) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    messages_[out.id] = std::move(out);
 }
 
 /// SOPM: NAM1 (byte 0 flags), MNAM type, ANAM 20 bytes: 4 reserved, min and
@@ -519,6 +587,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.sound_descriptors += sound_descriptors_.size();
     stats.sound_markers += sound_markers_.size();
     stats.sound_output_models += sound_output_models_.size();
+    stats.keywords += keywords_.size();
+    stats.messages += messages_.size();
     stats.land_textures += land_textures_.size();
     for (auto& [id, list] : pending_alternates_) {
         const auto base = bases_.find(id);
@@ -543,6 +613,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.sound_descriptors, sound_descriptors_);
     move_into(world.sound_markers, sound_markers_);
     move_into(world.sound_output_models, sound_output_models_);
+    move_into(world.keywords, keywords_);
+    move_into(world.messages, messages_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;

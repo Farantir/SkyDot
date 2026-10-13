@@ -43,6 +43,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     sink.environment().finish(root);
     sink.quests().finish(root);
     sink.actors().finish(root, sink.ai().form_lists());
+    sink.ai().finish(root);
     for (const auto& entry : order.entries()) {
         if (entry.active) {
             auto& plugin = root.plugins.emplace_back(std::make_unique<wfb::PluginT>());
@@ -83,6 +84,9 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto sound_descriptors = pack_all(builder, root.sound_descriptors);
     const auto sound_markers = pack_all(builder, root.sound_markers);
     const auto sound_output_models = pack_all(builder, root.sound_output_models);
+    const auto keywords = pack_all(builder, root.keywords);
+    const auto form_lists = pack_all(builder, root.form_lists);
+    const auto messages = pack_all(builder, root.messages);
     const auto grasses = pack_all(builder, root.grasses);
     const auto addon_nodes = pack_all(builder, root.addon_nodes);
     const auto plugins = pack_all(builder, root.plugins);
@@ -94,7 +98,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   armor_addons, outfits, leveled_lists, packages, image_spaces,
                                   material_objects, grasses, addon_nodes, volumetric_lightings, ammos,
                                   projectiles, sound_descriptors, sound_markers,
-                                  sound_output_models));
+                                  sound_output_models, keywords, form_lists, messages));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;
