@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -130,6 +131,23 @@ public:
     /// Leave the machine unstarted again (its state is forgotten, no events).
     void stop();
 
+    /// The running state, for saving: the state's id (not its index), the
+    /// time, the held pose, ping-pong direction and which triggers fired.
+    /// The pending event queue is not part of it (it is empty between steps).
+    struct Snapshot {
+        int state_id{};
+        float time{};
+        int held_clip{-1};
+        float held_time{};
+        bool backwards{};
+        std::vector<bool> fired;
+    };
+    /// Only meaningful while a state is current.
+    [[nodiscard]] Snapshot snapshot() const;
+    /// Silently resume from `s`: no events, no changes. False, and nothing
+    /// changed, if the snapshot does not fit this machine's definition.
+    bool restore(const Snapshot& s);
+
 private:
     [[nodiscard]] int find_state(int id) const;
     void change(int index, std::string_view cause, BehaviorOutput& out);
@@ -165,6 +183,14 @@ public:
     /// Machines running now, in index order.
     [[nodiscard]] std::vector<int> running() const;
     [[nodiscard]] const BehaviorMachine& machine(int index) const { return machines_[static_cast<std::size_t>(index)]; }
+
+    /// The runtime state of every machine as bytes (which run, where they
+    /// are), for a save. Empty before `start`.
+    [[nodiscard]] std::vector<std::uint8_t> save() const;
+    /// Silently resume from `save()` bytes of the same graph: no events, no
+    /// changes. False, and nothing changed, if the bytes are malformed or do
+    /// not fit the graph (unknown state id, wrong sizes).
+    bool load(std::span<const std::uint8_t> bytes);
 
 private:
     /// Start machines that became wanted, stop those no longer wanted.

@@ -11,6 +11,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <cstdint>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -338,4 +340,61 @@ TEST_CASE("a graph's roots are the machines that run; others wait to be named", 
     set.start(out);
     CHECK(set.running() == std::vector<int>{1, 2});
     CHECK(set.machine(0).state() == nullptr);
+}
+
+TEST_CASE("a saved graph resumes mid-clip with its nested machines, silently", "[behavior]") {
+    BehaviorSet set(blade_graph());
+    BehaviorOutput out;
+    set.start(out);
+    set.send("Single", out);
+    out = {};
+    set.advance(0.4F, out); // mid-swing, before the Apex trigger at the clip's end
+    REQUIRE(set.machine(1).state()->name == "Swing");
+    const std::vector<std::uint8_t> bytes = set.save();
+    REQUIRE_FALSE(bytes.empty());
+
+    BehaviorSet fresh(blade_graph());
+    out = {};
+    fresh.start(out);
+    REQUIRE(fresh.load(bytes));
+    CHECK(fresh.running() == std::vector<int>{0, 1, 2});
+    CHECK(fresh.machine(1).state()->name == "Swing");
+    CHECK(fresh.machine(1).clip_time() == Catch::Approx(0.4F));
+    CHECK(fresh.machine(2).state()->name == "Idle");
+    // It goes on from there: the trigger fires 0.6 s later, not 1.0 s.
+    out = {};
+    fresh.advance(0.5F, out);
+    CHECK_FALSE(has(out.events, "Apex"));
+    out = {};
+    fresh.advance(0.2F, out);
+    CHECK(has(out.events, "Apex"));
+}
+
+TEST_CASE("a snapshot that does not fit the graph is refused and changes nothing", "[behavior]") {
+    BehaviorSet set(blade_graph());
+    BehaviorOutput out;
+    set.start(out);
+    set.send("Single", out);
+    const std::vector<std::uint8_t> good = set.save();
+
+    BehaviorSet other(blade_graph());
+    other.start(out);
+    CHECK_FALSE(other.load({}));
+    CHECK_FALSE(other.load(std::span<const std::uint8_t>(good.data(), good.size() - 1)));
+    std::vector<std::uint8_t> trailing = good;
+    trailing.push_back(0);
+    CHECK_FALSE(other.load(trailing));
+    std::vector<std::uint8_t> bad_magic = good;
+    bad_magic[0] ^= 0xFF;
+    CHECK_FALSE(other.load(bad_magic));
+    // Machine 1 (index 1, first running record after machine 0's) names an unknown state id.
+    // Header 9 bytes; record 0: 1 + 4+4+4+4+1+4 = 22 bytes; record 1 starts at 31, id at 32.
+    std::vector<std::uint8_t> bad_state = good;
+    bad_state[32] = 99;
+    CHECK_FALSE(other.load(bad_state));
+    CHECK(other.machine(1).state()->name == "Rest");
+    CHECK(other.machine(1).clip_time() == 0.0F);
+
+    BehaviorSet different(BehaviorGraphDef{});
+    CHECK_FALSE(different.load(good));
 }
