@@ -40,6 +40,10 @@ public:
     /// `particles.birth_rate` channel (particles per second).
     void set_birth_rate(double rate);
     void set_active(bool active);
+    /// Whether the system starts as if it had been running for a particle
+    /// lifetime (the default, for ambient effects); a projectile's starts empty.
+    /// Only before the node enters the tree.
+    void set_warm_start(bool warm) { warm_start_ = warm; }
     std::int64_t get_emitter_count() const;
     /// Particles per second each emitter starts with.
     double get_birth_rate() const;
@@ -58,6 +62,7 @@ private:
         double peak_rate = 0.0;
     };
 
+    bool warm_start_ = true;
     godot::Dictionary block_;
     godot::Ref<godot::ShaderMaterial> draw_;
     godot::Ref<SkydotMaterials> materials_;

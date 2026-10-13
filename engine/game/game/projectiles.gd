@@ -9,6 +9,8 @@
 # particles and animators; a PROJ with the muzzle flash flag (0x8) puffs its
 # NAM1 model (dart traps: dust) at the shot's origin for its duration, then
 # stops the emitters and removes the model once the last particle has faded.
+# A projectile without the pick-up flag (0x40) is removed on impact, a pickable
+# one (an arrow) stays stuck.
 class_name Projectiles
 extends Node3D
 
@@ -19,6 +21,7 @@ const GRAVITY := 9.81  # m/s^2, times the projectile's gravity multiplier
 const MUZZLE_NAMES := ["projectile", "fire", "muzzle", "launch"]
 const MASK := 1 | 2 | 8  # world, clutter, terrain
 const FLAG_MUZZLE_FLASH := 0x8  # PROJ DATA flags
+const FLAG_PICKUP := 0x40  # PROJ DATA flags: can be picked up; the others vanish on impact
 const FLASH_FADE_SECONDS := 2.0  # a muzzle flash is freed this long after its emitters stop
 
 var _world: SkydotWorld
@@ -60,8 +63,12 @@ func fire(weapon: int, source: int, ammo: int) -> void:
 	var forward := _forward(node as Node3D, origin)
 	var scale_m := SkydotWorld.unit_scale()
 	var speed: float = proj["speed"] * scale_m
+	for animator in model.find_children("*", "SkydotAnimator", true, false):
+		animator.start_controllers()  # the dart's trail grows and scrolls from launch
+	_cold_start(model)
 	var shot := {
 		"node": model,
+		"pickable": int(proj["flags"]) & FLAG_PICKUP != 0,
 		"velocity": forward * speed,
 		"gravity": GRAVITY * float(proj["gravity"]),
 		"age": 0.0,
@@ -90,6 +97,7 @@ func _muzzle_flash(proj: Dictionary, position: Vector3, forward: Vector3) -> voi
 	if flash == null:
 		_warn_once("noflash%s" % path, "muzzle flash %s is not in the pack" % path)
 		return
+	_cold_start(flash)
 	add_child(flash)
 	flash.global_transform = Transform3D(Basis.looking_at(forward, Vector3.UP), position)
 	var duration := maxf(float(proj.get("muzzle_flash_duration", 0.0)), 0.0)
@@ -134,9 +142,38 @@ func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) 
 	if not hit.is_empty():
 		node.global_position = hit["position"]
 		shot["stuck"] = true
+		if not shot["pickable"]:
+			_vanish(shot)
 		return
 	shot["travelled"] += from.distance_to(to)
 	node.global_transform = Transform3D(Basis.looking_at(velocity.normalized(), Vector3.UP), to)
+
+
+## Particle systems start empty: a projectile's smoke is made as it flies, not
+## pre-filled around the port.
+func _cold_start(model: Node) -> void:
+	for emitter in model.find_children("*", "SkydotParticles", true, false):
+		emitter.set_warm_start(false)
+
+
+## A projectile that cannot be picked up is gone on impact: its meshes (dart,
+## trail) are hidden and its emitters stop, and the node is freed once the
+## particles already alive have faded.
+func _vanish(shot: Dictionary) -> void:
+	var node: Node3D = shot["node"]
+	_hide_meshes(node)
+	for emitter in node.find_children("*", "SkydotParticles", true, false):
+		emitter.set_active(false)
+	shot["age"] = STUCK_SECONDS - FLASH_FADE_SECONDS
+
+
+func _hide_meshes(node: Node) -> void:
+	for child in node.get_children():
+		if child.get_class() == "SkydotParticles":
+			continue
+		if child is MeshInstance3D:
+			child.visible = false
+		_hide_meshes(child)
 
 
 func _remove(index: int) -> void:
@@ -192,4 +229,5 @@ func _warn_once(key: String, text: String) -> void:
 	if not _warned.has(key):
 		_warned[key] = true
 		print(text)
+
 

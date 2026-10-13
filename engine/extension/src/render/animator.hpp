@@ -50,6 +50,10 @@ public:
     /// keep running. Returns false if there is no such clip.
     bool play(const godot::String& clip);
     void stop();
+    /// Run the unnamed clips whose controllers the NIF leaves inactive, from
+    /// their start, as the game does for a projectile's (a dart's trail grows
+    /// and scrolls from the moment it is launched).
+    void start_controllers();
     /// The nodes a behaviour graph poses: this animator leaves their
     /// transforms alone (visibility and shader clips still run).
     void mask_nodes(const std::vector<godot::Node3D*>& owned);
@@ -112,6 +116,8 @@ private:
     double last_local_ = -1.0; ///< Clip time last evaluated; -1 before the first.
     bool finished_ = false;
     bool autoplay_enabled_ = true;
+    bool controllers_started_ = false;
+    double controllers_time_ = 0.0; ///< Seconds since `start_controllers`.
 
     void bind(const std::shared_ptr<const EffectAsset>& asset, godot::Node* root);
     void bind_material(Target& target, std::size_t slot);

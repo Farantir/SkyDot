@@ -121,6 +121,7 @@ double scale_of(const godot::Basis& basis) {
 void SkydotParticles::_bind_methods() {
     using godot::D_METHOD;
     godot::ClassDB::bind_method(D_METHOD("set_birth_rate", "rate"), &SkydotParticles::set_birth_rate);
+    godot::ClassDB::bind_method(D_METHOD("set_warm_start", "warm"), &SkydotParticles::set_warm_start);
     godot::ClassDB::bind_method(D_METHOD("set_active", "active"), &SkydotParticles::set_active);
     godot::ClassDB::bind_method(D_METHOD("get_emitter_count"), &SkydotParticles::get_emitter_count);
     godot::ClassDB::bind_method(D_METHOD("get_birth_rate"), &SkydotParticles::get_birth_rate);
@@ -502,7 +503,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
     particles->set_name("Emitter");
     particles->set_amount(static_cast<std::int32_t>(amount));
     particles->set_lifetime(max_life);
-    particles->set_pre_process_time(std::min(max_life, 10.0));
+    particles->set_pre_process_time(warm_start_ ? std::min(max_life, 10.0) : 0.0);
     particles->set_use_local_coordinates(!world_space);
     particles->set_process_material(process);
     particles->set_draw_order(godot::GPUParticles3D::DRAW_ORDER_VIEW_DEPTH);

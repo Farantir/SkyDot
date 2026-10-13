@@ -152,6 +152,7 @@ void SkydotAnimator::_bind_methods() {
                                        &SkydotAnimator::attach);
     godot::ClassDB::bind_method(D_METHOD("play", "clip"), &SkydotAnimator::play);
     godot::ClassDB::bind_method(D_METHOD("stop"), &SkydotAnimator::stop);
+    godot::ClassDB::bind_method(D_METHOD("start_controllers"), &SkydotAnimator::start_controllers);
     godot::ClassDB::bind_method(D_METHOD("get_playing"), &SkydotAnimator::get_playing);
     godot::ClassDB::bind_method(D_METHOD("get_clip_names"), &SkydotAnimator::get_clip_names);
     godot::ClassDB::bind_method(D_METHOD("get_channel_count"), &SkydotAnimator::get_channel_count);
@@ -268,6 +269,9 @@ void SkydotAnimator::_process(double delta) {
     if (playing_ >= 0) {
         clip_time_ += delta;
     }
+    if (controllers_started_) {
+        controllers_time_ += delta;
+    }
     const auto* root = godot::Object::cast_to<godot::Node3D>(get_parent());
     const godot::Viewport* viewport = get_viewport();
     const godot::Camera3D* camera = viewport != nullptr ? viewport->get_camera_3d() : nullptr;
@@ -298,6 +302,11 @@ bool SkydotAnimator::play(const String& clip) {
 }
 
 void SkydotAnimator::stop() { playing_ = -1; }
+
+void SkydotAnimator::start_controllers() {
+    controllers_started_ = true;
+    controllers_time_ = 0.0;
+}
 
 String SkydotAnimator::get_playing() const {
     return playing_ >= 0 ? asset_->clips[static_cast<std::size_t>(playing_)].name : String();
@@ -342,6 +351,8 @@ void SkydotAnimator::step(double seconds, double seconds_into_clip, bool pose) {
             const Clip& clip = asset_->clips[i];
             if (clip.name.is_empty() && clip.autoplay) {
                 apply_clip(i, clip.local_time(seconds));
+            } else if (controllers_started_ && clip.name.is_empty()) {
+                apply_clip(i, clip.local_time(controllers_time_));
             }
         }
     }
