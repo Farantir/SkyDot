@@ -30,6 +30,7 @@ var _streamer: SkydotStreamer
 var _debug: DebugOverlay
 var _transition: PlaceTransition
 var _projectiles: Projectiles
+var _sounds: Sounds
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
@@ -46,6 +47,8 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_transition = transition
 	_projectiles = Projectiles.new(world, pack, find_ref_node)
 	host.add_child(_projectiles)
+	_sounds = Sounds.new(world, pack, find_ref_node)
+	host.add_child(_sounds)
 	_activations.assign(settings.activate)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.play_animation.connect(_on_play_animation)
@@ -60,6 +63,10 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_papyrus.objective_changed.connect(_on_objective_changed)
 	_papyrus.effect_shader.connect(_on_effect_shader)
 	_papyrus.fire_weapon.connect(_projectiles.fire)
+	_papyrus.play_sound.connect(_sounds.play)
+	_papyrus.stop_sound.connect(_sounds.stop)
+	_papyrus.sound_volume.connect(_sounds.set_volume)
+	_sounds.finished.connect(_papyrus.notify_sound_finished)
 	_papyrus.trigger.connect(_on_trigger)
 
 
@@ -69,6 +76,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 func scripts_loaded(root: Node, cell_id: int) -> void:
 	_resume_graphs(root)
 	if cell_id != 0:
+		_sounds.cell_loaded(root as Node3D, cell_id, Place.ref_nodes(root))
 		_papyrus.attach_cell(cell_id)
 	var scripted := _papyrus.attach_built(root)
 	if scripted > 0:
