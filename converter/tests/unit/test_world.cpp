@@ -1223,13 +1223,18 @@ void make_actors(const TempDir& dir) {
     ByteWriter proj;
     field_text(proj, "EDID", "TestDartProjectile");
     field_text(proj, "MODL", "Weapons\\Dart\\DartProjectile.nif");
+    field_text(proj, "NAM1", "Effects\\FXdartMuzzleDust.nif");
     ByteWriter proj_data;
-    proj_data.u16(0x0001);
+    proj_data.u16(0x0009);
     proj_data.u16(0x0040); // arrow
     proj_data.f32(0.5F);   // gravity
     proj_data.f32(6000.0F); // speed
     proj_data.f32(9000.0F); // range
-    for (int i = 0; i < 14; ++i) { // light .. cone spread
+    for (int i = 0; i < 7; ++i) { // light .. sound
+        proj_data.u32(0);
+    }
+    proj_data.f32(0.5F); // muzzle flash duration
+    for (int i = 0; i < 6; ++i) { // fade duration .. cone spread
         proj_data.u32(0);
     }
     proj_data.f32(4.0F);  // collision radius
@@ -1406,6 +1411,8 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(projectile->range == 9000.0F);
     CHECK(projectile->collision_radius == 4.0F);
     CHECK(projectile->lifetime == 30.0F);
+    CHECK(projectile->muzzle_flash_model == "meshes/effects/fxdartmuzzledust.nif");
+    CHECK(projectile->muzzle_flash_duration == 0.5F);
     // Both are bases too, for their models.
     const auto proj_base = file->base(0x0200'0E60);
     REQUIRE(proj_base.has_value());

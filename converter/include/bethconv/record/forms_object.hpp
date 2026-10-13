@@ -363,6 +363,8 @@ struct ProjectileFlight {
     float range{};    ///< Game units.
     float collision_radius{};
     float lifetime{}; ///< Seconds.
+    /// How long the muzzle flash model lives; DATA offset 44 (UESP SSE layout).
+    float muzzle_flash_duration{};
 };
 
 /// Nullopt if `data` is shorter than 80 bytes.

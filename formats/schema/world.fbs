@@ -1233,6 +1233,10 @@ table Projectile {
     collision_radius: float;
     /// Seconds.
     lifetime: float;
+    /// NAM1: the model shown at the muzzle when flag 0x8 is set (format 20).
+    muzzle_flash_model: string;
+    /// Seconds the muzzle flash lasts, DATA offset 44 (format 20).
+    muzzle_flash_duration: float;
 }
 
 table Plugin {

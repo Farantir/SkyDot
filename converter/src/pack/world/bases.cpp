@@ -252,6 +252,10 @@ void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanRe
     out.range = flight->range;
     out.collision_radius = flight->collision_radius;
     out.lifetime = flight->lifetime;
+    out.muzzle_flash_duration = flight->muzzle_flash_duration;
+    if (!projectile->muzzle_flash_model.empty()) {
+        out.muzzle_flash_model = model_vpath(projectile->muzzle_flash_model);
+    }
     projectiles_[out.id] = std::move(out);
 }
 

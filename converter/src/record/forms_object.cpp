@@ -524,7 +524,9 @@ std::optional<ProjectileFlight> projectile_flight(std::span<const std::byte> dat
     out.gravity = in.get<float>().value_or(0.0F);
     out.speed = in.get<float>().value_or(0.0F);
     out.range = in.get<float>().value_or(0.0F);
-    (void)in.bytes(56); // light .. cone spread
+    (void)in.bytes(28); // light .. sound
+    out.muzzle_flash_duration = in.get<float>().value_or(0.0F);
+    (void)in.bytes(24); // fade duration .. cone spread
     out.collision_radius = in.get<float>().value_or(0.0F);
     out.lifetime = in.get<float>().value_or(0.0F);
     return out;
