@@ -9,7 +9,8 @@
 # AudioStreamPlayer3D that is a child of the source node, so it moves with it.
 # Its SOPM (output model) gives the distances, in game units; one that does not
 # attenuate with distance plays non-positionally (AudioStreamPlayer), as does a
-# sound without a source. Frequency shift and variance become pitch, static
+# sound without a source. Every player is a child of its source node, so it is
+# freed with it; only a sound without a source lives under this node. Frequency shift and variance become pitch, static
 # attenuation and dB variance become volume. A descriptor that loops (LNAM
 # 0x08) loops the whole clip; the envelope kinds (0x10, 0x20) play once for now.
 # Compound descriptors (CNAM other than 0x1EEF540A) are not played: they pick
@@ -238,7 +239,7 @@ func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, 
 	_live[instance] = {"player": player, "base_db": db}
 	player.finished.connect(_ended.bind(instance))
 	player.tree_exiting.connect(_ended.bind(instance))
-	(node if positional else self).add_child(player)
+	(node if node != null else self).add_child(player)
 	player.play()
 	print("sound %s %s ref 0x%08X %s" % [descriptor["editor_id"], file, ref, "3d" if positional else "2d"])
 
