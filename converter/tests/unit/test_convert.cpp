@@ -54,6 +54,28 @@ std::vector<std::byte> an_hkx() {
     return b.bytes();
 }
 
+/// A RIFF/WAVE file of format tag `format`, `bits` bits and 4 samples.
+std::vector<std::byte> a_wav(std::uint16_t format = 1, std::uint16_t bits = 16) {
+    bethconv::test::ByteWriter w;
+    w.raw("RIFF");
+    w.u32(36 + 8);
+    w.raw("WAVE");
+    w.raw("fmt ");
+    w.u32(16);
+    w.u16(format);
+    w.u16(1);
+    w.u32(22050);
+    w.u32(44100);
+    w.u16(2);
+    w.u16(bits);
+    w.raw("data");
+    w.u32(8);
+    w.u32(0);
+    w.u32(0);
+    const auto span = w.span();
+    return {span.begin(), span.end()};
+}
+
 std::vector<std::byte> a_pex() {
     return bethconv::testing::build_script(bethconv::testing::empty_script("Fixture"));
 }
@@ -78,7 +100,7 @@ struct Fixture {
         write_file(dir.path() / "scripts/fixture.pex", a_pex());
         // Not converted yet; the manifest must count it.
         write_file(dir.path() / "sound/fixture.fuz", a_dds());
-        write_file(dir.path() / "sound/fixture.wav", a_dds());
+        write_file(dir.path() / "sound/fixture.wav", a_wav());
         write_file(dir.path() / "meshes/actors/fixture.hkx", an_hkx());
         REQUIRE(set.mount_loose(dir.path(), 0).has_value());
     }
@@ -153,15 +175,16 @@ TEST_CASE("one pass over a mount produces a whole pack", "[convert]") {
     CHECK(result->pack.textures == 1);
     CHECK(result->pack.scripts == 1);
     CHECK(result->pack.animations == 1);
+    CHECK(result->pack.sounds == 1);
     CHECK(result->pack.failed == 0);
-    CHECK(result->pack.converted == 4);
+    CHECK(result->pack.converted == 5);
 
     // Every pack file.
     CHECK(std::filesystem::exists(pack / "manifest.json"));
     CHECK(std::filesystem::exists(pack / "vpath.idx"));
     CHECK(std::filesystem::exists(pack / "report.json"));
     CHECK(std::filesystem::exists(pack / "world.fb"));
-    CHECK(assets_in(pack).size() == 4);
+    CHECK(assets_in(pack).size() == 5);
 
     REQUIRE(result->world.has_value());
     REQUIRE(result->merge.has_value());
@@ -173,7 +196,7 @@ TEST_CASE("one pass over a mount produces a whole pack", "[convert]") {
     CHECK_FALSE(std::filesystem::exists(pack / "records.fb"));
 }
 
-TEST_CASE("assets use the .glb, .dds, .pexfb and .animfb extensions",
+TEST_CASE("assets use the .glb, .dds, .pexfb, .animfb and .wav extensions",
           "[convert]") {
     Fixture fixture;
     TempDir out;
@@ -185,8 +208,8 @@ TEST_CASE("assets use the .glb, .dds, .pexfb and .animfb extensions",
         extensions.insert(name.substr(name.rfind('.')));
     }
     // `.dds`, not `.ktx2`; scripts decoded into `.pexfb`, Havok files into
-    // `.animfb`.
-    CHECK(extensions == std::set<std::string>{".animfb", ".dds", ".glb", ".pexfb"});
+    // `.animfb`, sound effects stay `.wav`.
+    CHECK(extensions == std::set<std::string>{".animfb", ".dds", ".glb", ".pexfb", ".wav"});
 }
 
 TEST_CASE("an input this pass does not convert is counted, not dropped silently",
@@ -197,16 +220,15 @@ TEST_CASE("an input this pass does not convert is counted, not dropped silently"
     const auto result = convert(fixture.set, fixture.order(), options_for(pack));
     REQUIRE(result.has_value());
 
-    // Three: the plugin itself is a loose file the asset pass does not convert,
+    // Two: the plugin itself is a loose file the asset pass does not convert,
     // so `.esm` shows up in the deferred counts. world.fb comes from the load
     // order, not this walk.
-    CHECK(result->pack.deferred == 3);
-    CHECK(result->pack.deferred_kinds == 3);
+    CHECK(result->pack.deferred == 2);
+    CHECK(result->pack.deferred_kinds == 2);
 
     const auto report = read_json(pack / "report.json");
     REQUIRE(report.contains("deferred"));
     CHECK(report["deferred"].contains(".fuz"));
-    CHECK(report["deferred"].contains(".wav"));
     CHECK(report["deferred"].contains(".esm"));
 }
 
@@ -234,7 +256,7 @@ TEST_CASE("each pass can be turned off on its own", "[convert]") {
         CHECK_FALSE(std::filesystem::exists(out.path() / "pack" / "world.fb"));
         CHECK_FALSE(read_json(out.path() / "pack" / "manifest.json").contains("world"));
         // Assets-only still writes assets (for re-testing without a merge).
-        CHECK(result->pack.converted == 4);
+        CHECK(result->pack.converted == 5);
     }
 }
 
@@ -300,14 +322,14 @@ TEST_CASE("a settings change renames every asset it could have affected",
 
     const auto a = assets_in(out.path() / "a");
     const auto b = assets_in(out.path() / "b");
-    REQUIRE(a.size() == 4);
-    REQUIRE(b.size() == 4);
+    REQUIRE(a.size() == 5);
+    REQUIRE(b.size() == 5);
 
     // Only the mesh moved: fingerprints are per kind.
     std::vector<std::string> shared;
     std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
                           std::back_inserter(shared));
-    CHECK(shared.size() == 3);
+    CHECK(shared.size() == 4);
     for (const auto& name : shared) {
         CHECK(name.find(".glb") == std::string::npos);
     }
@@ -351,9 +373,9 @@ TEST_CASE("two paths with the same bytes convert once", "[convert]") {
     REQUIRE(result.has_value());
 
     CHECK(result->pack.deduped == 1);
-    CHECK(result->pack.distinct_assets == 4);
-    CHECK(result->pack.index_entries == 5);
-    CHECK(assets_in(pack).size() == 4);
+    CHECK(result->pack.distinct_assets == 5);
+    CHECK(result->pack.index_entries == 6);
+    CHECK(assets_in(pack).size() == 5);
 }
 
 TEST_CASE("the manifest records the order the records came from", "[convert]") {

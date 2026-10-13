@@ -197,7 +197,7 @@ io::ParseResult<AssetIndex> AssetIndex::parse(std::span<const std::byte> bytes,
             return bad("truncated entry " + std::to_string(i));
         }
         std::ranges::copy(*hash, entry.hash.bytes.begin());
-        if (*kind > static_cast<std::uint8_t>(AssetKind::animation)) {
+        if (*kind > static_cast<std::uint8_t>(AssetKind::sound)) {
             return bad("entry " + std::to_string(i) + " has unknown kind " +
                        std::to_string(*kind));
         }

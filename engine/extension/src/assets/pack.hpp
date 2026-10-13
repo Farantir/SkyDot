@@ -45,7 +45,7 @@ class SkydotPack : public godot::RefCounted {
 
 public:
     /// The pack format version this engine reads (manifest and vpath.idx).
-    static constexpr int PACK_FORMAT_VERSION = 6;
+    static constexpr int PACK_FORMAT_VERSION = 7;
 
     /// Mount a pack directory. On refusal the pack stays closed, `get_error`
     /// explains, and the return code gives the category.

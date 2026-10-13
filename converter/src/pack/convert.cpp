@@ -79,6 +79,9 @@ namespace {
     if ((extension == ".hkx" || animation::is_animation_data(vpath)) && options.convert_animations) {
         return AssetKind::animation;
     }
+    if (extension == ".wav" && options.convert_sounds) {
+        return AssetKind::sound;
+    }
     return std::nullopt;
 }
 
@@ -179,6 +182,8 @@ struct Prepared {
         return convert_lod(bytes, vpath, extension);
     case AssetKind::animation:
         return convert_animation(bytes, vpath);
+    case AssetKind::sound:
+        return convert_sound(bytes, vpath);
     }
     return {};
 }
@@ -424,6 +429,10 @@ std::string ConvertOptions::animation_settings() const {
     return "animation/4;decoded";
 }
 
+std::string ConvertOptions::sound_settings() const {
+    return "sound/1;pcm16";
+}
+
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                                        const record::LoadOrder& order,
                                        const ConvertOptions& options) {
@@ -434,6 +443,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     pack_options.script_settings = options.script_settings();
     pack_options.lod_settings = options.lod_settings();
     pack_options.animation_settings = options.animation_settings();
+    pack_options.sound_settings = options.sound_settings();
     pack_options.prune_orphans = options.prune_orphans;
     pack_options.layout = options.layout;
 

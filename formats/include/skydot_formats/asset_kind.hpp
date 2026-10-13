@@ -22,11 +22,12 @@ enum class AssetKind : std::uint8_t {
     script,    ///< PEX -> decoded FlatBuffer (formats/schema/script.fbs).
     lod,       ///< .lod/.lst/.btt -> decoded FlatBuffer (formats/schema/lod.fbs).
     animation, ///< .hkx, animationdata .txt -> decoded FlatBuffer (formats/schema/animation.fbs).
+    sound,     ///< .wav -> .wav, PCM 16-bit checked.
 };
 
-inline constexpr std::array<AssetKind, 5> k_asset_kinds{AssetKind::mesh, AssetKind::texture,
+inline constexpr std::array<AssetKind, 6> k_asset_kinds{AssetKind::mesh,   AssetKind::texture,
                                                        AssetKind::script, AssetKind::lod,
-                                                       AssetKind::animation};
+                                                       AssetKind::animation, AssetKind::sound};
 
 /// The word vpath.idx writes for a kind.
 [[nodiscard]] constexpr std::string_view to_string(AssetKind kind) noexcept {
@@ -36,11 +37,12 @@ inline constexpr std::array<AssetKind, 5> k_asset_kinds{AssetKind::mesh, AssetKi
     case AssetKind::script: return "script";
     case AssetKind::lod: return "lod";
     case AssetKind::animation: return "animation";
+    case AssetKind::sound: return "sound";
     }
     return "unknown";
 }
 
-/// Including the dot: ".glb", ".dds", ".pexfb", ".lodfb", ".animfb".
+/// Including the dot: ".glb", ".dds", ".pexfb", ".lodfb", ".animfb", ".wav".
 [[nodiscard]] constexpr std::string_view extension_of(AssetKind kind) noexcept {
     switch (kind) {
     // DDS, not KTX2: textures are passed through.
@@ -49,6 +51,7 @@ inline constexpr std::array<AssetKind, 5> k_asset_kinds{AssetKind::mesh, AssetKi
     case AssetKind::script: return ".pexfb";
     case AssetKind::lod: return ".lodfb";
     case AssetKind::animation: return ".animfb";
+    case AssetKind::sound: return ".wav";
     }
     return "";
 }

@@ -165,6 +165,7 @@ struct PackOptions {
     std::string script_settings;
     std::string lod_settings;
     std::string animation_settings;
+    std::string sound_settings;
 
     /// Where asset bytes go. Blob unless asked otherwise.
     StoreLayout layout = StoreLayout::blob;
@@ -189,6 +190,7 @@ struct PackStats {
     std::uint64_t scripts{};
     std::uint64_t lod{};
     std::uint64_t animations{};
+    std::uint64_t sounds{};
 
     std::uint64_t asset_bytes{};  ///< Written by this run.
     std::uint64_t store_bytes{};  ///< Every stored asset, after pruning.

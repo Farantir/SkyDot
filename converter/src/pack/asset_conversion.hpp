@@ -86,4 +86,10 @@ struct AssetConversion {
 [[nodiscard]] AssetConversion convert_animation(std::span<const std::byte> source,
                                                 std::string_view vpath);
 
+/// A .wav passed through unchanged if it is RIFF/WAVE, PCM (format tag 1) and
+/// 16-bit; anything else fails with a reason the pack counts as a warning
+/// (see `PackWarning` for kinds the writer skips).
+[[nodiscard]] AssetConversion convert_sound(std::span<const std::byte> source,
+                                            std::string_view vpath);
+
 } // namespace bethconv::pack

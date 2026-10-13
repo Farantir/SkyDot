@@ -1,10 +1,11 @@
-# Pack format v6
+# Pack format v7
 
 The interface between converter and engine. The converter writes packs; the
-engine reads only packs. Everything below is stable in v6. The last section
+engine reads only packs. Everything below is stable in v7. The last section
 lists what is not promised.
 
-v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
+v7 adds sound effects: every `.wav` (16-bit PCM, passed through unchanged) is an asset
+of a new kind, `sound`, with extension `.wav`. v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
 a new kind, `animation`, holding its skeletons and clips; later v6 packs add
 behaviour graphs' clip generators and the animationdata text files (clip
 ids, root motion) to the same kind, which older v6 packs lack. v5 stores assets in one blob with an index (or, on request, as loose files)
@@ -15,7 +16,7 @@ a new kind, `lod`. v3 decodes scripts: a script asset is a `.pexfb` FlatBuffer i
 original `.pex`. v2 added `world.fb` (cells, references and base objects,
 decoded and with global FormIDs) and the manifest's `world` key.
 
-v6 packs written by earlier converters may also contain `records.fb` and a
+v6 and v7 packs written by earlier converters may also contain `records.fb` and a
 manifest `records` key; readers ignore both, whether or not the file is there.
 
 ## Overview
@@ -28,7 +29,7 @@ same input gives a byte-identical pack.
 
 ## Versioning
 
-`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 6. It
+`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 7. It
 appears in `manifest.json`, `report.json` and the `vpath.idx` header, and
 `world.fb` carries a `format_version` of its own. Each is checked separately so
 a reader can say which file it cannot read.
@@ -47,7 +48,7 @@ pack/
   manifest.json                      what the pack is and what built it
   world.fb                           cells, references, base objects
   assets.idx                         content hash -> offset, size, kind
-  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb bytes)
+  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb, .wav bytes)
   vpath.idx                          virtual path -> content hash
   report.json                        every skipped, failed and warned input
 ```
@@ -78,7 +79,7 @@ newline):
 | `load_order` | plugin filenames in order |
 | `source_hashes` | per mounted archive or directory: `name`, `kind`, `bytes`, optional `hash` |
 | `world` | `file`, `cells`, `refs`, `bases`, `bytes`, `hash`; absent for an asset-only pack |
-| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `animations`, `bytes` (written by this run), `dedupe_saved_bytes` |
+| `assets` | `distinct`, `index_entries`, `meshes`, `textures`, `scripts`, `lod`, `animations`, `sounds`, `bytes` (written by this run), `dedupe_saved_bytes` |
 | `store` | `layout` (`blob` or `loose`); for a blob also `index` and `blob` (file names); `bytes` (all stored assets) |
 | `deferred` | extension → count of inputs not converted by this version |
 | `report` | `file`, `failed`, `warnings` |
@@ -88,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (17; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (21; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -98,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM)). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM)). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -192,6 +193,15 @@ test bits by these names, through `has_flag` in
   parameter; FormID parameters are global, chosen by the function's
   parameter types (`bethconv/record/conditions.cpp`, from xEdit). How the
   engine runs them: `engine/docs/ai.md`.
+- Sound (format 21), each sorted by id: `sound_descriptors` (SNDR: the
+  file names as normalized virtual paths of sound assets, the output model,
+  category, descriptor type CNAM as stored (0x1EEF540A standard), looping
+  type, frequency shift and variance in percent, priority, dB variance and
+  static attenuation in hundredths of a dB); `sound_markers` (SOUN: the
+  descriptor, SDSC); `sound_output_models` (SOPM: flags, whose bit 0 is
+  attenuation with distance, type, min and max distance in game units and
+  the five attenuation curve bytes). A SOUN is also a `bases` entry without a
+  model, so its placed references resolve.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.
@@ -271,7 +281,7 @@ Two layouts hold the same assets under the same names.
 | blob_bytes | u64: bytes of the blob the index covers |
 | entries | count × { hash: 32 bytes, offset: u64, size: u64, kind: u8, 7 zero bytes } |
 
-Entries are sorted by hash bytes; kind is 0 mesh, 1 texture, 2 script, 3 lod, 4 animation.
+Entries are sorted by hash bytes; kind is 0 mesh, 1 texture, 2 script, 3 lod, 4 animation, 5 sound.
 Every entry lies inside `blob_bytes`, and nothing follows the last entry; a
 reader refuses an index that breaks either. Entries start on 16-byte
 boundaries, in conversion order (sorted virtual paths), so the blob is
@@ -311,6 +321,7 @@ Per kind, mentioning only settings that affect that kind:
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 | animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
+| sound | `.wav` | `sound/<n>;pcm16` | `sound/1` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
 whenever a writer's output changes (a changed option already changes its
@@ -357,6 +368,16 @@ so class `DefaultLever` is found at `scripts/defaultlever.pex`.
 
 All 10,015 LE, 14,302 SE and 13,507 VR scripts and the FUS list's 5,352
 decode; the corpus harness pins the counts and a hash over the assets.
+
+## Sound assets
+
+A sound effect (`.wav` in the game's Sound archive) is stored as it came,
+under the same virtual path (`sound/fx/obj/leverNordic02/...`, normalized):
+RIFF/WAVE, format tag 1 (PCM), 16 bits, any channel count or rate. Anything else
+(ADPCM, 8-bit, not RIFF) is a failure, counted in `failed` and listed in
+`report.json`. Vanilla SE: all 5,929 `.wav` in `Skyrim - Sounds.bsa` qualify.
+Music (`.xwm`), voices (`.fuz`) and `.lip` are not converted yet. Godot reads
+the bytes with `AudioStreamWAV.load_from_buffer`.
 
 ## LOD
 
@@ -429,12 +450,12 @@ only in the single file (LE's is in `Update.bsa`). The text formats:
 Tab-separated, sorted, one line per virtual path, after two comment lines:
 
 ```
-# bethconv vpath index v6
+# bethconv vpath index v7
 # virtual path\tcontent hash\tkind\twinning source
 meshes/clutter/apple01.nif\t3f9c…\tmesh\tSkyrim - Meshes0.bsa
 ```
 
-`kind` is `mesh`, `texture`, `script`, `lod` or `animation`. An unknown kind means a newer writer;
+`kind` is `mesh`, `texture`, `script`, `lod`, `animation` or `sound`. An unknown kind means a newer writer;
 say so rather than guess.
 
 Text because it is for debugging mod overrides: people read it and tools diff
@@ -554,7 +575,7 @@ the machine.
 - No hash-table iteration order in files. `vpath.idx` and all `report.json`
   arrays are sorted.
 
-## Not promised in v6
+## Not promised in v7
 
 - **Resolved text.** There is no per-language string file; names cannot be
   resolved from a pack alone.

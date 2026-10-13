@@ -262,6 +262,53 @@ TEST_CASE("a file that cannot be converted is a failure with its stage, not an a
                         {"textures/bad.dds", "texture"}});
 }
 
+TEST_CASE("a 16-bit PCM .wav is passed through, any other is reported", "[convert][sound]") {
+    const auto wav = [](std::uint16_t format, std::uint16_t bits) {
+        Bytes out;
+        const auto put = [&](std::uint32_t value, int bytes) {
+            for (int i = 0; i < bytes; ++i) {
+                out.push_back(static_cast<std::byte>((value >> (8 * i)) & 0xFF));
+            }
+        };
+        const auto text = [&](std::string_view t) {
+            for (const char c : t) {
+                out.push_back(static_cast<std::byte>(c));
+            }
+        };
+        text("RIFF");
+        put(36, 4);
+        text("WAVE");
+        text("fmt ");
+        put(16, 4);
+        put(format, 2);
+        put(1, 2);
+        put(22050, 4);
+        put(44100, 4);
+        put(2, 2);
+        put(bits, 2);
+        text("data");
+        put(0, 4);
+        return out;
+    };
+    Run run;
+    run.add("sound/fx/good.wav", wav(1, 16));
+    run.add("sound/fx/adpcm.wav", wav(2, 4));
+    run.add("sound/fx/eight.wav", wav(1, 8));
+    run.add("sound/fx/junk.wav", junk());
+
+    const auto result = run.go();
+    CHECK(result.pack.sounds == 1);
+    CHECK(result.pack.converted == 1);
+    CHECK(result.pack.failed == 3);
+
+    Run off;
+    off.add("sound/fx/good.wav", wav(1, 16));
+    off.options.convert_sounds = false;
+    const auto skipped = off.go();
+    CHECK(skipped.pack.sounds == 0);
+    CHECK(skipped.pack.failed == 0);
+}
+
 TEST_CASE("a script compiled for another game is reported, not packed", "[convert][script]") {
     Run run;
     bethconv::testing::PexSpec spec;
@@ -338,7 +385,7 @@ TEST_CASE("the pack is the same bytes on one thread, three and eight", "[convert
     run.add("meshes/bad.nif", junk());
     run.add("meshes/bad_copy.nif", junk());
     run.add("scripts/bad.pex", junk());
-    run.add("sound/voice.wav", junk());
+    run.add("sound/voice.fuz", junk());
     run.options.texture_encoding = bethconv::texture::Encoding::bc7;
 
     for (const auto layout : {StoreLayout::blob, StoreLayout::loose}) {

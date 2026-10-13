@@ -68,6 +68,8 @@ struct ConvertOptions {
     bool convert_lod = true;
     /// Havok files (.hkx): skeletons and animations as animation assets.
     bool convert_animations = true;
+    /// Sound effects (.wav, 16-bit PCM) as sound assets.
+    bool convert_sounds = true;
 
     mesh::ReadOptions mesh_read;
 
@@ -132,6 +134,7 @@ struct ConvertOptions {
     [[nodiscard]] std::string script_settings() const;
     [[nodiscard]] std::string lod_settings() const;
     [[nodiscard]] std::string animation_settings() const;
+    [[nodiscard]] std::string sound_settings() const;
 };
 
 /// Results of `convert`.

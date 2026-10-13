@@ -36,7 +36,7 @@ constexpr const char* k_index_name = "vpath.idx";
 
 // formats/pack-format.md, "vpath.idx": two comment lines, the first naming format
 // and version.
-constexpr const char* k_index_header = "# bethconv vpath index v6";
+constexpr const char* k_index_header = "# bethconv vpath index v7";
 
 std::string to_std(const String& s) {
     return std::string(s.utf8().get_data());

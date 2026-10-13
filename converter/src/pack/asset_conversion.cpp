@@ -237,4 +237,52 @@ AssetConversion convert_animation(std::span<const std::byte> source, std::string
     return out;
 }
 
+AssetConversion convert_sound(std::span<const std::byte> source, std::string_view vpath) {
+    AssetConversion out;
+    const auto reject = [&](std::size_t offset, std::string detail) {
+        out.failure = failure_from(vpath, "sound",
+                                   io::ParseError{.origin = std::string(vpath),
+                                                  .offset = offset,
+                                                  .kind = io::ErrorKind::unsupported,
+                                                  .detail = std::move(detail)});
+        return std::move(out);
+    };
+    const auto u16 = [&](std::size_t at) {
+        return static_cast<std::uint32_t>(std::to_integer<unsigned>(source[at])) |
+               (static_cast<std::uint32_t>(std::to_integer<unsigned>(source[at + 1])) << 8);
+    };
+    const auto tag = [&](std::size_t at, std::string_view want) {
+        for (std::size_t i = 0; i < 4; ++i) {
+            if (static_cast<char>(source[at + i]) != want[i]) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (source.size() < 12 || !tag(0, "RIFF") || !tag(8, "WAVE")) {
+        return reject(0, "not a RIFF/WAVE file");
+    }
+    // Chunks: id, u32 size, data padded to even.
+    std::size_t at = 12;
+    while (at + 8 <= source.size()) {
+        const std::size_t size = u16(at + 4) | (static_cast<std::size_t>(u16(at + 6)) << 16);
+        if (tag(at, "fmt ")) {
+            if (size < 16 || at + 8 + 16 > source.size()) {
+                return reject(at, "fmt chunk too short");
+            }
+            const auto format = u16(at + 8);
+            const auto bits = u16(at + 8 + 14);
+            if (format != 1 || bits != 16) {
+                return reject(at, "format tag " + std::to_string(format) + ", " +
+                                      std::to_string(bits) +
+                                      " bits: only 16-bit PCM is supported");
+            }
+            out.passthrough = true;
+            return out;
+        }
+        at += 8 + size + (size & 1U);
+    }
+    return reject(source.size(), "no fmt chunk");
+}
+
 } // namespace bethconv::pack

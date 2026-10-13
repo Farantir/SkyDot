@@ -58,6 +58,7 @@ std::string PackWriter::settings_for(AssetKind kind) const {
     case AssetKind::script: return options_.script_settings;
     case AssetKind::lod: return options_.lod_settings;
     case AssetKind::animation: return options_.animation_settings;
+    case AssetKind::sound: return options_.sound_settings;
     }
     return {};
 }
@@ -120,6 +121,7 @@ io::ParseResult<void> PackWriter::store(const AssetSlot& slot,
     case AssetKind::script: ++stats_.scripts; break;
     case AssetKind::lod: ++stats_.lod; break;
     case AssetKind::animation: ++stats_.animations; break;
+    case AssetKind::sound: ++stats_.sounds; break;
     }
     return {};
 }
@@ -134,6 +136,7 @@ void PackWriter::reuse(const AssetSlot& slot) {
     case AssetKind::script: ++stats_.scripts; break;
     case AssetKind::lod: ++stats_.lod; break;
     case AssetKind::animation: ++stats_.animations; break;
+    case AssetKind::sound: ++stats_.sounds; break;
     }
 }
 
@@ -215,7 +218,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     };
     report["assets"] = ordered_json{
         {"meshes", stats_.meshes}, {"textures", stats_.textures}, {"scripts", stats_.scripts},
-        {"lod", stats_.lod}, {"animations", stats_.animations}};
+        {"lod", stats_.lod}, {"animations", stats_.animations}, {"sounds", stats_.sounds}};
 
     // Uncapped: large broken load orders are where the full list matters.
     if (manifest.alpha_coverage) {
@@ -345,6 +348,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
                                  {"scripts", stats_.scripts},
                                  {"lod", stats_.lod},
                                  {"animations", stats_.animations},
+                                 {"sounds", stats_.sounds},
                                  {"bytes", stats_.asset_bytes},
                                  {"dedupe_saved_bytes", stats_.dedupe_saved_bytes}};
 

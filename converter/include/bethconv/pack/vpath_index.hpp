@@ -13,7 +13,7 @@
 //     # virtual path\tcontent hash\tkind\twinning source
 //     meshes/clutter/apple01.nif\t3f9c...\tmesh\tSkyrim - Meshes0.bsa
 //
-// The version is `k_pack_format_version`, shown here as 6.
+// The version is `k_pack_format_version`, shown here as 7.
 //
 // Tab-separated, sorted, one line per virtual path. Text because it is used to
 // debug mod overrides (which archive won, did it change), so people read it and
@@ -36,7 +36,7 @@ namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in the pack layout changes. See
 /// formats/pack-format.md.
-inline constexpr std::uint32_t k_pack_format_version = 6;
+inline constexpr std::uint32_t k_pack_format_version = 7;
 
 using skydot::formats::AssetKind;
 using skydot::formats::asset_relative_path;
