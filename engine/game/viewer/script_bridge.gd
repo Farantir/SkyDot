@@ -67,6 +67,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 ## including model-less ones such as triggers, and show script-made changes to
 ## what is enabled.
 func scripts_loaded(root: Node, cell_id: int) -> void:
+	_resume_graphs(root)
 	if cell_id != 0:
 		_papyrus.attach_cell(cell_id)
 	var scripted := _papyrus.attach_built(root)
@@ -80,6 +81,39 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 			var ref: int = node.get_meta("skydot_ref")
 			if changes.has(ref):
 				_show_ref(node, not changes[ref])
+
+
+## Put the behaviour graphs of what was just built where the saves left them
+## (an opened gate stays open), before scripts see the references, and keep
+## the store current when a graph changes or its cell unloads.
+func _resume_graphs(root: Node) -> void:
+	for node in Place.ref_nodes(root):
+		var player := node.find_child("SkydotBehavior", true, false)
+		if player == null:
+			continue
+		var ref: int = node.get_meta("skydot_ref")
+		var bytes := _papyrus.get_animation_state(ref)
+		if not bytes.is_empty() and not player.restore_snapshot(bytes):
+			print("0x%08X: its saved graph state does not fit the graph, so it starts over" % ref)
+		player.state_changed.connect(_record_graph.bind(ref, player))
+		player.leaving.connect(_record_graph.bind(ref, player))
+
+
+func _record_graph(ref: int, player: Node) -> void:
+	_papyrus.set_animation_state(ref, player.get_snapshot())
+
+
+## Record every live graph (for a save).
+func record_graphs() -> void:
+	for player in Engine.get_main_loop().get_nodes_in_group("skydot_behaviors"):
+		_record_graph(player.get_ref(), player)
+
+
+## The live graphs are about to be replaced by a loaded save: what they hold
+## is stale and must not reach the store when their cell unloads.
+func retire_graphs() -> void:
+	for player in Engine.get_main_loop().get_nodes_in_group("skydot_behaviors"):
+		player.retire()
 
 
 func _on_open_changed(ref: int, open: bool) -> void:

@@ -12,17 +12,21 @@ var _papyrus: SkydotPapyrus
 var _place: Place
 var _streamer: SkydotStreamer
 var _rig: PlayerRig
+var _bridge: ScriptBridge
 
 
-func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: PlayerRig) -> void:
+func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: PlayerRig,
+		bridge: ScriptBridge) -> void:
 	_papyrus = papyrus
 	_place = place
 	_streamer = streamer
 	_rig = rig
+	_bridge = bridge
 
 
 ## The scripts' state and where the camera is.
 func save(path: String) -> void:
+	_bridge.record_graphs()
 	var state := {
 		"format": FORMAT,
 		"papyrus": _papyrus.save_state(),
@@ -51,6 +55,7 @@ func load_game(path: String) -> bool:
 			or typeof(state.get("papyrus")) != TYPE_PACKED_BYTE_ARRAY:
 		printerr("not a save: ", path)
 		return false
+	_bridge.retire_graphs()
 	if _papyrus.load_state(state["papyrus"]) != OK:
 		printerr("cannot load the scripts' state: ", _papyrus.get_last_error())
 		return false

@@ -248,7 +248,7 @@ func _create_components() -> void:
 	_bridge.activations_finished.connect(func() -> void:  # let scripts run first
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_bridge.failed.connect(_fail)
-	_saves = SaveService.new(_papyrus, _place, _streamer, _rig)
+	_saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge)
 	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
 	if _settings.has_screenshot:
 		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"

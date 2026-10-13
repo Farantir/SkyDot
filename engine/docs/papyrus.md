@@ -253,6 +253,16 @@ handles and fills and changed globals are saved too (save format 2; format 1
 still loads). The viewer saves the place and camera with it (F5,
 F9, `--save-to`, `--load`).
 
+Behaviour graphs (`SkydotBehavior`, a gate or lever) are saved too: VM save
+version 4 adds a section of opaque bytes per reference (`set_animation_state`,
+`get_animation_state`; versions 1 to 3 still load). The bytes are
+`BehaviorSet::save()`: per machine whether it runs, its state id, clip time,
+held pose and fired triggers. The viewer's `ScriptBridge` restores a built
+reference's graph silently (no events) before its scripts' OnLoad, and
+records it when it changes, when its cell unloads and before a save, so an
+opened gate stays open after F9 and after leaving the cell and coming back.
+A snapshot that does not fit the graph is ignored and the graph starts over.
+
 Not saved: the world's own state outside scripts (none is simulated yet).
 
 ## Assumptions not checked against the game

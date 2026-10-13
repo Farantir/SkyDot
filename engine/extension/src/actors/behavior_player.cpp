@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <span>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -379,6 +380,45 @@ void SkydotBehavior::report(const BehaviorOutput& out) {
     for (const std::string& event : out.events) {
         emit_signal("event_raised", String::utf8(event.c_str()));
     }
+    if (!out.changes.empty()) {
+        emit_signal("state_changed");
+    }
+}
+
+godot::PackedByteArray SkydotBehavior::get_snapshot() const {
+    godot::PackedByteArray out;
+    if (set_) {
+        const std::vector<std::uint8_t> bytes = set_->save();
+        out.resize(static_cast<std::int64_t>(bytes.size()));
+        std::copy(bytes.begin(), bytes.end(), out.ptrw());
+    }
+    return out;
+}
+
+bool SkydotBehavior::restore_snapshot(const godot::PackedByteArray& bytes) {
+    if (!set_ || bytes.is_empty() ||
+        !set_->load(std::span<const std::uint8_t>(bytes.ptr(), static_cast<std::size_t>(bytes.size())))) {
+        return false;
+    }
+    for (const int index : set_->running()) {
+        if (const BehaviorState* state = set_->machine(index).state(); state != nullptr && !state->sequence.empty()) {
+            play_sequence(state->sequence);
+        }
+    }
+    apply();
+    char line[256];
+    std::snprintf(line, sizeof line, "0x%08llX graph restored: %s", static_cast<unsigned long long>(ref_),
+                  get_state().utf8().get_data());
+    godot::UtilityFunctions::print(String::utf8(line));
+    return true;
+}
+
+void SkydotBehavior::_notification(int what) {
+    if (what == NOTIFICATION_ENTER_TREE) {
+        add_to_group("skydot_behaviors");
+    } else if (what == NOTIFICATION_EXIT_TREE && !retired_) {
+        emit_signal("leaving");
+    }
 }
 
 void SkydotBehavior::apply() {
@@ -485,6 +525,12 @@ void SkydotBehavior::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("advance", "seconds"), &SkydotBehavior::advance);
     godot::ClassDB::bind_method(godot::D_METHOD("get_state"), &SkydotBehavior::get_state);
     godot::ClassDB::bind_method(godot::D_METHOD("raises_event", "event"), &SkydotBehavior::raises_event);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_snapshot"), &SkydotBehavior::get_snapshot);
+    godot::ClassDB::bind_method(godot::D_METHOD("restore_snapshot", "bytes"), &SkydotBehavior::restore_snapshot);
+    godot::ClassDB::bind_method(godot::D_METHOD("get_ref"), &SkydotBehavior::get_ref);
+    godot::ClassDB::bind_method(godot::D_METHOD("retire"), &SkydotBehavior::retire);
+    ADD_SIGNAL(godot::MethodInfo("state_changed"));
+    ADD_SIGNAL(godot::MethodInfo("leaving"));
     ADD_SIGNAL(godot::MethodInfo("event_raised", godot::PropertyInfo(godot::Variant::STRING, "event")));
 }
 

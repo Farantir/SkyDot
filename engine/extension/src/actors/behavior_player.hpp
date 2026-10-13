@@ -18,6 +18,12 @@
 // SkydotAnimator skips those (SkydotAnimator::mask_nodes). A state without a
 // clip holds the pose of the clip before it.
 //
+// The graph's state can be saved (`get_snapshot`) and resumed silently
+// (`restore_snapshot`); `state_changed` follows every state change and
+// `leaving` the node's exit from the tree (its cell unloading), so a host can
+// keep the last state of a graph that goes away. Nodes are in the group
+// `skydot_behaviors`.
+//
 // Events the graph raises (clip triggers, state enter/exit) go out as the
 // `event_raised` signal for Papyrus' PlayAnimationAndWait.
 #pragma once
@@ -72,9 +78,23 @@ public:
     /// Whether the graph can raise `event` (a clip trigger or a state's notify).
     [[nodiscard]] bool raises_event(const godot::String& event) const;
 
+    /// Where the graph is (which machines run, in which state and clip time)
+    /// as bytes for a save; empty if it has not started.
+    [[nodiscard]] godot::PackedByteArray get_snapshot() const;
+    /// Resume from `get_snapshot` bytes, silently: no `event_raised`, no
+    /// `state_changed`; the pose is applied and the states' NIF sequences
+    /// start. False, and nothing changed, if the bytes do not fit the graph.
+    bool restore_snapshot(const godot::PackedByteArray& bytes);
+    /// The reference this graph plays on.
+    [[nodiscard]] std::int64_t get_ref() const { return ref_; }
+    /// Stop reporting `leaving`: the node is about to be thrown away and its
+    /// state is stale (a save was loaded over it).
+    void retire() { retired_ = true; }
+
     /// Let `seconds` pass (what _process does each frame).
     void advance(double seconds);
     void _process(double delta) override;
+    void _notification(int what);
 
 protected:
     static void _bind_methods();
@@ -103,6 +123,7 @@ private:
     void play_sequence(const std::string& name);
     std::vector<ClipPose> poses_;
     std::int64_t ref_{};
+    bool retired_{};
 };
 
 } // namespace skydot
