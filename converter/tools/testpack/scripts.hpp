@@ -109,6 +109,14 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
         "scripts/weapon.pex",
         one_state("Weapon", "Form",
                   {native("Fire", "None", {{"akSource", "ObjectReference"}, {"akAmmo", "Form"}})}));
+    out.emplace_back(
+        "scripts/sound.pex",
+        one_state("Sound", "Form",
+                  {native("Play", "Int", {{"akSource", "ObjectReference"}}),
+                   native("PlayAndWait", "Bool", {{"akSource", "ObjectReference"}}),
+                   native("StopInstance", "None", {{"aiPlaybackInstance", "Int"}}, true),
+                   native("SetInstanceVolume", "None",
+                          {{"aiPlaybackInstance", "Int"}, {"afVolume", "Float"}}, true)}));
     out.emplace_back("scripts/debug.pex",
                      one_state("Debug", "",
                                {native("Trace", "None",
@@ -176,6 +184,17 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
         one_state("TestpackFireScript", "Weapon",
                   {function("Shoot", "None", {}, {{"::NoneVar", "None"}},
                             {ins(op_callmethod, {ident("Fire"), ident("self"), ident("::NoneVar")},
+                                 {none(), none()})})}));
+
+    // Scriptname TestpackSoundScript extends Sound
+    // Function Click()
+    //     Play(None)
+    // EndFunction
+    out.emplace_back(
+        "scripts/testpacksoundscript.pex",
+        one_state("TestpackSoundScript", "Sound",
+                  {function("Click", "None", {}, {{"::NoneVar", "None"}},
+                            {ins(op_callmethod, {ident("Play"), ident("self"), ident("::NoneVar")},
                                  {none(), none()})})}));
 
     // Scriptname TestpackVmScript: global functions covering the opcodes.

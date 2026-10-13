@@ -953,6 +953,65 @@ std::vector<std::byte> build_plugin() {
                                  light_record("TestpackTorch").span());
     bethconv::test::write_group(file, tag_value("LIGH"), 0, lights.span());
 
+    // ---- sound: an output model, a descriptor with two files, a marker ----
+    {
+        ByteWriter sopm;
+        edid(sopm, "TestpackSOM");
+        ByteWriter sopm_flags;
+        sopm_flags.u32(0x2300'0001);
+        bethconv::test::write_field(sopm, "NAM1", sopm_flags);
+        ByteWriter sopm_type;
+        sopm_type.u32(0);
+        bethconv::test::write_field(sopm, "MNAM", sopm_type);
+        ByteWriter sopm_anam;
+        sopm_anam.u32(0);
+        sopm_anam.f32(300.0F);
+        sopm_anam.f32(4000.0F);
+        for (const int c : {100, 70, 35, 15, 0, 0, 0, 0}) {
+            sopm_anam.u8(static_cast<std::uint8_t>(c));
+        }
+        bethconv::test::write_field(sopm, "ANAM", sopm_anam);
+        ByteWriter sopms;
+        bethconv::test::write_record(sopms, "SOPM", 0x0000'0180, sopm.span());
+        bethconv::test::write_group(file, tag_value("SOPM"), 0, sopms.span());
+
+        ByteWriter sndr;
+        edid(sndr, "TestpackClickSD");
+        ByteWriter sndr_type;
+        sndr_type.u32(0x1EEF'540A);
+        bethconv::test::write_field(sndr, "CNAM", sndr_type);
+        for (const char* path : {"\\Data\\Sound\\TestPack\\Click.wav", "TestPack\\Click.wav"}) {
+            ByteWriter file_name;
+            file_name.zstring(path);
+            bethconv::test::write_field(sndr, "ANAM", file_name);
+        }
+        ByteWriter sndr_om;
+        sndr_om.u32(0x0000'0180);
+        bethconv::test::write_field(sndr, "ONAM", sndr_om);
+        ByteWriter sndr_loop;
+        sndr_loop.u32(0x0000'0801);
+        bethconv::test::write_field(sndr, "LNAM", sndr_loop);
+        ByteWriter sndr_bnam;
+        sndr_bnam.u8(0);
+        sndr_bnam.u8(0);
+        sndr_bnam.u8(0x80);
+        sndr_bnam.u8(0);
+        sndr_bnam.u16(132);
+        bethconv::test::write_field(sndr, "BNAM", sndr_bnam);
+        ByteWriter sndrs;
+        bethconv::test::write_record(sndrs, "SNDR", 0x0000'0181, sndr.span());
+        bethconv::test::write_group(file, tag_value("SNDR"), 0, sndrs.span());
+
+        ByteWriter soun;
+        edid(soun, "TestpackClickMarker");
+        ByteWriter sdsc;
+        sdsc.u32(0x0000'0181);
+        bethconv::test::write_field(soun, "SDSC", sdsc);
+        ByteWriter souns;
+        bethconv::test::write_record(souns, "SOUN", 0x0000'0182, soun.span());
+        bethconv::test::write_group(file, tag_value("SOUN"), 0, souns.span());
+    }
+
     // ---- the worldspace ----
     ByteWriter cells;
     const ByteWriter land = land_record();
@@ -1265,6 +1324,28 @@ std::size_t write_data_folder(const fs::path& data) {
     put("meshes/animationdata/behaviour.txt", text_bytes(k_actor_project));
     put("meshes/animationdata/boundanims/anims_behaviour.txt", text_bytes(k_actor_motion));
     put("meshes/testpack/actor/body.nif", actor_body());
+
+    // A sound effect: 16-bit mono PCM, 4 samples.
+    {
+        ByteWriter wav;
+        wav.raw("RIFF");
+        wav.u32(36 + 8);
+        wav.raw("WAVE");
+        wav.raw("fmt ");
+        wav.u32(16);
+        wav.u16(1);
+        wav.u16(1);
+        wav.u32(22050);
+        wav.u32(44100);
+        wav.u16(2);
+        wav.u16(16);
+        wav.raw("data");
+        wav.u32(8);
+        for (const int sample : {0, 8000, 0, 0xE0C0}) {
+            wav.u16(static_cast<std::uint16_t>(sample));
+        }
+        put("sound/testpack/click.wav", wav.span());
+    }
 
     // Not converted; must appear in `report.json`.
     put("sound/testpack/voice.fuz", bethconv::testing::build_pex({}));
