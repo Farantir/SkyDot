@@ -274,6 +274,8 @@ private:
     static bool contains(const Trigger& t, const godot::Vector3& p);
     static bool contains(const Volume& v, const godot::Vector3& p);
     godot::Vector3 position_of(std::uint32_t ref) const;
+    /// Radians; where a script moved the reference, else as placed.
+    godot::Vector3 rotation_of(std::uint32_t ref) const;
     void reset();
     void install_scheduled_handler();
 
@@ -286,6 +288,11 @@ private:
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotWorld> world_;
     std::set<std::uint32_t> attached_;
+    /// Cells whose references were handed to the VM (never unloaded: nothing
+    /// signals a cell detaching yet).
+    std::set<std::uint32_t> attached_cells_;
+    /// References a script moved: position and rotation (radians).
+    std::map<std::uint32_t, std::pair<godot::Vector3, godot::Vector3>> moved_;
     std::map<std::uint32_t, bool> disabled_;
     std::set<std::uint32_t> blocked_;
     PendingActivations pending_activations_;

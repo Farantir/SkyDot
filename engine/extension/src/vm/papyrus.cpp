@@ -151,6 +151,11 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("stop_sound", PropertyInfo(Variant::INT, "instance")));
     ADD_SIGNAL(godot::MethodInfo("sound_volume", PropertyInfo(Variant::INT, "instance"),
                                  PropertyInfo(Variant::FLOAT, "volume")));
+    // ObjectReference.Reset: the reference goes to a position (Skyrim space,
+    // game units) and rotation (radians) the game layer applies.
+    ADD_SIGNAL(godot::MethodInfo("ref_moved", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::VECTOR3, "position"),
+                                 PropertyInfo(Variant::VECTOR3, "rotation")));
     ADD_SIGNAL(godot::MethodInfo("motion_type_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "motion_type")));
     // A script's or an activate parent's activation, once the VM ran it: the
@@ -195,6 +200,8 @@ void SkydotPapyrus::install_scheduled_handler() {
 
 void SkydotPapyrus::reset() {
     attached_.clear();
+    attached_cells_.clear();
+    moved_.clear();
     disabled_.clear();
     blocked_.clear();
     pending_activations_.clear();
@@ -309,7 +316,17 @@ bool SkydotPapyrus::locked(std::uint32_t ref) const {
     return ref_info(ref).get("lock", Variant()).get_type() == Variant::DICTIONARY;
 }
 
+Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
+    if (const auto it = moved_.find(ref); it != moved_.end()) {
+        return it->second.second;
+    }
+    return ref_info(ref).get("rotation", Vector3());
+}
+
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
+    if (const auto it = moved_.find(ref); it != moved_.end()) {
+        return it->second.first;
+    }
     if (const auto it = actors_.find(ref); it != actors_.end()) {
         return it->second;
     }
@@ -338,6 +355,13 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         }
         return 0;
     }
+    std::uint32_t parent_cell(std::uint32_t ref) const override {
+        return owner_.world_.is_null() ? 0 : static_cast<std::uint32_t>(owner_.world_->get_ref_cell(ref));
+    }
+    bool cell_interior(std::uint32_t cell) const override {
+        return !owner_.world_.is_null() && static_cast<bool>(owner_.world_->get_cell(cell).get("interior", false));
+    }
+    bool cell_attached(std::uint32_t cell) const override { return owner_.attached_cells_.contains(cell); }
     std::int32_t player_level() const override { return 1; }
 
 private:
@@ -523,6 +547,7 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
             }
             const std::int64_t ref = child->get_meta("skydot_ref");
             attach(child->get_meta("skydot_cell"), ref);
+            attached_cells_.insert(static_cast<std::uint32_t>(static_cast<std::int64_t>(child->get_meta("skydot_cell"))));
             if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
                 register_phantoms(static_cast<std::uint32_t>(ref),
                                   godot::Object::cast_to<godot::Node3D>(child));
@@ -543,6 +568,7 @@ std::int64_t SkydotPapyrus::attach_cell(std::int64_t cell) {
     if (world_.is_null()) {
         return 0;
     }
+    attached_cells_.insert(static_cast<std::uint32_t>(cell));
     std::int64_t count = 0;
     const auto refs = world_->get_scripted_refs(cell);
     for (std::int64_t i = 0; i < refs.size(); ++i) {

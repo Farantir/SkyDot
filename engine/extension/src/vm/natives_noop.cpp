@@ -23,6 +23,8 @@ void SkydotPapyrus::bind_noop_natives() {
     // (they return false).
     vm_->ignore("Keyword", "SendStoryEvent");
     vm_->ignore("Keyword", "SendStoryEventAndWait");
+    // No blame or crime until there is combat.
+    vm_->ignore("ObjectReference", "SetActorCause");
     // Feedback with no screen, controller or achievement system behind it.
     vm_->ignore("Game", "ShakeCamera");
     vm_->ignore("Game", "ShakeController");

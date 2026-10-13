@@ -130,7 +130,8 @@ shows XPRM bounds doubled. Not checked against the game.
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
-| ObjectReference | `Enable`, `Disable`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| Cell | `IsInterior`, `IsAttached` (its references were handed to the VM; a cell never detaches) |
 | EffectShader | `Play`, `Stop` |
 | Sound | `Play` (signal `play_sound`: sound, source reference, instance id; the game layer plays it, `game/game/sounds.gd`), `PlayAndWait` (waits for `notify_sound_finished(instance)`, which the game layer sends when the clip ends, or 30 s), `StopInstance` (signal `stop_sound`), `SetInstanceVolume` (signal `sound_volume`) |
 | Weapon | `Fire` (signal `fire_weapon`: the game layer launches the ammo's projectile, `game/game/projectiles.gd`) |
@@ -149,7 +150,7 @@ it) unless a script blocks activation, and returns an outcome the host
 applies (door, furniture, toggle_open, or a note). A script's `Activate` and
 the children arrive as `activation_outcome`.
 
-World changes are signals: `enable_changed`, `play_animation`,
+World changes are signals: `enable_changed`, `ref_moved`, `play_animation`,
 `activation_outcome`, `open_changed`, `lock_changed`, `effect_shader`,
 `message`, `trigger`, `havok_impulse`, `fire_weapon`, `play_sound`, `stop_sound`, `sound_volume`, `motion_type_changed`, and for
 quests `quest_started`, `quest_stopped`, `quest_stage`, `objective_changed`.
@@ -176,6 +177,7 @@ register for or shows what they do:
   `RegisterForTrackedStatsEvent` and their `Unregister...` (on `Form`,
   `Alias`, `ActiveMagicEffect`): no sleeping, line of sight or stats events.
 - `Keyword.SendStoryEvent(AndWait)`: no story manager; returns False.
+- `ObjectReference.SetActorCause`: no blame or crime until combat.
 - `Game.ShakeCamera`, `ShakeController`, `AddAchievement`, `IncrementStat`.
 
 Not on the list, though they are registrations: `RegisterForAnimationEvent`

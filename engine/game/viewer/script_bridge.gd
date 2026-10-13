@@ -51,6 +51,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	host.add_child(_sounds)
 	_activations.assign(settings.activate)
 	_papyrus.enable_changed.connect(_on_enable_changed)
+	_papyrus.ref_moved.connect(_on_ref_moved)
 	_papyrus.play_animation.connect(_on_play_animation)
 	_papyrus.havok_impulse.connect(_on_havok_impulse)
 	_papyrus.motion_type_changed.connect(_on_motion_type)
@@ -177,6 +178,16 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 		var holder := _world.build_ref(_world.get_ref_cell(ref), ref)
 		if holder != null:
 			_place.add(holder)
+
+
+## ObjectReference.Reset: the built node goes to the position and rotation
+## (Skyrim space, radians), keeping its scale. A reference not built moves
+## in the VM's view only.
+func _on_ref_moved(ref: int, position: Vector3, rotation: Vector3) -> void:
+	print("0x%08X moved by script" % ref)
+	var node := find_ref_node(ref) as Node3D
+	if node != null:
+		node.transform = _world.skyrim_transform(position, rotation, node.scale.x)
 
 
 ## Whether the place on screen is where reference `ref` is: its interior, or

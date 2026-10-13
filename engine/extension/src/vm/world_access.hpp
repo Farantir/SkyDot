@@ -20,6 +20,12 @@ public:
     /// What `ref` is linked to with `keyword` (0: the link without a keyword);
     /// 0 if there is no such link.
     [[nodiscard]] virtual std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const = 0;
+    /// The cell `ref` is placed in; 0 if unknown.
+    [[nodiscard]] virtual std::uint32_t parent_cell(std::uint32_t ref) const = 0;
+    /// Whether `cell` is an interior.
+    [[nodiscard]] virtual bool cell_interior(std::uint32_t cell) const = 0;
+    /// Whether `cell` is loaded (its references were handed to the VM).
+    [[nodiscard]] virtual bool cell_attached(std::uint32_t cell) const = 0;
     /// The player's level; 1 until the player has stats.
     [[nodiscard]] virtual std::int32_t player_level() const = 0;
 };

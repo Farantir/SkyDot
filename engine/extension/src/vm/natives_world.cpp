@@ -23,6 +23,17 @@ void bind_world_natives(Vm& vm, const WorldAccess& world) {
         const std::uint32_t target = nth_linked_ref(world, c.self.form(), n);
         return NativeResult{.value = target != 0 ? c.vm.object(target, "ObjectReference") : Value{}, .wait = -1.0};
     });
+    // The cell is a form of its own (class Cell, the cell record's id).
+    vm.bind("ObjectReference", "GetParentCell", [&world](NativeCall& c) {
+        const std::uint32_t cell = world.parent_cell(c.self.form());
+        return NativeResult{.value = cell != 0 ? c.vm.object(cell, "Cell") : Value{}, .wait = -1.0};
+    });
+    vm.bind("Cell", "IsInterior", [&world](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(world.cell_interior(c.self.form())), .wait = -1.0};
+    });
+    vm.bind("Cell", "IsAttached", [&world](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(world.cell_attached(c.self.form())), .wait = -1.0};
+    });
     // Levelled lists are resolved against the player's level for now.
     vm.bind("ObjectReference", "CalculateEncounterLevel", [&world](NativeCall&) {
         return NativeResult{.value = Value::integer(world.player_level()), .wait = -1.0};

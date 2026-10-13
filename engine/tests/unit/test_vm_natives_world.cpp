@@ -23,6 +23,9 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         const auto it = links.find(ref);
         return keyword == 0 && it != links.end() ? it->second : 0;
     }
+    std::uint32_t parent_cell(std::uint32_t ref) const override { return ref == 1 ? 0x100 : 0; }
+    bool cell_interior(std::uint32_t cell) const override { return cell == 0x100; }
+    bool cell_attached(std::uint32_t cell) const override { return cell == 0x100; }
     std::int32_t player_level() const override { return 7; }
 };
 
@@ -73,4 +76,32 @@ TEST_CASE("GetNthLinkedRef and CalculateEncounterLevel are bound by the world na
     // Past the end of the chain the result is None, and calling on it is the script's error.
     CHECK(rig.call("caller", "nth", {first, Int(3)}).i() == 0);
     CHECK(rig.vm.errors() == 1);
+}
+
+TEST_CASE("GetParentCell gives the cell form, which knows whether it is an interior and attached", "[vm][natives]") {
+    const FakeWorld world;
+    Rig rig;
+    rig.add({.name = "Cell",
+             .functions = {native_function("IsInterior", {}, "Bool", false),
+                           native_function("IsAttached", {}, "Bool", false)}});
+    rig.add({.name = "ObjectReference",
+             .functions = {native_function("GetParentCell", {}, "Cell", false)}});
+    skydot::vm::bind_world_natives(rig.vm, world);
+
+    auto interior = global_function("interior", {{"o", "ObjectReference"}},
+                                    {{"c", "Cell"}, {"r", "Bool"}}, "Bool");
+    interior.add(Op::callmethod, {ident("GetParentCell"), ident("o"), ident("c")})
+        .add(Op::callmethod, {ident("IsInterior"), ident("c"), ident("r")})
+        .add(Op::return_, {ident("r")});
+    auto attached = global_function("attached", {{"o", "ObjectReference"}},
+                                    {{"c", "Cell"}, {"r", "Bool"}}, "Bool");
+    attached.add(Op::callmethod, {ident("GetParentCell"), ident("o"), ident("c")})
+        .add(Op::callmethod, {ident("IsAttached"), ident("c"), ident("r")})
+        .add(Op::return_, {ident("r")});
+    rig.add(script("Caller", {interior, attached}));
+
+    const auto placed = rig.vm.object(1, "ObjectReference");
+    CHECK(rig.call("caller", "interior", {placed}).b());
+    CHECK(rig.call("caller", "attached", {placed}).b());
+    CHECK(rig.vm.errors() == 0);
 }

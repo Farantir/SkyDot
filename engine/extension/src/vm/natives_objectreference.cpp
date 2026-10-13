@@ -31,6 +31,38 @@ void SkydotPapyrus::bind_objectreference_natives() {
         set_disabled(c.self.form(), true);
         return NativeResult{};
     });
+    // No fade exists, so these are Enable and Disable.
+    v.bind("ObjectReference", "EnableNoWait", [this](NativeCall& c) {
+        set_disabled(c.self.form(), false);
+        return NativeResult{};
+    });
+    v.bind("ObjectReference", "DisableNoWait", [this](NativeCall& c) {
+        set_disabled(c.self.form(), true);
+        return NativeResult{};
+    });
+    // Back to the placed position and rotation (or to akTarget's), enabled as
+    // placed. The move reaches the game layer as `ref_moved`; open and lock
+    // state are left alone.
+    v.bind("ObjectReference", "Reset", [this, arg](NativeCall& c) {
+        const std::uint32_t ref = c.self.form();
+        const std::uint32_t target = arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0;
+        Vector3 position;
+        Vector3 rotation;
+        if (target != 0) {
+            position = position_of(target);
+            rotation = rotation_of(target);
+            moved_[ref] = {position, rotation};
+        } else {
+            moved_.erase(ref);
+            const Dictionary info = ref_info(ref);
+            position = info.get("position", Vector3());
+            rotation = info.get("rotation", Vector3());
+        }
+        emit_signal("ref_moved", static_cast<std::int64_t>(ref), position, rotation);
+        disabled_.erase(ref);
+        set_disabled(ref, static_cast<bool>(ref_info(ref).get("disabled", false)));
+        return NativeResult{};
+    });
     v.bind("ObjectReference", "IsDisabled", [this, result](NativeCall& c) {
         return result(Value::boolean(disabled(c.self.form())));
     });
@@ -68,7 +100,7 @@ void SkydotPapyrus::bind_objectreference_natives() {
         });
         // Degrees, as the game reports them.
         v.bind("ObjectReference", std::string("GetAngle") + axis, [this, index, result](NativeCall& c) {
-            const Vector3 r = ref_info(c.self.form()).get("rotation", Vector3());
+            const Vector3 r = rotation_of(c.self.form());
             return result(Value::floating(static_cast<float>(static_cast<double>(r[index]) * 180.0 / std::numbers::pi)));
         });
     }
