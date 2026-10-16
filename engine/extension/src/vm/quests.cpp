@@ -34,21 +34,19 @@ const Dictionary& SkydotPapyrus::quest_info(std::uint32_t quest) const {
 }
 
 std::uint32_t SkydotPapyrus::alias_handle(std::uint32_t quest, std::uint32_t alias) {
-    const auto key = std::pair{quest, alias};
-    if (const auto it = alias_handles_.find(key); it != alias_handles_.end()) {
-        return it->second;
+    if (const std::uint32_t handle = quests_.find_handle(quest, alias); handle != 0) {
+        return handle;
     }
-    const std::uint32_t handle = next_alias_handle_++;
-    alias_handles_[key] = handle;
-    handle_alias_[handle] = key;
+    const std::uint32_t handle = quests_.next_handle++;
+    quests_.add_handle(quest, alias, handle);
     return handle;
 }
 
 void SkydotPapyrus::attach_quest_scripts(std::uint32_t quest, bool on_init) {
-    if (world_.is_null() || quest_scripts_.contains(quest) || !world_->has_quest(quest)) {
+    if (world_.is_null() || quests_.scripts_attached(quest) || !world_->has_quest(quest)) {
         return;
     }
-    quest_scripts_.insert(quest);
+    quests_.mark_scripts_attached(quest);
     const Dictionary& info = quest_info(quest);
     attach_scripts(quest, info["scripts"], quest);
     // Vanilla lists the fragment script among the quest's scripts; attach it
@@ -92,7 +90,7 @@ void SkydotPapyrus::fill_aliases(std::uint32_t quest) {
                 fill = index >= 0 ? static_cast<std::uint32_t>(get_alias_ref(other, index)) : 0;
             }
         }
-        alias_fill_[alias_handle(quest, form_of(alias["id"]))] = fill;
+        quests_.set_fill(alias_handle(quest, form_of(alias["id"])), fill);
     }
 }
 
@@ -117,7 +115,7 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
     if (info.is_empty()) {
         return false;
     }
-    auto& state = quests_[quest];
+    auto& state = quests_.state(quest);
     if (state.running) {
         return true;
     }
@@ -125,7 +123,7 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
         return false;
     }
     // A restart begins again from no stages.
-    state = QuestState{};
+    state = vm::QuestState{};
     state.running = true;
     state.started = true;
     fill_aliases(quest);
@@ -134,15 +132,8 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
     // initialised, which attach_quest_scripts does for quests named before
     // they start.
     vm_->send_event(quest, "OnInit", {});
-    // The quest's alias objects in the order they were made: their handles
-    // rise, and alias_handles_ is sorted by quest.
-    std::vector<std::uint32_t> handles;
-    for (auto it = alias_handles_.lower_bound({quest, 0}); it != alias_handles_.end() && it->first.first == quest;
-         ++it) {
-        handles.push_back(it->second);
-    }
-    std::ranges::sort(handles);
-    for (const auto handle : handles) {
+    // The quest's alias objects in the order they were made.
+    for (const auto handle : quests_.handles_of(quest)) {
         vm_->send_event(handle, "OnInit", {});
     }
     emit_signal("quest_started", id);
@@ -159,16 +150,12 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
 
 void SkydotPapyrus::stop_quest(std::int64_t id) {
     const auto quest = static_cast<std::uint32_t>(id);
-    const auto it = quests_.find(quest);
-    if (it == quests_.end() || !it->second.running) {
+    const vm::QuestState* found = quests_.find(quest);
+    if (found == nullptr || !found->running) {
         return;
     }
-    it->second.running = false;
-    for (auto& [handle, fill] : alias_fill_) {
-        if (handle_alias_[handle].first == quest) {
-            fill = 0;
-        }
-    }
+    quests_.state(quest).running = false;
+    quests_.clear_fills(quest);
     emit_signal("quest_stopped", id);
 }
 
@@ -190,10 +177,10 @@ bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {
     if (stage.is_empty()) {
         return false;
     }
-    if (!quests_[quest].running && !start_quest(id)) {
+    if (!quests_.state(quest).running && !start_quest(id)) {
         return false;
     }
-    auto& state = quests_[quest];
+    auto& state = quests_.state(quest);
     const auto value = static_cast<std::int32_t>(index);
     if (state.done.contains(value) && !static_cast<bool>(info["allow_repeated_stages"])) {
         return false;
@@ -235,7 +222,7 @@ bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {
 }
 
 void SkydotPapyrus::set_objective(std::uint32_t quest, std::int32_t index, std::uint8_t bit, bool on) {
-    auto& bits = quests_[quest].objectives[index];
+    auto& bits = quests_.state(quest).objectives[index];
     const std::uint8_t was = bits;
     bits = static_cast<std::uint8_t>(on ? (bits | bit) : (bits & ~bit));
     if (bits == was) {
@@ -258,7 +245,7 @@ void SkydotPapyrus::set_objective(std::uint32_t quest, std::int32_t index, std::
 std::size_t SkydotPapyrus::dispatch(std::uint32_t ref, std::string_view event,
                                     const std::vector<vm::Value>& args) {
     std::size_t count = vm_->send_event(ref, event, args);
-    for (const auto& [handle, fill] : alias_fill_) {
+    for (const auto& [handle, fill] : quests_.fills()) {
         if (fill == ref && fill != 0) {
             count += vm_->send_event(handle, event, args);
         }
@@ -269,11 +256,11 @@ std::size_t SkydotPapyrus::dispatch(std::uint32_t ref, std::string_view event,
 Dictionary SkydotPapyrus::get_quest_state(std::int64_t id) const {
     Dictionary out;
     const auto quest = static_cast<std::uint32_t>(id);
-    const auto it = quests_.find(quest);
-    if (it == quests_.end()) {
+    const vm::QuestState* found = quests_.find(quest);
+    if (found == nullptr) {
         return out;
     }
-    const auto& s = it->second;
+    const auto& s = *found;
     out["running"] = s.running;
     out["completed"] = s.completed;
     out["failed"] = s.failed;
@@ -293,12 +280,8 @@ Dictionary SkydotPapyrus::get_quest_state(std::int64_t id) const {
     }
     out["objectives"] = objectives;
     Dictionary aliases;
-    for (const auto& [key, handle] : alias_handles_) {
-        if (key.first == quest) {
-            const auto fill = alias_fill_.find(handle);
-            aliases[static_cast<std::int64_t>(key.second)] =
-                static_cast<std::int64_t>(fill != alias_fill_.end() ? fill->second : 0);
-        }
+    for (const auto& [alias, handle] : quests_.aliases_of(quest)) {
+        aliases[static_cast<std::int64_t>(alias)] = static_cast<std::int64_t>(quests_.fill(handle));
     }
     out["aliases"] = aliases;
     return out;
@@ -306,7 +289,7 @@ Dictionary SkydotPapyrus::get_quest_state(std::int64_t id) const {
 
 godot::PackedInt64Array SkydotPapyrus::get_running_quests() const {
     godot::PackedInt64Array out;
-    for (const auto& [quest, state] : quests_) {
+    for (const auto& [quest, state] : quests_.quests()) {
         if (state.running) {
             out.push_back(quest);
         }
@@ -315,12 +298,7 @@ godot::PackedInt64Array SkydotPapyrus::get_running_quests() const {
 }
 
 std::int64_t SkydotPapyrus::get_alias_ref(std::int64_t quest, std::int64_t alias) const {
-    const auto it = alias_handles_.find({static_cast<std::uint32_t>(quest), static_cast<std::uint32_t>(alias)});
-    if (it == alias_handles_.end()) {
-        return 0;
-    }
-    const auto fill = alias_fill_.find(it->second);
-    return fill != alias_fill_.end() ? fill->second : 0;
+    return quests_.fill(quests_.find_handle(static_cast<std::uint32_t>(quest), static_cast<std::uint32_t>(alias)));
 }
 
 SkydotPapyrus::ClockGlobal SkydotPapyrus::clock_global(std::uint32_t global) const {
@@ -347,8 +325,8 @@ double SkydotPapyrus::get_global_value(std::int64_t global) const {
     case ClockGlobal::time_scale: return clock_->get_time_scale();
     case ClockGlobal::none: break;
     }
-    if (const auto it = globals_.find(static_cast<std::uint32_t>(global)); it != globals_.end()) {
-        return it->second;
+    if (const double* value = quests_.global(static_cast<std::uint32_t>(global))) {
+        return *value;
     }
     return world_.is_valid() ? static_cast<double>(world_->get_global(global).get("value", 0.0)) : 0.0;
 }
@@ -360,7 +338,7 @@ void SkydotPapyrus::set_global_value(std::int64_t global, double value) {
     case ClockGlobal::time_scale: clock_->set_time_scale(value); return;
     case ClockGlobal::none: break;
     }
-    globals_[static_cast<std::uint32_t>(global)] = value;
+    quests_.set_global(static_cast<std::uint32_t>(global), value);
 }
 
 } // namespace skydot

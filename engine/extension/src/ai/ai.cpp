@@ -31,7 +31,6 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 namespace {
 
-constexpr std::uint32_t k_player_ref = 0x14;
 constexpr std::uint32_t k_player_npc = 0x7;
 constexpr double k_seconds_per_day = 86400.0;
 /// Game seconds between moves of actors that are not built.

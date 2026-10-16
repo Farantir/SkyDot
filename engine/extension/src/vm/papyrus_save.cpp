@@ -28,7 +28,6 @@
 namespace skydot {
 
 using godot::String;
-using godot::Vector3;
 using save::ByteReader;
 using save::ByteWriter;
 
@@ -66,63 +65,11 @@ void SkydotPapyrus::write_host(save::SaveWriter& out) const {
     for (const auto ref : attached_) {
         p.u32(ref);
     }
-    p.u32(static_cast<std::uint32_t>(triggers_.size()));
-    for (const auto& [ref, t] : triggers_) {
-        p.u32(ref);
-        p.u32(static_cast<std::uint32_t>(t.inside.size()));
-        for (const auto a : t.inside) {
-            p.u32(a);
-        }
-    }
-    p.u32(static_cast<std::uint32_t>(actors_.size()));
-    for (const auto& [ref, position] : actors_) {
-        p.u32(ref);
-        p.f64(static_cast<double>(position.x));
-        p.f64(static_cast<double>(position.y));
-        p.f64(static_cast<double>(position.z));
-    }
+    triggers_.write(p);
     p.u32(next_form_);
     out.add("PAPY", k_section_version, p.out);
 
-    ByteWriter q;
-    q.u32(static_cast<std::uint32_t>(quests_.size()));
-    for (const auto& [quest, state] : quests_) {
-        q.u32(quest);
-        q.u8(state.running ? 1 : 0);
-        q.u8(state.started ? 1 : 0);
-        q.u8(state.completed ? 1 : 0);
-        q.u8(state.failed ? 1 : 0);
-        q.u8(state.active ? 1 : 0);
-        q.u32(static_cast<std::uint32_t>(state.stage));
-        q.u32(static_cast<std::uint32_t>(state.done.size()));
-        for (const auto stage : state.done) {
-            q.u32(static_cast<std::uint32_t>(stage));
-        }
-        q.u32(static_cast<std::uint32_t>(state.objectives.size()));
-        for (const auto& [index, bits] : state.objectives) {
-            q.u32(static_cast<std::uint32_t>(index));
-            q.u8(bits);
-        }
-    }
-    q.u32(static_cast<std::uint32_t>(quest_scripts_.size()));
-    for (const auto quest : quest_scripts_) {
-        q.u32(quest);
-    }
-    q.u32(static_cast<std::uint32_t>(alias_handles_.size()));
-    for (const auto& [key, handle] : alias_handles_) {
-        const auto fill = alias_fill_.find(handle);
-        q.u32(key.first);
-        q.u32(key.second);
-        q.u32(handle);
-        q.u32(fill != alias_fill_.end() ? fill->second : 0U);
-    }
-    q.u32(static_cast<std::uint32_t>(globals_.size()));
-    for (const auto& [global, value] : globals_) {
-        q.u32(global);
-        q.f64(value);
-    }
-    q.u32(next_alias_handle_);
-    out.add("QUST", k_section_version, q.out);
+    out.add("QUST", vm::QuestStates::k_section_version, quests_.save());
 }
 
 bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out, std::string& error) const {
@@ -145,33 +92,8 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
         }
         out.attached.insert(ref);
     }
-    if (!r.count(n, 8)) {
+    if (!vm::Triggers::read(r, out.triggers)) {
         return fail("PAPY");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::uint32_t ref = 0, inside = 0;
-        if (!r.u32(ref) || !r.count(inside, 4)) {
-            return fail("PAPY");
-        }
-        auto& list = out.inside[ref];
-        for (std::uint32_t k = 0; k < inside; ++k) {
-            std::uint32_t actor = 0;
-            if (!r.u32(actor)) {
-                return fail("PAPY");
-            }
-            list.insert(actor);
-        }
-    }
-    if (!r.count(n, 28)) {
-        return fail("PAPY");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::uint32_t ref = 0;
-        double x = 0.0, y = 0.0, z = 0.0;
-        if (!r.u32(ref) || !r.f64(x) || !r.f64(y) || !r.f64(z)) {
-            return fail("PAPY");
-        }
-        out.actors[ref] = Vector3(static_cast<float>(x), static_cast<float>(y), static_cast<float>(z));
     }
     if (!r.u32(out.next_form) || !r.at_end()) {
         return fail("PAPY");
@@ -180,81 +102,7 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
     if (!open_section(file, "QUST", r, error)) {
         return false;
     }
-    if (!r.count(n, 24)) {
-        return fail("QUST");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::uint32_t quest = 0, stage = 0, done = 0, objectives = 0;
-        std::uint8_t flags[5] = {};
-        QuestState q;
-        bool ok = r.u32(quest);
-        for (auto& f : flags) {
-            ok = ok && r.u8(f);
-        }
-        ok = ok && r.u32(stage) && r.count(done, 4);
-        if (!ok) {
-            return fail("QUST");
-        }
-        q.running = flags[0] != 0;
-        q.started = flags[1] != 0;
-        q.completed = flags[2] != 0;
-        q.failed = flags[3] != 0;
-        q.active = flags[4] != 0;
-        q.stage = static_cast<std::int32_t>(stage);
-        for (std::uint32_t k = 0; k < done; ++k) {
-            std::uint32_t d = 0;
-            if (!r.u32(d)) {
-                return fail("QUST");
-            }
-            q.done.insert(static_cast<std::int32_t>(d));
-        }
-        if (!r.count(objectives, 5)) {
-            return fail("QUST");
-        }
-        for (std::uint32_t k = 0; k < objectives; ++k) {
-            std::uint32_t index = 0;
-            std::uint8_t bits = 0;
-            if (!r.u32(index) || !r.u8(bits)) {
-                return fail("QUST");
-            }
-            q.objectives[static_cast<std::int32_t>(index)] = bits;
-        }
-        out.quests[quest] = std::move(q);
-    }
-    if (!r.count(n, 4)) {
-        return fail("QUST");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::uint32_t quest = 0;
-        if (!r.u32(quest)) {
-            return fail("QUST");
-        }
-        out.quest_scripts.insert(quest);
-    }
-    if (!r.count(n, 16)) {
-        return fail("QUST");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::array<std::uint32_t, 4> alias{};
-        for (auto& v : alias) {
-            if (!r.u32(v)) {
-                return fail("QUST");
-            }
-        }
-        out.aliases.push_back(alias);
-    }
-    if (!r.count(n, 12)) {
-        return fail("QUST");
-    }
-    for (std::uint32_t i = 0; i < n; ++i) {
-        std::uint32_t global = 0;
-        double value = 0.0;
-        if (!r.u32(global) || !r.f64(value)) {
-            return fail("QUST");
-        }
-        out.globals[global] = value;
-    }
-    if (!r.u32(out.next_alias_handle) || !r.at_end()) {
+    if (!vm::QuestStates::load(r, out.quests)) {
         return fail("QUST");
     }
     return true;
@@ -365,23 +213,9 @@ godot::Error SkydotPapyrus::commit_load() {
             register_trigger(ref, ref_info(ref));
         }
     }
-    for (const auto& [ref, actors] : host.inside) {
-        if (const auto it = triggers_.find(ref); it != triggers_.end()) {
-            it->second.inside = actors;
-        }
-    }
-    actors_ = std::move(host.actors);
+    triggers_.restore(std::move(host.triggers));
     next_form_ = host.next_form;
     quests_ = std::move(host.quests);
-    quest_scripts_ = std::move(host.quest_scripts);
-    for (const auto& a : host.aliases) {
-        const auto key = std::pair{a[0], a[1]};
-        alias_handles_[key] = a[2];
-        handle_alias_[a[2]] = key;
-        alias_fill_[a[2]] = a[3];
-    }
-    globals_ = std::move(host.globals);
-    next_alias_handle_ = host.next_alias_handle;
     // The kept placed references are built again.
     for (const auto& [id, placed] : vm_->placed().refs()) {
         emit_signal("ref_placed", static_cast<std::int64_t>(id), static_cast<std::int64_t>(placed.base),

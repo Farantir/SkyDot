@@ -59,12 +59,16 @@ set(SKYDOT_CORE_SOURCES
     src/vm/census.cpp
     src/vm/inventory.cpp
     src/vm/inventory.hpp
+    src/vm/quest_states.cpp
+    src/vm/quest_states.hpp
     src/vm/runtime_refs.hpp
     src/vm/natives_world.cpp
     src/vm/ref_states.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
+    src/vm/triggers.cpp
+    src/vm/triggers.hpp
     src/vm/value.hpp
     src/vm/vm.cpp
     src/vm/vm.hpp
@@ -214,7 +218,9 @@ target_sources(skydot PRIVATE
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
     src/vm/natives_noop.cpp
+    src/vm/papyrus_activation.cpp
     src/vm/papyrus_runtime.cpp
+    src/vm/papyrus_triggers.cpp
     src/vm/papyrus_save.cpp
     src/vm/natives_objectreference.cpp
     src/vm/natives_quest.cpp

@@ -22,8 +22,12 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace skydot {
+
+/// The player's reference, which activations come from.
+inline constexpr std::uint32_t k_player_ref = 0x14;
 
 enum class ActivationSource { player = 0, script = 1, parent = 2 };
 
@@ -68,5 +72,91 @@ private:
 
 /// XLOC's level as the game names it.
 [[nodiscard]] std::string lock_level_name(int level);
+
+/// What the rules need to know about the reference being activated.
+struct ActivationTarget {
+    std::uint32_t base{};
+    std::string type;      ///< Record type of the base: "DOOR", "FURN", "MISC", ...
+    std::string editor_id; ///< The base's.
+    bool parent_activate_only{};
+    bool load_door{};
+    std::int64_t count{1}; ///< How many a loose item stands for.
+};
+
+/// How an activation ended, for the host to act on. `kind` is one of missing,
+/// parent_only, locked, blocked, busy (the host shows `note`), door,
+/// furniture (with `event`; `deferred` if the graph's ObjectActivated is
+/// awaited), toggle_open or none (the host applies it; `note` is for when it
+/// cannot), pickup (done).
+struct ActivationOutcome {
+    std::uint32_t ref{};
+    std::string kind{"missing"};
+    std::string note;
+    /// "0x%08X editor_id (type)"; unset for a reference nobody knows.
+    std::optional<std::string> label;
+    /// How many OnActivate handlers ran.
+    std::int64_t scripts{};
+    /// The lock level, for kind locked.
+    std::optional<int> lock_level;
+    std::string event;
+    bool deferred{};
+    /// The reference is a load door (the host adds the door's data).
+    bool door{};
+};
+
+/// What an activation asks of the world and the VM. `SkydotPapyrus` answers it
+/// from the pack and its scripts; a unit test from a few fields.
+class ActivationHost {
+public:
+    virtual ~ActivationHost() = default;
+    /// False if `ref` is not a reference.
+    [[nodiscard]] virtual bool target(std::uint32_t ref, ActivationTarget& out) const = 0;
+    /// The lock level if locked, else -1 (a load door answers for its partner).
+    [[nodiscard]] virtual int lock_level(std::uint32_t ref) const = 0;
+    virtual void unlock(std::uint32_t ref) = 0;
+    /// Whether the reference's behaviour graph raises ObjectActivated.
+    [[nodiscard]] virtual bool graph_raises_activation(std::uint32_t ref) const = 0;
+    /// Send OnActivate(activator) to `ref`'s scripts; how many handlers ran.
+    virtual std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) = 0;
+    [[nodiscard]] virtual bool activation_blocked(std::uint32_t ref) const = 0;
+    struct Child {
+        std::uint32_t ref{};
+        double delay{};
+    };
+    [[nodiscard]] virtual std::vector<Child> activate_children(std::uint32_t ref) const = 0;
+    /// Run, after `delay` VM seconds, an activation of `child` by `parent`
+    /// (ActivationSource::parent).
+    virtual void schedule_child(double delay, std::uint32_t child, std::uint32_t parent) = 0;
+    /// `activator` takes the loose item `ref`: it goes into the inventory and
+    /// the reference leaves the world.
+    virtual void pick_up(std::uint32_t ref, std::int64_t activator, const ActivationTarget& item) = 0;
+};
+
+/// The whole of an activation, minus what only the host can do: the rules
+/// above, then OnActivate with `activator` as akActionRef (not with
+/// `default_only`), then the activate children (not if scripts block the
+/// activation), then the pickup of a loose item.
+class Activations {
+public:
+    explicit Activations(ActivationHost& host) : host_(host) {}
+
+    /// `activator` 0 is the player.
+    ActivationOutcome activate(std::uint32_t ref, std::int64_t activator, bool default_only,
+                               ActivationSource source, bool force);
+    /// Finish an activation that `activate` left pending (`deferred`): the
+    /// graph raised ObjectActivated. Nothing pending: nullopt.
+    std::optional<ActivationOutcome> complete(std::uint32_t ref);
+
+    [[nodiscard]] bool pending(std::uint32_t ref) const { return pending_.pending(ref); }
+    void clear() { pending_.clear(); }
+
+private:
+    /// OnActivate, the blocked check and the activate children: what an
+    /// activation does once it is going ahead. False if scripts blocked it.
+    bool run(std::uint32_t ref, std::int64_t activator, bool default_only, ActivationOutcome& out);
+
+    ActivationHost& host_;
+    PendingActivations pending_;
+};
 
 } // namespace skydot

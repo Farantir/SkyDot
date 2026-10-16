@@ -42,10 +42,6 @@ bool scalar_type(std::string_view type) {
     return type == "int" || type == "float" || type == "bool" || type == "string";
 }
 
-// XPRM types (world.fbs).
-constexpr std::uint32_t k_box = 1;
-constexpr std::uint32_t k_sphere = 2;
-
 using natives::k_closed;
 
 } // namespace
@@ -205,7 +201,10 @@ void SkydotPapyrus::_bind_methods() {
     BIND_CONSTANT(ALIAS_HANDLE_BASE);
 }
 
-SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) { install_scheduled_handler(); }
+SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) {
+    install_scheduled_handler();
+    bind_activations();
+}
 
 /// Host calls scheduled on the VM's clock: the activations of Activate and of
 /// activate children.
@@ -222,17 +221,10 @@ void SkydotPapyrus::reset() {
     attached_.clear();
     attached_cells_.clear();
     states_.clear();
-    pending_activations_.clear();
+    activations_->clear();
     triggers_.clear();
-    actors_.clear();
     next_form_ = 0xFF000000u;
     quests_.clear();
-    quest_scripts_.clear();
-    alias_handles_.clear();
-    handle_alias_.clear();
-    alias_fill_.clear();
-    globals_.clear();
-    next_alias_handle_ = static_cast<std::uint32_t>(ALIAS_HANDLE_BASE);
     quest_info_.clear();
 }
 
@@ -346,8 +338,8 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
         return vec3_of(it->second.position);
     }
-    if (const auto it = actors_.find(ref); it != actors_.end()) {
-        return it->second;
+    if (const vm::Vec3* actor = triggers_.actor_position(ref)) {
+        return Vector3(actor->x, actor->y, actor->z);
     }
     const Dictionary info = ref_info(ref);
     if (info.is_empty() && world_.is_valid()) {
@@ -668,143 +660,6 @@ bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
     return ref_nodes::find(ref) != nullptr && !disabled(ref);
 }
 
-// The rules are in vm/activation.hpp; this runs them and what follows.
-Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator, bool default_only,
-                                       std::int64_t source, bool force) {
-    Dictionary out;
-    out["ref"] = ref;
-    out["kind"] = "missing";
-    out["note"] = String();
-    out["scripts"] = 0;
-    const auto form = static_cast<std::uint32_t>(ref);
-    const Dictionary info = ref_info(form);
-    if (info.is_empty()) {
-        return out;
-    }
-    const String label = String("0x%08X %s (%s)") % Array::make(ref, info["editor_id"], info["type"]);
-    out["label"] = label;
-    const std::int64_t who = activator != 0 ? activator : PLAYER_REF;
-    ActivationRequest request;
-    request.source = static_cast<ActivationSource>(std::clamp<std::int64_t>(source, 0, 2));
-    request.parent_activate_only = static_cast<bool>(info.get("parent_activate_only", false));
-    request.lock_level = static_cast<int>(get_lock_level(ref));
-    request.force = force;
-    switch (activation_gate(request)) {
-    case ActivationGate::parent_only:
-        out["kind"] = "parent_only";
-        out["note"] = label + String(" only responds to its activate parents");
-        return out;
-    case ActivationGate::locked:
-        out["kind"] = "locked";
-        out["lock_level"] = request.lock_level;
-        out["note"] = String("%s is locked (level %d, %s)") %
-                      Array::make(label, request.lock_level, String::utf8(lock_level_name(request.lock_level).c_str()));
-        return out;
-    case ActivationGate::pass:
-        break;
-    }
-    if (activation_unlocks(request)) {
-        set_locked(ref, false);
-    }
-    // A lever with a behaviour graph activates when the graph says so: the
-    // scripts and activate children wait for its ObjectActivated.
-    if (activation_waits_for_graph(utf8(String(info["type"])), request.source, graph_raises_activation(form))) {
-        if (!pending_activations_.begin(form, {who, default_only})) {
-            out["kind"] = "busy";
-            out["note"] = label + String(" is still being used");
-            return out;
-        }
-        out["kind"] = "furniture";
-        out["event"] = "LeverPushStart";
-        out["deferred"] = true;
-        out["note"] = label + String(": nothing happens");
-        return out;
-    }
-    if (!run_activation(form, label, who, default_only, out)) {
-        return out;
-    }
-    out["kind"] = "none";
-    const Variant door = info.get("door", Variant());
-    if (activation_picks_up(utf8(String(info["type"])))) {
-        // Loose items go into the activator's inventory (XCNT is not in the
-        // reference info yet: one of them).
-        const auto count = static_cast<std::int64_t>(info.get("count", 1));
-        vm_->inventory().add(static_cast<std::uint32_t>(who),
-                             form_of(info["base"]), std::max<std::int64_t>(count, 1));
-        set_disabled(form, true);
-        out["kind"] = "pickup";
-        out["note"] = label + String(": picked up");
-        return out;
-    }
-    if (door.get_type() == Variant::DICTIONARY) {
-        out["kind"] = "door";
-        out["door"] = door;
-    } else if (String(info["type"]) == "FURN") {
-        // A lever is furniture: using it pushes it (the player's push
-        // animation, which sends Lever_PlayerPush in the game, does not exist).
-        out["kind"] = "furniture";
-        out["event"] = "LeverPushStart";
-    } else if (String(info["type"]) == "DOOR") {
-        out["kind"] = "toggle_open";
-    }
-    out["note"] = label + String(": nothing happens"); // if the host can do nothing with `kind`
-    return out;
-}
-
-// OnActivate, the blocked check and the activate children: what an activation
-// does once it is going ahead. False if scripts blocked it (`out` says so).
-bool SkydotPapyrus::run_activation(std::uint32_t form, const String& label, std::int64_t activator,
-                                   bool default_only, Dictionary& out) {
-    if (!default_only) {
-        out["scripts"] = activate(form, activator);
-    }
-    // A script that blocks activation handles it alone, and its activate
-    // children stay quiet.
-    if (is_activation_blocked(form)) {
-        out["kind"] = "blocked";
-        out["note"] = label + String(": activation blocked, only its scripts ran");
-        return false;
-    }
-    // Activate children run on the VM's clock, activated by the parent: trap
-    // scripts read the parent's trigger type from their activator (BladeTrap
-    // casts it to TrapTriggerBase; a pull chain's type 2 stops the blades).
-    const Array children = world_->get_activate_children(form);
-    for (std::int64_t i = 0; i < children.size(); ++i) {
-        const Dictionary child = children[i];
-        vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
-                      form_of(child["ref"]),
-                      form, static_cast<std::uint32_t>(ActivationSource::parent));
-    }
-    return true;
-}
-
-bool SkydotPapyrus::graph_raises_activation(std::uint32_t form) const {
-    godot::Node* node = ref_nodes::find(form);
-    if (node == nullptr) {
-        return false;
-    }
-    const auto* graph = godot::Object::cast_to<SkydotBehavior>(node->find_child("SkydotBehavior", true, false));
-    return graph != nullptr && graph->raises_event("ObjectActivated");
-}
-
-void SkydotPapyrus::complete_activation(std::int64_t ref) {
-    const auto form = static_cast<std::uint32_t>(ref);
-    const auto taken = pending_activations_.take(form);
-    if (!taken) {
-        return;
-    }
-    const PendingActivations::Entry pending = *taken;
-    Dictionary out;
-    out["ref"] = ref;
-    out["kind"] = "none";
-    out["scripts"] = 0;
-    out["note"] = String();
-    const Dictionary info = ref_info(form);
-    out["label"] = String("0x%08X %s (%s)") % Array::make(ref, info.get("editor_id", ""), info.get("type", ""));
-    run_activation(form, out["label"], pending.activator, pending.default_only, out);
-    emit_signal("activation_outcome", ref, out);
-}
-
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
     vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
 }
@@ -826,140 +681,6 @@ void SkydotPapyrus::notify_animation_event(std::int64_t ref, const String& event
 
 void SkydotPapyrus::notify_sound_finished(std::int64_t instance) {
     vm_->notify("sound:" + std::to_string(instance));
-}
-
-// ---- triggers -------------------------------------------------------------
-
-// A box's bounds are half extents: xEdit shows XPRM bounds doubled. A sphere's
-// radius is its x. Neither is checked against the game yet.
-void SkydotPapyrus::register_trigger(std::uint32_t ref, const Dictionary& info) {
-    const Variant primitive = info.get("primitive", Variant());
-    if (primitive.get_type() != Variant::DICTIONARY) {
-        return;
-    }
-    const Dictionary p = primitive;
-    const auto type = form_of(p["type"]);
-    if (type != k_box && type != k_sphere) {
-        return;
-    }
-    const Vector3 r = info.get("rotation", Vector3());
-    // As SkydotWorld::skyrim_transform: clockwise angles, Z first, then Y, X.
-    const godot::Basis rx(Vector3(1, 0, 0), -r.x);
-    const godot::Basis ry(Vector3(0, 1, 0), -r.y);
-    const godot::Basis rz(Vector3(0, 0, 1), -r.z);
-    const auto scale = static_cast<godot::real_t>(static_cast<double>(info.get("scale", 1.0)));
-    Trigger t;
-    t.origin = info.get("position", Vector3());
-    t.to_local = (rx * ry * rz).transposed();
-    t.half = Vector3(p["bounds"]) * scale;
-    t.type = type;
-    if (const auto old = triggers_.find(ref); old != triggers_.end()) {
-        t.volumes = std::move(old->second.volumes);
-    }
-    triggers_[ref] = std::move(t);
-}
-
-bool SkydotPapyrus::contains(const Volume& v, const Vector3& p) {
-    const Vector3 local = v.to_local.xform(skydot::skyrim_position(p));
-    if (v.sphere) {
-        return local.length() <= v.half.x;
-    }
-    return std::abs(local.x) <= v.half.x && std::abs(local.y) <= v.half.y &&
-           std::abs(local.z) <= v.half.z;
-}
-
-// The model's phantoms (see physics/collision.hpp) become volumes of the ref
-// that carries the model. `node` is the built reference; its transform is the
-// placement, like an XPRM trigger's.
-void SkydotPapyrus::register_phantoms(std::uint32_t ref, godot::Node3D* node) {
-    if (node == nullptr || !node->has_meta(k_phantoms_meta)) {
-        return;
-    }
-    const Variant meta = node->get_meta(k_phantoms_meta);
-    if (meta.get_type() != Variant::ARRAY) {
-        return;
-    }
-    std::vector<Volume> volumes;
-    const godot::Array list = meta;
-    for (std::int64_t i = 0; i < list.size(); ++i) {
-        if (list[i].get_type() != Variant::DICTIONARY) {
-            continue;
-        }
-        const Dictionary d = list[i];
-        Volume v;
-        v.to_local = (node->get_transform() * godot::Transform3D(d["transform"])).affine_inverse();
-        v.half = d["half"];
-        v.sphere = String(d["kind"]) == "sphere";
-        volumes.push_back(v);
-    }
-    if (volumes.empty()) {
-        return;
-    }
-    auto [it, fresh] = triggers_.try_emplace(ref);
-    if (fresh) {
-        it->second.primitive = false;
-    }
-    it->second.volumes = std::move(volumes);
-}
-
-bool SkydotPapyrus::contains(const Trigger& t, const Vector3& p) {
-    for (const Volume& v : t.volumes) {
-        if (contains(v, p)) {
-            return true;
-        }
-    }
-    if (!t.primitive) {
-        return false;
-    }
-    const Vector3 local = t.to_local.xform(p - t.origin);
-    if (t.type == k_sphere) {
-        return local.length() <= t.half.x;
-    }
-    return std::abs(local.x) <= t.half.x && std::abs(local.y) <= t.half.y &&
-           std::abs(local.z) <= t.half.z;
-}
-
-void SkydotPapyrus::update_actor(std::int64_t actor, const Vector3& position) {
-    const auto form = static_cast<std::uint32_t>(actor);
-    actors_[form] = position;
-    for (auto& [ref, t] : triggers_) {
-        const bool in = contains(t, position);
-        const bool was = t.inside.contains(form);
-        if (in == was) {
-            continue;
-        }
-        // A disabled trigger notices no one (the E3 demo's set-stage boxes on
-        // the way to Bleak Falls would start its quest and swap the barrow door).
-        if (in && disabled(ref)) {
-            continue;
-        }
-        if (in) {
-            t.inside.insert(form);
-        } else {
-            t.inside.erase(form);
-        }
-        emit_signal("trigger", static_cast<std::int64_t>(ref), actor, in);
-        dispatch(ref, in ? "OnTriggerEnter" : "OnTriggerLeave", {vm_->object(form, "ObjectReference")});
-    }
-}
-
-std::int64_t SkydotPapyrus::get_trigger_count(std::int64_t ref) const {
-    const auto it = triggers_.find(static_cast<std::uint32_t>(ref));
-    return it != triggers_.end() ? static_cast<std::int64_t>(it->second.inside.size()) : 0;
-}
-
-Array SkydotPapyrus::get_triggers() const {
-    Array out;
-    for (const auto& [ref, t] : triggers_) {
-        Dictionary entry;
-        entry["ref"] = static_cast<std::int64_t>(ref);
-        entry["type"] = static_cast<std::int64_t>(t.type);
-        entry["origin"] = t.origin;
-        entry["half"] = t.half;
-        entry["inside"] = static_cast<std::int64_t>(t.inside.size());
-        out.push_back(entry);
-    }
-    return out;
 }
 
 // ---- state the game layer reads and sets ----------------------------------

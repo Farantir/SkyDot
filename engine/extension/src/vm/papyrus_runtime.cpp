@@ -93,8 +93,7 @@ void SkydotPapyrus::forget_ref(std::int64_t ref) {
     vm_->destruction().erase(id);
     states_.forget(id);
     attached_.erase(id);
-    triggers_.erase(id);
-    actors_.erase(id);
+    triggers_.forget(id);
     if (placed) {
         emit_signal("ref_deleted", ref);
     }

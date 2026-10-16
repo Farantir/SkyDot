@@ -27,7 +27,7 @@ void SkydotPapyrus::bind_quest_natives() {
     const auto flag = [arg](NativeCall& c, std::size_t i, bool fallback) {
         return c.args.size() > i ? vm::Vm::truthy(arg(c, i)) : fallback;
     };
-    const auto state_of = [this](NativeCall& c) -> QuestState& { return quests_[c.self.form()]; };
+    const auto state_of = [this](NativeCall& c) -> vm::QuestState& { return quests_.state(c.self.form()); };
 
     // ---- Quest
     v.bind("Quest", "Start", [this, result](NativeCall& c) {
@@ -39,9 +39,10 @@ void SkydotPapyrus::bind_quest_natives() {
     });
     v.bind("Quest", "Reset", [this](NativeCall& c) {
         stop_quest(c.self.form());
-        const bool started = quests_[c.self.form()].started;
-        quests_[c.self.form()] = QuestState{};
-        quests_[c.self.form()].started = started;
+        auto& state = quests_.state(c.self.form());
+        const bool started = state.started;
+        state = vm::QuestState{};
+        state.started = started;
         return NativeResult{};
     });
     v.bind("Quest", "IsRunning", [state_of, result](NativeCall& c) {
@@ -116,7 +117,7 @@ void SkydotPapyrus::bind_quest_natives() {
     for (const auto& [name, bit] : {std::pair{"CompleteAllObjectives", k_completed},
                                     std::pair{"FailAllObjectives", k_failed}}) {
         v.bind("Quest", name, [this, bit](NativeCall& c) {
-            for (const auto& [index, bits] : std::map(quests_[c.self.form()].objectives)) {
+            for (const auto& [index, bits] : std::map(quests_.state(c.self.form()).objectives)) {
                 if ((bits & k_displayed) != 0) {
                     set_objective(c.self.form(), index, bit, true);
                 }
@@ -132,20 +133,19 @@ void SkydotPapyrus::bind_quest_natives() {
 
     // ---- Alias, ReferenceAlias, LocationAlias. self.form is the handle.
     v.bind("Alias", "GetOwningQuest", [this, result](NativeCall& c) {
-        const auto it = handle_alias_.find(c.self.form());
-        return it != handle_alias_.end() ? result(c.vm.object(it->second.first, "Quest")) : NativeResult{};
+        const auto* owner = quests_.owner(c.self.form());
+        return owner != nullptr ? result(c.vm.object(owner->first, "Quest")) : NativeResult{};
     });
     v.bind("Alias", "GetID", [this, result](NativeCall& c) {
-        const auto it = handle_alias_.find(c.self.form());
-        return result(Value::integer(it != handle_alias_.end() ? static_cast<std::int32_t>(it->second.second) : -1));
+        const auto* owner = quests_.owner(c.self.form());
+        return result(Value::integer(owner != nullptr ? static_cast<std::int32_t>(owner->second) : -1));
     });
     v.bind("Alias", "GetName", [this, result](NativeCall& c) {
-        const auto it = handle_alias_.find(c.self.form());
-        if (it != handle_alias_.end()) {
-            const Array aliases = quest_info(it->second.first).get("aliases", Array());
+        if (const auto* owner = quests_.owner(c.self.form())) {
+            const Array aliases = quest_info(owner->first).get("aliases", Array());
             for (std::int64_t i = 0; i < aliases.size(); ++i) {
                 const Dictionary a = aliases[i];
-                if (form_of(a["id"]) == it->second.second) {
+                if (form_of(a["id"]) == owner->second) {
                     return result(Value::string(utf8(a["name"])));
                 }
             }
@@ -153,8 +153,7 @@ void SkydotPapyrus::bind_quest_natives() {
         return result(Value::string(""));
     });
     const auto fill_of = [this](NativeCall& c) -> std::uint32_t {
-        const auto it = alias_fill_.find(c.self.form());
-        return it != alias_fill_.end() ? it->second : 0;
+        return quests_.fill(c.self.form());
     };
     for (const auto& [name, cls] : {std::pair{"GetReference", "ObjectReference"},
                                     std::pair{"GetRef", "ObjectReference"},
@@ -172,7 +171,7 @@ void SkydotPapyrus::bind_quest_natives() {
     for (const auto& [cls, name] : {std::pair{"ReferenceAlias", "ForceRefTo"},
                                     std::pair{"LocationAlias", "ForceLocationTo"}}) {
         v.bind(cls, name, [this, arg](NativeCall& c) {
-            alias_fill_[c.self.form()] = arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0;
+            quests_.set_fill(c.self.form(), arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0);
             return NativeResult{};
         });
     }
@@ -180,12 +179,12 @@ void SkydotPapyrus::bind_quest_natives() {
         if (fill_of(c) != 0 || arg(c, 0).kind() != vm::Kind::object) {
             return result(Value::boolean(false));
         }
-        alias_fill_[c.self.form()] = arg(c, 0).form();
+        quests_.set_fill(c.self.form(), arg(c, 0).form());
         return result(Value::boolean(true));
     });
     for (const char* cls : {"ReferenceAlias", "LocationAlias"}) {
         v.bind(cls, "Clear", [this](NativeCall& c) {
-            alias_fill_[c.self.form()] = 0;
+            quests_.set_fill(c.self.form(), 0);
             return NativeResult{};
         });
     }

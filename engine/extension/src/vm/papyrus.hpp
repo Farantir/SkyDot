@@ -26,7 +26,9 @@
 #include "data/godot_values.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
+#include "vm/quest_states.hpp"
 #include "vm/ref_states.hpp"
+#include "vm/triggers.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
 #include "vm/world_access.hpp"
@@ -60,7 +62,7 @@ class SkydotPapyrus : public godot::RefCounted {
 
 public:
     /// The player's reference, which activations come from.
-    static constexpr std::int64_t PLAYER_REF = 0x14;
+    static constexpr std::int64_t PLAYER_REF = static_cast<std::int64_t>(k_player_ref);
     /// Seconds PlayAnimationAndWait waits for its event before carrying on.
     static constexpr double ANIMATION_TIMEOUT = 10.0;
     /// Sound.PlayAndWait gives up on a clip that never reports its end (a loop).
@@ -248,22 +250,6 @@ protected:
     static void _bind_methods();
 
 private:
-    /// A volume taken from the referenced model's phantom (a pressure plate's).
-    struct Volume {
-        godot::Transform3D to_local; ///< Godot space to the volume's frame, game units.
-        godot::Vector3 half;         ///< Half extents; x is the radius of a sphere.
-        bool sphere = false;
-    };
-    struct Trigger {
-        bool primitive = true; ///< XPRM box or sphere; false if only `volumes` apply.
-        std::vector<Volume> volumes;
-        godot::Vector3 origin;
-        godot::Basis to_local; ///< Skyrim space to the volume's axes, scale removed.
-        godot::Vector3 half;   ///< Half extents; x is the radius of a sphere.
-        std::uint32_t type = 0;
-        std::set<std::uint32_t> inside;
-    };
-
     void bind_natives();
     void bind_debug_natives();
     void bind_utility_natives();
@@ -277,17 +263,6 @@ private:
     void bind_noop_natives();
     void bind_world_natives();
     void bind_runtime_natives();
-    struct QuestState {
-        bool running = false;
-        bool started = false; ///< Has ever started.
-        bool completed = false;
-        bool failed = false;
-        bool active = false;
-        std::int32_t stage = 0;
-        std::set<std::int32_t> done;
-        /// Objective index -> bit 0 displayed, 1 completed, 2 failed.
-        std::map<std::int32_t, std::uint8_t> objectives;
-    };
     /// get_quest's dictionary, cached; empty if not a quest.
     const godot::Dictionary& quest_info(std::uint32_t quest) const;
     /// The object standing for alias `alias` of `quest`.
@@ -326,8 +301,6 @@ private:
     std::uint32_t lock_holder(std::uint32_t ref) const;
     void register_trigger(std::uint32_t ref, const godot::Dictionary& info);
     void register_phantoms(std::uint32_t ref, godot::Node3D* node);
-    static bool contains(const Trigger& t, const godot::Vector3& p);
-    static bool contains(const Volume& v, const godot::Vector3& p);
     godot::Vector3 position_of(std::uint32_t ref) const;
     /// Radians; where a script moved the reference, else as placed.
     godot::Vector3 rotation_of(std::uint32_t ref) const;
@@ -352,36 +325,28 @@ private:
     std::set<std::uint32_t> attached_cells_;
     /// What scripts changed about references: enabled, open, locked, blocked, moved.
     vm::RefStates states_;
-    PendingActivations pending_activations_;
-    bool run_activation(std::uint32_t form, const godot::String& label, std::int64_t activator, bool default_only,
-                        godot::Dictionary& out);
+    /// The rules and sequence of activations (vm/activation.hpp); the adapter
+    /// answers what they ask of the world (vm/papyrus_activation.cpp).
+    struct ActivationAdapter;
+    std::unique_ptr<ActivationHost> activation_host_;
+    std::unique_ptr<Activations> activations_;
+    void bind_activations();
+    godot::Dictionary outcome_dictionary(const ActivationOutcome& outcome) const;
     bool graph_raises_activation(std::uint32_t form) const;
-    std::map<std::uint32_t, Trigger> triggers_;
-    std::map<std::uint32_t, godot::Vector3> actors_;
+    /// Trigger volumes and the actors moving through them.
+    vm::Triggers triggers_;
     std::uint32_t next_form_ = 0xFF000000u;
-    std::map<std::uint32_t, QuestState> quests_;
-    std::set<std::uint32_t> quest_scripts_;
-    std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> alias_handles_;
-    std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> handle_alias_;
-    /// Alias handle -> the reference or location filling it.
-    std::map<std::uint32_t, std::uint32_t> alias_fill_;
-    std::map<std::uint32_t, double> globals_;
-    std::uint32_t next_alias_handle_ = static_cast<std::uint32_t>(ALIAS_HANDLE_BASE);
+    /// Quests, their aliases and the globals scripts set (QUST).
+    vm::QuestStates quests_;
     mutable std::map<std::uint32_t, godot::Dictionary> quest_info_;
     godot::String last_error_;
 
     /// The parts of a save this class decodes besides the VM's and RefStates.
     struct HostSnapshot {
         std::set<std::uint32_t> attached;
-        std::map<std::uint32_t, std::set<std::uint32_t>> inside; ///< Trigger -> actors in it.
-        std::map<std::uint32_t, godot::Vector3> actors;
+        vm::Triggers::Saved triggers;
         std::uint32_t next_form = 0xFF000000u;
-        std::map<std::uint32_t, QuestState> quests;
-        std::set<std::uint32_t> quest_scripts;
-        /// quest, alias, handle, fill
-        std::vector<std::array<std::uint32_t, 4>> aliases;
-        std::map<std::uint32_t, double> globals;
-        std::uint32_t next_alias_handle = static_cast<std::uint32_t>(ALIAS_HANDLE_BASE);
+        vm::QuestStates quests;
     };
     struct PendingLoad {
         vm::Vm::Snapshot vm;
