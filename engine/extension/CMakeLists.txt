@@ -49,6 +49,9 @@ set(SKYDOT_CORE_SOURCES
     src/data/large_refs.hpp
     src/data/world_data.cpp
     src/data/world_data.hpp
+    src/save/bytes.hpp
+    src/save/save_file.cpp
+    src/save/save_file.hpp
     src/session/game_time.cpp
     src/session/game_time.hpp
     src/vm/activation.cpp
@@ -194,6 +197,8 @@ target_sources(skydot PRIVATE
     src/render/water.cpp
     src/render/water.hpp
     src/render/weather.cpp
+    src/save/save_binding.cpp
+    src/save/save_binding.hpp
     src/session/clock.cpp
     src/session/clock.hpp
     src/session/held_place.cpp

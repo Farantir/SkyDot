@@ -24,6 +24,7 @@
 #include "ai/ai.hpp"
 #include "physics/player.hpp"
 #include "render/weather.hpp"
+#include "save/save_binding.hpp"
 #include "session/clock.hpp"
 #include "session/streamer.hpp"
 #include "world/world.hpp"
@@ -59,6 +60,8 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotImageSpace);
     GDREGISTER_CLASS(skydot::SkydotAi);
     GDREGISTER_CLASS(skydot::SkydotClock);
+    GDREGISTER_CLASS(skydot::SkydotSaveWriter);
+    GDREGISTER_CLASS(skydot::SkydotSaveReader);
     GDREGISTER_CLASS(skydot::SkydotPreparation);
     GDREGISTER_CLASS(skydot::SkydotStreamer);
 }
