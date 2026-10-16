@@ -160,7 +160,7 @@ std::optional<ActivationOutcome> Activations::complete(std::uint32_t ref) {
     out.ref = ref;
     out.kind = "none";
     ActivationTarget target;
-    host_.target(ref, target); // an unknown reference labels as "0x... ()"
+    (void)host_.target(ref, target); // an unknown reference labels as "0x... ()"
     out.label = label_of(ref, target);
     if (!run(ref, taken->activator, taken->default_only, out)) {
         out.note = *out.label + ": activation blocked, only its scripts ran";
