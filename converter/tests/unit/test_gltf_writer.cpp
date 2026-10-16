@@ -539,7 +539,8 @@ TEST_CASE("a phantom becomes a trigger volume, not collision", "[mesh][nif][coll
     auto glb = bethconv::mesh::write_glb(*model, {});
     REQUIRE(glb.has_value());
     bool found = false;
-    for (const auto& node : json_chunk(*glb)["nodes"]) {
+    const auto json = json_chunk(*glb);
+    for (const auto& node : json["nodes"]) {
         if (node.contains("extras") && node["extras"]["bethconv"].contains("phantoms")) {
             const auto& list = node["extras"]["bethconv"]["phantoms"];
             REQUIRE(list.size() == 1);
@@ -562,7 +563,8 @@ TEST_CASE("a behaviour graph extra data becomes root extras", "[mesh][nif]") {
     auto glb = bethconv::mesh::write_glb(*model, {});
     REQUIRE(glb.has_value());
     bool found = false;
-    for (const auto& node : json_chunk(*glb)["nodes"]) {
+    const auto json = json_chunk(*glb);
+    for (const auto& node : json["nodes"]) {
         if (node.contains("extras") && node["extras"]["bethconv"].contains("behavior_graph")) {
             CHECK(node["extras"]["bethconv"]["behavior_graph"] == "Traps\\WallTrap\\WallTraps.hkx");
             found = true;
