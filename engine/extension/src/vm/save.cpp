@@ -1,141 +1,65 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// VM saves. Little-endian, versioned:
+// VM state in a save (save/save_file.hpp): one section each, every one with
+// its own version starting at 1 and no chain across classes.
 //
-//   "SKPV" u32 version, f64 time, u64 next thread id, u64 random state
-//   instances: u32 count, then per instance form, class, state; then per
-//              instance its variables per class level (class, count, values)
-//   threads:   u32 count; id, keep_result, wake_at, wait_for, frames (function
-//              as class/state/name/handler, instance, self, registers, pc,
-//              result argument)
-//   results:   u32 count; thread id, value
-//   timers:    u32 count; instance, due, interval
-//   scheduled: (version 2) u32 count; due, kind, a, b, c
-//   inventory: (version 3) u32 owner count; per owner: owner ref, u32 item
-//              count, then item form, i64 count each
-//   animation: (version 4) u32 count; per reference: ref, u32 length, that
-//              many bytes (a behaviour graph's snapshot; opaque to the VM)
-//   form lists: (version 5) u32 list count; per list: list form, u32 count,
-//              then the forms added to it, in order
-//   placed:    (version 6) u32 next id, u32 count; per kept reference: id,
-//              base, cell, f64 x3 position, f64 x3 rotation, f64 scale
-//   destruction: (version 6) u32 count; per reference: ref, f64 damage, i32
-//              stage (as u32), u8 destroyed
+//   VMST  f64 time, u64 next thread id, u64 random state; instances (u32
+//         count, then per instance form, class, state, then per instance its
+//         variables per class level: class, count, values); threads (u32
+//         count; id, keep_result, wake_at, wait_for, frames: function as
+//         class/state/name/handler, instance, self, registers, pc, result
+//         argument); results (thread id, value); timers (instance, due,
+//         interval); scheduled host calls (due, kind, a, b, c)
+//   INVT  u32 owner count; per owner: owner ref, u32 item count, then item
+//         form, i64 count each
+//   ANIM  u32 count; per reference: ref, u32 length, that many bytes (a
+//         behaviour graph's snapshot; opaque to the VM)
+//   FLST  u32 list count; per list: list form, u32 count, then the forms
+//         added to it, in order
+//   PLCD  u32 next id, u32 count; per kept reference: id, base, cell, f64 x3
+//         position, f64 x3 rotation, f64 scale
+//   DEST  u32 count; per reference: ref, f64 damage, i32 stage (as u32), u8
+//         destroyed
 //
 // A value is its kind and payload; objects name their class and instance
 // (index, or 0xFFFFFFFF), arrays an id that is followed by the elements the
 // first time it appears, so shared arrays stay shared. An array holds no
 // arrays, as in Papyrus; a save that nests them is refused.
 //
-// Loading treats the bytes as untrusted: every read is bounds-checked, and a
-// frame is only restored if its function exists, its registers match and its
-// pc is inside it. Classes load from the pack as usual, so a save made with
-// different scripts fails instead of running the wrong code.
+// Loading is two-phase: `decode` reads every section into a `Vm::Snapshot` of
+// new, detached objects, treating the bytes as untrusted (every read is
+// bounds-checked, a frame is only restored if its function exists, its
+// registers match and its pc is inside it; classes load from the pack as
+// usual, so a save made with different scripts fails instead of running the
+// wrong code); `commit` swaps it in. A failed decode leaves the VM as it was.
 #include "vm/vm.hpp"
+
+#include "save/bytes.hpp"
+#include "save/save_file.hpp"
 
 #include <algorithm>
 #include <bit>
 #include <cstring>
+#include <functional>
 #include <map>
 
 namespace skydot::vm {
 
 namespace {
 
-constexpr std::uint32_t k_version = 6; // 2: scheduled host calls after the timers; 3: inventories; 4: animation states; 5: form lists; 6: placed references and destruction
+using save::ByteReader;
+using save::ByteWriter;
+
+constexpr std::uint32_t k_section_version = 1;
 constexpr std::uint32_t k_max_animation_state = 1U << 20; ///< Bytes per reference, against corrupt lengths.
-constexpr std::uint32_t k_version_min = 1;
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
-
-class Writer {
-public:
-    void u8(std::uint8_t v) { out.push_back(v); }
-    void u32(std::uint32_t v) {
-        for (int s = 0; s < 32; s += 8) {
-            out.push_back(static_cast<std::uint8_t>((v >> s) & 0xFFu));
-        }
-    }
-    void u64(std::uint64_t v) {
-        for (int s = 0; s < 64; s += 8) {
-            out.push_back(static_cast<std::uint8_t>((v >> s) & 0xFFu));
-        }
-    }
-    void f64(double v) { u64(std::bit_cast<std::uint64_t>(v)); }
-    void text(std::string_view s) {
-        u32(static_cast<std::uint32_t>(s.size()));
-        out.insert(out.end(), s.begin(), s.end());
-    }
-    std::vector<std::uint8_t> out;
-};
-
-class Reader {
-public:
-    explicit Reader(const std::vector<std::uint8_t>& bytes) : in_(bytes) {}
-
-    bool u8(std::uint8_t& v) {
-        if (!need(1)) {
-            return false;
-        }
-        v = in_[pos_++];
-        return true;
-    }
-    bool u32(std::uint32_t& v) {
-        if (!need(4)) {
-            return false;
-        }
-        v = 0;
-        for (int s = 0; s < 32; s += 8) {
-            v |= static_cast<std::uint32_t>(in_[pos_++]) << s;
-        }
-        return true;
-    }
-    bool u64(std::uint64_t& v) {
-        if (!need(8)) {
-            return false;
-        }
-        v = 0;
-        for (int s = 0; s < 64; s += 8) {
-            v |= static_cast<std::uint64_t>(in_[pos_++]) << s;
-        }
-        return true;
-    }
-    bool f64(double& v) {
-        std::uint64_t bits = 0;
-        if (!u64(bits)) {
-            return false;
-        }
-        v = std::bit_cast<double>(bits);
-        return true;
-    }
-    bool text(std::string& s) {
-        std::uint32_t n = 0;
-        if (!u32(n) || !need(n)) {
-            return false;
-        }
-        s.assign(in_.begin() + static_cast<std::ptrdiff_t>(pos_),
-                 in_.begin() + static_cast<std::ptrdiff_t>(pos_ + n));
-        pos_ += n;
-        return true;
-    }
-    /// A count of items each at least `min_bytes` long; refuses counts the
-    /// remaining bytes cannot hold.
-    bool count(std::uint32_t& n, std::size_t min_bytes) {
-        return u32(n) && static_cast<std::size_t>(n) * min_bytes <= in_.size() - pos_;
-    }
-    [[nodiscard]] bool at_end() const { return pos_ == in_.size(); }
-
-private:
-    bool need(std::size_t n) const { return in_.size() - pos_ >= n; }
-    const std::vector<std::uint8_t>& in_;
-    std::size_t pos_ = 0;
-};
 
 struct SaveContext {
     std::map<const Instance*, std::uint32_t> instance_index;
     std::map<const Array*, std::uint32_t> array_ids;
 };
 
-void write_value(Writer& w, SaveContext& ctx, const Value& v) {
+void write_value(ByteWriter& w, SaveContext& ctx, const Value& v) {
     w.u8(static_cast<std::uint8_t>(v.kind()));
     switch (v.kind()) {
     case Kind::none: break;
@@ -165,15 +89,27 @@ void write_value(Writer& w, SaveContext& ctx, const Value& v) {
     }
 }
 
+/// The section `tag` of `file`, opened; sets `error` and returns false if it is
+/// missing or newer than this engine reads.
+bool open_section(const save::SaveReader& file, const char* tag, ByteReader& out, std::string& error) {
+    const auto* s = file.find(tag);
+    if (s == nullptr) {
+        error = std::string("the save lacks its ") + tag + " section";
+        return false;
+    }
+    if (s->version != k_section_version) {
+        error = std::string("section ") + tag + " has version " + std::to_string(s->version) +
+                ", which this engine does not read (it reads " + std::to_string(k_section_version) + ")";
+        return false;
+    }
+    out = file.open(*s);
+    return true;
+}
+
 } // namespace
 
-std::vector<std::uint8_t> Vm::save() const {
-    Writer w;
-    w.u8('S');
-    w.u8('K');
-    w.u8('P');
-    w.u8('V');
-    w.u32(k_version);
+void Vm::save_to(save::SaveWriter& out) const {
+    ByteWriter w;
     w.f64(time_);
     w.u64(next_thread_);
     w.u64(rng_);
@@ -267,71 +203,126 @@ std::vector<std::uint8_t> Vm::save() const {
         w.u32(d.b);
         w.u32(d.c);
     }
-    w.u32(static_cast<std::uint32_t>(inventory_.owners().size()));
+    out.add("VMST", k_section_version, w.out);
+
+    ByteWriter inventory;
+    inventory.u32(static_cast<std::uint32_t>(inventory_.owners().size()));
     for (const auto& [owner, items] : inventory_.owners()) {
-        w.u32(owner);
-        w.u32(static_cast<std::uint32_t>(items.size()));
+        inventory.u32(owner);
+        inventory.u32(static_cast<std::uint32_t>(items.size()));
         for (const auto& [item, count] : items) {
-            w.u32(item);
-            w.u64(static_cast<std::uint64_t>(count));
+            inventory.u32(item);
+            inventory.u64(static_cast<std::uint64_t>(count));
         }
     }
-    w.u32(static_cast<std::uint32_t>(animation_states_.size()));
+    out.add("INVT", k_section_version, inventory.out);
+
+    ByteWriter animation;
+    animation.u32(static_cast<std::uint32_t>(animation_states_.size()));
     for (const auto& [ref, bytes] : animation_states_) {
-        w.u32(ref);
-        w.u32(static_cast<std::uint32_t>(bytes.size()));
-        w.out.insert(w.out.end(), bytes.begin(), bytes.end());
+        animation.u32(ref);
+        animation.u32(static_cast<std::uint32_t>(bytes.size()));
+        animation.bytes(bytes);
     }
-    w.u32(static_cast<std::uint32_t>(form_lists_.lists().size()));
+    out.add("ANIM", k_section_version, animation.out);
+
+    ByteWriter lists;
+    lists.u32(static_cast<std::uint32_t>(form_lists_.lists().size()));
     for (const auto& [list, added] : form_lists_.lists()) {
-        w.u32(list);
-        w.u32(static_cast<std::uint32_t>(added.size()));
+        lists.u32(list);
+        lists.u32(static_cast<std::uint32_t>(added.size()));
         for (const auto form : added) {
-            w.u32(form);
+            lists.u32(form);
         }
     }
+    out.add("FLST", k_section_version, lists.out);
+
+    ByteWriter placed;
     std::uint32_t kept = 0;
     for (const auto& [id, ref] : placed_.refs()) {
         kept += ref.transient ? 0U : 1U;
     }
-    w.u32(placed_.next());
-    w.u32(kept);
+    placed.u32(placed_.next());
+    placed.u32(kept);
     for (const auto& [id, ref] : placed_.refs()) {
         if (ref.transient) {
             continue;
         }
-        w.u32(id);
-        w.u32(ref.base);
-        w.u32(ref.cell);
+        placed.u32(id);
+        placed.u32(ref.base);
+        placed.u32(ref.cell);
         for (const double v : ref.position) {
-            w.f64(v);
+            placed.f64(v);
         }
         for (const double v : ref.rotation) {
-            w.f64(v);
+            placed.f64(v);
         }
-        w.f64(ref.scale);
+        placed.f64(ref.scale);
     }
-    w.u32(static_cast<std::uint32_t>(destruction_.states().size()));
+    out.add("PLCD", k_section_version, placed.out);
+
+    ByteWriter destruction;
+    destruction.u32(static_cast<std::uint32_t>(destruction_.states().size()));
     for (const auto& [ref, state] : destruction_.states()) {
-        w.u32(ref);
-        w.f64(state.damage);
-        w.u32(static_cast<std::uint32_t>(state.stage));
-        w.u8(state.destroyed ? 1 : 0);
+        destruction.u32(ref);
+        destruction.f64(state.damage);
+        destruction.u32(static_cast<std::uint32_t>(state.stage));
+        destruction.u8(state.destroyed ? 1 : 0);
     }
-    return w.out;
+    out.add("DEST", k_section_version, destruction.out);
+}
+
+std::vector<std::uint8_t> Vm::save() const {
+    save::SaveWriter w;
+    save_to(w);
+    return w.finish();
 }
 
 bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
+    save::SaveReader file;
+    Snapshot snapshot;
+    if (!file.parse(bytes, error) || !decode(file, snapshot, error)) {
+        return false;
+    }
+    commit(std::move(snapshot));
+    return true;
+}
+
+void Vm::commit(Snapshot&& s) {
     clear();
-    Reader r(bytes);
+    instances_ = std::move(s.instances);
+    threads_ = std::move(s.threads);
+    results_ = std::move(s.results);
+    timers_ = std::move(s.timers);
+    scheduled_ = std::move(s.scheduled);
+    inventory_ = std::move(s.inventory);
+    animation_states_ = std::move(s.animation_states);
+    form_lists_ = std::move(s.form_lists);
+    placed_ = std::move(s.placed);
+    destruction_ = std::move(s.destruction);
+    time_ = s.time;
+    rng_ = s.rng;
+    next_thread_ = s.next_thread;
+    for (const auto& t : threads_) {
+        next_thread_ = std::max(next_thread_, t->id + 1);
+    }
+    for (const auto& [id, value] : results_) {
+        next_thread_ = std::max(next_thread_, id + 1);
+    }
+}
+
+bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error) {
+    ByteReader r({}, 0);
+    if (!open_section(file, "VMST", r, error)) {
+        return false;
+    }
     std::vector<Instance*> index;
     std::map<std::uint32_t, std::shared_ptr<Array>> arrays;
     const auto fail = [&](std::string why) {
-        clear();
         error = std::move(why);
         return false;
     };
-
+    static const std::string truncated = "truncated VM save";
     std::function<bool(Value&)> read_value = [&](Value& v) -> bool {
         std::uint8_t kind = 0;
         if (!r.u8(kind) || kind > static_cast<std::uint8_t>(Kind::array)) {
@@ -415,55 +406,45 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         return false;
     };
 
-    std::uint8_t magic[4] = {};
-    std::uint32_t version = 0;
-    for (auto& m : magic) {
-        if (!r.u8(m)) {
-            return fail("not a VM save");
-        }
-    }
-    if (std::memcmp(magic, "SKPV", 4) != 0 || !r.u32(version)) {
-        return fail("not a VM save");
-    }
-    if (version < k_version_min || version > k_version) {
-        return fail("VM save version " + std::to_string(version) + " is not one this engine reads (it reads " +
-                    std::to_string(k_version) + ")");
-    }
     double time = 0.0;
     std::uint64_t next_thread = 0;
     std::uint64_t rng = 0;
     if (!r.f64(time) || !r.u64(next_thread) || !r.u64(rng)) {
-        return fail("truncated VM save");
+        return fail(truncated);
     }
+    out.time = time;
+    out.next_thread = next_thread;
+    out.rng = rng;
 
     std::uint32_t count = 0;
     if (!r.count(count, 12)) {
-        return fail("truncated VM save");
+        return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
         std::uint32_t form = 0;
         std::string cls;
         std::string state;
         if (!r.u32(form) || !r.text(cls) || !r.text(state)) {
-            return fail("truncated VM save");
+            return fail(truncated);
         }
-        auto* instance = attach(form, cls);
+        auto instance = make_instance(form, cls);
         if (instance == nullptr) {
             return fail("the save attaches script " + cls + ", which does not load");
         }
         instance->set_state(std::move(state));
-        index.push_back(instance);
+        index.push_back(instance.get());
+        out.instances[form].push_back(std::move(instance));
     }
     for (auto* instance : index) {
         std::uint32_t levels = 0;
         if (!r.count(levels, 8)) {
-            return fail("truncated VM save");
+            return fail(truncated);
         }
         for (std::uint32_t l = 0; l < levels; ++l) {
             std::string cls;
             std::uint32_t n = 0;
             if (!r.text(cls) || !r.count(n, 1)) {
-                return fail("truncated VM save");
+                return fail(truncated);
             }
             std::vector<Value> values(n);
             for (auto& v : values) {
@@ -483,7 +464,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
     }
 
     if (!r.count(count, 32)) {
-        return fail("truncated VM save");
+        return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
         auto thread = std::make_unique<Thread>();
@@ -491,7 +472,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         std::uint32_t frames = 0;
         if (!r.u64(thread->id) || !r.u8(keep) || !r.f64(thread->wake_at) || !r.text(thread->wait_for) ||
             !r.count(frames, 16)) {
-            return fail("truncated VM save");
+            return fail(truncated);
         }
         thread->keep_result = keep != 0;
         for (std::uint32_t f = 0; f < frames; ++f) {
@@ -503,7 +484,7 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
             Frame frame;
             if (!r.text(cls) || !r.text(state) || !r.text(name) || !r.u8(handler) || !r.u32(instance) ||
                 !read_value(frame.self)) {
-                return fail("truncated VM save");
+                return fail(truncated);
             }
             const auto* owner = load_class(cls);
             if (owner == nullptr) {
@@ -552,152 +533,170 @@ bool Vm::load(const std::vector<std::uint8_t>& bytes, std::string& error) {
         if (thread->frames.empty() || thread->frames.front().result_arg != -1) {
             return fail("the save's call stack does not match the scripts");
         }
-        threads_.push_back(std::move(thread));
+        out.threads.push_back(std::move(thread));
     }
 
     if (!r.count(count, 9)) {
-        return fail("truncated VM save");
+        return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
         std::uint64_t id = 0;
         Value v;
         if (!r.u64(id) || !read_value(v)) {
-            return fail("truncated VM save");
+            return fail(truncated);
         }
-        results_[id] = std::move(v);
+        out.results[id] = std::move(v);
     }
     if (!r.count(count, 20)) {
-        return fail("truncated VM save");
+        return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
         std::uint32_t instance = 0;
         Timer t;
         if (!r.u32(instance) || !r.f64(t.due) || !r.f64(t.interval) || instance >= index.size()) {
-            return fail("truncated VM save");
+            return fail(truncated);
         }
         t.instance = index[instance];
-        timers_.push_back(t);
+        out.timers.push_back(t);
     }
-    if (version >= 2) {
-        if (!r.count(count, 24)) {
-            return fail("truncated VM save");
-        }
-        for (std::uint32_t n = 0; n < count; ++n) {
-            Scheduled d;
-            if (!r.f64(d.due) || !r.text(d.kind) || !r.u32(d.a) || !r.u32(d.b) || !r.u32(d.c)) {
-                return fail("truncated VM save");
-            }
-            scheduled_.push_back(std::move(d));
-        }
+    if (!r.count(count, 24)) {
+        return fail(truncated);
     }
-    if (version >= 3) {
-        std::uint32_t owners = 0;
-        if (!r.count(owners, 8)) {
-            return fail("truncated VM save");
+    for (std::uint32_t n = 0; n < count; ++n) {
+        Scheduled d;
+        if (!r.f64(d.due) || !r.text(d.kind) || !r.u32(d.a) || !r.u32(d.b) || !r.u32(d.c)) {
+            return fail(truncated);
         }
-        for (std::uint32_t n = 0; n < owners; ++n) {
-            std::uint32_t owner = 0, items = 0;
-            if (!r.u32(owner) || !r.count(items, 12)) {
-                return fail("truncated VM save");
-            }
-            for (std::uint32_t k = 0; k < items; ++k) {
-                std::uint32_t item = 0;
-                std::uint64_t amount = 0;
-                if (!r.u32(item) || !r.u64(amount)) {
-                    return fail("truncated VM save");
-                }
-                inventory_.add(owner, item, static_cast<std::int64_t>(amount));
-            }
-        }
+        out.scheduled.push_back(std::move(d));
     }
-    if (version >= 4) {
-        std::uint32_t refs = 0;
-        if (!r.count(refs, 8)) {
-            return fail("truncated VM save");
-        }
-        for (std::uint32_t n = 0; n < refs; ++n) {
-            std::uint32_t ref = 0, length = 0;
-            if (!r.u32(ref) || !r.count(length, 1) || length > k_max_animation_state) {
-                return fail("truncated VM save");
-            }
-            std::vector<std::uint8_t> state(length);
-            for (auto& b : state) {
-                if (!r.u8(b)) {
-                    return fail("truncated VM save");
-                }
-            }
-            set_animation_state(ref, std::move(state));
-        }
+    if (!r.at_end()) {
+        return fail("bytes after the end of the VMST section");
     }
-    if (version >= 5) {
-        std::uint32_t lists = 0;
-        if (!r.count(lists, 8)) {
-            return fail("truncated VM save");
-        }
-        for (std::uint32_t n = 0; n < lists; ++n) {
-            std::uint32_t list = 0, forms = 0;
-            if (!r.u32(list) || !r.count(forms, 4)) {
-                return fail("truncated VM save");
-            }
-            for (std::uint32_t k = 0; k < forms; ++k) {
-                std::uint32_t form = 0;
-                if (!r.u32(form)) {
-                    return fail("truncated VM save");
-                }
-                form_lists_.add(list, form);
-            }
-        }
+
+    if (!open_section(file, "INVT", r, error)) {
+        return false;
     }
-    if (version >= 6) {
-        std::uint32_t next = 0, kept = 0;
-        if (!r.u32(next) || !r.count(kept, 12 + 7 * 8)) {
-            return fail("truncated VM save");
+    std::uint32_t owners = 0;
+    if (!r.count(owners, 8)) {
+        return fail("truncated INVT section");
+    }
+    for (std::uint32_t n = 0; n < owners; ++n) {
+        std::uint32_t owner = 0, items = 0;
+        if (!r.u32(owner) || !r.count(items, 12)) {
+            return fail("truncated INVT section");
         }
-        for (std::uint32_t n = 0; n < kept; ++n) {
-            std::uint32_t id = 0;
-            PlacedRef ref;
-            bool ok = r.u32(id) && r.u32(ref.base) && r.u32(ref.cell);
-            for (double& v : ref.position) {
-                ok = ok && r.f64(v);
+        for (std::uint32_t k = 0; k < items; ++k) {
+            std::uint32_t item = 0;
+            std::uint64_t amount = 0;
+            if (!r.u32(item) || !r.u64(amount)) {
+                return fail("truncated INVT section");
             }
-            for (double& v : ref.rotation) {
-                ok = ok && r.f64(v);
-            }
-            ok = ok && r.f64(ref.scale);
-            if (!ok) {
-                return fail("truncated VM save");
-            }
-            placed_.restore(id, ref);
-        }
-        placed_.set_next(std::max(next, placed_.next()));
-        std::uint32_t states = 0;
-        if (!r.count(states, 17)) {
-            return fail("truncated VM save");
-        }
-        for (std::uint32_t n = 0; n < states; ++n) {
-            std::uint32_t ref = 0, stage = 0;
-            std::uint8_t destroyed = 0;
-            DestructionState state;
-            if (!r.u32(ref) || !r.f64(state.damage) || !r.u32(stage) || !r.u8(destroyed)) {
-                return fail("truncated VM save");
-            }
-            state.stage = static_cast<std::int32_t>(stage);
-            state.destroyed = destroyed != 0;
-            destruction_.set(ref, state);
+            out.inventory.add(owner, item, static_cast<std::int64_t>(amount));
         }
     }
     if (!r.at_end()) {
-        return fail("bytes after the end of the VM save");
+        return fail("bytes after the end of the INVT section");
     }
-    time_ = time;
-    next_thread_ = next_thread;
-    for (const auto& t : threads_) {
-        next_thread_ = std::max(next_thread_, t->id + 1);
+
+    if (!open_section(file, "ANIM", r, error)) {
+        return false;
     }
-    for (const auto& [id, value] : results_) {
-        next_thread_ = std::max(next_thread_, id + 1);
+    std::uint32_t refs = 0;
+    if (!r.count(refs, 8)) {
+        return fail("truncated ANIM section");
     }
-    rng_ = rng;
+    for (std::uint32_t n = 0; n < refs; ++n) {
+        std::uint32_t ref = 0, length = 0;
+        if (!r.u32(ref) || !r.count(length, 1) || length > k_max_animation_state) {
+            return fail("truncated ANIM section");
+        }
+        std::vector<std::uint8_t> state(length);
+        for (auto& b : state) {
+            if (!r.u8(b)) {
+                return fail("truncated ANIM section");
+            }
+        }
+        if (!state.empty()) {
+            out.animation_states[ref] = std::move(state);
+        }
+    }
+    if (!r.at_end()) {
+        return fail("bytes after the end of the ANIM section");
+    }
+
+    if (!open_section(file, "FLST", r, error)) {
+        return false;
+    }
+    std::uint32_t lists = 0;
+    if (!r.count(lists, 8)) {
+        return fail("truncated FLST section");
+    }
+    for (std::uint32_t n = 0; n < lists; ++n) {
+        std::uint32_t list = 0, forms = 0;
+        if (!r.u32(list) || !r.count(forms, 4)) {
+            return fail("truncated FLST section");
+        }
+        for (std::uint32_t k = 0; k < forms; ++k) {
+            std::uint32_t form = 0;
+            if (!r.u32(form)) {
+                return fail("truncated FLST section");
+            }
+            out.form_lists.add(list, form);
+        }
+    }
+    if (!r.at_end()) {
+        return fail("bytes after the end of the FLST section");
+    }
+
+    if (!open_section(file, "PLCD", r, error)) {
+        return false;
+    }
+    std::uint32_t next = 0, kept = 0;
+    if (!r.u32(next) || !r.count(kept, 12 + 7 * 8)) {
+        return fail("truncated PLCD section");
+    }
+    for (std::uint32_t n = 0; n < kept; ++n) {
+        std::uint32_t id = 0;
+        PlacedRef ref;
+        bool ok = r.u32(id) && r.u32(ref.base) && r.u32(ref.cell);
+        for (double& v : ref.position) {
+            ok = ok && r.f64(v);
+        }
+        for (double& v : ref.rotation) {
+            ok = ok && r.f64(v);
+        }
+        ok = ok && r.f64(ref.scale);
+        if (!ok) {
+            return fail("truncated PLCD section");
+        }
+        out.placed.restore(id, ref);
+    }
+    out.placed.set_next(std::max(next, out.placed.next()));
+    if (!r.at_end()) {
+        return fail("bytes after the end of the PLCD section");
+    }
+
+    if (!open_section(file, "DEST", r, error)) {
+        return false;
+    }
+    std::uint32_t states = 0;
+    if (!r.count(states, 17)) {
+        return fail("truncated DEST section");
+    }
+    for (std::uint32_t n = 0; n < states; ++n) {
+        std::uint32_t ref = 0, stage = 0;
+        std::uint8_t destroyed = 0;
+        DestructionState state;
+        if (!r.u32(ref) || !r.f64(state.damage) || !r.u32(stage) || !r.u8(destroyed)) {
+            return fail("truncated DEST section");
+        }
+        state.stage = static_cast<std::int32_t>(stage);
+        state.destroyed = destroyed != 0;
+        out.destruction.set(ref, state);
+    }
+    if (!r.at_end()) {
+        return fail("bytes after the end of the DEST section");
+    }
     return true;
 }
 

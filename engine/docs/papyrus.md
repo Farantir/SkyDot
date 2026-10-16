@@ -282,31 +282,43 @@ plumbing, then movement and actor state, which are the work still to come):
 
 ## Saving
 
-`save_state()` returns bytes; `load_state(bytes)` replaces everything, in a
-VM set up on the same pack. The VM part (`vm/save.cpp`) holds instances with
-their variables and states, running and waiting threads with every frame,
-timers, pending results, the clock and the random state; `SkydotPapyrus` adds
-which references are attached, script-made changes to enabled, open, locked
-and blocked state, who is inside which trigger, and actor positions. Loading
-treats the bytes as untrusted and refuses a save whose frames do not match
-the scripts in the pack. Quests (running, stages done, objectives), alias
-handles and fills and changed globals are saved too (save format 2; format 1
-still loads). The viewer saves the place and camera with it (F5,
-F9, `--save-to`, `--load`).
+A save is a sectioned file (`extension/src/save/`, docs/adr/0002-game-state-saves-and-session.md):
+magic `SKYS`, sections (FourCC, version, length, bytes), a CRC-32 trailer.
+`SkydotPapyrus.write_sections(writer)` adds HEAD (engine version, the pack's
+world hash and load order), the VM's VMST (instances with their variables
+and states, running and waiting threads with every frame, timers, pending
+results, scheduled host calls, the clock and the random state), INVT, ANIM
+(behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
+references) and DEST (destruction), then RFST (what scripts changed per
+reference: enabled, open, locked, blocked, moved), PAPY (attached references,
+who is inside which trigger, actor positions) and QUST (quests, alias handles
+and fills, globals). The viewer's SaveService adds PLYR (the place and the
+camera) and writes through a temporary file and a rename (F5, F9, `--save-to`,
+`--load`).
 
-Behaviour graphs (`SkydotBehavior`, a gate or lever) are saved too: VM save
-version 4 adds a section of opaque bytes per reference (`set_animation_state`,
-`get_animation_state`; versions 1 to 3 still load). The bytes are
-`BehaviorSet::save()`: per machine whether it runs, its state id, clip time,
-held pose and fired triggers. The viewer's `ScriptBridge` restores a built
-reference's graph silently (no events) before its scripts' OnLoad, and
+Loading is two phases. `prepare_load(reader)` checks HEAD against the open
+pack (a save of another pack or load order is refused) and decodes every
+section into new objects, treating the bytes as untrusted and refusing a save
+whose frames do not match the scripts in the pack; the running game is not
+touched, whatever the outcome. `commit_load()` then swaps it in. Sections have
+versions of their own, a newer one is refused, unknown tags are skipped, and
+there is no compatibility with saves of 0.1.0 and older. `save_state()` and
+`load_state(bytes)` do both steps on a file's bytes, for tests.
+
+Behaviour graphs (`SkydotBehavior`, a gate or lever) are saved as opaque bytes
+per reference (`set_animation_state`, `get_animation_state`; ANIM). The bytes
+are `BehaviorSet::save()`: per machine whether it runs, its state id, clip
+time, held pose and fired triggers. The viewer's `ScriptBridge` restores a
+built reference's graph silently (no events) before its scripts' OnLoad, and
 records it when it changes, when its cell unloads and before a save, so an
 opened gate stays open after F9 and after leaving the cell and coming back.
 A snapshot that does not fit the graph is ignored and the graph starts over.
 
-Forms added to form lists are saved as VM save version 5 (versions 1 to 4 still load).
+Deleting a placed reference (`Delete`, a finished explosion) goes through
+`forget_ref`, which drops its scripts, timers, running threads, scheduled
+calls, inventory, animation, destruction and script-made state.
 
-Not saved: where `Reset` or a later move put a reference (the view of it is a signal to the game layer), the world's own state outside scripts (none is simulated yet).
+Not saved yet: AI actors and live projectiles and sounds (AIAC, PROJ later), the world's own state outside scripts (none is simulated yet).
 
 ## Assumptions not checked against the game
 

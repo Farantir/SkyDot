@@ -26,6 +26,8 @@ public:
     /// temporary file and a rename.
     godot::Error write(const godot::String& path);
     godot::String get_error() const { return error_; }
+    /// The writer the C++ classes add their sections to.
+    save::SaveWriter& core() { return writer_; }
 
 protected:
     static void _bind_methods();

@@ -23,6 +23,7 @@
 #pragma once
 
 #include "assets/pack.hpp"
+#include "save/save_binding.hpp"
 #include "vm/ref_states.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
@@ -42,6 +43,7 @@
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <array>
 #include <cstdint>
 #include <map>
 #include <memory>
@@ -209,9 +211,24 @@ public:
     /// The snapshot set for `ref`, empty if none.
     godot::PackedByteArray get_animation_state(std::int64_t ref) const;
 
-    /// Everything scripts and their view of the world need to carry on.
+    // ---- saves (vm/papyrus_save.cpp; the container is save/save_file.hpp)
+    /// Add the sections scripts need to carry on: HEAD (engine version, the
+    /// pack's world hash and load order), the VM's (VMST, INVT, ANIM, FLST,
+    /// PLCD, DEST), RFST (what scripts changed per reference), PAPY
+    /// (attached references, triggers, actors) and QUST.
+    void write_sections(const godot::Ref<SkydotSaveWriter>& writer) const;
+    /// Phase one of a load: check HEAD against the open pack and decode every
+    /// section into new objects. The running state is not touched, whatever
+    /// the outcome; `get_last_error` says what was wrong.
+    godot::Error prepare_load(const godot::Ref<SkydotSaveReader>& reader);
+    /// Phase two: swap in what `prepare_load` decoded (OK), tell the game
+    /// layer which placed references are gone and which are back.
+    godot::Error commit_load();
+    /// Forget what `prepare_load` decoded.
+    void cancel_load();
+    /// The sections above as a file of their own, and prepare plus commit of
+    /// one: for tests and tools; the game saves through SaveService.
     godot::PackedByteArray save_state() const;
-    /// Replace the current state with a save. Scripts must be the same.
     godot::Error load_state(const godot::PackedByteArray& bytes);
     godot::String get_last_error() const;
 
@@ -341,6 +358,29 @@ private:
     std::uint32_t next_alias_handle_ = static_cast<std::uint32_t>(ALIAS_HANDLE_BASE);
     mutable std::map<std::uint32_t, godot::Dictionary> quest_info_;
     godot::String last_error_;
+
+    /// The parts of a save this class decodes besides the VM's and RefStates.
+    struct HostSnapshot {
+        std::set<std::uint32_t> attached;
+        std::map<std::uint32_t, std::set<std::uint32_t>> inside; ///< Trigger -> actors in it.
+        std::map<std::uint32_t, godot::Vector3> actors;
+        std::uint32_t next_form = 0xFF000000u;
+        std::map<std::uint32_t, QuestState> quests;
+        std::set<std::uint32_t> quest_scripts;
+        /// quest, alias, handle, fill
+        std::vector<std::array<std::uint32_t, 4>> aliases;
+        std::map<std::uint32_t, double> globals;
+        std::uint32_t next_alias_handle = static_cast<std::uint32_t>(ALIAS_HANDLE_BASE);
+    };
+    struct PendingLoad {
+        vm::Vm::Snapshot vm;
+        vm::RefStates states;
+        HostSnapshot host;
+    };
+    std::unique_ptr<PendingLoad> pending_;
+    godot::Error prepare(const save::SaveReader& file);
+    void write_host(save::SaveWriter& out) const;
+    bool decode_host(const save::SaveReader& file, HostSnapshot& out, std::string& error) const;
 };
 
 } // namespace skydot

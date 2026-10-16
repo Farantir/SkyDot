@@ -26,6 +26,7 @@
 // up the class chain.
 #pragma once
 
+#include "save/save_file.hpp"
 #include "vm/form_lists.hpp"
 #include "vm/inventory.hpp"
 #include "vm/runtime_refs.hpp"
@@ -236,10 +237,45 @@ public:
         return animation_states_;
     }
 
-    /// Everything the scripts would need to carry on, as bytes.
+    struct Timer {
+        Instance* instance = nullptr;
+        double due = 0.0;
+        double interval = 0.0;
+    };
+    struct Scheduled {
+        double due = 0.0;
+        std::string kind;
+        std::uint32_t a = 0, b = 0, c = 0;
+    };
+    /// The VM's saved state decoded into new objects, not yet in use
+    /// (`decode`), until `commit` swaps it in.
+    struct Snapshot {
+        std::unordered_map<std::uint32_t, std::vector<std::unique_ptr<Instance>>> instances;
+        std::vector<std::unique_ptr<Thread>> threads;
+        std::unordered_map<std::uint64_t, Value> results;
+        std::vector<Timer> timers;
+        std::vector<Scheduled> scheduled;
+        Inventory inventory;
+        FormListAdditions form_lists;
+        PlacedRefs placed;
+        DestructionStates destruction;
+        std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states;
+        double time = 0.0;
+        std::uint64_t next_thread = 1;
+        std::uint64_t rng = 0;
+    };
+
+    /// Write the VM's sections (VMST, INVT, ANIM, FLST, PLCD, DEST) into a
+    /// save (vm/save.cpp).
+    void save_to(save::SaveWriter& out) const;
+    /// Read them from a parsed save into `out` without touching the VM. On
+    /// failure `error` says why and the VM is as it was.
+    bool decode(const save::SaveReader& file, Snapshot& out, std::string& error);
+    /// Replace all state with a decoded snapshot.
+    void commit(Snapshot&& snapshot);
+    /// The sections as a save file of their own, and the reverse (decode and
+    /// commit in one). A failed load leaves the VM as it was.
     [[nodiscard]] std::vector<std::uint8_t> save() const;
-    /// Replace all state with a save. On failure the VM is left empty and
-    /// `error` says why.
     bool load(const std::vector<std::uint8_t>& bytes, std::string& error);
     /// Drop all instances, threads, timers and results; keep classes and natives.
     void clear();
@@ -272,6 +308,10 @@ private:
     Value convert(const Value& v, TypeKind kind, std::string_view type);
     /// Look `name` up from class `start` upward, in `state` (lowercase) then the default.
     static const Function* find_in_chain(const ScriptClass* start, const Name& state, const Name& name);
+
+    /// A new instance of `class_name` on `form`, variables at their initial
+    /// values and in its auto state, not yet attached. Null as `attach` is.
+    std::unique_ptr<Instance> make_instance(std::uint32_t form, std::string_view class_name);
 
     std::uint64_t start(Found found, Value self, std::vector<Value> args, bool keep_result);
     void fire_timers();
@@ -317,17 +357,7 @@ private:
     std::vector<std::unique_ptr<Instance>> detached_;
     std::vector<std::unique_ptr<Thread>> threads_;
     std::unordered_map<std::uint64_t, Value> results_;
-    struct Timer {
-        Instance* instance = nullptr;
-        double due = 0.0;
-        double interval = 0.0;
-    };
     std::vector<Timer> timers_;
-    struct Scheduled {
-        double due = 0.0;
-        std::string kind;
-        std::uint32_t a = 0, b = 0, c = 0;
-    };
     std::vector<Scheduled> scheduled_;
     Inventory inventory_;
     FormListAdditions form_lists_;

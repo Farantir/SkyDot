@@ -6,6 +6,7 @@
 // docs/papyrus.md ("Saving"): loading treats the bytes as untrusted, and a save
 // whose frames do not match the scripts is refused.
 #include "support/vm_rig.hpp"
+#include "save/save_file.hpp"
 #include "vm/inventory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -16,6 +17,7 @@
 #include <set>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 using namespace skydot::testing;
@@ -269,6 +271,52 @@ TEST_CASE("loading replaces everything the VM had", "[vm][save]") {
 
 namespace {
 
+using Bytes = std::vector<std::uint8_t>;
+using Sections = std::vector<std::tuple<std::string, std::uint32_t, Bytes>>;
+
+/// The sections of a save file, in order.
+Sections split(const Bytes& file) {
+    skydot::save::SaveReader reader;
+    std::string error;
+    REQUIRE(reader.parse(file, error));
+    Sections out;
+    for (const auto& s : reader.sections()) {
+        auto in = reader.open(s);
+        Bytes bytes(s.size);
+        for (auto& b : bytes) {
+            in.u8(b);
+        }
+        out.emplace_back(s.tag, s.version, std::move(bytes));
+    }
+    return out;
+}
+
+/// A save file of these sections, its CRC right whatever they hold.
+Bytes build(const Sections& sections) {
+    skydot::save::SaveWriter w;
+    for (const auto& [tag, version, bytes] : sections) {
+        w.add(tag, version, bytes);
+    }
+    return w.finish();
+}
+
+Bytes& section(Sections& sections, std::string_view tag) {
+    for (auto& [t, version, bytes] : sections) {
+        if (t == tag) {
+            return bytes;
+        }
+    }
+    FAIL("no section " << tag);
+    return std::get<2>(sections.front());
+}
+
+/// `file` with the bytes of one section replaced, resealed.
+Bytes with_section(const Bytes& file, std::string_view tag, const Bytes& bytes) {
+    auto sections = split(file);
+    section(sections, tag) = bytes;
+    return build(sections);
+}
+
 /// A save with an instance, a thread two frames deep, a timer and a result.
 std::vector<std::uint8_t> sample_save() {
     SaverRig s;
@@ -282,7 +330,7 @@ void check_refused_and_empty(skydot::vm::Vm& vm, const std::vector<std::uint8_t>
     std::string error;
     CHECK_FALSE(vm.load(bytes, error));
     CHECK_FALSE(error.empty());
-    // On failure the VM is left empty.
+    // The VMs here start empty; a failed load leaves them so.
     CHECK(vm.instances(0x10).empty());
     CHECK(vm.thread_count() == 0);
 }
@@ -297,19 +345,70 @@ TEST_CASE("bytes that are not a VM save are refused and leave the VM empty", "[v
     SECTION("another file") {
         check_refused_and_empty(s.vm(), {'N', 'O', 'P', 'E', 1, 0, 0, 0});
     }
-    SECTION("a version this engine does not read") {
+    SECTION("a container version this engine does not read") {
         bytes[4] = 7;
+        const auto crc = skydot::save::crc32(bytes.data(), bytes.size() - 4);
+        for (int i = 0; i < 4; ++i) {
+            bytes[bytes.size() - 4 + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>((crc >> (8 * i)) & 0xFFU);
+        }
         std::string error;
         CHECK_FALSE(s.vm().load(bytes, error));
         CHECK_THAT(error, ContainsSubstring("version 7"));
     }
-    SECTION("bytes after the end") {
-        bytes.push_back(0);
+    SECTION("a section version this engine does not read") {
+        auto sections = split(bytes);
+        std::get<1>(sections.front()) = 9;
         std::string error;
-        CHECK_FALSE(s.vm().load(bytes, error));
+        CHECK_FALSE(s.vm().load(build(sections), error));
+        CHECK_THAT(error, ContainsSubstring("version 9"));
+    }
+    SECTION("a missing section") {
+        auto sections = split(bytes);
+        std::erase_if(sections, [](const auto& e) { return std::get<0>(e) == "INVT"; });
+        std::string error;
+        CHECK_FALSE(s.vm().load(build(sections), error));
+        CHECK_THAT(error, ContainsSubstring("INVT"));
+    }
+    SECTION("bytes after the end of a section") {
+        auto sections = split(bytes);
+        section(sections, "VMST").push_back(0);
+        std::string error;
+        CHECK_FALSE(s.vm().load(build(sections), error));
         CHECK_THAT(error, ContainsSubstring("after the end"));
         CHECK(s.vm().instances(0x10).empty());
     }
+    SECTION("unknown sections are skipped") {
+        auto sections = split(bytes);
+        sections.emplace_back("ZZZZ", 5, Bytes{1, 2, 3});
+        std::string error;
+        CHECK(s.vm().load(build(sections), error));
+    }
+}
+
+TEST_CASE("a failed load leaves the running VM as it was", "[vm][save][errors]") {
+    const auto bytes = sample_save();
+    SaverRig running;
+    running.vm().call_method(running.instance, "run", {});
+    running.vm().update(2.0);
+    running.vm().inventory().add(0x14, 0x39647, 3);
+    running.vm().set_animation_state(0x10, {7});
+    const auto before = running.vm().save();
+
+    auto sections = split(bytes);
+    section(sections, "VMST").resize(section(sections, "VMST").size() / 2); // cut in the middle of the threads
+    std::string error;
+    CHECK_FALSE(running.vm().load(build(sections), error));
+    CHECK_FALSE(error.empty());
+    CHECK(running.vm().save() == before);
+    CHECK(running.vm().time() == 2.0);
+    CHECK(running.vm().thread_count() == 1);
+
+    // Damage in a later section is found before anything is swapped in.
+    sections = split(bytes);
+    section(sections, "DEST").push_back(1);
+    CHECK_FALSE(running.vm().load(build(sections), error));
+    CHECK(running.vm().save() == before);
+    CHECK(running.vm().inventory().count(0x14, 0x39647) == 3);
 }
 
 TEST_CASE("every truncation of a save is refused", "[vm][save][errors]") {
@@ -324,16 +423,26 @@ TEST_CASE("every truncation of a save is refused", "[vm][save][errors]") {
 
 TEST_CASE("a damaged save is refused or loads, never crashes", "[vm][save][errors]") {
     const auto bytes = sample_save();
+    const auto sections = split(bytes);
     SaverRig s(saver(), false);
+    std::string error;
+    // A flipped byte anywhere is caught by the checksum.
+    for (std::size_t at = 0; at < bytes.size(); ++at) {
+        auto bad = bytes;
+        bad[at] ^= 0x55;
+        CHECK_FALSE(s.vm().load(bad, error));
+    }
+    // Damage inside a section, the checksum made right, is the decoder's to catch.
+    const auto& vmst = std::get<2>(sections.front());
     for (const std::uint8_t damage : {std::uint8_t{0xFF}, std::uint8_t{0x00}, std::uint8_t{0x7F}}) {
-        for (std::size_t at = 0; at < bytes.size(); ++at) {
-            auto bad = bytes;
-            bad[at] = damage;
-            std::string error;
+        for (std::size_t at = 0; at < vmst.size(); ++at) {
+            auto changed = vmst;
+            changed[at] = damage;
+            const auto bad = with_section(bytes, "VMST", changed);
+            const auto before = s.vm().save();
             if (!s.vm().load(bad, error)) {
                 CHECK_FALSE(error.empty());
-                CHECK(s.vm().instances(0x10).empty());
-                CHECK(s.vm().thread_count() == 0);
+                CHECK(s.vm().save() == before);
             }
             // What loaded must run without crashing.
             s.vm().update(10.0);
@@ -368,8 +477,6 @@ TEST_CASE("a save of other scripts than the pack's is refused", "[vm][save][erro
 
 namespace {
 
-using Bytes = std::vector<std::uint8_t>;
-
 void put_u32(Bytes& out, std::uint32_t v) {
     for (int s = 0; s < 32; s += 8) {
         out.push_back(static_cast<std::uint8_t>((v >> s) & 0xFFU));
@@ -385,8 +492,6 @@ Bytes holder_save(const Bytes& value) {
         put_u32(out, static_cast<std::uint32_t>(t.size()));
         out.insert(out.end(), t.begin(), t.end());
     };
-    out.insert(out.end(), {'S', 'K', 'P', 'V'});
-    put_u32(out, 1);                     // version
     out.insert(out.end(), 8 + 8 + 8, 0); // time, next thread, random state
     put_u32(out, 1);                     // instances
     put_u32(out, 0x10);
@@ -399,7 +504,9 @@ Bytes holder_save(const Bytes& value) {
     put_u32(out, 0); // threads
     put_u32(out, 0); // results
     put_u32(out, 0); // timers
-    return out;
+    put_u32(out, 0); // scheduled
+    skydot::vm::Vm empty;
+    return with_section(empty.save(), "VMST", out);
 }
 
 /// An array value (kind 6, its id, its element count) followed by the
@@ -496,7 +603,7 @@ TEST_CASE("inventories add, remove and count per owner", "[vm][inventory]") {
     CHECK(inv.owners().empty());
 }
 
-TEST_CASE("an inventory is part of the VM save, and a version 2 save loads with none", "[vm][save][inventory]") {
+TEST_CASE("an inventory is part of the VM save", "[vm][save][inventory]") {
     skydot::vm::Vm a;
     a.inventory().add(0x14, 0x39647, 3);
     a.inventory().add(0x14, 0x0F, 100);
@@ -517,22 +624,15 @@ TEST_CASE("an inventory is part of the VM save, and a version 2 save loads with 
         skydot::vm::Vm c;
         CHECK_FALSE(c.load(cut, error));
     }
-    SECTION("version 2") {
-        Bytes v2;
-        v2.insert(v2.end(), {'S', 'K', 'P', 'V'});
-        put_u32(v2, 2);
-        v2.insert(v2.end(), 8 + 8 + 8, 0);
-        for (int i = 0; i < 5; ++i) { // instances, threads, results, timers, scheduled
-            put_u32(v2, 0);
-        }
+    SECTION("a save without the section is refused") {
+        auto sections = split(bytes);
+        std::erase_if(sections, [](const auto& e) { return std::get<0>(e) == "INVT"; });
         skydot::vm::Vm d;
-        d.inventory().add(0x14, 0x1, 1);
-        REQUIRE(d.load(v2, error));
-        CHECK(d.inventory().owners().empty());
+        CHECK_FALSE(d.load(build(sections), error));
     }
 }
 
-TEST_CASE("animation states are part of the VM save; version 3 saves load with none", "[vm][save][animation]") {
+TEST_CASE("animation states are part of the VM save", "[vm][save][animation]") {
     skydot::vm::Vm a;
     a.set_animation_state(0x3B9F1, {1, 2, 3, 4});
     a.set_animation_state(0x77, {9});
@@ -559,22 +659,15 @@ TEST_CASE("animation states are part of the VM save; version 3 saves load with n
         skydot::vm::Vm c;
         CHECK_FALSE(c.load(bad, error));
     }
-    SECTION("version 3") {
-        Bytes v3;
-        v3.insert(v3.end(), {'S', 'K', 'P', 'V'});
-        put_u32(v3, 3);
-        v3.insert(v3.end(), 8 + 8 + 8, 0);
-        for (int i = 0; i < 6; ++i) { // instances, threads, results, timers, scheduled, inventory
-            put_u32(v3, 0);
-        }
+    SECTION("a save without the section is refused") {
+        auto sections = split(bytes);
+        std::erase_if(sections, [](const auto& e) { return std::get<0>(e) == "ANIM"; });
         skydot::vm::Vm d;
-        d.set_animation_state(0x1, {1});
-        REQUIRE(d.load(v3, error));
-        CHECK(d.animation_states().empty());
+        CHECK_FALSE(d.load(build(sections), error));
     }
 }
 
-TEST_CASE("forms added to lists are part of the VM save; version 4 saves load with none", "[vm][save][formlist]") {
+TEST_CASE("forms added to lists are part of the VM save", "[vm][save][formlist]") {
     skydot::vm::Vm a;
     a.form_lists().add(0x600, 0x30);
     a.form_lists().add(0x600, 0x31);
@@ -593,18 +686,13 @@ TEST_CASE("forms added to lists are part of the VM save; version 4 saves load wi
     skydot::vm::Vm c;
     CHECK_FALSE(c.load(cut, error));
 
-    // A save without the section (version 4) ends after the animation states.
-    skydot::vm::Vm empty;
-    const auto plain = empty.save();
-    Bytes older(plain.begin(), plain.end() - 16); // drop the empty list, placed and destruction sections
-    older[4] = 4;                                // the version, little-endian
+    auto sections = split(bytes);
+    std::erase_if(sections, [](const auto& e) { return std::get<0>(e) == "FLST"; });
     skydot::vm::Vm d;
-    d.form_lists().add(0x1, 0x2);
-    REQUIRE(d.load(older, error));
-    CHECK(d.form_lists().lists().empty());
+    CHECK_FALSE(d.load(build(sections), error));
 }
 
-TEST_CASE("placed references and destruction are part of the VM save; version 5 saves load with none", "[vm][save][placed]") {
+TEST_CASE("placed references and destruction are part of the VM save", "[vm][save][placed]") {
     skydot::vm::Vm a;
     skydot::vm::PlacedRef rock{.base = 0x1234, .cell = 0x77};
     rock.position[0] = 10.5;
@@ -632,15 +720,10 @@ TEST_CASE("placed references and destruction are part of the VM save; version 5 
     CHECK(b.destruction().get(0x9B0EC).stage == 1);
     CHECK(b.destruction().get(0x9B0EC).damage == 10.0);
 
-    skydot::vm::Vm empty;
-    auto plain = empty.save();
-    Bytes older(plain.begin(), plain.end() - 12); // drop the placed and destruction sections
-    older[4] = 5;
+    auto sections = split(bytes);
+    std::erase_if(sections, [](const auto& e) { return std::get<0>(e) == "PLCD"; });
     skydot::vm::Vm c;
-    c.destruction().set(1, {.damage = 1.0, .stage = 1});
-    REQUIRE(c.load(older, error));
-    CHECK(c.placed().refs().empty());
-    CHECK(c.destruction().states().empty());
+    CHECK_FALSE(c.load(build(sections), error));
 }
 
 TEST_CASE("detaching a reference drops its scripts, timers, threads, inventory and animation state", "[vm][detach]") {

@@ -82,6 +82,8 @@ void SkydotPack::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_error"), &SkydotPack::get_error);
 
     ClassDB::bind_method(D_METHOD("has_world"), &SkydotPack::has_world);
+    ClassDB::bind_method(D_METHOD("get_world_hash"), &SkydotPack::get_world_hash);
+    ClassDB::bind_method(D_METHOD("get_load_order"), &SkydotPack::get_load_order);
     ClassDB::bind_method(D_METHOD("open_world"), &SkydotPack::open_world);
     ClassDB::bind_method(D_METHOD("get_asset_count"), &SkydotPack::get_asset_count);
     ClassDB::bind_method(D_METHOD("get_index_count"), &SkydotPack::get_index_count);
@@ -144,6 +146,8 @@ Error SkydotPack::open(const String& pack_dir) {
 void SkydotPack::close() {
     open_ = false;
     has_world_ = false;
+    world_hash_ = String();
+    load_order_ = godot::PackedStringArray();
     asset_count_ = 0;
     index_count_ = 0;
     unknown_kind_count_ = 0;
@@ -182,6 +186,17 @@ Error SkydotPack::read_manifest(const String& path) {
     // formats/pack-format.md: the `world` key decides whether world.fb exists. A
     // `records` key (and a records.fb) from an earlier converter is ignored.
     has_world_ = manifest.has("world");
+    world_hash_ = String();
+    if (has_world_ && Variant(manifest["world"]).get_type() == Variant::DICTIONARY) {
+        world_hash_ = Dictionary(manifest["world"]).get("hash", String());
+    }
+    load_order_ = godot::PackedStringArray();
+    if (manifest.has("load_order") && Variant(manifest["load_order"]).get_type() == Variant::ARRAY) {
+        const godot::Array order = manifest["load_order"];
+        for (int64_t i = 0; i < order.size(); ++i) {
+            load_order_.push_back(String(order[i]));
+        }
+    }
 
     if (!manifest.has("assets") || Variant(manifest["assets"]).get_type() != Variant::DICTIONARY) {
         return refuse(Error::ERR_FILE_CORRUPT, "manifest.json has no assets object");

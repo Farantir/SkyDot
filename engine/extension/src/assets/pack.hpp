@@ -32,6 +32,7 @@
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/classes/texture.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
+#include <godot_cpp/variant/packed_string_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
 #include <cstdint>
@@ -58,6 +59,10 @@ public:
 
     /// From manifest.json, so available without opening the files.
     bool has_world() const;
+    /// The hash of world.fb and the plugins the pack was converted from, in
+    /// load order, from manifest.json: what a save names its pack by.
+    godot::String get_world_hash() const { return world_hash_; }
+    godot::PackedStringArray get_load_order() const { return load_order_; }
     /// The pack's world.fb, opened and verified; null (with `get_error`) if
     /// the pack has none or it is damaged.
     godot::Ref<SkydotWorld> open_world();
@@ -118,6 +123,8 @@ private:
     bool open_{false};
 
     bool has_world_{false};
+    godot::String world_hash_;
+    godot::PackedStringArray load_order_;
     std::int64_t asset_count_{0};
     std::int64_t index_count_{0};
     std::int64_t unknown_kind_count_{0};

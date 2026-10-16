@@ -220,7 +220,7 @@ const std::vector<std::unique_ptr<Instance>>& Vm::attached(std::uint32_t form) c
     return it != instances_.end() ? it->second : k_none;
 }
 
-Instance* Vm::attach(std::uint32_t form, std::string_view class_name) {
+std::unique_ptr<Instance> Vm::make_instance(std::uint32_t form, std::string_view class_name) {
     const auto* cls = load_class(class_name);
     if (cls == nullptr) {
         return nullptr;
@@ -247,6 +247,14 @@ Instance* Vm::attach(std::uint32_t form, std::string_view class_name) {
             values.push_back(initial.is_none() ? default_of(v.kind) : convert(initial, v.kind, v.type));
         }
         instance->vars.emplace_back(c, std::move(values));
+    }
+    return instance;
+}
+
+Instance* Vm::attach(std::uint32_t form, std::string_view class_name) {
+    auto instance = make_instance(form, class_name);
+    if (instance == nullptr) {
+        return nullptr;
     }
     auto& list = instances_[form];
     list.push_back(std::move(instance));

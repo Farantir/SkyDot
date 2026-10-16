@@ -29,10 +29,11 @@ const INSIDE_DOOR := 0x303  # shares the lock of the outside door
 const OUTSIDE_DOOR := 0x213
 const SAVE_PATH := "user://game_save_smoke.skydot"
 const BAD_PATH := "user://game_save_smoke_bad.skydot"
+const FOREIGN_PATH := "user://game_save_smoke_foreign.skydot"
 
 ## Bugs of CODE-REVIEW.md that are known to be there: their checks are
 ## expected to fail.
-const KNOWN := ["B2", "B5", "B6"]
+const KNOWN := ["B5"]
 
 var failures := 0
 var known_failures := 0
@@ -201,7 +202,7 @@ func _run(pack_dir: String) -> void:
     var before_base: int = _papyrus.get_ref_base(extra)
     var before_scripts := _papyrus.get_scripts(LEVER)
     expect(not _saves.load_game("user://no_such_save.skydot"), "a missing file is refused")
-    expect(not _saves.load_game(BAD_PATH), "a save with a truncated script state is refused")
+    expect(not _saves.load_game(BAD_PATH), "a save with a truncated VM section is refused")
     check("B6", _papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == before_pulls
             and _papyrus.get_lock_level(OUTSIDE_DOOR) == before_lock
             and _papyrus.get_ref_base(extra) == before_base and _papyrus.get_scripts(LEVER) == before_scripts,
@@ -209,6 +210,11 @@ func _run(pack_dir: String) -> void:
             % [_papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls"), before_pulls,
                _papyrus.get_lock_level(OUTSIDE_DOOR), before_lock, _papyrus.get_ref_base(extra), before_base,
                _papyrus.get_scripts(LEVER)])
+    # A save of another pack (its HEAD names another world hash) is refused too.
+    _foreign_save()
+    expect(not _saves.load_game(FOREIGN_PATH), "a save of another pack is refused")
+    expect(_papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == before_pulls
+            and _papyrus.get_ref_base(extra) == before_base, "and the running game is as it was")
     await _frames(1)
 
     # ---- load and compare -------------------------------------------------
@@ -309,20 +315,45 @@ func _probe(ref: int) -> Vector3:
     return position
 
 
-## A save file whose script state is cut short, and one that is no save at all.
+## A save file that is whole (its checksum is right) but whose VM section is
+## cut short: only decoding it finds out.
 func _bad_save() -> void:
-    var good := bytes_to_var(FileAccess.get_file_as_bytes(SAVE_PATH)) as Dictionary
-    var scripts := bytes_to_var(good["papyrus"] as PackedByteArray) as Dictionary
-    var vm_bytes: PackedByteArray = scripts["vm"]
-    scripts["vm"] = vm_bytes.slice(0, vm_bytes.size() / 2)  # the header and the lists are fine
-    good["papyrus"] = var_to_bytes(scripts)
-    var file := FileAccess.open(BAD_PATH, FileAccess.WRITE)
-    file.store_buffer(var_to_bytes(good))
-    file.close()
+    var good := SkydotSaveReader.new()
+    expect(good.open(ProjectSettings.globalize_path(SAVE_PATH)) == OK, "the good save opens")
+    var writer := SkydotSaveWriter.new()
+    for tag in ["HEAD", "VMST", "INVT", "ANIM", "FLST", "PLCD", "DEST", "RFST", "PAPY", "QUST", "PLYR"]:
+        var bytes := good.get_section(tag)
+        if tag == "VMST":
+            bytes = bytes.slice(0, bytes.size() / 2)
+        writer.add_section(tag, good.get_section_version(tag), bytes)
+    expect(writer.write(ProjectSettings.globalize_path(BAD_PATH)) == OK, "the bad save is written")
+
+
+## The good save with another pack's world hash in its HEAD.
+func _foreign_save() -> void:
+    var good := SkydotSaveReader.new()
+    good.open(ProjectSettings.globalize_path(SAVE_PATH))
+    var writer := SkydotSaveWriter.new()
+    for tag in ["HEAD", "VMST", "INVT", "ANIM", "FLST", "PLCD", "DEST", "RFST", "PAPY", "QUST", "PLYR"]:
+        var bytes := good.get_section(tag)
+        if tag == "HEAD":
+            var head := StreamPeerBuffer.new()
+            var other_hash := "0".repeat(64).to_utf8_buffer()
+            head.put_u32(3)
+            head.put_data("0.1".to_utf8_buffer())
+            head.put_u32(other_hash.size())
+            head.put_data(other_hash)
+            head.put_u32(1)
+            head.put_u32(11)
+            head.put_data("Other.esm".to_utf8_buffer() + PackedByteArray([0, 0]))
+            bytes = head.data_array
+        writer.add_section(tag, good.get_section_version(tag), bytes)
+    writer.write(ProjectSettings.globalize_path(FOREIGN_PATH))
 
 
 func _finish() -> void:
     DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(BAD_PATH))
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(FOREIGN_PATH))
     print("smoke_game_save: failures=%d, known failures=%d" % [failures, known_failures])
     quit(failures)

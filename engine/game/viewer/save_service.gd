@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Saves and loads: the scripts' state (SkydotPapyrus) and where the player is,
-# as one file. F5 and F9 use the quicksave; --save-to and --load name a file.
+# as one sectioned file. F5 and F9 use the quicksave; --save-to and --load name a file.
 class_name SaveService
 extends RefCounted
 
 const QUICKSAVE := "user://quicksave.skydot"
-const FORMAT := 1
+const PLYR_VERSION := 1
 
 var _papyrus: SkydotPapyrus
 var _place: Place
@@ -24,45 +24,68 @@ func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: 
 	_bridge = bridge
 
 
-## The scripts' state and where the camera is.
-func save(path: String) -> void:
+## Every part of a save writes its own section (save/save_file.hpp,
+## docs/adr/0002-game-state-saves-and-session.md): the scripts' (HEAD, VMST,
+## RFST, ...) from SkydotPapyrus, PLYR here. The file is written to a
+## temporary and renamed over the old one.
+func save(path: String) -> bool:
 	_bridge.record_graphs()
-	var state := {
-		"format": FORMAT,
-		"papyrus": _papyrus.save_state(),
+	var writer := SkydotSaveWriter.new()
+	_papyrus.write_sections(writer)
+	writer.add_section("PLYR", PLYR_VERSION, _player_section())
+	if writer.write(ProjectSettings.globalize_path(path)) != OK:
+		printerr("cannot save to ", path, ": ", writer.get_error())
+		return false
+	print("saved ", path)
+	return true
+
+
+## Load a save in two phases: every section is checked and decoded first, and
+## only then does the game change. A file that is missing, damaged or from
+## another pack returns false and leaves the running game as it is.
+func load_game(path: String) -> bool:
+	var reader := SkydotSaveReader.new()
+	if reader.open(ProjectSettings.globalize_path(path)) != OK:
+		printerr("cannot read ", path, ": ", reader.get_error())
+		return false
+	var player := _parse_player(reader)
+	if player.is_empty():
+		printerr("not a usable save: ", path)
+		return false
+	if _papyrus.prepare_load(reader) != OK:
+		printerr("cannot load ", path, ": ", _papyrus.get_last_error())
+		return false
+	_bridge.retire_graphs()
+	_papyrus.commit_load()
+	if int(player["world"]) != 0:
+		_place.enter_exterior(int(player["world"]), player["position"], null)
+	else:
+		_place.enter_interior(int(player["cell"]), player["position"], null)
+	_rig.apply_look(float(player["yaw"]), float(player["pitch"]))
+	print("loaded ", path)
+	return true
+
+
+## PLYR: where the player is.
+func _player_section() -> PackedByteArray:
+	return var_to_bytes({
 		"cell": _place.cell_id,
 		"world": _streamer.world_id,
 		"position": _rig.camera.position,
 		"yaw": _rig.yaw,
 		"pitch": _rig.pitch,
-	}
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file == null:
-		printerr("cannot save to ", path)
-		return
-	file.store_buffer(var_to_bytes(state))
-	print("saved ", path)
+	})
 
 
-## Restore the scripts' state and enter the saved place. False if the file is
-## missing or not a save.
-func load_game(path: String) -> bool:
-	if not FileAccess.file_exists(path):
-		printerr("no save at ", path)
-		return false
-	var state = bytes_to_var(FileAccess.get_file_as_bytes(path))
-	if typeof(state) != TYPE_DICTIONARY or state.get("format", 0) != FORMAT \
-			or typeof(state.get("papyrus")) != TYPE_PACKED_BYTE_ARRAY:
-		printerr("not a save: ", path)
-		return false
-	_bridge.retire_graphs()
-	if _papyrus.load_state(state["papyrus"]) != OK:
-		printerr("cannot load the scripts' state: ", _papyrus.get_last_error())
-		return false
-	if int(state.get("world", 0)) != 0:
-		_place.enter_exterior(int(state["world"]), state["position"], null)
-	else:
-		_place.enter_interior(int(state["cell"]), state["position"], null)
-	_rig.apply_look(float(state["yaw"]), float(state["pitch"]))
-	print("loaded ", path)
-	return true
+## The PLYR section as a Dictionary, empty if it is missing or wrong.
+func _parse_player(reader: SkydotSaveReader) -> Dictionary:
+	if not reader.has_section("PLYR") or reader.get_section_version("PLYR") != PLYR_VERSION:
+		return {}
+	var state = bytes_to_var(reader.get_section("PLYR"))
+	if typeof(state) != TYPE_DICTIONARY:
+		return {}
+	if typeof(state.get("cell")) != TYPE_INT or typeof(state.get("world")) != TYPE_INT \
+			or typeof(state.get("position")) != TYPE_VECTOR3 or typeof(state.get("yaw")) != TYPE_FLOAT \
+			or typeof(state.get("pitch")) != TYPE_FLOAT:
+		return {}
+	return state

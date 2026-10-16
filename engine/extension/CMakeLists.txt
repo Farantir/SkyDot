@@ -61,6 +61,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/inventory.hpp
     src/vm/runtime_refs.hpp
     src/vm/natives_world.cpp
+    src/vm/ref_states.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
@@ -214,6 +215,7 @@ target_sources(skydot PRIVATE
     src/vm/natives_game.cpp
     src/vm/natives_noop.cpp
     src/vm/papyrus_runtime.cpp
+    src/vm/papyrus_save.cpp
     src/vm/natives_objectreference.cpp
     src/vm/natives_quest.cpp
     src/vm/natives_utility.cpp
@@ -231,6 +233,7 @@ target_sources(skydot PRIVATE
     src/world/world.hpp)
 add_dependencies(skydot skydot_flatbuffers)
 
+target_compile_definitions(skydot PRIVATE SKYDOT_VERSION="${PROJECT_VERSION}")
 target_include_directories(skydot PRIVATE src "${SKYDOT_FB_DIR}")
 target_include_directories(skydot SYSTEM PRIVATE
     "${CMAKE_SOURCE_DIR}/extern/flatbuffers/include")
