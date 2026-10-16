@@ -40,6 +40,12 @@ set(SKYDOT_TESTPACK "${_default_testpack}" CACHE PATH
 set(SKYDOT_LARGE_REF_PACK "$ENV{SKYDOT_LARGE_REF_PACK}" CACHE PATH
     "A format 11 pack with large references; empty skips the layer test")
 
+# A converted Skyrim SE pack: the `sse` tests replay activators of the real
+# game data headless (no screenshot files; positions are in the tests below).
+# Empty registers none of them.
+set(SKYDOT_SSE_PACK "$ENV{SKYDOT_SSE_PACK}" CACHE PATH
+    "A converted Skyrim SE pack; empty skips the sse tests")
+
 # The pack tool's smoke test runs a real bethconv: by default the sibling
 # checkout's build (release first); the environment variable wins.
 set(_default_bethconv "$ENV{SKYDOT_BETHCONV}")
@@ -196,4 +202,85 @@ if(SKYDOT_TESTPACK)
         PASS_REGULAR_EXPRESSION "loaded .*lever pulled 2.*0x00000301 enabled by script"
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;Papyrus:;cannot load"
         TIMEOUT 120)
+endif()
+
+# Activator regression runs on the real SE pack (GAMEPLAY-PLAN step 1). Each
+# stands near what it activates (animators stop beyond 250 m from the camera,
+# positions are game units) with time stopped, and checks the behaviour graph
+# and script log lines the original game's data must produce.
+if(SKYDOT_SSE_PACK)
+    function(skydot_sse_test name)
+        cmake_parse_arguments(T "" "PASS;FAIL;FIXTURES_SETUP;FIXTURES_REQUIRED" "ARGS" ${ARGN})
+        add_test(NAME ${name}
+                 COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://viewer/cell_viewer.tscn --
+                         --pack "${SKYDOT_SSE_PACK}" --walk off --no-input --time 13.13 --time-scale 0
+                         ${T_ARGS})
+        set(_fixtures godot_scan ${T_FIXTURES_REQUIRED})
+        set(_fail "SCRIPT ERROR;SHADER ERROR")
+        if(T_FAIL)
+            list(APPEND _fail "${T_FAIL}")
+        endif()
+        set_tests_properties(${name} PROPERTIES
+            LABELS sse
+            FIXTURES_REQUIRED "${_fixtures}"
+            PASS_REGULAR_EXPRESSION "${T_PASS}"
+            FAIL_REGULAR_EXPRESSION "${_fail}"
+            TIMEOUT 180)
+        if(T_FIXTURES_SETUP)
+            set_tests_properties(${name} PROPERTIES FIXTURES_SETUP ${T_FIXTURES_SETUP})
+        endif()
+    endfunction()
+
+    # Bleak Falls Barrow: the pillar lever sits at the pillars' room.
+    set(_pillars --cell BleakFallsBarrow01 --at 5006.8,-893.3,-636 --look 197.1,38.5
+                 --activate-wait 200 --quit-after 900)
+    set(_solution 0xAA8CB,0xAA8CB,0xAA8CC,0xAA8CC,0xAA8CD)
+    skydot_sse_test(sse_pillars_solved
+        ARGS ${_pillars} --activate ${_solution},0xAA8C3
+        PASS "0x000AA8C3 behaviour: LeverPushIdle -> LeverPush on LeverPushStart.*0x0003B9F1 behaviour: Closed -> Open on open.*0x0003B9F1 behaviour: Open -> Opened on Opening"
+        FAIL "projectile 0x000141EF")
+    skydot_sse_test(sse_pillars_unsolved
+        ARGS ${_pillars} --activate 0xAA8C3
+        PASS "projectile 0x000141EF from"
+        FAIL "0x0003B9F1 behaviour: Closed -> Open")
+    # The other lever of the room opens the same gate.
+    skydot_sse_test(sse_lever_gate
+        ARGS --cell BleakFallsBarrow01 --at 5238,-1500,-600 --look 0,0
+             --activate 0x6A9E2 --activate-wait 300 --quit-after 400
+        PASS "0x0006A9E2 behaviour: Pulled -> PulledToPushed on FullPush.*0x0003B9F1 behaviour: Closed -> Open on open.*0x0003B9F1 behaviour: Open -> Opened on Opening")
+    skydot_sse_test(sse_pull_chain_gate
+        ARGS --cell E3demoBleakFallsBarrow --at 2912,-8114,-2350 --look 0,0
+             --activate 0x8473B --activate-wait 300 --quit-after 600
+        PASS "0x0008473B behaviour: Up -> PlayDown on Pull.*0x0007CA50 behaviour: Closed -> Open on open")
+    # The blades swing on over and over after the first pull and stop at the second.
+    skydot_sse_test(sse_pull_chain_blades
+        ARGS --cell BleakFallsBarrow01 --at 6000,-7200,-2130 --look 0,0
+             --activate 0xFDA45,0xFDA45 --activate-wait 400 --quit-after 400
+        PASS "0x000FDA45 behaviour: Up -> PlayDown on Pull.*0x0003AC33 behaviour: State00 -> State02 on Single.*0x0003AC33 behaviour: State00 -> State02 on Single.*0x000FDA45 behaviour: Up -> PlayDown on Pull.*0x0003AC33 behaviour: State02 -> State00 on Reset")
+    # The Hall of Stories door: three wheels turned to the solution, then the
+    # keyhole, which wants the Golden Claw (0x39647).
+    set(_claw --cell BleakFallsBarrow02 --at 500,-320,-150 --look 4.712,-10
+              --activate 0x4E2BA,0x4E2BA,0x4E2BB,0x4E2BB,0x4E2BC,0x4E2BC,0x4E2B9
+              --activate-wait 600 --quit-after 600)
+    skydot_sse_test(sse_claw_door
+        ARGS ${_claw} --give 0x39647
+        PASS "0x0004E2B9 behaviour: Activated -> Open on Open"
+        FAIL "You need the Golden Claw")
+    skydot_sse_test(sse_claw_door_no_claw
+        ARGS ${_claw}
+        PASS "You need the Golden Claw"
+        FAIL "0x0004E2B9 behaviour: Activated -> Open on Open")
+    # An opened gate stays open through a save and a load, with no replay.
+    set(_gate_save "${CMAKE_CURRENT_BINARY_DIR}/scratch/sse_gate.skydot")
+    skydot_sse_test(sse_gate_save
+        ARGS ${_pillars} --activate ${_solution},0xAA8C3 --save-to "${_gate_save}"
+        FIXTURES_SETUP sse_gate_saved
+        PASS "0x0003B9F1 behaviour: Closed -> Open on open.*saved "
+        FAIL "projectile 0x000141EF")
+    skydot_sse_test(sse_gate_load
+        ARGS --cell BleakFallsBarrow01 --at 5006.8,-893.3,-636 --look 197.1,38.5
+             --load "${_gate_save}" --quit-after 100
+        FIXTURES_REQUIRED sse_gate_saved
+        PASS "0x0003B9F1 graph restored: Opened.*loaded "
+        FAIL "0x0003B9F1 behaviour: Closed -> Open;cannot load")
 endif()
