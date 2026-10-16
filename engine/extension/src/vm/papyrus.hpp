@@ -24,6 +24,7 @@
 
 #include "assets/pack.hpp"
 #include "save/save_binding.hpp"
+#include "session/clock.hpp"
 #include "vm/ref_states.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
@@ -68,6 +69,11 @@ public:
     static constexpr std::int64_t ALIAS_HANDLE_BASE = 0xFF800000;
 
     SkydotPapyrus();
+
+    /// The game clock (SkydotClock): the one source of game time. Utility.
+    /// GetCurrentGameTime reads it, and so do the GameHour, GameDaysPassed and
+    /// TimeScale globals; SetValue on them moves it.
+    void attach_clock(const godot::Ref<SkydotClock>& clock) { clock_ = clock; }
 
     /// Load scripts from `pack` and look references up in `world`.
     godot::Error setup(const godot::Ref<SkydotPack>& pack, const godot::Ref<SkydotWorld>& world);
@@ -334,6 +340,10 @@ private:
     /// The next playback instance Sound.Play hands out (1, 2, ...).
     std::int64_t next_sound_instance_ = 1;
     godot::Ref<SkydotPack> pack_;
+    godot::Ref<SkydotClock> clock_;
+    /// Which of the clock's values a global form is (found by editor id), if any.
+    enum class ClockGlobal { none, hour, days_passed, time_scale };
+    ClockGlobal clock_global(std::uint32_t global) const;
     godot::Ref<SkydotWorld> world_;
     std::set<std::uint32_t> attached_;
     /// Cells whose references were handed to the VM (never unloaded: nothing

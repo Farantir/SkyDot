@@ -10,6 +10,7 @@
 
 #include "ai/ai.hpp"
 #include "render/weather.hpp"
+#include "save/save_binding.hpp"
 #include "session/game_time.hpp"
 
 #include <godot_cpp/classes/ref_counted.hpp>
@@ -57,6 +58,27 @@ public:
     /// nothing keeps the time (inside, with the AI off).
     godot::String shift(double hours);
 
+    /// Days passed since the start; the fraction is the time of day. What
+    /// Utility.GetCurrentGameTime and the GameDaysPassed global read.
+    double get_game_days() const;
+    /// Set the time to `days` passed (GameDaysPassed's SetValue), wherever it
+    /// runs now. `set_hour` keeps the day and sets the hour (GameHour).
+    void set_game_days(double days);
+    void set_hour(double hour);
+
+    /// The clock's part of a save (the CLCK section): days passed, the speed
+    /// and the weather. `prepare_load` decodes into a pending state and
+    /// touches nothing; `commit_load` applies it: the time to whoever runs it
+    /// now, the weather to the one running or, for the one started next
+    /// (`take_saved_weather`), when a place is entered.
+    void write_section(const godot::Ref<SkydotSaveWriter>& writer) const;
+    godot::Error prepare_load(const godot::Ref<SkydotSaveReader>& reader);
+    godot::Error commit_load();
+    void cancel_load() { pending_ = false; }
+    godot::String get_last_error() const { return error_; }
+    /// The weather a save named, once: 0 if none is waiting.
+    std::int64_t take_saved_weather();
+
     /// The time for a shot's JSON: hour, day and, outside, the speed.
     godot::Dictionary describe() const;
 
@@ -67,6 +89,12 @@ private:
     session::GameTime time_; ///< The time kept while inside, from the AI.
     godot::Ref<SkydotAi> ai_; ///< Null with the AI off.
     std::uint64_t weather_ = 0; ///< Instance id of the weather; 0 inside.
+    std::int64_t saved_weather_ = 0; ///< A loaded save's weather, for the next one started.
+    bool pending_ = false;
+    double pending_days_ = 0.0;
+    double pending_scale_ = 0.0;
+    std::int64_t pending_weather_ = 0;
+    godot::String error_;
 };
 
 } // namespace skydot

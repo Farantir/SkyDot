@@ -227,6 +227,9 @@ func _start_weather(weather: int) -> bool:
 	if weather != 0:
 		node.set_weather(weather, 0.0)
 	_clock.bind_weather(node)
+	var saved := _clock.take_saved_weather()  # a loaded save's weather
+	if saved != 0 and weather == 0:
+		node.set_weather(saved, 0.0)
 	node.weather_changed.connect(func(_id: int) -> void:
 		message.emit("weather: " + str(node.get_state()["editor_id"])))
 	print("weather: ", node.get_state()["editor_id"])

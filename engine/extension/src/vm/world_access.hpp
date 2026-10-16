@@ -48,6 +48,12 @@ public:
     [[nodiscard]] virtual bool message(std::uint32_t id, MessageText& out) const = 0;
     /// The player's level; 1 until the player has stats.
     [[nodiscard]] virtual std::int32_t player_level() const = 0;
+    /// Days passed since the game started; the fraction is the time of day
+    /// (Utility.GetCurrentGameTime, the GameDaysPassed global). The one game
+    /// clock, not the VM's run time.
+    [[nodiscard]] virtual double game_days() const = 0;
+    /// Game seconds per real second (the TimeScale global); 0 when time stands.
+    [[nodiscard]] virtual double time_scale() const = 0;
 };
 
 } // namespace skydot::vm

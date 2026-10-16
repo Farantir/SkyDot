@@ -324,7 +324,30 @@ std::int64_t SkydotPapyrus::get_alias_ref(std::int64_t quest, std::int64_t alias
     return fill != alias_fill_.end() ? fill->second : 0;
 }
 
+SkydotPapyrus::ClockGlobal SkydotPapyrus::clock_global(std::uint32_t global) const {
+    if (clock_.is_null() || world_.is_null()) {
+        return ClockGlobal::none;
+    }
+    const String id = String(world_->get_global(global).get("editor_id", String())).to_lower();
+    if (id == "gamehour") {
+        return ClockGlobal::hour;
+    }
+    if (id == "gamedayspassed") {
+        return ClockGlobal::days_passed;
+    }
+    if (id == "timescale") {
+        return ClockGlobal::time_scale;
+    }
+    return ClockGlobal::none;
+}
+
 double SkydotPapyrus::get_global_value(std::int64_t global) const {
+    switch (clock_global(static_cast<std::uint32_t>(global))) {
+    case ClockGlobal::hour: return clock_->get_hour();
+    case ClockGlobal::days_passed: return clock_->get_game_days();
+    case ClockGlobal::time_scale: return clock_->get_time_scale();
+    case ClockGlobal::none: break;
+    }
     if (const auto it = globals_.find(static_cast<std::uint32_t>(global)); it != globals_.end()) {
         return it->second;
     }
@@ -332,6 +355,12 @@ double SkydotPapyrus::get_global_value(std::int64_t global) const {
 }
 
 void SkydotPapyrus::set_global_value(std::int64_t global, double value) {
+    switch (clock_global(static_cast<std::uint32_t>(global))) {
+    case ClockGlobal::hour: clock_->set_hour(value); return;
+    case ClockGlobal::days_passed: clock_->set_game_days(value); return;
+    case ClockGlobal::time_scale: clock_->set_time_scale(value); return;
+    case ClockGlobal::none: break;
+    }
     globals_[static_cast<std::uint32_t>(global)] = value;
 }
 

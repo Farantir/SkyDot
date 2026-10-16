@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Utility natives: Wait, time and random numbers.
+// Utility natives: Wait, real time and random numbers (GetCurrentGameTime reads
+// the game clock and is in natives_world.cpp).
 #include "vm/natives_common.hpp"
 #include "vm/papyrus.hpp"
 #include <algorithm>
@@ -21,10 +22,6 @@ void SkydotPapyrus::bind_utility_natives() {
     });
     v.bind("Utility", "GetCurrentRealTime", [result](NativeCall& c) {
         return result(Value::floating(static_cast<float>(c.vm.time())));
-    });
-    // Days since the start, at the default timescale.
-    v.bind("Utility", "GetCurrentGameTime", [result](NativeCall& c) {
-        return result(Value::floating(static_cast<float>(c.vm.time() * k_timescale / 86400.0)));
     });
     // Both bounds inclusive, as documented for RandomInt.
     v.bind("Utility", "RandomInt", [arg, result](NativeCall& c) {

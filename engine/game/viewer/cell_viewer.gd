@@ -190,6 +190,7 @@ func _open_world() -> bool:
 		return false
 	_papyrus = SkydotPapyrus.new()
 	_papyrus.setup(_pack, _world)
+	_papyrus.attach_clock(_clock)
 	_world.skyrim_materials = _settings.materials
 	_world.effects = _settings.effects
 	_world.grass = _settings.grass
@@ -250,7 +251,7 @@ func _create_components() -> void:
 	_bridge.activations_finished.connect(func() -> void:  # let scripts run first
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_bridge.failed.connect(_fail)
-	_saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge)
+	_saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge, _clock)
 	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
 	if _settings.has_screenshot:
 		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"

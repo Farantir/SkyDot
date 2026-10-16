@@ -41,6 +41,8 @@ struct FakeWorld final : skydot::vm::WorldAccess {
     }
     bool message(std::uint32_t, skydot::vm::MessageText&) const override { return false; }
     std::int32_t player_level() const override { return 7; }
+    double game_days() const override { return 3.25; }
+    double time_scale() const override { return 20.0; }
 };
 
 } // namespace
@@ -204,4 +206,19 @@ TEST_CASE("keywords and form lists are bound by the world natives", "[vm][native
         CAPTURE(rig.log);
         CHECK(rig.vm.errors() == 0);
     }
+}
+
+TEST_CASE("GetCurrentGameTime reads the game clock, not the VM's run time", "[vm][natives][time]") {
+    const FakeWorld world;
+    Rig rig;
+    rig.add({.name = "Utility", .functions = {native_function("GetCurrentGameTime", {}, "Float", true)}});
+    skydot::vm::bind_world_natives(rig.vm, world);
+    auto now = global_function("now", {}, {{"t", "Float"}}, "Float");
+    now.add(Op::callstatic, {ident("Utility"), ident("GetCurrentGameTime"), ident("t")})
+        .add(Op::return_, {ident("t")});
+    rig.add(script("Caller", {now}));
+    CHECK(rig.call("caller", "now", {}).f() == 3.25F);
+    rig.vm.update(1000.0); // real time passing changes nothing
+    CHECK(rig.call("caller", "now", {}).f() == 3.25F);
+    CHECK(rig.vm.errors() == 0);
 }

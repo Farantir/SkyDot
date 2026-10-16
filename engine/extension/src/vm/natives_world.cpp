@@ -165,6 +165,10 @@ void bind_world_natives(Vm& vm, const WorldAccess& world) {
     });
 
     // Levelled lists are resolved against the player's level for now.
+    // Days since the game started, from the game clock (not the VM's run time).
+    vm.bind("Utility", "GetCurrentGameTime", [&world](NativeCall&) {
+        return NativeResult{.value = Value::floating(static_cast<float>(world.game_days()))};
+    });
     vm.bind("ObjectReference", "CalculateEncounterLevel", [&world](NativeCall&) {
         return NativeResult{.value = Value::integer(world.player_level()), .wait = -1.0};
     });

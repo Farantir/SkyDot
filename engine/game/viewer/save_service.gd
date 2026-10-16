@@ -13,15 +13,17 @@ var _place: Place
 var _streamer: SkydotStreamer
 var _rig: PlayerRig
 var _bridge: ScriptBridge
+var _clock: SkydotClock
 
 
 func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: PlayerRig,
-		bridge: ScriptBridge) -> void:
+		bridge: ScriptBridge, clock: SkydotClock) -> void:
 	_papyrus = papyrus
 	_place = place
 	_streamer = streamer
 	_rig = rig
 	_bridge = bridge
+	_clock = clock
 
 
 ## Every part of a save writes its own section (save/save_file.hpp,
@@ -32,6 +34,7 @@ func save(path: String) -> bool:
 	_bridge.record_graphs()
 	var writer := SkydotSaveWriter.new()
 	_papyrus.write_sections(writer)
+	_clock.write_section(writer)
 	writer.add_section("PLYR", PLYR_VERSION, _player_section())
 	if writer.write(ProjectSettings.globalize_path(path)) != OK:
 		printerr("cannot save to ", path, ": ", writer.get_error())
@@ -55,8 +58,13 @@ func load_game(path: String) -> bool:
 	if _papyrus.prepare_load(reader) != OK:
 		printerr("cannot load ", path, ": ", _papyrus.get_last_error())
 		return false
+	if _clock.prepare_load(reader) != OK:
+		_papyrus.cancel_load()
+		printerr("cannot load ", path, ": ", _clock.get_last_error())
+		return false
 	_bridge.retire_graphs()
 	_papyrus.commit_load()
+	_clock.commit_load()
 	if int(player["world"]) != 0:
 		_place.enter_exterior(int(player["world"]), player["position"], null)
 	else:

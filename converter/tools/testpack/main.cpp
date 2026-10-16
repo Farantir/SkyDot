@@ -608,6 +608,21 @@ std::vector<std::byte> build_plugin() {
 
     // ---- a global and a quest whose alias is the lever ----
     ByteWriter globs;
+    // The game clock's globals (Skyrim.esm 0x38 to 0x3A): scripts read the
+    // time through them, and the engine answers from its clock.
+    for (const auto& [form, name] : {std::pair{0x0000'0038U, "GameHour"},
+                                     std::pair{0x0000'0039U, "GameDaysPassed"},
+                                     std::pair{0x0000'003AU, "TimeScale"}}) {
+        ByteWriter glob;
+        edid(glob, name);
+        ByteWriter kind;
+        kind.u8('f');
+        bethconv::test::write_field(glob, "FNAM", kind);
+        ByteWriter value;
+        value.f32(0.0F);
+        bethconv::test::write_field(glob, "FLTV", value);
+        bethconv::test::write_record(globs, "GLOB", form, glob.span());
+    }
     {
         ByteWriter glob;
         edid(glob, "TestpackCounter");

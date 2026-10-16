@@ -27,13 +27,16 @@ const LEVER_BASE := 0x104
 const HIDDEN := 0x302  # base 0x110, 180 up
 const INSIDE_DOOR := 0x303  # shares the lock of the outside door
 const OUTSIDE_DOOR := 0x213
+const GAME_HOUR := 0x38
+const GAME_DAYS := 0x39
+const TIME_SCALE := 0x3A
 const SAVE_PATH := "user://game_save_smoke.skydot"
 const BAD_PATH := "user://game_save_smoke_bad.skydot"
 const FOREIGN_PATH := "user://game_save_smoke_foreign.skydot"
 
 ## Bugs of CODE-REVIEW.md that are known to be there: their checks are
 ## expected to fail.
-const KNOWN := ["B5"]
+const KNOWN := ["B5"]  # B5: live sounds are not saved (the clock is)
 
 var failures := 0
 var known_failures := 0
@@ -114,6 +117,7 @@ func _run(pack_dir: String) -> void:
         _finish()
         return
     await _frames(2)
+    _check_clock(14.0)
 
     # ---- the state at save time ------------------------------------------
     var kept := _call("Spawn", [CUBE, CUBE_BASE]) as int  # placed, kept
@@ -175,7 +179,8 @@ func _run(pack_dir: String) -> void:
     var sound_plays := sounds.is_playing(instance)
     print("sound instance %d plays at save time: %s" % [instance, sound_plays])
     expect(not _clock.shift(2.0).is_empty(), "the clock moves")
-    var hour: float = _clock.hour
+    _check_clock(16.0)
+    var hour: float = _clock.get_hour()
     var camera_at: Vector3 = _rig.camera.position
 
     _saves.save(SAVE_PATH)
@@ -240,7 +245,13 @@ func _run(pack_dir: String) -> void:
     expect(_papyrus.get_open_state(INSIDE_DOOR) == open_state, "and open: %d" % _papyrus.get_open_state(INSIDE_DOOR))
     expect(_papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == pulls, "the script's count is back")
     expect(_rig.camera.position.is_equal_approx(camera_at), "the camera is where it was saved")
-    check("B5", _near(_clock.hour, hour), "the time of day is back: %.2f, saved at %.2f" % [_clock.hour, hour])
+    expect(_near(_clock.get_hour(), hour), "B5: the time of day is back: %.2f, saved at %.2f" % [_clock.get_hour(), hour])
+    expect(_near(_papyrus_time(), hour / 24.0), "B4: and scripts read it: %.4f days" % _papyrus_time())
+    # SetValue on GameHour moves the clock, and the sky with it.
+    _call("SetGlobal", [GAME_HOUR, 9.0])
+    _check_clock(9.0)
+    _call("SetGlobal", [TIME_SCALE, 0.0])
+    expect(_clock.get_time_scale() == 0.0, "B4: SetValue on TimeScale stops the clock")
     if sound_plays:
         check("B5", sounds.is_playing(instance), "a sound playing at save time plays after loading")
     else:
@@ -248,10 +259,24 @@ func _run(pack_dir: String) -> void:
     _finish()
 
 
+## What scripts read as the time (Utility.GetCurrentGameTime and the GameHour,
+## GameDaysPassed and TimeScale globals) is the SkydotClock's: one game clock (B4).
+func _check_clock(hour: float) -> void:
+    expect(_near(_clock.get_hour(), hour), "B4: the clock is at %.2f h: %.2f" % [hour, _clock.get_hour()])
+    expect(_near(_papyrus_time(), hour / 24.0), "B4: GetCurrentGameTime is %.4f days: %.4f" % [hour / 24.0, _papyrus_time()])
+    expect(_near(_call("GlobalValue", [GAME_HOUR]) as float, hour), "B4: GameHour is %.2f: %s" % [hour, _call("GlobalValue", [GAME_HOUR])])
+    expect(_near(_call("GlobalValue", [GAME_DAYS]) as float, hour / 24.0), "B4: GameDaysPassed follows the clock")
+    expect(_near(_call("GlobalValue", [TIME_SCALE]) as float, _clock.get_time_scale()), "B4: TimeScale is the clock's")
+
+
+func _papyrus_time() -> float:
+    return _call("GameTime", []) as float
+
+
 ## Put the viewer's parts together as cell_viewer.gd does, minus input.
 func _build(pack_dir: String) -> bool:
     var settings := ViewerSettings.from_arguments(PackedStringArray([
-        "--pack", pack_dir, "--cell", CELL, "--no-input", "--quests", "off",
+        "--pack", pack_dir, "--cell", CELL, "--no-input", "--time", "14", "--quests", "off",
         "--preload-doors", "off"]))
     expect(settings.error.is_empty(), "the options parse: " + settings.error)
     _clock = SkydotClock.new()
@@ -264,6 +289,7 @@ func _build(pack_dir: String) -> bool:
         return false
     _papyrus = SkydotPapyrus.new()
     expect(_papyrus.setup(_pack, _world) == OK, "the VM sets up")
+    _papyrus.attach_clock(_clock)
     _papyrus.error.connect(func(text: String) -> void: _errors.append(text); printerr("vm error: ", text))
     _papyrus.ref_placed.connect(func(ref: int, base: int, _cell: int, position: Vector3, _r: Vector3, _s: float, _d: bool) -> void:
         _placed_log.append([ref, base, position]))
@@ -295,7 +321,7 @@ func _build(pack_dir: String) -> bool:
     _place.built.connect(func(cell: Node3D, cell_id: int) -> void:
         _bridge.scripts_loaded(cell, cell_id)
         _streamer.register_doors(cell))
-    _saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge)
+    _saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge, _clock)
     _bridge.quests_ready = true
     var cell_id := _world.find_cell(CELL)
     expect(cell_id != 0, "the interior exists")

@@ -50,7 +50,4 @@ constexpr std::uint8_t k_failed = 0x4;
 constexpr std::int64_t k_open = 1;
 constexpr std::int64_t k_closed = 3;
 
-/// Game hours per real hour (the timescale GMST's default).
-constexpr double k_timescale = 20.0;
-
 } // namespace skydot::natives

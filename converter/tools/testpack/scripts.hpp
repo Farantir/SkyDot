@@ -132,6 +132,7 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
     out.emplace_back("scripts/utility.pex",
                      one_state("Utility", "",
                                {native("Wait", "None", {{"afSeconds", "Float"}}, true),
+                                native("GetCurrentGameTime", "Float", {}, true),
                                 native("RandomInt", "Int", {{"aiMin", "Int"}, {"aiMax", "Int"}}, true)}));
 
     // Scriptname TestpackLeverScript extends ObjectReference
@@ -210,6 +211,9 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
     // Function Remove(Int ref) global                    ; Delete
     // Function MoveTo(Int ref, Int target) global       ; Reset(target)
     // Function Hide(Int ref) global                      ; Disable
+    // Float Function GameTime() global                   ; Utility.GetCurrentGameTime
+    // Float Function GlobalValue(Int global) global      ; GlobalVariable.GetValue
+    // Function SetGlobal(Int global, Float value) global ; GlobalVariable.SetValue
     {
         const auto get_form = [](const char* from, const char* to) {
             return ins(op_callstatic, {ident("Game"), ident("GetForm"), ident(to)}, {ident(from)});
@@ -241,6 +245,22 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                               get_form("target", "::g"), ins(op_cast, {ident("::t"), ident("::g")}),
                               ins(op_callmethod, {ident("Reset"), ident("::o"), ident("::NoneVar")},
                                   {ident("::t")})},
+                             true),
+                    function("GameTime", "Float", {}, {{"::t", "Float"}},
+                             {ins(op_callstatic, {ident("Utility"), ident("GetCurrentGameTime"), ident("::t")}),
+                              ins(op_return, {ident("::t")})},
+                             true),
+                    function("GlobalValue", "Float", {{"global", "Int"}},
+                             {{"::f", "Form"}, {"::g", "GlobalVariable"}, {"::v", "Float"}},
+                             {get_form("global", "::f"), ins(op_cast, {ident("::g"), ident("::f")}),
+                              ins(op_callmethod, {ident("GetValue"), ident("::g"), ident("::v")}),
+                              ins(op_return, {ident("::v")})},
+                             true),
+                    function("SetGlobal", "None", {{"global", "Int"}, {"value", "Float"}},
+                             {{"::f", "Form"}, {"::g", "GlobalVariable"}, {"::NoneVar", "None"}},
+                             {get_form("global", "::f"), ins(op_cast, {ident("::g"), ident("::f")}),
+                              ins(op_callmethod, {ident("SetValue"), ident("::g"), ident("::NoneVar")},
+                                  {ident("value")})},
                              true),
                     function("Hide", "None", {{"ref", "Int"}},
                              {{"::f", "Form"}, {"::o", "ObjectReference"}, {"::NoneVar", "None"}},

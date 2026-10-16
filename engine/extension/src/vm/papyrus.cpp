@@ -53,6 +53,7 @@ using natives::k_closed;
 void SkydotPapyrus::_bind_methods() {
     using godot::D_METHOD;
     godot::ClassDB::bind_method(D_METHOD("setup", "pack", "world"), &SkydotPapyrus::setup);
+    godot::ClassDB::bind_method(D_METHOD("attach_clock", "clock"), &SkydotPapyrus::attach_clock);
     godot::ClassDB::bind_method(D_METHOD("attach", "cell", "ref"), &SkydotPapyrus::attach);
     godot::ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotPapyrus::attach_built);
     godot::ClassDB::bind_method(D_METHOD("attach_cell", "cell"), &SkydotPapyrus::attach_cell);
@@ -424,6 +425,12 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         return true;
     }
     std::int32_t player_level() const override { return 1; }
+    double game_days() const override {
+        return owner_.clock_.is_valid() ? owner_.clock_->get_game_days() : 0.0;
+    }
+    double time_scale() const override {
+        return owner_.clock_.is_valid() ? owner_.clock_->get_time_scale() : 0.0;
+    }
 
 private:
     const SkydotPapyrus& owner_;
