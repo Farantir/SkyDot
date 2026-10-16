@@ -7,6 +7,8 @@
 #       --pack DIR --cell EDITOR_ID [--screenshot out.png] [--materials off]
 #   godot4.7 --path game res://viewer/cell_viewer.tscn -- \
 #       --pack DIR --world Tamriel --at X,Y,Z [--target X,Y,Z] [--radius 2]
+#   ./skydot.x86_64 -- --pack DIR ...   (an exported build: the pack tool, its
+#       main scene, hands over to this one when it gets --pack)
 #
 # Exteriors keep the cells within --radius of the camera's cell loaded, nearest
 # first, and drop those further than one more. Models and textures load from

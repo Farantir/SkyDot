@@ -3,6 +3,9 @@
 # The pack tool: converts a Skyrim install (optionally with a Mod Organizer 2
 # profile) into a pack and opens packs in the viewer. It is the project's main
 # scene; the viewer stays its own scene and runs as a separate process.
+# Started with `-- --pack DIR ...` it hands over to the viewer instead: exported
+# builds refuse a scene path on the command line, so this is how the viewer
+# starts there (launch_viewer, README "How to play").
 #
 #   Convert  game, mods, output folder and settings; progress and the log
 #   Packs    packs found on this machine, their size and problems; update,
@@ -34,6 +37,9 @@ var _dialog_callback := Callable()
 
 
 func _ready() -> void:
+	if "--pack" in OS.get_cmdline_user_args():
+		get_tree().change_scene_to_file.call_deferred(VIEWER_SCENE)
+		return
 	get_window().title = "SkyDot pack tool"
 	get_window().min_size = Vector2i(900, 600)
 	settings.load(settings_path)
@@ -198,9 +204,9 @@ func _on_dialog_path(path: String) -> void:
 func launch_viewer(pack: String, args: PackedStringArray) -> int:
 	var command := PackedStringArray()
 	# An exported build is the game itself; the editor binary needs the project.
+	# No scene path: the main scene sees --pack and hands over (_ready).
 	if not OS.has_feature("template"):
 		command.append_array(["--path", ProjectSettings.globalize_path("res://")])
-	command.append(VIEWER_SCENE)
 	command.append("--")
 	command.append_array(["--pack", pack])
 	command.append_array(args)
