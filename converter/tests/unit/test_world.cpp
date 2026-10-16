@@ -1168,7 +1168,9 @@ void make_actors(const TempDir& dir) {
     field_text(race, "EDID", "TestRace");
     field_u32(race, "WNAM", 0x0100'0E10);
     ByteWriter data;
-    for (int i = 0; i < 16; ++i) {
+    data.u8(7); // skill boost: One-handed +10
+    data.u8(10);
+    for (int i = 2; i < 16; ++i) {
         data.u8(0);
     }
     data.f32(1.0F);
@@ -1176,7 +1178,17 @@ void make_actors(const TempDir& dir) {
     data.f32(1.0F);
     data.f32(1.0F);
     data.u32(1);
-    for (int i = 36; i < 164; ++i) {
+    data.f32(50.0F); // 36: starting health, magicka, stamina
+    data.f32(60.0F);
+    data.f32(70.0F);
+    data.f32(300.0F); // 48: carry weight
+    for (int i = 52; i < 84; ++i) {
+        data.u8(0);
+    }
+    data.f32(0.7F); // 84: regeneration
+    data.f32(3.0F);
+    data.f32(5.0F);
+    for (int i = 96; i < 164; ++i) {
         data.u8(0);
     }
     bethconv::test::write_field(race, "DATA", data);
@@ -1305,11 +1317,40 @@ void make_actors(const TempDir& dir) {
     ByteWriter npc;
     field_text(npc, "EDID", "TestNpc");
     ByteWriter acbs;
-    acbs.u32(0x1); // female
-    for (int i = 0; i < 10; ++i) {
-        acbs.u16(0);
-    }
+    acbs.u32(0x81); // female, PC level mult
+    acbs.u16(static_cast<std::uint16_t>(-20)); // magicka offset
+    acbs.u16(30);                              // stamina offset
+    acbs.u16(1000);                            // level
+    acbs.u16(5);                               // calc min
+    acbs.u16(50);                              // calc max
+    acbs.u16(110);                             // speed
+    acbs.u16(0);
+    acbs.u16(0);
+    acbs.u16(static_cast<std::uint16_t>(-5)); // health offset
+    acbs.u16(0);
     bethconv::test::write_field(npc, "ACBS", acbs);
+    ByteWriter aidt;
+    for (std::uint8_t v = 1; v <= 6; ++v) {
+        aidt.u8(v);
+    }
+    for (int i = 6; i < 20; ++i) {
+        aidt.u8(0);
+    }
+    bethconv::test::write_field(npc, "AIDT", aidt);
+    ByteWriter dnam;
+    for (int i = 0; i < 18; ++i) {
+        dnam.u8(static_cast<std::uint8_t>(15 + i));
+    }
+    for (int i = 0; i < 18; ++i) {
+        dnam.u8(static_cast<std::uint8_t>(i));
+    }
+    dnam.u16(40);
+    dnam.u16(41);
+    dnam.u16(42);
+    for (int i = 0; i < 13; ++i) {
+        dnam.u8(0);
+    }
+    bethconv::test::write_field(npc, "DNAM", dnam);
     field_u32(npc, "RNAM", 0x0100'0E00);
     field_u32(npc, "DOFT", 0x0100'0E20);
     ByteWriter height;
@@ -1408,6 +1449,8 @@ void make_actors(const TempDir& dir) {
     ByteWriter keyed;
     field_text(keyed, "EDID", "TestKeyed");
     field_text(keyed, "MODL", "Test\\Keyed.nif");
+    field_text(keyed, "FULL", "Keyed Thing");
+    field_text(keyed, "RNAM", "Pull");
     field_u32(keyed, "KSIZ", 2);
     ByteWriter kwda;
     kwda.u32(0x0100'0E80);
@@ -1509,6 +1552,21 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     REQUIRE(npc.has_value());
     CHECK(npc->editor_id == "TestNpc");
     CHECK(skydot::formats::has_flag(npc->flags, pack::wfb::NpcFlags::female));
+    CHECK(skydot::formats::has_flag(npc->flags, pack::wfb::NpcFlags::pc_level_mult));
+    CHECK(npc->health_offset == -5);
+    CHECK(npc->magicka_offset == -20);
+    CHECK(npc->stamina_offset == 30);
+    CHECK(npc->level == 1000);
+    CHECK(npc->calc_min_level == 5);
+    CHECK(npc->calc_max_level == 50);
+    CHECK(npc->speed_multiplier == 110);
+    CHECK((npc->health == 40 && npc->magicka == 41 && npc->stamina == 42));
+    REQUIRE(npc->skill_values.size() == 18);
+    REQUIRE(npc->skill_offsets.size() == 18);
+    CHECK(npc->skill_values[17] == 32);
+    CHECK(npc->skill_offsets[3] == 3);
+    CHECK((npc->aggression == 1 && npc->confidence == 2 && npc->energy == 3));
+    CHECK((npc->morality == 4 && npc->mood == 5 && npc->assistance == 6));
     CHECK(npc->race == 0x0200'0E00);
     CHECK(npc->default_outfit == 0x0200'0E20);
     CHECK(npc->height == 1.05F);
@@ -1543,6 +1601,8 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     const auto keyed = file->base(0x0200'0E81);
     REQUIRE(keyed.has_value());
     CHECK(keyed->keywords == std::vector<std::uint32_t>{0x0200'0E80, 0x0000'0901});
+    CHECK(keyed->name == "Keyed Thing");
+    CHECK(keyed->activate_text == "Pull");
     const auto flst_out = file->form_list(0x0200'0E50);
     REQUIRE(flst_out.has_value());
     CHECK(flst_out->editor_id == "TestDefaultPackages");
@@ -1613,6 +1673,11 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(race->skeletons.at(1) == "meshes/actors/character/character assets female/skeleton_female.nif");
     CHECK(race->behaviours.at(0) == "meshes/actors/character/defaultmale.hkx");
     CHECK(race->heights.at(1) == 0.95F);
+    REQUIRE(race->skill_boosts.size() == 14);
+    CHECK((race->skill_boosts[0] == 7 && race->skill_boosts[1] == 10));
+    CHECK((race->start_health == 50.0F && race->start_magicka == 60.0F && race->start_stamina == 70.0F));
+    CHECK(race->carry_weight == 300.0F);
+    CHECK((race->health_regen == 0.7F && race->magicka_regen == 3.0F && race->stamina_regen == 5.0F));
 
     const auto addon = file->armor_addon(0x0200'0E11);
     REQUIRE(addon.has_value());

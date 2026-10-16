@@ -162,7 +162,8 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
 /// Any other type: keep it as a base if it has a model or scripts. ARMO's
 /// MODL is an armature FormID, not a path; its world model is MOD2 (male)
 /// or MOD4 (female). Source: UESP, ARMO record.
-void BaseCollector::collect_generic(const record::MergedRecord& merged, io::SpanReader& data) {
+void BaseCollector::collect_generic(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
     const bool armor = merged.type == FourCC{"ARMO"};
     const bool door = merged.type == FourCC{"DOOR"};
     const bool scripted = !has_fragments(merged.type);
@@ -179,6 +180,10 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     record::KeywordList keywords;
     std::optional<io::ParseError> keyword_failure;
     record::Destruction destruction;
+    record::LString name;
+    record::LString activate_text;
+    const bool has_activate_text = merged.type == FourCC{"ACTI"} || merged.type == FourCC{"FLOR"};
+    std::optional<io::ParseError> text_failure;
     const auto walked = record::for_each_field(
         data, [&](const record::FieldHeader& field, io::SpanReader& body) {
             if (field.type == FourCC{"DNAM"} && stat && body.remaining() >= 8) {
@@ -188,6 +193,18 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 editor_id = std::string(body.zstring().value_or(""));
             } else if (field.type == FourCC{"MODL"} && modl.empty() && !armor) {
                 modl = std::string(body.zstring().value_or(""));
+            } else if (field.type == FourCC{"FULL"} && name.empty()) {
+                if (auto read = record::read_lstring(body, form_ctx, merged.type, field.type)) {
+                    name = std::move(*read);
+                } else {
+                    text_failure = read.error();
+                }
+            } else if (field.type == FourCC{"RNAM"} && has_activate_text) {
+                if (auto read = record::read_lstring(body, form_ctx, merged.type, field.type)) {
+                    activate_text = std::move(*read);
+                } else {
+                    text_failure = read.error();
+                }
             } else if (field.type == FourCC{"MODS"} && mods.empty()) {
                 if (const auto raw = body.bytes(body.remaining())) {
                     mods.assign(raw->begin(), raw->end());
@@ -210,7 +227,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
                 }
             }
         });
-    if (!walked || keyword_failure) {
+    if (!walked || keyword_failure || text_failure) {
         ++shared_.stats().parse_errors;
         return;
     }
@@ -229,6 +246,8 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
         keep_alternates(merged, mods);
     }
     out.flags = flags;
+    out.name = name.text;
+    out.activate_text = activate_text.text;
     out.keywords = shared_.global_all(merged, keywords.keywords, failed);
     if (!destruction.empty()) {
         auto dest = std::make_unique<wfb::DestructionT>();

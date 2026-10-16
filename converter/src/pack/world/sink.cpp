@@ -77,7 +77,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         {
             io::SpanReader copy = data;
             bases_.collect(merged, copy, form_ctx);
-            bases_.collect_generic(merged, data);
+            bases_.collect_generic(merged, data, form_ctx);
         }
         break;
     case FourCC{"NPC_"}.value:
@@ -86,11 +86,11 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         // These are bases too (placed armor, scripted NPCs); read twice.
         io::SpanReader copy = data;
         actors_.collect(merged, copy, form_ctx);
-        bases_.collect_generic(merged, data);
+        bases_.collect_generic(merged, data, form_ctx);
         break;
     }
     default:
-        bases_.collect_generic(merged, data);
+        bases_.collect_generic(merged, data, form_ctx);
         break;
     }
 }

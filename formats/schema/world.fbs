@@ -400,6 +400,11 @@ table Base {
     keywords: [uint32];
     /// DEST with its stages (format 23); absent if the record has none.
     destruction: Destruction;
+    /// FULL (format 24): the display name, localized; empty if none.
+    name: string;
+    /// RNAM of ACTI and FLOR (format 24): the activation verb that replaces
+    /// the default ("Open", "Search"...); empty if none.
+    activate_text: string;
 }
 
 /// DEST, DSTD and DMDL (format 23). A stage opens when the object's health
@@ -988,6 +993,21 @@ table Race {
     head_parts_female: [uint32];
     /// RNAM: the race whose armor this one wears.
     armor_race: uint32;
+    /// DATA skill boosts (format 24): seven pairs, `skill_boosts` holding
+    /// the actor value index (6 One-handed ... 23 Enchanting, 255 none) and
+    /// then the boost, interleaved: 14 bytes.
+    skill_boosts: [ubyte];
+    /// DATA starting values (format 24): bytes 36, 40, 44.
+    start_health: float;
+    start_magicka: float;
+    start_stamina: float;
+    /// DATA base carry weight (format 24): byte 48.
+    carry_weight: float;
+    /// DATA regeneration per second in percent of the maximum (format 24):
+    /// bytes 84, 88, 92.
+    health_regen: float;
+    magicka_regen: float;
+    stamina_regen: float;
 }
 
 /// ARMO: an item worn. Bit n of `slots` is body slot 30 + n.
@@ -1060,7 +1080,10 @@ struct NpcFaction {
 enum NpcFlags : uint32 (bit_flags) {
     female,
     essential,
-    unique = 5
+    unique = 5,
+    /// The level word is a multiplier (format 24 names it): the actor
+    /// levels with the player.
+    pc_level_mult = 7
 }
 
 /// `Npc.template_flags`: which parts of an actor come from its template
@@ -1106,6 +1129,29 @@ table Npc {
     default_packages: [uint32];
     /// SNAM, in record order (format 9).
     factions: [NpcFaction];
+    /// ACBS (format 24): the offsets are signed. `flags` carries the whole
+    /// ACBS flag word.
+    health_offset: int16;
+    magicka_offset: int16;
+    stamina_offset: int16;
+    calc_min_level: uint16;
+    calc_max_level: uint16;
+    /// Percent; 100 is normal speed.
+    speed_multiplier: uint16;
+    /// DNAM (format 24): the derived stats and the 18 skills (actor value
+    /// 6 + index) with their offsets.
+    health: uint16;
+    magicka: uint16;
+    stamina: uint16;
+    skill_values: [ubyte];
+    skill_offsets: [ubyte];
+    /// AIDT (format 24).
+    aggression: ubyte;
+    confidence: ubyte;
+    energy: ubyte;
+    morality: ubyte;
+    mood: ubyte;
+    assistance: ubyte;
 }
 
 /// The low bits of `Condition.type`.

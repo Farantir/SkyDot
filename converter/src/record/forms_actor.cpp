@@ -302,6 +302,21 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                     take(failure, d.get<float>(), out.weight[1]);
                     take(failure, d.get<std::uint32_t>(), out.flags);
                 }
+                if (!failure && out.data.size() >= 96) {
+                    io::SpanReader d(out.data, "RACE DATA");
+                    for (std::uint8_t& b : out.skill_boosts) {
+                        take(failure, d.get<std::uint8_t>(), b);
+                    }
+                    (void)d.skip(22);
+                    take(failure, d.get<float>(), out.start_health);
+                    take(failure, d.get<float>(), out.start_magicka);
+                    take(failure, d.get<float>(), out.start_stamina);
+                    take(failure, d.get<float>(), out.carry_weight);
+                    (void)d.skip(32);
+                    take(failure, d.get<float>(), out.health_regen);
+                    take(failure, d.get<float>(), out.magicka_regen);
+                    take(failure, d.get<float>(), out.stamina_regen);
+                }
             } else if (read_base_object_field(into, FourCC{"RACE"}, field, body, ctx, failure)) {
                 return true;
             } else {

@@ -129,6 +129,17 @@ struct Race {
     std::array<float, 2> height{1, 1}; ///< male, female
     std::array<float, 2> weight{1, 1};
     std::uint32_t flags{};             ///< DATA flags: 1 playable, …
+    /// DATA byte 0..13: seven (actor value index, boost) pairs. Offsets after
+    /// xEdit's RACE DATA (wbDefinitionsTES5): 36/40/44 starting health,
+    /// magicka, stamina; 48 base carry weight; 84/88/92 their regeneration.
+    std::array<std::uint8_t, 14> skill_boosts{};
+    float start_health{};
+    float start_magicka{};
+    float start_stamina{};
+    float carry_weight{};
+    float health_regen{};
+    float magicka_regen{};
+    float stamina_regen{};
 
     /// Per sex (0 male, 1 female).
     struct Sex {

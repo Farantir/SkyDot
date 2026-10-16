@@ -53,7 +53,8 @@ public:
                  const record::FormContext& form_ctx);
 
     /// Any other type: kept as a base if it has a model or scripts.
-    void collect_generic(const record::MergedRecord& merged, io::SpanReader& data);
+    void collect_generic(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx);
 
     /// The bases, land textures (with their texture set's paths), material
     /// objects, grasses and addon nodes, each in id order, into `world`.

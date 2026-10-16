@@ -102,6 +102,24 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     }
     out.face_model = face_model(shared_.order(), merged);
     out.skin_tone = {npc->skin_red, npc->skin_green, npc->skin_blue};
+    // The ACBS offsets are signed; the record keeps the raw words.
+    out.health_offset = static_cast<std::int16_t>(npc->health_offset);
+    out.magicka_offset = static_cast<std::int16_t>(npc->magicka_offset);
+    out.stamina_offset = static_cast<std::int16_t>(npc->stamina_offset);
+    out.calc_min_level = npc->calc_min_level;
+    out.calc_max_level = npc->calc_max_level;
+    out.speed_multiplier = npc->speed_multiplier;
+    out.health = npc->health;
+    out.magicka = npc->magicka;
+    out.stamina = npc->stamina;
+    out.skill_values.assign(npc->skill_values.begin(), npc->skill_values.end());
+    out.skill_offsets.assign(npc->skill_offsets.begin(), npc->skill_offsets.end());
+    out.aggression = npc->aggression;
+    out.confidence = npc->confidence;
+    out.energy = npc->energy;
+    out.morality = npc->morality;
+    out.mood = npc->mood;
+    out.assistance = npc->assistance;
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -139,6 +157,14 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
     out.weights.assign(race->weight.begin(), race->weight.end());
     out.flags = race->flags;
     out.armor_race = shared_.global(merged, race->armor_race, failed);
+    out.skill_boosts.assign(race->skill_boosts.begin(), race->skill_boosts.end());
+    out.start_health = race->start_health;
+    out.start_magicka = race->start_magicka;
+    out.start_stamina = race->start_stamina;
+    out.carry_weight = race->carry_weight;
+    out.health_regen = race->health_regen;
+    out.magicka_regen = race->magicka_regen;
+    out.stamina_regen = race->stamina_regen;
     if (failed) {
         ++shared_.stats().unresolved;
     }
