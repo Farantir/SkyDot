@@ -24,17 +24,13 @@ namespace {
 constexpr std::int64_t k_stage_disable = 2;
 constexpr std::int64_t k_stage_destroy = 4;
 
-Vector3 vec(const double (&v)[3]) {
-    return Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
-}
-
 } // namespace
 
 Dictionary SkydotPapyrus::placed_info(const vm::PlacedRef& placed) const {
     Dictionary info;
     info["base"] = static_cast<std::int64_t>(placed.base);
-    info["position"] = vec(placed.position);
-    info["rotation"] = vec(placed.rotation);
+    info["position"] = vec3_of(placed.position);
+    info["rotation"] = vec3_of(placed.rotation);
     info["scale"] = placed.scale;
     info["disabled"] = false;
     info["links"] = Array();
@@ -115,7 +111,7 @@ std::int64_t SkydotPapyrus::ref_built(std::int64_t ref) {
 }
 
 Dictionary SkydotPapyrus::destruction_of(std::uint32_t ref) const {
-    const auto base = static_cast<std::uint32_t>(static_cast<std::int64_t>(ref_info(ref).get("base", 0)));
+    const auto base = form_of(ref_info(ref).get("base", 0));
     return base != 0 && world_.is_valid() ? world_->get_destruction(base) : Dictionary();
 }
 

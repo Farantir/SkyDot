@@ -7,7 +7,6 @@
 using skydot::natives::k_completed;
 using skydot::natives::k_displayed;
 using skydot::natives::k_failed;
-using skydot::natives::u32;
 using skydot::natives::utf8;
 using godot::Array;
 using godot::Dictionary;
@@ -146,7 +145,7 @@ void SkydotPapyrus::bind_quest_natives() {
             const Array aliases = quest_info(it->second.first).get("aliases", Array());
             for (std::int64_t i = 0; i < aliases.size(); ++i) {
                 const Dictionary a = aliases[i];
-                if (u32(a["id"]) == it->second.second) {
+                if (form_of(a["id"]) == it->second.second) {
                     return result(Value::string(utf8(a["name"])));
                 }
             }

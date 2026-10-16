@@ -43,10 +43,6 @@ std::string utf8_of(const String& s) {
 
 String godot_of(const std::string& s) { return String::utf8(s.c_str(), static_cast<int>(s.size())); }
 
-Vector3 vec3_of(const double (&v)[3]) {
-    return Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
-}
-
 bool open_section(const save::SaveReader& file, const char* tag, ByteReader& out, std::string& error) {
     const auto* s = file.find(tag);
     if (s == nullptr) {

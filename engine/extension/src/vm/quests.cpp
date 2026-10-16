@@ -21,7 +21,6 @@ namespace {
 using natives::k_completed;
 using natives::k_displayed;
 using natives::k_failed;
-using natives::u32;
 using natives::utf8;
 
 } // namespace
@@ -64,7 +63,7 @@ void SkydotPapyrus::attach_quest_scripts(std::uint32_t quest, bool on_init) {
         const Dictionary alias = aliases[i];
         const Array scripts = alias["scripts"];
         if (!scripts.is_empty()) {
-            const auto handle = alias_handle(quest, u32(alias["id"]));
+            const auto handle = alias_handle(quest, form_of(alias["id"]));
             attach_scripts(handle, scripts, quest);
             handles.push_back(handle);
         }
@@ -84,16 +83,16 @@ void SkydotPapyrus::fill_aliases(std::uint32_t quest) {
     const Array aliases = quest_info(quest)["aliases"];
     for (std::int64_t i = 0; i < aliases.size(); ++i) {
         const Dictionary alias = aliases[i];
-        std::uint32_t fill = u32(alias["forced"]);
+        std::uint32_t fill = form_of(alias["forced"]);
         if (fill == 0 && !static_cast<bool>(alias["location"])) {
-            if (const auto npc = u32(alias["unique_actor"]); npc != 0) {
+            if (const auto npc = form_of(alias["unique_actor"]); npc != 0) {
                 fill = static_cast<std::uint32_t>(world_->find_actor_of(npc));
-            } else if (const auto other = u32(alias["external_quest"]); other != 0) {
+            } else if (const auto other = form_of(alias["external_quest"]); other != 0) {
                 const auto index = static_cast<std::int64_t>(alias["external_alias"]);
                 fill = index >= 0 ? static_cast<std::uint32_t>(get_alias_ref(other, index)) : 0;
             }
         }
-        alias_fill_[alias_handle(quest, u32(alias["id"]))] = fill;
+        alias_fill_[alias_handle(quest, form_of(alias["id"]))] = fill;
     }
 }
 

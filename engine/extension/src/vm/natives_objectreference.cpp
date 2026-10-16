@@ -90,7 +90,7 @@ void SkydotPapyrus::bind_objectreference_natives() {
             const Dictionary link = links[i];
             if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
                 return result(c.vm.object(
-                    static_cast<std::uint32_t>(static_cast<std::int64_t>(link["target"])), "ObjectReference"));
+                    form_of(link["target"]), "ObjectReference"));
             }
         }
         return NativeResult{};

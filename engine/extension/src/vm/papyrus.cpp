@@ -262,12 +262,6 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     return godot::OK;
 }
 
-namespace {
-Vector3 vec3(const double (&v)[3]) {
-    return Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
-}
-} // namespace
-
 // ---- the world as scripts see it ----------------------------------------------
 
 Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
@@ -286,7 +280,7 @@ bool SkydotPapyrus::disabled(std::uint32_t ref, int depth) const {
     }
     const Dictionary info = ref_info(ref);
     // Follow a script-changed enable parent; otherwise the world's initial state.
-    const auto parent = static_cast<std::uint32_t>(static_cast<std::int64_t>(info.get("enable_parent", 0)));
+    const auto parent = form_of(info.get("enable_parent", 0));
     if (parent != 0 && depth < 16 && world_.is_valid() && world_->get_ref_cell(parent) != 0) {
         return disabled(parent, depth + 1) != static_cast<bool>(info.get("enable_opposite", false));
     }
@@ -325,7 +319,7 @@ std::uint32_t SkydotPapyrus::lock_holder(std::uint32_t ref) const {
         return ref;
     }
     const auto other =
-        static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(door).get("destination", 0)));
+        form_of(Dictionary(door).get("destination", 0));
     if (other != 0 && ref_info(other).get("lock", Variant()).get_type() == Variant::DICTIONARY) {
         return other;
     }
@@ -343,14 +337,14 @@ bool SkydotPapyrus::locked(std::uint32_t ref) const {
 
 Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
-        return vec3(it->second.rotation);
+        return vec3_of(it->second.rotation);
     }
     return ref_info(ref).get("rotation", Vector3());
 }
 
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
-        return vec3(it->second.position);
+        return vec3_of(it->second.position);
     }
     if (const auto it = actors_.find(ref); it != actors_.end()) {
         return it->second;
@@ -368,14 +362,14 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
     explicit Access(const SkydotPapyrus& owner) : owner_(owner) {}
 
     std::uint32_t base_form(std::uint32_t ref) const override {
-        return static_cast<std::uint32_t>(static_cast<std::int64_t>(owner_.ref_info(ref).get("base", 0)));
+        return form_of(owner_.ref_info(ref).get("base", 0));
     }
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
         const Array links = owner_.ref_info(ref).get("links", Array());
         for (std::int64_t i = 0; i < links.size(); ++i) {
             const Dictionary link = links[i];
             if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
-                return static_cast<std::uint32_t>(static_cast<std::int64_t>(link["target"]));
+                return form_of(link["target"]);
             }
         }
         return 0;
@@ -392,7 +386,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
             return false;
         }
         // A reference answers for its base; anything else is taken for a base.
-        const auto placed = static_cast<std::uint32_t>(static_cast<std::int64_t>(owner_.ref_info(form).get("base", 0)));
+        const auto placed = form_of(owner_.ref_info(form).get("base", 0));
         const godot::PackedInt64Array keywords = owner_.world_->get_base_keywords(placed != 0 ? placed : form);
         return keywords.has(static_cast<std::int64_t>(keyword));
     }
@@ -500,7 +494,7 @@ vm::Value SkydotPapyrus::to_value(const Variant& v, std::string_view type, std::
     case Variant::DICTIONARY: {
         // A quest alias: {form, alias}; form 0 is the quest whose script this is.
         const Dictionary d = v;
-        auto quest = static_cast<std::uint32_t>(static_cast<std::int64_t>(d.get("form", 0)));
+        auto quest = form_of(d.get("form", 0));
         if (quest == 0) {
             quest = owner_quest;
         }
@@ -616,7 +610,7 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
             }
             const std::int64_t ref = child->get_meta("skydot_ref");
             attach(child->get_meta("skydot_cell"), ref);
-            attached_cells_.insert(static_cast<std::uint32_t>(static_cast<std::int64_t>(child->get_meta("skydot_cell"))));
+            attached_cells_.insert(form_of(child->get_meta("skydot_cell")));
             if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
                 register_phantoms(static_cast<std::uint32_t>(ref),
                                   godot::Object::cast_to<godot::Node3D>(child));
@@ -689,6 +683,7 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
     }
     const String label = String("0x%08X %s (%s)") % Array::make(ref, info["editor_id"], info["type"]);
     out["label"] = label;
+    const std::int64_t who = activator != 0 ? activator : PLAYER_REF;
     ActivationRequest request;
     request.source = static_cast<ActivationSource>(std::clamp<std::int64_t>(source, 0, 2));
     request.parent_activate_only = static_cast<bool>(info.get("parent_activate_only", false));
@@ -714,7 +709,7 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
     // A lever with a behaviour graph activates when the graph says so: the
     // scripts and activate children wait for its ObjectActivated.
     if (activation_waits_for_graph(utf8(String(info["type"])), request.source, graph_raises_activation(form))) {
-        if (!pending_activations_.begin(form, {activator != 0 ? activator : PLAYER_REF, default_only})) {
+        if (!pending_activations_.begin(form, {who, default_only})) {
             out["kind"] = "busy";
             out["note"] = label + String(" is still being used");
             return out;
@@ -725,7 +720,7 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
         out["note"] = label + String(": nothing happens");
         return out;
     }
-    if (!run_activation(form, label, activator, default_only, out)) {
+    if (!run_activation(form, label, who, default_only, out)) {
         return out;
     }
     out["kind"] = "none";
@@ -734,8 +729,8 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
         // Loose items go into the activator's inventory (XCNT is not in the
         // reference info yet: one of them).
         const auto count = static_cast<std::int64_t>(info.get("count", 1));
-        vm_->inventory().add(static_cast<std::uint32_t>(activator != 0 ? activator : PLAYER_REF),
-                             static_cast<std::uint32_t>(static_cast<std::int64_t>(info["base"])), std::max<std::int64_t>(count, 1));
+        vm_->inventory().add(static_cast<std::uint32_t>(who),
+                             form_of(info["base"]), std::max<std::int64_t>(count, 1));
         set_disabled(form, true);
         out["kind"] = "pickup";
         out["note"] = label + String(": picked up");
@@ -761,7 +756,7 @@ Dictionary SkydotPapyrus::activate_ref(std::int64_t ref, std::int64_t activator,
 bool SkydotPapyrus::run_activation(std::uint32_t form, const String& label, std::int64_t activator,
                                    bool default_only, Dictionary& out) {
     if (!default_only) {
-        out["scripts"] = activate(form, activator != 0 ? activator : PLAYER_REF);
+        out["scripts"] = activate(form, activator);
     }
     // A script that blocks activation handles it alone, and its activate
     // children stay quiet.
@@ -777,7 +772,7 @@ bool SkydotPapyrus::run_activation(std::uint32_t form, const String& label, std:
     for (std::int64_t i = 0; i < children.size(); ++i) {
         const Dictionary child = children[i];
         vm_->schedule(static_cast<double>(child.get("delay", 0.0)), "activate",
-                      static_cast<std::uint32_t>(static_cast<std::int64_t>(child["ref"])),
+                      form_of(child["ref"]),
                       form, static_cast<std::uint32_t>(ActivationSource::parent));
     }
     return true;
@@ -843,7 +838,7 @@ void SkydotPapyrus::register_trigger(std::uint32_t ref, const Dictionary& info) 
         return;
     }
     const Dictionary p = primitive;
-    const auto type = static_cast<std::uint32_t>(static_cast<std::int64_t>(p["type"]));
+    const auto type = form_of(p["type"]);
     if (type != k_box && type != k_sphere) {
         return;
     }

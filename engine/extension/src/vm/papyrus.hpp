@@ -23,6 +23,7 @@
 #pragma once
 
 #include "assets/pack.hpp"
+#include "data/godot_values.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
 #include "vm/ref_states.hpp"

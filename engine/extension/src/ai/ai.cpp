@@ -976,7 +976,7 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
         godot::Node* n = stack.back();
         stack.pop_back();
         if (auto* actor = godot::Object::cast_to<SkydotActor>(n); actor != nullptr && actor->has_meta("skydot_ref")) {
-            const auto ref = static_cast<std::uint32_t>(static_cast<std::int64_t>(actor->get_meta("skydot_ref")));
+            const auto ref = form_of(actor->get_meta("skydot_ref"));
             Mind* m = mind(ref);
             if (m == nullptr) {
                 continue;

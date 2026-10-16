@@ -4,6 +4,7 @@
 // system itself is in SkydotPapyrus (vm/quests.cpp).
 #include "world/queries.hpp"
 #include "data/fb_search.hpp"
+#include "data/godot_values.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
 
@@ -31,8 +32,6 @@ String fourcc_text(std::uint32_t v) {
                            0};
     return String(chars);
 }
-
-Vector3 vec(const wfb::Vec3f& v) { return {v.x(), v.y(), v.z()}; }
 
 } // namespace
 
@@ -251,8 +250,8 @@ Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     out["ref"] = static_cast<std::int64_t>(it->ref());
     out["base"] = static_cast<std::int64_t>(it->base());
     out["cell"] = static_cast<std::int64_t>(it->cell());
-    out["position"] = vec(it->position());
-    out["rotation"] = vec(it->rotation());
+    out["position"] = vec3_of(it->position());
+    out["rotation"] = vec3_of(it->rotation());
     out["disabled"] = formats::has_flag(it->flags(), wfb::RefFlags::initially_disabled);
     out["persistent"] = formats::has_flag(it->flags(), wfb::RefFlags::persistent);
     return out;

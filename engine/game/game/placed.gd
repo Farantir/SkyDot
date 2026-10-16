@@ -17,7 +17,7 @@ const EXPLOSION_LIFE_SECONDS := 5.0
 
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
-var _warned := {}
+var _warn := WarnOnce.new("", true)
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus) -> void:
@@ -39,12 +39,12 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 	var explosion := _world.get_explosion(base)
 	var path: String = explosion.get("model", "") if not explosion.is_empty() else _world.get_base(base).get("model", "")
 	if path == "":
-		_warn_once("nomodel%d" % base, "placed 0x%08X (base 0x%08X): the base has no model" % [ref, base])
+		_warn.once("nomodel%d" % base, "placed 0x%08X (base 0x%08X): the base has no model" % [ref, base])
 		_papyrus.ref_built.call_deferred(ref)
 		return
 	var model := _world.build_model(path)
 	if model == null:
-		_warn_once("nobuild" + path, "placed 0x%08X: model %s is not in the pack" % [ref, path])
+		_warn.once("nobuild" + path, "placed 0x%08X: model %s is not in the pack" % [ref, path])
 		return
 	model.transform = SkydotWorld.skyrim_transform(position, rotation, scale)
 	model.visible = not disabled
@@ -99,7 +99,7 @@ func swap_model(ref: int, model_path: String, stage: int) -> void:
 		path = _world.get_base(base).get("model", "")
 	var fresh := _world.build_model(path) if path != "" else null
 	if fresh == null:
-		_warn_once("noswap%d" % ref, "0x%08X: stage model %s is not in the pack" % [ref, path])
+		_warn.once("noswap%d" % ref, "0x%08X: stage model %s is not in the pack" % [ref, path])
 		return
 	fresh.transform = old.transform
 	fresh.visible = old.visible
@@ -110,9 +110,3 @@ func swap_model(ref: int, model_path: String, stage: int) -> void:
 	_world.tag_runtime_ref(ref, old.get_meta("skydot_cell", 0), fresh)
 	print("0x%08X model swapped to stage %d: %s" % [ref, stage, path])
 	old.queue_free()
-
-
-func _warn_once(key: String, text: String) -> void:
-	if not _warned.has(key):
-		_warned[key] = true
-		push_warning(text)

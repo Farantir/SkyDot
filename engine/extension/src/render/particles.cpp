@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/particles.hpp"
 
+#include "data/godot_values.hpp"
+
 #include <godot_cpp/classes/array_mesh.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
@@ -46,17 +48,6 @@ double num(const Dictionary& d, const char* key, double fallback = 0.0) {
     const Variant v = d.get(key, fallback);
     return v.get_type() == Variant::FLOAT || v.get_type() == Variant::INT ? static_cast<double>(v)
                                                                             : fallback;
-}
-
-Vector3 vec3(const Dictionary& d, const char* key, Vector3 fallback = Vector3()) {
-    const Variant v = d.get(key, Variant());
-    if (v.get_type() != Variant::ARRAY || Array(v).size() < 3) {
-        return fallback;
-    }
-    const Array a = v;
-    return Vector3(static_cast<float>(static_cast<double>(a[0])),
-                   static_cast<float>(static_cast<double>(a[1])),
-                   static_cast<float>(static_cast<double>(a[2])));
 }
 
 godot::Color color(const Variant& v, godot::Color fallback = godot::Color(1, 1, 1, 1)) {
@@ -223,7 +214,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
     const double space_scale = world_space ? 1.0 : scale_of(system.basis);
 
     const godot::String kind = e.get("kind", String("box"));
-    const Vector3 size = vec3(e, "size");
+    const Vector3 size = vec3_from(e, "size");
     process->set_shader_parameter("emitter_size", size);
     Transform3D emitter;
     if (em.node != nullptr) {
@@ -278,7 +269,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
         }
         process->set_shader_parameter("point_velocity",
                                       static_cast<std::int64_t>(num(e, "mesh_velocity")));
-        process->set_shader_parameter("point_axis", vec3(e, "mesh_axis", Vector3(0, 0, 1)));
+        process->set_shader_parameter("point_axis", vec3_from(e, "mesh_axis", Vector3(0, 0, 1)));
     } else {
         process->set_shader_parameter("emitter_kind", 0);
         extent = static_cast<double>(size.length()) / 2.0;
@@ -320,7 +311,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
         Transform3D object = g.node != nullptr ? g.node->get_global_transform() : system;
         const double world_scale = scale_of(object.basis);
         const double unit = world_scale / space_scale; // space units per NIF unit
-        Vector3 axis = vec3(g.block, "axis", Vector3(0, 0, 1));
+        Vector3 axis = vec3_from(g.block, "axis", Vector3(0, 0, 1));
         Vector3 world_axis;
         if (static_cast<bool>(g.block.get("world_aligned", false))) {
             // A Z-up world axis, in Godot's Y-up world.
@@ -364,7 +355,7 @@ void SkydotParticles::build_emitter(Emitter& em) {
         double falloff = 0.0;
         if (d != nullptr) {
             object = d->node != nullptr ? d->node->get_global_transform() : system;
-            const Vector3 local = vec3(d->block, "axis", Vector3());
+            const Vector3 local = vec3_from(d->block, "axis", Vector3());
             if (local.length_squared() > 0.0f) {
                 axis = to_space.basis.xform(object.basis.xform(local)).normalized();
             }

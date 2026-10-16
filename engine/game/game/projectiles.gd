@@ -28,7 +28,7 @@ var _world: SkydotWorld
 var _pack: SkydotPack
 var _find_ref: Callable  # reference id -> its built node, or null
 var _live: Array[Dictionary] = []  # node, velocity (m/s), age, travelled (m), range (m), stuck, exclude
-var _warned := {}
+var _warn := WarnOnce.new()
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
@@ -44,16 +44,16 @@ func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
 ## no source in the scene.
 func fire(weapon: int, source: int, ammo: int) -> void:
 	if ammo == 0:
-		_warn_once("noammo%d" % weapon, "0x%08X fires without ammo: no projectile" % weapon)
+		_warn.once("noammo%d" % weapon, "0x%08X fires without ammo: no projectile" % weapon)
 		return
 	var ammo_data := _world.get_ammo(ammo)
 	var proj := _world.get_projectile(ammo_data.get("projectile", 0))
 	if proj.is_empty():
-		_warn_once("noproj%d" % ammo, "ammo 0x%08X has no projectile" % ammo)
+		_warn.once("noproj%d" % ammo, "ammo 0x%08X has no projectile" % ammo)
 		return
 	var node: Node = _find_ref.call(source)
 	if not node is Node3D:
-		_warn_once("nosrc%d" % source, "0x%08X is not built: nothing fires from it" % source)
+		_warn.once("nosrc%d" % source, "0x%08X is not built: nothing fires from it" % source)
 		return
 	var origin := _muzzle(node as Node3D)
 	var model_path: String = proj["model"] if proj["model"] != "" else ammo_data["model"]
@@ -95,7 +95,7 @@ func _muzzle_flash(proj: Dictionary, position: Vector3, forward: Vector3) -> voi
 		return
 	var flash := _world.build_model(path)
 	if flash == null:
-		_warn_once("noflash%s" % path, "muzzle flash %s is not in the pack" % path)
+		_warn.once("noflash%s" % path, "muzzle flash %s is not in the pack" % path)
 		return
 	_cold_start(flash)
 	add_child(flash)
@@ -210,11 +210,3 @@ func _fallback_dart() -> Node3D:
 	box.size = Vector3(0.01, 0.01, 0.1)
 	mesh.mesh = box
 	return mesh
-
-
-func _warn_once(key: String, text: String) -> void:
-	if not _warned.has(key):
-		_warned[key] = true
-		print(text)
-
-

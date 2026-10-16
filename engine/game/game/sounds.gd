@@ -56,7 +56,7 @@ var _models := {}  # SOPM id -> its dictionary
 var listener: Node3D
 var _live := {}  # instance -> {name, player, base_db, user_db, positional, loops, min, max, curve}
 var _next_instance := FIRST_OWN_INSTANCE
-var _warned := {}
+var _warn := WarnOnce.new("sound: ")
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
@@ -76,7 +76,7 @@ func play(sound: int, source: int, instance := 0) -> int:
 	var node: Node = _find_ref.call(source) if source != 0 else null
 	var descriptor := _descriptor_of(sound)
 	if descriptor.is_empty():
-		_warn_once("form%d" % sound, "sound 0x%08X is no sound descriptor or marker" % sound)
+		_warn.once("form%d" % sound, "sound 0x%08X is no sound descriptor or marker" % sound)
 		_fail.call_deferred(instance)
 		return instance
 	_start(descriptor, node, source, instance)
@@ -89,7 +89,7 @@ func play_named(editor_id: String, node: Node, ref: int) -> int:
 	var instance := _new_instance()
 	var id := _descriptor_id(editor_id)
 	if id == 0:
-		_warn_once("name" + editor_id.to_lower(), "no sound descriptor %s" % editor_id)
+		_warn.once("name" + editor_id.to_lower(), "no sound descriptor %s" % editor_id)
 		_fail.call_deferred(instance)
 		return instance
 	_start(_world.get_sound_descriptor(id), node, ref, instance)
@@ -156,7 +156,7 @@ func cell_loaded(cell: Node3D, cell_id: int, ref_nodes: Array) -> void:
 		cell.add_child(anchor)
 		var descriptor := _world.get_sound_descriptor(marker["descriptor"])
 		if descriptor.is_empty():
-			_warn_once("marker%d" % ref["base"], "sound marker %s has no descriptor" % marker["editor_id"])
+			_warn.once("marker%d" % ref["base"], "sound marker %s has no descriptor" % marker["editor_id"])
 			continue
 		if _start(descriptor, anchor, ref["id"], _new_instance()):
 			started += 1
@@ -206,9 +206,9 @@ func _start(descriptor: Dictionary, node: Node, ref: int, instance: int) -> bool
 	var edid: String = descriptor["editor_id"]
 	var files: Array = descriptor["files"]
 	if descriptor["descriptor_type"] != STANDARD:
-		_warn_once("compound" + edid, "sound %s is a compound descriptor: not played" % edid)
+		_warn.once("compound" + edid, "sound %s is a compound descriptor: not played" % edid)
 	elif files.is_empty():
-		_warn_once("nofiles" + edid, "sound %s has no files" % edid)
+		_warn.once("nofiles" + edid, "sound %s has no files" % edid)
 	else:
 		var file: String = files[randi() % files.size()]
 		var loops: bool = int(descriptor["looping"]) & LOOP != 0
@@ -352,11 +352,11 @@ func _stream(vpath: String, loops: bool) -> AudioStreamWAV:
 		var bytes := _pack.get_bytes(vpath)
 		var stream: AudioStreamWAV = null
 		if bytes.is_empty():
-			_warn_once("file" + vpath, "sound file %s is not in the pack" % vpath)
+			_warn.once("file" + vpath, "sound file %s is not in the pack" % vpath)
 		else:
 			stream = AudioStreamWAV.load_from_buffer(_without_trailer(bytes))
 			if stream == null:
-				_warn_once("file" + vpath, "sound file %s cannot be read" % vpath)
+				_warn.once("file" + vpath, "sound file %s cannot be read" % vpath)
 		_streams[vpath] = stream
 	var plain: AudioStreamWAV = _streams[vpath]
 	if plain == null or not loops:
@@ -384,9 +384,3 @@ func _without_trailer(bytes: PackedByteArray) -> PackedByteArray:
 			return out
 		at += 8 + size + (size & 1)
 	return bytes
-
-
-func _warn_once(key: String, text: String) -> void:
-	if not _warned.has(key):
-		_warned[key] = true
-		print("sound: ", text)

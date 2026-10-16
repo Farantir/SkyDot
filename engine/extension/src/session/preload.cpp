@@ -2,6 +2,7 @@
 //
 // SkydotStreamer: building the place behind the nearest load door ahead (see
 // streamer.hpp).
+#include "data/godot_values.hpp"
 #include "session/held_place.hpp"
 #include "session/streamer.hpp"
 
@@ -49,7 +50,7 @@ void SkydotStreamer::register_doors(Node* cell) {
         }
     }
     for (Node* node : refs) {
-        const auto ref = static_cast<std::uint32_t>(static_cast<std::int64_t>(node->get_meta("skydot_ref")));
+        const auto ref = form_of(node->get_meta("skydot_ref"));
         if (world_->data().door_ptr(ref) == nullptr) {
             continue;
         }

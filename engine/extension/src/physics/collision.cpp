@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "physics/collision.hpp"
 
+#include "data/godot_values.hpp"
+
 #include "render/effect_asset.hpp"
 
 #include <godot_cpp/classes/animatable_body3d.hpp>
@@ -89,14 +91,8 @@ double number(const Dictionary& d, const char* key, double fallback = 0.0) {
 real_t real(const Variant& v) { return static_cast<real_t>(static_cast<double>(v)); }
 
 /// A three-element array as a vector, scaled; `ok` false if it is not one.
-Vector3 vec3(const Dictionary& d, const char* key, bool& ok) {
-    const Variant v = d.get(key, Variant());
-    if (v.get_type() != Variant::ARRAY || Array(v).size() != 3) {
-        ok = false;
-        return {};
-    }
-    const Array a = v;
-    return Vector3(real(a[0]), real(a[1]), real(a[2])) * k_havok_scale;
+Vector3 scaled_vec3(const Dictionary& d, const char* key, bool& ok) {
+    return vec3_from(d, key, Vector3(), &ok) * k_havok_scale;
 }
 
 /// The flat `vertices` list as points in game units.
@@ -215,7 +211,7 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
     const Variant xform = d.get("transform", Variant());
     if (xform.get_type() == Variant::DICTIONARY) {
         const Dictionary t = xform;
-        const Vector3 origin = vec3(t, "translation", ok);
+        const Vector3 origin = scaled_vec3(t, "translation", ok);
         const Variant r = t.get("rotation", Variant());
         godot::Basis basis;
         if (r.get_type() == Variant::ARRAY && Array(r).size() == 4) {
@@ -232,7 +228,7 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
     const real_t radius = static_cast<real_t>(number(d, "radius")) * k_havok_scale;
     if (kind == "box") {
         out.kind = ModelCollision::Kind::box;
-        out.half_extents = vec3(d, "half_extents", ok) + Vector3(radius, radius, radius);
+        out.half_extents = scaled_vec3(d, "half_extents", ok) + Vector3(radius, radius, radius);
         return ok && finite(out.half_extents) && out.half_extents.x > 0 && out.half_extents.y > 0 &&
                out.half_extents.z > 0;
     }
@@ -243,8 +239,8 @@ bool parse_shape(const Dictionary& d, ModelCollision::Shape& out) {
     }
     if (kind == "capsule" || kind == "cylinder") {
         const bool cylinder = kind == "cylinder";
-        const Vector3 a = vec3(d, "point_a", ok);
-        const Vector3 b = vec3(d, "point_b", ok);
+        const Vector3 a = scaled_vec3(d, "point_a", ok);
+        const Vector3 b = scaled_vec3(d, "point_b", ok);
         if (!ok || !finite(a) || !finite(b) || !std::isfinite(radius) || radius <= 0) {
             return false;
         }
