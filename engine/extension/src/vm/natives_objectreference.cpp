@@ -51,15 +51,20 @@ void SkydotPapyrus::bind_objectreference_natives() {
         if (target != 0) {
             position = position_of(target);
             rotation = rotation_of(target);
-            moved_[ref] = {position, rotation};
+            vm::MovedTo to;
+            for (int i = 0; i < 3; ++i) {
+                to.position[i] = static_cast<double>(position[i]);
+                to.rotation[i] = static_cast<double>(rotation[i]);
+            }
+            states_.moved[ref] = to;
         } else {
-            moved_.erase(ref);
+            states_.moved.erase(ref);
             const Dictionary info = ref_info(ref);
             position = info.get("position", Vector3());
             rotation = info.get("rotation", Vector3());
         }
         emit_signal("ref_moved", static_cast<std::int64_t>(ref), position, rotation);
-        disabled_.erase(ref);
+        states_.disabled.erase(ref);
         clear_destruction(ref);
         set_disabled(ref, static_cast<bool>(ref_info(ref).get("disabled", false)));
         return NativeResult{};
@@ -165,14 +170,14 @@ void SkydotPapyrus::bind_objectreference_natives() {
     });
     v.bind("ObjectReference", "BlockActivation", [this, arg](NativeCall& c) {
         if (c.args.empty() || vm::Vm::truthy(arg(c, 0))) {
-            blocked_.insert(c.self.form());
+            states_.blocked.insert(c.self.form());
         } else {
-            blocked_.erase(c.self.form());
+            states_.blocked.erase(c.self.form());
         }
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsActivationBlocked", [this, result](NativeCall& c) {
-        return result(Value::boolean(blocked_.contains(c.self.form())));
+        return result(Value::boolean(states_.blocked.contains(c.self.form())));
     });
     // No actors use furniture yet.
     v.bind("ObjectReference", "IsFurnitureInUse", [result](NativeCall&) { return result(Value::boolean(false)); });

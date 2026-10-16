@@ -119,6 +119,7 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::set_animation_state);
     godot::ClassDB::bind_method(D_METHOD("get_animation_state", "ref"), &SkydotPapyrus::get_animation_state);
     godot::ClassDB::bind_method(D_METHOD("remove_placed", "ref"), &SkydotPapyrus::remove_placed);
+    godot::ClassDB::bind_method(D_METHOD("forget_ref", "ref"), &SkydotPapyrus::forget_ref);
     godot::ClassDB::bind_method(D_METHOD("damage_ref", "ref", "amount"), &SkydotPapyrus::damage_ref);
     godot::ClassDB::bind_method(D_METHOD("ref_built", "ref"), &SkydotPapyrus::ref_built);
     godot::ClassDB::bind_method(D_METHOD("get_ref_base", "ref"), &SkydotPapyrus::get_ref_base);
@@ -218,12 +219,8 @@ void SkydotPapyrus::install_scheduled_handler() {
 void SkydotPapyrus::reset() {
     attached_.clear();
     attached_cells_.clear();
-    moved_.clear();
-    disabled_.clear();
-    blocked_.clear();
+    states_.clear();
     pending_activations_.clear();
-    open_.clear();
-    locked_.clear();
     triggers_.clear();
     actors_.clear();
     next_form_ = 0xFF000000u;
@@ -282,7 +279,7 @@ Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
 }
 
 bool SkydotPapyrus::disabled(std::uint32_t ref, int depth) const {
-    if (const auto it = disabled_.find(ref); it != disabled_.end()) {
+    if (const auto it = states_.disabled.find(ref); it != states_.disabled.end()) {
         return it->second;
     }
     const Dictionary info = ref_info(ref);
@@ -300,12 +297,12 @@ void SkydotPapyrus::set_disabled(std::uint32_t ref, bool value) {
     for (std::size_t i = 0; i < before.size() && world_.is_valid() && before.size() < 4096; ++i) {
         for (const std::int64_t child : world_->get_enable_children(before[i].first)) {
             const auto id = static_cast<std::uint32_t>(child);
-            if (!disabled_.contains(id)) {
+            if (!states_.disabled.contains(id)) {
                 before.emplace_back(id, disabled(id));
             }
         }
     }
-    disabled_[ref] = value;
+    states_.disabled[ref] = value;
     for (const auto& [id, was] : before) {
         if (const bool now = disabled(id); now != was) {
             emit_signal("enable_changed", static_cast<std::int64_t>(id), !now);
@@ -335,7 +332,7 @@ std::uint32_t SkydotPapyrus::lock_holder(std::uint32_t ref) const {
 
 bool SkydotPapyrus::locked(std::uint32_t ref) const {
     ref = lock_holder(ref);
-    if (const auto it = locked_.find(ref); it != locked_.end()) {
+    if (const auto it = states_.locked.find(ref); it != states_.locked.end()) {
         return it->second;
     }
     // A reference with XLOC starts locked.
@@ -343,15 +340,15 @@ bool SkydotPapyrus::locked(std::uint32_t ref) const {
 }
 
 Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
-    if (const auto it = moved_.find(ref); it != moved_.end()) {
-        return it->second.second;
+    if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
+        return vec3(it->second.rotation);
     }
     return ref_info(ref).get("rotation", Vector3());
 }
 
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
-    if (const auto it = moved_.find(ref); it != moved_.end()) {
-        return it->second.first;
+    if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
+        return vec3(it->second.position);
     }
     if (const auto it = actors_.find(ref); it != actors_.end()) {
         return it->second;
@@ -976,7 +973,7 @@ std::int64_t SkydotPapyrus::get_lock_level(std::int64_t ref) const {
 void SkydotPapyrus::set_locked(std::int64_t ref, bool value) {
     const auto form = lock_holder(static_cast<std::uint32_t>(ref));
     const bool was = locked(form);
-    locked_[form] = value;
+    states_.locked[form] = value;
     if (was != value) {
         emit_signal("lock_changed", ref, value);
         if (form != static_cast<std::uint32_t>(ref)) {
@@ -987,23 +984,23 @@ void SkydotPapyrus::set_locked(std::int64_t ref, bool value) {
 
 std::int64_t SkydotPapyrus::get_open_state(std::int64_t ref) const {
     const auto form = static_cast<std::uint32_t>(ref);
-    if (const auto it = open_.find(form); it != open_.end()) {
+    if (const auto it = states_.open.find(form); it != states_.open.end()) {
         return it->second;
     }
     return String(ref_info(form).get("type", String())) == "DOOR" ? k_closed : 0;
 }
 
 void SkydotPapyrus::set_open_state(std::int64_t ref, std::int64_t state) {
-    open_[static_cast<std::uint32_t>(ref)] = state;
+    states_.open[static_cast<std::uint32_t>(ref)] = state;
 }
 
 bool SkydotPapyrus::is_activation_blocked(std::int64_t ref) const {
-    return blocked_.contains(static_cast<std::uint32_t>(ref));
+    return states_.blocked.contains(static_cast<std::uint32_t>(ref));
 }
 
 Dictionary SkydotPapyrus::get_disabled_changes() const {
     Dictionary out;
-    for (const auto& [ref, value] : disabled_) {
+    for (const auto& [ref, value] : states_.disabled) {
         out[static_cast<std::int64_t>(ref)] = value;
     }
     return out;
@@ -1046,22 +1043,22 @@ godot::PackedByteArray SkydotPapyrus::save_state() const {
     }
     state["attached"] = attached;
     Dictionary disabled;
-    for (const auto& [ref, value] : disabled_) {
+    for (const auto& [ref, value] : states_.disabled) {
         disabled[static_cast<std::int64_t>(ref)] = value;
     }
     state["disabled"] = disabled;
     Array blocked;
-    for (const auto ref : blocked_) {
+    for (const auto ref : states_.blocked) {
         blocked.push_back(static_cast<std::int64_t>(ref));
     }
     state["blocked"] = blocked;
     Dictionary open;
-    for (const auto& [ref, value] : open_) {
+    for (const auto& [ref, value] : states_.open) {
         open[static_cast<std::int64_t>(ref)] = value;
     }
     state["open"] = open;
     Dictionary locks;
-    for (const auto& [ref, value] : locked_) {
+    for (const auto& [ref, value] : states_.locked) {
         locks[static_cast<std::int64_t>(ref)] = value;
     }
     state["locked"] = locks;
@@ -1195,13 +1192,13 @@ godot::Error SkydotPapyrus::load_state(const godot::PackedByteArray& bytes) {
             fn(keys[i], d[keys[i]]);
         }
     };
-    each(state["disabled"], [&](const Variant& k, const Variant& v) { disabled_[ref_of(k)] = v; });
+    each(state["disabled"], [&](const Variant& k, const Variant& v) { states_.disabled[ref_of(k)] = v; });
     const Array blocked = state["blocked"];
     for (std::int64_t i = 0; i < blocked.size(); ++i) {
-        blocked_.insert(ref_of(blocked[i]));
+        states_.blocked.insert(ref_of(blocked[i]));
     }
-    each(state["open"], [&](const Variant& k, const Variant& v) { open_[ref_of(k)] = v; });
-    each(state["locked"], [&](const Variant& k, const Variant& v) { locked_[ref_of(k)] = v; });
+    each(state["open"], [&](const Variant& k, const Variant& v) { states_.open[ref_of(k)] = v; });
+    each(state["locked"], [&](const Variant& k, const Variant& v) { states_.locked[ref_of(k)] = v; });
     each(state["inside"], [&](const Variant& k, const Variant& v) {
         if (const auto it = triggers_.find(ref_of(k)); it != triggers_.end() && v.get_type() == Variant::ARRAY) {
             const Array actors = v;

@@ -32,7 +32,7 @@ const BAD_PATH := "user://game_save_smoke_bad.skydot"
 
 ## Bugs of CODE-REVIEW.md that are known to be there: their checks are
 ## expected to fail.
-const KNOWN := ["B1", "B2", "B5", "B6"]
+const KNOWN := ["B2", "B5", "B6"]
 
 var failures := 0
 var known_failures := 0

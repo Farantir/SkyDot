@@ -64,7 +64,7 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
     placed.transient = !explosion.is_empty();
     const std::uint32_t id = vm_->placed().add(placed);
     if (initially_disabled) {
-        disabled_[id] = true;
+        states_.disabled[id] = true;
     }
     // The base's scripts attach as for a placed reference, then OnInit; OnLoad
     // comes when the game layer has built it (ref_built).
@@ -84,12 +84,24 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
 
 void SkydotPapyrus::remove_placed(std::int64_t ref) {
     const auto id = static_cast<std::uint32_t>(ref);
-    if (!vm_->placed().remove(id)) {
+    if (vm_->placed().find(id) == nullptr) {
         return;
     }
+    forget_ref(ref);
+}
+
+void SkydotPapyrus::forget_ref(std::int64_t ref) {
+    const auto id = static_cast<std::uint32_t>(ref);
+    const bool placed = vm_->placed().remove(id);
+    vm_->detach(id);
     vm_->destruction().erase(id);
-    disabled_.erase(id);
-    emit_signal("ref_deleted", ref);
+    states_.forget(id);
+    attached_.erase(id);
+    triggers_.erase(id);
+    actors_.erase(id);
+    if (placed) {
+        emit_signal("ref_deleted", ref);
+    }
 }
 
 std::int64_t SkydotPapyrus::ref_built(std::int64_t ref) {

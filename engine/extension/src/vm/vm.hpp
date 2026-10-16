@@ -51,6 +51,10 @@ struct Instance {
     /// Variables per class in the chain, most derived first.
     std::vector<std::pair<const ScriptClass*, std::vector<Value>>> vars;
 
+    /// The reference was forgotten (Vm::detach): the instance stays in memory
+    /// for the values that still point at it, but nothing runs on it.
+    bool detached = false;
+
     std::vector<Value>* vars_of(const ScriptClass* c);
     /// Variable `index` of class `c`, or null if the instance has no list for
     /// `c` or the list is shorter. Every class in the instance's chain has
@@ -156,6 +160,10 @@ public:
     /// load or is an engine type.
     Instance* attach(std::uint32_t form, std::string_view class_name);
     [[nodiscard]] std::vector<Instance*> instances(std::uint32_t form) const;
+    /// Forget everything the VM holds for `ref`: its script instances, their
+    /// timers, the threads running on them, scheduled host calls, inventory and
+    /// animation state. Safe from inside a native running on one of them.
+    void detach(std::uint32_t ref);
     /// The attached instance of exactly this class, or null.
     [[nodiscard]] Instance* instance(std::uint32_t form, std::string_view class_name) const;
 
@@ -305,6 +313,8 @@ private:
     /// ignored, then the default of its declared return type.
     Value unbound_result(const Function* fn);
     std::unordered_map<std::uint32_t, std::vector<std::unique_ptr<Instance>>> instances_;
+    /// Instances `detach` took out, kept so values pointing at them stay valid.
+    std::vector<std::unique_ptr<Instance>> detached_;
     std::vector<std::unique_ptr<Thread>> threads_;
     std::unordered_map<std::uint64_t, Value> results_;
     struct Timer {

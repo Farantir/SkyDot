@@ -334,7 +334,7 @@ const Function* Vm::find_in_chain(const ScriptClass* start, const Name& state, c
 
 Vm::Found Vm::find_method(const Value& object, const Name& name) {
     const auto try_instance = [&](Instance* i) -> Found {
-        if (i == nullptr || (object.cls() != nullptr && !i->cls->derives_from(object.cls()))) {
+        if (i == nullptr || i->detached || (object.cls() != nullptr && !i->cls->derives_from(object.cls()))) {
             return {};
         }
         return {find_in_chain(i->cls, i->state_key(), name), i};
@@ -494,7 +494,37 @@ void Vm::fire_scheduled() {
     }
 }
 
+void Vm::detach(std::uint32_t ref) {
+    inventory_.erase(ref);
+    animation_states_.erase(ref);
+    std::erase_if(scheduled_, [&](const Scheduled& d) { return d.a == ref; });
+    const auto it = instances_.find(ref);
+    if (it == instances_.end()) {
+        return;
+    }
+    for (auto& instance : it->second) {
+        instance->detached = true;
+        const Instance* gone = instance.get();
+        std::erase_if(timers_, [&](const Timer& t) { return t.instance == gone; });
+        for (auto& t : threads_) {
+            if (t->done) {
+                continue;
+            }
+            for (const auto& f : t->frames) {
+                if (f.instance == gone) {
+                    t->done = true; // stops at the next step; the frames stay for the one running now
+                    t->keep_result = false;
+                    break;
+                }
+            }
+        }
+        detached_.push_back(std::move(instance));
+    }
+    instances_.erase(it);
+}
+
 void Vm::clear() {
+    detached_.clear();
     inventory_.clear();
     form_lists_.clear();
     placed_.clear();
@@ -614,7 +644,7 @@ Value Vm::convert(const Value& v, TypeKind kind, std::string_view type) {
     if (target == nullptr) {
         return {};
     }
-    if (v.instance() != nullptr && v.instance()->cls->derives_from(target)) {
+    if (v.instance() != nullptr && !v.instance()->detached && v.instance()->cls->derives_from(target)) {
         return Value::object(v.form(), target, v.instance());
     }
     for (const auto& i : attached(v.form())) {
@@ -1095,7 +1125,7 @@ bool Vm::step(Thread& thread) {
             }
             return Outcome::skipped;
         };
-        if (object.instance() != nullptr) {
+        if (object.instance() != nullptr && !object.instance()->detached) {
             if (const auto outcome = try_instance(object.instance()); outcome != Outcome::skipped) {
                 return outcome == Outcome::pushed ? true : next();
             }

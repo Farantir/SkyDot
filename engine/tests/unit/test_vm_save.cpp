@@ -642,3 +642,63 @@ TEST_CASE("placed references and destruction are part of the VM save; version 5 
     CHECK(c.placed().refs().empty());
     CHECK(c.destruction().states().empty());
 }
+
+TEST_CASE("detaching a reference drops its scripts, timers, threads, inventory and animation state", "[vm][detach]") {
+    SaverRig a;
+    auto* other = a.vm().attach(0x20, "saver");
+    REQUIRE(other != nullptr);
+    a.vm().call_method(a.instance, "run", {}); // waits inside Step for 5 s
+    a.vm().call_method(other, "run", {});
+    a.vm().update(1.0);
+    a.vm().register_update(a.instance, 1.0, 1.0);
+    a.vm().register_update(other, 1.0, 1.0);
+    a.vm().inventory().add(0x10, 0x500, 3);
+    a.vm().inventory().add(0x20, 0x500, 2);
+    a.vm().set_animation_state(0x10, {1, 2, 3});
+    a.vm().set_animation_state(0x20, {4});
+    a.vm().schedule(2.0, "activate", 0x10, 0x14, 0);
+    a.vm().schedule(2.0, "activate", 0x20, 0x14, 0);
+    REQUIRE(a.vm().thread_count() == 2);
+
+    a.vm().detach(0x10);
+    CHECK(a.vm().instances(0x10).empty());
+    CHECK(a.vm().instance(0x10, "saver") == nullptr);
+    CHECK(a.vm().inventory().count(0x10, 0x500) == 0);
+    CHECK(a.vm().animation_states().count(0x10) == 0);
+    CHECK(a.vm().scheduled_count() == 1);
+    // What belongs to other references stays.
+    CHECK(a.vm().instances(0x20).size() == 1);
+    CHECK(a.vm().inventory().count(0x20, 0x500) == 2);
+    CHECK(a.vm().animation_states().count(0x20) == 1);
+
+    // Its timer does not fire, its thread does not finish; the other's do.
+    a.rig.notes.clear();
+    a.vm().update(1.0);
+    CHECK(a.rig.notes == std::vector<std::string>{"tick"});
+    CHECK(a.vm().thread_count() == 1);
+    a.vm().update(10.0);
+    CHECK(a.vm().thread_count() == 0);
+    CHECK(a.vm().errors() == 0);
+    CHECK(std::ranges::count(a.rig.notes, "done") == 1);
+
+    // Detaching what is not there is harmless, and the reference can get scripts again.
+    a.vm().detach(0x10);
+    a.vm().detach(0x9999);
+    CHECK(a.vm().attach(0x10, "saver") != nullptr);
+}
+
+TEST_CASE("a script can detach its own reference while it runs", "[vm][detach]") {
+    auto go = method("Go", {}, {}, "Int");
+    call_static(go, "Util", "Detach", {integer(0x10)});
+    note(go, "after");
+    go.add(Op::return_, {integer(1)});
+    auto spec = saver();
+    spec.functions.push_back(go);
+    SaverRig a(spec);
+    a.vm().call_method(a.instance, "go", {});
+    a.vm().update(0.0);
+    CHECK(a.vm().instances(0x10).empty());
+    CHECK(a.vm().thread_count() == 0);
+    CHECK(a.rig.notes.empty()); // the thread stopped where it was
+    CHECK(a.vm().errors() == 0);
+}

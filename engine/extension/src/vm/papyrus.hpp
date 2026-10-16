@@ -23,6 +23,7 @@
 #pragma once
 
 #include "assets/pack.hpp"
+#include "vm/ref_states.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
 #include "vm/world_access.hpp"
@@ -152,6 +153,11 @@ public:
     /// Take a PlaceAtMe reference out of the world (`ref_deleted`); the game
     /// layer calls it when an effect has run its course. No-op for any other.
     void remove_placed(std::int64_t ref);
+    /// The one path that forgets a reference: its scripts, timers, threads,
+    /// inventory, animation, destruction, script-made state and, for a placed
+    /// reference, the reference itself (`ref_deleted`). Delete and finished
+    /// effects use it.
+    void forget_ref(std::int64_t ref);
     /// DamageObject from the host (the viewer's --damage).
     void damage_ref(std::int64_t ref, double amount) { damage_object(static_cast<std::uint32_t>(ref), amount); }
     /// The game layer built the node of a placed reference: OnCellAttach,
@@ -316,16 +322,12 @@ private:
     /// Cells whose references were handed to the VM (never unloaded: nothing
     /// signals a cell detaching yet).
     std::set<std::uint32_t> attached_cells_;
-    /// References a script moved: position and rotation (radians).
-    std::map<std::uint32_t, std::pair<godot::Vector3, godot::Vector3>> moved_;
-    std::map<std::uint32_t, bool> disabled_;
-    std::set<std::uint32_t> blocked_;
+    /// What scripts changed about references: enabled, open, locked, blocked, moved.
+    vm::RefStates states_;
     PendingActivations pending_activations_;
     bool run_activation(std::uint32_t form, const godot::String& label, std::int64_t activator, bool default_only,
                         godot::Dictionary& out);
     bool graph_raises_activation(std::uint32_t form) const;
-    std::map<std::uint32_t, std::int64_t> open_;
-    std::map<std::uint32_t, bool> locked_;
     std::map<std::uint32_t, Trigger> triggers_;
     std::map<std::uint32_t, godot::Vector3> actors_;
     std::uint32_t next_form_ = 0xFF000000u;

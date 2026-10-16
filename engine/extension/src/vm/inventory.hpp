@@ -22,6 +22,7 @@ public:
     /// All of `owner`'s items (empty if it has none).
     [[nodiscard]] const Items& items(std::uint32_t owner) const;
     void clear() { owners_.clear(); }
+    void erase(std::uint32_t owner) { owners_.erase(owner); }
     [[nodiscard]] const std::map<std::uint32_t, Items>& owners() const { return owners_; }
 
 private:

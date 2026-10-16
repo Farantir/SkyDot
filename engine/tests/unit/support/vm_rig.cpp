@@ -24,6 +24,7 @@ Rig::Rig() {
                        native_function("NoteInt", {{"value", "Int"}}),
                        native_function("Triple", {{"value", "Int"}}, "Int"),
                        native_function("Echo", {{"s", "String"}, {"i", "Int"}, {"f", "Float"}, {"b", "Bool"}}),
+                       native_function("Detach", {{"form", "Int"}}),
                        native_function("Wait", {{"seconds", "Float"}}),
                        native_function("WaitFor", {{"key", "String"}, {"timeout", "Float"}})}});
     vm.bind("Util", "Note", [this](NativeCall& c) {
@@ -39,6 +40,10 @@ Rig::Rig() {
     });
     vm.bind("Util", "Echo", [this](NativeCall& c) {
         echoes.push_back(c.args);
+        return NativeResult{};
+    });
+    vm.bind("Util", "Detach", [this](NativeCall& c) {
+        vm.detach(static_cast<std::uint32_t>(c.args.at(0).i()));
         return NativeResult{};
     });
     vm.bind("Util", "Wait", [](NativeCall& c) {
