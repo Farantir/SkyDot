@@ -669,9 +669,13 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         if (!ok) {
             return fail("truncated PLCD section");
         }
-        out.placed.restore(id, ref);
+        if (!out.placed.restore(id, ref)) {
+            return fail("a reference in the PLCD section lies outside the runtime reference range");
+        }
     }
-    out.placed.set_next(std::max(next, out.placed.next()));
+    if (!out.placed.set_next(next)) {
+        return fail("the PLCD section's next id lies outside the runtime reference range");
+    }
     if (!r.at_end()) {
         return fail("bytes after the end of the PLCD section");
     }

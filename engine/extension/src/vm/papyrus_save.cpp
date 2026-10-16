@@ -34,6 +34,7 @@ using save::ByteWriter;
 namespace {
 
 constexpr std::uint32_t k_section_version = 1;
+constexpr std::uint32_t k_papy_version = 2; // 2: the sound instance counter
 
 std::string utf8_of(const String& s) {
     const auto bytes = s.utf8();
@@ -42,15 +43,16 @@ std::string utf8_of(const String& s) {
 
 String godot_of(const std::string& s) { return String::utf8(s.c_str(), static_cast<int>(s.size())); }
 
-bool open_section(const save::SaveReader& file, const char* tag, ByteReader& out, std::string& error) {
+bool open_section(const save::SaveReader& file, const char* tag, std::uint32_t version, ByteReader& out,
+                  std::string& error) {
     const auto* s = file.find(tag);
     if (s == nullptr) {
         error = std::string("the save lacks its ") + tag + " section";
         return false;
     }
-    if (s->version != k_section_version) {
+    if (s->version != version) {
         error = std::string("section ") + tag + " has version " + std::to_string(s->version) +
-                ", which this engine does not read (it reads " + std::to_string(k_section_version) + ")";
+                ", which this engine does not read (it reads " + std::to_string(version) + ")";
         return false;
     }
     out = file.open(*s);
@@ -66,8 +68,9 @@ void SkydotPapyrus::write_host(save::SaveWriter& out) const {
         p.u32(ref);
     }
     triggers_.write(p);
-    p.u32(next_form_);
-    out.add("PAPY", k_section_version, p.out);
+    p.u32(test_ids_.next());
+    p.u32(sound_ids_.next());
+    out.add("PAPY", k_papy_version, p.out);
 
     out.add("QUST", vm::QuestStates::k_section_version, quests_.save());
 }
@@ -78,7 +81,7 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
         error = std::string("the ") + tag + " section of the save is damaged";
         return false;
     };
-    if (!open_section(file, "PAPY", r, error)) {
+    if (!open_section(file, "PAPY", k_papy_version, r, error)) {
         return false;
     }
     std::uint32_t n = 0;
@@ -95,11 +98,13 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
     if (!vm::Triggers::read(r, out.triggers)) {
         return fail("PAPY");
     }
-    if (!r.u32(out.next_form) || !r.at_end()) {
+    std::uint32_t next_test = 0, next_sound = 0;
+    if (!r.u32(next_test) || !r.u32(next_sound) || !r.at_end() || !out.test_ids.restore(next_test) ||
+        !out.sound_ids.restore(next_sound)) {
         return fail("PAPY");
     }
 
-    if (!open_section(file, "QUST", r, error)) {
+    if (!open_section(file, "QUST", vm::QuestStates::k_section_version, r, error)) {
         return false;
     }
     if (!vm::QuestStates::load(r, out.quests)) {
@@ -135,7 +140,7 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     }
     std::string why;
     ByteReader r({}, 0);
-    if (!open_section(file, "HEAD", r, why)) {
+    if (!open_section(file, "HEAD", k_section_version, r, why)) {
         return fail(why);
     }
     std::string version, hash;
@@ -214,7 +219,8 @@ godot::Error SkydotPapyrus::commit_load() {
         }
     }
     triggers_.restore(std::move(host.triggers));
-    next_form_ = host.next_form;
+    test_ids_ = host.test_ids;
+    sound_ids_ = host.sound_ids;
     quests_ = std::move(host.quests);
     // The kept placed references are built again.
     for (const auto& [id, placed] : vm_->placed().refs()) {

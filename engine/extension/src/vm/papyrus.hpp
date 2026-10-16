@@ -26,6 +26,7 @@
 #include "data/godot_values.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
+#include "vm/id_ranges.hpp"
 #include "vm/quest_states.hpp"
 #include "vm/ref_states.hpp"
 #include "vm/triggers.hpp"
@@ -69,7 +70,7 @@ public:
     static constexpr double SOUND_TIMEOUT = 30.0;
     /// Alias handles are form ids from here up, above those create_instance
     /// hands out.
-    static constexpr std::int64_t ALIAS_HANDLE_BASE = 0xFF800000;
+    static constexpr std::int64_t ALIAS_HANDLE_BASE = vm::id_ranges::alias_handles.first;
 
     SkydotPapyrus();
 
@@ -149,7 +150,11 @@ public:
                              const godot::Array& args);
     /// An unattached instance of `cls` on a new form id, for tests. Returns
     /// the form, 0 if the class does not load.
+    /// 0 when the class cannot be attached or the 4,096 test ids are used up.
     std::int64_t create_instance(const godot::String& cls);
+    /// A playback instance id for a sound the game layer starts itself, from
+    /// the same range as Sound.Play's; 0 (and an error) once the range is used up.
+    std::int64_t new_sound_instance();
     std::int64_t call_method(std::int64_t form, const godot::String& cls, const godot::String& fn,
                              const godot::Array& args);
     /// {done: bool, value}; value is only present once done.
@@ -311,8 +316,9 @@ private:
     struct Access;
     std::unique_ptr<vm::WorldAccess> access_;
     std::unique_ptr<vm::Vm> vm_;
-    /// The next playback instance Sound.Play hands out (1, 2, ...).
-    std::int64_t next_sound_instance_ = 1;
+    /// Playback instances (id_ranges::sound_instances): Sound.Play's and the
+    /// game layer's, from `new_sound_instance`.
+    vm::IdAllocator sound_ids_{vm::id_ranges::sound_instances};
     godot::Ref<SkydotPack> pack_;
     godot::Ref<SkydotClock> clock_;
     /// Which of the clock's values a global form is (found by editor id), if any.
@@ -335,7 +341,7 @@ private:
     bool graph_raises_activation(std::uint32_t form) const;
     /// Trigger volumes and the actors moving through them.
     vm::Triggers triggers_;
-    std::uint32_t next_form_ = 0xFF000000u;
+    vm::IdAllocator test_ids_{vm::id_ranges::test_instances};
     /// Quests, their aliases and the globals scripts set (QUST).
     vm::QuestStates quests_;
     mutable std::map<std::uint32_t, godot::Dictionary> quest_info_;
@@ -345,7 +351,8 @@ private:
     struct HostSnapshot {
         std::set<std::uint32_t> attached;
         vm::Triggers::Saved triggers;
-        std::uint32_t next_form = 0xFF000000u;
+        vm::IdAllocator test_ids{vm::id_ranges::test_instances};
+        vm::IdAllocator sound_ids{vm::id_ranges::sound_instances};
         vm::QuestStates quests;
     };
     struct PendingLoad {

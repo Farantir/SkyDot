@@ -59,6 +59,10 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
     placed.scale = static_cast<double>(ref_info(source).get("scale", 1.0));
     placed.transient = !explosion.is_empty();
     const std::uint32_t id = vm_->placed().add(placed);
+    if (id == 0) {
+        godot::UtilityFunctions::push_error("Papyrus: the runtime reference ids are used up; nothing placed");
+        return 0;
+    }
     if (initially_disabled) {
         states_.disabled[id] = true;
     }
@@ -70,7 +74,7 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
     }
     if (!explosion.is_empty()) {
         if (const auto sound = static_cast<std::int64_t>(explosion.get("sound", 0)); sound != 0) {
-            emit_signal("play_sound", sound, static_cast<std::int64_t>(id), next_sound_instance_++);
+            emit_signal("play_sound", sound, static_cast<std::int64_t>(id), new_sound_instance());
         }
     }
     emit_signal("ref_placed", static_cast<std::int64_t>(id), static_cast<std::int64_t>(base),

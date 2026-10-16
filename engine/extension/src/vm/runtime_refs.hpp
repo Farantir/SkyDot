@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <map>
 
+#include "vm/id_ranges.hpp"
+
 namespace skydot::vm {
 
 /// A reference made by PlaceAtMe: a runtime form id, its base, the cell it
@@ -24,13 +26,17 @@ struct PlacedRef {
 
 class PlacedRefs {
 public:
-    /// Runtime form ids start here (the game's, 0xFF......), above the ids
-    /// `create_instance` gives test objects and below the alias handles.
-    static constexpr std::uint32_t FIRST = 0xFF001000u;
+    /// Runtime form ids come from id_ranges::runtime_refs (the game's,
+    /// 0xFF......), above the ids `create_instance` gives test objects and
+    /// below the alias handles.
+    static constexpr std::uint32_t FIRST = id_ranges::runtime_refs.first;
 
+    /// The new reference's id; 0 (and nothing added) once the range is used up.
     std::uint32_t add(const PlacedRef& ref) {
-        const std::uint32_t id = next_++;
-        refs_[id] = ref;
+        const std::uint32_t id = ids_.allocate();
+        if (id != 0) {
+            refs_[id] = ref;
+        }
         return id;
     }
     [[nodiscard]] const PlacedRef* find(std::uint32_t id) const {
@@ -40,21 +46,28 @@ public:
     bool remove(std::uint32_t id) { return refs_.erase(id) != 0; }
     void clear() {
         refs_.clear();
-        next_ = FIRST;
+        ids_.clear();
     }
     [[nodiscard]] const std::map<std::uint32_t, PlacedRef>& refs() const { return refs_; }
-    [[nodiscard]] std::uint32_t next() const { return next_; }
-    void restore(std::uint32_t id, const PlacedRef& ref) {
-        refs_[id] = ref;
-        if (id >= next_) {
-            next_ = id + 1;
+    [[nodiscard]] std::uint32_t next() const { return ids_.next(); }
+    /// False for an id outside the range.
+    bool restore(std::uint32_t id, const PlacedRef& ref) {
+        if (!id_ranges::runtime_refs.contains(id)) {
+            return false;
         }
+        refs_[id] = ref;
+        ids_.note_used(id);
+        return true;
     }
-    void set_next(std::uint32_t next) { next_ = next; }
+    /// Continue from a saved counter if it is above the one now; false if it
+    /// lies outside the range.
+    bool set_next(std::uint32_t next) {
+        return next >= ids_.next() ? ids_.restore(next) : ids_.range().contains(next);
+    }
 
 private:
     std::map<std::uint32_t, PlacedRef> refs_;
-    std::uint32_t next_ = FIRST;
+    IdAllocator ids_{id_ranges::runtime_refs};
 };
 
 /// How much a destructible reference has taken. `stage` counts the

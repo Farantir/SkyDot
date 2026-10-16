@@ -42,7 +42,7 @@ std::vector<std::uint8_t> QuestStates::save() const {
         q.u32(global);
         q.f64(value);
     }
-    q.u32(next_handle);
+    q.u32(handle_ids.next());
     return q.out;
 }
 
@@ -124,7 +124,8 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
         }
         out.globals_[global] = value;
     }
-    return r.u32(out.next_handle) && r.at_end();
+    std::uint32_t next = 0;
+    return r.u32(next) && out.handle_ids.restore(next) && r.at_end();
 }
 
 } // namespace skydot::vm

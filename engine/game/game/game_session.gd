@@ -167,7 +167,7 @@ func _make_streamer() -> void:
 func _make_game_nodes() -> void:
 	projectiles = Projectiles.new(world, pack, world.find_ref_node)
 	host.add_child(projectiles)
-	sounds = Sounds.new(world, pack, world.find_ref_node)
+	sounds = Sounds.new(world, pack, world.find_ref_node, papyrus.new_sound_instance)
 	host.add_child(sounds)
 	placed = PlacedRefs.new(world, papyrus)
 	host.add_child(placed)

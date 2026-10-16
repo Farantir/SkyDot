@@ -33,9 +33,6 @@ signal finished(instance: int)
 const STANDARD := 0x1EEF540A  # SNDR CNAM: a plain descriptor
 const FLAG_ATTENUATES := 0x1  # SOPM NAM1 flags: volume falls with distance
 const LOOP := 0x08  # SNDR LNAM byte 1
-## Instances the game layer starts itself count from here; Sound.Play's are
-## numbered by SkydotPapyrus from 1.
-const FIRST_OWN_INSTANCE := 1 << 20
 ## Without an output model: where a positional sound starts to fade and stops,
 ## game units, and the shape of the fade (most vanilla SOPMs).
 const DEFAULT_MIN := 150.0
@@ -55,11 +52,12 @@ var _models := {}  # SOPM id -> its dictionary
 ## Where sounds are heard from; null: the viewport's current camera.
 var listener: Node3D
 var _live := {}  # instance -> {name, player, base_db, user_db, positional, loops, min, max, curve}
-var _next_instance := FIRST_OWN_INSTANCE
+var _new_instance_id: Callable  # () -> a fresh instance id from the engine, 0 if used up
 var _warn := WarnOnce.new("sound: ")
 
 
-func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
+func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable, new_instance_id: Callable) -> void:
+	_new_instance_id = new_instance_id
 	_world = world
 	_pack = pack
 	_find_ref = find_ref
@@ -73,6 +71,8 @@ func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
 func play(sound: int, source: int, instance := 0) -> int:
 	if instance == 0:
 		instance = _new_instance()
+		if instance == 0:
+			return 0  # the engine's ids are used up (it logged the error)
 	var node: Node = _find_ref.call(source) if source != 0 else null
 	var descriptor := _descriptor_of(sound)
 	if descriptor.is_empty():
@@ -87,6 +87,8 @@ func play(sound: int, source: int, instance := 0) -> int:
 ## `ref`, or null).
 func play_named(editor_id: String, node: Node, ref: int) -> int:
 	var instance := _new_instance()
+	if instance == 0:
+		return 0
 	var id := _descriptor_id(editor_id)
 	if id == 0:
 		_warn.once("name" + editor_id.to_lower(), "no sound descriptor %s" % editor_id)
@@ -158,7 +160,8 @@ func cell_loaded(cell: Node3D, cell_id: int, ref_nodes: Array) -> void:
 		if descriptor.is_empty():
 			_warn.once("marker%d" % ref["base"], "sound marker %s has no descriptor" % marker["editor_id"])
 			continue
-		if _start(descriptor, anchor, ref["id"], _new_instance()):
+		var instance := _new_instance()
+		if instance != 0 and _start(descriptor, anchor, ref["id"], instance):
 			started += 1
 	if started > 0:
 		print("sounds: %d markers play in cell 0x%08X" % [started, cell_id])
@@ -196,8 +199,7 @@ func _descriptor_id(editor_id: String) -> int:
 
 
 func _new_instance() -> int:
-	_next_instance += 1
-	return _next_instance
+	return _new_instance_id.call()
 
 
 ## Start `descriptor` on `node`; false if nothing plays (the instance then ends

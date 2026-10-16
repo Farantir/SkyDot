@@ -3,6 +3,7 @@
 // Trigger volumes and quest states (vm/triggers.hpp, vm/quest_states.hpp):
 // crossings, and the save round trips.
 #include "vm/quest_states.hpp"
+#include "vm/runtime_refs.hpp"
 #include "vm/triggers.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -139,8 +140,8 @@ TEST_CASE("quest states round trip with aliases, fills and globals", "[quests][s
     q.done = {10, 20};
     q.objectives[1] = 3;
     quests.mark_scripts_attached(0x100);
-    quests.add_handle(0x100, 4, quests.next_handle++);
-    quests.add_handle(0x100, 2, quests.next_handle++);
+    quests.add_handle(0x100, 4, quests.handle_ids.allocate());
+    quests.add_handle(0x100, 2, quests.handle_ids.allocate());
     quests.set_fill(quests.find_handle(0x100, 4), 0x55);
     quests.set_global(0x9, 2.5);
 
@@ -154,7 +155,7 @@ TEST_CASE("quest states round trip with aliases, fills and globals", "[quests][s
     CHECK(loaded.fill(loaded.find_handle(0x100, 4)) == 0x55);
     CHECK(loaded.fill(loaded.find_handle(0x100, 2)) == 0);
     CHECK(*loaded.global(0x9) == 2.5);
-    CHECK(loaded.next_handle == quests.next_handle);
+    CHECK(loaded.handle_ids.next() == quests.handle_ids.next());
     CHECK(loaded.owner(loaded.find_handle(0x100, 2))->second == 2);
     // The handles come back in the order they were made, not by alias id.
     const auto handles = loaded.handles_of(0x100);
@@ -182,4 +183,62 @@ TEST_CASE("a damaged QUST section is refused", "[quests][save]") {
     CHECK_FALSE(QuestStates::load(save::ByteReader(bytes), loaded));
     bytes.resize(bytes.size() - 5);
     CHECK_FALSE(QuestStates::load(save::ByteReader(bytes), loaded));
+}
+
+TEST_CASE("id ranges: disjoint, checked and exhausted without overlap") {
+    using namespace skydot::vm;
+    const IdRange all[] = {id_ranges::test_instances, id_ranges::runtime_refs, id_ranges::alias_handles};
+    for (std::size_t i = 0; i < 3; ++i) {
+        CHECK(all[i].first <= all[i].last);
+        for (std::size_t j = i + 1; j < 3; ++j) {
+            CHECK((all[i].last < all[j].first || all[j].last < all[i].first));
+        }
+    }
+    CHECK(PlacedRefs::FIRST == id_ranges::runtime_refs.first);
+
+    IdAllocator test(id_ranges::test_instances);
+    CHECK(test.allocate() == 0xFF000000u);
+    for (int i = 1; i < 4096; ++i) {
+        REQUIRE(test.allocate() != 0);
+    }
+    CHECK(test.exhausted());
+    CHECK(test.allocate() == 0); // an error, not a step into the next range
+    CHECK(test.next() == 0xFF001000u);
+    CHECK(test.restore(0xFF001000u)); // the saved state of an exhausted range
+    CHECK_FALSE(test.restore(0xFF001001u));
+    CHECK_FALSE(test.restore(0xFEFFFFFFu));
+
+    IdAllocator sound(id_ranges::sound_instances);
+    CHECK(sound.allocate() == 1);
+    CHECK(sound.restore(id_ranges::sound_instances.last));
+    CHECK(sound.allocate() == id_ranges::sound_instances.last);
+    CHECK(sound.allocate() == 0);
+
+    IdAllocator alias(id_ranges::alias_handles);
+    CHECK(alias.restore(id_ranges::alias_handles.last));
+    CHECK(alias.allocate() == 0xFFFFFFFEu);
+    CHECK(alias.allocate() == 0);
+    CHECK(alias.next() == 0xFFFFFFFFu);
+}
+
+TEST_CASE("id ranges: placed references stay in their range and saves refuse others") {
+    using namespace skydot::vm;
+    PlacedRefs refs;
+    CHECK(refs.add({}) == id_ranges::runtime_refs.first);
+    CHECK_FALSE(refs.restore(0xFF000005u, {}));
+    CHECK_FALSE(refs.restore(0xFF800000u, {}));
+    CHECK(refs.restore(0xFF002000u, {}));
+    CHECK(refs.add({}) == 0xFF002001u);
+    CHECK_FALSE(refs.set_next(0xFF800001u));
+    CHECK(refs.set_next(0xFF003000u));
+    CHECK(refs.next() == 0xFF003000u);
+
+    QuestStates q;
+    CHECK(q.handle_ids.allocate() == id_ranges::alias_handles.first);
+    QuestStates bad;
+    auto bytes = q.save();
+    for (std::size_t i = 0; i < 4; ++i) {
+        bytes[bytes.size() - 4 + i] = 0x01; // a next handle outside the alias range
+    }
+    CHECK_FALSE(QuestStates::load(save::ByteReader(bytes), bad));
 }

@@ -19,7 +19,10 @@ void SkydotPapyrus::bind_sound_natives() {
     // comes back for StopInstance and SetInstanceVolume. The sound is a SNDR
     // or a SOUN; the source may be 0 (None), which plays non-positionally.
     v.bind("Sound", "Play", [this, arg](NativeCall& c) {
-        const std::int64_t instance = next_sound_instance_++;
+        const std::int64_t instance = new_sound_instance();
+        if (instance == 0) {
+            return NativeResult{.value = Value::integer(0), .wait = -1.0};
+        }
         emit_signal("play_sound", static_cast<std::int64_t>(c.self.form()),
                     static_cast<std::int64_t>(arg(c, 0).form()), instance);
         return NativeResult{.value = Value::integer(static_cast<std::int32_t>(instance)), .wait = -1.0};
@@ -29,7 +32,10 @@ void SkydotPapyrus::bind_sound_natives() {
     // loop never ends, so the wait gives up after SOUND_TIMEOUT. The signal
     // goes out after the wait is armed.
     v.bind("Sound", "PlayAndWait", [this, arg](NativeCall& c) {
-        const std::int64_t instance = next_sound_instance_++;
+        const std::int64_t instance = new_sound_instance();
+        if (instance == 0) {
+            return NativeResult{.value = Value::boolean(false), .wait = -1.0};
+        }
         const auto sound = static_cast<std::int64_t>(c.self.form());
         const auto source = static_cast<std::int64_t>(arg(c, 0).form());
         return NativeResult{.value = Value::boolean(true),

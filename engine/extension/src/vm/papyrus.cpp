@@ -77,6 +77,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("call_global", "cls", "fn", "args"),
                                 &SkydotPapyrus::call_global);
     godot::ClassDB::bind_method(D_METHOD("create_instance", "cls"), &SkydotPapyrus::create_instance);
+    godot::ClassDB::bind_method(D_METHOD("new_sound_instance"), &SkydotPapyrus::new_sound_instance);
     godot::ClassDB::bind_method(D_METHOD("call_method", "form", "cls", "fn", "args"),
                                 &SkydotPapyrus::call_method);
     godot::ClassDB::bind_method(D_METHOD("take_result", "thread"), &SkydotPapyrus::take_result);
@@ -223,7 +224,8 @@ void SkydotPapyrus::reset() {
     states_.clear();
     activations_->clear();
     triggers_.clear();
-    next_form_ = 0xFF000000u;
+    test_ids_.clear();
+    sound_ids_.clear();
     quests_.clear();
     quest_info_.clear();
 }
@@ -768,8 +770,20 @@ std::int64_t SkydotPapyrus::call_global(const String& cls, const String& fn, con
 }
 
 std::int64_t SkydotPapyrus::create_instance(const String& cls) {
-    const auto form = next_form_++;
+    const auto form = test_ids_.allocate();
+    if (form == 0) {
+        godot::UtilityFunctions::push_error("Papyrus: the 4,096 ids create_instance hands out are used up");
+        return 0;
+    }
     return vm_->attach(form, utf8(cls)) != nullptr ? form : 0;
+}
+
+std::int64_t SkydotPapyrus::new_sound_instance() {
+    const auto instance = sound_ids_.allocate();
+    if (instance == 0) {
+        godot::UtilityFunctions::push_error("Papyrus: the sound instance ids are used up");
+    }
+    return instance;
 }
 
 std::int64_t SkydotPapyrus::call_method(std::int64_t form, const String& cls, const String& fn,

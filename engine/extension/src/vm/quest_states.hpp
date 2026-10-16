@@ -10,6 +10,7 @@
 #pragma once
 
 #include "save/bytes.hpp"
+#include "vm/id_ranges.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -107,8 +108,8 @@ public:
     }
     void set_global(std::uint32_t id, double value) { globals_[id] = value; }
 
-    /// The next alias handle to hand out.
-    std::uint32_t next_handle = 0xFF800000u;
+    /// Where alias handles come from (id_ranges::alias_handles); 0 once used up.
+    IdAllocator handle_ids{id_ranges::alias_handles};
 
     void clear() { *this = QuestStates{}; }
 
