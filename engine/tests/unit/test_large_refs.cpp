@@ -69,7 +69,7 @@ WorldSpec rocks() {
             .worlds = {{.id = k_world,
                         .large_refs = {{.id = 0x30, .base = 3, .x = 9, .y = 0},
                                        {.id = 0x10, .base = 1, .x = 0, .y = 0},
-                                       {.id = 0x20, .base = 2, .x = 3, .y = 0, .reaches = {{2, 0}, {4, 0}}},
+                                       {.id = 0x20, .base = 2, .x = 3, .y = 0, .reaches = {{std::int16_t{2}, std::int16_t{0}}, {std::int16_t{4}, std::int16_t{0}}}},
                                        {.id = 0x40, .base = 4, .x = 0, .y = 1}}}}};
 }
 
