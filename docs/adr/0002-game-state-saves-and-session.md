@@ -29,6 +29,8 @@ running, two game clocks, and failed loads that emptied the running game
     inventories, animation/graph states, form lists — one section each, moved
     out of `Vm::save`.
   - `QUST`: quests, quest scripts, alias handles and fills, globals.
+  - `PAPY`: what `SkydotPapyrus` itself tracks: attached references,
+    trigger occupants, actor positions, the next form ID.
   - `PLYR`: where the player is (cell or worldspace, position, yaw, pitch),
     written by the shell's player object (see below).
   - Later, optional at first: `AIAC` (AI actors), `PROJ` (live projectiles).
@@ -59,15 +61,18 @@ error (B6). The CRC is checked before any section is decoded.
   timers, update registrations, scheduled host calls, inventory and
   animation state; `SkydotPapyrus::forget_ref(ref)` calls it plus
   `RefStates`, `DestructionStates` and `PlacedRefs`. Delete and finished
-  transient explosions use it (B1); cell detach (B8) will.
+  transient explosions use it (B1); cell detach (B8) will. Other scripts
+  may still hold a detached instance as a value, so `detach` marks it and
+  keeps it until `Vm::clear`; dispatch treats it as gone.
 
 ## One clock
 
 - `SkydotClock` is the only source of game time. `WorldAccess` gains
   `game_days()` (days passed, fraction = time of day) and `time_scale()`;
   `SkydotPapyrus` gets the clock with `attach_clock(clock)` and answers them
-  from it. `Utility.GetCurrentGameTime`, game-time update registrations and
-  `WaitGameTime` use them; `k_timescale` goes away.
+  from it. `Utility.GetCurrentGameTime` uses them, and so will game-time
+  update registrations and `WaitGameTime` when the VM gets them;
+  `k_timescale` goes away.
 - The globals `GameHour`, `GameDaysPassed` and `TimeScale` (found by editor
   ID; Skyrim.esm `0x38`, `0x39`, `0x3A`) read from the clock; `SetValue` on them moves the
   clock (`shift`) or sets its scale. `VM time` (real seconds) stays for
