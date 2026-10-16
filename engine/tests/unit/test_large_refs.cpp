@@ -185,7 +185,7 @@ TEST_CASE("a large reference follows its enable parent", "[large_refs]") {
                 return data.initially_disabled(*data.large_ref(k_world, i));
             }
         }
-        FAIL("no such large reference");
+        CHECK(false);  // no such large reference
         return false;
     };
     CHECK(!disabled(0x10));
