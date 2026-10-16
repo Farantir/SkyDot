@@ -1080,6 +1080,8 @@ struct NpcFaction {
 enum NpcFlags : uint32 (bit_flags) {
     female,
     essential,
+    /// The stats are the CK's computed totals (format 24 names it).
+    auto_calc_stats = 4,
     unique = 5,
     /// The level word is a multiplier (format 24 names it): the actor
     /// levels with the player.
@@ -1090,7 +1092,11 @@ enum NpcFlags : uint32 (bit_flags) {
 /// (ACBS template flags; source: xEdit, wbTemplateFlags).
 enum NpcTemplateFlags : uint16 (bit_flags) {
     use_traits,
+    /// Level, health, magicka, stamina and skills (named in format 24).
+    use_stats,
     use_factions = 2,
+    /// AIDT: aggression, confidence, energy, morality, mood, assistance.
+    use_ai_data = 4,
     use_ai_packages = 5,
     use_inventory = 8,
     /// DPLT's default package list.
