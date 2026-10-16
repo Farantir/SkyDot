@@ -171,6 +171,9 @@ public:
     bool is_ref_disabled(std::int64_t ref) const;
     /// References whose enabled state scripts changed: ref -> disabled.
     godot::Dictionary get_disabled_changes() const;
+    /// Where scripts moved references to: ref -> [position, rotation], as the
+    /// `ref_moved` signal sends them (Skyrim space, radians).
+    godot::Dictionary get_moved_changes() const;
     /// Take a PlaceAtMe reference out of the world (`ref_deleted`); the game
     /// layer calls it when an effect has run its course. No-op for any other.
     void remove_placed(std::int64_t ref);

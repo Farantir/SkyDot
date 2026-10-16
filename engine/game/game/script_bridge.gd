@@ -82,11 +82,14 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 	# Every change scripts have made so far: apply those to this cell's
 	# references in one walk over it, not a search of the scene for each.
 	var changes := _papyrus.get_disabled_changes()
-	if not changes.is_empty():
+	var moves := _papyrus.get_moved_changes()
+	if not changes.is_empty() or not moves.is_empty():
 		for node in Place.ref_nodes(root):
 			var ref: int = node.get_meta("skydot_ref")
 			if changes.has(ref):
 				_show_ref(node, not changes[ref])
+			if moves.has(ref):
+				_move_ref(node as Node3D, moves[ref][0], moves[ref][1])
 
 
 ## A cell went away (streamed out): its scripted references unload.
@@ -207,7 +210,12 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 ## in the VM's view only.
 func _on_ref_moved(ref: int, position: Vector3, rotation: Vector3) -> void:
 	print("0x%08X moved by script" % ref)
-	var node := find_ref_node(ref) as Node3D
+	_move_ref(find_ref_node(ref) as Node3D, position, rotation)
+
+
+## Put a built node at a position and rotation (Skyrim space, radians),
+## keeping its scale.
+func _move_ref(node: Node3D, position: Vector3, rotation: Vector3) -> void:
 	if node != null:
 		node.transform = _world.skyrim_transform(position, rotation, node.scale.x)
 

@@ -89,6 +89,7 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::get_variable);
     godot::ClassDB::bind_method(D_METHOD("get_scripts", "ref"), &SkydotPapyrus::get_scripts);
     godot::ClassDB::bind_method(D_METHOD("is_ref_disabled", "ref"), &SkydotPapyrus::is_ref_disabled);
+    godot::ClassDB::bind_method(D_METHOD("get_moved_changes"), &SkydotPapyrus::get_moved_changes);
     godot::ClassDB::bind_method(D_METHOD("get_disabled_changes"),
                                 &SkydotPapyrus::get_disabled_changes);
     godot::ClassDB::bind_method(D_METHOD("is_activation_blocked", "ref"),
@@ -784,6 +785,19 @@ Dictionary SkydotPapyrus::get_disabled_changes() const {
     Dictionary out;
     for (const auto& [ref, value] : states_.disabled) {
         out[static_cast<std::int64_t>(ref)] = value;
+    }
+    return out;
+}
+
+Dictionary SkydotPapyrus::get_moved_changes() const {
+    Dictionary out;
+    for (const auto& [ref, to] : states_.moved) {
+        Array pair;
+        pair.push_back(godot::Vector3(static_cast<float>(to.position[0]), static_cast<float>(to.position[1]),
+                                      static_cast<float>(to.position[2])));
+        pair.push_back(godot::Vector3(static_cast<float>(to.rotation[0]), static_cast<float>(to.rotation[1]),
+                                      static_cast<float>(to.rotation[2])));
+        out[static_cast<std::int64_t>(ref)] = pair;
     }
     return out;
 }

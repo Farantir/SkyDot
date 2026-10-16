@@ -240,6 +240,7 @@ func _check_detach(vm: SkydotPapyrus, world: SkydotWorld) -> void:
     expect(vm.detach_all() >= 1, "detach_all unloads what is loaded")
     vm.update(0.0)
     expect(vm.get_variable(0x305, script, "Unloads") == 2, "and sent OnUnload again")
+    expect(vm.get_moved_changes().is_empty(), "no script moved a reference")
 
 func _check_timers_and_natives(vm: SkydotPapyrus) -> void:
     var timer := vm.create_instance("TestpackTimerScript")
