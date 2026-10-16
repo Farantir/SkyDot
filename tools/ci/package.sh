@@ -34,6 +34,7 @@ if [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     done
 fi
 
+mkdir -p engine/game/bin
 for dir in "$binaries"/binaries-*/; do
     cp "$dir"/extension/* engine/game/bin/
 done
