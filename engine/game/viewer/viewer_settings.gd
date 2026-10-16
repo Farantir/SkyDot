@@ -107,6 +107,46 @@ var shot_notes := true  # ask what is wrong after a shot
 var has_pck := false  # given, though ignored
 
 
+## What the game session is opened with, from these options.
+func game_config() -> GameConfig:
+	var c := GameConfig.new()
+	c.pack = pack
+	c.materials = materials
+	c.effects = effects
+	c.grass = grass
+	c.all_light_shadows = all_light_shadows
+	c.collision = collision
+	c.navigation = navigation
+	c.actors = actors
+	c.wander = wander
+	c.ai = ai
+	c.has_tiling = has_tiling
+	c.tiling = tiling
+	c.foliage_bias = foliage_bias
+	c.shadows = shadows
+	c.radius = radius
+	c.build_budget_usec = build_budget_usec
+	c.lod = lod
+	c.lod_split = lod_split
+	c.large_refs = large_refs
+	c.large_ref_radius = large_ref_radius
+	c.has_tree_distance = has_tree_distance
+	c.tree_distance = tree_distance
+	c.preload_doors = preload_doors
+	c.preload_distance = preload_distance
+	c.time = time
+	c.time_scale = time_scale
+	c.still = captures
+	c.weather = weather
+	c.quests = quests
+	c.set_stage = set_stage
+	c.pick_locks = pick_locks
+	c.activate = activate.duplicate()
+	c.damage = damage.duplicate()
+	c.activate_wait = activate_wait
+	return c
+
+
 ## The settings for `list` (the user arguments). `error` says if they cannot
 ## be used.
 static func from_arguments(list: PackedStringArray) -> ViewerSettings:

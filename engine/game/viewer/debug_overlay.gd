@@ -23,7 +23,7 @@ var show_navmesh := false
 
 var _host: Node3D
 var _world: SkydotWorld
-var _papyrus: SkydotPapyrus
+var _session: GameSession
 var _ai: SkydotAi  # null with --ai off
 var _camera: Camera3D
 var _player: SkydotPlayer
@@ -71,12 +71,11 @@ func _init() -> void:
 	add_child(_perf_label)
 
 
-func setup(host: Node3D, world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi,
-		camera: Camera3D, player: SkydotPlayer) -> void:
-	_host = host
-	_world = world
-	_papyrus = papyrus
-	_ai = ai
+func setup(session: GameSession, camera: Camera3D, player: SkydotPlayer) -> void:
+	_session = session
+	_host = session.host
+	_world = session.world
+	_ai = session.ai
 	_camera = camera
 	_player = player
 
@@ -175,13 +174,6 @@ func _show_lines() -> void:
 	_notes.text = "\n".join(texts)
 
 
-## A quest's name as the game shows it, else its editor id.
-func quest_name(quest: int) -> String:
-	var info := _world.get_quest(quest)
-	var title: String = info.get("name", "")
-	return title if title != "" else info.get("editor_id", "0x%08X" % quest)
-
-
 ## Toggle the journal on screen: running quests with displayed objectives, as
 ## the game's journal lists them. The console gets every running quest.
 func toggle_journal() -> void:
@@ -189,21 +181,21 @@ func toggle_journal() -> void:
 		_journal.visible = false
 		_notes.visible = true
 		return
-	var running := _papyrus.get_running_quests()
+	var running := _session.get_running_quests()
 	print("journal: %d running quests" % running.size())
 	var lines: Array[String] = []
 	for quest in running:
-		var state := _papyrus.get_quest_state(quest)
+		var state := _session.get_quest_state(quest)
 		var info := _world.get_quest(quest)
 		var shown: Array = []
 		for o in info.get("objectives", []):
 			var s: Dictionary = state["objectives"].get(o["index"], {})
 			if s.get("displayed", false) and not s.get("completed", false):
 				shown.append(o["text"])
-		print("  %s (0x%08X) stage %d%s" % [quest_name(quest), quest, state["stage"],
+		print("  %s (0x%08X) stage %d%s" % [_session.quest_name(quest), quest, state["stage"],
 			("  -> " + "; ".join(shown)) if not shown.is_empty() else ""])
 		if not shown.is_empty():
-			lines.append("%s  (stage %d)" % [quest_name(quest), state["stage"]])
+			lines.append("%s  (stage %d)" % [_session.quest_name(quest), state["stage"]])
 			for text in shown:
 				lines.append("    " + text)
 	lines.push_front("Journal: %d quests with objectives, %d running (J closes)" % [

@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The game layer's save and load, round trip, on the test pack
-# (converter/tools/testpack): the viewer's parts (Place, ScriptBridge with its
-# PlacedRefs, Projectiles and Sounds, SaveService, SkydotClock) are put
-# together as cell_viewer.gd does, without input. References are placed,
+# (converter/tools/testpack), through a GameSession built headless around a
+# bare Camera3D and a stand-in player: no rig, no input, no overlay. References
+# are placed,
 # deleted, moved and disabled, a door is unlocked and opened, a sound plays and
 # a script counts; the state is saved, changed further and loaded, and every
 # piece is compared with what it was when saved. A corrupt save must leave the
@@ -41,16 +41,11 @@ const KNOWN := ["B5"]  # B5: live sounds are not saved (the clock is)
 var failures := 0
 var known_failures := 0
 
-var _pack: SkydotPack
+var _session: GameSession
+var _player: TestPlayer
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
 var _clock: SkydotClock
-var _rig: PlayerRig
-var _streamer: SkydotStreamer
-var _place: Place
-var _bridge: ScriptBridge
-var _saves: SaveService
-var _host: Node3D
 var _placed_log: Array = []  # ref_placed: [ref, base, position]
 var _errors: Array[String] = []
 
@@ -169,7 +164,7 @@ func _run(pack_dir: String) -> void:
     _papyrus.update(0.0)
     var pulls: int = _papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls")
     expect(pulls == 1, "the lever counts a pull: %d" % pulls)
-    var sounds: Sounds = _bridge._sounds
+    var sounds: Sounds = _session.sounds
     var descriptor := _world.find_sound_descriptor("TestpackClickSD")
     expect(descriptor != 0, "the test pack has a sound descriptor")
     var cube_disabled := _papyrus.is_ref_disabled(CUBE)
@@ -181,9 +176,9 @@ func _run(pack_dir: String) -> void:
     expect(not _clock.shift(2.0).is_empty(), "the clock moves")
     _check_clock(16.0)
     var hour: float = _clock.get_hour()
-    var camera_at: Vector3 = _rig.camera.position
+    var camera_at: Vector3 = _player.position
 
-    _saves.save(SAVE_PATH)
+    _session.save_game(SAVE_PATH)
     expect(FileAccess.file_exists(SAVE_PATH), "a save is written")
 
     # ---- change everything ------------------------------------------------
@@ -197,7 +192,7 @@ func _run(pack_dir: String) -> void:
     if sound_plays:
         sounds.stop(instance)
     _clock.shift(5.0)
-    _rig.camera.position += Vector3(1, 0, 1)
+    _player.position += Vector3(1, 0, 1)
     await _frames(3)
 
     # ---- a save that cannot be loaded leaves the game as it is ------------
@@ -206,8 +201,8 @@ func _run(pack_dir: String) -> void:
     var before_lock: int = _papyrus.get_lock_level(OUTSIDE_DOOR)
     var before_base: int = _papyrus.get_ref_base(extra)
     var before_scripts := _papyrus.get_scripts(LEVER)
-    expect(not _saves.load_game("user://no_such_save.skydot"), "a missing file is refused")
-    expect(not _saves.load_game(BAD_PATH), "a save with a truncated VM section is refused")
+    expect(not _session.load_game("user://no_such_save.skydot"), "a missing file is refused")
+    expect(not _session.load_game(BAD_PATH), "a save with a truncated VM section is refused")
     check("B6", _papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == before_pulls
             and _papyrus.get_lock_level(OUTSIDE_DOOR) == before_lock
             and _papyrus.get_ref_base(extra) == before_base and _papyrus.get_scripts(LEVER) == before_scripts,
@@ -217,13 +212,13 @@ func _run(pack_dir: String) -> void:
                _papyrus.get_scripts(LEVER)])
     # A save of another pack (its HEAD names another world hash) is refused too.
     _foreign_save()
-    expect(not _saves.load_game(FOREIGN_PATH), "a save of another pack is refused")
+    expect(not _session.load_game(FOREIGN_PATH), "a save of another pack is refused")
     expect(_papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == before_pulls
             and _papyrus.get_ref_base(extra) == before_base, "and the running game is as it was")
     await _frames(1)
 
     # ---- load and compare -------------------------------------------------
-    expect(_saves.load_game(SAVE_PATH), "the save loads")
+    expect(_session.load_game(SAVE_PATH), "the save loads")
     await _frames(4)
     expect(_papyrus.get_error_count() == 0, "no script error on the way: %s" % _papyrus.get_last_error())
     expect(_papyrus.get_ref_base(kept) == CUBE_BASE and _world.find_ref_node(kept) != null,
@@ -244,7 +239,7 @@ func _run(pack_dir: String) -> void:
     expect(_papyrus.get_lock_level(OUTSIDE_DOOR) == lock_state, "the door is unlocked again: %d" % _papyrus.get_lock_level(OUTSIDE_DOOR))
     expect(_papyrus.get_open_state(INSIDE_DOOR) == open_state, "and open: %d" % _papyrus.get_open_state(INSIDE_DOOR))
     expect(_papyrus.get_variable(LEVER, "TestpackLeverScript", "Pulls") == pulls, "the script's count is back")
-    expect(_rig.camera.position.is_equal_approx(camera_at), "the camera is where it was saved")
+    expect(_player.position.is_equal_approx(camera_at), "the player is where it was saved")
     expect(_near(_clock.get_hour(), hour), "B5: the time of day is back: %.2f, saved at %.2f" % [_clock.get_hour(), hour])
     expect(_near(_papyrus_time(), hour / 24.0), "B4: and scripts read it: %.4f days" % _papyrus_time())
     # SetValue on GameHour moves the clock, and the sky with it.
@@ -273,59 +268,69 @@ func _papyrus_time() -> float:
     return _call("GameTime", []) as float
 
 
-## Put the viewer's parts together as cell_viewer.gd does, minus input.
+## A stand-in for a shell's player (GameSession's contract): it only keeps
+## where it was put.
+class TestPlayer:
+    extends RefCounted
+    var yaw := 0.0
+    var pitch := 0.0
+    var flying := false
+    var position := Vector3.ZERO
+    var view_distance := 0.0
+    var loaded_position := Vector3.ZERO
+    var loaded_yaw := 0.0
+    var loaded_pitch := 0.0
+
+    func place_at(at: Vector3, new_yaw: float, new_pitch: float) -> void:
+        position = at
+        yaw = new_yaw
+        pitch = new_pitch
+
+    func set_view_distance(metres: float) -> void:
+        view_distance = metres
+
+    func save_section() -> PackedByteArray:
+        return var_to_bytes({"position": position, "yaw": yaw, "pitch": pitch})
+
+    func load_section(bytes: PackedByteArray) -> bool:
+        var state = bytes_to_var(bytes)
+        if typeof(state) != TYPE_DICTIONARY or typeof(state.get("position")) != TYPE_VECTOR3:
+            return false
+        loaded_position = state["position"]
+        loaded_yaw = state["yaw"]
+        loaded_pitch = state["pitch"]
+        return true
+
+
+## The game, as a shell would make it but with no rig, no input, no overlay:
+## a GameSession around a bare camera and a stand-in player.
 func _build(pack_dir: String) -> bool:
-    var settings := ViewerSettings.from_arguments(PackedStringArray([
-        "--pack", pack_dir, "--cell", CELL, "--no-input", "--time", "14", "--quests", "off",
-        "--preload-doors", "off"]))
-    expect(settings.error.is_empty(), "the options parse: " + settings.error)
-    _clock = SkydotClock.new()
-    _clock.setup(settings.time, settings.time_scale, settings.captures)
-    _pack = SkydotPack.new()
-    expect(_pack.open(pack_dir) == OK, "the test pack opens: " + _pack.get_error())
-    _world = _pack.open_world()
-    if _world == null:
-        expect(false, "world.fb opens")
+    var config := GameConfig.new()
+    config.pack = pack_dir
+    config.time = 14.0
+    config.navigation = false
+    config.actors = false
+    config.quests = false
+    config.preload_doors = false
+    _player = TestPlayer.new()
+    var viewpoint := Camera3D.new()
+    root.add_child(viewpoint)
+    _session = GameSession.new()
+    _session.interactive = false
+    _session.failed.connect(func(text: String) -> void: expect(false, "the session fails: " + text))
+    root.add_child(_session)
+    expect(_session.open(config, viewpoint, _player), "the session opens on the test pack")
+    if _session.world == null:
         return false
-    _papyrus = SkydotPapyrus.new()
-    expect(_papyrus.setup(_pack, _world) == OK, "the VM sets up")
-    _papyrus.attach_clock(_clock)
+    _papyrus = _session.papyrus
+    _clock = _session.clock
+    _world = _session.world
     _papyrus.error.connect(func(text: String) -> void: _errors.append(text); printerr("vm error: ", text))
     _papyrus.ref_placed.connect(func(ref: int, base: int, _cell: int, position: Vector3, _r: Vector3, _s: float, _d: bool) -> void:
         _placed_log.append([ref, base, position]))
-    var ai := SkydotAi.new()  # the clock keeps the time of day with it, inside
-    expect(ai.setup(_world, _papyrus) == OK, "the AI sets up")
-    _clock.attach_ai(ai)
-    _world.collision = settings.collision
-    _world.navigation = false
-    _world.actors = false
-    _host = Node3D.new()
-    root.add_child(_host)
-    var image_space := SkydotImageSpace.new()
-    _rig = PlayerRig.new(settings, image_space)
-    _host.add_child(_rig.camera)
-    _host.add_child(_rig.player)
-    _streamer = SkydotStreamer.new()
-    _streamer.setup(_world, _pack, _host, _rig.camera, ai)
-    _streamer.preload_enabled = false
-    _streamer.cell_finished.connect(func(cell: Node3D, cell_id: int) -> void: _bridge.scripts_loaded(cell, cell_id))
-    var debug := DebugOverlay.new()
-    debug.setup(_host, _world, _papyrus, ai, _rig.camera, _rig.player)
-    _host.add_child(debug)
-    _place = Place.new(_world, _host, settings, _rig, ai, _clock, _streamer)
-    var transition := PlaceTransition.new(_place, _streamer)
-    transition.interactive = false
-    _host.add_child(transition)
-    _bridge = ScriptBridge.new(_world, _papyrus, _host, _rig.camera, settings, _place, _streamer, debug,
-        transition, _pack)
-    _place.built.connect(func(cell: Node3D, cell_id: int) -> void:
-        _bridge.scripts_loaded(cell, cell_id)
-        _streamer.register_doors(cell))
-    _saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge, _clock)
-    _bridge.quests_ready = true
-    var cell_id := _world.find_cell(CELL)
-    expect(cell_id != 0, "the interior exists")
-    _place.enter_interior(cell_id, SkydotWorld.skyrim_position(Vector3(0, -100, 150)), null)
+    expect(_session.start_game(), "the game starts")
+    expect(_session.enter_cell(CELL, SkydotWorld.skyrim_position(Vector3(0, -100, 150)), null),
+        "the interior is entered")
     return true
 
 

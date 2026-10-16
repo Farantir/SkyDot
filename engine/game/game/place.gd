@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The place being shown: an interior, or a worldspace streamed around the
-# camera. It builds a place (the cell or the sky, light and LOD, with
-# SkydotWeather outside), puts the camera in it and removes the place when the
-# next one is entered. What the place consists of is `nodes`; who needs to
+# viewpoint. It builds a place (the cell or the sky, light and LOD, with
+# SkydotWeather outside), puts the player in it and removes the place when the
+# next one is entered. The player is the shell's object (GameSession's
+# contract: yaw, pitch, flying, place_at, set_view_distance). What the place consists of is `nodes`; who needs to
 # know that a cell was built hears `built`.
 class_name Place
 extends RefCounted
@@ -26,19 +27,21 @@ var cell_id := 0
 var interior_image_space := {}
 var _world: SkydotWorld
 var _host: Node3D  # the place's nodes are added here
-var _settings: ViewerSettings
-var _rig: PlayerRig
+var _config: GameConfig
+var _viewpoint: Camera3D
+var _player: Object
 var _ai: SkydotAi  # null with --ai off
 var _clock: SkydotClock
 var _streamer: SkydotStreamer
 
 
-func _init(world: SkydotWorld, host: Node3D, settings: ViewerSettings, rig: PlayerRig, ai: SkydotAi,
-		clock: SkydotClock, streamer: SkydotStreamer) -> void:
+func _init(world: SkydotWorld, host: Node3D, config: GameConfig, viewpoint: Camera3D, player: Object,
+		ai: SkydotAi, clock: SkydotClock, streamer: SkydotStreamer) -> void:
 	_world = world
 	_host = host
-	_settings = settings
-	_rig = rig
+	_config = config
+	_viewpoint = viewpoint
+	_player = player
 	_ai = ai
 	_clock = clock
 	_streamer = streamer
@@ -78,6 +81,18 @@ func add(node: Node) -> void:
 	nodes.append(node)
 
 
+## Put the player at `at`, looking at `target` (null keeps the direction).
+func _place_player(at: Vector3, target: Variant) -> void:
+	var yaw: float = _player.yaw
+	var pitch: float = _player.pitch
+	if target != null:
+		var d: Vector3 = target - at
+		if d.length() > 0.0001:
+			yaw = atan2(-d.x, -d.z)
+			pitch = asin(clampf(d.y / d.length(), -1.0, 1.0))
+	_player.place_at(at, yaw, pitch)
+
+
 ## Remove the current cell or worldspace.
 func leave() -> void:
 	left.emit()
@@ -113,25 +128,24 @@ func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = nu
 	print("cell %s: %s" % [cell["editor_id"], root.get_meta("skydot_stats")])
 	built.emit(root, id)
 	_add_environment(cell)
-	_rig.camera.far = 500.0
-	var spawn = _interior_spawn(id) if at == null and not _rig.player.fly else null
+	_player.set_view_distance(500.0)
+	var spawn = _interior_spawn(id) if at == null and not _player.flying else null
 	if spawn != null:
-		var eye: Vector3 = spawn.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
+		var eye: Vector3 = spawn.origin + Vector3(0, GameSession.EYE_HEIGHT, 0)
 		var forward: Vector3 = -spawn.basis.z
 		forward.y = 0.0
-		_rig.place_camera(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
+		_place_player(eye, eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD))
 	elif at == null:
-		if not _rig.player.fly:
-			_rig.player.fly = true
+		if not _player.flying:
+			_player.flying = true
 			print("no door leads into %s: flying (V walks)" % cell["editor_id"])
 		var bounds := mesh_bounds(root)
 		print("bounds: ", bounds)
 		var eye := bounds.get_center()
-		eye.y = bounds.position.y + min(PlayerRig.EYE_HEIGHT, bounds.size.y * 0.5)
-		_rig.place_camera(eye, null)
-		_rig.apply_look(0.0, 0.0)
+		eye.y = bounds.position.y + min(GameSession.EYE_HEIGHT, bounds.size.y * 0.5)
+		_player.place_at(eye, 0.0, 0.0)
 	else:
-		_rig.place_camera(at, target)
+		_place_player(at, target)
 	print("entered ", cell["editor_id"])
 
 
@@ -148,15 +162,15 @@ func enter_exterior(world_id: int, at: Vector3, target: Variant,
 		_ai.set_space(world_id)
 		_ai.settle_actors()  # a pass begun when preparing, or a full one
 	var weather := 0
-	if not _settings.weather.is_empty():
-		weather = _world.find_weather(_settings.weather)
+	if not _config.weather.is_empty():
+		weather = _world.find_weather(_config.weather)
 		if weather == 0:
-			failed.emit("no weather named " + _settings.weather)
+			failed.emit("no weather named " + _config.weather)
 			return false
 	if not _start_weather(weather):
-		_add_sky(_world.get_sky(_streamer.world_id, _clock.hour, weather), _settings.shadows)
-	_rig.camera.far = _streamer.view_distance()
-	_rig.place_camera(at, target)
+		_add_sky(_world.get_sky(_streamer.world_id, _clock.hour, weather), _config.shadows)
+	_player.set_view_distance(_streamer.view_distance())
+	_place_player(at, target)
 	var lod: SkydotLod = prepared.lod if prepared != null else null
 	if lod == null:
 		lod = _streamer.make_lod(world_id)
@@ -164,7 +178,7 @@ func enter_exterior(world_id: int, at: Vector3, target: Variant,
 		SkydotStreamer.release_held(lod)
 		add(lod)
 		_streamer.lod = lod
-		_rig.camera.far = 40000.0
+		_player.set_view_distance(40000.0)
 	_streamer.adopt(prepared)
 	for w in _world.list_worlds():
 		if w["id"] == world_id:
@@ -216,11 +230,11 @@ func _start_weather(weather: int) -> bool:
 	var node := SkydotWeather.new()
 	node.name = "weather"
 	_clock.configure(node)  # hour, day and speed
-	node.shadows = _settings.shadows
+	node.shadows = _config.shadows
 	if weather != 0:
 		node.auto_weather = false
 	add(node)
-	if node.setup(_world, _streamer.world_id, _rig.camera) != OK:
+	if node.setup(_world, _streamer.world_id, _viewpoint) != OK:
 		nodes.erase(node)
 		node.queue_free()
 		return false
@@ -288,17 +302,17 @@ func _add_interior_sky(cell: Dictionary, env: Environment) -> void:
 	if not cell.get("show_sky", false) or region == 0:
 		return
 	var weather := 0
-	if not _settings.weather.is_empty():
-		weather = _world.find_weather(_settings.weather)
+	if not _config.weather.is_empty():
+		weather = _world.find_weather(_config.weather)
 		if weather == 0:
-			failed.emit("no weather named " + _settings.weather)
+			failed.emit("no weather named " + _config.weather)
 	var node := SkydotWeather.new()
 	node.name = "weather"
 	_clock.configure(node)  # hour, day and speed
 	if weather != 0:
 		node.auto_weather = false
 	add(node)
-	if node.setup_sky(_world, region, _rig.camera) != OK:
+	if node.setup_sky(_world, region, _viewpoint) != OK:
 		nodes.erase(node)
 		node.queue_free()
 		return

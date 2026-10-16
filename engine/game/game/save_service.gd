@@ -11,17 +11,17 @@ const PLYR_VERSION := 1
 var _papyrus: SkydotPapyrus
 var _place: Place
 var _streamer: SkydotStreamer
-var _rig: PlayerRig
+var _player: Object  # GameSession's player contract: save_section, load_section, place_at
 var _bridge: ScriptBridge
 var _clock: SkydotClock
 
 
-func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, rig: PlayerRig,
+func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, player: Object,
 		bridge: ScriptBridge, clock: SkydotClock) -> void:
 	_papyrus = papyrus
 	_place = place
 	_streamer = streamer
-	_rig = rig
+	_player = player
 	_bridge = bridge
 	_clock = clock
 
@@ -65,27 +65,28 @@ func load_game(path: String) -> bool:
 	_bridge.retire_graphs()
 	_papyrus.commit_load()
 	_clock.commit_load()
+	var at: Vector3 = _player.loaded_position
 	if int(player["world"]) != 0:
-		_place.enter_exterior(int(player["world"]), player["position"], null)
+		_place.enter_exterior(int(player["world"]), at, null)
 	else:
-		_place.enter_interior(int(player["cell"]), player["position"], null)
-	_rig.apply_look(float(player["yaw"]), float(player["pitch"]))
+		_place.enter_interior(int(player["cell"]), at, null)
+	_player.place_at(_player.loaded_position, _player.loaded_yaw, _player.loaded_pitch)
 	print("loaded ", path)
 	return true
 
 
-## PLYR: where the player is.
+## PLYR: where the player is. The place is the session's, the rest (position,
+## look) the player object's own section.
 func _player_section() -> PackedByteArray:
 	return var_to_bytes({
 		"cell": _place.cell_id,
 		"world": _streamer.world_id,
-		"position": _rig.camera.position,
-		"yaw": _rig.yaw,
-		"pitch": _rig.pitch,
+		"player": _player.save_section(),
 	})
 
 
-## The PLYR section as a Dictionary, empty if it is missing or wrong.
+## The PLYR section as a Dictionary, empty if it is missing or wrong (the
+## player object reads its part, and keeps it for place_at).
 func _parse_player(reader: SkydotSaveReader) -> Dictionary:
 	if not reader.has_section("PLYR") or reader.get_section_version("PLYR") != PLYR_VERSION:
 		return {}
@@ -93,7 +94,8 @@ func _parse_player(reader: SkydotSaveReader) -> Dictionary:
 	if typeof(state) != TYPE_DICTIONARY:
 		return {}
 	if typeof(state.get("cell")) != TYPE_INT or typeof(state.get("world")) != TYPE_INT \
-			or typeof(state.get("position")) != TYPE_VECTOR3 or typeof(state.get("yaw")) != TYPE_FLOAT \
-			or typeof(state.get("pitch")) != TYPE_FLOAT:
+			or typeof(state.get("player")) != TYPE_PACKED_BYTE_ARRAY:
+		return {}
+	if not _player.load_section(state["player"]):
 		return {}
 	return state

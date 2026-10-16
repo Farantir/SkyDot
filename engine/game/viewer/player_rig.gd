@@ -3,11 +3,10 @@
 # The camera and the player it follows, and where they look. The player is
 # SkydotPlayer (walks with collision, or flies); the camera sits at its eyes
 # and faces where `yaw` and `pitch` say. Input only changes those two; the
-# places put the rig somewhere with place_camera.
+# places put the rig somewhere with place_at (the game's player contract).
 class_name PlayerRig
 extends RefCounted
 
-const EYE_HEIGHT := 1.7  # metres
 
 ## The player fell below the world and was put back, flying.
 signal fell_through
@@ -16,6 +15,10 @@ var camera: Camera3D
 var player: SkydotPlayer  # the camera follows its eyes
 var yaw := 0.0  # radians, about the up axis
 var pitch := 0.0
+## What load_section decoded, for place_at.
+var loaded_position := Vector3.ZERO
+var loaded_yaw := 0.0
+var loaded_pitch := 0.0
 var _last_ground := Vector3.ZERO  # where the player last stood
 var _ground_check := 0  # frames until checking the player is not under the land
 
@@ -32,22 +35,51 @@ func _init(settings: ViewerSettings, image_space: SkydotImageSpace) -> void:
 		camera.fov = settings.fov
 	player = SkydotPlayer.new()
 	player.name = "player"
-	player.eye_height = EYE_HEIGHT
+	player.eye_height = GameSession.EYE_HEIGHT
 	player.fly = settings.fly
 
 
-## Put the camera at `at` (a camera position) looking at `target`, or keep
-## the direction if `target` is null, with the player's feet below it.
-func place_camera(at: Vector3, target: Variant) -> void:
-	camera.position = at
-	if target != null:
-		camera.look_at(target)
-	yaw = camera.rotation.y
-	pitch = camera.rotation.x
+## GameSession's player contract (game/game_session.gd).
+##
+## Put the camera at `position` (a camera position) looking along `new_yaw` and
+## `new_pitch`, with the player's feet below it.
+func place_at(position: Vector3, new_yaw: float, new_pitch: float) -> void:
+	camera.position = position
+	apply_look(new_yaw, new_pitch)
 	# A little above the spot, so feet placed on a floor do not start in it.
-	player.teleport(at - Vector3(0, EYE_HEIGHT - 0.05, 0))
+	player.teleport(position - Vector3(0, GameSession.EYE_HEIGHT - 0.05, 0))
 	_last_ground = player.global_position
 	_ground_check = 3
+
+
+## Flying through everything, or walking.
+var flying: bool:
+	get:
+		return player.fly
+	set(value):
+		player.fly = value
+
+
+func set_view_distance(metres: float) -> void:
+	camera.far = metres
+
+
+## What the PLYR section holds of the player: where the camera is and looks.
+func save_section() -> PackedByteArray:
+	return var_to_bytes({"position": camera.position, "yaw": yaw, "pitch": pitch})
+
+
+## Decode a section (changes nothing): false if it is not a player's. The
+## values are in loaded_* for place_at.
+func load_section(bytes: PackedByteArray) -> bool:
+	var state = bytes_to_var(bytes)
+	if typeof(state) != TYPE_DICTIONARY or typeof(state.get("position")) != TYPE_VECTOR3 \
+			or typeof(state.get("yaw")) != TYPE_FLOAT or typeof(state.get("pitch")) != TYPE_FLOAT:
+		return false
+	loaded_position = state["position"]
+	loaded_yaw = state["yaw"]
+	loaded_pitch = state["pitch"]
+	return true
 
 
 func apply_look(new_yaw: float, new_pitch: float) -> void:

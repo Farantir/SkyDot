@@ -24,9 +24,6 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus) -> void:
 	_world = world
 	_papyrus = papyrus
 	name = "PlacedRefs"
-	papyrus.ref_placed.connect(place)
-	papyrus.ref_deleted.connect(remove)
-	papyrus.destruction_model.connect(swap_model)
 
 
 ## Build reference `ref` of `base` at `position` (Skyrim space) with `rotation`

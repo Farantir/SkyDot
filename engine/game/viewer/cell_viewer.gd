@@ -124,28 +124,20 @@
 # keeps the importer's standard materials, --effects off leaves models and
 # lights still, for comparison.
 #
-# This script only puts the viewer together and runs its frame; the parts are
-# next to it: ViewerSettings (the options), PlayerRig and PlayerInput, Place
-# and PlaceTransition, ScriptBridge, SaveService, ShotRecorder, DebugOverlay
-# and BenchmarkRun. The time of day (SkydotClock) and the streaming of the
-# world with its door preloading (SkydotStreamer) are the engine's.
+# This script is the viewer, a shell around the game: it reads the options,
+# owns the camera and player (PlayerRig, PlayerInput), the image space, the
+# debug overlay, shots and the benchmark, and runs the frame. The game itself
+# is GameSession (game/game_session.gd): the pack, scripts, AI, clock,
+# streaming, places, saves. The shell hands it the camera and the player and
+# listens to its signals.
 extends Node3D
 
 var _settings: ViewerSettings
-var _pack: SkydotPack
-var _world: SkydotWorld
-var _papyrus: SkydotPapyrus
-var _ai: SkydotAi  # null with --ai off
+var _session: GameSession
 var _image_space: SkydotImageSpace
-var _clock: SkydotClock
 var _rig: PlayerRig
-var _streamer: SkydotStreamer
-var _place: Place
-var _transition: PlaceTransition
-var _bridge: ScriptBridge
 var _controls: PlayerInput
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
-var _saves: SaveService
 var _shots: ShotRecorder
 var _benchmark := BenchmarkRun.new()
 var _quit_in := -1  # frames until quitting after --activate
@@ -155,8 +147,8 @@ var _quit_in := -1  # frames until quitting after --activate
 var _input := true:
 	set(value):
 		_input = value
-		if _transition != null:
-			_transition.interactive = value
+		if _session != null:
+			_session.interactive = value
 		if _controls != null:
 			_controls.enabled = value
 
@@ -168,178 +160,101 @@ func _ready() -> void:
 	if not _settings.error.is_empty():
 		_fail(_settings.error)
 		return
-	_clock = SkydotClock.new()
-	_clock.setup(_settings.time, _settings.time_scale, _settings.captures)
-	if not _open_world():
+	if not _open_game():
 		return
 	_create_components()
 	_start_game()
 
 
-## Open the pack and its world and set what is built and who runs it.
-func _open_world() -> bool:
-	_pack = SkydotPack.new()
-	if _pack.open(_settings.pack) != OK:
-		_fail(_pack.get_error())
-		return false
-	if _settings.has_pck:
-		push_warning("--pck is ignored: packs load directly, there is no bake any more")
-	_world = _pack.open_world()
-	if _world == null:
-		_fail(_pack.get_error())
-		return false
-	_papyrus = SkydotPapyrus.new()
-	_papyrus.setup(_pack, _world)
-	_papyrus.attach_clock(_clock)
-	_world.skyrim_materials = _settings.materials
-	_world.effects = _settings.effects
-	_world.grass = _settings.grass
-	_world.all_light_shadows = _settings.all_light_shadows
-	_world.collision = _settings.collision
-	_world.navigation = _settings.navigation
-	_world.actors = _settings.actors
-	_world.actor_wander = _settings.wander
-	if _settings.ai:
-		_ai = SkydotAi.new()
-		if _ai.setup(_world, _papyrus) == OK:
-			_clock.attach_ai(_ai)
-			_ai.drive = _world.actor_wander
-			_ai.actor_left.connect(_on_actor_left)
-		else:
-			_ai = null
-	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
-	get_viewport().screen_space_aa = ViewerSettings.AA_STEPS[_settings.aa_index]
-	get_viewport().scaling_3d_scale = _settings.render_scale
-	_world.foliage_bias = _settings.foliage_bias
-	if _settings.has_tiling:
-		_world.terrain_tiling = _settings.tiling
+## The camera and player, and the game around them: the session opens the
+## pack. False if it does not (the run is over).
+func _open_game() -> bool:
+	_image_space = SkydotImageSpace.new()
+	_rig = PlayerRig.new(_settings, _image_space)
+	add_child(_rig.camera)
+	add_child(_rig.player)
+	_session = GameSession.new()
+	_session.name = "GameSession"
+	_session.failed.connect(_fail)
+	add_child(_session)
 	# Runs that capture, measure or activate on their own ignore the keyboard
 	# and mouse, so a stray touch cannot move the view.
 	_input = _settings.interactive
+	if not _session.open(_settings.game_config(), _rig.camera, _rig):
+		return false
+	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
+	get_viewport().screen_space_aa = ViewerSettings.AA_STEPS[_settings.aa_index]
+	get_viewport().scaling_3d_scale = _settings.render_scale
 	return true
 
 
-## Make the parts and connect them. They are added to the scene in the order
-## the frame needs: camera and player, then what draws over them.
+## Make the shell's parts and connect them to the game's signals.
 func _create_components() -> void:
-	_image_space = SkydotImageSpace.new()
-	_rig = PlayerRig.new(_settings, _image_space)
 	_rig.fell_through.connect(func() -> void: _debug.note("fell through the world: flying (V walks)"))
-	add_child(_rig.camera)
-	add_child(_rig.player)
-	_make_streamer()
 	_debug = DebugOverlay.new()
-	_debug.setup(self, _world, _papyrus, _ai, _rig.camera, _rig.player)
+	_debug.setup(_session, _rig.camera, _rig.player)
 	add_child(_debug)
-	_place = Place.new(_world, self, _settings, _rig, _ai, _clock, _streamer)
-	_place.built.connect(_on_interior_built)
-	_place.left.connect(_image_space.reset_adaptation)
-	_place.left.connect(_debug.clear_path)
-	_place.message.connect(_debug.note)
-	_place.failed.connect(_fail)
-	if _ai != null:
-		_ai.actor_arrived.connect(_place.on_actor_arrived)
-	_transition = PlaceTransition.new(_place, _streamer)
-	_transition.interactive = _input
-	add_child(_transition)
+	_session.message.connect(func(text: String, _box: bool) -> void: _debug.note(text))
+	_session.place_built.connect(func(root: Node, _cell_id: int) -> void: _debug.navmesh_overlay(root))
+	_session.place_left.connect(_image_space.reset_adaptation)
+	_session.place_left.connect(_debug.clear_path)
+	_session.activations_finished.connect(func() -> void:  # let scripts run first
+		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _input
 	_controls.command.connect(_on_command)
 	add_child(_controls)
-	_bridge = ScriptBridge.new(_world, _papyrus, self, _rig.camera, _settings, _place, _streamer, _debug,
-		_transition, _pack)
-	_bridge.activations_finished.connect(func() -> void:  # let scripts run first
-		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
-	_bridge.failed.connect(_fail)
-	_saves = SaveService.new(_papyrus, _place, _streamer, _rig, _bridge, _clock)
-	_shots = ShotRecorder.new(self, _settings, _world, _rig, _place, _streamer, _clock, _debug)
+	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
+		_session.clock, _debug)
 	if _settings.has_screenshot:
 		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"
 	_controls.capture_mouse()
 
 
-## The streaming of exterior cells and the building ahead behind load doors,
-## as the options say.
-func _make_streamer() -> void:
-	_streamer = SkydotStreamer.new()
-	_streamer.setup(_world, _pack, self, _rig.camera, _ai)
-	_streamer.radius = _settings.radius
-	_streamer.build_budget_usec = _settings.build_budget_usec
-	_streamer.lod_enabled = _settings.lod
-	_streamer.lod_split = _settings.lod_split
-	_streamer.large_refs = _settings.large_refs
-	_streamer.large_ref_radius = _settings.large_ref_radius
-	if _settings.has_tree_distance:
-		_streamer.set_tree_distance(_settings.tree_distance)
-	_streamer.eye_height = PlayerRig.EYE_HEIGHT
-	_streamer.preload_enabled = _settings.preload_doors
-	_streamer.preload_distance = _settings.preload_distance
-	_streamer.cell_finished.connect(_on_cell_built)
-
-
-## Start the quests and enter the place the options name.
+## Start the game and enter the place the options name.
 func _start_game() -> void:
 	var settings := _settings
-	if settings.quests:
-		var started := _papyrus.start_game_enabled_quests()
-		print("quests: %d of %d started with the game" % [started, _world.get_quest_count()])
-	_bridge.quests_ready = true
-	if not settings.set_stage.is_empty():
-		for item in settings.set_stage.split(","):
-			var parts: PackedStringArray = item.split(":")
-			var quest := _world.find_quest(parts[0])
-			if quest == 0 or parts.size() != 2:
-				_fail("--set-stage wants EDID:STAGE, got " + item)
-				return
-			if not _papyrus.set_stage(quest, int(parts[1])):
-				print("%s: stage %s refused" % [parts[0], parts[1]])
+	if not _session.start_game():
+		return
 
 	if not settings.world.is_empty():
-		var world_id := _world.find_world(settings.world)
-		if world_id == 0:
-			_fail("no worldspace named " + settings.world)
-			return
 		if not settings.has_at:
 			_fail("--world needs --at X,Y,Z")
 			return
-		var started := Time.get_ticks_usec()
-		var variants := _world.warm_up()
-		print("warm_up: %d shader variants in %.0f ms" % [variants, (Time.get_ticks_usec() - started) / 1000.0])
 		var at := SkydotWorld.skyrim_position(settings.at)
 		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
-		if not _place.enter_exterior(world_id, at, target):
+		if not _session.enter_world(settings.world, at, target):
 			return
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		_controls.fly_speed = 10.0
 		if settings.has_benchmark:
 			_benchmark.begin(settings.benchmark, settings.fly_speed)
-			_streamer.max_usec = 0
-			_streamer.load_everything()
+			_session.streamer.max_usec = 0
+			_session.streamer.load_everything()
 		if settings.has_screenshot:
 			# Everything in range first, so the capture is complete.
-			_streamer.load_everything()
-			if _streamer.lod != null:
-				print("lod: ", _streamer.lod.get_stats())
+			_session.streamer.load_everything()
+			if _session.streamer.lod != null:
+				print("lod: ", _session.streamer.lod.get_stats())
 			_shots.begin_run(settings.screenshot, [NAN])
 		return
 
-	var cell_id := _world.find_cell(settings.cell)
-	if cell_id == 0:
-		_fail("no cell named " + settings.cell)
-		return
 	var fixed_view := settings.has_at and settings.has_target
+	var entered := false
 	if fixed_view:
-		_place.enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at),
+		entered = _session.enter_cell(settings.cell, SkydotWorld.skyrim_position(settings.at),
 			SkydotWorld.skyrim_position(settings.target))
 	else:
-		_place.enter_interior(cell_id, SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
+		entered = _session.enter_cell(settings.cell,
+			SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
+	if not entered:
+		return
 	if settings.has_look:
 		_rig.apply_look(settings.look_yaw, settings.look_pitch)
 	if not settings.load_path.is_empty():
-		_saves.load_game(settings.load_path)
-	for item in settings.give:
-		_papyrus.add_item(SkydotPapyrus.PLAYER_REF, item.x, item.y)
+		_session.load_game(settings.load_path)
+	_session.give(settings.give)
 
 	if settings.has_screenshot:
 		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
@@ -352,7 +267,7 @@ func _start_game() -> void:
 
 
 func _process(delta: float) -> void:
-	if _rig == null:
+	if _shots == null:
 		return
 	_sync_image_space()
 	_debug.sample_perf(delta)
@@ -360,41 +275,30 @@ func _process(delta: float) -> void:
 		if _settings.shot_frames > 1:
 			# A frame series shows what scripts do over time (a trap swinging
 			# when the feet reach its plate); single shots stay still.
-			_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
-				SkydotWorld.godot_to_skyrim(_rig.player.global_position))
-			_papyrus.update(delta)
-			if _bridge.has_activations():
-				_bridge.run_activation()  # --activate inside the series
+			_session.update_scripts(delta, _rig.player.global_position)
+			if _session.has_activations():
+				_session.run_activation()  # --activate inside the series
 		_shots.step(delta)
 		return
-	_streamer.hold_player(_rig.player, _transition.is_fading())
+	_session.streamer.hold_player(_rig.player, _session.is_fading())
 	_rig.track()
 	_rig.follow()
-	_streamer.update()
-	_streamer.preload_step(_rig.player.global_position)
-	if _transition.is_fading():
-		_transition.step(delta)
-	_papyrus.update_actor(SkydotPapyrus.PLAYER_REF,
-		SkydotWorld.godot_to_skyrim(_rig.player.global_position))
-	_papyrus.update(delta)
-	if _ai != null:
-		_clock.sync(_benchmark.is_running())
-		_ai.update(delta)
+	_session.step(delta, _rig.player.global_position, _benchmark.is_running())
 	_debug.age(delta)
 	if _quit_in >= 0:
 		_quit_in -= 1
 		if _quit_in < 0:
 			if not _settings.save_to.is_empty():
-				_saves.save(_settings.save_to)
+				_session.save_game(_settings.save_to)
 			get_tree().quit(0)
 		return
-	if _bridge.has_activations():
-		_bridge.run_activation()
+	if _session.has_activations():
+		_session.run_activation()
 		return
 	if _benchmark.is_running():
-		if _benchmark.frame(delta, _rig.player, _streamer.max_usec):
-			if _streamer.lod != null:
-				print("lod: ", _streamer.lod.get_stats())
+		if _benchmark.frame(delta, _rig.player, _session.streamer.max_usec):
+			if _session.streamer.lod != null:
+				print("lod: ", _session.streamer.lod.get_stats())
 			get_tree().quit(0)
 		return
 	_controls.apply()
@@ -410,34 +314,16 @@ func _sync_image_space() -> void:
 	else:
 		var space: Dictionary
 		# A sky seen from an interior ("show sky") does not grade the cell.
-		if _clock.has_weather() and not _clock.weather.is_sky_only():
-			space = _clock.weather.get_image_space()
+		if _session.clock.has_weather() and not _session.clock.weather.is_sky_only():
+			space = _session.clock.weather.get_image_space()
 			if not _settings.volumetric:
 				space.erase("volumetric")
 		else:
-			space = _place.interior_image_space.duplicate()
+			space = _session.place.interior_image_space.duplicate()
 		if _settings.neutral_grade:
 			space.erase("cinematic")
 			space.erase("tint")
 		_image_space.set_image_space(space)
-
-
-## A cell was built and shown (streamed or an interior): its scripts attach and
-## the navmesh overlay is brought up to date.
-func _on_cell_built(cell: Node3D, cell_id: int) -> void:
-	_bridge.scripts_loaded(cell, cell_id)
-	_debug.navmesh_overlay(cell)
-
-
-## The streamer registers the load doors of the cells it builds; an interior is
-## built by the place.
-func _on_interior_built(cell: Node3D, cell_id: int) -> void:
-	_on_cell_built(cell, cell_id)
-	_streamer.register_doors(cell)
-
-
-func _on_actor_left(ref: int, _door: int) -> void:
-	print("0x%08X leaves through a door" % ref)
 
 
 ## A key that is not about the player's body.
@@ -446,27 +332,26 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.SHOW_POSITION:
 			_debug.note(_debug.position_text(_rig.yaw, _rig.pitch))
 		PlayerInput.TOGGLE_PRELOAD:
-			_debug.note("load doors preload what is behind them" if _streamer.toggle_preload() else "load doors load on use")
+			_debug.note("load doors preload what is behind them" if _session.streamer.toggle_preload() else "load doors load on use")
 		PlayerInput.TAKE_SHOT:
 			_shots.capture(shift)
 		PlayerInput.ACTIVATE:
-			if not _transition.is_fading():
-				_bridge.activate_in_view(shift)  # Shift opens locks
+			_session.activate_in_view(shift)  # Shift opens locks
 		PlayerInput.QUICK_SAVE:
-			_saves.save(SaveService.QUICKSAVE)
+			_session.save_game(SaveService.QUICKSAVE)
 		PlayerInput.QUICK_LOAD:
-			_saves.load_game(SaveService.QUICKSAVE)
+			_session.load_game(SaveService.QUICKSAVE)
 		PlayerInput.SHOW_JOURNAL:
 			_debug.toggle_journal()
 		PlayerInput.CHANGE_TIME:
-			var time_text := _clock.shift(-1.0 if shift else 1.0)
+			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
 			if not time_text.is_empty():
 				_debug.note(time_text)
 		PlayerInput.INSPECT_ACTOR:
 			_debug.inspect_actor()
 		PlayerInput.NEXT_WEATHER:
-			if _clock.has_weather():
-				_clock.weather.next_weather()
+			if _session.clock.has_weather():
+				_session.clock.weather.next_weather()
 		PlayerInput.TOGGLE_NAVMESH:
 			_debug.toggle_navmesh()
 		PlayerInput.TOGGLE_PERF:
@@ -474,15 +359,15 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.SHOW_PATH:
 			_debug.path_to_view()
 		PlayerInput.LOD_DETAIL_DOWN:
-			_debug.note(_lod_text(_streamer.scale_lod_split(0.8)))
+			_debug.note(_lod_text(_session.streamer.scale_lod_split(0.8)))
 		PlayerInput.LOD_DETAIL_UP:
-			_debug.note(_lod_text(_streamer.scale_lod_split(1.25)))
+			_debug.note(_lod_text(_session.streamer.scale_lod_split(1.25)))
 		PlayerInput.RADIUS_DOWN:
-			if _streamer.world_id != 0:
-				_debug.note(_radius_text(_streamer.change_radius(-1)))
+			if _session.streamer.world_id != 0:
+				_debug.note(_radius_text(_session.streamer.change_radius(-1)))
 		PlayerInput.RADIUS_UP:
-			if _streamer.world_id != 0:
-				_debug.note(_radius_text(_streamer.change_radius(1)))
+			if _session.streamer.world_id != 0:
+				_debug.note(_radius_text(_session.streamer.change_radius(1)))
 		PlayerInput.CYCLE_MSAA:
 			var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
 			get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]

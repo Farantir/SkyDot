@@ -14,6 +14,12 @@ const REACH := 2.6  # metres the camera can activate from
 signal activations_finished
 ## --activate: a reference never appeared; the run is over.
 signal failed(text: String)
+## Something to tell the user: a script's message or a quest note, what an
+## activation says.
+signal message(text: String, box: bool)
+signal quest_started(quest: int)
+signal quest_stage(quest: int, stage: int, text: String)
+signal objective_changed(quest: int, index: int, state: String, text: String)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
@@ -22,39 +28,30 @@ var _wait := 0  # frames the first of them has been missing
 var _gap := 0  # frames to pass before the next of them (--activate-wait)
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
-var _host: Node3D  # the scene's root, where picking and waking clutter start
-var _camera: Camera3D
-var _settings: ViewerSettings
+var _host: Node3D  # the place's root, where picking and waking clutter start
+var _viewpoint: Camera3D
+var _config: GameConfig
 var _place: Place
 var _streamer: SkydotStreamer
-var _debug: DebugOverlay
 var _transition: PlaceTransition
-var _projectiles: Projectiles
 var _sounds: Sounds
-var _placed: PlacedRefs
 var _damages: Array[Vector2] = []
 
 
-func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Camera3D,
-		settings: ViewerSettings, place: Place, streamer: SkydotStreamer, debug: DebugOverlay,
-		transition: PlaceTransition, pack: SkydotPack) -> void:
+func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: Camera3D,
+		config: GameConfig, place: Place, streamer: SkydotStreamer, transition: PlaceTransition,
+		sounds: Sounds) -> void:
 	_world = world
 	_papyrus = papyrus
 	_host = host
-	_camera = camera
-	_settings = settings
+	_viewpoint = viewpoint
+	_config = config
 	_place = place
 	_streamer = streamer
-	_debug = debug
 	_transition = transition
-	_projectiles = Projectiles.new(world, pack, find_ref_node)
-	host.add_child(_projectiles)
-	_sounds = Sounds.new(world, pack, find_ref_node)
-	host.add_child(_sounds)
-	_placed = PlacedRefs.new(world, papyrus)
-	host.add_child(_placed)
-	_activations.assign(settings.activate)
-	_damages.assign(settings.damage)
+	_sounds = sounds
+	_activations.assign(config.activate)
+	_damages.assign(config.damage)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.ref_moved.connect(_on_ref_moved)
 	_papyrus.play_animation.connect(_on_play_animation)
@@ -68,11 +65,6 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, camera: Cam
 	_papyrus.quest_stage.connect(_on_quest_stage)
 	_papyrus.objective_changed.connect(_on_objective_changed)
 	_papyrus.effect_shader.connect(_on_effect_shader)
-	_papyrus.fire_weapon.connect(_projectiles.fire)
-	_papyrus.play_sound.connect(_sounds.play)
-	_papyrus.stop_sound.connect(_sounds.stop)
-	_papyrus.sound_volume.connect(_sounds.set_volume)
-	_sounds.finished.connect(_papyrus.notify_sound_finished)
 	_papyrus.trigger.connect(_on_trigger)
 
 
@@ -142,25 +134,35 @@ func _on_lock_changed(ref: int, locked: bool) -> void:
 	print("0x%08X %s by script" % [ref, "locked" if locked else "unlocked"])
 
 
-func _on_message(text: String, _box: bool) -> void:
-	_debug.note(text)
+func _on_message(text: String, box: bool) -> void:
+	message.emit(text, box)
+
+
+## A quest's name as the game shows it, else its editor id.
+func quest_name(quest: int) -> String:
+	var info := _world.get_quest(quest)
+	var title: String = info.get("name", "")
+	return title if title != "" else info.get("editor_id", "0x%08X" % quest)
 
 
 func _on_quest_started(quest: int) -> void:
 	if quests_ready:
-		print("quest started: ", _debug.quest_name(quest))
+		print("quest started: ", quest_name(quest))
+	quest_started.emit(quest)
 
 
 ## Only stages with journal text reach the screen, as in the game.
 func _on_quest_stage(quest: int, stage: int, text: String) -> void:
 	if text != "":
-		_debug.note("%s: %s" % [_debug.quest_name(quest), text])
+		message.emit("%s: %s" % [quest_name(quest), text], false)
 	elif quests_ready:
-		print("%s: stage %d" % [_debug.quest_name(quest), stage])
+		print("%s: stage %d" % [quest_name(quest), stage])
+	quest_stage.emit(quest, stage, text)
 
 
 func _on_objective_changed(quest: int, index: int, state: String, text: String) -> void:
-	_debug.note("%s objective %d %s: %s" % [_debug.quest_name(quest), index, state, text])
+	message.emit("%s objective %d %s: %s" % [quest_name(quest), index, state, text], false)
+	objective_changed.emit(quest, index, state, text)
 
 
 func _on_effect_shader(shader: int, ref: int, playing: bool) -> void:
@@ -302,7 +304,7 @@ func _connect_notifies(node: Node, ref: int) -> void:
 ## reference could not be found.
 func activate(_cell: int, ref: int, _node: Node, force: bool) -> bool:
 	var outcome := _papyrus.activate_ref(ref, SkydotPapyrus.PLAYER_REF, false,
-		SkydotPapyrus.ACTIVATE_PLAYER, force or _settings.pick_locks)
+		SkydotPapyrus.ACTIVATE_PLAYER, force or _config.pick_locks)
 	if outcome["kind"] == "missing":
 		return false
 	_apply_outcome(outcome, force)
@@ -323,10 +325,10 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 		print(label, " runs ", ", ".join(_papyrus.get_scripts(ref).map(func(s): return s["name"])))
 	match outcome["kind"]:
 		"parent_only", "blocked", "busy":
-			_debug.note(outcome["note"])
+			message.emit(outcome["note"], false)
 			return
 		"locked":
-			_debug.note(outcome["note"] + "; Shift+F opens it anyway")
+			message.emit(outcome["note"] + "; Shift+F opens it anyway", false)
 			return
 		"door":
 			print(label, " leads to 0x%08X" % outcome["door"]["destination"])
@@ -342,7 +344,7 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 			if node != null and _toggle_open(node, ref, label):
 				return
 	if _papyrus.get_scripts(ref).is_empty():
-		_debug.note(outcome["note"])
+		message.emit(outcome["note"], false)
 
 
 func _toggle_open(node: Node, ref: int, label: String) -> bool:
@@ -387,7 +389,7 @@ func run_activation() -> void:
 	_wait = 0
 	_activations.pop_front()
 	activate(node.get_meta("skydot_cell"), ref, node, false)
-	_gap = _settings.activate_wait
+	_gap = _config.activate_wait
 	if _activations.is_empty() and _damages.is_empty():
 		activations_finished.emit()
 
@@ -397,16 +399,16 @@ func _run_damage() -> void:
 	var entry: Vector2 = _damages.pop_front()
 	print("damage 0x%08X by %s" % [int(entry.x), entry.y])
 	_papyrus.damage_ref(int(entry.x), entry.y)
-	_gap = _settings.activate_wait
+	_gap = _config.activate_wait
 	if _damages.is_empty():
 		activations_finished.emit()
 
 
 func activate_in_view(force: bool) -> void:
-	var from := _camera.global_position
-	var to := from - _camera.global_transform.basis.z * REACH
+	var from := _viewpoint.global_position
+	var to := from - _viewpoint.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(_host, from, to)
 	if hit.is_empty():
-		_debug.note("nothing to activate")
+		message.emit("nothing to activate", false)
 		return
 	activate(hit["cell"], hit["ref"], hit["node"], force)

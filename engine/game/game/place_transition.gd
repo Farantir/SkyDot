@@ -89,7 +89,7 @@ func step(delta: float) -> void:
 ## What was built ahead for the place behind it is used.
 func travel(door: Dictionary) -> void:
 	var arrival: Transform3D = door["arrival"]
-	var eye := arrival.origin + Vector3(0, PlayerRig.EYE_HEIGHT, 0)
+	var eye := arrival.origin + Vector3(0, GameSession.EYE_HEIGHT, 0)
 	var forward := -arrival.basis.z
 	forward.y = 0.0
 	var target := eye + (forward.normalized() if forward.length() > 0.001 else Vector3.FORWARD)
