@@ -127,7 +127,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Class | Bound |
 | --- | --- |
 | Debug | `Trace`, `Notification`, `MessageBox` |
-| Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (timescale 20), `RandomInt`, `RandomFloat` |
+| Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (the game clock, SkydotClock), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `HasKeyword` (a reference answers for its base's KWDA; only bases that world.fb has, i.e. with a model or scripts, carry keywords), `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `PlaceAtMe`, `Delete`, `DeleteWhenAble`, `DamageObject`, `ClearDestruction`, `SetDestroyed`, `IsDestroyed`, `GetCurrentDestructionStage`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
