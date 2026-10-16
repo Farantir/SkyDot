@@ -95,7 +95,7 @@
 # place the previous one led to, then quits (for tests; works headless).
 # --activate-wait FRAMES waits that many frames between two of them, for
 # scripts and animations to play out; --quit-after FRAMES quits that many
-# frames after the last (default 5).
+# frames after the last (default 5); without --activate, from the start.
 # --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
 # at the start, after --load (like player.additem).
 # F3 shows or hides the performance line at the top right (fps, frame time
@@ -164,6 +164,8 @@ func _ready() -> void:
 		return
 	_create_components()
 	_start_game()
+	if _settings.quit_after >= 0 and not _session.has_activations():
+		_quit_in = _settings.quit_after  # nothing to activate: --quit-after counts from the start
 
 
 ## The camera and player, and the game around them: the session opens the
