@@ -1,0 +1,254 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// ActorStates (vm/actor_states.hpp): bases from a fake source, every op,
+// regeneration with its delay, death and the ACTV section; and the Actor
+// natives over it.
+#include "support/vm_rig.hpp"
+
+#include "vm/actor_states.hpp"
+#include "vm/natives_actor.hpp"
+
+#include <catch2/catch_approx.hpp>
+#include <catch2/catch_test_macros.hpp>
+
+using namespace skydot::testing;
+using namespace skydot::vm;
+using Catch::Approx;
+
+namespace {
+
+constexpr std::uint32_t k_hero = 0x14;    // the player
+constexpr std::uint32_t k_guard = 0x100;  // an ordinary NPC
+constexpr std::uint32_t k_elder = 0x101;  // essential
+constexpr std::uint32_t k_rock = 0x200;   // no actor
+
+bool fake_source(std::uint32_t ref, ActorBase& out) {
+    if (ref != k_hero && ref != k_guard && ref != k_elder) {
+        return false;
+    }
+    out = ActorBase{};
+    out.base[av::k_health] = 100;
+    out.base[av::k_magicka] = 80;
+    out.base[av::k_stamina] = 60;
+    out.base[av::k_heal_rate] = 1.0;    // percent of the maximum per second
+    out.base[av::k_magicka_rate] = 2.0;
+    out.base[av::k_stamina_rate] = 5.0;
+    out.base[av::k_heal_rate_mult] = 100;
+    out.base[av::k_magicka_rate_mult] = 100;
+    out.base[av::k_stamina_rate_mult] = 100;
+    out.base[av::k_first_skill] = 20; // OneHanded
+    out.is_player = ref == k_hero;
+    out.essential = ref == k_elder;
+    return true;
+}
+
+ActorStates make() {
+    ActorStates s;
+    s.set_source(fake_source);
+    return s;
+}
+
+} // namespace
+
+TEST_CASE("actor value names are found in any case, with the index table's anchors", "[actor]") {
+    CHECK(av::index_of("health") == 24u);
+    CHECK(av::index_of("MAGICKA") == 25u);
+    CHECK(av::index_of("Stamina") == 26u);
+    CHECK(av::index_of("OneHanded") == 6u);
+    CHECK(av::index_of("Enchanting") == 23u);
+    CHECK(av::index_of("CarryWeight") == 32u);
+    CHECK(av::index_of("ReflectDamage") == 163u);
+    CHECK(av::index_of("Archery") == 8u);
+    CHECK_FALSE(av::index_of("NoSuchValue").has_value());
+    CHECK(av::k_names[av::k_speed_mult] == "SpeedMult");
+}
+
+TEST_CASE("values come from the base, a non-actor reads 0", "[actor]") {
+    auto s = make();
+    CHECK(s.get(k_guard, av::k_health) == Approx(100));
+    CHECK(s.max(k_guard, av::k_magicka) == Approx(80));
+    CHECK(s.get(k_guard, av::k_first_skill) == Approx(20));
+    CHECK(s.get(k_guard, av::k_carry_weight) == Approx(0));
+    CHECK(s.is_actor(k_guard));
+    CHECK_FALSE(s.is_actor(k_rock));
+    CHECK(s.get(k_rock, av::k_health) == 0.0);
+    s.damage(k_rock, av::k_health, 5);
+    s.set_base(k_rock, av::k_health, 5);
+    CHECK(s.get(k_rock, av::k_health) == 0.0);
+    CHECK(s.get(k_guard, 9999) == 0.0);
+}
+
+TEST_CASE("set, mod, force, damage and restore", "[actor]") {
+    auto s = make();
+    s.set_base(k_guard, av::k_stamina, 70);
+    CHECK(s.get_base(k_guard, av::k_stamina) == Approx(70));
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(70));
+    s.mod(k_guard, av::k_stamina, 30);
+    CHECK(s.get_base(k_guard, av::k_stamina) == Approx(70));
+    CHECK(s.max(k_guard, av::k_stamina) == Approx(100));
+    s.damage(k_guard, av::k_stamina, 40);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(60));
+    CHECK(s.max(k_guard, av::k_stamina) == Approx(100));
+    CHECK(s.percentage(k_guard, av::k_stamina) == Approx(0.6));
+    s.restore(k_guard, av::k_stamina, 15);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(75));
+    s.restore(k_guard, av::k_stamina, 1000); // up to no damage, not beyond
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(100));
+    s.damage(k_guard, av::k_stamina, 10);
+    s.force(k_guard, av::k_stamina, 33);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(33));
+    s.damage(k_guard, av::k_magicka, 1000); // stops at 0
+    CHECK(s.get(k_guard, av::k_magicka) == Approx(0));
+    CHECK(s.percentage(k_guard, av::k_magicka) == Approx(0));
+    s.damage(k_guard, av::k_magicka, -5); // not a damage
+    CHECK(s.get(k_guard, av::k_magicka) == Approx(0));
+}
+
+TEST_CASE("percentage is 1 when there is no maximum", "[actor]") {
+    auto s = make();
+    CHECK(s.percentage(k_guard, av::k_carry_weight) == Approx(1.0));
+    s.set_base(k_guard, av::k_carry_weight, -3);
+    CHECK(s.percentage(k_guard, av::k_carry_weight) == Approx(1.0));
+}
+
+TEST_CASE("damaged values regenerate per second by the rate, Magicka and Stamina after a delay", "[actor]") {
+    auto s = make();
+    s.damage(k_guard, av::k_health, 50);
+    s.tick(10); // 1% of 100 per second
+    CHECK(s.get(k_guard, av::k_health) == Approx(60));
+    s.tick(1000);
+    CHECK(s.get(k_guard, av::k_health) == Approx(100)); // not beyond the maximum
+
+    s.damage(k_guard, av::k_stamina, 30);
+    s.damage(k_guard, av::k_magicka, 40);
+    s.tick(ActorStates::k_damaged_stamina_regen_delay - 0.5);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30));
+    CHECK(s.get(k_guard, av::k_magicka) == Approx(40));
+    s.tick(1.0); // the delay ends in this tick
+    s.tick(2.0); // 5% of 60 = 3 per second
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 6));
+    CHECK(s.get(k_guard, av::k_magicka) == Approx(40 + 2 * 2.0 * 0.8));
+
+    // The rate multiplier scales it.
+    s.set_base(k_guard, av::k_stamina_rate_mult, 200);
+    s.tick(1.0);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 6 + 6));
+    // Damage again starts a new delay.
+    s.damage(k_guard, av::k_stamina, 1);
+    s.tick(1.0);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 12 - 1));
+}
+
+TEST_CASE("an actor at Health 0 dies once, unless essential or the player", "[actor]") {
+    auto s = make();
+    s.damage(k_guard, av::k_health, 99);
+    CHECK_FALSE(s.is_dead(k_guard));
+    CHECK(s.take_deaths().empty());
+    s.damage(k_guard, av::k_health, 5);
+    CHECK(s.is_dead(k_guard));
+    CHECK(s.get(k_guard, av::k_health) == Approx(0));
+    CHECK(s.take_deaths() == std::vector<std::uint32_t>{k_guard});
+    CHECK(s.take_deaths().empty());
+    s.tick(60); // the dead do not regenerate
+    CHECK(s.get(k_guard, av::k_health) == Approx(0));
+    s.damage(k_guard, av::k_health, 5);
+    CHECK(s.take_deaths().empty());
+
+    for (const auto ref : {k_elder, k_hero}) {
+        s.damage(ref, av::k_health, 500);
+        CHECK_FALSE(s.is_dead(ref));
+        CHECK(s.get(ref, av::k_health) == Approx(0));
+        s.tick(10);
+        CHECK(s.get(ref, av::k_health) == Approx(10)); // they regenerate
+    }
+    CHECK(s.take_deaths().empty());
+
+    // A script setting Health to 0 kills as well.
+    auto t = make();
+    t.set_base(k_guard, av::k_health, 0);
+    CHECK(t.is_dead(k_guard));
+}
+
+TEST_CASE("forget and clear drop an actor's changes", "[actor]") {
+    auto s = make();
+    s.damage(k_guard, av::k_health, 10);
+    s.damage(k_elder, av::k_health, 10);
+    s.forget(k_guard);
+    CHECK(s.get(k_guard, av::k_health) == Approx(100));
+    CHECK(s.get(k_elder, av::k_health) == Approx(90));
+    s.clear();
+    CHECK(s.get(k_elder, av::k_health) == Approx(100));
+}
+
+TEST_CASE("ACTV round-trips and refuses damaged sections", "[actor][save]") {
+    auto s = make();
+    s.damage(k_guard, av::k_health, 100);
+    s.set_base(k_elder, av::k_stamina, 12.5);
+    s.mod(k_elder, av::k_stamina, 3);
+    s.damage(k_elder, av::k_stamina, 4);
+    const auto bytes = s.save();
+
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK(t.is_dead(k_guard));
+    CHECK(t.get_base(k_elder, av::k_stamina) == Approx(12.5));
+    CHECK(t.max(k_elder, av::k_stamina) == Approx(15.5));
+    CHECK(t.get(k_elder, av::k_stamina) == Approx(11.5));
+    CHECK(t.get(k_elder, av::k_health) == Approx(100)); // untouched: from the data
+
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    auto longer = bytes;
+    longer.push_back(0);
+    CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(longer), scratch));
+    CHECK(ActorStates::load(skydot::save::ByteReader(ActorStates{}.save()), scratch));
+}
+
+TEST_CASE("the Actor natives read and change values; non-actors and unknown names read 0 and report once",
+          "[actor][natives]") {
+    auto states = make();
+    Rig rig;
+    rig.add({.name = "Actor",
+             .functions = {native_function("GetActorValue", {{"av", "String"}}, "Float", false),
+                           native_function("DamageActorValue", {{"av", "String"}, {"v", "Float"}}, "None", false),
+                           native_function("GetActorValuePercentage", {{"av", "String"}}, "Float", false),
+                           native_function("IsDead", {}, "Bool", false)}});
+    bind_actor_natives(rig.vm, states);
+
+    auto hurt = global_function("hurt", {{"a", "Actor"}, {"n", "String"}, {"v", "Float"}});
+    hurt.add(Op::callmethod, {ident("DamageActorValue"), ident("a"), ident("::NoneVar"), ident("n"), ident("v")})
+        .add(Op::return_, {ident("::NoneVar")});
+    auto value = global_function("value", {{"a", "Actor"}, {"n", "String"}}, {{"r", "Float"}}, "Float");
+    value.add(Op::callmethod, {ident("GetActorValue"), ident("a"), ident("r"), ident("n")})
+        .add(Op::return_, {ident("r")});
+    auto percent = global_function("percent", {{"a", "Actor"}, {"n", "String"}}, {{"r", "Float"}}, "Float");
+    percent.add(Op::callmethod, {ident("GetActorValuePercentage"), ident("a"), ident("r"), ident("n")})
+        .add(Op::return_, {ident("r")});
+    auto dead = global_function("dead", {{"a", "Actor"}}, {{"r", "Bool"}}, "Bool");
+    dead.add(Op::callmethod, {ident("IsDead"), ident("a"), ident("r")}).add(Op::return_, {ident("r")});
+    rig.add(script("Caller", {hurt, value, percent, dead}));
+
+    const auto guard = rig.vm.object(k_guard, "Actor");
+    CHECK(rig.call("caller", "value", {guard, String("health")}).f() == Approx(100));
+    rig.call("caller", "hurt", {guard, String("Health"), Float(25)});
+    CHECK(rig.call("caller", "value", {guard, String("HEALTH")}).f() == Approx(75));
+    CHECK(rig.call("caller", "percent", {guard, String("Health")}).f() == Approx(0.75));
+    CHECK_FALSE(rig.call("caller", "dead", {guard}).b());
+    rig.call("caller", "hurt", {guard, String("Health"), Float(80)});
+    CHECK(rig.call("caller", "dead", {guard}).b());
+    CHECK(rig.vm.errors() == 0);
+
+    CHECK(rig.call("caller", "value", {guard, String("Bogus")}).f() == 0.0F);
+    CHECK(rig.call("caller", "value", {guard, String("Bogus")}).f() == 0.0F);
+    CHECK(rig.vm.errors() == 1); // reported once
+    const auto rock = rig.vm.object(k_rock, "Actor");
+    CHECK(rig.call("caller", "value", {rock, String("Health")}).f() == 0.0F);
+    CHECK_FALSE(rig.call("caller", "dead", {rock}).b());
+    CHECK(rig.vm.errors() == 2);
+    CHECK(states.get(k_rock, av::k_health) == 0.0);
+}

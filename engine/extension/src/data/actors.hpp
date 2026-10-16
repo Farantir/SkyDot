@@ -18,6 +18,8 @@
 
 #include "world_generated.h"
 
+#include "vm/actor_values.hpp"
+
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -48,6 +50,13 @@ const bethconv::pack::wfb::Npc* resolve_npc(const bethconv::pack::wfb::World& wo
                                             std::uint32_t npc,
                                             bethconv::pack::wfb::NpcTemplateFlags flag,
                                             std::uint32_t ref);
+
+/// The values `npc` (an NPC_, or an LVLN picked as for plan_actor) placed as
+/// `ref` starts with. Stats (health, magicka, stamina, skills, speed) come
+/// through a template with use_stats, AIDT through use_ai_data, the race
+/// through use_traits. False if `npc` is no NPC_ or its race is unknown.
+bool actor_base_values(const bethconv::pack::wfb::World& world, std::uint32_t npc, std::uint32_t ref,
+                       skydot::vm::ActorBase& out);
 
 /// `exists(vpath)` says whether the pack has an asset.
 ActorPlan plan_actor(const bethconv::pack::wfb::World& world, std::uint32_t npc, std::uint32_t ref,

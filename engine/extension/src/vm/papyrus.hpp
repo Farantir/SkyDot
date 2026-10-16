@@ -26,6 +26,7 @@
 #include "data/godot_values.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
+#include "vm/actor_states.hpp"
 #include "vm/id_ranges.hpp"
 #include "vm/quest_states.hpp"
 #include "vm/ref_states.hpp"
@@ -197,6 +198,15 @@ public:
     void set_locked(std::int64_t ref, bool locked);
     /// GetOpenState's values: 0 none, 1 open, 2 opening, 3 closed, 4 closing.
     std::int64_t get_open_state(std::int64_t ref) const;
+
+    // ---- actor values (vm/actor_states.hpp): 0 for a reference that is no actor
+    // or a name that is no actor value (reported once)
+    double get_actor_value(std::int64_t ref, const godot::String& name) const;
+    double get_actor_value_max(std::int64_t ref, const godot::String& name) const;
+    /// Lower `name` of `ref` by `amount`; an actor at Health 0 dies (signal
+    /// `actor_died`) unless it is essential or the player.
+    void damage_actor_value(std::int64_t ref, const godot::String& name, double amount);
+    void restore_actor_value(std::int64_t ref, const godot::String& name, double amount);
     void set_open_state(std::int64_t ref, std::int64_t state);
     /// Actors inside trigger `ref`.
     std::int64_t get_trigger_count(std::int64_t ref) const;
@@ -276,6 +286,9 @@ private:
     void bind_noop_natives();
     void bind_world_natives();
     void bind_runtime_natives();
+    void bind_actor_natives();
+    /// Emit `actor_died` for the actors that died since the last call.
+    void flush_deaths();
     /// get_quest's dictionary, cached; empty if not a quest.
     const godot::Dictionary& quest_info(std::uint32_t quest) const;
     /// The object standing for alias `alias` of `quest`.
@@ -344,6 +357,8 @@ private:
     std::map<std::uint32_t, std::uint32_t> loaded_;
     /// What scripts changed about references: enabled, open, locked, blocked, moved.
     vm::RefStates states_;
+    /// What scripts and the game did to actors' values (ACTV).
+    vm::ActorStates actors_;
     /// The rules and sequence of activations (vm/activation.hpp); the adapter
     /// answers what they ask of the world (vm/papyrus_activation.cpp).
     struct ActivationAdapter;
@@ -371,6 +386,7 @@ private:
     struct PendingLoad {
         vm::Vm::Snapshot vm;
         vm::RefStates states;
+        vm::ActorStates actors;
         HostSnapshot host;
     };
     std::unique_ptr<PendingLoad> pending_;

@@ -13,6 +13,7 @@ add_executable(skydot_core_tests
     support/vm_rig.hpp
     support/world_builder.cpp
     support/world_builder.hpp
+    test_actor_states.cpp
     test_actors.cpp
     test_activation.cpp
     test_behavior.cpp

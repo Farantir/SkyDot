@@ -126,6 +126,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     out.add("HEAD", k_section_version, head.out);
     vm_->save_to(out);
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
+    out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
     write_host(out);
 }
 
@@ -177,6 +178,15 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     if (!vm::RefStates::load(file.open(*rfst), pending->states)) {
         return fail("the RFST section of the save is damaged");
     }
+    // ACTV is optional: a save without it has no changed actor values.
+    if (const auto* actv = file.find("ACTV")) {
+        if (actv->version != vm::ActorStates::k_section_version) {
+            return fail("section ACTV has a version this engine does not read");
+        }
+        if (!vm::ActorStates::load(file.open(*actv), pending->actors)) {
+            return fail("the ACTV section of the save is damaged");
+        }
+    }
     if (!decode_host(file, pending->host, why)) {
         return fail(why);
     }
@@ -211,6 +221,7 @@ godot::Error SkydotPapyrus::commit_load() {
     }
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
+    actors_.adopt(std::move(pending->actors));
     HostSnapshot& host = pending->host;
     for (const auto ref : host.attached) {
         attached_.insert(ref);

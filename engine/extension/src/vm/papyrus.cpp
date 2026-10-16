@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/papyrus.hpp"
 
+#include "data/actors.hpp"
 #include "data/coordinates.hpp"
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
@@ -8,6 +9,7 @@
 #include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
+#include "vm/natives_actor.hpp"
 #include "vm/natives_common.hpp"
 #include "vm/natives_world.hpp"
 
@@ -97,6 +99,13 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_lock_level", "ref"), &SkydotPapyrus::get_lock_level);
     godot::ClassDB::bind_method(D_METHOD("set_locked", "ref", "locked"), &SkydotPapyrus::set_locked);
     godot::ClassDB::bind_method(D_METHOD("get_open_state", "ref"), &SkydotPapyrus::get_open_state);
+    godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
+    godot::ClassDB::bind_method(D_METHOD("get_actor_value_max", "ref", "name"),
+                                &SkydotPapyrus::get_actor_value_max);
+    godot::ClassDB::bind_method(D_METHOD("damage_actor_value", "ref", "name", "amount"),
+                                &SkydotPapyrus::damage_actor_value);
+    godot::ClassDB::bind_method(D_METHOD("restore_actor_value", "ref", "name", "amount"),
+                                &SkydotPapyrus::restore_actor_value);
     godot::ClassDB::bind_method(D_METHOD("set_open_state", "ref", "state"),
                                 &SkydotPapyrus::set_open_state);
     godot::ClassDB::bind_method(D_METHOD("get_trigger_count", "ref"),
@@ -174,6 +183,8 @@ void SkydotPapyrus::_bind_methods() {
                                  PropertyInfo(Variant::VECTOR3, "rotation"),
                                  PropertyInfo(Variant::FLOAT, "scale"), PropertyInfo(Variant::BOOL, "disabled")));
     ADD_SIGNAL(godot::MethodInfo("ref_deleted", PropertyInfo(Variant::INT, "ref")));
+    // A non-essential actor other than the player was brought to Health 0.
+    ADD_SIGNAL(godot::MethodInfo("actor_died", PropertyInfo(Variant::INT, "ref")));
     // A destructible reference opened a stage with a model: the game layer
     // swaps to it ("" and stage 0: back to the base's own model).
     ADD_SIGNAL(godot::MethodInfo("destruction_model", PropertyInfo(Variant::INT, "ref"),
@@ -228,6 +239,7 @@ void SkydotPapyrus::reset() {
     attached_cells_.clear();
     loaded_.clear();
     states_.clear();
+    actors_.clear();
     activations_->clear();
     triggers_.clear();
     test_ids_.clear();
@@ -432,6 +444,27 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         }
         return true;
     }
+    bool actor_base(std::uint32_t ref, vm::ActorBase& out) const override {
+        const WorldData* data = world();
+        if (data == nullptr || data->root() == nullptr) {
+            return false;
+        }
+        // The player is the NPC_ 0x7; a placed actor names its NPC_; one a
+        // script placed has it as its base.
+        std::uint32_t npc = 0;
+        if (ref == k_player_ref) {
+            npc = 0x7;
+        } else if (const auto* actor = data->actor_ptr(ref)) {
+            npc = actor->base();
+        } else {
+            npc = owner_.base_form_of(ref);
+        }
+        if (npc == 0 || !actor_base_values(*data->root(), npc, ref, out)) {
+            return false;
+        }
+        out.is_player = ref == k_player_ref;
+        return true;
+    }
     std::int32_t player_level() const override { return 1; }
     double game_days() const override {
         return owner_.clock_.is_valid() ? owner_.clock_->get_game_days() : 0.0;
@@ -447,6 +480,38 @@ private:
 void SkydotPapyrus::bind_world_natives() {
     access_ = std::make_unique<Access>(*this);
     vm::bind_world_natives(*vm_, *access_);
+    actors_.set_source([this](std::uint32_t ref, vm::ActorBase& out) { return access_->actor_base(ref, out); });
+}
+
+void SkydotPapyrus::bind_actor_natives() { vm::bind_actor_natives(*vm_, actors_); }
+
+void SkydotPapyrus::flush_deaths() {
+    for (const auto ref : actors_.take_deaths()) {
+        emit_signal("actor_died", static_cast<std::int64_t>(ref));
+    }
+}
+
+double SkydotPapyrus::get_actor_value(std::int64_t ref, const String& name) const {
+    const auto av = vm::av::index_of(utf8(name));
+    return av ? actors_.get(static_cast<std::uint32_t>(ref), *av) : 0.0;
+}
+
+double SkydotPapyrus::get_actor_value_max(std::int64_t ref, const String& name) const {
+    const auto av = vm::av::index_of(utf8(name));
+    return av ? actors_.max(static_cast<std::uint32_t>(ref), *av) : 0.0;
+}
+
+void SkydotPapyrus::damage_actor_value(std::int64_t ref, const String& name, double amount) {
+    if (const auto av = vm::av::index_of(utf8(name))) {
+        actors_.damage(static_cast<std::uint32_t>(ref), *av, amount);
+        flush_deaths();
+    }
+}
+
+void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, double amount) {
+    if (const auto av = vm::av::index_of(utf8(name))) {
+        actors_.restore(static_cast<std::uint32_t>(ref), *av, amount);
+    }
 }
 
 void SkydotPapyrus::bind_natives() {
@@ -464,6 +529,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
+        &SkydotPapyrus::bind_actor_natives,
         &SkydotPapyrus::bind_runtime_natives,
     };
     for (const Registration registration : table) {
@@ -829,7 +895,11 @@ String SkydotPapyrus::get_last_error() const { return last_error_; }
 
 // ---- tests and inspection -------------------------------------------------
 
-void SkydotPapyrus::update(double seconds) { vm_->update(seconds); }
+void SkydotPapyrus::update(double seconds) {
+    actors_.tick(seconds);
+    vm_->update(seconds);
+    flush_deaths();
+}
 
 std::int64_t SkydotPapyrus::call_global(const String& cls, const String& fn, const Array& args) {
     std::vector<vm::Value> values;

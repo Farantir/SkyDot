@@ -166,6 +166,83 @@ const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, wfb::NpcTemp
     return resolve(w, npc_of(w, npc), flag, ref);
 }
 
+bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref, vm::ActorBase& out) {
+    std::uint32_t id = npc_id;
+    for (int depth = 0; depth < k_max_depth; ++depth) {
+        const auto* list = list_of(w, id);
+        if (list == nullptr) {
+            break;
+        }
+        id = pick(*list, ref);
+    }
+    const auto* npc = npc_of(w, id);
+    if (npc == nullptr) {
+        return false;
+    }
+    const auto* traits = resolve(w, npc, wfb::NpcTemplateFlags::use_traits, ref);
+    const auto* stats = resolve(w, npc, wfb::NpcTemplateFlags::use_stats, ref);
+    const auto* ai = resolve(w, npc, wfb::NpcTemplateFlags::use_ai_data, ref);
+    const auto* race = race_of(w, traits->race());
+    if (race == nullptr) {
+        return false;
+    }
+    out = vm::ActorBase{};
+    auto& base = out.base;
+    out.essential = formats::has_flag(npc->flags(), wfb::NpcFlags::essential);
+    // Health, Magicka and Stamina. An NPC with auto-calculated stats stores
+    // the CK's total in DNAM, race start included (the player: race 50, offset
+    // 50, DNAM 100, and 100 in the game; Addvar 91, a mud crab 5 with offset
+    // -20 on a race of 25). Any other NPC has a DNAM that is not a total
+    // (57558 on some), so it is the race's start plus the ACBS offset.
+    if (formats::has_flag(stats->flags(), wfb::NpcFlags::auto_calc_stats)) {
+        base[vm::av::k_health] = stats->health();
+        base[vm::av::k_magicka] = stats->magicka();
+        base[vm::av::k_stamina] = stats->stamina();
+    } else {
+        base[vm::av::k_health] = static_cast<double>(race->start_health()) + stats->health_offset();
+        base[vm::av::k_magicka] = static_cast<double>(race->start_magicka()) + stats->magicka_offset();
+        base[vm::av::k_stamina] = static_cast<double>(race->start_stamina()) + stats->stamina_offset();
+    }
+    // Skills: DNAM value plus offset. Auto-calculated totals already hold the
+    // race's boosts (the player: Nord One-handed 15 + 5, Two-handed 15 + 10);
+    // for the others they are added (unverified against the original).
+    const bool totals = formats::has_flag(stats->flags(), wfb::NpcFlags::auto_calc_stats);
+    for (std::uint32_t i = 0; i < vm::av::k_skill_count; ++i) {
+        double value = 0.0;
+        if (stats->skill_values() != nullptr && i < stats->skill_values()->size()) {
+            value += stats->skill_values()->Get(i);
+        }
+        if (stats->skill_offsets() != nullptr && i < stats->skill_offsets()->size()) {
+            value += stats->skill_offsets()->Get(i);
+        }
+        base[vm::av::k_first_skill + i] = value;
+    }
+    if (!totals && race->skill_boosts() != nullptr) {
+        const auto& boosts = *race->skill_boosts();
+        for (flatbuffers::uoffset_t i = 0; i + 1 < boosts.size(); i += 2) {
+            const std::uint32_t skill = boosts.Get(i);
+            if (skill >= vm::av::k_first_skill && skill < vm::av::k_first_skill + vm::av::k_skill_count) {
+                base[skill] += boosts.Get(i + 1);
+            }
+        }
+    }
+    base[vm::av::k_heal_rate] = race->health_regen();
+    base[vm::av::k_magicka_rate] = race->magicka_regen();
+    base[vm::av::k_stamina_rate] = race->stamina_regen();
+    base[vm::av::k_heal_rate_mult] = 100.0;
+    base[vm::av::k_magicka_rate_mult] = 100.0;
+    base[vm::av::k_stamina_rate_mult] = 100.0;
+    base[vm::av::k_speed_mult] = stats->speed_multiplier();
+    base[vm::av::k_carry_weight] = race->carry_weight();
+    base[0] = ai->aggression();
+    base[1] = ai->confidence();
+    base[2] = ai->energy();
+    base[3] = ai->morality();
+    base[4] = ai->mood();
+    base[5] = ai->assistance();
+    return true;
+}
+
 ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref,
                      const std::function<bool(const std::string&)>& exists) {
     ActorPlan plan;

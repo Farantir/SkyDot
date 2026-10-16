@@ -40,6 +40,7 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         return true;
     }
     bool message(std::uint32_t, skydot::vm::MessageText&) const override { return false; }
+    bool actor_base(std::uint32_t, skydot::vm::ActorBase&) const override { return false; }
     std::int32_t player_level() const override { return 7; }
     double game_days() const override { return 3.25; }
     double time_scale() const override { return 20.0; }

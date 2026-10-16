@@ -7,6 +7,8 @@
 // bound before it read Dictionaries instead and stay as they are.
 #pragma once
 
+#include "vm/actor_values.hpp"
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -48,6 +50,9 @@ public:
     [[nodiscard]] virtual bool message(std::uint32_t id, MessageText& out) const = 0;
     /// The player's level; 1 until the player has stats.
     [[nodiscard]] virtual std::int32_t player_level() const = 0;
+    /// The values actor `ref` starts with, from the data; false if `ref` is
+    /// no actor (the player, 0x14, is the NPC_ 0x7).
+    [[nodiscard]] virtual bool actor_base(std::uint32_t ref, ActorBase& out) const = 0;
     /// Days passed since the game started; the fraction is the time of day
     /// (Utility.GetCurrentGameTime, the GameDaysPassed global). The one game
     /// clock, not the VM's run time.

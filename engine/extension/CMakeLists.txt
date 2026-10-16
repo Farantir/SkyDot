@@ -59,6 +59,11 @@ set(SKYDOT_CORE_SOURCES
     src/vm/census.cpp
     src/vm/inventory.cpp
     src/vm/inventory.hpp
+    src/vm/actor_states.cpp
+    src/vm/actor_states.hpp
+    src/vm/actor_values.hpp
+    src/vm/natives_actor.cpp
+    src/vm/natives_actor.hpp
     src/vm/quest_states.cpp
     src/vm/quest_states.hpp
     src/vm/runtime_refs.hpp
