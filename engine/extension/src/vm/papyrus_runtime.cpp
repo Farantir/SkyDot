@@ -97,6 +97,7 @@ void SkydotPapyrus::forget_ref(std::int64_t ref) {
     vm_->destruction().erase(id);
     states_.forget(id);
     attached_.erase(id);
+    loaded_.erase(id);
     triggers_.forget(id);
     if (placed) {
         emit_signal("ref_deleted", ref);
@@ -107,6 +108,10 @@ std::int64_t SkydotPapyrus::ref_built(std::int64_t ref) {
     const auto id = static_cast<std::uint32_t>(ref);
     if (vm_->instances(id).empty()) {
         return 0;
+    }
+    if (const auto* placed = vm_->placed().find(id)) {
+        loaded_[id] = placed->cell;
+        attached_cells_.insert(placed->cell);
     }
     dispatch(id, "OnCellAttach", {});
     dispatch(id, "OnCellLoad", {});

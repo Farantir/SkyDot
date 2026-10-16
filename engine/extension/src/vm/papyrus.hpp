@@ -93,6 +93,11 @@ public:
     /// Attach every scripted reference of `cell`, built or not (triggers have
     /// no model). Returns how many references got scripts.
     std::int64_t attach_cell(std::int64_t cell);
+    /// A cell went away: its scripted references get OnCellDetach and
+    /// OnUnload and lose their update timers. Returns how many.
+    std::int64_t detach_cell(std::int64_t cell);
+    /// detach_cell for every loaded cell.
+    std::int64_t detach_all();
     /// The natives called from the scripts named in `classes` (see
     /// `Vm::census`): an Array of Dictionaries with `class`, `function`,
     /// `sites`, `bound` and `ignored`.
@@ -328,9 +333,12 @@ private:
     ClockGlobal clock_global(std::uint32_t global) const;
     godot::Ref<SkydotWorld> world_;
     std::set<std::uint32_t> attached_;
-    /// Cells whose references were handed to the VM (never unloaded: nothing
-    /// signals a cell detaching yet).
+    /// Cells whose references are handed to the VM and loaded (until
+    /// detach_cell / detach_all). `attached_` is separate: it only says that
+    /// a reference's scripts exist and got OnInit.
     std::set<std::uint32_t> attached_cells_;
+    /// The scripted references of loaded cells: reference -> cell.
+    std::map<std::uint32_t, std::uint32_t> loaded_;
     /// What scripts changed about references: enabled, open, locked, blocked, moved.
     vm::RefStates states_;
     /// The rules and sequence of activations (vm/activation.hpp); the adapter

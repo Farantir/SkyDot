@@ -143,6 +143,7 @@ void SkydotStreamer::_bind_methods() {
 
     ADD_SIGNAL(MethodInfo("cell_finished", PropertyInfo(Variant::OBJECT, "cell", godot::PROPERTY_HINT_NODE_TYPE, "Node3D"),
                           PropertyInfo(Variant::INT, "cell_id")));
+    ADD_SIGNAL(MethodInfo("cell_dropped", PropertyInfo(Variant::INT, "cell_id")));
 }
 
 void SkydotStreamer::setup(const godot::Ref<SkydotWorld>& world, const godot::Ref<SkydotPack>& pack,
@@ -304,6 +305,7 @@ bool SkydotStreamer::step() {
         }
         if (it->second != 0) {
             if (auto* cell = godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(it->second))) {
+                emit_signal("cell_dropped", world_->get_exterior_cell(world_id_, it->first.first, it->first.second));
                 cell->queue_free();
             }
             dropped = true;

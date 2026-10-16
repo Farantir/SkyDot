@@ -129,6 +129,7 @@ func _run(pack_dir: String) -> void:
     expect(vm.get_error_count() == 0, "nothing went wrong so far")
 
     _check_triggers(vm, world)
+    _check_detach(vm, world)
     _check_timers_and_natives(vm)
     _check_save(vm, pack, world)
     _check_activation(vm)
@@ -212,6 +213,33 @@ func _check_triggers(vm: SkydotPapyrus, world: SkydotWorld) -> void:
     vm.update(0.0)
     expect(traces == ["inside 1", "left"], "leaving sends OnTriggerLeave: %s" % [traces])
     expect(vm.get_variable(0x305, "TestpackTriggerScript", "Entered") == 1, "Entered counted once")
+
+## A cell going away unloads its scripts: OnUnload, no more updates, and the
+## cell is no longer attached; coming back sends OnLoad again, not OnInit.
+func _check_detach(vm: SkydotPapyrus, world: SkydotWorld) -> void:
+    var interior := world.find_cell("TestpackInterior")
+    var script := "TestpackTriggerScript"
+    expect(vm.attach_cell(interior) == 0, "attached again, nothing new gets OnInit")
+    vm.update(1.1)
+    var updates: int = vm.get_variable(0x305, script, "Updates")
+    expect(updates >= 1, "the trigger's update timer runs while loaded: %d" % updates)
+    expect(vm.get_variable(0x305, script, "Unloads") == 0, "not unloaded yet")
+    var unloaded: int = vm.detach_cell(interior)
+    expect(unloaded >= 1, "detach_cell unloads the scripted references: %d" % unloaded)
+    vm.update(0.0)
+    expect(vm.get_variable(0x305, script, "Unloads") == 1, "OnUnload was sent")
+    vm.update(2.0)
+    expect(vm.get_variable(0x305, script, "Updates") == updates, "its updates stopped")
+    expect(vm.detach_cell(interior) == 0 and vm.detach_all() == 0, "nothing is unloaded twice")
+    var loads: int = vm.get_variable(0x305, script, "Loads")
+    expect(vm.attach_cell(interior) == 0, "attaching again sends no OnInit")
+    vm.update(0.0)
+    expect(vm.get_variable(0x305, script, "Loads") == loads, "attach_cell alone sends no OnLoad")
+    vm.update(1.0)
+    expect(vm.get_variable(0x305, script, "Updates") == updates, "no timer came back with it")
+    expect(vm.detach_all() >= 1, "detach_all unloads what is loaded")
+    vm.update(0.0)
+    expect(vm.get_variable(0x305, script, "Unloads") == 2, "and sent OnUnload again")
 
 func _check_timers_and_natives(vm: SkydotPapyrus) -> void:
     var timer := vm.create_instance("TestpackTimerScript")

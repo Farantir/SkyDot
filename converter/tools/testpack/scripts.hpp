@@ -377,6 +377,10 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
     // Event OnTriggerLeave(ObjectReference akActionRef)
     //     Debug.Trace("left")
     // EndEvent
+    // Int Loads, Unloads, Updates      ; counted by OnLoad, OnUnload, OnUpdate
+    // Event OnInit()
+    //     RegisterForUpdate(0.5)
+    // EndEvent
     out.emplace_back(
         "scripts/testpacktriggerscript.pex",
         one_state(
@@ -397,8 +401,29 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
              function("OnTriggerLeave", "None", {{"akActionRef", "ObjectReference"}},
                       {{"::NoneVar", "None"}},
                       {ins(op_callstatic, {ident("Debug"), ident("Trace"), ident("::NoneVar")},
-                           {str("left"), integer(0)})})},
-            {{.name = "Entered", .type = "Int", .initial = integer(0)}}));
+                           {str("left"), integer(0)})}),
+             function("OnLoad", "None", {}, {{"::temp0", "Int"}},
+                      {
+                          ins(op_iadd, {ident("::temp0"), ident("Loads"), integer(1)}),
+                          ins(op_assign, {ident("Loads"), ident("::temp0")}),
+                      }),
+             function("OnUnload", "None", {}, {{"::temp0", "Int"}},
+                      {
+                          ins(op_iadd, {ident("::temp0"), ident("Unloads"), integer(1)}),
+                          ins(op_assign, {ident("Unloads"), ident("::temp0")}),
+                      }),
+             function("OnUpdate", "None", {}, {{"::temp0", "Int"}},
+                      {
+                          ins(op_iadd, {ident("::temp0"), ident("Updates"), integer(1)}),
+                          ins(op_assign, {ident("Updates"), ident("::temp0")}),
+                      }),
+             function("OnInit", "None", {}, {{"::NoneVar", "None"}},
+                      {ins(op_callmethod, {ident("RegisterForUpdate"), ident("self"), ident("::NoneVar")},
+                           {floating(0.5F)})})},
+            {{.name = "Entered", .type = "Int", .initial = integer(0)},
+             {.name = "Loads", .type = "Int", .initial = integer(0)},
+             {.name = "Unloads", .type = "Int", .initial = integer(0)},
+             {.name = "Updates", .type = "Int", .initial = integer(0)}}));
 
     // Scriptname TestpackTimerScript extends ObjectReference
     // Int Ticks

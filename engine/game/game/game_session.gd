@@ -180,6 +180,8 @@ func _make_game_nodes() -> void:
 	papyrus.sound_volume.connect(sounds.set_volume)
 	sounds.finished.connect(papyrus.notify_sound_finished)
 	_bridge = ScriptBridge.new(world, papyrus, host, _viewpoint, config, place, streamer, transition, sounds)
+	place.left.connect(_bridge.place_left)
+	streamer.cell_dropped.connect(_bridge.scripts_unloaded)
 	_bridge.activations_finished.connect(activations_finished.emit)
 	_bridge.failed.connect(failed.emit)
 	_bridge.message.connect(message.emit)

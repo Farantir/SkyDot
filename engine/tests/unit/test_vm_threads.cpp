@@ -228,6 +228,17 @@ TEST_CASE("update timers send OnUpdate to the script that registered", "[vm][tim
         rig.vm.update(10.0);
         CHECK(rig.notes.size() == 2);
     }
+    SECTION("unregister_updates drops every timer of a reference, others keep theirs") {
+        auto* other = rig.vm.attach(0x81, "ticker");
+        REQUIRE(other != nullptr);
+        rig.vm.register_update(ticker, 1.0, 1.0);
+        rig.vm.register_update(other, 1.0, 1.0);
+        rig.vm.unregister_updates(0x80);
+        rig.vm.update(1.0);
+        CHECK(rig.notes == std::vector<std::string>{"1"});
+        rig.vm.update(1.0);
+        CHECK(rig.notes == std::vector<std::string>{"1", "2"});
+    }
     SECTION("registering again replaces the timer") {
         rig.vm.register_update(ticker, 1.0, 0.0);
         rig.vm.register_update(ticker, 3.0, 0.0);

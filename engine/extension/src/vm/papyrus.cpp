@@ -55,6 +55,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("attach", "cell", "ref"), &SkydotPapyrus::attach);
     godot::ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotPapyrus::attach_built);
     godot::ClassDB::bind_method(D_METHOD("attach_cell", "cell"), &SkydotPapyrus::attach_cell);
+    godot::ClassDB::bind_method(D_METHOD("detach_cell", "cell"), &SkydotPapyrus::detach_cell);
+    godot::ClassDB::bind_method(D_METHOD("detach_all"), &SkydotPapyrus::detach_all);
     godot::ClassDB::bind_method(D_METHOD("activate_ref", "ref", "activator", "default_only", "source", "force"),
                                 &SkydotPapyrus::activate_ref);
     godot::ClassDB::bind_method(D_METHOD("is_3d_loaded", "ref"), &SkydotPapyrus::is_3d_loaded_i);
@@ -223,6 +225,7 @@ void SkydotPapyrus::install_scheduled_handler() {
 void SkydotPapyrus::reset() {
     attached_.clear();
     attached_cells_.clear();
+    loaded_.clear();
     states_.clear();
     activations_->clear();
     triggers_.clear();
@@ -620,7 +623,11 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
             }
             const std::int64_t ref = child->get_meta("skydot_ref");
             attach(child->get_meta("skydot_cell"), ref);
-            attached_cells_.insert(form_of(child->get_meta("skydot_cell")));
+            const auto ref_cell = form_of(child->get_meta("skydot_cell"));
+            attached_cells_.insert(ref_cell);
+            if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
+                loaded_[static_cast<std::uint32_t>(ref)] = ref_cell;
+            }
             if (!vm_->instances(static_cast<std::uint32_t>(ref)).empty()) {
                 register_phantoms(static_cast<std::uint32_t>(ref),
                                   godot::Object::cast_to<godot::Node3D>(child));
@@ -646,6 +653,39 @@ std::int64_t SkydotPapyrus::attach_cell(std::int64_t cell) {
     const auto refs = world_->get_scripted_refs(cell);
     for (std::int64_t i = 0; i < refs.size(); ++i) {
         count += attach(cell, refs[i]) > 0 ? 1 : 0;
+        if (!vm_->instances(static_cast<std::uint32_t>(refs[i])).empty()) {
+            loaded_[static_cast<std::uint32_t>(refs[i])] = static_cast<std::uint32_t>(cell);
+        }
+    }
+    return count;
+}
+
+std::int64_t SkydotPapyrus::detach_cell(std::int64_t cell) {
+    const auto id = static_cast<std::uint32_t>(cell);
+    attached_cells_.erase(id);
+    std::vector<std::uint32_t> refs;
+    for (const auto& [ref, in] : loaded_) {
+        if (in == id) {
+            refs.push_back(ref);
+        }
+    }
+    for (const auto ref : refs) {
+        loaded_.erase(ref);
+        dispatch(ref, "OnCellDetach", {});
+        dispatch(ref, "OnUnload", {});
+        vm_->unregister_updates(ref);
+    }
+    return static_cast<std::int64_t>(refs.size());
+}
+
+std::int64_t SkydotPapyrus::detach_all() {
+    std::set<std::uint32_t> cells(attached_cells_);
+    for (const auto& entry : loaded_) {
+        cells.insert(entry.second);
+    }
+    std::int64_t count = 0;
+    for (const auto cell : cells) {
+        count += detach_cell(cell);
     }
     return count;
 }

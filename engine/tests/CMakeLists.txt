@@ -123,7 +123,7 @@ if(SKYDOT_TESTPACK)
     set_tests_properties(viewer_doors PROPERTIES
         LABELS smoke
         FIXTURES_REQUIRED godot_scan
-        PASS_REGULAR_EXPRESSION "entered TestpackInterior.*leads to 0x00000213.*entered TestpackWorld.*leads to 0x00000303.*entered TestpackInterior"
+        PASS_REGULAR_EXPRESSION "entered TestpackInterior.*leads to 0x00000213.*scripts: 2 references unloaded.*entered TestpackWorld.*leads to 0x00000303.*entered TestpackInterior"
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;never appeared"
         TIMEOUT 120)
     add_test(NAME viewer_locked

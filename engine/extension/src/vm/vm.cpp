@@ -444,6 +444,10 @@ void Vm::unregister_update(Instance* instance) {
     std::erase_if(timers_, [&](const Timer& t) { return t.instance == instance; });
 }
 
+void Vm::unregister_updates(std::uint32_t ref) {
+    std::erase_if(timers_, [&](const Timer& t) { return t.instance->form == ref; });
+}
+
 std::uint32_t Vm::random() {
     // splitmix64: small, seeded, and its whole state saves as one number.
     rng_ += 0x9E3779B97F4A7C15ULL;

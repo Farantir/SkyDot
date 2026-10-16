@@ -89,6 +89,21 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 				_show_ref(node, not changes[ref])
 
 
+## A cell went away (streamed out): its scripted references unload.
+func scripts_unloaded(cell_id: int) -> void:
+	_report_unloaded(_papyrus.detach_cell(cell_id))
+
+
+## The place on screen is about to go: everything loaded unloads.
+func place_left() -> void:
+	_report_unloaded(_papyrus.detach_all())
+
+
+func _report_unloaded(count: int) -> void:
+	if count > 0:
+		print("scripts: %d references unloaded" % count)
+
+
 ## Put the behaviour graphs of what was just built where the saves left them
 ## (an opened gate stays open), before scripts see the references, and keep
 ## the store current when a graph changes or its cell unloads.

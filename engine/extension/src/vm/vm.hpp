@@ -209,6 +209,8 @@ public:
 
     void register_update(Instance* instance, double delay, double interval);
     void unregister_update(Instance* instance);
+    /// Drop the update registrations of every instance attached to `ref`.
+    void unregister_updates(std::uint32_t ref);
     /// The VM's random numbers; seeded, so runs repeat.
     std::uint32_t random();
 
