@@ -111,8 +111,8 @@ void BaseCollector::keep_alternates(const record::MergedRecord& merged,
             break;
         }
         PendingAlternate entry;
-        if (const auto name = in.bytes(*length)) {
-            entry.shape.assign(reinterpret_cast<const char*>(name->data()), name->size());
+        if (const auto name = in.chars(*length)) {
+            entry.shape.assign(name->data(), name->size());
         }
         const auto txst = in.get<std::uint32_t>();
         const auto index = in.get<std::int32_t>();
