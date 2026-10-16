@@ -2,13 +2,13 @@
 #include "front_end.hpp"
 
 #include "bethconv/install/mo2.hpp"
+#include "bethconv/io/byte_view.hpp"
+#include "bethconv/io/mapped_file.hpp"
 #include "bethconv/io/json_text.hpp"
 #include "bethconv/pack/asset_store.hpp"
 #include "bethconv/pack/vpath_index.hpp"
 
 #include <cstdio>
-#include <fstream>
-#include <iterator>
 #include <unordered_set>
 
 namespace bethconv::cli {
@@ -60,16 +60,11 @@ namespace {
 }
 
 [[nodiscard]] std::optional<std::vector<std::byte>> read_bytes(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    const auto file = bethconv::io::MappedFile::open(path);
+    if (!file) {
         return std::nullopt;
     }
-    std::vector<char> chars((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    std::vector<std::byte> bytes(chars.size());
-    for (std::size_t i = 0; i < chars.size(); ++i) {
-        bytes[i] = static_cast<std::byte>(chars[i]);
-    }
-    return bytes;
+    return std::vector<std::byte>(file->bytes().begin(), file->bytes().end());
 }
 
 [[nodiscard]] std::string human_bytes(std::uint64_t bytes) {
@@ -341,12 +336,11 @@ int cmd_target(const std::filesystem::path& dir, bool json) {
 }
 
 int cmd_info(const std::filesystem::path& pack, bool json) {
-    std::ifstream in(pack / "manifest.json", std::ios::binary);
-    if (!in) {
+    const auto file = bethconv::io::MappedFile::open(pack / "manifest.json");
+    if (!file) {
         return fail(json, "not a pack: no manifest.json in " + pack.string());
     }
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    auto manifest = ordered_json::parse(text, nullptr, false);
+    auto manifest = ordered_json::parse(bethconv::io::as_chars(file->bytes()), nullptr, false);
     if (manifest.is_discarded() || !manifest.is_object()) {
         return fail(json, "manifest.json is not a JSON object: " + pack.string());
     }

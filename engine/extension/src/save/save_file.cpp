@@ -101,7 +101,20 @@ bool SaveReader::read_file(const std::string& path, std::vector<std::uint8_t>& b
         error = "cannot read " + path;
         return false;
     }
-    bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    // Sized read: GCC 14 at -O2 reports a null dereference inside streambuf
+    // when istreambuf_iterator is inlined.
+    in.seekg(0, std::ios::end);
+    const auto size = static_cast<std::streamoff>(in.tellg());
+    in.seekg(0, std::ios::beg);
+    if (size < 0) {
+        error = "cannot read " + path;
+        return false;
+    }
+    bytes.resize(static_cast<std::size_t>(size));
+    if (!in.read(reinterpret_cast<char*>(bytes.data()), size)) {
+        error = "cannot read " + path;
+        return false;
+    }
     return true;
 }
 
