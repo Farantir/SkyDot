@@ -65,3 +65,7 @@ Licences and pinned versions are in `converter/THIRD_PARTY.md` and
 
 GPL-3.0-or-later (see `LICENSE`). The converter links nifly, which is GPL-3.
 AGPL code is never linked.
+
+The engine carries an additional permission for script mods
+(`LICENSE-EXCEPTION.md`): mods made only of scripts and data that use only the
+mod API may use any licence. Native mods stay under the GPL.

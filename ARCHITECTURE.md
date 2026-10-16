@@ -999,7 +999,7 @@ The VM is in `engine/extension/src/vm/` and documented in
   open, locked, blocked) and emit signals (`enable_changed`, `open_changed`,
   `lock_changed`, `play_animation`, `havok_impulse`, `motion_type_changed`,
   `activate_requested`, `trigger`, `quest_started`/`quest_stage`/
-  `objective_changed`, `message`, `error`); the game layer (the viewer)
+  `objective_changed`, `message`, `error`); the game layer (`engine/game/game/`)
   applies them to nodes.
 
 ### 7.10 Coordinates
