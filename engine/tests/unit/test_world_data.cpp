@@ -104,3 +104,28 @@ TEST_CASE("a world without cells, or a closed one, holds no reference", "[world_
     CHECK(empty.data.cell_of_ref(0x14) == 0);
     CHECK(WorldData().cell_of_ref(0x14) == 0);
 }
+
+TEST_CASE("typed queries answer from the indexes, and a closed world answers nothing", "[world_data]") {
+    const OpenWorld world({.cells = {{.id = 0x3000, .refs = {0x14, 0x15}}}});
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    const WorldData& data = world.data;
+    CHECK(data.ref_ptr(0x14) != nullptr);
+    CHECK(data.ref_ptr(0x16) == nullptr);
+    WorldData::RefEnable info;
+    CHECK(data.ref_enable(0x15, info));
+    CHECK(info.enable_parent == 0);
+    CHECK_FALSE(info.initially_disabled);
+    CHECK_FALSE(data.ref_enable(0x16, info));
+    CHECK(data.keyword_by_editor_id("NoSuchKeyword") == 0);
+    CHECK_FALSE(data.base_has_keyword(0x14, 0x100));
+    CHECK(data.form_list_ptr(0x100) == nullptr);
+    CHECK(data.message_ptr(0x100) == nullptr);
+    CHECK(data.explosion_ptr(0x100) == nullptr);
+    CHECK(data.destruction_ptr(0x100) == nullptr);
+
+    const WorldData closed;
+    CHECK(closed.ref_ptr(0x14) == nullptr);
+    CHECK(closed.keyword_by_editor_id("x") == 0);
+    CHECK(closed.form_list_ptr(1) == nullptr);
+    CHECK(closed.message_ptr(1) == nullptr);
+}

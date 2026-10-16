@@ -293,8 +293,10 @@ private:
     std::uint32_t cell_of(std::uint32_t ref) const;
     /// PlaceAtMe: a new runtime reference of `base` where `source` is.
     std::uint32_t place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled);
-    /// The base's DEST (get_destruction), empty if `ref` is not destructible.
-    godot::Dictionary destruction_of(std::uint32_t ref) const;
+    /// The base's DEST, null if `ref` is not destructible.
+    const bethconv::pack::wfb::Destruction* destruction_of(std::uint32_t ref) const;
+    /// The base form of `ref`, placed by a script or by the world; 0 if unknown.
+    std::uint32_t base_form_of(std::uint32_t ref) const;
     /// DamageObject: open the stages the damage reaches and send
     /// OnDestructionStageChanged.
     void damage_object(std::uint32_t ref, double amount);

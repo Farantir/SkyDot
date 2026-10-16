@@ -14,6 +14,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <string_view>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -24,6 +25,10 @@ namespace bethconv::pack::wfb {
 struct World;
 struct Cell;
 struct Base;
+struct FormList;
+struct Message;
+struct Explosion;
+struct Destruction;
 struct Ref;
 struct LargeRef;
 struct LargeRefCell;
@@ -108,6 +113,29 @@ public:
     /// The cell holding reference `ref`, or 0.
     std::int64_t cell_of_ref(std::int64_t ref) const;
 
+    // ---- typed queries for the VM: no Dictionary on the way ------------------
+    /// The placed reference `ref` (found through its cell), or null.
+    const bethconv::pack::wfb::Ref* ref_ptr(std::uint32_t ref) const;
+    /// What the VM needs of a placed reference to work out whether it is
+    /// enabled: its base, its enable parent and whether the parent's state is
+    /// inverted, and its enabled state as the world has it.
+    struct RefEnable {
+        std::uint32_t base = 0;
+        std::uint32_t enable_parent = 0;
+        bool opposite = false;
+        bool initially_disabled = false;
+    };
+    bool ref_enable(std::uint32_t ref, RefEnable& out) const;
+    /// The KYWD with this editor id (any case) from an index built in `open`; 0 if none.
+    std::uint32_t keyword_by_editor_id(std::string_view editor_id) const;
+    /// Whether base form `base` lists `keyword` (KWDA).
+    bool base_has_keyword(std::uint32_t base, std::uint32_t keyword) const;
+    const bethconv::pack::wfb::FormList* form_list_ptr(std::uint32_t id) const;
+    const bethconv::pack::wfb::Message* message_ptr(std::uint32_t id) const;
+    const bethconv::pack::wfb::Explosion* explosion_ptr(std::uint32_t id) const;
+    /// The DEST of base `base`, or null.
+    const bethconv::pack::wfb::Destruction* destruction_ptr(std::uint32_t base) const;
+
     // ---- indexes -----------------------------------------------------------
     /// Load door ref -> the cell holding it and its link.
     using DoorIndex = std::unordered_map<std::uint32_t, std::pair<const bethconv::pack::wfb::Cell*,
@@ -179,6 +207,8 @@ private:
     std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;
     std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
     std::unordered_map<std::uint32_t, std::uint32_t> actor_of_;
+    /// Lowercase editor id -> KYWD id (the first of equal names).
+    std::unordered_map<std::string, std::uint32_t> keywords_;
 };
 
 } // namespace skydot

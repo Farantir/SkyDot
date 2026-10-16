@@ -3,6 +3,7 @@
 #include "data/fb_search.hpp"
 
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/vpath.hpp"
 #include "world_generated.h"
 
 #include <algorithm>
@@ -73,6 +74,13 @@ WorldData::OpenResult WorldData::open(const std::string& path) {
 }
 
 void WorldData::build_indexes() {
+    if (const auto* keywords = root_->keywords()) {
+        for (const auto* k : *keywords) {
+            if (k->editor_id() != nullptr) {
+                keywords_.try_emplace(formats::ascii_lower(k->editor_id()->string_view()), k->id());
+            }
+        }
+    }
     if (const auto* actors = root_->actors()) {
         // Sorted by ref, so the first seen is the lowest.
         for (const auto* a : *actors) {
@@ -236,6 +244,50 @@ std::int64_t WorldData::cell_of_ref(std::int64_t ref) const {
     const auto id = static_cast<std::uint64_t>(static_cast<std::uint32_t>(ref));
     const auto it = std::ranges::lower_bound(ref_cells_, id << 32);
     return it != ref_cells_.end() && *it >> 32 == id ? static_cast<std::int64_t>(*it & 0xFFFFFFFFU) : 0;
+}
+
+const wfb::Ref* WorldData::ref_ptr(std::uint32_t ref) const {
+    const auto* cell = cell_ptr(cell_of_ref(ref));
+    return cell != nullptr ? lookup(cell->refs(), ref) : nullptr;
+}
+
+bool WorldData::ref_enable(std::uint32_t ref, RefEnable& out) const {
+    const auto* r = ref_ptr(ref);
+    if (r == nullptr) {
+        return false;
+    }
+    out.base = r->base();
+    out.enable_parent = r->enable_parent();
+    out.opposite = formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
+    out.initially_disabled = initially_disabled(*r);
+    return true;
+}
+
+std::uint32_t WorldData::keyword_by_editor_id(std::string_view editor_id) const {
+    const auto it = keywords_.find(formats::ascii_lower(editor_id));
+    return it != keywords_.end() ? it->second : 0;
+}
+
+bool WorldData::base_has_keyword(std::uint32_t base, std::uint32_t keyword) const {
+    const auto* b = base_ptr(base);
+    if (b == nullptr || b->keywords() == nullptr) {
+        return false;
+    }
+    return std::ranges::find(*b->keywords(), keyword) != b->keywords()->end();
+}
+
+const wfb::FormList* WorldData::form_list_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->form_lists(), id) : nullptr;
+}
+const wfb::Message* WorldData::message_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->messages(), id) : nullptr;
+}
+const wfb::Explosion* WorldData::explosion_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->explosions(), id) : nullptr;
+}
+const wfb::Destruction* WorldData::destruction_ptr(std::uint32_t base) const {
+    const auto* b = base_ptr(base);
+    return b != nullptr ? b->destruction() : nullptr;
 }
 
 // ---- indexes --------------------------------------------------------------

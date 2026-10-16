@@ -46,7 +46,7 @@ std::uint32_t SkydotPapyrus::cell_of(std::uint32_t ref) const {
 }
 
 std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled) {
-    const Dictionary explosion = world_.is_valid() ? world_->get_explosion(base) : Dictionary();
+    const auto* explosion = world_.is_valid() ? world_->data().explosion_ptr(base) : nullptr;
     vm::PlacedRef placed;
     placed.base = base;
     placed.cell = cell_of(source);
@@ -57,7 +57,7 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
         placed.rotation[i] = static_cast<double>(rotation[i]);
     }
     placed.scale = static_cast<double>(ref_info(source).get("scale", 1.0));
-    placed.transient = !explosion.is_empty();
+    placed.transient = explosion != nullptr;
     const std::uint32_t id = vm_->placed().add(placed);
     if (id == 0) {
         godot::UtilityFunctions::push_error("Papyrus: the runtime reference ids are used up; nothing placed");
@@ -72,8 +72,8 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
     if (attach_scripts(id, placed_info(placed).get("scripts", Array()), 0) != 0) {
         vm_->send_event(id, "OnInit", {});
     }
-    if (!explosion.is_empty()) {
-        if (const auto sound = static_cast<std::int64_t>(explosion.get("sound", 0)); sound != 0) {
+    if (explosion != nullptr) {
+        if (const auto sound = static_cast<std::int64_t>(explosion->sound()); sound != 0) {
             emit_signal("play_sound", sound, static_cast<std::int64_t>(id), new_sound_instance());
         }
     }
@@ -113,18 +113,19 @@ std::int64_t SkydotPapyrus::ref_built(std::int64_t ref) {
     return static_cast<std::int64_t>(dispatch(id, "OnLoad", {}));
 }
 
-Dictionary SkydotPapyrus::destruction_of(std::uint32_t ref) const {
-    const auto base = form_of(ref_info(ref).get("base", 0));
-    return base != 0 && world_.is_valid() ? world_->get_destruction(base) : Dictionary();
+const bethconv::pack::wfb::Destruction* SkydotPapyrus::destruction_of(std::uint32_t ref) const {
+    const auto base = base_form_of(ref);
+    return base != 0 && world_.is_valid() ? world_->data().destruction_ptr(base) : nullptr;
 }
 
 void SkydotPapyrus::damage_object(std::uint32_t ref, double amount) {
-    const Dictionary dest = destruction_of(ref);
-    if (dest.is_empty() || amount <= 0.0) {
+    const auto* dest = destruction_of(ref);
+    if (dest == nullptr || amount <= 0.0) {
         return;
     }
-    const double health = static_cast<double>(dest["health"]);
-    const Array stages = dest["stages"];
+    const double health = static_cast<double>(dest->health());
+    const auto* stages = dest->stages();
+    const auto stage_count = stages != nullptr ? static_cast<std::int32_t>(stages->size()) : 0;
     vm::DestructionState state = vm_->destruction().get(ref);
     if (state.destroyed) {
         return;
@@ -132,8 +133,8 @@ void SkydotPapyrus::damage_object(std::uint32_t ref, double amount) {
     state.damage = health > 0.0 ? std::min(state.damage + amount, health) : state.damage + amount;
     const double remaining = health > 0.0 ? (health - state.damage) * 100.0 / health : 0.0;
     std::int32_t stage = state.stage;
-    for (std::int64_t i = 0; i < stages.size(); ++i) {
-        if (remaining <= static_cast<double>(Dictionary(stages[i]).get("health_percent", 0))) {
+    for (std::int32_t i = 0; i < stage_count; ++i) {
+        if (remaining <= static_cast<double>(stages->Get(static_cast<flatbuffers::uoffset_t>(i))->health_percent())) {
             stage = std::max(stage, static_cast<std::int32_t>(i + 1));
         }
     }
@@ -141,14 +142,15 @@ void SkydotPapyrus::damage_object(std::uint32_t ref, double amount) {
     state.stage = stage;
     // Every stage opened by this blow takes effect, in order.
     for (std::int32_t s = before + 1; s <= stage; ++s) {
-        const Dictionary opened = stages[s - 1];
-        if (const String model = opened.get("model", String()); !model.is_empty()) {
-            emit_signal("destruction_model", static_cast<std::int64_t>(ref), model, static_cast<std::int64_t>(s));
+        const auto* opened = stages->Get(static_cast<flatbuffers::uoffset_t>(s - 1));
+        if (opened->model() != nullptr && opened->model()->size() != 0) {
+            emit_signal("destruction_model", static_cast<std::int64_t>(ref),
+                        String::utf8(opened->model()->c_str()), static_cast<std::int64_t>(s));
         }
-        if (const auto explosion = static_cast<std::int64_t>(opened.get("explosion", 0)); explosion != 0) {
-            place_at(ref, static_cast<std::uint32_t>(explosion), false);
+        if (const auto explosion = opened->explosion(); explosion != 0) {
+            place_at(ref, explosion, false);
         }
-        const auto flags = static_cast<std::int64_t>(opened.get("flags", 0));
+        const std::int64_t flags = opened->flags();
         if ((flags & k_stage_disable) != 0) {
             set_disabled(ref, true);
         }

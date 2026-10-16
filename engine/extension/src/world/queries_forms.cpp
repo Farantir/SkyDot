@@ -20,17 +20,7 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot::queries {
 
 std::int64_t find_keyword(const WorldData& data, const String& editor_id) {
-    const auto* all = data.root() != nullptr ? data.root()->keywords() : nullptr;
-    if (all == nullptr) {
-        return 0;
-    }
-    const std::string wanted = formats::ascii_lower(std::string(editor_id.utf8().get_data()));
-    for (const auto* k : *all) {
-        if (k->editor_id() != nullptr && formats::ascii_lower(k->editor_id()->string_view()) == wanted) {
-            return k->id();
-        }
-    }
-    return 0;
+    return data.keyword_by_editor_id(std::string_view(editor_id.utf8().get_data()));
 }
 
 godot::PackedInt64Array get_base_keywords(const WorldData& data, std::int64_t base) {

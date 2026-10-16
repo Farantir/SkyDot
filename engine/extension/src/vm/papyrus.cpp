@@ -2,6 +2,8 @@
 #include "vm/papyrus.hpp"
 
 #include "data/coordinates.hpp"
+#include "skydot_formats/flags.hpp"
+#include "world_generated.h"
 #include "actors/behavior_player.hpp"
 #include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
@@ -268,17 +270,28 @@ Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
     return world_->get_ref_info(world_->get_ref_cell(ref), ref);
 }
 
+std::uint32_t SkydotPapyrus::base_form_of(std::uint32_t ref) const {
+    if (const auto* placed = vm_->placed().find(ref)) {
+        return placed->base;
+    }
+    WorldData::RefEnable info;
+    return world_.is_valid() && world_->data().ref_enable(ref, info) ? info.base : 0;
+}
+
 bool SkydotPapyrus::disabled(std::uint32_t ref, int depth) const {
     if (const auto it = states_.disabled.find(ref); it != states_.disabled.end()) {
         return it->second;
     }
-    const Dictionary info = ref_info(ref);
-    // Follow a script-changed enable parent; otherwise the world's initial state.
-    const auto parent = form_of(info.get("enable_parent", 0));
-    if (parent != 0 && depth < 16 && world_.is_valid() && world_->get_ref_cell(parent) != 0) {
-        return disabled(parent, depth + 1) != static_cast<bool>(info.get("enable_opposite", false));
+    // A reference a script placed starts enabled; one of the world's follows
+    // its enable parent, as scripts changed it, else the world's initial state.
+    WorldData::RefEnable info;
+    if (vm_->placed().find(ref) != nullptr || world_.is_null() || !world_->data().ref_enable(ref, info)) {
+        return false;
     }
-    return static_cast<bool>(info.get("disabled", false));
+    if (info.enable_parent != 0 && depth < 16 && world_->data().cell_of_ref(info.enable_parent) != 0) {
+        return disabled(info.enable_parent, depth + 1) != info.opposite;
+    }
+    return info.initially_disabled;
 }
 
 void SkydotPapyrus::set_disabled(std::uint32_t ref, bool value) {
@@ -355,8 +368,11 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 struct SkydotPapyrus::Access final : vm::WorldAccess {
     explicit Access(const SkydotPapyrus& owner) : owner_(owner) {}
 
+    /// The typed world data, null without a world.
+    const WorldData* world() const { return owner_.world_.is_valid() ? &owner_.world_->data() : nullptr; }
+
     std::uint32_t base_form(std::uint32_t ref) const override {
-        return form_of(owner_.ref_info(ref).get("base", 0));
+        return owner_.base_form_of(ref);
     }
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
         const Array links = owner_.ref_info(ref).get("links", Array());
@@ -376,39 +392,39 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
     }
     bool cell_attached(std::uint32_t cell) const override { return owner_.attached_cells_.contains(cell); }
     bool has_keyword(std::uint32_t form, std::uint32_t keyword) const override {
-        if (owner_.world_.is_null()) {
+        if (world() == nullptr) {
             return false;
         }
         // A reference answers for its base; anything else is taken for a base.
-        const auto placed = form_of(owner_.ref_info(form).get("base", 0));
-        const godot::PackedInt64Array keywords = owner_.world_->get_base_keywords(placed != 0 ? placed : form);
-        return keywords.has(static_cast<std::int64_t>(keyword));
+        const auto placed = base_form(form);
+        return world()->base_has_keyword(placed != 0 ? placed : form, keyword);
     }
     std::uint32_t find_keyword(const std::string& editor_id) const override {
-        return owner_.world_.is_null() ? 0 : static_cast<std::uint32_t>(owner_.world_->find_keyword(to_godot(editor_id)));
+        return world() != nullptr ? world()->keyword_by_editor_id(editor_id) : 0;
     }
     bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const override {
-        const Dictionary info = owner_.world_.is_null() ? Dictionary() : owner_.world_->get_form_list(list);
-        if (info.is_empty()) {
+        const auto* l = world() != nullptr ? world()->form_list_ptr(list) : nullptr;
+        if (l == nullptr) {
             return false;
         }
-        const godot::PackedInt64Array ids = info["forms"];
-        for (const std::int64_t id : ids) {
-            forms.push_back(static_cast<std::uint32_t>(id));
+        if (l->forms() != nullptr) {
+            forms.assign(l->forms()->begin(), l->forms()->end());
         }
         return true;
     }
     bool message(std::uint32_t id, vm::MessageText& out) const override {
-        const Dictionary info = owner_.world_.is_null() ? Dictionary() : owner_.world_->get_message(id);
-        if (info.is_empty()) {
+        const auto* m = world() != nullptr ? world()->message_ptr(id) : nullptr;
+        if (m == nullptr) {
             return false;
         }
-        out.title = utf8(info["title"]);
-        out.text = utf8(info["text"]);
-        out.box = info["box"];
-        const Array buttons = info["buttons"];
-        for (std::int64_t i = 0; i < buttons.size(); ++i) {
-            out.buttons.push_back(utf8(buttons[i]));
+        const auto text = [](const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string(); };
+        out.title = text(m->title());
+        out.text = text(m->text());
+        out.box = formats::has_flag(m->flags(), bethconv::pack::wfb::MessageFlags::message_box);
+        if (m->buttons() != nullptr) {
+            for (const auto* b : *m->buttons()) {
+                out.buttons.push_back(text(b));
+            }
         }
         return true;
     }
