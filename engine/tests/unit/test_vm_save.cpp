@@ -306,7 +306,7 @@ Bytes& section(Sections& sections, std::string_view tag) {
             return bytes;
         }
     }
-    FAIL("no section " << tag);
+    FAIL_CHECK("no section " << tag);
     return std::get<2>(sections.front());
 }
 
