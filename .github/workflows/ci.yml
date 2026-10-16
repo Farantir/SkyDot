@@ -4,6 +4,8 @@ name: CI
 on:
   push:
     branches: [main]
+    # A vX.Y.Z tag publishes the packaged builds as a GitHub Release.
+    tags: ["v*"]
   pull_request:
 
 env:
@@ -191,3 +193,142 @@ jobs:
         env:
           SKYDOT_TESTPACK_REQUIRE: "1"
         run: ctest --preset ${{ matrix.preset }} -LE unit
+
+  # Release builds of bethconv and the extension for other machines: no
+  # runtime the player has to install. Not on pull requests.
+  binaries:
+    name: binaries ${{ matrix.name }}
+    if: github.event_name == 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Static libstdc++ and libgcc; libgomp ships next to bethconv,
+          # which finds it through the rpath.
+          - name: linux-x86_64
+            os: ubuntu-24.04
+            preset: linux-release
+            cc: gcc-14
+            cxx: g++-14
+            converter_flags: "-DCMAKE_EXE_LINKER_FLAGS='-static-libstdc++ -static-libgcc' -DCMAKE_BUILD_RPATH='$ORIGIN'"
+            engine_flags: -DGODOTCPP_USE_STATIC_CPP=ON
+          # vcpkg's DLLs and the VC++ runtime ship next to bethconv.exe.
+          - name: windows-x86_64
+            os: windows-2022
+            preset: windows-release
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install vcpkg
+        shell: bash
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            "$VCPKG_ROOT"/bootstrap-vcpkg.bat -disableMetrics
+          else
+            "$VCPKG_ROOT"/bootstrap-vcpkg.sh -disableMetrics
+          fi
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/vcpkg-cache
+          key: vcpkg-binaries-${{ matrix.name }}-${{ hashFiles('converter/vcpkg.json') }}
+
+      - name: MSVC on PATH for the Ninja generator
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build bethconv
+        shell: bash
+        working-directory: converter
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake --preset ${{ matrix.preset }} -DBETHCONV_BUILD_TESTS=OFF ${{ matrix.converter_flags }}
+          cmake --build --preset ${{ matrix.preset }}
+
+      - name: Build the extension
+        shell: bash
+        working-directory: engine
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake --preset ${{ matrix.preset }} -DSKYDOT_BUILD_TESTS=OFF ${{ matrix.engine_flags }}
+          cmake --build --preset ${{ matrix.preset }}
+
+      - name: Collect
+        shell: bash
+        run: ./tools/ci/collect-binaries.sh "${{ matrix.preset }}" dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.name }}
+          path: dist
+          if-no-files-found: error
+
+  # Exports the game for both platforms from Linux and puts bethconv next to
+  # it, where the pack tool looks first (engine/game/packtool/bethconv.gd).
+  package:
+    name: package
+    # Only tested builds are packaged.
+    needs: [converter, engine, binaries]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: binaries-*
+          path: binaries
+
+      - name: Godot templates (cached)
+        id: templates
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          key: godot-templates-${{ env.GODOT_VERSION }}
+
+      - name: Godot editor and export templates
+        run: |
+          curl -sSL -o godot.zip \
+            "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip
+          sudo install -m 755 "Godot_v${GODOT_VERSION}-stable_linux.x86_64" /usr/local/bin/godot4.7
+          if [[ "${{ steps.templates.outputs.cache-hit }}" != "true" ]]; then
+            dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+            curl -sSL -o templates.tpz \
+              "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+            mkdir -p "$dir"
+            unzip -q -j templates.tpz templates/version.txt \
+              templates/linux_release.x86_64 templates/windows_release_x86_64.exe -d "$dir"
+            rm templates.tpz
+          fi
+
+      - name: Package
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then version="${GITHUB_REF_NAME#v}"; else version="$(git rev-parse --short HEAD)"; fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          ./tools/ci/package.sh "$version" binaries out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: skydot-${{ env.VERSION }}
+          path: out/*
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* --title "SkyDot $VERSION" --generate-notes \
+            --notes "How to install and play: [README](https://github.com/${GITHUB_REPOSITORY}/blob/${GITHUB_REF_NAME}/README.md#how-to-play)."

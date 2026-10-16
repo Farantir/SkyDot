@@ -16,6 +16,36 @@ it.
 Each half builds on its own (see its README). Run `tools/ci/install-hooks.sh`
 once after cloning.
 
+## How to play
+
+SkyDot is early: 0.1.0 lets you walk around Skyrim, not play it yet. You
+need your own copy of Skyrim Special Edition (Legendary Edition and VR data
+convert too).
+
+1. Download the archive for your system from the
+   [releases](https://github.com/Farantir/SkyDot/releases) and unpack it
+   anywhere. Linux (also the Steam Deck in desktop mode): run
+   `skydot.x86_64`. Windows: run `skydot.exe`.
+2. **Convert** tab: pick your Skyrim install (found automatically when Steam
+   installed it), optionally a Mod Organizer 2 profile, and a folder for the
+   pack. Converting the whole game takes a while and needs about 35 GB.
+3. **Packs** tab: pick the pack, choose where to start (a worldspace or an
+   interior) and press *Open in the viewer*.
+
+In the viewer: the mouse looks (Esc releases it, a click captures it again),
+WASD moves, Shift sprints, Ctrl walks, Space jumps, F opens doors and
+activates things, V toggles flying (Q/E down/up). F5 saves, F9 loads. All keys
+are listed at the top of `engine/game/viewer/cell_viewer.gd`.
+
+What works: the world streams in with its LOD, weather and time of day; doors
+and load doors; NPCs follow their daily schedules; quests and their scripts
+run; saving and loading. Not yet: combat, dialogue, menus, the inventory and
+the HUD.
+
+From the command line the viewer starts directly:
+`./skydot.x86_64 -- --pack DIR --world Tamriel --at X,Y,Z` or
+`-- --pack DIR --cell EDITOR_ID`.
+
 ## Thanks
 
 SkyDot stands on years of work by the Skyrim modding and open source
