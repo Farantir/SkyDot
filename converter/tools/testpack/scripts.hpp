@@ -102,9 +102,16 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                    native("GetOpenState", "Int", {}),
                    native("SetOpen", "None", {{"abOpen", "Bool"}}),
                    native("GetTriggerObjectCount", "Int", {}),
+                   native("PlaceAtMe", "ObjectReference",
+                          {{"akFormToPlace", "Form"}, {"aiCount", "Int"}, {"abForcePersist", "Bool"},
+                           {"abInitiallyDisabled", "Bool"}}),
+                   native("Delete", "None", {}),
+                   native("Reset", "None", {{"akTarget", "ObjectReference"}}),
                    function("OnActivate", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerEnter", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerLeave", "None", {{"akActionRef", "ObjectReference"}}, {}, {})}));
+    out.emplace_back("scripts/game.pex",
+                     one_state("Game", "", {native("GetForm", "Form", {{"aiFormID", "Int"}}, true)}));
     out.emplace_back(
         "scripts/weapon.pex",
         one_state("Weapon", "Form",
@@ -196,6 +203,53 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                   {function("Click", "None", {}, {{"::NoneVar", "None"}},
                             {ins(op_callmethod, {ident("Play"), ident("self"), ident("::NoneVar")},
                                  {none(), none()})})}));
+
+    // Scriptname TestpackWorldScript: what scripts do to the world, by form id
+    // (forms cannot be handed in from outside).
+    // Int Function Spawn(Int source, Int base) global    ; PlaceAtMe, the new reference's id
+    // Function Remove(Int ref) global                    ; Delete
+    // Function MoveTo(Int ref, Int target) global       ; Reset(target)
+    // Function Hide(Int ref) global                      ; Disable
+    {
+        const auto get_form = [](const char* from, const char* to) {
+            return ins(op_callstatic, {ident("Game"), ident("GetForm"), ident(to)}, {ident(from)});
+        };
+        out.emplace_back(
+            "scripts/testpackworldscript.pex",
+            one_state(
+                "TestpackWorldScript", "",
+                {
+                    function("Spawn", "Int", {{"source", "Int"}, {"base", "Int"}},
+                             {{"::f", "Form"}, {"::src", "ObjectReference"}, {"::b", "Form"},
+                              {"::r", "ObjectReference"}, {"::id", "Int"}},
+                             {get_form("source", "::f"), ins(op_cast, {ident("::src"), ident("::f")}),
+                              get_form("base", "::b"),
+                              ins(op_callmethod, {ident("PlaceAtMe"), ident("::src"), ident("::r")},
+                                  {ident("::b"), integer(1), boolean(false), boolean(false)}),
+                              ins(op_callmethod, {ident("GetFormID"), ident("::r"), ident("::id")}),
+                              ins(op_return, {ident("::id")})},
+                             true),
+                    function("Remove", "None", {{"ref", "Int"}},
+                             {{"::f", "Form"}, {"::o", "ObjectReference"}, {"::NoneVar", "None"}},
+                             {get_form("ref", "::f"), ins(op_cast, {ident("::o"), ident("::f")}),
+                              ins(op_callmethod, {ident("Delete"), ident("::o"), ident("::NoneVar")})},
+                             true),
+                    function("MoveTo", "None", {{"ref", "Int"}, {"target", "Int"}},
+                             {{"::f", "Form"}, {"::o", "ObjectReference"}, {"::g", "Form"},
+                              {"::t", "ObjectReference"}, {"::NoneVar", "None"}},
+                             {get_form("ref", "::f"), ins(op_cast, {ident("::o"), ident("::f")}),
+                              get_form("target", "::g"), ins(op_cast, {ident("::t"), ident("::g")}),
+                              ins(op_callmethod, {ident("Reset"), ident("::o"), ident("::NoneVar")},
+                                  {ident("::t")})},
+                             true),
+                    function("Hide", "None", {{"ref", "Int"}},
+                             {{"::f", "Form"}, {"::o", "ObjectReference"}, {"::NoneVar", "None"}},
+                             {get_form("ref", "::f"), ins(op_cast, {ident("::o"), ident("::f")}),
+                              ins(op_callmethod, {ident("Disable"), ident("::o"), ident("::NoneVar")},
+                                  {boolean(false)})},
+                             true),
+                }));
+    }
 
     // Scriptname TestpackVmScript: global functions covering the opcodes.
     out.emplace_back(
