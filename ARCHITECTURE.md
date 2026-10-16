@@ -2,7 +2,7 @@
 
 This document explains how SkyDot is put together and how its parts work
 inside, in much more detail than the READMEs. It describes the tree as of
-2026-10-04. The format specification is `formats/pack-format.md`.
+2026-10-16 (after 0.1.0 and the game-state refactoring of ADR 0002). The format specification is `formats/pack-format.md`.
 The subsystem notes in `converter/docs/` and `engine/docs/` hold the
 measurements; this file links them together and does not repeat their
 numbers.
@@ -38,7 +38,7 @@ against each other:
             |
             |  bethconv  (converter/, C++23, a CLI and a static library)
             v
-  a pack directory                         formats/pack-format.md (v6)
+  a pack directory                         formats/pack-format.md (v7)
   (manifest.json, world.fb,                FlatBuffers schemas in
    assets.idx + assets-0001.blob,          formats/schema/
    vpath.idx, report.json)
@@ -69,14 +69,17 @@ game), and speed (all the slow parsing happens once, ahead of time).
 
 ## 2. Repository map
 
-Line counts are approximate (tracked and untracked source, 2026-10-04).
+Line counts are approximate (tracked and untracked source, 2026-10-04;
+`session/`, `save/`, `vm/` and `game/` counted again on 2026-10-16).
 
 ```
 SkyDot/
 ├── README.md, CONTRIBUTING.md, LICENSE (GPL-3.0-or-later)
 ├── ARCHITECTURE.md                   this file
+├── GLOSSARY.md                       the project's terms
+├── docs/adr/                         project-wide decisions (script-mod licence, saves and the game session)
 ├── formats/                          ~2,000 lines: THE CONTRACT
-│   ├── pack-format.md                the pack, versioned (v6)
+│   ├── pack-format.md                the pack, versioned (v7)
 │   ├── schema/*.fbs                  world, script, lod, animation
 │   └── include/skydot_formats/       C++ headers both halves share (vocabulary only)
 ├── converter/                        bethconv
@@ -98,10 +101,11 @@ SkyDot/
 │   ├── extension/src/actors/         actors, their animation, locomotion, places (~1,600)
 │   ├── extension/src/nav/            navigation regions (~270)
 │   ├── extension/src/ai/             AI packages and SkydotAi (~2,300)
-│   ├── extension/src/session/        SkydotStreamer (world streaming, door preloading), SkydotClock (~1,300)
-│   ├── extension/src/vm/             Papyrus VM and its binding (~4,600)
+│   ├── extension/src/session/        SkydotStreamer (world streaming, door preloading), SkydotClock (~1,450)
+│   ├── extension/src/save/           the sectioned save container and its Godot binding (~530)
+│   ├── extension/src/vm/             Papyrus VM, activation, triggers, quest and reference state, its binding (~8,000)
 │   ├── extension/src/register_types.*  GDExtension entry point
-│   ├── game/                         Godot project: pack tool, viewer, tools (~5,500)
+│   ├── game/                         Godot project: pack tool, game layer (game/game/, ~2,100), viewer, tools
 │   ├── game/shaders/                 the shaders, as text files Godot's preprocessor assembles (~1,300)
 │   ├── tests/smoke/                  headless Godot tests (~2,600)
 │   ├── docs/                         subsystem notes (~1,100)
@@ -667,13 +671,17 @@ at the SCENE level:
 | `SkydotStreamer` (RefCounted) | `session/streamer.cpp`, `preload.cpp` | streams a worldspace's exterior cells and LOD around the camera and builds the place behind a near load door ahead (7.11) |
 | `SkydotPreparation` (RefCounted) | `session/streamer.*` | the place behind a load door, built ahead, and how far along it is |
 | `SkydotClock` (RefCounted) | `session/clock.*`, `game_time.*` | the time of day, handed between the weather outside and the AI inside (7.11) |
-| `SkydotPapyrus` (RefCounted) | `vm/papyrus.*`, `vm/quests.cpp`, `vm/save.cpp` | the Papyrus VM bound to the world |
+| `SkydotPapyrus` (RefCounted) | `vm/papyrus*.cpp`, `vm/natives_*.cpp`, `vm/quests.cpp` | the Papyrus VM bound to the world (7.9) |
+| `SkydotSaveWriter`, `SkydotSaveReader` (RefCounted) | `save/save_binding.*` | the save container for GDScript: sections as `PackedByteArray`s (7.12) |
 
 Non-Godot helpers: `AssetCache`, `PackStore`, `TerrainBuilder`,
 `WaterMaterials`, `ModelCollision`, `NavIndex`, `ActorPlan`, `Locomotion`,
-packages, `session::GameTime` (the clock's arithmetic) and the whole `vm::`
-namespace (`vm.*`, `script_class.*`, `value.hpp`, `save.cpp`), which does not
-depend on Godot at all.
+packages, `session::GameTime` (the clock's arithmetic), the save container
+(`save::SaveWriter`, `SaveReader`, `ByteWriter`, `ByteReader`), and the whole
+`vm::` namespace (`vm.*`, `script_class.*`, `value.hpp`, `save.cpp`,
+`runtime_refs.hpp`, `ref_states.hpp`, `quest_states.*`, `triggers.*`,
+`id_ranges.hpp`) plus `skydot::Activations` (`vm/activation.*`), none of
+which depends on Godot.
 
 ### 7.2 Assets: from pack bytes to Godot resources
 
@@ -989,18 +997,37 @@ The VM is in `engine/extension/src/vm/` and documented in
   and save/load of the complete state (`save.cpp`). Dispatch looks a method
   up in the attached script derived from the static class, in the current
   state first, then the default state, up the chain.
-- **`SkydotPapyrus`** binds the VM to the pack and `SkydotWorld`. It loads
-  classes from script assets, attaches base and reference scripts with VMAD
-  property values (`attach`, `attach_cell`, `attach_built` with `OnLoad`),
-  handles trigger volumes (XPRM boxes and spheres, `OnTriggerEnter`/`Leave`
-  via `update_actor`), and runs quests (`vm/quests.cpp`: aliases as handle
-  objects, stages and fragments, objectives, globals). Natives that change
-  the world never touch nodes. They update SkydotPapyrus's own view (enabled,
-  open, locked, blocked) and emit signals (`enable_changed`, `open_changed`,
+- **Game rules without Godot**, each with Catch2 tests:
+  `Activations` (`vm/activation.*`: who may activate what, locks, activate
+  parents, furniture that waits for its graph's `ObjectActivated`, pickup;
+  the host answers through `ActivationHost`), `vm::Triggers`
+  (`vm/triggers.*`: XPRM boxes and spheres, who is inside), `vm::QuestStates`
+  (`vm/quest_states.*`: stages, objectives, alias handles and fills,
+  globals), `vm::RefStates` (`vm/ref_states.hpp`: what scripts changed about
+  a reference: disabled, open, locked, blocked, moved), `vm::PlacedRefs`
+  (`vm/runtime_refs.hpp`: what PlaceAtMe made) and destruction states. Each
+  writes and reads its own save section (7.12).
+- **IDs** come from one checked allocator (`vm/id_ranges.hpp`): test
+  instances, runtime references and alias handles own disjoint parts of the
+  `0xFF......` space, sound instances a range of their own (`Sound.Play`'s
+  and the game layer's, through `new_sound_instance`). A used-up range is an
+  error (id 0), never an overlap.
+- **`SkydotPapyrus`** is the Godot binding: it binds the VM to the pack and
+  `SkydotWorld`, loads classes from script assets, attaches base and
+  reference scripts with VMAD property values (`attach`, `attach_cell`,
+  `attach_built` with `OnLoad`), feeds the triggers (`update_actor`), runs
+  activations (`papyrus_activation.cpp`, `activate_ref` returns an outcome
+  Dictionary, `activation_outcome` the deferred ones) and quests
+  (`vm/quests.cpp`), and answers the VM's `WorldAccess` from `WorldData`'s
+  typed queries (`ref_enable`, `base_has_keyword`, `keyword_by_editor_id`
+  with an index built at open, `form_list_ptr`, `message_ptr`, ...), with no
+  Dictionary on the way; game time comes from `SkydotClock`
+  (`attach_clock`). Natives that change the world never touch nodes. They
+  update the state above and emit signals (`enable_changed`, `open_changed`,
   `lock_changed`, `play_animation`, `havok_impulse`, `motion_type_changed`,
   `activate_requested`, `trigger`, `quest_started`/`quest_stage`/
-  `objective_changed`, `message`, `error`); the game layer (`engine/game/game/`)
-  applies them to nodes.
+  `objective_changed`, `message`, `error`); the game layer (`engine/game/game/`,
+  8.2) applies them to nodes.
 
 ### 7.10 Coordinates
 
@@ -1079,6 +1106,30 @@ scale (stopped while benchmarking), inside. `shift` moves the time by hours
 (T), `describe` says it for a shot. The arithmetic is `session/game_time.*`
 in `skydot_core`, with Catch2 tests (`tests/unit/test_game_time.cpp`). The
 weather and the AI keep advancing their own time; the clock does not tick.
+It is also the VM's only source of game time (`WorldAccess::game_days`,
+`time_scale`; the globals `GameHour`, `GameDaysPassed` and `TimeScale` read
+and move it) and is saved in the `CLCK` section.
+
+### 7.12 Saves
+
+`docs/adr/0002-game-state-saves-and-session.md` has the decisions. A save is
+one container (`save/save_file.*`): magic `SKYS`, a container version, then
+tagged sections (FourCC, `u32` section version, `u64` length, bytes) and a
+CRC-32 trailer. Each state class writes and reads its own section with its
+own version: `HEAD` (engine version, the pack's world hash and load order;
+another pack is refused), `CLCK`, `VMST` (the VM core), `RFST`, `PLCD`,
+`DEST`, `INVT`, `ANIM`, `FLST`, `QUST`, `PAPY` (what the binding tracks:
+attached references, trigger occupants, ID counters) and `PLYR`, which
+`SaveService` writes from GDScript. Unknown tags are skipped; a newer section
+version is refused. There is no compatibility promise before 1.0: an older
+section version is refused too, not converted.
+
+Loading is two-phase: the CRC is checked, every section is decoded into
+detached objects (`SkydotPapyrus.prepare`, `decode_host`, `Vm::decode`), and
+only then swapped in (`commit_load`), so a damaged or foreign save leaves the
+running game as it was. Writing goes to `<path>.tmp` and is renamed over the
+file. One forget path (`SkydotPapyrus::forget_ref`: `Vm::detach` plus every
+state class) is used by Delete and by finished transient explosions.
 
 ---
 
@@ -1109,50 +1160,58 @@ child process (`bethconv.gd`):
 - `ui.gd`: small helpers that build controls in code. There are no `.tscn`
   pages besides the root.
 
-### 8.2 Cell viewer (`game/viewer/`)
+### 8.2 Game layer (`game/game/`)
 
-`cell_viewer.gd` is the composition root and the frame loop: about 300
-lines of code, and the documentation of every option in its header. It opens
-the pack and world, creates `SkydotPapyrus`, `SkydotAi`, `SkydotImageSpace`,
-`SkydotClock` and `SkydotStreamer` (the last two are engine classes, 7.11),
-makes the parts below, starts the start-game quests and enters the place the
-options name (an interior, at the arrival spot of the door leading in, or an
-exterior). Each part is a class with typed state and a small API. None has a
-`_process` of its own: the root calls them in the order the frame needs, as
-the one script did before.
+`GameSession` (`game_session.gd`, a `Node`) is the composition root of the
+game, apart from any front end (ADR 0002). `open(config, viewpoint, player)`
+takes a `GameConfig` (what a shell's options say: pack, building, streaming,
+time, the self-driving runs), the camera to stream around and the shell's
+player object; it opens the pack and world and makes `SkydotPapyrus`,
+`SkydotAi`, `SkydotClock`, `SkydotStreamer` and the parts below, and connects
+every `SkydotPapyrus` signal there or in a part it makes. It runs headless
+(`tests/smoke/game_save.gd` drives it with a bare camera and a stand-in
+player). A shell calls `start_game`, `enter_world`/`enter_cell`, `step`
+each frame (streaming, preloading, the door fade, scripts, clock hand-off,
+AI), `activate_in_view`, `save_game`/`load_game`, and listens to `message`,
+`failed`, the quest signals and `place_built`/`place_left`. No part has a
+`_process` of its own.
+
+| File | Class | What it owns |
+| --- | --- | --- |
+| `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
+| `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in |
+| `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the streamer built ahead |
+| `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, graph states, quests, messages), carrying out activation outcomes (load doors, plain doors, furniture), the `--activate` runs |
+| `placed.gd` | `PlacedRefs` | the nodes of references scripts place (PlaceAtMe, explosions) and destruction model swaps; the VM owns the references |
+| `projectiles.gd` | `Projectiles` | what `Weapon.Fire` launches, in flight and stuck |
+| `sounds.gd` | `Sounds` | sound effects from `Sound.Play`, graphs, text keys and sound markers; instance ids come from the engine |
+| `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the engine's sections plus `PLYR` (7.12) |
+| `warn_once.gd` | `WarnOnce` | a message once per key |
+
+### 8.3 Cell viewer (`game/viewer/`)
+
+The viewer is one shell around `GameSession`; a VR shell will be another.
+`cell_viewer.gd` (about 400 lines, with the documentation of every option in
+its header) parses the options, makes a `GameSession` from
+`ViewerSettings.game_config()`, adds `SkydotImageSpace`, and owns the
+developer tooling: CLI flags, the debug overlay, shots and the benchmark.
 
 | File | Class | What it owns |
 | --- | --- | --- |
 | `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
 | `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
-| `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot` (the same logical keys as before), so a gamepad or VR shell can map its own events to them |
-| `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in; signals `built`, `left`, `message`, `failed` |
-| `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the streamer built ahead |
-| `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, quests, messages), `activate` (locks, load doors, plain doors, scripts, activate parents), finding a reference's node, the `--activate` run |
-| `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the VM state plus the place and camera |
+| `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot`, so a gamepad or VR shell can map its own events to them |
 | `shot_recorder.gd` | `ShotRecorder` | F12 shots (PNG and JSON with place, camera in engine and game terms, time, weather, options, pack hashes, GPU, console commands and the note the user types), `--screenshot`, `--shot-delay` |
 | `debug_overlay.gd` | `DebugOverlay` | a `CanvasLayer`: notes, journal, navmesh overlay, path drawing, position text, actor inspection |
 | `benchmark_run.gd` | `BenchmarkRun` | `--benchmark`: the flight and its frame statistics |
 
 Per frame (`_process`): fog sync and image space; during a `--screenshot`
 run only the shots; then the player held or tracked and the camera following
-it, `SkydotStreamer.update` (cells, LOD), `SkydotStreamer.preload_step`,
-`PlaceTransition.step`, Papyrus (`update_actor` for triggers, `update`), the
-clock hand-off and `SkydotAi.update`, the notes' age, the countdown that
-quits an `--activate` run, scripted activations, the benchmark, then input.
+it, `GameSession.step`, the notes' age, the countdown that quits an
+`--activate` run, the benchmark, then input. `_input = false` (tools set it)
+turns off `PlayerInput` and the door fades.
 
-The parts do not know the root. What a built cell needs next (scripts, navmesh
-overlay) is the root's `_on_cell_built`, connected to
-`SkydotStreamer.cell_finished` and, for an interior (whose load doors the
-root registers with the streamer, which registers those of the cells it builds
-itself), `Place.built`; notes and failures are signals. `_input = false`
-(tools set it) turns off `PlayerInput` and the door fades. The streaming, the
-door preloading and the clock run every frame and every front end needs them,
-so they are engine classes (7.11) that a VR shell uses as the viewer does; the
-viewer's `ViewerSettings` fill their options in `_make_streamer` and
-`_ready`.
-
-### 8.3 Tools and tests
+### 8.4 Tools and tests
 
 - `game/tools/*.gd`: headless or windowed measurement drivers against a real
   pack (`preload_check`, `door_check`, `collision_check`, `nav_check`,
@@ -1202,10 +1261,13 @@ viewer's `ViewerSettings` fill their options in `_make_streamer` and
 
 ### 9.3 Pulling a lever
 
-1. F → `pick_ref` finds the lever's reference from the camera ray.
-2. `ScriptBridge.activate` checks the lock, then `SkydotPapyrus.activate(ref,
-   activator)`, which sends `OnActivate` to the reference's scripts (and
-   its aliases').
+1. F → `GameSession.activate_in_view` → `ScriptBridge` finds the lever's
+   reference from the camera ray.
+2. `SkydotPapyrus.activate_ref` runs the rules of `Activations` (activate
+   parents, the lock, a graph that raises `ObjectActivated` defers it), sends
+   `OnActivate` to the reference's scripts (and its aliases'), schedules the
+   activate children and returns an outcome (`door`, `furniture`,
+   `toggle_open`, `locked`, ...) that `ScriptBridge` carries out.
 3. The script calls `PlayAnimationAndWait` (latent: the thread waits for a
    text key, with a timeout) and `Enable()`/`Disable()` on linked refs.
 4. SkydotPapyrus updates its world view and emits `play_animation` and
@@ -1253,11 +1315,13 @@ Several version numbers move independently:
 | What | Where | Value (working tree) | Bumped when |
 | --- | --- | --- | --- |
 | Pack format | `k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`), manifest, `vpath.idx` header; engine `SkydotPack::PACK_FORMAT_VERSION` | 7 | the pack layout's meaning changes |
-| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 11 | `world.fbs` meaning changes |
+| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 23 | `world.fbs` meaning changes |
 | Script, LOD, animation assets | `format_version` in each root table | 1 / per schema | their schema changes |
 | Asset settings fingerprints | `ConvertOptions::*_settings()` (`mesh/19`, `texture/1`, `script/2`, `lod/1`, `animation/2`) | — | a writer's output changes for unchanged input (renames assets, no format change) |
 | CLI JSON | `cli::k_json_version` | — | the JSON the pack tool reads changes |
 | Shot JSON | `ViewerSettings.SHOT_FORMAT` | 1 | the F12 metadata changes |
+| Save container | `save::k_container_version` (`save/save_file.hpp`) | 1 | the framing changes |
+| Save sections | each state class's own constant (`k_section_version`, `k_clock_section_version`, `k_papy_version`, `SaveService.PLYR_VERSION`) | 1, `PAPY` 2 | that class's saved state changes; older versions are refused before 1.0 |
 
 Readers refuse unknown versions and say which numbers they read.
 
@@ -1271,7 +1335,7 @@ Readers refuse unknown versions and say which numbers they read.
 | Corpus | `converter/tests/corpus/` | real installs from `$SKYRIM_DATA_{LE,SE,VR}`, recording only counts, versions and hashes (`corpus-expectations.json`); skipped when unset |
 | Fuzz | `converter/tests/fuzz/` | libFuzzer targets for ESM, BSA, NIF, DDS, PEX, HKX, strings, LOD, assets, forms; also replayed as normal tests with seeds |
 | Test pack | `converter/tools/testpack/`, `tests/testpack/` | a complete synthetic pack (meshes, a cube map, cells, doors, a lock, a lever with scripts, a quest); a determinism check builds it twice and compares |
-| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool; the viewer's typed options (`viewer_settings.gd`, no pack); the clock and the streamer (`session.gd`) |
+| Engine smoke | `engine/tests/smoke/*.gd` | headless Godot runs against the test pack: extension loads, refusal paths, pack, assets, Papyrus, quests, LOD, animation, actors, AI, physics, navigation, weather, shaders, pack tool; the viewer's typed options (`viewer_settings.gd`, no pack); the clock and the streamer (`session.gd`); the game layer's save round trip through a headless `GameSession` (`game_save.gd`) |
 | Viewer runs | `engine/tests/CMakeLists.txt` | the viewer walks through doors, locked doors, a lever, `--from-shot`, save and load |
 | Visual | F12 shots and `COMPARISON-SHOTS.md` (outside the repo) | rendering compared with game screenshots by hand |
 
@@ -1287,9 +1351,10 @@ Readers refuse unknown versions and say which numbers they read.
 | change mod or load-order handling | `install/mount_plan.*`, `install/mo2.*`, `record/load_order.*` |
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
 | change a shader | the file in `engine/game/shaders/` (its header comment says how it is used and which defines it takes; `game/shaders/README.md`); the variants and their defines are chosen in `render/materials.cpp` and `terrain.cpp`, the other shaders are loaded whole by `render/water.cpp`, `lod.cpp`, `weather.cpp`, `materials.cpp` (particles); check with `smoke_shaders`, `game/tools/shader_compile.gd` and `--from-shot` re-renders |
-| add a Papyrus native | `vm/papyrus.cpp` (`bind` calls), `vm/quests.cpp` for quest ones |
+| add a Papyrus native | the `vm/natives_<script>.cpp` of its script (`bind` calls); state it keeps goes into a Godot-free class in `vm/` with its own save section (7.12) |
+| change who may activate what | `vm/activation.*` (the rules, with unit tests), `vm/papyrus_activation.cpp` (the binding), `game/game/script_bridge.gd` (carrying out the outcome) |
 | change streaming or door preloading | `engine/extension/src/session/` (`streamer.cpp`: streaming, `preload.cpp`: building ahead, `held_place.*`), 7.11 |
-| change door transitions | `game/viewer/` (`place_transition.gd`, `place.gd`) |
+| change door transitions | `game/game/` (`place_transition.gd`, `place.gd`) |
 | change how the time of day is handed between weather and AI | `session/game_time.*` (the rules, with unit tests), `session/clock.cpp` |
 | change a viewer key | the action in `game/project.godot` (`[input]`), `player_input.gd`, and the dispatcher `_on_command` in `cell_viewer.gd` |
 | change what the pack tool shows | `game/packtool/*.gd`, `converter/docs/cli-json.md` |
