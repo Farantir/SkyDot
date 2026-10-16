@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.28)
 
 project(bethconv
-    VERSION 0.0.1
+    VERSION 0.1.0
     DESCRIPTION "Ahead-of-time converter from Bethesda game data to open formats"
     # C only because BLAKE3's imported target declares C compile features.
     # We compile no C ourselves.
