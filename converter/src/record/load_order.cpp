@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/record/load_order.hpp"
 
+#include "bethconv/io/byte_view.hpp"
+#include "bethconv/io/mapped_file.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
-#include <fstream>
-#include <iterator>
 #include <limits>
 #include <system_error>
 
@@ -164,16 +165,14 @@ PluginList parse_plugin_list(std::string_view text) {
 }
 
 io::ParseResult<PluginList> read_plugin_list(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in.good()) {
+    const auto file = io::MappedFile::open(path);
+    if (!file) {
         return std::unexpected(io::ParseError{.origin = path.filename().string(),
                                               .offset = 0,
                                               .kind = io::ErrorKind::bad_value,
                                               .detail = "cannot open plugin list"});
     }
-    const std::string text((std::istreambuf_iterator<char>(in)),
-                           std::istreambuf_iterator<char>());
-    return parse_plugin_list(text);
+    return parse_plugin_list(io::as_chars(file->bytes()));
 }
 
 LoadOrder LoadOrder::build(const std::filesystem::path& data_dir, const PluginList& list,

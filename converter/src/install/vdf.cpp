@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/install/vdf.hpp"
 
-#include <fstream>
-#include <iterator>
+#include "bethconv/io/byte_view.hpp"
+#include "bethconv/io/mapped_file.hpp"
 
 namespace bethconv::install {
 namespace {
@@ -192,14 +192,13 @@ io::ParseResult<VdfNode> parse_vdf(std::string_view text) {
 }
 
 io::ParseResult<VdfNode> read_vdf(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    const auto file = io::MappedFile::open(path);
+    if (!file) {
         return std::unexpected(io::ParseError{.origin = path.string(),
                                               .kind = io::ErrorKind::truncated,
                                               .detail = "cannot open"});
     }
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    return Parser(text, path.string()).parse();
+    return Parser(io::as_chars(file->bytes()), path.string()).parse();
 }
 
 } // namespace bethconv::install

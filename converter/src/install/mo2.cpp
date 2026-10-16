@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/install/mo2.hpp"
 
+#include "bethconv/io/byte_view.hpp"
+#include "bethconv/io/mapped_file.hpp"
+
 #include <algorithm>
-#include <fstream>
-#include <iterator>
 #include <set>
 
 namespace bethconv::install {
@@ -31,11 +32,11 @@ namespace {
 }
 
 [[nodiscard]] std::optional<std::string> read_text(const std::filesystem::path& path) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) {
+    const auto file = io::MappedFile::open(path);
+    if (!file) {
         return std::nullopt;
     }
-    std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string text(io::as_chars(file->bytes()));
     if (text.starts_with("\xEF\xBB\xBF")) {
         text.erase(0, 3);
     }
