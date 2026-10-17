@@ -23,6 +23,7 @@
 
 namespace bethconv::pack::wfb {
 struct World;
+struct GameSetting;
 struct Cell;
 struct Base;
 struct FormList;
@@ -63,7 +64,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 29;
+    static constexpr int FORMAT_VERSION = 30;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {
@@ -126,6 +127,19 @@ public:
         bool initially_disabled = false;
     };
     bool ref_enable(std::uint32_t ref, RefEnable& out) const;
+    /// The GMST `name` (any case; format 30) by binary search, or null.
+    static const bethconv::pack::wfb::GameSetting* find_gmst(const bethconv::pack::wfb::World* root,
+                                                             std::string_view name);
+    /// Its value as a float (an integer or boolean setting converts), or
+    /// `fallback` if the world has no such setting. The static forms serve
+    /// code that holds only the world root.
+    static float gmst_float(const bethconv::pack::wfb::World* root, std::string_view name, float fallback);
+    static std::int32_t gmst_int(const bethconv::pack::wfb::World* root, std::string_view name,
+                                 std::int32_t fallback);
+    float gmst_float(std::string_view name, float fallback) const { return gmst_float(root_, name, fallback); }
+    std::int32_t gmst_int(std::string_view name, std::int32_t fallback) const {
+        return gmst_int(root_, name, fallback);
+    }
     /// The KYWD with this editor id (any case) from an index built in `open`; 0 if none.
     std::uint32_t keyword_by_editor_id(std::string_view editor_id) const;
     /// Whether base form `base` lists `keyword` (KWDA).

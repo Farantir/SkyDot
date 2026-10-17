@@ -161,9 +161,9 @@ void ActorStates::damage(std::uint32_t ref, std::uint32_t av, double amount) {
             v.damage = std::max(v.damage, std::min(floor, 0.0));
         }
         if (av == av::k_magicka) {
-            r->magicka_pause = k_damaged_magicka_regen_delay;
+            r->magicka_pause = magicka_regen_delay_;
         } else if (av == av::k_stamina) {
-            r->stamina_pause = k_damaged_stamina_regen_delay;
+            r->stamina_pause = stamina_regen_delay_;
         } else if (av == av::k_health) {
             check_death(ref, *r);
         }

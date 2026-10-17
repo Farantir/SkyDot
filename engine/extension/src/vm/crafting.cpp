@@ -2,6 +2,7 @@
 #include "vm/crafting.hpp"
 
 #include "data/fb_search.hpp"
+#include "data/world_data.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -38,8 +39,12 @@ struct Instance {
     std::size_t index = 0; ///< Position in the ingredient's effects.
 };
 
-double power(double skill) {
-    return k_alchemy_init_mult * (1.0 + (k_alchemy_skill_factor - 1.0) * skill / 100.0);
+double power(const wfb::World& world, double skill) {
+    const double init = static_cast<double>(WorldData::gmst_float(
+        &world, "fAlchemyIngredientInitMult", static_cast<float>(k_alchemy_init_mult)));
+    const double factor = static_cast<double>(
+        WorldData::gmst_float(&world, "fAlchemySkillFactor", static_cast<float>(k_alchemy_skill_factor)));
+    return init * (1.0 + (factor - 1.0) * skill / 100.0);
 }
 
 double effect_cost(float base_cost, float magnitude, std::uint32_t duration) {
@@ -296,7 +301,7 @@ std::vector<Instance> instances_of(const wfb::World& world, std::uint32_t form, 
     if (effects == nullptr || item->category() != k_ingredient) {
         return out;
     }
-    const double factor = power(skill);
+    const double factor = power(world, skill);
     for (std::size_t i = 0; i < effects->size() && i < 4; ++i) {
         const auto* e = effects->Get(static_cast<flatbuffers::uoffset_t>(i));
         const auto* mgef = effect_of(world, e->effect());

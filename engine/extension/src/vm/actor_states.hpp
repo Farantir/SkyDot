@@ -24,11 +24,15 @@ class ActorStates {
 public:
     static constexpr std::uint32_t k_section_version = 1;
     /// Seconds Magicka and Stamina wait after taking damage before they
-    /// regenerate. The game's values are the GMSTs fDamagedMagickaRegenDelay
-    /// and fDamagedStaminaRegenDelay; GMSTs are not in world.fb, so these are
-    /// placeholders until measured in the original.
-    static constexpr double k_damaged_magicka_regen_delay = 1.5;
-    static constexpr double k_damaged_stamina_regen_delay = 1.5;
+    /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
+    /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
+    /// for a world without them; `set_regen_delays` takes the world's.
+    static constexpr double k_damaged_magicka_regen_delay = 0.5;
+    static constexpr double k_damaged_stamina_regen_delay = 0.5;
+    void set_regen_delays(double magicka, double stamina) {
+        magicka_regen_delay_ = magicka;
+        stamina_regen_delay_ = stamina;
+    }
 
     /// Fills `out` with the data's values for actor `ref`; false if `ref` is
     /// no actor.
@@ -100,6 +104,8 @@ private:
     void check_death(std::uint32_t ref, Record& record);
 
     BaseSource source_;
+    double magicka_regen_delay_ = k_damaged_magicka_regen_delay;
+    double stamina_regen_delay_ = k_damaged_stamina_regen_delay;
     mutable std::map<std::uint32_t, std::optional<ActorBase>> bases_;
     std::map<std::uint32_t, Record> records_;
     std::vector<std::uint32_t> deaths_;

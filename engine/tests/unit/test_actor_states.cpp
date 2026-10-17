@@ -111,6 +111,11 @@ TEST_CASE("percentage is 1 when there is no maximum", "[actor]") {
     CHECK(s.percentage(k_guard, av::k_carry_weight) == Approx(1.0));
 }
 
+TEST_CASE("the regeneration delays default to the GMST values", "[actor]") {
+    CHECK(ActorStates::k_damaged_magicka_regen_delay == 0.5);
+    CHECK(ActorStates::k_damaged_stamina_regen_delay == 0.5);
+}
+
 TEST_CASE("damaged values regenerate per second by the rate, Magicka and Stamina after a delay", "[actor]") {
     auto s = make();
     s.damage(k_guard, av::k_health, 50);
@@ -119,9 +124,10 @@ TEST_CASE("damaged values regenerate per second by the rate, Magicka and Stamina
     s.tick(1000);
     CHECK(s.get(k_guard, av::k_health) == Approx(100)); // not beyond the maximum
 
+    s.set_regen_delays(1.5, 1.5);
     s.damage(k_guard, av::k_stamina, 30);
     s.damage(k_guard, av::k_magicka, 40);
-    s.tick(ActorStates::k_damaged_stamina_regen_delay - 0.5);
+    s.tick(1.0);
     CHECK(s.get(k_guard, av::k_stamina) == Approx(30));
     CHECK(s.get(k_guard, av::k_magicka) == Approx(40));
     s.tick(1.0); // the delay ends half way: 0.5 s regenerate (5% of 60 = 3 per second)

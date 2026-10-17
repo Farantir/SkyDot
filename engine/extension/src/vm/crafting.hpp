@@ -54,8 +54,8 @@ inline constexpr double k_placeholder_skill = 15.0;
 /// PLACEHOLDER (P6): the tempering tier the skill reaches without perks:
 /// skill 15 gives Fine.
 inline constexpr float k_placeholder_temper_health = 1.1F;
-/// GMSTs fAlchemyIngredientInitMult and fAlchemySkillFactor; world.fb has no
-/// GMSTs yet, so their values from Skyrim.esm.
+/// Fallbacks of the GMSTs fAlchemyIngredientInitMult and fAlchemySkillFactor
+/// (their values in Skyrim.esm), for a world without game settings.
 inline constexpr double k_alchemy_init_mult = 4.0;
 inline constexpr double k_alchemy_skill_factor = 1.5;
 /// A created potion's weight.

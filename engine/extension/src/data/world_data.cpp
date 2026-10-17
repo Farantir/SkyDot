@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <utility>
 
 namespace wfb = bethconv::pack::wfb;
@@ -261,6 +262,63 @@ bool WorldData::ref_enable(std::uint32_t ref, RefEnable& out) const {
     out.opposite = formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
     out.initially_disabled = initially_disabled(*r);
     return true;
+}
+
+const wfb::GameSetting* WorldData::find_gmst(const wfb::World* root, std::string_view name) {
+    const auto* list = root != nullptr ? root->gmsts() : nullptr;
+    if (list == nullptr) {
+        return nullptr;
+    }
+    const std::string wanted = formats::ascii_lower(name);
+    std::size_t lo = 0;
+    std::size_t hi = list->size();
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        const auto* item = list->Get(static_cast<flatbuffers::uoffset_t>(mid));
+        const std::string have =
+            item->editor_id() != nullptr ? formats::ascii_lower(item->editor_id()->string_view()) : std::string();
+        if (have == wanted) {
+            return item;
+        }
+        if (have < wanted) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return nullptr;
+}
+
+float WorldData::gmst_float(const wfb::World* root, std::string_view name, float fallback) {
+    const auto* s = find_gmst(root, name);
+    if (s == nullptr) {
+        return fallback;
+    }
+    switch (s->kind()) {
+    case wfb::GameSettingKind::floating:
+        return s->float_value();
+    case wfb::GameSettingKind::integer:
+    case wfb::GameSettingKind::boolean:
+        return static_cast<float>(s->int_value());
+    default:
+        return fallback;
+    }
+}
+
+std::int32_t WorldData::gmst_int(const wfb::World* root, std::string_view name, std::int32_t fallback) {
+    const auto* s = find_gmst(root, name);
+    if (s == nullptr) {
+        return fallback;
+    }
+    switch (s->kind()) {
+    case wfb::GameSettingKind::floating:
+        return static_cast<std::int32_t>(std::lround(static_cast<double>(s->float_value())));
+    case wfb::GameSettingKind::integer:
+    case wfb::GameSettingKind::boolean:
+        return s->int_value();
+    default:
+        return fallback;
+    }
 }
 
 std::uint32_t WorldData::keyword_by_editor_id(std::string_view editor_id) const {

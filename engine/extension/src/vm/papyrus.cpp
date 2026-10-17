@@ -542,6 +542,14 @@ void SkydotPapyrus::bind_world_natives() {
     access_ = std::make_unique<Access>(*this);
     vm::bind_world_natives(*vm_, *access_);
     actors_.set_source([this](std::uint32_t ref, vm::ActorBase& out) { return access_->actor_base(ref, out); });
+    if (world_.is_valid()) {
+        const WorldData& data = world_->data();
+        actors_.set_regen_delays(
+            static_cast<double>(data.gmst_float("fDamagedMagickaRegenDelay",
+                                                static_cast<float>(vm::ActorStates::k_damaged_magicka_regen_delay))),
+            static_cast<double>(data.gmst_float("fDamagedStaminaRegenDelay",
+                                                static_cast<float>(vm::ActorStates::k_damaged_stamina_regen_delay))));
+    }
 }
 
 void SkydotPapyrus::bind_actor_natives() { vm::bind_actor_natives(*vm_, actors_); }

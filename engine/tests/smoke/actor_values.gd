@@ -118,8 +118,10 @@ func _run(pack_dir: String) -> void:
 	_session.step(1.0, feet)
 	expect(_near(_session.actor_value(PLAYER, "Stamina"), 93.0, 0.5), "a second of sprint costs about 7 Stamina: %f" % _session.actor_value(PLAYER, "Stamina"))
 	expect(_player.allowed_calls.is_empty(), "sprinting stays allowed")
-	for i in 20:
-		_session.step(1.0, feet)
+	# Frame-sized steps: each drain renews the regeneration delay (0.5 s in the
+	# game's data), as it does in play.
+	for i in 300:
+		_session.step(0.1, feet)
 	expect(_session.actor_value(PLAYER, "Stamina") <= 0.001, "Stamina runs out")
 	expect(_player.allowed_calls == [false], "and sprinting is forbidden once: %s" % [_player.allowed_calls])
 	_player.sprinting = false
