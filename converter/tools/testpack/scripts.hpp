@@ -102,6 +102,11 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                    native("GetOpenState", "Int", {}),
                    native("SetOpen", "None", {{"abOpen", "Bool"}}),
                    native("GetTriggerObjectCount", "Int", {}),
+                   native("GetItemCount", "Int", {{"akItem", "Form"}}),
+                   native("AddItem", "None", {{"akItemToAdd", "Form"}, {"aiCount", "Int"}, {"abSilent", "Bool"}}),
+                   native("RemoveItem", "None",
+                          {{"akItemToRemove", "Form"}, {"aiCount", "Int"}, {"abSilent", "Bool"},
+                           {"akOtherContainer", "ObjectReference"}}),
                    native("PlaceAtMe", "ObjectReference",
                           {{"akFormToPlace", "Form"}, {"aiCount", "Int"}, {"abForcePersist", "Bool"},
                            {"abInitiallyDisabled", "Bool"}}),
@@ -110,6 +115,19 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                    function("OnActivate", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerEnter", "None", {{"akActionRef", "ObjectReference"}}, {}, {}),
                    function("OnTriggerLeave", "None", {{"akActionRef", "ObjectReference"}}, {}, {})}));
+    out.emplace_back("scripts/armor.pex", one_state("Armor", "Form", {}));
+    out.emplace_back(
+        "scripts/actor.pex",
+        one_state("Actor", "ObjectReference",
+                  {native("EquipItem", "None",
+                          {{"akItem", "Form"}, {"abPreventRemoval", "Bool"}, {"abSilent", "Bool"}}),
+                   native("UnequipItem", "None",
+                          {{"akItem", "Form"}, {"abPreventEquip", "Bool"}, {"abSilent", "Bool"}}),
+                   native("UnequipAll", "None", {}),
+                   native("IsEquipped", "Bool", {{"akItem", "Form"}}),
+                   native("GetEquippedItemType", "Int", {{"aiHand", "Int"}}),
+                   native("GetEquippedWeapon", "Weapon", {{"abLeftHand", "Bool"}}),
+                   native("GetEquippedShield", "Armor", {})}));
     out.emplace_back("scripts/game.pex",
                      one_state("Game", "", {native("GetForm", "Form", {{"aiFormID", "Int"}}, true)}));
     out.emplace_back(
@@ -267,6 +285,106 @@ inline std::vector<std::pair<std::string, std::vector<std::byte>>> scripts() {
                              {get_form("ref", "::f"), ins(op_cast, {ident("::o"), ident("::f")}),
                               ins(op_callmethod, {ident("Disable"), ident("::o"), ident("::NoneVar")},
                                   {boolean(false)})},
+                             true),
+                }));
+    }
+
+    // Scriptname TestpackItemScript: items and equipment through the natives.
+    // Int Function Count(Int owner, Int item) global              ; GetItemCount
+    // Function Give(Int owner, Int item, Int count) global        ; AddItem
+    // Function Take(Int owner, Int item, Int count) global        ; RemoveItem
+    // Function Equip(Int actor, Int item) global                  ; EquipItem
+    // Function Unequip(Int actor, Int item) global                ; UnequipItem
+    // Function Strip(Int actor) global                            ; UnequipAll
+    // Bool Function Wearing(Int actor, Int item) global           ; IsEquipped
+    // Int Function HandType(Int actor, Int hand) global           ; GetEquippedItemType
+    // Int Function WeaponId(Int actor, Bool left) global          ; GetEquippedWeapon().GetFormID(), 0 for None
+    // Int Function ShieldId(Int actor) global                     ; GetEquippedShield().GetFormID(), 0 for None
+    {
+        const auto get_form = [](const char* from, const char* to) {
+            return ins(op_callstatic, {ident("Game"), ident("GetForm"), ident(to)}, {ident(from)});
+        };
+        const auto as_ref = [&](const char* from) {
+            return std::vector<PexInstructionSpec>{get_form(from, "::f"),
+                                                   ins(op_cast, {ident("::o"), ident("::f")})};
+        };
+        const auto as_actor = [&](const char* from) {
+            return std::vector<PexInstructionSpec>{get_form(from, "::f"),
+                                                   ins(op_cast, {ident("::a"), ident("::f")})};
+        };
+        const auto join = [](std::vector<PexInstructionSpec> a, std::vector<PexInstructionSpec> b) {
+            a.insert(a.end(), b.begin(), b.end());
+            return a;
+        };
+        const std::vector<std::pair<std::string, std::string>> locals = {
+            {"::f", "Form"},  {"::o", "ObjectReference"}, {"::a", "Actor"}, {"::i", "Form"},
+            {"::n", "Int"},   {"::b", "Bool"},            {"::w", "Weapon"}, {"::s", "Armor"},
+            {"::id", "Int"},  {"::NoneVar", "None"}};
+        out.emplace_back(
+            "scripts/testpackitemscript.pex",
+            one_state(
+                "TestpackItemScript", "",
+                {
+                    function("Count", "Int", {{"owner", "Int"}, {"item", "Int"}}, locals,
+                             join(join(as_ref("owner"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("GetItemCount"), ident("::o"), ident("::n")},
+                                       {ident("::i")}),
+                                   ins(op_return, {ident("::n")})}),
+                             true),
+                    function("Give", "None", {{"owner", "Int"}, {"item", "Int"}, {"count", "Int"}}, locals,
+                             join(join(as_ref("owner"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("AddItem"), ident("::o"), ident("::NoneVar")},
+                                       {ident("::i"), ident("count"), boolean(true)})}),
+                             true),
+                    function("Take", "None", {{"owner", "Int"}, {"item", "Int"}, {"count", "Int"}}, locals,
+                             join(join(as_ref("owner"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("RemoveItem"), ident("::o"), ident("::NoneVar")},
+                                       {ident("::i"), ident("count"), boolean(true), none()})}),
+                             true),
+                    function("Equip", "None", {{"actor", "Int"}, {"item", "Int"}}, locals,
+                             join(join(as_actor("actor"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("EquipItem"), ident("::a"), ident("::NoneVar")},
+                                       {ident("::i"), boolean(false), boolean(true)})}),
+                             true),
+                    function("Unequip", "None", {{"actor", "Int"}, {"item", "Int"}}, locals,
+                             join(join(as_actor("actor"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("UnequipItem"), ident("::a"), ident("::NoneVar")},
+                                       {ident("::i"), boolean(false), boolean(true)})}),
+                             true),
+                    function("Strip", "None", {{"actor", "Int"}}, locals,
+                             join(as_actor("actor"),
+                                  {ins(op_callmethod, {ident("UnequipAll"), ident("::a"), ident("::NoneVar")})}),
+                             true),
+                    function("Wearing", "Bool", {{"actor", "Int"}, {"item", "Int"}}, locals,
+                             join(join(as_actor("actor"), {get_form("item", "::i")}),
+                                  {ins(op_callmethod, {ident("IsEquipped"), ident("::a"), ident("::b")},
+                                       {ident("::i")}),
+                                   ins(op_return, {ident("::b")})}),
+                             true),
+                    function("HandType", "Int", {{"actor", "Int"}, {"hand", "Int"}}, locals,
+                             join(as_actor("actor"),
+                                  {ins(op_callmethod, {ident("GetEquippedItemType"), ident("::a"), ident("::n")},
+                                       {ident("hand")}),
+                                   ins(op_return, {ident("::n")})}),
+                             true),
+                    function("WeaponId", "Int", {{"actor", "Int"}, {"left", "Bool"}}, locals,
+                             join(as_actor("actor"),
+                                  {ins(op_callmethod, {ident("GetEquippedWeapon"), ident("::a"), ident("::w")},
+                                       {ident("left")}),
+                                   ins(op_cast, {ident("::b"), ident("::w")}),
+                                   ins(op_jmpf, {ident("::b"), integer(3)}),
+                                   ins(op_callmethod, {ident("GetFormID"), ident("::w"), ident("::id")}),
+                                   ins(op_return, {ident("::id")}),
+                                   ins(op_return, {integer(0)})}),
+                             true),
+                    function("ShieldId", "Int", {{"actor", "Int"}}, locals,
+                             join(as_actor("actor"),
+                                  {ins(op_callmethod, {ident("GetEquippedShield"), ident("::a"), ident("::s")}),
+                                   ins(op_cast, {ident("::b"), ident("::s")}),
+                                   ins(op_jmpf, {ident("::b"), integer(3)}),
+                                   ins(op_callmethod, {ident("GetFormID"), ident("::s"), ident("::id")}),
+                                   ins(op_return, {ident("::id")}),
+                                   ins(op_return, {integer(0)})}),
                              true),
                 }));
     }

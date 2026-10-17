@@ -657,7 +657,7 @@ std::vector<std::byte> build_plugin() {
         edid(weap, "TestpackSword");
         text(weap, "FULL", "Testpack Sword");
         modl(weap, "testpack/cube_se.nif");
-        u32(weap, "ETYP", 0x0001'3F44); // EitherHand, as in Skyrim.esm
+        u32(weap, "ETYP", 0x0001'3F42); // RightHand, as Skyrim.esm's one-handed swords
         ByteWriter weap_data;
         weap_data.u32(25);
         weap_data.f32(9.0F);
