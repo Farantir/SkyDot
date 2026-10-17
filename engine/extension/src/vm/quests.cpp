@@ -192,17 +192,26 @@ bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {
     state.done.insert(value);
     state.stage = value;
 
-    // Conditions choose among a stage's log entries; they are not evaluated,
-    // so the first entry and its fragment are taken.
+    // Conditions choose among a stage's log entries: the first whose
+    // conditions pass is the entry, and its fragment runs (else the stage's
+    // lowest one).
     const Array log = stage["log"];
-    const Dictionary entry = log.is_empty() ? Dictionary() : Dictionary(log[0]);
+    const std::size_t chosen = chosen_log_entry(quest, static_cast<std::int32_t>(index));
+    const Dictionary entry =
+        log.is_empty() ? Dictionary() : Dictionary(log[static_cast<std::int64_t>(std::min<std::size_t>(chosen, static_cast<std::size_t>(log.size()) - 1))]);
     const Array fragments = info["fragments"];
     String function;
     for (std::int64_t i = 0; i < fragments.size(); ++i) {
         const Dictionary f = fragments[i];
-        if (static_cast<std::int64_t>(f["stage"]) == index) {
+        if (static_cast<std::int64_t>(f["stage"]) != index) {
+            continue;
+        }
+        if (function.is_empty()) {
+            function = f["function"]; // sorted by log entry, so the lowest comes first
+        }
+        if (static_cast<std::size_t>(static_cast<std::int64_t>(f["log_entry"])) == chosen) {
             function = f["function"];
-            break; // sorted by log entry, so the lowest comes first
+            break;
         }
     }
     if (!function.is_empty()) {

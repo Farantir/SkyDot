@@ -89,5 +89,76 @@ dialogue and quests, by INFO + QUST uses; the first 25 cover 90 %, the first 40
 
 ## Bindings
 
-TODO: filled by the engine task (one row per function: bound, placeholder or
-unknown, with the data it reads).
+`engine/extension/src/conditions/` is the evaluator (`conditions.cpp`: ORed
+runs ANDed, run-on 0..7, the swap flag, GLOB comparison values, unknown
+counter) and the binding table (`functions.cpp`, a switch by function index).
+Bindings read the game through `ConditionWorld`; `PapyrusConditionWorld`
+(`vm/papyrus_conditions.cpp`) answers it from world.fb, `QuestStates`,
+`ActorStates`, the inventory, the enabled state of references and the game
+clock. The AI derives from it for the places of actors it keeps and for its own
+clock (`ai/ai.cpp`, `SkydotAi::Conditions`), and answers GetIsCurrentPackage
+(161), GetRandomPercent (77, the mind's dice) and GetNumericPackageData (612,
+package inputs) as overrides.
+
+A function without a binding is **unknown**: the condition is false (quests,
+dialogue) or its value is 0 (AI packages), the index is counted per function
+(`ConditionWorld::unknowns()`), and one warning per index goes to the log.
+
+Run-on: 0 subject, 1 target, 2 the condition's reference, 3 the subject's
+combat target (the world answers 0 until combat exists), 4 the subject's
+linked reference (no keyword), 5 the fill of alias `param3` of the context's
+quest, 6 package data and 7 event data (no reference: 0). Flag 0x10 swaps
+subject and target first. A reference parameter with the "use aliases" flag
+names an alias of the context's quest.
+
+**Bound** (by index): GetDistance 1, GetActorValue 14, GetCurrentTime 18,
+GetDisabled 35, GetDead 46, GetItemCount 47, GetGold 48, GetTalkedToPC 50
+(false until dialogue), GetQuestRunning 56, GetStage 58, GetStageDone 59,
+GetInCell 67, GetIsRace 69, GetIsSex 70, GetInFaction 71, GetIsID 72,
+GetFactionRank 73, GetGlobalValue 74, GetRandomPercent 77, GetLevel 80,
+GetDeadCount 84, GetPCIsRace 130, GetPCIsSex 131, GetIsReference 136,
+GetDayOfWeek 170, IsInDialogueWithPlayer 249 (false until dialogue),
+GetOffersServicesNow 255 (a faction with the vendor flag whose VENV hours
+contain the hour; start = end is always), GetBaseActorValue 277, IsInInterior
+300, GetInWorldspace 310, GetInCurrentLoc 359 (the cell's location or one of
+its parents), HasLinkedRef 362, GetRelationshipRank 403 (RELA rank 0 lover ...
+8 archnemesis as 4 ... -4, none 0), GetIsVoiceType 426 (the NPC's VTCK, else its
+race's male or female voice; the parameter may be a form list), GetQuestCompleted
+543, HasKeyword 560 (the base's KWDA, an NPC's too), LocationHasKeyword 562 (the
+subject's current location), GetIsAliasRef 566, GetVMQuestVariable 629,
+GetVMScriptVariable 630 (the variable name is CIS2; any script on the form),
+GetActorValuePercent 640, IsLinkedTo 650. AI only: GetIsCurrentPackage 161,
+GetNumericPackageData 612.
+
+**Placeholders** (bound, resting value 0 until the system exists):
+
+| Index | Function | Replaced by |
+|---:|---|---|
+| 579 | GetEquippedShout | shouts |
+| 286 | IsSneaking | stealth |
+| 289 | IsInCombat | combat (C1) |
+| 263 | IsWeaponOut | combat / weapon drawing |
+| 101 | IsWeaponMagicOut | magic |
+| 459 | GetCrimeGold | crime |
+| 145 | IsTrespassing | crime |
+| 144 | GetTrespassWarningLevel | crime |
+| 453 | GetPlayerTeammate | followers |
+| 314 | IsActorAVictim | crime |
+| 66 | GetShouldAttack | combat |
+| 655 | GetIntimidateSuccess | persuasion |
+| 654 | GetBribeSuccess | persuasion |
+| 45 | GetDetected | stealth |
+
+**Unknown** (everything else). The biggest in INFO conditions:
+GetKeywordDataForLocation 606 (594), GetEquipped 182 (229), LocAliasIsLocation
+605 (121), SpellHasKeyword 596 (74), GetInContainer 624, HasMagicEffect 214,
+HasAssociationType 258, HasSpell 264, IsScenePlaying 248; in QUST conditions:
+HasRefType 561 (688), GetIsEditorLocAlias 567 (436), GetInCurrentLocAlias 360
+(258), GetAllowWorldInteractions 503, HasSameEditorLocAsRefAlias 181,
+GetEventData 576.
+
+**Coverage** (Skyrim.esm + Update.esm, 2026-10-17), of all CTDAs: INFO 56 083,
+94.9 % bound, 2.1 % placeholder, 3.0 % unknown; QUST 12 060, 79.1 % bound,
+0.4 % placeholder, 20.6 % unknown (the location-alias functions and HasRefType
+come with alias "find matching" fills). Unit tests: `tests/unit/test_conditions.cpp`
+(a fake `ConditionWorld`) and `test_packages.cpp` (the AI's use).
