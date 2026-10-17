@@ -99,6 +99,16 @@ struct FakeHost final : ActivationHost {
     std::vector<std::tuple<double, std::uint32_t, std::uint32_t>> scheduled;
     std::vector<std::pair<std::uint32_t, std::int64_t>> picked;
     std::vector<std::uint32_t> unlocked;
+    std::set<std::uint32_t> harvested_refs;
+    HarvestResult yield;
+    std::vector<std::uint32_t> harvests;
+
+    bool harvested(std::uint32_t ref) const override { return harvested_refs.contains(ref); }
+    HarvestResult harvest(std::uint32_t ref, std::int64_t) override {
+        harvests.push_back(ref);
+        harvested_refs.insert(ref);
+        return yield;
+    }
 
     bool target(std::uint32_t ref, ActivationTarget& out) const override {
         const auto it = targets.find(ref);
@@ -261,4 +271,57 @@ TEST_CASE("a load door and furniture hand their kind to the host", "[activation]
     const auto chair = activations.activate(0x11, 0, false, ActivationSource::player, false);
     CHECK(chair.kind == "furniture");
     CHECK_FALSE(chair.deferred);
+}
+
+TEST_CASE("a bench is crafting, never a lever, also when its graph raises ObjectActivated", "[activation]") {
+    CHECK_FALSE(activation_waits_for_graph("FURN", ActivationSource::player, true, 1));
+    CHECK(activation_waits_for_graph("FURN", ActivationSource::player, true, 0));
+    FakeHost host;
+    auto bench = target_of("FURN", "BlacksmithForge");
+    bench.bench_type = 1;
+    host.targets[0x10] = bench;
+    host.raises.insert(0x10);
+    Activations activations(host);
+    const auto out = activations.activate(0x10, 0, false, ActivationSource::player, false);
+    CHECK(out.kind == "crafting");
+    CHECK(out.bench_type == 1);
+    CHECK_FALSE(out.deferred);
+    CHECK(out.event.empty());
+    CHECK(out.scripts == 1); // its scripts still run
+}
+
+TEST_CASE("a plant gives its ingredient once, then answers already harvested", "[activation][harvest]") {
+    FakeHost host;
+    auto plant = target_of("FLOR", "Garlic");
+    plant.harvestable = true;
+    host.targets[0x20] = plant;
+    host.yield = {0x34D22, 2, "Garlic", 0x99};
+    Activations activations(host);
+    const auto first = activations.activate(0x20, 0, false, ActivationSource::player, false);
+    CHECK(first.kind == "harvest");
+    CHECK(first.harvest_form == 0x34D22);
+    CHECK(first.harvest_count == 2);
+    CHECK(first.harvest_sound == 0x99);
+    CHECK(first.note == "Garlic added");
+    const auto second = activations.activate(0x20, 0, false, ActivationSource::player, false);
+    CHECK(second.kind == "none");
+    CHECK(second.note == "already harvested");
+    CHECK(host.harvests.size() == 1);
+}
+
+TEST_CASE("a zero chance still harvests the plant, and a blocking script wins", "[activation][harvest]") {
+    FakeHost host;
+    auto plant = target_of("TREE", "Tree");
+    plant.harvestable = true;
+    host.targets[0x20] = plant;
+    host.targets[0x21] = plant;
+    host.blocked.insert(0x21);
+    Activations activations(host);
+    const auto nothing = activations.activate(0x20, 0, false, ActivationSource::player, false);
+    CHECK(nothing.kind == "harvest");
+    CHECK(nothing.harvest_count == 0);
+    CHECK(host.harvested_refs.contains(0x20));
+    const auto blocked = activations.activate(0x21, 0, false, ActivationSource::player, false);
+    CHECK(blocked.kind == "blocked");
+    CHECK_FALSE(host.harvested_refs.contains(0x21));
 }

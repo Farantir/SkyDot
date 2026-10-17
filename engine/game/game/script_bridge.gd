@@ -370,6 +370,16 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 		"toggle_open":
 			if node != null and _toggle_open(node, ref, label):
 				return
+		"harvest":
+			# The ingredient is already in the inventory; the sound
+			# (outcome["harvest_sound"]) is played by the menu phase (5j).
+			message.emit(outcome["note"], false)
+			return
+		"crafting":
+			# The bench menu comes with 5j; until then the use is only noted.
+			print(label, " is a bench of type ", outcome["bench_type"])
+			message.emit(outcome["note"], false)
+			return
 	if outcome["kind"] == "container":
 		print(label, " opens")
 		container_opened.emit(ref)

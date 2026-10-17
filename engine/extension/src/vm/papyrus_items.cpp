@@ -43,6 +43,14 @@ vm::ItemInfo SkydotPapyrus::item_info_of(std::uint32_t form) const {
     const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
     const auto* base = root != nullptr ? lookup(root->bases(), form) : nullptr;
     if (base == nullptr) {
+        // A potion that alchemy made.
+        if (const auto* potion = created_.find(form)) {
+            info.known = true;
+            info.name = potion->name;
+            info.category = vm::ItemCategory::potion;
+            info.weight = potion->weight;
+            info.value = potion->value;
+        }
         return info;
     }
     if (base->name() != nullptr) {
@@ -123,40 +131,92 @@ void SkydotPapyrus::resolve_owner(std::uint32_t owner) const {
     }
 }
 
-std::int64_t SkydotPapyrus::remove_item(std::uint32_t owner, std::uint32_t form, std::int64_t count) {
+void SkydotPapyrus::refresh_equipment(std::uint32_t owner, std::uint32_t form) {
+    if (items_.find(owner) == nullptr) {
+        return;
+    }
+    auto& equipment = items_.equipment(owner);
+    // Each slot that holds `form` needs a unit of its stack left.
+    while (equipment.holds(form) &&
+           vm_->inventory().count_extra(owner, form, equipment.extra_of(form)) <= 0) {
+        if (!vm::unequip(equipment, form, equipment.extra_of(form))) {
+            break;
+        }
+    }
+}
+
+std::vector<vm::Inventory::Taken> SkydotPapyrus::remove_item_split(std::uint32_t owner, std::uint32_t form,
+                                                                   std::int64_t count) {
     resolve_owner(owner);
-    const std::int64_t taken = vm_->inventory().remove(owner, form, count);
-    if (taken > 0 && vm_->inventory().count(owner, form) == 0 && items_.find(owner) != nullptr) {
-        vm::unequip(items_.equipment(owner), form);
+    auto taken = vm_->inventory().remove_split(owner, form, count);
+    if (!taken.empty()) {
+        refresh_equipment(owner, form);
     }
     return taken;
 }
 
-bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing) {
+std::int64_t SkydotPapyrus::remove_item(std::uint32_t owner, std::uint32_t form, std::int64_t count) {
+    std::int64_t total = 0;
+    for (const auto& part : remove_item_split(owner, form, count)) {
+        total += part.count;
+    }
+    return total;
+}
+
+std::int64_t SkydotPapyrus::remove_item_extra(std::uint32_t owner, std::uint32_t form, std::uint32_t extra,
+                                              std::int64_t count) {
+    resolve_owner(owner);
+    const std::int64_t taken = vm_->inventory().remove_extra(owner, form, extra, count);
+    if (taken > 0) {
+        refresh_equipment(owner, form);
+    }
+    return taken;
+}
+
+std::uint32_t SkydotPapyrus::resolve_extra(std::uint32_t owner, std::uint32_t form, std::int64_t extra) const {
+    if (extra >= 0) {
+        return static_cast<std::uint32_t>(extra);
+    }
+    const auto& inventory = vm_->inventory();
+    if (inventory.count_extra(owner, form, 0) > 0) {
+        return 0;
+    }
+    const auto& split = inventory.extras_of(owner, form);
+    return split.empty() ? 0 : split.begin()->first;
+}
+
+bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing,
+                               std::uint32_t extra) {
     resolve_owner(owner);
     const auto info = item_info_of(form);
     if (!info.known) {
         return false;
     }
-    const bool carried = vm_->inventory().count(owner, form) > 0;
+    const bool carried = vm_->inventory().count_extra(owner, form, extra) > 0;
     if (!carried && !add_missing) {
         return false;
     }
     const auto lookup_info = [this](std::uint32_t id) { return item_info_of(id); };
     vm::Equipment trial = items_.find(owner) != nullptr ? *items_.find(owner) : vm::Equipment{};
-    const auto result = vm::equip(trial, info, left, lookup_info);
+    const auto result = vm::equip(trial, info, left, lookup_info, extra);
     if (result.action == vm::EquipAction::refused) {
         return false;
     }
     if (!carried) {
-        vm_->inventory().add(owner, form, 1);
+        vm_->inventory().add(owner, form, 1, extra);
     }
     switch (result.action) {
     case vm::EquipAction::equipped:
         items_.equipment(owner) = std::move(trial);
         break;
     case vm::EquipAction::consumed:
-        remove_item(owner, form, 1);
+        remove_item_extra(owner, form, extra, 1);
+        if (info.category == vm::ItemCategory::ingredient) {
+            // Eating an ingredient teaches its first effect.
+            if (auto* logic = crafting_logic()) {
+                logic->note_eaten(form);
+            }
+        }
         emit_signal("trace", to_godot("item " + info.name + ": effects not implemented"));
         godot::UtilityFunctions::print(to_godot("items: " + info.name + " consumed, effects not implemented"));
         break;
@@ -173,6 +233,10 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
 bool SkydotPapyrus::unequip_item(std::uint32_t owner, std::uint32_t form) {
     resolve_owner(owner);
     return items_.find(owner) != nullptr && vm::unequip(items_.equipment(owner), form);
+}
+
+std::string SkydotPapyrus::item_name_of(std::uint32_t form) const {
+    return item_info_of(form).name;
 }
 
 void SkydotPapyrus::unequip_all(std::uint32_t owner) {
@@ -230,50 +294,96 @@ Array SkydotPapyrus::inventory(std::int64_t owner) {
     struct Row {
         std::string key;
         std::uint32_t form;
+        std::uint32_t extra;
         std::int64_t count;
+        std::string name;
+        const char* tier;
         vm::ItemInfo info;
     };
     std::vector<Row> rows;
-    for (const auto& [form, count] : vm_->inventory().items(id)) {
+    const auto& inventory = vm_->inventory();
+    for (const auto& [form, total] : inventory.items(id)) {
         auto info = item_info_of(form);
-        rows.push_back({lower(info.name), form, count, std::move(info)});
+        const auto add_row = [&](std::uint32_t extra, std::int64_t count) {
+            std::string name = info.name;
+            const char* tier = "";
+            if (const auto* e = items_.extras().find(extra)) {
+                tier = vm::temper_tier_name(e->health);
+                if (!e->name.empty()) {
+                    name = e->name;
+                }
+                if (tier[0] != '\0') {
+                    name += std::string(" (") + tier + ")";
+                }
+            }
+            rows.push_back({lower(name), form, extra, count, std::move(name), tier, info});
+        };
+        if (const std::int64_t plain = inventory.count_extra(id, form, 0); plain > 0) {
+            add_row(0, plain);
+        }
+        for (const auto& [extra, count] : inventory.extras_of(id, form)) {
+            add_row(extra, count);
+        }
     }
     std::ranges::sort(rows, [](const Row& a, const Row& b) {
-        return a.key != b.key ? a.key < b.key : a.form < b.form;
+        if (a.key != b.key) {
+            return a.key < b.key;
+        }
+        return a.form != b.form ? a.form < b.form : a.extra < b.extra;
     });
     Array out;
     for (const auto& row : rows) {
         Dictionary entry;
         entry["form"] = static_cast<std::int64_t>(row.form);
-        entry["name"] = to_godot(row.info.name);
+        entry["extra"] = static_cast<std::int64_t>(row.extra);
+        entry["name"] = to_godot(row.name);
+        entry["tier"] = to_godot(row.tier);
         entry["count"] = row.count;
         entry["weight"] = static_cast<double>(row.info.weight);
         entry["value"] = static_cast<std::int64_t>(row.info.value);
         entry["category"] = vm::category_name(row.info.category);
-        entry["equipped"] = equipment != nullptr && equipment->holds(row.form);
+        entry["equipped"] = equipment != nullptr && equipment->holds(row.form, row.extra);
         entry["playable"] = row.info.playable;
         out.push_back(entry);
     }
     return out;
 }
 
-std::int64_t SkydotPapyrus::transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count) {
+std::int64_t SkydotPapyrus::transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count,
+                                     std::int64_t extra) {
     const auto source = static_cast<std::uint32_t>(from);
     const auto target = static_cast<std::uint32_t>(to);
+    const auto base = static_cast<std::uint32_t>(form);
+    resolve_owner(source);
     resolve_owner(target);
-    const std::int64_t moved = remove_item(source, static_cast<std::uint32_t>(form), count);
-    if (moved > 0) {
-        vm_->inventory().add(target, static_cast<std::uint32_t>(form), moved);
+    std::int64_t moved = 0;
+    if (extra < 0) {
+        for (const auto& part : remove_item_split(source, base, count)) {
+            vm_->inventory().add(target, base, part.count, part.extra);
+            moved += part.count;
+        }
+    } else {
+        moved = remove_item_extra(source, base, static_cast<std::uint32_t>(extra), count);
+        vm_->inventory().add(target, base, moved, static_cast<std::uint32_t>(extra));
     }
     return moved;
 }
 
-bool SkydotPapyrus::equip(std::int64_t owner, std::int64_t form) {
-    return equip_item(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(form), false, false);
+bool SkydotPapyrus::equip(std::int64_t owner, std::int64_t form, std::int64_t extra) {
+    const auto id = static_cast<std::uint32_t>(owner);
+    const auto base = static_cast<std::uint32_t>(form);
+    resolve_owner(id);
+    return equip_item(id, base, false, false, resolve_extra(id, base, extra));
 }
 
-bool SkydotPapyrus::unequip(std::int64_t owner, std::int64_t form) {
-    return unequip_item(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(form));
+bool SkydotPapyrus::unequip(std::int64_t owner, std::int64_t form, std::int64_t extra) {
+    resolve_owner(static_cast<std::uint32_t>(owner));
+    const auto id = static_cast<std::uint32_t>(owner);
+    if (items_.find(id) == nullptr) {
+        return false;
+    }
+    return vm::unequip(items_.equipment(id), static_cast<std::uint32_t>(form),
+                       extra < 0 ? std::nullopt : std::optional<std::uint32_t>(static_cast<std::uint32_t>(extra)));
 }
 
 Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
@@ -284,6 +394,9 @@ Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
     out["right"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->right : 0);
     out["left"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->left : 0);
     out["ammo"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->ammo : 0);
+    out["right_extra"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->right_extra : 0);
+    out["left_extra"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->left_extra : 0);
+    out["ammo_extra"] = static_cast<std::int64_t>(equipment != nullptr ? equipment->ammo_extra : 0);
     godot::PackedInt64Array worn;
     if (equipment != nullptr) {
         for (const auto form : equipment->worn) {
@@ -303,9 +416,13 @@ std::int64_t SkydotPapyrus::equipped_item_type(std::int64_t owner, std::int64_t 
 }
 
 std::int64_t SkydotPapyrus::drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
-                                 const godot::Vector3& position, const godot::Vector3& rotation) {
+                                 const godot::Vector3& position, const godot::Vector3& rotation,
+                                 std::int64_t extra) {
     const auto base = static_cast<std::uint32_t>(form);
-    const std::int64_t taken = remove_item(static_cast<std::uint32_t>(owner), base, count);
+    const auto from = static_cast<std::uint32_t>(owner);
+    resolve_owner(from);
+    const std::uint32_t stack = resolve_extra(from, base, extra);
+    const std::int64_t taken = remove_item_extra(from, base, stack, count);
     if (taken <= 0) {
         return 0;
     }
@@ -318,10 +435,10 @@ std::int64_t SkydotPapyrus::drop(std::int64_t owner, std::int64_t form, std::int
     }
     const std::uint32_t id = place_ref(placed, false);
     if (id == 0) {
-        vm_->inventory().add(static_cast<std::uint32_t>(owner), base, taken);
+        vm_->inventory().add(from, base, taken, stack);
         return 0;
     }
-    items_.set_dropped(id, taken);
+    items_.set_dropped(id, taken, stack);
     return id;
 }
 

@@ -106,14 +106,45 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         flatbuffers::Offset<wfb::ItemData> item = 0;
         if (b.item) {
             const auto& i = *b.item;
+            std::vector<wfb::EffectItem> effects;
+            for (const auto& e : i.effects) {
+                effects.emplace_back(e.effect, e.magnitude, 0U, e.duration);
+            }
+            flatbuffers::Offset<flatbuffers::Vector<const wfb::EffectItem*>> effects_v = 0;
+            if (!effects.empty()) {
+                effects_v = fbb.CreateVectorOfStructs(effects);
+            }
             item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
-                                       i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food);
+                                       i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food, effects_v,
+                                       i.enchantment);
+        }
+        flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> keywords = 0;
+        if (!b.keywords.empty()) {
+            keywords = fbb.CreateVector(b.keywords);
+        }
+        flatbuffers::Offset<wfb::Harvest> harvest = 0;
+        if (b.harvest) {
+            harvest = wfb::CreateHarvest(fbb, b.harvest->ingredient, b.harvest->sound, b.harvest->seasonal_yield);
         }
         const auto items = entries_of(b.items);
-        bases.push_back(wfb::CreateBaseDirect(fbb, b.id, 0, nullptr, nullptr, false, nullptr, b.flags, nullptr,
-                                              wfb::RecordFlags{}, 0, 0.0F, nullptr, nullptr, 0,
-                                              b.name.empty() ? nullptr : b.name.c_str(), nullptr, item,
-                                              items.empty() ? nullptr : &items));
+        flatbuffers::Offset<flatbuffers::Vector<const wfb::NpcItem*>> items_v = 0;
+        if (!items.empty()) {
+            items_v = fbb.CreateVectorOfStructs(items);
+        }
+        flatbuffers::Offset<flatbuffers::String> name = 0;
+        if (!b.name.empty()) {
+            name = fbb.CreateString(b.name);
+        }
+        wfb::BaseBuilder base(fbb);
+        base.add_id(b.id);
+        base.add_flags(b.flags);
+        base.add_keywords(keywords);
+        base.add_name(name);
+        base.add_item(item);
+        base.add_items(items_v);
+        base.add_harvest(harvest);
+        base.add_bench_type(b.bench_type);
+        bases.push_back(base.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Race>> races;
     for (const auto& r : by_id(spec.races)) {
@@ -150,6 +181,26 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         }
         lists.push_back(wfb::CreateLeveledListDirect(fbb, l.id, l.type, l.flags, l.chance_none, some(entries),
                                                      l.chance_global));
+    }
+    std::vector<flatbuffers::Offset<wfb::Recipe>> recipes;
+    for (const auto& r : by_id(spec.recipes)) {
+        const auto components = entries_of(r.components);
+        flatbuffers::Offset<flatbuffers::Vector<const wfb::NpcItem*>> components_v = 0;
+        if (!components.empty()) {
+            components_v = fbb.CreateVectorOfStructs(components);
+        }
+        const auto list = conditions(fbb, r.conditions);
+        flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>> list_v = 0;
+        if (!list.empty()) {
+            list_v = fbb.CreateVector(list);
+        }
+        recipes.push_back(
+            wfb::CreateRecipe(fbb, r.id, 0, r.product, r.product_count, r.bench_keyword, components_v, list_v));
+    }
+    std::vector<flatbuffers::Offset<wfb::MagicEffect>> effects;
+    for (const auto& e : by_id(spec.magic_effects)) {
+        effects.push_back(wfb::CreateMagicEffectDirect(fbb, e.id, nullptr, some(e.name), some(e.description), e.flags,
+                                                       e.base_cost));
     }
     std::vector<flatbuffers::Offset<wfb::Package>> packages;
     for (const auto& p : by_id(spec.packages)) {
@@ -199,6 +250,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto outfits_v = fbb.CreateVector(outfits);
     const auto lists_v = fbb.CreateVector(lists);
     const auto packages_v = fbb.CreateVector(packages);
+    const auto recipes_v = fbb.CreateVector(recipes);
+    const auto effects_v = fbb.CreateVector(effects);
     wfb::WorldBuilder world(fbb);
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
@@ -211,6 +264,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_outfits(outfits_v);
     world.add_leveled_lists(lists_v);
     world.add_packages(packages_v);
+    world.add_recipes(recipes_v);
+    world.add_magic_effects(effects_v);
     wfb::FinishWorldBuffer(fbb, world.Finish());
 
     bytes_.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());

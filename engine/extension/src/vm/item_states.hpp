@@ -8,11 +8,19 @@
 //
 //   ITST  u32 resolved owners, each u32 ref; u32 picks, each u32 ref and u32
 //         NPC_; u32 owners with equipment, each u32 ref, u32 right, u32 left,
-//         u32 ammo, u32 worn count and u32 forms
+//         u32 ammo, u32 worn count and u32 forms; version 3 adds after the
+//         worn forms u32 right, left and ammo extras, u32 count and per entry
+//         u32 worn form and u32 extra
+//         version 2: u32 dropped references, each u32 ref and u64 count (3:
+//         and u32 extra)
+//         version 3 ends with the extras table (item_extras.hpp) and the
+//         splits: u32 owners, each u32 owner, u32 items, each u32 form, u32
+//         entries, each u32 extra and u64 count
 #pragma once
 
 #include "vm/equipment.hpp"
 #include "vm/inventory.hpp"
+#include "vm/item_extras.hpp"
 #include "save/bytes.hpp"
 
 #include <cstdint>
@@ -24,7 +32,7 @@ namespace skydot::vm {
 
 class ItemStates {
 public:
-    static constexpr std::uint32_t k_section_version = 2;
+    static constexpr std::uint32_t k_section_version = 3;
 
     [[nodiscard]] bool resolved(std::uint32_t owner) const { return resolved_.contains(owner); }
     void mark_resolved(std::uint32_t owner) { resolved_.insert(owner); }
@@ -58,13 +66,39 @@ public:
         const auto it = dropped_.find(ref);
         return it == dropped_.end() ? 0 : it->second;
     }
-    void set_dropped(std::uint32_t ref, std::int64_t count) { dropped_[ref] = count; }
-    void forget_dropped(std::uint32_t ref) { dropped_.erase(ref); }
+    /// The extra id of the units a dropped reference stands for (0: plain).
+    [[nodiscard]] std::uint32_t dropped_extra(std::uint32_t ref) const {
+        const auto it = dropped_extra_.find(ref);
+        return it == dropped_extra_.end() ? 0 : it->second;
+    }
+    void set_dropped(std::uint32_t ref, std::int64_t count, std::uint32_t extra = 0) {
+        dropped_[ref] = count;
+        if (extra != 0) {
+            dropped_extra_[ref] = extra;
+        } else {
+            dropped_extra_.erase(ref);
+        }
+    }
+    void forget_dropped(std::uint32_t ref) {
+        dropped_.erase(ref);
+        dropped_extra_.erase(ref);
+    }
+
+    /// The extras the session interned; ids in inventories, equipment and
+    /// dropped references refer to it.
+    ItemExtras& extras() { return extras_; }
+    [[nodiscard]] const ItemExtras& extras() const { return extras_; }
+    /// The splits a load read (the inventory is the VM's, which takes them
+    /// from here); empty otherwise.
+    Inventory::Splits take_splits() { return std::move(loaded_splits_); }
 
     void clear();
     void adopt(ItemStates&& other) { *this = std::move(other); }
 
-    [[nodiscard]] std::vector<std::uint8_t> save() const;
+    /// `inventory` supplies the splits.
+    [[nodiscard]] std::vector<std::uint8_t> save(const Inventory& inventory) const;
+    /// Without splits (every unit plain).
+    [[nodiscard]] std::vector<std::uint8_t> save() const { return save(Inventory{}); }
     /// `version` is the section's (1: no dropped references).
     [[nodiscard]] static bool load(save::ByteReader r, ItemStates& out, std::uint32_t version = k_section_version);
 
@@ -73,6 +107,9 @@ private:
     std::map<std::uint32_t, std::uint32_t> picks_;
     std::map<std::uint32_t, Equipment> equipment_;
     std::map<std::uint32_t, std::int64_t> dropped_;
+    std::map<std::uint32_t, std::uint32_t> dropped_extra_;
+    ItemExtras extras_;
+    Inventory::Splits loaded_splits_;
 };
 
 } // namespace skydot::vm

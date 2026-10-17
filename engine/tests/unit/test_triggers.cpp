@@ -187,10 +187,11 @@ TEST_CASE("a damaged QUST section is refused", "[quests][save]") {
 
 TEST_CASE("id ranges: disjoint, checked and exhausted without overlap") {
     using namespace skydot::vm;
-    const IdRange all[] = {id_ranges::test_instances, id_ranges::runtime_refs, id_ranges::alias_handles};
-    for (std::size_t i = 0; i < 3; ++i) {
+    const IdRange all[] = {id_ranges::test_instances, id_ranges::runtime_refs, id_ranges::created_forms,
+                           id_ranges::alias_handles};
+    for (std::size_t i = 0; i < 4; ++i) {
         CHECK(all[i].first <= all[i].last);
-        for (std::size_t j = i + 1; j < 3; ++j) {
+        for (std::size_t j = i + 1; j < 4; ++j) {
             CHECK((all[i].last < all[j].first || all[j].last < all[i].first));
         }
     }

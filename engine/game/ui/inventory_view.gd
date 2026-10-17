@@ -128,9 +128,9 @@ func use_current() -> void:
 	if row.is_empty():
 		return
 	if row["equipped"]:
-		_session.unequip(int(row["form"]))
+		_session.unequip(int(row["form"]), int(row["extra"]))
 	else:
-		_session.equip(int(row["form"]))
+		_session.equip(int(row["form"]), int(row["extra"]))
 	_refresh()
 
 
@@ -139,7 +139,7 @@ func drop_current() -> void:
 	var row := current()
 	if row.is_empty():
 		return
-	_session.drop(int(row["form"]), int(row["count"]))
+	_session.drop(int(row["form"]), int(row["count"]), int(row["extra"]))
 	_refresh()
 
 

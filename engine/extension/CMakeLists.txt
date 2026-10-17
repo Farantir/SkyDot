@@ -74,6 +74,14 @@ set(SKYDOT_CORE_SOURCES
     src/vm/activation.hpp
     src/vm/census.cpp
     src/vm/inventory.cpp
+    src/vm/item_extras.cpp
+    src/vm/item_extras.hpp
+    src/vm/created_forms.cpp
+    src/vm/created_forms.hpp
+    src/vm/crafting.cpp
+    src/vm/crafting.hpp
+    src/vm/harvest.cpp
+    src/vm/harvest.hpp
     src/vm/inventory.hpp
     src/vm/equipment.cpp
     src/vm/equipment.hpp
@@ -247,6 +255,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_conditions.cpp
     src/vm/papyrus_dialogue.cpp
     src/vm/papyrus_items.cpp
+    src/vm/papyrus_crafting.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp

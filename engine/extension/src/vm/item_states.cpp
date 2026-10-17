@@ -18,6 +18,7 @@ void ItemStates::erase(std::uint32_t owner) {
     picks_.erase(owner);
     equipment_.erase(owner);
     dropped_.erase(owner);
+    dropped_extra_.erase(owner);
 }
 
 void ItemStates::clear() {
@@ -25,9 +26,12 @@ void ItemStates::clear() {
     picks_.clear();
     equipment_.clear();
     dropped_.clear();
+    dropped_extra_.clear();
+    extras_.clear();
+    loaded_splits_.clear();
 }
 
-std::vector<std::uint8_t> ItemStates::save() const {
+std::vector<std::uint8_t> ItemStates::save(const Inventory& inventory) const {
     save::ByteWriter w;
     w.u32(static_cast<std::uint32_t>(resolved_.size()));
     for (const auto owner : resolved_) {
@@ -55,11 +59,35 @@ std::vector<std::uint8_t> ItemStates::save() const {
         for (const auto form : equipment.worn) {
             w.u32(form);
         }
+        w.u32(equipment.right_extra);
+        w.u32(equipment.left_extra);
+        w.u32(equipment.ammo_extra);
+        w.u32(static_cast<std::uint32_t>(equipment.worn_extra.size()));
+        for (const auto& [form, extra] : equipment.worn_extra) {
+            w.u32(form);
+            w.u32(extra);
+        }
     }
     w.u32(static_cast<std::uint32_t>(dropped_.size()));
     for (const auto& [ref, count] : dropped_) {
         w.u32(ref);
         w.u64(static_cast<std::uint64_t>(count));
+        w.u32(dropped_extra(ref));
+    }
+    extras_.write(w);
+    const auto& splits = inventory.splits();
+    w.u32(static_cast<std::uint32_t>(splits.size()));
+    for (const auto& [owner, per_item] : splits) {
+        w.u32(owner);
+        w.u32(static_cast<std::uint32_t>(per_item.size()));
+        for (const auto& [form, split] : per_item) {
+            w.u32(form);
+            w.u32(static_cast<std::uint32_t>(split.size()));
+            for (const auto& [extra, count] : split) {
+                w.u32(extra);
+                w.u64(static_cast<std::uint64_t>(count));
+            }
+        }
     }
     return w.out;
 }
@@ -104,19 +132,58 @@ bool ItemStates::load(save::ByteReader r, ItemStates& out, std::uint32_t version
             }
             equipment.worn.insert(form);
         }
+        if (version >= 3) {
+            std::uint32_t extras = 0;
+            if (!r.u32(equipment.right_extra) || !r.u32(equipment.left_extra) || !r.u32(equipment.ammo_extra) ||
+                !r.count(extras, 8)) {
+                return false;
+            }
+            for (std::uint32_t k = 0; k < extras; ++k) {
+                std::uint32_t form = 0, extra = 0;
+                if (!r.u32(form) || !r.u32(extra)) {
+                    return false;
+                }
+                equipment.worn_extra[form] = extra;
+            }
+        }
         out.equipment_[owner] = std::move(equipment);
     }
     if (version >= 2) {
-        if (!r.count(n, 12)) {
+        if (!r.count(n, version >= 3 ? 16 : 12)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
-            std::uint32_t ref = 0;
+            std::uint32_t ref = 0, extra = 0;
             std::uint64_t count = 0;
-            if (!r.u32(ref) || !r.u64(count)) {
+            if (!r.u32(ref) || !r.u64(count) || (version >= 3 && !r.u32(extra))) {
                 return false;
             }
-            out.dropped_[ref] = static_cast<std::int64_t>(count);
+            out.set_dropped(ref, static_cast<std::int64_t>(count), extra);
+        }
+    }
+    if (version >= 3) {
+        if (!ItemExtras::read(r, out.extras_) || !r.count(n, 8)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::uint32_t owner = 0, items = 0;
+            if (!r.u32(owner) || !r.count(items, 8)) {
+                return false;
+            }
+            for (std::uint32_t k = 0; k < items; ++k) {
+                std::uint32_t form = 0, entries = 0;
+                if (!r.u32(form) || !r.count(entries, 12)) {
+                    return false;
+                }
+                for (std::uint32_t e = 0; e < entries; ++e) {
+                    std::uint32_t extra = 0;
+                    std::uint64_t count = 0;
+                    if (!r.u32(extra) || !r.u64(count)) {
+                        return false;
+                    }
+                    out.loaded_splits_[owner][form][extra] = static_cast<std::int64_t>(count);
+                }
+            }
         }
     }
     return r.at_end();

@@ -11,6 +11,8 @@
 //         of triggers, per trigger the ref and its actors (u32 count + ids);
 //         u32 count of actors with f64 x3 position; u32 next form id
 //   ITST  (optional) resolved owners, leveled actor picks and equipment, vm/item_states.hpp
+//   CRFT  (optional) created potions and alchemy knowledge, vm/created_forms.hpp
+//   HRVS  (optional) harvested references, vm/harvest.hpp
 //   QUST  u32 quests (id; running, started, completed, failed, active as
 //         u8s; i32 stage; u32 count + done stages; u32 count + objective
 //         index and bits); u32 count + quests with scripts; u32 aliases
@@ -128,7 +130,9 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     vm_->save_to(out);
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
     out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
-    out.add("ITST", vm::ItemStates::k_section_version, items_.save());
+    out.add("ITST", vm::ItemStates::k_section_version, items_.save(vm_->inventory()));
+    out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
+    out.add("HRVS", vm::HarvestStates::k_section_version, harvests_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
     if (scenes_ != nullptr) {
         out.add("SCEN", scenes::Scenes::k_section_version, scenes_->save());
@@ -202,9 +206,28 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
         if (!vm::ItemStates::load(file.open(*itst), pending->items, itst->version)) {
             return fail("the ITST section of the save is damaged");
         }
+        // The splits belong to the inventory the VM takes over.
+        pending->vm.inventory.set_splits(pending->items.take_splits());
     } else {
         // An old save: what is in INVT already has its start items.
         pending->items.mark_holders_resolved(pending->vm.inventory);
+    }
+    // CRFT and HRVS are optional: an older save has nothing created, known or harvested.
+    if (const auto* crft = file.find("CRFT")) {
+        if (crft->version != vm::CreatedForms::k_section_version) {
+            return fail("section CRFT has a version this engine does not read");
+        }
+        if (!vm::CreatedForms::load(file.open(*crft), pending->created)) {
+            return fail("the CRFT section of the save is damaged");
+        }
+    }
+    if (const auto* hrvs = file.find("HRVS")) {
+        if (hrvs->version != vm::HarvestStates::k_section_version) {
+            return fail("section HRVS has a version this engine does not read");
+        }
+        if (!vm::HarvestStates::load(file.open(*hrvs), pending->harvests)) {
+            return fail("the HRVS section of the save is damaged");
+        }
     }
     // DLGS is optional: a save without it has said nothing.
     if (const auto* dlgs = file.find("DLGS")) {
@@ -262,6 +285,8 @@ godot::Error SkydotPapyrus::commit_load() {
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
     items_.adopt(std::move(pending->items));
+    created_.adopt(std::move(pending->created));
+    harvests_.adopt(std::move(pending->harvests));
     dialogue_states_.adopt(std::move(pending->dialogue));
     if (auto* logic = scene_logic()) {
         if (pending->scenes != nullptr) {

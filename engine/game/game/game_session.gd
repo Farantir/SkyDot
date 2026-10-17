@@ -335,9 +335,10 @@ func equipment() -> Dictionary:
 	return papyrus.equipment(SkydotPapyrus.PLAYER_REF)
 
 
-## Move up to `count` of `form`; returns how many moved.
-func transfer(from: int, to: int, form: int, count: int) -> int:
-	var moved := papyrus.transfer(from, to, form, count)
+## Move up to `count` of `form`; returns how many moved. `extra` names a stack
+## (a tempered or enchanted one; a row's `extra`), -1 takes plain units first.
+func transfer(from: int, to: int, form: int, count: int, extra := -1) -> int:
+	var moved := papyrus.transfer(from, to, form, count, extra)
 	if moved > 0:
 		items_changed.emit()
 	return moved
@@ -347,22 +348,22 @@ func transfer(from: int, to: int, form: int, count: int) -> int:
 func transfer_all(from: int, to: int) -> int:
 	var stacks := 0
 	for row: Dictionary in papyrus.inventory(from):
-		if transfer(from, to, int(row["form"]), int(row["count"])) > 0:
+		if transfer(from, to, int(row["form"]), int(row["count"]), int(row["extra"])) > 0:
 			stacks += 1
 	return stacks
 
 
 ## The player equips (or consumes, or reads) one `form`. False if it is not
 ## carried or cannot be equipped.
-func equip(form: int) -> bool:
-	var done := papyrus.equip(SkydotPapyrus.PLAYER_REF, form)
+func equip(form: int, extra := -1) -> bool:
+	var done := papyrus.equip(SkydotPapyrus.PLAYER_REF, form, extra)
 	if done:
 		items_changed.emit()
 	return done
 
 
-func unequip(form: int) -> bool:
-	var done := papyrus.unequip(SkydotPapyrus.PLAYER_REF, form)
+func unequip(form: int, extra := -1) -> bool:
+	var done := papyrus.unequip(SkydotPapyrus.PLAYER_REF, form, extra)
 	if done:
 		items_changed.emit()
 	return done
@@ -371,10 +372,10 @@ func unequip(form: int) -> bool:
 ## Drop up to `count` of `form` as one reference in front of the player, which
 ## keeps the count and is picked up by activating it. Returns the reference, 0
 ## if the player has none.
-func drop(form: int, count: int) -> int:
+func drop(form: int, count: int, extra := -1) -> int:
 	var forward := Vector3(-sin(_player.yaw), 0.0, -cos(_player.yaw))
 	var at := SkydotWorld.godot_to_skyrim(_feet + forward * DROP_DISTANCE + Vector3.UP * DROP_HEIGHT)
-	var ref := papyrus.drop(SkydotPapyrus.PLAYER_REF, form, count, place.cell_id, at, Vector3.ZERO)
+	var ref := papyrus.drop(SkydotPapyrus.PLAYER_REF, form, count, place.cell_id, at, Vector3.ZERO, extra)
 	if ref != 0:
 		items_changed.emit()
 	return ref

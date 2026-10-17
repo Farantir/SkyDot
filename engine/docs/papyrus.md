@@ -252,10 +252,23 @@ reference always holds the same, and the actor builder draws its outfit with
 the same seed); the player's level is 1 until stats exist. A placed leveled
 actor list picks its actor once and the pick is kept. What is held, worn and
 resolved is saved (ITST). `item_info(form)`, `inventory(owner)`,
-`transfer(from, to, form, count)`, `equip(owner, form)`, `unequip(owner,
-form)` and `equipment(owner)` are for the game layer; the rules are in
-`vm/equipment.hpp`. An actor built after a script equipped something shows
-it (`SkydotWorld.set_worn_provider`).
+`transfer(from, to, form, count[, extra])`, `equip(owner, form[, extra])`,
+`unequip(owner, form[, extra])` and `equipment(owner)` are for the game layer;
+the rules are in `vm/equipment.hpp`. An actor built after a script equipped
+something shows it (`SkydotWorld.set_worn_provider`).
+
+Units with extra data (tempered, enchanted; `vm/item_extras.hpp`, ADR 0007)
+are rows of their own with an `extra` id (-1 as an argument: any, plain
+first); potions that alchemy made are created forms
+(`vm/created_forms.hpp`, ids 0xFF700000 up; sections CRFT, and ITST version
+3). Crafting (`vm/crafting.hpp`): `recipes(bench)`, `craft(recipe, count)`,
+`temper_rows(bench)`, `temper(recipe, form, extra)`, `enchant_rows()` (a
+stub), `alchemy_rows()`, `alchemy_preview(forms)`, `alchemy_mix(forms)`.
+Activating a FURN with a bench type gives the outcome kind `crafting`
+(`bench_type`); activating a FLOR or TREE with a harvest gives `harvest`
+(`harvest_form`, `harvest_count`, `harvest_name`, `harvest_sound`), then
+"already harvested" until 10 game days pass (`vm/harvest.hpp`, section HRVS;
+`harvested(ref)` for the prompt).
 
 ## Census
 
@@ -309,7 +322,7 @@ magic `SKYS`, sections (FourCC, version, length, bytes), a CRC-32 trailer.
 `SkydotPapyrus.write_sections(writer)` adds HEAD (engine version, the pack's
 world hash and load order), the VM's VMST (instances with their variables
 and states, running and waiting threads with every frame, timers, pending
-results, scheduled host calls, the clock and the random state), INVT, ITST (optional: resolved owners, leveled actor picks, equipment; an old save without it has every inventory unresolved and resolves it on touch), ANIM
+results, scheduled host calls, the clock and the random state), INVT, ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
 references) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,

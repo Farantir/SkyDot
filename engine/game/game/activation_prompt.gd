@@ -75,6 +75,9 @@ func describe(cell: int, ref: int) -> Dictionary:
 			verb = base.get("activate_text", "")
 			if verb.is_empty():
 				verb = "Activate"
+			# A harvested plant offers nothing until it respawns.
+			if type == "FLOR" and _papyrus.harvested(ref):
+				verb = ""
 		"FURN":
 			verb = "Sleep" if _is_bed(base) else "Sit"
 		"BOOK":

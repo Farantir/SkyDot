@@ -19,6 +19,8 @@
 
 #include <cstdint>
 #include <functional>
+#include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -86,9 +88,20 @@ struct Equipment {
     std::uint32_t left = 0;
     std::uint32_t ammo = 0;
     std::set<std::uint32_t> worn;
+    /// The extra data (item_extras.hpp) of the unit in each slot, 0 if plain.
+    std::uint32_t right_extra = 0;
+    std::uint32_t left_extra = 0;
+    std::uint32_t ammo_extra = 0;
+    /// Worn form -> extra; only the worn pieces that carry one.
+    std::map<std::uint32_t, std::uint32_t> worn_extra;
 
     [[nodiscard]] bool empty() const noexcept { return right == 0 && left == 0 && ammo == 0 && worn.empty(); }
     [[nodiscard]] bool holds(std::uint32_t form) const noexcept;
+    /// Whether the unit of `form` carrying `extra` is held or worn.
+    [[nodiscard]] bool holds(std::uint32_t form, std::uint32_t extra) const noexcept;
+    /// The extra of the held or worn unit of `form` (0 if plain or not held).
+    [[nodiscard]] std::uint32_t extra_of(std::uint32_t form) const noexcept;
+    [[nodiscard]] std::uint32_t worn_extra_of(std::uint32_t form) const noexcept;
 };
 
 /// The item data of a form (a function so a test can stand in the pack).
@@ -107,13 +120,15 @@ struct EquipResult {
     std::vector<std::uint32_t> displaced;
 };
 
-/// Equip `item` on `equipment`; `left` asks for the left hand where either
-/// will do. Only the state changes: whether the owner has the item is for the
-/// caller.
-EquipResult equip(Equipment& equipment, const ItemInfo& item, bool left, const ItemLookup& lookup);
+/// Equip `item` (the unit carrying `extra`) on `equipment`; `left` asks for
+/// the left hand where either will do. Only the state changes: whether the
+/// owner has the item is for the caller.
+EquipResult equip(Equipment& equipment, const ItemInfo& item, bool left, const ItemLookup& lookup,
+                  std::uint32_t extra = 0);
 
-/// Take `form` off wherever it is; false if it was not held or worn.
-bool unequip(Equipment& equipment, std::uint32_t form) noexcept;
+/// Take `form` off wherever it is; with `extra`, only if the unit there
+/// carries it. False if it was not held or worn.
+bool unequip(Equipment& equipment, std::uint32_t form, std::optional<std::uint32_t> extra = std::nullopt) noexcept;
 
 /// Actor.GetEquippedItemType for `item`: 0 nothing or fists, 1 sword, 2
 /// dagger, 3 axe, 4 mace, 5 two-handed sword, 6 two-handed axe, 7 bow, 8

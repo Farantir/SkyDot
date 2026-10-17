@@ -12,6 +12,9 @@
 //     ObjectActivated takes effect when the graph says so: the scripts and
 //     activate children wait (PendingActivations). A second use meanwhile is
 //     ignored.
+//   - A FLOR or TREE with a harvest gives its ingredient once (vm/harvest.hpp)
+//     and then answers "already harvested" until it respawns. A FURN with a
+//     bench type (workbenches) is crafting, never a lever.
 //   - An actor that activates a loose item (an ALCH, AMMO, ARMO, BOOK, INGR,
 //     KEYM, MISC, SLGM, SCRL or WEAP reference) picks it up, unless scripts
 //     blocked the activation.
@@ -47,7 +50,9 @@ struct ActivationRequest {
 [[nodiscard]] bool activation_unlocks(const ActivationRequest& request);
 /// Whether an activation of a reference of record `type` waits for the
 /// graph's ObjectActivated: the player's use of furniture whose graph raises it.
-[[nodiscard]] bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises);
+/// A bench (`bench_type` != 0) is never a lever.
+[[nodiscard]] bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises,
+                                              int bench_type = 0);
 
 /// Whether a reference of record `type` is a loose item an activator picks up.
 [[nodiscard]] bool activation_picks_up(std::string_view type);
@@ -81,13 +86,20 @@ struct ActivationTarget {
     bool parent_activate_only{};
     bool load_door{};
     std::int64_t count{1}; ///< How many a loose item stands for.
+    /// A FLOR or TREE that gives an ingredient (a harvest in its base).
+    bool harvestable{};
+    /// FURN WBDT: the bench type, 0 if the furniture is no bench.
+    int bench_type{};
 };
 
 /// How an activation ended, for the host to act on. `kind` is one of missing,
 /// parent_only, locked, blocked, busy (the host shows `note`), door,
 /// furniture (with `event`; `deferred` if the graph's ObjectActivated is
-/// awaited), toggle_open, container (a CONT: the host opens its menu) or none
-/// (the host applies it; `note` is for when it cannot), pickup (done).
+/// awaited), toggle_open, container (a CONT: the host opens its menu), harvest
+/// (done; `harvest_*` say what was given, nothing when the chance failed),
+/// crafting (a bench: the host opens its menu for `bench_type`) or none
+/// (the host applies it; `note` is for when it cannot; a harvested plant
+/// says "already harvested"), pickup (done).
 struct ActivationOutcome {
     std::uint32_t ref{};
     std::string kind{"missing"};
@@ -102,6 +114,22 @@ struct ActivationOutcome {
     bool deferred{};
     /// The reference is a load door (the host adds the door's data).
     bool door{};
+    /// kind harvest: the ingredient form given (0 if none), how many, its
+    /// name, and the sound descriptor to play (0 if none).
+    std::uint32_t harvest_form{};
+    std::int64_t harvest_count{};
+    std::string harvest_name;
+    std::uint32_t harvest_sound{};
+    /// kind crafting: the bench type (FURN WBDT).
+    int bench_type{};
+};
+
+/// What a harvest gave.
+struct HarvestResult {
+    std::uint32_t form{};
+    std::int64_t count{};
+    std::string name;
+    std::uint32_t sound{};
 };
 
 /// What an activation asks of the world and the VM. `SkydotPapyrus` answers it
@@ -130,6 +158,11 @@ public:
     /// `activator` takes the loose item `ref`: it goes into the inventory and
     /// the reference leaves the world.
     virtual void pick_up(std::uint32_t ref, std::int64_t activator, const ActivationTarget& item) = 0;
+    /// Whether a harvestable `ref` is harvested now.
+    [[nodiscard]] virtual bool harvested(std::uint32_t) const { return false; }
+    /// Harvest `ref` for `activator`: roll the season's chance, add the
+    /// ingredient to its inventory, mark the reference harvested.
+    virtual HarvestResult harvest(std::uint32_t, std::int64_t) { return {}; }
 };
 
 /// The whole of an activation, minus what only the host can do: the rules

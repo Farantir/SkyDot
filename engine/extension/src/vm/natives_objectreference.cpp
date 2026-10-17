@@ -228,11 +228,14 @@ void SkydotPapyrus::bind_objectreference_natives() {
     // Moves the items to `other` if given, else they are gone.
     v.bind("ObjectReference", "RemoveItem", [this, arg](NativeCall& c) {
         if (arg(c, 0).kind() == vm::Kind::object) {
-            const std::int64_t taken =
-                remove_item(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+            // Plain units go first; extras (a tempered weapon) move with their stack.
+            const auto taken =
+                remove_item_split(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
             if (arg(c, 3).kind() == vm::Kind::object) {
                 resolve_owner(arg(c, 3).form());
-                vm_->inventory().add(arg(c, 3).form(), arg(c, 0).form(), taken);
+                for (const auto& part : taken) {
+                    vm_->inventory().add(arg(c, 3).form(), arg(c, 0).form(), part.count, part.extra);
+                }
             }
         }
         return NativeResult{};

@@ -32,6 +32,9 @@
 #include "session/clock.hpp"
 #include "vm/actor_states.hpp"
 #include "vm/condition_world.hpp"
+#include "vm/crafting.hpp"
+#include "vm/created_forms.hpp"
+#include "vm/harvest.hpp"
 #include "vm/equipment.hpp"
 #include "vm/id_ranges.hpp"
 #include "vm/item_states.hpp"
@@ -61,6 +64,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -129,19 +133,26 @@ public:
     /// playable, equip_slot, weapon_type, damage, armor_rating, armor_type,
     /// biped_slots. Empty if `form` is no item.
     godot::Dictionary item_info(std::int64_t form) const;
-    /// `owner`'s items, resolved first, by name: {form, name, count, weight,
-    /// value, category, equipped, playable} each.
+    /// `owner`'s items, resolved first, by name: {form, extra, name, tier,
+    /// count, weight, value, category, equipped, playable} each. Units that
+    /// carry extra data (tempered, enchanted; vm/item_extras.hpp) are rows of
+    /// their own (`extra` != 0, `name` with the tier: "Iron Dagger (Fine)");
+    /// created forms (alchemy) are rows like any item.
     godot::Array inventory(std::int64_t owner);
     /// Move up to `count` of `form` from `from` to `to` (an item that runs out
-    /// is taken off); returns how many moved.
-    std::int64_t transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count);
+    /// is taken off); returns how many moved. `extra` names the stack (0
+    /// plain, -1 any: plain first, then the extras in id order).
+    std::int64_t transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count,
+                          std::int64_t extra = -1);
     /// Equip (or consume, or read) one `form` of `owner`'s; false if it is
     /// not carried or cannot be equipped. Weapons go to the right hand, or the
-    /// left where only that fits (see vm/equipment.hpp).
-    bool equip(std::int64_t owner, std::int64_t form);
-    /// Take `form` off `owner`; false if it was not equipped.
-    bool unequip(std::int64_t owner, std::int64_t form);
-    /// {right, left, ammo, worn: [forms]} of `owner`.
+    /// left where only that fits (see vm/equipment.hpp). `extra` as in transfer.
+    bool equip(std::int64_t owner, std::int64_t form, std::int64_t extra = -1);
+    /// Take `form` off `owner`; false if it was not equipped. With `extra`
+    /// >= 0 only if the unit equipped carries it.
+    bool unequip(std::int64_t owner, std::int64_t form, std::int64_t extra = -1);
+    /// {right, left, ammo, worn: [forms], right_extra, left_extra, ammo_extra}
+    /// of `owner`.
     godot::Dictionary equipment(std::int64_t owner);
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
     /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
@@ -153,7 +164,33 @@ public:
     /// again) and is saved like any placed reference. Returns the reference,
     /// 0 if `owner` has none.
     std::int64_t drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
-                      const godot::Vector3& position, const godot::Vector3& rotation);
+                      const godot::Vector3& position, const godot::Vector3& rotation, std::int64_t extra = -1);
+
+    // ---- crafting and harvesting (vm/papyrus_crafting.cpp; the rules are
+    // vm/crafting.hpp and vm/harvest.hpp)
+    /// The create-object recipes of the bench `bench_ref` (a FURN, type 1):
+    /// {recipe, product, name, count, components: [{form, name, need, have}],
+    /// craftable} each.
+    godot::Array recipes(std::int64_t bench_ref);
+    /// Make `count` of the recipe; returns how many were made.
+    std::int64_t craft(std::int64_t recipe, std::int64_t count);
+    /// The tempering rows of a smithing bench (type 2 or 7): {recipe, form,
+    /// extra, name, tier, next_tier, components, craftable} each.
+    godot::Array temper_rows(std::int64_t bench_ref);
+    /// Temper one unit of the stack (form, extra).
+    bool temper(std::int64_t recipe, std::int64_t form, std::int64_t extra);
+    /// The enchanting stub (types 3, 4): {form, extra, name} of the carried
+    /// items with an enchantment. There are no actions yet (C5).
+    godot::Array enchant_rows();
+    /// The carried ingredients: {form, name, count, effects: [{name, known}]}.
+    godot::Array alchemy_rows();
+    /// What mixing `forms` makes: {name, poison, value, effects: [{name,
+    /// magnitude, duration, description}], mixable}.
+    godot::Dictionary alchemy_preview(const godot::PackedInt64Array& forms);
+    /// Mix `forms`; the created potion's form, 0 if it could not be done.
+    std::int64_t alchemy_mix(const godot::PackedInt64Array& forms);
+    /// Whether the harvestable `ref` is harvested now.
+    bool harvested(std::int64_t ref) const;
     /// How a reference is activated (activate_ref's `source`).
     static constexpr std::int64_t ACTIVATE_PLAYER = 0;
     static constexpr std::int64_t ACTIVATE_SCRIPT = 1;
@@ -484,8 +521,31 @@ private:
     std::int64_t remove_item(std::uint32_t owner, std::uint32_t form, std::int64_t count);
     /// Equip one `form` of `owner`'s; `left` asks for the left hand where
     /// either will do. Adds the item if `add_missing`.
-    bool equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing);
+    bool equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing, std::uint32_t extra = 0);
     bool unequip_item(std::uint32_t owner, std::uint32_t form);
+    /// Like remove_item for the units carrying `extra` only.
+    std::int64_t remove_item_extra(std::uint32_t owner, std::uint32_t form, std::uint32_t extra, std::int64_t count);
+    /// Take items, saying which units (extras) went.
+    std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form, std::int64_t count);
+    /// The extra id of a stack named by the API's `extra` (-1: the first
+    /// carried: plain, else the lowest id); 0 if `form` is not carried.
+    std::uint32_t resolve_extra(std::uint32_t owner, std::uint32_t form, std::int64_t extra) const;
+    /// Unequip what is equipped of `form` once no unit of the equipped
+    /// stack is left.
+    void refresh_equipment(std::uint32_t owner, std::uint32_t form);
+    /// Created potions and what is known of ingredients (CRFT).
+    vm::CreatedForms created_;
+    /// What is harvested (HRVS).
+    vm::HarvestStates harvests_;
+    struct CraftingAdapter;
+    std::unique_ptr<crafting::CraftingHost> crafting_host_;
+    std::unique_ptr<crafting::Crafting> crafting_;
+    /// The crafting rules on the VM's inventory; null before setup.
+    crafting::Crafting* crafting_logic();
+    /// A name for any item, also created forms and ones the pack lacks.
+    std::string item_name_of(std::uint32_t form) const;
+    /// The game day now (GameDaysPassed).
+    double game_days() const;
     void unequip_all(std::uint32_t owner);
     /// The worn armor of resolved actors, for the actor builder.
     WornProvider worn_provider() const;
@@ -518,6 +578,8 @@ private:
         vm::RefStates states;
         vm::ActorStates actors;
         vm::ItemStates items;
+        vm::CreatedForms created;
+        vm::HarvestStates harvests;
         dialogue::DialogueStates dialogue;
         std::unique_ptr<scenes::Scenes> scenes;
         HostSnapshot host;

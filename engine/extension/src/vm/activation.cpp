@@ -58,8 +58,9 @@ std::string lock_level_name(int level) {
     return "Novice";
 }
 
-bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises) {
-    return type == "FURN" && source == ActivationSource::player && graph_raises;
+bool activation_waits_for_graph(std::string_view type, ActivationSource source, bool graph_raises,
+                                int bench_type) {
+    return type == "FURN" && bench_type == 0 && source == ActivationSource::player && graph_raises;
 }
 
 bool PendingActivations::begin(std::uint32_t ref, Entry entry) {
@@ -111,7 +112,8 @@ ActivationOutcome Activations::activate(std::uint32_t ref, std::int64_t activato
     }
     // A lever with a behaviour graph activates when the graph says so: the
     // scripts and activate children wait for its ObjectActivated.
-    if (activation_waits_for_graph(target.type, request.source, host_.graph_raises_activation(ref))) {
+    if (activation_waits_for_graph(target.type, request.source, host_.graph_raises_activation(ref),
+                                   target.bench_type)) {
         if (!pending_.begin(ref, {who, default_only})) {
             out.kind = "busy";
             out.note = label + " is still being used";
@@ -128,6 +130,20 @@ ActivationOutcome Activations::activate(std::uint32_t ref, std::int64_t activato
         return out;
     }
     out.kind = "none";
+    if (target.harvestable) {
+        if (host_.harvested(ref)) {
+            out.note = "already harvested";
+            return out;
+        }
+        const HarvestResult got = host_.harvest(ref, who);
+        out.kind = "harvest";
+        out.harvest_form = got.form;
+        out.harvest_count = got.count;
+        out.harvest_name = got.name;
+        out.harvest_sound = got.sound;
+        out.note = got.count > 0 ? got.name + " added" : label + ": nothing gathered";
+        return out;
+    }
     if (activation_picks_up(target.type)) {
         // Loose items go into the activator's inventory.
         target.count = std::max<std::int64_t>(target.count, 1);
@@ -139,6 +155,11 @@ ActivationOutcome Activations::activate(std::uint32_t ref, std::int64_t activato
     if (target.load_door) {
         out.kind = "door";
         out.door = true;
+    } else if (target.type == "FURN" && target.bench_type != 0) {
+        out.kind = "crafting";
+        out.bench_type = target.bench_type;
+        out.note = label + ": crafting";
+        return out;
     } else if (target.type == "FURN") {
         // A lever is furniture: using it pushes it (the player's push
         // animation, which sends Lever_PlayerPush in the game, does not exist).

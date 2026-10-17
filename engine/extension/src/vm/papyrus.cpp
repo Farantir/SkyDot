@@ -73,14 +73,26 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("resolve", "owner"), &SkydotPapyrus::resolve);
     godot::ClassDB::bind_method(D_METHOD("item_info", "form"), &SkydotPapyrus::item_info);
     godot::ClassDB::bind_method(D_METHOD("inventory", "owner"), &SkydotPapyrus::inventory);
-    godot::ClassDB::bind_method(D_METHOD("transfer", "from", "to", "form", "count"), &SkydotPapyrus::transfer);
-    godot::ClassDB::bind_method(D_METHOD("equip", "owner", "form"), &SkydotPapyrus::equip);
-    godot::ClassDB::bind_method(D_METHOD("unequip", "owner", "form"), &SkydotPapyrus::unequip);
+    godot::ClassDB::bind_method(D_METHOD("transfer", "from", "to", "form", "count", "extra"),
+                                &SkydotPapyrus::transfer, DEFVAL(-1));
+    godot::ClassDB::bind_method(D_METHOD("equip", "owner", "form", "extra"), &SkydotPapyrus::equip, DEFVAL(-1));
+    godot::ClassDB::bind_method(D_METHOD("unequip", "owner", "form", "extra"), &SkydotPapyrus::unequip,
+                                DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("equipment", "owner"), &SkydotPapyrus::equipment);
     godot::ClassDB::bind_method(D_METHOD("equipped_item_type", "owner", "hand"),
                                 &SkydotPapyrus::equipped_item_type);
-    godot::ClassDB::bind_method(D_METHOD("drop", "owner", "form", "count", "cell", "position", "rotation"),
-                                &SkydotPapyrus::drop);
+    godot::ClassDB::bind_method(
+        D_METHOD("drop", "owner", "form", "count", "cell", "position", "rotation", "extra"),
+        &SkydotPapyrus::drop, DEFVAL(-1));
+    godot::ClassDB::bind_method(D_METHOD("recipes", "bench_ref"), &SkydotPapyrus::recipes);
+    godot::ClassDB::bind_method(D_METHOD("craft", "recipe", "count"), &SkydotPapyrus::craft);
+    godot::ClassDB::bind_method(D_METHOD("temper_rows", "bench_ref"), &SkydotPapyrus::temper_rows);
+    godot::ClassDB::bind_method(D_METHOD("temper", "recipe", "form", "extra"), &SkydotPapyrus::temper);
+    godot::ClassDB::bind_method(D_METHOD("enchant_rows"), &SkydotPapyrus::enchant_rows);
+    godot::ClassDB::bind_method(D_METHOD("alchemy_rows"), &SkydotPapyrus::alchemy_rows);
+    godot::ClassDB::bind_method(D_METHOD("alchemy_preview", "forms"), &SkydotPapyrus::alchemy_preview);
+    godot::ClassDB::bind_method(D_METHOD("alchemy_mix", "forms"), &SkydotPapyrus::alchemy_mix);
+    godot::ClassDB::bind_method(D_METHOD("harvested", "ref"), &SkydotPapyrus::harvested);
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
@@ -279,6 +291,8 @@ void SkydotPapyrus::reset() {
     states_.clear();
     actors_.clear();
     items_.clear();
+    created_.clear();
+    harvests_.clear();
     dialogue_states_.clear();
     dialogue_.reset();
     scenes_.reset();
@@ -301,6 +315,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     world_ = world;
     world_->set_worn_provider(worn_provider());
     vm_ = std::make_unique<vm::Vm>();
+    crafting_.reset(); // it refers to the old VM's inventory
     install_scheduled_handler();
     reset();
     // Scripts keep their virtual paths: class Foo is scripts/foo.pex.

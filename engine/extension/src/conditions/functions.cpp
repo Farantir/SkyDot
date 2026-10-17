@@ -216,9 +216,16 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(world.talked_to_player(subject));
     case fn::is_in_dialogue_with_player:
         return flag(world.in_dialogue_with_player(subject));
+    // The player has no perks until P6, and no spells until magic (C5).
+    case fn::has_perk:
+    case fn::has_spell:
+        return 0.0;
     default:
         break;
     }
+    // EPTemperingItemIsEnchanted (fn::ep_tempering_item_is_enchanted) is
+    // answered by the crafting context through ConditionOverrides; without
+    // one it stays unknown.
     // Systems that do not exist yet answer their resting value.
     if (std::ranges::find(k_placeholders, c.function()) != k_placeholders.end()) {
         return 0.0;

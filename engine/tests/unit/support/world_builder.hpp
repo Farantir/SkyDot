@@ -204,6 +204,21 @@ struct ItemSpec {
     std::uint8_t armor_type = 0;
     std::uint32_t biped_slots = 0;
     bool food = false;
+    /// EFID/EFIT of an ingredient or potion.
+    struct Effect {
+        std::uint32_t effect;
+        float magnitude = 0.0F;
+        std::uint32_t duration = 0;
+    };
+    std::vector<Effect> effects = {};
+    std::uint32_t enchantment = 0;
+};
+
+/// PFIG, SNAM and PFPC of a plant.
+struct HarvestSpec {
+    std::uint32_t ingredient = 0;
+    std::uint32_t sound = 0;
+    std::uint32_t seasonal_yield = 0;
 };
 
 /// A base record: an item (with `item`) or a container (with `items`).
@@ -213,6 +228,28 @@ struct BaseSpec {
     std::optional<ItemSpec> item = {};
     std::vector<ItemEntry> items = {};
     std::uint32_t flags = 0;
+    std::vector<std::uint32_t> keywords = {};
+    std::optional<HarvestSpec> harvest = {};
+    std::uint8_t bench_type = 0;
+};
+
+/// COBJ.
+struct RecipeSpec {
+    std::uint32_t id;
+    std::uint32_t product = 0;
+    std::int32_t product_count = 1;
+    std::uint32_t bench_keyword = 0;
+    std::vector<ItemEntry> components = {};
+    std::vector<ConditionSpec> conditions = {};
+};
+
+/// MGEF.
+struct MagicEffectSpec {
+    std::uint32_t id;
+    std::string name = {};
+    std::string description = {};
+    std::uint32_t flags = 0;
+    float base_cost = 0.0F;
 };
 
 /// "LVLN" as the record type a leveled list of NPCs carries.
@@ -280,6 +317,8 @@ struct WorldSpec {
     std::vector<OutfitSpec> outfits = {};
     std::vector<LeveledListSpec> leveled_lists = {};
     std::vector<PackageSpec> packages = {};
+    std::vector<RecipeSpec> recipes = {};
+    std::vector<MagicEffectSpec> magic_effects = {};
 };
 
 /// A built and verified world.fb, kept alive with the reader on it.

@@ -23,7 +23,9 @@ namespace id_ranges {
 /// Objects `create_instance` makes for tests (4,096).
 inline constexpr IdRange test_instances{0xFF000000u, 0xFF000FFFu};
 /// References PlaceAtMe makes (runtime_refs.hpp).
-inline constexpr IdRange runtime_refs{0xFF001000u, 0xFF7FFFFFu};
+inline constexpr IdRange runtime_refs{0xFF001000u, 0xFF6FFFFFu};
+/// Potions and poisons that alchemy creates (created_forms.hpp), 1,048,576.
+inline constexpr IdRange created_forms{0xFF700000u, 0xFF7FFFFFu};
 /// Handles for quest aliases (quest_states.hpp).
 inline constexpr IdRange alias_handles{0xFF800000u, 0xFFFFFFFEu};
 /// Sound playback instances: Sound.Play's and the game layer's own. Fits the

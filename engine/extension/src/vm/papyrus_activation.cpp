@@ -7,7 +7,10 @@
 #include "vm/papyrus.hpp"
 
 #include "actors/behavior_player.hpp"
+#include "ai/packages.hpp"
 #include "build/ref_nodes.hpp"
+#include "data/fb_search.hpp"
+#include "data/leveled.hpp"
 #include "vm/natives_common.hpp"
 
 #include <algorithm>
@@ -20,6 +23,8 @@ using godot::Variant;
 namespace skydot {
 
 namespace {
+
+namespace wfb = bethconv::pack::wfb;
 
 String godot_of(const std::string& s) { return String::utf8(s.c_str(), static_cast<int>(s.size())); }
 
@@ -40,7 +45,57 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
         out.load_door = info.get("door", Variant()).get_type() == Variant::DICTIONARY;
         // XCNT is not in the reference info yet: one of them.
         out.count = static_cast<std::int64_t>(info.get("count", 1));
+        if (const auto* base = base_of(out.base)) {
+            out.harvestable = (out.type == "FLOR" || out.type == "TREE") && base->harvest() != nullptr &&
+                              base->harvest()->ingredient() != 0;
+            out.bench_type = out.type == "FURN" ? static_cast<int>(base->bench_type()) : 0;
+        }
         return true;
+    }
+    bool harvested(std::uint32_t ref) const override {
+        return owner_.harvests_.harvested(ref, owner_.game_days());
+    }
+    HarvestResult harvest(std::uint32_t ref, std::int64_t activator) override {
+        HarvestResult out;
+        const auto* root = owner_.world_->data().root();
+        const auto* base = base_of(owner_.base_form_of(ref));
+        if (root == nullptr || base == nullptr || base->harvest() == nullptr) {
+            return out;
+        }
+        const auto* h = base->harvest();
+        const double now = owner_.game_days();
+        const auto season = vm::season_of_month(ai::Clock{.days = now}.month());
+        const int chance = vm::harvest_chance(h->seasonal_yield(), season);
+        const std::uint32_t times = owner_.harvests_.times(ref);
+        const bool success = vm::harvest_succeeds(chance, ref, times);
+        owner_.harvests_.mark(ref, now);
+        out.sound = h->sound();
+        if (!success) {
+            return out;
+        }
+        std::vector<leveled::Entry> given;
+        if (leveled::is_list(*root, h->ingredient())) {
+            const leveled::GlobalValue global = [this](std::uint32_t id) -> std::optional<double> {
+                return owner_.get_global_value(id);
+            };
+            leveled::Rng rng(leveled::seed_for(ref, k_harvest_list_purpose + times));
+            given = leveled::resolve(*root, h->ingredient(), leveled::player_level(), rng, global);
+        } else {
+            given.push_back({h->ingredient(), 1});
+        }
+        const auto who = static_cast<std::uint32_t>(activator);
+        owner_.resolve_owner(who);
+        for (const auto& entry : given) {
+            owner_.vm_->inventory().add(who, entry.form, entry.count);
+            if (out.form == 0) {
+                out.form = entry.form;
+                out.name = owner_.item_name_of(entry.form);
+            }
+            if (entry.form == out.form) {
+                out.count += entry.count;
+            }
+        }
+        return out;
     }
     int lock_level(std::uint32_t ref) const override { return static_cast<int>(owner_.get_lock_level(ref)); }
     void unlock(std::uint32_t ref) override { owner_.set_locked(ref, false); }
@@ -67,7 +122,7 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
         const std::int64_t dropped = owner_.items_.dropped_count(ref);
         owner_.resolve_owner(static_cast<std::uint32_t>(activator));
         owner_.vm_->inventory().add(static_cast<std::uint32_t>(activator), item.base,
-                                    dropped > 0 ? dropped : item.count);
+                                    dropped > 0 ? dropped : item.count, owner_.items_.dropped_extra(ref));
         if (dropped > 0) {
             owner_.forget_ref(ref);
         } else {
@@ -76,6 +131,14 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
     }
 
 private:
+    /// Added to the seed's purpose: apart from the chance roll's.
+    static constexpr std::uint64_t k_harvest_list_purpose = 0x4C495354ULL; // "LIST"
+
+    const wfb::Base* base_of(std::uint32_t base) const {
+        const auto* root = owner_.world_.is_valid() ? owner_.world_->data().root() : nullptr;
+        return root != nullptr ? lookup(root->bases(), base) : nullptr;
+    }
+
     SkydotPapyrus& owner_;
 };
 
@@ -104,6 +167,15 @@ Dictionary SkydotPapyrus::outcome_dictionary(const ActivationOutcome& outcome) c
     }
     if (outcome.door) {
         out["door"] = world_->get_door(outcome.ref);
+    }
+    if (outcome.kind == "harvest") {
+        out["harvest_form"] = static_cast<std::int64_t>(outcome.harvest_form);
+        out["harvest_count"] = outcome.harvest_count;
+        out["harvest_name"] = godot_of(outcome.harvest_name);
+        out["harvest_sound"] = static_cast<std::int64_t>(outcome.harvest_sound);
+    }
+    if (outcome.kind == "crafting") {
+        out["bench_type"] = outcome.bench_type;
     }
     return out;
 }
