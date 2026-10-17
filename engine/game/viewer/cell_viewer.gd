@@ -254,6 +254,7 @@ func _start_game() -> void:
 		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
 		if not _session.enter_world(settings.world, at, target):
 			return
+		_session.start_quests(settings.start_quests)
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		_controls.fly_speed = 10.0

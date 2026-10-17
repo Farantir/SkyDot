@@ -143,6 +143,8 @@ private:
     SceneHost& host_;
     std::map<std::uint32_t, Run> runs_;
     std::set<std::uint32_t> waiting_; ///< Scenes that begin as soon as they can.
+    std::string why_;                 ///< Why the last can_start said no.
+    std::map<std::uint32_t, std::string> waited_; ///< The reason last logged per waiting scene.
     std::vector<DialogueRequest> outbox_;
 };
 

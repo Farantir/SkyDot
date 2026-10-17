@@ -45,15 +45,19 @@ std::vector<std::uint32_t> Scenes::actors_of(const wfb::Scene& scene) const {
 }
 
 bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uint32_t>& actors) {
+    why_.clear();
     if (!host_.quest_running(scene.quest())) {
+        why_ = "its quest is not running";
         return false;
     }
     if (!force && !host_.conditions_pass(scene.conditions(), scene.quest(), 0)) {
+        why_ = "its conditions fail";
         return false;
     }
     actors = actors_of(scene);
     for (const auto actor : actors) {
         if (actor == 0 || !host_.actor_ready(actor)) {
+            why_ = actor == 0 ? "an alias is empty" : hex(actor) + " is not loaded and alive";
             return false;
         }
     }
@@ -66,6 +70,7 @@ bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uin
             }
             for (const auto theirs : actors_of(*other)) {
                 if (std::ranges::find(actors, theirs) != actors.end()) {
+                    why_ = "an actor is in scene " + name(*other);
                     return false;
                 }
             }
@@ -279,6 +284,8 @@ void Scenes::quest_started(std::uint32_t quest) {
         if (scene->quest() == quest && has_flag(*scene, wfb::SceneFlags::begin_on_quest_start) &&
             !runs_.contains(scene->id()) && !begin(scene->id(), false)) {
             waiting_.insert(scene->id());
+            waited_[scene->id()] = why_;
+            host_.log("scene " + name(*scene) + " waits: " + why_);
         }
     }
 }
@@ -302,8 +309,13 @@ std::vector<DialogueRequest> Scenes::update(double seconds) {
     for (const auto id : retry) {
         if (!host_.quest_running(quest_of(id))) {
             waiting_.erase(id);
-        } else {
-            begin(id, false);
+        } else if (begin(id, false)) {
+            continue;
+        } else if (why_ != waited_[id]) {
+            waited_[id] = why_;
+            if (const auto* scene = find(id)) {
+                host_.log("scene " + name(*scene) + " waits: " + why_);
+            }
         }
     }
     std::vector<std::uint32_t> ids;
