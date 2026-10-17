@@ -25,6 +25,8 @@
 
 #include <functional>
 #include <string>
+#include <string_view>
+#include <unordered_map>
 
 namespace skydot {
 
@@ -43,6 +45,9 @@ struct Locomotion {
     GaitClip idle;
     GaitClip walk;
     GaitClip run;
+    /// Every clip of the project that has an animation in the pack, by lower-case name without
+    /// ".hkx" (`set_stance` finds the combat set here).
+    std::unordered_map<std::string, GaitClip> clips;
     std::string missing; ///< Why there is nothing (no project, no character), or empty.
 };
 
@@ -51,6 +56,18 @@ struct Locomotion {
 Locomotion find_locomotion(const std::string& behaviour,
                            const std::function<godot::PackedByteArray(const std::string&)>& bytes,
                            const std::function<bool(const std::string&)>& exists);
+
+/// The idle, walk and run of a stance (`1hm`, `2hm`, `bow`, `combat`...): each empty where the
+/// project has no clip of that name (the actor keeps its normal one then).
+struct Stance {
+    GaitClip idle;
+    GaitClip walk;
+    GaitClip run;
+    [[nodiscard]] bool empty() const { return idle.empty() && walk.empty() && run.empty(); }
+};
+
+/// The stance `prefix` (any case) of `locomotion`'s project, found by name.
+Stance find_stance(const Locomotion& locomotion, std::string_view prefix);
 
 /// Lowercase, forward slashes, `.` and `..` resolved.
 std::string normalize_path(const std::string& path);

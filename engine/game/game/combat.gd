@@ -23,6 +23,14 @@
 # of the race's attack, in line of sight, takes `SkydotPapyrus.apply_hit`.
 # Then the impact: the weapon's impact data set, the target race's material,
 # the sound and the model of that impact.
+#
+# Actors (6g): `npc_attack(attacker, power, target)` turns the attacker to its
+# target, plays the third-person clip on it (SkydotActor.play_action) and tests
+# against every living built actor but the attacker, and the player, the target
+# first. `npc_draw(ref, drawn)` sets the combat stance by the weapon in the
+# right hand (a bow for an archer: SkydotPapyrus.ranged_weapon), plays the
+# equip or unequip clip and moves the weapon model between sheath and hand
+# (ActorGear) halfway through it.
 extends RefCounted
 class_name Combat
 
@@ -39,8 +47,11 @@ signal attack_started(clip: String, power: bool)
 ## `point` (engine space).
 signal hit_landed(target: int, result: Dictionary, point: Vector3)
 ## An actor's attack began (`npc_attack`): the attacker, the third-person clip
-## (a pack path) and whether it is a power attack. For the AI's animation.
+## (a pack path) and whether it is a power attack. The clip already plays on
+## the attacker's node; the signal is for shells and the AI.
 signal npc_attack_started(attacker: int, clip: String, power: bool)
+## An actor drew or sheathed (`npc_draw`).
+signal npc_drawn_changed(ref: int, drawn: bool)
 
 const FIRST_PERSON_PROJECT := "meshes/animationdata/firstperson.txt"
 const FIRST_PERSON_CLIPS := "meshes/actors/character/_1stperson/animations/"
@@ -73,6 +84,15 @@ const SWEEP_COOLDOWN := 0.5
 const IMPACT_MIN_SECONDS := 0.5
 const IMPACT_MAX_SECONDS := 3.0
 
+## The weapon model changes hands this far into the equip or unequip clip: a
+## placeholder for the clip's own weapon text key (not read yet).
+const GEAR_SWAP_FRACTION := 0.4
+## WEAP animation type -> the third-person equip clip's prefix (`1hm_equip`).
+const EQUIP_PREFIX := {1: "1hm", 2: "dag", 3: "axe", 4: "mac", 5: "2hm", 6: "2hw", 7: "bow"}
+## WEAP animation type -> the stance (SkydotActor.set_stance).
+const STANCE_PREFIX := {1: "1hm", 2: "1hm", 3: "1hm", 4: "1hm", 5: "2hm", 6: "2hw", 7: "bow"}
+## What a creature without a weapon stands in when it fights.
+const CREATURE_STANCE := "combat"
 const PLAYER_REF := 0x14
 const PLAYER_NPC := 7
 const EVENT_LIGHT := "attackStart"
@@ -110,6 +130,11 @@ var _projects := {}  # project path -> {lowercase clip name: annotations}
 var _races := {}  # race id -> get_race
 var _plans := {}  # actor ref -> get_actor_plan (race, behaviour)
 var _player_plan := {}
+var _locomotions := {}  # behaviour path -> get_locomotion
+var _drawn := {}  # actor ref -> bool, the actors that fight with their weapon out
+var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, drawn}
+## The weapons on the third-person skeletons.
+var gear: ActorGear
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, sounds: Sounds,
@@ -121,6 +146,7 @@ func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: N
 	_sounds = sounds
 	_pointer = pointer
 	_feet = feet
+	gear = ActorGear.new(world, papyrus)
 	on_items_changed()
 
 
@@ -277,10 +303,12 @@ func hit_segment(base: Vector3, tip: Vector3) -> Dictionary:
 
 # ---- actors that attack
 
-## `attacker` (a built actor) swings: after the HitFrame of its third-person
-## clip it tests from its head along its facing, against the player. Combat AI
-## (A9) calls this. False if it has no node or is dead.
-func npc_attack(attacker: int, power := false) -> bool:
+## `attacker` (a built actor) swings: it turns to `target` (the player or
+## another built actor), plays its third-person clip, and after the clip's
+## HitFrame tests from its head along its facing against every living built
+## actor but itself and the player, `target` first. Combat AI (A9) calls this.
+## False if it has no node or is dead.
+func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	var node := _world.find_ref_node(attacker) as Node3D
 	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(attacker):
 		return false
@@ -299,11 +327,89 @@ func npc_attack(attacker: int, power := false) -> bool:
 	var dir := (behaviour.get_base_dir() + "/animations/") if behaviour != "" else THIRD_PERSON_CLIPS
 	var timing := _timing(project, dir, stem)
 	var speed := maxf(float(info.get("speed", 1.0)), 0.1)
-	_npc_attacks.append({"attacker": attacker, "power": power, "weapon": form, "info": info,
+	_face(node, target)
+	var clip := _clip_file(behaviour, stem, dir)
+	if node.has_method("play_action"):
+		node.play_action(clip, speed)
+	_npc_attacks.append({"attacker": attacker, "target": target, "power": power, "weapon": form, "info": info,
 		"extra": int(equipment["right_extra"]), "time": 0.0, "hit": false, "speed": speed,
 		"hit_time": timing["hit"], "length": timing["stop"]})
-	npc_attack_started.emit(attacker, dir + stem + ".hkx", power)
+	npc_attack_started.emit(attacker, clip, power)
 	return true
+
+
+## `ref` draws its weapon (true) or sheathes it: the combat stance of the weapon
+## in its right hand (a carried bow if it has no other weapon, `combat` for a
+## creature), the equip or unequip clip on it, and the weapon model in hand or
+## on its sheath halfway through the clip. False if it is not a built living actor.
+func npc_draw(ref: int, drawn: bool) -> bool:
+	var node := _world.find_ref_node(ref) as Node3D
+	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(ref):
+		return false
+	if _drawn.get(ref, false) == drawn:
+		return true
+	_drawn[ref] = drawn
+	var info := npc_weapon(ref)
+	var type := int(info.get("weapon_type", 0))
+	var behaviour: String = _actor_plan(ref).get("behaviour", "")
+	var length := 0.0
+	if node.has_method("set_stance"):
+		var stance: String = STANCE_PREFIX.get(type, CREATURE_STANCE)
+		node.set_stance(stance if drawn else "")
+		if EQUIP_PREFIX.has(type):
+			var clip := _clip_file(behaviour, EQUIP_PREFIX[type] + ("_equip" if drawn else "_unequip"), "")
+			if clip != "":
+				length = node.play_action(clip, 1.0)
+	if length > 0.0:
+		_swaps.append({"ref": ref, "left": length * GEAR_SWAP_FRACTION, "drawn": drawn})
+	else:
+		gear.set_drawn(ref, drawn)
+	npc_drawn_changed.emit(ref, drawn)
+	return true
+
+
+## Whether `ref` fights with its weapon out (`npc_draw`).
+func npc_is_drawn(ref: int) -> bool:
+	return _drawn.get(ref, false)
+
+
+## The weapon `ref` fights with, as SkydotWorld.get_weapon: the right hand's, else the bow it
+## carries, else {} (hands or claws).
+func npc_weapon(ref: int) -> Dictionary:
+	var form: int = _papyrus.equipment(ref)["right"]
+	if form != 0:
+		return _world.get_weapon(form)
+	var ranged := _papyrus.ranged_weapon(ref)
+	return _world.get_weapon(int(ranged["weapon"])) if not ranged.is_empty() else {}
+
+
+## The animation file of the actor's project clip `stem` (any case), else
+## `dir` + stem + ".hkx" (or "" when `dir` is).
+func _clip_file(behaviour: String, stem: String, dir: String) -> String:
+	if behaviour != "":
+		if not _locomotions.has(behaviour):
+			_locomotions[behaviour] = _world.get_locomotion(behaviour)
+		var clips: Dictionary = _locomotions[behaviour].get("clips", {})
+		if clips.has(stem.to_lower()):
+			return clips[stem.to_lower()]["file"]
+	return dir + stem + ".hkx" if dir != "" else ""
+
+
+## Turn `node` to face the actor (or the player) `target`.
+func _face(node: Node3D, target: int) -> void:
+	if not node.has_method("face"):
+		return
+	var at: Vector3
+	if target == PLAYER_REF:
+		at = _feet.call()
+	else:
+		var other := _world.find_ref_node(target) as Node3D
+		if other == null:
+			return
+		at = other.global_position
+	var offset := at - node.global_position
+	if Vector2(offset.x, offset.z).length() > 0.01:
+		node.face(atan2(-offset.x, -offset.z))
 
 
 # ---- the frame
@@ -314,6 +420,7 @@ func step(delta: float) -> void:
 	_step_state(delta)
 	_step_attack(delta)
 	_step_npc_attacks(delta)
+	_step_swaps(delta)
 	_step_effects(delta)
 
 
@@ -347,6 +454,14 @@ func _step_attack(delta: float) -> void:
 		_attack = {}
 		if _state == State.DRAWN:
 			weapon_state_changed.emit(_state, idle_clip())
+
+
+func _step_swaps(delta: float) -> void:
+	for swap in _swaps.duplicate():
+		swap["left"] -= delta
+		if swap["left"] <= 0.0:
+			_swaps.erase(swap)
+			gear.set_drawn(swap["ref"], swap["drawn"])
 
 
 func _step_npc_attacks(delta: float) -> void:
@@ -399,7 +514,7 @@ func _npc_strike(data: Dictionary) -> void:
 	var race := _race(int(plan.get("race", 0)))
 	var power: bool = data["power"]
 	var event := EVENT_POWER if power else EVENT_LIGHT
-	var hit := _find_target(attacker, origin, forward, data["info"], race, event, power, true)
+	var hit := _find_target(attacker, origin, forward, data["info"], race, event, power, data["target"])
 	if hit.is_empty():
 		return
 	_deliver(attacker, hit["ref"], data["weapon"], data["extra"], event,
@@ -407,16 +522,16 @@ func _npc_strike(data: Dictionary) -> void:
 
 
 ## The nearest living target within reach, inside the strike angle and in
-## line of sight: {ref, point} or {}. `only_player`: the player is the one
-## candidate (NPCs have no enemies before the AI has factions).
+## line of sight: {ref, point} or {}. `prefer` (an actor ref, 0 for none) wins
+## over a nearer one when it is a candidate too.
 func _find_target(attacker: int, origin: Vector3, forward: Vector3, weapon: Dictionary, race: Dictionary,
-		event: String, power: bool, only_player := false) -> Dictionary:
+		event: String, power: bool, prefer := 0) -> Dictionary:
 	var reach := _reach_metres(weapon, race)
 	var half_angle := deg_to_rad(_strike_angle(race, event, power))
 	var space := _host.get_world_3d().direct_space_state
 	var best := {}
 	var best_distance := INF
-	for candidate in _candidates(attacker, only_player):
+	for candidate in _candidates(attacker):
 		var closest := _closest_on_body(origin, candidate)
 		var offset: Vector3 = closest - origin
 		var distance := offset.length() - float(candidate["radius"])
@@ -428,20 +543,20 @@ func _find_target(attacker: int, origin: Vector3, forward: Vector3, weapon: Dict
 			SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 		if not space.intersect_ray(query).is_empty():
 			continue
+		if candidate["ref"] == prefer:
+			return {"ref": candidate["ref"], "point": _body_point(candidate)}
 		if distance < best_distance:
 			best_distance = distance
 			best = {"ref": candidate["ref"], "point": _body_point(candidate)}
 	return best
 
 
-## Everything an attack by `attacker` can hit: the built, living actors, and
-## the player for an NPC's attack. [{ref, feet, radius, height}]
-func _candidates(attacker: int, only_player := false) -> Array[Dictionary]:
+## Everything an attack by `attacker` can hit: the built, living actors but
+## itself, and the player for an NPC's attack. [{ref, feet, radius, height}]
+func _candidates(attacker: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if attacker != PLAYER_REF and not _papyrus.is_actor_dead(PLAYER_REF):
 		out.append({"ref": PLAYER_REF, "feet": _feet.call(), "radius": PLAYER_RADIUS, "height": PLAYER_HEIGHT})
-	if only_player:
-		return out
 	for node in _host.find_children("*", "SkydotActor", true, false):
 		var actor := node as SkydotActor
 		if actor == null or not actor.has_meta("skydot_ref") or not actor.is_inside_tree():

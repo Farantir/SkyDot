@@ -154,6 +154,9 @@ public:
     /// {right, left, ammo, worn: [forms], right_extra, left_extra, ammo_extra}
     /// of `owner`.
     godot::Dictionary equipment(std::int64_t owner);
+    /// The bow `owner` carries (the one of the most damage) with its best ammo: {weapon, ammo},
+    /// empty if it has no bow. Computed from the inventory, nothing is saved.
+    godot::Dictionary ranged_weapon(std::int64_t owner);
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
     /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
     /// 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow.

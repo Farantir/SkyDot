@@ -234,8 +234,16 @@ Locomotion find_locomotion(const std::string& behaviour,
         }
         return best;
     };
+    for (const auto* c : *clips) {
+        if (c->name() == nullptr) {
+            continue;
+        }
+        if (GaitClip g = clip_of(*c); !g.file.empty() && exists(g.file)) {
+            out.clips.emplace(bare(c->name()->str()), std::move(g));
+        }
+    }
     // Names seen in vanilla, humans first, then creatures by their schemes.
-    out.idle = pick({"mt_idle", "mainidle", "idle"}, [](const std::string&) { return false; }, false);
+    out.idle = pick({"mt_idle", "mainidle", "main_idle", "main_idle_wolf", "idle"}, [](const std::string&) { return false; }, false);
     out.walk = pick({"mt_walkforward", "walkforward", "mtwalkforward", "forward_walk", "walkforward00",
                      "walkforward00_wolf", "walkf", "mt_walk_f", "h2hwalkforward", "mtforward", "mt_forward",
                      "defaultforward", "forward"},
@@ -248,6 +256,32 @@ Locomotion find_locomotion(const std::string& behaviour,
     if (!out.run.empty() && !out.walk.empty() && out.run.speed <= out.walk.speed) {
         out.run = GaitClip{};
     }
+    return out;
+}
+
+Stance find_stance(const Locomotion& locomotion, std::string_view prefix) {
+    Stance out;
+    const std::string p = ascii_lower(std::string(prefix));
+    if (p.empty()) {
+        return out;
+    }
+    const auto first = [&](std::initializer_list<std::string> names, bool needs_motion) {
+        for (const std::string& name : names) {
+            const auto it = locomotion.clips.find(name);
+            if (it != locomotion.clips.end() && (!needs_motion || it->second.speed > 1.0F)) {
+                return it->second;
+            }
+        }
+        return GaitClip{};
+    };
+    // Names seen in vanilla: humans `1hm_idle`, `1hm_walkforward`, `bow_idledrawn`; the draugr's
+    // `clip_1hm_idle`, `1hmforward`, `1hmfastforward`; creatures `combatidle`.
+    out.idle = first({p + "_idle", p + "_idledrawn", p + "idle", p + "_sword_idle", "clip_" + p + "_idle",
+                      p + "_idle_drawn"},
+                     false);
+    out.walk = first({p + "_walkforward", p + "walkforward", p + "forward", p + "_forward", p + "_forward_walk"}, true);
+    out.run = first({p + "_runforward", p + "runforward", p + "fastforward", p + "_fastforward", p + "_forward_run"},
+                    true);
     return out;
 }
 

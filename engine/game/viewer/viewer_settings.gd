@@ -106,6 +106,7 @@ var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var ready_weapon := false  # --ready-weapon: draw the weapon after the load
 var attack_at := 0  # --attack-at 0xREF[,power]: face that actor and attack once it is in reach
 var attack_power := false
+var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
@@ -226,6 +227,8 @@ func _read(args: Dictionary) -> void:
 		attack_power = parts.size() > 1 and parts[1] in ["power", "1", "true"]
 	for entry: String in args.get("kill", "").split(",", false):
 		kill.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("npc-draw", "").split(",", false):
+		npc_draw.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("equip", "").split(",", false):
 		equip.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("damage-actor", "").split(",", false):

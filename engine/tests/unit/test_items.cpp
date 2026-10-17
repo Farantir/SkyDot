@@ -421,3 +421,44 @@ TEST_CASE("an ITST of version 1 has no dropped references", "[items][save]") {
     CHECK(back.resolved(0x800));
     CHECK_FALSE(vm::ItemStates::load(skydot::save::ByteReader(w.out), back, 2));
 }
+
+TEST_CASE("an NPC fights with its best weapon, a shield beside a one-hander, and keeps its bow", "[items][equip]") {
+    const auto with_damage = [](vm::ItemInfo base, float damage, float rating = 0.0F) {
+        base.damage = damage;
+        base.armor_rating = rating;
+        return base;
+    };
+    const std::map<std::uint32_t, vm::ItemInfo> things = {
+        {0x1, with_damage(weapon(0x1, vm::etyp::either_hand, 1), 7)},
+        {0x2, with_damage(weapon(0x2, vm::etyp::either_hand, 3), 8)},
+        {0x3, with_damage(weapon(0x3, vm::etyp::both_hands, 5), 20)},
+        {0x4, with_damage(weapon(0x4, vm::etyp::both_hands, 7), 9)},
+        {0x5, with_damage(weapon(0x5, vm::etyp::both_hands, 7), 12)},
+        {0x6, with_damage(armor(0x6, 1U << 9, vm::ItemCategory::armor, vm::etyp::shield), 0, 20)},
+        {0x7, with_damage(armor(0x7, 1U << 9, vm::ItemCategory::armor, vm::etyp::shield), 0, 30)},
+        {0x8, with_damage(other(0x8, vm::ItemCategory::ammo), 8)},
+        {0x9, with_damage(other(0x9, vm::ItemCategory::ammo), 10)},
+        {0xA, with_damage(weapon(0xA, 0, 8), 30)}, // a staff is no melee weapon
+    };
+    const vm::ItemLookup lookup = [&](std::uint32_t form) {
+        const auto it = things.find(form);
+        return it == things.end() ? vm::ItemInfo{} : it->second;
+    };
+    // One-handers: the axe (8) beats the sword (7); the better shield stands beside it.
+    auto gear = vm::choose_gear({0x1, 0x2, 0x6, 0x7, 0x4, 0x5, 0x8, 0x9, 0xA, 0x99}, lookup);
+    CHECK(gear.melee == 0x2);
+    CHECK(gear.shield == 0x7);
+    CHECK(gear.bow == 0x5);
+    CHECK(gear.ammo == 0x9);
+    // A two-hander of more damage takes both hands: no shield.
+    gear = vm::choose_gear({0x1, 0x3, 0x6}, lookup);
+    CHECK(gear.melee == 0x3);
+    CHECK(gear.shield == 0);
+    CHECK(gear.bow == 0);
+    // Only a bow: nothing in hand, the bow is the ranged choice.
+    gear = vm::choose_gear({0x4, 0x8}, lookup);
+    CHECK(gear.melee == 0);
+    CHECK(gear.bow == 0x4);
+    CHECK(gear.ammo == 0x8);
+    CHECK(vm::choose_gear({}, lookup).melee == 0);
+}

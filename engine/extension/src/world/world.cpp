@@ -485,6 +485,11 @@ godot::Dictionary SkydotWorld::get_locomotion(const String& behaviour) {
     out["walk"] = gait(l.walk);
     out["run"] = gait(l.run);
     out["missing"] = String::utf8(l.missing.c_str());
+    godot::Dictionary clips;
+    for (const auto& [name, clip] : l.clips) {
+        clips[String::utf8(name.c_str())] = gait(clip);
+    }
+    out["clips"] = clips;
     return out;
 }
 

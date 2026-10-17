@@ -4,6 +4,7 @@
 #include "render/animator.hpp"
 #include "physics/collision.hpp"
 
+#include <godot_cpp/classes/animation_library.hpp>
 #include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
 #include <godot_cpp/classes/navigation_server3d.hpp>
@@ -120,8 +121,119 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_dead", "dead"), &SkydotActor::set_dead);
     ClassDB::bind_method(D_METHOD("is_dead"), &SkydotActor::is_dead);
     ClassDB::bind_method(D_METHOD("get_lod"), &SkydotActor::get_lod);
+    ClassDB::bind_method(D_METHOD("set_stance", "prefix"), &SkydotActor::set_stance);
+    ClassDB::bind_method(D_METHOD("get_stance"), &SkydotActor::get_stance);
+    ClassDB::bind_method(D_METHOD("play_action", "clip", "speed"), &SkydotActor::play_action);
+    ClassDB::bind_method(D_METHOD("is_acting"), &SkydotActor::is_acting);
+    ClassDB::bind_method(D_METHOD("set_look_target", "point"), &SkydotActor::set_look_target);
+    ClassDB::bind_method(D_METHOD("clear_look_target"), &SkydotActor::clear_look_target);
+    ClassDB::bind_method(D_METHOD("has_look_target"), &SkydotActor::has_look_target);
+    ClassDB::bind_method(D_METHOD("get_playing"), &SkydotActor::get_playing);
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
+}
+
+bool SkydotActor::set_stance(const godot::String& prefix) {
+    godot::AnimationPlayer* anim = player();
+    stance_idle_ = stance_walk_ = stance_run_ = false;
+    stance_walk_speed_ = stance_run_speed_ = 0.0;
+    stance_ = "";
+    playing_ = "";
+    if (prefix.is_empty()) {
+        return true;
+    }
+    if (anim == nullptr || !stance_source_) {
+        return false;
+    }
+    const StanceClips clips = stance_source_(prefix.to_lower().utf8().get_data());
+    godot::Ref<godot::AnimationLibrary> library = anim->get_animation_library("");
+    if (library.is_null()) {
+        return false;
+    }
+    const auto put = [&](const char* name, const godot::Ref<godot::Animation>& clip) {
+        if (clip.is_null()) {
+            return false;
+        }
+        if (library->has_animation(name)) {
+            library->remove_animation(name);
+        }
+        library->add_animation(name, clip);
+        return true;
+    };
+    stance_idle_ = put("stance_idle", clips.idle);
+    stance_walk_ = put("stance_walk", clips.walk);
+    stance_run_ = put("stance_run", clips.run);
+    stance_walk_speed_ = clips.walk_speed;
+    stance_run_speed_ = clips.run_speed;
+    if (!stance_idle_ && !stance_walk_ && !stance_run_) {
+        return false;
+    }
+    stance_ = prefix.to_lower();
+    return true;
+}
+
+godot::String SkydotActor::gait_clip(const godot::String& base) const {
+    if (base == godot::String("idle") && stance_idle_) {
+        return "stance_idle";
+    }
+    if (base == godot::String("walk") && stance_walk_) {
+        return "stance_walk";
+    }
+    if (base == godot::String("run") && stance_run_) {
+        return "stance_run";
+    }
+    return base;
+}
+
+double SkydotActor::play_action(const godot::String& clip, double speed) {
+    godot::AnimationPlayer* anim = player();
+    if (anim == nullptr || !clip_source_ || dead_ || clip.is_empty()) {
+        return 0.0;
+    }
+    godot::Ref<godot::AnimationLibrary> library = anim->get_animation_library("");
+    if (library.is_null()) {
+        return 0.0;
+    }
+    const std::string key = clip.utf8().get_data();
+    auto it = action_clips_.find(key);
+    if (it == action_clips_.end()) {
+        const godot::Ref<godot::Animation> animation = clip_source_(key);
+        if (animation.is_null()) {
+            return 0.0;
+        }
+        const godot::String name = godot::String("action_") + godot::String::num_int64(
+            static_cast<std::int64_t>(action_clips_.size()));
+        library->add_animation(name, animation);
+        it = action_clips_.emplace(key, name).first;
+    }
+    const double rate = std::max(speed, 0.1);
+    const double length = static_cast<double>(library->get_animation(it->second)->get_length()) / rate;
+    anim->set_speed_scale(r(rate));
+    anim->play(it->second, k_blend);
+    playing_ = it->second;
+    action_left_ = length;
+    wake_ = true;
+    return length;
+}
+
+void SkydotActor::set_look_target(const Vector3& point) {
+    look_target_ = point;
+    look_active_ = true;
+    wake_ = true;
+}
+
+void SkydotActor::turn_to_look(double delta) {
+    if (!look_active_) {
+        return;
+    }
+    Vector3 to = look_target_ - get_global_position();
+    to.y = 0;
+    if (static_cast<double>(to.length()) < 0.05) {
+        return;
+    }
+    const double want = std::atan2(-static_cast<double>(to.x), -static_cast<double>(to.z));
+    const double step = k_turn_rate * delta;
+    face(facing_ + std::clamp(wrap(want - facing_), -step, step));
 }
 
 void SkydotActor::set_dead(bool dead) {
@@ -370,6 +482,7 @@ void SkydotActor::think(double delta) {
 void SkydotActor::steer(double delta) {
     if (path_.is_empty()) {
         set_input(godot::Vector2(), 0.0, WALK);
+        turn_to_look(delta);
         return;
     }
     const Vector3 here = get_global_position();
@@ -401,6 +514,25 @@ void SkydotActor::steer(double delta) {
             door_wait_ = k_door_wait;
             return;
         }
+    }
+    if (look_active_) {
+        // Walking while facing a point: the body turns to it and the corner is reached sideways
+        // or backwards (the gait clip still plays forward).
+        turn_to_look(delta);
+        const Vector3 dir = to.normalized();
+        const Vector3 forward(r(-std::sin(facing_)), 0, r(-std::cos(facing_)));
+        const Vector3 right(r(std::cos(facing_)), 0, r(-std::sin(facing_)));
+        set_input(godot::Vector2(dir.dot(right), dir.dot(forward)), 0.0, run_ ? RUN : WALK);
+        stuck_time_ += delta;
+        if (stuck_time_ >= k_stuck_window) {
+            if (static_cast<double>(here.distance_to(stuck_from_)) < k_stuck_distance) {
+                stop();
+                wait_ = static_cast<double>(rng_->randf_range(3.0F, 8.0F));
+            }
+            stuck_time_ = 0.0;
+            stuck_from_ = here;
+        }
+        return;
     }
     const double want = std::atan2(-static_cast<double>(to.x), -static_cast<double>(to.z));
     const double diff = wrap(want - facing_);
@@ -482,6 +614,9 @@ void SkydotActor::animate() {
     if (anim == nullptr) {
         return;
     }
+    if (action_left_ > 0.0) {
+        return; // an action plays over the gait
+    }
     const Vector3 v = get_velocity();
     const double speed = get_hold() ? 0.0 : static_cast<double>(Vector3(v.x, 0, v.z).length());
     godot::String want = "idle";
@@ -489,12 +624,13 @@ void SkydotActor::animate() {
     if (speed >= k_idle_speed) {
         if (run_ && clip_run_ > 0.0 && anim->has_animation("run")) {
             want = "run";
-            clip = clip_run_;
+            clip = stance_run_ && stance_run_speed_ > 0.0 ? stance_run_speed_ : clip_run_;
         } else if (anim->has_animation("walk")) {
             want = "walk";
-            clip = clip_walk_;
+            clip = stance_walk_ && stance_walk_speed_ > 0.0 ? stance_walk_speed_ : clip_walk_;
         }
     }
+    want = gait_clip(want);
     if (!anim->has_animation(want)) {
         return;
     }
@@ -526,6 +662,13 @@ void SkydotActor::_physics_process(double engine_delta) {
     }
     step_wait_ = 0.0;
     wake_ = false;
+    if (action_left_ > 0.0) {
+        action_left_ -= delta;
+        if (action_left_ <= 0.0) {
+            action_left_ = 0.0;
+            playing_ = ""; // the gait clip starts again
+        }
+    }
     if (get_hold()) {
         if (find_ground(delta)) {
             set_hold(false);

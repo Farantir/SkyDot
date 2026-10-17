@@ -124,6 +124,19 @@ void SkydotPapyrus::resolve_owner(std::uint32_t owner) const {
                 equipment.worn.insert(form);
             }
         }
+        // The weapon in the right hand and the shield in the left, as the game equips an NPC
+        // that spawns; the bow and arrows stay in the inventory (`ranged_weapon`).
+        std::vector<std::uint32_t> forms;
+        forms.reserve(contents.items.size());
+        for (const auto& item : contents.items) {
+            forms.push_back(item.form);
+        }
+        const auto gear = vm::choose_gear(forms, lookup_info);
+        for (const std::uint32_t form : {gear.melee, gear.shield}) {
+            if (form != 0) {
+                vm::equip(equipment, item_info_of(form), false, lookup_info);
+            }
+        }
         return;
     }
     for (const auto& item : container_contents(*root, base, owner, leveled::player_level(), global)) {
@@ -404,6 +417,24 @@ Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
         }
     }
     out["worn"] = worn;
+    return out;
+}
+
+Dictionary SkydotPapyrus::ranged_weapon(std::int64_t owner) {
+    const auto id = static_cast<std::uint32_t>(owner);
+    resolve_owner(id);
+    Dictionary out;
+    std::vector<std::uint32_t> forms;
+    for (const auto& [form, total] : vm_->inventory().items(id)) {
+        if (total > 0) {
+            forms.push_back(form);
+        }
+    }
+    const auto gear = vm::choose_gear(forms, [this](std::uint32_t form) { return item_info_of(form); });
+    if (gear.bow != 0) {
+        out["weapon"] = static_cast<std::int64_t>(gear.bow);
+        out["ammo"] = static_cast<std::int64_t>(gear.ammo);
+    }
     return out;
 }
 

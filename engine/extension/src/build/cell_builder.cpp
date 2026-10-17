@@ -1008,6 +1008,28 @@ void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         node->add_child(player);
     }
     node->set_clip_speeds(walk_speed, run_speed);
+    // Combat stances and actions load their clips on demand from the same cache.
+    node->set_clip_source(
+        [this, skeleton_path = plan.skeleton](const std::string& vpath) {
+            return assets_ != nullptr && assets_->has(vpath) ? actor_clip(vpath, skeleton_path)
+                                                              : godot::Ref<godot::Animation>();
+        },
+        [this, behaviour = plan.behaviour, skeleton_path = plan.skeleton, stride](const std::string& prefix) {
+            const Stance stance = find_stance(locomotion_of(behaviour), prefix);
+            StanceClips out;
+            if (!stance.idle.empty()) {
+                out.idle = actor_clip(stance.idle.file, skeleton_path);
+            }
+            if (!stance.walk.empty()) {
+                out.walk = actor_clip(stance.walk.file, skeleton_path);
+                out.walk_speed = static_cast<double>(stance.walk.speed) * stride;
+            }
+            if (!stance.run.empty()) {
+                out.run = actor_clip(stance.run.file, skeleton_path);
+                out.run_speed = static_cast<double>(stance.run.speed) * stride;
+            }
+            return out;
+        });
     node->set_wander(options_.actor_wander);
     node->set_seed(static_cast<std::int64_t>(actor.ref()));
     // The body: a cylinder about as wide and tall as the skeleton at rest

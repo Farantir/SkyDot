@@ -79,6 +79,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("unequip", "owner", "form", "extra"), &SkydotPapyrus::unequip,
                                 DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("equipment", "owner"), &SkydotPapyrus::equipment);
+    godot::ClassDB::bind_method(D_METHOD("ranged_weapon", "owner"), &SkydotPapyrus::ranged_weapon);
     godot::ClassDB::bind_method(D_METHOD("equipped_item_type", "owner", "hand"),
                                 &SkydotPapyrus::equipped_item_type);
     godot::ClassDB::bind_method(

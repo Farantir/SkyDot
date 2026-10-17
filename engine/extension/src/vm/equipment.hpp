@@ -126,6 +126,18 @@ struct EquipResult {
 EquipResult equip(Equipment& equipment, const ItemInfo& item, bool left, const ItemLookup& lookup,
                   std::uint32_t extra = 0);
 
+/// The gear an NPC fights with, chosen among what it carries (0: none).
+struct GearChoice {
+    std::uint32_t melee = 0;  ///< The one-handed or two-handed melee weapon of the most damage.
+    std::uint32_t shield = 0; ///< The shield of the best rating, only with a one-handed `melee`.
+    std::uint32_t bow = 0;    ///< The bow of the most damage.
+    std::uint32_t ammo = 0;   ///< The ammo of the most damage.
+};
+
+/// Best melee weapon (animation types 1 to 6), shield, bow (type 7) and ammo among `forms`.
+/// Ties go to the first. A pure rule so a test needs no pack.
+[[nodiscard]] GearChoice choose_gear(const std::vector<std::uint32_t>& forms, const ItemLookup& lookup);
+
 /// Take `form` off wherever it is; with `extra`, only if the unit there
 /// carries it. False if it was not held or worn.
 bool unequip(Equipment& equipment, std::uint32_t form, std::optional<std::uint32_t> extra = std::nullopt) noexcept;

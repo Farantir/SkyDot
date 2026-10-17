@@ -551,9 +551,14 @@ func weapon_state() -> int:
 	return combat.weapon_state()
 
 
-## An actor attacks the player (the AI's door into Combat.npc_attack).
-func npc_attack(attacker: int, power := false) -> bool:
-	return combat.npc_attack(attacker, power)
+## An actor attacks the player or `target` (the AI's door into Combat.npc_attack).
+func npc_attack(attacker: int, power := false, target := Combat.PLAYER_REF) -> bool:
+	return combat.npc_attack(attacker, power, target)
+
+
+## An actor draws its weapon or sheathes it (Combat.npc_draw).
+func npc_draw(ref: int, drawn: bool) -> bool:
+	return combat.npc_draw(ref, drawn)
 
 
 ## The combat part alone, for runs where the session's `step` does not run
@@ -816,6 +821,7 @@ func quest_name(quest: int) -> String:
 func _on_cell_built(cell: Node3D, cell_id: int) -> void:
 	_bridge.scripts_loaded(cell, cell_id)
 	corpses.on_place_built(cell)
+	combat.gear.on_place_built(cell)
 	place_built.emit(cell, cell_id)
 
 

@@ -42,6 +42,43 @@ bool is_two_handed(const ItemInfo& item) noexcept {
     return item.weapon_type == 5 || item.weapon_type == 6 || item.weapon_type == 7 || item.weapon_type == 9;
 }
 
+GearChoice choose_gear(const std::vector<std::uint32_t>& forms, const ItemLookup& lookup) {
+    GearChoice choice;
+    float melee_damage = -1.0F;
+    float bow_damage = -1.0F;
+    float ammo_damage = -1.0F;
+    float shield_rating = -1.0F;
+    ItemInfo melee_info;
+    for (const std::uint32_t form : forms) {
+        const ItemInfo info = lookup(form);
+        if (!info.known) {
+            continue;
+        }
+        if (info.category == ItemCategory::weapon) {
+            if (info.weapon_type >= 1 && info.weapon_type <= 6 && info.damage > melee_damage) {
+                melee_damage = info.damage;
+                choice.melee = form;
+                melee_info = info;
+            } else if (info.weapon_type == 7 && info.damage > bow_damage) {
+                bow_damage = info.damage;
+                choice.bow = form;
+            }
+        } else if (info.category == ItemCategory::ammo) {
+            if (info.damage > ammo_damage) {
+                ammo_damage = info.damage;
+                choice.ammo = form;
+            }
+        } else if (is_shield(info) && info.armor_rating > shield_rating) {
+            shield_rating = info.armor_rating;
+            choice.shield = form;
+        }
+    }
+    if (choice.melee != 0 && is_two_handed(melee_info)) {
+        choice.shield = 0;
+    }
+    return choice;
+}
+
 bool Equipment::holds(std::uint32_t form) const noexcept {
     return form != 0 && (right == form || left == form || ammo == form || worn.contains(form));
 }
