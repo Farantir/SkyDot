@@ -385,7 +385,7 @@ TEST_CASE("the pack is the same bytes on one thread, three and eight", "[convert
     run.add("meshes/bad.nif", junk());
     run.add("meshes/bad_copy.nif", junk());
     run.add("scripts/bad.pex", junk());
-    run.add("sound/voice.fuz", junk());
+    run.add("sound/voice.lip", junk());
     run.options.texture_encoding = bethconv::texture::Encoding::bc7;
 
     for (const auto layout : {StoreLayout::blob, StoreLayout::loose}) {

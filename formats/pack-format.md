@@ -4,7 +4,7 @@ The interface between converter and engine. The converter writes packs; the
 engine reads only packs. Everything below is stable in v7. The last section
 lists what is not promised.
 
-v7 adds sound effects: every `.wav` (16-bit PCM, passed through unchanged) is an asset
+Later v7 packs (sound fingerprint `sound/2`) also hold voices and music as `sound` assets, as Ogg Vorbis (see "Sound assets"); engines that read sound assets must sniff the first bytes (`RIFF` WAV, `OggS`, `SDVC`), not trust the extension. v7 adds sound effects: every `.wav` (16-bit PCM, passed through unchanged) is an asset
 of a new kind, `sound`, with extension `.wav`. v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
 a new kind, `animation`, holding its skeletons and clips; later v6 packs add
 behaviour graphs' clip generators and the animationdata text files (clip
@@ -357,7 +357,7 @@ Per kind, mentioning only settings that affect that kind:
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 | animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
-| sound | `.wav` | `sound/<n>;pcm16` | `sound/1` |
+| sound | `.wav` (historical: the bytes may be WAV, Ogg or a voice container) | `sound/<n>;pcm16;vorbis-q<q>` | `sound/2;pcm16;vorbis-q0.4` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
 whenever a writer's output changes (a changed option already changes its
@@ -407,13 +407,37 @@ decode; the corpus harness pins the counts and a hash over the assets.
 
 ## Sound assets
 
-A sound effect (`.wav` in the game's Sound archive) is stored as it came,
-under the same virtual path (`sound/fx/obj/leverNordic02/...`, normalized):
-RIFF/WAVE, format tag 1 (PCM), 16 bits, any channel count or rate. Anything else
-(ADPCM, 8-bit, not RIFF) is a failure, counted in `failed` and listed in
-`report.json`. Vanilla SE: all 5,929 `.wav` in `Skyrim - Sounds.bsa` qualify.
-Music (`.xwm`), voices (`.fuz`) and `.lip` are not converted yet. Godot reads
-the bytes with `AudioStreamWAV.load_from_buffer`.
+A sound asset keeps its game path, normalized, and is one of three things; a
+reader tells them apart by the first four bytes.
+
+- **Sound effect** (`.wav` in the Sound archive, `RIFF`): stored as it came,
+  RIFF/WAVE, format tag 1 (PCM), 16 bits, any channel count or rate. Anything
+  else (ADPCM, 8-bit, not RIFF) is a failure, counted in `failed` and listed in
+  `report.json`. Vanilla SE: all 5,929 `.wav` in `Skyrim - Sounds.bsa` qualify.
+  Godot reads the bytes with `AudioStreamWAV.load_from_buffer`.
+- **Music** (`.xwm`, WMA2 in an XWMA RIFF): decoded and re-encoded as a plain
+  Ogg Vorbis stream (`OggS`), same channels and rate, libvorbis VBR quality 0.4,
+  fixed stream serial number so the bytes are deterministic. Godot reads it with
+  `AudioStreamOggVorbis.load_from_buffer`.
+- **Voice** (`.fuz`: `FUZE`, u32 version 1, u32 lip size, the `.lip` bytes, then an
+  XWMA RIFF): a SkyDot voice container, all integers little endian, offsets from
+  the start of the container.
+
+  | Offset | Field |
+  | --- | --- |
+  | 0 | `SDVC` |
+  | 4 | u32 version, 1 |
+  | 8 | u32 Ogg offset (24) |
+  | 12 | u32 Ogg size |
+  | 16 | u32 lip offset |
+  | 20 | u32 lip size |
+  | 24 | the Ogg Vorbis stream (as for music), then the `.lip` bytes untouched |
+
+  The vpath keeps its `.fuz`. A reader slices the Ogg part out and loads it as
+  music. The lip bytes are for facial animation later.
+
+A stream that does not decode (not XWMA, truncated, unknown codec) is a failure
+like any other. `--no-sounds` skips all three.
 
 ## LOD
 

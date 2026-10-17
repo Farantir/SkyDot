@@ -43,6 +43,7 @@ add_executable(bethconv_unit_tests
     test_ordered_pool.cpp
     test_deflate.cpp
     test_world.cpp
+    test_xwma.cpp
 )
 
 # The synthetic-plugin builder in tests/support deflates payloads directly.
@@ -57,11 +58,13 @@ find_package(bsa CONFIG REQUIRED)
 # Mesh fixtures are written with nifly; the emitted GLB is read back with
 # fastgltf.
 find_package(fastgltf CONFIG REQUIRED)
+find_package(FFMPEG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 
 target_link_libraries(bethconv_unit_tests
     PRIVATE bethconv::core bethconv::warnings Catch2::Catch2WithMain ZLIB::ZLIB lz4::lz4 bsa::bsa
-            nifly fastgltf::fastgltf nlohmann_json::nlohmann_json)
+            nifly fastgltf::fastgltf nlohmann_json::nlohmann_json ${FFMPEG_LIBRARIES})
+target_include_directories(bethconv_unit_tests SYSTEM PRIVATE ${FFMPEG_INCLUDE_DIRS})
 
 # GCC 16 flags nlohmann/json.hpp:1400 as a null dereference once it is inlined
 # into this file, which is a false positive (GCC 14 in CI is clean). Only this

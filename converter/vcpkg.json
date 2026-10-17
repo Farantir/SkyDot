@@ -12,8 +12,17 @@
       "name": "directx-headers",
       "platform": "windows"
     },
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "avcodec",
+        "avformat"
+      ]
+    },
     "fastgltf",
     "flatbuffers",
+    "libvorbis",
     "lz4",
     "nlohmann-json",
     "rsm-bsa",

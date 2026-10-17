@@ -30,6 +30,8 @@ Versions come from the `builtin-baseline` in `vcpkg.json`.
 | `fastgltf` | 0.9.0 | MIT | glTF writing |
 | `blake3` | 1.8.6 | CC0 / Apache-2.0 | Content hashing |
 | `flatbuffers` | 25.12.19 | Apache-2.0 | `world.fb` and the script, LOD and animation assets |
+| `ffmpeg` | 9.0.1 | LGPL-2.1-or-later | `libavformat` (xwma demuxer) and `libavcodec` (wmav2 decoder) decode voices and music; features `avcodec`, `avformat` only, built without `--enable-gpl`/`--enable-nonfree` |
+| `libvorbis`, `libogg` | 1.3.7 / 1.3.6 | BSD-3-Clause | Ogg Vorbis encoding of voices and music |
 | `catch2` | 3.15.3 | BSL-1.0 | Unit tests |
 
 `flatc` from the `flatbuffers` port compiles `formats/schema/*.fbs` at build

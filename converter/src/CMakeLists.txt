@@ -2,6 +2,9 @@
 find_package(ZLIB REQUIRED)
 find_package(lz4 CONFIG REQUIRED)
 find_package(bsa CONFIG REQUIRED)
+# Voice and music: xWMA decoding (FFmpeg) and Ogg Vorbis encoding.
+find_package(FFMPEG REQUIRED)
+find_package(Vorbis CONFIG REQUIRED)
 find_package(fastgltf CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(flatbuffers CONFIG REQUIRED)
@@ -71,6 +74,7 @@ add_library(bethconv_core STATIC
     mesh/gltf_writer.cpp
     animation/animation_data.cpp
     animation/hkx.cpp
+    audio/xwma.cpp
     texture/dds.cpp
     texture/mip_tail.cpp
     texture/mip_drop.cpp
@@ -114,12 +118,13 @@ add_library(bethconv::core ALIAS bethconv_core)
 target_include_directories(bethconv_core
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../include>
            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../../formats/include>)
+target_include_directories(bethconv_core SYSTEM PRIVATE ${FFMPEG_INCLUDE_DIRS})
 target_include_directories(bethconv_core SYSTEM
     PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/generated>)
 
 target_link_libraries(bethconv_core
     PRIVATE bethconv::warnings ZLIB::ZLIB lz4::lz4 bsa::bsa nifly fastgltf::fastgltf nlohmann_json::nlohmann_json
-            BLAKE3::blake3 bc7enc
+            BLAKE3::blake3 bc7enc ${FFMPEG_LIBRARIES} Vorbis::vorbisenc Vorbis::vorbis
     PUBLIC bethconv::sanitizers flatbuffers::flatbuffers)
 
 # install/game_install.cpp reads Steam's and the games' registry keys.

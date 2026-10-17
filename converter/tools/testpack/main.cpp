@@ -1363,7 +1363,7 @@ std::size_t write_data_folder(const fs::path& data) {
     }
 
     // Not converted; must appear in `report.json`.
-    put("sound/testpack/voice.fuz", bethconv::testing::build_pex({}));
+    put("sound/testpack/voice.lip", bethconv::testing::build_pex({}));
 
     return files;
 }

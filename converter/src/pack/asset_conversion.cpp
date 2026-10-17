@@ -3,6 +3,7 @@
 
 #include "bethconv/animation/animation_data.hpp"
 #include "bethconv/animation/hkx.hpp"
+#include "bethconv/audio/xwma.hpp"
 #include "bethconv/mesh/gltf_writer.hpp"
 #include "bethconv/mesh/nif_reader.hpp"
 #include "bethconv/pack/animation_asset.hpp"
@@ -237,8 +238,32 @@ AssetConversion convert_animation(std::span<const std::byte> source, std::string
     return out;
 }
 
-AssetConversion convert_sound(std::span<const std::byte> source, std::string_view vpath) {
+AssetConversion convert_sound(std::span<const std::byte> source, std::string_view vpath,
+                              std::string_view extension) {
     AssetConversion out;
+    if (extension == ".xwm") {
+        auto ogg = audio::xwma_to_ogg(source, vpath);
+        if (!ogg) {
+            out.failure = failure_from(vpath, "sound", ogg.error());
+        } else {
+            out.bytes = std::move(*ogg);
+        }
+        return out;
+    }
+    if (extension == ".fuz") {
+        auto parts = audio::parse_fuz(source, vpath);
+        if (!parts) {
+            out.failure = failure_from(vpath, "sound", parts.error());
+            return out;
+        }
+        auto ogg = audio::xwma_to_ogg(parts->xwma, vpath);
+        if (!ogg) {
+            out.failure = failure_from(vpath, "sound", ogg.error());
+            return out;
+        }
+        out.bytes = audio::write_voice_container(*ogg, parts->lip);
+        return out;
+    }
     const auto reject = [&](std::size_t offset, std::string detail) {
         out.failure = failure_from(vpath, "sound",
                                    io::ParseError{.origin = std::string(vpath),

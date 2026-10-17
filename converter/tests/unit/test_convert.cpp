@@ -99,7 +99,7 @@ struct Fixture {
         write_file(dir.path() / "textures/fixture.dds", a_dds());
         write_file(dir.path() / "scripts/fixture.pex", a_pex());
         // Not converted yet; the manifest must count it.
-        write_file(dir.path() / "sound/fixture.fuz", a_dds());
+        write_file(dir.path() / "sound/fixture.lip", a_dds());
         write_file(dir.path() / "sound/fixture.wav", a_wav());
         write_file(dir.path() / "meshes/actors/fixture.hkx", an_hkx());
         REQUIRE(set.mount_loose(dir.path(), 0).has_value());
@@ -228,7 +228,7 @@ TEST_CASE("an input this pass does not convert is counted, not dropped silently"
 
     const auto report = read_json(pack / "report.json");
     REQUIRE(report.contains("deferred"));
-    CHECK(report["deferred"].contains(".fuz"));
+    CHECK(report["deferred"].contains(".lip"));
     CHECK(report["deferred"].contains(".esm"));
 }
 

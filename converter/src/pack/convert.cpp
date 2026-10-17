@@ -79,7 +79,8 @@ namespace {
     if ((extension == ".hkx" || animation::is_animation_data(vpath)) && options.convert_animations) {
         return AssetKind::animation;
     }
-    if (extension == ".wav" && options.convert_sounds) {
+    if ((extension == ".wav" || extension == ".fuz" || extension == ".xwm") &&
+        options.convert_sounds) {
         return AssetKind::sound;
     }
     return std::nullopt;
@@ -183,7 +184,7 @@ struct Prepared {
     case AssetKind::animation:
         return convert_animation(bytes, vpath);
     case AssetKind::sound:
-        return convert_sound(bytes, vpath);
+        return convert_sound(bytes, vpath, extension);
     }
     return {};
 }
@@ -430,7 +431,7 @@ std::string ConvertOptions::animation_settings() const {
 }
 
 std::string ConvertOptions::sound_settings() const {
-    return "sound/1;pcm16";
+    return "sound/2;pcm16;vorbis-q0.4";
 }
 
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,

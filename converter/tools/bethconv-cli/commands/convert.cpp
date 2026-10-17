@@ -512,7 +512,7 @@ void register_convert(CLI::App& app) {
     convert->add_flag("--no-scripts", args->no_scripts, "Skip the PEX pass");
     convert->add_flag("--no-lod", args->no_lod, "Skip terrain, object and tree LOD");
     convert->add_flag("--no-animations", args->no_animations, "Skip Havok files (.hkx)");
-    convert->add_flag("--no-sounds", args->no_sounds, "Skip sound effects (.wav)");
+    convert->add_flag("--no-sounds", args->no_sounds, "Skip sounds (.wav, .fuz voices, .xwm music)");
     convert->add_flag("--no-mip-fix", args->no_mip_fix,
                       "Leave short DDS mip chains alone (control run)");
     convert->add_option("--alpha-coverage", args->alpha_coverage,
