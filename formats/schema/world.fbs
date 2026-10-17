@@ -1135,10 +1135,10 @@ table LeveledList {
     type: uint32;
     flags: LeveledListFlags;
     chance_none: ubyte;
+    entries: [LeveledEntry];
     /// LVLG (format 28): a GlobalVariable whose value replaces `chance_none`;
     /// 0 if none.
     chance_global: uint32;
-    entries: [LeveledEntry];
 }
 
 struct NpcItem {
