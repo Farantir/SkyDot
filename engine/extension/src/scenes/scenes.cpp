@@ -206,7 +206,7 @@ void Scenes::start_action(const wfb::Scene& scene, Run& run, std::size_t i) {
     default:
         host_.log(head + " " + std::to_string(a->timer_seconds()) + " s");
         state.status = Status::active;
-        state.left = a->timer_seconds();
+        state.left = static_cast<double>(a->timer_seconds());
         break;
     }
 }

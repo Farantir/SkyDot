@@ -212,8 +212,8 @@ TEST_CASE("GetRelationshipRank maps RELA ranks to -4..4", "[conditions]") {
     w.npcs[0x14] = 0x7;
     w.npcs[0x20] = 0x900;
     // RELA ranks as stored: 0 lover ... 4 acquaintance ... 8 archnemesis.
-    const std::pair<std::int32_t, float> expected[] = {{0, 4}, {1, 3}, {2, 2}, {3, 1}, {4, 0},
-                                                      {5, -1}, {6, -2}, {7, -3}, {8, -4}};
+    const std::pair<std::int32_t, float> expected[] = {{0, 4.0F}, {1, 3.0F}, {2, 2.0F}, {3, 1.0F}, {4, 0.0F},
+                                                      {5, -1.0F}, {6, -2.0F}, {7, -3.0F}, {8, -4.0F}};
     for (const auto& [raw, rank] : expected) {
         CAPTURE(raw);
         w.relationships[{0x900, 0x7}] = raw;
