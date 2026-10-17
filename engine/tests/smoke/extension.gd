@@ -18,6 +18,7 @@ func _init() -> void:
 # Billboards need the scene tree, which is only live once frames run.
 func _process(_delta: float) -> bool:
     _check_billboards()
+    _check_switch()
     _check_effects()
     _check_one_owner()
     _check_flicker()
@@ -39,6 +40,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
     expect(ClassDB.class_exists("SkydotBillboard"), "SkydotBillboard is registered")
+    expect(ClassDB.class_exists("SkydotSwitch"), "SkydotSwitch is registered")
     for name in ["SkydotAnimator", "SkydotParticles", "SkydotFlicker", "SkydotEmittance", "SkydotShadowBudget"]:
         expect(ClassDB.class_exists(name), name + " is registered")
     expect(not pack.is_open(), "a new pack is closed")
@@ -109,6 +111,34 @@ func _check_billboards() -> void:
     expect(about_up.global_basis.z.normalized().is_equal_approx(flat.normalized()),
            "and turns +Z towards the camera about it")
     scene.free()
+
+## A NiSwitchNode shows one child: the marked one first, then the one asked for.
+func _check_switch() -> void:
+    var model := Node3D.new()
+    var plain := Node3D.new()
+    model.add_child(plain)
+    var switch_node := Node3D.new()
+    switch_node.set_meta("extras", {"bethconv": {"switch": 0}})
+    for child_name in ["whole", "cut"]:
+        var child := Node3D.new()
+        child.name = child_name
+        switch_node.add_child(child)
+    var body := StaticBody3D.new()
+    switch_node.add_child(body)
+    model.add_child(switch_node)
+    expect(SkydotSwitch.get_index(model) == -1 or SkydotSwitch.get_index(model) == 0, "children start visible")
+    expect(SkydotSwitch.apply_defaults(model) == 1, "one switch node found")
+    expect(switch_node.get_child(0).visible and not switch_node.get_child(1).visible, "child 0 is shown first")
+    expect(SkydotSwitch.set_index(model, 1) == 1, "set_index counts the switch")
+    expect(not switch_node.get_child(0).visible and switch_node.get_child(1).visible, "child 1 is shown after")
+    expect(SkydotSwitch.get_index(model) == 1, "get_index reads it")
+    SkydotSwitch.set_index(model, 7)
+    expect(SkydotSwitch.get_index(model) == 1, "an index past the end shows the last child")
+    expect(body.visible, "a collision body is not a choice")
+    SkydotSwitch.set_index(model, 0)
+    expect(SkydotSwitch.get_index(model) == 0 and plain.visible, "back to child 0; other nodes untouched")
+    expect(SkydotSwitch.set_index(null, 1) == 0, "null is harmless")
+    model.free()
 
 ## Every refusal case, triggered with files this script writes (no game data,
 ## no converter output).

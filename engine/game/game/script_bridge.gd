@@ -85,6 +85,7 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 	var scripted := _papyrus.attach_built(root)
 	if scripted > 0:
 		print("scripts: %d references in %s" % [scripted, root.name])
+	show_harvests(root)
 	# Every change scripts have made so far: apply those to this cell's
 	# references in one walk over it, not a search of the scene for each.
 	var changes := _papyrus.get_disabled_changes()
@@ -96,6 +97,16 @@ func scripts_loaded(root: Node, cell_id: int) -> void:
 				_show_ref(node, not changes[ref])
 			if moves.has(ref):
 				_move_ref(node as Node3D, moves[ref][0], moves[ref][1])
+
+
+## Plants and trees harvested so far show their harvested model (child 1 of
+## the model's switch node) in what was just built; the rest keep child 0. A
+## respawned one is not listed, so a rebuild shows it whole again.
+func show_harvests(root: Node) -> void:
+	for ref in _papyrus.get_harvested_refs():
+		var node := find_ref_node(ref)
+		if node != null and (node == root or root.is_ancestor_of(node)):
+			SkydotSwitch.set_index(node, 1)
 
 
 ## A cell went away (streamed out): its scripted references unload.
@@ -373,6 +384,8 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 			if node != null and _toggle_open(node, ref, label):
 				return
 		"harvest":
+			if node != null:
+				SkydotSwitch.set_index(node, 1)
 			# The ingredient is already in the inventory.
 			var sound: int = outcome.get("harvest_sound", 0)
 			if sound != 0 and int(outcome.get("harvest_count", 0)) > 0:

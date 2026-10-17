@@ -77,6 +77,52 @@ func _activate(ref: int) -> Dictionary:
 	return _session.papyrus.activate_ref(ref, PLAYER, false, SkydotPapyrus.ACTIVATE_PLAYER, false)
 
 
+## The Fly Amanita is a NiSwitchNode model: child 0 whole, child 1 harvested.
+## Built on its own it shows the harvested state the VM keeps (as a cell does
+## when it is built), and a harvest shows it at once.
+func _built_plant() -> Node3D:
+	var cell := _session.world.get_ref_cell(FLY_AMANITA_PLANT)
+	var holder := _session.world.build_ref(cell, FLY_AMANITA_PLANT)
+	expect(holder != null, "the plant is built")
+	if holder == null:
+		return null
+	root.add_child(holder)
+	_session.show_harvests(holder)
+	return holder
+
+
+func _check_harvested_model(papyrus: SkydotPapyrus) -> void:
+	# Loaded state: the save in _run left it harvested.
+	var holder := _built_plant()
+	if holder == null:
+		return
+	expect(SkydotSwitch.get_index(holder) == 1, "a built harvested plant shows child 1: %d" % SkydotSwitch.get_index(holder))
+	holder.free()
+
+	# Respawn: ten days later a rebuilt plant is whole.
+	var before := _session.clock.get_game_days()
+	_session.clock.set_game_days(before + 11.0)
+	holder = _built_plant()
+	expect(not papyrus.harvested(FLY_AMANITA_PLANT), "it has respawned")
+	expect(SkydotSwitch.get_index(holder) == 0, "a respawned plant shows child 0: %d" % SkydotSwitch.get_index(holder))
+
+	# Harvesting it again shows child 1 at once, through the bridge.
+	expect(_session.activate_ref(FLY_AMANITA_PLANT), "the plant is activated")
+	expect(papyrus.harvested(FLY_AMANITA_PLANT), "and harvested")
+	expect(SkydotSwitch.get_index(holder) == 1, "the live node shows child 1 at once: %d" % SkydotSwitch.get_index(holder))
+	# The shapes' names: FloraMushroom01_N whole, FloraMushroom01_1_N harvested.
+	var cut := 0
+	var whole := 0
+	for mesh in holder.find_children("*", "MeshInstance3D", true, false):
+		if (mesh as MeshInstance3D).is_visible_in_tree():
+			if str(mesh.name).begins_with("FloraMushroom01_1_"):
+				cut += 1
+			elif str(mesh.name).begins_with("FloraMushroom01_"):
+				whole += 1
+	expect(whole == 0 and cut == 3, "only the harvested shapes are drawn (%d whole, %d cut)" % [whole, cut])
+	holder.free()
+
+
 func _run(pack_dir: String) -> void:
 	await process_frame
 	var config := GameConfig.new()
@@ -119,6 +165,8 @@ func _run(pack_dir: String) -> void:
 	expect(_session.load_game(path), "loads")
 	expect(papyrus.harvested(FLY_AMANITA_PLANT), "the save keeps it harvested")
 	expect(_count(FLY_AMANITA) == held, "and the ingredient")
+
+	_check_harvested_model(papyrus)
 
 	# The forge: Iron Dagger from an Iron Ingot and Leather Strips.
 	var forge := _activate(FORGE)

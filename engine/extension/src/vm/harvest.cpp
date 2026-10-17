@@ -43,6 +43,16 @@ std::uint32_t HarvestStates::times(std::uint32_t ref) const {
     return it == states_.end() ? 0 : it->second.times;
 }
 
+std::vector<std::uint32_t> HarvestStates::harvested_refs(double now) const {
+    std::vector<std::uint32_t> out;
+    for (const auto& [ref, state] : states_) {
+        if (state.times > 0 && now - state.day < k_harvest_respawn_days) {
+            out.push_back(ref);
+        }
+    }
+    return out;
+}
+
 void HarvestStates::mark(std::uint32_t ref, double now) {
     auto& state = states_[ref];
     state.day = now;

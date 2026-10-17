@@ -41,6 +41,8 @@ public:
     [[nodiscard]] bool harvested(std::uint32_t ref, double now) const;
     /// How many times `ref` was harvested (counting respawned ones).
     [[nodiscard]] std::uint32_t times(std::uint32_t ref) const;
+    /// Every reference harvested at game day `now`, in reference order.
+    [[nodiscard]] std::vector<std::uint32_t> harvested_refs(double now) const;
     void mark(std::uint32_t ref, double now);
     void erase(std::uint32_t ref) { states_.erase(ref); }
     void clear() { states_.clear(); }

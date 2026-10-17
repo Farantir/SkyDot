@@ -5,6 +5,7 @@
 #include "actors/behavior_player.hpp"
 #include "render/animator.hpp"
 #include "render/billboard.hpp"
+#include "render/switch_node.hpp"
 #include "physics/collision.hpp"
 #include "render/effect_asset.hpp"
 #include "data/fb_search.hpp"
@@ -107,6 +108,7 @@ struct Decorator::Steps {
             d.stats.effects += self.attach_addons(node);
         }
     }
+    static void switches(Decorator&, godot::Node3D* node, Decoration&) { SkydotSwitch::apply_defaults(node); }
     static void billboards(Decorator&, godot::Node3D* node, Decoration& d) {
         d.stats.billboards += SkydotBillboard::attach(node);
     }
@@ -296,6 +298,7 @@ void Decorator::decorate(godot::Node3D* node, Decoration& decoration) {
         {Steps::alternate_textures, false, true},
         {Steps::directional, false, true},
         {Steps::addons, false, false, true},
+        {Steps::switches, true, true},
         {Steps::billboards, true, true},
         {Steps::animators, true, true},
         {Steps::behavior, false, false},

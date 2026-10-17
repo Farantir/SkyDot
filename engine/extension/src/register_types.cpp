@@ -12,6 +12,7 @@
 #include "actors/behavior_player.hpp"
 #include "render/animator.hpp"
 #include "render/billboard.hpp"
+#include "render/switch_node.hpp"
 #include "physics/collision.hpp"
 #include "render/emittance.hpp"
 #include "render/flicker.hpp"
@@ -39,6 +40,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
         return;
     }
     GDREGISTER_CLASS(skydot::SkydotBillboard);
+    GDREGISTER_CLASS(skydot::SkydotSwitch);
     GDREGISTER_CLASS(skydot::SkydotFlicker);
     GDREGISTER_CLASS(skydot::SkydotEmittance);
     GDREGISTER_CLASS(skydot::SkydotShadowBudget);

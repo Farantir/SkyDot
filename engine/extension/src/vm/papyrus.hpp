@@ -191,6 +191,8 @@ public:
     std::int64_t alchemy_mix(const godot::PackedInt64Array& forms);
     /// Whether the harvestable `ref` is harvested now.
     bool harvested(std::int64_t ref) const;
+    /// Every reference that is harvested now (respawned ones are not listed).
+    godot::PackedInt64Array get_harvested_refs() const;
     /// How a reference is activated (activate_ref's `source`).
     static constexpr std::int64_t ACTIVATE_PLAYER = 0;
     static constexpr std::int64_t ACTIVATE_SCRIPT = 1;

@@ -516,6 +516,12 @@ func activate_ref(ref: int, force := false) -> bool:
 	return _bridge.activate(place.cell_id, ref, null, force)
 
 
+## Show the harvested model on the harvested plants under `root` (a built cell
+## does it itself; for a reference built on its own).
+func show_harvests(root: Node) -> void:
+	_bridge.show_harvests(root)
+
+
 func has_activations() -> bool:
 	return _bridge.has_activations()
 

@@ -93,6 +93,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("alchemy_preview", "forms"), &SkydotPapyrus::alchemy_preview);
     godot::ClassDB::bind_method(D_METHOD("alchemy_mix", "forms"), &SkydotPapyrus::alchemy_mix);
     godot::ClassDB::bind_method(D_METHOD("harvested", "ref"), &SkydotPapyrus::harvested);
+    godot::ClassDB::bind_method(D_METHOD("get_harvested_refs"), &SkydotPapyrus::get_harvested_refs);
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);

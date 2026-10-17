@@ -271,6 +271,16 @@ TEST_CASE("a harvested reference respawns after ten game days, and HRVS round-tr
     CHECK_FALSE(vm::HarvestStates::load(skydot::save::ByteReader(bytes), back));
 }
 
+TEST_CASE("the harvested references are listed without the respawned ones", "[harvest]") {
+    vm::HarvestStates s;
+    CHECK(s.harvested_refs(0.0).empty());
+    s.mark(0x20, 1.0);
+    s.mark(0x10, 5.0);
+    CHECK(s.harvested_refs(6.0) == std::vector<std::uint32_t>{0x10, 0x20});
+    CHECK(s.harvested_refs(12.0) == std::vector<std::uint32_t>{0x10});
+    CHECK(s.harvested_refs(15.0).empty());
+}
+
 // ---- crafting ------------------------------------------------------------------------
 
 namespace {

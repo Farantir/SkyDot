@@ -210,6 +210,8 @@ target_sources(skydot PRIVATE
     src/render/animator.hpp
     src/render/billboard.cpp
     src/render/billboard.hpp
+    src/render/switch_node.cpp
+    src/render/switch_node.hpp
     src/render/effect_asset.cpp
     src/render/effect_asset.hpp
     src/render/emittance.cpp
