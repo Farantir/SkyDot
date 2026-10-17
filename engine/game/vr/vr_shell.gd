@@ -38,8 +38,10 @@ var _controls: PlayerInput
 var _dialogue_panel: VrPanel
 var _inventory: InventoryView
 var _container: ContainerView
+var _crafting: CraftingView
 var _inventory_panel: VrPanel
 var _container_panel: VrPanel
+var _crafting_panel: VrPanel
 var _xr: XRInterface
 var _quit_in := -1  # frames until quitting after --activate
 
@@ -132,7 +134,10 @@ func _create_components() -> void:
 		_container = ContainerView.new(_session)
 		_inventory_panel = _menu_panel(_inventory)
 		_container_panel = _menu_panel(_container)
+		_crafting = CraftingView.new(_session)
+		_crafting_panel = _menu_panel(_crafting)
 		_session.container_opened.connect(_on_container_opened)
+		_session.crafting_opened.connect(_on_crafting_opened)
 	if not _rig.tracking:
 		_controls.capture_mouse()
 
@@ -160,8 +165,12 @@ func _menu_panel(view: Control) -> VrPanel:
 
 
 func _on_menu_engaged(open: bool, view: Control) -> void:
-	var panel := _inventory_panel if view == _inventory else _container_panel
-	_controls.blocked = open or _inventory.is_open() or _container.is_open()
+	var panel := _inventory_panel
+	if view == _container:
+		panel = _container_panel
+	elif view == _crafting:
+		panel = _crafting_panel
+	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open()
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -176,6 +185,8 @@ func _on_inventory_requested() -> void:
 		_inventory.close()
 	elif _container.is_open():
 		_container.close()
+	elif _crafting.is_open():
+		_crafting.close()
 	elif not _session.is_dialogue_open():
 		_inventory.open()
 
@@ -186,6 +197,15 @@ func _on_container_opened(ref: int) -> void:
 		return
 	_inventory.close()
 	_container.open(ref)
+
+
+## Activating a workbench opens its menu.
+func _on_crafting_opened(ref: int, bench_type: int) -> void:
+	if _session.is_dialogue_open():
+		return
+	_inventory.close()
+	_container.close()
+	_crafting.open(ref, bench_type)
 
 
 func _on_dialogue_engaged(open: bool) -> void:
@@ -208,7 +228,10 @@ func _start_game() -> void:
 		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
 		if not _session.enter_world(settings.world, at, target):
 			return
+		_session.give(settings.give)
 		_session.start_quests(settings.start_quests)
+		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
+			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		return

@@ -322,6 +322,29 @@ if(SKYDOT_SSE_PACK)
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
         TIMEOUT 180)
 
+    # Activating a workbench opens the crafting menu: Alvor's forge (recipes,
+    # Riverwood exterior), the Sleeping Giant Inn's alchemy lab (ingredients
+    # that share an effect), and the VR shell's panel for the forge.
+    skydot_sse_test(sse_open_forge
+        ARGS --world Tamriel --at 20459,-45300,100 --look 0,0 --hud --give 0x5ACE4x2,0x800E4x2
+             --open-container 0xD6987 --quit-after 20
+        PASS "crafting: [A-Za-z ]+ opens \\(type 1, [1-9][0-9]* recipes\\)")
+    skydot_sse_test(sse_open_alchemy
+        ARGS --cell RiverwoodSleepingGiantInn --hud --give 0x4DA00x2,0x34D22x2
+             --open-container 0x26D7B --quit-after 20
+        PASS "crafting: [A-Za-z ]+ opens \\(type 5, [2-9][0-9]* ingredients\\)")
+    add_test(NAME sse_vr_open_forge
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://vr/vr_shell.tscn --
+                     --pack "${SKYDOT_SSE_PACK}" --world Tamriel --at 20459,-45300,100 --look 0,0 --hud
+                     --time 13.13 --time-scale 0 --give 0x5ACE4x2,0x800E4x2 --open-container 0xD6987
+                     --quit-after 20)
+    set_tests_properties(sse_vr_open_forge PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "crafting: [A-Za-z ]+ opens \\(type 1, [1-9][0-9]* recipes\\).*vr: quit"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 180)
+
     # Bleak Falls Barrow: the pillar lever sits at the pillars' room.
     set(_pillars --cell BleakFallsBarrow01 --at 5006.8,-893.3,-636 --look 197.1,38.5
                  --activate-wait 200 --quit-after 900)

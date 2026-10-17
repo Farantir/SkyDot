@@ -260,7 +260,10 @@ func _start_game() -> void:
 		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
 		if not _session.enter_world(settings.world, at, target):
 			return
+		_session.give(settings.give)
 		_session.start_quests(settings.start_quests)
+		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
+			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		_controls.fly_speed = 10.0
