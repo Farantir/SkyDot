@@ -26,6 +26,7 @@
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
+#include "scenes/scenes.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
 #include "vm/actor_states.hpp"
@@ -245,6 +246,20 @@ public:
     /// akSpeakerRef. Returns whether the INFO has one.
     bool dialogue_fragment(std::int64_t info, bool end, std::int64_t speaker);
 
+    // ---- scenes (vm/papyrus_scenes.cpp; the rules are scenes/scenes.hpp)
+    /// Advance the scenes by `seconds` of game time. Returns the dialogue
+    /// actions to speak: [{scene, action, speaker, lines}], lines as
+    /// `dialogue_open` gives them (with `voice`). The host speaks them and
+    /// reports `scene_action_done`.
+    godot::Array scenes_update(double seconds);
+    void scene_action_done(std::int64_t scene, std::int64_t action);
+    bool scene_start(std::int64_t scene, bool force);
+    void scene_stop(std::int64_t scene);
+    bool scene_is_playing(std::int64_t scene) const;
+    /// Whether a scene's actors must have their 3D loaded (default), else a
+    /// living placed actor is enough (headless tests).
+    void set_scene_actors_need_3d(bool need) { scene_needs_3d_ = need; }
+
     // ---- quests
     /// Start every start-game-enabled quest, as a new game does. Returns how
     /// many started.
@@ -314,9 +329,17 @@ private:
     std::map<std::uint32_t, std::uint32_t> info_quests_;
     dialogue::Dialogue* dialogue_logic();
     friend class DialogueHostImpl;
+    friend class SceneHostImpl;
+    std::unique_ptr<scenes::SceneHost> scene_host_;
+    std::unique_ptr<scenes::Scenes> scenes_;
+    std::set<std::uint32_t> scene_scripts_;
+    bool scene_needs_3d_ = true;
+    scenes::Scenes* scene_logic();
+    void bind_scene_natives();
     /// The NPC_ behind an actor reference (the player: 0x7); 0 if none.
     std::uint32_t dialogue_npc(std::uint32_t ref) const;
     godot::Dictionary dialogue_dictionary(const dialogue::Result& result) const;
+    godot::Array lines_array(const std::vector<dialogue::Line>& lines) const;
     /// The index of the first log entry of stage `index` of `quest` whose
     /// conditions pass (subject: the player, quest: this one); 0 if none does.
     std::size_t chosen_log_entry(std::uint32_t quest, std::int32_t index);
@@ -435,6 +458,7 @@ private:
         vm::RefStates states;
         vm::ActorStates actors;
         dialogue::DialogueStates dialogue;
+        std::unique_ptr<scenes::Scenes> scenes;
         HostSnapshot host;
     };
     std::unique_ptr<PendingLoad> pending_;

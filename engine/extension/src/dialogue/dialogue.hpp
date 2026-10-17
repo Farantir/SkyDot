@@ -91,6 +91,11 @@ public:
     void close();
     [[nodiscard]] bool is_open() const { return speaker_ != 0; }
 
+    /// `speaker` says `topic` (a scene's dialogue action): the first INFO of
+    /// the topic that passes (subject: the speaker), as spoken lines, marked
+    /// said. Changes nothing about an open dialogue. No lines if none passes.
+    Result say(std::uint32_t speaker, std::uint32_t topic);
+
     /// What opening would say and list, without saying it: no state changes
     /// and no dice (the first INFO that passes is taken).
     Result peek(std::uint32_t speaker);

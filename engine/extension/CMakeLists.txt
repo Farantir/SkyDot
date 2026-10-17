@@ -54,6 +54,8 @@ set(SKYDOT_CORE_SOURCES
     src/dialogue/dialogue_states.hpp
     src/dialogue/voice.cpp
     src/dialogue/voice.hpp
+    src/scenes/scenes.cpp
+    src/scenes/scenes.hpp
     src/data/actors.hpp
     src/data/large_refs.cpp
     src/data/large_refs.hpp
@@ -236,6 +238,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_activation.cpp
     src/vm/papyrus_conditions.cpp
     src/vm/papyrus_dialogue.cpp
+    src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp
     src/vm/papyrus_save.cpp

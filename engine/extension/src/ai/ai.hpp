@@ -108,6 +108,10 @@ public:
     /// schedule (hour, duration, day_of_week), scheduled, conditions_pass,
     /// chosen.
     godot::Array get_packages(std::int64_t ref);
+    /// A scene puts `package` on top of `ref`'s packages: it is chosen
+    /// whatever the schedule says, until `pop_package` takes it off.
+    void push_package(std::int64_t ref, std::int64_t package);
+    void pop_package(std::int64_t ref, std::int64_t package);
     /// Where `ref`'s package wants it now (space, position, radius), or empty.
     godot::Dictionary get_destination(std::int64_t ref);
 
@@ -231,6 +235,8 @@ private:
     mutable std::unordered_map<std::uint32_t, bool> lock_cache_;
     /// Static per actor: its package list (NPC_ templates followed).
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> package_lists_;
+    /// Packages scenes pushed, per actor, the last one on top.
+    std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> forced_;
     const std::vector<std::uint32_t>& packages_of(const Mind& m);
     std::unordered_map<std::uint32_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>> doors_;
 };

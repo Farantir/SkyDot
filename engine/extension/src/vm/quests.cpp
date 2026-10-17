@@ -149,6 +149,9 @@ bool SkydotPapyrus::start_quest(std::int64_t id) {
             break;
         }
     }
+    if (auto* scenes = scene_logic()) {
+        scenes->quest_started(quest);
+    }
     return true;
 }
 
@@ -161,6 +164,9 @@ void SkydotPapyrus::stop_quest(std::int64_t id) {
     quests_.state(quest).running = false;
     quests_.clear_fills(quest);
     emit_signal("quest_stopped", id);
+    if (scenes_ != nullptr) {
+        scenes_->quest_stopped(quest);
+    }
 }
 
 bool SkydotPapyrus::set_stage(std::int64_t id, std::int64_t index) {

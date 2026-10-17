@@ -225,6 +225,8 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_actor_state", "ref"), &SkydotAi::get_actor_state);
     ClassDB::bind_method(D_METHOD("get_packages", "ref"), &SkydotAi::get_packages);
     ClassDB::bind_method(D_METHOD("get_destination", "ref"), &SkydotAi::get_destination);
+    ClassDB::bind_method(D_METHOD("push_package", "ref", "package"), &SkydotAi::push_package);
+    ClassDB::bind_method(D_METHOD("pop_package", "ref", "package"), &SkydotAi::pop_package);
     BIND_CONSTANT(PLACE_BUDGET_USEC);
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
@@ -706,7 +708,10 @@ bool SkydotAi::choose(Mind& m) {
         }
         return true;
     };
-    const auto id = ai::choose_package(*root(), packages_of(m), m.ref, clock_, host, skip);
+    const auto forced = forced_.find(m.ref);
+    const auto id = forced != forced_.end() && !forced->second.empty()
+                        ? forced->second.back()
+                        : ai::choose_package(*root(), packages_of(m), m.ref, clock_, host, skip);
     if (id == m.package && !m.steps.empty()) {
         return false;
     }
@@ -714,6 +719,28 @@ bool SkydotAi::choose(Mind& m) {
     m.package = id;
     start_package(m, previous);
     return previous != id;
+}
+
+void SkydotAi::push_package(std::int64_t ref, std::int64_t package) {
+    const auto actor = static_cast<std::uint32_t>(ref);
+    forced_[actor].push_back(static_cast<std::uint32_t>(package));
+    if (auto* m = mind(actor)) {
+        choose(*m);
+    }
+}
+
+void SkydotAi::pop_package(std::int64_t ref, std::int64_t package) {
+    const auto actor = static_cast<std::uint32_t>(ref);
+    auto& list = forced_[actor];
+    if (const auto it = std::ranges::find(list, static_cast<std::uint32_t>(package)); it != list.end()) {
+        list.erase(it);
+    }
+    if (list.empty()) {
+        forced_.erase(actor);
+    }
+    if (auto* m = mind(actor)) {
+        choose(*m);
+    }
 }
 
 void SkydotAi::start_package(Mind& m, std::uint32_t previous) {

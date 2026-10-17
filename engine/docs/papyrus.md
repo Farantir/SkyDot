@@ -73,6 +73,16 @@ scripts exist before it starts. A property without an instance behind it (as
 `GlobalVariable.Value`) runs its getter or setter on the object, like a
 method.
 
+## Scenes
+
+`scenes/scenes.hpp` runs SCEN records (rules in its header). Natives: `Scene.Start`,
+`ForceStart`, `Stop`, `IsPlaying`, `GetOwningQuest`, `IsActionComplete(index)`.
+The SF_ fragment script attaches to the scene's form. The game layer calls
+`scenes_update(dt)`, speaks the returned dialogue actions and answers
+`scene_action_done`; a package action emits `scene_package(actor, package, push)`.
+Save section `SCEN` v1 (optional). Scene and phase conditions use the player as
+subject (an assumption).
+
 ## Quests
 
 `start_quest` fills the quest's aliases, attaches its scripts and its

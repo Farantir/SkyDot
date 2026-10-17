@@ -120,6 +120,12 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("dialogue_choose", "topic"), &SkydotPapyrus::dialogue_choose);
     godot::ClassDB::bind_method(D_METHOD("dialogue_close"), &SkydotPapyrus::dialogue_close);
     godot::ClassDB::bind_method(D_METHOD("dialogue_is_open"), &SkydotPapyrus::dialogue_is_open);
+    godot::ClassDB::bind_method(D_METHOD("scenes_update", "seconds"), &SkydotPapyrus::scenes_update);
+    godot::ClassDB::bind_method(D_METHOD("scene_action_done", "scene", "action"), &SkydotPapyrus::scene_action_done);
+    godot::ClassDB::bind_method(D_METHOD("scene_start", "scene", "force"), &SkydotPapyrus::scene_start);
+    godot::ClassDB::bind_method(D_METHOD("scene_stop", "scene"), &SkydotPapyrus::scene_stop);
+    godot::ClassDB::bind_method(D_METHOD("scene_is_playing", "scene"), &SkydotPapyrus::scene_is_playing);
+    godot::ClassDB::bind_method(D_METHOD("set_scene_actors_need_3d", "need"), &SkydotPapyrus::set_scene_actors_need_3d);
     godot::ClassDB::bind_method(D_METHOD("voice_census", "vpaths"), &SkydotPapyrus::voice_census);
     godot::ClassDB::bind_method(D_METHOD("dialogue_topics_debug", "speaker"),
                                 &SkydotPapyrus::dialogue_topics_debug);
@@ -178,6 +184,8 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("play_sound", PropertyInfo(Variant::INT, "sound"),
                                  PropertyInfo(Variant::INT, "source"),
                                  PropertyInfo(Variant::INT, "instance")));
+    ADD_SIGNAL(godot::MethodInfo("scene_package", PropertyInfo(Variant::INT, "actor"),
+                                 PropertyInfo(Variant::INT, "package"), PropertyInfo(Variant::BOOL, "push")));
     ADD_SIGNAL(godot::MethodInfo("stop_sound", PropertyInfo(Variant::INT, "instance")));
     ADD_SIGNAL(godot::MethodInfo("sound_volume", PropertyInfo(Variant::INT, "instance"),
                                  PropertyInfo(Variant::FLOAT, "volume")));
@@ -254,6 +262,8 @@ void SkydotPapyrus::reset() {
     actors_.clear();
     dialogue_states_.clear();
     dialogue_.reset();
+    scenes_.reset();
+    scene_scripts_.clear();
     info_quests_.clear();
     activations_->clear();
     triggers_.clear();
@@ -542,6 +552,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_weapon_natives,
         &SkydotPapyrus::bind_sound_natives,
         &SkydotPapyrus::bind_quest_natives,
+        &SkydotPapyrus::bind_scene_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,

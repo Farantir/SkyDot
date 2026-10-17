@@ -128,6 +128,9 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
     out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
+    if (scenes_ != nullptr) {
+        out.add("SCEN", scenes::Scenes::k_section_version, scenes_->save());
+    }
     write_host(out);
 }
 
@@ -197,6 +200,17 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
             return fail("the DLGS section of the save is damaged");
         }
     }
+    // SCEN is optional: a save without it has no scene running.
+    if (const auto* scen = file.find("SCEN")) {
+        if (scen->version != scenes::Scenes::k_section_version) {
+            return fail("section SCEN has a version this engine does not read");
+        }
+        auto* logic = scene_logic();
+        pending->scenes = logic != nullptr ? std::make_unique<scenes::Scenes>(*world_->data().root(), *scene_host_) : nullptr;
+        if (pending->scenes == nullptr || !scenes::Scenes::load(file.open(*scen), *pending->scenes)) {
+            return fail("the SCEN section of the save is damaged");
+        }
+    }
     if (!decode_host(file, pending->host, why)) {
         return fail(why);
     }
@@ -233,6 +247,17 @@ godot::Error SkydotPapyrus::commit_load() {
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
     dialogue_states_.adopt(std::move(pending->dialogue));
+    if (auto* logic = scene_logic()) {
+        if (pending->scenes != nullptr) {
+            logic->adopt(std::move(*pending->scenes));
+            // The AI forgot the pushed packages with the rest of its state.
+            for (const auto& [actor, package] : logic->pushed_packages()) {
+                emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), true);
+            }
+        } else {
+            logic->clear();
+        }
+    }
     HostSnapshot& host = pending->host;
     for (const auto ref : host.attached) {
         attached_.insert(ref);

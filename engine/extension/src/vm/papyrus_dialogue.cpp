@@ -96,19 +96,25 @@ bool SkydotPapyrus::dialogue_can_talk(std::int64_t ref) const {
     return !actors_.is_dead(id);
 }
 
-Dictionary SkydotPapyrus::dialogue_dictionary(const dialogue::Result& result) const {
-    Dictionary out;
+Array SkydotPapyrus::lines_array(const std::vector<dialogue::Line>& all) const {
     Array lines;
-    for (const auto& line : result.lines) {
+    for (const auto& line : all) {
         Dictionary l;
         l["text"] = String::utf8(line.text.c_str());
         l["voice"] = String::utf8(line.voice.c_str());
         l["seconds"] = line_seconds(line.text);
         l["info"] = static_cast<std::int64_t>(line.info);
+        l["topic"] = static_cast<std::int64_t>(dialogue_ != nullptr ? dialogue_->topic_of_info(line.info) : 0);
         l["first"] = line.first;
         l["last"] = line.last;
         lines.push_back(l);
     }
+    return lines;
+}
+
+Dictionary SkydotPapyrus::dialogue_dictionary(const dialogue::Result& result) const {
+    Dictionary out;
+    const Array lines = lines_array(result.lines);
     Array topics;
     for (const auto& topic : result.topics) {
         Dictionary t;

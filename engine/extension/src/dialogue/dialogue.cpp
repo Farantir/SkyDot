@@ -331,6 +331,31 @@ void Dialogue::finish(Result& out) {
     out.topics = top_level();
 }
 
+Result Dialogue::say(std::uint32_t speaker, std::uint32_t topic_id) {
+    build_indexes();
+    Result out;
+    const auto* topic = lookup(world_.dialogue_topics(), topic_id);
+    if (topic == nullptr) {
+        return out;
+    }
+    // speak() leaves its links behind and reads the speaker: keep an open dialogue's.
+    const auto saved_speaker = speaker_;
+    const auto saved_links = links_;
+    const bool saved_exclusive = exclusive_;
+    const bool saved_dice = dice_;
+    dice_ = true;
+    speaker_ = speaker;
+    if (const auto* chosen = pick(*topic, true)) {
+        speak(*topic, *chosen, out, true, 0);
+    }
+    speaker_ = saved_speaker;
+    dice_ = saved_dice;
+    links_ = saved_links;
+    exclusive_ = saved_exclusive;
+    out.topics.clear();
+    return out;
+}
+
 Result Dialogue::begin(std::uint32_t speaker, bool commit) {
     build_indexes();
     speaker_ = speaker;
