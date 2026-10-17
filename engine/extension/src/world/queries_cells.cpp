@@ -249,6 +249,7 @@ Dictionary get_base(const WorldData& data, std::int64_t id) {
     out["model"] = to_godot(base->model());
     out["name"] = to_godot(base->name());
     out["activate_text"] = to_godot(base->activate_text());
+    out["harvest"] = base->harvest() != nullptr && base->harvest()->ingredient() != 0;
     if (const auto* l = base->light(); l != nullptr && base->has_light()) {
         Dictionary light;
         light["radius"] = static_cast<double>(l->radius()) * formats::k_metres_per_unit;

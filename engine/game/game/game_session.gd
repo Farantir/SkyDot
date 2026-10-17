@@ -70,12 +70,19 @@ signal subtitle_line(speaker: int, text: String, seconds: float)
 ## The player activated a container: its reference. The shell shows the menu
 ## (`inventory(ref)` is what it holds).
 signal container_opened(ref: int)
+## The player activated a workbench: its reference and bench type (1 create
+## object, 2 grindstone, 3/4 enchanting, 5/6 alchemy, 7 armor workbench). The
+## shell shows the crafting menu.
+signal crafting_opened(ref: int, bench_type: int)
 ## Something moved between inventories, or was equipped or dropped.
 signal items_changed
 
 ## Metres in front of the player a dropped item lands, and above the feet.
 const DROP_DISTANCE := 0.8
 const DROP_HEIGHT := 0.3
+## The ids of created forms (potions mixed by alchemy; id_ranges::created_forms).
+const CREATED_FIRST := 0xFF700000
+const CREATED_LAST := 0xFF7FFFFF
 
 ## Stamina a sprinting player loses per second. To measure in the original
 ## (the game's fSprintStaminaDrainMult is a multiplier of something else).
@@ -248,6 +255,7 @@ func _make_game_nodes() -> void:
 	streamer.cell_dropped.connect(_bridge.scripts_unloaded)
 	_bridge.talk_requested.connect(dialogue_open)
 	_bridge.container_opened.connect(container_opened.emit)
+	_bridge.crafting_opened.connect(crafting_opened.emit)
 	_bridge.activations_finished.connect(activations_finished.emit)
 	_bridge.failed.connect(failed.emit)
 	_bridge.message.connect(message.emit)
@@ -373,6 +381,10 @@ func unequip(form: int, extra := -1) -> bool:
 ## keeps the count and is picked up by activating it. Returns the reference, 0
 ## if the player has none.
 func drop(form: int, count: int, extra := -1) -> int:
+	if form >= CREATED_FIRST and form <= CREATED_LAST:
+		# The game cannot build a reference for a created form yet.
+		message.emit("A mixed potion cannot be dropped yet", false)
+		return 0
 	var forward := Vector3(-sin(_player.yaw), 0.0, -cos(_player.yaw))
 	var at := SkydotWorld.godot_to_skyrim(_feet + forward * DROP_DISTANCE + Vector3.UP * DROP_HEIGHT)
 	var ref := papyrus.drop(SkydotPapyrus.PLAYER_REF, form, count, place.cell_id, at, Vector3.ZERO, extra)
@@ -386,6 +398,58 @@ func container_name(ref: int) -> String:
 	var base := world.get_base(papyrus.get_ref_base(ref))
 	var text: String = base.get("name", "")
 	return text if text != "" else String(base.get("editor_id", ""))
+
+
+# ---- crafting
+
+## A workbench's name as the game shows it.
+func bench_name(ref: int) -> String:
+	return container_name(ref)
+
+
+## The create-object recipes of bench `ref`: see SkydotPapyrus.recipes.
+func recipes(ref: int) -> Array:
+	return papyrus.recipes(ref)
+
+
+## Make `count` of `recipe`; returns how many were made.
+func craft(recipe: int, count := 1) -> int:
+	var made := papyrus.craft(recipe, count)
+	if made > 0:
+		items_changed.emit()
+	return made
+
+
+func temper_rows(ref: int) -> Array:
+	return papyrus.temper_rows(ref)
+
+
+func temper(recipe: int, form: int, extra: int) -> bool:
+	var done := papyrus.temper(recipe, form, extra)
+	if done:
+		items_changed.emit()
+	return done
+
+
+## The carried items with an enchantment: [{form, extra, name, enchantment}].
+func enchant_rows() -> Array:
+	return papyrus.enchant_rows()
+
+
+func alchemy_rows() -> Array:
+	return papyrus.alchemy_rows()
+
+
+func alchemy_preview(forms: PackedInt64Array) -> Dictionary:
+	return papyrus.alchemy_preview(forms)
+
+
+## Mix `forms`; the created potion's form, 0 if it could not be done.
+func alchemy_mix(forms: PackedInt64Array) -> int:
+	var potion := papyrus.alchemy_mix(forms)
+	if potion != 0:
+		items_changed.emit()
+	return potion
 
 
 ## The game's frame, after the shell has moved the player and before it

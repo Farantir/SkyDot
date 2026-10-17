@@ -24,6 +24,8 @@ signal objective_changed(quest: int, index: int, state: String, text: String)
 signal talk_requested(ref: int)
 ## The player activated a container (a CONT, lock gate passed): its menu.
 signal container_opened(ref: int)
+## The player activated a workbench (a FURN with a bench type): its menu.
+signal crafting_opened(ref: int, bench_type: int)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
@@ -371,14 +373,15 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 			if node != null and _toggle_open(node, ref, label):
 				return
 		"harvest":
-			# The ingredient is already in the inventory; the sound
-			# (outcome["harvest_sound"]) is played by the menu phase (5j).
+			# The ingredient is already in the inventory.
+			var sound: int = outcome.get("harvest_sound", 0)
+			if sound != 0 and int(outcome.get("harvest_count", 0)) > 0:
+				_sounds.play(sound, ref)
 			message.emit(outcome["note"], false)
 			return
 		"crafting":
-			# The bench menu comes with 5j; until then the use is only noted.
 			print(label, " is a bench of type ", outcome["bench_type"])
-			message.emit(outcome["note"], false)
+			crafting_opened.emit(ref, outcome["bench_type"])
 			return
 	if outcome["kind"] == "container":
 		print(label, " opens")

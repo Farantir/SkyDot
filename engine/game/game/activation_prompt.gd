@@ -71,12 +71,16 @@ func describe(cell: int, ref: int) -> Dictionary:
 		"CONT":
 			verb = "Open"
 			lock_level = _papyrus.get_lock_level(ref)
-		"ACTI", "FLOR":
+		"ACTI", "FLOR", "TREE":
 			verb = base.get("activate_text", "")
 			if verb.is_empty():
 				verb = "Activate"
-			# A harvested plant offers nothing until it respawns.
-			if type == "FLOR" and _papyrus.harvested(ref):
+			var harvestable: bool = base.get("harvest", false)
+			# A tree without ingredient is no activator; a harvested plant
+			# offers nothing until it respawns.
+			if type == "TREE" and not harvestable:
+				verb = ""
+			elif harvestable and _papyrus.harvested(ref):
 				verb = ""
 		"FURN":
 			verb = "Sleep" if _is_bed(base) else "Sit"
