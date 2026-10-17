@@ -1172,7 +1172,8 @@ every `SkydotPapyrus` signal there or in a part it makes. It runs headless
 (`tests/smoke/game_save.gd` drives it with a bare camera and a stand-in
 player). A shell calls `start_game`, `enter_world`/`enter_cell`, `step`
 each frame (streaming, preloading, the door fade, scripts, clock hand-off,
-AI), `activate_in_view`, `save_game`/`load_game`, and listens to `message`,
+AI), `activate_in_view` (along the viewpoint, or the node `set_pointer` names: a VR
+shell's controller), `save_game`/`load_game`, and listens to `message`,
 `failed`, the quest signals and `place_built`/`place_left`. No part has a
 `_process` of its own.
 
@@ -1190,7 +1191,7 @@ AI), `activate_in_view`, `save_game`/`load_game`, and listens to `message`,
 
 ### 8.3 Cell viewer (`game/viewer/`)
 
-The viewer is one shell around `GameSession`; a VR shell will be another.
+The viewer is one shell around `GameSession`; the VR shell (8.3a) is another.
 `cell_viewer.gd` (about 400 lines, with the documentation of every option in
 its header) parses the options, makes a `GameSession` from
 `ViewerSettings.game_config()`, adds `SkydotImageSpace`, and owns the
@@ -1199,6 +1200,8 @@ developer tooling: CLI flags, the debug overlay, shots and the benchmark.
 | File | Class | What it owns |
 | --- | --- | --- |
 | `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
+| `hud.gd`, `dialogue_menu.gd`, `subtitles.gd` | `Hud`, `DialogueMenu`, `Subtitles` | `CanvasLayer` hosts of the views in `game/ui/` |
+| `image_space_sync.gd` | `ImageSpaceSync` | the per-frame fog and image space sync, shared with the VR shell |
 | `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
 | `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot`, so a gamepad or VR shell can map its own events to them |
 | `shot_recorder.gd` | `ShotRecorder` | F12 shots (PNG and JSON with place, camera in engine and game terms, time, weather, options, pack hashes, GPU, console commands and the note the user types), `--screenshot`, `--shot-delay` |
@@ -1210,6 +1213,21 @@ run only the shots; then the player held or tracked and the camera following
 it, `GameSession.step`, the notes' age, the countdown that quits an
 `--activate` run, the benchmark, then input. `_input = false` (tools set it)
 turns off `PlayerInput` and the door fades.
+
+### 8.3a VR shell (`game/vr/`, `game/ui/`)
+
+ADR 0006. A second shell around the same `GameSession`, started with
+`godot --xr-mode on res://vr/vr_shell.tscn -- <viewer game options>`;
+OpenXR is off in `project.godot`, so the viewer never touches XR. Without a
+runtime it prints `vr: no OpenXR runtime, desktop fallback` and runs as a
+desktop game with the `XRCamera3D` as a plain camera.
+
+| File | Class | What it owns |
+| --- | --- | --- |
+| `vr/vr_shell.gd`, `.tscn` | | starts XR, opens the session with the rig, makes the panels, runs the frame, enters the place from the viewer's options (`ViewerSettings`) |
+| `vr/vr_rig.gd` | `VrRig` (a `PlayerRig`) | `XROrigin3D` at the player's feet, `XRCamera3D`, two controllers; snap turn about the head; controller events as `InputMap` actions |
+| `vr/vr_panel.gd` | `VrPanel` | a view in a `SubViewport` on an unshaded quad: head-locked, or recentred in front of the head |
+| `ui/hud_view.gd`, `subtitles_view.gd`, `dialogue_view.gd` | `HudView`, `SubtitlesView`, `DialogueView` | the shell widgets as `Control`s with no host; the dialogue takes `ui_*` actions and `activate` |
 
 ### 8.4 Tools and tests
 
