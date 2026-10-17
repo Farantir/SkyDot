@@ -47,6 +47,7 @@ var _pack: SkydotPack
 var _find_ref: Callable  # reference id -> its built node, or null
 var _streams := {}  # vpath -> AudioStreamWAV, or null if it cannot be played
 var _looped := {}  # vpath -> the same stream, set to loop
+var _decoded := {}  # vpath -> AudioStream for load_stream, or null
 var _by_name := {}  # lowercase editor id -> SNDR id, 0 if there is none
 var _models := {}  # SOPM id -> its dictionary
 ## Where sounds are heard from; null: the viewport's current camera.
@@ -196,6 +197,41 @@ func _descriptor_id(editor_id: String) -> int:
 			id = _world.get_sound_marker(_world.find_sound_marker(editor_id)).get("descriptor", 0)
 		_by_name[key] = id
 	return _by_name[key]
+
+
+## Any sound asset by vpath, told apart by its first bytes, not its extension:
+## `RIFF` a WAV, `OggS` Ogg Vorbis (music), `SDVC` a voice container (its Ogg
+## slice). Cached; null (warned once) when the pack lacks it or Godot cannot
+## read it. The lip bytes of a voice are not used.
+func load_stream(vpath: String) -> AudioStream:
+	if _decoded.has(vpath):
+		return _decoded[vpath]
+	var stream: AudioStream = null
+	var bytes := _pack.get_bytes(vpath)
+	if bytes.is_empty():
+		_warn.once("file" + vpath, "sound file %s is not in the pack" % vpath)
+	elif bytes.slice(0, 4).get_string_from_ascii() == "RIFF":
+		stream = _stream(vpath, false)
+	else:
+		stream = _ogg(bytes)
+		if stream == null:
+			_warn.once("file" + vpath, "sound file %s cannot be read" % vpath)
+	_decoded[vpath] = stream
+	return stream
+
+
+## The Ogg Vorbis stream of plain Ogg bytes or of an `SDVC` container (u32
+## version at 4, u32 Ogg offset at 8, u32 Ogg size at 12); null if neither.
+static func _ogg(bytes: PackedByteArray) -> AudioStreamOggVorbis:
+	var magic := bytes.slice(0, 4).get_string_from_ascii()
+	if magic == "SDVC" and bytes.size() >= 24:
+		var start := bytes.decode_u32(8)
+		var size := bytes.decode_u32(12)
+		if start < 24 or start + size > bytes.size():
+			return null
+		bytes = bytes.slice(start, start + size)
+		magic = bytes.slice(0, 4).get_string_from_ascii()
+	return AudioStreamOggVorbis.load_from_buffer(bytes) if magic == "OggS" else null
 
 
 func _new_instance() -> int:

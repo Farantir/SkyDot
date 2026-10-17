@@ -49,13 +49,26 @@ func expect(ok: bool, what: String) -> void:
 func _describe(npc_name: String, ref: int) -> Dictionary:
 	var result := _session.papyrus.dialogue_topics_debug(ref)
 	var lines: Array[String] = []
+	var voices: Array[String] = []
 	for line: Dictionary in result["lines"]:
 		lines.append(line["text"])
+		voices.append(line["voice"])
 	var topics: Array[String] = []
 	for topic: Dictionary in result["topics"]:
 		topics.append(topic["text"])
 	print("%s 0x%X greeting=%s topics=%s" % [npc_name, ref, lines, topics])
-	return {"lines": lines, "topics": topics}
+	return {"lines": lines, "topics": topics, "voices": voices}
+
+
+## Every line of `described` has a voice file in the pack that decodes to more
+## than half a second.
+func _expect_voices(npc_name: String, described: Dictionary) -> void:
+	expect(not described["voices"].is_empty(), npc_name + " has a line")
+	for vpath: String in described["voices"]:
+		expect(vpath.begins_with("sound/voice/skyrim.esm/") and vpath.ends_with(".fuz"), "%s's voice path %s" % [npc_name, vpath])
+		var stream := _session.sounds.load_stream(vpath)
+		expect(stream != null and stream.get_length() > 0.5, "%s's voice %s loads" % [npc_name, vpath])
+		print("%s voice %s %.2f s" % [npc_name, vpath, stream.get_length() if stream != null else -1.0])
 
 
 func _run(pack_dir: String) -> void:
@@ -98,10 +111,13 @@ func _run(pack_dir: String) -> void:
 		"Lucan's greeting before MS13")
 	expect(lucan["topics"] == ["Did something happen?", "Do you sell spells?", "What have you got for sale?"],
 		"Lucan's topics before MS13 (the merchant's barter topic hangs on IsCommandedActor)")
+	_expect_voices("LucanValerius", lucan)
 	var gerdur := _describe("Gerdur", npcs["Gerdur"])
+	_expect_voices("Gerdur", gerdur)
 	expect(gerdur["lines"] == ["New to Riverwood? If you're looking for work, go see Hod at the mill."], "Gerdur's greeting")
 	expect(gerdur["topics"] == generic + ["Is there somewhere I can buy fresh supplies?"], "Gerdur's topics")
 	var alvor := _describe("Alvor", npcs["Alvor"])
+	_expect_voices("Alvor", alvor)
 	expect(alvor["lines"] == ["Ain't every day we get visitors in Riverwood."], "Alvor's greeting")
 	# Alvor sells but does not train: smithing training is Balimund's (JobTrainerSmithingFaction).
 	expect(alvor["topics"] == generic + ["Can I use your forge?", "What have you got for sale?"], "Alvor's topics")

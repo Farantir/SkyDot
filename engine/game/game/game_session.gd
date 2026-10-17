@@ -107,6 +107,8 @@ var _talk_topics: Array = []
 var placed: PlacedRefs
 var projectiles: Projectiles
 var sounds: Sounds
+## Spoken lines (dialogue voices), one queue per speaker.
+var speech: Speech
 
 
 ## Open the pack and put the game together around `viewpoint` and `player`.
@@ -201,6 +203,8 @@ func _make_game_nodes() -> void:
 	host.add_child(projectiles)
 	sounds = Sounds.new(world, pack, world.find_ref_node, papyrus.new_sound_instance)
 	host.add_child(sounds)
+	speech = Speech.new(sounds, world.find_ref_node)
+	host.add_child(speech)
 	placed = PlacedRefs.new(world, papyrus)
 	host.add_child(placed)
 	papyrus.ref_placed.connect(placed.place)
@@ -284,6 +288,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 		transition.step(delta)
 	update_scripts(delta, feet)
 	update_dialogue(delta)
+	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
@@ -373,6 +378,8 @@ func dialogue_close() -> void:
 ## Cut the line being spoken short.
 func dialogue_skip() -> void:
 	_talk_left = 0.0
+	if _talk_speaker != 0:
+		speech.skip(_talk_speaker)
 
 
 func _is_talking() -> bool:
@@ -403,7 +410,7 @@ func update_dialogue(delta: float) -> void:
 		_talk_current = _talk_lines.pop_front()
 		if _talk_current["first"]:
 			papyrus.dialogue_fragment(_talk_current["info"], false, _talk_speaker)
-		_talk_left = _talk_current["seconds"]
+		_talk_left = speech.say(_talk_speaker, _talk_current)  # the voice's length, else the text timer
 		if not (_talk_current["text"] as String).is_empty():
 			dialogue_line.emit(_talk_speaker, _talk_current["text"], _talk_left)
 	if _talk_after.is_empty():
@@ -418,6 +425,7 @@ func update_dialogue(delta: float) -> void:
 
 
 func _finish_talk() -> void:
+	speech.stop(_talk_speaker)
 	papyrus.dialogue_close()
 	_talk_speaker = 0
 	_talk_lines = []
