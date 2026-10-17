@@ -381,6 +381,79 @@ struct IdleMarker {
     std::vector<FormId> idles;   ///< IDLA, IDLE FormIDs.
 };
 
+/// BOOK: a book, note or spell tome.
+struct Book {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    LString name;
+    LString description; ///< DESC
+    KeywordList keywords;
+    ScriptData scripts;
+
+    /// DATA, 16 bytes: flags, type, two unused, the skill or spell taught,
+    /// value, weight (UESP, BOOK record).
+    std::uint8_t flags{}; ///< 1 teaches a skill, 2 can't be taken, 4 teaches a spell.
+    std::uint8_t book_type{};
+    std::uint32_t teaches{}; ///< A spell (flag 4) or a skill index (flag 1); raw.
+    std::int32_t value{};
+    float weight{};
+    FormId pickup_sound;  ///< YNAM
+    FormId drop_sound;    ///< ZNAM
+};
+
+/// INGR: an ingredient.
+struct Ingredient {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    LString name;
+    KeywordList keywords;
+    ScriptData scripts;
+
+    std::int32_t value{};  ///< DATA[0..3]
+    float weight{};        ///< DATA[4..7]
+    std::int32_t enit_value{}; ///< ENIT
+    std::uint32_t flags{};     ///< ENIT
+    FormId pickup_sound;   ///< YNAM
+    FormId drop_sound;     ///< ZNAM
+    std::vector<EffectItem> effects;
+};
+
+/// SLGM: a soul gem.
+struct SoulGem {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    LString name;
+    KeywordList keywords;
+    ScriptData scripts;
+
+    std::int32_t value{};  ///< DATA[0..3]
+    float weight{};        ///< DATA[4..7]
+    std::uint8_t soul{};     ///< SOUL
+    std::uint8_t capacity{}; ///< SLCP
+    FormId pickup_sound;   ///< YNAM
+    FormId drop_sound;     ///< ZNAM
+};
+
+/// SCRL: a scroll.
+struct Scroll {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    LString name;
+    LString description; ///< DESC
+    KeywordList keywords;
+
+    std::int32_t value{};  ///< DATA[0..3]
+    float weight{};        ///< DATA[4..7]
+    FormId equip_slot;     ///< ETYP
+    FormId pickup_sound;   ///< YNAM
+    FormId drop_sound;     ///< ZNAM
+    std::vector<EffectItem> effects;
+};
+
 /// LVLN: a leveled NPC list. 691 in SE, 4,074 entries.
 struct LeveledNpc {
     std::string editor_id;
@@ -434,6 +507,11 @@ struct LeveledNpc {
 [[nodiscard]] io::ParseResult<Key> parse_key(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Ingestible> parse_ingestible(io::SpanReader& data,
                                                            const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Book> parse_book(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Ingredient> parse_ingredient(io::SpanReader& data,
+                                                           const FormContext& ctx);
+[[nodiscard]] io::ParseResult<SoulGem> parse_soul_gem(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Scroll> parse_scroll(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Ammo> parse_ammo(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Weapon> parse_weapon(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Projectile> parse_projectile(io::SpanReader& data,

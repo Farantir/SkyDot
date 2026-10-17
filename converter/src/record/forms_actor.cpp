@@ -190,11 +190,14 @@ io::ParseResult<Outfit> parse_outfit(io::SpanReader& data, const FormContext& ct
     return out;
 }
 
-io::ParseResult<LeveledItem> parse_leveled_item(io::SpanReader& data, const FormContext& ctx) {
+namespace {
+
+io::ParseResult<LeveledItem> parse_leveled_list(io::SpanReader& data, const FormContext& ctx,
+                                                FourCC record) {
     LeveledItem out;
     const BaseObjectFields into{.editor_id = &out.editor_id, .bounds = &out.bounds};
     const auto walked = walk_fields(
-        data, FourCC{"LVLI"}, ctx,
+        data, record, ctx,
         [&](const FieldHeader& field, io::SpanReader& body, std::optional<io::ParseError>& failure) {
             if (field.type == FourCC{"LVLD"}) {
                 take(failure, body.get<std::uint8_t>(), out.chance_none);
@@ -215,7 +218,7 @@ io::ParseResult<LeveledItem> parse_leveled_item(io::SpanReader& data, const Form
                     out.entries.push_back(entry);
                 }
             } else {
-                return read_base_object_field(into, FourCC{"LVLI"}, field, body, ctx, failure);
+                return read_base_object_field(into, record, field, body, ctx, failure);
             }
             return true;
         });
@@ -223,6 +226,16 @@ io::ParseResult<LeveledItem> parse_leveled_item(io::SpanReader& data, const Form
         return std::unexpected(walked.error());
     }
     return out;
+}
+
+} // namespace
+
+io::ParseResult<LeveledItem> parse_leveled_item(io::SpanReader& data, const FormContext& ctx) {
+    return parse_leveled_list(data, ctx, FourCC{"LVLI"});
+}
+
+io::ParseResult<LeveledItem> parse_leveled_spell(io::SpanReader& data, const FormContext& ctx) {
+    return parse_leveled_list(data, ctx, FourCC{"LVSP"});
 }
 
 io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {

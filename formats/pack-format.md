@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (27; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (28; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -238,6 +238,20 @@ test bits by these names, through `has_flag` in
   and `keywords`, `races` `voice_types` (male, female) and `cells` `location`
   (XLCN). Unlike a package's conditions, an empty `string1`/`string2` of a
   dialogue condition is an empty string, not absent.
+- Items (format 28): `bases` gain `item` (`ItemData`) for every carriable
+  base, with or without a model: ALCH, AMMO, ARMO, BOOK, INGR, KEYM, LIGH
+  with the carry flag, MISC, SLGM, SCRL and WEAP. `category` is one of misc,
+  weapon, armor, clothing, jewelry, potion, food, ingredient, book, key,
+  soul_gem, scroll, ammo, light; `weight`, `value`, `playable` (false for the
+  record's Non-Playable flag, or AMMO's), `equip_slot` (ETYP of ARMO, WEAP and
+  SCRL), `weapon_type` (WEAP DNAM byte 0, 0..9), `damage`, `armor_rating`
+  (DNAM / 100), `armor_type` (BOD2: 0 light, 1 heavy, 2 clothing),
+  `biped_slots` (bit n is slot 30 + n) and `food` (ALCH food flag). Armor with
+  armor type clothing is jewelry when it covers only amulet, ring or circlet
+  slots, else clothing. A CONT base carries `items` (CNTO; a form can be a
+  leveled list) and its DATA flags in `flags` (bit 1 respawns). `leveled_lists`
+  also holds LVSP, and `chance_global` (LVLG, 0 if none) replaces
+  `chance_none` when set.
 - Scenes (format 27): `scenes` (SCEN), sorted by id, FormIDs global: `quest`
   (the PNAM after the last action), `flags` (FNAM: 0x1 begin on quest start,
   0x2 stop on quest end, 0x4 show all text, 0x8 repeat while true, 0x10

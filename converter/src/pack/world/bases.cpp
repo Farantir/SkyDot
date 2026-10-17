@@ -6,6 +6,7 @@
 #include "bethconv/io/span_reader.hpp"
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/forms.hpp"
+#include "bethconv/record/forms_actor.hpp"
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
 
@@ -153,6 +154,13 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
         light->flicker_intensity_amplitude, light->flicker_movement_amplitude);
     out.scripts = shared_.global_scripts(merged, light->scripts, failed);
     out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
+    if (light->has(record::Light::Flag::can_be_carried)) {
+        out.name = light->name.text;
+        out.item = std::make_unique<wfb::ItemDataT>();
+        out.item->category = wfb::ItemCategory::light;
+        out.item->weight = light->weight;
+        out.item->value = static_cast<std::int32_t>(light->value);
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -662,8 +670,189 @@ void BaseCollector::on_texture_set(const record::MergedRecord& merged, io::SpanR
     texture_sets_[merged.form.value] = std::move(entry);
 }
 
+bool BaseCollector::is_item_type(io::FourCC type) noexcept {
+    return type == FourCC{"ALCH"} || type == FourCC{"AMMO"} || type == FourCC{"ARMO"} ||
+           type == FourCC{"BOOK"} || type == FourCC{"INGR"} || type == FourCC{"KEYM"} ||
+           type == FourCC{"MISC"} || type == FourCC{"SLGM"} || type == FourCC{"SCRL"} ||
+           type == FourCC{"WEAP"} || type == FourCC{"CONT"};
+}
+
+namespace {
+
+/// The record header's Non-Playable flag (ARMO, WEAP, BOOK).
+constexpr std::uint32_t k_record_non_playable = 0x4;
+
+/// BOD2 slot bits (slot - 30) of the jewelry: amulet 35, ring 36, circlet 42.
+constexpr std::uint32_t k_jewelry_slots = (1U << 5) | (1U << 6) | (1U << 12);
+
+/// Armor type 2 (clothing) with only jewelry slots is jewelry.
+wfb::ItemCategory armor_category(std::uint32_t armor_type, std::uint32_t slots) {
+    if (armor_type != 2) {
+        return wfb::ItemCategory::armor;
+    }
+    if (slots != 0 && (slots & ~k_jewelry_slots) == 0) {
+        return wfb::ItemCategory::jewelry;
+    }
+    return wfb::ItemCategory::clothing;
+}
+
+} // namespace
+
+void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanReader& data,
+                                 const record::FormContext& form_ctx) {
+    ItemEntry entry;
+    entry.type = merged.type.value;
+    entry.record_flags = merged.flags;
+    entry.has_item = true;
+    auto& item = entry.item;
+    bool failed = false;
+    const auto type = merged.type;
+    const auto fail = [&] { ++shared_.stats().parse_errors; };
+    if (type == FourCC{"MISC"}) {
+        auto r = record::parse_misc_item(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::misc;
+        item.weight = r->weight;
+        item.value = r->value;
+    } else if (type == FourCC{"KEYM"}) {
+        auto r = record::parse_key(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::key;
+        item.weight = r->weight;
+        item.value = r->value;
+    } else if (type == FourCC{"ALCH"}) {
+        auto r = record::parse_ingestible(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.food = r->has(record::Ingestible::Flag::food_item);
+        item.category = item.food ? wfb::ItemCategory::food : wfb::ItemCategory::potion;
+        item.weight = r->weight;
+        item.value = r->value;
+    } else if (type == FourCC{"INGR"}) {
+        auto r = record::parse_ingredient(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::ingredient;
+        item.weight = r->weight;
+        item.value = r->value;
+    } else if (type == FourCC{"BOOK"}) {
+        auto r = record::parse_book(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::book;
+        item.weight = r->weight;
+        item.value = r->value;
+        item.playable = (merged.flags & k_record_non_playable) == 0;
+    } else if (type == FourCC{"SLGM"}) {
+        auto r = record::parse_soul_gem(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::soul_gem;
+        item.weight = r->weight;
+        item.value = r->value;
+    } else if (type == FourCC{"SCRL"}) {
+        auto r = record::parse_scroll(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::scroll;
+        item.weight = r->weight;
+        item.value = r->value;
+        item.equip_slot = shared_.global(merged, r->equip_slot, failed);
+    } else if (type == FourCC{"AMMO"}) {
+        auto r = record::parse_ammo(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::ammo;
+        item.weight = r->weight.value_or(0.0F);
+        item.value = r->value;
+        item.damage = r->damage;
+        item.playable = !r->has(record::Ammo::Flag::non_playable);
+    } else if (type == FourCC{"WEAP"}) {
+        auto r = record::parse_weapon(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.category = wfb::ItemCategory::weapon;
+        item.weight = r->weight;
+        item.value = r->value;
+        item.damage = static_cast<float>(r->damage);
+        item.equip_slot = shared_.global(merged, r->equip_type, failed);
+        // DNAM byte 0: the animation type.
+        item.weapon_type = r->weapon_data.empty() ? std::uint8_t{0}
+                                                  : static_cast<std::uint8_t>(r->weapon_data[0]);
+        item.playable = (merged.flags & k_record_non_playable) == 0;
+    } else if (type == FourCC{"ARMO"}) {
+        auto r = record::parse_armor(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        item.weight = r->weight;
+        item.value = static_cast<std::int32_t>(r->value);
+        item.armor_rating = static_cast<float>(r->armor_rating) / 100.0F;
+        item.armor_type = static_cast<std::uint8_t>(r->body.armor_type);
+        item.biped_slots = r->body.slots;
+        item.category = armor_category(r->body.armor_type, r->body.slots);
+        item.equip_slot = shared_.global(merged, r->equip_slot, failed);
+        item.playable = (merged.flags & k_record_non_playable) == 0;
+    } else if (type == FourCC{"CONT"}) {
+        auto r = record::parse_container(data, form_ctx);
+        if (!r) { return fail(); }
+        entry.has_item = false;
+        entry.editor_id = r->editor_id;
+        entry.name = r->name.text;
+        entry.flags = r->flags;
+        for (const auto& it : r->items) {
+            entry.items.emplace_back(shared_.global(merged, it.item, failed), it.count);
+        }
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    item_entries_[merged.form.value] = std::move(entry);
+}
+
 void BaseCollector::finish(wfb::WorldT& world) {
     auto& stats = shared_.stats();
+    for (auto& [id, entry] : item_entries_) {
+        auto found = bases_.find(id);
+        if (found == bases_.end()) {
+            // An item without a model or scripts: a base all the same, so its
+            // references and the inventories that hold it resolve.
+            if (!entry.has_item) {
+                continue;
+            }
+            wfb::BaseT made;
+            made.id = id;
+            made.type = entry.type;
+            made.editor_id = entry.editor_id;
+            made.record_flags = static_cast<wfb::RecordFlags>(entry.record_flags);
+            found = bases_.emplace(id, std::move(made)).first;
+        }
+        auto& base = found->second;
+        if (base.name.empty()) {
+            base.name = entry.name;
+        }
+        if (entry.has_item) {
+            base.item = std::make_unique<wfb::ItemDataT>(entry.item);
+            ++stats.items;
+        } else {
+            base.flags = entry.flags;
+            base.items = std::move(entry.items);
+            ++stats.containers;
+            stats.container_items += base.items.size();
+        }
+    }
+    item_entries_.clear();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {

@@ -388,7 +388,7 @@ table Base {
     has_light: bool;
     light: LightData;
     /// Type-specific flags: DOOR FNAM (bit 1 automatic, 2 hidden, 3 minimal
-    /// use, 4 sliding).
+    /// use, 4 sliding); CONT DATA (bit 1 respawns, format 28).
     flags: uint32;
     /// VMAD.
     scripts: [Script];
@@ -410,6 +410,57 @@ table Base {
     /// RNAM of ACTI and FLOR (format 24): the activation verb that replaces
     /// the default ("Open", "Search"...); empty if none.
     activate_text: string;
+    /// Set for every item base that can be carried (format 28).
+    item: ItemData;
+    /// CONT CNTO (format 28): the start inventory. An entry's form can be a
+    /// LeveledList (LVLI); the engine resolves it on first touch.
+    items: [NpcItem];
+}
+
+/// `ItemData.category`.
+enum ItemCategory : ubyte {
+    misc,
+    weapon,
+    armor,
+    clothing,
+    jewelry,
+    potion,
+    food,
+    ingredient,
+    book,
+    key,
+    soul_gem,
+    scroll,
+    ammo,
+    light
+}
+
+/// What a carriable item base is (format 28; ALCH, AMMO, ARMO, BOOK, INGR,
+/// KEYM, LIGH with the carry flag, MISC, SLGM, SCRL, WEAP). Sources: UESP
+/// and xEdit record layouts.
+table ItemData {
+    category: ItemCategory;
+    weight: float;
+    value: int32;
+    /// False for the record's non-playable flag (ARMO, WEAP, BOOK: record
+    /// flag 4; AMMO: DATA flag 2). The inventory hides these.
+    playable: bool = true;
+    /// ETYP of ARMO and WEAP, an EQUP id; 0 if none.
+    equip_slot: uint32;
+    /// WEAP DNAM animation type: 0 hand to hand, 1 one-handed sword, 2 dagger,
+    /// 3 axe, 4 mace, 5 two-handed sword, 6 two-handed axe, 7 bow, 8 staff,
+    /// 9 crossbow.
+    weapon_type: ubyte;
+    /// WEAP DATA damage, AMMO DATA damage.
+    damage: float;
+    /// ARMO DNAM / 100.
+    armor_rating: float;
+    /// ARMO BOD2 armor type: 0 light, 1 heavy, 2 clothing.
+    armor_type: ubyte;
+    /// ARMO BOD2 or BODT: bit n is body slot 30 + n.
+    biped_slots: uint32;
+    /// ALCH food flag.
+    food: bool;
 }
 
 /// DEST, DSTD and DMDL (format 23). A stage opens when the object's health
@@ -1078,12 +1129,15 @@ enum LeveledListFlags : ubyte (bit_flags) {
     use_all
 }
 
-/// LVLI or LVLN.
+/// LVLI, LVLN or LVSP (format 28).
 table LeveledList {
     id: uint32 (key);
     type: uint32;
     flags: LeveledListFlags;
     chance_none: ubyte;
+    /// LVLG (format 28): a GlobalVariable whose value replaces `chance_none`;
+    /// 0 if none.
+    chance_global: uint32;
     entries: [LeveledEntry];
 }
 

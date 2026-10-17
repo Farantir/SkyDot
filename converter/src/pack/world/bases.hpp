@@ -44,6 +44,19 @@ struct LandTextureEntry {
     std::uint32_t texture_set{};
 };
 
+/// An item base or a container waiting for `finish` to join its base (or
+/// become one: items without a model are bases too).
+struct ItemEntry {
+    std::uint32_t type{};
+    std::string editor_id;
+    std::string name;
+    std::uint32_t record_flags{};
+    std::uint32_t flags{}; ///< CONT DATA flags, into Base.flags.
+    bool has_item{};       ///< False for a CONT: only `items`.
+    wfb::ItemDataT item;
+    std::vector<wfb::NpcItem> items;
+};
+
 class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
@@ -55,6 +68,15 @@ public:
     /// Any other type: kept as a base if it has a model or scripts.
     void collect_generic(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
+
+    /// ALCH, AMMO, ARMO, BOOK, INGR, KEYM, MISC, SLGM, SCRL, WEAP (the item
+    /// data) and CONT (the start inventory): read from `data` alone, joined to
+    /// the base in `finish`. Nothing for another type.
+    void collect_item(const record::MergedRecord& merged, io::SpanReader& data,
+                      const record::FormContext& form_ctx);
+
+    /// True for the types `collect_item` reads.
+    [[nodiscard]] static bool is_item_type(io::FourCC type) noexcept;
 
     /// The bases, land textures (with their texture set's paths), material
     /// objects, grasses and addon nodes, each in id order, into `world`.
@@ -88,6 +110,7 @@ private:
 
     CollectContext& shared_;
     std::map<std::uint32_t, wfb::BaseT> bases_;
+    std::map<std::uint32_t, ItemEntry> item_entries_;
     std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;
     std::map<std::uint32_t, wfb::GrassT> grasses_;
     std::map<std::uint32_t, wfb::AddonNodeT> addons_;

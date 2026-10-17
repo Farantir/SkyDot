@@ -64,6 +64,9 @@ void ActorCollector::collect(const record::MergedRecord& merged, io::SpanReader&
     case FourCC{"LVLN"}.value:
         on_leveled_npc(merged, data, form_ctx);
         break;
+    case FourCC{"LVSP"}.value:
+        on_leveled_spell(merged, data, form_ctx);
+        break;
     default:
         break;
     }
@@ -241,13 +244,15 @@ void ActorCollector::on_outfit(const record::MergedRecord& merged, io::SpanReade
 
 template <typename Entries>
 void ActorCollector::add_leveled(const record::MergedRecord& merged, std::uint8_t flags,
-                                 std::uint8_t chance_none, const Entries& entries) {
+                                 std::uint8_t chance_none, const Entries& entries,
+                                 record::FormId chance_global) {
     bool failed = false;
     wfb::LeveledListT out;
     out.id = merged.form.value;
     out.type = merged.type.value;
     out.flags = static_cast<wfb::LeveledListFlags>(flags);
     out.chance_none = chance_none;
+    out.chance_global = shared_.global(merged, chance_global, failed);
     for (const auto& e : entries) {
         out.entries.emplace_back(e.level, e.count, shared_.global(merged, e.reference, failed));
     }
@@ -264,7 +269,17 @@ void ActorCollector::on_leveled_item(const record::MergedRecord& merged, io::Spa
         ++shared_.stats().parse_errors;
         return;
     }
-    add_leveled(merged, list->flags, list->chance_none, list->entries);
+    add_leveled(merged, list->flags, list->chance_none, list->entries, list->chance_global);
+}
+
+void ActorCollector::on_leveled_spell(const record::MergedRecord& merged, io::SpanReader& data,
+                                      const record::FormContext& form_ctx) {
+    auto list = record::parse_leveled_spell(data, form_ctx);
+    if (!list) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    add_leveled(merged, list->flags, list->chance_none, list->entries, list->chance_global);
 }
 
 void ActorCollector::on_leveled_npc(const record::MergedRecord& merged, io::SpanReader& data,

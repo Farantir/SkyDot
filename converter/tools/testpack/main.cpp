@@ -639,6 +639,96 @@ std::vector<std::byte> build_plugin() {
     bethconv::test::write_record(quests, "QUST", 0x0000'0150, quest_record().span());
     bethconv::test::write_group(file, tag_value("QUST"), 0, quests.span());
 
+
+    // ---- items: a sword, gold, a leveled list and a chest (the cuirass is
+    // with the other armor below) ----
+    {
+        const auto text = [](ByteWriter& payload, std::string_view tag, std::string_view value) {
+            ByteWriter field;
+            field.zstring(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        const auto u32 = [](ByteWriter& payload, std::string_view tag, std::uint32_t value) {
+            ByteWriter field;
+            field.u32(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        ByteWriter weap;
+        edid(weap, "TestpackSword");
+        text(weap, "FULL", "Testpack Sword");
+        modl(weap, "testpack/cube_se.nif");
+        u32(weap, "ETYP", 0x0001'3F44); // EitherHand, as in Skyrim.esm
+        ByteWriter weap_data;
+        weap_data.u32(25);
+        weap_data.f32(9.0F);
+        weap_data.u16(7);
+        bethconv::test::write_field(weap, "DATA", weap_data);
+        ByteWriter dnam;
+        dnam.u8(1); // one-handed sword
+        for (int i = 1; i < 100; ++i) {
+            dnam.u8(0);
+        }
+        bethconv::test::write_field(weap, "DNAM", dnam);
+        ByteWriter weaps;
+        bethconv::test::write_record(weaps, "WEAP", 0x0000'0190, weap.span());
+        bethconv::test::write_group(file, tag_value("WEAP"), 0, weaps.span());
+
+        ByteWriter misc;
+        edid(misc, "TestpackGold");
+        text(misc, "FULL", "Testpack Gold");
+        ByteWriter misc_data;
+        misc_data.u32(1);
+        misc_data.f32(0.0F);
+        bethconv::test::write_field(misc, "DATA", misc_data);
+        ByteWriter miscs;
+        bethconv::test::write_record(miscs, "MISC", 0x0000'0192, misc.span());
+        bethconv::test::write_group(file, tag_value("MISC"), 0, miscs.span());
+
+        // One of the sword or the cuirass, whichever the seed picks.
+        ByteWriter lvli;
+        edid(lvli, "TestpackLoot");
+        ByteWriter lvld;
+        lvld.u8(0);
+        bethconv::test::write_field(lvli, "LVLD", lvld);
+        ByteWriter lvlf;
+        lvlf.u8(0);
+        bethconv::test::write_field(lvli, "LVLF", lvlf);
+        ByteWriter llct;
+        llct.u8(2);
+        bethconv::test::write_field(lvli, "LLCT", llct);
+        for (const std::uint32_t form : {0x0000'0190U, 0x0000'0191U}) {
+            ByteWriter lvlo;
+            lvlo.u16(1);
+            lvlo.u16(0);
+            lvlo.u32(form);
+            lvlo.u16(1);
+            lvlo.u16(0);
+            bethconv::test::write_field(lvli, "LVLO", lvlo);
+        }
+        ByteWriter lvlis;
+        bethconv::test::write_record(lvlis, "LVLI", 0x0000'0193, lvli.span());
+        bethconv::test::write_group(file, tag_value("LVLI"), 0, lvlis.span());
+
+        ByteWriter cont;
+        edid(cont, "TestpackChest");
+        modl(cont, "testpack/cube_se.nif");
+        text(cont, "FULL", "Testpack Chest");
+        ByteWriter cont_data;
+        cont_data.u8(0);
+        cont_data.f32(0.0F);
+        bethconv::test::write_field(cont, "DATA", cont_data);
+        u32(cont, "COCT", 2);
+        for (const auto& [form, count] : {std::pair{0x0000'0192U, 25U}, std::pair{0x0000'0193U, 1U}}) {
+            ByteWriter cnto;
+            cnto.u32(form);
+            cnto.u32(count);
+            bethconv::test::write_field(cont, "CNTO", cnto);
+        }
+        ByteWriter conts;
+        bethconv::test::write_record(conts, "CONT", 0x0000'0194, cont.span());
+        bethconv::test::write_group(file, tag_value("CONT"), 0, conts.span());
+    }
+
     // ---- an actor: race, skin armor and its addon, NPC ----
     // The race's skeleton and behaviour name files under meshes/testpack/actor/
     // (see actor_skeleton and actor_clip); its skin is one addon, the skinned
@@ -697,6 +787,21 @@ std::vector<std::byte> build_plugin() {
         u32(skin, "MODL", 0x0000'0161);
         ByteWriter armors;
         bethconv::test::write_record(armors, "ARMO", 0x0000'0162, skin.span());
+        {
+            ByteWriter cuirass;
+            edid(cuirass, "TestpackCuirass");
+            text(cuirass, "FULL", "Testpack Cuirass");
+            ByteWriter heavy_body;
+            heavy_body.u32(0x4);
+            heavy_body.u32(1); // heavy
+            bethconv::test::write_field(cuirass, "BOD2", heavy_body);
+            ByteWriter armo_data;
+            armo_data.u32(100);
+            armo_data.f32(28.0F);
+            bethconv::test::write_field(cuirass, "DATA", armo_data);
+            u32(cuirass, "DNAM", 2500);
+            bethconv::test::write_record(armors, "ARMO", 0x0000'0191, cuirass.span());
+        }
         bethconv::test::write_group(file, tag_value("ARMO"), 0, armors.span());
 
         ByteWriter npc;
@@ -1043,6 +1148,8 @@ std::vector<std::byte> build_plugin() {
                     .y = 0,
                     .z = 0,
                     .scale = 2.5F},
+                   // A chest holding gold and a leveled list.
+                   {.form = 0x0000'0214, .base = 0x0000'0194, .x = 500, .y = 500, .z = 0},
                    // Locked; leads to the interior's door.
                    {.form = 0x0000'0213,
                     .base = 0x0000'0103,

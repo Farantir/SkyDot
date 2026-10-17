@@ -411,7 +411,8 @@ std::span<const FourCC> defined_types() noexcept {
         FourCC{"TXST"}, FourCC{"ACTI"}, FourCC{"CONT"}, FourCC{"MISC"},
         FourCC{"MSTT"}, FourCC{"FURN"}, FourCC{"FLOR"}, FourCC{"TREE"},
         FourCC{"KEYM"}, FourCC{"ALCH"}, FourCC{"AMMO"}, FourCC{"WEAP"},
-        FourCC{"PROJ"}, FourCC{"IDLM"}, FourCC{"LVLN"},
+        FourCC{"PROJ"}, FourCC{"IDLM"}, FourCC{"LVLN"}, FourCC{"BOOK"},
+        FourCC{"INGR"}, FourCC{"SLGM"}, FourCC{"SCRL"},
         // forms_world.cpp
         FourCC{"LTEX"}, FourCC{"IMGS"}, FourCC{"VOLI"}, FourCC{"CLMT"}, FourCC{"WTHR"},
         FourCC{"REGN"}, FourCC{"LCTN"}, FourCC{"LAND"}, FourCC{"NAVM"},
@@ -421,7 +422,7 @@ std::span<const FourCC> defined_types() noexcept {
         FourCC{"ENCH"}, FourCC{"SPEL"}, FourCC{"NPC_"}, FourCC{"QUST"},
         FourCC{"FLST"}, FourCC{"PACK"},
         // forms_actor.cpp
-        FourCC{"ARMO"}, FourCC{"ARMA"}, FourCC{"OTFT"}, FourCC{"LVLI"}, FourCC{"RACE"},
+        FourCC{"ARMO"}, FourCC{"ARMA"}, FourCC{"OTFT"}, FourCC{"LVLI"}, FourCC{"LVSP"}, FourCC{"RACE"},
         // forms_dialogue.cpp
         FourCC{"DLBR"}, FourCC{"DIAL"}, FourCC{"INFO"}, FourCC{"VTYP"}, FourCC{"RELA"}, FourCC{"SCEN"},
     };

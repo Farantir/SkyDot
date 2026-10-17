@@ -242,6 +242,10 @@ std::optional<wfb::ClimateT> WorldFile::climate(std::uint32_t id) const {
     return unpack(lookup(impl_->root->climates(), id));
 }
 
+std::optional<wfb::LeveledListT> WorldFile::leveled_list(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->leveled_lists(), id));
+}
+
 std::optional<wfb::AmmoT> WorldFile::ammo(std::uint32_t id) const {
     return unpack(lookup(impl_->root->ammos(), id));
 }

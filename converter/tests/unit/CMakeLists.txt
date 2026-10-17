@@ -43,6 +43,7 @@ add_executable(bethconv_unit_tests
     test_ordered_pool.cpp
     test_deflate.cpp
     test_world.cpp
+    test_world_items.cpp
     test_scene.cpp
     test_xwma.cpp
 )

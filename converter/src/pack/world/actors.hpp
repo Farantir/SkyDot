@@ -46,12 +46,15 @@ private:
                    const record::FormContext& form_ctx);
     void on_leveled_item(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
+    void on_leveled_spell(const record::MergedRecord& merged, io::SpanReader& data,
+                          const record::FormContext& form_ctx);
     void on_leveled_npc(const record::MergedRecord& merged, io::SpanReader& data,
                         const record::FormContext& form_ctx);
 
     template <typename Entries>
     void add_leveled(const record::MergedRecord& merged, std::uint8_t flags,
-                     std::uint8_t chance_none, const Entries& entries);
+                     std::uint8_t chance_none, const Entries& entries,
+                     record::FormId chance_global = {});
 
     CollectContext& shared_;
     std::map<std::uint32_t, wfb::NpcT> npcs_;

@@ -369,6 +369,151 @@ io::ParseResult<Ingestible> parse_ingestible(io::SpanReader& data, const FormCon
     return out;
 }
 
+io::ParseResult<Book> parse_book(io::SpanReader& data, const FormContext& ctx) {
+    Book out;
+    const BaseObjectFields into{.editor_id = &out.editor_id,
+                                .bounds = &out.bounds,
+                                .model = &out.model,
+                                .name = &out.name,
+                                .keywords = &out.keywords,
+                                .scripts = &out.scripts};
+    const auto walked = walk_fields(
+        data, FourCC{"BOOK"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::uint8_t>(), out.flags);
+                take(failure, body.get<std::uint8_t>(), out.book_type);
+                std::uint16_t unused{};
+                take(failure, body.get<std::uint16_t>(), unused);
+                take(failure, body.get<std::uint32_t>(), out.teaches);
+                take(failure, body.get<std::int32_t>(), out.value);
+                take(failure, body.get<float>(), out.weight);
+            } else if (field.type == FourCC{"DESC"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"BOOK"}, field.type, StringKind::description),
+                     out.description);
+            } else if (field.type == FourCC{"YNAM"}) {
+                take(failure, read_formid(body), out.pickup_sound);
+            } else if (field.type == FourCC{"ZNAM"}) {
+                take(failure, read_formid(body), out.drop_sound);
+            } else {
+                return read_base_object_field(into, FourCC{"BOOK"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<Ingredient> parse_ingredient(io::SpanReader& data, const FormContext& ctx) {
+    Ingredient out;
+    const BaseObjectFields into{.editor_id = &out.editor_id,
+                                .bounds = &out.bounds,
+                                .model = &out.model,
+                                .name = &out.name,
+                                .keywords = &out.keywords,
+                                .scripts = &out.scripts};
+    const auto walked = walk_fields(
+        data, FourCC{"INGR"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::int32_t>(), out.value);
+                take(failure, body.get<float>(), out.weight);
+            } else if (field.type == FourCC{"ENIT"}) {
+                take(failure, body.get<std::int32_t>(), out.enit_value);
+                take(failure, body.get<std::uint32_t>(), out.flags);
+            } else if (field.type == FourCC{"YNAM"}) {
+                take(failure, read_formid(body), out.pickup_sound);
+            } else if (field.type == FourCC{"ZNAM"}) {
+                take(failure, read_formid(body), out.drop_sound);
+            } else if (read_effect_field(out.effects, field, body, failure)) {
+                return true;
+            } else {
+                return read_base_object_field(into, FourCC{"INGR"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<SoulGem> parse_soul_gem(io::SpanReader& data, const FormContext& ctx) {
+    SoulGem out;
+    const BaseObjectFields into{.editor_id = &out.editor_id,
+                                .bounds = &out.bounds,
+                                .model = &out.model,
+                                .name = &out.name,
+                                .keywords = &out.keywords,
+                                .scripts = &out.scripts};
+    const auto walked = walk_fields(
+        data, FourCC{"SLGM"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::int32_t>(), out.value);
+                take(failure, body.get<float>(), out.weight);
+            } else if (field.type == FourCC{"SOUL"}) {
+                take(failure, body.get<std::uint8_t>(), out.soul);
+            } else if (field.type == FourCC{"SLCP"}) {
+                take(failure, body.get<std::uint8_t>(), out.capacity);
+            } else if (field.type == FourCC{"YNAM"}) {
+                take(failure, read_formid(body), out.pickup_sound);
+            } else if (field.type == FourCC{"ZNAM"}) {
+                take(failure, read_formid(body), out.drop_sound);
+            } else {
+                return read_base_object_field(into, FourCC{"SLGM"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<Scroll> parse_scroll(io::SpanReader& data, const FormContext& ctx) {
+    Scroll out;
+    const BaseObjectFields into{.editor_id = &out.editor_id,
+                                .bounds = &out.bounds,
+                                .model = &out.model,
+                                .name = &out.name,
+                                .keywords = &out.keywords};
+    const auto walked = walk_fields(
+        data, FourCC{"SCRL"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::int32_t>(), out.value);
+                take(failure, body.get<float>(), out.weight);
+            } else if (field.type == FourCC{"DESC"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"SCRL"}, field.type, StringKind::description),
+                     out.description);
+            } else if (field.type == FourCC{"ETYP"}) {
+                take(failure, read_formid(body), out.equip_slot);
+            } else if (field.type == FourCC{"YNAM"}) {
+                take(failure, read_formid(body), out.pickup_sound);
+            } else if (field.type == FourCC{"ZNAM"}) {
+                take(failure, read_formid(body), out.drop_sound);
+            } else if (read_effect_field(out.effects, field, body, failure)) {
+                return true;
+            } else {
+                return read_base_object_field(into, FourCC{"SCRL"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<Ammo> parse_ammo(io::SpanReader& data, const FormContext& ctx) {
     Ammo out;
     const BaseObjectFields into{.editor_id = &out.editor_id,

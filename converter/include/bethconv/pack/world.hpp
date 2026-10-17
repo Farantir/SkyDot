@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 27;
+inline constexpr std::uint32_t k_world_format_version = 28;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -65,6 +65,11 @@ struct WorldStats {
     std::uint64_t armor_addons{};
     std::uint64_t outfits{};
     std::uint64_t leveled_lists{};
+    /// Item bases with ItemData and containers with their start inventory
+    /// (format 28), and the entries of the latter.
+    std::uint64_t items{};
+    std::uint64_t containers{};
+    std::uint64_t container_items{};
     /// AMMO and PROJ (format 19).
     std::uint64_t ammos{};
     std::uint64_t projectiles{};
@@ -191,6 +196,7 @@ public:
     [[nodiscard]] std::size_t package_count() const noexcept;
     [[nodiscard]] std::optional<wfb::RaceT> race(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ArmorAddonT> armor_addon(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::LeveledListT> leveled_list(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::AmmoT> ammo(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ProjectileT> projectile(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;

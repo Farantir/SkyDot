@@ -93,7 +93,7 @@ struct Outfit {
     std::vector<FormId> items; ///< INAM
 };
 
-/// LVLI: a leveled item list. 3,846 in SE, 25,532 entries.
+/// LVLI: a leveled item list. LVSP (leveled spells) has the same layout. 3,846 in SE, 25,532 entries.
 struct LeveledItem {
     std::string editor_id;
     ObjectBounds bounds;
@@ -170,6 +170,9 @@ struct Race {
 [[nodiscard]] io::ParseResult<Outfit> parse_outfit(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<LeveledItem> parse_leveled_item(io::SpanReader& data,
                                                               const FormContext& ctx);
+/// LVSP: a leveled spell list; the layout is LVLI's.
+[[nodiscard]] io::ParseResult<LeveledItem> parse_leveled_spell(io::SpanReader& data,
+                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx);
 
 } // namespace bethconv::record

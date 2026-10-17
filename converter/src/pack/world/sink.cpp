@@ -20,6 +20,12 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     if (merged.deleted) {
         return;
     }
+    if (BaseCollector::is_item_type(merged.type)) {
+        // The item data and start inventories, read from a copy; the types
+        // below still make the base as before.
+        io::SpanReader copy = data;
+        bases_.collect_item(merged, copy, form_ctx);
+    }
     switch (merged.type.value) {
     case FourCC{"CELL"}.value:
     case FourCC{"REFR"}.value:
@@ -55,6 +61,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"ARMA"}.value:
     case FourCC{"OTFT"}.value:
     case FourCC{"LVLI"}.value:
+    case FourCC{"LVSP"}.value:
         actors_.collect(merged, data, form_ctx);
         break;
     case FourCC{"PACK"}.value:
