@@ -99,7 +99,9 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
+# --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# reference as the player (a container opens its menu; item_menu.gd); both with --hud
+# or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
 # with --screenshot the lines play out first (--shot-delay).
 # --hud forces the health, magicka and stamina bars, the crosshair and the
 # activation prompt on in --screenshot and --benchmark runs, which leave them
@@ -152,6 +154,7 @@ var _rig: PlayerRig
 var _controls: PlayerInput
 var _hud: Hud
 var _dialogue: DialogueMenu
+var _items: ItemMenu
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
 var _benchmark := BenchmarkRun.new()
@@ -231,6 +234,9 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
+	if _settings.hud or _settings.open_inventory or _settings.open_container != 0:
+		_items = ItemMenu.new(_session, _controls)
+		add_child(_items)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
 	if _settings.has_screenshot:
@@ -288,6 +294,10 @@ func _start_game() -> void:
 	_session.start_quests(settings.start_quests)
 	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
 		print("--talk: 0x%08X cannot talk" % settings.talk)
+	if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
+		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
+	if settings.open_inventory and _items != null:
+		_items.open_inventory()
 
 	if settings.has_screenshot:
 		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
@@ -355,6 +365,9 @@ func _on_command(action: StringName, shift: bool) -> void:
 			_session.load_game(SaveService.QUICKSAVE)
 		PlayerInput.SHOW_JOURNAL:
 			_debug.toggle_journal()
+		PlayerInput.INVENTORY:
+			if _items != null:
+				_items.open_inventory()
 		PlayerInput.CHANGE_TIME:
 			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
 			if not time_text.is_empty():

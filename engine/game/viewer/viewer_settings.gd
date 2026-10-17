@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input", "hud", "invert-look-y"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -100,6 +100,8 @@ var benchmark := 0.0  # seconds
 var fly_speed := 20.0  # m/s during the benchmark
 var captures := false  # screenshot or benchmark: still time, still actors
 var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
+var open_inventory := false  # --open-inventory: show the inventory after the load
+var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
 var stick_look_speed := 3.0  # rad/s at full deflection of the right stick (pitch: 0.7 of it)
@@ -205,6 +207,10 @@ func _read(args: Dictionary) -> void:
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	hud = args.has("hud") or not captures
+	open_inventory = args.has("open-inventory")
+	if args.has("open-container"):
+		var container_text: String = args["open-container"]
+		open_container = container_text.hex_to_int() if container_text.begins_with("0x") else container_text.to_int()
 	if args.has("talk"):
 		var talk_text: String = args["talk"]
 		talk = talk_text.hex_to_int() if talk_text.begins_with("0x") else talk_text.to_int()

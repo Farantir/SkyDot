@@ -1174,15 +1174,19 @@ player). A shell calls `start_game`, `enter_world`/`enter_cell`, `step`
 each frame (streaming, preloading, the door fade, scripts, clock hand-off,
 AI), `activate_in_view` (along the viewpoint, or the node `set_pointer` names: a VR
 shell's controller), `save_game`/`load_game`, and listens to `message`,
-`failed`, the quest signals and `place_built`/`place_left`. No part has a
-`_process` of its own.
+`failed`, the quest signals, `container_opened` and `place_built`/`place_left`.
+Items: `inventory(owner)`, `equipment`, `transfer`, `transfer_all`,
+`equip`/`unequip` (the player's) and `drop(form, count)`, which put one placed
+reference with its count in front of the player (activating it picks the count
+up again; saved with the placed references and ITST); `items_changed` says
+when to redraw. No part has a `_process` of its own.
 
 | File | Class | What it owns |
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
 | `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in |
 | `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the streamer built ahead |
-| `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, graph states, quests, messages), carrying out activation outcomes (load doors, plain doors, furniture), the `--activate` runs |
+| `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, graph states, quests, messages), carrying out activation outcomes (load doors, plain doors, furniture, containers: `container_opened`), the `--activate` runs |
 | `placed.gd` | `PlacedRefs` | the nodes of references scripts place (PlaceAtMe, explosions) and destruction model swaps; the VM owns the references |
 | `projectiles.gd` | `Projectiles` | what `Weapon.Fire` launches, in flight and stuck |
 | `sounds.gd` | `Sounds` | sound effects from `Sound.Play`, graphs, text keys and sound markers; instance ids come from the engine |
@@ -1200,7 +1204,7 @@ developer tooling: CLI flags, the debug overlay, shots and the benchmark.
 | File | Class | What it owns |
 | --- | --- | --- |
 | `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
-| `hud.gd`, `dialogue_menu.gd`, `subtitles.gd` | `Hud`, `DialogueMenu`, `Subtitles` | `CanvasLayer` hosts of the views in `game/ui/` |
+| `hud.gd`, `dialogue_menu.gd`, `subtitles.gd`, `item_menu.gd` | `Hud`, `DialogueMenu`, `Subtitles`, `ItemMenu` | `CanvasLayer` hosts of the views in `game/ui/`; `ItemMenu` opens the inventory (`inventory` action: I, Tab, gamepad Back) and a container's menu on `container_opened`, and keeps the player still while one is open. `--open-inventory` and `--open-container 0xREF` open them from the command line |
 | `image_space_sync.gd` | `ImageSpaceSync` | the per-frame fog and image space sync, shared with the VR shell |
 | `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
 | `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot`, so a gamepad or VR shell can map its own events to them |
@@ -1228,6 +1232,7 @@ desktop game with the `XRCamera3D` as a plain camera.
 | `vr/vr_rig.gd` | `VrRig` (a `PlayerRig`) | `XROrigin3D` at the player's feet, `XRCamera3D`, two controllers; snap turn about the head; controller events as `InputMap` actions |
 | `vr/vr_panel.gd` | `VrPanel` | a view in a `SubViewport` on an unshaded quad: head-locked, or recentred in front of the head |
 | `ui/hud_view.gd`, `subtitles_view.gd`, `dialogue_view.gd` | `HudView`, `SubtitlesView`, `DialogueView` | the shell widgets as `Control`s with no host; the dialogue takes `ui_*` actions and `activate` |
+| `ui/inventory_view.gd`, `container_view.gd`, `item_rows.gd` | `InventoryView`, `ContainerView`, `ItemRows` | the item menus (categories, columns, equipped mark; two columns with move and take all), driven by `ui_*`, `inventory` and `menu_drop` (R, X); the VR shell puts each on a `VrPanel` in front of the head, the left menu button opens the inventory and activating a container its menu |
 
 ### 8.4 Tools and tests
 

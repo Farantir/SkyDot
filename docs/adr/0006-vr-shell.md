@@ -32,7 +32,7 @@ window, which a headset cannot show.
   meaning. Left stick moves relative to the head (click: sprint), right
   stick x snap-turns 30 degrees about the head, the right trigger activates
   along the right controller's aim ray, A jumps and accepts, B cancels, the
-  left menu button asks for the inventory (logged: there is none yet).
+  left menu button opens the inventory (`InventoryView` and `ContainerView`, one `VrPanel` each, as for the dialogue).
   Controller events become `InputEventAction`s on the InputMap actions that
   `PlayerInput` and the menus already read; `PlayerInput` is reused as is, so
   the desktop fallback plays like the viewer.

@@ -296,6 +296,22 @@ if(SKYDOT_SSE_PACK)
         endif()
     endfunction()
 
+    # Activating a container opens its menu (flat viewer and VR shell fallback).
+    skydot_sse_test(sse_open_container
+        ARGS --cell RiverwoodRiverwoodTrader --pick-locks on --hud --open-container 0x5A3B6 --open-inventory
+             --quit-after 20
+        PASS "0x0005A3B6 PersonalChestSmall \\(CONT\\) opens")
+    add_test(NAME sse_vr_open_container
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://vr/vr_shell.tscn --
+                     --pack "${SKYDOT_SSE_PACK}" --cell RiverwoodRiverwoodTrader --pick-locks on --hud
+                     --time 13.13 --time-scale 0 --open-container 0x5A3B6 --quit-after 20)
+    set_tests_properties(sse_vr_open_container PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "PersonalChestSmall \\(CONT\\) opens.*vr: quit"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 180)
+
     # Bleak Falls Barrow: the pillar lever sits at the pillars' room.
     set(_pillars --cell BleakFallsBarrow01 --at 5006.8,-893.3,-636 --look 197.1,38.5
                  --activate-wait 200 --quit-after 900)

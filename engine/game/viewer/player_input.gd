@@ -55,9 +55,10 @@ const RADIUS_DOWN := &"radius_down"
 const RADIUS_UP := &"radius_up"
 const CYCLE_MSAA := &"cycle_msaa"
 const TOGGLE_FLY := &"toggle_fly"
+const INVENTORY := &"inventory"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
@@ -72,7 +73,7 @@ const PITCH_SPEED_FACTOR := 0.7
 ## backwards or the forced variant of some).
 signal command(action: StringName, modifier: bool)
 
-## Set while a dialogue menu has the keyboard: the player stands still and the
+## Set while a menu has the keyboard: the player stands still and the
 ## keys are not commands.
 var blocked := false
 ## Off for runs that drive themselves: everything here is ignored and the

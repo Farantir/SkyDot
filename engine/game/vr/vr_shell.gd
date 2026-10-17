@@ -36,6 +36,10 @@ var _image_space: SkydotImageSpace
 var _rig: VrRig
 var _controls: PlayerInput
 var _dialogue_panel: VrPanel
+var _inventory: InventoryView
+var _container: ContainerView
+var _inventory_panel: VrPanel
+var _container_panel: VrPanel
 var _xr: XRInterface
 var _quit_in := -1  # frames until quitting after --activate
 
@@ -103,7 +107,7 @@ func _create_components() -> void:
 	_session.activations_finished.connect(func() -> void:
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_rig.fell_through.connect(func() -> void: print("note: fell through the world"))
-	_rig.inventory_requested.connect(func() -> void: print("vr: inventory (not implemented)"))
+	_rig.inventory_requested.connect(_on_inventory_requested)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _settings.interactive
 	_controls.look_speed = _settings.stick_look_speed
@@ -123,6 +127,12 @@ func _create_components() -> void:
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)
 		add_child(_dialogue_panel)
+	if _settings.hud or _settings.open_inventory or _settings.open_container != 0:
+		_inventory = InventoryView.new(_session)
+		_container = ContainerView.new(_session)
+		_inventory_panel = _menu_panel(_inventory)
+		_container_panel = _menu_panel(_container)
+		_session.container_opened.connect(_on_container_opened)
 	if not _rig.tracking:
 		_controls.capture_mouse()
 
@@ -136,6 +146,46 @@ func _head_panel(view: Control, pixels: Vector2i, width: float, at: Vector3) -> 
 
 func _key_label(action: StringName) -> String:
 	return "Trigger" if _rig.tracking and action == &"activate" else _controls.key_label(action)
+
+
+## An item menu (ui/) on a panel put in front of the head when it opens.
+func _menu_panel(view: Control) -> VrPanel:
+	view.enabled = func() -> bool: return _controls.enabled
+	view.key_label = _key_label
+	view.engaged.connect(_on_menu_engaged.bind(view))
+	var panel := VrPanel.new(view, MENU_PIXELS, MENU_WIDTH)
+	panel.set_shown(false)
+	add_child(panel)
+	return panel
+
+
+func _on_menu_engaged(open: bool, view: Control) -> void:
+	var panel := _inventory_panel if view == _inventory else _container_panel
+	_controls.blocked = open or _inventory.is_open() or _container.is_open()
+	if open and not panel.visible:
+		panel.recenter(_rig.camera)
+	panel.set_shown(open)
+
+
+## The left menu button: the inventory, or closes the menu that is open.
+func _on_inventory_requested() -> void:
+	if _inventory == null:
+		print("vr: inventory (the HUD is off)")
+		return
+	if _inventory.is_open():
+		_inventory.close()
+	elif _container.is_open():
+		_container.close()
+	elif not _session.is_dialogue_open():
+		_inventory.open()
+
+
+## Activating a container opens its menu.
+func _on_container_opened(ref: int) -> void:
+	if _session.is_dialogue_open():
+		return
+	_inventory.close()
+	_container.open(ref)
 
 
 func _on_dialogue_engaged(open: bool) -> void:
@@ -179,6 +229,10 @@ func _start_game() -> void:
 	_session.start_quests(settings.start_quests)
 	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
 		print("--talk: 0x%08X cannot talk" % settings.talk)
+	if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
+		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
+	if settings.open_inventory and _inventory != null:
+		_inventory.open()
 
 
 func _process(delta: float) -> void:
