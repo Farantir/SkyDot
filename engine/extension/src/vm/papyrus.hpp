@@ -143,6 +143,10 @@ public:
     bool unequip(std::int64_t owner, std::int64_t form);
     /// {right, left, ammo, worn: [forms]} of `owner`.
     godot::Dictionary equipment(std::int64_t owner);
+    /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
+    /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
+    /// 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow.
+    std::int64_t equipped_item_type(std::int64_t owner, std::int64_t hand);
     /// Take up to `count` of `form` from `owner` and put one reference of the
     /// item in the world in `cell` at `position` (Skyrim space) with
     /// `rotation` (radians); it carries the count (activating it picks them up

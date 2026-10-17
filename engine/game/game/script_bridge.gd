@@ -22,6 +22,8 @@ signal quest_stage(quest: int, stage: int, text: String)
 signal objective_changed(quest: int, index: int, state: String, text: String)
 ## The player activated an actor that can talk, and nothing else came of it.
 signal talk_requested(ref: int)
+## The player activated a container (a CONT, lock gate passed): its menu.
+signal container_opened(ref: int)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
@@ -368,6 +370,10 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 		"toggle_open":
 			if node != null and _toggle_open(node, ref, label):
 				return
+	if outcome["kind"] == "container":
+		print(label, " opens")
+		container_opened.emit(ref)
+		return
 	if outcome["kind"] == "none" and _papyrus.dialogue_can_talk(ref):
 		talk_requested.emit(ref)
 		return

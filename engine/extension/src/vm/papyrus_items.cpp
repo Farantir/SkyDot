@@ -294,6 +294,14 @@ Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
     return out;
 }
 
+std::int64_t SkydotPapyrus::equipped_item_type(std::int64_t owner, std::int64_t hand) {
+    const auto id = static_cast<std::uint32_t>(owner);
+    resolve_owner(id);
+    const auto* equipment = items_.find(id);
+    const std::uint32_t form = equipment == nullptr ? 0 : (hand == 0 ? equipment->left : equipment->right);
+    return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
+}
+
 std::int64_t SkydotPapyrus::drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
                                  const godot::Vector3& position, const godot::Vector3& rotation) {
     const auto base = static_cast<std::uint32_t>(form);
@@ -349,13 +357,7 @@ void SkydotPapyrus::bind_item_natives() {
     });
     // aiHand: 0 left, 1 right.
     vm_->bind("Actor", "GetEquippedItemType", [this](NativeCall& c) {
-        resolve_owner(c.self.form());
-        const auto* equipment = items_.find(c.self.form());
-        std::uint32_t form = 0;
-        if (equipment != nullptr) {
-            form = arg(c, 0).i() == 0 ? equipment->left : equipment->right;
-        }
-        return result(Value::integer(form == 0 ? 0 : vm::equipped_item_type(item_info_of(form))));
+        return result(Value::integer(static_cast<std::int32_t>(equipped_item_type(c.self.form(), arg(c, 0).i()))));
     });
     vm_->bind("Actor", "GetEquippedWeapon", [this](NativeCall& c) {
         resolve_owner(c.self.form());

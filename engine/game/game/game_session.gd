@@ -67,6 +67,16 @@ signal dialogue_closed
 ## long it lasts. The shell decides whether the player is near enough to see it.
 signal subtitle_line(speaker: int, text: String, seconds: float)
 
+## The player activated a container: its reference. The shell shows the menu
+## (`inventory(ref)` is what it holds).
+signal container_opened(ref: int)
+## Something moved between inventories, or was equipped or dropped.
+signal items_changed
+
+## Metres in front of the player a dropped item lands, and above the feet.
+const DROP_DISTANCE := 0.8
+const DROP_HEIGHT := 0.3
+
 ## Stamina a sprinting player loses per second. To measure in the original
 ## (the game's fSprintStaminaDrainMult is a multiplier of something else).
 const SPRINT_STAMINA_PER_SECOND := 7.0
@@ -97,6 +107,7 @@ var _prompt: ActivationPrompt
 var _target := {}
 var _target_frame := -1
 var _sprint_allowed := true
+var _feet := Vector3.ZERO  # the player's feet at the last step, engine space
 var _player: Object
 var _bridge: ScriptBridge
 # Dialogue: the speaker, the lines still to speak, the one being spoken (and
@@ -236,6 +247,7 @@ func _make_game_nodes() -> void:
 	place.left.connect(_bridge.place_left)
 	streamer.cell_dropped.connect(_bridge.scripts_unloaded)
 	_bridge.talk_requested.connect(dialogue_open)
+	_bridge.container_opened.connect(container_opened.emit)
 	_bridge.activations_finished.connect(activations_finished.emit)
 	_bridge.failed.connect(failed.emit)
 	_bridge.message.connect(message.emit)
@@ -309,10 +321,77 @@ func give(items: Array[Vector2i]) -> void:
 		papyrus.add_item(SkydotPapyrus.PLAYER_REF, item.x, item.y)
 
 
+# ---- items
+
+## What `owner` carries (the player by default; a container's reference), start
+## items resolved first: [{form, name, count, weight, value, category,
+## equipped, playable}] by name.
+func inventory(owner := SkydotPapyrus.PLAYER_REF) -> Array:
+	return papyrus.inventory(owner)
+
+
+## What the player holds and wears: {right, left, ammo, worn: [forms]}.
+func equipment() -> Dictionary:
+	return papyrus.equipment(SkydotPapyrus.PLAYER_REF)
+
+
+## Move up to `count` of `form`; returns how many moved.
+func transfer(from: int, to: int, form: int, count: int) -> int:
+	var moved := papyrus.transfer(from, to, form, count)
+	if moved > 0:
+		items_changed.emit()
+	return moved
+
+
+## Everything `from` has, to `to`; returns the number of stacks moved.
+func transfer_all(from: int, to: int) -> int:
+	var stacks := 0
+	for row: Dictionary in papyrus.inventory(from):
+		if transfer(from, to, int(row["form"]), int(row["count"])) > 0:
+			stacks += 1
+	return stacks
+
+
+## The player equips (or consumes, or reads) one `form`. False if it is not
+## carried or cannot be equipped.
+func equip(form: int) -> bool:
+	var done := papyrus.equip(SkydotPapyrus.PLAYER_REF, form)
+	if done:
+		items_changed.emit()
+	return done
+
+
+func unequip(form: int) -> bool:
+	var done := papyrus.unequip(SkydotPapyrus.PLAYER_REF, form)
+	if done:
+		items_changed.emit()
+	return done
+
+
+## Drop up to `count` of `form` as one reference in front of the player, which
+## keeps the count and is picked up by activating it. Returns the reference, 0
+## if the player has none.
+func drop(form: int, count: int) -> int:
+	var forward := Vector3(-sin(_player.yaw), 0.0, -cos(_player.yaw))
+	var at := SkydotWorld.godot_to_skyrim(_feet + forward * DROP_DISTANCE + Vector3.UP * DROP_HEIGHT)
+	var ref := papyrus.drop(SkydotPapyrus.PLAYER_REF, form, count, place.cell_id, at, Vector3.ZERO)
+	if ref != 0:
+		items_changed.emit()
+	return ref
+
+
+## A container's name as the game shows it, else its editor id.
+func container_name(ref: int) -> String:
+	var base := world.get_base(papyrus.get_ref_base(ref))
+	var text: String = base.get("name", "")
+	return text if text != "" else String(base.get("editor_id", ""))
+
+
 ## The game's frame, after the shell has moved the player and before it
 ## draws: streaming, the transition, scripts, the clock and the AI. `feet` is
 ## the player's position (engine space).
 func step(delta: float, feet: Vector3, benchmarking := false) -> void:
+	_feet = feet
 	streamer.update()
 	streamer.preload_step(feet)
 	if transition.is_fading():
@@ -364,6 +443,12 @@ func set_pointer(node: Node3D) -> void:
 func activate_in_view(force: bool) -> void:
 	if not transition.is_fading():
 		_bridge.activate_in_view(force, _pointer)
+
+
+## The player activates reference `ref` (not what the pointer shows): the
+## viewer's --open-container. False if the reference is unknown.
+func activate_ref(ref: int, force := false) -> bool:
+	return _bridge.activate(place.cell_id, ref, null, force)
 
 
 func has_activations() -> bool:

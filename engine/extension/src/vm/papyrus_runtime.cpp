@@ -34,7 +34,11 @@ Dictionary SkydotPapyrus::placed_info(const vm::PlacedRef& placed) const {
     info["scale"] = placed.scale;
     info["disabled"] = false;
     info["links"] = Array();
-    info["scripts"] = world_.is_valid() ? world_->get_base(placed.base).get("scripts", Array()) : Variant(Array());
+    // What activating it needs of the base: its record type and name.
+    const Dictionary base = world_.is_valid() ? world_->get_base(placed.base) : Dictionary();
+    info["type"] = base.get("type", String());
+    info["editor_id"] = base.get("editor_id", String());
+    info["scripts"] = base.get("scripts", Array());
     return info;
 }
 
