@@ -104,10 +104,12 @@ void worn_items(const wfb::World& w, std::uint32_t id, std::uint16_t level, leve
 
 /// The addon's model for this sex and weight, if the pack has it.
 std::string addon_model(const wfb::ArmorAddon& addon, bool female, float weight,
-                        const std::function<bool(const std::string&)>& exists) {
-    std::string path = str(female ? addon.female_model() : addon.male_model());
+                        const std::function<bool(const std::string&)>& exists, bool first_person = false) {
+    std::string path = first_person ? str(female ? addon.female_model_1st() : addon.male_model_1st())
+                                    : str(female ? addon.female_model() : addon.male_model());
     if (path.empty()) {
-        path = str(female ? addon.male_model() : addon.female_model());
+        path = first_person ? str(female ? addon.male_model_1st() : addon.female_model_1st())
+                            : str(female ? addon.male_model() : addon.female_model());
     }
     if (path.empty()) {
         return {};
@@ -283,6 +285,11 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
             const std::string model = addon_model(*addon, plan.female, traits->weight(), exists);
             if (!model.empty() && std::find(plan.parts.begin(), plan.parts.end(), model) == plan.parts.end()) {
                 plan.parts.push_back(model);
+            }
+            const std::string model_1st = addon_model(*addon, plan.female, traits->weight(), exists, true);
+            if (!model_1st.empty() &&
+                std::find(plan.parts_1st.begin(), plan.parts_1st.end(), model_1st) == plan.parts_1st.end()) {
+                plan.parts_1st.push_back(model_1st);
             }
         }
     };

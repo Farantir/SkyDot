@@ -73,6 +73,12 @@ godot::Dictionary get_form_list(const WorldData& data, std::int64_t id);
 godot::Dictionary get_message(const WorldData& data, std::int64_t id);
 godot::Dictionary get_destruction(const WorldData& data, std::int64_t base);
 godot::Dictionary get_explosion(const WorldData& data, std::int64_t id);
+/// GMSTs, weapons, races and impacts (queries_forms.cpp; world.fb 30).
+double get_gmst_float(const WorldData& data, const godot::String& name, double fallback);
+std::int64_t get_gmst_int(const WorldData& data, const godot::String& name, std::int64_t fallback);
+godot::Dictionary get_weapon(const WorldData& data, std::int64_t form);
+godot::Dictionary get_race(const WorldData& data, std::int64_t race);
+godot::Dictionary get_impact(const WorldData& data, std::int64_t data_set, std::int64_t material);
 
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
 godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);

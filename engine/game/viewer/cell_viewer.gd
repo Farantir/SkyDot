@@ -112,7 +112,13 @@
 # default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start shows the
 # journal. Sprinting costs Stamina (7 a second) and stops when it is out.
 # --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
-# at the start, after --load (like player.additem).
+# at the start, after --load (like player.additem). --equip 0xFORM[,...] then equips them.
+# Combat: R (gamepad X) draws and sheathes the weapon (the first-person arms and the
+# weapon show while it is drawn: first_person_body.gd), the left mouse button
+# (right trigger) attacks, a hold longer than fInitialPowerAttackDelay is a power
+# attack (game/combat.gd). --ready-weapon draws it after the load; --attack-at
+# 0xREF[,power] draws it, faces that actor and attacks once it is in reach (for shots
+# and tests); --kill 0xREF[,...] hits those actors with the weapon in hand until dead.
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
 # physics time per frame, draw calls, primitives, objects). It is in
@@ -157,6 +163,8 @@ var _dialogue: DialogueMenu
 var _items: ItemMenu
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
+var _body: FirstPersonBody  # the player's arms and weapon
+var _attack_at := 0  # --attack-at: the actor still to attack
 var _benchmark := BenchmarkRun.new()
 var _quit_in := -1  # frames until quitting after --activate
 
@@ -225,7 +233,10 @@ func _create_components() -> void:
 	_controls.look_speed = _settings.stick_look_speed
 	_controls.invert_look_y = _settings.invert_look_y
 	_controls.command.connect(_on_command)
+	_controls.attack_changed.connect(_on_attack_changed)
 	add_child(_controls)
+	_body = FirstPersonBody.new(_session, _rig.camera)
+	add_child(_body)
 	if _settings.hud:
 		_hud = Hud.new(_session, _controls)
 		add_child(_hud)
@@ -261,6 +272,7 @@ func _start_game() -> void:
 		if not _session.enter_world(settings.world, at, target):
 			return
 		_session.give(settings.give)
+		_apply_combat_options()
 		_session.start_quests(settings.start_quests)
 		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
 			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
@@ -294,6 +306,7 @@ func _start_game() -> void:
 	if not settings.load_path.is_empty():
 		_session.load_game(settings.load_path)
 	_session.give(settings.give)
+	_apply_combat_options()
 	_session.start_quests(settings.start_quests)
 	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
 		print("--talk: 0x%08X cannot talk" % settings.talk)
@@ -312,6 +325,43 @@ func _start_game() -> void:
 			_shots.begin_run(settings.screenshot, yaws)
 
 
+## --equip, --ready-weapon, --attack-at and --kill, once the player has what --give gave.
+func _apply_combat_options() -> void:
+	for form in _settings.equip:
+		if not _session.equip(form):
+			print("--equip: 0x%08X cannot be equipped" % form)
+	if _settings.ready_weapon and _session.weapon_state() == Combat.State.SHEATHED:
+		_session.toggle_weapon()
+	_attack_at = _settings.attack_at
+	for ref in _settings.kill:
+		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
+
+
+## --attack-at: face the actor and attack when it is in reach, once.
+func _attack_at_step() -> void:
+	if _attack_at == 0 or _session.weapon_state() != Combat.State.DRAWN:
+		return
+	var node := _session.world.find_ref_node(_attack_at) as Node3D
+	if node == null or _session.papyrus.is_actor_dead(_attack_at):
+		return
+	var eye := _rig.camera.global_position
+	var chest := node.global_position + Vector3.UP * 1.2
+	var offset := chest - eye
+	var flat := Vector2(offset.x, offset.z).length()
+	_rig.apply_look(atan2(-offset.x, -offset.z), atan2(offset.y, flat))
+	if flat - float(node.get("radius")) <= _session.combat.reach_metres():
+		print("--attack-at: 0x%08X in reach (%.2f m)" % [_attack_at, flat])
+		_session.attack(_settings.attack_power)
+		_attack_at = 0
+
+
+func _on_attack_changed(pressed: bool) -> void:
+	if pressed:
+		_session.attack_pressed()
+	else:
+		_session.attack_released()
+
+
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
@@ -325,11 +375,16 @@ func _process(delta: float) -> void:
 			if _session.has_activations():
 				_session.run_activation()  # --activate inside the series
 		_session.update_dialogue(delta)
+		_session.update_combat(delta)
+		_attack_at_step()
+		_body.follow()
 		_shots.step(delta)
 		return
 	_session.streamer.hold_player(_rig.player, _session.is_fading())
 	_rig.track()
 	_rig.follow()
+	_attack_at_step()
+	_body.follow()
 	_session.step(delta, _rig.player.global_position, _benchmark.is_running())
 	_debug.age(delta)
 	if _quit_in >= 0:
@@ -371,6 +426,8 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.INVENTORY:
 			if _items != null:
 				_items.open_inventory()
+		PlayerInput.READY_WEAPON:
+			_session.toggle_weapon()
 		PlayerInput.CHANGE_TIME:
 			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
 			if not time_text.is_empty():

@@ -32,8 +32,9 @@ class SkydotAnimation : public godot::RefCounted {
 
 public:
     /// What the asset holds: `skeletons` (names), `clips` (per clip:
-    /// `duration`, `frames`, `tracks`, `skeleton`, `annotations`), or
-    /// `error`.
+    /// `duration`, `frames`, `tracks`, `skeleton`, `annotations`),
+    /// `project_clips` (a project file's clips: `name`, `speed`, `crop_start`,
+    /// `crop_end`, `annotations` as {time, text}), or `error`.
     static godot::Dictionary describe(const godot::PackedByteArray& asset);
 
     /// The asset's first skeleton as a Skeleton3D at its reference pose, or

@@ -193,6 +193,23 @@ public:
     godot::Dictionary get_sound_output_model(std::int64_t id) const;
     /// AMMO: id, projectile (a PROJ id), flags, model (virtual path or empty).
     /// Empty if not an ammo.
+    /// The game setting `name` (any case) as a number, `fallback` if the world has none.
+    double get_gmst_float(const godot::String& name, double fallback) const;
+    std::int64_t get_gmst_int(const godot::String& name, std::int64_t fallback) const;
+    /// A weapon (WEAP) as combat needs it (keys: id, editor_id, name, model, weapon_type, damage,
+    /// speed, reach, skill, stagger, impact_data_set, first_person_model, equip_sound,
+    /// unequip_sound); empty for anything else.
+    godot::Dictionary get_weapon(std::int64_t form) const;
+    /// A race's combat data (keys: id, editor_id, unarmed_damage, unarmed_reach, impact_material,
+    /// impact_data_set, behaviours, attacks: [{event, damage_mult, flags, attack_angle,
+    /// strike_angle, stagger}]).
+    godot::Dictionary get_race(std::int64_t race) const;
+    /// What a hit on `material` (a MaterialType) leaves according to impact data set `data_set`
+    /// (keys: id, editor_id, model, duration, orientation, sound1, sound2); empty if none.
+    godot::Dictionary get_impact(std::int64_t data_set, std::int64_t material) const;
+    /// The plan (as `get_actor_plan`) of NPC_ `npc` as if placed as `ref`, for the player (7, 0x14).
+    /// Adds `parts_1st`, the first-person models.
+    godot::Dictionary get_npc_plan(std::int64_t npc, std::int64_t ref) const;
     godot::Dictionary get_ammo(std::int64_t id) const;
     /// PROJ: id, type (1 missile, 2 lobber, 4 beam, 8 flame, 0x10 cone, 0x20
     /// barrier, 0x40 arrow), flags, gravity (multiplier), speed and range and

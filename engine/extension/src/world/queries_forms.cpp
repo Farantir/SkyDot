@@ -123,4 +123,104 @@ Dictionary get_explosion(const WorldData& data, std::int64_t id) {
     return out;
 }
 
+double get_gmst_float(const WorldData& data, const String& name, double fallback) {
+    return static_cast<double>(
+        data.gmst_float(std::string_view(name.utf8().get_data()), static_cast<float>(fallback)));
+}
+
+std::int64_t get_gmst_int(const WorldData& data, const String& name, std::int64_t fallback) {
+    return data.gmst_int(std::string_view(name.utf8().get_data()), static_cast<std::int32_t>(fallback));
+}
+
+Dictionary get_weapon(const WorldData& data, std::int64_t form) {
+    Dictionary out;
+    const auto* base = data.base_ptr(form);
+    const auto* item = base != nullptr ? base->item() : nullptr;
+    if (item == nullptr || item->weapon_skill() < 0) {
+        return out;
+    }
+    out["id"] = form;
+    out["editor_id"] = to_godot(base->editor_id());
+    out["name"] = to_godot(base->name());
+    out["model"] = to_godot(base->model());
+    out["weapon_type"] = static_cast<std::int64_t>(item->weapon_type());
+    out["damage"] = static_cast<double>(item->damage());
+    out["speed"] = static_cast<double>(item->speed());
+    out["reach"] = static_cast<double>(item->reach());
+    out["skill"] = static_cast<std::int64_t>(item->weapon_skill());
+    out["stagger"] = static_cast<double>(item->stagger());
+    out["impact_data_set"] = static_cast<std::int64_t>(item->impact_data_set());
+    out["first_person_model"] = to_godot(item->first_person_model());
+    out["equip_sound"] = static_cast<std::int64_t>(item->equip_sound());
+    out["unequip_sound"] = static_cast<std::int64_t>(item->unequip_sound());
+    return out;
+}
+
+Dictionary get_race(const WorldData& data, std::int64_t race_id) {
+    Dictionary out;
+    const auto* race = lookup(data.root() != nullptr ? data.root()->races() : nullptr, static_cast<std::uint32_t>(race_id));
+    if (race == nullptr) {
+        return out;
+    }
+    out["id"] = race_id;
+    out["editor_id"] = to_godot(race->editor_id());
+    out["unarmed_damage"] = static_cast<double>(race->unarmed_damage());
+    out["unarmed_reach"] = static_cast<double>(race->unarmed_reach());
+    out["impact_material"] = static_cast<std::int64_t>(race->impact_material());
+    out["impact_data_set"] = static_cast<std::int64_t>(race->impact_data_set());
+    Array behaviours;
+    if (race->behaviours() != nullptr) {
+        for (const auto* b : *race->behaviours()) {
+            behaviours.push_back(to_godot(b));
+        }
+    }
+    out["behaviours"] = behaviours;
+    Array attacks;
+    if (race->attacks() != nullptr) {
+        for (const auto* a : *race->attacks()) {
+            Dictionary d;
+            d["event"] = to_godot(a->event());
+            d["damage_mult"] = static_cast<double>(a->damage_mult());
+            d["flags"] = static_cast<std::int64_t>(a->flags());
+            d["attack_angle"] = static_cast<double>(a->attack_angle());
+            d["strike_angle"] = static_cast<double>(a->strike_angle());
+            d["stagger"] = static_cast<double>(a->stagger());
+            attacks.push_back(d);
+        }
+    }
+    out["attacks"] = attacks;
+    return out;
+}
+
+Dictionary get_impact(const WorldData& data, std::int64_t data_set, std::int64_t material) {
+    Dictionary out;
+    const auto* root = data.root();
+    if (root == nullptr) {
+        return out;
+    }
+    const auto* set = lookup(root->impact_data_sets(), static_cast<std::uint32_t>(data_set));
+    if (set == nullptr || set->entries() == nullptr) {
+        return out;
+    }
+    std::uint32_t impact_id = 0;
+    for (const auto* entry : *set->entries()) {
+        if (entry->material() == static_cast<std::uint32_t>(material)) {
+            impact_id = entry->impact();
+            break;
+        }
+    }
+    const auto* impact = impact_id != 0 ? lookup(root->impacts(), impact_id) : nullptr;
+    if (impact == nullptr) {
+        return out;
+    }
+    out["id"] = static_cast<std::int64_t>(impact_id);
+    out["editor_id"] = to_godot(impact->editor_id());
+    out["model"] = to_godot(impact->model());
+    out["duration"] = static_cast<double>(impact->duration());
+    out["orientation"] = static_cast<std::int64_t>(impact->orientation());
+    out["sound1"] = static_cast<std::int64_t>(impact->sound1());
+    out["sound2"] = static_cast<std::int64_t>(impact->sound2());
+    return out;
+}
+
 } // namespace skydot::queries

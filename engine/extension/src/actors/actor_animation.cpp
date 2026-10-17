@@ -175,6 +175,30 @@ godot::Dictionary SkydotAnimation::describe(const godot::PackedByteArray& asset)
     }
     out["skeletons"] = skeletons;
     out["clips"] = clips;
+    // A project file's clips (animationdata/<project>.txt): where Skyrim keeps
+    // the text keys of most clips (HitFrame, weaponSwing, SoundPlay.*).
+    godot::Array project;
+    if (const auto* c = root->project_clips()) {
+        for (const auto* clip : *c) {
+            godot::Dictionary d;
+            d["name"] = clip->name() != nullptr ? String::utf8(clip->name()->c_str()) : String();
+            d["speed"] = static_cast<double>(clip->speed());
+            d["crop_start"] = static_cast<double>(clip->crop_start());
+            d["crop_end"] = static_cast<double>(clip->crop_end());
+            godot::Array notes;
+            if (const auto* entries = clip->annotations()) {
+                for (const auto* a : *entries) {
+                    godot::Dictionary n;
+                    n["time"] = static_cast<double>(a->time());
+                    n["text"] = a->text() != nullptr ? String::utf8(a->text()->c_str()) : String();
+                    notes.push_back(n);
+                }
+            }
+            d["annotations"] = notes;
+            project.push_back(d);
+        }
+    }
+    out["project_clips"] = project;
     return out;
 }
 

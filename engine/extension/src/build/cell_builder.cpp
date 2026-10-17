@@ -128,6 +128,11 @@ TerrainBuilder& CellBuilder::terrain_builder() {
 
 ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor, assets_, worn_); }
 
+ActorPlan CellBuilder::npc_plan(std::uint32_t npc, std::uint32_t ref) const {
+    const auto exists = [&](const std::string& vpath) { return assets_ != nullptr && assets_->has(vpath); };
+    return plan_actor(*world_fb(), npc, ref, exists, worn_);
+}
+
 /// What a build counts; the models' own counts (materials, billboards, effects, bodies) are
 /// DecorationStats'.
 struct CellBuilder::BuildStats : DecorationStats {

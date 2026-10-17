@@ -39,6 +39,9 @@ struct ActorPlan {
     std::string idle;       ///< An idle clip (`.hkx`), or empty.
     std::string behaviour;  ///< The race's behaviour project for the sex (`.hkx`).
     std::vector<std::string> parts; ///< Models, all skinned to the skeleton.
+    /// The first-person models of the same armors and skin (ARMA MOD4/MOD5), skinned to
+    /// the first-person skeleton; slots the worn items cover are left out as for `parts`.
+    std::vector<std::string> parts_1st;
     std::string missing;    ///< Why nothing can be built, or empty.
     /// Worn items cover slot 31 (hair): the FaceGen head's hair is hidden.
     bool hide_hair{};

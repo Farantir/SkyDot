@@ -56,9 +56,14 @@ const RADIUS_UP := &"radius_up"
 const CYCLE_MSAA := &"cycle_msaa"
 const TOGGLE_FLY := &"toggle_fly"
 const INVENTORY := &"inventory"
+const READY_WEAPON := &"ready_weapon"
+# Held: the attack button goes down and up (`attack_changed`); attack_left is
+# reserved for blocking.
+const ATTACK_RIGHT := &"attack_right"
+const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, READY_WEAPON]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
@@ -72,6 +77,9 @@ const PITCH_SPEED_FACTOR := 0.7
 ## An action in COMMANDS was pressed; `modifier` is true with Shift held (the
 ## backwards or the forced variant of some).
 signal command(action: StringName, modifier: bool)
+## The attack button went down (true) or up (false). A mouse click does not
+## count while the mouse is released: it captures the mouse.
+signal attack_changed(pressed: bool)
 
 ## Set while a menu has the keyboard: the player stands still and the
 ## keys are not commands.
@@ -88,6 +96,7 @@ var invert_look_y := false
 ## The last input came from a gamepad (else keyboard or mouse).
 var uses_gamepad := false
 var _rig: PlayerRig
+var _attacking := false
 
 
 func _init(rig: PlayerRig) -> void:
@@ -148,8 +157,19 @@ func _input(event: InputEvent) -> void:
 		uses_gamepad = false
 
 
+## Emit `attack_changed` when the button changes (a trigger sends events all
+## the time it is held).
+func _set_attacking(down: bool) -> void:
+	if down != _attacking:
+		_attacking = down
+		attack_changed.emit(down)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not enabled or blocked:
+		# A menu opened under a held button: letting go still counts.
+		if enabled and _attacking and event.is_action(ATTACK_RIGHT) and not event.is_pressed():
+			_set_attacking(false)
 		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
@@ -157,6 +177,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			clamp(_rig.pitch - event.relative.y * LOOK_PER_PIXEL, -PITCH_LIMIT, PITCH_LIMIT))
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and not captured:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif event.is_action(ATTACK_RIGHT) and (captured or not event is InputEventMouseButton):
+		_set_attacking(event.is_pressed())
 	elif event.is_action_pressed(RELEASE_MOUSE):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event.is_action_pressed(JUMP):

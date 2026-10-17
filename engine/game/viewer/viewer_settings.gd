@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "ready-weapon"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -103,6 +103,11 @@ var hud := true  # health, magicka and stamina bars, crosshair, activation promp
 var open_inventory := false  # --open-inventory: show the inventory after the load
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
+var ready_weapon := false  # --ready-weapon: draw the weapon after the load
+var attack_at := 0  # --attack-at 0xREF[,power]: face that actor and attack once it is in reach
+var attack_power := false
+var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
+var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
 var stick_look_speed := 3.0  # rad/s at full deflection of the right stick (pitch: 0.7 of it)
 var invert_look_y := false  # the right stick looks down when pushed up
@@ -214,6 +219,15 @@ func _read(args: Dictionary) -> void:
 	if args.has("talk"):
 		var talk_text: String = args["talk"]
 		talk = talk_text.hex_to_int() if talk_text.begins_with("0x") else talk_text.to_int()
+	ready_weapon = args.has("ready-weapon") or args.has("attack-at")
+	if args.has("attack-at"):
+		var parts: PackedStringArray = String(args["attack-at"]).split(",")
+		attack_at = parts[0].hex_to_int() if parts[0].begins_with("0x") else parts[0].to_int()
+		attack_power = parts.size() > 1 and parts[1] in ["power", "1", "true"]
+	for entry: String in args.get("kill", "").split(",", false):
+		kill.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("equip", "").split(",", false):
+		equip.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("damage-actor", "").split(",", false):
 		var parts: PackedStringArray = entry.split(":")
 		if parts.size() != 3 or parts[1].is_empty():

@@ -127,6 +127,8 @@ public:
 
     /// The plan for a placed actor, from world.fb and what the pack holds.
     ActorPlan actor_plan(const bethconv::pack::wfb::ActorRef& actor) const;
+    /// The plan of NPC_ `npc` as if placed as `ref` (the player: 7, 0x14).
+    ActorPlan npc_plan(std::uint32_t npc, std::uint32_t ref) const;
     /// The clips of a behaviour project; read once, then kept.
     const Locomotion& locomotion_of(const std::string& behaviour);
 

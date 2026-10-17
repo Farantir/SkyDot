@@ -60,6 +60,12 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_explosion", "id"), &SkydotWorld::get_explosion);
     godot::ClassDB::bind_method(D_METHOD("tag_runtime_ref", "ref", "cell", "node"), &SkydotWorld::tag_runtime_ref);
     godot::ClassDB::bind_method(D_METHOD("get_sound_output_model", "id"), &SkydotWorld::get_sound_output_model);
+    godot::ClassDB::bind_method(D_METHOD("get_gmst_float", "name", "fallback"), &SkydotWorld::get_gmst_float);
+    godot::ClassDB::bind_method(D_METHOD("get_gmst_int", "name", "fallback"), &SkydotWorld::get_gmst_int);
+    godot::ClassDB::bind_method(D_METHOD("get_weapon", "form"), &SkydotWorld::get_weapon);
+    godot::ClassDB::bind_method(D_METHOD("get_race", "race"), &SkydotWorld::get_race);
+    godot::ClassDB::bind_method(D_METHOD("get_impact", "data_set", "material"), &SkydotWorld::get_impact);
+    godot::ClassDB::bind_method(D_METHOD("get_npc_plan", "npc", "ref"), &SkydotWorld::get_npc_plan);
     godot::ClassDB::bind_method(D_METHOD("get_ammo", "id"), &SkydotWorld::get_ammo);
     godot::ClassDB::bind_method(D_METHOD("get_projectile", "id"), &SkydotWorld::get_projectile);
     godot::ClassDB::bind_method(D_METHOD("get_actor", "ref"), &SkydotWorld::get_actor);
@@ -289,6 +295,17 @@ void SkydotWorld::tag_runtime_ref(std::int64_t ref, std::int64_t cell, godot::No
     ref_nodes::add(static_cast<std::uint32_t>(ref), node);
 }
 Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return queries::get_sound_output_model(data(), id); }
+double SkydotWorld::get_gmst_float(const String& name, double fallback) const {
+    return queries::get_gmst_float(data(), name, fallback);
+}
+std::int64_t SkydotWorld::get_gmst_int(const String& name, std::int64_t fallback) const {
+    return queries::get_gmst_int(data(), name, fallback);
+}
+Dictionary SkydotWorld::get_weapon(std::int64_t form) const { return queries::get_weapon(data(), form); }
+Dictionary SkydotWorld::get_race(std::int64_t race) const { return queries::get_race(data(), race); }
+Dictionary SkydotWorld::get_impact(std::int64_t data_set, std::int64_t material) const {
+    return queries::get_impact(data(), data_set, material);
+}
 Dictionary SkydotWorld::get_ammo(std::int64_t id) const { return queries::get_ammo(data(), id); }
 Dictionary SkydotWorld::get_projectile(std::int64_t id) const { return queries::get_projectile(data(), id); }
 Dictionary SkydotWorld::get_actor(std::int64_t ref) const { return queries::get_actor(data(), ref); }
@@ -436,6 +453,11 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
         parts.push_back(String::utf8(p.c_str()));
     }
     out["parts"] = parts;
+    godot::PackedStringArray parts_1st;
+    for (const auto& p : plan.parts_1st) {
+        parts_1st.push_back(String::utf8(p.c_str()));
+    }
+    out["parts_1st"] = parts_1st;
     out["missing"] = String::utf8(plan.missing.c_str());
     return out;
 }
@@ -466,6 +488,10 @@ godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
         return {};
     }
     return plan_dictionary(builder_.actor_plan(*actor));
+}
+
+godot::Dictionary SkydotWorld::get_npc_plan(std::int64_t npc, std::int64_t ref) const {
+    return plan_dictionary(builder_.npc_plan(static_cast<std::uint32_t>(npc), static_cast<std::uint32_t>(ref)));
 }
 
 std::int64_t SkydotWorld::wake_clutter(godot::Node* root, const Vector3& centre, double radius) {

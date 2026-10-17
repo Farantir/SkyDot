@@ -77,6 +77,14 @@ signal crafting_opened(ref: int, bench_type: int)
 ## Something moved between inventories, or was equipped or dropped.
 signal items_changed
 
+## The player's weapon state changed (Combat.State) or an attack ended: the
+## state and the first-person clip to play (Combat.weapon_state_changed).
+signal weapon_state_changed(state: int, clip: String)
+## The player's attack began (Combat.attack_started).
+signal attack_started(clip: String, power: bool)
+## A hit landed: the target, apply_hit's result and the point (Combat.hit_landed).
+signal hit_landed(target: int, result: Dictionary, point: Vector3)
+
 ## Metres in front of the player a dropped item lands, and above the feet.
 const DROP_DISTANCE := 0.8
 const DROP_HEIGHT := 0.3
@@ -129,6 +137,8 @@ var _talk_topics: Array = []
 # speaker to end, and the lines each running action still has to finish.
 var _scene_held: Array = []
 var _scene_lines := {}  # "scene:action" -> lines left
+## The player's weapon, attacks and hit tests, and actors' attacks.
+var combat: Combat
 ## What scripts place, fire and play.
 var placed: PlacedRefs
 var projectiles: Projectiles
@@ -239,6 +249,12 @@ func _make_game_nodes() -> void:
 	host.add_child(speech)
 	speech.line_started.connect(_on_speech_started)
 	speech.line_ended.connect(_on_speech_ended)
+	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
+		func() -> Vector3: return _feet)
+	combat.weapon_state_changed.connect(weapon_state_changed.emit)
+	combat.attack_started.connect(attack_started.emit)
+	combat.hit_landed.connect(hit_landed.emit)
+	items_changed.connect(combat.on_items_changed)
 	placed = PlacedRefs.new(world, papyrus)
 	host.add_child(placed)
 	papyrus.ref_placed.connect(placed.place)
@@ -465,6 +481,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	update_dialogue(delta)
 	update_scenes(delta)
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
+	combat.step(delta)
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
@@ -493,6 +510,69 @@ func _drain_sprint(delta: float) -> void:
 
 func is_fading() -> bool:
 	return transition.is_fading()
+
+
+# ---- combat
+
+## Draw the player's weapon, or sheathe it (R, gamepad X).
+func toggle_weapon() -> void:
+	combat.toggle_weapon()
+
+
+## The attack button went down or up: a short press is a light attack, a long
+## one a power attack (Combat.attack_pressed).
+func attack_pressed() -> void:
+	combat.attack_pressed()
+
+
+func attack_released() -> void:
+	combat.attack_released()
+
+
+## Attack now: power or light (Combat.attack).
+func attack(power := false) -> bool:
+	return combat.attack(power)
+
+
+## The right-hand weapon's form, 0 for bare hands.
+func player_weapon() -> int:
+	return combat.player_weapon()
+
+
+## Combat.State.
+func weapon_state() -> int:
+	return combat.weapon_state()
+
+
+## An actor attacks the player (the AI's door into Combat.npc_attack).
+func npc_attack(attacker: int, power := false) -> bool:
+	return combat.npc_attack(attacker, power)
+
+
+## The combat part alone, for runs where the session's `step` does not run
+## (shots).
+func update_combat(delta: float) -> void:
+	combat.step(delta)
+
+
+## Debug (--kill): hit `ref` with the weapon in hand until it is dead. Returns
+## the hits it took; 0 if it was dead already or is no actor.
+func kill_actor(ref: int) -> int:
+	var hits := 0
+	var weapon := combat.player_weapon()
+	var extra: int = papyrus.equipment(SkydotPapyrus.PLAYER_REF)["right_extra"]
+	while hits < 200 and not papyrus.is_actor_dead(ref):
+		var result := papyrus.apply_hit(SkydotPapyrus.PLAYER_REF, ref, weapon, extra, "attackStart", 0)
+		if result.has("error"):
+			break
+		hits += 1
+		hit_landed.emit(ref, result, _actor_chest(ref))
+	return hits
+
+
+func _actor_chest(ref: int) -> Vector3:
+	var node := world.find_ref_node(ref) as Node3D
+	return node.global_position + Vector3.UP * 1.2 if node != null else _feet
 
 
 # ---- activation
@@ -701,7 +781,10 @@ func save_game(path: String) -> bool:
 
 
 func load_game(path: String) -> bool:
-	return saves.load_game(path)
+	var done := saves.load_game(path)
+	if done:
+		combat.on_items_changed()
+	return done
 
 
 # ---- queries for the shell's overlays

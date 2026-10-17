@@ -43,6 +43,7 @@ var _inventory_panel: VrPanel
 var _container_panel: VrPanel
 var _crafting_panel: VrPanel
 var _xr: XRInterface
+var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 var _quit_in := -1  # frames until quitting after --activate
 
 
@@ -115,7 +116,14 @@ func _create_components() -> void:
 	_controls.look_speed = _settings.stick_look_speed
 	_controls.invert_look_y = _settings.invert_look_y
 	_controls.command.connect(_on_command)
+	_controls.attack_changed.connect(_on_attack_changed)
 	add_child(_controls)
+	# Minimal combat (ADR 0006): the weapon model in the right controller; a
+	# swing faster than FirstPersonBody.SWING_SPEED is the attack. Only the
+	# desktop fallback has been run (the controller stands still there: the
+	# mouse button attacks as in the viewer).
+	_body = FirstPersonBody.new(_session, null, _rig.right)
+	add_child(_body)
 	if _settings.hud:
 		var hud := HudView.new(_session, _key_label)
 		hud.show_crosshair = not _rig.tracking
@@ -256,6 +264,10 @@ func _start_game() -> void:
 		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 	if settings.open_inventory and _inventory != null:
 		_inventory.open()
+	for form in settings.equip:
+		_session.equip(form)
+	if settings.ready_weapon:
+		_session.toggle_weapon()
 
 
 func _process(delta: float) -> void:
@@ -265,6 +277,7 @@ func _process(delta: float) -> void:
 	_session.streamer.hold_player(_rig.player, _session.is_fading())
 	_rig.track()
 	_rig.follow()
+	_body.update_hand(delta)
 	_session.step(delta, _rig.player.global_position)
 	if _quit_in >= 0:
 		_quit_in -= 1
@@ -294,12 +307,21 @@ func _on_command(action: StringName, shift: bool) -> void:
 	match action:
 		PlayerInput.ACTIVATE:
 			_session.activate_in_view(shift)
+		PlayerInput.READY_WEAPON:
+			_session.toggle_weapon()
 		PlayerInput.QUICK_SAVE:
 			_session.save_game(SaveService.QUICKSAVE)
 		PlayerInput.QUICK_LOAD:
 			_session.load_game(SaveService.QUICKSAVE)
 		PlayerInput.TOGGLE_FLY:
 			print("note: ", "flying" if _rig.toggle_fly() else "walking")
+
+
+func _on_attack_changed(pressed: bool) -> void:
+	if pressed:
+		_session.attack_pressed()
+	else:
+		_session.attack_released()
 
 
 func _fail(message: String) -> void:
