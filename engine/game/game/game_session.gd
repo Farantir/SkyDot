@@ -92,6 +92,7 @@ var interactive := true:
 			transition.interactive = value
 
 var _viewpoint: Camera3D
+var _pointer: Node3D  # what activating and the prompt point along: the viewpoint unless the shell says
 var _prompt: ActivationPrompt
 var _target := {}
 var _target_frame := -1
@@ -123,6 +124,7 @@ var speech: Speech
 func open(game_config: GameConfig, viewpoint: Camera3D, player: Object) -> bool:
 	config = game_config
 	_viewpoint = viewpoint
+	_pointer = viewpoint
 	_player = player
 	clock = SkydotClock.new()
 	clock.setup(config.time, config.time_scale, config.still)
@@ -351,10 +353,17 @@ func is_fading() -> bool:
 
 # ---- activation
 
-## The player activates what the viewpoint looks at (Shift: picks locks).
+## Activating and the prompt point along `node`'s -Z axis from its position
+## (a VR shell: the controller's aim), not along the viewpoint.
+func set_pointer(node: Node3D) -> void:
+	_pointer = node
+
+
+## The player activates what the pointer points at (the viewpoint's view unless
+## set_pointer says otherwise; Shift: picks locks).
 func activate_in_view(force: bool) -> void:
 	if not transition.is_fading():
-		_bridge.activate_in_view(force)
+		_bridge.activate_in_view(force, _pointer)
 
 
 func has_activations() -> bool:
@@ -518,14 +527,14 @@ func actor_value_max(ref: int, name: String) -> float:
 	return papyrus.get_actor_value_max(ref, name)
 
 
-## What activating what the viewpoint looks at would do: {ref, verb, name,
+## What activating what the pointer points at would do: {ref, verb, name,
 ## lock_level} (lock_level -1: not locked), or {} if nothing is in reach or it
 ## has no name. Worked out once per frame.
 func activation_target() -> Dictionary:
 	var frame := Engine.get_process_frames()
 	if frame != _target_frame:
 		_target_frame = frame
-		_target = _prompt.target() if _prompt != null and not transition.is_fading() else {}
+		_target = _prompt.target(_pointer) if _prompt != null and not transition.is_fading() else {}
 	return _target
 
 

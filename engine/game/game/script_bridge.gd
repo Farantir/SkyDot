@@ -432,9 +432,9 @@ func _run_damage() -> void:
 		activations_finished.emit()
 
 
-func activate_in_view(force: bool) -> void:
-	var from := _viewpoint.global_position
-	var to := from - _viewpoint.global_transform.basis.z * REACH
+func activate_in_view(force: bool, pointer: Node3D) -> void:
+	var from := pointer.global_position
+	var to := from - pointer.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(_host, from, to)
 	if hit.is_empty():
 		message.emit("nothing to activate", false)

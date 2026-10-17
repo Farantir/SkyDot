@@ -33,11 +33,12 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node, viewpoint: Ca
 	_bed_keyword = world.find_keyword("FurnitureBedRoleKeyword")
 
 
-## {ref, verb, name, lock_level} for what the viewpoint looks at within reach,
-## or {} if there is nothing to activate or nothing to call it.
-func target() -> Dictionary:
-	var from := _viewpoint.global_position
-	var to := from - _viewpoint.global_transform.basis.z * REACH
+## {ref, verb, name, lock_level} for what `pointer` (a Node3D; its -Z axis is
+## the ray) points at within reach, or {} if there is nothing to activate or
+## nothing to call it.
+func target(pointer: Node3D) -> Dictionary:
+	var from := pointer.global_position
+	var to := from - pointer.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(_host, from, to)
 	if hit.is_empty():
 		return {}

@@ -23,9 +23,10 @@ var _last_ground := Vector3.ZERO  # where the player last stood
 var _ground_check := 0  # frames until checking the player is not under the land
 
 
-## `image_space` grades what the camera sees (always on).
-func _init(settings: ViewerSettings, image_space: SkydotImageSpace) -> void:
-	camera = Camera3D.new()
+## `image_space` grades what the camera sees (always on). `head` is the camera
+## to use (a VR shell's XRCamera3D); a plain Camera3D if null.
+func _init(settings: ViewerSettings, image_space: SkydotImageSpace, head: Camera3D = null) -> void:
+	camera = head if head != null else Camera3D.new()
 	camera.near = 0.05
 	# The scene is drawn in the game's gamma space; this grades it as the
 	# game's image space does and hands Godot linear colour.

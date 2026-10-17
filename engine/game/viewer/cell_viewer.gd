@@ -302,7 +302,7 @@ func _start_game() -> void:
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
-	_sync_image_space()
+	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
 	if _shots.is_running():
 		if _settings.shot_frames > 1:
@@ -336,28 +336,6 @@ func _process(delta: float) -> void:
 			get_tree().quit(0)
 		return
 	_controls.apply(delta)
-
-
-## The image space the camera grades with: the weather's outside, the cell's
-## inside, none with --image-space off, a neutral grade with --image-space
-## neutral. Our shaders compute the fog themselves.
-func _sync_image_space() -> void:
-	SkydotMaterials.sync_fog(get_viewport().find_world_3d().environment)
-	if not _settings.image_space:
-		_image_space.clear()
-	else:
-		var space: Dictionary
-		# A sky seen from an interior ("show sky") does not grade the cell.
-		if _session.clock.has_weather() and not _session.clock.weather.is_sky_only():
-			space = _session.clock.weather.get_image_space()
-			if not _settings.volumetric:
-				space.erase("volumetric")
-		else:
-			space = _session.place.interior_image_space.duplicate()
-		if _settings.neutral_grade:
-			space.erase("cinematic")
-			space.erase("tint")
-		_image_space.set_image_space(space)
 
 
 ## A key that is not about the player's body.
