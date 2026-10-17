@@ -40,6 +40,7 @@ jobs:
             preset: linux-debug-asan
             cc: gcc-14
             cxx: g++-14
+            apt: nasm
             testpack: true
           # clang 18 with Ubuntu's libstdc++ has no std::expected.
           - name: linux-clang-release
@@ -47,7 +48,7 @@ jobs:
             preset: linux-release
             cc: clang-19
             cxx: clang++-19
-            apt: clang-19 clang-tools-19
+            apt: clang-19 clang-tools-19 nasm
           - name: windows-msvc-release
             os: windows-2022
             preset: windows-release
@@ -221,6 +222,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: true
+
+      # FFmpeg's vcpkg port assembles with nasm; vcpkg fetches it only on Windows.
+      - name: nasm
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -q && sudo apt-get install -y -q nasm
 
       - name: Install vcpkg
         shell: bash
