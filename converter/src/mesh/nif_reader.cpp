@@ -248,6 +248,11 @@ private:
                 static_cast<std::uint16_t>(billboard->billboardMode);
         }
 
+        if (const auto* sw = dynamic_cast<nifly::NiSwitchNode*>(obj);
+            sw != nullptr && dynamic_cast<nifly::NiLODNode*>(obj) == nullptr) {
+            model_.nodes[index].switch_index = sw->index;
+        }
+
         model_.nodes[index].hidden = (obj->flags & 1u) != 0;
         if (const auto* value = dynamic_cast<nifly::BSValueNode*>(obj);
             value != nullptr && model_.nodes[index].name.starts_with("AddOnNode")) {

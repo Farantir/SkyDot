@@ -900,6 +900,9 @@ private:
                 if (src.addon_index.has_value()) {
                     ours["addon"] = *src.addon_index;
                 }
+                if (src.switch_index.has_value()) {
+                    ours["switch"] = *src.switch_index;
+                }
                 if (!ours.empty()) {
                     extras_.set(fastgltf::Category::Nodes, gltf_node_[i],
                                 nlohmann::json{{"bethconv", std::move(ours)}});

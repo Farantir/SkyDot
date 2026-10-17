@@ -393,7 +393,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/19` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/24` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep`; for a texture some material alpha-tests, `;cov/1;t=<threshold>`, plus `;floor` in the default mode (alpha coverage mips) | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -419,7 +419,9 @@ water shaders named `BSWaterShaderProperty` rather than `other`, `mesh/19`
 `addon` (the BSValueNode's value) on nodes named `AddOnNode...` (node extras;
 candle flames hang there), `mesh/22` `extras.bethconv.phantoms` (trigger volumes, below), `mesh/23`
 `extras.bethconv.behavior_graph` (the `BSBehaviorGraphExtraData` file path,
-as stored, on the root node next to the provenance); the list in
+as stored, on the root node next to the provenance), `mesh/24` `switch` (the
+active child index) on NiSwitchNodes other than LOD nodes (node extras; flora
+show child 1 once harvested); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 

@@ -711,3 +711,35 @@ TEST_CASE("a bhkPlaneShape becomes the flat hull where it cuts its bounds",
         CHECK_THAT(std::abs(v.y), Catch::Matchers::WithinAbs(2.0, 1e-6));
     }
 }
+
+TEST_CASE("a NiSwitchNode keeps both children apart and names its active index",
+          "[gltf][extras]") {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    auto* sw = builder.add_node<nifly::NiSwitchNode>("switch");
+    sw->index = 1;
+    auto* full = builder.add_node("full", sw);
+    auto* cut = builder.add_node("cut", sw);
+    auto* a = builder.add_shape("capped", bethconv::test::make_cube());
+    auto* b = builder.add_shape("uncapped", bethconv::test::make_cube());
+    REQUIRE(a != nullptr);
+    REQUIRE(b != nullptr);
+    builder.file().SetParentNode(a, full);
+    builder.file().SetParentNode(b, cut);
+    auto lod = builder.add_node<nifly::NiLODNode>("lod");
+    (void)lod;
+
+    auto model = bethconv::mesh::read_nif(builder.bytes(), "switch.nif");
+    REQUIRE(model.has_value());
+    const auto glb = bethconv::mesh::write_glb(*model);
+    REQUIRE(glb.has_value());
+    const auto json = json_chunk(*glb);
+    int switches = 0;
+    for (const auto& node : json["nodes"]) {
+        if (node.contains("extras") && node["extras"]["bethconv"].contains("switch")) {
+            CHECK(node["extras"]["bethconv"]["switch"] == 1);
+            CHECK(node["children"].size() == 2);
+            ++switches;
+        }
+    }
+    CHECK(switches == 1);
+}

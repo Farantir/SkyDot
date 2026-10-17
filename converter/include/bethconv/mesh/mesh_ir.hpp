@@ -162,6 +162,9 @@ struct Node {
     /// BSValueNode named "AddOnNode...": the game attaches the model of the
     /// ADDN record with this index here (candle flames, smoke).
     std::optional<std::int32_t> addon_index;
+    /// NiSwitchNode (not a NiLODNode): only the child with this index is
+    /// shown. Flora use it for the harvested state (child 1).
+    std::optional<std::uint32_t> switch_index;
     /// NiAVObject flag bit 0: not drawn until a controller shows it (flames
     /// switched by a NiVisController, emitter meshes).
     bool hidden{false};
