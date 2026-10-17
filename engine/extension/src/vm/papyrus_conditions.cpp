@@ -363,6 +363,14 @@ double PapyrusConditionWorld::random_percent() {
     return std::floor(static_cast<double>(r >> 11) / static_cast<double>(1ull << 53) * 100.0);
 }
 
+bool PapyrusConditionWorld::talked_to_player(std::uint32_t ref) const {
+    return owner_ != nullptr && owner_->dialogue_states_.talked_to_player(ref);
+}
+
+bool PapyrusConditionWorld::in_dialogue_with_player(std::uint32_t ref) const {
+    return owner_ != nullptr && ref != 0 && owner_->dialogue_states_.speaker() == ref;
+}
+
 // ---- the shared world, and who uses it --------------------------------------------
 
 conditions::ConditionWorld& SkydotPapyrus::condition_world() {

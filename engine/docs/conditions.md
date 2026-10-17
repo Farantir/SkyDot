@@ -117,7 +117,7 @@ GetDisabled 35, GetDead 46, GetItemCount 47, GetGold 48, GetTalkedToPC 50
 GetInCell 67, GetIsRace 69, GetIsSex 70, GetInFaction 71, GetIsID 72,
 GetFactionRank 73, GetGlobalValue 74, GetRandomPercent 77, GetLevel 80,
 GetDeadCount 84, GetPCIsRace 130, GetPCIsSex 131, GetIsReference 136,
-GetDayOfWeek 170, IsInDialogueWithPlayer 249 (false until dialogue),
+GetDayOfWeek 170, IsInDialogueWithPlayer 249,
 GetOffersServicesNow 255 (a faction with the vendor flag whose VENV hours
 contain the hour; start = end is always), GetBaseActorValue 277, IsInInterior
 300, GetInWorldspace 310, GetInCurrentLoc 359 (the cell's location or one of

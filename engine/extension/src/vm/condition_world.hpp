@@ -77,6 +77,9 @@ public:
     double game_days() const override;
     double random_percent() override;
 
+    bool talked_to_player(std::uint32_t ref) const override;
+    bool in_dialogue_with_player(std::uint32_t ref) const override;
+
 private:
     /// The NPC_ standing for `ref` for what `flag` covers (templates followed).
     const bethconv::pack::wfb::Npc* resolved(std::uint32_t ref,

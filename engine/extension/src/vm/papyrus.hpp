@@ -23,6 +23,8 @@
 #pragma once
 
 #include "assets/pack.hpp"
+#include "dialogue/dialogue.hpp"
+#include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
@@ -223,6 +225,24 @@ public:
     /// its counters of unbound functions log one warning per function.
     conditions::ConditionWorld& condition_world();
 
+    // ---- dialogue (vm/papyrus_dialogue.cpp; the rules are dialogue/dialogue.hpp)
+    /// Whether activating `ref` may open a dialogue: a placed actor that is
+    /// not the player and not dead.
+    bool dialogue_can_talk(std::int64_t ref) const;
+    /// The player starts talking to `speaker`. {lines: [{text, seconds, info,
+    /// first, last}], topics: [{id, text, said}], closed}. Lines are spoken
+    /// one after the other; the host runs `dialogue_fragment` for an INFO at
+    /// its `first` line's start and its `last` line's end.
+    godot::Dictionary dialogue_open(std::int64_t speaker);
+    godot::Dictionary dialogue_choose(std::int64_t topic);
+    void dialogue_close();
+    bool dialogue_is_open() const;
+    /// What `dialogue_open` would say and list, changing nothing (tests).
+    godot::Dictionary dialogue_topics_debug(std::int64_t speaker);
+    /// Run the begin (or end) fragment of INFO `info`, with `speaker` as
+    /// akSpeakerRef. Returns whether the INFO has one.
+    bool dialogue_fragment(std::int64_t info, bool end, std::int64_t speaker);
+
     // ---- quests
     /// Start every start-game-enabled quest, as a new game does. Returns how
     /// many started.
@@ -284,6 +304,17 @@ protected:
 private:
     friend class PapyrusConditionWorld;
     std::unique_ptr<PapyrusConditionWorld> conditions_;
+    /// What was said (DLGS), the selection logic over it and the INFOs whose
+    /// fragment scripts are attached (INFO -> its topic's quest).
+    dialogue::DialogueStates dialogue_states_;
+    std::unique_ptr<dialogue::DialogueHost> dialogue_host_;
+    std::unique_ptr<dialogue::Dialogue> dialogue_;
+    std::map<std::uint32_t, std::uint32_t> info_quests_;
+    dialogue::Dialogue* dialogue_logic();
+    friend class DialogueHostImpl;
+    /// The NPC_ behind an actor reference (the player: 0x7); 0 if none.
+    std::uint32_t dialogue_npc(std::uint32_t ref) const;
+    godot::Dictionary dialogue_dictionary(const dialogue::Result& result) const;
     /// The index of the first log entry of stage `index` of `quest` whose
     /// conditions pass (subject: the player, quest: this one); 0 if none does.
     std::size_t chosen_log_entry(std::uint32_t quest, std::int32_t index);
@@ -401,6 +432,7 @@ private:
         vm::Vm::Snapshot vm;
         vm::RefStates states;
         vm::ActorStates actors;
+        dialogue::DialogueStates dialogue;
         HostSnapshot host;
     };
     std::unique_ptr<PendingLoad> pending_;

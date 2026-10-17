@@ -127,6 +127,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     vm_->save_to(out);
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
     out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
+    out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
     write_host(out);
 }
 
@@ -187,6 +188,15 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
             return fail("the ACTV section of the save is damaged");
         }
     }
+    // DLGS is optional: a save without it has said nothing.
+    if (const auto* dlgs = file.find("DLGS")) {
+        if (dlgs->version != dialogue::DialogueStates::k_section_version) {
+            return fail("section DLGS has a version this engine does not read");
+        }
+        if (!dialogue::DialogueStates::load(file.open(*dlgs), pending->dialogue)) {
+            return fail("the DLGS section of the save is damaged");
+        }
+    }
     if (!decode_host(file, pending->host, why)) {
         return fail(why);
     }
@@ -222,6 +232,7 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
+    dialogue_states_.adopt(std::move(pending->dialogue));
     HostSnapshot& host = pending->host;
     for (const auto ref : host.attached) {
         attached_.insert(ref);

@@ -29,6 +29,13 @@ void SkydotPapyrus::bind_quest_natives() {
     };
     const auto state_of = [this](NativeCall& c) -> vm::QuestState& { return quests_.state(c.self.form()); };
 
+    // ---- TopicInfo: the INFO a fragment script is attached to
+    v.bind("TopicInfo", "GetOwningQuest", [this](NativeCall& c) {
+        const auto it = info_quests_.find(c.self.form());
+        return NativeResult{.value = it != info_quests_.end() ? c.vm.object(it->second, "Quest") : Value{},
+                            .wait = -1.0};
+    });
+
     // ---- Quest
     v.bind("Quest", "Start", [this, result](NativeCall& c) {
         return result(Value::boolean(start_quest(c.self.form())));
