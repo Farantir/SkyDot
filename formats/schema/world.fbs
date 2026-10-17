@@ -1630,6 +1630,100 @@ table Faction {
     vendor_chest: uint32;
 }
 
+/// `Scene.flags`: SCEN FNAM (format 27; source: UESP, xEdit).
+enum SceneFlags : uint32 (bit_flags) {
+    /// Begin when the quest starts.
+    begin_on_quest_start,
+    /// Stop when the quest ends.
+    stop_on_quest_end,
+    show_all_text = 2,
+    repeat_while_true,
+    interruptible
+}
+
+/// One phase of a scene, in order; its index is its position.
+table ScenePhase {
+    /// NAM0.
+    name: string;
+    /// The conditions before the first NEXT: the phase is skipped if they fail.
+    start_conditions: [Condition];
+    /// The conditions after it: the phase waits for them.
+    completion_conditions: [Condition];
+}
+
+/// An actor of a scene, filled from the quest alias `alias`.
+table SceneActor {
+    /// ALID.
+    alias: int;
+    /// LNAM.
+    flags: uint32;
+    /// DNAM: behaviour flags (Skyrim.esm uses 0x1a on both Riverwood
+    /// actors).
+    behaviour_flags: uint32;
+}
+
+/// One action of a scene. There are no conditions on actions in SSE.
+table SceneAction {
+    /// ANAM: 0 dialogue, 1 package, 2 timer.
+    type: ushort;
+    /// NAM0.
+    name: string;
+    /// ALID: the acting alias; -1 if none (timers).
+    alias: int;
+    /// INAM.
+    index: uint32;
+    /// FNAM (dialogue actions only).
+    flags: uint32;
+    /// SNAM: the phase whose start starts the action.
+    start_phase: uint32;
+    /// ENAM: the phase the action must be done for.
+    end_phase: uint32;
+    /// DATA, a DialogueTopic (dialogue).
+    topic: uint32;
+    /// PNAM, packages (package).
+    packages: [uint32];
+    /// The second SNAM (timer).
+    timer_seconds: float;
+    /// HTID: the alias to look at; -1 none.
+    head_track_alias: int = -1;
+    /// DMAX and DMIN.
+    delay_max: float;
+    delay_min: float;
+    /// DEMO and DEVA.
+    emotion: uint32;
+    emotion_value: uint32;
+}
+
+/// SCEN (format 27): a scene, FormIDs global. Old-style result scripts and
+/// VNAM are not kept.
+table Scene {
+    id: uint32 (key);
+    editor_id: string;
+    /// The PNAM after the last action.
+    quest: uint32;
+    flags: SceneFlags;
+    conditions: [Condition];
+    phases: [ScenePhase];
+    actors: [SceneActor];
+    actions: [SceneAction];
+    /// VMAD scripts.
+    scripts: [Script];
+    /// VMAD fragments: the SF_ script file, the begin and end functions
+    /// (empty if absent) and the per-phase functions.
+    fragment_script: string;
+    begin_fragment: string;
+    end_fragment: string;
+    phase_fragments: [ScenePhaseFragment];
+}
+
+/// A scene fragment run at the begin or end of a phase.
+table ScenePhaseFragment {
+    phase: uint32;
+    /// True: runs when the phase ends; false: when it begins.
+    on_end: bool;
+    fragment: string;
+}
+
 table World {
     format_version: uint32;
     /// Sorted by id.
@@ -1712,6 +1806,8 @@ table World {
     relationships: [Relationship];
     /// Sorted by id (format 26).
     factions: [Faction];
+    /// Sorted by id (format 27).
+    scenes: [Scene];
 }
 
 root_type World;

@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 26;
+inline constexpr std::uint32_t k_world_format_version = 27;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -89,6 +89,17 @@ struct WorldStats {
     std::uint64_t locations{};
     std::uint64_t relationships{};
     std::uint64_t factions{};
+    /// SCEN (format 27): scenes, their phases, actors, actions by type
+    /// (dialogue, package, timer) and phase fragments. Every PACK is in the
+    /// package table, placed on an NPC or not.
+    std::uint64_t scenes{};
+    std::uint64_t scene_phases{};
+    std::uint64_t scene_actors{};
+    std::uint64_t scene_dialogue_actions{};
+    std::uint64_t scene_package_actions{};
+    std::uint64_t scene_timer_actions{};
+    std::uint64_t scene_phase_fragments{};
+    std::uint64_t scene_scripted{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -198,6 +209,9 @@ public:
     [[nodiscard]] std::optional<wfb::LocationT> location(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::FactionT> faction(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::RelationshipT> relationships() const;
+    /// Scenes (format 27).
+    [[nodiscard]] std::optional<wfb::SceneT> scene(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::SceneT> scenes() const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

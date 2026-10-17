@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Dialogue and what its conditions read: DLBR (branches), DIAL (topics), INFO
-// (the lines), VTYP (voice types) and RELA (relationships).
+// (the lines), VTYP (voice types), RELA (relationships) and SCEN (scenes).
 //
 // DIAL's children, the INFOs, are not part of its payload: they lie in the
 // group that follows it (group type 7, label = the DIAL), which the merge
@@ -99,6 +99,59 @@ struct Relationship {
     FormId association;            ///< DATA[12], an ASTP.
     static constexpr std::size_t k_size = 16;
 };
+
+/// One phase of a scene: HNAM, NAM0, the start conditions, NEXT, the
+/// completion conditions, NEXT, the old-style result script (skipped), HNAM.
+struct ScenePhase {
+    std::string name; ///< NAM0
+    std::vector<Condition> start_conditions;
+    std::vector<Condition> completion_conditions;
+};
+
+/// An actor of a scene: ALID, LNAM, DNAM.
+struct SceneActor {
+    std::int32_t alias{-1};
+    std::uint32_t flags{};           ///< LNAM
+    std::uint32_t behaviour_flags{}; ///< DNAM
+};
+
+/// One action: ANAM (type) ... ANAM (end). 0 dialogue, 1 package, 2 timer. No
+/// action has conditions in Skyrim.esm or Update.esm.
+struct SceneAction {
+    std::uint16_t type{};
+    std::string name;              ///< NAM0
+    std::int32_t alias{-1};        ///< ALID
+    std::uint32_t index{};         ///< INAM
+    std::uint32_t flags{};         ///< FNAM
+    std::uint32_t start_phase{};   ///< SNAM
+    std::uint32_t end_phase{};     ///< ENAM
+    FormId topic;                  ///< DATA (dialogue)
+    std::vector<FormId> packages;  ///< PNAM (package)
+    float timer_seconds{};         ///< the second SNAM (timer)
+    std::int32_t head_track_alias{-1}; ///< HTID
+    float delay_max{};             ///< DMAX
+    float delay_min{};             ///< DMIN
+    std::uint32_t emotion{};       ///< DEMO
+    std::uint32_t emotion_value{}; ///< DEVA
+};
+
+/// SCEN: a scene. 1,706 in Skyrim.esm.
+struct Scene {
+    std::string editor_id;
+    /// FNAM: 0x1 begin on quest start, 0x2 stop on quest end, 0x4 show all
+    /// text, 0x8 repeat while true, 0x10 interruptible.
+    std::uint32_t flags{};
+    FormId quest; ///< The PNAM after the last action.
+    std::vector<Condition> conditions;
+    std::uint32_t declared_condition_count{};
+    std::vector<ScenePhase> phases;
+    std::vector<SceneActor> actors;
+    std::vector<SceneAction> actions;
+    ScriptData scripts;
+    SceneFragments fragments;
+};
+
+[[nodiscard]] io::ParseResult<Scene> parse_scene(io::SpanReader& data, const FormContext& ctx);
 
 [[nodiscard]] io::ParseResult<DialogueBranch> parse_dialogue_branch(io::SpanReader& data,
                                                                     const FormContext& ctx);

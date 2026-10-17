@@ -296,6 +296,16 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(w.locations),
                      static_cast<unsigned long long>(w.relationships),
                      static_cast<unsigned long long>(w.factions));
+        std::fprintf(text, "                %llu scenes (%llu phases, %llu actors, %llu dialogue / %llu package / "
+                           "%llu timer actions, %llu phase fragments, %llu with a fragment script)\n",
+                     static_cast<unsigned long long>(w.scenes),
+                     static_cast<unsigned long long>(w.scene_phases),
+                     static_cast<unsigned long long>(w.scene_actors),
+                     static_cast<unsigned long long>(w.scene_dialogue_actions),
+                     static_cast<unsigned long long>(w.scene_package_actions),
+                     static_cast<unsigned long long>(w.scene_timer_actions),
+                     static_cast<unsigned long long>(w.scene_phase_fragments),
+                     static_cast<unsigned long long>(w.scene_scripted));
         std::fprintf(text, "                %llu unresolved, %llu parse errors, %llu script errors\n",
                      static_cast<unsigned long long>(w.unresolved),
                      static_cast<unsigned long long>(w.parse_errors),

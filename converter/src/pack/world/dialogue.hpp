@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Dialogue (DLBR, DIAL, INFO) and the records its conditions read (VTYP, LCTN,
-// RELA, FACT). Private to pack/world/.
+// RELA, FACT) and scenes (SCEN). Private to pack/world/.
 #pragma once
 
 #include "context.hpp"
@@ -46,6 +46,8 @@ private:
                      const record::FormContext& form_ctx);
     void on_relationship(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
+    void on_scene(const record::MergedRecord& merged, io::SpanReader& data,
+                  const record::FormContext& form_ctx);
     void on_faction(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
 
@@ -62,6 +64,7 @@ private:
     std::map<std::uint32_t, wfb::LocationT> locations_;
     std::map<std::uint32_t, wfb::RelationshipT> relationships_;
     std::map<std::uint32_t, wfb::FactionT> factions_;
+    std::map<std::uint32_t, wfb::SceneT> scenes_;
 };
 
 } // namespace bethconv::pack::detail

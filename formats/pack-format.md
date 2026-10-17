@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (26; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (27; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -238,6 +238,22 @@ test bits by these names, through `has_flag` in
   and `keywords`, `races` `voice_types` (male, female) and `cells` `location`
   (XLCN). Unlike a package's conditions, an empty `string1`/`string2` of a
   dialogue condition is an empty string, not absent.
+- Scenes (format 27): `scenes` (SCEN), sorted by id, FormIDs global: `quest`
+  (the PNAM after the last action), `flags` (FNAM: 0x1 begin on quest start,
+  0x2 stop on quest end, 0x4 show all text, 0x8 repeat while true, 0x10
+  interruptible), `conditions`, `phases` in order (a phase's index is its
+  position; `name`, `start_conditions` before its first NEXT and
+  `completion_conditions` after it), `actors` (`alias`, LNAM `flags`, DNAM
+  `behaviour_flags`) and `actions`: `type` (0 dialogue, 1 package, 2 timer),
+  `name`, `alias` (-1 for timers), `index` (INAM), `flags` (FNAM, dialogue
+  only), `start_phase`, `end_phase`, `topic` (dialogue), `packages` (package),
+  `timer_seconds` (the second SNAM of a timer), `head_track_alias` (-1
+  none), `delay_max`, `delay_min`, `emotion` and `emotion_value`. Actions
+  have no conditions in Skyrim Special Edition. The VMAD gives `scripts`,
+  `fragment_script`, `begin_fragment`, `end_fragment` and `phase_fragments`
+  (`phase`, `on_end`, `fragment`). Old-style result scripts (QNAM, SCHR),
+  the editor's phase width (WNAM) and VNAM are not kept. Every PACK is in the
+  package table, whether an NPC uses it or not.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.

@@ -299,6 +299,14 @@ std::vector<wfb::RelationshipT> WorldFile::relationships() const {
     return unpack_all(impl_->root->relationships());
 }
 
+std::optional<wfb::SceneT> WorldFile::scene(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->scenes(), id));
+}
+
+std::vector<wfb::SceneT> WorldFile::scenes() const {
+    return unpack_all(impl_->root->scenes());
+}
+
 std::optional<wfb::KeywordT> WorldFile::keyword(std::uint32_t id) const {
     return unpack(lookup(impl_->root->keywords(), id));
 }

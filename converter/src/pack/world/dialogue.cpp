@@ -41,6 +41,9 @@ void DialogueCollector::collect(const record::MergedRecord& merged, io::SpanRead
     case FourCC{"FACT"}.value:
         on_faction(merged, data, form_ctx);
         break;
+    case FourCC{"SCEN"}.value:
+        on_scene(merged, data, form_ctx);
+        break;
     default:
         break;
     }
@@ -217,6 +220,76 @@ void DialogueCollector::on_faction(const record::MergedRecord& merged, io::SpanR
     factions_[out.id] = std::move(out);
 }
 
+void DialogueCollector::on_scene(const record::MergedRecord& merged, io::SpanReader& data,
+                                 const record::FormContext& form_ctx) {
+    auto s = record::parse_scene(data, form_ctx);
+    if (!s) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::SceneT out;
+    out.id = merged.form.value;
+    out.editor_id = s->editor_id;
+    out.quest = shared_.global(merged, s->quest, failed);
+    out.flags = static_cast<wfb::SceneFlags>(s->flags);
+    out.conditions = shared_.global_conditions(merged, s->conditions, failed);
+    for (const auto& p : s->phases) {
+        auto& t = out.phases.emplace_back(std::make_unique<wfb::ScenePhaseT>());
+        t->name = p.name;
+        t->start_conditions = shared_.global_conditions(merged, p.start_conditions, failed);
+        t->completion_conditions =
+            shared_.global_conditions(merged, p.completion_conditions, failed);
+    }
+    for (const auto& a : s->actors) {
+        auto& t = out.actors.emplace_back(std::make_unique<wfb::SceneActorT>());
+        t->alias = a.alias;
+        t->flags = a.flags;
+        t->behaviour_flags = a.behaviour_flags;
+    }
+    auto& stats = shared_.stats();
+    for (const auto& a : s->actions) {
+        auto& t = out.actions.emplace_back(std::make_unique<wfb::SceneActionT>());
+        t->type = a.type;
+        t->name = a.name;
+        t->alias = a.alias;
+        t->index = a.index;
+        t->flags = a.flags;
+        t->start_phase = a.start_phase;
+        t->end_phase = a.end_phase;
+        t->topic = shared_.global(merged, a.topic, failed);
+        t->packages = shared_.global_all(merged, a.packages, failed);
+        t->timer_seconds = a.timer_seconds;
+        t->head_track_alias = a.head_track_alias;
+        t->delay_max = a.delay_max;
+        t->delay_min = a.delay_min;
+        t->emotion = a.emotion;
+        t->emotion_value = a.emotion_value;
+        (a.type == 0 ? stats.scene_dialogue_actions
+                     : a.type == 1 ? stats.scene_package_actions : stats.scene_timer_actions)++;
+    }
+    out.scripts = shared_.global_scripts(merged, s->scripts, failed);
+    out.fragment_script = s->fragments.script;
+    out.begin_fragment = s->fragments.begin_function;
+    out.end_fragment = s->fragments.end_function;
+    for (const auto& f : s->fragments.phases) {
+        auto& t = out.phase_fragments.emplace_back(std::make_unique<wfb::ScenePhaseFragmentT>());
+        t->phase = f.phase;
+        t->on_end = (f.flags & 2U) != 0;
+        t->fragment = f.function;
+    }
+    stats.scene_phases += out.phases.size();
+    stats.scene_actors += out.actors.size();
+    stats.scene_phase_fragments += out.phase_fragments.size();
+    if (!out.fragment_script.empty()) {
+        ++stats.scene_scripted;
+    }
+    if (failed) {
+        ++stats.unresolved;
+    }
+    scenes_[out.id] = std::move(out);
+}
+
 void DialogueCollector::finish(wfb::WorldT& world, const record::MergedWorld& merged) {
     auto& stats = shared_.stats();
     // Group the INFOs by topic in the order the merge first saw them.
@@ -246,12 +319,14 @@ void DialogueCollector::finish(wfb::WorldT& world, const record::MergedWorld& me
     stats.locations += locations_.size();
     stats.relationships += relationships_.size();
     stats.factions += factions_.size();
+    stats.scenes += scenes_.size();
     move_into(world.dialogue_branches, branches_);
     move_into(world.dialogue_topics, topics_);
     move_into(world.voice_types, voice_types_);
     move_into(world.locations, locations_);
     move_into(world.relationships, relationships_);
     move_into(world.factions, factions_);
+    move_into(world.scenes, scenes_);
 }
 
 } // namespace bethconv::pack::detail

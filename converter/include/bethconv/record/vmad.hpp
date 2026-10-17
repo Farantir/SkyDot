@@ -11,7 +11,7 @@
 // object is a FormID, an alias index (int16) and two unused bytes, in that
 // order for object format 1 and reversed (unused, alias, FormID) for 2.
 //
-// QUST, INFO, PACK, SCEN and PERK follow the scripts with fragment data.
+// QUST, INFO, SCEN, PACK and PERK follow the scripts with fragment data.
 // QUST's is decoded (`read_quest_fragments`): a byte (2 in vanilla), a
 // fragment count, the fragment script's name (empty, not absent, without
 // fragments), the fragments (stage uint16, int16, log entry int32, a byte,
@@ -133,6 +133,34 @@ struct InfoFragments {
     static constexpr std::uint8_t k_has_end = 0x02;
 };
 
+/// What follows a SCEN's scripts: a byte (version), a flags byte (bit 0 the
+/// begin fragment is present, bit 1 the end fragment), the fragment script's
+/// file name (`SF_<scene>`), the begin and end fragments (a byte, script name,
+/// function name), a u16 count and per phase fragment a flags byte (bit 0
+/// begin of the phase, bit 1 end), the phase index (u32), a byte, the script
+/// name and the function name. Source: UESP (VMAD field), xEdit
+/// (wbVMADFragmentedSCEN).
+struct SceneFragments {
+    std::uint8_t version{};
+    std::uint8_t flags{};
+    std::string script;
+    std::string begin_script;
+    std::string begin_function;
+    std::string end_script;
+    std::string end_function;
+
+    struct PhaseFragment {
+        std::uint8_t flags{};
+        std::uint32_t phase{};
+        std::string script;
+        std::string function;
+    };
+    std::vector<PhaseFragment> phases;
+
+    static constexpr std::uint8_t k_has_begin = 0x01;
+    static constexpr std::uint8_t k_has_end = 0x02;
+};
+
 /// Read the script part of a VMAD payload. Stops after the last script;
 /// anything after it is left in `body`.
 [[nodiscard]] io::ParseResult<ScriptData> read_script_data(io::SpanReader& body);
@@ -144,5 +172,8 @@ struct InfoFragments {
 
 /// Read INFO fragment data from where `read_script_data` stopped.
 [[nodiscard]] io::ParseResult<InfoFragments> read_info_fragments(io::SpanReader& body);
+
+/// Read SCEN fragment data from where `read_script_data` stopped.
+[[nodiscard]] io::ParseResult<SceneFragments> read_scene_fragments(io::SpanReader& body);
 
 } // namespace bethconv::record

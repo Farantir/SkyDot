@@ -5,6 +5,151 @@
 #include <utility>
 
 namespace bethconv::record {
+namespace {
+
+/// A field read for nothing: old-style scripts, VNAM, editor widths.
+void skip_rest(std::optional<io::ParseError>& failure, io::SpanReader& body) {
+    std::vector<std::byte> skipped;
+    take(failure, read_verbatim(body), skipped);
+}
+
+} // namespace
+
+io::ParseResult<Scene> parse_scene(io::SpanReader& data, const FormContext& ctx) {
+    Scene out;
+    bool in_phase = false;
+    int phase_stage = 0; // 0 start conditions, 1 completion, 2 after the second NEXT
+    bool in_action = false;
+    bool timer_seconds_next = false;
+    std::uint32_t ignored_count{};
+    const auto walked = walk_fields(
+        data, FourCC{"SCEN"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            const auto t = field.type;
+            if (in_phase) {
+                auto& phase = out.phases.back();
+                if (read_ctda_field(phase_stage == 0 ? phase.start_conditions
+                                                     : phase.completion_conditions,
+                                    ignored_count, field, body, failure)) {
+                    return true;
+                }
+            } else if (read_ctda_field(out.conditions, out.declared_condition_count, field, body,
+                                       failure)) {
+                return true;
+            }
+            const auto skip = [&] { skip_rest(failure, body); };
+            if (t == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (t == FourCC{"VMAD"}) {
+                take(failure, read_script_data(body), out.scripts);
+                if (!failure && !body.at_end()) {
+                    take(failure, read_scene_fragments(body), out.fragments);
+                }
+            } else if (t == FourCC{"HNAM"}) {
+                if (in_phase) {
+                    in_phase = false;
+                } else {
+                    out.phases.emplace_back();
+                    in_phase = true;
+                    phase_stage = 0;
+                }
+            } else if (t == FourCC{"ANAM"}) {
+                if (in_action) {
+                    in_action = false;
+                } else {
+                    auto& a = out.actions.emplace_back();
+                    take(failure, body.get<std::uint16_t>(), a.type);
+                    in_action = true;
+                    timer_seconds_next = false;
+                }
+            } else if (t == FourCC{"NEXT"}) {
+                if (in_phase) {
+                    ++phase_stage;
+                } else {
+                    skip();
+                }
+            } else if (t == FourCC{"NAM0"}) {
+                if (in_action) {
+                    take(failure, read_zstring(body), out.actions.back().name);
+                } else if (in_phase) {
+                    take(failure, read_zstring(body), out.phases.back().name);
+                } else {
+                    skip();
+                }
+            } else if (in_action) {
+                auto& a = out.actions.back();
+                if (t == FourCC{"ALID"}) {
+                    take(failure, body.get<std::int32_t>(), a.alias);
+                } else if (t == FourCC{"INAM"}) {
+                    take(failure, body.get<std::uint32_t>(), a.index);
+                } else if (t == FourCC{"FNAM"}) {
+                    take(failure, body.get<std::uint32_t>(), a.flags);
+                } else if (t == FourCC{"SNAM"}) {
+                    if (timer_seconds_next) {
+                        take(failure, body.get<float>(), a.timer_seconds);
+                    } else {
+                        take(failure, body.get<std::uint32_t>(), a.start_phase);
+                        timer_seconds_next = true;
+                    }
+                } else if (t == FourCC{"ENAM"}) {
+                    take(failure, body.get<std::uint32_t>(), a.end_phase);
+                } else if (t == FourCC{"DATA"}) {
+                    take(failure, read_formid(body), a.topic);
+                } else if (t == FourCC{"PNAM"}) {
+                    FormId package;
+                    take(failure, read_formid(body), package);
+                    if (!failure) {
+                        a.packages.push_back(package);
+                    }
+                } else if (t == FourCC{"HTID"}) {
+                    take(failure, body.get<std::int32_t>(), a.head_track_alias);
+                } else if (t == FourCC{"DMAX"}) {
+                    take(failure, body.get<float>(), a.delay_max);
+                } else if (t == FourCC{"DMIN"}) {
+                    take(failure, body.get<float>(), a.delay_min);
+                } else if (t == FourCC{"DEMO"}) {
+                    take(failure, body.get<std::uint32_t>(), a.emotion);
+                } else if (t == FourCC{"DEVA"}) {
+                    take(failure, body.get<std::uint32_t>(), a.emotion_value);
+                } else if (t == FourCC{"QNAM"} || t == FourCC{"SCHR"} || t == FourCC{"SCDA"} ||
+                           t == FourCC{"SCTX"} || t == FourCC{"SCRO"}) {
+                    skip(); // Old-style result script.
+                } else {
+                    return false;
+                }
+            } else if (in_phase) {
+                if (t == FourCC{"QNAM"} || t == FourCC{"SCHR"} || t == FourCC{"SCDA"} ||
+                    t == FourCC{"SCTX"} || t == FourCC{"SCRO"} || t == FourCC{"WNAM"}) {
+                    skip(); // Old-style result script and the editor width.
+                } else {
+                    return false;
+                }
+            } else if (t == FourCC{"FNAM"}) {
+                take(failure, body.get<std::uint32_t>(), out.flags);
+            } else if (t == FourCC{"ALID"}) {
+                auto& a = out.actors.emplace_back();
+                take(failure, body.get<std::int32_t>(), a.alias);
+            } else if (t == FourCC{"LNAM"} && !out.actors.empty()) {
+                take(failure, body.get<std::uint32_t>(), out.actors.back().flags);
+            } else if (t == FourCC{"DNAM"} && !out.actors.empty()) {
+                take(failure, body.get<std::uint32_t>(), out.actors.back().behaviour_flags);
+            } else if (t == FourCC{"PNAM"}) {
+                take(failure, read_formid(body), out.quest);
+            } else if (t == FourCC{"INAM"} || t == FourCC{"VNAM"} || t == FourCC{"XNAM"} ||
+                       t == FourCC{"SCHR"} || t == FourCC{"SCDA"} || t == FourCC{"SCTX"} ||
+                       t == FourCC{"SCRO"} || t == FourCC{"QNAM"} || t == FourCC{"WNAM"}) {
+                skip(); // The last action's index, VNAM, old-style scripts.
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
 
 io::ParseResult<DialogueBranch> parse_dialogue_branch(io::SpanReader& data,
                                                       const FormContext& ctx) {

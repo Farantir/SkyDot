@@ -233,4 +233,36 @@ io::ParseResult<InfoFragments> read_info_fragments(io::SpanReader& body) {
     return out;
 }
 
+io::ParseResult<SceneFragments> read_scene_fragments(io::SpanReader& body) {
+    Cursor in{body};
+    SceneFragments out;
+    if (in.read(out.version) && in.read(out.flags) && in.read_wstring(out.script)) {
+        std::uint8_t unknown{};
+        if ((out.flags & SceneFragments::k_has_begin) != 0) {
+            in.read(unknown) && in.read_wstring(out.begin_script) &&
+                in.read_wstring(out.begin_function);
+        }
+        if ((out.flags & SceneFragments::k_has_end) != 0 && !in.failure()) {
+            in.read(unknown) && in.read_wstring(out.end_script) &&
+                in.read_wstring(out.end_function);
+        }
+        std::uint16_t count{};
+        if (!in.failure() && in.read(count)) {
+            // Each is at least 1 + 4 + 1 + 2 + 2 bytes.
+            if (count > in.remaining() / 10) {
+                in.fail(io::ErrorKind::out_of_range, "scene phase fragment count past the end");
+            }
+            for (std::uint16_t i = 0; i < count && !in.failure(); ++i) {
+                auto& f = out.phases.emplace_back();
+                in.read(f.flags) && in.read(f.phase) && in.read(unknown) &&
+                    in.read_wstring(f.script) && in.read_wstring(f.function);
+            }
+        }
+    }
+    if (in.failure()) {
+        return std::unexpected(std::move(*in.failure()));
+    }
+    return out;
+}
+
 } // namespace bethconv::record

@@ -69,6 +69,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"VTYP"}.value:
     case FourCC{"LCTN"}.value:
     case FourCC{"RELA"}.value:
+    case FourCC{"SCEN"}.value:
     case FourCC{"FACT"}.value: {
         // Bases too, as before; read twice.
         io::SpanReader copy = data;

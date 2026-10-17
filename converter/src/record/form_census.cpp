@@ -88,6 +88,7 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"INFO"}, &run<parse_dialogue_info>},
     {FourCC{"VTYP"}, &run<parse_voice_type>},
     {FourCC{"RELA"}, &run<parse_relationship>},
+    {FourCC{"SCEN"}, &run<parse_scene>},
 };
 
 } // namespace
