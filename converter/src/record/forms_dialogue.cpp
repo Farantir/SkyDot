@@ -95,8 +95,9 @@ io::ParseResult<DialogueInfo> parse_dialogue_info(io::SpanReader& data, const Fo
             } else if (t == FourCC{"CNAM"}) {
                 take(failure, body.get<std::uint8_t>(), out.favor_level);
             } else if (t == FourCC{"RNAM"}) {
-                take(failure, read_lstring(body, ctx, FourCC{"INFO"}, t, StringKind::dialogue),
-                     out.prompt);
+                // The prompt is in the .STRINGS table, not ILSTRINGS like the
+                // responses (all 1,441 in Skyrim.esm resolve there).
+                take(failure, read_lstring(body, ctx, FourCC{"INFO"}, t), out.prompt);
             } else if (t == FourCC{"ANAM"}) {
                 take(failure, read_formid(body), out.speaker);
             } else if (t == FourCC{"DNAM"}) {
