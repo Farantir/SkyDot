@@ -86,8 +86,8 @@ struct ActivationTarget {
 /// How an activation ended, for the host to act on. `kind` is one of missing,
 /// parent_only, locked, blocked, busy (the host shows `note`), door,
 /// furniture (with `event`; `deferred` if the graph's ObjectActivated is
-/// awaited), toggle_open or none (the host applies it; `note` is for when it
-/// cannot), pickup (done).
+/// awaited), toggle_open, container (a CONT: the host opens its menu) or none
+/// (the host applies it; `note` is for when it cannot), pickup (done).
 struct ActivationOutcome {
     std::uint32_t ref{};
     std::string kind{"missing"};

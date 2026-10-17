@@ -196,10 +196,10 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     // ITST is optional: a save without it has nothing equipped, and the owners
     // that hold items count as resolved; the others resolve on touch.
     if (const auto* itst = file.find("ITST")) {
-        if (itst->version != vm::ItemStates::k_section_version) {
+        if (itst->version < 1 || itst->version > vm::ItemStates::k_section_version) {
             return fail("section ITST has a version this engine does not read");
         }
-        if (!vm::ItemStates::load(file.open(*itst), pending->items)) {
+        if (!vm::ItemStates::load(file.open(*itst), pending->items, itst->version)) {
             return fail("the ITST section of the save is damaged");
         }
     } else {

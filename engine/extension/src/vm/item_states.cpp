@@ -17,12 +17,14 @@ void ItemStates::erase(std::uint32_t owner) {
     resolved_.erase(owner);
     picks_.erase(owner);
     equipment_.erase(owner);
+    dropped_.erase(owner);
 }
 
 void ItemStates::clear() {
     resolved_.clear();
     picks_.clear();
     equipment_.clear();
+    dropped_.clear();
 }
 
 std::vector<std::uint8_t> ItemStates::save() const {
@@ -54,10 +56,15 @@ std::vector<std::uint8_t> ItemStates::save() const {
             w.u32(form);
         }
     }
+    w.u32(static_cast<std::uint32_t>(dropped_.size()));
+    for (const auto& [ref, count] : dropped_) {
+        w.u32(ref);
+        w.u64(static_cast<std::uint64_t>(count));
+    }
     return w.out;
 }
 
-bool ItemStates::load(save::ByteReader r, ItemStates& out) {
+bool ItemStates::load(save::ByteReader r, ItemStates& out, std::uint32_t version) {
     out = ItemStates{};
     std::uint32_t n = 0;
     if (!r.count(n, 4)) {
@@ -98,6 +105,19 @@ bool ItemStates::load(save::ByteReader r, ItemStates& out) {
             equipment.worn.insert(form);
         }
         out.equipment_[owner] = std::move(equipment);
+    }
+    if (version >= 2) {
+        if (!r.count(n, 12)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n; ++i) {
+            std::uint32_t ref = 0;
+            std::uint64_t count = 0;
+            if (!r.u32(ref) || !r.u64(count)) {
+                return false;
+            }
+            out.dropped_[ref] = static_cast<std::int64_t>(count);
+        }
     }
     return r.at_end();
 }

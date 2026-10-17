@@ -215,6 +215,7 @@ TEST_CASE("item states survive a save, and an empty section loads", "[items][sav
     e.ammo = k_arrow;
     e.worn = {k_cuirass, k_boots};
     s.equipment(0x802); // empty: not saved
+    s.set_dropped(0xFF000001, 7);
 
     vm::ItemStates back;
     REQUIRE(vm::ItemStates::load(skydot::save::ByteReader(s.save()), back));
@@ -228,6 +229,8 @@ TEST_CASE("item states survive a save, and an empty section loads", "[items][sav
     CHECK(back.find(0x801)->ammo == k_arrow);
     CHECK(back.find(0x801)->worn == std::set<std::uint32_t>{k_cuirass, k_boots});
     CHECK(back.find(0x802) == nullptr);
+    CHECK(back.dropped_count(0xFF000001) == 7);
+    CHECK(back.dropped_count(0xFF000002) == 0);
 
     vm::ItemStates none;
     REQUIRE(vm::ItemStates::load(skydot::save::ByteReader(vm::ItemStates{}.save()), none));
@@ -404,4 +407,17 @@ TEST_CASE("owners that hold items count as resolved when a save has no ITST", "[
     CHECK(s.resolved(0x800));
     CHECK(s.resolved(0x801));
     CHECK_FALSE(s.resolved(0x802));
+}
+
+TEST_CASE("an ITST of version 1 has no dropped references", "[items][save]") {
+    // Version 1: resolved owners, picks and equipment only.
+    skydot::save::ByteWriter w;
+    w.u32(1);
+    w.u32(0x800);
+    w.u32(0);
+    w.u32(0);
+    vm::ItemStates back;
+    REQUIRE(vm::ItemStates::load(skydot::save::ByteReader(w.out), back, 1));
+    CHECK(back.resolved(0x800));
+    CHECK_FALSE(vm::ItemStates::load(skydot::save::ByteReader(w.out), back, 2));
 }

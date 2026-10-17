@@ -143,6 +143,13 @@ public:
     bool unequip(std::int64_t owner, std::int64_t form);
     /// {right, left, ammo, worn: [forms]} of `owner`.
     godot::Dictionary equipment(std::int64_t owner);
+    /// Take up to `count` of `form` from `owner` and put one reference of the
+    /// item in the world in `cell` at `position` (Skyrim space) with
+    /// `rotation` (radians); it carries the count (activating it picks them up
+    /// again) and is saved like any placed reference. Returns the reference,
+    /// 0 if `owner` has none.
+    std::int64_t drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
+                      const godot::Vector3& position, const godot::Vector3& rotation);
     /// How a reference is activated (activate_ref's `source`).
     static constexpr std::int64_t ACTIVATE_PLAYER = 0;
     static constexpr std::int64_t ACTIVATE_SCRIPT = 1;
@@ -417,6 +424,7 @@ private:
     std::uint32_t cell_of(std::uint32_t ref) const;
     /// PlaceAtMe: a new runtime reference of `base` where `source` is.
     std::uint32_t place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled);
+    std::uint32_t place_ref(const vm::PlacedRef& placed, bool initially_disabled);
     /// The base's DEST, null if `ref` is not destructible.
     const bethconv::pack::wfb::Destruction* destruction_of(std::uint32_t ref) const;
     /// The base form of `ref`, placed by a script or by the world; 0 if unknown.

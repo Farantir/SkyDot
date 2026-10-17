@@ -77,6 +77,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("equip", "owner", "form"), &SkydotPapyrus::equip);
     godot::ClassDB::bind_method(D_METHOD("unequip", "owner", "form"), &SkydotPapyrus::unequip);
     godot::ClassDB::bind_method(D_METHOD("equipment", "owner"), &SkydotPapyrus::equipment);
+    godot::ClassDB::bind_method(D_METHOD("drop", "owner", "form", "count", "cell", "position", "rotation"),
+                                &SkydotPapyrus::drop);
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);

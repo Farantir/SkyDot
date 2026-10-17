@@ -62,8 +62,17 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
         owner_.vm_->schedule(delay, "activate", child, parent, static_cast<std::uint32_t>(ActivationSource::parent));
     }
     void pick_up(std::uint32_t ref, std::int64_t activator, const ActivationTarget& item) override {
-        owner_.vm_->inventory().add(static_cast<std::uint32_t>(activator), item.base, item.count);
-        owner_.set_disabled(ref, true);
+        // A dropped item stands for the count it was dropped with, and is gone
+        // once taken.
+        const std::int64_t dropped = owner_.items_.dropped_count(ref);
+        owner_.resolve_owner(static_cast<std::uint32_t>(activator));
+        owner_.vm_->inventory().add(static_cast<std::uint32_t>(activator), item.base,
+                                    dropped > 0 ? dropped : item.count);
+        if (dropped > 0) {
+            owner_.forget_ref(ref);
+        } else {
+            owner_.set_disabled(ref, true);
+        }
     }
 
 private:

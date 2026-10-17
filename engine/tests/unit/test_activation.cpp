@@ -236,6 +236,19 @@ TEST_CASE("an actor that activates a loose item picks it up", "[activation]") {
     CHECK(host.picked[0].second == k_player_ref);
 }
 
+TEST_CASE("a container's activation asks the host to open it, after the lock gate", "[activation]") {
+    FakeHost host;
+    host.targets[0x10] = target_of("CONT", "Chest");
+    host.targets[0x11] = target_of("CONT", "LockedChest");
+    host.locks[0x11] = 25;
+    Activations activations(host);
+    const auto open = activations.activate(0x10, 0, false, ActivationSource::player, false);
+    CHECK(open.kind == "container");
+    CHECK(host.picked.empty());
+    CHECK(activations.activate(0x11, 0, false, ActivationSource::player, false).kind == "locked");
+    CHECK(activations.activate(0x11, 0, false, ActivationSource::player, true).kind == "container");
+}
+
 TEST_CASE("a load door and furniture hand their kind to the host", "[activation]") {
     FakeHost host;
     host.targets[0x10] = target_of("DOOR", "LoadDoor");

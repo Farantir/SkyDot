@@ -294,6 +294,29 @@ Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
     return out;
 }
 
+std::int64_t SkydotPapyrus::drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
+                                 const godot::Vector3& position, const godot::Vector3& rotation) {
+    const auto base = static_cast<std::uint32_t>(form);
+    const std::int64_t taken = remove_item(static_cast<std::uint32_t>(owner), base, count);
+    if (taken <= 0) {
+        return 0;
+    }
+    vm::PlacedRef placed;
+    placed.base = base;
+    placed.cell = static_cast<std::uint32_t>(cell);
+    for (int i = 0; i < 3; ++i) {
+        placed.position[i] = static_cast<double>(position[i]);
+        placed.rotation[i] = static_cast<double>(rotation[i]);
+    }
+    const std::uint32_t id = place_ref(placed, false);
+    if (id == 0) {
+        vm_->inventory().add(static_cast<std::uint32_t>(owner), base, taken);
+        return 0;
+    }
+    items_.set_dropped(id, taken);
+    return id;
+}
+
 // ---- natives ----------------------------------------------------------------------
 
 void SkydotPapyrus::bind_item_natives() {

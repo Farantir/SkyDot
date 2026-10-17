@@ -58,6 +58,16 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
     }
     placed.scale = static_cast<double>(ref_info(source).get("scale", 1.0));
     placed.transient = explosion != nullptr;
+    return place_ref(placed, initially_disabled);
+}
+
+std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initially_disabled) {
+    const auto* explosion = world_.is_valid() ? world_->data().explosion_ptr(placed.base) : nullptr;
+    const Vector3 position(static_cast<float>(placed.position[0]), static_cast<float>(placed.position[1]),
+                           static_cast<float>(placed.position[2]));
+    const Vector3 rotation(static_cast<float>(placed.rotation[0]), static_cast<float>(placed.rotation[1]),
+                           static_cast<float>(placed.rotation[2]));
+    const std::uint32_t base = placed.base;
     const std::uint32_t id = vm_->placed().add(placed);
     if (id == 0) {
         godot::UtilityFunctions::push_error("Papyrus: the runtime reference ids are used up; nothing placed");

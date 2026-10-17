@@ -24,7 +24,7 @@ namespace skydot::vm {
 
 class ItemStates {
 public:
-    static constexpr std::uint32_t k_section_version = 1;
+    static constexpr std::uint32_t k_section_version = 2;
 
     [[nodiscard]] bool resolved(std::uint32_t owner) const { return resolved_.contains(owner); }
     void mark_resolved(std::uint32_t owner) { resolved_.insert(owner); }
@@ -52,16 +52,27 @@ public:
     /// Forget everything about `owner`.
     void erase(std::uint32_t owner);
 
+    /// How many items a reference that was dropped stands for (not in the
+    /// world's data, so the VM keeps it); 0 if it is not one.
+    [[nodiscard]] std::int64_t dropped_count(std::uint32_t ref) const {
+        const auto it = dropped_.find(ref);
+        return it == dropped_.end() ? 0 : it->second;
+    }
+    void set_dropped(std::uint32_t ref, std::int64_t count) { dropped_[ref] = count; }
+    void forget_dropped(std::uint32_t ref) { dropped_.erase(ref); }
+
     void clear();
     void adopt(ItemStates&& other) { *this = std::move(other); }
 
     [[nodiscard]] std::vector<std::uint8_t> save() const;
-    [[nodiscard]] static bool load(save::ByteReader r, ItemStates& out);
+    /// `version` is the section's (1: no dropped references).
+    [[nodiscard]] static bool load(save::ByteReader r, ItemStates& out, std::uint32_t version = k_section_version);
 
 private:
     std::set<std::uint32_t> resolved_;
     std::map<std::uint32_t, std::uint32_t> picks_;
     std::map<std::uint32_t, Equipment> equipment_;
+    std::map<std::uint32_t, std::int64_t> dropped_;
 };
 
 } // namespace skydot::vm

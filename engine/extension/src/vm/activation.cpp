@@ -146,6 +146,9 @@ ActivationOutcome Activations::activate(std::uint32_t ref, std::int64_t activato
         out.event = "LeverPushStart";
     } else if (target.type == "DOOR") {
         out.kind = "toggle_open";
+    } else if (target.type == "CONT") {
+        // The host opens the container's menu (the lock gate was passed above).
+        out.kind = "container";
     }
     out.note = label + ": nothing happens"; // if the host can do nothing with `kind`
     return out;
