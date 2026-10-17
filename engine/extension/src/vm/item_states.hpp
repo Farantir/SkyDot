@@ -12,6 +12,7 @@
 #pragma once
 
 #include "vm/equipment.hpp"
+#include "vm/inventory.hpp"
 #include "save/bytes.hpp"
 
 #include <cstdint>
@@ -28,6 +29,14 @@ public:
     [[nodiscard]] bool resolved(std::uint32_t owner) const { return resolved_.contains(owner); }
     void mark_resolved(std::uint32_t owner) { resolved_.insert(owner); }
     [[nodiscard]] const std::set<std::uint32_t>& resolved_owners() const { return resolved_; }
+
+    /// Every owner that holds something counts as resolved: for a save that
+    /// has no ITST, whose inventories already include their start items.
+    void mark_holders_resolved(const Inventory& inventory) {
+        for (const auto& [owner, items] : inventory.owners()) {
+            resolved_.insert(owner);
+        }
+    }
 
     /// The NPC_ a placed leveled NPC list picked for `ref`; 0 if none was.
     [[nodiscard]] std::uint32_t pick_of(std::uint32_t ref) const;

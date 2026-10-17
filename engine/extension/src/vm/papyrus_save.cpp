@@ -193,8 +193,8 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
             return fail("the ACTV section of the save is damaged");
         }
     }
-    // ITST is optional: a save without it has every owner unresolved (they
-    // resolve on touch) and nothing equipped.
+    // ITST is optional: a save without it has nothing equipped, and the owners
+    // that hold items count as resolved; the others resolve on touch.
     if (const auto* itst = file.find("ITST")) {
         if (itst->version != vm::ItemStates::k_section_version) {
             return fail("section ITST has a version this engine does not read");
@@ -202,6 +202,9 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
         if (!vm::ItemStates::load(file.open(*itst), pending->items)) {
             return fail("the ITST section of the save is damaged");
         }
+    } else {
+        // An old save: what is in INVT already has its start items.
+        pending->items.mark_holders_resolved(pending->vm.inventory);
     }
     // DLGS is optional: a save without it has said nothing.
     if (const auto* dlgs = file.find("DLGS")) {

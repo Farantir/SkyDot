@@ -394,3 +394,14 @@ TEST_CASE("an actor's level: its own, or the player's times its multiplier", "[i
     CHECK(skydot::actor_level(*zero) == 1);
     CHECK(skydot::actor_level(*mult) == 2); // 1 x 2.0
 }
+
+TEST_CASE("owners that hold items count as resolved when a save has no ITST", "[items][save]") {
+    vm::Inventory inventory;
+    inventory.add(0x800, k_gold, 5);
+    inventory.add(0x801, k_sword, 1);
+    vm::ItemStates s;
+    s.mark_holders_resolved(inventory);
+    CHECK(s.resolved(0x800));
+    CHECK(s.resolved(0x801));
+    CHECK_FALSE(s.resolved(0x802));
+}
