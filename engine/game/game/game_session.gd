@@ -55,6 +55,15 @@ signal activations_finished
 ## A non-essential actor other than the player was brought to Health 0.
 signal actor_died(ref: int)
 
+## A line of dialogue starts: the speaker's reference, the (subtitle) text, and
+## the seconds it stays.
+signal dialogue_line(speaker: int, text: String, seconds: float)
+## The lines are spoken: the topics to pick from, [{id, text, said}]. Choose
+## one with `dialogue_choose(index)`; "Goodbye" is the shell's own entry.
+signal dialogue_topics(list: Array)
+## The dialogue is over (a Goodbye line, or `dialogue_close`).
+signal dialogue_closed
+
 ## Stamina a sprinting player loses per second. To measure in the original
 ## (the game's fSprintStaminaDrainMult is a multiplier of something else).
 const SPRINT_STAMINA_PER_SECOND := 7.0
@@ -86,6 +95,14 @@ var _target_frame := -1
 var _sprint_allowed := true
 var _player: Object
 var _bridge: ScriptBridge
+# Dialogue: the speaker, the lines still to speak, the one being spoken (and
+# the seconds left of it), and what comes after the lines.
+var _talk_speaker := 0
+var _talk_lines: Array = []
+var _talk_current := {}
+var _talk_left := 0.0
+var _talk_after := {}
+var _talk_topics: Array = []
 ## What scripts place, fire and play.
 var placed: PlacedRefs
 var projectiles: Projectiles
@@ -198,6 +215,7 @@ func _make_game_nodes() -> void:
 	_bridge = ScriptBridge.new(world, papyrus, host, _viewpoint, config, place, streamer, transition, sounds)
 	place.left.connect(_bridge.place_left)
 	streamer.cell_dropped.connect(_bridge.scripts_unloaded)
+	_bridge.talk_requested.connect(dialogue_open)
 	_bridge.activations_finished.connect(activations_finished.emit)
 	_bridge.failed.connect(failed.emit)
 	_bridge.message.connect(message.emit)
@@ -265,6 +283,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	if transition.is_fading():
 		transition.step(delta)
 	update_scripts(delta, feet)
+	update_dialogue(delta)
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
@@ -310,6 +329,102 @@ func has_activations() -> bool:
 ## The --activate and --damage runs, a step a frame.
 func run_activation() -> void:
 	_bridge.run_activation()
+
+
+# ---- dialogue
+
+func is_dialogue_open() -> bool:
+	return _talk_speaker != 0
+
+
+## The name of the actor `ref` for a subtitle; empty if it has none.
+func ref_name(ref: int) -> String:
+	return world.get_actor(ref).get("name", "")
+
+
+## The player talks to `ref`: its lines play (`dialogue_line`), then the topics
+## come (`dialogue_topics`). False if `ref` cannot talk or a dialogue is open.
+func dialogue_open(ref: int) -> bool:
+	if _talk_speaker != 0 or not papyrus.dialogue_can_talk(ref):
+		return false
+	_talk_speaker = ref
+	_begin_talk(papyrus.dialogue_open(ref))
+	return true
+
+
+## Pick topic `index` of the list `dialogue_topics` sent. Ignored while lines play.
+func dialogue_choose(index: int) -> void:
+	if _talk_speaker == 0 or _is_talking() or index < 0 or index >= _talk_topics.size():
+		return
+	var topic: Dictionary = _talk_topics[index]
+	_talk_topics = []
+	_begin_talk(papyrus.dialogue_choose(topic["id"]))
+
+
+## End the dialogue now (the shell's Goodbye).
+func dialogue_close() -> void:
+	if _talk_speaker == 0:
+		return
+	if not _talk_current.is_empty() and _talk_current["last"]:
+		papyrus.dialogue_fragment(_talk_current["info"], true, _talk_speaker)
+	_finish_talk()
+
+
+## Cut the line being spoken short.
+func dialogue_skip() -> void:
+	_talk_left = 0.0
+
+
+func _is_talking() -> bool:
+	return not _talk_current.is_empty() or not _talk_lines.is_empty() or not _talk_after.is_empty()
+
+
+func _begin_talk(result: Dictionary) -> void:
+	_talk_lines.append_array(result["lines"])
+	_talk_after = result
+	update_dialogue(0.0)
+
+
+## The lines on their timer: fragments begin with an INFO's first line and end
+## with its last, then the topics (or the end).
+func update_dialogue(delta: float) -> void:
+	if _talk_speaker == 0:
+		return
+	_talk_left -= delta
+	while true:
+		if not _talk_current.is_empty():
+			if _talk_left > 0.0:
+				return
+			if _talk_current["last"]:
+				papyrus.dialogue_fragment(_talk_current["info"], true, _talk_speaker)
+			_talk_current = {}
+		if _talk_lines.is_empty():
+			break
+		_talk_current = _talk_lines.pop_front()
+		if _talk_current["first"]:
+			papyrus.dialogue_fragment(_talk_current["info"], false, _talk_speaker)
+		_talk_left = _talk_current["seconds"]
+		if not (_talk_current["text"] as String).is_empty():
+			dialogue_line.emit(_talk_speaker, _talk_current["text"], _talk_left)
+	if _talk_after.is_empty():
+		return
+	var after := _talk_after
+	_talk_after = {}
+	if after["closed"]:
+		_finish_talk()
+	else:
+		_talk_topics = after["topics"]
+		dialogue_topics.emit(_talk_topics)
+
+
+func _finish_talk() -> void:
+	papyrus.dialogue_close()
+	_talk_speaker = 0
+	_talk_lines = []
+	_talk_current = {}
+	_talk_after = {}
+	_talk_topics = []
+	dialogue_closed.emit()
 
 
 # ---- actor values and the prompt

@@ -20,6 +20,8 @@ signal message(text: String, box: bool)
 signal quest_started(quest: int)
 signal quest_stage(quest: int, stage: int, text: String)
 signal objective_changed(quest: int, index: int, state: String, text: String)
+## The player activated an actor that can talk, and nothing else came of it.
+signal talk_requested(ref: int)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
@@ -366,6 +368,9 @@ func _apply_outcome(outcome: Dictionary, picked := false) -> void:
 		"toggle_open":
 			if node != null and _toggle_open(node, ref, label):
 				return
+	if outcome["kind"] == "none" and _papyrus.dialogue_can_talk(ref):
+		talk_requested.emit(ref)
+		return
 	if _papyrus.get_scripts(ref).is_empty():
 		message.emit(outcome["note"], false)
 

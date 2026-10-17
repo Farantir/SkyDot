@@ -72,6 +72,9 @@ const PITCH_SPEED_FACTOR := 0.7
 ## backwards or the forced variant of some).
 signal command(action: StringName, modifier: bool)
 
+## Set while a dialogue menu has the keyboard: the player stands still and the
+## keys are not commands.
+var blocked := false
 ## Off for runs that drive themselves: everything here is ignored and the
 ## player stands still.
 var enabled := true
@@ -111,7 +114,7 @@ func key_label(action: StringName) -> String:
 ## view by `delta` seconds' worth.
 func apply(delta: float) -> void:
 	var player := _rig.player
-	if not enabled:
+	if not enabled or blocked:
 		player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
 		player.set_look(_rig.yaw, _rig.pitch)
 		return
@@ -145,7 +148,7 @@ func _input(event: InputEvent) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not enabled:
+	if not enabled or blocked:
 		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):

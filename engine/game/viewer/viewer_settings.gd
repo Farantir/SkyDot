@@ -99,6 +99,7 @@ var benchmark := 0.0  # seconds
 var fly_speed := 20.0  # m/s during the benchmark
 var captures := false  # screenshot or benchmark: still time, still actors
 var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
+var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
 var stick_look_speed := 3.0  # rad/s at full deflection of the right stick (pitch: 0.7 of it)
 var invert_look_y := false  # the right stick looks down when pushed up
@@ -202,6 +203,9 @@ func _read(args: Dictionary) -> void:
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	hud = args.has("hud") or not captures
+	if args.has("talk"):
+		var talk_text: String = args["talk"]
+		talk = talk_text.hex_to_int() if talk_text.begins_with("0x") else talk_text.to_int()
 	for entry: String in args.get("damage-actor", "").split(",", false):
 		var parts: PackedStringArray = entry.split(":")
 		if parts.size() != 3 or parts[1].is_empty():
