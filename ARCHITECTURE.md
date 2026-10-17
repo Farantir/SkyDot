@@ -963,7 +963,10 @@ Building an actor (`engine/docs/actors.md`):
    It works at a level of detail set by its distance to the camera: near
    (80 m) every frame, middle (160 m) and far at a lower rate for animation,
    physics and AI, and with no animation off screen; a standing one only
-   checks the floor once a second.
+   checks the floor once a second. `set_dead` (a death, 8.2 `Corpses`) stops
+   it: no walking, no processing, the animation off, and its cylinder on no
+   physics layer. The plan also carries `parts_1st`, the first-person models
+   (ARMA MOD4/MOD5) of the same armors and skin, for `FirstPersonBody`.
 
 ### 7.8 AI packages
 
@@ -1190,6 +1193,7 @@ when to redraw. No part has a `_process` of its own.
 | `placed.gd` | `PlacedRefs` | the nodes of references scripts place (PlaceAtMe, explosions) and destruction model swaps; the VM owns the references |
 | `projectiles.gd` | `Projectiles` | what `Weapon.Fire` launches, in flight and stuck |
 | `combat.gd` | `Combat` | the player's weapon (sheathed, drawing, drawn, sheathing) and clip set (`1hm_`, `2hm_`, `2hw_`, `h2h_`), light, left and held power attacks timed by the first-person project's text keys (`HitFrame`), the hit test (reach, strike angle, line of sight) into `apply_hit`, the impact (IPDS, material, IPCT sound and model), `npc_attack` for actors (third-person clip, test from the head), `hit_segment` for a swung blade (VR). `GameSession` has `toggle_weapon`, `attack_pressed/released`, `attack`, `npc_attack`, `kill_actor` and forwards `weapon_state_changed`, `attack_started`, `hit_landed` |
+| `corpses.gd` | `Corpses` | what a death looks like: the actor's node stops (`SkydotActor.set_dead`), a `PhysicalBoneSimulator3D` ragdoll (12 capsule `PhysicalBone3D`s, cone joints, the killing hit's impulse) runs under its skeleton until it rests or 5 s, then freezes into the bones' poses; stores the corpse place (`set_corpse_place`), marks the node pickable (Search), lays the dead of a place built later down at their place; a skeleton without the human bones logs `death: no ragdoll for <skeleton>` and lies on its side |
 | `sounds.gd` | `Sounds` | sound effects from `Sound.Play`, graphs, text keys and sound markers; instance ids come from the engine |
 | `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the engine's sections plus `PLYR` (7.12) |
 | `warn_once.gd` | `WarnOnce` | a message once per key |

@@ -137,14 +137,6 @@ func _run(pack_dir: String) -> void:
 	root.add_child(body)
 	await process_frame
 	expect(not body.visible, "the body is hidden while sheathed")
-	var arms := body.get_node_or_null("bethconv_z_up_to_y_up/Skeleton") as Skeleton3D
-	expect(arms != null and arms.find_bone("Camera1st [Cam1]") >= 0 and arms.find_bone("Weapon") >= 0, "the first-person skeleton is built")
-	var arm_meshes := 0
-	if arms != null:
-		for child in arms.get_children():
-			arm_meshes += 1 if child is MeshInstance3D else 0
-	expect(arm_meshes >= 2, "the player's first-person body and hands are skinned onto it: %d meshes" % arm_meshes)
-
 	# Hands first: nothing in the right hand.
 	expect(_session.player_weapon() == 0 and _session.combat.clip_prefix() == "h2h_", "bare hands play h2h_")
 
@@ -158,10 +150,16 @@ func _run(pack_dir: String) -> void:
 	expect(_session.weapon_state() == Combat.State.DRAWING, "drawing")
 	await process_frame
 	body.follow()
+	var arms := body.get_node_or_null("bethconv_z_up_to_y_up/Skeleton") as Skeleton3D
+	expect(arms != null and arms.find_bone("Camera1st [Cam1]") >= 0 and arms.find_bone("Weapon") >= 0, "the first-person skeleton is built on the first draw")
+	var arm_meshes := 0
+	if arms != null:
+		for child in arms.get_children():
+			arm_meshes += 1 if child is MeshInstance3D else 0
+	expect(arm_meshes >= 2, "the player's first-person body and hands are skinned onto it: %d meshes" % arm_meshes)
 	var player := body.get_node("AnimationPlayer") as AnimationPlayer
 	expect(body.visible and player.current_animation == "1hm_equip", "the body shows and plays 1hm_equip: %s" % player.current_animation)
 	expect(body.get_node_or_null("bethconv_z_up_to_y_up/Skeleton/WeaponAttachment") != null, "the sword is on the Weapon bone")
-	arms = body.get_node("bethconv_z_up_to_y_up/Skeleton") as Skeleton3D  # built again by the equip
 	var cam_bone := arms.get_bone_global_rest(arms.find_bone("Camera1st [Cam1]")).origin
 	var at_camera := (body.get_node("bethconv_z_up_to_y_up") as Node3D).global_transform * cam_bone
 	expect(at_camera.distance_to(_camera.global_position) < 0.01, "the camera bone is at the camera: %s vs %s" % [at_camera, _camera.global_position])

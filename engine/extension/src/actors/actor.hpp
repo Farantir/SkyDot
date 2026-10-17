@@ -63,6 +63,12 @@ public:
     /// Facing about +Y, radians, as `SkydotPlayer.set_look` takes it.
     void face(double yaw);
 
+    /// The actor died: it stops walking and thinking, its AnimationPlayer stops (a ragdoll or
+    /// a frozen pose takes over the bones), and its cylinder leaves every collision layer so
+    /// that it blocks nobody. The node stays; the game layer lays the body down.
+    void set_dead(bool dead);
+    bool is_dead() const { return dead_; }
+
     /// Level of detail: 0 near (everything every frame), 1 middle, 2 far.
     /// Near without a camera.
     std::int32_t get_lod() const { return lod_; }
@@ -111,6 +117,7 @@ private:
     double lod_wait_{0.0};     ///< Seconds before the level is worked out again.
     double anim_wait_{0.0};    ///< Seconds since the animation last advanced.
     double step_wait_{0.0};    ///< Seconds since the physics last stepped.
+    bool dead_{false};         ///< `set_dead`: nothing moves it any more.
     bool wake_{false};         ///< Step at the next tick, whatever the level of detail.
     bool posed_{false};        ///< The animation has been applied at least once.
     bool manual_{false};       ///< The AnimationPlayer is advanced by hand.

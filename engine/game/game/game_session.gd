@@ -139,6 +139,8 @@ var _scene_held: Array = []
 var _scene_lines := {}  # "scene:action" -> lines left
 ## The player's weapon, attacks and hit tests, and actors' attacks.
 var combat: Combat
+## What a death looks like: ragdolls, corpse places.
+var corpses: Corpses
 ## What scripts place, fire and play.
 var placed: PlacedRefs
 var projectiles: Projectiles
@@ -255,6 +257,10 @@ func _make_game_nodes() -> void:
 	combat.attack_started.connect(attack_started.emit)
 	combat.hit_landed.connect(hit_landed.emit)
 	items_changed.connect(combat.on_items_changed)
+	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
+	actor_died.connect(corpses.on_died)
+	combat.hit_landed.connect(corpses.on_hit)
+	actor_arrived.connect(corpses.on_actor_arrived)
 	placed = PlacedRefs.new(world, papyrus)
 	host.add_child(placed)
 	papyrus.ref_placed.connect(placed.place)
@@ -482,6 +488,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	update_scenes(delta)
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	combat.step(delta)
+	corpses.step(delta)
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
@@ -553,6 +560,7 @@ func npc_attack(attacker: int, power := false) -> bool:
 ## (shots).
 func update_combat(delta: float) -> void:
 	combat.step(delta)
+	corpses.step(delta)
 
 
 ## Debug (--kill): hit `ref` with the weapon in hand until it is dead. Returns
@@ -807,6 +815,7 @@ func quest_name(quest: int) -> String:
 ## A cell was built and shown: its scripts attach, the shell hears of it.
 func _on_cell_built(cell: Node3D, cell_id: int) -> void:
 	_bridge.scripts_loaded(cell, cell_id)
+	corpses.on_place_built(cell)
 	place_built.emit(cell, cell_id)
 
 

@@ -49,6 +49,7 @@ var _shown := false
 var _last_tip := Vector3.ZERO
 var _has_tip := false
 var _warned := {}
+var _built := false
 
 
 ## `camera` is what the body hangs in front of (flat mode); `hand`, if given,
@@ -65,12 +66,19 @@ func _init(session: GameSession, camera: Node3D, hand: Node3D = null) -> void:
 
 
 func _ready() -> void:
-	rebuild()
 	_apply_state(_session.weapon_state(), _session.combat.idle_clip())
 
 
 ## Build the skeleton, the parts and the weapon again (the equipment changed).
+## Nothing is built until the weapon is first drawn: a sheathed body is hidden.
 func rebuild() -> void:
+	if not _built:
+		return
+	_build()
+
+
+func _build() -> void:
+	_built = true
 	for child in get_children():
 		remove_child(child)
 		child.free()
@@ -232,6 +240,8 @@ func _on_attack(clip: String, _power: bool) -> void:
 
 func _apply_state(state: int, clip: String) -> void:
 	_shown = state != Combat.State.SHEATHED
+	if _shown and not _built:
+		_build()
 	if _hand == null:
 		visible = _shown
 	elif _weapon_node != null:

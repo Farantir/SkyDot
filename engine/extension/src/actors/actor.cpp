@@ -117,9 +117,30 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_wander_radius", "value"), &SkydotActor::set_wander_radius);
     ClassDB::bind_method(D_METHOD("get_wander_radius"), &SkydotActor::get_wander_radius);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wander_radius"), "set_wander_radius", "get_wander_radius");
+    ClassDB::bind_method(D_METHOD("set_dead", "dead"), &SkydotActor::set_dead);
+    ClassDB::bind_method(D_METHOD("is_dead"), &SkydotActor::is_dead);
     ClassDB::bind_method(D_METHOD("get_lod"), &SkydotActor::get_lod);
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
+}
+
+void SkydotActor::set_dead(bool dead) {
+    dead_ = dead;
+    if (!dead) {
+        return;
+    }
+    path_.clear();
+    corner_ = 0;
+    set_input(godot::Vector2(), 0.0, WALK);
+    set_velocity(Vector3());
+    set_collision_layer(0);
+    set_collision_mask(0);
+    set_process(false);
+    set_physics_process(false);
+    if (godot::AnimationPlayer* anim = player()) {
+        anim->stop();
+        anim->set_active(false);
+    }
 }
 
 std::uint32_t SkydotActor::body_layer() const {
@@ -241,6 +262,9 @@ void SkydotActor::animate_lod(double delta) {
 }
 
 void SkydotActor::_process(double delta) {
+    if (dead_) {
+        return;
+    }
     lod_wait_ -= delta;
     if (lod_wait_ <= 0.0) {
         lod_wait_ = k_lod_interval;
@@ -483,6 +507,9 @@ void SkydotActor::animate() {
 }
 
 void SkydotActor::_physics_process(double engine_delta) {
+    if (dead_) {
+        return;
+    }
     // Level of detail: a farther actor steps less often, and then for the
     // time since its last step. A standing one only looks for ground.
     double delta = engine_delta;
