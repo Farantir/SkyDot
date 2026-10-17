@@ -194,7 +194,8 @@ bool SkydotPapyrus::dialogue_fragment(std::int64_t info_id, bool end, std::int64
 Dictionary SkydotPapyrus::voice_census(const godot::PackedStringArray& vpaths) const {
     Dictionary out;
     const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
-    if (root == nullptr || root->dialogue_topics() == nullptr) {
+    const auto* all_topics = root != nullptr ? root->dialogue_topics() : nullptr;
+    if (all_topics == nullptr) {
         return out;
     }
     // The archive: "<plugin>/<stem>" and the full paths.
@@ -222,24 +223,26 @@ Dictionary SkydotPapyrus::voice_census(const godot::PackedStringArray& vpaths) c
     std::int64_t speakers_voiced = 0;
     std::int64_t speakers_found = 0;
     std::vector<std::string> missing_speakers;
-    for (const auto* topic : *root->dialogue_topics()) {
-        if (topic->infos() == nullptr) {
+    for (const auto* topic : *all_topics) {
+        const auto* infos = topic->infos();
+        if (infos == nullptr) {
             continue;
         }
         const auto* quest = lookup(root->quests(), topic->quest());
         const std::string quest_edid = quest != nullptr && quest->editor_id() != nullptr ? quest->editor_id()->str() : "";
         const std::string topic_edid = topic->editor_id() != nullptr ? topic->editor_id()->str() : "";
-        for (const auto* info : *topic->infos()) {
+        for (const auto* info : *infos) {
             std::string plugin;
             std::uint32_t local = 0;
-            if (info->responses() == nullptr || !dialogue::plugin_of_form(*root, info->id(), plugin, local)) {
+            const auto* responses = info->responses();
+            if (responses == nullptr || !dialogue::plugin_of_form(*root, info->id(), plugin, local)) {
                 continue;
             }
             std::string lower_plugin = plugin;
             std::ranges::transform(lower_plugin, lower_plugin.begin(),
                                    [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             std::set<std::string> stems;
-            for (const auto* response : *info->responses()) {
+            for (const auto* response : *responses) {
                 const std::string stem = dialogue::voice_stem(quest_edid, topic_edid, local, response->number());
                 stems.insert(stem);
                 if (derived[lower_plugin].insert(stem).second && !archive_stems[lower_plugin].contains(stem) &&
@@ -253,24 +256,26 @@ Dictionary SkydotPapyrus::voice_census(const godot::PackedStringArray& vpaths) c
             const auto* npc = resolve_npc(*root, info->speaker(), wfb::NpcTemplateFlags::use_traits, 0);
             const auto* race = npc != nullptr ? lookup(root->races(), npc->race()) : nullptr;
             std::uint32_t voice = npc != nullptr ? npc->voice_type() : 0;
-            if (voice == 0 && race != nullptr && race->voice_types() != nullptr && race->voice_types()->size() >= 2) {
-                voice = race->voice_types()->Get(formats::has_flag(npc->flags(), wfb::NpcFlags::female) ? 1 : 0);
+            const auto* types = race != nullptr ? race->voice_types() : nullptr;
+            if (voice == 0 && npc != nullptr && types != nullptr && types->size() >= 2) {
+                voice = types->Get(formats::has_flag(npc->flags(), wfb::NpcFlags::female) ? 1U : 0U);
             }
             const auto* type = voice != 0 ? lookup(root->voice_types(), voice) : nullptr;
             ++speakers;
-            if (type == nullptr || type->editor_id() == nullptr) {
+            const auto* type_edid = type != nullptr ? type->editor_id() : nullptr;
+            if (type_edid == nullptr) {
                 continue;
             }
             ++speakers_voiced;
             bool all = true;
             for (const auto& stem : stems) {
-                const std::string path = dialogue::voice_path(plugin, type->editor_id()->str(), stem);
+                const std::string path = dialogue::voice_path(plugin, type_edid->str(), stem);
                 all = all && archive_full.contains(path);
             }
             if (all) {
                 ++speakers_found;
             } else if (missing_speakers.size() < 8) {
-                missing_speakers.push_back(dialogue::voice_path(plugin, type->editor_id()->str(), *stems.begin()));
+                missing_speakers.push_back(dialogue::voice_path(plugin, type_edid->str(), *stems.begin()));
             }
         }
     }
