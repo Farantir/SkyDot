@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (21; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (26; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -223,6 +223,21 @@ test bits by these names, through `has_flag` in
   rates. A `bases` entry adds `name` (FULL) and `activate_text` (RNAM of ACTI
   and FLOR). Format 25 adds `name` (FULL) to `cells` and `worlds`, for the name
   of a load door.
+- Dialogue and conditions (format 26): `dialogue_branches` (DLBR),
+  `dialogue_topics` (DIAL, each with its `infos` in the topic-children group
+  order: a later plugin's override keeps the base plugin's place and new INFOs
+  follow in the order the merge first saw them), `voice_types` (VTYP),
+  `locations` (LCTN), `relationships` (RELA) and `factions` (FACT: flags and
+  vendor hours, radius and chest), all sorted by id except the INFOs. An INFO
+  carries its conditions (the PACK condition table, FormIDs global), its
+  responses (TRDT with the ILSTRINGS text and the notes), links (TCLT), the
+  script fragment names of its VMAD and the usual `scripts`. A `quests` entry
+  adds `dialogue_conditions` (CTDAs before NEXT; they gate all of the quest's
+  dialogue), `event_conditions` (after NEXT), and `condition_list` on log
+  entries and aliases (their `conditions` count stays). `npcs` add `voice_type`
+  and `keywords`, `races` `voice_types` (male, female) and `cells` `location`
+  (XLCN). Unlike a package's conditions, an empty `string1`/`string2` of a
+  dialogue condition is an empty string, not absent.
 - `plugins`, in load order: each active plugin's name and FormID prefix
   (`0xII000000`, or `0xFEIII000` for a light plugin), so scripts can name a
   form by plugin and object id.

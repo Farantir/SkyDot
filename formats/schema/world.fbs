@@ -330,6 +330,9 @@ table Cell {
     sky_region: uint32;
     /// FULL (format 25): the name a load door into the cell shows; empty if none.
     name: string;
+    /// XLCN (format 26): a Location in `locations`; 0 if none. Exterior cells
+    /// have one too.
+    location: uint32;
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A
@@ -852,6 +855,9 @@ table QuestLogEntry {
     /// CTDA count. Conditions choose among a stage's entries; the engine does
     /// not evaluate them.
     conditions: ushort;
+    /// The CTDAs counted by `conditions` (format 26): the entry is chosen when
+    /// the stage is set if they pass.
+    condition_list: [Condition];
 }
 
 /// `QuestStage.flags`.
@@ -917,6 +923,9 @@ table QuestAlias {
     display_name: uint32;
     /// Scripts attached to the alias (from the quest's VMAD).
     scripts: [Script];
+    /// The CTDAs counted by `conditions` (format 26): they choose the fill of
+    /// an alias that nothing names.
+    condition_list: [Condition];
 }
 
 /// `Quest.flags`: DNAM (source: UESP, QUST record).
@@ -946,6 +955,12 @@ table Quest {
     /// In record order.
     objectives: [QuestObjective];
     aliases: [QuestAlias];
+    /// The CTDAs before NEXT (format 26): they gate every dialogue INFO of the
+    /// quest.
+    dialogue_conditions: [Condition];
+    /// The CTDAs after NEXT and before the first INDX (format 26): the
+    /// conditions of the quest's story manager event.
+    event_conditions: [Condition];
 }
 
 /// GLOB. `kind` is FNAM: 's' short, 'l' long, 'f' float.
@@ -1012,6 +1027,9 @@ table Race {
     health_regen: float;
     magicka_regen: float;
     stamina_regen: float;
+    /// VTCK (format 26): the voice types of the male and the female, VTYP ids;
+    /// empty or 0 if none.
+    voice_types: [uint32];
 }
 
 /// ARMO: an item worn. Bit n of `slots` is body slot 30 + n.
@@ -1162,6 +1180,10 @@ table Npc {
     morality: ubyte;
     mood: ubyte;
     assistance: ubyte;
+    /// VTCK (format 26): a VTYP in `voice_types`; 0 if none.
+    voice_type: uint32;
+    /// KWDA (format 26): KYWD ids.
+    keywords: [uint32];
 }
 
 /// The low bits of `Condition.type`.
@@ -1438,6 +1460,176 @@ table Explosion {
     flags: uint32;
 }
 
+/// `DialogueBranch.flags`: DLBR DNAM (format 26; source: UESP).
+enum DialogueBranchFlags : uint32 (bit_flags) {
+    top_level,
+    blocking,
+    exclusive
+}
+
+/// DLBR (format 26): a branch of a quest's dialogue.
+table DialogueBranch {
+    id: uint32 (key);
+    editor_id: string;
+    /// QNAM, a Quest.
+    quest: uint32;
+    /// SNAM, a DialogueTopic.
+    start_topic: uint32;
+    flags: DialogueBranchFlags;
+    /// TNAM: 0 player, 1 command.
+    category: uint32;
+}
+
+/// `DialogueTopic.flags`: DIAL DATA byte 0 (format 26).
+enum DialogueTopicFlags : ubyte (bit_flags) {
+    do_all_before_repeating
+}
+
+/// `DialogueInfo.flags`: INFO ENAM low word (format 26; source: UESP, xEdit).
+enum DialogueInfoFlags : uint16 (bit_flags) {
+    goodbye,
+    random,
+    say_once,
+    requires_player_activation,
+    info_refusal,
+    random_end,
+    invisible_continue,
+    walk_away,
+    walk_away_invisible_in_menu,
+    force_subtitle,
+    can_move_while_greeting,
+    no_lip_file,
+    requires_post_processing,
+    audio_output_override,
+    spends_favor_points
+}
+
+/// One spoken response of a line: TRDT with NAM1 and NAM2 (format 26).
+table DialogueResponse {
+    /// TRDT bytes 0 and 4: the emotion type (0 neutral ... 7 surprise) and
+    /// its value.
+    emotion: uint32;
+    emotion_value: uint32;
+    /// TRDT byte 12: the response number; it names the voice file.
+    number: ubyte;
+    /// TRDT bytes 16: a SoundDescriptor; 0 if none.
+    sound: uint32;
+    /// TRDT byte 20: 1 use emotion animation.
+    flags: ubyte;
+    /// NAM1, resolved from the ILSTRINGS table.
+    text: string;
+    /// NAM2: the writer's notes.
+    notes: string;
+}
+
+/// INFO (format 26): one line of a topic. FormIDs are global.
+table DialogueInfo {
+    id: uint32;
+    editor_id: string;
+    flags: DialogueInfoFlags;
+    /// ENAM high word.
+    reset_hours: uint16;
+    /// CNAM.
+    favor_level: ubyte;
+    /// RNAM: the text the player's menu shows instead of the topic's.
+    prompt: string;
+    /// ANAM, an NPC_.
+    speaker: uint32;
+    /// DNAM, an INFO whose responses this one uses.
+    shared_info: uint32;
+    /// TCLT, topics, in order.
+    links: [uint32];
+    /// TWAT, a topic.
+    walk_away_topic: uint32;
+    /// ONAM, a SOPM.
+    audio_output: uint32;
+    conditions: [Condition];
+    responses: [DialogueResponse];
+    /// VMAD scripts.
+    scripts: [Script];
+    /// INFO VMAD fragments: the TIF__ script file and the functions of its
+    /// begin and end fragments (`Fragment_N(ObjectReference akSpeakerRef)`);
+    /// empty if absent.
+    fragment_script: string;
+    begin_fragment: string;
+    end_fragment: string;
+}
+
+/// DIAL (format 26): a topic.
+table DialogueTopic {
+    id: uint32 (key);
+    editor_id: string;
+    /// FULL: the player's line.
+    text: string;
+    quest: uint32;
+    /// BNAM, a DialogueBranch.
+    branch: uint32;
+    /// PNAM.
+    priority: float;
+    flags: DialogueTopicFlags;
+    /// DATA byte 1.
+    category: ubyte;
+    /// DATA bytes 2 and 3.
+    subtype: uint16;
+    /// SNAM: GREE, HELO, IDLE, ... as four characters (like `Quest.event`).
+    subtype_code: uint32;
+    /// The INFOs in group order (the Creation Kit's order); overrides keep the
+    /// base plugin's place, new ones follow in the order of the plugin that
+    /// adds them.
+    infos: [DialogueInfo];
+}
+
+/// VTYP (format 26). `flags` is DNAM: 1 allow default dialogue, 2 female.
+table VoiceType {
+    id: uint32 (key);
+    editor_id: string;
+    flags: ubyte;
+}
+
+/// LCTN (format 26).
+table Location {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// PNAM, a Location.
+    parent: uint32;
+    /// KWDA, KYWD ids.
+    keywords: [uint32];
+}
+
+/// RELA (format 26): DATA is 16 bytes, parent NPC, child NPC, rank (u16), two
+/// bytes, association type (an ASTP).
+table Relationship {
+    id: uint32 (key);
+    editor_id: string;
+    parent: uint32;
+    child: uint32;
+    /// As stored; xEdit's names: 0 lover, 1 ally, 2 confidant, 3 friend, 4
+    /// acquaintance, 5 rival, 6 foe, 7 enemy, 8 archnemesis.
+    rank: uint16;
+    association: uint32;
+}
+
+/// `Faction.flags` bits the engine names (FACT DATA).
+enum FactionFlags : uint32 (bit_flags) {
+    hidden_from_pc,
+    vendor = 14
+}
+
+/// FACT (format 26): what conditions and vendors read.
+table Faction {
+    id: uint32 (key);
+    editor_id: string;
+    /// DATA.
+    flags: FactionFlags;
+    /// VENV: the hours (0-24) and the radius a vendor of this faction trades in.
+    vendor_start_hour: uint16;
+    vendor_end_hour: uint16;
+    vendor_radius: uint32;
+    /// VENC, a container.
+    vendor_chest: uint32;
+}
+
 table World {
     format_version: uint32;
     /// Sorted by id.
@@ -1508,6 +1700,18 @@ table World {
     messages: [Message];
     /// Sorted by id (format 23).
     explosions: [Explosion];
+    /// Sorted by id (format 26).
+    dialogue_branches: [DialogueBranch];
+    /// Sorted by id (format 26).
+    dialogue_topics: [DialogueTopic];
+    /// Sorted by id (format 26).
+    voice_types: [VoiceType];
+    /// Sorted by id (format 26).
+    locations: [Location];
+    /// Sorted by id (format 26).
+    relationships: [Relationship];
+    /// Sorted by id (format 26).
+    factions: [Faction];
 }
 
 root_type World;
