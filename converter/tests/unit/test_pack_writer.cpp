@@ -502,3 +502,29 @@ TEST_CASE("a damaged asset index is an error, not a short pack", "[pack]") {
     CHECK_FALSE(AssetReader::open(dir / "pack").has_value());
     CHECK_FALSE(PackWriter::create(dir / "pack", default_options()).has_value());
 }
+
+TEST_CASE("an input of an unsupported kind is a warning and does not fail the run", "[pack]") {
+    TempDir dir;
+    auto writer = PackWriter::create(dir / "pack", default_options());
+    REQUIRE(writer.has_value());
+    writer->fail(PackFailure{.vpath = "meshes/cc.hkx",
+                             .stage = "animation",
+                             .kind = "unsupported",
+                             .detail = "Havok binary tagfile"});
+    auto stats = writer->finish(default_manifest());
+    REQUIRE(stats.has_value());
+    CHECK(stats->failed == 0);
+    CHECK(stats->unsupported == 1);
+    CHECK(stats->warnings == 1);
+    CHECK(convert_exit_code(*stats) == 0);
+    const auto report = nlohmann::json::parse(read_text(dir / "pack" / "report.json"));
+    CHECK(report["totals"]["unsupported"] == 1);
+    CHECK(report["totals"]["failed"] == 0);
+
+    writer->fail(PackFailure{
+        .vpath = "meshes/bad.nif", .stage = "mesh", .kind = "corrupt", .detail = "no"});
+    stats = writer->finish(default_manifest());
+    REQUIRE(stats.has_value());
+    CHECK(stats->failed == 1);
+    CHECK(convert_exit_code(*stats) == 1);
+}

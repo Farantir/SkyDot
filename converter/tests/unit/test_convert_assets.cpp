@@ -299,7 +299,9 @@ TEST_CASE("a 16-bit PCM .wav is passed through, any other is reported", "[conver
     const auto result = run.go();
     CHECK(result.pack.sounds == 1);
     CHECK(result.pack.converted == 1);
-    CHECK(result.pack.failed == 3);
+    // Unsupported formats are warnings, not failures.
+    CHECK(result.pack.failed + result.pack.unsupported == 3);
+    CHECK(result.pack.unsupported >= 1);
 
     Run off;
     off.add("sound/fx/good.wav", wav(1, 16));
@@ -318,13 +320,11 @@ TEST_CASE("a script compiled for another game is reported, not packed", "[conver
 
     const auto result = run.go();
     CHECK(result.pack.scripts == 0);
-    REQUIRE(result.pack.failed == 1);
-    REQUIRE(result.first_failures.size() == 1);
-    const auto& failure = result.first_failures[0];
-    CHECK(failure.vpath == "scripts/fallout.pex");
-    CHECK(failure.stage == "script");
-    CHECK(failure.kind == "unsupported");
-    CHECK(failure.detail == "compiled for fallout4 (gameID 2), not skyrim");
+    // A warning in report.json, not a failure.
+    CHECK(result.pack.failed == 0);
+    CHECK(result.pack.unsupported == 1);
+    CHECK(result.pack.warnings == 1);
+    CHECK(bethconv::pack::convert_exit_code(result.pack) == 0);
 }
 
 TEST_CASE("bytes after a tree LOD file's blocks are skipped and reported", "[convert][lod]") {

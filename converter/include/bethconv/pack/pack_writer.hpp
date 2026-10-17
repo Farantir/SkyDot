@@ -176,12 +176,21 @@ struct PackOptions {
     bool prune_orphans = false;
 };
 
+/// Whether `fail` counts the failure as a warning: the input is valid but of a
+/// kind this converter does not read.
+[[nodiscard]] inline bool is_unsupported(const PackFailure& failure) noexcept {
+    return failure.kind == "unsupported";
+}
+
 /// Statistics from `finish()`.
 struct PackStats {
     std::uint64_t inputs{};   ///< Virtual paths offered to the pack.
     std::uint64_t converted{}; ///< Assets actually written.
     std::uint64_t deduped{};   ///< Inputs whose asset already existed.
     std::uint64_t failed{};
+    /// Inputs that failed with kind "unsupported" (a Havok tagfile, a script
+    /// for another game): counted in `warnings`, not in `failed`.
+    std::uint64_t unsupported{};
     std::uint64_t deferred{};  ///< Inputs of a kind this pass does not convert.
     std::uint64_t deferred_kinds{}; ///< Distinct extensions among them.
 
@@ -211,6 +220,13 @@ struct PackStats {
     std::uint64_t index_bytes{};
     std::uint64_t report_bytes{};
 };
+
+/// The exit status of `bethconv convert`: 1 only for real failures; inputs of
+/// an unsupported kind are warnings.
+[[nodiscard]] inline int convert_exit_code(const PackStats& stats) noexcept {
+    return stats.failed == 0 ? 0 : 1;
+}
+
 
 /// A reserved asset for one input. The hash comes from the source bytes, so
 /// `already_present` is known before conversion; if true, do not convert.

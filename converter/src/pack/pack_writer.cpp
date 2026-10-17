@@ -141,6 +141,12 @@ void PackWriter::reuse(const AssetSlot& slot) {
 }
 
 void PackWriter::fail(PackFailure failure) {
+    if (is_unsupported(failure)) {
+        ++stats_.unsupported;
+        warn(PackWarning{.vpath = failure.vpath,
+                         .detail = "unsupported (" + failure.stage + "): " + failure.detail});
+        return;
+    }
     ++stats_.failed;
     failures_.push_back(std::move(failure));
 }
@@ -204,6 +210,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     report["totals"] = ordered_json{
         {"inputs", stats_.inputs},         {"converted", stats_.converted},
         {"deduped", stats_.deduped},       {"failed", stats_.failed},
+        {"unsupported", stats_.unsupported},
         {"deferred", stats_.deferred},     {"warnings", stats_.warnings},
         {"distinct_assets", stats_.distinct_assets},
         {"index_entries", stats_.index_entries},
@@ -369,6 +376,7 @@ io::ParseResult<PackStats> PackWriter::finish(const PackManifest& manifest) {
     doc["deferred"] = std::move(not_converted);
     doc["report"] = ordered_json{{"file", "report.json"},
                                  {"failed", stats_.failed},
+                                 {"unsupported", stats_.unsupported},
                                  {"warnings", stats_.warnings}};
 
     const std::string manifest_text = doc.dump(2) + "\n";
