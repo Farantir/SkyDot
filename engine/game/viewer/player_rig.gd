@@ -60,6 +60,17 @@ var flying: bool:
 		player.fly = value
 
 
+## Sprinting at the sprint gait (the session drains Stamina meanwhile) and
+## whether it is allowed (not with Stamina out): GameSession's optional part
+## of the player contract, ADR 0003.
+func is_sprinting() -> bool:
+	return player.is_sprinting()
+
+
+func set_sprint_allowed(allowed: bool) -> void:
+	player.set_sprint_allowed(allowed)
+
+
 func set_view_distance(metres: float) -> void:
 	camera.far = metres
 

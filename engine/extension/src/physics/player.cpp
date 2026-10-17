@@ -70,6 +70,9 @@ void SkydotPlayer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("teleport", "feet"), &SkydotPlayer::teleport);
     ClassDB::bind_method(D_METHOD("get_eye_position"), &SkydotPlayer::get_eye_position);
     ClassDB::bind_method(D_METHOD("is_swimming"), &SkydotPlayer::is_swimming);
+    ClassDB::bind_method(D_METHOD("is_sprinting"), &SkydotPlayer::is_sprinting);
+    ClassDB::bind_method(D_METHOD("set_sprint_allowed", "allowed"), &SkydotPlayer::set_sprint_allowed);
+    ClassDB::bind_method(D_METHOD("get_sprint_allowed"), &SkydotPlayer::get_sprint_allowed);
     ClassDB::bind_method(D_METHOD("clear_water"), &SkydotPlayer::clear_water);
     ClassDB::bind_method(D_METHOD("has_water"), &SkydotPlayer::has_water);
 
@@ -140,6 +143,11 @@ void SkydotPlayer::set_input(const godot::Vector2& move, double vertical, int ga
     move_ = move.limit_length(1);
     vertical_ = std::clamp(vertical, -1.0, 1.0);
     gait_ = std::clamp(gait, static_cast<int>(WALK), static_cast<int>(SPRINT));
+}
+
+bool SkydotPlayer::is_sprinting() const {
+    return gait_ == SPRINT && sprint_allowed_ && move_.length_squared() > 0.0001F && !fly_ && !swimming_ &&
+           is_on_floor();
 }
 
 void SkydotPlayer::set_look(double yaw, double pitch) {
@@ -219,7 +227,7 @@ void SkydotPlayer::_physics_process(double delta) {
 void SkydotPlayer::walk(double delta) {
     const Basis yaw(Vector3(0, 1, 0), r(yaw_));
     const Vector3 wish = yaw.xform(Vector3(move_.x, 0, -move_.y));
-    const double speed = gait_ == WALK ? walk_speed_ : gait_ == SPRINT ? sprint_speed_ : run_speed_;
+    const double speed = effective_gait() == WALK ? walk_speed_ : effective_gait() == SPRINT ? sprint_speed_ : run_speed_;
     const bool on_floor = is_on_floor();
 
     Vector3 v = get_velocity();

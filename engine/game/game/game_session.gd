@@ -21,6 +21,10 @@
 #     load_section(bytes) -> bool   decode and check it (changes nothing yet);
 #                                   then loaded_position, loaded_yaw and
 #                                   loaded_pitch say what place_at gets
+#     is_sprinting() -> bool        optional, with set_sprint_allowed(bool): the
+#                                   player runs at the sprint gait; the session
+#                                   drains Stamina meanwhile and forbids
+#                                   sprinting while it is out
 #
 # The shell calls `step` once a frame, with the player's feet, and listens to
 # the signals; it does not subscribe to SkydotPapyrus.
@@ -48,6 +52,12 @@ signal place_left
 signal actor_arrived(ref: int)
 ## The --activate run: everything was activated.
 signal activations_finished
+## A non-essential actor other than the player was brought to Health 0.
+signal actor_died(ref: int)
+
+## Stamina a sprinting player loses per second. To measure in the original
+## (the game's fSprintStaminaDrainMult is a multiplier of something else).
+const SPRINT_STAMINA_PER_SECOND := 7.0
 
 var config: GameConfig
 var pack: SkydotPack
@@ -70,6 +80,10 @@ var interactive := true:
 			transition.interactive = value
 
 var _viewpoint: Camera3D
+var _prompt: ActivationPrompt
+var _target := {}
+var _target_frame := -1
+var _sprint_allowed := true
 var _player: Object
 var _bridge: ScriptBridge
 ## What scripts place, fire and play.
@@ -121,6 +135,7 @@ func _open_world() -> bool:
 	papyrus = SkydotPapyrus.new()
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)
+	papyrus.actor_died.connect(actor_died.emit)
 	world.skyrim_materials = config.materials
 	world.effects = config.effects
 	world.grass = config.grass
@@ -179,6 +194,7 @@ func _make_game_nodes() -> void:
 	papyrus.stop_sound.connect(sounds.stop)
 	papyrus.sound_volume.connect(sounds.set_volume)
 	sounds.finished.connect(papyrus.notify_sound_finished)
+	_prompt = ActivationPrompt.new(world, papyrus, host, _viewpoint)
 	_bridge = ScriptBridge.new(world, papyrus, host, _viewpoint, config, place, streamer, transition, sounds)
 	place.left.connect(_bridge.place_left)
 	streamer.cell_dropped.connect(_bridge.scripts_unloaded)
@@ -249,6 +265,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	if transition.is_fading():
 		transition.step(delta)
 	update_scripts(delta, feet)
+	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
 		ai.update(delta)
@@ -258,6 +275,20 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 func update_scripts(delta: float, feet: Vector3) -> void:
 	papyrus.update_actor(SkydotPapyrus.PLAYER_REF, SkydotWorld.godot_to_skyrim(feet))
 	papyrus.update(delta)
+
+
+## A sprinting player (the shell's player object says so) loses Stamina; at 0
+## it may not sprint until Stamina is back above 0. Damaging Stamina also holds
+## its regeneration back, so it does not recover while sprinting.
+func _drain_sprint(delta: float) -> void:
+	if not (_player.has_method("is_sprinting") and _player.has_method("set_sprint_allowed")):
+		return
+	if _player.is_sprinting():
+		papyrus.damage_actor_value(SkydotPapyrus.PLAYER_REF, "Stamina", SPRINT_STAMINA_PER_SECOND * delta)
+	var allowed := actor_value(SkydotPapyrus.PLAYER_REF, "Stamina") > 0.0
+	if allowed != _sprint_allowed:
+		_sprint_allowed = allowed
+		_player.set_sprint_allowed(allowed)
 
 
 func is_fading() -> bool:
@@ -279,6 +310,28 @@ func has_activations() -> bool:
 ## The --activate and --damage runs, a step a frame.
 func run_activation() -> void:
 	_bridge.run_activation()
+
+
+# ---- actor values and the prompt
+
+## Actor value `name` ("Health", "Stamina"...) of `ref`; 0 for no actor.
+func actor_value(ref: int, name: String) -> float:
+	return papyrus.get_actor_value(ref, name)
+
+
+func actor_value_max(ref: int, name: String) -> float:
+	return papyrus.get_actor_value_max(ref, name)
+
+
+## What activating what the viewpoint looks at would do: {ref, verb, name,
+## lock_level} (lock_level -1: not locked), or {} if nothing is in reach or it
+## has no name. Worked out once per frame.
+func activation_target() -> Dictionary:
+	var frame := Engine.get_process_frames()
+	if frame != _target_frame:
+		_target_frame = frame
+		_target = _prompt.target() if _prompt != null and not transition.is_fading() else {}
+	return _target
 
 
 # ---- saves

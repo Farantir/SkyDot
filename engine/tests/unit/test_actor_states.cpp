@@ -124,19 +124,19 @@ TEST_CASE("damaged values regenerate per second by the rate, Magicka and Stamina
     s.tick(ActorStates::k_damaged_stamina_regen_delay - 0.5);
     CHECK(s.get(k_guard, av::k_stamina) == Approx(30));
     CHECK(s.get(k_guard, av::k_magicka) == Approx(40));
-    s.tick(1.0); // the delay ends in this tick
-    s.tick(2.0); // 5% of 60 = 3 per second
-    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 6));
-    CHECK(s.get(k_guard, av::k_magicka) == Approx(40 + 2 * 2.0 * 0.8));
+    s.tick(1.0); // the delay ends half way: 0.5 s regenerate (5% of 60 = 3 per second)
+    s.tick(2.0);
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 7.5));
+    CHECK(s.get(k_guard, av::k_magicka) == Approx(40 + 2.5 * 2.0 * 0.8));
 
     // The rate multiplier scales it.
     s.set_base(k_guard, av::k_stamina_rate_mult, 200);
     s.tick(1.0);
-    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 6 + 6));
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 7.5 + 6));
     // Damage again starts a new delay.
     s.damage(k_guard, av::k_stamina, 1);
     s.tick(1.0);
-    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 12 - 1));
+    CHECK(s.get(k_guard, av::k_stamina) == Approx(30 + 7.5 + 6 - 1));
 }
 
 TEST_CASE("an actor at Health 0 dies once, unless essential or the player", "[actor]") {

@@ -27,8 +27,8 @@ public:
     /// regenerate. The game's values are the GMSTs fDamagedMagickaRegenDelay
     /// and fDamagedStaminaRegenDelay; GMSTs are not in world.fb, so these are
     /// placeholders until measured in the original.
-    static constexpr double k_damaged_magicka_regen_delay = 5.0;
-    static constexpr double k_damaged_stamina_regen_delay = 5.0;
+    static constexpr double k_damaged_magicka_regen_delay = 1.5;
+    static constexpr double k_damaged_stamina_regen_delay = 1.5;
 
     /// Fills `out` with the data's values for actor `ref`; false if `ref` is
     /// no actor.

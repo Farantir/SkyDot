@@ -175,9 +175,9 @@ void ActorStates::tick(double seconds) {
         return;
     }
     for (auto& [ref, record] : records_) {
-        // A pause that ends during this tick still holds back all of it.
-        const bool magicka_paused = record.magicka_pause > 0.0;
-        const bool stamina_paused = record.stamina_pause > 0.0;
+        // What is left of a pause holds back that much of this tick.
+        const double magicka_held = std::min(record.magicka_pause, seconds);
+        const double stamina_held = std::min(record.stamina_pause, seconds);
         record.magicka_pause = std::max(0.0, record.magicka_pause - seconds);
         record.stamina_pause = std::max(0.0, record.stamina_pause - seconds);
         if (record.dead) {
@@ -185,25 +185,22 @@ void ActorStates::tick(double seconds) {
         }
         struct Vital {
             std::uint32_t value, rate, mult;
-            bool paused;
+            double held;
         };
         Vital vitals[] = {
-            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, false},
-            {av::k_magicka, av::k_magicka_rate, av::k_magicka_rate_mult, magicka_paused},
-            {av::k_stamina, av::k_stamina_rate, av::k_stamina_rate_mult, stamina_paused},
+            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, 0.0},
+            {av::k_magicka, av::k_magicka_rate, av::k_magicka_rate_mult, magicka_held},
+            {av::k_stamina, av::k_stamina_rate, av::k_stamina_rate_mult, stamina_held},
         };
         for (const Vital& vital : vitals) {
             const auto it = record.values.find(vital.value);
             if (it == record.values.end() || it->second.damage >= 0.0) {
                 continue;
             }
-            if (vital.paused) {
-                continue;
-            }
             const double per_second = std::max(0.0, max(ref, vital.value)) *
                                       std::max(0.0, get(ref, vital.rate)) / 100.0 *
                                       std::max(0.0, get(ref, vital.mult)) / 100.0;
-            it->second.damage = std::min(0.0, it->second.damage + per_second * seconds);
+            it->second.damage = std::min(0.0, it->second.damage + per_second * (seconds - vital.held));
         }
     }
 }

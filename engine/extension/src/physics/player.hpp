@@ -40,6 +40,12 @@ public:
     /// The eye, interpolated between the last two physics ticks.
     godot::Vector3 get_eye_position() const;
     bool is_swimming() const { return swimming_; }
+    /// Moving at the sprint gait on the ground (not flying or swimming), and
+    /// sprinting is allowed: the game drains Stamina meanwhile.
+    bool is_sprinting() const;
+    /// False makes the SPRINT gait run (Stamina is out).
+    void set_sprint_allowed(bool allowed) { sprint_allowed_ = allowed; }
+    bool get_sprint_allowed() const { return sprint_allowed_; }
 
     void set_fly(bool fly);
     bool get_fly() const { return fly_; }
@@ -111,6 +117,8 @@ private:
     godot::Vector2 move_;
     double vertical_{0.0};
     int gait_{RUN};
+    bool sprint_allowed_{true};
+    int effective_gait() const { return gait_ == SPRINT && !sprint_allowed_ ? RUN : gait_; }
     double yaw_{0.0};
     double pitch_{0.0};
     bool jump_requested_{false};

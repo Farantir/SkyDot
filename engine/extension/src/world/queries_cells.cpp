@@ -142,6 +142,7 @@ Dictionary get_cell(const WorldData& data, std::int64_t id) {
     }
     out["id"] = static_cast<std::int64_t>(cell->id());
     out["editor_id"] = to_godot(cell->editor_id());
+    out["name"] = to_godot(cell->name());
     out["interior"] = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
     out["world"] = static_cast<std::int64_t>(cell->world());
     out["grid"] = cell->has_grid() ? godot::Variant(godot::Vector2i(cell->grid_x(), cell->grid_y()))
@@ -246,6 +247,8 @@ Dictionary get_base(const WorldData& data, std::int64_t id) {
     out["type"] = String(chars);
     out["editor_id"] = to_godot(base->editor_id());
     out["model"] = to_godot(base->model());
+    out["name"] = to_godot(base->name());
+    out["activate_text"] = to_godot(base->activate_text());
     if (const auto* l = base->light(); l != nullptr && base->has_light()) {
         Dictionary light;
         light["radius"] = static_cast<double>(l->radius()) * formats::k_metres_per_unit;
@@ -373,6 +376,7 @@ Array list_worlds(const WorldData& data) {
         Dictionary entry;
         entry["id"] = static_cast<std::int64_t>(w->id());
         entry["editor_id"] = to_godot(w->editor_id());
+        entry["name"] = to_godot(w->name());
         entry["parent"] = static_cast<std::int64_t>(w->parent());
         entry["land_world"] = static_cast<std::int64_t>(data.land_world(w->id()));
         entry["default_water_height"] =

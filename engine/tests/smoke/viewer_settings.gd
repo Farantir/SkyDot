@@ -94,6 +94,16 @@ func _captures() -> void:
     expect(not flagged.interactive and flagged.radius == 4, "--no-input does not swallow --radius")
     expect(flagged.has_screenshot and flagged.screenshot == "out.png", "--no-input does not swallow --screenshot")
     expect(not parse(["--pack", "p", "--cell", "C", "--no-input", "--lod", "off"]).lod, "--no-input does not swallow --lod")
+    var play := parse(["--pack", "p", "--cell", "C"])
+    expect(play.hud and play.stick_look_speed == 3.0 and not play.invert_look_y and play.damage_actor.is_empty(), "play defaults: HUD, stick look 3, no inversion")
+    var shot := parse(["--pack", "p", "--cell", "C", "--screenshot", "o.png"])
+    expect(not shot.hud and parse(["--pack", "p", "--cell", "C", "--screenshot", "o.png", "--hud", "--radius", "3"]).hud, "captures have no HUD unless --hud")
+    expect(parse(["--pack", "p", "--cell", "C", "--hud", "--radius", "3"]).radius == 3, "--hud does not swallow --radius")
+    var feel := parse(["--pack", "p", "--cell", "C", "--stick-look-speed", "4.5", "--invert-look-y", "--damage-actor", "0x14:Health:40,0x1000:Stamina:5"])
+    expect(feel.stick_look_speed == 4.5 and feel.invert_look_y, "--stick-look-speed and --invert-look-y")
+    expect(feel.damage_actor.size() == 2 and feel.damage_actor[0] == {"ref": 0x14, "av": "Health", "amount": 40.0}
+        and feel.damage_actor[1]["ref"] == 0x1000, "--damage-actor lists ref, value and amount")
+    expect(not parse(["--pack", "p", "--cell", "C", "--damage-actor", "0x14:Health"]).error.is_empty(), "--damage-actor wants three parts")
     var last := parse(["--pack", "p", "--world", "W", "--large-refs", "off", "--large-ref-radius", "7", "--no-input"])
     expect(not last.large_refs and last.large_ref_radius == 7 and not last.interactive, "--no-input last")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,

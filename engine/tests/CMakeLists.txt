@@ -114,6 +114,7 @@ skydot_smoke_test(smoke_navigation navigation.gd)
 skydot_smoke_test(smoke_weather weather.gd)
 skydot_smoke_test(smoke_session session.gd)
 skydot_smoke_test(smoke_game_save game_save.gd)
+skydot_smoke_test(smoke_activation_prompt activation_prompt.gd)
 skydot_smoke_test(smoke_shaders shaders.gd "SCRIPT ERROR")
 skydot_smoke_test(smoke_viewer_settings viewer_settings.gd)
 skydot_smoke_test(smoke_packtool packtool.gd)
@@ -209,6 +210,16 @@ endif()
 # positions are game units) with time stopped, and checks the behaviour graph
 # and script log lines the original game's data must produce.
 if(SKYDOT_SSE_PACK)
+    add_test(NAME sse_actor_values
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/actor_values.gd")
+    set_tests_properties(sse_actor_values PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     function(skydot_sse_test name)
         cmake_parse_arguments(T "" "PASS;FAIL;FIXTURES_SETUP;FIXTURES_REQUIRED" "ARGS" ${ARGN})
         add_test(NAME ${name}

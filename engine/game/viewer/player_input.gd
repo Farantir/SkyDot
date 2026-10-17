@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Keyboard and mouse to the player. What the player does (walk, fly, sprint,
+# Keyboard, mouse and gamepad to the player. What the player does (walk, fly, sprint,
 # jump, look) goes to the PlayerRig here; every other key is a command the
 # viewer carries out (the `command` signal). Keys are InputMap actions
 # declared in project.godot, so a gamepad or VR shell maps its own events to
@@ -9,6 +9,13 @@
 # The mouse looks (Esc releases it, a click captures it again; the right
 # button looks while released). WASD to move, Shift sprints, Ctrl walks, Space
 # jumps (and swims up), Q and E fly down and up.
+#
+# A gamepad (Skyrim SE's Xbox layout; a Steam Deck's controls are the same
+# events) is bound in project.godot: the left stick moves (analog: under half
+# deflection walks unless sprint is held), the right stick looks (turn rate =
+# look_speed * deflection squared, so small pushes aim finely), A activates, Y
+# jumps, LB sprints (held), Start shows the journal. `uses_gamepad` says which
+# device was used last, for the prompt's key label.
 class_name PlayerInput
 extends Node
 
@@ -20,6 +27,10 @@ const MOVE_RIGHT := &"move_right"
 const MOVE_UP := &"move_up"
 const MOVE_DOWN := &"move_down"
 const SPRINT := &"sprint"
+const LOOK_LEFT := &"look_left"
+const LOOK_RIGHT := &"look_right"
+const LOOK_UP := &"look_up"
+const LOOK_DOWN := &"look_down"
 const WALK := &"walk"
 # Pressed once: the player's own.
 const JUMP := &"jump"
@@ -50,6 +61,12 @@ const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
+## A left stick pushed less than this far walks.
+## Xbox layout button names by Godot's JoyButton index.
+const PAD_LABELS := ["A", "B", "X", "Y", "Back", "Guide", "Start", "L3", "R3", "LB", "RB"]
+const WALK_DEFLECTION := 0.5
+## The stick turns the view up and down this much as fast as sideways.
+const PITCH_SPEED_FACTOR := 0.7
 
 ## An action in COMMANDS was pressed; `modifier` is true with Shift held (the
 ## backwards or the forced variant of some).
@@ -60,6 +77,12 @@ signal command(action: StringName, modifier: bool)
 var enabled := true
 ## m/s while flying.
 var fly_speed := 3.0
+## rad/s at full deflection of the right stick (--stick-look-speed).
+var look_speed := 3.0
+## Pushing the right stick up looks down (--invert-look-y).
+var invert_look_y := false
+## The last input came from a gamepad (else keyboard or mouse).
+var uses_gamepad := false
 var _rig: PlayerRig
 
 
@@ -74,18 +97,31 @@ func capture_mouse() -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 
 
-## Every frame: what is held goes to the player.
-func apply() -> void:
+## The label of what `action` is bound to on the device used last: "F" or "A".
+func key_label(action: StringName) -> String:
+	for event in InputMap.action_get_events(action):
+		if uses_gamepad and event is InputEventJoypadButton:
+			return PAD_LABELS[event.button_index] if event.button_index < PAD_LABELS.size() else "Pad"
+		if not uses_gamepad and event is InputEventKey:
+			return OS.get_keycode_string(event.keycode if event.keycode != 0 else event.physical_keycode)
+	return ""
+
+
+## Every frame: what is held goes to the player, and the right stick turns the
+## view by `delta` seconds' worth.
+func apply(delta: float) -> void:
 	var player := _rig.player
 	if not enabled:
 		player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
 		player.set_look(_rig.yaw, _rig.pitch)
 		return
-	var move := Vector2.ZERO
-	if Input.is_action_pressed(MOVE_FORWARD): move.y += 1
-	if Input.is_action_pressed(MOVE_BACK): move.y -= 1
-	if Input.is_action_pressed(MOVE_LEFT): move.x -= 1
-	if Input.is_action_pressed(MOVE_RIGHT): move.x += 1
+	var move := Input.get_vector(MOVE_LEFT, MOVE_RIGHT, MOVE_BACK, MOVE_FORWARD)
+	var look := Input.get_vector(LOOK_LEFT, LOOK_RIGHT, LOOK_DOWN, LOOK_UP)
+	if look != Vector2.ZERO:
+		var turn := look * look.length() * look_speed * delta  # squared response
+		_rig.apply_look(_rig.yaw - turn.x,
+			clampf(_rig.pitch + turn.y * PITCH_SPEED_FACTOR * (-1.0 if invert_look_y else 1.0),
+				-PITCH_LIMIT, PITCH_LIMIT))
 	var vertical := 0.0
 	if Input.is_action_pressed(MOVE_UP) or (Input.is_action_pressed(JUMP) and player.is_swimming()):
 		vertical += 1
@@ -94,11 +130,18 @@ func apply() -> void:
 	var gait := SkydotPlayer.RUN
 	if Input.is_action_pressed(SPRINT):
 		gait = SkydotPlayer.SPRINT
-	elif Input.is_action_pressed(WALK):
+	elif Input.is_action_pressed(WALK) or (move != Vector2.ZERO and move.length() < WALK_DEFLECTION):
 		gait = SkydotPlayer.WALK
 	player.fly_speed = fly_speed
 	player.set_input(move, vertical, gait)
 	player.set_look(_rig.yaw, _rig.pitch)
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.3):
+		uses_gamepad = true
+	elif event is InputEventKey or event is InputEventMouseButton or event is InputEventMouseMotion:
+		uses_gamepad = false
 
 
 func _unhandled_input(event: InputEvent) -> void:

@@ -96,6 +96,14 @@
 # --activate-wait FRAMES waits that many frames between two of them, for
 # scripts and animations to play out; --quit-after FRAMES quits that many
 # frames after the last (default 5); without --activate, from the start.
+# --hud forces the health, magicka and stamina bars, the crosshair and the
+# activation prompt on in --screenshot and --benchmark runs, which leave them
+# out; --damage-actor 0xREF:ActorValue:AMOUNT[,...] damages those actor values
+# once at the start (ref 0x14 is the player), so a shot shows the bars.
+# A gamepad plays as Skyrim SE's Xbox layout (player_input.gd): the left stick
+# moves, the right stick looks (--stick-look-speed RAD_PER_S at full deflection,
+# default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start shows the
+# journal. Sprinting costs Stamina (7 a second) and stops when it is out.
 # --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
 # at the start, after --load (like player.additem).
 # F3 shows or hides the performance line at the top right (fps, frame time
@@ -137,6 +145,7 @@ var _session: GameSession
 var _image_space: SkydotImageSpace
 var _rig: PlayerRig
 var _controls: PlayerInput
+var _hud: Hud
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
 var _benchmark := BenchmarkRun.new()
@@ -204,8 +213,13 @@ func _create_components() -> void:
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _input
+	_controls.look_speed = _settings.stick_look_speed
+	_controls.invert_look_y = _settings.invert_look_y
 	_controls.command.connect(_on_command)
 	add_child(_controls)
+	if _settings.hud:
+		_hud = Hud.new(_session, _controls)
+		add_child(_hud)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
 	if _settings.has_screenshot:
@@ -218,6 +232,8 @@ func _start_game() -> void:
 	var settings := _settings
 	if not _session.start_game():
 		return
+	for entry in settings.damage_actor:
+		_session.papyrus.damage_actor_value(entry["ref"], entry["av"], entry["amount"])
 
 	if not settings.world.is_empty():
 		if not settings.has_at:
@@ -303,7 +319,7 @@ func _process(delta: float) -> void:
 				print("lod: ", _session.streamer.lod.get_stats())
 			get_tree().quit(0)
 		return
-	_controls.apply()
+	_controls.apply(delta)
 
 
 ## The image space the camera grades with: the weather's outside, the cell's

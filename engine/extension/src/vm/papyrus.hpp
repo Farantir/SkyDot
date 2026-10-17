@@ -201,6 +201,9 @@ public:
 
     // ---- actor values (vm/actor_states.hpp): 0 for a reference that is no actor
     // or a name that is no actor value (reported once)
+    bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
+    /// How many of `item` `owner` carries (the player's key check).
+    std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
     double get_actor_value(std::int64_t ref, const godot::String& name) const;
     double get_actor_value_max(std::int64_t ref, const godot::String& name) const;
     /// Lower `name` of `ref` by `amount`; an actor at Health 0 dies (signal

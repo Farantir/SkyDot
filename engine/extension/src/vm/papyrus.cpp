@@ -99,6 +99,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_lock_level", "ref"), &SkydotPapyrus::get_lock_level);
     godot::ClassDB::bind_method(D_METHOD("set_locked", "ref", "locked"), &SkydotPapyrus::set_locked);
     godot::ClassDB::bind_method(D_METHOD("get_open_state", "ref"), &SkydotPapyrus::get_open_state);
+    godot::ClassDB::bind_method(D_METHOD("is_actor_dead", "ref"), &SkydotPapyrus::is_actor_dead);
+    godot::ClassDB::bind_method(D_METHOD("get_item_count", "owner", "item"), &SkydotPapyrus::get_item_count);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value_max", "ref", "name"),
                                 &SkydotPapyrus::get_actor_value_max);
@@ -787,6 +789,10 @@ bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
 
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
     vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
+}
+
+std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) const {
+    return vm_->inventory().count(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item));
 }
 
 std::int64_t SkydotPapyrus::send_event(std::int64_t ref, const String& event, const Array& args) {

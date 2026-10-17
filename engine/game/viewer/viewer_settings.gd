@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input"]
+const FLAGS := ["no-input", "hud", "invert-look-y"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -98,6 +98,10 @@ var has_benchmark := false
 var benchmark := 0.0  # seconds
 var fly_speed := 20.0  # m/s during the benchmark
 var captures := false  # screenshot or benchmark: still time, still actors
+var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
+var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
+var stick_look_speed := 3.0  # rad/s at full deflection of the right stick (pitch: 0.7 of it)
+var invert_look_y := false  # the right stick looks down when pushed up
 var interactive := true  # false: ignore the keyboard and mouse
 
 # F12.
@@ -197,6 +201,16 @@ func _read(args: Dictionary) -> void:
 		give.append(Vector2i(form, maxi(1, entry.substr(cut + 1).to_int()) if cut >= 0 else 1))
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
+	hud = args.has("hud") or not captures
+	for entry: String in args.get("damage-actor", "").split(",", false):
+		var parts: PackedStringArray = entry.split(":")
+		if parts.size() != 3 or parts[1].is_empty():
+			error = "--damage-actor wants 0xREF:ActorValue:AMOUNT, got " + entry
+			return
+		damage_actor.append({"ref": parts[0].hex_to_int() if parts[0].begins_with("0x") else parts[0].to_int(),
+			"av": parts[1], "amount": parts[2].to_float()})
+	stick_look_speed = maxf(args.get("stick-look-speed", "3").to_float(), 0.0)
+	invert_look_y = args.has("invert-look-y")
 	interactive = not (captures or has_activate or args.has("no-input"))
 
 	materials = args.get("materials", "on") != "off"

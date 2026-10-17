@@ -249,6 +249,9 @@ Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     }
     out["ref"] = static_cast<std::int64_t>(it->ref());
     out["base"] = static_cast<std::int64_t>(it->base());
+    if (const auto* npc = lookup(data.root()->npcs(), it->base())) {
+        out["name"] = to_godot(npc->name());
+    }
     out["cell"] = static_cast<std::int64_t>(it->cell());
     out["position"] = vec3_of(it->position());
     out["rotation"] = vec3_of(it->rotation());
