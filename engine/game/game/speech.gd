@@ -11,7 +11,7 @@
 #
 # The log, per voiced line: `speech: 0x… voice <vpath> <seconds> s start <time>`
 # and `… end <time>`, or `speech: 0x… voice missing <vpath>`; times are the
-# engine's (`Time.get_ticks_msec`), in seconds. The lines' clock is
+# game clock (the sum of `update` deltas), then `wall` (`Time.get_ticks_msec`), in seconds. The lines' clock is
 # `update(delta)`, called once a frame.
 class_name Speech
 extends Node
@@ -29,6 +29,7 @@ const UNIT_SIZE := 3.0
 
 var _sounds: Sounds
 var _find_ref: Callable  # reference id -> its built node, or null
+var _clock := 0.0  # game seconds: the sum of update(delta)
 var _queues := {}  # speaker -> Array of entries; the first is playing
 
 
@@ -70,6 +71,7 @@ func stop(speaker: int) -> void:
 
 ## Advance the lines' clocks.
 func update(delta: float) -> void:
+	_clock += delta
 	for speaker: int in _queues.keys():
 		var queue: Array = _queues.get(speaker, [])
 		if queue.is_empty():
@@ -111,7 +113,7 @@ func _start(speaker: int, entry: Dictionary) -> void:
 		(node if node != null else self).add_child(player)
 		player.play()
 		entry["player"] = player
-		print("speech: 0x%08X voice %s %.2f s start %.2f" % [speaker, vpath, entry["seconds"], _now()])
+		print("speech: 0x%08X voice %s %.2f s start %.2f wall %.2f" % [speaker, vpath, entry["seconds"], _clock, _now()])
 	elif not vpath.is_empty():
 		print("speech: 0x%08X voice missing %s" % [speaker, vpath])
 	line_started.emit(speaker, line, entry["seconds"])
@@ -126,7 +128,7 @@ func _end(speaker: int) -> void:
 		if is_instance_valid(player):
 			player.stop()
 			player.queue_free()
-		print("speech: 0x%08X voice %s %.2f s end %.2f" % [speaker, entry["line"]["voice"], entry["seconds"], _now()])
+		print("speech: 0x%08X voice %s %.2f s end %.2f wall %.2f" % [speaker, entry["line"]["voice"], entry["seconds"], _clock, _now()])
 	if queue.is_empty():
 		_queues.erase(speaker)
 	line_ended.emit(speaker, entry["line"])
