@@ -27,6 +27,7 @@ extends RefCounted
 ## are sized by eye on the human skeleton, not from the game's ragdoll data.
 const BONES := [
 	["NPC Pelvis [Pelv]", "NPC Spine [Spn0]", 0.12, 0.0, 0.0],
+	["NPC Spine [Spn0]", "NPC Spine1 [Spn1]", 0.11, 15.0, 10.0],
 	["NPC Spine1 [Spn1]", "NPC Spine2 [Spn2]", 0.12, 20.0, 15.0],
 	["NPC Spine2 [Spn2]", "NPC Neck [Neck]", 0.13, 20.0, 15.0],
 	["NPC Head [Head]", "", 0.09, 45.0, 30.0],
@@ -188,6 +189,12 @@ func _lay_down(ref: int, impulse: Vector3) -> void:
 	skeleton.add_child(simulator)
 	for bone: PhysicalBone3D in ragdoll["bones"]:
 		simulator.add_child(bone)
+	# A joint is made when the type changes in the tree, not when it enters it.
+	for bone: PhysicalBone3D in ragdoll["bones"]:
+		var type := bone.joint_type
+		if type != PhysicalBone3D.JOINT_TYPE_NONE:
+			bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
+			bone.joint_type = type
 	simulator.physical_bones_start_simulation()
 	if impulse != Vector3.ZERO:
 		var target: PhysicalBone3D = ragdoll["impulse_bone"]
@@ -212,10 +219,18 @@ func _freeze(body: Dictionary) -> void:
 	simulator.physical_bones_stop_simulation()
 	skeleton.remove_child(simulator)
 	simulator.free()
-	var indices: Array = poses.keys()
-	indices.sort()  # parents come before their children
-	for index: int in indices:
-		skeleton.set_bone_global_pose(index, poses[index])
+	# Local poses against parents worked out here (the skeleton's cached global
+	# poses are stale while it simulates): a bone with a body takes the
+	# simulated pose, any other follows its parent with the pose it had.
+	var globals := {}
+	for index in skeleton.get_bone_count():  # parents come before their children
+		var parent := skeleton.get_bone_parent(index)
+		var parent_global: Transform3D = globals[parent] if parent >= 0 else Transform3D.IDENTITY
+		if poses.has(index):
+			globals[index] = poses[index]
+			skeleton.set_bone_pose(index, parent_global.affine_inverse() * poses[index])
+		else:
+			globals[index] = parent_global * skeleton.get_bone_pose(index)
 	_set_place(body["ref"], node, pelvis_at)
 	_mark_pickable(node, skeleton)
 
@@ -291,6 +306,7 @@ func _make_ragdoll(skeleton: Skeleton3D) -> Dictionary:
 	for i in bones.size():
 		for j in range(i + 1, bones.size()):
 			bones[i].add_collision_exception_with(bones[j])
+			bones[j].add_collision_exception_with(bones[i])
 	return {"simulator": simulator, "bones": bones, "impulse_bone": impulse_bone}
 
 
@@ -327,14 +343,16 @@ func _make_bone(skeleton: Skeleton3D, entry: Array, units: float) -> PhysicalBon
 	bone.add_child(collision)
 	# The capsule's axis (Y) along the bone, its middle halfway to the child.
 	var align := Basis(Quaternion(Vector3.UP, along))
-	bone.body_offset = Transform3D(align, along * (length * 0.5))
+	# (The body sits on the bone itself, with no offset in skeleton units: the
+	# joints then agree with the bodies. The capsule is moved inside it, in metres.)
+	collision.transform = Transform3D(align, along * (length_m * 0.5))
 	var swing: float = entry[3]
 	if swing > 0.0:
 		bone.joint_type = PhysicalBone3D.JOINT_TYPE_CONE
+		# The joint sits at the bone's origin, its twist axis (X) along the capsule.
 		bone.set("joint_constraints/swing_span", swing)
 		bone.set("joint_constraints/twist_span", entry[4])
-		# The joint sits at the bone's origin, its twist axis (X) along the capsule.
-		bone.joint_offset = Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3(0.0, -length_m * 0.5, 0.0))
+		bone.joint_offset = Transform3D(Basis(Vector3.BACK, PI / 2.0), Vector3.ZERO)
 	return bone
 
 

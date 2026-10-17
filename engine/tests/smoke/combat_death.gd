@@ -89,6 +89,35 @@ func _pelvis(node: Node) -> Vector3:
 	return skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("NPC Pelvis [Pelv]")).origin
 
 
+## Distance of every bone from its parent, in skeleton units.
+func _bone_lengths(skeleton: Skeleton3D) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	for i in skeleton.get_bone_count():
+		var parent := skeleton.get_bone_parent(i)
+		out.append(0.0 if parent < 0 else skeleton.get_bone_global_pose(i).origin.distance_to(skeleton.get_bone_global_pose(parent).origin))
+	return out
+
+
+## Bones keep their lengths (within 5%): no stretching.
+## Only bones whose parent is a ragdoll body are held to their length (the
+## root bones above the pelvis stay where the actor stood), with 4 units of
+## slack for the joints of the shortest.
+func _check_lengths(skeleton: Skeleton3D, reference: PackedFloat32Array, who: String) -> void:
+	var bodies := {}
+	for entry: Array in Corpses.BONES:
+		bodies[skeleton.find_bone(entry[0])] = true
+	var bad := []
+	for i in skeleton.get_bone_count():
+		var parent := skeleton.get_bone_parent(i)
+		if parent < 0 or not bodies.has(parent) or not bodies.has(i) or absf(reference[i]) > 1.0e3:
+			continue
+		var now := skeleton.get_bone_global_pose(i).origin.distance_to(skeleton.get_bone_global_pose(parent).origin)
+		if absf(now - reference[i]) > maxf(0.05 * reference[i], 4.0):
+			bad.append("%s %.1f->%.1f" % [skeleton.get_bone_name(i), reference[i], now])
+	print(who, " stretched bones: ", bad)
+	expect(bad.is_empty(), "%s: every bone keeps its length: %s" % [who, bad.slice(0, 6)])
+
+
 func _open_session(pack_dir: String) -> bool:
 	var config := GameConfig.new()
 	config.pack = pack_dir
@@ -126,6 +155,7 @@ func _run(pack_dir: String) -> void:
 	_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT
 	_camera.look_at(node.global_position + Vector3.UP * 1.2, Vector3.UP)
 	var standing := _pelvis(node)
+	var reference := _bone_lengths(_skeleton_of(node))
 	var start := node.global_position
 	expect(standing.y - start.y > 0.7, "standing: the pelvis is %.2f m above the feet" % (standing.y - start.y))
 	expect(node.collision_layer != 0, "a living actor is on a physics layer")
@@ -149,6 +179,7 @@ func _run(pack_dir: String) -> void:
 	expect(Vector2(lying.x - start.x, lying.z - start.z).length() > 0.05, "the hit pushed him: moved %.2f m" % Vector2(lying.x - start.x, lying.z - start.z).length())
 	await _frames(30)
 	expect(_pelvis(node).distance_to(lying) < 0.01, "and it stays frozen")
+	_check_lengths(_skeleton_of(node), reference, "bandit")
 	var place := papyrus.get_corpse_place(BANDIT)
 	var cell: int = _session.world.get_actor(BANDIT)["cell"]
 	print("corpse place ", place)
@@ -167,12 +198,14 @@ func _run(pack_dir: String) -> void:
 	var draugr := _session.world.find_ref_node(DRAUGR) as SkydotActor
 	if draugr != null:
 		var draugr_feet := draugr.global_position
+		var draugr_reference := _bone_lengths(_skeleton_of(draugr))
 		_session.kill_actor(DRAUGR)
 		await _frames(2)
 		expect(draugr.is_dead() and _session.corpses.simulating() == 1, "the draugr has a ragdoll too")
 		await _until(func() -> bool: return _session.corpses.simulating() == 0, 8.0)
 		var down := _pelvis(draugr)
 		print("draugr pelvis ", down, " feet ", draugr_feet)
+		_check_lengths(_skeleton_of(draugr), draugr_reference, "draugr")
 		expect(draugr.is_dead() and down.y - draugr_feet.y < 0.7, "the draugr lies down: %.2f m" % (down.y - draugr_feet.y))
 		expect(not papyrus.get_corpse_place(DRAUGR).is_empty(), "the draugr has a corpse place")
 	else:

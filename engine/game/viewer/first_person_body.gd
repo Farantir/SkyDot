@@ -34,6 +34,8 @@ const BLEND := 0.1
 const SWING_SPEED := 2.5
 ## Placeholder: the blade's length from the hand, metres, for the sweep (VR).
 const BLADE_LENGTH := 0.9
+## Align the camera bone's orientation with the camera too (else position only).
+const ALIGN_ORIENTATION := false
 
 var _session: GameSession
 var _camera: Node3D
@@ -104,9 +106,13 @@ func _build() -> void:
 func follow() -> void:
 	if _skeleton == null or _camera == null or _cam_bone < 0:
 		return
-	var rest := _skeleton.get_bone_global_rest(_cam_bone).origin
-	var offset := _units.transform.basis * rest
+	var rest := _skeleton.get_bone_global_rest(_cam_bone)
+	var offset := _units.transform.basis * rest.origin
 	var basis := _camera.global_transform.basis
+	if ALIGN_ORIENTATION:
+		# The camera bone's own axes against the camera's.
+		var bone_basis := _units.transform.basis.orthonormalized() * rest.basis.orthonormalized()
+		basis = basis * bone_basis.inverse()
 	global_transform = Transform3D(basis, _camera.global_position - basis * offset)
 
 
