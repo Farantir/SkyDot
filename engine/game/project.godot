@@ -208,6 +208,12 @@ lights_and_shadows/positional_shadow/atlas_quadrant_3_subdiv=5
 
 3d/physics_engine="Jolt Physics"
 
+[xr]
+
+; Off: the flat viewer never touches XR. The VR shell (vr/vr_shell.tscn) is
+; started with `--xr-mode on`.
+openxr/enabled=false
+
 [navigation]
 
 ; Navmesh vertices are kept as Skyrim placed them; a coarse cell would merge

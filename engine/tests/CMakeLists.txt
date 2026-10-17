@@ -167,6 +167,20 @@ if(SKYDOT_TESTPACK)
         PASS_REGULAR_EXPRESSION "scripts: 1 references.*lever pulled 1.*0x00000301 disabled by script.*lever pulled 2.*0x00000301 enabled by script"
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;never appeared;Papyrus:"
         TIMEOUT 120)
+    # The VR shell without an OpenXR session (the OpenXR module is off without
+    # --xr-mode on, so its interface cannot start; with the flag and no
+    # runtime Godot itself opens a modal alert dialog and waits for a click):
+    # it says so, runs as a desktop game on the test pack and quits by itself.
+    add_test(NAME vr_shell_fallback
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://vr/vr_shell.tscn --
+                     --pack "${SKYDOT_TESTPACK}"
+                     --cell TestpackInterior --quit-after 10)
+    set_tests_properties(vr_shell_fallback PROPERTIES
+        LABELS smoke
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "vr: no OpenXR runtime, desktop fallback.*entered TestpackInterior.*vr: quit"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR;never appeared;OpenXR session started"
+        TIMEOUT 120)
     # A viewer screenshot's JSON (F12) brings the viewer back to its place;
     # --pack given on the command line wins over the shot's.
     add_test(NAME viewer_from_shot
