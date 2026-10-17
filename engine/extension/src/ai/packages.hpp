@@ -20,8 +20,10 @@
 // what procedures do, how the vanilla templates use them (docs/ai.md).
 #pragma once
 
+#include "conditions/conditions.hpp"
 #include "world_generated.h"
 
+#include <concepts>
 #include <cstdint>
 #include <functional>
 #include <string>
@@ -49,25 +51,29 @@ struct Clock {
 /// of `duration` minutes (an hour when 0), which may run past midnight.
 bool schedule_active(const wfb::Package& p, const Clock& clock);
 
-/// What conditions ask about the world. Functions the host does not know
-/// count as 0, which is what most "is it so?" functions are by default.
-class ConditionHost {
-public:
-    virtual ~ConditionHost() = default;
-    /// The value of `c`'s function for `subject` (a reference, or 0 when the
-    /// condition's subject could not be found).
-    virtual double function_value(const wfb::Condition& c, std::uint32_t subject) = 0;
-    /// A GLOB's value, for conditions comparing with one.
-    virtual double global_value(std::uint32_t global) = 0;
-    /// `actor`'s linked reference with `keyword` (0: the one without), or 0.
-    virtual std::uint32_t linked_ref(std::uint32_t actor, std::uint32_t keyword) = 0;
+/// What a package's conditions are evaluated against: the shared world
+/// (conditions/conditions.hpp) and the answers only the AI knows (the
+/// current package, the mind's dice). Functions neither knows count as 0.
+struct ConditionSource {
+    conditions::ConditionWorld* world = nullptr;
+    conditions::ConditionOverrides* overrides = nullptr;
+
+    ConditionSource() = default;
+    ConditionSource(conditions::ConditionWorld& w, conditions::ConditionOverrides* o = nullptr)
+        : world(&w), overrides(o) {}
+    /// One object that is both, as the tests' fake is.
+    template <typename Both>
+        requires std::derived_from<Both, conditions::ConditionWorld> &&
+                 std::derived_from<Both, conditions::ConditionOverrides>
+    ConditionSource(Both& both) : world(&both), overrides(&both) {}
 };
 
 /// Conditions in order, ORed runs ANDed together (CTDA flag 0x01 ORs a
-/// condition with the next). Empty or null passes. `actor` is the subject
-/// unless a condition runs on a reference or the actor's linked reference.
+/// condition with the next). Empty or null passes. `actor` is the subject and
+/// the target (a package has no target of its own); unknown functions count
+/// as 0.
 bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list,
-                     ConditionHost& host, std::uint32_t actor);
+                     const ConditionSource& source, std::uint32_t actor);
 
 /// A package with its template: inputs by key, its own first.
 struct Package {
@@ -132,9 +138,9 @@ struct Step {
 /// Seeded random numbers for Random nodes and GetRandomPercent.
 using Dice = std::function<double()>; ///< Uniform in [0, 1).
 
-/// The steps `pkg` runs for `actor` now. Conditions on branches see `host`;
+/// The steps `pkg` runs for `actor` now. Conditions on branches see `source`;
 /// GetNumericPackageData reads `pkg`'s inputs.
-std::vector<Step> plan_steps(const Package& pkg, ConditionHost& host, std::uint32_t actor,
+std::vector<Step> plan_steps(const Package& pkg, const ConditionSource& source, std::uint32_t actor,
                              const Dice& dice);
 /// Whether the tree starts over when its steps are done (PRCB bit 0 on the
 /// root).
@@ -144,11 +150,11 @@ bool repeats(const Package& pkg);
 /// packages, then its default package list, leaving out those `skip` names
 /// (packages it has completed). 0 if none applies.
 std::uint32_t choose_package(const wfb::World& world, std::uint32_t npc, std::uint32_t actor,
-                             const Clock& clock, ConditionHost& host,
+                             const Clock& clock, const ConditionSource& source,
                              const std::function<bool(std::uint32_t)>& skip = {});
 /// The same over a package list already made.
 std::uint32_t choose_package(const wfb::World& world, const std::vector<std::uint32_t>& list,
-                             std::uint32_t actor, const Clock& clock, ConditionHost& host,
+                             std::uint32_t actor, const Clock& clock, const ConditionSource& source,
                              const std::function<bool(std::uint32_t)>& skip = {});
 /// Minutes a package stays done once completed: its schedule window, or an
 /// hour for one without a start time.

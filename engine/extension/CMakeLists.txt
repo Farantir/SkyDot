@@ -40,6 +40,10 @@ set(SKYDOT_CORE_SOURCES
     src/actors/behavior_machine.hpp
     src/ai/packages.cpp
     src/ai/packages.hpp
+    src/conditions/conditions.cpp
+    src/conditions/conditions.hpp
+    src/conditions/functions.cpp
+    src/conditions/functions.hpp
     src/assets/mapped_file.cpp
     src/assets/mapped_file.hpp
     src/assets/vpath.hpp
@@ -224,6 +228,7 @@ target_sources(skydot PRIVATE
     src/vm/natives_game.cpp
     src/vm/natives_noop.cpp
     src/vm/papyrus_activation.cpp
+    src/vm/papyrus_conditions.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp
     src/vm/papyrus_save.cpp

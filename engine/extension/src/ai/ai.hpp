@@ -36,6 +36,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -49,6 +50,8 @@ class SkydotAi : public godot::RefCounted {
     GDCLASS(SkydotAi, godot::RefCounted)
 
 public:
+    SkydotAi();
+    ~SkydotAi() override;
     /// Game seconds per real second by default (the timescale GMST's).
     static constexpr double TIME_SCALE = 20.0;
     static constexpr std::int64_t PLACE_BUDGET_USEC = 1500;
@@ -150,8 +153,10 @@ private:
         bool announced{};                ///< actor_arrived sent for its place.
     };
 
-    class Host;
-    friend class Host;
+    class Conditions;
+    friend class Conditions;
+    /// Conditions, with the places and clock this AI keeps; made in `setup`.
+    std::unique_ptr<Conditions> conditions_;
 
     const bethconv::pack::wfb::World* root() const;
     Mind* mind(std::uint32_t ref);
@@ -222,12 +227,8 @@ private:
     bool place_one(std::uint32_t ref, bool through_doors);
     /// Place persistent_ from `first` on, at once; returns how many moved.
     std::int64_t place_from(std::size_t first, bool through_doors);
-    /// Per frame and pass: quest states (SkydotPapyrus builds a Dictionary
-    /// per call). Static: whether a door has a lock, quests' script names.
-    std::unordered_map<std::uint32_t, godot::Dictionary> quest_cache_;
+    /// Static: whether a door has a lock.
     mutable std::unordered_map<std::uint32_t, bool> lock_cache_;
-    std::unordered_map<std::uint32_t, std::vector<godot::String>> quest_scripts_;
-    const godot::Dictionary& quest_state(std::uint32_t quest);
     /// Static per actor: its package list (NPC_ templates followed).
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> package_lists_;
     const std::vector<std::uint32_t>& packages_of(const Mind& m);

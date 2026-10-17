@@ -24,7 +24,8 @@ std::vector<flatbuffers::Offset<wfb::Condition>> conditions(Fbb& fbb, const std:
     std::vector<flatbuffers::Offset<wfb::Condition>> out;
     for (const auto& c : list) {
         out.push_back(wfb::CreateConditionDirect(fbb, c.type, c.function, c.value, c.value_global, c.param1, c.param2,
-                                                 c.run_on, c.reference));
+                                                 c.run_on, c.reference, c.param3, nullptr,
+                                                 c.string2.empty() ? nullptr : c.string2.c_str()));
     }
     return out;
 }

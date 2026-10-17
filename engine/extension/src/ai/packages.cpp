@@ -28,77 +28,30 @@ constexpr int k_minutes_per_day = 24 * 60;
 constexpr int k_max_chain = 8;
 constexpr std::int32_t k_no_key = 255;
 
-/// The flags in the CTDA type byte, below the comparison (world.fbs, Condition).
-wfb::ConditionFlags flags_of(const wfb::Condition& c) {
-    return static_cast<wfb::ConditionFlags>(c.type());
-}
-constexpr std::uint32_t k_run_on_subject = 0;
-constexpr std::uint32_t k_run_on_target = 1;
-constexpr std::uint32_t k_run_on_reference = 2;
-constexpr std::uint32_t k_run_on_linked = 4;
-
-bool compare(double value, std::uint8_t type, double with) {
-    constexpr double k_eps = 1e-4;
-    switch (type >> 5) {
-    case 0:
-        return std::abs(value - with) < k_eps;
-    case 1:
-        return std::abs(value - with) >= k_eps;
-    case 2:
-        return value > with + k_eps;
-    case 3:
-        return value > with - k_eps;
-    case 4:
-        return value < with - k_eps;
-    case 5:
-        return value < with + k_eps;
-    default:
-        return false;
-    }
-}
-
-bool evaluate(const wfb::Condition& c, ConditionHost& host, std::uint32_t actor) {
-    std::uint32_t subject = 0;
-    switch (c.run_on()) {
-    case k_run_on_subject:
-    case k_run_on_target: // A package has no target of its own: the actor.
-        subject = actor;
-        break;
-    case k_run_on_reference:
-        subject = c.reference();
-        break;
-    case k_run_on_linked:
-        subject = host.linked_ref(actor, 0);
-        break;
-    default: // Combat target, quest alias, package data, event data.
-        break;
-    }
-    const double value = host.function_value(c, subject);
-    const double with = formats::has_flag(flags_of(c), wfb::ConditionFlags::use_global)
-                            ? host.global_value(c.value_global())
-                            : static_cast<double>(c.value());
-    return compare(value, c.type(), with);
-}
-
-/// A host that answers GetNumericPackageData from a package's inputs.
-class PackageDataHost final : public ConditionHost {
+/// Answers GetNumericPackageData from a package's inputs, the rest from the
+/// caller's overrides.
+class PackageDataOverrides final : public conditions::ConditionOverrides {
 public:
-    PackageDataHost(const Package& pkg, ConditionHost& inner) : pkg_(pkg), inner_(inner) {}
-    double function_value(const wfb::Condition& c, std::uint32_t subject) override {
+    PackageDataOverrides(const Package& pkg, conditions::ConditionOverrides* inner)
+        : pkg_(pkg), inner_(inner) {}
+    std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
+                                         const conditions::ConditionContext& ctx) override {
         if (c.function() == k_get_numeric_package_data) {
             return pkg_.number(static_cast<std::int32_t>(c.param1()));
         }
-        return inner_.function_value(c, subject);
-    }
-    double global_value(std::uint32_t global) override { return inner_.global_value(global); }
-    std::uint32_t linked_ref(std::uint32_t actor, std::uint32_t keyword) override {
-        return inner_.linked_ref(actor, keyword);
+        return inner_ != nullptr ? inner_->function_value(c, subject, ctx) : std::nullopt;
     }
 
 private:
     const Package& pkg_;
-    ConditionHost& inner_;
+    conditions::ConditionOverrides* inner_;
 };
+
+conditions::ConditionContext context_of(std::uint32_t actor) {
+    return {.subject = actor,
+            .target = actor,
+            .unknown = conditions::UnknownPolicy::zero};
+}
 
 struct Node {
     const wfb::PackageBranch* branch = nullptr;
@@ -125,8 +78,9 @@ std::string_view sv(const flatbuffers::String* s) {
 
 class Planner {
 public:
-    Planner(const Package& pkg, ConditionHost& host, std::uint32_t actor, const Dice& dice)
-        : pkg_(pkg), host_(pkg, host), actor_(actor), dice_(dice) {}
+    Planner(const Package& pkg, const ConditionSource& source, std::uint32_t actor, const Dice& dice)
+        : pkg_(pkg), data_(pkg, source.overrides), host_(*source.world, &data_), actor_(actor),
+          dice_(dice) {}
 
     std::vector<Step> run() {
         const auto* branches = pkg_.tree != nullptr ? pkg_.tree->branches() : nullptr;
@@ -257,7 +211,8 @@ private:
     }
 
     const Package& pkg_;
-    PackageDataHost host_;
+    PackageDataOverrides data_;
+    ConditionSource host_;
     std::uint32_t actor_;
     const Dice& dice_;
     std::vector<Node> nodes_;
@@ -351,26 +306,8 @@ bool schedule_active(const wfb::Package& p, const Clock& clock) {
 }
 
 bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list,
-                     ConditionHost& host, std::uint32_t actor) {
-    if (list == nullptr) {
-        return true;
-    }
-    bool all = true;
-    bool any = false;
-    bool open = false;
-    for (const auto* c : *list) {
-        any = evaluate(*c, host, actor) || any;
-        open = true;
-        if (!formats::has_flag(flags_of(*c), wfb::ConditionFlags::or_next)) {
-            all = all && any;
-            any = false;
-            open = false;
-        }
-    }
-    if (open) { // A trailing OR closes its run at the end.
-        all = all && any;
-    }
-    return all;
+                     const ConditionSource& source, std::uint32_t actor) {
+    return conditions::conditions_pass(list, *source.world, context_of(actor), source.overrides);
 }
 
 const wfb::PackageInput* Package::input(std::int32_t key) const {
@@ -462,7 +399,7 @@ const char* procedure_name(Procedure p) {
     return "other";
 }
 
-std::vector<Step> plan_steps(const Package& pkg, ConditionHost& host, std::uint32_t actor,
+std::vector<Step> plan_steps(const Package& pkg, const ConditionSource& host, std::uint32_t actor,
                              const Dice& dice) {
     return Planner(pkg, host, actor, dice).run();
 }
@@ -499,13 +436,13 @@ double done_minutes(const wfb::Package& p) {
 }
 
 std::uint32_t choose_package(const wfb::World& world, std::uint32_t npc, std::uint32_t actor,
-                             const Clock& clock, ConditionHost& host,
+                             const Clock& clock, const ConditionSource& host,
                              const std::function<bool(std::uint32_t)>& skip) {
     return choose_package(world, package_list(world, npc, actor), actor, clock, host, skip);
 }
 
 std::uint32_t choose_package(const wfb::World& world, const std::vector<std::uint32_t>& list,
-                             std::uint32_t actor, const Clock& clock, ConditionHost& host,
+                             std::uint32_t actor, const Clock& clock, const ConditionSource& host,
                              const std::function<bool(std::uint32_t)>& skip) {
     for (const auto id : list) {
         if (skip && skip(id)) {
@@ -519,8 +456,8 @@ std::uint32_t choose_package(const wfb::World& world, const std::vector<std::uin
             return id;
         }
         const auto pkg = resolve_package(world, id);
-        PackageDataHost data(pkg, host);
-        if (conditions_pass(pkg.own->conditions(), data, actor)) {
+        PackageDataOverrides data(pkg, host.overrides);
+        if (conditions_pass(pkg.own->conditions(), ConditionSource(*host.world, &data), actor)) {
             return id;
         }
     }

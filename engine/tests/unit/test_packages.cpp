@@ -6,6 +6,7 @@
 // world.fb is built in memory (support/world_builder.hpp); conditions are
 // answered by a host the test fills in. Everything goes through the public
 // API of ai/packages.hpp.
+#include "support/fake_condition_world.hpp"
 #include "support/world_builder.hpp"
 
 #include "ai/packages.hpp"
@@ -15,37 +16,30 @@
 
 #include <algorithm>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
 using namespace skydot::testing;
+namespace conditions = skydot::conditions;
 namespace ai = skydot::ai;
 
 namespace {
 
 /// Hands conditions the values a test sets. A function it was not given is 0,
-/// as for the engine's host.
-class FakeHost final : public ai::ConditionHost {
+/// as for the engine's host. It is both the world and the overrides, and
+/// answers every function itself, so the shared bindings are never asked.
+class FakeHost final : public FakeConditionWorld, public conditions::ConditionOverrides {
 public:
     std::map<std::uint16_t, double> values;
-    std::map<std::uint32_t, double> globals;
-    /// An actor's linked reference.
-    std::map<std::uint32_t, std::uint32_t> linked;
     /// The subject each function_value call was for, in order.
     std::vector<std::uint32_t> subjects;
 
-    double function_value(const wfb::Condition& c, std::uint32_t subject) override {
+    std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
+                                         const conditions::ConditionContext&) override {
         subjects.push_back(subject);
         const auto it = values.find(c.function());
         return it != values.end() ? it->second : 0.0;
-    }
-    double global_value(std::uint32_t global) override {
-        const auto it = globals.find(global);
-        return it != globals.end() ? it->second : 0.0;
-    }
-    std::uint32_t linked_ref(std::uint32_t actor, std::uint32_t) override {
-        const auto it = linked.find(actor);
-        return it != linked.end() ? it->second : 0;
     }
 };
 
@@ -347,7 +341,7 @@ TEST_CASE("every grouping of up to four conditions is ANDed runs of ORs", "[ai][
 
 TEST_CASE("a condition asks about the actor, a reference, or the actor's linked reference", "[ai][conditions]") {
     FakeHost host;
-    host.linked[0x14] = 0x333;
+    host.links[{0x14, 0}] = 0x333;
     auto on = [](std::uint32_t run_on, std::uint32_t reference = 0) {
         ConditionSpec c = condition(7, ge, 0.0F);
         c.run_on = run_on;
@@ -826,12 +820,13 @@ namespace {
 
 /// Answers a function 1 the first time it is asked and 0 every time after,
 /// as GetRandomPercent's rolls come out differently each time.
-class FlakyHost final : public ai::ConditionHost {
+class FlakyHost final : public FakeConditionWorld, public conditions::ConditionOverrides {
 public:
     int asked = 0;
-    double function_value(const wfb::Condition&, std::uint32_t) override { return asked++ == 0 ? 1.0 : 0.0; }
-    double global_value(std::uint32_t) override { return 0.0; }
-    std::uint32_t linked_ref(std::uint32_t, std::uint32_t) override { return 0; }
+    std::optional<double> function_value(const wfb::Condition&, std::uint32_t,
+                                         const conditions::ConditionContext&) override {
+        return asked++ == 0 ? 1.0 : 0.0;
+    }
 };
 
 std::vector<ai::Step> plan_with(FlakyHost& host, BranchSpec tree) {

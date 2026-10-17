@@ -27,6 +27,7 @@
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
 #include "vm/actor_states.hpp"
+#include "vm/condition_world.hpp"
 #include "vm/id_ranges.hpp"
 #include "vm/quest_states.hpp"
 #include "vm/ref_states.hpp"
@@ -217,6 +218,11 @@ public:
     /// extents, inside (actor count).
     godot::Array get_triggers() const;
 
+    // ---- conditions
+    /// The game as condition functions ask about it (vm/condition_world.hpp);
+    /// its counters of unbound functions log one warning per function.
+    conditions::ConditionWorld& condition_world();
+
     // ---- quests
     /// Start every start-game-enabled quest, as a new game does. Returns how
     /// many started.
@@ -276,6 +282,11 @@ protected:
     static void _bind_methods();
 
 private:
+    friend class PapyrusConditionWorld;
+    std::unique_ptr<PapyrusConditionWorld> conditions_;
+    /// The index of the first log entry of stage `index` of `quest` whose
+    /// conditions pass (subject: the player, quest: this one); 0 if none does.
+    std::size_t chosen_log_entry(std::uint32_t quest, std::int32_t index);
     void bind_natives();
     void bind_debug_natives();
     void bind_utility_natives();

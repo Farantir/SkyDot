@@ -28,6 +28,8 @@ namespace wfb = bethconv::pack::wfb;
 enum Compare : std::uint8_t { eq = 0 << 5, ne = 1 << 5, gt = 2 << 5, ge = 3 << 5, lt = 4 << 5, le = 5 << 5 };
 inline constexpr auto k_or = static_cast<std::uint8_t>(wfb::ConditionFlags::or_next);
 inline constexpr auto k_use_global = static_cast<std::uint8_t>(wfb::ConditionFlags::use_global);
+inline constexpr auto k_use_aliases = static_cast<std::uint8_t>(wfb::ConditionFlags::use_aliases);
+inline constexpr auto k_swap = static_cast<std::uint8_t>(wfb::ConditionFlags::swap_subject_target);
 /// CTDA run-on values.
 inline constexpr std::uint32_t k_on_subject = 0;
 inline constexpr std::uint32_t k_on_target = 1;
@@ -44,6 +46,8 @@ struct ConditionSpec {
     std::uint32_t param2 = 0;
     std::uint32_t run_on = k_on_subject;
     std::uint32_t reference = 0;
+    std::int32_t param3 = -1;
+    std::string string2 = {};
 };
 
 /// `function` compared with `value` by `compare`, plus flags.

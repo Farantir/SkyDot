@@ -5,6 +5,7 @@
 #include "actors/actor.hpp"
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"
+#include "conditions/functions.hpp"
 #include "vm/papyrus.hpp"
 #include "skydot_formats/flags.hpp"
 #include "skydot_formats/units.hpp"
@@ -129,164 +130,71 @@ bool contains_any(const flatbuffers::String* text, std::initializer_list<std::st
                        [&](std::string_view w) { return lower.find(w) != std::string::npos; });
 }
 
-double to_number(const Variant& v) {
-    switch (v.get_type()) {
-    case Variant::BOOL:
-        return static_cast<bool>(v) ? 1.0 : 0.0;
-    case Variant::INT:
-        return static_cast<double>(static_cast<std::int64_t>(v));
-    case Variant::FLOAT:
-        return static_cast<double>(v);
-    default:
-        return 0.0;
-    }
-}
-
 } // namespace
 
 // ---- conditions -----------------------------------------------------------
 
-class SkydotAi::Host final : public ai::ConditionHost {
+/// The game as the AI's conditions see it: the shared world with the places
+/// of actors the AI keeps (an unbuilt actor is where its mind put it) and the
+/// AI's clock, and the answers only the AI has (the current package of an
+/// actor, the mind's own dice).
+class SkydotAi::Conditions final : public PapyrusConditionWorld, public conditions::ConditionOverrides {
 public:
-    Host(SkydotAi& ai, Mind& m) : ai_(ai), m_(m) {}
+    explicit Conditions(SkydotAi& ai) : PapyrusConditionWorld(ai.vm_, ai.world_.ptr()), ai_(ai) {}
 
-    double function_value(const wfb::Condition& c, std::uint32_t subject) override {
-        // Minds exist only after a setup with an open world, which stays open.
-        const auto* root = ai_.root();
-        if (root == nullptr) {
-            return 0.0;
-        }
-        const auto& w = *root;
-        const auto* actor = lookup(w.actors(), subject);
-        const std::uint32_t npc = subject == k_player_ref ? k_player_npc : actor != nullptr ? actor->base() : 0;
-        const auto quest = [&](const char* key) -> Variant {
-            if (ai_.vm_ == nullptr) {
-                return Variant();
-            }
-            return ai_.quest_state(c.param1()).get(key, Variant());
-        };
+    /// The actor whose package is being worked out.
+    Mind* mind = nullptr;
+
+    std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
+                                         const conditions::ConditionContext&) override {
         switch (c.function()) {
-        case fn_get_is_id:
-            return npc == c.param1() || subject == c.param1() ? 1.0 : 0.0;
-        case fn_get_is_reference:
-            return subject == c.param1() ? 1.0 : 0.0;
-        case fn_get_in_faction:
-        case fn_get_faction_rank: {
-            const auto* n =
-                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_factions, subject) : nullptr;
-            if (n != nullptr && n->factions() != nullptr) {
-                for (const auto* f : *n->factions()) {
-                    if (f->faction() == c.param1()) {
-                        return c.function() == fn_get_in_faction ? 1.0 : static_cast<double>(f->rank());
-                    }
-                }
-            }
-            return c.function() == fn_get_in_faction ? 0.0 : -1.0;
-        }
-        case fn_get_is_race: {
-            const auto* n =
-                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_traits, subject) : nullptr;
-            return n != nullptr && n->race() == c.param1() ? 1.0 : 0.0;
-        }
-        case fn_get_is_sex: {
-            const auto* n =
-                npc != 0 ? resolve_npc(w, npc, wfb::NpcTemplateFlags::use_traits, subject) : nullptr;
-            const bool female = n != nullptr && formats::has_flag(n->flags(), wfb::NpcFlags::female);
-            const std::uint32_t sex = female ? 1 : 0;
-            return sex == c.param1() ? 1.0 : 0.0;
-        }
-        case fn_get_stage:
-            return to_number(quest("stage"));
-        case fn_get_stage_done: {
-            const Variant done = quest("stages_done");
-            return done.get_type() == Variant::ARRAY && Array(done).has(static_cast<std::int64_t>(c.param2()))
-                       ? 1.0
-                       : 0.0;
-        }
-        case fn_get_quest_running:
-            return to_number(quest("running"));
-        case fn_get_quest_completed:
-            return to_number(quest("completed"));
-        case fn_get_global_value:
-            return global_value(c.param1());
-        case fn_has_linked_ref:
-            return ai_.linked_ref(subject, c.param1()) != 0 ? 1.0 : 0.0;
-        case fn_get_disabled:
-            return ai_.vm_ != nullptr && ai_.vm_->is_ref_disabled(subject) ? 1.0 : 0.0;
-        case fn_get_random_percent:
-            return std::floor(ai_.roll(m_) * 100.0);
-        case fn_get_current_time:
-            return ai_.clock_.hour();
-        case fn_get_day_of_week:
-            return ai_.clock_.day_of_week();
-        case fn_get_is_current_package:
-            if (const auto* other = ai_.minds_.count(subject) != 0 ? &ai_.minds_.at(subject) : nullptr) {
-                return other->package == c.param1() ? 1.0 : 0.0;
+        case conditions::fn::get_is_current_package:
+            if (const auto it = ai_.minds_.find(subject); it != ai_.minds_.end()) {
+                return it->second.package == c.param1() ? 1.0 : 0.0;
             }
             return 0.0;
-        case fn_is_in_interior:
-        case fn_get_in_worldspace:
-        case fn_get_in_cell:
-        case fn_get_distance: {
-            const Spot here = subject == m_.ref ? ai_.actor_spot(m_) : ai_.ref_spot(subject).value_or(Spot{});
-            const auto* space = ai_.world_->data().cell_ptr(here.space);
-            const bool interior =
-                space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior);
-            if (c.function() == fn_is_in_interior) {
-                return interior ? 1.0 : 0.0;
-            }
-            if (c.function() == fn_get_in_worldspace) {
-                return !interior && here.space == c.param1() ? 1.0 : 0.0;
-            }
-            if (c.function() == fn_get_in_cell) {
-                return interior && here.space == c.param1() ? 1.0 : 0.0;
-            }
-            const auto other = ai_.ref_spot(c.param1());
-            if (!other || other->space != here.space) {
-                return 1.0e9;
-            }
-            return static_cast<double>(here.position.distance_to(other->position));
-        }
-        case fn_get_vm_quest_variable: {
-            if (ai_.vm_ == nullptr || c.string2() == nullptr) {
-                return 0.0;
-            }
-            auto& classes = ai_.quest_scripts_[c.param1()];
-            if (classes.empty()) {
-                const Array scripts = ai_.world_->get_quest(c.param1()).get("scripts", Array());
-                for (int i = 0; i < scripts.size(); ++i) {
-                    classes.push_back(Dictionary(scripts[i]).get("name", String()));
-                }
-            }
-            const String name = String::utf8(c.string2()->c_str());
-            for (const auto& cls : classes) {
-                const Variant v = ai_.vm_->get_variable(c.param1(), cls, name);
-                if (v.get_type() != Variant::NIL) {
-                    return to_number(v);
-                }
-            }
-            return 0.0;
-        }
+        case conditions::fn::get_random_percent:
+            return mind != nullptr ? std::optional<double>(std::floor(ai_.roll(*mind) * 100.0))
+                                   : std::nullopt;
         default:
-            return 0.0;
+            return std::nullopt;
         }
     }
 
-    double global_value(std::uint32_t global) override {
-        if (ai_.vm_ != nullptr) {
-            return ai_.vm_->get_global_value(global);
+    /// The "cell" of an actor is its space: the interior cell, or the
+    /// worldspace outside.
+    std::uint32_t cell_of(std::uint32_t ref) const override { return spot_of(ref).space; }
+    std::uint32_t cell_world(std::uint32_t space) const override {
+        return cell_interior(space) ? 0 : space;
+    }
+    std::optional<double> distance(std::uint32_t a, std::uint32_t b) const override {
+        const Spot here = spot_of(a);
+        const auto other = ai_.ref_spot(b);
+        if (!other || other->space != here.space) {
+            return std::nullopt;
         }
-        return static_cast<double>(ai_.world_->get_global(global).get("value", 0.0));
+        return static_cast<double>(here.position.distance_to(other->position));
     }
-
-    std::uint32_t linked_ref(std::uint32_t actor, std::uint32_t keyword) override {
-        return ai_.linked_ref(actor, keyword);
+    std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
+        return ai_.linked_ref(ref, keyword);
     }
+    double game_days() const override { return ai_.clock_.days; }
+    double hour() const override { return ai_.clock_.hour(); }
+    int day_of_week() const override { return ai_.clock_.day_of_week(); }
 
 private:
+    Spot spot_of(std::uint32_t ref) const {
+        if (mind != nullptr && ref == mind->ref) {
+            return ai_.actor_spot(*mind);
+        }
+        return ai_.ref_spot(ref).value_or(Spot{});
+    }
+
     SkydotAi& ai_;
-    Mind& m_;
 };
+
+SkydotAi::SkydotAi() = default;
+SkydotAi::~SkydotAi() = default;
 
 // ---- setup ------------------------------------------------------------------
 
@@ -329,7 +237,7 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     minds_.clear();
     package_lists_.clear();
     lock_cache_.clear();
-    quest_scripts_.clear();
+    conditions_ = std::make_unique<Conditions>(*this);
     persistent_.clear();
     attached_.clear();
     doors_.clear();
@@ -733,14 +641,6 @@ const std::vector<std::uint32_t>& SkydotAi::packages_of(const Mind& m) {
     return package_lists_.emplace(m.ref, ai::package_list(*root(), m.npc, m.ref)).first->second;
 }
 
-const Dictionary& SkydotAi::quest_state(std::uint32_t quest) {
-    const auto it = quest_cache_.find(quest);
-    if (it != quest_cache_.end()) {
-        return it->second;
-    }
-    return quest_cache_.emplace(quest, vm_->get_quest_state(quest)).first->second;
-}
-
 bool SkydotAi::has_lock(std::uint32_t door) const {
     if (const auto it = lock_cache_.find(door); it != lock_cache_.end()) {
         return it->second;
@@ -792,7 +692,8 @@ bool SkydotAi::choose(Mind& m) {
     if (root() == nullptr) {
         return false;
     }
-    Host host(*this, m);
+    conditions_->mind = &m;
+    const ai::ConditionSource host(*conditions_, conditions_.get());
     const auto skip = [&](std::uint32_t pkg) {
         const auto it = m.completed.find(pkg);
         if (it == m.completed.end()) {
@@ -837,7 +738,8 @@ void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
         return;
     }
     const auto pkg = ai::resolve_package(*root(), m.package);
-    Host host(*this, m);
+    conditions_->mind = &m;
+    const ai::ConditionSource host(*conditions_, conditions_.get());
     m.steps = ai::plan_steps(pkg, host, m.ref, [&]() { return roll(m); });
     if (formats::has_flag(pkg.own->flags(), wfb::PackageFlags::unlock_doors_at_start)) {
         set_doors_locked(actor_spot(m), false);
@@ -891,7 +793,6 @@ std::int64_t SkydotAi::place_from(std::size_t first, bool through_doors) {
         return 0;
     }
     placed_ = true;
-    quest_cache_.clear();
     std::int64_t moved = 0;
     batching_ = true;
     pending_locks_.clear();
@@ -1030,7 +931,6 @@ void SkydotAi::update(double seconds) {
     }
     clock_.days += seconds * time_scale_ / k_seconds_per_day;
     since_placed_ += seconds * time_scale_;
-    quest_cache_.clear();
     const std::vector<std::uint32_t> attached = attached_;
     for (const auto ref : attached) {
         Mind* m = mind(ref);
@@ -1328,7 +1228,8 @@ Array SkydotAi::get_packages(std::int64_t ref) {
     if (m == nullptr) {
         return out;
     }
-    Host host(*this, *m);
+    conditions_->mind = m;
+    const ai::ConditionSource host(*conditions_, conditions_.get());
     for (const auto id : ai::package_list(*root(), m->npc, m->ref)) {
         const auto pkg = ai::resolve_package(*root(), id);
         Dictionary d;
@@ -1357,7 +1258,11 @@ Array SkydotAi::get_packages(std::int64_t ref) {
                 cd["param2"] = static_cast<std::int64_t>(c->param2());
                 cd["run_on"] = static_cast<std::int64_t>(c->run_on());
                 cd["compare_to"] = static_cast<double>(c->value());
-                cd["value"] = host.function_value(*c, c->run_on() == 2 ? c->reference() : m->ref);
+                const std::uint32_t subject = conditions::resolve_subject(
+                    *c, {.subject = m->ref, .target = m->ref}, *conditions_);
+                cd["value"] = conditions::function_value(
+                                  *c, subject, {.subject = m->ref, .target = m->ref}, *conditions_)
+                                  .value_or(0.0);
                 conditions.push_back(cd);
             }
         }

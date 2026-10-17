@@ -92,6 +92,16 @@ bool ActorStates::is_dead(std::uint32_t ref) const {
     return r != nullptr && r->dead;
 }
 
+std::vector<std::uint32_t> ActorStates::dead_refs() const {
+    std::vector<std::uint32_t> out;
+    for (const auto& [ref, record] : records_) {
+        if (record.dead) {
+            out.push_back(ref);
+        }
+    }
+    return out;
+}
+
 ActorStates::Record* ActorStates::touch(std::uint32_t ref, std::uint32_t av) {
     if (av >= av::k_count || base_of(ref) == nullptr) {
         return nullptr;

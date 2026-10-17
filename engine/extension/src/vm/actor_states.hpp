@@ -48,6 +48,8 @@ public:
     /// Value over max; 1 if max is 0 or less.
     [[nodiscard]] double percentage(std::uint32_t ref, std::uint32_t av) const;
     [[nodiscard]] bool is_dead(std::uint32_t ref) const;
+    /// Every actor that is dead, ascending.
+    [[nodiscard]] std::vector<std::uint32_t> dead_refs() const;
 
     void set_base(std::uint32_t ref, std::uint32_t av, double value);
     void mod(std::uint32_t ref, std::uint32_t av, double amount);
