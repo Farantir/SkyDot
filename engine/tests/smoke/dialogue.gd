@@ -96,13 +96,15 @@ func _run(pack_dir: String) -> void:
 	var lucan := _describe("LucanValerius", npcs["LucanValerius"])
 	expect(lucan["lines"] == ["I don't know what you overheard, but the Riverwood Trader is still open. Feel free to shop."],
 		"Lucan's greeting before MS13")
-	expect(lucan["topics"] == ["Did something happen?", "Do you sell spells?"], "Lucan's topics before MS13")
+	expect(lucan["topics"] == ["Did something happen?", "Do you sell spells?", "What have you got for sale?"],
+		"Lucan's topics before MS13 (the merchant's barter topic hangs on IsCommandedActor)")
 	var gerdur := _describe("Gerdur", npcs["Gerdur"])
 	expect(gerdur["lines"] == ["New to Riverwood? If you're looking for work, go see Hod at the mill."], "Gerdur's greeting")
 	expect(gerdur["topics"] == generic + ["Is there somewhere I can buy fresh supplies?"], "Gerdur's topics")
 	var alvor := _describe("Alvor", npcs["Alvor"])
 	expect(alvor["lines"] == ["Ain't every day we get visitors in Riverwood."], "Alvor's greeting")
-	expect(alvor["topics"] == generic + ["Can I use your forge?"], "Alvor's topics")
+	# Alvor sells but does not train: smithing training is Balimund's (JobTrainerSmithingFaction).
+	expect(alvor["topics"] == generic + ["Can I use your forge?", "What have you got for sale?"], "Alvor's topics")
 
 	# MQ102 (Before the Storm) at stage 10 changes nothing for the three.
 	expect(_session.papyrus.set_stage(quest, 10), "MQ102 stage 10 is set")
@@ -116,12 +118,12 @@ func _run(pack_dir: String) -> void:
 	expect(_session.papyrus.set_stage(ms13, 10), "MS13 stage 10 is set")
 	lucan = _describe("LucanValerius", npcs["LucanValerius"])
 	expect(lucan["lines"] == ["Show those thieves not to steal from Lucan Valerius!"], "Lucan's greeting during MS13")
-	expect(lucan["topics"] == ["Do you sell spells?"], "Lucan's topics during MS13")
+	expect(lucan["topics"] == ["Do you sell spells?", "What have you got for sale?"], "Lucan's topics during MS13")
 	expect(_describe("Gerdur", npcs["Gerdur"])["topics"] == gerdur["topics"], "Gerdur is unaffected")
 
 	# The side effects of really talking: Say Once, said topics, fragments.
 	var opened := _session.papyrus.dialogue_open(npcs["LucanValerius"])
-	expect(opened["lines"].size() >= 1 and opened["topics"].size() == 1, "dialogue_open speaks and lists")
+	expect(opened["lines"].size() >= 1 and opened["topics"].size() == 2, "dialogue_open speaks and lists")
 	expect(_session.papyrus.dialogue_is_open(), "the dialogue is open")
 	var spells: Dictionary = _session.papyrus.dialogue_choose(opened["topics"][0]["id"])
 	expect(spells["lines"].size() >= 1, "a topic is answered: %s" % [spells["lines"]])

@@ -10,6 +10,8 @@
 #include "vm/natives_common.hpp"
 #include "build/refs.hpp"
 
+#include <godot_cpp/variant/utility_functions.hpp>
+
 #include <algorithm>
 
 using godot::Array;
@@ -123,6 +125,13 @@ Dictionary SkydotPapyrus::dialogue_open(std::int64_t speaker) {
 
 Dictionary SkydotPapyrus::dialogue_choose(std::int64_t topic) {
     auto* logic = dialogue_logic();
+    // The vendor services topic opens the barter menu, which does not exist yet.
+    if (const auto* root = world_.is_valid() ? world_->data().root() : nullptr) {
+        const auto* t = lookup(root->dialogue_topics(), static_cast<std::uint32_t>(topic));
+        if (t != nullptr && t->editor_id() != nullptr && t->editor_id()->str() == "OfferServicesTopic") {
+            godot::UtilityFunctions::print("barter: not implemented");
+        }
+    }
     return logic != nullptr ? dialogue_dictionary(logic->choose(static_cast<std::uint32_t>(topic))) : Dictionary();
 }
 

@@ -148,6 +148,8 @@ GetNumericPackageData 612.
 | 655 | GetIntimidateSuccess | persuasion |
 | 654 | GetBribeSuccess | persuasion |
 | 45 | GetDetected | stealth |
+| 700 | IsCommandedActor | commanded and summoned actors (DialogueGeneric's quest condition needs it: every vendor topic hangs on it) |
+| 638 | IsInFriendStateWithPlayer | followers |
 
 **Unknown** (everything else). The biggest in INFO conditions:
 GetKeywordDataForLocation 606 (594), GetEquipped 182 (229), LocAliasIsLocation

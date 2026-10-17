@@ -68,8 +68,10 @@ inline constexpr std::uint16_t get_vm_quest_variable = 629;
 inline constexpr std::uint16_t get_vm_script_variable = 630;
 inline constexpr std::uint16_t get_actor_value_percent = 640;
 inline constexpr std::uint16_t is_linked_to = 650;
+inline constexpr std::uint16_t is_in_friend_state_with_player = 638;
 inline constexpr std::uint16_t get_bribe_success = 654;
 inline constexpr std::uint16_t get_intimidate_success = 655;
+inline constexpr std::uint16_t is_commanded_actor = 700;
 } // namespace fn
 
 /// The functions bound to a resting value because the system they read does
