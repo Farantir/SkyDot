@@ -328,6 +328,8 @@ table Cell {
     /// fills the sky seen through the openings of an interior with the
     /// show_sky flag; 0 if none.
     sky_region: uint32;
+    /// FULL (format 25): the name a load door into the cell shows; empty if none.
+    name: string;
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A
@@ -833,6 +835,8 @@ table Worldspace {
     large_refs: [LargeRef];
     large_cells: [LargeRefCell];
     large_cell_refs: [uint32];
+    /// FULL (format 25): the name a load door into the worldspace shows; empty if none.
+    name: string;
 }
 
 /// `QuestLogEntry.flags`.

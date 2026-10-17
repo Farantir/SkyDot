@@ -97,6 +97,7 @@ void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io:
     wfb::WorldspaceT out;
     out.id = merged.form.value;
     out.editor_id = w->editor_id;
+    out.name = w->name.text;
     out.parent = shared_.global(merged, w->parent, failed);
     out.parent_flags = static_cast<wfb::ParentFlags>(w->parent_flags);
     out.flags = w->flags;

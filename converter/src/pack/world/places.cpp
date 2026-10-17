@@ -252,6 +252,7 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
     auto& out = entry.cell;
     out.id = merged.form.value;
     out.editor_id = cell->editor_id;
+    out.name = cell->name.text;
     out.world = cell->is_interior() ? 0 : merged.parent.value;
     out.flags = static_cast<wfb::CellFlags>(cell->flags);
     if (cell->grid) {
