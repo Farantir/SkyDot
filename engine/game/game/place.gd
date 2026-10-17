@@ -129,7 +129,9 @@ func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = nu
 	built.emit(root, id)
 	_add_environment(cell)
 	_player.set_view_distance(500.0)
-	var spawn = _interior_spawn(id) if at == null and not _player.flying else null
+	# Without an arrival the door into the cell places the player, flying or
+	# not; the bounds are for a cell no door leads into.
+	var spawn = _interior_spawn(id) if at == null else null
 	if spawn != null:
 		var eye: Vector3 = spawn.origin + Vector3(0, GameSession.EYE_HEIGHT, 0)
 		var forward: Vector3 = -spawn.basis.z
