@@ -3,7 +3,7 @@
 // Dialogue selection over world.fb's dialogue tables (ADR 0004). Which
 // greeting an actor gives, which topics the player may pick, which INFO
 // answers a topic and what follows it, all decided with the shared condition
-// evaluator and the dialogue states. Text only: no voice, no scenes. Nothing
+// evaluator and the dialogue states. Text and the voice file path of each line; no scenes. Nothing
 // here touches Godot.
 //
 // - A topic is available when its quest runs, the quest's dialogue conditions
@@ -54,6 +54,9 @@ public:
 /// mark the begin and end of an INFO (its fragments run there).
 struct Line {
     std::string text;
+    /// Virtual path of the voice file (`sound/voice/...fuz`), empty if the
+    /// speaker has no voice type or the line is silent.
+    std::string voice;
     std::uint32_t info = 0;
     bool first = false;
     bool last = false;
@@ -118,6 +121,11 @@ private:
     [[nodiscard]] bool entry_of(const wfb::DialogueTopic& topic, TopicEntry& out);
     void speak(const wfb::DialogueTopic& topic, const wfb::DialogueInfo& info, Result& out, bool commit,
                int depth);
+    /// The EDID of the speaker's voice type (NPC_ VTCK through a traits
+    /// template, else the race's for the sex); empty if none.
+    [[nodiscard]] std::string speaker_voice_type() const;
+    [[nodiscard]] std::string voice_of(const wfb::DialogueInfo& source, unsigned number,
+                                       const std::string& voice_type) const;
     [[nodiscard]] std::string substitute(const std::string& text, const wfb::DialogueTopic& topic);
     void finish(Result& out);
     [[nodiscard]] Result begin(std::uint32_t speaker, bool commit);

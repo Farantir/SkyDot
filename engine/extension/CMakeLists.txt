@@ -52,6 +52,8 @@ set(SKYDOT_CORE_SOURCES
     src/dialogue/dialogue.hpp
     src/dialogue/dialogue_states.cpp
     src/dialogue/dialogue_states.hpp
+    src/dialogue/voice.cpp
+    src/dialogue/voice.hpp
     src/data/actors.hpp
     src/data/large_refs.cpp
     src/data/large_refs.hpp

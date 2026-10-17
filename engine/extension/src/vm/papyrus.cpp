@@ -120,6 +120,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("dialogue_choose", "topic"), &SkydotPapyrus::dialogue_choose);
     godot::ClassDB::bind_method(D_METHOD("dialogue_close"), &SkydotPapyrus::dialogue_close);
     godot::ClassDB::bind_method(D_METHOD("dialogue_is_open"), &SkydotPapyrus::dialogue_is_open);
+    godot::ClassDB::bind_method(D_METHOD("voice_census", "vpaths"), &SkydotPapyrus::voice_census);
     godot::ClassDB::bind_method(D_METHOD("dialogue_topics_debug", "speaker"),
                                 &SkydotPapyrus::dialogue_topics_debug);
     godot::ClassDB::bind_method(D_METHOD("dialogue_fragment", "info", "end", "speaker"),

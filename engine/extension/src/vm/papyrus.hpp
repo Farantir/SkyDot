@@ -239,6 +239,8 @@ public:
     bool dialogue_is_open() const;
     /// What `dialogue_open` would say and list, changing nothing (tests).
     godot::Dictionary dialogue_topics_debug(std::int64_t speaker);
+    /// Derived voice stems of every INFO against the pack's `vpaths` (tools/voice_census.gd).
+    godot::Dictionary voice_census(const godot::PackedStringArray& vpaths) const;
     /// Run the begin (or end) fragment of INFO `info`, with `speaker` as
     /// akSpeakerRef. Returns whether the INFO has one.
     bool dialogue_fragment(std::int64_t info, bool end, std::int64_t speaker);

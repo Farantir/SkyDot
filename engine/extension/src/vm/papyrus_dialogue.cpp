@@ -7,12 +7,16 @@
 
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"
+#include "dialogue/voice.hpp"
+#include "skydot_formats/flags.hpp"
 #include "vm/natives_common.hpp"
 #include "build/refs.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
+#include <map>
+#include <set>
 
 using godot::Array;
 using godot::Dictionary;
@@ -98,6 +102,7 @@ Dictionary SkydotPapyrus::dialogue_dictionary(const dialogue::Result& result) co
     for (const auto& line : result.lines) {
         Dictionary l;
         l["text"] = String::utf8(line.text.c_str());
+        l["voice"] = String::utf8(line.voice.c_str());
         l["seconds"] = line_seconds(line.text);
         l["info"] = static_cast<std::int64_t>(line.info);
         l["first"] = line.first;
@@ -184,6 +189,129 @@ bool SkydotPapyrus::dialogue_fragment(std::int64_t info_id, bool end, std::int64
         vm_->error("dialogue: no fragment " + function->str() + " in " + script);
     }
     return true;
+}
+
+Dictionary SkydotPapyrus::voice_census(const godot::PackedStringArray& vpaths) const {
+    Dictionary out;
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr || root->dialogue_topics() == nullptr) {
+        return out;
+    }
+    // The archive: "<plugin>/<stem>" and the full paths.
+    std::set<std::string> archive_full;
+    std::map<std::string, std::set<std::string>> archive_stems; // plugin -> stems
+    const std::string prefix = "sound/voice/";
+    for (int i = 0; i < vpaths.size(); ++i) {
+        const std::string path = vpaths[i].utf8().get_data();
+        if (!path.starts_with(prefix) || !path.ends_with(".fuz")) {
+            continue;
+        }
+        archive_full.insert(path);
+        const auto plugin_end = path.find('/', prefix.size());
+        const auto type_end = plugin_end == std::string::npos ? plugin_end : path.find('/', plugin_end + 1);
+        if (type_end == std::string::npos) {
+            continue;
+        }
+        archive_stems[path.substr(prefix.size(), plugin_end - prefix.size())].insert(
+            path.substr(type_end + 1, path.size() - type_end - 1 - 4));
+    }
+    // Every INFO that owns responses: its stems, per lowercase plugin file.
+    std::map<std::string, std::set<std::string>> derived;
+    std::map<std::string, std::vector<std::string>> samples; // derived but not in the archive
+    std::int64_t speakers = 0;
+    std::int64_t speakers_voiced = 0;
+    std::int64_t speakers_found = 0;
+    std::vector<std::string> missing_speakers;
+    for (const auto* topic : *root->dialogue_topics()) {
+        if (topic->infos() == nullptr) {
+            continue;
+        }
+        const auto* quest = lookup(root->quests(), topic->quest());
+        const std::string quest_edid = quest != nullptr && quest->editor_id() != nullptr ? quest->editor_id()->str() : "";
+        const std::string topic_edid = topic->editor_id() != nullptr ? topic->editor_id()->str() : "";
+        for (const auto* info : *topic->infos()) {
+            std::string plugin;
+            std::uint32_t local = 0;
+            if (info->responses() == nullptr || !dialogue::plugin_of_form(*root, info->id(), plugin, local)) {
+                continue;
+            }
+            std::string lower_plugin = plugin;
+            std::ranges::transform(lower_plugin, lower_plugin.begin(),
+                                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+            std::set<std::string> stems;
+            for (const auto* response : *info->responses()) {
+                const std::string stem = dialogue::voice_stem(quest_edid, topic_edid, local, response->number());
+                stems.insert(stem);
+                if (derived[lower_plugin].insert(stem).second && !archive_stems[lower_plugin].contains(stem) &&
+                    samples[lower_plugin].size() < 400) {
+                    samples[lower_plugin].push_back(stem);
+                }
+            }
+            if (info->speaker() == 0 || info->shared_info() != 0 || stems.empty()) {
+                continue;
+            }
+            const auto* npc = resolve_npc(*root, info->speaker(), wfb::NpcTemplateFlags::use_traits, 0);
+            const auto* race = npc != nullptr ? lookup(root->races(), npc->race()) : nullptr;
+            std::uint32_t voice = npc != nullptr ? npc->voice_type() : 0;
+            if (voice == 0 && race != nullptr && race->voice_types() != nullptr && race->voice_types()->size() >= 2) {
+                voice = race->voice_types()->Get(formats::has_flag(npc->flags(), wfb::NpcFlags::female) ? 1 : 0);
+            }
+            const auto* type = voice != 0 ? lookup(root->voice_types(), voice) : nullptr;
+            ++speakers;
+            if (type == nullptr || type->editor_id() == nullptr) {
+                continue;
+            }
+            ++speakers_voiced;
+            bool all = true;
+            for (const auto& stem : stems) {
+                const std::string path = dialogue::voice_path(plugin, type->editor_id()->str(), stem);
+                all = all && archive_full.contains(path);
+            }
+            if (all) {
+                ++speakers_found;
+            } else if (missing_speakers.size() < 8) {
+                missing_speakers.push_back(dialogue::voice_path(plugin, type->editor_id()->str(), *stems.begin()));
+            }
+        }
+    }
+    Dictionary plugins;
+    for (const auto& [plugin, stems] : archive_stems) {
+        std::int64_t matched = 0;
+        const auto& mine = derived[plugin];
+        godot::PackedStringArray unmatched;
+        for (const auto& stem : stems) {
+            matched += mine.contains(stem) ? 1 : 0;
+            if (!mine.contains(stem) && unmatched.size() < 400) {
+                unmatched.push_back(String::utf8(stem.c_str()));
+            }
+        }
+        std::int64_t found = 0;
+        for (const auto& stem : mine) {
+            found += stems.contains(stem) ? 1 : 0;
+        }
+        Dictionary row;
+        row["archive"] = static_cast<std::int64_t>(stems.size());
+        row["matched"] = matched;
+        row["derived"] = static_cast<std::int64_t>(mine.size());
+        row["derived_found"] = found;
+        godot::PackedStringArray sample;
+        for (const auto& s : samples[plugin]) {
+            sample.push_back(String::utf8(s.c_str()));
+        }
+        row["derived_missing_samples"] = sample;
+        row["archive_unmatched"] = unmatched;
+        plugins[String::utf8(plugin.c_str())] = row;
+    }
+    out["plugins"] = plugins;
+    out["speakers"] = speakers;
+    out["speakers_voiced"] = speakers_voiced;
+    out["speakers_found"] = speakers_found;
+    godot::PackedStringArray missing;
+    for (const auto& s : missing_speakers) {
+        missing.push_back(String::utf8(s.c_str()));
+    }
+    out["speaker_missing_samples"] = missing;
+    return out;
 }
 
 } // namespace skydot

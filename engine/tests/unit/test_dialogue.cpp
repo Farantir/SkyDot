@@ -9,11 +9,13 @@
 
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
+#include "dialogue/voice.hpp"
 #include "conditions/functions.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <map>
+#include <tuple>
 #include <string>
 #include <vector>
 
@@ -43,6 +45,7 @@ struct InfoSpec {
 };
 struct TopicSpec {
     std::uint32_t id;
+    std::string edid = {};
     std::string text = {};
     std::uint32_t quest = 0x100;
     std::uint32_t branch = 0;
@@ -57,16 +60,24 @@ struct BranchSpec {
 };
 struct QuestSpec {
     std::uint32_t id;
+    std::string edid = {};
     std::uint8_t priority = 0;
     std::uint32_t gate_global = 0; ///< a dialogue condition: GetGlobalValue == 1
     std::vector<std::pair<std::uint32_t, std::string>> aliases = {};
+};
+
+/// Plugins (name, prefix, light) and voice types (id, EDID) a test adds.
+struct Extras {
+    std::vector<std::tuple<std::string, std::uint32_t, bool>> plugins = {};
+    std::vector<std::pair<std::uint32_t, std::string>> voice_types = {};
 };
 
 using CondOffsets = std::vector<flatbuffers::Offset<wfb::Condition>>;
 
 class Built {
 public:
-    Built(std::vector<QuestSpec> quests, std::vector<BranchSpec> branches, std::vector<TopicSpec> topics) {
+    Built(std::vector<QuestSpec> quests, std::vector<BranchSpec> branches, std::vector<TopicSpec> topics,
+          const Extras& extras = {}) {
         flatbuffers::FlatBufferBuilder fbb;
         const auto cond = [&](std::uint16_t function, std::uint32_t p1, bool or_next) {
             return wfb::CreateConditionDirect(fbb, static_cast<std::uint8_t>(or_next ? 1 : 0), function, 1.0F, 0, p1);
@@ -81,7 +92,7 @@ public:
             if (q.gate_global != 0) {
                 gate.push_back(cond(skydot::conditions::fn::get_global_value, q.gate_global, false));
             }
-            qs.push_back(wfb::CreateQuestDirect(fbb, q.id, nullptr, nullptr, {}, q.priority, 0, 0, nullptr, nullptr,
+            qs.push_back(wfb::CreateQuestDirect(fbb, q.id, q.edid.empty() ? nullptr : q.edid.c_str(), nullptr, {}, q.priority, 0, 0, nullptr, nullptr,
                                                 nullptr, nullptr, nullptr, &aliases, &gate));
         }
         std::vector<flatbuffers::Offset<wfb::DialogueBranch>> bs;
@@ -109,13 +120,25 @@ public:
                     &i.links, 0, 0, &conditions, &responses));
             }
             ts.push_back(wfb::CreateDialogueTopicDirect(
-                fbb, t.id, nullptr, t.text.empty() ? nullptr : t.text.c_str(), t.quest, t.branch, t.priority, {}, 0, 0,
+                fbb, t.id, t.edid.empty() ? nullptr : t.edid.c_str(), t.text.empty() ? nullptr : t.text.c_str(), t.quest, t.branch, t.priority, {}, 0, 0,
                 t.subtype, &infos));
         }
         const auto q_v = fbb.CreateVector(qs);
         const auto b_v = fbb.CreateVector(bs);
         const auto t_v = fbb.CreateVector(ts);
+        std::vector<flatbuffers::Offset<wfb::Plugin>> ps;
+        for (const auto& [name, prefix, light] : extras.plugins) {
+            ps.push_back(wfb::CreatePluginDirect(fbb, name.c_str(), prefix, light));
+        }
+        std::vector<flatbuffers::Offset<wfb::VoiceType>> vs;
+        for (const auto& [id, edid] : extras.voice_types) {
+            vs.push_back(wfb::CreateVoiceTypeDirect(fbb, id, edid.c_str(), 0));
+        }
+        const auto p_v = fbb.CreateVector(ps);
+        const auto v_v = fbb.CreateVector(vs);
         wfb::WorldBuilder world(fbb);
+        world.add_plugins(p_v);
+        world.add_voice_types(v_v);
         world.add_quests(q_v);
         world.add_dialogue_branches(b_v);
         world.add_dialogue_topics(t_v);
@@ -384,4 +407,89 @@ TEST_CASE("the DLGS section round-trips", "[dialogue][save]") {
     const auto none = empty.save();
     CHECK(dialogue::DialogueStates::load(skydot::save::ByteReader(none.data(), none.size()), b));
     CHECK_FALSE(b.info_said(7));
+}
+
+// ---- voice paths ---------------------------------------------------------------
+
+TEST_CASE("the voice stem cuts quest and topic only when together they pass 25 characters", "[dialogue][voice]") {
+    // An empty topic: the quest stays whole up to 25 characters.
+    CHECK(dialogue::voice_stem("DialogueWinterholdCollege", "", 0x2d8cd, 1) == "dialoguewinterholdcollege__0002d8cd_1");
+    // Longer than 25 with an empty topic: cut to 10.
+    CHECK(dialogue::voice_stem("DarkBrotherhoodSanctuaryConvSystem", "", 0x16810, 1) == "darkbrothe__00016810_1");
+    // Together longer than 25: quest to 10, topic to what is left of 25.
+    CHECK(dialogue::voice_stem("BardsCollegeX", "BardsCollegeDrumsAreFun", 0x1234, 2) == "bardscolle_bardscollegedru_00001234_2");
+    CHECK(dialogue::voice_stem("DA16", "DA16ErandurAfterLabbrXYZ", 0x9fbf9, 1) == "da16_da16erandurafterlabbr_0009fbf9_1");
+    // Together at most 25: nothing is cut, however long the quest.
+    CHECK(dialogue::voice_stem("DLC1Surgery", "DLC1SurgeryNo", 0x696d, 1) == "dlc1surgery_dlc1surgeryno_0000696d_1");
+}
+
+TEST_CASE("the voice file of a line: plugin that defines the INFO, voice type, stem", "[dialogue][voice]") {
+    constexpr std::uint32_t k_male_nord = 0x700;
+    constexpr std::uint32_t k_female_nord = 0x701;
+    const Extras extras{.plugins = {{"Skyrim.esm", 0x00000000, false}, {"Dawnguard.esm", 0x01000000, false},
+                                    {"Light.esl", 0xFE001000, true}},
+                        .voice_types = {{k_male_nord, "MaleNord"}, {k_female_nord, "FemaleNord"}}};
+    Built world({{.id = 0x100, .edid = "MQ101"}, {.id = 0x200, .edid = "DialogueWhiterun"}},
+                {{.id = 1, .start = 10}},
+                {{.id = 10, .edid = "Hello", .text = "Hi", .quest = 0x100, .branch = 1,
+                  .infos = {{.id = 0x00012345, .lines = {"One.", "Two."}}}},
+                 // Defined by Dawnguard, overridden later: the id names Dawnguard.
+                 {.id = 11, .edid = "TopicDG", .quest = 0x200, .subtype = k_gree,
+                  .infos = {{.id = 0x01000abc, .lines = {"Dawnguard."}}}},
+                 // A shared INFO: responses and path come from the shared one.
+                 {.id = 12, .edid = "SharedUser", .quest = 0x100, .subtype = k_helo,
+                  .infos = {{.id = 0x00099999, .shared = 0x00012345}}},
+                 // A light plugin keeps 12 bits.
+                 {.id = 13, .edid = "Lite", .quest = 0x100, .infos = {{.id = 0xFE001777, .lines = {"Light."}}}}},
+                extras);
+    Rig rig;
+    rig.conditions.races[0x20] = 0x300;
+    rig.conditions.race_voices[0x300] = {k_male_nord, k_female_nord};
+    dialogue::Dialogue d(*world, rig.states, rig.conditions, rig.host);
+
+    // Via the race: male, then female.
+    auto lines = d.open(0x20).lines;
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].voice == "sound/voice/dawnguard.esm/malenord/dialoguewhiterun_topicdg_00000abc_1.fuz");
+    rig.conditions.females.insert(0x20);
+    lines = d.peek(0x20).lines;
+    REQUIRE(lines.size() == 1);
+    CHECK(lines[0].voice == "sound/voice/dawnguard.esm/femalenord/dialoguewhiterun_topicdg_00000abc_1.fuz");
+
+    // The NPC's own voice type (the condition world resolves templates) wins over the race's.
+    rig.conditions.voices[0x20] = 0x701;
+    rig.conditions.females.clear();
+    lines = d.peek(0x20).lines;
+    CHECK(lines[0].voice == "sound/voice/dawnguard.esm/femalenord/dialoguewhiterun_topicdg_00000abc_1.fuz");
+
+    // No voice type anywhere: no voice.
+    rig.conditions.voices.clear();
+    rig.conditions.races.clear();
+    CHECK(d.peek(0x20).lines[0].voice.empty());
+}
+
+TEST_CASE("shared and light-plugin INFOs name their own voice files", "[dialogue][voice]") {
+    const Extras extras{.plugins = {{"Skyrim.esm", 0x00000000, false}, {"Light.esl", 0xFE001000, true}},
+                        .voice_types = {{0x700, "MaleNord"}}};
+    Built world({{.id = 0x100, .edid = "MQ101"}}, {{.id = 1, .start = 12}},
+                {{.id = 10, .edid = "Hello", .quest = 0x100,
+                  .infos = {{.id = 0x00012345, .lines = {"One.", "Two."}}}},
+                 {.id = 12, .edid = "SharedUser", .text = "Pick", .quest = 0x100, .branch = 1,
+                  .infos = {{.id = 0x00099999, .shared = 0x00012345}}},
+                 {.id = 13, .edid = "Lite", .text = "Lite", .quest = 0x100, .branch = 1,
+                  .infos = {{.id = 0xFE001777, .lines = {"Light."}}}}},
+                extras);
+    Rig rig;
+    rig.conditions.voices[0x20] = 0x700;
+    dialogue::Dialogue d(*world, rig.states, rig.conditions, rig.host);
+    auto r = d.open(0x20);
+    // Greetings: none. Choose the topics.
+    r = d.choose(12);
+    REQUIRE(r.lines.size() == 2);
+    CHECK(r.lines[0].text == "One.");
+    CHECK(r.lines[0].voice == "sound/voice/skyrim.esm/malenord/mq101_hello_00012345_1.fuz");
+    CHECK(r.lines[1].voice == "sound/voice/skyrim.esm/malenord/mq101_hello_00012345_2.fuz");
+    r = d.choose(13);
+    REQUIRE(r.lines.size() == 1);
+    CHECK(r.lines[0].voice == "sound/voice/light.esl/malenord/mq101_lite_00000777_1.fuz");
 }

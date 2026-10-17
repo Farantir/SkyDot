@@ -2,6 +2,7 @@
 #include "dialogue/dialogue.hpp"
 
 #include "data/fb_search.hpp"
+#include "dialogue/voice.hpp"
 #include "skydot_formats/flags.hpp"
 
 #include <algorithm>
@@ -250,12 +251,14 @@ void Dialogue::speak(const wfb::DialogueTopic& topic, const wfb::DialogueInfo& i
     }
     std::ranges::stable_sort(responses, {}, [](const wfb::DialogueResponse* r) { return r->number(); });
     const std::size_t first = out.lines.size();
+    const std::string voice_type = speaker_voice_type();
     for (const auto* response : responses) {
         out.lines.push_back({.text = substitute(response->text() != nullptr ? response->text()->str() : "", topic),
+                             .voice = voice_of(*source, response->number(), voice_type),
                              .info = info.id()});
     }
     if (out.lines.size() == first) {
-        out.lines.push_back({.text = {}, .info = info.id()});
+        out.lines.push_back({.text = {}, .voice = {}, .info = info.id()});
     }
     out.lines[first].first = true;
     out.lines.back().last = true;
@@ -285,6 +288,29 @@ void Dialogue::speak(const wfb::DialogueTopic& topic, const wfb::DialogueInfo& i
             }
         }
     }
+}
+
+std::string Dialogue::speaker_voice_type() const {
+    std::uint32_t voice = conditions_.voice_type_of(speaker_);
+    if (voice == 0) {
+        const auto [male, female] = conditions_.race_voice_types(conditions_.race_of(speaker_));
+        voice = conditions_.is_female(speaker_) ? female : male;
+    }
+    const auto* type = voice != 0 ? lookup(world_.voice_types(), voice) : nullptr;
+    return type != nullptr && type->editor_id() != nullptr ? type->editor_id()->str() : std::string();
+}
+
+std::string Dialogue::voice_of(const wfb::DialogueInfo& source, unsigned number, const std::string& voice_type) const {
+    std::string plugin;
+    std::uint32_t local = 0;
+    const auto* topic = lookup(world_.dialogue_topics(), topic_of_info(source.id()));
+    if (voice_type.empty() || topic == nullptr || !plugin_of_form(world_, source.id(), plugin, local)) {
+        return {};
+    }
+    const auto* quest = lookup(world_.quests(), topic->quest());
+    const std::string quest_edid = quest != nullptr && quest->editor_id() != nullptr ? quest->editor_id()->str() : "";
+    const std::string topic_edid = topic->editor_id() != nullptr ? topic->editor_id()->str() : "";
+    return voice_path(plugin, voice_type, voice_stem(quest_edid, topic_edid, local, number));
 }
 
 void Dialogue::finish(Result& out) {
