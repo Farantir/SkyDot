@@ -65,6 +65,7 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"MGEF"}, &run<parse_magic_effect>},
     {FourCC{"IPDS"}, &run<parse_impact_data_set>},
     {FourCC{"IPCT"}, &run<parse_impact>},
+    {FourCC{"CSTY"}, &run<parse_combat_style>},
     {FourCC{"LTEX"}, &run<parse_land_texture>},
     {FourCC{"IMGS"}, &run<parse_image_space>},
     {FourCC{"VOLI"}, &run<parse_volumetric_lighting>},

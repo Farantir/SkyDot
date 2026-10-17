@@ -64,6 +64,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_gmst_int", "name", "fallback"), &SkydotWorld::get_gmst_int);
     godot::ClassDB::bind_method(D_METHOD("get_weapon", "form"), &SkydotWorld::get_weapon);
     godot::ClassDB::bind_method(D_METHOD("get_race", "race"), &SkydotWorld::get_race);
+    godot::ClassDB::bind_method(D_METHOD("get_combat_style", "id"), &SkydotWorld::get_combat_style);
+    godot::ClassDB::bind_method(D_METHOD("get_npc", "id"), &SkydotWorld::get_npc);
+    godot::ClassDB::bind_method(D_METHOD("get_faction", "id"), &SkydotWorld::get_faction);
     godot::ClassDB::bind_method(D_METHOD("get_impact", "data_set", "material"), &SkydotWorld::get_impact);
     godot::ClassDB::bind_method(D_METHOD("get_npc_plan", "npc", "ref"), &SkydotWorld::get_npc_plan);
     godot::ClassDB::bind_method(D_METHOD("get_ammo", "id"), &SkydotWorld::get_ammo);
@@ -303,6 +306,9 @@ std::int64_t SkydotWorld::get_gmst_int(const String& name, std::int64_t fallback
 }
 Dictionary SkydotWorld::get_weapon(std::int64_t form) const { return queries::get_weapon(data(), form); }
 Dictionary SkydotWorld::get_race(std::int64_t race) const { return queries::get_race(data(), race); }
+Dictionary SkydotWorld::get_combat_style(std::int64_t id) const { return queries::get_combat_style(data(), id); }
+Dictionary SkydotWorld::get_npc(std::int64_t id) const { return queries::get_npc(data(), id); }
+Dictionary SkydotWorld::get_faction(std::int64_t id) const { return queries::get_faction(data(), id); }
 Dictionary SkydotWorld::get_impact(std::int64_t data_set, std::int64_t material) const {
     return queries::get_impact(data(), data_set, material);
 }

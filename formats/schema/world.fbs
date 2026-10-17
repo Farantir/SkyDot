@@ -1380,6 +1380,10 @@ table Npc {
     voice_type: uint32;
     /// KWDA (format 26): KYWD ids.
     keywords: [uint32];
+    /// ZNAM (format 31): a CombatStyle in `combat_styles`; 0 if none.
+    combat_style: uint32;
+    /// CRIF (format 31): the Faction whose crimes the NPC reports; 0 if none.
+    crime_faction: uint32;
 }
 
 /// The low bits of `Condition.type`.
@@ -1712,6 +1716,52 @@ table Impact {
     hazard: uint32;
 }
 
+/// CSTY (format 31): how an NPC fights. Sources: xEdit's CSTY layout (SSE).
+/// A shorter field in an older record leaves the rest of its values 0.
+table CombatStyle {
+    id: uint32 (key);
+    editor_id: string;
+    /// CSGD, 10 floats.
+    offensive_mult: float;
+    defensive_mult: float;
+    group_offensive_mult: float;
+    /// Equipment score multipliers.
+    melee_score_mult: float;
+    magic_score_mult: float;
+    ranged_score_mult: float;
+    shout_score_mult: float;
+    unarmed_score_mult: float;
+    staff_score_mult: float;
+    avoid_threat_chance: float;
+    /// CSME, 8 floats.
+    attack_staggered_mult: float;
+    power_attack_staggered_mult: float;
+    power_attack_blocking_mult: float;
+    bash_mult: float;
+    bash_recoil_mult: float;
+    bash_attack_mult: float;
+    bash_power_attack_mult: float;
+    special_attack_mult: float;
+    /// CSCR.
+    circle_mult: float;
+    fallback_mult: float;
+    flank_distance: float;
+    stalk_time: float;
+    /// CSLR.
+    strafe_mult: float;
+    /// CSFL, 8 floats.
+    hover_chance: float;
+    dive_bomb_chance: float;
+    ground_attack_chance: float;
+    hover_time: float;
+    ground_attack_time: float;
+    perch_attack_chance: float;
+    perch_attack_time: float;
+    flying_attack_chance: float;
+    /// DATA: bit 0 dueling, 1 flanking, 2 allow dual wielding.
+    flags: uint32;
+}
+
 /// `DialogueBranch.flags`: DLBR DNAM (format 26; source: UESP).
 enum DialogueBranchFlags : uint32 (bit_flags) {
     top_level,
@@ -1880,6 +1930,18 @@ table Faction {
     vendor_radius: uint32;
     /// VENC, a container.
     vendor_chest: uint32;
+    /// XNAM (format 31), in record order. `flags` holds the whole DATA word.
+    relations: [FactionRelation];
+}
+
+/// FACT XNAM (format 31; 12 bytes, source: xEdit): how members of this
+/// faction see members of `faction`.
+struct FactionRelation {
+    faction: uint32;
+    /// The disposition modifier.
+    modifier: int32;
+    /// 0 neutral, 1 enemy, 2 ally, 3 friend.
+    reaction: uint32;
 }
 
 /// `Scene.flags`: SCEN FNAM (format 27; source: UESP, xEdit).
@@ -2072,6 +2134,8 @@ table World {
     impact_data_sets: [ImpactDataSet];
     /// Sorted by id (format 30).
     impacts: [Impact];
+    /// Sorted by id (format 31).
+    combat_styles: [CombatStyle];
 }
 
 root_type World;

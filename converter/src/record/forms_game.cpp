@@ -511,6 +511,65 @@ io::ParseResult<Impact> parse_impact(io::SpanReader& data, const FormContext& ct
     return out;
 }
 
+// ---- CSTY -----------------------------------------------------------------
+
+namespace {
+
+/// Floats from `bytes` into `out`, as many as there are; the rest stays 0.
+template <std::size_t N>
+void read_floats(const std::vector<std::byte>& bytes, std::array<float, N>& out) {
+    io::SpanReader r(bytes, "CSTY");
+    for (float& value : out) {
+        const auto v = r.get<float>();
+        if (!v) {
+            return;
+        }
+        value = *v;
+    }
+}
+
+} // namespace
+
+io::ParseResult<CombatStyle> parse_combat_style(io::SpanReader& data, const FormContext& ctx) {
+    CombatStyle out;
+    const BaseObjectFields into{.editor_id = &out.editor_id};
+    const auto walked = walk_fields(
+        data, FourCC{"CSTY"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"CSGD"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                read_floats(raw, out.general);
+            } else if (field.type == FourCC{"CSME"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                read_floats(raw, out.melee);
+            } else if (field.type == FourCC{"CSCR"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                read_floats(raw, out.close_range);
+            } else if (field.type == FourCC{"CSLR"}) {
+                take(failure, body.get<float>(), out.long_range);
+            } else if (field.type == FourCC{"CSFL"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                read_floats(raw, out.flight);
+            } else if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::uint32_t>(), out.flags);
+            } else if (field.type == FourCC{"CSMD"}) {
+                // Unknown 8 bytes: skipped.
+            } else {
+                return read_base_object_field(into, FourCC{"CSTY"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- SPEL -----------------------------------------------------------------
 
 io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx) {

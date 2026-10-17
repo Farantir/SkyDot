@@ -214,6 +214,10 @@ void DialogueCollector::on_faction(const record::MergedRecord& merged, io::SpanR
         out.vendor_radius = v.get<std::uint32_t>().value_or(0);
     }
     out.vendor_chest = shared_.global(merged, f->vendor_chest, failed);
+    for (const auto& relation : f->relations) {
+        out.relations.emplace_back(shared_.global(merged, relation.faction, failed),
+                                   relation.modifier, relation.combat_reaction);
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }

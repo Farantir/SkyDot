@@ -108,6 +108,9 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"IPCT"}.value:
         on_impact(merged, data, form_ctx);
         break;
+    case FourCC{"CSTY"}.value:
+        on_combat_style(merged, data, form_ctx);
+        break;
     default:
         break;
     }
@@ -934,6 +937,51 @@ void BaseCollector::on_impact(const record::MergedRecord& merged, io::SpanReader
     impacts_[out.id] = std::move(out);
 }
 
+void BaseCollector::on_combat_style(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
+    auto r = record::parse_combat_style(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::CombatStyleT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.offensive_mult = r->general[0];
+    out.defensive_mult = r->general[1];
+    out.group_offensive_mult = r->general[2];
+    out.melee_score_mult = r->general[3];
+    out.magic_score_mult = r->general[4];
+    out.ranged_score_mult = r->general[5];
+    out.shout_score_mult = r->general[6];
+    out.unarmed_score_mult = r->general[7];
+    out.staff_score_mult = r->general[8];
+    out.avoid_threat_chance = r->general[9];
+    out.attack_staggered_mult = r->melee[0];
+    out.power_attack_staggered_mult = r->melee[1];
+    out.power_attack_blocking_mult = r->melee[2];
+    out.bash_mult = r->melee[3];
+    out.bash_recoil_mult = r->melee[4];
+    out.bash_attack_mult = r->melee[5];
+    out.bash_power_attack_mult = r->melee[6];
+    out.special_attack_mult = r->melee[7];
+    out.circle_mult = r->close_range[0];
+    out.fallback_mult = r->close_range[1];
+    out.flank_distance = r->close_range[2];
+    out.stalk_time = r->close_range[3];
+    out.strafe_mult = r->long_range;
+    out.hover_chance = r->flight[0];
+    out.dive_bomb_chance = r->flight[1];
+    out.ground_attack_chance = r->flight[2];
+    out.hover_time = r->flight[3];
+    out.ground_attack_time = r->flight[4];
+    out.perch_attack_chance = r->flight[5];
+    out.perch_attack_time = r->flight[6];
+    out.flying_attack_chance = r->flight[7];
+    out.flags = r->flags;
+    combat_styles_[out.id] = std::move(out);
+}
+
 bool BaseCollector::is_item_type(io::FourCC type) noexcept {
     return type == FourCC{"ALCH"} || type == FourCC{"AMMO"} || type == FourCC{"ARMO"} ||
            type == FourCC{"BOOK"} || type == FourCC{"INGR"} || type == FourCC{"KEYM"} ||
@@ -1168,6 +1216,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.gmsts += gmsts_.size();
     stats.impact_data_sets += impact_data_sets_.size();
     stats.impacts += impacts_.size();
+    stats.combat_styles += combat_styles_.size();
     stats.recipes += recipes_.size();
     stats.magic_effects += magic_effects_.size();
     stats.enchantments += enchantments_.size();
@@ -1216,6 +1265,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.recipes, recipes_);
     move_into(world.impact_data_sets, impact_data_sets_);
     move_into(world.impacts, impacts_);
+    move_into(world.combat_styles, combat_styles_);
     for (auto& [name, setting] : gmsts_) {
         world.gmsts.push_back(std::make_unique<wfb::GameSettingT>(std::move(setting)));
     }

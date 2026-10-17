@@ -244,6 +244,28 @@ struct Impact {
     static constexpr std::size_t k_data_size = 24;
 };
 
+/// CSTY: a combat style. Layout after xEdit's CSTY definition (SSE): CSGD 40
+/// bytes (ten floats), CSME 32 (eight floats), CSCR 16 (four floats), CSLR 4,
+/// CSFL 32 (eight floats), DATA a flag word. CSMD (8 bytes) is skipped. A
+/// shorter field (older records) is read as far as it goes; the rest stays 0.
+struct CombatStyle {
+    std::string editor_id;
+    /// CSGD: offensive, defensive, group offensive mult, equipment score mults
+    /// (melee, magic, ranged, shout, unarmed, staff), avoid threat chance.
+    std::array<float, 10> general{};
+    /// CSME: attack staggered, power attack staggered, power attack blocking,
+    /// bash, bash recoil, bash attack, bash power attack, special attack.
+    std::array<float, 8> melee{};
+    /// CSCR: circle mult, fallback mult, flank distance, stalk time.
+    std::array<float, 4> close_range{};
+    float long_range{}; ///< CSLR: strafe mult.
+    /// CSFL: hover chance, dive bomb chance, ground attack chance, hover time,
+    /// ground attack time, perch attack chance, perch attack time, flying attack
+    /// chance.
+    std::array<float, 8> flight{};
+    std::uint32_t flags{}; ///< DATA: 1 dueling, 2 flanking, 4 allow dual wielding.
+};
+
 /// SPEL: spell, shout effect, ability, disease or power. 1,561 in SE.
 struct Spell {
     std::string editor_id;
@@ -745,6 +767,8 @@ struct Package {
 [[nodiscard]] io::ParseResult<ImpactDataSet> parse_impact_data_set(io::SpanReader& data,
                                                                   const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Impact> parse_impact(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<CombatStyle> parse_combat_style(io::SpanReader& data,
+                                                             const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);

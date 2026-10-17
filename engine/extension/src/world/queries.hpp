@@ -75,6 +75,9 @@ godot::Dictionary get_destruction(const WorldData& data, std::int64_t base);
 godot::Dictionary get_explosion(const WorldData& data, std::int64_t id);
 /// GMSTs, weapons, races and impacts (queries_forms.cpp; world.fb 30).
 double get_gmst_float(const WorldData& data, const godot::String& name, double fallback);
+godot::Dictionary get_combat_style(const WorldData& data, std::int64_t id);
+godot::Dictionary get_npc(const WorldData& data, std::int64_t id);
+godot::Dictionary get_faction(const WorldData& data, std::int64_t id);
 std::int64_t get_gmst_int(const WorldData& data, const godot::String& name, std::int64_t fallback);
 godot::Dictionary get_weapon(const WorldData& data, std::int64_t form);
 godot::Dictionary get_race(const WorldData& data, std::int64_t race);

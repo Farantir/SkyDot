@@ -204,6 +204,22 @@ public:
     /// impact_data_set, behaviours, attacks: [{event, damage_mult, flags, attack_angle,
     /// strike_angle, stagger}]).
     godot::Dictionary get_race(std::int64_t race) const;
+    /// A combat style (CSTY; world.fb 31; keys: id, editor_id, offensive_mult, defensive_mult,
+    /// group_offensive_mult, melee_score_mult, magic_score_mult, ranged_score_mult,
+    /// shout_score_mult, unarmed_score_mult, staff_score_mult, avoid_threat_chance,
+    /// attack_staggered_mult, power_attack_staggered_mult, power_attack_blocking_mult, bash_mult,
+    /// bash_recoil_mult, bash_attack_mult, bash_power_attack_mult, special_attack_mult,
+    /// circle_mult, fallback_mult, flank_distance, stalk_time, strafe_mult, hover_chance,
+    /// dive_bomb_chance, ground_attack_chance, hover_time, ground_attack_time,
+    /// perch_attack_chance, perch_attack_time, flying_attack_chance, flags); empty if none.
+    godot::Dictionary get_combat_style(std::int64_t id) const;
+    /// An NPC_ base as combat reads it (keys: id, editor_id, name, race, level, aggression,
+    /// confidence, energy, morality, mood, assistance, combat_style, crime_faction, factions:
+    /// [{faction, rank}]); empty if none. The record's own values, no template.
+    godot::Dictionary get_npc(std::int64_t id) const;
+    /// A faction (keys: id, editor_id, flags (the whole DATA word), relations: [{faction,
+    /// modifier, reaction}] with reaction 0 neutral, 1 enemy, 2 ally, 3 friend); empty if none.
+    godot::Dictionary get_faction(std::int64_t id) const;
     /// What a hit on `material` (a MaterialType) leaves according to impact data set `data_set`
     /// (keys: id, editor_id, model, duration, orientation, sound1, sound2); empty if none.
     godot::Dictionary get_impact(std::int64_t data_set, std::int64_t material) const;

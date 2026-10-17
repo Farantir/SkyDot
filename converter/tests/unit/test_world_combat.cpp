@@ -3,6 +3,8 @@
 // world.fb 30: game settings (GMST), weapon speed, reach, skill and critical
 // data, first-person models, race attacks and unarmed data, impact data sets
 // (IPDS) and impacts (IPCT).
+// world.fb 31: combat styles (CSTY), NPC combat style and crime faction,
+// faction relations (XNAM).
 #include "bethconv/pack/world.hpp"
 
 #include "bethconv/record/load_order.hpp"
@@ -14,6 +16,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <fstream>
+#include <tuple>
 #include <string>
 #include <string_view>
 
@@ -297,4 +300,139 @@ TEST_CASE("world.fb 30 carries game settings, weapon combat data, race attacks a
     CHECK(impact->flags == 1);
     CHECK(impact->sound1 == 0x832);
     CHECK(impact->sound2 == 0x833);
+}
+
+namespace {
+
+void floats(ByteWriter& w, float first, std::size_t count) {
+    for (std::size_t i = 0; i < count; ++i) {
+        w.f32(first + static_cast<float>(i));
+    }
+}
+
+void make_styles(const TempDir& dir) {
+    ByteWriter file;
+    bethconv::test::write_tes4(file, 0, {});
+
+    ByteWriter full;
+    text(full, "EDID", "csFull");
+    {
+        ByteWriter w;
+        floats(w, 1.0F, 10); // CSGD: 1..10
+        bethconv::test::write_field(full, "CSGD", w);
+        ByteWriter md;
+        zeros(md, 8);
+        bethconv::test::write_field(full, "CSMD", md);
+        ByteWriter me;
+        floats(me, 20.0F, 8);
+        bethconv::test::write_field(full, "CSME", me);
+        ByteWriter cr;
+        floats(cr, 30.0F, 4);
+        bethconv::test::write_field(full, "CSCR", cr);
+        ByteWriter lr;
+        lr.f32(40.0F);
+        bethconv::test::write_field(full, "CSLR", lr);
+        ByteWriter fl;
+        floats(fl, 50.0F, 8);
+        bethconv::test::write_field(full, "CSFL", fl);
+    }
+    u32(full, "DATA", 5);
+    record(file, "CSTY", 0x900, full);
+
+    // An older record: CSGD of 3 floats only.
+    ByteWriter shorter;
+    text(shorter, "EDID", "csShort");
+    {
+        ByteWriter w;
+        floats(w, 7.0F, 3);
+        bethconv::test::write_field(shorter, "CSGD", w);
+    }
+    record(file, "CSTY", 0x901, shorter);
+
+    ByteWriter npc;
+    text(npc, "EDID", "StyledNpc");
+    u32(npc, "ZNAM", 0x900);
+    u32(npc, "CRIF", 0x911);
+    record(file, "NPC_", 0x910, npc);
+
+    ByteWriter fact;
+    text(fact, "EDID", "BanditLike");
+    for (const auto& [other, modifier, reaction] :
+         {std::tuple<std::uint32_t, std::int32_t, std::uint32_t>{0x912, 0, 1}, {0x913, -5, 2},
+          {0x914, 3, 3}}) {
+        ByteWriter xnam;
+        xnam.u32(other);
+        xnam.u32(static_cast<std::uint32_t>(modifier));
+        xnam.u32(reaction);
+        bethconv::test::write_field(fact, "XNAM", xnam);
+    }
+    u32(fact, "DATA", 0x8001'4005U);
+    record(file, "FACT", 0x911, fact);
+
+    std::ofstream out(dir / "Styles.esm", std::ios::binary);
+    for (const auto b : file.bytes()) {
+        out.put(static_cast<char>(b));
+    }
+}
+
+} // namespace
+
+TEST_CASE("world.fb 31 carries combat styles, the NPC's style and crime faction, faction relations",
+          "[pack][world][combat]") {
+    const TempDir dir;
+    make_styles(dir);
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "Styles.esm", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list,
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto out = dir / "world.fb";
+    const auto stats = pack::write_world(world, order, out);
+    REQUIRE(stats.has_value());
+    CHECK(stats->parse_errors == 0);
+    CHECK(stats->combat_styles == 2);
+
+    const auto file = pack::WorldFile::open(out);
+    REQUIRE(file.has_value());
+    const auto full = file->combat_style(0x900);
+    REQUIRE(full.has_value());
+    CHECK(full->editor_id == "csFull");
+    CHECK(full->offensive_mult == 1.0F);
+    CHECK(full->group_offensive_mult == 3.0F);
+    CHECK(full->melee_score_mult == 4.0F);
+    CHECK(full->staff_score_mult == 9.0F);
+    CHECK(full->avoid_threat_chance == 10.0F);
+    CHECK(full->attack_staggered_mult == 20.0F);
+    CHECK(full->bash_mult == 23.0F);
+    CHECK(full->special_attack_mult == 27.0F);
+    CHECK(full->circle_mult == 30.0F);
+    CHECK(full->stalk_time == 33.0F);
+    CHECK(full->strafe_mult == 40.0F);
+    CHECK(full->hover_chance == 50.0F);
+    CHECK(full->flying_attack_chance == 57.0F);
+    CHECK(full->flags == 5);
+
+    const auto shorter = file->combat_style(0x901);
+    REQUIRE(shorter.has_value());
+    CHECK(shorter->defensive_mult == 8.0F);
+    CHECK(shorter->group_offensive_mult == 9.0F);
+    CHECK(shorter->melee_score_mult == 0.0F);
+    CHECK(shorter->flags == 0);
+    CHECK_FALSE(file->combat_style(0x999).has_value());
+
+    const auto npc = file->npc(0x910);
+    REQUIRE(npc.has_value());
+    CHECK(npc->combat_style == 0x900);
+    CHECK(npc->crime_faction == 0x911);
+
+    const auto faction = file->faction(0x911);
+    REQUIRE(faction.has_value());
+    CHECK(static_cast<std::uint32_t>(faction->flags) == 0x8001'4005U);
+    REQUIRE(faction->relations.size() == 3);
+    CHECK(faction->relations[0].faction() == 0x912);
+    CHECK(faction->relations[0].reaction() == 1);
+    CHECK(faction->relations[1].modifier() == -5);
+    CHECK(faction->relations[1].reaction() == 2);
+    CHECK(faction->relations[2].reaction() == 3);
 }

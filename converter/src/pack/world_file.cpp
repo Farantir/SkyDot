@@ -267,6 +267,10 @@ std::optional<wfb::ImpactT> WorldFile::impact(std::uint32_t id) const {
     return unpack(lookup(impl_->root->impacts(), id));
 }
 
+std::optional<wfb::CombatStyleT> WorldFile::combat_style(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->combat_styles(), id));
+}
+
 std::vector<wfb::GameSettingT> WorldFile::game_settings() const {
     return unpack_all(impl_->root->gmsts());
 }

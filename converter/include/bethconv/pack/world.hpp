@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 30;
+inline constexpr std::uint32_t k_world_format_version = 31;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -81,6 +81,8 @@ struct WorldStats {
     std::uint64_t gmsts{};
     std::uint64_t impact_data_sets{};
     std::uint64_t impacts{};
+    /// CSTY (format 31).
+    std::uint64_t combat_styles{};
     /// AMMO and PROJ (format 19).
     std::uint64_t ammos{};
     std::uint64_t projectiles{};
@@ -213,6 +215,7 @@ public:
     [[nodiscard]] std::optional<wfb::EnchantmentT> enchantment(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactDataSetT> impact_data_set(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactT> impact(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::CombatStyleT> combat_style(std::uint32_t id) const;
     /// Every GMST, sorted by lower-case editor id.
     [[nodiscard]] std::vector<wfb::GameSettingT> game_settings() const;
     /// The GMST named `editor_id` (any case), if the pack has it.

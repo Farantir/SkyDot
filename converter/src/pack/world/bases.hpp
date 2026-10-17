@@ -76,7 +76,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, GMST, IPDS or IPCT; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, GMST, IPDS, IPCT or CSTY; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -134,6 +134,8 @@ private:
                             const record::FormContext& form_ctx);
     void on_impact(const record::MergedRecord& merged, io::SpanReader& data,
                    const record::FormContext& form_ctx);
+    void on_combat_style(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx);
     void on_keyword(const record::MergedRecord& merged, io::SpanReader& data);
     void on_message(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
@@ -152,6 +154,7 @@ private:
     std::map<std::uint32_t, wfb::EnchantmentT> enchantments_;
     std::map<std::uint32_t, wfb::ImpactDataSetT> impact_data_sets_;
     std::map<std::uint32_t, wfb::ImpactT> impacts_;
+    std::map<std::uint32_t, wfb::CombatStyleT> combat_styles_;
     /// By lower-case editor id, the later record of an id wins.
     std::map<std::string, wfb::GameSettingT> gmsts_;
     std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;

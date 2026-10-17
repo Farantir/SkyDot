@@ -156,6 +156,109 @@ Dictionary get_weapon(const WorldData& data, std::int64_t form) {
     return out;
 }
 
+Dictionary get_combat_style(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* root = data.root();
+    const auto* c = root != nullptr ? lookup(root->combat_styles(), static_cast<std::uint32_t>(id)) : nullptr;
+    if (c == nullptr) {
+        return out;
+    }
+    const auto num = [](float v) { return static_cast<double>(v); };
+    out["id"] = id;
+    out["editor_id"] = to_godot(c->editor_id());
+    out["offensive_mult"] = num(c->offensive_mult());
+    out["defensive_mult"] = num(c->defensive_mult());
+    out["group_offensive_mult"] = num(c->group_offensive_mult());
+    out["melee_score_mult"] = num(c->melee_score_mult());
+    out["magic_score_mult"] = num(c->magic_score_mult());
+    out["ranged_score_mult"] = num(c->ranged_score_mult());
+    out["shout_score_mult"] = num(c->shout_score_mult());
+    out["unarmed_score_mult"] = num(c->unarmed_score_mult());
+    out["staff_score_mult"] = num(c->staff_score_mult());
+    out["avoid_threat_chance"] = num(c->avoid_threat_chance());
+    out["attack_staggered_mult"] = num(c->attack_staggered_mult());
+    out["power_attack_staggered_mult"] = num(c->power_attack_staggered_mult());
+    out["power_attack_blocking_mult"] = num(c->power_attack_blocking_mult());
+    out["bash_mult"] = num(c->bash_mult());
+    out["bash_recoil_mult"] = num(c->bash_recoil_mult());
+    out["bash_attack_mult"] = num(c->bash_attack_mult());
+    out["bash_power_attack_mult"] = num(c->bash_power_attack_mult());
+    out["special_attack_mult"] = num(c->special_attack_mult());
+    out["circle_mult"] = num(c->circle_mult());
+    out["fallback_mult"] = num(c->fallback_mult());
+    out["flank_distance"] = num(c->flank_distance());
+    out["stalk_time"] = num(c->stalk_time());
+    out["strafe_mult"] = num(c->strafe_mult());
+    out["hover_chance"] = num(c->hover_chance());
+    out["dive_bomb_chance"] = num(c->dive_bomb_chance());
+    out["ground_attack_chance"] = num(c->ground_attack_chance());
+    out["hover_time"] = num(c->hover_time());
+    out["ground_attack_time"] = num(c->ground_attack_time());
+    out["perch_attack_chance"] = num(c->perch_attack_chance());
+    out["perch_attack_time"] = num(c->perch_attack_time());
+    out["flying_attack_chance"] = num(c->flying_attack_chance());
+    out["flags"] = static_cast<std::int64_t>(c->flags());
+    return out;
+}
+
+Dictionary get_npc(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* root = data.root();
+    const auto* npc = root != nullptr ? lookup(root->npcs(), static_cast<std::uint32_t>(id)) : nullptr;
+    if (npc == nullptr) {
+        return out;
+    }
+    out["id"] = id;
+    out["editor_id"] = to_godot(npc->editor_id());
+    out["name"] = to_godot(npc->name());
+    out["race"] = static_cast<std::int64_t>(npc->race());
+    out["level"] = static_cast<std::int64_t>(npc->level());
+    out["aggression"] = static_cast<std::int64_t>(npc->aggression());
+    out["confidence"] = static_cast<std::int64_t>(npc->confidence());
+    out["energy"] = static_cast<std::int64_t>(npc->energy());
+    out["morality"] = static_cast<std::int64_t>(npc->morality());
+    out["mood"] = static_cast<std::int64_t>(npc->mood());
+    out["assistance"] = static_cast<std::int64_t>(npc->assistance());
+    // Absent in packs before world.fb 31: 0.
+    out["combat_style"] = static_cast<std::int64_t>(npc->combat_style());
+    out["crime_faction"] = static_cast<std::int64_t>(npc->crime_faction());
+    Array factions;
+    if (npc->factions() != nullptr) {
+        for (const auto* f : *npc->factions()) {
+            Dictionary d;
+            d["faction"] = static_cast<std::int64_t>(f->faction());
+            d["rank"] = static_cast<std::int64_t>(f->rank());
+            factions.push_back(d);
+        }
+    }
+    out["factions"] = factions;
+    return out;
+}
+
+Dictionary get_faction(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* root = data.root();
+    const auto* f = root != nullptr ? lookup(root->factions(), static_cast<std::uint32_t>(id)) : nullptr;
+    if (f == nullptr) {
+        return out;
+    }
+    out["id"] = id;
+    out["editor_id"] = to_godot(f->editor_id());
+    out["flags"] = static_cast<std::int64_t>(static_cast<std::uint32_t>(f->flags()));
+    Array relations;
+    if (f->relations() != nullptr) {
+        for (const auto* r : *f->relations()) {
+            Dictionary d;
+            d["faction"] = static_cast<std::int64_t>(r->faction());
+            d["modifier"] = static_cast<std::int64_t>(r->modifier());
+            d["reaction"] = static_cast<std::int64_t>(r->reaction());
+            relations.push_back(d);
+        }
+    }
+    out["relations"] = relations;
+    return out;
+}
+
 Dictionary get_race(const WorldData& data, std::int64_t race_id) {
     Dictionary out;
     const auto* race = lookup(data.root() != nullptr ? data.root()->races() : nullptr, static_cast<std::uint32_t>(race_id));
