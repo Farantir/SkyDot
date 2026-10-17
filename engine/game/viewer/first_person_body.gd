@@ -11,7 +11,8 @@
 # ARMA's MOD4/MOD5); the weapon model (WEAP `first_person_model` if it has
 # one) on the `Weapon` bone. The `Camera1st [Cam1]` bone is put at the camera
 # (position only: the clips animate the arms relative to it) and the body
-# turns with the camera, so it follows the pitch. It plays the clips Combat
+# turns with the camera, so it follows the pitch. Drawn as at ARMS_FOV whatever
+# the camera's field of view (a view-space scale). It plays the clips Combat
 # names (equip, idle, attacks) and is hidden while the weapon is sheathed, as
 # in Skyrim's first person.
 #
@@ -36,6 +37,11 @@ const SWING_SPEED := 2.5
 const BLADE_LENGTH := 0.9
 ## Align the camera bone's orientation with the camera too (else position only).
 const ALIGN_ORIENTATION := false
+## Vertical field of view, degrees, the arms are drawn with whatever the
+## camera's is, as Skyrim draws them with its own first-person FOV. Skyrim SE's
+## default, measured with SkyrimRemote (vertical 50.53 at 1100x800, the same at
+## 16:9: it keeps the height); its INI fDefault1stPersonFOV is not in the data.
+const ARMS_FOV := 50.53
 
 var _session: GameSession
 var _camera: Node3D
@@ -113,7 +119,27 @@ func follow() -> void:
 		# The camera bone's own axes against the camera's.
 		var bone_basis := _units.transform.basis.orthonormalized() * rest.basis.orthonormalized()
 		basis = basis * bone_basis.inverse()
-	global_transform = Transform3D(basis, _camera.global_position - basis * offset)
+	var placed := Transform3D(basis, _camera.global_position - basis * offset)
+	global_transform = _arms_projection() * placed
+
+
+## The view-space scale that makes the arms look as at ARMS_FOV under the
+## camera's own field of view: x and y about the camera's axis by the ratio of
+## the two tangents, depth unchanged (identity when the FOVs agree).
+func _arms_projection() -> Transform3D:
+	var camera := _camera as Camera3D
+	if camera == null or camera.projection != Camera3D.PROJECTION_PERSPECTIVE:
+		return Transform3D.IDENTITY
+	var k := tan(deg_to_rad(camera.fov) / 2.0) / tan(deg_to_rad(ARMS_FOV) / 2.0)
+	if camera.keep_aspect != Camera3D.KEEP_HEIGHT:
+		# The fov is horizontal: compare at the viewport's aspect.
+		var size := camera.get_viewport().get_visible_rect().size
+		var aspect := size.x / maxf(size.y, 1.0)
+		k = tan(deg_to_rad(camera.fov) / 2.0) / (tan(deg_to_rad(ARMS_FOV) / 2.0) * aspect)
+	if absf(k - 1.0) < 0.001:
+		return Transform3D.IDENTITY
+	var view := camera.global_transform.orthonormalized()
+	return view * Transform3D(Basis.from_scale(Vector3(k, k, 1.0)), Vector3.ZERO) * view.affine_inverse()
 
 
 ## Hand mode, every frame: the weapon follows the controller (it is its
