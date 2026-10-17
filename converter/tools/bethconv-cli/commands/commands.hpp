@@ -20,6 +20,7 @@
 //   convert   produce a pack
 //   view      materialize a pack as a directory tree
 //   cell      inspect cells in a pack's world.fb
+//   form      print GMSTs, items, races and impacts of a pack's world.fb
 //   detect    find installs (front_end.cpp runs it, as the next three)
 //   mo2       read a Mod Organizer 2 instance
 //   target    check a folder for a pack
@@ -45,6 +46,7 @@ void register_animation(CLI::App& app);
 void register_convert(CLI::App& app);
 void register_view(CLI::App& app);
 void register_cell(CLI::App& app);
+void register_form(CLI::App& app);
 void register_detect(CLI::App& app);
 void register_mo2(CLI::App& app);
 void register_target(CLI::App& app);

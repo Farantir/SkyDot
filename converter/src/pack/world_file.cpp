@@ -7,6 +7,7 @@
 
 #include "bethconv/pack/world_generated.h"
 #include "skydot_formats/flags.hpp"
+#include "skydot_formats/vpath.hpp"
 
 #include <algorithm>
 #include <string>
@@ -256,6 +257,43 @@ std::optional<wfb::MagicEffectT> WorldFile::magic_effect(std::uint32_t id) const
 
 std::optional<wfb::EnchantmentT> WorldFile::enchantment(std::uint32_t id) const {
     return unpack(lookup(impl_->root->enchantments(), id));
+}
+
+std::optional<wfb::ImpactDataSetT> WorldFile::impact_data_set(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->impact_data_sets(), id));
+}
+
+std::optional<wfb::ImpactT> WorldFile::impact(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->impacts(), id));
+}
+
+std::vector<wfb::GameSettingT> WorldFile::game_settings() const {
+    return unpack_all(impl_->root->gmsts());
+}
+
+std::optional<wfb::GameSettingT> WorldFile::game_setting(std::string_view editor_id) const {
+    const auto* list = impl_->root->gmsts();
+    if (list == nullptr) {
+        return std::nullopt;
+    }
+    const std::string wanted = skydot::formats::ascii_lower(editor_id);
+    std::size_t lo = 0;
+    std::size_t hi = list->size();
+    while (lo < hi) {
+        const std::size_t mid = lo + (hi - lo) / 2;
+        const auto* item = list->Get(static_cast<flatbuffers::uoffset_t>(mid));
+        const std::string have = skydot::formats::ascii_lower(
+            item->editor_id() != nullptr ? item->editor_id()->string_view() : std::string_view{});
+        if (have == wanted) {
+            return unpack(item);
+        }
+        if (have < wanted) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return std::nullopt;
 }
 
 std::optional<wfb::AmmoT> WorldFile::ammo(std::uint32_t id) const {

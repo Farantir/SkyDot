@@ -140,6 +140,31 @@ struct Race {
     float health_regen{};
     float magicka_regen{};
     float stamina_regen{};
+    /// DATA byte 96 and 100.
+    float unarmed_damage{};
+    float unarmed_reach{};
+    FormId impact_material;    ///< NAM4: a MATT.
+    FormId impact_data_set;    ///< NAM5: an IPDS.
+
+    /// ATKD (44 bytes) with the ATKE after it. Offsets after xEdit's RACE
+    /// layout.
+    struct Attack {
+        float damage_mult{};
+        float chance{};
+        FormId spell;
+        std::uint32_t flags{}; ///< 0x4 is the power attack bit.
+        float attack_angle{};
+        float strike_angle{};
+        float stagger{};
+        FormId attack_type; ///< A keyword.
+        float knockdown{};
+        float recovery_time{};
+        float stamina_mult{};
+        std::string event; ///< ATKE
+        static constexpr std::size_t k_atkd_size = 44;
+        static constexpr std::uint32_t k_flag_power_attack = 0x4;
+    };
+    std::vector<Attack> attacks;
 
     /// Per sex (0 male, 1 female).
     struct Sex {

@@ -33,6 +33,7 @@ int main(int argc, char** argv) {
     register_target(app);
     register_info(app);
     register_cell(app);
+    register_form(app);
     register_view(app);
     register_scan(app);
     register_extract(app);

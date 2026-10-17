@@ -486,6 +486,29 @@ table ItemData {
     /// EITM of WEAP and ARMO (format 29): an Enchantment in `enchantments`, 0
     /// if none.
     enchantment: uint32;
+    /// WEAP DNAM (format 30): bytes 4 and 8, the swing speed and the reach
+    /// (both 1.0 on a sword). Sources: xEdit's WEAP DNAM layout, checked
+    /// against the Iron Sword.
+    speed: float = 1;
+    reach: float = 1;
+    /// WEAP DNAM byte 76 (format 30): the skill as an actor value index (6
+    /// OneHanded, 7 TwoHanded, 8 Marksman), -1 for anything but a weapon.
+    weapon_skill: int32 = -1;
+    /// WEAP CRDT (format 30): bytes 0 (uint16, the critical damage) and 4
+    /// (float, the multiplier of the base damage).
+    crit_damage: int32;
+    crit_mult: float;
+    /// WEAP DNAM byte 96 (format 30): the stagger.
+    stagger: float;
+    /// WEAP INAM (format 30): an ImpactDataSet in `impact_data_sets`; 0 if none.
+    impact_data_set: uint32;
+    /// WEAP WNAM (format 30): the model of the STAT it points to (the
+    /// first-person weapon); empty if none.
+    first_person_model: string;
+    /// WEAP NAM9 and NAM8 (format 30): SoundDescriptors in
+    /// `sound_descriptors`; 0 if none.
+    equip_sound: uint32;
+    unequip_sound: uint32;
 }
 
 /// EFID and EFIT (format 29): a magic effect with its strength.
@@ -1166,6 +1189,37 @@ table Race {
     /// VTCK (format 26): the voice types of the male and the female, VTYP ids;
     /// empty or 0 if none.
     voice_types: [uint32];
+    /// DATA (format 30): bytes 96 and 100, the unarmed damage and reach.
+    unarmed_damage: float;
+    unarmed_reach: float;
+    /// NAM4 (a MaterialType, MATT) and NAM5 (an ImpactDataSet in
+    /// `impact_data_sets`) (format 30); 0 if none.
+    impact_material: uint32;
+    impact_data_set: uint32;
+    /// ATKD and ATKE pairs (format 30), in record order.
+    attacks: [RaceAttack];
+}
+
+/// RACE ATKD (44 bytes) and ATKE (format 30). Source: xEdit's RACE layout. In
+/// vanilla data a standing power attack has `damage_mult` 2.
+table RaceAttack {
+    /// ATKE: the animation event, e.g. `attackStart`, `attackPowerStartForward`.
+    event: string;
+    damage_mult: float;
+    chance: float;
+    /// A Spell; 0 if none.
+    spell: uint32;
+    /// Raw ATKD flags: 0x1 ignore weapon, 0x2 bash attack, 0x4 power attack,
+    /// 0x8 left attack, 0x10 rotating attack, 0x20 override damage.
+    flags: uint32;
+    attack_angle: float;
+    strike_angle: float;
+    stagger: float;
+    /// A Keyword; 0 if none.
+    attack_type: uint32;
+    knockdown: float;
+    recovery_time: float;
+    stamina_mult: float;
 }
 
 /// ARMO: an item worn. Bit n of `slots` is body slot 30 + n.
@@ -1192,6 +1246,9 @@ table ArmorAddon {
     female_priority: ubyte;
     male_weight_slider: ubyte;
     female_weight_slider: ubyte;
+    /// MOD4 and MOD5 (format 30): the first-person models; empty if none.
+    male_model_1st: string;
+    female_model_1st: string;
 }
 
 /// OTFT: ARMO and LVLI.
@@ -1599,6 +1656,62 @@ table Explosion {
     flags: uint32;
 }
 
+/// GMST (format 30). Sorted in `World.gmsts` by the ASCII lower-case
+/// `editor_id`, so a lookup is a binary search.
+enum GameSettingKind : ubyte {
+    floating,
+    integer,
+    boolean,
+    text
+}
+
+table GameSetting {
+    editor_id: string;
+    kind: GameSettingKind;
+    /// The value of a `floating` setting.
+    float_value: float;
+    /// The value of an `integer` (an unsigned `u` setting too, bit for bit)
+    /// or `boolean` (0 or 1) setting.
+    int_value: int32;
+    /// The value of a `text` setting, localized.
+    text_value: string;
+}
+
+struct ImpactEntry {
+    /// A MaterialType (MATT).
+    material: uint32;
+    /// An Impact in `impacts`.
+    impact: uint32;
+}
+
+/// IPDS (format 30): the impact each material takes. PNAM pairs.
+table ImpactDataSet {
+    id: uint32 (key);
+    editor_id: string;
+    entries: [ImpactEntry];
+}
+
+/// IPCT (format 30): what a hit leaves. Sources: xEdit's IPCT layout.
+table Impact {
+    id: uint32 (key);
+    editor_id: string;
+    /// MODL: normalized virtual path, or empty.
+    model: string;
+    /// DATA: the effect duration in seconds.
+    duration: float;
+    /// DATA: 0 surface normal, 1 projectile vector, 2 projectile reflection.
+    orientation: uint32;
+    angle_threshold: float;
+    placement_radius: float;
+    /// DATA: bit 0 no decal data.
+    flags: ubyte;
+    /// SNAM and NAM1: SoundDescriptors; 0 if none.
+    sound1: uint32;
+    sound2: uint32;
+    /// NAM2: a Hazard; 0 if none.
+    hazard: uint32;
+}
+
 /// `DialogueBranch.flags`: DLBR DNAM (format 26; source: UESP).
 enum DialogueBranchFlags : uint32 (bit_flags) {
     top_level,
@@ -1953,6 +2066,12 @@ table World {
     magic_effects: [MagicEffect];
     /// Sorted by id (format 29).
     enchantments: [Enchantment];
+    /// Sorted by lower-case editor id (format 30).
+    gmsts: [GameSetting];
+    /// Sorted by id (format 30).
+    impact_data_sets: [ImpactDataSet];
+    /// Sorted by id (format 30).
+    impacts: [Impact];
 }
 
 root_type World;

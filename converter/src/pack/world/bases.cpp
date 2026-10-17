@@ -11,6 +11,8 @@
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
 
+#include "skydot_formats/vpath.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -96,6 +98,15 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         break;
     case FourCC{"ENCH"}.value:
         on_enchantment(merged, data, form_ctx);
+        break;
+    case FourCC{"GMST"}.value:
+        on_game_setting(merged, data, form_ctx);
+        break;
+    case FourCC{"IPDS"}.value:
+        on_impact_data_set(merged, data, form_ctx);
+        break;
+    case FourCC{"IPCT"}.value:
+        on_impact(merged, data, form_ctx);
         break;
     default:
         break;
@@ -836,6 +847,93 @@ void BaseCollector::on_enchantment(const record::MergedRecord& merged, io::SpanR
     enchantments_[out.id] = std::move(out);
 }
 
+void BaseCollector::on_game_setting(const record::MergedRecord& /*merged*/, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
+    auto r = record::parse_game_setting(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    using Kind = record::GameSetting::Kind;
+    wfb::GameSettingT out;
+    out.editor_id = r->editor_id;
+    switch (r->kind) {
+    case Kind::floating:
+        out.kind = wfb::GameSettingKind::floating;
+        out.float_value = r->float_value;
+        break;
+    case Kind::integer:
+        out.kind = wfb::GameSettingKind::integer;
+        out.int_value = r->integer_value;
+        break;
+    case Kind::unsigned_int:
+        out.kind = wfb::GameSettingKind::integer;
+        out.int_value = static_cast<std::int32_t>(r->unsigned_value);
+        break;
+    case Kind::boolean:
+        out.kind = wfb::GameSettingKind::boolean;
+        out.int_value = r->boolean_value ? 1 : 0;
+        break;
+    case Kind::string:
+        out.kind = wfb::GameSettingKind::text;
+        out.text_value = r->text.text;
+        break;
+    case Kind::unknown:
+        return;
+    }
+    if (out.editor_id.empty() || r->raw.empty()) {
+        return;
+    }
+    gmsts_[skydot::formats::ascii_lower(out.editor_id)] = std::move(out);
+}
+
+void BaseCollector::on_impact_data_set(const record::MergedRecord& merged, io::SpanReader& data,
+                                       const record::FormContext& form_ctx) {
+    auto r = record::parse_impact_data_set(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::ImpactDataSetT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    for (const auto& entry : r->entries) {
+        out.entries.emplace_back(shared_.global(merged, entry.material, failed),
+                                 shared_.global(merged, entry.impact, failed));
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    impact_data_sets_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_impact(const record::MergedRecord& merged, io::SpanReader& data,
+                              const record::FormContext& form_ctx) {
+    auto r = record::parse_impact(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::ImpactT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.model = r->model.empty() ? std::string{} : model_vpath(r->model.path);
+    out.duration = r->duration;
+    out.orientation = r->orientation;
+    out.angle_threshold = r->angle_threshold;
+    out.placement_radius = r->placement_radius;
+    out.flags = r->flags;
+    out.sound1 = shared_.global(merged, r->sound1, failed);
+    out.sound2 = shared_.global(merged, r->sound2, failed);
+    out.hazard = shared_.global(merged, r->hazard, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    impacts_[out.id] = std::move(out);
+}
+
 bool BaseCollector::is_item_type(io::FourCC type) noexcept {
     return type == FourCC{"ALCH"} || type == FourCC{"AMMO"} || type == FourCC{"ARMO"} ||
            type == FourCC{"BOOK"} || type == FourCC{"INGR"} || type == FourCC{"KEYM"} ||
@@ -960,6 +1058,16 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         // DNAM byte 0: the animation type.
         item.weapon_type = r->weapon_data.empty() ? std::uint8_t{0}
                                                   : static_cast<std::uint8_t>(r->weapon_data[0]);
+        item.speed = r->speed;
+        item.reach = r->reach;
+        item.weapon_skill = static_cast<std::int32_t>(r->skill);
+        item.crit_damage = r->crit_damage;
+        item.crit_mult = r->crit_mult;
+        item.stagger = r->stagger;
+        item.impact_data_set = shared_.global(merged, r->impact_data_set, failed);
+        item.equip_sound = shared_.global(merged, r->equip_sound, failed);
+        item.unequip_sound = shared_.global(merged, r->unequip_sound, failed);
+        entry.first_person_stat = shared_.global(merged, r->first_person_model, failed);
         item.playable = (merged.flags & k_record_non_playable) == 0;
     } else if (type == FourCC{"ARMO"}) {
         auto r = record::parse_armor(data, form_ctx);
@@ -1014,6 +1122,11 @@ void BaseCollector::finish(wfb::WorldT& world) {
             base.name = entry.name;
         }
         if (entry.has_item) {
+            if (entry.first_person_stat != 0) {
+                if (const auto stat = bases_.find(entry.first_person_stat); stat != bases_.end()) {
+                    entry.item.first_person_model = stat->second.model;
+                }
+            }
             base.item = std::make_unique<wfb::ItemDataT>(entry.item);
             ++stats.items;
         } else {
@@ -1052,6 +1165,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
         }
     }
     work_entries_.clear();
+    stats.gmsts += gmsts_.size();
+    stats.impact_data_sets += impact_data_sets_.size();
+    stats.impacts += impacts_.size();
     stats.recipes += recipes_.size();
     stats.magic_effects += magic_effects_.size();
     stats.enchantments += enchantments_.size();
@@ -1098,6 +1214,11 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.keywords, keywords_);
     move_into(world.messages, messages_);
     move_into(world.recipes, recipes_);
+    move_into(world.impact_data_sets, impact_data_sets_);
+    move_into(world.impacts, impacts_);
+    for (auto& [name, setting] : gmsts_) {
+        world.gmsts.push_back(std::make_unique<wfb::GameSettingT>(std::move(setting)));
+    }
     move_into(world.magic_effects, magic_effects_);
     move_into(world.enchantments, enchantments_);
     for (auto& [id, ltex] : land_textures_) {

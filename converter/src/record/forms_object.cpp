@@ -625,6 +625,28 @@ io::ParseResult<Weapon> parse_weapon(io::SpanReader& data, const FormContext& ct
     if (!walked) {
         return std::unexpected(walked.error());
     }
+    if (out.weapon_data.size() >= 12) {
+        io::SpanReader d(out.weapon_data, "WEAP DNAM");
+        (void)d.skip(4);
+        out.speed = d.get<float>().value_or(1.0F);
+        out.reach = d.get<float>().value_or(1.0F);
+    }
+    if (out.weapon_data.size() >= 80) {
+        io::SpanReader d(out.weapon_data, "WEAP DNAM");
+        (void)d.skip(76);
+        out.skill = d.get<std::uint32_t>().value_or(0);
+    }
+    if (out.weapon_data.size() >= 100) {
+        io::SpanReader d(out.weapon_data, "WEAP DNAM");
+        (void)d.skip(96);
+        out.stagger = d.get<float>().value_or(0.0F);
+    }
+    if (out.critical_data.size() >= 8) {
+        io::SpanReader d(out.critical_data, "WEAP CRDT");
+        out.crit_damage = d.get<std::uint16_t>().value_or(0);
+        (void)d.skip(2);
+        out.crit_mult = d.get<float>().value_or(0.0F);
+    }
     return out;
 }
 

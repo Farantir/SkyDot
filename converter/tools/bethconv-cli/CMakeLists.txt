@@ -10,6 +10,7 @@ add_executable(bethconv_cli
     commands/convert.cpp
     commands/detect.cpp
     commands/extract.cpp
+    commands/form.cpp
     commands/forms.cpp
     commands/info.cpp
     commands/loadorder.cpp

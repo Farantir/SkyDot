@@ -172,6 +172,25 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
     out.stamina_regen = race->stamina_regen;
     out.voice_types = {shared_.global(merged, race->voice_male, failed),
                        shared_.global(merged, race->voice_female, failed)};
+    out.unarmed_damage = race->unarmed_damage;
+    out.unarmed_reach = race->unarmed_reach;
+    out.impact_material = shared_.global(merged, race->impact_material, failed);
+    out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
+    for (const auto& a : race->attacks) {
+        auto& attack = out.attacks.emplace_back(std::make_unique<wfb::RaceAttackT>());
+        attack->event = a.event;
+        attack->damage_mult = a.damage_mult;
+        attack->chance = a.chance;
+        attack->spell = shared_.global(merged, a.spell, failed);
+        attack->flags = a.flags;
+        attack->attack_angle = a.attack_angle;
+        attack->strike_angle = a.strike_angle;
+        attack->stagger = a.stagger;
+        attack->attack_type = shared_.global(merged, a.attack_type, failed);
+        attack->knockdown = a.knockdown;
+        attack->recovery_time = a.recovery_time;
+        attack->stamina_mult = a.stamina_mult;
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -217,6 +236,12 @@ void ActorCollector::on_armor_addon(const record::MergedRecord& merged, io::Span
         addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path);
     out.male_priority = addon->male_priority;
     out.female_priority = addon->female_priority;
+    out.male_model_1st = addon->male_first_person.empty()
+                             ? std::string{}
+                             : model_vpath(addon->male_first_person.path);
+    out.female_model_1st = addon->female_first_person.empty()
+                               ? std::string{}
+                               : model_vpath(addon->female_first_person.path);
     out.male_weight_slider = addon->male_weight_slider;
     out.female_weight_slider = addon->female_weight_slider;
     if (failed) {

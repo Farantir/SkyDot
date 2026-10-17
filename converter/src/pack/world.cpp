@@ -101,6 +101,9 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto recipes = pack_all(builder, root.recipes);
     const auto magic_effects = pack_all(builder, root.magic_effects);
     const auto enchantments = pack_all(builder, root.enchantments);
+    const auto gmsts = pack_all(builder, root.gmsts);
+    const auto impact_data_sets = pack_all(builder, root.impact_data_sets);
+    const auto impacts = pack_all(builder, root.impacts);
     const auto plugins = pack_all(builder, root.plugins);
     const auto actors = builder.CreateVectorOfStructs(root.actors);
     wfb::FinishWorldBuffer(
@@ -113,7 +116,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   sound_output_models, keywords, form_lists, messages, explosions,
                                   dialogue_branches, dialogue_topics, voice_types, locations,
                                   relationships, factions, scenes, recipes, magic_effects,
-                                  enchantments));
+                                  enchantments, gmsts, impact_data_sets, impacts));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

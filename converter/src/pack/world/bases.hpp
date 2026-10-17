@@ -54,6 +54,8 @@ struct ItemEntry {
     std::uint32_t flags{}; ///< CONT DATA flags, into Base.flags.
     bool has_item{};       ///< False for a CONT: only `items`.
     wfb::ItemDataT item;
+    /// WEAP WNAM, a STAT whose model fills `item.first_person_model` in `finish`.
+    std::uint32_t first_person_stat{};
     std::vector<wfb::NpcItem> items;
 };
 
@@ -74,7 +76,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF or ENCH; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, GMST, IPDS or IPCT; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -126,6 +128,12 @@ private:
                          const record::FormContext& form_ctx);
     void on_enchantment(const record::MergedRecord& merged, io::SpanReader& data,
                         const record::FormContext& form_ctx);
+    void on_game_setting(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx);
+    void on_impact_data_set(const record::MergedRecord& merged, io::SpanReader& data,
+                            const record::FormContext& form_ctx);
+    void on_impact(const record::MergedRecord& merged, io::SpanReader& data,
+                   const record::FormContext& form_ctx);
     void on_keyword(const record::MergedRecord& merged, io::SpanReader& data);
     void on_message(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
@@ -142,6 +150,10 @@ private:
     std::map<std::uint32_t, wfb::RecipeT> recipes_;
     std::map<std::uint32_t, wfb::MagicEffectT> magic_effects_;
     std::map<std::uint32_t, wfb::EnchantmentT> enchantments_;
+    std::map<std::uint32_t, wfb::ImpactDataSetT> impact_data_sets_;
+    std::map<std::uint32_t, wfb::ImpactT> impacts_;
+    /// By lower-case editor id, the later record of an id wins.
+    std::map<std::string, wfb::GameSettingT> gmsts_;
     std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;
     std::map<std::uint32_t, wfb::GrassT> grasses_;
     std::map<std::uint32_t, wfb::AddonNodeT> addons_;

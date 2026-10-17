@@ -214,6 +214,36 @@ struct ConstructibleObject {
     std::uint16_t created_count{1};      ///< NAM1
 };
 
+/// IPDS: an impact data set, the impact each material takes. PNAM pairs.
+struct ImpactDataSet {
+    std::string editor_id;
+    struct Entry {
+        FormId material; ///< A MATT.
+        FormId impact;   ///< An IPCT.
+    };
+    std::vector<Entry> entries;
+};
+
+/// IPCT: an impact, what a hit leaves. DATA is 24 bytes after xEdit's layout:
+/// duration, orientation, angle threshold, placement radius, sound level,
+/// flags, result, 2 unused.
+struct Impact {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    float duration{};
+    std::uint32_t orientation{};
+    float angle_threshold{};
+    float placement_radius{};
+    std::uint32_t sound_level{};
+    std::uint8_t flags{};
+    std::uint8_t result{};
+    FormId sound1;     ///< SNAM
+    FormId sound2;     ///< NAM1
+    FormId hazard;     ///< NAM2
+    static constexpr std::size_t k_data_size = 24;
+};
+
 /// SPEL: spell, shout effect, ability, disease or power. 1,561 in SE.
 struct Spell {
     std::string editor_id;
@@ -712,6 +742,9 @@ struct Package {
                                                                     const FormContext& ctx);
 [[nodiscard]] io::ParseResult<ConstructibleObject> parse_constructible_object(
     io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ImpactDataSet> parse_impact_data_set(io::SpanReader& data,
+                                                                  const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Impact> parse_impact(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);

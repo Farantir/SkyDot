@@ -304,6 +304,28 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                 take(failure, read_formid(body), out.morph_race);
             } else if (t == FourCC{"RNAM"}) {
                 take(failure, read_formid(body), out.armor_race);
+            } else if (t == FourCC{"NAM4"}) {
+                take(failure, read_formid(body), out.impact_material);
+            } else if (t == FourCC{"NAM5"}) {
+                take(failure, read_formid(body), out.impact_data_set);
+            } else if (t == FourCC{"ATKD"}) {
+                Race::Attack attack;
+                take(failure, body.get<float>(), attack.damage_mult);
+                take(failure, body.get<float>(), attack.chance);
+                take(failure, read_formid(body), attack.spell);
+                take(failure, body.get<std::uint32_t>(), attack.flags);
+                take(failure, body.get<float>(), attack.attack_angle);
+                take(failure, body.get<float>(), attack.strike_angle);
+                take(failure, body.get<float>(), attack.stagger);
+                take(failure, read_formid(body), attack.attack_type);
+                take(failure, body.get<float>(), attack.knockdown);
+                take(failure, body.get<float>(), attack.recovery_time);
+                take(failure, body.get<float>(), attack.stamina_mult);
+                if (!failure) {
+                    out.attacks.push_back(std::move(attack));
+                }
+            } else if (t == FourCC{"ATKE"} && !out.attacks.empty()) {
+                take(failure, read_zstring(body), out.attacks.back().event);
             } else if (t == FourCC{"DATA"}) {
                 take(failure, read_verbatim(body), out.data);
                 if (!failure && out.data.size() >= 36) {
@@ -329,6 +351,12 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                     take(failure, d.get<float>(), out.health_regen);
                     take(failure, d.get<float>(), out.magicka_regen);
                     take(failure, d.get<float>(), out.stamina_regen);
+                }
+                if (!failure && out.data.size() >= 104) {
+                    io::SpanReader d(out.data, "RACE DATA");
+                    (void)d.skip(96);
+                    take(failure, d.get<float>(), out.unarmed_damage);
+                    take(failure, d.get<float>(), out.unarmed_reach);
                 }
             } else if (read_base_object_field(into, FourCC{"RACE"}, field, body, ctx, failure)) {
                 return true;

@@ -452,6 +452,65 @@ io::ParseResult<ConstructibleObject> parse_constructible_object(io::SpanReader& 
     return out;
 }
 
+// ---- IPDS, IPCT -----------------------------------------------------------
+
+io::ParseResult<ImpactDataSet> parse_impact_data_set(io::SpanReader& data, const FormContext& ctx) {
+    ImpactDataSet out;
+    const BaseObjectFields into{.editor_id = &out.editor_id};
+    const auto walked = walk_fields(
+        data, FourCC{"IPDS"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"PNAM"}) {
+                ImpactDataSet::Entry entry;
+                take(failure, read_formid(body), entry.material);
+                take(failure, read_formid(body), entry.impact);
+                if (!failure) {
+                    out.entries.push_back(entry);
+                }
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"IPDS"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<Impact> parse_impact(io::SpanReader& data, const FormContext& ctx) {
+    Impact out;
+    const BaseObjectFields into{
+        .editor_id = &out.editor_id, .bounds = &out.bounds, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"IPCT"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<float>(), out.duration);
+                take(failure, body.get<std::uint32_t>(), out.orientation);
+                take(failure, body.get<float>(), out.angle_threshold);
+                take(failure, body.get<float>(), out.placement_radius);
+                take(failure, body.get<std::uint32_t>(), out.sound_level);
+                take(failure, body.get<std::uint8_t>(), out.flags);
+                take(failure, body.get<std::uint8_t>(), out.result);
+            } else if (field.type == FourCC{"SNAM"}) {
+                take(failure, read_formid(body), out.sound1);
+            } else if (field.type == FourCC{"NAM1"}) {
+                take(failure, read_formid(body), out.sound2);
+            } else if (field.type == FourCC{"NAM2"}) {
+                take(failure, read_formid(body), out.hazard);
+            } else {
+                return read_base_object_field(into, FourCC{"IPCT"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- SPEL -----------------------------------------------------------------
 
 io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx) {

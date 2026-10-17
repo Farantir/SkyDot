@@ -314,6 +314,21 @@ struct Weapon {
     static constexpr std::size_t k_crdt_le = 16;
     static constexpr std::size_t k_crdt_se = 24;
 
+    /// Read from `weapon_data` and `critical_data` (offsets after xEdit's WEAP
+    /// layout, checked against the Iron Sword); the defaults stand when the
+    /// field is shorter.
+    /// DNAM byte 4 and 8.
+    float speed{1.0F};
+    float reach{1.0F};
+    /// DNAM byte 76: the skill as an actor value index (6 OneHanded).
+    std::uint32_t skill{};
+    /// DNAM byte 96.
+    float stagger{};
+    /// CRDT byte 0 and 4.
+    std::uint16_t crit_damage{};
+    float crit_mult{};
+    static constexpr std::size_t k_dnam_size = 100;
+
     std::uint32_t detection_sound_level{}; ///< VNAM
     FormId template_weapon;                ///< CNAM
     FormId enchantment;                    ///< EITM
