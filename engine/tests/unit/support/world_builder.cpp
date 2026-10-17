@@ -87,11 +87,33 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         cells.push_back(cell.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
+    const auto entries_of = [](const std::vector<ItemEntry>& list) {
+        std::vector<wfb::NpcItem> out;
+        for (const auto& e : list) {
+            out.emplace_back(e.form, e.count);
+        }
+        return out;
+    };
     for (const auto& n : by_id(spec.npcs)) {
+        const auto npc_items = entries_of(n.items);
         npcs.push_back(wfb::CreateNpcDirect(fbb, n.id, nullptr, nullptr, n.flags, n.level, n.race, n.template_id,
                                             n.template_flags, n.skin, n.default_outfit, 0, n.height, n.weight, nullptr,
-                                            nullptr, some(n.face_model), some(n.skin_tone), some(n.packages),
+                                            npc_items.empty() ? nullptr : &npc_items, some(n.face_model), some(n.skin_tone), some(n.packages),
                                             some(n.default_packages)));
+    }
+    std::vector<flatbuffers::Offset<wfb::Base>> bases;
+    for (const auto& b : by_id(spec.bases)) {
+        flatbuffers::Offset<wfb::ItemData> item = 0;
+        if (b.item) {
+            const auto& i = *b.item;
+            item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
+                                       i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food);
+        }
+        const auto items = entries_of(b.items);
+        bases.push_back(wfb::CreateBaseDirect(fbb, b.id, 0, nullptr, nullptr, false, nullptr, b.flags, nullptr,
+                                              wfb::RecordFlags{}, 0, 0.0F, nullptr, nullptr, 0,
+                                              b.name.empty() ? nullptr : b.name.c_str(), nullptr, item,
+                                              items.empty() ? nullptr : &items));
     }
     std::vector<flatbuffers::Offset<wfb::Race>> races;
     for (const auto& r : by_id(spec.races)) {
@@ -123,10 +145,11 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     std::vector<flatbuffers::Offset<wfb::LeveledList>> lists;
     for (const auto& l : by_id(spec.leveled_lists)) {
         std::vector<wfb::LeveledEntry> entries;
-        for (const auto& [level, form] : l.entries) {
-            entries.emplace_back(level, std::uint16_t{1}, form);
+        for (const auto& e : l.entries) {
+            entries.emplace_back(e.level, e.count, e.form);
         }
-        lists.push_back(wfb::CreateLeveledListDirect(fbb, l.id, l.type, l.flags, 0, some(entries)));
+        lists.push_back(wfb::CreateLeveledListDirect(fbb, l.id, l.type, l.flags, l.chance_none, some(entries),
+                                                     l.chance_global));
     }
     std::vector<flatbuffers::Offset<wfb::Package>> packages;
     for (const auto& p : by_id(spec.packages)) {
@@ -166,6 +189,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
                                                      some(large_cell_refs)));
     }
 
+    const auto bases_v = fbb.CreateVector(bases);
     const auto cells_v = fbb.CreateVector(cells);
     const auto worlds_v = fbb.CreateVector(worlds);
     const auto npcs_v = fbb.CreateVector(npcs);
@@ -179,6 +203,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
     world.add_cells(cells_v);
+    world.add_bases(bases_v);
     world.add_npcs(npcs_v);
     world.add_races(races_v);
     world.add_armors(armors_v);

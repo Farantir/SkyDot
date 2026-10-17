@@ -459,17 +459,23 @@ TEST_CASE("an outfit entry that is a leveled list is resolved by the actor's lev
         CHECK(has(parts, "armor/cuirass.nif"));
         CHECK_FALSE(has(parts, "armor/boots.nif"));
     }
-    // At 25 either, the same one for a reference every time.
+    // At 25 only the highest level is used, the boots; from all levels, either,
+    // the same one for a reference every time.
+    CHECK(has(worn_at(wfb::LeveledListFlags::NONE, 25), "armor/boots.nif"));
+    CHECK_FALSE(has(worn_at(wfb::LeveledListFlags::NONE, 25), "armor/cuirass.nif"));
     std::set<bool> cuirass_seen;
     for (std::uint32_t ref = 0x800; ref < 0x840; ++ref) {
-        const auto parts = worn_at(wfb::LeveledListFlags::NONE, 25, ref);
+        const auto parts = worn_at(wfb::LeveledListFlags::from_all_levels, 25, ref);
         CHECK(has(parts, "armor/cuirass.nif") != has(parts, "armor/boots.nif"));
-        CHECK(worn_at(wfb::LeveledListFlags::NONE, 25, ref) == parts);
+        CHECK(worn_at(wfb::LeveledListFlags::from_all_levels, 25, ref) == parts);
         cuirass_seen.insert(has(parts, "armor/cuirass.nif"));
     }
     CHECK(cuirass_seen.size() == 2);
-    // With "use all" the list is every entry.
-    const auto all = worn_at(wfb::LeveledListFlags::use_all, 5);
+    // With "use all" every entry that is eligible: below its level, not the boots.
+    const auto some = worn_at(wfb::LeveledListFlags::use_all, 5);
+    CHECK(has(some, "armor/cuirass.nif"));
+    CHECK_FALSE(has(some, "armor/boots.nif"));
+    const auto all = worn_at(wfb::LeveledListFlags::use_all | wfb::LeveledListFlags::from_all_levels, 25);
     CHECK(has(all, "armor/cuirass.nif"));
     CHECK(has(all, "armor/boots.nif"));
 }

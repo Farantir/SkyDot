@@ -7,7 +7,8 @@
 // Rules (from the game's data; see docs/actors.md):
 // - Template flags pick what comes from TPLT: traits give race, sex,
 //   skin, height, weight and face; inventory the outfit. A leveled
-//   list (LVLN, LVLI) picks one entry, the same every time for a reference.
+//   list (LVLN, LVLI) is resolved by data/leveled.hpp, the same every time
+//   for a reference.
 // - Worn: the outfit's armor. Its slots hide the skin's addons that overlap
 //   them; the rest of the skin (body, hands, feet) stays.
 // - An addon fits a race named by RNAM or its additional races (or the
@@ -43,6 +44,17 @@ struct ActorPlan {
     bool hide_hair{};
 };
 
+/// The actor placed as `ref` whose base is `id`: `id` itself if it is an NPC_,
+/// what a leveled NPC list picks (the same every time for the reference,
+/// leveled.hpp) if it is a list; 0 if the list picks nothing.
+std::uint32_t pick_actor_form(const bethconv::pack::wfb::World& world, std::uint32_t id, std::uint32_t ref);
+
+/// The level an actor is built at, for the leveled lists of its outfit and
+/// inventory: its own level, or for one that levels with the player (the level
+/// word a multiplier in thousandths) the player's times it, within its
+/// calculated minimum and maximum.
+std::uint16_t actor_level(const bethconv::pack::wfb::Npc& npc);
+
 /// The NPC_ that supplies what `flag` covers for `npc` placed as `ref`:
 /// TPLT followed while the flag is set, leveled lists picked as plan_actor
 /// picks them. Null if `npc` is no NPC_.
@@ -58,8 +70,14 @@ const bethconv::pack::wfb::Npc* resolve_npc(const bethconv::pack::wfb::World& wo
 bool actor_base_values(const bethconv::pack::wfb::World& world, std::uint32_t npc, std::uint32_t ref,
                        skydot::vm::ActorBase& out);
 
-/// `exists(vpath)` says whether the pack has an asset.
+/// What actor `ref` wears when the game knows it (the VM's equipment): the
+/// worn ARMO forms into `armors` and true; false to build from the outfit.
+using WornProvider = std::function<bool(std::uint32_t ref, std::vector<std::uint32_t>& armors)>;
+
+/// `exists(vpath)` says whether the pack has an asset. Leveled lists are drawn
+/// as leveled.hpp does, with the seeds the VM uses, so the actor is the one
+/// the VM knows. `worn`, if given, says what the actor wears.
 ActorPlan plan_actor(const bethconv::pack::wfb::World& world, std::uint32_t npc, std::uint32_t ref,
-                     const std::function<bool(const std::string&)>& exists);
+                     const std::function<bool(const std::string&)>& exists, const WornProvider& worn = {});
 
 } // namespace skydot

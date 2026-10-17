@@ -131,6 +131,12 @@ struct PackageSpec {
 
 // ---- actors -----------------------------------------------------------------
 
+/// An inventory entry (CNTO).
+struct ItemEntry {
+    std::uint32_t form;
+    std::int32_t count = 1;
+};
+
 struct NpcSpec {
     std::uint32_t id;
     wfb::NpcFlags flags = {};
@@ -146,6 +152,7 @@ struct NpcSpec {
     std::vector<float> skin_tone = {};
     std::vector<std::uint32_t> packages = {};
     std::vector<std::uint32_t> default_packages = {};
+    std::vector<ItemEntry> items = {};
 };
 
 struct RaceSpec {
@@ -184,6 +191,30 @@ struct OutfitSpec {
     std::vector<std::uint32_t> items = {};
 };
 
+/// ItemData of a carriable base.
+struct ItemSpec {
+    wfb::ItemCategory category = wfb::ItemCategory::misc;
+    float weight = 0.0F;
+    std::int32_t value = 0;
+    bool playable = true;
+    std::uint32_t equip_slot = 0;
+    std::uint8_t weapon_type = 0;
+    float damage = 0.0F;
+    float armor_rating = 0.0F;
+    std::uint8_t armor_type = 0;
+    std::uint32_t biped_slots = 0;
+    bool food = false;
+};
+
+/// A base record: an item (with `item`) or a container (with `items`).
+struct BaseSpec {
+    std::uint32_t id;
+    std::string name = {};
+    std::optional<ItemSpec> item = {};
+    std::vector<ItemEntry> items = {};
+    std::uint32_t flags = 0;
+};
+
 /// "LVLN" as the record type a leveled list of NPCs carries.
 inline constexpr std::uint32_t k_lvln = 0x4E4C564C;
 
@@ -191,12 +222,16 @@ struct LeveledListSpec {
     std::uint32_t id;
     std::uint32_t type = 0;
     wfb::LeveledListFlags flags = {};
-    /// Entries as {level, form}. A struct, not a pair: pair's converting
+    std::uint8_t chance_none = 0;
+    /// LVLG: a global replacing `chance_none`.
+    std::uint32_t chance_global = 0;
+    /// Entries as {level, form, count}. A struct, not a pair: pair's converting
     /// constructor narrows int literals inside the STL, which MSVC warns
     /// about there.
     struct Entry {
         std::uint16_t level;
         std::uint32_t form;
+        std::uint16_t count = 1;
     };
     std::vector<Entry> entries = {};
 };
@@ -237,6 +272,7 @@ struct WorldSpec {
     int format_version = 10;
     std::vector<WorldspaceSpec> worlds = {};
     std::vector<CellSpec> cells = {};
+    std::vector<BaseSpec> bases = {};
     std::vector<NpcSpec> npcs = {};
     std::vector<RaceSpec> races = {};
     std::vector<ArmorSpec> armors = {};

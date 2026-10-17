@@ -57,6 +57,8 @@ set(SKYDOT_CORE_SOURCES
     src/scenes/scenes.cpp
     src/scenes/scenes.hpp
     src/data/actors.hpp
+    src/data/leveled.cpp
+    src/data/leveled.hpp
     src/data/large_refs.cpp
     src/data/large_refs.hpp
     src/data/world_data.cpp

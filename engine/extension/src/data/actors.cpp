@@ -2,6 +2,7 @@
 #include "data/actors.hpp"
 
 #include "data/fb_search.hpp"
+#include "data/leveled.hpp"
 
 #include "skydot_formats/flags.hpp"
 
@@ -37,28 +38,11 @@ const wfb::Outfit* outfit_of(const wfb::World& w, std::uint32_t id) {
     return lookup(w.outfits(), id);
 }
 
-/// One entry of a leveled list, the same every time for this reference:
-/// among the entries at or below `level` (all if `level` is 0 or none
-/// qualify), chosen by a hash of the reference.
-std::uint32_t pick(const wfb::LeveledList& list, std::uint32_t ref, std::uint16_t level = 0) {
-    const auto* entries = list.entries();
-    if (entries == nullptr || entries->size() == 0) {
-        return 0;
-    }
-    std::vector<std::uint32_t> eligible;
-    for (const auto* e : *entries) {
-        if (level == 0 || e->level() <= level) {
-            eligible.push_back(e->form());
-        }
-    }
-    if (eligible.empty()) {
-        for (const auto* e : *entries) {
-            eligible.push_back(e->form());
-        }
-    }
-    std::uint32_t h = (ref ^ list.id()) * 2654435761u;
-    h ^= h >> 15;
-    return eligible[h % eligible.size()];
+/// The actor a leveled list stands for, the same every time for this
+/// reference (leveled.hpp); `id` itself if it is no list.
+std::uint32_t pick_actor(const wfb::World& w, std::uint32_t id, std::uint32_t ref) {
+    leveled::Rng rng(leveled::seed_for(ref, leveled::k_purpose_actor));
+    return leveled::pick_one(w, id, leveled::player_level(), rng);
 }
 
 /// Follow TPLT while the NPC takes `flag` from its template.
@@ -69,12 +53,8 @@ const wfb::Npc* resolve(const wfb::World& w, const wfb::Npc* npc, wfb::NpcTempla
             return npc;
         }
         std::uint32_t next = npc->template_();
-        for (int inner = 0; inner < k_max_depth; ++inner) {
-            const auto* list = list_of(w, next);
-            if (list == nullptr || list->type() != k_lvln) {
-                break;
-            }
-            next = pick(*list, ref);
+        if (const auto* list = list_of(w, next); list != nullptr && list->type() == k_lvln) {
+            next = pick_actor(w, next, ref);
         }
         const auto* t = npc_of(w, next);
         if (t == nullptr) {
@@ -107,29 +87,19 @@ bool fits(const wfb::ArmorAddon& addon, const wfb::Race& race) {
            (armor_race != 0 && (addon.race() == armor_race || contains(addon.additional_races(), armor_race)));
 }
 
-/// The armor an outfit item stands for: itself, every entry of a "use all"
-/// leveled list, or one pick from another.
-void worn_items(const wfb::World& w, std::uint32_t id, std::uint32_t ref, std::uint16_t level,
-                std::vector<const wfb::Armor*>& out, int depth = 0) {
-    if (depth >= k_max_depth) {
-        return;
-    }
+/// The armor an outfit item stands for: itself, or what a leveled list
+/// gives (leveled.hpp, drawing from `rng`).
+void worn_items(const wfb::World& w, std::uint32_t id, std::uint16_t level, leveled::Rng& rng,
+                std::vector<const wfb::Armor*>& out) {
     if (const auto* armor = armor_of(w, id)) {
         out.push_back(armor);
         return;
     }
-    const auto* list = list_of(w, id);
-    if (list == nullptr || list->entries() == nullptr) {
-        return;
-    }
-    // Give every entry rather than one.
-    if (formats::has_flag(list->flags(), wfb::LeveledListFlags::use_all)) {
-        for (const auto* e : *list->entries()) {
-            worn_items(w, e->form(), ref, level, out, depth + 1);
+    for (const auto& entry : leveled::resolve(w, id, level, rng)) {
+        if (const auto* armor = armor_of(w, entry.form)) {
+            out.push_back(armor);
         }
-        return;
     }
-    worn_items(w, pick(*list, ref, level), ref, level, out, depth + 1);
 }
 
 /// The addon's model for this sex and weight, if the pack has it.
@@ -161,21 +131,30 @@ std::string with_extension(const std::string& path, const char* ext) {
 
 } // namespace
 
+std::uint32_t pick_actor_form(const wfb::World& w, std::uint32_t id, std::uint32_t ref) {
+    return pick_actor(w, id, ref);
+}
+
+std::uint16_t actor_level(const wfb::Npc& npc) {
+    if (!formats::has_flag(npc.flags(), wfb::NpcFlags::pc_level_mult)) {
+        return std::max<std::uint16_t>(npc.level(), 1);
+    }
+    // The level word is a multiplier of the player's level, in thousandths.
+    auto level = static_cast<std::uint32_t>(leveled::player_level()) * npc.level() / 1000;
+    level = std::max(level, std::max<std::uint32_t>(npc.calc_min_level(), 1));
+    if (npc.calc_max_level() != 0) {
+        level = std::min<std::uint32_t>(level, npc.calc_max_level());
+    }
+    return static_cast<std::uint16_t>(std::min<std::uint32_t>(level, 0xFFFF));
+}
+
 const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, wfb::NpcTemplateFlags flag,
                             std::uint32_t ref) {
     return resolve(w, npc_of(w, npc), flag, ref);
 }
 
 bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref, vm::ActorBase& out) {
-    std::uint32_t id = npc_id;
-    for (int depth = 0; depth < k_max_depth; ++depth) {
-        const auto* list = list_of(w, id);
-        if (list == nullptr) {
-            break;
-        }
-        id = pick(*list, ref);
-    }
-    const auto* npc = npc_of(w, id);
+    const auto* npc = npc_of(w, pick_actor(w, npc_id, ref));
     if (npc == nullptr) {
         return false;
     }
@@ -244,18 +223,10 @@ bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t 
 }
 
 ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref,
-                     const std::function<bool(const std::string&)>& exists) {
+                     const std::function<bool(const std::string&)>& exists, const WornProvider& worn) {
     ActorPlan plan;
     // The placed base may itself be a leveled list.
-    std::uint32_t base = npc_id;
-    for (int depth = 0; depth < k_max_depth; ++depth) {
-        const auto* list = list_of(w, base);
-        if (list == nullptr) {
-            break;
-        }
-        base = pick(*list, ref);
-    }
-    const auto* npc = npc_of(w, base);
+    const auto* npc = npc_of(w, pick_actor(w, npc_id, ref));
     if (npc == nullptr) {
         plan.missing = "no NPC_";
         return plan;
@@ -315,21 +286,37 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
             }
         }
     };
-    if (const auto* outfit = outfit_of(w, inventory->default_outfit()); outfit != nullptr && outfit->items() != nullptr) {
-        std::vector<const wfb::Armor*> items;
-        for (const std::uint32_t item : *outfit->items()) {
-            worn_items(w, item, ref, npc->level(), items);
+    // What the actor wears: as the game knows it (the VM's equipment), else
+    // its default outfit, drawn as the VM draws it.
+    std::vector<const wfb::Armor*> items;
+    std::vector<std::uint32_t> provided;
+    bool known = false;
+    if (worn && worn(ref, provided)) {
+        known = true;
+        for (const std::uint32_t id : provided) {
+            if (const auto* armor = armor_of(w, id)) {
+                items.push_back(armor);
+            }
         }
-        std::vector<const wfb::Armor*> worn;
+    } else if (const auto* outfit = outfit_of(w, inventory->default_outfit());
+               outfit != nullptr && outfit->items() != nullptr) {
+        known = true;
+        leveled::Rng rng(leveled::seed_for(ref, leveled::k_purpose_outfit));
+        for (const std::uint32_t item : *outfit->items()) {
+            worn_items(w, item, actor_level(*npc), rng, items);
+        }
+    }
+    if (known) {
+        std::vector<const wfb::Armor*> kept;
         for (const auto* armor : items) {
             // Two items on one slot: the first keeps it.
             if ((armor->slots() & covered) != 0) {
                 continue;
             }
             covered |= armor->slots();
-            worn.push_back(armor);
+            kept.push_back(armor);
         }
-        for (const auto* armor : worn) {
+        for (const auto* armor : kept) {
             add_armor(*armor, false);
         }
         plan.hide_hair = (covered & k_slot_hair) != 0;
