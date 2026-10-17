@@ -130,6 +130,17 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::get_actor_value_max);
     godot::ClassDB::bind_method(D_METHOD("damage_actor_value", "ref", "name", "amount"),
                                 &SkydotPapyrus::damage_actor_value);
+    godot::ClassDB::bind_method(
+        D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags"),
+        &SkydotPapyrus::apply_hit);
+    godot::ClassDB::bind_method(D_METHOD("get_corpse_place", "ref"), &SkydotPapyrus::get_corpse_place);
+    godot::ClassDB::bind_method(D_METHOD("set_corpse_place", "ref", "space", "position", "rot_z"),
+                                &SkydotPapyrus::set_corpse_place);
+    godot::ClassDB::bind_method(D_METHOD("get_killer", "ref"), &SkydotPapyrus::get_killer);
+    BIND_CONSTANT(HIT_POWER);
+    BIND_CONSTANT(HIT_SNEAK);
+    BIND_CONSTANT(HIT_BASH);
+    BIND_CONSTANT(HIT_BLOCKED);
     godot::ClassDB::bind_method(D_METHOD("restore_actor_value", "ref", "name", "amount"),
                                 &SkydotPapyrus::restore_actor_value);
     godot::ClassDB::bind_method(D_METHOD("set_open_state", "ref", "state"),

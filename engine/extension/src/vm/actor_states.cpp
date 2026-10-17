@@ -120,6 +120,38 @@ void ActorStates::check_death(std::uint32_t ref, Record& record) {
     }
 }
 
+void ActorStates::set_killer(std::uint32_t ref, std::uint32_t killer) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->killer = killer;
+    }
+}
+
+std::uint32_t ActorStates::killer_of(std::uint32_t ref) const {
+    const Record* r = find(ref);
+    return r != nullptr ? r->killer : 0;
+}
+
+void ActorStates::set_corpse_place(std::uint32_t ref, const CorpsePlace& place) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->corpse = place;
+    }
+}
+
+std::optional<ActorStates::CorpsePlace> ActorStates::corpse_place(std::uint32_t ref) const {
+    const Record* r = find(ref);
+    return r != nullptr ? r->corpse : std::nullopt;
+}
+
+std::vector<std::pair<std::uint32_t, ActorStates::CorpsePlace>> ActorStates::corpse_places() const {
+    std::vector<std::pair<std::uint32_t, CorpsePlace>> out;
+    for (const auto& [ref, record] : records_) {
+        if (record.corpse) {
+            out.emplace_back(ref, *record.corpse);
+        }
+    }
+    return out;
+}
+
 void ActorStates::set_base(std::uint32_t ref, std::uint32_t av, double value) {
     if (Record* r = touch(ref, av)) {
         r->values[av].base = value;
@@ -248,14 +280,23 @@ std::vector<std::uint8_t> ActorStates::save() const {
             w.f64(v.modifier);
             w.f64(v.damage);
         }
+        w.u32(record.killer);
+        w.u8(record.corpse ? 1 : 0);
+        if (record.corpse) {
+            w.u32(record.corpse->space);
+            w.f64(record.corpse->x);
+            w.f64(record.corpse->y);
+            w.f64(record.corpse->z);
+            w.f64(record.corpse->rot_z);
+        }
     }
     return w.out;
 }
 
-bool ActorStates::load(save::ByteReader r, ActorStates& out) {
+bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t version) {
     out = ActorStates{};
     std::uint32_t n = 0;
-    if (!r.count(n, 9)) {
+    if (!r.count(n, version >= 2 ? 14 : 9)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -280,6 +321,21 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out) {
                 v.base = base;
             }
             record.values[av] = v;
+        }
+        if (version >= 2) {
+            std::uint8_t has_corpse = 0;
+            if (!r.u32(record.killer) || !r.u8(has_corpse)) {
+                return false;
+            }
+            if (has_corpse != 0) {
+                CorpsePlace place;
+                if (!r.u32(place.space) || !r.f64(place.x) || !r.f64(place.y) || !r.f64(place.z) ||
+                    !r.f64(place.rot_z) || !std::isfinite(place.x) || !std::isfinite(place.y) ||
+                    !std::isfinite(place.z) || !std::isfinite(place.rot_z)) {
+                    return false;
+                }
+                record.corpse = place;
+            }
         }
     }
     return r.at_end();

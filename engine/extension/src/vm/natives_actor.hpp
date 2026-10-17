@@ -10,7 +10,7 @@ namespace skydot::vm {
 
 /// Bind Actor.GetActorValue, GetBaseActorValue, SetActorValue,
 /// ModActorValue, ForceActorValue, DamageActorValue, RestoreActorValue,
-/// GetActorValuePercentage and IsDead. An unknown actor value name or a self
+/// GetActorValuePercentage, IsDead and GetKiller. An unknown actor value name or a self
 /// that is no actor is reported once and reads 0 (does nothing). `states`
 /// must outlive the VM.
 void bind_actor_natives(Vm& vm, ActorStates& states);

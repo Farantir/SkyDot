@@ -693,6 +693,17 @@ bool SkydotAi::choose(Mind& m) {
     if (root() == nullptr) {
         return false;
     }
+    // The dead have no package: whatever they were doing stops.
+    if (vm_ != nullptr && vm_->is_actor_dead(static_cast<std::int64_t>(m.ref))) {
+        if (m.package != 0 || !m.steps.empty()) {
+            m.package = 0;
+            m.steps.clear();
+            m.step = 0;
+            m.target.reset();
+            m.door = 0;
+        }
+        return false;
+    }
     conditions_->mind = &m;
     const ai::ConditionSource host(*conditions_, conditions_.get());
     const auto skip = [&](std::uint32_t pkg) {

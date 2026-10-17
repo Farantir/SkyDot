@@ -190,10 +190,10 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     }
     // ACTV is optional: a save without it has no changed actor values.
     if (const auto* actv = file.find("ACTV")) {
-        if (actv->version != vm::ActorStates::k_section_version) {
+        if (actv->version < 1 || actv->version > vm::ActorStates::k_section_version) {
             return fail("section ACTV has a version this engine does not read");
         }
-        if (!vm::ActorStates::load(file.open(*actv), pending->actors)) {
+        if (!vm::ActorStates::load(file.open(*actv), pending->actors, actv->version)) {
             return fail("the ACTV section of the save is damaged");
         }
     }
@@ -284,6 +284,15 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
+    // The dead lie where they fell (the actor places are not saved).
+    if (world_.is_valid()) {
+        for (const auto& [ref, place] : actors_.corpse_places()) {
+            world_->placement().set_place(ref, place.space,
+                                          godot::Vector3(static_cast<real_t>(place.x), static_cast<real_t>(place.y),
+                                                         static_cast<real_t>(place.z)),
+                                          static_cast<float>(place.rot_z));
+        }
+    }
     items_.adopt(std::move(pending->items));
     created_.adopt(std::move(pending->created));
     harvests_.adopt(std::move(pending->harvests));

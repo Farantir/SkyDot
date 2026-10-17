@@ -295,6 +295,29 @@ public:
     /// Lower `name` of `ref` by `amount`; an actor at Health 0 dies (signal
     /// `actor_died`) unless it is essential or the player.
     void damage_actor_value(std::int64_t ref, const godot::String& name, double amount);
+
+    /// `apply_hit` flags.
+    static constexpr std::int64_t HIT_POWER = 1;
+    static constexpr std::int64_t HIT_SNEAK = 2;
+    static constexpr std::int64_t HIT_BASH = 4;
+    static constexpr std::int64_t HIT_BLOCKED = 8;
+    /// One melee hit of `attacker` (0: none) on `target` with `weapon` (0:
+    /// fists; `extra` its item extra) for the race attack named `attack_event`
+    /// (e.g. "attackStart", "attackPowerStartInPlace"; empty: the standing
+    /// light or power attack). Resolves the inputs, damages Health, logs a
+    /// `combat:` line, sends OnHit and, on a death, OnDying and OnDeath (the
+    /// signal actor_died too); keeps the killer for Actor.GetKiller.
+    /// {error} if the target is no living actor, else {attacker, target,
+    /// weapon, event, base, skill_value, skill, attack, difficulty, sneak,
+    /// weapon_damage, armor_rating, armor_percent, damage, health_before,
+    /// health_after, killed}. Blocking only passes the flag on.
+    godot::Dictionary apply_hit(std::int64_t attacker, std::int64_t target, std::int64_t weapon,
+                                std::int64_t extra, const godot::String& attack_event, std::int64_t flags);
+    /// Where a dead actor lies ({space, position, rot_z}; empty: not set).
+    godot::Dictionary get_corpse_place(std::int64_t ref) const;
+    void set_corpse_place(std::int64_t ref, std::int64_t space, const godot::Vector3& position, double rot_z);
+    /// Who killed `ref`; 0 if nobody or alive.
+    std::int64_t get_killer(std::int64_t ref) const;
     void restore_actor_value(std::int64_t ref, const godot::String& name, double amount);
     void set_open_state(std::int64_t ref, std::int64_t state);
     /// Actors inside trigger `ref`.

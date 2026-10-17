@@ -36,7 +36,15 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
     bool target(std::uint32_t ref, ActivationTarget& out) const override {
         const Dictionary info = owner_.ref_info(ref);
         if (info.is_empty()) {
-            return false;
+            // A placed actor is no reference of its cell: its base is the NPC_.
+            const auto* actor = owner_.world_.is_valid() ? owner_.world_->data().actor_ptr(ref) : nullptr;
+            if (actor == nullptr) {
+                return false;
+            }
+            out.base = actor->base();
+            out.type = "NPC_";
+            out.dead = owner_.actors_.is_dead(ref);
+            return true;
         }
         out.base = form_of(info.get("base", 0));
         out.type = natives::utf8(String(info.get("type", String())));
@@ -45,6 +53,7 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
         out.load_door = info.get("door", Variant()).get_type() == Variant::DICTIONARY;
         // XCNT is not in the reference info yet: one of them.
         out.count = static_cast<std::int64_t>(info.get("count", 1));
+        out.dead = owner_.actors_.is_dead(ref);
         if (const auto* base = base_of(out.base)) {
             out.harvestable = (out.type == "FLOR" || out.type == "TREE") && base->harvest() != nullptr &&
                               base->harvest()->ingredient() != 0;

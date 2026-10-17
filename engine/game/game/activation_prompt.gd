@@ -117,6 +117,8 @@ static func lock_text(level: int) -> String:
 func _actor_prompt(ref: int) -> Dictionary:
 	var actor := _world.get_actor(ref)
 	var name: String = actor.get("name", "")
+	if name.is_empty() and _papyrus.is_actor_dead(ref):
+		name = "Corpse"  # an unnamed actor (bandits are named by their race and class in the game)
 	if name.is_empty():
 		return {}
 	return {"ref": ref, "verb": "Search" if _papyrus.is_actor_dead(ref) else "Talk", "name": name,

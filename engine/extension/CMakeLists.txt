@@ -78,6 +78,8 @@ set(SKYDOT_CORE_SOURCES
     src/vm/item_extras.hpp
     src/vm/created_forms.cpp
     src/vm/created_forms.hpp
+    src/combat/damage.cpp
+    src/combat/damage.hpp
     src/vm/crafting.cpp
     src/vm/crafting.hpp
     src/vm/harvest.cpp
@@ -258,6 +260,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_dialogue.cpp
     src/vm/papyrus_items.cpp
     src/vm/papyrus_crafting.cpp
+    src/vm/papyrus_combat.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp

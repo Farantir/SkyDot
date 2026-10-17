@@ -96,6 +96,26 @@ void SkydotPapyrus::fill_aliases(std::uint32_t quest) {
         }
         quests_.set_fill(alias_handle(quest, form_of(alias["id"])), fill);
     }
+    // An alias that creates an object (ALCO) "in" another alias's actor (ALCA):
+    // the object goes into that actor's inventory, once (MS13's GoldenClaw is
+    // made in Arvel's, so it lies on his corpse). Creating one "at" a
+    // reference is not supported.
+    for (std::int64_t i = 0; i < aliases.size(); ++i) {
+        const Dictionary alias = aliases[i];
+        const auto object = form_of(alias["created_object"]);
+        if (object == 0) {
+            continue;
+        }
+        const auto holder = quests_.fill(alias_handle(quest, form_of(alias["create_at"])));
+        if (holder != 0 && actors_.is_actor(holder)) {
+            if (get_item_count(holder, object) == 0) {
+                add_item(holder, object, 1);
+            }
+        } else {
+            godot::UtilityFunctions::push_warning(
+                String("quest alias creating 0x") + String::num_int64(object, 16) + String(": no actor to hold it"));
+        }
+    }
 }
 
 std::int64_t SkydotPapyrus::start_game_enabled_quests() {

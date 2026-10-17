@@ -234,6 +234,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_combat_rules
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/combat_rules.gd")
+    set_tests_properties(sse_combat_rules PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_dialogue
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/dialogue.gd")
     set_tests_properties(sse_dialogue PROPERTIES

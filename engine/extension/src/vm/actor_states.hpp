@@ -22,7 +22,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 1;
+    static constexpr std::uint32_t k_section_version = 2;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -33,6 +33,15 @@ public:
         magicka_regen_delay_ = magicka;
         stamina_regen_delay_ = stamina;
     }
+
+    /// Where a dead actor lies (version 2 of the section): the space (cell or
+    /// worldspace form), the position in Skyrim units and the facing about Z
+    /// in radians.
+    struct CorpsePlace {
+        std::uint32_t space = 0;
+        double x = 0.0, y = 0.0, z = 0.0;
+        double rot_z = 0.0;
+    };
 
     /// Fills `out` with the data's values for actor `ref`; false if `ref` is
     /// no actor.
@@ -52,6 +61,14 @@ public:
     /// Value over max; 1 if max is 0 or less.
     [[nodiscard]] double percentage(std::uint32_t ref, std::uint32_t av) const;
     [[nodiscard]] bool is_dead(std::uint32_t ref) const;
+    /// Who dealt the blow that killed `ref` (0 if unknown or alive); kept in
+    /// the save.
+    void set_killer(std::uint32_t ref, std::uint32_t killer);
+    [[nodiscard]] std::uint32_t killer_of(std::uint32_t ref) const;
+    void set_corpse_place(std::uint32_t ref, const CorpsePlace& place);
+    [[nodiscard]] std::optional<CorpsePlace> corpse_place(std::uint32_t ref) const;
+    /// Every actor with a corpse place, ascending.
+    [[nodiscard]] std::vector<std::pair<std::uint32_t, CorpsePlace>> corpse_places() const;
     /// Every actor that is dead, ascending.
     [[nodiscard]] std::vector<std::uint32_t> dead_refs() const;
 
@@ -79,7 +96,8 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out);
+    /// Version 1 has no killer and no corpse place.
+    [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
     struct Value {
@@ -90,6 +108,8 @@ private:
     struct Record {
         std::map<std::uint32_t, Value> values;
         bool dead = false;
+        std::uint32_t killer = 0;
+        std::optional<CorpsePlace> corpse;
         double magicka_pause = 0.0; ///< Not saved.
         double stamina_pause = 0.0;
     };

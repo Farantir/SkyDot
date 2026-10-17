@@ -215,6 +215,52 @@ TEST_CASE("ACTV round-trips and refuses damaged sections", "[actor][save]") {
     CHECK(ActorStates::load(skydot::save::ByteReader(ActorStates{}.save()), scratch));
 }
 
+TEST_CASE("ACTV 2 keeps the killer and the corpse place, version 1 still loads", "[actor][save]") {
+    auto s = make();
+    s.damage(k_guard, av::k_health, 100);
+    s.set_killer(k_guard, k_hero);
+    s.set_corpse_place(k_guard, {.space = 0x3C, .x = 1.5, .y = -2.0, .z = 300.0, .rot_z = 0.75});
+    CHECK(s.killer_of(k_guard) == k_hero);
+    CHECK(s.killer_of(k_elder) == 0);
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK(t.is_dead(k_guard));
+    CHECK(t.killer_of(k_guard) == k_hero);
+    const auto place = t.corpse_place(k_guard);
+    REQUIRE(place.has_value());
+    CHECK(place->space == 0x3C);
+    CHECK(place->y == Approx(-2.0));
+    CHECK(place->rot_z == Approx(0.75));
+    CHECK_FALSE(t.corpse_place(k_elder).has_value());
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+
+    // Version 1: one dead actor, one value (Health base 7), nothing after.
+    skydot::save::ByteWriter w;
+    w.u32(1);
+    w.u32(k_guard);
+    w.u8(1);
+    w.u32(1);
+    w.u32(av::k_health);
+    w.u8(1);
+    w.f64(7.0);
+    w.f64(0.0);
+    w.f64(-7.0);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(w.out), old, 1));
+    ActorStates u = make();
+    u.adopt(std::move(old));
+    CHECK(u.is_dead(k_guard));
+    CHECK(u.killer_of(k_guard) == 0);
+    CHECK_FALSE(u.corpse_place(k_guard).has_value());
+}
+
 TEST_CASE("the Actor natives read and change values; non-actors and unknown names read 0 and report once",
           "[actor][natives]") {
     auto states = make();

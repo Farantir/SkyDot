@@ -64,6 +64,15 @@ void bind_actor_natives(Vm& vm, ActorStates& states) {
     vm.bind("Actor", "DamageActorValue", writer("DamageActorValue", &ActorStates::damage));
     vm.bind("Actor", "RestoreActorValue", writer("RestoreActorValue", &ActorStates::restore));
 
+    // The actor that dealt the killing blow; None while alive or unknown.
+    vm.bind("Actor", "GetKiller", [&states](NativeCall& c) {
+        const std::uint32_t killer = states.killer_of(c.self.form());
+        if (killer == 0) {
+            return NativeResult{};
+        }
+        return NativeResult{.value = c.vm.object(killer, "Actor"), .wait = -1.0};
+    });
+
     vm.bind("Actor", "IsDead", [&states, reported](NativeCall& c) {
         if (!states.is_actor(c.self.form())) {
             if (reported->insert("the object is no actor").second) {

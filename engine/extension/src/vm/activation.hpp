@@ -90,6 +90,8 @@ struct ActivationTarget {
     bool harvestable{};
     /// FURN WBDT: the bench type, 0 if the furniture is no bench.
     int bench_type{};
+    /// A dead actor: activating it opens its inventory (like a container).
+    bool dead{};
 };
 
 /// How an activation ended, for the host to act on. `kind` is one of missing,

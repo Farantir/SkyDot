@@ -4,6 +4,7 @@
 // system itself is in SkydotPapyrus (vm/quests.cpp).
 #include "world/queries.hpp"
 #include "data/fb_search.hpp"
+#include "data/actors.hpp"
 #include "data/godot_values.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
@@ -251,6 +252,12 @@ Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     out["base"] = static_cast<std::int64_t>(it->base());
     if (const auto* npc = lookup(data.root()->npcs(), it->base())) {
         out["name"] = to_godot(npc->name());
+    }
+    if (String(out.get("name", String())).is_empty()) {
+        // A template or a leveled list names it.
+        if (const auto* resolved = resolve_npc(*data.root(), it->base(), wfb::NpcTemplateFlags::use_traits, id)) {
+            out["name"] = to_godot(resolved->name());
+        }
     }
     out["cell"] = static_cast<std::int64_t>(it->cell());
     out["position"] = vec3_of(it->position());
