@@ -19,6 +19,7 @@ add_executable(skydot_core_tests
     test_activation.cpp
     test_behavior.cpp
     test_conditions.cpp
+    test_dialogue.cpp
     test_game_time.cpp
     test_large_refs.cpp
     test_mapped_file.cpp

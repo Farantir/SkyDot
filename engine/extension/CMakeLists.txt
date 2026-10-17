@@ -48,6 +48,10 @@ set(SKYDOT_CORE_SOURCES
     src/assets/mapped_file.hpp
     src/assets/vpath.hpp
     src/data/actors.cpp
+    src/dialogue/dialogue.cpp
+    src/dialogue/dialogue.hpp
+    src/dialogue/dialogue_states.cpp
+    src/dialogue/dialogue_states.hpp
     src/data/actors.hpp
     src/data/large_refs.cpp
     src/data/large_refs.hpp
@@ -229,6 +233,7 @@ target_sources(skydot PRIVATE
     src/vm/natives_noop.cpp
     src/vm/papyrus_activation.cpp
     src/vm/papyrus_conditions.cpp
+    src/vm/papyrus_dialogue.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp
     src/vm/papyrus_save.cpp
