@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "context.hpp"
 
+#include "bethconv/record/conditions.hpp"
+
 #include <utility>
 
 namespace bethconv::pack::detail {
@@ -49,6 +51,32 @@ std::vector<std::uint32_t> CollectContext::global_all(const record::MergedRecord
     out.reserve(forms.size());
     for (const record::FormId f : forms) {
         out.push_back(global(merged, f, failed));
+    }
+    return out;
+}
+
+std::vector<std::unique_ptr<wfb::ConditionT>> CollectContext::global_conditions(
+    const record::MergedRecord& merged, const std::vector<record::Condition>& list,
+    bool& failed) const {
+    std::vector<std::unique_ptr<wfb::ConditionT>> out;
+    out.reserve(list.size());
+    for (const auto& c : list) {
+        auto& t = out.emplace_back(std::make_unique<wfb::ConditionT>());
+        t->type = c.type;
+        t->function = c.function;
+        t->value = c.value;
+        t->value_global = global(merged, c.value_global, failed);
+        t->param1 = record::condition_param_is_form(c, 1) ? global(merged, record::FormId{c.param1}, failed)
+                                                          : c.param1;
+        t->param2 = record::condition_param_is_form(c, 2) ? global(merged, record::FormId{c.param2}, failed)
+                                                          : c.param2;
+        t->run_on = c.run_on;
+        t->reference = c.run_on == record::Condition::k_run_on_reference
+                           ? global(merged, c.reference, failed)
+                           : c.reference.value;
+        t->param3 = c.param3;
+        t->string1 = c.string1;
+        t->string2 = c.string2;
     }
     return out;
 }

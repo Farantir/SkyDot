@@ -114,6 +114,25 @@ struct QuestFragments {
     std::vector<AliasScripts> aliases;
 };
 
+/// What follows an INFO's scripts: a byte (2 in vanilla), a flags byte (bit 0
+/// the begin fragment is present, bit 1 the end fragment), the fragment
+/// script's file name (`TIF__<local id>`), then for each present fragment, begin
+/// first, a byte (1 in vanilla), the script name and the function name
+/// (`Fragment_N`). 5,540 Skyrim.esm INFOs have a VMAD; 231 end after the
+/// scripts. Source: xEdit (wbVMADFragmentedINFO), checked against Skyrim.esm.
+struct InfoFragments {
+    std::uint8_t unknown{};
+    std::uint8_t flags{};
+    std::string script;         ///< The file name of the fragment script.
+    std::string begin_script;   ///< Empty without the begin fragment.
+    std::string begin_function;
+    std::string end_script;
+    std::string end_function;
+
+    static constexpr std::uint8_t k_has_begin = 0x01;
+    static constexpr std::uint8_t k_has_end = 0x02;
+};
+
 /// Read the script part of a VMAD payload. Stops after the last script;
 /// anything after it is left in `body`.
 [[nodiscard]] io::ParseResult<ScriptData> read_script_data(io::SpanReader& body);
@@ -122,5 +141,8 @@ struct QuestFragments {
 /// supplies the object format.
 [[nodiscard]] io::ParseResult<QuestFragments> read_quest_fragments(io::SpanReader& body,
                                                                    const ScriptData& scripts);
+
+/// Read INFO fragment data from where `read_script_data` stopped.
+[[nodiscard]] io::ParseResult<InfoFragments> read_info_fragments(io::SpanReader& body);
 
 } // namespace bethconv::record

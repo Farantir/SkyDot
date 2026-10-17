@@ -60,6 +60,7 @@ add_library(bethconv_core STATIC
     record/forms_world.cpp
     record/forms_game.cpp
     record/forms_actor.cpp
+    record/forms_dialogue.cpp
     record/form_census.cpp
     record/strings.cpp
     record/merge.cpp
@@ -92,6 +93,7 @@ add_library(bethconv_core STATIC
     pack/world/ai.cpp
     pack/world/bases.cpp
     pack/world/context.cpp
+    pack/world/dialogue.cpp
     pack/world/environment.cpp
     pack/world/fb_write.cpp
     pack/world/places.cpp

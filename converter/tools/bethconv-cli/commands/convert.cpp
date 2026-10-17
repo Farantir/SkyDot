@@ -284,6 +284,18 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(w.armor_addons), static_cast<unsigned long long>(w.outfits),
                      static_cast<unsigned long long>(w.leveled_lists),
                      static_cast<unsigned long long>(w.packages));
+        std::fprintf(text, "                %llu dialogue topics (%llu branches, %llu infos, %llu responses, "
+                           "%llu orphaned infos), %llu voice types, %llu locations, "
+                           "%llu relationships, %llu factions\n",
+                     static_cast<unsigned long long>(w.dialogue_topics),
+                     static_cast<unsigned long long>(w.dialogue_branches),
+                     static_cast<unsigned long long>(w.dialogue_infos),
+                     static_cast<unsigned long long>(w.dialogue_responses),
+                     static_cast<unsigned long long>(w.orphan_infos),
+                     static_cast<unsigned long long>(w.voice_types),
+                     static_cast<unsigned long long>(w.locations),
+                     static_cast<unsigned long long>(w.relationships),
+                     static_cast<unsigned long long>(w.factions));
         std::fprintf(text, "                %llu unresolved, %llu parse errors, %llu script errors\n",
                      static_cast<unsigned long long>(w.unresolved),
                      static_cast<unsigned long long>(w.parse_errors),
@@ -359,6 +371,11 @@ int cmd_convert(const ConvertArgs& args) {
     std::fprintf(text, "in %.1fs (%u thread%s)\n", elapsed, result->jobs,
                  result->jobs == 1 ? "" : "s");
 
+    if (stats.unsupported != 0) {
+        std::fprintf(text, "  %llu input(s) of an unsupported kind counted as warnings, not "
+                     "failures (report.json lists them)\n",
+                     static_cast<unsigned long long>(stats.unsupported));
+    }
     // Show a few failures on the terminal; the full list is in report.json.
     if (stats.failed != 0) {
         std::fprintf(text, "\nfirst %zu of %llu failures -- report.json has every one:\n",
@@ -368,7 +385,7 @@ int cmd_convert(const ConvertArgs& args) {
             std::fprintf(text, "  %-8s %s\n", failure.stage.c_str(), failure.detail.c_str());
         }
     }
-    const int exit_code = stats.failed == 0 ? 0 : 1;
+    const int exit_code = bethconv::pack::convert_exit_code(stats);
     if (args.json) {
         auto failures = ordered_json::array();
         for (const auto& failure : result->first_failures) {
@@ -418,6 +435,7 @@ int cmd_convert(const ConvertArgs& args) {
                           {"unchanged", result->alpha_coverage.unchanged},
                           {"unsupported", result->alpha_coverage.unsupported}}},
             {"failed", stats.failed},
+            {"unsupported", stats.unsupported},
             {"warnings", stats.warnings},
             {"orphaned_assets", stats.orphaned_assets},
             {"pruned", args.prune},

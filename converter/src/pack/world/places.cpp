@@ -264,6 +264,7 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
     out.lighting_template = shared_.global(merged, cell->lighting_template, failed);
     out.image_space = shared_.global(merged, cell->image_space, failed);
     out.sky_region = shared_.global(merged, cell->sky_region, failed);
+    out.location = shared_.global(merged, cell->location, failed);
     out.persistent = record::has_flag(merged.flags, record::RecordFlag::persistent);
     out.water = shared_.global(merged, cell->water, failed);
     if (failed) {

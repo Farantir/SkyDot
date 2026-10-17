@@ -17,35 +17,6 @@ namespace {
 using io::FourCC;
 using record::FormId;
 
-/// Conditions as world.fb's tables, with their FormID parameters made global.
-std::vector<std::unique_ptr<wfb::ConditionT>> global_conditions(
-    const CollectContext& shared, const record::MergedRecord& merged,
-    const std::vector<record::Condition>& list, bool& failed) {
-    std::vector<std::unique_ptr<wfb::ConditionT>> out;
-    out.reserve(list.size());
-    for (const auto& c : list) {
-        auto& t = out.emplace_back(std::make_unique<wfb::ConditionT>());
-        t->type = c.type;
-        t->function = c.function;
-        t->value = c.value;
-        t->value_global = shared.global(merged, c.value_global, failed);
-        t->param1 = record::condition_param_is_form(c, 1)
-                        ? shared.global(merged, FormId{c.param1}, failed)
-                        : c.param1;
-        t->param2 = record::condition_param_is_form(c, 2)
-                        ? shared.global(merged, FormId{c.param2}, failed)
-                        : c.param2;
-        t->run_on = c.run_on;
-        t->reference = c.run_on == record::Condition::k_run_on_reference
-                           ? shared.global(merged, c.reference, failed)
-                           : c.reference.value;
-        t->param3 = c.param3;
-        t->string1 = c.string1;
-        t->string2 = c.string2;
-    }
-    return out;
-}
-
 /// The string `text` in the buffer, or nothing if it is empty. The package
 /// tables are written by hand, not with CreatePackage(builder, &object): Pack
 /// writes every string, and the engine takes an absent `Condition.string2` or
@@ -135,7 +106,7 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
     out.hour = pack->schedule.hour;
     out.minute = pack->schedule.minute;
     out.duration = pack->schedule.duration;
-    out.conditions = global_conditions(shared_, merged, pack->conditions, failed);
+    out.conditions = shared_.global_conditions(merged, pack->conditions, failed);
     out.template_ = shared_.global(merged, pack->template_package, failed);
     out.idle_flags = pack->idle_flags;
     out.idle_timer = pack->idle_timer;
@@ -183,7 +154,7 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
     for (const auto& b : pack->branches) {
         auto& w = out.branches.emplace_back(std::make_unique<wfb::PackageBranchT>());
         w->type = b.type;
-        w->conditions = global_conditions(shared_, merged, b.conditions, failed);
+        w->conditions = shared_.global_conditions(merged, b.conditions, failed);
         w->children = b.branch_count;
         w->flags = static_cast<wfb::BranchFlags>(b.root_flags);
         w->procedure = b.procedure;

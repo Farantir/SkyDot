@@ -213,4 +213,24 @@ io::ParseResult<QuestFragments> read_quest_fragments(io::SpanReader& body,
     return out;
 }
 
+io::ParseResult<InfoFragments> read_info_fragments(io::SpanReader& body) {
+    Cursor in{body};
+    InfoFragments out;
+    if (in.read(out.unknown) && in.read(out.flags) && in.read_wstring(out.script)) {
+        std::uint8_t unknown{};
+        if ((out.flags & InfoFragments::k_has_begin) != 0) {
+            in.read(unknown) && in.read_wstring(out.begin_script) &&
+                in.read_wstring(out.begin_function);
+        }
+        if ((out.flags & InfoFragments::k_has_end) != 0 && !in.failure()) {
+            in.read(unknown) && in.read_wstring(out.end_script) &&
+                in.read_wstring(out.end_function);
+        }
+    }
+    if (in.failure()) {
+        return std::unexpected(std::move(*in.failure()));
+    }
+    return out;
+}
+
 } // namespace bethconv::record

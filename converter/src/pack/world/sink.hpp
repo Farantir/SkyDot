@@ -9,6 +9,7 @@
 #include "ai.hpp"
 #include "bases.hpp"
 #include "context.hpp"
+#include "dialogue.hpp"
 #include "environment.hpp"
 #include "places.hpp"
 #include "quests.hpp"
@@ -31,9 +32,10 @@ public:
           environment_(shared_),
           quests_(shared_),
           actors_(shared_),
-          ai_(shared_) {}
+          ai_(shared_),
+          dialogue_(shared_) {}
 
-    /// Deleted records are skipped, and so are INFO records. NPC_, ARMO and
+    /// Deleted records are skipped. NPC_, ARMO and
     /// LVLN are collected twice, by ActorCollector and as generic bases; any
     /// type no collector names is a base if it has a model or scripts.
     void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
@@ -53,6 +55,7 @@ public:
     [[nodiscard]] QuestCollector& quests() noexcept { return quests_; }
     [[nodiscard]] ActorCollector& actors() noexcept { return actors_; }
     [[nodiscard]] AiCollector& ai() noexcept { return ai_; }
+    [[nodiscard]] DialogueCollector& dialogue() noexcept { return dialogue_; }
 
 private:
     CollectContext shared_;
@@ -62,6 +65,7 @@ private:
     QuestCollector quests_;
     ActorCollector actors_;
     AiCollector ai_;
+    DialogueCollector dialogue_;
 };
 
 } // namespace bethconv::pack::detail

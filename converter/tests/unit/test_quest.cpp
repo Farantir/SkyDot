@@ -136,10 +136,10 @@ TEST_CASE("QUST fields go to the stage, objective or alias they follow", "[recor
     CHECK(q->has(record::Quest::Flag::run_once));
     CHECK(q->priority == 60);
     CHECK(q->type == 2);
-    REQUIRE(q->dialogue_conditions.raw.size() == 1);
-    CHECK(q->dialogue_conditions.raw[0][0] == std::byte{1});
-    REQUIRE(q->event_conditions.raw.size() == 1);
-    CHECK(q->event_conditions.raw[0][0] == std::byte{2});
+    REQUIRE(q->dialogue_conditions.list.size() == 1);
+    CHECK(q->dialogue_conditions.list[0].type == 1);
+    REQUIRE(q->event_conditions.list.size() == 1);
+    CHECK(q->event_conditions.list[0].type == 2);
 
     REQUIRE(q->stages.size() == 1);
     CHECK(q->stages[0].index == 10);
@@ -147,7 +147,7 @@ TEST_CASE("QUST fields go to the stage, objective or alias they follow", "[recor
     REQUIRE(q->stages[0].log.size() == 1);
     CHECK(q->stages[0].log[0].has(record::Quest::LogEntry::Flag::complete_quest));
     CHECK(q->stages[0].log[0].text.text == "Found it.");
-    CHECK(q->stages[0].log[0].conditions.raw[0][0] == std::byte{3});
+    CHECK(q->stages[0].log[0].conditions.list[0].type == 3);
 
     REQUIRE(q->objectives.size() == 1);
     CHECK(q->objectives[0].index == 5);
@@ -155,7 +155,7 @@ TEST_CASE("QUST fields go to the stage, objective or alias they follow", "[recor
     CHECK(q->objectives[0].text.text == "Find it");
     REQUIRE(q->objectives[0].targets.size() == 1);
     CHECK(q->objectives[0].targets[0].alias == 3);
-    CHECK(q->objectives[0].targets[0].conditions.raw[0][0] == std::byte{4});
+    CHECK(q->objectives[0].targets[0].conditions.list[0].type == 4);
 
     CHECK(q->next_alias_id == 4);
     REQUIRE(q->aliases.size() == 2);
@@ -164,7 +164,7 @@ TEST_CASE("QUST fields go to the stage, objective or alias they follow", "[recor
     CHECK(q->aliases[0].name == "Thing");
     CHECK(q->aliases[0].has(record::Quest::Alias::Flag::optional));
     CHECK(q->aliases[0].forced_ref.value == 0x00012345u);
-    CHECK(q->aliases[0].conditions.raw[0][0] == std::byte{5});
+    CHECK(q->aliases[0].conditions.list[0].type == 5);
     CHECK(q->aliases[1].location);
     CHECK(q->aliases[1].name == "Where");
 

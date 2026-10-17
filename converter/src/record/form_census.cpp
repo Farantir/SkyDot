@@ -2,6 +2,7 @@
 #include "bethconv/record/form_census.hpp"
 
 #include "bethconv/record/forms_actor.hpp"
+#include "bethconv/record/forms_dialogue.hpp"
 #include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
@@ -82,6 +83,11 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"OTFT"}, &run<parse_outfit>},
     {FourCC{"LVLI"}, &run<parse_leveled_item>},
     {FourCC{"RACE"}, &run<parse_race>},
+    {FourCC{"DLBR"}, &run<parse_dialogue_branch>},
+    {FourCC{"DIAL"}, &run<parse_dialogue_topic>},
+    {FourCC{"INFO"}, &run<parse_dialogue_info>},
+    {FourCC{"VTYP"}, &run<parse_voice_type>},
+    {FourCC{"RELA"}, &run<parse_relationship>},
 };
 
 } // namespace

@@ -47,6 +47,8 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
     out.type = q->type;
     out.event = q->event.value;
     out.scripts = shared_.global_scripts(merged, q->scripts, failed);
+    out.dialogue_conditions = shared_.global_conditions(merged, q->dialogue_conditions.list, failed);
+    out.event_conditions = shared_.global_conditions(merged, q->event_conditions.list, failed);
     out.fragment_script = q->fragments.script;
     for (const auto& f : q->fragments.fragments) {
         auto& fragment = out.fragments.emplace_back(std::make_unique<wfb::QuestFragmentT>());
@@ -68,7 +70,8 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
             auto& e = s->log.emplace_back(std::make_unique<wfb::QuestLogEntryT>());
             e->flags = static_cast<wfb::LogEntryFlags>(entry.flags);
             e->text = entry.text.text;
-            e->conditions = static_cast<std::uint16_t>(entry.conditions.raw.size());
+            e->conditions = static_cast<std::uint16_t>(entry.conditions.list.size());
+            e->condition_list = shared_.global_conditions(merged, entry.conditions.list, failed);
         }
     }
     std::ranges::stable_sort(out.stages, {}, [](const auto& s) { return s->index; });
@@ -94,7 +97,8 @@ void QuestCollector::on_quest(const record::MergedRecord& merged, io::SpanReader
         a->external_alias = alias.external_alias;
         a->created_object = shared_.global(merged, alias.created_object, failed);
         a->create_at = alias.create_at;
-        a->conditions = static_cast<std::uint16_t>(alias.conditions.raw.size());
+        a->conditions = static_cast<std::uint16_t>(alias.conditions.list.size());
+        a->condition_list = shared_.global_conditions(merged, alias.conditions.list, failed);
         a->display_name = shared_.global(merged, alias.display_name, failed);
         for (auto& attached : q->fragments.aliases) {
             if (attached.alias.alias >= 0 &&

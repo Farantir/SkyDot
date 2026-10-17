@@ -27,6 +27,7 @@ add_executable(bethconv_unit_tests
     test_package.cpp
     test_vmad.cpp
     test_quest.cpp
+    test_dialogue.cpp
     test_lod_asset.cpp
     test_hkx.cpp
     test_animation_data.cpp

@@ -657,8 +657,8 @@ bool read_alias_field(Quest::Alias& alias, const FieldHeader& field, io::SpanRea
         append_formid(failure, alias.factions, body);
     } else if (field.type == FourCC{"ALPC"}) {
         append_formid(failure, alias.packages, body);
-    } else if (read_condition_field(alias.conditions.raw, alias.conditions.strings, field, body,
-                                    failure) ||
+    } else if (read_ctda_field(alias.conditions.list, alias.conditions.declared_count, field,
+                                body, failure) ||
                read_keyword_field(alias.keywords, field, body, failure) ||
                read_container_field(alias.items, alias.declared_item_count, field, body,
                                     failure)) {
@@ -784,7 +784,7 @@ io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx)
                 open = Open::target;
             } else if (auto* into = conditions();
                        into != nullptr &&
-                       read_condition_field(into->raw, into->strings, field, body, failure)) {
+                       read_ctda_field(into->list, into->declared_count, field, body, failure)) {
                 return true;
             } else {
                 return false;

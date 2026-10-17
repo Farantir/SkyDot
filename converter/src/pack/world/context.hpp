@@ -7,6 +7,7 @@
 
 #include "bethconv/pack/world.hpp"
 #include "bethconv/pack/world_generated.h"
+#include "bethconv/record/conditions.hpp"
 #include "bethconv/record/load_order.hpp"
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/types.hpp"
@@ -40,6 +41,11 @@ public:
     /// Script data as world.fb's tables, with object properties made global.
     [[nodiscard]] std::vector<std::unique_ptr<wfb::ScriptT>> global_scripts(
         const record::MergedRecord& merged, const record::ScriptData& data, bool& failed) const;
+
+    /// Conditions as world.fb's tables, with their FormID parameters made global.
+    [[nodiscard]] std::vector<std::unique_ptr<wfb::ConditionT>> global_conditions(
+        const record::MergedRecord& merged, const std::vector<record::Condition>& list,
+        bool& failed) const;
 
     [[nodiscard]] std::vector<std::uint32_t> global_all(const record::MergedRecord& merged,
                                                         const std::vector<record::FormId>& forms,

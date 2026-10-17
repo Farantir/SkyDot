@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 25;
+inline constexpr std::uint32_t k_world_format_version = 26;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -78,6 +78,17 @@ struct WorldStats {
     std::uint64_t messages{};
     /// EXPL (format 23).
     std::uint64_t explosions{};
+    /// DLBR, DIAL, INFO (and their responses), VTYP, LCTN, RELA and FACT
+    /// (format 26). `orphan_infos`: INFOs whose topic is absent; not included.
+    std::uint64_t dialogue_branches{};
+    std::uint64_t dialogue_topics{};
+    std::uint64_t dialogue_infos{};
+    std::uint64_t dialogue_responses{};
+    std::uint64_t orphan_infos{};
+    std::uint64_t voice_types{};
+    std::uint64_t locations{};
+    std::uint64_t relationships{};
+    std::uint64_t factions{};
     /// AI packages and templates (format 9).
     std::uint64_t packages{};
     /// IMGS and LGTM (format 10).
@@ -178,6 +189,15 @@ public:
     [[nodiscard]] std::optional<wfb::KeywordT> keyword(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::FormListT> form_list(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::MessageT> message(std::uint32_t id) const;
+    /// Dialogue and what its conditions read (format 26).
+    [[nodiscard]] std::size_t dialogue_topic_count() const noexcept;
+    [[nodiscard]] std::optional<wfb::DialogueBranchT> dialogue_branch(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::DialogueTopicT> dialogue_topic(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::DialogueTopicT> dialogue_topics() const;
+    [[nodiscard]] std::optional<wfb::VoiceTypeT> voice_type(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::LocationT> location(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::FactionT> faction(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::RelationshipT> relationships() const;
     /// Plugin names and FormID prefixes, in load order.
     [[nodiscard]] std::vector<wfb::PluginT> plugins() const;
     /// The exterior cell of `world` at grid (x, y); linear.

@@ -266,6 +266,39 @@ std::optional<wfb::ExplosionT> WorldFile::explosion(std::uint32_t id) const {
     return unpack(lookup(impl_->root->explosions(), id));
 }
 
+std::size_t WorldFile::dialogue_topic_count() const noexcept {
+    const auto* list = impl_->root->dialogue_topics();
+    return list != nullptr ? list->size() : 0;
+}
+
+std::optional<wfb::DialogueBranchT> WorldFile::dialogue_branch(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->dialogue_branches(), id));
+}
+
+std::optional<wfb::DialogueTopicT> WorldFile::dialogue_topic(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->dialogue_topics(), id));
+}
+
+std::vector<wfb::DialogueTopicT> WorldFile::dialogue_topics() const {
+    return unpack_all(impl_->root->dialogue_topics());
+}
+
+std::optional<wfb::VoiceTypeT> WorldFile::voice_type(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->voice_types(), id));
+}
+
+std::optional<wfb::LocationT> WorldFile::location(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->locations(), id));
+}
+
+std::optional<wfb::FactionT> WorldFile::faction(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->factions(), id));
+}
+
+std::vector<wfb::RelationshipT> WorldFile::relationships() const {
+    return unpack_all(impl_->root->relationships());
+}
+
 std::optional<wfb::KeywordT> WorldFile::keyword(std::uint32_t id) const {
     return unpack(lookup(impl_->root->keywords(), id));
 }

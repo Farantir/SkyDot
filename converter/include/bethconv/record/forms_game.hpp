@@ -361,8 +361,8 @@ struct Quest {
     bool has_next{};                 ///< NEXT, a marker.
 
     struct Conditions {
-        std::vector<std::vector<std::byte>> raw; ///< CTDA, 32 bytes each.
-        std::vector<std::string> strings;        ///< CIS1/CIS2
+        std::vector<Condition> list;       ///< CTDA with its CIS1/CIS2.
+        std::uint32_t declared_count{};    ///< CITC
     };
     Conditions dialogue_conditions;
     Conditions event_conditions;

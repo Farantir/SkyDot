@@ -44,6 +44,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     sink.quests().finish(root);
     sink.actors().finish(root, sink.ai().form_lists());
     sink.ai().finish(root);
+    sink.dialogue().finish(root, world);
     for (const auto& entry : order.entries()) {
         if (entry.active) {
             auto& plugin = root.plugins.emplace_back(std::make_unique<wfb::PluginT>());
@@ -90,6 +91,12 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto messages = pack_all(builder, root.messages);
     const auto grasses = pack_all(builder, root.grasses);
     const auto addon_nodes = pack_all(builder, root.addon_nodes);
+    const auto dialogue_branches = pack_all(builder, root.dialogue_branches);
+    const auto dialogue_topics = pack_all(builder, root.dialogue_topics);
+    const auto voice_types = pack_all(builder, root.voice_types);
+    const auto locations = pack_all(builder, root.locations);
+    const auto relationships = pack_all(builder, root.relationships);
+    const auto factions = pack_all(builder, root.factions);
     const auto plugins = pack_all(builder, root.plugins);
     const auto actors = builder.CreateVectorOfStructs(root.actors);
     wfb::FinishWorldBuffer(
@@ -99,7 +106,9 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   armor_addons, outfits, leveled_lists, packages, image_spaces,
                                   material_objects, grasses, addon_nodes, volumetric_lightings, ammos,
                                   projectiles, sound_descriptors, sound_markers,
-                                  sound_output_models, keywords, form_lists, messages, explosions));
+                                  sound_output_models, keywords, form_lists, messages, explosions,
+                                  dialogue_branches, dialogue_topics, voice_types, locations,
+                                  relationships, factions));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

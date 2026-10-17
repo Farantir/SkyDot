@@ -62,7 +62,20 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         ai_.collect(merged, data, form_ctx);
         break;
     case FourCC{"INFO"}.value:
+        dialogue_.collect(merged, data, form_ctx);
         break;
+    case FourCC{"DLBR"}.value:
+    case FourCC{"DIAL"}.value:
+    case FourCC{"VTYP"}.value:
+    case FourCC{"LCTN"}.value:
+    case FourCC{"RELA"}.value:
+    case FourCC{"FACT"}.value: {
+        // Bases too, as before; read twice.
+        io::SpanReader copy = data;
+        dialogue_.collect(merged, copy, form_ctx);
+        bases_.collect_generic(merged, data, form_ctx);
+        break;
+    }
     case FourCC{"SNDR"}.value:
     case FourCC{"SOPM"}.value:
     case FourCC{"KYWD"}.value:

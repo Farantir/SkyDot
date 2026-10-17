@@ -120,6 +120,8 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.morality = npc->morality;
     out.mood = npc->mood;
     out.assistance = npc->assistance;
+    out.voice_type = shared_.global(merged, npc->voice_type, failed);
+    out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -165,6 +167,8 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
     out.health_regen = race->health_regen;
     out.magicka_regen = race->magicka_regen;
     out.stamina_regen = race->stamina_regen;
+    out.voice_types = {shared_.global(merged, race->voice_male, failed),
+                       shared_.global(merged, race->voice_female, failed)};
     if (failed) {
         ++shared_.stats().unresolved;
     }
