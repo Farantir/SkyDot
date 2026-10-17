@@ -230,6 +230,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_scene
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/scene.gd")
+    set_tests_properties(sse_scene PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     function(skydot_sse_test name)
         cmake_parse_arguments(T "" "PASS;FAIL;FIXTURES_SETUP;FIXTURES_REQUIRED" "ARGS" ${ARGN})
         add_test(NAME ${name}

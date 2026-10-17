@@ -85,6 +85,7 @@ var has_activate := false
 var damage: Array[Vector2] = []  # --damage 0xREF=AMOUNT: DamageObject calls after the activations
 var activate_wait := 0  # frames between two --activate references (0: next frame)
 var quit_after := -1  # frames after the last --activate before quitting (-1: 5)
+var start_quests := PackedStringArray()  # --start-quest EDID[,EDID]: started after the load
 var give: Array[Vector2i] = []  # (form id, count) the player starts with (--give)
 var save_to := ""  # saves when the --activate run ends
 var load_path := ""  # loads at start
@@ -200,6 +201,7 @@ func _read(args: Dictionary) -> void:
 		var form_text := entry if cut < 0 else entry.substr(0, cut)
 		var form: int = form_text.hex_to_int() if form_text.begins_with("0x") else form_text.to_int()
 		give.append(Vector2i(form, maxi(1, entry.substr(cut + 1).to_int()) if cut >= 0 else 1))
+	start_quests = PackedStringArray(String(args.get("start-quest", "")).split(",", false))
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	hud = args.has("hud") or not captures

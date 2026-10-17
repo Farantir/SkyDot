@@ -96,6 +96,9 @@
 # --activate-wait FRAMES waits that many frames between two of them, for
 # scripts and animations to play out; --quit-after FRAMES quits that many
 # frames after the last (default 5); without --activate, from the start.
+# --start-quest EDID[,EDID...] starts those quests after the load (a scene
+# with "begin on quest start" then begins once its actors are loaded); the
+# scenes' lines show as subtitles under the crosshair for speakers within 20 m.
 # --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
 # with --screenshot the lines play out first (--shot-delay).
 # --hud forces the health, magicka and stamina bars, the crosshair and the
@@ -223,6 +226,8 @@ func _create_components() -> void:
 	if _settings.hud:
 		_hud = Hud.new(_session, _controls)
 		add_child(_hud)
+	if _settings.hud or not _settings.start_quests.is_empty():
+		add_child(Subtitles.new(_session))
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
@@ -279,6 +284,7 @@ func _start_game() -> void:
 	if not settings.load_path.is_empty():
 		_session.load_game(settings.load_path)
 	_session.give(settings.give)
+	_session.start_quests(settings.start_quests)
 	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
 		print("--talk: 0x%08X cannot talk" % settings.talk)
 

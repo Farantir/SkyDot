@@ -63,6 +63,9 @@ signal dialogue_line(speaker: int, text: String, seconds: float)
 signal dialogue_topics(list: Array)
 ## The dialogue is over (a Goodbye line, or `dialogue_close`).
 signal dialogue_closed
+## A scene's line starts: the speaker's reference, the subtitle text and how
+## long it lasts. The shell decides whether the player is near enough to see it.
+signal subtitle_line(speaker: int, text: String, seconds: float)
 
 ## Stamina a sprinting player loses per second. To measure in the original
 ## (the game's fSprintStaminaDrainMult is a multiplier of something else).
@@ -103,6 +106,10 @@ var _talk_current := {}
 var _talk_left := 0.0
 var _talk_after := {}
 var _talk_topics: Array = []
+# Scenes: the dialogue actions waiting for the player's dialogue with their
+# speaker to end, and the lines each running action still has to finish.
+var _scene_held: Array = []
+var _scene_lines := {}  # "scene:action" -> lines left
 ## What scripts place, fire and play.
 var placed: PlacedRefs
 var projectiles: Projectiles
@@ -169,6 +176,11 @@ func _open_world() -> bool:
 			clock.attach_ai(ai)
 			ai.drive = world.actor_wander
 			ai.actor_left.connect(_on_actor_left)
+			papyrus.scene_package.connect(func(actor: int, package: int, push: bool) -> void:
+				if push:
+					ai.push_package(actor, package)
+				else:
+					ai.pop_package(actor, package))
 		else:
 			ai = null
 	world.foliage_bias = config.foliage_bias
@@ -205,6 +217,8 @@ func _make_game_nodes() -> void:
 	host.add_child(sounds)
 	speech = Speech.new(sounds, world.find_ref_node)
 	host.add_child(speech)
+	speech.line_started.connect(_on_speech_started)
+	speech.line_ended.connect(_on_speech_ended)
 	placed = PlacedRefs.new(world, papyrus)
 	host.add_child(placed)
 	papyrus.ref_placed.connect(placed.place)
@@ -272,6 +286,21 @@ func enter_cell(cell_name: String, at: Variant, target: Variant) -> bool:
 	return true
 
 
+## Start quests by editor id (the viewer's --start-quest); returns how many
+## started. A scene of such a quest with "begin on quest start" begins when its
+## actors are loaded.
+func start_quests(editor_ids: PackedStringArray) -> int:
+	var started := 0
+	for editor_id in editor_ids:
+		var quest := world.find_quest(editor_id.strip_edges())
+		if quest == 0:
+			failed.emit("no quest named " + editor_id)
+		elif papyrus.start_quest(quest):
+			print("quest %s started" % editor_id)
+			started += 1
+	return started
+
+
 ## Put items in the player's inventory: Vector2i(form id, count).
 func give(items: Array[Vector2i]) -> void:
 	for item in items:
@@ -288,6 +317,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 		transition.step(delta)
 	update_scripts(delta, feet)
 	update_dialogue(delta)
+	update_scenes(delta)
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	_drain_sprint(delta)
 	if ai != null:
@@ -340,6 +370,14 @@ func run_activation() -> void:
 
 func is_dialogue_open() -> bool:
 	return _talk_speaker != 0
+
+
+## How far the actor `ref` is from the player's view, metres; INF if it is not built.
+func distance_to_player(ref: int) -> float:
+	var node := world.find_ref_node(ref) as Node3D
+	if node == null or not node.is_inside_tree():
+		return INF
+	return _viewpoint.global_position.distance_to(node.global_position)
 
 
 ## The name of the actor `ref` for a subtitle; empty if it has none.
@@ -422,6 +460,40 @@ func update_dialogue(delta: float) -> void:
 	else:
 		_talk_topics = after["topics"]
 		dialogue_topics.emit(_talk_topics)
+
+
+## The scenes' frame: what the runner asks to be spoken goes through the
+## speakers' queues, and an action is done when its lines are. A speaker in
+## the player's dialogue is left alone until it ends.
+func update_scenes(delta: float) -> void:
+	var requests: Array = _scene_held
+	_scene_held = []
+	requests.append_array(papyrus.scenes_update(delta))
+	for request: Dictionary in requests:
+		if request["speaker"] == _talk_speaker:
+			_scene_held.append(request)
+			continue
+		var key := "%d:%d" % [request["scene"], request["action"]]
+		_scene_lines[key] = request["lines"].size()
+		for line: Dictionary in request["lines"]:
+			line["scene"] = request["scene"]
+			line["action"] = request["action"]
+			speech.say(request["speaker"], line)
+
+
+func _on_speech_started(speaker: int, line: Dictionary, seconds: float) -> void:
+	if line.has("scene") and not (line["text"] as String).is_empty():
+		subtitle_line.emit(speaker, line["text"], seconds)
+
+
+func _on_speech_ended(_speaker: int, line: Dictionary) -> void:
+	if not line.has("scene"):
+		return
+	var key := "%d:%d" % [line["scene"], line["action"]]
+	_scene_lines[key] = int(_scene_lines.get(key, 1)) - 1
+	if _scene_lines[key] <= 0:
+		_scene_lines.erase(key)
+		papyrus.scene_action_done(line["scene"], line["action"])
 
 
 func _finish_talk() -> void:
