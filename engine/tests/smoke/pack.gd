@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Mounts the pack from `bethconv-testpack` and queries it. Expected numbers
-# come from that tool (converter/tools/testpack/main.cpp: 47 forms, 43 distinct
-# assets, 47 index entries) and change with it.
+# come from that tool (converter/tools/testpack/main.cpp: 46 distinct
+# assets, 50 index entries) and change with it.
 extends SceneTree
 
 var failures := 0
@@ -32,8 +32,8 @@ func _run(pack_dir: String) -> void:
     if not pack.is_open():
         return
 
-    expect(pack.get_asset_count() == 43, "43 distinct assets, got %d" % pack.get_asset_count())
-    expect(pack.get_index_count() == 47, "47 index entries, got %d" % pack.get_index_count())
+    expect(pack.get_asset_count() == 46, "46 distinct assets, got %d" % pack.get_asset_count())
+    expect(pack.get_index_count() == 50, "50 index entries, got %d" % pack.get_index_count())
     expect(pack.get_unknown_kind_count() == 0, "every kind is one this engine knows")
 
     expect(pack.get_store_layout() == "blob", "the test pack keeps its assets in a blob")
@@ -144,7 +144,7 @@ func _check_world(pack: SkydotPack) -> void:
     if world == null:
         return
     expect(world.get_cell_count() == 4, "4 cells, got %d" % world.get_cell_count())
-    expect(world.get_base_count() == 8, "8 bases, got %d" % world.get_base_count())
+    expect(world.get_base_count() == 13, "13 bases, got %d" % world.get_base_count())
 
     # Sound: SNDR with both file spellings normalized, its SOPM, and the SOUN.
     var sound_id := world.find_sound_descriptor("TESTPACKCLICKSD")

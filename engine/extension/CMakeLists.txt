@@ -59,6 +59,8 @@ set(SKYDOT_CORE_SOURCES
     src/data/actors.hpp
     src/data/leveled.cpp
     src/data/leveled.hpp
+    src/data/start_inventory.cpp
+    src/data/start_inventory.hpp
     src/data/large_refs.cpp
     src/data/large_refs.hpp
     src/data/world_data.cpp
@@ -73,6 +75,10 @@ set(SKYDOT_CORE_SOURCES
     src/vm/census.cpp
     src/vm/inventory.cpp
     src/vm/inventory.hpp
+    src/vm/equipment.cpp
+    src/vm/equipment.hpp
+    src/vm/item_states.cpp
+    src/vm/item_states.hpp
     src/vm/actor_states.cpp
     src/vm/actor_states.hpp
     src/vm/actor_values.hpp
@@ -240,6 +246,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_activation.cpp
     src/vm/papyrus_conditions.cpp
     src/vm/papyrus_dialogue.cpp
+    src/vm/papyrus_items.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp

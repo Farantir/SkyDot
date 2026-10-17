@@ -23,6 +23,7 @@
 #pragma once
 
 #include "assets/pack.hpp"
+#include "data/actors.hpp"
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
@@ -31,7 +32,9 @@
 #include "session/clock.hpp"
 #include "vm/actor_states.hpp"
 #include "vm/condition_world.hpp"
+#include "vm/equipment.hpp"
 #include "vm/id_ranges.hpp"
+#include "vm/item_states.hpp"
 #include "vm/quest_states.hpp"
 #include "vm/ref_states.hpp"
 #include "vm/triggers.hpp"
@@ -78,6 +81,7 @@ public:
     static constexpr std::int64_t ALIAS_HANDLE_BASE = vm::id_ranges::alias_handles.first;
 
     SkydotPapyrus();
+    ~SkydotPapyrus() override;
 
     /// The game clock (SkydotClock): the one source of game time. Utility.
     /// GetCurrentGameTime reads it, and so do the GameHour, GameDaysPassed and
@@ -111,6 +115,34 @@ public:
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
     /// Put `count` of `item` into `owner`'s inventory (the viewer's --give).
     void add_item(std::int64_t owner, std::int64_t item, std::int64_t count);
+
+    // ---- items (vm/papyrus_items.cpp; the rules are vm/equipment.hpp, what
+    // containers and actors start with is data/start_inventory.hpp)
+    /// Resolve `owner`'s start inventory now, if no one has touched it yet:
+    /// a container's CNTO, an actor's CNTO and default outfit (worn), the
+    /// leveled lists in them drawn with a seed of the reference. Every other
+    /// inventory call does this first.
+    void resolve(std::int64_t owner);
+    /// What the data says of item `form`: found, form, name, editor_id,
+    /// category (misc, weapon, armor, clothing, jewelry, potion, food,
+    /// ingredient, book, key, soul_gem, scroll, ammo, light), weight, value,
+    /// playable, equip_slot, weapon_type, damage, armor_rating, armor_type,
+    /// biped_slots. Empty if `form` is no item.
+    godot::Dictionary item_info(std::int64_t form) const;
+    /// `owner`'s items, resolved first, by name: {form, name, count, weight,
+    /// value, category, equipped, playable} each.
+    godot::Array inventory(std::int64_t owner);
+    /// Move up to `count` of `form` from `from` to `to` (an item that runs out
+    /// is taken off); returns how many moved.
+    std::int64_t transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count);
+    /// Equip (or consume, or read) one `form` of `owner`'s; false if it is
+    /// not carried or cannot be equipped. Weapons go to the right hand, or the
+    /// left where only that fits (see vm/equipment.hpp).
+    bool equip(std::int64_t owner, std::int64_t form);
+    /// Take `form` off `owner`; false if it was not equipped.
+    bool unequip(std::int64_t owner, std::int64_t form);
+    /// {right, left, ammo, worn: [forms]} of `owner`.
+    godot::Dictionary equipment(std::int64_t owner);
     /// How a reference is activated (activate_ref's `source`).
     static constexpr std::int64_t ACTIVATE_PLAYER = 0;
     static constexpr std::int64_t ACTIVATE_SCRIPT = 1;
@@ -357,6 +389,7 @@ private:
     void bind_world_natives();
     void bind_runtime_natives();
     void bind_actor_natives();
+    void bind_item_natives();
     /// Emit `actor_died` for the actors that died since the last call.
     void flush_deaths();
     /// get_quest's dictionary, cached; empty if not a quest.
@@ -429,6 +462,21 @@ private:
     vm::RefStates states_;
     /// What scripts and the game did to actors' values (ACTV).
     vm::ActorStates actors_;
+    /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
+    /// inventory resolves on the first look at it, also from const queries.
+    mutable vm::ItemStates items_;
+    void resolve_owner(std::uint32_t owner) const;
+    vm::ItemInfo item_info_of(std::uint32_t form) const;
+    /// Take items from `owner` (resolved first); an item that runs out is
+    /// taken off.
+    std::int64_t remove_item(std::uint32_t owner, std::uint32_t form, std::int64_t count);
+    /// Equip one `form` of `owner`'s; `left` asks for the left hand where
+    /// either will do. Adds the item if `add_missing`.
+    bool equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing);
+    bool unequip_item(std::uint32_t owner, std::uint32_t form);
+    void unequip_all(std::uint32_t owner);
+    /// The worn armor of resolved actors, for the actor builder.
+    WornProvider worn_provider() const;
     /// The rules and sequence of activations (vm/activation.hpp); the adapter
     /// answers what they ask of the world (vm/papyrus_activation.cpp).
     struct ActivationAdapter;
@@ -457,6 +505,7 @@ private:
         vm::Vm::Snapshot vm;
         vm::RefStates states;
         vm::ActorStates actors;
+        vm::ItemStates items;
         dialogue::DialogueStates dialogue;
         std::unique_ptr<scenes::Scenes> scenes;
         HostSnapshot host;

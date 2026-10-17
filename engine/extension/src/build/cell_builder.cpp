@@ -95,9 +95,9 @@ constexpr float k_no_water = 1.0e30F;
 
 
 skydot::ActorPlan plan_for(const wfb::World& world, const wfb::ActorRef& actor,
-                           const std::shared_ptr<AssetCache>& assets) {
+                           const std::shared_ptr<AssetCache>& assets, const WornProvider& worn) {
     const auto exists = [&](const std::string& vpath) { return assets != nullptr && assets->has(vpath); };
-    return plan_actor(world, actor.base(), actor.ref(), exists);
+    return plan_actor(world, actor.base(), actor.ref(), exists, worn);
 }
 
 } // namespace
@@ -126,7 +126,7 @@ TerrainBuilder& CellBuilder::terrain_builder() {
     return *terrain_;
 }
 
-ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor, assets_); }
+ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor, assets_, worn_); }
 
 /// What a build counts; the models' own counts (materials, billboards, effects, bodies) are
 /// DecorationStats'.
@@ -795,7 +795,7 @@ std::vector<std::string> CellBuilder::actor_resources(const wfb::ActorRef& actor
     if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         return {};
     }
-    auto plan = plan_for(*world_fb(), actor, assets_);
+    auto plan = plan_for(*world_fb(), actor, assets_, worn_);
     std::vector<std::string> out = std::move(plan.parts);
     if (plan.missing.empty() && !plan.skeleton.empty()) {
         const auto clips = actor_clips(plan);
@@ -888,7 +888,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         ++stats.disabled;
         return;
     }
-    const auto plan = plan_for(*world_fb(), actor, assets_);
+    const auto plan = plan_for(*world_fb(), actor, assets_, worn_);
     const auto fail = [&](const String& why) {
         const std::int64_t n = stats.actor_failures.get(why, 0);
         stats.actor_failures[why] = n + 1;

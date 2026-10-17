@@ -52,8 +52,8 @@ func _run(pack_dir: String) -> void:
         OS.delay_msec(1)
     var cell := world.build_exterior(world_id, 0, 0)
     var stats: Dictionary = cell.get_meta("skydot_stats")
-    # The cube and the door use the cube with a box; the spaced cube has none.
-    expect(stats["bodies"] == 2, "two references get a body: %s" % stats)
+    # The cube, the door and the chest (the cube again) have a box; the spaced cube has none.
+    expect(stats["bodies"] == 3, "three references get a body: %s" % stats)
     root.add_child(cell)
     await ticks(2)
 

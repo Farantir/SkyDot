@@ -10,6 +10,7 @@
 //   PAPY  u32 count + the references whose scripts were attached; u32 count
 //         of triggers, per trigger the ref and its actors (u32 count + ids);
 //         u32 count of actors with f64 x3 position; u32 next form id
+//   ITST  (optional) resolved owners, leveled actor picks and equipment, vm/item_states.hpp
 //   QUST  u32 quests (id; running, started, completed, failed, active as
 //         u8s; i32 stage; u32 count + done stages; u32 count + objective
 //         index and bits); u32 count + quests with scripts; u32 aliases
@@ -127,6 +128,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     vm_->save_to(out);
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
     out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
+    out.add("ITST", vm::ItemStates::k_section_version, items_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
     if (scenes_ != nullptr) {
         out.add("SCEN", scenes::Scenes::k_section_version, scenes_->save());
@@ -191,6 +193,16 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
             return fail("the ACTV section of the save is damaged");
         }
     }
+    // ITST is optional: a save without it has every owner unresolved (they
+    // resolve on touch) and nothing equipped.
+    if (const auto* itst = file.find("ITST")) {
+        if (itst->version != vm::ItemStates::k_section_version) {
+            return fail("section ITST has a version this engine does not read");
+        }
+        if (!vm::ItemStates::load(file.open(*itst), pending->items)) {
+            return fail("the ITST section of the save is damaged");
+        }
+    }
     // DLGS is optional: a save without it has said nothing.
     if (const auto* dlgs = file.find("DLGS")) {
         if (dlgs->version != dialogue::DialogueStates::k_section_version) {
@@ -246,6 +258,7 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
+    items_.adopt(std::move(pending->items));
     dialogue_states_.adopt(std::move(pending->dialogue));
     if (auto* logic = scene_logic()) {
         if (pending->scenes != nullptr) {

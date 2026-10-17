@@ -164,8 +164,8 @@ func _check_exterior(world: SkydotWorld) -> void:
         expect(false, "the origin cell builds")
         return
     var stats: Dictionary = origin.get_meta("skydot_stats")
-    expect(stats["placed"] == 3 and stats["lights"] == 1 and stats["terrain"],
-           "two cubes, a door, the persistent light and terrain: %s" % stats)
+    expect(stats["placed"] == 4 and stats["lights"] == 1 and stats["terrain"],
+           "two cubes, a door, a chest, the persistent light and terrain: %s" % stats)
     var terrain := origin.find_child("Terrain", false, false)
     var quadrants := terrain.find_children("Quadrant*", "MeshInstance3D", false, false)
     expect(quadrants.size() == 4, "one mesh per quadrant")

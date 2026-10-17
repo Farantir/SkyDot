@@ -64,6 +64,9 @@ public:
     /// The pack's asset cache, which every model and texture comes from;
     /// without it nothing loads.
     void set_assets(std::shared_ptr<AssetCache> assets);
+    /// What actors wear when the game knows it (data/actors.hpp); none: the
+    /// actors' default outfits. Called on the building thread.
+    void set_worn_provider(WornProvider worn) { worn_ = std::move(worn); }
     BuildOptions& options() { return options_; }
     const BuildOptions& options() const { return options_; }
 
@@ -177,6 +180,7 @@ private:
     std::shared_ptr<const WorldData> data_;
     ActorPlacement& placement_;
     std::shared_ptr<AssetCache> assets_;
+    WornProvider worn_;
     BuildOptions options_;
 
     /// Builds under way, by root instance id.

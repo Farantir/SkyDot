@@ -301,8 +301,9 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
     } else if (const auto* outfit = outfit_of(w, inventory->default_outfit());
                outfit != nullptr && outfit->items() != nullptr) {
         known = true;
+        const auto& outfit_items = *outfit->items();
         leveled::Rng rng(leveled::seed_for(ref, leveled::k_purpose_outfit));
-        for (const std::uint32_t item : *outfit->items()) {
+        for (const std::uint32_t item : outfit_items) {
             worn_items(w, item, actor_level(*npc), rng, items);
         }
     }

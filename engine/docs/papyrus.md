@@ -140,7 +140,8 @@ shows XPRM bounds doubled. Not checked against the game.
 | Utility | `Wait`, `GetCurrentRealTime`, `GetCurrentGameTime` (the game clock, SkydotClock), `RandomInt`, `RandomFloat` |
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `HasKeyword` (a reference answers for its base's KWDA; only bases that world.fb has, i.e. with a model or scripts, carry keywords), `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
-| ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `PlaceAtMe`, `Delete`, `DeleteWhenAble`, `DamageObject`, `ClearDestruction`, `SetDestroyed`, `IsDestroyed`, `GetCurrentDestructionStage`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount` |
+| ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `PlaceAtMe`, `Delete`, `DeleteWhenAble`, `DamageObject`, `ClearDestruction`, `SetDestroyed`, `IsDestroyed`, `GetCurrentDestructionStage`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount`, `GetItemCount`, `AddItem`, `RemoveItem` (the owner's start inventory is resolved first; an item that runs out is taken off) |
+| Actor | `IsDead`, the actor value natives, `EquipItem` (adds the item if missing; potions, food, ingredients and scrolls are consumed with a log line, books read with one, neither does anything yet), `UnequipItem`, `UnequipAll`, `IsEquipped`, `GetEquippedItemType` (hand 0 left, 1 right: 0 none, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword, 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow), `GetEquippedWeapon`, `GetEquippedShield` (rules: `vm/equipment.hpp`) |
 | Keyword | `GetKeyword` (by editor id, any case; KYWD table of world.fb) |
 | FormList | `GetSize`, `GetAt`, `Find`, `HasForm` (the FLST's forms, then those added; nested lists are not looked into), `AddForm`, `RemoveAddedForm`, `Revert` (the additions are `Vm::form_lists`, saved with the VM) |
 | Message | `Show` (MESG text, `%.0f`-style placeholders filled from the arguments; signal `message`; returns 0, the first button), `ShowAsHelpMessage` (as a notification) |
@@ -239,6 +240,23 @@ damage are not applied). Then the scripts get
 forget the damage and bring back the base's model. State is saved with the VM
 (`Vm::destruction`). Self-damage per second and debris are not applied.
 
+## Items
+
+A container's or an actor's start inventory is resolved the first time
+anything looks at it (`resolve`, `inventory`, `transfer`, a script's
+`GetItemCount`, `AddItem`, `RemoveItem`, a condition's item count): a
+container's CNTO, an actor's CNTO (through a template that supplies the
+inventory) and its default outfit, which it wears. Leveled lists in them are
+drawn by `data/leveled.hpp` (splitmix64 seeded from the reference, so a
+reference always holds the same, and the actor builder draws its outfit with
+the same seed); the player's level is 1 until stats exist. A placed leveled
+actor list picks its actor once and the pick is kept. What is held, worn and
+resolved is saved (ITST). `item_info(form)`, `inventory(owner)`,
+`transfer(from, to, form, count)`, `equip(owner, form)`, `unequip(owner,
+form)` and `equipment(owner)` are for the game layer; the rules are in
+`vm/equipment.hpp`. An actor built after a script equipped something shows
+it (`SkydotWorld.set_worn_provider`).
+
 ## Census
 
 `game/tools/papyrus_census.gd` reads the code of every script in a pack
@@ -255,32 +273,26 @@ godot4.7 --headless --path game --script res://tools/papyrus_census.gd -- \
 `--all on` adds a table of every native called. Rerun it after binding
 natives and update the numbers below.
 
-Skyrim SE pack, 14,325 scripts (2026-10-13):
+Skyrim SE pack, 14,325 scripts (2026-10-17):
 
 | | Natives | Call sites |
 | --- | ---: | ---: |
 | Called | 549 | 65,685 |
-| Bound | 110 | 41,205 |
+| Bound | 133 | 51,411 |
 | Ignored (no-op) | 19 | 499 |
-| Unbound | 420 | 23,981 |
+| Unbound | 397 | 13,775 |
 
-Unbound natives with most call sites (the first are quest topic and scene
-plumbing, then movement and actor state, which are the work still to come):
+Unbound natives with most call sites (movement and actor state, which are
+the work still to come):
 
 | Native | Call sites |
 | --- | ---: |
-| `TopicInfo.GetOwningQuest` | 6,494 |
 | `ObjectReference.MoveTo` | 1,291 |
 | `Actor.EvaluatePackage` | 1,282 |
-| `Scene.GetOwningQuest` | 1,007 |
-| `Scene.Start` | 942 |
 | `Actor.RemoveFromFaction` | 536 |
-| `Scene.Stop` | 486 |
-| `Actor.IsDead` | 424 |
 | `Actor.StartCombat` | 331 |
 | `Actor.PlayIdle` | 327 |
 | `Actor.RemoveSpell` | 322 |
-| `Actor.SetActorValue` | 301 |
 | `Actor.AddSpell` | 288 |
 | `Actor.Kill` | 287 |
 | `ObjectReference.AddToMap` | 287 |
@@ -297,7 +309,7 @@ magic `SKYS`, sections (FourCC, version, length, bytes), a CRC-32 trailer.
 `SkydotPapyrus.write_sections(writer)` adds HEAD (engine version, the pack's
 world hash and load order), the VM's VMST (instances with their variables
 and states, running and waiting threads with every frame, timers, pending
-results, scheduled host calls, the clock and the random state), INVT, ANIM
+results, scheduled host calls, the clock and the random state), INVT, ITST (optional: resolved owners, leveled actor picks, equipment; an old save without it has every inventory unresolved and resolves it on touch), ANIM
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
 references) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,

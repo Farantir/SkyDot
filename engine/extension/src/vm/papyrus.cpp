@@ -70,6 +70,13 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("add_item", "owner", "item", "count"), &SkydotPapyrus::add_item);
+    godot::ClassDB::bind_method(D_METHOD("resolve", "owner"), &SkydotPapyrus::resolve);
+    godot::ClassDB::bind_method(D_METHOD("item_info", "form"), &SkydotPapyrus::item_info);
+    godot::ClassDB::bind_method(D_METHOD("inventory", "owner"), &SkydotPapyrus::inventory);
+    godot::ClassDB::bind_method(D_METHOD("transfer", "from", "to", "form", "count"), &SkydotPapyrus::transfer);
+    godot::ClassDB::bind_method(D_METHOD("equip", "owner", "form"), &SkydotPapyrus::equip);
+    godot::ClassDB::bind_method(D_METHOD("unequip", "owner", "form"), &SkydotPapyrus::unequip);
+    godot::ClassDB::bind_method(D_METHOD("equipment", "owner"), &SkydotPapyrus::equipment);
     godot::ClassDB::bind_method(D_METHOD("send_event", "ref", "event", "args"),
                                 &SkydotPapyrus::send_event);
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
@@ -243,6 +250,13 @@ SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) {
     bind_activations();
 }
 
+SkydotPapyrus::~SkydotPapyrus() {
+    // The world outlives this object and must not call back into it.
+    if (world_.is_valid()) {
+        world_->set_worn_provider({});
+    }
+}
+
 /// Host calls scheduled on the VM's clock: the activations of Activate and of
 /// activate children.
 void SkydotPapyrus::install_scheduled_handler() {
@@ -260,6 +274,7 @@ void SkydotPapyrus::reset() {
     loaded_.clear();
     states_.clear();
     actors_.clear();
+    items_.clear();
     dialogue_states_.clear();
     dialogue_.reset();
     scenes_.reset();
@@ -280,6 +295,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     }
     pack_ = pack;
     world_ = world;
+    world_->set_worn_provider(worn_provider());
     vm_ = std::make_unique<vm::Vm>();
     install_scheduled_handler();
     reset();
@@ -556,6 +572,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,
+        &SkydotPapyrus::bind_item_natives,
         &SkydotPapyrus::bind_runtime_natives,
     };
     for (const Registration registration : table) {
@@ -812,10 +829,12 @@ bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
 }
 
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
+    resolve_owner(static_cast<std::uint32_t>(owner));
     vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
 }
 
 std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) const {
+    resolve_owner(static_cast<std::uint32_t>(owner));
     return vm_->inventory().count(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item));
 }
 

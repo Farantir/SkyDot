@@ -131,6 +131,7 @@ func _run(pack_dir: String) -> void:
     _check_triggers(vm, world)
     _check_detach(vm, world)
     _check_timers_and_natives(vm)
+    _check_items(vm, pack, world)
     _check_save(vm, pack, world)
     _check_activation(vm)
     _check_loaded_state(vm, world, interior)
@@ -285,6 +286,78 @@ func _check_timers_and_natives(vm: SkydotPapyrus) -> void:
     finish(vm, vm.call_method(timer, "TestpackTimerScript", "Guard", []))
     expect(vm.is_activation_blocked(timer), "BlockActivation blocks")
     expect(vm.get_lock_level(timer) == 0, "Lock locks: %d" % vm.get_lock_level(timer))
+
+const SWORD := 0x190
+const CUIRASS := 0x191
+const GOLD := 0x192
+const CHEST := 0x214
+const PLAYER := 0x14
+
+func _item(vm: SkydotPapyrus, fn: String, args: Array) -> Variant:
+    return finish(vm, vm.call_global("TestpackItemScript", fn, args))
+
+## The test pack's chest holds 25 gold and one of a leveled list's sword or
+## cuirass; items move, equip and survive a save, through the API and the
+## natives.
+func _check_items(vm: SkydotPapyrus, pack: SkydotPack, world: SkydotWorld) -> void:
+    var inventory := vm.inventory(CHEST)
+    expect(inventory.size() == 2, "the chest resolves to gold and one more: %s" % [inventory])
+    var gold: Dictionary = inventory[0] if inventory[0]["form"] == GOLD else inventory[1]
+    var other: Dictionary = inventory[1] if inventory[0]["form"] == GOLD else inventory[0]
+    expect(gold["form"] == GOLD and gold["count"] == 25 and gold["name"] == "Testpack Gold", "25 gold")
+    expect(gold["category"] == "misc" and gold["value"] == 1 and gold["playable"], "gold is a playable misc item")
+    expect(other["form"] in [SWORD, CUIRASS] and other["count"] == 1, "one of the list's items")
+    expect(vm.inventory(CHEST) == inventory, "and the same again")
+    expect(_item(vm, "Count", [CHEST, GOLD]) == 25, "GetItemCount sees the gold")
+
+    var sword := vm.item_info(SWORD)
+    expect(sword["found"] and sword["category"] == "weapon" and sword["weapon_type"] == 1, "the sword: %s" % [sword])
+    expect(sword["equip_slot"] == 0x13F42 and sword["damage"] == 7.0 and sword["value"] == 25, "its slot, damage, value")
+    var cuirass := vm.item_info(CUIRASS)
+    expect(cuirass["category"] == "armor" and cuirass["armor_type"] == 1 and cuirass["biped_slots"] == 4, "the cuirass")
+    expect(is_equal_approx(cuirass["armor_rating"], 25.0), "its rating is DNAM / 100")
+    expect(vm.item_info(CHEST).is_empty(), "a chest is no item")
+
+    # Moving: gold, then everything.
+    expect(vm.transfer(CHEST, PLAYER, GOLD, 100) == 25, "all 25 gold move")
+    expect(vm.transfer(CHEST, PLAYER, GOLD, 1) == 0, "no more")
+    expect(vm.transfer(CHEST, PLAYER, other["form"], 1) == 1, "the other item moves")
+    expect(vm.inventory(CHEST).is_empty(), "the chest is empty and stays so (it is resolved)")
+    expect(_item(vm, "Count", [PLAYER, GOLD]) == 25, "the player has the gold")
+
+    # Equipping.
+    vm.add_item(PLAYER, SWORD, 1)
+    vm.add_item(PLAYER, CUIRASS, 1)
+    expect(vm.equip(PLAYER, SWORD) and vm.equip(PLAYER, CUIRASS), "sword and cuirass equip")
+    expect(not vm.equip(PLAYER, GOLD), "gold does not")
+    expect(_item(vm, "Wearing", [PLAYER, SWORD]) and _item(vm, "Wearing", [PLAYER, CUIRASS]), "IsEquipped")
+    expect(_item(vm, "HandType", [PLAYER, 1]) == 1 and _item(vm, "HandType", [PLAYER, 0]) == 0, "a sword in the right hand")
+    expect(_item(vm, "WeaponId", [PLAYER, false]) == SWORD and _item(vm, "WeaponId", [PLAYER, true]) == 0, "GetEquippedWeapon")
+    expect(_item(vm, "ShieldId", [PLAYER]) == 0, "no shield")
+    var worn := vm.equipment(PLAYER)
+    expect(worn["right"] == SWORD and worn["left"] == 0 and worn["worn"] == PackedInt64Array([CUIRASS]), "equipment: %s" % [worn])
+    var rows := vm.inventory(PLAYER).filter(func(row: Dictionary) -> bool: return row["equipped"])
+    expect(rows.size() == 2, "the inventory marks both")
+
+    # Saved with the game.
+    var bytes := vm.save_state()
+    var fresh := SkydotPapyrus.new()
+    fresh.setup(pack, world)
+    expect(fresh.load_state(bytes) == OK, "loads: " + fresh.get_last_error())
+    expect(fresh.inventory(CHEST).is_empty(), "the chest is still empty after a load")
+    expect(fresh.equipment(PLAYER) == worn, "the equipment comes back")
+    expect(fresh.get_item_count(PLAYER, GOLD) == 25, "and the gold")
+
+    # Removing the last one takes it off; EquipItem adds what is missing.
+    _item(vm, "Take", [PLAYER, SWORD, 1])
+    expect(vm.equipment(PLAYER)["right"] == 0 and _item(vm, "Count", [PLAYER, SWORD]) == 0, "the sword is gone and off")
+    _item(vm, "Equip", [PLAYER, SWORD])
+    expect(_item(vm, "Count", [PLAYER, SWORD]) == 1 and _item(vm, "Wearing", [PLAYER, SWORD]), "EquipItem adds the sword")
+    _item(vm, "Unequip", [PLAYER, SWORD])
+    expect(not _item(vm, "Wearing", [PLAYER, SWORD]) and _item(vm, "Count", [PLAYER, SWORD]) == 1, "UnequipItem keeps it")
+    _item(vm, "Equip", [PLAYER, SWORD])
+    _item(vm, "Strip", [PLAYER])
+    expect(vm.equipment(PLAYER)["worn"].is_empty() and vm.equipment(PLAYER)["right"] == 0, "UnequipAll")
 
 ## A save taken while a thread waits restores into a fresh VM and finishes
 ## there; variables, states and the world view come along.

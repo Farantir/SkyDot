@@ -241,7 +241,11 @@ bool PapyrusConditionWorld::is_disabled(std::uint32_t ref) const {
 }
 
 std::int64_t PapyrusConditionWorld::item_count(std::uint32_t ref, std::uint32_t item) const {
-    return owner_ != nullptr && owner_->vm_ != nullptr ? owner_->vm_->inventory().count(ref, item) : 0;
+    if (owner_ == nullptr || owner_->vm_ == nullptr) {
+        return 0;
+    }
+    owner_->resolve_owner(ref);
+    return owner_->vm_->inventory().count(ref, item);
 }
 
 std::int32_t PapyrusConditionWorld::level(std::uint32_t ref) const {

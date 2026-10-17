@@ -261,6 +261,9 @@ public:
     /// The pack's asset cache, which every model and texture comes from.
     /// Set by SkydotPack::open_world; without it nothing loads.
     void set_assets(std::shared_ptr<AssetCache> assets) { builder_.set_assets(std::move(assets)); }
+    /// Who wears what, if the game knows (data/actors.hpp WornProvider); the
+    /// VM sets it, and an actor built after a script equipped something shows it.
+    void set_worn_provider(WornProvider worn) { builder_.set_worn_provider(std::move(worn)); }
 
     /// Virtual paths of the resources (models, land and water textures)
     /// exterior cell (x, y) of `world` needs.
