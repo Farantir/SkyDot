@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 28;
+inline constexpr std::uint32_t k_world_format_version = 29;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -70,6 +70,13 @@ struct WorldStats {
     std::uint64_t items{};
     std::uint64_t containers{};
     std::uint64_t container_items{};
+    /// COBJ, MGEF, ENCH, FLOR and TREE with PFIG, and FURN with a bench type
+    /// (format 29).
+    std::uint64_t recipes{};
+    std::uint64_t magic_effects{};
+    std::uint64_t enchantments{};
+    std::uint64_t harvestables{};
+    std::uint64_t benches{};
     /// AMMO and PROJ (format 19).
     std::uint64_t ammos{};
     std::uint64_t projectiles{};
@@ -197,6 +204,9 @@ public:
     [[nodiscard]] std::optional<wfb::RaceT> race(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ArmorAddonT> armor_addon(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::LeveledListT> leveled_list(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::RecipeT> recipe(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::MagicEffectT> magic_effect(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::EnchantmentT> enchantment(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::AmmoT> ammo(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ProjectileT> projectile(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::SoundDescriptorT> sound_descriptor(std::uint32_t id) const;

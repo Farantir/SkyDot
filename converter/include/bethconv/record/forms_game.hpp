@@ -172,6 +172,48 @@ struct Enchantment {
     std::vector<EffectItem> effects; ///< EFID/EFIT/CTDA
 };
 
+/// MGEF: a magic effect. 951 in SE (sources: UESP and xEdit).
+struct MagicEffectRecord {
+    std::string editor_id;
+    LString name;
+    LString description; ///< DNAM
+    KeywordList keywords;
+    ScriptData scripts;
+    FormId menu_display_object; ///< MDOB
+    FormId sound;               ///< SNDD, the raw 8 bytes' first FormID
+    std::vector<Condition> conditions; ///< CTDA with its CIS1/CIS2.
+    std::uint32_t declared_condition_count{};
+
+    /// DATA, 152 bytes in SE; the fields up to `delivery` are read, the rest
+    /// is kept raw. Tolerant of a shorter record.
+    std::uint32_t flags{};
+    float base_cost{};
+    FormId associated_item;
+    std::int32_t magic_skill{-1};
+    std::int32_t resist_value{-1};
+    std::uint32_t archetype{};
+    std::int32_t actor_value{-1};
+    std::uint32_t casting_type{};
+    std::uint32_t delivery{};
+    std::vector<std::byte> data_rest;
+
+    static constexpr std::uint32_t k_flag_hostile = 0x1;
+    static constexpr std::uint32_t k_flag_power_affects_magnitude = 0x200000;
+    static constexpr std::uint32_t k_flag_power_affects_duration = 0x400000;
+};
+
+/// COBJ: a constructible object (a crafting recipe). 
+struct ConstructibleObject {
+    std::string editor_id;
+    std::uint32_t declared_item_count{}; ///< COCT
+    std::vector<ContainerItem> items;    ///< CNTO (+ COED)
+    std::vector<Condition> conditions;   ///< CTDA with its CIS1/CIS2.
+    std::uint32_t declared_condition_count{};
+    FormId created_object;               ///< CNAM
+    FormId workbench_keyword;            ///< BNAM
+    std::uint16_t created_count{1};      ///< NAM1
+};
+
 /// SPEL: spell, shout effect, ability, disease or power. 1,561 in SE.
 struct Spell {
     std::string editor_id;
@@ -666,6 +708,10 @@ struct Package {
                                                      const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Enchantment> parse_enchantment(io::SpanReader& data,
                                                              const FormContext& ctx);
+[[nodiscard]] io::ParseResult<MagicEffectRecord> parse_magic_effect(io::SpanReader& data,
+                                                                    const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ConstructibleObject> parse_constructible_object(
+    io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);

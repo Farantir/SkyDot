@@ -729,6 +729,172 @@ std::vector<std::byte> build_plugin() {
         bethconv::test::write_group(file, tag_value("CONT"), 0, conts.span());
     }
 
+    // ---- crafting and harvesting: benches, recipes, magic effects,
+    // ingredients that share an effect, and a plant ----
+    {
+        const auto text = [](ByteWriter& payload, std::string_view tag, std::string_view value) {
+            ByteWriter field;
+            field.zstring(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        const auto u32 = [](ByteWriter& payload, std::string_view tag, std::uint32_t value) {
+            ByteWriter field;
+            field.u32(value);
+            bethconv::test::write_field(payload, tag, field);
+        };
+        ByteWriter kywds;
+        for (const auto& [form, name] :
+             {std::pair{0x0000'0500U, "CraftingSmithingForge"},
+              std::pair{0x0000'0501U, "CraftingSmithingSharpeningWheel"}}) {
+            ByteWriter kywd;
+            edid(kywd, name);
+            bethconv::test::write_record(kywds, "KYWD", form, kywd.span());
+        }
+        bethconv::test::write_group(file, tag_value("KYWD"), 0, kywds.span());
+
+        // The forge carries its keyword; the grindstone and the alchemy lab
+        // are chosen by bench type alone.
+        ByteWriter furns;
+        const auto furn = [&](std::uint32_t form, std::string_view name, std::uint8_t bench,
+                              std::uint32_t keyword) {
+            ByteWriter record;
+            edid(record, name);
+            modl(record, "testpack/cube_se.nif");
+            if (keyword != 0) {
+                ByteWriter ksiz;
+                ksiz.u32(1);
+                bethconv::test::write_field(record, "KSIZ", ksiz);
+                u32(record, "KWDA", keyword);
+            }
+            ByteWriter wbdt;
+            wbdt.u8(bench);
+            wbdt.u8(0);
+            bethconv::test::write_field(record, "WBDT", wbdt);
+            bethconv::test::write_record(furns, "FURN", form, record.span());
+        };
+        furn(0x0000'0510, "TestpackForge", 1, 0x0000'0500);
+        furn(0x0000'0511, "TestpackGrindstone", 2, 0x0000'0501);
+        furn(0x0000'0512, "TestpackAlchemyLab", 5, 0);
+        bethconv::test::write_group(file, tag_value("FURN"), 0, furns.span());
+
+        ByteWriter mgefs;
+        const auto mgef = [&](std::uint32_t form, std::string_view name, std::string_view shown,
+                              std::uint32_t flags, float cost, std::int32_t actor_value) {
+            ByteWriter record;
+            edid(record, name);
+            text(record, "FULL", shown);
+            text(record, "DNAM", "Restores <mag> points.");
+            ByteWriter data;
+            data.u32(flags);
+            data.f32(cost);
+            data.u32(0);  // associated item
+            data.u32(0xFFFF'FFFFU); // magic skill: none
+            data.u32(0xFFFF'FFFFU); // resist value: none
+            data.u16(0);
+            data.u16(0);
+            for (int i = 0; i < 9; ++i) {
+                data.u32(0); // light, taper weight, shaders, skill, area, cast time...
+            }
+            data.u32(0);  // second AV weight
+            data.u32(2);  // archetype: value modifier
+            data.u32(static_cast<std::uint32_t>(actor_value));
+            data.u32(0);  // projectile
+            data.u32(0);  // explosion
+            data.u32(1);  // casting type: fire and forget
+            data.u32(0);  // delivery: self
+            for (int i = 0; i < 16; ++i) {
+                data.u32(0); // the rest of the 152 bytes
+            }
+            bethconv::test::write_field(record, "DATA", data);
+            bethconv::test::write_record(mgefs, "MGEF", form, record.span());
+        };
+        mgef(0x0000'0520, "TestpackRestoreHealth", "Restore Health", 0x0020'0000, 2.0F, 24);
+        mgef(0x0000'0521, "TestpackDamageStamina", "Damage Stamina", 0x1, 1.5F, 25);
+        bethconv::test::write_group(file, tag_value("MGEF"), 0, mgefs.span());
+
+        // Two ingredients sharing Restore Health.
+        ByteWriter ingrs;
+        const auto ingr = [&](std::uint32_t form, std::string_view name, std::uint32_t second) {
+            ByteWriter record;
+            edid(record, name);
+            text(record, "FULL", name);
+            ByteWriter data;
+            data.u32(5);
+            data.f32(0.5F);
+            bethconv::test::write_field(record, "DATA", data);
+            ByteWriter enit;
+            enit.u32(5);
+            enit.u32(0);
+            bethconv::test::write_field(record, "ENIT", enit);
+            for (const std::uint32_t effect : {0x0000'0520U, second}) {
+                u32(record, "EFID", effect);
+                ByteWriter efit;
+                efit.f32(5.0F);
+                efit.u32(0);
+                efit.u32(10);
+                bethconv::test::write_field(record, "EFIT", efit);
+            }
+            bethconv::test::write_record(ingrs, "INGR", form, record.span());
+        };
+        ingr(0x0000'0530, "TestpackHerb", 0x0000'0521);
+        ingr(0x0000'0531, "TestpackBerry", 0x0000'0520);
+        bethconv::test::write_group(file, tag_value("INGR"), 0, ingrs.span());
+
+        ByteWriter flors;
+        {
+            ByteWriter record;
+            edid(record, "TestpackPlant");
+            text(record, "FULL", "Testpack Plant");
+            modl(record, "testpack/cube_se.nif");
+            u32(record, "PFIG", 0x0000'0530);
+            ByteWriter pfpc;
+            pfpc.u8(0);
+            pfpc.u8(50);
+            pfpc.u8(80);
+            pfpc.u8(10);
+            bethconv::test::write_field(record, "PFPC", pfpc);
+            bethconv::test::write_record(flors, "FLOR", 0x0000'0540, record.span());
+        }
+        bethconv::test::write_group(file, tag_value("FLOR"), 0, flors.span());
+
+        // The sword from five gold at the forge, and its tempering.
+        ByteWriter cobjs;
+        const auto cobj = [&](std::uint32_t form, std::string_view name, std::uint32_t keyword,
+                              std::uint32_t gold, bool conditional) {
+            ByteWriter record;
+            edid(record, name);
+            u32(record, "COCT", 1);
+            ByteWriter cnto;
+            cnto.u32(0x0000'0192);
+            cnto.u32(gold);
+            bethconv::test::write_field(record, "CNTO", cnto);
+            if (conditional) {
+                ByteWriter ctda;
+                ctda.u8(0x60); // >=
+                ctda.u8(0);
+                ctda.u16(0);
+                ctda.f32(1.0F);
+                ctda.u16(47); // GetItemCount
+                ctda.u16(0);
+                ctda.u32(0x0000'0192);
+                ctda.u32(0);
+                ctda.u32(0);
+                ctda.u32(0);
+                ctda.u32(0xFFFF'FFFFU);
+                bethconv::test::write_field(record, "CTDA", ctda);
+            }
+            u32(record, "CNAM", 0x0000'0190);
+            u32(record, "BNAM", keyword);
+            ByteWriter nam1;
+            nam1.u16(1);
+            bethconv::test::write_field(record, "NAM1", nam1);
+            bethconv::test::write_record(cobjs, "COBJ", form, record.span());
+        };
+        cobj(0x0000'0550, "TestpackRecipeSword", 0x0000'0500, 5, true);
+        cobj(0x0000'0551, "TestpackRecipeSwordTemper", 0x0000'0501, 1, false);
+        bethconv::test::write_group(file, tag_value("COBJ"), 0, cobjs.span());
+    }
+
     // ---- an actor: race, skin armor and its addon, NPC ----
     // The race's skeleton and behaviour name files under meshes/testpack/actor/
     // (see actor_skeleton and actor_clip); its skin is one addon, the skinned

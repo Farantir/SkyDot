@@ -144,7 +144,7 @@ func _check_world(pack: SkydotPack) -> void:
     if world == null:
         return
     expect(world.get_cell_count() == 4, "4 cells, got %d" % world.get_cell_count())
-    expect(world.get_base_count() == 13, "13 bases, got %d" % world.get_base_count())
+    expect(world.get_base_count() == 19, "19 bases, got %d" % world.get_base_count())
 
     # Sound: SNDR with both file spellings normalized, its SOPM, and the SOUN.
     var sound_id := world.find_sound_descriptor("TESTPACKCLICKSD")

@@ -347,6 +347,111 @@ io::ParseResult<Enchantment> parse_enchantment(io::SpanReader& data, const FormC
     return out;
 }
 
+// ---- MGEF -----------------------------------------------------------------
+
+io::ParseResult<MagicEffectRecord> parse_magic_effect(io::SpanReader& data, const FormContext& ctx) {
+    MagicEffectRecord out;
+    const BaseObjectFields into{.editor_id = &out.editor_id,
+                                .name = &out.name,
+                                .keywords = &out.keywords,
+                                .scripts = &out.scripts};
+    const auto walked = walk_fields(
+        data, FourCC{"MGEF"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DNAM"}) {
+                take(failure, read_lstring(body, ctx, FourCC{"MGEF"}, field.type, StringKind::plain),
+                     out.description);
+            } else if (field.type == FourCC{"MDOB"}) {
+                take(failure, read_formid(body), out.menu_display_object);
+            } else if (field.type == FourCC{"SNDD"}) {
+                // Pairs of (sound type, SNDR) in SE, one SNDR in LE, empty in
+                // 656 SE records; the first SNDR is kept.
+                if (body.remaining() >= 8) {
+                    std::uint32_t sound_type{};
+                    take(failure, body.get<std::uint32_t>(), sound_type);
+                }
+                if (body.remaining() >= 4) {
+                    take(failure, read_formid(body), out.sound);
+                }
+                if (!failure && body.remaining() != 0) {
+                    std::vector<std::byte> rest;
+                    take(failure, read_verbatim(body), rest);
+                }
+            } else if (field.type == FourCC{"ESCE"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+            } else if (read_ctda_field(out.conditions, out.declared_condition_count, field, body,
+                                       failure)) {
+                return true;
+            } else if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::uint32_t>(), out.flags);
+                take(failure, body.get<float>(), out.base_cost);
+                take(failure, read_formid(body), out.associated_item);
+                take(failure, body.get<std::int32_t>(), out.magic_skill);
+                take(failure, body.get<std::int32_t>(), out.resist_value);
+                if (!failure && body.remaining() >= 68) {
+                    // counter count + pad (4), casting light, taper weight, hit
+                    // shader, enchant shader, min skill, spellmaking area and
+                    // cast time, taper curve and duration, second AV weight.
+                    const auto skip = [&](std::size_t n) {
+                        if (auto r = body.skip(n); !r && !failure) {
+                            failure = std::move(r).error();
+                        }
+                    };
+                    skip(44);
+                    take(failure, body.get<std::uint32_t>(), out.archetype);
+                    take(failure, body.get<std::int32_t>(), out.actor_value);
+                    skip(8);
+                    take(failure, body.get<std::uint32_t>(), out.casting_type);
+                    take(failure, body.get<std::uint32_t>(), out.delivery);
+                }
+                if (!failure && body.remaining() != 0) {
+                    take(failure, read_verbatim(body), out.data_rest);
+                }
+            } else {
+                return read_base_object_field(into, FourCC{"MGEF"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+// ---- COBJ -----------------------------------------------------------------
+
+io::ParseResult<ConstructibleObject> parse_constructible_object(io::SpanReader& data,
+                                                                const FormContext& ctx) {
+    ConstructibleObject out;
+    const BaseObjectFields into{.editor_id = &out.editor_id};
+    const auto walked = walk_fields(
+        data, FourCC{"COBJ"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (read_container_field(out.items, out.declared_item_count, field, body, failure) ||
+                read_ctda_field(out.conditions, out.declared_condition_count, field, body,
+                                failure)) {
+                return true;
+            }
+            if (field.type == FourCC{"CNAM"}) {
+                take(failure, read_formid(body), out.created_object);
+            } else if (field.type == FourCC{"BNAM"}) {
+                take(failure, read_formid(body), out.workbench_keyword);
+            } else if (field.type == FourCC{"NAM1"}) {
+                take(failure, body.get<std::uint16_t>(), out.created_count);
+            } else {
+                return read_base_object_field(into, FourCC{"COBJ"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- SPEL -----------------------------------------------------------------
 
 io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx) {

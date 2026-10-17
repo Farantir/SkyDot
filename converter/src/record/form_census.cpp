@@ -61,6 +61,8 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"INGR"}, &run<parse_ingredient>},
     {FourCC{"SLGM"}, &run<parse_soul_gem>},
     {FourCC{"SCRL"}, &run<parse_scroll>},
+    {FourCC{"COBJ"}, &run<parse_constructible_object>},
+    {FourCC{"MGEF"}, &run<parse_magic_effect>},
     {FourCC{"LTEX"}, &run<parse_land_texture>},
     {FourCC{"IMGS"}, &run<parse_image_space>},
     {FourCC{"VOLI"}, &run<parse_volumetric_lighting>},

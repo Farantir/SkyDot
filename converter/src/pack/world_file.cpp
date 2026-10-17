@@ -246,6 +246,18 @@ std::optional<wfb::LeveledListT> WorldFile::leveled_list(std::uint32_t id) const
     return unpack(lookup(impl_->root->leveled_lists(), id));
 }
 
+std::optional<wfb::RecipeT> WorldFile::recipe(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->recipes(), id));
+}
+
+std::optional<wfb::MagicEffectT> WorldFile::magic_effect(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->magic_effects(), id));
+}
+
+std::optional<wfb::EnchantmentT> WorldFile::enchantment(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->enchantments(), id));
+}
+
 std::optional<wfb::AmmoT> WorldFile::ammo(std::uint32_t id) const {
     return unpack(lookup(impl_->root->ammos(), id));
 }

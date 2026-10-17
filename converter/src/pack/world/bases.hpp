@@ -57,11 +57,24 @@ struct ItemEntry {
     std::vector<wfb::NpcItem> items;
 };
 
+/// FLOR and TREE harvest data and FURN bench type, waiting to join the base.
+struct WorkEntry {
+    std::uint32_t type{};
+    std::string editor_id;
+    std::uint32_t record_flags{};
+    bool has_harvest{};
+    std::uint32_t ingredient{};
+    std::uint32_t sound{};
+    std::uint32_t seasonal_yield{};
+    std::uint8_t bench_type{};
+    std::uint8_t bench_skill{};
+};
+
 class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG or EXPL; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF or ENCH; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -74,6 +87,14 @@ public:
     /// the base in `finish`. Nothing for another type.
     void collect_item(const record::MergedRecord& merged, io::SpanReader& data,
                       const record::FormContext& form_ctx);
+
+    /// FLOR, TREE (harvest data) and FURN (bench type), read from `data`
+    /// alone, joined to the base in `finish`. Nothing for another type.
+    void collect_work(const record::MergedRecord& merged, io::SpanReader& data,
+                      const record::FormContext& form_ctx);
+
+    /// True for FLOR, TREE and FURN.
+    [[nodiscard]] static bool is_work_type(io::FourCC type) noexcept;
 
     /// True for the types `collect_item` reads.
     [[nodiscard]] static bool is_item_type(io::FourCC type) noexcept;
@@ -99,6 +120,12 @@ private:
     void on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
     void on_explosion(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_recipe(const record::MergedRecord& merged, io::SpanReader& data,
+                   const record::FormContext& form_ctx);
+    void on_magic_effect(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx);
+    void on_enchantment(const record::MergedRecord& merged, io::SpanReader& data,
+                        const record::FormContext& form_ctx);
     void on_keyword(const record::MergedRecord& merged, io::SpanReader& data);
     void on_message(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
@@ -111,6 +138,10 @@ private:
     CollectContext& shared_;
     std::map<std::uint32_t, wfb::BaseT> bases_;
     std::map<std::uint32_t, ItemEntry> item_entries_;
+    std::map<std::uint32_t, WorkEntry> work_entries_;
+    std::map<std::uint32_t, wfb::RecipeT> recipes_;
+    std::map<std::uint32_t, wfb::MagicEffectT> magic_effects_;
+    std::map<std::uint32_t, wfb::EnchantmentT> enchantments_;
     std::map<std::uint32_t, wfb::MaterialObjectT> material_objects_;
     std::map<std::uint32_t, wfb::GrassT> grasses_;
     std::map<std::uint32_t, wfb::AddonNodeT> addons_;

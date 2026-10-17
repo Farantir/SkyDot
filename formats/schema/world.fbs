@@ -415,6 +415,26 @@ table Base {
     /// CONT CNTO (format 28): the start inventory. An entry's form can be a
     /// LeveledList (LVLI); the engine resolves it on first touch.
     items: [NpcItem];
+    /// FLOR and TREE with PFIG (format 29); absent if the record has none.
+    harvest: Harvest;
+    /// FURN WBDT byte 0 (format 29): 0 none, 1 create object (forge, smelter,
+    /// tanning rack, cook pot), 2 smithing weapon (grindstone), 3 enchanting,
+    /// 4 enchanting experiment, 5 alchemy, 6 alchemy experiment, 7 smithing
+    /// armor (workbench).
+    bench_type: ubyte;
+    /// FURN WBDT byte 1 (format 29): the skill the bench uses.
+    bench_skill: ubyte;
+}
+
+/// What a plant or tree gives (format 29; FLOR and TREE).
+table Harvest {
+    /// PFIG: an INGR, or a LVLI.
+    ingredient: uint32;
+    /// SNAM: a sound descriptor, 0 if none.
+    sound: uint32;
+    /// PFPC: the chance in percent per season, byte 0 spring, 1 summer,
+    /// 2 autumn, 3 winter.
+    seasonal_yield: uint32;
 }
 
 /// `ItemData.category`.
@@ -461,6 +481,71 @@ table ItemData {
     biped_slots: uint32;
     /// ALCH food flag.
     food: bool;
+    /// INGR, ALCH and SCRL effects (format 29).
+    effects: [EffectItem];
+    /// EITM of WEAP and ARMO (format 29): an Enchantment in `enchantments`, 0
+    /// if none.
+    enchantment: uint32;
+}
+
+/// EFID and EFIT (format 29): a magic effect with its strength.
+struct EffectItem {
+    /// A MagicEffect in `magic_effects`.
+    effect: uint32;
+    magnitude: float;
+    area: uint32;
+    duration: uint32;
+}
+
+/// COBJ (format 29): a constructible object. The bench is chosen by
+/// `bench_keyword`, which the furniture carries in `Base.keywords`.
+table Recipe {
+    id: uint32 (key);
+    editor_id: string;
+    /// CNAM: the created form.
+    product: uint32;
+    /// NAM1.
+    product_count: int32 = 1;
+    /// BNAM: a Keyword.
+    bench_keyword: uint32;
+    /// CNTO.
+    components: [NpcItem];
+    /// CTDA.
+    conditions: [Condition];
+}
+
+/// MGEF (format 29). Sources: UESP and xEdit record layouts.
+table MagicEffect {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// DNAM, with its `<mag>` and `<dur>` placeholders.
+    description: string;
+    /// DATA flags: 0x1 hostile, 0x4 recover, 0x200000 power affects
+    /// magnitude, 0x400000 power affects duration, among others.
+    flags: uint32;
+    base_cost: float;
+    /// The magic skill as an actor value index, -1 if none.
+    magic_skill: int32;
+    actor_value: int32;
+    archetype: uint32;
+    /// 0 constant, 1 fire and forget, 2 concentration, 3 scroll.
+    casting_type: uint32;
+    /// 0 self, 1 touch, 2 aimed, 3 target actor, 4 target location.
+    delivery: uint32;
+    keywords: [uint32];
+}
+
+/// ENCH (format 29).
+table Enchantment {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// ENIT cost.
+    cost: int32;
+    /// ENIT enchantment amount: the charge.
+    charge: int32;
+    effects: [EffectItem];
 }
 
 /// DEST, DSTD and DMDL (format 23). A stage opens when the object's health
@@ -1862,6 +1947,12 @@ table World {
     factions: [Faction];
     /// Sorted by id (format 27).
     scenes: [Scene];
+    /// Sorted by id (format 29).
+    recipes: [Recipe];
+    /// Sorted by id (format 29).
+    magic_effects: [MagicEffect];
+    /// Sorted by id (format 29).
+    enchantments: [Enchantment];
 }
 
 root_type World;

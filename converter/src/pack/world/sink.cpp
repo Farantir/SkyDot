@@ -26,6 +26,12 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         io::SpanReader copy = data;
         bases_.collect_item(merged, copy, form_ctx);
     }
+    if (BaseCollector::is_work_type(merged.type)) {
+        // Harvest data and bench types, read from a copy; the types below
+        // still make the base as before.
+        io::SpanReader copy = data;
+        bases_.collect_work(merged, copy, form_ctx);
+    }
     switch (merged.type.value) {
     case FourCC{"CELL"}.value:
     case FourCC{"REFR"}.value:
@@ -92,6 +98,9 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         break;
     case FourCC{"SOUN"}.value:
     case FourCC{"EXPL"}.value:
+    case FourCC{"COBJ"}.value:
+    case FourCC{"MGEF"}.value:
+    case FourCC{"ENCH"}.value:
     case FourCC{"AMMO"}.value:
     case FourCC{"PROJ"}.value:
         // Bases too (the model); the flight data is read from a copy.

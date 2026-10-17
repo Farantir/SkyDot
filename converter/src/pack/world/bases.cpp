@@ -7,6 +7,7 @@
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/forms.hpp"
 #include "bethconv/record/forms_actor.hpp"
+#include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
 
@@ -86,6 +87,15 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         break;
     case FourCC{"EXPL"}.value:
         on_explosion(merged, data);
+        break;
+    case FourCC{"COBJ"}.value:
+        on_recipe(merged, data, form_ctx);
+        break;
+    case FourCC{"MGEF"}.value:
+        on_magic_effect(merged, data, form_ctx);
+        break;
+    case FourCC{"ENCH"}.value:
+        on_enchantment(merged, data, form_ctx);
         break;
     default:
         break;
@@ -670,6 +680,162 @@ void BaseCollector::on_texture_set(const record::MergedRecord& merged, io::SpanR
     texture_sets_[merged.form.value] = std::move(entry);
 }
 
+namespace {
+
+/// EFID/EFIT entries as world.fb's structs, the effects' FormIDs global.
+std::vector<wfb::EffectItem> effect_items(CollectContext& shared,
+                                          const record::MergedRecord& merged,
+                                          const std::vector<record::EffectItem>& effects,
+                                          bool& failed) {
+    std::vector<wfb::EffectItem> out;
+    out.reserve(effects.size());
+    for (const auto& e : effects) {
+        out.emplace_back(shared.global(merged, e.effect, failed), e.magnitude, e.area, e.duration);
+    }
+    return out;
+}
+
+} // namespace
+
+bool BaseCollector::is_work_type(io::FourCC type) noexcept {
+    return type == FourCC{"FLOR"} || type == FourCC{"TREE"} || type == FourCC{"FURN"};
+}
+
+void BaseCollector::collect_work(const record::MergedRecord& merged, io::SpanReader& data,
+                                 const record::FormContext& form_ctx) {
+    WorkEntry entry;
+    entry.type = merged.type.value;
+    entry.record_flags = merged.flags;
+    bool failed = false;
+    const auto pack_yield = [](const std::array<std::uint8_t, 4>& y) {
+        return static_cast<std::uint32_t>(y[0]) | (static_cast<std::uint32_t>(y[1]) << 8U) |
+               (static_cast<std::uint32_t>(y[2]) << 16U) | (static_cast<std::uint32_t>(y[3]) << 24U);
+    };
+    if (merged.type == FourCC{"FURN"}) {
+        auto r = record::parse_furniture(data, form_ctx);
+        if (!r) {
+            ++shared_.stats().parse_errors;
+            return;
+        }
+        entry.editor_id = r->editor_id;
+        entry.bench_type = r->bench_type;
+        entry.bench_skill = r->bench_skill;
+        if (entry.bench_type == 0) {
+            return;
+        }
+    } else {
+        std::string editor_id;
+        record::FormId ingredient;
+        record::FormId sound;
+        std::array<std::uint8_t, 4> yield{};
+        if (merged.type == FourCC{"FLOR"}) {
+            auto r = record::parse_flora(data, form_ctx);
+            if (!r) {
+                ++shared_.stats().parse_errors;
+                return;
+            }
+            editor_id = r->editor_id;
+            ingredient = r->ingredient;
+            sound = r->harvest_sound;
+            yield = r->seasonal_yield;
+        } else {
+            auto r = record::parse_tree(data, form_ctx);
+            if (!r) {
+                ++shared_.stats().parse_errors;
+                return;
+            }
+            editor_id = r->editor_id;
+            ingredient = r->ingredient;
+            sound = r->harvest_sound;
+            yield = r->seasonal_yield;
+        }
+        if (ingredient.value == 0) {
+            return;
+        }
+        entry.editor_id = std::move(editor_id);
+        entry.has_harvest = true;
+        entry.ingredient = shared_.global(merged, ingredient, failed);
+        entry.sound = shared_.global(merged, sound, failed);
+        entry.seasonal_yield = pack_yield(yield);
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    work_entries_[merged.form.value] = std::move(entry);
+}
+
+void BaseCollector::on_recipe(const record::MergedRecord& merged, io::SpanReader& data,
+                              const record::FormContext& form_ctx) {
+    auto r = record::parse_constructible_object(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::RecipeT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.product = shared_.global(merged, r->created_object, failed);
+    out.product_count = r->created_count;
+    out.bench_keyword = shared_.global(merged, r->workbench_keyword, failed);
+    for (const auto& it : r->items) {
+        out.components.emplace_back(shared_.global(merged, it.item, failed), it.count);
+    }
+    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    recipes_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_magic_effect(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
+    auto r = record::parse_magic_effect(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::MagicEffectT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.description = r->description.text;
+    out.flags = r->flags;
+    out.base_cost = r->base_cost;
+    out.magic_skill = r->magic_skill;
+    out.actor_value = r->actor_value;
+    out.archetype = r->archetype;
+    out.casting_type = r->casting_type;
+    out.delivery = r->delivery;
+    out.keywords = shared_.global_all(merged, r->keywords.keywords, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    magic_effects_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_enchantment(const record::MergedRecord& merged, io::SpanReader& data,
+                                   const record::FormContext& form_ctx) {
+    auto r = record::parse_enchantment(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::EnchantmentT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.cost = r->cost;
+    out.charge = r->amount;
+    out.effects = effect_items(shared_, merged, r->effects, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    enchantments_[out.id] = std::move(out);
+}
+
 bool BaseCollector::is_item_type(io::FourCC type) noexcept {
     return type == FourCC{"ALCH"} || type == FourCC{"AMMO"} || type == FourCC{"ARMO"} ||
            type == FourCC{"BOOK"} || type == FourCC{"INGR"} || type == FourCC{"KEYM"} ||
@@ -729,6 +895,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         if (!r) { return fail(); }
         entry.editor_id = r->editor_id;
         entry.name = r->name.text;
+        item.effects = effect_items(shared_, merged, r->effects, failed);
         item.food = r->has(record::Ingestible::Flag::food_item);
         item.category = item.food ? wfb::ItemCategory::food : wfb::ItemCategory::potion;
         item.weight = r->weight;
@@ -738,6 +905,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         if (!r) { return fail(); }
         entry.editor_id = r->editor_id;
         entry.name = r->name.text;
+        item.effects = effect_items(shared_, merged, r->effects, failed);
         item.category = wfb::ItemCategory::ingredient;
         item.weight = r->weight;
         item.value = r->value;
@@ -763,6 +931,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         if (!r) { return fail(); }
         entry.editor_id = r->editor_id;
         entry.name = r->name.text;
+        item.effects = effect_items(shared_, merged, r->effects, failed);
         item.category = wfb::ItemCategory::scroll;
         item.weight = r->weight;
         item.value = r->value;
@@ -786,6 +955,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         item.weight = r->weight;
         item.value = r->value;
         item.damage = static_cast<float>(r->damage);
+        item.enchantment = shared_.global(merged, r->enchantment, failed);
         item.equip_slot = shared_.global(merged, r->equip_type, failed);
         // DNAM byte 0: the animation type.
         item.weapon_type = r->weapon_data.empty() ? std::uint8_t{0}
@@ -799,6 +969,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         item.weight = r->weight;
         item.value = static_cast<std::int32_t>(r->value);
         item.armor_rating = static_cast<float>(r->armor_rating) / 100.0F;
+        item.enchantment = shared_.global(merged, r->enchantment, failed);
         item.armor_type = static_cast<std::uint8_t>(r->body.armor_type);
         item.biped_slots = r->body.slots;
         item.category = armor_category(r->body.armor_type, r->body.slots);
@@ -853,6 +1024,37 @@ void BaseCollector::finish(wfb::WorldT& world) {
         }
     }
     item_entries_.clear();
+    for (auto& [id, entry] : work_entries_) {
+        auto found = bases_.find(id);
+        if (found == bases_.end()) {
+            if (!entry.has_harvest) {
+                continue;
+            }
+            wfb::BaseT made;
+            made.id = id;
+            made.type = entry.type;
+            made.editor_id = entry.editor_id;
+            made.record_flags = static_cast<wfb::RecordFlags>(entry.record_flags);
+            found = bases_.emplace(id, std::move(made)).first;
+        }
+        auto& base = found->second;
+        base.bench_type = entry.bench_type;
+        base.bench_skill = entry.bench_skill;
+        if (entry.has_harvest) {
+            auto harvest = std::make_unique<wfb::HarvestT>();
+            harvest->ingredient = entry.ingredient;
+            harvest->sound = entry.sound;
+            harvest->seasonal_yield = entry.seasonal_yield;
+            base.harvest = std::move(harvest);
+            ++stats.harvestables;
+        } else {
+            ++stats.benches;
+        }
+    }
+    work_entries_.clear();
+    stats.recipes += recipes_.size();
+    stats.magic_effects += magic_effects_.size();
+    stats.enchantments += enchantments_.size();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {
@@ -895,6 +1097,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.explosions, explosions_);
     move_into(world.keywords, keywords_);
     move_into(world.messages, messages_);
+    move_into(world.recipes, recipes_);
+    move_into(world.magic_effects, magic_effects_);
+    move_into(world.enchantments, enchantments_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;
