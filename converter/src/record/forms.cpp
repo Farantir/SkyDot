@@ -419,7 +419,7 @@ std::span<const FourCC> defined_types() noexcept {
         FourCC{"NAVI"}, FourCC{"ACHR"}, FourCC{"SPGD"},
         // forms_game.cpp
         FourCC{"GMST"}, FourCC{"GLOB"}, FourCC{"CLAS"}, FourCC{"FACT"},
-        FourCC{"ENCH"}, FourCC{"COBJ"}, FourCC{"MGEF"}, FourCC{"IPDS"}, FourCC{"IPCT"}, FourCC{"CSTY"}, FourCC{"SPEL"}, FourCC{"NPC_"}, FourCC{"QUST"},
+        FourCC{"ENCH"}, FourCC{"COBJ"}, FourCC{"MGEF"}, FourCC{"IPDS"}, FourCC{"IPCT"}, FourCC{"ARTO"}, FourCC{"CSTY"}, FourCC{"SPEL"}, FourCC{"NPC_"}, FourCC{"QUST"},
         FourCC{"FLST"}, FourCC{"PACK"},
         // forms_actor.cpp
         FourCC{"ARMO"}, FourCC{"ARMA"}, FourCC{"OTFT"}, FourCC{"LVLI"}, FourCC{"LVSP"}, FourCC{"RACE"},

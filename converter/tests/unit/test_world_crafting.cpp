@@ -267,16 +267,16 @@ TEST_CASE("world.fb 29 carries recipes, magic effects, harvest data and bench ty
     CHECK(enchantment->cost == 120);
     CHECK(enchantment->charge == 600);
     REQUIRE(enchantment->effects.size() == 1);
-    CHECK(enchantment->effects[0].effect() == 0x802);
-    CHECK(enchantment->effects[0].magnitude() == 8.0F);
+    CHECK(enchantment->effects[0]->effect == 0x802);
+    CHECK(enchantment->effects[0]->magnitude == 8.0F);
 
     const auto herb = file->base(0x804);
     REQUIRE(herb.has_value());
     REQUIRE(herb->item != nullptr);
     REQUIRE(herb->item->effects.size() == 1);
-    CHECK(herb->item->effects[0].effect() == 0x802);
-    CHECK(herb->item->effects[0].magnitude() == 4.0F);
-    CHECK(herb->item->effects[0].duration() == 30);
+    CHECK(herb->item->effects[0]->effect == 0x802);
+    CHECK(herb->item->effects[0]->magnitude == 4.0F);
+    CHECK(herb->item->effects[0]->duration == 30);
     const auto sword = file->base(0x805);
     REQUIRE(sword.has_value());
     REQUIRE(sword->item != nullptr);

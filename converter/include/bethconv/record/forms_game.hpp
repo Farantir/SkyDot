@@ -172,7 +172,8 @@ struct Enchantment {
     std::vector<EffectItem> effects; ///< EFID/EFIT/CTDA
 };
 
-/// MGEF: a magic effect. 951 in SE (sources: UESP and xEdit).
+/// MGEF: a magic effect. 951 in SE (sources: UESP and xEdit; offsets checked
+/// against Skyrim.esm's 152-byte DATA).
 struct MagicEffectRecord {
     std::string editor_id;
     LString name;
@@ -180,26 +181,68 @@ struct MagicEffectRecord {
     KeywordList keywords;
     ScriptData scripts;
     FormId menu_display_object; ///< MDOB
-    FormId sound;               ///< SNDD, the raw 8 bytes' first FormID
+    /// SNDD: (kind, SNDR) pairs in SE, a single SNDR in LE (kind 0), empty in
+    /// 656 SE records.
+    struct Sound {
+        std::uint32_t kind{};
+        FormId sound;
+    };
+    std::vector<Sound> sounds;
+    std::vector<FormId> counter_effects; ///< ESCE
     std::vector<Condition> conditions; ///< CTDA with its CIS1/CIS2.
     std::uint32_t declared_condition_count{};
 
-    /// DATA, 152 bytes in SE; the fields up to `delivery` are read, the rest
-    /// is kept raw. Tolerant of a shorter record.
+    /// DATA, 152 bytes in SE. Tolerant of a shorter record: what is missing
+    /// reads as the default.
     std::uint32_t flags{};
     float base_cost{};
-    FormId associated_item;
-    std::int32_t magic_skill{-1};
-    std::int32_t resist_value{-1};
-    std::uint32_t archetype{};
-    std::int32_t actor_value{-1};
-    std::uint32_t casting_type{};
-    std::uint32_t delivery{};
-    std::vector<std::byte> data_rest;
+    FormId associated_item;                ///< 8
+    std::int32_t magic_skill{-1};          ///< 12
+    std::int32_t resist_value{-1};         ///< 16
+    std::uint16_t counter_effect_count{};  ///< 20
+    FormId casting_light;                  ///< 24
+    float taper_weight{};                  ///< 28
+    FormId hit_shader;                     ///< 32
+    FormId enchant_shader;                 ///< 36
+    std::uint32_t skill_level{};           ///< 40
+    std::uint32_t area{};                  ///< 44
+    float casting_time{};                  ///< 48
+    float taper_curve{};                   ///< 52
+    float taper_duration{};                ///< 56
+    float second_av_weight{};              ///< 60
+    std::uint32_t archetype{};             ///< 64
+    std::int32_t actor_value{-1};          ///< 68
+    FormId projectile;                     ///< 72
+    FormId explosion;                      ///< 76
+    std::uint32_t casting_type{};          ///< 80
+    std::uint32_t delivery{};              ///< 84
+    std::int32_t second_actor_value{-1};   ///< 88
+    FormId casting_art;                    ///< 92
+    FormId hit_effect_art;                 ///< 96
+    FormId impact_data;                    ///< 100
+    float skill_usage_multiplier{};        ///< 104
+    FormId dual_cast_art;                  ///< 108
+    float dual_cast_scale{1.0F};           ///< 112
+    FormId enchant_art;                    ///< 116
+    FormId equip_ability;                  ///< 128
+    FormId image_space_mod;                ///< 132
+    FormId perk_to_apply;                  ///< 136
+    std::uint32_t casting_sound_level{};   ///< 140
+    float ai_score{};                      ///< 144
+    float ai_delay_time{};                 ///< 148
 
     static constexpr std::uint32_t k_flag_hostile = 0x1;
     static constexpr std::uint32_t k_flag_power_affects_magnitude = 0x200000;
     static constexpr std::uint32_t k_flag_power_affects_duration = 0x400000;
+};
+
+/// ARTO: art of a magic effect. MODL and DNAM (0 magic casting, 1 magic hit
+/// effect, 2 magic effect).
+struct ArtObject {
+    std::string editor_id;
+    ObjectBounds bounds;
+    ModelData model;
+    std::uint32_t art_type{};
 };
 
 /// COBJ: a constructible object (a crafting recipe). 
@@ -760,6 +803,7 @@ struct Package {
                                                      const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Enchantment> parse_enchantment(io::SpanReader& data,
                                                              const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ArtObject> parse_art_object(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<MagicEffectRecord> parse_magic_effect(io::SpanReader& data,
                                                                     const FormContext& ctx);
 [[nodiscard]] io::ParseResult<ConstructibleObject> parse_constructible_object(

@@ -99,6 +99,12 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"ENCH"}.value:
         on_enchantment(merged, data, form_ctx);
         break;
+    case FourCC{"SPEL"}.value:
+        on_spell(merged, data, form_ctx);
+        break;
+    case FourCC{"ARTO"}.value:
+        on_art_object(merged, data, form_ctx);
+        break;
     case FourCC{"GMST"}.value:
         on_game_setting(merged, data, form_ctx);
         break;
@@ -354,6 +360,28 @@ void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanRe
     out.muzzle_flash_duration = flight->muzzle_flash_duration;
     if (!projectile->muzzle_flash_model.empty()) {
         out.muzzle_flash_model = model_vpath(projectile->muzzle_flash_model);
+    }
+    bool failed = false;
+    if (!projectile->model.empty()) {
+        out.model = model_vpath(projectile->model.path);
+    }
+    out.light = shared_.global(merged, flight->light, failed);
+    out.muzzle_flash_light = shared_.global(merged, flight->muzzle_flash_light, failed);
+    out.tracer_chance = flight->tracer_chance;
+    out.explosion_proximity = flight->explosion_proximity;
+    out.explosion_timer = flight->explosion_timer;
+    out.explosion = shared_.global(merged, flight->explosion, failed);
+    out.sound = shared_.global(merged, flight->sound, failed);
+    out.sound_countdown = shared_.global(merged, flight->sound_countdown, failed);
+    out.sound_disable = shared_.global(merged, flight->sound_disable, failed);
+    out.sound_level = projectile->sound_level;
+    out.fade_duration = flight->fade_duration;
+    out.impact_force = flight->impact_force;
+    out.default_weapon_source = shared_.global(merged, flight->default_weapon_source, failed);
+    out.cone_spread = flight->cone_spread;
+    out.relaunch_interval = flight->relaunch_interval;
+    if (failed) {
+        ++shared_.stats().unresolved;
     }
     projectiles_[out.id] = std::move(out);
 }
@@ -697,14 +725,18 @@ void BaseCollector::on_texture_set(const record::MergedRecord& merged, io::SpanR
 namespace {
 
 /// EFID/EFIT entries as world.fb's structs, the effects' FormIDs global.
-std::vector<wfb::EffectItem> effect_items(CollectContext& shared,
-                                          const record::MergedRecord& merged,
-                                          const std::vector<record::EffectItem>& effects,
-                                          bool& failed) {
-    std::vector<wfb::EffectItem> out;
+std::vector<std::unique_ptr<wfb::EffectItemT>> effect_items(
+    CollectContext& shared, const record::MergedRecord& merged,
+    const std::vector<record::EffectItem>& effects, bool& failed) {
+    std::vector<std::unique_ptr<wfb::EffectItemT>> out;
     out.reserve(effects.size());
     for (const auto& e : effects) {
-        out.emplace_back(shared.global(merged, e.effect, failed), e.magnitude, e.area, e.duration);
+        auto& item = out.emplace_back(std::make_unique<wfb::EffectItemT>());
+        item->effect = shared.global(merged, e.effect, failed);
+        item->magnitude = e.magnitude;
+        item->area = e.area;
+        item->duration = e.duration;
+        item->conditions = shared.global_conditions(merged, e.conditions, failed);
     }
     return out;
 }
@@ -823,6 +855,41 @@ void BaseCollector::on_magic_effect(const record::MergedRecord& merged, io::Span
     out.casting_type = r->casting_type;
     out.delivery = r->delivery;
     out.keywords = shared_.global_all(merged, r->keywords.keywords, failed);
+    const auto form = [&](record::FormId f) { return shared_.global(merged, f, failed); };
+    out.associated_item = form(r->associated_item);
+    out.resist_value = r->resist_value;
+    out.second_actor_value = r->second_actor_value;
+    out.second_av_weight = r->second_av_weight;
+    out.skill_level = r->skill_level;
+    out.area = r->area;
+    out.casting_time = r->casting_time;
+    out.taper_weight = r->taper_weight;
+    out.taper_curve = r->taper_curve;
+    out.taper_duration = r->taper_duration;
+    out.projectile = form(r->projectile);
+    out.explosion = form(r->explosion);
+    out.casting_light = form(r->casting_light);
+    out.hit_shader = form(r->hit_shader);
+    out.enchant_shader = form(r->enchant_shader);
+    out.casting_art = form(r->casting_art);
+    out.hit_effect_art = form(r->hit_effect_art);
+    out.enchant_art = form(r->enchant_art);
+    out.impact_data = form(r->impact_data);
+    out.skill_usage_multiplier = r->skill_usage_multiplier;
+    out.dual_cast_art = form(r->dual_cast_art);
+    out.dual_cast_scale = r->dual_cast_scale;
+    out.equip_ability = form(r->equip_ability);
+    out.image_space_mod = form(r->image_space_mod);
+    out.perk_to_apply = form(r->perk_to_apply);
+    out.casting_sound_level = r->casting_sound_level;
+    out.ai_score = r->ai_score;
+    out.ai_delay_time = r->ai_delay_time;
+    out.counter_effects = shared_.global_all(merged, r->counter_effects, failed);
+    for (const auto& s : r->sounds) {
+        out.sounds.emplace_back(s.kind, form(s.sound));
+    }
+    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+    out.scripts = shared_.global_scripts(merged, r->scripts, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -844,10 +911,65 @@ void BaseCollector::on_enchantment(const record::MergedRecord& merged, io::SpanR
     out.cost = r->cost;
     out.charge = r->amount;
     out.effects = effect_items(shared_, merged, r->effects, failed);
+    out.flags = r->flags;
+    out.casting_type = r->cast_type;
+    out.delivery = r->target_type;
+    out.enchantment_type = r->enchantment_type;
+    out.charge_time = r->charge_time;
+    out.base_enchantment = shared_.global(merged, r->base_enchantment, failed);
+    if (r->worn_restrictions) {
+        out.worn_restrictions = shared_.global(merged, *r->worn_restrictions, failed);
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }
     enchantments_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_spell(const record::MergedRecord& merged, io::SpanReader& data,
+                             const record::FormContext& form_ctx) {
+    auto r = record::parse_spell(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::SpellT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.cost = r->cost;
+    out.flags = r->flags;
+    out.type = r->type;
+    out.charge_time = r->charge_time;
+    out.casting_type = r->cast_type;
+    out.delivery = r->target_type;
+    out.cast_duration = r->cast_duration;
+    out.range = r->range;
+    out.half_cost_perk = shared_.global(merged, r->half_cost_perk, failed);
+    out.equip_slot = shared_.global(merged, r->equip_type, failed);
+    out.effects = effect_items(shared_, merged, r->effects, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    spells_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_art_object(const record::MergedRecord& merged, io::SpanReader& data,
+                                  const record::FormContext& form_ctx) {
+    auto r = record::parse_art_object(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::ArtObjectT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    if (!r->model.empty()) {
+        out.model = model_vpath(r->model.path);
+    }
+    out.art_type = r->art_type;
+    art_objects_[out.id] = std::move(out);
 }
 
 void BaseCollector::on_game_setting(const record::MergedRecord& /*merged*/, io::SpanReader& data,
@@ -1102,6 +1224,7 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         item.value = r->value;
         item.damage = static_cast<float>(r->damage);
         item.enchantment = shared_.global(merged, r->enchantment, failed);
+        item.enchantment_amount = r->enchantment_amount;
         item.equip_slot = shared_.global(merged, r->equip_type, failed);
         // DNAM byte 0: the animation type.
         item.weapon_type = r->weapon_data.empty() ? std::uint8_t{0}
@@ -1220,6 +1343,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.recipes += recipes_.size();
     stats.magic_effects += magic_effects_.size();
     stats.enchantments += enchantments_.size();
+    stats.spells += spells_.size();
+    stats.art_objects += art_objects_.size();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {
@@ -1271,6 +1396,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     }
     move_into(world.magic_effects, magic_effects_);
     move_into(world.enchantments, enchantments_);
+    move_into(world.spells, spells_);
+    move_into(world.art_objects, art_objects_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;

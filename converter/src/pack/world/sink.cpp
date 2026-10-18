@@ -98,6 +98,8 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"IPDS"}.value:
     case FourCC{"IPCT"}.value:
     case FourCC{"CSTY"}.value:
+    case FourCC{"SPEL"}.value:
+    case FourCC{"ARTO"}.value:
         bases_.collect(merged, data, form_ctx);
         break;
     case FourCC{"SOUN"}.value:

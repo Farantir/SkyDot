@@ -106,13 +106,13 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         flatbuffers::Offset<wfb::ItemData> item = 0;
         if (b.item) {
             const auto& i = *b.item;
-            std::vector<wfb::EffectItem> effects;
+            std::vector<flatbuffers::Offset<wfb::EffectItem>> effects;
             for (const auto& e : i.effects) {
-                effects.emplace_back(e.effect, e.magnitude, 0U, e.duration);
+                effects.push_back(wfb::CreateEffectItem(fbb, e.effect, e.magnitude, 0U, e.duration));
             }
-            flatbuffers::Offset<flatbuffers::Vector<const wfb::EffectItem*>> effects_v = 0;
+            flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<wfb::EffectItem>>> effects_v = 0;
             if (!effects.empty()) {
-                effects_v = fbb.CreateVectorOfStructs(effects);
+                effects_v = fbb.CreateVector(effects);
             }
             item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
                                        i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food, effects_v,

@@ -76,7 +76,7 @@ class BaseCollector {
 public:
     explicit BaseCollector(CollectContext& shared) : shared_(shared) {}
 
-    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, GMST, IPDS, IPCT or CSTY; nothing for another type.
+    /// LIGH, MATO, ADDN, TXST, LTEX, GRAS, AMMO, PROJ, SNDR, SOUN, SOPM, KYWD, MESG, EXPL, COBJ, MGEF, ENCH, SPEL, ARTO, GMST, IPDS, IPCT or CSTY; nothing for another type.
     void collect(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
 
@@ -128,6 +128,10 @@ private:
                          const record::FormContext& form_ctx);
     void on_enchantment(const record::MergedRecord& merged, io::SpanReader& data,
                         const record::FormContext& form_ctx);
+    void on_spell(const record::MergedRecord& merged, io::SpanReader& data,
+                  const record::FormContext& form_ctx);
+    void on_art_object(const record::MergedRecord& merged, io::SpanReader& data,
+                       const record::FormContext& form_ctx);
     void on_game_setting(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
     void on_impact_data_set(const record::MergedRecord& merged, io::SpanReader& data,
@@ -152,6 +156,8 @@ private:
     std::map<std::uint32_t, wfb::RecipeT> recipes_;
     std::map<std::uint32_t, wfb::MagicEffectT> magic_effects_;
     std::map<std::uint32_t, wfb::EnchantmentT> enchantments_;
+    std::map<std::uint32_t, wfb::SpellT> spells_;
+    std::map<std::uint32_t, wfb::ArtObjectT> art_objects_;
     std::map<std::uint32_t, wfb::ImpactDataSetT> impact_data_sets_;
     std::map<std::uint32_t, wfb::ImpactT> impacts_;
     std::map<std::uint32_t, wfb::CombatStyleT> combat_styles_;

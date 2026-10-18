@@ -349,6 +349,88 @@ io::ParseResult<Enchantment> parse_enchantment(io::SpanReader& data, const FormC
 
 // ---- MGEF -----------------------------------------------------------------
 
+namespace {
+
+/// DATA of an MGEF: every field is read if the record is long enough.
+void read_magic_effect_data(const std::vector<std::byte>& raw, MagicEffectRecord& out) {
+    const auto word = [&](std::size_t at) -> std::optional<io::SpanReader> {
+        if (at + 4 > raw.size()) {
+            return std::nullopt;
+        }
+        return io::SpanReader(std::span<const std::byte>(raw).subspan(at, 4), "MGEF DATA");
+    };
+    const auto u32 = [&](std::size_t at, std::uint32_t fallback = 0) {
+        auto in = word(at);
+        return in ? in->get<std::uint32_t>().value_or(fallback) : fallback;
+    };
+    const auto f32 = [&](std::size_t at, float fallback = 0.0F) {
+        auto in = word(at);
+        return in ? in->get<float>().value_or(fallback) : fallback;
+    };
+    const auto s32 = [&](std::size_t at, std::int32_t fallback) {
+        return static_cast<std::int32_t>(u32(at, static_cast<std::uint32_t>(fallback)));
+    };
+    out.flags = u32(0);
+    out.base_cost = f32(4);
+    out.associated_item = FormId{u32(8)};
+    out.magic_skill = s32(12, -1);
+    out.resist_value = s32(16, -1);
+    out.counter_effect_count = static_cast<std::uint16_t>(u32(20) & 0xFFFFU);
+    out.casting_light = FormId{u32(24)};
+    out.taper_weight = f32(28);
+    out.hit_shader = FormId{u32(32)};
+    out.enchant_shader = FormId{u32(36)};
+    out.skill_level = u32(40);
+    out.area = u32(44);
+    out.casting_time = f32(48);
+    out.taper_curve = f32(52);
+    out.taper_duration = f32(56);
+    out.second_av_weight = f32(60);
+    out.archetype = u32(64);
+    out.actor_value = s32(68, -1);
+    out.projectile = FormId{u32(72)};
+    out.explosion = FormId{u32(76)};
+    out.casting_type = u32(80);
+    out.delivery = u32(84);
+    out.second_actor_value = s32(88, -1);
+    out.casting_art = FormId{u32(92)};
+    out.hit_effect_art = FormId{u32(96)};
+    out.impact_data = FormId{u32(100)};
+    out.skill_usage_multiplier = f32(104);
+    out.dual_cast_art = FormId{u32(108)};
+    out.dual_cast_scale = f32(112, 1.0F);
+    out.enchant_art = FormId{u32(116)};
+    out.equip_ability = FormId{u32(128)};
+    out.image_space_mod = FormId{u32(132)};
+    out.perk_to_apply = FormId{u32(136)};
+    out.casting_sound_level = u32(140);
+    out.ai_score = f32(144);
+    out.ai_delay_time = f32(148);
+}
+
+} // namespace
+
+io::ParseResult<ArtObject> parse_art_object(io::SpanReader& data, const FormContext& ctx) {
+    ArtObject out;
+    const BaseObjectFields into{
+        .editor_id = &out.editor_id, .bounds = &out.bounds, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"ARTO"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DNAM"}) {
+                take(failure, body.get<std::uint32_t>(), out.art_type);
+            } else {
+                return read_base_object_field(into, FourCC{"ARTO"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<MagicEffectRecord> parse_magic_effect(io::SpanReader& data, const FormContext& ctx) {
     MagicEffectRecord out;
     const BaseObjectFields into{.editor_id = &out.editor_id,
@@ -365,49 +447,37 @@ io::ParseResult<MagicEffectRecord> parse_magic_effect(io::SpanReader& data, cons
             } else if (field.type == FourCC{"MDOB"}) {
                 take(failure, read_formid(body), out.menu_display_object);
             } else if (field.type == FourCC{"SNDD"}) {
-                // Pairs of (sound type, SNDR) in SE, one SNDR in LE, empty in
-                // 656 SE records; the first SNDR is kept.
-                if (body.remaining() >= 8) {
-                    std::uint32_t sound_type{};
-                    take(failure, body.get<std::uint32_t>(), sound_type);
+                // Pairs of (kind, SNDR) in SE, one SNDR in LE, empty in 656
+                // SE records.
+                if (body.remaining() == 4) {
+                    MagicEffectRecord::Sound sound;
+                    take(failure, read_formid(body), sound.sound);
+                    out.sounds.push_back(sound);
                 }
-                if (body.remaining() >= 4) {
-                    take(failure, read_formid(body), out.sound);
+                while (!failure && body.remaining() >= 8) {
+                    MagicEffectRecord::Sound sound;
+                    take(failure, body.get<std::uint32_t>(), sound.kind);
+                    take(failure, read_formid(body), sound.sound);
+                    out.sounds.push_back(sound);
                 }
                 if (!failure && body.remaining() != 0) {
                     std::vector<std::byte> rest;
                     take(failure, read_verbatim(body), rest);
                 }
             } else if (field.type == FourCC{"ESCE"}) {
-                std::vector<std::byte> raw;
-                take(failure, read_verbatim(body), raw);
+                while (!failure && body.remaining() >= 4) {
+                    FormId id;
+                    take(failure, read_formid(body), id);
+                    out.counter_effects.push_back(id);
+                }
             } else if (read_ctda_field(out.conditions, out.declared_condition_count, field, body,
                                        failure)) {
                 return true;
             } else if (field.type == FourCC{"DATA"}) {
-                take(failure, body.get<std::uint32_t>(), out.flags);
-                take(failure, body.get<float>(), out.base_cost);
-                take(failure, read_formid(body), out.associated_item);
-                take(failure, body.get<std::int32_t>(), out.magic_skill);
-                take(failure, body.get<std::int32_t>(), out.resist_value);
-                if (!failure && body.remaining() >= 68) {
-                    // counter count + pad (4), casting light, taper weight, hit
-                    // shader, enchant shader, min skill, spellmaking area and
-                    // cast time, taper curve and duration, second AV weight.
-                    const auto skip = [&](std::size_t n) {
-                        if (auto r = body.skip(n); !r && !failure) {
-                            failure = std::move(r).error();
-                        }
-                    };
-                    skip(44);
-                    take(failure, body.get<std::uint32_t>(), out.archetype);
-                    take(failure, body.get<std::int32_t>(), out.actor_value);
-                    skip(8);
-                    take(failure, body.get<std::uint32_t>(), out.casting_type);
-                    take(failure, body.get<std::uint32_t>(), out.delivery);
-                }
-                if (!failure && body.remaining() != 0) {
-                    take(failure, read_verbatim(body), out.data_rest);
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                if (!failure) {
+                    read_magic_effect_data(raw, out);
                 }
             } else {
                 return read_base_object_field(into, FourCC{"MGEF"}, field, body, ctx, failure);

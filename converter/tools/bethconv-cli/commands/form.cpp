@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "commands/commands.hpp"
 #include "common.hpp"
+#include "commands/form_magic.hpp"
 
 #include "bethconv/pack/world.hpp"
 #include "skydot_formats/vpath.hpp"
@@ -23,6 +24,7 @@ struct FormArgs {
     std::vector<std::uint32_t> races;
     std::vector<std::uint32_t> impact_data_sets;
     std::vector<std::uint32_t> impacts;
+    bool magic{};
 };
 
 namespace wfb = bethconv::pack::wfb;
@@ -54,6 +56,9 @@ int cmd_form(const FormArgs& args) {
                 print_setting(s);
             }
         }
+    }
+    if (args.magic) {
+        print_magic_census(*world);
     }
     for (const auto id : args.items) {
         const auto base = world->base(id);
@@ -131,6 +136,7 @@ void register_form(CLI::App& app) {
     form->add_option("--item", args->items, "An item base (WEAP, ...) by FormID");
     form->add_option("--race", args->races, "A race by FormID, with its attacks");
     form->add_option("--ipds", args->impact_data_sets, "An impact data set by FormID");
+    form->add_flag("--magic", args->magic, "Count the magic effect archetypes of spells, potions, scrolls and enchantments, in the whole world and in the first-milestone slice");
     form->add_option("--ipct", args->impacts, "An impact by FormID");
     form->callback([args] { set_exit_status(cmd_form(*args)); });
 }

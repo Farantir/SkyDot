@@ -684,18 +684,43 @@ std::optional<ProjectileFlight> projectile_flight(std::span<const std::byte> dat
     if (data.size() < 80) {
         return std::nullopt;
     }
-    io::SpanReader in(data, "PROJ DATA");
+    const auto word = [&](std::size_t at) -> std::optional<io::SpanReader> {
+        if (at + 4 > data.size()) {
+            return std::nullopt;
+        }
+        return io::SpanReader(data.subspan(at, 4), "PROJ DATA");
+    };
+    const auto u32 = [&](std::size_t at) {
+        auto in = word(at);
+        return in ? in->get<std::uint32_t>().value_or(0U) : 0U;
+    };
+    const auto f32 = [&](std::size_t at) {
+        auto in = word(at);
+        return in ? in->get<float>().value_or(0.0F) : 0.0F;
+    };
     ProjectileFlight out;
-    out.flags = in.get<std::uint16_t>().value_or(0);
-    out.type = in.get<std::uint16_t>().value_or(0);
-    out.gravity = in.get<float>().value_or(0.0F);
-    out.speed = in.get<float>().value_or(0.0F);
-    out.range = in.get<float>().value_or(0.0F);
-    (void)in.bytes(28); // light .. sound
-    out.muzzle_flash_duration = in.get<float>().value_or(0.0F);
-    (void)in.bytes(24); // fade duration .. cone spread
-    out.collision_radius = in.get<float>().value_or(0.0F);
-    out.lifetime = in.get<float>().value_or(0.0F);
+    out.flags = static_cast<std::uint16_t>(u32(0) & 0xFFFFU);
+    out.type = static_cast<std::uint16_t>(u32(0) >> 16U);
+    out.gravity = f32(4);
+    out.speed = f32(8);
+    out.range = f32(12);
+    out.light = FormId{u32(16)};
+    out.muzzle_flash_light = FormId{u32(20)};
+    out.tracer_chance = f32(24);
+    out.explosion_proximity = f32(28);
+    out.explosion_timer = f32(32);
+    out.explosion = FormId{u32(36)};
+    out.sound = FormId{u32(40)};
+    out.muzzle_flash_duration = f32(44);
+    out.fade_duration = f32(48);
+    out.impact_force = f32(52);
+    out.sound_countdown = FormId{u32(56)};
+    out.sound_disable = FormId{u32(60)};
+    out.default_weapon_source = FormId{u32(64)};
+    out.cone_spread = f32(68);
+    out.collision_radius = f32(72);
+    out.lifetime = f32(76);
+    out.relaunch_interval = f32(80);
     return out;
 }
 

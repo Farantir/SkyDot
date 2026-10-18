@@ -10,6 +10,7 @@
 #pragma once
 
 #include "bethconv/io/span_reader.hpp"
+#include "bethconv/record/conditions.hpp"
 #include "bethconv/record/field_walk.hpp"
 #include "bethconv/record/headers.hpp"
 #include "bethconv/record/strings.hpp"
@@ -209,11 +210,8 @@ struct EffectItem {
     std::uint32_t area{};     ///< EFIT[4..7]
     std::uint32_t duration{}; ///< EFIT[8..11]
 
-    /// CTDA, 32 bytes each, kept raw. Parameter meaning depends on the function
-    /// index; nothing needs it yet.
-    std::vector<std::vector<std::byte>> conditions;
-    /// CIS1/CIS2: string parameter of the preceding condition.
-    std::vector<std::string> condition_strings;
+    /// CTDA with its CIS1/CIS2, decoded.
+    std::vector<Condition> conditions;
 };
 
 // ---- shared field dispatch ------------------------------------------------

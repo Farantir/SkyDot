@@ -232,8 +232,26 @@ Dictionary get_projectile(const WorldData& data, std::int64_t id) {
     out["lifetime"] = static_cast<double>(proj->lifetime());
     out["muzzle_flash_model"] = proj->muzzle_flash_model() != nullptr ? String::utf8(proj->muzzle_flash_model()->c_str()) : String();
     out["muzzle_flash_duration"] = static_cast<double>(proj->muzzle_flash_duration());
+    // World.fb 33: the projectile's own model, else the base's of the same id.
     const auto* base = lookup(root->bases(), key);
-    out["model"] = base != nullptr && base->model() != nullptr ? String::utf8(base->model()->c_str()) : String();
+    out["model"] = proj->model() != nullptr && proj->model()->size() != 0
+                       ? String::utf8(proj->model()->c_str())
+                       : (base != nullptr && base->model() != nullptr ? String::utf8(base->model()->c_str()) : String());
+    out["light"] = static_cast<std::int64_t>(proj->light());
+    out["muzzle_flash_light"] = static_cast<std::int64_t>(proj->muzzle_flash_light());
+    out["tracer_chance"] = static_cast<double>(proj->tracer_chance());
+    out["explosion_proximity"] = static_cast<double>(proj->explosion_proximity());
+    out["explosion_timer"] = static_cast<double>(proj->explosion_timer());
+    out["explosion"] = static_cast<std::int64_t>(proj->explosion());
+    out["sound"] = static_cast<std::int64_t>(proj->sound());
+    out["sound_countdown"] = static_cast<std::int64_t>(proj->sound_countdown());
+    out["sound_disable"] = static_cast<std::int64_t>(proj->sound_disable());
+    out["sound_level"] = static_cast<std::int64_t>(proj->sound_level());
+    out["fade_duration"] = static_cast<double>(proj->fade_duration());
+    out["impact_force"] = static_cast<double>(proj->impact_force());
+    out["default_weapon_source"] = static_cast<std::int64_t>(proj->default_weapon_source());
+    out["cone_spread"] = static_cast<double>(proj->cone_spread());
+    out["relaunch_interval"] = static_cast<double>(proj->relaunch_interval());
     return out;
 }
 

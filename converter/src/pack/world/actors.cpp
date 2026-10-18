@@ -130,6 +130,7 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.aggro_warn = npc->warn;
     out.aggro_warn_attack = npc->warn_or_attack;
     out.aggro_attack = npc->attack;
+    out.spells = shared_.global_all(merged, npc->spells, failed);
     out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
     if (failed) {
         ++shared_.stats().unresolved;
@@ -182,6 +183,7 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
     out.unarmed_reach = race->unarmed_reach;
     out.impact_material = shared_.global(merged, race->impact_material, failed);
     out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
+    out.spells = shared_.global_all(merged, race->spells, failed);
     for (const auto& a : race->attacks) {
         auto& attack = out.attacks.emplace_back(std::make_unique<wfb::RaceAttackT>());
         attack->event = a.event;

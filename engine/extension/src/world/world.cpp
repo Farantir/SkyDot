@@ -65,6 +65,11 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_weapon", "form"), &SkydotWorld::get_weapon);
     godot::ClassDB::bind_method(D_METHOD("get_race", "race"), &SkydotWorld::get_race);
     godot::ClassDB::bind_method(D_METHOD("get_combat_style", "id"), &SkydotWorld::get_combat_style);
+    godot::ClassDB::bind_method(D_METHOD("get_spell", "id"), &SkydotWorld::get_spell);
+    godot::ClassDB::bind_method(D_METHOD("get_magic_effect", "id"), &SkydotWorld::get_magic_effect);
+    godot::ClassDB::bind_method(D_METHOD("get_enchantment", "id"), &SkydotWorld::get_enchantment);
+    godot::ClassDB::bind_method(D_METHOD("get_art_object", "id"), &SkydotWorld::get_art_object);
+    godot::ClassDB::bind_method(D_METHOD("get_item_effects", "form"), &SkydotWorld::get_item_effects);
     godot::ClassDB::bind_method(D_METHOD("get_npc", "id"), &SkydotWorld::get_npc);
     godot::ClassDB::bind_method(D_METHOD("get_faction", "id"), &SkydotWorld::get_faction);
     godot::ClassDB::bind_method(D_METHOD("get_impact", "data_set", "material"), &SkydotWorld::get_impact);
@@ -307,6 +312,11 @@ std::int64_t SkydotWorld::get_gmst_int(const String& name, std::int64_t fallback
 Dictionary SkydotWorld::get_weapon(std::int64_t form) const { return queries::get_weapon(data(), form); }
 Dictionary SkydotWorld::get_race(std::int64_t race) const { return queries::get_race(data(), race); }
 Dictionary SkydotWorld::get_combat_style(std::int64_t id) const { return queries::get_combat_style(data(), id); }
+Dictionary SkydotWorld::get_spell(std::int64_t id) const { return queries::get_spell(data(), id); }
+Dictionary SkydotWorld::get_magic_effect(std::int64_t id) const { return queries::get_magic_effect(data(), id); }
+Dictionary SkydotWorld::get_enchantment(std::int64_t id) const { return queries::get_enchantment(data(), id); }
+Dictionary SkydotWorld::get_art_object(std::int64_t id) const { return queries::get_art_object(data(), id); }
+Array SkydotWorld::get_item_effects(std::int64_t form) const { return queries::get_item_effects(data(), form); }
 Dictionary SkydotWorld::get_npc(std::int64_t id) const { return queries::get_npc(data(), id); }
 Dictionary SkydotWorld::get_faction(std::int64_t id) const { return queries::get_faction(data(), id); }
 Dictionary SkydotWorld::get_impact(std::int64_t data_set, std::int64_t material) const {

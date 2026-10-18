@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (32; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (33; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -280,6 +280,21 @@ test bits by these names, through `has_flag` in
   ATKD fields; `flags` stay raw, 0x4 is the power attack bit).
 - `RefFlags.starts_dead` (bit 5, set on a placed actor whose ACHR record flag 0x200 "Starts Dead"
   is set; added to format 31 without a bump: an older pack has the bit clear and its actors live).
+- Magic (format 33; sources UESP and xEdit): `spells` (SPEL, sorted by id: SPIT `cost`,
+  `flags` raw, `type`, `charge_time`, `casting_type`, `delivery`, `cast_duration`, `range`,
+  `half_cost_perk`; ETYP `equip_slot`; `effects`). `EffectItem` is a table (it was a struct) and
+  gains `conditions` (the CTDAs after each EFIT). `MagicEffect` gains the DATA fields beyond
+  `delivery` (associated item, resist value, second actor value and weight, skill level, area,
+  casting time, taper, projectile, explosion, light, shaders, art objects, impact data, skill usage,
+  dual cast, equip ability, image space modifier, perk, AI score), `counter_effects` (ESCE),
+  `sounds` (SNDD `kind` + `sound`), `conditions` (CTDA) and `scripts` (VMAD); its `flags` comment
+  was corrected (0x4 is detrimental, 0x2 recover). `art_objects` (ARTO: `model`, `art_type`).
+  `Projectile` gains `model`, `light`, `muzzle_flash_light`, tracer chance, explosion proximity and
+  timer, `explosion`, the three sounds, `sound_level`, `fade_duration`, `impact_force`,
+  `default_weapon_source`, `cone_spread` and `relaunch_interval`. `Enchantment` gains the ENIT
+  `flags`, `casting_type`, `delivery`, `enchantment_type` (6 enchantment, 12 staff), `charge_time`,
+  `base_enchantment` and `worn_restrictions`. `ItemData.enchantment_amount` (WEAP/ARMO EAMT).
+  `Npc.spells` and `Race.spells` (SPLO as they are: spells, LVSPs, shouts).
 - `Npc` gains `aggro_radius_behaviour`, `aggro_warn`, `aggro_warn_attack` and `aggro_attack`
   (format 32, AIDT).
 - Combat styles (format 31): `combat_styles` (CSTY, sorted by id: the CSGD

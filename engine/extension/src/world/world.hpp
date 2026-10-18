@@ -213,6 +213,32 @@ public:
     /// dive_bomb_chance, ground_attack_chance, hover_time, ground_attack_time,
     /// perch_attack_chance, perch_attack_time, flying_attack_chance, flags); empty if none.
     godot::Dictionary get_combat_style(std::int64_t id) const;
+    /// A spell (SPEL; world.fb 33; keys: id, editor_id, name, cost, flags (raw; 0x1 manual
+    /// cost), type (0 spell, 1 disease, 2 power, 3 lesser power, 4 ability, 5 poison, 10
+    /// addiction, 11 voice), charge_time, casting_type (0 constant, 1 fire and forget, 2
+    /// concentration, 3 scroll), delivery (0 self, 1 touch, 2 aimed, 3 target actor, 4 target
+    /// location), cast_duration, range, half_cost_perk, equip_slot, effects); empty if none.
+    /// `effects` is [{effect (an MGEF), magnitude, area, duration, conditions: [{type, function,
+    /// compare_to, value_global, param1, param2, run_on, reference, param3}]}].
+    godot::Dictionary get_spell(std::int64_t id) const;
+    /// A magic effect (MGEF; keys: id, editor_id, name, description, flags (0x1 hostile, 0x2
+    /// recover, 0x4 detrimental, ...), base_cost, magic_skill, actor_value, archetype,
+    /// casting_type, delivery, associated_item, resist_value, second_actor_value,
+    /// second_av_weight, skill_level, area, casting_time, taper_weight, taper_curve,
+    /// taper_duration, projectile, explosion, casting_light, hit_shader, enchant_shader,
+    /// casting_art, hit_effect_art, enchant_art, impact_data, skill_usage_multiplier,
+    /// dual_cast_art, dual_cast_scale, equip_ability, image_space_mod, perk_to_apply,
+    /// casting_sound_level, ai_score, ai_delay_time, keywords, counter_effects, sounds: [{kind,
+    /// sound}], conditions, scripts: [name]); empty if none.
+    godot::Dictionary get_magic_effect(std::int64_t id) const;
+    /// An enchantment (ENCH; keys: id, editor_id, name, cost, charge, flags, casting_type,
+    /// delivery, enchantment_type (6 enchantment, 12 staff), charge_time, base_enchantment,
+    /// worn_restrictions, effects as in get_spell); empty if none.
+    godot::Dictionary get_enchantment(std::int64_t id) const;
+    /// An art object (ARTO; keys: id, editor_id, model, art_type); empty if none.
+    godot::Dictionary get_art_object(std::int64_t id) const;
+    /// The effects of an item base (ALCH, SCRL, INGR) as in get_spell; empty for others.
+    godot::Array get_item_effects(std::int64_t form) const;
     /// An NPC_ base as combat reads it (keys: id, editor_id, name, race, level, aggression,
     /// confidence, energy, morality, mood, assistance, template, template_flags, combat_style, crime_faction, factions:
     /// [{faction, rank}]); empty if none. The record's own values, no template.

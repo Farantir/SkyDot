@@ -489,6 +489,9 @@ table ItemData {
     /// EITM of WEAP and ARMO (format 29): an Enchantment in `enchantments`, 0
     /// if none.
     enchantment: uint32;
+    /// EAMT of WEAP (format 33; no ARMO record has one in Skyrim.esm): the
+    /// enchantment's charge, the most a weapon holds.
+    enchantment_amount: uint32;
     /// WEAP DNAM (format 30): bytes 4 and 8, the swing speed and the reach
     /// (both 1.0 on a sword). Sources: xEdit's WEAP DNAM layout, checked
     /// against the Iron Sword.
@@ -514,13 +517,71 @@ table ItemData {
     unequip_sound: uint32;
 }
 
-/// EFID and EFIT (format 29): a magic effect with its strength.
-struct EffectItem {
+/// EFID, EFIT and the CTDAs after them: a magic effect with its strength.
+/// A struct up to format 32; a table from format 33.
+table EffectItem {
     /// A MagicEffect in `magic_effects`.
     effect: uint32;
     magnitude: float;
     area: uint32;
     duration: uint32;
+    /// The CTDA records that follow this entry's EFIT (format 33): the effect
+    /// applies while they hold (subject: the caster, target: the target).
+    conditions: [Condition];
+}
+
+/// SPEL (format 33): a spell, power, ability, disease, poison or addiction.
+/// Sources: UESP (Spell record, SPIT) and xEdit's SPEL layout.
+table Spell {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// SPIT cost (the magicka a spell costs; for an auto-calc spell the
+    /// stored value is not the displayed one).
+    cost: int32;
+    /// SPIT flags, raw: 0x1 manual cost calc (clear: auto-calc), 0x20000
+    /// "Pc start spell", 0x40000 "Area effect ignores LOS", 0x80000 "Ignore
+    /// resistance", 0x100000 "No absorb/reflect", 0x400000 "No dual cast
+    /// modification" (xEdit).
+    flags: uint32;
+    /// SPIT type: 0 spell, 1 disease, 2 power, 3 lesser power, 4 ability,
+    /// 5 poison, 10 addiction, 11 voice power.
+    type: uint32;
+    /// Seconds a spell is charged before it casts.
+    charge_time: float;
+    /// 0 constant, 1 fire and forget, 2 concentration, 3 scroll.
+    casting_type: uint32;
+    /// 0 self, 1 touch, 2 aimed, 3 target actor, 4 target location.
+    delivery: uint32;
+    /// Seconds a concentration spell lasts per cast, or a fire-and-forget
+    /// spell's cast time.
+    cast_duration: float;
+    range: float;
+    /// A Perk (SPIT's last word) that halves the cost; 0 if none.
+    half_cost_perk: uint32;
+    /// ETYP: an EQUP slot; 0 if none (a spell is held in either hand).
+    equip_slot: uint32;
+    effects: [EffectItem];
+}
+
+/// ARTO (format 33): visual art of a magic effect (casting, hit or enchant).
+table ArtObject {
+    id: uint32 (key);
+    editor_id: string;
+    /// MODL: a normalized virtual path; empty if none.
+    model: string;
+    /// DNAM: 0 magic casting, 1 magic hit effect, 2 magic effect (UESP,
+    /// xEdit).
+    art_type: uint32;
+}
+
+/// A MagicEffect's SNDD entry (format 33).
+struct MagicEffectSound {
+    /// 0 sheathe/draw, 1 charge, 2 ready, 3 release, 4 cast loop, 5 on hit
+    /// (UESP).
+    kind: uint32;
+    /// A SoundDescriptor in `sound_descriptors`.
+    sound: uint32;
 }
 
 /// COBJ (format 29): a constructible object. The bench is chosen by
@@ -547,8 +608,13 @@ table MagicEffect {
     name: string;
     /// DNAM, with its `<mag>` and `<dur>` placeholders.
     description: string;
-    /// DATA flags: 0x1 hostile, 0x4 recover, 0x200000 power affects
-    /// magnitude, 0x400000 power affects duration, among others.
+    /// DATA flags (UESP and xEdit; before format 33 this said 0x4 was
+    /// "recover"): 0x1 hostile, 0x2 recover, 0x4 detrimental, 0x8 snap to
+    /// navmesh, 0x10 no hit event, 0x100 dispel with keywords, 0x200 no
+    /// duration, 0x400 no magnitude, 0x800 no area, 0x1000 FX persist, 0x2000
+    /// gory visuals, 0x4000 hide in UI, 0x10000 no recast, 0x200000 power
+    /// affects magnitude, 0x400000 power affects duration, 0x4000000 painless,
+    /// 0x8000000 no hit effect, 0x10000000 no death dispel.
     flags: uint32;
     base_cost: float;
     /// The magic skill as an actor value index, -1 if none.
@@ -560,6 +626,60 @@ table MagicEffect {
     /// 0 self, 1 touch, 2 aimed, 3 target actor, 4 target location.
     delivery: uint32;
     keywords: [uint32];
+    /// DATA, offsets in the 152-byte form (format 33; xEdit, checked against
+    /// Skyrim.esm): 8 the associated item (a form; an archetype decides what:
+    /// the summoned actor, the bound weapon, the light, ...).
+    associated_item: uint32;
+    /// 16: the actor value that resists it, -1 if none.
+    resist_value: int32;
+    /// 88 and 60: the second actor value of a dual value modifier and its
+    /// weight.
+    second_actor_value: int32 = -1;
+    second_av_weight: float;
+    /// 40: the minimum skill level of the spell-maker.
+    skill_level: uint32;
+    /// 44 and 48: spell-maker area and casting time.
+    area: uint32;
+    casting_time: float;
+    /// 28, 52, 56: taper weight, curve and duration.
+    taper_weight: float;
+    taper_curve: float;
+    taper_duration: float;
+    /// 72, 76: a Projectile and an Explosion.
+    projectile: uint32;
+    explosion: uint32;
+    /// 24: a LIGH.
+    casting_light: uint32;
+    /// 32, 36: EFSH forms.
+    hit_shader: uint32;
+    enchant_shader: uint32;
+    /// 92, 96, 116: ArtObjects in `art_objects`; 100: an ImpactDataSet.
+    casting_art: uint32;
+    hit_effect_art: uint32;
+    enchant_art: uint32;
+    impact_data: uint32;
+    /// 104: multiplier of the skill use gained.
+    skill_usage_multiplier: float;
+    /// 108 and 112: the DUAL form of a dual cast and its scale.
+    dual_cast_art: uint32;
+    dual_cast_scale: float = 1;
+    /// 128, 132, 136: a Spell an equipped item grants, an IMAD and a Perk.
+    equip_ability: uint32;
+    image_space_mod: uint32;
+    perk_to_apply: uint32;
+    /// 140 and 144, 148: casting sound level; the AI score and delay time
+    /// of a script effect.
+    casting_sound_level: uint32;
+    ai_score: float;
+    ai_delay_time: float;
+    /// ESCE: MagicEffects that counter this one.
+    counter_effects: [uint32];
+    /// SNDD.
+    sounds: [MagicEffectSound];
+    /// CTDA: the conditions the effect needs on its target (format 33).
+    conditions: [Condition];
+    /// VMAD (format 33), as scripted bases carry theirs.
+    scripts: [Script];
 }
 
 /// ENCH (format 29).
@@ -572,6 +692,20 @@ table Enchantment {
     /// ENIT enchantment amount: the charge.
     charge: int32;
     effects: [EffectItem];
+    /// ENIT (format 33; UESP and xEdit): flags (0x1 manual calc, 0x4 extend
+    /// duration on recast), the casting type (as `MagicEffect.casting_type`),
+    /// the delivery (as `MagicEffect.delivery`), the type (6 enchantment,
+    /// 12 staff enchantment) and the charge time.
+    flags: uint32;
+    casting_type: uint32;
+    delivery: uint32;
+    enchantment_type: uint32;
+    charge_time: float;
+    /// ENIT: the Enchantment this one is made from, 0 if none.
+    base_enchantment: uint32;
+    /// ENIT: a FormList of the keywords of the items it may be worn on (a
+    /// weapon or armor kind); 0 for any.
+    worn_restrictions: uint32;
 }
 
 /// DEST, DSTD and DMDL (format 23). A stage opens when the object's health
@@ -1201,6 +1335,9 @@ table Race {
     impact_data_set: uint32;
     /// ATKD and ATKE pairs (format 30), in record order.
     attacks: [RaceAttack];
+    /// SPLO (format 33): the spells and abilities every actor of the race
+    /// has, as they stand (Spells, LVSPs, SHOUs).
+    spells: [uint32];
 }
 
 /// RACE ATKD (44 bytes) and ATKE (format 30). Source: xEdit's RACE layout. In
@@ -1394,6 +1531,10 @@ table Npc {
     aggro_warn: uint32;
     aggro_warn_attack: uint32;
     aggro_attack: uint32;
+    /// SPLO (format 33): the spells, abilities and powers it starts with, as
+    /// they stand: Spells in `spells`, leveled spell lists (LVSP, in
+    /// `leveled_lists`) and shouts (SHOU, not in this file).
+    spells: [uint32];
 }
 
 /// The low bits of `Condition.type`.
@@ -1545,6 +1686,10 @@ table Projectile {
     id: uint32 (key);
     /// 1 missile, 2 lobber, 4 beam, 8 flame, 0x10 cone, 0x20 barrier, 0x40 arrow.
     type: uint16;
+    /// DATA flags, raw (xEdit): 0x1 hitscan, 0x2 explosion, 0x4 alt. trigger,
+    /// 0x8 muzzle flash, 0x20 can be disabled, 0x40 can be picked up, 0x80
+    /// supersonic, 0x100 pins limbs, 0x200 pass through small transparent,
+    /// 0x400 disable combat aim correction, 0x800 rotation.
     flags: uint16;
     /// Multiplier of the world's gravity.
     gravity: float;
@@ -1560,6 +1705,36 @@ table Projectile {
     muzzle_flash_model: string;
     /// Seconds the muzzle flash lasts, DATA offset 44 (format 20).
     muzzle_flash_duration: float;
+    /// MODL (format 33): the projectile's own model, a normalized virtual
+    /// path; empty if none.
+    model: string;
+    /// DATA, offsets in the 92-byte form (format 33; xEdit, UESP): 16 a LIGH
+    /// that travels with it, 20 the muzzle flash LIGH.
+    light: uint32;
+    muzzle_flash_light: uint32;
+    /// 24, 28, 32: the tracer chance, and the proximity and the timer of an
+    /// alt. trigger (flag 0x4).
+    tracer_chance: float;
+    explosion_proximity: float;
+    explosion_timer: float;
+    /// 36: an Explosion in `explosions` (flag 0x2).
+    explosion: uint32;
+    /// 40, 56, 60: SoundDescriptors for the flight (active), the countdown
+    /// of an alt. trigger and when it is disabled; 0 if none. VNAM is the
+    /// sound level.
+    sound: uint32;
+    sound_countdown: uint32;
+    sound_disable: uint32;
+    sound_level: uint32;
+    /// 48: seconds it fades out after it ends; 52: the force of its impact.
+    fade_duration: float;
+    impact_force: float;
+    /// 64: the weapon form it takes its source from by default (a WEAP).
+    default_weapon_source: uint32;
+    /// 68: degrees, for a cone; 80: seconds between relaunches of a beam or
+    /// flame.
+    cone_spread: float;
+    relaunch_interval: float;
 }
 
 table Plugin {
@@ -2146,6 +2321,10 @@ table World {
     impacts: [Impact];
     /// Sorted by id (format 31).
     combat_styles: [CombatStyle];
+    /// Sorted by id (format 33).
+    spells: [Spell];
+    /// Sorted by id (format 33).
+    art_objects: [ArtObject];
 }
 
 root_type World;

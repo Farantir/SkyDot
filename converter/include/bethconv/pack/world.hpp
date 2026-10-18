@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 32;
+inline constexpr std::uint32_t k_world_format_version = 33;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -75,6 +75,9 @@ struct WorldStats {
     std::uint64_t recipes{};
     std::uint64_t magic_effects{};
     std::uint64_t enchantments{};
+    /// SPEL and ARTO (format 33).
+    std::uint64_t spells{};
+    std::uint64_t art_objects{};
     std::uint64_t harvestables{};
     std::uint64_t benches{};
     /// GMST, IPDS and IPCT (format 30).
@@ -167,6 +170,20 @@ inline constexpr std::size_t k_terrain_grid = 33;
            skydot::formats::has_flag(world.parent_flags, wfb::ParentFlags::land_data);
 }
 
+/// What the `form --magic` census needs of a cell without unpacking its
+/// terrain and references.
+struct CellSummary {
+    std::uint32_t id{};
+    std::string editor_id;
+    std::uint32_t world{};
+    bool interior{};
+    bool has_grid{};
+    std::int32_t grid_x{};
+    std::int32_t grid_y{};
+    /// The bases of its references, one per reference.
+    std::vector<std::uint32_t> ref_bases;
+};
+
 /// A verified `world.fb`. Lookups copy a table out as flatc's object type
 /// (`wfb::CellT` for `wfb::Cell`, and so on), so a field added to world.fbs
 /// reads here without an edit.
@@ -213,6 +230,13 @@ public:
     [[nodiscard]] std::optional<wfb::RecipeT> recipe(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::MagicEffectT> magic_effect(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::EnchantmentT> enchantment(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::SpellT> spell(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::SpellT> spells() const;
+    [[nodiscard]] std::vector<wfb::EnchantmentT> enchantments() const;
+    /// Every base that is an item (`item` set), in id order.
+    [[nodiscard]] std::vector<wfb::BaseT> item_bases() const;
+    [[nodiscard]] std::vector<CellSummary> cell_summaries() const;
+    [[nodiscard]] std::optional<wfb::ArtObjectT> art_object(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactDataSetT> impact_data_set(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactT> impact(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::CombatStyleT> combat_style(std::uint32_t id) const;

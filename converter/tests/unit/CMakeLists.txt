@@ -46,6 +46,7 @@ add_executable(bethconv_unit_tests
     test_world_items.cpp
     test_world_crafting.cpp
     test_world_combat.cpp
+    test_world_magic.cpp
     test_scene.cpp
     test_xwma.cpp
 )

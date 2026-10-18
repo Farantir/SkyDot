@@ -259,6 +259,60 @@ std::optional<wfb::EnchantmentT> WorldFile::enchantment(std::uint32_t id) const 
     return unpack(lookup(impl_->root->enchantments(), id));
 }
 
+std::optional<wfb::SpellT> WorldFile::spell(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->spells(), id));
+}
+
+std::vector<wfb::SpellT> WorldFile::spells() const {
+    return unpack_all(impl_->root->spells());
+}
+
+std::vector<wfb::EnchantmentT> WorldFile::enchantments() const {
+    return unpack_all(impl_->root->enchantments());
+}
+
+std::vector<wfb::BaseT> WorldFile::item_bases() const {
+    std::vector<wfb::BaseT> out;
+    if (const auto* bases = impl_->root->bases()) {
+        for (const auto* b : *bases) {
+            if (b->item() != nullptr) {
+                b->UnPackTo(&out.emplace_back());
+            }
+        }
+    }
+    return out;
+}
+
+std::vector<CellSummary> WorldFile::cell_summaries() const {
+    std::vector<CellSummary> out;
+    if (const auto* cells = impl_->root->cells()) {
+        out.reserve(cells->size());
+        for (const auto* c : *cells) {
+            auto& s = out.emplace_back();
+            s.id = c->id();
+            if (const auto* name = c->editor_id()) {
+                s.editor_id = name->str();
+            }
+            s.world = c->world();
+            s.interior = skydot::formats::has_flag(c->flags(), wfb::CellFlags::interior);
+            s.has_grid = c->has_grid();
+            s.grid_x = c->grid_x();
+            s.grid_y = c->grid_y();
+            if (const auto* refs = c->refs()) {
+                s.ref_bases.reserve(refs->size());
+                for (const auto* r : *refs) {
+                    s.ref_bases.push_back(r->base());
+                }
+            }
+        }
+    }
+    return out;
+}
+
+std::optional<wfb::ArtObjectT> WorldFile::art_object(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->art_objects(), id));
+}
+
 std::optional<wfb::ImpactDataSetT> WorldFile::impact_data_set(std::uint32_t id) const {
     return unpack(lookup(impl_->root->impact_data_sets(), id));
 }

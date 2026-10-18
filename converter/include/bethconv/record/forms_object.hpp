@@ -380,6 +380,26 @@ struct ProjectileFlight {
     float lifetime{}; ///< Seconds.
     /// How long the muzzle flash model lives; DATA offset 44 (UESP SSE layout).
     float muzzle_flash_duration{};
+    /// The other words of the 92-byte form (xEdit, UESP), 0 where the record
+    /// is shorter: light (16), muzzle flash light (20), tracer chance (24),
+    /// alt. trigger proximity (28) and timer (32), explosion (36), sound (40),
+    /// fade duration (48), impact force (52), countdown sound (56), disable
+    /// sound (60), default weapon source (64), cone spread (68), relaunch
+    /// interval (80).
+    FormId light;
+    FormId muzzle_flash_light;
+    float tracer_chance{};
+    float explosion_proximity{};
+    float explosion_timer{};
+    FormId explosion;
+    FormId sound;
+    float fade_duration{};
+    float impact_force{};
+    FormId sound_countdown;
+    FormId sound_disable;
+    FormId default_weapon_source;
+    float cone_spread{};
+    float relaunch_interval{};
 };
 
 /// Nullopt if `data` is shorter than 80 bytes.

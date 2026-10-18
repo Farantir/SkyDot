@@ -249,24 +249,13 @@ bool read_effect_field(std::vector<EffectItem>& effects, const FieldHeader& fiel
         take(failure, body.get<float>(), item.magnitude);
         take(failure, body.get<std::uint32_t>(), item.area);
         take(failure, body.get<std::uint32_t>(), item.duration);
-    } else if (field.type == FourCC{"CTDA"}) {
+    } else if (field.type == FourCC{"CTDA"} || field.type == FourCC{"CIS1"} ||
+               field.type == FourCC{"CIS2"}) {
         if (effects.empty()) {
             effects.emplace_back();
         }
-        std::vector<std::byte> condition;
-        take(failure, read_verbatim(body), condition);
-        if (!failure) {
-            effects.back().conditions.push_back(std::move(condition));
-        }
-    } else if (field.type == FourCC{"CIS1"} || field.type == FourCC{"CIS2"}) {
-        if (effects.empty()) {
-            effects.emplace_back();
-        }
-        std::string text;
-        take(failure, read_zstring(body), text);
-        if (!failure) {
-            effects.back().condition_strings.push_back(std::move(text));
-        }
+        std::uint32_t declared = 0;
+        (void)read_ctda_field(effects.back().conditions, declared, field, body, failure);
     } else {
         return false;
     }

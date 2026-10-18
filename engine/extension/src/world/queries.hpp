@@ -83,6 +83,13 @@ godot::Dictionary get_weapon(const WorldData& data, std::int64_t form);
 godot::Dictionary get_race(const WorldData& data, std::int64_t race);
 godot::Dictionary get_impact(const WorldData& data, std::int64_t data_set, std::int64_t material);
 
+/// Magic (queries_magic.cpp; world.fb 33).
+godot::Dictionary get_spell(const WorldData& data, std::int64_t id);
+godot::Dictionary get_magic_effect(const WorldData& data, std::int64_t id);
+godot::Dictionary get_enchantment(const WorldData& data, std::int64_t id);
+godot::Dictionary get_art_object(const WorldData& data, std::int64_t id);
+godot::Array get_item_effects(const WorldData& data, std::int64_t form);
+
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
 godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);
 godot::Dictionary get_actor(const WorldData& data, std::int64_t ref);

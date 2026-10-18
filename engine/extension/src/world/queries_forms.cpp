@@ -153,6 +153,9 @@ Dictionary get_weapon(const WorldData& data, std::int64_t form) {
     out["first_person_model"] = to_godot(item->first_person_model());
     out["equip_sound"] = static_cast<std::int64_t>(item->equip_sound());
     out["unequip_sound"] = static_cast<std::int64_t>(item->unequip_sound());
+    // World.fb 33: absent (0) in older packs.
+    out["enchantment"] = static_cast<std::int64_t>(item->enchantment());
+    out["enchantment_amount"] = static_cast<std::int64_t>(item->enchantment_amount());
     return out;
 }
 
@@ -227,6 +230,14 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     out["aggro_attack"] = static_cast<std::int64_t>(npc->aggro_attack());
     out["combat_style"] = static_cast<std::int64_t>(npc->combat_style());
     out["crime_faction"] = static_cast<std::int64_t>(npc->crime_faction());
+    // SPLO as it is: spells, leveled spell lists and shouts (world.fb 33).
+    godot::PackedInt64Array spells;
+    if (npc->spells() != nullptr) {
+        for (const auto s : *npc->spells()) {
+            spells.push_back(s);
+        }
+    }
+    out["spells"] = spells;
     Array factions;
     if (npc->factions() != nullptr) {
         for (const auto* f : *npc->factions()) {
@@ -276,6 +287,13 @@ Dictionary get_race(const WorldData& data, std::int64_t race_id) {
     out["unarmed_reach"] = static_cast<double>(race->unarmed_reach());
     out["impact_material"] = static_cast<std::int64_t>(race->impact_material());
     out["impact_data_set"] = static_cast<std::int64_t>(race->impact_data_set());
+    godot::PackedInt64Array spells;
+    if (race->spells() != nullptr) {
+        for (const auto s : *race->spells()) {
+            spells.push_back(s);
+        }
+    }
+    out["spells"] = spells;
     Array behaviours;
     if (race->behaviours() != nullptr) {
         for (const auto* b : *race->behaviours()) {
