@@ -498,3 +498,11 @@ if(SKYDOT_SSE_PACK)
         PASS "0x0003B9F1 graph restored: Opened.*loaded "
         FAIL "0x0003B9F1 behaviour: Closed -> Open;cannot load")
 endif()
+
+# The tests that write saves share user://, and sse_player_death takes the newest save there and
+# deletes every .skydot: one at a time.
+foreach(_t sse_player_death sse_combat_death sse_items_session sse_crafting_session sse_combat_melee smoke_game_save)
+    if(TEST ${_t})
+        set_property(TEST ${_t} APPEND PROPERTY RESOURCE_LOCK user_saves)
+    endif()
+endforeach()
