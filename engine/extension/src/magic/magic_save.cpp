@@ -32,7 +32,7 @@ bool check_magc(const wfb::World& world, const MagcParts& parts) {
     }
     struct Silent final : MagicHost {
         double actor_value(std::uint32_t, std::uint32_t) const override { return 0.0; }
-        void damage_value(std::uint32_t, std::uint32_t, double) override {}
+        void damage_value(std::uint32_t, std::uint32_t, double, std::uint32_t) override {}
         void restore_value(std::uint32_t, std::uint32_t, double) override {}
         void modify_temp(std::uint32_t, std::uint32_t, double) override {}
         bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>*, std::uint32_t,

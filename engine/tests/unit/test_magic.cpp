@@ -70,7 +70,7 @@ struct Host : magic::MagicHost {
 
     Host() { states.set_source(fake_source); }
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return states.get(ref, av); }
-    void damage_value(std::uint32_t ref, std::uint32_t av, double amount) override { states.damage(ref, av, amount); }
+    void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t) override { states.damage(ref, av, amount); }
     void restore_value(std::uint32_t ref, std::uint32_t av, double amount) override { states.restore(ref, av, amount); }
     void modify_temp(std::uint32_t ref, std::uint32_t av, double delta) override { states.mod_temp(ref, av, delta); }
     bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<magic::wfb::Condition>>*, std::uint32_t,

@@ -104,6 +104,10 @@ set(SKYDOT_CORE_SOURCES
     src/vm/actor_values.hpp
     src/vm/natives_actor.cpp
     src/vm/natives_actor.hpp
+    src/vm/natives_activemagiceffect.cpp
+    src/vm/natives_magic.hpp
+    src/vm/natives_magiceffect.cpp
+    src/vm/natives_spell.cpp
     src/vm/quest_states.cpp
     src/vm/quest_states.hpp
     src/vm/runtime_refs.hpp
@@ -271,6 +275,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_dialogue.cpp
     src/vm/papyrus_items.cpp
     src/vm/papyrus_crafting.cpp
+    src/vm/papyrus_magic.cpp
     src/vm/papyrus_combat.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp

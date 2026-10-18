@@ -15,6 +15,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
+#include <cstdio>
 
 using godot::Array;
 using godot::Dictionary;
@@ -222,7 +223,19 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
     case vm::EquipAction::equipped:
         items_.equipment(owner) = std::move(trial);
         break;
-    case vm::EquipAction::consumed:
+    case vm::EquipAction::consumed: {
+        const auto applied = apply_item_effects(owner, form, extra);
+        if (String(applied.get("reason", String())) == "poison") {
+            // A poison waits for the weapon (7a-3): it stays in the inventory.
+            const std::string line = "magic: poison " + [&] {
+                char buf[16];
+                std::snprintf(buf, sizeof buf, "0x%X", form);
+                return std::string(buf);
+            }() + " waits for the weapon (7a-3)";
+            emit_signal("trace", to_godot(line));
+            godot::UtilityFunctions::print(to_godot(line));
+            return false;
+        }
         remove_item_extra(owner, form, extra, 1);
         if (info.category == vm::ItemCategory::ingredient) {
             // Eating an ingredient teaches its first effect.
@@ -230,9 +243,9 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
                 logic->note_eaten(form);
             }
         }
-        emit_signal("trace", to_godot("item " + info.name + ": effects not implemented"));
-        godot::UtilityFunctions::print(to_godot("items: " + info.name + " consumed, effects not implemented"));
+        godot::UtilityFunctions::print(to_godot("items: " + info.name + " consumed"));
         break;
+    }
     case vm::EquipAction::read:
         emit_signal("trace", to_godot("item " + info.name + ": reading not implemented"));
         godot::UtilityFunctions::print(to_godot("items: " + info.name + ", reading not implemented"));

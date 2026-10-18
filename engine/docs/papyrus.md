@@ -15,7 +15,7 @@ other VM's code was read, so it stays GPL-3.0.
 | `vm/vm.*` | Instances, threads, the interpreter, the scheduler, timers, native binding |
 | `vm/save.cpp` | The VM's save format |
 | `vm/papyrus.*` | `SkydotPapyrus`: the VM bound to a pack and `SkydotWorld`, triggers, saves; `bind_natives` registers the natives from one table |
-| `vm/natives_<class>.cpp` | The natives of one class each (`debug`, `utility`, `game`, `form`, `objectreference`, `effectshader`, `weapon`, `sound`, `quest`), the intended no-ops (`noop`), and `world`, written against `WorldAccess` |
+| `vm/natives_<class>.cpp` | The natives of one class each (`debug`, `utility`, `game`, `form`, `objectreference`, `effectshader`, `weapon`, `sound`, `quest`, `spell`, `magiceffect`, `activemagiceffect`), the intended no-ops (`noop`), and `world`, written against `WorldAccess` |
 | `vm/world_access.hpp` | `WorldAccess`: typed questions natives ask the world (base form, linked ref, player level), so a native needs no Dictionary and a test no pack |
 | `vm/census.cpp` | `Vm::census`: which natives a set of scripts call |
 | `vm/quests.cpp` | Quests, aliases, stages, objectives, globals |
@@ -286,14 +286,14 @@ godot4.7 --headless --path game --script res://tools/papyrus_census.gd -- \
 `--all on` adds a table of every native called. Rerun it after binding
 natives and update the numbers below.
 
-Skyrim SE pack, 14,325 scripts (2026-10-17):
+Skyrim SE pack, 14,325 scripts (2026-10-18, after the magic natives):
 
 | | Natives | Call sites |
 | --- | ---: | ---: |
 | Called | 549 | 65,685 |
-| Bound | 133 | 51,411 |
+| Bound | 156 | 53,181 |
 | Ignored (no-op) | 19 | 499 |
-| Unbound | 397 | 13,775 |
+| Unbound | 374 | 12,005 |
 
 Unbound natives with most call sites (movement and actor state, which are
 the work still to come):
@@ -303,17 +303,40 @@ the work still to come):
 | `ObjectReference.MoveTo` | 1,291 |
 | `Actor.EvaluatePackage` | 1,282 |
 | `Actor.RemoveFromFaction` | 536 |
-| `Actor.StartCombat` | 331 |
 | `Actor.PlayIdle` | 327 |
-| `Actor.RemoveSpell` | 322 |
-| `Actor.AddSpell` | 288 |
 | `Actor.Kill` | 287 |
 | `ObjectReference.AddToMap` | 287 |
 | `Actor.IsInFaction` | 285 |
-| `Spell.Cast` | 277 |
 | `Actor.SetRelationshipRank` | 272 |
 | `Actor.SetGhost` | 222 |
 | `VisualEffect.Play` | 216 |
+
+## Magic
+
+Spells, effects and potions run in `magic/` (docs/adr/0008-active-magic-effects.md);
+`vm/papyrus_magic.cpp` is the glue. The natives are Godot-free and call the game
+through `MagicApi` (`vm/natives_magic.hpp`): `Spell` (`natives_spell.cpp`: Cast,
+RemoteCast, GetMagickaCost, GetEffectiveMagickaCost, GetCastTime, IsHostile, the
+`GetNthEffect...` family, GetPerk), `MagicEffect` (`natives_magiceffect.cpp`:
+GetAssociatedSkill, GetResistance, casting and delivery types, base cost, skill level,
+the forms the record names), `ActiveMagicEffect` (`natives_activemagiceffect.cpp`:
+GetTargetActor, GetCasterActor, GetBaseObject, Dispel, GetMagnitude, GetDuration,
+GetTimeElapsed) and, in `natives_actor.cpp`, `Actor.AddSpell` (with a message "<Spell> added"
+for the player), RemoveSpell, HasSpell, DispelSpell, DispelAllSpells, HasMagicEffect,
+HasMagicEffectWithKeyword, DoCombatSpellApply, EquipSpell (aiSource 0 left, 1 right, 2 the
+power), UnequipSpell and GetEquippedSpell.
+
+An effect whose MGEF has scripts gets a script object of its own: its handle is the effect's
+instance id (`id_ranges::effect_instances`), it is sent `OnEffectStart(akTarget, akCaster)` when
+the effect starts acting and `OnEffectFinish` when it ends, and detached two updates later. The
+game layer's calls are `cast_spell(caster, spell, target[, seconds])` (pays the cost, checks a
+power's cooldown), `spell_cost`, `spend_magicka`, `apply_item_effects(actor, form[, extra])`
+(`equip` of a potion, food or ingredient calls it), `spells_of`, `equip_spell`, `equipped_spell`,
+`active_effects` and the signal `magic_effect_changed(target, mgef, archetype, started, instance)`.
+The optional save section MAGC (version 1) holds the running effects (abilities are derived
+again), the spells added and removed, the equipped spells, the power cooldowns and the known
+enchantments; the temporary modifiers effects hold are not in ACTV, the effects hold them again
+on load.
 
 ## Saving
 
@@ -322,7 +345,7 @@ magic `SKYS`, sections (FourCC, version, length, bytes), a CRC-32 trailer.
 `SkydotPapyrus.write_sections(writer)` adds HEAD (engine version, the pack's
 world hash and load order), the VM's VMST (instances with their variables
 and states, running and waiting threads with every frame, timers, pending
-results, scheduled host calls, the clock and the random state), INVT, ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
+results, scheduled host calls, the clock and the random state), INVT, MAGC (optional: effects, spells, hands, cooldowns), ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
 references) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,

@@ -188,6 +188,41 @@ public:
     std::int64_t drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,
                       const godot::Vector3& position, const godot::Vector3& rotation, std::int64_t extra = -1);
 
+    // ---- magic (vm/papyrus_magic.cpp; the rules are magic/, docs/adr/0008)
+    /// `caster` casts `spell` on `target` (0 or a spell of self delivery: the caster), paying its
+    /// magicka (a concentration spell: for `seconds`, one second if 0) and starting a power's
+    /// cooldown. {ok, reason ("" or "not enough magicka", "cooldown", "no such spell", "no
+    /// caster", "dead"), cost, instances}. No projectiles: the effects land on `target`.
+    godot::Dictionary cast_spell(std::int64_t caster, std::int64_t spell, std::int64_t target, double seconds = 0.0);
+    /// What `spell` costs `caster` at its skill (0 for `caster` 0: the stored cost).
+    double spell_cost(std::int64_t caster, std::int64_t spell);
+    /// Take magicka from `caster` as damage, so the regeneration delay applies.
+    void spend_magicka(std::int64_t caster, double amount);
+    /// The effects of an ALCH, INGR or SCRL (or created potion) on `actor`: {ok, reason, effects}.
+    /// An ingredient gives its first effect only; a poison is not applied (reason "poison").
+    godot::Dictionary apply_item_effects(std::int64_t actor, std::int64_t form, std::int64_t extra = 0);
+    /// The spells `actor` knows, as form ids.
+    godot::PackedInt64Array spells_of(std::int64_t actor);
+    bool add_spell(std::int64_t actor, std::int64_t spell);
+    bool remove_spell(std::int64_t actor, std::int64_t spell);
+    bool has_spell(std::int64_t actor, std::int64_t spell);
+    /// `hand`: 0 left, 1 right, 2 power.
+    bool equip_spell(std::int64_t actor, std::int64_t spell, std::int64_t hand);
+    std::int64_t equipped_spell(std::int64_t actor, std::int64_t hand);
+    /// Game days until `spell` (a power) may be used again by `actor`; 0 if it may.
+    double power_cooldown(std::int64_t actor, std::int64_t spell);
+    /// What runs on `actor`: {instance, mgef, name, magnitude, duration, elapsed, remaining (-1 if
+    /// constant), source (a form), source_kind (0 spell, 1 enchantment, 2 potion, 3 ingredient, 4
+    /// scroll, 5 ability, 6 poison), caster, archetype, active}.
+    godot::Array active_effects(std::int64_t actor);
+    /// End `spell`'s effects on `actor`, or all of them.
+    bool dispel_spell(std::int64_t actor, std::int64_t spell);
+    void dispel_all_spells(std::int64_t actor);
+    /// The game layer built `actor`: its abilities start (they are not saved).
+    void prepare_actor_magic(std::int64_t actor);
+    /// Archetypes started without rules: archetype -> count.
+    godot::Dictionary get_unhandled_archetypes() const;
+
     // ---- crafting and harvesting (vm/papyrus_crafting.cpp; the rules are
     // vm/crafting.hpp and vm/harvest.hpp)
     /// The create-object recipes of the bench `bench_ref` (a FURN, type 1):
@@ -488,6 +523,7 @@ private:
     void bind_world_natives();
     void bind_runtime_natives();
     void bind_actor_natives();
+    void bind_magic_natives();
     CombatHooks combat_hooks_;
     bool player_dead_ = false;
     std::uint32_t last_damager_ = 0; ///< Who last hurt the player.
@@ -589,6 +625,26 @@ private:
     /// Unequip what is equipped of `form` once no unit of the equipped
     /// stack is left.
     void refresh_equipment(std::uint32_t owner, std::uint32_t form);
+    /// The magic of all actors: effects, spell books and the adapters (vm/papyrus_magic.cpp).
+    struct MagicRuntime {
+        virtual ~MagicRuntime() = default;
+    };
+    struct MagicState;
+    std::unique_ptr<MagicRuntime> magic_;
+    MagicState* magic_state();
+    /// Send what effects started or finished since the last call (Papyrus events, the signal).
+    void flush_magic_events();
+    void tick_magic(double seconds);
+    /// An actor died: its effects end (but the ones that survive death).
+    void magic_actor_died(std::uint32_t ref);
+    /// Forget all effects and spell changes (a load replaces the game, a setup the world).
+    void clear_magic();
+    /// The MAGC section's bytes; empty if magic never ran.
+    std::vector<std::uint8_t> magic_section() const;
+    /// Whether `bytes` is a MAGC section this world can load; its two parts.
+    bool magic_decode(save::ByteReader r, std::vector<std::uint8_t>& effects, std::vector<std::uint8_t>& book);
+    /// Take a decoded MAGC section (or none) and hold the temporary modifiers again.
+    void magic_adopt(bool has, const std::vector<std::uint8_t>& effects, const std::vector<std::uint8_t>& book);
     /// Created potions and what is known of ingredients (CRFT).
     vm::CreatedForms created_;
     /// What is harvested (HRVS).
@@ -635,6 +691,9 @@ private:
         vm::ActorStates actors;
         vm::ItemStates items;
         vm::CreatedForms created;
+        std::vector<std::uint8_t> magic_effects;
+        std::vector<std::uint8_t> magic_book;
+        bool has_magic = false;
         vm::HarvestStates harvests;
         dialogue::DialogueStates dialogue;
         std::unique_ptr<scenes::Scenes> scenes;

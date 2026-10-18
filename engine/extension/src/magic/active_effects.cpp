@@ -123,12 +123,12 @@ void ActiveEffects::log_start(const Instance& i) {
               " dur " + (i.permanent ? std::string("constant") : number(i.duration)));
 }
 
-void ActiveEffects::apply_to(std::uint32_t target, std::uint32_t av, double amount, bool takes) {
+void ActiveEffects::apply_to(std::uint32_t caster, std::uint32_t target, std::uint32_t av, double amount, bool takes) {
     if (amount <= 0.0) {
         return;
     }
     if (takes) {
-        host_.damage_value(target, av, amount);
+        host_.damage_value(target, av, amount, caster);
     } else {
         host_.restore_value(target, av, amount);
     }
@@ -146,15 +146,15 @@ void ActiveEffects::act_over(const Instance& i, double seconds) {
     case archetype::value_modifier:
     case archetype::peak_value_modifier:
         if (i.actor_value >= 0) {
-            apply_to(i.target, static_cast<std::uint32_t>(i.actor_value), amount, takes);
+            apply_to(i.caster, i.target, static_cast<std::uint32_t>(i.actor_value), amount, takes);
         }
         break;
     case archetype::dual_value_modifier:
         if (i.actor_value >= 0) {
-            apply_to(i.target, static_cast<std::uint32_t>(i.actor_value), amount, takes);
+            apply_to(i.caster, i.target, static_cast<std::uint32_t>(i.actor_value), amount, takes);
         }
         if (i.second_actor_value >= 0) {
-            apply_to(i.target, static_cast<std::uint32_t>(i.second_actor_value), amount * i.second_weight, takes);
+            apply_to(i.caster, i.target, static_cast<std::uint32_t>(i.second_actor_value), amount * i.second_weight, takes);
         }
         break;
     case archetype::absorb:
@@ -162,7 +162,7 @@ void ActiveEffects::act_over(const Instance& i, double seconds) {
             const auto av = static_cast<std::uint32_t>(i.actor_value);
             const double taken = std::min(amount, std::max(0.0, host_.actor_value(i.target, av)));
             if (taken > 0.0) {
-                host_.damage_value(i.target, av, taken);
+                host_.damage_value(i.target, av, taken, i.caster);
                 if (i.caster != 0) {
                     host_.restore_value(i.caster, av, taken);
                 }
@@ -480,6 +480,14 @@ std::vector<EffectView> ActiveEffects::effects_on(std::uint32_t target) const {
     return out;
 }
 
+std::set<std::uint32_t> ActiveEffects::targets() const {
+    std::set<std::uint32_t> out;
+    for (const auto& [id, i] : instances_) {
+        out.insert(i.target);
+    }
+    return out;
+}
+
 std::optional<EffectView> ActiveEffects::instance(std::uint32_t id) const {
     const auto it = instances_.find(id);
     return it != instances_.end() ? std::optional<EffectView>(view(it->second)) : std::nullopt;
@@ -491,7 +499,7 @@ namespace {
 class NullHost final : public MagicHost {
 public:
     double actor_value(std::uint32_t, std::uint32_t) const override { return 0.0; }
-    void damage_value(std::uint32_t, std::uint32_t, double) override {}
+    void damage_value(std::uint32_t, std::uint32_t, double, std::uint32_t) override {}
     void restore_value(std::uint32_t, std::uint32_t, double) override {}
     void modify_temp(std::uint32_t, std::uint32_t, double) override {}
     bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>*, std::uint32_t,

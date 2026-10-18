@@ -89,6 +89,24 @@ void SkydotPapyrus::_bind_methods() {
         D_METHOD("drop", "owner", "form", "count", "cell", "position", "rotation", "extra"),
         &SkydotPapyrus::drop, DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("recipes", "bench_ref"), &SkydotPapyrus::recipes);
+    godot::ClassDB::bind_method(D_METHOD("cast_spell", "caster", "spell", "target", "seconds"),
+                                &SkydotPapyrus::cast_spell, DEFVAL(0), DEFVAL(0.0));
+    godot::ClassDB::bind_method(D_METHOD("spell_cost", "caster", "spell"), &SkydotPapyrus::spell_cost);
+    godot::ClassDB::bind_method(D_METHOD("spend_magicka", "caster", "amount"), &SkydotPapyrus::spend_magicka);
+    godot::ClassDB::bind_method(D_METHOD("apply_item_effects", "actor", "form", "extra"),
+                                &SkydotPapyrus::apply_item_effects, DEFVAL(0));
+    godot::ClassDB::bind_method(D_METHOD("spells_of", "actor"), &SkydotPapyrus::spells_of);
+    godot::ClassDB::bind_method(D_METHOD("add_spell", "actor", "spell"), &SkydotPapyrus::add_spell);
+    godot::ClassDB::bind_method(D_METHOD("remove_spell", "actor", "spell"), &SkydotPapyrus::remove_spell);
+    godot::ClassDB::bind_method(D_METHOD("has_spell", "actor", "spell"), &SkydotPapyrus::has_spell);
+    godot::ClassDB::bind_method(D_METHOD("equip_spell", "actor", "spell", "hand"), &SkydotPapyrus::equip_spell);
+    godot::ClassDB::bind_method(D_METHOD("equipped_spell", "actor", "hand"), &SkydotPapyrus::equipped_spell);
+    godot::ClassDB::bind_method(D_METHOD("power_cooldown", "actor", "spell"), &SkydotPapyrus::power_cooldown);
+    godot::ClassDB::bind_method(D_METHOD("active_effects", "actor"), &SkydotPapyrus::active_effects);
+    godot::ClassDB::bind_method(D_METHOD("dispel_spell", "actor", "spell"), &SkydotPapyrus::dispel_spell);
+    godot::ClassDB::bind_method(D_METHOD("dispel_all_spells", "actor"), &SkydotPapyrus::dispel_all_spells);
+    godot::ClassDB::bind_method(D_METHOD("prepare_actor_magic", "actor"), &SkydotPapyrus::prepare_actor_magic);
+    godot::ClassDB::bind_method(D_METHOD("get_unhandled_archetypes"), &SkydotPapyrus::get_unhandled_archetypes);
     godot::ClassDB::bind_method(D_METHOD("craft", "recipe", "count"), &SkydotPapyrus::craft);
     godot::ClassDB::bind_method(D_METHOD("temper_rows", "bench_ref"), &SkydotPapyrus::temper_rows);
     godot::ClassDB::bind_method(D_METHOD("temper", "recipe", "form", "extra"), &SkydotPapyrus::temper);
@@ -245,6 +263,11 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("ref_deleted", PropertyInfo(Variant::INT, "ref")));
     // A non-essential actor other than the player was brought to Health 0.
     ADD_SIGNAL(godot::MethodInfo("actor_died", PropertyInfo(Variant::INT, "ref")));
+    // A magic effect started acting on `target` or finished (`instance` is its id, the handle of
+    // its script object); `archetype` is the MGEF's. For presentation: light, art, a menu.
+    ADD_SIGNAL(godot::MethodInfo("magic_effect_changed", PropertyInfo(Variant::INT, "target"),
+                                 PropertyInfo(Variant::INT, "mgef"), PropertyInfo(Variant::INT, "archetype"),
+                                 PropertyInfo(Variant::BOOL, "started"), PropertyInfo(Variant::INT, "instance")));
     // The player was brought to Health 0 (nobody dies in the VM for him): the killer, 0 if none.
     ADD_SIGNAL(godot::MethodInfo("player_died", PropertyInfo(Variant::INT, "killer")));
     // A destructible reference opened a stage with a model: the game layer
@@ -309,6 +332,7 @@ void SkydotPapyrus::reset() {
     loaded_.clear();
     states_.clear();
     actors_.clear();
+    clear_magic();
     items_.clear();
     created_.clear();
     harvests_.clear();
@@ -335,6 +359,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     world_->set_worn_provider(worn_provider());
     vm_ = std::make_unique<vm::Vm>();
     crafting_.reset(); // it refers to the old VM's inventory
+    magic_.reset();    // the natives bound to it die with the old VM
     install_scheduled_handler();
     reset();
     // Scripts keep their virtual paths: class Foo is scripts/foo.pex.
@@ -618,6 +643,7 @@ std::int64_t SkydotPapyrus::combat_state_changed(std::int64_t ref, std::int64_t 
 
 void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {
+        magic_actor_died(ref);
         emit_signal("actor_died", static_cast<std::int64_t>(ref));
     }
 }
@@ -669,6 +695,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,
+        &SkydotPapyrus::bind_magic_natives,
         &SkydotPapyrus::bind_item_natives,
         &SkydotPapyrus::bind_runtime_natives,
     };
@@ -1063,6 +1090,7 @@ void SkydotPapyrus::check_player_death() {
 }
 
 void SkydotPapyrus::update(double seconds) {
+    tick_magic(seconds);
     actors_.tick(seconds);
     vm_->update(seconds);
     flush_deaths();

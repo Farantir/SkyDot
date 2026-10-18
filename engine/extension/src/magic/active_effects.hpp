@@ -86,8 +86,8 @@ class MagicHost {
 public:
     virtual ~MagicHost() = default;
     [[nodiscard]] virtual double actor_value(std::uint32_t ref, std::uint32_t av) const = 0;
-    /// Lower the value of `av` by `amount` (> 0).
-    virtual void damage_value(std::uint32_t ref, std::uint32_t av, double amount) = 0;
+    /// Lower the value of `av` by `amount` (> 0); `caster` is who is to blame (0: no one).
+    virtual void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t caster) = 0;
     /// Give back at most `amount` (> 0), never above the maximum.
     virtual void restore_value(std::uint32_t ref, std::uint32_t av, double amount) = 0;
     /// Add `delta` (either sign) to the temporary modifier; counts in value and maximum.
@@ -135,6 +135,8 @@ public:
     [[nodiscard]] std::vector<EffectView> effects_on(std::uint32_t target) const;
     [[nodiscard]] std::optional<EffectView> instance(std::uint32_t id) const;
     [[nodiscard]] std::size_t size() const { return instances_.size(); }
+    /// Every actor something runs on.
+    [[nodiscard]] std::set<std::uint32_t> targets() const;
     /// How often an effect of an archetype without rules was started.
     [[nodiscard]] const std::map<std::uint32_t, std::uint64_t>& unhandled() const { return unhandled_; }
 
@@ -185,7 +187,7 @@ private:
     void begin(Instance& i);
     void act_once(const Instance& i);
     void act_over(const Instance& i, double seconds);
-    void apply_to(std::uint32_t target, std::uint32_t av, double amount, bool takes);
+    void apply_to(std::uint32_t caster, std::uint32_t target, std::uint32_t av, double amount, bool takes);
     void sync_holds(std::uint32_t target);
     void finish(std::uint32_t id);
     void log_start(const Instance& i);

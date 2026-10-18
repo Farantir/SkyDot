@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/natives_actor.hpp"
+#include "vm/natives_magic.hpp"
 
 #include <memory>
 #include <optional>
@@ -81,6 +82,56 @@ void bind_actor_natives(Vm& vm, ActorStates& states) {
             return NativeResult{.value = Value::boolean(false), .wait = -1.0};
         }
         return NativeResult{.value = Value::boolean(states.is_dead(c.self.form())), .wait = -1.0};
+    });
+}
+
+void bind_actor_magic_natives(Vm& vm, MagicApi& api) {
+    const auto arg = [](NativeCall& c, std::size_t i) -> const Value& {
+        static const Value none;
+        return i < c.args.size() ? c.args[i] : none;
+    };
+    const auto flag = [](bool v) { return NativeResult{.value = Value::boolean(v), .wait = -1.0}; };
+    // AddSpell(akSpell, abVerbose = true): teaches it; a message "<Spell> added" if verbose.
+    vm.bind("Actor", "AddSpell", [&api, arg, flag](NativeCall& c) {
+        const bool verbose = c.args.size() < 2 || Vm::truthy(c.args[1]);
+        return flag(api.add_spell(c.self.form(), arg(c, 0).form(), verbose));
+    });
+    vm.bind("Actor", "RemoveSpell", [&api, arg, flag](NativeCall& c) {
+        return flag(api.remove_spell(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "HasSpell", [&api, arg, flag](NativeCall& c) {
+        return flag(api.has_spell(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "DispelSpell", [&api, arg, flag](NativeCall& c) {
+        return flag(api.dispel_spell(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "DispelAllSpells", [&api](NativeCall& c) {
+        api.dispel_all_spells(c.self.form());
+        return NativeResult{};
+    });
+    vm.bind("Actor", "HasMagicEffect", [&api, arg, flag](NativeCall& c) {
+        return flag(api.has_magic_effect(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "HasMagicEffectWithKeyword", [&api, arg, flag](NativeCall& c) {
+        return flag(api.has_magic_effect_keyword(c.self.form(), arg(c, 0).form()));
+    });
+    // DoCombatSpellApply(akSpell, akTarget): the spell hits akTarget as if this actor had cast it.
+    vm.bind("Actor", "DoCombatSpellApply", [&api, arg](NativeCall& c) {
+        api.cast(arg(c, 0).form(), c.self.form(), 0, arg(c, 1).form());
+        return NativeResult{};
+    });
+    // EquipSpell(akSpell, aiSource): 0 left hand, 1 right hand, 2 instant (the power).
+    vm.bind("Actor", "EquipSpell", [&api, arg](NativeCall& c) {
+        api.equip_spell(c.self.form(), arg(c, 0).form(), arg(c, 1).i());
+        return NativeResult{};
+    });
+    vm.bind("Actor", "UnequipSpell", [&api, arg](NativeCall& c) {
+        api.unequip_spell(c.self.form(), arg(c, 1).i());
+        return NativeResult{};
+    });
+    vm.bind("Actor", "GetEquippedSpell", [&api, arg](NativeCall& c) {
+        return NativeResult{.value = c.vm.object(api.equipped_spell(c.self.form(), arg(c, 0).i()), "Spell"),
+                            .wait = -1.0};
     });
 }
 

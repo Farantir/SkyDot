@@ -24,6 +24,7 @@
 // swaps it in.
 #include "vm/papyrus.hpp"
 
+#include "magic/magic_save.hpp"
 #include "save/bytes.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -130,6 +131,9 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) c
     vm_->save_to(out);
     out.add("RFST", vm::RefStates::k_section_version, states_.save());
     out.add("ACTV", vm::ActorStates::k_section_version, actors_.save());
+    if (const auto magc = magic_section(); !magc.empty()) {
+        out.add("MAGC", magic::k_magc_version, magc);
+    }
     out.add("ITST", vm::ItemStates::k_section_version, items_.save(vm_->inventory()));
     out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
     out.add("HRVS", vm::HarvestStates::k_section_version, harvests_.save());
@@ -212,6 +216,16 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
         // An old save: what is in INVT already has its start items.
         pending->items.mark_holders_resolved(pending->vm.inventory);
     }
+    // MAGC is optional: a save without it has no effect running and no spell changed.
+    if (const auto* magc = file.find("MAGC")) {
+        if (magc->version != magic::k_magc_version) {
+            return fail("section MAGC has a version this engine does not read");
+        }
+        if (!magic_decode(file.open(*magc), pending->magic_effects, pending->magic_book)) {
+            return fail("the MAGC section of the save is damaged");
+        }
+        pending->has_magic = true;
+    }
     // CRFT and HRVS are optional: an older save has nothing created, known or harvested.
     if (const auto* crft = file.find("CRFT")) {
         if (crft->version != vm::CreatedForms::k_section_version) {
@@ -286,6 +300,7 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
+    magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book);
     // The dead lie where they fell (the actor places are not saved).
     if (world_.is_valid()) {
         for (const auto& [ref, place] : actors_.corpse_places()) {
