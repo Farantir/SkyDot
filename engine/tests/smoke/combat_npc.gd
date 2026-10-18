@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # NPC gear, stance and actions on the real SE pack (SKYDOT_SSE_PACK), headless
-# (GAMEPLAY-PLAN.md, 6g): the bandit 0x373A6 of BleakFallsBarrow01 holds a
+# (GAMEPLAY-PLAN.md, 6g): the bandit 0x39FE4 of BleakFallsBarrow01 holds a
 # weapon in its right hand once its inventory is resolved, its model hangs on
 # the sheath bone and moves to the WEAPON bone when it draws; set_stance picks
 # 1HM_Idle; play_action plays a one-shot; npc_attack against the player hurts
@@ -10,7 +10,7 @@
 extends SceneTree
 
 const PLAYER := 0x14
-const BANDIT := 0x373A6
+const BANDIT := 0x39FE4
 const STEP := 1.0 / 60.0
 const SKEEVER_PROJECT := "meshes/actors/skeever/skeeverproject.hkx"
 
@@ -175,6 +175,7 @@ func _run(pack_dir: String) -> void:
 	forward = -node.global_transform.basis.z
 	forward.y = 0.0
 	_feet = node.global_position + forward.normalized() * 1.0
+	await _frames(2)  # the session learns where the player stands
 	var health := papyrus.get_actor_value(PLAYER, "Health")
 	_hits.clear()
 	expect(_session.npc_attack(BANDIT, false), "npc_attack against the player is accepted")

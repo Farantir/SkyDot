@@ -253,6 +253,8 @@ struct ActorBase {
     std::array<double, av::k_count> base{};
     bool essential = false;
     bool is_player = false;
+    /// The placed reference starts dead (ACHR "Starts Dead"): dead from the first touch.
+    bool starts_dead = false;
 };
 
 } // namespace skydot::vm

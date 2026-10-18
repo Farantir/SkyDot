@@ -2,7 +2,7 @@
 #
 # Combat AI on the real SE pack (SKYDOT_SSE_PACK), headless (GAMEPLAY-PLAN.md,
 # 6h and 6i): in BleakFallsBarrow01 the player stands in sight of the bandit
-# 0x373A6 (very aggressive, neutral to the player): it enters combat with 0x14,
+# 0x39FE4 (very aggressive, neutral to the player): it enters combat with 0x14,
 # draws (stance 1hm), approaches, and a hit line names the player; a second
 # bandit, given a bow and arrows and no melee weapon, keeps its distance and
 # shoots an arrow; after `kill_actor` the bandit leaves combat and attacks no
@@ -11,7 +11,7 @@
 extends SceneTree
 
 const PLAYER := 0x14
-const BANDIT := 0x373A6
+const BANDIT := 0x39FE4
 const HUNTING_BOW := 0x13985
 const IRON_ARROW := 0x1397D
 const STEP := 1.0 / 60.0
@@ -87,7 +87,6 @@ func _run(pack_dir: String) -> void:
 	config.quests = false
 	config.preload_doors = false
 	config.wander = false
-	config.combat = false  # until the rest of the cell is out of the way
 	_camera = Camera3D.new()
 	root.add_child(_camera)
 	_session = GameSession.new()
@@ -123,9 +122,12 @@ func _run(pack_dir: String) -> void:
 	forward = forward.normalized()
 	_feet = home + forward * 6.0
 	expect(papyrus.get_actor_value(BANDIT, "Aggression") == 2, "the bandit is very aggressive")
+	# The corpses at the entrance start dead (ACHR "Starts Dead"): no combat, no attacks from them.
+	for corpse in [0x373A6, 0x375AA]:
+		expect(papyrus.is_actor_dead(corpse), "0x%X starts dead" % corpse)
+		expect(papyrus.get_actor_value(corpse, "Health") <= 0.0, "0x%X has no health" % corpse)
 
-	# Another aggressive actor becomes the archer; everyone else is out of the way, so that the
-	# actors of the cell (bandits, draugr, skeevers, who dislike each other) do not fight first.
+	# Another aggressive actor becomes the archer.
 	var archer_ref := 0
 	var archer: SkydotActor = null
 	for candidate in node.get_parent().find_children("*", "SkydotActor", true, false):
@@ -135,12 +137,6 @@ func _run(pack_dir: String) -> void:
 			archer = candidate
 			archer_ref = ref
 	expect(archer != null, "another aggressive actor is in the cell")
-	for candidate in node.get_parent().find_children("*", "SkydotActor", true, false):
-		var ref: int = candidate.get_meta("skydot_ref", 0)
-		if ref != 0 and ref != BANDIT and ref != archer_ref:
-			papyrus.damage_actor_value(ref, "Health", 100000.0)
-	await _frames(30)
-	ai.set_combat(true)
 
 	# He sees the player (neutral by faction, aggression 2) and fights.
 	var waited := await _until(func() -> bool: return ai.get_combat_state(BANDIT) == 1, 10.0)
@@ -194,5 +190,8 @@ func _run(pack_dir: String) -> void:
 	var count := _attacks.filter(func(a: Array) -> bool: return a[0] == BANDIT).size()
 	await _frames(180)
 	expect(_attacks.filter(func(a: Array) -> bool: return a[0] == BANDIT).size() == count, "the dead attack no more")
+	for corpse in [0x373A6, 0x375AA]:
+		expect(ai.get_combat_state(corpse) == 0 and not _states.any(func(e: Array) -> bool: return e[0] == corpse) \
+			and not _attacks.any(func(e: Array) -> bool: return e[0] == corpse), "0x%X never fought" % corpse)
 	print("smoke_combat_ai: failures=%d" % failures)
 	quit(failures)

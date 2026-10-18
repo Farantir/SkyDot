@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Combat rules through GameSession on the real SE pack (SKYDOT_SSE_PACK):
-# apply_hit with the Iron Sword on the bandit 0x373A6 of BleakFallsBarrow01
+# apply_hit with the Iron Sword on the bandit 0x39FE4 of BleakFallsBarrow01
 # until it dies (every hit's damage against the formula worked out here from
 # the data), actor_died, the killer, searching the corpse, save and load, and
 # Arvel's Golden Claw (quest MS13 creates it in his inventory). Headless;
@@ -9,7 +9,7 @@
 extends SceneTree
 
 const PLAYER := 0x14
-const BANDIT := 0x373A6
+const BANDIT := 0x39FE4
 const ARVEL := 0x39655
 const MS13 := 0x39645
 const GOLDEN_CLAW := 0x39647

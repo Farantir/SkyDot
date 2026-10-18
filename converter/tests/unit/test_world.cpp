@@ -1064,7 +1064,7 @@ void make_quests(const TempDir& dir) {
     xlkr.u32(0x0100'0B01); // itself, local
     bethconv::test::write_field(achr, "XLKR", xlkr);
     ByteWriter refrs;
-    bethconv::test::write_record(refrs, "ACHR", 0x0100'0B01, achr.span());
+    bethconv::test::write_record(refrs, "ACHR", 0x0100'0B01, achr.span(), 0x200); // Starts Dead
     ByteWriter temporary;
     bethconv::test::write_group(temporary, cell, 9, refrs.span());
     ByteWriter cell_children;
@@ -1142,6 +1142,8 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(actors[0].base() == 0x0000'0900);
     CHECK(actors[0].cell() == 0x0200'0B00);
     CHECK(actors[0].rotation().z() == 0.5F);
+    CHECK((static_cast<std::uint32_t>(actors[0].flags()) &
+           static_cast<std::uint32_t>(bethconv::pack::wfb::RefFlags::starts_dead)) != 0);
     // A placed actor's linked references are its cell's, like a reference's.
     const auto room = file->cell(0x0200'0B00);
     REQUIRE(room.has_value());

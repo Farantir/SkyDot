@@ -36,7 +36,10 @@ enum RefFlags : uint32 (bit_flags) {
     parent_activate_only,
     /// The REFR's record flag 0x8000: the reference is in object LOD (format
     /// 11). A reference's base can have the same flag (`RecordFlags`).
-    visible_when_distant
+    visible_when_distant,
+    /// ACHR only: the actor starts dead (record flag 0x200 "Starts Dead", xEdit; format 31
+    /// packs written after 2026-10-18). Corpses at a dungeon's entrance are such refs.
+    starts_dead = 5
 }
 
 /// One placed reference (REFR). Deleted references are not included.

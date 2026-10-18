@@ -278,6 +278,8 @@ test bits by these names, through `has_flag` in
   `unarmed_reach` (DATA bytes 96 and 100), `impact_material` (NAM4),
   `impact_data_set` (NAM5) and `attacks` (`RaceAttack`: ATKE `event` with the
   ATKD fields; `flags` stay raw, 0x4 is the power attack bit).
+- `RefFlags.starts_dead` (bit 5, set on a placed actor whose ACHR record flag 0x200 "Starts Dead"
+  is set; added to format 31 without a bump: an older pack has the bit clear and its actors live).
 - Combat styles (format 31): `combat_styles` (CSTY, sorted by id: the CSGD
   multipliers, CSME melee multipliers, CSCR circle/fallback/flank/stalk, CSLR
   strafe, CSFL flight values and the DATA `flags`; a shorter CSGD in an older

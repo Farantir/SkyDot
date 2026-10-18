@@ -214,7 +214,7 @@ public:
     /// perch_attack_chance, perch_attack_time, flying_attack_chance, flags); empty if none.
     godot::Dictionary get_combat_style(std::int64_t id) const;
     /// An NPC_ base as combat reads it (keys: id, editor_id, name, race, level, aggression,
-    /// confidence, energy, morality, mood, assistance, combat_style, crime_faction, factions:
+    /// confidence, energy, morality, mood, assistance, template, template_flags, combat_style, crime_faction, factions:
     /// [{faction, rank}]); empty if none. The record's own values, no template.
     godot::Dictionary get_npc(std::int64_t id) const;
     /// A faction (keys: id, editor_id, flags (the whole DATA word), relations: [{faction,

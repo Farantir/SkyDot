@@ -79,6 +79,9 @@ double ActorStates::get(std::uint32_t ref, std::uint32_t av) const {
         return 0.0;
     }
     const Record* r = find(ref);
+    if (av == av::k_health && is_dead(ref)) {
+        return std::min(0.0, base_value(ref, r, av) + modifier_value(r, av) + damage_value(r, av));
+    }
     return base_value(ref, r, av) + modifier_value(r, av) + damage_value(r, av);
 }
 
@@ -89,7 +92,12 @@ double ActorStates::percentage(std::uint32_t ref, std::uint32_t av) const {
 
 bool ActorStates::is_dead(std::uint32_t ref) const {
     const Record* r = find(ref);
-    return r != nullptr && r->dead;
+    if (r != nullptr && r->dead) {
+        return true;
+    }
+    // A reference placed dead is dead before anything touches it.
+    const ActorBase* base = base_of(ref);
+    return base != nullptr && base->starts_dead && !base->is_player;
 }
 
 std::vector<std::uint32_t> ActorStates::dead_refs() const {

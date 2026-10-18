@@ -434,6 +434,11 @@ void PlaceCollector::on_actor(const record::MergedRecord& merged,
     if (actor->persistent) {
         flags |= wfb::RefFlags::persistent;
     }
+    // ACHR record flag 0x200 is "Starts Dead" (xEdit; the same bit is ESL on a TES4).
+    constexpr std::uint32_t k_starts_dead = 0x200;
+    if ((merged.flags & k_starts_dead) != 0) {
+        flags |= wfb::RefFlags::starts_dead;
+    }
     actors_.emplace_back(id, shared_.global(merged, actor->base, failed), merged.parent.value,
                          to_fb(actor->position), to_fb(actor->rotation), flags);
     // Packages walk to linked references (beds, work markers, patrols).

@@ -2,7 +2,7 @@
 #
 # Melee through GameSession on the real SE pack (SKYDOT_SSE_PACK), headless:
 # the Iron Sword is drawn (the first-person equip clip's time), the player
-# faces the bandit 0x373A6 of BleakFallsBarrow01 and attacks through Combat;
+# faces the bandit 0x39FE4 of BleakFallsBarrow01 and attacks through Combat;
 # the HitFrame of the first-person project's clip decides when apply_hit
 # runs, its damage is the formula's (combat_rules.gd), a power attack held
 # past fInitialPowerAttackDelay does double, reach, strike angle and line of
@@ -12,7 +12,7 @@
 extends SceneTree
 
 const PLAYER := 0x14
-const BANDIT := 0x373A6
+const BANDIT := 0x39FE4
 const IRON_SWORD := 0x12EB7
 const STEP := 1.0 / 60.0
 

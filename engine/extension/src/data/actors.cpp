@@ -168,6 +168,9 @@ bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t 
         return false;
     }
     out = vm::ActorBase{};
+    if (const auto* placed = lookup(w.actors(), ref); placed != nullptr) {
+        out.starts_dead = formats::has_flag(placed->flags(), wfb::RefFlags::starts_dead);
+    }
     auto& base = out.base;
     out.essential = formats::has_flag(npc->flags(), wfb::NpcFlags::essential);
     // Health, Magicka and Stamina. An NPC with auto-calculated stats stores

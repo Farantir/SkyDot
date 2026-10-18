@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Death through GameSession on the real SE pack (SKYDOT_SSE_PACK), headless:
-# the bandit 0x373A6 of BleakFallsBarrow01 is killed with the Iron Sword (the
+# the bandit 0x39FE4 of BleakFallsBarrow01 is killed with the Iron Sword (the
 # hits go through Combat, so the impulse has a direction); his node stops
 # (SkydotActor.set_dead: no collision, no animation), a PhysicalBoneSimulator3D
 # ragdoll runs under his skeleton (Jolt simulates it headless too), freezes
@@ -13,7 +13,7 @@
 extends SceneTree
 
 const PLAYER := 0x14
-const BANDIT := 0x373A6
+const BANDIT := 0x39FE4
 const DRAUGR := 0x380B5
 const SPIDER := 0x3A1E1
 const IRON_SWORD := 0x12EB7
@@ -165,7 +165,7 @@ func _run(pack_dir: String) -> void:
 	await _frames(2)
 	expect(node.is_dead() and node.collision_layer == 0 and node.collision_mask == 0, "the node is dead: no collision")
 	var skeleton := _skeleton_of(node)
-	expect(skeleton.get_node_or_null("Ragdoll") != null and _session.corpses.simulating() == 1, "a ragdoll runs under the skeleton")
+	expect(skeleton.get_node_or_null("Ragdoll") != null and _session.corpses.simulating() >= 1, "a ragdoll runs under the skeleton")
 	var player := node.get_node("AnimationPlayer") as AnimationPlayer
 	expect(not player.is_playing() and not player.active, "the animation stopped")
 	expect(not papyrus.get_corpse_place(BANDIT).is_empty(), "a corpse place is stored at once")

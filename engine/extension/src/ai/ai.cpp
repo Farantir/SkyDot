@@ -1018,6 +1018,11 @@ void SkydotAi::update(double seconds) {
         }
         const double elapsed = m->idle;
         m->idle = 0.0;
+        // The dead (a corpse placed dead too) have no AI: no package, no fight.
+        if (vm_ != nullptr && vm_->is_actor_dead(ref)) {
+            leave_combat(*m, nullptr);
+            continue;
+        }
         // A mind in combat sets its package aside (and comes back to it after).
         if (combat_tick(*m, *actor, elapsed)) {
             continue;

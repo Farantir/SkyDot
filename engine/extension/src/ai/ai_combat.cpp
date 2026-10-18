@@ -87,7 +87,9 @@ std::uint32_t SkydotAi::npc_of(std::uint32_t ref) const {
 
 std::vector<combat_ai::Membership> SkydotAi::memberships(std::uint32_t ref) const {
     std::vector<combat_ai::Membership> out;
-    const auto* npc = root() != nullptr ? lookup(root()->npcs(), npc_of(ref)) : nullptr;
+    // SNAM comes from the template chain when the NPC uses its template's factions.
+    const auto* npc = root() != nullptr ? resolve_npc(*root(), npc_of(ref), wfb::NpcTemplateFlags::use_factions, ref)
+                                        : nullptr;
     if (npc != nullptr && npc->factions() != nullptr) {
         for (const auto* f : *npc->factions()) {
             out.push_back({f->faction(), f->rank()});
@@ -234,7 +236,8 @@ void SkydotAi::read_gear(Mind& m) {
         reach = static_cast<double>(race.get("unarmed_reach", k_unarmed_reach));
     }
     c.reach = reach;
-    const auto* npc = lookup(root()->npcs(), npc_of(m.ref));
+    // ZNAM follows the AI data of the template chain (assumed: no template flag of its own).
+    const auto* npc = resolve_npc(*root(), npc_of(m.ref), wfb::NpcTemplateFlags::use_ai_data, m.ref);
     const auto* style = npc != nullptr && npc->combat_style() != 0 ? lookup(root()->combat_styles(), npc->combat_style())
                                                                     : nullptr;
     c.style = {};
@@ -522,6 +525,12 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         }
         if (best == 0) {
             return false;
+        }
+        {
+            const auto why = reaction_of(m.ref, best);
+            const char* names[] = {"enemy", "neutral", "ally", "friend"};
+            std::printf("combat: 0x%X sees 0x%X: %s, aggression %d\n", m.ref, best,
+                        names[static_cast<int>(why)], value_of(m.ref, "Aggression"));
         }
         enter_combat(m, actor, best);
         return true;

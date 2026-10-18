@@ -212,6 +212,8 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     out["editor_id"] = to_godot(npc->editor_id());
     out["name"] = to_godot(npc->name());
     out["race"] = static_cast<std::int64_t>(npc->race());
+    out["template"] = static_cast<std::int64_t>(npc->template_());
+    out["template_flags"] = static_cast<std::int64_t>(static_cast<std::uint32_t>(npc->template_flags()));
     out["level"] = static_cast<std::int64_t>(npc->level());
     out["aggression"] = static_cast<std::int64_t>(npc->aggression());
     out["confidence"] = static_cast<std::int64_t>(npc->confidence());
