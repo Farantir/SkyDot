@@ -2,7 +2,8 @@
 //
 // What scripts and the game did to actors' values, kept sparse per reference
 // and saved as the ACTV section. Value = base + modifier + damage (damage is
-// 0 or less); max = base + modifier. The base comes from the data (an
+// 0 or less); max = base + modifier + temporary (the magic bucket: what active
+// magic effects hold, never saved, the effects re-add it on load). The base comes from the data (an
 // `ActorBase`, asked for through a callback and cached, never saved) unless a
 // script set it. Health, Magicka and Stamina regenerate in `tick`; a
 // non-essential, non-player actor at Health 0 is dead. Nothing here touches
@@ -74,6 +75,10 @@ public:
 
     void set_base(std::uint32_t ref, std::uint32_t av, double value);
     void mod(std::uint32_t ref, std::uint32_t av, double amount);
+    /// The temporary (magic) modifier: counts in value and max, is not saved. The sum an
+    /// effect holds is added and, when it ends, taken away again.
+    void mod_temp(std::uint32_t ref, std::uint32_t av, double amount);
+    [[nodiscard]] double get_temp(std::uint32_t ref, std::uint32_t av) const;
     /// Change the modifier so that the value is `value`.
     void force(std::uint32_t ref, std::uint32_t av, double value);
     /// Lower the value by `amount` (> 0). Health, Magicka and Stamina stop at 0.
@@ -103,6 +108,7 @@ private:
     struct Value {
         std::optional<double> base; ///< Set by a script; else the data's.
         double modifier = 0.0;
+        double temp = 0.0; ///< Not saved.
         double damage = 0.0;
     };
     struct Record {

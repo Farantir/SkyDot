@@ -188,10 +188,10 @@ TEST_CASE("a damaged QUST section is refused", "[quests][save]") {
 TEST_CASE("id ranges: disjoint, checked and exhausted without overlap") {
     using namespace skydot::vm;
     const IdRange all[] = {id_ranges::test_instances, id_ranges::runtime_refs, id_ranges::created_forms,
-                           id_ranges::alias_handles};
-    for (std::size_t i = 0; i < 4; ++i) {
+                           id_ranges::alias_handles, id_ranges::effect_instances};
+    for (std::size_t i = 0; i < 5; ++i) {
         CHECK(all[i].first <= all[i].last);
-        for (std::size_t j = i + 1; j < 4; ++j) {
+        for (std::size_t j = i + 1; j < 5; ++j) {
             CHECK((all[i].last < all[j].first || all[j].last < all[i].first));
         }
     }
@@ -217,9 +217,15 @@ TEST_CASE("id ranges: disjoint, checked and exhausted without overlap") {
 
     IdAllocator alias(id_ranges::alias_handles);
     CHECK(alias.restore(id_ranges::alias_handles.last));
-    CHECK(alias.allocate() == 0xFFFFFFFEu);
+    CHECK(alias.allocate() == 0xFFEFFFFFu);
     CHECK(alias.allocate() == 0);
-    CHECK(alias.next() == 0xFFFFFFFFu);
+    CHECK(alias.next() == 0xFFF00000u);
+
+    IdAllocator effects(id_ranges::effect_instances);
+    CHECK(effects.allocate() == 0xFFF00000u);
+    CHECK(effects.restore(id_ranges::effect_instances.last));
+    CHECK(effects.allocate() == 0xFFFFFFFEu);
+    CHECK(effects.allocate() == 0);
 }
 
 TEST_CASE("id ranges: placed references stay in their range and saves refuse others") {

@@ -250,6 +250,37 @@ struct MagicEffectSpec {
     std::string description = {};
     std::uint32_t flags = 0;
     float base_cost = 0.0F;
+    std::uint32_t archetype = 0;
+    std::int32_t actor_value = -1;
+    std::int32_t second_actor_value = -1;
+    float second_av_weight = 0.0F;
+    std::int32_t resist_value = -1;
+    std::int32_t magic_skill = -1;
+    std::uint32_t casting_type = 1;
+    std::uint32_t delivery = 0;
+    std::vector<std::uint32_t> keywords = {};
+    std::vector<ConditionSpec> conditions = {};
+};
+
+/// One effect entry of a spell (or an ench.: EFID, EFIT and its CTDAs).
+struct SpellEffectSpec {
+    std::uint32_t effect;
+    float magnitude = 0.0F;
+    std::uint32_t area = 0;
+    std::uint32_t duration = 0;
+    std::vector<ConditionSpec> conditions = {};
+};
+
+/// SPEL.
+struct SpellSpec {
+    std::uint32_t id;
+    std::string name = {};
+    std::int32_t cost = 0;
+    std::uint32_t flags = 0;
+    std::uint32_t type = 0;
+    std::uint32_t casting_type = 1;
+    std::uint32_t delivery = 0;
+    std::vector<SpellEffectSpec> effects = {};
 };
 
 /// "LVLN" as the record type a leveled list of NPCs carries.
@@ -319,6 +350,7 @@ struct WorldSpec {
     std::vector<PackageSpec> packages = {};
     std::vector<RecipeSpec> recipes = {};
     std::vector<MagicEffectSpec> magic_effects = {};
+    std::vector<SpellSpec> spells = {};
 };
 
 /// A built and verified world.fb, kept alive with the reader on it.

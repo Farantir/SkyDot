@@ -23,6 +23,7 @@ constexpr std::uint32_t k_health = 24;
 constexpr std::uint32_t k_magicka = 25;
 constexpr std::uint32_t k_stamina = 26;
 constexpr std::uint32_t k_heal_rate = 27;
+constexpr std::uint32_t k_resist_magic = 44;
 constexpr std::uint32_t k_magicka_rate = 28;
 constexpr std::uint32_t k_stamina_rate = 29;
 constexpr std::uint32_t k_speed_mult = 30;

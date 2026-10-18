@@ -43,7 +43,7 @@ double ActorStates::modifier_value(const Record* record, std::uint32_t av) const
     if (record != nullptr) {
         const auto it = record->values.find(av);
         if (it != record->values.end()) {
-            return it->second.modifier;
+            return it->second.modifier + it->second.temp;
         }
     }
     return 0.0;
@@ -178,10 +178,38 @@ void ActorStates::mod(std::uint32_t ref, std::uint32_t av, double amount) {
     }
 }
 
+void ActorStates::mod_temp(std::uint32_t ref, std::uint32_t av, double amount) {
+    if (Record* r = touch(ref, av)) {
+        Value& v = r->values[av];
+        v.temp += amount;
+        if (std::abs(v.temp) < 1e-9) {
+            v.temp = 0.0;
+        }
+        if (is_vital(av)) {
+            // A lower maximum takes the value with it.
+            v.damage = std::max(v.damage, std::min(-(base_value(ref, r, av) + v.modifier + v.temp), 0.0));
+        }
+        if (av == av::k_health) {
+            check_death(ref, *r);
+        }
+    }
+}
+
+double ActorStates::get_temp(std::uint32_t ref, std::uint32_t av) const {
+    const Record* r = find(ref);
+    if (r != nullptr) {
+        const auto it = r->values.find(av);
+        if (it != r->values.end()) {
+            return it->second.temp;
+        }
+    }
+    return 0.0;
+}
+
 void ActorStates::force(std::uint32_t ref, std::uint32_t av, double value) {
     if (Record* r = touch(ref, av)) {
         Value& v = r->values[av];
-        v.modifier = value - base_value(ref, r, av) - v.damage;
+        v.modifier = value - base_value(ref, r, av) - v.temp - v.damage;
         if (av == av::k_health) {
             check_death(ref, *r);
         }
@@ -197,7 +225,7 @@ void ActorStates::damage(std::uint32_t ref, std::uint32_t av, double amount) {
         v.damage -= amount;
         if (is_vital(av)) {
             // Health, Magicka and Stamina stop at 0.
-            const double floor = -(base_value(ref, r, av) + v.modifier);
+            const double floor = -(base_value(ref, r, av) + v.modifier + v.temp);
             v.damage = std::max(v.damage, std::min(floor, 0.0));
         }
         if (av == av::k_magicka) {

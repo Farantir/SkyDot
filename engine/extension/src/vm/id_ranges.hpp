@@ -27,7 +27,10 @@ inline constexpr IdRange runtime_refs{0xFF001000u, 0xFF6FFFFFu};
 /// Potions and poisons that alchemy creates (created_forms.hpp), 1,048,576.
 inline constexpr IdRange created_forms{0xFF700000u, 0xFF7FFFFFu};
 /// Handles for quest aliases (quest_states.hpp).
-inline constexpr IdRange alias_handles{0xFF800000u, 0xFFFFFFFEu};
+inline constexpr IdRange alias_handles{0xFF800000u, 0xFFEFFFFFu};
+/// Instances of active magic effects (magic/active_effects.hpp), also the handles of the script
+/// objects an effect's scripts make: 1,048,575.
+inline constexpr IdRange effect_instances{0xFFF00000u, 0xFFFFFFFEu};
 /// Sound playback instances: Sound.Play's and the game layer's own. Fits the
 /// Int a script gets.
 inline constexpr IdRange sound_instances{1u, 0x7FFFFFFFu};
