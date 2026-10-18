@@ -46,6 +46,21 @@ func save(path: String) -> bool:
 ## Load a save in two phases: every section is checked and decoded first, and
 ## only then does the game change. A file that is missing, damaged or from
 ## another pack returns false and leaves the running game as it is.
+## The newest save in user:// (the quicksave and any other .skydot), "" if there is none.
+func newest() -> String:
+	var best := ""
+	var best_time := 0
+	for file in DirAccess.get_files_at("user://"):
+		if not file.ends_with(".skydot"):
+			continue
+		var path := "user://" + file
+		var time := FileAccess.get_modified_time(path)
+		if best == "" or time > best_time:
+			best = path
+			best_time = time
+	return best
+
+
 func load_game(path: String) -> bool:
 	var reader := SkydotSaveReader.new()
 	if reader.open(ProjectSettings.globalize_path(path)) != OK:

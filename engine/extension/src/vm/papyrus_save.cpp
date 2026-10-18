@@ -273,6 +273,8 @@ godot::Error SkydotPapyrus::commit_load() {
         return godot::ERR_UNCONFIGURED;
     }
     auto pending = std::move(pending_);
+    player_dead_ = false; // a loaded game has its own Health
+    last_damager_ = 0;
     std::vector<std::uint32_t> gone;
     for (const auto& [id, placed] : vm_->placed().refs()) {
         gone.push_back(id);

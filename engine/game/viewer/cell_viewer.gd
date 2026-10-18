@@ -254,6 +254,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.open_inventory or _settings.open_container != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
+	add_child(DeathMenu.new(_session, _rig, _controls))
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
 	if _settings.has_screenshot:

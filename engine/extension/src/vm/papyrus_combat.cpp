@@ -163,8 +163,9 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
                   static_cast<double>(r.weapon), static_cast<double>(r.armor_percent),
                   static_cast<double>(r.final_damage), before, after);
     godot::UtilityFunctions::print(String::utf8(line));
-    if (target == k_player_ref && after <= 0.0) {
-        godot::UtilityFunctions::print(String("combat: player at 0 health (death waits)"));
+    if (target == k_player_ref) {
+        last_damager_ = attacker;
+        check_player_death();
     }
 
     using vm::Value;

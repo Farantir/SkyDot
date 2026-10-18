@@ -137,6 +137,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(
         D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
         &SkydotPapyrus::apply_hit, DEFVAL(0));
+    godot::ClassDB::bind_method(D_METHOD("is_player_dead"), &SkydotPapyrus::is_player_dead);
     godot::ClassDB::bind_method(D_METHOD("get_corpse_place", "ref"), &SkydotPapyrus::get_corpse_place);
     godot::ClassDB::bind_method(D_METHOD("set_corpse_place", "ref", "space", "position", "rot_z"),
                                 &SkydotPapyrus::set_corpse_place);
@@ -244,6 +245,8 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("ref_deleted", PropertyInfo(Variant::INT, "ref")));
     // A non-essential actor other than the player was brought to Health 0.
     ADD_SIGNAL(godot::MethodInfo("actor_died", PropertyInfo(Variant::INT, "ref")));
+    // The player was brought to Health 0 (nobody dies in the VM for him): the killer, 0 if none.
+    ADD_SIGNAL(godot::MethodInfo("player_died", PropertyInfo(Variant::INT, "killer")));
     // A destructible reference opened a stage with a model: the game layer
     // swaps to it ("" and stage 0: back to the base's own model).
     ADD_SIGNAL(godot::MethodInfo("destruction_model", PropertyInfo(Variant::INT, "ref"),
@@ -603,6 +606,10 @@ void SkydotPapyrus::bind_actor_natives() {
     });
 }
 
+std::int64_t SkydotPapyrus::send_get_up(std::int64_t ref) {
+    return static_cast<std::int64_t>(dispatch(static_cast<std::uint32_t>(ref), "OnGetUp", {vm::Value{}}));
+}
+
 std::int64_t SkydotPapyrus::combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state) {
     const vm::Value who = target != 0 ? vm_->object(static_cast<std::uint32_t>(target), "Actor") : vm::Value{};
     return static_cast<std::int64_t>(dispatch(static_cast<std::uint32_t>(ref), "OnCombatStateChanged",
@@ -629,12 +636,19 @@ void SkydotPapyrus::damage_actor_value(std::int64_t ref, const String& name, dou
     if (const auto av = vm::av::index_of(utf8(name))) {
         actors_.damage(static_cast<std::uint32_t>(ref), *av, amount);
         flush_deaths();
+        if (static_cast<std::uint32_t>(ref) == k_player_ref) {
+            check_player_death();
+        }
     }
 }
 
 void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, double amount) {
     if (const auto av = vm::av::index_of(utf8(name))) {
         actors_.restore(static_cast<std::uint32_t>(ref), *av, amount);
+        if (player_dead_ && static_cast<std::uint32_t>(ref) == k_player_ref && *av == vm::av::k_health && amount > 0.0) {
+            player_dead_ = false; // brought back (a restart)
+            last_damager_ = 0;
+        }
     }
 }
 
@@ -1027,10 +1041,32 @@ String SkydotPapyrus::get_last_error() const { return last_error_; }
 
 // ---- tests and inspection -------------------------------------------------
 
+void SkydotPapyrus::check_player_death() {
+    const double health = actors_.get(k_player_ref, vm::av::k_health);
+    if (player_dead_) {
+        // The dead do not regenerate: only a load or a restore brings him back.
+        if (health > 0.0) {
+            actors_.damage(k_player_ref, vm::av::k_health, health);
+        }
+        return;
+    }
+    if (health <= 0.0 && actors_.is_actor(k_player_ref)) {
+        player_dead_ = true;
+        godot::UtilityFunctions::print(String::utf8(
+            (std::string("death: player killed by 0x") + [&] {
+                char hex[16];
+                std::snprintf(hex, sizeof hex, "%X", last_damager_);
+                return std::string(hex);
+            }()).c_str()));
+        emit_signal("player_died", static_cast<std::int64_t>(last_damager_));
+    }
+}
+
 void SkydotPapyrus::update(double seconds) {
     actors_.tick(seconds);
     vm_->update(seconds);
     flush_deaths();
+    check_player_death();
 }
 
 std::int64_t SkydotPapyrus::call_global(const String& cls, const String& fn, const Array& args) {

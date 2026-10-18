@@ -64,6 +64,8 @@ constexpr double k_exterior_mult = 2.1;
 constexpr double k_flee_interior = 3000.0;
 constexpr double k_flee_exterior = 5000.0;
 constexpr double k_regard = 0.8;
+/// PLACEHOLDER: how close the player must come (game units) to wake a sleeping actor.
+constexpr double k_wake_distance = 400.0;
 
 double flat(const Vector3& a, const Vector3& b) {
     const double dx = static_cast<double>(a.x - b.x);
@@ -523,6 +525,15 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
             return false;
         }
         c.detect = k_detect_interval;
+        // A sleeper wakes when the player comes close (and it could see him): its scripts hear
+        // OnGetUp, which for an ambush draugr (masterAmbushScript) sets Aggression 2.
+        if (!m.woken && m.step < m.steps.size() && m.steps[m.step].procedure == ai::Procedure::sleep &&
+            alive(k_player_ref) && sees(m, actor, k_player_ref, false, k_wake_distance)) {
+            m.woken = true;
+            if (vm_->send_get_up(m.ref) > 0) {
+                std::printf("combat: 0x%X wakes as 0x14 comes close\n", m.ref);
+            }
+        }
         // The nearest one it sees and would fight.
         std::uint32_t best = 0;
         double best_distance = 1e18;

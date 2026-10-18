@@ -67,6 +67,11 @@ signal dialogue_closed
 ## long it lasts. The shell decides whether the player is near enough to see it.
 signal subtitle_line(speaker: int, text: String, seconds: float)
 
+## The player's Health reached 0 (log `death: player killed by 0xA`): the killer, 0 if none.
+## Controls stop (`is_player_dead`) and the AI ends its fights against him; the shell shows the
+## death (fade, "Load the last save?") and asks `reload_or_restart`.
+signal player_died(killer: int)
+
 ## The player activated a container: its reference. The shell shows the menu
 ## (`inventory(ref)` is what it holds).
 signal container_opened(ref: int)
@@ -138,6 +143,7 @@ var _talk_topics: Array = []
 var _scene_held: Array = []
 var _scene_lines := {}  # "scene:action" -> lines left
 ## The player's weapon, attacks and hit tests, and actors' attacks.
+var _start := {}  # the first place entered: where a death with no save starts again
 var combat: Combat
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
@@ -194,6 +200,7 @@ func _open_world() -> bool:
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)
 	papyrus.actor_died.connect(actor_died.emit)
+	papyrus.player_died.connect(player_died.emit)
 	world.skyrim_materials = config.materials
 	world.effects = config.effects
 	world.grass = config.grass
@@ -317,6 +324,8 @@ func start_game() -> bool:
 ## look). Positions are engine space. False (with `failed` emitted) if it
 ## cannot be entered.
 func enter_world(world_name: String, at: Vector3, target: Variant) -> bool:
+	if _start.is_empty():
+		_start = {"kind": "world", "name": world_name, "at": at, "target": target}
 	var world_id := world.find_world(world_name)
 	if world_id == 0:
 		failed.emit("no worldspace named " + world_name)
@@ -330,6 +339,8 @@ func enter_world(world_name: String, at: Vector3, target: Variant) -> bool:
 ## Enter interior `cell_name`. `at` null puts the player where the game does
 ## (the arrival spot of a door leading in), else at `at`, looking at `target`.
 func enter_cell(cell_name: String, at: Variant, target: Variant) -> bool:
+	if _start.is_empty():
+		_start = {"kind": "cell", "name": cell_name, "at": at, "target": target}
 	var cell_id := world.find_cell(cell_name)
 	if cell_id == 0:
 		failed.emit("no cell named " + cell_name)
@@ -500,14 +511,14 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
-		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_actor_dead(SkydotPapyrus.PLAYER_REF))
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
 		ai.update(delta)
 
 
 ## The fights under way only, for runs that keep the world still (shots).
 func update_fights(delta: float, feet: Vector3) -> void:
 	if ai != null:
-		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_actor_dead(SkydotPapyrus.PLAYER_REF))
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
 		ai.update_fights(delta)
 
 
@@ -544,13 +555,15 @@ func is_fading() -> bool:
 
 ## Draw the player's weapon, or sheathe it (R, gamepad X).
 func toggle_weapon() -> void:
-	combat.toggle_weapon()
+	if not papyrus.is_player_dead():
+		combat.toggle_weapon()
 
 
 ## The attack button went down or up: a short press is a light attack, a long
 ## one a power attack (Combat.attack_pressed).
 func attack_pressed() -> void:
-	combat.attack_pressed()
+	if not papyrus.is_player_dead():
+		combat.attack_pressed()
 
 
 func attack_released() -> void:
@@ -559,7 +572,7 @@ func attack_released() -> void:
 
 ## Attack now: power or light (Combat.attack).
 func attack(power := false) -> bool:
-	return combat.attack(power)
+	return not papyrus.is_player_dead() and combat.attack(power)
 
 
 ## The right-hand weapon's form, 0 for bare hands.
@@ -639,7 +652,7 @@ func set_pointer(node: Node3D) -> void:
 ## The player activates what the pointer points at (the viewpoint's view unless
 ## set_pointer says otherwise; Shift: picks locks).
 func activate_in_view(force: bool) -> void:
-	if not transition.is_fading():
+	if not transition.is_fading() and not papyrus.is_player_dead():
 		_bridge.activate_in_view(force, _pointer)
 
 
@@ -828,6 +841,29 @@ func activation_target() -> Dictionary:
 
 
 # ---- saves
+
+## Whether the player is dead (Health 0): the shell stops his controls.
+func is_player_dead() -> bool:
+	return papyrus != null and papyrus.is_player_dead()
+
+
+## After a death: load the newest save (SaveService.newest) or, with none, start the start
+## place again with full Health. False if neither worked.
+func reload_or_restart() -> bool:
+	var path := saves.newest()
+	if path != "":
+		return load_game(path)
+	if _start.is_empty():
+		return false
+	var health := papyrus.get_actor_value_max(SkydotPapyrus.PLAYER_REF, "Health")
+	var done: bool
+	if _start["kind"] == "world":
+		done = enter_world(_start["name"], _start["at"], _start["target"])
+	else:
+		done = enter_cell(_start["name"], _start["at"], _start["target"])
+	papyrus.restore_actor_value(SkydotPapyrus.PLAYER_REF, "Health", health)
+	return done
+
 
 func save_game(path: String) -> bool:
 	return saves.save(path)

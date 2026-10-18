@@ -203,6 +203,7 @@ private:
         std::uint64_t dice{};            ///< RNG state.
         bool announced{};                ///< actor_arrived sent for its place.
         CombatMind combat;
+        bool woken{};                    ///< Sent OnGetUp after the player came close while it slept.
     };
 
     class Conditions;

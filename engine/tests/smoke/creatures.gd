@@ -161,13 +161,14 @@ func _run(pack_dir: String) -> void:
 	var draugr := _session.world.find_ref_node(DRAUGR) as Node3D
 	expect(draugr != null, "the draugr is built")
 	if draugr != null:
-		await _stand_before(draugr, 3.0)
+		await _stand_before(draugr, 12.0)
 		await _frames(180)
-		expect(_session.ai.get_combat_state(DRAUGR) == 0, "the ambush draugr is dormant in front of the player")
-		# masterAmbushScript: OnActivate by the player ends its waiting state, sets Aggression 2.
-		papyrus.send_event(DRAUGR, "OnActivate", [PLAYER])
-		await _frames(2)
-		expect(papyrus.get_actor_value(DRAUGR, "Aggression") == 2, "the script woke it: Aggression %s" % papyrus.get_actor_value(DRAUGR, "Aggression"))
+		expect(_session.ai.get_combat_state(DRAUGR) == 0 and papyrus.get_actor_value(DRAUGR, "Aggression") == 0,
+			"the ambush draugr is dormant while the player is far")
+		# The player walks up to it: the sleeper hears him (OnGetUp) and masterAmbushScript sets Aggression 2.
+		await _stand_before(draugr, 3.0)
+		var woke := await _until(func() -> bool: return papyrus.get_actor_value(DRAUGR, "Aggression") == 2, 5.0)
+		expect(woke >= 0.0, "the script woke it on approach: Aggression %s" % papyrus.get_actor_value(DRAUGR, "Aggression"))
 		await _fight(DRAUGR, "draugr", "")
 
 	# The frostbite spider (dropped from the ceiling, found the floor).

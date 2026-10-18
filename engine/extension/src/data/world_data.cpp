@@ -244,7 +244,12 @@ const wfb::DoorLink* WorldData::door_ptr(std::uint32_t ref) const {
 std::int64_t WorldData::cell_of_ref(std::int64_t ref) const {
     const auto id = static_cast<std::uint64_t>(static_cast<std::uint32_t>(ref));
     const auto it = std::ranges::lower_bound(ref_cells_, id << 32);
-    return it != ref_cells_.end() && *it >> 32 == id ? static_cast<std::int64_t>(*it & 0xFFFFFFFFU) : 0;
+    if (it != ref_cells_.end() && *it >> 32 == id) {
+        return static_cast<std::int64_t>(*it & 0xFFFFFFFFU);
+    }
+    // A placed actor (ACHR) is in the cell it is placed in.
+    const auto* actor = actor_ptr(static_cast<std::uint32_t>(ref));
+    return actor != nullptr ? static_cast<std::int64_t>(actor->cell()) : 0;
 }
 
 const wfb::Ref* WorldData::ref_ptr(std::uint32_t ref) const {

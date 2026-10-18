@@ -173,6 +173,9 @@ public:
     /// An actor's combat state changed: sends OnCombatStateChanged(akTarget, aeCombatState) to its
     /// scripts and aliases (dispatch as OnHit). Returns how many handlers ran.
     std::int64_t combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state);
+    /// A sleeping actor got up (woken by the player's closeness): sends OnGetUp(None) to its
+    /// scripts, as the game does when an actor leaves its furniture. Returns the handlers run.
+    std::int64_t send_get_up(std::int64_t ref);
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
     /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
     /// 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow.
@@ -306,6 +309,8 @@ public:
 
     // ---- actor values (vm/actor_states.hpp): 0 for a reference that is no actor
     // or a name that is no actor value (reported once)
+    /// The player is at Health 0 (`player_died` was sent; Health above 0 again clears it).
+    bool is_player_dead() const { return player_dead_; }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
     std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
@@ -484,6 +489,10 @@ private:
     void bind_runtime_natives();
     void bind_actor_natives();
     CombatHooks combat_hooks_;
+    bool player_dead_ = false;
+    std::uint32_t last_damager_ = 0; ///< Who last hurt the player.
+    /// Player at Health 0: log `death: player killed by 0xA` and send `player_died` once.
+    void check_player_death();
     void bind_item_natives();
     /// Emit `actor_died` for the actors that died since the last call.
     void flush_deaths();
