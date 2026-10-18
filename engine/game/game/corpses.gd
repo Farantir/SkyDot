@@ -13,7 +13,10 @@
 # position in Skyrim units, facing), which saves keep: a dead actor built
 # later (the cell entered again, a load) is placed there and lies down the
 # same way, without an impulse. A skeleton without the bones logs
-# `death: no ragdoll for <skeleton>` and lies on its side.
+# `death: no ragdoll for <skeleton>` and lies on its side. Another skeleton (a
+# creature's) gets a generic ragdoll: a capsule along every bone that has a child
+# more than GENERIC_MIN_LENGTH away, cone joints of generic limits between a body and
+# the nearest body above it; `death: ragdoll for <skeleton> (N bodies)` says how many.
 #
 # The corpse stays pickable for activation (Search): `pick_ref` finds a node
 # by the `skydot_activatable` and `skydot_bounds` metadata, which this sets on
@@ -40,6 +43,16 @@ const BONES := [
 	["NPC R Thigh [RThg]", "NPC R Calf [RClf]", 0.08, 60.0, 20.0],
 	["NPC R Calf [RClf]", "NPC R Foot [Rft ]", 0.06, 60.0, 15.0],
 ]
+## The generic ragdoll (creatures): a bone gets a capsule when a child is farther than this
+## (metres); the capsule's radius is this share of its length, within the limits; joint
+## limits in degrees; at most this many bodies. Placeholders, sized by eye.
+const GENERIC_MIN_LENGTH := 0.05
+const GENERIC_RADIUS_SHARE := 0.25
+const GENERIC_MIN_RADIUS := 0.03
+const GENERIC_MAX_RADIUS := 0.15
+const GENERIC_SWING := 45.0
+const GENERIC_TWIST := 20.0
+const GENERIC_MAX_BODIES := 32
 ## A capsule with no bone to run to, metres long (the head).
 const HEAD_LENGTH := 0.12
 ## The body that takes the hit's impulse.
@@ -202,7 +215,9 @@ func _lay_down(ref: int, impulse: Vector3) -> void:
 			target.apply_central_impulse(impulse)
 	_set_place(ref, node, node.global_position)
 	_bodies.append({"ref": ref, "node": node, "skeleton": skeleton, "simulator": simulator,
-		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0})
+		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0, "root": ragdoll["root"]})
+	var skeleton_name := String(_world.get_actor_plan(ref).get("skeleton", "?"))
+	_warn.once("ragdoll" + skeleton_name, "ragdoll for %s (%d bodies)" % [skeleton_name, ragdoll["bones"].size()])
 	_mark_pickable(node, skeleton)
 
 
@@ -214,7 +229,7 @@ func _freeze(body: Dictionary) -> void:
 	var poses := {}
 	for bone: PhysicalBone3D in body["bones"]:
 		poses[skeleton.find_bone(bone.bone_name)] = bone_pose(skeleton, bone)
-	var pelvis := skeleton.find_bone(BONES[0][0])
+	var pelvis := skeleton.find_bone(body.get("root", BONES[0][0]))
 	var pelvis_at := skeleton.global_transform * (poses[pelvis] as Transform3D).origin
 	simulator.physical_bones_stop_simulation()
 	skeleton.remove_child(simulator)
@@ -288,26 +303,70 @@ func _mark_pickable(node: Node3D, skeleton: Skeleton3D) -> void:
 ## {simulator, bones, impulse_bone} for `skeleton`, or {} if it lacks the human
 ## bones. Nothing is added to the scene.
 func _make_ragdoll(skeleton: Skeleton3D) -> Dictionary:
+	var entries := BONES
+	var root_name: String = BONES[0][0]
 	for entry: Array in BONES:
 		if skeleton.find_bone(entry[0]) < 0:
-			return {}
+			entries = _generic_entries(skeleton)
+			if entries.is_empty():
+				return {}
+			root_name = entries[0][0]
+			break
 	var simulator := PhysicalBoneSimulator3D.new()
 	simulator.name = "Ragdoll"
 	var units := _units_scale(skeleton)  # metres per skeleton unit
 	var bones: Array[PhysicalBone3D] = []
 	var impulse_bone: PhysicalBone3D = null
-	for entry: Array in BONES:
+	var longest := -1.0
+	for entry: Array in entries:
 		var bone := _make_bone(skeleton, entry, units)
 		bones.append(bone)
 		if entry[0] == IMPULSE_BONE:
 			impulse_bone = bone
+		elif entries != BONES and bone.get_child(0) is CollisionShape3D:
+			var height: float = ((bone.get_child(0) as CollisionShape3D).shape as CapsuleShape3D).height
+			if height > longest:
+				longest = height
+				impulse_bone = bone
 	# The bones do not collide with each other (capsules overlap at the
 	# joints), nor with the player: only with the world.
 	for i in bones.size():
 		for j in range(i + 1, bones.size()):
 			bones[i].add_collision_exception_with(bones[j])
 			bones[j].add_collision_exception_with(bones[i])
-	return {"simulator": simulator, "bones": bones, "impulse_bone": impulse_bone}
+	return {"simulator": simulator, "bones": bones, "impulse_bone": impulse_bone, "root": root_name}
+
+
+## The entries (as BONES') of a generic ragdoll: every bone with a child more than
+## GENERIC_MIN_LENGTH away, a capsule to the farthest such child, a joint to the nearest
+## body above (none for a bone with no body above it).
+func _generic_entries(skeleton: Skeleton3D) -> Array:
+	var units := _units_scale(skeleton)
+	var out: Array = []
+	var has_body := {}  # bone index -> true
+	for index in skeleton.get_bone_count():  # parents come before their children
+		var here := skeleton.get_bone_global_rest(index).origin
+		if absf(here.x) > 1.0e4 or absf(here.y) > 1.0e4 or absf(here.z) > 1.0e4:
+			continue  # a bone parked far away for a prop
+		var far := -1
+		var far_length := GENERIC_MIN_LENGTH
+		for child in skeleton.get_bone_children(index):
+			var length := (skeleton.get_bone_global_rest(child).origin - here).length() * units
+			if length > far_length:
+				far_length = length
+				far = child
+		if far < 0 or out.size() >= GENERIC_MAX_BODIES:
+			continue
+		var above := false
+		var parent := skeleton.get_bone_parent(index)
+		while parent >= 0 and not above:
+			above = has_body.has(parent)
+			parent = skeleton.get_bone_parent(parent)
+		has_body[index] = true
+		var radius := clampf(far_length * GENERIC_RADIUS_SHARE, GENERIC_MIN_RADIUS, GENERIC_MAX_RADIUS)
+		out.append([skeleton.get_bone_name(index), skeleton.get_bone_name(far), radius,
+			GENERIC_SWING if above else 0.0, GENERIC_TWIST if above else 0.0])
+	return out
 
 
 ## One capsule from the bone to its child.

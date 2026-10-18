@@ -165,7 +165,15 @@ void SkydotAi::set_player(const Vector3& position, bool alive_now) {
     player_known_ = true;
 }
 
-bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t target) const {
+double SkydotAi::aggro_radius(const Mind& m) const {
+    const auto* npc = resolve_npc(*root(), npc_of(m.ref), wfb::NpcTemplateFlags::use_ai_data, m.ref);
+    if (npc == nullptr || npc->aggro_radius_behaviour() == 0) {
+        return 0.0;
+    }
+    return static_cast<double>(npc->aggro_attack() != 0 ? npc->aggro_attack() : npc->aggro_warn_attack());
+}
+
+bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t target, bool cone, double aggro) const {
     const auto at = position_of(target);
     if (!at || !actor.is_inside_tree()) {
         return false;
@@ -180,6 +188,9 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
                                                                     static_cast<float>(k_exterior_mult)));
         }
     }
+    if (aggro > 0.0) {
+        range = aggro;
+    }
     const Vector3 from = actor.get_global_position();
     const Vector3 to = SkydotWorld::skyrim_position(*at);
     const double distance = static_cast<double>(from.distance_to(to));
@@ -190,7 +201,7 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
     Vector3 flat_to = to - from;
     flat_to.y = 0;
     const Vector3 forward = -actor.get_global_transform().basis.get_column(2);
-    if (flat_to.length() > 0.01F) {
+    if (cone && flat_to.length() > 0.01F) {
         const double angle = static_cast<double>(forward.angle_to(flat_to.normalized()));
         if (angle > k_view_cone_degrees * 0.5 * std::numbers::pi / 180.0) {
             return false;
@@ -331,6 +342,16 @@ void SkydotAi::update_fights(double seconds) {
     }
 }
 
+std::int64_t SkydotAi::get_reaction(std::int64_t a, std::int64_t b) {
+    const auto known = [this](std::int64_t ref) {
+        return ref == 0x14 || mind(static_cast<std::uint32_t>(ref)) != nullptr;
+    };
+    if (!known(a) || !known(b)) {
+        return -1;
+    }
+    return static_cast<std::int64_t>(reaction_of(static_cast<std::uint32_t>(a), static_cast<std::uint32_t>(b)));
+}
+
 std::int64_t SkydotAi::get_combat_target(std::int64_t ref) {
     const auto it = minds_.find(static_cast<std::uint32_t>(ref));
     return it == minds_.end() ? 0 : it->second.combat.target;
@@ -384,7 +405,10 @@ void SkydotAi::combat_walk(Mind& m, SkydotActor& actor, const Vector3& skyrim_po
         return;
     }
     c.repath = 0.6;
-    actor.walk_to(SkydotWorld::skyrim_position(skyrim_point), run);
+    const Vector3 at = SkydotWorld::skyrim_position(skyrim_point);
+    if (!actor.walk_to(at, run)) {
+        actor.walk_straight(at, run); // off the navmesh (a big creature): straight at it
+    }
 }
 
 void SkydotAi::melee_tick(Mind& m, SkydotActor& actor, double distance, const Vector3& to) {
@@ -511,9 +535,16 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
                 return;
             }
             const double d = flat(m.last, *at);
-            if (d >= best_distance ||
-                !combat_ai::starts_combat(value_of(m.ref, "Aggression"), reaction_of(m.ref, other)) ||
-                !sees(m, actor, other)) {
+            if (d >= best_distance) {
+                return;
+            }
+            const auto how = reaction_of(m.ref, other);
+            // An aggro radius attacks whatever comes within it and is not a friend (skeevers,
+            // wolves, ambush draugr); otherwise aggression and the reaction decide.
+            const double radius = aggro_radius(m);
+            const bool by_radius = radius > 0.0 && !combat_ai::friendly(how) && sees(m, actor, other, false, radius);
+            if (!by_radius &&
+                (!combat_ai::starts_combat(value_of(m.ref, "Aggression"), how) || !sees(m, actor, other))) {
                 return;
             }
             best = other;

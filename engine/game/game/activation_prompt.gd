@@ -48,7 +48,7 @@ func target(pointer: Node3D) -> Dictionary:
 ## The prompt for reference `ref` placed in `cell`; {} if it has none.
 func describe(cell: int, ref: int) -> Dictionary:
 	var info := _world.get_ref_info(cell, ref)
-	if info.is_empty():
+	if info.is_empty() or info.get("type", "") == "NPC_":  # an actor's info has only its scripts
 		return _actor_prompt(ref)
 	var base: Dictionary = _world.get_base(info["base"])
 	if base.is_empty():

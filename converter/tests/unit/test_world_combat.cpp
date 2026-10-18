@@ -353,6 +353,17 @@ void make_styles(const TempDir& dir) {
     text(npc, "EDID", "StyledNpc");
     u32(npc, "ZNAM", 0x900);
     u32(npc, "CRIF", 0x911);
+    {
+        // AIDT: seven behaviour bytes, a pad, then warn, warn or attack and attack distances.
+        ByteWriter aidt;
+        for (const int b : {1, 4, 50, 0, 0, 1, 1, 0}) {
+            aidt.u8(static_cast<std::uint8_t>(b));
+        }
+        aidt.u32(300);
+        aidt.u32(400);
+        aidt.u32(500);
+        bethconv::test::write_field(npc, "AIDT", aidt);
+    }
     record(file, "NPC_", 0x910, npc);
 
     ByteWriter fact;
@@ -425,6 +436,10 @@ TEST_CASE("world.fb 31 carries combat styles, the NPC's style and crime faction,
     REQUIRE(npc.has_value());
     CHECK(npc->combat_style == 0x900);
     CHECK(npc->crime_faction == 0x911);
+    CHECK(npc->aggro_radius_behaviour == 1);
+    CHECK(npc->aggro_warn == 300);
+    CHECK(npc->aggro_warn_attack == 400);
+    CHECK(npc->aggro_attack == 500);
 
     const auto faction = file->faction(0x911);
     REQUIRE(faction.has_value());

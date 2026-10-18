@@ -126,6 +126,10 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.voice_type = shared_.global(merged, npc->voice_type, failed);
     out.combat_style = shared_.global(merged, npc->combat_style, failed);
     out.crime_faction = shared_.global(merged, npc->crime_faction, failed);
+    out.aggro_radius_behaviour = npc->aggro_radius_behaviour;
+    out.aggro_warn = npc->warn;
+    out.aggro_warn_attack = npc->warn_or_attack;
+    out.aggro_attack = npc->attack;
     out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
     if (failed) {
         ++shared_.stats().unresolved;

@@ -222,6 +222,9 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     out["mood"] = static_cast<std::int64_t>(npc->mood());
     out["assistance"] = static_cast<std::int64_t>(npc->assistance());
     // Absent in packs before world.fb 31: 0.
+    out["aggro_radius_behaviour"] = static_cast<std::int64_t>(npc->aggro_radius_behaviour());
+    out["aggro_warn"] = static_cast<std::int64_t>(npc->aggro_warn());
+    out["aggro_attack"] = static_cast<std::int64_t>(npc->aggro_attack());
     out["combat_style"] = static_cast<std::int64_t>(npc->combat_style());
     out["crime_faction"] = static_cast<std::int64_t>(npc->crime_faction());
     Array factions;

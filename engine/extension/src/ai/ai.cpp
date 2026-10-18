@@ -240,6 +240,7 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_combat_target", "ref"), &SkydotAi::get_combat_target);
     ClassDB::bind_method(D_METHOD("get_combat_state", "ref"), &SkydotAi::get_combat_state);
     ClassDB::bind_method(D_METHOD("update_fights", "seconds"), &SkydotAi::update_fights);
+    ClassDB::bind_method(D_METHOD("get_reaction", "a", "b"), &SkydotAi::get_reaction);
     ADD_SIGNAL(MethodInfo("combat_state_changed", PropertyInfo(Variant::INT, "ref"),
                           PropertyInfo(Variant::INT, "target"), PropertyInfo(Variant::INT, "state")));
     ADD_SIGNAL(MethodInfo("combat_attack", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),

@@ -27,6 +27,8 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
+#include <vector>
 
 namespace skydot {
 
@@ -37,6 +39,8 @@ struct GaitClip {
     /// Forward speed in game units per second at that playback speed; 0 for
     /// an idle or an animation without root motion.
     float speed{};
+    /// The project's text keys of the clip (HitFrame, SoundPlay.*): time in seconds, text.
+    std::vector<std::pair<float, std::string>> notes;
 
     [[nodiscard]] bool empty() const { return file.empty(); }
 };

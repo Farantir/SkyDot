@@ -8,8 +8,8 @@
 # when it rests and stores the corpse place; he is still pickable (Search), the
 # corpse place survives a save, and entering the cell again lays him down at
 # that place without an impulse. A draugr gets the same ragdoll; a skeleton
-# without the human bones (a frostbite spider) logs "death: no ragdoll" and lies
-# on its side. Skips without the pack.
+# without the human bones (a frostbite spider) gets a generic one, a capsule on every
+# bone with a long child. Skips without the pack.
 extends SceneTree
 
 const PLAYER := 0x14
@@ -230,14 +230,14 @@ func _run(pack_dir: String) -> void:
 		expect(settled.y - again.global_position.y < 0.5, "it settles lying: %.2f m" % (settled.y - again.global_position.y))
 		expect(Vector2(settled.x - lying.x, settled.z - lying.z).length() < 1.5, "near where he lay: %.2f m" % Vector2(settled.x - lying.x, settled.z - lying.z).length())
 
-	# A skeleton without the human bones.
+	# A skeleton without the human bones: the generic ragdoll.
 	var spider := _session.world.find_ref_node(SPIDER) as SkydotActor
 	expect(spider != null, "the spider is built")
 	if spider != null:
 		_session.kill_actor(SPIDER)
 		await _frames(5)
-		expect(spider.is_dead() and _session.corpses.simulating() == 0, "the spider has no ragdoll")
-		expect(absf(spider.transform.basis.y.y) < 0.1, "and lies on its side")
+		var ragdoll := spider.find_child("Ragdoll", true, false)
+		expect(spider.is_dead() and ragdoll != null and ragdoll.get_child_count() >= 8, "the spider has a generic ragdoll")
 		expect(not papyrus.get_corpse_place(SPIDER).is_empty(), "with a corpse place")
 	print("smoke_combat_death: failures=%d" % failures)
 	quit(failures)

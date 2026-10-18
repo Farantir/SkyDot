@@ -169,6 +169,7 @@ var _items: ItemMenu
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
 var _body: FirstPersonBody  # the player's arms and weapon
+var _fight_pending: Array[int] = []  # --fight: the actors still to start (not built yet)
 var _attack_at := 0  # --attack-at: the actor still to attack
 var _benchmark := BenchmarkRun.new()
 var _quit_in := -1  # frames until quitting after --activate
@@ -346,8 +347,7 @@ func _apply_combat_options() -> void:
 		while _session.papyrus.melee_weapon(ref) != 0:
 			if _session.papyrus.transfer(ref, SkydotPapyrus.PLAYER_REF, _session.papyrus.melee_weapon(ref), 1) <= 0:
 				break
-	for ref in _settings.fight:
-		print("--fight: 0x%08X %s" % [ref, "fights" if _session.start_fight(ref) else "cannot fight"])
+	_fight_pending = _settings.fight.duplicate()
 	for ref in _settings.npc_draw:
 		print("--npc-draw: 0x%08X %s" % [ref, "draws" if _session.npc_draw(ref, true) else "cannot draw"])
 
@@ -377,9 +377,18 @@ func _on_attack_changed(pressed: bool) -> void:
 		_session.attack_released()
 
 
+## --fight: start the fights of actors that are built now (an exterior streams them in).
+func _fight_step() -> void:
+	for ref in _fight_pending.duplicate():
+		if _session.start_fight(ref):
+			print("--fight: 0x%08X fights" % ref)
+			_fight_pending.erase(ref)
+
+
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
+	_fight_step()
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
 	if _shots.is_running():

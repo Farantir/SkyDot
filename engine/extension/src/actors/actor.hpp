@@ -63,6 +63,9 @@ public:
     /// Walk (or run) to `target` along the navigation map. False when no
     /// path leads there (yet): the map may still be synchronizing.
     bool walk_to(const godot::Vector3& target, bool run);
+    /// Walk (or run) straight at `target` with no path: for a creature the navmesh has no place
+    /// for (the physics keeps it out of walls).
+    bool walk_straight(const godot::Vector3& target, bool run);
     void stop();
     bool is_walking() const { return !path_.is_empty(); }
     godot::PackedVector3Array get_path() const { return path_; }

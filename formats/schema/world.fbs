@@ -1387,6 +1387,13 @@ table Npc {
     combat_style: uint32;
     /// CRIF (format 31): the Faction whose crimes the NPC reports; 0 if none.
     crime_faction: uint32;
+    /// AIDT bytes 6 and 8 to 19 (format 32; xEdit): whether the actor has an aggro radius (it
+    /// attacks what comes within `aggro_attack` game units, as skeevers, wolves and ambush
+    /// draugr do) and its warn, warn-or-attack and attack distances.
+    aggro_radius_behaviour: ubyte;
+    aggro_warn: uint32;
+    aggro_warn_attack: uint32;
+    aggro_attack: uint32;
 }
 
 /// The low bits of `Condition.type`.

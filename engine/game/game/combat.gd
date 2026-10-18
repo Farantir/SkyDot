@@ -89,10 +89,13 @@ const IMPACT_MAX_SECONDS := 3.0
 ## The weapon model changes hands this far into the equip or unequip clip: a
 ## placeholder for the clip's own weapon text key (not read yet).
 const GEAR_SWAP_FRACTION := 0.4
-## WEAP animation type -> the third-person equip clip's prefix (`1hm_equip`).
-const EQUIP_PREFIX := {1: "1hm", 2: "dag", 3: "axe", 4: "mac", 5: "2hm", 6: "2hw", 7: "bow"}
-## WEAP animation type -> the stance (SkydotActor.set_stance).
-const STANCE_PREFIX := {1: "1hm", 2: "1hm", 3: "1hm", 4: "1hm", 5: "2hm", 6: "2hw", 7: "bow"}
+## WEAP animation type -> the third-person equip clip's prefixes (`1hm_equip`), the first
+## the project has wins (the draugr's two-handers use `2gs` and `2hm`).
+const EQUIP_PREFIX := {1: ["1hm"], 2: ["dag", "1hm"], 3: ["axe", "1hm"], 4: ["mac", "1hm"], 5: ["2hm", "2gs"],
+	6: ["2hw", "2hm", "2gs"], 7: ["bow"]}
+## WEAP animation type -> the stances (SkydotActor.set_stance), tried in order.
+const STANCE_PREFIX := {1: ["1hm"], 2: ["1hm"], 3: ["1hm"], 4: ["1hm"], 5: ["2hm", "2gs"], 6: ["2hw", "2hm", "2gs"],
+	7: ["bow"]}
 ## What a creature without a weapon stands in when it fights.
 const CREATURE_STANCE := "combat"
 ## PLACEHOLDER: where in the draw clip the arrow leaves when the clip has no release key.
@@ -335,18 +338,25 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	var equipment := _papyrus.equipment(attacker)
 	var form: int = equipment["right"]
 	var info := _world.get_weapon(form) if form != 0 else {}
-	var prefix := _prefix_of(int(info.get("weapon_type", 0)))
-	if prefix == "":
+	var type := int(info.get("weapon_type", 0))
+	if _prefix_of(type) == "":
 		info = {}
 		form = 0
-		prefix = "h2h_"
-	var stem := prefix + ("attackpower" if power else "attackright")
-	var project := PROJECTS + behaviour.get_file().get_basename() + ".txt"
-	var dir := (behaviour.get_base_dir() + "/animations/") if behaviour != "" else THIRD_PERSON_CLIPS
-	var timing := _timing(project, dir, stem)
+		type = 0
+	# The clip: a project clip by name (a creature's `Attack1`, a draugr's `1hmattacka`, a
+	# human's `1hm_attackright`) with the project's text keys.
+	var picked := _attack_clip(behaviour, type, power)
+	var clip: String = picked.get("file", "")
+	var timing: Dictionary
+	if clip != "":
+		timing = _timing_of(clip, picked["notes"], "clip|" + clip)
+	else:
+		var stem := _prefix_of(type) + ("attackpower" if power else "attackright")
+		var dir := (behaviour.get_base_dir() + "/animations/") if behaviour != "" else THIRD_PERSON_CLIPS
+		timing = _timing(PROJECTS + behaviour.get_file().get_basename() + ".txt", dir, stem)
+		clip = dir + stem + ".hkx"
 	var speed := maxf(float(info.get("speed", 1.0)), 0.1)
 	_face(node, target)
-	var clip := _clip_file(behaviour, stem, dir)
 	if node.has_method("play_action"):
 		node.play_action(clip, speed)
 	_npc_attacks.append({"attacker": attacker, "target": target, "power": power, "weapon": form, "info": info,
@@ -392,6 +402,15 @@ func npc_shoot(attacker: int, target := PLAYER_REF) -> bool:
 
 ## Put the weapon `ranged` (the bow with its arrows) or the melee weapon in `ref`'s hands, as
 ## the game's AI does when the fight changes, and show it. No clip plays.
+func _set_stance_of(node: Node, type: int, drawn: bool) -> void:
+	if not drawn:
+		node.set_stance("")
+		return
+	for stance: String in STANCE_PREFIX.get(type, [CREATURE_STANCE]):
+		if node.set_stance(stance):
+			return
+
+
 func _use_weapon(ref: int, ranged: bool) -> void:
 	var right: int = _papyrus.equipment(ref)["right"]
 	var want := 0
@@ -410,8 +429,59 @@ func _use_weapon(ref: int, ranged: bool) -> void:
 	gear.refresh(ref)
 	var node := _world.find_ref_node(ref)
 	if node != null and node.has_method("set_stance") and _drawn.get(ref, false):
-		var info := _world.get_weapon(want)
-		node.set_stance(STANCE_PREFIX.get(int(info.get("weapon_type", 0)), CREATURE_STANCE))
+		_set_stance_of(node, int(_world.get_weapon(want).get("weapon_type", 0)), true)
+
+
+## Words that make a clip no plain attack of a project's clip table.
+const ATTACK_EXCLUDED := ["left", "mirror", "intro", "outro", "sprint", "back", "bwd", "uncropped", "bash", "block",
+	"stagger", "recoil", "1stp", "jump", "sneak", "combo", "cast", "spit", "walk", "run", "turn", "paired", "dual",
+	"npc", "x2", "equip", "unequip"]
+## Stems by weapon type of an armed actor's attack clip (human project), else the project's names.
+const ARMED_ATTACK := {1: ["1hm"], 2: ["1hm"], 3: ["1hm"], 4: ["1hm"], 5: ["2hm", "2gs"], 6: ["2hw", "2hm", "2gs"]}
+
+
+## The attack clip of an actor of project `behaviour` holding a weapon of `type` (0 none):
+## {stem, file, notes}, or {} if the project has none. A human's `<set>_attackright` and
+## `<set>_attackpower` first; else a clip of the project whose name has "attack" in it (and
+## "power" for a power attack, else none of the excluded words), chosen at random.
+func _attack_clip(behaviour: String, type: int, power: bool) -> Dictionary:
+	if behaviour == "":
+		return {}
+	if not _locomotions.has(behaviour):
+		_locomotions[behaviour] = _world.get_locomotion(behaviour)
+	var clips: Dictionary = _locomotions[behaviour].get("clips", {})
+	var sets: Array = ARMED_ATTACK.get(type, ["h2h"])
+	var preferred := []
+	for set_name: String in sets:
+		if power:
+			preferred.append("%s_attackpower" % set_name)
+		preferred.append("%s_attackright" % set_name)
+	for stem in preferred:
+		if clips.has(stem):
+			return {"stem": stem, "file": clips[stem]["file"], "notes": clips[stem]["annotations"]}
+	var names: Array = []
+	for stem: String in clips.keys():
+		if not stem.contains("attack") or (power != stem.contains("power")):
+			continue
+		if type != 0 and not sets.any(func(set_name: String) -> bool: return stem.begins_with(set_name)):
+			continue
+		if type == 0 and stem.begins_with("1hm") or type == 0 and stem.begins_with("2h") or type == 0 and stem.begins_with("bow"):
+			continue
+		var bad := false
+		for word: String in ATTACK_EXCLUDED:
+			if stem.contains(word):
+				bad = true
+		if not bad and (power or not stem.contains("forward")):
+			names.append(stem)
+	if names.is_empty() and power:
+		return _attack_clip(behaviour, type, false)
+	if names.is_empty() and type != 0:
+		return _attack_clip(behaviour, 0, power)
+	if names.is_empty():
+		return {}
+	names.sort()
+	var chosen: String = names[_rng.randi() % names.size()]
+	return {"stem": chosen, "file": clips[chosen]["file"], "notes": clips[chosen]["annotations"]}
 
 
 ## `ref` draws its weapon (true) or sheathes it: the combat stance of the weapon
@@ -430,12 +500,12 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 	var behaviour: String = _actor_plan(ref).get("behaviour", "")
 	var length := 0.0
 	if node.has_method("set_stance"):
-		var stance: String = STANCE_PREFIX.get(type, CREATURE_STANCE)
-		node.set_stance(stance if drawn else "")
-		if EQUIP_PREFIX.has(type):
-			var clip := _clip_file(behaviour, EQUIP_PREFIX[type] + ("_equip" if drawn else "_unequip"), "")
+		_set_stance_of(node, type, drawn)
+		for prefix: String in EQUIP_PREFIX.get(type, []):
+			var clip := _clip_file(behaviour, prefix + ("_equip" if drawn else "_unequip"), "")
 			if clip != "":
 				length = node.play_action(clip, 1.0)
+				break
 	if length > 0.0:
 		_swaps.append({"ref": ref, "left": length * GEAR_SWAP_FRACTION, "drawn": drawn})
 	else:
@@ -802,17 +872,22 @@ func _clip_for(power: bool, left: bool) -> String:
 ## sounds: [[time, text]]}. From the project's text keys (`HitFrame`,
 ## `AttackWinStart`, `attackStop`, `SoundPlay.*`), else from the length.
 func _timing(project: String, dir: String, stem: String) -> Dictionary:
-	var key := project + "|" + dir + stem
+	return _timing_of(dir + stem + ".hkx", _project_notes(project, stem), project + "|" + dir + stem)
+
+
+## The same for the animation file `file` and its text keys `notes` ([{time, text}]), cached
+## under `key`.
+func _timing_of(file: String, notes: Array, key: String) -> Dictionary:
+	var stem := file.get_file().get_basename()
 	if _timings.has(key):
 		return _timings[key]
 	var length := 1.0
 	var info: Dictionary = {}
-	var bytes := _pack.get_bytes(dir + stem + ".hkx")
+	var bytes := _pack.get_bytes(file)
 	if bytes.size() > 0:
 		info = SkydotAnimation.describe(bytes)
 		if info.has("clips") and not info["clips"].is_empty():
 			length = float(info["clips"][0]["duration"])
-	var notes := _project_notes(project, stem)
 	var out := {"hit": -1.0, "window": -1.0, "stop": -1.0, "length": length, "sounds": []}
 	for note: Dictionary in notes:
 		var text := String(note["text"]).to_lower()

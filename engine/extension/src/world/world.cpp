@@ -478,6 +478,14 @@ godot::Dictionary SkydotWorld::get_locomotion(const String& behaviour) {
         d["file"] = String::utf8(g.file.c_str());
         d["playback"] = g.playback;
         d["speed"] = g.speed;
+        godot::Array notes;
+        for (const auto& [time, text] : g.notes) {
+            godot::Dictionary n;
+            n["time"] = static_cast<double>(time);
+            n["text"] = String::utf8(text.c_str());
+            notes.push_back(n);
+        }
+        d["annotations"] = notes;
         return d;
     };
     godot::Dictionary out;

@@ -134,6 +134,9 @@ public:
     /// Run the fights under way only (not the packages, not new fights): for runs that keep the
     /// world still, as --screenshot does, but show a fight started by hand.
     void update_fights(double seconds);
+    /// How `a` sees `b` (combat_ai::Reaction: 0 enemy, 1 neutral, 2 ally, 3 friend); -1 if a
+    /// reference is no placed actor (or the player).
+    std::int64_t get_reaction(std::int64_t a, std::int64_t b);
     /// 0 not in combat, 1 combat, 2 searching.
     std::int64_t get_combat_state(std::int64_t ref);
 
@@ -260,7 +263,12 @@ private:
     /// Skyrim position of a living, built actor or of the player; nullopt otherwise.
     std::optional<godot::Vector3> position_of(std::uint32_t ref) const;
     bool alive(std::uint32_t ref) const;
-    bool sees(const Mind& m, const SkydotActor& actor, std::uint32_t target) const;
+    /// `cone` off: all round (an actor with an aggro radius feels what comes close). `range` > 0
+    /// replaces the sight distance (game units).
+    bool sees(const Mind& m, const SkydotActor& actor, std::uint32_t target, bool cone = true,
+              double range = 0.0) const;
+    /// The attack distance of `m`'s aggro radius (game units), 0 if it has none.
+    double aggro_radius(const Mind& m) const;
     combat_ai::Reaction reaction_of(std::uint32_t a, std::uint32_t b);
     std::vector<combat_ai::Membership> memberships(std::uint32_t ref) const;
     std::uint32_t npc_of(std::uint32_t ref) const;

@@ -43,6 +43,8 @@ constexpr double k_idle_speed = 0.15;
 constexpr double k_ground_poll = 0.25;
 /// Falling this far below home puts it back there.
 constexpr double k_lost_depth = 30.0;
+/// A held actor with no ground within 4 m looks this far down (metres) before it waits on.
+constexpr double k_drop_search = 40.0;
 constexpr double k_blend = 0.25;
 /// Doors: how often to look for one ahead (seconds), how far past the body
 /// (metres), how long to stand while it swings, and when to close it behind
@@ -103,6 +105,7 @@ void SkydotActor::_bind_methods() {
     using godot::Variant;
     ClassDB::bind_method(D_METHOD("walk_to", "target", "run"), &SkydotActor::walk_to);
     ClassDB::bind_method(D_METHOD("stop"), &SkydotActor::stop);
+    ClassDB::bind_method(D_METHOD("walk_straight", "target", "run"), &SkydotActor::walk_straight);
     ClassDB::bind_method(D_METHOD("is_walking"), &SkydotActor::is_walking);
     ClassDB::bind_method(D_METHOD("get_path"), &SkydotActor::get_path);
     ClassDB::bind_method(D_METHOD("get_state"), &SkydotActor::get_state);
@@ -424,6 +427,21 @@ bool SkydotActor::walk_to(const Vector3& target, bool run) {
     return true;
 }
 
+bool SkydotActor::walk_straight(const Vector3& target, bool run) {
+    if (!is_inside_tree()) {
+        return false;
+    }
+    path_.clear();
+    path_.push_back(get_global_position());
+    path_.push_back(target);
+    wake_ = true;
+    corner_ = 1;
+    run_ = run;
+    stuck_time_ = 0.0;
+    stuck_from_ = get_global_position();
+    return true;
+}
+
 void SkydotActor::stop() {
     wake_ = true;
     path_.clear();
@@ -445,7 +463,14 @@ bool SkydotActor::find_ground(double delta) {
     const auto query = godot::PhysicsRayQueryParameters3D::create(
         feet + Vector3(0, r(get_step_height() + 0.1), 0), feet - Vector3(0, 4, 0),
         physics_layer::world | physics_layer::terrain);
-    const godot::Dictionary hit = space->intersect_ray(query);
+    godot::Dictionary hit = space->intersect_ray(query);
+    if (hit.is_empty()) {
+        // Placed high (the Bleak Falls spider hangs from the ceiling): the first floor below.
+        const auto far = godot::PhysicsRayQueryParameters3D::create(
+            feet + Vector3(0, r(get_step_height() + 0.1), 0), feet - Vector3(0, r(k_drop_search), 0),
+            physics_layer::world | physics_layer::terrain);
+        hit = space->intersect_ray(far);
+    }
     if (hit.is_empty()) {
         return false;
     }

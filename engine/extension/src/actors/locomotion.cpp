@@ -202,6 +202,11 @@ Locomotion find_locomotion(const std::string& behaviour,
         if (const auto it = generators.find(ascii_lower(g.name)); it != generators.end()) {
             g.file = it->second;
         }
+        if (const auto* entries = c.annotations()) {
+            for (const auto* a : *entries) {
+                g.notes.emplace_back(a->time(), a->text() != nullptr ? a->text()->str() : std::string());
+            }
+        }
         if (const auto it = motions.find(c.animation()); it != motions.end() && it->second.duration > 0.0F) {
             g.speed = it->second.forward / it->second.duration * g.playback;
         }

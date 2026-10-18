@@ -84,6 +84,24 @@ Dictionary get_ref_info(const WorldData& data, std::int64_t cell_id, std::int64_
     const auto id = static_cast<std::uint32_t>(ref_id);
     const auto* ref = cell != nullptr ? find_ref(*cell, id) : nullptr;
     if (ref == nullptr) {
+        // A placed actor: its NPC_'s scripts (masterAmbushScript on the ambush draugr) and its own.
+        const auto* actor = cell != nullptr ? data.actor_ptr(id) : nullptr;
+        if (actor == nullptr) {
+            return out;
+        }
+        const auto* npc_base = data.base_ptr(actor->base());
+        out["id"] = static_cast<std::int64_t>(id);
+        out["cell"] = static_cast<std::int64_t>(cell->id());
+        out["base"] = static_cast<std::int64_t>(actor->base());
+        out["type"] = String("NPC_");
+        out["position"] = Vector3(actor->position().x(), actor->position().y(), actor->position().z());
+        out["rotation"] = Vector3(actor->rotation().x(), actor->rotation().y(), actor->rotation().z());
+        out["scale"] = 1.0;
+        Array actor_scripts = script_list(npc_base != nullptr ? npc_base->scripts() : nullptr, false);
+        if (const auto* own = ref_scripts(*cell, id)) {
+            actor_scripts.append_array(script_list(own->scripts(), true));
+        }
+        out["scripts"] = actor_scripts;
         return out;
     }
     const auto* base = data.base_ptr(ref->base());
