@@ -144,6 +144,8 @@ public:
     /// Replace the instances by a saved section; the temporary modifiers are held again (the actor
     /// values must not hold them yet). False if it is cut short or names nothing sensible.
     [[nodiscard]] bool load(save::ByteReader r);
+    /// Whether `r` decodes, changing nothing (a load is checked before it is committed).
+    [[nodiscard]] static bool check(const wfb::World& world, save::ByteReader r);
 
 private:
     struct Instance {

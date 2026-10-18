@@ -485,6 +485,31 @@ std::optional<EffectView> ActiveEffects::instance(std::uint32_t id) const {
     return it != instances_.end() ? std::optional<EffectView>(view(it->second)) : std::nullopt;
 }
 
+namespace {
+
+/// A host that does nothing, for checking a section without touching the game.
+class NullHost final : public MagicHost {
+public:
+    double actor_value(std::uint32_t, std::uint32_t) const override { return 0.0; }
+    void damage_value(std::uint32_t, std::uint32_t, double) override {}
+    void restore_value(std::uint32_t, std::uint32_t, double) override {}
+    void modify_temp(std::uint32_t, std::uint32_t, double) override {}
+    bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>*, std::uint32_t,
+                         std::uint32_t) override {
+        return true;
+    }
+    bool is_dead(std::uint32_t) const override { return false; }
+    void log(const std::string&) override {}
+};
+
+} // namespace
+
+bool ActiveEffects::check(const wfb::World& world, save::ByteReader r) {
+    NullHost host;
+    ActiveEffects scratch(world, host);
+    return scratch.load(r);
+}
+
 void ActiveEffects::clear() {
     instances_.clear();
     ids_.clear();
@@ -496,8 +521,13 @@ std::vector<std::uint8_t> ActiveEffects::save() const {
     save::ByteWriter w;
     w.u32(k_section_version);
     w.u32(ids_.next());
-    w.u32(static_cast<std::uint32_t>(instances_.size()));
+    // Abilities are derived from the spells an actor knows, never saved.
+    w.u32(static_cast<std::uint32_t>(std::ranges::count_if(
+        instances_, [](const auto& p) { return p.second.source.kind != SourceKind::ability; })));
     for (const auto& [id, i] : instances_) {
+        if (i.source.kind == SourceKind::ability) {
+            continue;
+        }
         w.u32(i.id);
         w.u32(i.mgef);
         w.u8(static_cast<std::uint8_t>(i.source.kind));

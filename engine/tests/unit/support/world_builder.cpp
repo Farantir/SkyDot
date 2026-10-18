@@ -96,10 +96,30 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     };
     for (const auto& n : by_id(spec.npcs)) {
         const auto npc_items = entries_of(n.items);
-        npcs.push_back(wfb::CreateNpcDirect(fbb, n.id, nullptr, nullptr, n.flags, n.level, n.race, n.template_id,
-                                            n.template_flags, n.skin, n.default_outfit, 0, n.height, n.weight, nullptr,
-                                            npc_items.empty() ? nullptr : &npc_items, some(n.face_model), some(n.skin_tone), some(n.packages),
-                                            some(n.default_packages)));
+        const auto items_v = npc_items.empty() ? 0 : fbb.CreateVectorOfStructs(npc_items);
+        const auto face_v = n.face_model.empty() ? 0 : fbb.CreateString(n.face_model);
+        const auto tone_v = n.skin_tone.empty() ? 0 : fbb.CreateVector(n.skin_tone);
+        const auto packages_v = n.packages.empty() ? 0 : fbb.CreateVector(n.packages);
+        const auto default_packages_v = n.default_packages.empty() ? 0 : fbb.CreateVector(n.default_packages);
+        const auto spells_v = n.spells.empty() ? 0 : fbb.CreateVector(n.spells);
+        wfb::NpcBuilder b(fbb);
+        b.add_id(n.id);
+        b.add_flags(n.flags);
+        b.add_level(n.level);
+        b.add_race(n.race);
+        b.add_template_(n.template_id);
+        b.add_template_flags(n.template_flags);
+        b.add_skin(n.skin);
+        b.add_default_outfit(n.default_outfit);
+        b.add_height(n.height);
+        b.add_weight(n.weight);
+        b.add_items(items_v);
+        b.add_face_model(face_v);
+        b.add_skin_tone(tone_v);
+        b.add_packages(packages_v);
+        b.add_default_packages(default_packages_v);
+        b.add_spells(spells_v);
+        npcs.push_back(b.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Base>> bases;
     for (const auto& b : by_id(spec.bases)) {
@@ -156,8 +176,19 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         for (const auto& b : r.behaviours) {
             behaviours.push_back(fbb.CreateString(b));
         }
-        races.push_back(wfb::CreateRaceDirect(fbb, r.id, nullptr, some(skeletons), some(behaviours), r.skin,
-                                              some(r.heights), nullptr, 0, nullptr, nullptr, nullptr, r.armor_race));
+        const auto spells_v = r.spells.empty() ? 0 : fbb.CreateVector(r.spells);
+        const auto skeletons_v = skeletons.empty() ? 0 : fbb.CreateVector(skeletons);
+        const auto behaviours_v = behaviours.empty() ? 0 : fbb.CreateVector(behaviours);
+        const auto heights_v = r.heights.empty() ? 0 : fbb.CreateVector(r.heights);
+        wfb::RaceBuilder b(fbb);
+        b.add_id(r.id);
+        b.add_skeletons(skeletons_v);
+        b.add_behaviours(behaviours_v);
+        b.add_skin(r.skin);
+        b.add_heights(heights_v);
+        b.add_armor_race(r.armor_race);
+        b.add_spells(spells_v);
+        races.push_back(b.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Armor>> armors;
     for (const auto& a : by_id(spec.armors)) {

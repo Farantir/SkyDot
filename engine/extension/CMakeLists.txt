@@ -74,6 +74,10 @@ set(SKYDOT_CORE_SOURCES
     src/magic/active_effects.hpp
     src/magic/magic_rules.cpp
     src/magic/magic_rules.hpp
+    src/magic/magic_save.cpp
+    src/magic/magic_save.hpp
+    src/magic/spell_lists.cpp
+    src/magic/spell_lists.hpp
     src/session/game_time.cpp
     src/session/game_time.hpp
     src/vm/activation.cpp

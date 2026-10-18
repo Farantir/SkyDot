@@ -39,6 +39,8 @@ inline constexpr std::uint64_t k_purpose_actor = 1;
 /// An actor's default outfit; apart from the inventory so the builder, which
 /// knows only the outfit, draws what the VM drew.
 inline constexpr std::uint64_t k_purpose_outfit = 2;
+/// The spells an LVSP in an actor's (or its race's) list gives.
+inline constexpr std::uint64_t k_purpose_spells = 3;
 
 /// The nesting of lists followed before giving up.
 inline constexpr int k_max_depth = 8;

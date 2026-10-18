@@ -153,6 +153,8 @@ struct NpcSpec {
     std::vector<std::uint32_t> packages = {};
     std::vector<std::uint32_t> default_packages = {};
     std::vector<ItemEntry> items = {};
+    /// SPLO: spells, leveled spell lists and shouts as they stand.
+    std::vector<std::uint32_t> spells = {};
 };
 
 struct RaceSpec {
@@ -165,6 +167,7 @@ struct RaceSpec {
     /// Male then female.
     std::vector<float> heights = {};
     std::uint32_t armor_race = 0;
+    std::vector<std::uint32_t> spells = {};
 };
 
 struct ArmorSpec {
