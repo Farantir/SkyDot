@@ -80,6 +80,9 @@ void SkydotPapyrus::_bind_methods() {
                                 DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("equipment", "owner"), &SkydotPapyrus::equipment);
     godot::ClassDB::bind_method(D_METHOD("ranged_weapon", "owner"), &SkydotPapyrus::ranged_weapon);
+    godot::ClassDB::bind_method(D_METHOD("melee_weapon", "owner"), &SkydotPapyrus::melee_weapon);
+    godot::ClassDB::bind_method(D_METHOD("combat_state_changed", "ref", "target", "state"),
+                                &SkydotPapyrus::combat_state_changed);
     godot::ClassDB::bind_method(D_METHOD("equipped_item_type", "owner", "hand"),
                                 &SkydotPapyrus::equipped_item_type);
     godot::ClassDB::bind_method(
@@ -132,8 +135,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("damage_actor_value", "ref", "name", "amount"),
                                 &SkydotPapyrus::damage_actor_value);
     godot::ClassDB::bind_method(
-        D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags"),
-        &SkydotPapyrus::apply_hit);
+        D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
+        &SkydotPapyrus::apply_hit, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("get_corpse_place", "ref"), &SkydotPapyrus::get_corpse_place);
     godot::ClassDB::bind_method(D_METHOD("set_corpse_place", "ref", "space", "position", "rot_z"),
                                 &SkydotPapyrus::set_corpse_place);
@@ -564,7 +567,47 @@ void SkydotPapyrus::bind_world_natives() {
     }
 }
 
-void SkydotPapyrus::bind_actor_natives() { vm::bind_actor_natives(*vm_, actors_); }
+void SkydotPapyrus::bind_actor_natives() {
+    vm::bind_actor_natives(*vm_, actors_);
+    // Combat: the state lives in SkydotAi (hooks); without it nobody fights.
+    using vm::NativeCall;
+    using vm::NativeResult;
+    using vm::Value;
+    const auto self_state = [this](NativeCall& c) -> std::int64_t {
+        return combat_hooks_.state ? combat_hooks_.state(c.self.form()) : 0;
+    };
+    vm_->bind("Actor", "IsInCombat", [self_state](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(self_state(c) != 0), .wait = -1.0};
+    });
+    vm_->bind("Actor", "GetCombatState", [self_state](NativeCall& c) {
+        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(self_state(c))), .wait = -1.0};
+    });
+    vm_->bind("Actor", "GetCombatTarget", [this](NativeCall& c) {
+        const std::uint32_t target = combat_hooks_.target ? combat_hooks_.target(c.self.form()) : 0;
+        if (target == 0) {
+            return NativeResult{};
+        }
+        return NativeResult{.value = c.vm.object(target, "Actor"), .wait = -1.0};
+    });
+    vm_->bind("Actor", "StartCombat", [this](NativeCall& c) {
+        if (combat_hooks_.start && !c.args.empty() && c.args[0].kind() == vm::Kind::object) {
+            combat_hooks_.start(c.self.form(), c.args[0].form());
+        }
+        return NativeResult{};
+    });
+    vm_->bind("Actor", "StopCombat", [this](NativeCall& c) {
+        if (combat_hooks_.stop) {
+            combat_hooks_.stop(c.self.form());
+        }
+        return NativeResult{};
+    });
+}
+
+std::int64_t SkydotPapyrus::combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state) {
+    const vm::Value who = target != 0 ? vm_->object(static_cast<std::uint32_t>(target), "Actor") : vm::Value{};
+    return static_cast<std::int64_t>(dispatch(static_cast<std::uint32_t>(ref), "OnCombatStateChanged",
+                                              {who, vm::Value::integer(static_cast<std::int32_t>(state))}));
+}
 
 void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {

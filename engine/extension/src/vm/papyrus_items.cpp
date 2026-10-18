@@ -438,6 +438,19 @@ Dictionary SkydotPapyrus::ranged_weapon(std::int64_t owner) {
     return out;
 }
 
+std::int64_t SkydotPapyrus::melee_weapon(std::int64_t owner) {
+    const auto id = static_cast<std::uint32_t>(owner);
+    resolve_owner(id);
+    std::vector<std::uint32_t> forms;
+    for (const auto& [form, total] : vm_->inventory().items(id)) {
+        if (total > 0) {
+            forms.push_back(form);
+        }
+    }
+    return static_cast<std::int64_t>(
+        vm::choose_gear(forms, [this](std::uint32_t form) { return item_info_of(form); }).melee);
+}
+
 std::int64_t SkydotPapyrus::equipped_item_type(std::int64_t owner, std::int64_t hand) {
     const auto id = static_cast<std::uint32_t>(owner);
     resolve_owner(id);

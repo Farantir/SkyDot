@@ -38,6 +38,8 @@ add_custom_target(skydot_flatbuffers DEPENDS
 set(SKYDOT_CORE_SOURCES
     src/actors/behavior_machine.cpp
     src/actors/behavior_machine.hpp
+    src/ai/combat_rules.cpp
+    src/ai/combat_rules.hpp
     src/ai/packages.cpp
     src/ai/packages.hpp
     src/conditions/conditions.cpp
@@ -183,6 +185,7 @@ target_sources(skydot PRIVATE
     src/actors/locomotion.cpp
     src/actors/locomotion.hpp
     src/ai/ai.cpp
+    src/ai/ai_combat.cpp
     src/ai/ai.hpp
     src/assets/asset_cache.cpp
     src/assets/asset_cache.hpp

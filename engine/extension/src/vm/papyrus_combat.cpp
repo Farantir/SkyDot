@@ -42,7 +42,8 @@ bool same_event(const flatbuffers::String* have, const std::string& wanted) {
 } // namespace
 
 Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t target_id, std::int64_t weapon_id,
-                                    std::int64_t extra_id, const String& attack_event, std::int64_t flags) {
+                                    std::int64_t extra_id, const String& attack_event, std::int64_t flags,
+                                    std::int64_t ammo_id) {
     Dictionary out;
     const auto attacker = static_cast<std::uint32_t>(attacker_id);
     const auto target = static_cast<std::uint32_t>(target_id);
@@ -112,6 +113,9 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
     } else if (race != nullptr) {
         in.weapon_damage = race->unarmed_damage();
     }
+    if (ammo_id != 0) {
+        in.ammo_damage = item_info_of(static_cast<std::uint32_t>(ammo_id)).damage;
+    }
     if (skill_av >= 0) {
         in.weapon_skill = actors_.get(attacker, static_cast<std::uint32_t>(skill_av));
     }
@@ -179,6 +183,7 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
     out["attacker"] = attacker_id;
     out["target"] = target_id;
     out["weapon"] = weapon_id;
+    out["ammo"] = ammo_id;
     out["event"] = natives::to_godot(event);
     out["base"] = static_cast<double>(r.base);
     out["skill_value"] = in.weapon_skill;

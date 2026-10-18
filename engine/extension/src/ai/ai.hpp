@@ -25,6 +25,7 @@
 // docs/ai.md for the list).
 #pragma once
 
+#include "ai/combat_rules.hpp"
 #include "ai/packages.hpp"
 #include "world/world.hpp"
 
@@ -115,6 +116,27 @@ public:
     /// Where `ref`'s package wants it now (space, position, radius), or empty.
     godot::Dictionary get_destination(std::int64_t ref);
 
+    // ---- combat (ai_combat.cpp; rules in combat_rules.hpp) ----
+
+    /// Whether minds start and fight combats at all (default on). A mind in combat sets its
+    /// package aside whatever `drive` says, so shots with still actors still show a fight.
+    void set_combat(bool v) { combat_enabled_ = v; }
+    bool get_combat() const { return combat_enabled_; }
+    /// The player, given each frame: Skyrim position (feet) and whether it lives. It is ref 0x14.
+    void set_player(const godot::Vector3& position, bool alive);
+    /// `attacker` hit `target`: the victim fights back, and allies within 1024 units that see
+    /// the attacker and whose assistance says so join.
+    void on_hit(std::int64_t attacker, std::int64_t target);
+    /// Force `ref` into combat with `target`; false if `ref` is not a built, living actor.
+    bool start_combat(std::int64_t ref, std::int64_t target);
+    void stop_combat(std::int64_t ref);
+    std::int64_t get_combat_target(std::int64_t ref);
+    /// Run the fights under way only (not the packages, not new fights): for runs that keep the
+    /// world still, as --screenshot does, but show a fight started by hand.
+    void update_fights(double seconds);
+    /// 0 not in combat, 1 combat, 2 searching.
+    std::int64_t get_combat_state(std::int64_t ref);
+
 protected:
     static void _bind_methods();
 
@@ -126,6 +148,28 @@ private:
         float rotation_z{};
         double radius{}; ///< Game units.
         std::uint32_t ref{}; ///< The reference it was taken from, if any.
+    };
+
+    /// What a mind knows of its fight.
+    struct CombatMind {
+        std::uint32_t target{};
+        std::int32_t state{};            ///< 0 none, 1 combat, 2 searching
+        godot::Vector3 last_seen;        ///< Skyrim space
+        double since_seen{};             ///< Seconds the target has been out of sight
+        double searching{};              ///< Seconds spent searching
+        double cooldown{};               ///< Seconds until the next attack
+        double think{};                  ///< Seconds before the next decision
+        double detect{};                 ///< Seconds before the next look for an enemy
+        double repath{};
+        bool fleeing{};
+        bool ranged{};                   ///< Fights with its bow
+        bool was_wander{};
+        int circle{1};                   ///< Which way it circles
+        double reach{};                  ///< Game units, from its weapon
+        bool has_bow{};
+        bool has_melee{};
+        double gear_age{1e9};            ///< Seconds since reach and gear were read
+        combat_ai::MeleeStyle style;
     };
 
     struct Mind {
@@ -155,6 +199,7 @@ private:
         std::map<std::uint32_t, double> completed;
         std::uint64_t dice{};            ///< RNG state.
         bool announced{};                ///< actor_arrived sent for its place.
+        CombatMind combat;
     };
 
     class Conditions;
@@ -207,6 +252,29 @@ private:
     void detach(Mind& m);
     /// An attached actor opened or closed a plain door (`door_toggled`).
     void on_door_toggled(std::int64_t ref, std::int64_t open_state);
+
+    bool combat_tick(Mind& m, SkydotActor& actor, double seconds);
+    void enter_combat(Mind& m, SkydotActor& actor, std::uint32_t target);
+    void leave_combat(Mind& m, SkydotActor* actor);
+    void read_gear(Mind& m);
+    /// Skyrim position of a living, built actor or of the player; nullopt otherwise.
+    std::optional<godot::Vector3> position_of(std::uint32_t ref) const;
+    bool alive(std::uint32_t ref) const;
+    bool sees(const Mind& m, const SkydotActor& actor, std::uint32_t target) const;
+    combat_ai::Reaction reaction_of(std::uint32_t a, std::uint32_t b);
+    std::vector<combat_ai::Membership> memberships(std::uint32_t ref) const;
+    std::uint32_t npc_of(std::uint32_t ref) const;
+    std::uint8_t value_of(std::uint32_t ref, const char* actor_value) const;
+    void combat_walk(Mind& m, SkydotActor& actor, const godot::Vector3& skyrim_point, bool run);
+    void melee_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to);
+    void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
+    void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
+    bool combat_enabled_{true};
+    godot::Vector3 player_position_;
+    bool player_alive_{false};
+    bool player_known_{false};
+    std::unordered_map<std::uint64_t, std::uint16_t> relationships_;
+    bool relationships_built_{false};
 
     godot::Ref<SkydotWorld> world_;
     godot::Ref<godot::RefCounted> papyrus_;

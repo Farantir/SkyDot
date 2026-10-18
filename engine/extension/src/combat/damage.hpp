@@ -5,7 +5,8 @@
 // here touches Godot or the pack: the caller passes the settings and the
 // facts in.
 //
-//   weapon = base x tempering x skill x attack x difficulty x sneak
+//   base   = weapon x tempering + ammo (arrows)
+//   weapon = base x skill x skill x attack x difficulty x sneak
 //   skill  = player with a weapon skill: lerp(fDamagePCSkillMin,
 //            fDamagePCSkillMax, skill / 100); otherwise 1
 //   armor  = min(fMaxArmorRating, sum(ceil(rating x armor skill factor)) x
@@ -54,6 +55,9 @@ struct ArmorPiece {
 struct HitInputs {
     /// The weapon's damage; for an unarmed hit the race's unarmed damage.
     float weapon_damage = 0.0F;
+    /// An arrow's or bolt's own damage, added to the bow's (UESP Skyrim:Damage: "arrow damage =
+    /// bow damage + arrow damage"; the bow's tempering counts for the bow only); 0 for melee.
+    float ammo_damage = 0.0F;
     /// Item health of the weapon (tempering), 1 untouched, up to 1.6.
     float temper_health = 1.0F;
     /// The attacker's skill with the weapon (0 to 100) and whether the player

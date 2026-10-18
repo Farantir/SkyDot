@@ -116,6 +116,39 @@ func _stop_flash(flash: Node3D) -> void:
 	get_tree().create_timer(FLASH_FADE_SECONDS).timeout.connect(flash.queue_free)
 
 
+## An arrow shot from `origin` along `direction`, made of the PROJ `proj` and the AMMO `ammo_data`
+## (SkydotWorld.get_projectile and get_ammo): its speed, gravity, range and model. `actor_test`
+## (from, to) -> {ref, point} says whether the step from `from` to `to` enters an actor's body
+## (`{}`: no), and then `on_hit(ref, point)` is called and the arrow is gone (it sticks in
+## the world when it hits that).
+func shoot(ammo: int, origin: Vector3, direction: Vector3, proj: Dictionary, ammo_data: Dictionary,
+		actor_test: Callable, on_hit: Callable) -> void:
+	var model_path: String = proj["model"] if proj["model"] != "" else ammo_data.get("model", "")
+	var model: Node3D = _world.build_model(model_path) if model_path != "" else null
+	if model == null:
+		model = _fallback_dart()
+	for animator in model.find_children("*", "SkydotAnimator", true, false):
+		animator.start_controllers()
+	_cold_start(model)
+	add_child(model)
+	model.global_transform = Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
+	while _live.size() >= MAX_LIVE:
+		_remove(0)
+	_live.append({
+		"node": model,
+		"pickable": int(proj["flags"]) & FLAG_PICKUP != 0,
+		"velocity": direction * float(proj["speed"]) * SkydotWorld.unit_scale(),
+		"gravity": GRAVITY * float(proj["gravity"]),
+		"age": 0.0,
+		"travelled": 0.0,
+		"range": float(proj["range"]) * SkydotWorld.unit_scale(),
+		"stuck": false,
+		"exclude": [],
+		"actor_test": actor_test,
+		"on_hit": on_hit,
+	})
+
+
 func _physics_process(delta: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var i := 0
@@ -139,6 +172,15 @@ func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) 
 	var query := PhysicsRayQueryParameters3D.create(from, to, MASK, shot["exclude"])
 	var hit := space.intersect_ray(query)
 	shot["velocity"] = velocity
+	if shot.has("actor_test"):
+		var end: Vector3 = hit["position"] if not hit.is_empty() else to
+		var body: Dictionary = shot["actor_test"].call(from, end)
+		if not body.is_empty():
+			node.global_position = body["point"]
+			shot["stuck"] = true
+			_vanish(shot)
+			shot["on_hit"].call(body["ref"], body["point"])
+			return
 	if not hit.is_empty():
 		node.global_position = hit["position"]
 		shot["stuck"] = true

@@ -253,9 +253,17 @@ func _make_game_nodes() -> void:
 	speech.line_ended.connect(_on_speech_ended)
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
 		func() -> Vector3: return _feet)
+	combat.projectiles = projectiles
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
 	combat.hit_landed.connect(hit_landed.emit)
+	if ai != null:
+		ai.set_combat(config.combat)
+		ai.combat_state_changed.connect(_on_combat_state)
+		ai.combat_attack.connect(_on_combat_attack)
+		# Every hit, the player's and the actors', raises the alarm.
+		combat.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
+			ai.on_hit(int(result.get("attacker", 0)), target))
 	items_changed.connect(combat.on_items_changed)
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
 	actor_died.connect(corpses.on_died)
@@ -492,7 +500,20 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_actor_dead(SkydotPapyrus.PLAYER_REF))
 		ai.update(delta)
+
+
+## The fights under way only, for runs that keep the world still (shots).
+func update_fights(delta: float, feet: Vector3) -> void:
+	if ai != null:
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_actor_dead(SkydotPapyrus.PLAYER_REF))
+		ai.update_fights(delta)
+
+
+## Make `ref` fight the player now (the viewer's --fight).
+func start_fight(ref: int) -> bool:
+	return ai != null and ai.start_combat(ref, SkydotPapyrus.PLAYER_REF)
 
 
 ## Scripts only: the player's position for triggers, then the VM's time.
@@ -549,6 +570,25 @@ func player_weapon() -> int:
 ## Combat.State.
 func weapon_state() -> int:
 	return combat.weapon_state()
+
+
+## The AI's fights reach the game: the stance and weapon, the Papyrus event.
+func _on_combat_state(ref: int, target: int, state: int) -> void:
+	if state == 1:
+		combat.npc_draw(ref, true)
+	elif state == 0:
+		combat.npc_draw(ref, false)
+	papyrus.combat_state_changed(ref, target, state)
+
+
+func _on_combat_attack(ref: int, target: int, kind: String) -> void:
+	match kind:
+		"shoot":
+			combat.npc_shoot(ref, target)
+		"power":
+			combat.npc_attack(ref, true, target)
+		_:
+			combat.npc_attack(ref, false, target)
 
 
 ## An actor attacks the player or `target` (the AI's door into Combat.npc_attack).

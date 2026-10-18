@@ -61,6 +61,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <map>
 #include <memory>
 #include <set>
@@ -157,6 +158,21 @@ public:
     /// The bow `owner` carries (the one of the most damage) with its best ammo: {weapon, ammo},
     /// empty if it has no bow. Computed from the inventory, nothing is saved.
     godot::Dictionary ranged_weapon(std::int64_t owner);
+    /// The melee weapon `owner` carries (the one of the most damage), 0 if none.
+    std::int64_t melee_weapon(std::int64_t owner);
+
+    /// What the combat AI answers the combat natives with (set by SkydotAi, which owns the
+    /// state; cleared when it goes). Without them every actor is out of combat.
+    struct CombatHooks {
+        std::function<std::int64_t(std::uint32_t ref)> state;    ///< 0 none, 1 combat, 2 searching
+        std::function<std::uint32_t(std::uint32_t ref)> target;
+        std::function<void(std::uint32_t ref, std::uint32_t target)> start;
+        std::function<void(std::uint32_t ref)> stop;
+    };
+    void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
+    /// An actor's combat state changed: sends OnCombatStateChanged(akTarget, aeCombatState) to its
+    /// scripts and aliases (dispatch as OnHit). Returns how many handlers ran.
+    std::int64_t combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state);
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
     /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
     /// 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow.
@@ -314,8 +330,10 @@ public:
     /// weapon, event, base, skill_value, skill, attack, difficulty, sneak,
     /// weapon_damage, armor_rating, armor_percent, damage, health_before,
     /// health_after, killed}. Blocking only passes the flag on.
+    /// `ammo` (an AMMO form, 0 for melee) adds the arrow's damage to the bow's.
     godot::Dictionary apply_hit(std::int64_t attacker, std::int64_t target, std::int64_t weapon,
-                                std::int64_t extra, const godot::String& attack_event, std::int64_t flags);
+                                std::int64_t extra, const godot::String& attack_event, std::int64_t flags,
+                                std::int64_t ammo = 0);
     /// Where a dead actor lies ({space, position, rot_z}; empty: not set).
     godot::Dictionary get_corpse_place(std::int64_t ref) const;
     void set_corpse_place(std::int64_t ref, std::int64_t space, const godot::Vector3& position, double rot_z);
@@ -465,6 +483,7 @@ private:
     void bind_world_natives();
     void bind_runtime_natives();
     void bind_actor_natives();
+    CombatHooks combat_hooks_;
     void bind_item_natives();
     /// Emit `actor_died` for the actors that died since the last call.
     void flush_deaths();

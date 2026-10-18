@@ -106,6 +106,9 @@ var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var ready_weapon := false  # --ready-weapon: draw the weapon after the load
 var attack_at := 0  # --attack-at 0xREF[,power]: face that actor and attack once it is in reach
 var attack_power := false
+var fight: Array[int] = []  # --fight 0xREF[,...]: those actors fight the player after the load
+var strip_melee: Array[int] = []  # --strip-melee 0xREF[,...]: those actors lose their melee weapons
+var npc_give: Array[Dictionary] = []  # --npc-give 0xREF:0xFORM[xN],...: {ref, form, count}
 var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
@@ -227,6 +230,18 @@ func _read(args: Dictionary) -> void:
 		attack_power = parts.size() > 1 and parts[1] in ["power", "1", "true"]
 	for entry: String in args.get("kill", "").split(",", false):
 		kill.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("fight", "").split(",", false):
+		fight.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("strip-melee", "").split(",", false):
+		strip_melee.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("npc-give", "").split(",", false):
+		var halves: PackedStringArray = entry.split(":")
+		if halves.size() == 2:
+			var cut: int = halves[1].rfind("x")
+			var has_count := cut > 1
+			npc_give.append({"ref": halves[0].hex_to_int(),
+				"form": (halves[1].substr(0, cut) if has_count else halves[1]).hex_to_int(),
+				"count": halves[1].substr(cut + 1).to_int() if has_count else 1})
 	for entry: String in args.get("npc-draw", "").split(",", false):
 		npc_draw.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("equip", "").split(",", false):

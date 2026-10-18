@@ -52,6 +52,8 @@ signal hit_landed(target: int, result: Dictionary, point: Vector3)
 signal npc_attack_started(attacker: int, clip: String, power: bool)
 ## An actor drew or sheathed (`npc_draw`).
 signal npc_drawn_changed(ref: int, drawn: bool)
+## An arrow left an actor's bow (`npc_shoot`): the shooter and its target.
+signal npc_arrow(attacker: int, target: int)
 
 const FIRST_PERSON_PROJECT := "meshes/animationdata/firstperson.txt"
 const FIRST_PERSON_CLIPS := "meshes/actors/character/_1stperson/animations/"
@@ -93,6 +95,17 @@ const EQUIP_PREFIX := {1: "1hm", 2: "dag", 3: "axe", 4: "mac", 5: "2hm", 6: "2hw
 const STANCE_PREFIX := {1: "1hm", 2: "1hm", 3: "1hm", 4: "1hm", 5: "2hm", 6: "2hw", 7: "bow"}
 ## What a creature without a weapon stands in when it fights.
 const CREATURE_STANCE := "combat"
+## PLACEHOLDER: where in the draw clip the arrow leaves when the clip has no release key.
+const BOW_RELEASE_FRACTION := 0.85
+## Bow draw clips, in the order tried (human project); the arrow leaves at the end.
+const BOW_CLIPS := ["bow_drawlight", "bow_drawnock_quickshot", "bow_drawnock"]
+const GMST_BOW_SPREAD := "fBowNPCSpreadAngle"
+const BOW_SPREAD_FALLBACK := 4.0
+const GRAVITY := 9.81
+## A shot leaves this far above the feet (fraction of the height) and this far ahead (metres).
+const SHOT_HEIGHT_FRACTION := 0.75
+const SHOT_AHEAD := 0.5
+const EVENT_BOW := "bowAttack"
 const PLAYER_REF := 0x14
 const PLAYER_NPC := 7
 const EVENT_LIGHT := "attackStart"
@@ -130,6 +143,10 @@ var _projects := {}  # project path -> {lowercase clip name: annotations}
 var _races := {}  # race id -> get_race
 var _plans := {}  # actor ref -> get_actor_plan (race, behaviour)
 var _player_plan := {}
+var _shots: Array[Dictionary] = []  # arrows still to leave: {attacker, target, bow, ammo, left}
+var _rng := RandomNumberGenerator.new()
+## Where arrows fly (the session's Projectiles).
+var projectiles: Projectiles
 var _locomotions := {}  # behaviour path -> get_locomotion
 var _drawn := {}  # actor ref -> bool, the actors that fight with their weapon out
 var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, drawn}
@@ -312,6 +329,7 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	var node := _world.find_ref_node(attacker) as Node3D
 	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(attacker):
 		return false
+	_use_weapon(attacker, false)
 	var plan := _actor_plan(attacker)
 	var behaviour: String = plan.get("behaviour", "")
 	var equipment := _papyrus.equipment(attacker)
@@ -336,6 +354,64 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 		"hit_time": timing["hit"], "length": timing["stop"]})
 	npc_attack_started.emit(attacker, clip, power)
 	return true
+
+
+## `attacker` shoots at `target`: the bow it carries (SkydotPapyrus.ranged_weapon) goes in
+## its hands with the best arrows, it turns to the target and plays the bow's draw clip, and
+## at the clip's release key (BOW_RELEASE_FRACTION of it without one) an arrow leaves through
+## Projectiles with the AMMO's PROJ speed and gravity and fBowNPCSpreadAngle of spread. An
+## arrow that enters an actor's body calls apply_hit with the bow and the arrow. False without
+## a bow, a built living actor or Projectiles.
+func npc_shoot(attacker: int, target := PLAYER_REF) -> bool:
+	var node := _world.find_ref_node(attacker) as Node3D
+	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(attacker) or projectiles == null:
+		return false
+	var ranged := _papyrus.ranged_weapon(attacker)
+	if ranged.is_empty() or int(ranged.get("ammo", 0)) == 0:
+		_warn.once("noshot%d" % attacker, "0x%08X has no bow and arrows to shoot with" % attacker)
+		return false
+	_use_weapon(attacker, true)
+	_face(node, target)
+	var behaviour: String = _actor_plan(attacker).get("behaviour", "")
+	var length := 0.0
+	var release := 0.0
+	for stem in BOW_CLIPS:
+		var clip := _clip_file(behaviour, stem, "")
+		if clip != "" and node.has_method("play_action"):
+			length = node.play_action(clip, 1.0)
+			if length > 0.0:
+				release = length * BOW_RELEASE_FRACTION
+				for note: Dictionary in _project_notes(PROJECTS + behaviour.get_file().get_basename() + ".txt", stem):
+					if String(note["text"]).to_lower().contains("release"):
+						release = float(note["time"])
+				break
+	_shots.append({"attacker": attacker, "target": target, "bow": int(ranged["weapon"]),
+		"ammo": int(ranged["ammo"]), "left": minf(release, maxf(length, 0.0))})
+	return true
+
+
+## Put the weapon `ranged` (the bow with its arrows) or the melee weapon in `ref`'s hands, as
+## the game's AI does when the fight changes, and show it. No clip plays.
+func _use_weapon(ref: int, ranged: bool) -> void:
+	var right: int = _papyrus.equipment(ref)["right"]
+	var want := 0
+	var ammo := 0
+	if ranged:
+		var bow := _papyrus.ranged_weapon(ref)
+		want = int(bow.get("weapon", 0))
+		ammo = int(bow.get("ammo", 0))
+	else:
+		want = _papyrus.melee_weapon(ref)
+	if want == 0 or want == right:
+		return
+	_papyrus.equip(ref, want)
+	if ammo != 0:
+		_papyrus.equip(ref, ammo)
+	gear.refresh(ref)
+	var node := _world.find_ref_node(ref)
+	if node != null and node.has_method("set_stance") and _drawn.get(ref, false):
+		var info := _world.get_weapon(want)
+		node.set_stance(STANCE_PREFIX.get(int(info.get("weapon_type", 0)), CREATURE_STANCE))
 
 
 ## `ref` draws its weapon (true) or sheathes it: the combat stance of the weapon
@@ -421,6 +497,7 @@ func step(delta: float) -> void:
 	_step_attack(delta)
 	_step_npc_attacks(delta)
 	_step_swaps(delta)
+	_step_shots(delta)
 	_step_effects(delta)
 
 
@@ -454,6 +531,72 @@ func _step_attack(delta: float) -> void:
 		_attack = {}
 		if _state == State.DRAWN:
 			weapon_state_changed.emit(_state, idle_clip())
+
+
+func _step_shots(delta: float) -> void:
+	for shot in _shots.duplicate():
+		shot["left"] -= delta
+		if shot["left"] <= 0.0:
+			_shots.erase(shot)
+			_release(shot)
+
+
+## The arrow leaves: toward the target's chest, the drop at that range made up for, a random
+## spread of up to fBowNPCSpreadAngle degrees about the aim.
+func _release(shot: Dictionary) -> void:
+	var attacker: int = shot["attacker"]
+	var node := _world.find_ref_node(attacker) as Node3D
+	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(attacker):
+		return
+	var target: int = shot["target"]
+	var chest: Vector3
+	if target == PLAYER_REF:
+		chest = _feet.call() + Vector3.UP * PLAYER_HEIGHT * CHEST_FRACTION
+	else:
+		var other := _world.find_ref_node(target) as Node3D
+		if other == null:
+			return
+		chest = other.global_position + Vector3.UP * float(other.get("height")) * CHEST_FRACTION
+	var height: float = node.get_height() if node.has_method("get_height") else 1.8
+	var origin := node.global_position + Vector3.UP * height * SHOT_HEIGHT_FRACTION
+	var ammo_data := _world.get_ammo(shot["ammo"])
+	var proj := _world.get_projectile(int(ammo_data.get("projectile", 0)))
+	if proj.is_empty():
+		_warn.once("noproj%d" % shot["ammo"], "ammo 0x%08X has no projectile" % shot["ammo"])
+		return
+	var speed: float = float(proj["speed"]) * SkydotWorld.unit_scale()
+	var aim := chest - origin
+	var flight := aim.length() / maxf(speed, 1.0)
+	aim.y += 0.5 * GRAVITY * float(proj["gravity"]) * flight * flight
+	var direction := aim.normalized()
+	var spread := _world.get_gmst_float(GMST_BOW_SPREAD, BOW_SPREAD_FALLBACK)
+	var tilt := deg_to_rad(spread) * _rng.randf()
+	var axis := direction.cross(Vector3.UP).normalized().rotated(direction, _rng.randf() * TAU)
+	direction = direction.rotated(axis, tilt)
+	origin += direction * SHOT_AHEAD
+	print("combat: arrow 0x%X -> 0x%X (ammo 0x%X, bow 0x%X): %.1f m/s, spread %.2f of %.1f deg" % [
+		attacker, target, shot["ammo"], shot["bow"], speed, rad_to_deg(tilt), spread])
+	npc_arrow.emit(attacker, target)
+	projectiles.shoot(shot["ammo"], origin, direction, proj, ammo_data,
+		func(from: Vector3, to: Vector3) -> Dictionary: return segment_hit(attacker, from, to),
+		func(ref: int, point: Vector3) -> void:
+			_deliver(attacker, ref, shot["bow"], 0, EVENT_BOW, 0, point, _race(int(_actor_plan(attacker).get("race", 0))),
+				_world.get_weapon(shot["bow"]), shot["ammo"]))
+
+
+## The first living actor but `attacker` (the player too) whose body the segment crosses:
+## {ref, point} or {}.
+func segment_hit(attacker: int, from: Vector3, to: Vector3) -> Dictionary:
+	for candidate in _candidates(attacker):
+		var feet: Vector3 = candidate["feet"]
+		var top := feet + Vector3.UP * float(candidate["height"])
+		var steps := maxi(int(from.distance_to(to) / 0.2), 1)
+		for i in steps + 1:
+			var p := from.lerp(to, float(i) / steps)
+			var q := Geometry3D.get_closest_point_to_segment(p, feet, top)
+			if p.distance_to(q) <= float(candidate["radius"]):
+				return {"ref": candidate["ref"], "point": p}
+	return {}
 
 
 func _step_swaps(delta: float) -> void:
@@ -598,8 +741,8 @@ static func _segment_distance(a: Vector3, b: Vector3, candidate: Dictionary) -> 
 
 ## Apply the hit, tell the shells, and leave the impact.
 func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, point: Vector3,
-		attacker_race: Dictionary, weapon_info: Dictionary) -> Dictionary:
-	var result := _papyrus.apply_hit(attacker, target, weapon, extra, event, flags)
+		attacker_race: Dictionary, weapon_info: Dictionary, ammo := 0) -> Dictionary:
+	var result := _papyrus.apply_hit(attacker, target, weapon, extra, event, flags, ammo)
 	if result.has("error"):
 		return result
 	_impact(weapon_info, attacker_race, target, point)

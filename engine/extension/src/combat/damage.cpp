@@ -13,7 +13,7 @@ double lerp(double a, double b, double t) { return a + (b - a) * std::clamp(t, 0
 
 HitResult compute_hit(const HitInputs& in, const CombatSettings& s) {
     HitResult r;
-    r.base = in.weapon_damage * in.temper_health;
+    r.base = in.weapon_damage * in.temper_health + in.ammo_damage;
     r.skill = in.attacker_is_player
                   ? static_cast<float>(lerp(static_cast<double>(s.damage_pc_skill_min),
                                             static_cast<double>(s.damage_pc_skill_max), in.weapon_skill / 100.0))

@@ -76,3 +76,22 @@ TEST_CASE("unarmed damage, tempering and clothing", "[combat]") {
     const HitResult r = compute_hit(in, CombatSettings{});
     CHECK(r.armor_percent == Approx(1.2));
 }
+
+TEST_CASE("an arrow adds its damage to the bow's before the other factors", "[combat][damage]") {
+    // A Hunting Bow (damage 7) with an Iron Arrow (damage 8), an NPC shooter and an unarmored target.
+    HitInputs in;
+    in.weapon_damage = 7.0F;
+    in.ammo_damage = 8.0F;
+    const auto r = compute_hit(in, CombatSettings{});
+    CHECK(r.base == Approx(15.0F));
+    CHECK(r.final_damage == Approx(15.0F));
+    // The bow's tempering counts for the bow only.
+    in.temper_health = 1.5F;
+    CHECK(compute_hit(in, CombatSettings{}).base == Approx(7.0F * 1.5F + 8.0F));
+    // The player's skill and the attack multiplier scale the sum.
+    in.temper_health = 1.0F;
+    in.attacker_is_player = true;
+    in.weapon_skill = 100.0;
+    in.attack_mult = 2.0F;
+    CHECK(compute_hit(in, CombatSettings{}).weapon == Approx(15.0F * 1.5F * 2.0F));
+}

@@ -16,7 +16,7 @@ class_name ActorGear
 ## The bone of a drawn weapon, a shield, a drawn bow.
 const HAND_BONE := "WEAPON"
 const SHIELD_BONE := "SHIELD"
-## A drawn bow sits in the left hand: the shield's node (a guess; check by eye).
+## A drawn bow sits in the left hand: the skeleton's `Shield` bone is a child of `NPC L Hand` (checked).
 const BOW_DRAWN_BONE := SHIELD_BONE
 ## Sheath bone by WEAP animation type.
 const SHEATH_BONES := {1: "WeaponSword", 2: "WeaponDagger", 3: "WeaponAxe", 4: "WeaponMace",

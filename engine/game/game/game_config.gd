@@ -20,6 +20,7 @@ var navigation := true
 var actors := true
 var wander := true
 var ai := true
+var combat := true  # actors that see an enemy fight (SkydotAi.set_combat)
 var has_tiling := false
 var tiling := 0.0  # land texture repeats per cell
 var foliage_bias := 0.5  # mip levels blurrier for alpha-tested trees and grass

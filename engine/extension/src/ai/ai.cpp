@@ -193,7 +193,11 @@ private:
 };
 
 SkydotAi::SkydotAi() = default;
-SkydotAi::~SkydotAi() = default;
+SkydotAi::~SkydotAi() {
+    if (vm_ != nullptr && papyrus_.is_valid()) {
+        vm_->set_combat_hooks({});
+    }
+}
 
 // ---- setup ------------------------------------------------------------------
 
@@ -227,6 +231,19 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("push_package", "ref", "package"), &SkydotAi::push_package);
     ClassDB::bind_method(D_METHOD("pop_package", "ref", "package"), &SkydotAi::pop_package);
     BIND_CONSTANT(PLACE_BUDGET_USEC);
+    ClassDB::bind_method(D_METHOD("set_combat", "value"), &SkydotAi::set_combat);
+    ClassDB::bind_method(D_METHOD("get_combat"), &SkydotAi::get_combat);
+    ClassDB::bind_method(D_METHOD("set_player", "position", "alive"), &SkydotAi::set_player);
+    ClassDB::bind_method(D_METHOD("on_hit", "attacker", "target"), &SkydotAi::on_hit);
+    ClassDB::bind_method(D_METHOD("start_combat", "ref", "target"), &SkydotAi::start_combat);
+    ClassDB::bind_method(D_METHOD("stop_combat", "ref"), &SkydotAi::stop_combat);
+    ClassDB::bind_method(D_METHOD("get_combat_target", "ref"), &SkydotAi::get_combat_target);
+    ClassDB::bind_method(D_METHOD("get_combat_state", "ref"), &SkydotAi::get_combat_state);
+    ClassDB::bind_method(D_METHOD("update_fights", "seconds"), &SkydotAi::update_fights);
+    ADD_SIGNAL(MethodInfo("combat_state_changed", PropertyInfo(Variant::INT, "ref"),
+                          PropertyInfo(Variant::INT, "target"), PropertyInfo(Variant::INT, "state")));
+    ADD_SIGNAL(MethodInfo("combat_attack", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
+                          PropertyInfo(Variant::STRING, "kind")));
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
 }
@@ -239,6 +256,16 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     package_lists_.clear();
     lock_cache_.clear();
     conditions_ = std::make_unique<Conditions>(*this);
+    relationships_.clear();
+    relationships_built_ = false;
+    if (vm_ != nullptr) {
+        SkydotPapyrus::CombatHooks hooks;
+        hooks.state = [this](std::uint32_t ref) { return get_combat_state(ref); };
+        hooks.target = [this](std::uint32_t ref) { return static_cast<std::uint32_t>(get_combat_target(ref)); };
+        hooks.start = [this](std::uint32_t ref, std::uint32_t target) { start_combat(ref, target); };
+        hooks.stop = [this](std::uint32_t ref) { stop_combat(ref); };
+        vm_->set_combat_hooks(std::move(hooks));
+    }
     persistent_.clear();
     attached_.clear();
     doors_.clear();
@@ -991,6 +1018,10 @@ void SkydotAi::update(double seconds) {
         }
         const double elapsed = m->idle;
         m->idle = 0.0;
+        // A mind in combat sets its package aside (and comes back to it after).
+        if (combat_tick(*m, *actor, elapsed)) {
+            continue;
+        }
         m->think -= elapsed;
         if (m->think <= 0.0) {
             m->think = k_think_interval * (lod == 0 ? 1.0 : lod == 1 ? 2.0 : 4.0);

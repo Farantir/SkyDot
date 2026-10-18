@@ -119,6 +119,9 @@
 # attack (game/combat.gd). --ready-weapon draws it after the load; --attack-at
 # 0xREF[,power] draws it, faces that actor and attacks once it is in reach (for shots
 # and tests); --kill 0xREF[,...] hits those actors with the weapon in hand until dead;
+# --fight 0xREF[,...] makes those actors fight the player at once (they and their fights keep
+# running in a --screenshot, where nothing else moves); --npc-give 0xREF:0xFORM[xN],... puts items
+# in an actor's inventory and --strip-melee 0xREF[,...] takes its melee weapons away (an archer);
 # --npc-draw 0xREF[,...] makes those actors draw their weapons (combat stance, equip clip,
 # the weapon model on the WEAPON bone: game/combat.gd npc_draw).
 # F3 shows or hides the performance line at the top right (fps, frame time
@@ -337,6 +340,14 @@ func _apply_combat_options() -> void:
 	_attack_at = _settings.attack_at
 	for ref in _settings.kill:
 		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
+	for entry: Dictionary in _settings.npc_give:
+		_session.papyrus.add_item(entry["ref"], entry["form"], entry["count"])
+	for ref in _settings.strip_melee:
+		while _session.papyrus.melee_weapon(ref) != 0:
+			if _session.papyrus.transfer(ref, SkydotPapyrus.PLAYER_REF, _session.papyrus.melee_weapon(ref), 1) <= 0:
+				break
+	for ref in _settings.fight:
+		print("--fight: 0x%08X %s" % [ref, "fights" if _session.start_fight(ref) else "cannot fight"])
 	for ref in _settings.npc_draw:
 		print("--npc-draw: 0x%08X %s" % [ref, "draws" if _session.npc_draw(ref, true) else "cannot draw"])
 
@@ -380,6 +391,7 @@ func _process(delta: float) -> void:
 				_session.run_activation()  # --activate inside the series
 		_session.update_dialogue(delta)
 		_session.update_combat(delta)
+		_session.update_fights(delta, _rig.player.global_position)
 		_attack_at_step()
 		_body.follow()
 		_shots.step(delta)

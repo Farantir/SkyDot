@@ -19,6 +19,7 @@ add_executable(skydot_core_tests
     test_activation.cpp
     test_behavior.cpp
     test_conditions.cpp
+    test_combat_ai.cpp
     test_combat_damage.cpp
     test_crafting.cpp
     test_dialogue.cpp
