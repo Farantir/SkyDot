@@ -264,6 +264,8 @@ void make_magic(const TempDir& dir) {
     u32(race, "SPCT", 2);
     u32(race, "SPLO", 0x904);
     u32(race, "SPLO", 0x972);
+    u32(race, "KSIZ", 1);
+    u32(race, "KWDA", 0x973);
     record(file, "RACE", 0x907, race);
 
     std::ofstream out(dir / "Magic.esm", std::ios::binary);
@@ -274,7 +276,7 @@ void make_magic(const TempDir& dir) {
 
 } // namespace
 
-TEST_CASE("world.fb 33 carries spells, magic effect data, art objects and projectile data",
+TEST_CASE("world.fb 33/34 carries spells, magic effect data, art objects and projectile data",
           "[pack][world][magic]") {
     const TempDir dir;
     make_magic(dir);
@@ -426,4 +428,6 @@ TEST_CASE("world.fb 33 carries spells, magic effect data, art objects and projec
     REQUIRE(race.has_value());
     REQUIRE(race->spells.size() == 2);
     CHECK(race->spells[1] == 0x972);
+    REQUIRE(race->keywords.size() == 1);
+    CHECK(race->keywords[0] == 0x973);
 }

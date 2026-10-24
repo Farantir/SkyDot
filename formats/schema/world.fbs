@@ -1338,6 +1338,9 @@ table Race {
     /// SPLO (format 33): the spells and abilities every actor of the race
     /// has, as they stand (Spells, LVSPs, SHOUs).
     spells: [uint32];
+    /// KWDA (format 34): the race's keywords (ActorTypeUndead, ...); an
+    /// actor answers HasKeyword for them too.
+    keywords: [uint32];
 }
 
 /// RACE ATKD (44 bytes) and ATKE (format 30). Source: xEdit's RACE layout. In
