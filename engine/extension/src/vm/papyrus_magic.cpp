@@ -951,9 +951,19 @@ void SkydotPapyrus::magic_actor_died(std::uint32_t ref) {
     // Soul Trap cast by the player: the soul goes into a gem as the actor dies.
     if (ref != k_player_ref) {
         const auto views = m->effects.effects_on(ref);
-        if (std::ranges::any_of(views, [](const magic::EffectView& v) {
-                return v.archetype == k_archetype_soul_trap && v.caster == k_player_ref && v.active;
-            })) {
+        // The spell's own effect is a Script archetype with Papyrus scripts (SoulTrapFFActor); the
+        // enchantments' and perks' are archetype 23. Either, cast by the player, is a Soul Trap.
+        const auto soul_trap = [&](const magic::EffectView& v) {
+            if (v.caster != k_player_ref) {
+                return false;
+            }
+            if (v.archetype == k_archetype_soul_trap) {
+                return true;
+            }
+            const auto* mgef = lookup(m->world_.magic_effects(), v.mgef);
+            return mgef != nullptr && mgef->editor_id() != nullptr && mgef->editor_id()->str().starts_with("SoulTrap");
+        };
+        if (std::ranges::any_of(views, soul_trap)) {
             const auto fill = fill_gem(ref);
             emit_signal("soul_trapped", static_cast<std::int64_t>(ref), fill["filled"], fill["gem"], fill["soul"]);
         }

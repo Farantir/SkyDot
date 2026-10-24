@@ -1,17 +1,37 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Enchanted weapons and poisons through Combat on the real SE pack (SKYDOT_SSE_PACK), headless,
-# 7a-3 (disenchanting and enchanting are a later step): the Dremora Fire Sword 0x17009 is drawn
+# 7a-3 and 7a-6: the Dremora Fire Sword 0x17009 is drawn
 # and hits the bandit 0x39FE4 of BleakFallsBarrow01 as in sse_combat_melee; its enchantment's
 # effects land on him, the charge drops by the cost at each hit (the weapon moves to a new
 # ItemExtra every time, and the next hit names the new one; running out of charge is covered by the
 # C++ tests), and a poison put on the weapon with
-# use_item is delivered by the next hit and gone after it. Skips without the pack.
+# use_item is delivered by the next hit and gone after it.
+#
+# The enchanting table (7a-6): an Iron Dagger of Burning 0x896B4 is disenchanted (the dagger is gone,
+# its enchantment known, a second one refused as known) and Mehrunes' Razor 0xDA07's (MagicDisallowEnchanting)
+# is refused; an Iron Sword 0x12EB7 is enchanted with it using Azura's Star 0x63B27 holding a soul
+# (kept, emptied; the petty soul limits the charge and the cost of a use) and, through the CraftingView,
+# with a filled grand soul gem 0x2E4FF (gone; "Iron Sword of ...", charge 3000). The sword is drawn and hits
+# the bandit: the created enchantment's effect lands and the charge drops by its cost; the inventory's
+# recharge takes a filled petty gem 0x2E4E3 (charge up, capped at the maximum). A save and a load keep
+# the enchantment and the charge. Soul Trap 0x4DBA4 on the skeever, which then dies, fills an empty gem.
+# Skips without the pack.
 extends SceneTree
 
 const PLAYER := 0x14
 const FIRE_SWORD := 0x17009
 const POISON := 0x3A5A4  # Weak Poison: Damage Health
+const IRON_SWORD := 0x12EB7
+const FIRE_DAGGER := 0x896B4  # Iron Dagger of Burning
+const RAZOR := 0x240D2  # Mehrunes' Razor: MagicDisallowEnchanting
+const GRAND_FULL := 0x2E4FF
+const PETTY := 0x2E4E2
+const PETTY_FULL := 0x2E4E3
+const AZURA := 0x63B27
+const SOUL_TRAP := 0x4DBA4
+const SKEEVER := 0x3B9F7
+const SAVE := "user://magic_enchant.skydot"
 const STEP := 1.0 / 60.0
 
 var failures := 0
@@ -19,6 +39,7 @@ var _session: GameSession
 var _camera: Camera3D
 var _feet := Vector3.ZERO
 var _hits: Array[Dictionary] = []
+var _traps: Array[Dictionary] = []
 
 
 class FakePlayer:
@@ -207,5 +228,163 @@ func _run(pack_dir: String) -> void:
 	result = hit.get("result", {})
 	expect(result.get("poison", 0) == 0, "and the one after carries none: %s" % [result])
 
+	await _enchanting(papyrus, target)
+
 	print("smoke_magic_enchant: ", "FAIL" if failures > 0 else "OK")
 	quit(1 if failures > 0 else 0)
+
+
+## The row of `rows` for (form, extra) or the entry of `key` equal to `value`; {} if none.
+func _row(rows: Array, form: int) -> Dictionary:
+	for row: Dictionary in rows:
+		if int(row["form"]) == form:
+			return row
+	return {}
+
+
+func _enchanting(papyrus: SkydotPapyrus, target: int) -> void:
+	papyrus.soul_trapped.connect(func(actor: int, filled: bool, gem: int, soul: int) -> void:
+		_traps.append({"actor": actor, "filled": filled, "gem": gem, "soul": soul}))
+	await _until(func() -> bool: return _session.combat.current_attack().is_empty(), 3.0)
+
+	# ---- Azura's Star takes the skeever's soul (in an extra: it has no filled form)
+	_session.give([Vector2i(AZURA, 1)])
+	var fill := papyrus.fill_gem(SKEEVER)
+	print("fill_gem: ", fill)
+	expect(fill["filled"] and fill["gem"] == AZURA and fill["soul"] >= 1 and fill["extra"] != 0, "the skeever's soul goes into Azura's Star: %s" % [fill])
+	var azura_soul: int = fill["soul"]
+	expect(int(_row(_session.inventory(), AZURA).get("soul", 0)) == azura_soul, "and the inventory row shows it")
+
+	# ---- disenchanting
+	_session.give([Vector2i(FIRE_DAGGER, 2), Vector2i(RAZOR, 1), Vector2i(IRON_SWORD, 3)])
+	var rows := _session.enchant_rows()
+	var dagger_row := _row(rows["disenchant"], FIRE_DAGGER)
+	var razor_row := _row(rows["disenchant"], RAZOR)
+	print("disenchant rows: ", dagger_row, razor_row)
+	expect(not dagger_row.is_empty() and dagger_row["ok"], "the dagger can be disenchanted: %s" % [dagger_row])
+	expect(not razor_row.is_empty() and not razor_row["ok"] and razor_row["refusal"] != "", "the Razor is refused: %s" % [razor_row])
+	expect(rows["enchantments"].is_empty(), "nothing is learned yet")
+	expect(not _session.disenchant(RAZOR, 0)["ok"] and papyrus.get_item_count(PLAYER, RAZOR) == 1, "disenchanting the Razor is refused and keeps it")
+	var done := _session.disenchant(FIRE_DAGGER, 0)
+	expect(done["ok"] and done["learned"] != "", "the dagger is disenchanted: %s" % [done])
+	expect(papyrus.get_item_count(PLAYER, FIRE_DAGGER) == 1, "one dagger is gone")
+	rows = _session.enchant_rows()
+	var learned: Array = rows["enchantments"].filter(func(e: Dictionary) -> bool: return e["kind"] == "weapon")
+	expect(learned.size() == 1 and not learned[0]["effects"].is_empty(), "its enchantment is known, with its effects: %s" % [learned])
+	var again := _session.disenchant(FIRE_DAGGER, 0)
+	expect(not again["ok"] and papyrus.get_item_count(PLAYER, FIRE_DAGGER) == 1, "the same enchantment is not learned twice: %s" % [again])
+	var ench: int = learned[0]["id"]
+
+	# ---- enchanting with Azura's Star
+	var azura_extra: int = _row(_session.inventory(), AZURA)["extra"]
+	var preview := _session.enchant_preview(IRON_SWORD, 0, ench, AZURA, azura_extra)
+	print("preview: ", preview)
+	expect(preview["ok"] and preview["name"].begins_with("Iron Sword of "), "the preview names the sword: %s" % [preview])
+	expect(preview["charge"] <= 250.0 * azura_soul * 2.0 and preview["cost"] <= preview["charge"], "one use fits the soul's charge")
+	var made := _session.enchant(IRON_SWORD, 0, ench, AZURA, azura_extra)
+	expect(made["ok"] and made["name"] == preview["name"], "the sword is enchanted: %s" % [made])
+	expect(papyrus.get_item_count(PLAYER, AZURA) == 1 and int(_row(_session.inventory(), AZURA).get("soul", 0)) == 0, "Azura's Star is kept, emptied")
+	expect(papyrus.get_item_count(PLAYER, IRON_SWORD) == 3, "the swords are three still")
+
+	# ---- enchanting through the menu, with a grand gem
+	_session.give([Vector2i(GRAND_FULL, 1)])
+	var view := CraftingView.new(_session)
+	view.size = Vector2(1280, 720)
+	root.add_child(view)
+	view.open(0, 3)
+	view.select_category("Item")
+	var plain_row := -1
+	for i in view._rows.size():
+		if int(view._rows[i]["form"]) == IRON_SWORD and int(view._rows[i]["extra"]) == 0:
+			plain_row = i
+	expect(plain_row >= 0, "the plain sword is listed to enchant")
+	view._selected = maxi(plain_row, 0)
+	view.accept()
+	view.select_category("Enchantment")
+	view.accept()
+	view.select_category("Soul gem")
+	for i in view._rows.size():
+		if int(view._rows[i]["form"]) == GRAND_FULL:
+			view._selected = i
+	view.accept()
+	print("menu preview: ", view._preview)
+	expect(view._preview.get("ok", false) and view._preview["charge"] == 3000.0, "the menu previews a charge of 3000: %s" % [view._preview])
+	view.enchant_marked()
+	view.close()
+	view.queue_free()
+	expect(papyrus.get_item_count(PLAYER, GRAND_FULL) == 0, "the grand gem is used up")
+	var swords := _session.inventory().filter(func(r: Dictionary) -> bool: return int(r["form"]) == IRON_SWORD and r["charge_max"] == 3000.0 if r.has("charge_max") else false)
+	expect(swords.size() == 1 and swords[0]["name"].begins_with("Iron Sword of "), "the inventory lists the new sword with its charge: %s" % [swords])
+	if swords.is_empty():
+		return
+	var extra: int = swords[0]["extra"]
+	expect(_session.equip(IRON_SWORD, extra) and _session.player_weapon() == IRON_SWORD, "the enchanted sword is equipped")
+	var charge := papyrus.weapon_charge(PLAYER, IRON_SWORD, extra)
+	print("charge: ", charge)
+	expect(charge["max"] == 3000.0 and charge["charge"] == 3000.0 and charge["cost"] > 0.0 and charge["enchantment"] >= 0x1000000, "full, a created enchantment with a cost")
+
+	# ---- a hit with it
+	papyrus.dispel_all_spells(target)
+	papyrus.restore_actor_value(target, "Health", 1000.0)
+	if _session.weapon_state() != Combat.State.DRAWN:
+		_session.toggle_weapon()
+		await _until(func() -> bool: return _session.weapon_state() == Combat.State.DRAWN, 5.0)
+	var hit := await _swing()
+	var result: Dictionary = hit.get("result", {})
+	print("created hit: ", result)
+	expect(result.get("enchantment", 0) == charge["enchantment"], "the hit names the created enchantment: %s" % [result])
+	expect(papyrus.get_actor_value(target, "Health") < result["health_after"] - 0.5, "its effect lands on the target: %f after the blow's %f" % [papyrus.get_actor_value(target, "Health"), result["health_after"]])
+	var after := papyrus.weapon_charge(PLAYER, IRON_SWORD)
+	expect(absf(after["charge"] - (3000.0 - charge["cost"])) < 1e-2, "the charge drops by the cost: %f" % after["charge"])
+
+	# ---- recharge from the inventory
+	_session.give([Vector2i(PETTY_FULL, 1)])
+	var inventory := InventoryView.new(_session)
+	inventory.size = Vector2(1280, 720)
+	root.add_child(inventory)
+	inventory.open()
+	inventory._category = 1
+	inventory._refresh()
+	for i in inventory._rows.size():
+		if int(inventory._rows[i]["form"]) == IRON_SWORD and int(inventory._rows[i]["extra"]) == papyrus.equipment(PLAYER)["right_extra"]:
+			inventory._selected = i
+	expect(InventoryView.rechargeable(inventory.current()), "the sword can take a charge: %s" % [inventory.current()])
+	inventory.recharge_current()
+	inventory.close()
+	inventory.queue_free()
+	var recharged := papyrus.weapon_charge(PLAYER, IRON_SWORD)
+	expect(absf(recharged["charge"] - minf(3000.0, after["charge"] + 250.0)) < 1e-2, "petty gem: charge %f -> %f" % [after["charge"], recharged["charge"]])
+	expect(papyrus.get_item_count(PLAYER, PETTY_FULL) == 0, "and the gem is used up")
+
+	# ---- a save and a load
+	expect(_session.save_game(SAVE), "the game is saved")
+	papyrus.restore_actor_value(target, "Health", 1000.0)
+	hit = await _swing()
+	expect(_session.load_game(SAVE), "and loaded")
+	var loaded := papyrus.weapon_charge(PLAYER, IRON_SWORD)
+	expect(loaded["enchantment"] == charge["enchantment"] and absf(loaded["charge"] - recharged["charge"]) < 1e-2,
+		"the enchantment and its charge are kept: %s" % [loaded])
+	var kept := _session.inventory().filter(func(r: Dictionary) -> bool: return int(r["form"]) == IRON_SWORD and r.get("charge_max", 0.0) == 3000.0)
+	expect(kept.size() == 1 and kept[0]["name"].begins_with("Iron Sword of "), "and the name: %s" % [kept])
+	papyrus.dispel_all_spells(target)
+	papyrus.restore_actor_value(target, "Health", 1000.0)
+	await _until(func() -> bool: return _session.combat.current_attack().is_empty(), 3.0)
+	hit = await _swing()
+	expect(hit.get("result", {}).get("enchantment", 0) == charge["enchantment"]
+		and papyrus.get_actor_value(target, "Health") < hit["result"]["health_after"] - 0.5,
+		"it still fires its effects after the load: %s" % [hit])
+
+	# ---- Soul Trap
+	_session.give([Vector2i(PETTY, 1)])
+	_traps.clear()
+	var cast := _session.cast_spell(SOUL_TRAP, SKEEVER)
+	print("soul trap cast: ", cast)
+	expect(cast["ok"], "Soul Trap is cast on the skeever: %s" % [cast])
+	print("skeever effects: ", papyrus.active_effects(SKEEVER))
+	_session.kill_actor(SKEEVER)
+	await _frames(5)
+	expect(papyrus.is_actor_dead(SKEEVER), "the skeever is dead")
+	print("soul trapped: ", _traps)
+	expect(_traps.size() == 1 and _traps[0]["filled"] and _traps[0]["actor"] == SKEEVER, "a soul is captured: %s" % [_traps])
+	var held := _session.inventory().filter(func(r: Dictionary) -> bool: return int(r.get("soul", 0)) > 0 and (int(r["form"]) == PETTY or int(r["form"]) == AZURA))
+	expect(held.size() == 1, "a gem holds it: %s" % [held])
