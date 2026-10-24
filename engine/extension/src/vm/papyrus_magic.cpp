@@ -11,6 +11,7 @@
 #include "build/refs.hpp"
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
+#include "data/actors.hpp"
 #include "data/leveled.hpp"
 #include "magic/active_effects.hpp"
 #include "magic/casting.hpp"
@@ -65,6 +66,10 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
                             : std::vector<std::uint32_t>{};
         });
     }
+
+    /// PLACEHOLDER: how far in front of the caster a summon appears, Skyrim units.
+    static constexpr double k_summon_distance = 150.0;
+    static std::uint32_t actor_level_of(const wfb::Npc& npc) { return skydot::actor_level(npc); }
 
     SkydotPapyrus& owner_;
     const wfb::World& world_;
@@ -122,6 +127,83 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
                    : fallback;
     }
     void effect_changed(bool started, const magic::EffectView& e) override { pending.push_back({started, e}); }
+
+    // ---- archetypes (UESP; placeholders marked in magic/active_effects.cpp)
+    std::uint32_t actor_level(std::uint32_t ref) const override {
+        if (ref == k_player_ref) {
+            return leveled::player_level();
+        }
+        if (!owner_.actors_.is_actor(ref)) {
+            return 0;
+        }
+        const auto* npc = resolve_npc(world_, owner_.dialogue_npc(ref), wfb::NpcTemplateFlags::use_stats, ref);
+        return npc != nullptr ? actor_level_of(*npc) : 0;
+    }
+    std::uint32_t place_summon(std::uint32_t caster, std::uint32_t npc_base) override {
+        vm::PlacedRef placed;
+        placed.base = npc_base;
+        placed.cell = owner_.cell_of(caster);
+        const godot::Vector3 position = owner_.position_of(caster);
+        const godot::Vector3 rotation = owner_.rotation_of(caster);
+        // PLACEHOLDER: 150 units in front of the caster (rotation z is the heading, radians).
+        const double heading = static_cast<double>(rotation.z);
+        placed.position[0] = static_cast<double>(position.x) + std::sin(heading) * k_summon_distance;
+        placed.position[1] = static_cast<double>(position.y) + std::cos(heading) * k_summon_distance;
+        placed.position[2] = static_cast<double>(position.z);
+        for (int i = 0; i < 3; ++i) {
+            placed.rotation[i] = static_cast<double>(rotation[i]);
+        }
+        placed.scale = 1.0;
+        const std::uint32_t ref = owner_.place_ref(placed, false);
+        if (ref == 0 || !owner_.actors_.is_actor(ref)) {
+            if (ref != 0) {
+                owner_.forget_ref(ref);
+            }
+            return 0;
+        }
+        log("magic: " + hex(npc_base) + " summoned " + hex(ref) + " for " + hex(caster));
+        return ref;
+    }
+    void remove_summon(std::uint32_t ref) override {
+        log("magic: summon " + hex(ref) + " gone");
+        owner_.forget_ref(ref);
+    }
+    void reanimate(std::uint32_t target, std::uint32_t caster) override {
+        owner_.actors_.revive(target);
+        log("magic: " + hex(target) + " reanimated for " + hex(caster));
+    }
+    void end_reanimate(std::uint32_t target) override {
+        // PLACEHOLDER: it just dies (UESP: it turns to ash).
+        owner_.actors_.damage(target, vm::av::k_health, 1e9);
+    }
+    void bound_add(std::uint32_t target, std::uint32_t weapon) override {
+        // PLACEHOLDER: always the right hand (the MGEF names no hand).
+        if (owner_.equip_item(target, weapon, false, true)) {
+            log("magic: " + hex(target) + " bound weapon " + hex(weapon) + " added");
+        }
+    }
+    void bound_remove(std::uint32_t target, std::uint32_t weapon) override {
+        (void)owner_.unequip_item(target, weapon);
+        (void)owner_.remove_item(target, weapon, 1);
+        log("magic: " + hex(target) + " bound weapon " + hex(weapon) + " removed");
+    }
+    std::vector<std::uint32_t> actors_near(std::uint32_t ref, double radius) const override {
+        std::vector<std::uint32_t> out;
+        const godot::Vector3 at = owner_.position_of(ref);
+        const auto consider = [&](std::uint32_t actor) {
+            if (actor != ref && owner_.actors_.is_actor(actor) && !owner_.actors_.is_dead(actor) &&
+                static_cast<double>(owner_.position_of(actor).distance_to(at)) <= radius) {
+                out.push_back(actor);
+            }
+        };
+        for (const auto& [actor, position] : owner_.triggers_.actors()) {
+            if (actor != k_player_ref) {
+                consider(actor);
+            }
+        }
+        consider(k_player_ref);
+        return out;
+    }
     void log(const std::string& line) override {
         owner_.emit_signal("trace", to_godot(line));
         godot::UtilityFunctions::print(to_godot(line));
@@ -351,6 +433,81 @@ SkydotPapyrus::MagicState* SkydotPapyrus::magic_state() {
     return static_cast<MagicState*>(magic_.get());
 }
 
+namespace {
+
+/// The log word of a held archetype ("" for the others); fear names its source.
+std::string held_state_word(const magic::EffectView& v) {
+    switch (v.archetype) {
+    case magic::archetype::calm: return "calm";
+    case magic::archetype::demoralize:
+    case magic::archetype::turn_undead: return "fear from " + hex(v.caster);
+    case magic::archetype::frenzy: return "frenzy";
+    case magic::archetype::paralysis: return "paralyzed";
+    case magic::archetype::invisibility: return "invisible";
+    case magic::archetype::slow_time: return "slow time " + number(magic::slow_time_scale(v.magnitude));
+    default: return {};
+    }
+}
+
+Dictionary effect_event(const magic::EffectView& v, bool started) {
+    Dictionary d;
+    d["started"] = started;
+    d["instance"] = static_cast<std::int64_t>(v.id);
+    d["mgef"] = static_cast<std::int64_t>(v.mgef);
+    d["archetype"] = static_cast<std::int64_t>(v.archetype);
+    d["caster"] = static_cast<std::int64_t>(v.caster);
+    d["target"] = static_cast<std::int64_t>(v.target);
+    d["magnitude"] = v.magnitude;
+    d["duration"] = v.duration;
+    d["area"] = v.area;
+    d["associated"] = static_cast<std::int64_t>(v.associated);
+    d["summoned"] = static_cast<std::int64_t>(v.summoned);
+    return d;
+}
+
+godot::Dictionary overrides_dictionary(const magic::Overrides& o) {
+    Dictionary d;
+    d["calm"] = o.calm;
+    d["frenzy"] = o.frenzy;
+    d["paralyzed"] = o.paralyzed;
+    d["invisible"] = o.invisible;
+    d["fear_from"] = static_cast<std::int64_t>(o.fear_from);
+    d["commanded_by"] = static_cast<std::int64_t>(o.commanded_by);
+    d["time_scale"] = o.time_scale;
+    return d;
+}
+
+} // namespace
+
+magic::Overrides SkydotPapyrus::magic_overrides_of(std::uint32_t ref) const {
+    return magic_ ? static_cast<const MagicState*>(magic_.get())->effects.overrides(ref) : magic::Overrides{};
+}
+
+Dictionary SkydotPapyrus::magic_overrides(std::int64_t ref) const {
+    return overrides_dictionary(magic_overrides_of(static_cast<std::uint32_t>(ref)));
+}
+
+std::int64_t SkydotPapyrus::break_invisibility(std::int64_t ref) {
+    auto* m = magic_state();
+    if (m == nullptr) {
+        return 0;
+    }
+    const auto n = m->effects.break_invisibility(static_cast<std::uint32_t>(ref));
+    if (n != 0) {
+        m->log("magic: invisibility of " + hex(static_cast<std::uint32_t>(ref)) + " broken");
+    }
+    flush_magic_events();
+    return static_cast<std::int64_t>(n);
+}
+
+bool SkydotPapyrus::dispel_bound_weapon(std::int64_t actor, std::int64_t weapon) {
+    auto* m = magic_state();
+    const bool any = m != nullptr && m->effects.dispel_bound(static_cast<std::uint32_t>(actor),
+                                                            static_cast<std::uint32_t>(weapon)) != 0;
+    flush_magic_events();
+    return any;
+}
+
 void SkydotPapyrus::flush_magic_events() {
     auto* m = magic_state();
     if (m == nullptr || m->flushing) {
@@ -364,6 +521,13 @@ void SkydotPapyrus::flush_magic_events() {
             const auto& v = event.view;
             emit_signal("magic_effect_changed", static_cast<std::int64_t>(v.target), static_cast<std::int64_t>(v.mgef),
                         static_cast<std::int64_t>(v.archetype), event.started, static_cast<std::int64_t>(v.id));
+            emit_signal("magic_effect_event", effect_event(v, event.started));
+            if (const std::string word = held_state_word(v); !word.empty()) {
+                m->log("magic: " + hex(v.target) + " " + word + (event.started ? " starts" : " ends"));
+            }
+            if (event.started && v.archetype == magic::archetype::stagger) {
+                m->log("magic: " + hex(v.target) + " staggered (" + number(v.magnitude) + ")");
+            }
             const auto* mgef = lookup(m->world_.magic_effects(), v.mgef);
             const auto* scripts = mgef != nullptr ? mgef->scripts() : nullptr;
             if (scripts == nullptr || scripts->size() == 0) {
@@ -721,6 +885,9 @@ Array SkydotPapyrus::active_effects(std::int64_t actor_in) {
         d["caster"] = static_cast<std::int64_t>(e.caster);
         d["archetype"] = static_cast<std::int64_t>(e.archetype);
         d["active"] = e.active;
+        d["associated"] = static_cast<std::int64_t>(e.associated);
+        d["summoned"] = static_cast<std::int64_t>(e.summoned);
+        d["area"] = e.area;
         out.push_back(d);
     }
     return out;

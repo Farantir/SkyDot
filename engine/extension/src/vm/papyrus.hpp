@@ -24,6 +24,7 @@
 
 #include "assets/pack.hpp"
 #include "data/actors.hpp"
+#include "magic/active_effects.hpp"
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
@@ -256,6 +257,14 @@ public:
     /// constant), source (a form), source_kind (0 spell, 1 enchantment, 2 potion, 3 ingredient, 4
     /// scroll, 5 ability, 6 poison), caster, archetype, active}.
     godot::Array active_effects(std::int64_t actor);
+    /// The held states of the magic archetypes on `ref`: {calm, frenzy, paralyzed, invisible, fear_from,
+    /// commanded_by, time_scale}. `magic_overrides_of` is the same for C++ (the AI).
+    godot::Dictionary magic_overrides(std::int64_t ref) const;
+    [[nodiscard]] magic::Overrides magic_overrides_of(std::uint32_t ref) const;
+    /// The actor attacked, cast or activated: its invisibility ends; how many effects.
+    std::int64_t break_invisibility(std::int64_t ref);
+    /// The player put `weapon` away: its bound weapon effect ends.
+    bool dispel_bound_weapon(std::int64_t actor, std::int64_t weapon);
     /// End `spell`'s effects on `actor`, or all of them.
     bool dispel_spell(std::int64_t actor, std::int64_t spell);
     void dispel_all_spells(std::int64_t actor);

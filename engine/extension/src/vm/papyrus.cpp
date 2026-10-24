@@ -114,6 +114,10 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("equipped_spell", "actor", "hand"), &SkydotPapyrus::equipped_spell);
     godot::ClassDB::bind_method(D_METHOD("power_cooldown", "actor", "spell"), &SkydotPapyrus::power_cooldown);
     godot::ClassDB::bind_method(D_METHOD("active_effects", "actor"), &SkydotPapyrus::active_effects);
+    godot::ClassDB::bind_method(D_METHOD("magic_overrides", "ref"), &SkydotPapyrus::magic_overrides);
+    godot::ClassDB::bind_method(D_METHOD("break_invisibility", "ref"), &SkydotPapyrus::break_invisibility);
+    godot::ClassDB::bind_method(D_METHOD("dispel_bound_weapon", "actor", "weapon"),
+                                &SkydotPapyrus::dispel_bound_weapon);
     godot::ClassDB::bind_method(D_METHOD("dispel_spell", "actor", "spell"), &SkydotPapyrus::dispel_spell);
     godot::ClassDB::bind_method(D_METHOD("dispel_all_spells", "actor"), &SkydotPapyrus::dispel_all_spells);
     godot::ClassDB::bind_method(D_METHOD("prepare_actor_magic", "actor"), &SkydotPapyrus::prepare_actor_magic);
@@ -279,6 +283,9 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("magic_effect_changed", PropertyInfo(Variant::INT, "target"),
                                  PropertyInfo(Variant::INT, "mgef"), PropertyInfo(Variant::INT, "archetype"),
                                  PropertyInfo(Variant::BOOL, "started"), PropertyInfo(Variant::INT, "instance")));
+    // The same with everything the game layer needs: {started, instance, mgef, archetype, caster, target,
+    // magnitude, duration, area, associated (the MGEF's item), summoned (a summon's ref)}.
+    ADD_SIGNAL(godot::MethodInfo("magic_effect_event", PropertyInfo(Variant::DICTIONARY, "info")));
     // The player was brought to Health 0 (nobody dies in the VM for him): the killer, 0 if none.
     ADD_SIGNAL(godot::MethodInfo("player_died", PropertyInfo(Variant::INT, "killer")));
     // A destructible reference opened a stage with a model: the game layer

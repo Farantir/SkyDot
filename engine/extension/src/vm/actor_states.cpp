@@ -90,10 +90,25 @@ double ActorStates::percentage(std::uint32_t ref, std::uint32_t av) const {
     return m > 0.0 ? get(ref, av) / m : 1.0;
 }
 
+void ActorStates::revive(std::uint32_t ref) {
+    Record* r = touch(ref, av::k_health);
+    if (r == nullptr) {
+        return;
+    }
+    r->dead = false;
+    r->risen = true;
+    r->killer = 0;
+    r->corpse.reset();
+    restore(ref, av::k_health, 1e9);
+}
+
 bool ActorStates::is_dead(std::uint32_t ref) const {
     const Record* r = find(ref);
     if (r != nullptr && r->dead) {
         return true;
+    }
+    if (r != nullptr && r->risen) {
+        return false;
     }
     // A reference placed dead is dead before anything touches it.
     const ActorBase* base = base_of(ref);

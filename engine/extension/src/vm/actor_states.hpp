@@ -62,6 +62,9 @@ public:
     /// Value over max; 1 if max is 0 or less.
     [[nodiscard]] double percentage(std::uint32_t ref, std::uint32_t av) const;
     [[nodiscard]] bool is_dead(std::uint32_t ref) const;
+    /// Bring a dead actor back to full health (reanimate). PLACEHOLDER: not saved, so an actor that
+    /// started dead is dead again after a load.
+    void revive(std::uint32_t ref);
     /// Who dealt the blow that killed `ref` (0 if unknown or alive); kept in
     /// the save.
     void set_killer(std::uint32_t ref, std::uint32_t killer);
@@ -114,6 +117,7 @@ private:
     struct Record {
         std::map<std::uint32_t, Value> values;
         bool dead = false;
+        bool risen = false; ///< Revived: not dead although the base starts dead. Not saved.
         std::uint32_t killer = 0;
         std::optional<CorpsePlace> corpse;
         double magicka_pause = 0.0; ///< Not saved.
