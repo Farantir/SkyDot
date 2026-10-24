@@ -284,6 +284,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_magic_npc
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/magic_npc.gd")
+    set_tests_properties(sse_magic_npc PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_magic_enchant
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/magic_enchant.gd")
     set_tests_properties(sse_magic_enchant PROPERTIES

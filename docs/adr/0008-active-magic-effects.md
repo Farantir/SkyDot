@@ -103,3 +103,25 @@ record that stored nothing.
   The pack has no ALCH poison flag; a potion whose effects are all hostile counts.
 - **Worn enchantments** (armor, clothing, jewelry, shield) are constant effects
   derived from what is worn (`WornEnchantments`), never saved.
+
+## NPC magic (7a-5)
+
+- **The choice is a pure rule** (`ai/magic_choice`): a spell is an attack (hostile, touch, aimed or at
+  an actor), a heal (non-hostile self value modifier of Health without the MGEF Recover flag: Restore
+  Health; with the flag it is Fortify Health), a summon (archetype 18, self or target location: the CK
+  delivers conjurations to a location), a cloak or a fortify; wards, powers, abilities and the rest the
+  AI does not use. `decide` picks: heal below half Health, then a buff it does not have on while a
+  quarter of the Magicka stays, then an attack spell in reach (the die picks among those, the style's
+  magic multiplier must beat the weapons' melee and ranged ones), else the weapons. Placeholders are
+  named in the header.
+- **The AI only decides** (`SkydotAi::mage_tick`): it emits `combat_cast(ref, target, spell, hand,
+  phase)`, `start` when the spell is raised, `release` once the casting time has passed (fire and
+  forget), `stop` when a held spell ends or the cast is broken (paralysis, flight, the end of the fight).
+- **The game layer carries it out** (`NpcMagic`): the same `hand_press`/`hand_step`/`hand_release` rules
+  as the player's hands (charge time, concentration paid per step through `pay_spell`, so the Magicka
+  regeneration waits) and `Magic.deliver_from(caster, ...)`, the delivery all casters share (self,
+  touch, projectiles, areas, the same impact and landing). Third-person clips are the first-person
+  names of the actor's own behaviour project (`mrh_chargeloop`, `mrh_aimedconcentration`, `mrh_release`
+  and their self forms).
+- **Leveled spell lists are seeded by the reference**: two spawned actors of one NPC_ know different
+  spells; tests teach the spells they need.

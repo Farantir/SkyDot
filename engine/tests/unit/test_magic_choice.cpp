@@ -40,7 +40,7 @@ SpellFacts healing() {
     s.cost = 12.0;
     s.concentration = true;
     s.delivery = 0;
-    s.recover = true;
+    s.recover = false; // Restore Health stays; Fortify Health is undone at the end
     s.archetype = 0;
     s.actor_value = k_health;
     return s;
@@ -58,7 +58,8 @@ SpellFacts oakflesh() {
     s.form = 0x5AD5E;
     s.cost = 40.0;
     s.delivery = 0;
-    s.archetype = 0;
+    s.archetype = 34;
+    s.recover = true;
     s.actor_value = k_armor;
     return s;
 }
@@ -77,9 +78,7 @@ MageInputs mage(std::vector<SpellFacts> spells) {
     in.magicka = 200.0;
     in.magicka_max = 200.0;
     in.distance = 800.0;
-    in.style.magic = 1.0;
-    in.style.melee = 0.2;
-    in.style.ranged = 0.2;
+    in.style = {1.0, 0.2, 0.2, 0.2};
     return in;
 }
 
@@ -93,7 +92,7 @@ TEST_CASE("spells are classified by what they do to whom", "[magic][ai]") {
     CHECK(classify(oakflesh()) == SpellRole::fortify);
     CHECK(classify(cloak()) == SpellRole::cloak);
     SpellFacts fortify_health = healing();
-    fortify_health.recover = false;
+    fortify_health.recover = true;
     CHECK(classify(fortify_health) == SpellRole::fortify);
     SpellFacts power = firebolt();
     power.plain = false;
@@ -101,6 +100,9 @@ TEST_CASE("spells are classified by what they do to whom", "[magic][ai]") {
     SpellFacts rune = firebolt();
     rune.delivery = 4;
     CHECK(classify(rune) == SpellRole::other);
+    SpellFacts conjure = familiar();
+    conjure.delivery = 4; // Conjure Familiar is delivered to a target location
+    CHECK(classify(conjure) == SpellRole::summon);
     SpellFacts aimed_buff = oakflesh();
     aimed_buff.delivery = 2;
     CHECK(classify(aimed_buff) == SpellRole::other);
@@ -110,17 +112,19 @@ TEST_CASE("the style's multipliers decide between spells and weapons", "[magic][
     MageInputs in = mage({firebolt()});
     in.has_melee = true;
     CHECK(prefers_magic(in));
-    in.style = {0.2, 1.0, 0.2}; // a warrior with a spell
+    in.style = {0.2, 1.0, 0.2, 0.2}; // a warrior with a spell
     CHECK_FALSE(prefers_magic(in));
-    in.style = {0.5, 0.5, 0.5}; // a tie goes to the weapons
+    in.style = {0.5, 0.5, 0.5, 0.5}; // a tie goes to the weapons
     CHECK_FALSE(prefers_magic(in));
     in.has_melee = false;
-    CHECK(prefers_magic(in)); // unarmed: the spell
+    CHECK_FALSE(prefers_magic(in)); // the fists tie too (a spider that spits and bites)
+    in.style = {4.05, 0.76, 1.0, 1.0}; // csHumanMagic
+    CHECK(prefers_magic(in));
     in.style.magic = 0.0;
     CHECK_FALSE(prefers_magic(in)); // the style forbids it
     in = mage({firebolt()});
     in.has_bow = true;
-    in.style = {0.4, 0.1, 0.9};
+    in.style = {0.4, 0.1, 0.9, 0.1};
     CHECK_FALSE(prefers_magic(in));
 }
 

@@ -541,6 +541,32 @@ func _clip_file(behaviour: String, stem: String, dir: String) -> String:
 	return dir + stem + ".hkx" if dir != "" else ""
 
 
+## Turn the actor `attacker` to face `target` (the player or an actor); false if it has no node.
+func npc_face(attacker: int, target: int) -> bool:
+	var node := _world.find_ref_node(attacker) as Node3D
+	if node == null:
+		return false
+	_face(node, target)
+	return true
+
+
+## The clip file of `stem` (a project clip name such as `mrh_chargeloop`) in the behaviour project of
+## `ref`, "" if its project has none.
+func clip_of(ref: int, stem: String) -> String:
+	return _clip_file(String(_actor_plan(ref).get("behaviour", "")), stem, "")
+
+
+## The chest of the actor (or the player) `ref` in engine space; its feet if it has no node.
+func body_point_of(ref: int) -> Vector3:
+	if ref == PLAYER_REF:
+		return _feet.call() + Vector3.UP * (PLAYER_HEIGHT * CHEST_FRACTION)
+	var node := _world.find_ref_node(ref) as Node3D
+	if node == null:
+		return Vector3.ZERO
+	var height: float = node.get("height") if node.get("height") != null else PLAYER_HEIGHT
+	return node.global_position + Vector3.UP * (height * CHEST_FRACTION)
+
+
 ## Turn `node` to face the actor (or the player) `target`.
 func _face(node: Node3D, target: int) -> void:
 	if not node.has_method("face"):
@@ -1026,5 +1052,12 @@ func _actor_plan(ref: int) -> Dictionary:
 		_player_race()
 		return _player_plan
 	if not _plans.has(ref):
-		_plans[ref] = _world.get_actor_plan(ref)
+		var plan := _world.get_actor_plan(ref)
+		if plan.is_empty():  # a runtime actor (a summon, a spawned one): its plan is its NPC_'s
+			var base := _papyrus.get_ref_base(ref)
+			if base != 0:
+				plan = _world.get_npc_plan(base, ref)
+		if plan.is_empty():
+			return plan  # not built yet: asked again
+		_plans[ref] = plan
 	return _plans[ref]

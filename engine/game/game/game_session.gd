@@ -156,6 +156,8 @@ var _start := {}  # the first place entered: where a death with no save starts a
 var combat: Combat
 ## The player's spells, scrolls and powers in the hands.
 var magic: Magic
+## What mages cast in a fight (the AI's combat_cast), carried out with Magic's delivery.
+var npc_magic: NpcMagic
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
 ## What scripts place, fire and play.
@@ -297,6 +299,13 @@ func _make_game_nodes() -> void:
 		magic.spell_landed.connect(func(_hand: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
 			if hostile and target != SkydotPapyrus.PLAYER_REF:
 				ai.on_hit(SkydotPapyrus.PLAYER_REF, target))
+	npc_magic = NpcMagic.new(world, papyrus, magic, combat)
+	if ai != null:
+		ai.combat_cast.connect(npc_magic.on_cast)
+		# A hostile spell an actor lands on someone raises the alarm, as a weapon's hit does.
+		magic.npc_spell_landed.connect(func(caster: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
+			if hostile and target != caster:
+				ai.on_hit(caster, target))
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
@@ -563,6 +572,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	combat.step(delta)
 	magic.step(delta)
+	npc_magic.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
 	_drain_sprint(delta)
@@ -750,6 +760,7 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 func update_combat(delta: float) -> void:
 	combat.step(delta)
 	magic.step(delta)
+	npc_magic.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
 

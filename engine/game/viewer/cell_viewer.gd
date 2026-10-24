@@ -370,6 +370,8 @@ func _apply_combat_options() -> void:
 			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
 	if _settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
+	if not _settings.spawn.is_empty():
+		SpawnActors.spawn(_session, _rig, _settings.spawn)
 	for ref in _settings.kill:
 		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
 	for entry: Dictionary in _settings.npc_give:

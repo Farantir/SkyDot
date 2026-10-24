@@ -342,6 +342,8 @@ func _start_game() -> void:
 		_session.equip_spell(entry["form"], entry["hand"])
 	if settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, settings.cast_at, settings.cast_at_hand)
+	if not settings.spawn.is_empty():
+		SpawnActors.spawn(_session, _rig, settings.spawn)
 	for form in settings.drink:
 		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
 			_session.give([Vector2i(form, 1)])

@@ -117,6 +117,7 @@ var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (aft
 var equip_spell: Array[Dictionary] = []  # --equip-spell 0xFORM[,left|right|power]: {form, hand} (Magic.RIGHT by default)
 var cast_at := 0  # --cast-at 0xREF[,left|right]: ready the hands, face that actor, cast the hand's spell at it
 var cast_at_hand := 1
+var spawn: Array[int] = []  # --spawn 0xNPC_[,...]: those actors (NPC_ or LVLN) appear in front of the player after the load
 var drink: Array[int] = []  # --drink 0xFORM[,...]: the player uses those items (added first if not carried)
 var cast: Array[Dictionary] = []  # --cast 0xSPELL[@0xREF][,...]: {spell, target}, the player casts (0: on itself)
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
@@ -264,6 +265,8 @@ func _read(args: Dictionary) -> void:
 		var cast_parts: PackedStringArray = String(args["cast-at"]).split(",")
 		cast_at = cast_parts[0].hex_to_int() if cast_parts[0].begins_with("0x") else cast_parts[0].to_int()
 		cast_at_hand = _hand_of(cast_parts[1]) if cast_parts.size() > 1 else 1
+	for entry: String in args.get("spawn", "").split(",", false):
+		spawn.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("drink", "").split(",", false):
 		drink.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("cast", "").split(",", false):

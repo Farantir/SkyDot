@@ -88,6 +88,11 @@ signal cast_started(hand: int, spell: int, info: Dictionary)
 signal spell_landed(hand: int, spell: int, target: int, point: Vector3, hostile: bool)
 ## A scroll was read and used up (the hands that held the last one are empty).
 signal scroll_used(spell: int)
+## An NPC's cast was paid (its fire-and-forget release, a concentration spell's start): the caster, the
+## hand, the spell and cast_info's dictionary.
+signal npc_cast_started(caster: int, hand: int, spell: int, info: Dictionary)
+## An NPC's spell landed on `target` at `point` (engine space).
+signal npc_spell_landed(caster: int, spell: int, target: int, point: Vector3, hostile: bool)
 ## The hand's cast was refused (not enough Magicka, cooldown, ...): hand, spell, reason.
 signal cast_refused(hand: int, spell: int, reason: String)
 
@@ -310,17 +315,36 @@ func cast_power() -> Dictionary:
 
 ## Pay for a fire-and-forget cast (a scroll is paid for when it lands). False, with
 ## `cast_refused`, if it cannot.
-func _pay(hand: int, spell: int, info: Dictionary) -> bool:
+func _pay(hand: int, spell: int, info: Dictionary, caster := PLAYER_REF) -> bool:
 	if bool(info.get("is_scroll", false)):
-		cast_started.emit(hand, spell, info)
+		_announce(caster, hand, spell, info)
 		return true
-	_papyrus.break_invisibility(PLAYER_REF)  # casting ends the player's invisibility
-	var paid := _papyrus.pay_spell(PLAYER_REF, spell, 0.0)
+	_papyrus.break_invisibility(caster)  # casting ends the caster's invisibility
+	var paid := _papyrus.pay_spell(caster, spell, 0.0)
 	if not paid["ok"]:
-		cast_refused.emit(hand, spell, paid["reason"])
-		print("magic: 0x%08X refused: %s" % [spell, paid["reason"]])
+		if caster == PLAYER_REF:
+			cast_refused.emit(hand, spell, paid["reason"])
+		print("magic: 0x%08X refused%s: %s" % [spell, "" if caster == PLAYER_REF else " for 0x%X" % caster, paid["reason"]])
 		return false
-	cast_started.emit(hand, spell, info)
+	_announce(caster, hand, spell, info)
+	return true
+
+
+func _announce(caster: int, hand: int, spell: int, info: Dictionary) -> void:
+	if caster == PLAYER_REF:
+		cast_started.emit(hand, spell, info)
+	else:
+		npc_cast_started.emit(caster, hand, spell, info)
+
+
+## An NPC's spell leaves it: `pay` takes the cost first (a fire-and-forget release; false if it cannot
+## pay), else the cost was paid already (a tick of a held spell, `again`). The effects leave `eye`
+## along `forward`; `right` is the side of its hands.
+func npc_deliver(caster: int, hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vector3,
+		right: Vector3, again: bool, pay := true) -> bool:
+	if pay and not _pay(hand, spell, info, caster):
+		return false
+	deliver_from(caster, hand, spell, info, eye, forward, right, again)
 	return true
 
 
@@ -396,38 +420,45 @@ func _deliver(hand: int, spell: int, info: Dictionary, again: bool) -> void:
 	var pointer: Node3D = _pointer.call()
 	if pointer == null:
 		return
-	var eye := pointer.global_position
-	var forward := -pointer.global_transform.basis.z
+	deliver_from(PLAYER_REF, hand, spell, info, pointer.global_position, -pointer.global_transform.basis.z,
+		pointer.global_transform.basis.x, again)
+
+
+## The delivery of any caster: `eye` is where it casts from, `forward` where it looks, `right` the side
+## its hands are on (the player's pointer, an NPC's head and its aim at the target).
+func deliver_from(caster: int, hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vector3,
+		right: Vector3, again: bool) -> void:
 	match int(info.get("delivery", DELIVER_SELF)):
 		DELIVER_SELF:
-			_land(hand, spell, info, PLAYER_REF, eye)
+			_land(caster, hand, spell, info, caster, eye)
 		DELIVER_TOUCH:
-			var hit := _combat.find_in_cone(PLAYER_REF, eye, forward, TOUCH_REACH_UNITS * SkydotWorld.unit_scale(), TOUCH_ANGLE)
+			var hit := _combat.find_in_cone(caster, eye, forward, TOUCH_REACH_UNITS * SkydotWorld.unit_scale(), TOUCH_ANGLE)
 			if hit.is_empty():
 				return
-			_impact(hand, spell, info, hit["ref"], hit["point"])
+			_impact(caster, hand, spell, info, hit["ref"], hit["point"])
 		DELIVER_AIMED:
-			_launch(hand, spell, info, eye, forward, pointer, again)
+			_launch(caster, hand, spell, info, eye, forward, right, again)
 		DELIVER_TARGET_ACTOR:
 			var reach := maxf(float(info.get("range", 0.0)), TARGET_REACH_UNITS) * SkydotWorld.unit_scale()
-			var hit := _combat.find_in_cone(PLAYER_REF, eye, forward, reach, TARGET_ANGLE)
+			var hit := _combat.find_in_cone(caster, eye, forward, reach, TARGET_ANGLE)
 			if hit.is_empty():
 				_warn.once("notarget%d" % spell, "0x%08X found no actor at the crosshair" % spell)
 				return
-			_impact(hand, spell, info, hit["ref"], hit["point"])
+			_impact(caster, hand, spell, info, hit["ref"], hit["point"])
 		DELIVER_TARGET_LOCATION:
-			_impact(hand, spell, info, 0, _aim_point(eye, forward))
+			_impact(caster, hand, spell, info, 0, _aim_point(caster, eye, forward))
 		_:
 			_warn.once("delivery%d" % spell, "0x%08X has delivery %s: not implemented" % [spell, info.get("delivery")])
 
 
 ## Aimed: the PROJ's type decides.
-func _launch(hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vector3, pointer: Node3D, again: bool) -> void:
+func _launch(caster: int, hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vector3, right: Vector3,
+		again: bool) -> void:
 	var proj := _world.get_projectile(int(info.get("projectile", 0)))
 	if proj.is_empty():
 		_warn.once("noproj%d" % spell, "0x%08X is aimed but has no projectile: it lands at the crosshair" % spell)
-		var ray := _ray(eye, forward, AIM_DISTANCE)
-		_impact(hand, spell, info, ray["ref"], ray["point"])
+		var ray := _ray(caster, eye, forward, AIM_DISTANCE)
+		_impact(caster, hand, spell, info, ray["ref"], ray["point"])
 		return
 	var type := int(proj["type"])
 	var reach := float(proj["range"]) * SkydotWorld.unit_scale()
@@ -436,91 +467,95 @@ func _launch(hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vec
 	match type:
 		PROJ_BEAM:
 			_warn.once("beam%d" % type, "beam projectiles are a ray without a model (0x%08X)" % int(proj["id"]))
-			var ray := _ray(eye, forward, reach)
-			_impact(hand, spell, info, ray["ref"], ray["point"])
+			var ray := _ray(caster, eye, forward, reach)
+			_impact(caster, hand, spell, info, ray["ref"], ray["point"])
 		PROJ_CONE:
 			_warn.once("cone%d" % type, "cone projectiles are a cone test without a model (0x%08X)" % int(proj["id"]))
 			var angle: float = float(proj.get("cone_spread", 0.0))
-			var hit := _combat.find_in_cone(PLAYER_REF, eye, forward, reach, angle if angle > 1.0 else CONE_ANGLE_FALLBACK)
+			var hit := _combat.find_in_cone(caster, eye, forward, reach, angle if angle > 1.0 else CONE_ANGLE_FALLBACK)
 			var ahead := eye + forward * minf(reach, 3.0)
-			_impact(hand, spell, info, hit.get("ref", 0), hit.get("point", ahead))
+			_impact(caster, hand, spell, info, hit.get("ref", 0), hit.get("point", ahead))
 		PROJ_MISSILE, PROJ_LOBBER, PROJ_FLAME:
-			_shoot(hand, spell, info, proj, eye, forward, pointer, reach)
+			_shoot(caster, hand, spell, info, proj, eye, forward, right, reach)
 		_:
 			_warn.once("projtype%d" % type, "projectile type 0x%X (barrier, arrow...) is flown as a missile" % type)
-			_shoot(hand, spell, info, proj, eye, forward, pointer, reach)
+			_shoot(caster, hand, spell, info, proj, eye, forward, right, reach)
 
 
-func _shoot(hand: int, spell: int, info: Dictionary, proj: Dictionary, eye: Vector3, forward: Vector3,
-		pointer: Node3D, reach: float) -> void:
+func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictionary, eye: Vector3, forward: Vector3,
+		right: Vector3, reach: float) -> void:
 	if _projectiles == null:
 		return
-	var right := pointer.global_transform.basis.x
 	var side := -1.0 if hand == LEFT else (1.0 if hand == RIGHT else 0.0)
 	var origin := eye + forward * SHOT_AHEAD + right * SHOT_SIDE * side - Vector3.UP * SHOT_BELOW
 	var blocked := _host.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(eye, origin, MASK))
 	if not blocked.is_empty():
 		origin = eye  # the hand is inside a wall: the shot leaves from the eyes
-	var aim := _aim_point(eye, forward)
+	var aim := _aim_point(caster, eye, forward)
 	var direction := (aim - origin).normalized()
 	if direction.length() < 0.5:
 		direction = forward
 	var flame := int(proj["type"]) == PROJ_FLAME
 	_projectiles.shoot_spell(origin, direction, proj,
-		func(from: Vector3, to: Vector3) -> Dictionary: return _combat.segment_hit(PLAYER_REF, from, to),
-		func(ref: int, point: Vector3) -> void: _impact(hand, spell, info, ref, point),
+		func(from: Vector3, to: Vector3) -> Dictionary: return _combat.segment_hit(caster, from, to),
+		func(ref: int, point: Vector3) -> void: _impact(caster, hand, spell, info, ref, point),
 		reach, not flame)
 
 
 ## The first thing the crosshair's ray meets (an actor, else the world): {ref, point}; the point
 ## `distance` ahead when it meets nothing.
-func _ray(eye: Vector3, forward: Vector3, distance: float) -> Dictionary:
+func _ray(caster: int, eye: Vector3, forward: Vector3, distance: float) -> Dictionary:
 	var far := eye + forward * distance
 	var space := _host.get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(eye, far, MASK)
 	var hit := space.intersect_ray(query)
 	var end: Vector3 = hit["position"] if not hit.is_empty() else far
-	var body := _combat.segment_hit(PLAYER_REF, eye, end)
+	var body := _combat.segment_hit(caster, eye, end)
 	if not body.is_empty():
 		return {"ref": body["ref"], "point": body["point"]}
 	return {"ref": 0, "point": end}
 
 
 ## Where the crosshair points: the world, else a long way ahead.
-func _aim_point(eye: Vector3, forward: Vector3) -> Vector3:
-	return _ray(eye, forward, AIM_DISTANCE)["point"]
+func _aim_point(caster: int, eye: Vector3, forward: Vector3) -> Vector3:
+	return _ray(caster, eye, forward, AIM_DISTANCE)["point"]
 
 
 ## The spell arrived at `point`, having entered the actor `ref` (0: the world, or nothing).
-func _impact(hand: int, spell: int, info: Dictionary, ref: int, point: Vector3) -> void:
+func _impact(caster: int, hand: int, spell: int, info: Dictionary, ref: int, point: Vector3) -> void:
 	var area := float(info.get("area_units", 0.0)) * SkydotWorld.unit_scale()
 	var targets: Array[int] = []
 	if ref != 0:
 		targets.append(ref)
 	if area > 0.0:
-		for body in _combat.actors_within(PLAYER_REF, point, area):
+		for body in _combat.actors_within(caster, point, area):
 			if not targets.has(body["ref"]):
 				targets.append(body["ref"])
+	if targets.is_empty() and int(info.get("delivery", 0)) == DELIVER_TARGET_LOCATION:
+		targets.append(caster)  # no actor to land on: a conjuration's summon appears next to its caster
 	for i in targets.size():
-		_land(hand, spell, info, targets[i], point, i == 0)
+		_land(caster, hand, spell, info, targets[i], point, i == 0)
 	_show_impact(info, point)
 
 
 ## Land the effects on `target` (PLAYER_REF: the caster). `consume`: a scroll is read and used up
 ## by this landing (the first of an area's), else only landed.
-func _land(hand: int, spell: int, info: Dictionary, target: int, point: Vector3, consume := true) -> void:
+func _land(caster: int, hand: int, spell: int, info: Dictionary, target: int, point: Vector3, consume := true) -> void:
 	var result: Dictionary
-	var at := 0 if target == PLAYER_REF else target
-	if consume and bool(info.get("is_scroll", false)):
-		result = _papyrus.cast_scroll(PLAYER_REF, spell, at)
+	var at := 0 if target == caster else target
+	if caster == PLAYER_REF and consume and bool(info.get("is_scroll", false)):
+		result = _papyrus.cast_scroll(caster, spell, at)
 		if result["ok"]:
 			scroll_used.emit(spell)
 	else:
-		result = _papyrus.land_spell(PLAYER_REF, spell, at)
+		result = _papyrus.land_spell(caster, spell, at)
 	if not result["ok"]:
 		_warn.once("landfail%d_%s" % [spell, result["reason"]], "0x%08X does not land: %s" % [spell, result["reason"]])
 		return
-	spell_landed.emit(hand, spell, target, point, bool(info.get("hostile", false)))
+	if caster == PLAYER_REF:
+		spell_landed.emit(hand, spell, target, point, bool(info.get("hostile", false)))
+	else:
+		npc_spell_landed.emit(caster, spell, target, point, bool(info.get("hostile", false)))
 
 
 # ---- effects of the spell in the scene

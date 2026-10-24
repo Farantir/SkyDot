@@ -114,6 +114,9 @@ func _captures() -> void:
     expect(spells.cast_at == 0x3B9F7 and spells.cast_at_hand == 0, "--cast-at names the actor and the hand")
     var plain := parse(["--pack", "p", "--cell", "C", "--cast-at", "0x3B9F7"])
     expect(plain.cast_at_hand == 1 and plain.equip_spell.is_empty(), "--cast-at casts with the right hand by default")
+    var spawned := parse(["--pack", "p", "--cell", "C", "--spawn", "0x39D37,0x39D49,123"])
+    expect(spawned.spawn == [0x39D37, 0x39D49, 123], "--spawn lists NPC_ and LVLN forms: %s" % [spawned.spawn])
+    expect(parse(["--pack", "p", "--cell", "C"]).spawn.is_empty(), "--spawn is empty by default")
     var last := parse(["--pack", "p", "--world", "W", "--large-refs", "off", "--large-ref-radius", "7", "--no-input"])
     expect(not last.large_refs and last.large_ref_radius == 7 and not last.interactive, "--no-input last")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,
