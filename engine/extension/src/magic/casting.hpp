@@ -45,6 +45,9 @@ struct CastInfo {
     std::uint32_t hit_art = 0;
     std::uint32_t casting_light = 0;
     bool hostile = false;
+    bool recover = false;           ///< The costliest effect restores (MGEF flag Recover: Restore Health).
+    std::uint32_t archetype = 0;    ///< Of the costliest effect (archetype::).
+    int actor_value = -1;           ///< Its actor value, -1 if none.
     int school = -1; ///< The actor value of the magic skill, -1 if none.
 };
 

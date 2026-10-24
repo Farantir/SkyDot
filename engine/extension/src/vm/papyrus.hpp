@@ -209,7 +209,8 @@ public:
     /// 1 touch, 2 aimed, 3 target actor, 4 target location; a scroll's is its effect's), charge_time,
     /// cast_duration, range, effects (count), and of the costliest effect: mgef, magnitude, duration,
     /// area_feet, area_units, projectile, explosion, casting_art, hit_art, casting_light (form ids, 0
-    /// if none), hostile, school (actor value of the magic skill, -1 if none)}.
+    /// if none), hostile, recover (it restores), archetype, actor_value (of the effect, -1 if none),
+    /// school (actor value of the magic skill, -1 if none)}.
     godot::Dictionary cast_info(std::int64_t form);
     /// The caster reads a scroll it carries: its effects land on `target` (0: the caster) without
     /// magicka, one scroll is used up, the hands holding it are emptied when the last is gone.

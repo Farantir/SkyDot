@@ -88,6 +88,9 @@ CastInfo cast_info(const wfb::World& world, std::uint32_t form, const MagicSetti
         out.hit_art = m->hit_effect_art();
         out.casting_light = m->casting_light();
         out.hostile = (m->flags() & mgef_flag::hostile) != 0;
+        out.recover = (m->flags() & mgef_flag::recover) != 0;
+        out.archetype = m->archetype();
+        out.actor_value = m->actor_value();
         out.school = m->magic_skill();
         if (scroll != nullptr) {
             out.delivery = m->delivery(); // a scroll is cast the way its effect is delivered

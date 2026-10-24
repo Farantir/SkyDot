@@ -722,6 +722,9 @@ Dictionary SkydotPapyrus::cast_info(std::int64_t form_in) {
     out["hit_art"] = id(info.hit_art);
     out["casting_light"] = id(info.casting_light);
     out["hostile"] = info.hostile;
+    out["recover"] = info.recover;
+    out["archetype"] = static_cast<std::int64_t>(info.archetype);
+    out["actor_value"] = info.actor_value;
     out["school"] = info.school;
     return out;
 }

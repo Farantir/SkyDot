@@ -40,6 +40,8 @@ set(SKYDOT_CORE_SOURCES
     src/actors/behavior_machine.hpp
     src/ai/combat_rules.cpp
     src/ai/combat_rules.hpp
+    src/ai/magic_choice.cpp
+    src/ai/magic_choice.hpp
     src/ai/packages.cpp
     src/ai/packages.hpp
     src/conditions/conditions.cpp
