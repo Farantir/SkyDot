@@ -108,6 +108,12 @@ func _captures() -> void:
     expect(magic.drink == [0x3EADE, 0x3EAF4], "--drink lists forms")
     expect(magic.cast.size() == 2 and magic.cast[0] == {"spell": 0x12FCD, "target": 0x39FE4}
         and magic.cast[1] == {"spell": 0x12FCC, "target": 0}, "--cast lists spell and target, 0 for self")
+    var spells := parse(["--pack", "p", "--cell", "C", "--equip-spell", "0x12FCD,left,0x12FD0,0x1234,power", "--cast-at", "0x3B9F7,left"])
+    expect(spells.equip_spell == [{"form": 0x12FCD, "hand": 0}, {"form": 0x12FD0, "hand": 1}, {"form": 0x1234, "hand": 2}],
+        "--equip-spell lists forms, each with its hand (right by default): %s" % [spells.equip_spell])
+    expect(spells.cast_at == 0x3B9F7 and spells.cast_at_hand == 0, "--cast-at names the actor and the hand")
+    var plain := parse(["--pack", "p", "--cell", "C", "--cast-at", "0x3B9F7"])
+    expect(plain.cast_at_hand == 1 and plain.equip_spell.is_empty(), "--cast-at casts with the right hand by default")
     var last := parse(["--pack", "p", "--world", "W", "--large-refs", "off", "--large-ref-radius", "7", "--no-input"])
     expect(not last.large_refs and last.large_ref_radius == 7 and not last.interactive, "--no-input last")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,

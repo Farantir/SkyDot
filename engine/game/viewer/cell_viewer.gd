@@ -129,6 +129,12 @@
 # in an actor's inventory and --strip-melee 0xREF[,...] takes its melee weapons away (an archer);
 # --npc-draw 0xREF[,...] makes those actors draw their weapons (combat stance, equip clip,
 # the weapon model on the WEAPON bone: game/combat.gd npc_draw).
+# Magic (game/magic.gd): a spell or scroll in a hand is readied with R and cast with that hand's
+# attack button (left mouse the right hand, right mouse the left hand, the triggers on a gamepad);
+# Z (gamepad RB) casts the power. --equip-spell 0xFORM[,left|right|power][,0xFORM...] teaches the
+# spell if unknown and puts it in a hand (right by default); --cast-at 0xREF[,left|right] readies the
+# hands, faces that actor and casts the hand's spell at it (holding a concentration spell until it
+# is dead), for shots and tests: `--equip-spell 0x12FCD --cast-at 0x3B9F7 --screenshot out.png`.
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
 # physics time per frame, draw calls, primitives, objects). It is in
@@ -176,6 +182,7 @@ var _shots: ShotRecorder
 var _body: FirstPersonBody  # the player's arms and weapon
 var _fight_pending: Array[int] = []  # --fight: the actors still to start (not built yet)
 var _attack_at := 0  # --attack-at: the actor still to attack
+var _cast_at: CastAt  # --cast-at: the cast still to make
 var _benchmark := BenchmarkRun.new()
 var _quit_in := -1  # frames until quitting after --activate
 
@@ -245,6 +252,7 @@ func _create_components() -> void:
 	_controls.invert_look_y = _settings.invert_look_y
 	_controls.command.connect(_on_command)
 	_controls.attack_changed.connect(_on_attack_changed)
+	_controls.attack_left_changed.connect(_on_attack_left_changed)
 	add_child(_controls)
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
@@ -337,7 +345,7 @@ func _start_game() -> void:
 			_shots.begin_run(settings.screenshot, yaws)
 
 
-## --equip, --ready-weapon, --attack-at and --kill, once the player has what --give gave.
+## --equip, --equip-spell, --ready-weapon, --attack-at, --cast-at and --kill, once the player has what --give gave.
 func _apply_combat_options() -> void:
 	for form in _settings.equip:
 		if not _session.equip(form):
@@ -352,6 +360,13 @@ func _apply_combat_options() -> void:
 		var result := _session.cast_spell(entry["spell"], entry["target"])
 		print("--cast: 0x%08X %s %s" % [entry["spell"], "cast" if result["ok"] else "refused", result["reason"]])
 	_attack_at = _settings.attack_at
+	for entry: Dictionary in _settings.equip_spell:
+		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry["form"]):
+			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry["form"])
+		print("--equip-spell: 0x%08X in hand %d: %s" % [entry["form"], entry["hand"],
+			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
+	if _settings.cast_at != 0:
+		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
 	for ref in _settings.kill:
 		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
 	for entry: Dictionary in _settings.npc_give:
@@ -383,11 +398,23 @@ func _attack_at_step() -> void:
 		_attack_at = 0
 
 
+func _cast_at_step() -> void:
+	if _cast_at != null:
+		_cast_at.step()
+
+
 func _on_attack_changed(pressed: bool) -> void:
 	if pressed:
 		_session.attack_pressed()
 	else:
 		_session.attack_released()
+
+
+func _on_attack_left_changed(pressed: bool) -> void:
+	if pressed:
+		_session.attack_left_pressed()
+	else:
+		_session.attack_left_released()
 
 
 ## --fight: start the fights of actors that are built now (an exterior streams them in).
@@ -415,6 +442,7 @@ func _process(delta: float) -> void:
 		_session.update_combat(delta)
 		_session.update_fights(delta, _rig.player.global_position)
 		_attack_at_step()
+		_cast_at_step()
 		_body.follow()
 		_shots.step(delta)
 		return
@@ -422,6 +450,7 @@ func _process(delta: float) -> void:
 	_rig.track()
 	_rig.follow()
 	_attack_at_step()
+	_cast_at_step()
 	_body.follow()
 	_session.step(delta, _rig.player.global_position, _benchmark.is_running())
 	_debug.age(delta)
@@ -466,6 +495,10 @@ func _on_command(action: StringName, shift: bool) -> void:
 				_items.open_inventory()
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
+		PlayerInput.POWER:
+			var cast := _session.cast_power()
+			if not cast["ok"]:
+				_debug.note("power: " + String(cast["reason"]))
 		PlayerInput.CHANGE_TIME:
 			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
 			if not time_text.is_empty():

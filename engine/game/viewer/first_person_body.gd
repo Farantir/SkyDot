@@ -11,7 +11,11 @@
 # ARMA's MOD4/MOD5); the weapon model (WEAP `first_person_model` if it has
 # one) on the `Weapon` bone. The `Camera1st [Cam1]` bone is put at the camera
 # (position only: the clips animate the arms relative to it) and the body
-# turns with the camera, so it follows the pitch. Drawn as at ARMS_FOV whatever
+# turns with the camera, so it follows the pitch. The casting art of a readied hand's
+# spell (Magic.hand_art_changed) is built on that hand's magic node
+# (`NPC L MagicNode [LMag]`, `NPC R MagicNode [RMag]`), and Magic's clips (hands
+# readied, charging, released) play over Combat's until it gives the arms back.
+# Drawn as at ARMS_FOV whatever
 # the camera's field of view (a view-space scale). It plays the clips Combat
 # names (equip, idle, attacks) and is hidden while the weapon is sheathed, as
 # in Skyrim's first person.
@@ -27,6 +31,7 @@ const CLIPS := "meshes/actors/character/_1stperson/animations/"
 const UNITS_NODE := "bethconv_z_up_to_y_up"
 const CAMERA_BONE := "Camera1st [Cam1]"
 const WEAPON_BONE := "Weapon"
+const MAGIC_BONES := {Magic.LEFT: "NPC L MagicNode [LMag]", Magic.RIGHT: "NPC R MagicNode [RMag]"}
 const PLAYER_NPC := 7
 const PLAYER_REF := 0x14
 ## Seconds a clip blends into the previous pose.
@@ -54,6 +59,10 @@ var _cam_bone := -1
 var _weapon_bone := -1
 var _weapon_node: Node3D
 var _shown := false
+var _weapon_shown := false  # the weapon is out (Combat)
+var _magic_shown := false  # the hands are readied (Magic)
+var _left_hand: Node3D  # hand mode: the left controller, which carries the left hand's art
+var _art_nodes := {}  # Magic.LEFT / RIGHT -> the casting art model's holder
 var _last_tip := Vector3.ZERO
 var _has_tip := false
 var _warned := {}
@@ -62,19 +71,24 @@ var _built := false
 
 ## `camera` is what the body hangs in front of (flat mode); `hand`, if given,
 ## is the controller that holds the weapon (hand mode, no arms).
-func _init(session: GameSession, camera: Node3D, hand: Node3D = null) -> void:
+func _init(session: GameSession, camera: Node3D, hand: Node3D = null, left_hand: Node3D = null) -> void:
 	_session = session
 	_camera = camera
 	_hand = hand
+	_left_hand = left_hand
 	name = "FirstPersonBody"
 	visible = false
 	_session.weapon_state_changed.connect(_on_state)
 	_session.attack_started.connect(_on_attack)
 	_session.items_changed.connect(rebuild)
+	_session.magic.ready_changed.connect(_on_magic_ready)
+	_session.magic.hand_clip.connect(_on_magic_clip)
+	_session.magic.hand_art_changed.connect(_on_art)
 
 
 func _ready() -> void:
 	_apply_state(_session.weapon_state(), _session.combat.idle_clip())
+	_magic_shown = _session.magic.is_ready()
 
 
 ## Build the skeleton, the parts and the weapon again (the equipment changed).
@@ -92,6 +106,7 @@ func _build() -> void:
 		child.free()
 	if _weapon_node != null and _hand != null:
 		_weapon_node.free()
+	_art_nodes.clear()
 	_skeleton = null
 	_player = null
 	_units = null
@@ -105,6 +120,9 @@ func _build() -> void:
 	if _player != null:
 		_player.add_animation_library("", _library)
 	_apply_state(_session.weapon_state(), _session.combat.idle_clip())
+	var art: Dictionary = _session.magic.hand_art()
+	for hand: int in art:
+		_on_art(hand, art[hand])
 
 
 ## Every frame, after the camera moved: put the body so the camera bone is at
@@ -232,7 +250,7 @@ func _build_weapon() -> void:
 		_weapon_node.name = "Weapon"
 		_weapon_node.add_child(model)
 		_hand.add_child(_weapon_node)
-		_weapon_node.visible = _shown
+		_weapon_node.visible = _weapon_shown
 		return
 	if _skeleton == null or _weapon_bone < 0:
 		model.free()
@@ -271,18 +289,87 @@ func _on_attack(clip: String, _power: bool) -> void:
 
 
 func _apply_state(state: int, clip: String) -> void:
-	_shown = state != Combat.State.SHEATHED
+	_weapon_shown = state != Combat.State.SHEATHED
+	_show()
+	if clip.is_empty():
+		# Nothing of Combat's to show: the readied hands' idle, else rest.
+		var idle := _session.magic.idle_clip()
+		if idle != "" and _built:
+			_play(idle, true, 1.0)
+		elif _player != null:
+			_player.stop()
+		return
+	_play(clip, state == Combat.State.DRAWN, 1.0)
+
+
+## Weapon or readied hands out: the arms show (and are built on the first time).
+func _show() -> void:
+	_shown = _weapon_shown or _magic_shown
 	if _shown and not _built:
 		_build()
 	if _hand == null:
 		visible = _shown
 	elif _weapon_node != null:
-		_weapon_node.visible = _shown
+		_weapon_node.visible = _weapon_shown
+
+
+func _on_magic_ready(is_ready: bool) -> void:
+	_magic_shown = is_ready
+	_show()
+
+
+## Magic's clip for the arms; "" gives them back to Combat (its idle, or the hands' idle).
+func _on_magic_clip(clip: String, loops: bool, speed: float) -> void:
+	if not _built:
+		return
 	if clip.is_empty():
-		if _player != null:
+		_apply_state(_session.weapon_state(), _session.combat.idle_clip())
+		if _session.weapon_state() == Combat.State.SHEATHED and not _magic_shown and _player != null:
 			_player.stop()
 		return
-	_play(clip, state == Combat.State.DRAWN, 1.0)
+	_play(clip, loops, speed)
+
+
+## The casting art of the spell in `hand` (Magic.LEFT, RIGHT) on its magic node; "" takes it off.
+func _on_art(hand: int, model_path: String) -> void:
+	if _art_nodes.has(hand):
+		var old: Node = _art_nodes[hand]
+		if is_instance_valid(old):
+			old.get_parent().remove_child(old)
+			old.free()
+		_art_nodes.erase(hand)
+	if model_path.is_empty() or not _built:
+		return  # built with the arms (rebuild asks Magic again)
+	var model := _session.world.build_model(model_path)
+	if model == null:
+		_warn_once("art" + model_path, "first person: cannot build the casting art %s" % model_path)
+		return
+	_set_shadows_off(model)
+	if _hand != null:
+		var controller := _hand if hand == Magic.RIGHT else _left_hand
+		if controller == null:
+			model.free()
+			return
+		var holder := Node3D.new()
+		holder.name = "CastingArt"
+		holder.add_child(model)
+		controller.add_child(holder)
+		_art_nodes[hand] = holder
+		return
+	var bone: String = MAGIC_BONES[hand]
+	if _skeleton == null or _skeleton.find_bone(bone) < 0:
+		_warn_once("artbone" + bone, "first person: the skeleton has no %s bone for the casting art" % bone)
+		model.free()
+		return
+	var attachment := BoneAttachment3D.new()
+	attachment.name = "CastingArt%d" % hand
+	attachment.bone_name = bone
+	_skeleton.add_child(attachment)
+	var holder := Node3D.new()
+	holder.transform = _units_transform().affine_inverse()
+	attachment.add_child(holder)
+	holder.add_child(model)
+	_art_nodes[hand] = attachment
 
 
 ## Play first-person clip `clip` (a name without path or extension); a loop for

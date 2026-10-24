@@ -149,6 +149,46 @@ func shoot(ammo: int, origin: Vector3, direction: Vector3, proj: Dictionary, amm
 	})
 
 
+## A spell's shot from `origin` along `direction`, made of the PROJ `proj` (SkydotWorld.get_projectile):
+## its model, speed, gravity and range (`range_metres` > 0 shortens it). `actor_test` (from, to) ->
+## {ref, point} or {} says whether the step enters an actor's body, as for `shoot`. At the impact
+## `on_impact(ref, point)` is called once, `ref` 0 when the shot met the world, and the shot is gone.
+## A shot that flies its range without meeting anything is gone silently. `flash`: also puff the
+## PROJ's muzzle flash (flames do not, they leave ten times a second).
+func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_test: Callable,
+		on_impact: Callable, range_metres := 0.0, flash := true) -> void:
+	var model: Node3D = _world.build_model(proj["model"]) if proj["model"] != "" else null
+	if model == null:
+		_warn.once("nospellmodel%d" % int(proj["id"]), "spell projectile 0x%08X has no model" % int(proj["id"]))
+		model = _fallback_dart()
+	for animator in model.find_children("*", "SkydotAnimator", true, false):
+		animator.start_controllers()
+	_cold_start(model)
+	add_child(model)
+	model.global_transform = Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
+	while _live.size() >= MAX_LIVE:
+		_remove(0)
+	var reach := float(proj["range"]) * SkydotWorld.unit_scale()
+	if range_metres > 0.0:
+		reach = minf(reach, range_metres) if reach > 0.0 else range_metres
+	_live.append({
+		"node": model,
+		"pickable": false,
+		"velocity": direction * float(proj["speed"]) * SkydotWorld.unit_scale(),
+		"gravity": GRAVITY * float(proj["gravity"]),
+		"age": 0.0,
+		"travelled": 0.0,
+		"range": reach,
+		"stuck": false,
+		"exclude": _bodies(model),  # a spray model brings colliders of its own
+		"actor_test": actor_test,
+		"on_hit": on_impact,
+		"on_world": on_impact,
+	})
+	if flash:
+		_muzzle_flash(proj, origin, direction)
+
+
 func _physics_process(delta: float) -> void:
 	var space := get_world_3d().direct_space_state
 	var i := 0
@@ -186,6 +226,8 @@ func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) 
 		shot["stuck"] = true
 		if not shot["pickable"]:
 			_vanish(shot)
+		if shot.has("on_world"):
+			shot["on_world"].call(0, hit["position"])
 		return
 	shot["travelled"] += from.distance_to(to)
 	node.global_transform = Transform3D(Basis.looking_at(velocity.normalized(), Vector3.UP), to)

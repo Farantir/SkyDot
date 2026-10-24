@@ -163,6 +163,8 @@ func _left_button(input_name: String, pressed: bool) -> void:
 	match input_name:
 		"primary_click":
 			_action(PlayerInput.SPRINT, pressed)
+		"trigger_click":
+			_action(PlayerInput.ATTACK_LEFT, pressed)
 		"menu_button":
 			if pressed:
 				inventory_requested.emit()
@@ -177,3 +179,5 @@ func _right_button(input_name: String, pressed: bool) -> void:
 			_action(&"ui_accept", pressed)
 		"by_button":
 			_action(&"ui_cancel", pressed)
+		"grip_click":
+			_action(PlayerInput.POWER, pressed)

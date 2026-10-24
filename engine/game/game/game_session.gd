@@ -93,6 +93,8 @@ signal weapon_state_changed(state: int, clip: String)
 signal attack_started(clip: String, power: bool)
 ## A hit landed: the target, apply_hit's result and the point (Combat.hit_landed).
 signal hit_landed(target: int, result: Dictionary, point: Vector3)
+## A spell's effects landed on `target` (Magic.spell_landed).
+signal spell_landed(hand: int, spell: int, target: int, point: Vector3, hostile: bool)
 
 ## Item categories `use_item` takes effect of.
 const USABLE: Array[String] = ["potion", "food", "ingredient"]
@@ -152,6 +154,8 @@ var _scene_lines := {}  # "scene:action" -> lines left
 ## The player's weapon, attacks and hit tests, and actors' attacks.
 var _start := {}  # the first place entered: where a death with no save starts again
 var combat: Combat
+## The player's spells, scrolls and powers in the hands.
+var magic: Magic
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
 ## What scripts place, fire and play.
@@ -280,6 +284,15 @@ func _make_game_nodes() -> void:
 		combat.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
 			ai.on_hit(int(result.get("attacker", 0)), target))
 	items_changed.connect(combat.on_items_changed)
+	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer)
+	items_changed.connect(magic.on_items_changed)
+	magic.spell_landed.connect(spell_landed.emit)
+	magic.scroll_used.connect(func(_spell: int) -> void: items_changed.emit())
+	if ai != null:
+		# A hostile spell that lands on an actor raises the alarm, as a weapon's hit does.
+		magic.spell_landed.connect(func(_hand: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
+			if hostile and target != SkydotPapyrus.PLAYER_REF:
+				ai.on_hit(SkydotPapyrus.PLAYER_REF, target))
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
@@ -533,6 +546,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	update_scenes(delta)
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	combat.step(delta)
+	magic.step(delta)
 	corpses.step(delta)
 	_drain_sprint(delta)
 	if ai != null:
@@ -579,21 +593,62 @@ func is_fading() -> bool:
 
 # ---- combat
 
-## Draw the player's weapon, or sheathe it (R, gamepad X).
+## Draw the player's weapon, or sheathe it (R, gamepad X). Hands that hold spells or scrolls
+## are readied with it: alone when the right hand holds no weapon, else in step with the weapon.
 func toggle_weapon() -> void:
-	if not papyrus.is_player_dead():
+	if papyrus.is_player_dead():
+		return
+	if magic.hands_with_spells().is_empty():
 		combat.toggle_weapon()
+		magic.set_ready(false, true)
+	elif combat.player_weapon() != 0:
+		combat.toggle_weapon()
+		var drawn := combat.weapon_state() == Combat.State.DRAWING or combat.weapon_state() == Combat.State.DRAWN
+		magic.set_ready(drawn, true)
+	else:
+		magic.toggle_ready()
 
 
 ## The attack button went down or up: a short press is a light attack, a long
-## one a power attack (Combat.attack_pressed).
+## one a power attack (Combat.attack_pressed). A spell in the right hand is cast instead.
 func attack_pressed() -> void:
-	if not papyrus.is_player_dead():
+	if papyrus.is_player_dead():
+		return
+	if magic.spell_in(Magic.RIGHT) != 0:
+		magic.hand_pressed(Magic.RIGHT)
+	elif combat.weapon_state() == Combat.State.SHEATHED and not magic.hands_with_spells().is_empty():
+		toggle_weapon()
+	else:
 		combat.attack_pressed()
 
 
 func attack_released() -> void:
+	magic.hand_released(Magic.RIGHT)
 	combat.attack_released()
+
+
+## The left hand's attack button (right mouse, left trigger) went down or up: a spell in
+## the left hand is cast (it is reserved for blocking otherwise).
+func attack_left_pressed() -> void:
+	if not papyrus.is_player_dead() and magic.spell_in(Magic.LEFT) != 0:
+		magic.hand_pressed(Magic.LEFT)
+
+
+func attack_left_released() -> void:
+	magic.hand_released(Magic.LEFT)
+
+
+## The power key: cast the power in the power slot (Magic.cast_power). {ok, reason}.
+func cast_power() -> Dictionary:
+	return {"ok": false, "reason": "dead"} if papyrus.is_player_dead() else magic.cast_power()
+
+
+## Put `spell` (a known spell or a carried scroll) in `hand` (Magic.LEFT, RIGHT, POWER).
+func equip_spell(spell: int, hand: int) -> bool:
+	var done := papyrus.equip_spell(SkydotPapyrus.PLAYER_REF, spell, hand)
+	if done:
+		items_changed.emit()
+	return done
 
 
 ## Attack now: power or light (Combat.attack).
@@ -644,6 +699,7 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 ## (shots).
 func update_combat(delta: float) -> void:
 	combat.step(delta)
+	magic.step(delta)
 	corpses.step(delta)
 
 
@@ -899,6 +955,7 @@ func load_game(path: String) -> bool:
 	var done := saves.load_game(path)
 	if done:
 		combat.on_items_changed()
+		magic.on_items_changed()
 	return done
 
 

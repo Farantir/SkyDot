@@ -47,6 +47,7 @@ var _container_panel: VrPanel
 var _crafting_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
+var _cast_at: CastAt  # --cast-at: the cast still to make
 var _quit_in := -1  # frames until quitting after --activate
 
 
@@ -120,12 +121,13 @@ func _create_components() -> void:
 	_controls.invert_look_y = _settings.invert_look_y
 	_controls.command.connect(_on_command)
 	_controls.attack_changed.connect(_on_attack_changed)
+	_controls.attack_left_changed.connect(_on_attack_left_changed)
 	add_child(_controls)
 	# Minimal combat (ADR 0006): the weapon model in the right controller; a
 	# swing faster than FirstPersonBody.SWING_SPEED is the attack. Only the
 	# desktop fallback has been run (the controller stands still there: the
 	# mouse button attacks as in the viewer).
-	_body = FirstPersonBody.new(_session, null, _rig.right)
+	_body = FirstPersonBody.new(_session, null, _rig.right, _rig.left)
 	add_child(_body)
 	if _settings.hud:
 		var hud := HudView.new(_session, _key_label)
@@ -307,6 +309,12 @@ func _start_game() -> void:
 		_inventory.open()
 	for form in settings.equip:
 		_session.equip(form)
+	for entry: Dictionary in settings.equip_spell:
+		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry["form"]):
+			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry["form"])
+		_session.equip_spell(entry["form"], entry["hand"])
+	if settings.cast_at != 0:
+		_cast_at = CastAt.new(_session, _rig, settings.cast_at, settings.cast_at_hand)
 	for form in settings.drink:
 		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
 			_session.give([Vector2i(form, 1)])
@@ -331,6 +339,8 @@ func _process(delta: float) -> void:
 	_rig.track()
 	_rig.follow()
 	_body.update_hand(delta)
+	if _cast_at != null:
+		_cast_at.step()
 	if _death_fade != null and _death_fade.visible:
 		((_death_fade.mesh as QuadMesh).material as StandardMaterial3D).albedo_color = Color(0, 0, 0, _death.fade)
 	_session.step(delta, _rig.player.global_position)
@@ -364,6 +374,10 @@ func _on_command(action: StringName, shift: bool) -> void:
 			_session.activate_in_view(shift)
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
+		PlayerInput.POWER:
+			var cast := _session.cast_power()
+			if not cast["ok"]:
+				print("note: power: ", cast["reason"])
 		PlayerInput.QUICK_SAVE:
 			_session.save_game(SaveService.QUICKSAVE)
 		PlayerInput.QUICK_LOAD:
@@ -377,6 +391,13 @@ func _on_attack_changed(pressed: bool) -> void:
 		_session.attack_pressed()
 	else:
 		_session.attack_released()
+
+
+func _on_attack_left_changed(pressed: bool) -> void:
+	if pressed:
+		_session.attack_left_pressed()
+	else:
+		_session.attack_left_released()
 
 
 func _fail(message: String) -> void:

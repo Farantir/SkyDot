@@ -112,6 +112,9 @@ var npc_give: Array[Dictionary] = []  # --npc-give 0xREF:0xFORM[xN],...: {ref, f
 var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
+var equip_spell: Array[Dictionary] = []  # --equip-spell 0xFORM[,left|right|power]: {form, hand} (Magic.RIGHT by default)
+var cast_at := 0  # --cast-at 0xREF[,left|right]: ready the hands, face that actor, cast the hand's spell at it
+var cast_at_hand := 1
 var drink: Array[int] = []  # --drink 0xFORM[,...]: the player uses those items (added first if not carried)
 var cast: Array[Dictionary] = []  # --cast 0xSPELL[@0xREF][,...]: {spell, target}, the player casts (0: on itself)
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
@@ -248,6 +251,15 @@ func _read(args: Dictionary) -> void:
 		npc_draw.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("equip", "").split(",", false):
 		equip.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in str(args.get("equip-spell", "")).split(",", false):
+		if entry in ["left", "right", "power"] and not equip_spell.is_empty():
+			equip_spell[-1]["hand"] = _hand_of(entry)  # the hand of the form before it
+		else:
+			equip_spell.append({"form": entry.hex_to_int() if entry.begins_with("0x") else entry.to_int(), "hand": 1})
+	if args.has("cast-at"):
+		var cast_parts: PackedStringArray = String(args["cast-at"]).split(",")
+		cast_at = cast_parts[0].hex_to_int() if cast_parts[0].begins_with("0x") else cast_parts[0].to_int()
+		cast_at_hand = _hand_of(cast_parts[1]) if cast_parts.size() > 1 else 1
 	for entry: String in args.get("drink", "").split(",", false):
 		drink.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("cast", "").split(",", false):
@@ -417,3 +429,13 @@ static func _arguments_from_shot(path: String) -> Dictionary:
 	if not str(shot.get("note", "")).is_empty():
 		out["note"] = shot["note"]
 	return out
+
+
+## --equip-spell and --cast-at: "left" is 0, "right" 1, "power" 2 (Magic.LEFT, RIGHT, POWER).
+static func _hand_of(text: String) -> int:
+	match text.to_lower():
+		"left":
+			return 0
+		"power":
+			return 2
+	return 1

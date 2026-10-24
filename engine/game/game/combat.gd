@@ -739,8 +739,17 @@ func _npc_strike(data: Dictionary) -> void:
 ## over a nearer one when it is a candidate too.
 func _find_target(attacker: int, origin: Vector3, forward: Vector3, weapon: Dictionary, race: Dictionary,
 		event: String, power: bool, prefer := 0) -> Dictionary:
-	var reach := _reach_metres(weapon, race)
-	var half_angle := deg_to_rad(_strike_angle(race, event, power))
+	return find_in_cone(attacker, origin, forward, _reach_metres(weapon, race),
+		_strike_angle(race, event, power), prefer)
+
+
+## The nearest living actor but `attacker` whose body is within `reach` metres of `origin`
+## (the body's radius not counted), inside `half_angle` degrees of `forward` and in line of
+## sight: {ref, point} or {}. `prefer` (an actor ref, 0 for none) wins over a nearer one when
+## it is a candidate too. Weapons, touch spells and aimed-at-actor spells share it.
+func find_in_cone(attacker: int, origin: Vector3, forward: Vector3, reach: float, half_angle_degrees: float,
+		prefer := 0) -> Dictionary:
+	var half_angle := deg_to_rad(half_angle_degrees)
 	var space := _host.get_world_3d().direct_space_state
 	var best := {}
 	var best_distance := INF
@@ -762,6 +771,20 @@ func _find_target(attacker: int, origin: Vector3, forward: Vector3, weapon: Dict
 			best_distance = distance
 			best = {"ref": candidate["ref"], "point": _body_point(candidate)}
 	return best
+
+
+## The living actors but `attacker` whose body is within `radius` metres of `point`
+## (an area effect's reach): [{ref, point}], nearest first.
+func actors_within(attacker: int, point: Vector3, radius: float) -> Array[Dictionary]:
+	var found: Array[Dictionary] = []
+	for candidate in _candidates(attacker):
+		var q := Geometry3D.get_closest_point_to_segment(point, candidate["feet"],
+			(candidate["feet"] as Vector3) + Vector3.UP * float(candidate["height"]))
+		var distance := point.distance_to(q) - float(candidate["radius"])
+		if distance <= radius:
+			found.append({"ref": candidate["ref"], "point": _body_point(candidate), "distance": distance})
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["distance"] < b["distance"])
+	return found
 
 
 ## Everything an attack by `attacker` can hit: the built, living actors but
@@ -813,6 +836,12 @@ static func _segment_distance(a: Vector3, b: Vector3, candidate: Dictionary) -> 
 func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, point: Vector3,
 		attacker_race: Dictionary, weapon_info: Dictionary, ammo := 0) -> Dictionary:
 	var result := _papyrus.apply_hit(attacker, target, weapon, extra, event, flags, ammo)
+	if attacker == PLAYER_REF:
+		# Spending an enchantment's charge or a poison moves the weapon to a new unit (ItemExtra):
+		# the next hit has to name that one.
+		var right: Dictionary = _papyrus.equipment(PLAYER_REF)
+		if int(right["right"]) == _weapon_form:
+			_weapon_extra = int(right["right_extra"])
 	if result.has("error"):
 		return result
 	_impact(weapon_info, attacker_race, target, point)
