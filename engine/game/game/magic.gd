@@ -49,6 +49,8 @@ const DELIVER_AIMED := 2
 const DELIVER_TARGET_ACTOR := 3
 const DELIVER_TARGET_LOCATION := 4
 const CAST_CONCENTRATION := 2
+## MGEF archetype of a summon creature effect.
+const ARCHETYPE_SUMMON := 18
 
 ## Seconds between two landings (and flame bolts) of a concentration spell.
 const TICK_SECONDS := 0.1
@@ -532,7 +534,10 @@ func _impact(caster: int, hand: int, spell: int, info: Dictionary, ref: int, poi
 			if not targets.has(body["ref"]):
 				targets.append(body["ref"])
 	if targets.is_empty() and int(info.get("delivery", 0)) == DELIVER_TARGET_LOCATION:
-		targets.append(caster)  # no actor to land on: a conjuration's summon appears next to its caster
+		if int(info.get("archetype", 0)) == ARCHETYPE_SUMMON:
+			targets.append(caster)  # no actor to land on: a conjuration's summon appears next to its caster
+		else:
+			_warn.once("nolocation%d" % spell, "0x%08X lands at a location with no actor in it: runes and hazards are not done" % spell)
 	for i in targets.size():
 		_land(caster, hand, spell, info, targets[i], point, i == 0)
 	_show_impact(info, point)

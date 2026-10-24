@@ -313,5 +313,17 @@ func _run(pack_dir: String) -> void:
 		var fights := await _until(func() -> bool: return ai.get_combat_state(familiar) == 1 and ai.get_combat_target(familiar) == PLAYER, 10.0)
 		expect(fights >= 0.0, "and it fights the player for mage C")
 
+	# A location spell that is no conjuration (a rune) landing where nobody stands does not hurt its caster.
+	var rune_info := _session.magic.info_of(FLAMES).duplicate()
+	rune_info["delivery"] = Magic.DELIVER_TARGET_LOCATION
+	var before := papyrus.get_actor_value(mage_c, "Health")
+	var effects_before := papyrus.active_effects(mage_c).size()
+	_landed.clear()
+	var node_c := _session.world.find_ref_node(mage_c) as Node3D
+	_session.magic.npc_deliver(mage_c, 1, FLAMES, rune_info, node_c.global_position + Vector3.UP * 1.6, Vector3.UP, Vector3.RIGHT, false, false)
+	await _frames(5)
+	expect(not _landed.any(func(l: Array) -> bool: return l[1] == FLAMES and l[2] == mage_c) and papyrus.get_actor_value(mage_c, "Health") >= before and papyrus.active_effects(mage_c).size() <= effects_before,
+		"a location spell that lands nowhere leaves its caster alone")
+
 	print("smoke_magic_npc: ", "FAIL" if failures > 0 else "OK")
 	quit(1 if failures > 0 else 0)
