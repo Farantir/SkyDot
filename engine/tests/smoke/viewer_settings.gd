@@ -104,6 +104,10 @@ func _captures() -> void:
     expect(feel.damage_actor.size() == 2 and feel.damage_actor[0] == {"ref": 0x14, "av": "Health", "amount": 40.0}
         and feel.damage_actor[1]["ref"] == 0x1000, "--damage-actor lists ref, value and amount")
     expect(not parse(["--pack", "p", "--cell", "C", "--damage-actor", "0x14:Health"]).error.is_empty(), "--damage-actor wants three parts")
+    var magic := parse(["--pack", "p", "--cell", "C", "--drink", "0x3EADE,0x3EAF4", "--cast", "0x12FCD@0x39FE4,0x12FCC"])
+    expect(magic.drink == [0x3EADE, 0x3EAF4], "--drink lists forms")
+    expect(magic.cast.size() == 2 and magic.cast[0] == {"spell": 0x12FCD, "target": 0x39FE4}
+        and magic.cast[1] == {"spell": 0x12FCC, "target": 0}, "--cast lists spell and target, 0 for self")
     var last := parse(["--pack", "p", "--world", "W", "--large-refs", "off", "--large-ref-radius", "7", "--no-input"])
     expect(not last.large_refs and last.large_ref_radius == 7 and not last.interactive, "--no-input last")
     expect(not parse(["--pack", "p", "--cell", "C", "--activate"]).has_activate,

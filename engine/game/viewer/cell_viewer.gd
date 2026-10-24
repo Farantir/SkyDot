@@ -107,6 +107,11 @@
 # activation prompt on in --screenshot and --benchmark runs, which leave them
 # out; --damage-actor 0xREF:ActorValue:AMOUNT[,...] damages those actor values
 # once at the start (ref 0x14 is the player), so a shot shows the bars.
+# --drink 0xFORM[,...] makes the player use those items (a potion, food, an ingredient; added
+# first if not carried) once the place is built; --cast 0xSPELL[@0xREF][,...] makes the player
+# cast those spells once, on the reference or, without one, on himself (the cost is paid, the
+# effects land, no projectile yet). The log tells: `magic: 0x14 casts 0x12FCC on 0x14 (cost N)`,
+# `magic: effect 0x1CEA4 on 0x14 start mag 10 dur 1`, `magic: effect ... end`.
 # A gamepad plays as Skyrim SE's Xbox layout (player_input.gd): the left stick
 # moves, the right stick looks (--stick-look-speed RAD_PER_S at full deflection,
 # default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start shows the
@@ -339,6 +344,13 @@ func _apply_combat_options() -> void:
 			print("--equip: 0x%08X cannot be equipped" % form)
 	if _settings.ready_weapon and _session.weapon_state() == Combat.State.SHEATHED:
 		_session.toggle_weapon()
+	for form in _settings.drink:
+		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
+			_session.give([Vector2i(form, 1)])
+		print("--drink: 0x%08X %s" % [form, "used" if _session.use_item(form) else "cannot be used"])
+	for entry: Dictionary in _settings.cast:
+		var result := _session.cast_spell(entry["spell"], entry["target"])
+		print("--cast: 0x%08X %s %s" % [entry["spell"], "cast" if result["ok"] else "refused", result["reason"]])
 	_attack_at = _settings.attack_at
 	for ref in _settings.kill:
 		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])

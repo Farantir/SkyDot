@@ -112,6 +112,8 @@ var npc_give: Array[Dictionary] = []  # --npc-give 0xREF:0xFORM[xN],...: {ref, f
 var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
+var drink: Array[int] = []  # --drink 0xFORM[,...]: the player uses those items (added first if not carried)
+var cast: Array[Dictionary] = []  # --cast 0xSPELL[@0xREF][,...]: {spell, target}, the player casts (0: on itself)
 var damage_actor: Array[Dictionary] = []  # --damage-actor 0xREF:AV:AMOUNT, applied once at the start
 var stick_look_speed := 3.0  # rad/s at full deflection of the right stick (pitch: 0.7 of it)
 var invert_look_y := false  # the right stick looks down when pushed up
@@ -246,6 +248,12 @@ func _read(args: Dictionary) -> void:
 		npc_draw.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	for entry: String in args.get("equip", "").split(",", false):
 		equip.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("drink", "").split(",", false):
+		drink.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in args.get("cast", "").split(",", false):
+		var halves: PackedStringArray = entry.split("@")
+		cast.append({"spell": halves[0].hex_to_int() if halves[0].begins_with("0x") else halves[0].to_int(),
+			"target": 0 if halves.size() < 2 else (halves[1].hex_to_int() if halves[1].begins_with("0x") else halves[1].to_int())})
 	for entry: String in args.get("damage-actor", "").split(",", false):
 		var parts: PackedStringArray = entry.split(":")
 		if parts.size() != 3 or parts[1].is_empty():

@@ -122,13 +122,16 @@ func _change_category(step: int) -> void:
 	_refresh()
 
 
-## Equip the item under the cursor, or take it off if it is worn.
+## Equip the item under the cursor, or take it off if it is worn; a potion, food or ingredient is
+## used up and takes effect (GameSession.use_item).
 func use_current() -> void:
 	var row := current()
 	if row.is_empty():
 		return
 	if row["equipped"]:
 		_session.unequip(int(row["form"]), int(row["extra"]))
+	elif row["category"] in GameSession.USABLE:
+		_session.use_item(int(row["form"]), int(row["extra"]))  # drunk, eaten: takes effect
 	else:
 		_session.equip(int(row["form"]), int(row["extra"]))
 	_refresh()

@@ -307,6 +307,12 @@ func _start_game() -> void:
 		_inventory.open()
 	for form in settings.equip:
 		_session.equip(form)
+	for form in settings.drink:
+		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
+			_session.give([Vector2i(form, 1)])
+		_session.use_item(form)
+	for entry: Dictionary in settings.cast:
+		_session.cast_spell(entry["spell"], entry["target"])
 	if settings.ready_weapon:
 		_session.toggle_weapon()
 

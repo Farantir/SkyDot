@@ -72,6 +72,10 @@ signal subtitle_line(speaker: int, text: String, seconds: float)
 ## death (fade, "Load the last save?") and asks `reload_or_restart`.
 signal player_died(killer: int)
 
+## A magic effect started acting on `target` or ended (SkydotPapyrus.magic_effect_changed): the
+## MGEF, its archetype and the instance. For presentation: lights, art, the active effects list.
+signal magic_effect_changed(target: int, mgef: int, archetype: int, started: bool, instance: int)
+
 ## The player activated a container: its reference. The shell shows the menu
 ## (`inventory(ref)` is what it holds).
 signal container_opened(ref: int)
@@ -89,6 +93,9 @@ signal weapon_state_changed(state: int, clip: String)
 signal attack_started(clip: String, power: bool)
 ## A hit landed: the target, apply_hit's result and the point (Combat.hit_landed).
 signal hit_landed(target: int, result: Dictionary, point: Vector3)
+
+## Item categories `use_item` takes effect of.
+const USABLE: Array[String] = ["potion", "food", "ingredient"]
 
 ## Metres in front of the player a dropped item lands, and above the feet.
 const DROP_DISTANCE := 0.8
@@ -201,6 +208,7 @@ func _open_world() -> bool:
 	papyrus.attach_clock(clock)
 	papyrus.actor_died.connect(actor_died.emit)
 	papyrus.player_died.connect(player_died.emit)
+	papyrus.magic_effect_changed.connect(magic_effect_changed.emit)
 	world.skyrim_materials = config.materials
 	world.effects = config.effects
 	world.grass = config.grass
@@ -308,6 +316,7 @@ func start_game() -> bool:
 		var started := papyrus.start_game_enabled_quests()
 		print("quests: %d of %d started with the game" % [started, world.get_quest_count()])
 	_bridge.quests_ready = true
+	papyrus.prepare_actor_magic(SkydotPapyrus.PLAYER_REF)  # the player's abilities (race, birthsign)
 	if not config.set_stage.is_empty():
 		for item in config.set_stage.split(","):
 			var parts: PackedStringArray = item.split(":")
@@ -409,6 +418,23 @@ func equip(form: int, extra := -1) -> bool:
 	if done:
 		items_changed.emit()
 	return done
+
+
+## What the player uses up: a potion, food or an ingredient takes effect on the player and is
+## taken from the inventory (SkydotPapyrus.equip does both). A poison waits for the weapon (7a-3):
+## it logs `magic: poison 0x.. waits for the weapon` and stays. False if it is not carried or is
+## no such item.
+func use_item(form: int, extra := -1) -> bool:
+	var category: String = papyrus.item_info(form).get("category", "")
+	if category not in USABLE:
+		return false
+	return equip(form, extra)
+
+
+## The player (or `caster`) casts `spell` on `target` (0: on itself): the cost is paid, the effects
+## land, no projectile yet (SkydotPapyrus.cast_spell). {ok, reason, cost, instances}.
+func cast_spell(spell: int, target := 0, seconds := 0.0, caster := SkydotPapyrus.PLAYER_REF) -> Dictionary:
+	return papyrus.cast_spell(caster, spell, target, seconds)
 
 
 func unequip(form: int, extra := -1) -> bool:
