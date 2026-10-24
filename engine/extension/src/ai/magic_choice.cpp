@@ -16,6 +16,7 @@ constexpr std::uint32_t k_self = 0;
 constexpr std::uint32_t k_touch = 1;
 constexpr std::uint32_t k_aimed = 2;
 constexpr std::uint32_t k_target_actor = 3;
+constexpr std::uint32_t k_target_location = 4;
 
 bool value_modifier(std::uint32_t a) noexcept {
     return a == arch::value_modifier || a == arch::peak_value_modifier || a == arch::dual_value_modifier;
@@ -42,17 +43,18 @@ SpellRole classify(const SpellFacts& s) noexcept {
         const bool at_enemy = s.delivery == k_touch || s.delivery == k_aimed || s.delivery == k_target_actor;
         return at_enemy ? SpellRole::attack : SpellRole::other;
     }
+    // Conjure spells are delivered to a target location (CK), the rest of the buffs to self.
+    if (s.archetype == arch::summon_creature && (s.delivery == k_self || s.delivery == k_target_location)) {
+        return SpellRole::summon;
+    }
     if (s.delivery != k_self) {
         return SpellRole::other;
-    }
-    if (s.archetype == arch::summon_creature) {
-        return SpellRole::summon;
     }
     if (s.archetype == arch::cloak) {
         return SpellRole::cloak;
     }
     if (value_modifier(s.archetype) && s.actor_value >= 0) {
-        if (static_cast<std::uint32_t>(s.actor_value) == vm::av::k_health && s.recover) {
+        if (static_cast<std::uint32_t>(s.actor_value) == vm::av::k_health && !s.recover) {
             return SpellRole::heal;
         }
         return SpellRole::fortify;

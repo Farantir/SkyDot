@@ -5,6 +5,8 @@
 // and is saved with it; what the player sees is signalled to the game layer.
 #include "vm/natives_common.hpp"
 #include "vm/papyrus.hpp"
+#include "data/actors.hpp"
+#include "data/fb_search.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -94,6 +96,28 @@ std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initial
     emit_signal("ref_placed", static_cast<std::int64_t>(id), static_cast<std::int64_t>(base),
                 static_cast<std::int64_t>(placed.cell), position, rotation, placed.scale, initially_disabled);
     return id;
+}
+
+std::int64_t SkydotPapyrus::spawn_actor(std::int64_t base, std::int64_t cell, const Vector3& position,
+                                        double rotation_z) {
+    if (!world_.is_valid() || world_->data().root() == nullptr) {
+        return 0;
+    }
+    const std::uint32_t npc = pick_actor_form(*world_->data().root(), static_cast<std::uint32_t>(base), 0);
+    if (npc == 0 || lookup(world_->data().root()->npcs(), npc) == nullptr) {
+        return 0;
+    }
+    vm::PlacedRef placed;
+    placed.base = npc;
+    placed.cell = static_cast<std::uint32_t>(cell);
+    for (int i = 0; i < 3; ++i) {
+        placed.position[i] = static_cast<double>(position[i]);
+    }
+    placed.rotation[0] = 0.0;
+    placed.rotation[1] = 0.0;
+    placed.rotation[2] = rotation_z;
+    placed.scale = 1.0;
+    return static_cast<std::int64_t>(place_ref(placed, false));
 }
 
 void SkydotPapyrus::remove_placed(std::int64_t ref) {

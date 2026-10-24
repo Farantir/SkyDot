@@ -19,7 +19,7 @@ namespace skydot::combat_ai {
 enum class SpellRole : std::uint8_t {
     other,   ///< Not used by the AI (powers, abilities, runes, a spell without a known effect...).
     attack,  ///< Hostile, touch or aimed or at an actor: cast at the enemy.
-    heal,    ///< Restore Health on itself.
+    heal,    ///< Restore Health on itself (a Health value modifier that is not undone at the end).
     summon,  ///< Summon creature on itself.
     cloak,   ///< Cloak archetype on itself.
     fortify, ///< A beneficial value modifier on itself that is no healing (armor spells, Fortify ...).
@@ -34,15 +34,15 @@ struct SpellFacts {
     std::uint32_t delivery{};     ///< 0 self, 1 touch, 2 aimed, 3 target actor, 4 target location.
     double reach{};               ///< Game units it can hit from (touch, aimed: the projectile's range).
     bool hostile{};
-    bool recover{};               ///< The costliest effect restores (Restore Health).
+    bool recover{};               ///< MGEF flag Recover: the change is undone when the effect ends (Fortify...); clear for Restore Health.
     std::uint32_t archetype{};    ///< Of the costliest effect (magic_rules.hpp `archetype`).
     int actor_value{-1};          ///< Of the costliest effect, -1 if none (vm/actor_values.hpp).
     bool active{};                ///< Its effects run on the caster now.
 };
 
 /// The role of a spell: attack for hostile touch, aimed or target-actor delivery; heal for a
-/// non-hostile self spell that restores Health; summon (archetype 18), cloak (35) and fortify (a
-/// non-hostile self value modifier of another actor value, or one of Health that does not restore)
+/// non-hostile self value modifier of Health without the Recover flag (Restore Health; with the flag it is Fortify Health); summon (archetype 18; self or target location delivery), cloak (35) and fortify (a
+/// non-hostile self value modifier of another actor value, or of Health with the Recover flag)
 /// on the caster. Wards have no archetype of their own in the engine yet: they are `other`.
 [[nodiscard]] SpellRole classify(const SpellFacts& spell) noexcept;
 

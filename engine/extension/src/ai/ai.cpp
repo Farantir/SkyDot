@@ -247,6 +247,11 @@ void SkydotAi::_bind_methods() {
                           PropertyInfo(Variant::INT, "target"), PropertyInfo(Variant::INT, "state")));
     ADD_SIGNAL(MethodInfo("combat_attack", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
                           PropertyInfo(Variant::STRING, "kind")));
+    // A mage casts (ai_combat.cpp): phase "start" (hold the spell in the hand), "release" (a fire-and-forget
+    // spell was charged: cast it) or "stop" (a concentration spell ended, or any cast was broken off).
+    ADD_SIGNAL(MethodInfo("combat_cast", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
+                          PropertyInfo(Variant::INT, "spell"), PropertyInfo(Variant::INT, "hand"),
+                          PropertyInfo(Variant::STRING, "phase")));
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
 }

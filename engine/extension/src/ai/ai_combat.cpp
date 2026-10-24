@@ -13,6 +13,7 @@
 #include "actors/actor.hpp"
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"
+#include "magic/magic_rules.hpp"
 #include "physics/collision.hpp"
 #include "vm/papyrus.hpp"
 
@@ -50,6 +51,15 @@ constexpr double k_alarm_radius = 1024.0;
 /// PLACEHOLDERS: the seconds between a melee swing and the next, and between arrows.
 constexpr double k_attack_period = 1.4;
 constexpr double k_shoot_period = 3.0;
+/// PLACEHOLDER: seconds from a spell's release to the next cast, and the slack added to a spell's
+/// casting time before the release (the game layer's hand has charged by then).
+constexpr double k_cast_period = 1.5;
+constexpr double k_release_slack = 0.1;
+/// PLACEHOLDERS: reach of a touch spell, of an aimed spell whose projectile gives none, and the most
+/// an aimed spell is cast from (game units).
+constexpr double k_touch_reach = 128.0;
+constexpr double k_aimed_reach = 1500.0;
+constexpr double k_max_reach = 2500.0;
 /// PLACEHOLDER: the radius of a body in game units, taken off distances.
 constexpr double k_body_radius = 21.0;
 /// PLACEHOLDER: how far it backs off or circles, as game units.
@@ -293,14 +303,183 @@ void SkydotAi::read_gear(Mind& m) {
     const auto* style = npc != nullptr && npc->combat_style() != 0 ? lookup(root()->combat_styles(), npc->combat_style())
                                                                     : nullptr;
     c.style = {};
+    c.weapon_style = {};
     if (style != nullptr) {
         c.style = {style->offensive_mult(), style->circle_mult(), style->fallback_mult(),
                    style->special_attack_mult()};
+        c.weapon_style = {style->magic_score_mult(), style->melee_score_mult(), style->ranged_score_mult()};
     }
+    read_spells(m);
     // Only a bow (no melee weapon to fight with) means ranged from the start.
     if (c.has_bow && !c.has_melee) {
         c.ranged = true;
     }
+}
+
+
+// ---- magic ------------------------------------------------------------------------
+
+void SkydotAi::read_spells(Mind& m) {
+    CombatMind& c = m.combat;
+    c.spells.clear();
+    c.spells_read = true;
+    const godot::PackedInt64Array known = vm_->spells_of(m.ref);
+    for (const std::int64_t form : known) {
+        const auto key = static_cast<std::uint32_t>(form);
+        auto cached = spell_facts_.find(key);
+        if (cached == spell_facts_.end()) {
+            const godot::Dictionary info = vm_->cast_info(form);
+            combat_ai::SpellFacts f;
+            f.form = key;
+            if (info.get("found", false)) {
+                f.plain = static_cast<std::int64_t>(info.get("type", 0)) == 0 && !static_cast<bool>(info.get("is_scroll", false));
+                f.concentration = static_cast<std::int64_t>(info.get("casting_type", 1)) == magic::casting::concentration;
+                f.delivery = static_cast<std::uint32_t>(static_cast<std::int64_t>(info.get("delivery", 0)));
+                f.hostile = info.get("hostile", false);
+                f.recover = info.get("recover", false);
+                f.archetype = static_cast<std::uint32_t>(static_cast<std::int64_t>(info.get("archetype", 0)));
+                f.actor_value = static_cast<int>(static_cast<std::int64_t>(info.get("actor_value", -1)));
+                double reach = 0.0;
+                if (f.delivery == 1) {
+                    reach = k_touch_reach;
+                } else if (f.delivery == 2) {
+                    const godot::Dictionary proj = world_->get_projectile(static_cast<std::int64_t>(info.get("projectile", 0)));
+                    reach = proj.is_empty() ? 0.0 : static_cast<double>(proj.get("range", 0.0));
+                    reach = reach > 0.0 ? std::min(reach, k_max_reach) : k_aimed_reach;
+                } else if (f.delivery == 3) {
+                    const double range = static_cast<double>(info.get("range", 0.0));
+                    reach = range > 0.0 ? range : k_max_reach;
+                }
+                f.reach = reach;
+            } else {
+                f.plain = false;
+            }
+            cached = spell_facts_.emplace(key, f).first;
+        }
+        if (combat_ai::classify(cached->second) != combat_ai::SpellRole::other) {
+            c.spells.push_back(cached->second);
+        }
+    }
+}
+
+void SkydotAi::end_cast(Mind& m) {
+    CombatMind& c = m.combat;
+    if (!c.cast.active) {
+        return;
+    }
+    c.cast.active = false;
+    emit_signal("combat_cast", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                static_cast<std::int64_t>(c.cast.spell), static_cast<std::int64_t>(1), "stop");
+}
+
+bool SkydotAi::cast_tick(Mind& m, double seconds) {
+    CombatMind& c = m.combat;
+    if (!c.cast.active) {
+        return false;
+    }
+    auto& cast = c.cast;
+    cast.elapsed += seconds;
+    if (!cast.concentration) {
+        if (cast.elapsed >= cast.charge + k_release_slack) {
+            cast.active = false;
+            c.cooldown = k_cast_period;
+            std::printf("combat: 0x%X casts 0x%X\n", m.ref, cast.spell);
+            emit_signal("combat_cast", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                        static_cast<std::int64_t>(cast.spell), static_cast<std::int64_t>(1), "release");
+        }
+        return true;
+    }
+    const double magicka = vm_->get_actor_value(m.ref, "Magicka");
+    bool done = cast.elapsed >= cast.hold || magicka < cast.cost * 0.1;
+    if (cast.role == combat_ai::SpellRole::heal) {
+        const double max = vm_->get_actor_value_max(m.ref, "Health");
+        done = done || (max > 0.0 && vm_->get_actor_value(m.ref, "Health") / max >= combat_ai::k_healed_above);
+    }
+    if (done) {
+        cast.active = false;
+        c.cooldown = k_cast_period;
+        std::printf("combat: 0x%X stops casting 0x%X\n", m.ref, cast.spell);
+        emit_signal("combat_cast", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                    static_cast<std::int64_t>(cast.spell), static_cast<std::int64_t>(1), "stop");
+    }
+    return true;
+}
+
+bool SkydotAi::mage_tick(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los) {
+    CombatMind& c = m.combat;
+    if (c.spells.empty()) {
+        return false;
+    }
+    // What runs on it now decides which buffs it still needs.
+    std::vector<std::uint32_t> running;
+    for (const godot::Variant& v : vm_->active_effects(m.ref)) {
+        const godot::Dictionary e = v;
+        if (static_cast<std::int64_t>(e.get("caster", 0)) == static_cast<std::int64_t>(m.ref)) {
+            running.push_back(static_cast<std::uint32_t>(static_cast<std::int64_t>(e.get("source", 0))));
+        }
+    }
+    combat_ai::MageInputs in;
+    in.spells = c.spells;
+    for (auto& s : in.spells) {
+        s.cost = vm_->spell_cost(m.ref, s.form);
+        s.active = std::ranges::find(running, s.form) != running.end();
+    }
+    in.magicka = vm_->get_actor_value(m.ref, "Magicka");
+    in.magicka_max = vm_->get_actor_value_max(m.ref, "Magicka");
+    const double max_health = vm_->get_actor_value_max(m.ref, "Health");
+    in.health_fraction = max_health > 0.0 ? vm_->get_actor_value(m.ref, "Health") / max_health : 1.0;
+    in.distance = distance;
+    in.line_of_sight = los;
+    in.ready = c.cooldown <= 0.0;
+    in.has_melee = c.has_melee;
+    in.has_bow = c.has_bow;
+    in.style = c.weapon_style;
+    in.roll = roll(m);
+    const combat_ai::MageDecision d = combat_ai::decide(in);
+    const Vector3 here = m.last;
+    Vector3 away = here - to;
+    away.z = 0;
+    const double length = static_cast<double>(away.length());
+    const Vector3 dir = length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0);
+    switch (d.action) {
+    case combat_ai::MageAction::weapons:
+        return false;
+    case combat_ai::MageAction::wait:
+        actor.stop();
+        return true;
+    case combat_ai::MageAction::keep_distance:
+        combat_walk(m, actor, here + dir * static_cast<float>(k_keep_distance), true);
+        return true;
+    case combat_ai::MageAction::approach: {
+        const auto it = std::ranges::find_if(in.spells, [&](const auto& s) { return s.form == d.spell; });
+        const double reach = it != in.spells.end() ? it->reach * combat_ai::k_reach_fraction : 0.0;
+        // Walk to a point at that reach from the target, on this side of it.
+        combat_walk(m, actor, to + dir * static_cast<float>(std::max(reach, 60.0)), true);
+        return true;
+    }
+    case combat_ai::MageAction::cast: {
+        const auto it = std::ranges::find_if(in.spells, [&](const auto& s) { return s.form == d.spell; });
+        if (it == in.spells.end()) {
+            return false;
+        }
+        actor.stop();
+        auto& cast = c.cast;
+        cast = {};
+        cast.active = true;
+        cast.spell = d.spell;
+        cast.role = d.role;
+        cast.concentration = it->concentration;
+        cast.hold = d.hold;
+        cast.cost = it->cost;
+        const godot::Dictionary info = vm_->cast_info(static_cast<std::int64_t>(d.spell));
+        cast.charge = it->concentration ? 0.0 : static_cast<double>(info.get("charge_time", 0.0));
+        std::printf("combat: 0x%X %s 0x%X\n", m.ref, it->concentration ? "holds" : "charges", d.spell);
+        emit_signal("combat_cast", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                    static_cast<std::int64_t>(d.spell), static_cast<std::int64_t>(1), "start");
+        return true;
+    }
+    }
+    return false;
 }
 
 // ---- starting and ending ---------------------------------------------------------
@@ -334,6 +513,7 @@ void SkydotAi::enter_combat(Mind& m, SkydotActor& actor, std::uint32_t target) {
 
 void SkydotAi::leave_combat(Mind& m, SkydotActor* actor) {
     CombatMind& c = m.combat;
+    end_cast(m);
     if (c.state == 0) {
         return;
     }
@@ -736,6 +916,7 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
     }
     const combat_ai::MagicState magic = magic_state(m.ref);
     if (magic_step(m, actor, magic, seconds)) {
+        end_cast(m);
         return true;
     }
     if (c.following && magic.commanded_by == 0) {
@@ -848,6 +1029,12 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         leave_combat(m, &actor);
         return false;
     }
+    if (cast_tick(m, seconds)) {
+        if (c.state != 1 || !position_of(c.target)) {
+            end_cast(m);
+        }
+        return true; // it stands and casts
+    }
     if (c.think > 0.0) {
         return true;
     }
@@ -905,11 +1092,15 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         }
     }
     if (c.fleeing) {
+        end_cast(m);
         actor.clear_look_target();
         flee_tick(m, actor, *at);
         return c.state != 0;
     }
     const double distance = flat(m.last, *at);
+    if (mage_tick(m, actor, distance, *at, in_sight)) {
+        return true;
+    }
     if (c.ranged || (c.has_bow && !c.has_melee)) {
         ranged_tick(m, actor, distance, *at, in_sight);
     } else {

@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ai/combat_rules.hpp"
+#include "ai/magic_choice.hpp"
 #include "ai/packages.hpp"
 #include "magic/active_effects.hpp"
 #include "world/world.hpp"
@@ -192,6 +193,20 @@ private:
         bool has_melee{};
         double gear_age{1e9};            ///< Seconds since reach and gear were read
         combat_ai::MeleeStyle style;
+        // Magic (ai_combat.cpp mage_tick): the spells it knows and the cast under way.
+        combat_ai::WeaponStyle weapon_style;
+        std::vector<combat_ai::SpellFacts> spells; ///< Static facts; cost and active are read per decision.
+        bool spells_read{};
+        struct Cast {
+            bool active{};
+            std::uint32_t spell{};
+            combat_ai::SpellRole role{};
+            bool concentration{};
+            double charge{};  ///< Seconds of fire and forget before the release.
+            double hold{};    ///< Seconds of concentration.
+            double cost{};    ///< Magicka per second, concentration only.
+            double elapsed{};
+        } cast;
     };
 
     struct Mind {
@@ -309,6 +324,15 @@ private:
     void melee_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to);
     void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
     void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
+    /// A mage's turn (magic_choice.hpp): true if it cast, walked for a spell or waits for one; false
+    /// if it fights with its weapons.
+    bool mage_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
+    /// The cast under way, once per frame: release or stop it when its time is up. True while one runs.
+    bool cast_tick(Mind& m, double seconds);
+    /// Stop the cast under way ("stop": nothing is cast for a fire-and-forget spell).
+    void end_cast(Mind& m);
+    void read_spells(Mind& m);
+    std::unordered_map<std::uint32_t, combat_ai::SpellFacts> spell_facts_; ///< Static facts by spell.
     mutable std::unordered_map<std::uint32_t, magic::Overrides> overrides_cache_;
     bool combat_enabled_{true};
     godot::Vector3 player_position_;

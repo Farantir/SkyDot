@@ -219,6 +219,8 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::set_animation_state);
     godot::ClassDB::bind_method(D_METHOD("get_animation_state", "ref"), &SkydotPapyrus::get_animation_state);
     godot::ClassDB::bind_method(D_METHOD("remove_placed", "ref"), &SkydotPapyrus::remove_placed);
+    godot::ClassDB::bind_method(D_METHOD("spawn_actor", "base", "cell", "position", "rotation_z"),
+                                &SkydotPapyrus::spawn_actor);
     godot::ClassDB::bind_method(D_METHOD("forget_ref", "ref"), &SkydotPapyrus::forget_ref);
     godot::ClassDB::bind_method(D_METHOD("damage_ref", "ref", "amount"), &SkydotPapyrus::damage_ref);
     godot::ClassDB::bind_method(D_METHOD("ref_built", "ref"), &SkydotPapyrus::ref_built);

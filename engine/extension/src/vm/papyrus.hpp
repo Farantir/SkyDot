@@ -209,7 +209,7 @@ public:
     /// 1 touch, 2 aimed, 3 target actor, 4 target location; a scroll's is its effect's), charge_time,
     /// cast_duration, range, effects (count), and of the costliest effect: mgef, magnitude, duration,
     /// area_feet, area_units, projectile, explosion, casting_art, hit_art, casting_light (form ids, 0
-    /// if none), hostile, recover (it restores), archetype, actor_value (of the effect, -1 if none),
+    /// if none), hostile, recover (MGEF flag: the change is undone when it ends, Fortify; clear for Restore), archetype, actor_value (of the effect, -1 if none),
     /// school (actor value of the magic skill, -1 if none)}.
     godot::Dictionary cast_info(std::int64_t form);
     /// The caster reads a scroll it carries: its effects land on `target` (0: the caster) without
@@ -375,6 +375,12 @@ public:
     /// Take a PlaceAtMe reference out of the world (`ref_deleted`); the game
     /// layer calls it when an effect has run its course. No-op for any other.
     void remove_placed(std::int64_t ref);
+    /// Put an actor in the world at run time (the viewer's --spawn): `base` is an NPC_, or a leveled
+    /// NPC list (resolved now for a player of the current level, so the actor's spells and gear are
+    /// those of the NPC it picks), placed in `cell` at `position` (Skyrim space) facing `rotation_z`
+    /// (radians). The game layer builds it on `ref_placed`. Returns the reference, 0 if `base` is
+    /// no actor.
+    std::int64_t spawn_actor(std::int64_t base, std::int64_t cell, const godot::Vector3& position, double rotation_z);
     /// The one path that forgets a reference: its scripts, timers, threads,
     /// inventory, animation, destruction, script-made state and, for a placed
     /// reference, the reference itself (`ref_deleted`). Delete and finished
