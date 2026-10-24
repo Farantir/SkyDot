@@ -99,7 +99,7 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container opens its menu; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
 # with --screenshot the lines play out first (--shot-delay).
@@ -264,7 +264,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_container != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _controls))
@@ -334,6 +334,9 @@ func _start_game() -> void:
 		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 	if settings.open_inventory and _items != null:
 		_items.open_inventory()
+	if settings.open_magic and _items != null:
+		_items.open_magic()
+		_items.magic_view.select_category(settings.magic_category)
 
 	if settings.has_screenshot:
 		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
@@ -493,6 +496,9 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.INVENTORY:
 			if _items != null:
 				_items.open_inventory()
+		PlayerInput.MAGIC:
+			if _items != null:
+				_items.open_magic()
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
 		PlayerInput.POWER:

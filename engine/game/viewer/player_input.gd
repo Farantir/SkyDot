@@ -56,6 +56,7 @@ const RADIUS_UP := &"radius_up"
 const CYCLE_MSAA := &"cycle_msaa"
 const TOGGLE_FLY := &"toggle_fly"
 const INVENTORY := &"inventory"
+const MAGIC := &"magic"
 const READY_WEAPON := &"ready_weapon"
 const POWER := &"power"
 # Held: the attack buttons go down and up (`attack_changed` for the right hand,
@@ -64,7 +65,7 @@ const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, READY_WEAPON, POWER]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, READY_WEAPON, POWER]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down

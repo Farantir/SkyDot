@@ -12,13 +12,15 @@
 # to the head (click: sprint), the right stick's x snap-turns SNAP_DEGREES
 # about the head, the right trigger activates along the right controller's aim
 # ray, A (right) jumps and accepts, B cancels, the left menu button asks for
-# the inventory. They feed the InputMap actions PlayerInput and the menus
+# the inventory, the left Y button for the magic menu. They feed the InputMap actions PlayerInput and the menus
 # read, so neither knows where the input comes from.
 class_name VrRig
 extends PlayerRig
 
 ## The left menu button was pressed.
 signal inventory_requested
+## The left Y button was pressed.
+signal magic_requested
 
 const SNAP_DEGREES := 30.0
 ## The right stick must pass this to snap-turn and fall below the lower one to
@@ -168,6 +170,9 @@ func _left_button(input_name: String, pressed: bool) -> void:
 		"menu_button":
 			if pressed:
 				inventory_requested.emit()
+		"by_button":
+			if pressed:
+				magic_requested.emit()
 
 
 func _right_button(input_name: String, pressed: bool) -> void:

@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "ready-weapon"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -101,6 +101,8 @@ var fly_speed := 20.0  # m/s during the benchmark
 var captures := false  # screenshot or benchmark: still time, still actors
 var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
 var open_inventory := false  # --open-inventory: show the inventory after the load
+var open_magic := false  # --open-magic: show the magic menu after the load
+var magic_category := ""  # --magic-category NAME: the category it shows (Powers, Destruction, Scrolls...)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var ready_weapon := false  # --ready-weapon: draw the weapon after the load
@@ -222,6 +224,8 @@ func _read(args: Dictionary) -> void:
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	hud = args.has("hud") or not captures
 	open_inventory = args.has("open-inventory")
+	open_magic = args.has("open-magic")
+	magic_category = args.get("magic-category", "")
 	if args.has("open-container"):
 		var container_text: String = args["open-container"]
 		open_container = container_text.hex_to_int() if container_text.begins_with("0x") else container_text.to_int()

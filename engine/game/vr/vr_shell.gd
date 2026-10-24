@@ -39,12 +39,14 @@ var _dialogue_panel: VrPanel
 var _inventory: InventoryView
 var _container: ContainerView
 var _crafting: CraftingView
+var _magic: MagicView
 var _death: DeathView
 var _death_panel: VrPanel
 var _death_fade: MeshInstance3D  # a black quad on the head: the fade
 var _inventory_panel: VrPanel
 var _container_panel: VrPanel
 var _crafting_panel: VrPanel
+var _magic_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 var _cast_at: CastAt  # --cast-at: the cast still to make
@@ -115,6 +117,7 @@ func _create_components() -> void:
 		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_rig.fell_through.connect(func() -> void: print("note: fell through the world"))
 	_rig.inventory_requested.connect(_on_inventory_requested)
+	_rig.magic_requested.connect(_on_magic_requested)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _settings.interactive
 	_controls.look_speed = _settings.stick_look_speed
@@ -142,13 +145,15 @@ func _create_components() -> void:
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)
 		add_child(_dialogue_panel)
-	if _settings.hud or _settings.open_inventory or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_container != 0:
 		_inventory = InventoryView.new(_session)
 		_container = ContainerView.new(_session)
 		_inventory_panel = _menu_panel(_inventory)
 		_container_panel = _menu_panel(_container)
 		_crafting = CraftingView.new(_session)
 		_crafting_panel = _menu_panel(_crafting)
+		_magic = MagicView.new(_session)
+		_magic_panel = _menu_panel(_magic)
 		_session.container_opened.connect(_on_container_opened)
 		_session.crafting_opened.connect(_on_crafting_opened)
 	_make_death_screen()
@@ -221,7 +226,9 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 		panel = _container_panel
 	elif view == _crafting:
 		panel = _crafting_panel
-	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open()
+	elif view == _magic:
+		panel = _magic_panel
+	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open()
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -238,8 +245,23 @@ func _on_inventory_requested() -> void:
 		_container.close()
 	elif _crafting.is_open():
 		_crafting.close()
+	elif _magic.is_open():
+		_magic.close()
 	elif not _session.is_dialogue_open():
 		_inventory.open()
+
+
+## The left Y button: the magic menu, or closes the menu that is open.
+func _on_magic_requested() -> void:
+	if _magic == null:
+		print("vr: magic (the HUD is off)")
+		return
+	if _magic.is_open():
+		_magic.close()
+	elif _inventory.is_open() or _container.is_open() or _crafting.is_open():
+		return
+	elif not _session.is_dialogue_open():
+		_magic.open()
 
 
 ## Activating a container opens its menu.
@@ -247,6 +269,7 @@ func _on_container_opened(ref: int) -> void:
 	if _session.is_dialogue_open():
 		return
 	_inventory.close()
+	_magic.close()
 	_container.open(ref)
 
 
@@ -256,6 +279,7 @@ func _on_crafting_opened(ref: int, bench_type: int) -> void:
 		return
 	_inventory.close()
 	_container.close()
+	_magic.close()
 	_crafting.open(ref, bench_type)
 
 
@@ -307,6 +331,9 @@ func _start_game() -> void:
 		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 	if settings.open_inventory and _inventory != null:
 		_inventory.open()
+	if settings.open_magic and _magic != null:
+		_magic.open()
+		_magic.select_category(settings.magic_category)
 	for form in settings.equip:
 		_session.equip(form)
 	for entry: Dictionary in settings.equip_spell:

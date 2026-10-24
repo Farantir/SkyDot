@@ -651,6 +651,37 @@ func equip_spell(spell: int, hand: int) -> bool:
 	return done
 
 
+## The player's spells for the magic menu: cast_info of each spell (type 0), power and lesser power
+## (2, 3), plus `cost` (Magicka, rounded) and `cooldown` (game days left of a power, as
+## SkydotPapyrus.power_cooldown). Abilities, diseases and poisons are not listed.
+func known_spells() -> Array:
+	var out: Array = []
+	for form in papyrus.spells_of(SkydotPapyrus.PLAYER_REF):
+		var info := papyrus.cast_info(form)
+		if not info["found"] or not int(info["type"]) in [0, 2, 3]:
+			continue
+		info["cost"] = roundi(papyrus.spell_cost(SkydotPapyrus.PLAYER_REF, form))
+		info["cooldown"] = papyrus.power_cooldown(SkydotPapyrus.PLAYER_REF, form) if int(info["type"]) >= 2 else 0.0
+		out.append(info)
+	return out
+
+
+## cast_info of a spell or a scroll the player holds, {} if unknown.
+func spell_info(form: int) -> Dictionary:
+	var info := papyrus.cast_info(form)
+	return info if info["found"] else {}
+
+
+## The spell or scroll in `hand` (Magic.LEFT, RIGHT, POWER), 0 for none.
+func spell_in_hand(hand: int) -> int:
+	return magic.spell_in(hand)
+
+
+## The effects acting on the player (SkydotPapyrus.active_effects).
+func player_effects() -> Array:
+	return papyrus.active_effects(SkydotPapyrus.PLAYER_REF)
+
+
 ## Attack now: power or light (Combat.attack).
 func attack(power := false) -> bool:
 	return not papyrus.is_player_dead() and combat.attack(power)
