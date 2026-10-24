@@ -38,8 +38,6 @@ std::string archetype_name(std::uint32_t archetype) {
 }
 
 enum Source : std::size_t { spel, alch, scrl, ench, ingr, other, k_sources };
-constexpr std::array<const char*, k_sources> k_source_names{"SPEL", "ALCH", "SCRL", "ENCH", "INGR",
-                                                           "other"};
 
 /// One effect entry's use: where it is and which MGEF.
 struct Use {

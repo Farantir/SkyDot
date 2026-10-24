@@ -609,7 +609,8 @@ void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effec
     }
     // Abilities are not saved: start them again for whoever is known.
     m->book.reset_abilities();
-    std::set<std::uint32_t> refs(m->book.refs().begin(), m->book.refs().end());
+    const auto known = m->book.refs(); // a copy: begin and end of one vector
+    std::set<std::uint32_t> refs(known.begin(), known.end());
     for (const auto t : m->effects.targets()) {
         refs.insert(t);
     }

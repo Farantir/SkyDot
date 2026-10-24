@@ -52,7 +52,8 @@ double auto_calc_cost(const wfb::World& world, const wfb::Spell& spell, const Ma
         if (m == nullptr) {
             continue;
         }
-        sum += effect_cost(m->base_cost(), e->magnitude(), e->duration(), spell.casting_type(), e->area(), s);
+        sum += effect_cost(static_cast<double>(m->base_cost()), static_cast<double>(e->magnitude()), e->duration(),
+                           spell.casting_type(), e->area(), s);
     }
     return sum;
 }
@@ -68,7 +69,8 @@ int spell_school(const wfb::World& world, const wfb::Spell& spell) {
         if (m == nullptr) {
             continue;
         }
-        const double cost = effect_cost(m->base_cost(), e->magnitude(), e->duration(), spell.casting_type(), 0.0);
+        const double cost = effect_cost(static_cast<double>(m->base_cost()), static_cast<double>(e->magnitude()),
+                                        e->duration(), spell.casting_type(), 0.0);
         if (cost > best && m->magic_skill() >= 0) {
             best = cost;
             school = m->magic_skill();

@@ -85,7 +85,7 @@ bool ActiveEffects::fill_from_mgef(Instance& i) const {
     i.flags = m->flags();
     i.actor_value = m->actor_value();
     i.second_actor_value = m->second_actor_value();
-    i.second_weight = m->second_av_weight();
+    i.second_weight = static_cast<double>(m->second_av_weight());
     return true;
 }
 
