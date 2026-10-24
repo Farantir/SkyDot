@@ -51,6 +51,7 @@ public:
     std::pair<std::uint32_t, std::uint32_t> race_voice_types(std::uint32_t race) const override;
     bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const override;
     bool has_keyword(std::uint32_t ref, std::uint32_t keyword) const override;
+    bool is_child(std::uint32_t ref) const override;
     double actor_value(std::uint32_t ref, std::uint32_t av) const override;
     double base_actor_value(std::uint32_t ref, std::uint32_t av) const override;
     double actor_value_percent(std::uint32_t ref, std::uint32_t av) const override;

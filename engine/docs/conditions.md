@@ -124,7 +124,8 @@ contain the hour; start = end is always), GetBaseActorValue 277, IsInInterior
 its parents), HasLinkedRef 362, GetRelationshipRank 403 (RELA rank 0 lover ...
 8 archnemesis as 4 ... -4, none 0), GetIsVoiceType 426 (the NPC's VTCK, else its
 race's male or female voice; the parameter may be a form list), GetQuestCompleted
-543, HasKeyword 560 (the base's KWDA, an NPC's too), LocationHasKeyword 562 (the
+543, HasKeyword 560 (the base's KWDA, an NPC's and its race's too), IsChild 365 (the race's DATA flag 4),
+IsUndead 715 (keyword ActorTypeUndead 0x13796 on the NPC or its race), LocationHasKeyword 562 (the
 subject's current location), GetIsAliasRef 566, GetVMQuestVariable 629,
 GetVMScriptVariable 630 (the variable name is CIS2; any script on the form),
 GetActorValuePercent 640, IsLinkedTo 650. AI only: GetIsCurrentPackage 161,
@@ -150,7 +151,7 @@ GetNumericPackageData 612.
 | 45 | GetDetected | stealth |
 | 700 | IsCommandedActor | commanded and summoned actors (DialogueGeneric's quest condition needs it: every vendor topic hangs on it) |
 | 638 | IsInFriendStateWithPlayer | followers |
-| 244, 365, 715 | state flags the MGEF conditions of calm, fear, fury and paralysis want at 0 (excluded targets) | their systems |
+| 244 | GetRestrained (the MGEF conditions of calm, fear, fury, paralysis and turn undead want 0) | a restraint system |
 
 **Unknown** (everything else). The biggest in INFO conditions:
 GetKeywordDataForLocation 606 (594), GetEquipped 182 (229), LocAliasIsLocation

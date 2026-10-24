@@ -35,6 +35,13 @@ bool contains(const flatbuffers::Vector<std::uint32_t>* list, std::uint32_t valu
     return list != nullptr && std::find(list->begin(), list->end(), value) != list->end();
 }
 
+const wfb::Race* race_in(const wfb::World* world, std::uint32_t race) {
+    if (world == nullptr) {
+        return nullptr;
+    }
+    return lookup(world->races(), race);
+}
+
 } // namespace
 
 const WorldData* PapyrusConditionWorld::data() const {
@@ -206,7 +213,17 @@ bool PapyrusConditionWorld::has_keyword(std::uint32_t ref, std::uint32_t keyword
         return true;
     }
     const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_traits);
-    return n != nullptr && contains(n->keywords(), keyword);
+    if (n != nullptr && contains(n->keywords(), keyword)) {
+        return true;
+    }
+    // The race's keywords count for the actor.
+    const auto* r = race_in(root(), race_of(ref));
+    return r != nullptr && contains(r->keywords(), keyword);
+}
+
+bool PapyrusConditionWorld::is_child(std::uint32_t ref) const {
+    const auto* r = race_in(root(), race_of(ref));
+    return r != nullptr && (r->flags() & 0x4U) != 0;
 }
 
 double PapyrusConditionWorld::actor_value(std::uint32_t ref, std::uint32_t av) const {

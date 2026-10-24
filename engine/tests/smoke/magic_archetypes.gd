@@ -31,6 +31,8 @@ const REANIMATE := 0x65BD7
 const BOUND_SWORD := 0x211EB
 const SLOW_TIME := 0x48AD0
 const BANISH := 0x6D22C
+const TURN_UNDEAD := 0x5DD5D
+const TURN_UNDEAD_ARCHETYPE := 24
 
 var failures := 0
 var _session: GameSession
@@ -267,6 +269,13 @@ func _run(pack_dir: String) -> void:
 	var after := _flat(skeever.global_position, _feet)
 	print("fear: distance ", before, " -> ", after)
 	expect(after > before + 1.0, "the afraid skeever gets away from the player: %f -> %f" % [before, after])
+	await _clean([SKEEVER])
+
+	print("PHASE ", Time.get_ticks_msec() / 1000, " Turn Undead: the living skeever is not affected (IsUndead condition)")
+	# ---- Turn Undead wants an undead target (its effect conditions need IsUndead 1): the skeever is not
+	_cast(TURN_UNDEAD, SKEEVER)
+	await _advance(1.0)
+	expect(_effects(SKEEVER, TURN_UNDEAD_ARCHETYPE) == 0, "Turn Undead does not affect the living skeever")
 	await _clean([SKEEVER])
 
 	print("PHASE ", Time.get_ticks_msec() / 1000, " Frenzy")

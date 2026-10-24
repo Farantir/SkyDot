@@ -36,6 +36,7 @@ public:
     std::set<std::pair<std::uint32_t, std::uint32_t>> keywords;
     std::map<std::pair<std::uint32_t, std::uint32_t>, double> values;
     std::set<std::uint32_t> dead;
+    std::set<std::uint32_t> children;
     std::map<std::uint32_t, std::int32_t> dead_counts;
     std::set<std::uint32_t> disabled;
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::int64_t> items;
@@ -109,6 +110,7 @@ public:
     double actor_value(std::uint32_t r, std::uint32_t av) const override { return get(values, {r, av}, 0.0); }
     double base_actor_value(std::uint32_t r, std::uint32_t av) const override { return get(values, {r, av}, 0.0); }
     double actor_value_percent(std::uint32_t, std::uint32_t) const override { return 1.0; }
+    bool is_child(std::uint32_t r) const override { return children.contains(r); }
     bool is_dead(std::uint32_t r) const override { return dead.contains(r); }
     std::int32_t dead_count(std::uint32_t npc) const override { return get(dead_counts, npc, 0); }
     bool is_disabled(std::uint32_t r) const override { return disabled.contains(r); }

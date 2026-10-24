@@ -116,7 +116,10 @@ public:
         std::uint32_t race) const = 0;
     [[nodiscard]] virtual bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const = 0;
     /// Whether `ref` (through its base) has `keyword`.
+    /// HasKeyword on an actor sees its base's and its race's keywords too.
     [[nodiscard]] virtual bool has_keyword(std::uint32_t ref, std::uint32_t keyword) const = 0;
+    /// The actor's race has the child flag (RACE DATA 0x4).
+    [[nodiscard]] virtual bool is_child(std::uint32_t) const { return false; }
     [[nodiscard]] virtual double actor_value(std::uint32_t ref, std::uint32_t av) const = 0;
     [[nodiscard]] virtual double base_actor_value(std::uint32_t ref, std::uint32_t av) const = 0;
     [[nodiscard]] virtual double actor_value_percent(std::uint32_t ref, std::uint32_t av) const = 0;

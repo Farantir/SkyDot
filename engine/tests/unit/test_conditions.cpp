@@ -163,6 +163,20 @@ TEST_CASE("systems that do not exist yet answer their resting value", "[conditio
     CHECK(w.unknowns().counts().empty());
 }
 
+TEST_CASE("IsChild and IsUndead, GetRestrained rests at 0", "[conditions]") {
+    FakeConditionWorld w;
+    w.children.insert(0x20);
+    w.keywords.insert({0x21, fn::k_actor_type_undead});
+    w.keywords.insert({0x22, 0x66});
+    CHECK(pass({cond(fn::is_child, 1.0F)}, w, {.subject = 0x20}));
+    CHECK_FALSE(pass({cond(fn::is_child, 1.0F)}, w, {.subject = 0x21}));
+    CHECK(pass({cond(fn::is_undead, 1.0F)}, w, {.subject = 0x21}));
+    CHECK(pass({cond(fn::is_undead, 0.0F)}, w, {.subject = 0x22}));
+    CHECK(pass({cond(fn::is_undead, 0.0F)}, w, {.subject = 0x20}));
+    CHECK(pass({cond(fn::get_restrained, 0.0F)}, w, {.subject = 0x21}));
+    CHECK(w.unknowns().counts().empty());
+}
+
 TEST_CASE("GetIsVoiceType takes the NPC's voice, else its race's, or a form list", "[conditions]") {
     FakeConditionWorld w;
     constexpr std::uint32_t k_male = 0xA1, k_female = 0xA2, k_own = 0xA3, k_list = 0xB1;
