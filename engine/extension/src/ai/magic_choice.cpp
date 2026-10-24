@@ -66,17 +66,14 @@ bool prefers_magic(const MageInputs& in) noexcept {
     if (in.style.magic <= 0.0) {
         return false;
     }
-    double weapons = 0.0;
-    bool armed = false;
+    double weapons = in.style.unarmed;
     if (in.has_melee) {
         weapons = std::max(weapons, in.style.melee);
-        armed = true;
     }
     if (in.has_bow) {
         weapons = std::max(weapons, in.style.ranged);
-        armed = true;
     }
-    return !armed || in.style.magic > weapons;
+    return in.style.magic > weapons;
 }
 
 double hold_seconds(double roll, double cost_per_second, double magicka) noexcept {

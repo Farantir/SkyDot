@@ -51,6 +51,7 @@ struct WeaponStyle {
     double magic = 0.5;
     double melee = 0.5;
     double ranged = 0.5;
+    double unarmed = 0.5; ///< Fists and a creature's own attacks: always there to fight with.
 };
 
 /// PLACEHOLDERS (UESP gives no numbers).
@@ -100,8 +101,8 @@ struct MageDecision {
     double hold{}; ///< A concentration spell is held for this many seconds (0: a fire-and-forget spell).
 };
 
-/// Whether the fight is fought with spells: the style's magic multiplier is above those of the
-/// weapons it carries (a tie goes to the weapons), or it carries none and the multiplier is above 0.
+/// Whether the fight is fought with spells: the style's magic multiplier is above 0 and above those of
+/// the unarmed attacks and of the weapons it carries (a tie goes to the weapons).
 [[nodiscard]] bool prefers_magic(const MageInputs& in) noexcept;
 
 /// What to do now: heal below k_heal_below (the first affordable healing spell), else cast a buff it
