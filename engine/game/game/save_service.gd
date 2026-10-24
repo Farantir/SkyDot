@@ -8,6 +8,9 @@ extends RefCounted
 const QUICKSAVE := "user://quicksave.skydot"
 const PLYR_VERSION := 1
 
+## Where newest() looks; a test points it at a directory of its own so that tests running in
+## parallel do not see or delete each other's saves.
+var directory := "user://"
 var _papyrus: SkydotPapyrus
 var _place: Place
 var _streamer: SkydotStreamer
@@ -46,14 +49,14 @@ func save(path: String) -> bool:
 ## Load a save in two phases: every section is checked and decoded first, and
 ## only then does the game change. A file that is missing, damaged or from
 ## another pack returns false and leaves the running game as it is.
-## The newest save in user:// (the quicksave and any other .skydot), "" if there is none.
+## The newest save in `directory` (the quicksave and any other .skydot), "" if there is none.
 func newest() -> String:
 	var best := ""
 	var best_time := 0
-	for file in DirAccess.get_files_at("user://"):
+	for file in DirAccess.get_files_at(directory):
 		if not file.ends_with(".skydot"):
 			continue
-		var path := "user://" + file
+		var path := directory + file
 		var time := FileAccess.get_modified_time(path)
 		if best == "" or time > best_time:
 			best = path

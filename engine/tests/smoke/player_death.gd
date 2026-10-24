@@ -10,7 +10,8 @@ extends SceneTree
 
 const PLAYER := 0x14
 const BANDIT := 0x39FE4
-const SAVE := "user://player_death_test.skydot"
+const DIR := "user://player_death/"  # its own, so parallel tests keep their saves
+const SAVE := DIR + "player_death_test.skydot"
 const STEP := 1.0 / 60.0
 
 var failures := 0
@@ -78,6 +79,7 @@ func _until(done: Callable, limit: float) -> float:
 
 func _run(pack_dir: String) -> void:
 	await process_frame
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(DIR))
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE))
 	var config := GameConfig.new()
 	config.pack = pack_dir
@@ -94,6 +96,7 @@ func _run(pack_dir: String) -> void:
 	if _session.world == null or _session.ai == null:
 		quit(1)
 		return
+	_session.saves.directory = DIR
 	var papyrus := _session.papyrus
 	expect(_session.start_game(), "the game starts")
 	expect(_session.enter_cell("BleakFallsBarrow01", SkydotWorld.skyrim_position(Vector3(5006.8, -893.3, -636)), null),
@@ -158,9 +161,9 @@ func _run(pack_dir: String) -> void:
 	papyrus.damage_actor_value(PLAYER, "Health", 100000.0)
 	await _frames(2)
 	expect(_session.is_player_dead(), "dead again")
-	for file in DirAccess.get_files_at("user://"):
+	for file in DirAccess.get_files_at(DIR):
 		if file.ends_with(".skydot"):
-			DirAccess.remove_absolute(ProjectSettings.globalize_path("user://" + file))
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(DIR + file))
 	expect(_session.saves.newest() == "", "no save is left")
 	expect(_session.reload_or_restart(), "the start place starts again")
 	await _frames(5)
