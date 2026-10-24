@@ -126,4 +126,77 @@ RangedStep ranged_step(const RangedInputs& in) noexcept {
     return RangedStep::shoot;
 }
 
+MagicMode magic_mode(const MagicState& state) noexcept {
+    if (state.paralyzed) {
+        return MagicMode::frozen;
+    }
+    if (state.fear_from != 0) {
+        return MagicMode::afraid;
+    }
+    return state.calm ? MagicMode::calmed : MagicMode::free;
+}
+
+std::uint8_t aggression_under(std::uint8_t base, const MagicState& state) noexcept {
+    if (state.frenzy) {
+        return 3;
+    }
+    return state.commanded_by != 0 ? 1 : base;
+}
+
+Reaction reaction_under(const MagicState& state, Reaction r) noexcept {
+    return state.frenzy ? Reaction::enemy : r;
+}
+
+Reaction commanded_reaction(std::uint32_t a, std::uint32_t b, const CommanderOf& commander_of,
+                            const ReactionOf& base) {
+    const std::uint32_t ca = commander_of(a);
+    const std::uint32_t cb = commander_of(b);
+    const std::uint32_t pa = ca != 0 ? ca : a;
+    const std::uint32_t pb = cb != 0 ? cb : b;
+    if (pa == pb) {
+        return Reaction::ally;
+    }
+    return base(pa, pb);
+}
+
+FollowStep follow_step(double distance) noexcept {
+    if (distance > k_follow_far) {
+        return FollowStep::run;
+    }
+    return distance > k_follow_near ? FollowStep::walk : FollowStep::stay;
+}
+
+std::string stagger_clip(const std::vector<std::string>& names, bool large) {
+    const auto has = [](const std::string& n, const char* part) { return n.find(part) != std::string::npos; };
+    std::vector<const std::string*> found;
+    for (const auto& n : names) {
+        if (has(n, "stagger") && !has(n, "bash")) {
+            found.push_back(&n);
+        }
+    }
+    if (found.empty()) {
+        for (const auto& n : names) {
+            if (has(n, "recoil")) {
+                found.push_back(&n);
+            }
+        }
+    }
+    const auto order = [](const std::string* x, const std::string* y) {
+        return x->size() != y->size() ? x->size() < y->size() : *x < *y;
+    };
+    std::ranges::sort(found, order);
+    for (const auto* n : found) {
+        const bool big = has(*n, "large") || has(*n, "heavy") || has(*n, "back");
+        const bool small = has(*n, "small") || has(*n, "light");
+        if (large ? big : small) {
+            return *n;
+        }
+    }
+    // None says its size: the plainest name for a small one, the longest for a large one.
+    if (found.empty()) {
+        return {};
+    }
+    return large ? *found.back() : *found.front();
+}
+
 } // namespace skydot::combat_ai

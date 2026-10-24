@@ -237,6 +237,8 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("on_hit", "attacker", "target"), &SkydotAi::on_hit);
     ClassDB::bind_method(D_METHOD("start_combat", "ref", "target"), &SkydotAi::start_combat);
     ClassDB::bind_method(D_METHOD("stop_combat", "ref"), &SkydotAi::stop_combat);
+    ClassDB::bind_method(D_METHOD("stagger", "ref", "magnitude"), &SkydotAi::stagger);
+    ClassDB::bind_method(D_METHOD("revive", "ref"), &SkydotAi::revive);
     ClassDB::bind_method(D_METHOD("get_combat_target", "ref"), &SkydotAi::get_combat_target);
     ClassDB::bind_method(D_METHOD("get_combat_state", "ref"), &SkydotAi::get_combat_state);
     ClassDB::bind_method(D_METHOD("update_fights", "seconds"), &SkydotAi::update_fights);
@@ -298,13 +300,21 @@ SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
     const auto* a = root() != nullptr
                         ? lookup(root()->actors(), ref)
                         : nullptr;
+    std::uint32_t npc = a != nullptr ? a->base() : 0;
     if (a == nullptr) {
-        return nullptr;
+        // A reference a script placed (a summon) whose base is an NPC_ or a leveled list of them.
+        const auto* w = root();
+        const std::uint32_t base = w != nullptr && vm_ != nullptr ? vm_->base_form_of(ref) : 0;
+        const std::uint32_t picked = base != 0 && w != nullptr ? pick_actor_form(*w, base, ref) : 0;
+        if (picked == 0 || w == nullptr || lookup(w->npcs(), picked) == nullptr) {
+            return nullptr;
+        }
+        npc = base;
     }
     Mind m;
     m.ref = ref;
-    m.npc = a->base();
-    m.persistent = formats::has_flag(a->flags(), wfb::RefFlags::persistent);
+    m.npc = npc;
+    m.persistent = a != nullptr && formats::has_flag(a->flags(), wfb::RefFlags::persistent);
     m.dice = 0x9E3779B97F4A7C15ull ^ (static_cast<std::uint64_t>(ref) * 0xBF58476D1CE4E5B9ull);
     m.think = static_cast<double>(ref % 97) / 97.0 * k_think_interval;
     m.idle = static_cast<double>(ref % 89) / 89.0 * SkydotActor::ai_interval(2);
@@ -948,8 +958,14 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
             }
             m->node = actor->get_instance_id();
             const auto where = world_->placement().where(ref);
-            m->space = where ? where->place.space : 0;
-            m->last = where ? where->place.position : Vector3();
+            const bool runtime = !where &&
+                                 world_->data().actor_ptr(ref) == nullptr;
+            // A runtime reference lives where the shown space is, and where its node stands.
+            m->space = where ? where->place.space : runtime ? space_ : 0;
+            m->last = where ? where->place.position
+                            : runtime ? SkydotWorld::godot_to_skyrim(actor->is_inside_tree() ? actor->get_global_position()
+                                                                                              : actor->get_position())
+                                      : Vector3();
             if (std::find(attached_.begin(), attached_.end(), ref) == attached_.end()) {
                 attached_.push_back(ref);
             }
@@ -994,6 +1010,7 @@ void SkydotAi::update(double seconds) {
     if (root() == nullptr) {
         return;
     }
+    overrides_cache_.clear();
     clock_.days += seconds * time_scale_ / k_seconds_per_day;
     since_placed_ += seconds * time_scale_;
     const std::vector<std::uint32_t> attached = attached_;
@@ -1021,6 +1038,9 @@ void SkydotAi::update(double seconds) {
         m->idle = 0.0;
         // The dead (a corpse placed dead too) have no AI: no package, no fight.
         if (vm_ != nullptr && vm_->is_actor_dead(ref)) {
+            m->combat.paralyzed = m->combat.calmed = m->combat.frenzied = m->combat.following = false;
+            m->combat.afraid_of = 0;
+            m->combat.stagger = 0.0;
             leave_combat(*m, nullptr);
             continue;
         }

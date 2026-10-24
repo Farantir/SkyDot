@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <optional>
+#include <string>
 #include <vector>
 
 namespace skydot::combat_ai {
@@ -112,5 +113,59 @@ struct RangedInputs {
 /// keep distance; beyond max_distance or without line of sight: approach;
 /// otherwise shoot.
 [[nodiscard]] RangedStep ranged_step(const RangedInputs& in) noexcept;
+
+// ---- magic (step 7a-4; UESP Skyrim:Calm, Fear, Frenzy, Paralysis, Invisibility, Summon Creature) ----
+
+/// The held magic on an actor as the rules read it (SkydotAi fills it from magic::Overrides).
+struct MagicState {
+    bool calm = false;
+    bool frenzy = false;
+    bool paralyzed = false;
+    bool invisible = false;
+    std::uint32_t fear_from = 0;    ///< Flees from this actor; 0 none.
+    std::uint32_t commanded_by = 0; ///< A summon or a reanimated corpse of this actor; 0 none.
+};
+
+/// What a mind does this tick: paralysed beats fear beats calm; frenzy and command change who it
+/// fights, not what it may do.
+enum class MagicMode : std::uint8_t { free, frozen, afraid, calmed };
+[[nodiscard]] MagicMode magic_mode(const MagicState& state) noexcept;
+
+/// The aggression it acts on: frenzy 3 (anyone), a commanded actor 1 (its master's enemies), else `base`.
+[[nodiscard]] std::uint8_t aggression_under(std::uint8_t base, const MagicState& state) noexcept;
+
+/// A frenzied actor sees everyone as an enemy.
+[[nodiscard]] Reaction reaction_under(const MagicState& state, Reaction r) noexcept;
+
+/// Whoever commands `ref` (a summon, a reanimated corpse), 0 if none.
+using CommanderOf = std::function<std::uint32_t(std::uint32_t ref)>;
+using ReactionOf = std::function<Reaction(std::uint32_t a, std::uint32_t b)>;
+
+/// How `a` sees `b` when either may be commanded: a commanded actor and its commander are allies, and so
+/// are two actors of one commander; towards anyone else a commanded actor takes its commander's
+/// reaction (and others see it as they see its commander).
+[[nodiscard]] Reaction commanded_reaction(std::uint32_t a, std::uint32_t b, const CommanderOf& commander_of,
+                                          const ReactionOf& base);
+
+/// After a frenzy ends: whether it goes on fighting `reaction` at `aggression` (else it leaves combat).
+[[nodiscard]] inline bool fights_after_frenzy(std::uint8_t aggression, Reaction r) noexcept {
+    return starts_combat(aggression, r);
+}
+
+enum class FollowStep : std::uint8_t { stay, walk, run };
+
+/// PLACEHOLDERS: a commanded actor walks to within 250 game units of its commander and runs from farther than 600.
+inline constexpr double k_follow_near = 250.0;
+inline constexpr double k_follow_far = 600.0;
+[[nodiscard]] FollowStep follow_step(double distance) noexcept;
+
+/// The stagger clip among a behaviour project's clip names (lower case, no extension): those with
+/// "stagger" (not "bash"), else "recoil"; a large one for `large` (name with large, heavy or back),
+/// a small one otherwise (small, light), else the shortest, then alphabetically. Empty if none.
+/// PLACEHOLDER pick, as the real game chooses by direction and size.
+[[nodiscard]] std::string stagger_clip(const std::vector<std::string>& names, bool large);
+
+/// Stagger is large from this magnitude on (PLACEHOLDER).
+inline constexpr double k_large_stagger = 0.5;
 
 } // namespace skydot::combat_ai

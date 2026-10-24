@@ -115,6 +115,11 @@ public:
     /// that it blocks nobody. The node stays; the game layer lays the body down.
     void set_dead(bool dead);
     bool is_dead() const { return dead_; }
+    /// Paralysed (magic): it does not walk, wander or change its clip, its animation holds the
+    /// pose it had (PLACEHOLDER for Skyrim's ragdoll) and gravity still acts. `set_dead(false)`
+    /// (a reanimated body) puts a dead actor back as it was alive.
+    void set_frozen(bool frozen);
+    bool is_frozen() const { return frozen_; }
 
     /// Level of detail: 0 near (everything every frame), 1 middle, 2 far.
     /// Near without a camera.
@@ -167,6 +172,7 @@ private:
     double lod_wait_{0.0};     ///< Seconds before the level is worked out again.
     double anim_wait_{0.0};    ///< Seconds since the animation last advanced.
     double step_wait_{0.0};    ///< Seconds since the physics last stepped.
+    bool frozen_{false};       ///< `set_frozen`.
     bool dead_{false};         ///< `set_dead`: nothing moves it any more.
     bool wake_{false};         ///< Step at the next tick, whatever the level of detail.
     bool posed_{false};        ///< The animation has been applied at least once.

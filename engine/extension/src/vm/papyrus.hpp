@@ -261,6 +261,9 @@ public:
     /// commanded_by, time_scale}. `magic_overrides_of` is the same for C++ (the AI).
     godot::Dictionary magic_overrides(std::int64_t ref) const;
     [[nodiscard]] magic::Overrides magic_overrides_of(std::uint32_t ref) const;
+    /// The base form of `ref`, placed by a script or by the world; 0 if unknown (the AI reads a
+    /// summon's NPC_ here).
+    std::uint32_t base_form_of(std::uint32_t ref) const;
     /// The actor attacked, cast or activated: its invisibility ends; how many effects.
     std::int64_t break_invisibility(std::int64_t ref);
     /// The player put `weapon` away: its bound weapon effect ends.
@@ -610,8 +613,6 @@ private:
     std::uint32_t place_ref(const vm::PlacedRef& placed, bool initially_disabled);
     /// The base's DEST, null if `ref` is not destructible.
     const bethconv::pack::wfb::Destruction* destruction_of(std::uint32_t ref) const;
-    /// The base form of `ref`, placed by a script or by the world; 0 if unknown.
-    std::uint32_t base_form_of(std::uint32_t ref) const;
     /// DamageObject: open the stages the damage reaches and send
     /// OnDestructionStageChanged.
     void damage_object(std::uint32_t ref, double amount);

@@ -134,3 +134,72 @@ TEST_CASE("the ranged step keeps its distance, shoots in sight and closes in oth
     in.has_melee = true;
     CHECK(ranged_step(in) == RangedStep::switch_to_melee);
 }
+
+// ---- magic ----
+
+TEST_CASE("held magic picks the mode: paralysis, then fear, then calm", "[combat][ai][magic]") {
+    MagicState s;
+    CHECK(magic_mode(s) == MagicMode::free);
+    s.calm = true;
+    CHECK(magic_mode(s) == MagicMode::calmed);
+    s.fear_from = 0x14;
+    CHECK(magic_mode(s) == MagicMode::afraid);
+    s.paralyzed = true;
+    CHECK(magic_mode(s) == MagicMode::frozen);
+    // Frenzy alone leaves it free: it only changes whom it fights.
+    MagicState f;
+    f.frenzy = true;
+    CHECK(magic_mode(f) == MagicMode::free);
+}
+
+TEST_CASE("frenzy fights anyone, a commanded actor its master's enemies", "[combat][ai][magic]") {
+    MagicState f;
+    f.frenzy = true;
+    CHECK(aggression_under(0, f) == 3);
+    CHECK(reaction_under(f, Reaction::friend_) == Reaction::enemy);
+    CHECK(starts_combat(aggression_under(0, f), reaction_under(f, Reaction::ally)));
+    MagicState c;
+    c.commanded_by = 0x14;
+    CHECK(aggression_under(0, c) == 1);
+    CHECK(aggression_under(3, c) == 1);
+    CHECK(reaction_under(c, Reaction::neutral) == Reaction::neutral);
+    CHECK(aggression_under(2, MagicState{}) == 2);
+    // The frenzy over: an ally is not fought any more, a foe is.
+    CHECK_FALSE(fights_after_frenzy(1, Reaction::ally));
+    CHECK(fights_after_frenzy(1, Reaction::enemy));
+}
+
+TEST_CASE("a summon is its commander's ally and takes its reactions", "[combat][ai][magic]") {
+    constexpr std::uint32_t player = 0x14, summon = 0xFF000001, other = 0xFF000002, wolf = 0x100, bandit = 0x200;
+    const CommanderOf commander = [&](std::uint32_t r) { return r == summon || r == other ? player : 0u; };
+    const ReactionOf base = [&](std::uint32_t a, std::uint32_t b) {
+        if (a == player && b == bandit) return Reaction::enemy;
+        if (a == bandit && b == player) return Reaction::enemy;
+        if (a == player && b == wolf) return Reaction::neutral;
+        return Reaction::neutral;
+    };
+    CHECK(commanded_reaction(summon, player, commander, base) == Reaction::ally);
+    CHECK(commanded_reaction(player, summon, commander, base) == Reaction::ally);
+    CHECK(commanded_reaction(summon, other, commander, base) == Reaction::ally);
+    CHECK(commanded_reaction(summon, bandit, commander, base) == Reaction::enemy);
+    CHECK(commanded_reaction(bandit, summon, commander, base) == Reaction::enemy);
+    CHECK(commanded_reaction(summon, wolf, commander, base) == Reaction::neutral);
+    CHECK(commanded_reaction(bandit, wolf, commander, base) == Reaction::neutral);
+}
+
+TEST_CASE("a commanded actor follows: stay, walk, run", "[combat][ai][magic]") {
+    CHECK(follow_step(100.0) == FollowStep::stay);
+    CHECK(follow_step(400.0) == FollowStep::walk);
+    CHECK(follow_step(900.0) == FollowStep::run);
+}
+
+TEST_CASE("the stagger clip is found by name and size", "[combat][ai][magic]") {
+    const std::vector<std::string> human{"idle", "staggerstart", "staggerbackwards", "staggerbash", "recoillargestart"};
+    CHECK(stagger_clip(human, true) == "staggerbackwards");
+    CHECK(stagger_clip(human, false) == "staggerstart");
+    const std::vector<std::string> sized{"staggersmall", "staggerlarge", "staggerx"};
+    CHECK(stagger_clip(sized, true) == "staggerlarge");
+    CHECK(stagger_clip(sized, false) == "staggersmall");
+    CHECK(stagger_clip({"idle", "recoilstart"}, false) == "recoilstart");
+    CHECK(stagger_clip({"idle", "walk"}, true).empty());
+}

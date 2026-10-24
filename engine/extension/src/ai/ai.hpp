@@ -27,6 +27,7 @@
 
 #include "ai/combat_rules.hpp"
 #include "ai/packages.hpp"
+#include "magic/active_effects.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
@@ -130,6 +131,16 @@ public:
     /// Force `ref` into combat with `target`; false if `ref` is not a built, living actor.
     bool start_combat(std::int64_t ref, std::int64_t target);
     void stop_combat(std::int64_t ref);
+    /// `ref` staggers (magic effect archetype 33, a bash): it plays a stagger clip of its
+    /// behaviour project (small below magnitude 0.5, else large; PLACEHOLDER) and its AI pauses
+    /// for the clip's length (1 s without one). Returns that pause, 0 if `ref` is not a built,
+    /// living actor.
+    double stagger(std::int64_t ref, double magnitude);
+    /// `ref` lives again (reanimate): its node is alive for the SkydotActor again (set_dead(false)),
+    /// its combat and package are forgotten and the AI takes it up again. Call it once the game
+    /// layer has stood the body up as a SkydotActor (see SkydotWorld.build_placed_actor and
+    /// attach_built); true if a node is attached.
+    bool revive(std::int64_t ref);
     std::int64_t get_combat_target(std::int64_t ref);
     /// Run the fights under way only (not the packages, not new fights): for runs that keep the
     /// world still, as --screenshot does, but show a fight started by hand.
@@ -165,6 +176,14 @@ private:
         double detect{};                 ///< Seconds before the next look for an enemy
         double repath{};
         bool fleeing{};
+        // Magic (ai_combat.cpp magic_step): transitions are logged once.
+        bool paralyzed{};
+        bool calmed{};
+        bool frenzied{};
+        bool following{};                ///< Follows its commander instead of its package.
+        bool fear_entered{};             ///< The fight began as a flight from a fear caster.
+        std::uint32_t afraid_of{};       ///< The fear caster it flees from; 0 none.
+        double stagger{};                ///< Seconds its AI still pauses for a stagger clip.
         bool ranged{};                   ///< Fights with its bow
         bool was_wander{};
         int circle{1};                   ///< Which way it circles
@@ -271,6 +290,18 @@ private:
     /// The attack distance of `m`'s aggro radius (game units), 0 if it has none.
     double aggro_radius(const Mind& m) const;
     combat_ai::Reaction reaction_of(std::uint32_t a, std::uint32_t b);
+    /// Factions and relationships only: reaction_of without the commanders.
+    combat_ai::Reaction faction_reaction(std::uint32_t a, std::uint32_t b);
+    /// The held magic on `ref` (the host's, kept for the frame: the caches are cleared by
+    /// update, update_fights and on_hit).
+    const magic::Overrides& overrides_of(std::uint32_t ref) const;
+    combat_ai::MagicState magic_state(std::uint32_t ref) const;
+    std::uint32_t commander_of(std::uint32_t ref) const;
+    /// Paralysis, fear, calm and following a commander. True when it took over this tick.
+    bool magic_step(Mind& m, SkydotActor& actor, const combat_ai::MagicState& state, double seconds);
+    bool follow_commander(Mind& m, SkydotActor& actor, std::uint32_t commander);
+    /// The plan of a placed or a runtime actor.
+    godot::Dictionary plan_of(std::uint32_t ref) const;
     std::vector<combat_ai::Membership> memberships(std::uint32_t ref) const;
     std::uint32_t npc_of(std::uint32_t ref) const;
     std::uint8_t value_of(std::uint32_t ref, const char* actor_value) const;
@@ -278,6 +309,7 @@ private:
     void melee_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to);
     void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
     void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
+    mutable std::unordered_map<std::uint32_t, magic::Overrides> overrides_cache_;
     bool combat_enabled_{true};
     godot::Vector3 player_position_;
     bool player_alive_{false};

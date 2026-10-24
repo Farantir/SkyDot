@@ -123,6 +123,8 @@ void SkydotActor::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wander_radius"), "set_wander_radius", "get_wander_radius");
     ClassDB::bind_method(D_METHOD("set_dead", "dead"), &SkydotActor::set_dead);
     ClassDB::bind_method(D_METHOD("is_dead"), &SkydotActor::is_dead);
+    ClassDB::bind_method(D_METHOD("set_frozen", "frozen"), &SkydotActor::set_frozen);
+    ClassDB::bind_method(D_METHOD("is_frozen"), &SkydotActor::is_frozen);
     ClassDB::bind_method(D_METHOD("get_lod"), &SkydotActor::get_lod);
     ClassDB::bind_method(D_METHOD("set_stance", "prefix"), &SkydotActor::set_stance);
     ClassDB::bind_method(D_METHOD("get_stance"), &SkydotActor::get_stance);
@@ -240,8 +242,23 @@ void SkydotActor::turn_to_look(double delta) {
 }
 
 void SkydotActor::set_dead(bool dead) {
+    const bool was = dead_;
     dead_ = dead;
     if (!dead) {
+        if (was) {
+            // Alive again (reanimated): the body blocks, moves and animates as before.
+            frozen_ = false;
+            action_left_ = 0.0;
+            playing_ = "";
+            wake_ = true;
+            set_collision_layer(body_layer());
+            set_collision_mask(body_mask());
+            set_process(true);
+            set_physics_process(true);
+            if (godot::AnimationPlayer* anim = player()) {
+                anim->set_active(true);
+            }
+        }
         return;
     }
     path_.clear();
@@ -255,6 +272,21 @@ void SkydotActor::set_dead(bool dead) {
     if (godot::AnimationPlayer* anim = player()) {
         anim->stop();
         anim->set_active(false);
+    }
+}
+
+void SkydotActor::set_frozen(bool frozen) {
+    if (frozen_ == frozen) {
+        return;
+    }
+    frozen_ = frozen;
+    wake_ = true;
+    if (frozen) {
+        stop();
+        set_velocity(Vector3(0, get_velocity().y, 0));
+    }
+    if (godot::AnimationPlayer* anim = player(); anim != nullptr && !dead_) {
+        anim->set_active(!frozen);
     }
 }
 
@@ -698,7 +730,7 @@ void SkydotActor::_physics_process(double engine_delta) {
         if (find_ground(delta)) {
             set_hold(false);
         }
-    } else {
+    } else if (!frozen_) {
         think(delta);
         steer(delta);
     }

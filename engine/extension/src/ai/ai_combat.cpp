@@ -106,7 +106,43 @@ std::vector<combat_ai::Membership> SkydotAi::memberships(std::uint32_t ref) cons
     return out;
 }
 
+const magic::Overrides& SkydotAi::overrides_of(std::uint32_t ref) const {
+    const auto it = overrides_cache_.find(ref);
+    if (it != overrides_cache_.end()) {
+        return it->second;
+    }
+    return overrides_cache_.emplace(ref, vm_ != nullptr ? vm_->magic_overrides_of(ref) : magic::Overrides{})
+        .first->second;
+}
+
+combat_ai::MagicState SkydotAi::magic_state(std::uint32_t ref) const {
+    const magic::Overrides& o = overrides_of(ref);
+    combat_ai::MagicState s;
+    s.calm = o.calm;
+    s.frenzy = o.frenzy;
+    s.paralyzed = o.paralyzed;
+    s.invisible = o.invisible;
+    s.fear_from = o.fear_from;
+    s.commanded_by = o.commanded_by;
+    return s;
+}
+
+std::uint32_t SkydotAi::commander_of(std::uint32_t ref) const {
+    return ref == k_player_ref ? 0 : overrides_of(ref).commanded_by;
+}
+
+godot::Dictionary SkydotAi::plan_of(std::uint32_t ref) const {
+    godot::Dictionary plan = world_->get_actor_plan(ref);
+    return plan.is_empty() ? world_->get_npc_plan(npc_of(ref), ref) : plan;
+}
+
 combat_ai::Reaction SkydotAi::reaction_of(std::uint32_t a, std::uint32_t b) {
+    return combat_ai::commanded_reaction(
+        a, b, [this](std::uint32_t ref) { return commander_of(ref); },
+        [this](std::uint32_t x, std::uint32_t y) { return faction_reaction(x, y); });
+}
+
+combat_ai::Reaction SkydotAi::faction_reaction(std::uint32_t a, std::uint32_t b) {
     if (!relationships_built_) {
         relationships_built_ = true;
         const auto* list = root() != nullptr ? root()->relationships() : nullptr;
@@ -180,6 +216,10 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
     if (!at || !actor.is_inside_tree()) {
         return false;
     }
+    // An invisible target (the player too) is not seen at all.
+    if (target != m.ref && overrides_of(target).invisible) {
+        return false;
+    }
     const double scale = SkydotWorld::unit_scale();
     const bool interior = world_->data().cell_ptr(static_cast<std::uint32_t>(space_)) != nullptr;
     double range = k_sneak_distance;
@@ -219,7 +259,6 @@ bool SkydotAi::sees(const Mind& m, const SkydotActor& actor, std::uint32_t targe
     const Vector3 head = to + Vector3(0, static_cast<float>(target_height), 0);
     const auto query = godot::PhysicsRayQueryParameters3D::create(
         eye, head, physics_layer::world | physics_layer::terrain);
-    (void)m;
     return space->intersect_ray(query).is_empty();
 }
 
@@ -244,7 +283,7 @@ void SkydotAi::read_gear(Mind& m) {
             reach = static_cast<double>(weapon.get("reach", 1.0)) * combat_distance;
         }
     } else {
-        const godot::Dictionary plan = world_->get_actor_plan(m.ref);
+        const godot::Dictionary plan = plan_of(m.ref);
         const godot::Dictionary race = world_->get_race(static_cast<std::int64_t>(plan.get("race", 0)));
         reach = static_cast<double>(race.get("unarmed_reach", k_unarmed_reach));
     }
@@ -332,6 +371,7 @@ void SkydotAi::stop_combat(std::int64_t ref) {
 }
 
 void SkydotAi::update_fights(double seconds) {
+    overrides_cache_.clear();
     const std::vector<std::uint32_t> attached = attached_;
     for (const std::uint32_t ref : attached) {
         Mind* m = mind(ref);
@@ -365,6 +405,7 @@ std::int64_t SkydotAi::get_combat_state(std::int64_t ref) {
 }
 
 void SkydotAi::on_hit(std::int64_t attacker_id, std::int64_t target_id) {
+    overrides_cache_.clear();
     const auto attacker = static_cast<std::uint32_t>(attacker_id);
     const auto victim = static_cast<std::uint32_t>(target_id);
     if (!combat_enabled_ || attacker == victim || !alive(attacker)) {
@@ -397,6 +438,178 @@ void SkydotAi::on_hit(std::int64_t attacker_id, std::int64_t target_id) {
             enter_combat(*a, *node, attacker);
         }
     }
+    // The actors a commander commands fight whom it hits, and whoever hits it.
+    for (const std::uint32_t ref : attached_) {
+        Mind* a = mind(ref);
+        const std::uint32_t master = commander_of(ref);
+        SkydotActor* node = a != nullptr && master != 0 ? node_of(*a) : nullptr;
+        if (node == nullptr || a->combat.state != 0 || !alive(ref) || overrides_of(ref).calm) {
+            continue;
+        }
+        const std::uint32_t foe = master == attacker ? victim : master == victim ? attacker : 0;
+        if (foe != 0 && foe != ref && commander_of(foe) != master && alive(foe) &&
+            !combat_ai::friendly(reaction_of(ref, foe))) {
+            enter_combat(*a, *node, foe);
+        }
+    }
+}
+
+double SkydotAi::stagger(std::int64_t ref_id, double magnitude) {
+    const auto ref = static_cast<std::uint32_t>(ref_id);
+    Mind* m = mind(ref);
+    SkydotActor* actor = m != nullptr ? node_of(*m) : nullptr;
+    if (actor == nullptr || !alive(ref)) {
+        return 0.0;
+    }
+    const godot::Dictionary plan = plan_of(ref);
+    const godot::Dictionary loco = world_->get_locomotion(plan.get("behaviour", godot::String()));
+    const godot::Dictionary clips = loco.get("clips", godot::Dictionary());
+    std::vector<std::string> names;
+    for (const godot::Variant& key : clips.keys()) {
+        names.emplace_back(godot::String(key).utf8().get_data());
+    }
+    const std::string name = combat_ai::stagger_clip(names, magnitude >= combat_ai::k_large_stagger);
+    double length = 0.0;
+    if (!name.empty()) {
+        const godot::Dictionary clip = clips.get(godot::String::utf8(name.c_str()), godot::Dictionary());
+        length = actor->play_action(clip.get("file", godot::String()), 1.0);
+    }
+    actor->stop();
+    m->combat.stagger = length > 0.0 ? length : 1.0;
+    std::printf("combat: 0x%X staggers (%g)\n", ref, magnitude);
+    return m->combat.stagger;
+}
+
+bool SkydotAi::revive(std::int64_t ref_id) {
+    const auto ref = static_cast<std::uint32_t>(ref_id);
+    Mind* m = mind(ref);
+    if (m == nullptr) {
+        return false;
+    }
+    m->combat = CombatMind{};
+    m->package = 0;
+    m->steps.clear();
+    m->step = 0;
+    m->step_started = false;
+    m->target.reset();
+    m->door = 0;
+    m->think = 0.0;
+    m->idle = 0.0;
+    SkydotActor* actor = node_of(*m);
+    if (actor == nullptr) {
+        return false;
+    }
+    actor->set_dead(false);
+    actor->set_frozen(false);
+    actor->set_wander(false);
+    actor->clear_look_target();
+    actor->stop();
+    if (std::find(attached_.begin(), attached_.end(), ref) == attached_.end()) {
+        attached_.push_back(ref);
+    }
+    std::printf("combat: 0x%X lives again\n", ref);
+    return true;
+}
+
+// ---- magic ---------------------------------------------------------------------------
+
+bool SkydotAi::follow_commander(Mind& m, SkydotActor& actor, std::uint32_t commander) {
+    CombatMind& c = m.combat;
+    const auto at = commander != 0 && alive(commander) ? position_of(commander) : std::nullopt;
+    if (!at) {
+        return false;
+    }
+    if (!c.following) {
+        c.following = true;
+        actor.set_wander(false);
+    }
+    switch (combat_ai::follow_step(flat(m.last, *at))) {
+    case combat_ai::FollowStep::stay:
+        if (actor.is_walking()) {
+            actor.stop();
+        }
+        break;
+    case combat_ai::FollowStep::walk:
+        combat_walk(m, actor, *at, false);
+        break;
+    case combat_ai::FollowStep::run:
+        combat_walk(m, actor, *at, true);
+        break;
+    }
+    return true;
+}
+
+bool SkydotAi::magic_step(Mind& m, SkydotActor& actor, const combat_ai::MagicState& state, double seconds) {
+    CombatMind& c = m.combat;
+    if (c.stagger > 0.0) {
+        c.stagger -= seconds;
+        return true; // the clip plays, the AI waits
+    }
+    const auto mode = combat_ai::magic_mode(state);
+    // Paralysis: nothing is done, the combat state is kept.
+    if (mode == combat_ai::MagicMode::frozen) {
+        if (!c.paralyzed) {
+            c.paralyzed = true;
+            actor.stop();
+            actor.set_frozen(true);
+            std::printf("combat: 0x%X paralyzed\n", m.ref);
+        }
+        return true;
+    }
+    if (c.paralyzed) {
+        c.paralyzed = false;
+        actor.set_frozen(false);
+        std::printf("combat: 0x%X moves again\n", m.ref);
+    }
+    // Fear: it flees from the caster while the fear lasts.
+    if (mode == combat_ai::MagicMode::afraid) {
+        const auto from = alive(state.fear_from) ? position_of(state.fear_from) : std::nullopt;
+        if (from) {
+            if (c.afraid_of != state.fear_from) {
+                c.afraid_of = state.fear_from;
+                std::printf("combat: 0x%X flees from 0x%X (fear)\n", m.ref, state.fear_from);
+                if (c.state == 0) {
+                    enter_combat(m, actor, state.fear_from);
+                    c.fear_entered = true;
+                }
+            }
+            if (c.state != 0) {
+                actor.clear_look_target();
+                if (c.state == 2) {
+                    c.state = 1;
+                }
+                flee_tick(m, actor, *from);
+                if (c.state == 0) {
+                    c.afraid_of = state.fear_from; // far enough: it waits, still afraid
+                }
+            }
+            return true;
+        }
+    }
+    if (c.afraid_of != 0) {
+        // The fear is over: it fights what it would fight, else leaves.
+        const std::uint32_t caster = c.afraid_of;
+        c.afraid_of = 0;
+        const bool entered = c.fear_entered;
+        c.fear_entered = false;
+        if (c.state != 0 && entered && c.target == caster &&
+            !combat_ai::starts_combat(value_of(m.ref, "Aggression"), reaction_of(m.ref, caster))) {
+            leave_combat(m, &actor);
+        }
+    }
+    // Calm: no fight, none started.
+    if (mode == combat_ai::MagicMode::calmed) {
+        if (!c.calmed) {
+            c.calmed = true;
+            std::printf("combat: 0x%X calmed\n", m.ref);
+        }
+        if (c.state != 0) {
+            leave_combat(m, &actor);
+        }
+        return false;
+    }
+    c.calmed = false;
+    return false;
 }
 
 // ---- the step --------------------------------------------------------------------
@@ -520,9 +733,33 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         leave_combat(m, nullptr);
         return false;
     }
+    const combat_ai::MagicState magic = magic_state(m.ref);
+    if (magic_step(m, actor, magic, seconds)) {
+        return true;
+    }
+    if (c.following && magic.commanded_by == 0) {
+        // No longer commanded: its package again.
+        c.following = false;
+        m.package = 0;
+        m.think = 0.0;
+        actor.stop();
+    }
+    if (magic.frenzy) {
+        c.frenzied = true;
+    }
+    if (c.frenzied && !magic.frenzy) {
+        c.frenzied = false;
+        if (c.state != 0 && !combat_ai::fights_after_frenzy(value_of(m.ref, "Aggression"),
+                                                            reaction_of(m.ref, c.target))) {
+            leave_combat(m, &actor);
+        }
+    }
     if (c.state == 0) {
-        if (c.detect > 0.0 || !player_known_) {
+        if (magic.calm) {
             return false;
+        }
+        if (c.detect > 0.0 || !player_known_) {
+            return follow_commander(m, actor, magic.commanded_by);
         }
         c.detect = k_detect_interval;
         // A sleeper wakes when the player comes close (and it could see him): its scripts hear
@@ -549,13 +786,14 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
             if (d >= best_distance) {
                 return;
             }
-            const auto how = reaction_of(m.ref, other);
+            const auto how = combat_ai::reaction_under(magic, reaction_of(m.ref, other));
             // An aggro radius attacks whatever comes within it and is not a friend (skeevers,
             // wolves, ambush draugr); otherwise aggression and the reaction decide.
             const double radius = aggro_radius(m);
             const bool by_radius = radius > 0.0 && !combat_ai::friendly(how) && sees(m, actor, other, false, radius);
             if (!by_radius &&
-                (!combat_ai::starts_combat(value_of(m.ref, "Aggression"), how) || !sees(m, actor, other))) {
+                (!combat_ai::starts_combat(combat_ai::aggression_under(value_of(m.ref, "Aggression"), magic), how) ||
+                 !sees(m, actor, other))) {
                 return;
             }
             best = other;
@@ -565,10 +803,37 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         for (const std::uint32_t other : attached_) {
             consider(other);
         }
-        if (best == 0) {
-            return false;
+        // A commanded actor also fights whoever fights its commander.
+        if (magic.commanded_by != 0 && !magic.frenzy) {
+            const std::uint32_t master = magic.commanded_by;
+            const auto help = [&](std::uint32_t other) {
+                if (other == m.ref || other == master || !alive(other) || commander_of(other) == master ||
+                    combat_ai::friendly(reaction_of(m.ref, other))) {
+                    return;
+                }
+                if (const auto at = position_of(other); at && flat(m.last, *at) < best_distance) {
+                    best = other;
+                    best_distance = flat(m.last, *at);
+                }
+            };
+            for (const std::uint32_t other : attached_) {
+                const Mind* om = mind(other);
+                if (om != nullptr && om->combat.state == 1 && om->combat.target == master) {
+                    help(other);
+                }
+            }
+            if (const Mind* cm = master == k_player_ref ? nullptr : mind(master);
+                cm != nullptr && cm->combat.state == 1) {
+                help(cm->combat.target);
+            }
         }
-        {
+        if (best == 0) {
+            return follow_commander(m, actor, magic.commanded_by);
+        }
+        c.following = false;
+        if (magic.frenzy) {
+            std::printf("combat: 0x%X frenzied attacks 0x%X\n", m.ref, best);
+        } else {
             const auto why = reaction_of(m.ref, best);
             const char* names[] = {"enemy", "neutral", "ally", "friend"};
             std::printf("combat: 0x%X sees 0x%X: %s, aggression %d\n", m.ref, best,

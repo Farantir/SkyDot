@@ -106,6 +106,10 @@ public:
     godot::Node3D* build_model(const godot::String& vpath);
     /// Placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref);
+    /// An actor for runtime reference `ref` of NPC_ (or leveled list) `base`, standing at
+    /// `position` (Skyrim space) facing `rotation_z`; null if the NPC does not build.
+    godot::Node3D* build_placed_actor(std::uint32_t ref, std::uint32_t base, const godot::Vector3& position,
+                                      float rotation_z);
 
     /// Virtual paths of the resources a cell needs, and a request for them on
     /// the asset cache's threads. A request returns how many are still pending.
@@ -174,8 +178,18 @@ private:
     /// the asset cache (built on its workers when requested ahead); null if
     /// it does not build.
     godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path) const;
-    void place_actor(godot::Node3D* root, const bethconv::pack::wfb::ActorRef& actor, BuildStats& stats,
-                     const ActorPlacement::Place* place = nullptr);
+    /// What place_actor needs of an actor: a placed ACHR's fields (at its moved place if it has
+    /// one) or a runtime reference's.
+    struct ActorSpec {
+        std::uint32_t ref{};
+        std::uint32_t base{};
+        std::uint32_t cell{};
+        bool disabled{};
+        godot::Vector3 position;
+        float rotation_z{};
+    };
+    static ActorSpec spec_of(const bethconv::pack::wfb::ActorRef& actor, const ActorPlacement::Place* place);
+    void place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats);
     /// The actor's models and clips (asset cache keys) to request ahead.
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor);
 

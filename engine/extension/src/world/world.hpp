@@ -400,6 +400,11 @@ public:
     godot::Dictionary get_locomotion(const godot::String& behaviour);
     /// Build placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref);
+    /// An actor for runtime reference `ref` of NPC_ `base` at `position` (Skyrim space) facing
+    /// `rotation_z` (a summon, PlaceAtMe): the node is tagged with `ref` so that
+    /// SkydotAi.attach_built takes it. Null if the NPC does not build.
+    godot::Node3D* build_placed_actor(std::int64_t ref, std::int64_t base, const godot::Vector3& position,
+                                      double rotation_z);
     /// The placed actors (ACHR refs) of an interior or exterior cell, as
     /// placed in the editor.
     godot::PackedInt64Array get_cell_actors(std::int64_t cell) const;

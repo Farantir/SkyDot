@@ -94,10 +94,10 @@ constexpr auto k_cell_units = static_cast<float>(formats::k_cell_units);
 constexpr float k_no_water = 1.0e30F;
 
 
-skydot::ActorPlan plan_for(const wfb::World& world, const wfb::ActorRef& actor,
+skydot::ActorPlan plan_for(const wfb::World& world, std::uint32_t base, std::uint32_t ref,
                            const std::shared_ptr<AssetCache>& assets, const WornProvider& worn) {
     const auto exists = [&](const std::string& vpath) { return assets != nullptr && assets->has(vpath); };
-    return plan_actor(world, actor.base(), actor.ref(), exists, worn);
+    return plan_actor(world, base, ref, exists, worn);
 }
 
 } // namespace
@@ -126,7 +126,7 @@ TerrainBuilder& CellBuilder::terrain_builder() {
     return *terrain_;
 }
 
-ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor, assets_, worn_); }
+ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor.base(), actor.ref(), assets_, worn_); }
 
 ActorPlan CellBuilder::npc_plan(std::uint32_t npc, std::uint32_t ref) const {
     const auto exists = [&](const std::string& vpath) { return assets_ != nullptr && assets_->has(vpath); };
@@ -564,7 +564,7 @@ bool CellBuilder::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
             return false;
         }
         const auto& at = job.actors[job.next_actor++];
-        place_actor(root, *at.actor, job.stats, at.place);
+        place_actor(root, spec_of(*at.actor, at.place), job.stats);
     }
     Dictionary out = stats_dictionary(job.stats);
     if (job.exterior) {
@@ -800,7 +800,7 @@ std::vector<std::string> CellBuilder::actor_resources(const wfb::ActorRef& actor
     if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
         return {};
     }
-    auto plan = plan_for(*world_fb(), actor, assets_, worn_);
+    auto plan = plan_for(*world_fb(), actor.base(), actor.ref(), assets_, worn_);
     std::vector<std::string> out = std::move(plan.parts);
     if (plan.missing.empty() && !plan.skeleton.empty()) {
         const auto clips = actor_clips(plan);
@@ -874,6 +874,18 @@ godot::Node3D* CellBuilder::build_model(const godot::String& vpath) {
     return node;
 }
 
+CellBuilder::ActorSpec CellBuilder::spec_of(const wfb::ActorRef& actor, const ActorPlacement::Place* place) {
+    ActorSpec spec;
+    spec.ref = actor.ref();
+    spec.base = actor.base();
+    spec.cell = actor.cell();
+    spec.disabled = formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled);
+    const auto& p = actor.position();
+    spec.position = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
+    spec.rotation_z = place != nullptr ? place->rotation_z : actor.rotation().z();
+    return spec;
+}
+
 godot::Node3D* CellBuilder::build_actor(std::int64_t ref) {
     const auto* actor = data().actor_ptr(ref);
     if (actor == nullptr) {
@@ -882,18 +894,32 @@ godot::Node3D* CellBuilder::build_actor(std::int64_t ref) {
     auto* root = memnew(godot::Node3D);
     root->set_name(hex_id(actor->ref()));
     BuildStats stats;
-    place_actor(root, *actor, stats, placement_.moved_place(actor->ref()));
+    place_actor(root, spec_of(*actor, placement_.moved_place(actor->ref())), stats);
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }
 
-void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, BuildStats& stats,
-                              const ActorPlacement::Place* place) {
-    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
+godot::Node3D* CellBuilder::build_placed_actor(std::uint32_t ref, std::uint32_t base, const Vector3& position,
+                                               float rotation_z) {
+    auto* root = memnew(godot::Node3D);
+    root->set_name(hex_id(ref));
+    BuildStats stats;
+    ActorSpec spec;
+    spec.ref = ref;
+    spec.base = base;
+    spec.position = position;
+    spec.rotation_z = rotation_z;
+    place_actor(root, spec, stats);
+    root->set_meta("skydot_stats", stats_dictionary(stats));
+    return root;
+}
+
+void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats) {
+    if (actor.disabled) {
         ++stats.disabled;
         return;
     }
-    const auto plan = plan_for(*world_fb(), actor, assets_, worn_);
+    const auto plan = plan_for(*world_fb(), actor.base, actor.ref, assets_, worn_);
     const auto fail = [&](const String& why) {
         const std::int64_t n = stats.actor_failures.get(why, 0);
         stats.actor_failures[why] = n + 1;
@@ -911,12 +937,9 @@ void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
 
     const auto* npc = lookup(world_fb()->npcs(), plan.npc);
     auto* node = memnew(SkydotActor);
-    node->set_name(hex_id(actor.ref()) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
+    node->set_name(hex_id(actor.ref) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
-    const auto& p = actor.position();
-    const Vector3 spot = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
-    const double facing = place != nullptr ? static_cast<double>(place->rotation_z) : static_cast<double>(actor.rotation().z());
-    node->set_transform(skyrim_transform(spot, Vector3(0, 0, static_cast<godot::real_t>(facing)), 1.0));
+    node->set_transform(skyrim_transform(actor.position, Vector3(0, 0, actor.rotation_z), 1.0));
     auto* units = memnew(godot::Node3D);
     units->set_name("bethconv_z_up_to_y_up");
     units->set_transform(godot::Transform3D(
@@ -1031,7 +1054,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
             return out;
         });
     node->set_wander(options_.actor_wander);
-    node->set_seed(static_cast<std::int64_t>(actor.ref()));
+    node->set_seed(static_cast<std::int64_t>(actor.ref));
     // The body: a cylinder about as wide and tall as the skeleton at rest
     // (skinned meshes' own bounds are not where the bones put them). Bones
     // parked far away for props are left out.
@@ -1059,7 +1082,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const wfb::ActorRef& actor, B
         node->set_height(std::clamp(top, 0.3, 12.0));
         node->set_step_height(std::clamp(0.25 * top, 0.15, 0.6));
     }
-    tag_ref(node, actor.ref(), actor.cell(), false);
+    tag_ref(node, actor.ref, actor.cell, false);
     root->add_child(node);
     ++stats.actors;
 }

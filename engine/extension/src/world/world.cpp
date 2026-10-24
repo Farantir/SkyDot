@@ -157,6 +157,8 @@ void SkydotWorld::_bind_methods() {
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
     godot::ClassDB::bind_method(D_METHOD("get_locomotion", "behaviour"), &SkydotWorld::get_locomotion);
     godot::ClassDB::bind_method(D_METHOD("build_actor", "ref"), &SkydotWorld::build_actor);
+    godot::ClassDB::bind_method(D_METHOD("build_placed_actor", "ref", "base", "position", "rotation_z"),
+                                &SkydotWorld::build_placed_actor);
     godot::ClassDB::bind_method(D_METHOD("get_cell_actors", "cell"), &SkydotWorld::get_cell_actors);
     godot::ClassDB::bind_method(D_METHOD("set_actor_place", "ref", "space", "position", "rotation_z"),
                                 &SkydotWorld::set_actor_place);
@@ -397,6 +399,12 @@ godot::Node3D* SkydotWorld::build_ref(std::int64_t cell, std::int64_t ref) {
 }
 godot::Node3D* SkydotWorld::build_model(const String& vpath) { return builder_.build_model(vpath); }
 godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) { return builder_.build_actor(ref); }
+
+godot::Node3D* SkydotWorld::build_placed_actor(std::int64_t ref, std::int64_t base, const Vector3& position,
+                                               double rotation_z) {
+    return builder_.build_placed_actor(static_cast<std::uint32_t>(ref), static_cast<std::uint32_t>(base), position,
+                                       static_cast<float>(rotation_z));
+}
 
 godot::PackedStringArray SkydotWorld::get_cell_resources(std::int64_t id) {
     return builder_.cell_resources(id);
