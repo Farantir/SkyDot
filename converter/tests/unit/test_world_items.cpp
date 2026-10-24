@@ -172,7 +172,16 @@ void make_items(const TempDir& dir) {
     ByteWriter slgm;
     text(slgm, "EDID", "TestSoulGem");
     bethconv::test::write_field(slgm, "DATA", value_weight(60, 1.0F));
-    record(file, "SLGM", 0x80C, slgm);
+    {
+        ByteWriter b;
+        b.u8(3);
+        bethconv::test::write_field(slgm, "SOUL", b);
+        ByteWriter c;
+        c.u8(5);
+        bethconv::test::write_field(slgm, "SLCP", c);
+    }
+    u32(slgm, "NAM0", 0x80D);
+    record(file, "SLGM", 0x80C, slgm, 0x20000); // can hold NPC soul
 
     ByteWriter scrl;
     text(scrl, "EDID", "TestScroll");
@@ -340,6 +349,11 @@ TEST_CASE("world.fb 28 carries item data, containers and leveled list extras", "
     CHECK(item(0x80B).category == ItemCategory::ingredient);
     CHECK(item(0x80B).weight == 0.25F);
     CHECK(item(0x80C).category == ItemCategory::soul_gem);
+    CHECK(item(0x80C).soul == 3);
+    CHECK(item(0x80C).soul_capacity == 5);
+    CHECK(item(0x80C).soul_gem_linked == 0x80D);
+    CHECK(item(0x80C).holds_npc_souls);
+    CHECK_FALSE(item(0x80D).holds_npc_souls);
     CHECK(item(0x80D).category == ItemCategory::scroll);
     CHECK(item(0x80E).category == ItemCategory::key);
     CHECK(item(0x80F).category == ItemCategory::ammo);

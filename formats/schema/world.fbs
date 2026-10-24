@@ -515,6 +515,16 @@ table ItemData {
     /// `sound_descriptors`; 0 if none.
     equip_sound: uint32;
     unequip_sound: uint32;
+    /// SLGM SOUL (format 35): the soul a gem holds, 0 none, 1 petty, 2
+    /// lesser, 3 common, 4 greater, 5 grand. Source: xEdit.
+    soul: ubyte;
+    /// SLGM SLCP (format 35): the largest soul it takes (same scale).
+    soul_capacity: ubyte;
+    /// SLGM NAM0 (format 35): the filled gem an empty one becomes, 0 if none
+    /// (Azura's Star and the Black Star keep their soul on the reference).
+    soul_gem_linked: uint32;
+    /// SLGM record flag 0x20000 "Can Hold NPC Soul" (format 35): a black gem.
+    holds_npc_souls: bool;
 }
 
 /// EFID, EFIT and the CTDAs after them: a magic effect with its strength.

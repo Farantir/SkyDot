@@ -1115,6 +1115,8 @@ namespace {
 
 /// The record header's Non-Playable flag (ARMO, WEAP, BOOK).
 constexpr std::uint32_t k_record_non_playable = 0x4;
+/// SLGM record flag "Can Hold NPC Soul" (xEdit): a black soul gem.
+constexpr std::uint32_t k_record_can_hold_npc_soul = 0x20000;
 
 /// BOD2 slot bits (slot - 30) of the jewelry: amulet 35, ring 36, circlet 42.
 constexpr std::uint32_t k_jewelry_slots = (1U << 5) | (1U << 6) | (1U << 12);
@@ -1194,6 +1196,10 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         item.category = wfb::ItemCategory::soul_gem;
         item.weight = r->weight;
         item.value = r->value;
+        item.soul = r->soul;
+        item.soul_capacity = r->capacity;
+        item.soul_gem_linked = shared_.global(merged, r->linked, failed);
+        item.holds_npc_souls = (merged.flags & k_record_can_hold_npc_soul) != 0;
     } else if (type == FourCC{"SCRL"}) {
         auto r = record::parse_scroll(data, form_ctx);
         if (!r) { return fail(); }

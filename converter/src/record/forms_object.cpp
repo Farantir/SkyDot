@@ -462,6 +462,8 @@ io::ParseResult<SoulGem> parse_soul_gem(io::SpanReader& data, const FormContext&
                 take(failure, body.get<std::uint8_t>(), out.soul);
             } else if (field.type == FourCC{"SLCP"}) {
                 take(failure, body.get<std::uint8_t>(), out.capacity);
+            } else if (field.type == FourCC{"NAM0"}) {
+                take(failure, read_formid(body), out.linked);
             } else if (field.type == FourCC{"YNAM"}) {
                 take(failure, read_formid(body), out.pickup_sound);
             } else if (field.type == FourCC{"ZNAM"}) {

@@ -73,6 +73,11 @@ vm::ItemInfo SkydotPapyrus::item_info_of(std::uint32_t form) const {
     info.armor_type = item->armor_type();
     info.biped_slots = item->biped_slots();
     info.food = item->food();
+    // World.fb 35: absent (0) in older packs.
+    info.soul = item->soul();
+    info.soul_capacity = item->soul_capacity();
+    info.soul_gem_linked = item->soul_gem_linked();
+    info.holds_npc_souls = item->holds_npc_souls();
     return info;
 }
 
@@ -310,6 +315,10 @@ Dictionary SkydotPapyrus::item_info(std::int64_t form) const {
     out["armor_rating"] = static_cast<double>(info.armor_rating);
     out["armor_type"] = static_cast<std::int64_t>(info.armor_type);
     out["biped_slots"] = static_cast<std::int64_t>(info.biped_slots);
+    out["soul"] = static_cast<std::int64_t>(info.soul);
+    out["soul_capacity"] = static_cast<std::int64_t>(info.soul_capacity);
+    out["soul_gem_linked"] = static_cast<std::int64_t>(info.soul_gem_linked);
+    out["holds_npc_souls"] = info.holds_npc_souls;
     return out;
 }
 

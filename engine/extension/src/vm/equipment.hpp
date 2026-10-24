@@ -76,6 +76,12 @@ struct ItemInfo {
     std::uint8_t armor_type = 0;
     std::uint32_t biped_slots = 0;
     bool food = false;
+    /// SLGM (world.fb 35): the soul it holds and takes (0 none .. 5 grand), the
+    /// filled gem an empty one becomes (0 if none), and whether it is black.
+    std::uint8_t soul = 0;
+    std::uint8_t soul_capacity = 0;
+    std::uint32_t soul_gem_linked = 0;
+    bool holds_npc_souls = false;
 };
 
 [[nodiscard]] bool is_shield(const ItemInfo& item) noexcept;

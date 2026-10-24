@@ -468,6 +468,7 @@ struct SoulGem {
     float weight{};        ///< DATA[4..7]
     std::uint8_t soul{};     ///< SOUL
     std::uint8_t capacity{}; ///< SLCP
+    FormId linked;           ///< NAM0: the filled gem an empty one becomes
     FormId pickup_sound;   ///< YNAM
     FormId drop_sound;     ///< ZNAM
 };
