@@ -4,7 +4,9 @@
 # the right with count, weight, value and a mark on what is equipped. Up and
 # down choose an item, left and right a category, accept equips or unequips
 # it (a potion or food is used up, a book read; neither does anything yet),
-# `menu_drop` (R, X) drops the stack, cancel, Tab or I closes. Items that are
+# `menu_drop` (R, X) drops the stack, `menu_equip_left` (Q, gamepad Y) recharges an
+# enchanted weapon below its maximum from a filled soul gem (the smallest one
+# that fills it, else the largest), cancel, Tab or I closes. Items that are
 # not playable are hidden. This is the view, a Control that fills its host
 # (the viewer's CanvasLayer, a VR shell's panel); it takes its input from the
 # InputMap's ui_* actions and `inventory` and `menu_drop`, so any shell can
@@ -95,6 +97,8 @@ func _input(event: InputEvent) -> void:
 		use_current()
 	elif event.is_action_pressed(&"menu_drop"):
 		drop_current()
+	elif event.is_action_pressed(&"menu_equip_left"):
+		recharge_current()
 	else:
 		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	if handled:
@@ -135,6 +139,32 @@ func use_current() -> void:
 	else:
 		_session.equip(int(row["form"]), int(row["extra"]))
 	_refresh()
+
+
+## Whether the row is an enchanted weapon that can take more charge.
+static func rechargeable(row: Dictionary) -> bool:
+	return row.has("charge_max") and float(row["charge"]) < float(row["charge_max"])
+
+
+## Recharge the weapon under the cursor from the filled soul gem that fills it with the least waste
+## (the smallest that reaches the maximum), else from the largest soul there is.
+func recharge_current() -> void:
+	var row := current()
+	if row.is_empty() or not rechargeable(row):
+		return
+	var options := _session.recharge_options(int(row["form"]), int(row["extra"]))
+	if options.is_empty():
+		_session.message.emit("No filled soul gem", false)
+		return
+	var best: Dictionary = {}
+	for option: Dictionary in options:
+		if best.is_empty():
+			best = option
+		elif option["fills"] != best["fills"]:
+			best = option if option["fills"] else best
+		elif option["fills"] == (float(option["charge"]) < float(best["charge"])):
+			best = option  # both fill: the smaller; neither fills: the larger
+	_session.recharge(int(row["form"]), int(row["extra"]), int(best["form"]), int(best["extra"]))
 
 
 ## Drop the stack under the cursor.
@@ -189,6 +219,9 @@ func _draw() -> void:
 	if _rows.is_empty():
 		_text(font, "Nothing here", font_size, Vector2(columns_x, list_top + line), DIM)
 	var hint := "%s equip/unequip   %s drop   %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_drop", "R"), _key(&"inventory", "I")]
+	if rechargeable(current()):
+		hint = "%s equip/unequip   %s drop   %s recharge   %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_drop", "R"),
+			_key(&"menu_equip_left", "Q"), _key(&"inventory", "I")]
 	_text(font, hint, font_size, Vector2(left, panel.end.y - font_size * 0.8), DIM)
 
 

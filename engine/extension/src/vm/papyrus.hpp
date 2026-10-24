@@ -296,6 +296,8 @@ public:
     /// name, kind, effects: [text]}] (the learned ones), gems: [{form, extra, name, count, soul,
     /// soul_name, charge, capacity}] (the filled ones)}.
     godot::Dictionary enchant_rows();
+    /// The player learns the world enchantment (debug: the viewer's --learn-enchantment); false if known or no ENCH.
+    bool learn_enchantment(std::int64_t enchantment);
     /// Whether the learned enchantment fits the item (kind, staff, worn restrictions).
     bool enchantment_fits(std::int64_t item, std::int64_t enchantment) const;
     /// What enchanting would make: {ok, refusal, name, effects: [text], charge, cost, uses, constant}.

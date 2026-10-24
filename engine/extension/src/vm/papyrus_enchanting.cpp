@@ -193,6 +193,11 @@ Dictionary SkydotPapyrus::enchant_rows() {
     return out;
 }
 
+bool SkydotPapyrus::learn_enchantment(std::int64_t enchantment) {
+    auto* book = spell_book();
+    return book != nullptr && book->learn_enchantment(static_cast<std::uint32_t>(enchantment));
+}
+
 bool SkydotPapyrus::enchantment_fits(std::int64_t item, std::int64_t enchantment) const {
     const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
     const auto* ench = root != nullptr ? lookup(root->enchantments(), static_cast<std::uint32_t>(enchantment)) : nullptr;

@@ -100,7 +100,8 @@
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
 # --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
-# reference as the player (a container opens its menu; item_menu.gd); both with --hud
+# reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
+# picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
 # with --screenshot the lines play out first (--shot-delay).
 # --hud forces the health, magicka and stamina bars, the crosshair and the
@@ -296,6 +297,7 @@ func _start_game() -> void:
 		_session.start_quests(settings.start_quests)
 		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
 			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
+		_select_crafting_category(settings)
 		if settings.has_look:
 			_rig.apply_look(settings.look_yaw, settings.look_pitch)
 		_controls.fly_speed = 10.0
@@ -332,6 +334,7 @@ func _start_game() -> void:
 		print("--talk: 0x%08X cannot talk" % settings.talk)
 	if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
 		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
+	_select_crafting_category(settings)
 	if settings.open_inventory and _items != null:
 		_items.open_inventory()
 	if settings.open_magic and _items != null:
@@ -348,8 +351,16 @@ func _start_game() -> void:
 			_shots.begin_run(settings.screenshot, yaws)
 
 
+## --crafting-category: the category an opened enchanting table shows.
+func _select_crafting_category(settings: ViewerSettings) -> void:
+	if settings.crafting_category != "" and _items != null:
+		_items.crafting_view.select_category(settings.crafting_category)
+
+
 ## --equip, --equip-spell, --ready-weapon, --attack-at, --cast-at and --kill, once the player has what --give gave.
 func _apply_combat_options() -> void:
+	for ench in _settings.learn_enchantment:
+		print("--learn-enchantment: 0x%08X %s" % [ench, "learned" if _session.papyrus.learn_enchantment(ench) else "not learned"])
 	for form in _settings.equip:
 		if not _session.equip(form):
 			print("--equip: 0x%08X cannot be equipped" % form)

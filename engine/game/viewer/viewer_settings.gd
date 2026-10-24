@@ -102,6 +102,8 @@ var captures := false  # screenshot or benchmark: still time, still actors
 var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
 var open_inventory := false  # --open-inventory: show the inventory after the load
 var open_magic := false  # --open-magic: show the magic menu after the load
+var learn_enchantment: Array[int] = []  # --learn-enchantment 0xENCH[,...]: the player knows those enchantments (for the enchanting table)
+var crafting_category := ""  # --crafting-category NAME|N: the enchanting table's category (Disenchant, Item, Enchantment, Soul gem)
 var magic_category := ""  # --magic-category NAME: the category it shows (Powers, Destruction, Scrolls...)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
@@ -227,6 +229,9 @@ func _read(args: Dictionary) -> void:
 	open_inventory = args.has("open-inventory")
 	open_magic = args.has("open-magic")
 	magic_category = args.get("magic-category", "")
+	crafting_category = args.get("crafting-category", "")
+	for entry: String in args.get("learn-enchantment", "").split(",", false):
+		learn_enchantment.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
 	if args.has("open-container"):
 		var container_text: String = args["open-container"]
 		open_container = container_text.hex_to_int() if container_text.begins_with("0x") else container_text.to_int()

@@ -126,6 +126,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("temper_rows", "bench_ref"), &SkydotPapyrus::temper_rows);
     godot::ClassDB::bind_method(D_METHOD("temper", "recipe", "form", "extra"), &SkydotPapyrus::temper);
     godot::ClassDB::bind_method(D_METHOD("enchant_rows"), &SkydotPapyrus::enchant_rows);
+    godot::ClassDB::bind_method(D_METHOD("learn_enchantment", "enchantment"), &SkydotPapyrus::learn_enchantment);
     godot::ClassDB::bind_method(D_METHOD("enchantment_fits", "item", "enchantment"), &SkydotPapyrus::enchantment_fits);
     godot::ClassDB::bind_method(D_METHOD("enchant_preview", "item", "item_extra", "enchantment", "gem", "gem_extra", "name"),
                                 &SkydotPapyrus::enchant_preview);

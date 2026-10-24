@@ -151,6 +151,7 @@ func _create_components() -> void:
 		_inventory_panel = _menu_panel(_inventory)
 		_container_panel = _menu_panel(_container)
 		_crafting = CraftingView.new(_session)
+		_crafting.can_name = false  # no keyboard: an enchanted item keeps its default name
 		_crafting_panel = _menu_panel(_crafting)
 		_magic = MagicView.new(_session)
 		_magic_panel = _menu_panel(_magic)

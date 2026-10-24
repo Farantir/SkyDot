@@ -22,6 +22,10 @@ const CATEGORIES: Array[Dictionary] = [
 ]
 
 
+## Soul sizes by number (SLGM SOUL).
+const SOULS: Array[String] = ["", "petty", "lesser", "common", "greater", "grand"]
+
+
 ## The playable rows of `rows` that category `index` shows.
 static func visible(rows: Array, index := 0) -> Array:
 	var wanted: Array = CATEGORIES[index]["items"]
@@ -37,6 +41,10 @@ static func visible(rows: Array, index := 0) -> Array:
 ## "Iron Sword" or "Arrow (12)": a name with its count.
 static func label(row: Dictionary) -> String:
 	var text: String = row["name"] if row["name"] != "" else "0x%08X" % int(row["form"])
+	if row.has("charge_max"):
+		text += " [%d/%d]" % [int(row["charge"]), int(row["charge_max"])]
+	elif int(row.get("soul", 0)) > 0:
+		text += " [%s]" % SOULS[int(row["soul"])]
 	return text + (" (%d)" % int(row["count"]) if int(row["count"]) > 1 else "")
 
 
