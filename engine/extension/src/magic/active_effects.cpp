@@ -49,7 +49,12 @@ MagicSettings ActiveEffects::settings() const {
 
 bool ActiveEffects::handled(std::uint32_t a) const {
     return a == archetype::value_modifier || a == archetype::peak_value_modifier ||
-           a == archetype::dual_value_modifier || a == archetype::absorb || a == archetype::script;
+           a == archetype::dual_value_modifier || a == archetype::absorb || a == archetype::script ||
+           a == archetype::calm || a == archetype::demoralize || a == archetype::frenzy ||
+           a == archetype::turn_undead || a == archetype::reanimate || a == archetype::stagger ||
+           a == archetype::paralysis || a == archetype::invisibility || a == archetype::light ||
+           a == archetype::cloak || a == archetype::bound_weapon || a == archetype::summon_creature ||
+           a == archetype::slow_time;
 }
 
 bool ActiveEffects::holds(const Instance& i) const {
@@ -73,6 +78,8 @@ EffectView ActiveEffects::view(const Instance& i) const {
     v.active = i.active;
     v.permanent = i.permanent;
     v.flags = i.flags;
+    v.associated = i.associated;
+    v.summoned = i.summoned;
     return v;
 }
 
@@ -83,6 +90,7 @@ bool ActiveEffects::fill_from_mgef(Instance& i) const {
     }
     i.archetype = m->archetype();
     i.flags = m->flags();
+    i.associated = m->associated_item();
     i.actor_value = m->actor_value();
     i.second_actor_value = m->second_actor_value();
     i.second_weight = static_cast<double>(m->second_av_weight());
@@ -174,7 +182,31 @@ void ActiveEffects::act_over(const Instance& i, double seconds) {
     }
 }
 
-void ActiveEffects::begin(Instance& i) {
+double slow_time_scale(double magnitude) noexcept {
+    // PLACEHOLDER (UESP gives no formula): 0 < m < 1 is the scale itself, otherwise m is a percent slowed.
+    const double scale = magnitude > 0.0 && magnitude < 1.0 ? magnitude : 1.0 - magnitude / 100.0;
+    return std::clamp(scale, 0.1, 1.0);
+}
+
+bool ActiveEffects::begin(Instance& i) {
+    if (i.archetype == archetype::summon_creature) {
+        // One summon per caster (no Twin Souls yet): the earlier one goes once the loops are done.
+        for (const auto& [id, other] : instances_) {
+            if (id != i.id && other.archetype == archetype::summon_creature && other.caster == i.caster &&
+                other.started) {
+                dispel_later_.push_back(id);
+            }
+        }
+        i.summoned = i.associated != 0 ? host_.place_summon(i.caster, i.associated) : 0;
+        if (i.summoned == 0) {
+            host_.log("magic: summon of " + hex(i.associated) + " for " + hex(i.caster) + " failed");
+            return false;
+        }
+    } else if (i.archetype == archetype::reanimate) {
+        host_.reanimate(i.target, i.caster);
+    } else if (i.archetype == archetype::bound_weapon && i.associated != 0) {
+        host_.bound_add(i.target, i.associated);
+    }
     i.started = true;
     if (!handled(i.archetype)) {
         if (unhandled_[i.archetype]++ == 0 && logged_.insert(i.archetype).second) {
@@ -187,6 +219,103 @@ void ActiveEffects::begin(Instance& i) {
     if (instant(i)) {
         act_once(i);
     }
+    return true;
+}
+
+void ActiveEffects::flush_later() {
+    auto later = std::move(dispel_later_);
+    dispel_later_.clear();
+    for (const auto id : later) {
+        finish(id);
+    }
+}
+
+void ActiveEffects::pulse_cloak(const Instance& i) {
+    const auto* spell = lookup(world_.spells(), i.associated);
+    if (spell == nullptr) {
+        return;
+    }
+    // PLACEHOLDER: an area of 0 is 10 feet.
+    const double radius = i.area > 0.0 ? i.area : area_units(10.0);
+    const auto inputs = inputs_of(spell->effects());
+    for (const std::uint32_t actor : host_.actors_near(i.target, radius)) {
+        if (actor == i.target || host_.is_dead(actor)) {
+            continue;
+        }
+        apply(i.target, actor, {SourceKind::spell, i.associated, 0}, inputs);
+    }
+}
+
+Overrides ActiveEffects::overrides(std::uint32_t ref) const {
+    Overrides o;
+    std::uint32_t fear_id = 0;
+    for (const auto& [id, i] : instances_) {
+        if (!i.active || !i.started) {
+            continue;
+        }
+        if (i.archetype == archetype::summon_creature && i.summoned == ref && ref != 0) {
+            o.commanded_by = i.caster;
+        }
+        if (i.target != ref) {
+            continue;
+        }
+        switch (i.archetype) {
+        case archetype::calm:
+            o.calm = true;
+            break;
+        case archetype::frenzy:
+            o.frenzy = true;
+            break;
+        case archetype::paralysis:
+            o.paralyzed = true;
+            break;
+        case archetype::invisibility:
+            o.invisible = true;
+            break;
+        case archetype::demoralize:
+        case archetype::turn_undead:
+            if (id > fear_id) { // the newest
+                fear_id = id;
+                o.fear_from = i.caster;
+            }
+            break;
+        case archetype::reanimate:
+            o.commanded_by = i.caster;
+            break;
+        case archetype::slow_time:
+            o.time_scale = std::min(o.time_scale, slow_time_scale(i.magnitude));
+            break;
+        default:
+            break;
+        }
+    }
+    return o;
+}
+
+std::size_t ActiveEffects::break_invisibility(std::uint32_t ref) {
+    std::vector<std::uint32_t> ids;
+    for (const auto& [id, i] : instances_) {
+        if (i.target == ref && i.archetype == archetype::invisibility) {
+            ids.push_back(id);
+        }
+    }
+    for (const auto id : ids) {
+        finish(id);
+    }
+    return ids.size();
+}
+
+std::size_t ActiveEffects::dispel_bound(std::uint32_t target, std::uint32_t weapon) {
+    std::vector<std::uint32_t> ids;
+    for (const auto& [id, i] : instances_) {
+        if (i.target == target && i.archetype == archetype::bound_weapon && i.associated == weapon) {
+            ids.push_back(id);
+        }
+    }
+    for (const auto id : ids) {
+        finish(id);
+    }
+    return ids.size();
 }
 
 void ActiveEffects::sync_holds(std::uint32_t target) {
@@ -276,6 +405,15 @@ void ActiveEffects::finish(std::uint32_t id) {
     }
     sync_holds(inst.target);
     if (inst.started) {
+        if (inst.archetype == archetype::summon_creature && inst.summoned != 0) {
+            host_.remove_summon(inst.summoned);
+        } else if (inst.archetype == archetype::reanimate) {
+            if (!host_.is_dead(inst.target)) {
+                host_.end_reanimate(inst.target);
+            }
+        } else if (inst.archetype == archetype::bound_weapon && inst.associated != 0) {
+            host_.bound_remove(inst.target, inst.associated);
+        }
         host_.log("magic: effect " + hex(inst.mgef) + " on " + hex(inst.target) + " end");
         host_.effect_changed(false, v);
     }
@@ -303,11 +441,27 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
             }
             magnitude = resisted_magnitude(magnitude, host_.actor_value(target, vm::av::k_resist_magic), s);
         }
+        if (const std::uint32_t a = m->archetype(); a == archetype::calm || a == archetype::demoralize ||
+                                                    a == archetype::frenzy || a == archetype::turn_undead ||
+                                                    a == archetype::reanimate) {
+            // The magnitude is the highest level affected.
+            const std::uint32_t level = host_.actor_level(target);
+            if (static_cast<double>(level) > magnitude) {
+                if (gate_logged_.emplace(target, in.effect).second) {
+                    host_.log("magic: " + hex(target) + " is too strong for " + (m->editor_id() != nullptr ? std::string(m->editor_id()->c_str()) : hex(in.effect)) +
+                              " (level " + std::to_string(level) + " > " + number(magnitude) + ")");
+                }
+                continue;
+            }
+            if (a == archetype::reanimate && !host_.is_dead(target)) {
+                continue; // only the dead rise
+            }
+        }
         const bool constant = options.constant || source.kind == SourceKind::ability;
         // The same caster, target, source and entry: refresh.
         Instance* existing = nullptr;
         for (auto& [id, i] : instances_) {
-            if (i.mgef == in.effect && i.caster == caster && i.target == target && i.source == source &&
+            if (i.archetype != archetype::summon_creature && i.mgef == in.effect && i.caster == caster && i.target == target && i.source == source &&
                 i.index == in.index) {
                 existing = &i;
                 break;
@@ -320,8 +474,11 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
             existing->area = area_units(in.area);
             if (const bool now = conditions_ok(*existing); now != existing->active) {
                 existing->active = now;
-                if (now && !existing->started) {
-                    begin(*existing);
+                if (now && !existing->started && !begin(*existing)) {
+                    const std::uint32_t gone = existing->id;
+                    instances_.erase(gone);
+                    flush_later();
+                    continue;
                 }
             }
             sync_holds(target);
@@ -349,7 +506,11 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
         const bool is_instant = instant(inst);
         auto& stored = instances_.emplace(id, std::move(inst)).first->second;
         if (stored.active) {
-            begin(stored);
+            if (!begin(stored)) {
+                instances_.erase(id);
+                flush_later();
+                continue;
+            }
             if (is_instant) {
                 finish(id);
                 made.push_back(id);
@@ -362,6 +523,7 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
         }
         made.push_back(id);
     }
+    flush_later();
     return made;
 }
 
@@ -370,8 +532,13 @@ void ActiveEffects::tick(double seconds) {
         return;
     }
     std::vector<std::uint32_t> ended;
+    std::vector<std::uint32_t> pulses;
     std::set<std::uint32_t> dirty;
     for (auto& [id, i] : instances_) {
+        if (i.archetype == archetype::summon_creature && i.started && i.summoned != 0 && host_.is_dead(i.summoned)) {
+            ended.push_back(id); // the summon died: the effect ends
+            continue;
+        }
         if (host_.is_dead(i.target)) {
             continue;
         }
@@ -382,9 +549,13 @@ void ActiveEffects::tick(double seconds) {
             if (now != i.active) {
                 i.active = now;
                 dirty.insert(i.target);
-                if (now && !i.started) {
-                    begin(i);
+                if (now && !i.started && !begin(i)) {
+                    ended.push_back(id);
+                    continue;
                 }
+            }
+            if (i.archetype == archetype::cloak && i.active && i.started) {
+                pulses.push_back(id);
             }
         }
         if (i.active && i.started && !i.permanent && !holds(i)) {
@@ -399,6 +570,12 @@ void ActiveEffects::tick(double seconds) {
     for (const std::uint32_t t : dirty) {
         sync_holds(t);
     }
+    for (const std::uint32_t id : pulses) {
+        if (const auto it = instances_.find(id); it != instances_.end()) {
+            pulse_cloak(it->second);
+        }
+    }
+    flush_later();
     for (const std::uint32_t id : ended) {
         finish(id);
     }
@@ -441,7 +618,9 @@ bool ActiveEffects::dispel_instance(std::uint32_t id) {
 void ActiveEffects::on_death(std::uint32_t target) {
     std::vector<std::uint32_t> ids;
     for (const auto& [id, i] : instances_) {
-        if (i.target == target && (i.flags & mgef_flag::no_death_dispel) == 0) {
+        // A reanimated actor lives while its effect runs: only its second death ends it.
+        const bool risen = i.archetype == archetype::reanimate && !host_.is_dead(target);
+        if (i.target == target && !risen && (i.flags & mgef_flag::no_death_dispel) == 0) {
             ids.push_back(id);
         }
     }
@@ -554,13 +733,14 @@ std::vector<std::uint8_t> ActiveEffects::save() const {
         w.f64(i.area);
         w.f64(i.since_check);
         w.u8(static_cast<std::uint8_t>((i.active ? 1 : 0) | (i.started ? 2 : 0) | (i.permanent ? 4 : 0)));
+        w.u32(i.summoned);
     }
     return w.out;
 }
 
 bool ActiveEffects::load(save::ByteReader r) {
     std::uint32_t version = 0, next = 0, n = 0;
-    if (!r.u32(version) || version != k_section_version || !r.u32(next) || !r.count(n, 70)) {
+    if (!r.u32(version) || (version != k_section_version && version != 1) || !r.u32(next) || !r.count(n, 70)) {
         return false;
     }
     std::map<std::uint32_t, Instance> loaded;
@@ -571,7 +751,7 @@ bool ActiveEffects::load(save::ByteReader r) {
         if (!r.u32(i.id) || !r.u32(i.mgef) || !r.u8(kind) || !r.u32(i.source.form) || !r.u32(i.source.extra) ||
             !r.u32(index) || !r.u32(i.caster) || !r.u32(i.target) || !r.f64(i.magnitude) || !r.f64(i.duration) ||
             !r.f64(i.elapsed) || !r.f64(i.area) || !r.f64(i.since_check) || !r.u8(flags) ||
-            kind > static_cast<std::uint8_t>(SourceKind::poison) || !std::isfinite(i.magnitude) ||
+            (version >= 2 && !r.u32(i.summoned)) || kind > static_cast<std::uint8_t>(SourceKind::poison) || !std::isfinite(i.magnitude) ||
             !std::isfinite(i.duration) || !std::isfinite(i.elapsed) || !std::isfinite(i.area) ||
             !std::isfinite(i.since_check) || !vm::id_ranges::effect_instances.contains(i.id)) {
             return false;

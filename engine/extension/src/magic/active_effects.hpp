@@ -80,7 +80,25 @@ struct EffectView {
     bool active = true;
     bool permanent = false;
     std::uint32_t flags = 0; ///< The MGEF's.
+    /// The MGEF's associated item: a LIGH (light), SPEL (cloak), NPC_ (summon), WEAP (bound weapon).
+    std::uint32_t associated = 0;
+    /// The ref a summon placed (0: none).
+    std::uint32_t summoned = 0;
 };
+
+/// What the held effects make of one actor (the AI and the game layer read it).
+struct Overrides {
+    bool calm = false;
+    bool frenzy = false;
+    bool paralyzed = false;
+    bool invisible = false;
+    std::uint32_t fear_from = 0;    ///< The caster of the newest fear (demoralize, turn undead); 0: none.
+    std::uint32_t commanded_by = 0; ///< The caster of a summon or reanimation this actor is.
+    double time_scale = 1.0;        ///< The world's, from a slow time effect on this actor.
+};
+
+/// The world time scale for a slow time magnitude: m in (0,1) is the scale, else 1 - m/100; in [0.1, 1].
+[[nodiscard]] double slow_time_scale(double magnitude) noexcept;
 
 class MagicHost {
 public:
@@ -100,13 +118,28 @@ public:
     [[nodiscard]] virtual double game_setting(std::string_view /*name*/, double fallback) const { return fallback; }
     /// An effect started (it acts for the first time) or finished: the VM sends OnEffectStart and
     /// OnEffectFinish, the game layer shows it.
+    /// The level of an actor (0: unknown; no level gate then).
+    [[nodiscard]] virtual std::uint32_t actor_level(std::uint32_t /*ref*/) const { return 0; }
+    /// Summon: place `npc_base` near `caster`; the new ref, 0 if it failed.
+    virtual std::uint32_t place_summon(std::uint32_t /*caster*/, std::uint32_t /*npc_base*/) { return 0; }
+    virtual void remove_summon(std::uint32_t /*ref*/) {}
+    /// Reanimate: the dead `target` stands up for `caster`; end: it dies again.
+    virtual void reanimate(std::uint32_t /*target*/, std::uint32_t /*caster*/) {}
+    virtual void end_reanimate(std::uint32_t /*target*/) {}
+    /// Bound weapon: put into the inventory and equip (right hand); take away.
+    virtual void bound_add(std::uint32_t /*target*/, std::uint32_t /*weapon*/) {}
+    virtual void bound_remove(std::uint32_t /*target*/, std::uint32_t /*weapon*/) {}
+    /// The live actors within `radius` (game units) of `ref`, `ref` itself left out or not.
+    [[nodiscard]] virtual std::vector<std::uint32_t> actors_near(std::uint32_t /*ref*/, double /*radius*/) const {
+        return {};
+    }
     virtual void effect_changed(bool /*started*/, const EffectView& /*effect*/) {}
     virtual void log(const std::string& line) = 0;
 };
 
 class ActiveEffects {
 public:
-    static constexpr std::uint32_t k_section_version = 1;
+    static constexpr std::uint32_t k_section_version = 2;
     /// PLACEHOLDER: how often conditions are checked, seconds.
     static constexpr double k_condition_interval = 1.0;
     /// The caster 0 is "no caster" (a trap, a hazard).
@@ -131,6 +164,12 @@ public:
     /// Whether an active effect `mgef` runs on `target`.
     [[nodiscard]] bool has_effect(std::uint32_t target, std::uint32_t mgef) const;
     [[nodiscard]] bool has_effect_keyword(std::uint32_t target, std::uint32_t keyword) const;
+    /// The held states on `ref` (only active, started instances count).
+    [[nodiscard]] Overrides overrides(std::uint32_t ref) const;
+    /// Dispel the invisibility on `ref` (it attacked, cast or activated); how many.
+    std::size_t break_invisibility(std::uint32_t ref);
+    /// Dispel the bound weapon `weapon` on `target`; how many.
+    std::size_t dispel_bound(std::uint32_t target, std::uint32_t weapon);
     /// All effects on `target`, in instance order (for the menu).
     [[nodiscard]] std::vector<EffectView> effects_on(std::uint32_t target) const;
     [[nodiscard]] std::optional<EffectView> instance(std::uint32_t id) const;
@@ -165,7 +204,9 @@ private:
         bool active = true;
         bool started = false;
         bool permanent = false;
+        std::uint32_t summoned = 0; ///< Saved: the ref a summon placed.
         // Derived from the MGEF, not saved:
+        std::uint32_t associated = 0;
         std::uint32_t archetype = 0;
         std::uint32_t flags = 0;
         std::int32_t actor_value = -1;
@@ -184,7 +225,10 @@ private:
     [[nodiscard]] const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* entry_conditions(
         const Instance& i) const;
     bool fill_from_mgef(Instance& i) const;
-    void begin(Instance& i);
+    /// False: the effect cannot start (a summon that could not be placed) and the instance is to go.
+    bool begin(Instance& i);
+    void pulse_cloak(const Instance& i);
+    void flush_later();
     void act_once(const Instance& i);
     void act_over(const Instance& i, double seconds);
     void apply_to(std::uint32_t caster, std::uint32_t target, std::uint32_t av, double amount, bool takes);
@@ -199,6 +243,8 @@ private:
     std::map<std::uint32_t, std::uint64_t> unhandled_;
     std::set<std::uint32_t> logged_;
     bool dual_logged_ = false;
+    std::set<std::pair<std::uint32_t, std::uint32_t>> gate_logged_;
+    std::vector<std::uint32_t> dispel_later_; ///< Previous summons of a caster, dispelled once the loop is done.
 };
 
 } // namespace skydot::magic

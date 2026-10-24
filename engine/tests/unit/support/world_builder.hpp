@@ -270,6 +270,9 @@ struct MagicEffectSpec {
     std::uint32_t casting_art = 0;
     std::uint32_t hit_effect_art = 0;
     std::uint32_t casting_light = 0;
+    /// The associated item (a LIGH, SPEL, NPC_ or WEAP by archetype).
+    std::uint32_t associated_item = 0;
+    std::string editor_id = {};
 };
 
 /// One effect entry of a spell (or an ench.: EFID, EFIT and its CTDAs).

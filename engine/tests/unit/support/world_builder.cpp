@@ -233,6 +233,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         const auto mgef_conditions = conditions(fbb, e.conditions);
         const auto name = fbb.CreateString(e.name);
         const auto description = fbb.CreateString(e.description);
+        const auto editor_id = fbb.CreateString(e.editor_id);
         const auto keywords = fbb.CreateVector(e.keywords);
         const auto cond_v = fbb.CreateVector(mgef_conditions);
         wfb::MagicEffectBuilder m(fbb);
@@ -256,6 +257,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         m.add_casting_art(e.casting_art);
         m.add_hit_effect_art(e.hit_effect_art);
         m.add_casting_light(e.casting_light);
+        m.add_associated_item(e.associated_item);
+        m.add_editor_id(editor_id);
         effects.push_back(m.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Spell>> spells;

@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 #include <set>
 #include <string>
 
@@ -27,6 +29,8 @@ namespace {
 
 constexpr std::uint32_t k_player = 0x14;
 constexpr std::uint32_t k_skeever = 0x200;
+constexpr std::uint32_t k_wolf = 0x201;
+constexpr std::uint32_t k_corpse = 0x202;
 constexpr std::uint32_t k_health = vm::av::k_health;
 constexpr std::uint32_t k_magicka = vm::av::k_magicka;
 constexpr std::uint32_t k_stamina = vm::av::k_stamina;
@@ -39,17 +43,32 @@ constexpr std::uint32_t k_fortify = 0x1004;      // fortify health: peak, recove
 constexpr std::uint32_t k_frost = 0x1005;        // dual: health and stamina
 constexpr std::uint32_t k_drain = 0x1006;        // absorb health
 constexpr std::uint32_t k_cond = 0x1007;         // restore with a condition on its MGEF
-constexpr std::uint32_t k_demoralize = 0x1008;   // archetype 7: not done
+constexpr std::uint32_t k_demoralize = 0x1008;   // archetype 7: fear
 constexpr std::uint32_t k_nodeath = 0x1009;      // fortify that survives death
 constexpr std::uint32_t k_weak = 0x100A;         // weakness to fire: value modifier, detrimental, recover
 constexpr std::uint32_t k_script = 0x100B;       // archetype 1
+constexpr std::uint32_t k_disarm = 0x100C;       // archetype 9: not done
+constexpr std::uint32_t k_calm = 0x1010;
+constexpr std::uint32_t k_frenzy = 0x1011;
+constexpr std::uint32_t k_paralysis = 0x1012;
+constexpr std::uint32_t k_invis = 0x1013;
+constexpr std::uint32_t k_summon = 0x1014;
+constexpr std::uint32_t k_reanimate = 0x1015;
+constexpr std::uint32_t k_bound = 0x1016;
+constexpr std::uint32_t k_cloak = 0x1017;
+constexpr std::uint32_t k_slow = 0x1018;
+constexpr std::uint32_t k_stagger = 0x1019;
+constexpr std::uint32_t k_turn = 0x101A;
+constexpr std::uint32_t k_npc_base = 0x5001;   // the summoned creature
+constexpr std::uint32_t k_weapon = 0x6001;     // the bound weapon
+constexpr std::uint32_t k_cloak_spell = 0x2004; // fire damage to those near
 
 constexpr std::uint32_t k_spell = 0x2001;
 constexpr std::uint32_t k_spell2 = 0x2002;
 constexpr std::uint32_t k_spell_cond = 0x2003;
 
 bool fake_source(std::uint32_t ref, vm::ActorBase& out) {
-    if (ref != k_player && ref != k_skeever) {
+    if (ref != k_player && ref != k_skeever && ref != k_wolf && ref != k_corpse) {
         return false;
     }
     out = vm::ActorBase{};
@@ -65,12 +84,26 @@ struct Host : magic::MagicHost {
     vm::ActorStates states;
     bool conditions_hold = true;
     int condition_calls = 0;
+    std::map<std::uint32_t, std::uint32_t> levels;
+    std::set<std::uint32_t> dead_refs; // summons that died
+    std::set<std::uint32_t> damaged;
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> placed; // caster, base
+    std::vector<std::uint32_t> removed;
+    std::vector<std::uint32_t> ended_reanimate;
+    std::vector<std::tuple<bool, std::uint32_t, std::uint32_t>> bound; // added, target, weapon
+    std::vector<std::uint32_t> near;
+    mutable double last_radius = 0.0;
+    bool fail_summon = false;
+    std::uint32_t next_summon = 0x900;
     std::vector<std::string> logs;
     std::vector<std::pair<bool, std::uint32_t>> events; // started, mgef
 
     Host() { states.set_source(fake_source); }
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return states.get(ref, av); }
-    void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t) override { states.damage(ref, av, amount); }
+    void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t) override {
+        damaged.insert(ref);
+        states.damage(ref, av, amount);
+    }
     void restore_value(std::uint32_t ref, std::uint32_t av, double amount) override { states.restore(ref, av, amount); }
     void modify_temp(std::uint32_t ref, std::uint32_t av, double delta) override { states.mod_temp(ref, av, delta); }
     bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<magic::wfb::Condition>>*, std::uint32_t,
@@ -78,7 +111,30 @@ struct Host : magic::MagicHost {
         ++condition_calls;
         return conditions_hold;
     }
-    bool is_dead(std::uint32_t ref) const override { return states.is_dead(ref); }
+    bool is_dead(std::uint32_t ref) const override { return states.is_dead(ref) || dead_refs.contains(ref); }
+    std::uint32_t actor_level(std::uint32_t ref) const override {
+        const auto it = levels.find(ref);
+        return it == levels.end() ? 0 : it->second;
+    }
+    std::uint32_t place_summon(std::uint32_t caster, std::uint32_t base) override {
+        if (fail_summon) {
+            return 0;
+        }
+        placed.emplace_back(caster, base);
+        return next_summon++;
+    }
+    void remove_summon(std::uint32_t ref) override { removed.push_back(ref); }
+    void reanimate(std::uint32_t target, std::uint32_t) override { states.revive(target); }
+    void end_reanimate(std::uint32_t target) override {
+        ended_reanimate.push_back(target);
+        states.damage(target, k_health, 1e9);
+    }
+    void bound_add(std::uint32_t target, std::uint32_t weapon) override { bound.emplace_back(true, target, weapon); }
+    void bound_remove(std::uint32_t target, std::uint32_t weapon) override { bound.emplace_back(false, target, weapon); }
+    std::vector<std::uint32_t> actors_near(std::uint32_t, double radius) const override {
+        last_radius = radius;
+        return near;
+    }
     void effect_changed(bool started, const magic::EffectView& e) override { events.emplace_back(started, e.mgef); }
     void log(const std::string& line) override { logs.push_back(line); }
     [[nodiscard]] int count_logs(const std::string& needle) const {
@@ -113,10 +169,29 @@ WorldSpec world_spec() {
     auto cond = mgef(k_cond, 0, static_cast<std::int32_t>(k_health), 0, 1.0F);
     cond.conditions = {condition(448, ge, 1.0F)};
     auto demoralize = mgef(k_demoralize, 7, -1, magic::mgef_flag::hostile, 1.0F);
+    auto disarm = mgef(k_disarm, 9, -1, magic::mgef_flag::hostile, 1.0F);
+    disarm.editor_id = "Disarm";
+    demoralize.editor_id = "Fear";
+    const auto arch = [&](std::uint32_t id, std::uint32_t a, std::uint32_t assoc = 0) {
+        auto m = mgef(id, a, -1, 0, 1.0F);
+        m.associated_item = assoc;
+        return m;
+    };
+    const auto calm = arch(k_calm, 6);
+    const auto frenzy = arch(k_frenzy, 8);
+    const auto paralysis = arch(k_paralysis, 21);
+    const auto invis = arch(k_invis, 11);
+    const auto summon = arch(k_summon, 18, k_npc_base);
+    const auto reanimate = arch(k_reanimate, 22);
+    const auto bound = arch(k_bound, 17, k_weapon);
+    const auto cloak = arch(k_cloak, 35, k_cloak_spell);
+    const auto slow = arch(k_slow, 37);
+    const auto stagger = arch(k_stagger, 33);
+    const auto turn = arch(k_turn, 24);
     auto nodeath = mgef(k_nodeath, 34, static_cast<std::int32_t>(k_magicka), magic::mgef_flag::recover | magic::mgef_flag::no_death_dispel, 0.5F);
     auto weak = mgef(k_weak, 0, 41, magic::mgef_flag::recover | magic::mgef_flag::detrimental, 0.5F);
     auto script = mgef(k_script, 1, -1, 0, 0.0F);
-    spec.magic_effects = {restore, restore_conc, fire, fortify, frost, drain, cond, demoralize, nodeath, weak, script};
+    spec.magic_effects = {restore, restore_conc, fire, fortify, frost, drain, cond, demoralize, nodeath, weak, script, disarm, calm, frenzy, paralysis, invis, summon, reanimate, bound, cloak, slow, stagger, turn};
     spec.spells = {
         SpellSpec{.id = k_spell, .name = "Flames", .cost = 14, .casting_type = 2, .delivery = 2,
                   .effects = {{.effect = k_fire, .magnitude = 8.0F, .duration = 1}}},
@@ -125,6 +200,8 @@ WorldSpec world_spec() {
         SpellSpec{.id = k_spell_cond, .name = "Cond", .cost = 0,
                   .effects = {{.effect = k_restore_conc, .magnitude = 10.0F, .duration = 1,
                                .conditions = {condition(448, ge, 1.0F)}}}},
+        SpellSpec{.id = k_cloak_spell, .name = "Cloak damage", .cost = 0,
+                  .effects = {{.effect = k_fire, .magnitude = 8.0F, .duration = 1}}},
     };
     return spec;
 }
@@ -358,15 +435,15 @@ TEST_CASE("death removes effects except the no-death-dispel ones", "[magic][effe
 
 TEST_CASE("archetypes without rules are logged once, counted, and live their duration", "[magic][effects]") {
     Rig rig;
-    rig.raw(k_player, k_skeever, {magic::SourceKind::spell, 1, 0}, k_demoralize, 5, 15);
-    rig.raw(k_player, k_skeever, {magic::SourceKind::spell, 2, 0}, k_demoralize, 5, 15);
-    CHECK(rig.host.count_logs("magic: archetype 7 (Demoralize) not done") == 1);
-    CHECK(rig.effects.unhandled().at(7) == 2);
-    CHECK(rig.effects.has_effect(k_skeever, k_demoralize));
+    rig.raw(k_player, k_skeever, {magic::SourceKind::spell, 1, 0}, k_disarm, 5, 15);
+    rig.raw(k_player, k_skeever, {magic::SourceKind::spell, 2, 0}, k_disarm, 5, 15);
+    CHECK(rig.host.count_logs("magic: archetype 9 (Disarm) not done") == 1);
+    CHECK(rig.effects.unhandled().at(9) == 2);
+    CHECK(rig.effects.has_effect(k_skeever, k_disarm));
     rig.run(14.0);
-    CHECK(rig.effects.has_effect(k_skeever, k_demoralize));
+    CHECK(rig.effects.has_effect(k_skeever, k_disarm));
     rig.run(1.5);
-    CHECK_FALSE(rig.effects.has_effect(k_skeever, k_demoralize));
+    CHECK_FALSE(rig.effects.has_effect(k_skeever, k_disarm));
 }
 
 TEST_CASE("a script effect starts and finishes with an event each", "[magic][effects]") {
@@ -447,4 +524,222 @@ TEST_CASE("actor states: the temporary bucket counts in value and maximum and is
     loaded.set_source(fake_source);
     CHECK(loaded.get_temp(k_player, k_health) == Approx(0));
     CHECK(loaded.max(k_player, k_health) == Approx(100));
+}
+
+// ---- archetypes (GAMEPLAY-PLAN 7a-4) ----------------------------------------------------------
+
+namespace {
+constexpr magic::Source k_src{magic::SourceKind::spell, 0x3001, 0};
+constexpr magic::Source k_src2{magic::SourceKind::spell, 0x3002, 0};
+} // namespace
+
+TEST_CASE("calm, fear and frenzy only affect targets up to the magnitude's level", "[magic][archetype]") {
+    Rig rig;
+    rig.host.levels[k_skeever] = 20;
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_calm, 15, 30).empty()); // level 20 > 15
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_calm, 15, 30).empty());
+    CHECK(rig.host.count_logs("is too strong for") == 1);                // once per target and effect
+    CHECK_FALSE(rig.effects.overrides(k_skeever).calm);
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_frenzy, 25, 30).size() == 1); // level 20 <= 25
+    CHECK(rig.effects.overrides(k_skeever).frenzy);
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_demoralize, 19, 30).empty());
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_turn, 19, 30).empty());
+    CHECK(rig.host.count_logs("(level 20 > 19)") == 2);
+    CHECK(rig.effects.unhandled().empty());
+}
+
+TEST_CASE("held states are on while the effect runs and off after", "[magic][archetype]") {
+    Rig rig;
+    rig.raw(k_player, k_skeever, k_src, k_calm, 99, 5);
+    rig.raw(k_player, k_skeever, k_src, k_frenzy, 99, 5);
+    rig.raw(k_player, k_skeever, k_src, k_paralysis, 0, 5);
+    rig.raw(k_player, k_skeever, k_src, k_invis, 0, 5);
+    rig.raw(k_player, k_skeever, k_src, k_demoralize, 99, 5);
+    auto o = rig.effects.overrides(k_skeever);
+    CHECK((o.calm && o.frenzy && o.paralyzed && o.invisible));
+    CHECK(o.fear_from == k_player);
+    CHECK(o.time_scale == Approx(1.0));
+    const auto other = rig.effects.overrides(k_wolf);
+    CHECK_FALSE((other.calm || other.frenzy || other.paralyzed || other.invisible));
+    CHECK(other.fear_from == 0);
+    rig.run(5.5);
+    o = rig.effects.overrides(k_skeever);
+    CHECK_FALSE((o.calm || o.frenzy || o.paralyzed || o.invisible));
+    CHECK(o.fear_from == 0);
+    CHECK(rig.effects.unhandled().empty());
+}
+
+TEST_CASE("fear comes from the caster of the newest fear", "[magic][archetype]") {
+    Rig rig;
+    rig.raw(k_player, k_skeever, k_src, k_demoralize, 99, 30);
+    rig.raw(k_wolf, k_skeever, k_src2, k_turn, 99, 30);
+    CHECK(rig.effects.overrides(k_skeever).fear_from == k_wolf);
+}
+
+TEST_CASE("acting breaks invisibility", "[magic][archetype]") {
+    Rig rig;
+    rig.raw(k_player, k_player, k_src, k_invis, 0, 60);
+    REQUIRE(rig.effects.overrides(k_player).invisible);
+    CHECK(rig.effects.break_invisibility(k_wolf) == 0);
+    CHECK(rig.effects.break_invisibility(k_player) == 1);
+    CHECK_FALSE(rig.effects.overrides(k_player).invisible);
+    CHECK_FALSE(rig.effects.has_effect(k_player, k_invis));
+}
+
+TEST_CASE("stagger is instant and holds nothing", "[magic][archetype]") {
+    Rig rig;
+    CHECK(rig.raw(k_player, k_skeever, k_src, k_stagger, 3, 0).size() == 1);
+    REQUIRE(rig.host.events.size() == 2);
+    CHECK(rig.host.events[0] == std::make_pair(true, k_stagger));
+    CHECK(rig.effects.size() == 0);
+    CHECK(rig.effects.unhandled().empty());
+}
+
+TEST_CASE("a summon is placed, commanded by the caster and removed at the end", "[magic][archetype][summon]") {
+    Rig rig;
+    const auto ids = rig.raw(k_player, k_player, k_src, k_summon, 0, 10);
+    REQUIRE(ids.size() == 1);
+    REQUIRE(rig.host.placed.size() == 1);
+    CHECK(rig.host.placed[0] == std::make_pair(k_player, k_npc_base));
+    CHECK(rig.effects.instance(ids[0])->summoned == 0x900);
+    CHECK(rig.effects.overrides(0x900).commanded_by == k_player);
+    CHECK(rig.effects.overrides(k_wolf).commanded_by == 0);
+    rig.run(10.5);
+    CHECK(rig.host.removed == std::vector<std::uint32_t>{0x900});
+    CHECK(rig.effects.overrides(0x900).commanded_by == 0);
+}
+
+TEST_CASE("a failed placement ends the summon at once", "[magic][archetype][summon]") {
+    Rig rig;
+    rig.host.fail_summon = true;
+    CHECK(rig.raw(k_player, k_player, k_src, k_summon, 0, 10).empty());
+    CHECK(rig.effects.size() == 0);
+    CHECK(rig.host.removed.empty());
+    CHECK(rig.host.events.empty());
+}
+
+TEST_CASE("a second summon by the same caster removes the first", "[magic][archetype][summon]") {
+    Rig rig;
+    rig.raw(k_player, k_player, k_src, k_summon, 0, 60);
+    rig.raw(k_wolf, k_wolf, k_src, k_summon, 0, 60); // another caster's stays
+    rig.raw(k_player, k_player, k_src, k_summon, 0, 60); // even the same spell again
+    CHECK(rig.host.removed == std::vector<std::uint32_t>{0x900});
+    CHECK(rig.effects.overrides(0x901).commanded_by == k_wolf);
+    CHECK(rig.effects.overrides(0x902).commanded_by == k_player);
+    CHECK(rig.effects.overrides(0x900).commanded_by == 0);
+}
+
+TEST_CASE("when the summon dies the effect ends", "[magic][archetype][summon]") {
+    Rig rig;
+    const auto ids = rig.raw(k_player, k_player, k_src, k_summon, 0, 60);
+    rig.run(1.0);
+    CHECK(rig.effects.instance(ids[0]).has_value());
+    rig.host.dead_refs.insert(0x900);
+    rig.run(0.2);
+    CHECK_FALSE(rig.effects.instance(ids[0]).has_value());
+    CHECK(rig.host.removed == std::vector<std::uint32_t>{0x900});
+}
+
+TEST_CASE("reanimate raises only the dead and lets them die at the end", "[magic][archetype][reanimate]") {
+    Rig rig;
+    CHECK(rig.raw(k_player, k_wolf, k_src, k_reanimate, 50, 20).empty()); // alive: nothing happens
+    rig.host.states.damage(k_corpse, k_health, 1000);
+    REQUIRE(rig.host.is_dead(k_corpse));
+    rig.host.levels[k_corpse] = 60;
+    CHECK(rig.raw(k_player, k_corpse, k_src, k_reanimate, 50, 20).empty()); // too strong
+    rig.host.levels[k_corpse] = 10;
+    REQUIRE(rig.raw(k_player, k_corpse, k_src, k_reanimate, 50, 20).size() == 1);
+    CHECK_FALSE(rig.host.is_dead(k_corpse));
+    CHECK(rig.effects.overrides(k_corpse).commanded_by == k_player);
+    rig.effects.on_death(k_corpse); // a stale death notice does not end it while it stands
+    CHECK(rig.effects.has_effect(k_corpse, k_reanimate));
+    rig.run(20.5);
+    CHECK(rig.host.ended_reanimate == std::vector<std::uint32_t>{k_corpse});
+    CHECK(rig.host.is_dead(k_corpse));
+    CHECK(rig.effects.overrides(k_corpse).commanded_by == 0);
+}
+
+TEST_CASE("a reanimated actor killed again ends the effect", "[magic][archetype][reanimate]") {
+    Rig rig;
+    rig.host.states.damage(k_corpse, k_health, 1000);
+    rig.raw(k_player, k_corpse, k_src, k_reanimate, 50, 60);
+    rig.host.states.damage(k_corpse, k_health, 1000);
+    rig.effects.on_death(k_corpse);
+    CHECK_FALSE(rig.effects.has_effect(k_corpse, k_reanimate));
+    CHECK(rig.host.ended_reanimate.empty()); // already dead
+}
+
+TEST_CASE("a bound weapon is added and removed, or dispelled by the game", "[magic][archetype][bound]") {
+    Rig rig;
+    rig.raw(k_player, k_player, k_src, k_bound, 0, 5);
+    REQUIRE(rig.host.bound.size() == 1);
+    CHECK(rig.host.bound[0] == std::make_tuple(true, k_player, k_weapon));
+    rig.run(5.5);
+    REQUIRE(rig.host.bound.size() == 2);
+    CHECK(rig.host.bound[1] == std::make_tuple(false, k_player, k_weapon));
+
+    rig.raw(k_player, k_player, k_src, k_bound, 0, 60);
+    CHECK(rig.effects.dispel_bound(k_player, 0x1234) == 0);
+    CHECK(rig.effects.dispel_bound(k_player, k_weapon) == 1);
+    CHECK(rig.host.bound.size() == 4);
+    CHECK_FALSE(rig.effects.has_effect(k_player, k_bound));
+}
+
+TEST_CASE("a cloak applies its spell to those near every second, not to its bearer", "[magic][archetype][cloak]") {
+    Rig rig;
+    rig.host.states.damage(k_corpse, k_health, 1000);
+    rig.host.near = {k_player, k_skeever, k_wolf, k_corpse};
+    rig.raw(k_player, k_player, k_src, k_cloak, 0, 30);
+    rig.run(0.8);
+    CHECK(rig.host.damaged.empty());
+    rig.run(0.5);
+    CHECK(rig.host.damaged.contains(k_skeever));
+    CHECK(rig.host.damaged.contains(k_wolf));
+    CHECK_FALSE(rig.host.damaged.contains(k_player));
+    CHECK_FALSE(rig.host.damaged.contains(k_corpse));
+    CHECK(rig.host.last_radius == Approx(magic::area_units(10))); // PLACEHOLDER area
+    const double health = rig.host.states.get(k_skeever, k_health);
+    rig.run(1.0);
+    CHECK(rig.host.states.get(k_skeever, k_health) < health); // and again
+    CHECK(rig.effects.unhandled().empty());
+}
+
+TEST_CASE("slow time scales the world by its magnitude", "[magic][archetype][slow]") {
+    CHECK(magic::slow_time_scale(0.3) == Approx(0.3));
+    CHECK(magic::slow_time_scale(50.0) == Approx(0.5));
+    CHECK(magic::slow_time_scale(100.0) == Approx(0.1)); // clamped
+    CHECK(magic::slow_time_scale(0.0) == Approx(1.0));
+    Rig rig;
+    rig.raw(k_player, k_player, k_src, k_slow, 0.2F, 5);
+    CHECK(rig.effects.overrides(k_player).time_scale == Approx(0.2));
+    CHECK(rig.effects.overrides(k_wolf).time_scale == Approx(1.0));
+    rig.run(5.5);
+    CHECK(rig.effects.overrides(k_player).time_scale == Approx(1.0));
+}
+
+TEST_CASE("the section keeps a summon's ref (version 2) and reads version 1", "[magic][archetype][save]") {
+    Rig rig;
+    rig.raw(k_player, k_player, k_src, k_summon, 0, 60);
+    rig.raw(k_player, k_skeever, k_src, k_calm, 99, 60);
+    const auto bytes = rig.effects.save();
+    CHECK(magic::ActiveEffects::check(*rig.world, skydot::save::ByteReader(bytes)));
+
+    Rig other;
+    REQUIRE(other.effects.load(skydot::save::ByteReader(bytes)));
+    CHECK(other.host.placed.empty()); // nothing is placed again
+    CHECK(other.effects.overrides(0x900).commanded_by == k_player);
+    CHECK(other.effects.overrides(k_skeever).calm);
+    CHECK(other.effects.dispel_all(k_player) == 1);
+    CHECK(other.host.removed == std::vector<std::uint32_t>{0x900});
+
+    // Version 1: no summoned ref at the end of a record.
+    Rig old;
+    old.raw(k_player, k_skeever, k_src, k_calm, 99, 60);
+    auto v1 = old.effects.save();
+    v1[0] = 1;
+    v1.resize(v1.size() - 4);
+    Rig loaded;
+    REQUIRE(loaded.effects.load(skydot::save::ByteReader(v1)));
+    CHECK(loaded.effects.overrides(k_skeever).calm);
+    CHECK(loaded.effects.effects_on(k_skeever)[0].summoned == 0);
 }
