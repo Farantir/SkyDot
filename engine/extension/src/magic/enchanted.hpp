@@ -57,6 +57,8 @@ struct HitMagicInput {
     std::uint32_t weapon = 0;
     std::uint32_t extra = 0; ///< The extra id of the weapon unit (0: plain).
     bool attacker_is_player = false;
+    /// No other unit or dropped reference of the session carries `extra`: its table entry may change in place.
+    bool extra_unique = false;
     bool target_alive = true; ///< Effects do not land on a corpse; charge and poison are still spent.
 };
 

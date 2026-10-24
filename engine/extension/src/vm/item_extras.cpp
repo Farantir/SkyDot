@@ -39,6 +39,19 @@ std::uint32_t ItemExtras::intern(const ItemExtra& extra) {
     return static_cast<std::uint32_t>(table_.size());
 }
 
+bool ItemExtras::replace(std::uint32_t id, const ItemExtra& extra) {
+    if (id == 0 || id > table_.size() || extra.plain()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < table_.size(); ++i) {
+        if (i + 1 != id && table_[i].same(extra)) {
+            return false;
+        }
+    }
+    table_[id - 1] = extra;
+    return true;
+}
+
 const ItemExtra* ItemExtras::find(std::uint32_t id) const noexcept {
     return id == 0 || id > table_.size() ? nullptr : &table_[id - 1];
 }

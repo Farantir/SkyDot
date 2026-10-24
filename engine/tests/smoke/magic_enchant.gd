@@ -187,7 +187,7 @@ func _run(pack_dir: String) -> void:
 	var charge2 := papyrus.weapon_charge(PLAYER, FIRE_SWORD)
 	expect(result.get("enchantment", 0) == charge["enchantment"], "a second hit fires again (the new extra was followed): %s" % [result])
 	expect(absf(charge2["charge"] - (charge1["charge"] - charge["cost"])) < 1e-2, "and spends again: %f -> %f" % [charge1["charge"], charge2["charge"]])
-	expect(papyrus.equipment(PLAYER)["right_extra"] != extra1, "to yet another ItemExtra")
+	expect(papyrus.equipment(PLAYER)["right_extra"] == extra1, "the sole holder keeps its ItemExtra id (changed in place)")
 	papyrus.dispel_all_spells(target)
 
 	# ---- a poison

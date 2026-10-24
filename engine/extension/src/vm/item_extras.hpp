@@ -56,6 +56,9 @@ public:
     std::uint32_t intern(const ItemExtra& extra);
     /// The extra of `id`; null for 0 and ids this table does not have.
     [[nodiscard]] const ItemExtra* find(std::uint32_t id) const noexcept;
+    /// Change the value of `id` in place (its holders follow). False, changing nothing, if `id` is not in the
+    /// table, `extra` is plain or another entry already has that value; the caller interns then.
+    bool replace(std::uint32_t id, const ItemExtra& extra);
     [[nodiscard]] std::size_t size() const noexcept { return table_.size(); }
     void clear() { table_.clear(); }
 

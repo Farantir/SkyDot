@@ -404,6 +404,36 @@ TEST_CASE("a hit with an enchanted weapon fires it and spends the player's charg
     CHECK(empty.new_extra == in.extra);
 }
 
+TEST_CASE("a sole holder's extra changes in place; shared ones split off", "[casting][enchant]") {
+    Rig rig;
+    vm::ItemExtra big;
+    big.charge_max = 5000.0F;
+    big.charge = 5000.0F;
+    std::uint32_t id = rig.extras.intern(big);
+    const std::uint32_t first = id;
+    float last = 5000.0F;
+    for (int i = 0; i < 50; ++i) {
+        magic::HitMagicInput in{.attacker = k_player, .target = k_skeever, .weapon = k_sword, .extra = id,
+                                .attacker_is_player = true, .extra_unique = true};
+        const auto r = magic::hit_magic(*rig.world, rig.effects, rig.extras, in, {});
+        REQUIRE(r.fired);
+        id = r.new_extra;
+        CHECK(id == first);
+        const float now = rig.extras.find(id)->charge;
+        CHECK(now < last);
+        last = now;
+    }
+    CHECK(rig.extras.size() == 1);
+
+    // Two units share the id: the one hit gets its own, the other keeps the old.
+    magic::HitMagicInput shared{.attacker = k_player, .target = k_skeever, .weapon = k_sword, .extra = first,
+                                .attacker_is_player = true, .extra_unique = false};
+    const auto r = magic::hit_magic(*rig.world, rig.effects, rig.extras, shared, {});
+    CHECK(r.new_extra != first);
+    CHECK(rig.extras.size() == 2);
+    CHECK(rig.extras.find(first)->charge == Approx(last));
+}
+
 TEST_CASE("an NPC's enchanted weapon never runs out and keeps its extra", "[casting][enchant]") {
     Rig rig;
     const magic::HitMagicInput in{.attacker = k_skeever, .target = k_player, .weapon = k_sword, .extra = 0,

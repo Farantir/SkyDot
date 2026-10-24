@@ -72,6 +72,15 @@ public:
         const auto it = dropped_extra_.find(ref);
         return it == dropped_extra_.end() ? 0 : it->second;
     }
+    /// Whether a dropped reference carries `extra`.
+    [[nodiscard]] bool extra_dropped(std::uint32_t extra) const {
+        for (const auto& [ref, id] : dropped_extra_) {
+            if (id == extra) {
+                return true;
+            }
+        }
+        return false;
+    }
     void set_dropped(std::uint32_t ref, std::int64_t count, std::uint32_t extra = 0) {
         dropped_[ref] = count;
         if (extra != 0) {

@@ -889,6 +889,7 @@ Dictionary SkydotPapyrus::hit_magic(std::uint32_t attacker, std::uint32_t target
     in.extra = extra;
     in.attacker_is_player = attacker == k_player_ref;
     in.target_alive = target_alive;
+    in.extra_unique = extra != 0 && vm_->inventory().units_with_extra(extra) == 1 && !items_.extra_dropped(extra);
     const auto poison_inputs = [m](std::uint32_t poison, std::vector<magic::EffectInput>& inputs) {
         magic::SourceKind kind = magic::SourceKind::potion;
         bool is_poison = false;

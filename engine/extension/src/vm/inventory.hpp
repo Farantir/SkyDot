@@ -40,6 +40,8 @@ public:
     [[nodiscard]] std::int64_t count(std::uint32_t owner, std::uint32_t item) const;
     /// The units carrying `extra` (0: the plain ones).
     [[nodiscard]] std::int64_t count_extra(std::uint32_t owner, std::uint32_t item, std::uint32_t extra) const;
+    /// The units carrying `extra` over all owners and forms.
+    [[nodiscard]] std::int64_t units_with_extra(std::uint32_t extra) const;
     /// The units of `item` that carry extras (empty if all are plain).
     [[nodiscard]] const Split& extras_of(std::uint32_t owner, std::uint32_t item) const;
     /// All of `owner`'s items (empty if it has none).

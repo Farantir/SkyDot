@@ -124,6 +124,17 @@ std::int64_t Inventory::count(std::uint32_t owner, std::uint32_t item) const {
     return i == o->second.end() ? 0 : i->second;
 }
 
+std::int64_t Inventory::units_with_extra(std::uint32_t extra) const {
+    std::int64_t n = 0;
+    for (const auto& [owner, forms] : splits_) {
+        for (const auto& [form, split] : forms) {
+            const auto it = split.find(extra);
+            n += it == split.end() ? 0 : it->second;
+        }
+    }
+    return n;
+}
+
 std::int64_t Inventory::count_extra(std::uint32_t owner, std::uint32_t item, std::uint32_t extra) const {
     const auto& split = extras_of(owner, item);
     if (extra != 0) {

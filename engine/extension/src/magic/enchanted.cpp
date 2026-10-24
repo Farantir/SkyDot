@@ -139,7 +139,11 @@ HitMagicResult hit_magic(const wfb::World& world, ActiveEffects& effects, vm::It
         }
     }
     if (changed) {
-        out.new_extra = extras.intern(extra);
+        if (in.extra_unique && in.extra != 0 && extras.replace(in.extra, extra)) {
+            out.new_extra = in.extra; // sole holder: the entry changes, the table does not grow
+        } else {
+            out.new_extra = extras.intern(extra);
+        }
     }
     return out;
 }
