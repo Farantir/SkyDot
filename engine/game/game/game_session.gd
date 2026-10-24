@@ -582,8 +582,10 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 		ai.update(delta)
 
 
-## The fights under way only, for runs that keep the world still (shots).
+## The fights under way only, for runs that keep the world still (shots). The player's feet are
+## kept as `step` keeps them: fighters and NPC spells aim at them.
 func update_fights(delta: float, feet: Vector3) -> void:
+	_feet = feet
 	if ai != null:
 		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
 		ai.update_fights(delta)
