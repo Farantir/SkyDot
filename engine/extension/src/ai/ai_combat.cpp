@@ -307,8 +307,8 @@ void SkydotAi::read_gear(Mind& m) {
     if (style != nullptr) {
         c.style = {style->offensive_mult(), style->circle_mult(), style->fallback_mult(),
                    style->special_attack_mult()};
-        c.weapon_style = {style->magic_score_mult(), style->melee_score_mult(), style->ranged_score_mult(),
-                          style->unarmed_score_mult()};
+        c.weapon_style = {static_cast<double>(style->magic_score_mult()), static_cast<double>(style->melee_score_mult()),
+                          static_cast<double>(style->ranged_score_mult()), static_cast<double>(style->unarmed_score_mult())};
     }
     read_spells(m);
     // Only a bow (no melee weapon to fight with) means ranged from the start.
