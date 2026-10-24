@@ -17,12 +17,14 @@ const EXPLOSION_LIFE_SECONDS := 5.0
 
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
+var _ai: SkydotAi  # attaches the actors (summons) it builds; may be null
 var _warn := WarnOnce.new("", true)
 
 
-func _init(world: SkydotWorld, papyrus: SkydotPapyrus) -> void:
+func _init(world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi = null) -> void:
 	_world = world
 	_papyrus = papyrus
+	_ai = ai
 	name = "PlacedRefs"
 
 
@@ -36,6 +38,9 @@ func place(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3,
 
 func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3, scale: float,
 		disabled: bool) -> void:
+	if _world.is_actor_base(base):
+		_build_actor(ref, base, position, rotation, disabled)
+		return
 	var explosion := _world.get_explosion(base)
 	var path: String = explosion.get("model", "") if not explosion.is_empty() else _world.get_base(base).get("model", "")
 	if path == "":
@@ -53,6 +58,24 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 	print("placed 0x%08X built: %s%s" % [ref, path, " (explosion)" if not explosion.is_empty() else ""])
 	if not explosion.is_empty():
 		_play_explosion(ref, model)
+	_papyrus.ref_built(ref)
+
+
+## A summon or another actor a script placed: a SkydotActor like the cell's, under this node, taken
+## by the AI (its NPC_ comes from the reference's base).
+func _build_actor(ref: int, base: int, position: Vector3, rotation: Vector3, disabled: bool) -> void:
+	var node := _world.build_placed_actor(ref, base, position, rotation.z)
+	if node == null or node.get_child_count() == 0:
+		_warn.once("noactor%d" % base, "placed 0x%08X: the actor of base 0x%08X does not build" % [ref, base])
+		if node != null:
+			node.queue_free()
+		_papyrus.ref_built.call_deferred(ref)
+		return
+	node.visible = not disabled
+	add_child(node)
+	print("placed 0x%08X built: actor of 0x%08X" % [ref, base])
+	if _ai != null:
+		_ai.attach_built(node)
 	_papyrus.ref_built(ref)
 
 
@@ -84,7 +107,11 @@ func remove(ref: int) -> void:
 	var node := _world.find_ref_node(ref)
 	if node != null and is_ancestor_of(node):
 		print("placed 0x%08X removed" % ref)
-		node.queue_free()
+		# An actor node is the child of a root of its own; both go.
+		var gone: Node = node
+		if node is SkydotActor and node.get_parent() != self:
+			gone = node.get_parent()
+		gone.queue_free()
 
 
 ## A destruction stage's model replaces the reference's (path "": the base's

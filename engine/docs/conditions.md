@@ -150,6 +150,7 @@ GetNumericPackageData 612.
 | 45 | GetDetected | stealth |
 | 700 | IsCommandedActor | commanded and summoned actors (DialogueGeneric's quest condition needs it: every vendor topic hangs on it) |
 | 638 | IsInFriendStateWithPlayer | followers |
+| 244, 365, 715 | state flags the MGEF conditions of calm, fear, fury and paralysis want at 0 (excluded targets) | their systems |
 
 **Unknown** (everything else). The biggest in INFO conditions:
 GetKeywordDataForLocation 606 (594), GetEquipped 182 (229), LocAliasIsLocation

@@ -473,6 +473,7 @@ func _process(delta: float) -> void:
 				print("lod: ", _session.streamer.lod.get_stats())
 			get_tree().quit(0)
 		return
+	_controls.paralyzed = _session.player_paralyzed
 	_controls.apply(delta)
 
 

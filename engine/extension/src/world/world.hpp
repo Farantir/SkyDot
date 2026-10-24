@@ -400,6 +400,8 @@ public:
     godot::Dictionary get_locomotion(const godot::String& behaviour);
     /// Build placed actor `ref` alone, at its place; null if it has none.
     godot::Node3D* build_actor(std::int64_t ref);
+    /// Whether `base` is an NPC_ or a leveled list that gives one (what a summon is made of).
+    bool is_actor_base(std::int64_t base) const;
     /// An actor for runtime reference `ref` of NPC_ `base` at `position` (Skyrim space) facing
     /// `rotation_z` (a summon, PlaceAtMe): the node is tagged with `ref` so that
     /// SkydotAi.attach_built takes it. Null if the NPC does not build.

@@ -135,6 +135,35 @@ func _queue(ref: int) -> void:
 		_pending[ref] = 0.0
 
 
+## Reanimate: the body gets up. Its ragdoll (running or frozen into the bones' poses) is
+## taken away, the skeleton goes back to its rest pose, it is no longer pickable as a corpse and
+## the actor node lives again (`SkydotActor.set_dead(false)`); the AI is told by
+## `SkydotAi.revive`. False if the actor is not built.
+func stand_up(ref: int) -> bool:
+	_pending.erase(ref)
+	_hits.erase(ref)
+	for body in _bodies.duplicate():
+		if body["ref"] == ref:
+			if is_instance_valid(body["simulator"]):
+				body["simulator"].physical_bones_stop_simulation()
+				if is_instance_valid(body["skeleton"]):
+					body["skeleton"].remove_child(body["simulator"])
+				body["simulator"].free()
+			_bodies.erase(body)
+	var node := _world.find_ref_node(ref) as SkydotActor
+	if node == null or not node.is_inside_tree():
+		return false
+	for skeleton: Skeleton3D in node.find_children("*", "Skeleton3D", true, false):
+		skeleton.reset_bone_poses()
+	node.rotation.x = 0.0
+	node.rotation.z = 0.0
+	node.set_meta("skydot_activatable", false)
+	node.remove_meta("skydot_bounds")
+	node.set_dead(false)
+	print("death: 0x%08X stands up" % ref)
+	return true
+
+
 ## Number of ragdolls still simulating.
 func simulating() -> int:
 	return _bodies.size()

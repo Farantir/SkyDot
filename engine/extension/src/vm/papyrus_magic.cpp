@@ -180,6 +180,8 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         // PLACEHOLDER: always the right hand (the MGEF names no hand).
         if (owner_.equip_item(target, weapon, false, true)) {
             log("magic: " + hex(target) + " bound weapon " + hex(weapon) + " added");
+        } else {
+            log("magic: " + hex(target) + " cannot equip bound weapon " + hex(weapon));
         }
     }
     void bound_remove(std::uint32_t target, std::uint32_t weapon) override {

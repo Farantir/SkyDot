@@ -264,6 +264,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_magic_archetypes
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/magic_archetypes.gd")
+    set_tests_properties(sse_magic_archetypes PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 600
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_magic_cast
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/magic_cast.gd")
     set_tests_properties(sse_magic_cast PROPERTIES
@@ -541,7 +551,7 @@ endif()
 
 # The tests that write saves share user://, and sse_player_death takes the newest save there and
 # deletes every .skydot: one at a time.
-foreach(_t sse_player_death sse_magic_effects sse_magic_cast sse_magic_enchant sse_magic_menu sse_combat_death sse_items_session sse_crafting_session sse_combat_melee smoke_game_save)
+foreach(_t sse_player_death sse_magic_effects sse_magic_cast sse_magic_archetypes sse_magic_enchant sse_magic_menu sse_combat_death sse_items_session sse_crafting_session sse_combat_melee smoke_game_save)
     if(TEST ${_t})
         set_property(TEST ${_t} APPEND PROPERTY RESOURCE_LOCK user_saves)
     endif()

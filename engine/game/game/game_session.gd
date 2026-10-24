@@ -160,6 +160,10 @@ var magic: Magic
 var corpses: Corpses
 ## What scripts place, fire and play.
 var placed: PlacedRefs
+## The magic archetypes in the scene (lights, stagger, reanimate, bound weapons, slow time).
+var magic_world: MagicWorld
+## The player is paralysed: the shell reads no input, the hands are lowered.
+var player_paralyzed := false
 var projectiles: Projectiles
 var sounds: Sounds
 ## Spoken lines (dialogue voices), one queue per speaker.
@@ -297,8 +301,10 @@ func _make_game_nodes() -> void:
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
 	actor_arrived.connect(corpses.on_actor_arrived)
-	placed = PlacedRefs.new(world, papyrus)
+	placed = PlacedRefs.new(world, papyrus, ai)
 	host.add_child(placed)
+	magic_world = MagicWorld.new(self)
+	host.add_child(magic_world)
 	papyrus.ref_placed.connect(placed.place)
 	papyrus.ref_deleted.connect(placed.remove)
 	papyrus.destruction_model.connect(placed.swap_model)
@@ -409,6 +415,8 @@ func equipment() -> Dictionary:
 ## Move up to `count` of `form`; returns how many moved. `extra` names a stack
 ## (a tempered or enchanted one; a row's `extra`), -1 takes plain units first.
 func transfer(from: int, to: int, form: int, count: int, extra := -1) -> int:
+	if from == SkydotPapyrus.PLAYER_REF and to != from and magic_world.is_bound(form):
+		return 0  # PLACEHOLDER: a bound weapon cannot be given away or sold
 	var moved := papyrus.transfer(from, to, form, count, extra)
 	if moved > 0:
 		items_changed.emit()
@@ -447,12 +455,17 @@ func use_item(form: int, extra := -1) -> bool:
 ## The player (or `caster`) casts `spell` on `target` (0: on itself): the cost is paid, the effects
 ## land, no projectile yet (SkydotPapyrus.cast_spell). {ok, reason, cost, instances}.
 func cast_spell(spell: int, target := 0, seconds := 0.0, caster := SkydotPapyrus.PLAYER_REF) -> Dictionary:
+	if caster == SkydotPapyrus.PLAYER_REF:
+		papyrus.break_invisibility(caster)
 	return papyrus.cast_spell(caster, spell, target, seconds)
 
 
 func unequip(form: int, extra := -1) -> bool:
 	var done := papyrus.unequip(SkydotPapyrus.PLAYER_REF, form, extra)
 	if done:
+		# Putting a bound weapon away ends its effect.
+		if magic_world.is_bound(form):
+			papyrus.dispel_bound_weapon(SkydotPapyrus.PLAYER_REF, form)
 		items_changed.emit()
 	return done
 
@@ -461,6 +474,9 @@ func unequip(form: int, extra := -1) -> bool:
 ## keeps the count and is picked up by activating it. Returns the reference, 0
 ## if the player has none.
 func drop(form: int, count: int, extra := -1) -> int:
+	if magic_world.is_bound(form):
+		message.emit("A bound weapon cannot be dropped", false)  # PLACEHOLDER: the game says nothing
+		return 0
 	if form >= CREATED_FIRST and form <= CREATED_LAST:
 		# The game cannot build a reference for a created form yet.
 		message.emit("A mixed potion cannot be dropped yet", false)
@@ -547,6 +563,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	combat.step(delta)
 	magic.step(delta)
+	magic_world.step(delta)
 	corpses.step(delta)
 	_drain_sprint(delta)
 	if ai != null:
@@ -596,7 +613,7 @@ func is_fading() -> bool:
 ## Draw the player's weapon, or sheathe it (R, gamepad X). Hands that hold spells or scrolls
 ## are readied with it: alone when the right hand holds no weapon, else in step with the weapon.
 func toggle_weapon() -> void:
-	if papyrus.is_player_dead():
+	if papyrus.is_player_dead() or player_paralyzed:
 		return
 	if magic.hands_with_spells().is_empty():
 		combat.toggle_weapon()
@@ -612,8 +629,9 @@ func toggle_weapon() -> void:
 ## The attack button went down or up: a short press is a light attack, a long
 ## one a power attack (Combat.attack_pressed). A spell in the right hand is cast instead.
 func attack_pressed() -> void:
-	if papyrus.is_player_dead():
+	if papyrus.is_player_dead() or player_paralyzed:
 		return
+	papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
 	if magic.spell_in(Magic.RIGHT) != 0:
 		magic.hand_pressed(Magic.RIGHT)
 	elif combat.weapon_state() == Combat.State.SHEATHED and not magic.hands_with_spells().is_empty():
@@ -630,7 +648,8 @@ func attack_released() -> void:
 ## The left hand's attack button (right mouse, left trigger) went down or up: a spell in
 ## the left hand is cast (it is reserved for blocking otherwise).
 func attack_left_pressed() -> void:
-	if not papyrus.is_player_dead() and magic.spell_in(Magic.LEFT) != 0:
+	if not papyrus.is_player_dead() and not player_paralyzed and magic.spell_in(Magic.LEFT) != 0:
+		papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
 		magic.hand_pressed(Magic.LEFT)
 
 
@@ -731,6 +750,7 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 func update_combat(delta: float) -> void:
 	combat.step(delta)
 	magic.step(delta)
+	magic_world.step(delta)
 	corpses.step(delta)
 
 
@@ -772,6 +792,9 @@ func activate_in_view(force: bool) -> void:
 ## The player activates reference `ref` (not what the pointer shows): the
 ## viewer's --open-container. False if the reference is unknown.
 func activate_ref(ref: int, force := false) -> bool:
+	if player_paralyzed:
+		return false
+	papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
 	return _bridge.activate(place.cell_id, ref, null, force)
 
 
@@ -987,7 +1010,24 @@ func load_game(path: String) -> bool:
 	if done:
 		combat.on_items_changed()
 		magic.on_items_changed()
+		magic_world.on_loaded()
 	return done
+
+
+## The player's feet (Godot space) as of the last step.
+func player_feet() -> Vector3:
+	return _feet
+
+
+func player_object() -> Object:
+	return _player
+
+
+## Hands down: the weapon sheathed and the spell hands unreadied (paralysis).
+func lower_hands() -> void:
+	magic.set_ready(false, true)
+	if combat.weapon_state() == Combat.State.DRAWN or combat.weapon_state() == Combat.State.DRAWING:
+		combat.toggle_weapon()
 
 
 # ---- queries for the shell's overlays

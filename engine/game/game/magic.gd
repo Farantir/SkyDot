@@ -314,6 +314,7 @@ func _pay(hand: int, spell: int, info: Dictionary) -> bool:
 	if bool(info.get("is_scroll", false)):
 		cast_started.emit(hand, spell, info)
 		return true
+	_papyrus.break_invisibility(PLAYER_REF)  # casting ends the player's invisibility
 	var paid := _papyrus.pay_spell(PLAYER_REF, spell, 0.0)
 	if not paid["ok"]:
 		cast_refused.emit(hand, spell, paid["reason"])

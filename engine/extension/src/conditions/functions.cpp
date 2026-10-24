@@ -16,13 +16,14 @@ constexpr double k_far = 1.0e9;
 /// Locations nest a few levels; this only stops loops.
 constexpr int k_max_location_depth = 32;
 
-constexpr std::array<std::uint16_t, 16> k_placeholders{
+constexpr std::array<std::uint16_t, 19> k_placeholders{
     fn::get_equipped_shout,       fn::is_sneaking,          fn::is_in_combat,
     fn::is_weapon_out,            fn::is_weapon_magic_out,  fn::get_crime_gold,
     fn::is_trespassing,           fn::get_trespass_warning_level,
     fn::get_player_teammate,      fn::is_actor_a_victim,    fn::get_should_attack,
     fn::get_intimidate_success,   fn::get_bribe_success,    fn::get_detected,
     fn::is_commanded_actor,       fn::is_in_friend_state_with_player,
+    fn::magic_exclusion_244,      fn::magic_exclusion_365,  fn::magic_exclusion_715,
 };
 
 double flag(bool value) { return value ? 1.0 : 0.0; }

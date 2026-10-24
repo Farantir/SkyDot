@@ -75,6 +75,11 @@ inline constexpr std::uint16_t is_in_friend_state_with_player = 638;
 inline constexpr std::uint16_t get_bribe_success = 654;
 inline constexpr std::uint16_t get_intimidate_success = 655;
 inline constexpr std::uint16_t is_commanded_actor = 700;
+/// State flags the calm, fear, fury and paralysis effects (MGEF conditions) require to be 0
+/// (excluded targets: ghosts and the like); named by index until they matter.
+inline constexpr std::uint16_t magic_exclusion_244 = 244;
+inline constexpr std::uint16_t magic_exclusion_365 = 365;
+inline constexpr std::uint16_t magic_exclusion_715 = 715;
 } // namespace fn
 
 /// The functions bound to a resting value because the system they read does

@@ -1036,6 +1036,10 @@ void SkydotAi::update(double seconds) {
         }
         const double elapsed = m->idle;
         m->idle = 0.0;
+        // The VM follows the actors that are on screen (triggers, area effects, cloaks).
+        if (vm_ != nullptr && !vm_->is_actor_dead(ref)) {
+            vm_->update_actor(ref, m->last);
+        }
         // The dead (a corpse placed dead too) have no AI: no package, no fight.
         if (vm_ != nullptr && vm_->is_actor_dead(ref)) {
             m->combat.paralyzed = m->combat.calmed = m->combat.frenzied = m->combat.following = false;

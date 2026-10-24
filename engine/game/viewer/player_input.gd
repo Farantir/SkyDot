@@ -88,6 +88,8 @@ signal attack_left_changed(pressed: bool)
 ## Set while a menu has the keyboard: the player stands still and the
 ## keys are not commands.
 var blocked := false
+## Paralysed (a magic effect): like `blocked`, set by the session's state each frame.
+var paralyzed := false
 ## Off for runs that drive themselves: everything here is ignored and the
 ## player stands still.
 var enabled := true
@@ -129,7 +131,7 @@ func key_label(action: StringName) -> String:
 ## view by `delta` seconds' worth.
 func apply(delta: float) -> void:
 	var player := _rig.player
-	if not enabled or blocked:
+	if not enabled or blocked or paralyzed:
 		player.set_input(Vector2.ZERO, 0.0, SkydotPlayer.RUN)
 		player.set_look(_rig.yaw, _rig.pitch)
 		return

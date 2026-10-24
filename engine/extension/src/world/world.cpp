@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "build/ref_nodes.hpp"
 #include "world/world.hpp"
+#include "data/actors.hpp"
 #include "data/coordinates.hpp"
+#include "data/fb_search.hpp"
 #include "physics/collision.hpp"
 #include "world/queries.hpp"
 #include "build/refs.hpp"
@@ -157,6 +159,7 @@ void SkydotWorld::_bind_methods() {
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
     godot::ClassDB::bind_method(D_METHOD("get_locomotion", "behaviour"), &SkydotWorld::get_locomotion);
     godot::ClassDB::bind_method(D_METHOD("build_actor", "ref"), &SkydotWorld::build_actor);
+    godot::ClassDB::bind_method(D_METHOD("is_actor_base", "base"), &SkydotWorld::is_actor_base);
     godot::ClassDB::bind_method(D_METHOD("build_placed_actor", "ref", "base", "position", "rotation_z"),
                                 &SkydotWorld::build_placed_actor);
     godot::ClassDB::bind_method(D_METHOD("get_cell_actors", "cell"), &SkydotWorld::get_cell_actors);
@@ -399,6 +402,15 @@ godot::Node3D* SkydotWorld::build_ref(std::int64_t cell, std::int64_t ref) {
 }
 godot::Node3D* SkydotWorld::build_model(const String& vpath) { return builder_.build_model(vpath); }
 godot::Node3D* SkydotWorld::build_actor(std::int64_t ref) { return builder_.build_actor(ref); }
+
+bool SkydotWorld::is_actor_base(std::int64_t base) const {
+    const auto* root = data().root();
+    if (root == nullptr || base == 0) {
+        return false;
+    }
+    const std::uint32_t picked = pick_actor_form(*root, static_cast<std::uint32_t>(base), 0);
+    return picked != 0 && lookup(root->npcs(), picked) != nullptr;
+}
 
 godot::Node3D* SkydotWorld::build_placed_actor(std::int64_t ref, std::int64_t base, const Vector3& position,
                                                double rotation_z) {

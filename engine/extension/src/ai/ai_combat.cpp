@@ -541,10 +541,6 @@ bool SkydotAi::follow_commander(Mind& m, SkydotActor& actor, std::uint32_t comma
 
 bool SkydotAi::magic_step(Mind& m, SkydotActor& actor, const combat_ai::MagicState& state, double seconds) {
     CombatMind& c = m.combat;
-    if (c.stagger > 0.0) {
-        c.stagger -= seconds;
-        return true; // the clip plays, the AI waits
-    }
     const auto mode = combat_ai::magic_mode(state);
     // Paralysis: nothing is done, the combat state is kept.
     if (mode == combat_ai::MagicMode::frozen) {
@@ -560,6 +556,11 @@ bool SkydotAi::magic_step(Mind& m, SkydotActor& actor, const combat_ai::MagicSta
         c.paralyzed = false;
         actor.set_frozen(false);
         std::printf("combat: 0x%X moves again\n", m.ref);
+    }
+    // A stagger pauses the rest.
+    if (c.stagger > 0.0) {
+        c.stagger -= seconds;
+        return true; // the clip plays, the AI waits
     }
     // Fear: it flees from the caster while the fear lasts.
     if (mode == combat_ai::MagicMode::afraid) {
