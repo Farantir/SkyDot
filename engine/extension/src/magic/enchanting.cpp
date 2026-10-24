@@ -288,6 +288,8 @@ EnchantOutcome Enchanting::plan(const EnchantRequest& req, MadeEnchantment* made
     }
     out.charge_max = made->charge_max;
     out.cost = made->ench.cost;
+    out.effects = made->ench.effects;
+    out.constant = made->ench.constant;
     out.name = req.name;
     if (out.name.empty()) {
         std::string suffix = made->ench.name;

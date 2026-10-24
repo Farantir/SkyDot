@@ -126,6 +126,15 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("temper_rows", "bench_ref"), &SkydotPapyrus::temper_rows);
     godot::ClassDB::bind_method(D_METHOD("temper", "recipe", "form", "extra"), &SkydotPapyrus::temper);
     godot::ClassDB::bind_method(D_METHOD("enchant_rows"), &SkydotPapyrus::enchant_rows);
+    godot::ClassDB::bind_method(D_METHOD("enchantment_fits", "item", "enchantment"), &SkydotPapyrus::enchantment_fits);
+    godot::ClassDB::bind_method(D_METHOD("enchant_preview", "item", "item_extra", "enchantment", "gem", "gem_extra", "name"),
+                                &SkydotPapyrus::enchant_preview);
+    godot::ClassDB::bind_method(D_METHOD("enchant", "item", "item_extra", "enchantment", "gem", "gem_extra", "name"),
+                                &SkydotPapyrus::enchant);
+    godot::ClassDB::bind_method(D_METHOD("disenchant", "form", "extra"), &SkydotPapyrus::disenchant);
+    godot::ClassDB::bind_method(D_METHOD("recharge_options", "item", "extra"), &SkydotPapyrus::recharge_options);
+    godot::ClassDB::bind_method(D_METHOD("recharge", "item", "extra", "gem", "gem_extra"), &SkydotPapyrus::recharge);
+    godot::ClassDB::bind_method(D_METHOD("fill_gem", "actor"), &SkydotPapyrus::fill_gem);
     godot::ClassDB::bind_method(D_METHOD("alchemy_rows"), &SkydotPapyrus::alchemy_rows);
     godot::ClassDB::bind_method(D_METHOD("alchemy_preview", "forms"), &SkydotPapyrus::alchemy_preview);
     godot::ClassDB::bind_method(D_METHOD("alchemy_mix", "forms"), &SkydotPapyrus::alchemy_mix);
@@ -280,6 +289,8 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("ref_deleted", PropertyInfo(Variant::INT, "ref")));
     // A non-essential actor other than the player was brought to Health 0.
     ADD_SIGNAL(godot::MethodInfo("actor_died", PropertyInfo(Variant::INT, "ref")));
+    ADD_SIGNAL(godot::MethodInfo("soul_trapped", PropertyInfo(Variant::INT, "actor"), PropertyInfo(Variant::BOOL, "filled"),
+                                 PropertyInfo(Variant::INT, "gem"), PropertyInfo(Variant::INT, "soul")));
     // A magic effect started acting on `target` or finished (`instance` is its id, the handle of
     // its script object); `archetype` is the MGEF's. For presentation: light, art, a menu.
     ADD_SIGNAL(godot::MethodInfo("magic_effect_changed", PropertyInfo(Variant::INT, "target"),

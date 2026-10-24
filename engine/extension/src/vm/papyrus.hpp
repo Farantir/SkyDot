@@ -25,6 +25,7 @@
 #include "assets/pack.hpp"
 #include "data/actors.hpp"
 #include "magic/active_effects.hpp"
+#include "magic/enchanting.hpp"
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
@@ -290,9 +291,28 @@ public:
     godot::Array temper_rows(std::int64_t bench_ref);
     /// Temper one unit of the stack (form, extra).
     bool temper(std::int64_t recipe, std::int64_t form, std::int64_t extra);
-    /// The enchanting stub (types 3, 4): {form, extra, name} of the carried
-    /// items with an enchantment. There are no actions yet (C5).
-    godot::Array enchant_rows();
+    /// The enchanting table (types 3, 4): {disenchant: [{form, extra, name, enchantment, ok, refusal}],
+    /// items: [{form, extra, name, count, kind}] (unenchanted weapons and apparel), enchantments: [{id,
+    /// name, kind, effects: [text]}] (the learned ones), gems: [{form, extra, name, count, soul,
+    /// soul_name, charge, capacity}] (the filled ones)}.
+    godot::Dictionary enchant_rows();
+    /// Whether the learned enchantment fits the item (kind, staff, worn restrictions).
+    bool enchantment_fits(std::int64_t item, std::int64_t enchantment) const;
+    /// What enchanting would make: {ok, refusal, name, effects: [text], charge, cost, uses, constant}.
+    godot::Dictionary enchant_preview(std::int64_t item, std::int64_t item_extra, std::int64_t enchantment,
+                                      std::int64_t gem, std::int64_t gem_extra, const godot::String& name);
+    /// Enchant one unit, spend the gem: {ok, refusal, name, extra, created}.
+    godot::Dictionary enchant(std::int64_t item, std::int64_t item_extra, std::int64_t enchantment, std::int64_t gem,
+                              std::int64_t gem_extra, const godot::String& name);
+    /// Destroy one unit and learn its enchantment: {ok, refusal, learned}.
+    godot::Dictionary disenchant(std::int64_t form, std::int64_t extra);
+    /// The filled gems that could recharge the weapon unit: {form, extra, name, soul, charge, fills}.
+    godot::Array recharge_options(std::int64_t item, std::int64_t extra);
+    /// Recharge a weapon unit with a gem: {ok, refusal, charge, max, extra}.
+    godot::Dictionary recharge(std::int64_t item, std::int64_t extra, std::int64_t gem, std::int64_t gem_extra);
+    /// Fill the smallest empty gem the player carries with the soul of `actor` (its level, an NPC's
+    /// is black): {filled, gem, form, extra, soul, name}.
+    godot::Dictionary fill_gem(std::int64_t actor);
     /// The carried ingredients: {form, name, count, effects: [{name, known}]}.
     godot::Array alchemy_rows();
     /// What mixing `forms` makes: {name, poison, value, effects: [{name,
@@ -707,6 +727,16 @@ private:
     /// The unit of `form` that carried extra `from` carries `to` now: the inventory entry and the
     /// equipment slot move together (ItemExtras interns, so a changed value is a new id).
     void move_unit_extra(std::uint32_t owner, std::uint32_t form, std::uint32_t from, std::uint32_t to);
+    /// Only the equipment slot that held the unit with extra `from` (its inventory entry changed already).
+    void retarget_equipment(std::uint32_t owner, std::uint32_t form, std::uint32_t from, std::uint32_t to);
+    /// The spell book of the magic runtime (null before there is a VM and a world).
+    magic::SpellBook* spell_book();
+    /// The enchanting table over the player's inventory; empty before there is a VM and a world.
+    std::optional<magic::Enchanting> enchanting_table();
+    /// The name a unit shows: its extra's, else its base's.
+    std::string unit_name(std::uint32_t form, std::uint32_t extra) const;
+    /// The soul an actor that dies now gives: level (1 if unknown) and whether it is an NPC.
+    magic::ActorSoul soul_of(std::uint32_t actor);
     /// A weapon hit's magic (poison, enchantment, charge): {poison, enchantment, fired, charge, charge_max}.
     godot::Dictionary hit_magic(std::uint32_t attacker, std::uint32_t target, std::uint32_t weapon,
                                 std::uint32_t extra, bool target_alive);

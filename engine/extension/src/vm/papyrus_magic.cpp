@@ -8,6 +8,8 @@
 // (`flush_magic_events`), because a script that answers one may dispel another effect.
 #include "vm/papyrus.hpp"
 
+#include "vm/condition_world.hpp"
+
 #include "build/refs.hpp"
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
@@ -51,6 +53,8 @@ std::string number(double v) {
 }
 
 constexpr int kind_value(magic::SourceKind k) { return static_cast<int>(k); }
+/// MGEF archetype 23.
+constexpr std::uint32_t k_archetype_soul_trap = 23;
 
 } // namespace
 
@@ -926,11 +930,34 @@ Dictionary SkydotPapyrus::get_unhandled_archetypes() const {
     return out;
 }
 
+magic::SpellBook* SkydotPapyrus::spell_book() {
+    auto* m = magic_state();
+    return m != nullptr ? &m->book : nullptr;
+}
+
+magic::ActorSoul SkydotPapyrus::soul_of(std::uint32_t actor) {
+    auto* m = magic_state();
+    const std::uint32_t level = m != nullptr ? m->actor_level(actor) : 0;
+    const std::uint32_t npc = world_.is_valid() ? world_->data().keyword_by_editor_id("ActorTypeNPC") : 0;
+    const bool is_npc = npc != 0 && PapyrusConditionWorld(this).has_keyword(actor, npc);
+    return magic::actor_soul(std::max(level, 1U), is_npc);
+}
+
 void SkydotPapyrus::magic_actor_died(std::uint32_t ref) {
     if (!magic_) {
         return;
     }
     auto* m = static_cast<MagicState*>(magic_.get());
+    // Soul Trap cast by the player: the soul goes into a gem as the actor dies.
+    if (ref != k_player_ref) {
+        const auto views = m->effects.effects_on(ref);
+        if (std::ranges::any_of(views, [](const magic::EffectView& v) {
+                return v.archetype == k_archetype_soul_trap && v.caster == k_player_ref && v.active;
+            })) {
+            const auto fill = fill_gem(ref);
+            emit_signal("soul_trapped", static_cast<std::int64_t>(ref), fill["filled"], fill["gem"], fill["soul"]);
+        }
+    }
     m->effects.on_death(ref);
     m->worn.forget(ref);
     std::erase_if(m->hands, [ref](const auto& h) { return h.first.first == ref; });
@@ -1021,7 +1048,11 @@ void SkydotPapyrus::move_unit_extra(std::uint32_t owner, std::uint32_t form, std
     if (inventory.remove_extra(owner, form, from, 1) > 0) {
         inventory.add(owner, form, 1, to);
     }
-    if (items_.find(owner) == nullptr) {
+    retarget_equipment(owner, form, from, to);
+}
+
+void SkydotPapyrus::retarget_equipment(std::uint32_t owner, std::uint32_t form, std::uint32_t from, std::uint32_t to) {
+    if (from == to || owner == 0 || items_.find(owner) == nullptr) {
         return;
     }
     auto& equipment = items_.equipment(owner);

@@ -283,6 +283,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_dialogue.cpp
     src/vm/papyrus_items.cpp
     src/vm/papyrus_crafting.cpp
+    src/vm/papyrus_enchanting.cpp
     src/vm/papyrus_magic.cpp
     src/vm/papyrus_combat.cpp
     src/vm/papyrus_scenes.cpp

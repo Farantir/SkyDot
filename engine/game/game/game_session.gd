@@ -217,6 +217,7 @@ func _open_world() -> bool:
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)
 	papyrus.actor_died.connect(actor_died.emit)
+	papyrus.soul_trapped.connect(_on_soul_trapped)
 	papyrus.player_died.connect(player_died.emit)
 	papyrus.magic_effect_changed.connect(magic_effect_changed.emit)
 	world.skyrim_materials = config.materials
@@ -536,9 +537,72 @@ func temper(recipe: int, form: int, extra: int) -> bool:
 	return done
 
 
-## The carried items with an enchantment: [{form, extra, name, enchantment}].
-func enchant_rows() -> Array:
+## What an enchanting table lists: {disenchant, items, enchantments, gems}, see
+## SkydotPapyrus.enchant_rows.
+func enchant_rows() -> Dictionary:
 	return papyrus.enchant_rows()
+
+
+## Whether the learned enchantment fits the item (its kind and worn restrictions).
+func enchantment_fits(item: int, enchantment: int) -> bool:
+	return papyrus.enchantment_fits(item, enchantment)
+
+
+## What enchanting would make: {ok, refusal, name, effects, charge, cost, uses, constant}.
+func enchant_preview(item: int, item_extra: int, enchantment: int, gem: int, gem_extra: int, name := "") -> Dictionary:
+	return papyrus.enchant_preview(item, item_extra, enchantment, gem, gem_extra, name)
+
+
+## Enchant one unit with a learned enchantment and a filled soul gem (spent, unless it is reusable);
+## {ok, refusal, name, extra, created}. `name` empty takes "<item> of <enchantment>".
+func enchant(item: int, item_extra: int, enchantment: int, gem: int, gem_extra: int, name := "") -> Dictionary:
+	var result := papyrus.enchant(item, item_extra, enchantment, gem, gem_extra, name)
+	if result["ok"]:
+		message.emit("%s enchanted" % result["name"], false)
+		print("enchanting: made %s (created 0x%X, extra %d)" % [result["name"], int(result["created"]), int(result["extra"])])
+		items_changed.emit()
+	elif result["refusal"] != "":
+		message.emit(result["refusal"], false)
+	return result
+
+
+## Destroy one unit and learn its enchantment: {ok, refusal, learned}.
+func disenchant(form: int, extra: int) -> Dictionary:
+	var result := papyrus.disenchant(form, extra)
+	if result["ok"]:
+		message.emit("Learned %s" % result["learned"], false)
+		print("enchanting: learned %s" % result["learned"])
+		items_changed.emit()
+	elif result["refusal"] != "":
+		message.emit(result["refusal"], false)
+	return result
+
+
+## The filled soul gems that could recharge the weapon unit.
+func recharge_options(item: int, extra: int) -> Array:
+	return papyrus.recharge_options(item, extra)
+
+
+## Recharge a weapon unit with a filled soul gem: {ok, refusal, charge, max, extra}.
+func recharge(item: int, extra: int, gem: int, gem_extra: int) -> Dictionary:
+	var result := papyrus.recharge(item, extra, gem, gem_extra)
+	if result["ok"]:
+		message.emit("Recharged to %d" % int(result["charge"]), false)
+		print("enchanting: recharged to %d of %d" % [int(result["charge"]), int(result["max"])])
+		items_changed.emit()
+	elif result["refusal"] != "":
+		message.emit(result["refusal"], false)
+	return result
+
+
+## Soul Trap killed `actor`: the notification and the log line.
+func _on_soul_trapped(actor: int, filled: bool, gem: int, soul: int) -> void:
+	if filled:
+		message.emit("Soul captured", false)
+		print("soul trap: 0x%X filled gem 0x%X with soul %d" % [actor, gem, soul])
+		items_changed.emit()
+	else:
+		print("soul trap: 0x%X, no soul gem fits" % actor)
 
 
 func alchemy_rows() -> Array:

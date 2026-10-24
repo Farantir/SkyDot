@@ -379,6 +379,19 @@ Array SkydotPapyrus::inventory(std::int64_t owner) {
         entry["category"] = vm::category_name(row.info.category);
         entry["equipped"] = equipment != nullptr && equipment->holds(row.form, row.extra);
         entry["playable"] = row.info.playable;
+        // An enchanted weapon shows its charge, a filled soul gem its soul.
+        const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+        if (root != nullptr && row.info.category == vm::ItemCategory::weapon) {
+            const auto charge = magic::weapon_charge(*root, row.form, items_.extras().find(row.extra), {}, &created_);
+            if (charge.enchantment != 0 && charge.max > 0.0F) {
+                entry["charge"] = static_cast<double>(charge.charge);
+                entry["charge_max"] = static_cast<double>(charge.max);
+            }
+        } else if (root != nullptr && row.info.category == vm::ItemCategory::soul_gem) {
+            const auto gem = magic::gem_info(*root, {}, row.form, items_.extras().find(row.extra));
+            entry["soul"] = static_cast<std::int64_t>(gem.soul);
+            entry["soul_capacity"] = static_cast<std::int64_t>(gem.capacity);
+        }
         out.push_back(entry);
     }
     return out;

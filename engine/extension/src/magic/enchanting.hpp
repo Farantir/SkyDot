@@ -146,6 +146,9 @@ struct EnchantOutcome {
     std::string name;
     float charge_max = 0.0F;
     double cost = 0.0;
+    /// What the enchantment does (a preview and the result).
+    std::vector<vm::CreatedEffect> effects;
+    bool constant = false;
     [[nodiscard]] bool ok() const noexcept { return refusal == Refusal::none; }
 };
 

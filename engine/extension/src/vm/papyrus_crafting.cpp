@@ -202,24 +202,6 @@ bool SkydotPapyrus::temper(std::int64_t recipe, std::int64_t form, std::int64_t 
     return true;
 }
 
-Array SkydotPapyrus::enchant_rows() {
-    Array out;
-    auto* logic = crafting_logic();
-    if (logic == nullptr) {
-        return out;
-    }
-    resolve_owner(k_player_ref);
-    for (const auto& row : logic->enchant_rows()) {
-        Dictionary entry;
-        entry["form"] = static_cast<std::int64_t>(row.form);
-        entry["extra"] = static_cast<std::int64_t>(row.extra);
-        entry["name"] = to_godot(item_name_of(row.form));
-        entry["enchantment"] = static_cast<std::int64_t>(row.enchantment);
-        out.push_back(entry);
-    }
-    return out;
-}
-
 Array SkydotPapyrus::alchemy_rows() {
     Array out;
     auto* logic = crafting_logic();
