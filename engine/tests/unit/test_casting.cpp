@@ -11,6 +11,7 @@
 #include "magic/enchanted.hpp"
 #include "magic/magic_save.hpp"
 #include "vm/actor_states.hpp"
+#include "vm/created_forms.hpp"
 #include "vm/item_extras.hpp"
 
 #include <catch2/catch_approx.hpp>
@@ -644,4 +645,49 @@ TEST_CASE("actors_to_rederive: the player, the book's actors, effect targets and
     Rig bare;
     bare.book.clear();
     CHECK(magic::actors_to_rederive(bare.book, bare.effects) == std::set<std::uint32_t>{k_player});
+}
+
+// ---- created enchantments ------------------------------------------------------------------------------
+
+TEST_CASE("a created weapon enchantment fires its effects and spends its own cost", "[casting][enchant][created]") {
+    Rig rig;
+    vm::CreatedForms created;
+    const auto made = created.create_enchantment({.id = 0, .base = k_ench_fire, .name = "Fire", .effects = {{k_bolt, 12.0F, 0, 0}},
+                                                  .cost = 40.0, .constant = false});
+    vm::ItemExtra extra;
+    extra.enchantment = made;
+    extra.charge_max = 200.0F;
+    const auto id = rig.extras.intern(extra);
+
+    const auto info = magic::weapon_charge(*rig.world, k_plain_sword, rig.extras.find(id), {}, &created);
+    CHECK(info.enchantment == made);
+    CHECK(info.max == Approx(200.0F));
+    CHECK(info.charge == Approx(200.0F));
+    CHECK(info.cost == Approx(40.0));
+    // Without the table of made enchantments it is nothing.
+    CHECK(magic::weapon_charge(*rig.world, k_plain_sword, rig.extras.find(id)).enchantment == 0);
+
+    magic::HitMagicInput in{.attacker = k_player, .target = k_skeever, .weapon = k_plain_sword, .extra = id,
+                            .attacker_is_player = true};
+    const auto hit = magic::hit_magic(*rig.world, rig.effects, rig.extras, in, {}, {}, &created);
+    CHECK(hit.enchantment == made);
+    CHECK(hit.fired);
+    CHECK(hit.charge == Approx(160.0F));
+    CHECK(hit.instances.size() == 1);
+    CHECK(rig.host.states.get(k_skeever, k_health) < 100.0);
+    CHECK(rig.extras.find(hit.new_extra)->charge == Approx(160.0F));
+}
+
+TEST_CASE("a created apparel enchantment is worn like a world one", "[casting][enchant][worn][created]") {
+    Rig rig;
+    vm::CreatedForms created;
+    const auto made = created.create_enchantment({.id = 0, .base = k_ench_fortify, .name = "Fortify", .effects = {{k_fortify, 12.0F, 0, 0}},
+                                                  .cost = 0.0, .constant = true});
+    magic::WornEnchantments worn(*rig.world, rig.effects, &created);
+    const double max = rig.host.states.max(k_player, k_health);
+    worn.sync(k_player, {{k_circlet, 1, made}});
+    CHECK(rig.has_effect(k_player, k_fortify));
+    CHECK(rig.host.states.max(k_player, k_health) == Approx(max + 12));
+    worn.sync(k_player, {});
+    CHECK(rig.host.states.max(k_player, k_health) == Approx(max));
 }

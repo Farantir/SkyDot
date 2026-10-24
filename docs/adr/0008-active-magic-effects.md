@@ -125,3 +125,29 @@ record that stored nothing.
   and their self forms).
 - **Leveled spell lists are seeded by the reference**: two spawned actors of one NPC_ know different
   spells; tests teach the spells they need.
+
+## Created enchantments and soul gems (7a-6)
+
+- **A made enchantment is a value** (`vm::CreatedEnchantment`, saved in CRFT 2, ids from the created
+  range, deduplicated by base, effects, cost and kind): the effects of a learned world ENCH at the
+  strength the soul and the skill gave. `ItemExtra.enchantment` names a world ENCH or a created one;
+  `magic::resolve_enchantment(world, created, id)` is the one reader (effects, cost per use, constant
+  or not), used by `weapon_charge`, `hit_magic` and `WornEnchantments`, so no caller tells them apart.
+  A weapon's charge maximum is `ItemExtra.charge_max`. CRFT 1 loads with nothing created.
+- **Souls**: a gem with a filled form has the soul in its base (`ItemData.soul`); the others (Azura's
+  Star, the Black Star, an empty gem whose NAM0 is not set - Petty to Greater have none in vanilla)
+  hold it in `ItemExtra.soul` (ITST layout 3, section 5). A black (NPC) soul is grand-sized; which gems
+  take it is the gem's `holds_npc_souls`, so the extra needs no seventh value.
+- **Rules** (`magic/enchanting`, skill 15, no perks, UESP "Enchanting Effects"): skill multiplier
+  `1 + s(s - 0.14)/3.4`; apparel magnitude `floor(base * soul fraction * skill)` (1/12 .. 1), a
+  power-affects-duration effect scales its duration; a weapon holds the soul's charge (250 .. 3000),
+  uses `3 * cost^1.1 * (1 - sqrt(skill/200))` per hit, and a dearer enchantment is scaled down until one
+  use fits the gem. Disenchanting teaches the base ENCH of an item's enchantment unless it is made,
+  a staff's, forbidden (MagicDisallowEnchanting on the item or an effect) or known. A reusable gem
+  (ReusableSoulGem) is emptied instead of spent. Soul trap fills the smallest empty gem that takes
+  the soul; an empty gem with a linked form whose soul is the right size becomes that form, any
+  other gets the soul in its extra. Creature souls by level (petty 1-3, lesser 4-15, common 16-27,
+  greater 28-37, grand 38+) are from memory of UESP's creature tables, not verified there.
+- **The player's table** is `magic::Enchanting` over the inventory, the extras, the created forms and
+  the spell book; the game layer owns the keywords' ids and moves equipment slots that held a
+  changed unit (as `move_unit_extra` does for a hit).

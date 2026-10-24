@@ -228,10 +228,10 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     }
     // CRFT and HRVS are optional: an older save has nothing created, known or harvested.
     if (const auto* crft = file.find("CRFT")) {
-        if (crft->version != vm::CreatedForms::k_section_version) {
+        if (crft->version < 1 || crft->version > vm::CreatedForms::k_section_version) {
             return fail("section CRFT has a version this engine does not read");
         }
-        if (!vm::CreatedForms::load(file.open(*crft), pending->created)) {
+        if (!vm::CreatedForms::load(file.open(*crft), pending->created, crft->version)) {
             return fail("the CRFT section of the save is damaged");
         }
     }

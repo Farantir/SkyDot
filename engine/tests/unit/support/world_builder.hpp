@@ -217,6 +217,11 @@ struct ItemSpec {
     std::uint32_t enchantment = 0;
     /// EAMT of a weapon: the charge it holds.
     std::uint32_t enchantment_amount = 0;
+    /// SLGM: the soul held, the largest taken, the filled form an empty one becomes, black gem.
+    std::uint8_t soul = 0;
+    std::uint8_t soul_capacity = 0;
+    std::uint32_t soul_gem_linked = 0;
+    bool holds_npc_souls = false;
 };
 
 /// PFIG, SNAM and PFPC of a plant.
@@ -308,6 +313,21 @@ struct EnchantmentSpec {
     std::uint32_t flags = 0;
     std::uint32_t casting_type = 1;
     std::vector<SpellEffectSpec> effects = {};
+    std::uint32_t enchantment_type = 6;
+    std::uint32_t base_enchantment = 0;
+    std::uint32_t worn_restrictions = 0;
+};
+
+/// FLST.
+struct FormListSpec {
+    std::uint32_t id;
+    std::vector<std::uint32_t> forms = {};
+};
+
+/// KYWD.
+struct KeywordSpec {
+    std::uint32_t id;
+    std::string editor_id = {};
 };
 
 /// "LVLN" as the record type a leveled list of NPCs carries.
@@ -379,6 +399,8 @@ struct WorldSpec {
     std::vector<MagicEffectSpec> magic_effects = {};
     std::vector<SpellSpec> spells = {};
     std::vector<EnchantmentSpec> enchantments = {};
+    std::vector<FormListSpec> form_lists = {};
+    std::vector<KeywordSpec> keywords = {};
 };
 
 /// A built and verified world.fb, kept alive with the reader on it.

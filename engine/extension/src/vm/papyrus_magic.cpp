@@ -56,7 +56,7 @@ constexpr int kind_value(magic::SourceKind k) { return static_cast<int>(k); }
 
 struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::MagicHost, vm::MagicApi {
     MagicState(SkydotPapyrus& owner, const wfb::World& world)
-        : owner_(owner), world_(world), effects(world, *this), book(world, effects), worn(world, effects) {
+        : owner_(owner), world_(world), effects(world, *this), book(world, effects), worn(world, effects, &owner.created_) {
         book.set_base_source([this](std::uint32_t ref) {
             if (!owner_.actors_.is_actor(ref)) {
                 return std::vector<std::uint32_t>{};
@@ -1067,7 +1067,7 @@ Dictionary SkydotPapyrus::hit_magic(std::uint32_t attacker, std::uint32_t target
         bool is_poison = false;
         return m->item_effects(poison, inputs, kind, is_poison);
     };
-    const auto result = magic::hit_magic(m->world_, m->effects, items_.extras(), in, poison_inputs, m->settings());
+    const auto result = magic::hit_magic(m->world_, m->effects, items_.extras(), in, poison_inputs, m->settings(), &created_);
     if (result.new_extra != extra) {
         move_unit_extra(attacker, weapon, extra, result.new_extra);
     }
@@ -1168,7 +1168,7 @@ Dictionary SkydotPapyrus::weapon_charge(std::int64_t actor_in, std::int64_t form
     } else {
         unit = resolve_extra(actor, form, -1);
     }
-    const auto info = magic::weapon_charge(m->world_, form, items_.extras().find(unit), m->settings());
+    const auto info = magic::weapon_charge(m->world_, form, items_.extras().find(unit), m->settings(), &created_);
     out["enchantment"] = static_cast<std::int64_t>(info.enchantment);
     out["charge"] = static_cast<double>(info.charge);
     out["max"] = static_cast<double>(info.max);

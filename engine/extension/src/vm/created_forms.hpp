@@ -7,7 +7,10 @@
 // each). Section CRFT of a save (optional: an older save has nothing created
 // and nothing known). Nothing here touches Godot.
 //
-//   CRFT  u32 next id; u32 potions, each u32 id, text name, i32 value, f64
+//   CRFT  (version 2 adds the enchantments after the ingredients: u32 enchantments, each u32 id, text
+//         name, u32 base, f64 cost, u8 constant, u32 effects (u32 effect, f64 magnitude, u32 duration,
+//         u32 area))
+//         u32 next id; u32 potions, each u32 id, text name, i32 value, f64
 //         weight, u8 poison, text model, u32 effects (u32 effect, f64
 //         magnitude, u32 duration); u32 ingredients, each u32 form, u8 mask
 #pragma once
@@ -26,6 +29,7 @@ struct CreatedEffect {
     std::uint32_t effect = 0; ///< A MagicEffect of the world.
     float magnitude = 0.0F;
     std::uint32_t duration = 0;
+    std::uint32_t area = 0; ///< Feet; 0 for potions.
 
     [[nodiscard]] bool operator==(const CreatedEffect& other) const noexcept;
 };
@@ -41,15 +45,36 @@ struct CreatedPotion {
     std::string model;
 };
 
+/// An enchantment the player made at the table (docs/adr/0008): the effects of a known world
+/// enchantment (`base`) at the strength the soul and skill gave, saved by value.
+struct CreatedEnchantment {
+    std::uint32_t id = 0;
+    std::uint32_t base = 0; ///< The world ENCH it was made from.
+    std::string name;
+    std::vector<CreatedEffect> effects;
+    /// Charge one use costs (a weapon's); 0 for apparel.
+    double cost = 0.0;
+    /// Constant effect (apparel); clear: fire and forget on a hit (weapons).
+    bool constant = false;
+
+    [[nodiscard]] bool operator==(const CreatedEnchantment& other) const noexcept;
+};
+
 class CreatedForms {
 public:
-    static constexpr std::uint32_t k_section_version = 1;
+    /// 1 potions and ingredients; 2 adds the created enchantments.
+    static constexpr std::uint32_t k_section_version = 2;
 
     /// The form of `potion`: an existing one with the same effects and
     /// poison flag, else a new one (`potion.id` is set). 0 when the range is
     /// used up.
     std::uint32_t create(CreatedPotion potion);
     [[nodiscard]] const CreatedPotion* find(std::uint32_t id) const;
+    /// The id of `ench`: an existing one with the same base, effects, cost and kind, else a new one
+    /// (`ench.id` is set). 0 when the range is used up.
+    std::uint32_t create_enchantment(CreatedEnchantment ench);
+    [[nodiscard]] const CreatedEnchantment* find_enchantment(std::uint32_t id) const;
+    [[nodiscard]] const std::map<std::uint32_t, CreatedEnchantment>& enchantments() const { return enchantments_; }
     [[nodiscard]] bool is_created(std::uint32_t id) const noexcept {
         return id_ranges::created_forms.contains(id);
     }
@@ -65,11 +90,13 @@ public:
     void adopt(CreatedForms&& other) { *this = std::move(other); }
 
     [[nodiscard]] std::vector<std::uint8_t> save() const;
-    [[nodiscard]] static bool load(save::ByteReader r, CreatedForms& out);
+    /// `version` is the section's (1 reads an old save: nothing is enchanted).
+    [[nodiscard]] static bool load(save::ByteReader r, CreatedForms& out, std::uint32_t version = k_section_version);
 
 private:
     IdAllocator ids_{id_ranges::created_forms};
     std::map<std::uint32_t, CreatedPotion> potions_;
+    std::map<std::uint32_t, CreatedEnchantment> enchantments_;
     std::map<std::uint32_t, std::uint8_t> known_;
 };
 

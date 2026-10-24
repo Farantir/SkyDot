@@ -33,7 +33,7 @@ namespace skydot::vm {
 
 class ItemStates {
 public:
-    static constexpr std::uint32_t k_section_version = 4;
+    static constexpr std::uint32_t k_section_version = 5;
 
     [[nodiscard]] bool resolved(std::uint32_t owner) const { return resolved_.contains(owner); }
     void mark_resolved(std::uint32_t owner) { resolved_.insert(owner); }

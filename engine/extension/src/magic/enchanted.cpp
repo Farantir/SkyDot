@@ -24,6 +24,36 @@ double enchantment_cost(const wfb::World& world, const wfb::Enchantment& ench, c
     return sum * k_placeholder_enchant_cost_scale;
 }
 
+std::optional<ResolvedEnchantment> resolve_enchantment(const wfb::World& world, const vm::CreatedForms* created,
+                                                      std::uint32_t id, const MagicSettings& s) {
+    if (id == 0) {
+        return std::nullopt;
+    }
+    ResolvedEnchantment out;
+    out.id = id;
+    if (const auto* e = lookup(world.enchantments(), id)) {
+        out.world = e;
+        out.effects = inputs_of(e->effects());
+        out.cost = enchantment_cost(world, *e, s);
+        out.charge = e->charge();
+        out.constant = e->casting_type() == 0;
+        out.name = e->name() != nullptr ? e->name()->str() : std::string{};
+        return out;
+    }
+    const auto* made = created != nullptr ? created->find_enchantment(id) : nullptr;
+    if (made == nullptr) {
+        return std::nullopt;
+    }
+    out.created = true;
+    out.cost = made->cost;
+    out.constant = made->constant;
+    out.name = made->name;
+    for (const auto& f : made->effects) {
+        out.effects.push_back({f.effect, f.magnitude, f.area, f.duration, -1});
+    }
+    return out;
+}
+
 float charge_max(float extra_max, std::uint32_t item_amount, std::int32_t enchantment_charge) {
     if (extra_max > 0.0F) {
         return extra_max;
@@ -63,20 +93,20 @@ std::uint32_t enchantment_of(const wfb::World& world, std::uint32_t form, const 
 }
 
 WeaponCharge weapon_charge(const wfb::World& world, std::uint32_t form, const vm::ItemExtra* extra,
-                           const MagicSettings& s) {
+                           const MagicSettings& s, const vm::CreatedForms* created) {
     WeaponCharge out;
     out.enchantment = enchantment_of(world, form, extra);
-    const auto* ench = out.enchantment != 0 ? lookup(world.enchantments(), out.enchantment) : nullptr;
-    if (ench == nullptr) {
+    const auto ench = resolve_enchantment(world, created, out.enchantment, s);
+    if (!ench) {
         out.enchantment = 0;
         return out;
     }
     const auto* base = lookup(world.bases(), form);
     const auto* item = base != nullptr ? base->item() : nullptr;
     out.max = charge_max(extra != nullptr ? extra->charge_max : 0.0F, item != nullptr ? item->enchantment_amount() : 0,
-                         ench->charge());
+                         ench->charge);
     out.charge = charge_now(extra != nullptr ? extra->charge : vm::k_full_charge, out.max);
-    out.cost = enchantment_cost(world, *ench, s);
+    out.cost = ench->cost;
     return out;
 }
 
@@ -89,7 +119,7 @@ vm::ItemExtra poisoned(vm::ItemExtra extra, std::uint32_t poison, std::uint32_t 
 }
 
 HitMagicResult hit_magic(const wfb::World& world, ActiveEffects& effects, vm::ItemExtras& extras,
-                         const HitMagicInput& in, const PoisonInputs& poison_inputs, const MagicSettings& s) {
+                         const HitMagicInput& in, const PoisonInputs& poison_inputs, const MagicSettings& s, const vm::CreatedForms* created) {
     HitMagicResult out;
     out.new_extra = in.extra;
     if (in.weapon == 0) {
@@ -117,16 +147,16 @@ HitMagicResult hit_magic(const wfb::World& world, ActiveEffects& effects, vm::It
     }
 
     // The enchantment: fires while charge is left; only the player's weapons run out.
-    const auto info = weapon_charge(world, in.weapon, extras.find(in.extra), s);
+    const auto info = weapon_charge(world, in.weapon, extras.find(in.extra), s, created);
     if (info.enchantment != 0) {
-        const auto* ench = lookup(world.enchantments(), info.enchantment);
+        const auto ench = resolve_enchantment(world, created, info.enchantment, s);
         out.enchantment = info.enchantment;
         out.max = info.max;
         const ChargeSpend spent = spend_charge(extra.charge, info.max, info.cost, in.attacker_is_player);
         out.fired = spent.effect;
         out.charge = spent.after;
-        if (spent.effect && in.target_alive && ench != nullptr) {
-            auto inputs = inputs_of(ench->effects());
+        if (spent.effect && in.target_alive && ench) {
+            auto inputs = ench->effects;
             for (auto& e : inputs) {
                 e.index = -1; // the source is the weapon: its entry conditions cannot be found by index
             }
@@ -167,11 +197,11 @@ void WornEnchantments::sync(std::uint32_t actor, const std::vector<WornEnchant>&
         if (have.contains(w.item)) {
             continue;
         }
-        const auto* ench = lookup(world_.enchantments(), w.enchantment);
-        if (ench == nullptr) {
+        const auto ench = resolve_enchantment(world_, created_, w.enchantment);
+        if (!ench) {
             continue;
         }
-        auto inputs = inputs_of(ench->effects());
+        auto inputs = ench->effects;
         for (auto& e : inputs) {
             e.index = -1;
         }

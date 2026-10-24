@@ -78,6 +78,8 @@ set(SKYDOT_CORE_SOURCES
     src/magic/casting.hpp
     src/magic/enchanted.cpp
     src/magic/enchanted.hpp
+    src/magic/enchanting.cpp
+    src/magic/enchanting.hpp
     src/magic/magic_rules.cpp
     src/magic/magic_rules.hpp
     src/magic/magic_save.cpp

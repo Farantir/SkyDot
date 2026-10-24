@@ -136,7 +136,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
             }
             item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
                                        i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food, effects_v,
-                                       i.enchantment, i.enchantment_amount);
+                                       i.enchantment, i.enchantment_amount, 1.0F, 1.0F, -1, 0, 0.0F, 0.0F, 0U, 0, 0U, 0U,
+                                       i.soul, i.soul_capacity, i.soul_gem_linked, i.holds_npc_souls);
         }
         flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> keywords = 0;
         if (!b.keywords.empty()) {
@@ -301,7 +302,23 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_effects(items_v);
         b.add_flags(en.flags);
         b.add_casting_type(en.casting_type);
+        b.add_enchantment_type(en.enchantment_type);
+        b.add_base_enchantment(en.base_enchantment);
+        b.add_worn_restrictions(en.worn_restrictions);
         enchantments.push_back(b.Finish());
+    }
+    std::vector<flatbuffers::Offset<wfb::FormList>> form_lists;
+    for (const auto& l : by_id(spec.form_lists)) {
+        const auto forms = fbb.CreateVector(l.forms);
+        wfb::FormListBuilder b(fbb);
+        b.add_id(l.id);
+        b.add_forms(forms);
+        form_lists.push_back(b.Finish());
+    }
+    std::vector<flatbuffers::Offset<wfb::Keyword>> keywords_table;
+    for (const auto& k : by_id(spec.keywords)) {
+        const auto edid = fbb.CreateString(k.editor_id);
+        keywords_table.push_back(wfb::CreateKeyword(fbb, k.id, edid));
     }
     std::vector<flatbuffers::Offset<wfb::Package>> packages;
     for (const auto& p : by_id(spec.packages)) {
@@ -355,6 +372,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto effects_v = fbb.CreateVector(effects);
     const auto spells_v = fbb.CreateVector(spells);
     const auto enchantments_v = fbb.CreateVector(enchantments);
+    const auto form_lists_v = fbb.CreateVector(form_lists);
+    const auto keywords_v = fbb.CreateVector(keywords_table);
     wfb::WorldBuilder world(fbb);
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
@@ -371,6 +390,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_magic_effects(effects_v);
     world.add_spells(spells_v);
     world.add_enchantments(enchantments_v);
+    world.add_form_lists(form_lists_v);
+    world.add_keywords(keywords_v);
     wfb::FinishWorldBuffer(fbb, world.Finish());
 
     bytes_.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());

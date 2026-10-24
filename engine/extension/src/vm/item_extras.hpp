@@ -32,6 +32,10 @@ struct ItemExtra {
     /// A poison on the weapon (an ALCH, a created potion), 0 if none, and the hits it still gives.
     std::uint32_t poison = 0;
     std::uint32_t poison_doses = 0;
+    /// The soul a soul gem holds when its base has none of its own (Azura's Star, the Black Star, a
+    /// gem an empty one became without a filled form): 0 none, 1 petty .. 5 grand. A black (NPC) soul
+    /// is grand-sized; which gems take it is the gem's `holds_npc_souls`.
+    std::uint8_t soul = 0;
 
     [[nodiscard]] bool plain() const noexcept;
     [[nodiscard]] bool same(const ItemExtra& other) const noexcept;
@@ -62,8 +66,9 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return table_.size(); }
     void clear() { table_.clear(); }
 
-    /// The table's layout: 1 health, enchantment and name; 2 adds charge, charge_max, poison and doses.
-    static constexpr std::uint32_t k_format_version = 2;
+    /// The table's layout: 1 health, enchantment and name; 2 adds charge, charge_max, poison and doses;
+    /// 3 adds the soul.
+    static constexpr std::uint32_t k_format_version = 3;
     void write(save::ByteWriter& w) const;
     /// `version` is the layout the bytes are in (1 reads an old save; the new fields take their defaults).
     [[nodiscard]] static bool read(save::ByteReader& r, ItemExtras& out, std::uint32_t version = k_format_version);

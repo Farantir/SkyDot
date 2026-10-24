@@ -10,11 +10,14 @@
 #pragma once
 
 #include "magic/active_effects.hpp"
+#include "vm/created_forms.hpp"
 #include "vm/item_extras.hpp"
 
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <string>
+#include <optional>
 #include <vector>
 
 namespace skydot::magic {
@@ -27,6 +30,24 @@ inline constexpr std::uint32_t k_placeholder_poison_doses = 1;
 
 /// ENIT flag 0x1: the cost is the stored one; clear: the sum of the effects' costs.
 inline constexpr std::uint32_t k_ench_manual_cost = 0x1;
+
+/// An enchantment by id, whether the world's ENCH or one the player made (docs/adr/0008): what every
+/// reader of an enchantment (hit, charge, worn effects, the menus) asks, so a created one needs no
+/// special case anywhere.
+struct ResolvedEnchantment {
+    std::uint32_t id = 0;
+    std::vector<EffectInput> effects; ///< `index` is -1 for a created one (it has no entry conditions).
+    double cost = 0.0;                ///< Charge per use.
+    std::int32_t charge = 0;          ///< The ENCH's own charge (0 for a created one: the extra holds it).
+    bool constant = false;            ///< Apparel kind (casting type 0).
+    bool created = false;
+    std::string name;
+    const wfb::Enchantment* world = nullptr; ///< Null for a created one.
+};
+/// Null if `id` is neither; `created` may be null (no made enchantments).
+[[nodiscard]] std::optional<ResolvedEnchantment> resolve_enchantment(const wfb::World& world,
+                                                                     const vm::CreatedForms* created,
+                                                                     std::uint32_t id, const MagicSettings& s = {});
 
 /// What one hit with the enchantment costs: ENIT cost when manual, else the sum of `effect_cost` of
 /// its effects (fire and forget: a weapon enchantment is one), times the placeholder.
@@ -77,7 +98,8 @@ struct HitMagicResult {
 /// The effects come from the attacker onto the target (poison: SourceKind::poison, source the poison
 /// form; enchantment: SourceKind::enchantment, source the weapon, extra 0 so a repeated hit refreshes).
 HitMagicResult hit_magic(const wfb::World& world, ActiveEffects& effects, vm::ItemExtras& extras,
-                         const HitMagicInput& in, const PoisonInputs& poison_inputs, const MagicSettings& s = {});
+                         const HitMagicInput& in, const PoisonInputs& poison_inputs, const MagicSettings& s = {},
+                         const vm::CreatedForms* created = nullptr);
 
 /// A unit's enchantment: the extra's, else the base item's; 0 if none.
 [[nodiscard]] std::uint32_t enchantment_of(const wfb::World& world, std::uint32_t form, const vm::ItemExtra* extra);
@@ -89,7 +111,7 @@ struct WeaponCharge {
     double cost = 0.0;
 };
 [[nodiscard]] WeaponCharge weapon_charge(const wfb::World& world, std::uint32_t form, const vm::ItemExtra* extra,
-                                         const MagicSettings& s = {});
+                                         const MagicSettings& s = {}, const vm::CreatedForms* created = nullptr);
 
 /// A poison put on a unit: the extra after (the poison and `doses` hits), as it was if it carried one already.
 [[nodiscard]] bool can_poison(const vm::ItemExtra& extra) noexcept;
@@ -110,7 +132,8 @@ struct WornEnchant {
 /// load clears them (`ActiveEffects` does not write them) and `sync` derives them again.
 class WornEnchantments {
 public:
-    WornEnchantments(const wfb::World& world, ActiveEffects& effects) : world_(world), effects_(effects) {}
+    WornEnchantments(const wfb::World& world, ActiveEffects& effects, const vm::CreatedForms* created = nullptr)
+        : world_(world), effects_(effects), created_(created) {}
 
     /// Make `worn` what `actor` has on: start what is new, end what is gone or changed.
     void sync(std::uint32_t actor, const std::vector<WornEnchant>& worn);
@@ -122,6 +145,7 @@ public:
 private:
     const wfb::World& world_;
     ActiveEffects& effects_;
+    const vm::CreatedForms* created_;
     std::map<std::uint32_t, std::map<std::uint32_t, WornEnchant>> applied_; ///< Actor -> item -> piece.
 };
 

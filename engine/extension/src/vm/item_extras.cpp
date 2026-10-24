@@ -11,7 +11,7 @@ bool ItemExtra::same(const ItemExtra& other) const noexcept {
            enchantment == other.enchantment && name == other.name &&
            std::bit_cast<std::uint32_t>(charge) == std::bit_cast<std::uint32_t>(other.charge) &&
            std::bit_cast<std::uint32_t>(charge_max) == std::bit_cast<std::uint32_t>(other.charge_max) &&
-           poison == other.poison && poison_doses == other.poison_doses;
+           poison == other.poison && poison_doses == other.poison_doses && soul == other.soul;
 }
 
 bool ItemExtra::plain() const noexcept { return same(ItemExtra{}); }
@@ -66,6 +66,7 @@ void ItemExtras::write(save::ByteWriter& w) const {
         w.f64(static_cast<double>(e.charge_max));
         w.u32(e.poison);
         w.u32(e.poison_doses);
+        w.u8(e.soul);
     }
 }
 
@@ -90,6 +91,9 @@ bool ItemExtras::read(save::ByteReader& r, ItemExtras& out, std::uint32_t versio
             }
             e.charge = static_cast<float>(charge);
             e.charge_max = static_cast<float>(charge_max);
+        }
+        if (version >= 3 && !r.u8(e.soul)) {
+            return false;
         }
         out.table_.push_back(std::move(e));
     }

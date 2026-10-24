@@ -162,7 +162,7 @@ bool ItemStates::load(save::ByteReader r, ItemStates& out, std::uint32_t version
         }
     }
     if (version >= 3) {
-        if (!ItemExtras::read(r, out.extras_, version >= 4 ? ItemExtras::k_format_version : 1) || !r.count(n, 8)) {
+        if (!ItemExtras::read(r, out.extras_, version >= 5 ? ItemExtras::k_format_version : (version >= 4 ? 2U : 1U)) || !r.count(n, 8)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
