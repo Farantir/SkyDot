@@ -529,11 +529,15 @@ std::vector<std::uint8_t> ActiveEffects::save() const {
     save::ByteWriter w;
     w.u32(k_section_version);
     w.u32(ids_.next());
-    // Abilities are derived from the spells an actor knows, never saved.
-    w.u32(static_cast<std::uint32_t>(std::ranges::count_if(
-        instances_, [](const auto& p) { return p.second.source.kind != SourceKind::ability; })));
+    // Abilities are derived from the spells an actor knows and constant enchantments (worn armor) from
+    // what is worn: never saved.
+    const auto derived = [](const Instance& i) {
+        return i.source.kind == SourceKind::ability || (i.source.kind == SourceKind::enchantment && i.permanent);
+    };
+    w.u32(static_cast<std::uint32_t>(
+        std::ranges::count_if(instances_, [&](const auto& p) { return !derived(p.second); })));
     for (const auto& [id, i] : instances_) {
-        if (i.source.kind == SourceKind::ability) {
+        if (derived(i)) {
             continue;
         }
         w.u32(i.id);

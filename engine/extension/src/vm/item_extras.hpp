@@ -14,6 +14,9 @@
 
 namespace skydot::vm {
 
+/// `ItemExtra::charge` of a weapon that was never used.
+inline constexpr float k_full_charge = -1.0F;
+
 struct ItemExtra {
     /// Tempering: 1.0 untouched, up to 1.6 (Legendary).
     float health = 1.0F;
@@ -21,6 +24,14 @@ struct ItemExtra {
     std::uint32_t enchantment = 0;
     /// A name the player gave it (enchanting); empty keeps the base's.
     std::string name;
+    /// The charge an enchanted weapon holds (EAMT units); `k_full_charge` means full (a unit that was
+    /// never used), so a freshly made or found weapon needs no extra of its own.
+    float charge = -1.0F;
+    /// The most a created enchantment holds; 0 takes the base's EAMT (or the ENCH's charge).
+    float charge_max = 0.0F;
+    /// A poison on the weapon (an ALCH, a created potion), 0 if none, and the hits it still gives.
+    std::uint32_t poison = 0;
+    std::uint32_t poison_doses = 0;
 
     [[nodiscard]] bool plain() const noexcept;
     [[nodiscard]] bool same(const ItemExtra& other) const noexcept;
@@ -48,8 +59,11 @@ public:
     [[nodiscard]] std::size_t size() const noexcept { return table_.size(); }
     void clear() { table_.clear(); }
 
+    /// The table's layout: 1 health, enchantment and name; 2 adds charge, charge_max, poison and doses.
+    static constexpr std::uint32_t k_format_version = 2;
     void write(save::ByteWriter& w) const;
-    [[nodiscard]] static bool read(save::ByteReader& r, ItemExtras& out);
+    /// `version` is the layout the bytes are in (1 reads an old save; the new fields take their defaults).
+    [[nodiscard]] static bool read(save::ByteReader& r, ItemExtras& out, std::uint32_t version = k_format_version);
 
 private:
     std::vector<ItemExtra> table_; ///< Id = index + 1.

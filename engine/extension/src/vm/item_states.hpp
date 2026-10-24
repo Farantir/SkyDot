@@ -13,6 +13,7 @@
 //         u32 worn form and u32 extra
 //         version 2: u32 dropped references, each u32 ref and u64 count (3:
 //         and u32 extra)
+//         version 4: the extras table is in layout 2 (item_extras.hpp: charge, poison)
 //         version 3 ends with the extras table (item_extras.hpp) and the
 //         splits: u32 owners, each u32 owner, u32 items, each u32 form, u32
 //         entries, each u32 extra and u64 count
@@ -32,7 +33,7 @@ namespace skydot::vm {
 
 class ItemStates {
 public:
-    static constexpr std::uint32_t k_section_version = 3;
+    static constexpr std::uint32_t k_section_version = 4;
 
     [[nodiscard]] bool resolved(std::uint32_t owner) const { return resolved_.contains(owner); }
     void mark_resolved(std::uint32_t owner) { resolved_.insert(owner); }

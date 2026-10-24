@@ -72,6 +72,10 @@ set(SKYDOT_CORE_SOURCES
     src/save/save_file.hpp
     src/magic/active_effects.cpp
     src/magic/active_effects.hpp
+    src/magic/casting.cpp
+    src/magic/casting.hpp
+    src/magic/enchanted.cpp
+    src/magic/enchanted.hpp
     src/magic/magic_rules.cpp
     src/magic/magic_rules.hpp
     src/magic/magic_save.cpp

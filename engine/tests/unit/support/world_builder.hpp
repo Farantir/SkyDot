@@ -215,6 +215,8 @@ struct ItemSpec {
     };
     std::vector<Effect> effects = {};
     std::uint32_t enchantment = 0;
+    /// EAMT of a weapon: the charge it holds.
+    std::uint32_t enchantment_amount = 0;
 };
 
 /// PFIG, SNAM and PFPC of a plant.
@@ -263,6 +265,11 @@ struct MagicEffectSpec {
     std::uint32_t delivery = 0;
     std::vector<std::uint32_t> keywords = {};
     std::vector<ConditionSpec> conditions = {};
+    std::uint32_t projectile = 0;
+    std::uint32_t explosion = 0;
+    std::uint32_t casting_art = 0;
+    std::uint32_t hit_effect_art = 0;
+    std::uint32_t casting_light = 0;
 };
 
 /// One effect entry of a spell (or an ench.: EFID, EFIT and its CTDAs).
@@ -283,6 +290,20 @@ struct SpellSpec {
     std::uint32_t type = 0;
     std::uint32_t casting_type = 1;
     std::uint32_t delivery = 0;
+    float charge_time = 0.0F;
+    float cast_duration = 0.0F;
+    float range = 0.0F;
+    std::vector<SpellEffectSpec> effects = {};
+};
+
+/// ENCH.
+struct EnchantmentSpec {
+    std::uint32_t id;
+    std::string name = {};
+    std::int32_t cost = 0;
+    std::int32_t charge = 0;
+    std::uint32_t flags = 0;
+    std::uint32_t casting_type = 1;
     std::vector<SpellEffectSpec> effects = {};
 };
 
@@ -354,6 +375,7 @@ struct WorldSpec {
     std::vector<RecipeSpec> recipes = {};
     std::vector<MagicEffectSpec> magic_effects = {};
     std::vector<SpellSpec> spells = {};
+    std::vector<EnchantmentSpec> enchantments = {};
 };
 
 /// A built and verified world.fb, kept alive with the reader on it.

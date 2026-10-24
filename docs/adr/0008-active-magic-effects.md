@@ -83,3 +83,23 @@ record that stored nothing.
   an archetype state is added there.
 - The temporary bucket is the one place that makes max and value differ from
   a script's `ModActorValue`; scripts that read `GetActorValueMax` see it.
+
+## Casting, poisons, enchanted items (7a-3)
+
+- **Paying and landing are apart** (`magic/casting`): `pay_spell` (cooldown, magicka
+  through the host so the regeneration waits, power use noted; concentration
+  x seconds) and `land_form` (a SPEL's or a scroll's effects, no cost). `cast_spell`
+  is both. Scrolls are SCRL items (fire and forget, delivery of their primary
+  effect, no charge time) and cost no magicka.
+- **Hands**: `HandCast` is the pure state of the attack button on a hand
+  (charging, charged, cast; concentration ticks and stops).
+- **Enchanted weapons** (`magic/enchanted`): the charge lives in `ItemExtra`
+  (`charge`, -1 = full; `charge_max` for a created enchantment, else EAMT).
+  A hit costs the ENCH's cost (manual: ENIT cost, else the summed effect cost);
+  it fires while any charge is left; only the player's weapons are spent. The
+  inventory and equipment move to the new extra id. ItemExtras layout 2 (ITST 4)
+  adds charge and poison; layout 1 loads with defaults.
+- **Poisons**: one dose on the right-hand weapon unit, delivered by the next hit.
+  The pack has no ALCH poison flag; a potion whose effects are all hostile counts.
+- **Worn enchantments** (armor, clothing, jewelry, shield) are constant effects
+  derived from what is worn (`WornEnchantments`), never saved.

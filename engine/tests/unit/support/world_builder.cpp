@@ -136,7 +136,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
             }
             item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
                                        i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food, effects_v,
-                                       i.enchantment);
+                                       i.enchantment, i.enchantment_amount);
         }
         flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> keywords = 0;
         if (!b.keywords.empty()) {
@@ -251,6 +251,11 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         m.add_delivery(e.delivery);
         m.add_keywords(keywords);
         m.add_conditions(cond_v);
+        m.add_projectile(e.projectile);
+        m.add_explosion(e.explosion);
+        m.add_casting_art(e.casting_art);
+        m.add_hit_effect_art(e.hit_effect_art);
+        m.add_casting_light(e.casting_light);
         effects.push_back(m.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Spell>> spells;
@@ -271,8 +276,29 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_type(sp.type);
         b.add_casting_type(sp.casting_type);
         b.add_delivery(sp.delivery);
+        b.add_charge_time(sp.charge_time);
+        b.add_cast_duration(sp.cast_duration);
+        b.add_range(sp.range);
         b.add_effects(items_v);
         spells.push_back(b.Finish());
+    }
+    std::vector<flatbuffers::Offset<wfb::Enchantment>> enchantments;
+    for (const auto& en : by_id(spec.enchantments)) {
+        std::vector<flatbuffers::Offset<wfb::EffectItem>> items;
+        for (const auto& e : en.effects) {
+            items.push_back(wfb::CreateEffectItem(fbb, e.effect, e.magnitude, e.area, e.duration));
+        }
+        const auto name = fbb.CreateString(en.name);
+        const auto items_v = fbb.CreateVector(items);
+        wfb::EnchantmentBuilder b(fbb);
+        b.add_id(en.id);
+        b.add_name(name);
+        b.add_cost(en.cost);
+        b.add_charge(en.charge);
+        b.add_effects(items_v);
+        b.add_flags(en.flags);
+        b.add_casting_type(en.casting_type);
+        enchantments.push_back(b.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Package>> packages;
     for (const auto& p : by_id(spec.packages)) {
@@ -325,6 +351,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto recipes_v = fbb.CreateVector(recipes);
     const auto effects_v = fbb.CreateVector(effects);
     const auto spells_v = fbb.CreateVector(spells);
+    const auto enchantments_v = fbb.CreateVector(enchantments);
     wfb::WorldBuilder world(fbb);
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
@@ -340,6 +367,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_recipes(recipes_v);
     world.add_magic_effects(effects_v);
     world.add_spells(spells_v);
+    world.add_enchantments(enchantments_v);
     wfb::FinishWorldBuffer(fbb, world.Finish());
 
     bytes_.assign(fbb.GetBufferPointer(), fbb.GetBufferPointer() + fbb.GetSize());

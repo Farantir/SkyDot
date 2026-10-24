@@ -149,8 +149,14 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
     const double before = actors_.get(target, vm::av::k_health);
     actors_.damage(target, vm::av::k_health, static_cast<double>(r.final_damage));
     const double after = actors_.get(target, vm::av::k_health);
-    const bool killed = actors_.is_dead(target);
+    bool killed = actors_.is_dead(target);
     if (killed) {
+        actors_.set_killer(target, attacker);
+    }
+    // The weapon's poison and enchantment (7a-3): effects on the target, charge spent for the player.
+    const Dictionary hit_magic_out = hit_magic(attacker, target, weapon, static_cast<std::uint32_t>(extra_id), !killed);
+    if (!killed && actors_.is_dead(target)) {
+        killed = true; // the enchantment finished it
         actors_.set_killer(target, attacker);
     }
 
@@ -199,6 +205,10 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
     out["health_before"] = before;
     out["health_after"] = after;
     out["killed"] = killed;
+    out["poison"] = hit_magic_out["poison"];
+    out["enchantment"] = hit_magic_out["enchantment"];
+    out["charge"] = hit_magic_out["charge"];
+    out["charge_max"] = hit_magic_out["charge_max"];
     return out;
 }
 

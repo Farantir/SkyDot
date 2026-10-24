@@ -300,7 +300,6 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
-    magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book);
     // The dead lie where they fell (the actor places are not saved).
     if (world_.is_valid()) {
         for (const auto& [ref, place] : actors_.corpse_places()) {
@@ -314,6 +313,8 @@ godot::Error SkydotPapyrus::commit_load() {
     created_.adopt(std::move(pending->created));
     harvests_.adopt(std::move(pending->harvests));
     dialogue_states_.adopt(std::move(pending->dialogue));
+    // After the items: worn enchantments are derived from what is worn.
+    magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book);
     if (auto* logic = scene_logic()) {
         if (pending->scenes != nullptr) {
             logic->adopt(std::move(*pending->scenes));

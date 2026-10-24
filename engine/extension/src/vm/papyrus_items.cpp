@@ -157,6 +157,7 @@ void SkydotPapyrus::refresh_equipment(std::uint32_t owner, std::uint32_t form) {
             break;
         }
     }
+    sync_worn_magic(owner);
 }
 
 std::vector<vm::Inventory::Taken> SkydotPapyrus::remove_item_split(std::uint32_t owner, std::uint32_t form,
@@ -222,19 +223,13 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
     switch (result.action) {
     case vm::EquipAction::equipped:
         items_.equipment(owner) = std::move(trial);
+        sync_worn_magic(owner);
         break;
     case vm::EquipAction::consumed: {
         const auto applied = apply_item_effects(owner, form, extra);
         if (String(applied.get("reason", String())) == "poison") {
-            // A poison waits for the weapon (7a-3): it stays in the inventory.
-            const std::string line = "magic: poison " + [&] {
-                char buf[16];
-                std::snprintf(buf, sizeof buf, "0x%X", form);
-                return std::string(buf);
-            }() + " waits for the weapon (7a-3)";
-            emit_signal("trace", to_godot(line));
-            godot::UtilityFunctions::print(to_godot(line));
-            return false;
+            // A poison goes on the weapon in the right hand (it uses itself up); the next hit delivers it.
+            return bool(poison_weapon(owner, form, static_cast<std::int64_t>(extra)).get("ok", false));
         }
         remove_item_extra(owner, form, extra, 1);
         if (info.category == vm::ItemCategory::ingredient) {
@@ -258,7 +253,11 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
 
 bool SkydotPapyrus::unequip_item(std::uint32_t owner, std::uint32_t form) {
     resolve_owner(owner);
-    return items_.find(owner) != nullptr && vm::unequip(items_.equipment(owner), form);
+    const bool done = items_.find(owner) != nullptr && vm::unequip(items_.equipment(owner), form);
+    if (done) {
+        sync_worn_magic(owner);
+    }
+    return done;
 }
 
 std::string SkydotPapyrus::item_name_of(std::uint32_t form) const {
@@ -268,6 +267,7 @@ std::string SkydotPapyrus::item_name_of(std::uint32_t form) const {
 void SkydotPapyrus::unequip_all(std::uint32_t owner) {
     resolve_owner(owner);
     items_.clear_equipment(owner);
+    sync_worn_magic(owner);
 }
 
 WornProvider SkydotPapyrus::worn_provider() const {
@@ -408,8 +408,12 @@ bool SkydotPapyrus::unequip(std::int64_t owner, std::int64_t form, std::int64_t 
     if (items_.find(id) == nullptr) {
         return false;
     }
-    return vm::unequip(items_.equipment(id), static_cast<std::uint32_t>(form),
-                       extra < 0 ? std::nullopt : std::optional<std::uint32_t>(static_cast<std::uint32_t>(extra)));
+    const bool done = vm::unequip(items_.equipment(id), static_cast<std::uint32_t>(form),
+                                  extra < 0 ? std::nullopt : std::optional<std::uint32_t>(static_cast<std::uint32_t>(extra)));
+    if (done) {
+        sync_worn_magic(id);
+    }
+    return done;
 }
 
 Dictionary SkydotPapyrus::equipment(std::int64_t owner) {

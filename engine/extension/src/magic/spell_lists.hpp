@@ -55,7 +55,9 @@ public:
 
     [[nodiscard]] std::uint32_t equipped(std::uint32_t ref, Slot slot) const;
     /// Hold `spell` in `slot` (false if `ref` does not know it). A power goes to the power slot only.
-    bool equip(std::uint32_t ref, std::uint32_t spell, Slot slot);
+    /// With `scroll` the form is a scroll the caller has checked `ref` carries (a scroll is an item,
+    /// not a known spell): any form is held in a hand; the slot keeps it (MAGC saves it as it is).
+    bool equip(std::uint32_t ref, std::uint32_t spell, Slot slot, bool scroll = false);
     void unequip(std::uint32_t ref, Slot slot);
 
     /// Whether `spell` may be used by `ref` at `game_days` (powers once per game day; anything else always).
@@ -94,5 +96,12 @@ private:
     std::set<std::uint32_t> applied_; ///< Not saved.
     std::set<std::uint32_t> known_enchantments_;
 };
+
+/// The actors whose abilities and worn enchantments are derived again after a load (`magic_adopt`):
+/// the player, everyone the spell book has a record for (spells added or removed, equipped spells,
+/// power uses), everyone an effect runs on, and `wearers` (owners of worn items, for armor
+/// enchantments). Pure, so a test needs no pack.
+[[nodiscard]] std::set<std::uint32_t> actors_to_rederive(const SpellBook& book, const ActiveEffects& effects,
+                                                         const std::vector<std::uint32_t>& wearers = {});
 
 } // namespace skydot::magic

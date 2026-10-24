@@ -194,19 +194,60 @@ public:
     /// cooldown. {ok, reason ("" or "not enough magicka", "cooldown", "no such spell", "no
     /// caster", "dead"), cost, instances}. No projectiles: the effects land on `target`.
     godot::Dictionary cast_spell(std::int64_t caster, std::int64_t spell, std::int64_t target, double seconds = 0.0);
+    /// Only the paying half of a cast: the cooldown of a power, the magicka (`seconds` of a
+    /// concentration spell, one second if 0) taken as damage so the regeneration waits, the power's
+    /// use noted. {ok, reason ("" or "not enough magicka", "cooldown", "no such spell", "no caster",
+    /// "dead"), cost}. An aimed spell is paid at the release and landed at the impact.
+    godot::Dictionary pay_spell(std::int64_t caster, std::int64_t spell, double seconds = 0.0);
+    /// Only the landing half: the effects of `form` (a SPEL or a scroll item) on `target` (0: the
+    /// caster; so do spells of self delivery), no cost, no scroll used up. An area spell is paid once
+    /// and landed on each actor. {ok, reason ("" or "no such spell", "no caster", "dead"), instances}.
+    godot::Dictionary land_spell(std::int64_t caster, std::int64_t form, std::int64_t target);
+    /// What the game layer needs to cast a SPEL or a scroll item: {found, form, name, is_scroll, type
+    /// (SPIT), casting_type (1 fire and forget, 2 concentration; scrolls are 1), delivery (0 self,
+    /// 1 touch, 2 aimed, 3 target actor, 4 target location; a scroll's is its effect's), charge_time,
+    /// cast_duration, range, effects (count), and of the costliest effect: mgef, magnitude, duration,
+    /// area_feet, area_units, projectile, explosion, casting_art, hit_art, casting_light (form ids, 0
+    /// if none), hostile, school (actor value of the magic skill, -1 if none)}.
+    godot::Dictionary cast_info(std::int64_t form);
+    /// The caster reads a scroll it carries: its effects land on `target` (0: the caster) without
+    /// magicka, one scroll is used up, the hands holding it are emptied when the last is gone.
+    /// {ok, reason ("" or "no such scroll", "not carried", "no caster", "dead"), instances}.
+    godot::Dictionary cast_scroll(std::int64_t caster, std::int64_t scroll, std::int64_t target);
+    /// Put a poison (an ALCH or created potion the actor carries) on the weapon in its right hand
+    /// (bows included; a staff or fists do not count): one poison is used up, the weapon unit gets
+    /// the poison for one hit (the extra's `poison`, `poison_doses`; no perks yet). {ok, reason ("" or
+    /// "not a poison", "not carried", "no weapon", "already poisoned", "no actor"), weapon, doses}.
+    godot::Dictionary apply_poison(std::int64_t actor, std::int64_t poison);
+    /// An enchanted weapon unit's charge for the HUD and the menus: {enchantment (0: none), charge,
+    /// max, cost (per hit)}. `extra` -1: the unit held in the right hand, else the first carried.
+    godot::Dictionary weapon_charge(std::int64_t actor, std::int64_t form, std::int64_t extra = -1);
+    /// The attack button on a hand (`hand`: 0 left, 1 right, 2 power) that holds a spell or scroll.
+    /// hand_press starts it: {ok, reason ("" or "no spell", "dead", "cooldown", "not enough magicka",
+    /// "not carried"), spell, casting_type, charge_time, is_scroll}.
+    godot::Dictionary hand_press(std::int64_t actor, std::int64_t hand);
+    /// Advance it by `dt` seconds of the button held: {event ("" nothing, "charged" a fire-and-forget
+    /// spell can now be released, "tick" a concentration spell was paid for `seconds` and lands again,
+    /// "stop" it ended for lack of magicka), seconds, progress (0..1), cost (paid in this step), spell, hand}.
+    godot::Dictionary hand_step(std::int64_t actor, std::int64_t hand, double dt);
+    /// The button is released: {event ("cast" fire and forget held long enough: pay_spell (or
+    /// cast_scroll) and land it; "stop" a concentration spell ended; "" released too early: nothing,
+    /// no cost), seconds (held), spell, is_scroll, hand}.
+    godot::Dictionary hand_release(std::int64_t actor, std::int64_t hand);
     /// What `spell` costs `caster` at its skill (0 for `caster` 0: the stored cost).
     double spell_cost(std::int64_t caster, std::int64_t spell);
     /// Take magicka from `caster` as damage, so the regeneration delay applies.
     void spend_magicka(std::int64_t caster, double amount);
     /// The effects of an ALCH, INGR or SCRL (or created potion) on `actor`: {ok, reason, effects}.
-    /// An ingredient gives its first effect only; a poison is not applied (reason "poison").
+    /// An ingredient gives its first effect only; a poison is not applied (reason "poison": see
+    /// apply_poison; an ALCH whose effects are all hostile counts as one, the pack has no poison flag).
     godot::Dictionary apply_item_effects(std::int64_t actor, std::int64_t form, std::int64_t extra = 0);
     /// The spells `actor` knows, as form ids.
     godot::PackedInt64Array spells_of(std::int64_t actor);
     bool add_spell(std::int64_t actor, std::int64_t spell);
     bool remove_spell(std::int64_t actor, std::int64_t spell);
     bool has_spell(std::int64_t actor, std::int64_t spell);
-    /// `hand`: 0 left, 1 right, 2 power.
+    /// `hand`: 0 left, 1 right, 2 power. A scroll the actor carries may be held in a hand too.
     bool equip_spell(std::int64_t actor, std::int64_t spell, std::int64_t hand);
     std::int64_t equipped_spell(std::int64_t actor, std::int64_t hand);
     /// Game days until `spell` (a power) may be used again by `actor`; 0 if it may.
@@ -643,6 +684,16 @@ private:
     std::vector<std::uint8_t> magic_section() const;
     /// Whether `bytes` is a MAGC section this world can load; its two parts.
     bool magic_decode(save::ByteReader r, std::vector<std::uint8_t>& effects, std::vector<std::uint8_t>& book);
+    /// Make the constant effects of the enchanted armor `owner` wears what they should be (start the
+    /// new, end the gone); no-op before magic ran (priming derives them then).
+    void sync_worn_magic(std::uint32_t owner);
+    /// The unit of `form` that carried extra `from` carries `to` now: the inventory entry and the
+    /// equipment slot move together (ItemExtras interns, so a changed value is a new id).
+    void move_unit_extra(std::uint32_t owner, std::uint32_t form, std::uint32_t from, std::uint32_t to);
+    /// A weapon hit's magic (poison, enchantment, charge): {poison, enchantment, fired, charge, charge_max}.
+    godot::Dictionary hit_magic(std::uint32_t attacker, std::uint32_t target, std::uint32_t weapon,
+                                std::uint32_t extra, bool target_alive);
+    godot::Dictionary poison_weapon(std::uint32_t owner, std::uint32_t poison, std::int64_t extra);
     /// Take a decoded MAGC section (or none) and hold the temporary modifiers again.
     void magic_adopt(bool has, const std::vector<std::uint8_t>& effects, const std::vector<std::uint8_t>& book);
     /// Created potions and what is known of ingredients (CRFT).

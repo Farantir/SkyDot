@@ -8,7 +8,10 @@ namespace skydot::vm {
 
 bool ItemExtra::same(const ItemExtra& other) const noexcept {
     return std::bit_cast<std::uint32_t>(health) == std::bit_cast<std::uint32_t>(other.health) &&
-           enchantment == other.enchantment && name == other.name;
+           enchantment == other.enchantment && name == other.name &&
+           std::bit_cast<std::uint32_t>(charge) == std::bit_cast<std::uint32_t>(other.charge) &&
+           std::bit_cast<std::uint32_t>(charge_max) == std::bit_cast<std::uint32_t>(other.charge_max) &&
+           poison == other.poison && poison_doses == other.poison_doses;
 }
 
 bool ItemExtra::plain() const noexcept { return same(ItemExtra{}); }
@@ -46,10 +49,14 @@ void ItemExtras::write(save::ByteWriter& w) const {
         w.f64(static_cast<double>(e.health));
         w.u32(e.enchantment);
         w.text(e.name);
+        w.f64(static_cast<double>(e.charge));
+        w.f64(static_cast<double>(e.charge_max));
+        w.u32(e.poison);
+        w.u32(e.poison_doses);
     }
 }
 
-bool ItemExtras::read(save::ByteReader& r, ItemExtras& out) {
+bool ItemExtras::read(save::ByteReader& r, ItemExtras& out, std::uint32_t version) {
     out.clear();
     std::uint32_t n = 0;
     if (!r.count(n, 16)) {
@@ -62,6 +69,15 @@ bool ItemExtras::read(save::ByteReader& r, ItemExtras& out) {
             return false;
         }
         e.health = static_cast<float>(health);
+        if (version >= 2) {
+            double charge = 0.0, charge_max = 0.0;
+            if (!r.f64(charge) || !r.f64(charge_max) || !r.u32(e.poison) || !r.u32(e.poison_doses) ||
+                !std::isfinite(charge) || !std::isfinite(charge_max)) {
+                return false;
+            }
+            e.charge = static_cast<float>(charge);
+            e.charge_max = static_cast<float>(charge_max);
+        }
         out.table_.push_back(std::move(e));
     }
     return true;

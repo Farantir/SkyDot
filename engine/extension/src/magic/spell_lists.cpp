@@ -11,6 +11,9 @@ namespace skydot::magic {
 
 namespace {
 
+/// The player's reference (build/refs.hpp k_player_ref).
+constexpr std::uint32_t k_player_actor = 0x14;
+
 /// NpcTemplateFlags bit 3 (0x8): the spell list comes from the template.
 constexpr std::uint32_t k_template_spell_list = 0x8;
 
@@ -173,14 +176,20 @@ std::uint32_t SpellBook::equipped(std::uint32_t ref, Slot slot) const {
     return it != records_.end() ? it->second.slots[static_cast<std::size_t>(slot)] : 0;
 }
 
-bool SpellBook::equip(std::uint32_t ref, std::uint32_t spell, Slot slot) {
-    if (!has_spell(ref, spell)) {
-        return false;
-    }
-    const std::uint32_t type = type_of(spell);
-    const bool power = type == spell_type::power || type == spell_type::lesser_power;
-    if ((slot == Slot::power) != power) {
-        return false;
+bool SpellBook::equip(std::uint32_t ref, std::uint32_t spell, Slot slot, bool scroll) {
+    if (scroll) {
+        if (slot == Slot::power || spell == 0) {
+            return false;
+        }
+    } else {
+        if (!has_spell(ref, spell)) {
+            return false;
+        }
+        const std::uint32_t type = type_of(spell);
+        const bool power = type == spell_type::power || type == spell_type::lesser_power;
+        if ((slot == Slot::power) != power) {
+            return false;
+        }
     }
     records_[ref].slots[static_cast<std::size_t>(slot)] = spell;
     return true;
@@ -339,6 +348,17 @@ bool SpellBook::load(save::ByteReader r, SpellBook& out) {
     out.base_cache_.clear();
     out.applied_.clear();
     return true;
+}
+
+std::set<std::uint32_t> actors_to_rederive(const SpellBook& book, const ActiveEffects& effects,
+                                           const std::vector<std::uint32_t>& wearers) {
+    // refs() returns a vector by value: take it once (begin and end of two copies hung a load, 0fec095).
+    const std::vector<std::uint32_t> known = book.refs();
+    std::set<std::uint32_t> out(known.begin(), known.end());
+    out.merge(effects.targets());
+    out.insert(wearers.begin(), wearers.end());
+    out.insert(k_player_actor);
+    return out;
 }
 
 } // namespace skydot::magic
