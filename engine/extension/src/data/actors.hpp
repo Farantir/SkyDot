@@ -28,12 +28,27 @@
 
 namespace skydot {
 
+/// What a flying race (RACE flag 0x80, Flies) gives the flight mover: the DATA flight fields and
+/// the speeds of its flying movement type (FLMV).
+struct FlightPlan {
+    bool flies{};
+    float max_turn_rate{};        ///< FLMV rotate, radians per second.
+    float angular_acceleration{}; ///< RACE.
+    float angular_tolerance{};    ///< RACE, degrees.
+    float aim_tolerance{};        ///< RACE, degrees.
+    float flight_radius{};        ///< RACE, game units.
+    float cruise_speed{};         ///< FLMV forward walk, units per second.
+    float run_speed{};            ///< FLMV forward run.
+    float injured_health{};       ///< RACE: health fraction below which it is injured.
+};
+
 struct ActorPlan {
     std::uint32_t npc{};    ///< The NPC_ that supplied traits.
     std::uint32_t race{};
     bool female{};
     /// Radians per second the race turns in place (its walk MOVT's rotate_in_place), 0 without a MOVT.
     float turn_rate{};
+    FlightPlan flight;      ///< Set for a race that flies.
     float scale{1.0F};      ///< NPC height times the race's for its sex.
     /// The traits NPC's QNAM, which body skin (SkinTint) is multiplied by.
     float skin_tone[3]{1.0F, 1.0F, 1.0F};

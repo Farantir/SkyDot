@@ -43,6 +43,11 @@ inline double heading_to(const Vec3& from, const Vec3& to) { return std::atan2(t
 /// An angle wrapped into [-pi, pi].
 double wrap_pi(double a);
 
+/// The facing of a Godot body (radians about +Y, 0 looking down -Z, as SkydotActor::face takes it)
+/// for a Skyrim heading, and back: Godot's z is Skyrim's -y, so the turn changes sense.
+inline double facing_from_heading(double heading) { return wrap_pi(-heading); }
+inline double heading_from_facing(double facing) { return wrap_pi(-facing); }
+
 /// The highest surface (terrain or static) at a point; NaN when unknown, where
 /// the mover keeps the last height it knew.
 using Ground = std::function<double(double x, double y)>;

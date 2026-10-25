@@ -600,3 +600,15 @@ TEST_CASE("flight tactics: out of combat it makes no demands") {
     CHECK(c.kind == CommandKind::keep);
     CHECK(r.t.maneuver == Maneuver::ground);
 }
+
+TEST_CASE("flight: the Godot facing is the Skyrim heading turned the other way") {
+    // North (+y) is -Z in Godot: facing 0 and heading 0 agree; east (+x) is heading pi/2 and facing -pi/2.
+    CHECK(facing_from_heading(0) == 0);
+    CHECK(facing_from_heading(M_PI / 2) == Catch::Approx(-M_PI / 2));
+    CHECK(heading_from_facing(facing_from_heading(1.0)) == Catch::Approx(1.0));
+    // Facing f looks along (-sin f, -cos f) in Godot's (x, z); that is Skyrim (sin h, cos h) with z = -y.
+    const double h = 0.7;
+    const double f = facing_from_heading(h);
+    CHECK(-std::sin(f) == Catch::Approx(std::sin(h)));
+    CHECK(-std::cos(f) == Catch::Approx(-std::cos(h)));
+}

@@ -258,6 +258,19 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
                                                                                  movement->rotate_in_place_walk() > 0.0F) {
         plan.turn_rate = movement->rotate_in_place_walk();
     }
+    if ((race->flags() & 0x80U) != 0) {
+        plan.flight.flies = true;
+        plan.flight.angular_acceleration = race->angular_acceleration();
+        plan.flight.angular_tolerance = race->angular_tolerance();
+        plan.flight.aim_tolerance = race->aim_angle_tolerance();
+        plan.flight.flight_radius = race->flight_radius();
+        plan.flight.injured_health = race->injured_health();
+        if (const auto* fly = lookup(w.movement_types(), race->movement_fly()); fly != nullptr) {
+            plan.flight.max_turn_rate = fly->rotate_in_place_walk();
+            plan.flight.cruise_speed = fly->forward_walk();
+            plan.flight.run_speed = fly->forward_run();
+        }
+    }
     const float npc_height = traits->height() > 0.0F ? traits->height() : 1.0F;
     float race_height = 1.0F;
     if (const auto* h = race->heights(); h != nullptr && sex < h->size() && h->Get(static_cast<flatbuffers::uoffset_t>(sex)) > 0.0F) {
