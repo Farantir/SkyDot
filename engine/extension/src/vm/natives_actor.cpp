@@ -6,6 +6,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <utility>
 
 namespace skydot::vm {
 
@@ -36,7 +37,7 @@ std::optional<std::uint32_t> target(NativeCall& c, const ActorStates& states, co
 
 } // namespace
 
-void bind_actor_natives(Vm& vm, ActorStates& states) {
+void bind_actor_natives(Vm& vm, ActorStates& states, std::function<void(std::uint32_t, std::uint32_t, double)> on_mod) {
     // One set for the natives, as the report is about the name or the object.
     auto reported = std::make_shared<std::set<std::string>>();
     const auto reader = [&states, reported](const char* native, double (ActorStates::*read)(std::uint32_t, std::uint32_t) const) {
@@ -60,7 +61,16 @@ void bind_actor_natives(Vm& vm, ActorStates& states) {
         };
     };
     vm.bind("Actor", "SetActorValue", writer("SetActorValue", &ActorStates::set_base));
-    vm.bind("Actor", "ModActorValue", writer("ModActorValue", &ActorStates::mod));
+    vm.bind("Actor", "ModActorValue", [&states, reported, on_mod = std::move(on_mod)](NativeCall& c) {
+        if (const auto av = target(c, states, "ModActorValue", *reported)) {
+            const double amount = c.args.size() > 1 ? number(c.args[1]) : 0.0;
+            states.mod(c.self.form(), *av, amount);
+            if (on_mod) {
+                on_mod(c.self.form(), *av, amount);
+            }
+        }
+        return NativeResult{};
+    });
     vm.bind("Actor", "ForceActorValue", writer("ForceActorValue", &ActorStates::force));
     vm.bind("Actor", "DamageActorValue", writer("DamageActorValue", &ActorStates::damage));
     vm.bind("Actor", "RestoreActorValue", writer("RestoreActorValue", &ActorStates::restore));

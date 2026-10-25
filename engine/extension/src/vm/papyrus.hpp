@@ -474,6 +474,13 @@ public:
     std::uint32_t forced_landing_marker(std::int64_t ref) const {
         return actors_.landing_marker(static_cast<std::uint32_t>(ref));
     }
+    /// The rank of `ref` in `faction` (the NPC_'s factions and what scripts did), -1 if it is no member.
+    std::int64_t faction_rank(std::int64_t ref, std::int64_t faction) {
+        return condition_world()
+            .faction_rank(static_cast<std::uint32_t>(ref), static_cast<std::uint32_t>(faction))
+            .value_or(-1);
+    }
+    bool is_actor_ghost(std::int64_t ref) const { return actors_.is_ghost(static_cast<std::uint32_t>(ref)); }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
     std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
@@ -650,6 +657,9 @@ private:
     void bind_form_natives();
     void bind_objectreference_natives();
     void bind_effectshader_natives();
+    void bind_actor_extra_natives();
+    /// A script raised the player's DragonSouls: the message sDragonSoulAcquired.
+    void dragon_soul_absorbed();
     void bind_weapon_natives();
     void bind_sound_natives();
     void bind_quest_natives();
@@ -740,6 +750,9 @@ private:
     vm::RefStates states_;
     /// What scripts and the game did to actors' values (ACTV).
     vm::ActorStates actors_;
+    /// A ghost takes no hits: true (and says so once per actor) when `ref` is one.
+    bool ghost_ignores_hit(std::uint32_t ref);
+    std::set<std::uint32_t> ghost_reported_;
     /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
     /// inventory resolves on the first look at it, also from const queries.
     mutable vm::ItemStates items_;

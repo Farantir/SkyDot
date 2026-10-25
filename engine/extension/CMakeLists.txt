@@ -277,6 +277,7 @@ target_sources(skydot PRIVATE
     src/session/streamer.cpp
     src/session/streamer.hpp
     src/vm/natives_debug.cpp
+    src/vm/natives_actor_extra.cpp
     src/vm/natives_effectshader.cpp
     src/vm/natives_sound.cpp
     src/vm/natives_weapon.cpp

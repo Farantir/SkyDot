@@ -382,3 +382,54 @@ TEST_CASE("the flight natives keep what a script says", "[actor][natives]") {
     CHECK(states.landing_marker(k_guard) == 0);
     CHECK(rig.vm.errors() == 0);
 }
+
+TEST_CASE("ACTV 4 keeps ghosts and the factions scripts set, version 3 still loads", "[actor][save]") {
+    auto s = make();
+    CHECK_FALSE(s.is_ghost(k_guard));
+    CHECK_FALSE(s.faction_override(k_guard, 0x10).has_value());
+    s.set_ghost(k_guard, true);
+    s.set_ghost(k_rock, true); // no actor: ignored
+    s.set_faction_rank(k_guard, 0x10, 2);
+    s.set_faction_rank(k_guard, 0x20, -5); // below 0 means removed
+    s.set_faction_rank(k_rock, 0x10, 1);
+    CHECK(s.is_ghost(k_guard));
+    CHECK_FALSE(s.is_ghost(k_rock));
+    CHECK(s.faction_override(k_guard, 0x10) == 2);
+    CHECK(s.faction_override(k_guard, 0x20) == -1);
+    CHECK(s.added_factions(k_guard) == std::vector<std::uint32_t>{0x10});
+    CHECK(s.added_factions(k_rock).empty());
+
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK(t.is_ghost(k_guard));
+    CHECK(t.faction_override(k_guard, 0x10) == 2);
+    CHECK(t.faction_override(k_guard, 0x20) == -1);
+    CHECK_FALSE(t.faction_override(k_guard, 0x30).has_value());
+    t.set_ghost(k_guard, false);
+    CHECK_FALSE(t.is_ghost(k_guard));
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 3: one actor, a flight setting, nothing after.
+    skydot::save::ByteWriter w;
+    w.u32(1);
+    w.u32(k_guard);
+    w.u8(0);
+    w.u32(0);
+    w.u32(0);
+    w.u8(0);
+    w.u8(1);
+    w.u32(0x77);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(w.out), old, 3));
+    ActorStates u = make();
+    u.adopt(std::move(old));
+    CHECK_FALSE(u.allowed_to_fly(k_guard));
+    CHECK_FALSE(u.is_ghost(k_guard));
+    CHECK_FALSE(u.faction_override(k_guard, 0x10).has_value());
+}

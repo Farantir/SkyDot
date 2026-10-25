@@ -165,6 +165,44 @@ std::uint32_t ActorStates::landing_marker(std::uint32_t ref) const {
     return r != nullptr ? r->landing_marker : 0;
 }
 
+void ActorStates::set_ghost(std::uint32_t ref, bool ghost) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->ghost = ghost;
+    }
+}
+
+bool ActorStates::is_ghost(std::uint32_t ref) const {
+    const Record* r = find(ref);
+    return r != nullptr && r->ghost;
+}
+
+void ActorStates::set_faction_rank(std::uint32_t ref, std::uint32_t faction, std::int32_t rank) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->factions[faction] = std::max<std::int32_t>(rank, -1);
+    }
+}
+
+std::optional<std::int32_t> ActorStates::faction_override(std::uint32_t ref, std::uint32_t faction) const {
+    const Record* r = find(ref);
+    if (r == nullptr) {
+        return std::nullopt;
+    }
+    const auto it = r->factions.find(faction);
+    return it != r->factions.end() ? std::optional<std::int32_t>(it->second) : std::nullopt;
+}
+
+std::vector<std::uint32_t> ActorStates::added_factions(std::uint32_t ref) const {
+    std::vector<std::uint32_t> out;
+    if (const Record* r = find(ref)) {
+        for (const auto& [faction, rank] : r->factions) {
+            if (rank >= 0) {
+                out.push_back(faction);
+            }
+        }
+    }
+    return out;
+}
+
 void ActorStates::set_killer(std::uint32_t ref, std::uint32_t killer) {
     if (Record* r = touch(ref, av::k_health)) {
         r->killer = killer;
@@ -364,6 +402,12 @@ std::vector<std::uint8_t> ActorStates::save() const {
         }
         w.u8(record.no_flying ? 1 : 0);
         w.u32(record.landing_marker);
+        w.u8(record.ghost ? 1 : 0);
+        w.u32(static_cast<std::uint32_t>(record.factions.size()));
+        for (const auto& [faction, rank] : record.factions) {
+            w.u32(faction);
+            w.u32(static_cast<std::uint32_t>(rank));
+        }
     }
     return w.out;
 }
@@ -371,7 +415,7 @@ std::vector<std::uint8_t> ActorStates::save() const {
 bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t version) {
     out = ActorStates{};
     std::uint32_t n = 0;
-    if (!r.count(n, version >= 3 ? 19 : version >= 2 ? 14 : 9)) {
+    if (!r.count(n, version >= 4 ? 24 : version >= 3 ? 19 : version >= 2 ? 14 : 9)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -418,6 +462,21 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 return false;
             }
             record.no_flying = no_flying != 0;
+        }
+        if (version >= 4) {
+            std::uint8_t ghost = 0;
+            std::uint32_t factions = 0;
+            if (!r.u8(ghost) || !r.count(factions, 8)) {
+                return false;
+            }
+            record.ghost = ghost != 0;
+            for (std::uint32_t k = 0; k < factions; ++k) {
+                std::uint32_t faction = 0, rank = 0;
+                if (!r.u32(faction) || !r.u32(rank)) {
+                    return false;
+                }
+                record.factions[faction] = std::max<std::int32_t>(static_cast<std::int32_t>(rank), -1);
+            }
         }
     }
     return r.at_end();

@@ -147,6 +147,12 @@ std::uint32_t PapyrusConditionWorld::npc_of(std::uint32_t ref) const {
 
 std::optional<std::int32_t> PapyrusConditionWorld::faction_rank(std::uint32_t ref,
                                                                 std::uint32_t faction) const {
+    // What scripts did (SetFactionRank, RemoveFromFaction) wins over the NPC_.
+    if (owner_ != nullptr) {
+        if (const auto set = owner_->actors_.faction_override(ref, faction)) {
+            return *set >= 0 ? std::optional<std::int32_t>(*set) : std::nullopt;
+        }
+    }
     const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_factions);
     if (n != nullptr && n->factions() != nullptr) {
         for (const auto* f : *n->factions()) {
@@ -163,7 +169,16 @@ std::vector<std::uint32_t> PapyrusConditionWorld::factions_of(std::uint32_t ref)
     const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_factions);
     if (n != nullptr && n->factions() != nullptr) {
         for (const auto* f : *n->factions()) {
-            out.push_back(f->faction());
+            if (faction_rank(ref, f->faction())) {
+                out.push_back(f->faction());
+            }
+        }
+    }
+    if (owner_ != nullptr) {
+        for (const std::uint32_t faction : owner_->actors_.added_factions(ref)) {
+            if (std::find(out.begin(), out.end(), faction) == out.end()) {
+                out.push_back(faction);
+            }
         }
     }
     return out;

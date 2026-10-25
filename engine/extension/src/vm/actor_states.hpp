@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 3;
+    static constexpr std::uint32_t k_section_version = 4;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -84,6 +84,17 @@ public:
     void set_landing_marker(std::uint32_t ref, std::uint32_t marker);
     [[nodiscard]] std::uint32_t landing_marker(std::uint32_t ref) const;
 
+    /// SetGhost (version 4 of the section): a ghost takes no hits.
+    void set_ghost(std::uint32_t ref, bool ghost);
+    [[nodiscard]] bool is_ghost(std::uint32_t ref) const;
+    /// Factions a script changed (version 4): the rank it gave `ref` in `faction`; a rank below 0 is
+    /// "not a member" (also against the NPC_'s own factions). Nothing for an actor that is no actor.
+    void set_faction_rank(std::uint32_t ref, std::uint32_t faction, std::int32_t rank);
+    /// What a script said about `faction` for `ref` (the rank, -1 for removed); none if it said nothing.
+    [[nodiscard]] std::optional<std::int32_t> faction_override(std::uint32_t ref, std::uint32_t faction) const;
+    /// The factions a script put `ref` in (rank 0 or more), ascending.
+    [[nodiscard]] std::vector<std::uint32_t> added_factions(std::uint32_t ref) const;
+
     void set_base(std::uint32_t ref, std::uint32_t av, double value);
     void mod(std::uint32_t ref, std::uint32_t av, double amount);
     /// The temporary (magic) modifier: counts in value and max, is not saved. The sum an
@@ -112,7 +123,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -130,6 +141,8 @@ private:
         std::optional<CorpsePlace> corpse;
         bool no_flying = false;          ///< SetAllowFlying(false).
         std::uint32_t landing_marker = 0;
+        bool ghost = false;                              ///< SetGhost(true).
+        std::map<std::uint32_t, std::int32_t> factions;  ///< Script-set ranks; -1 removed.
         double magicka_pause = 0.0; ///< Not saved.
         double stamina_pause = 0.0;
     };

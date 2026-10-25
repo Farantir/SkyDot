@@ -186,6 +186,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_locked", "ref", "locked"), &SkydotPapyrus::set_locked);
     godot::ClassDB::bind_method(D_METHOD("get_open_state", "ref"), &SkydotPapyrus::get_open_state);
     godot::ClassDB::bind_method(D_METHOD("is_actor_dead", "ref"), &SkydotPapyrus::is_actor_dead);
+    godot::ClassDB::bind_method(D_METHOD("is_actor_ghost", "ref"), &SkydotPapyrus::is_actor_ghost);
+    godot::ClassDB::bind_method(D_METHOD("faction_rank", "ref", "faction"), &SkydotPapyrus::faction_rank);
     godot::ClassDB::bind_method(D_METHOD("get_item_count", "owner", "item"), &SkydotPapyrus::get_item_count);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value_max", "ref", "name"),
@@ -346,6 +348,12 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("effect_shader", PropertyInfo(Variant::INT, "shader"),
                                  PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::BOOL, "playing")));
+    // VisualEffect.Play / Stop: `effect` plays on `ref`, toward `target` (0 none) for `seconds` (0: until stopped).
+    ADD_SIGNAL(godot::MethodInfo("visual_effect", PropertyInfo(Variant::INT, "effect"),
+                                 PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
+                                 PropertyInfo(Variant::FLOAT, "seconds"), PropertyInfo(Variant::BOOL, "playing")));
+    ADD_SIGNAL(godot::MethodInfo("sub_graph_animation", PropertyInfo(Variant::INT, "ref"),
+                                 PropertyInfo(Variant::STRING, "name")));
     ADD_SIGNAL(godot::MethodInfo("trigger", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "actor"),
                                  PropertyInfo(Variant::BOOL, "entered")));
@@ -655,7 +663,11 @@ void SkydotPapyrus::bind_world_natives() {
 }
 
 void SkydotPapyrus::bind_actor_natives() {
-    vm::bind_actor_natives(*vm_, actors_);
+    vm::bind_actor_natives(*vm_, actors_, [this](std::uint32_t ref, std::uint32_t av, double amount) {
+        if (ref == k_player_ref && av == vm::av::k_dragon_souls && amount > 0.0) {
+            dragon_soul_absorbed();
+        }
+    });
     // Combat: the state lives in SkydotAi (hooks); without it nobody fights.
     using vm::NativeCall;
     using vm::NativeResult;
@@ -784,6 +796,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,
+        &SkydotPapyrus::bind_actor_extra_natives,
         &SkydotPapyrus::bind_magic_natives,
         &SkydotPapyrus::bind_item_natives,
         &SkydotPapyrus::bind_runtime_natives,

@@ -111,6 +111,9 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     // ---- MagicHost
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return owner_.actors_.get(ref, av); }
     void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t caster) override {
+        if (av == vm::av::k_health && amount > 0.0 && owner_.ghost_ignores_hit(ref)) {
+            return;
+        }
         owner_.actors_.damage(ref, av, amount);
         if (caster != 0 && av == vm::av::k_health) {
             if (owner_.actors_.get(ref, vm::av::k_health) <= 0.0 && owner_.actors_.killer_of(ref) == 0) {
@@ -1490,11 +1493,11 @@ Dictionary SkydotPapyrus::unlock_word_with_soul(std::int64_t actor_in, std::int6
         out["reason"] = "no actor";
         return out;
     }
-    const double souls = actors_.get_base(actor, vm::av::k_dragon_souls);
+    const double souls = actors_.get(actor, vm::av::k_dragon_souls);
     const auto result = m->shouts.unlock_with_soul(actor, static_cast<std::uint32_t>(word), souls);
     out["ok"] = result.ok;
     if (result.ok) {
-        actors_.set_base(actor, vm::av::k_dragon_souls, souls - 1.0);
+        actors_.mod(actor, vm::av::k_dragon_souls, -1.0); // base + what scripts added
     } else if (result.reason == "no dragon soul") {
         out["reason"] = to_godot(m->game_text("sFailSpendSoul", "You do not have a dragon soul to spend."));
     } else {

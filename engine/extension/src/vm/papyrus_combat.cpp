@@ -57,6 +57,10 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
         out["error"] = "the target is dead";
         return out;
     }
+    if (ghost_ignores_hit(target)) {
+        out["error"] = "the target is a ghost";
+        return out;
+    }
     const bool power = (flags & HIT_POWER) != 0;
     const bool sneak = (flags & HIT_SNEAK) != 0;
     const bool bash = (flags & HIT_BASH) != 0;

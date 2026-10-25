@@ -6,6 +6,8 @@
 #include "vm/actor_states.hpp"
 #include "vm/vm.hpp"
 
+#include <functional>
+
 namespace skydot::vm {
 
 /// Bind Actor.GetActorValue, GetBaseActorValue, SetActorValue,
@@ -13,6 +15,8 @@ namespace skydot::vm {
 /// GetActorValuePercentage, IsDead and GetKiller. An unknown actor value name or a self
 /// that is no actor is reported once and reads 0 (does nothing). `states`
 /// must outlive the VM.
-void bind_actor_natives(Vm& vm, ActorStates& states);
+/// `on_mod` hears every ModActorValue a script makes (actor, actor value, amount).
+void bind_actor_natives(Vm& vm, ActorStates& states,
+                        std::function<void(std::uint32_t, std::uint32_t, double)> on_mod = {});
 
 } // namespace skydot::vm
