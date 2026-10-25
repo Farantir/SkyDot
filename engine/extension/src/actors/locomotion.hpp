@@ -49,6 +49,9 @@ struct Locomotion {
     GaitClip idle;
     GaitClip walk;
     GaitClip run;
+    /// Turning on the spot (the dragon's mtturnleftground45...), empty where the project has none.
+    GaitClip turn_left;
+    GaitClip turn_right;
     /// Every clip of the project that has an animation in the pack, by lower-case name without
     /// ".hkx" (`set_stance` finds the combat set here).
     std::unordered_map<std::string, GaitClip> clips;

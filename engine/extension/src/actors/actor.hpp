@@ -72,6 +72,11 @@ public:
     /// "held", "idle", "walk" or "run".
     godot::String get_state() const;
 
+    /// Radians per second the actor turns at, standing or walking (default 5; a race's MOVT sets it
+    /// for the dragon). Below the default it turns on the spot before it walks on and plays the
+    /// "turn_left"/"turn_right" clips of its library while it does.
+    void set_turn_rate(double rate) { turn_rate_ = rate; }
+    double get_turn_rate() const { return turn_rate_; }
     /// Clip speeds in metres per second at playback speed 1 (0: no clip).
     void set_clip_speeds(double walk, double run);
 
@@ -164,6 +169,8 @@ private:
     double wander_radius_{7.3}; ///< 512 game units, the CK's default sandbox radius.
     double wait_{0.0};          ///< Idle time left before the next wander.
     double facing_{0.0};
+    double turn_rate_{5.0};
+    double animated_facing_{0.0};
     double clip_walk_{0.0};
     double clip_run_{0.0};
     double stuck_time_{0.0};

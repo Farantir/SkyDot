@@ -1067,6 +1067,13 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
             run_speed = static_cast<double>(loco.run.speed) * stride;
         }
     }
+    for (const auto& [name, turn] : {std::pair{"turn_left", &loco.turn_left}, std::pair{"turn_right", &loco.turn_right}}) {
+        if (!turn->empty()) {
+            if (const auto clip = actor_clip(turn->file, plan.skeleton, loco); clip.is_valid()) {
+                library->add_animation(name, clip);
+            }
+        }
+    }
     if (library->has_animation("idle") || library->has_animation("walk")) {
         auto* player = memnew(godot::AnimationPlayer);
         player->set_name("AnimationPlayer");
@@ -1077,6 +1084,9 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
         node->add_child(player);
     }
     node->set_clip_speeds(walk_speed, run_speed);
+    if (plan.turn_rate > 0.0F) {
+        node->set_turn_rate(static_cast<double>(plan.turn_rate));
+    }
     // Combat stances and actions load their clips on demand from the same cache.
     node->set_clip_source(
         [this, behaviour = plan.behaviour, skeleton_path = plan.skeleton](const std::string& vpath) {

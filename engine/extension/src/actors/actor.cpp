@@ -30,6 +30,10 @@ real_t r(double v) { return static_cast<real_t>(v); }
 constexpr double k_tau = 2.0 * std::numbers::pi;
 /// Radians per second.
 constexpr double k_turn_rate = 5.0;
+/// Radians a step turns at least for the actor to count as turning (animate).
+constexpr double k_turn_visible = 0.002;
+/// A slow turner (the dragon) walks on once its heading is within this cosine (45 degrees) of the corner.
+constexpr double k_slow_walk_cos = 0.7;
 /// A corner counts as reached this close (metres, horizontally).
 constexpr double k_corner_reach = 0.35;
 /// Farther than this off the navmesh, a walk does not start.
@@ -133,6 +137,8 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_look_target", "point"), &SkydotActor::set_look_target);
     ClassDB::bind_method(D_METHOD("clear_look_target"), &SkydotActor::clear_look_target);
     ClassDB::bind_method(D_METHOD("has_look_target"), &SkydotActor::has_look_target);
+    ClassDB::bind_method(D_METHOD("set_turn_rate", "rate"), &SkydotActor::set_turn_rate);
+    ClassDB::bind_method(D_METHOD("get_turn_rate"), &SkydotActor::get_turn_rate);
     ClassDB::bind_method(D_METHOD("get_playing"), &SkydotActor::get_playing);
     ADD_SIGNAL(godot::MethodInfo("animation_event", PropertyInfo(Variant::STRING, "event")));
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
@@ -238,7 +244,7 @@ void SkydotActor::turn_to_look(double delta) {
         return;
     }
     const double want = std::atan2(-static_cast<double>(to.x), -static_cast<double>(to.z));
-    const double step = k_turn_rate * delta;
+    const double step = turn_rate_ * delta;
     face(facing_ + std::clamp(wrap(want - facing_), -step, step));
 }
 
@@ -443,6 +449,9 @@ void SkydotActor::scan_events() {
     if (cache.markers != count) {
         cache.markers = count;
         cache.keys.clear();
+        for (int64_t i = 0; i < times.size() && i < texts.size(); ++i) {
+            cache.keys.push_back({times[i], texts[i]});
+        }
         for (const godot::String& marker : names) {
             godot::String text = marker;
             const std::int64_t hash = text.rfind("#");
@@ -480,6 +489,11 @@ void SkydotActor::scan_events() {
     }
     for (const godot::String& text : raised) {
         emit_signal("animation_event", text);
+        // "Func.DragonBiteEffect" (the dragons' hit keys) is the graph's event "DragonBiteEffect": the
+        // behaviour graphs list only the plain names, so scripts register for those.
+        if (text.begins_with("Func.") && text.length() > 5) {
+            emit_signal("animation_event", text.substr(5));
+        }
     }
 }
 
@@ -489,11 +503,6 @@ godot::String SkydotActor::get_state() const {
     }
     if (path_.is_empty()) {
         return "idle";
-        // "Func.DragonBiteEffect" (the dragons' hit keys) is the graph's event "DragonBiteEffect": the
-        // behaviour graphs list only the plain names, so scripts register for those.
-        if (text.begins_with("Func.") && text.length() > 5) {
-            emit_signal("animation_event", text.substr(5));
-        }
     }
     return run_ ? "run" : "walk";
 }
@@ -565,6 +574,14 @@ bool SkydotActor::find_ground(double delta) {
         physics_layer::world | physics_layer::terrain);
     godot::Dictionary hit = space->intersect_ray(query);
     if (hit.is_empty()) {
+        // Placed a little low (a dragon set at the ground height of another spot, the ground
+        // at its feet is higher than its step): a ray from half its height up finds it.
+        const double up = std::max(get_step_height() + 0.1, get_height() * 0.6);
+        const auto raised = godot::PhysicsRayQueryParameters3D::create(
+            feet + Vector3(0, r(up), 0), feet - Vector3(0, 4, 0), physics_layer::world | physics_layer::terrain);
+        hit = space->intersect_ray(raised);
+    }
+    if (hit.is_empty()) {
         // Placed high (the Bleak Falls spider hangs from the ceiling): the first floor below.
         const auto far = godot::PhysicsRayQueryParameters3D::create(
             feet + Vector3(0, r(get_step_height() + 0.1), 0), feet - Vector3(0, r(k_drop_search), 0),
@@ -581,14 +598,6 @@ bool SkydotActor::find_ground(double delta) {
 
 void SkydotActor::think(double delta) {
     if (!wander_ || clip_walk_ <= 0.0 || !path_.is_empty()) {
-    if (hit.is_empty()) {
-        // Placed a little low (a dragon set at the ground height of another spot, the ground
-        // at its feet is higher than its step): a ray from half its height up finds it.
-        const double up = std::max(get_step_height() + 0.1, get_height() * 0.6);
-        const auto raised = godot::PhysicsRayQueryParameters3D::create(
-            feet + Vector3(0, r(up), 0), feet - Vector3(0, 4, 0), physics_layer::world | physics_layer::terrain);
-        hit = space->intersect_ray(raised);
-    }
         return;
     }
     wait_ -= delta;
@@ -655,7 +664,20 @@ void SkydotActor::steer(double delta) {
         const Vector3 dir = to.normalized();
         const Vector3 forward(r(-std::sin(facing_)), 0, r(-std::cos(facing_)));
         const Vector3 right(r(std::cos(facing_)), 0, r(-std::sin(facing_)));
-        set_input(godot::Vector2(dir.dot(right), dir.dot(forward)), 0.0, run_ ? RUN : WALK);
+        const bool slow = turn_rate_ < k_turn_rate;
+        if (slow) {
+            // A slow turner walks only where it faces and turns on the spot otherwise.
+            const double ahead = static_cast<double>(dir.dot(forward));
+            const bool go = ahead > k_slow_walk_cos;
+            set_input(godot::Vector2(0, go ? r(ahead) : 0.0F), 0.0, run_ ? RUN : WALK);
+            if (!go) {
+                stuck_time_ = 0.0;
+                stuck_from_ = here;
+                return;
+            }
+        } else {
+            set_input(godot::Vector2(dir.dot(right), dir.dot(forward)), 0.0, run_ ? RUN : WALK);
+        }
         stuck_time_ += delta;
         if (stuck_time_ >= k_stuck_window) {
             if (static_cast<double>(here.distance_to(stuck_from_)) < k_stuck_distance) {
@@ -669,11 +691,19 @@ void SkydotActor::steer(double delta) {
     }
     const double want = std::atan2(-static_cast<double>(to.x), -static_cast<double>(to.z));
     const double diff = wrap(want - facing_);
-    const double step = k_turn_rate * delta;
+    const double step = turn_rate_ * delta;
     face(facing_ + std::clamp(diff, -step, step));
     // Turn on the spot when the corner is behind, ease in when it is to the side.
-    const double ahead = std::abs(diff) < std::numbers::pi / 2 ? std::cos(diff) : 0.0;
+    const bool slow = turn_rate_ < k_turn_rate;
+    const double ahead = std::abs(diff) < std::numbers::pi / 2 && (!slow || std::cos(diff) > k_slow_walk_cos)
+                             ? std::cos(diff)
+                             : 0.0;
     set_input(godot::Vector2(0, r(ahead)), 0.0, run_ ? RUN : WALK);
+    if (slow && ahead == 0.0) {
+        stuck_time_ = 0.0;
+        stuck_from_ = here;
+        return;
+    }
 
     stuck_time_ += delta;
     if (stuck_time_ >= k_stuck_window) {
@@ -761,6 +791,15 @@ void SkydotActor::animate() {
         } else if (anim->has_animation("walk")) {
             want = "walk";
             clip = stance_walk_ && stance_walk_speed_ > 0.0 ? stance_walk_speed_ : clip_walk_;
+        }
+    }
+    // Standing and turning: the turn clip of the side it turns to (a dragon's 45 degree turns).
+    const double turned = wrap(facing_ - animated_facing_);
+    animated_facing_ = facing_;
+    if (want == godot::String("idle") && std::abs(turned) > k_turn_visible) {
+        const godot::String turn = turned > 0.0 ? "turn_left" : "turn_right";
+        if (anim->has_animation(turn)) {
+            want = turn;
         }
     }
     want = gait_clip(want);

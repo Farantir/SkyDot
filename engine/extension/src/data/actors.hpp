@@ -32,6 +32,8 @@ struct ActorPlan {
     std::uint32_t npc{};    ///< The NPC_ that supplied traits.
     std::uint32_t race{};
     bool female{};
+    /// Radians per second the race turns in place (its walk MOVT's rotate_in_place), 0 without a MOVT.
+    float turn_rate{};
     float scale{1.0F};      ///< NPC height times the race's for its sex.
     /// The traits NPC's QNAM, which body skin (SkinTint) is multiplied by.
     float skin_tone[3]{1.0F, 1.0F, 1.0F};

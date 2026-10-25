@@ -248,15 +248,20 @@ Locomotion find_locomotion(const std::string& behaviour,
         }
     }
     // Names seen in vanilla, humans first, then creatures by their schemes.
-    out.idle = pick({"mt_idle", "mainidle", "main_idle", "main_idle_wolf", "idle"}, [](const std::string&) { return false; }, false);
+    out.idle = pick({"mt_idle", "mainidle", "main_idle", "main_idle_wolf", "idle", "clip_ground_idle_default_standing"}, [](const std::string&) { return false; }, false);
     out.walk = pick({"mt_walkforward", "walkforward", "mtwalkforward", "forward_walk", "walkforward00",
                      "walkforward00_wolf", "walkf", "mt_walk_f", "h2hwalkforward", "mtforward", "mt_forward",
-                     "defaultforward", "forward"},
+                     "defaultforward", "forward", "clip_ground_locomotion_forward"},
                     [](const std::string& n) { return is_gait(n, "walk"); }, true);
     out.run = pick({"mt_runforward", "runforward", "mtrunforward", "forward_run", "runforward00", "runf",
                     "mt_run_f", "h2hrunforward", "mtfastforward", "mt_fastforward", "defaultfastforward",
                     "fastforward"},
                    [](const std::string& n) { return is_gait(n, "run"); }, true);
+    const auto turn = [&](std::initializer_list<std::string_view> names) {
+        return pick(names, [](const std::string&) { return false; }, false);
+    };
+    out.turn_left = turn({"clip_ground_standing_turn_left"});
+    out.turn_right = turn({"clip_ground_standing_turn_right"});
     // A run no faster than the walk is mislabelled; walk instead.
     if (!out.run.empty() && !out.walk.empty() && out.run.speed <= out.walk.speed) {
         out.run = GaitClip{};
@@ -281,10 +286,10 @@ Stance find_stance(const Locomotion& locomotion, std::string_view prefix) {
     };
     // Names seen in vanilla: humans `1hm_idle`, `1hm_walkforward`, `bow_idledrawn`; the draugr's
     // `clip_1hm_idle`, `1hmforward`, `1hmfastforward`; creatures `combatidle`.
-    out.idle = first({p + "_idle", p + "_idledrawn", p + "idle", p + "_sword_idle", "clip_" + p + "_idle",
+    out.idle = first({"clip_ground_" + p + "_default_standing_idle", p + "_idle", p + "_idledrawn", p + "idle", p + "_sword_idle", "clip_" + p + "_idle",
                       p + "_idle_drawn"},
                      false);
-    out.walk = first({p + "_walkforward", p + "walkforward", p + "forward", p + "_forward", p + "_forward_walk"}, true);
+    out.walk = first({p == "combat" ? "clip_ground_locomotion_forward" : p + "_walkforward", p + "_walkforward", p + "walkforward", p + "forward", p + "_forward", p + "_forward_walk"}, true);
     out.run = first({p + "_runforward", p + "runforward", p + "fastforward", p + "_fastforward", p + "_forward_run"},
                     true);
     return out;

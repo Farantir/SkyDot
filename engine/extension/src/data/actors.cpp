@@ -254,6 +254,10 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
         return plan;
     }
     plan.race = race->id();
+    if (const auto* movement = lookup(w.movement_types(), race->movement_walk()); movement != nullptr &&
+                                                                                 movement->rotate_in_place_walk() > 0.0F) {
+        plan.turn_rate = movement->rotate_in_place_walk();
+    }
     const float npc_height = traits->height() > 0.0F ? traits->height() : 1.0F;
     float race_height = 1.0F;
     if (const auto* h = race->heights(); h != nullptr && sex < h->size() && h->Get(static_cast<flatbuffers::uoffset_t>(sex)) > 0.0F) {
