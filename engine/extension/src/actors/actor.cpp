@@ -2,11 +2,13 @@
 #include "actors/actor.hpp"
 
 #include "render/animator.hpp"
+#include "data/coordinates.hpp"
 #include "physics/collision.hpp"
 
 #include <godot_cpp/classes/animation_library.hpp>
 #include <godot_cpp/classes/animation_player.hpp>
 #include <godot_cpp/classes/camera3d.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/navigation_server3d.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
 #include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
@@ -140,6 +142,20 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_turn_rate", "rate"), &SkydotActor::set_turn_rate);
     ClassDB::bind_method(D_METHOD("get_turn_rate"), &SkydotActor::get_turn_rate);
     ClassDB::bind_method(D_METHOD("get_playing"), &SkydotActor::get_playing);
+    ClassDB::bind_method(D_METHOD("fly_command", "kind", "point_skyrim", "radius", "height", "dive"),
+                         &SkydotActor::fly_command, DEFVAL(0.0), DEFVAL(0.0), DEFVAL(false));
+    ClassDB::bind_method(D_METHOD("is_flying"), &SkydotActor::is_flying);
+    ClassDB::bind_method(D_METHOD("can_fly"), &SkydotActor::can_fly);
+    ClassDB::bind_method(D_METHOD("get_flying_state"), &SkydotActor::get_flying_state);
+    ClassDB::bind_method(D_METHOD("get_flight_mode"), &SkydotActor::get_flight_mode);
+    ClassDB::bind_method(D_METHOD("get_flight_bank"), &SkydotActor::get_flight_bank);
+    ClassDB::bind_method(D_METHOD("get_flight_speed"), &SkydotActor::get_flight_speed);
+    ClassDB::bind_method(D_METHOD("get_flight_pitch"), &SkydotActor::get_flight_pitch);
+    ClassDB::bind_method(D_METHOD("set_flight_hurt", "hurt"), &SkydotActor::set_flight_hurt);
+    ClassDB::bind_method(D_METHOD("get_flight_hurt"), &SkydotActor::get_flight_hurt);
+    ADD_SIGNAL(godot::MethodInfo("flight_took_off"));
+    ADD_SIGNAL(godot::MethodInfo("flight_landed"));
+    ADD_SIGNAL(godot::MethodInfo("flight_crashed"));
     ADD_SIGNAL(godot::MethodInfo("animation_event", PropertyInfo(Variant::STRING, "event")));
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
@@ -198,6 +214,10 @@ godot::String SkydotActor::gait_clip(const godot::String& base) const {
 }
 
 double SkydotActor::play_action(const godot::String& clip, double speed) {
+    return play_clip(clip, speed, false);
+}
+
+double SkydotActor::play_clip(const godot::String& clip, double speed, bool loop) {
     godot::AnimationPlayer* anim = player();
     if (anim == nullptr || !clip_source_ || dead_ || clip.is_empty()) {
         return 0.0;
@@ -219,11 +239,13 @@ double SkydotActor::play_action(const godot::String& clip, double speed) {
         it = action_clips_.emplace(key, name).first;
     }
     const double rate = std::max(speed, 0.1);
-    const double length = static_cast<double>(library->get_animation(it->second)->get_length()) / rate;
+    const godot::Ref<godot::Animation> animation = library->get_animation(it->second);
+    const double length = static_cast<double>(animation->get_length()) / rate;
+    animation->set_loop_mode(loop ? godot::Animation::LOOP_LINEAR : godot::Animation::LOOP_NONE);
     anim->set_speed_scale(r(rate));
     anim->play(it->second, k_blend);
     playing_ = it->second;
-    action_left_ = length;
+    action_left_ = loop ? 0.0 : length;
     wake_ = true;
     return length;
 }
@@ -362,7 +384,7 @@ godot::AnimationPlayer* SkydotActor::player() const {
 void SkydotActor::update_lod() {
     const godot::Viewport* viewport = get_viewport();
     const godot::Camera3D* camera = viewport != nullptr ? viewport->get_camera_3d() : nullptr;
-    if (camera == nullptr) {
+    if (camera == nullptr || flight_active_) {
         lod_ = 0;
         on_screen_ = true;
         return;
@@ -827,6 +849,11 @@ void SkydotActor::_physics_process(double engine_delta) {
     if (dead_) {
         return;
     }
+    if (flight_active_) {
+        // The mover has the body: no gravity, no slide, no steering, no throttling.
+        flight_tick(engine_delta);
+        return;
+    }
     // Level of detail: a farther actor steps less often, and then for the
     // time since its last step. A standing one only looks for ground.
     double delta = engine_delta;
@@ -867,6 +894,203 @@ void SkydotActor::_physics_process(double engine_delta) {
         set_hold(true);
     }
     animate();
+}
+
+// ---- flight ----------------------------------------------------------------------------
+
+namespace {
+
+constexpr double k_ground_cell = 50.0;     ///< Skyrim units: one cached ray per square this big.
+constexpr double k_ground_cache_life = 0.5; ///< Seconds.
+constexpr double k_ray_up = 20000.0;       ///< Skyrim units above the probe height the ray starts.
+constexpr double k_ray_down = 40000.0;
+
+const char* mode_name(flight::Mode m) {
+    switch (m) {
+    case flight::Mode::grounded: return "grounded";
+    case flight::Mode::takeoff: return "takeoff";
+    case flight::Mode::cruise: return "cruise";
+    case flight::Mode::orbit: return "orbit";
+    case flight::Mode::hover: return "hover";
+    case flight::Mode::pass: return "pass";
+    case flight::Mode::approach: return "approach";
+    case flight::Mode::landing: return "landing";
+    case flight::Mode::crash: return "crash";
+    case flight::Mode::crashed: return "crashed";
+    }
+    return "grounded";
+}
+
+} // namespace
+
+godot::String SkydotActor::get_flight_mode() const { return mode_name(flight_body_.mode); }
+
+void SkydotActor::set_flight(const flight::Params& params, const std::string& clip_dir, flight::Ground terrain) {
+    flight_enabled_ = true;
+    flight_params_ = params;
+    flight_dir_ = clip_dir;
+    flight_terrain_ = std::move(terrain);
+}
+
+void SkydotActor::fly_command(const godot::String& kind, const godot::Vector3& point_skyrim, double radius,
+                              double height, bool dive) {
+    flight::Command c;
+    const std::string k = kind.utf8().get_data();
+    using flight::CommandKind;
+    if (k == "takeoff") c.kind = CommandKind::takeoff;
+    else if (k == "fly_to") c.kind = CommandKind::fly_to;
+    else if (k == "orbit") c.kind = CommandKind::orbit;
+    else if (k == "hover") c.kind = CommandKind::hover;
+    else if (k == "pass") c.kind = CommandKind::pass;
+    else if (k == "land") c.kind = CommandKind::land;
+    else if (k == "crash") c.kind = CommandKind::crash;
+    else c.kind = CommandKind::keep;
+    c.point = {static_cast<double>(point_skyrim.x), static_cast<double>(point_skyrim.y),
+               static_cast<double>(point_skyrim.z)};
+    c.radius = radius;
+    c.height = height;
+    c.dive = dive;
+    fly(c);
+}
+
+void SkydotActor::fly(const flight::Command& command) {
+    if (!flight_enabled_ || dead_ || command.kind == flight::CommandKind::keep) {
+        return;
+    }
+    flight_command_ = command;
+    if (flight_active_) {
+        return;
+    }
+    if (flight_body_.mode == flight::Mode::crashed) {
+        return;
+    }
+    // Hand the body to the mover from where it stands.
+    const Vector3 at = godot_to_skyrim(get_global_position());
+    flight_body_.pos = {static_cast<double>(at.x), static_cast<double>(at.y), static_cast<double>(at.z)};
+    flight_body_.yaw = flight::heading_from_facing(facing_);
+    flight_body_.last_ground = flight_body_.pos.z;
+    flight_body_.yaw_rate = 0;
+    flight_body_.vz = 0;
+    flight_body_.speed = 0;
+    flight_body_.bank = 0;
+    flight_body_.pitch = 0;
+    const bool takeoff = command.kind == flight::CommandKind::takeoff;
+    if (command.kind == flight::CommandKind::land) {
+        return; // on the ground already
+    }
+    if (!takeoff) {
+        // Placed in the air: it flies from here.
+        flight_body_.mode = flight::Mode::cruise;
+        flight_body_.mode_time = 0;
+        flight_body_.speed = flight_params_.cruise_speed;
+    }
+    flight_active_ = true;
+    flight_clip_.clear();
+    set_hold(false);
+    set_velocity(Vector3());
+    wake_ = true;
+}
+
+double SkydotActor::flight_ground(double x, double y) {
+    const auto key = (static_cast<std::int64_t>(std::floor(x / k_ground_cell)) << 32) ^
+                     (static_cast<std::int64_t>(std::floor(y / k_ground_cell)) & 0xFFFFFFFF);
+    const auto it = ground_cache_.find(key);
+    if (it != ground_cache_.end() && it->second.expires > flight_clock_) {
+        return it->second.height;
+    }
+    if (ground_cache_.size() > 8192) {
+        std::erase_if(ground_cache_, [&](const auto& e) { return e.second.expires <= flight_clock_; });
+    }
+    double height = std::nan("");
+    auto* world3d = is_inside_tree() ? get_world_3d().ptr() : nullptr;
+    auto* space = world3d != nullptr ? world3d->get_direct_space_state() : nullptr;
+    if (space != nullptr) {
+        const double top = flight_body_.pos.z + k_ray_up;
+        const Vector3 from = skyrim_position(Vector3(static_cast<real_t>(x), static_cast<real_t>(y),
+                                                     static_cast<real_t>(top)));
+        const Vector3 to = skyrim_position(Vector3(static_cast<real_t>(x), static_cast<real_t>(y),
+                                                   static_cast<real_t>(top - k_ray_up - k_ray_down)));
+        const auto query = godot::PhysicsRayQueryParameters3D::create(
+            from, to, physics_layer::world | physics_layer::terrain);
+        const godot::Dictionary hit = space->intersect_ray(query);
+        if (!hit.is_empty()) {
+            const Vector3 p = hit["position"];
+            height = static_cast<double>(godot_to_skyrim(p).z);
+        }
+    }
+    if (std::isnan(height) && flight_terrain_) {
+        height = flight_terrain_(x, y);
+    }
+    ground_cache_[key] = {height, flight_clock_ + k_ground_cache_life};
+    return height;
+}
+
+void SkydotActor::flight_pose() {
+    godot::Node3D* units = godot::Object::cast_to<godot::Node3D>(get_node_or_null("bethconv_z_up_to_y_up"));
+    if (units == nullptr) {
+        return;
+    }
+    if (!visual_known_) {
+        visual_rest_ = units->get_transform();
+        visual_known_ = true;
+    }
+    const bool flying = flight_active_;
+    const double pitch = flying ? flight_body_.pitch : 0.0;
+    const double roll = flying ? flight_body_.bank * flight_params_.bank_roll_scale : 0.0;
+    // Nose up about +X (the body looks down -Z); the left wing (-X) goes down with a positive bank.
+    const godot::Basis tilt = godot::Basis(Vector3(0, 0, 1), r(roll)) * godot::Basis(Vector3(1, 0, 0), r(pitch));
+    units->set_transform(godot::Transform3D(tilt * visual_rest_.basis, tilt.xform(visual_rest_.origin)));
+}
+
+void SkydotActor::animate_flight() {
+    using flight::Mode;
+    const std::string stem = flight::clip_for(flight_body_, flight_params_, flight_hurt_);
+    if (stem.empty() || stem == flight_clip_) {
+        return;
+    }
+    const Mode m = flight_body_.mode;
+    const bool once = m == Mode::takeoff || m == Mode::landing || m == Mode::crash || m == Mode::crashed;
+    if (play_clip(godot::String::utf8((flight_dir_ + stem + ".hkx").c_str()), 1.0, !once) > 0.0) {
+        flight_clip_ = stem;
+    } else {
+        flight_clip_ = stem; // not in the pack: do not ask again every frame
+    }
+}
+
+void SkydotActor::flight_tick(double delta) {
+    flight_clock_ += delta;
+    wake_ = false;
+    step_wait_ = 0.0;
+    const flight::Events ev = flight::step(
+        flight_body_, flight_command_, flight_params_,
+        [this](double x, double y) { return flight_ground(x, y); }, delta);
+    const Vector3 at = skyrim_position(Vector3(static_cast<real_t>(flight_body_.pos.x),
+                                               static_cast<real_t>(flight_body_.pos.y),
+                                               static_cast<real_t>(flight_body_.pos.z)));
+    set_global_position(at);
+    set_velocity(Vector3());
+    face(flight::facing_from_heading(flight_body_.yaw));
+    if (ev.took_off) {
+        flight_command_ = flight::Command{};
+        emit_signal("flight_took_off");
+    }
+    if (ev.landed || ev.crashed) {
+        flight_command_ = flight::Command{};
+        flight_active_ = false;
+        flight_clip_.clear();
+        playing_ = "";
+        action_left_ = 0.0;
+        flight_pose();
+        set_hold(false);
+        animated_facing_ = facing_;
+        if (godot::AnimationPlayer* anim = player()) {
+            anim->set_speed_scale(1.0F);
+        }
+        emit_signal(ev.landed ? "flight_landed" : "flight_crashed");
+        return;
+    }
+    flight_pose();
+    animate_flight();
 }
 
 } // namespace skydot

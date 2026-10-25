@@ -224,6 +224,8 @@ protected:
     static void _bind_methods();
 
 private:
+    /// Move the flying actors of a cell about to be freed to a cell that stays.
+    void rescue_flyers(godot::Node3D* cell);
     godot::Node3D* host() const;
     godot::Camera3D* camera() const;
     void finish_cell(const CellKey& key, godot::Node3D* cell);

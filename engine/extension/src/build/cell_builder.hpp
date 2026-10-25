@@ -12,6 +12,7 @@
 // models, projected materials), which are guarded.
 #pragma once
 
+#include "ai/flight.hpp"
 #include "assets/asset_cache.hpp"
 #include "actors/actor_placement.hpp"
 #include "data/actors.hpp"
@@ -174,6 +175,9 @@ private:
         std::string run;
     };
     ActorClips actor_clips(const ActorPlan& plan);
+    /// The terrain height (Skyrim units, NaN where there is none) of the worldspace of `cell`, from
+    /// world.fb: a flying actor's fallback where the physics world has no ground yet.
+    flight::Ground terrain_height_query(std::uint32_t cell) const;
     /// The looping clip `file` for the skeleton asset `skeleton_path`, from
     /// the asset cache (built on its workers when requested ahead); null if
     /// it does not build.

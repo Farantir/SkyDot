@@ -30,6 +30,7 @@
 // and a standing one only checks the ground once a second. `get_lod`.
 #pragma once
 
+#include "ai/flight.hpp"
 #include "physics/player.hpp"
 
 #include <godot_cpp/classes/animation.hpp>
@@ -135,6 +136,33 @@ public:
     /// Seconds the AI waits between its updates of an actor at `lod`.
     static double ai_interval(std::int32_t lod);
 
+    // ---- flight (step 7b-6): a race that flies ---------------------------------------------
+    /// Makes the actor able to fly: the mover's parameters, the virtual folder of the flight clips
+    /// (the behaviour project's "animations/") and a terrain height query in Skyrim units that
+    /// serves where the physics world has no ground yet (NaN where unknown; may be empty).
+    void set_flight(const flight::Params& params, const std::string& clip_dir, flight::Ground terrain);
+    bool can_fly() const { return flight_enabled_; }
+    /// The order the mover follows (C++ API of SkydotAi). Takeoff from the ground starts the
+    /// flight; the others on the ground start it in the air (a dragon placed flying).
+    void fly(const flight::Command& command);
+    /// `kind`: "none", "takeoff", "fly_to", "orbit", "hover", "pass", "land" or "crash";
+    /// `point` in Skyrim units.
+    void fly_command(const godot::String& kind, const godot::Vector3& point_skyrim, double radius, double height,
+                     bool dive);
+    /// Not on the ground nor crashed: the mover moves the body, not the ground physics.
+    bool is_flying() const { return flight_enabled_ && flight_body_.mode != flight::Mode::grounded &&
+                                    flight_body_.mode != flight::Mode::crashed; }
+    std::int32_t get_flying_state() const { return flight::flying_state(flight_body_.mode); }
+    /// "grounded", "takeoff", "cruise", "orbit", "hover", "pass", "approach", "landing", "crash", "crashed".
+    godot::String get_flight_mode() const;
+    double get_flight_bank() const { return flight_body_.bank; }
+    double get_flight_speed() const { return flight_body_.speed; }
+    double get_flight_pitch() const { return flight_body_.pitch; }
+    const flight::Body& flight_body() const { return flight_body_; }
+    /// The injured flight clips play (the AI sets it from the health fraction).
+    void set_flight_hurt(bool hurt) { flight_hurt_ = hurt; }
+    bool get_flight_hurt() const { return flight_hurt_; }
+
     void _ready() override;
     void _process(double delta) override;
     void _physics_process(double delta) override;
@@ -151,6 +179,12 @@ private:
     godot::String gait_clip(const godot::String& base) const;
     void steer(double delta);
     void animate();
+    /// Play `clip` (a virtual path), looped or once; the shared part of play_action.
+    double play_clip(const godot::String& clip, double speed, bool loop);
+    void flight_tick(double delta);
+    void animate_flight();
+    double flight_ground(double x, double y);
+    void flight_pose();
     /// Raise `animation_event` for the annotations the current clip passed since the last scan.
     void scan_events();
     void update_lod();
@@ -217,6 +251,23 @@ private:
     std::unordered_map<std::uint64_t, EventKeys> event_keys_; ///< By Animation instance id.
     godot::String scan_clip_; ///< The clip scan_events saw last.
     double scan_pos_{-1.0};   ///< Where it was in it.
+    bool flight_enabled_{false};
+    bool flight_active_{false}; ///< The mover has the body (set by fly, cleared on landing).
+    bool flight_hurt_{false};
+    flight::Params flight_params_;
+    flight::Body flight_body_;
+    flight::Command flight_command_;
+    flight::Ground flight_terrain_;
+    std::string flight_dir_;
+    std::string flight_clip_;      ///< The stem playing now.
+    double flight_clock_{0.0};
+    struct GroundSample {
+        double height{};
+        double expires{};
+    };
+    std::unordered_map<std::int64_t, GroundSample> ground_cache_;
+    bool visual_known_{false};
+    godot::Transform3D visual_rest_;
 };
 
 } // namespace skydot

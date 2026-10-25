@@ -6,6 +6,7 @@
 
 #include "actors/actor.hpp"
 #include "actors/actor_animation.hpp"
+#include "ai/flight.hpp"
 #include "data/actors.hpp"
 #include "render/emittance.hpp"
 #include "render/flicker.hpp"
@@ -37,6 +38,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <map>
 #include <numbers>
 
 using godot::Dictionary;
@@ -124,6 +126,45 @@ TerrainBuilder& CellBuilder::terrain_builder() {
     }
     terrain_->set_collision(options_.collision);
     return *terrain_;
+}
+
+flight::Ground CellBuilder::terrain_height_query(std::uint32_t cell) const {
+    const std::uint32_t space = data().cell_space(cell);
+    if (space == 0) {
+        return {};
+    }
+    struct Cache {
+        std::map<std::pair<std::int32_t, std::int32_t>, std::vector<float>> cells;
+    };
+    auto cache = std::make_shared<Cache>();
+    return [data = data_, land = data_->land_world(space), cache](double x, double y) {
+        constexpr double k_side = static_cast<double>(formats::k_cell_units);
+        constexpr int k_grid = 33;
+        const auto gx = static_cast<std::int32_t>(std::floor(x / k_side));
+        const auto gy = static_cast<std::int32_t>(std::floor(y / k_side));
+        auto it = cache->cells.find({gx, gy});
+        if (it == cache->cells.end()) {
+            const auto* tile = data->exterior_ptr(land, gx, gy);
+            std::vector<float> h = tile != nullptr && tile->terrain() != nullptr
+                                       ? TerrainBuilder::heights(*tile->terrain())
+                                       : std::vector<float>{};
+            it = cache->cells.emplace(std::pair{gx, gy}, std::move(h)).first;
+        }
+        const auto& h = it->second;
+        if (h.size() < static_cast<std::size_t>(k_grid * k_grid)) {
+            return std::nan("");
+        }
+        const double step = k_side / (k_grid - 1);
+        const double fx = std::clamp((x - gx * k_side) / step, 0.0, k_grid - 1.0);
+        const double fy = std::clamp((y - gy * k_side) / step, 0.0, k_grid - 1.0);
+        const int c0 = std::min(static_cast<int>(fx), k_grid - 2);
+        const int r0 = std::min(static_cast<int>(fy), k_grid - 2);
+        const double tx = fx - c0;
+        const double ty = fy - r0;
+        const auto at = [&](int r, int c) { return static_cast<double>(h[static_cast<std::size_t>(r * k_grid + c)]); };
+        return (at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx) * (1 - ty) +
+               (at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx) * ty;
+    };
 }
 
 ActorPlan CellBuilder::actor_plan(const wfb::ActorRef& actor) const { return plan_for(*world_fb(), actor.base(), actor.ref(), assets_, worn_); }
@@ -1110,6 +1151,24 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
             }
             return out;
         });
+    if (plan.flight.flies) {
+        // Dragons: the mover's data from the race and its flying movement type (placeholders stay).
+        const auto& fp = plan.flight;
+        auto params = flight::Params::from_race(
+            fp.max_turn_rate > 0.0F ? static_cast<double>(fp.max_turn_rate) : flight::Params{}.max_turn_rate,
+            fp.angular_acceleration > 0.0F ? static_cast<double>(fp.angular_acceleration)
+                                           : flight::Params{}.angular_acceleration,
+            fp.angular_tolerance > 0.0F ? static_cast<double>(fp.angular_tolerance) : 5.0,
+            static_cast<double>(fp.flight_radius),
+            fp.cruise_speed > 0.0F ? static_cast<double>(fp.cruise_speed) : flight::Params{}.cruise_speed,
+            fp.run_speed > 0.0F ? static_cast<double>(fp.run_speed) : flight::Params{}.transit_speed);
+        if (fp.aim_tolerance > 0.0F) {
+            params.aim_tolerance = static_cast<double>(fp.aim_tolerance) * std::numbers::pi / 180.0;
+        }
+        const auto slash = plan.behaviour.rfind('/');
+        const std::string dir = slash == std::string::npos ? std::string() : plan.behaviour.substr(0, slash + 1);
+        node->set_flight(params, dir + "animations/", terrain_height_query(actor.cell));
+    }
     node->set_wander(options_.actor_wander);
     node->set_seed(static_cast<std::int64_t>(actor.ref));
     // The body: a cylinder about as wide and tall as the skeleton at rest

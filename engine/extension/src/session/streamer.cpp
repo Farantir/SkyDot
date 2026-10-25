@@ -3,6 +3,7 @@
 // SkydotStreamer: the bindings and the streaming of a worldspace's cells (see
 // streamer.hpp); the preloading is in preload.cpp.
 #include "session/streamer.hpp"
+#include "actors/actor.hpp"
 
 #include "session/held_place.hpp"
 
@@ -293,6 +294,26 @@ void SkydotStreamer::load_everything() {
     }
 }
 
+void SkydotStreamer::rescue_flyers(Node3D* cell) {
+    // A flying actor is not freed with its cell (a dragon circling over a cell that scrolls away):
+    // it moves, keeping its place in the world, to the loaded cell under it, else to the one under
+    // the camera.
+    for (const godot::Variant& child : cell->find_children("*", "SkydotActor", true, false)) {
+        auto* actor = godot::Object::cast_to<SkydotActor>(child);
+        if (actor == nullptr || !actor->is_flying()) {
+            continue;
+        }
+        Node3D* to = get_loaded_cell(cell_at(actor->get_global_position()));
+        if (to == nullptr || to == cell) {
+            to = get_loaded_cell(camera_cell());
+        }
+        if (to == nullptr || to == cell) {
+            continue;
+        }
+        actor->reparent(to, true);
+    }
+}
+
 bool SkydotStreamer::step() {
     const Vector2i at = camera_cell();
     const CellKey centre{at.x, at.y};
@@ -305,6 +326,7 @@ bool SkydotStreamer::step() {
         }
         if (it->second != 0) {
             if (auto* cell = godot::Object::cast_to<Node3D>(godot::ObjectDB::get_instance(it->second))) {
+                rescue_flyers(cell);
                 emit_signal("cell_dropped", world_->get_exterior_cell(world_id_, it->first.first, it->first.second));
                 cell->queue_free();
             }
