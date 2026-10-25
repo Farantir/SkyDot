@@ -10,8 +10,8 @@
 //     bench keyword the furniture carries.
 //   2 smithing weapon (grindstone), 7 smithing armor (workbench): tempering,
 //     the COBJ with the matching tempering keyword whose product is carried.
-//   3 and 4 enchanting: a stub, it lists the carried items that carry an
-//     enchantment; there are no actions until magic effects exist (C5).
+//   3 and 4 enchanting: not here; magic::Enchanting has the rules and
+//     SkydotPapyrus (papyrus_enchanting.cpp) lists the table's rows.
 //   5 and 6 alchemy: mixing 2 or 3 ingredients (see `preview`).
 // A recipe is listed when its conditions pass (subject: the player; a
 // function the evaluator does not know fails it), and craftable when the
@@ -92,13 +92,6 @@ struct TemperRow {
     bool craftable = false;
 };
 
-/// An item the enchanting stub lists.
-struct EnchantRow {
-    std::uint32_t form = 0;
-    std::uint32_t extra = 0;
-    std::uint32_t enchantment = 0;
-};
-
 struct AlchemyEffect {
     std::uint32_t effect = 0;
     bool known = false;
@@ -160,9 +153,6 @@ public:
     /// components, and the unit becomes one with the tier's health. False if
     /// it cannot (components, no stack, no improvement).
     bool temper(std::uint32_t recipe, std::uint32_t form, std::uint32_t extra);
-
-    /// Enchanting stub (types 3, 4): the carried items that have an enchantment.
-    [[nodiscard]] std::vector<EnchantRow> enchant_rows() const;
 
     /// The carried ingredients with their effects and what is known.
     [[nodiscard]] std::vector<AlchemyRow> alchemy_rows() const;

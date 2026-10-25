@@ -425,7 +425,11 @@ func _draw() -> void:
 		var tabs := ""
 		for i in ENCHANT_CATEGORIES.size():
 			tabs += ("[%s] " if i == _category else " %s  ") % ENCHANT_CATEGORIES[i]
-		_text(font, tabs, font_size, Vector2(left, top + line), SELECTED, split - font_size * 2.0)
+		# All four names stay readable: a smaller font when the bar is wider than the left side.
+		var tab_size := font_size
+		while tab_size > 8 and font.get_string_size(tabs, HORIZONTAL_ALIGNMENT_LEFT, -1, tab_size).x > split - font_size * 2.0:
+			tab_size -= 1
+		_text(font, tabs, tab_size, Vector2(left, top + line), SELECTED, split - font_size * 2.0)
 	var rows_fit := int((panel.end.y - top - line * (offset + 2.0)) / line)
 	var first := clampi(_selected - rows_fit / 2, 0, maxi(_rows.size() - rows_fit, 0))
 	for i in range(first, mini(first + rows_fit, _rows.size())):

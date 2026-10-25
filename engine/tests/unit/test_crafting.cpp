@@ -491,18 +491,6 @@ TEST_CASE("tempering needs a carried product and only improves it", "[crafting]"
     CHECK(r.host.lines.back().find("Smithing") != std::string::npos);
 }
 
-TEST_CASE("the enchanting stub lists enchanted items only", "[crafting]") {
-    Rig r;
-    r.inventory.add(k_player, k_dagger, 1);
-    CHECK(r.crafting.enchant_rows().empty());
-    vm::ItemExtra e;
-    e.enchantment = 0x99;
-    r.inventory.add(k_player, k_dagger, 1, r.extras.intern(e));
-    const auto rows = r.crafting.enchant_rows();
-    REQUIRE(rows.size() == 1);
-    CHECK(rows[0].enchantment == 0x99);
-}
-
 TEST_CASE("ingredients sharing an effect make a potion, the strongest instance wins", "[crafting][alchemy]") {
     Rig r;
     r.inventory.add(k_player, k_a, 2);

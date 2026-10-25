@@ -248,27 +248,6 @@ bool Crafting::temper(std::uint32_t recipe_id, std::uint32_t form, std::uint32_t
     return true;
 }
 
-std::vector<EnchantRow> Crafting::enchant_rows() const {
-    std::vector<EnchantRow> out;
-    for (const auto& [form, total] : inventory_.items(player_)) {
-        const auto* item = item_of(world_, form);
-        if (item == nullptr) {
-            continue;
-        }
-        if (item->enchantment() != 0 && inventory_.count_extra(player_, form, 0) > 0) {
-            out.push_back({form, 0, item->enchantment()});
-        }
-        for (const auto& [extra, n] : inventory_.extras_of(player_, form)) {
-            const auto* e = extras_.find(extra);
-            const std::uint32_t enchantment = e != nullptr && e->enchantment != 0 ? e->enchantment : item->enchantment();
-            if (enchantment != 0) {
-                out.push_back({form, extra, enchantment});
-            }
-        }
-    }
-    return out;
-}
-
 // ---- alchemy -----------------------------------------------------------------------
 
 std::vector<AlchemyRow> Crafting::alchemy_rows() const {

@@ -598,7 +598,7 @@ func recharge(item: int, extra: int, gem: int, gem_extra: int) -> Dictionary:
 ## Soul Trap killed `actor`: the notification and the log line.
 func _on_soul_trapped(actor: int, filled: bool, gem: int, soul: int) -> void:
 	if filled:
-		message.emit("Soul captured", false)
+		message.emit("Soul captured!", false)  # GMST sSoulCaptured
 		print("soul trap: 0x%X filled gem 0x%X with soul %d" % [actor, gem, soul])
 		items_changed.emit()
 	else:

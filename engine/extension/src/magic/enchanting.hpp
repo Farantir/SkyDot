@@ -58,8 +58,9 @@ struct ActorSoul {
     std::uint8_t size = 0;
     bool npc = false; ///< Only a gem that holds NPC souls takes it.
 };
-/// A creature's soul by level (UESP's bands: petty 1-3, lesser 4-15, common 16-27, greater 28-37,
-/// grand 38 and up); an NPC's is black and grand-sized.
+/// A creature's soul by level (Skyrim.esm GMSTs iLesserSoulActorLevel 4, iCommonSoulActorLevel 16,
+/// iGreaterSoulActorLevel 28, iGrandSoulActorLevel 38: petty 1-3, lesser 4-15, common 16-27, greater
+/// 28-37, grand 38 and up); an NPC's is black and grand-sized.
 [[nodiscard]] ActorSoul actor_soul(std::uint32_t level, bool is_npc);
 
 // ---- items and gems ---------------------------------------------------------------------------
