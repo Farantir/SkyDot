@@ -72,10 +72,10 @@ const BONES := [
 const GENERIC_MIN_LENGTH := 0.05
 const GENERIC_RADIUS_SHARE := 0.25
 const GENERIC_MIN_RADIUS := 0.03
-const GENERIC_MAX_RADIUS := 0.15
+const GENERIC_MAX_RADIUS := 0.5
 const GENERIC_SWING := 45.0
 const GENERIC_TWIST := 20.0
-const GENERIC_MAX_BODIES := 32
+const GENERIC_MAX_BODIES := 128
 ## A capsule with no bone to run to, metres long (the head).
 const HEAD_LENGTH := 0.12
 ## The body that takes the hit's impulse.
@@ -334,8 +334,18 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 	if not knocked and node.has_death_clip():
 		return _pose_death(ref, node)
 	node.set_dead(true)
+	return _ragdoll_body(ref, node, impulse, knocked, false)
+
+
+## The generic ragdoll of `node`'s skeleton from the pose it has (`posed`: it plays or holds a death
+## clip; the animation is let go of and a body without a ragdoll stays as it is).
+func _ragdoll_body(ref: int, node: SkydotActor, impulse: Vector3, knocked: bool, posed: bool) -> bool:
 	var found := node.find_children("*", "Skeleton3D", true, false)
 	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
+	if posed:
+		var anim := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
+		if anim != null:
+			anim.active = false  # the skeleton keeps the pose; the simulation takes it from there
 	var ragdoll := _make_ragdoll(skeleton) if skeleton != null else {}
 	if ragdoll.is_empty():
 		var name := String(_world.get_actor_plan(ref).get("skeleton", "no skeleton"))
@@ -343,7 +353,8 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 		if knocked:
 			node.set_dead(false)  # no body to throw: it only staggers
 			return false
-		node.rotate_object_local(Vector3.BACK, PI / 2.0)  # on its side
+		if not posed:
+			node.rotate_object_local(Vector3.BACK, PI / 2.0)  # on its side
 		_finish(ref, node, skeleton)
 		return true
 	var simulator: PhysicalBoneSimulator3D = ragdoll["simulator"]
@@ -388,7 +399,8 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 
 ## A race with a death clip (the dragon's mtdeathintro) plays it once and holds the last frame; a flyer
 ## crashes first. A body built dead is posed at the end of the clip directly. When the pose is held
-## (`SkydotActor.death_pose_done`) the corpse place is stored and the body is pickable.
+## (`SkydotActor.death_pose_done`) the generic ragdoll takes the body from that pose, which then rests,
+## freezes and is stored as any creature's.
 func _pose_death(ref: int, node: SkydotActor) -> bool:
 	var rebuilt := not _live.has(ref)
 	_live.erase(ref)
@@ -404,8 +416,6 @@ func _pose_death(ref: int, node: SkydotActor) -> bool:
 func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
 	if not is_instance_valid(node) or not node.is_inside_tree():
 		return
-	var found := node.find_children("*", "Skeleton3D", true, false)
-	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
 	var space := _host.get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(node.global_position + Vector3.UP * 0.5,
 		node.global_position + Vector3.DOWN * 200.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
@@ -415,8 +425,8 @@ func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
 	# The VM knows an NPC only where it was placed: tell it where the body lies (a crashed flyer is far
 	# from where it flew; scripts measure distances to it).
 	_papyrus.update_actor(ref, SkydotWorld.godot_to_skyrim(node.global_position))
-	_set_place(ref, node, node.global_position)
-	_mark_pickable(node, skeleton)
+	# The clip is only the intro: the body collapses and rests as other creatures' do, without a push.
+	_ragdoll_body(ref, node, Vector3.ZERO, false, true)
 
 
 ## Freeze the ragdoll into the bones' poses, free it, store the corpse place.

@@ -14,8 +14,10 @@ extends RefCounted
 class_name VisualEffects
 
 const FADE_SECONDS := 2.0
-const STREAM_LIFETIME := 1.0  # seconds a particle takes from the source to the target
-const STREAM_COLOR := Color(0.55, 0.8, 1.0)
+const STREAM_LIFETIME := 1.6  # seconds a particle takes from the source to the target
+const STREAM_PARTICLES := 160
+const WISP_CORE := Color(1.0, 0.92, 0.7)  # warm white
+const WISP_EDGE := Color(1.0, 0.55, 0.12)  # amber
 
 var _world: SkydotWorld
 var _host: Node3D
@@ -42,31 +44,91 @@ func on_visual_effect(effect: int, ref: int, target: int, seconds: float, playin
 		return
 	var particles := GPUParticles3D.new()
 	particles.name = "VisualEffect_%08X" % effect
-	particles.amount = 48
+	particles.amount = STREAM_PARTICLES
 	particles.lifetime = STREAM_LIFETIME
 	particles.local_coords = false
 	particles.visibility_aabb = AABB(Vector3.ONE * -100.0, Vector3.ONE * 200.0)
 	var material := ParticleProcessMaterial.new()
 	material.gravity = Vector3.ZERO
-	material.spread = 4.0
+	material.spread = 6.0
 	material.emission_shape = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
-	material.emission_sphere_radius = 0.4
-	material.scale_min = 0.6
-	material.scale_max = 1.4
+	material.emission_sphere_radius = _radius(ref)
+	material.scale_min = 0.5
+	material.scale_max = 1.2
+	material.scale_curve = _fade_curve()
+	material.color_ramp = _wisp_colors()
+	material.turbulence_enabled = true
+	material.turbulence_noise_strength = 0.6
+	material.turbulence_noise_scale = 3.0
 	particles.process_material = material
 	var quad := QuadMesh.new()
-	quad.size = Vector2.ONE * 0.18
+	quad.size = Vector2.ONE * 0.13
 	var look := StandardMaterial3D.new()
 	look.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	look.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	look.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	look.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	look.albedo_color = STREAM_COLOR
+	look.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	look.vertex_color_use_as_albedo = true
+	look.albedo_texture = _soft_circle()
+	look.disable_receive_shadows = true
 	quad.material = look
 	particles.draw_pass_1 = quad
 	_host.add_child(particles)
 	_streams[key] = {"node": particles, "ref": ref, "target": target, "left": seconds if seconds > 0.0 else -1.0}
 	_aim(_streams[key])
+
+
+## A soft round dot: opaque white in the middle, clear at the rim.
+static func _soft_circle() -> GradientTexture2D:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(1, 1, 1, 1))
+	gradient.set_color(1, Color(1, 1, 1, 0))
+	gradient.add_point(0.35, Color(1, 1, 1, 0.55))
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill = GradientTexture2D.FILL_RADIAL
+	texture.fill_from = Vector2(0.5, 0.5)
+	texture.fill_to = Vector2(1.0, 0.5)
+	texture.width = 64
+	texture.height = 64
+	return texture
+
+
+## Warm white at birth, amber later, gone at the end.
+static func _wisp_colors() -> GradientTexture1D:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(WISP_CORE, 0.0))
+	gradient.set_color(1, Color(WISP_EDGE, 0.0))
+	gradient.add_point(0.15, Color(WISP_CORE, 0.6))
+	gradient.add_point(0.7, Color(WISP_EDGE, 0.4))
+	var texture := GradientTexture1D.new()
+	texture.gradient = gradient
+	return texture
+
+
+static func _fade_curve() -> CurveTexture:
+	var curve := Curve.new()
+	curve.add_point(Vector2(0.0, 0.6))
+	curve.add_point(Vector2(0.3, 1.0))
+	curve.add_point(Vector2(1.0, 0.3))
+	var texture := CurveTexture.new()
+	texture.curve = curve
+	return texture
+
+
+## How wide the wisps are born: a quarter of the body's box, between 0.3 and 3 m.
+func _radius(ref: int) -> float:
+	if ref == SkydotPapyrus.PLAYER_REF:
+		return 0.3
+	var node := _world.find_ref_node(ref) as Node3D
+	if node == null:
+		return 0.3
+	var size := 0.0
+	for mesh in node.find_children("*", "MeshInstance3D", true, false):
+		var body := mesh as MeshInstance3D
+		if body.get_parent() is Skeleton3D:
+			size = maxf(size, (body.global_transform * body.get_aabb()).size.length())
+	return clampf(size / 4.0, 0.3, 3.0)
 
 
 ## SkydotPapyrus.sub_graph_animation.

@@ -282,20 +282,17 @@ func _ground_death() -> void:
 	await _kill("fist")
 	await _frames(10)
 	expect(_node.get_death_state() == "clip", "the death clip plays: '%s'" % _node.get_death_state())
-	expect(_session.corpses.simulating() == 0, "no ragdoll")
 	var held := await _until(func() -> bool: return _node.get_death_state() == "held", 15.0)
 	expect(held >= 0.0, "the pose is held: '%s'" % _node.get_death_state())
 	var shift := _pose_shift(_node)
 	print("dragon soul: death pose held after %.1f s, bone %d is %.0f units from its rest" % [held, shift[0], shift[1]])
 	expect(shift[1] > 100.0, "the death pose is far from the rest pose: %.0f units" % shift[1])
-	expect(_node.has_meta("skydot_bounds"), "the corpse is pickable")
-	expect(_session.corpses.simulating() == 0, "still no ragdoll")
+	await _rests()
 	# At 25 m (1750 units) it is beyond deathFXrange (1000 units): it keeps waiting.
 	await _frames(240)
 	expect(_state() == "deadAndWaiting" and _effects.is_empty(), "out of range it waits: '%s', %d effects" % [_state(), _effects.size()])
 	await _absorb(1.0)
-	var later := _pose_shift(_node)
-	expect(later[0] == shift[0] and (later[2] as Vector3).distance_to(shift[2]) < 1.0, "the death pose is still held: %.2f units off" % (later[2] as Vector3).distance_to(shift[2]))
+	expect(_head_height() < 3.0, "the body still lies after the absorb: head %.2f m over the ground" % _head_height())
 	expect(papyrus.get_error_count() == errors, "the VM logged no new errors: %d" % (papyrus.get_error_count() - errors))
 
 
@@ -322,13 +319,33 @@ func _air_death() -> void:
 	expect(modes.has("crash"), "the mover crashed it: %s" % [modes.keys()])
 	expect(crashed[0], "flight_crashed was raised")
 	expect(_height_over_ground(_node) < 2.0, "it ends on the ground: %.2f m" % _height_over_ground(_node))
-	expect(_session.corpses.simulating() == 0, "no ragdoll")
-	var shift := _pose_shift(_node)
-	await _frames(180)
-	var later := _pose_shift(_node)
-	expect((later[2] as Vector3).distance_to(shift[2]) < 1.0 and later[1] > 100.0, "the death pose is not replaced by the gait: %.2f units off" % (later[2] as Vector3).distance_to(shift[2]))
-	expect(_node.has_meta("skydot_bounds"), "the corpse is pickable")
+	await _rests()
 	await _absorb(2.0)
+
+
+## The death clip was only the intro: the generic ragdoll collapses the body, it rests and is frozen,
+## the head ends near the ground and the corpse is pickable.
+func _rests() -> void:
+	var started := await _until(func() -> bool: return _session.corpses.simulating() > 0 or _node.has_meta("skydot_bounds"), 5.0)
+	expect(started >= 0.0, "the ragdoll takes the body from the death pose")
+	var rested := await _until(func() -> bool: return _session.corpses.simulating() == 0, 40.0)
+	expect(rested >= 0.0, "the ragdoll comes to rest")
+	print("dragon soul: the body rests after %.1f s, head %.2f m over the ground" % [rested, _head_height()])
+	expect(_head_height() < 3.0, "the head ends near the ground: %.2f m" % _head_height())
+	expect(_node.has_meta("skydot_bounds"), "the corpse is pickable")
+
+
+## The height of the dragon's head bone over the ground under it, metres.
+func _head_height() -> float:
+	var skeleton := _node.find_children("*", "Skeleton3D", true, false).front() as Skeleton3D
+	for i in skeleton.get_bone_count():
+		if skeleton.get_bone_name(i).to_lower().contains("head"):
+			var at := skeleton.global_transform * skeleton.get_bone_global_pose(i).origin
+			var space := _camera.get_world_3d().direct_space_state
+			var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3.UP * 20.0,
+				at + Vector3.DOWN * 500.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN))
+			return at.y - hit["position"].y if not hit.is_empty() else INF
+	return INF
 
 
 func _height_over_ground(node: Node3D) -> float:
