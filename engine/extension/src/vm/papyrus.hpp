@@ -757,6 +757,9 @@ private:
     /// inventory resolves on the first look at it, also from const queries.
     mutable vm::ItemStates items_;
     void resolve_owner(std::uint32_t owner) const;
+    /// A dying actor's death item (INAM, data/start_inventory.hpp) goes into its inventory; called once per
+    /// death by flush_deaths, after the start inventory is resolved so that comes first.
+    void give_death_item(std::uint32_t ref);
     vm::ItemInfo item_info_of(std::uint32_t form) const;
     /// Take items from `owner` (resolved first); an item that runs out is
     /// taken off.

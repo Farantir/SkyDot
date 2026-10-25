@@ -41,4 +41,11 @@ struct StartInventory {
 [[nodiscard]] StartInventory actor_contents(const bethconv::pack::wfb::World& world, std::uint32_t npc,
                                             std::uint32_t owner, const leveled::GlobalValue& global = {});
 
+/// What actor `owner` of NPC_ `npc` drops when it dies: its death item (INAM,
+/// through the template if the NPC takes its inventory from one), a leveled
+/// item list drawn at the actor's level. Empty if it has none or the pack is
+/// older than world.fb 37.
+[[nodiscard]] std::vector<StartItem> death_contents(const bethconv::pack::wfb::World& world, std::uint32_t npc,
+                                                    std::uint32_t owner, const leveled::GlobalValue& global = {});
+
 } // namespace skydot

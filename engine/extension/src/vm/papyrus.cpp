@@ -740,6 +740,7 @@ void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {
         magic_actor_died(ref);
         emit_signal("actor_died", static_cast<std::int64_t>(ref));
+        give_death_item(ref);
         // Every death, whoever dealt it (a hit, a spell, a shout, a script): OnDying, then OnDeath.
         const std::uint32_t killer_ref = actors_.killer_of(ref);
         const vm::Value killer = killer_ref != 0 ? vm_->object(killer_ref, "Actor") : vm::Value{};

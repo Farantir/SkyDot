@@ -94,4 +94,28 @@ StartInventory actor_contents(const wfb::World& world, std::uint32_t npc, std::u
     return out;
 }
 
+std::vector<StartItem> death_contents(const wfb::World& world, std::uint32_t npc, std::uint32_t owner,
+                                      const leveled::GlobalValue& global) {
+    std::vector<StartItem> out;
+    const auto* base = lookup(world.npcs(), npc);
+    if (base == nullptr) {
+        return out;
+    }
+    // The CK shows the death item on the Inventory tab: "Use Inventory" covers it.
+    const auto* source = resolve_npc(world, npc, wfb::NpcTemplateFlags::use_inventory, owner);
+    if (source == nullptr || source->death_item() == 0) {
+        return out;
+    }
+    const std::uint32_t form = source->death_item();
+    if (!leveled::is_list(world, form)) {
+        add(out, form, 1);
+        return out;
+    }
+    leveled::Rng rng(leveled::seed_for(owner, leveled::k_purpose_death_item));
+    for (const auto& item : leveled::resolve(world, form, actor_level(*base), rng, global)) {
+        add(out, item.form, item.count);
+    }
+    return out;
+}
+
 } // namespace skydot

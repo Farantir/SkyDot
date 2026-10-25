@@ -340,6 +340,30 @@ TEST_CASE("an actor with a template for its inventory takes the template's", "[i
     CHECK(inventory.items[0].count == 9);
 }
 
+TEST_CASE("an actor's death item is an item or a leveled list, from the template with the inventory",
+          "[items][start]") {
+    auto spec = stocked();
+    spec.npcs = {{.id = k_npc, .death_item = k_gold},
+                 {.id = 0x332, .death_item = k_loot},
+                 {.id = 0x333, .template_id = k_template_npc, .template_flags = wfb::NpcTemplateFlags::use_inventory},
+                 {.id = k_template_npc, .death_item = k_dagger},
+                 {.id = 0x334}};
+    const BuiltWorld world(spec);
+    const auto plain = skydot::death_contents(*world, k_npc, 0x800);
+    REQUIRE(plain.size() == 1);
+    CHECK(plain[0].form == k_gold);
+    CHECK(plain[0].count == 1);
+    const auto drawn = skydot::death_contents(*world, 0x332, 0x800);
+    REQUIRE(drawn.size() == 1);
+    CHECK((drawn[0].form == k_sword || drawn[0].form == k_dagger));
+    // The same reference draws the same.
+    CHECK(skydot::death_contents(*world, 0x332, 0x800)[0].form == drawn[0].form);
+    const auto inherited = skydot::death_contents(*world, 0x333, 0x800);
+    REQUIRE(inherited.size() == 1);
+    CHECK(inherited[0].form == k_dagger);
+    CHECK(skydot::death_contents(*world, 0x334, 0x800).empty());
+}
+
 TEST_CASE("the outfit the VM draws is the one the builder wears", "[items][start]") {
     // Same lists, same seeds: for every reference the VM's worn pieces are
     // what plan_actor puts on the actor.

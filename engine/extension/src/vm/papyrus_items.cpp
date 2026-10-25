@@ -150,6 +150,27 @@ void SkydotPapyrus::resolve_owner(std::uint32_t owner) const {
     }
 }
 
+void SkydotPapyrus::give_death_item(std::uint32_t ref) {
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr || ref == k_player_ref) {
+        return;
+    }
+    resolve_owner(ref);
+    const auto* actor = world_->data().actor_ptr(ref);
+    const std::uint32_t base = actor != nullptr ? actor->base() : base_form_of(ref);
+    const std::uint32_t pick = items_.pick_of(ref);
+    const std::uint32_t npc = pick != 0 ? pick : base;
+    if (npc == 0 || lookup(root->npcs(), npc) == nullptr) {
+        return;
+    }
+    const leveled::GlobalValue global = [this](std::uint32_t id) -> std::optional<double> {
+        return get_global_value(id);
+    };
+    for (const auto& item : death_contents(*root, npc, ref, global)) {
+        vm_->inventory().add(ref, item.form, item.count);
+    }
+}
+
 void SkydotPapyrus::refresh_equipment(std::uint32_t owner, std::uint32_t form) {
     if (items_.find(owner) == nullptr) {
         return;

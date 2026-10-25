@@ -41,6 +41,8 @@ inline constexpr std::uint64_t k_purpose_actor = 1;
 inline constexpr std::uint64_t k_purpose_outfit = 2;
 /// The spells an LVSP in an actor's (or its race's) list gives.
 inline constexpr std::uint64_t k_purpose_spells = 3;
+/// The item (or leveled item list) an actor drops when it dies.
+inline constexpr std::uint64_t k_purpose_death_item = 4;
 
 /// The nesting of lists followed before giving up.
 inline constexpr int k_max_depth = 8;
