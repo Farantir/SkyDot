@@ -26,6 +26,7 @@
 #pragma once
 
 #include "ai/combat_rules.hpp"
+#include "ai/flight.hpp"
 #include "ai/magic_choice.hpp"
 #include "ai/packages.hpp"
 #include "magic/active_effects.hpp"
@@ -219,6 +220,13 @@ private:
             std::uint32_t shout{};
             double elapsed{};
         } shout;
+        // Flight (ai_flight.cpp): the dragon's choice of maneuvers, from its combat style.
+        flight::Tactics flight;
+        flight::Style flight_style;
+        double injured{0.35};            ///< Race injured health: the fraction below which it is hurt.
+        int flight_logged{-1};           ///< The maneuver last logged.
+        double flight_log{};             ///< Seconds before the next periodic flight line.
+        std::optional<flight::Vec3> idle_land; ///< Where it lands when it may not fly (out of combat).
         struct Cast {
             bool active{};
             std::uint32_t spell{};
@@ -352,7 +360,20 @@ private:
     bool shout_tick(Mind& m, double seconds);
     /// Whether to start a shout now (the aim rule, the die and the style); true if the actor stands
     /// aiming or inhaling.
-    bool shout_decide(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
+    /// `airborne` (a breath in flight): the ground rules of aim time, standing still and reach do not apply.
+    bool shout_decide(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los,
+                      bool airborne = false);
+    /// A flying-capable actor in combat: the flight tactics decide and order (flight::decide); true
+    /// while the mover has the body (no ground combat then), false on the ground.
+    bool flight_combat(Mind& m, SkydotActor& actor, double seconds);
+    /// A flying actor out of combat: its patrol markers, else its orbit marker or editor spot; lands
+    /// when it may no longer fly.
+    void flight_idle(Mind& m, SkydotActor& actor, double seconds);
+    void flight_log_tick(Mind& m, SkydotActor& actor, double distance, double seconds);
+    /// Patrol markers of the current step (the start and the references linked on from it).
+    void load_patrol(Mind& m);
+    std::uint32_t orbit_keyword_{0};
+    bool orbit_keyword_known_{false};
     bool mage_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
     /// The cast under way, once per frame: release or stop it when its time is up. True while one runs.
     bool cast_tick(Mind& m, double seconds);

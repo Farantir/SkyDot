@@ -174,6 +174,7 @@ func _run(pack_dir: String) -> void:
 	_feet = player_at
 	var ref: int = _session.papyrus.spawn_actor(DRAGON, _session.place.cell_id, SkydotWorld.godot_to_skyrim(centre), 0.0)
 	expect(ref != 0, "the dragon is spawned")
+	_session.papyrus.set_allowed_to_fly(ref, false)  # this test is about the ground (the flight has its own test)
 	_node = world.find_ref_node(ref) as SkydotActor
 	await _frames(30)
 	_node = world.find_ref_node(ref) as SkydotActor

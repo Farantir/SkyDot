@@ -214,6 +214,7 @@ godot::String SkydotActor::gait_clip(const godot::String& base) const {
 }
 
 double SkydotActor::play_action(const godot::String& clip, double speed) {
+    flight_own_action_ = false;
     return play_clip(clip, speed, false);
 }
 
@@ -1048,6 +1049,10 @@ void SkydotActor::animate_flight() {
     if (stem.empty() || stem == flight_clip_) {
         return;
     }
+    if (action_left_ > 0.0 && !flight_own_action_) {
+        return; // an action (a breath) plays over the flight clip
+    }
+    flight_own_action_ = true;
     const Mode m = flight_body_.mode;
     const bool once = m == Mode::takeoff || m == Mode::landing || m == Mode::crash || m == Mode::crashed;
     if (play_clip(godot::String::utf8((flight_dir_ + stem + ".hkx").c_str()), 1.0, !once) > 0.0) {
@@ -1061,6 +1066,15 @@ void SkydotActor::flight_tick(double delta) {
     flight_clock_ += delta;
     wake_ = false;
     step_wait_ = 0.0;
+    if (action_left_ > 0.0) {
+        action_left_ -= delta;
+        if (action_left_ <= 0.0) {
+            action_left_ = 0.0;
+            if (!flight_own_action_) {
+                flight_clip_.clear(); // the flight clip starts again after a breath
+            }
+        }
+    }
     const flight::Events ev = flight::step(
         flight_body_, flight_command_, flight_params_,
         [this](double x, double y) { return flight_ground(x, y); }, delta);

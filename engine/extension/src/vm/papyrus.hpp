@@ -177,6 +177,9 @@ public:
         std::function<double(std::uint32_t ref)> length;           ///< ObjectReference.GetLength (units)
     };
     void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
+    /// References the streamer moved out of a cell that goes (a dragon flying on): detach_cell leaves
+    /// their scripts loaded. detach_all (the place is left) unloads them all.
+    void set_stays_loaded(std::function<bool(std::uint32_t ref)> stays) { stays_loaded_ = std::move(stays); }
     /// An actor's combat state changed: sends OnCombatStateChanged(akTarget, aeCombatState) to its
     /// scripts and aliases (dispatch as OnHit). Returns how many handlers ran.
     std::int64_t combat_state_changed(std::int64_t ref, std::int64_t target, std::int64_t state);
@@ -463,6 +466,10 @@ public:
     /// The player is at Health 0 (`player_died` was sent; Health above 0 again clears it).
     bool is_player_dead() const { return player_dead_; }
     /// SetAllowFlying / SetForcedLandingMarker (saved): what the flight AI reads.
+    /// SetAllowFlying from the game layer and the tests.
+    void set_allowed_to_fly(std::int64_t ref, bool allowed) {
+        actors_.set_allowed_to_fly(static_cast<std::uint32_t>(ref), allowed);
+    }
     bool allowed_to_fly(std::int64_t ref) const { return actors_.allowed_to_fly(static_cast<std::uint32_t>(ref)); }
     std::uint32_t forced_landing_marker(std::int64_t ref) const {
         return actors_.landing_marker(static_cast<std::uint32_t>(ref));
@@ -652,6 +659,8 @@ private:
     void bind_actor_natives();
     void bind_magic_natives();
     CombatHooks combat_hooks_;
+    std::function<bool(std::uint32_t ref)> stays_loaded_;
+    bool detaching_all_{false};
     bool player_dead_ = false;
     std::uint32_t last_damager_ = 0; ///< Who last hurt the player.
     /// Player at Health 0: log `death: player killed by 0xA` and send `player_died` once.

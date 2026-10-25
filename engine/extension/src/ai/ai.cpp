@@ -196,6 +196,7 @@ SkydotAi::SkydotAi() = default;
 SkydotAi::~SkydotAi() {
     if (vm_ != nullptr && papyrus_.is_valid()) {
         vm_->set_combat_hooks({});
+        vm_->set_stays_loaded({});
     }
 }
 
@@ -280,7 +281,32 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
         hooks.start = [this](std::uint32_t ref, std::uint32_t target) { start_combat(ref, target); };
         hooks.stop = [this](std::uint32_t ref) { stop_combat(ref); };
         hooks.has_los = [this](std::uint32_t ref, std::uint32_t target) { return has_los(ref, target); };
+        hooks.is_flying = [this](std::uint32_t ref) {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr && a->is_flying();
+        };
+        hooks.flying_state = [this](std::uint32_t ref) -> std::int64_t {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr ? a->get_flying_state() : 0;
+        };
+        hooks.can_fly_here = [this](std::uint32_t ref) {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr && a->can_fly() && world_->data().world_ptr(m->space) != nullptr;
+        };
+        hooks.length = [this](std::uint32_t ref) {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr ? std::max(a->get_height(), 2.0 * a->get_radius()) / SkydotWorld::UNIT_SCALE : 0.0;
+        };
         vm_->set_combat_hooks(std::move(hooks));
+        vm_->set_stays_loaded([this](std::uint32_t ref) {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr && a->can_fly() && a->flight_active() && a->has_meta("skydot_rescued");
+        });
     }
     persistent_.clear();
     attached_.clear();
@@ -1065,6 +1091,12 @@ void SkydotAi::update(double seconds) {
         if (combat_tick(*m, *actor, elapsed)) {
             continue;
         }
+        if (actor->can_fly() && actor->flight_active()) {
+            if (drive_) {
+                flight_idle(*m, *actor, elapsed);
+            }
+            continue;
+        }
         m->think -= elapsed;
         if (m->think <= 0.0) {
             m->think = k_think_interval * (lod == 0 ? 1.0 : lod == 1 ? 2.0 : 4.0);
@@ -1189,6 +1221,22 @@ bool SkydotAi::go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, d
     return false;
 }
 
+void SkydotAi::load_patrol(Mind& m) {
+    // Patrol markers: the start, then its linked references in turn.
+    m.patrol.clear();
+    m.patrol_next = 0;
+    if (!m.target) {
+        return;
+    }
+    std::set<std::uint32_t> seen;
+    for (auto r = m.target->ref; r != 0 && !seen.contains(r) && m.patrol.size() < 32; r = linked_ref(r, 0)) {
+        seen.insert(r);
+        if (auto at = ref_spot(r); at && at->space == m.target->space) {
+            m.patrol.push_back(at->position);
+        }
+    }
+}
+
 void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
     using ai::Procedure;
     if (m.step >= m.steps.size()) {
@@ -1210,16 +1258,7 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
         m.step_time = 0.0;
         m.target = step_spot(m, s);
         if (s.procedure == Procedure::patrol && m.target) {
-            // Patrol markers: the start, then its linked references in turn.
-            m.patrol.clear();
-            m.patrol_next = 0;
-            std::set<std::uint32_t> seen;
-            for (auto r = m.target->ref; r != 0 && !seen.contains(r) && m.patrol.size() < 32; r = linked_ref(r, 0)) {
-                seen.insert(r);
-                if (auto at = ref_spot(r); at && at->space == m.target->space) {
-                    m.patrol.push_back(at->position);
-                }
-            }
+            load_patrol(m);
         }
     }
     m.step_time += seconds;

@@ -159,6 +159,12 @@ public:
     double get_flight_speed() const { return flight_body_.speed; }
     double get_flight_pitch() const { return flight_body_.pitch; }
     const flight::Body& flight_body() const { return flight_body_; }
+    const flight::Params& flight_params() const { return flight_params_; }
+    /// The mover has the body (from `fly` until it lands), also in the first frame of a takeoff.
+    bool flight_active() const { return flight_active_; }
+    /// The highest surface at (x, y) in Skyrim units (cached down-ray, else the terrain heights; NaN
+    /// where unknown).
+    double flight_ground(double x, double y);
     /// The injured flight clips play (the AI sets it from the health fraction).
     void set_flight_hurt(bool hurt) { flight_hurt_ = hurt; }
     bool get_flight_hurt() const { return flight_hurt_; }
@@ -183,7 +189,6 @@ private:
     double play_clip(const godot::String& clip, double speed, bool loop);
     void flight_tick(double delta);
     void animate_flight();
-    double flight_ground(double x, double y);
     void flight_pose();
     /// Raise `animation_event` for the annotations the current clip passed since the last scan.
     void scan_events();
@@ -254,6 +259,7 @@ private:
     bool flight_enabled_{false};
     bool flight_active_{false}; ///< The mover has the body (set by fly, cleared on landing).
     bool flight_hurt_{false};
+    bool flight_own_action_{false}; ///< The action playing is the flight's own (takeoff, landing, crash).
     flight::Params flight_params_;
     flight::Body flight_body_;
     flight::Command flight_command_;

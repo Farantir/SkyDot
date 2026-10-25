@@ -376,6 +376,20 @@ void SkydotAi::read_gear(Mind& m) {
                           static_cast<double>(style->ranged_score_mult()), static_cast<double>(style->unarmed_score_mult()),
                           static_cast<double>(style->shout_score_mult())};
     }
+    if (style != nullptr) {
+        c.flight_style = {static_cast<double>(style->hover_chance()),
+                          static_cast<double>(style->dive_bomb_chance()),
+                          static_cast<double>(style->ground_attack_chance()),
+                          static_cast<double>(style->hover_time()),
+                          static_cast<double>(style->ground_attack_time()),
+                          static_cast<double>(style->flying_attack_chance())};
+    }
+    {
+        const godot::Dictionary plan = plan_of(m.ref);
+        const godot::Dictionary race = world_->get_race(static_cast<std::int64_t>(plan.get("race", 0)));
+        const double injured = static_cast<double>(race.get("injured_health", 0.0));
+        c.injured = injured > 0.0 ? injured : 0.35;
+    }
     read_spells(m);
     // Only a bow (no melee weapon to fight with) means ranged from the start.
     if (c.has_bow && !c.has_melee) {
@@ -519,14 +533,15 @@ bool SkydotAi::shout_tick(Mind& m, double seconds) {
     return true;
 }
 
-bool SkydotAi::shout_decide(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los) {
+bool SkydotAi::shout_decide(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los,
+                            bool airborne) {
     CombatMind& c = m.combat;
     if (c.shouts.empty() || c.weapon_style.shout <= 0.0 || c.cast.active) {
         c.aimed = 0.0;
         c.facing = false;
         return false;
     }
-    if (c.directional_melee && distance - k_body_radius <= c.reach) {
+    if (!airborne && c.directional_melee && distance - k_body_radius <= c.reach) {
         c.aimed = 0.0;
         c.facing = false;
         return false; // in reach of its bite, wings and tail
@@ -540,10 +555,19 @@ bool SkydotAi::shout_decide(Mind& m, SkydotActor& actor, double distance, const 
     in.roll = roll(m);
     // Would it shout if it were aimed? Then it stands and faces the target until it is.
     in.aimed = true;
-    if (combat_ai::decide_shout(in) == 0) {
+    const std::uint32_t wanted = combat_ai::decide_shout(in);
+    if (wanted == 0) {
         c.aimed = 0.0;
         c.facing = false;
         return false;
+    }
+    if (airborne) {
+        // In the air the mover has aimed it (flight::breath_allowed) and it does not stand.
+        c.shout = {true, wanted, 0.0};
+        std::printf("combat: 0x%X shouts 0x%X at 0x%X (airborne)\n", m.ref, wanted, c.target);
+        emit_signal("combat_shout", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                    static_cast<std::int64_t>(wanted), "start");
+        return true;
     }
     const auto& data = world_->data();
     const double tolerance = static_cast<double>(data.gmst_float("fAIShoutToleranceDegrees", 5.0F));
@@ -666,6 +690,9 @@ void SkydotAi::enter_combat(Mind& m, SkydotActor& actor, std::uint32_t target) {
         return;
     }
     c.was_wander = actor.get_wander();
+    c.flight = {};
+    c.flight_logged = -1;
+    c.flight_log = 0.0;
     c.ranged = false;
     c.gear_age = 1e9;
     actor.set_wander(false);
@@ -1205,6 +1232,9 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
     if (!alive(c.target)) {
         leave_combat(m, &actor);
         return false;
+    }
+    if (c.state == 1 && actor.can_fly() && flight_combat(m, actor, seconds)) {
+        return true; // the mover has the body
     }
     if (shout_tick(m, seconds)) {
         if (c.state != 1 || !position_of(c.target)) {

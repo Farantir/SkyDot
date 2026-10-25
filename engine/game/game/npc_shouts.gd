@@ -55,7 +55,11 @@ func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 			_papyrus.equip_shout(ref, shout)
 			print("npc shout: 0x%X inhales for 0x%08X" % [ref, shout])
 			var kind := _breath_kind(ref, shout)
-			_play(ref, ["clip_shout_inhale_" + kind] if kind != "" else ["shoutinhale", "mt_shout_inhale"], "inhale")
+			var air := _air_stems(ref)
+			if kind != "" and not air.is_empty():
+				_play(ref, [air["inhale"]], "inhale")
+			else:
+				_play(ref, ["clip_shout_inhale_" + kind] if kind != "" else ["shoutinhale", "mt_shout_inhale"], "inhale")
 		"release":
 			_combat.npc_face(ref, target)
 			var kind := _breath_kind(ref, shout)
@@ -72,14 +76,33 @@ func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 			shouted.emit(ref, shout, words, int(result["spell"]))
 
 
+## The flight clips of a dragon breathing in the air (GetFlyingState 3 hovering, 2 flying): the stems
+## `shout_hoverinhale`/`shout_hoverexhale<flame|fireball>` or `shout_flightinhale`/`shout_flightexhale...` as
+## {inhale, exhale} (the exhale stem lacks the kind); {} on the ground or without them.
+func _air_stems(ref: int) -> Dictionary:
+	var node := _world.find_ref_node(ref)
+	if node == null or not node.has_method("get_flying_state"):
+		return {}
+	var state := int(node.get_flying_state())
+	if state != 2 and state != 3:
+		return {}
+	var prefix := "shout_hover" if state == 3 else "shout_flight"
+	if _clip(ref, prefix + "inhale") == "":
+		return {}
+	return {"inhale": prefix + "inhale", "exhale": prefix + "exhale"}
+
+
 ## "firebreath" or "fireball" if the project of `ref` has the breath clips of the last word's spell (told by
-## its casting type: concentration or not), else "".
+## its casting type: concentration or not), else "". In the air the flight clips decide.
 func _breath_kind(ref: int, shout: int) -> String:
 	var words: Array = _world.get_shout(shout).get("words", [])
 	if words.is_empty():
 		return ""
 	var info := _magic.info_of(int(words[words.size() - 1]["spell"]))
 	var kind := "firebreath" if int(info.get("casting_type", 0)) == Magic.CAST_CONCENTRATION else "fireball"
+	var air := _air_stems(ref)
+	if not air.is_empty():
+		return kind if _clip(ref, air["exhale"] + ("flame" if kind == "firebreath" else "fireball")) != "" else ""
 	return kind if _combat.clip_of(ref, "clip_shout_exhale_" + kind) != "" else ""
 
 
@@ -90,9 +113,20 @@ func _breathe(ref: int, target: int, shout: int, kind: String) -> void:
 		return
 	var node := _world.find_ref_node(ref)
 	var length := 0.0
+	var air := _air_stems(ref)
+	var fire_now := false
 	if node != null and node.has_method("play_action"):
-		length = float(node.play_action(_combat.clip_of(ref, "clip_shout_exhale_" + kind), 1.0))
-		print("npc shout: 0x%X plays clip_shout_exhale_%s (%.2f s)" % [ref, kind, length])
+		if air.is_empty():
+			length = float(node.play_action(_combat.clip_of(ref, "clip_shout_exhale_" + kind), 1.0))
+			print("npc shout: 0x%X plays clip_shout_exhale_%s (%.2f s)" % [ref, kind, length])
+		else:
+			var stem: String = air["exhale"] + ("flame" if kind == "firebreath" else "fireball")
+			length = float(node.play_action(_clip(ref, stem), 1.0))
+			print("npc shout: 0x%X plays %s (%.2f s)" % [ref, stem, length])
+			# A flight exhale clip without the release key would never let the breath leave: it leaves now.
+			fire_now = not _clip_has_event(node, EVENT_FIRE)
+			if fire_now:
+				_warn.once("noevent" + stem, "%s has no %s key: the breath leaves at its start" % [stem, EVENT_FIRE])
 		if not node.has_meta("skydot_breath_events") and node.has_signal("animation_event"):
 			node.set_meta("skydot_breath_events", true)
 			node.connect("animation_event", func(event: String) -> void: _on_event(ref, event))
@@ -103,6 +137,25 @@ func _breathe(ref: int, target: int, shout: int, kind: String) -> void:
 	var words := int(result["words"])
 	_voice(ref, words)
 	shouted.emit(ref, shout, words, int(result["spell"]))
+	if fire_now:
+		_on_event(ref, EVENT_FIRE)
+
+
+## Whether the clip playing on `node` has an annotation (a text key) called `event`.
+func _clip_has_event(node: Node, event: String) -> bool:
+	var player := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if player == null or player.assigned_animation == "":
+		return true
+	var clip := player.get_animation(player.assigned_animation)
+	if clip == null:
+		return true
+	for text: String in clip.get_meta("skydot_event_texts", PackedStringArray()):
+		if text.begins_with(event):
+			return true
+	for marker: String in clip.get_marker_names():
+		if marker.begins_with(event):
+			return true
+	return false
 
 
 func _on_event(ref: int, event: String) -> void:

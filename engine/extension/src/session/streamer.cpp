@@ -311,6 +311,8 @@ void SkydotStreamer::rescue_flyers(Node3D* cell) {
             continue;
         }
         actor->reparent(to, true);
+        // The scripts of its reference stay loaded (SkydotPapyrus::detach_cell asks SkydotAi).
+        actor->set_meta("skydot_rescued", true);
     }
 }
 

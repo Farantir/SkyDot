@@ -210,6 +210,7 @@ target_sources(skydot PRIVATE
     src/actors/locomotion.hpp
     src/ai/ai.cpp
     src/ai/ai_combat.cpp
+    src/ai/ai_flight.cpp
     src/ai/ai.hpp
     src/assets/asset_cache.cpp
     src/assets/asset_cache.hpp

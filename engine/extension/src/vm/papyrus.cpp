@@ -58,6 +58,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotPapyrus::attach_built);
     godot::ClassDB::bind_method(D_METHOD("attach_cell", "cell"), &SkydotPapyrus::attach_cell);
     godot::ClassDB::bind_method(D_METHOD("detach_cell", "cell"), &SkydotPapyrus::detach_cell);
+    godot::ClassDB::bind_method(D_METHOD("set_allowed_to_fly", "ref", "allowed"), &SkydotPapyrus::set_allowed_to_fly);
+    godot::ClassDB::bind_method(D_METHOD("get_allowed_to_fly", "ref"), &SkydotPapyrus::allowed_to_fly);
     godot::ClassDB::bind_method(D_METHOD("detach_all"), &SkydotPapyrus::detach_all);
     godot::ClassDB::bind_method(D_METHOD("activate_ref", "ref", "activator", "default_only", "source", "force"),
                                 &SkydotPapyrus::activate_ref);
@@ -1005,7 +1007,12 @@ std::int64_t SkydotPapyrus::detach_cell(std::int64_t cell) {
             refs.push_back(ref);
         }
     }
+    std::int64_t kept = 0;
     for (const auto ref : refs) {
+        if (!detaching_all_ && stays_loaded_ && stays_loaded_(ref)) {
+            ++kept; // rescued by the streamer: it flies on, with its scripts
+            continue;
+        }
         loaded_.erase(ref);
         volume_loaded_.erase(ref);
         dispatch(ref, "OnCellDetach", {});
@@ -1013,7 +1020,7 @@ std::int64_t SkydotPapyrus::detach_cell(std::int64_t cell) {
         vm_->unregister_updates(ref);
         vm_->unregister_animation_events(ref);
     }
-    return static_cast<std::int64_t>(refs.size());
+    return static_cast<std::int64_t>(refs.size()) - kept;
 }
 
 std::int64_t SkydotPapyrus::detach_all() {
@@ -1022,9 +1029,11 @@ std::int64_t SkydotPapyrus::detach_all() {
         cells.insert(entry.second);
     }
     std::int64_t count = 0;
+    detaching_all_ = true;
     for (const auto cell : cells) {
         count += detach_cell(cell);
     }
+    detaching_all_ = false;
     return count;
 }
 
