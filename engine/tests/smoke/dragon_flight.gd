@@ -324,7 +324,8 @@ func _run(pack_dir: String) -> void:
 		if _node.is_flying():
 			flew = true
 	expect(not flew, "and stays on the ground for 22 s")
-	expect(_session.ai.get_combat_state(_ref) == 1, "in combat: state %d" % _session.ai.get_combat_state(_ref))
+	# 1 fights, 2 searches for a target it lost sight of (a landing spot can hide the player); both are combat.
+	expect(_session.ai.get_combat_state(_ref) in [1, 2], "in combat: state %d" % _session.ai.get_combat_state(_ref))
 
 	# 3) A dragon placed high in the air flies (its placement 3000 units above the ground).
 	_session.papyrus.set_allowed_to_fly(_ref, false)
