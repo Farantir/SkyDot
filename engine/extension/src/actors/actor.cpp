@@ -16,6 +16,7 @@
 #include <godot_cpp/classes/world3d.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -129,6 +130,11 @@ void SkydotActor::_bind_methods() {
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "wander_radius"), "set_wander_radius", "get_wander_radius");
     ClassDB::bind_method(D_METHOD("set_dead", "dead"), &SkydotActor::set_dead);
     ClassDB::bind_method(D_METHOD("is_dead"), &SkydotActor::is_dead);
+    ClassDB::bind_method(D_METHOD("set_death_clip", "vpath"), &SkydotActor::set_death_clip);
+    ClassDB::bind_method(D_METHOD("get_death_clip"), &SkydotActor::get_death_clip);
+    ClassDB::bind_method(D_METHOD("has_death_clip"), &SkydotActor::has_death_clip);
+    ClassDB::bind_method(D_METHOD("start_death", "seek_end"), &SkydotActor::start_death);
+    ClassDB::bind_method(D_METHOD("get_death_state"), &SkydotActor::get_death_state);
     ClassDB::bind_method(D_METHOD("set_frozen", "frozen"), &SkydotActor::set_frozen);
     ClassDB::bind_method(D_METHOD("is_frozen"), &SkydotActor::is_frozen);
     ClassDB::bind_method(D_METHOD("get_lod"), &SkydotActor::get_lod);
@@ -157,6 +163,7 @@ void SkydotActor::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("flight_took_off"));
     ADD_SIGNAL(godot::MethodInfo("flight_landed"));
     ADD_SIGNAL(godot::MethodInfo("flight_crashed"));
+    ADD_SIGNAL(godot::MethodInfo("death_pose_done"));
     ADD_SIGNAL(godot::MethodInfo("animation_event", PropertyInfo(Variant::STRING, "event")));
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
@@ -219,9 +226,9 @@ double SkydotActor::play_action(const godot::String& clip, double speed) {
     return play_clip(clip, speed, false);
 }
 
-double SkydotActor::play_clip(const godot::String& clip, double speed, bool loop) {
+double SkydotActor::play_clip(const godot::String& clip, double speed, bool loop, double blend) {
     godot::AnimationPlayer* anim = player();
-    if (anim == nullptr || !clip_source_ || dead_ || clip.is_empty()) {
+    if (anim == nullptr || !clip_source_ || (dead_ && !death_anim_) || clip.is_empty()) {
         return 0.0;
     }
     godot::Ref<godot::AnimationLibrary> library = anim->get_animation_library("");
@@ -245,7 +252,7 @@ double SkydotActor::play_clip(const godot::String& clip, double speed, bool loop
     const double length = static_cast<double>(animation->get_length()) / rate;
     animation->set_loop_mode(loop ? godot::Animation::LOOP_LINEAR : godot::Animation::LOOP_NONE);
     anim->set_speed_scale(r(rate));
-    anim->play(it->second, k_blend);
+    anim->play(it->second, blend >= 0.0 ? blend : k_blend);
     playing_ = it->second;
     action_left_ = loop ? 0.0 : length;
     wake_ = true;
@@ -282,6 +289,13 @@ void SkydotActor::set_dead(bool dead) {
             action_left_ = 0.0;
             playing_ = "";
             wake_ = true;
+            death_state_ = "";
+            death_anim_ = false;
+            dying_flight_ = false;
+            if (godot::AnimationPlayer* anim = player()) {
+                anim->set_callback_mode_process(godot::AnimationMixer::ANIMATION_CALLBACK_MODE_PROCESS_IDLE);
+                manual_ = false;
+            }
             set_collision_layer(body_layer());
             set_collision_mask(body_mask());
             set_process(true);
@@ -292,17 +306,95 @@ void SkydotActor::set_dead(bool dead) {
         }
         return;
     }
+    stop_for_death();
+    set_process(false);
+    set_physics_process(false);
+    if (godot::AnimationPlayer* anim = player()) {
+        anim->stop();
+        anim->set_active(false);
+    }
+}
+
+void SkydotActor::stop_for_death() {
     path_.clear();
     corner_ = 0;
     set_input(godot::Vector2(), 0.0, WALK);
     set_velocity(Vector3());
     set_collision_layer(0);
     set_collision_mask(0);
+}
+
+bool SkydotActor::start_death(bool seek_end) {
+    if (dead_) {
+        return false;
+    }
+    dead_ = true;
+    death_anim_ = true;
+    stop_for_death();
+    set_process(true);
+    frozen_ = false;
+    godot::AnimationPlayer* anim = player();
+    if (anim != nullptr) {
+        anim->set_active(true);
+        anim->set_callback_mode_process(godot::AnimationMixer::ANIMATION_CALLBACK_MODE_PROCESS_IDLE);
+        manual_ = false;
+    }
+    if (flight_enabled_ && flight_active_ && !seek_end) {
+        // Falls first: the mover goes on with a crash order and nothing else commands it.
+        dying_flight_ = true;
+        death_state_ = "crash";
+        death_time_ = 0.0;
+        flight_command_ = flight::Command{};
+        flight_command_.kind = flight::CommandKind::crash;
+        flight_clip_.clear();
+        flight_own_action_ = false;
+        set_physics_process(true);
+        return true;
+    }
+    set_physics_process(false);
+    begin_death_clip(seek_end);
+    return true;
+}
+
+void SkydotActor::begin_death_clip(bool seek_end) {
+    godot::AnimationPlayer* anim = player();
+    flight_clip_.clear();
+    flight_own_action_ = false;
+    const double length = death_clip_.is_empty() ? 0.0 : play_clip(death_clip_, 1.0, false, seek_end ? 0.0 : -1.0);
+    if (anim == nullptr || length <= 0.0) {
+        hold_death_pose();
+        return;
+    }
+    if (seek_end) {
+        death_left_ = 0.0;
+        hold_death_pose();
+        return;
+    }
+    death_state_ = "clip";
+    death_left_ = length;
+    set_physics_process(false);
+}
+
+void SkydotActor::hold_death_pose() {
+    if (godot::AnimationPlayer* anim = player(); anim != nullptr && anim->has_animation(playing_)) {
+        // The end of the clip, kept: paused, not stopped (a stopped player may let go of the pose).
+        anim->seek(static_cast<double>(anim->get_animation(playing_)->get_length()), true);
+        anim->pause();
+    }
+    death_state_ = "held";
+    death_anim_ = false;
+    action_left_ = 0.0;
     set_process(false);
     set_physics_process(false);
-    if (godot::AnimationPlayer* anim = player()) {
-        anim->stop();
-        anim->set_active(false);
+    emit_signal("death_pose_done");
+}
+
+void SkydotActor::death_step(double delta) {
+    if (death_state_ == "clip") {
+        death_left_ -= delta;
+        if (death_left_ <= 0.0) {
+            hold_death_pose();
+        }
     }
 }
 
@@ -441,6 +533,10 @@ void SkydotActor::animate_lod(double delta) {
 
 void SkydotActor::_process(double delta) {
     if (dead_) {
+        if (death_anim_) {
+            death_step(delta);
+            animate_lod(delta);
+        }
         return;
     }
     lod_wait_ -= delta;
@@ -849,6 +945,9 @@ void SkydotActor::animate() {
 
 void SkydotActor::_physics_process(double engine_delta) {
     if (dead_) {
+        if (dying_flight_) {
+            flight_tick(engine_delta);
+        }
         return;
     }
     if (flight_active_) {
@@ -1104,9 +1203,24 @@ void SkydotActor::flight_tick(double delta) {
             }
         }
     }
-    const flight::Events ev = flight::step(
+    flight::Events ev = flight::step(
         flight_body_, flight_command_, flight_params_,
         [this](double x, double y) { return flight_ground(x, y); }, delta);
+    if (dying_flight_) {
+        death_time_ += delta;
+        if (!ev.crashed && death_time_ > flight_params_.crash_timeout) {
+            // Never stays in the air: put on the ground under it.
+            const double ground = flight_ground(flight_body_.pos.x, flight_body_.pos.y);
+            if (!std::isnan(ground)) {
+                flight_body_.pos.z = ground;
+            }
+            flight_body_.mode = flight::Mode::crashed;
+            flight_body_.speed = 0.0;
+            flight_body_.vz = 0.0;
+            ev.crashed = true;
+            godot::UtilityFunctions::print(godot::String("death: ") + godot::String(get_name()) + " crash timed out, put on the ground");
+        }
+    }
     const Vector3 at = skyrim_position(Vector3(static_cast<real_t>(flight_body_.pos.x),
                                                static_cast<real_t>(flight_body_.pos.y),
                                                static_cast<real_t>(flight_body_.pos.z)));
@@ -1130,6 +1244,13 @@ void SkydotActor::flight_tick(double delta) {
             anim->set_speed_scale(1.0F);
         }
         emit_signal(ev.landed ? "flight_landed" : "flight_crashed");
+        if (dying_flight_) {
+            dying_flight_ = false;
+            set_global_position(skyrim_position(Vector3(static_cast<real_t>(flight_body_.pos.x),
+                                                        static_cast<real_t>(flight_body_.pos.y),
+                                                        static_cast<real_t>(flight_body_.pos.z))));
+            begin_death_clip(false);
+        }
         return;
     }
     flight_pose();

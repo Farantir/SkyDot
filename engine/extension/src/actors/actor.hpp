@@ -124,6 +124,19 @@ public:
     /// that it blocks nobody. The node stays; the game layer lays the body down.
     void set_dead(bool dead);
     bool is_dead() const { return dead_; }
+    /// The clip a death plays instead of a ragdoll (a virtual path to a .hkx; the behaviour
+    /// project's death intro, the dragon's mtdeathintro), empty for a race that falls apart.
+    void set_death_clip(const godot::String& vpath) { death_clip_ = vpath; }
+    godot::String get_death_clip() const { return death_clip_; }
+    bool has_death_clip() const { return !death_clip_.is_empty(); }
+    /// The actor died and has a death clip: like `set_dead(true)` it stops thinking and blocking, but
+    /// its animation plays the death clip once and holds the last frame. A flyer in flight crashes
+    /// first (the mover's crash approach and crash clips, down to the ground), then plays it.
+    /// `seek_end` (a body built again) poses the end of the clip directly. Raises `death_pose_done`
+    /// when the pose is held (at once for `seek_end`); false if it was dead already.
+    bool start_death(bool seek_end);
+    /// "" (not dying), "crash" (falling from the air), "clip" (the death clip plays), "held".
+    godot::String get_death_state() const { return death_state_; }
     /// Paralysed (magic): it does not walk, wander or change its clip, its animation holds the
     /// pose it had (PLACEHOLDER for Skyrim's ragdoll) and gravity still acts. `set_dead(false)`
     /// (a reanimated body) puts a dead actor back as it was alive.
@@ -187,13 +200,19 @@ private:
     void steer(double delta);
     void animate();
     /// Play `clip` (a virtual path), looped or once; the shared part of play_action.
-    double play_clip(const godot::String& clip, double speed, bool loop);
+    double play_clip(const godot::String& clip, double speed, bool loop, double blend = -1.0);
     void flight_tick(double delta);
     /// A held flyer whose placement is far above the ground starts in flight; false while the
     /// ground under it is not known yet.
     bool start_if_placed_high(double delta);
     void animate_flight();
     void flight_pose();
+    /// Play the death clip (end pose at once if `seek_end`), or hold nothing if it cannot play.
+    void begin_death_clip(bool seek_end);
+    void hold_death_pose();
+    void death_step(double delta);
+    /// What stopping an actor has in common.
+    void stop_for_death();
     /// Raise `animation_event` for the annotations the current clip passed since the last scan.
     void scan_events();
     void update_lod();
@@ -229,6 +248,12 @@ private:
     double step_wait_{0.0};    ///< Seconds since the physics last stepped.
     bool frozen_{false};       ///< `set_frozen`.
     bool dead_{false};         ///< `set_dead`: nothing moves it any more.
+    godot::String death_clip_;
+    godot::String death_state_;
+    bool death_anim_{false};   ///< Dying with a clip: the animation (not the AI) still runs.
+    bool dying_flight_{false}; ///< Crashing: the mover has the body until it is on the ground.
+    double death_time_{0.0};
+    double death_left_{0.0};
     bool wake_{false};         ///< Step at the next tick, whatever the level of detail.
     bool posed_{false};        ///< The animation has been applied at least once.
     bool manual_{false};       ///< The AnimationPlayer is advanced by hand.

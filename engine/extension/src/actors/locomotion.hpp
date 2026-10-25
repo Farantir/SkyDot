@@ -52,6 +52,9 @@ struct Locomotion {
     /// Turning on the spot (the dragon's mtturnleftground45...), empty where the project has none.
     GaitClip turn_left;
     GaitClip turn_right;
+    /// The clip a death plays instead of a ragdoll: the project's clip whose file ends in
+    /// "deathintro.hkx" (the dragon's mtdeathintro); empty for a race that falls apart.
+    GaitClip death;
     /// Every clip of the project that has an animation in the pack, by lower-case name without
     /// ".hkx" (`set_stance` finds the combat set here).
     std::unordered_map<std::string, GaitClip> clips;

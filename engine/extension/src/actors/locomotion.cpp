@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <cmath>
 #include <string_view>
 #include <unordered_map>
@@ -245,6 +246,13 @@ Locomotion find_locomotion(const std::string& behaviour,
         }
         if (GaitClip g = clip_of(*c); !g.file.empty() && exists(g.file)) {
             out.clips.emplace(bare(c->name()->str()), std::move(g));
+        }
+    }
+    for (const auto& [name, clip] : out.clips) {
+        std::string file = clip.file;
+        std::transform(file.begin(), file.end(), file.begin(), [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+        if (file.ends_with("deathintro.hkx")) {
+            out.death = clip;
         }
     }
     // Names seen in vanilla, humans first, then creatures by their schemes.

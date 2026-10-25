@@ -1132,6 +1132,9 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
         node->add_child(player);
     }
     node->set_clip_speeds(walk_speed, run_speed);
+    if (!loco.death.empty()) {
+        node->set_death_clip(String::utf8(loco.death.file.c_str()));
+    }
     if (plan.turn_rate > 0.0F) {
         node->set_turn_rate(static_cast<double>(plan.turn_rate));
     }

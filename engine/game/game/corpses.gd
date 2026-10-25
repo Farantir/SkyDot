@@ -112,6 +112,7 @@ var _player_position: Callable  # () -> Vector3: where the player is, for the di
 var _warn := WarnOnce.new("death: ")
 var _hits := {}  # target ref -> impulse vector of the last hit
 var _pending := {}  # ref -> seconds waited: dead, not yet lying down
+var _live := {}  # ref -> true: died while built (not a body built dead): its death plays
 var _bodies: Array[Dictionary] = []  # {ref, node, skeleton, simulator, bones, time, still, knocked}
 ## The AI to hold while an actor is down (the session sets it; null without one).
 var ai: SkydotAi
@@ -151,6 +152,7 @@ func on_died(ref: int) -> void:
 			body["knocked"] = false  # it dies where it lies: its ragdoll goes on as a corpse's
 			body["time"] = 0.0
 			return
+	_live[ref] = true
 	_queue(ref)
 
 
@@ -308,7 +310,9 @@ func _start_pending(delta: float) -> void:
 			if _pending[ref] > GROUND_SECONDS:
 				_pending.erase(ref)
 			continue
-		if _pending[ref] < GROUND_SECONDS and not _has_ground(node.global_position):
+		# A race with a death clip does not wait for ground: it may die in the air and falls first.
+		var posed := node is SkydotActor and (node as SkydotActor).has_death_clip()
+		if not posed and _pending[ref] < GROUND_SECONDS and not _has_ground(node.global_position):
 			continue
 		_pending.erase(ref)
 		_lay_down(ref, _hits.get(ref, Vector3.ZERO))
@@ -327,6 +331,8 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 	var node := _world.find_ref_node(ref) as SkydotActor
 	if node == null or not node.is_inside_tree() or node.is_dead():
 		return false
+	if not knocked and node.has_death_clip():
+		return _pose_death(ref, node)
 	node.set_dead(true)
 	var found := node.find_children("*", "Skeleton3D", true, false)
 	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
@@ -378,6 +384,39 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 	if not knocked:
 		_mark_pickable(node, skeleton)
 	return true
+
+
+## A race with a death clip (the dragon's mtdeathintro) plays it once and holds the last frame; a flyer
+## crashes first. A body built dead is posed at the end of the clip directly. When the pose is held
+## (`SkydotActor.death_pose_done`) the corpse place is stored and the body is pickable.
+func _pose_death(ref: int, node: SkydotActor) -> bool:
+	var rebuilt := not _live.has(ref)
+	_live.erase(ref)
+	node.death_pose_done.connect(_on_death_pose_done.bind(ref, node), CONNECT_ONE_SHOT)
+	if not rebuilt:
+		print("death: 0x%08X plays %s%s" % [ref, node.get_death_clip().get_file(), " after a crash" if node.is_flying() else ""])
+	if not node.start_death(rebuilt):
+		node.death_pose_done.disconnect(_on_death_pose_done.bind(ref, node))
+		return false
+	return true
+
+
+func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
+	if not is_instance_valid(node) or not node.is_inside_tree():
+		return
+	var found := node.find_children("*", "Skeleton3D", true, false)
+	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
+	var space := _host.get_world_3d().direct_space_state
+	var query := PhysicsRayQueryParameters3D.create(node.global_position + Vector3.UP * 0.5,
+		node.global_position + Vector3.DOWN * 200.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
+	var hit := space.intersect_ray(query)
+	var above: float = node.global_position.y - float(hit["position"].y) if not hit.is_empty() else INF
+	print("death: 0x%08X holds the death pose, %.2f m above the ground" % [ref, above])
+	# The VM knows an NPC only where it was placed: tell it where the body lies (a crashed flyer is far
+	# from where it flew; scripts measure distances to it).
+	_papyrus.update_actor(ref, SkydotWorld.godot_to_skyrim(node.global_position))
+	_set_place(ref, node, node.global_position)
+	_mark_pickable(node, skeleton)
 
 
 ## Freeze the ragdoll into the bones' poses, free it, store the corpse place.

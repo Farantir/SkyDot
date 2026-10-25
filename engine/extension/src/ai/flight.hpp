@@ -108,6 +108,7 @@ struct Params {
     // Crash.
     double crash_speed = 1500;
     double crash_slide = 1000;
+    double crash_timeout = 15;  ///< s: a flyer that died in the air is put on the ground after this long.
     // Tactics.
     double ground_seconds_scale = 20; ///< ground_attack_time * this = seconds on the ground.
     double orbit_seconds = 8;         ///< one lap.
