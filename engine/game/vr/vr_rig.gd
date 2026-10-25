@@ -168,7 +168,7 @@ func _left_button(input_name: String, pressed: bool) -> void:
 		"trigger_click":
 			_action(PlayerInput.ATTACK_LEFT, pressed)
 		"grip_click":
-			_action(PlayerInput.POWER, pressed)  # the voice key: a power, or a shout while held
+			_action(PlayerInput.POWER, pressed)  # the voice key (the left grip only: a grip is easily squeezed, and a wasted shout costs its recovery)
 		"ax_button":
 			_action(&"menu_drop", pressed)  # in a menu: drop, take all, unlock a word
 		"menu_button":
@@ -188,5 +188,3 @@ func _right_button(input_name: String, pressed: bool) -> void:
 			_action(&"ui_accept", pressed)
 		"by_button":
 			_action(&"ui_cancel", pressed)
-		"grip_click":
-			_action(PlayerInput.POWER, pressed)
