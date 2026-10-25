@@ -433,3 +433,38 @@ TEST_CASE("ACTV 4 keeps ghosts and the factions scripts set, version 3 still loa
     CHECK_FALSE(u.is_ghost(k_guard));
     CHECK_FALSE(u.faction_override(k_guard, 0x10).has_value());
 }
+
+TEST_CASE("ACTV 5 keeps the actors whose OnDeath waits, version 4 still loads", "[actor][save]") {
+    auto s = make();
+    CHECK_FALSE(s.is_dying(k_guard));
+    CHECK_FALSE(s.finish_dying(k_guard));
+    s.defer_death(k_guard, 30.0);
+    s.defer_death(k_elder, 2.0);
+    CHECK(s.is_dying(k_guard));
+    s.tick(1.0);
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK(t.is_dying(k_guard));
+    CHECK(t.is_dying(k_elder));
+    CHECK(t.take_due_deaths().empty());
+    t.tick(1.5); // 1 s left for the elder, 29 for the guard
+    CHECK(t.take_due_deaths() == std::vector<std::uint32_t>{k_elder});
+    CHECK_FALSE(t.is_dying(k_elder));
+    CHECK(t.finish_dying(k_guard));
+    CHECK_FALSE(t.finish_dying(k_guard));
+    CHECK(t.take_due_deaths().empty());
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 4: no actors, nothing after.
+    skydot::save::ByteWriter w;
+    w.u32(0);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(w.out), old, 4));
+    CHECK_FALSE(old.is_dying(k_guard));
+}

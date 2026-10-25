@@ -165,6 +165,12 @@ std::uint32_t ActorStates::landing_marker(std::uint32_t ref) const {
     return r != nullptr ? r->landing_marker : 0;
 }
 
+void ActorStates::defer_death(std::uint32_t ref, double seconds) { dying_[ref] = std::max(seconds, 0.0); }
+
+bool ActorStates::finish_dying(std::uint32_t ref) { return dying_.erase(ref) > 0; }
+
+std::vector<std::uint32_t> ActorStates::take_due_deaths() { return std::exchange(due_, {}); }
+
 void ActorStates::set_ghost(std::uint32_t ref, bool ghost) {
     if (Record* r = touch(ref, av::k_health)) {
         r->ghost = ghost;
@@ -327,6 +333,15 @@ void ActorStates::tick(double seconds) {
     if (seconds <= 0.0) {
         return;
     }
+    for (auto it = dying_.begin(); it != dying_.end();) {
+        it->second -= seconds;
+        if (it->second <= 0.0) {
+            due_.push_back(it->first);
+            it = dying_.erase(it);
+        } else {
+            ++it;
+        }
+    }
     for (auto& [ref, record] : records_) {
         // What is left of a pause holds back that much of this tick.
         const double magicka_held = std::min(record.magicka_pause, seconds);
@@ -369,12 +384,16 @@ void ActorStates::clear() {
     records_.clear();
     bases_.clear();
     deaths_.clear();
+    dying_.clear();
+    due_.clear();
 }
 
 void ActorStates::adopt(ActorStates&& other) {
     records_ = std::move(other.records_);
+    dying_ = std::move(other.dying_);
     bases_.clear();
     deaths_.clear();
+    due_.clear();
 }
 
 std::vector<std::uint8_t> ActorStates::save() const {
@@ -408,6 +427,11 @@ std::vector<std::uint8_t> ActorStates::save() const {
             w.u32(faction);
             w.u32(static_cast<std::uint32_t>(rank));
         }
+    }
+    w.u32(static_cast<std::uint32_t>(dying_.size()));
+    for (const auto& [ref, left] : dying_) {
+        w.u32(ref);
+        w.f64(left);
     }
     return w.out;
 }
@@ -477,6 +501,20 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 }
                 record.factions[faction] = std::max<std::int32_t>(static_cast<std::int32_t>(rank), -1);
             }
+        }
+    }
+    if (version >= 5) {
+        std::uint32_t dying = 0;
+        if (!r.count(dying, 12)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < dying; ++i) {
+            std::uint32_t ref = 0;
+            double left = 0.0;
+            if (!r.u32(ref) || !r.f64(left) || !std::isfinite(left)) {
+                return false;
+            }
+            out.dying_[ref] = std::max(left, 0.0);
         }
     }
     return r.at_end();

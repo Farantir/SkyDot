@@ -456,6 +456,7 @@ func _freeze(body: Dictionary) -> void:
 			globals[index] = parent_global * skeleton.get_bone_pose(index)
 	_set_place(body["ref"], node, pelvis_at)
 	_mark_pickable(node, skeleton)
+	_papyrus.finish_dying(body["ref"])  # a body with a death clip: OnDeath comes now
 
 
 ## Where the simulation has the bone, in the skeleton's space and units: the
@@ -469,6 +470,7 @@ static func bone_pose(skeleton: Skeleton3D, bone: PhysicalBone3D) -> Transform3D
 
 ## A frozen or lying body: store where it is.
 func _finish(ref: int, node: Node3D, skeleton: Skeleton3D) -> void:
+	_papyrus.finish_dying(ref)
 	_set_place(ref, node, node.global_position)
 	_mark_pickable(node, skeleton)
 

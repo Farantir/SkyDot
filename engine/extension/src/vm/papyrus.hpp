@@ -175,6 +175,8 @@ public:
         std::function<std::int64_t(std::uint32_t ref)> flying_state; ///< Actor.GetFlyingState (0..4)
         std::function<bool(std::uint32_t ref)> can_fly_here;       ///< Actor.CanFlyHere
         std::function<double(std::uint32_t ref)> length;           ///< ObjectReference.GetLength (units)
+        /// The actor dies in a way that takes time (a death clip, a crash): OnDeath waits for finish_dying.
+        std::function<bool(std::uint32_t ref)> defers_death;
     };
     void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
     /// References the streamer moved out of a cell that goes (a dragon flying on): detach_cell leaves
@@ -480,6 +482,10 @@ public:
             .faction_rank(static_cast<std::uint32_t>(ref), static_cast<std::uint32_t>(faction))
             .value_or(-1);
     }
+    /// The body of `ref` is at rest (the game layer): OnDeath runs if it was waiting. False if not.
+    bool finish_dying(std::int64_t ref);
+    /// Seconds OnDeath waits for finish_dying at the longest (game time).
+    static constexpr double k_dying_timeout = 30.0;
     bool is_actor_ghost(std::int64_t ref) const { return actors_.is_ghost(static_cast<std::uint32_t>(ref)); }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
@@ -658,6 +664,7 @@ private:
     void bind_objectreference_natives();
     void bind_effectshader_natives();
     void bind_actor_extra_natives();
+    void send_on_death(std::uint32_t ref);
     /// A script raised the player's DragonSouls: the message sDragonSoulAcquired.
     void dragon_soul_absorbed();
     void bind_weapon_natives();

@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 4;
+    static constexpr std::uint32_t k_section_version = 5;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -84,6 +84,15 @@ public:
     void set_landing_marker(std::uint32_t ref, std::uint32_t marker);
     [[nodiscard]] std::uint32_t landing_marker(std::uint32_t ref) const;
 
+    /// Dying (version 5 of the section): an actor whose OnDeath waits until its body is at rest (a
+    /// death clip, a crash). `seconds` is the longest it waits; `tick` counts it down.
+    void defer_death(std::uint32_t ref, double seconds);
+    /// The body is at rest: true if OnDeath was waiting (it is not any more).
+    bool finish_dying(std::uint32_t ref);
+    [[nodiscard]] bool is_dying(std::uint32_t ref) const { return dying_.contains(ref); }
+    /// The actors whose wait ran out since the last call.
+    [[nodiscard]] std::vector<std::uint32_t> take_due_deaths();
+
     /// SetGhost (version 4 of the section): a ghost takes no hits.
     void set_ghost(std::uint32_t ref, bool ghost);
     [[nodiscard]] bool is_ghost(std::uint32_t ref) const;
@@ -123,7 +132,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -162,6 +171,8 @@ private:
     mutable std::map<std::uint32_t, std::optional<ActorBase>> bases_;
     std::map<std::uint32_t, Record> records_;
     std::vector<std::uint32_t> deaths_;
+    std::map<std::uint32_t, double> dying_;  ///< Seconds OnDeath still waits; saved.
+    std::vector<std::uint32_t> due_;
 };
 
 } // namespace skydot::vm

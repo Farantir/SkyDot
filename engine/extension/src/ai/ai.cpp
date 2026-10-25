@@ -286,6 +286,11 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
             const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
             return a != nullptr && a->is_flying();
         };
+        hooks.defers_death = [this](std::uint32_t ref) {
+            const Mind* m = mind(ref);
+            const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
+            return a != nullptr && a->has_death_clip();
+        };
         hooks.flying_state = [this](std::uint32_t ref) -> std::int64_t {
             const Mind* m = mind(ref);
             const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;

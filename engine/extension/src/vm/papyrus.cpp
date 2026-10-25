@@ -187,6 +187,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_open_state", "ref"), &SkydotPapyrus::get_open_state);
     godot::ClassDB::bind_method(D_METHOD("is_actor_dead", "ref"), &SkydotPapyrus::is_actor_dead);
     godot::ClassDB::bind_method(D_METHOD("is_actor_ghost", "ref"), &SkydotPapyrus::is_actor_ghost);
+    godot::ClassDB::bind_method(D_METHOD("finish_dying", "ref"), &SkydotPapyrus::finish_dying);
     godot::ClassDB::bind_method(D_METHOD("faction_rank", "ref", "faction"), &SkydotPapyrus::faction_rank);
     godot::ClassDB::bind_method(D_METHOD("get_item_count", "owner", "item"), &SkydotPapyrus::get_item_count);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
@@ -738,16 +739,39 @@ std::int64_t SkydotPapyrus::combat_state_changed(std::int64_t ref, std::int64_t 
                                               {who, vm::Value::integer(static_cast<std::int32_t>(state))}));
 }
 
+void SkydotPapyrus::send_on_death(std::uint32_t ref) {
+    const std::uint32_t killer_ref = actors_.killer_of(ref);
+    dispatch(ref, "OnDeath", {killer_ref != 0 ? vm_->object(killer_ref, "Actor") : vm::Value{}});
+}
+
+bool SkydotPapyrus::finish_dying(std::int64_t ref) {
+    const auto id = static_cast<std::uint32_t>(ref);
+    if (!actors_.finish_dying(id)) {
+        return false;
+    }
+    send_on_death(id);
+    return true;
+}
+
 void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {
         magic_actor_died(ref);
         emit_signal("actor_died", static_cast<std::int64_t>(ref));
         give_death_item(ref);
-        // Every death, whoever dealt it (a hit, a spell, a shout, a script): OnDying, then OnDeath.
+        // Every death, whoever dealt it (a hit, a spell, a shout, a script): OnDying at once; OnDeath
+        // when the actor has finished dying, which for a body that takes time (a death clip, a
+        // crash) is when the game layer says it is at rest (`finish_dying`), or after a timeout.
         const std::uint32_t killer_ref = actors_.killer_of(ref);
         const vm::Value killer = killer_ref != 0 ? vm_->object(killer_ref, "Actor") : vm::Value{};
         dispatch(ref, "OnDying", {killer});
-        dispatch(ref, "OnDeath", {killer});
+        if (combat_hooks_.defers_death && combat_hooks_.defers_death(ref)) {
+            actors_.defer_death(ref, k_dying_timeout);
+        } else {
+            dispatch(ref, "OnDeath", {killer});
+        }
+    }
+    for (const auto ref : actors_.take_due_deaths()) {
+        send_on_death(ref);
     }
 }
 

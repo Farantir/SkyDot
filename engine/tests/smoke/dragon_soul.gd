@@ -28,6 +28,8 @@ var _effects: Array[Array] = []  # [effect, ref, target, seconds, playing]
 var _animations: Array[Array] = []  # [ref, name]
 var _messages: Array[String] = []
 var _shaders := 0
+var _entered := {}  # ref -> [ragdolls simulating, death state] when its onDeath state was first seen
+var _fades: Array[int] = []  # ragdolls simulating at each SkinFadeOut
 var _player: FakePlayer
 var _dead: Array[int] = []  # the dragons that died, in order
 
@@ -75,6 +77,8 @@ func _frames(count: int) -> void:
 		_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT
 		_session.papyrus.restore_actor_value(PLAYER, "Health", 100000.0)
 		_session.step(STEP, _feet)
+		if _ref != 0 and not _entered.has(_ref) and _node != null and _state() in ["deadAndWaiting", "deadDisintegrated"]:
+			_entered[_ref] = [_session.corpses.simulating(), _node.get_death_state()]
 		await physics_frame
 
 
@@ -164,7 +168,10 @@ func _run(pack_dir: String) -> void:
 	expect(_session.start_game(), "the game starts")
 	_session.papyrus.visual_effect.connect(func(effect: int, ref: int, target: int, seconds: float, playing: bool) -> void:
 		_effects.append([effect, ref, target, seconds, playing]))
-	_session.papyrus.sub_graph_animation.connect(func(ref: int, name: String) -> void: _animations.append([ref, name]))
+	_session.papyrus.sub_graph_animation.connect(func(ref: int, name: String) -> void:
+		_animations.append([ref, name])
+		if name == "SkinFadeOut":
+			_fades.append(_session.corpses.simulating()))
 	_session.papyrus.message.connect(func(text: String, _box: bool) -> void: _messages.append(text))
 	_session.papyrus.effect_shader.connect(func(_shader: int, _ref: int, _playing: bool) -> void: _shaders += 1)
 	_feet = SkydotWorld.skyrim_position(SPOT)
@@ -241,7 +248,10 @@ func _absorb(expected: float) -> void:
 	var hider := _quest_form("::SkinDragonHider_var")
 	var underskin := _quest_form("::DragonUnderskin_var")
 	var faction := _quest_form("::MQKillDragonFaction_var")
-	expect(_state() == "deadAndWaiting", "DragonActorScript runs onDeath and waits for the player: '%s'" % _state())
+	await _until(func() -> bool: return _state() == "deadAndWaiting" or _state() == "deadDisintegrated", 3.0)
+	expect(_state() == "deadAndWaiting" or _state() == "deadDisintegrated", "DragonActorScript runs onDeath: '%s'" % _state())
+	expect(_entered.has(_ref) and _entered[_ref][0] == 0 and _entered[_ref][1] == "held",
+		"onDeath came only after the body rested (and the crash): %s" % [_entered.get(_ref)])
 	_feet = _ground(_node.global_position + Vector3(10.0, 0.0, 0.0))
 	await _frames(60)
 	print("dragon soul: player at ", _feet, " dragon at ", _node.global_position, " state ", _state())
@@ -255,6 +265,7 @@ func _absorb(expected: float) -> void:
 	expect(_effects.any(func(e: Array) -> bool: return e[1] == _ref and e[2] == PLAYER and e[4]), "a visual effect plays dragon -> player: %s" % [_effects])
 	expect(_effects.any(func(e: Array) -> bool: return e[1] == PLAYER and e[2] == _ref and e[4]), "and one player -> dragon")
 	expect(_animations.any(func(a: Array) -> bool: return a[0] == _ref and a[1] == "SkinFadeOut"), "SkinFadeOut plays on the dragon: %s" % [_animations])
+	expect(_fades.size() == int(expected) and _fades.all(func(n: int) -> bool: return n == 0), "and only after the ragdoll rested: %s" % [_fades])
 	expect(papyrus.is_actor_ghost(_ref), "the dragon is a ghost")
 	expect(_messages.count("Dragon Soul Absorbed") == int(expected), "the player is told once per soul: %s" % [_messages])
 	expect(papyrus.faction_rank(_ref, faction) >= 0, "the dragon is in MQKillDragonFaction: %d" % papyrus.faction_rank(_ref, faction))
@@ -281,6 +292,7 @@ func _ground_death() -> void:
 	var errors: int = papyrus.get_error_count()
 	await _kill("fist")
 	await _frames(10)
+	expect(_state() == "alive", "dying, it has not run onDeath yet: '%s'" % _state())
 	expect(_node.get_death_state() == "clip", "the death clip plays: '%s'" % _node.get_death_state())
 	var held := await _until(func() -> bool: return _node.get_death_state() == "held", 15.0)
 	expect(held >= 0.0, "the pose is held: '%s'" % _node.get_death_state())
