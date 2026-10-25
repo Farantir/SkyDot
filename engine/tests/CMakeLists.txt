@@ -304,6 +304,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_shout_data
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/shout_data.gd")
+    set_tests_properties(sse_shout_data PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_magic_menu
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/magic_menu.gd")
     set_tests_properties(sse_magic_menu PROPERTIES
