@@ -26,12 +26,18 @@ const CATEGORIES: Array[Dictionary] = [
 const SOULS: Array[String] = ["", "petty", "lesser", "common", "greater", "grand"]
 
 
+## Whether a list shows `row`: playable, and with a name (the game hides the nameless, such as a
+## dragon's blood effect armors).
+static func is_listed(row: Dictionary) -> bool:
+	return row["playable"] and row["name"] != ""
+
+
 ## The playable rows of `rows` that category `index` shows.
 static func visible(rows: Array, index := 0) -> Array:
 	var wanted: Array = CATEGORIES[index]["items"]
 	var out: Array = []
 	for row: Dictionary in rows:
-		if not row["playable"]:
+		if not is_listed(row):
 			continue
 		if wanted.is_empty() or wanted.has(row["category"]):
 			out.append(row)

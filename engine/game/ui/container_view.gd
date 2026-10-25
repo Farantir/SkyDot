@@ -141,10 +141,10 @@ func move_current() -> void:
 
 ## Everything the container holds goes to the player (non-playable items too), except
 ## non-playable armor: a dead actor's race skin, a dragon's underskin and skin hider are what it
-## wears, not loot, and taking them would strip the corpse.
+## wears, not loot, and taking them would strip the corpse; nameless items (effect armors) are not loot either.
 func take_all() -> void:
 	for row: Dictionary in _session.papyrus.inventory(_container):
-		if not row["playable"] and row["category"] in ["armor", "clothing"]:
+		if row["name"] == "" or (not row["playable"] and row["category"] in ["armor", "clothing"]):
 			continue
 		_session.transfer(_container, SkydotPapyrus.PLAYER_REF, int(row["form"]), int(row["count"]), int(row["extra"]))
 	_refresh()

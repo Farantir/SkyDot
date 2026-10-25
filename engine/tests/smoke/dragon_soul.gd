@@ -126,7 +126,9 @@ func _expect_loot(ref: int, who: String) -> void:
 	expect(listed.has(DRAGON_BONE) and listed.has(DRAGON_SCALES), "the loot list shows them: %s" % [listed])
 	for worn in [_quest_form("::SkinDragonHider_var"), _quest_form("::DragonUnderskin_var")]:
 		expect(counts.has(worn) and not listed.has(worn), "%s: 0x%X is carried but not listed" % [who, worn])
-	expect(listed.size() == rows.filter(func(row: Dictionary) -> bool: return row["playable"]).size(), "only playable rows are listed")
+	expect(listed.size() == rows.filter(ItemRows.is_listed).size(), "only playable, named rows are listed")
+	expect(ItemRows.visible(rows).all(func(row: Dictionary) -> bool: return row["name"] != ""), "no nameless row is listed")
+	expect(rows.any(func(row: Dictionary) -> bool: return row["name"] == ""), "(the corpse does carry nameless items)")
 
 
 func _state() -> String:
