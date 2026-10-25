@@ -125,14 +125,17 @@ const ActorPlacement::Place* ActorPlacement::moved_place(std::uint32_t ref) cons
 
 std::optional<ActorPlacement::Where> ActorPlacement::where(std::uint32_t ref) const {
     const auto* a = data_->actor_ptr(ref);
-    if (a == nullptr) {
-        return std::nullopt;
+    const Place* moved = moved_place(ref);
+    if (a == nullptr && moved == nullptr) {
+        return std::nullopt; // no placed actor, and no script-placed one that was put somewhere
     }
     Where out;
-    out.place = {data_->cell_space(a->cell()),
-                 godot::Vector3(a->position().x(), a->position().y(), a->position().z()),
-                 a->rotation().z()};
-    if (const auto* moved = moved_place(a->ref())) {
+    if (a != nullptr) {
+        out.place = {data_->cell_space(a->cell()),
+                     godot::Vector3(a->position().x(), a->position().y(), a->position().z()),
+                     a->rotation().z()};
+    }
+    if (moved != nullptr) {
         out.place = *moved;
         out.moved = true;
     }

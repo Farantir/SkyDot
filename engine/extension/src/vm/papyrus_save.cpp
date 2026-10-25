@@ -117,7 +117,43 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
     return true;
 }
 
-void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) const {
+void SkydotPapyrus::capture_actor_places() {
+    if (world_.is_null()) {
+        return;
+    }
+    actors_.clear_living_places();
+    const auto keep = [this](std::uint32_t ref, std::uint32_t space, const godot::Vector3& at, double rot_z) {
+        if (ref != k_player_ref && space != 0 && actors_.is_actor(ref) && !actors_.is_dead(ref)) {
+            actors_.set_living_place(ref, {.space = space,
+                                           .x = static_cast<double>(at.x),
+                                           .y = static_cast<double>(at.y),
+                                           .z = static_cast<double>(at.z),
+                                           .rot_z = rot_z});
+        }
+    };
+    // Actors on screen: where they are now. A script-placed one also updates its record, which is its place.
+    for (const auto& [ref, at] : triggers_.actors()) {
+        if (ref == k_player_ref || !actors_.is_actor(ref)) {
+            continue;
+        }
+        const godot::Vector3 position(static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z));
+        if (const auto* record = vm_->placed().find(ref)) {
+            const double xyz[3] = {at.x, at.y, at.z};
+            vm_->placed().move(ref, 0, xyz, record->rotation);
+        } else {
+            keep(ref, get_ref_space(ref), position, static_cast<double>(rotation_of(ref).z));
+        }
+    }
+    // The others: where the placement put them (the AI's walks, MoveTo).
+    for (const auto& [ref, place] : world_->placement().places()) {
+        if (!triggers_.actors().contains(ref) && vm_->placed().find(ref) == nullptr) {
+            keep(ref, place.space, place.position, static_cast<double>(place.rotation_z));
+        }
+    }
+}
+
+void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
+    capture_actor_places();
     save::SaveWriter& out = writer->core();
     ByteWriter head;
     head.text(SKYDOT_VERSION);
@@ -300,8 +336,14 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
-    // The dead lie where they fell (the actor places are not saved).
+    // The dead lie where they fell, the living where they stood.
     if (world_.is_valid()) {
+        for (const auto& [ref, place] : actors_.living_places()) {
+            world_->placement().set_place(ref, place.space,
+                                          godot::Vector3(static_cast<real_t>(place.x), static_cast<real_t>(place.y),
+                                                         static_cast<real_t>(place.z)),
+                                          static_cast<float>(place.rot_z));
+        }
         for (const auto& [ref, place] : actors_.corpse_places()) {
             world_->placement().set_place(ref, place.space,
                                           godot::Vector3(static_cast<real_t>(place.x), static_cast<real_t>(place.y),
@@ -347,7 +389,7 @@ godot::Error SkydotPapyrus::commit_load() {
     return godot::OK;
 }
 
-godot::PackedByteArray SkydotPapyrus::save_state() const {
+godot::PackedByteArray SkydotPapyrus::save_state() {
     godot::Ref<SkydotSaveWriter> writer;
     writer.instantiate();
     write_sections(writer);

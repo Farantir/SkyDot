@@ -99,6 +99,17 @@ void SkydotPapyrus::register_phantoms(std::uint32_t ref, godot::Node3D* node) {
     triggers_.set_volumes(ref, std::move(volumes));
 }
 
+void SkydotPapyrus::forget_actor_position(std::int64_t actor) {
+    const auto form = static_cast<std::uint32_t>(actor);
+    // A script-placed actor keeps where it was last seen as its record's place.
+    if (const vm::Vec3* at = triggers_.actor_position(form); at != nullptr && vm_->placed().find(form) != nullptr) {
+        const double position[3] = {at->x, at->y, at->z};
+        const auto* record = vm_->placed().find(form);
+        vm_->placed().move(form, 0, position, record->rotation);
+    }
+    triggers_.forget_position(form);
+}
+
 void SkydotPapyrus::update_actor(std::int64_t actor, const Vector3& position) {
     const auto form = static_cast<std::uint32_t>(actor);
     triggers_.move_actor(

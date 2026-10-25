@@ -341,6 +341,8 @@ func _make_game_nodes() -> void:
 	placed.actor_built.connect(corpses.on_actor_arrived)  # a dead one built again lies down
 	magic_world = MagicWorld.new(self)
 	host.add_child(magic_world)
+	placed.place_on_screen = place
+	placed.streamer = streamer
 	papyrus.ref_placed.connect(placed.place)
 	papyrus.ref_deleted.connect(placed.remove)
 	papyrus.destruction_model.connect(placed.swap_model)
@@ -1305,6 +1307,7 @@ func quest_name(quest: int) -> String:
 ## A cell was built and shown: its scripts attach, the shell hears of it.
 func _on_cell_built(cell: Node3D, cell_id: int) -> void:
 	_bridge.scripts_loaded(cell, cell_id)
+	placed.cell_built(cell_id)
 	corpses.on_place_built(cell)
 	combat.gear.on_place_built(cell)
 	place_built.emit(cell, cell_id)

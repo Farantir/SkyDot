@@ -8,6 +8,7 @@
 #include <godot_cpp/variant/utility_functions.hpp>
 
 #include <algorithm>
+#include <cstdio>
 
 using godot::Array;
 using godot::Dictionary;
@@ -94,7 +95,12 @@ void SkydotPapyrus::fill_aliases(std::uint32_t quest) {
                 fill = index >= 0 ? static_cast<std::uint32_t>(get_alias_ref(other, index)) : 0;
             }
         }
-        quests_.set_fill(alias_handle(quest, form_of(alias["id"])), fill);
+        const auto handle = alias_handle(quest, form_of(alias["id"]));
+        // A reference this alias created on an earlier start (and a save kept) is not made again.
+        if (fill == 0 && form_of(alias["created_object"]) != 0 && vm_->placed().find(quests_.fill(handle)) != nullptr) {
+            continue;
+        }
+        quests_.set_fill(handle, fill);
     }
     // An alias that creates an object (ALCO) "in" another alias's actor (ALCA):
     // the object goes into that actor's inventory, once (MS13's GoldenClaw is
@@ -106,14 +112,32 @@ void SkydotPapyrus::fill_aliases(std::uint32_t quest) {
         if (object == 0) {
             continue;
         }
+        const auto handle = alias_handle(quest, form_of(alias["id"]));
+        if (vm_->placed().find(quests_.fill(handle)) != nullptr) {
+            continue; // made on an earlier start
+        }
         const auto holder = quests_.fill(alias_handle(quest, form_of(alias["create_at"])));
         if (holder != 0 && actors_.is_actor(holder)) {
             if (get_item_count(holder, object) == 0) {
                 add_item(holder, object, 1);
             }
+        } else if (holder != 0) {
+            // Created at a reference (a marker): the actor or object stands there; flag 0x8000 (ALFL "initially
+            // disabled", bit 15) makes it start disabled, a script enables it.
+            const bool disabled = (static_cast<std::int64_t>(alias["flags"]) & 0x8000) != 0;
+            const std::uint32_t made = create_at_reference(object, holder, disabled);
+            if (made != 0) {
+                quests_.set_fill(handle, made);
+                std::printf("quest alias %s: created 0x%X at 0x%X%s\n", String(alias["name"]).utf8().get_data(), made,
+                            holder, disabled ? " (disabled)" : "");
+            } else {
+                // An object (a book at a marker): not made yet, and so many that a warning each would drown the log.
+                std::printf("quest alias %s: 0x%X is no actor, not created at 0x%X\n", String(alias["name"]).utf8().get_data(),
+                            object, holder);
+            }
         } else {
             godot::UtilityFunctions::push_warning(
-                String("quest alias creating 0x") + String::num_int64(object, 16) + String(": no actor to hold it"));
+                String("quest alias creating 0x") + String::num_int64(object, 16) + String(": no reference to create at"));
         }
     }
 }

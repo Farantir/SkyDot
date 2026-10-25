@@ -222,6 +222,17 @@ std::vector<std::pair<std::uint32_t, std::uint8_t>> ActorStates::faction_reactio
     return out;
 }
 
+void ActorStates::set_living_place(std::uint32_t ref, const CorpsePlace& place) {
+    if (base_of(ref) != nullptr) {
+        living_[ref] = place;
+    }
+}
+
+std::optional<ActorStates::CorpsePlace> ActorStates::living_place(std::uint32_t ref) const {
+    const auto it = living_.find(ref);
+    return it != living_.end() ? std::optional<CorpsePlace>(it->second) : std::nullopt;
+}
+
 void ActorStates::set_allowed_to_fly(std::uint32_t ref, bool allowed) {
     if (Record* r = touch(ref, av::k_health)) {
         r->no_flying = !allowed;
@@ -468,6 +479,7 @@ void ActorStates::clear() {
     base_flags_.clear();
     relationships_.clear();
     reactions_.clear();
+    living_.clear();
 }
 
 void ActorStates::adopt(ActorStates&& other) {
@@ -476,6 +488,7 @@ void ActorStates::adopt(ActorStates&& other) {
     base_flags_ = std::move(other.base_flags_);
     relationships_ = std::move(other.relationships_);
     reactions_ = std::move(other.reactions_);
+    living_ = std::move(other.living_);
     bases_.clear();
     deaths_.clear();
     due_.clear();
@@ -536,6 +549,15 @@ std::vector<std::uint8_t> ActorStates::save() const {
         w.u32(static_cast<std::uint32_t>(key >> 32));
         w.u32(static_cast<std::uint32_t>(key & 0xFFFFFFFFU));
         w.u8(reaction);
+    }
+    w.u32(static_cast<std::uint32_t>(living_.size()));
+    for (const auto& [ref, place] : living_) {
+        w.u32(ref);
+        w.u32(place.space);
+        w.f64(place.x);
+        w.f64(place.y);
+        w.f64(place.z);
+        w.f64(place.rot_z);
     }
     return w.out;
 }
@@ -662,6 +684,22 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 return false;
             }
             out.set_faction_reaction(from, to, reaction);
+        }
+    }
+    if (version >= 7) {
+        std::uint32_t n_living = 0;
+        if (!r.count(n_living, 40)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n_living; ++i) {
+            std::uint32_t ref = 0;
+            CorpsePlace place;
+            if (!r.u32(ref) || !r.u32(place.space) || !r.f64(place.x) || !r.f64(place.y) || !r.f64(place.z) ||
+                !r.f64(place.rot_z) || !std::isfinite(place.x) || !std::isfinite(place.y) || !std::isfinite(place.z) ||
+                !std::isfinite(place.rot_z)) {
+                return false;
+            }
+            out.living_[ref] = place;
         }
     }
     return r.at_end();

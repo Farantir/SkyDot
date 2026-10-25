@@ -1087,6 +1087,9 @@ void SkydotAi::detach(Mind& m) {
         at = world_->nearest_nav_point(m.space, m.target->position, 512.0);
     }
     world_->placement().set_place(m.ref, m.space, at, 0.0F);
+    if (vm_ != nullptr) {
+        vm_->forget_actor_position(m.ref);
+    }
 }
 
 void SkydotAi::update(double seconds) {

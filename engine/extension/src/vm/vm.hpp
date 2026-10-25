@@ -177,6 +177,10 @@ public:
     /// Start a thread per attached script that handles `event`. Returns how
     /// many started.
     std::size_t send_event(std::uint32_t form, std::string_view event, std::vector<Value> args);
+    /// Run the threads that are ready now (events just sent, an OnInit) without advancing the clock; a no-op
+    /// while the VM is already running threads. A caller that sends one event after another needs the first
+    /// to have finished (OnInit puts a state script into its state, and events find their handler by state).
+    void run_ready();
     /// Start a thread calling a global function, or a method on an instance.
     /// Returns its id, or 0 if there is no such function.
     std::uint64_t call_global(std::string_view cls, std::string_view fn, std::vector<Value> args);
@@ -389,6 +393,7 @@ private:
     void fire_scheduled();
     std::uint64_t rng_ = 0x9E3779B97F4A7C15ULL;
     std::uint64_t next_thread_ = 1;
+    bool running_ = false; ///< update or run_ready is running threads.
     std::uint64_t budget_ = 100000;
     std::uint64_t instructions_ = 0;
     std::uint64_t errors_ = 0;

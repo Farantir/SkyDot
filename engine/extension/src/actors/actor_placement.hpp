@@ -53,6 +53,8 @@ public:
     void clear_places();
     /// Where `ref` was moved to; null if it stands where the editor put it.
     const Place* moved_place(std::uint32_t ref) const;
+    /// Every actor moved from its editor place, and where.
+    const std::unordered_map<std::uint32_t, Place>& places() const { return places_; }
     /// Empty if `ref` is no placed actor.
     std::optional<Where> where(std::uint32_t ref) const;
 

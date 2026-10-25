@@ -600,11 +600,27 @@ void Vm::clear() {
     instances_.clear();
 }
 
+void Vm::run_ready() {
+    if (running_) {
+        return; // called from a native: the update loop picks the new threads up
+    }
+    running_ = true;
+    for (std::size_t i = 0; i < threads_.size(); ++i) {
+        auto& t = *threads_[i];
+        if (!t.done && t.wake_at <= time_) {
+            t.wait_for.clear();
+            run(t);
+        }
+    }
+    running_ = false;
+}
+
 void Vm::update(double seconds) {
     time_ += seconds;
     fire_timers();
     fire_scheduled();
     // Threads started while running are appended and run in this update too.
+    running_ = true;
     for (std::size_t i = 0; i < threads_.size(); ++i) {
         auto& t = *threads_[i];
         if (!t.done && t.wake_at <= time_) {
@@ -612,6 +628,7 @@ void Vm::update(double seconds) {
             run(t);
         }
     }
+    running_ = false;
     std::erase_if(threads_, [&](const std::unique_ptr<Thread>& t) {
         if (t->done && t->keep_result) {
             results_[t->id] = t->result;

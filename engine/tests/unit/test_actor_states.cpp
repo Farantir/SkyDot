@@ -568,10 +568,43 @@ TEST_CASE("ACTV 6 keeps base flags, relationships and faction relations, version
     // Version 5 ends after the dying actors: the same bytes without the three counts load, and bytes left over
     // from a newer version do not.
     auto empty = make().save();
-    REQUIRE(empty.size() > 12);
-    const std::vector<std::uint8_t> v5(empty.begin(), empty.end() - 12);
+    REQUIRE(empty.size() > 16);
+    const std::vector<std::uint8_t> v5(empty.begin(), empty.end() - 16);
     ActorStates old;
     REQUIRE(ActorStates::load(skydot::save::ByteReader(v5), old, 5));
     CHECK_FALSE(old.has_faction_reactions());
     CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(empty), scratch, 5));
+    CHECK(ActorStates::load(skydot::save::ByteReader(empty), scratch, 7));
+}
+
+TEST_CASE("ACTV 7 keeps where living actors stood, version 6 still loads", "[actor][save]") {
+    auto s = make();
+    s.set_living_place(k_guard, {.space = 0x3C, .x = 1.5, .y = -2.5, .z = 300.0, .rot_z = 0.25});
+    s.set_living_place(k_rock, {.space = 0x3C}); // no actor: ignored
+    CHECK(s.living_place(k_guard)->space == 0x3C);
+    CHECK_FALSE(s.living_place(k_rock).has_value());
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    const auto place = t.living_place(k_guard);
+    REQUIRE(place.has_value());
+    CHECK(place->x == Approx(1.5));
+    CHECK(place->y == Approx(-2.5));
+    CHECK(place->z == Approx(300.0));
+    CHECK(place->rot_z == Approx(0.25));
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 6 ends after the faction relations: the same bytes without the place count load.
+    auto empty = make().save();
+    const std::vector<std::uint8_t> v6(empty.begin(), empty.end() - 4);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(v6), old, 6));
+    CHECK_FALSE(old.living_place(k_guard).has_value());
+    t.clear_living_places();
+    CHECK_FALSE(t.living_place(k_guard).has_value());
 }

@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 6;
+    static constexpr std::uint32_t k_section_version = 7;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -73,6 +73,12 @@ public:
     [[nodiscard]] std::optional<CorpsePlace> corpse_place(std::uint32_t ref) const;
     /// Every actor with a corpse place, ascending.
     [[nodiscard]] std::vector<std::pair<std::uint32_t, CorpsePlace>> corpse_places() const;
+    /// Where a living actor stood when the game was saved (version 7): kept apart from the corpse's place, put back
+    /// by the load. `clear_living_places` drops them all (they are captured again at the next save).
+    void set_living_place(std::uint32_t ref, const CorpsePlace& place);
+    void clear_living_places() { living_.clear(); }
+    [[nodiscard]] std::optional<CorpsePlace> living_place(std::uint32_t ref) const;
+    [[nodiscard]] const std::map<std::uint32_t, CorpsePlace>& living_places() const { return living_; }
     /// Every actor that is dead, ascending.
     [[nodiscard]] std::vector<std::uint32_t> dead_refs() const;
 
@@ -158,7 +164,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors; below 6 no base flags, relationships or faction relations.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors; below 6 no base flags, relationships or faction relations; below 7 no living places.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -205,7 +211,8 @@ private:
     };
     std::map<std::uint32_t, BaseFlags> base_flags_;                    ///< By NPC_; saved.
     std::map<std::uint64_t, std::int32_t> relationships_;              ///< (low ref << 32 | high ref); saved.
-    std::map<std::uint64_t, std::uint8_t> reactions_;                  ///< (from << 32 | to); saved.
+    std::map<std::uint64_t, std::uint8_t> reactions_;
+    std::map<std::uint32_t, CorpsePlace> living_;                      ///< Where living actors stood at the save.                  ///< (from << 32 | to); saved.
 };
 
 } // namespace skydot::vm

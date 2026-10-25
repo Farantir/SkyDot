@@ -724,3 +724,25 @@ TEST_CASE("the census counts the natives scripts call by call instruction, throu
     CHECK(entries[2].sites == 1);
     CHECK(entries[2].bound);
 }
+
+TEST_CASE("run_ready runs an OnInit at once so an event sent after it finds the new state's handler", "[vm][states][events]") {
+    // The default state's OnInit goes to "alive"; OnDeath exists only there (a dragon's script).
+    auto goto_state = method("GotoState", {{"newState", "String"}}, {});
+    goto_state.add(Op::assign, {ident("::State"), ident("newState")});
+    auto init = method("OnInit", {}, {}, "None", "");
+    init.add(Op::callmethod, {ident("GotoState"), ident("self"), ident("::NoneVar"), str("alive")});
+    auto death = method("OnDeath", {}, {}, "None", "alive");
+    note(death, "died while alive");
+    Rig rig;
+    rig.add(script("Mortal", {goto_state, init, death}));
+    auto* instance = rig.vm.attach(0x61, "mortal");
+    REQUIRE(instance != nullptr);
+    CHECK(rig.vm.send_event(0x61, "OnInit", {}) == 1);
+    // Before OnInit has run the instance is in its default state: the event finds no handler.
+    CHECK(rig.vm.send_event(0x61, "OnDeath", {}) == 0);
+    rig.vm.run_ready();
+    CHECK(instance->state() == "alive");
+    CHECK(rig.vm.send_event(0x61, "OnDeath", {}) == 1);
+    rig.vm.run_ready();
+    CHECK(rig.notes == std::vector<std::string>{"died while alive"});
+}

@@ -543,8 +543,14 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
         return vec3_of(it->second.position);
     }
-    if (const vm::Vec3* actor = triggers_.actor_position(ref)) {
+    // An actor on screen reports where it is (the AI, a few times a second); one that is not, or lies dead,
+    // is where the placement says (its walk off screen, its corpse place).
+    const ActorPlacement::Place* moved = world_.is_valid() ? world_->placement().moved_place(ref) : nullptr;
+    if (const vm::Vec3* actor = triggers_.actor_position(ref); actor != nullptr && (moved == nullptr || !actors_.is_dead(ref))) {
         return Vector3(actor->x, actor->y, actor->z);
+    }
+    if (moved != nullptr) {
+        return moved->position;
     }
     const Dictionary info = ref_info(ref);
     if (info.is_empty() && world_.is_valid()) {

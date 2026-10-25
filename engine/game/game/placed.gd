@@ -22,6 +22,11 @@ var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
 var _ai: SkydotAi  # attaches the actors (summons) it builds; may be null
 var _warn := WarnOnce.new("", true)
+## Set by the session: where the place on screen is. An actor made for a cell that is not built (a quest creates a
+## soldier at a marker in Whiterun) waits for it.
+var place_on_screen: Place
+var streamer: SkydotStreamer
+var _waiting: Array[Array] = []  # [ref, base, cell, position, rotation, scale, disabled]
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi = null) -> void:
@@ -42,6 +47,9 @@ func place(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3,
 func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3, scale: float,
 		disabled: bool) -> void:
 	if _world.is_actor_base(base):
+		if not _cell_is_built(cell, position):
+			_waiting.append([ref, base, cell, position, rotation, scale, disabled])
+			return
 		_build_actor(ref, base, position, rotation, disabled)
 		return
 	var explosion := _world.get_explosion(base)
@@ -66,6 +74,28 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 
 ## A summon or another actor a script placed: a SkydotActor like the cell's, under this node, taken
 ## by the AI (its NPC_ comes from the reference's base).
+## Whether the cell `cell` (0: the one the player is in) is built now: the interior on screen, or the exterior
+## cell at `position` in the worldspace on screen.
+func _cell_is_built(cell: int, position: Vector3) -> bool:
+	if cell == 0 or place_on_screen == null or streamer == null:
+		return true
+	var info := _world.get_cell(cell)
+	if info.is_empty():
+		return true
+	if info["interior"]:
+		return streamer.world_id == 0 and place_on_screen.cell_id == cell
+	return streamer.world_id != 0 and info["world"] == streamer.world_id and streamer.get_loaded_cell(
+		Vector2i(floori(position.x / SkydotWorld.CELL_UNITS), floori(position.y / SkydotWorld.CELL_UNITS))) != null
+
+
+## A cell was built: the actors that waited for one are built if theirs is.
+func cell_built(_cell_id: int) -> void:
+	var waiting := _waiting
+	_waiting = []
+	for entry in waiting:
+		_build(entry[0], entry[1], entry[2], entry[3], entry[4], entry[5], entry[6])
+
+
 func _build_actor(ref: int, base: int, position: Vector3, rotation: Vector3, disabled: bool) -> void:
 	# A dead one built again (after a load) lies where it died, not where it was placed.
 	var corpse := _papyrus.get_corpse_place(ref)
@@ -113,6 +143,7 @@ func _expire(ref: int) -> void:
 
 ## The reference is gone (Delete, an effect that ended, a loaded save).
 func remove(ref: int) -> void:
+	_waiting = _waiting.filter(func(entry: Array) -> bool: return entry[0] != ref)
 	var node := _world.find_ref_node(ref)
 	if node != null and is_ancestor_of(node):
 		print("placed 0x%08X removed" % ref)

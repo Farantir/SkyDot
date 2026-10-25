@@ -89,7 +89,7 @@ void SkydotPapyrus::relocate_ref(std::uint32_t ref, std::uint32_t cell, const Ve
     if (actors_.is_actor(ref)) {
         // A placed actor's place is the placement's (the AI and the cell builder read it); a runtime
         // actor's is its record. The triggers see the move as any other step.
-        if (!runtime && cell != 0) {
+        if (cell != 0) {
             world_->placement().set_place(ref, world_->data().cell_space(cell), position, rotation.z);
         }
         update_actor(ref, position);
@@ -149,6 +149,9 @@ std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initial
     attached_.insert(id);
     if (attach_scripts(id, placed_info(placed).get("scripts", Array()), 0) != 0) {
         vm_->send_event(id, "OnInit", {});
+        // Its OnInit runs now, not at the next update: a script puts itself in its state there (a dragon's
+        // "alive"), and an event sent before that (a kill in the same frame) would find no handler.
+        vm_->run_ready();
     }
     if (explosion != nullptr) {
         if (const auto sound = static_cast<std::int64_t>(explosion->sound()); sound != 0) {
@@ -158,6 +161,27 @@ std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initial
     emit_signal("ref_placed", static_cast<std::int64_t>(id), static_cast<std::int64_t>(base),
                 static_cast<std::int64_t>(placed.cell), position, rotation, placed.scale, initially_disabled);
     return id;
+}
+
+std::uint32_t SkydotPapyrus::create_at_reference(std::uint32_t base, std::uint32_t at, bool disabled) {
+    if (world_.is_null() || world_->data().root() == nullptr) {
+        return 0;
+    }
+    const std::uint32_t npc = pick_actor_form(*world_->data().root(), base, 0);
+    if (npc == 0 || lookup(world_->data().root()->npcs(), npc) == nullptr) {
+        return 0; // an object (a book at a marker): not made yet
+    }
+    vm::PlacedRef placed;
+    placed.base = npc;
+    placed.cell = cell_of(at);
+    const Vector3 position = position_of(at);
+    const Vector3 rotation = rotation_of(at);
+    for (int i = 0; i < 3; ++i) {
+        placed.position[i] = static_cast<double>(position[i]);
+    }
+    placed.rotation[2] = static_cast<double>(rotation.z);
+    placed.scale = 1.0;
+    return place_ref(placed, disabled);
 }
 
 std::int64_t SkydotPapyrus::spawn_actor(std::int64_t base, std::int64_t cell, const Vector3& position,

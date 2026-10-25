@@ -67,6 +67,8 @@ public:
         triggers_.erase(ref);
         actors_.erase(ref);
     }
+    /// Forget where `actor` was (it left the screen); the triggers it is inside keep it.
+    void forget_position(std::uint32_t actor) { actors_.erase(actor); }
     void clear() {
         triggers_.clear();
         actors_.clear();

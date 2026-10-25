@@ -412,6 +412,8 @@ public:
     /// Move `actor` to `position` (Skyrim space, game units): OnTriggerEnter
     /// and OnTriggerLeave for the trigger volumes it crosses.
     void update_actor(std::int64_t actor, const godot::Vector3& position);
+    /// The actor left the screen: its position is the placement's from now on.
+    void forget_actor_position(std::int64_t actor);
 
     /// Advance the VM's clock and run what is ready.
     void update(double seconds);
@@ -622,7 +624,10 @@ public:
     /// pack's world hash and load order), the VM's (VMST, INVT, ANIM, FLST,
     /// PLCD, DEST), RFST (what scripts changed per reference), PAPY
     /// (attached references, triggers, actors) and QUST.
-    void write_sections(const godot::Ref<SkydotSaveWriter>& writer) const;
+    void write_sections(const godot::Ref<SkydotSaveWriter>& writer);
+    /// Before a save: where living actors stand now (the ones on screen report it, the others the placement), kept
+    /// for ACTV; script-placed actors on screen update their record.
+    void capture_actor_places();
     /// Phase one of a load: check HEAD against the open pack and decode every
     /// section into new objects. The running state is not touched, whatever
     /// the outcome; `get_last_error` says what was wrong.
@@ -634,7 +639,7 @@ public:
     void cancel_load();
     /// The sections above as a file of their own, and prepare plus commit of
     /// one: for tests and tools; the game saves through SaveService.
-    godot::PackedByteArray save_state() const;
+    godot::PackedByteArray save_state();
     godot::Error load_state(const godot::PackedByteArray& bytes);
     godot::String get_last_error() const;
 
@@ -726,6 +731,8 @@ private:
     /// PlaceAtMe: a new runtime reference of `base` where `source` is.
     std::uint32_t place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled);
     std::uint32_t place_ref(const vm::PlacedRef& placed, bool initially_disabled);
+    /// A quest alias creates `base` (an NPC_ or a leveled actor; objects are not made yet) at reference `at`; the new reference, 0 if none.
+    std::uint32_t create_at_reference(std::uint32_t base, std::uint32_t at, bool disabled);
     /// ObjectReference.MoveTo: `ref` to `target`'s position plus `offset`, with its rotation if `match_rotation`.
     void move_ref_to(std::uint32_t ref, std::uint32_t target, const godot::Vector3& offset, bool match_rotation);
     /// Put `ref` at a position and rotation (radians) in `cell` (0: where it is). An actor moves in the scene
