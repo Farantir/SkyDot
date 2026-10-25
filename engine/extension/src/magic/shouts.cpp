@@ -8,6 +8,22 @@
 
 namespace skydot::magic {
 
+std::string word_spelling(const std::string& full) {
+    std::string out;
+    for (const char c : full) {
+        switch (c) {
+        case '1': out += "aa"; break;
+        case '2': out += "ei"; break;
+        case '3': out += "ii"; break;
+        case '4': out += "ah"; break;
+        case '8': out += "oo"; break;
+        default: out += c; break;
+        }
+    }
+    return out;
+}
+
+
 int words_for_hold(double seconds, const ShoutSettings& settings) {
     if (seconds < settings.shout_time1) {
         return 1;

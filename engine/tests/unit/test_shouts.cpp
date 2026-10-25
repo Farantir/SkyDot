@@ -312,3 +312,12 @@ TEST_CASE("MAGC version 2 carries the ShoutBook and version 1 still reads", "[sh
     damaged.shouts.pop_back();
     CHECK_FALSE(magic::check_magc(*rig.world, damaged));
 }
+
+TEST_CASE("word_spelling gives the dragon font's digits their vowels", "[shouts]") {
+    CHECK(magic::word_spelling("D4") == "Dah");
+    CHECK(magic::word_spelling("F1s") == "Faas");
+    CHECK(magic::word_spelling("F2m") == "Feim");
+    CHECK(magic::word_spelling("Z3") == "Zii");
+    CHECK(magic::word_spelling("K8r") == "Koor");
+    CHECK(magic::word_spelling("Fus") == "Fus");
+}

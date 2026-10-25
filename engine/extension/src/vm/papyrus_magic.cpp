@@ -249,7 +249,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     }
     [[nodiscard]] std::string word_name(std::uint32_t word) const {
         const auto* w = lookup(world_.words_of_power(), word);
-        return w != nullptr && w->name() != nullptr ? w->name()->str() : hex(word);
+        return w != nullptr && w->name() != nullptr ? magic::word_spelling(w->name()->str()) : hex(word);
     }
     void message(const std::string& text) {
         godot::UtilityFunctions::print(to_godot("[Notification] " + text));
@@ -1428,7 +1428,7 @@ Dictionary SkydotPapyrus::shout_info(std::int64_t actor_in, std::int64_t shout_i
             Dictionary d;
             const auto* word = lookup(m->world_.words_of_power(), w->word());
             d["word"] = id(w->word());
-            d["name"] = word != nullptr && word->name() != nullptr ? to_godot(word->name()->str()) : String();
+            d["name"] = word != nullptr && word->name() != nullptr ? to_godot(magic::word_spelling(word->name()->str())) : String();
             d["translation"] = word != nullptr && word->translation() != nullptr ? to_godot(word->translation()->str()) : String();
             d["known"] = m->shouts.is_word_known(actor, w->word());
             d["unlocked"] = m->shouts.is_word_unlocked(actor, w->word());

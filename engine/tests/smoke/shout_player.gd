@@ -263,6 +263,7 @@ func _run(pack_dir: String) -> void:
 	_vm("TeachWord", WORD_DAH)
 	_vm("UnlockWord", WORD_DAH)
 	expect(papyrus.shout_info(PLAYER, UNRELENTING_FORCE)["usable"] == 3, "all three words are usable")
+	expect(_word(2)["name"] == "Dah", "Dah is spelled out of the dragon font's D4: %s" % _word(2)["name"])
 
 	# ---- a tap says one word still; 0.5 s are two words
 	_shouts.clear()

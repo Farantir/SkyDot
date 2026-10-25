@@ -30,6 +30,13 @@ struct ShoutSettings {
     double shout_time2 = 0.9;
 };
 
+/// The spelling of a word of power for display. Skyrim.esm stores a word's FULL in the dragon font's
+/// keystrokes: a digit stands for a vowel digraph (Dah is "D4", Faas "F1s", Feim "F2m", Zii "Z3", Koor
+/// "K8r"). The game draws it in the dragon font; this gives the Latin spelling UESP uses. Only the digits
+/// the data uses are mapped (1 aa, 2 ei, 3 ii, 4 ah, 8 oo; read off the shouts Unrelenting Force, Whirlwind
+/// Sprint, Fade, Ethereal, Fear, Elemental Fury, Clear Skies, whose words are known); any other digit stays.
+[[nodiscard]] std::string word_spelling(const std::string& full);
+
 /// Words spoken after holding the button for `seconds`: 1 below time1, 2 below time2, else 3.
 [[nodiscard]] int words_for_hold(double seconds, const ShoutSettings& settings);
 
