@@ -420,6 +420,8 @@ public:
     /// An actor for runtime reference `ref` of NPC_ `base` at `position` (Skyrim space) facing
     /// `rotation_z` (a summon, PlaceAtMe): the node is tagged with `ref` so that
     /// SkydotAi.attach_built takes it. Null if the NPC does not build.
+    /// Build the parts of the built actor `ref` (NPC_ or leveled list `base`) again from what it wears now.
+    bool refresh_actor_parts(std::int64_t ref, std::int64_t base);
     godot::Node3D* build_placed_actor(std::int64_t ref, std::int64_t base, const godot::Vector3& position,
                                       double rotation_z);
     /// The placed actors (ACHR refs) of an interior or exterior cell, as

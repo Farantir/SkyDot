@@ -335,6 +335,7 @@ func _make_game_nodes() -> void:
 	visual_effects = VisualEffects.new(world, host, func() -> Vector3: return _feet + Vector3.UP * 1.2)
 	papyrus.visual_effect.connect(visual_effects.on_visual_effect)
 	papyrus.sub_graph_animation.connect(visual_effects.on_sub_graph_animation)
+	papyrus.worn_changed.connect(_on_worn_changed)
 	placed = PlacedRefs.new(world, papyrus, ai)
 	host.add_child(placed)
 	magic_world = MagicWorld.new(self)
@@ -455,6 +456,14 @@ func transfer(from: int, to: int, form: int, count: int, extra := -1) -> int:
 	if moved > 0:
 		items_changed.emit()
 	return moved
+
+
+## An actor's worn armor changed (EquipItem, UnequipItem): its built body gets the parts of what it wears
+## now (a dragon's underskin and skin hider replace its skin). The player has no body to dress.
+func _on_worn_changed(ref: int) -> void:
+	if ref == SkydotPapyrus.PLAYER_REF or world.find_ref_node(ref) == null:
+		return
+	world.refresh_actor_parts(ref, papyrus.get_ref_base(ref))
 
 
 ## Everything `from` has, to `to`; returns the number of stacks moved.

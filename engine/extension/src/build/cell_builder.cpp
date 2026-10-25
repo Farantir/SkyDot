@@ -1002,6 +1002,86 @@ godot::Node3D* CellBuilder::build_placed_actor(std::uint32_t ref, std::uint32_t 
     return root;
 }
 
+void CellBuilder::attach_actor_parts(godot::Node3D* node, godot::Skeleton3D* skeleton, const ActorPlan& plan,
+                                      BuildStats& stats) {
+    for (const auto& part : plan.parts) {
+        const godot::Ref<SkydotModel> scene = resource(String::utf8(part.c_str()));
+        if (scene.is_null()) {
+            if (!stats.missing.has(String::utf8(part.c_str()))) {
+                stats.missing.push_back(String::utf8(part.c_str()));
+            }
+            continue;
+        }
+        godot::Node* model = scene->instantiate();
+        if (model == nullptr) {
+            continue;
+        }
+        if (options_.skyrim_materials) {
+            stats.materials += materials().apply(model);
+        }
+        node->add_child(model);
+        const int before = skeleton->get_child_count();
+        stats.actor_parts += SkydotAnimation::attach_skinned(model, skeleton);
+        if (std::find(plan.skin_parts.begin(), plan.skin_parts.end(), part) != plan.skin_parts.end()) {
+            for (int i = before; i < skeleton->get_child_count(); ++i) {
+                skeleton->get_child(i)->set_meta("skydot_skin", true);
+            }
+        }
+        node->remove_child(model);
+        memdelete(model);
+    }
+    // Under a hood or helmet the head's hair shapes ("Hair…", hairlines too)
+    // would show through.
+    if (plan.hide_hair) {
+        for (int i = 0; i < skeleton->get_child_count(); ++i) {
+            auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
+            if (mesh != nullptr && String(mesh->get_name()).to_lower().begins_with("hair")) {
+                mesh->set_visible(false);
+            }
+        }
+    }
+    // Body skin takes this actor's tone: its own copy of the shared material.
+    const godot::Color tone(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);
+    for (int i = 0; i < skeleton->get_child_count(); ++i) {
+        auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
+        if (mesh == nullptr || mesh->get_mesh().is_null()) {
+            continue;
+        }
+        for (int s = 0; s < mesh->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::ShaderMaterial> m = mesh->get_surface_override_material(s);
+            if (m.is_valid() && static_cast<bool>(m->get_shader_parameter("use_skin_tint"))) {
+                godot::Ref<godot::ShaderMaterial> own = m->duplicate();
+                own->set_shader_parameter("skin_tint", shader_rgb(tone));
+                mesh->set_surface_override_material(s, own);
+            }
+        }
+    }
+}
+
+bool CellBuilder::refresh_actor_parts(godot::Node3D* node, std::uint32_t ref, std::uint32_t base) {
+    if (node == nullptr || assets_ == nullptr) {
+        return false;
+    }
+    auto* skeleton = godot::Object::cast_to<godot::Skeleton3D>(node->find_child("Skeleton", true, false));
+    if (skeleton == nullptr) {
+        return false;
+    }
+    const auto plan = plan_for(*world_fb(), base, ref, assets_, worn_);
+    if (!plan.missing.empty()) {
+        return false;
+    }
+    // The parts are the skeleton's mesh children; the weapons hang on bone attachments and stay.
+    for (int i = skeleton->get_child_count() - 1; i >= 0; --i) {
+        if (auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i))) {
+            skeleton->remove_child(mesh);
+            memdelete(mesh);
+        }
+    }
+    BuildStats stats;
+    attach_actor_parts(node, skeleton, plan, stats);
+    return true;
+}
+
 void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats) {
     if (actor.disabled) {
         ++stats.disabled;
@@ -1043,52 +1123,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
     node->add_child(units);
     units->add_child(skeleton);
 
-    for (const auto& part : plan.parts) {
-        const godot::Ref<SkydotModel> scene = resource(String::utf8(part.c_str()));
-        if (scene.is_null()) {
-            if (!stats.missing.has(String::utf8(part.c_str()))) {
-                stats.missing.push_back(String::utf8(part.c_str()));
-            }
-            continue;
-        }
-        godot::Node* model = scene->instantiate();
-        if (model == nullptr) {
-            continue;
-        }
-        if (options_.skyrim_materials) {
-            stats.materials += materials().apply(model);
-        }
-        node->add_child(model);
-        stats.actor_parts += SkydotAnimation::attach_skinned(model, skeleton);
-        node->remove_child(model);
-        memdelete(model);
-    }
-    // Under a hood or helmet the head's hair shapes ("Hair…", hairlines too)
-    // would show through.
-    if (plan.hide_hair) {
-        for (int i = 0; i < skeleton->get_child_count(); ++i) {
-            auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
-            if (mesh != nullptr && String(mesh->get_name()).to_lower().begins_with("hair")) {
-                mesh->set_visible(false);
-            }
-        }
-    }
-    // Body skin takes this actor's tone: its own copy of the shared material.
-    const godot::Color tone(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);
-    for (int i = 0; i < skeleton->get_child_count(); ++i) {
-        auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
-        if (mesh == nullptr || mesh->get_mesh().is_null()) {
-            continue;
-        }
-        for (int s = 0; s < mesh->get_mesh()->get_surface_count(); ++s) {
-            const godot::Ref<godot::ShaderMaterial> m = mesh->get_surface_override_material(s);
-            if (m.is_valid() && static_cast<bool>(m->get_shader_parameter("use_skin_tint"))) {
-                godot::Ref<godot::ShaderMaterial> own = m->duplicate();
-                own->set_shader_parameter("skin_tint", shader_rgb(tone));
-                mesh->set_surface_override_material(s, own);
-            }
-        }
-    }
+    attach_actor_parts(node, skeleton, plan, stats);
 
     const Locomotion& loco = locomotion_of(plan.behaviour);
     const ActorClips clips = actor_clips(plan);

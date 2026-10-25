@@ -27,6 +27,7 @@
 #include <godot_cpp/classes/animation.hpp>
 #include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/resource.hpp>
+#include <godot_cpp/classes/skeleton3d.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_byte_array.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
@@ -111,6 +112,9 @@ public:
     /// `position` (Skyrim space) facing `rotation_z`; null if the NPC does not build.
     godot::Node3D* build_placed_actor(std::uint32_t ref, std::uint32_t base, const godot::Vector3& position,
                                       float rotation_z);
+    /// Build the parts of the built actor `node` (reference `ref`, base `base`) again from what it wears
+    /// now (the worn provider): after an EquipItem or UnequipItem. False if it has no skeleton or no plan.
+    bool refresh_actor_parts(godot::Node3D* node, std::uint32_t ref, std::uint32_t base);
 
     /// Virtual paths of the resources a cell needs, and a request for them on
     /// the asset cache's threads. A request returns how many are still pending.
@@ -198,6 +202,9 @@ private:
     };
     static ActorSpec spec_of(const bethconv::pack::wfb::ActorRef& actor, const ActorPlacement::Place* place);
     void place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats);
+    /// The skin, worn armor and head of `plan` as meshes on `skeleton` (hair hidden under a helmet,
+    /// the skin tone applied). `node` is the actor, which instantiates the parts for a moment.
+    void attach_actor_parts(godot::Node3D* node, godot::Skeleton3D* skeleton, const ActorPlan& plan, BuildStats& stats);
     /// The actor's models and clips (asset cache keys) to request ahead.
     std::vector<std::string> actor_resources(const bethconv::pack::wfb::ActorRef& actor);
 

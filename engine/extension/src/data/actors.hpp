@@ -56,6 +56,9 @@ struct ActorPlan {
     std::string idle;       ///< An idle clip (`.hkx`), or empty.
     std::string behaviour;  ///< The race's behaviour project for the sex (`.hkx`).
     std::vector<std::string> parts; ///< Models, all skinned to the skeleton.
+    /// The models of `parts` that came from the skin (the NPC's WNAM or the race's), where no worn item covers it:
+    /// the meshes a skin fade-out takes away, not the worn armor under them (a dragon's underskin).
+    std::vector<std::string> skin_parts;
     /// The first-person models of the same armors and skin (ARMA MOD4/MOD5), skinned to
     /// the first-person skeleton; slots the worn items cover are left out as for `parts`.
     std::vector<std::string> parts_1st;

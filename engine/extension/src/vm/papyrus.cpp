@@ -352,6 +352,8 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("visual_effect", PropertyInfo(Variant::INT, "effect"),
                                  PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
                                  PropertyInfo(Variant::FLOAT, "seconds"), PropertyInfo(Variant::BOOL, "playing")));
+    // The armor an actor wears changed (EquipItem, UnequipItem, UnequipAll): its parts are built again.
+    ADD_SIGNAL(godot::MethodInfo("worn_changed", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(godot::MethodInfo("sub_graph_animation", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::STRING, "name")));
     ADD_SIGNAL(godot::MethodInfo("trigger", PropertyInfo(Variant::INT, "ref"),

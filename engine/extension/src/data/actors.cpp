@@ -311,6 +311,9 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
             const std::string model = addon_model(*addon, plan.female, traits->weight(), exists);
             if (!model.empty() && std::find(plan.parts.begin(), plan.parts.end(), model) == plan.parts.end()) {
                 plan.parts.push_back(model);
+                if (skin) {
+                    plan.skin_parts.push_back(model);
+                }
             }
             const std::string model_1st = addon_model(*addon, plan.female, traits->weight(), exists, true);
             if (!model_1st.empty() &&

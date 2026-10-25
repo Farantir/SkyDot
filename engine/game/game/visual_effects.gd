@@ -5,8 +5,10 @@
 # is a stream of glowing particles from the reference's chest to the target's chest, updated every step
 # while it plays and ended by VisualEffect.Stop or after its seconds; one without a target shows nothing
 # (the bridge logs it). The sub graph animation "SkinFadeOut" fades the meshes on the actor's skeleton
-# (its skin; the weapons hang on bone attachments and stay) over FADE_SECONDS and hides them; the node
-# gets the meta `skydot_skin_faded` (and each mesh `skydot_skin`) so what equips a skin later can tell.
+# that came from its skin (the cell builder marks them with the meta `skydot_skin`: the worn armor under
+# them, a dragon's underskin, and the weapons on bone attachments stay) over FADE_SECONDS and hides them. The
+# corpse's look does not rest on this: a body built or dressed again wears what the actor is equipped with
+# (a dragon's SkinDragonHider covers the skin's slots, so the skin is not built).
 # Other sub graph animations are only logged by the bridge.
 extends RefCounted
 class_name VisualEffects
@@ -81,11 +83,9 @@ func fade_skin(ref: int) -> bool:
 	var skeleton := node.find_child("Skeleton", true, false) as Skeleton3D
 	if skeleton == null:
 		return false
-	node.set_meta("skydot_skin_faded", true)
 	var meshes: Array[MeshInstance3D] = []
 	for child in skeleton.get_children():
-		if child is MeshInstance3D:
-			child.set_meta("skydot_skin", true)
+		if child is MeshInstance3D and child.get_meta("skydot_skin", false):
 			meshes.append(child)
 	if meshes.is_empty():
 		return true

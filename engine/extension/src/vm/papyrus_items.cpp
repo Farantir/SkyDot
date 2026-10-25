@@ -247,10 +247,13 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
         vm_->inventory().add(owner, form, 1, extra);
     }
     switch (result.action) {
-    case vm::EquipAction::equipped:
+    case vm::EquipAction::equipped: {
+        const auto before = worn_of(owner);
         items_.equipment(owner) = std::move(trial);
         sync_worn_magic(owner);
+        note_worn(owner, before);
         break;
+    }
     case vm::EquipAction::consumed: {
         const auto applied = apply_item_effects(owner, form, extra);
         if (String(applied.get("reason", String())) == "poison") {
@@ -279,9 +282,11 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
 
 bool SkydotPapyrus::unequip_item(std::uint32_t owner, std::uint32_t form) {
     resolve_owner(owner);
+    const auto before = worn_of(owner);
     const bool done = items_.find(owner) != nullptr && vm::unequip(items_.equipment(owner), form);
     if (done) {
         sync_worn_magic(owner);
+        note_worn(owner, before);
     }
     return done;
 }
@@ -292,8 +297,21 @@ std::string SkydotPapyrus::item_name_of(std::uint32_t form) const {
 
 void SkydotPapyrus::unequip_all(std::uint32_t owner) {
     resolve_owner(owner);
+    const auto before = worn_of(owner);
     items_.clear_equipment(owner);
     sync_worn_magic(owner);
+    note_worn(owner, before);
+}
+
+std::set<std::uint32_t> SkydotPapyrus::worn_of(std::uint32_t owner) const {
+    const auto* equipment = items_.find(owner);
+    return equipment != nullptr ? equipment->worn : std::set<std::uint32_t>{};
+}
+
+void SkydotPapyrus::note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before) {
+    if (worn_of(owner) != before) {
+        emit_signal("worn_changed", static_cast<std::int64_t>(owner));
+    }
 }
 
 WornProvider SkydotPapyrus::worn_provider() const {

@@ -760,6 +760,9 @@ private:
     /// A dying actor's death item (INAM, data/start_inventory.hpp) goes into its inventory; called once per
     /// death by flush_deaths, after the start inventory is resolved so that comes first.
     void give_death_item(std::uint32_t ref);
+    /// `owner`'s worn armor, and the signal worn_changed if it is not `before` any more.
+    std::set<std::uint32_t> worn_of(std::uint32_t owner) const;
+    void note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before);
     vm::ItemInfo item_info_of(std::uint32_t form) const;
     /// Take items from `owner` (resolved first); an item that runs out is
     /// taken off.
