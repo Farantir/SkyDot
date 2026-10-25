@@ -18,6 +18,13 @@
 # more than GENERIC_MIN_LENGTH away, cone joints of generic limits between a body and
 # the nearest body above it; `death: ragdoll for <skeleton> (N bodies)` says how many.
 #
+# A living actor can be knocked down too (`knock_down`: a shout's push, PushActorAway): the same
+# ragdoll with an impulse along source to target, but it does not die, is not a corpse (no corpse
+# place, not pickable) and gets up: after GET_UP_SECONDS or once it rests, it stands where its
+# pelvis lay, collision, animation and AI back (`push: 0x… gets up`). While it is down its node
+# is "dead" for SkydotActor (nothing moves it) and the AI is held (`SkydotAi.hold`). If it dies
+# meanwhile, the ragdoll goes on as a corpse's.
+#
 # The corpse stays pickable for activation (Search): `pick_ref` finds a node
 # by the `skydot_activatable` and `skydot_bounds` metadata, which this sets on
 # the actor's node (its cylinder is not on a physics layer any more).
@@ -68,6 +75,15 @@ const MAX_SECONDS := 5.0
 ## Placeholders: damping of every body and the friction on the floor.
 const BONE_DAMPING := 0.5
 const BONE_FRICTION := 1.0
+## Placeholders: a push throws every body of the ragdoll at this many m/s per unit of its Papyrus force
+## (PushActorAway's aiKnockbackForce, 15 for Unrelenting Force: 6 m/s), with this share of lift. The force's
+## unit in Skyrim's Havok is unknown.
+const PUSH_SPEED_PER_FORCE := 0.4
+const PUSH_LIFT := 0.35
+## Placeholder (the plan's guess): a knocked-down actor gets up after this long, or once it rests,
+## but not before KNOCK_MIN_SECONDS.
+const GET_UP_SECONDS := 2.0
+const KNOCK_MIN_SECONDS := 1.0
 ## A dead actor built in a place waits this long for the ground under it.
 const GROUND_SECONDS := 10.0
 ## A frozen body's pickable box is its bones' box grown by this (metres).
@@ -80,7 +96,9 @@ var _player_position: Callable  # () -> Vector3: where the player is, for the di
 var _warn := WarnOnce.new("death: ")
 var _hits := {}  # target ref -> impulse vector of the last hit
 var _pending := {}  # ref -> seconds waited: dead, not yet lying down
-var _bodies: Array[Dictionary] = []  # {ref, node, skeleton, simulator, bones, time, still}
+var _bodies: Array[Dictionary] = []  # {ref, node, skeleton, simulator, bones, time, still, knocked}
+## The AI to hold while an actor is down (the session sets it; null without one).
+var ai: SkydotAi
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, player_position: Callable) -> void:
@@ -112,6 +130,11 @@ func on_hit(target: int, result: Dictionary, _point: Vector3) -> void:
 ## An actor died: its node lies down with the impulse of the last hit, from the
 ## next `step` (the hit that killed it is reported after the death).
 func on_died(ref: int) -> void:
+	for body in _bodies:
+		if body["ref"] == ref and body["knocked"]:
+			body["knocked"] = false  # it dies where it lies: its ragdoll goes on as a corpse's
+			body["time"] = 0.0
+			return
 	_queue(ref)
 
 
@@ -164,6 +187,71 @@ func stand_up(ref: int) -> bool:
 	return true
 
 
+# ---- knocked down
+
+## `ref`, a living actor, is thrown away from `source` (an actor, or the player) with `force` (the
+## PushActorAway force): it falls as a ragdoll and gets up later. False (and nothing happens) if it
+## is dead, not built, already down, or has no ragdoll.
+func knock_down(ref: int, source: int, force: float) -> bool:
+	if _papyrus.is_actor_dead(ref) or is_down(ref):
+		return false
+	var node := _world.find_ref_node(ref) as Node3D
+	if node == null or not node.is_inside_tree():
+		return false
+	var from: Vector3 = _player_position.call()
+	if source != SkydotPapyrus.PLAYER_REF:
+		var origin := _world.find_ref_node(source) as Node3D
+		if origin != null:
+			from = origin.global_position
+	var away := node.global_position - from
+	away.y = 0.0
+	if away.length() < 0.001:
+		away = -node.global_transform.basis.z  # on top of it: along where it looks
+	away = away.normalized()
+	var speed := (away + Vector3.UP * PUSH_LIFT).normalized() * force * PUSH_SPEED_PER_FORCE
+	if not _lay_down(ref, speed, true):
+		return false
+	if ai != null:
+		ai.hold(ref, GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
+	print("push: 0x%08X pushed by 0x%08X (force %s)" % [ref, source, force])
+	return true
+
+
+## Whether `ref` lies knocked down (alive).
+func is_down(ref: int) -> bool:
+	for body in _bodies:
+		if body["ref"] == ref and body["knocked"]:
+			return true
+	return false
+
+
+## The knocked-down body stands where its pelvis lay: the ragdoll goes, the bones are at rest, the
+## node is alive for SkydotActor and the AI again.
+func _get_up(body: Dictionary) -> void:
+	var ref: int = body["ref"]
+	var node: SkydotActor = body["node"]
+	var skeleton: Skeleton3D = body["skeleton"]
+	var simulator: PhysicalBoneSimulator3D = body["simulator"]
+	var at := node.global_position
+	for bone: PhysicalBone3D in body["bones"]:
+		if bone.bone_name == body["root"]:
+			at = skeleton.global_transform * bone_pose(skeleton, bone).origin
+	simulator.physical_bones_stop_simulation()
+	skeleton.remove_child(simulator)
+	simulator.free()
+	skeleton.reset_bone_poses()
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 3.0,
+		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
+	var hit := _host.get_world_3d().direct_space_state.intersect_ray(query)
+	node.global_position = hit["position"] if not hit.is_empty() else Vector3(at.x, node.global_position.y, at.z)
+	node.rotation.x = 0.0
+	node.rotation.z = 0.0
+	node.set_dead(false)
+	if ai != null:
+		ai.hold(ref, 0.0)
+	print("push: 0x%08X gets up" % ref)
+
+
 ## Number of ragdolls still simulating.
 func simulating() -> int:
 	return _bodies.size()
@@ -182,6 +270,11 @@ func step(delta: float) -> void:
 			if bone.linear_velocity.length() > REST_SPEED:
 				moving = true
 		body["still"] = 0.0 if moving else body["still"] + delta
+		if body["knocked"]:
+			if body["time"] >= GET_UP_SECONDS or (body["time"] >= KNOCK_MIN_SECONDS and body["still"] >= REST_SECONDS):
+				_get_up(body)
+				_bodies.erase(body)
+			continue
 		if body["still"] >= REST_SECONDS or body["time"] >= MAX_SECONDS:
 			_freeze(body)
 			_bodies.erase(body)
@@ -213,10 +306,11 @@ func _has_ground(at: Vector3) -> bool:
 	return not space.intersect_ray(query).is_empty()
 
 
-func _lay_down(ref: int, impulse: Vector3) -> void:
+## `impulse` is the hit that killed it, applied to one body; for `knocked` it is a velocity every body gets.
+func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 	var node := _world.find_ref_node(ref) as SkydotActor
 	if node == null or not node.is_inside_tree() or node.is_dead():
-		return
+		return false
 	node.set_dead(true)
 	var found := node.find_children("*", "Skeleton3D", true, false)
 	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
@@ -224,9 +318,12 @@ func _lay_down(ref: int, impulse: Vector3) -> void:
 	if ragdoll.is_empty():
 		var name := String(_world.get_actor_plan(ref).get("skeleton", "no skeleton"))
 		_warn.once(name, "no ragdoll for %s" % name)
+		if knocked:
+			node.set_dead(false)  # no body to throw: it only staggers
+			return false
 		node.rotate_object_local(Vector3.BACK, PI / 2.0)  # on its side
 		_finish(ref, node, skeleton)
-		return
+		return true
 	var simulator: PhysicalBoneSimulator3D = ragdoll["simulator"]
 	skeleton.add_child(simulator)
 	for bone: PhysicalBone3D in ragdoll["bones"]:
@@ -238,16 +335,22 @@ func _lay_down(ref: int, impulse: Vector3) -> void:
 			bone.joint_type = PhysicalBone3D.JOINT_TYPE_NONE
 			bone.joint_type = type
 	simulator.physical_bones_start_simulation()
-	if impulse != Vector3.ZERO:
+	if knocked:
+		for bone: PhysicalBone3D in ragdoll["bones"]:
+			bone.apply_central_impulse(impulse * bone.mass)
+	elif impulse != Vector3.ZERO:
 		var target: PhysicalBone3D = ragdoll["impulse_bone"]
 		if target != null:
 			target.apply_central_impulse(impulse)
-	_set_place(ref, node, node.global_position)
+	if not knocked:
+		_set_place(ref, node, node.global_position)
 	_bodies.append({"ref": ref, "node": node, "skeleton": skeleton, "simulator": simulator,
-		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0, "root": ragdoll["root"]})
+		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0, "root": ragdoll["root"], "knocked": knocked})
 	var skeleton_name := String(_world.get_actor_plan(ref).get("skeleton", "?"))
 	_warn.once("ragdoll" + skeleton_name, "ragdoll for %s (%d bodies)" % [skeleton_name, ragdoll["bones"].size()])
-	_mark_pickable(node, skeleton)
+	if not knocked:
+		_mark_pickable(node, skeleton)
+	return true
 
 
 ## Freeze the ragdoll into the bones' poses, free it, store the corpse place.

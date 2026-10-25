@@ -58,6 +58,8 @@ const TOGGLE_FLY := &"toggle_fly"
 const INVENTORY := &"inventory"
 const MAGIC := &"magic"
 const READY_WEAPON := &"ready_weapon"
+# Held, like the attacks: the voice key (Z, gamepad RB, the VR grips) casts the power in the voice
+# slot when it goes down, or charges the shout there while it is down (`voice_changed`).
 const POWER := &"power"
 # Held: the attack buttons go down and up (`attack_changed` for the right hand,
 # `attack_left_changed` for the left: a spell in the left hand; blocking otherwise).
@@ -65,7 +67,7 @@ const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, READY_WEAPON, POWER]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, READY_WEAPON]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
@@ -84,6 +86,8 @@ signal command(action: StringName, modifier: bool)
 signal attack_changed(pressed: bool)
 ## The left hand's attack button went down (true) or up (false).
 signal attack_left_changed(pressed: bool)
+## The voice key (POWER) went down (true) or up (false).
+signal voice_changed(pressed: bool)
 
 ## Set while a menu has the keyboard: the player stands still and the
 ## keys are not commands.
@@ -104,6 +108,7 @@ var uses_gamepad := false
 var _rig: PlayerRig
 var _attacking := false
 var _attacking_left := false
+var _voicing := false
 
 
 func _init(rig: PlayerRig) -> void:
@@ -178,6 +183,12 @@ func _set_attacking_left(down: bool) -> void:
 		attack_left_changed.emit(down)
 
 
+func _set_voicing(down: bool) -> void:
+	if down != _voicing:
+		_voicing = down
+		voice_changed.emit(down)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not enabled or blocked:
 		# A menu opened under a held button: letting go still counts.
@@ -185,6 +196,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_attacking(false)
 		if enabled and _attacking_left and event.is_action(ATTACK_LEFT) and not event.is_pressed():
 			_set_attacking_left(false)
+		if enabled and _voicing and event.is_action(POWER) and not event.is_pressed():
+			_set_voicing(false)
 		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
@@ -196,6 +209,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_attacking(event.is_pressed())
 	elif event.is_action(ATTACK_LEFT) and (captured or not event is InputEventMouseButton):
 		_set_attacking_left(event.is_pressed())
+	elif event.is_action(POWER):
+		_set_voicing(event.is_pressed())
 	elif event.is_action_pressed(RELEASE_MOUSE):
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	elif event.is_action_pressed(JUMP):

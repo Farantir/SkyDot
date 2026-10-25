@@ -50,6 +50,7 @@ var _magic_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 var _cast_at: CastAt  # --cast-at: the cast still to make
+var _shout_at: ShoutAt  # --shout: the shout still to say
 var _quit_in := -1  # frames until quitting after --activate
 
 
@@ -125,6 +126,7 @@ func _create_components() -> void:
 	_controls.command.connect(_on_command)
 	_controls.attack_changed.connect(_on_attack_changed)
 	_controls.attack_left_changed.connect(_on_attack_left_changed)
+	_controls.voice_changed.connect(_on_voice_changed)
 	add_child(_controls)
 	# Minimal combat (ADR 0006): the weapon model in the right controller; a
 	# swing faster than FirstPersonBody.SWING_SPEED is the attack. Only the
@@ -343,6 +345,7 @@ func _start_game() -> void:
 		_session.equip_spell(entry["form"], entry["hand"])
 	if settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, settings.cast_at, settings.cast_at_hand)
+	_shout_at = ShoutAt.apply(_session, _rig, settings)
 	if not settings.spawn.is_empty():
 		SpawnActors.spawn(_session, _rig, settings.spawn)
 	for form in settings.drink:
@@ -371,6 +374,8 @@ func _process(delta: float) -> void:
 	_body.update_hand(delta)
 	if _cast_at != null:
 		_cast_at.step()
+	if _shout_at != null:
+		_shout_at.step()
 	if _death_fade != null and _death_fade.visible:
 		((_death_fade.mesh as QuadMesh).material as StandardMaterial3D).albedo_color = Color(0, 0, 0, _death.fade)
 	_session.step(delta, _rig.player.global_position)
@@ -404,10 +409,6 @@ func _on_command(action: StringName, shift: bool) -> void:
 			_session.activate_in_view(shift)
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
-		PlayerInput.POWER:
-			var cast := _session.cast_power()
-			if not cast["ok"]:
-				print("note: power: ", cast["reason"])
 		PlayerInput.QUICK_SAVE:
 			_session.save_game(SaveService.QUICKSAVE)
 		PlayerInput.QUICK_LOAD:
@@ -428,6 +429,15 @@ func _on_attack_left_changed(pressed: bool) -> void:
 		_session.attack_left_pressed()
 	else:
 		_session.attack_left_released()
+
+
+func _on_voice_changed(pressed: bool) -> void:
+	if pressed:
+		var voice := _session.voice_pressed()
+		if not voice["ok"]:
+			print("note: voice: ", voice["reason"])
+	else:
+		_session.voice_released()
 
 
 func _fail(message: String) -> void:

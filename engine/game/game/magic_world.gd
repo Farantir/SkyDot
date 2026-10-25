@@ -69,7 +69,7 @@ func _on_event(info: Dictionary) -> void:
 
 func _stagger(target: int, magnitude: float) -> void:
 	if target == SkydotPapyrus.PLAYER_REF:
-		print("magic: player staggers (%g)" % magnitude)  # PLACEHOLDER: no camera shake yet
+		print("magic: player staggers (%s)" % magnitude)  # PLACEHOLDER: no camera shake yet
 		return
 	if _session.ai != null:
 		_session.ai.stagger(target, magnitude)

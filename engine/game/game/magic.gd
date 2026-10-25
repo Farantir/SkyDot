@@ -23,6 +23,18 @@
 # effect (else its PROJ) appears there, and so does the effect's hit art. A scroll lands the
 # same way and is used up by its first landing (an aimed scroll that meets nothing is not).
 #
+# Shouts (GAMEPLAY-PLAN.md, 7b-3): the voice key (GameSession.voice_pressed) opens `shout_begin`
+# when the voice slot holds a shout. The key charges it (the first-person inhale clip): it
+# leaves when the key goes up (`shout_release`) with the seconds held, or by itself once the held
+# time reaches that of the most words usable (SkydotPapyrus.shout_info `usable`: one word fires
+# at the press, two at fShoutTime1, three at fShoutTime2). SkydotPapyrus.cast_shout decides
+# the words and the recovery; the spell it returns is delivered from the pointer by
+# `deliver_from` like any aimed spell (a voice spell costs nothing, so nothing is paid; the
+# cone projectile lands on every actor in the cone) and `shouted` says it was said. No shout
+# while a hand charges or concentrates, no hand cast while a shout charges (the GMST messages
+# sMagicCastShoutWhileCasting and sMagicCastCastWhileShouting). A shout still recovering
+# refuses at the press (`shout: refused recovering`, silent as in the game).
+#
 # Shells draw it through signals: `hand_clip` (the first-person clip to play, or "" to give the
 # arms back to Combat), `ready_changed`, `hand_art_changed` (the casting art model on a hand).
 class_name Magic
@@ -70,6 +82,14 @@ const SHOT_SIDE := 0.15
 const SHOT_BELOW := 0.12
 ## How far the crosshair's ray looks for something to aim at, metres.
 const AIM_DISTANCE := 60.0
+## MGEF sound kinds (MagicEffectSound.kind): release and on hit.
+const SOUND_RELEASE := 3
+const SOUND_HIT := 5
+## GMSTs: the held seconds that make two and three words of a shout.
+const GMST_SHOUT_TIME1 := "fShoutTime1"
+const GMST_SHOUT_TIME2 := "fShoutTime2"
+const SHOUT_TIME1_FALLBACK := 0.2
+const SHOUT_TIME2_FALLBACK := 0.9
 ## Seconds an explosion or hit art model stays.
 const EFFECT_SECONDS := 2.0
 const MASK := SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_CLUTTER | SkydotPlayer.LAYER_TERRAIN
@@ -97,6 +117,13 @@ signal npc_cast_started(caster: int, hand: int, spell: int, info: Dictionary)
 signal npc_spell_landed(caster: int, spell: int, target: int, point: Vector3, hostile: bool)
 ## The hand's cast was refused (not enough Magicka, cooldown, ...): hand, spell, reason.
 signal cast_refused(hand: int, spell: int, reason: String)
+## A shout was said: the shout, the words spoken, the spell of the last one and its cast_info.
+signal shouted(shout: int, words: int, spell: int, info: Dictionary)
+## A message for the player (a GMST text).
+signal notice(text: String)
+## A sound of a shout's effect to play: the SNDR and the reference it plays on (0: the player's own, not
+## positional).
+signal sound_wanted(sound: int, source: int)
 
 var _world: SkydotWorld
 var _pack: SkydotPack
@@ -117,6 +144,9 @@ var _effects: Array[Dictionary] = []  # explosion and hit art models: {node, lef
 var _lengths := {}  # clip stem -> seconds
 var _clock := 0.0
 var _info_cache := {}  # spell -> cast_info
+var _shout := {}  # the key is down on a shout: {shout, held, usable, threshold, fired}
+var _shout_spell := 0  # the spell of the last shout said (its on-hit sound plays when it lands)
+var _shout_hit_sound := 0
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, combat: Combat,
@@ -174,6 +204,9 @@ func info_of(spell: int) -> Dictionary:
 ## The equipment changed (or a game was loaded): the hands' spells and their art follow it.
 func on_items_changed() -> void:
 	_info_cache.clear()
+	if is_shouting() and int(_papyrus.equipped_shout(PLAYER_REF)) != int(_shout["shout"]):
+		_shout.clear()
+		_play_idle()
 	for hand in _hands.keys():
 		if spell_in(hand) != (_hands[hand]["spell"] as int):
 			_papyrus.hand_release(PLAYER_REF, hand)
@@ -256,6 +289,9 @@ func hand_pressed(hand: int) -> void:
 	if _papyrus.is_player_dead() or _hands.has(hand):
 		return
 	if spell_in(hand) == 0:
+		return
+	if is_shouting():
+		_refuse_shout("shouting", _world.get_gmst_string("sMagicCastCastWhileShouting", "You cannot cast a spell while shouting"))
 		return
 	if _ready == Ready.SHEATHED:
 		set_ready(true)
@@ -383,6 +419,7 @@ func step(delta: float) -> void:
 	for hand in _hands.keys():
 		if _hands.has(hand):
 			_step_hand(hand, delta)
+	_step_shout(delta)
 	for effect in _effects.duplicate():
 		effect["left"] -= delta
 		if effect["left"] <= 0.0 or not is_instance_valid(effect["node"]):
@@ -413,6 +450,123 @@ func _step_hand(hand: int, delta: float) -> void:
 			print("magic: 0x%08X ends: out of Magicka" % held["spell"])
 			_hands.erase(hand)
 			_after_release(hand, held["info"], "")
+
+
+# ---- shouts
+
+## Whether the voice key is down on a shout (it is charging, or has fired and waits for the key to go up).
+func is_shouting() -> bool:
+	return not _shout.is_empty()
+
+
+## The shout being said: {shout, held, usable, threshold, fired}; {} if none.
+func shout_state() -> Dictionary:
+	return _shout.duplicate()
+
+
+## The voice key went down on `shout`. {ok, reason}: refused while dead, with a hand casting
+## (`notice`), while the voice recovers or with no usable word. One usable word is said at once.
+func shout_begin(shout: int) -> Dictionary:
+	if is_shouting():
+		return {"ok": true, "reason": ""}
+	if _papyrus.is_player_dead():
+		return {"ok": false, "reason": "dead"}
+	if not _hands.is_empty():
+		return _refuse_shout("casting", _world.get_gmst_string("sMagicCastShoutWhileCasting", "You cannot shout while casting a spell"))
+	var info := _papyrus.shout_info(PLAYER_REF, shout)
+	if not bool(info["found"]):
+		return _refuse_shout("unknown shout")
+	var usable := int(info["usable"])
+	if usable <= 0:
+		return _refuse_shout("no word")
+	if _papyrus.voice_recovery(PLAYER_REF) > 0.0:
+		return _refuse_shout("recovering")
+	var threshold := 0.0
+	if usable >= 3:
+		threshold = _world.get_gmst_float(GMST_SHOUT_TIME2, SHOUT_TIME2_FALLBACK)
+	elif usable == 2:
+		threshold = _world.get_gmst_float(GMST_SHOUT_TIME1, SHOUT_TIME1_FALLBACK)
+	_shout = {"shout": shout, "held": 0.0, "usable": usable, "threshold": threshold, "fired": false}
+	_clip_left = 0.0
+	print("shout: 0x%08X begins (%d usable words)" % [shout, usable])
+	var stem := _shout_clip("inhale")
+	if stem != "":
+		hand_clip.emit(stem, false, 1.0)
+	if usable == 1:
+		_shout_fire()
+	return {"ok": true, "reason": ""}
+
+
+## The voice key went up: the words held so far are said (nothing if it fired by itself already).
+func shout_release() -> void:
+	if not is_shouting():
+		return
+	if not _shout["fired"]:
+		_shout_fire()
+	_shout.clear()
+
+
+func _step_shout(delta: float) -> void:
+	if not is_shouting() or _shout["fired"]:
+		return
+	_shout["held"] += delta
+	if _shout["held"] >= float(_shout["threshold"]):
+		_shout["held"] = float(_shout["threshold"])
+		_shout_fire()
+
+
+func _refuse_shout(reason: String, text := "") -> Dictionary:
+	print("shout: refused %s" % reason)
+	if text != "":
+		notice.emit(text)
+	return {"ok": false, "reason": reason}
+
+
+## Say the words held: cast_shout decides, the spell leaves the pointer.
+func _shout_fire() -> void:
+	_shout["fired"] = true
+	var shout: int = _shout["shout"]
+	var result := _papyrus.cast_shout(PLAYER_REF, shout, float(_shout["held"]), 0)
+	if not bool(result["ok"]):
+		_refuse_shout(String(result["reason"]))
+		_play_idle()
+		return
+	var words := int(result["words"])
+	var spell := int(result["spell"])
+	print("shout: 0x%08X words %d spell 0x%08X recovery %s" % [shout, words, spell, result["recovery"]])
+	_papyrus.break_invisibility(PLAYER_REF)
+	var info := info_of(spell)
+	_shout_spell = spell
+	_shout_hit_sound = 0
+	var effect := _world.get_magic_effect(int(info.get("mgef", 0))) if int(info.get("mgef", 0)) != 0 else {}
+	for entry: Dictionary in effect.get("sounds", []):
+		if int(entry["kind"]) == SOUND_RELEASE and int(entry["sound"]) != 0:
+			print("shout: sound 0x%08X on release" % int(entry["sound"]))
+			sound_wanted.emit(int(entry["sound"]), 0)
+		elif int(entry["kind"]) == SOUND_HIT:
+			_shout_hit_sound = int(entry["sound"])
+	var stem := _shout_clip("exhale", words)
+	if stem != "":
+		_clip_left = _length_of(stem)
+		hand_clip.emit(stem, false, 1.0)
+	_deliver(POWER, spell, info, false)
+	shouted.emit(shout, words, spell, info)
+
+
+## The first-person shout clip (inhale; exhale for 1, 2, 3 words: plain, medium, long); the one-handed
+## set while a one-handed weapon is out. "" when the pack has none.
+func _shout_clip(what: String, words := 1) -> String:
+	var lengths: Array[String] = ["", "", "_medium", "_long"]
+	var suffix: String = "" if what == "inhale" else lengths[clampi(words, 1, 3)]
+	var prefixes: Array[String] = ["mt_"]
+	if _combat.weapon_state() == Combat.State.DRAWN and _combat.clip_prefix() == "1hm_":
+		prefixes.push_front("1hm_")
+	for prefix in prefixes:
+		var stem := "%sshout_%s%s" % [prefix, what, suffix]
+		if _pack.has(FIRST_PERSON_CLIPS + stem + ".hkx"):
+			return stem
+	_warn.once("noshoutclip" + what, "no first-person shout clip for %s" % what)
+	return ""
 
 
 # ---- delivery
@@ -474,9 +628,14 @@ func _launch(caster: int, hand: int, spell: int, info: Dictionary, eye: Vector3,
 		PROJ_CONE:
 			_warn.once("cone%d" % type, "cone projectiles are a cone test without a model (0x%08X)" % int(proj["id"]))
 			var angle: float = float(proj.get("cone_spread", 0.0))
-			var hit := _combat.find_in_cone(caster, eye, forward, reach, angle if angle > 1.0 else CONE_ANGLE_FALLBACK)
-			var ahead := eye + forward * minf(reach, 3.0)
-			_impact(caster, hand, spell, info, hit.get("ref", 0), hit.get("point", ahead))
+			# A cone lands on every actor in it (a shout throws them all), the nearest first.
+			var hits := _combat.actors_in_cone(caster, eye, forward, reach, angle if angle > 1.0 else CONE_ANGLE_FALLBACK)
+			if hits.is_empty():
+				_impact(caster, hand, spell, info, 0, eye + forward * minf(reach, 3.0))
+			else:
+				for i in hits.size():
+					_land(caster, hand, spell, info, hits[i]["ref"], hits[i]["point"], i == 0)
+				_show_impact(info, hits[0]["point"])
 		PROJ_MISSILE, PROJ_LOBBER, PROJ_FLAME:
 			_shoot(caster, hand, spell, info, proj, eye, forward, right, reach)
 		_:
@@ -558,6 +717,8 @@ func _land(caster: int, hand: int, spell: int, info: Dictionary, target: int, po
 		_warn.once("landfail%d_%s" % [spell, result["reason"]], "0x%08X does not land: %s" % [spell, result["reason"]])
 		return
 	if caster == PLAYER_REF:
+		if spell == _shout_spell and _shout_hit_sound != 0:
+			sound_wanted.emit(_shout_hit_sound, 0 if target == PLAYER_REF else target)
 		spell_landed.emit(hand, spell, target, point, bool(info.get("hostile", false)))
 	else:
 		npc_spell_landed.emit(caster, spell, target, point, bool(info.get("hostile", false)))

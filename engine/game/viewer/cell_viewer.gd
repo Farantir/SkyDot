@@ -136,6 +136,12 @@
 # spell if unknown and puts it in a hand (right by default); --cast-at 0xREF[,left|right] readies the
 # hands, faces that actor and casts the hand's spell at it (holding a concentration spell until it
 # is dead), for shots and tests: `--equip-spell 0x12FCD --cast-at 0x3B9F7 --screenshot out.png`.
+# Shouts (game/magic.gd): Z (gamepad RB, VR: a grip) is the voice key: it casts a power in the voice slot, or
+# charges the shout there while it is held (a tap is one word, 0.2 s two, 0.9 s three; the words you know and
+# have unlocked limit it). --teach-word 0xWOOP[,...] teaches words of power, --unlock-word 0xWOOP[,...]
+# unlocks them, --equip-shout 0xSHOU puts a shout in the voice slot, --dragon-souls N sets the dragon souls,
+# --shout N[,0xREF] faces that actor and says N words: `--teach-word 0x13E22 --unlock-word 0x13E22
+# --equip-shout 0x13E07 --shout 1,0x39FE4` (Unrelenting Force at a bandit of Bleak Falls Barrow).
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
 # physics time per frame, draw calls, primitives, objects). It is in
@@ -184,6 +190,7 @@ var _body: FirstPersonBody  # the player's arms and weapon
 var _fight_pending: Array[int] = []  # --fight: the actors still to start (not built yet)
 var _attack_at := 0  # --attack-at: the actor still to attack
 var _cast_at: CastAt  # --cast-at: the cast still to make
+var _shout_at: ShoutAt  # --shout: the shout still to say
 var _benchmark := BenchmarkRun.new()
 var _quit_in := -1  # frames until quitting after --activate
 
@@ -254,6 +261,7 @@ func _create_components() -> void:
 	_controls.command.connect(_on_command)
 	_controls.attack_changed.connect(_on_attack_changed)
 	_controls.attack_left_changed.connect(_on_attack_left_changed)
+	_controls.voice_changed.connect(_on_voice_changed)
 	add_child(_controls)
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
@@ -381,6 +389,7 @@ func _apply_combat_options() -> void:
 			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
 	if _settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
+	_shout_at = ShoutAt.apply(_session, _rig, _settings)
 	if not _settings.spawn.is_empty():
 		SpawnActors.spawn(_session, _rig, _settings.spawn)
 	for ref in _settings.kill:
@@ -417,6 +426,8 @@ func _attack_at_step() -> void:
 func _cast_at_step() -> void:
 	if _cast_at != null:
 		_cast_at.step()
+	if _shout_at != null:
+		_shout_at.step()
 
 
 func _on_attack_changed(pressed: bool) -> void:
@@ -431,6 +442,15 @@ func _on_attack_left_changed(pressed: bool) -> void:
 		_session.attack_left_pressed()
 	else:
 		_session.attack_left_released()
+
+
+func _on_voice_changed(pressed: bool) -> void:
+	if pressed:
+		var voice := _session.voice_pressed()
+		if not voice["ok"]:
+			_debug.note("voice: " + String(voice["reason"]))
+	else:
+		_session.voice_released()
 
 
 ## --fight: start the fights of actors that are built now (an exterior streams them in).
@@ -515,10 +535,6 @@ func _on_command(action: StringName, shift: bool) -> void:
 				_items.open_magic()
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
-		PlayerInput.POWER:
-			var cast := _session.cast_power()
-			if not cast["ok"]:
-				_debug.note("power: " + String(cast["reason"]))
 		PlayerInput.CHANGE_TIME:
 			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
 			if not time_text.is_empty():

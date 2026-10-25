@@ -106,6 +106,11 @@ const DROP_HEIGHT := 0.3
 const CREATED_FIRST := 0xFF700000
 const CREATED_LAST := 0xFF7FFFFF
 
+## The lines the player says for the words of a shout (VoicePowers topics Shout01a, Shout01b, Shout02,
+## Shout03; which INFO plays, by voice type and equipped shout, is the dialogue's). The vanilla INFOs
+## read "Fus!" (01a), "Fus..." (01b), "Ro!" (02) and "Ro...Da!" (03): one word is 01a; two words are 01b
+## then 02; three words are 01b then 03.
+const SHOUT_TOPICS := {1: [0x13E01], 2: [0x13E00, 0x13DFF], 3: [0x13E00, 0x13DFE]}
 ## Stamina a sprinting player loses per second. To measure in the original
 ## (the game's fSprintStaminaDrainMult is a multiplier of something else).
 const SPRINT_STAMINA_PER_SECOND := 7.0
@@ -295,6 +300,11 @@ func _make_game_nodes() -> void:
 	items_changed.connect(magic.on_items_changed)
 	magic.spell_landed.connect(spell_landed.emit)
 	magic.scroll_used.connect(func(_spell: int) -> void: items_changed.emit())
+	magic.notice.connect(func(text: String) -> void: message.emit(text, false))
+	magic.sound_wanted.connect(func(sound: int, source: int) -> void: sounds.play(sound, source))
+	magic.shouted.connect(_on_shouted)
+	papyrus.push_actor.connect(_on_push_actor)
+	papyrus.knock_area.connect(_on_knock_area)
 	if ai != null:
 		# A hostile spell that lands on an actor raises the alarm, as a weapon's hit does.
 		magic.spell_landed.connect(func(_hand: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
@@ -308,6 +318,7 @@ func _make_game_nodes() -> void:
 			if hostile and target != caster:
 				ai.on_hit(caster, target))
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
+	corpses.ai = ai
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
 	actor_arrived.connect(corpses.on_actor_arrived)
@@ -736,6 +747,70 @@ func attack_left_released() -> void:
 ## The power key: cast the power in the power slot (Magic.cast_power). {ok, reason}.
 func cast_power() -> Dictionary:
 	return {"ok": false, "reason": "dead"} if papyrus.is_player_dead() else magic.cast_power()
+
+
+## The voice key went down: the voice slot holds a power (cast at once, like `cast_power`) or a
+## shout (it charges while the key is down, Magic.shout_begin). {ok, reason}.
+func voice_pressed() -> Dictionary:
+	if papyrus.is_player_dead():
+		return {"ok": false, "reason": "dead"}
+	var shout := int(papyrus.equipped_shout(SkydotPapyrus.PLAYER_REF))
+	if shout == 0:
+		return cast_power()
+	if player_paralyzed:
+		return {"ok": false, "reason": "paralyzed"}
+	return magic.shout_begin(shout)
+
+
+## The voice key went up: a charging shout is said (Magic.shout_release).
+func voice_released() -> void:
+	magic.shout_release()
+
+
+## Put `shout` in the voice slot (it empties the power slot). Not while a shout is being said:
+## sFailShouting, "You cannot change shouts while shouting."
+func equip_shout(shout: int) -> bool:
+	if magic.is_shouting():
+		message.emit(world.get_gmst_string("sFailShouting", "You cannot change shouts while shouting."), false)
+		return false
+	var done := papyrus.equip_shout(SkydotPapyrus.PLAYER_REF, shout)
+	if done:
+		items_changed.emit()
+	return done
+
+
+func _on_shouted(_shout: int, words: int, _spell: int, _info: Dictionary) -> void:
+	for topic: int in SHOUT_TOPICS[clampi(words, 1, 3)]:
+		var line := papyrus.topic_line(SkydotPapyrus.PLAYER_REF, topic)
+		if line.is_empty() or String(line.get("voice", "")).is_empty():
+			print("shout: voice missing (topic 0x%X)" % topic)
+			continue
+		print("shout: voice %s" % line["voice"])
+		speech.say(SkydotPapyrus.PLAYER_REF, line)
+
+
+## PushActorAway: a living actor is knocked down (Corpses.knock_down); the player's own knock-down is
+## not done (PLACEHOLDER: no ragdoll for the player).
+func _on_push_actor(source: int, target: int, force: float) -> void:
+	if target == SkydotPapyrus.PLAYER_REF:
+		print("push: the player is pushed by 0x%08X (force %s): not done" % [source, force])
+		return
+	if not corpses.knock_down(target, source, force):
+		print("push: 0x%08X is not knocked down (dead, not built or down already)" % target)
+
+
+## KnockAreaEffect: every actor within `radius` game units of the source is pushed away with `magnitude`.
+func _on_knock_area(source: int, magnitude: float, radius: float) -> void:
+	var at := _feet
+	if source != SkydotPapyrus.PLAYER_REF:
+		var node := world.find_ref_node(source) as Node3D
+		if node == null:
+			return
+		at = node.global_position
+	var near := combat.actors_within(source, at, radius * SkydotWorld.unit_scale())
+	print("push: area of 0x%08X (magnitude %s, radius %s) reaches %d actors" % [source, magnitude, radius, near.size()])
+	for body in near:
+		_on_push_actor(source, body["ref"], magnitude)
 
 
 ## Put `spell` (a known spell or a carried scroll) in `hand` (Magic.LEFT, RIGHT, POWER).

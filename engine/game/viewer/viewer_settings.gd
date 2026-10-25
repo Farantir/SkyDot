@@ -119,6 +119,12 @@ var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (aft
 var equip_spell: Array[Dictionary] = []  # --equip-spell 0xFORM[,left|right|power]: {form, hand} (Magic.RIGHT by default)
 var cast_at := 0  # --cast-at 0xREF[,left|right]: ready the hands, face that actor, cast the hand's spell at it
 var cast_at_hand := 1
+var teach_word: Array[int] = []  # --teach-word 0xWOOP[,...]: the player learns those words of power (known, locked)
+var unlock_word: Array[int] = []  # --unlock-word 0xWOOP[,...]: those words are unlocked
+var equip_shout := 0  # --equip-shout 0xSHOU: the shout in the voice slot
+var dragon_souls := -1  # --dragon-souls N: the player's DragonSouls (-1: unchanged)
+var shout_words := 0  # --shout N[,0xREF]: say N words (hold the voice key for them) facing that actor
+var shout_at := 0
 var spawn: Array[int] = []  # --spawn 0xNPC_[,...]: those actors (NPC_ or LVLN) appear in front of the player after the load
 var drink: Array[int] = []  # --drink 0xFORM[,...]: the player uses those items (added first if not carried)
 var cast: Array[Dictionary] = []  # --cast 0xSPELL[@0xREF][,...]: {spell, target}, the player casts (0: on itself)
@@ -266,6 +272,20 @@ func _read(args: Dictionary) -> void:
 			equip_spell[-1]["hand"] = _hand_of(entry)  # the hand of the form before it
 		else:
 			equip_spell.append({"form": entry.hex_to_int() if entry.begins_with("0x") else entry.to_int(), "hand": 1})
+	for entry: String in str(args.get("teach-word", "")).split(",", false):
+		teach_word.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	for entry: String in str(args.get("unlock-word", "")).split(",", false):
+		unlock_word.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	if args.has("equip-shout"):
+		var shout_text: String = args["equip-shout"]
+		equip_shout = shout_text.hex_to_int() if shout_text.begins_with("0x") else shout_text.to_int()
+	if args.has("dragon-souls"):
+		dragon_souls = maxi(0, str(args["dragon-souls"]).to_int())
+	if args.has("shout"):
+		var shout_parts: PackedStringArray = String(args["shout"]).split(",")
+		shout_words = clampi(shout_parts[0].to_int(), 1, 3)
+		if shout_parts.size() > 1:
+			shout_at = shout_parts[1].hex_to_int() if shout_parts[1].begins_with("0x") else shout_parts[1].to_int()
 	if args.has("cast-at"):
 		var cast_parts: PackedStringArray = String(args["cast-at"]).split(",")
 		cast_at = cast_parts[0].hex_to_int() if cast_parts[0].begins_with("0x") else cast_parts[0].to_int()

@@ -114,6 +114,14 @@ func _captures() -> void:
     expect(spells.cast_at == 0x3B9F7 and spells.cast_at_hand == 0, "--cast-at names the actor and the hand")
     var plain := parse(["--pack", "p", "--cell", "C", "--cast-at", "0x3B9F7"])
     expect(plain.cast_at_hand == 1 and plain.equip_spell.is_empty(), "--cast-at casts with the right hand by default")
+    var shouts := parse(["--pack", "p", "--cell", "C", "--teach-word", "0x13E22,0x13E23", "--unlock-word", "0x13E22", "--equip-shout", "0x13E07",
+        "--dragon-souls", "2", "--shout", "3,0x39FE4"])
+    expect(shouts.teach_word == [0x13E22, 0x13E23] and shouts.unlock_word == [0x13E22] and shouts.equip_shout == 0x13E07,
+        "--teach-word, --unlock-word and --equip-shout list forms")
+    expect(shouts.dragon_souls == 2 and shouts.shout_words == 3 and shouts.shout_at == 0x39FE4, "--dragon-souls and --shout N,0xREF")
+    var no_shouts := parse(["--pack", "p", "--cell", "C", "--shout", "9"])
+    expect(no_shouts.dragon_souls == -1 and no_shouts.shout_words == 3 and no_shouts.shout_at == 0 and no_shouts.teach_word.is_empty(),
+        "the shout flags are off by default; --shout has 1 to 3 words")
     var spawned := parse(["--pack", "p", "--cell", "C", "--spawn", "0x39D37,0x39D49,123"])
     expect(spawned.spawn == [0x39D37, 0x39D49, 123], "--spawn lists NPC_ and LVLN forms: %s" % [spawned.spawn])
     expect(parse(["--pack", "p", "--cell", "C"]).spawn.is_empty(), "--spawn is empty by default")

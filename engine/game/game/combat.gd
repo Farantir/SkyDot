@@ -780,16 +780,8 @@ func find_in_cone(attacker: int, origin: Vector3, forward: Vector3, reach: float
 	var best := {}
 	var best_distance := INF
 	for candidate in _candidates(attacker):
-		var closest := _closest_on_body(origin, candidate)
-		var offset: Vector3 = closest - origin
-		var distance := offset.length() - float(candidate["radius"])
-		if distance > reach:
-			continue
-		if distance > 0.0 and forward.angle_to(offset) > half_angle:
-			continue
-		var query := PhysicsRayQueryParameters3D.create(origin, closest,
-			SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
-		if not space.intersect_ray(query).is_empty():
+		var distance := _cone_distance(candidate, space, origin, forward, reach, half_angle)
+		if distance == INF:
 			continue
 		if candidate["ref"] == prefer:
 			return {"ref": candidate["ref"], "point": _body_point(candidate)}
@@ -797,6 +789,42 @@ func find_in_cone(attacker: int, origin: Vector3, forward: Vector3, reach: float
 			best_distance = distance
 			best = {"ref": candidate["ref"], "point": _body_point(candidate)}
 	return best
+
+
+## Every living actor but `attacker` that `find_in_cone` would accept: [{ref, point, distance}],
+## nearest first. A shout's cone lands on all of them.
+func actors_in_cone(attacker: int, origin: Vector3, forward: Vector3, reach: float,
+		half_angle_degrees: float) -> Array[Dictionary]:
+	var half_angle := deg_to_rad(half_angle_degrees)
+	var space := _host.get_world_3d().direct_space_state
+	var found: Array[Dictionary] = []
+	for candidate in _candidates(attacker):
+		var distance := _cone_distance(candidate, space, origin, forward, reach, half_angle, true)
+		if distance != INF:
+			found.append({"ref": candidate["ref"], "point": _body_point(candidate), "distance": distance})
+	found.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["distance"] < b["distance"])
+	return found
+
+
+## How far the candidate's body is from `origin` (its radius not counted) if it is within `reach`,
+## inside the cone and in line of sight; else INF.
+## `chest_too`: a body whose chest is inside the cone counts too (a narrow cone aimed at a chest from the
+## eyes passes above or below the body point at the eyes' height).
+func _cone_distance(candidate: Dictionary, space: PhysicsDirectSpaceState3D, origin: Vector3, forward: Vector3,
+		reach: float, half_angle: float, chest_too := false) -> float:
+	var closest := _closest_on_body(origin, candidate)
+	var offset: Vector3 = closest - origin
+	var distance := offset.length() - float(candidate["radius"])
+	if distance > reach:
+		return INF
+	if distance > 0.0 and forward.angle_to(offset) > half_angle:
+		if not chest_too or forward.angle_to(_body_point(candidate) - origin) > half_angle:
+			return INF
+	var query := PhysicsRayQueryParameters3D.create(origin, closest,
+		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
+	if not space.intersect_ray(query).is_empty():
+		return INF
+	return distance
 
 
 ## The living actors but `attacker` whose body is within `radius` metres of `point`

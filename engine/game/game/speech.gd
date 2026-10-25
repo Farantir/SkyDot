@@ -7,7 +7,8 @@
 # is over. A line lasts as long as its voice; without one (no voice type, the
 # file missing or unreadable) it lasts `line["seconds"]`, the text timer
 # max(2 s, 0.07 s/char) the engine computed. The player's dialogue and, later,
-# scenes use the same queue. No viewer, camera, input or overlay in here.
+# scenes use the same queue; the player has no node of his own, his lines (a shout) play in his
+# head. No viewer, camera, input or overlay in here.
 #
 # The log, per voiced line: `speech: 0x… voice <vpath> <seconds> s start <time>`
 # and `… end <time>`, or `speech: 0x… voice missing <vpath>`; times are the
@@ -21,6 +22,8 @@ extends Node
 signal line_started(speaker: int, line: Dictionary, seconds: float)
 signal line_ended(speaker: int, line: Dictionary)
 
+## The player's reference: he has no built node.
+const PLAYER_REF := 0x14
 ## Where a head is above the speaker's origin, metres.
 const HEAD_HEIGHT := 1.6
 ## Voices fade out past this, metres.
@@ -105,13 +108,22 @@ func _start(speaker: int, entry: Dictionary) -> void:
 	entry["left"] = entry["seconds"]
 	if stream != null and stream.get_length() > 0.0:
 		var node: Node = _find_ref.call(speaker)
-		var player := AudioStreamPlayer3D.new()
-		player.stream = stream
-		player.max_distance = MAX_DISTANCE
-		player.unit_size = UNIT_SIZE
-		player.position = Vector3(0.0, HEAD_HEIGHT, 0.0)
-		(node if node != null else self).add_child(player)
-		player.play()
+		var player: Node
+		if node == null and speaker == PLAYER_REF:
+			var own := AudioStreamPlayer.new()  # the player speaks in his own head
+			own.stream = stream
+			add_child(own)
+			own.play()
+			player = own
+		else:
+			var placed := AudioStreamPlayer3D.new()
+			placed.stream = stream
+			placed.max_distance = MAX_DISTANCE
+			placed.unit_size = UNIT_SIZE
+			placed.position = Vector3(0.0, HEAD_HEIGHT, 0.0)
+			(node if node != null else self).add_child(placed)
+			placed.play()
+			player = placed
 		entry["player"] = player
 		print("speech: 0x%08X voice %s %.2f s start %.2f wall %.2f" % [speaker, vpath, entry["seconds"], _clock, _now()])
 	elif not vpath.is_empty():
