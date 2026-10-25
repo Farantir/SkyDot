@@ -52,6 +52,7 @@ struct WeaponStyle {
     double melee = 0.5;
     double ranged = 0.5;
     double unarmed = 0.5; ///< Fists and a creature's own attacks: always there to fight with.
+    double shout = 0.0;   ///< CSTY shout score mult: how often it shouts; 0 (no combat style too) never.
 };
 
 /// PLACEHOLDERS (UESP gives no numbers).
@@ -115,5 +116,40 @@ struct MageDecision {
 /// How long a concentration spell is held: the die between k_hold_min and k_hold_max, no longer than
 /// the Magicka lasts (at least 0.1 s).
 [[nodiscard]] double hold_seconds(double roll, double cost_per_second, double magicka) noexcept;
+
+// ---- shouts (7b-4) ------------------------------------------------------------------------
+
+/// What the rules need to know of one shout an NPC knows: it says all three words (7b-2), so the
+/// spell is that of the last word and the recovery the whole shout's.
+struct ShoutFacts {
+    std::uint32_t form{};      ///< The SHOU.
+    std::uint32_t spell{};     ///< Of the last word.
+    double reach{};            ///< Game units the spell can hit from (its projectile's range, a cone's).
+    double recovery{};         ///< Seconds the voice recovers after it.
+    bool hostile{};
+};
+
+/// PLACEHOLDER (the CK documents the shout mult as a score multiplier, not a rate): the chance, per
+/// decision, that an NPC that can shout does is its style's shout mult (a mult of 1 or more: always).
+/// A shout is only said at a target within this fraction of its reach (k_reach_fraction).
+struct ShoutInputs {
+    std::vector<ShoutFacts> shouts;
+    bool recovering{};       ///< The voice still recovers from the last shout.
+    bool aimed{};            ///< It has faced the target for fAIShoutMinAimSeconds within fAIShoutToleranceDegrees.
+    bool line_of_sight = true;
+    double distance{};       ///< To the target, game units.
+    double shout_mult{};     ///< The combat style's shout score mult.
+    double roll{};           ///< A die in [0, 1).
+};
+
+/// Whether the NPC has faced its target long enough: `aimed_seconds` is how long the angle between
+/// where it looks and the target has stayed within the tolerance (the caller resets it when it leaves
+/// the tolerance).
+[[nodiscard]] bool shout_aimed(double aimed_seconds, double min_aim_seconds) noexcept;
+
+/// The shout to say now, 0 for none: not recovering, aimed, in sight, the style's mult above 0, the
+/// die under the mult, and a hostile shout whose reach holds the target (k_reach_fraction of it); the
+/// same die, rescaled, picks among several.
+[[nodiscard]] std::uint32_t decide_shout(const ShoutInputs& in) noexcept;
 
 } // namespace skydot::combat_ai

@@ -35,6 +35,9 @@ public:
     void set_look(double yaw, double pitch);
     /// Jump on the next tick, if standing.
     void jump();
+    /// A shove: `velocity` (metres per second, Godot space) is added to the body's own; the walk's
+    /// acceleration takes it out again (a shout's push).
+    void impulse(const godot::Vector3& velocity) { set_velocity(get_velocity() + velocity); }
     /// Put the feet at `feet` with no velocity.
     void teleport(const godot::Vector3& feet);
     /// The eye, interpolated between the last two physics ticks.

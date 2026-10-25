@@ -67,6 +67,7 @@ void SkydotPlayer::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_input", "move", "vertical", "gait"), &SkydotPlayer::set_input);
     ClassDB::bind_method(D_METHOD("set_look", "yaw", "pitch"), &SkydotPlayer::set_look);
     ClassDB::bind_method(D_METHOD("jump"), &SkydotPlayer::jump);
+    ClassDB::bind_method(D_METHOD("impulse", "velocity"), &SkydotPlayer::impulse);
     ClassDB::bind_method(D_METHOD("teleport", "feet"), &SkydotPlayer::teleport);
     ClassDB::bind_method(D_METHOD("get_eye_position"), &SkydotPlayer::get_eye_position);
     ClassDB::bind_method(D_METHOD("is_swimming"), &SkydotPlayer::is_swimming);

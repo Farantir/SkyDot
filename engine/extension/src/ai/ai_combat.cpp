@@ -45,6 +45,9 @@ constexpr double k_think_interval = 0.25;
 constexpr double k_view_cone_degrees = 190.0;
 constexpr double k_player_head = 1.7;
 constexpr double k_player_view_degrees = 120.0;
+// PLACEHOLDER: how long a shouting NPC inhales before the words (the clip's own length is the game
+// layer's; this is the AI's wait).
+constexpr double k_shout_inhale = 0.8;
 constexpr double k_head_fraction = 0.93;
 /// PLACEHOLDER: seconds out of sight before it searches, and how long it searches.
 constexpr double k_lost_grace = 3.0;
@@ -358,7 +361,8 @@ void SkydotAi::read_gear(Mind& m) {
         c.style = {style->offensive_mult(), style->circle_mult(), style->fallback_mult(),
                    style->special_attack_mult()};
         c.weapon_style = {static_cast<double>(style->magic_score_mult()), static_cast<double>(style->melee_score_mult()),
-                          static_cast<double>(style->ranged_score_mult()), static_cast<double>(style->unarmed_score_mult())};
+                          static_cast<double>(style->ranged_score_mult()), static_cast<double>(style->unarmed_score_mult()),
+                          static_cast<double>(style->shout_score_mult())};
     }
     read_spells(m);
     // Only a bow (no melee weapon to fight with) means ranged from the start.
@@ -411,6 +415,36 @@ void SkydotAi::read_spells(Mind& m) {
             c.spells.push_back(cached->second);
         }
     }
+    // The shouts: an NPC says all three words, so the spell of the last one and the recovery of the shout.
+    c.shouts.clear();
+    for (const std::int64_t shout : vm_->shouts_of(m.ref)) {
+        const godot::Dictionary info = vm_->shout_info(m.ref, shout);
+        const godot::Array words = info.get("words", godot::Array());
+        if (words.is_empty()) {
+            continue;
+        }
+        const godot::Dictionary last = words[words.size() - 1];
+        const auto spell = static_cast<std::int64_t>(last.get("spell", 0));
+        const godot::Dictionary cast = vm_->cast_info(spell);
+        if (!cast.get("found", false)) {
+            continue;
+        }
+        combat_ai::ShoutFacts f;
+        f.form = static_cast<std::uint32_t>(shout);
+        f.spell = static_cast<std::uint32_t>(spell);
+        f.hostile = cast.get("hostile", false);
+        f.recovery = static_cast<double>(last.get("recovery", 0.0));
+        const auto delivery = static_cast<std::int64_t>(cast.get("delivery", 0));
+        if (delivery == 2) {
+            const godot::Dictionary proj = world_->get_projectile(static_cast<std::int64_t>(cast.get("projectile", 0)));
+            const double range = proj.is_empty() ? 0.0 : static_cast<double>(proj.get("range", 0.0));
+            f.reach = range > 0.0 ? std::min(range, k_max_reach) : k_aimed_reach;
+        } else if (delivery == 3) {
+            const double range = static_cast<double>(cast.get("range", 0.0));
+            f.reach = range > 0.0 ? range : k_max_reach;
+        }
+        c.shouts.push_back(f);
+    }
 }
 
 void SkydotAi::end_cast(Mind& m) {
@@ -453,6 +487,69 @@ bool SkydotAi::cast_tick(Mind& m, double seconds) {
         emit_signal("combat_cast", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
                     static_cast<std::int64_t>(cast.spell), static_cast<std::int64_t>(1), "stop");
     }
+    return true;
+}
+
+bool SkydotAi::shout_tick(Mind& m, double seconds) {
+    CombatMind& c = m.combat;
+    if (!c.shout.active) {
+        return false;
+    }
+    c.shout.elapsed += seconds;
+    if (c.shout.elapsed >= k_shout_inhale) {
+        c.shout.active = false;
+        c.cooldown = k_cast_period;
+        c.aimed = 0.0;
+        std::printf("combat: 0x%X says 0x%X\n", m.ref, c.shout.shout);
+        emit_signal("combat_shout", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                    static_cast<std::int64_t>(c.shout.shout), "release");
+    }
+    return true;
+}
+
+bool SkydotAi::shout_decide(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los) {
+    CombatMind& c = m.combat;
+    if (c.shouts.empty() || c.weapon_style.shout <= 0.0 || c.cast.active) {
+        c.aimed = 0.0;
+        c.facing = false;
+        return false;
+    }
+    combat_ai::ShoutInputs in;
+    in.shouts = c.shouts;
+    in.recovering = vm_->voice_recovery(m.ref) > 0.0;
+    in.line_of_sight = los;
+    in.distance = distance;
+    in.shout_mult = c.weapon_style.shout;
+    in.roll = roll(m);
+    // Would it shout if it were aimed? Then it stands and faces the target until it is.
+    in.aimed = true;
+    if (combat_ai::decide_shout(in) == 0) {
+        c.aimed = 0.0;
+        c.facing = false;
+        return false;
+    }
+    const auto& data = world_->data();
+    const double tolerance = static_cast<double>(data.gmst_float("fAIShoutToleranceDegrees", 5.0F));
+    const double min_aim = static_cast<double>(data.gmst_float("fAIShoutMinAimSeconds", 2.0F));
+    Vector3 flat_to = SkydotWorld::skyrim_position(to) - actor.get_global_position();
+    flat_to.y = 0;
+    const Vector3 forward = -actor.get_global_transform().basis.get_column(2);
+    const double angle = flat_to.length() > 0.01F
+                             ? static_cast<double>(forward.angle_to(flat_to.normalized())) * 180.0 / std::numbers::pi
+                             : 0.0;
+    // The seconds count from the decision that found it facing the target, not from the one before.
+    c.aimed = angle <= tolerance && c.facing ? c.aimed + k_think_interval : 0.0;
+    c.facing = angle <= tolerance;
+    in.aimed = combat_ai::shout_aimed(c.aimed, min_aim);
+    const std::uint32_t shout = combat_ai::decide_shout(in);
+    actor.stop();
+    if (shout == 0) {
+        return true; // faces the target until it has aimed long enough
+    }
+    c.shout = {true, shout, 0.0};
+    std::printf("combat: 0x%X shouts 0x%X at 0x%X (aimed %.1f s)\n", m.ref, shout, c.target, c.aimed);
+    emit_signal("combat_shout", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
+                static_cast<std::int64_t>(shout), "start");
     return true;
 }
 
@@ -1092,6 +1189,12 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         leave_combat(m, &actor);
         return false;
     }
+    if (shout_tick(m, seconds)) {
+        if (c.state != 1 || !position_of(c.target)) {
+            c.shout.active = false;
+        }
+        return true; // it stands and shouts
+    }
     if (cast_tick(m, seconds)) {
         if (c.state != 1 || !position_of(c.target)) {
             end_cast(m);
@@ -1161,6 +1264,9 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         return c.state != 0;
     }
     const double distance = flat(m.last, *at);
+    if (shout_decide(m, actor, distance, *at, in_sight)) {
+        return true;
+    }
     if (mage_tick(m, actor, distance, *at, in_sight)) {
         return true;
     }

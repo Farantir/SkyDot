@@ -160,4 +160,30 @@ MageDecision decide(const MageInputs& in) noexcept {
     return cast(pick, hold_seconds(scaled - std::floor(scaled), pick.cost, in.magicka));
 }
 
+bool shout_aimed(double aimed_seconds, double min_aim_seconds) noexcept {
+    return aimed_seconds >= min_aim_seconds;
+}
+
+std::uint32_t decide_shout(const ShoutInputs& in) noexcept {
+    if (in.recovering || !in.aimed || !in.line_of_sight || in.shout_mult <= 0.0) {
+        return 0;
+    }
+    const double chance = std::min(in.shout_mult, 1.0);
+    const double roll = std::clamp(in.roll, 0.0, 0.999999);
+    if (roll >= chance) {
+        return 0;
+    }
+    std::vector<const ShoutFacts*> usable;
+    for (const auto& s : in.shouts) {
+        if (s.hostile && in.distance <= s.reach * k_reach_fraction) {
+            usable.push_back(&s);
+        }
+    }
+    if (usable.empty()) {
+        return 0;
+    }
+    const auto index = static_cast<std::size_t>(roll / chance * static_cast<double>(usable.size()));
+    return usable[std::min(index, usable.size() - 1)]->form;
+}
+
 } // namespace skydot::combat_ai

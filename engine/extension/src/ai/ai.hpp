@@ -208,6 +208,16 @@ private:
         combat_ai::WeaponStyle weapon_style;
         std::vector<combat_ai::SpellFacts> spells; ///< Static facts; cost and active are read per decision.
         bool spells_read{};
+        // Shouts (ai_combat.cpp shout_tick): the shouts it knows, how long it has faced its target
+        // and the shout under way (inhaling, then said).
+        std::vector<combat_ai::ShoutFacts> shouts;
+        double aimed{};
+        bool facing{};   ///< Within the tolerance of the target at the last decision.
+        struct Shout {
+            bool active{};
+            std::uint32_t shout{};
+            double elapsed{};
+        } shout;
         struct Cast {
             bool active{};
             std::uint32_t spell{};
@@ -337,6 +347,11 @@ private:
     void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
     /// A mage's turn (magic_choice.hpp): true if it cast, walked for a spell or waits for one; false
     /// if it fights with its weapons.
+    /// A shout under way: true while it inhales (the actor stands), then it is said (`combat_shout`).
+    bool shout_tick(Mind& m, double seconds);
+    /// Whether to start a shout now (the aim rule, the die and the style); true if the actor stands
+    /// aiming or inhaling.
+    bool shout_decide(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
     bool mage_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
     /// The cast under way, once per frame: release or stop it when its time is up. True while one runs.
     bool cast_tick(Mind& m, double seconds);

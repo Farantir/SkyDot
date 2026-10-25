@@ -231,3 +231,60 @@ TEST_CASE("a concentration spell is held between one and three seconds, as long 
     CHECK(hold_seconds(1.0, 8.0, 12.0) == 1.5);
     CHECK(hold_seconds(1.0, 8.0, 0.0) == 0.1);
 }
+
+namespace {
+ShoutInputs shouter() {
+    ShoutInputs in;
+    // Unrelenting Force (draugr): a cone a few hundred units long.
+    in.shouts = {{0x9DE93, 0x13F3A, 700.0, 15.0, true}};
+    in.aimed = true;
+    in.distance = 300.0;
+    in.shout_mult = 1.0;
+    in.roll = 0.3;
+    return in;
+}
+} // namespace
+
+TEST_CASE("an NPC shouts when it is aimed, in sight, in reach, not recovering and its style likes it", "[magic][ai][shout]") {
+    auto in = shouter();
+    CHECK(decide_shout(in) == 0x9DE93);
+    in.recovering = true;
+    CHECK(decide_shout(in) == 0);
+    in = shouter();
+    in.aimed = false;
+    CHECK(decide_shout(in) == 0);
+    in = shouter();
+    in.line_of_sight = false;
+    CHECK(decide_shout(in) == 0);
+    in = shouter();
+    in.distance = 700.0 * k_reach_fraction + 1.0;
+    CHECK(decide_shout(in) == 0);
+    in.distance = 700.0 * k_reach_fraction;
+    CHECK(decide_shout(in) == 0x9DE93);
+    in = shouter();
+    in.shout_mult = 0.0;
+    CHECK(decide_shout(in) == 0); // a style without the mult (or none) never shouts
+    in.shout_mult = 0.5;
+    in.roll = 0.6;
+    CHECK(decide_shout(in) == 0); // the die is the mult
+    in.roll = 0.4;
+    CHECK(decide_shout(in) == 0x9DE93);
+}
+
+TEST_CASE("the die picks among the shouts in reach; a friendly shout is not said at an enemy", "[magic][ai][shout]") {
+    auto in = shouter();
+    in.shouts.push_back({0x1111, 0x2222, 500.0, 8.0, true});
+    in.shouts.push_back({0x3333, 0x4444, 500.0, 8.0, false});
+    in.roll = 0.1;
+    CHECK(decide_shout(in) == 0x9DE93);
+    in.roll = 0.9;
+    CHECK(decide_shout(in) == 0x1111);
+    in.distance = 450.0; // out of reach of the 500 unit one
+    in.roll = 0.9;
+    CHECK(decide_shout(in) == 0x9DE93);
+}
+
+TEST_CASE("aiming takes the minimum seconds", "[magic][ai][shout]") {
+    CHECK_FALSE(shout_aimed(1.9, 2.0));
+    CHECK(shout_aimed(2.0, 2.0));
+}

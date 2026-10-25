@@ -255,6 +255,10 @@ void SkydotAi::_bind_methods() {
     ADD_SIGNAL(MethodInfo("combat_cast", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
                           PropertyInfo(Variant::INT, "spell"), PropertyInfo(Variant::INT, "hand"),
                           PropertyInfo(Variant::STRING, "phase")));
+    // An NPC shouts (ai_combat.cpp shout_tick): phase "start" (it inhales, standing) or "release" (the
+    // words are said: the game layer casts the shout and plays the exhale).
+    ADD_SIGNAL(MethodInfo("combat_shout", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "target"),
+                          PropertyInfo(Variant::INT, "shout"), PropertyInfo(Variant::STRING, "phase")));
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
 }
