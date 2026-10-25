@@ -31,6 +31,22 @@
 class_name Corpses
 extends RefCounted
 
+## Writes the simulated bodies' poses into their bones without the skeleton's scale (see `_lay_down`).
+class RagdollPose:
+	extends SkeletonModifier3D
+	var bones: Array[PhysicalBone3D] = []
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var skeleton := get_skeleton()
+		if skeleton == null:
+			return
+		for bone in bones:  # parents come before their children
+			if is_instance_valid(bone) and bone.is_inside_tree():
+				var index := skeleton.find_bone(bone.bone_name)
+				if index >= 0:
+					skeleton.set_bone_global_pose(index, Corpses.bone_pose(skeleton, bone))
+
+
 ## The human ragdoll set: bone, the bone its capsule runs to (or "" for a
 ## fixed length), the capsule's radius in metres, the joint's swing and twist
 ## spans in degrees (0: the root, no joint). Placeholders: shapes and limits
@@ -328,6 +344,17 @@ func _lay_down(ref: int, impulse: Vector3, knocked := false) -> bool:
 	skeleton.add_child(simulator)
 	for bone: PhysicalBone3D in ragdoll["bones"]:
 		simulator.add_child(bone)
+	# Godot's simulator writes a body's pose into the bone through the skeleton's inverse transform,
+	# scale included: under the actor's units node (about 0.0147) a bone's basis comes out 68 times
+	# too large and the skin explodes into huge planes. This modifier runs after it (it is the
+	# skeleton's next child) and writes the right pose (`bone_pose`: no scale) over it; it goes when
+	# the simulator does.
+	var fix := RagdollPose.new()
+	fix.bones = ragdoll["bones"]
+	skeleton.add_child(fix)
+	simulator.tree_exiting.connect(func() -> void:
+		fix.active = false
+		fix.queue_free())
 	# A joint is made when the type changes in the tree, not when it enters it.
 	for bone: PhysicalBone3D in ragdoll["bones"]:
 		var type := bone.joint_type
