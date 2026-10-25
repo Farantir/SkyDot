@@ -33,6 +33,8 @@ static func spawn(session: GameSession, rig: PlayerRig, forms: Array[int], dista
 		var here := SkydotWorld.godot_to_skyrim(at)
 		var to := SkydotWorld.godot_to_skyrim(feet) - here
 		var ref := session.papyrus.spawn_actor(forms[i], session.place.cell_id, here, atan2(to.x, to.y))
-		print("--spawn: 0x%08X %s" % [forms[i], "is 0x%08X" % ref if ref != 0 else "is no actor"])
+		print("--spawn: 0x%08X %s at Skyrim (%.0f, %.0f, %.0f), the player at (%.0f, %.0f, %.0f)" % [forms[i],
+			"is 0x%08X" % ref if ref != 0 else "is no actor", here.x, here.y, here.z,
+			SkydotWorld.godot_to_skyrim(feet).x, SkydotWorld.godot_to_skyrim(feet).y, SkydotWorld.godot_to_skyrim(feet).z])
 		refs.append(ref)
 	return refs

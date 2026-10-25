@@ -1015,7 +1015,7 @@ func kill_actor(ref: int) -> int:
 	var hits := 0
 	var weapon := combat.player_weapon()
 	var extra: int = papyrus.equipment(SkydotPapyrus.PLAYER_REF)["right_extra"]
-	while hits < 200 and not papyrus.is_actor_dead(ref):
+	while hits < 2000 and not papyrus.is_actor_dead(ref):
 		var result := papyrus.apply_hit(SkydotPapyrus.PLAYER_REF, ref, weapon, extra, "attackStart", 0)
 		if result.has("error"):
 			break

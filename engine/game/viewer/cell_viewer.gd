@@ -189,6 +189,7 @@ var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it fo
 var _shots: ShotRecorder
 var _body: FirstPersonBody  # the player's arms and weapon
 var _fight_pending: Array[int] = []  # --fight: the actors still to start (not built yet)
+var _kill_in := 0.0  # --kill-after: seconds left before --kill
 var _attack_at := 0  # --attack-at: the actor still to attack
 var _cast_at: CastAt  # --cast-at: the cast still to make
 var _shout_at: ShoutAt  # --shout: the shout still to say
@@ -393,8 +394,9 @@ func _apply_combat_options() -> void:
 	_shout_at = ShoutAt.apply(_session, _rig, _settings)
 	if not _settings.spawn.is_empty():
 		SpawnActors.spawn(_session, _rig, _settings.spawn, _settings.spawn_distance)
-	for ref in _settings.kill:
-		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
+	_kill_in = _settings.kill_after
+	if _kill_in <= 0.0:
+		_kill_now()
 	for entry: Dictionary in _settings.npc_give:
 		_session.papyrus.add_item(entry["ref"], entry["form"], entry["count"])
 	for ref in _settings.strip_melee:
@@ -404,6 +406,12 @@ func _apply_combat_options() -> void:
 	_fight_pending = _settings.fight.duplicate()
 	for ref in _settings.npc_draw:
 		print("--npc-draw: 0x%08X %s" % [ref, "draws" if _session.npc_draw(ref, true) else "cannot draw"])
+
+
+## --kill: hit the actors until they are dead.
+func _kill_now() -> void:
+	for ref in _settings.kill:
+		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
 
 
 ## --attack-at: face the actor and attack when it is in reach, once.
@@ -465,6 +473,10 @@ func _fight_step() -> void:
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
+	if _kill_in > 0.0:
+		_kill_in -= delta
+		if _kill_in <= 0.0:
+			_kill_now()
 	_fight_step()
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
@@ -473,6 +485,7 @@ func _process(delta: float) -> void:
 			# A frame series, or a shot after a delay, shows what scripts do over time (a trap
 			# swinging when the feet reach its plate, a shout's push); other single shots stay still.
 			_session.update_scripts(delta, _rig.player.global_position)
+			_session.visual_effects.step(delta)  # the streams of a soul absorbed follow their ends
 			if _session.has_activations():
 				_session.run_activation()  # --activate inside the series
 		if _settings.has_shot_camera:

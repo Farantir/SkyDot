@@ -126,6 +126,7 @@ var dragon_souls := -1  # --dragon-souls N: the player's DragonSouls (-1: unchan
 var shout_words := 0  # --shout N[,0xREF]: say N words (hold the voice key for them) facing that actor
 var shout_at := 0
 var shout_side := 0  # --shout-side K: the first of twelve sides round the actor --shout-from tries
+var kill_after := 0.0  # --kill-after SECONDS: --kill waits that long (a spawned actor needs its scripts first)
 var shout_from := 0.0  # --shout-from METRES: stand that far from the actor first (a shot)
 var spawn: Array[int] = []  # --spawn 0xNPC_[,...]: those actors (NPC_ or LVLN) appear in front of the player after the load
 var spawn_distance := SpawnActors.DISTANCE  # --spawn-distance METRES: how far ahead --spawn puts them
@@ -298,6 +299,7 @@ func _read(args: Dictionary) -> void:
 		var cast_parts: PackedStringArray = String(args["cast-at"]).split(",")
 		cast_at = cast_parts[0].hex_to_int() if cast_parts[0].begins_with("0x") else cast_parts[0].to_int()
 		cast_at_hand = _hand_of(cast_parts[1]) if cast_parts.size() > 1 else 1
+	kill_after = maxf(0.0, str(args.get("kill-after", "0")).to_float())
 	spawn_distance = maxf(0.5, str(args.get("spawn-distance", str(SpawnActors.DISTANCE))).to_float())
 	for entry: String in args.get("spawn", "").split(",", false):
 		spawn.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
