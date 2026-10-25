@@ -271,17 +271,31 @@ TEST_CASE("an NPC shouts when it is aimed, in sight, in reach, not recovering an
     CHECK(decide_shout(in) == 0x9DE93);
 }
 
-TEST_CASE("the die picks among the shouts in reach; a friendly shout is not said at an enemy", "[magic][ai][shout]") {
+TEST_CASE("the die picks among the shouts of the shortest reach that holds the target; a friendly shout is not said at an enemy",
+          "[magic][ai][shout]") {
     auto in = shouter();
-    in.shouts.push_back({0x1111, 0x2222, 500.0, 8.0, true});
-    in.shouts.push_back({0x3333, 0x4444, 500.0, 8.0, false});
+    const double reach = in.shouts.front().reach;
+    in.shouts.push_back({0x1111, 0x2222, reach, 8.0, true});
+    in.shouts.push_back({0x3333, 0x4444, reach, 8.0, false});
     in.roll = 0.1;
     CHECK(decide_shout(in) == 0x9DE93);
     in.roll = 0.9;
     CHECK(decide_shout(in) == 0x1111);
-    in.distance = 450.0; // out of reach of the 500 unit one
+}
+
+TEST_CASE("the shout made for the distance is said: the shorter reach within it, the longer beyond", "[magic][ai][shout]") {
+    auto in = shouter();
+    in.shouts.clear();
+    in.shouts.push_back({0xAAAA, 0xA1, 2000.0, 5.0, true}); // a fireball
+    in.shouts.push_back({0xBBBB, 0xB1, 1600.0, 5.0, true}); // the breath
+    in.distance = 1000.0;
+    in.roll = 0.1;
+    CHECK(decide_shout(in) == 0xBBBB);
     in.roll = 0.9;
-    CHECK(decide_shout(in) == 0x9DE93);
+    CHECK(decide_shout(in) == 0xBBBB);
+    in.distance = 1500.0 * 1.0; // beyond the breath's 0.8 of its reach
+    in.roll = 0.1;
+    CHECK(decide_shout(in) == 0xAAAA);
 }
 
 TEST_CASE("aiming takes the minimum seconds", "[magic][ai][shout]") {

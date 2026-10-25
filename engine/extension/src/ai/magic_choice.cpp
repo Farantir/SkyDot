@@ -182,6 +182,13 @@ std::uint32_t decide_shout(const ShoutInputs& in) noexcept {
     if (usable.empty()) {
         return 0;
     }
+    // The shout with the shortest reach that holds the target is the one made for it (the dragon's breath
+    // within 0.8 of its reach, its fireball beyond that); the die picks among equals.
+    double shortest = usable.front()->reach;
+    for (const ShoutFacts* s : usable) {
+        shortest = std::min(shortest, s->reach);
+    }
+    std::erase_if(usable, [&](const ShoutFacts* s) { return s->reach > shortest; });
     const auto index = static_cast<std::size_t>(roll / chance * static_cast<double>(usable.size()));
     return usable[std::min(index, usable.size() - 1)]->form;
 }
