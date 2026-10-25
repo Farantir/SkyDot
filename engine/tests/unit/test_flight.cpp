@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
+#include <numbers>
 
 using namespace skydot::flight;
 
@@ -95,7 +96,7 @@ TEST_CASE("flight: a large dt gives the same flight as small ones") {
 
 TEST_CASE("flight: the heading convention is Skyrim's (0 faces +y, clockwise)") {
     const Params p;
-    Body b = airborne_body(0, 0, 1600, M_PI / 2, 2000);
+    Body b = airborne_body(0, 0, 1600, std::numbers::pi / 2, 2000);
     Command c;
     c.kind = CommandKind::fly_to;
     c.point = {50000, 0, 0};
@@ -143,7 +144,7 @@ TEST_CASE("flight: bank follows the turn direction and stays within the maximum"
 
 TEST_CASE("flight: the dragon stays above the clearance over a ridge on its way") {
     const Params p;
-    Body b = airborne_body(0, 0, 3100, M_PI / 2, 2000); // 1500 over the foot of the ground... flying east
+    Body b = airborne_body(0, 0, 3100, std::numbers::pi / 2, 2000); // 1500 over the foot of the ground... flying east
     b.pos.z = 100 + p.cruise_height;
     Command c;
     c.kind = CommandKind::fly_to;
@@ -162,7 +163,7 @@ TEST_CASE("flight: a static spike in the path is cleared") {
     const Ground tower = [](double x, double y) {
         return (std::fabs(x - 5000) < 200 && std::fabs(y) < 200) ? 4000.0 : 100.0;
     };
-    Body b = airborne_body(0, 0, 1600, M_PI / 2, 2000);
+    Body b = airborne_body(0, 0, 1600, std::numbers::pi / 2, 2000);
     Command c;
     c.kind = CommandKind::fly_to;
     c.point = {12000, 0, 0};
@@ -178,7 +179,7 @@ TEST_CASE("flight: a static spike in the path is cleared") {
 TEST_CASE("flight: it follows a slope down and up") {
     const Params p;
     const Ground slope = [](double x, double) { return 0.1 * x; };
-    Body b = airborne_body(0, 0, 1500, M_PI / 2, 2000);
+    Body b = airborne_body(0, 0, 1500, std::numbers::pi / 2, 2000);
     Command c;
     c.kind = CommandKind::fly_to;
     c.point = {40000, 0, 0};
@@ -397,7 +398,7 @@ TEST_CASE("flight: find_landing rejects a bumpy or steep spot and finds a flat o
 TEST_CASE("flight: an unknown ground height keeps the last known one") {
     const Params p;
     const Ground g = [](double x, double) { return x > 3000 ? std::nan("") : 100.0; };
-    Body b = airborne_body(0, 0, 1600, M_PI / 2, 2000);
+    Body b = airborne_body(0, 0, 1600, std::numbers::pi / 2, 2000);
     Command c;
     c.kind = CommandKind::fly_to;
     c.point = {20000, 0, 0};
@@ -575,7 +576,7 @@ TEST_CASE("flight tactics: the breath is allowed hovering at the target and in t
     CHECK(allowed);
     // Not facing: no breath.
     Body away = r.b;
-    away.yaw += M_PI;
+    away.yaw += std::numbers::pi;
     CHECK_FALSE(breath_allowed(r.t, away, r.in.target, r.p));
 
     // A pass: inbound with the target ahead in range.
@@ -646,7 +647,7 @@ TEST_CASE("flight tactics: out of combat it makes no demands") {
 TEST_CASE("flight: the Godot facing is the Skyrim heading turned the other way") {
     // North (+y) is -Z in Godot: facing 0 and heading 0 agree; east (+x) is heading pi/2 and facing -pi/2.
     CHECK(facing_from_heading(0) == 0);
-    CHECK(facing_from_heading(M_PI / 2) == Catch::Approx(-M_PI / 2));
+    CHECK(facing_from_heading(std::numbers::pi / 2) == Catch::Approx(-std::numbers::pi / 2));
     CHECK(heading_from_facing(facing_from_heading(1.0)) == Catch::Approx(1.0));
     // Facing f looks along (-sin f, -cos f) in Godot's (x, z); that is Skyrim (sin h, cos h) with z = -y.
     const double h = 0.7;
