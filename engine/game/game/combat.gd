@@ -556,6 +556,11 @@ func clip_of(ref: int, stem: String) -> String:
 	return _clip_file(String(_actor_plan(ref).get("behaviour", "")), stem, "")
 
 
+## The behaviour project file of `ref` ("" if it has none).
+func behaviour_of(ref: int) -> String:
+	return String(_actor_plan(ref).get("behaviour", ""))
+
+
 ## The chest of the actor (or the player) `ref` in engine space; its feet if it has no node.
 func body_point_of(ref: int) -> Vector3:
 	if ref == PLAYER_REF:

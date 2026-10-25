@@ -39,6 +39,8 @@ const EYE_HEIGHT := 1.7
 signal failed(text: String)
 ## Something to tell the user: a script's message, a quest note, what an
 ## activation says, the weather.
+## The player was shoved (PushActorAway): the source and the velocity given.
+signal player_pushed(source: int, velocity: Vector3)
 signal message(text: String, box: bool)
 signal quest_started(quest: int)
 signal quest_stage(quest: int, stage: int, text: String)
@@ -163,6 +165,8 @@ var combat: Combat
 var magic: Magic
 ## What mages cast in a fight (the AI's combat_cast), carried out with Magic's delivery.
 var npc_magic: NpcMagic
+## What shouters say in a fight (the AI's combat_shout), carried out with the player's shout rules.
+var npc_shouts: NpcShouts
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
 ## What scripts place, fire and play.
@@ -317,6 +321,9 @@ func _make_game_nodes() -> void:
 		magic.npc_spell_landed.connect(func(caster: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
 			if hostile and target != caster:
 				ai.on_hit(caster, target))
+	npc_shouts = NpcShouts.new(world, papyrus, magic, combat, speech, pack)
+	if ai != null:
+		ai.combat_shout.connect(npc_shouts.on_shout)
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
 	corpses.ai = ai
 	actor_died.connect(corpses.on_died)
@@ -836,10 +843,29 @@ func _on_shouted(_shout: int, words: int, _spell: int, _info: Dictionary) -> voi
 ## not done (PLACEHOLDER: no ragdoll for the player).
 func _on_push_actor(source: int, target: int, force: float) -> void:
 	if target == SkydotPapyrus.PLAYER_REF:
-		print("push: the player is pushed by 0x%08X (force %s): not done" % [source, force])
+		_push_player(source, force)
 		return
 	if not corpses.knock_down(target, source, force):
 		print("push: 0x%08X is not knocked down (dead, not built or down already)" % target)
+
+
+## The player is shoved away from `source` (no ragdoll, no lost control): a velocity along source to
+## player with Corpses' speed per unit of force and lift, which the walk's acceleration takes out again.
+func _push_player(source: int, force: float) -> void:
+	var node := world.find_ref_node(source) as Node3D
+	var away := Vector3.ZERO if node == null else _feet - node.global_position
+	away.y = 0.0
+	if away.length() < 0.001:
+		away = -_viewpoint.global_transform.basis.z
+		away.y = 0.0
+	var speed := (away.normalized() + Vector3.UP * Corpses.PUSH_LIFT).normalized() * force * Corpses.PUSH_SPEED_PER_FORCE
+	var body: Object = _player.get("player") if _player != null else null
+	if body == null or not body.has_method("impulse"):
+		print("push: the player is pushed by 0x%08X (force %s): no body to push" % [source, force])
+		return
+	body.impulse(speed)
+	player_pushed.emit(source, speed)
+	print("push: the player is pushed by 0x%08X (force %s, %.1f m/s)" % [source, force, speed.length()])
 
 
 ## KnockAreaEffect: every actor within `radius` game units of the source is pushed away with `magnitude`.

@@ -88,6 +88,8 @@ const SOUND_HIT := 5
 ## GMSTs: the held seconds that make two and three words of a shout.
 const GMST_SHOUT_TIME1 := "fShoutTime1"
 const GMST_SHOUT_TIME2 := "fShoutTime2"
+## The seconds an actor is taken to hold a shout: long enough for all the words.
+const NPC_SHOUT_HELD := 99.0
 const SHOUT_TIME1_FALLBACK := 0.2
 const SHOUT_TIME2_FALLBACK := 0.9
 ## Seconds an explosion or hit art model stays.
@@ -528,32 +530,64 @@ func _refuse_shout(reason: String, text := "") -> Dictionary:
 func _shout_fire() -> void:
 	_shout["fired"] = true
 	var shout: int = _shout["shout"]
-	var result := _papyrus.cast_shout(PLAYER_REF, shout, float(_shout["held"]), 0)
+	var result := _speak(PLAYER_REF, shout, float(_shout["held"]))
 	if not bool(result["ok"]):
 		_refuse_shout(String(result["reason"]))
 		_play_idle()
 		return
 	var words := int(result["words"])
 	var spell := int(result["spell"])
-	print("shout: 0x%08X words %d spell 0x%08X recovery %s" % [shout, words, spell, result["recovery"]])
 	last_recovery = float(result["recovery"])
 	_papyrus.break_invisibility(PLAYER_REF)
+	var stem := _shout_clip("exhale", words)
+	if stem != "":
+		_clip_left = _length_of(stem)
+		hand_clip.emit(stem, false, 1.0)
+	_deliver(POWER, spell, result["info"], false)
+	shouted.emit(shout, words, spell, result["info"])
+
+
+## `caster` (the player, or an actor: it says all the words) says `shout`: cast_shout decides the
+## words, the spell and the recovery; the spell's release sound plays and its hit sound is remembered
+## for the landings. Returns cast_shout's result with the spell's cast `info`; nothing is delivered.
+func _speak(caster: int, shout: int, held: float) -> Dictionary:
+	var result := _papyrus.cast_shout(caster, shout, held, 0)
+	if not bool(result["ok"]):
+		return result
+	var spell := int(result["spell"])
+	print("shout: 0x%08X said by 0x%X, words %d spell 0x%08X recovery %s" % [shout, caster, int(result["words"]), spell, result["recovery"]])
 	var info := info_of(spell)
+	result["info"] = info
 	_shout_spell = spell
 	_shout_hit_sound = 0
 	var effect := _world.get_magic_effect(int(info.get("mgef", 0))) if int(info.get("mgef", 0)) != 0 else {}
 	for entry: Dictionary in effect.get("sounds", []):
 		if int(entry["kind"]) == SOUND_RELEASE and int(entry["sound"]) != 0:
 			print("shout: sound 0x%08X on release" % int(entry["sound"]))
-			sound_wanted.emit(int(entry["sound"]), 0)
+			sound_wanted.emit(int(entry["sound"]), 0 if caster == PLAYER_REF else caster)
 		elif int(entry["kind"]) == SOUND_HIT:
 			_shout_hit_sound = int(entry["sound"])
-	var stem := _shout_clip("exhale", words)
-	if stem != "":
-		_clip_left = _length_of(stem)
-		hand_clip.emit(stem, false, 1.0)
-	_deliver(POWER, spell, info, false)
-	shouted.emit(shout, words, spell, info)
+	return result
+
+
+## An actor says `shout` at `target` (SkydotAi.combat_shout "release"): the same rules and delivery as
+## the player's, from its head towards the target. Returns cast_shout's result ({ok: false, reason}
+## when it cannot).
+func npc_shout(caster: int, target: int, shout: int) -> Dictionary:
+	var result := _speak(caster, shout, NPC_SHOUT_HELD)
+	if not bool(result["ok"]):
+		print("shout: 0x%X cannot say 0x%08X: %s" % [caster, shout, result["reason"]])
+		return result
+	var node := _world.find_ref_node(caster) as Node3D
+	if node != null:
+		var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT
+		var eye := node.global_position + Vector3.UP * (height * 0.93)
+		var forward := (_combat.body_point_of(target) - eye).normalized()
+		if forward.length() < 0.5:
+			forward = -node.global_transform.basis.z
+		var right := forward.cross(Vector3.UP).normalized()
+		deliver_from(caster, RIGHT, int(result["spell"]), result["info"], eye, forward, right, false)
+	return result
 
 
 ## The first-person shout clip (inhale; exhale for 1, 2, 3 words: plain, medium, long); the one-handed
