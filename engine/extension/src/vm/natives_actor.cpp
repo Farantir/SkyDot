@@ -74,6 +74,23 @@ void bind_actor_natives(Vm& vm, ActorStates& states) {
         return NativeResult{.value = c.vm.object(killer, "Actor"), .wait = -1.0};
     });
 
+    // Flight (step 7b-6): the settings a script gives a flying actor, kept here and saved; the AI
+    // reads them. SetAllowFlyingEx(allowed, crash, search) only differs in what it also lets the
+    // game do, which is nothing here.
+    const auto allow = [&states](NativeCall& c) {
+        states.set_allowed_to_fly(c.self.form(), c.args.empty() || Vm::truthy(c.args[0]));
+        return NativeResult{};
+    };
+    vm.bind("Actor", "SetAllowFlying", allow);
+    vm.bind("Actor", "SetAllowFlyingEx", allow);
+    vm.bind("Actor", "IsAllowedToFly", [&states](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(states.allowed_to_fly(c.self.form())), .wait = -1.0};
+    });
+    vm.bind("Actor", "SetForcedLandingMarker", [&states](NativeCall& c) {
+        const bool marker = !c.args.empty() && c.args[0].kind() == Kind::object;
+        states.set_landing_marker(c.self.form(), marker ? c.args[0].form() : 0);
+        return NativeResult{};
+    });
     vm.bind("Actor", "IsDead", [&states, reported](NativeCall& c) {
         if (!states.is_actor(c.self.form())) {
             if (reported->insert("the object is no actor").second) {

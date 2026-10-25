@@ -687,6 +687,23 @@ void SkydotPapyrus::bind_actor_natives() {
                           combat_hooks_.has_los(c.self.form(), c.args[0].form());
         return NativeResult{.value = Value::boolean(seen), .wait = -1.0};
     });
+    // Flight: the node's mover answers (SkydotAi hooks); a grounded or unbuilt actor does not fly.
+    vm_->bind("Actor", "IsFlying", [this](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(combat_hooks_.is_flying && combat_hooks_.is_flying(c.self.form())),
+                            .wait = -1.0};
+    });
+    vm_->bind("Actor", "GetFlyingState", [this](NativeCall& c) {
+        const std::int64_t state = combat_hooks_.flying_state ? combat_hooks_.flying_state(c.self.form()) : 0;
+        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(state)), .wait = -1.0};
+    });
+    vm_->bind("Actor", "CanFlyHere", [this](NativeCall& c) {
+        return NativeResult{.value = Value::boolean(combat_hooks_.can_fly_here && combat_hooks_.can_fly_here(c.self.form())),
+                            .wait = -1.0};
+    });
+    vm_->bind("ObjectReference", "GetLength", [this](NativeCall& c) {
+        const double length = combat_hooks_.length ? combat_hooks_.length(c.self.form()) : 0.0;
+        return NativeResult{.value = Value::floating(static_cast<float>(length)), .wait = -1.0};
+    });
     vm_->bind("Actor", "StopCombat", [this](NativeCall& c) {
         if (combat_hooks_.stop) {
             combat_hooks_.stop(c.self.form());

@@ -171,6 +171,10 @@ public:
         std::function<void(std::uint32_t ref, std::uint32_t target)> start;
         std::function<void(std::uint32_t ref)> stop;
         std::function<bool(std::uint32_t ref, std::uint32_t target)> has_los;  ///< Actor.HasLOS
+        std::function<bool(std::uint32_t ref)> is_flying;          ///< Actor.IsFlying
+        std::function<std::int64_t(std::uint32_t ref)> flying_state; ///< Actor.GetFlyingState (0..4)
+        std::function<bool(std::uint32_t ref)> can_fly_here;       ///< Actor.CanFlyHere
+        std::function<double(std::uint32_t ref)> length;           ///< ObjectReference.GetLength (units)
     };
     void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
     /// An actor's combat state changed: sends OnCombatStateChanged(akTarget, aeCombatState) to its
@@ -458,6 +462,11 @@ public:
     // or a name that is no actor value (reported once)
     /// The player is at Health 0 (`player_died` was sent; Health above 0 again clears it).
     bool is_player_dead() const { return player_dead_; }
+    /// SetAllowFlying / SetForcedLandingMarker (saved): what the flight AI reads.
+    bool allowed_to_fly(std::int64_t ref) const { return actors_.allowed_to_fly(static_cast<std::uint32_t>(ref)); }
+    std::uint32_t forced_landing_marker(std::int64_t ref) const {
+        return actors_.landing_marker(static_cast<std::uint32_t>(ref));
+    }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
     std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;

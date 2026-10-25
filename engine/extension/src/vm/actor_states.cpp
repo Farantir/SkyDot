@@ -143,6 +143,28 @@ void ActorStates::check_death(std::uint32_t ref, Record& record) {
     }
 }
 
+void ActorStates::set_allowed_to_fly(std::uint32_t ref, bool allowed) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->no_flying = !allowed;
+    }
+}
+
+bool ActorStates::allowed_to_fly(std::uint32_t ref) const {
+    const Record* r = find(ref);
+    return r == nullptr || !r->no_flying;
+}
+
+void ActorStates::set_landing_marker(std::uint32_t ref, std::uint32_t marker) {
+    if (Record* r = touch(ref, av::k_health)) {
+        r->landing_marker = marker;
+    }
+}
+
+std::uint32_t ActorStates::landing_marker(std::uint32_t ref) const {
+    const Record* r = find(ref);
+    return r != nullptr ? r->landing_marker : 0;
+}
+
 void ActorStates::set_killer(std::uint32_t ref, std::uint32_t killer) {
     if (Record* r = touch(ref, av::k_health)) {
         r->killer = killer;
@@ -340,6 +362,8 @@ std::vector<std::uint8_t> ActorStates::save() const {
             w.f64(record.corpse->z);
             w.f64(record.corpse->rot_z);
         }
+        w.u8(record.no_flying ? 1 : 0);
+        w.u32(record.landing_marker);
     }
     return w.out;
 }
@@ -347,7 +371,7 @@ std::vector<std::uint8_t> ActorStates::save() const {
 bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t version) {
     out = ActorStates{};
     std::uint32_t n = 0;
-    if (!r.count(n, version >= 2 ? 14 : 9)) {
+    if (!r.count(n, version >= 3 ? 19 : version >= 2 ? 14 : 9)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -387,6 +411,13 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 }
                 record.corpse = place;
             }
+        }
+        if (version >= 3) {
+            std::uint8_t no_flying = 0;
+            if (!r.u8(no_flying) || !r.u32(record.landing_marker)) {
+                return false;
+            }
+            record.no_flying = no_flying != 0;
         }
     }
     return r.at_end();

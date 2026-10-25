@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 2;
+    static constexpr std::uint32_t k_section_version = 3;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -76,6 +76,14 @@ public:
     /// Every actor that is dead, ascending.
     [[nodiscard]] std::vector<std::uint32_t> dead_refs() const;
 
+    /// SetAllowFlying (version 3 of the section): whether a flying actor may fly; true unless a script
+    /// said otherwise.
+    void set_allowed_to_fly(std::uint32_t ref, bool allowed);
+    [[nodiscard]] bool allowed_to_fly(std::uint32_t ref) const;
+    /// SetForcedLandingMarker (version 3): the reference a flying actor lands at; 0 none.
+    void set_landing_marker(std::uint32_t ref, std::uint32_t marker);
+    [[nodiscard]] std::uint32_t landing_marker(std::uint32_t ref) const;
+
     void set_base(std::uint32_t ref, std::uint32_t av, double value);
     void mod(std::uint32_t ref, std::uint32_t av, double amount);
     /// The temporary (magic) modifier: counts in value and max, is not saved. The sum an
@@ -104,7 +112,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -120,6 +128,8 @@ private:
         bool risen = false; ///< Revived: not dead although the base starts dead. Not saved.
         std::uint32_t killer = 0;
         std::optional<CorpsePlace> corpse;
+        bool no_flying = false;          ///< SetAllowFlying(false).
+        std::uint32_t landing_marker = 0;
         double magicka_pause = 0.0; ///< Not saved.
         double stamina_pause = 0.0;
     };

@@ -304,3 +304,81 @@ TEST_CASE("the Actor natives read and change values; non-actors and unknown name
     CHECK(rig.vm.errors() == 2);
     CHECK(states.get(k_rock, av::k_health) == 0.0);
 }
+
+TEST_CASE("ACTV 3 keeps SetAllowFlying and the forced landing marker, version 2 still loads", "[actor][save]") {
+    auto s = make();
+    CHECK(s.allowed_to_fly(k_guard));
+    CHECK(s.landing_marker(k_guard) == 0);
+    s.set_allowed_to_fly(k_guard, false);
+    s.set_landing_marker(k_guard, 0x2468);
+    s.set_landing_marker(k_rock, 0x1); // no actor: ignored
+    CHECK_FALSE(s.allowed_to_fly(k_guard));
+    CHECK(s.allowed_to_fly(k_elder));
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK_FALSE(t.allowed_to_fly(k_guard));
+    CHECK(t.landing_marker(k_guard) == 0x2468);
+    CHECK(t.landing_marker(k_rock) == 0);
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 2: one actor with a killer and no corpse, nothing after.
+    skydot::save::ByteWriter w;
+    w.u32(1);
+    w.u32(k_guard);
+    w.u8(0);
+    w.u32(0);
+    w.u32(k_hero);
+    w.u8(0);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(w.out), old, 2));
+    ActorStates u = make();
+    u.adopt(std::move(old));
+    CHECK(u.killer_of(k_guard) == k_hero);
+    CHECK(u.allowed_to_fly(k_guard));
+    CHECK(u.landing_marker(k_guard) == 0);
+}
+
+TEST_CASE("the flight natives keep what a script says", "[actor][natives]") {
+    auto states = make();
+    Rig rig;
+    rig.add({.name = "Actor",
+             .functions = {native_function("SetAllowFlying", {{"b", "Bool"}}, "None", false),
+                           native_function("SetAllowFlyingEx", {{"b", "Bool"}, {"c", "Bool"}, {"d", "Bool"}}, "None",
+                                           false),
+                           native_function("IsAllowedToFly", {}, "Bool", false),
+                           native_function("SetForcedLandingMarker", {{"m", "ObjectReference"}}, "None", false)}});
+    bind_actor_natives(rig.vm, states);
+    auto allow = global_function("allow", {{"a", "Actor"}, {"b", "Bool"}});
+    allow.add(Op::callmethod, {ident("SetAllowFlying"), ident("a"), ident("::NoneVar"), ident("b")})
+        .add(Op::return_, {ident("::NoneVar")});
+    auto allow_ex = global_function("allow_ex", {{"a", "Actor"}, {"b", "Bool"}});
+    allow_ex.add(Op::callmethod, {ident("SetAllowFlyingEx"), ident("a"), ident("::NoneVar"), ident("b"), ident("b"),
+                                   ident("b")})
+        .add(Op::return_, {ident("::NoneVar")});
+    auto allowed = global_function("allowed", {{"a", "Actor"}}, {{"r", "Bool"}}, "Bool");
+    allowed.add(Op::callmethod, {ident("IsAllowedToFly"), ident("a"), ident("r")}).add(Op::return_, {ident("r")});
+    auto marker = global_function("marker", {{"a", "Actor"}, {"m", "ObjectReference"}});
+    marker.add(Op::callmethod, {ident("SetForcedLandingMarker"), ident("a"), ident("::NoneVar"), ident("m")})
+        .add(Op::return_, {ident("::NoneVar")});
+    rig.add(script("Caller", {allow, allow_ex, allowed, marker}));
+
+    const auto guard = rig.vm.object(k_guard, "Actor");
+    CHECK(rig.call("caller", "allowed", {guard}).b());
+    rig.call("caller", "allow", {guard, Bool(false)});
+    CHECK_FALSE(rig.call("caller", "allowed", {guard}).b());
+    rig.call("caller", "allow", {guard, Bool(true)});
+    CHECK(rig.call("caller", "allowed", {guard}).b());
+    rig.call("caller", "allow_ex", {guard, Bool(false)});
+    CHECK_FALSE(states.allowed_to_fly(k_guard));
+    rig.call("caller", "marker", {guard, rig.vm.object(0x4321, "ObjectReference")});
+    CHECK(states.landing_marker(k_guard) == 0x4321);
+    rig.call("caller", "marker", {guard, Value{}});
+    CHECK(states.landing_marker(k_guard) == 0);
+    CHECK(rig.vm.errors() == 0);
+}
