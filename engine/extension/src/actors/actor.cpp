@@ -573,6 +573,14 @@ bool SkydotActor::find_ground(double delta) {
 
 void SkydotActor::think(double delta) {
     if (!wander_ || clip_walk_ <= 0.0 || !path_.is_empty()) {
+    if (hit.is_empty()) {
+        // Placed a little low (a dragon set at the ground height of another spot, the ground
+        // at its feet is higher than its step): a ray from half its height up finds it.
+        const double up = std::max(get_step_height() + 0.1, get_height() * 0.6);
+        const auto raised = godot::PhysicsRayQueryParameters3D::create(
+            feet + Vector3(0, r(up), 0), feet - Vector3(0, 4, 0), physics_layer::world | physics_layer::terrain);
+        hit = space->intersect_ray(raised);
+    }
         return;
     }
     wait_ -= delta;
