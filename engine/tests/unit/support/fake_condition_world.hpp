@@ -51,6 +51,8 @@ public:
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::uint32_t> links; ///< (ref, keyword)
     std::map<std::uint32_t, std::uint32_t> combat;
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> relationships;
+    /// SetRelationshipRank between references, on the condition's scale.
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> scripted_relationships;
     std::map<std::uint32_t, std::pair<std::int32_t, std::int32_t>> vendors;
     double now_hour = 12.0;
     int now_day = 0;
@@ -138,6 +140,14 @@ public:
     std::optional<std::int32_t> relationship_rank(std::uint32_t a, std::uint32_t b) const override {
         for (const auto& key : {std::pair{a, b}, std::pair{b, a}}) {
             if (const auto it = relationships.find(key); it != relationships.end()) {
+                return it->second;
+            }
+        }
+        return std::nullopt;
+    }
+    std::optional<std::int32_t> scripted_relationship_rank(std::uint32_t a, std::uint32_t b) const override {
+        for (const auto& key : {std::pair{a, b}, std::pair{b, a}}) {
+            if (const auto it = scripted_relationships.find(key); it != scripted_relationships.end()) {
                 return it->second;
             }
         }

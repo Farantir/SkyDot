@@ -100,6 +100,12 @@ public:
     /// them). Returns how many.
     std::int64_t attach_built(godot::Node* root);
 
+    /// A script moved actor `ref` to `position` (Skyrim space; the VM and the placement know the space already):
+    /// drops what it was walking to. -1 if the AI has no mind for it, 0 if it is not built, 1 if it is built and
+    /// the place on screen is where it went (the caller moves the node), 2 if it was built and went elsewhere
+    /// (its node is freed).
+    std::int64_t relocate(std::int64_t ref, const godot::Vector3& position);
+
     /// Advance the clock by `seconds` of real time and run the packages.
     /// Actors that are not built are moved a few at a time, within
     /// PLACE_BUDGET_USEC per call.

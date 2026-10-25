@@ -71,6 +71,7 @@ public:
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override;
 
     std::optional<std::int32_t> relationship_rank(std::uint32_t npc_a, std::uint32_t npc_b) const override;
+    std::optional<std::int32_t> scripted_relationship_rank(std::uint32_t ref_a, std::uint32_t ref_b) const override;
     std::optional<std::pair<std::int32_t, std::int32_t>> vendor_hours(std::uint32_t faction) const override;
 
     double hour() const override;

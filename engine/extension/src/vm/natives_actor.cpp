@@ -49,6 +49,7 @@ void bind_actor_natives(Vm& vm, ActorStates& states, std::function<void(std::uin
     };
     vm.bind("Actor", "GetActorValue", reader("GetActorValue", &ActorStates::get));
     vm.bind("Actor", "GetBaseActorValue", reader("GetBaseActorValue", &ActorStates::get_base));
+    vm.bind("Actor", "GetActorValueMax", reader("GetActorValueMax", &ActorStates::max));
     vm.bind("Actor", "GetActorValuePercentage", reader("GetActorValuePercentage", &ActorStates::percentage));
 
     using Write = void (ActorStates::*)(std::uint32_t, std::uint32_t, double);

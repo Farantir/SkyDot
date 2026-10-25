@@ -44,6 +44,21 @@ public:
         return it != refs_.end() ? &it->second : nullptr;
     }
     bool remove(std::uint32_t id) { return refs_.erase(id) != 0; }
+    /// A script moved the reference (`cell` 0: it stays in its cell); false if there is no such reference.
+    bool move(std::uint32_t id, std::uint32_t cell, const double position[3], const double rotation[3]) {
+        const auto it = refs_.find(id);
+        if (it == refs_.end()) {
+            return false;
+        }
+        if (cell != 0) {
+            it->second.cell = cell;
+        }
+        for (int i = 0; i < 3; ++i) {
+            it->second.position[i] = position[i];
+            it->second.rotation[i] = rotation[i];
+        }
+        return true;
+    }
     void clear() {
         refs_.clear();
         ids_.clear();

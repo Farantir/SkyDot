@@ -152,6 +152,12 @@ public:
     /// either order; nothing if there is no relationship.
     [[nodiscard]] virtual std::optional<std::int32_t> relationship_rank(std::uint32_t npc_a,
                                                                        std::uint32_t npc_b) const = 0;
+    /// The rank a script gave two actor references (SetRelationshipRank), on the condition's scale (4 lover to
+    /// -4 archnemesis), in either order; nothing if none did. Worlds without scripts say nothing.
+    [[nodiscard]] virtual std::optional<std::int32_t> scripted_relationship_rank(std::uint32_t /*ref_a*/,
+                                                                                std::uint32_t /*ref_b*/) const {
+        return std::nullopt;
+    }
     /// A vendor faction's trading hours (start, end); nothing for a faction
     /// that is not a vendor.
     [[nodiscard]] virtual std::optional<std::pair<std::int32_t, std::int32_t>> vendor_hours(

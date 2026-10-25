@@ -39,6 +39,7 @@ bool fake_source(std::uint32_t ref, ActorBase& out) {
     out.base[av::k_first_skill] = 20; // OneHanded
     out.is_player = ref == k_hero;
     out.essential = ref == k_elder;
+    out.npc = ref + 0x1000; // the NPC_ a reference is
     return true;
 }
 
@@ -467,4 +468,110 @@ TEST_CASE("ACTV 5 keeps the actors whose OnDeath waits, version 4 still loads", 
     ActorStates old;
     REQUIRE(ActorStates::load(skydot::save::ByteReader(w.out), old, 4));
     CHECK_FALSE(old.is_dying(k_guard));
+}
+
+TEST_CASE("Kill: the actor dies at once with its killer, essential or not; the player only loses his health",
+          "[actor][death]") {
+    auto s = make();
+    s.kill(k_guard, k_hero);
+    CHECK(s.is_dead(k_guard));
+    CHECK(s.get(k_guard, av::k_health) == Approx(0));
+    CHECK(s.killer_of(k_guard) == k_hero);
+    CHECK(s.take_deaths() == std::vector<std::uint32_t>{k_guard});
+    s.kill(k_guard, k_elder); // already dead: the first killer stays, no second death
+    CHECK(s.killer_of(k_guard) == k_hero);
+    CHECK(s.take_deaths().empty());
+    s.kill(k_elder, 0); // essential actors are killed by a script
+    CHECK(s.is_dead(k_elder));
+    CHECK(s.take_deaths() == std::vector<std::uint32_t>{k_elder});
+    s.kill(k_hero, k_guard);
+    CHECK_FALSE(s.is_dead(k_hero));
+    CHECK(s.get(k_hero, av::k_health) == Approx(0));
+    CHECK(s.take_deaths().empty());
+    s.kill(k_rock, k_hero); // no actor: nothing
+    CHECK_FALSE(s.is_dead(k_rock));
+}
+
+TEST_CASE("SetEssential and SetInvulnerable are kept per base and win over the data", "[actor][death]") {
+    auto s = make();
+    CHECK_FALSE(s.is_essential(k_guard));
+    CHECK(s.is_essential(k_elder));
+    s.set_base_essential(k_guard + 0x1000, true);
+    s.set_base_essential(k_elder + 0x1000, false);
+    CHECK(s.is_essential(k_guard));
+    CHECK_FALSE(s.is_essential(k_elder));
+    s.damage(k_guard, av::k_health, 500); // essential: Health 0 does not kill
+    CHECK_FALSE(s.is_dead(k_guard));
+    CHECK(s.get(k_guard, av::k_health) == Approx(0));
+    s.damage(k_elder, av::k_health, 500); // no longer essential
+    CHECK(s.is_dead(k_elder));
+
+    auto t = make();
+    t.set_base_invulnerable(k_guard + 0x1000, true);
+    CHECK(t.is_invulnerable(k_guard));
+    t.damage(k_guard, av::k_health, 50);
+    CHECK(t.get(k_guard, av::k_health) == Approx(100));
+    t.damage(k_guard, av::k_stamina, 10); // only Health is spared
+    CHECK(t.get(k_guard, av::k_stamina) == Approx(50));
+    CHECK_FALSE(t.is_invulnerable(k_elder));
+    t.set_base_invulnerable(k_guard + 0x1000, false);
+    t.damage(k_guard, av::k_health, 50);
+    CHECK(t.get(k_guard, av::k_health) == Approx(50));
+}
+
+TEST_CASE("relationship ranks and faction relations are kept, clamped and the same both ways round", "[actor]") {
+    auto s = make();
+    CHECK_FALSE(s.relationship_rank(k_guard, k_hero).has_value());
+    s.set_relationship_rank(k_guard, k_hero, 3);
+    CHECK(s.relationship_rank(k_hero, k_guard) == 3);
+    s.set_relationship_rank(k_hero, k_guard, -9);
+    CHECK(s.relationship_rank(k_guard, k_hero) == -4);
+
+    CHECK_FALSE(s.has_faction_reactions());
+    s.set_faction_reaction(0x10, 0x20, 1);
+    s.set_faction_reaction(0x20, 0x10, 0);
+    s.set_faction_reaction(0x10, 0x30, 3);
+    s.set_faction_reaction(0x11, 0x20, 2);
+    CHECK(s.has_faction_reactions());
+    CHECK(s.faction_reaction(0x10, 0x20) == 1);
+    CHECK(s.faction_reaction(0x20, 0x10) == 0);
+    CHECK_FALSE(s.faction_reaction(0x30, 0x10).has_value());
+    const std::vector<std::pair<std::uint32_t, std::uint8_t>> from10 = {{0x20, 1}, {0x30, 3}};
+    CHECK(s.faction_reactions_from(0x10) == from10);
+    CHECK(s.faction_reactions_from(0x12).empty());
+}
+
+TEST_CASE("ACTV 6 keeps base flags, relationships and faction relations, version 5 still loads", "[actor][save]") {
+    auto s = make();
+    s.set_base_essential(0x1100, true);
+    s.set_base_invulnerable(0x1100, false);
+    s.set_base_invulnerable(0x1101, true);
+    s.set_relationship_rank(k_guard, k_hero, -2);
+    s.set_faction_reaction(0x10, 0x20, 1);
+    s.set_faction_reaction(0x20, 0x10, 3);
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK(t.is_essential(k_guard));        // 0x1100 is the guard's base
+    CHECK_FALSE(t.is_invulnerable(k_guard));
+    CHECK(t.is_invulnerable(k_elder));     // 0x1101
+    CHECK(t.relationship_rank(k_hero, k_guard) == -2);
+    CHECK(t.faction_reaction(0x10, 0x20) == 1);
+    CHECK(t.faction_reaction(0x20, 0x10) == 3);
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 5 ends after the dying actors: the same bytes without the three counts load, and bytes left over
+    // from a newer version do not.
+    auto empty = make().save();
+    REQUIRE(empty.size() > 12);
+    const std::vector<std::uint8_t> v5(empty.begin(), empty.end() - 12);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(v5), old, 5));
+    CHECK_FALSE(old.has_faction_reactions());
+    CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(empty), scratch, 5));
 }

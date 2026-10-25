@@ -212,6 +212,20 @@ func on_actor_arrived(ref: int) -> void:
 		_ai.attach_built(node)
 
 
+## A script moved actor `ref` (MoveTo): SkydotAi.relocate says what became of
+## it. -1 the AI has no mind for it, 0 it was not built (built now if its new
+## place is the one on screen), 1 built and still here (the caller moves the
+## node), 2 built and gone from the place on screen. Returns 1 or -1 when the
+## caller moves the node, 0 when built here now or not shown, 2 when freed.
+func relocate_actor(ref: int, position: Vector3) -> int:
+	if _ai == null:
+		return -1
+	var outcome: int = _ai.relocate(ref, position)
+	if outcome == 0:
+		on_actor_arrived(ref)
+	return outcome
+
+
 ## Where the game puts the player entering interior `id`: the arrival spot of
 ## a door elsewhere that leads to one of its doors, or null.
 func _interior_spawn(id: int):

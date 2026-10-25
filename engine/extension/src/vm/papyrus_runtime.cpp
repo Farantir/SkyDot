@@ -48,7 +48,69 @@ std::uint32_t SkydotPapyrus::cell_of(std::uint32_t ref) const {
     if (const auto* placed = vm_->placed().find(ref)) {
         return placed->cell;
     }
-    return world_.is_valid() ? static_cast<std::uint32_t>(world_->get_ref_cell(ref)) : 0;
+    if (world_.is_valid()) {
+        // An actor a script moved stands in the cell of its new place.
+        if (world_->placement().moved_place(ref) != nullptr) {
+            if (const auto where = world_->placement().where(ref); where && where->cell != 0) {
+                return where->cell;
+            }
+        }
+        return static_cast<std::uint32_t>(world_->get_ref_cell(ref));
+    }
+    return 0;
+}
+
+void SkydotPapyrus::move_ref_to(std::uint32_t ref, std::uint32_t target, const Vector3& offset, bool match_rotation) {
+    if (target == 0 || world_.is_null()) {
+        return;
+    }
+    relocate_ref(ref, cell_of(target), position_of(target) + offset, match_rotation ? rotation_of(target) : rotation_of(ref));
+}
+
+void SkydotPapyrus::relocate_ref(std::uint32_t ref, std::uint32_t cell, const Vector3& position, const Vector3& rotation) {
+    if (world_.is_null()) {
+        return;
+    }
+    if (ref == k_player_ref) {
+        // The player stands where the game layer put him; nothing teleports him from a script yet.
+        std::printf("papyrus: the player was asked to move to (%.0f, %.0f, %.0f); not done\n", static_cast<double>(position.x),
+                    static_cast<double>(position.y), static_cast<double>(position.z));
+        return;
+    }
+    vm::MovedTo to;
+    for (int i = 0; i < 3; ++i) {
+        to.position[i] = static_cast<double>(position[i]);
+        to.rotation[i] = static_cast<double>(rotation[i]);
+    }
+    const bool runtime = vm_->placed().find(ref) != nullptr;
+    if (runtime) {
+        vm_->placed().move(ref, cell, to.position, to.rotation);
+    }
+    if (actors_.is_actor(ref)) {
+        // A placed actor's place is the placement's (the AI and the cell builder read it); a runtime
+        // actor's is its record. The triggers see the move as any other step.
+        if (!runtime && cell != 0) {
+            world_->placement().set_place(ref, world_->data().cell_space(cell), position, rotation.z);
+        }
+        update_actor(ref, position);
+    } else {
+        states_.moved[ref] = to;
+    }
+    emit_signal("ref_moved", static_cast<std::int64_t>(ref), position, rotation);
+}
+
+bool SkydotPapyrus::location_loaded(std::uint32_t location) {
+    auto& cw = condition_world();
+    for (const std::uint32_t cell : attached_cells_) {
+        std::uint32_t at = cw.cell_location(cell);
+        for (int depth = 0; at != 0 && depth < 32; ++depth) {
+            if (at == location) {
+                return true;
+            }
+            at = cw.location_parent(at);
+        }
+    }
+    return false;
 }
 
 std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled) {

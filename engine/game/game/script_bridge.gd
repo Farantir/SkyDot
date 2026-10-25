@@ -236,12 +236,19 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 			_place.add(holder)
 
 
-## ObjectReference.Reset: the built node goes to the position and rotation
+## ObjectReference.Reset, MoveTo: the built node goes to the position and rotation
 ## (Skyrim space, radians), keeping its scale. A reference not built moves
-## in the VM's view only.
+## in the VM's view only. An actor goes through the AI: it forgets where it
+## walked to, is built where it went if that is the place on screen, and its
+## node is freed if it went elsewhere.
 func _on_ref_moved(ref: int, position: Vector3, rotation: Vector3) -> void:
 	print("0x%08X moved by script" % ref)
-	_move_ref(find_ref_node(ref) as Node3D, position, rotation)
+	var node := find_ref_node(ref) as Node3D
+	if _place != null:
+		var outcome := _place.relocate_actor(ref, position)
+		if outcome == 0 or outcome == 2:
+			return  # built there by the place, or gone with its node
+	_move_ref(node, position, rotation)
 
 
 ## Put a built node at a position and rotation (Skyrim space, radians),

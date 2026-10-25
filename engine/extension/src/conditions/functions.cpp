@@ -92,6 +92,9 @@ bool offers_services(ConditionWorld& world, std::uint32_t subject) {
 
 /// RELA ranks run from 0 lover to 8 archnemesis; the condition's from 4 to -4.
 double relationship_rank(ConditionWorld& world, std::uint32_t subject, std::uint32_t other) {
+    if (const auto scripted = world.scripted_relationship_rank(subject, other)) {
+        return static_cast<double>(*scripted);
+    }
     const std::uint32_t a = world.npc_of(subject);
     const std::uint32_t b = world.npc_of(other);
     if (a == 0 || b == 0) {

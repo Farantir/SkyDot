@@ -259,6 +259,9 @@ struct ActorBase {
     std::array<double, av::k_count> base{};
     bool essential = false;
     bool is_player = false;
+    /// The NPC_ the reference is (templates and leveled lists resolved); 0 if unknown. The flags a
+    /// script sets on an `ActorBase` are kept by it.
+    std::uint32_t npc = 0;
     /// The placed reference starts dead (ACHR "Starts Dead"): dead from the first touch.
     bool starts_dead = false;
 };

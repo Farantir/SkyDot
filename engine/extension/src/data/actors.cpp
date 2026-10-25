@@ -157,7 +157,8 @@ const wfb::Npc* resolve_npc(const wfb::World& w, std::uint32_t npc, wfb::NpcTemp
 }
 
 bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t ref, vm::ActorBase& out) {
-    const auto* npc = npc_of(w, pick_actor(w, npc_id, ref));
+    const std::uint32_t picked = pick_actor(w, npc_id, ref);
+    const auto* npc = npc_of(w, picked);
     if (npc == nullptr) {
         return false;
     }
@@ -169,6 +170,7 @@ bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t 
         return false;
     }
     out = vm::ActorBase{};
+    out.npc = picked;
     if (const auto* placed = lookup(w.actors(), ref); placed != nullptr) {
         out.starts_dead = formats::has_flag(placed->flags(), wfb::RefFlags::starts_dead);
     }

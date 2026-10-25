@@ -67,6 +67,35 @@ Reaction reaction(const std::vector<Membership>& a, const std::vector<Membership
     return hostile ? Reaction::enemy : Reaction::neutral;
 }
 
+void apply_scripted_memberships(std::vector<Membership>& out,
+                                const std::function<std::optional<std::int32_t>(std::uint32_t faction)>& overridden,
+                                const std::vector<std::uint32_t>& added) {
+    for (Membership& m : out) {
+        if (const auto set = overridden(m.faction)) {
+            m.rank = *set;
+        }
+    }
+    for (const std::uint32_t faction : added) {
+        if (!std::ranges::any_of(out, [faction](const Membership& m) { return m.faction == faction; })) {
+            out.push_back({faction, overridden(faction).value_or(0)});
+        }
+    }
+}
+
+std::vector<FactionRelation> with_scripted_relations(
+    std::vector<FactionRelation> data, const std::vector<std::pair<std::uint32_t, std::uint8_t>>& scripted) {
+    if (scripted.empty()) {
+        return data;
+    }
+    std::erase_if(data, [&](const FactionRelation& r) {
+        return std::ranges::any_of(scripted, [&](const auto& e) { return e.first == r.faction; });
+    });
+    for (const auto& [faction, reaction] : scripted) {
+        data.push_back({faction, 0, reaction});
+    }
+    return data;
+}
+
 bool starts_combat(std::uint8_t aggression, Reaction r) noexcept {
     switch (aggression) {
     case 0: return false;

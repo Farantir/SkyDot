@@ -47,6 +47,23 @@ using RelationsOf = std::function<std::vector<FactionRelation>(std::uint32_t fac
 [[nodiscard]] Reaction reaction(const std::vector<Membership>& a, const std::vector<Membership>& b,
                                 std::optional<std::uint32_t> relationship_rank, const RelationsOf& relations);
 
+/// What scripts did to an actor's memberships over the NPC_'s (`out`): `overridden` gives the rank a script set
+/// for a faction (below 0: removed), `added` lists the factions scripts put it in; ones `out` lacks are appended.
+void apply_scripted_memberships(std::vector<Membership>& out,
+                                const std::function<std::optional<std::int32_t>(std::uint32_t faction)>& overridden,
+                                const std::vector<std::uint32_t>& added);
+
+/// The XNAM entries of a faction with what scripts set (SetEnemy, SetAlly: faction and reaction): a scripted
+/// reaction replaces the data's entry for that faction, others stay.
+[[nodiscard]] std::vector<FactionRelation> with_scripted_relations(
+    std::vector<FactionRelation> data, const std::vector<std::pair<std::uint32_t, std::uint8_t>>& scripted);
+
+/// A relationship rank a script set (Papyrus scale: 4 lover ... 0 acquaintance ... -4 archnemesis) as the RELA
+/// rank `reaction` takes (0 lover ... 8 archnemesis).
+[[nodiscard]] constexpr std::uint32_t rela_rank_of(std::int32_t papyrus_rank) noexcept {
+    return static_cast<std::uint32_t>(4 - (papyrus_rank < -4 ? -4 : papyrus_rank > 4 ? 4 : papyrus_rank));
+}
+
 [[nodiscard]] inline bool friendly(Reaction r) noexcept { return r == Reaction::ally || r == Reaction::friend_; }
 
 /// Whether an actor of `aggression` starts a fight with someone it sees and

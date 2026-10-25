@@ -225,6 +225,7 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("begin_placing"), &SkydotAi::begin_placing);
     ClassDB::bind_method(D_METHOD("settle_actors"), &SkydotAi::settle_actors);
     ClassDB::bind_method(D_METHOD("attach_built", "root"), &SkydotAi::attach_built);
+    ClassDB::bind_method(D_METHOD("relocate", "ref", "position"), &SkydotAi::relocate);
     ClassDB::bind_method(D_METHOD("update", "seconds"), &SkydotAi::update);
     ClassDB::bind_method(D_METHOD("get_actor_state", "ref"), &SkydotAi::get_actor_state);
     ClassDB::bind_method(D_METHOD("get_packages", "ref"), &SkydotAi::get_packages);
@@ -305,6 +306,11 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
             const Mind* m = mind(ref);
             const SkydotActor* a = m != nullptr ? node_of(*m) : nullptr;
             return a != nullptr ? std::max(a->get_height(), 2.0 * a->get_radius()) / SkydotWorld::UNIT_SCALE : 0.0;
+        };
+        hooks.evaluate_package = [this](std::uint32_t ref) {
+            if (Mind* m = mind(ref)) {
+                m->think = 0.0; // chosen again on its next turn
+            }
         };
         vm_->set_combat_hooks(std::move(hooks));
         vm_->set_stays_loaded([this](std::uint32_t ref) {
@@ -1034,6 +1040,39 @@ void SkydotAi::on_door_toggled(std::int64_t ref, std::int64_t open_state) {
     if (vm_ != nullptr) {
         vm_->set_open_state(ref, open_state);
     }
+}
+
+std::int64_t SkydotAi::relocate(std::int64_t ref_id, const Vector3& position) {
+    const auto ref = static_cast<std::uint32_t>(ref_id);
+    Mind* m = mind(ref);
+    if (m == nullptr) {
+        return -1;
+    }
+    std::uint32_t space = vm_ != nullptr ? vm_->get_ref_space(ref) : 0;
+    if (space == 0) {
+        space = m->space;
+    }
+    // What it walked to is no longer on its way.
+    m->target.reset();
+    m->door = 0;
+    m->failures = 0;
+    m->walks = 0;
+    m->step_started = false;
+    m->last = position;
+    SkydotActor* actor = node_of(*m);
+    m->space = space;
+    if (actor == nullptr) {
+        m->node = 0;
+        return 0;
+    }
+    if (space == space_) {
+        return 1;
+    }
+    std::erase(attached_, ref);
+    m->node = 0;
+    m->announced = false;
+    actor->queue_free();
+    return 2;
 }
 
 void SkydotAi::detach(Mind& m) {

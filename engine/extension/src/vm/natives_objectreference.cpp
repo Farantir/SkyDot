@@ -11,6 +11,7 @@
 using godot::Array;
 using godot::Dictionary;
 using godot::String;
+using godot::Variant;
 using godot::Vector3;
 
 namespace skydot {
@@ -228,6 +229,40 @@ void SkydotPapyrus::bind_objectreference_natives() {
         const auto level = get_lock_level(c.self.form());
         return result(Value::integer(static_cast<std::int32_t>(level < 0 ? 0 : level)));
     });
+    // The key of the lock (from the data); None if the lock needs none or there is no lock.
+    v.bind("ObjectReference", "GetKey", [this, result](NativeCall& c) {
+        const Variant lock = ref_info(lock_holder(c.self.form())).get("lock", Variant());
+        if (lock.get_type() != Variant::DICTIONARY) {
+            return NativeResult{};
+        }
+        const auto key = static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(lock).get("key", 0)));
+        return key != 0 ? result(c.vm.object(key, "Key")) : NativeResult{};
+    });
+    // MoveTo(target, x, y, z, matchRotation): to the target's place plus offsets in world axes. An actor moves in
+    // the scene (relocate_ref); the player is not moved by scripts yet.
+    v.bind("ObjectReference", "MoveTo", [this, arg, number](NativeCall& c) {
+        if (arg(c, 0).kind() != vm::Kind::object) {
+            return NativeResult{};
+        }
+        const Vector3 offset(static_cast<float>(number(arg(c, 1))), static_cast<float>(number(arg(c, 2))),
+                             static_cast<float>(number(arg(c, 3))));
+        move_ref_to(c.self.form(), arg(c, 0).form(), offset, c.args.size() < 5 || vm::Vm::truthy(arg(c, 4)));
+        return NativeResult{};
+    });
+    // There is no translation over time: TranslateTo and SplineTranslateTo put the reference at the end point
+    // (position in units, angles in degrees) at once and report OnTranslationComplete, so a script that waits for
+    // it goes on. Speed, rotation speed and the spline's tangent are ignored.
+    for (const char* name : {"TranslateTo", "SplineTranslateTo"}) {
+        v.bind("ObjectReference", name, [this, number, arg](NativeCall& c) {
+            constexpr double k_degrees = std::numbers::pi / 180.0;
+            const auto at = [&](std::size_t i) { return static_cast<float>(number(arg(c, i))); };
+            const auto angle = [&](std::size_t i) { return static_cast<float>(number(arg(c, i)) * k_degrees); };
+            const std::uint32_t ref = c.self.form();
+            relocate_ref(ref, 0, Vector3(at(0), at(1), at(2)), Vector3(angle(3), angle(4), angle(5)));
+            dispatch(ref, "OnTranslationComplete", {});
+            return NativeResult{};
+        });
+    }
 
     // ---- inventory (bound here, reached from Actor through the parent class)
     // A FormList is not looked into (its forms are not reachable from here):

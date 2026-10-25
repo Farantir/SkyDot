@@ -137,10 +137,89 @@ void ActorStates::check_death(std::uint32_t ref, Record& record) {
         return;
     }
     const ActorBase* base = base_of(ref);
-    if (base != nullptr && !base->essential && !base->is_player) {
+    if (base != nullptr && !is_essential(ref) && !base->is_player) {
         record.dead = true;
         deaths_.push_back(ref);
     }
+}
+
+void ActorStates::kill(std::uint32_t ref, std::uint32_t killer) {
+    Record* r = touch(ref, av::k_health);
+    if (r == nullptr || is_dead(ref)) {
+        return;
+    }
+    if (killer != 0) {
+        r->killer = killer;
+    }
+    Value& v = r->values[av::k_health];
+    v.damage = -(base_value(ref, r, av::k_health) + v.modifier + v.temp);
+    if (!base_of(ref)->is_player) {
+        r->dead = true;
+        r->risen = false;
+        deaths_.push_back(ref);
+    }
+}
+
+void ActorStates::set_base_essential(std::uint32_t npc, bool essential) { base_flags_[npc].essential = essential; }
+
+void ActorStates::set_base_invulnerable(std::uint32_t npc, bool invulnerable) {
+    base_flags_[npc].invulnerable = invulnerable;
+}
+
+bool ActorStates::is_essential(std::uint32_t ref) const {
+    const ActorBase* base = base_of(ref);
+    if (base == nullptr) {
+        return false;
+    }
+    if (const auto it = base_flags_.find(base->npc); it != base_flags_.end() && it->second.essential) {
+        return *it->second.essential;
+    }
+    return base->essential;
+}
+
+bool ActorStates::is_invulnerable(std::uint32_t ref) const {
+    if (base_flags_.empty()) {
+        return false;
+    }
+    const ActorBase* base = base_of(ref);
+    if (base == nullptr) {
+        return false;
+    }
+    const auto it = base_flags_.find(base->npc);
+    return it != base_flags_.end() && it->second.invulnerable.value_or(false);
+}
+
+namespace {
+std::uint64_t pair_key(std::uint32_t a, std::uint32_t b) {
+    return static_cast<std::uint64_t>(std::min(a, b)) << 32 | std::max(a, b);
+}
+} // namespace
+
+void ActorStates::set_relationship_rank(std::uint32_t a, std::uint32_t b, std::int32_t rank) {
+    relationships_[pair_key(a, b)] = std::clamp(rank, -4, 4);
+}
+
+std::optional<std::int32_t> ActorStates::relationship_rank(std::uint32_t a, std::uint32_t b) const {
+    const auto it = relationships_.find(pair_key(a, b));
+    return it != relationships_.end() ? std::optional<std::int32_t>(it->second) : std::nullopt;
+}
+
+void ActorStates::set_faction_reaction(std::uint32_t from, std::uint32_t to, std::uint8_t reaction) {
+    reactions_[static_cast<std::uint64_t>(from) << 32 | to] = std::min<std::uint8_t>(reaction, 3);
+}
+
+std::optional<std::uint8_t> ActorStates::faction_reaction(std::uint32_t from, std::uint32_t to) const {
+    const auto it = reactions_.find(static_cast<std::uint64_t>(from) << 32 | to);
+    return it != reactions_.end() ? std::optional<std::uint8_t>(it->second) : std::nullopt;
+}
+
+std::vector<std::pair<std::uint32_t, std::uint8_t>> ActorStates::faction_reactions_from(std::uint32_t from) const {
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> out;
+    for (auto it = reactions_.lower_bound(static_cast<std::uint64_t>(from) << 32);
+         it != reactions_.end() && (it->first >> 32) == from; ++it) {
+        out.emplace_back(static_cast<std::uint32_t>(it->first & 0xFFFFFFFFU), it->second);
+    }
+    return out;
 }
 
 void ActorStates::set_allowed_to_fly(std::uint32_t ref, bool allowed) {
@@ -298,7 +377,7 @@ void ActorStates::force(std::uint32_t ref, std::uint32_t av, double value) {
 }
 
 void ActorStates::damage(std::uint32_t ref, std::uint32_t av, double amount) {
-    if (amount <= 0.0) {
+    if (amount <= 0.0 || (av == av::k_health && is_invulnerable(ref))) {
         return;
     }
     if (Record* r = touch(ref, av)) {
@@ -386,11 +465,17 @@ void ActorStates::clear() {
     deaths_.clear();
     dying_.clear();
     due_.clear();
+    base_flags_.clear();
+    relationships_.clear();
+    reactions_.clear();
 }
 
 void ActorStates::adopt(ActorStates&& other) {
     records_ = std::move(other.records_);
     dying_ = std::move(other.dying_);
+    base_flags_ = std::move(other.base_flags_);
+    relationships_ = std::move(other.relationships_);
+    reactions_ = std::move(other.reactions_);
     bases_.clear();
     deaths_.clear();
     due_.clear();
@@ -432,6 +517,25 @@ std::vector<std::uint8_t> ActorStates::save() const {
     for (const auto& [ref, left] : dying_) {
         w.u32(ref);
         w.f64(left);
+    }
+    w.u32(static_cast<std::uint32_t>(base_flags_.size()));
+    const auto tri = [](const std::optional<bool>& v) { return static_cast<std::uint8_t>(v ? (*v ? 2 : 1) : 0); };
+    for (const auto& [npc, flags] : base_flags_) {
+        w.u32(npc);
+        w.u8(tri(flags.essential));
+        w.u8(tri(flags.invulnerable));
+    }
+    w.u32(static_cast<std::uint32_t>(relationships_.size()));
+    for (const auto& [key, rank] : relationships_) {
+        w.u32(static_cast<std::uint32_t>(key >> 32));
+        w.u32(static_cast<std::uint32_t>(key & 0xFFFFFFFFU));
+        w.u32(static_cast<std::uint32_t>(rank));
+    }
+    w.u32(static_cast<std::uint32_t>(reactions_.size()));
+    for (const auto& [key, reaction] : reactions_) {
+        w.u32(static_cast<std::uint32_t>(key >> 32));
+        w.u32(static_cast<std::uint32_t>(key & 0xFFFFFFFFU));
+        w.u8(reaction);
     }
     return w.out;
 }
@@ -515,6 +619,49 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 return false;
             }
             out.dying_[ref] = std::max(left, 0.0);
+        }
+    }
+    if (version >= 6) {
+        std::uint32_t n_flags = 0;
+        if (!r.count(n_flags, 6)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n_flags; ++i) {
+            std::uint32_t npc = 0;
+            std::uint8_t essential = 0, invulnerable = 0;
+            if (!r.u32(npc) || !r.u8(essential) || !r.u8(invulnerable) || essential > 2 || invulnerable > 2) {
+                return false;
+            }
+            BaseFlags& flags = out.base_flags_[npc];
+            if (essential != 0) {
+                flags.essential = essential == 2;
+            }
+            if (invulnerable != 0) {
+                flags.invulnerable = invulnerable == 2;
+            }
+        }
+        std::uint32_t n_rel = 0;
+        if (!r.count(n_rel, 12)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n_rel; ++i) {
+            std::uint32_t a = 0, b = 0, rank = 0;
+            if (!r.u32(a) || !r.u32(b) || !r.u32(rank)) {
+                return false;
+            }
+            out.set_relationship_rank(a, b, static_cast<std::int32_t>(rank));
+        }
+        std::uint32_t n_react = 0;
+        if (!r.count(n_react, 9)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n_react; ++i) {
+            std::uint32_t from = 0, to = 0;
+            std::uint8_t reaction = 0;
+            if (!r.u32(from) || !r.u32(to) || !r.u8(reaction) || reaction > 3) {
+                return false;
+            }
+            out.set_faction_reaction(from, to, reaction);
         }
     }
     return r.at_end();

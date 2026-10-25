@@ -249,6 +249,18 @@ TEST_CASE("GetRelationshipRank maps RELA ranks to -4..4", "[conditions]") {
     CHECK(pass({cond(fn::get_relationship_rank, 0.0F, 0x14)}, w, {.subject = 0x20}));
 }
 
+TEST_CASE("GetRelationshipRank prefers the rank a script gave the two references", "[conditions]") {
+    FakeConditionWorld w;
+    w.npcs[0x14] = 0x7;
+    w.npcs[0x20] = 0x900;
+    w.relationships[{0x900, 0x7}] = 7; // enemy in the data
+    CHECK(pass({cond(fn::get_relationship_rank, -3.0F, 0x14)}, w, {.subject = 0x20}));
+    w.scripted_relationships[{0x20, 0x14}] = 2; // SetRelationshipRank(player, 2)
+    CHECK(pass({cond(fn::get_relationship_rank, 2.0F, 0x14)}, w, {.subject = 0x20}));
+    CHECK(pass({cond(fn::get_relationship_rank, 2.0F, 0x20)}, w, {.subject = 0x14}));
+    CHECK_FALSE(pass({cond(fn::get_relationship_rank, -3.0F, 0x14)}, w, {.subject = 0x20}));
+}
+
 TEST_CASE("GetOffersServicesNow follows a vendor faction's hours", "[conditions]") {
     FakeConditionWorld w;
     w.factions[0x20] = {{0xF1, 0}, {0xF2, 0}};

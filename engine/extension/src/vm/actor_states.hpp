@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 5;
+    static constexpr std::uint32_t k_section_version = 6;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -96,6 +96,32 @@ public:
     /// SetGhost (version 4 of the section): a ghost takes no hits.
     void set_ghost(std::uint32_t ref, bool ghost);
     [[nodiscard]] bool is_ghost(std::uint32_t ref) const;
+    /// Kill (Actor.Kill): Health to 0 and the actor dead whatever its flags, `killer` (0: none) recorded;
+    /// it joins `take_deaths` as any death does. The player only loses his health (nobody dies in the VM
+    /// for him). Nothing for a dead actor.
+    void kill(std::uint32_t ref, std::uint32_t killer);
+
+    /// What a script said about an `ActorBase` (version 6): SetEssential and SetInvulnerable, kept by the
+    /// NPC_ and winning over the data. Essential: Health 0 does not kill. Invulnerable: Health takes no damage.
+    void set_base_essential(std::uint32_t npc, bool essential);
+    void set_base_invulnerable(std::uint32_t npc, bool invulnerable);
+    [[nodiscard]] bool is_essential(std::uint32_t ref) const;
+    [[nodiscard]] bool is_invulnerable(std::uint32_t ref) const;
+
+    /// Relationship ranks between two actors, in the Papyrus scale (4 lover ... 0 acquaintance ...
+    /// -4 archnemesis), the same both ways round (version 6). None if no script set one.
+    void set_relationship_rank(std::uint32_t a, std::uint32_t b, std::int32_t rank);
+    [[nodiscard]] std::optional<std::int32_t> relationship_rank(std::uint32_t a, std::uint32_t b) const;
+
+    /// Faction relations a script set (version 6): how members of `from` see members of `to` (FACT
+    /// XNAM reactions: 0 neutral, 1 enemy, 2 ally, 3 friend). They win over the data's entry.
+    void set_faction_reaction(std::uint32_t from, std::uint32_t to, std::uint8_t reaction);
+    [[nodiscard]] std::optional<std::uint8_t> faction_reaction(std::uint32_t from, std::uint32_t to) const;
+    /// Every (to, reaction) a script set for `from`.
+    [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint8_t>> faction_reactions_from(std::uint32_t from) const;
+    /// Whether any faction relation was set (the AI skips its lookups otherwise).
+    [[nodiscard]] bool has_faction_reactions() const { return !reactions_.empty(); }
+
     /// Factions a script changed (version 4): the rank it gave `ref` in `faction`; a rank below 0 is
     /// "not a member" (also against the NPC_'s own factions). Nothing for an actor that is no actor.
     void set_faction_rank(std::uint32_t ref, std::uint32_t faction, std::int32_t rank);
@@ -132,7 +158,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors; below 6 no base flags, relationships or faction relations.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -173,6 +199,13 @@ private:
     std::vector<std::uint32_t> deaths_;
     std::map<std::uint32_t, double> dying_;  ///< Seconds OnDeath still waits; saved.
     std::vector<std::uint32_t> due_;
+    struct BaseFlags {
+        std::optional<bool> essential;
+        std::optional<bool> invulnerable;
+    };
+    std::map<std::uint32_t, BaseFlags> base_flags_;                    ///< By NPC_; saved.
+    std::map<std::uint64_t, std::int32_t> relationships_;              ///< (low ref << 32 | high ref); saved.
+    std::map<std::uint64_t, std::uint8_t> reactions_;                  ///< (from << 32 | to); saved.
 };
 
 } // namespace skydot::vm

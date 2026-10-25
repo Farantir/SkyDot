@@ -113,6 +113,12 @@ std::vector<combat_ai::Membership> SkydotAi::memberships(std::uint32_t ref) cons
             out.push_back({f->faction(), f->rank()});
         }
     }
+    // What scripts did to the actor's factions (SetFactionRank, RemoveFromFaction) wins over the NPC_.
+    if (vm_ != nullptr) {
+        const vm::ActorStates& states = vm_->actor_states();
+        combat_ai::apply_scripted_memberships(
+            out, [&](std::uint32_t faction) { return states.faction_override(ref, faction); }, states.added_factions(ref));
+    }
     if (ref == k_player_ref) {
         const bool listed = std::ranges::any_of(out, [](const auto& m) { return m.faction == k_player_faction; });
         if (!listed) {
@@ -174,6 +180,12 @@ combat_ai::Reaction SkydotAi::faction_reaction(std::uint32_t a, std::uint32_t b)
         it != relationships_.end()) {
         rank = it->second;
     }
+    // A relationship a script set (Papyrus scale 4 .. -4) is the RELA rank 4 - r.
+    if (vm_ != nullptr) {
+        if (const auto set = vm_->actor_states().relationship_rank(a, b)) {
+            rank = combat_ai::rela_rank_of(*set);
+        }
+    }
     const auto relations = [this](std::uint32_t faction) {
         std::vector<combat_ai::FactionRelation> out;
         const auto* f = root() != nullptr ? lookup(root()->factions(), faction) : nullptr;
@@ -181,6 +193,10 @@ combat_ai::Reaction SkydotAi::faction_reaction(std::uint32_t a, std::uint32_t b)
             for (const auto* r : *f->relations()) {
                 out.push_back({r->faction(), r->modifier(), r->reaction()});
             }
+        }
+        // What SetEnemy / SetAlly said replaces the data's entry for that faction.
+        if (vm_ != nullptr && vm_->actor_states().has_faction_reactions()) {
+            out = combat_ai::with_scripted_relations(std::move(out), vm_->actor_states().faction_reactions_from(faction));
         }
         return out;
     };

@@ -8,6 +8,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <map>
+
 using namespace skydot::combat_ai;
 
 namespace {
@@ -202,4 +204,74 @@ TEST_CASE("the stagger clip is found by name and size", "[combat][ai][magic]") {
     CHECK(stagger_clip(sized, false) == "staggersmall");
     CHECK(stagger_clip({"idle", "recoilstart"}, false) == "recoilstart");
     CHECK(stagger_clip({"idle", "walk"}, true).empty());
+}
+
+TEST_CASE("scripted memberships replace, remove and add to the NPC_'s", "[combat_ai]") {
+    std::vector<Membership> m = {{0x10, 1}, {0x20, 0}};
+    const std::map<std::uint32_t, std::int32_t> set = {{0x10, 5}, {0x20, -1}, {0x40, 2}};
+    apply_scripted_memberships(
+        m,
+        [&](std::uint32_t f) {
+            const auto it = set.find(f);
+            return it != set.end() ? std::optional<std::int32_t>(it->second) : std::nullopt;
+        },
+        {0x40});
+    REQUIRE(m.size() == 3);
+    CHECK(m[0].rank == 5);
+    CHECK(m[1].rank == -1); // removed
+    CHECK(m[2].faction == 0x40);
+    CHECK(m[2].rank == 2);
+}
+
+TEST_CASE("SetEnemy makes a dragon and the player's side enemies, SetAlly undoes it", "[combat_ai]") {
+    constexpr std::uint32_t dragon_faction = 0x100, player_faction = 0x200, guard_faction = 0x300;
+    const std::vector<Membership> dragon = {{dragon_faction, 0}};
+    const std::vector<Membership> player = {{player_faction, 0}};
+    const std::vector<Membership> guard = {{guard_faction, 0}};
+    // The data: guards are the player's friends (the guard faction lists the player's); the dragon knows nobody.
+    const auto data = [&](std::uint32_t f) {
+        std::vector<FactionRelation> out;
+        if (f == guard_faction) {
+            out.push_back({player_faction, 0, 3});
+        }
+        return out;
+    };
+    CHECK(reaction(dragon, player, std::nullopt, data) == Reaction::neutral);
+    // SetEnemy(PlayerFaction): dragon faction sees the player's as enemy, and the other way round.
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> dragon_set = {{player_faction, 1}};
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> player_set = {{dragon_faction, 1}};
+    const auto scripted = [&](std::uint32_t f) {
+        if (f == dragon_faction) {
+            return with_scripted_relations(data(f), dragon_set);
+        }
+        if (f == player_faction) {
+            return with_scripted_relations(data(f), player_set);
+        }
+        return data(f);
+    };
+    CHECK(reaction(dragon, player, std::nullopt, scripted) == Reaction::enemy);
+    CHECK(reaction(player, dragon, std::nullopt, scripted) == Reaction::enemy);
+    CHECK(reaction(guard, player, std::nullopt, scripted) == Reaction::friend_); // the data's stays
+    // A scripted entry replaces the data's for that faction: SetAlly over a data enemy.
+    const auto hostile_data = [](std::uint32_t) { return std::vector<FactionRelation>{{0x200, 0, 1}}; };
+    const std::vector<std::pair<std::uint32_t, std::uint8_t>> ally = {{0x200, 2}};
+    const auto merged = with_scripted_relations(hostile_data(0x100), ally);
+    REQUIRE(merged.size() == 1);
+    CHECK(merged[0].reaction == 2);
+    CHECK(with_scripted_relations(hostile_data(0x100), {}).size() == 1);
+}
+
+TEST_CASE("a relationship rank a script set becomes the RELA rank the reaction reads", "[combat_ai]") {
+    CHECK(rela_rank_of(4) == 0);   // lover
+    CHECK(rela_rank_of(3) == 1);   // ally
+    CHECK(rela_rank_of(2) == 2);   // confidant
+    CHECK(rela_rank_of(0) == 4);   // acquaintance
+    CHECK(rela_rank_of(-3) == 7);  // enemy
+    CHECK(rela_rank_of(-9) == 8);  // clamped to archnemesis
+    const std::vector<Membership> a = {{0x1, 0}};
+    const std::vector<Membership> b = {{0x2, 0}};
+    const auto none = [](std::uint32_t) { return std::vector<FactionRelation>{}; };
+    CHECK(reaction(a, b, rela_rank_of(3), none) == Reaction::ally);
+    CHECK(reaction(a, b, rela_rank_of(-3), none) == Reaction::enemy);
+    CHECK(reaction(a, b, rela_rank_of(0), none) == Reaction::neutral);
 }

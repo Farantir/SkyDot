@@ -177,6 +177,8 @@ public:
         std::function<double(std::uint32_t ref)> length;           ///< ObjectReference.GetLength (units)
         /// The actor dies in a way that takes time (a death clip, a crash): OnDeath waits for finish_dying.
         std::function<bool(std::uint32_t ref)> defers_death;
+        /// Actor.EvaluatePackage: choose the package again now.
+        std::function<void(std::uint32_t ref)> evaluate_package;
     };
     void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
     /// References the streamer moved out of a cell that goes (a dragon flying on): detach_cell leaves
@@ -188,6 +190,12 @@ public:
     /// A sleeping actor got up (woken by the player's closeness): sends OnGetUp(None) to its
     /// scripts, as the game does when an actor leaves its furniture. Returns the handlers run.
     std::int64_t send_get_up(std::int64_t ref);
+    /// An actor's combat hooks are set (the AI): `evaluate` re-picks its package.
+    void evaluate_package(std::uint32_t ref) {
+        if (combat_hooks_.evaluate_package) {
+            combat_hooks_.evaluate_package(ref);
+        }
+    }
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
     /// right): 0 nothing, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword,
     /// 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow.
@@ -487,6 +495,13 @@ public:
     /// Seconds OnDeath waits for finish_dying at the longest (game time).
     static constexpr double k_dying_timeout = 30.0;
     bool is_actor_ghost(std::int64_t ref) const { return actors_.is_ghost(static_cast<std::uint32_t>(ref)); }
+    /// The space (interior cell or worldspace) `ref` stands in; 0 if unknown.
+    [[nodiscard]] std::uint32_t get_ref_space(std::uint32_t ref) const {
+        const std::uint32_t cell = cell_of(ref);
+        return cell != 0 && world_.is_valid() ? static_cast<std::uint32_t>(world_->get_cell_space(cell)) : 0;
+    }
+    /// What scripts did to actors (values, factions, relationships): for the AI and the conditions.
+    [[nodiscard]] const vm::ActorStates& actor_states() const { return actors_; }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
     std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
@@ -711,6 +726,13 @@ private:
     /// PlaceAtMe: a new runtime reference of `base` where `source` is.
     std::uint32_t place_at(std::uint32_t source, std::uint32_t base, bool initially_disabled);
     std::uint32_t place_ref(const vm::PlacedRef& placed, bool initially_disabled);
+    /// ObjectReference.MoveTo: `ref` to `target`'s position plus `offset`, with its rotation if `match_rotation`.
+    void move_ref_to(std::uint32_t ref, std::uint32_t target, const godot::Vector3& offset, bool match_rotation);
+    /// Put `ref` at a position and rotation (radians) in `cell` (0: where it is). An actor moves in the scene
+    /// (placement, triggers, `ref_moved`), another reference in the VM's view and the scene (`ref_moved`).
+    void relocate_ref(std::uint32_t ref, std::uint32_t cell, const godot::Vector3& position, const godot::Vector3& rotation);
+    /// Whether a cell a script attached belongs to `location` or one of its children.
+    [[nodiscard]] bool location_loaded(std::uint32_t location);
     /// The base's DEST, null if `ref` is not destructible.
     const bethconv::pack::wfb::Destruction* destruction_of(std::uint32_t ref) const;
     /// DamageObject: open the stages the damage reaches and send
@@ -759,6 +781,8 @@ private:
     vm::ActorStates actors_;
     /// A ghost takes no hits: true (and says so once per actor) when `ref` is one.
     bool ghost_ignores_hit(std::uint32_t ref);
+    /// Actor.GetRelationshipRank: what a script set, else the RELA record (Papyrus scale), else 0.
+    std::int32_t relationship_rank_of(std::uint32_t a, std::uint32_t b);
     std::set<std::uint32_t> ghost_reported_;
     /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
     /// inventory resolves on the first look at it, also from const queries.
