@@ -15,6 +15,7 @@ namespace wfb = bethconv::pack::wfb;
 
 /// Body slot 31 (bit 1): hair. Hoods and helmets cover it.
 constexpr std::uint32_t k_slot_hair = 0x2;
+constexpr std::uint32_t k_slot_body = 0x4;
 /// Templates and leveled lists nest; vanilla stays far below this.
 constexpr int k_max_depth = 8;
 constexpr std::uint32_t k_lvln = 0x4E4C564C; // "LVLN"
@@ -283,7 +284,11 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
             if (addon == nullptr || !fits(*addon, *race)) {
                 continue;
             }
-            if (skin && (addon->slots() & covered) != 0) {
+            // The skin stays where armor leaves part of it bare: a draugr's one skin addon holds head, body
+            // and hands (slots 30, 32, 33), and a helmet (slot 30) must not take the whole body with it.
+            // It goes when the body slot or all of its slots are covered.
+            if (skin && addon->slots() != 0 &&
+                ((addon->slots() & covered & k_slot_body) != 0 || (addon->slots() & ~covered) == 0)) {
                 continue;
             }
             const std::string model = addon_model(*addon, plan.female, traits->weight(), exists);

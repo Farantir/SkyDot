@@ -188,6 +188,9 @@ func _run(pack_dir: String) -> void:
 	var style := _session.world.get_combat_style(int(_session.world.get_npc(papyrus.get_ref_base(draugr)).get("combat_style", 0)))
 	print("its combat style shout mult: ", style.get("shout_score_mult"))
 	expect(float(style.get("shout_score_mult", 0.0)) > 0.0, "its combat style has a shout mult")
+	# A draugr has a body: its helmet must not take the one skin addon (head, body, hands) with it.
+	var parts: Array = _session.world.get_npc_plan(papyrus.get_ref_base(draugr), draugr).get("parts", [])
+	expect(parts.any(func(part: String) -> bool: return part.contains("draugrmale")), "the draugr has its body, not only a helmet: %s" % [parts])
 	var project := _session.combat.behaviour_of(draugr)
 	expect(_session.pack.has(project.get_base_dir() + "/animations/shoutinhale.hkx")
 		and _session.pack.has(project.get_base_dir() + "/animations/shoutexhale.hkx"), "its project has the shout clips")
