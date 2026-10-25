@@ -132,6 +132,7 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.aggro_attack = npc->attack;
     out.spells = shared_.global_all(merged, npc->spells, failed);
     out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
+    out.death_item = shared_.global(merged, npc->death_item, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }

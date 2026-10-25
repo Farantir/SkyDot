@@ -353,6 +353,7 @@ void make_styles(const TempDir& dir) {
     text(npc, "EDID", "StyledNpc");
     u32(npc, "ZNAM", 0x900);
     u32(npc, "CRIF", 0x911);
+    u32(npc, "INAM", 0x911); // world.fb 37: the death item (any form here)
     {
         // AIDT: seven behaviour bytes, a pad, then warn, warn or attack and attack distances.
         ByteWriter aidt;
@@ -436,6 +437,7 @@ TEST_CASE("world.fb 31 carries combat styles, the NPC's style and crime faction,
     REQUIRE(npc.has_value());
     CHECK(npc->combat_style == 0x900);
     CHECK(npc->crime_faction == 0x911);
+    CHECK(npc->death_item == 0x911);
     CHECK(npc->aggro_radius_behaviour == 1);
     CHECK(npc->aggro_warn == 300);
     CHECK(npc->aggro_warn_attack == 400);

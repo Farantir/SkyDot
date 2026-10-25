@@ -1346,7 +1346,7 @@ Several version numbers move independently:
 | What | Where | Value (working tree) | Bumped when |
 | --- | --- | --- | --- |
 | Pack format | `k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`), manifest, `vpath.idx` header; engine `SkydotPack::PACK_FORMAT_VERSION` | 7 | the pack layout's meaning changes |
-| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 36 | `world.fbs` meaning changes |
+| `world.fb` | `k_world_format_version` / engine `WORLD_FORMAT_VERSION` (min 8) | 37 | `world.fbs` meaning changes |
 | Script, LOD, animation assets | `format_version` in each root table | 1 / per schema | their schema changes |
 | Asset settings fingerprints | `ConvertOptions::*_settings()` (`mesh/19`, `texture/1`, `script/2`, `lod/1`, `animation/2`) | — | a writer's output changes for unchanged input (renames assets, no format change) |
 | CLI JSON | `cli::k_json_version` | — | the JSON the pack tool reads changes |

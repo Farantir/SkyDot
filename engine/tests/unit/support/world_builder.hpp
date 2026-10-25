@@ -155,6 +155,8 @@ struct NpcSpec {
     std::vector<ItemEntry> items = {};
     /// SPLO: spells, leveled spell lists and shouts as they stand.
     std::vector<std::uint32_t> spells = {};
+    /// INAM (world.fb 37).
+    std::uint32_t death_item = 0;
 };
 
 struct RaceSpec {

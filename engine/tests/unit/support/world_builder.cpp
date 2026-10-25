@@ -119,6 +119,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_packages(packages_v);
         b.add_default_packages(default_packages_v);
         b.add_spells(spells_v);
+        b.add_death_item(n.death_item);
         npcs.push_back(b.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Base>> bases;

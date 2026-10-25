@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 36;
+inline constexpr std::uint32_t k_world_format_version = 37;
 
 struct WorldStats {
     std::uint64_t cells{};

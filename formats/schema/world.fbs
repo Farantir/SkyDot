@@ -1628,6 +1628,10 @@ table Npc {
     /// they stand: Spells in `spells`, leveled spell lists (LVSP, in
     /// `leveled_lists`) and shouts (SHOU, in `shouts` since format 36).
     spells: [uint32];
+    /// INAM (format 37): the death item, an item or a leveled item list (LVLI) that goes
+    /// into the inventory when the actor dies; 0 if none. Template inheritance: it comes
+    /// with `use_inventory` (the CK shows it on the Inventory tab).
+    death_item: uint32;
 }
 
 /// The low bits of `Condition.type`.

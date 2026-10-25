@@ -254,6 +254,8 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     out["aggro_attack"] = static_cast<std::int64_t>(npc->aggro_attack());
     out["combat_style"] = static_cast<std::int64_t>(npc->combat_style());
     out["crime_faction"] = static_cast<std::int64_t>(npc->crime_faction());
+    // INAM, absent (0) in packs before world.fb 37; as the record has it, not through the template.
+    out["death_item"] = static_cast<std::int64_t>(npc->death_item());
     // SPLO as it is: spells, leveled spell lists and shouts (world.fb 33).
     godot::PackedInt64Array spells;
     if (npc->spells() != nullptr) {
