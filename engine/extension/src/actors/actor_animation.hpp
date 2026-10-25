@@ -56,6 +56,13 @@ public:
                                                        const godot::PackedByteArray& skeleton_asset,
                                                        const godot::String& skeleton_path);
 
+    /// A text key of `clip` at `time`, in the clip's meta lists "skydot_event_times" and
+    /// "skydot_event_texts" (markers hold one key per moment, and a clip has several at once:
+    /// preHitFrame, weaponSwing, DragonTailAttackEffect...). A key of the same text within
+    /// `merge` seconds is the same key and is not added twice. True if it was added.
+    static bool add_event(const godot::Ref<godot::Animation>& clip, const godot::String& text, double time,
+                          double merge);
+
     /// Move every skinned MeshInstance3D under `model` onto `skeleton`: binds
     /// are matched by bone name (case-insensitive) and recomputed against
     /// the skeleton's rest, so a mesh sits where its own skeleton put it.

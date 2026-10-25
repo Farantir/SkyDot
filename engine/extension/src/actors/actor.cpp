@@ -436,9 +436,12 @@ void SkydotActor::scan_events() {
     }
     // The clip's keys: its markers, "#n" (made unique when the clip was built) cut off.
     EventKeys& cache = event_keys_[clip->get_instance_id()];
-    const godot::PackedStringArray names = clip->get_marker_names();
-    if (cache.markers != names.size()) {
-        cache.markers = static_cast<std::int32_t>(names.size());
+    const godot::PackedFloat64Array times = clip->get_meta("skydot_event_times", godot::PackedFloat64Array());
+    const godot::PackedStringArray texts = clip->get_meta("skydot_event_texts", godot::PackedStringArray());
+    const godot::PackedStringArray names = times.is_empty() ? clip->get_marker_names() : godot::PackedStringArray();
+    const auto count = static_cast<std::int32_t>(times.is_empty() ? names.size() : times.size());
+    if (cache.markers != count) {
+        cache.markers = count;
         cache.keys.clear();
         for (const godot::String& marker : names) {
             godot::String text = marker;
@@ -486,6 +489,11 @@ godot::String SkydotActor::get_state() const {
     }
     if (path_.is_empty()) {
         return "idle";
+        // "Func.DragonBiteEffect" (the dragons' hit keys) is the graph's event "DragonBiteEffect": the
+        // behaviour graphs list only the plain names, so scripts register for those.
+        if (text.begins_with("Func.") && text.length() > 5) {
+            emit_signal("animation_event", text.substr(5));
+        }
     }
     return run_ ? "run" : "walk";
 }

@@ -135,6 +135,23 @@ void collect_meshes(godot::Node* node, std::vector<godot::MeshInstance3D*>& out)
 
 } // namespace
 
+bool SkydotAnimation::add_event(const godot::Ref<godot::Animation>& clip, const godot::String& text, double time,
+                                double merge) {
+    godot::PackedFloat64Array times = clip->get_meta("skydot_event_times", godot::PackedFloat64Array());
+    godot::PackedStringArray texts = clip->get_meta("skydot_event_texts", godot::PackedStringArray());
+    for (int64_t i = 0; i < times.size() && i < texts.size(); ++i) {
+        // The project's "Func" is the clip file's "Func.DragonBiteEffect" cut short.
+        if ((texts[i] == text || texts[i].begins_with(text + godot::String("."))) && std::abs(times[i] - time) <= merge) {
+            return false;
+        }
+    }
+    times.push_back(time);
+    texts.push_back(text);
+    clip->set_meta("skydot_event_times", times);
+    clip->set_meta("skydot_event_texts", texts);
+    return true;
+}
+
 godot::Dictionary SkydotAnimation::describe(const godot::PackedByteArray& asset) {
     godot::Dictionary out;
     const auto* root = read_asset(asset);
@@ -376,7 +393,9 @@ godot::Ref<godot::Animation> SkydotAnimation::clip_onto(const godot::PackedByteA
                     for (int n = 2; anim->has_marker(unique); ++n) {
                         unique = name + "#" + String::num_int64(n);
                     }
-                    anim->add_marker(unique, std::clamp<double>(static_cast<double>(a->time()), 0.0, anim->get_length()));
+                    const double at = std::clamp<double>(static_cast<double>(a->time()), 0.0, anim->get_length());
+                    anim->add_marker(unique, at);
+                    add_event(anim, name, at, 0.001);
                 }
             }
         }

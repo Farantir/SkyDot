@@ -892,6 +892,7 @@ godot::Ref<godot::Animation> CellBuilder::actor_clip(const std::string& file, co
             if (!known) {
                 clip->add_marker(unique, at);
             }
+            SkydotAnimation::add_event(clip, name, at, 0.04);
         }
     };
     add(project.idle);
