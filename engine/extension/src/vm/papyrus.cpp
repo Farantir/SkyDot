@@ -189,6 +189,8 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::get_actor_value_max);
     godot::ClassDB::bind_method(D_METHOD("damage_actor_value", "ref", "name", "amount"),
                                 &SkydotPapyrus::damage_actor_value);
+    godot::ClassDB::bind_method(D_METHOD("set_actor_value", "ref", "name", "value"),
+                                &SkydotPapyrus::set_actor_value);
     godot::ClassDB::bind_method(
         D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
         &SkydotPapyrus::apply_hit, DEFVAL(0));
@@ -212,6 +214,7 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::start_game_enabled_quests);
     godot::ClassDB::bind_method(D_METHOD("dialogue_can_talk", "ref"), &SkydotPapyrus::dialogue_can_talk);
     godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker"), &SkydotPapyrus::dialogue_open);
+    godot::ClassDB::bind_method(D_METHOD("topic_line", "speaker", "topic"), &SkydotPapyrus::topic_line);
     godot::ClassDB::bind_method(D_METHOD("dialogue_choose", "topic"), &SkydotPapyrus::dialogue_choose);
     godot::ClassDB::bind_method(D_METHOD("dialogue_close"), &SkydotPapyrus::dialogue_close);
     godot::ClassDB::bind_method(D_METHOD("dialogue_is_open"), &SkydotPapyrus::dialogue_is_open);
@@ -271,6 +274,12 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("havok_impulse", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::VECTOR3, "direction"),
                                  PropertyInfo(Variant::FLOAT, "magnitude")));
+    // ObjectReference.PushActorAway and KnockAreaEffect: the source, the actor pushed and the force; the
+    // source, the magnitude and the radius in game units.
+    ADD_SIGNAL(godot::MethodInfo("push_actor", PropertyInfo(Variant::INT, "source"),
+                                 PropertyInfo(Variant::INT, "target"), PropertyInfo(Variant::FLOAT, "force")));
+    ADD_SIGNAL(godot::MethodInfo("knock_area", PropertyInfo(Variant::INT, "source"),
+                                 PropertyInfo(Variant::FLOAT, "magnitude"), PropertyInfo(Variant::FLOAT, "radius")));
     // Weapon.Fire: the weapon, the source reference and the ammo (0 for None).
     ADD_SIGNAL(godot::MethodInfo("fire_weapon", PropertyInfo(Variant::INT, "weapon"),
                                  PropertyInfo(Variant::INT, "source"),
@@ -700,6 +709,12 @@ double SkydotPapyrus::get_actor_value(std::int64_t ref, const String& name) cons
 double SkydotPapyrus::get_actor_value_max(std::int64_t ref, const String& name) const {
     const auto av = vm::av::index_of(utf8(name));
     return av ? actors_.max(static_cast<std::uint32_t>(ref), *av) : 0.0;
+}
+
+void SkydotPapyrus::set_actor_value(std::int64_t ref, const String& name, double value) {
+    if (const auto av = vm::av::index_of(utf8(name))) {
+        actors_.set_base(static_cast<std::uint32_t>(ref), *av, value);
+    }
 }
 
 void SkydotPapyrus::damage_actor_value(std::int64_t ref, const String& name, double amount) {

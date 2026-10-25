@@ -460,6 +460,8 @@ public:
     /// Lower `name` of `ref` by `amount`; an actor at Health 0 dies (signal
     /// `actor_died`) unless it is essential or the player.
     void damage_actor_value(std::int64_t ref, const godot::String& name, double amount);
+    /// Set the base of an actor value (Actor.SetActorValue): the viewer's --dragon-souls, tests.
+    void set_actor_value(std::int64_t ref, const godot::String& name, double value);
 
     /// `apply_hit` flags.
     static constexpr std::int64_t HIT_POWER = 1;
@@ -507,6 +509,10 @@ public:
     /// one after the other; the host runs `dialogue_fragment` for an INFO at
     /// its `first` line's start and its `last` line's end.
     godot::Dictionary dialogue_open(std::int64_t speaker);
+    /// `speaker` says `topic` (a line the player's shouts, a grunt, a bark): the first INFO of the topic
+    /// that passes for the speaker, as one line of `dialogue_open` ({text, seconds, voice, info, topic,
+    /// first, last}); {} if no INFO passes or the topic is unknown. Its fragments are not run.
+    godot::Dictionary topic_line(std::int64_t speaker, std::int64_t topic);
     godot::Dictionary dialogue_choose(std::int64_t topic);
     void dialogue_close();
     bool dialogue_is_open() const;

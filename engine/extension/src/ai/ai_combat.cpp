@@ -661,6 +661,18 @@ double SkydotAi::stagger(std::int64_t ref_id, double magnitude) {
     return m->combat.stagger;
 }
 
+bool SkydotAi::hold(std::int64_t ref_id, double seconds) {
+    const auto ref = static_cast<std::uint32_t>(ref_id);
+    Mind* m = mind(ref);
+    SkydotActor* actor = m != nullptr ? node_of(*m) : nullptr;
+    if (actor == nullptr || !alive(ref)) {
+        return false;
+    }
+    actor->stop();
+    m->combat.stagger = std::max(seconds, 0.0);
+    return true;
+}
+
 bool SkydotAi::revive(std::int64_t ref_id) {
     const auto ref = static_cast<std::uint32_t>(ref_id);
     Mind* m = mind(ref);

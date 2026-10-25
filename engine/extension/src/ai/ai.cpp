@@ -238,6 +238,7 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("start_combat", "ref", "target"), &SkydotAi::start_combat);
     ClassDB::bind_method(D_METHOD("stop_combat", "ref"), &SkydotAi::stop_combat);
     ClassDB::bind_method(D_METHOD("stagger", "ref", "magnitude"), &SkydotAi::stagger);
+    ClassDB::bind_method(D_METHOD("hold", "ref", "seconds"), &SkydotAi::hold);
     ClassDB::bind_method(D_METHOD("revive", "ref"), &SkydotAi::revive);
     ClassDB::bind_method(D_METHOD("get_combat_target", "ref"), &SkydotAi::get_combat_target);
     ClassDB::bind_method(D_METHOD("get_combat_state", "ref"), &SkydotAi::get_combat_state);

@@ -5,6 +5,7 @@
 #include "vm/papyrus.hpp"
 #include "vm/activation.hpp"
 
+#include <cstdio>
 #include <numbers>
 
 using godot::Array;
@@ -150,6 +151,28 @@ void SkydotPapyrus::bind_objectreference_natives() {
         const Vector3 direction(static_cast<float>(number(arg(c, 0))), static_cast<float>(number(arg(c, 1))),
                                 static_cast<float>(number(arg(c, 2))));
         emit_signal("havok_impulse", static_cast<std::int64_t>(c.self.form()), direction, number(arg(c, 3)));
+        return NativeResult{};
+    });
+    // PushActorAway(Actor, float force): the source knocks the actor over (a shout's push, a dragon's
+    // blow); KnockAreaEffect(magnitude, radius): everything within the radius (game units) of the
+    // source is knocked away from it. The game layer owns the bodies: it ragdolls and gets them up.
+    v.bind("ObjectReference", "PushActorAway", [this, arg, number](NativeCall& c) {
+        if (arg(c, 0).kind() != vm::Kind::object) {
+            return NativeResult{};
+        }
+        const auto source = static_cast<std::int64_t>(c.self.form());
+        const auto target = static_cast<std::int64_t>(arg(c, 0).form());
+        const double force = number(arg(c, 1));
+        std::printf("papyrus: PushActorAway 0x%X pushes 0x%X (force %g)\n", c.self.form(), arg(c, 0).form(), force);
+        emit_signal("push_actor", source, target, force);
+        return NativeResult{};
+    });
+    v.bind("ObjectReference", "KnockAreaEffect", [this, arg, number](NativeCall& c) {
+        const auto source = static_cast<std::int64_t>(c.self.form());
+        const double magnitude = number(arg(c, 0));
+        const double radius = number(arg(c, 1));
+        std::printf("papyrus: KnockAreaEffect 0x%X (magnitude %g, radius %g)\n", c.self.form(), magnitude, radius);
+        emit_signal("knock_area", source, magnitude, radius);
         return NativeResult{};
     });
     // ObjectReference.psc: 1 dynamic, 2 sphere, 3 box, 6 thin box inertia

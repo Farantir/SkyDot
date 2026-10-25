@@ -112,6 +112,21 @@ Array SkydotPapyrus::lines_array(const std::vector<dialogue::Line>& all) const {
     return lines;
 }
 
+Dictionary SkydotPapyrus::topic_line(std::int64_t speaker, std::int64_t topic) {
+    auto* logic = dialogue_logic();
+    if (logic == nullptr) {
+        return Dictionary();
+    }
+    const auto lines = lines_array(logic->say(static_cast<std::uint32_t>(speaker), static_cast<std::uint32_t>(topic)).lines);
+    for (int i = 0; i < lines.size(); ++i) {
+        const Dictionary line = lines[i];
+        if (!String(line["text"]).is_empty() || !String(line["voice"]).is_empty()) {
+            return line;
+        }
+    }
+    return Dictionary();
+}
+
 Dictionary SkydotPapyrus::dialogue_dictionary(const dialogue::Result& result) const {
     Dictionary out;
     const Array lines = lines_array(result.lines);

@@ -79,6 +79,7 @@ godot::Dictionary get_combat_style(const WorldData& data, std::int64_t id);
 godot::Dictionary get_npc(const WorldData& data, std::int64_t id);
 godot::Dictionary get_faction(const WorldData& data, std::int64_t id);
 std::int64_t get_gmst_int(const WorldData& data, const godot::String& name, std::int64_t fallback);
+godot::String get_gmst_string(const WorldData& data, const godot::String& name, const godot::String& fallback);
 godot::Dictionary get_weapon(const WorldData& data, std::int64_t form);
 godot::Dictionary get_race(const WorldData& data, std::int64_t race);
 godot::Dictionary get_impact(const WorldData& data, std::int64_t data_set, std::int64_t material);

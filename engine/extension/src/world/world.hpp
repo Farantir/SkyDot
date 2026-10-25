@@ -196,6 +196,8 @@ public:
     /// The game setting `name` (any case) as a number, `fallback` if the world has none.
     double get_gmst_float(const godot::String& name, double fallback) const;
     std::int64_t get_gmst_int(const godot::String& name, std::int64_t fallback) const;
+    /// The text of a text GMST (a game message), or `fallback`.
+    godot::String get_gmst_string(const godot::String& name, const godot::String& fallback) const;
     /// A weapon (WEAP) as combat needs it (keys: id, editor_id, name, model, weapon_type, damage,
     /// speed, reach, skill, stagger, impact_data_set, first_person_model, equip_sound,
     /// unequip_sound); empty for anything else.

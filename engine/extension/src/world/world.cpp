@@ -64,6 +64,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_sound_output_model", "id"), &SkydotWorld::get_sound_output_model);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_float", "name", "fallback"), &SkydotWorld::get_gmst_float);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_int", "name", "fallback"), &SkydotWorld::get_gmst_int);
+    godot::ClassDB::bind_method(D_METHOD("get_gmst_string", "name", "fallback"), &SkydotWorld::get_gmst_string);
     godot::ClassDB::bind_method(D_METHOD("get_weapon", "form"), &SkydotWorld::get_weapon);
     godot::ClassDB::bind_method(D_METHOD("get_race", "race"), &SkydotWorld::get_race);
     godot::ClassDB::bind_method(D_METHOD("get_combat_style", "id"), &SkydotWorld::get_combat_style);
@@ -313,6 +314,9 @@ void SkydotWorld::tag_runtime_ref(std::int64_t ref, std::int64_t cell, godot::No
 Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return queries::get_sound_output_model(data(), id); }
 double SkydotWorld::get_gmst_float(const String& name, double fallback) const {
     return queries::get_gmst_float(data(), name, fallback);
+}
+String SkydotWorld::get_gmst_string(const String& name, const String& fallback) const {
+    return queries::get_gmst_string(data(), name, fallback);
 }
 std::int64_t SkydotWorld::get_gmst_int(const String& name, std::int64_t fallback) const {
     return queries::get_gmst_int(data(), name, fallback);

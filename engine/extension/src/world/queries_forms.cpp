@@ -150,6 +150,12 @@ std::int64_t get_gmst_int(const WorldData& data, const String& name, std::int64_
     return data.gmst_int(std::string_view(name.utf8().get_data()), static_cast<std::int32_t>(fallback));
 }
 
+String get_gmst_string(const WorldData& data, const String& name, const String& fallback) {
+    const auto* g = WorldData::find_gmst(data.root(), std::string_view(name.utf8().get_data()));
+    return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? String::utf8(g->text_value()->c_str())
+                                                                                      : fallback;
+}
+
 Dictionary get_weapon(const WorldData& data, std::int64_t form) {
     Dictionary out;
     const auto* base = data.base_ptr(form);
