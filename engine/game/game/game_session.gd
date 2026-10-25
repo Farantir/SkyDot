@@ -338,6 +338,7 @@ func _make_game_nodes() -> void:
 	papyrus.worn_changed.connect(_on_worn_changed)
 	placed = PlacedRefs.new(world, papyrus, ai)
 	host.add_child(placed)
+	placed.actor_built.connect(corpses.on_actor_arrived)  # a dead one built again lies down
 	magic_world = MagicWorld.new(self)
 	host.add_child(magic_world)
 	papyrus.ref_placed.connect(placed.place)

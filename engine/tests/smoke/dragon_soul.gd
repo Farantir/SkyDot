@@ -5,7 +5,8 @@
 # Skyrim (13100, -13650), killed by the player 25 m away. The game's own scripts run: DragonActorScript
 # (onDeath, deadAndWaiting, deadDisintegrated) and MQKillDragonScript.deathSequence (the absorb effects,
 # SetGhost, DragonSouls +1 with the message, MQKillDragonFaction, the skin items). Later phases add the
-# skeleton, the loot and the save. The death plays the dragon's death clip (mtdeathintro) and holds its
+# skeleton (the underskin shows, the skin is not built: SkinDragonHider covers its slots), the loot (the
+# death item: dragon bones and scales) and a save and load with both corpses. The death plays the dragon's death clip (mtdeathintro) and holds its
 # last frame, no ragdoll; a dragon killed in the air crashes first and lies on the ground. Skips without the pack.
 extends SceneTree
 
@@ -13,6 +14,8 @@ const PLAYER := 0x14
 const DRAGON := 0x1CA03
 const STEP := 1.0 / 60.0
 const ICE_SPIKE := 0x2B96C
+const DRAGON_BONE := 0x3ADA4
+const DRAGON_SCALES := 0x3ADA3
 const SPOT := Vector3(13100.0, -13650.0, -3000.0)  # Skyrim units; the ground is below
 
 var failures := 0
@@ -25,6 +28,8 @@ var _effects: Array[Array] = []  # [effect, ref, target, seconds, playing]
 var _animations: Array[Array] = []  # [ref, name]
 var _messages: Array[String] = []
 var _shaders := 0
+var _player: FakePlayer
+var _dead: Array[int] = []  # the dragons that died, in order
 
 
 class FakePlayer:
@@ -88,6 +93,42 @@ func _ground(at: Vector3) -> Vector3:
 	return hit["position"] if not hit.is_empty() else at
 
 
+## The visible meshes on the skeleton of `node` by name.
+func _shown(node: Node) -> Array[String]:
+	var out: Array[String] = []
+	for mesh in node.find_children("*", "MeshInstance3D", true, false):
+		if mesh.get_parent() is Skeleton3D and mesh.visible:
+			out.append(String(mesh.name))
+	return out
+
+
+## A dead dragon shows the skeleton and none of its skin: the underskin is there, SkinDragonHider is worn and
+## no skin mesh is built (what it wears decides, not the fade).
+func _expect_skeleton(node: Node, who: String) -> void:
+	var shown := _shown(node)
+	expect(shown.has("Underskin"), "%s shows the underskin: %s" % [who, shown])
+	var skin := 0
+	for mesh in node.find_children("*", "MeshInstance3D", true, false):
+		if mesh.get_parent() is Skeleton3D and mesh.get_meta("skydot_skin", false):
+			skin += 1
+	expect(skin == 0, "%s has no skin mesh: %d" % [who, skin])
+	expect(shown.size() <= 2, "and nothing else but the hider's shape: %s" % [shown])
+
+
+## The corpse holds the death item (dragon bones and scales), shows it in the loot list and none of what it wears.
+func _expect_loot(ref: int, who: String) -> void:
+	var rows: Array = _session.papyrus.inventory(ref)
+	var counts := {}
+	for row: Dictionary in rows:
+		counts[int(row["form"])] = int(row["count"])
+	expect(counts.get(DRAGON_BONE, 0) > 0 and counts.get(DRAGON_SCALES, 0) > 0, "%s holds dragon bones and scales: %s" % [who, counts])
+	var listed := ItemRows.visible(rows).map(func(row: Dictionary) -> int: return int(row["form"]))
+	expect(listed.has(DRAGON_BONE) and listed.has(DRAGON_SCALES), "the loot list shows them: %s" % [listed])
+	for worn in [_quest_form("::SkinDragonHider_var"), _quest_form("::DragonUnderskin_var")]:
+		expect(counts.has(worn) and not listed.has(worn), "%s: 0x%X is carried but not listed" % [who, worn])
+	expect(listed.size() == rows.filter(func(row: Dictionary) -> bool: return row["playable"]).size(), "only playable rows are listed")
+
+
 func _state() -> String:
 	for script in _session.papyrus.get_scripts(_ref):
 		if String(script["name"]).to_lower() == "dragonactorscript":
@@ -113,7 +154,8 @@ func _run(pack_dir: String) -> void:
 	_session.interactive = false
 	_session.failed.connect(func(text: String) -> void: expect(false, "the session fails: " + text))
 	root.add_child(_session)
-	expect(_session.open(config, _camera, FakePlayer.new()), "the session opens")
+	_player = FakePlayer.new()
+	expect(_session.open(config, _camera, _player), "the session opens")
 	if _session.world == null or _session.ai == null:
 		quit(1)
 		return
@@ -133,6 +175,7 @@ func _run(pack_dir: String) -> void:
 		return
 	await _ground_death()
 	await _air_death()
+	await _save_load()
 	print("smoke_dragon_soul: failures=%d" % failures)
 	quit(failures)
 
@@ -216,16 +259,13 @@ func _absorb(expected: float) -> void:
 	var worn: Array = papyrus.equipment(_ref)["worn"]
 	expect(worn.has(hider), "it wears SkinDragonHider: %s" % [worn])
 	expect(worn.has(underskin), "and DragonUnderskin")
-	expect(_node.get_meta("skydot_skin_faded", false), "its skin faded out")
-	var visible_skin := 0
-	for mesh in _node.find_children("*", "MeshInstance3D", true, false):
-		if mesh.get_parent() is Skeleton3D and mesh.visible:
-			visible_skin += 1
-	expect(visible_skin == 0, "no skin mesh is left: %d" % visible_skin)
+	_expect_skeleton(_node, "the corpse")
+	_expect_loot(_ref, "the corpse")
+	_dead.append(_ref)
 	expect(_session.visual_effects.stream_count() == 0, "no stream is left: %d" % _session.visual_effects.stream_count())
 	var result := papyrus.apply_hit(PLAYER, _ref, 0, 0, "attackStart", 0)
 	expect(result.has("error"), "a hit on the dead ghost lands nowhere: %s" % [result])
-	await _frames(600)
+	await _frames(300)
 	expect(_souls() == expected, "no second absorb: %s" % _souls())
 
 
@@ -294,3 +334,60 @@ func _height_over_ground(node: Node3D) -> float:
 	var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(node.global_position + Vector3.UP * 0.5,
 		node.global_position + Vector3.DOWN * 500.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN))
 	return node.global_position.y - hit["position"].y if not hit.is_empty() else INF
+
+
+## F5 and F9 with both corpses lying: they are still there (the actors a script created persist), dead, the death
+## clip's last frame held, wearing the hider and the underskin, still deadDisintegrated and ghosts, the souls
+## unchanged and not absorbed a second time; the loot is still in them and can be taken.
+func _save_load() -> void:
+	var papyrus := _session.papyrus
+	expect(_dead.size() == 2, "two dragons died: %s" % [_dead])
+	var hider := _quest_form("::SkinDragonHider_var")
+	var underskin := _quest_form("::DragonUnderskin_var")
+	var souls := _souls()
+	var scripts_before := {}
+	for ref in _dead:
+		scripts_before[ref] = papyrus.get_scripts(ref).size()
+	var path := "user://dragon_soul.skydot"
+	_player.loaded_position = _feet
+	_messages.clear()
+	_effects.clear()
+	expect(_session.save_game(path), "saves")
+	expect(_session.load_game(path), "loads")
+	await _until(func() -> bool: return _session.world.find_ref_node(_dead[0]) != null and _session.world.find_ref_node(_dead[1]) != null, 30.0)
+	await _frames(30)
+	for ref in _dead:
+		var who := "the dragon 0x%X after the load" % ref
+		var node := _session.world.find_ref_node(ref) as SkydotActor
+		expect(node != null, "%s is built again" % who)
+		if node == null:
+			continue
+		expect(papyrus.is_actor_dead(ref) and node.is_dead(), "%s is dead" % who)
+		expect(node.get_death_state() == "held", "%s holds the death pose: '%s'" % [who, node.get_death_state()])
+		var shift := _pose_shift(node)
+		expect(shift[1] > 100.0, "%s lies in the death pose: %.0f units from the rest pose" % [who, shift[1]])
+		var worn: Array = papyrus.equipment(ref)["worn"]
+		expect(worn.has(hider) and worn.has(underskin), "%s wears the hider and the underskin: %s" % [who, worn])
+		_expect_skeleton(node, who)
+		await _until(func() -> bool: return _height_over_ground(node) < INF, 10.0)
+		expect(_height_over_ground(node) < 2.0, "%s lies on the ground: %.2f m" % [who, _height_over_ground(node)])
+		expect(papyrus.is_actor_ghost(ref), "%s is a ghost" % who)
+		var state := ""
+		for script in papyrus.get_scripts(ref):
+			if String(script["name"]).to_lower() == "dragonactorscript":
+				state = script["state"]
+		expect(state == "deadDisintegrated", "%s: DragonActorScript is in '%s'" % [who, state])
+		_expect_loot(ref, who)
+	expect(_souls() == souls, "the souls are unchanged: %s" % _souls())
+	# The player stays near for a while: nothing is absorbed a second time.
+	_feet = _ground(_session.world.find_ref_node(_dead[0]).global_position + Vector3(8.0, 0.0, 0.0))
+	await _frames(600)
+	expect(_souls() == souls, "no second absorb: %s" % _souls())
+	expect(not _messages.has("Dragon Soul Absorbed"), "and no message: %s" % [_messages])
+	expect(_effects.is_empty(), "and no stream: %d" % _effects.size())
+	# The loot can be taken.
+	var player_bones := papyrus.get_item_count(PLAYER, DRAGON_BONE)
+	var held := papyrus.get_item_count(_dead[0], DRAGON_BONE)
+	expect(_session.transfer(_dead[0], PLAYER, DRAGON_BONE, held) == held and held > 0, "the bones are taken: %d" % held)
+	expect(papyrus.get_item_count(PLAYER, DRAGON_BONE) == player_bones + held, "the player has them")
+	expect(papyrus.equipment(_dead[0])["worn"].has(hider), "the corpse still wears the hider")

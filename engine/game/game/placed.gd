@@ -12,6 +12,9 @@
 class_name PlacedRefs
 extends Node3D
 
+## A script-placed actor was built (a dead one lies down: Corpses.on_actor_arrived).
+signal actor_built(ref: int)
+
 const EXPLOSION_EMIT_SECONDS := 1.5
 const EXPLOSION_LIFE_SECONDS := 5.0
 
@@ -64,6 +67,11 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 ## A summon or another actor a script placed: a SkydotActor like the cell's, under this node, taken
 ## by the AI (its NPC_ comes from the reference's base).
 func _build_actor(ref: int, base: int, position: Vector3, rotation: Vector3, disabled: bool) -> void:
+	# A dead one built again (after a load) lies where it died, not where it was placed.
+	var corpse := _papyrus.get_corpse_place(ref)
+	if not corpse.is_empty() and _papyrus.is_actor_dead(ref):
+		position = corpse["position"]
+		rotation.z = corpse["rot_z"]
 	var node := _world.build_placed_actor(ref, base, position, rotation.z)
 	if node == null or node.get_child_count() == 0:
 		_warn.once("noactor%d" % base, "placed 0x%08X: the actor of base 0x%08X does not build" % [ref, base])
@@ -77,6 +85,7 @@ func _build_actor(ref: int, base: int, position: Vector3, rotation: Vector3, dis
 	if _ai != null:
 		_ai.attach_built(node)
 	_papyrus.ref_built(ref)
+	actor_built.emit(ref)
 
 
 ## The explosion's controllers and particles start from nothing, run for a
