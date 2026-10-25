@@ -169,6 +169,8 @@ func _left_button(input_name: String, pressed: bool) -> void:
 			_action(PlayerInput.ATTACK_LEFT, pressed)
 		"grip_click":
 			_action(PlayerInput.POWER, pressed)  # the voice key: a power, or a shout while held
+		"ax_button":
+			_action(&"menu_drop", pressed)  # in a menu: drop, take all, unlock a word
 		"menu_button":
 			if pressed:
 				inventory_requested.emit()

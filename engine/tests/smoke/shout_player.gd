@@ -219,18 +219,47 @@ func _run(pack_dir: String) -> void:
 	expect(recovery > 14.0 and recovery <= 15.0, "the voice recovers for 15 s: %f" % recovery)
 	var again := _session.voice_pressed()
 	expect(not again["ok"] and again["reason"] == "recovering" and not magic.is_shouting(), "a second shout is refused while recovering: %s" % [again])
+	# the HUD's voice meter fills as the recovery runs out
+	var hud := HudView.new(_session, func(_action: StringName) -> String: return "")
+	root.add_child(hud)
+	await process_frame
+	await process_frame
+	expect(hud.voice_alpha == 1.0 and hud.voice_fill < 0.1, "the meter shows, nearly empty: %f %f" % [hud.voice_alpha, hud.voice_fill])
 	await _frames(30)
+	papyrus.update(7.0)
+	await process_frame
+	await process_frame
+	expect(hud.voice_fill > 0.4 and hud.voice_fill < 0.7, "and half full after half the recovery: %f" % hud.voice_fill)
 	papyrus.update(15.0)
 	expect(papyrus.voice_recovery(PLAYER) == 0.0, "the recovery runs out")
 
-	# ---- a dragon soul: Ro
+	# ---- the magic menu: the Shouts category, equip, and unlock with a dragon soul (Ro)
+	var view := MagicView.new(_session)
+	root.add_child(view)
+	view.open()
+	expect(view.category_names()[0] == "Shouts", "Shouts is the first category: %s" % [view.category_names()])
+	view.select_category("Shouts")
+	var rows := view.rows_of("Shouts")
+	expect(rows.size() == 1 and rows[0]["name"] == "Unrelenting Force" and rows[0]["power"], "Unrelenting Force is listed, in the voice slot")
+	expect(rows[0]["words"][0]["unlocked"] and not rows[0]["words"][1]["known"] and not rows[0]["words"][2]["known"], "Fus is unlocked, Ro and Dah unknown")
+	expect(MagicView.word_text(rows[0]["words"][0]) == "Fus  Force" and MagicView.word_text(rows[0]["words"][1]) == "?????", "the word lines: %s" % MagicView.word_text(rows[0]["words"][0]))
 	_vm("TeachWord", WORD_RO)
+	view._refresh()
+	expect(MagicView.word_text(view.rows_of("Shouts")[0]["words"][1]) == "Ro  Balance (locked)", "Ro is known and locked: %s" % MagicView.word_text(view.rows_of("Shouts")[0]["words"][1]))
+	expect(_session.equip_spell(power, Magic.POWER) and papyrus.equipped_shout(PLAYER) == 0, "a power takes the voice slot")
+	expect(view.equip_current(Magic.RIGHT) and papyrus.equipped_shout(PLAYER) == UNRELENTING_FORCE, "equipping the shout from the menu")
 	papyrus.set_actor_value(PLAYER, "DragonSouls", 0)
-	var no_soul := papyrus.unlock_word_with_soul(PLAYER, WORD_RO)
-	expect(not no_soul["ok"] and not _word(1)["unlocked"], "with no dragon soul Ro stays locked: %s" % [no_soul])
+	_messages.clear()
+	expect(not view.unlock_current() and view.confirmation() == "", "with no dragon soul nothing is asked")
+	expect(view.notice() == _session.world.get_gmst_string("sFailSpendSoul", "?") and view.notice() != "?" and not _word(1)["unlocked"], "the menu says so: %s" % view.notice())
 	papyrus.set_actor_value(PLAYER, "DragonSouls", 1)
-	var soul := papyrus.unlock_word_with_soul(PLAYER, WORD_RO)
-	expect(soul["ok"] and _word(1)["unlocked"] and papyrus.get_actor_value(PLAYER, "DragonSouls") == 0.0, "a dragon soul unlocks Ro: %s" % [soul])
+	expect(view.unlock_current() and view.confirmation().begins_with("Spend Soul?") and view.confirmation().ends_with("Ro"), "Spend Soul? Ro: %s" % view.confirmation())
+	expect(not view.answer_confirmation(false) and not _word(1)["unlocked"] and _session.dragon_souls() == 1, "no keeps the soul")
+	expect(view.unlock_current() and view.answer_confirmation(true), "yes unlocks")
+	expect(_word(1)["unlocked"] and _session.dragon_souls() == 0, "Ro is unlocked and the soul spent")
+	expect(not view.unlock_current(), "Ro is done and Dah is unknown: nothing to unlock")
+	view.close()
+	view.queue_free()
 	_vm("TeachWord", WORD_DAH)
 	_vm("UnlockWord", WORD_DAH)
 	expect(papyrus.shout_info(PLAYER, UNRELENTING_FORCE)["usable"] == 3, "all three words are usable")
@@ -258,6 +287,10 @@ func _run(pack_dir: String) -> void:
 	var held := _session.voice_pressed()
 	expect(held["ok"] and magic.is_shouting() and not magic.shout_state()["fired"], "the key is down, the shout charges: %s" % [held])
 	await _frames(30)
+	var charge := _session.voice_meter()
+	await process_frame
+	await process_frame
+	expect(charge["charging"] and charge["fill"] > 0.4 and charge["fill"] < 0.7 and hud.voice_fill > 0.4, "the meter shows the charge: %s %f" % [charge, hud.voice_fill])
 	expect(_shouts.is_empty(), "nothing is said at 0.5 s")
 	await _frames(40)
 	expect(_shouts.size() == 1 and _shouts[0]["words"] == 3 and _shouts[0]["spell"] == UF3 and magic.shout_state()["fired"],

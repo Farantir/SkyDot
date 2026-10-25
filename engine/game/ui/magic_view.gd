@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The magic menu: categories on the left (Powers, the five schools of spells, Other, Scrolls the
+# The magic menu: categories on the left (Shouts, Powers, the five schools of spells, Other, Scrolls the
 # player carries, Active Effects), the entries of the chosen one on the right. A spell row has
 # its Magicka cost ("/s" for concentration) and L, R or LR for the hand(s) it is in; one the
 # player cannot pay now is dimmed but listed. Up and down choose an entry, left and right a
 # category, accept (Enter, E) puts it in the right hand, `menu_equip_left` (Q, the gamepad's Y) in
 # the left; a power goes to the power slot whichever is used. Cancel, P or the `magic` action
-# closes. Abilities are not spells and show only as Active Effects. This is the view, a Control
+# closes. Shouts: a row is a shout the player has, marked E in the voice slot; accept or
+# `menu_equip_left` puts it there (GameSession.equip_shout), and under the list the selected
+# shout shows its three words with their translations, each unlocked, known (locked) or unknown
+# (shown as ?????). `menu_drop` (R, gamepad X) unlocks the next known, locked word of the shout
+# with a dragon soul after the question sConfirmSpendSoul (accept yes, cancel no); with no soul
+# it says sFailSpendSoul. The header shows the dragon souls. Abilities are not spells and show only as Active Effects. This is the view, a Control
 # that fills its host (the viewer's CanvasLayer, a VR shell's panel); it takes its input from the
 # InputMap's ui_* actions, `magic` and `menu_equip_left`, and knows the game only through
 # GameSession. While it is open it emits `engaged(true)` so the shell keeps the player still.
@@ -22,14 +27,16 @@ const EQUIPPED := Color(0.6, 0.9, 0.6)
 const STICK_THRESHOLD := 0.6
 const REFRESH_SECONDS := 0.5
 const HOURS_PER_DAY := 24.0
+const NOTICE_SECONDS := 4.0
 
 ## The magic skills' actor value index (Alteration 18 ... Restoration 22) -> school.
 const SCHOOLS := {18: "Alteration", 19: "Conjuration", 20: "Destruction", 21: "Illusion", 22: "Restoration"}
+const SHOUTS := "Shouts"
 const POWERS := "Powers"
 const OTHER := "Other"
 const SCROLLS := "Scrolls"
 const EFFECTS := "Active Effects"
-const NAMES: Array[String] = [POWERS, "Alteration", "Conjuration", "Destruction", "Illusion", "Restoration", OTHER, SCROLLS, EFFECTS]
+const NAMES: Array[String] = [SHOUTS, POWERS, "Alteration", "Conjuration", "Destruction", "Illusion", "Restoration", OTHER, SCROLLS, EFFECTS]
 
 var _session: GameSession
 var _open := false
@@ -38,6 +45,9 @@ var _selected := 0
 var _categories: Array[Dictionary] = []  # {name, rows} of the categories shown
 var _stick_ready := true
 var _since_refresh := 0.0
+var _confirm := {}  # the word to unlock once the player says yes: {word, name}
+var _notice := ""  # the last refusal, shown in the menu
+var _notice_left := 0.0
 ## Whether the menu listens at all (false in runs that drive themselves).
 var enabled: Callable = func() -> bool: return true
 ## What the key labels say, by action (the viewer's gamepad or keyboard).
@@ -68,6 +78,7 @@ func close() -> void:
 	if not _open:
 		return
 	_open = false
+	_confirm = {}
 	engaged.emit(false)
 	queue_redraw()
 
@@ -133,6 +144,9 @@ func _refresh() -> void:
 			by_name[POWERS].append(row)
 		else:
 			by_name[SCHOOLS.get(int(info["school"]), OTHER)].append(row)
+	for info: Dictionary in _session.known_shouts():
+		by_name[SHOUTS].append({"form": int(info["shout"]), "name": info["name"], "kind": "shout", "words": info["words"],
+			"description": info["description"], "usable": int(info["usable"]), "power": bool(info["equipped"]), "affordable": true})
 	for item: Dictionary in _session.inventory():
 		if item["category"] == "scroll" and item["playable"]:
 			var form := int(item["form"])
@@ -146,7 +160,7 @@ func _refresh() -> void:
 		(by_name[name] as Array).sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a["name"]) < String(b["name"]))
 	_categories.clear()
 	for name in NAMES:
-		if name == OTHER and by_name[name].is_empty():
+		if (name == OTHER or name == SHOUTS) and by_name[name].is_empty():
 			continue
 		_categories.append({"name": name, "rows": by_name[name]})
 	_category = 0
@@ -164,6 +178,7 @@ func _category_name() -> String:
 func _process(delta: float) -> void:
 	if not _open:
 		return
+	_notice_left = maxf(_notice_left - delta, 0.0)
 	_since_refresh += delta
 	if _since_refresh >= REFRESH_SECONDS:
 		_since_refresh = 0.0
@@ -174,6 +189,15 @@ func _input(event: InputEvent) -> void:
 	if not _open or not enabled.call():
 		return
 	var handled := true
+	if not _confirm.is_empty():
+		# A question is open: yes or no, nothing else.
+		if event.is_action_pressed(&"ui_accept"):
+			answer_confirmation(true)
+		elif event.is_action_pressed(&"ui_cancel"):
+			answer_confirmation(false)
+		if event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton:
+			get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"magic"):
 		close()
 	elif event.is_action_pressed(&"ui_down"):
@@ -190,6 +214,8 @@ func _input(event: InputEvent) -> void:
 		equip_current(Magic.RIGHT)
 	elif event.is_action_pressed(&"menu_equip_left"):
 		equip_current(Magic.LEFT)
+	elif event.is_action_pressed(&"menu_drop"):
+		unlock_current()
 	else:
 		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	if handled:
@@ -226,9 +252,71 @@ func equip_current(hand: int) -> bool:
 	var row := current()
 	if row.is_empty() or row["kind"] == "effect":
 		return false
+	if row["kind"] == "shout":
+		var equipped := _session.equip_shout(int(row["form"]))
+		_refresh()
+		return equipped
 	var done := _session.equip_spell(int(row["form"]), Magic.POWER if row["kind"] == "power" else hand)
 	_refresh()
 	return done
+
+
+## The unlock action on a shout: the question "Spend Soul?" for its next known, locked word, or the
+## refusal (sFailSpendSoul with no dragon soul). False if nothing was asked.
+func unlock_current() -> bool:
+	var row := current()
+	if row.is_empty() or row["kind"] != "shout":
+		return false
+	for word: Dictionary in row["words"]:
+		if word["known"] and not word["unlocked"]:
+			if _session.dragon_souls() < 1:
+				_say(_session.world.get_gmst_string("sFailSpendSoul", "You do not have a dragon soul to spend."))
+				return false
+			_confirm = {"word": int(word["word"]), "name": word["name"]}
+			queue_redraw()
+			return true
+	_say("No known word to unlock")
+	return false
+
+
+## The question's answer: yes spends the soul and unlocks the word. Returns whether it was unlocked.
+func answer_confirmation(yes: bool) -> bool:
+	if _confirm.is_empty():
+		return false
+	var word := int(_confirm["word"])
+	_confirm = {}
+	var done := false
+	if yes:
+		var result := _session.unlock_word(word)
+		done = result["ok"]
+		if not done:
+			_say(String(result["reason"]))
+	_refresh()
+	return done
+
+
+## The question being asked, "" if none.
+func confirmation() -> String:
+	return "" if _confirm.is_empty() else "%s %s" % [_session.world.get_gmst_string("sConfirmSpendSoul", "Spend Soul?"), _confirm["name"]]
+
+
+## The last refusal the menu shows ("" after a few seconds).
+func notice() -> String:
+	return _notice if _notice_left > 0.0 else ""
+
+
+func _say(text: String) -> void:
+	_notice = text
+	_notice_left = NOTICE_SECONDS
+	queue_redraw()
+
+
+## The word's line in a shout's detail: "Fus  Force", "Ro  Balance (locked)", "?????".
+static func word_text(word: Dictionary) -> String:
+	if not word["known"]:
+		return "?????"
+	var text := "%s  %s" % [word["name"], word["translation"]]
+	return text if word["unlocked"] else text + " (locked)"
 
 
 func _draw() -> void:
@@ -247,6 +335,8 @@ func _draw() -> void:
 	var header := "Magicka %d / %d" % [roundi(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Magicka")),
 		roundi(_session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Magicka"))]
 	_text(font, header, font_size, Vector2(panel.end.x - font.get_string_size(header, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x - font_size, top - font_size * 0.4), NORMAL)
+	var souls := "Dragon Souls: %d" % _session.dragon_souls()
+	_text(font, souls, font_size, Vector2(panel.position.x + panel.size.x * 0.5 - font.get_string_size(souls, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x * 0.5, top - font_size * 0.4), NORMAL)
 	var list_top := top + line
 	for i in _categories.size():
 		var current_category := i == _category
@@ -260,9 +350,9 @@ func _draw() -> void:
 	if shown == EFFECTS:
 		_text(font, "Magnitude", font_size, Vector2(cost_x, list_top - line * 0.1), DIM)
 		_text(font, "Time left", font_size, Vector2(hand_x - panel.size.x * 0.06, list_top - line * 0.1), DIM)
-	elif shown != SCROLLS:
+	elif shown != SCROLLS and shown != SHOUTS:
 		_text(font, "Cost", font_size, Vector2(cost_x, list_top - line * 0.1), DIM)
-	var rows_fit := int((panel.end.y - list_top - line * 3.0) / line)
+	var rows_fit := int((panel.end.y - list_top - line * (7.0 if shown == SHOUTS else 3.0)) / line)
 	var first := clampi(_selected - rows_fit / 2, 0, maxi(rows.size() - rows_fit, 0))
 	for i in range(first, mini(first + rows_fit, rows.size())):
 		var row: Dictionary = rows[i]
@@ -282,13 +372,36 @@ func _draw() -> void:
 				_text(font, hands_text(row), font_size, Vector2(hand_x, y), colour)
 			"power":
 				_text(font, power_text(row), font_size, Vector2(cost_x, y), colour)
+			"shout":
+				pass
 			_:
 				_text(font, cost_text(row), font_size, Vector2(cost_x, y), colour)
 				_text(font, hands_text(row), font_size, Vector2(hand_x, y), colour)
 	if rows.is_empty():
 		_text(font, "Nothing here", font_size, Vector2(columns_x, list_top + line), DIM)
 	var hint := "%s right hand   %s left hand   %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_equip_left", "Q"), _key(&"magic", "P")]
-	_text(font, hint, font_size, Vector2(left, panel.end.y - font_size * 0.8), DIM)
+	if shown == SHOUTS:
+		hint = "%s equip   %s unlock word   %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_drop", "R"), _key(&"magic", "P")]
+		_draw_shout_detail(font, font_size, line, panel, columns_x, panel.end.y - font_size * 0.8 - line * 5.2)
+	if not _confirm.is_empty():
+		hint = "%s   %s yes   %s no" % [confirmation(), _key(&"ui_accept", "Enter"), _key(&"ui_cancel", "Esc")]
+	elif notice() != "":
+		hint = notice()
+	_text(font, hint, font_size, Vector2(left, panel.end.y - font_size * 0.8), SELECTED if not _confirm.is_empty() else DIM)
+
+
+## The selected shout's description and three words from `top`.
+func _draw_shout_detail(font: Font, font_size: int, line: float, panel: Rect2, x: float, top: float) -> void:
+	var row := current()
+	if row.is_empty() or row["kind"] != "shout":
+		return
+	draw_line(Vector2(x, top - line * 0.8), Vector2(panel.end.x - font_size, top - line * 0.8), Color(0.5, 0.45, 0.35, 0.6), 1.0)
+	var text: String = row["description"]
+	_text(font, text.left(60), font_size, Vector2(x, top), DIM)
+	for i in (row["words"] as Array).size():
+		var word: Dictionary = row["words"][i]
+		var colour := EQUIPPED if word["unlocked"] else (NORMAL if word["known"] else DIM)
+		_text(font, word_text(word), font_size, Vector2(x, top + line * (i + 1)), colour)
 
 
 ## "Flames", "Oakflesh Scroll (2)", with "E " before the power in the power slot.

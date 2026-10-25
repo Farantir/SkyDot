@@ -145,6 +145,8 @@ var _lengths := {}  # clip stem -> seconds
 var _clock := 0.0
 var _info_cache := {}  # spell -> cast_info
 var _shout := {}  # the key is down on a shout: {shout, held, usable, threshold, fired}
+## The recovery seconds of the last shout said (the HUD meter's full length).
+var last_recovery := 0.0
 var _shout_spell := 0  # the spell of the last shout said (its on-hit sound plays when it lands)
 var _shout_hit_sound := 0
 
@@ -534,6 +536,7 @@ func _shout_fire() -> void:
 	var words := int(result["words"])
 	var spell := int(result["spell"])
 	print("shout: 0x%08X words %d spell 0x%08X recovery %s" % [shout, words, spell, result["recovery"]])
+	last_recovery = float(result["recovery"])
 	_papyrus.break_invisibility(PLAYER_REF)
 	var info := info_of(spell)
 	_shout_spell = spell

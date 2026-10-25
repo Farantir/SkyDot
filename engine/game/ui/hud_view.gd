@@ -5,7 +5,9 @@
 # A bar shows while its value is below the maximum or changed in the last two
 # seconds, then fades out over half a second. It reads only GameSession's
 # getters (actor_value, actor_value_max, activation_target), every frame, and
-# draws; it changes nothing. This is the view: a Control that fills its host
+# draws; it changes nothing. Under the crosshair a thin bar shows the voice: it fills as a shout
+# charges and, after one, as the recovery runs out (GameSession.voice_meter); it fades like the bars.
+# PLACEHOLDER: Skyrim shows the recovery in the compass, and there is no compass yet. This is the view: a Control that fills its host
 # (the flat viewer's CanvasLayer, a VR shell's panel).
 class_name HudView
 extends Control
@@ -20,6 +22,12 @@ const BAR_WIDTH := 0.2
 const BAR_HEIGHT := 9.0
 const MARGIN := 0.05  # of the viewport, from its edges
 const FRAME := Color(0.0, 0.0, 0.0, 0.7)
+## The voice meter: width as a fraction of the viewport's width, height in pixels per 1080, and its
+## distance under the viewport's centre as a fraction of the height (above the activation prompt).
+const VOICE_WIDTH := 0.1
+const VOICE_HEIGHT := 6.0
+const VOICE_DROP := 0.035
+const VOICE_COLOUR := Color(0.85, 0.75, 0.35)
 const BARS := [
 	{"av": "Magicka", "colour": Color(0.2, 0.45, 0.9), "anchor": 0.0},
 	{"av": "Health", "colour": Color(0.78, 0.12, 0.1), "anchor": 0.5},
@@ -33,6 +41,10 @@ var _key_label: Callable  # (action: StringName) -> String, the prompt's key
 var _last_value := {}  # actor value name -> value seen last frame
 var _last_change := {}  # actor value name -> msec of its last change
 var _prompt := {}
+## The voice meter as of the last frame: how full (0 to 1) and how visible (0 to 1).
+var voice_fill := 0.0
+var voice_alpha := 0.0
+var _voice_active := -1000000  # msec the voice was last busy
 
 
 func _init(session: GameSession, key_label: Callable) -> void:
@@ -44,6 +56,16 @@ func _init(session: GameSession, key_label: Callable) -> void:
 
 func _process(_delta: float) -> void:
 	_prompt = _session.activation_target()
+	var voice := _session.voice_meter()
+	var now := Time.get_ticks_msec()
+	if voice["recovering"] or voice["charging"]:
+		_voice_active = now
+		voice_fill = voice["fill"]
+		voice_alpha = 1.0
+	else:
+		voice_alpha = clampf(1.0 - (now - _voice_active) / 1000.0 / FADE, 0.0, 1.0)
+		if voice_alpha > 0.0:
+			voice_fill = 1.0  # the recovery ran out: full, then gone
 	queue_redraw()
 
 
@@ -52,6 +74,7 @@ func _draw() -> void:
 	var now := Time.get_ticks_msec()
 	for bar: Dictionary in BARS:
 		_draw_bar(bar, area, now)
+	_draw_voice(area)
 	if show_crosshair:
 		_draw_crosshair(area)
 	_draw_prompt(area)
@@ -86,6 +109,20 @@ func _draw_bar(bar: Dictionary, area: Vector2, now: int) -> void:
 	filled.size.x = width * clampf(value / maximum, 0.0, 1.0)
 	var colour: Color = bar["colour"]
 	draw_rect(filled, Color(colour, alpha))
+
+
+## The voice meter under the crosshair's place (drawn in a VR panel too, which leaves the crosshair out).
+func _draw_voice(area: Vector2) -> void:
+	if voice_alpha <= 0.0:
+		return
+	var width := area.x * VOICE_WIDTH
+	var height := maxf(3.0, VOICE_HEIGHT * area.y / 1080.0)
+	var frame := Rect2(area.x * 0.5 - width * 0.5, area.y * (0.5 + VOICE_DROP), width, height)
+	draw_rect(frame.grow(2.0), Color(FRAME, FRAME.a * voice_alpha))
+	draw_rect(frame, Color(0.0, 0.0, 0.0, 0.5 * voice_alpha))
+	var filled := frame
+	filled.size.x = width * clampf(voice_fill, 0.0, 1.0)
+	draw_rect(filled, Color(VOICE_COLOUR, voice_alpha))
 
 
 func _draw_crosshair(area: Vector2) -> void:

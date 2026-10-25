@@ -6,7 +6,8 @@
 # --shout N[,0xREF]: the player faces that actor (if given) and says N words of the shout in the voice
 # slot (see --equip-shout), as a finger on the voice key would: the key goes down, is held for the time
 # of N words (fShoutTime1 for two, fShoutTime2 for three; one word needs no hold) and goes up. A shout
-# with fewer usable words fires by itself earlier. Shared by the flat viewer and the VR shell; `step()`
+# with fewer usable words fires by itself earlier. With --shout-from METRES the player first stands that far
+# from the actor, on a side with a clear line to its chest (the way into a cave is long: for shots). Shared by the flat viewer and the VR shell; `step()`
 # runs every frame. The log tells: `--shout: …` here and `shout: …` from Magic.
 class_name ShoutAt
 extends RefCounted
@@ -18,6 +19,9 @@ var _session: GameSession
 var _rig: PlayerRig
 var _words: int
 var _ref: int
+var from_metres := 0.0  # --shout-from
+var side := 0  # --shout-side: the first of the twelve sides round the actor to try
+var _placed := false
 var _pressed := false
 var _done := false
 
@@ -35,7 +39,10 @@ static func apply(session: GameSession, rig: PlayerRig, settings: ViewerSettings
 	if settings.equip_shout != 0:
 		print("--equip-shout: 0x%08X %s" % [settings.equip_shout, "ok" if session.equip_shout(settings.equip_shout) else "cannot be equipped"])
 	if settings.shout_words != 0:
-		return ShoutAt.new(session, rig, settings.shout_words, settings.shout_at)
+		var shout := ShoutAt.new(session, rig, settings.shout_words, settings.shout_at)
+		shout.from_metres = settings.shout_from
+		shout.side = settings.shout_side
+		return shout
 	return null
 
 
@@ -56,6 +63,10 @@ func step() -> void:
 	if _ref != 0:
 		var node := _session.world.find_ref_node(_ref) as Node3D
 		if node == null:
+			return
+		if from_metres > 0.0 and not _placed:
+			_placed = true
+			_stand_before(node)
 			return
 		_face(node)
 	var magic := _session.magic
@@ -88,3 +99,25 @@ func _face(node: Node3D) -> void:
 	var offset := chest - eye
 	var flat := Vector2(offset.x, offset.z).length()
 	_rig.apply_look(atan2(-offset.x, -offset.z), atan2(offset.y, flat))
+
+
+## Stand `from_metres` from the actor on the first side (turning round it) with a clear line from the eyes to
+## its chest and ground under the feet.
+func _stand_before(node: Node3D) -> void:
+	var space := _rig.camera.get_world_3d().direct_space_state
+	var chest := node.global_position + Vector3.UP * 0.6
+	var forward := -node.global_transform.basis.z
+	forward.y = 0.0
+	forward = forward.normalized()
+	for scale in [1.0, 0.75, 0.5, 1.25]:
+		for step in range(side, side + 12):
+			var feet: Vector3 = node.global_position + forward.rotated(Vector3.UP, step * TAU / 12.0) * from_metres * scale
+			var eye := feet + Vector3.UP * GameSession.EYE_HEIGHT
+			var free := space.intersect_ray(PhysicsRayQueryParameters3D.create(eye, chest, 1 | 2 | 8)).is_empty()
+			var ground := not space.intersect_ray(PhysicsRayQueryParameters3D.create(feet + Vector3.UP * 0.5, feet - Vector3.UP * 0.5, 1 | 2 | 8)).is_empty()
+			if free and ground:
+				_rig.place_at(eye, 0.0, 0.0)
+				print("--shout-from: standing %.1f m from 0x%08X, eye at %s, it at %s" % [from_metres * scale, _ref,
+					SkydotWorld.godot_to_skyrim(eye), SkydotWorld.godot_to_skyrim(chest)])
+				return
+	print("--shout-from: no clear place %.1f m from 0x%08X" % [from_metres, _ref])

@@ -125,6 +125,8 @@ var equip_shout := 0  # --equip-shout 0xSHOU: the shout in the voice slot
 var dragon_souls := -1  # --dragon-souls N: the player's DragonSouls (-1: unchanged)
 var shout_words := 0  # --shout N[,0xREF]: say N words (hold the voice key for them) facing that actor
 var shout_at := 0
+var shout_side := 0  # --shout-side K: the first of twelve sides round the actor --shout-from tries
+var shout_from := 0.0  # --shout-from METRES: stand that far from the actor first (a shot)
 var spawn: Array[int] = []  # --spawn 0xNPC_[,...]: those actors (NPC_ or LVLN) appear in front of the player after the load
 var drink: Array[int] = []  # --drink 0xFORM[,...]: the player uses those items (added first if not carried)
 var cast: Array[Dictionary] = []  # --cast 0xSPELL[@0xREF][,...]: {spell, target}, the player casts (0: on itself)
@@ -281,6 +283,8 @@ func _read(args: Dictionary) -> void:
 		equip_shout = shout_text.hex_to_int() if shout_text.begins_with("0x") else shout_text.to_int()
 	if args.has("dragon-souls"):
 		dragon_souls = maxi(0, str(args["dragon-souls"]).to_int())
+	shout_side = str(args.get("shout-side", "0")).to_int()
+	shout_from = maxf(0.0, str(args.get("shout-from", "0")).to_float())
 	if args.has("shout"):
 		var shout_parts: PackedStringArray = String(args["shout"]).split(",")
 		shout_words = clampi(shout_parts[0].to_int(), 1, 3)

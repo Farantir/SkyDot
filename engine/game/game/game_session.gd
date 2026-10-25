@@ -779,6 +779,47 @@ func equip_shout(shout: int) -> bool:
 	return done
 
 
+## The player's shouts for the magic menu: shout_info of each (name, description, words with their
+## names, translations and known / unlocked flags, usable, equipped), by name.
+func known_shouts() -> Array:
+	var out: Array = []
+	for shout in papyrus.shouts_of(SkydotPapyrus.PLAYER_REF):
+		var info := papyrus.shout_info(SkydotPapyrus.PLAYER_REF, shout)
+		if info["found"]:
+			out.append(info)
+	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return String(a["name"]) < String(b["name"]))
+	return out
+
+
+## The player's dragon souls.
+func dragon_souls() -> int:
+	return roundi(actor_value(SkydotPapyrus.PLAYER_REF, "DragonSouls"))
+
+
+## Spend a dragon soul on `word` (SkydotPapyrus.unlock_word_with_soul). {ok, reason}; a refusal is also
+## said on the message line (sFailSpendSoul with no soul).
+func unlock_word(word: int) -> Dictionary:
+	var result := papyrus.unlock_word_with_soul(SkydotPapyrus.PLAYER_REF, word)
+	if not result["ok"] and not String(result["reason"]).is_empty():
+		message.emit(result["reason"], false)
+	items_changed.emit()
+	return result
+
+
+## The voice meter the HUD draws: {recovering, charging, fill}. `fill` rises from 0 to 1 as the recovery
+## runs out (the seconds left against those of the last shout), or as a charging shout nears the held
+## time of its most usable words.
+func voice_meter() -> Dictionary:
+	var left := papyrus.voice_recovery(SkydotPapyrus.PLAYER_REF)
+	var charge := magic.shout_state()
+	if not charge.is_empty() and not charge["fired"] and float(charge["threshold"]) > 0.0:
+		return {"recovering": false, "charging": true, "fill": clampf(float(charge["held"]) / float(charge["threshold"]), 0.0, 1.0)}
+	if left > 0.0:
+		var total := maxf(magic.last_recovery, left)  # a loaded game knows only what is left
+		return {"recovering": true, "charging": false, "fill": clampf(1.0 - left / total, 0.0, 1.0)}
+	return {"recovering": false, "charging": false, "fill": 1.0 if magic.is_shouting() else 0.0}
+
+
 func _on_shouted(_shout: int, words: int, _spell: int, _info: Dictionary) -> void:
 	for topic: int in SHOUT_TOPICS[clampi(words, 1, 3)]:
 		var line := papyrus.topic_line(SkydotPapyrus.PLAYER_REF, topic)

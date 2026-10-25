@@ -140,7 +140,7 @@
 # charges the shout there while it is held (a tap is one word, 0.2 s two, 0.9 s three; the words you know and
 # have unlocked limit it). --teach-word 0xWOOP[,...] teaches words of power, --unlock-word 0xWOOP[,...]
 # unlocks them, --equip-shout 0xSHOU puts a shout in the voice slot, --dragon-souls N sets the dragon souls,
-# --shout N[,0xREF] faces that actor and says N words: `--teach-word 0x13E22 --unlock-word 0x13E22
+# --shout N[,0xREF] faces that actor (--shout-from METRES stands that far from it first) and says N words: `--teach-word 0x13E22 --unlock-word 0x13E22
 # --equip-shout 0x13E07 --shout 1,0x39FE4` (Unrelenting Force at a bandit of Bleak Falls Barrow).
 # F3 shows or hides the performance line at the top right (fps, frame time
 # mean and max over the last second, the renderer's CPU and GPU time and the
@@ -468,9 +468,9 @@ func _process(delta: float) -> void:
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
 	if _shots.is_running():
-		if _settings.shot_frames > 1:
-			# A frame series shows what scripts do over time (a trap swinging
-			# when the feet reach its plate); single shots stay still.
+		if _settings.shot_frames > 1 or _settings.shot_delay > 0.0:
+			# A frame series, or a shot after a delay, shows what scripts do over time (a trap
+			# swinging when the feet reach its plate, a shout's push); other single shots stay still.
 			_session.update_scripts(delta, _rig.player.global_position)
 			if _session.has_activations():
 				_session.run_activation()  # --activate inside the series
