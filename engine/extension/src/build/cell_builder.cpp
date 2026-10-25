@@ -1071,14 +1071,30 @@ bool CellBuilder::refresh_actor_parts(godot::Node3D* node, std::uint32_t ref, st
         return false;
     }
     // The parts are the skeleton's mesh children; the weapons hang on bone attachments and stay.
+    // A skin that was fading out or gone stays so (SkinFadeOut runs between the equips of a dragon's death).
+    float skin_transparency = 0.0F;
+    bool skin_hidden = false;
     for (int i = skeleton->get_child_count() - 1; i >= 0; --i) {
         if (auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i))) {
+            if (mesh->has_meta("skydot_skin")) {
+                skin_transparency = std::max(skin_transparency, mesh->get_transparency());
+                skin_hidden = skin_hidden || !mesh->is_visible();
+            }
             skeleton->remove_child(mesh);
             memdelete(mesh);
         }
     }
     BuildStats stats;
     attach_actor_parts(node, skeleton, plan, stats);
+    if (skin_hidden || skin_transparency > 0.0F) {
+        for (int i = 0; i < skeleton->get_child_count(); ++i) {
+            if (auto* mesh = godot::Object::cast_to<godot::MeshInstance3D>(skeleton->get_child(i));
+                mesh != nullptr && mesh->has_meta("skydot_skin")) {
+                mesh->set_transparency(skin_transparency);
+                mesh->set_visible(!skin_hidden);
+            }
+        }
+    }
     return true;
 }
 
