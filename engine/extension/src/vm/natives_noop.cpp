@@ -6,6 +6,8 @@
 // native warns once (docs/papyrus.md).
 #include "vm/papyrus.hpp"
 
+#include <cstdio>
+
 namespace skydot {
 
 void SkydotPapyrus::bind_noop_natives() {
@@ -30,6 +32,18 @@ void SkydotPapyrus::bind_noop_natives() {
     vm_->ignore("Game", "ShakeController");
     vm_->ignore("Game", "AddAchievement");
     vm_->ignore("Game", "IncrementStat");
+    // Image space modifiers (a word wall's glow, a potion's tint) are screen effects that wait for the
+    // renderer's post-processing: the call is logged, nothing is drawn.
+    for (const char* fn : {"Apply", "ApplyCrossFade", "Remove", "PopTo"}) {
+        vm_->bind("ImageSpaceModifier", fn, [fn](vm::NativeCall& c) {
+            std::printf("papyrus: ImageSpaceModifier.%s 0x%X (no screen effect)\n", fn, c.self.form());
+            return vm::NativeResult{};
+        });
+    }
+    vm_->bind("ImageSpaceModifier", "RemoveCrossFade", [](vm::NativeCall&) {
+        std::printf("papyrus: ImageSpaceModifier.RemoveCrossFade (no screen effect)\n");
+        return vm::NativeResult{};
+    });
 }
 
 } // namespace skydot

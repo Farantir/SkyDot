@@ -17,6 +17,8 @@
 #include "physics/collision.hpp"
 #include "vm/papyrus.hpp"
 
+#include <godot_cpp/classes/node3d.hpp>
+#include <godot_cpp/core/object.hpp>
 #include <godot_cpp/classes/physics_direct_space_state3d.hpp>
 #include <godot_cpp/classes/physics_ray_query_parameters3d.hpp>
 #include <godot_cpp/classes/world3d.hpp>
@@ -42,6 +44,7 @@ constexpr double k_think_interval = 0.25;
 /// PLACEHOLDER (A8, detection): the cone an actor sees in, degrees, and how high the heads are.
 constexpr double k_view_cone_degrees = 190.0;
 constexpr double k_player_head = 1.7;
+constexpr double k_player_view_degrees = 120.0;
 constexpr double k_head_fraction = 0.93;
 /// PLACEHOLDER: seconds out of sight before it searches, and how long it searches.
 constexpr double k_lost_grace = 3.0;
@@ -211,6 +214,53 @@ void SkydotAi::set_player(const Vector3& position, bool alive_now) {
     player_position_ = position;
     player_alive_ = alive_now;
     player_known_ = true;
+}
+
+void SkydotAi::set_player_view(godot::Node3D* camera) {
+    player_view_ = camera != nullptr ? static_cast<std::uint64_t>(camera->get_instance_id()) : 0;
+}
+
+bool SkydotAi::has_los(std::uint32_t ref, std::uint32_t target) const {
+    const auto at = ref_spot(target);
+    if (!at) {
+        return false;
+    }
+    Vector3 eye;
+    Vector3 forward;
+    bool cone = false;
+    godot::Node3D* node = nullptr;
+    if (ref == k_player_ref) {
+        node = godot::Object::cast_to<godot::Node3D>(godot::ObjectDB::get_instance(player_view_));
+        if (node == nullptr || !node->is_inside_tree()) {
+            return false;
+        }
+        eye = node->get_global_position();
+        forward = -node->get_global_transform().basis.get_column(2);
+        cone = true;
+    } else {
+        const auto it = minds_.find(ref);
+        SkydotActor* actor = it != minds_.end() ? node_of(it->second) : nullptr;
+        if (actor == nullptr || !actor->is_inside_tree()) {
+            return false;
+        }
+        node = actor;
+        eye = node->get_global_position() + Vector3(0, static_cast<float>(actor->get_height() * k_head_fraction), 0);
+    }
+    // An actor is looked at in the chest, anything else (a marker) where it stands.
+    const bool actor_target = target == k_player_ref || minds_.contains(target);
+    const Vector3 to = SkydotWorld::skyrim_position(at->position) +
+                       Vector3(0, actor_target ? 1.4F : 0.0F, 0);
+    // A (guess) 120 degrees of view for the player: the game's own cone is not in the data.
+    if (cone && static_cast<double>(forward.angle_to((to - eye).normalized())) > k_player_view_degrees * 0.5 * std::numbers::pi / 180.0) {
+        return false;
+    }
+    auto* space = node->get_world_3d()->get_direct_space_state();
+    if (space == nullptr) {
+        return true;
+    }
+    const auto query = godot::PhysicsRayQueryParameters3D::create(
+        eye, to, physics_layer::world | physics_layer::terrain);
+    return space->intersect_ray(query).is_empty();
 }
 
 double SkydotAi::aggro_radius(const Mind& m) const {

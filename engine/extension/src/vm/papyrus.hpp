@@ -170,6 +170,7 @@ public:
         std::function<std::uint32_t(std::uint32_t ref)> target;
         std::function<void(std::uint32_t ref, std::uint32_t target)> start;
         std::function<void(std::uint32_t ref)> stop;
+        std::function<bool(std::uint32_t ref, std::uint32_t target)> has_los;  ///< Actor.HasLOS
     };
     void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
     /// An actor's combat state changed: sends OnCombatStateChanged(akTarget, aeCombatState) to its
@@ -709,6 +710,7 @@ private:
     std::set<std::uint32_t> attached_cells_;
     /// The scripted references of loaded cells: reference -> cell.
     std::map<std::uint32_t, std::uint32_t> loaded_;
+    std::set<std::uint32_t> volume_loaded_; ///< trigger volumes (no node) that got their load events
     /// What scripts changed about references: enabled, open, locked, blocked, moved.
     vm::RefStates states_;
     /// What scripts and the game did to actors' values (ACTV).

@@ -234,6 +234,8 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_combat", "value"), &SkydotAi::set_combat);
     ClassDB::bind_method(D_METHOD("get_combat"), &SkydotAi::get_combat);
     ClassDB::bind_method(D_METHOD("set_player", "position", "alive"), &SkydotAi::set_player);
+    ClassDB::bind_method(D_METHOD("set_player_view", "camera"), &SkydotAi::set_player_view);
+    ClassDB::bind_method(D_METHOD("has_los", "ref", "target"), &SkydotAi::has_los);
     ClassDB::bind_method(D_METHOD("on_hit", "attacker", "target"), &SkydotAi::on_hit);
     ClassDB::bind_method(D_METHOD("start_combat", "ref", "target"), &SkydotAi::start_combat);
     ClassDB::bind_method(D_METHOD("stop_combat", "ref"), &SkydotAi::stop_combat);
@@ -273,6 +275,7 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
         hooks.target = [this](std::uint32_t ref) { return static_cast<std::uint32_t>(get_combat_target(ref)); };
         hooks.start = [this](std::uint32_t ref, std::uint32_t target) { start_combat(ref, target); };
         hooks.stop = [this](std::uint32_t ref) { stop_combat(ref); };
+        hooks.has_los = [this](std::uint32_t ref, std::uint32_t target) { return has_los(ref, target); };
         vm_->set_combat_hooks(std::move(hooks));
     }
     persistent_.clear();

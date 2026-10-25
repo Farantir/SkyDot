@@ -32,6 +32,7 @@
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/node3d.hpp>
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
@@ -126,6 +127,13 @@ public:
     bool get_combat() const { return combat_enabled_; }
     /// The player, given each frame: Skyrim position (feet) and whether it lives. It is ref 0x14.
     void set_player(const godot::Vector3& position, bool alive);
+    /// The player's eyes: the camera whose position and facing HasLOS reads (and whose world holds
+    /// the bodies the ray meets). Null forgets it.
+    void set_player_view(godot::Node3D* camera);
+    /// Actor.HasLOS: whether `ref` can see `target` (a reference): the target within the viewing
+    /// cone of `ref` (the player: the camera's) and no world or terrain body on the line from the
+    /// eyes to it.
+    bool has_los(std::uint32_t ref, std::uint32_t target) const;
     /// `attacker` hit `target`: the victim fights back, and allies within 1024 units that see
     /// the attacker and whose assistance says so join.
     void on_hit(std::int64_t attacker, std::int64_t target);
@@ -341,6 +349,7 @@ private:
     godot::Vector3 player_position_;
     bool player_alive_{false};
     bool player_known_{false};
+    std::uint64_t player_view_{0};  ///< ObjectID of the camera (set_player_view), 0 if none
     std::unordered_map<std::uint64_t, std::uint16_t> relationships_;
     bool relationships_built_{false};
 

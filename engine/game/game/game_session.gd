@@ -654,6 +654,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	if ai != null:
 		clock.sync(benchmarking)
 		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
+		ai.set_player_view(_viewpoint)  # Actor.HasLOS of the player looks from the camera
 		ai.update(delta)
 
 
@@ -663,6 +664,7 @@ func update_fights(delta: float, feet: Vector3) -> void:
 	_feet = feet
 	if ai != null:
 		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
+		ai.set_player_view(_viewpoint)
 		ai.update_fights(delta)
 
 

@@ -676,6 +676,13 @@ void SkydotPapyrus::bind_actor_natives() {
         }
         return NativeResult{};
     });
+    // HasLOS(ObjectReference): a ray from the actor's eyes to the target (SkydotAi::has_los). Without
+    // the AI nobody sees anything.
+    vm_->bind("Actor", "HasLOS", [this](NativeCall& c) {
+        const bool seen = combat_hooks_.has_los && !c.args.empty() && c.args[0].kind() == vm::Kind::object &&
+                          combat_hooks_.has_los(c.self.form(), c.args[0].form());
+        return NativeResult{.value = Value::boolean(seen), .wait = -1.0};
+    });
     vm_->bind("Actor", "StopCombat", [this](NativeCall& c) {
         if (combat_hooks_.stop) {
             combat_hooks_.stop(c.self.form());
@@ -904,6 +911,7 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
         return 0;
     }
     std::int64_t scripted = 0;
+    std::set<std::uint32_t> visited;
     std::vector<godot::Node*> pending{root};
     while (!pending.empty()) {
         godot::Node* node = pending.back();
@@ -915,6 +923,7 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
                 continue;
             }
             const std::int64_t ref = child->get_meta("skydot_ref");
+            visited.insert(static_cast<std::uint32_t>(ref));
             attach(child->get_meta("skydot_cell"), ref);
             const auto ref_cell = form_of(child->get_meta("skydot_cell"));
             attached_cells_.insert(ref_cell);
@@ -933,6 +942,19 @@ std::int64_t SkydotPapyrus::attach_built(godot::Node* root) {
                 ++scripted;
             }
         }
+    }
+    // A trigger volume has no model, so no node walked above: its scripts still get the load events
+    // once (a word wall's trigger sets its link to the glow script in OnLoad).
+    std::vector<std::uint32_t> volumes;
+    for (const auto& [ref, cell] : loaded_) {
+        if (!visited.contains(ref) && triggers_.triggers().contains(ref) && volume_loaded_.insert(ref).second) {
+            volumes.push_back(ref);
+        }
+    }
+    for (const std::uint32_t ref : volumes) {
+        dispatch(ref, "OnCellAttach", {});
+        dispatch(ref, "OnCellLoad", {});
+        dispatch(ref, "OnLoad", {});
     }
     return scripted;
 }
@@ -964,6 +986,7 @@ std::int64_t SkydotPapyrus::detach_cell(std::int64_t cell) {
     }
     for (const auto ref : refs) {
         loaded_.erase(ref);
+        volume_loaded_.erase(ref);
         dispatch(ref, "OnCellDetach", {});
         dispatch(ref, "OnUnload", {});
         vm_->unregister_updates(ref);
