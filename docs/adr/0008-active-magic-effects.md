@@ -151,3 +151,39 @@ record that stored nothing.
 - **The player's table** is `magic::Enchanting` over the inventory, the extras, the created forms and
   the spell book; the game layer owns the keywords' ids and moves equipment slots that held a
   changed unit (as `move_unit_extra` does for a hit).
+
+## Shouts (7b-2)
+
+`magic/shouts` (no Godot) holds the rules; `MagicState` owns a `ShoutBook` beside the `SpellBook`.
+
+- **Data.** A SHOU has three words (WOOP), each with the spell cast when it is the last word spoken
+  and a recovery time (Unrelenting Force: 15, 20, 45 s). The book keeps per actor the words known and
+  unlocked, the shouts added and removed (AddShout, RemoveShout), the shout in the voice slot and the
+  recovery left. The base shouts of a non-player actor come from `base_shouts` (its NPC_ and race
+  lists, leveled lists resolved). The player (0x14) also has every shout with a known word, unless
+  removed.
+- **Words spoken.** Holding the button for less than `fShoutTime1` (0.2 s) speaks one word, less than
+  `fShoutTime2` (0.9 s) two, else three. **(Guess)**: that these two GMSTs are the thresholds is from
+  their names and UESP's tap / short hold / full hold. The player speaks at most the leading run of
+  the shout's words that are known and unlocked; any other actor speaks all of them. With none
+  usable the shout is refused ("no word"). A longer hold than usable speaks what is usable.
+- **Spell.** Only the spell of the last word spoken is cast (SNAM[words - 1]), not the earlier ones.
+  **(Guess)**, as Skyrim's shouts are built (each word's spell includes the weaker one's effect
+  strength as a step). Voice spells cost nothing; the game layer lands the spell as any other
+  (`land_spell` per actor hit), or `cast_shout` lands it on a given target.
+- **Recovery.** The SNAM recovery of the last word times the ShoutRecoveryMult actor value (base 1,
+  set for every actor; 0 at the lowest). It counts down in real seconds (`tick_magic` is not slowed by
+  game time scale) **(guess)**, and a shout is refused while it runs ("recovering"). Casting and
+  shouting exclude each other (sMagicCastShoutWhileCasting, sMagicCastCastWhileShouting): that is the
+  game layer's, not the book's.
+- **Souls.** A word is unlocked by spending one DragonSouls on a word that is known and locked
+  (refused: "unknown word", "already unlocked", "no dragon soul" with the text sFailSpendSoul).
+  `Game.UnlockWord` unlocks without knowing the word, as the vanilla scripts use it **(guess)**; a
+  word unlocked but unknown is not spoken.
+- **Voice slot.** A shout and a power exclude each other (the VoiceEquipSlot equip type: "only one
+  shout or Power can be selected"): `equip_voice` puts a shout in the ShoutBook and empties the
+  SpellBook's power slot, or the reverse. EquipSpell with source 2, `equip_spell` of the API and
+  EquipShout all go through it. RemoveShout empties the slot if it held the shout.
+- **Save.** MAGC version 2 adds the ShoutBook as a third text (own section version 1); a version 1
+  section reads, with an empty ShoutBook. The condition GetEquippedShout (579) answers from the
+  voice slot.

@@ -15,10 +15,12 @@
 #include "data/fb_search.hpp"
 #include "data/actors.hpp"
 #include "data/leveled.hpp"
+#include "data/world_data.hpp"
 #include "magic/active_effects.hpp"
 #include "magic/casting.hpp"
 #include "magic/enchanted.hpp"
 #include "magic/magic_save.hpp"
+#include "magic/shouts.hpp"
 #include "magic/spell_lists.hpp"
 #include "vm/natives_magic.hpp"
 
@@ -60,7 +62,15 @@ constexpr std::uint32_t k_archetype_soul_trap = 23;
 
 struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::MagicHost, vm::MagicApi {
     MagicState(SkydotPapyrus& owner, const wfb::World& world)
-        : owner_(owner), world_(world), effects(world, *this), book(world, effects), worn(world, effects, &owner.created_) {
+        : owner_(owner), world_(world), effects(world, *this), book(world, effects), shouts(world), worn(world, effects, &owner.created_) {
+        shouts.set_base_source([this](std::uint32_t ref) {
+            if (!owner_.actors_.is_actor(ref)) {
+                return std::vector<std::uint32_t>{};
+            }
+            const std::uint32_t npc = owner_.dialogue_npc(ref);
+            return npc != 0 ? magic::base_shouts(world_, npc, ref, leveled::player_level())
+                            : std::vector<std::uint32_t>{};
+        });
         book.set_base_source([this](std::uint32_t ref) {
             if (!owner_.actors_.is_actor(ref)) {
                 return std::vector<std::uint32_t>{};
@@ -79,6 +89,8 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     const wfb::World& world_;
     magic::ActiveEffects effects;
     magic::SpellBook book;
+    /// Words of power, shouts and the voice slot (shared with the power of `book`).
+    magic::ShoutBook shouts;
     /// The constant effects of worn enchanted armor (never saved: derived when an actor is primed).
     magic::WornEnchantments worn;
     /// The attack button on each hand that holds a spell: (actor, hand) -> state.
@@ -222,6 +234,22 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         s.skill_cost_exponent = game_setting("fMagicPCSkillCostScale", s.skill_cost_exponent);
         s.area_cost_mult = game_setting("fMagicAreaBaseCostMult", s.area_cost_mult);
         return s;
+    }
+    /// The text of a text GMST, or `fallback`.
+    [[nodiscard]] std::string game_text(std::string_view name, const char* fallback) const {
+        const auto* g = WorldData::find_gmst(&world_, name);
+        return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? g->text_value()->str()
+                                                                                         : std::string(fallback);
+    }
+    [[nodiscard]] magic::ShoutSettings shout_settings() const {
+        magic::ShoutSettings s;
+        s.shout_time1 = game_setting("fShoutTime1", s.shout_time1);
+        s.shout_time2 = game_setting("fShoutTime2", s.shout_time2);
+        return s;
+    }
+    [[nodiscard]] std::string word_name(std::uint32_t word) const {
+        const auto* w = lookup(world_.words_of_power(), word);
+        return w != nullptr && w->name() != nullptr ? w->name()->str() : hex(word);
     }
     void message(const std::string& text) {
         godot::UtilityFunctions::print(to_godot("[Notification] " + text));
@@ -405,11 +433,40 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         return hand == 0 ? magic::Slot::left : (hand == 1 ? magic::Slot::right : magic::Slot::power);
     }
     bool equip_spell(std::uint32_t actor, std::uint32_t spell, int hand) override {
+        if (hand == 2) {
+            return magic::equip_voice(book, shouts, actor, spell); // the voice slot: a power or a shout
+        }
         const bool scroll = !book.has_spell(actor, spell) && carried_scroll(actor, spell);
         return book.equip(actor, spell, slot_of(hand), scroll);
     }
     void unequip_spell(std::uint32_t actor, int hand) override { book.unequip(actor, slot_of(hand)); }
     std::uint32_t equipped_spell(std::uint32_t actor, int hand) override { return book.equipped(actor, slot_of(hand)); }
+    // ---- shouts
+    bool teach_word(std::uint32_t word) override {
+        const bool learned = shouts.teach_word(k_player_ref, word);
+        if (learned) {
+            message(game_text("sShoutAdded", "Word of Power Learned") + ": " + word_name(word));
+        }
+        return learned;
+    }
+    bool unlock_word(std::uint32_t word) override { return shouts.unlock_word(k_player_ref, word); }
+    bool is_word_unlocked(std::uint32_t word) override { return shouts.is_word_unlocked(k_player_ref, word); }
+    bool add_shout(std::uint32_t actor, std::uint32_t shout) override {
+        return owner_.actors_.is_actor(actor) && shouts.add_shout(actor, shout);
+    }
+    bool remove_shout(std::uint32_t actor, std::uint32_t shout) override { return shouts.remove_shout(actor, shout); }
+    bool equip_shout(std::uint32_t actor, std::uint32_t shout) override {
+        return shouts.is_shout(shout) && magic::equip_voice(book, shouts, actor, shout);
+    }
+    void unequip_shout(std::uint32_t actor, std::uint32_t shout) override {
+        if (shout == 0 || shouts.equipped(actor) == shout) {
+            shouts.unequip(actor);
+        }
+    }
+    std::uint32_t equipped_shout(std::uint32_t actor) override { return shouts.equipped(actor); }
+    void set_voice_recovery(std::uint32_t actor, double seconds) override { shouts.set_recovery(actor, seconds); }
+    double voice_recovery(std::uint32_t actor) override { return shouts.recovery_left(actor); }
+
     std::optional<Effect> effect(std::uint32_t handle) override {
         if (const auto live = effects.instance(handle)) {
             return Effect{live->mgef, live->target, live->caster, live->magnitude, live->duration, live->elapsed};
@@ -561,6 +618,7 @@ void SkydotPapyrus::tick_magic(double seconds) {
         return;
     }
     m->effects.tick(seconds);
+    m->shouts.tick(seconds); // real seconds (docs/adr/0008)
     flush_magic_events();
     // Script objects of finished effects go once their OnEffectFinish had its updates.
     for (auto it = m->detach_later.begin(); it != m->detach_later.end();) {
@@ -981,6 +1039,7 @@ void SkydotPapyrus::clear_magic() {
     auto* m = static_cast<MagicState*>(magic_.get());
     m->effects.clear();
     m->book.clear();
+    m->shouts.clear();
     m->worn.clear();
     m->hands.clear();
     m->pending.clear();
@@ -993,11 +1052,11 @@ std::vector<std::uint8_t> SkydotPapyrus::magic_section() const {
         return {};
     }
     const auto* m = static_cast<const MagicState*>(magic_.get());
-    return magic::write_magc(m->effects, m->book);
+    return magic::write_magc(m->effects, m->book, m->shouts);
 }
 
 bool SkydotPapyrus::magic_decode(save::ByteReader r, std::vector<std::uint8_t>& effects,
-                                 std::vector<std::uint8_t>& book) {
+                                 std::vector<std::uint8_t>& book, std::vector<std::uint8_t>& shouts) {
     const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
     magic::MagcParts parts;
     if (root == nullptr || !magic::read_magc(r, parts) || !magic::check_magc(*root, parts)) {
@@ -1005,17 +1064,19 @@ bool SkydotPapyrus::magic_decode(save::ByteReader r, std::vector<std::uint8_t>& 
     }
     effects = std::move(parts.effects);
     book = std::move(parts.book);
+    shouts = std::move(parts.shouts);
     return true;
 }
 
 void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effects,
-                                const std::vector<std::uint8_t>& book) {
+                                const std::vector<std::uint8_t>& book, const std::vector<std::uint8_t>& shouts) {
     auto* m = magic_state();
     if (m == nullptr) {
         return;
     }
     m->effects.clear();
     m->book.clear();
+    m->shouts.clear();
     m->worn.clear();
     m->hands.clear();
     m->pending.clear();
@@ -1024,6 +1085,10 @@ void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effec
     if (has) {
         // The actor values were replaced without their temporary part: the effects hold it again.
         (void)magic::SpellBook::load(save::ByteReader(book), m->book);
+        // A version 1 section has no shout part: the book stays empty.
+        if (!shouts.empty()) {
+            (void)magic::ShoutBook::load(save::ByteReader(shouts), m->shouts);
+        }
         (void)m->effects.load(save::ByteReader(effects));
     }
     // Abilities are not saved: start them again for whoever is known.
@@ -1333,6 +1398,161 @@ Dictionary SkydotPapyrus::hand_release(std::int64_t actor_in, std::int64_t hand_
     return out;
 }
 
+// ---- shouts: the game layer's API ----------------------------------------------------------------
+
+std::uint32_t SkydotPapyrus::voice_shout(std::uint32_t ref) const {
+    const auto* m = static_cast<const MagicState*>(magic_.get());
+    return m != nullptr ? m->shouts.equipped(ref) : 0;
+}
+
+Dictionary SkydotPapyrus::shout_info(std::int64_t actor_in, std::int64_t shout_in) {
+    Dictionary out;
+    out["found"] = false;
+    auto* m = magic_state();
+    const auto actor = static_cast<std::uint32_t>(actor_in);
+    const auto shout = static_cast<std::uint32_t>(shout_in);
+    const auto* s = m != nullptr ? lookup(m->world_.shouts(), shout) : nullptr;
+    if (s == nullptr) {
+        return out;
+    }
+    const auto id = [](std::uint32_t v) { return static_cast<std::int64_t>(v); };
+    out["found"] = true;
+    out["shout"] = shout_in;
+    out["name"] = s->name() != nullptr ? to_godot(s->name()->str()) : String();
+    out["description"] = s->description() != nullptr ? to_godot(s->description()->str()) : String();
+    const double mult = actors_.get(actor, vm::av::k_shout_recovery_mult);
+    Array words;
+    if (s->words() != nullptr) {
+        int index = 1;
+        for (const auto* w : *s->words()) {
+            Dictionary d;
+            const auto* word = lookup(m->world_.words_of_power(), w->word());
+            d["word"] = id(w->word());
+            d["name"] = word != nullptr && word->name() != nullptr ? to_godot(word->name()->str()) : String();
+            d["translation"] = word != nullptr && word->translation() != nullptr ? to_godot(word->translation()->str()) : String();
+            d["known"] = m->shouts.is_word_known(actor, w->word());
+            d["unlocked"] = m->shouts.is_word_unlocked(actor, w->word());
+            d["spell"] = id(w->spell());
+            d["recovery"] = magic::recovery_seconds(m->world_, shout, index++, mult);
+            words.push_back(d);
+        }
+    }
+    out["words"] = words;
+    out["usable"] = m->shouts.usable_words(actor, shout);
+    out["equipped"] = m->shouts.equipped(actor) == shout;
+    return out;
+}
+
+godot::PackedInt64Array SkydotPapyrus::shouts_of(std::int64_t actor_in) {
+    godot::PackedInt64Array out;
+    auto* m = magic_state();
+    const auto actor = static_cast<std::uint32_t>(actor_in);
+    if (m != nullptr && actors_.is_actor(actor)) {
+        for (const auto s : m->shouts.shouts_of(actor)) {
+            out.push_back(s);
+        }
+    }
+    return out;
+}
+
+std::int64_t SkydotPapyrus::equipped_shout(std::int64_t actor) {
+    return static_cast<std::int64_t>(voice_shout(static_cast<std::uint32_t>(actor)));
+}
+
+bool SkydotPapyrus::equip_shout(std::int64_t actor, std::int64_t shout) {
+    auto* m = magic_state();
+    return m != nullptr && m->equip_shout(static_cast<std::uint32_t>(actor), static_cast<std::uint32_t>(shout));
+}
+
+bool SkydotPapyrus::teach_word(std::int64_t actor, std::int64_t word) {
+    auto* m = magic_state();
+    if (m == nullptr) {
+        return false;
+    }
+    if (static_cast<std::uint32_t>(actor) == k_player_ref) {
+        return m->teach_word(static_cast<std::uint32_t>(word));
+    }
+    return m->shouts.teach_word(static_cast<std::uint32_t>(actor), static_cast<std::uint32_t>(word));
+}
+
+bool SkydotPapyrus::unlock_word(std::int64_t actor, std::int64_t word) {
+    auto* m = magic_state();
+    return m != nullptr && m->shouts.unlock_word(static_cast<std::uint32_t>(actor), static_cast<std::uint32_t>(word));
+}
+
+Dictionary SkydotPapyrus::unlock_word_with_soul(std::int64_t actor_in, std::int64_t word) {
+    Dictionary out;
+    out["ok"] = false;
+    out["reason"] = String();
+    auto* m = magic_state();
+    const auto actor = static_cast<std::uint32_t>(actor_in);
+    if (m == nullptr || !actors_.is_actor(actor)) {
+        out["reason"] = "no actor";
+        return out;
+    }
+    const double souls = actors_.get_base(actor, vm::av::k_dragon_souls);
+    const auto result = m->shouts.unlock_with_soul(actor, static_cast<std::uint32_t>(word), souls);
+    out["ok"] = result.ok;
+    if (result.ok) {
+        actors_.set_base(actor, vm::av::k_dragon_souls, souls - 1.0);
+    } else if (result.reason == "no dragon soul") {
+        out["reason"] = to_godot(m->game_text("sFailSpendSoul", "You do not have a dragon soul to spend."));
+    } else {
+        out["reason"] = to_godot(result.reason);
+    }
+    return out;
+}
+
+double SkydotPapyrus::voice_recovery(std::int64_t actor) {
+    auto* m = magic_state();
+    return m != nullptr ? m->shouts.recovery_left(static_cast<std::uint32_t>(actor)) : 0.0;
+}
+
+void SkydotPapyrus::set_voice_recovery(std::int64_t actor, double seconds) {
+    if (auto* m = magic_state()) {
+        m->shouts.set_recovery(static_cast<std::uint32_t>(actor), seconds);
+    }
+}
+
+Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_in, double held_seconds,
+                                     std::int64_t target_in) {
+    Dictionary out;
+    out["ok"] = false;
+    out["reason"] = String();
+    out["words"] = 0;
+    out["spell"] = 0;
+    out["recovery"] = 0.0;
+    auto* m = magic_state();
+    const auto actor = static_cast<std::uint32_t>(actor_in);
+    if (m == nullptr || !m->shouts.is_shout(static_cast<std::uint32_t>(shout_in))) {
+        out["reason"] = "unknown shout";
+        return out;
+    }
+    if (!caster_can_act(actors_, actor, out)) {
+        return out;
+    }
+    m->prime(actor);
+    const double mult = actors_.get(actor, vm::av::k_shout_recovery_mult);
+    const auto shouted = m->shouts.shout(actor, static_cast<std::uint32_t>(shout_in), held_seconds, m->shout_settings(), mult);
+    out["reason"] = to_godot(shouted.reason);
+    if (!shouted.ok) {
+        return out;
+    }
+    out["ok"] = true;
+    out["words"] = shouted.words;
+    out["spell"] = static_cast<std::int64_t>(shouted.spell);
+    out["recovery"] = shouted.recovery;
+    if (target_in != 0) {
+        // Voice spells cost nothing: land them as land_spell does.
+        const auto target = static_cast<std::uint32_t>(target_in);
+        m->prime(target);
+        (void)magic::land_form(m->world_, m->effects, actor, shouted.spell, target);
+        flush_magic_events();
+        flush_deaths();
+    }
+    return out;
+}
+
 void SkydotPapyrus::bind_magic_natives() {
     // The natives need the world; a VM without one has no spells to cast (setup binds again).
     auto* m = magic_state();
@@ -1343,6 +1563,7 @@ void SkydotPapyrus::bind_magic_natives() {
     vm::bind_magiceffect_natives(*vm_, m->world_);
     vm::bind_activemagiceffect_natives(*vm_, *m);
     vm::bind_actor_magic_natives(*vm_, *m);
+    vm::bind_shout_natives(*vm_, m->world_);
 }
 
 } // namespace skydot

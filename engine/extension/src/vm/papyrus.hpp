@@ -255,6 +255,30 @@ public:
     std::int64_t equipped_spell(std::int64_t actor, std::int64_t hand);
     /// Game days until `spell` (a power) may be used again by `actor`; 0 if it may.
     double power_cooldown(std::int64_t actor, std::int64_t spell);
+    /// Shouts (magic/shouts.hpp, docs/adr/0008). {found, shout, name, description, words (an Array of
+    /// {word, name (the word), translation, known, unlocked, spell, recovery (seconds, with the actor's
+    /// ShoutRecoveryMult)}), usable (words `actor` can speak, 0 to 3), equipped}.
+    godot::Dictionary shout_info(std::int64_t actor, std::int64_t shout);
+    godot::PackedInt64Array shouts_of(std::int64_t actor);
+    /// The shout in the voice slot, 0 if none (a power may hold it instead).
+    std::int64_t equipped_shout(std::int64_t actor);
+    /// Hold `shout` in the voice slot (and put the power away); false if `actor` does not have it.
+    bool equip_shout(std::int64_t actor, std::int64_t shout);
+    /// Learn / unlock a word (the player gets the message sShoutAdded when it learns one).
+    bool teach_word(std::int64_t actor, std::int64_t word);
+    bool unlock_word(std::int64_t actor, std::int64_t word);
+    /// Spend one DragonSouls to unlock a known word: {ok, reason ("" or sFailSpendSoul's text, or
+    /// "unknown word" / "already unlocked")}.
+    godot::Dictionary unlock_word_with_soul(std::int64_t actor, std::int64_t word);
+    /// Real seconds until `actor` may shout again.
+    double voice_recovery(std::int64_t actor);
+    void set_voice_recovery(std::int64_t actor, double seconds);
+    /// Shout `shout` after holding the button `held_seconds`: {ok, reason ("" or "unknown shout" /
+    /// "recovering" / "no word" / "no caster" / "dead"), words, spell (the SPEL of the last word
+    /// spoken: the game layer lands it with land_spell per actor hit), recovery (seconds, set)}. With a
+    /// `target` the spell lands on it here. Voice spells cost nothing. Casting and shouting excluding
+    /// each other (sMagicCastShoutWhileCasting) is the game layer's.
+    godot::Dictionary cast_shout(std::int64_t actor, std::int64_t shout, double held_seconds, std::int64_t target = 0);
     /// What runs on `actor`: {instance, mgef, name, magnitude, duration, elapsed, remaining (-1 if
     /// constant), source (a form), source_kind (0 spell, 1 enchantment, 2 potion, 3 ingredient, 4
     /// scroll, 5 ability, 6 poison), caster, archetype, active}.
@@ -712,6 +736,8 @@ private:
     struct MagicState;
     std::unique_ptr<MagicRuntime> magic_;
     MagicState* magic_state();
+    /// The shout in the voice slot of `ref` (condition GetEquippedShout); 0 if none.
+    std::uint32_t voice_shout(std::uint32_t ref) const;
     /// Send what effects started or finished since the last call (Papyrus events, the signal).
     void flush_magic_events();
     void tick_magic(double seconds);
@@ -722,7 +748,8 @@ private:
     /// The MAGC section's bytes; empty if magic never ran.
     std::vector<std::uint8_t> magic_section() const;
     /// Whether `bytes` is a MAGC section this world can load; its two parts.
-    bool magic_decode(save::ByteReader r, std::vector<std::uint8_t>& effects, std::vector<std::uint8_t>& book);
+    bool magic_decode(save::ByteReader r, std::vector<std::uint8_t>& effects, std::vector<std::uint8_t>& book,
+                      std::vector<std::uint8_t>& shouts);
     /// Make the constant effects of the enchanted armor `owner` wears what they should be (start the
     /// new, end the gone); no-op before magic ran (priming derives them then).
     void sync_worn_magic(std::uint32_t owner);
@@ -744,7 +771,8 @@ private:
                                 std::uint32_t extra, bool target_alive);
     godot::Dictionary poison_weapon(std::uint32_t owner, std::uint32_t poison, std::int64_t extra);
     /// Take a decoded MAGC section (or none) and hold the temporary modifiers again.
-    void magic_adopt(bool has, const std::vector<std::uint8_t>& effects, const std::vector<std::uint8_t>& book);
+    void magic_adopt(bool has, const std::vector<std::uint8_t>& effects, const std::vector<std::uint8_t>& book,
+                     const std::vector<std::uint8_t>& shouts);
     /// Created potions and what is known of ingredients (CRFT).
     vm::CreatedForms created_;
     /// What is harvested (HRVS).
@@ -793,6 +821,7 @@ private:
         vm::CreatedForms created;
         std::vector<std::uint8_t> magic_effects;
         std::vector<std::uint8_t> magic_book;
+        std::vector<std::uint8_t> magic_shouts;
         bool has_magic = false;
         vm::HarvestStates harvests;
         dialogue::DialogueStates dialogue;

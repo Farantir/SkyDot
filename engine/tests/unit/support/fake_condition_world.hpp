@@ -58,6 +58,7 @@ public:
     double percent = 0.0;
     std::set<std::uint32_t> talked;
     std::set<std::uint32_t> in_dialogue;
+    std::map<std::uint32_t, std::uint32_t> shouts; ///< ref -> the shout in its voice slot
     /// The subject of each reference-asking call is not recorded; tests that
     /// need it use ConditionOverrides.
 
@@ -153,6 +154,10 @@ public:
     double random_percent() override { return percent; }
     bool talked_to_player(std::uint32_t r) const override { return talked.contains(r); }
     bool in_dialogue_with_player(std::uint32_t r) const override { return in_dialogue.contains(r); }
+    std::uint32_t equipped_shout(std::uint32_t r) const override {
+        const auto it = shouts.find(r);
+        return it != shouts.end() ? it->second : 0;
+    }
 
 private:
     template <typename Map, typename Value>

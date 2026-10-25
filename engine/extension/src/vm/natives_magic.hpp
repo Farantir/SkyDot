@@ -40,6 +40,22 @@ public:
     virtual void unequip_spell(std::uint32_t actor, int hand) = 0;
     [[nodiscard]] virtual std::uint32_t equipped_spell(std::uint32_t actor, int hand) = 0;
 
+    // ---- shouts (magic/shouts.hpp); the word natives of Game act on the player
+    /// Game.TeachWord: the player learns a word (a message the first time). False if it is no word or known.
+    virtual bool teach_word(std::uint32_t word) = 0;
+    /// Game.UnlockWord (also when the word is not known).
+    virtual bool unlock_word(std::uint32_t word) = 0;
+    [[nodiscard]] virtual bool is_word_unlocked(std::uint32_t word) = 0;
+    virtual bool add_shout(std::uint32_t actor, std::uint32_t shout) = 0;
+    virtual bool remove_shout(std::uint32_t actor, std::uint32_t shout) = 0;
+    /// Hold `shout` in the voice slot (emptying the power's); false if the actor lacks it.
+    virtual bool equip_shout(std::uint32_t actor, std::uint32_t shout) = 0;
+    /// Empty the voice slot if it holds `shout` (0: whatever shout it holds).
+    virtual void unequip_shout(std::uint32_t actor, std::uint32_t shout) = 0;
+    [[nodiscard]] virtual std::uint32_t equipped_shout(std::uint32_t actor) = 0;
+    virtual void set_voice_recovery(std::uint32_t actor, double seconds) = 0;
+    [[nodiscard]] virtual double voice_recovery(std::uint32_t actor) = 0;
+
     // ---- the object of one running effect (its handle is the instance id)
     struct Effect {
         std::uint32_t mgef = 0;
@@ -67,7 +83,12 @@ void bind_magiceffect_natives(Vm& vm, const bethconv::pack::wfb::World& world);
 /// GetDuration, GetTimeElapsed.
 void bind_activemagiceffect_natives(Vm& vm, MagicApi& api);
 /// Actor.AddSpell, RemoveSpell, HasSpell, DispelSpell, DispelAllSpells, HasMagicEffect,
-/// HasMagicEffectWithKeyword, DoCombatSpellApply, EquipSpell, UnequipSpell, GetEquippedSpell.
+/// HasMagicEffectWithKeyword, DoCombatSpellApply, EquipSpell, UnequipSpell, GetEquippedSpell, and the
+/// shouts: AddShout, RemoveShout, EquipShout, UnequipShout, GetEquippedShout, SetVoiceRecoveryTime,
+/// GetVoiceRecoveryTime (SKSE); Game.TeachWord, UnlockWord, IsWordUnlocked.
 void bind_actor_magic_natives(Vm& vm, MagicApi& api);
+
+/// Shout.GetNthWordOfPower, GetNthSpell, GetNthRecoveryTime (SKSE).
+void bind_shout_natives(Vm& vm, const bethconv::pack::wfb::World& world);
 
 } // namespace skydot::vm

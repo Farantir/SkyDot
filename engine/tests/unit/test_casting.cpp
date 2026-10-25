@@ -611,7 +611,7 @@ TEST_CASE("a scroll can be held in a hand and survives MAGC", "[casting][save]")
     rig.book.equip(k_player, k_firebolt, magic::Slot::right);
     CHECK(rig.book.equipped(k_player, magic::Slot::left) == k_scroll);
 
-    const auto bytes = magic::write_magc(rig.effects, rig.book);
+    const auto bytes = magic::write_magc(rig.effects, rig.book, magic::ShoutBook(*rig.world));
     magic::MagcParts parts;
     REQUIRE(magic::read_magc(skydot::save::ByteReader(bytes), parts));
     REQUIRE(magic::check_magc(*rig.world, parts));

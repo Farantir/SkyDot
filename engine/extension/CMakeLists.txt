@@ -84,6 +84,8 @@ set(SKYDOT_CORE_SOURCES
     src/magic/magic_rules.hpp
     src/magic/magic_save.cpp
     src/magic/magic_save.hpp
+    src/magic/shouts.cpp
+    src/magic/shouts.hpp
     src/magic/spell_lists.cpp
     src/magic/spell_lists.hpp
     src/session/game_time.cpp

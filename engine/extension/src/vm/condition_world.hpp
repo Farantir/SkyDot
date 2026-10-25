@@ -80,6 +80,7 @@ public:
 
     bool talked_to_player(std::uint32_t ref) const override;
     bool in_dialogue_with_player(std::uint32_t ref) const override;
+    std::uint32_t equipped_shout(std::uint32_t ref) const override;
 
 private:
     /// The NPC_ standing for `ref` for what `flag` covers (templates followed).

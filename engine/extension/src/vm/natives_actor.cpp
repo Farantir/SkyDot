@@ -133,6 +133,44 @@ void bind_actor_magic_natives(Vm& vm, MagicApi& api) {
         return NativeResult{.value = c.vm.object(api.equipped_spell(c.self.form(), arg(c, 0).i()), "Spell"),
                             .wait = -1.0};
     });
+    // ---- shouts
+    vm.bind("Actor", "AddShout", [&api, arg, flag](NativeCall& c) {
+        return flag(api.add_shout(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "RemoveShout", [&api, arg, flag](NativeCall& c) {
+        return flag(api.remove_shout(c.self.form(), arg(c, 0).form()));
+    });
+    vm.bind("Actor", "EquipShout", [&api, arg](NativeCall& c) {
+        api.equip_shout(c.self.form(), arg(c, 0).form());
+        return NativeResult{};
+    });
+    vm.bind("Actor", "UnequipShout", [&api, arg](NativeCall& c) {
+        api.unequip_shout(c.self.form(), arg(c, 0).form());
+        return NativeResult{};
+    });
+    vm.bind("Actor", "GetEquippedShout", [&api](NativeCall& c) {
+        return NativeResult{.value = c.vm.object(api.equipped_shout(c.self.form()), "Shout"), .wait = -1.0};
+    });
+    // SKSE.
+    vm.bind("Actor", "SetVoiceRecoveryTime", [&api, arg](NativeCall& c) {
+        api.set_voice_recovery(c.self.form(), static_cast<double>(arg(c, 0).f()));
+        return NativeResult{};
+    });
+    vm.bind("Actor", "GetVoiceRecoveryTime", [&api](NativeCall& c) {
+        return NativeResult{.value = Value::floating(static_cast<float>(api.voice_recovery(c.self.form()))), .wait = -1.0};
+    });
+    // Game.TeachWord(akWord), UnlockWord(akWord), IsWordUnlocked(akWord): the player's.
+    vm.bind("Game", "TeachWord", [&api, arg](NativeCall& c) {
+        api.teach_word(arg(c, 0).form());
+        return NativeResult{};
+    });
+    vm.bind("Game", "UnlockWord", [&api, arg](NativeCall& c) {
+        api.unlock_word(arg(c, 0).form());
+        return NativeResult{};
+    });
+    vm.bind("Game", "IsWordUnlocked", [&api, arg, flag](NativeCall& c) {
+        return flag(api.is_word_unlocked(arg(c, 0).form()));
+    });
 }
 
 } // namespace skydot::vm

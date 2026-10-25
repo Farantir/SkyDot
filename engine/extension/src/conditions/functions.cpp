@@ -16,8 +16,8 @@ constexpr double k_far = 1.0e9;
 /// Locations nest a few levels; this only stops loops.
 constexpr int k_max_location_depth = 32;
 
-constexpr std::array<std::uint16_t, 17> k_placeholders{
-    fn::get_equipped_shout,       fn::is_sneaking,          fn::is_in_combat,
+constexpr std::array<std::uint16_t, 16> k_placeholders{
+    fn::is_sneaking,              fn::is_in_combat,
     fn::is_weapon_out,            fn::is_weapon_magic_out,  fn::get_crime_gold,
     fn::is_trespassing,           fn::get_trespass_warning_level,
     fn::get_player_teammate,      fn::is_actor_a_victim,    fn::get_should_attack,
@@ -221,6 +221,9 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(world.talked_to_player(subject));
     case fn::is_in_dialogue_with_player:
         return flag(world.in_dialogue_with_player(subject));
+    // The shout in the voice slot of the subject (0 if none); the parameter is a SHOU.
+    case fn::get_equipped_shout:
+        return flag(p1 != 0 && world.equipped_shout(subject) == p1);
     // The player has no perks until P6, and no spells until magic (C5).
     case fn::has_perk:
     case fn::has_spell:

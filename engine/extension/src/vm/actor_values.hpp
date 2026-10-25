@@ -244,6 +244,11 @@ constexpr bool equal_nocase(std::string_view a, std::string_view b) {
     return std::nullopt;
 }
 
+/// ShoutRecoveryMult (base 1: the multiplier of a shout's recovery) and DragonSouls (the player's
+/// unspent souls).
+inline constexpr std::uint32_t k_shout_recovery_mult = *index_of("ShoutRecoveryMult");
+inline constexpr std::uint32_t k_dragon_souls = *index_of("DragonSouls");
+
 } // namespace skydot::vm::av
 
 namespace skydot::vm {

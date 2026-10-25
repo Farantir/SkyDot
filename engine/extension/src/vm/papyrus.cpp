@@ -113,6 +113,18 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("equip_spell", "actor", "spell", "hand"), &SkydotPapyrus::equip_spell);
     godot::ClassDB::bind_method(D_METHOD("equipped_spell", "actor", "hand"), &SkydotPapyrus::equipped_spell);
     godot::ClassDB::bind_method(D_METHOD("power_cooldown", "actor", "spell"), &SkydotPapyrus::power_cooldown);
+    godot::ClassDB::bind_method(D_METHOD("shout_info", "actor", "shout"), &SkydotPapyrus::shout_info);
+    godot::ClassDB::bind_method(D_METHOD("shouts_of", "actor"), &SkydotPapyrus::shouts_of);
+    godot::ClassDB::bind_method(D_METHOD("equipped_shout", "actor"), &SkydotPapyrus::equipped_shout);
+    godot::ClassDB::bind_method(D_METHOD("equip_shout", "actor", "shout"), &SkydotPapyrus::equip_shout);
+    godot::ClassDB::bind_method(D_METHOD("teach_word", "actor", "word"), &SkydotPapyrus::teach_word);
+    godot::ClassDB::bind_method(D_METHOD("unlock_word", "actor", "word"), &SkydotPapyrus::unlock_word);
+    godot::ClassDB::bind_method(D_METHOD("unlock_word_with_soul", "actor", "word"),
+                                &SkydotPapyrus::unlock_word_with_soul);
+    godot::ClassDB::bind_method(D_METHOD("voice_recovery", "actor"), &SkydotPapyrus::voice_recovery);
+    godot::ClassDB::bind_method(D_METHOD("set_voice_recovery", "actor", "seconds"), &SkydotPapyrus::set_voice_recovery);
+    godot::ClassDB::bind_method(D_METHOD("cast_shout", "actor", "shout", "held_seconds", "target"),
+                                &SkydotPapyrus::cast_shout, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("active_effects", "actor"), &SkydotPapyrus::active_effects);
     godot::ClassDB::bind_method(D_METHOD("magic_overrides", "ref"), &SkydotPapyrus::magic_overrides);
     godot::ClassDB::bind_method(D_METHOD("break_invisibility", "ref"), &SkydotPapyrus::break_invisibility);

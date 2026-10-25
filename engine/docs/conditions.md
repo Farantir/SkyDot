@@ -129,13 +129,13 @@ IsUndead 715 (keyword ActorTypeUndead 0x13796 on the NPC or its race), LocationH
 subject's current location), GetIsAliasRef 566, GetVMQuestVariable 629,
 GetVMScriptVariable 630 (the variable name is CIS2; any script on the form),
 GetActorValuePercent 640, IsLinkedTo 650. AI only: GetIsCurrentPackage 161,
-GetNumericPackageData 612.
+GetNumericPackageData 612. GetEquippedShout 579 (the SHOU in the subject's voice slot equals
+parameter 1; `ConditionWorld::equipped_shout`, from the ShoutBook).
 
 **Placeholders** (bound, resting value 0 until the system exists):
 
 | Index | Function | Replaced by |
 |---:|---|---|
-| 579 | GetEquippedShout | shouts |
 | 286 | IsSneaking | stealth |
 | 289 | IsInCombat | combat (C1) |
 | 263 | IsWeaponOut | combat / weapon drawing |

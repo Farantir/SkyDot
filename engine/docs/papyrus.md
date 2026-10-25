@@ -324,7 +324,13 @@ GetTargetActor, GetCasterActor, GetBaseObject, Dispel, GetMagnitude, GetDuration
 GetTimeElapsed) and, in `natives_actor.cpp`, `Actor.AddSpell` (with a message "<Spell> added"
 for the player), RemoveSpell, HasSpell, DispelSpell, DispelAllSpells, HasMagicEffect,
 HasMagicEffectWithKeyword, DoCombatSpellApply, EquipSpell (aiSource 0 left, 1 right, 2 the
-power), UnequipSpell and GetEquippedSpell.
+power; the voice slot is shared with a shout), UnequipSpell and GetEquippedSpell, and the shouts
+(`magic/shouts`): `Actor.AddShout`, RemoveShout, EquipShout, UnequipShout, GetEquippedShout and (SKSE)
+SetVoiceRecoveryTime / GetVoiceRecoveryTime, `Game.TeachWord` (a message "Word of Power Learned: <word>"
+for the player), UnlockWord, IsWordUnlocked, and (SKSE, `bind_shout_natives`) `Shout.GetNthWordOfPower`,
+GetNthSpell, GetNthRecoveryTime. The game layer's calls are `shout_info`, `shouts_of`, `equipped_shout`,
+`equip_shout`, `teach_word`, `unlock_word`, `unlock_word_with_soul`, `voice_recovery`,
+`set_voice_recovery` and `cast_shout`.
 
 An effect whose MGEF has scripts gets a script object of its own: its handle is the effect's
 instance id (`id_ranges::effect_instances`), it is sent `OnEffectStart(akTarget, akCaster)` when
@@ -333,9 +339,10 @@ game layer's calls are `cast_spell(caster, spell, target[, seconds])` (pays the 
 power's cooldown), `spell_cost`, `spend_magicka`, `apply_item_effects(actor, form[, extra])`
 (`equip` of a potion, food or ingredient calls it), `spells_of`, `equip_spell`, `equipped_spell`,
 `active_effects` and the signal `magic_effect_changed(target, mgef, archetype, started, instance)`.
-The optional save section MAGC (version 1) holds the running effects (abilities are derived
-again), the spells added and removed, the equipped spells, the power cooldowns and the known
-enchantments; the temporary modifiers effects hold are not in ACTV, the effects hold them again
+The optional save section MAGC (version 2; version 1 still reads, with no shouts) holds the running
+effects (abilities are derived again), the spells added and removed, the equipped spells, the power
+cooldowns and the known enchantments, and in a third part the ShoutBook (words known and unlocked,
+shouts added and removed, the voice slot, the recovery left); the temporary modifiers effects hold are not in ACTV, the effects hold them again
 on load.
 
 ## Saving
@@ -345,7 +352,7 @@ magic `SKYS`, sections (FourCC, version, length, bytes), a CRC-32 trailer.
 `SkydotPapyrus.write_sections(writer)` adds HEAD (engine version, the pack's
 world hash and load order), the VM's VMST (instances with their variables
 and states, running and waiting threads with every frame, timers, pending
-results, scheduled host calls, the clock and the random state), INVT, MAGC (optional: effects, spells, hands, cooldowns), ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
+results, scheduled host calls, the clock and the random state), INVT, MAGC (optional: effects, spells, hands, cooldowns, shouts; version 2), ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
 references) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,

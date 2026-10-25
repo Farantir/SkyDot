@@ -62,6 +62,33 @@ struct FakeApi final : vm::MagicApi {
         const auto it = hands.find({actor, hand});
         return it != hands.end() ? it->second : 0;
     }
+    std::set<std::uint32_t> taught, unlocked;
+    std::map<std::uint32_t, std::set<std::uint32_t>> shouts;
+    std::map<std::uint32_t, std::uint32_t> voice;
+    std::map<std::uint32_t, double> recovery;
+    bool teach_word(std::uint32_t word) override { return taught.insert(word).second; }
+    bool unlock_word(std::uint32_t word) override { return unlocked.insert(word).second; }
+    bool is_word_unlocked(std::uint32_t word) override { return unlocked.contains(word); }
+    bool add_shout(std::uint32_t actor, std::uint32_t shout) override { return shouts[actor].insert(shout).second; }
+    bool remove_shout(std::uint32_t actor, std::uint32_t shout) override { return shouts[actor].erase(shout) != 0; }
+    bool equip_shout(std::uint32_t actor, std::uint32_t shout) override {
+        if (!shouts[actor].contains(shout)) {
+            return false;
+        }
+        voice[actor] = shout;
+        return true;
+    }
+    void unequip_shout(std::uint32_t actor, std::uint32_t shout) override {
+        if (shout == 0 || voice[actor] == shout) {
+            voice.erase(actor);
+        }
+    }
+    std::uint32_t equipped_shout(std::uint32_t actor) override {
+        const auto it = voice.find(actor);
+        return it != voice.end() ? it->second : 0;
+    }
+    void set_voice_recovery(std::uint32_t actor, double seconds) override { recovery[actor] = seconds; }
+    double voice_recovery(std::uint32_t actor) override { return recovery[actor]; }
     std::optional<Effect> effect(std::uint32_t handle) override {
         if (handle != k_handle) {
             return std::nullopt;
@@ -84,6 +111,8 @@ WorldSpec spec() {
     SpellSpec flames{.id = k_flames, .name = "Flames", .cost = 14, .casting_type = 2, .delivery = 2};
     flames.effects = {{.effect = k_fire, .magnitude = 8.0F, .area = 3, .duration = 1}};
     s.spells = {flames};
+    s.words_of_power = {WordSpec{.id = 0x3002, .name = "Fus"}};
+    s.shouts = {ShoutSpec{.id = 0x3001, .name = "Force", .words = {{0x3002, k_flames, 15.0F}, {0x3003, k_flames, 20.0F}}}};
     return s;
 }
 
@@ -106,7 +135,23 @@ struct Fixture {
                                native_function("DoCombatSpellApply", {{"s", "Spell"}, {"t", "ObjectReference"}}, "None", false),
                                native_function("EquipSpell", {{"s", "Spell"}, {"h", "Int"}}, "None", false),
                                native_function("UnequipSpell", {{"s", "Spell"}, {"h", "Int"}}, "None", false),
-                               native_function("GetEquippedSpell", {{"h", "Int"}}, "Spell", false)}});
+                               native_function("GetEquippedSpell", {{"h", "Int"}}, "Spell", false),
+                               native_function("AddShout", {{"s", "Shout"}}, "Bool", false),
+                               native_function("RemoveShout", {{"s", "Shout"}}, "Bool", false),
+                               native_function("EquipShout", {{"s", "Shout"}}, "None", false),
+                               native_function("UnequipShout", {{"s", "Shout"}}, "None", false),
+                               native_function("GetEquippedShout", {}, "Shout", false),
+                               native_function("SetVoiceRecoveryTime", {{"t", "Float"}}, "None", false),
+                               native_function("GetVoiceRecoveryTime", {}, "Float", false)}});
+        rig.add({.name = "Game",
+                 .functions = {native_function("TeachWord", {{"w", "WordOfPower"}}, "None", true),
+                               native_function("UnlockWord", {{"w", "WordOfPower"}}, "None", true),
+                               native_function("IsWordUnlocked", {{"w", "WordOfPower"}}, "Bool", true)}});
+        rig.add({.name = "WordOfPower", .parent = "Form"});
+        rig.add({.name = "Shout", .parent = "Form",
+                 .functions = {native_function("GetNthWordOfPower", {{"i", "Int"}}, "WordOfPower", false),
+                               native_function("GetNthSpell", {{"i", "Int"}}, "Spell", false),
+                               native_function("GetNthRecoveryTime", {{"i", "Int"}}, "Float", false)}});
         rig.add({.name = "Spell", .parent = "Form",
                  .functions = {native_function("Cast", {{"s", "ObjectReference"}, {"t", "ObjectReference"}}, "None", false),
                                native_function("RemoteCast", {{"s", "ObjectReference"}, {"b", "Actor"}, {"t", "ObjectReference"}}, "None", false),
@@ -138,6 +183,7 @@ struct Fixture {
         vm::bind_magiceffect_natives(rig.vm, *world);
         vm::bind_activemagiceffect_natives(rig.vm, api);
         vm::bind_actor_magic_natives(rig.vm, api);
+        vm::bind_shout_natives(rig.vm, *world);
     }
 };
 
@@ -159,6 +205,23 @@ FunctionSpec caller(const std::string& name, const std::string& cls, const std::
     const std::vector<Param> locals{{"r", ret}};
     auto f = global_function(name, params, locals, ret);
     f.add(vm::Op::callmethod, ops).add(vm::Op::return_, {ident("r")});
+    return f;
+}
+
+/// A global function `name(args...)` that calls the static `Game.fn` with them, returning `ret`.
+FunctionSpec game_caller(const std::string& name, const std::string& fn, std::vector<Param> args, const std::string& ret) {
+    const bool none = ret == "None";
+    std::vector<Arg> ops{ident("Game"), ident(fn), ident(none ? "::NoneVar" : "r")};
+    for (const auto& a : args) {
+        ops.push_back(ident(a.name));
+    }
+    if (none) {
+        auto f = global_function(name, args);
+        f.add(vm::Op::callstatic, ops).add(vm::Op::return_, {ident("::NoneVar")});
+        return f;
+    }
+    auto f = global_function(name, args, {{"r", ret}}, ret);
+    f.add(vm::Op::callstatic, ops).add(vm::Op::return_, {ident("r")});
     return f;
 }
 
@@ -284,4 +347,52 @@ TEST_CASE("equipped spells map the hands, and the dispels reach the API", "[magi
     CHECK(f.rig.call("caller", "has_effect", {hero, f.rig.vm.object(k_fire, "MagicEffect")}).b());
     CHECK_FALSE(f.rig.call("caller", "has_effect", {hero, f.rig.vm.object(0x1, "MagicEffect")}).b());
     CHECK(f.rig.call("caller", "has_keyword", {hero, f.rig.vm.object(0x77, "Keyword")}).b());
+}
+
+TEST_CASE("shout natives: words, shouts, the voice slot and recovery", "[magic][natives][shouts]") {
+    Fixture f;
+    f.rig.add(script("Caller", {caller("add", "Actor", "AddShout", {{"s", "Shout"}}, "Bool"),
+                                caller("remove", "Actor", "RemoveShout", {{"s", "Shout"}}, "Bool"),
+                                caller("equip", "Actor", "EquipShout", {{"s", "Shout"}}, "None"),
+                                caller("unequip", "Actor", "UnequipShout", {{"s", "Shout"}}, "None"),
+                                caller("equipped", "Actor", "GetEquippedShout", {}, "Shout"),
+                                caller("set_recovery", "Actor", "SetVoiceRecoveryTime", {{"t", "Float"}}, "None"),
+                                caller("recovery", "Actor", "GetVoiceRecoveryTime", {}, "Float"),
+                                caller("nth_word", "Shout", "GetNthWordOfPower", {{"i", "Int"}}, "WordOfPower"),
+                                caller("nth_spell", "Shout", "GetNthSpell", {{"i", "Int"}}, "Spell"),
+                                caller("nth_time", "Shout", "GetNthRecoveryTime", {{"i", "Int"}}, "Float"),
+                                game_caller("teach", "TeachWord", {{"w", "WordOfPower"}}, "None"),
+                                game_caller("unlock", "UnlockWord", {{"w", "WordOfPower"}}, "None"),
+                                game_caller("is_unlocked", "IsWordUnlocked", {{"w", "WordOfPower"}}, "Bool")}));
+    const auto hero = f.rig.vm.object(k_hero, "Actor");
+    const auto shout = f.rig.vm.object(0x3001, "Shout");
+    const auto word = f.rig.vm.object(0x3002, "WordOfPower");
+
+    CHECK_FALSE(f.rig.call("caller", "equipped", {hero}).form() != 0);
+    CHECK(f.rig.call("caller", "add", {hero, shout}).b());
+    CHECK_FALSE(f.rig.call("caller", "add", {hero, shout}).b());
+    f.rig.call("caller", "equip", {hero, shout});
+    CHECK(f.rig.call("caller", "equipped", {hero}).form() == 0x3001);
+    f.rig.call("caller", "unequip", {hero, shout});
+    CHECK(f.rig.call("caller", "equipped", {hero}).form() == 0);
+    CHECK(f.rig.call("caller", "remove", {hero, shout}).b());
+    CHECK_FALSE(f.rig.call("caller", "remove", {hero, shout}).b());
+
+    f.rig.call("caller", "set_recovery", {hero, vm::Value::floating(12.5F)});
+    CHECK(f.rig.call("caller", "recovery", {hero}).f() == Approx(12.5F));
+
+    f.rig.call("caller", "teach", {word});
+    f.rig.call("caller", "unlock", {word});
+    CHECK(f.api.taught.contains(0x3002));
+    CHECK(f.rig.call("caller", "is_unlocked", {word}).b());
+    CHECK_FALSE(f.rig.call("caller", "is_unlocked", {f.rig.vm.object(0x3003, "WordOfPower")}).b());
+
+    CHECK(f.rig.call("caller", "nth_word", {shout, vm::Value::integer(0)}).form() == 0x3002);
+    CHECK(f.rig.call("caller", "nth_word", {shout, vm::Value::integer(5)}).form() == 0);
+    CHECK(f.rig.call("caller", "nth_spell", {shout, vm::Value::integer(1)}).form() == k_flames);
+    CHECK(f.rig.call("caller", "nth_time", {shout, vm::Value::integer(1)}).f() == Approx(20.0F));
+    for (const auto& line : f.rig.log) {
+        INFO(line);
+    }
+    CHECK(f.rig.vm.errors() == 0);
 }

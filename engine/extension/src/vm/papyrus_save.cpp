@@ -218,10 +218,10 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     }
     // MAGC is optional: a save without it has no effect running and no spell changed.
     if (const auto* magc = file.find("MAGC")) {
-        if (magc->version != magic::k_magc_version) {
+        if (magc->version < magic::k_magc_min_version || magc->version > magic::k_magc_version) {
             return fail("section MAGC has a version this engine does not read");
         }
-        if (!magic_decode(file.open(*magc), pending->magic_effects, pending->magic_book)) {
+        if (!magic_decode(file.open(*magc), pending->magic_effects, pending->magic_book, pending->magic_shouts)) {
             return fail("the MAGC section of the save is damaged");
         }
         pending->has_magic = true;
@@ -314,7 +314,7 @@ godot::Error SkydotPapyrus::commit_load() {
     harvests_.adopt(std::move(pending->harvests));
     dialogue_states_.adopt(std::move(pending->dialogue));
     // After the items: worn enchantments are derived from what is worn.
-    magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book);
+    magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book, pending->magic_shouts);
     if (auto* logic = scene_logic()) {
         if (pending->scenes != nullptr) {
             logic->adopt(std::move(*pending->scenes));

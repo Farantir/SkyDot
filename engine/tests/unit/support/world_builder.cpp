@@ -300,6 +300,16 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_words(words_v);
         shouts.push_back(b.Finish());
     }
+    std::vector<flatbuffers::Offset<wfb::WordOfPower>> words;
+    for (const auto& w : by_id(spec.words_of_power)) {
+        const auto name = fbb.CreateString(w.name);
+        const auto translation = fbb.CreateString(w.translation);
+        wfb::WordOfPowerBuilder b(fbb);
+        b.add_id(w.id);
+        b.add_name(name);
+        b.add_translation(translation);
+        words.push_back(b.Finish());
+    }
     std::vector<flatbuffers::Offset<wfb::Enchantment>> enchantments;
     for (const auto& en : by_id(spec.enchantments)) {
         std::vector<flatbuffers::Offset<wfb::EffectItem>> items;
@@ -386,6 +396,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto effects_v = fbb.CreateVector(effects);
     const auto spells_v = fbb.CreateVector(spells);
     const auto shouts_v = fbb.CreateVector(shouts);
+    const auto words_v = fbb.CreateVector(words);
     const auto enchantments_v = fbb.CreateVector(enchantments);
     const auto form_lists_v = fbb.CreateVector(form_lists);
     const auto keywords_v = fbb.CreateVector(keywords_table);
@@ -405,6 +416,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_magic_effects(effects_v);
     world.add_spells(spells_v);
     world.add_shouts(shouts_v);
+    world.add_words_of_power(words_v);
     world.add_enchantments(enchantments_v);
     world.add_form_lists(form_lists_v);
     world.add_keywords(keywords_v);

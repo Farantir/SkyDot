@@ -163,6 +163,17 @@ TEST_CASE("systems that do not exist yet answer their resting value", "[conditio
     CHECK(w.unknowns().counts().empty());
 }
 
+TEST_CASE("GetEquippedShout compares the voice slot with its parameter", "[conditions]") {
+    FakeConditionWorld w;
+    w.shouts[0x14] = 0x13E07;
+    CHECK(pass({cond(fn::get_equipped_shout, 1.0F, 0x13E07)}, w, {.subject = 0x14}));
+    CHECK_FALSE(pass({cond(fn::get_equipped_shout, 1.0F, 0x13E08)}, w, {.subject = 0x14}));
+    CHECK(pass({cond(fn::get_equipped_shout, 0.0F, 0x13E08)}, w, {.subject = 0x14}));
+    CHECK_FALSE(pass({cond(fn::get_equipped_shout, 1.0F, 0x13E07)}, w, {.subject = 0x15}));
+    CHECK(pass({cond(fn::get_equipped_shout, 0.0F, 0x13E07)}, w, {.subject = 0x15}));
+    CHECK(w.unknowns().counts().empty());
+}
+
 TEST_CASE("IsChild and IsUndead, GetRestrained rests at 0", "[conditions]") {
     FakeConditionWorld w;
     w.children.insert(0x20);

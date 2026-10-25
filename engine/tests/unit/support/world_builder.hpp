@@ -316,6 +316,13 @@ struct ShoutSpec {
     std::vector<Word> words = {};
 };
 
+/// WOOP (world.fb 36).
+struct WordSpec {
+    std::uint32_t id;
+    std::string name = {};
+    std::string translation = {};
+};
+
 /// ENCH.
 struct EnchantmentSpec {
     std::uint32_t id;
@@ -411,6 +418,7 @@ struct WorldSpec {
     std::vector<MagicEffectSpec> magic_effects = {};
     std::vector<SpellSpec> spells = {};
     std::vector<ShoutSpec> shouts = {};
+    std::vector<WordSpec> words_of_power = {};
     std::vector<EnchantmentSpec> enchantments = {};
     std::vector<FormListSpec> form_lists = {};
     std::vector<KeywordSpec> keywords = {};

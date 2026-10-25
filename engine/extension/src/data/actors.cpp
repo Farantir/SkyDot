@@ -216,6 +216,7 @@ bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t 
     base[vm::av::k_heal_rate_mult] = 100.0;
     base[vm::av::k_magicka_rate_mult] = 100.0;
     base[vm::av::k_stamina_rate_mult] = 100.0;
+    base[vm::av::k_shout_recovery_mult] = 1.0;
     base[vm::av::k_speed_mult] = static_cast<double>(stats->speed_multiplier());
     base[vm::av::k_carry_weight] = static_cast<double>(race->carry_weight());
     base[0] = ai->aggression();

@@ -94,4 +94,26 @@ void bind_spell_natives(Vm& vm, const wfb::World& world, MagicApi& api) {
     });
 }
 
+void bind_shout_natives(Vm& vm, const wfb::World& world) {
+    const auto nth = [&world](NativeCall& c) -> const wfb::ShoutWord* {
+        const auto* s = lookup(world.shouts(), c.self.form());
+        const auto index = static_cast<std::size_t>(std::max(0, arg(c, 0).i()));
+        return s != nullptr && s->words() != nullptr && index < s->words()->size()
+                   ? s->words()->Get(static_cast<flatbuffers::uoffset_t>(index))
+                   : nullptr;
+    };
+    vm.bind("Shout", "GetNthWordOfPower", [nth](NativeCall& c) {
+        const auto* w = nth(c);
+        return done(c.vm.object(w != nullptr ? w->word() : 0, "WordOfPower"));
+    });
+    vm.bind("Shout", "GetNthSpell", [nth](NativeCall& c) {
+        const auto* w = nth(c);
+        return done(c.vm.object(w != nullptr ? w->spell() : 0, "Spell"));
+    });
+    vm.bind("Shout", "GetNthRecoveryTime", [nth](NativeCall& c) {
+        const auto* w = nth(c);
+        return done(Value::floating(w != nullptr ? w->recovery() : 0.0F));
+    });
+}
+
 } // namespace skydot::vm

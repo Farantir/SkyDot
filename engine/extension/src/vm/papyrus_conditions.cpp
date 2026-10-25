@@ -392,6 +392,10 @@ bool PapyrusConditionWorld::in_dialogue_with_player(std::uint32_t ref) const {
     return owner_ != nullptr && ref != 0 && owner_->dialogue_states_.speaker() == ref;
 }
 
+std::uint32_t PapyrusConditionWorld::equipped_shout(std::uint32_t ref) const {
+    return owner_ != nullptr ? owner_->voice_shout(ref) : 0;
+}
+
 // ---- the shared world, and who uses it --------------------------------------------
 
 conditions::ConditionWorld& SkydotPapyrus::condition_world() {

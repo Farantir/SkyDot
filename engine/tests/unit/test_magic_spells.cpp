@@ -211,7 +211,7 @@ TEST_CASE("MAGC carries effects, spells, hands, cooldowns", "[magic][spells][sav
     rig.book.note_used(k_player, k_power, 7.5);
     const magic::EffectInput in{k_fortify, 40.0F, 0, 60, -1};
     rig.effects.apply(k_player, k_player, {magic::SourceKind::potion, 0x3EADE, 0}, std::span(&in, 1));
-    const auto bytes = magic::write_magc(rig.effects, rig.book);
+    const auto bytes = magic::write_magc(rig.effects, rig.book, magic::ShoutBook(*rig.world));
 
     magic::MagcParts parts;
     REQUIRE(magic::read_magc(skydot::save::ByteReader(bytes), parts));
