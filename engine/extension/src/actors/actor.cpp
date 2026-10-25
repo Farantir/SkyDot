@@ -134,6 +134,7 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("clear_look_target"), &SkydotActor::clear_look_target);
     ClassDB::bind_method(D_METHOD("has_look_target"), &SkydotActor::has_look_target);
     ClassDB::bind_method(D_METHOD("get_playing"), &SkydotActor::get_playing);
+    ADD_SIGNAL(godot::MethodInfo("animation_event", PropertyInfo(Variant::STRING, "event")));
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
 }
@@ -418,6 +419,65 @@ void SkydotActor::_process(double delta) {
         update_lod();
     }
     animate_lod(delta);
+    scan_events();
+}
+
+void SkydotActor::scan_events() {
+    godot::AnimationPlayer* anim = player();
+    if (anim == nullptr) {
+        return;
+    }
+    const godot::String name = anim->get_assigned_animation();
+    const godot::Ref<godot::Animation> clip = name.is_empty() ? godot::Ref<godot::Animation>()
+                                                              : anim->get_animation(name);
+    if (clip.is_null()) {
+        scan_clip_ = "";
+        return;
+    }
+    // The clip's keys: its markers, "#n" (made unique when the clip was built) cut off.
+    EventKeys& cache = event_keys_[clip->get_instance_id()];
+    const godot::PackedStringArray names = clip->get_marker_names();
+    if (cache.markers != names.size()) {
+        cache.markers = static_cast<std::int32_t>(names.size());
+        cache.keys.clear();
+        for (const godot::String& marker : names) {
+            godot::String text = marker;
+            const std::int64_t hash = text.rfind("#");
+            if (hash > 0 && text.substr(static_cast<std::int32_t>(hash + 1)).is_valid_int()) {
+                text = text.substr(0, static_cast<std::int32_t>(hash));
+            }
+            cache.keys.push_back({static_cast<double>(clip->get_marker_time(marker)), text});
+        }
+        std::stable_sort(cache.keys.begin(), cache.keys.end(),
+                         [](const EventKey& a, const EventKey& b) { return a.time < b.time; });
+    }
+    const double pos = static_cast<double>(anim->get_current_animation_position());
+    const double last = name == scan_clip_ ? scan_pos_ : -1.0;
+    scan_clip_ = name;
+    scan_pos_ = pos;
+    if (cache.keys.empty()) {
+        return;
+    }
+    // Behind where it was: the clip restarted, or looped round. A loop first runs out to the end.
+    const bool wrapped = pos < last;
+    const bool loops = clip->get_loop_mode() != godot::Animation::LOOP_NONE;
+    std::vector<godot::String> raised;
+    if (wrapped && loops) {
+        for (const EventKey& key : cache.keys) {
+            if (key.time > last) {
+                raised.push_back(key.text);
+            }
+        }
+    }
+    const double from = wrapped ? -1.0 : last;
+    for (const EventKey& key : cache.keys) {
+        if (key.time > from && key.time <= pos) {
+            raised.push_back(key.text);
+        }
+    }
+    for (const godot::String& text : raised) {
+        emit_signal("animation_event", text);
+    }
 }
 
 godot::String SkydotActor::get_state() const {

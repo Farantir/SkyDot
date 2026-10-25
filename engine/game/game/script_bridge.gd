@@ -61,6 +61,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.ref_moved.connect(_on_ref_moved)
 	_papyrus.play_animation.connect(_on_play_animation)
+	_papyrus.animation_events_wanted.connect(_on_animation_events_wanted)
 	_papyrus.havok_impulse.connect(_on_havok_impulse)
 	_papyrus.motion_type_changed.connect(_on_motion_type)
 	_papyrus.activation_outcome.connect(_on_activation_outcome)
@@ -322,6 +323,13 @@ func _play_event(node: Node, ref: int, event: String) -> bool:
 	return true
 
 
+## A script registered for animation events of `ref` (RegisterForAnimationEvent).
+func _on_animation_events_wanted(ref: int) -> void:
+	var node := find_ref_node(ref)
+	if node != null:
+		_connect_notifies(node, ref)
+
+
 func _connect_notifies(node: Node, ref: int) -> void:
 	if node.has_meta("skydot_notifies"):
 		return
@@ -335,6 +343,10 @@ func _connect_notifies(node: Node, ref: int) -> void:
 	var player := node.find_child("SkydotBehavior", true, false)
 	if player != null:
 		player.event_raised.connect(func(name: String) -> void:
+			_papyrus.notify_animation_event(ref, name))
+	# An actor's clips raise their annotations (FootLeft, HitFrame, SoundPlay.*) as they play.
+	if node is SkydotActor:
+		node.animation_event.connect(func(name: String) -> void:
 			_papyrus.notify_animation_event(ref, name))
 
 

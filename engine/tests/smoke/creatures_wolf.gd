@@ -16,6 +16,7 @@ var _camera: Camera3D
 var _feet := Vector3.ZERO
 var _hits: Array[Dictionary] = []
 var _clips: Array[Array] = []
+var _events: Array[String] = []
 
 
 class FakePlayer:
@@ -105,6 +106,7 @@ func _run(pack_dir: String) -> void:
 	if node == null:
 		quit(1)
 		return
+	node.animation_event.connect(func(event: String) -> void: _events.append(event))
 	# Stand within its aggro radius, on the ground.
 	# A spot 5 m off with a clear line from the wolf's eyes to the player's (trees and rocks stand about).
 	var space := node.get_world_3d().direct_space_state
@@ -125,6 +127,15 @@ func _run(pack_dir: String) -> void:
 	expect(hit_time >= 0.0, "the wolf bites the player")
 	expect(node.global_position.distance_to(home) > 0.5, "it moved: %.2f m" % node.global_position.distance_to(home))
 	expect(_clips.any(func(c: Array) -> bool: return String(c[1]).to_lower().contains("attack")), "with an attack clip: %s" % [_clips])
+	# Its clips' annotations arrive as events while they play (the project's HitFrame in the bite).
+	await _frames(40)  # the hit lands a moment before the clip passes its HitFrame
+	var seen := {}
+	for event in _events:
+		seen[event] = true
+	print("wolf: animation events %s" % [seen.keys()])
+	expect(seen.has("HitFrame"), "the bite raises its HitFrame: %s" % [seen.keys()])
+	# Once per pass: the clip file and its project both list the HitFrame, one event per bite.
+	expect(_events.count("HitFrame") <= _clips.size(), "HitFrame once per bite: %d for %d attacks" % [_events.count("HitFrame"), _clips.size()])
 	_session.kill_actor(WOLF)
 	await _frames(10)
 	expect(papyrus.is_actor_dead(WOLF) and _session.ai.get_combat_state(WOLF) == 0, "it dies and leaves combat")

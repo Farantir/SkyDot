@@ -211,6 +211,18 @@ public:
     void unregister_update(Instance* instance);
     /// Drop the update registrations of every instance attached to `ref`.
     void unregister_updates(std::uint32_t ref);
+    /// RegisterForAnimationEvent: `instance` wants OnAnimationEvent when
+    /// `sender`'s animation raises `event` (any case). False if it already
+    /// had that registration (it is one registration).
+    bool register_animation_event(Instance* instance, std::uint32_t sender, std::string_view event);
+    void unregister_animation_event(Instance* instance, std::uint32_t sender, std::string_view event);
+    /// Drop every animation registration whose sender or holder is `ref`.
+    void unregister_animation_events(std::uint32_t ref);
+    [[nodiscard]] bool has_animation_event(const Instance* instance, std::uint32_t sender, std::string_view event) const;
+    [[nodiscard]] std::size_t animation_registrations() const noexcept { return animation_regs_.size(); }
+    /// Start OnAnimationEvent(akSource = sender, event) on every instance
+    /// registered for it; returns the instances it reached that handle it.
+    std::vector<Instance*> send_animation_event(std::uint32_t sender, std::string_view event);
     /// The VM's random numbers; seeded, so runs repeat.
     std::uint32_t random();
 
@@ -244,6 +256,11 @@ public:
         double due = 0.0;
         double interval = 0.0;
     };
+    struct AnimationRegistration {
+        Instance* instance = nullptr;
+        std::uint32_t sender = 0;
+        std::string event; ///< Lower case.
+    };
     struct Scheduled {
         double due = 0.0;
         std::string kind;
@@ -256,6 +273,7 @@ public:
         std::vector<std::unique_ptr<Thread>> threads;
         std::unordered_map<std::uint64_t, Value> results;
         std::vector<Timer> timers;
+        std::vector<AnimationRegistration> animation_regs;
         std::vector<Scheduled> scheduled;
         Inventory inventory;
         FormListAdditions form_lists;
@@ -360,6 +378,7 @@ private:
     std::vector<std::unique_ptr<Thread>> threads_;
     std::unordered_map<std::uint64_t, Value> results_;
     std::vector<Timer> timers_;
+    std::vector<AnimationRegistration> animation_regs_;
     std::vector<Scheduled> scheduled_;
     Inventory inventory_;
     FormListAdditions form_lists_;

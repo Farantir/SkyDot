@@ -158,6 +158,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("complete_activation", "ref"), &SkydotPapyrus::complete_activation);
     godot::ClassDB::bind_method(D_METHOD("notify_animation_event", "ref", "event"),
                                 &SkydotPapyrus::notify_animation_event);
+    godot::ClassDB::bind_method(D_METHOD("get_animation_event_count"), &SkydotPapyrus::get_animation_event_count);
     godot::ClassDB::bind_method(D_METHOD("notify_sound_finished", "instance"),
                                 &SkydotPapyrus::notify_sound_finished);
     godot::ClassDB::bind_method(D_METHOD("update_actor", "actor", "position"),
@@ -269,6 +270,9 @@ void SkydotPapyrus::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("error", PropertyInfo(Variant::STRING, "text")));
     ADD_SIGNAL(godot::MethodInfo("enable_changed", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::BOOL, "enabled")));
+    // A script registered for animation events of `ref`: the host connects what the model raises to
+    // notify_animation_event (once per node).
+    ADD_SIGNAL(godot::MethodInfo("animation_events_wanted", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(godot::MethodInfo("play_animation", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::STRING, "animation")));
     ADD_SIGNAL(godot::MethodInfo("havok_impulse", PropertyInfo(Variant::INT, "ref"),
@@ -990,6 +994,7 @@ std::int64_t SkydotPapyrus::detach_cell(std::int64_t cell) {
         dispatch(ref, "OnCellDetach", {});
         dispatch(ref, "OnUnload", {});
         vm_->unregister_updates(ref);
+        vm_->unregister_animation_events(ref);
     }
     return static_cast<std::int64_t>(refs.size());
 }
@@ -1057,6 +1062,20 @@ void SkydotPapyrus::notify_animation_event(std::int64_t ref, const String& event
         complete_activation(ref);
     }
     vm_->notify("anim:" + std::to_string(static_cast<std::uint32_t>(ref)) + ":" + utf8(event));
+    // Scripts that registered for this event on this reference.
+    const auto sender = static_cast<std::uint32_t>(ref);
+    for (const auto* instance : vm_->send_animation_event(sender, utf8(event))) {
+        const auto key = instance->cls->key() + ":" + vm::to_lower(utf8(event));
+        if (animation_event_logged_.insert(key).second) {
+            std::printf("papyrus: OnAnimationEvent %s from 0x%08X reaches %s\n", utf8(event).c_str(), sender,
+                        instance->cls->name().c_str());
+        }
+        ++animation_events_delivered_;
+    }
+}
+
+std::int64_t SkydotPapyrus::get_animation_event_count() const {
+    return static_cast<std::int64_t>(animation_events_delivered_);
 }
 
 void SkydotPapyrus::notify_sound_finished(std::int64_t instance) {

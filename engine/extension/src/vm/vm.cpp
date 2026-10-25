@@ -448,6 +448,55 @@ void Vm::unregister_updates(std::uint32_t ref) {
     std::erase_if(timers_, [&](const Timer& t) { return t.instance->form == ref; });
 }
 
+bool Vm::register_animation_event(Instance* instance, std::uint32_t sender, std::string_view event) {
+    if (has_animation_event(instance, sender, event)) {
+        return false;
+    }
+    animation_regs_.push_back({instance, sender, to_lower(event)});
+    return true;
+}
+
+void Vm::unregister_animation_event(Instance* instance, std::uint32_t sender, std::string_view event) {
+    const auto key = to_lower(event);
+    std::erase_if(animation_regs_, [&](const AnimationRegistration& r) {
+        return r.instance == instance && r.sender == sender && r.event == key;
+    });
+}
+
+void Vm::unregister_animation_events(std::uint32_t ref) {
+    std::erase_if(animation_regs_,
+                  [&](const AnimationRegistration& r) { return r.sender == ref || r.instance->form == ref; });
+}
+
+bool Vm::has_animation_event(const Instance* instance, std::uint32_t sender, std::string_view event) const {
+    const auto key = to_lower(event);
+    return std::ranges::any_of(animation_regs_, [&](const AnimationRegistration& r) {
+        return r.instance == instance && r.sender == sender && r.event == key;
+    });
+}
+
+std::vector<Instance*> Vm::send_animation_event(std::uint32_t sender, std::string_view event) {
+    const auto key = to_lower(event);
+    std::vector<Instance*> listeners;
+    for (const auto& r : animation_regs_) {
+        if (r.sender == sender && r.event == key) {
+            listeners.push_back(r.instance);
+        }
+    }
+    std::vector<Instance*> reached;
+    for (auto* i : listeners) {
+        const auto* fn = find_in_chain(i->cls, i->state_key(), "onanimationevent");
+        if (fn == nullptr || fn->native) {
+            continue;
+        }
+        if (start({fn, i}, Value::object(i->form, i->cls, i),
+                  {Value::object(sender, load_class("ObjectReference")), Value::string(std::string(event))}, false) != 0) {
+            reached.push_back(i);
+        }
+    }
+    return reached;
+}
+
 std::uint32_t Vm::random() {
     // splitmix64: small, seeded, and its whole state saves as one number.
     rng_ += 0x9E3779B97F4A7C15ULL;
@@ -518,6 +567,7 @@ void Vm::detach(std::uint32_t ref) {
         instance->detached = true;
         const Instance* gone = instance.get();
         std::erase_if(timers_, [&](const Timer& t) { return t.instance == gone; });
+        std::erase_if(animation_regs_, [&](const AnimationRegistration& r) { return r.instance == gone; });
         for (auto& t : threads_) {
             if (t->done) {
                 continue;
@@ -546,6 +596,7 @@ void Vm::clear() {
     threads_.clear();
     results_.clear();
     timers_.clear();
+    animation_regs_.clear();
     instances_.clear();
 }
 

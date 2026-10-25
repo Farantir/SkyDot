@@ -178,6 +178,10 @@ private:
     /// the asset cache (built on its workers when requested ahead); null if
     /// it does not build.
     godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path) const;
+    /// `actor_clip` with the text keys the behaviour project lists for the file (HitFrame,
+    /// SoundPlay.*: the clip file itself may lack them) added as markers, once.
+    godot::Ref<godot::Animation> actor_clip(const std::string& file, const std::string& skeleton_path,
+                                            const Locomotion& project) const;
     /// What place_actor needs of an actor: a placed ACHR's fields (at its moved place if it has
     /// one) or a runtime reference's.
     struct ActorSpec {

@@ -1121,7 +1121,7 @@ tagged sections (FourCC, `u32` section version, `u64` length, bytes) and a
 CRC-32 trailer. Each state class writes and reads its own section with its
 own version: `HEAD` (engine version, the pack's world hash and load order;
 another pack is refused), `CLCK`, `VMST` (the VM core), `RFST`, `PLCD`,
-`DEST`, `INVT`, `ANIM`, `FLST`, `QUST`, `PAPY` (what the binding tracks:
+`DEST`, `INVT`, `ANIM`, `AEVT` (animation event registrations), `FLST`, `QUST`, `PAPY` (what the binding tracks:
 attached references, trigger occupants, ID counters) and `PLYR`, which
 `SaveService` writes from GDScript. Unknown tags are skipped; a newer section
 version is refused. There is no compatibility promise before 1.0: an older

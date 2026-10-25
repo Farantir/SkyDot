@@ -56,7 +56,10 @@ ScriptSpec saver(bool with_step = true, bool extra_local = false) {
     auto on_update = method("OnUpdate");
     note(on_update, "tick");
 
-    std::vector<FunctionSpec> functions{run, on_update};
+    auto on_animation = method("OnAnimationEvent", {{"akSource", "Int"}, {"asEventName", "String"}});
+    note(on_animation, "anim");
+
+    std::vector<FunctionSpec> functions{run, on_update, on_animation};
     if (with_step) {
         functions.push_back(step);
     }
@@ -784,4 +787,53 @@ TEST_CASE("a script can detach its own reference while it runs", "[vm][detach]")
     CHECK(a.vm().thread_count() == 0);
     CHECK(a.rig.notes.empty()); // the thread stopped where it was
     CHECK(a.vm().errors() == 0);
+}
+
+TEST_CASE("animation event registrations: any case, one per script, dropped with the instance, saved",
+          "[vm][save][animation]") {
+    SaverRig a;
+    auto& vm = a.vm();
+    CHECK(vm.register_animation_event(a.instance, 0x77, "FootLeft"));
+    // The same registration again, in another case, is the same registration.
+    CHECK_FALSE(vm.register_animation_event(a.instance, 0x77, "footleft"));
+    CHECK(vm.animation_registrations() == 1);
+    CHECK(vm.register_animation_event(a.instance, 0x78, "FootLeft"));
+
+    // Only the sender and the event it registered for; the event name in any case.
+    CHECK(vm.send_animation_event(0x99, "FootLeft").empty());
+    CHECK(vm.send_animation_event(0x77, "FootRight").empty());
+    CHECK(vm.send_animation_event(0x77, "FOOTLEFT") == std::vector<skydot::vm::Instance*>{a.instance});
+    vm.update(0.0);
+    CHECK(a.rig.notes == std::vector<std::string>{"anim"});
+
+    // Registrations are saved and loaded.
+    const auto bytes = vm.save();
+    SaverRig b(saver(), false);
+    std::string error;
+    REQUIRE(b.vm().load(bytes, error));
+    b.instance = b.vm().instance(0x10, "saver");
+    CHECK(b.vm().animation_registrations() == 2);
+    CHECK(b.vm().has_animation_event(b.instance, 0x78, "footleft"));
+    CHECK(b.vm().save() == bytes);
+    b.rig.notes.clear();
+    CHECK(b.vm().send_animation_event(0x77, "footleft").size() == 1);
+    b.vm().update(0.0);
+    CHECK(b.rig.notes == std::vector<std::string>{"anim"});
+
+    // A save from before the section (none) loads with no registrations.
+    auto sections = split(bytes);
+    std::erase_if(sections, [](const auto& s) { return std::get<0>(s) == "AEVT"; });
+    SaverRig c(saver(), false);
+    REQUIRE(c.vm().load(build(sections), error));
+    CHECK(c.vm().animation_registrations() == 0);
+
+    // Unregistering, and dropping by sender or by holder.
+    vm.unregister_animation_event(a.instance, 0x77, "FOOTLEFT");
+    CHECK(vm.animation_registrations() == 1);
+    vm.register_animation_event(a.instance, 0x79, "x");
+    vm.unregister_animation_events(0x79);
+    CHECK(vm.animation_registrations() == 1);
+    // Forgetting the holder's reference takes its registrations with it.
+    vm.detach(0x10);
+    CHECK(vm.animation_registrations() == 0);
 }

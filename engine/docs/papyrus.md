@@ -30,6 +30,13 @@ other VM's code was read, so it stays GPL-3.0.
   budget (100,000 instructions per update). Events start one thread per
   attached script that handles them. Runs are deterministic, random numbers
   included (a seeded generator whose state is saved).
+- `RegisterForAnimationEvent(sender, event)` (false unless the sender's 3D is loaded) keeps one
+  registration per script, sender and event (any case); `OnAnimationEvent(akSource, asEventName)`
+  goes to the registered scripts when `notify_animation_event` gets the event: a behaviour graph's
+  event, a NIF text key, or an actor's clip annotation (`SkydotActor.animation_event`, from the
+  Animation's markers: the clip file's and the behaviour project's). Registrations go with their
+  script's reference (`Vm::detach`), are dropped when the sender's cell unloads and are saved
+  (`AEVT`). Each script class and event logs once; `get_animation_event_count` counts deliveries.
 - `RegisterForSingleUpdate`/`RegisterForUpdate` set one timer per script;
   when it is due, OnUpdate goes to that script alone.
 - Names are hashed once: a script's when it loads, an instance's state when

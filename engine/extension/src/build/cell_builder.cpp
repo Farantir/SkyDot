@@ -858,6 +858,51 @@ godot::Ref<godot::Animation> CellBuilder::actor_clip(const std::string& file,
     return assets_->clip(file, skeleton_path);
 }
 
+godot::Ref<godot::Animation> CellBuilder::actor_clip(const std::string& file, const std::string& skeleton_path,
+                                                     const Locomotion& project) const {
+    godot::Ref<godot::Animation> clip = actor_clip(file, skeleton_path);
+    if (clip.is_null()) {
+        return clip;
+    }
+    const auto lower = [](std::string text) {
+        for (char& ch : text) {
+            ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+        }
+        return text;
+    };
+    const std::string wanted = lower(file);
+    const auto add = [&](const GaitClip& gait) {
+        if (gait.file.empty() || lower(gait.file) != wanted) {
+            return;
+        }
+        for (const auto& [time, text] : gait.notes) {
+            if (text.empty()) {
+                continue;
+            }
+            // One key per text and (within a frame or so) time, whether the clip file or the project (or two clips of the
+            // project that share the file) gave it. Markers are named uniquely: "text#n".
+            const godot::String name = godot::String::utf8(text.c_str());
+            const double at = std::clamp<double>(static_cast<double>(time), 0.0, clip->get_length());
+            bool known = false;
+            godot::String unique = name;
+            for (int n = 2; clip->has_marker(unique); ++n) {
+                known = known || std::abs(static_cast<double>(clip->get_marker_time(unique)) - at) < 0.04;
+                unique = name + godot::String("#") + godot::String::num_int64(n);
+            }
+            if (!known) {
+                clip->add_marker(unique, at);
+            }
+        }
+    };
+    add(project.idle);
+    add(project.walk);
+    add(project.run);
+    for (const auto& [name, gait] : project.clips) {
+        add(gait);
+    }
+    return clip;
+}
+
 godot::Node3D* CellBuilder::build_model(const godot::String& vpath) {
     if (vpath.is_empty()) {
         return nullptr;
@@ -1001,7 +1046,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
     godot::Ref<godot::AnimationLibrary> library;
     library.instantiate();
     if (!clips.idle.empty()) {
-        if (const auto clip = actor_clip(clips.idle, plan.skeleton); clip.is_valid()) {
+        if (const auto clip = actor_clip(clips.idle, plan.skeleton, loco); clip.is_valid()) {
             library->add_animation("idle", clip);
         }
     }
@@ -1010,13 +1055,13 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
     double walk_speed = 0.0;
     double run_speed = 0.0;
     if (!clips.walk.empty()) {
-        if (const auto clip = actor_clip(clips.walk, plan.skeleton); clip.is_valid()) {
+        if (const auto clip = actor_clip(clips.walk, plan.skeleton, loco); clip.is_valid()) {
             library->add_animation("walk", clip);
             walk_speed = static_cast<double>(loco.walk.speed) * stride;
         }
     }
     if (!clips.run.empty()) {
-        if (const auto clip = actor_clip(clips.run, plan.skeleton); clip.is_valid()) {
+        if (const auto clip = actor_clip(clips.run, plan.skeleton, loco); clip.is_valid()) {
             library->add_animation("run", clip);
             run_speed = static_cast<double>(loco.run.speed) * stride;
         }
@@ -1033,22 +1078,23 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
     node->set_clip_speeds(walk_speed, run_speed);
     // Combat stances and actions load their clips on demand from the same cache.
     node->set_clip_source(
-        [this, skeleton_path = plan.skeleton](const std::string& vpath) {
-            return assets_ != nullptr && assets_->has(vpath) ? actor_clip(vpath, skeleton_path)
-                                                              : godot::Ref<godot::Animation>();
+        [this, behaviour = plan.behaviour, skeleton_path = plan.skeleton](const std::string& vpath) {
+            return assets_ != nullptr && assets_->has(vpath)
+                       ? actor_clip(vpath, skeleton_path, locomotion_of(behaviour))
+                       : godot::Ref<godot::Animation>();
         },
         [this, behaviour = plan.behaviour, skeleton_path = plan.skeleton, stride](const std::string& prefix) {
             const Stance stance = find_stance(locomotion_of(behaviour), prefix);
             StanceClips out;
             if (!stance.idle.empty()) {
-                out.idle = actor_clip(stance.idle.file, skeleton_path);
+                out.idle = actor_clip(stance.idle.file, skeleton_path, locomotion_of(behaviour));
             }
             if (!stance.walk.empty()) {
-                out.walk = actor_clip(stance.walk.file, skeleton_path);
+                out.walk = actor_clip(stance.walk.file, skeleton_path, locomotion_of(behaviour));
                 out.walk_speed = static_cast<double>(stance.walk.speed) * stride;
             }
             if (!stance.run.empty()) {
-                out.run = actor_clip(stance.run.file, skeleton_path);
+                out.run = actor_clip(stance.run.file, skeleton_path, locomotion_of(behaviour));
                 out.run_speed = static_cast<double>(stance.run.speed) * stride;
             }
             return out;

@@ -107,6 +107,9 @@ public:
     void set_look_target(const godot::Vector3& point);
     void clear_look_target() { look_active_ = false; }
     bool has_look_target() const { return look_active_; }
+    /// Annotations of the clips (text keys of the clip file and of its behaviour project, kept as the
+    /// Animation's markers) raise `animation_event(event)` as the playing clip passes them: once per
+    /// pass, again every cycle of a loop, and none for a clip that was replaced or restarted.
     /// The name of the clip playing now ("idle", "stance_walk", an action's...), for tests.
     godot::String get_playing() const { return playing_; }
 
@@ -143,6 +146,8 @@ private:
     godot::String gait_clip(const godot::String& base) const;
     void steer(double delta);
     void animate();
+    /// Raise `animation_event` for the annotations the current clip passed since the last scan.
+    void scan_events();
     void update_lod();
     void animate_lod(double delta);
     godot::AnimationPlayer* player() const;
@@ -194,6 +199,17 @@ private:
     double action_left_{0.0};
     bool look_active_{false};
     godot::Vector3 look_target_;
+    struct EventKey {
+        double time{};
+        godot::String text;
+    };
+    struct EventKeys {
+        std::int32_t markers{-1}; ///< How many markers the list was made from.
+        std::vector<EventKey> keys;
+    };
+    std::unordered_map<std::uint64_t, EventKeys> event_keys_; ///< By Animation instance id.
+    godot::String scan_clip_; ///< The clip scan_events saw last.
+    double scan_pos_{-1.0};   ///< Where it was in it.
 };
 
 } // namespace skydot

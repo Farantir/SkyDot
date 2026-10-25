@@ -16,6 +16,8 @@
 //         behaviour graph's snapshot; opaque to the VM)
 //   FLST  u32 list count; per list: list form, u32 count, then the forms
 //         added to it, in order
+//   AEVT  u32 count; per RegisterForAnimationEvent: instance, sender ref, event
+//         (an optional section: saves from before it have none)
 //   PLCD  u32 next id, u32 count; per kept reference: id, base, cell, f64 x3
 //         position, f64 x3 rotation, f64 scale
 //   DEST  u32 count; per reference: ref, f64 damage, i32 stage (as u32), u8
@@ -270,6 +272,15 @@ void Vm::save_to(save::SaveWriter& out) const {
         destruction.u8(state.destroyed ? 1 : 0);
     }
     out.add("DEST", k_section_version, destruction.out);
+
+    ByteWriter animation_events;
+    animation_events.u32(static_cast<std::uint32_t>(animation_regs_.size()));
+    for (const auto& r : animation_regs_) {
+        animation_events.u32(ctx.instance_index.at(r.instance));
+        animation_events.u32(r.sender);
+        animation_events.text(r.event);
+    }
+    out.add("AEVT", k_section_version, animation_events.out);
 }
 
 std::vector<std::uint8_t> Vm::save() const {
@@ -294,6 +305,7 @@ void Vm::commit(Snapshot&& s) {
     threads_ = std::move(s.threads);
     results_ = std::move(s.results);
     timers_ = std::move(s.timers);
+    animation_regs_ = std::move(s.animation_regs);
     scheduled_ = std::move(s.scheduled);
     inventory_ = std::move(s.inventory);
     animation_states_ = std::move(s.animation_states);
@@ -700,6 +712,29 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     }
     if (!r.at_end()) {
         return fail("bytes after the end of the DEST section");
+    }
+
+    // Saves from before animation events have no AEVT section.
+    if (file.find("AEVT") != nullptr) {
+        if (!open_section(file, "AEVT", r, error)) {
+            return false;
+        }
+        std::uint32_t regs = 0;
+        if (!r.count(regs, 12)) {
+            return fail("truncated AEVT section");
+        }
+        for (std::uint32_t n = 0; n < regs; ++n) {
+            AnimationRegistration reg;
+            std::uint32_t instance = 0;
+            if (!r.u32(instance) || !r.u32(reg.sender) || !r.text(reg.event) || instance >= index.size()) {
+                return fail("truncated AEVT section");
+            }
+            reg.instance = index[instance];
+            out.animation_regs.push_back(std::move(reg));
+        }
+        if (!r.at_end()) {
+            return fail("bytes after the end of the AEVT section");
+        }
     }
     return true;
 }

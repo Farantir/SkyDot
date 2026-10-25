@@ -383,7 +383,12 @@ public:
     std::int64_t send_event(std::int64_t ref, const godot::String& event, const godot::Array& args);
     /// An animation event (a text key or a finished clip) on `ref`, for
     /// PlayAnimationAndWait.
+    /// Also sends OnAnimationEvent to the scripts registered for it
+    /// (RegisterForAnimationEvent). The first delivery per script class and
+    /// event is logged; every delivery is counted.
     void notify_animation_event(std::int64_t ref, const godot::String& event);
+    /// How many OnAnimationEvent handlers notify_animation_event has started.
+    std::int64_t get_animation_event_count() const;
     /// A sound instance (play_sound's third argument) has ended, for
     /// Sound.PlayAndWait.
     void notify_sound_finished(std::int64_t instance);
@@ -708,6 +713,8 @@ private:
     /// detach_cell / detach_all). `attached_` is separate: it only says that
     /// a reference's scripts exist and got OnInit.
     std::set<std::uint32_t> attached_cells_;
+    std::set<std::string> animation_event_logged_;
+    std::int64_t animation_events_delivered_ = 0;
     /// The scripted references of loaded cells: reference -> cell.
     std::map<std::uint32_t, std::uint32_t> loaded_;
     std::set<std::uint32_t> volume_loaded_; ///< trigger volumes (no node) that got their load events
