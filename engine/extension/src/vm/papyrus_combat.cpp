@@ -185,10 +185,7 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
              {aggressor, weapon != 0 ? vm_->object(weapon, "Form") : none, none, Value::boolean(power),
               Value::boolean(sneak), Value::boolean(bash), Value::boolean(blocked)});
     if (killed) {
-        flush_deaths();
-        const Value killer = attacker != 0 ? vm_->object(attacker, "Actor") : none;
-        dispatch(target, "OnDying", {killer});
-        dispatch(target, "OnDeath", {killer});
+        flush_deaths(); // announces the death: actor_died, OnDying and OnDeath
     }
 
     out["attacker"] = attacker_id;
