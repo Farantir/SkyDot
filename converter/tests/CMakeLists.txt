@@ -2,6 +2,7 @@
 add_subdirectory(unit)
 add_subdirectory(corpus)
 add_subdirectory(testpack)
+add_subdirectory(sse)
 
 # Always added. BETHCONV_BUILD_FUZZERS only controls the libFuzzer binaries;
 # the replay drivers build everywhere so ctest runs the targets without clang.
