@@ -12,6 +12,7 @@
 #include "render/flicker.hpp"
 #include "render/shadow_budget.hpp"
 #include "nav/navmesh.hpp"
+#include "build/ref_nodes.hpp"
 #include "build/refs.hpp"
 
 #include "skydot_formats/flags.hpp"
@@ -1004,6 +1005,12 @@ godot::Node3D* CellBuilder::build_placed_actor(std::uint32_t ref, std::uint32_t 
 void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats) {
     if (actor.disabled) {
         ++stats.disabled;
+        return;
+    }
+    // A flying actor the streamer rescued from its dropped cell is alive under another cell: the
+    // rebuilt cell does not build it a second time.
+    if (const godot::Node* live = ref_nodes::find(actor.ref);
+        live != nullptr && !live->is_queued_for_deletion() && live->has_meta("skydot_rescued")) {
         return;
     }
     const auto plan = plan_for(*world_fb(), actor.base, actor.ref, assets_, worn_);

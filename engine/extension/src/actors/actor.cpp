@@ -151,6 +151,7 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_flight_bank"), &SkydotActor::get_flight_bank);
     ClassDB::bind_method(D_METHOD("get_flight_speed"), &SkydotActor::get_flight_speed);
     ClassDB::bind_method(D_METHOD("get_flight_pitch"), &SkydotActor::get_flight_pitch);
+    ClassDB::bind_method(D_METHOD("get_flight_mode_time"), &SkydotActor::get_flight_mode_time);
     ClassDB::bind_method(D_METHOD("set_flight_hurt", "hurt"), &SkydotActor::set_flight_hurt);
     ClassDB::bind_method(D_METHOD("get_flight_hurt"), &SkydotActor::get_flight_hurt);
     ADD_SIGNAL(godot::MethodInfo("flight_took_off"));
@@ -879,6 +880,9 @@ void SkydotActor::_physics_process(double engine_delta) {
         }
     }
     if (get_hold()) {
+        if (flight_enabled_ && !air_checked_ && start_if_placed_high(delta)) {
+            return;
+        }
         if (find_ground(delta)) {
             set_hold(false);
         }
@@ -952,6 +956,31 @@ void SkydotActor::fly_command(const godot::String& kind, const godot::Vector3& p
     c.height = height;
     c.dive = dive;
     fly(c);
+}
+
+bool SkydotActor::start_if_placed_high(double delta) {
+    air_poll_ -= delta;
+    flight_clock_ += delta; // the ground cache ages while held, too
+    if (air_poll_ > 0.0 || !is_inside_tree()) {
+        return false;
+    }
+    air_poll_ = k_ground_poll;
+    const Vector3 at = godot_to_skyrim(get_global_position());
+    flight_body_.pos = {static_cast<double>(at.x), static_cast<double>(at.y), static_cast<double>(at.z)};
+    const double ground = flight_ground(flight_body_.pos.x, flight_body_.pos.y);
+    if (std::isnan(ground)) {
+        return false;
+    }
+    air_checked_ = true;
+    if (flight_body_.pos.z - ground <= flight_params_.placed_in_air) {
+        return false;
+    }
+    // Placed in the air (MQ104's dragon): it flies from there; the AI's orders (patrol, orbit) follow.
+    flight::Command c;
+    c.kind = flight::CommandKind::orbit;
+    c.point = flight_body_.pos;
+    fly(c);
+    return flight_active_;
 }
 
 void SkydotActor::fly(const flight::Command& command) {

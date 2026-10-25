@@ -158,6 +158,7 @@ public:
     double get_flight_bank() const { return flight_body_.bank; }
     double get_flight_speed() const { return flight_body_.speed; }
     double get_flight_pitch() const { return flight_body_.pitch; }
+    double get_flight_mode_time() const { return flight_body_.mode_time; }
     const flight::Body& flight_body() const { return flight_body_; }
     const flight::Params& flight_params() const { return flight_params_; }
     /// The mover has the body (from `fly` until it lands), also in the first frame of a takeoff.
@@ -188,6 +189,9 @@ private:
     /// Play `clip` (a virtual path), looped or once; the shared part of play_action.
     double play_clip(const godot::String& clip, double speed, bool loop);
     void flight_tick(double delta);
+    /// A held flyer whose placement is far above the ground starts in flight; false while the
+    /// ground under it is not known yet.
+    bool start_if_placed_high(double delta);
     void animate_flight();
     void flight_pose();
     /// Raise `animation_event` for the annotations the current clip passed since the last scan.
@@ -256,6 +260,8 @@ private:
     std::unordered_map<std::uint64_t, EventKeys> event_keys_; ///< By Animation instance id.
     godot::String scan_clip_; ///< The clip scan_events saw last.
     double scan_pos_{-1.0};   ///< Where it was in it.
+    double air_poll_{0.0};      ///< Seconds before the next look for a flyer placed in the air.
+    bool air_checked_{false};   ///< A flyer's placement was compared with the ground under it.
     bool flight_enabled_{false};
     bool flight_active_{false}; ///< The mover has the body (set by fly, cleared on landing).
     bool flight_hurt_{false};
