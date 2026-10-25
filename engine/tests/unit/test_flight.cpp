@@ -233,6 +233,48 @@ TEST_CASE("flight: a pass flies over the target at pass height, then climbs") {
     CHECK(b.pos.z > z_over + 300);
 }
 
+TEST_CASE("flight: from a standstill beside the centre it settles on the orbit circle within 10 s") {
+    const Params p;
+    Body b = airborne_body(1750, 0, 600, 0, 0);
+    const Command c = orbit_at({0, 0, 0});
+    double widest = 0;
+    run(b, c, p, k_flat, 10);
+    for (int i = 0; i < 400; ++i) {
+        run(b, c, p, k_flat, 0.05);
+        widest = std::max(widest, std::fabs(distance_xy(b.pos, c.point) - p.orbit_radius));
+    }
+    CHECK(widest < 0.1 * p.orbit_radius);
+}
+
+TEST_CASE("flight: a pass from an orbit's tangent flies over the target") {
+    const Params p;
+    for (double th : {0.0, 1.0, 2.5, 4.0}) {
+        Body b = airborne_body(2500 * std::sin(th), 2500 * std::cos(th), 1600, th + 1.5708, 2000);
+        b.yaw_rate = 0.8;
+        Command c;
+        c.kind = CommandKind::pass;
+        c.point = {0, 0, 100};
+        double closest = 1e9;
+        for (int i = 0; i < 1200 && b.pass_phase < 2; ++i) {
+            step(b, c, p, k_flat, 0.05);
+            if (b.pass_phase == 0) closest = std::min(closest, distance_xy(b.pos, c.point));
+        }
+        CHECK(b.pass_phase == 2);
+        CHECK(closest < 300);
+    }
+}
+
+TEST_CASE("flight: a hover that starts beside the target flies out to the hover distance") {
+    const Params p;
+    Body b = airborne_body(450, 0, 1000, 0, 0);
+    Command c;
+    c.kind = CommandKind::hover;
+    c.point = {0, 0, 0};
+    run(b, c, p, k_flat, 40);
+    CHECK(std::fabs(distance_xy(b.pos, c.point) - p.hover_distance) < 0.15 * p.hover_distance);
+    CHECK(b.speed < 150);
+}
+
 TEST_CASE("flight: a dive bomb passes lower") {
     const Params p;
     Body b = airborne_body(0, 0, 1600, 0, 2000);
@@ -502,10 +544,10 @@ TEST_CASE("flight tactics: the whole combat cycle with scripted dice") {
     REQUIRE(r.until(Maneuver::takeoff, 25));
     REQUIRE(r.until(Maneuver::orbit, 10));
     CHECK(r.b.mode != Mode::grounded);
-    REQUIRE(r.until(Maneuver::hover, 14));
+    REQUIRE(r.until(Maneuver::hover, 30));
     REQUIRE(r.until(Maneuver::orbit, 30));
     CHECK(r.t.attacks == 1);
-    REQUIRE(r.until(Maneuver::pass, 20));
+    REQUIRE(r.until(Maneuver::pass, 30));
     CHECK_FALSE(r.t.dive);
     REQUIRE(r.until(Maneuver::land, 40));
     CHECK(r.t.attacks == 2);
@@ -611,4 +653,16 @@ TEST_CASE("flight: the Godot facing is the Skyrim heading turned the other way")
     const double f = facing_from_heading(h);
     CHECK(-std::sin(f) == Catch::Approx(std::sin(h)));
     CHECK(-std::cos(f) == Catch::Approx(-std::cos(h)));
+}
+
+TEST_CASE("flight tactics: an injured dragon stays down until it has healed well past the threshold") {
+    Rig r;
+    r.in.health_fraction = 0.3;
+    r.seconds(25);
+    CHECK(r.b.mode == Mode::grounded); // injured: it does not take off
+    r.in.health_fraction = 0.4;       // regenerated a little, still above the threshold only
+    r.seconds(25);
+    CHECK(r.b.mode == Mode::grounded);
+    r.in.health_fraction = 0.7;
+    REQUIRE(r.until(Maneuver::takeoff, 25));
 }

@@ -69,6 +69,7 @@ struct Params {
     double aim_tolerance = 0.7287;      ///< data: race aim angle tolerance 41.75 degrees, rad.
     // Altitude.
     double cruise_height = 1500;  ///< placeholder: above the ground under it.
+    double placed_in_air = 1000;  ///< placeholder: a flyer placed this far over the ground starts in flight.
     double min_clearance = 400;   ///< max(race flight radius, 400) above the highest surface.
     double max_climb = 800;       ///< placeholder, u/s.
     double max_descent = 700;     ///< placeholder, u/s.
@@ -82,11 +83,16 @@ struct Params {
     // Orbit, hover, pass.
     double orbit_radius = 2500;
     double orbit_height = 1500;
+    double orbit_entry_speed = 0.3;   ///< placeholder: share of the cruise speed kept while the heading is 90 degrees off.
+    double orbit_approach_angle = 1.2566; ///< placeholder: rad; the heading turns this far off the tangent, in or out, when far from the circle.
+    double orbit_approach_band = 1.0;     ///< placeholder: share of the radius off the circle that gives the full angle.
     double hover_distance = 1800;
+    double hover_retreat_ratio = 0.8; ///< placeholder: closer than this share of the hover distance, it flies away first.
     double hover_height = 900;
     double pass_height = 700;
     double dive_height = 400;
-    double pass_start_distance = 3000;
+    double pass_arm_ahead = 500;      ///< placeholder: once the target is this far ahead, passing over it counts.
+    double pass_close = 150;          ///< placeholder: within this of the target the pass is over it.
     double pass_overshoot = 2500;
     // Landing and takeoff.
     double landing_rings[2] = {1200, 2000};
@@ -103,7 +109,10 @@ struct Params {
     // Tactics.
     double ground_seconds_scale = 20; ///< ground_attack_time * this = seconds on the ground.
     double orbit_seconds = 8;         ///< one lap.
+    double orbit_band = 0.3;          ///< placeholder: the lap counts while within this share of the radius.
+    double orbit_settle_limit = 20;   ///< placeholder: s; the lap counts anyway after this long in orbit.
     int min_air_attacks = 2;
+    double injured_recovery = 0.25;   ///< placeholder: an injured dragon flies again at injured health + this (it regenerates ~1% a second).
     double breath_range = 2000;       ///< a pass breathes within this of the target.
 
     /// The defaults with the data of a race and its flying movement type.
@@ -128,6 +137,7 @@ struct Body {
     Vec3 anchor;            ///< takeoff: where it left the ground.
     double pass_heading = 0; ///< the line of the current pass.
     int pass_phase = 0;      ///< 0 inbound, 1 passed over, 2 flown on and done.
+    bool pass_armed = false; ///< inbound and the target was ahead: passing over it ends the inbound phase.
     double last_ground = 0;
 };
 
@@ -177,6 +187,7 @@ struct Tactics {
     std::optional<Vec3> forced_spot; ///< the forced landing marker, kept for later landings.
     bool forced_pending = false;     ///< a newly set marker not yet answered.
     bool forced_seen = false;
+    bool injured = false;            ///< below the race's injured health; stays until it has healed on.
 };
 
 /// The CSFL values of the combat style.

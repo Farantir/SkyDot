@@ -141,8 +141,9 @@ void apply_command(Body& b, const Command& c, const Params& p) {
     case CommandKind::pass:
         if (m != Mode::pass) {
             set_mode(b, Mode::pass);
-            b.pass_heading = distance_xy(b.pos, c.point) > 1 ? heading_to(b.pos, c.point) : b.yaw;
+            b.pass_heading = b.yaw;
             b.pass_phase = 0;
+            b.pass_armed = false;
         }
         break;
     case CommandKind::land:
@@ -200,10 +201,14 @@ void substep(Body& b, const Command& c, const Params& p, const Ground& g, double
         const double gc = ground_at(b, g, c.point.x, c.point.y);
         const double r = distance_xy(b.pos, c.point);
         const double theta = r > 1 ? std::atan2(b.pos.x - c.point.x, b.pos.y - c.point.y) : b.yaw - k_pi / 2;
-        const double radial = clampd((r - radius) / radius, -1, 1);
-        const double desired = theta + k_pi / 2 + radial * 0.8 * (k_pi / 2);
+        const double radial = clampd((r - radius) / (p.orbit_approach_band * radius), -1, 1);
+        const double desired = theta + k_pi / 2 + radial * p.orbit_approach_angle;
         const double lap_rate = b.speed / std::max(r, 0.5 * radius); // the tangent turns this fast
-        fly(b, p, g, h, desired, p.max_turn_rate, p.cruise_speed, gc + height, lap_rate);
+        // Slower while the heading is far from the wanted one (the entry, a turn back): the turn
+        // radius shrinks with the speed, so the dragon closes on the circle instead of spiralling out.
+        const double err = std::fabs(wrap_pi(desired - b.yaw));
+        const double spd = p.cruise_speed * clampd(std::cos(std::min(err, k_pi / 2)) + p.orbit_entry_speed, p.orbit_entry_speed, 1);
+        fly(b, p, g, h, desired, p.max_turn_rate, spd, gc + height, lap_rate);
         break;
     }
 
@@ -218,26 +223,34 @@ void substep(Body& b, const Command& c, const Params& p, const Ground& g, double
             spd *= std::max(0.25, std::cos(std::min(std::fabs(err), k_pi / 2)));
         }
         const double rate = b.speed < 150 ? p.hover_turn_rate : p.max_turn_rate;
+        const bool moving_out = b.speed > 100 && std::fabs(wrap_pi(heading_to(b.pos, c.point) - b.yaw)) > k_pi / 2;
+        if (dist < p.hover_distance * p.hover_retreat_ratio || (moving_out && dist < p.hover_distance - 50)) {
+            // Too close (it took off beside the target): it flies away, stopping at the hover distance.
+            const double away = dist > 1 ? heading_to(c.point, b.pos) : b.yaw;
+            const double out = std::sqrt(2 * p.deceleration * 0.8 * std::max(p.hover_distance - dist, 0.0));
+            fly(b, p, g, h, away, p.max_turn_rate, std::min(p.pass_speed, std::max(out, 100.0)), gh + height);
+            break;
+        }
         fly(b, p, g, h, dist > 1 ? heading_to(b.pos, c.point) : b.yaw, rate, spd, gh + height);
         break;
     }
 
     case Mode::pass: {
         const double height = c.height > 0 ? c.height : (c.dive ? p.dive_height : p.pass_height);
-        const double dx = std::sin(b.pass_heading);
-        const double dy = std::cos(b.pass_heading);
-        const double rx = b.pos.x - c.point.x;
-        const double ry = b.pos.y - c.point.y;
-        const double s = rx * dx + ry * dy;
-        const double lead = s + 1500;
-        const double aim_x = c.point.x + dx * lead;
-        const double aim_y = c.point.y + dy * lead;
-        const double desired = std::atan2(aim_x - b.pos.x, aim_y - b.pos.y);
-        if (b.pass_phase == 0 && s >= 0) {
-            b.pass_phase = 1;
-            ev.passed_over = true;
+        const double dist = distance_xy(b.pos, c.point);
+        // Pure pursuit of the point over the target while inbound (a straight line fixed at the start
+        // cannot be joined from an orbit's tangent within the turn radius), then straight on.
+        const double ahead = (c.point.x - b.pos.x) * std::sin(b.yaw) + (c.point.y - b.pos.y) * std::cos(b.yaw);
+        if (b.pass_phase == 0) {
+            if (!b.pass_armed && ahead > p.pass_arm_ahead) b.pass_armed = true;
+            if (b.pass_armed && (ahead <= 0 || dist < p.pass_close)) {
+                b.pass_phase = 1;
+                b.pass_heading = b.yaw;
+                ev.passed_over = true;
+            }
         }
-        if (b.pass_phase == 1 && s >= p.pass_overshoot) b.pass_phase = 2;
+        if (b.pass_phase == 1 && dist >= p.pass_overshoot) b.pass_phase = 2;
+        const double desired = b.pass_phase == 0 ? (dist > 1 ? heading_to(b.pos, c.point) : b.yaw) : b.pass_heading;
         const double gt = ground_at(b, g, c.point.x, c.point.y);
         const double alt = b.pass_phase == 0 ? gt + height : std::max(gt + height, gh + p.orbit_height);
         const double spd = b.pass_phase < 2 ? p.pass_speed : p.cruise_speed;
@@ -466,6 +479,13 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
         t.forced_pending = false;
     }
 
+    // Injured: down until it has healed well past the threshold (it regenerates while it waits).
+    if (in.health_fraction < in.injured_fraction) {
+        t.injured = true;
+    } else if (in.health_fraction >= in.injured_fraction + p.injured_recovery) {
+        t.injured = false;
+    }
+
     if (!in.in_combat) {
         enter(t, b.mode == Mode::grounded ? Maneuver::ground : Maneuver::orbit);
         t.attacks = 0;
@@ -475,7 +495,7 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
 
     t.timer += dt;
     t.elapsed += dt;
-    const bool down = !in.allowed_to_fly || in.health_fraction < in.injured_fraction;
+    const bool down = !in.allowed_to_fly || t.injured;
     const bool flying = b.mode != Mode::grounded && b.mode != Mode::crashed;
 
     // A flyer unknown to the tactics (loaded in the air, or it landed by
@@ -520,6 +540,11 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
         break;
     }
     case Maneuver::orbit: {
+        // A lap counts once the circle is flown (entering it, or coming back from a pass, does not).
+        if (std::fabs(distance_xy(in.self, in.target) - p.orbit_radius) > p.orbit_band * p.orbit_radius &&
+            t.elapsed < p.orbit_settle_limit) {
+            t.timer = 0;
+        }
         if (t.timer >= p.orbit_seconds) {
             t.timer = 0;
             if (roll() < in.style.flying_attack_chance) {
