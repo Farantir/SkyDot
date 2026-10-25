@@ -72,6 +72,8 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 	_papyrus.quest_stage.connect(_on_quest_stage)
 	_papyrus.objective_changed.connect(_on_objective_changed)
 	_papyrus.effect_shader.connect(_on_effect_shader)
+	_papyrus.visual_effect.connect(_on_visual_effect)
+	_papyrus.sub_graph_animation.connect(_on_sub_graph_animation)
 	_papyrus.trigger.connect(_on_trigger)
 
 
@@ -203,6 +205,17 @@ func _on_objective_changed(quest: int, index: int, state: String, text: String) 
 
 func _on_effect_shader(shader: int, ref: int, playing: bool) -> void:
 	print("effect shader 0x%08X %s on 0x%08X (not drawn yet)" % [shader, "plays" if playing else "stops", ref])
+
+
+func _on_visual_effect(effect: int, ref: int, target: int, seconds: float, playing: bool) -> void:
+	if playing:
+		print("visual effect 0x%08X plays on 0x%08X toward 0x%08X for %.1f s (placeholder)" % [effect, ref, target, seconds])
+	else:
+		print("visual effect 0x%08X stops on 0x%08X" % [effect, ref])
+
+
+func _on_sub_graph_animation(ref: int, event_name: String) -> void:
+	print("sub graph animation '%s' on 0x%08X (placeholder: only SkinFadeOut shows)" % [event_name, ref])
 
 
 func _on_trigger(ref: int, _actor: int, entered: bool) -> void:

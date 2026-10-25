@@ -169,6 +169,8 @@ var npc_magic: NpcMagic
 var npc_shouts: NpcShouts
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
+## What visual effects and skin fades look like (placeholders).
+var visual_effects: VisualEffects
 ## What scripts place, fire and play.
 var placed: PlacedRefs
 ## The magic archetypes in the scene (lights, stagger, reanimate, bound weapons, slow time).
@@ -330,6 +332,9 @@ func _make_game_nodes() -> void:
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
 	actor_arrived.connect(corpses.on_actor_arrived)
+	visual_effects = VisualEffects.new(world, host, func() -> Vector3: return _feet + Vector3.UP * 1.2)
+	papyrus.visual_effect.connect(visual_effects.on_visual_effect)
+	papyrus.sub_graph_animation.connect(visual_effects.on_sub_graph_animation)
 	placed = PlacedRefs.new(world, papyrus, ai)
 	host.add_child(placed)
 	magic_world = MagicWorld.new(self)
@@ -659,6 +664,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	npc_shouts.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
+	visual_effects.step(delta)
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
@@ -990,6 +996,7 @@ func update_combat(delta: float) -> void:
 	npc_shouts.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
+	visual_effects.step(delta)
 
 
 ## Debug (--kill): hit `ref` with the weapon in hand until it is dead. Returns
