@@ -20,6 +20,12 @@ var _session: GameSession
 var _camera: Camera3D
 var _feet := Vector3.ZERO
 var _node: SkydotActor
+var _attacks: Array[Array] = []
+var _hits: Array[Dictionary] = []
+var _staggers: Array[Array] = []
+var _lost := 0.0
+var _shouts := 0
+var _health := 0.0
 
 
 class FakePlayer:
@@ -63,7 +69,10 @@ func expect(ok: bool, what: String) -> void:
 func _frames(count: int) -> void:
 	for i in count:
 		_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT
+		var health := _session.papyrus.get_actor_value(PLAYER, "Health")
+		_lost += maxf(_health - health, 0.0)
 		_session.papyrus.restore_actor_value(PLAYER, "Health", 100000.0)
+		_health = _session.papyrus.get_actor_value(PLAYER, "Health")
 		_session.step(STEP, _feet)
 		await physics_frame
 
@@ -87,6 +96,32 @@ func _flat(v: Vector3) -> Vector2:
 	return Vector2(v.x, v.z)
 
 
+## The player stands `bearing` degrees from the dragon's facing (positive to its right), 3 m off, and it
+## attacks him (Session.npc_attack): the clip must be `clip` (a file, or a part of its name), with a hit
+## in its strike angle, and a tail or wing blow staggers the player (`area`).
+func _staged_attack(ref: int, bearing: float, clip: String, area: bool) -> void:
+	_session.ai.hold(ref, 4.0)  # its own choices wait (the combat AI would attack again and again)
+	_node.face(0.0)
+	_node.clear_look_target()
+	var forward := Vector3(0.0, 0.0, -1.0)
+	_feet = _ground(_node.global_position + forward.rotated(Vector3.UP, -deg_to_rad(bearing)) * 3.0)
+	await _frames(20)
+	_attacks.clear()
+	_hits.clear()
+	_staggers.clear()
+	_lost = 0.0
+	var yaw := _node.rotation.y
+	expect(_session.npc_attack(ref, false, PLAYER), "the dragon attacks at bearing %.0f" % bearing)
+	await _frames(170)
+	var files: Array = _attacks.map(func(a: Array) -> String: return String(a[1]).get_file())
+	print("dragon: bearing %.0f: attack %s, hits %d, health lost %.1f, staggers %s, turned %.3f rad" % [bearing, files, _hits.size(), _lost, _staggers, absf(wrapf(_node.rotation.y - yaw, -PI, PI))])
+	expect(files.size() == 1 and String(files[0]).contains(clip), "bearing %.0f picks %s: %s" % [bearing, clip, files])
+	expect(absf(wrapf(_node.rotation.y - yaw, -PI, PI)) < 0.05, "it does not turn to him first: %.3f rad" % absf(wrapf(_node.rotation.y - yaw, -PI, PI)))
+	expect(_hits.size() == 1 and _lost > 10.0, "and hits him: %d hits, %.1f health" % [_hits.size(), _lost])
+	if area:
+		expect(_staggers.any(func(s: Array) -> bool: return s[1] == PLAYER), "the blow staggers the player: %s" % [_staggers])
+
+
 func _run(pack_dir: String) -> void:
 	await process_frame
 	var config := GameConfig.new()
@@ -107,6 +142,11 @@ func _run(pack_dir: String) -> void:
 		return
 	var world := _session.world
 	expect(_session.start_game(), "the game starts")
+	_session.combat.npc_attack_started.connect(func(attacker: int, clip: String, _power: bool) -> void: _attacks.append([attacker, clip]))
+	_session.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
+		if target == PLAYER:
+			_hits.append(result))
+	_session.combat.stagger_wanted.connect(func(source: int, target: int, magnitude: float) -> void: _staggers.append([source, target, magnitude]))
 	_feet = SkydotWorld.skyrim_position(SPOT)
 	expect(_session.enter_world("Tamriel", _feet, null), "the worldspace is entered")
 	await _frames(240)
@@ -212,14 +252,74 @@ func _run(pack_dir: String) -> void:
 	print("dragon: stands %.1f m from the player, playing %s" % [gap, _node.get_playing()])
 	expect(gap < 12.0 and gap > 1.0, "it stops within reach: %.1f m" % gap)
 	expect(_session.ai.get_combat_state(ref) == 1, "still in combat")
-	# The bite's annotation "Func.DragonBiteEffect" reaches scripts as the graph's "DragonBiteEffect" too.
-	var events: Array[String] = []
-	_node.animation_event.connect(func(event: String) -> void: events.append(event))
-	await _until(func() -> bool: return not _node.is_acting(), 5.0)
-	var length := _node.play_action(clips["clip_ground_combat_attack_bite"]["file"], 1.0)
-	expect(length > 0.5, "the bite clip plays: %.2f s" % length)
-	await _frames(int((length + 0.3) / STEP))
-	print("dragon: bite events ", events)
-	expect(events.has("Func.DragonBiteEffect") and events.has("DragonBiteEffect"), "the bite raises DragonBiteEffect: %s" % [events])
+	# Phase 5: in reach and facing him, its own choice is the bite (a bite clip, a HitFrame hit, Health drops).
+	var scripted := _session.papyrus.get_animation_event_count()
+	_attacks.clear()
+	_hits.clear()
+	_lost = 0.0
+	await _until(func() -> bool: return _attacks.any(func(a: Array) -> bool: return String(a[1]).contains("ground_bite")), 12.0)
+	await _frames(150)
+	print("dragon: attacks ", _attacks.map(func(a: Array) -> String: return String(a[1]).get_file()), " hits ", _hits.size(), " health lost ", _lost)
+	expect(_attacks.any(func(a: Array) -> bool: return String(a[1]).contains("ground_bite")), "it bites the player in front of it: %s" % [_attacks])
+	expect(_hits.size() >= 1 and _lost > 20.0, "the bite lands: %d hits, %.1f health lost (bite 25 x 1.5)" % [_hits.size(), _lost])
+	expect(_session.papyrus.get_animation_event_count() > scripted, "its DragonBiteEffect reaches dragonActorSCRIPT: %d events delivered" % (_session.papyrus.get_animation_event_count() - scripted))
+
+	# Phases 6 and 7: staged (the AI off), the player at a bearing from the dragon's facing, 3 m away. The attack is
+	# chosen by the bearing and the dragon does not turn to him first.
+	await _staged_attack(ref, 180.0, "ground_tailwhip.hkx", true)
+	await _staged_attack(ref, 90.0, "ground_wingswiperight.hkx", true)
+	await _staged_attack(ref, -90.0, "ground_wingswipeleft.hkx", true)
+	await _staged_attack(ref, -135.0, "ground_tailwhipleft.hkx", true)
+	await _staged_attack(ref, 20.0, "ground_bite", false)
+
+	# Phase 8: the breath (the player 18 m in front of it): the inhale and exhale clips, the concentration spell 0x252C2
+	# leaves its head at Voice_SpellFire_Event and lands until shoutStop.
+	_session.ai.hold(ref, 8.0)
+	_node.face(0.0)
+	_feet = _ground(_node.global_position + Vector3(0.0, 0.0, -18.0))
+	await _frames(10)
+	var seen: Array[String] = []
+	_node.animation_event.connect(func(event: String) -> void: seen.append(event))
+	var sparks: Array[Array] = []
+	_session.magic.npc_spell_landed.connect(func(caster: int, spell: int, target: int, _point: Vector3, _hostile: bool) -> void: sparks.append([caster, spell, target]))
+	_lost = 0.0
+	_session.npc_shouts.on_shout(ref, PLAYER, 152256, "start")
+	await _frames(48)
+	_session.npc_shouts.on_shout(ref, PLAYER, 152256, "release")
+	await _frames(300)
+	var lands := sparks.filter(func(l: Array) -> bool: return l[1] == 0x252C2 and l[2] == PLAYER)
+	print("dragon: breath: events ", seen.filter(func(e: String) -> bool: return e in ["Voice_SpellFire_Event", "shoutStop"]), ", landed ", lands.size(), " times, health lost ", snappedf(_lost, 0.1))
+	expect(seen.has("Voice_SpellFire_Event"), "the exhale clip raises Voice_SpellFire_Event")
+	expect(lands.size() >= 5, "the fire breath lands on the player several times: %d" % lands.size())
+	expect(_lost > 12.0 and _lost < 90.0, "about 20 per second for the 2.7 s of the exhale: %.1f health" % _lost)
+
+	# Phase 9: the fireball (a fire-and-forget projectile from its head).
+	_lost = 0.0
+	sparks.clear()
+	_session.ai.hold(ref, 8.0)
+	_node.face(0.0)
+	_session.npc_shouts.on_shout(ref, PLAYER, 318373, "start")
+	await _frames(48)
+	_session.npc_shouts.on_shout(ref, PLAYER, 318373, "release")
+	await _frames(240)
+	var balls := sparks.filter(func(l: Array) -> bool: return l[1] == 475854)
+	print("dragon: fireball sparks ", balls.size(), " times, health lost ", snappedf(_lost, 0.1))
+	expect(balls.size() >= 1, "the fireball lands: %d" % balls.size())
+	expect(_lost > 5.0, "and burns: %.1f health" % _lost)
+	# Phase 10: its own choice: breath from range, then, with the player in reach, the melee first.
+	_shouts = 0
+	_session.npc_shouts.shouted.connect(func(_r: int, _s: int, _w: int, _sp: int) -> void: _shouts += 1)
+	_node.face(0.0)
+	_feet = _ground(_node.global_position + Vector3(0.0, 0.0, -18.0))
+	await _frames(300)  # the hold ends, its voice recovers (5 s)
+	_session.ai.start_combat(ref, PLAYER)
+	var shouted_after := await _until(func() -> bool: return _shouts > 0, 40.0)
+	print("dragon: shouts after %.1f s at 18 m" % shouted_after)
+	expect(shouted_after >= 0.0, "from 18 m it breathes (the shout path decides)")
+	_feet = _ground(_node.global_position + _node.global_transform.basis * Vector3(0.0, 0.0, -3.0))
+	_attacks.clear()
+	_shouts = 0
+	var struck := await _until(func() -> bool: return not _attacks.is_empty(), 15.0)
+	expect(struck >= 0.0 and _shouts == 0, "in reach it fights with bite, wings and tail first: %s, %d shouts" % [_attacks, _shouts])
 	print("smoke_dragon_ground: failures=%d" % failures)
 	quit(failures)

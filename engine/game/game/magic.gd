@@ -573,11 +573,13 @@ func _speak(caster: int, shout: int, held: float) -> Dictionary:
 ## An actor says `shout` at `target` (SkydotAi.combat_shout "release"): the same rules and delivery as
 ## the player's, from its head towards the target. Returns cast_shout's result ({ok: false, reason}
 ## when it cannot).
-func npc_shout(caster: int, target: int, shout: int) -> Dictionary:
+func npc_shout(caster: int, target: int, shout: int, deliver := true) -> Dictionary:
 	var result := _speak(caster, shout, NPC_SHOUT_HELD)
 	if not bool(result["ok"]):
 		print("shout: 0x%X cannot say 0x%08X: %s" % [caster, shout, result["reason"]])
 		return result
+	if not deliver:
+		return result  # the caller delivers it when its clip says so (NpcShouts: Voice_SpellFire_Event)
 	var node := _world.find_ref_node(caster) as Node3D
 	if node != null:
 		var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT

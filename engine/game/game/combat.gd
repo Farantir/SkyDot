@@ -51,6 +51,9 @@ signal hit_landed(target: int, result: Dictionary, point: Vector3)
 ## the attacker's node; the signal is for shells and the AI.
 signal npc_attack_started(attacker: int, clip: String, power: bool)
 ## An actor drew or sheathed (`npc_draw`).
+## An attack's blow shoves the actors (and the player) round the attacker: the attacker, who is
+## staggered (`target`: an actor, or the player), with what magnitude (the race's attack data), from where.
+signal stagger_wanted(source: int, target: int, magnitude: float)
 signal npc_drawn_changed(ref: int, drawn: bool)
 ## An arrow left an actor's bow (`npc_shoot`): the shooter and its target.
 signal npc_arrow(attacker: int, target: int)
@@ -80,6 +83,15 @@ const PLAYER_HEIGHT := 1.83
 const HEAD_FRACTION := 0.93
 ## Where on a body a hit lands, as a share of its height.
 const CHEST_FRACTION := 0.65
+## PLACEHOLDER (a guess): the radius round a dragon within which its tail and wing blows
+## (DragonTailAttackEffect, DragonLeftWingAttackEffect, DragonRightWingAttackEffect) stagger every actor,
+## in game units.
+const AREA_BLOW_RADIUS_UNITS := 400.0
+## Where a directional blow's cone starts, as a fraction of the attacker's height (a dragon's head is far above
+## what it hits).
+const DIRECTIONAL_ORIGIN_FRACTION := 0.3
+## A slow turner (the dragon) is turned by its look target, never snapped.
+const SNAP_TURN_RATE := 5.0
 ## Placeholder: seconds a segment sweep (VR) cannot hit the same actor again.
 const SWEEP_COOLDOWN := 0.5
 ## Placeholder: seconds the impact model stays at least, and at most.
@@ -150,6 +162,7 @@ var _shots: Array[Dictionary] = []  # arrows still to leave: {attacker, target, 
 var _rng := RandomNumberGenerator.new()
 ## Where arrows fly (the session's Projectiles).
 var projectiles: Projectiles
+var _attack_tables := {}  # behaviour|race -> _attack_table
 var _locomotions := {}  # behaviour path -> get_locomotion
 var _drawn := {}  # actor ref -> bool, the actors that fight with their weapon out
 var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, drawn}
@@ -346,6 +359,9 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	# The clip: a project clip by name (a creature's `Attack1`, a draugr's `1hmattacka`, a
 	# human's `1hm_attackright`) with the project's text keys.
 	var picked := _attack_clip(behaviour, type, power)
+	var directional := _directional_attack(node, behaviour, _race(int(plan.get("race", 0))), target) if form == 0 else {}
+	if not directional.is_empty():
+		picked = directional
 	var clip: String = picked.get("file", "")
 	var timing: Dictionary
 	if clip != "":
@@ -361,7 +377,11 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 		node.play_action(clip, speed)
 	_npc_attacks.append({"attacker": attacker, "target": target, "power": power, "weapon": form, "info": info,
 		"extra": int(equipment["right_extra"]), "time": 0.0, "hit": false, "speed": speed,
-		"hit_time": timing["hit"], "length": timing["stop"]})
+		"hit_time": timing["hit"], "length": timing["stop"], "event": directional.get("event", ""),
+		"angle": directional.get("angle", 0.0), "stagger": directional.get("stagger", 0.0)})
+	if not directional.is_empty():
+		print("combat: 0x%X attacks 0x%X with %s (bearing %.0f, attack angle %.0f)" % [attacker, target, directional["stem"], directional["bearing"], directional["angle"]])
+		_watch_blows(node, attacker)
 	npc_attack_started.emit(attacker, clip, power)
 	return true
 
@@ -398,6 +418,110 @@ func npc_shoot(attacker: int, target := PLAYER_REF) -> bool:
 	_shots.append({"attacker": attacker, "target": target, "bow": int(ranged["weapon"]),
 		"ammo": int(ranged["ammo"]), "left": minf(release, maxf(length, 0.0))})
 	return true
+
+
+## The directional attacks of a race at a project: [{event, angle, strike, stagger, stem, file, notes}] for the
+## race's attack data (ATKE) whose events name a clip of the project, by the project's own names: the
+## event "attackStartBiteLeft" is the clip ending in "attack_bite_left" (the dragon's
+## clip_ground_combat_attack_bite_left; ground clips before flight ones). Empty for a race without such
+## attacks (it needs two clips and angles). Derived from the data, no table.
+func _attack_table(behaviour: String, race: Dictionary) -> Array:
+	var key := "%s|%d" % [behaviour, int(race.get("id", 0))]
+	if _attack_tables.has(key):
+		return _attack_tables[key]
+	var table: Array = []
+	if behaviour != "":
+		if not _locomotions.has(behaviour):
+			_locomotions[behaviour] = _world.get_locomotion(behaviour)
+		var clips: Dictionary = _locomotions[behaviour].get("clips", {})
+		var names: Array = clips.keys()
+		names.sort()
+		for entry: Dictionary in race.get("attacks", []):
+			var event := String(entry["event"])
+			if not event.begins_with("attackStart") or event.length() <= 11:
+				continue
+			var suffix := _snake(event.substr(11))
+			var found := ""
+			for name: String in names:
+				if name.ends_with("attack_" + suffix) and (found == "" or name.contains("ground")):
+					found = name
+			if found != "":
+				table.append({"event": event, "angle": float(entry["attack_angle"]), "strike": float(entry["strike_angle"]),
+					"stagger": float(entry["stagger"]), "stem": found, "file": clips[found]["file"], "notes": clips[found]["annotations"]})
+	if table.size() < 2 or table.all(func(e: Dictionary) -> bool: return e["angle"] == 0.0):
+		table = []
+	_attack_tables[key] = table
+	return table
+
+
+static func _snake(text: String) -> String:
+	var out := ""
+	for i in text.length():
+		var ch := text[i]
+		if i > 0 and ch != ch.to_lower():
+			out += "_"
+		out += ch.to_lower()
+	return out
+
+
+## The attack of `node` at `target` for the bearing of the target from its facing (negative to its left, as the
+## race's attack angles are): the one whose attack angle is nearest. {} where the race has no directional
+## attacks. It is not turned to the target first.
+func _directional_attack(node: Node3D, behaviour: String, race: Dictionary, target: int) -> Dictionary:
+	var table := _attack_table(behaviour, race)
+	if table.is_empty():
+		return {}
+	var forward := -node.global_transform.basis.z
+	forward.y = 0.0
+	var to := _target_position(target) - node.global_position
+	to.y = 0.0
+	if forward.length() < 0.001 or to.length() < 0.001:
+		return table[0].merged({"bearing": 0.0})
+	var bearing := -rad_to_deg(forward.signed_angle_to(to, Vector3.UP))
+	var best := {}
+	var best_diff := INF
+	for entry: Dictionary in table:
+		var diff := absf(wrapf(bearing - float(entry["angle"]), -180.0, 180.0))
+		if diff < best_diff:
+			best_diff = diff
+			best = entry
+	return best.merged({"bearing": bearing})
+
+
+func _target_position(target: int) -> Vector3:
+	if target == PLAYER_REF:
+		return _feet.call()
+	var other := _world.find_ref_node(target) as Node3D
+	return other.global_position if other != null else Vector3.ZERO
+
+
+## The blows of a dragon's tail and wings are felt all round it (animation events of its clips).
+func _watch_blows(node: Node3D, attacker: int) -> void:
+	if node.has_meta("skydot_blows") or not node.has_signal("animation_event"):
+		return
+	node.set_meta("skydot_blows", true)
+	node.connect("animation_event", func(event: String) -> void: _on_blow(attacker, event))
+
+
+func _on_blow(attacker: int, event: String) -> void:
+	var node := _world.find_ref_node(attacker) as Node3D
+	if node == null or _papyrus.is_actor_dead(attacker):
+		return
+	var kind := ""
+	for blow in ["DragonTailAttackEffect", "DragonLeftWingAttackEffect", "DragonRightWingAttackEffect"]:
+		if event == blow:
+			kind = "tail" if blow.contains("Tail") else "wing"
+	if kind == "":
+		return
+	var race := _race(int(_actor_plan(attacker).get("race", 0)))
+	var magnitude := 0.5
+	for entry: Dictionary in race.get("attacks", []):
+		if String(entry["event"]).to_lower().contains(kind):
+			magnitude = float(entry["stagger"])
+	var near := actors_within(attacker, node.global_position, AREA_BLOW_RADIUS_UNITS * SkydotWorld.unit_scale())
+	print("combat: 0x%X's %s blow (%s) staggers %d actors within %.1f m" % [attacker, kind, event, near.size(), AREA_BLOW_RADIUS_UNITS * SkydotWorld.unit_scale()])
+	for body in near:
+		stagger_wanted.emit(attacker, body["ref"], magnitude)
 
 
 ## Put the weapon `ranged` (the bow with its arrows) or the melee weapon in `ref`'s hands, as
@@ -561,6 +685,22 @@ func behaviour_of(ref: int) -> String:
 	return String(_actor_plan(ref).get("behaviour", ""))
 
 
+## Where an actor's spells and breath leave it: its head's magic node (else its head bone, else the top
+## of its body) in engine space.
+func head_point_of(ref: int) -> Vector3:
+	var node := _world.find_ref_node(ref) as Node3D
+	if node == null:
+		return body_point_of(ref)
+	var skeleton := node.find_child("Skeleton3D", true, false) as Skeleton3D
+	if skeleton != null:
+		for want in ["head magicnode", "head"]:
+			for bone in skeleton.get_bone_count():
+				if skeleton.get_bone_name(bone).to_lower().contains(want):
+					return skeleton.to_global(skeleton.get_bone_global_pose(bone).origin)
+	var height: float = node.get("height") if node.get("height") != null else PLAYER_HEIGHT
+	return node.global_position + Vector3.UP * (height * HEAD_FRACTION)
+
+
 ## The chest of the actor (or the player) `ref` in engine space; its feet if it has no node.
 func body_point_of(ref: int) -> Vector3:
 	if ref == PLAYER_REF:
@@ -576,6 +716,8 @@ func body_point_of(ref: int) -> Vector3:
 func _face(node: Node3D, target: int) -> void:
 	if not node.has_method("face"):
 		return
+	if node.has_method("get_turn_rate") and float(node.get_turn_rate()) < SNAP_TURN_RATE:
+		return  # a slow turner is turned by its look target
 	var at: Vector3
 	if target == PLAYER_REF:
 		at = _feet.call()
@@ -758,9 +900,16 @@ func _npc_strike(data: Dictionary) -> void:
 	var race := _race(int(plan.get("race", 0)))
 	var power: bool = data["power"]
 	var event := EVENT_POWER if power else EVENT_LIGHT
+	if String(data["event"]) != "":
+		# A directional attack: the cone is about its attack angle (negative to the left), not the facing.
+		event = data["event"]
+		origin = node.global_position + Vector3.UP * height * DIRECTIONAL_ORIGIN_FRACTION
+		forward = forward.rotated(Vector3.UP, -deg_to_rad(float(data["angle"])))
 	var hit := _find_target(attacker, origin, forward, data["info"], race, event, power, data["target"])
 	if hit.is_empty():
 		return
+	if String(data["event"]).to_lower().contains("bite") and float(data["stagger"]) > 0.0:
+		stagger_wanted.emit(attacker, hit["ref"], float(data["stagger"]))
 	_deliver(attacker, hit["ref"], data["weapon"], data["extra"], event,
 		SkydotPapyrus.HIT_POWER if power else 0, hit["point"], race, data["info"])
 

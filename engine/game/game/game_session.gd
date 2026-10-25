@@ -296,6 +296,7 @@ func _make_game_nodes() -> void:
 		ai.set_combat(config.combat)
 		ai.combat_state_changed.connect(_on_combat_state)
 		ai.combat_attack.connect(_on_combat_attack)
+		combat.stagger_wanted.connect(_on_stagger_wanted)
 		# Every hit, the player's and the actors', raises the alarm.
 		combat.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
 			ai.on_hit(int(result.get("attacker", 0)), target))
@@ -655,6 +656,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	combat.step(delta)
 	magic.step(delta)
 	npc_magic.step(delta)
+	npc_shouts.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
 	_drain_sprint(delta)
@@ -945,6 +947,20 @@ func _on_combat_state(ref: int, target: int, state: int) -> void:
 	papyrus.combat_state_changed(ref, target, state)
 
 
+## PLACEHOLDER: the shove of a stagger blow on the player, force per magnitude (see _push_player).
+const PLAYER_STAGGER_FORCE := 8.0
+
+
+## A blow staggers `target`: an actor takes SkydotAi.stagger (its stagger clip); the player is shoved and
+## logs it (no camera shake hook exists yet).
+func _on_stagger_wanted(source: int, target: int, magnitude: float) -> void:
+	if target == SkydotPapyrus.PLAYER_REF:
+		print("combat: the player staggers (%s) from 0x%X" % [magnitude, source])
+		_push_player(source, magnitude * PLAYER_STAGGER_FORCE)
+	elif ai != null:
+		ai.stagger(target, magnitude)
+
+
 func _on_combat_attack(ref: int, target: int, kind: String) -> void:
 	match kind:
 		"shoot":
@@ -971,6 +987,7 @@ func update_combat(delta: float) -> void:
 	combat.step(delta)
 	magic.step(delta)
 	npc_magic.step(delta)
+	npc_shouts.step(delta)
 	magic_world.step(delta)
 	corpses.step(delta)
 

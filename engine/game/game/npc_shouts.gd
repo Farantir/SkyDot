@@ -7,7 +7,11 @@
 # third-person clips are the behaviour project's: `shoutinhale` and `shoutexhale` (a draugr's) or
 # `mt_shout_inhale` and `mt_shout_exhale` with `_medium`/`_long` for two and three words (a human's),
 # played with play_action. A project without them (a creature) shouts without a clip, with one
-# warning. The voice line is the VoicePowers topic of the words said (the same topics as the player's),
+# warning. A dragon (clip_shout_inhale_* and clip_shout_exhale_* in its project, firebreath for a
+# concentration spell and fireball for a fire-and-forget one, told apart by the spell's casting type) breathes
+# with the exhale clip's events: the spell leaves its head at Voice_SpellFire_Event, a concentration one is
+# held, landing every Magic.TICK_SECONDS, until shoutStop or the end of the clip (shoutStop is its last key,
+# which a looping action does not always reach). The voice line is the VoicePowers topic of the words said (the same topics as the player's),
 # spoken by the actor's own voice type.
 class_name NpcShouts
 extends RefCounted
@@ -22,6 +26,10 @@ var _combat: Combat
 var _speech: Speech
 var _pack: SkydotPack
 var _warn := WarnOnce.new("npc shout: ")
+var _breaths := {}  # ref -> {spell, info, target, concentration, state: "wait"|"fire", tick, left}
+
+const EVENT_FIRE := "Voice_SpellFire_Event"
+const EVENT_STOP := "shoutStop"
 
 ## An actor said a shout: the actor, the shout, the words and the spell of the last one.
 signal shouted(ref: int, shout: int, words: int, spell: int)
@@ -46,9 +54,14 @@ func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 			# The voice slot holds the shout (the VoicePowers lines are picked by the equipped shout).
 			_papyrus.equip_shout(ref, shout)
 			print("npc shout: 0x%X inhales for 0x%08X" % [ref, shout])
-			_play(ref, ["shoutinhale", "mt_shout_inhale"], "inhale")
+			var kind := _breath_kind(ref, shout)
+			_play(ref, ["clip_shout_inhale_" + kind] if kind != "" else ["shoutinhale", "mt_shout_inhale"], "inhale")
 		"release":
 			_combat.npc_face(ref, target)
+			var kind := _breath_kind(ref, shout)
+			if kind != "":
+				_breathe(ref, target, shout, kind)
+				return
 			var result := _magic.npc_shout(ref, target, shout)
 			if not bool(result["ok"]):
 				return
@@ -57,6 +70,81 @@ func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 			_play(ref, ["shoutexhale", "mt_shout_exhale" + suffix, "mt_shout_exhale"], "exhale")
 			_voice(ref, words)
 			shouted.emit(ref, shout, words, int(result["spell"]))
+
+
+## "firebreath" or "fireball" if the project of `ref` has the breath clips of the last word's spell (told by
+## its casting type: concentration or not), else "".
+func _breath_kind(ref: int, shout: int) -> String:
+	var words: Array = _world.get_shout(shout).get("words", [])
+	if words.is_empty():
+		return ""
+	var info := _magic.info_of(int(words[words.size() - 1]["spell"]))
+	var kind := "firebreath" if int(info.get("casting_type", 0)) == Magic.CAST_CONCENTRATION else "fireball"
+	return kind if _combat.clip_of(ref, "clip_shout_exhale_" + kind) != "" else ""
+
+
+## The exhale: the shout is said (cost and recovery), its clip plays and its events release the spell.
+func _breathe(ref: int, target: int, shout: int, kind: String) -> void:
+	var result := _magic.npc_shout(ref, target, shout, false)
+	if not bool(result["ok"]):
+		return
+	var node := _world.find_ref_node(ref)
+	var length := 0.0
+	if node != null and node.has_method("play_action"):
+		length = float(node.play_action(_combat.clip_of(ref, "clip_shout_exhale_" + kind), 1.0))
+		print("npc shout: 0x%X plays clip_shout_exhale_%s (%.2f s)" % [ref, kind, length])
+		if not node.has_meta("skydot_breath_events") and node.has_signal("animation_event"):
+			node.set_meta("skydot_breath_events", true)
+			node.connect("animation_event", func(event: String) -> void: _on_event(ref, event))
+	var info: Dictionary = result["info"]
+	_breaths[ref] = {"spell": int(result["spell"]), "info": info, "target": target,
+		"concentration": int(info.get("casting_type", 0)) == Magic.CAST_CONCENTRATION, "state": "wait", "tick": 0.0,
+		"left": length}
+	var words := int(result["words"])
+	_voice(ref, words)
+	shouted.emit(ref, shout, words, int(result["spell"]))
+
+
+func _on_event(ref: int, event: String) -> void:
+	if not _breaths.has(ref):
+		return
+	var breath: Dictionary = _breaths[ref]
+	if event == EVENT_FIRE and breath["state"] == "wait":
+		breath["state"] = "fire"
+		print("npc shout: 0x%X's %s leaves its head" % [ref, "breath" if breath["concentration"] else "fireball"])
+		_deliver(ref, breath, false)
+		if not breath["concentration"]:
+			_breaths.erase(ref)
+	elif event == EVENT_STOP:
+		if breath["state"] == "fire":
+			print("npc shout: 0x%X's breath ends" % ref)
+		_breaths.erase(ref)
+
+
+## Advance the held breaths by `delta` seconds.
+func step(delta: float) -> void:
+	for ref in _breaths.keys():
+		var breath: Dictionary = _breaths[ref]
+		breath["left"] -= delta
+		if _papyrus.is_actor_dead(ref) or breath["left"] <= 0.0:
+			_breaths.erase(ref)
+			continue
+		if breath["state"] == "fire" and breath["concentration"]:
+			breath["tick"] += delta
+			if breath["tick"] >= Magic.TICK_SECONDS:
+				breath["tick"] = 0.0
+				_deliver(ref, breath, true)
+
+
+## The spell leaves the head towards the target (a tick of a held one: `again`).
+func _deliver(ref: int, breath: Dictionary, again: bool) -> void:
+	var eye := _combat.head_point_of(ref)
+	var forward := (_combat.body_point_of(int(breath["target"])) - eye).normalized()
+	if forward.length() < 0.5:
+		var node := _world.find_ref_node(ref) as Node3D
+		forward = -node.global_transform.basis.z if node != null else Vector3.FORWARD
+	_magic.deliver_from(ref, Magic.RIGHT, int(breath["spell"]), breath["info"], eye, forward,
+		forward.cross(Vector3.UP).normalized(), again)
 
 
 func _voice(ref: int, words: int) -> void:
