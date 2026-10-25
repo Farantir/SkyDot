@@ -391,7 +391,7 @@ func _apply_combat_options() -> void:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
 	_shout_at = ShoutAt.apply(_session, _rig, _settings)
 	if not _settings.spawn.is_empty():
-		SpawnActors.spawn(_session, _rig, _settings.spawn)
+		SpawnActors.spawn(_session, _rig, _settings.spawn, _settings.spawn_distance)
 	for ref in _settings.kill:
 		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
 	for entry: Dictionary in _settings.npc_give:
