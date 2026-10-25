@@ -622,6 +622,15 @@ void SkydotActor::think(double delta) {
 }
 
 void SkydotActor::steer(double delta) {
+    if (action_left_ > 0.0 && turn_rate_ < k_turn_rate) {
+        // A slow turner (the dragon) stands and keeps its heading while an action plays: a bite, a tail
+        // whip or a breath goes where it was aimed.
+        if (!path_.is_empty()) {
+            stop();
+        }
+        set_input(godot::Vector2(), 0.0, WALK);
+        return;
+    }
     if (path_.is_empty()) {
         set_input(godot::Vector2(), 0.0, WALK);
         turn_to_look(delta);

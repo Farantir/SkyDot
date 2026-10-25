@@ -351,6 +351,18 @@ void SkydotAi::read_gear(Mind& m) {
         reach = static_cast<double>(race.get("unarmed_reach", k_unarmed_reach));
     }
     c.reach = reach;
+    // A race with attacks in all directions (the dragon's bite, wings and tail) fights what is in its
+    // reach before it shouts.
+    {
+        const godot::Dictionary plan = plan_of(m.ref);
+        const godot::Dictionary race = world_->get_race(static_cast<std::int64_t>(plan.get("race", 0)));
+        int directional = 0;
+        for (const godot::Variant& v : static_cast<godot::Array>(race.get("attacks", godot::Array()))) {
+            const godot::Dictionary a = v;
+            directional += static_cast<double>(a.get("attack_angle", 0.0)) != 0.0 ? 1 : 0;
+        }
+        c.directional_melee = directional >= 4;
+    }
     // ZNAM follows the AI data of the template chain (assumed: no template flag of its own).
     const auto* npc = resolve_npc(*root(), npc_of(m.ref), wfb::NpcTemplateFlags::use_ai_data, m.ref);
     const auto* style = npc != nullptr && npc->combat_style() != 0 ? lookup(root()->combat_styles(), npc->combat_style())
@@ -513,6 +525,11 @@ bool SkydotAi::shout_decide(Mind& m, SkydotActor& actor, double distance, const 
         c.aimed = 0.0;
         c.facing = false;
         return false;
+    }
+    if (c.directional_melee && distance - k_body_radius <= c.reach) {
+        c.aimed = 0.0;
+        c.facing = false;
+        return false; // in reach of its bite, wings and tail
     }
     combat_ai::ShoutInputs in;
     in.shouts = c.shouts;

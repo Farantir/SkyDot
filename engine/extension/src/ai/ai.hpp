@@ -200,6 +200,7 @@ private:
         bool was_wander{};
         int circle{1};                   ///< Which way it circles
         double reach{};                  ///< Game units, from its weapon
+        bool directional_melee{};        ///< Its race attacks in all directions (the dragon): melee first.
         bool has_bow{};
         bool has_melee{};
         double gear_age{1e9};            ///< Seconds since reach and gear were read
