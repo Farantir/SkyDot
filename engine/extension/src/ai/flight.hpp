@@ -71,6 +71,8 @@ struct Params {
     double cruise_height = 1500;  ///< placeholder: above the ground under it.
     double placed_in_air = 1000;  ///< placeholder: a flyer placed this far over the ground starts in flight.
     double min_clearance = 400;   ///< max(race flight radius, 400) above the highest surface.
+    double probe_seconds = 3;     ///< placeholder: the clearance probes reach this many seconds of flight ahead,
+    double probe_min_reach = 600; ///< placeholder: and at least this far (units).
     double max_climb = 800;       ///< placeholder, u/s.
     double max_descent = 700;     ///< placeholder, u/s.
     double vertical_accel = 1000; ///< placeholder, u/s^2.

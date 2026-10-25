@@ -666,3 +666,20 @@ TEST_CASE("flight tactics: an injured dragon stays down until it has healed well
     r.in.health_fraction = 0.7;
     REQUIRE(r.until(Maneuver::takeoff, 25));
 }
+
+TEST_CASE("flight: a hovering dragon does not climb for a wall far ahead, a fast one does") {
+    const Params p;
+    const Ground wall = [](double x, double) { return x > 3500 ? 5000.0 : 0.0; };
+    Body b = airborne_body(0, 0, 900, 1.5708, 0);
+    Command c;
+    c.kind = CommandKind::hover;
+    c.point = {1800, 0, 0};
+    run(b, c, p, wall, 15);
+    CHECK(b.pos.z < 1200);
+    Body fast = airborne_body(0, 0, 900, 1.5708, 2000);
+    Command cruise;
+    cruise.kind = CommandKind::fly_to;
+    cruise.point = {20000, 0, 0};
+    run(fast, cruise, p, wall, 3);
+    CHECK(fast.pos.z > 1200); // it sees the wall 2 s ahead and climbs
+}

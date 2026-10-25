@@ -69,7 +69,10 @@ std::vector<Probe> probe_ahead(Body& b, const Params& p, const Ground& g) {
     std::vector<Probe> out;
     const double sx = std::sin(b.yaw);
     const double sy = std::cos(b.yaw);
+    // Far probes matter at speed only: a dragon hanging over its landing spot looks 600 units ahead, not past the trees 6000 away.
+    const double reach = std::max(p.probe_min_reach, b.speed * p.probe_seconds);
     for (double d : k_distances) {
+        if (d > reach) break;
         const double h = ground_at(b, g, b.pos.x + sx * d, b.pos.y + sy * d);
         out.push_back({d, h + p.min_clearance});
     }
