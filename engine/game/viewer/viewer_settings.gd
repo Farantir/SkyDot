@@ -138,6 +138,9 @@ var interactive := true  # false: ignore the keyboard and mouse
 
 # F12.
 var shot_dir := "user://screenshots"
+var has_shot_camera := false  # --shot-camera X,Y,Z --shot-look X,Y,Z: a series' camera stands there (Skyrim units) while the player stays at --at
+var shot_camera := Vector3.ZERO
+var shot_look := Vector3.ZERO
 var shot_notes := true  # ask what is wrong after a shot
 
 var has_pck := false  # given, though ignored
@@ -367,6 +370,15 @@ func _read(args: Dictionary) -> void:
 	shot_dir = args.get("shot-dir", "user://screenshots")
 	shot_notes = args.get("shot-notes", "on") != "off"
 
+	if args.has("shot-camera") and args.has("shot-look"):
+		var from = _vec3(args["shot-camera"])
+		var to = _vec3(args["shot-look"])
+		if from == null or to == null:
+			error = "--shot-camera and --shot-look want X,Y,Z"
+			return
+		has_shot_camera = true
+		shot_camera = from
+		shot_look = to
 	has_at = args.has("at")
 	if has_at:
 		var value = _vec3(args["at"])

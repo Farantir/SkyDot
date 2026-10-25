@@ -157,7 +157,8 @@
 # idle where their packages put them; --screenshot and --benchmark runs keep
 # them still unless --wander on; --shot-delay SECONDS lets the world run that
 # long before a --screenshot is taken; --shot-frames N [--shot-every K] saves
-# N frames of one view instead (see shot_recorder.gd); --hide-refs ID[,ID...]
+# N frames of one view instead (see shot_recorder.gd; --shot-camera X,Y,Z --shot-look X,Y,Z puts that view
+# elsewhere than at the player, Skyrim units, for a side view of a fight); --hide-refs ID[,ID...]
 # (hex form IDs) hides those references in them, as the game's `disable`. Inside, time runs too (--time-scale);
 # T and Shift+T move it there as well. I tells what the nearest actor's
 # package is.
@@ -474,6 +475,10 @@ func _process(delta: float) -> void:
 			_session.update_scripts(delta, _rig.player.global_position)
 			if _session.has_activations():
 				_session.run_activation()  # --activate inside the series
+		if _settings.has_shot_camera:
+			# A side view: the camera stands apart from the player, whom the actors fight.
+			_rig.camera.global_position = SkydotWorld.skyrim_position(_settings.shot_camera)
+			_rig.camera.look_at(SkydotWorld.skyrim_position(_settings.shot_look))
 		_session.update_dialogue(delta)
 		_session.update_combat(delta)
 		_session.update_fights(delta, _rig.player.global_position)
