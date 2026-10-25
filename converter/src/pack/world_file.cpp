@@ -313,6 +313,22 @@ std::optional<wfb::ArtObjectT> WorldFile::art_object(std::uint32_t id) const {
     return unpack(lookup(impl_->root->art_objects(), id));
 }
 
+std::optional<wfb::ShoutT> WorldFile::shout(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->shouts(), id));
+}
+
+std::optional<wfb::WordOfPowerT> WorldFile::word_of_power(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->words_of_power(), id));
+}
+
+std::optional<wfb::MovementTypeT> WorldFile::movement_type(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->movement_types(), id));
+}
+
+std::vector<wfb::ShoutT> WorldFile::shouts() const {
+    return unpack_all(impl_->root->shouts());
+}
+
 std::optional<wfb::ImpactDataSetT> WorldFile::impact_data_set(std::uint32_t id) const {
     return unpack(lookup(impl_->root->impact_data_sets(), id));
 }

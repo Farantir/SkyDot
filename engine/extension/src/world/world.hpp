@@ -201,8 +201,10 @@ public:
     /// unequip_sound); empty for anything else.
     godot::Dictionary get_weapon(std::int64_t form) const;
     /// A race's combat data (keys: id, editor_id, unarmed_damage, unarmed_reach, impact_material,
-    /// impact_data_set, behaviours, attacks: [{event, damage_mult, flags, attack_angle,
-    /// strike_angle, stagger}]).
+    /// impact_data_set, spells, shouts (the SPLO entries that are SHOUs), injured_health,
+    /// aim_angle_tolerance, flight_radius, angular_acceleration, angular_tolerance, flags2,
+    /// movement_walk/run/swim/fly/sneak/sprint (MOVT ids, 0 none; world.fb 36), behaviours,
+    /// attacks: [{event, damage_mult, flags, attack_angle, strike_angle, stagger}]).
     godot::Dictionary get_race(std::int64_t race) const;
     /// A combat style (CSTY; world.fb 31; keys: id, editor_id, offensive_mult, defensive_mult,
     /// group_offensive_mult, melee_score_mult, magic_score_mult, ranged_score_mult,
@@ -237,10 +239,21 @@ public:
     godot::Dictionary get_enchantment(std::int64_t id) const;
     /// An art object (ARTO; keys: id, editor_id, model, art_type); empty if none.
     godot::Dictionary get_art_object(std::int64_t id) const;
+    /// A shout (SHOU; world.fb 36; keys: id, editor_id, name, description, menu_display_object,
+    /// words: [{word (a WOOP), spell (a SPEL), recovery (seconds)}]); empty if none.
+    godot::Dictionary get_shout(std::int64_t id) const;
+    /// A word of power (WOOP; keys: id, editor_id, name (the dragon word), translation); empty if none.
+    godot::Dictionary get_word_of_power(std::int64_t id) const;
+    /// A movement type (MOVT; keys: id, editor_id, name, left_walk, left_run, right_walk,
+    /// right_run, forward_walk, forward_run, back_walk, back_run, rotate_in_place_walk,
+    /// rotate_in_place_run, rotate_while_moving_run; game units per second, the rotation values
+    /// as stored; a 40-byte SPED has no rotate_while_moving_run: 0); empty if none.
+    godot::Dictionary get_movement_type(std::int64_t id) const;
     /// The effects of an item base (ALCH, SCRL, INGR) as in get_spell; empty for others.
     godot::Array get_item_effects(std::int64_t form) const;
     /// An NPC_ base as combat reads it (keys: id, editor_id, name, race, level, aggression,
-    /// confidence, energy, morality, mood, assistance, template, template_flags, combat_style, crime_faction, factions:
+    /// confidence, energy, morality, mood, assistance, template, template_flags, combat_style, crime_faction, spells
+    /// (SPLO as stored), shouts (its SHOU entries; world.fb 36), factions:
     /// [{faction, rank}]); empty if none. The record's own values, no template.
     godot::Dictionary get_npc(std::int64_t id) const;
     /// A faction (keys: id, editor_id, flags (the whole DATA word), relations: [{faction,

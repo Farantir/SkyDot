@@ -64,7 +64,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 35;
+    static constexpr int FORMAT_VERSION = 36;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {

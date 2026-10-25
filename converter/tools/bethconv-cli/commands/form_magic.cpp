@@ -77,6 +77,8 @@ public:
             for (const auto& e : list->entries) {
                 add_spell(c, e.form(), visited);
             }
+        } else if (world_.shout(id)) {
+            slice_shouts_.insert(id);
         } else {
             ++unknown_spell_forms_;
             unknown_spell_ids_.insert(id);
@@ -120,12 +122,15 @@ public:
         return it == forms_.end() ? 0 : it->second[s];
     }
     [[nodiscard]] std::size_t unknown_spell_forms() const { return unknown_spell_forms_; }
+    /// The distinct SHOUs the spell lists given to add_spell name.
+    [[nodiscard]] const std::set<std::uint32_t>& shouts() const { return slice_shouts_; }
 
 private:
     const pack::WorldFile& world_;
     mutable std::map<const Census*, std::array<std::size_t, k_sources>> forms_;
     std::size_t unknown_spell_forms_{};
     std::set<std::uint32_t> unknown_spell_ids_;
+    std::set<std::uint32_t> slice_shouts_;
 };
 
 bool starts_with_any(const std::string& text, std::initializer_list<std::string_view> prefixes) {
@@ -340,8 +345,22 @@ void print_magic_census(const pack::WorldFile& world) {
                 collector.forms(slice, spel), collector.forms(slice, alch),
                 collector.forms(slice, scrl), collector.forms(slice, ench),
                 collector.forms(slice, ingr), collector.forms(slice, other), slice.uses.size());
+    {
+        std::vector<std::string> names;
+        for (const auto id : collector.shouts()) {
+            const auto shout = world.shout(id);
+            names.push_back(shout ? shout->editor_id : std::string{});
+        }
+        std::ranges::sort(names);
+        std::string list;
+        for (const auto& name : names) {
+            list += (list.empty() ? "" : ", ") + name;
+        }
+        std::printf("slice shouts: %zu SHOU (%s); whole world: %zu SHOU\n",
+                    names.size(), list.c_str(), world.shouts().size());
+    }
     if (collector.unknown_spell_forms() != 0 || missing_npcs != 0 || missing_mgef != 0) {
-        std::printf("not resolved: %zu spell-list forms that are neither SPEL nor LVSP (shouts), "
+        std::printf("not resolved: %zu spell-list forms that are neither SPEL, LVSP nor SHOU, "
                     "%zu actor bases missing, %zu effects naming no MGEF\n",
                     collector.unknown_spell_forms(), missing_npcs, missing_mgef);
     }

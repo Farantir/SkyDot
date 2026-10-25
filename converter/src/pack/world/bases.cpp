@@ -102,6 +102,15 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"SPEL"}.value:
         on_spell(merged, data, form_ctx);
         break;
+    case FourCC{"SHOU"}.value:
+        on_shout(merged, data, form_ctx);
+        break;
+    case FourCC{"WOOP"}.value:
+        on_word_of_power(merged, data, form_ctx);
+        break;
+    case FourCC{"MOVT"}.value:
+        on_movement_type(merged, data, form_ctx);
+        break;
     case FourCC{"ARTO"}.value:
         on_art_object(merged, data, form_ctx);
         break;
@@ -955,6 +964,70 @@ void BaseCollector::on_spell(const record::MergedRecord& merged, io::SpanReader&
     spells_[out.id] = std::move(out);
 }
 
+void BaseCollector::on_shout(const record::MergedRecord& merged, io::SpanReader& data,
+                             const record::FormContext& form_ctx) {
+    auto r = record::parse_shout(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::ShoutT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.description = r->description.text;
+    out.menu_display_object = shared_.global(merged, r->menu_display_object, failed);
+    for (const auto& w : r->words) {
+        out.words.emplace_back(shared_.global(merged, w.word, failed),
+                               shared_.global(merged, w.spell, failed), w.recovery);
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    shouts_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_word_of_power(const record::MergedRecord& merged, io::SpanReader& data,
+                                     const record::FormContext& form_ctx) {
+    auto r = record::parse_word_of_power(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::WordOfPowerT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.translation = r->translation.text;
+    words_of_power_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
+                                     const record::FormContext& form_ctx) {
+    auto r = record::parse_movement_type(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::MovementTypeT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name;
+    out.left_walk = r->speeds[0];
+    out.left_run = r->speeds[1];
+    out.right_walk = r->speeds[2];
+    out.right_run = r->speeds[3];
+    out.forward_walk = r->speeds[4];
+    out.forward_run = r->speeds[5];
+    out.back_walk = r->speeds[6];
+    out.back_run = r->speeds[7];
+    out.rotate_in_place_walk = r->speeds[8];
+    out.rotate_in_place_run = r->speeds[9];
+    out.rotate_while_moving_run = r->speeds[10];
+    movement_types_[out.id] = std::move(out);
+}
+
 void BaseCollector::on_art_object(const record::MergedRecord& merged, io::SpanReader& data,
                                   const record::FormContext& form_ctx) {
     auto r = record::parse_art_object(data, form_ctx);
@@ -1351,6 +1424,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.enchantments += enchantments_.size();
     stats.spells += spells_.size();
     stats.art_objects += art_objects_.size();
+    stats.shouts += shouts_.size();
+    stats.words_of_power += words_of_power_.size();
+    stats.movement_types += movement_types_.size();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {
@@ -1404,6 +1480,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.enchantments, enchantments_);
     move_into(world.spells, spells_);
     move_into(world.art_objects, art_objects_);
+    move_into(world.shouts, shouts_);
+    move_into(world.words_of_power, words_of_power_);
+    move_into(world.movement_types, movement_types_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {
             ltex.table.diffuse = t->second.diffuse;

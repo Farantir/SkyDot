@@ -304,6 +304,18 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                 take(failure, read_formid(body), out.morph_race);
             } else if (t == FourCC{"RNAM"}) {
                 take(failure, read_formid(body), out.armor_race);
+            } else if (t == FourCC{"WKMV"}) {
+                take(failure, read_formid(body), out.movement_walk);
+            } else if (t == FourCC{"RNMV"}) {
+                take(failure, read_formid(body), out.movement_run);
+            } else if (t == FourCC{"SWMV"}) {
+                take(failure, read_formid(body), out.movement_swim);
+            } else if (t == FourCC{"FLMV"}) {
+                take(failure, read_formid(body), out.movement_fly);
+            } else if (t == FourCC{"SNMV"}) {
+                take(failure, read_formid(body), out.movement_sneak);
+            } else if (t == FourCC{"SPMV"}) {
+                take(failure, read_formid(body), out.movement_sprint);
             } else if (t == FourCC{"NAM4"}) {
                 take(failure, read_formid(body), out.impact_material);
             } else if (t == FourCC{"NAM5"}) {
@@ -357,6 +369,20 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                     (void)d.skip(96);
                     take(failure, d.get<float>(), out.unarmed_damage);
                     take(failure, d.get<float>(), out.unarmed_reach);
+                }
+                if (!failure && out.data.size() >= 80) {
+                    io::SpanReader d(out.data, "RACE DATA");
+                    (void)d.skip(76);
+                    take(failure, d.get<float>(), out.injured_health);
+                }
+                if (!failure && out.data.size() >= 128) {
+                    io::SpanReader d(out.data, "RACE DATA");
+                    (void)d.skip(108);
+                    take(failure, d.get<float>(), out.aim_angle_tolerance);
+                    take(failure, d.get<float>(), out.flight_radius);
+                    take(failure, d.get<float>(), out.angular_acceleration);
+                    take(failure, d.get<float>(), out.angular_tolerance);
+                    take(failure, d.get<std::uint32_t>(), out.flags2);
                 }
             } else if (read_base_object_field(into, FourCC{"RACE"}, field, body, ctx, failure)) {
                 return true;

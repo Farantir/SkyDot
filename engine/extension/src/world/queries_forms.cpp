@@ -19,6 +19,24 @@ namespace wfb = bethconv::pack::wfb;
 
 namespace skydot::queries {
 
+namespace {
+
+/// The SPLO entries that are shouts (SHOU).
+godot::PackedInt64Array shouts_in(const WorldData& data, const flatbuffers::Vector<std::uint32_t>* splo) {
+    godot::PackedInt64Array out;
+    if (splo == nullptr || data.root() == nullptr) {
+        return out;
+    }
+    for (const auto s : *splo) {
+        if (lookup(data.root()->shouts(), s) != nullptr) {
+            out.push_back(s);
+        }
+    }
+    return out;
+}
+
+} // namespace
+
 std::int64_t find_keyword(const WorldData& data, const String& editor_id) {
     return data.keyword_by_editor_id(std::string_view(editor_id.utf8().get_data()));
 }
@@ -238,6 +256,7 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
         }
     }
     out["spells"] = spells;
+    out["shouts"] = shouts_in(data, npc->spells());
     Array factions;
     if (npc->factions() != nullptr) {
         for (const auto* f : *npc->factions()) {
@@ -294,6 +313,20 @@ Dictionary get_race(const WorldData& data, std::int64_t race_id) {
         }
     }
     out["spells"] = spells;
+    out["shouts"] = shouts_in(data, race->spells());
+    // world.fb 36; absent in older packs: 0.
+    out["injured_health"] = static_cast<double>(race->injured_health());
+    out["aim_angle_tolerance"] = static_cast<double>(race->aim_angle_tolerance());
+    out["flight_radius"] = static_cast<double>(race->flight_radius());
+    out["angular_acceleration"] = static_cast<double>(race->angular_acceleration());
+    out["angular_tolerance"] = static_cast<double>(race->angular_tolerance());
+    out["flags2"] = static_cast<std::int64_t>(race->flags2());
+    out["movement_walk"] = static_cast<std::int64_t>(race->movement_walk());
+    out["movement_run"] = static_cast<std::int64_t>(race->movement_run());
+    out["movement_swim"] = static_cast<std::int64_t>(race->movement_swim());
+    out["movement_fly"] = static_cast<std::int64_t>(race->movement_fly());
+    out["movement_sneak"] = static_cast<std::int64_t>(race->movement_sneak());
+    out["movement_sprint"] = static_cast<std::int64_t>(race->movement_sprint());
     Array behaviours;
     if (race->behaviours() != nullptr) {
         for (const auto* b : *race->behaviours()) {

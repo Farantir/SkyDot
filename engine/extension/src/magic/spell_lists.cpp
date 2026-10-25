@@ -17,7 +17,14 @@ constexpr std::uint32_t k_player_actor = 0x14;
 /// NpcTemplateFlags bit 3 (0x8): the spell list comes from the template.
 constexpr std::uint32_t k_template_spell_list = 0x8;
 
-void add_forms(const wfb::World& world, const flatbuffers::Vector<std::uint32_t>* raw, std::uint32_t ref,
+/// Whether a list collects spells (SPEL) or shouts (SHOU).
+enum class Kind : std::uint8_t { spells, shouts };
+
+bool is_wanted(const wfb::World& world, Kind kind, std::uint32_t id) {
+    return kind == Kind::spells ? lookup(world.spells(), id) != nullptr : lookup(world.shouts(), id) != nullptr;
+}
+
+void add_forms(const wfb::World& world, Kind kind, const flatbuffers::Vector<std::uint32_t>* raw, std::uint32_t ref,
                std::uint16_t level, std::vector<std::uint32_t>& out) {
     if (raw == nullptr) {
         return;
@@ -25,15 +32,15 @@ void add_forms(const wfb::World& world, const flatbuffers::Vector<std::uint32_t>
     leveled::Rng rng(leveled::seed_for(ref, leveled::k_purpose_spells));
     for (const std::uint32_t id : *raw) {
         std::vector<std::uint32_t> found;
-        if (lookup(world.spells(), id) != nullptr) {
+        if (is_wanted(world, kind, id)) {
             found.push_back(id);
         } else if (leveled::is_list(world, id)) {
             for (const auto& e : leveled::resolve(world, id, level, rng)) {
-                if (lookup(world.spells(), e.form) != nullptr) {
+                if (is_wanted(world, kind, e.form)) {
                     found.push_back(e.form);
                 }
             }
-        } // else a shout: not in this file
+        } // else the other kind, or neither
         for (const std::uint32_t f : found) {
             if (std::ranges::find(out, f) == out.end()) {
                 out.push_back(f);
@@ -42,23 +49,23 @@ void add_forms(const wfb::World& world, const flatbuffers::Vector<std::uint32_t>
     }
 }
 
-void collect(const wfb::World& world, std::uint32_t npc_id, std::uint32_t ref, std::uint16_t level, int depth,
+void collect(const wfb::World& world, Kind kind, std::uint32_t npc_id, std::uint32_t ref, std::uint16_t level, int depth,
              std::vector<std::uint32_t>& out) {
     const auto* npc = lookup(world.npcs(), npc_id);
     if (npc == nullptr) {
         return;
     }
-    add_forms(world, npc->spells(), ref, level, out);
+    add_forms(world, kind, npc->spells(), ref, level, out);
     if (depth < 4 && npc->template_() != 0 &&
         (static_cast<std::uint32_t>(npc->template_flags()) & k_template_spell_list) != 0) {
         leveled::Rng rng(leveled::seed_for(ref, leveled::k_purpose_actor));
         const std::uint32_t tpl = leveled::pick_one(world, npc->template_(), level, rng);
         if (tpl != 0) {
-            collect(world, tpl, ref, level, depth + 1, out);
+            collect(world, kind, tpl, ref, level, depth + 1, out);
         }
     }
     if (const auto* race = lookup(world.races(), npc->race())) {
-        add_forms(world, race->spells(), ref, level, out);
+        add_forms(world, kind, race->spells(), ref, level, out);
     }
 }
 
@@ -67,7 +74,14 @@ void collect(const wfb::World& world, std::uint32_t npc_id, std::uint32_t ref, s
 std::vector<std::uint32_t> base_spells(const wfb::World& world, std::uint32_t npc, std::uint32_t ref,
                                        std::uint16_t level) {
     std::vector<std::uint32_t> out;
-    collect(world, npc, ref, level, 0, out);
+    collect(world, Kind::spells, npc, ref, level, 0, out);
+    return out;
+}
+
+std::vector<std::uint32_t> base_shouts(const wfb::World& world, std::uint32_t npc, std::uint32_t ref,
+                                       std::uint16_t level) {
+    std::vector<std::uint32_t> out;
+    collect(world, Kind::shouts, npc, ref, level, 0, out);
     return out;
 }
 

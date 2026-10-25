@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (35; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (36; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls, 36 shouts (SHOU), words of power (WOOP), movement types (MOVT), race flight data and default movement types). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 

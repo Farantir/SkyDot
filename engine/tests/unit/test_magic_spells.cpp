@@ -33,8 +33,11 @@ constexpr std::uint32_t k_ability = 0x2003;
 constexpr std::uint32_t k_power = 0x2004;
 constexpr std::uint32_t k_lesser = 0x2005;
 constexpr std::uint32_t k_extra = 0x2006;
+constexpr std::uint32_t k_list2 = 0x3001;    // an LVSP of a shout
 constexpr std::uint32_t k_list = 0x3000;     // an LVSP of Healing and Extra
-constexpr std::uint32_t k_shout = 0x9999;    // not in the file
+constexpr std::uint32_t k_shout = 0x9999;    // a SHOU
+constexpr std::uint32_t k_shout2 = 0x999A;   // a SHOU only the LVSP names
+constexpr std::uint32_t k_shout3 = 0x999B;   // a SHOU of the race
 
 bool fake_source(std::uint32_t ref, vm::ActorBase& out) {
     if (ref != k_player && ref != k_mage) {
@@ -62,7 +65,7 @@ struct Host : magic::MagicHost {
 
 WorldSpec spec() {
     WorldSpec s;
-    s.format_version = 33;
+    s.format_version = 36;
     MagicEffectSpec fortify{.id = k_fortify};
     fortify.archetype = 34;
     fortify.actor_value = static_cast<std::int32_t>(vm::av::k_health);
@@ -78,10 +81,13 @@ WorldSpec spec() {
     };
     s.spells = {spell(k_flames, 0, 2), spell(k_healing, 0, 2), spell(k_ability, 4, 0), spell(k_power, 2, 1),
                 spell(k_lesser, 3, 1), spell(k_extra, 0, 1)};
-    s.races = {RaceSpec{.id = k_race, .spells = {k_ability}}};
-    s.npcs = {NpcSpec{.id = k_npc, .race = k_race, .spells = {k_flames, k_list, k_shout}},
+    s.shouts = {ShoutSpec{.id = k_shout, .name = "Fus", .words = {{0x500, k_flames, 15.0F}}},
+                ShoutSpec{.id = k_shout2}, ShoutSpec{.id = k_shout3}};
+    s.races = {RaceSpec{.id = k_race, .spells = {k_ability, k_shout3, k_shout}}};
+    s.npcs = {NpcSpec{.id = k_npc, .race = k_race, .spells = {k_flames, k_list, k_list2, k_shout}},
               NpcSpec{.id = k_mage_npc, .race = k_race, .spells = {k_power}}};
-    s.leveled_lists = {LeveledListSpec{.id = k_list, .entries = {{.level = 1, .form = k_healing}}}};
+    s.leveled_lists = {LeveledListSpec{.id = k_list, .entries = {{.level = 1, .form = k_healing}}},
+                     LeveledListSpec{.id = k_list2, .entries = {{.level = 1, .form = k_shout2}}}};
     return s;
 }
 
@@ -108,6 +114,16 @@ TEST_CASE("an actor's base spells are its NPC_ list and its race's, lists resolv
     CHECK(spells == std::vector<std::uint32_t>{k_flames, k_healing, k_ability});
     CHECK(magic::base_spells(*rig.world, k_npc, k_player, 1) == spells); // the same every time
     CHECK(magic::base_spells(*rig.world, 0x7777, k_player, 1).empty());
+}
+
+TEST_CASE("an actor's base shouts are the SHOUs of the same lists, once each", "[magic][spells]") {
+    Rig rig;
+    // NPC_: the LVSP's k_shout2, then k_shout; the race adds k_shout3 (k_shout is not repeated).
+    CHECK(magic::base_shouts(*rig.world, k_npc, k_player, 1) ==
+          std::vector<std::uint32_t>{k_shout2, k_shout, k_shout3});
+    CHECK(magic::base_shouts(*rig.world, k_mage_npc, k_mage, 1) ==
+          std::vector<std::uint32_t>{k_shout3, k_shout});
+    CHECK(magic::base_shouts(*rig.world, 0x7777, k_player, 1).empty());
 }
 
 TEST_CASE("added and removed spells change what is known", "[magic][spells]") {

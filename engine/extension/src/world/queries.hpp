@@ -88,6 +88,10 @@ godot::Dictionary get_spell(const WorldData& data, std::int64_t id);
 godot::Dictionary get_magic_effect(const WorldData& data, std::int64_t id);
 godot::Dictionary get_enchantment(const WorldData& data, std::int64_t id);
 godot::Dictionary get_art_object(const WorldData& data, std::int64_t id);
+/// Shouts, words of power and movement types (queries_magic.cpp; world.fb 36).
+godot::Dictionary get_shout(const WorldData& data, std::int64_t id);
+godot::Dictionary get_word_of_power(const WorldData& data, std::int64_t id);
+godot::Dictionary get_movement_type(const WorldData& data, std::int64_t id);
 godot::Array get_item_effects(const WorldData& data, std::int64_t form);
 
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);

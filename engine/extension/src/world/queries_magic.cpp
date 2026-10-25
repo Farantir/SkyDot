@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Magic as world.fb 33 carries it: spells (SPEL), magic effects (MGEF),
-// enchantments (ENCH), art objects (ARTO) and the effects of items.
+// enchantments (ENCH), art objects (ARTO) and the effects of items; shouts (SHOU),
+// words of power (WOOP) and movement types (MOVT) since 36.
 #include "world/queries.hpp"
 #include "data/fb_search.hpp"
 #include "data/text.hpp"
@@ -204,6 +205,70 @@ Dictionary get_art_object(const WorldData& data, std::int64_t id) {
     out["editor_id"] = to_godot(a->editor_id());
     out["model"] = to_godot(a->model());
     out["art_type"] = whole(a->art_type());
+    return out;
+}
+
+Dictionary get_shout(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* s = lookup(data.root() != nullptr ? data.root()->shouts() : nullptr,
+                           static_cast<std::uint32_t>(id));
+    if (s == nullptr) {
+        return out;
+    }
+    out["id"] = id;
+    out["editor_id"] = to_godot(s->editor_id());
+    out["name"] = to_godot(s->name());
+    out["description"] = to_godot(s->description());
+    out["menu_display_object"] = whole(s->menu_display_object());
+    Array words;
+    if (s->words() != nullptr) {
+        for (const auto* w : *s->words()) {
+            Dictionary d;
+            d["word"] = whole(w->word());
+            d["spell"] = whole(w->spell());
+            d["recovery"] = static_cast<double>(w->recovery());
+            words.push_back(d);
+        }
+    }
+    out["words"] = words;
+    return out;
+}
+
+Dictionary get_word_of_power(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* w = lookup(data.root() != nullptr ? data.root()->words_of_power() : nullptr,
+                           static_cast<std::uint32_t>(id));
+    if (w == nullptr) {
+        return out;
+    }
+    out["id"] = id;
+    out["editor_id"] = to_godot(w->editor_id());
+    out["name"] = to_godot(w->name());
+    out["translation"] = to_godot(w->translation());
+    return out;
+}
+
+Dictionary get_movement_type(const WorldData& data, std::int64_t id) {
+    Dictionary out;
+    const auto* m = lookup(data.root() != nullptr ? data.root()->movement_types() : nullptr,
+                           static_cast<std::uint32_t>(id));
+    if (m == nullptr) {
+        return out;
+    }
+    out["id"] = id;
+    out["editor_id"] = to_godot(m->editor_id());
+    out["name"] = to_godot(m->name());
+    out["left_walk"] = static_cast<double>(m->left_walk());
+    out["left_run"] = static_cast<double>(m->left_run());
+    out["right_walk"] = static_cast<double>(m->right_walk());
+    out["right_run"] = static_cast<double>(m->right_run());
+    out["forward_walk"] = static_cast<double>(m->forward_walk());
+    out["forward_run"] = static_cast<double>(m->forward_run());
+    out["back_walk"] = static_cast<double>(m->back_walk());
+    out["back_run"] = static_cast<double>(m->back_run());
+    out["rotate_in_place_walk"] = static_cast<double>(m->rotate_in_place_walk());
+    out["rotate_in_place_run"] = static_cast<double>(m->rotate_in_place_run());
+    out["rotate_while_moving_run"] = static_cast<double>(m->rotate_while_moving_run());
     return out;
 }
 

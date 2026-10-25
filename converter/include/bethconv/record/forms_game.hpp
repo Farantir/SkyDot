@@ -333,6 +333,41 @@ struct Spell {
     std::vector<EffectItem> effects; ///< EFID/EFIT/CTDA
 };
 
+/// SHOU: a shout. 75 in SE and LE.
+struct Shout {
+    std::string editor_id;
+    ObjectBounds bounds;
+    LString name;
+    LString description;      ///< DESC
+    FormId menu_display_object; ///< MDOB
+    /// SNAM, 12 bytes each: a WOOP, the SPEL cast and the recovery seconds.
+    struct Word {
+        FormId word;
+        FormId spell;
+        float recovery{};
+    };
+    std::vector<Word> words;
+};
+
+/// WOOP: a word of power. 81 in SE and LE.
+struct WordOfPower {
+    std::string editor_id;
+    ObjectBounds bounds;
+    LString name;        ///< FULL: the word in the dragon language.
+    LString translation; ///< TNAM
+};
+
+/// MOVT: a movement type. 92 in SE and LE, SPED 44 bytes (77) or 40 bytes (15).
+struct MovementType {
+    std::string editor_id;
+    ObjectBounds bounds;
+    std::string name; ///< MNAM
+    /// SPED floats in xEdit order: left walk, left run, right walk, right run,
+    /// forward walk, forward run, back walk, back run, rotate in place walk,
+    /// rotate in place run, rotate while moving run. A 40-byte SPED has no last one.
+    std::array<float, 11> speeds{};
+};
+
 /// NPC_: an actor. 6,626 in SE, all compressed, 58 distinct field types.
 struct Npc {
     std::string editor_id;
@@ -814,6 +849,11 @@ struct Package {
 [[nodiscard]] io::ParseResult<CombatStyle> parse_combat_style(io::SpanReader& data,
                                                              const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Shout> parse_shout(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<WordOfPower> parse_word_of_power(io::SpanReader& data,
+                                                               const FormContext& ctx);
+[[nodiscard]] io::ParseResult<MovementType> parse_movement_type(io::SpanReader& data,
+                                                                const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<FormList> parse_form_list(io::SpanReader& data,

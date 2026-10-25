@@ -12,12 +12,19 @@ endif()
 foreach(line IN ITEMS
         "whole world: 1451 SPEL, 472 ALCH, 104 SCRL, 757 ENCH, 180 INGR, 0 other items with effects; 5213 effect entries"
         "slice sources: 166 SPEL, 234 ALCH, 11 SCRL, 348 ENCH, 91 INGR, 0 other; 1387 effect entries"
-        "not resolved: 40 spell-list forms that are neither SPEL nor LVSP (shouts), 0 actor bases missing, 0 effects naming no MGEF")
+        "slice shouts: 40 SHOU (AlduinFirestormShout, BecomeEtherealShout, DLC1DragonDrainVitalityShout06,"
+        "UnrelentingForceShout, UnrelentingForceShoutDraugr, WhirlwindSprintShout); whole world: 117 SHOU")
     string(FIND "${out}" "${line}" at)
     if(at EQUAL -1)
         message(FATAL_ERROR "the census lacks the line\n  ${line}\nit printed:\n${out}")
     endif()
 endforeach()
+
+# Every spell-list form is a SPEL, an LVSP or a SHOU now.
+string(FIND "${out}" "not resolved" at)
+if(NOT at EQUAL -1)
+    message(FATAL_ERROR "the census has unresolved forms; it printed:\n${out}")
+endif()
 
 # The most used archetypes in the slice, in census order.
 foreach(pattern IN ITEMS

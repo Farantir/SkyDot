@@ -143,6 +143,22 @@ struct Race {
     /// DATA byte 96 and 100.
     float unarmed_damage{};
     float unarmed_reach{};
+    /// DATA byte 76 (164 bytes in SE, 128 in LE): the injured health fraction;
+    /// byte 108..123 aim angle tolerance, flight radius, angular acceleration
+    /// and tolerance; byte 124 the second flag word.
+    float injured_health{};
+    float aim_angle_tolerance{};
+    float flight_radius{};
+    float angular_acceleration{};
+    float angular_tolerance{};
+    std::uint32_t flags2{};
+    /// WKMV, RNMV, SWMV, FLMV, SNMV, SPMV: the default MOVTs.
+    FormId movement_walk;
+    FormId movement_run;
+    FormId movement_swim;
+    FormId movement_fly;
+    FormId movement_sneak;
+    FormId movement_sprint;
     FormId impact_material;    ///< NAM4: a MATT.
     FormId impact_data_set;    ///< NAM5: an IPDS.
 

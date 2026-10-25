@@ -21,9 +21,14 @@ namespace skydot::magic {
 enum class Slot : std::uint8_t { left = 0, right = 1, power = 2 };
 
 /// The spells of NPC_ `npc` placed as `ref`, plus its race's: SPLO as they stand, an LVSP resolved
-/// for a player of `level`, a shout (SHOU, not in world.fb) dropped; each spell once, in order. A
+/// for a player of `level`, a shout (SHOU) dropped (see base_shouts); each spell once, in order. A
 /// template that gives the spell list (flag 0x8) is followed.
 [[nodiscard]] std::vector<std::uint32_t> base_spells(const wfb::World& world, std::uint32_t npc, std::uint32_t ref,
+                                                     std::uint16_t level);
+
+/// The shouts of NPC_ `npc` placed as `ref`, plus its race's: the SHOUs among the same SPLO lists,
+/// an LVSP resolved for `level` (its entries that are shouts count too); each shout once, in order.
+[[nodiscard]] std::vector<std::uint32_t> base_shouts(const wfb::World& world, std::uint32_t npc, std::uint32_t ref,
                                                      std::uint16_t level);
 
 class SpellBook {

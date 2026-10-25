@@ -181,6 +181,18 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
                        shared_.global(merged, race->voice_female, failed)};
     out.unarmed_damage = race->unarmed_damage;
     out.unarmed_reach = race->unarmed_reach;
+    out.injured_health = race->injured_health;
+    out.aim_angle_tolerance = race->aim_angle_tolerance;
+    out.flight_radius = race->flight_radius;
+    out.angular_acceleration = race->angular_acceleration;
+    out.angular_tolerance = race->angular_tolerance;
+    out.flags2 = race->flags2;
+    out.movement_walk = shared_.global(merged, race->movement_walk, failed);
+    out.movement_run = shared_.global(merged, race->movement_run, failed);
+    out.movement_swim = shared_.global(merged, race->movement_swim, failed);
+    out.movement_fly = shared_.global(merged, race->movement_fly, failed);
+    out.movement_sneak = shared_.global(merged, race->movement_sneak, failed);
+    out.movement_sprint = shared_.global(merged, race->movement_sprint, failed);
     out.impact_material = shared_.global(merged, race->impact_material, failed);
     out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
     out.spells = shared_.global_all(merged, race->spells, failed);

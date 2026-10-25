@@ -682,6 +682,91 @@ io::ParseResult<Spell> parse_spell(io::SpanReader& data, const FormContext& ctx)
     return out;
 }
 
+io::ParseResult<Shout> parse_shout(io::SpanReader& data, const FormContext& ctx) {
+    Shout out;
+    const BaseObjectFields into{
+        .editor_id = &out.editor_id, .bounds = &out.bounds, .name = &out.name};
+    const auto walked = walk_fields(
+        data, FourCC{"SHOU"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DESC"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"SHOU"}, field.type,
+                                  StringKind::description),
+                     out.description);
+            } else if (field.type == FourCC{"MDOB"}) {
+                take(failure, read_formid(body), out.menu_display_object);
+            } else if (field.type == FourCC{"SNAM"}) {
+                Shout::Word word;
+                take(failure, read_formid(body), word.word);
+                take(failure, read_formid(body), word.spell);
+                take(failure, body.get<float>(), word.recovery);
+                if (!failure) {
+                    out.words.push_back(word);
+                }
+            } else {
+                return read_base_object_field(into, FourCC{"SHOU"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<WordOfPower> parse_word_of_power(io::SpanReader& data, const FormContext& ctx) {
+    WordOfPower out;
+    const BaseObjectFields into{
+        .editor_id = &out.editor_id, .bounds = &out.bounds, .name = &out.name};
+    const auto walked = walk_fields(
+        data, FourCC{"WOOP"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"TNAM"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"WOOP"}, field.type, StringKind::plain),
+                     out.translation);
+            } else {
+                return read_base_object_field(into, FourCC{"WOOP"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<MovementType> parse_movement_type(io::SpanReader& data, const FormContext& ctx) {
+    MovementType out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .bounds = &out.bounds};
+    const auto walked = walk_fields(
+        data, FourCC{"MOVT"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"MNAM"}) {
+                take(failure, read_zstring(body), out.name);
+            } else if (field.type == FourCC{"SPED"}) {
+                // 44 bytes, or 40 without the rotate-while-moving value.
+                for (float& speed : out.speeds) {
+                    if (body.remaining() < sizeof(float)) {
+                        break;
+                    }
+                    take(failure, body.get<float>(), speed);
+                }
+            } else {
+                return read_base_object_field(into, FourCC{"MOVT"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- NPC_ -----------------------------------------------------------------
 
 namespace {

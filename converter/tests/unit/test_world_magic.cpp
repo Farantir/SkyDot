@@ -266,7 +266,74 @@ void make_magic(const TempDir& dir) {
     u32(race, "SPLO", 0x972);
     u32(race, "KSIZ", 1);
     u32(race, "KWDA", 0x973);
+    {
+        // DATA of 128 bytes (LE): the injured health at 76, flight data at 108.
+        ByteWriter d;
+        for (std::size_t at = 0; at < 128; at += 4) {
+            if (at == 76) {
+                d.f32(0.35F);
+            } else if (at == 108) {
+                d.f32(41.75F);
+            } else if (at == 112) {
+                d.f32(400.0F);
+            } else if (at == 116) {
+                d.f32(0.25F);
+            } else if (at == 120) {
+                d.f32(5.0F);
+            } else if (at == 124) {
+                d.u32(0x11);
+            } else {
+                d.u32(0);
+            }
+        }
+        bethconv::test::write_field(race, "DATA", d);
+    }
+    u32(race, "WKMV", 0xA02);
+    u32(race, "FLMV", 0xA03);
     record(file, "RACE", 0x907, race);
+
+    ByteWriter shou;
+    text(shou, "EDID", "TestShout");
+    text(shou, "FULL", "Test Shout");
+    text(shou, "DESC", "Pushes.");
+    u32(shou, "MDOB", 0xA10);
+    for (std::uint32_t i = 0; i < 3; ++i) {
+        ByteWriter w;
+        w.u32(0xA20 + i);
+        w.u32(0x904 + i);
+        w.f32(15.0F + 5.0F * static_cast<float>(i));
+        bethconv::test::write_field(shou, "SNAM", w);
+    }
+    record(file, "SHOU", 0x980, shou);
+
+    ByteWriter woop;
+    text(woop, "EDID", "TestWord");
+    text(woop, "FULL", "Fus");
+    text(woop, "TNAM", "Force");
+    record(file, "WOOP", 0xA20, woop);
+
+    ByteWriter movt;
+    text(movt, "EDID", "TestMT");
+    text(movt, "MNAM", "Default");
+    {
+        ByteWriter w;
+        for (int i = 1; i <= 10; ++i) {
+            w.f32(static_cast<float>(i));
+        }
+        bethconv::test::write_field(movt, "SPED", w); // the 40-byte form
+    }
+    record(file, "MOVT", 0xA02, movt);
+
+    ByteWriter movt2;
+    text(movt2, "EDID", "TestMT2");
+    {
+        ByteWriter w;
+        for (int i = 1; i <= 11; ++i) {
+            w.f32(static_cast<float>(i) * 0.5F);
+        }
+        bethconv::test::write_field(movt2, "SPED", w);
+    }
+    record(file, "MOVT", 0xA03, movt2);
 
     std::ofstream out(dir / "Magic.esm", std::ios::binary);
     for (const auto b : file.bytes()) {
@@ -430,4 +497,42 @@ TEST_CASE("world.fb 33/34 carries spells, magic effect data, art objects and pro
     CHECK(race->spells[1] == 0x972);
     REQUIRE(race->keywords.size() == 1);
     CHECK(race->keywords[0] == 0x973);
+    CHECK(race->injured_health == 0.35F);
+    CHECK(race->aim_angle_tolerance == 41.75F);
+    CHECK(race->flight_radius == 400.0F);
+    CHECK(race->angular_acceleration == 0.25F);
+    CHECK(race->angular_tolerance == 5.0F);
+    CHECK(race->flags2 == 0x11);
+    CHECK(race->movement_walk == 0xA02);
+    CHECK(race->movement_fly == 0xA03);
+    CHECK(race->movement_run == 0);
+
+    // world.fb 36: shouts, words of power, movement types.
+    CHECK(stats->shouts == 1);
+    CHECK(stats->words_of_power == 1);
+    CHECK(stats->movement_types == 2);
+    const auto shout = file->shout(0x980);
+    REQUIRE(shout.has_value());
+    CHECK(shout->editor_id == "TestShout");
+    CHECK(shout->name == "Test Shout");
+    CHECK(shout->description == "Pushes.");
+    CHECK(shout->menu_display_object == 0xA10);
+    REQUIRE(shout->words.size() == 3);
+    CHECK(shout->words[1].word() == 0xA21);
+    CHECK(shout->words[1].spell() == 0x905);
+    CHECK(shout->words[2].recovery() == 25.0F);
+    const auto word = file->word_of_power(0xA20);
+    REQUIRE(word.has_value());
+    CHECK(word->name == "Fus");
+    CHECK(word->translation == "Force");
+    const auto mt = file->movement_type(0xA02);
+    REQUIRE(mt.has_value());
+    CHECK(mt->name == "Default");
+    CHECK(mt->left_walk == 1.0F);
+    CHECK(mt->forward_run == 6.0F);
+    CHECK(mt->rotate_in_place_run == 10.0F);
+    CHECK(mt->rotate_while_moving_run == 0.0F);
+    const auto mt2 = file->movement_type(0xA03);
+    REQUIRE(mt2.has_value());
+    CHECK(mt2->rotate_while_moving_run == 5.5F);
 }

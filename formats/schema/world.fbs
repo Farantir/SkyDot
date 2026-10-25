@@ -1346,11 +1346,91 @@ table Race {
     /// ATKD and ATKE pairs (format 30), in record order.
     attacks: [RaceAttack];
     /// SPLO (format 33): the spells and abilities every actor of the race
-    /// has, as they stand (Spells, LVSPs, SHOUs).
+    /// has, as they stand (Spells, LVSPs, SHOUs; a SHOU is in `shouts` since
+    /// format 36).
     spells: [uint32];
     /// KWDA (format 34): the race's keywords (ActorTypeUndead, ...); an
     /// actor answers HasKeyword for them too.
     keywords: [uint32];
+    /// DATA byte 76 (format 36; xEdit): the fraction of health below which an
+    /// actor is injured (DragonRace 0.35).
+    injured_health: float;
+    /// DATA byte 108..127 (format 36; xEdit): flight data of flying races:
+    /// the angle in degrees within which the actor aims at a target (41.75 for
+    /// dragons), the radius of its circling flight in game units (400), its
+    /// angular acceleration (0.25) and tolerance (5). 0 when DATA is shorter.
+    aim_angle_tolerance: float;
+    flight_radius: float;
+    angular_acceleration: float;
+    angular_tolerance: float;
+    /// DATA byte 124 (format 36): the second flag word, raw.
+    flags2: uint32;
+    /// WKMV, RNMV, SWMV, FLMV, SNMV and SPMV (format 36): the default
+    /// MovementTypes (in `movement_types`) for walking, running, swimming,
+    /// flying, sneaking and sprinting; 0 if none.
+    movement_walk: uint32;
+    movement_run: uint32;
+    movement_swim: uint32;
+    movement_fly: uint32;
+    movement_sneak: uint32;
+    movement_sprint: uint32;
+}
+
+/// One word of a Shout (SHOU SNAM, 12 bytes; format 36).
+struct ShoutWord {
+    /// A WordOfPower (WOOP) in `words_of_power`.
+    word: uint32;
+    /// The Spell cast when the word is spoken, in `spells`.
+    spell: uint32;
+    /// Seconds before the shout can be used again after this word.
+    recovery: float;
+}
+
+/// SHOU (format 36): a shout (dragon shout or creature breath). Sources: xEdit.
+table Shout {
+    id: uint32 (key);
+    editor_id: string;
+    /// FULL, localized.
+    name: string;
+    /// DESC, localized.
+    description: string;
+    /// MDOB: the object shown in the menu; 0 if none.
+    menu_display_object: uint32;
+    /// SNAM, in record order (words 1 to 3; three in vanilla).
+    words: [ShoutWord];
+}
+
+/// WOOP (format 36): a word of power. Sources: xEdit.
+table WordOfPower {
+    id: uint32 (key);
+    editor_id: string;
+    /// FULL, localized: the word in the dragon language ("Fus").
+    name: string;
+    /// TNAM, localized: its translation ("Force").
+    translation: string;
+}
+
+/// MOVT (format 36): how fast an actor moves and turns in each gait. SPED
+/// holds 11 floats in the order below (xEdit); a 40-byte SPED (10 floats, 15
+/// in vanilla) lacks the last one, which then reads 0. Speeds are game units
+/// per second; the rotation values are radians as stored (Dragon_Flying_MT
+/// 1.5708, Dragon_Default_MT 0.589; xEdit shows no unit).
+table MovementType {
+    id: uint32 (key);
+    editor_id: string;
+    /// MNAM, the name of the movement type's animation ("Default").
+    name: string;
+    left_walk: float;
+    left_run: float;
+    right_walk: float;
+    right_run: float;
+    forward_walk: float;
+    forward_run: float;
+    back_walk: float;
+    back_run: float;
+    rotate_in_place_walk: float;
+    rotate_in_place_run: float;
+    rotate_while_moving_run: float;
 }
 
 /// RACE ATKD (44 bytes) and ATKE (format 30). Source: xEdit's RACE layout. In
@@ -1546,7 +1626,7 @@ table Npc {
     aggro_attack: uint32;
     /// SPLO (format 33): the spells, abilities and powers it starts with, as
     /// they stand: Spells in `spells`, leveled spell lists (LVSP, in
-    /// `leveled_lists`) and shouts (SHOU, not in this file).
+    /// `leveled_lists`) and shouts (SHOU, in `shouts` since format 36).
     spells: [uint32];
 }
 
@@ -2338,6 +2418,12 @@ table World {
     spells: [Spell];
     /// Sorted by id (format 33).
     art_objects: [ArtObject];
+    /// Sorted by id (format 36).
+    shouts: [Shout];
+    /// Sorted by id (format 36).
+    words_of_power: [WordOfPower];
+    /// Sorted by id (format 36).
+    movement_types: [MovementType];
 }
 
 root_type World;
