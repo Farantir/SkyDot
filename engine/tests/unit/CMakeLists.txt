@@ -20,6 +20,7 @@ add_executable(skydot_core_tests
     test_behavior.cpp
     test_conditions.cpp
     test_combat_ai.cpp
+    test_flight.cpp
     test_magic_choice.cpp
     test_combat_damage.cpp
     test_crafting.cpp
