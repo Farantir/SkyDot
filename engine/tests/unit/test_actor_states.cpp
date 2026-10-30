@@ -536,7 +536,7 @@ TEST_CASE("relationship ranks and faction relations are kept, clamped and the sa
     CHECK(s.faction_reaction(0x10, 0x20) == 1);
     CHECK(s.faction_reaction(0x20, 0x10) == 0);
     CHECK_FALSE(s.faction_reaction(0x30, 0x10).has_value());
-    const std::vector<std::pair<std::uint32_t, std::uint8_t>> from10 = {{0x20, 1}, {0x30, 3}};
+    const std::vector<std::pair<std::uint32_t, std::uint8_t>> from10 = {{0x20u, std::uint8_t{1}}, {0x30u, std::uint8_t{3}}};
     CHECK(s.faction_reactions_from(0x10) == from10);
     CHECK(s.faction_reactions_from(0x12).empty());
 }

@@ -254,9 +254,8 @@ void SkydotPapyrus::bind_objectreference_natives() {
     // it goes on. Speed, rotation speed and the spline's tangent are ignored.
     for (const char* name : {"TranslateTo", "SplineTranslateTo"}) {
         v.bind("ObjectReference", name, [this, number, arg](NativeCall& c) {
-            constexpr double k_degrees = std::numbers::pi / 180.0;
             const auto at = [&](std::size_t i) { return static_cast<float>(number(arg(c, i))); };
-            const auto angle = [&](std::size_t i) { return static_cast<float>(number(arg(c, i)) * k_degrees); };
+            const auto angle = [&](std::size_t i) { return static_cast<float>(number(arg(c, i)) * (std::numbers::pi / 180.0)); };
             const std::uint32_t ref = c.self.form();
             relocate_ref(ref, 0, Vector3(at(0), at(1), at(2)), Vector3(angle(3), angle(4), angle(5)));
             dispatch(ref, "OnTranslationComplete", {});

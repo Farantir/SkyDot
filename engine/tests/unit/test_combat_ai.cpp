@@ -254,8 +254,8 @@ TEST_CASE("SetEnemy makes a dragon and the player's side enemies, SetAlly undoes
     };
     CHECK(reaction(dragon, player, std::nullopt, data) == Reaction::neutral);
     // SetEnemy(PlayerFaction): dragon faction sees the player's as enemy, and the other way round.
-    std::vector<std::pair<std::uint32_t, std::uint8_t>> dragon_set = {{player_faction, 1}};
-    std::vector<std::pair<std::uint32_t, std::uint8_t>> player_set = {{dragon_faction, 1}};
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> dragon_set = {{player_faction, std::uint8_t{1}}};
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> player_set = {{dragon_faction, std::uint8_t{1}}};
     const auto scripted = [&](std::uint32_t f) {
         if (f == dragon_faction) {
             return with_scripted_relations(data(f), dragon_set);
@@ -270,7 +270,7 @@ TEST_CASE("SetEnemy makes a dragon and the player's side enemies, SetAlly undoes
     CHECK(reaction(guard, player, std::nullopt, scripted) == Reaction::friend_); // the data's stays
     // A scripted entry replaces the data's for that faction: SetAlly over a data enemy.
     const auto hostile_data = [](std::uint32_t) { return std::vector<FactionRelation>{{0x200, 0, 1}}; };
-    const std::vector<std::pair<std::uint32_t, std::uint8_t>> ally = {{0x200, 2}};
+    const std::vector<std::pair<std::uint32_t, std::uint8_t>> ally = {{0x200u, std::uint8_t{2}}};
     const auto merged = with_scripted_relations(hostile_data(0x100), ally);
     REQUIRE(merged.size() == 1);
     CHECK(merged[0].reaction == 2);
