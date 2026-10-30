@@ -72,6 +72,14 @@ public:
     double get_fly_speed() const { return fly_speed_; }
     void set_swim_speed(double v) { swim_speed_ = v; }
     double get_swim_speed() const { return swim_speed_; }
+    /// Swimming at the walk gait.
+    void set_swim_walk_speed(double v) { swim_walk_speed_ = v; }
+    double get_swim_walk_speed() const { return swim_walk_speed_; }
+    /// Backwards speed as a fraction of the forward speed (walk and run gait; MOVT back / forward).
+    void set_back_walk_ratio(double v) { back_walk_ratio_ = v; }
+    double get_back_walk_ratio() const { return back_walk_ratio_; }
+    void set_back_run_ratio(double v) { back_run_ratio_ = v; }
+    double get_back_run_ratio() const { return back_run_ratio_; }
     void set_jump_height(double v) { jump_height_ = v; }
     double get_jump_height() const { return jump_height_; }
     void set_step_height(double v) { step_height_ = v; }
@@ -95,6 +103,7 @@ protected:
 
 private:
     void walk(double delta);
+    double back_factor(double ratio) const;
     void swim(double delta);
     /// Climb a step in the way of this tick's motion. True if it did.
     bool step_up(double delta);
@@ -102,16 +111,21 @@ private:
     godot::Basis look_basis() const;
 
     // Defaults: the body is about the game's (128 units tall, eyes at 120);
-    // speeds are roughly the game's walk, run and sprint.
+    // speeds are the game's for a human (NPC_Default_MT walk 80.1 and run 370
+    // units per second, NPC_Sprinting_MT 500, back 71.9 and 205) and the
+    // jump is fJumpHeightMin (76 units); the player rig sets the race's.
     double radius_{0.3};
     double height_{1.83};
     double eye_height_{1.7};
-    double walk_speed_{1.6};
-    double run_speed_{5.0};
-    double sprint_speed_{7.5};
+    double walk_speed_{1.14};
+    double run_speed_{5.29};
+    double sprint_speed_{7.14};
     double fly_speed_{10.0};
-    double swim_speed_{2.2};
-    double jump_height_{1.1};
+    double swim_speed_{5.29};
+    double swim_walk_speed_{1.14};
+    double back_walk_ratio_{0.898};
+    double back_run_ratio_{0.554};
+    double jump_height_{1.086};
     double step_height_{0.45};
     double max_slope_{0.873}; ///< 50 degrees
     double chest_{1.25};      ///< Above the feet; swimming starts when it is under water.

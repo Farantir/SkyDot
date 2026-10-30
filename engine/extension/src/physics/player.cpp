@@ -91,6 +91,9 @@ void SkydotPlayer::_bind_methods() {
     SKYDOT_PROPERTY(sprint_speed, FLOAT);
     SKYDOT_PROPERTY(fly_speed, FLOAT);
     SKYDOT_PROPERTY(swim_speed, FLOAT);
+    SKYDOT_PROPERTY(swim_walk_speed, FLOAT);
+    SKYDOT_PROPERTY(back_walk_ratio, FLOAT);
+    SKYDOT_PROPERTY(back_run_ratio, FLOAT);
     SKYDOT_PROPERTY(jump_height, FLOAT);
     SKYDOT_PROPERTY(step_height, FLOAT);
     SKYDOT_PROPERTY(radius, FLOAT);
@@ -225,10 +228,20 @@ void SkydotPlayer::_physics_process(double delta) {
     current_ = get_global_position();
 }
 
+// Moving backwards is slower: between 1 (forwards or sideways) and `ratio` (straight back).
+double SkydotPlayer::back_factor(double ratio) const {
+    const double length = move_.length();
+    if (move_.y >= 0.0F || length < 0.0001) {
+        return 1.0;
+    }
+    return 1.0 - (1.0 - ratio) * (-static_cast<double>(move_.y) / length);
+}
+
 void SkydotPlayer::walk(double delta) {
     const Basis yaw(Vector3(0, 1, 0), r(yaw_));
     const Vector3 wish = yaw.xform(Vector3(move_.x, 0, -move_.y));
-    const double speed = effective_gait() == WALK ? walk_speed_ : effective_gait() == SPRINT ? sprint_speed_ : run_speed_;
+    double speed = effective_gait() == WALK ? walk_speed_ : effective_gait() == SPRINT ? sprint_speed_ : run_speed_;
+    speed *= back_factor(effective_gait() == WALK ? back_walk_ratio_ : back_run_ratio_);
     const bool on_floor = is_on_floor();
 
     Vector3 v = get_velocity();
@@ -269,7 +282,7 @@ void SkydotPlayer::swim(double delta) {
     Vector3 target = (look_basis().xform(Vector3(move_.x, 0, -move_.y)) +
                       Vector3(0, r(vertical_), 0))
                          .limit_length(1) *
-                     r(swim_speed_);
+                     r(gait_ == WALK ? swim_walk_speed_ : swim_speed_);
     if (vertical_ == 0.0) {
         // Float with the chest just under the surface.
         const double chest = static_cast<double>(get_global_position().y) + chest_;

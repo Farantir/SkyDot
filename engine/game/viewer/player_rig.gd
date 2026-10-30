@@ -72,6 +72,71 @@ func set_sprint_allowed(allowed: bool) -> void:
 	player.set_sprint_allowed(allowed)
 
 
+## The player's speeds and jump, for the game (the data's movement types, slow time).
+func set_walk_speed(value: float) -> void:
+	player.walk_speed = value
+
+
+func get_walk_speed() -> float:
+	return player.walk_speed
+
+
+func set_run_speed(value: float) -> void:
+	player.run_speed = value
+
+
+func get_run_speed() -> float:
+	return player.run_speed
+
+
+func set_sprint_speed(value: float) -> void:
+	player.sprint_speed = value
+
+
+func get_sprint_speed() -> float:
+	return player.sprint_speed
+
+
+func set_swim_speed(value: float) -> void:
+	player.swim_speed = value
+
+
+func get_swim_speed() -> float:
+	return player.swim_speed
+
+
+func set_swim_walk_speed(value: float) -> void:
+	player.swim_walk_speed = value
+
+
+func get_swim_walk_speed() -> float:
+	return player.swim_walk_speed
+
+
+func set_jump_height(value: float) -> void:
+	player.jump_height = value
+
+
+func get_jump_height() -> float:
+	return player.jump_height
+
+
+func set_back_walk_ratio(value: float) -> void:
+	player.back_walk_ratio = value
+
+
+func get_back_walk_ratio() -> float:
+	return player.back_walk_ratio
+
+
+func set_back_run_ratio(value: float) -> void:
+	player.back_run_ratio = value
+
+
+func get_back_run_ratio() -> float:
+	return player.back_run_ratio
+
+
 func set_view_distance(metres: float) -> void:
 	camera.far = metres
 
