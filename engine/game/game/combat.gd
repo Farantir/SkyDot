@@ -66,6 +66,12 @@ const PROJECTS := "meshes/animationdata/"
 ## Game settings and their fallbacks (the values of the base game's data).
 const GMST_POWER_DELAY := "fInitialPowerAttackDelay"
 const POWER_DELAY_FALLBACK := 0.3
+const GMST_ATTACK_BASE := "fStaminaAttackWeaponBase"
+const ATTACK_BASE_FALLBACK := 20.0
+const GMST_ATTACK_MULT := "fStaminaAttackWeaponMult"
+const ATTACK_MULT_FALLBACK := 1.0
+const GMST_POWER_PENALTY := "fPowerAttackStaminaPenalty"
+const POWER_PENALTY_FALLBACK := 2.0
 const GMST_COMBAT_DISTANCE := "fCombatDistance"
 const COMBAT_DISTANCE_FALLBACK := 141.0
 
@@ -298,6 +304,8 @@ func attack(power := false, left := false) -> bool:
 		return false
 	if not _attack.is_empty() and _attack["time"] < _attack["window"]:
 		return false
+	if power and _papyrus.get_actor_value(PLAYER_REF, "Stamina") <= 0.0:
+		return false  # no Stamina, no power attack
 	var use_left := left or (not power and _left_next)
 	var stem := _clip_for(power, use_left)
 	var timing := _timing(FIRST_PERSON_PROJECT, FIRST_PERSON_CLIPS, stem)
@@ -307,8 +315,19 @@ func attack(power := false, left := false) -> bool:
 		"sounds": timing["sounds"], "sounds_done": 0}
 	if not power:
 		_left_next = not use_left
+	if power:
+		_papyrus.damage_actor_value(PLAYER_REF, "Stamina", _power_attack_cost())
 	attack_started.emit(stem, power)
 	return true
+
+
+## Stamina a power attack costs: (fStaminaAttackWeaponBase + the weapon's weight times
+## fStaminaAttackWeaponMult) times fPowerAttackStaminaPenalty. A normal attack costs none.
+func _power_attack_cost() -> float:
+	var weight := float(_papyrus.item_info(_weapon_form).get("weight", 0.0)) if _weapon_form != 0 else 0.0
+	return (_world.get_gmst_float(GMST_ATTACK_BASE, ATTACK_BASE_FALLBACK)
+		+ weight * _world.get_gmst_float(GMST_ATTACK_MULT, ATTACK_MULT_FALLBACK)) \
+		* _world.get_gmst_float(GMST_POWER_PENALTY, POWER_PENALTY_FALLBACK)
 
 
 ## Sweep a blade segment (VR: the weapon's base and tip, engine space) against

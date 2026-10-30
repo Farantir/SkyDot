@@ -113,9 +113,16 @@ const CREATED_LAST := 0xFF7FFFFF
 ## read "Fus!" (01a), "Fus..." (01b), "Ro!" (02) and "Ro...Da!" (03): one word is 01a; two words are 01b
 ## then 02; three words are 01b then 03.
 const SHOUT_TOPICS := {1: [0x13E01], 2: [0x13E00, 0x13DFF], 3: [0x13E00, 0x13DFE]}
-## Stamina a sprinting player loses per second. To measure in the original
-## (the game's fSprintStaminaDrainMult is a multiplier of something else).
-const SPRINT_STAMINA_PER_SECOND := 7.0
+## Stamina a sprinting player loses per second: fSprintStaminaDrainMult times
+## (fSprintStaminaWeightBase plus fSprintStaminaWeightMult times the weight of the
+## worn armor); the values of Skyrim.esm are the fallbacks.
+const SPRINT_DRAIN_MULT := 7.0
+const SPRINT_WEIGHT_BASE := 1.0
+const SPRINT_WEIGHT_MULT := 0.02
+## The race of the player's NPC_ (combat.gd's PLAYER_NPC), whose movement types it walks by.
+const PLAYER_NPC := 7
+## fJumpHeightMin in Skyrim.esm, in game units.
+const JUMP_HEIGHT_UNITS := 76.0
 
 var config: GameConfig
 var pack: SkydotPack
@@ -375,6 +382,7 @@ func start_game() -> bool:
 		print("quests: %d of %d started with the game" % [started, world.get_quest_count()])
 	_bridge.quests_ready = true
 	papyrus.prepare_actor_magic(SkydotPapyrus.PLAYER_REF)  # the player's abilities (race, birthsign)
+	_apply_player_movement()
 	if not config.set_stage.is_empty():
 		for item in config.set_stage.split(","):
 			var parts: PackedStringArray = item.split(":")
@@ -714,11 +722,54 @@ func _drain_sprint(delta: float) -> void:
 	if not (_player.has_method("is_sprinting") and _player.has_method("set_sprint_allowed")):
 		return
 	if _player.is_sprinting():
-		papyrus.damage_actor_value(SkydotPapyrus.PLAYER_REF, "Stamina", SPRINT_STAMINA_PER_SECOND * delta)
+		papyrus.damage_actor_value(SkydotPapyrus.PLAYER_REF, "Stamina", _sprint_drain() * delta)
 	var allowed := actor_value(SkydotPapyrus.PLAYER_REF, "Stamina") > 0.0
 	if allowed != _sprint_allowed:
 		_sprint_allowed = allowed
 		_player.set_sprint_allowed(allowed)
+
+
+## Stamina per second while sprinting, by the weight of the worn armor.
+func _sprint_drain() -> float:
+	var weight := 0.0
+	for row: Dictionary in papyrus.inventory(SkydotPapyrus.PLAYER_REF):
+		if row["equipped"] and row["category"] == "armor":
+			weight += float(row["weight"])
+	return world.get_gmst_float("fSprintStaminaDrainMult", SPRINT_DRAIN_MULT) \
+		* (world.get_gmst_float("fSprintStaminaWeightBase", SPRINT_WEIGHT_BASE)
+		+ world.get_gmst_float("fSprintStaminaWeightMult", SPRINT_WEIGHT_MULT) * weight)
+
+
+## The player walks, runs, sprints and swims at the speeds of its race's movement
+## types (units per second, times SpeedMult / 100) and jumps fJumpHeightMin high.
+## What the pack lacks leaves the shell's own speeds.
+func _apply_player_movement() -> void:
+	if not _player.has_method("set_walk_speed"):
+		return
+	var metres := SkydotWorld.unit_scale()
+	var jump := world.get_gmst_float("fJumpHeightMin", JUMP_HEIGHT_UNITS)
+	_player.set_jump_height(jump * metres)
+	var race := world.get_race(int(world.get_npc_plan(PLAYER_NPC, SkydotPapyrus.PLAYER_REF).get("race", 0)))
+	var factor := metres * maxf(papyrus.get_actor_value(SkydotPapyrus.PLAYER_REF, "SpeedMult"), 0.0) / 100.0
+	if race.is_empty() or factor <= 0.0:
+		return
+	var walk := world.get_movement_type(int(race.get("movement_walk", 0)))
+	var run := world.get_movement_type(int(race.get("movement_run", 0)))
+	var sprint := world.get_movement_type(int(race.get("movement_sprint", 0)))
+	var swim := world.get_movement_type(int(race.get("movement_swim", 0)))
+	if not walk.is_empty():
+		_player.set_walk_speed(walk["forward_walk"] * factor)
+		if walk["forward_walk"] > 0.0:
+			_player.set_back_walk_ratio(walk["back_walk"] / walk["forward_walk"])
+	if not run.is_empty():
+		_player.set_run_speed(run["forward_run"] * factor)
+		if run["forward_run"] > 0.0:
+			_player.set_back_run_ratio(run["back_run"] / run["forward_run"])
+	if not sprint.is_empty():
+		_player.set_sprint_speed(sprint["forward_run"] * factor)
+	if not swim.is_empty():
+		_player.set_swim_walk_speed(swim["forward_walk"] * factor)
+		_player.set_swim_speed(swim["forward_run"] * factor)
 
 
 func is_fading() -> bool:
