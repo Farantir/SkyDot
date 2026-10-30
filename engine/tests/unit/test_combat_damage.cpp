@@ -70,11 +70,25 @@ TEST_CASE("unarmed damage, tempering and clothing", "[combat]") {
     in.attacker_is_player = false;
     CHECK(compute_hit(in, CombatSettings{}).final_damage == Approx(4.0));
     in.weapon_damage = 7.0F;
-    in.temper_health = 1.6F;
-    CHECK(compute_hit(in, CombatSettings{}).final_damage == Approx(11.2));
+    in.temper_quality = 6; // Legendary: +20 x 0.5 for a weapon
+    CHECK(compute_hit(in, CombatSettings{}).final_damage == Approx(17.0));
     in.armor.push_back({10.0F, 2}); // robes: rating counts, no piece bonus
     const HitResult r = compute_hit(in, CombatSettings{});
     CHECK(r.armor_percent == Approx(1.2));
+}
+
+TEST_CASE("tempering adds a bonus: weapons round to nearest, armor up, chest armor counts double", "[combat]") {
+    CHECK(temper_bonus(1, 0.5F, false) == Approx(1.0F));
+    CHECK(temper_bonus(2, 0.5F, false) == Approx(3.0F));
+    CHECK(temper_bonus(6, 1.0F, true) == Approx(20.0F));
+    CHECK(temper_bonus(1, 0.5F, true) == Approx(1.0F));
+    CHECK(temper_bonus(2, 0.5F, true) == Approx(3.0F));
+    CHECK(temper_bonus(0, 1.0F, true) == Approx(0.0F));
+    HitInputs in;
+    in.weapon_damage = 10.0F;
+    in.armor.push_back({10.0F, 0, 6, true});
+    in.light_armor_skill = 0.0;
+    CHECK(compute_hit(in, CombatSettings{}).armor_rating == Approx(std::ceil(30.0 * static_cast<double>(CombatSettings{}.armor_rating_base))));
 }
 
 TEST_CASE("an arrow adds its damage to the bow's before the other factors", "[combat][damage]") {
@@ -86,10 +100,10 @@ TEST_CASE("an arrow adds its damage to the bow's before the other factors", "[co
     CHECK(r.base == Approx(15.0F));
     CHECK(r.final_damage == Approx(15.0F));
     // The bow's tempering counts for the bow only.
-    in.temper_health = 1.5F;
-    CHECK(compute_hit(in, CombatSettings{}).base == Approx(7.0F * 1.5F + 8.0F));
+    in.temper_quality = 5; // Epic: (3.6 x 5 - 1.6) x 0.5 = 8.2, rounded to 8
+    CHECK(compute_hit(in, CombatSettings{}).base == Approx(7.0F + 8.0F + 8.0F));
     // The player's skill and the attack multiplier scale the sum.
-    in.temper_health = 1.0F;
+    in.temper_quality = 0;
     in.attacker_is_player = true;
     in.weapon_skill = 100.0;
     in.attack_mult = 2.0F;

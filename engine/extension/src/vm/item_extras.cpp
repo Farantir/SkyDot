@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/item_extras.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 #include <bit>
 #include <cmath>
 
@@ -24,6 +27,10 @@ const char* temper_tier_name(float health) noexcept {
         }
     }
     return name;
+}
+
+int temper_quality(float health) noexcept {
+    return std::clamp(static_cast<int>(std::lround((health - 1.0F) * 10.0F)), 0, 6);
 }
 
 std::uint32_t ItemExtras::intern(const ItemExtra& extra) {

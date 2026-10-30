@@ -21,6 +21,7 @@
 // 2.5, skill / 100).
 #pragma once
 
+#include <cmath>
 #include <cstdint>
 #include <vector>
 
@@ -45,11 +46,25 @@ inline constexpr float k_placeholder_difficulty = 1.0F;
 /// PLACEHOLDER (A8, sneaking): no sneak attack bonus yet.
 inline constexpr float k_placeholder_sneak = 1.0F;
 
+/// Tempering adds, it does not multiply (UESP Skyrim:Smithing): quality level 1 (Fine) to 6
+/// (Legendary) gives 3.6 x ql - 1.6, times 1 for chest armor and 0.5 for weapons and other armor.
+/// Weapons round to the nearest, armor up.
+[[nodiscard]] inline float temper_bonus(int quality, float factor, bool round_up) {
+    if (quality <= 0) {
+        return 0.0F;
+    }
+    const float bonus = (3.6F * static_cast<float>(quality) - 1.6F) * factor;
+    return round_up ? std::ceil(bonus - 0.001F) : std::round(bonus);
+}
+
 /// One worn piece of the target.
 struct ArmorPiece {
     float rating = 0.0F;
     /// ARMO armor type: 0 light, 1 heavy, 2 clothing.
     std::uint8_t armor_type = 0;
+    /// Its tempering quality level (0 untempered) and whether it is chest armor (body slot 32).
+    int quality = 0;
+    bool chest = false;
 };
 
 struct HitInputs {
@@ -58,8 +73,8 @@ struct HitInputs {
     /// An arrow's or bolt's own damage, added to the bow's (UESP Skyrim:Damage: "arrow damage =
     /// bow damage + arrow damage"; the bow's tempering counts for the bow only); 0 for melee.
     float ammo_damage = 0.0F;
-    /// Item health of the weapon (tempering), 1 untouched, up to 1.6.
-    float temper_health = 1.0F;
+    /// Tempering quality level of the weapon, 0 untempered up to 6 (Legendary).
+    int temper_quality = 0;
     /// The attacker's skill with the weapon (0 to 100) and whether the player
     /// swings it (NPCs have no skill factor).
     double weapon_skill = 0.0;
@@ -77,7 +92,7 @@ struct HitInputs {
 };
 
 struct HitResult {
-    float base = 0.0F;      ///< weapon_damage x temper_health
+    float base = 0.0F;      ///< weapon_damage + tempering + ammo
     float skill = 1.0F;
     float attack = 1.0F;
     float difficulty = 1.0F;

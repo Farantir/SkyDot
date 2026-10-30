@@ -13,7 +13,7 @@ double lerp(double a, double b, double t) { return a + (b - a) * std::clamp(t, 0
 
 HitResult compute_hit(const HitInputs& in, const CombatSettings& s) {
     HitResult r;
-    r.base = in.weapon_damage * in.temper_health + in.ammo_damage;
+    r.base = in.weapon_damage + temper_bonus(in.temper_quality, 0.5F, false) + in.ammo_damage;
     r.skill = in.attacker_is_player
                   ? static_cast<float>(lerp(static_cast<double>(s.damage_pc_skill_min),
                                             static_cast<double>(s.damage_pc_skill_max), in.weapon_skill / 100.0))
@@ -35,7 +35,8 @@ HitResult compute_hit(const HitInputs& in, const CombatSettings& s) {
         const double skill = piece.armor_type == 1 ? in.heavy_armor_skill : in.light_armor_skill;
         const double top = static_cast<double>(in.target_is_player ? s.armor_rating_pc_max : s.armor_rating_max);
         const double factor = lerp(static_cast<double>(s.armor_rating_base), top, skill / 100.0);
-        rating += std::ceil(static_cast<double>(piece.rating) * factor);
+        const float tempered = piece.rating + temper_bonus(piece.quality, piece.chest ? 1.0F : 0.5F, true);
+        rating += std::ceil(static_cast<double>(tempered) * factor);
         ++pieces;
     }
     r.armor_rating = static_cast<float>(rating);

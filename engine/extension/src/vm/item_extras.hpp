@@ -51,6 +51,9 @@ inline constexpr TemperTier k_temper_tiers[] = {
     {1.1F, "Fine"}, {1.2F, "Superior"}, {1.3F, "Exquisite"}, {1.4F, "Flawless"}, {1.5F, "Epic"}, {1.6F, "Legendary"},
 };
 
+/// The quality level of a health: 0 untempered, 1 Fine to 6 Legendary (a tenth of health each).
+[[nodiscard]] int temper_quality(float health) noexcept;
+
 /// The tier a health stands for ("" if untempered).
 [[nodiscard]] const char* temper_tier_name(float health) noexcept;
 

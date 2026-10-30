@@ -125,7 +125,7 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
     }
     if (extra_id != 0) {
         if (const auto* extra = items_.extras().find(static_cast<std::uint32_t>(extra_id))) {
-            in.temper_health = extra->health;
+            in.temper_quality = vm::temper_quality(extra->health);
         }
     }
 
@@ -138,7 +138,9 @@ Dictionary SkydotPapyrus::apply_hit(std::int64_t attacker_id, std::int64_t targe
         const auto add = [&](std::uint32_t form) {
             const vm::ItemInfo info = item_info_of(form);
             if (info.known && (info.category == vm::ItemCategory::armor || info.category == vm::ItemCategory::clothing)) {
-                in.armor.push_back({info.armor_rating, info.armor_type});
+                const auto* extra = items_.extras().find(worn->worn_extra_of(form));
+                in.armor.push_back({info.armor_rating, info.armor_type, extra != nullptr ? vm::temper_quality(extra->health) : 0,
+                                    (info.biped_slots & (1U << 2)) != 0});
             }
         };
         for (const std::uint32_t form : worn->worn) {
