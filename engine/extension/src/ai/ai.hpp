@@ -358,7 +358,7 @@ private:
     std::uint8_t value_of(std::uint32_t ref, const char* actor_value) const;
     void combat_walk(Mind& m, SkydotActor& actor, const godot::Vector3& skyrim_point, bool run);
     void melee_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to);
-    void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los);
+    void ranged_tick(Mind& m, SkydotActor& actor, double distance, const godot::Vector3& to, bool los, bool airborne = false);
     void flee_tick(Mind& m, SkydotActor& actor, const godot::Vector3& from);
     /// A mage's turn (magic_choice.hpp): true if it cast, walked for a spell or waits for one; false
     /// if it fights with its weapons.

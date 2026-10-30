@@ -158,6 +158,10 @@ public:
                                                                                 std::uint32_t /*ref_b*/) const {
         return std::nullopt;
     }
+    /// Whether action `action` (INAM) of scene `scene` is done; true for a scene that is not playing.
+    [[nodiscard]] virtual bool scene_action_complete(std::uint32_t /*scene*/, std::uint32_t /*action*/) const {
+        return true;
+    }
     /// A vendor faction's trading hours (start, end); nothing for a faction
     /// that is not a vendor.
     [[nodiscard]] virtual std::optional<std::pair<std::int32_t, std::int32_t>> vendor_hours(

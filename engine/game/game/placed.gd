@@ -26,6 +26,7 @@ var _warn := WarnOnce.new("", true)
 ## soldier at a marker in Whiterun) waits for it.
 var place_on_screen: Place
 var streamer: SkydotStreamer
+var _noted := {}
 var _waiting: Array[Array] = []  # [ref, base, cell, position, rotation, scale, disabled]
 
 
@@ -49,6 +50,9 @@ func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3
 	if _world.is_actor_base(base):
 		if not _cell_is_built(cell, position):
 			_waiting.append([ref, base, cell, position, rotation, scale, disabled])
+			if not _noted.has(ref):
+				_noted[ref] = true
+				print("placed 0x%08X waits for cell 0x%X (%s) at (%.0f, %.0f, %.0f)" % [ref, cell, _world.get_cell(cell).get("editor_id", ""), position.x, position.y, position.z])
 			return
 		_build_actor(ref, base, position, rotation, disabled)
 		return
@@ -86,6 +90,22 @@ func _cell_is_built(cell: int, position: Vector3) -> bool:
 		return streamer.world_id == 0 and place_on_screen.cell_id == cell
 	return streamer.world_id != 0 and info["world"] == streamer.world_id and streamer.get_loaded_cell(
 		Vector2i(floori(position.x / SkydotWorld.CELL_UNITS), floori(position.y / SkydotWorld.CELL_UNITS))) != null
+
+
+## A script moved reference `ref` (MoveTo): an actor still waiting for its cell waits for the new one, and is
+## built now if that is built.
+func moved(ref: int, position: Vector3, rotation: Vector3) -> void:
+	for i in _waiting.size():
+		var entry := _waiting[i]
+		if entry[0] != ref:
+			continue
+		entry[2] = _papyrus.get_runtime_cell(ref)
+		entry[3] = position
+		entry[4] = rotation
+		if _cell_is_built(entry[2], position):
+			_waiting.remove_at(i)
+			_build(entry[0], entry[1], entry[2], entry[3], entry[4], entry[5], entry[6])
+		return
 
 
 ## A cell was built: the actors that waited for one are built if theirs is.

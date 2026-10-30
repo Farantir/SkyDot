@@ -344,3 +344,25 @@ TEST_CASE("running scenes survive a save; a speaking action asks for its line ag
     scenes::Scenes bad(*world, later);
     CHECK_FALSE(scenes::Scenes::load(skydot::save::ByteReader(damaged), bad));
 }
+
+TEST_CASE("a scene started by a script waits for unbuilt actors, then begins without them after the grace time", "[scenes]") {
+    Built world({dialogue_scene()});
+    FakeHost host;
+    host.not_ready.insert(k_b);
+    scenes::Scenes s(*world, host);
+    CHECK_FALSE(s.start(k_scene));
+    s.update(1.0);
+    CHECK_FALSE(s.is_playing(k_scene));
+    s.update(scenes::Scenes::k_grace);
+    CHECK(s.is_playing(k_scene));
+
+    // Built in time, it begins as soon as it can.
+    s.stop(k_scene);
+    FakeHost other;
+    other.not_ready.insert(k_a);
+    scenes::Scenes t(*world, other);
+    CHECK_FALSE(t.start(k_scene));
+    other.not_ready.clear();
+    t.update(0.1);
+    CHECK(t.is_playing(k_scene));
+}

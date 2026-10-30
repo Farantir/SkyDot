@@ -44,7 +44,7 @@ std::vector<std::uint32_t> Scenes::actors_of(const wfb::Scene& scene) const {
     return out;
 }
 
-bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uint32_t>& actors) {
+bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uint32_t>& actors, bool lenient) {
     why_.clear();
     if (!host_.quest_running(scene.quest())) {
         why_ = "its quest is not running";
@@ -55,9 +55,15 @@ bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uin
         return false;
     }
     actors = actors_of(scene);
-    for (const auto actor : actors) {
+    for (std::size_t i = 0; i < actors.size(); ++i) {
+        const auto actor = actors[i];
+        if (lenient) {
+            continue; // after the grace time the scene begins with whoever is there
+        }
         if (actor == 0 || !host_.actor_ready(actor)) {
-            why_ = actor == 0 ? "an alias is empty" : hex(actor) + " is not loaded and alive";
+            const auto* a = scene.actors() != nullptr ? scene.actors()->Get(static_cast<flatbuffers::uoffset_t>(i)) : nullptr;
+            const std::string which = a != nullptr ? " (alias " + std::to_string(a->alias()) + ", flags " + hex(a->flags()) + ")" : "";
+            why_ = actor == 0 ? "an alias is empty" + which : hex(actor) + which + " is not loaded and alive";
             return false;
         }
     }
@@ -79,13 +85,28 @@ bool Scenes::can_start(const wfb::Scene& scene, bool force, std::vector<std::uin
     return true;
 }
 
-bool Scenes::begin(std::uint32_t id, bool force) {
+bool Scenes::start(std::uint32_t id) {
+    if (begin(id, false)) {
+        return true;
+    }
+    if (const auto* scene = find(id); scene != nullptr && !runs_.contains(id)) {
+        host_.log("scene " + name(*scene) + " cannot start: " + why_);
+        if (why_.ends_with("is not loaded and alive") && host_.quest_running(scene->quest())) {
+            waiting_.insert(id);
+            waited_[id] = why_;
+            grace_[id] = k_grace;
+        }
+    }
+    return false;
+}
+
+bool Scenes::begin(std::uint32_t id, bool force, bool lenient) {
     const auto* scene = find(id);
     if (scene == nullptr || runs_.contains(id)) {
         return false;
     }
     std::vector<std::uint32_t> actors;
-    if (!can_start(*scene, force, actors)) {
+    if (!can_start(*scene, force, actors, lenient)) {
         return false;
     }
     if (force) {
@@ -310,6 +331,11 @@ std::vector<DialogueRequest> Scenes::update(double seconds) {
         if (!host_.quest_running(quest_of(id))) {
             waiting_.erase(id);
         } else if (begin(id, false)) {
+            grace_.erase(id);
+            continue;
+        } else if (const auto g = grace_.find(id); g != grace_.end() && (g->second -= seconds) <= 0.0 && begin(id, false, true)) {
+            grace_.erase(id);
+            host_.log("scene " + name(*find(id)) + " began without the actors that are not built");
             continue;
         } else if (why_ != waited_[id]) {
             waited_[id] = why_;
@@ -362,6 +388,27 @@ std::vector<DialogueRequest> Scenes::update(double seconds) {
             }
             const auto* phase = scene->phases()->Get(static_cast<flatbuffers::uoffset_t>(run.phase));
             if (!all || !host_.conditions_pass(phase->completion_conditions(), scene->quest(), 0)) {
+                std::string pending;
+                for (std::size_t i = 0; i < run.actions.size(); ++i) {
+                    const auto* a = scene->actions()->Get(static_cast<flatbuffers::uoffset_t>(i));
+                    if (static_cast<std::int32_t>(a->end_phase()) == run.phase && run.actions[i].status != Status::done) {
+                        pending += " action " + std::to_string(a->index());
+                    }
+                }
+                const auto* conditions = phase->completion_conditions();
+                if (pending.empty() && conditions != nullptr) {
+                    pending = " its completion conditions:";
+                    for (flatbuffers::uoffset_t k = 0; k < conditions->size(); ++k) {
+                        const auto* c = conditions->Get(k);
+                        pending += " [function " + std::to_string(c->function()) + " " + hex(c->param1()) + " " + hex(c->param2()) +
+                                   " type " + std::to_string(c->type()) + " value " + std::to_string(c->value()) + "]";
+                    }
+                }
+                const std::string text = "phase " + std::to_string(run.phase) + " waits for" + pending;
+                if (run.waiting_logged != text) {
+                    run.waiting_logged = text;
+                    host_.log("scene " + name(*scene) + " " + text);
+                }
                 break;
             }
             finish_phase(*scene, run);
@@ -383,12 +430,14 @@ std::vector<std::pair<std::uint32_t, std::uint32_t>> Scenes::pushed_packages() c
 void Scenes::clear() {
     runs_.clear();
     waiting_.clear();
+    grace_.clear();
     outbox_.clear();
 }
 
 void Scenes::adopt(Scenes&& other) {
     runs_ = std::move(other.runs_);
     waiting_.clear();
+    grace_.clear();
     outbox_.clear();
 }
 

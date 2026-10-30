@@ -252,6 +252,19 @@ std::int64_t WorldData::cell_of_ref(std::int64_t ref) const {
     return actor != nullptr ? static_cast<std::int64_t>(actor->cell()) : 0;
 }
 
+std::int64_t WorldData::script_base(std::int64_t id) const {
+    constexpr std::uint16_t k_use_script = 0x200;
+    for (int depth = 0; depth < 8 && root_ != nullptr; ++depth) {
+        const auto* npc = lookup(root_->npcs(), static_cast<std::uint32_t>(id));
+        if (npc == nullptr || npc->template_() == 0 ||
+            (static_cast<std::uint16_t>(npc->template_flags()) & k_use_script) == 0) {
+            break;
+        }
+        id = npc->template_();
+    }
+    return id;
+}
+
 const wfb::Ref* WorldData::ref_ptr(std::uint32_t ref) const {
     const auto* cell = cell_ptr(cell_of_ref(ref));
     return cell != nullptr ? lookup(cell->refs(), ref) : nullptr;
@@ -260,6 +273,14 @@ const wfb::Ref* WorldData::ref_ptr(std::uint32_t ref) const {
 bool WorldData::ref_enable(std::uint32_t ref, RefEnable& out) const {
     const auto* r = ref_ptr(ref);
     if (r == nullptr) {
+        // A placed actor: it has no enable parent, only the editor's flag.
+        if (const auto* a = actor_ptr(ref)) {
+            out.base = a->base();
+            out.enable_parent = 0;
+            out.opposite = false;
+            out.initially_disabled = formats::has_flag(a->flags(), wfb::RefFlags::initially_disabled);
+            return true;
+        }
         return false;
     }
     out.base = r->base();

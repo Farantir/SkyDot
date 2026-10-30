@@ -89,7 +89,7 @@ Dictionary get_ref_info(const WorldData& data, std::int64_t cell_id, std::int64_
         if (actor == nullptr) {
             return out;
         }
-        const auto* npc_base = data.base_ptr(actor->base());
+        const auto* npc_base = data.base_ptr(data.script_base(actor->base()));
         out["id"] = static_cast<std::int64_t>(id);
         out["cell"] = static_cast<std::int64_t>(cell->id());
         out["base"] = static_cast<std::int64_t>(actor->base());

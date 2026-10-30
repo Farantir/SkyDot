@@ -189,6 +189,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("is_actor_ghost", "ref"), &SkydotPapyrus::is_actor_ghost);
     godot::ClassDB::bind_method(D_METHOD("finish_dying", "ref"), &SkydotPapyrus::finish_dying);
     godot::ClassDB::bind_method(D_METHOD("faction_rank", "ref", "faction"), &SkydotPapyrus::faction_rank);
+    godot::ClassDB::bind_method(D_METHOD("get_runtime_cell", "ref"), &SkydotPapyrus::get_runtime_cell);
     godot::ClassDB::bind_method(D_METHOD("get_item_count", "owner", "item"), &SkydotPapyrus::get_item_count);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value_max", "ref", "name"),
@@ -397,6 +398,9 @@ void SkydotPapyrus::install_scheduled_handler() {
 }
 
 void SkydotPapyrus::reset() {
+    if (world_.is_valid()) {
+        world_->placement().clear_enabled();
+    }
     attached_.clear();
     attached_cells_.clear();
     loaded_.clear();
@@ -498,6 +502,9 @@ void SkydotPapyrus::set_disabled(std::uint32_t ref, bool value) {
     states_.disabled[ref] = value;
     for (const auto& [id, was] : before) {
         if (const bool now = disabled(id); now != was) {
+            if (world_.is_valid() && world_->data().actor_ptr(id) != nullptr) {
+                world_->placement().set_enabled(id, !now); // the cell builder builds an actor a script enabled
+            }
             emit_signal("enable_changed", static_cast<std::int64_t>(id), !now);
         }
     }

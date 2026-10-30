@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace skydot {
@@ -53,6 +54,17 @@ public:
     void clear_places();
     /// Where `ref` was moved to; null if it stands where the editor put it.
     const Place* moved_place(std::uint32_t ref) const;
+    /// A script enabled an actor that the editor placed disabled (Enable): the cell builder builds it. Disable
+    /// takes it back. Not a place: it is kept apart from `clear_places`.
+    void set_enabled(std::uint32_t ref, bool enabled) {
+        if (enabled) {
+            enabled_.insert(ref);
+        } else {
+            enabled_.erase(ref);
+        }
+    }
+    [[nodiscard]] bool is_enabled(std::uint32_t ref) const { return enabled_.contains(ref); }
+    void clear_enabled() { enabled_.clear(); }
     /// Every actor moved from its editor place, and where.
     const std::unordered_map<std::uint32_t, Place>& places() const { return places_; }
     /// Empty if `ref` is no placed actor.
@@ -71,6 +83,7 @@ private:
 
     std::shared_ptr<const WorldData> data_;
     std::unordered_map<std::uint32_t, Place> places_;
+    std::unordered_set<std::uint32_t> enabled_;
     /// Bucket -> actors moved into it.
     std::unordered_map<std::uint64_t, std::vector<std::uint32_t>> moved_in_;
 };

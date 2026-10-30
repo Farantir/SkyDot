@@ -74,10 +74,14 @@ struct DialogueRequest {
 class Scenes {
 public:
     static constexpr std::uint32_t k_section_version = 1;
+    static constexpr double k_grace = 20.0;
 
     Scenes(const wfb::World& world, SceneHost& host) : world_(world), host_(host) {}
 
-    bool start(std::uint32_t scene) { return begin(scene, false); }
+    /// Begin `scene`. One that cannot yet because an actor is not loaded is kept waiting like a scene that
+    /// starts with its quest, for `k_grace` seconds of `update` time; then it begins with whoever is there; the actors
+    /// that are not built say nothing. Other failures are logged.
+    bool start(std::uint32_t scene);
     bool force_start(std::uint32_t scene) { return begin(scene, true); }
     void stop(std::uint32_t scene);
     [[nodiscard]] bool is_playing(std::uint32_t scene) const { return runs_.contains(scene); }
@@ -123,11 +127,12 @@ private:
             std::uint32_t end_phase; ///< Popped when this phase completes.
         };
         std::vector<Pushed> pushed;
+        std::string waiting_logged; ///< What the phase last logged it waits for (not saved).
     };
 
     [[nodiscard]] const wfb::Scene* find(std::uint32_t scene) const;
-    bool begin(std::uint32_t scene, bool force);
-    bool can_start(const wfb::Scene& scene, bool force, std::vector<std::uint32_t>& actors);
+    bool begin(std::uint32_t scene, bool force, bool lenient = false);
+    bool can_start(const wfb::Scene& scene, bool force, std::vector<std::uint32_t>& actors, bool lenient = false);
     [[nodiscard]] std::string name(const wfb::Scene& scene) const;
     [[nodiscard]] std::vector<std::uint32_t> actors_of(const wfb::Scene& scene) const;
     /// Enter phase `phase` or the next one that is not skipped; false if the scene ended.
@@ -143,6 +148,7 @@ private:
     SceneHost& host_;
     std::map<std::uint32_t, Run> runs_;
     std::set<std::uint32_t> waiting_; ///< Scenes that begin as soon as they can.
+    std::map<std::uint32_t, double> grace_; ///< A started scene waiting for its actors to be built: seconds left, then it begins without.
     std::string why_;                 ///< Why the last can_start said no.
     std::map<std::uint32_t, std::string> waited_; ///< The reason last logged per waiting scene.
     std::vector<DialogueRequest> outbox_;

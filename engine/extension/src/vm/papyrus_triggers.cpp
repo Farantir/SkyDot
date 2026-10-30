@@ -103,7 +103,7 @@ void SkydotPapyrus::forget_actor_position(std::int64_t actor) {
     const auto form = static_cast<std::uint32_t>(actor);
     // A script-placed actor keeps where it was last seen as its record's place.
     if (const vm::Vec3* at = triggers_.actor_position(form); at != nullptr && vm_->placed().find(form) != nullptr) {
-        const double position[3] = {at->x, at->y, at->z};
+        const double position[3] = {static_cast<double>(at->x), static_cast<double>(at->y), static_cast<double>(at->z)};
         const auto* record = vm_->placed().find(form);
         vm_->placed().move(form, 0, position, record->rotation);
     }

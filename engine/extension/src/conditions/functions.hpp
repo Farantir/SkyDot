@@ -57,6 +57,8 @@ inline constexpr std::uint16_t get_in_current_loc = 359;
 inline constexpr std::uint16_t has_perk = 448;
 inline constexpr std::uint16_t has_linked_ref = 362;
 inline constexpr std::uint16_t get_relationship_rank = 403;
+/// IsSceneActionComplete(scene, action): scene phase conditions use it (MQ104's FortIntroScene).
+inline constexpr std::uint16_t is_scene_action_complete = 550;
 inline constexpr std::uint16_t get_is_voice_type = 426;
 inline constexpr std::uint16_t get_player_teammate = 453;
 inline constexpr std::uint16_t get_crime_gold = 459;

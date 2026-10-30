@@ -473,14 +473,9 @@ Command orbit_cmd(const TacticsInput& in) {
 
 Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& p, const Ground& ground, double dt,
                const std::function<double()>& roll) {
-    if (in.forced_landing) {
-        t.forced_spot = in.forced_landing;
-        if (!t.forced_seen) t.forced_pending = true;
-        t.forced_seen = true;
-    } else {
-        t.forced_seen = false;
-        t.forced_pending = false;
-    }
+    // SetForcedLandingMarker names where it lands the next time it decides to (after its attacks, or injured);
+    // it does not bring it down at once.
+    t.forced_spot = in.forced_landing;
 
     // Injured: down until it has healed well past the threshold (it regenerates while it waits).
     if (in.health_fraction < in.injured_fraction) {
@@ -492,7 +487,6 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
     if (!in.in_combat) {
         enter(t, b.mode == Mode::grounded ? Maneuver::ground : Maneuver::orbit);
         t.attacks = 0;
-        t.forced_pending = false;
         return {};
     }
 
@@ -513,11 +507,8 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
     bool land_now = false;
     if (flying && b.mode != Mode::takeoff && t.maneuver != Maneuver::land) {
         if (down) land_now = true;
-        if (t.forced_pending) land_now = true;
     }
-    if (!flying || t.maneuver == Maneuver::land) t.forced_pending = false;
     if (land_now) {
-        t.forced_pending = false;
         t.landing_spot.reset();
         enter(t, Maneuver::land);
     }

@@ -497,6 +497,8 @@ public:
     /// Seconds OnDeath waits for finish_dying at the longest (game time).
     static constexpr double k_dying_timeout = 30.0;
     bool is_actor_ghost(std::int64_t ref) const { return actors_.is_ghost(static_cast<std::uint32_t>(ref)); }
+    /// The cell `ref` stands in (a script-placed or moved reference's current one); 0 if unknown.
+    std::int64_t get_runtime_cell(std::int64_t ref) const { return cell_of(static_cast<std::uint32_t>(ref)); }
     /// The space (interior cell or worldspace) `ref` stands in; 0 if unknown.
     [[nodiscard]] std::uint32_t get_ref_space(std::uint32_t ref) const {
         const std::uint32_t cell = cell_of(ref);

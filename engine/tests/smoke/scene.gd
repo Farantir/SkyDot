@@ -77,17 +77,18 @@ func _run(pack_dir: String) -> void:
 		return
 	expect(_session.start_game(), "the game starts")
 	_session.papyrus.set_scene_actors_need_3d(false)
-	_session.speech.line_started.connect(func(speaker: int, line: Dictionary, seconds: float) -> void:
-		if line.has("scene"):
-			_started.append({"speaker": speaker, "line": line, "seconds": seconds}))
-	_session.speech.line_ended.connect(func(_speaker: int, line: Dictionary) -> void:
-		if line.has("scene"):
-			_ended += 1)
-	_session.subtitle_line.connect(func(speaker: int, text: String, seconds: float) -> void:
-		_subtitles.append([speaker, text, seconds]))
-
 	var gerdur := _session.world.find_actor_of(GERDUR_NPC)
 	var hod := _session.world.find_actor_of(HOD_NPC)
+	_session.speech.line_started.connect(func(speaker: int, line: Dictionary, seconds: float) -> void:
+		if line.get("scene", 0) == SCENE:
+			_started.append({"speaker": speaker, "line": line, "seconds": seconds}))
+	_session.speech.line_ended.connect(func(_speaker: int, line: Dictionary) -> void:
+		if line.get("scene", 0) == SCENE:
+			_ended += 1)
+	_session.subtitle_line.connect(func(speaker: int, text: String, seconds: float) -> void:
+		if speaker == gerdur or speaker == hod:
+			_subtitles.append([speaker, text, seconds]))
+
 	var speakers := [gerdur, hod, gerdur, hod, gerdur]
 	expect(gerdur != 0 and hod != 0, "Gerdur and Hod are placed")
 	expect(not _session.papyrus.scene_is_playing(SCENE), "the scene is not playing before its quest")

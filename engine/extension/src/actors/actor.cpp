@@ -1239,6 +1239,7 @@ void SkydotActor::flight_tick(double delta) {
         action_left_ = 0.0;
         flight_pose();
         set_hold(false);
+        home_ = get_global_position(); // it stands here now: not a fall through the world that sends it back
         animated_facing_ = facing_;
         if (godot::AnimationPlayer* anim = player()) {
             anim->set_speed_scale(1.0F);

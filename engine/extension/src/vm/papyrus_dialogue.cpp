@@ -90,7 +90,7 @@ dialogue::Dialogue* SkydotPapyrus::dialogue_logic() {
 
 bool SkydotPapyrus::dialogue_can_talk(std::int64_t ref) const {
     const auto id = static_cast<std::uint32_t>(ref);
-    if (id == k_player_ref || !world_.is_valid() || world_->data().actor_ptr(id) == nullptr) {
+    if (id == k_player_ref || !world_.is_valid() || !actors_.is_actor(id)) {
         return false;
     }
     return !actors_.is_dead(id);

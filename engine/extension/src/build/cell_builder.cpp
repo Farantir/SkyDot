@@ -839,7 +839,7 @@ void CellBuilder::add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) {
 }
 
 std::vector<std::string> CellBuilder::actor_resources(const wfb::ActorRef& actor) {
-    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled)) {
+    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled) && !placement_.is_enabled(actor.ref())) {
         return {};
     }
     auto plan = plan_for(*world_fb(), actor.base(), actor.ref(), assets_, worn_);
@@ -967,7 +967,7 @@ CellBuilder::ActorSpec CellBuilder::spec_of(const wfb::ActorRef& actor, const Ac
     spec.ref = actor.ref();
     spec.base = actor.base();
     spec.cell = actor.cell();
-    spec.disabled = formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled);
+    spec.disabled = formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled) && !placement_.is_enabled(actor.ref());
     const auto& p = actor.position();
     spec.position = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
     spec.rotation_z = place != nullptr ? place->rotation_z : actor.rotation().z();
@@ -982,7 +982,9 @@ godot::Node3D* CellBuilder::build_actor(std::int64_t ref) {
     auto* root = memnew(godot::Node3D);
     root->set_name(hex_id(actor->ref()));
     BuildStats stats;
-    place_actor(root, spec_of(*actor, placement_.moved_place(actor->ref())), stats);
+    ActorSpec spec = spec_of(*actor, placement_.moved_place(actor->ref()));
+    spec.disabled = false; // asked for by name: a script enabled it, or the AI brought it
+    place_actor(root, spec, stats);
     root->set_meta("skydot_stats", stats_dictionary(stats));
     return root;
 }

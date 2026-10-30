@@ -138,7 +138,7 @@ void SkydotPapyrus::capture_actor_places() {
         }
         const godot::Vector3 position(static_cast<float>(at.x), static_cast<float>(at.y), static_cast<float>(at.z));
         if (const auto* record = vm_->placed().find(ref)) {
-            const double xyz[3] = {at.x, at.y, at.z};
+            const double xyz[3] = {static_cast<double>(at.x), static_cast<double>(at.y), static_cast<double>(at.z)};
             vm_->placed().move(ref, 0, xyz, record->rotation);
         } else {
             keep(ref, get_ref_space(ref), position, static_cast<double>(rotation_of(ref).z));
@@ -336,6 +336,15 @@ godot::Error SkydotPapyrus::commit_load() {
     vm_->commit(std::move(pending->vm));
     states_ = std::move(pending->states);
     actors_.adopt(std::move(pending->actors));
+    if (world_.is_valid()) {
+        // Actors scripts enabled are built by the cell builder again.
+        world_->placement().clear_enabled();
+        for (const auto& [ref, off] : states_.disabled) {
+            if (!off && world_->data().actor_ptr(ref) != nullptr) {
+                world_->placement().set_enabled(ref, true);
+            }
+        }
+    }
     // The dead lie where they fell, the living where they stood.
     if (world_.is_valid()) {
         for (const auto& [ref, place] : actors_.living_places()) {

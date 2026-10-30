@@ -143,6 +143,9 @@ MeleeStep melee_step(const MeleeInputs& in) noexcept {
 }
 
 RangedStep ranged_step(const RangedInputs& in) noexcept {
+    if (in.target_airborne) {
+        return in.distance > in.max_distance || !in.line_of_sight ? RangedStep::approach : RangedStep::shoot;
+    }
     if (in.has_melee && in.distance < in.melee_distance) {
         return RangedStep::switch_to_melee;
     }

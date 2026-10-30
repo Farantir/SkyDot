@@ -344,6 +344,7 @@ func _make_game_nodes() -> void:
 	placed.place_on_screen = place
 	placed.streamer = streamer
 	papyrus.ref_placed.connect(placed.place)
+	papyrus.ref_moved.connect(placed.moved)
 	papyrus.ref_deleted.connect(placed.remove)
 	papyrus.destruction_model.connect(placed.swap_model)
 	papyrus.fire_weapon.connect(projectiles.fire)

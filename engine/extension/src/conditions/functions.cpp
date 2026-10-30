@@ -208,6 +208,8 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(other != 0 && world.linked_ref(subject, p2) == other);
     }
     // ---- relationships, vendors
+    case fn::is_scene_action_complete:
+        return flag(world.scene_action_complete(p1, p2));
     case fn::get_relationship_rank:
         return relationship_rank(world, subject, reference_param(c, ctx, world));
     case fn::get_offers_services_now:

@@ -119,6 +119,22 @@ TEST_CASE("the melee step approaches, attacks, and otherwise circles or falls ba
     CHECK(melee_step(in) == MeleeStep::hold);
 }
 
+TEST_CASE("the ranged step against an airborne target only approaches or shoots", "[combat][ai]") {
+    RangedInputs in;
+    in.target_airborne = true;
+    in.has_melee = true;
+    in.line_of_sight = true;
+    in.distance = 100.0;
+    CHECK(ranged_step(in) == RangedStep::shoot);  // no melee, no backing off
+    in.distance = 1500.0;
+    CHECK(ranged_step(in) == RangedStep::shoot);
+    in.distance = 2500.0;
+    CHECK(ranged_step(in) == RangedStep::approach);
+    in.distance = 1000.0;
+    in.line_of_sight = false;
+    CHECK(ranged_step(in) == RangedStep::approach);
+}
+
 TEST_CASE("the ranged step keeps its distance, shoots in sight and closes in otherwise", "[combat][ai]") {
     RangedInputs in;
     in.distance = 1000.0;

@@ -89,6 +89,8 @@
 # --from-shot FILE.json starts where such a shot was taken, with time
 # stopped; arguments given as well win (--pack, or --screenshot to render it
 # again and exit).
+# --god (a flag) restores the player's Health every frame, like tgm. --shout-wait EDID:STAGE holds the
+# shout flags (--teach-word … --shout) back until that quest stage is done.
 # --screenshot, --benchmark, --activate and --no-input (a flag: it takes no value) runs ignore the keyboard
 # and mouse.
 # --activate 0xREF[,0xREF...] activates those references in turn, each in the
@@ -391,7 +393,8 @@ func _apply_combat_options() -> void:
 			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
 	if _settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
-	_shout_at = ShoutAt.apply(_session, _rig, _settings)
+	if _settings.shout_wait.is_empty():
+		_shout_at = ShoutAt.apply(_session, _rig, _settings)
 	if not _settings.spawn.is_empty():
 		SpawnActors.spawn(_session, _rig, _settings.spawn, _settings.spawn_distance)
 	_kill_in = _settings.kill_after
@@ -406,6 +409,28 @@ func _apply_combat_options() -> void:
 	_fight_pending = _settings.fight.duplicate()
 	for ref in _settings.npc_draw:
 		print("--npc-draw: 0x%08X %s" % [ref, "draws" if _session.npc_draw(ref, true) else "cannot draw"])
+
+
+## --god: the player's Health is restored every frame.
+func _god_step() -> void:
+	if _settings.god and _session != null:
+		_session.papyrus.restore_actor_value(SkydotPapyrus.PLAYER_REF, "Health", 100000.0)
+
+
+## --shout-wait EDID:STAGE: apply the shout flags once that quest stage is done.
+func _shout_wait_step() -> void:
+	if _settings.shout_wait.is_empty() or _session == null:
+		return
+	var parts: PackedStringArray = _settings.shout_wait.split(":")
+	var quest := _session.world.find_quest(parts[0])
+	if quest == 0 or parts.size() != 2:
+		return
+	var state: Dictionary = _session.papyrus.get_quest_state(quest)
+	if not (state.get("stages_done", []) as Array).has(int(parts[1])):
+		return
+	print("--shout-wait: %s done" % _settings.shout_wait)
+	_settings.shout_wait = ""
+	_shout_at = ShoutAt.apply(_session, _rig, _settings)
 
 
 ## --kill: hit the actors until they are dead.
@@ -477,6 +502,8 @@ func _process(delta: float) -> void:
 		_kill_in -= delta
 		if _kill_in <= 0.0:
 			_kill_now()
+	_god_step()
+	_shout_wait_step()
 	_fight_step()
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)

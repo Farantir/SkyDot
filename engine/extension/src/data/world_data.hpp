@@ -95,6 +95,9 @@ public:
     // ---- lookups: null when there is no such record ------------------------
     const bethconv::pack::wfb::Cell* cell_ptr(std::int64_t id) const;
     const bethconv::pack::wfb::Base* base_ptr(std::int64_t id) const;
+    /// The base whose VMAD scripts an NPC_ runs: itself, or its template's (and that one's) while the template
+    /// flags say "use script" (bit 9, 0x200). `id` if it is no NPC_.
+    [[nodiscard]] std::int64_t script_base(std::int64_t id) const;
     const bethconv::pack::wfb::Worldspace* world_ptr(std::int64_t id) const;
     const bethconv::pack::wfb::Water* water_ptr(std::uint32_t id) const;
     const bethconv::pack::wfb::ActorRef* actor_ptr(std::int64_t ref) const;

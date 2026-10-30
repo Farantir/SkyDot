@@ -218,8 +218,10 @@ func _on_sub_graph_animation(ref: int, event_name: String) -> void:
 	print("sub graph animation '%s' on 0x%08X (placeholder: only SkinFadeOut shows)" % [event_name, ref])
 
 
-func _on_trigger(ref: int, _actor: int, entered: bool) -> void:
-	print("%s trigger 0x%08X" % ["entered" if entered else "left", ref])
+func _on_trigger(ref: int, actor: int, entered: bool) -> void:
+	var info := _world.get_ref_info(_world.get_ref_cell(ref), ref)
+	var at: Vector3 = info.get("position", Vector3.ZERO)
+	print("%s trigger 0x%08X (actor 0x%X, trigger at %.0f, %.0f, %.0f)" % ["entered" if entered else "left", ref, actor, at.x, at.y, at.z])
 
 
 func _on_enable_changed(ref: int, enabled: bool) -> void:
@@ -229,6 +231,13 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 		if not enabled:
 			_wake_around(node)
 		_show_ref(node, enabled)
+	elif enabled and _place != null and _place.enable_actor(ref):
+		# An actor the editor placed disabled: built now, with the scripts of its base (a far one has no cell
+		# to attach them).
+		var built := find_ref_node(ref)
+		if built != null:
+			var count := _papyrus.attach_built(built.get_parent() if built.get_parent() != null else built)
+			print("0x%08X built after Enable: %d scripted, scripts %s" % [ref, count, _papyrus.get_scripts(ref).map(func(x: Dictionary) -> String: return x["name"])])
 	elif enabled and _in_place(ref):
 		# Initially disabled references are not built with their cell.
 		var holder := _world.build_ref(_world.get_ref_cell(ref), ref)
@@ -242,7 +251,7 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 ## walked to, is built where it went if that is the place on screen, and its
 ## node is freed if it went elsewhere.
 func _on_ref_moved(ref: int, position: Vector3, rotation: Vector3) -> void:
-	print("0x%08X moved by script" % ref)
+	print("0x%08X moved by script to (%.0f, %.0f, %.0f)" % [ref, position.x, position.y, position.z])
 	var node := find_ref_node(ref) as Node3D
 	if _place != null:
 		var outcome := _place.relocate_actor(ref, position)

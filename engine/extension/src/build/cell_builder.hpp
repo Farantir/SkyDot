@@ -200,7 +200,7 @@ private:
         godot::Vector3 position;
         float rotation_z{};
     };
-    static ActorSpec spec_of(const bethconv::pack::wfb::ActorRef& actor, const ActorPlacement::Place* place);
+    ActorSpec spec_of(const bethconv::pack::wfb::ActorRef& actor, const ActorPlacement::Place* place);
     void place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats);
     /// The skin, worn armor and head of `plan` as meshes on `skeleton` (hair hidden under a helmet,
     /// the skin tone applied). `node` is the actor, which instantiates the parts for a moment.

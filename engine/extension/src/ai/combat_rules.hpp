@@ -124,11 +124,12 @@ struct RangedInputs {
     double min_distance = 512.0;  ///< PLACEHOLDER: it backs off inside this (GAMEPLAY-PLAN.md 6h).
     double max_distance = 2000.0; ///< PLACEHOLDER: it closes in beyond this.
     double melee_distance = 256.0; ///< PLACEHOLDER: it switches to melee inside this.
+    bool target_airborne = false;  ///< A flying target: never melee or back off, only approach or shoot (distance is 3D).
 };
 
 /// Inside melee_distance with a melee weapon: switch to it; inside min_distance:
 /// keep distance; beyond max_distance or without line of sight: approach;
-/// otherwise shoot.
+/// otherwise shoot. Against an airborne target only approach or shoot.
 [[nodiscard]] RangedStep ranged_step(const RangedInputs& in) noexcept;
 
 // ---- magic (step 7a-4; UESP Skyrim:Calm, Fear, Frenzy, Paralysis, Invisibility, Summon Creature) ----

@@ -187,9 +187,7 @@ struct Tactics {
     int attacks = 0;     ///< since the last landing.
     bool dive = false;
     std::optional<Vec3> landing_spot;
-    std::optional<Vec3> forced_spot; ///< the forced landing marker, kept for later landings.
-    bool forced_pending = false;     ///< a newly set marker not yet answered.
-    bool forced_seen = false;
+    std::optional<Vec3> forced_spot; ///< the forced landing marker: where it lands the next time it decides to (attacks first).
     bool injured = false;            ///< below the race's injured health; stays until it has healed on.
 };
 

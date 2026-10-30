@@ -204,12 +204,55 @@ func on_actor_arrived(ref: int) -> void:
 			floori(p.y / SkydotWorld.CELL_UNITS)))
 	if parent == null:
 		return
+	if _world.find_ref_node(ref) != null:
+		return
 	var node := _world.build_actor(ref)
 	if node == null:
 		return
 	parent.add_child(node)
 	if _ai != null:
 		_ai.attach_built(node)
+
+
+## A script enabled actor `ref` that the editor placed disabled: built where it stands if that part of the world
+## is built, else (a dragon that is to fly in from far away) built there anyway if it can fly. False if it is no
+## placed actor or already built.
+func enable_actor(ref: int) -> bool:
+	var where := _world.get_actor_place(ref)
+	if where.is_empty() or _world.find_ref_node(ref) != null:
+		return false
+	var parent: Node = null
+	if _streamer.world_id == 0:
+		if where["space"] == cell_id and not nodes.is_empty():
+			parent = nodes[0]
+	elif where["space"] == _streamer.world_id:
+		var p: Vector3 = where["position"]
+		parent = _streamer.get_loaded_cell(Vector2i(floori(p.x / SkydotWorld.CELL_UNITS), floori(p.y / SkydotWorld.CELL_UNITS)))
+	var far := parent == null
+	if far:
+		if _streamer.world_id == 0 or where["space"] != _streamer.world_id or nodes.is_empty():
+			return false
+		parent = nodes[0]
+	var node := _world.build_actor(ref)
+	if node == null or node.get_child_count() == 0:
+		if node != null:
+			node.queue_free()
+		return false
+	if far and not _flies(node):
+		node.queue_free()  # it is built when its cell is
+		return false
+	if far:
+		print("0x%08X is built far from the loaded cells (it flies)" % ref)
+	parent.add_child(node)
+	if _ai != null:
+		_ai.attach_built(node)
+	return true
+
+
+func _flies(root: Node) -> bool:
+	for actor in root.find_children("*", "SkydotActor", true, false):
+		return (actor as SkydotActor).can_fly()
+	return false
 
 
 ## A script moved actor `ref` (MoveTo): SkydotAi.relocate says what became of

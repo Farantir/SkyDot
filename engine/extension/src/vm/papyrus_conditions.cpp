@@ -353,6 +353,10 @@ std::uint32_t PapyrusConditionWorld::linked_ref(std::uint32_t ref, std::uint32_t
 
 // ---- relationships and vendors ---------------------------------------------------
 
+bool PapyrusConditionWorld::scene_action_complete(std::uint32_t scene, std::uint32_t action) const {
+    return owner_ == nullptr || owner_->scenes_ == nullptr || owner_->scenes_->action_complete(scene, action);
+}
+
 std::optional<std::int32_t> PapyrusConditionWorld::scripted_relationship_rank(std::uint32_t ref_a,
                                                                               std::uint32_t ref_b) const {
     return owner_ != nullptr ? owner_->actors_.relationship_rank(ref_a, ref_b) : std::nullopt;

@@ -266,7 +266,10 @@ Dictionary get_base(const WorldData& data, std::int64_t id) {
         out["light"] = godot::Variant();
     }
     out["flags"] = static_cast<std::int64_t>(base->flags());
-    out["scripts"] = script_list(base->scripts(), false);
+    const auto* script_base = data.script_base(base->id()) != static_cast<std::int64_t>(base->id())
+                                  ? data.base_ptr(data.script_base(base->id()))
+                                  : base;
+    out["scripts"] = script_list(script_base != nullptr ? script_base->scripts() : base->scripts(), false);
     return out;
 }
 

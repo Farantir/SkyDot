@@ -805,6 +805,10 @@ void SkydotAi::on_hit(std::int64_t attacker_id, std::int64_t target_id) {
         return;
     }
     if (v->combat.state == 0) {
+        if (attacker != k_player_ref && combat_ai::friendly(reaction_of(victim, attacker))) {
+            std::printf("combat: 0x%X ignores a hit from its ally 0x%X\n", victim, attacker);
+            return;
+        }
         enter_combat(*v, *actor, attacker);
     }
     const auto victim_at = position_of(victim);
@@ -1071,12 +1075,13 @@ void SkydotAi::melee_tick(Mind& m, SkydotActor& actor, double distance, const Ve
     }
 }
 
-void SkydotAi::ranged_tick(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los) {
+void SkydotAi::ranged_tick(Mind& m, SkydotActor& actor, double distance, const Vector3& to, bool los, bool airborne) {
     CombatMind& c = m.combat;
     combat_ai::RangedInputs in;
     in.distance = distance;
     in.line_of_sight = los;
     in.has_melee = c.has_melee;
+    in.target_airborne = airborne;
     const Vector3 here = m.last;
     Vector3 away = here - to;
     away.z = 0;
@@ -1326,7 +1331,30 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         flee_tick(m, actor, *at);
         return c.state != 0;
     }
-    const double distance = flat(m.last, *at);
+    double distance = flat(m.last, *at);
+    // A target in the air: a bow shoots it, everyone else without wings waits under it (a swing at
+    // a dragon overhead only hits friends).
+    bool airborne = false;
+    if (!actor.can_fly()) {
+        const Mind* foe_mind = mind(c.target);
+        const SkydotActor* foe = foe_mind != nullptr ? node_of(*foe_mind) : nullptr;
+        airborne = foe != nullptr && foe->is_flying();
+    }
+    if (airborne) {
+        if (c.has_bow) {
+            c.ranged = true;
+            distance = static_cast<double>((*at - m.last).length());
+        } else {
+            constexpr double k_wait_under = 1024.0; // PLACEHOLDER: a melee fighter stops this far (flat) from a flier
+            actor.set_look_target(SkydotWorld::skyrim_position(*at));
+            if (distance > k_wait_under) {
+                combat_walk(m, actor, *at, true);
+            } else {
+                actor.stop();
+            }
+            return true;
+        }
+    }
     if (shout_decide(m, actor, distance, *at, in_sight)) {
         return true;
     }
@@ -1334,7 +1362,7 @@ bool SkydotAi::combat_tick(Mind& m, SkydotActor& actor, double seconds) {
         return true;
     }
     if (c.ranged || (c.has_bow && !c.has_melee)) {
-        ranged_tick(m, actor, distance, *at, in_sight);
+        ranged_tick(m, actor, distance, *at, in_sight, airborne);
     } else {
         melee_tick(m, actor, distance, *at);
     }

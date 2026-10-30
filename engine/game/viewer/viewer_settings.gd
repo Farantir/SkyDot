@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon", "god"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -56,6 +56,8 @@ var neutral_grade := false  # --image-space neutral
 var volumetric := true  # the weather's volumetric lighting haze
 var quests := true
 var set_stage := ""  # EDID:STAGE[,EDID:STAGE...]
+var god := false  # --god: the player's Health is restored every frame (like tgm)
+var shout_wait := ""  # --shout-wait EDID:STAGE: the shout flags wait until that stage is done
 
 # Time and weather.
 var time := 12.0  # hour to start at
@@ -342,6 +344,8 @@ func _read(args: Dictionary) -> void:
 	volumetric = args.get("volumetric", "on") != "off"
 	quests = args.get("quests", "on") != "off"
 	set_stage = args.get("set-stage", "")
+	god = args.has("god")
+	shout_wait = args.get("shout-wait", "")
 
 	time_scale = args.get("time-scale", "20").to_float()
 	weather = args.get("weather", "")

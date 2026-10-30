@@ -209,7 +209,9 @@ quits that many frames after the last (default 5), so delayed activations
 and animations play out. `--save-to FILE` saves at
 the end of such a run, `--load FILE` loads at the start. `--give 0xFORM[xN],...`
 puts items into the player's inventory at the start (like `player.additem`). Add
-`--screenshot out.png` to render four views and exit.
+`--screenshot out.png` to render four views and exit. `--god` (a flag) restores the
+player's Health every frame, like tgm; `--shout-wait EDID:STAGE` applies the shout flags
+(`--teach-word` to `--shout`) only once that quest stage is done.
 
 ## Build and run
 

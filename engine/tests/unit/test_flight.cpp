@@ -619,21 +619,37 @@ TEST_CASE("flight tactics: a dragon not allowed to fly lands and stays down") {
     CHECK(r.b.mode == Mode::grounded);
 }
 
-TEST_CASE("flight tactics: a forced landing marker brings it down there at once") {
+TEST_CASE("flight tactics: a forced landing marker names where it lands next time, it does not land it at once") {
     Rig r;
     r.b = airborne_body(0, -3000, 1600, 0, 2000);
     r.t.maneuver = Maneuver::orbit;
     r.seconds(2);
     r.in.forced_landing = Vec3{6000, 6000, 100};
-    r.tick();
-    CHECK(r.t.maneuver == Maneuver::land);
-    REQUIRE(r.until(Maneuver::ground, 60));
+    r.in.style.flying_attack_chance = 0;
+    r.seconds(20);
+    CHECK(r.t.maneuver == Maneuver::orbit); // it keeps flying
+    // Its attacks done and the decision to land taken, it lands at the marker.
+    r.t.maneuver = Maneuver::orbit;
+    r.t.attacks = 5;
+    r.in.style.ground_attack_chance = 1;
+    r.in.style.flying_attack_chance = 1;
+    r.in.style.hover_chance = 0;
+    REQUIRE(r.until(Maneuver::pass, 40));
+    REQUIRE(r.until(Maneuver::land, 60));
+    REQUIRE(r.until(Maneuver::ground, 80));
     CHECK(distance_xy(r.b.pos, {6000, 6000, 100}) < 300);
-    // It may fly again later, and the marker does not land it a second time at once.
-    REQUIRE(r.until(Maneuver::takeoff, 30));
-    REQUIRE(r.until(Maneuver::orbit, 10));
+}
+
+TEST_CASE("flight tactics: an injured dragon lands at the forced marker") {
+    Rig r;
+    r.b = airborne_body(0, -3000, 1600, 0, 2000);
+    r.t.maneuver = Maneuver::orbit;
+    r.in.forced_landing = Vec3{6000, 6000, 100};
     r.seconds(2);
-    CHECK(r.t.maneuver == Maneuver::orbit);
+    r.in.health_fraction = 0.2;
+    REQUIRE(r.until(Maneuver::land, 2));
+    REQUIRE(r.until(Maneuver::ground, 80));
+    CHECK(distance_xy(r.b.pos, {6000, 6000, 100}) < 300);
 }
 
 TEST_CASE("flight tactics: out of combat it makes no demands") {
