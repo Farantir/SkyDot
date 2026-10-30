@@ -282,6 +282,9 @@ func _run(pack_dir: String) -> void:
 	expect(magicka_b < papyrus.get_actor_value_max(mage_b, "Magicka") - 20.0, "mage B paid for its spells: %f" % magicka_b)
 	var health_b := papyrus.get_actor_value_max(mage_b, "Health")
 	papyrus.damage_actor_value(mage_b, "Health", health_b * 0.7)
+	# In combat Magicka regenerates at fCombatMagickaRegenRateMult (0.33) of the rate, so the two
+	# spells before may have left too little for the heal: give the Magicka back.
+	papyrus.restore_actor_value(mage_b, "Magicka", 100000.0)
 	var low_b := papyrus.get_actor_value(mage_b, "Health")
 	var fast := await _until(func() -> bool: return _casts_of(mage_b, FAST_HEALING, "release") > 0, 15.0)
 	print("Fast Healing released after ", fast, " s")
