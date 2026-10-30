@@ -80,6 +80,8 @@ public:
     double get_turn_rate() const { return turn_rate_; }
     /// Clip speeds in metres per second at playback speed 1 (0: no clip).
     void set_clip_speeds(double walk, double run);
+    /// Metres per second it moves at, walking and running; 0 keeps the clip's speed.
+    void set_ground_speeds(double walk, double run);
 
     void set_home(const godot::Vector3& v) {
         home_ = v;

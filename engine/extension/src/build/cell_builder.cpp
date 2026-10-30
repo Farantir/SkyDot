@@ -1185,6 +1185,10 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
         node->add_child(player);
     }
     node->set_clip_speeds(walk_speed, run_speed);
+    // The game moves an actor at its race's movement speed and scales the clip to it (the actor
+    // does, by the speed it moves at); a race without a MOVT keeps the clip's speed.
+    node->set_ground_speeds(static_cast<double>(plan.walk_speed) * formats::k_metres_per_unit,
+                            static_cast<double>(plan.run_speed) * formats::k_metres_per_unit);
     if (!loco.death.empty()) {
         node->set_death_clip(String::utf8(loco.death.file.c_str()));
     }

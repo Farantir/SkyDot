@@ -48,6 +48,10 @@ struct ActorPlan {
     bool female{};
     /// Radians per second the race turns in place (its walk MOVT's rotate_in_place), 0 without a MOVT.
     float turn_rate{};
+    /// Units per second the race walks and runs forward (its walk and run MOVTs times the NPC's
+    /// SpeedMult / 100), 0 without a MOVT: the speeds the game moves it at.
+    float walk_speed{};
+    float run_speed{};
     FlightPlan flight;      ///< Set for a race that flies.
     float scale{1.0F};      ///< NPC height times the race's for its sex.
     /// The traits NPC's QNAM, which body skin (SkinTint) is multiplied by.

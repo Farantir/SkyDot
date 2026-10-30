@@ -117,6 +117,7 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_path"), &SkydotActor::get_path);
     ClassDB::bind_method(D_METHOD("get_state"), &SkydotActor::get_state);
     ClassDB::bind_method(D_METHOD("set_clip_speeds", "walk", "run"), &SkydotActor::set_clip_speeds);
+    ClassDB::bind_method(D_METHOD("set_ground_speeds", "walk", "run"), &SkydotActor::set_ground_speeds);
     ClassDB::bind_method(D_METHOD("set_seed", "seed"), &SkydotActor::set_seed);
     ClassDB::bind_method(D_METHOD("face", "yaw"), &SkydotActor::face);
     ClassDB::bind_method(D_METHOD("set_home", "value"), &SkydotActor::set_home);
@@ -436,6 +437,17 @@ void SkydotActor::set_clip_speeds(double walk, double run) {
     }
     // Without a run clip it walks wherever it would run.
     set_run_speed(run > 0 ? run : walk);
+}
+
+void SkydotActor::set_ground_speeds(double walk, double run) {
+    if (walk > 0) {
+        set_walk_speed(walk);
+    }
+    if (run > 0) {
+        set_run_speed(run);
+    } else if (walk > 0 && clip_run_ <= 0.0) {
+        set_run_speed(walk);
+    }
 }
 
 void SkydotActor::face(double yaw) {

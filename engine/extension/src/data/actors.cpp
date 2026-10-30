@@ -260,6 +260,15 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
                                                                                  movement->rotate_in_place_walk() > 0.0F) {
         plan.turn_rate = movement->rotate_in_place_walk();
     }
+    const auto* speed_stats = resolve(w, npc, wfb::NpcTemplateFlags::use_stats, ref);
+    const float speed_mult =
+        speed_stats->speed_multiplier() > 0.0F ? speed_stats->speed_multiplier() / 100.0F : 1.0F;
+    if (const auto* movement = lookup(w.movement_types(), race->movement_walk()); movement != nullptr) {
+        plan.walk_speed = movement->forward_walk() * speed_mult;
+    }
+    if (const auto* movement = lookup(w.movement_types(), race->movement_run()); movement != nullptr) {
+        plan.run_speed = movement->forward_run() * speed_mult;
+    }
     if ((race->flags() & 0x80U) != 0) {
         plan.flight.flies = true;
         plan.flight.angular_acceleration = race->angular_acceleration();
