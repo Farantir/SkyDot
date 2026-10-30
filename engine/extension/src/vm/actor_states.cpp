@@ -441,14 +441,17 @@ void ActorStates::tick(double seconds) {
         if (record.dead) {
             continue; // a dead actor does not recover
         }
+        const bool fighting = in_combat_ && in_combat_(ref);
+        const double combat_health = get(ref, av::k_combat_health_regen_multiply);
         struct Vital {
             std::uint32_t value, rate, mult;
             double held;
+            double combat; ///< Factor while in combat.
         };
         Vital vitals[] = {
-            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, 0.0},
-            {av::k_magicka, av::k_magicka_rate, av::k_magicka_rate_mult, magicka_held},
-            {av::k_stamina, av::k_stamina_rate, av::k_stamina_rate_mult, stamina_held},
+            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, 0.0, combat_health > 0.0 ? combat_health : 1.0},
+            {av::k_magicka, av::k_magicka_rate, av::k_magicka_rate_mult, magicka_held, combat_magicka_regen_mult_},
+            {av::k_stamina, av::k_stamina_rate, av::k_stamina_rate_mult, stamina_held, combat_stamina_regen_mult_},
         };
         for (const Vital& vital : vitals) {
             const auto it = record.values.find(vital.value);
@@ -457,7 +460,7 @@ void ActorStates::tick(double seconds) {
             }
             const double per_second = std::max(0.0, max(ref, vital.value)) *
                                       std::max(0.0, get(ref, vital.rate)) / 100.0 *
-                                      std::max(0.0, get(ref, vital.mult)) / 100.0;
+                                      std::max(0.0, get(ref, vital.mult)) / 100.0 * (fighting ? vital.combat : 1.0);
             it->second.damage = std::min(0.0, it->second.damage + per_second * (seconds - vital.held));
         }
     }

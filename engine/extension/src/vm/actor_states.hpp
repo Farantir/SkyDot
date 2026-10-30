@@ -34,6 +34,16 @@ public:
         magicka_regen_delay_ = magicka;
         stamina_regen_delay_ = stamina;
     }
+    /// Regeneration in combat: the GMSTs fCombatStaminaRegenRateMult and
+    /// fCombatMagickaRegenRateMult (0.35 and 0.33 in Skyrim.esm), and who is in combat.
+    /// Health in combat is scaled by the actor's CombatHealthRegenMultiply (unset, 0, is 1).
+    static constexpr double k_combat_stamina_regen_mult = 0.35;
+    static constexpr double k_combat_magicka_regen_mult = 0.33;
+    void set_combat_regen(double magicka, double stamina) {
+        combat_magicka_regen_mult_ = magicka;
+        combat_stamina_regen_mult_ = stamina;
+    }
+    void set_in_combat(std::function<bool(std::uint32_t ref)> in_combat) { in_combat_ = std::move(in_combat); }
 
     /// Where a dead actor lies (version 2 of the section): the space (cell or
     /// worldspace form), the position in Skyrim units and the facing about Z
@@ -200,6 +210,9 @@ private:
     BaseSource source_;
     double magicka_regen_delay_ = k_damaged_magicka_regen_delay;
     double stamina_regen_delay_ = k_damaged_stamina_regen_delay;
+    double combat_magicka_regen_mult_ = k_combat_magicka_regen_mult;
+    double combat_stamina_regen_mult_ = k_combat_stamina_regen_mult;
+    std::function<bool(std::uint32_t ref)> in_combat_;
     mutable std::map<std::uint32_t, std::optional<ActorBase>> bases_;
     std::map<std::uint32_t, Record> records_;
     std::vector<std::uint32_t> deaths_;

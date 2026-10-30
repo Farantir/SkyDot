@@ -675,7 +675,14 @@ void SkydotPapyrus::bind_world_natives() {
                                                 static_cast<float>(vm::ActorStates::k_damaged_magicka_regen_delay))),
             static_cast<double>(data.gmst_float("fDamagedStaminaRegenDelay",
                                                 static_cast<float>(vm::ActorStates::k_damaged_stamina_regen_delay))));
+        actors_.set_combat_regen(
+            static_cast<double>(data.gmst_float("fCombatMagickaRegenRateMult",
+                                                static_cast<float>(vm::ActorStates::k_combat_magicka_regen_mult))),
+            static_cast<double>(data.gmst_float("fCombatStaminaRegenRateMult",
+                                                static_cast<float>(vm::ActorStates::k_combat_stamina_regen_mult))));
     }
+    // Who fights is SkydotAi's (the hooks are set later; read when ticking).
+    actors_.set_in_combat([this](std::uint32_t ref) { return combat_hooks_.state && combat_hooks_.state(ref) != 0; });
 }
 
 void SkydotPapyrus::bind_actor_natives() {

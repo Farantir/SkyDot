@@ -28,6 +28,7 @@ constexpr std::uint32_t k_magicka_rate = 28;
 constexpr std::uint32_t k_stamina_rate = 29;
 constexpr std::uint32_t k_speed_mult = 30;
 constexpr std::uint32_t k_carry_weight = 32;
+constexpr std::uint32_t k_combat_health_regen_multiply = 134;
 constexpr std::uint32_t k_heal_rate_mult = 155;
 constexpr std::uint32_t k_magicka_rate_mult = 156;
 constexpr std::uint32_t k_stamina_rate_mult = 157;
