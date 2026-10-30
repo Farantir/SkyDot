@@ -354,6 +354,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 420
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_mq104
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/mq104.gd")
+    set_tests_properties(sse_mq104 PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 900
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_dragon_flight
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/dragon_flight.gd")
     set_tests_properties(sse_dragon_flight PROPERTIES
