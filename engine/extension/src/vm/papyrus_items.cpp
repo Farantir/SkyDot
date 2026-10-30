@@ -249,9 +249,11 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
     switch (result.action) {
     case vm::EquipAction::equipped: {
         const auto before = worn_of(owner);
+        const auto held = held_of(owner);
         items_.equipment(owner) = std::move(trial);
         sync_worn_magic(owner);
         note_worn(owner, before);
+        note_held(owner, held);
         break;
     }
     case vm::EquipAction::consumed: {
@@ -283,10 +285,12 @@ bool SkydotPapyrus::equip_item(std::uint32_t owner, std::uint32_t form, bool lef
 bool SkydotPapyrus::unequip_item(std::uint32_t owner, std::uint32_t form) {
     resolve_owner(owner);
     const auto before = worn_of(owner);
+    const auto held = held_of(owner);
     const bool done = items_.find(owner) != nullptr && vm::unequip(items_.equipment(owner), form);
     if (done) {
         sync_worn_magic(owner);
         note_worn(owner, before);
+        note_held(owner, held);
     }
     return done;
 }
@@ -298,14 +302,48 @@ std::string SkydotPapyrus::item_name_of(std::uint32_t form) const {
 void SkydotPapyrus::unequip_all(std::uint32_t owner) {
     resolve_owner(owner);
     const auto before = worn_of(owner);
+    const auto held = held_of(owner);
     items_.clear_equipment(owner);
     sync_worn_magic(owner);
     note_worn(owner, before);
+    note_held(owner, held);
 }
 
 std::set<std::uint32_t> SkydotPapyrus::worn_of(std::uint32_t owner) const {
     const auto* equipment = items_.find(owner);
     return equipment != nullptr ? equipment->worn : std::set<std::uint32_t>{};
+}
+
+std::set<std::uint32_t> SkydotPapyrus::held_of(std::uint32_t owner) const {
+    std::set<std::uint32_t> out;
+    if (const auto* e = items_.find(owner)) {
+        out = e->worn;
+        for (const auto form : {e->right, e->left, e->ammo}) {
+            if (form != 0) {
+                out.insert(form);
+            }
+        }
+    }
+    return out;
+}
+
+void SkydotPapyrus::send_equip_event(std::uint32_t owner, std::uint32_t form, bool equipped) {
+    const vm::Value none;
+    dispatch(owner, equipped ? "OnObjectEquipped" : "OnObjectUnequipped", {vm_->object(form, "Form"), none});
+}
+
+void SkydotPapyrus::note_held(std::uint32_t owner, const std::set<std::uint32_t>& before) {
+    const auto after = held_of(owner);
+    for (const auto form : before) {
+        if (!after.contains(form)) {
+            send_equip_event(owner, form, false);
+        }
+    }
+    for (const auto form : after) {
+        if (!before.contains(form)) {
+            send_equip_event(owner, form, true);
+        }
+    }
 }
 
 void SkydotPapyrus::note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before) {
@@ -469,10 +507,12 @@ bool SkydotPapyrus::unequip(std::int64_t owner, std::int64_t form, std::int64_t 
     if (items_.find(id) == nullptr) {
         return false;
     }
+    const auto held = held_of(id);
     const bool done = vm::unequip(items_.equipment(id), static_cast<std::uint32_t>(form),
                                   extra < 0 ? std::nullopt : std::optional<std::uint32_t>(static_cast<std::uint32_t>(extra)));
     if (done) {
         sync_worn_magic(id);
+        note_held(id, held);
     }
     return done;
 }

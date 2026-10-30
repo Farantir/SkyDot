@@ -803,6 +803,14 @@ private:
     /// `owner`'s worn armor, and the signal worn_changed if it is not `before` any more.
     std::set<std::uint32_t> worn_of(std::uint32_t owner) const;
     void note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before);
+    /// Everything `owner` holds or wears (hands, ammo, worn), for OnObjectEquipped/OnObjectUnequipped.
+    std::set<std::uint32_t> held_of(std::uint32_t owner) const;
+    /// Sends OnObjectUnequipped for what left `before` and OnObjectEquipped for what joined it.
+    void note_held(std::uint32_t owner, const std::set<std::uint32_t>& before);
+    /// OnObjectEquipped/OnObjectUnequipped(form, none) to `owner`'s scripts and aliases.
+    void send_equip_event(std::uint32_t owner, std::uint32_t form, bool equipped);
+    /// OnSpellCast(spell) to `caster`'s scripts and aliases.
+    void send_spell_cast(std::uint32_t caster, std::uint32_t spell);
     vm::ItemInfo item_info_of(std::uint32_t form) const;
     /// Take items from `owner` (resolved first); an item that runs out is
     /// taken off.

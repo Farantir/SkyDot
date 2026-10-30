@@ -437,10 +437,20 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     }
     bool equip_spell(std::uint32_t actor, std::uint32_t spell, int hand) override {
         if (hand == 2) {
-            return magic::equip_voice(book, shouts, actor, spell); // the voice slot: a power or a shout
+            const bool changed = shouts.equipped(actor) != spell && book.equipped(actor, magic::Slot::power) != spell;
+            const bool done = magic::equip_voice(book, shouts, actor, spell); // the voice slot: a power or a shout
+            if (done && changed) {
+                owner_.send_equip_event(actor, spell, true);
+            }
+            return done;
         }
         const bool scroll = !book.has_spell(actor, spell) && carried_scroll(actor, spell);
-        return book.equip(actor, spell, slot_of(hand), scroll);
+        const bool changed = equipped_spell(actor, hand) != spell;
+        const bool done = book.equip(actor, spell, slot_of(hand), scroll);
+        if (done && changed) {
+            owner_.send_equip_event(actor, spell, true);
+        }
+        return done;
     }
     void unequip_spell(std::uint32_t actor, int hand) override { book.unequip(actor, slot_of(hand)); }
     std::uint32_t equipped_spell(std::uint32_t actor, int hand) override { return book.equipped(actor, slot_of(hand)); }
@@ -459,7 +469,15 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     }
     bool remove_shout(std::uint32_t actor, std::uint32_t shout) override { return shouts.remove_shout(actor, shout); }
     bool equip_shout(std::uint32_t actor, std::uint32_t shout) override {
-        return shouts.is_shout(shout) && magic::equip_voice(book, shouts, actor, shout);
+        if (!shouts.is_shout(shout)) {
+            return false;
+        }
+        const bool changed = shouts.equipped(actor) != shout;
+        const bool done = magic::equip_voice(book, shouts, actor, shout);
+        if (done && changed) {
+            owner_.send_equip_event(actor, shout, true);
+        }
+        return done;
     }
     void unequip_shout(std::uint32_t actor, std::uint32_t shout) override {
         if (shout == 0 || shouts.equipped(actor) == shout) {
@@ -674,6 +692,9 @@ Dictionary SkydotPapyrus::pay_spell(std::int64_t caster_in, std::int64_t spell_i
     out["ok"] = paid.ok;
     out["reason"] = to_godot(paid.reason);
     out["cost"] = paid.cost;
+    if (paid.ok && seconds <= 0.0) {
+        send_spell_cast(caster, spell); // a concentration spell pays every frame: one event per cast
+    }
     return out;
 }
 
@@ -746,6 +767,9 @@ Dictionary SkydotPapyrus::cast_spell(std::int64_t caster_in, std::int64_t spell_
         godot::UtilityFunctions::print(to_godot(line));
     }
     const auto landed = magic::land_form(m->world_, m->effects, caster, spell, target);
+    if (fresh) {
+        send_spell_cast(caster, spell);
+    }
     flush_magic_events();
     flush_deaths();
     out["ok"] = true;
@@ -822,6 +846,7 @@ Dictionary SkydotPapyrus::cast_scroll(std::int64_t caster_in, std::int64_t scrol
     emit_signal("trace", to_godot(line));
     godot::UtilityFunctions::print(to_godot(line));
     const auto landed = magic::land_form(m->world_, m->effects, caster, scroll, target);
+    send_spell_cast(caster, scroll);
     if (item) {
         (void)remove_item(caster, scroll, 1);
         if (vm_->inventory().count(caster, scroll) <= 0) {
@@ -1545,6 +1570,7 @@ Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_i
     out["words"] = shouted.words;
     out["spell"] = static_cast<std::int64_t>(shouted.spell);
     out["recovery"] = shouted.recovery;
+    send_spell_cast(actor, shouted.spell);
     if (target_in != 0) {
         // Voice spells cost nothing: land them as land_spell does.
         const auto target = static_cast<std::uint32_t>(target_in);
@@ -1554,6 +1580,10 @@ Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_i
         flush_deaths();
     }
     return out;
+}
+
+void SkydotPapyrus::send_spell_cast(std::uint32_t caster, std::uint32_t spell) {
+    dispatch(caster, "OnSpellCast", {vm_->object(spell, "Form")});
 }
 
 void SkydotPapyrus::bind_magic_natives() {
