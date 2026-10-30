@@ -88,7 +88,11 @@ The SF_ fragment script attaches to the scene's form. The game layer calls
 `scenes_update(dt)`, speaks the returned dialogue actions and answers
 `scene_action_done`; a package action emits `scene_package(actor, package, push)`.
 Save section `SCEN` v1 (optional). Scene and phase conditions use the player as
-subject (an assumption).
+subject (an assumption); IsSceneActionComplete (550) reads the running scene.
+A scene a script starts while an actor of it is not built waits like one that
+starts with its quest, and after 20 s (`Scenes::k_grace`, **guess**: Skyrim
+runs unloaded actors in low process) begins with whoever is built; the others
+say nothing (MQ104's FortIntroScene, its soldiers far off).
 
 ## Quests
 
@@ -249,6 +253,12 @@ forget the damage and bring back the base's model. State is saved with the VM
 (`Vm::destruction`). Self-damage per second and debris are not applied.
 
 ## Items
+
+Equip events: what really changes in a hand, the ammo slot or the worn set,
+and a spell or shout put in a hand or the voice slot, sends
+`OnObjectEquipped`/`OnObjectUnequipped(base, None)` to the actor and its
+aliases; a cast (hands, power, scroll, a shout with its word spell; a
+concentration spell once) sends `OnSpellCast(spell)` (MQ104 92 and 100).
 
 A container's or an actor's start inventory is resolved the first time
 anything looks at it (`resolve`, `inventory`, `transfer`, a script's

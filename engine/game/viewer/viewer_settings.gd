@@ -10,7 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
-const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon", "god"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon", "god", "shot-live"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -96,6 +96,7 @@ var screenshot := ""
 var shot_delay := 0.0  # seconds the world runs before --screenshot captures
 var shot_frames := 1  # --screenshot of one view: consecutive frames to save (an effect over time)
 var shot_every := 1  # of those, every this many rendered frames
+var shot_live := false  # --shot-live: the whole game runs during a series (quests, scenes, AI), not only scripts and fights
 var hide_refs: Array[int] = []  # --screenshot: references (form IDs) hidden in the shots
 var has_benchmark := false
 var benchmark := 0.0  # seconds
@@ -345,6 +346,7 @@ func _read(args: Dictionary) -> void:
 	quests = args.get("quests", "on") != "off"
 	set_stage = args.get("set-stage", "")
 	god = args.has("god")
+	shot_live = args.has("shot-live")
 	shout_wait = args.get("shout-wait", "")
 
 	time_scale = args.get("time-scale", "20").to_float()

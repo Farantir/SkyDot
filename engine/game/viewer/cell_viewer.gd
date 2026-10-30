@@ -160,7 +160,8 @@
 # them still unless --wander on; --shot-delay SECONDS lets the world run that
 # long before a --screenshot is taken; --shot-frames N [--shot-every K] saves
 # N frames of one view instead (see shot_recorder.gd; --shot-camera X,Y,Z --shot-look X,Y,Z puts that view
-# elsewhere than at the player, Skyrim units, for a side view of a fight); --hide-refs ID[,ID...]
+# elsewhere than at the player, Skyrim units, for a side view of a fight; --shot-live runs the whole game during
+# the series, quests, scenes and AI, as in play: MQ104); --hide-refs ID[,ID...]
 # (hex form IDs) hides those references in them, as the game's `disable`. Inside, time runs too (--time-scale);
 # T and Shift+T move it there as well. I tells what the nearest actor's
 # package is.
@@ -507,6 +508,15 @@ func _process(delta: float) -> void:
 	_fight_step()
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
+	if _shots.is_running() and _settings.shot_live:
+		# --shot-live: the game runs as in play (quests, scenes, the AI), the camera at the shot's view.
+		_session.step(delta, _rig.player.global_position)
+		if _settings.has_shot_camera:
+			_rig.camera.global_position = SkydotWorld.skyrim_position(_settings.shot_camera)
+			_rig.camera.look_at(SkydotWorld.skyrim_position(_settings.shot_look))
+		_body.follow()
+		_shots.step(delta)
+		return
 	if _shots.is_running():
 		if _settings.shot_frames > 1 or _settings.shot_delay > 0.0:
 			# A frame series, or a shot after a delay, shows what scripts do over time (a trap
