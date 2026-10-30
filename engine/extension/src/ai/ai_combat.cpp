@@ -927,7 +927,12 @@ bool SkydotAi::follow_commander(Mind& m, SkydotActor& actor, std::uint32_t comma
         c.following = true;
         actor.set_wander(false);
     }
-    switch (combat_ai::follow_step(flat(m.last, *at))) {
+    const auto& data = world_->data();
+    const double near = static_cast<double>(
+        data.gmst_float("fSummonedCreatureMinFollowDist", static_cast<float>(combat_ai::k_follow_near)));
+    const double far = static_cast<double>(
+        data.gmst_float("fSummonedCreatureMaxFollowDist", static_cast<float>(combat_ai::k_follow_far)));
+    switch (combat_ai::follow_step(flat(m.last, *at), near, far)) {
     case combat_ai::FollowStep::stay:
         if (actor.is_walking()) {
             actor.stop();

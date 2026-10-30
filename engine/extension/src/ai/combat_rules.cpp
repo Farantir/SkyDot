@@ -191,11 +191,11 @@ Reaction commanded_reaction(std::uint32_t a, std::uint32_t b, const CommanderOf&
     return base(pa, pb);
 }
 
-FollowStep follow_step(double distance) noexcept {
-    if (distance > k_follow_far) {
+FollowStep follow_step(double distance, double near, double far) noexcept {
+    if (distance > far) {
         return FollowStep::run;
     }
-    return distance > k_follow_near ? FollowStep::walk : FollowStep::stay;
+    return distance > near ? FollowStep::walk : FollowStep::stay;
 }
 
 std::string stagger_clip(const std::vector<std::string>& names, bool large) {

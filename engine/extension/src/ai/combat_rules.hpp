@@ -172,10 +172,13 @@ using ReactionOf = std::function<Reaction(std::uint32_t a, std::uint32_t b)>;
 
 enum class FollowStep : std::uint8_t { stay, walk, run };
 
-/// PLACEHOLDERS: a commanded actor walks to within 250 game units of its commander and runs from farther than 600.
+/// A commanded actor walks to within `near` game units of its commander and runs from farther than `far`:
+/// the GMSTs fSummonedCreatureMinFollowDist and fSummonedCreatureMaxFollowDist (their values in Skyrim.esm
+/// are the defaults).
 inline constexpr double k_follow_near = 250.0;
-inline constexpr double k_follow_far = 600.0;
-[[nodiscard]] FollowStep follow_step(double distance) noexcept;
+inline constexpr double k_follow_far = 400.0;
+[[nodiscard]] FollowStep follow_step(double distance, double near = k_follow_near,
+                                     double far = k_follow_far) noexcept;
 
 /// The stagger clip among a behaviour project's clip names (lower case, no extension): those with
 /// "stagger" (not "bash"), else "recoil"; a large one for `large` (name with large, heavy or back),
