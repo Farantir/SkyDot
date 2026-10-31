@@ -710,7 +710,13 @@ func head_point_of(ref: int) -> Vector3:
 	var node := _world.find_ref_node(ref) as Node3D
 	if node == null:
 		return body_point_of(ref)
-	var skeleton := node.find_child("Skeleton3D", true, false) as Skeleton3D
+	return head_point_in(node)
+
+
+## The head of an actor's node: the head bone of its "Skeleton" (the name the cell builder gives it),
+## else a fraction of its height.
+static func head_point_in(node: Node3D) -> Vector3:
+	var skeleton := node.find_child("Skeleton", true, false) as Skeleton3D
 	if skeleton != null:
 		for want in ["head magicnode", "head"]:
 			for bone in skeleton.get_bone_count():

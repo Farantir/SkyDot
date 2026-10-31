@@ -53,6 +53,7 @@ func _run(args: PackedStringArray) -> void:
         printerr("FAIL: %s has no test_* methods" % args[0])
         quit(1)
         return
+    await process_frame  # nodes added to root are in the tree from here on
     var failed := 0
     var skipped := 0
     for test_name in names:
