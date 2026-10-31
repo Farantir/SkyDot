@@ -17,9 +17,6 @@ signal actor_built(ref: int)
 ## A destruction stage's model replaced the reference's node (sounds are watched anew).
 signal model_swapped(node: Node3D, ref: int)
 
-## Once-only guards that watchers set on a node (sounds.gd, script_bridge.gd, combat.gd,
-## npc_shouts.gd). A swapped-in model must not inherit them or it is never watched.
-const WATCH_GUARDS := ["skydot_sounds", "skydot_notifies", "skydot_blows", "skydot_breath_events"]
 const EXPLOSION_EMIT_SECONDS := 1.5
 const EXPLOSION_LIFE_SECONDS := 5.0
 
@@ -200,11 +197,10 @@ func remove(ref: int) -> void:
 		gone.queue_free()
 
 
-## The tags of `from` on `to`, except the watchers' once-only guards.
+## The tags of `from` on `to`.
 static func copy_meta(from: Node, to: Node) -> void:
 	for key in from.get_meta_list():
-		if not key in WATCH_GUARDS:
-			to.set_meta(key, from.get_meta(key))
+		to.set_meta(key, from.get_meta(key))
 
 
 ## A destruction stage's model replaces the reference's (path "": the base's

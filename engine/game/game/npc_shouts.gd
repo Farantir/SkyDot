@@ -137,9 +137,10 @@ func _breathe(ref: int, target: int, shout: int, kind: String) -> void:
 			fire_now = not _clip_has_event(node, EVENT_FIRE)
 			if fire_now:
 				_warn.once("noevent" + stem, "%s has no %s key: the breath leaves at its start" % [stem, EVENT_FIRE])
-		if not node.has_meta("skydot_breath_events") and node.has_signal("animation_event"):
-			node.set_meta("skydot_breath_events", true)
-			node.connect("animation_event", func(event: String) -> void: _on_event(ref, event))
+		if node.has_signal("animation_event"):
+			var watcher := _on_animation_event.bind(ref)
+			if not node.is_connected("animation_event", watcher):  # once per node
+				node.connect("animation_event", watcher)
 	var info: Dictionary = result["info"]
 	_breaths[ref] = {"spell": int(result["spell"]), "info": info, "target": target,
 		"concentration": int(info.get("casting_type", 0)) == Magic.CAST_CONCENTRATION, "state": "wait", "tick": 0.0,
@@ -166,6 +167,10 @@ func _clip_has_event(node: Node, event: String) -> bool:
 		if marker.begins_with(event):
 			return true
 	return false
+
+
+func _on_animation_event(event: String, ref: int) -> void:
+	_on_event(ref, event)
 
 
 func _on_event(ref: int, event: String) -> void:

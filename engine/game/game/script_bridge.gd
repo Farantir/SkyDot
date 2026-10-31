@@ -360,23 +360,35 @@ func _on_animation_events_wanted(ref: int) -> void:
 
 
 func _connect_notifies(node: Node, ref: int) -> void:
-	if node.has_meta("skydot_notifies"):
-		return
-	node.set_meta("skydot_notifies", true)
 	var animator := node.get_node_or_null("SkydotAnimator")
-	if animator != null:
-		animator.text_key.connect(func(_clip: String, key: String) -> void:
-			_papyrus.notify_animation_event(ref, key))
-		animator.finished.connect(func(clip: String) -> void:
-			_papyrus.notify_animation_event(ref, clip))
 	var player := node.find_child("SkydotBehavior", true, false)
+	var on_text_key := _notify_text_key.bind(ref)
+	var on_name := _notify.bind(ref)
+	# Once per node: the first connection tells.
+	if animator != null:
+		if animator.text_key.is_connected(on_text_key):
+			return
+	elif player != null:
+		if player.event_raised.is_connected(on_name):
+			return
+	elif node is SkydotActor and node.animation_event.is_connected(on_name):
+		return
+	if animator != null:
+		animator.text_key.connect(on_text_key)
+		animator.finished.connect(on_name)
 	if player != null:
-		player.event_raised.connect(func(name: String) -> void:
-			_papyrus.notify_animation_event(ref, name))
+		player.event_raised.connect(on_name)
 	# An actor's clips raise their annotations (FootLeft, HitFrame, SoundPlay.*) as they play.
 	if node is SkydotActor:
-		node.animation_event.connect(func(name: String) -> void:
-			_papyrus.notify_animation_event(ref, name))
+		node.animation_event.connect(on_name)
+
+
+func _notify_text_key(_clip: String, key: String, ref: int) -> void:
+	_papyrus.notify_animation_event(ref, key)
+
+
+func _notify(event: String, ref: int) -> void:
+	_papyrus.notify_animation_event(ref, event)
 
 
 ## The player's activation of reference `ref`: SkydotPapyrus.activate_ref

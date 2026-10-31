@@ -545,13 +545,14 @@ func _target_position(target: int) -> Vector3:
 
 ## The blows of a dragon's tail and wings are felt all round it (animation events of its clips).
 func _watch_blows(node: Node3D, attacker: int) -> void:
-	if node.has_meta("skydot_blows") or not node.has_signal("animation_event"):
+	if not node.has_signal("animation_event"):
 		return
-	node.set_meta("skydot_blows", true)
-	node.connect("animation_event", func(event: String) -> void: _on_blow(attacker, event))
+	var blow := _on_blow.bind(attacker)
+	if not node.is_connected("animation_event", blow):  # once per node
+		node.connect("animation_event", blow)
 
 
-func _on_blow(attacker: int, event: String) -> void:
+func _on_blow(event: String, attacker: int) -> void:
 	var node := _world.find_ref_node(attacker) as Node3D
 	if node == null or _papyrus.is_actor_dead(attacker):
 		return

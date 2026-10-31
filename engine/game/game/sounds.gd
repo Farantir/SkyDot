@@ -128,17 +128,20 @@ func is_playing(instance: int) -> bool:
 ## `SoundPlay.X` and `Sound: X`, graph events `SoundPlay.X`. X is an SNDR or
 ## SOUN editor id. Once per node.
 func watch(node: Node, ref: int) -> void:
-	if node.has_meta("skydot_sounds"):
-		return
-	node.set_meta("skydot_sounds", true)
 	var animator := node.get_node_or_null("SkydotAnimator")
-	if animator != null:
-		animator.text_key.connect(func(_clip: String, key: String) -> void:
-			_on_key(key, node, ref))
 	var player := node.find_child("SkydotBehavior", true, false)
+	var on_text_key := _on_text_key.bind(node, ref)
+	var on_event := _on_key.bind(node, ref)
+	# Once per node: the first connection tells (a swapped-in model is a new node and is watched).
+	if animator != null:
+		if animator.text_key.is_connected(on_text_key):
+			return
+	elif player != null and player.event_raised.is_connected(on_event):
+		return
+	if animator != null:
+		animator.text_key.connect(on_text_key)
 	if player != null:
-		player.event_raised.connect(func(event: String) -> void:
-			_on_key(event, node, ref))
+		player.event_raised.connect(on_event)
 
 
 ## A cell was built: watch its references and start its sound markers.
@@ -166,6 +169,10 @@ func cell_loaded(cell: Node3D, cell_id: int, ref_nodes: Array) -> void:
 			started += 1
 	if started > 0:
 		print("sounds: %d markers play in cell 0x%08X" % [started, cell_id])
+
+
+func _on_text_key(_clip: String, key: String, node: Node, ref: int) -> void:
+	_on_key(key, node, ref)
 
 
 func _on_key(key: String, node: Node, ref: int) -> void:
