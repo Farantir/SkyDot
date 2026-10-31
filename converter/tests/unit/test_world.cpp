@@ -266,7 +266,7 @@ void make_mod(const TempDir& dir) {
 
 /// Land.esm: a worldspace with a persistent cell and a real cell at (0, 0),
 /// the real one with LAND; an LTEX and its TXST.
-void make_land(const TempDir& dir) {
+void make_land(const TempDir& dir, bool short_vhgt = false) {
     ByteWriter file;
     bethconv::test::write_tes4(file, 0x1, {});
 
@@ -563,13 +563,15 @@ void make_land(const TempDir& dir) {
     bethconv::test::write_field(land, "DATA", land_data);
     ByteWriter vhgt;
     vhgt.f32(1.0F);
-    for (std::size_t i = 0; i < 33 * 33; ++i) {
+    for (std::size_t i = 0; i < (short_vhgt ? 10 : 33 * 33); ++i) {
         const int delta = i == 0 ? 2 : i == 1 ? -1 : i == 33 ? 1 : 0;
         vhgt.u8(static_cast<std::uint8_t>(static_cast<std::int8_t>(delta)));
     }
-    vhgt.u8(0);
-    vhgt.u8(0);
-    vhgt.u8(0);
+    if (!short_vhgt) {
+        vhgt.u8(0);
+        vhgt.u8(0);
+        vhgt.u8(0);
+    }
     bethconv::test::write_field(land, "VHGT", vhgt);
     ByteWriter vclr;
     for (std::size_t i = 0; i < 33 * 33 * 3; ++i) {
@@ -758,6 +760,20 @@ TEST_CASE("world.fb is refused when damaged", "[pack][world]") {
     std::vector<std::byte> junk(64, std::byte{0x5A});
     CHECK_FALSE(pack::WorldFile::from_bytes(junk, "junk").has_value());
     CHECK_FALSE(pack::WorldFile::from_bytes({}, "empty").has_value());
+}
+
+TEST_CASE("a LAND with a VHGT too short for the grid is counted as a parse error", "[pack][world]") {
+    const TempDir dir;
+    make_land(dir, true);
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "Land.esm", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list, record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto stats = pack::write_world(world, order, dir / "world.fb");
+    REQUIRE(stats.has_value());
+    CHECK(stats->terrains == 0);
+    CHECK(stats->parse_errors == 1);
 }
 
 TEST_CASE("world.fb carries terrain, worldspaces and land textures", "[pack][world]") {

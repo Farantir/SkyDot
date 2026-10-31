@@ -369,6 +369,9 @@ void PlaceCollector::on_land(const record::MergedRecord& merged, io::SpanReader&
         return;
     }
     auto heights = decode_vhgt(land->heights);
+    if (!heights && !land->heights.empty()) {
+        ++shared_.stats().parse_errors; // a VHGT too short for the grid; no VHGT at all is legitimate
+    }
     if (!heights || merged.parent.is_null()) {
         return;
     }
