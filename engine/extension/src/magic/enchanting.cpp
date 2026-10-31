@@ -44,7 +44,7 @@ double weapon_use_cost(double base_cost, double skill) {
     if (base_cost <= 0.0) {
         return 0.0;
     }
-    return 3.0 * std::pow(base_cost, k_cost_exponent) * (1.0 - std::sqrt(skill / 200.0));
+    return 3.0 * std::pow(base_cost, k_cost_exponent) * (1.0 - std::sqrt(std::clamp(skill, 0.0, 200.0) / 200.0));
 }
 
 vm::CreatedEffect scale_effect(const EffectInput& base, std::uint32_t mgef_flags, double factor) {
@@ -214,7 +214,7 @@ std::optional<MadeEnchantment> make_enchantment(const wfb::World& world, const w
         double cost = weapon_use_cost(base_cost, skill);
         if (cost > capacity) {
             // One use must fit the gem: shrink the magnitude until 3 * (base cost * r)^1.1 * k is the capacity.
-            const double k = 1.0 - std::sqrt(skill / 200.0);
+            const double k = 1.0 - std::sqrt(std::clamp(skill, 0.0, 200.0) / 200.0);
             factor *= std::pow(capacity / (3.0 * k), 1.0 / k_cost_exponent) / base_cost;
             cost = capacity;
         }

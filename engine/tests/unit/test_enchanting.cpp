@@ -202,6 +202,10 @@ TEST_CASE("the enchanting formulas at skill 15", "[enchanting]") {
     CHECK(magic::soul_magnitude_multiplier(1) == Approx(1.0 / 12.0));
     CHECK(magic::weapon_use_cost(100.0, 15.0) == Approx(3.0 * std::pow(100.0, 1.1) * (1.0 - std::sqrt(15.0 / 200.0))));
     CHECK(magic::weapon_use_cost(0.0, 15.0) == 0.0);
+    // A skill past 200 (boosted) must not make the cost negative.
+    CHECK(magic::weapon_use_cost(100.0, 250.0) >= 0.0);
+    CHECK(magic::weapon_use_cost(100.0, 250.0) == Approx(magic::weapon_use_cost(100.0, 200.0)));
+    CHECK(magic::weapon_use_cost(100.0, -5.0) == Approx(magic::weapon_use_cost(100.0, 0.0)));
 }
 
 TEST_CASE("a creature's soul follows its level, an NPC's is black and grand", "[enchanting]") {
