@@ -311,12 +311,17 @@ func _run(pack_dir: String) -> void:
 	await _frames(5)
 	print("bandit: dead ", papyrus.is_actor_dead(BANDIT), " state ", ai.get_actor_state(BANDIT).get("attached"), " lod ", _node(BANDIT).get_lod(), " in tree ", _node(BANDIT).is_inside_tree(), " frozen ", _node(BANDIT).is_frozen())
 	expect(papyrus.magic_overrides(BANDIT)["paralyzed"], "the bandit is paralysed")
-	expect(bandit.is_frozen(), "his node is frozen")
-	var still := bandit.global_position
+	await _advance(2.0)
+	expect(_session.corpses.is_down(BANDIT), "he goes limp and lies down as a ragdoll")
 	await _advance(3.0)
-	expect(bandit.global_position.distance_to(still) < 0.05, "he does not move while paralysed")
+	expect(_session.corpses.is_down(BANDIT), "he stays down while paralysed")
 	await _advance(10.0)
-	expect(not papyrus.magic_overrides(BANDIT)["paralyzed"] and not bandit.is_frozen(), "and moves again")
+	expect(not papyrus.magic_overrides(BANDIT)["paralyzed"], "the paralysis ends")
+	await _advance(4.0)
+	expect(not _session.corpses.is_down(BANDIT) and not bandit.is_frozen() and not bandit.is_dead(), "and he stands again")
+	var stood := bandit.global_position
+	await _advance(3.0)
+	expect(bandit.global_position.distance_to(stood) > 0.05 or ai.get_combat_target(BANDIT) != 0, "and moves again")
 	await _clean(both)
 
 	print("PHASE ", Time.get_ticks_msec() / 1000, " ", "Conjure Familiar: a summon next to the caster, an ally, gone at the end, back after a load")

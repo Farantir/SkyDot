@@ -110,6 +110,8 @@ const PLAYER_PUSH_LIFT := 0.35
 ## but not before KNOCK_MIN_SECONDS.
 const GET_UP_SECONDS := 2.0
 const KNOCK_MIN_SECONDS := 1.0
+## Paralysis is looked at this often, seconds.
+const PARALYSIS_POLL := 0.2
 ## A dead actor built in a place waits this long for the ground under it.
 const GROUND_SECONDS := 10.0
 ## A frozen body's pickable box is its bones' box grown by this (metres).
@@ -124,6 +126,8 @@ var _hits := {}  # target ref -> impulse vector of the last hit
 var _pending := {}  # ref -> seconds waited: dead, not yet lying down
 var _live := {}  # ref -> true: died while built (not a body built dead): its death plays
 var _bodies: Array[Dictionary] = []  # {ref, node, skeleton, simulator, bones, time, still, knocked}
+var _paralysed := {}  # ref -> true: the actors whose paralysis has been seen
+var _paralysis_timer := 0.0
 ## The AI to hold while an actor is down (the session sets it; null without one).
 var ai: SkydotAi
 
@@ -219,8 +223,8 @@ func stand_up(ref: int) -> bool:
 
 ## `ref`, a living actor, is thrown away from `source` (an actor, or the player) with `force` (the
 ## PushActorAway force): it falls as a ragdoll and gets up later. False (and nothing happens) if it
-## is dead, not built, already down, or has no ragdoll.
-func knock_down(ref: int, source: int, force: float) -> bool:
+## is dead, not built, already down, or has no ragdoll. `hold`: it stays down until `release` (paralysis).
+func knock_down(ref: int, source: int, force: float, hold := false) -> bool:
 	if _papyrus.is_actor_dead(ref) or is_down(ref):
 		return false
 	var node := _world.find_ref_node(ref) as Node3D
@@ -244,9 +248,39 @@ func knock_down(ref: int, source: int, force: float) -> bool:
 		node.global_position -= Vector3.UP * KNOCK_LIFT
 		return false
 	if ai != null:
-		ai.hold(ref, GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
+		ai.hold(ref, 3600.0 if hold else GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
+	for body in _bodies:
+		if body["ref"] == ref:
+			body["hold"] = hold
 	print("push: 0x%08X pushed by 0x%08X (force %s)" % [ref, source, force])
 	return true
+
+
+## Paralysis (the effect's overrides, polled in `step`): the actor goes limp as a ragdoll with no push (Skyrim's:
+## it collapses within about a second) and lies until the effect ends, then `release` lets it get up. A flyer
+## or a race with a death clip (the dragon) has no ragdoll to fall as: it keeps the AI's freeze of the pose.
+## The green shell of the effect (its EFSH) is not shown unless the visual effects show it.
+func _poll_paralysis(delta: float) -> void:
+	_paralysis_timer += delta
+	if _paralysis_timer < PARALYSIS_POLL:
+		return
+	_paralysis_timer = 0.0
+	for node: SkydotActor in _host.find_children("*", "SkydotActor", true, false):
+		if not node.has_meta("skydot_ref"):
+			continue
+		var ref: int = node.get_meta("skydot_ref")
+		var on: bool = bool(_papyrus.magic_overrides(ref).get("paralyzed", false))
+		if on == _paralysed.has(ref):
+			continue
+		if on:
+			_paralysed[ref] = true
+			if not node.is_flying() and not node.has_death_clip():
+				knock_down(ref, 0, 0.0, true)
+		else:
+			_paralysed.erase(ref)
+			for body in _bodies:
+				if body["ref"] == ref:
+					body["hold"] = false  # it gets up with the next step
 
 
 ## Whether `ref` lies knocked down (alive).
@@ -291,6 +325,7 @@ func simulating() -> int:
 
 ## The frame: freeze the ragdolls that rest or have run their time.
 func step(delta: float) -> void:
+	_poll_paralysis(delta)
 	_start_pending(delta)
 	for body in _bodies.duplicate():
 		if not is_instance_valid(body["node"]) or not is_instance_valid(body["skeleton"]):
@@ -303,6 +338,8 @@ func step(delta: float) -> void:
 				moving = true
 		body["still"] = 0.0 if moving else body["still"] + delta
 		if body["knocked"]:
+			if body.get("hold", false):
+				continue
 			if body["time"] >= GET_UP_SECONDS or (body["time"] >= KNOCK_MIN_SECONDS and body["still"] >= REST_SECONDS):
 				_get_up(body)
 				_bodies.erase(body)
