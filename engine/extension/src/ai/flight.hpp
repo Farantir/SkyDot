@@ -143,6 +143,7 @@ struct Body {
     double mode_time = 0;
     // Bookkeeping of the mover.
     Vec3 anchor;            ///< takeoff: where it left the ground.
+    Vec3 land_point;        ///< landing: the spot it settles on (the approach's goal).
     double pass_heading = 0; ///< the line of the current pass.
     int pass_phase = 0;      ///< 0 inbound, 1 passed over, 2 flown on and done.
     bool pass_repeat = false; ///< the pass is a sweep (Command::repeat).

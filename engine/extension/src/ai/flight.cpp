@@ -288,6 +288,7 @@ void substep(Body& b, const Command& c, const Params& p, const Ground& g, double
         fly(b, p, g, h, dist > 1 ? heading_to(b.pos, c.point) : b.yaw, rate, spd, alt);
         if ((dist < 150 && std::fabs(b.pos.z - alt) < 150) || b.mode_time > 60) {
             set_mode(b, Mode::landing);
+            b.land_point = c.point;
             b.mode_time = -h;
         }
         break;
@@ -299,8 +300,15 @@ void substep(Body& b, const Command& c, const Params& p, const Ground& g, double
         const double remaining = std::max(p.landing_time - b.mode_time, h);
         b.vz = (gh - b.pos.z) / remaining;
         b.pos.z += b.vz * h;
-        b.pos.x += std::sin(b.yaw) * b.speed * h;
-        b.pos.y += std::cos(b.yaw) * b.speed * h;
+        if (distance_xy(b.pos, b.land_point) < 400) {
+            // It settles on the spot (the game's lands within a unit or two of the marker).
+            const double share = std::min(1.0, h / remaining);
+            b.pos.x += (b.land_point.x - b.pos.x) * share;
+            b.pos.y += (b.land_point.y - b.pos.y) * share;
+        } else {
+            b.pos.x += std::sin(b.yaw) * b.speed * h;
+            b.pos.y += std::cos(b.yaw) * b.speed * h;
+        }
         if (b.mode_time + h >= p.landing_time) {
             b.pos.z = ground_at(b, g, b.pos.x, b.pos.y);
             ev.landed = true;
