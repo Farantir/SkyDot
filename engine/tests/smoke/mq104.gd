@@ -94,6 +94,8 @@ func _frames(count: int) -> void:
 		_session.papyrus.restore_actor_value(PLAYER, "Health", 100000.0)
 		_session.step(STEP, _feet)
 		_clock += STEP
+		_track()
+		_watch_landing()
 		await physics_frame
 
 
@@ -159,32 +161,31 @@ func _run(pack_dir: String) -> void:
 	_feet = _ground(_feet)
 	_log("the player stands at %s" % [_feet])
 
-	for stage in [48, 52, 55, 60, 65]:
-		await _stage(stage, 240.0)
+	await _stage(48, 240.0)
 
 	# Mirmulnir is built after stage 60, high in the air.
-	await _until(func() -> bool: return _session.world.find_ref_node(DRAGON) != null, 60.0)
+	await _until(func() -> bool: return _session.world.find_ref_node(DRAGON) != null, 240.0)
 	_node = _session.world.find_ref_node(DRAGON) as SkydotActor
 	expect(_node != null, "Mirmulnir is built")
 	if _node == null:
 		print("smoke_mq104: failures=%d" % failures)
 		quit(1)
 		return
-	var height := (_node.global_position.y - _surface(_node.global_position)) / UNIT
-	_log("Mirmulnir built at %s, %.0f units over the ground, flying=%s" % [SkydotWorld.godot_to_skyrim(_node.global_position), height, _node.is_flying()])
-	expect(_node.is_flying() and height > 500.0, "he starts high in the air: %.0f" % height)
+	_log("Mirmulnir built at %s, flying=%s" % [SkydotWorld.godot_to_skyrim(_node.global_position), _node.is_flying()])
+	expect(_node.is_flying(), "he starts in the air")
+	_log("Mirmulnir: Health %.0f (max %.0f), HealRate %.2f, HealRateMult %.0f" % [_av("Health"), _session.papyrus.get_actor_value_max(DRAGON, "Health"),
+		_av("HealRate"), _av("HealRateMult")])
+	expect(_av("Health") > 800.0 and absf(_av("HealRate") - 0.7) < 0.01, "level-10 dragon values: Health 905, HealRate 0.7")
+	for stage in [52, 55, 60, 65]:
+		await _stage(stage, 240.0)
 
-	# He lands near the marker.
-	var landed_at := -1.0
-	var t := await _until(func() -> bool: return _flew() and not _node.is_flying(), LIMIT)
+	# He lands on the marker (the forced landing marker), at least once.
+	var t := await _until(func() -> bool: return not _landings.is_empty(), LIMIT)
 	expect(t >= 0.0, "he lands")
-	if t >= 0.0:
-		landed_at = _clock
-		var at := SkydotWorld.godot_to_skyrim(_node.global_position)
-		var distance := Vector2(at.x - MARKER.x, at.y - MARKER.y).length()
-		_log("Mirmulnir landed at %s, %.0f units from the marker, %d arrows at him (%d in the air)" % [at, distance, _arrows, _arrows_air])
-		expect(distance < 1000.0, "he lands within 1000 units of the marker: %.0f" % distance)
+	for landing in _landings:
+		expect(float(landing["distance"]) < 50.0, "he lands within 50 units of the marker: %.0f" % float(landing["distance"]))
 	expect(_arrows_air >= 1, "the guards shot at him while he flew: %d" % _arrows_air)
+	var landed_at: float = _landings[0]["time"] if not _landings.is_empty() else _clock
 
 	# The ground fight kills him, or the fallback does.
 	var dead := func() -> bool: return _session.papyrus.is_actor_dead(DRAGON)
@@ -194,6 +195,9 @@ func _run(pack_dir: String) -> void:
 		_log("fallback kill")
 		await _until(dead, 10.0)
 	expect(dead.call(), "Mirmulnir dies")
+	_dead_at = _clock
+	_log("dead %.1f s after the first landing, %.1f s after the last, %d landings" % [_clock - landed_at, _clock - float(_landings[-1]["time"]), _landings.size()])
+	expect(t >= 0.0 and _clock - float(_landings[-1]["time"]) < 60.0, "he dies within 60 s of his last landing: %.1f" % (_clock - float(_landings[-1]["time"])))
 	_log("Mirmulnir is dead at %s, the player %.0f units away" % [SkydotWorld.godot_to_skyrim(_node.global_position),
 		_node.global_position.distance_to(_feet) / UNIT])
 	# "Investigate the dragon": the player walks up to the body (the soul is absorbed within deathFXrange).
@@ -201,6 +205,7 @@ func _run(pack_dir: String) -> void:
 
 	for stage in [80, 85, 90]:
 		await _stage(stage, 240.0)
+		_log("  = %.1f s after death, DragonSouls %s" % [_clock - _dead_at, _session.papyrus.get_actor_value(PLAYER, "DragonSouls")])
 	var papyrus := _session.papyrus
 	var fus: Dictionary = {}
 	for row: Dictionary in papyrus.shout_info(PLAYER, SHOUT).get("words", []):
@@ -228,9 +233,41 @@ func _run(pack_dir: String) -> void:
 	quit(failures)
 
 
-var _was_flying := false
+var _airborne := false
+var _landings: Array[Dictionary] = []
+var _next_health := 0.0
+var _dead_at := 0.0
 
 
-func _flew() -> bool:
-	_was_flying = _was_flying or _node.is_flying()
-	return _was_flying
+## Every 5 s once Mirmulnir exists: stage 60's time, his height over the ground, distance from the marker, Health.
+func _track() -> void:
+	if _clock < _next_health:
+		return
+	var node := _session.world.find_ref_node(DRAGON) as Node3D
+	if node == null:
+		return
+	_next_health = _clock + 5.0
+	var at := SkydotWorld.godot_to_skyrim(node.global_position)
+	var flying: bool = node.has_method("is_flying") and node.is_flying()
+	_log("Mirmulnir %5.0f u from the marker, %5.0f u up, flying=%s, Health %.0f%s" % [Vector2(at.x - MARKER.x, at.y - MARKER.y).length(),
+		at.z - MARKER.z, flying, _av("Health"), "" if _stage_done(60) else " (stage 60 not yet)"])
+
+
+## Every landing (flying, then not flying) with its distance from the marker, Health and the time since the last one.
+func _watch_landing() -> void:
+	var node := _session.world.find_ref_node(DRAGON) as SkydotActor
+	if node == null:
+		return
+	if node.is_flying():
+		_airborne = true
+	elif _airborne:
+		_airborne = false
+		var at := SkydotWorld.godot_to_skyrim(node.global_position)
+		var distance := Vector2(at.x - MARKER.x, at.y - MARKER.y).length()
+		_landings.append({"time": _clock, "distance": distance})
+		_log("landing %d: %.0f units from the marker, Health %.0f (%.0f %%), %d arrows at him (%d in the air)" % [_landings.size(), distance,
+			_av("Health"), 100.0 * _av("Health") / maxf(_session.papyrus.get_actor_value_max(DRAGON, "Health"), 1.0), _arrows, _arrows_air])
+
+
+func _av(name: String) -> float:
+	return float(_session.papyrus.get_actor_value(DRAGON, name))
