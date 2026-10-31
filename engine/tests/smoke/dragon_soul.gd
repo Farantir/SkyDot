@@ -14,6 +14,9 @@ const PLAYER := 0x14
 const DRAGON := 0x1CA03
 const STEP := 1.0 / 60.0
 const ICE_SPIKE := 0x2B96C
+## A lying dragon's wings reach more than this far out to the side and lie lower than this, metres (measured: 6.6 to 7.8, 0.8 to 0.9).
+const WINGS_OUT := 5.0
+const WINGS_HIGH := 1.5
 const DRAGON_BONE := 0x3ADA4
 const DRAGON_SCALES := 0x3ADA3
 const SPOT := Vector3(13100.0, -13650.0, -3000.0)  # Skyrim units; the ground is below
@@ -305,6 +308,7 @@ func _ground_death() -> void:
 	expect(_state() == "deadAndWaiting" and _effects.is_empty(), "out of range it waits: '%s', %d effects" % [_state(), _effects.size()])
 	await _absorb(1.0)
 	expect(_head_height() < 3.0, "the body still lies after the absorb: head %.2f m over the ground" % _head_height())
+	expect(_wings(_node)[0] > WINGS_OUT, "and its wings are still spread: %.1f m" % _wings(_node)[0])
 	expect(papyrus.get_error_count() == errors, "the VM logged no new errors: %d" % (papyrus.get_error_count() - errors))
 
 
@@ -342,6 +346,9 @@ func _rests() -> void:
 	expect(started >= 0.0, "the ragdoll takes the body from the death pose")
 	var rested := await _until(func() -> bool: return _session.corpses.simulating() == 0, 40.0)
 	expect(rested >= 0.0, "the ragdoll comes to rest")
+	var wings := _wings(_node)
+	print("dragon soul: wings %.1f m out to the side, at most %.2f m over the ground" % wings)
+	expect(wings[0] > WINGS_OUT and wings[1] < WINGS_HIGH, "the wings lie spread out: %.1f m, %.2f m" % wings)
 	print("dragon soul: the body rests after %.1f s, head %.2f m over the ground" % [rested, _head_height()])
 	expect(_head_height() < 3.0, "the head ends near the ground: %.2f m" % _head_height())
 	expect(_node.has_meta("skydot_bounds"), "the corpse is pickable")
@@ -358,6 +365,32 @@ func _head_height() -> float:
 				at + Vector3.DOWN * 500.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN))
 			return at.y - hit["position"].y if not hit.is_empty() else INF
 	return INF
+
+
+## The wing bones' lateral spread (metres from the body's own spine plane) and height over the ground:
+## [smallest spread of the two wings, highest wing bone]. A lying dragon has both wings out to the sides,
+## down on the ground (Skyrim's: about 7 m, under 1 m; the wings of the clip's last frame are not).
+func _wings(node: Node3D) -> Array:
+	var skeleton := node.find_children("*", "Skeleton3D", true, false).front() as Skeleton3D
+	var left := 0.0
+	var right := 0.0
+	var top := 0.0
+	for i in skeleton.get_bone_count():
+		var bone := skeleton.get_bone_name(i).to_lower()
+		if not (bone.contains("finger") or bone.ends_with("hand")):
+			continue
+		var at := skeleton.global_transform * skeleton.get_bone_global_pose(i).origin
+		var side := node.global_transform.affine_inverse() * at
+		if side.x > left:
+			left = side.x
+		if -side.x > right:
+			right = -side.x
+		var space := node.get_world_3d().direct_space_state
+		var hit := space.intersect_ray(PhysicsRayQueryParameters3D.create(at + Vector3.UP * 20.0,
+			at + Vector3.DOWN * 500.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN))
+		if not hit.is_empty():
+			top = maxf(top, at.y - hit["position"].y)
+	return [minf(left, right), top]
 
 
 func _height_over_ground(node: Node3D) -> float:
@@ -402,6 +435,8 @@ func _save_load() -> void:
 		_expect_skeleton(node, who)
 		await _until(func() -> bool: return _height_over_ground(node) < INF, 10.0)
 		expect(_height_over_ground(node) < 2.0, "%s lies on the ground: %.2f m" % [who, _height_over_ground(node)])
+		var wings := _wings(node)
+		expect(wings[0] > WINGS_OUT and wings[1] < WINGS_HIGH, "%s has its wings spread out: %.1f m, %.2f m" % [who, wings[0], wings[1]])
 		expect(papyrus.is_actor_ghost(ref), "%s is a ghost" % who)
 		var state := ""
 		for script in papyrus.get_scripts(ref):

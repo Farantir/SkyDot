@@ -76,6 +76,8 @@ const GENERIC_MAX_RADIUS := 0.5
 const GENERIC_SWING := 45.0
 const GENERIC_TWIST := 20.0
 const GENERIC_MAX_BODIES := 128
+## A dead dragon's wings lie with the hand this high over the ground, metres (PLACEHOLDER, a guess).
+const WING_TIP_HEIGHT := 0.3
 ## A capsule with no bone to run to, metres long (the head).
 const HEAD_LENGTH := 0.12
 ## The body that takes the hit's impulse.
@@ -358,7 +360,10 @@ func _ragdoll_body(ref: int, node: SkydotActor, impulse: Vector3, knocked: bool,
 		var anim := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 		if anim != null:
 			anim.active = false  # the skeleton keeps the pose; the simulation takes it from there
-	var ragdoll := _make_ragdoll(skeleton) if skeleton != null else {}
+	var pinned := _pin_wings(skeleton) if posed and skeleton != null else {}
+	if not pinned.is_empty():
+		_lay_wings(skeleton, pinned, {}, _floor_under(node.global_position).y)
+	var ragdoll := _make_ragdoll(skeleton, pinned) if skeleton != null else {}
 	if ragdoll.is_empty():
 		var name := String(_world.get_actor_plan(ref).get("skeleton", "no skeleton"))
 		_warn.once(name, "no ragdoll for %s" % name)
@@ -401,7 +406,7 @@ func _ragdoll_body(ref: int, node: SkydotActor, impulse: Vector3, knocked: bool,
 	if not knocked:
 		_set_place(ref, node, node.global_position)
 	_bodies.append({"ref": ref, "node": node, "skeleton": skeleton, "simulator": simulator,
-		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0, "root": ragdoll["root"], "knocked": knocked})
+		"bones": ragdoll["bones"], "time": 0.0, "still": 0.0, "root": ragdoll["root"], "knocked": knocked, "pinned": pinned})
 	var skeleton_name := String(_world.get_actor_plan(ref).get("skeleton", "?"))
 	_warn.once("ragdoll" + skeleton_name, "ragdoll for %s (%d bodies)" % [skeleton_name, ragdoll["bones"].size()])
 	if not knocked:
@@ -457,9 +462,18 @@ func _freeze(body: Dictionary) -> void:
 	simulator.physical_bones_stop_simulation()
 	skeleton.remove_child(simulator)
 	simulator.free()
-	# Local poses against parents worked out here (the skeleton's cached global
-	# poses are stale while it simulates): a bone with a body takes the
-	# simulated pose, any other follows its parent with the pose it had.
+	_settle_poses(skeleton, poses)
+	if not body.get("pinned", {}).is_empty():
+		_lay_wings(skeleton, body["pinned"], poses, _floor_under(pelvis_at).y)
+	_set_place(body["ref"], node, pelvis_at)
+	_mark_pickable(node, skeleton)
+	_papyrus.finish_dying(body["ref"])  # a body with a death clip: OnDeath comes now
+
+
+## Local poses against parents worked out here (the skeleton's cached global poses are stale while it
+## simulates): a bone with a body in `poses` (index -> global pose) takes the simulated pose, any other
+## follows its parent with the pose it had. Returns the global poses (index -> Transform3D).
+func _settle_poses(skeleton: Skeleton3D, poses: Dictionary) -> Dictionary:
 	var globals := {}
 	for index in skeleton.get_bone_count():  # parents come before their children
 		var parent := skeleton.get_bone_parent(index)
@@ -469,9 +483,65 @@ func _freeze(body: Dictionary) -> void:
 			skeleton.set_bone_pose(index, parent_global.affine_inverse() * poses[index])
 		else:
 			globals[index] = parent_global * skeleton.get_bone_pose(index)
-	_set_place(body["ref"], node, pelvis_at)
-	_mark_pickable(node, skeleton)
-	_papyrus.finish_dying(body["ref"])  # a body with a death clip: OnDeath comes now
+	return globals
+
+
+## A dead dragon's wings lie spread out on the ground, as in Skyrim: the arm chain under each collarbone
+## gets no bodies, so it rides on the torso. The clip's last frame is still falling (a wing up, the head
+## 4.8 m high) and the rest pose has the wings raised, so `_lay_wings` turns each wing down. Returns the
+## bones (index -> true) of the chains.
+func _pin_wings(skeleton: Skeleton3D) -> Dictionary:
+	var pinned := {}
+	for index in skeleton.get_bone_count():  # parents come before their children
+		var parent := skeleton.get_bone_parent(index)
+		if skeleton.get_bone_name(index).to_lower().contains("collarbone") or (parent >= 0 and pinned.has(parent)):
+			pinned[index] = true
+			skeleton.set_bone_pose(index, skeleton.get_bone_rest(index))
+	return pinned
+
+
+## Turn each pinned wing at its collarbone from the rest pose to point out level to its side, down as far as
+## it takes to be WING_TIP_HEIGHT over `floor_y` at the hand; `poses` are the bodies' global poses (see _settle_poses).
+func _lay_wings(skeleton: Skeleton3D, pinned: Dictionary, poses: Dictionary, floor_y: float) -> void:
+	var globals := _settle_poses(skeleton, poses)
+	var head := skeleton.find_bone("NPC Head")
+	var pelvis := skeleton.find_bone("NPC Pelvis")
+	if head < 0 or pelvis < 0:
+		return
+	var to: Vector3 = skeleton.global_transform.basis * (globals[head].origin - globals[pelvis].origin)
+	to.y = 0.0
+	if to.length() < 0.1:
+		return
+	for collar: int in pinned:
+		if not skeleton.get_bone_name(collar).to_lower().contains("collarbone"):
+			continue
+		skeleton.set_bone_pose(collar, skeleton.get_bone_rest(collar))
+		globals = _settle_poses(skeleton, poses)
+		var from: Transform3D = globals[collar]
+		var hand := -1
+		for index: int in pinned:
+			var above := skeleton.get_bone_parent(index)
+			while above >= 0 and above != collar:
+				above = skeleton.get_bone_parent(above)
+			if above == collar and skeleton.get_bone_name(index).to_lower().ends_with("hand"):
+				hand = index
+		if hand < 0:
+			continue
+		# The arm from the collarbone to the hand points out level to its side (the way it points now),
+		# drooping as far as it takes to reach WING_TIP_HEIGHT over the floor.
+		var arm: Vector3 = globals[hand].origin - from.origin
+		var out: Vector3 = skeleton.global_transform.basis * arm
+		out.y = 0.0
+		out = (out - to.normalized() * out.dot(to.normalized())).normalized()  # across the body
+		var reach := arm.length() * skeleton.global_transform.basis.get_scale().x
+		var shoulder: float = (skeleton.global_transform * from.origin).y
+		var droop := asin(clampf((shoulder - floor_y - WING_TIP_HEIGHT) / reach, 0.0, 0.95))
+		var wanted: Vector3 = skeleton.global_transform.basis.inverse() * (out * cos(droop) + Vector3.DOWN * sin(droop))
+		var turned_arm := Quaternion(arm.normalized(), wanted.normalized())
+		var parent := skeleton.get_bone_parent(collar)
+		var parent_global: Transform3D = globals[parent] if parent >= 0 else Transform3D.IDENTITY
+		var turned := Transform3D(Basis(turned_arm) * from.basis, from.origin)
+		skeleton.set_bone_pose(collar, parent_global.affine_inverse() * turned)
 
 
 ## Where the simulation has the bone, in the skeleton's space and units: the
@@ -490,16 +560,19 @@ func _finish(ref: int, node: Node3D, skeleton: Skeleton3D) -> void:
 	_mark_pickable(node, skeleton)
 
 
-## The corpse place: the floor under `at`, in Skyrim units, and the facing.
-## A dead actor built again stands there and falls the same way.
-func _set_place(ref: int, node: Node3D, at: Vector3) -> void:
-	var floor_at := at
+## The floor under `at` (`at` itself where there is none within 3 m).
+func _floor_under(at: Vector3) -> Vector3:
 	var space := _host.get_world_3d().direct_space_state
 	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 3.0,
 		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 	var hit := space.intersect_ray(query)
-	if not hit.is_empty():
-		floor_at = hit["position"]
+	return hit["position"] if not hit.is_empty() else at
+
+
+## The corpse place: the floor under `at`, in Skyrim units, and the facing.
+## A dead actor built again stands there and falls the same way.
+func _set_place(ref: int, node: Node3D, at: Vector3) -> void:
+	var floor_at := _floor_under(at)
 	var cell: int = _world.get_actor(ref).get("cell", 0)
 	_papyrus.set_corpse_place(ref, _world.get_cell_space(cell), SkydotWorld.godot_to_skyrim(floor_at), node.rotation.y)
 
@@ -527,12 +600,12 @@ func _mark_pickable(node: Node3D, skeleton: Skeleton3D) -> void:
 
 ## {simulator, bones, impulse_bone} for `skeleton`, or {} if it lacks the human
 ## bones. Nothing is added to the scene.
-func _make_ragdoll(skeleton: Skeleton3D) -> Dictionary:
+func _make_ragdoll(skeleton: Skeleton3D, pinned := {}) -> Dictionary:
 	var entries := BONES
 	var root_name: String = BONES[0][0]
 	for entry: Array in BONES:
 		if skeleton.find_bone(entry[0]) < 0:
-			entries = _generic_entries(skeleton)
+			entries = _generic_entries(skeleton, pinned)
 			if entries.is_empty():
 				return {}
 			root_name = entries[0][0]
@@ -564,8 +637,8 @@ func _make_ragdoll(skeleton: Skeleton3D) -> Dictionary:
 
 ## The entries (as BONES') of a generic ragdoll: every bone with a child more than
 ## GENERIC_MIN_LENGTH away, a capsule to the farthest such child, a joint to the nearest
-## body above (none for a bone with no body above it).
-func _generic_entries(skeleton: Skeleton3D) -> Array:
+## body above (none for a bone with no body above it). A bone in `pinned` gets none.
+func _generic_entries(skeleton: Skeleton3D, pinned := {}) -> Array:
 	var units := _units_scale(skeleton)
 	var out: Array = []
 	var has_body := {}  # bone index -> true
@@ -573,6 +646,8 @@ func _generic_entries(skeleton: Skeleton3D) -> Array:
 		var here := skeleton.get_bone_global_rest(index).origin
 		if absf(here.x) > 1.0e4 or absf(here.y) > 1.0e4 or absf(here.z) > 1.0e4:
 			continue  # a bone parked far away for a prop
+		if pinned.has(index):
+			continue
 		var far := -1
 		var far_length := GENERIC_MIN_LENGTH
 		for child in skeleton.get_bone_children(index):
