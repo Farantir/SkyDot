@@ -392,6 +392,7 @@ func _process(delta: float) -> void:
 	if _session.has_activations():
 		_session.run_activation()
 		return
+	_controls.paralyzed = _session.player_paralyzed
 	_controls.apply(delta)
 
 
