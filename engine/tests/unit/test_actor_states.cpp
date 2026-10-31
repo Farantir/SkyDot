@@ -636,3 +636,25 @@ TEST_CASE("ACTV 8 keeps a reanimated starts-dead actor risen, version 7 still lo
     u.adopt(std::move(old));
     CHECK(u.is_dead(k_dead_npc));
 }
+
+TEST_CASE("a reference whose base becomes known later is no longer unknown", "[actor]") {
+    bool known = false;
+    ActorStates s;
+    s.set_source([&](std::uint32_t ref, ActorBase& out) { return known && fake_source(ref, out); });
+    CHECK(s.get(k_guard, av::k_health) == 0.0);
+    CHECK_FALSE(s.is_dead(k_guard));
+    known = true;
+    CHECK(s.get(k_guard, av::k_health) == 100.0);
+}
+
+TEST_CASE("forgetting an actor drops its pending death and living place", "[actor]") {
+    auto s = make();
+    s.kill(k_guard, 0);
+    s.defer_death(k_guard, 5.0);
+    s.set_living_place(k_elder, {.space = 0x3C});
+    s.forget(k_guard);
+    s.forget(k_elder);
+    CHECK_FALSE(s.is_dying(k_guard));
+    CHECK(s.take_deaths().empty());
+    CHECK_FALSE(s.living_place(k_elder).has_value());
+}

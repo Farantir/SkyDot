@@ -18,7 +18,10 @@ const ActorBase* ActorStates::base_of(std::uint32_t ref) const {
     if (it == bases_.end()) {
         ActorBase base;
         const bool known = source_ && source_(ref, base);
-        it = bases_.emplace(ref, known ? std::optional<ActorBase>(base) : std::nullopt).first;
+        if (!known) {
+            return nullptr; // not cached: the base may become known later
+        }
+        it = bases_.emplace(ref, std::optional<ActorBase>(base)).first;
     }
     return it->second ? &*it->second : nullptr;
 }
@@ -471,6 +474,10 @@ std::vector<std::uint32_t> ActorStates::take_deaths() { return std::exchange(dea
 void ActorStates::forget(std::uint32_t ref) {
     records_.erase(ref);
     bases_.erase(ref);
+    dying_.erase(ref);
+    living_.erase(ref);
+    std::erase(deaths_, ref);
+    std::erase(due_, ref);
 }
 
 void ActorStates::clear() {
