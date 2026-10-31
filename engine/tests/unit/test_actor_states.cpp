@@ -20,10 +20,11 @@ namespace {
 constexpr std::uint32_t k_hero = 0x14;    // the player
 constexpr std::uint32_t k_guard = 0x100;  // an ordinary NPC
 constexpr std::uint32_t k_elder = 0x101;  // essential
+constexpr std::uint32_t k_dead_npc = 0x102; // placed dead
 constexpr std::uint32_t k_rock = 0x200;   // no actor
 
 bool fake_source(std::uint32_t ref, ActorBase& out) {
-    if (ref != k_hero && ref != k_guard && ref != k_elder) {
+    if (ref != k_hero && ref != k_guard && ref != k_elder && ref != k_dead_npc) {
         return false;
     }
     out = ActorBase{};
@@ -39,6 +40,7 @@ bool fake_source(std::uint32_t ref, ActorBase& out) {
     out.base[av::k_first_skill] = 20; // OneHanded
     out.is_player = ref == k_hero;
     out.essential = ref == k_elder;
+    out.starts_dead = ref == k_dead_npc;
     out.npc = ref + 0x1000; // the NPC_ a reference is
     return true;
 }
@@ -568,13 +570,14 @@ TEST_CASE("ACTV 6 keeps base flags, relationships and faction relations, version
     // Version 5 ends after the dying actors: the same bytes without the three counts load, and bytes left over
     // from a newer version do not.
     auto empty = make().save();
-    REQUIRE(empty.size() > 16);
-    const std::vector<std::uint8_t> v5(empty.begin(), empty.end() - 16);
+    REQUIRE(empty.size() > 20);
+    const std::vector<std::uint8_t> v5(empty.begin(), empty.end() - 20);
     ActorStates old;
     REQUIRE(ActorStates::load(skydot::save::ByteReader(v5), old, 5));
     CHECK_FALSE(old.has_faction_reactions());
     CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(empty), scratch, 5));
-    CHECK(ActorStates::load(skydot::save::ByteReader(empty), scratch, 7));
+    CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(empty), scratch, 7));
+    CHECK(ActorStates::load(skydot::save::ByteReader(empty), scratch));
 }
 
 TEST_CASE("ACTV 7 keeps where living actors stood, version 6 still loads", "[actor][save]") {
@@ -601,10 +604,35 @@ TEST_CASE("ACTV 7 keeps where living actors stood, version 6 still loads", "[act
     }
     // Version 6 ends after the faction relations: the same bytes without the place count load.
     auto empty = make().save();
-    const std::vector<std::uint8_t> v6(empty.begin(), empty.end() - 4);
+    const std::vector<std::uint8_t> v6(empty.begin(), empty.end() - 8);
     ActorStates old;
     REQUIRE(ActorStates::load(skydot::save::ByteReader(v6), old, 6));
     CHECK_FALSE(old.living_place(k_guard).has_value());
     t.clear_living_places();
     CHECK_FALSE(t.living_place(k_guard).has_value());
+}
+
+TEST_CASE("ACTV 8 keeps a reanimated starts-dead actor risen, version 7 still loads", "[actor][save]") {
+    auto s = make();
+    CHECK(s.is_dead(k_dead_npc));
+    s.revive(k_dead_npc);
+    CHECK_FALSE(s.is_dead(k_dead_npc));
+    const auto bytes = s.save();
+    ActorStates loaded;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(bytes), loaded));
+    ActorStates t = make();
+    t.adopt(std::move(loaded));
+    CHECK_FALSE(t.is_dead(k_dead_npc));
+    ActorStates scratch;
+    for (std::size_t cut = 0; cut < bytes.size(); ++cut) {
+        const std::vector<std::uint8_t> shorter(bytes.begin(), bytes.begin() + static_cast<std::ptrdiff_t>(cut));
+        CHECK_FALSE(ActorStates::load(skydot::save::ByteReader(shorter), scratch));
+    }
+    // Version 7 ends after the living places: the same bytes without the risen count load, risen false.
+    const std::vector<std::uint8_t> v7(bytes.begin(), bytes.end() - 8);
+    ActorStates old;
+    REQUIRE(ActorStates::load(skydot::save::ByteReader(v7), old, 7));
+    ActorStates u = make();
+    u.adopt(std::move(old));
+    CHECK(u.is_dead(k_dead_npc));
 }

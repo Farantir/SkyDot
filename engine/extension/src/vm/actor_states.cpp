@@ -562,6 +562,16 @@ std::vector<std::uint8_t> ActorStates::save() const {
         w.f64(place.z);
         w.f64(place.rot_z);
     }
+    std::uint32_t n_risen = 0;
+    for (const auto& [ref, record] : records_) {
+        n_risen += record.risen ? 1 : 0;
+    }
+    w.u32(n_risen);
+    for (const auto& [ref, record] : records_) {
+        if (record.risen) {
+            w.u32(ref);
+        }
+    }
     return w.out;
 }
 
@@ -703,6 +713,23 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
                 return false;
             }
             out.living_[ref] = place;
+        }
+    }
+    if (version >= 8) {
+        std::uint32_t n_risen = 0;
+        if (!r.count(n_risen, 4)) {
+            return false;
+        }
+        for (std::uint32_t i = 0; i < n_risen; ++i) {
+            std::uint32_t ref = 0;
+            if (!r.u32(ref)) {
+                return false;
+            }
+            const auto it = out.records_.find(ref);
+            if (it == out.records_.end()) {
+                return false;
+            }
+            it->second.risen = true;
         }
     }
     return r.at_end();

@@ -23,7 +23,7 @@ namespace skydot::vm {
 
 class ActorStates {
 public:
-    static constexpr std::uint32_t k_section_version = 7;
+    static constexpr std::uint32_t k_section_version = 8;
     /// Seconds Magicka and Stamina wait after taking damage before they
     /// regenerate: the GMSTs fDamagedMagickaRegenDelay and
     /// fDamagedStaminaRegenDelay (0.5 in Skyrim.esm). These are the fallbacks
@@ -177,7 +177,7 @@ public:
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     /// Decode a section into a fresh object; false if it is cut short,
     /// names an actor value that does not exist or has bytes left over.
-    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors; below 6 no base flags, relationships or faction relations; below 7 no living places.
+    /// Version 1 has no killer and no corpse place; versions below 3 no flight settings; below 4 no ghost and no factions; below 5 no dying actors; below 6 no base flags, relationships or faction relations; below 7 no living places; below 8 no risen actors.
     [[nodiscard]] static bool load(save::ByteReader r, ActorStates& out, std::uint32_t version = k_section_version);
 
 private:
@@ -190,7 +190,7 @@ private:
     struct Record {
         std::map<std::uint32_t, Value> values;
         bool dead = false;
-        bool risen = false; ///< Revived: not dead although the base starts dead. Not saved.
+        bool risen = false; ///< Revived: not dead although the base starts dead. Saved since version 8.
         std::uint32_t killer = 0;
         std::optional<CorpsePlace> corpse;
         bool no_flying = false;          ///< SetAllowFlying(false).
