@@ -1311,12 +1311,16 @@ func reload_or_restart() -> bool:
 
 
 func save_game(path: String) -> bool:
+	if transition.is_fading():
+		print("not saving during a door transition")  # the place is half built
+		return false
 	return saves.save(path)
 
 
 func load_game(path: String) -> bool:
 	var done := saves.load_game(path)
 	if done:
+		transition.cancel()  # a door fade must not travel on into the old place
 		combat.on_items_changed()
 		magic.on_items_changed()
 		magic_world.on_loaded()

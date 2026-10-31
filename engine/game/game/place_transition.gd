@@ -58,6 +58,17 @@ func begin_fade(door: Dictionary) -> void:
 	_fade.visible = true
 
 
+## Drop a door transition half way (a loaded save replaces the place it was
+## going to): nothing travels afterwards and the screen is clear.
+func cancel() -> void:
+	phase = Phase.NONE
+	_door = {}
+	_wait = 0.0
+	_frames = 0
+	_fade.color.a = 0.0
+	_fade.visible = false
+
+
 ## The fade, a step per frame while is_fading.
 func step(delta: float) -> void:
 	match phase:
