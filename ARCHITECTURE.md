@@ -1184,6 +1184,22 @@ reference with its count in front of the player (activating it picks the count
 up again; saved with the placed references and ITST); `items_changed` says
 when to redraw. No part has a `_process` of its own.
 
+Lifecycle of the GDScript parts. A part that keeps per-ref state joins
+`GameSession._lifecycle` (projectiles, speech, combat, its gear, magic, NPC
+magic and shouts, corpses, visual effects, placed references, the door
+transition) and has two duck-typed methods, no framework: `reset()` drops all
+per-game state, frees the nodes the part made itself and does what
+`on_place_left()` does; `on_place_left()` drops what is tied to the built
+nodes of the place being left. The session calls `reset()` on a load, between
+the scripts' state being committed and the place being entered
+(`SaveService.committed`: entering builds cells whose state must survive), and
+on a restart; it calls `on_place_left()` when `place.left` fires. Both are
+silent: no signal, no papyrus call, no sound start. Caches read from the pack,
+`WarnOnce` objects and monotonic clocks stay. Once-only watchers on a node
+(sounds, animation notifies, dragon blows, breath events) are guarded by
+`is_connected` of their own callable, not by node meta that a copy or a swapped
+model would carry over.
+
 | File | Class | What it owns |
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
