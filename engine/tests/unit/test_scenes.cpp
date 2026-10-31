@@ -343,6 +343,15 @@ TEST_CASE("running scenes survive a save; a speaking action asks for its line ag
     damaged.pop_back();
     scenes::Scenes bad(*world, later);
     CHECK_FALSE(scenes::Scenes::load(skydot::save::ByteReader(damaged), bad));
+
+    // A phase past the scene's last one would index outside the phase list.
+    auto wild = bytes;
+    REQUIRE(wild.size() > 12);
+    wild[8] = 99; // count u32, scene id u32, then the phase u32 (little endian)
+    wild[9] = wild[10] = wild[11] = 0;
+    scenes::Scenes bad_phase(*world, later);
+    CHECK_FALSE(scenes::Scenes::load(skydot::save::ByteReader(wild), bad_phase));
+    CHECK_FALSE(bad_phase.is_playing(k_scene));
 }
 
 TEST_CASE("a scene started by a script waits for unbuilt actors, then begins without them after the grace time", "[scenes]") {

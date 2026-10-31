@@ -480,8 +480,13 @@ bool Scenes::load(save::ByteReader r, Scenes& out) {
         if (scene == nullptr || scene->actions() == nullptr || scene->actions()->size() != actions) {
             return false;
         }
+        const auto phase_count = static_cast<std::int32_t>(scene->phases() != nullptr ? scene->phases()->size() : 0);
+        const auto phase_value = static_cast<std::int32_t>(phase);
+        if (phase_value >= phase_count) { // negative = no phase running
+            return false;
+        }
         Run run;
-        run.phase = static_cast<std::int32_t>(phase);
+        run.phase = phase_value;
         for (std::uint32_t i = 0; i < actions; ++i) {
             std::uint8_t status = 0;
             ActionRun a;
