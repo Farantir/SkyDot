@@ -212,12 +212,14 @@ func _physics_process(delta: float) -> void:
 	var space := get_world_3d().direct_space_state
 	# A snapshot: a hit callback may fire or remove shots, which moves the indices of _live.
 	for shot in _live.duplicate():
-		var i := _live.find(shot)
-		if i < 0:
+		if shot.has("gone"):  # removed by a callback during this step
 			continue
 		shot["age"] += delta
 		if shot["age"] > STUCK_SECONDS or (not shot["stuck"] and shot["travelled"] > shot["range"]):
-			_remove(i)
+			for i in _live.size():  # rare: by identity (find compares the dictionaries' contents)
+				if is_same(_live[i], shot):
+					_remove(i)
+					break
 			continue
 		if not shot["stuck"]:
 			_advance(shot, delta, space)
@@ -283,6 +285,7 @@ func _first(puffs: bool) -> int:
 
 func _remove(index: int) -> void:
 	var node: Node = _live[index]["node"]
+	_live[index]["gone"] = true
 	node.queue_free()
 	_live.remove_at(index)
 
