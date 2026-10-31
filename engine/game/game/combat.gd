@@ -201,6 +201,35 @@ func toggle_weapon() -> void:
 		_begin(State.SHEATHING, _prefix + "unequip", "weaponSheathe")
 
 
+## A save was loaded or the game restarted: nothing of the game before it goes on. Besides what
+## `on_place_left` drops, the actors' stance (`_drawn`) and plans go. Silent (no signal, no sound).
+func reset() -> void:
+	on_place_left()
+	_drawn.clear()
+	_plans.clear()
+	_player_plan = {}
+
+
+## The place was left: the attacks, arrows, hand changes and impact art tied to its actors go, and the
+## player's attack under way. The stance and plans stay (a rebuilt actor gets its stance applied again).
+## A draw or sheathe under way runs out on its own. Silent.
+func on_place_left() -> void:
+	_npc_attacks.clear()
+	_shots.clear()
+	_swaps.clear()
+	_cooldowns.clear()
+	for effect in _effects:
+		var node: Node = effect["node"]
+		if is_instance_valid(node):
+			node.queue_free()
+	_effects.clear()
+	_attack = {}
+	_held = false
+	_held_time = 0.0
+	_held_fired = false
+	_left_next = false
+
+
 func weapon_state() -> int:
 	return _state
 

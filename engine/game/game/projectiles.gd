@@ -40,6 +40,21 @@ func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
 	name = "Projectiles"
 
 
+## A save was loaded or the game restarted: every shot in flight, stuck arrow and muzzle flash goes.
+## Silent.
+func reset() -> void:
+	for child in get_children():
+		child.queue_free()
+	for shot in _live:
+		shot["gone"] = true
+	_live.clear()
+
+
+## The place was left: the shots flew through it. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## Launch the ammo's projectile from `source` along its forward axis (Skyrim's
 ## +Y), or from its fire node if the model has one. Does nothing, logging once,
 ## when there is no ammo (a weapon without ammo, a bow, has no projectile) or

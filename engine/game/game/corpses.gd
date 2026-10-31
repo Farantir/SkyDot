@@ -267,10 +267,12 @@ func _poll_paralysis(delta: float) -> void:
 	if _paralysis_timer < PARALYSIS_POLL:
 		return
 	_paralysis_timer = 0.0
+	var seen := {}
 	for node: SkydotActor in _host.find_children("*", "SkydotActor", true, false):
 		if not node.has_meta("skydot_ref"):
 			continue
 		var ref: int = node.get_meta("skydot_ref")
+		seen[ref] = true
 		var on: bool = bool(_papyrus.magic_overrides(ref).get("paralyzed", false))
 		if on == _paralysed.has(ref):
 			continue
@@ -283,6 +285,26 @@ func _poll_paralysis(delta: float) -> void:
 			for body in _bodies:
 				if body["ref"] == ref:
 					body["hold"] = false  # it gets up with the next step
+	# An actor that is no longer built (its cell streamed out) is no longer marked: a rebuilt one stands.
+	for ref: int in _paralysed.keys():
+		if not seen.has(ref):
+			_paralysed.erase(ref)
+
+
+## A save was loaded or the game restarted: nothing of the game before it stays. The actor nodes belong to the
+## place, which frees them; only the entries go. Silent.
+func reset() -> void:
+	_hits.clear()
+	_pending.clear()
+	_live.clear()
+	_bodies.clear()
+	_paralysed.clear()
+	_paralysis_timer = 0.0
+
+
+## The place was left: its actors are freed with it, so the bodies and the marks of paralysis go. Silent.
+func on_place_left() -> void:
+	reset()
 
 
 ## Whether `ref` lies knocked down (alive).

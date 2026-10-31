@@ -33,7 +33,7 @@ var place_on_screen: Place
 var streamer: SkydotStreamer
 var _noted := {}
 var _deleted := {}  # refs removed before their deferred build ran (cleared when placed again)
-var _generation := 0  # bumped by forget(): timers of an earlier game do nothing
+var _generation := 0  # bumped by reset(): timers of an earlier game do nothing
 var _waiting: Array[Array] = []  # [ref, base, cell, position, rotation, scale, disabled]
 
 
@@ -173,10 +173,17 @@ func _expire(ref: int, generation: int) -> void:
 	_papyrus.remove_placed(ref)
 
 
-## A save was loaded: pending removals and explosion timers of the game before it are void.
-func forget() -> void:
+## A save was loaded or the game restarted: pending removals, explosion timers and the references waiting for
+## a cell of the game before it are void. Silent.
+func reset() -> void:
 	_generation += 1
 	_deleted.clear()
+	_waiting.clear()
+
+
+## The place was left: references waiting for their cell stay valid until it is built.
+func on_place_left() -> void:
+	pass
 
 
 ## The reference is gone (Delete, an effect that ended, a loaded save).

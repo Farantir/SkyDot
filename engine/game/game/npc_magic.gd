@@ -33,6 +33,16 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, magic: Magic, combat: Com
 	_combat = combat
 
 
+## A save was loaded or the game restarted: no cast goes on. Silent (no papyrus call, no signal).
+func reset() -> void:
+	_casts.clear()
+
+
+## The place was left: its actors are gone, so are their casts. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## Whether `ref` holds a spell now.
 func is_casting(ref: int) -> bool:
 	return _casts.has(ref)

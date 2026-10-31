@@ -34,6 +34,16 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus) -> void:
 	_papyrus = papyrus
 
 
+## A save was loaded or the game restarted: nobody has its weapon out. Silent.
+func reset() -> void:
+	_drawn.clear()
+
+
+## The place was left: the stance stays, `on_place_built` applies it to the actors built again.
+func on_place_left() -> void:
+	pass
+
+
 ## Whether `ref` shows its weapon in hand.
 func is_drawn(ref: int) -> bool:
 	return _drawn.get(ref, false)

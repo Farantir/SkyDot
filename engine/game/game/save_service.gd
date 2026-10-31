@@ -8,6 +8,10 @@ extends RefCounted
 const QUICKSAVE := "user://quicksave.skydot"
 const PLYR_VERSION := 1
 
+## A save's script state is in place, the place is not entered yet: the parts that keep state of the
+## game before it drop it now (GameSession._reset_game_state).
+signal committed
+
 ## Where newest() looks; a test points it at a directory of its own so that tests running in
 ## parallel do not see or delete each other's saves.
 var directory := "user://"
@@ -83,6 +87,7 @@ func load_game(path: String) -> bool:
 	_bridge.retire_graphs()
 	_papyrus.commit_load()
 	_clock.commit_load()
+	committed.emit()
 	var at: Vector3 = _player.loaded_position
 	if int(player["world"]) != 0:
 		if not _place.enter_exterior(int(player["world"]), at, null):

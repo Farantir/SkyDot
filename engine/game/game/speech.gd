@@ -42,6 +42,23 @@ func _init(sounds: Sounds, find_ref: Callable) -> void:
 	name = "Speech"
 
 
+## A save was loaded or the game restarted: every line is dropped and what plays is stopped, without
+## `line_ended` (the session's dialogue is reset on its own). Silent.
+func reset() -> void:
+	for queue: Array in _queues.values():
+		for entry: Dictionary in queue:
+			var player: Node = entry.get("player")
+			if player != null and is_instance_valid(player):
+				player.stop()
+				player.queue_free()
+	_queues.clear()
+
+
+## The place was left: the speakers' voices are children of its actors. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## Queue `line` for `speaker` (a reference id). Returns how many seconds it
 ## lasts once it plays; it starts at once if the speaker is silent.
 func say(speaker: int, line: Dictionary) -> float:

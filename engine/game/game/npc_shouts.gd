@@ -44,6 +44,16 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, magic: Magic, combat: Com
 	_pack = pack
 
 
+## A save was loaded or the game restarted: no breath goes on. Silent.
+func reset() -> void:
+	_breaths.clear()
+
+
+## The place was left: its actors are gone, so are their breaths. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## SkydotAi.combat_shout.
 func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 	if _papyrus.is_actor_dead(ref):

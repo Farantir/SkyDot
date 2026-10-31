@@ -31,6 +31,20 @@ func _init(world: SkydotWorld, host: Node3D, player_chest: Callable) -> void:
 	_player_chest = player_chest
 
 
+## A save was loaded or the game restarted: the streams (their particles) go. Silent.
+func reset() -> void:
+	for stream: Dictionary in _streams.values():
+		var node: Node = stream["node"]
+		if is_instance_valid(node):
+			node.queue_free()
+	_streams.clear()
+
+
+## The place was left: the streams were tied to its actors. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## How many streams play.
 func stream_count() -> int:
 	return _streams.size()

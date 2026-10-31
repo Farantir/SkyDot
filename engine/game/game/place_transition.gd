@@ -69,6 +69,16 @@ func cancel() -> void:
 	_fade.visible = false
 
 
+## A save was loaded or the game restarted: a door transition half way is dropped. Silent.
+func reset() -> void:
+	cancel()
+
+
+## The place was left: the transition itself leaves it, so it must go on.
+func on_place_left() -> void:
+	pass
+
+
 ## The fade, a step per frame while is_fading.
 func step(delta: float) -> void:
 	match phase:

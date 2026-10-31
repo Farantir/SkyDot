@@ -174,6 +174,12 @@ var magic: Magic
 var npc_magic: NpcMagic
 ## What shouters say in a fight (the AI's combat_shout), carried out with the player's shout rules.
 var npc_shouts: NpcShouts
+## The subsystems with a lifecycle: `reset()` on a load or restart, `on_place_left()` when the place is
+## left. Both are duck-typed, silent (no signal, no papyrus call, no sound start: they clear GDScript
+## state and free the nodes the subsystem made itself) and keep the pack's data caches, WarnOnce objects
+## and monotonic clocks. `reset()` runs after the scripts' state is committed and before the new place
+## is entered (SaveService.committed), and also does what `on_place_left()` does.
+var _lifecycle: Array[Object] = []
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
 ## What visual effects and skin fades look like (placeholders).
@@ -218,6 +224,7 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: Object) -> bool:
 	add_child(transition)
 	_make_game_nodes()
 	saves = SaveService.new(papyrus, place, streamer, _player, _bridge, clock)
+	saves.committed.connect(_reset_game_state)
 	return true
 
 
@@ -373,6 +380,20 @@ func _make_game_nodes() -> void:
 	_bridge.quest_started.connect(quest_started.emit)
 	_bridge.quest_stage.connect(quest_stage.emit)
 	_bridge.objective_changed.connect(objective_changed.emit)
+	_lifecycle = [projectiles, speech, combat, combat.gear, magic, npc_magic, npc_shouts, corpses, visual_effects,
+		placed, transition]
+	place.left.connect(_on_place_left)
+
+
+## Drop the per-game state of every joining subsystem (a save was loaded, the game restarts).
+func _reset_game_state() -> void:
+	for part in _lifecycle:
+		part.reset()
+
+
+func _on_place_left() -> void:
+	for part in _lifecycle:
+		part.on_place_left()
 
 
 ## Start the quests the game starts with and set the stages the options name.
@@ -1301,6 +1322,7 @@ func reload_or_restart() -> bool:
 		return load_game(path)
 	if _start.is_empty():
 		return false
+	_reset_game_state()
 	var health := papyrus.get_actor_value_max(SkydotPapyrus.PLAYER_REF, "Health")
 	var done: bool
 	if _start["kind"] == "world":
@@ -1321,8 +1343,6 @@ func save_game(path: String) -> bool:
 func load_game(path: String) -> bool:
 	var done := saves.load_game(path)
 	if done:
-		placed.forget()
-		transition.cancel()  # a door fade must not travel on into the old place
 		combat.on_items_changed()
 		magic.on_items_changed()
 		magic_world.on_loaded()

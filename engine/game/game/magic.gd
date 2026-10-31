@@ -208,6 +208,22 @@ func info_of(spell: int) -> Dictionary:
 	return _info_cache[spell]
 
 
+## A save was loaded or the game restarted: the held flames and the explosion and hit art of the game
+## before it go. The hands, shout and caches stay (`on_items_changed` re-reads the hands). Silent.
+func reset() -> void:
+	_streams.clear()
+	for effect in _effects:
+		var node: Node = effect["node"]
+		if is_instance_valid(node):
+			node.queue_free()
+	_effects.clear()
+
+
+## The place was left: its art and the flames held into it go. Silent.
+func on_place_left() -> void:
+	reset()
+
+
 ## The equipment changed (or a game was loaded): the hands' spells and their art follow it.
 func on_items_changed() -> void:
 	_info_cache.clear()
