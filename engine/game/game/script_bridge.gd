@@ -484,7 +484,7 @@ func run_activation() -> void:
 	var node := find_ref_node(ref)
 	if node == null:
 		_wait += 1
-		if _wait > 600:
+		if _wait == 601:  # once
 			failed.emit("reference 0x%08X never appeared" % ref)
 		return
 	_wait = 0
