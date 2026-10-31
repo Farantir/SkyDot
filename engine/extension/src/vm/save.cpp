@@ -44,6 +44,7 @@
 #include <cstring>
 #include <functional>
 #include <map>
+#include <set>
 
 namespace skydot::vm {
 
@@ -191,9 +192,15 @@ void Vm::save_to(save::SaveWriter& out) const {
         write_value(w, ctx, results_.at(id));
     }
 
-    w.u32(static_cast<std::uint32_t>(timers_.size()));
+    // A timer whose instance is not in the save (detached) is dropped.
+    w.u32(static_cast<std::uint32_t>(std::ranges::count_if(
+        timers_, [&](const auto& t) { return ctx.instance_index.contains(t.instance); })));
     for (const auto& t : timers_) {
-        w.u32(ctx.instance_index.at(t.instance));
+        const auto found = ctx.instance_index.find(t.instance);
+        if (found == ctx.instance_index.end()) {
+            continue;
+        }
+        w.u32(found->second);
         w.f64(t.due);
         w.f64(t.interval);
     }
@@ -274,9 +281,14 @@ void Vm::save_to(save::SaveWriter& out) const {
     out.add("DEST", k_section_version, destruction.out);
 
     ByteWriter animation_events;
-    animation_events.u32(static_cast<std::uint32_t>(animation_regs_.size()));
+    animation_events.u32(static_cast<std::uint32_t>(std::ranges::count_if(
+        animation_regs_, [&](const auto& r) { return ctx.instance_index.contains(r.instance); })));
     for (const auto& r : animation_regs_) {
-        animation_events.u32(ctx.instance_index.at(r.instance));
+        const auto found = ctx.instance_index.find(r.instance);
+        if (found == ctx.instance_index.end()) {
+            continue;
+        }
+        animation_events.u32(found->second);
         animation_events.u32(r.sender);
         animation_events.text(r.event);
     }
@@ -478,6 +490,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     if (!r.count(count, 32)) {
         return fail(truncated);
     }
+    std::set<std::uint64_t> seen_threads;
     for (std::uint32_t n = 0; n < count; ++n) {
         auto thread = std::make_unique<Thread>();
         std::uint8_t keep = 0;
@@ -485,6 +498,9 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         if (!r.u64(thread->id) || !r.u8(keep) || !r.f64(thread->wake_at) || !r.text(thread->wait_for) ||
             !r.count(frames, 16)) {
             return fail(truncated);
+        }
+        if (!seen_threads.insert(thread->id).second) {
+            return fail("the save lists a thread id twice");
         }
         thread->keep_result = keep != 0;
         for (std::uint32_t f = 0; f < frames; ++f) {

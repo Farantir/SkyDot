@@ -846,3 +846,42 @@ TEST_CASE("animation event registrations: any case, one per script, dropped with
     vm.detach(0x10);
     CHECK(vm.animation_registrations() == 0);
 }
+
+TEST_CASE("saving skips timers whose instance is not in the save", "[vm][save]") {
+    SaverRig a;
+    SaverRig foreign; // its instance is not one of a's
+    a.vm().register_update(a.instance, 1.0, 1.0);
+    a.vm().register_update(foreign.instance, 1.0, 1.0);
+    Bytes bytes;
+    REQUIRE_NOTHROW(bytes = a.vm().save());
+    SaverRig b;
+    std::string error;
+    CHECK(b.vm().load(bytes, error));
+}
+
+TEST_CASE("a save that lists a thread id twice is refused", "[vm][save]") {
+    SaverRig a;
+    REQUIRE(a.vm().call_method(a.instance, "run", {}) != 0);
+    REQUIRE(a.vm().call_method(a.instance, "run", {}) != 0);
+    a.vm().update(1.0);
+    REQUIRE(a.vm().thread_count() == 2);
+    const auto bytes = a.vm().save();
+    SaverRig ok(saver(), false);
+    std::string error;
+    REQUIRE(ok.vm().load(bytes, error));
+
+    auto sections = split(bytes);
+    auto& vmst = section(sections, "VMST");
+    int patched = 0;
+    for (std::size_t i = 0; i + 8 <= vmst.size(); ++i) {
+        if (vmst[i] == 2 && std::all_of(vmst.begin() + static_cast<std::ptrdiff_t>(i) + 1,
+                                        vmst.begin() + static_cast<std::ptrdiff_t>(i) + 8,
+                                        [](auto b) { return b == 0; })) {
+            vmst[i] = 1;
+            ++patched;
+        }
+    }
+    REQUIRE(patched >= 1);
+    SaverRig bad(saver(), false);
+    CHECK_FALSE(bad.vm().load(build(sections), error));
+}
