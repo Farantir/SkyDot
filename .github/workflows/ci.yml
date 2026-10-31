@@ -27,6 +27,20 @@ jobs:
         run: ./tools/ci/check-no-game-data.sh
       - name: All untrusted input through SpanReader
         run: ./tools/ci/check-raw-access.sh
+      - name: No AI attribution in commit messages
+        env:
+          BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            range="$PR_BASE..$PR_HEAD"
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = 0000000000000000000000000000000000000000 ]; then
+            echo "new ref, nothing to compare"; exit 0
+          else
+            range="$BEFORE..${{ github.sha }}"
+          fi
+          ./tools/ci/check-commit-msg.sh --range "$range"
 
   converter:
     name: converter ${{ matrix.name }}

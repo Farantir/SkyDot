@@ -9,5 +9,9 @@ pre-commit hook:
 - **All untrusted input through `SpanReader`** in the converter's parsers
   (`check-raw-access.sh`).
 
+Commit messages carry no AI attribution trailers (`check-commit-msg.sh`).
+After cloning, run `tools/ci/install-hooks.sh` (or
+`git config core.hooksPath tools/git-hooks`) to enable the hooks.
+
 A change to the pack format updates `formats/`, the converter and the engine
 in one commit.
