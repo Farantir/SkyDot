@@ -9,6 +9,11 @@
 #include <fstream>
 #include <system_error>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace skydot::save {
 
 namespace {
@@ -64,6 +69,27 @@ std::vector<std::uint8_t> SaveWriter::finish() const {
     return w.out;
 }
 
+namespace {
+
+/// Flush a file's (or directory's) data to the disk, so a power loss cannot leave the renamed save empty.
+/// Best effort and POSIX only; false only when the file was opened and the sync failed.
+bool sync_path(const std::filesystem::path& path) {
+#ifndef _WIN32
+    const int fd = ::open(path.c_str(), O_RDONLY);
+    if (fd < 0) {
+        return true;
+    }
+    const bool ok = ::fsync(fd) == 0;
+    ::close(fd);
+    return ok;
+#else
+    (void)path;
+    return true;
+#endif
+}
+
+} // namespace
+
 bool SaveWriter::write_file(const std::string& path, const std::vector<std::uint8_t>& bytes, std::string& error) {
     namespace fs = std::filesystem;
     const fs::path target = path_of(path);
@@ -84,6 +110,12 @@ bool SaveWriter::write_file(const std::string& path, const std::vector<std::uint
             return false;
         }
     }
+    if (!sync_path(temporary)) {
+        error = "cannot flush " + temporary.string() + " to disk";
+        std::error_code ignored;
+        fs::remove(temporary, ignored);
+        return false;
+    }
     std::error_code ec;
     fs::rename(temporary, target, ec);
     if (ec) {
@@ -92,6 +124,7 @@ bool SaveWriter::write_file(const std::string& path, const std::vector<std::uint
         fs::remove(temporary, ignored);
         return false;
     }
+    sync_path(target.has_parent_path() ? target.parent_path() : fs::path("."));
     return true;
 }
 
