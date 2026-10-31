@@ -85,7 +85,9 @@ func load_game(path: String) -> bool:
 	_clock.commit_load()
 	var at: Vector3 = _player.loaded_position
 	if int(player["world"]) != 0:
-		_place.enter_exterior(int(player["world"]), at, null)
+		if not _place.enter_exterior(int(player["world"]), at, null):
+			printerr("cannot enter the saved worldspace of ", path)
+			return false
 	else:
 		_place.enter_interior(int(player["cell"]), at, null)
 	_player.place_at(_player.loaded_position, _player.loaded_yaw, _player.loaded_pitch)

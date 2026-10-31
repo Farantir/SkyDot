@@ -33,6 +33,7 @@ var _player: Object
 var _ai: SkydotAi  # null with --ai off
 var _clock: SkydotClock
 var _streamer: SkydotStreamer
+var _flying_by_place := false  # this place turned flying on (a door-less interior), not the player
 
 
 func _init(world: SkydotWorld, host: Node3D, config: GameConfig, viewpoint: Camera3D, player: Object,
@@ -96,6 +97,9 @@ func _place_player(at: Vector3, target: Variant) -> void:
 ## Remove the current cell or worldspace.
 func leave() -> void:
 	left.emit()
+	if _flying_by_place:  # the next place is walked in again, unless the player took flight themselves
+		_flying_by_place = false
+		_player.flying = false
 	interior_image_space = {}
 	_clock.release_weather()
 	for node in nodes:
@@ -140,6 +144,7 @@ func enter_interior(id: int, at: Variant, target: Variant, prepared: Node3D = nu
 	elif at == null:
 		if not _player.flying:
 			_player.flying = true
+			_flying_by_place = true
 			print("no door leads into %s: flying (V walks)" % cell["editor_id"])
 		var bounds := mesh_bounds(root)
 		print("bounds: ", bounds)
