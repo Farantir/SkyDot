@@ -220,6 +220,11 @@ bool actor_base_values(const wfb::World& w, std::uint32_t npc_id, std::uint32_t 
     base[vm::av::k_magicka_rate_mult] = 100.0;
     base[vm::av::k_stamina_rate_mult] = 100.0;
     base[vm::av::k_shout_recovery_mult] = 1.0;
+    // The engine gives the player 0.7 (read in Skyrim SE, 2026-10-31); NPCs have 0, so
+    // fCombatHealthRegenRateMult (0: none) applies to them.
+    if (ref == 0x14) {
+        base[vm::av::k_combat_health_regen_multiply] = 0.7;
+    }
     base[vm::av::k_speed_mult] = static_cast<double>(stats->speed_multiplier());
     base[vm::av::k_carry_weight] = static_cast<double>(race->carry_weight());
     base[0] = ai->aggression();
