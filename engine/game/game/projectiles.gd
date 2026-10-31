@@ -15,6 +15,7 @@ class_name Projectiles
 extends Node3D
 
 const MAX_LIVE := 64
+const MAX_PUFFS := 96  # visual-only puffs in flight; they count apart from MAX_LIVE and never push a shot out
 const STUCK_SECONDS := 30.0  # a stuck projectile is removed this long after it was fired
 const GRAVITY := 9.81  # m/s^2, times the projectile's gravity multiplier
 ## Nodes of a model that mark where its projectiles leave, by lowercase name part.
@@ -29,6 +30,7 @@ var _pack: SkydotPack
 var _find_ref: Callable  # reference id -> its built node, or null
 var _live: Array[Dictionary] = []  # node, velocity (m/s), age, travelled (m), range (m), stuck, exclude
 var _warn := WarnOnce.new()
+var puffs_spawned := 0  # visual-only puffs launched so far (smoke tests read it)
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
@@ -154,9 +156,11 @@ func shoot(ammo: int, origin: Vector3, direction: Vector3, proj: Dictionary, amm
 ## {ref, point} or {} says whether the step enters an actor's body, as for `shoot`. At the impact
 ## `on_impact(ref, point)` is called once, `ref` 0 when the shot met the world, and the shot is gone.
 ## A shot that flies its range without meeting anything is gone silently. `flash`: also puff the
-## PROJ's muzzle flash (flames do not, they leave ten times a second).
+## PROJ's muzzle flash (flames do not, they leave ten times a second). `puff`: a visual-only copy
+## (the stream between a flame's shots): no actor test, no callback, gone on the world or at its
+## range, and counted apart so it never pushes a shot out.
 func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_test: Callable,
-		on_impact: Callable, range_metres := 0.0, flash := true) -> void:
+		on_impact: Callable, range_metres := 0.0, flash := true, puff := false) -> void:
 	var model: Node3D = _world.build_model(proj["model"]) if proj["model"] != "" else null
 	if model == null:
 		_warn.once("nospellmodel%d" % int(proj["id"]), "spell projectile 0x%08X has no model" % int(proj["id"]))
@@ -166,12 +170,17 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 	_cold_start(model)
 	add_child(model)
 	model.global_transform = Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
-	while _live.size() >= MAX_LIVE:
-		_remove(0)
+	if puff:
+		puffs_spawned += 1
+		while _count(true) >= MAX_PUFFS:
+			_remove(_first(true))
+	else:
+		while _count(false) >= MAX_LIVE:
+			_remove(_first(false))
 	var reach := float(proj["range"]) * SkydotWorld.unit_scale()
 	if range_metres > 0.0:
 		reach = minf(reach, range_metres) if reach > 0.0 else range_metres
-	_live.append({
+	var shot := {
 		"node": model,
 		"pickable": false,
 		"velocity": direction * float(proj["speed"]) * SkydotWorld.unit_scale(),
@@ -181,10 +190,13 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 		"range": reach,
 		"stuck": false,
 		"exclude": _bodies(model),  # a spray model brings colliders of its own
-		"actor_test": actor_test,
-		"on_hit": on_impact,
-		"on_world": on_impact,
-	})
+		"puff": puff,
+	}
+	if not puff:
+		shot["actor_test"] = actor_test
+		shot["on_hit"] = on_impact
+		shot["on_world"] = on_impact
+	_live.append(shot)
 	if flash:
 		_muzzle_flash(proj, origin, direction)
 
@@ -245,6 +257,20 @@ func _cold_start(model: Node) -> void:
 func _vanish(shot: Dictionary) -> void:
 	(shot["node"] as Node3D).visible = false
 	shot["age"] = STUCK_SECONDS + 1.0
+
+
+func _count(puffs: bool) -> int:
+	var n := 0
+	for shot in _live:
+		n += 1 if shot.get("puff", false) == puffs else 0
+	return n
+
+
+func _first(puffs: bool) -> int:
+	for i in _live.size():
+		if _live[i].get("puff", false) == puffs:
+			return i
+	return 0
 
 
 func _remove(index: int) -> void:

@@ -66,6 +66,8 @@ const ARCHETYPE_SUMMON := 18
 
 ## Seconds between two landings (and flame bolts) of a concentration spell.
 const TICK_SECONDS := 0.1
+## Placeholder: seconds between the visual puffs of a held flame, which fill the stream between its shots.
+const PUFF_SECONDS := 1.0 / 60.0
 ## Placeholder: a touch spell's reach from the eyes in game units, and half its cone in degrees.
 const TOUCH_REACH_UNITS := 128.0
 const TOUCH_ANGLE := 50.0
@@ -142,6 +144,7 @@ var _ready_length := 0.0
 var _hands := {}  # hand -> {spell, info, phase, timer}: the buttons that are down
 var _clip_left := 0.0  # seconds until a release clip is over and the idle returns
 var _art := {LEFT: "", RIGHT: ""}  # the models last announced per hand
+var _streams := {}  # caster * 4 + hand -> {caster, proj, origin, direction, reach, left, timer}: held flames still puffing
 var _effects: Array[Dictionary] = []  # explosion and hit art models: {node, left}
 var _lengths := {}  # clip stem -> seconds
 var _clock := 0.0
@@ -424,12 +427,29 @@ func step(delta: float) -> void:
 		if _hands.has(hand):
 			_step_hand(hand, delta)
 	_step_shout(delta)
+	_step_streams(delta)
 	for effect in _effects.duplicate():
 		effect["left"] -= delta
 		if effect["left"] <= 0.0 or not is_instance_valid(effect["node"]):
 			if is_instance_valid(effect["node"]):
 				effect["node"].queue_free()
 			_effects.erase(effect)
+
+
+## Between two shots of a held flame, puff its model from the last shot's origin so the stream has no gaps.
+## A stream ends when the next shot does not renew it (the hand let go).
+func _step_streams(delta: float) -> void:
+	for key in _streams.keys():
+		var stream: Dictionary = _streams[key]
+		stream["left"] -= delta
+		if stream["left"] <= 0.0 or _projectiles == null:
+			_streams.erase(key)
+			continue
+		stream["timer"] += delta
+		while stream["timer"] >= PUFF_SECONDS:
+			stream["timer"] -= PUFF_SECONDS
+			_projectiles.shoot_spell(stream["origin"], stream["direction"], stream["proj"], Callable(), Callable(),
+				stream["reach"], false, true)
 
 
 func _step_hand(hand: int, delta: float) -> void:
@@ -700,6 +720,11 @@ func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictiona
 		func(from: Vector3, to: Vector3) -> Dictionary: return _combat.segment_hit(caster, from, to),
 		func(ref: int, point: Vector3) -> void: _impact(caster, hand, spell, info, ref, point),
 		reach, not flame)
+	if flame:
+		var key := caster * 4 + hand
+		var timer: float = _streams[key]["timer"] if _streams.has(key) else 0.0
+		_streams[key] = {"proj": proj, "origin": origin, "direction": direction, "reach": reach,
+			"left": TICK_SECONDS * 1.5, "timer": timer}
 
 
 ## The first thing the crosshair's ray meets (an actor, else the world): {ref, point}; the point

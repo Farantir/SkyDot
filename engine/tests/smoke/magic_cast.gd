@@ -235,6 +235,7 @@ func _run(pack_dir: String) -> void:
 	var burning := false
 	_max_live = 0
 	_landed.clear()
+	var puffs_before: int = _session.projectiles.puffs_spawned
 	_session.attack_pressed()
 	expect(magic.is_casting(Magic.RIGHT), "Flames is held")
 	var held := 0.0
@@ -249,6 +250,9 @@ func _run(pack_dir: String) -> void:
 		", bolts at most ", _max_live, ", landings ", _landed.size())
 	expect(monotonic and last < start_magicka - 5.0, "Magicka drains while it is held and never comes back")
 	expect(_max_live >= 1, "flame bolts fly")
+	var puffs: int = _session.projectiles.puffs_spawned - puffs_before
+	print("Flames puffs ", puffs, " for ", _landed.size(), " landings")
+	expect(puffs >= 5 * _landed.size(), "a held flame streams visual puffs between its shots: %d puffs, %d landings" % [puffs, _landed.size()])
 	expect(burning, "the skeever burns (FireDamageConcAimed)")
 	expect(papyrus.is_actor_dead(SKEEVER), "and dies")
 	expect(_landed.size() > 3 and _landed.all(func(l: Dictionary) -> bool: return l["target"] == SKEEVER), "Flames landed on the skeever repeatedly: %d" % _landed.size())
