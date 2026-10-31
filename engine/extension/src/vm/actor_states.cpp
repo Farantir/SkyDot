@@ -449,7 +449,7 @@ void ActorStates::tick(double seconds) {
             double combat; ///< Factor while in combat.
         };
         Vital vitals[] = {
-            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, 0.0, combat_health > 0.0 ? combat_health : 1.0},
+            {av::k_health, av::k_heal_rate, av::k_heal_rate_mult, 0.0, combat_health > 0.0 ? combat_health : combat_health_regen_mult_},
             {av::k_magicka, av::k_magicka_rate, av::k_magicka_rate_mult, magicka_held, combat_magicka_regen_mult_},
             {av::k_stamina, av::k_stamina_rate, av::k_stamina_rate_mult, stamina_held, combat_stamina_regen_mult_},
         };

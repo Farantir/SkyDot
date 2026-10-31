@@ -676,6 +676,8 @@ void SkydotPapyrus::bind_world_natives() {
             static_cast<double>(data.gmst_float("fDamagedStaminaRegenDelay",
                                                 static_cast<float>(vm::ActorStates::k_damaged_stamina_regen_delay))));
         actors_.set_combat_regen(
+            static_cast<double>(data.gmst_float("fCombatHealthRegenRateMult",
+                                                static_cast<float>(vm::ActorStates::k_combat_health_regen_mult))),
             static_cast<double>(data.gmst_float("fCombatMagickaRegenRateMult",
                                                 static_cast<float>(vm::ActorStates::k_combat_magicka_regen_mult))),
             static_cast<double>(data.gmst_float("fCombatStaminaRegenRateMult",
