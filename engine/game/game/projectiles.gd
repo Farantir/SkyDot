@@ -80,7 +80,7 @@ func fire(weapon: int, source: int, ammo: int) -> void:
 		"exclude": _bodies(node),
 	}
 	add_child(model)
-	model.global_transform = Transform3D(Basis.looking_at(forward, Vector3.UP), origin.origin)
+	model.global_transform = Transform3D(facing(forward), origin.origin)
 	while _live.size() >= MAX_LIVE:
 		_remove(0)
 	_live.append(shot)
@@ -101,7 +101,7 @@ func _muzzle_flash(proj: Dictionary, position: Vector3, forward: Vector3) -> voi
 		return
 	_cold_start(flash)
 	add_child(flash)
-	flash.global_transform = Transform3D(Basis.looking_at(forward, Vector3.UP), position)
+	flash.global_transform = Transform3D(facing(forward), position)
 	var duration := maxf(float(proj.get("muzzle_flash_duration", 0.0)), 0.0)
 	var emitters := flash.find_children("*", "SkydotParticles", true, false)
 	print("muzzle flash %s: %d particle systems, %d add-ons, %.2f s" % [
@@ -133,7 +133,7 @@ func shoot(ammo: int, origin: Vector3, direction: Vector3, proj: Dictionary, amm
 		animator.start_controllers()
 	_cold_start(model)
 	add_child(model)
-	model.global_transform = Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
+	model.global_transform = Transform3D(facing(direction), origin)
 	while _live.size() >= MAX_LIVE:
 		_remove(0)
 	_live.append({
@@ -169,7 +169,7 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 		animator.start_controllers()
 	_cold_start(model)
 	add_child(model)
-	model.global_transform = Transform3D(Basis.looking_at(direction, Vector3.UP), origin)
+	model.global_transform = Transform3D(facing(direction), origin)
 	if puff:
 		puffs_spawned += 1
 		while _count(true) >= MAX_PUFFS:
@@ -201,18 +201,26 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 		_muzzle_flash(proj, origin, direction)
 
 
+## A basis looking along `direction`, also when that is straight up or down (looking_at with UP
+## is degenerate then: an error and an arbitrary roll).
+static func facing(direction: Vector3) -> Basis:
+	var up := Vector3.UP if absf(direction.normalized().dot(Vector3.UP)) < 0.999 else Vector3.BACK
+	return Basis.looking_at(direction, up)
+
+
 func _physics_process(delta: float) -> void:
 	var space := get_world_3d().direct_space_state
-	var i := 0
-	while i < _live.size():
-		var shot := _live[i]
+	# A snapshot: a hit callback may fire or remove shots, which moves the indices of _live.
+	for shot in _live.duplicate():
+		var i := _live.find(shot)
+		if i < 0:
+			continue
 		shot["age"] += delta
 		if shot["age"] > STUCK_SECONDS or (not shot["stuck"] and shot["travelled"] > shot["range"]):
 			_remove(i)
 			continue
 		if not shot["stuck"]:
 			_advance(shot, delta, space)
-		i += 1
 
 
 func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) -> void:
@@ -242,7 +250,7 @@ func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) 
 			shot["on_world"].call(0, hit["position"])
 		return
 	shot["travelled"] += from.distance_to(to)
-	node.global_transform = Transform3D(Basis.looking_at(velocity.normalized(), Vector3.UP), to)
+	node.global_transform = Transform3D(facing(velocity.normalized()), to)
 
 
 ## Particle systems start empty: a projectile's smoke is made as it flies, not
