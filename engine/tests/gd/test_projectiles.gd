@@ -9,7 +9,7 @@ func test_facing_straight_up_is_a_valid_basis() -> void:
 		expect(((-b.z) - dir).length() < 0.001, "faces %s, got %s" % [dir, -b.z])
 
 func test_a_removal_during_the_step_skips_that_shot() -> void:
-	var p := Projectiles.new()
+	var p := Projectiles.new(null, null, Callable())
 	add_child(p)
 	var a := Node3D.new()
 	var b := Node3D.new()
