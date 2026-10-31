@@ -73,5 +73,8 @@ copied or linked.
   headless editor run (`tests/smoke/`). Each refusal path gets a test that
   triggers it with a file the test writes; new reported numbers are checked
   against the test pack (see `converter/tools/testpack/main.cpp`).
+- Game-layer rules (ADR `docs/adr/0009-game-rules-in-gdscript.md`) get headless
+  GDScript tests in `tests/gd/` (`ctest --preset linux-debug -L gd`); see
+  `tests/gd/README.md`.
 - Record hard-won facts about the editor and bindings in `docs/godot-notes.md`,
   with version and date.

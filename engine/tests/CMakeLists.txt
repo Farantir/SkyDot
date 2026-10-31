@@ -119,6 +119,22 @@ skydot_smoke_test(smoke_shaders shaders.gd "SCRIPT ERROR")
 skydot_smoke_test(smoke_viewer_settings viewer_settings.gd)
 skydot_smoke_test(smoke_packtool packtool.gd)
 
+# Headless GDScript unit tests (tests/gd/README.md): one file per test, run by
+# run.gd. A script error or a logged engine error fails the test.
+function(skydot_gd_test name file)
+    add_test(NAME "gd_${name}"
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${CMAKE_CURRENT_SOURCE_DIR}/gd/run.gd" -- "${CMAKE_CURRENT_SOURCE_DIR}/gd/${file}")
+    set_tests_properties("gd_${name}" PROPERTIES
+        LABELS gd
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR|SHADER ERROR"
+        TIMEOUT 120
+        ENVIRONMENT "SKYDOT_TESTPACK=${SKYDOT_TESTPACK}")
+endfunction()
+
+skydot_gd_test(activation_prompt test_activation_prompt.gd)
+
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,
 # so it is only registered when one is configured.

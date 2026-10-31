@@ -198,6 +198,10 @@ jobs:
       - name: Unit tests
         run: ctest --preset ${{ matrix.preset }} -L unit
 
+      # Headless GDScript tests (engine/tests/gd); the godot_scan fixture runs first.
+      - name: GDScript tests
+        run: ctest --preset ${{ matrix.preset }} -L gd
+
       - name: The converter's test pack
         uses: actions/download-artifact@v4
         with:
@@ -207,7 +211,7 @@ jobs:
       - name: Smoke tests
         env:
           SKYDOT_TESTPACK_REQUIRE: "1"
-        run: ctest --preset ${{ matrix.preset }} -LE unit
+        run: ctest --preset ${{ matrix.preset }} -LE "unit|gd"
 
   # Release builds of bethconv and the extension for other machines: no
   # runtime the player has to install. Not on pull requests.
