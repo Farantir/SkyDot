@@ -35,6 +35,7 @@ var _landed: Array[Dictionary] = []
 var _shouts: Array[Dictionary] = []
 var _messages: Array[String] = []
 var _effects: Array[Dictionary] = []
+var _throw: Array[Vector3] = []
 
 
 class FakePlayer:
@@ -79,6 +80,37 @@ func _frames(count: int) -> void:
 	for i in count:
 		_session.step(STEP, _feet)
 		await physics_frame
+		_sample_throw()
+
+
+## While BANDIT is knocked down each frame adds its pelvis (the first physics bone of the human set) to `_throw`.
+func _sample_throw() -> void:
+	if not _session.corpses.is_down(BANDIT):
+		return
+	for b in _session.corpses._bodies:
+		if b["ref"] == BANDIT:
+			_throw.append((b["bones"][0] as PhysicalBone3D).global_position)
+
+
+## The throw from `_throw` (one pelvis position per frame from the knock-down), `start` the standing place, `floor_y`
+## its height: {air_m, air_s: where and when the pelvis comes back down, rest_m, rest_s, peak_m}, horizontal metres.
+func _throw_summary(start: Vector3, floor_y: float) -> Dictionary:
+	var out := {"peak_m": 0.0, "air_m": -1.0, "air_s": -1.0, "rest_m": 0.0, "rest_s": 0.0}
+	var flew := false
+	for i in _throw.size():
+		var at: Vector3 = _throw[i]
+		var flat := Vector2(at.x - start.x, at.z - start.z).length()
+		var up := at.y - floor_y
+		out["peak_m"] = maxf(out["peak_m"], up)
+		flew = flew or up > 0.6
+		if flew and out["air_m"] < 0.0 and up < 0.45:
+			out["air_m"] = flat
+			out["air_s"] = i * STEP
+		out["rest_m"] = flat
+		out["rest_s"] = i * STEP
+		if i % 6 == 0:
+			print("  t=%.2f flat=%.2f h=%.2f" % [i * STEP, flat, up])
+	return out
 
 
 func _until(done: Callable, limit: float) -> float:
@@ -280,11 +312,27 @@ func _run(pack_dir: String) -> void:
 	papyrus.update(21.0)
 
 	# ---- a full hold: three words by themselves at fShoutTime2, UF3 on everyone in the cone, pushed
+	# on flat ground: a big slab high above the barrow, the player 5.7 m (400 units) from the bandit
+	var slab := StaticBody3D.new()
+	var slab_shape := CollisionShape3D.new()
+	slab_shape.shape = BoxShape3D.new()
+	(slab_shape.shape as BoxShape3D).size = Vector3(200, 1, 200)
+	slab.add_child(slab_shape)
+	root.add_child(slab)
+	slab.global_position = bandit.global_position + Vector3(0, 300.0 - 0.5, 0)
+	var forward := (bandit.global_position - _feet)
+	forward.y = 0.0
+	forward = forward.normalized()
+	bandit.global_position = slab.global_position + Vector3(0, 0.5, 0)
+	_feet = bandit.global_position - forward * 400.0 * SkydotWorld.unit_scale()
+	_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT
+	_camera.look_at(bandit.global_position + Vector3.UP * 0.6, Vector3.UP)
 	var right := _camera.global_transform.basis.x
 	skeever.global_position = bandit.global_position + right * 0.6
 	await _frames(5)
 	_shouts.clear()
 	_landed.clear()
+	var start := bandit.global_position
 	var held := _session.voice_pressed()
 	expect(held["ok"] and magic.is_shouting() and not magic.shout_state()["fired"], "the key is down, the shout charges: %s" % [held])
 	await _frames(30)
@@ -301,6 +349,7 @@ func _run(pack_dir: String) -> void:
 	await _frames(5)
 	var targets: Array = _landed.filter(func(l: Dictionary) -> bool: return l["spell"] == UF3).map(func(l: Dictionary) -> int: return l["target"])
 	expect(targets.has(BANDIT) and targets.has(SKEEVER), "UF3 lands on all actors in the cone: %s" % [targets])
+	expect(absf(papyrus.voice_recovery(PLAYER) - 45.0) < 3.0, "recovery 45 s: %f" % papyrus.voice_recovery(PLAYER))
 	var down_bandit := _session.corpses.is_down(BANDIT)
 	var down_skeever := _session.corpses.is_down(SKEEVER)
 	expect(down_bandit and down_skeever, "both are knocked down: %s %s" % [down_bandit, down_skeever])
@@ -308,9 +357,16 @@ func _run(pack_dir: String) -> void:
 	var lay := bandit.global_position
 	await _until(func() -> bool: return not _session.corpses.is_down(BANDIT) and not _session.corpses.is_down(SKEEVER), 8.0)
 	expect(not _session.corpses.is_down(BANDIT) and not _session.corpses.is_down(SKEEVER), "they get up")
+	# Measured in game on a slope (UF3 on a human at 400 units): down after 1.6 s and 5.7 m, at rest after 7.8 m, up to
+	# 2 m high. Here on flat ground, the pelvis from where the actor stood; the band is -20 % / +25 % for physics noise
+	# and the slide, which depends on the ground.
+	var throw := _throw_summary(start, start.y)
+	expect(throw["air_m"] > 5.7 * 0.8 and throw["air_m"] < 5.7 * 1.25, "touchdown 5.7 m (4.6-7.1): %s" % [throw])
+	expect(throw["air_s"] > 1.6 * 0.8 and throw["air_s"] < 1.6 * 1.25, "touchdown at 1.6 s (1.3-2.0): %s" % [throw])
+	expect(throw["rest_m"] > 7.8 * 0.75 and throw["rest_m"] < 7.8 * 1.15, "at rest 7.8 m (5.9-9.0): %s" % [throw])
+	expect(throw["peak_m"] > 2.0 and throw["peak_m"] < 4.0, "the pelvis flies 2-4 m above the floor: %s" % [throw])
 	expect(not (bandit as SkydotActor).is_dead() and not papyrus.is_actor_dead(BANDIT), "the bandit lives and moves again")
 	expect(bandit.global_position.distance_to(lay) > 0.2, "having been thrown: %s -> %s" % [lay, bandit.global_position])
-	expect(absf(papyrus.voice_recovery(PLAYER) - 45.0) < 3.0, "recovery 45 s: %f" % papyrus.voice_recovery(PLAYER))
 	papyrus.update(46.0)
 
 	# ---- no shout while a hand casts, no cast while a shout charges

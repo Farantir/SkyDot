@@ -97,9 +97,11 @@ const BONE_FRICTION := 1.0
 ## voicepusheffectscript on VoiceUnrelentingForceEffect03; words 1 and 2 have no push effect, only the stagger
 ## archetype): thrown ~550 units, 3.6 m/s horizontal at first, rising ~2 m in 0.7 s, down at ~1.6 s. A push gives
 ## every body of the ragdoll `force` x PUSH_SPEED_PER_FORCE m/s along the way from the source and `force` x
-## PUSH_LIFT_PER_FORCE m/s up.
-const PUSH_SPEED_PER_FORCE := 0.24
-const PUSH_LIFT_PER_FORCE := 0.43
+## PUSH_LIFT_PER_FORCE m/s up. Tuned on flat ground (sse_shout_player): before 0.24 / 0.43 the pelvis came down
+## after 2.3 m and 0.8 s (peak 1.1 m); now it comes down after ~6.4 m and 1.6 s (target 5.7 m, 1.6 s), peaks ~3.4 m
+## above the floor and lies at ~6.6 m (game: 7.8 m, the rest of the slide was on a slope).
+const PUSH_SPEED_PER_FORCE := 0.42
+const PUSH_LIFT_PER_FORCE := 0.62
 ## Metres a knocked-down actor's ragdoll starts above the floor.
 const KNOCK_LIFT := 0.25
 ## The player's own shove keeps the earlier placeholder (not measured): this many m/s per unit of force, with this
@@ -108,7 +110,7 @@ const PLAYER_PUSH_SPEED_PER_FORCE := 0.4
 const PLAYER_PUSH_LIFT := 0.35
 ## Placeholder (the plan's guess): a knocked-down actor gets up after this long, or once it rests,
 ## but not before KNOCK_MIN_SECONDS.
-const GET_UP_SECONDS := 2.0
+const GET_UP_SECONDS := 4.0
 const KNOCK_MIN_SECONDS := 1.0
 ## Paralysis is looked at this often, seconds.
 const PARALYSIS_POLL := 0.2
