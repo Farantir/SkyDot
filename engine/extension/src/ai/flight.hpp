@@ -57,7 +57,7 @@ struct Params {
     double cruise_speed = 2000;      ///< data: FLMV Dragon_Flying_MT forward walk.
     double transit_speed = 7400;     ///< data: its run; only when the goal is far.
     double transit_distance = 20000; ///< placeholder: farther than this, fly at transit speed.
-    double pass_speed = 1200;        ///< placeholder: a breath pass.
+    double pass_speed = 2300;        ///< measured in game (GAME-VALUES-PLAN.md): passes at 2000-2800, median ~2300.
     double acceleration = 600;       ///< placeholder, u/s^2.
     double deceleration = 900;       ///< placeholder, u/s^2.
     // Turning.
@@ -88,14 +88,17 @@ struct Params {
     double orbit_entry_speed = 0.3;   ///< placeholder: share of the cruise speed kept while the heading is 90 degrees off.
     double orbit_approach_angle = 1.2566; ///< placeholder: rad; the heading turns this far off the tangent, in or out, when far from the circle.
     double orbit_approach_band = 1.0;     ///< placeholder: share of the radius off the circle that gives the full angle.
-    double hover_distance = 1800;
+    double hover_distance = 1500;     ///< measured in game (GAME-VALUES-PLAN.md): 1480-1570.
     double hover_retreat_ratio = 0.8; ///< placeholder: closer than this share of the hover distance, it flies away first.
-    double hover_height = 900;
-    double pass_height = 700;
+    double hover_height = 900;        ///< measured in game (GAME-VALUES-PLAN.md): 790-1050.
+    double pass_height = 850;         ///< measured in game (GAME-VALUES-PLAN.md): 600-1140 over the target.
     double dive_height = 400;
     double pass_arm_ahead = 500;      ///< placeholder: once the target is this far ahead, passing over it counts.
     double pass_close = 150;          ///< placeholder: within this of the target the pass is over it.
-    double pass_overshoot = 2500;
+    double pass_overshoot = 5000;     ///< measured in game (GAME-VALUES-PLAN.md): 4500-5400.
+    double pass_turn_start = 2800;    ///< placeholder: a sweep starts its turn this far out; the turn carries it on to pass_overshoot (measured ~5000).
+    double pass_turn_height = 2500;   ///< measured in game (GAME-VALUES-PLAN.md): a sweep turns around at 2000-3300 up.
+    double pass_turn_aligned = 0.3;   ///< placeholder: rad; a sweep's turn-around ends once the heading is this close to the target.
     // Landing and takeoff.
     double landing_rings[2] = {1200, 2000};
     double landing_sample_radius = 400;
@@ -111,7 +114,9 @@ struct Params {
     double crash_timeout = 15;  ///< s: a flyer that died in the air is put on the ground after this long.
     // Tactics.
     double ground_seconds_scale = 20; ///< ground_attack_time * this = seconds on the ground.
-    double orbit_seconds = 8;         ///< one lap.
+    double orbit_seconds = 8;         ///< one lap (orbit is no longer flown in combat; only a landing spot search and scripts use it).
+    double sweep_settle_limit = 20;   ///< placeholder: s; a sweep counts as done after this long without turning around.
+    double hover_interval = 25;       ///< measured in game (GAME-VALUES-PLAN.md): a hover about every 30 s, this long after the last one ended.
     double orbit_band = 0.3;          ///< placeholder: the lap counts while within this share of the radius.
     double orbit_settle_limit = 20;   ///< placeholder: s; the lap counts anyway after this long in orbit.
     int min_air_attacks = 2;
@@ -140,6 +145,7 @@ struct Body {
     Vec3 anchor;            ///< takeoff: where it left the ground.
     double pass_heading = 0; ///< the line of the current pass.
     int pass_phase = 0;      ///< 0 inbound, 1 passed over, 2 flown on and done.
+    bool pass_repeat = false; ///< the pass is a sweep (Command::repeat).
     bool pass_armed = false; ///< inbound and the target was ahead: passing over it ends the inbound phase.
     double last_ground = 0;
 };
@@ -153,6 +159,7 @@ struct Command {
     double radius = 0; ///< orbit; 0 = Params::orbit_radius.
     double height = 0; ///< above the ground; 0 = the mode's default.
     bool dive = false; ///< pass: dive bomb (Params::dive_height).
+    bool repeat = false; ///< pass: out-and-back passes without end (turn around at Params::pass_turn_height).
 };
 
 struct Events {
@@ -186,6 +193,8 @@ struct Tactics {
     double elapsed = 0;  ///< wall time in the current maneuver.
     int attacks = 0;     ///< since the last landing.
     bool dive = false;
+    double since_hover = 0; ///< s since the last hover ended (or since combat began).
+    bool sweep_turned = false; ///< the sweep has turned around since it last flew inbound (one lap).
     std::optional<Vec3> landing_spot;
     std::optional<Vec3> forced_spot; ///< the forced landing marker: where it lands the next time it decides to (attacks first).
     bool injured = false;            ///< below the race's injured health; stays until it has healed on.

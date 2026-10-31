@@ -51,6 +51,7 @@ var _modes := {}
 var _locked := false
 var _in_band := 0.0
 var _lock_after := 0.0
+var _far_max := 0.0
 var _hover_min := 1.0e9
 var _pass_close := 1.0e9
 
@@ -151,6 +152,7 @@ func _sample() -> void:
 		_hover_min = minf(_hover_min, _dist())
 	if mode == "pass":
 		_pass_close = minf(_pass_close, _dist())
+		_far_max = maxf(_far_max, _dist())
 
 
 func _frames(count: int) -> void:
@@ -268,12 +270,10 @@ func _run(pack_dir: String) -> void:
 	expect(_events.has("DragonTakeoffEffect"), "DragonTakeoffEffect comes with the takeoff: %s" % [_events])
 	expect(_session.papyrus.get_animation_event_count() > scripted, "and reaches the dragon's script: %d" % (_session.papyrus.get_animation_event_count() - scripted))
 
-	# b) It orbits the player for a lap or more.
-	t = await _until(func() -> bool: return _orbit_time >= 8.0, 60.0)
-	expect(t >= 0.0, "it orbits for a lap: %.1f s" % _orbit_time)
-	print("dragon_flight: orbit distance %.0f..%.0f over %.1f s (radius %.0f), on the circle %.1f s after entering, lowest clearance %.0f (%s)" % [_orbit_min, _orbit_max, _orbit_time, ORBIT_RADIUS, _lock_after, _min_clearance, _clearance_mode])
-	expect(_orbit_min > ORBIT_RADIUS * (1.0 - BAND) and _orbit_max < ORBIT_RADIUS * (1.0 + BAND), "once on the circle it keeps its radius within 30%%: %.0f..%.0f" % [_orbit_min, _orbit_max])
-	expect(_lock_after < 15.0, "it reaches the circle within 15 s: %.1f s" % _lock_after)
+	# b) It sweeps over the player: out-and-back passes (no orbit), measured in game.
+	t = await _until(func() -> bool: return _pass_close < 400.0 and _far_max >= 4000.0, 60.0)
+	expect(t >= 0.0, "it sweeps over the player and out again: closest %.0f, farthest %.0f" % [_pass_close, _far_max])
+	print("dragon_flight: sweep closest %.0f, farthest %.0f, lowest clearance %.0f (%s)" % [_pass_close, _far_max, _min_clearance, _clearance_mode])
 
 	# c) A breath in the air hurts him.
 	t = await _until(func() -> bool: return _lost_air > 0.0, 90.0)
@@ -352,7 +352,7 @@ func _run(pack_dir: String) -> void:
 		node2.remove_meta("skydot_rescued")
 
 	if _modes.has("hover"):
-		expect(absf(_hover_min - 1800.0) < 270.0, "it hovers at about the hover distance 1800: %.0f" % _hover_min)
+		expect(absf(_hover_min - 1500.0) < 270.0, "it hovers at about the hover distance 1500: %.0f" % _hover_min)
 	if _modes.has("pass"):
 		expect(_pass_close < 500.0, "a pass flies over the target: closest %.0f" % _pass_close)
 	print("dragon_flight: modes seen ", _modes.keys(), ", hover distance %.0f, pass closest %.0f, %.1f s of simulation in %.1f s" % [_hover_min, _pass_close, _clock, (Time.get_ticks_msec() - started) / 1000.0])

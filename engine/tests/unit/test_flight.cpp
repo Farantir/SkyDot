@@ -534,10 +534,11 @@ struct Rig {
 
 TEST_CASE("flight tactics: the whole combat cycle with scripted dice") {
     Rig r;
-    // lap 1: attack, hover; after the hover (1 attack) orbit; lap 2: attack,
-    // no hover, no dive: strafe; after it (2 attacks) the ground roll succeeds.
+    // lap 1: attack, hover; after the hover (1 attack) it sweeps on; lap 2: attack,
+    // no hover, dive bomb; after it (2 attacks) the ground roll succeeds.
+    r.t.since_hover = r.p.hover_interval;
     r.dice.rolls = {0.0, 0.0,           // lap 1: attack, hover
-                    0.0, 0.99, 0.99,    // lap 2: attack, no hover, no dive
+                    0.0, 0.99, 0.0,     // lap 2: attack, no hover, dive
                     0.0};               // ground attack
     CHECK(r.t.maneuver == Maneuver::ground);
     r.seconds(1);
@@ -549,7 +550,7 @@ TEST_CASE("flight tactics: the whole combat cycle with scripted dice") {
     REQUIRE(r.until(Maneuver::orbit, 30));
     CHECK(r.t.attacks == 1);
     REQUIRE(r.until(Maneuver::pass, 30));
-    CHECK_FALSE(r.t.dive);
+    CHECK(r.t.dive);
     REQUIRE(r.until(Maneuver::land, 40));
     CHECK(r.t.attacks == 2);
     REQUIRE(r.until(Maneuver::ground, 40));
@@ -563,6 +564,7 @@ TEST_CASE("flight tactics: the breath is allowed hovering at the target and in t
     r.dice.rolls = {0.0, 0.0};
     r.b = airborne_body(0, -3000, 1600, 0, 2000);
     r.t.maneuver = Maneuver::orbit;
+    r.t.since_hover = r.p.hover_interval;
     bool in_hover = false;
     bool allowed = false;
     for (int i = 0; i < 20 * 40 && !in_hover; ++i) {
@@ -633,6 +635,7 @@ TEST_CASE("flight tactics: a forced landing marker names where it lands next tim
     r.t.attacks = 5;
     r.in.style.ground_attack_chance = 1;
     r.in.style.flying_attack_chance = 1;
+    r.in.style.dive_bomb_chance = 1;
     r.in.style.hover_chance = 0;
     REQUIRE(r.until(Maneuver::pass, 40));
     REQUIRE(r.until(Maneuver::land, 60));
@@ -699,4 +702,55 @@ TEST_CASE("flight: a hovering dragon does not climb for a wall far ahead, a fast
     cruise.point = {20000, 0, 0};
     run(fast, cruise, p, wall, 3);
     CHECK(fast.pos.z > 1200); // it sees the wall 2 s ahead and climbs
+}
+
+TEST_CASE("flight tactics: a 90 s fight sweeps over the target and hovers now and then (measured in game)") {
+    Rig r;
+    r.in.in_combat = true;
+    r.in.target = {0, 0, 100};
+    r.in.style = {1.0, 0.0, 0.0, 0.25, 1.0, 1.0}; // always attacks and hovers when due; hover 5 s; never lands
+    r.dice.rolls.clear();
+    r.b = airborne_body(0, -3000, 1600, 0, 2000);
+    r.in.self = r.b.pos;
+    r.t.maneuver = Maneuver::orbit;
+    const std::function<double()> roll = [] { return 0.0; };
+
+    double max_out = 0;
+    int passes = 0;
+    bool near_prev = false;
+    int moving = 0;
+    int moving_fast = 0;
+    double hover_start = -1;
+    std::vector<double> hovers;
+    bool in_hover = false;
+    double dt = 0.05;
+    double tt = 0;
+    for (; tt < 90; tt += dt) {
+        const Command c = decide(r.t, r.in, r.b, r.p, k_flat, dt, roll);
+        r.in.self = r.b.pos;
+        step(r.b, c, r.p, k_flat, dt);
+        const double d = distance_xy(r.b.pos, r.in.target);
+        max_out = std::max(max_out, d);
+        const bool near = d <= 400;
+        if (near && !near_prev) ++passes;
+        near_prev = near;
+        const bool hovering = r.b.mode == Mode::hover && r.b.speed < 200 && d > 1300 && d < 1700;
+        if (hovering && !in_hover) hover_start = tt;
+        if (!hovering && in_hover) hovers.push_back(tt - hover_start);
+        in_hover = hovering;
+        if (!hovering && tt > 5 && r.b.mode == Mode::pass) {
+            ++moving;
+            if (r.b.speed >= 1800 && r.b.speed <= 2800) ++moving_fast;
+        }
+        CHECK(r.t.maneuver != Maneuver::land);
+    }
+    INFO("passes " << passes << " max_out " << max_out << " moving " << moving << " fast " << moving_fast);
+    for (double h : hovers) INFO("hover " << h);
+    CHECK(max_out >= 4000);
+    CHECK(passes >= 5);
+    CHECK(moving_fast > 0.6 * moving);
+    int good_hovers = 0;
+    for (double h : hovers) good_hovers += (h >= 3 && h <= 7);
+    CHECK(good_hovers >= 2);
+    CHECK(r.t.maneuver != Maneuver::ground);
 }

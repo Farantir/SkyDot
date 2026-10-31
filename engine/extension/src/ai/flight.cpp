@@ -147,6 +147,11 @@ void apply_command(Body& b, const Command& c, const Params& p) {
             b.pass_heading = b.yaw;
             b.pass_phase = 0;
             b.pass_armed = false;
+            b.pass_repeat = c.repeat;
+        } else if (b.pass_repeat != c.repeat) {
+            b.pass_repeat = c.repeat;
+            b.pass_phase = 0;
+            b.pass_armed = false;
         }
         break;
     case CommandKind::land:
@@ -252,11 +257,22 @@ void substep(Body& b, const Command& c, const Params& p, const Ground& g, double
                 ev.passed_over = true;
             }
         }
-        if (b.pass_phase == 1 && dist >= p.pass_overshoot) b.pass_phase = 2;
-        const double desired = b.pass_phase == 0 ? (dist > 1 ? heading_to(b.pos, c.point) : b.yaw) : b.pass_heading;
+        if (b.pass_phase == 1 && dist >= (c.repeat ? p.pass_turn_start : p.pass_overshoot)) b.pass_phase = 2;
+        const double to_target = dist > 1 ? heading_to(b.pos, c.point) : b.yaw;
+        const bool turning = c.repeat && b.pass_phase == 2;
+        if (turning && std::fabs(wrap_pi(to_target - b.yaw)) < p.pass_turn_aligned) {
+            // Turned around: back inbound for the next pass.
+            b.pass_phase = 0;
+            b.pass_armed = false;
+        }
+        const double desired = (b.pass_phase == 0 || turning) ? to_target : b.pass_heading;
         const double gt = ground_at(b, g, c.point.x, c.point.y);
-        const double alt = b.pass_phase == 0 ? gt + height : std::max(gt + height, gh + p.orbit_height);
-        const double spd = b.pass_phase < 2 ? p.pass_speed : p.cruise_speed;
+        const double away_height = c.repeat ? p.pass_turn_height : p.orbit_height;
+        const double alt = (b.pass_phase == 0 && !turning) ? gt + height : std::max(gt + height, (c.repeat ? gt : gh) + away_height);
+        double spd = (b.pass_phase < 2 || c.repeat) ? p.pass_speed : p.cruise_speed;
+        // Inbound and not lined up: slow enough that the turn circle (speed / turn rate) fits between it and the target.
+        if (b.pass_phase == 0 && std::fabs(wrap_pi(to_target - b.yaw)) > 0.5)
+            spd = std::min(spd, std::max(300.0, p.max_turn_rate * dist * 0.45));
         fly(b, p, g, h, desired, p.max_turn_rate, spd, alt);
         break;
     }
@@ -462,9 +478,11 @@ void attack_done(Tactics& t, const TacticsInput& in, const Params& p, const std:
     }
 }
 
+/// Between attacks it flies out-and-back passes over the target (measured in game), not a circle.
 Command orbit_cmd(const TacticsInput& in) {
     Command c;
-    c.kind = CommandKind::orbit;
+    c.kind = CommandKind::pass;
+    c.repeat = true;
     c.point = in.target;
     return c;
 }
@@ -492,6 +510,7 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
 
     t.timer += dt;
     t.elapsed += dt;
+    if (t.maneuver != Maneuver::hover) t.since_hover += dt;
     const bool down = !in.allowed_to_fly || t.injured;
     const bool flying = b.mode != Mode::grounded && b.mode != Mode::crashed;
 
@@ -534,19 +553,29 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
         break;
     }
     case Maneuver::orbit: {
-        // A lap counts once the circle is flown (entering it, or coming back from a pass, does not).
-        if (std::fabs(distance_xy(in.self, in.target) - p.orbit_radius) > p.orbit_band * p.orbit_radius &&
-            t.elapsed < p.orbit_settle_limit) {
-            t.timer = 0;
+        // A lap is one sweep: it counts when the body has flown over the target and turned around out
+        // there, which is also where the next maneuver starts.
+        bool lap = false;
+        if (b.mode == Mode::pass && b.pass_repeat) {
+            if (b.pass_phase == 2 && !t.sweep_turned) {
+                t.sweep_turned = true;
+                lap = true;
+            } else if (b.pass_phase == 0) {
+                t.sweep_turned = false;
+            }
         }
-        if (t.timer >= p.orbit_seconds) {
+        if (t.elapsed >= p.sweep_settle_limit && t.timer >= p.sweep_settle_limit) lap = true;
+        if (lap) {
             t.timer = 0;
             if (roll() < in.style.flying_attack_chance) {
-                if (roll() < in.style.hover_chance) {
+                if (roll() < in.style.hover_chance && t.since_hover >= p.hover_interval) {
                     enter(t, Maneuver::hover);
+                    t.since_hover = 0;
                 } else {
+                    // The sweeps themselves are no attacks (the game flew 90 s of them without landing): only a
+                    // hover or a dive bomb counts.
                     t.dive = roll() < in.style.dive_bomb_chance;
-                    enter(t, Maneuver::pass);
+                    if (t.dive) enter(t, Maneuver::pass);
                 }
             }
         }
@@ -561,6 +590,7 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
         }
         if (t.timer >= in.style.hover_time * p.ground_seconds_scale ||
             t.elapsed > in.style.hover_time * p.ground_seconds_scale + 15) {
+            t.since_hover = 0;
             attack_done(t, in, p, roll);
             break;
         }
@@ -610,6 +640,8 @@ Command decide(Tactics& t, const TacticsInput& in, const Body& b, const Params& 
 bool breath_allowed(const Tactics& t, const Body& b, const Vec3& target, const Params& p) {
     const double err = std::fabs(wrap_pi(heading_to(b.pos, target) - b.yaw));
     if (t.maneuver == Maneuver::hover && b.mode == Mode::hover) return err <= p.aim_tolerance;
+    if (t.maneuver == Maneuver::orbit && b.mode == Mode::pass && b.pass_repeat && b.pass_phase == 0)
+        return err <= p.aim_tolerance && distance(b.pos, target) <= p.breath_range;
     if (t.maneuver == Maneuver::pass && b.mode == Mode::pass && b.pass_phase == 0)
         return err <= p.aim_tolerance && distance(b.pos, target) <= p.breath_range;
     return false;
