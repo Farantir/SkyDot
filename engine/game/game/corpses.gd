@@ -716,10 +716,11 @@ func _make_bone(skeleton: Skeleton3D, entry: Array, units: float) -> PhysicalBon
 	var along := Vector3.UP
 	if entry[1] != "":
 		var child := skeleton.find_bone(entry[1])
-		var vector := skeleton.get_bone_global_rest(child).origin - from.origin
-		if child >= 0 and vector.length() > 0.001:
-			length = vector.length()
-			along = (from.basis.inverse() * vector).normalized()  # in the bone's frame
+		if child >= 0:  # a skeleton may lack the bone
+			var vector := skeleton.get_bone_global_rest(child).origin - from.origin
+			if vector.length() > 0.001:
+				length = vector.length()
+				along = (from.basis.inverse() * vector).normalized()  # in the bone's frame
 	var radius: float = entry[2]
 	var bone := PhysicalBone3D.new()
 	bone.name = String(entry[0]).get_slice(" [", 0).replace(" ", "")
