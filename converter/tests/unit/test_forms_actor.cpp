@@ -233,3 +233,38 @@ TEST_CASE("OTFT and LVLI: an outfit's items and a leveled list's entries", "[rec
     REQUIRE(lvli->entries.size() == 1);
     CHECK(lvli->entries[0].reference.value == 0x0001BE1A);
 }
+
+TEST_CASE("a truncated DSTD keeps its place, so the next model does not join the previous stage", "[record][destruction]") {
+    const auto field = [](std::string_view type, const ByteWriter& body) {
+        ByteWriter p;
+        write_field(p, type, body);
+        return p;
+    };
+    const auto dstd = [](std::size_t bytes) {
+        ByteWriter w;
+        for (std::size_t i = 0; i < bytes; ++i) {
+            w.u8(0);
+        }
+        return w;
+    };
+    // Reads one field of `fields` through read_destruction_field, the way the base collector does.
+    record::Destruction dest;
+    std::optional<io::ParseError> failure;
+    const auto feed = [&](const ByteWriter& fields) {
+        io::SpanReader all{fields.span(), "fields"};
+        const auto header = record::read_field_header(all);
+        REQUIRE(header.has_value());
+        const auto body = all.bytes(header->data_size);
+        REQUIRE(body.has_value());
+        io::SpanReader reader{*body, "field"};
+        REQUIRE(record::read_destruction_field(dest, *header, reader, failure));
+    };
+    feed(field("DSTD", dstd(20)));
+    feed(field("DMDL", text("a.nif")));
+    feed(field("DSTD", dstd(7))); // truncated
+    feed(field("DMDL", text("b.nif")));
+    REQUIRE(dest.stages.size() == 2);
+    CHECK(dest.stages[0].model.path == "a.nif");
+    CHECK(dest.stages[1].model.path == "b.nif");
+    CHECK(failure.has_value()); // the error is still counted
+}

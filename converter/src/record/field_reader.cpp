@@ -152,9 +152,9 @@ bool read_destruction_field(Destruction& dest, const FieldHeader& field, io::Spa
         take(failure, read_formid(body), stage.explosion);
         take(failure, read_formid(body), stage.debris);
         take(failure, body.get<std::int32_t>(), stage.debris_count);
-        if (!failure) {
-            dest.stages.push_back(std::move(stage));
-        }
+        // Pushed even when it failed to parse (the error stays in `failure`): the model fields that follow
+        // belong to this stage, not to the previous one.
+        dest.stages.push_back(std::move(stage));
     } else if (field.type == FourCC{"DMDL"} || field.type == FourCC{"DMDT"} ||
                field.type == FourCC{"DMDS"}) {
         // A model field belongs to the stage opened by DSTD. Without one, it
