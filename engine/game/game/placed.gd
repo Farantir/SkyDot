@@ -32,6 +32,8 @@ var _warn := WarnOnce.new("", true)
 var place_on_screen: Place
 var streamer: SkydotStreamer
 var _noted := {}
+var _deleted := {}  # refs removed before their deferred build ran (cleared when placed again)
+var _generation := 0  # bumped by forget(): timers of an earlier game do nothing
 var _waiting: Array[Array] = []  # [ref, base, cell, position, rotation, scale, disabled]
 
 
@@ -47,11 +49,14 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, ai: SkydotAi = null) -> v
 ## has finished its step.
 func place(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3, scale: float,
 		disabled: bool) -> void:
+	_deleted.erase(ref)
 	_build.call_deferred(ref, base, cell, position, rotation, scale, disabled)
 
 
 func _build(ref: int, base: int, cell: int, position: Vector3, rotation: Vector3, scale: float,
 		disabled: bool) -> void:
+	if _deleted.has(ref):  # removed in the frame it was placed
+		return
 	if _world.is_actor_base(base):
 		if not _cell_is_built(cell, position):
 			_waiting.append([ref, base, cell, position, rotation, scale, disabled])
@@ -151,7 +156,7 @@ func _play_explosion(ref: int, model: Node3D) -> void:
 	for emitter in model.find_children("*", "SkydotParticles", true, false):
 		emitter.set_warm_start(false)
 	get_tree().create_timer(EXPLOSION_EMIT_SECONDS).timeout.connect(_stop_emitters.bind(model))
-	get_tree().create_timer(EXPLOSION_LIFE_SECONDS).timeout.connect(_expire.bind(ref))
+	get_tree().create_timer(EXPLOSION_LIFE_SECONDS).timeout.connect(_expire.bind(ref, _generation))
 
 
 func _stop_emitters(model: Node3D) -> void:
@@ -161,13 +166,22 @@ func _stop_emitters(model: Node3D) -> void:
 		emitter.set_active(false)
 
 
-func _expire(ref: int) -> void:
+func _expire(ref: int, generation: int) -> void:
+	if generation != _generation:  # a save was loaded since: the ref may be someone else's now
+		return
 	print("placed 0x%08X ends" % ref)
 	_papyrus.remove_placed(ref)
 
 
+## A save was loaded: pending removals and explosion timers of the game before it are void.
+func forget() -> void:
+	_generation += 1
+	_deleted.clear()
+
+
 ## The reference is gone (Delete, an effect that ended, a loaded save).
 func remove(ref: int) -> void:
+	_deleted[ref] = true
 	_waiting = _waiting.filter(func(entry: Array) -> bool: return entry[0] != ref)
 	var node := _world.find_ref_node(ref)
 	if node != null and is_ancestor_of(node):

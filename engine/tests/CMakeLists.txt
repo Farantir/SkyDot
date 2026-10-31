@@ -140,6 +140,7 @@ skydot_gd_test(placed test_placed.gd)
 skydot_gd_test(place test_place.gd)
 skydot_gd_test(script_bridge test_script_bridge.gd)
 skydot_gd_test(corpses test_corpses.gd)
+skydot_gd_test(placed_race test_placed_race.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,

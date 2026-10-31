@@ -1321,6 +1321,7 @@ func save_game(path: String) -> bool:
 func load_game(path: String) -> bool:
 	var done := saves.load_game(path)
 	if done:
+		placed.forget()
 		transition.cancel()  # a door fade must not travel on into the old place
 		combat.on_items_changed()
 		magic.on_items_changed()
