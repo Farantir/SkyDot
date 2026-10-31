@@ -155,6 +155,11 @@ func _run(pack_dir: String) -> void:
 			_arrows += 1
 			if _node != null and is_instance_valid(_node) and _node.is_flying():
 				_arrows_air += 1)
+	# The quest adds the soul and sets stage 90 in one script run: "Dragon Soul Absorbed" is the sign of the +1.
+	_session.papyrus.message.connect(func(text: String, _modal: bool) -> void:
+		if text.containsn("Dragon Soul") and _souls_at < 0.0 and _dead_at > 0.0:
+			_souls_at = _clock - _dead_at
+			_log("DragonSouls +1, %.1f s after death" % _souls_at))
 	_feet = SkydotWorld.skyrim_position(SPOT)
 	expect(_session.enter_world("Tamriel", _feet, null), "the worldspace is entered")
 	await _frames(30)
@@ -207,6 +212,7 @@ func _run(pack_dir: String) -> void:
 		await _stage(stage, 240.0)
 		_log("  = %.1f s after death, DragonSouls %s" % [_clock - _dead_at, _session.papyrus.get_actor_value(PLAYER, "DragonSouls")])
 	var papyrus := _session.papyrus
+	expect(_souls_at >= 0.0 and _souls_at < 40.0, "DragonSouls rises after the death (game: ~23 s): %.1f" % _souls_at)
 	var fus: Dictionary = {}
 	for row: Dictionary in papyrus.shout_info(PLAYER, SHOUT).get("words", []):
 		if int(row["word"]) == WORD_FUS:
@@ -237,6 +243,7 @@ var _airborne := false
 var _landings: Array[Dictionary] = []
 var _next_health := 0.0
 var _dead_at := 0.0
+var _souls_at := -1.0
 
 
 ## Every 5 s once Mirmulnir exists: stage 60's time, his height over the ground, distance from the marker, Health.

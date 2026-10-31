@@ -250,8 +250,8 @@ func _absorb(expected: float) -> void:
 	var faction := _quest_form("::MQKillDragonFaction_var")
 	await _until(func() -> bool: return _state() == "deadAndWaiting" or _state() == "deadDisintegrated", 3.0)
 	expect(_state() == "deadAndWaiting" or _state() == "deadDisintegrated", "DragonActorScript runs onDeath: '%s'" % _state())
-	expect(_entered.has(_ref) and _entered[_ref][0] == 0 and _entered[_ref][1] == "held",
-		"onDeath came only after the body rested (and the crash): %s" % [_entered.get(_ref)])
+	expect(_entered.has(_ref) and _entered[_ref][1] == "held",
+		"onDeath came only after the death clip was held (and the crash; the game: OnDeath ~2 s after the kill): %s" % [_entered.get(_ref)])
 	_feet = _ground(_node.global_position + Vector3(10.0, 0.0, 0.0))
 	await _frames(60)
 	print("dragon soul: player at ", _feet, " dragon at ", _node.global_position, " state ", _state())

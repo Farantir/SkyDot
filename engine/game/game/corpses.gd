@@ -437,6 +437,9 @@ func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
 	# The VM knows an NPC only where it was placed: tell it where the body lies (a crashed flyer is far
 	# from where it flew; scripts measure distances to it).
 	_papyrus.update_actor(ref, SkydotWorld.godot_to_skyrim(node.global_position))
+	# The creature has finished dying when the clip is done (the game's dragon: OnDeath ~2 s after the
+	# kill, stage 80), not when the body that then collapses has come to rest.
+	_papyrus.finish_dying(ref)
 	# The clip is only the intro: the body collapses and rests as other creatures' do, without a push.
 	_ragdoll_body(ref, node, Vector3.ZERO, false, true)
 
