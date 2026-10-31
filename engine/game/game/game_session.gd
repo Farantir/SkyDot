@@ -354,6 +354,7 @@ func _make_game_nodes() -> void:
 	papyrus.ref_moved.connect(placed.moved)
 	papyrus.ref_deleted.connect(placed.remove)
 	papyrus.destruction_model.connect(placed.swap_model)
+	placed.model_swapped.connect(sounds.watch)
 	papyrus.fire_weapon.connect(projectiles.fire)
 	papyrus.play_sound.connect(sounds.play)
 	papyrus.stop_sound.connect(sounds.stop)

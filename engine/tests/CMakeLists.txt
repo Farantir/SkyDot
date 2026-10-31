@@ -136,6 +136,7 @@ endfunction()
 skydot_gd_test(activation_prompt test_activation_prompt.gd)
 skydot_gd_test(place_transition test_place_transition.gd)
 skydot_gd_test(combat_head test_combat_head.gd)
+skydot_gd_test(placed test_placed.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,

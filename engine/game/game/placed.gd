@@ -14,7 +14,12 @@ extends Node3D
 
 ## A script-placed actor was built (a dead one lies down: Corpses.on_actor_arrived).
 signal actor_built(ref: int)
+## A destruction stage's model replaced the reference's node (sounds are watched anew).
+signal model_swapped(node: Node3D, ref: int)
 
+## Once-only guards that watchers set on a node (sounds.gd, script_bridge.gd, combat.gd,
+## npc_shouts.gd). A swapped-in model must not inherit them or it is never watched.
+const WATCH_GUARDS := ["skydot_sounds", "skydot_notifies", "skydot_blows", "skydot_breath_events"]
 const EXPLOSION_EMIT_SECONDS := 1.5
 const EXPLOSION_LIFE_SECONDS := 5.0
 
@@ -174,6 +179,13 @@ func remove(ref: int) -> void:
 		gone.queue_free()
 
 
+## The tags of `from` on `to`, except the watchers' once-only guards.
+static func copy_meta(from: Node, to: Node) -> void:
+	for key in from.get_meta_list():
+		if not key in WATCH_GUARDS:
+			to.set_meta(key, from.get_meta(key))
+
+
 ## A destruction stage's model replaces the reference's (path "": the base's
 ## own comes back). The node keeps its place, tags and activation bounds.
 func swap_model(ref: int, model_path: String, stage: int) -> void:
@@ -190,10 +202,10 @@ func swap_model(ref: int, model_path: String, stage: int) -> void:
 		return
 	fresh.transform = old.transform
 	fresh.visible = old.visible
-	for key in old.get_meta_list():
-		fresh.set_meta(key, old.get_meta(key))
+	copy_meta(old, fresh)
 	var parent := old.get_parent()
 	parent.add_child(fresh)
 	_world.tag_runtime_ref(ref, old.get_meta("skydot_cell", 0), fresh)
+	model_swapped.emit(fresh, ref)
 	print("0x%08X model swapped to stage %d: %s" % [ref, stage, path])
 	old.queue_free()
