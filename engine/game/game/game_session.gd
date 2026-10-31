@@ -922,7 +922,7 @@ func _on_push_actor(source: int, target: int, force: float) -> void:
 
 
 ## The player is shoved away from `source` (no ragdoll, no lost control): a velocity along source to
-## player with Corpses' speed per unit of force and lift, which the walk's acceleration takes out again.
+## player with Corpses' player speed per unit of force and lift, which the walk's acceleration takes out again.
 func _push_player(source: int, force: float) -> void:
 	var node := world.find_ref_node(source) as Node3D
 	var away := Vector3.ZERO if node == null else _feet - node.global_position
@@ -930,7 +930,7 @@ func _push_player(source: int, force: float) -> void:
 	if away.length() < 0.001:
 		away = -_viewpoint.global_transform.basis.z
 		away.y = 0.0
-	var speed := (away.normalized() + Vector3.UP * Corpses.PUSH_LIFT).normalized() * force * Corpses.PUSH_SPEED_PER_FORCE
+	var speed := (away.normalized() + Vector3.UP * Corpses.PLAYER_PUSH_LIFT).normalized() * force * Corpses.PLAYER_PUSH_SPEED_PER_FORCE
 	var body: Object = _player.get("player") if _player != null else null
 	if body == null or not body.has_method("impulse"):
 		print("push: the player is pushed by 0x%08X (force %s): no body to push" % [source, force])

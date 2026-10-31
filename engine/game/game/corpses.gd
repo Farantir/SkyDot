@@ -91,11 +91,19 @@ const MAX_SECONDS := 5.0
 ## Placeholders: damping of every body and the friction on the floor.
 const BONE_DAMPING := 0.5
 const BONE_FRICTION := 1.0
-## Placeholders: a push throws every body of the ragdoll at this many m/s per unit of its Papyrus force
-## (PushActorAway's aiKnockbackForce, 15 for Unrelenting Force: 6 m/s), with this share of lift. The force's
-## unit in Skyrim's Havok is unknown.
-const PUSH_SPEED_PER_FORCE := 0.4
-const PUSH_LIFT := 0.35
+## Measured in game (GAME-VALUES-PLAN.md; Unrelenting Force word 3 on a human at 400 units, PushForce 15 from
+## voicepusheffectscript on VoiceUnrelentingForceEffect03; words 1 and 2 have no push effect, only the stagger
+## archetype): thrown ~550 units, 3.6 m/s horizontal at first, rising ~2 m in 0.7 s, down at ~1.6 s. A push gives
+## every body of the ragdoll `force` x PUSH_SPEED_PER_FORCE m/s along the way from the source and `force` x
+## PUSH_LIFT_PER_FORCE m/s up.
+const PUSH_SPEED_PER_FORCE := 0.24
+const PUSH_LIFT_PER_FORCE := 0.43
+## Metres a knocked-down actor's ragdoll starts above the floor.
+const KNOCK_LIFT := 0.25
+## The player's own shove keeps the earlier placeholder (not measured): this many m/s per unit of force, with this
+## share of lift.
+const PLAYER_PUSH_SPEED_PER_FORCE := 0.4
+const PLAYER_PUSH_LIFT := 0.35
 ## Placeholder (the plan's guess): a knocked-down actor gets up after this long, or once it rests,
 ## but not before KNOCK_MIN_SECONDS.
 const GET_UP_SECONDS := 2.0
@@ -226,8 +234,12 @@ func knock_down(ref: int, source: int, force: float) -> bool:
 	if away.length() < 0.001:
 		away = -node.global_transform.basis.z  # on top of it: along where it looks
 	away = away.normalized()
-	var speed := (away + Vector3.UP * PUSH_LIFT).normalized() * force * PUSH_SPEED_PER_FORCE
+	var speed := (away * PUSH_SPEED_PER_FORCE + Vector3.UP * PUSH_LIFT_PER_FORCE) * force
+	# The ragdoll's legs start in the floor (its capsules are sized by eye) and the floor's friction would hold
+	# them while the upper body flies: it starts a little above it. Getting up puts the actor back on the ground.
+	node.global_position += Vector3.UP * KNOCK_LIFT
 	if not _lay_down(ref, speed, true):
+		node.global_position -= Vector3.UP * KNOCK_LIFT
 		return false
 	if ai != null:
 		ai.hold(ref, GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
