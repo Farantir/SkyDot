@@ -2,6 +2,7 @@
 #include "vm/triggers.hpp"
 
 #include <cmath>
+#include <vector>
 
 namespace skydot::vm {
 
@@ -57,6 +58,8 @@ void Triggers::move_actor(std::uint32_t actor, const Vec3& position,
                           const std::function<bool(std::uint32_t)>& notices,
                           const std::function<void(std::uint32_t, bool)>& crossed) {
     actors_[actor] = position;
+    // The callbacks may forget triggers, so they run after the walk over the map.
+    std::vector<std::pair<std::uint32_t, bool>> crossings;
     for (auto& [ref, t] : triggers_) {
         const bool in = t.contains(position);
         const bool was = t.inside.contains(actor);
@@ -72,7 +75,12 @@ void Triggers::move_actor(std::uint32_t actor, const Vec3& position,
         } else {
             t.inside.erase(actor);
         }
-        crossed(ref, in);
+        crossings.emplace_back(ref, in);
+    }
+    for (const auto& [ref, in] : crossings) {
+        if (triggers_.contains(ref)) {
+            crossed(ref, in);
+        }
     }
 }
 

@@ -249,3 +249,21 @@ TEST_CASE("id ranges: placed references stay in their range and saves refuse oth
     }
     CHECK_FALSE(QuestStates::load(save::ByteReader(bytes), bad));
 }
+
+TEST_CASE("a crossing callback may forget triggers, including the one it was called for", "[triggers]") {
+    Triggers triggers;
+    for (std::uint32_t ref : {7u, 8u, 9u}) {
+        triggers.set_primitive(ref, box_at({0, 0, 0}, {10, 10, 10}));
+    }
+    std::vector<std::uint32_t> seen;
+    triggers.move_actor(0x14, {0, 0, 0}, [](std::uint32_t) { return true; },
+                        [&](std::uint32_t trigger, bool) {
+                            seen.push_back(trigger);
+                            triggers.forget(trigger);
+                            triggers.forget(8); // also a later one
+                        });
+    CHECK(seen == std::vector<std::uint32_t>{7, 9});
+    CHECK_FALSE(triggers.has(7));
+    CHECK_FALSE(triggers.has(8));
+    CHECK_FALSE(triggers.has(9));
+}
