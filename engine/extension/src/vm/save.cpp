@@ -706,6 +706,9 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         if (!r.u32(ref) || !r.f64(state.damage) || !r.u32(stage) || !r.u8(destroyed)) {
             return fail("truncated DEST section");
         }
+        if (stage > 0x7FFFFFFFU) { // a negative stage would index the model list backwards
+            return fail("a destruction stage in the DEST section is negative");
+        }
         state.stage = static_cast<std::int32_t>(stage);
         state.destroyed = destroyed != 0;
         out.destruction.set(ref, state);

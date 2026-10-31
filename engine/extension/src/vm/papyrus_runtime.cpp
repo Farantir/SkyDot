@@ -263,6 +263,7 @@ void SkydotPapyrus::damage_object(std::uint32_t ref, double amount) {
     }
     state.damage = health > 0.0 ? std::min(state.damage + amount, health) : state.damage + amount;
     const double remaining = health > 0.0 ? (health - state.damage) * 100.0 / health : 0.0;
+    state.stage = std::clamp(state.stage, std::int32_t{0}, stage_count); // a stage from a save may lie outside the model
     std::int32_t stage = state.stage;
     for (std::int32_t i = 0; i < stage_count; ++i) {
         if (remaining <= static_cast<double>(stages->Get(static_cast<flatbuffers::uoffset_t>(i))->health_percent())) {

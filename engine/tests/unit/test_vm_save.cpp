@@ -729,6 +729,15 @@ TEST_CASE("placed references and destruction are part of the VM save", "[vm][sav
     CHECK_FALSE(c.load(build(sections), error));
 }
 
+TEST_CASE("a negative saved destruction stage is refused", "[vm][save][placed]") {
+    skydot::vm::Vm a;
+    a.destruction().set(0x9B0EC, {.damage = 10.0, .stage = -3, .destroyed = false});
+    skydot::vm::Vm b;
+    std::string error;
+    CHECK_FALSE(b.load(a.save(), error));
+    CHECK(b.destruction().states().empty());
+}
+
 TEST_CASE("detaching a reference drops its scripts, timers, threads, inventory and animation state", "[vm][detach]") {
     SaverRig a;
     auto* other = a.vm().attach(0x20, "saver");
