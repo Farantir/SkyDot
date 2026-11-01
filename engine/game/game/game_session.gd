@@ -93,7 +93,7 @@ signal items_changed
 signal weapon_state_changed(state: int, clip: String)
 ## The player's attack began (Combat.attack_started).
 signal attack_started(clip: String, power: bool)
-## A hit landed: the target, apply_hit's result and the point (Combat.hit_landed).
+## A hit landed: the target, AttackRules.hit's result and the point (Combat.hit_landed).
 signal hit_landed(target: int, result: Dictionary, point: Vector3)
 ## A spell's effects landed on `target` (Magic.spell_landed).
 signal spell_landed(hand: int, spell: int, target: int, point: Vector3, hostile: bool)
@@ -314,7 +314,7 @@ func _make_game_nodes() -> void:
 	speech.line_ended.connect(_on_speech_ended)
 	attack_rules = attack_rules_script.new(AttackData.new(papyrus, world))
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
-		func() -> Vector3: return _feet, actors)
+		func() -> Vector3: return _feet, actors, attack_rules)
 	combat.projectiles = projectiles
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
@@ -1099,7 +1099,7 @@ func kill_actor(ref: int) -> int:
 	var weapon := combat.player_weapon()
 	var extra: int = papyrus.equipment(SkydotPapyrus.PLAYER_REF)["right_extra"]
 	while hits < 2000 and not papyrus.is_actor_dead(ref):
-		var result := papyrus.apply_hit(SkydotPapyrus.PLAYER_REF, ref, weapon, extra, "attackStart", 0)
+		var result := attack_rules.hit(SkydotPapyrus.PLAYER_REF, ref, weapon, extra, "attackStart", 0)
 		if result.has("error"):
 			break
 		hits += 1

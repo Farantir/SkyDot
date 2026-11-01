@@ -20,7 +20,7 @@
 # fInitialPowerAttackDelay becomes a power attack. At the clip's `HitFrame`
 # the hit test runs: the nearest living actor within weapon reach x
 # fCombatDistance (plus its radius) of the viewpoint, inside the strike angle
-# of the race's attack, in line of sight, takes `SkydotPapyrus.apply_hit`.
+# of the race's attack, in line of sight, takes `AttackRules.hit`.
 # Then the impact: the weapon's impact data set, the target race's material,
 # the sound and the model of that impact.
 #
@@ -43,7 +43,7 @@ signal weapon_state_changed(state: int, clip: String)
 ## The player's attack began: its clip and whether it is a power attack.
 ## `current_attack()` says the rest (left hand, playback speed, hit time).
 signal attack_started(clip: String, power: bool)
-## `target` took a hit (the dictionary `SkydotPapyrus.apply_hit` returns) at
+## `target` took a hit (the dictionary `AttackRules.hit` returns) at
 ## `point` (engine space).
 signal hit_landed(target: int, result: Dictionary, point: Vector3)
 ## An actor's attack began (`npc_attack`): the attacker, the third-person clip
@@ -63,25 +63,9 @@ const FIRST_PERSON_CLIPS := "meshes/actors/character/_1stperson/animations/"
 const THIRD_PERSON_CLIPS := "meshes/actors/character/animations/"
 const PROJECTS := "meshes/animationdata/"
 
-## Game settings and their fallbacks (the values of the base game's data).
-const GMST_POWER_DELAY := "fInitialPowerAttackDelay"
-const POWER_DELAY_FALLBACK := 0.3
-const GMST_ATTACK_BASE := "fStaminaAttackWeaponBase"
-const ATTACK_BASE_FALLBACK := 20.0
-const GMST_ATTACK_MULT := "fStaminaAttackWeaponMult"
-const ATTACK_MULT_FALLBACK := 1.0
-const GMST_POWER_PENALTY := "fPowerAttackStaminaPenalty"
-const POWER_PENALTY_FALLBACK := 2.0
-const GMST_COMBAT_DISTANCE := "fCombatDistance"
-const COMBAT_DISTANCE_FALLBACK := 141.0
-
 ## Placeholder: the hit time of a clip the project does not list, as a share
 ## of its length.
 const HIT_FRACTION_FALLBACK := 0.4
-## Placeholder: the strike angle (degrees, half the cone) when the race has no
-## attack of the event. The data's 50 and 35 (attackStart, power attacks).
-const STRIKE_ANGLE_LIGHT := 50.0
-const STRIKE_ANGLE_POWER := 35.0
 ## Placeholder: the player's body for NPC attacks (SkydotPlayer's defaults).
 const PLAYER_RADIUS := 0.3
 const PLAYER_HEIGHT := 1.83
@@ -175,11 +159,14 @@ var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, 
 ## The weapons on the third-person skeletons.
 var gear: ActorGear
 var actors: ActorRegistry
+## The rules of a hit (damage, power attack, reach, cone, stagger): the session's.
+var rules: AttackRules
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, sounds: Sounds,
-		pointer: Callable, feet: Callable, actor_registry: ActorRegistry) -> void:
+		pointer: Callable, feet: Callable, actor_registry: ActorRegistry, attack_rules: AttackRules = null) -> void:
 	actors = actor_registry
+	rules = attack_rules if attack_rules != null else AttackRules.new(AttackData.new(papyrus, world))
 	_world = world
 	_pack = pack
 	_papyrus = papyrus
@@ -262,7 +249,7 @@ func current_attack() -> Dictionary:
 
 ## The weapon's reach from the viewpoint in metres, without the target's radius.
 func reach_metres() -> float:
-	return _reach_metres(_weapon, _player_race())
+	return rules.reach(_weapon, _player_race())
 
 
 ## The equipment changed (or was loaded): the weapon in hand and the clip set
@@ -335,7 +322,7 @@ func attack(power := false, left := false) -> bool:
 		return false
 	if not _attack.is_empty() and _attack["time"] < _attack["window"]:
 		return false
-	if power and _papyrus.get_actor_value(PLAYER_REF, "Stamina") <= 0.0:
+	if power and not rules.can_power_attack(PLAYER_REF):
 		return false  # no Stamina, no power attack
 	var use_left := left or (not power and _left_next)
 	var stem := _clip_for(power, use_left)
@@ -347,18 +334,9 @@ func attack(power := false, left := false) -> bool:
 	if not power:
 		_left_next = not use_left
 	if power:
-		_papyrus.damage_actor_value(PLAYER_REF, "Stamina", _power_attack_cost())
+		rules.pay_power_attack(PLAYER_REF, _weapon_form)
 	attack_started.emit(stem, power)
 	return true
-
-
-## Stamina a power attack costs: (fStaminaAttackWeaponBase + the weapon's weight times
-## fStaminaAttackWeaponMult) times fPowerAttackStaminaPenalty. A normal attack costs none.
-func _power_attack_cost() -> float:
-	var weight := float(_papyrus.item_info(_weapon_form).get("weight", 0.0)) if _weapon_form != 0 else 0.0
-	return (_world.get_gmst_float(GMST_ATTACK_BASE, ATTACK_BASE_FALLBACK)
-		+ weight * _world.get_gmst_float(GMST_ATTACK_MULT, ATTACK_MULT_FALLBACK)) \
-		* _world.get_gmst_float(GMST_POWER_PENALTY, POWER_PENALTY_FALLBACK)
 
 
 ## Sweep a blade segment (VR: the weapon's base and tip, engine space) against
@@ -440,7 +418,7 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 ## its hands with the best arrows, it turns to the target and plays the bow's draw clip, and
 ## at the clip's release key (BOW_RELEASE_FRACTION of it without one) an arrow leaves through
 ## Projectiles with the AMMO's PROJ speed and gravity and fBowNPCSpreadAngle of spread. An
-## arrow that enters an actor's body calls apply_hit with the bow and the arrow. False without
+## arrow that enters an actor's body calls AttackRules.hit with the bow and the arrow. False without
 ## a bow, a built living actor or Projectiles.
 func npc_shoot(attacker: int, target := PLAYER_REF) -> bool:
 	var node := _world.find_ref_node(attacker) as Node3D
@@ -565,10 +543,7 @@ func _on_blow(event: String, attacker: int) -> void:
 	if kind == "":
 		return
 	var race := _race(int(_actor_plan(attacker).get("race", 0)))
-	var magnitude := 0.5
-	for entry: Dictionary in race.get("attacks", []):
-		if String(entry["event"]).to_lower().contains(kind):
-			magnitude = float(entry["stagger"])
+	var magnitude := rules.stagger(race, kind, 0.5)
 	var near := actors_within(attacker, node.global_position, AREA_BLOW_RADIUS_UNITS * SkydotWorld.unit_scale())
 	print("combat: 0x%X's %s blow (%s) staggers %d actors within %.1f m" % [attacker, kind, event, near.size(), AREA_BLOW_RADIUS_UNITS * SkydotWorld.unit_scale()])
 	for body in near:
@@ -811,7 +786,7 @@ func _step_state(delta: float) -> void:
 func _step_attack(delta: float) -> void:
 	if _held and not _held_fired and _state == State.DRAWN:
 		_held_time += delta
-		if _held_time >= _power_delay() and (_attack.is_empty() or _attack["time"] >= _attack["window"]):
+		if _held_time >= rules.power_delay() and (_attack.is_empty() or _attack["time"] >= _attack["window"]):
 			_held_fired = true
 			attack(true)
 	if _attack.is_empty():
@@ -974,8 +949,8 @@ func _npc_strike(data: Dictionary) -> void:
 ## over a nearer one when it is a candidate too.
 func _find_target(attacker: int, origin: Vector3, forward: Vector3, weapon: Dictionary, race: Dictionary,
 		event: String, power: bool, prefer := 0) -> Dictionary:
-	return find_in_cone(attacker, origin, forward, _reach_metres(weapon, race),
-		_strike_angle(race, event, power), prefer)
+	return find_in_cone(attacker, origin, forward, rules.reach(weapon, race),
+		rules.strike_angle(race, event, power), prefer)
 
 
 ## The nearest living actor but `attacker` whose body is within `reach` metres of `origin`
@@ -1097,7 +1072,7 @@ static func _segment_distance(a: Vector3, b: Vector3, candidate: Dictionary) -> 
 ## Apply the hit, tell the shells, and leave the impact.
 func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, point: Vector3,
 		attacker_race: Dictionary, weapon_info: Dictionary, ammo := 0) -> Dictionary:
-	var result := _papyrus.apply_hit(attacker, target, weapon, extra, event, flags, ammo)
+	var result := rules.hit(attacker, target, weapon, extra, event, flags, ammo)
 	if attacker == PLAYER_REF:
 		# Spending an enchantment's charge or a poison moves the weapon to a new unit (ItemExtra):
 		# the next hit has to name that one.
@@ -1233,27 +1208,6 @@ func _begin(state: int, stem: String, done: String) -> void:
 		_state_length = 0.0
 		_warn.once("noclip" + stem, "no first-person clip %s (%s)" % [stem, done])
 	weapon_state_changed.emit(state, stem)
-
-
-func _power_delay() -> float:
-	return _world.get_gmst_float(GMST_POWER_DELAY, POWER_DELAY_FALLBACK)
-
-
-func _reach_metres(weapon: Dictionary, race: Dictionary) -> float:
-	var units: float
-	if weapon.is_empty():
-		units = float(race.get("unarmed_reach", 96.0))  # the race's reach is in game units
-	else:
-		units = float(weapon["reach"]) * _world.get_gmst_float(GMST_COMBAT_DISTANCE, COMBAT_DISTANCE_FALLBACK)
-	return units * SkydotWorld.unit_scale()
-
-
-## Half the cone of the race's attack of `event`, degrees.
-func _strike_angle(race: Dictionary, event: String, power: bool) -> float:
-	for attack_data: Dictionary in race.get("attacks", []):
-		if String(attack_data["event"]).to_lower() == event.to_lower():
-			return float(attack_data["strike_angle"])
-	return STRIKE_ANGLE_POWER if power else STRIKE_ANGLE_LIGHT
 
 
 static func _prefix_of(type: int) -> String:
