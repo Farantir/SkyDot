@@ -32,6 +32,9 @@ class StubMagic extends Magic:
 	func hands_with_spells() -> Array[int]:
 		return [Magic.LEFT, Magic.RIGHT]
 
+	func hand_released(_hand: int) -> void:
+		pass
+
 	func hand_pressed(hand: int) -> void:
 		calls.append("hand_pressed %d" % hand)
 
@@ -62,6 +65,13 @@ class StubCombat extends Combat:
 
 	func attack_pressed() -> void:
 		calls.append("attack_pressed")
+
+	func block_pressed() -> bool:
+		calls.append("block_pressed")
+		return true
+
+	func block_released() -> void:
+		calls.append("block_released")
 
 	func attack(power := false, _left := false) -> bool:
 		calls.append("attack %s" % power)
@@ -120,6 +130,17 @@ func test_paralysed_attack_pressed_does_nothing() -> void:
 	_session.attack_pressed()
 	expect_eq(_combat.calls, [] as Array[String], "combat calls")
 	expect_eq(_magic.calls, [] as Array[String], "magic calls")
+
+
+func test_left_button_without_a_spell_blocks_and_paralysis_refuses() -> void:
+	_magic.left_spell = 0
+	_session.attack_left_pressed()
+	_session.attack_left_released()
+	expect_eq(_combat.calls, ["block_pressed", "block_released"] as Array[String], "block")
+	_combat.calls.clear()
+	_session.player_state.set_paralyzed(true)
+	_session.attack_left_pressed()
+	expect_eq(_combat.calls, [] as Array[String], "paralysed")
 
 
 func test_paralysed_attack_left_pressed_does_nothing() -> void:

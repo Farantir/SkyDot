@@ -116,7 +116,16 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
 
     resolve_owner(target);
     godot::Array armor;
-    if (const vm::Equipment* worn = items_.find(target)) {
+    bool target_unarmed = true;
+    const vm::Equipment* worn = items_.find(target);
+    std::uint32_t shield = 0;
+    if (worn != nullptr) {
+        target_unarmed = worn->right == 0;
+        if (worn->left != 0 && vm::is_shield(item_info_of(worn->left))) {
+            shield = worn->left;
+        }
+    }
+    if (worn != nullptr) {
         const auto add = [&](std::uint32_t form) {
             const vm::ItemInfo info = item_info_of(form);
             if (info.known && (info.category == vm::ItemCategory::armor || info.category == vm::ItemCategory::clothing)) {
@@ -126,14 +135,15 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
                 piece["armor_type"] = static_cast<std::int64_t>(info.armor_type);
                 piece["quality"] = static_cast<std::int64_t>(extra != nullptr ? vm::temper_quality(extra->health) : 0);
                 piece["chest"] = (info.biped_slots & (1U << 2)) != 0;
+                piece["shield"] = form == shield;
                 armor.push_back(piece);
             }
         };
         for (const std::uint32_t form : worn->worn) {
             add(form);
         }
-        if (worn->left != 0 && vm::is_shield(item_info_of(worn->left))) {
-            add(worn->left);
+        if (shield != 0) {
+            add(shield);
         }
     }
 
@@ -153,6 +163,10 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
     out["light_armor_skill"] = actors_.get(target, vm::av::k_first_skill + 6);  // LightArmor 12
     out["heavy_armor_skill"] = actors_.get(target, vm::av::k_first_skill + 5);  // HeavyArmor 11
     out["armor"] = armor;
+    out["power"] = power;
+    out["blocked"] = (flags & HIT_BLOCKED) != 0;
+    out["block_skill"] = actors_.get(target, vm::av::k_first_skill + 3);  // Block 9
+    out["target_unarmed"] = target_unarmed;
     return out;
 }
 
@@ -183,8 +197,8 @@ Dictionary SkydotPapyrus::land_hit(std::int64_t attacker_id, std::int64_t target
         actors_.set_killer(target, attacker);
     }
 
-    char line[320];
-    std::snprintf(line, sizeof line,
+    char line[400];
+    int length = std::snprintf(line, sizeof line,
                   "combat: 0x%X hits 0x%X with 0x%X (%s): base %.3f x skill %.3f x attack %.3f x diff %.3f = %.3f, "
                   "armor %.1f%% -> %.3f (health %.2f -> %.2f)",
                   attacker, target, weapon, event.c_str(), static_cast<double>(breakdown.get("base", 0.0)),
@@ -192,6 +206,10 @@ Dictionary SkydotPapyrus::land_hit(std::int64_t attacker_id, std::int64_t target
                   static_cast<double>(breakdown.get("difficulty", 1.0)),
                   static_cast<double>(breakdown.get("weapon_damage", 0.0)),
                   static_cast<double>(breakdown.get("armor_percent", 0.0)), damage, before, after);
+    const double blocked_percent = breakdown.get("blocked_percent", 0.0);
+    if (blocked_percent > 0.0 && length > 0 && static_cast<std::size_t>(length) < sizeof line) {
+        std::snprintf(line + length, sizeof line - static_cast<std::size_t>(length), ", block %.1f%%", blocked_percent);
+    }
     godot::UtilityFunctions::print(String::utf8(line));
     if (target == k_player_ref) {
         combat_.set_last_damager(attacker);

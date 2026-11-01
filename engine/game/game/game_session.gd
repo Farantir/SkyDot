@@ -851,15 +851,19 @@ func attack_released() -> void:
 
 
 ## The left hand's attack button (right mouse, left trigger) went down or up: a spell in
-## the left hand is cast (it is reserved for blocking otherwise).
+## the left hand is cast; otherwise it blocks (Combat.block_pressed, with a shield or an empty left hand).
 func attack_left_pressed() -> void:
-	if player_state.can(PlayerState.CAST) and magic.spell_in(Magic.LEFT) != 0:
-		player_state.acted(PlayerState.CAST)
-		magic.hand_pressed(Magic.LEFT)
+	if magic.spell_in(Magic.LEFT) != 0:
+		if player_state.can(PlayerState.CAST):
+			player_state.acted(PlayerState.CAST)
+			magic.hand_pressed(Magic.LEFT)
+	elif player_state.can(PlayerState.ATTACK):
+		combat.block_pressed()
 
 
 func attack_left_released() -> void:
 	magic.hand_released(Magic.LEFT)
+	combat.block_released()
 
 
 ## The power key: cast the power in the power slot (Magic.cast_power). {ok, reason}.

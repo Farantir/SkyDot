@@ -13,10 +13,11 @@
 #   base   = weapon + tempering + ammo           weapon = base x skill x attack x difficulty x sneak
 #   skill  = player with a weapon skill: lerp(1, fDamagePCSkillMax, skill / 100); otherwise 1
 #   armor  = min(fMaxArmorRating, sum(ceil(rating x armor skill factor)) x fArmorScalingFactor
-#            + fArmorBaseFactor x 100 x pieces)     final = weapon x (1 - armor / 100)
+#            + fArmorBaseFactor x 100 x pieces)     final = weapon x (1 - armor / 100) x (1 - blocked / 100)
+#   blocked: see `blocked_percent` (UESP Skyrim:Block)
 #
 # A script mod extends this class and overrides a rule method (`damage` or one of its parts
-# `skill_factor`, `armor_percent`, `sneak_mult`, `difficulty`; `can_power_attack`, `pays_stamina`,
+# `skill_factor`, `armor_percent`, `blocked_percent`, `sneak_mult`, `difficulty`; `block_stamina`, `blocked_stagger`; `can_power_attack`, `pays_stamina`,
 # `power_attack_cost`, `power_delay`, `reach`, `strike_angle`, `stagger`), or replaces the class
 # whole (GameSession.attack_rules_script). It holds no state: nothing to reset.
 class_name AttackRules
@@ -29,7 +30,18 @@ const SETTINGS := {
 	"fDamagePCSkillMax": 1.5, "fArmorScalingFactor": 0.12, "fMaxArmorRating": 80.0,
 	"fArmorBaseFactor": 0.03, "fArmorRatingBase": 1.0, "fArmorRatingPCMax": 1.4,
 	"fArmorRatingMax": 2.5, "fClothingArmorScale": 1.0,
+	# Blocking (UESP Skyrim:Block). fBlockAmountHandToHandMult is not in Skyrim.esm: ESTIMATE, 1.
+	"fShieldBaseFactor": 0.45, "fShieldScalingFactor": 0.2, "fBlockWeaponBase": 0.3,
+	"fBlockWeaponScaling": 0.2, "fBlockAmountWeaponMult": 1.0, "fBlockAmountHandToHandMult": 1.0,
+	"fBlockPowerAttackMult": 0.66, "fStaminaBlockBase": 0.0, "fStaminaBlockDmgMult": 0.25,
 }
+const HIT_BLOCKED := 8
+## UESP's measured cap of the blocked share, percent (the esm's fBlockMax is 0.7: not used).
+const BLOCK_CAP := 85.0
+## UESP's weight of the Block skill in the blocked share (the esm's fBlockSkillMult, 2.0, is not used).
+const BLOCK_SKILL_FACTOR := 1.5
+## ESTIMATE: the stagger magnitude of a blocked power attack on the blocker (no source for it).
+const BLOCKED_POWER_STAGGER := 0.25
 const DAMAGE_PC_SKILL_MIN := 1.0
 const ARMOR_CLOTHING := 2
 const ARMOR_HEAVY := 1
@@ -60,7 +72,7 @@ func _init(data: AttackData = null) -> void:
 ## attack `event` ("" the standing light or power attack by `flags`' HIT_POWER) and `ammo` (an
 ## arrow's own damage adds to the bow's). {error} if refused; else attacker, target, weapon, ammo,
 ## event, base, skill_value, skill, attack, difficulty, sneak, weapon_damage, armor_rating,
-## armor_percent, damage, then health_before, health_after, killed, poison, enchantment, charge,
+## armor_percent, damage_before_block, blocked_percent, damage, power, then health_before, health_after, killed, poison, enchantment, charge,
 ## charge_max.
 func hit(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, ammo := 0) -> Dictionary:
 	var facts := _data.hit_facts(attacker, target, weapon, extra, event, flags, ammo)
@@ -72,6 +84,11 @@ func hit(attacker: int, target: int, weapon: int, extra: int, event: String, fla
 	out["weapon"] = weapon
 	out["ammo"] = ammo
 	out["event"] = String(facts.get("event", event))
+	out["power"] = (flags & HIT_POWER) != 0
+	if float(out["blocked_percent"]) > 0.0:
+		_data.spend_stamina(target, block_stamina(out, facts.get("settings", {})))
+	else:
+		flags &= ~HIT_BLOCKED  # a block that stopped nothing (a weapon against an arrow) is no block
 	out["skill_value"] = float(facts.get("weapon_skill", 0.0))
 	out.merge(_data.land_hit(attacker, target, weapon, extra, float(out["damage"]), String(out["event"]), flags, out))
 	return out
@@ -79,7 +96,7 @@ func hit(attacker: int, target: int, weapon: int, extra: int, event: String, fla
 
 ## The breakdown of the damage of a hit from its `facts` (SkydotPapyrus.hit_facts and `settings`):
 ## {base, skill, attack, difficulty, sneak, weapon_damage (before armor), armor_rating,
-## armor_percent, damage}.
+## armor_percent, damage_before_block, blocked_percent, damage}.
 func damage(facts: Dictionary) -> Dictionary:
 	var settings: Dictionary = facts.get("settings", {})
 	var base := float(facts.get("weapon_damage", 0.0)) \
@@ -90,9 +107,58 @@ func damage(facts: Dictionary) -> Dictionary:
 	var sneak := sneak_mult(facts)
 	var weapon := base * skill * attack * diff * sneak
 	var armor := armor_percent(facts, settings)
+	var arriving := weapon * (1.0 - float(armor["percent"]) / 100.0)
+	var blocked := blocked_percent(facts, settings)
 	return {"base": base, "skill": skill, "attack": attack, "difficulty": diff, "sneak": sneak,
 		"weapon_damage": weapon, "armor_rating": armor["rating"], "armor_percent": armor["percent"],
-		"damage": weapon * (1.0 - float(armor["percent"]) / 100.0)}
+		"damage_before_block": arriving, "blocked_percent": blocked, "damage": arriving * (1.0 - blocked / 100.0)}
+
+
+## The share of the damage a block stops, percent (0 if the hit was not blocked): UESP Skyrim:Block.
+## A shield: fShieldBaseFactor x 100 + fShieldScalingFactor x the shield's own armor rating x
+## (1 + Block x BLOCK_SKILL_FACTOR / 100). Without one (a weapon or fists blocking): (fBlockWeaponBase x 100
+## + fBlockWeaponScaling x the attacker's weapon base damage x the same skill term) x fBlockAmountWeaponMult,
+## times fBlockAmountHandToHandMult for fists; an attacker with no weapon adds 0 damage, and an arrow is
+## not stopped by a weapon. A power attack scales it by fBlockPowerAttackMult. Capped at BLOCK_CAP.
+func blocked_percent(facts: Dictionary, settings: Dictionary) -> float:
+	if not bool(facts.get("blocked", false)):
+		return 0.0
+	var skill_term := 1.0 + float(facts.get("block_skill", 0.0)) * BLOCK_SKILL_FACTOR / 100.0
+	var percent := 0.0
+	var shield_rating := -1.0
+	for piece: Dictionary in facts.get("armor", []):
+		if bool(piece.get("shield", false)):
+			shield_rating = float(piece["rating"])
+	if shield_rating >= 0.0:
+		percent = _setting(settings, "fShieldBaseFactor") * 100.0 \
+			+ _setting(settings, "fShieldScalingFactor") * shield_rating * skill_term
+	else:
+		if int(facts.get("ammo", 0)) != 0:
+			return 0.0
+		var attacker_damage := float(facts.get("weapon_damage", 0.0)) if int(facts.get("weapon", 0)) != 0 else 0.0
+		percent = (_setting(settings, "fBlockWeaponBase") * 100.0
+			+ _setting(settings, "fBlockWeaponScaling") * attacker_damage * skill_term) \
+			* _setting(settings, "fBlockAmountWeaponMult")
+		if bool(facts.get("target_unarmed", false)):
+			percent *= _setting(settings, "fBlockAmountHandToHandMult")
+	if bool(facts.get("power", false)):
+		percent *= _setting(settings, "fBlockPowerAttackMult")
+	return minf(percent, BLOCK_CAP)
+
+
+## Stamina the blocker pays for the hit it stopped: fStaminaBlockBase + fStaminaBlockDmgMult x the
+## damage that arrived (after armor, before the block). ESTIMATE: which damage the game takes is assumed.
+func block_stamina(result: Dictionary, settings: Dictionary) -> float:
+	return _setting(settings, "fStaminaBlockBase") \
+		+ _setting(settings, "fStaminaBlockDmgMult") * float(result.get("damage_before_block", 0.0))
+
+
+## The stagger magnitude a blocked hit gives the blocker (0 none). ESTIMATE: a blocked light attack does
+## not stagger, a blocked power attack does (BLOCKED_POWER_STAGGER).
+func blocked_stagger(result: Dictionary) -> float:
+	if float(result.get("blocked_percent", 0.0)) > 0.0 and bool(result.get("power", false)):
+		return BLOCKED_POWER_STAGGER
+	return 0.0
 
 
 ## The player with a weapon skill: lerp(1, fDamagePCSkillMax, skill / 100); everyone else 1.

@@ -68,6 +68,8 @@ const PROJECTS := "meshes/animationdata/"
 const HIT_FRACTION_FALLBACK := 0.4
 ## Placeholder: the player's body for NPC attacks (SkydotPlayer's defaults).
 const PLAYER_RADIUS := 0.3
+const GMST_HIT_CONE := "fCombatHitConeAngle"
+const HIT_CONE_FALLBACK := 35.0
 const PLAYER_HEIGHT := 1.83
 ## An NPC's eyes in a share of its height.
 const HEAD_FRACTION := 0.93
@@ -135,6 +137,7 @@ var _weapon_form := 0
 var _weapon_extra := 0
 var _prefix := "h2h_"
 var _left_next := false
+var _blocking := false  # the block button is held (is_blocking says whether it takes effect)
 var _attack := {}  # the attack under way (current_attack)
 var _held := false  # the attack button is down
 var _held_time := 0.0
@@ -213,6 +216,7 @@ func on_place_left() -> void:
 	_held_time = 0.0
 	_held_fired = false
 	_left_next = false
+	_blocking = false
 
 
 func weapon_state() -> int:
@@ -308,6 +312,45 @@ func attack_released() -> void:
 	_held = false
 	if not _held_fired:
 		attack(false)
+
+
+## The block button went down: the player blocks while it is held, the weapon is drawn and he is not
+## attacking, if his left hand holds a shield or nothing (a weapon in it is no block; a bow, a two-hander,
+## a one-hander and fists all block). False if he cannot.
+func block_pressed() -> bool:
+	if _state != State.DRAWN or not _left_hand_blocks():
+		return false
+	_blocking = true
+	return true
+
+
+func block_released() -> void:
+	_blocking = false
+
+
+## Whether the player's block is up now.
+func is_blocking() -> bool:
+	return _blocking and _state == State.DRAWN and _attack.is_empty()
+
+
+func _left_hand_blocks() -> bool:
+	var left := int(_papyrus.equipment(PLAYER_REF).get("left", 0))
+	# Only a shield is armor in the left hand; a weapon, a torch or a spell is not.
+	return left == 0 or String(_papyrus.item_info(left).get("category", "")) == "armor"
+
+
+## Whether `attacker` stands within fCombatHitConeAngle of where the player faces (flat on the ground).
+func _in_front_of_player(attacker: int, fallback: Vector3) -> bool:
+	var pointer: Node3D = _pointer.call()
+	var node := _world.find_ref_node(attacker) as Node3D
+	var from := (node.global_position if node != null else fallback) - pointer.global_position
+	var forward := -pointer.global_transform.basis.z
+	from.y = 0.0
+	forward.y = 0.0
+	if from.length() < 0.001 or forward.length() < 0.001:
+		return true
+	var cone := _world.get_gmst_float(GMST_HIT_CONE, HIT_CONE_FALLBACK)
+	return rad_to_deg(forward.angle_to(from)) <= cone
 
 
 ## Begin an attack now: a power attack, or the next light one (right and left
@@ -927,7 +970,7 @@ func _npc_strike(data: Dictionary) -> void:
 	if hit.is_empty():
 		return
 	if String(data["event"]).to_lower().contains("bite") and float(data["stagger"]) > 0.0:
-		stagger_wanted.emit(attacker, hit["ref"], float(data["stagger"]))
+		stagger_wanted.emit(attacker, hit["ref"], rules.stagger(race, "bite", float(data["stagger"])))
 	_deliver(attacker, hit["ref"], data["weapon"], data["extra"], event,
 		SkydotPapyrus.HIT_POWER if power else 0, hit["point"], race, data["info"])
 
@@ -1060,6 +1103,8 @@ static func _segment_distance(a: Vector3, b: Vector3, candidate: Dictionary) -> 
 ## Apply the hit, tell the shells, and leave the impact.
 func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, point: Vector3,
 		attacker_race: Dictionary, weapon_info: Dictionary, ammo := 0) -> Dictionary:
+	if target == PLAYER_REF and attacker != PLAYER_REF and is_blocking() and _in_front_of_player(attacker, point):
+		flags |= SkydotPapyrus.HIT_BLOCKED
 	var result := rules.hit(attacker, target, weapon, extra, event, flags, ammo)
 	if attacker == PLAYER_REF:
 		# Spending an enchantment's charge or a poison moves the weapon to a new unit (ItemExtra):
@@ -1071,6 +1116,9 @@ func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String
 		return result
 	_impact(weapon_info, attacker_race, target, point)
 	hit_landed.emit(target, result, point)
+	var shove := rules.blocked_stagger(result)
+	if shove > 0.0:
+		stagger_wanted.emit(attacker, target, shove)
 	return result
 
 

@@ -201,6 +201,88 @@ func test_power_delay() -> void:
 	_near(rules.power_delay(), 0.5, "GMST")
 
 
+# ---- blocking
+
+## A blocked hit of a sword (damage 10) on a target with Block `skill`; `shield` a rating (-1: none).
+func _blocked(skill: float, shield := -1.0, sword := SWORD) -> Dictionary:
+	var armor: Array = []
+	if shield >= 0.0:
+		armor.append({"rating": shield, "armor_type": 1, "quality": 0, "chest": false, "shield": true})
+	return {"weapon_damage": 10.0, "weapon": sword, "attack_mult": 1.0, "armor": armor, "blocked": true,
+		"block_skill": skill, "target_is_player": true}
+
+
+func test_not_blocked_stops_nothing() -> void:
+	var facts := _blocked(15.0, 20.0)
+	facts["blocked"] = false
+	var r := rules.damage(facts)
+	_near(r["blocked_percent"], 0.0, "no block")
+	_near(r["damage"], r["damage_before_block"], "no change")
+
+
+func test_shield_block_formula() -> void:
+	var r := rules.damage(_blocked(15.0, 20.0))
+	_near(r["blocked_percent"], 45.0 + 0.2 * 20.0 * 1.225, "49.9 %")
+	var weapon := 10.0
+	var armor_percent: float = r["armor_percent"]
+	var arriving := weapon * (1.0 - armor_percent / 100.0)
+	_near(r["damage_before_block"], arriving, "arriving")
+	_near(r["damage"], arriving * (1.0 - r["blocked_percent"] / 100.0), "final")
+
+
+func test_weapon_block_against_a_weapon_and_a_creature() -> void:
+	var r := rules.damage(_blocked(0.0))
+	_near(r["blocked_percent"], 30.0 + 0.2 * 10.0, "weapon of damage 10")
+	var creature := _blocked(40.0, -1.0, 0)
+	_near(rules.damage(creature)["blocked_percent"], 30.0, "a creature adds no damage")
+	creature["target_unarmed"] = true
+	data.gmsts.clear()
+	_near(rules.damage(creature)["blocked_percent"], 30.0, "fists, mult 1")
+	var settings := {"fBlockAmountHandToHandMult": 0.5}
+	_near(rules.blocked_percent(creature, settings), 15.0, "fists scale")
+
+
+func test_power_attack_blocks_less_and_the_cap_is_85() -> void:
+	var facts := _blocked(0.0)
+	facts["power"] = true
+	_near(rules.damage(facts)["blocked_percent"], 32.0 * 0.66, "power x 0.66")
+	var strong := _blocked(100.0, 100.0)
+	_near(rules.damage(strong)["blocked_percent"], 85.0, "capped")
+
+
+func test_an_arrow_is_stopped_by_a_shield_only() -> void:
+	var weapon := _blocked(15.0)
+	weapon["ammo"] = 0x1234
+	_near(rules.damage(weapon)["blocked_percent"], 0.0, "weapon block")
+	var shield := _blocked(15.0, 20.0)
+	shield["ammo"] = 0x1234
+	_near(rules.damage(shield)["blocked_percent"], 45.0 + 0.2 * 20.0 * 1.225, "shield block")
+
+
+func test_a_block_costs_the_blocker_stamina() -> void:
+	data.facts = _blocked(0.0, 20.0)
+	var r := rules.hit(NPC, P, SWORD, 0, "", 8)
+	expect_eq(data.spent.size(), 1, "one payment")
+	expect_eq(data.spent[0][0], P, "the blocker pays")
+	_near(data.spent[0][1], 0.25 * r["damage_before_block"], "fStaminaBlockDmgMult x arriving")
+	expect_eq(int(data.landed[0][6]) & 8, 8, "OnHit flagged blocked")
+
+
+func test_a_block_that_stops_nothing_is_no_block() -> void:
+	var arrow := _blocked(0.0)
+	arrow["ammo"] = 1
+	data.facts = arrow
+	rules.hit(NPC, P, SWORD, 0, "", 8, 1)
+	expect(data.spent.is_empty(), "no stamina")
+	expect_eq(int(data.landed[0][6]) & 8, 0, "not flagged blocked")
+
+
+func test_blocked_stagger_is_for_power_attacks() -> void:
+	_near(rules.blocked_stagger({"blocked_percent": 30.0, "power": true}), AttackRules.BLOCKED_POWER_STAGGER, "power")
+	_near(rules.blocked_stagger({"blocked_percent": 30.0, "power": false}), 0.0, "light")
+	_near(rules.blocked_stagger({"blocked_percent": 0.0, "power": true}), 0.0, "not blocked")
+
+
 # ---- reach, cone, stagger
 
 func test_reach_in_metres() -> void:
