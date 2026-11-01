@@ -29,3 +29,4 @@ engine/tests/smoke/.godot/
 # Converter output: built locally, never committed.
 *.pck
 *.blob
+!engine/extension/src/build/
