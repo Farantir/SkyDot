@@ -68,6 +68,16 @@ class StubCombat extends Combat:
 		return true
 
 
+class StubBridge extends ScriptBridge:
+	var found := true
+
+	func _init() -> void:
+		super(Fakes.world(), Fakes.papyrus(), Node3D.new(), Camera3D.new(), GameConfig.new(), null, null, null, null)
+
+	func activate_in_view(_force: bool, _pointer: Node3D) -> bool:
+		return found
+
+
 var _session: GameSession
 var _magic: StubMagic
 var _combat: StubCombat
@@ -149,6 +159,30 @@ func test_dead_player_is_refused() -> void:
 	expect_eq(_combat.calls, [] as Array[String], "combat calls")
 	expect_eq(_magic.calls, [] as Array[String], "magic calls")
 	expect_eq(_data.broken, 0, "invisibility kept")
+
+
+func test_activate_in_view_breaks_invisibility() -> void:
+	_session.transition = PlaceTransition.new(null, null)
+	_session._bridge = StubBridge.new()
+	_session._pointer = Node3D.new()
+	_session.activate_in_view(false)
+	expect_eq(_data.broken, 1, "activated")
+	_session._bridge.found = false
+	_session.activate_in_view(false)
+	expect_eq(_data.broken, 1, "nothing to activate")
+	_data.dead = true
+	_session._bridge.found = true
+	_session.activate_in_view(false)
+	expect_eq(_data.broken, 1, "dead")
+
+
+func test_dead_player_cannot_move() -> void:
+	_data.dead = true
+	expect_eq(_session.player_state.can(PlayerState.MOVE), false, "dead")
+	_data.dead = false
+	expect_eq(_session.player_state.can(PlayerState.MOVE), true, "alive")
+	_session.player_state.set_paralyzed(true)
+	expect_eq(_session.player_state.can(PlayerState.MOVE), false, "paralysed")
 
 
 func test_acting_breaks_invisibility() -> void:

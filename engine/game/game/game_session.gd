@@ -1133,7 +1133,8 @@ func set_pointer(node: Node3D) -> void:
 ## set_pointer says otherwise; Shift: picks locks).
 func activate_in_view(force: bool) -> void:
 	if not transition.is_fading() and player_state.can(PlayerState.ACTIVATE):
-		_bridge.activate_in_view(force, _pointer)
+		if _bridge.activate_in_view(force, _pointer):
+			player_state.acted(PlayerState.ACTIVATE)
 
 
 ## The player activates reference `ref` (not what the pointer shows): the

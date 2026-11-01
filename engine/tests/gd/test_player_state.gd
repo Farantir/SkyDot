@@ -36,9 +36,9 @@ func test_refusal_table() -> void:
 	for action in ACTIONS:
 		var move: bool = action == PlayerState.MOVE
 		expect_eq(_state(false, false).refusal(action), "", "%s alive" % action)
-		expect_eq(_state(true, false).refusal(action), "" if move else "dead", "%s dead" % action)
+		expect_eq(_state(true, false).refusal(action), "dead", "%s dead" % action)
 		expect_eq(_state(false, true).refusal(action), "paralyzed", "%s paralysed" % action)
-		expect_eq(_state(true, true).refusal(action), "paralyzed" if move else "dead", "%s dead and paralysed" % action)
+		expect_eq(_state(true, true).refusal(action), "dead", "%s dead and paralysed" % action)
 
 
 func test_can_is_an_empty_refusal() -> void:

@@ -517,11 +517,12 @@ func _run_damage() -> void:
 		activations_finished.emit()
 
 
-func activate_in_view(force: bool, pointer: Node3D) -> void:
+## Activates what the viewpoint looks at. False if there was nothing known to activate.
+func activate_in_view(force: bool, pointer: Node3D) -> bool:
 	var from := pointer.global_position
 	var to := from - pointer.global_transform.basis.z * REACH
 	var hit := _world.pick_ref(_host, from, to)
 	if hit.is_empty():
 		message.emit("nothing to activate", false)
-		return
-	activate(hit["cell"], hit["ref"], hit["node"], force)
+		return false
+	return activate(hit["cell"], hit["ref"], hit["node"], force)

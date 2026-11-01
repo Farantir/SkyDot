@@ -49,11 +49,10 @@ func set_paralyzed(value: bool) -> void:
 	_paralyzed = value
 
 
-## Why the player cannot do `action`: "" if he can, else "dead" or "paralyzed". Moving is refused
-## by paralysis only (the death screen is the shell's); every other action by death first, then
-## paralysis.
+## Why the player cannot do `action`: "" if he can, else "dead" or "paralyzed". Every action,
+## moving included, is refused by death first, then by paralysis (the death screen is the shell's).
 func refusal(action: String) -> String:
-	if action != MOVE and is_dead():
+	if is_dead():
 		return "dead"
 	if is_paralyzed():
 		return "paralyzed"

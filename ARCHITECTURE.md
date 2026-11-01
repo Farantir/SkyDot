@@ -1349,9 +1349,9 @@ which state of the player blocks which action and which actions break
 invisibility. The actions are named by constants (`MOVE`, `READY` for drawing,
 sheathing and readying the hands, `ATTACK`, `CAST`, `SHOUT`, `ACTIVATE`). Its
 interface: `is_dead()`, `is_paralyzed()` and `set_paralyzed(value)`;
-`refusal(action)` (`""` when allowed, else `"dead"` or `"paralyzed"`; only
-paralysis refuses `MOVE`, the death screen is the shell's, and every other
-action is refused dead first, then paralysed), `can(action)`,
+`refusal(action)` (`""` when allowed, else `"dead"` or `"paralyzed"`; every
+action, `MOVE` included, is refused dead first, then paralysed; the death
+screen is the shell's), `can(action)`,
 `breaks_invisibility(action)` (an attack, a cast, a shout or an activation) and
 `acted(action)`, which ends the invisibility when the action breaks it. It
 returns plain values and emits nothing. It asks its data through
