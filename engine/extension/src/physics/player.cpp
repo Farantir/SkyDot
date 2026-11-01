@@ -230,7 +230,7 @@ void SkydotPlayer::_physics_process(double delta) {
 
 // Moving backwards is slower: between 1 (forwards or sideways) and `ratio` (straight back).
 double SkydotPlayer::back_factor(double ratio) const {
-    const double length = move_.length();
+    const double length = static_cast<double>(move_.length());
     if (move_.y >= 0.0F || length < 0.0001) {
         return 1.0;
     }
