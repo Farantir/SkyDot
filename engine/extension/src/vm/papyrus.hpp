@@ -532,6 +532,20 @@ public:
     godot::Dictionary apply_hit(std::int64_t attacker, std::int64_t target, std::int64_t weapon,
                                 std::int64_t extra, const godot::String& attack_event, std::int64_t flags,
                                 std::int64_t ammo = 0);
+    /// The facts the damage rules need for one hit (design: ARCHITECTURE.md 8.2, AttackRules): {error} with
+    /// the same refusals as apply_hit, else {attacker, target, weapon, ammo, event (resolved), attacker_is_player,
+    /// target_is_player, weapon_damage (the race's unarmed damage for fists), ammo_damage, has_weapon_skill,
+    /// weapon_skill, temper_quality, attack_mult, light_armor_skill, heavy_armor_skill, armor: [{rating,
+    /// armor_type, quality, chest}]}. Changes nothing.
+    godot::Dictionary hit_facts(std::int64_t attacker, std::int64_t target, std::int64_t weapon, std::int64_t extra,
+                                const godot::String& attack_event, std::int64_t flags, std::int64_t ammo = 0);
+    /// Land a hit whose `damage` the rules worked out: Health damaged, killer, the weapon's poison and
+    /// enchantment, the `combat:` line (from `breakdown`: base, skill, attack, difficulty, weapon_damage,
+    /// armor_percent), the player's death check, OnHit, and the death announced. {health_before, health_after,
+    /// killed, poison, enchantment, charge, charge_max}.
+    godot::Dictionary land_hit(std::int64_t attacker, std::int64_t target, std::int64_t weapon, std::int64_t extra,
+                               double damage, const godot::String& attack_event, std::int64_t flags,
+                               const godot::Dictionary& breakdown);
     /// Where a dead actor lies ({space, position, rot_z}; empty: not set).
     godot::Dictionary get_corpse_place(std::int64_t ref) const;
     void set_corpse_place(std::int64_t ref, std::int64_t space, const godot::Vector3& position, double rot_z);

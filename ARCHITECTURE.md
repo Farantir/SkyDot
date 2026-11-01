@@ -1243,6 +1243,39 @@ those of the actors left behind). A script mod changes the rules by extending
 builds whichever `GameSession.casting_script` names, the hook the Mod API (M3)
 will hand out.
 
+Attack rules (ADR 0009). `AttackRules` (`attack_rules.gd`) owns the rules of a
+hit for every attacker, the player and NPCs alike: the damage of a blow (base =
+weapon + tempering + ammo, times the player's weapon-skill factor, the attack
+event's multiplier, difficulty and sneak, less the target's armor: the pieces
+scaled by its armor skill, capped at `fMaxArmorRating`), the Stamina of a power
+attack (who may start one, who pays, what it costs), the hold time that makes
+one (`fInitialPowerAttackDelay`), how far a blow reaches, the half cone of a
+race's attack, and how hard a dragon's tail or wing blow staggers. It returns
+plain dictionaries and emits nothing. Its interface: `hit(attacker, target,
+weapon, extra, event, flags, ammo)` (the breakdown of `damage(facts)` merged
+with what landing it gave; `{error}` when the target is no actor, dead or a
+ghost), `damage(facts)` built from `skill_factor`, `armor_percent`,
+`sneak_mult` and `difficulty` (the last two are placeholders, 1.0),
+`can_power_attack`, `pays_stamina` (only the player pays today),
+`power_attack_cost`, `pay_power_attack`, `power_delay`, `reach`,
+`strike_angle`, `stagger`. It asks its data through `AttackData`
+(`attack_data.gd`), a GDScript seam over `SkydotPapyrus` and `SkydotWorld`:
+`hit_facts`, `land_hit`, Stamina, a weapon's weight, GMSTs; the unit tests
+(`tests/gd/test_attack_rules.gd`) give it a fake. C++ keeps the data, state and
+Papyrus: `SkydotPapyrus.hit_facts` gathers the facts from the world database
+and the inventory (the weapon, the race's attack, skills, the worn armor, the
+tempering) and `land_hit` damages Health, keeps the killer, applies the
+weapon's poison and enchantment (`hit_magic`), logs the hit, checks the
+player's death and sends `OnHit` and the death. The AI's decision of when to
+attack and whether lightly or with power (`ai_combat.cpp` `melee_step` and
+`ranged_step`) stays in C++: it is AI-internal tactics run per tick in
+`SkydotAi`, and `CombatHooks` is AI state for Papyrus natives. `Combat` and
+`GameSession.kill_actor` call the session's one `AttackRules`; it holds no
+state, so it is not in the lifecycle. A script mod changes the rules by
+extending `AttackRules` and overriding a rule method, or replaces it whole with
+a class of the same interface; the session builds whichever
+`GameSession.attack_rules_script` names.
+
 | File | Class | What it owns |
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
@@ -1255,6 +1288,8 @@ will hand out.
 | `combat.gd` | `Combat` | the player's weapon (sheathed, drawing, drawn, sheathing) and clip set (`1hm_`, `2hm_`, `2hw_`, `h2h_`), light, left and held power attacks timed by the first-person project's text keys (`HitFrame`), the hit test (reach, strike angle, line of sight) into `apply_hit`, the impact (IPDS, material, IPCT sound and model), `npc_attack` for actors (third-person clip, test from the head), `hit_segment` for a swung blade (VR). `GameSession` has `toggle_weapon`, `attack_pressed/released`, `attack`, `npc_attack`, `kill_actor` and forwards `weapon_state_changed`, `attack_started`, `hit_landed` |
 | `casting.gd` | `Casting` | the rules of the hands and the voice for every caster (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `press`/`step`/`release` (a release pays), `pay`, `cast_power`, `cancel`, `phase_of`/`spell_of`/`hands_of`, `shout_begin`/`shout_step`/`shout_release`, `info_of`; the rule methods `refusal`, `charge_time`, `shout_threshold`, `pay` are the mod's to override; `reset()`/`on_place_left()` drop the hands and shouts silently |
 | `casting_data.gd` | `CastingData` | the narrow data questions `Casting` asks (equipped spell, `cast_info`, dead, Magicka, cost, cooldown, carried, `pay_spell`, shout info, recovery, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
+| `attack_rules.gd` | `AttackRules` | the rules of a hit for every attacker (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `hit` (facts, damage, landing), the formula `damage` built from `skill_factor`, `armor_percent`, `sneak_mult`, `difficulty`; the power attack's `can_power_attack`, `pays_stamina`, `power_attack_cost`, `pay_power_attack`, `power_delay`; `reach`, `strike_angle`, `stagger`; all of them the mod's to override; no state |
+| `attack_data.gd` | `AttackData` | the narrow data questions `AttackRules` asks (`hit_facts` with the formula's GMSTs, `land_hit`, Stamina, a weapon's weight, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `magic.gd` | `Magic` | the player's casting in the scene (7a-3): spells and scrolls in the hands (`LEFT` 0, `RIGHT` 1, `POWER` 2) readied with R, the hand's attack button goes to `Casting` (it holds the hand and the voice, refuses, pays), `Magic` plays the clips and art, shows the refusals and lands the effects with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key, `eye_of` the head an NPC casts from; signals for the arms' clips and the hand art. `NpcMagic` carries out the same hands for actors (target, clips) over the same `Casting` | with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key; signals for the arms' clips and the hand art |
 | `actor_registry.gd` | `ActorRegistry` | the `SkydotActor` nodes under the host, mirrored from the tree's `node_added` / `node_removed` (one hook for every way an actor is built or leaves; `all()` replaces the scans of the whole host by combat, corpses and magic), and per-node caches of the head bone (`head`) and the skinned meshes (`chest`) that `refresh(node)` drops when an actor's parts are rebuilt; `GameSession.actors` |
 | `corpses.gd` | `Corpses` | what a death looks like: the actor's node stops (`SkydotActor.set_dead`), a `PhysicalBoneSimulator3D` ragdoll (13 capsule `PhysicalBone3D`s, cone joints, the killing hit's impulse) runs under its skeleton until it rests or 5 s, then freezes into the bones' poses; stores the corpse place (`set_corpse_place`), marks the node pickable (Search), lays the dead of a place built later down at their place; a skeleton without the human bones logs `death: no ragdoll for <skeleton>` and lies on its side |

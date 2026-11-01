@@ -198,6 +198,12 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(
         D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
         &SkydotPapyrus::apply_hit, DEFVAL(0));
+    godot::ClassDB::bind_method(
+        D_METHOD("hit_facts", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
+        &SkydotPapyrus::hit_facts, DEFVAL(0));
+    godot::ClassDB::bind_method(
+        D_METHOD("land_hit", "attacker", "target", "weapon", "extra", "damage", "attack_event", "flags", "breakdown"),
+        &SkydotPapyrus::land_hit);
     godot::ClassDB::bind_method(D_METHOD("is_player_dead"), &SkydotPapyrus::is_player_dead);
     godot::ClassDB::bind_method(D_METHOD("get_corpse_place", "ref"), &SkydotPapyrus::get_corpse_place);
     godot::ClassDB::bind_method(D_METHOD("set_corpse_place", "ref", "space", "position", "rot_z"),

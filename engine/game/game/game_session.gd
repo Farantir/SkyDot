@@ -178,6 +178,10 @@ var npc_magic: NpcMagic
 ## of Casting (or a class of the same interface) here before `open`; the Mod API (M3) hands it out.
 var casting_script: GDScript = Casting
 var casting: Casting
+## The rules of a hit: damage, the Stamina of a power attack, reach, strike angle, stagger. A script mod
+## names a subclass of AttackRules (or a class of the same interface) here before `open`.
+var attack_rules_script: GDScript = AttackRules
+var attack_rules: AttackRules
 ## What shouters say in a fight (the AI's combat_shout), carried out with the player's shout rules.
 var npc_shouts: NpcShouts
 ## The subsystems with a lifecycle: `reset()` on a load or restart, `on_place_left()` when the place is
@@ -308,6 +312,7 @@ func _make_game_nodes() -> void:
 	host.add_child(speech)
 	speech.line_started.connect(_on_speech_started)
 	speech.line_ended.connect(_on_speech_ended)
+	attack_rules = attack_rules_script.new(AttackData.new(papyrus, world))
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
 		func() -> Vector3: return _feet, actors)
 	combat.projectiles = projectiles
