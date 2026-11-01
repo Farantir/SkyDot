@@ -326,6 +326,7 @@ func _make_game_nodes() -> void:
 	combat.hit_landed.connect(hit_landed.emit)
 	if ai != null:
 		ai.set_combat(config.combat)
+		combat.ai = ai
 		ai.combat_state_changed.connect(_on_combat_state)
 		ai.combat_attack.connect(_on_combat_attack)
 		combat.stagger_wanted.connect(_on_stagger_wanted)

@@ -155,6 +155,8 @@ var _shots: Array[Dictionary] = []  # arrows still to leave: {attacker, target, 
 var _rng := RandomNumberGenerator.new()
 ## Where arrows fly (the session's Projectiles).
 var projectiles: Projectiles
+## The AI, for who is an enemy of whom (an archer holds its arrow when a friend is in the line of fire). Null: no check.
+var ai: SkydotAi
 var _attack_tables := {}  # behaviour|race -> _attack_table
 var _locomotions := {}  # behaviour path -> get_locomotion
 ## The weapons on the third-person skeletons.
@@ -871,6 +873,12 @@ func _release(shot: Dictionary) -> void:
 		chest = other.global_position + Vector3.UP * ActorRegistry.height_of(other) * CHEST_FRACTION
 	var height := ActorRegistry.height_of(node)
 	var origin := node.global_position + Vector3.UP * height * SHOT_HEIGHT_FRACTION
+	# The game's archers do not shoot through friends: the first body on the straight line to the chest must be
+	# the target or an enemy of the archer (the player too), else the arrow stays on the string until the AI draws again.
+	var blocker := _first_crossed(attacker, origin, chest)
+	if not blocker.is_empty() and blocker["ref"] != target and not _is_enemy(attacker, int(blocker["ref"])):
+		print("combat: 0x%X holds its arrow: 0x%X is in the way" % [attacker, blocker["ref"]])
+		return
 	var ammo_data := _world.get_ammo(shot["ammo"])
 	var proj := _world.get_projectile(int(ammo_data.get("projectile", 0)))
 	if proj.is_empty():
@@ -897,18 +905,42 @@ func _release(shot: Dictionary) -> void:
 
 
 ## The first living actor but `attacker` (the player too) whose body the segment crosses:
-## {ref, point} or {}.
+## {ref, point} or {}. (Among several, the first in the registry's order.)
 func segment_hit(attacker: int, from: Vector3, to: Vector3) -> Dictionary:
 	for candidate in _candidates(attacker):
-		var feet: Vector3 = candidate["feet"]
-		var top := feet + Vector3.UP * float(candidate["height"])
-		var steps := maxi(int(from.distance_to(to) / 0.2), 1)
-		for i in steps + 1:
-			var p := from.lerp(to, float(i) / steps)
-			var q := Geometry3D.get_closest_point_to_segment(p, feet, top)
-			if p.distance_to(q) <= float(candidate["radius"]):
-				return {"ref": candidate["ref"], "point": p}
+		var hit := _crossing(candidate, from, to)
+		if not hit.is_empty():
+			return hit
 	return {}
+
+
+## The same, but the body met first along the segment.
+func _first_crossed(attacker: int, from: Vector3, to: Vector3) -> Dictionary:
+	var best := {}
+	for candidate in _candidates(attacker):
+		var hit := _crossing(candidate, from, to)
+		if not hit.is_empty() and (best.is_empty() or from.distance_to(hit["point"]) < from.distance_to(best["point"])):
+			best = hit
+	return best
+
+
+## Where the segment first enters `candidate`'s body: {ref, point} or {}.
+static func _crossing(candidate: Dictionary, from: Vector3, to: Vector3) -> Dictionary:
+	var feet: Vector3 = candidate["feet"]
+	var top := feet + Vector3.UP * float(candidate["height"])
+	var steps := maxi(int(from.distance_to(to) / 0.2), 1)
+	for i in steps + 1:
+		var p := from.lerp(to, float(i) / steps)
+		var q := Geometry3D.get_closest_point_to_segment(p, feet, top)
+		if p.distance_to(q) <= float(candidate["radius"]):
+			return {"ref": candidate["ref"], "point": p}
+	return {}
+
+
+## Whether `other` is an enemy of `actor` (the AI's reaction: factions, relationships, commanders). Without an
+## AI, or for a pair it does not know, no.
+func _is_enemy(actor: int, other: int) -> bool:
+	return ai != null and ai.get_reaction(actor, other) == 0
 
 
 func _step_npc_attacks(delta: float) -> void:
