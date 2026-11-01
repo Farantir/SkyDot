@@ -1034,7 +1034,9 @@ owner, then e.g. the weapon base, the target, a spell), so a subject can be a ba
 SpellHasSkill / SpellHasCastingPerk on a spell, EPAlchemyEffectHasKeyword and EPAlchemyGetMakingPoison,
 EPTempering* , EPMagic_IsAdvanceSkill and EPModSkillUsage_IsAdvanceAction / AdvanceObjectHasKeyword,
 WornHasKeyword and WornApparelHasKeywordCount (`EntryContext::worn`) and IsAttackType
-(`EntryContext::attack_keywords`). The rest are `engine/docs/conditions.md`.
+(`EntryContext::attack_keywords`). HasMagicEffect, GetEquipped, GetEquippedItemType and IsBlocking are world
+conditions (`ConditionWorld`; the block state is set by the game layer, `SkydotPapyrus.set_blocking`, from
+`Combat`); IsSneaking stays a placeholder (0) until A8. The rest are `engine/docs/conditions.md`.
 
 Adding a perk carries out its effects centrally: `ProgressionRuntime::add_perk` and `remove_perk` call the host's
 `perk_gained` / `perk_lost` (not on clear or load; MAGC already saves the spells), which run
@@ -1049,8 +1051,18 @@ Attack Damage (`perk_damage_mult`, a multiplier on the weapon damage before armo
 target), 18 Mod Sneak Attack Mult (`sneak_perk_mult`, applied to the weapon type's multiplier), 36 Mod Incoming
 Damage (`incoming_perk_mult` on the damage that gets through; tabs victim, attacker, attacker's weapon) and 27
 Mod Power Attack Stamina (`power_attack_cost`), through `AttackData.perk_entry`; `Progression.skill_use_mult`
-asks 22 Mod Skill Use with the advanced skill. Not wired yet: 37, 85 and 39 (armor and block), spell cost,
-magnitude and duration (38, 29, 30, 41, 42), crafting (76, 66, 73, 83, 77, 79, 80, 49), detection (57, 47, 48),
+asks 22 Mod Skill Use with the advanced skill. P6f2 adds the armor and block points in `AttackRules`:
+85 Mod Armor Rating (`piece_perk_rating`: per worn piece after the skill and the rounding, owner the wearer,
+tabs wearer, armor base; `extra.worn` from `hit_facts.worn`), 37 Mod Target Damage Resistance
+(`resistance_perk_rating`: the attacker's perks on the target's total armor rating; tabs attacker, weapon,
+target) and 39 Mod Percent Blocked (`blocked_perk_percent` before the cap; tabs blocker, attacker, weapon). The
+Heavy and Light Armor mods of PerkSkillBoosts are 36 entries and ride on `incoming_perk_mult`. The magic rules
+(C++) reach the engine through `MagicHost::perk_entry` (implemented by the module host, `worn` filled from the
+equipment): 38 Mod Spell Cost in `magic::perk_spell_cost` (used by `pay_spell` and `spell_cost`; tabs caster,
+spell), and in `ActiveEffects::apply` for spells and scrolls only (not potions, enchantments, poisons or
+abilities) 29 Mod Spell Magnitude and 30 Mod Spell Duration (tabs caster, spell, target) then 41 and 42
+(tabs target, spell, caster), all before resistance. A scroll is not a SPEL, so perks whose conditions read a
+spell do not match it. Not wired yet: crafting (76, 66, 73, 83, 77, 79, 80, 49), detection (57, 47, 48),
 criticals (1, 2; no criticals exist), prices (8, 60; no barter), carry weight (10; no limit), lockpicking and
 pickpocketing (no minigames), dual casting (75).
 
@@ -1486,7 +1498,7 @@ rules by extending `PlayerState` and overriding `refusal` or
 | `casting.gd` | `Casting` | the rules of the hands and the voice for every caster (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `press`/`step`/`release` (a release pays), `pay`, `cast_power`, `cancel`, `phase_of`/`spell_of`/`hands_of`, `shout_begin`/`shout_step`/`shout_release`, `info_of`; the rule methods `refusal`, `charge_time`, `shout_threshold`, `pay` are the mod's to override; `reset()`/`on_place_left()` drop the hands and shouts silently |
 | `casting_data.gd` | `CastingData` | the narrow data questions `Casting` asks (equipped spell, `cast_info`, dead, Magicka, cost, cooldown, carried, `pay_spell`, shout info, recovery, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `attack_rules.gd` | `AttackRules` | the rules of a hit for every attacker (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `hit` (facts, damage, landing), the formula `damage` built from `skill_factor`, `armor_percent`, `sneak_mult`, `difficulty`; the power attack's `can_power_attack`, `pays_stamina`, `power_attack_cost`, `pay_power_attack`, `power_delay`; `reach`, `strike_angle`, `stagger`; all of them the mod's to override; no state |
-| `attack_data.gd` | `AttackData` | the narrow data questions `AttackRules` asks (`hit_facts` with the formula's GMSTs, `land_hit`, Stamina, a weapon's weight, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
+| `attack_data.gd` | `AttackData` | the narrow data questions `AttackRules` asks (`hit_facts` with the formula's GMSTs, `land_hit`, `perk_entry` (with `extra`), Stamina, a weapon's weight, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `progression.gd` | `Progression` | the rules of levelling for the player (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `use_skill`, `increment_skill`, `level_up_ready`/`level_up`, `perk_blocker`/`perk_status`/`can_take_perk`/`take_perk`, `make_legendary`; the formulas `skill_threshold`, `xp_for_skill_level`, `level_up_threshold` and the hooks `skill_use_mult`, `on_perk_taken` are the mod's to override; no state (it is `SkydotPapyrus`'s progression) |
 | `progression_data.gd` | `ProgressionData` | the narrow data questions `Progression` asks (GMSTs, a skill's AVIF values and perk tree, the player's base and current actor values, set and restore, the progress dictionary and setters, perk data, ranks, add, remove, prerequisite conditions) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `player_state.gd` | `PlayerState` | which state of the player blocks which action and which actions break invisibility (ADR 0009), a `RefCounted` that returns plain values and emits nothing: `refusal`, `can`, `breaks_invisibility`, `acted`; the paralysis flag `MagicWorld` writes; the mod's to override |

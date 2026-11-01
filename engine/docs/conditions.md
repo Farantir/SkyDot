@@ -184,7 +184,12 @@ EPTemperingItemHasKeyword 660, EPMagic_IsAdvanceSkill 681, EPModSkillUsage_IsAdv
 EPModSkillUsage_AdvanceObjectHasKeyword 691, WornHasKeyword 682, WornApparelHasKeywordCount 722 (from
 `EntryContext::worn`), IsAttackType 697 (from `attack_keywords`).
 
-Still unbound (false, or 0 for a count) in tabs: HasMagicEffect 214 (the evaluator has no active-effect query),
-GetEquipped 182, GetEquippedItemType 597, IsBlocking 569, IsSprinting 568, IsPoison 721, GetLocked 5, GetLockLevel 65,
-GetSleeping 49, HasBeenEaten 127, GetItemCount in tabs is bound; IsSneaking 286, IsInCombat 289 and
+World conditions added in P6f2: HasMagicEffect 214 (`ConditionWorld::has_magic_effect`, the actor's active
+effects in MagicRuntime), GetEquipped 182 (`is_equipped`: worn or in a hand; the parameter may be a form list),
+GetEquippedItemType 597 (`equipped_item_type`: the type of the item in hand 0 left, 1 right; 0 empty) and
+IsBlocking 569 (`is_blocking`, from `SkydotPapyrus.set_blocking`, which `Combat` keeps current for the
+player; NPCs never block yet).
+
+Still unbound (false, or 0 for a count) in tabs: IsSprinting 568, IsPoison 721, GetLocked 5, GetLockLevel 65,
+GetSleeping 49, HasBeenEaten 127, GetItemCount in tabs is bound; IsSneaking 286 (no sneak state before A8), IsInCombat 289 and
 GetPlayerTeammate 453 are placeholders (0).
