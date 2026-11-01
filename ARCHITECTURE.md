@@ -1085,13 +1085,31 @@ behaviour and save format do not change; the module writes and restores its
 save section (`save()`, `load()`, `adopt()`). `check-layering.sh` keeps the
 module files free of Godot.
 
-Planned seams: scenes, then dialogue, crafting, activation (each has Godot-free
-logic and a nested adapter today) become modules; enchanting, items, magic and
-combat follow as their natives allow. Stays in `SkydotPapyrus`: the runtime
-(`papyrus_runtime.cpp`: forgets, census, ref lifecycle), save (composes the
-sections of all modules), conditions (`PapyrusConditionWorld` reads quests,
-actors, clock and scenes), triggers and the VM/pack/world binding. These cut
-across every domain, so they are the shell the modules plug into.
+Modules today (all Godot-free, each with unit tests over fakes, listed in
+`check-layering.sh`): `SceneRuntime` (scenes, the Scene natives),
+`DialogueRuntime` (what was said, selection, INFO fragments' quests, the dice),
+`CraftingRuntime` (crafting rules on the VM's inventory) and `CombatRuntime`
+(the AI's hooks, the combat natives, ghosts, the player's death and who hurt
+him). Hosts are 3 to 9 methods, mostly the shared interfaces; the scene module
+takes the dialogue module directly.
+
+Not modules yet, and why: **activation** (its host is `ActivationHost`, 11
+methods answered from the Godot-typed `ref_info` Dictionary, the world's
+activate-children Array and scene nodes), **items** and **magic** (they share
+`items_`, `created_`, the VM inventory and `actors_`, and `papyrus_magic.cpp`
+reaches the triggers, the casting state and the saves besides). Stays in
+`SkydotPapyrus` for good: the runtime (`papyrus_runtime.cpp`: forgets, census,
+ref lifecycle), save (composes the sections of all modules), conditions
+(`PapyrusConditionWorld` reads quests, actors, clock and scenes), triggers and
+the VM/pack/world binding. These cut across every domain, so they are the shell
+the modules plug into.
+
+Next seam: a typed world-query layer (reference info, activate children, doors
+and placement as typed `WorldAccess`-style queries instead of Dictionaries and
+Arrays). It lets activation move, then items, whose host then needs an item
+interface (`resolve_owner`, `item_name_of`, equipment refresh) rather than the
+whole of `SkydotPapyrus`; magic follows once split into casting, shouts and
+enchantment effects.
 
 ### 7.10 Coordinates
 
