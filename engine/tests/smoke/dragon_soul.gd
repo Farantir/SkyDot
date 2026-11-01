@@ -256,7 +256,7 @@ func _absorb(expected: float) -> void:
 	_expect_loot(_ref, "the corpse")
 	_dead.append(_ref)
 	expect(_session.visual_effects.stream_count() == 0, "no stream is left: %d" % _session.visual_effects.stream_count())
-	var result := papyrus.apply_hit(PLAYER, _ref, 0, 0, "attackStart", 0)
+	var result := _session.attack_rules.hit(PLAYER, _ref, 0, 0, "attackStart", 0)
 	expect(result.has("error"), "a hit on the dead ghost lands nowhere: %s" % [result])
 	await _frames(300)
 	expect(_souls() == expected, "no second absorb: %s" % _souls())

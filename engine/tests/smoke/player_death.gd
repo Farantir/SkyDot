@@ -93,7 +93,7 @@ func _run(pack_dir: String) -> void:
 	expect(_session.saves.save(SAVE), "the game is saved")
 	var health_before := papyrus.get_actor_value(PLAYER, "Health")
 
-	# The bandit fights him until he is dead (apply_hit by the AI's attacks).
+	# The bandit fights him until he is dead (AttackRules.hit by the AI's attacks).
 	var waited := await _until(func() -> bool: return _session.is_player_dead(), 120.0)
 	print("the player died after ", waited, " s")
 	expect(waited >= 0.0, "the bandit kills the player")

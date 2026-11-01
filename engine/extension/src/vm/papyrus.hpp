@@ -513,27 +513,15 @@ public:
     /// Set the base of an actor value (Actor.SetActorValue): the viewer's --dragon-souls, tests.
     void set_actor_value(std::int64_t ref, const godot::String& name, double value);
 
-    /// `apply_hit` flags.
+    /// `hit_facts` / `land_hit` flags.
     static constexpr std::int64_t HIT_POWER = 1;
     static constexpr std::int64_t HIT_SNEAK = 2;
     static constexpr std::int64_t HIT_BASH = 4;
     static constexpr std::int64_t HIT_BLOCKED = 8;
-    /// One melee hit of `attacker` (0: none) on `target` with `weapon` (0:
-    /// fists; `extra` its item extra) for the race attack named `attack_event`
-    /// (e.g. "attackStart", "attackPowerStartInPlace"; empty: the standing
-    /// light or power attack). Resolves the inputs, damages Health, logs a
-    /// `combat:` line, sends OnHit and, on a death, OnDying and OnDeath (the
-    /// signal actor_died too); keeps the killer for Actor.GetKiller.
-    /// {error} if the target is no living actor, else {attacker, target,
-    /// weapon, event, base, skill_value, skill, attack, difficulty, sneak,
-    /// weapon_damage, armor_rating, armor_percent, damage, health_before,
-    /// health_after, killed}. Blocking only passes the flag on.
-    /// `ammo` (an AMMO form, 0 for melee) adds the arrow's damage to the bow's.
-    godot::Dictionary apply_hit(std::int64_t attacker, std::int64_t target, std::int64_t weapon,
-                                std::int64_t extra, const godot::String& attack_event, std::int64_t flags,
-                                std::int64_t ammo = 0);
-    /// The facts the damage rules need for one hit (design: ARCHITECTURE.md 8.2, AttackRules): {error} with
-    /// the same refusals as apply_hit, else {attacker, target, weapon, ammo, event (resolved), attacker_is_player,
+    /// The facts the damage rules need for one hit of `attacker` (0: none) on `target` with `weapon` (0: fists;
+    /// `extra` its item extra) for the race attack `attack_event` (empty: the standing light or power attack by
+    /// `flags`) and `ammo` (an AMMO form, 0 for melee), see AttackRules in ARCHITECTURE.md 8.2: {error} if
+    /// the target is no actor, dead or a ghost, else {attacker, target, weapon, ammo, event (resolved), attacker_is_player,
     /// target_is_player, weapon_damage (the race's unarmed damage for fists), ammo_damage, has_weapon_skill,
     /// weapon_skill, temper_quality, attack_mult, light_armor_skill, heavy_armor_skill, armor: [{rating,
     /// armor_type, quality, chest}]}. Changes nothing.

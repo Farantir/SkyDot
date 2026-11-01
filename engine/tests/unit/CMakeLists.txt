@@ -22,7 +22,6 @@ add_executable(skydot_core_tests
     test_combat_ai.cpp
     test_flight.cpp
     test_magic_choice.cpp
-    test_combat_damage.cpp
     test_crafting.cpp
     test_dialogue.cpp
     test_game_time.cpp

@@ -196,9 +196,6 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_actor_value", "ref", "name", "value"),
                                 &SkydotPapyrus::set_actor_value);
     godot::ClassDB::bind_method(
-        D_METHOD("apply_hit", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
-        &SkydotPapyrus::apply_hit, DEFVAL(0));
-    godot::ClassDB::bind_method(
         D_METHOD("hit_facts", "attacker", "target", "weapon", "extra", "attack_event", "flags", "ammo"),
         &SkydotPapyrus::hit_facts, DEFVAL(0));
     godot::ClassDB::bind_method(

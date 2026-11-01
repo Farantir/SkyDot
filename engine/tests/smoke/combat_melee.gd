@@ -3,7 +3,7 @@
 # Melee through GameSession on the real SE pack (SKYDOT_SSE_PACK), headless:
 # the Iron Sword is drawn (the first-person equip clip's time), the player
 # faces the bandit 0x39FE4 of BleakFallsBarrow01 and attacks through Combat;
-# the HitFrame of the first-person project's clip decides when apply_hit
+# the HitFrame of the first-person project's clip decides when AttackRules.hit
 # runs, its damage is the formula's (combat_rules.gd), a power attack held
 # past fInitialPowerAttackDelay does double, reach, strike angle and line of
 # sight keep misses from hitting, the bandit's own npc_attack hurts the
@@ -148,7 +148,7 @@ func _run(pack_dir: String) -> void:
 	expect(_states.size() >= 2 and _states[0][1] == "1hm_equip" and _states[-1][1] == "1hm_idle",
 		"the states name 1hm_equip then 1hm_idle: %s" % [_states])
 
-	# A light attack: apply_hit runs at the HitFrame (0.367 s of 1HM_AttackRight).
+	# A light attack: AttackRules.hit runs at the HitFrame (0.367 s of 1HM_AttackRight).
 	var player_health := papyrus.get_actor_value(PLAYER, "Health")
 	var skill := papyrus.get_actor_value(PLAYER, "OneHanded")
 	var armor := _bandit_armor_percent()

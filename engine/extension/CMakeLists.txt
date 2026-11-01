@@ -102,8 +102,6 @@ set(SKYDOT_CORE_SOURCES
     src/state/item_extras.hpp
     src/state/created_forms.cpp
     src/state/created_forms.hpp
-    src/combat/damage.cpp
-    src/combat/damage.hpp
     src/vm/crafting.cpp
     src/vm/crafting.hpp
     src/vm/harvest.cpp

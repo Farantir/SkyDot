@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Combat rules through GameSession on the real SE pack (SKYDOT_SSE_PACK):
-# apply_hit with the Iron Sword on the bandit 0x39FE4 of BleakFallsBarrow01
+# AttackRules.hit with the Iron Sword on the bandit 0x39FE4 of BleakFallsBarrow01
 # until it dies (every hit's damage against the formula worked out here from
 # the data), actor_died, the killer, searching the corpse, save and load, and
 # Arvel's Golden Claw (quest MS13 creates it in his inventory). Headless;
@@ -95,7 +95,7 @@ func _run(pack_dir: String) -> void:
 	var start_inventory := _session.inventory(BANDIT)
 	expect(not start_inventory.is_empty(), "the bandit carries his outfit and items: %d stacks" % start_inventory.size())
 
-	# Parity: AttackRules over the real data works out what apply_hit does (the facts, then the formula).
+	# Parity: AttackRules over the real data works out what AttackRules.hit lands (the facts, then the formula).
 	var rules := _session.attack_rules
 	var data := AttackData.new(papyrus, _session.world)
 	var facts := data.hit_facts(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0)
@@ -106,24 +106,24 @@ func _run(pack_dir: String) -> void:
 	var hits := 0
 	var last := {}
 	while not papyrus.is_actor_dead(BANDIT) and hits < 100:
-		last = papyrus.apply_hit(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0)
+		last = rules.hit(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0)
 		hits += 1
 		if hits == 1:
 			print("first hit: ", last)
 			expect(_near(last["damage"], expected, 0.001), "the first hit does %f, expected %f" % [last["damage"], expected])
 			expect(_near(last["damage"], worked_out["damage"], 0.001) and _near(last["armor_percent"], worked_out["armor_percent"], 0.001),
-				"apply_hit and AttackRules agree on the damage and the armor")
+				"the hit lands the damage and armor AttackRules works out from the facts")
 			expect(_near(last["base"], 7.0) and _near(last["attack"], 1.0), "base 7, attack 1")
 			expect(_near(health - last["health_after"], expected, 0.01) or last["killed"], "Health drops by the damage")
 	expect(hits > 1 and papyrus.is_actor_dead(BANDIT), "the bandit dies after %d hits" % hits)
 	expect(last.get("killed", false), "the last hit says killed")
 	expect(deaths == [BANDIT], "actor_died fired once: %s" % [deaths])
 	expect(papyrus.get_killer(BANDIT) == PLAYER, "the killer is the player")
-	var power := papyrus.apply_hit(PLAYER, ARVEL, IRON_SWORD, 0, "attackPowerStartInPlace", SkydotPapyrus.HIT_POWER)
+	var power := rules.hit(PLAYER, ARVEL, IRON_SWORD, 0, "attackPowerStartInPlace", SkydotPapyrus.HIT_POWER)
 	expect(not power.has("error") and _near(power["attack"], 2.0), "a standing power attack has multiplier 2: %s" % [power])
 	expect(_near(power["damage"], power_worked_out["damage"], 0.001) and _near(power["attack"], power_worked_out["attack"]),
-		"the power attack: apply_hit %f, AttackRules %f" % [power["damage"], power_worked_out["damage"]])
-	expect(papyrus.apply_hit(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0).has("error"), "a dead target takes no hit")
+		"the power attack: hit %f, facts %f" % [power["damage"], power_worked_out["damage"]])
+	expect(rules.hit(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0).has("error"), "a dead target takes no hit")
 
 	# The corpse: prompt, activation, loot.
 	var cell: int = _session.world.get_actor(BANDIT)["cell"]
@@ -160,7 +160,7 @@ func _run(pack_dir: String) -> void:
 	expect(has_claw, "Arvel carries the Golden Claw")
 	var arvel_hits := 0
 	while not papyrus.is_actor_dead(ARVEL) and arvel_hits < 100:
-		papyrus.apply_hit(PLAYER, ARVEL, IRON_SWORD, 0, "attackStart", 0)
+		rules.hit(PLAYER, ARVEL, IRON_SWORD, 0, "attackStart", 0)
 		arvel_hits += 1
 	expect(papyrus.is_actor_dead(ARVEL) and papyrus.get_killer(ARVEL) == PLAYER, "Arvel dies to the player after %d hits" % arvel_hits)
 	_session.transfer_all(ARVEL, PLAYER)

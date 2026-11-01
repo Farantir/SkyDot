@@ -147,7 +147,7 @@ void SkydotPapyrus::bind_actor_extra_natives() {
                             .wait = -1.0};
     });
 
-    // ---- ghosts take no hits (apply_hit, magic landing)
+    // ---- ghosts take no hits (hit_facts, magic landing)
     vm_->bind("Actor", "SetGhost", [this](NativeCall& c) {
         actors_.set_ghost(c.self.form(), !c.args.empty() && vm::Vm::truthy(c.args[0]));
         return NativeResult{};
