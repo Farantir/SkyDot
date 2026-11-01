@@ -51,6 +51,7 @@
 #include "vm/activation.hpp"
 #include "vm/activation_runtime.hpp"
 #include "vm/item_runtime.hpp"
+#include "vm/magic_runtime.hpp"
 #include "vm/world_access.hpp"
 #include "world/world.hpp"
 
@@ -784,12 +785,11 @@ private:
     /// OnSpellCast(spell) to `caster`'s scripts and aliases.
     void send_spell_cast(std::uint32_t caster, std::uint32_t spell);
     /// The magic of all actors: effects, spell books and the adapters (vm/papyrus_magic.cpp).
-    struct MagicRuntime {
-        virtual ~MagicRuntime() = default;
-    };
-    struct MagicState;
-    std::unique_ptr<MagicRuntime> magic_;
-    MagicState* magic_state();
+    std::unique_ptr<vm::MagicRuntime> magic_;
+    vm::MagicRuntime* magic_state();
+    std::unique_ptr<vm::MagicRuntime> new_magic(const bethconv::pack::wfb::World& root);
+    /// The dictionary of the signal magic_effect_event.
+    static godot::Dictionary effect_event_dictionary(const magic::EffectView& view, bool started);
     /// The shout in the voice slot of `ref` (condition GetEquippedShout); 0 if none.
     std::uint32_t voice_shout(std::uint32_t ref) const;
     /// Send what effects started or finished since the last call (Papyrus events, the signal).

@@ -9,7 +9,7 @@ namespace skydot {
 // ---- shouts: the game layer's API ----------------------------------------------------------------
 
 std::uint32_t SkydotPapyrus::voice_shout(std::uint32_t ref) const {
-    const auto* m = static_cast<const MagicState*>(magic_.get());
+    const auto* m = magic_.get();
     return m != nullptr ? m->shouts.equipped(ref) : 0;
 }
 

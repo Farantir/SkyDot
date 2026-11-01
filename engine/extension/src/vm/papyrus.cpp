@@ -636,7 +636,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
                              vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
-                             vm::ActivationRuntime::Host, vm::ItemRuntime::Host {
+                             vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -883,6 +883,35 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
     void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
 
+    // ---- vm::MagicRuntime::Host
+    std::uint32_t dialogue_npc(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+    std::uint32_t place_summon_ref(const vm::PlacedRef& placed) override { return owner_.place_ref(placed, false); }
+    std::vector<std::uint32_t> triggered_actors() const override {
+        std::vector<std::uint32_t> out;
+        for (const auto& [actor, position] : owner_.triggers_.actors()) {
+            out.push_back(actor);
+        }
+        return out;
+    }
+    void magic_trace(const std::string& line) override {
+        owner_.emit_signal("trace", natives::to_godot(line));
+        godot::UtilityFunctions::print(natives::to_godot(line));
+    }
+    void magic_notification(const std::string& text) override {
+        godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
+        owner_.emit_signal("message", natives::to_godot(text), false);
+    }
+    void effect_event(const magic::EffectView& v, bool started) override {
+        owner_.emit_signal("magic_effect_changed", static_cast<std::int64_t>(v.target), static_cast<std::int64_t>(v.mgef),
+                           static_cast<std::int64_t>(v.archetype), started, static_cast<std::int64_t>(v.id));
+        owner_.emit_signal("magic_effect_event", effect_event_dictionary(v, started));
+    }
+    void attach_effect_scripts(std::uint32_t id, std::uint32_t mgef) override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        const auto* record = root != nullptr ? lookup(root->magic_effects(), mgef) : nullptr;
+        owner_.attach_scripts(id, script_list(record != nullptr ? record->scripts() : nullptr, false), 0);
+    }
+
     // ---- vm::ItemRuntime::Host
     vm::Vm& vm() override { return *owner_.vm_; }
     void dispatch_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
@@ -976,6 +1005,10 @@ private:
 };
 
 void SkydotPapyrus::AccessDeleter::operator()(Access* access) const { delete access; }
+
+std::unique_ptr<vm::MagicRuntime> SkydotPapyrus::new_magic(const bethconv::pack::wfb::World& root) {
+    return std::make_unique<vm::MagicRuntime>(*access_, root, item_, combat_);
+}
 
 void SkydotPapyrus::bind_item_natives() { item_.bind_natives(*vm_, *access_); }
 

@@ -353,7 +353,7 @@ void SkydotPapyrus::prepare_actor_magic(std::int64_t actor) {
 Dictionary SkydotPapyrus::get_unhandled_archetypes() const {
     Dictionary out;
     if (magic_) {
-        for (const auto& [a, n] : static_cast<MagicState*>(magic_.get())->effects.unhandled()) {
+        for (const auto& [a, n] : magic_.get()->effects.unhandled()) {
             out[static_cast<std::int64_t>(a)] = static_cast<std::int64_t>(n);
         }
     }

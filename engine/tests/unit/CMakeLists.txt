@@ -27,6 +27,7 @@ add_executable(skydot_core_tests
     test_crafting_runtime.cpp
     test_activation_runtime.cpp
     test_item_runtime.cpp
+    test_magic_runtime.cpp
     test_dialogue.cpp
     test_dialogue_runtime.cpp
     test_game_time.cpp
