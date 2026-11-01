@@ -204,6 +204,11 @@ func _run(pack_dir: String) -> void:
 	print("spell costs at the player's skills: Flames ", flames_cost, " Healing ", healing_cost)
 	expect(flames_cost > 11.0 and flames_cost < 14.0, "Flames costs about 14 x (1 - (skill/400)^0.65): %f" % flames_cost)
 	expect(healing_cost > 9.0 and healing_cost < 12.0, "Healing costs about 12 x (1 - (skill/400)^0.65): %f" % healing_cost)
+	# Mod Spell Cost 38: Novice Destruction (DestructionNovice00) halves Flames, not Healing.
+	_session.papyrus.add_perk(PLAYER, 0xF2CA8)
+	expect(absf(_session.papyrus.spell_cost(PLAYER, FLAMES) - flames_cost * 0.5) < 0.01, "Novice Destruction halves Flames: %f" % _session.papyrus.spell_cost(PLAYER, FLAMES))
+	expect(absf(_session.papyrus.spell_cost(PLAYER, HEALING) - healing_cost) < 0.01, "and leaves Healing alone")
+	_session.papyrus.remove_perk(PLAYER, 0xF2CA8)
 
 	# ---- casting (7a-3): cast_info, paying apart from landing, a hand
 	expect(papyrus.add_spell(PLAYER, FIREBOLT), "Firebolt is taught again")

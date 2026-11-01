@@ -320,6 +320,7 @@ struct SpellSpec {
     float cast_duration = 0.0F;
     float range = 0.0F;
     std::vector<SpellEffectSpec> effects = {};
+    std::uint32_t half_cost_perk = 0;
 };
 
 /// SHOU (world.fb 36).

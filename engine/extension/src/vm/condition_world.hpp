@@ -84,6 +84,10 @@ public:
     bool in_dialogue_with_player(std::uint32_t ref) const override;
     std::uint32_t equipped_shout(std::uint32_t ref) const override;
     std::int32_t perk_rank(std::uint32_t ref, std::uint32_t perk) const override;
+    bool has_magic_effect(std::uint32_t ref, std::uint32_t mgef) const override;
+    bool is_equipped(std::uint32_t ref, std::uint32_t form) const override;
+    std::int32_t equipped_item_type(std::uint32_t ref, std::int32_t hand) const override;
+    bool is_blocking(std::uint32_t ref) const override;
 
 private:
     /// The NPC_ standing for `ref` for what `flag` covers (templates followed).

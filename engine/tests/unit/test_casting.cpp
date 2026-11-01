@@ -17,6 +17,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include "perks/entry_points.hpp"
+#include "support/fake_condition_world.hpp"
+
+#include <array>
 #include <cmath>
 #include <set>
 #include <string>
@@ -47,6 +51,11 @@ constexpr std::uint32_t k_firebolt = 0x2002; // fire and forget, aimed, 50, char
 constexpr std::uint32_t k_healing = 0x2003;  // self, 20
 constexpr std::uint32_t k_power = 0x2004;    // power, 0 magicka
 
+constexpr std::uint32_t k_novice_destruction = 0x5001; // perks
+constexpr std::uint32_t k_novice_restoration = 0x5002;
+constexpr std::uint32_t k_augmented = 0x5003;
+constexpr std::uint32_t k_mod_skills = 0x5004;
+
 // Items
 constexpr std::uint32_t k_scroll = 0x3001;
 constexpr std::uint32_t k_sword = 0x3002;    // enchanted with k_ench_fire, EAMT 100
@@ -76,7 +85,23 @@ bool fake_source(std::uint32_t ref, vm::ActorBase& out) {
 struct Host : magic::MagicHost {
     vm::ActorStates states;
     std::vector<std::string> logs;
+    /// The perks of the actors, when a test gives some (perks::EntryPoints over the rig's world).
+    const magic::wfb::World* perk_world = nullptr;
+    FakeConditionWorld perk_fake;
+    std::vector<std::pair<std::uint32_t, std::uint8_t>> perks_owned;
     Host() { states.set_source(fake_source); }
+    double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
+                      double value) const override {
+        if (perk_world == nullptr) {
+            return value;
+        }
+        const skydot::perks::EntryPoints points(*perk_world, const_cast<FakeConditionWorld&>(perk_fake),
+                                                [this](std::uint32_t) { return perks_owned; });
+        skydot::perks::EntryContext ctx;
+        ctx.owner = owner;
+        ctx.subjects = subjects;
+        return points.apply(static_cast<skydot::perks::EntryPoint>(ep), ctx, value);
+    }
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return states.get(ref, av); }
     void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t) override { states.damage(ref, av, amount); }
     void restore_value(std::uint32_t ref, std::uint32_t av, double amount) override { states.restore(ref, av, amount); }
@@ -88,6 +113,33 @@ struct Host : magic::MagicHost {
     bool is_dead(std::uint32_t ref) const override { return states.is_dead(ref); }
     void log(const std::string& line) override { logs.push_back(line); }
 };
+
+PerkEffectSpec perk_effect(std::uint8_t ep, std::uint8_t function, float value, std::vector<ConditionSpec> tab1,
+                           std::int32_t actor_value = -1) {
+    PerkEffectSpec e;
+    e.entry_point = ep;
+    e.function = function;
+    e.values = {value};
+    e.actor_value = actor_value;
+    e.data_type = actor_value >= 0 ? 2 : 1;
+    e.tabs = {{1, std::move(tab1)}};
+    return e;
+}
+
+/// Novice Destruction (half cost of its spells), Augmented Flames (x1.25 magnitude of destruction spells),
+/// and a skill-boosts perk: Destruction cost x (1 - 0.01 x the owner's value of actor value 108).
+std::vector<PerkSpec> perk_specs() {
+    constexpr std::uint16_t has_casting_perk = 713;
+    constexpr std::uint16_t spell_has_skill = 696;
+    return {PerkSpec{.id = k_novice_destruction,
+                     .effects = {perk_effect(38, 3, 0.5F, {condition(has_casting_perk, eq, 1.0F, 0, k_novice_destruction)})}},
+            PerkSpec{.id = k_augmented,
+                     .effects = {perk_effect(29, 3, 1.25F, {condition(spell_has_skill, eq, 1.0F, 0, k_destruction)})}},
+            PerkSpec{.id = k_mod_skills,
+                     .effects = {perk_effect(38, 14, -0.01F, {condition(spell_has_skill, eq, 1.0F, 0, k_destruction)}, 108),
+                                 perk_effect(41, 3, 0.5F, {condition(spell_has_skill, eq, 1.0F, 0, k_destruction)}),
+                                 perk_effect(30, 3, 2.0F, {condition(spell_has_skill, eq, 1.0F, 0, k_destruction)})}}};
+}
 
 WorldSpec world_spec() {
     WorldSpec spec;
@@ -119,12 +171,12 @@ WorldSpec world_spec() {
     spec.magic_effects = {fire, bolt, heal, fortify, venom};
     spec.spells = {
         SpellSpec{.id = k_flames, .name = "Flames", .cost = 14, .casting_type = 2, .delivery = 2, .range = 1000.0F,
-                  .effects = {{.effect = k_fire, .magnitude = 8.0F, .duration = 1}}},
+                  .effects = {{.effect = k_fire, .magnitude = 8.0F, .duration = 1}}, .half_cost_perk = k_novice_destruction},
         SpellSpec{.id = k_firebolt, .name = "Firebolt", .cost = 50, .casting_type = 1, .delivery = 2,
                   .charge_time = 0.5F, .cast_duration = 1.0F, .range = 5000.0F,
-                  .effects = {{.effect = k_bolt, .magnitude = 25.0F, .area = 10}}},
+                  .effects = {{.effect = k_bolt, .magnitude = 25.0F, .area = 10}}, .half_cost_perk = k_novice_destruction},
         SpellSpec{.id = k_healing, .name = "Healing", .cost = 20, .casting_type = 1, .delivery = 0,
-                  .effects = {{.effect = k_heal, .magnitude = 10.0F}}},
+                  .effects = {{.effect = k_heal, .magnitude = 10.0F}}, .half_cost_perk = k_novice_restoration},
         SpellSpec{.id = k_power, .name = "Power", .cost = 0, .flags = magic::k_spell_manual_cost, .type = magic::spell_type::power, .casting_type = 1,
                   .delivery = 0, .effects = {{.effect = k_heal, .magnitude = 5.0F}}},
     };
@@ -143,6 +195,7 @@ WorldSpec world_spec() {
     BaseSpec poison{.id = k_poison, .name = "Poison"};
     poison.item = ItemSpec{.category = wfb::ItemCategory::potion, .effects = {{.effect = k_venom, .magnitude = 3.0F, .duration = 5}}};
     spec.bases = {scroll, sword, plain, auto_sword, circlet, poison};
+    spec.perks = perk_specs();
     spec.enchantments = {
         EnchantmentSpec{.id = k_ench_fire, .cost = 25, .charge = 100, .flags = magic::k_ench_manual_cost,
                         .effects = {{.effect = k_bolt, .magnitude = 10.0F}}},
@@ -624,4 +677,54 @@ TEST_CASE("a created apparel enchantment is worn like a world one", "[casting][e
     CHECK(rig.host.states.max(k_player, k_health) == Approx(max + 12));
     worn.sync(k_player, {});
     CHECK(rig.host.states.max(k_player, k_health) == Approx(max));
+}
+
+// ---- perks ----------------------------------------------------------------------------------------
+
+namespace {
+void give_perks(Rig& rig, std::vector<std::pair<std::uint32_t, std::uint8_t>> owned) {
+    rig.host.perk_world = &*rig.world;
+    rig.host.perks_owned = std::move(owned);
+}
+} // namespace
+
+TEST_CASE("a half-cost perk halves the cost of the spells that name it only", "[casting][perks]") {
+    Rig rig;
+    const double flames = magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_flames));
+    const double healing = magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_healing));
+    give_perks(rig, {{k_novice_destruction, 1}});
+    CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_flames)) ==
+          Approx(flames * 0.5));
+    CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_healing)) ==
+          Approx(healing)); // its half-cost perk is Novice Restoration
+    const auto paid = rig.pay(k_firebolt);
+    CHECK(paid.cost == Approx(50 * magic::skill_cost_multiplier(15) * 0.5).margin(0.01));
+}
+
+TEST_CASE("a school mod of 25 costs x0.75, and a magnitude perk raises the damage", "[casting][perks]") {
+    Rig rig;
+    const auto* flames = skydot::lookup(rig.world->spells(), k_flames);
+    const double plain = magic::perk_spell_cost(*rig.world, rig.host, k_player, *flames);
+    give_perks(rig, {{k_mod_skills, 1}});
+    rig.host.perk_fake.values[{k_player, 108}] = 25.0;
+    CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *flames) == Approx(plain * 0.75));
+
+    Rig base;
+    magic::land_form(*base.world, base.effects, k_player, k_firebolt, k_skeever);
+    const double plain_damage = 100.0 - base.host.states.get(k_skeever, k_health);
+    REQUIRE(plain_damage > 0.0);
+    Rig perked;
+    give_perks(perked, {{k_augmented, 1}});
+    magic::land_form(*perked.world, perked.effects, k_player, k_firebolt, k_skeever);
+    CHECK(100.0 - perked.host.states.get(k_skeever, k_health) == Approx(plain_damage * 1.25).margin(0.01));
+}
+
+TEST_CASE("the target's incoming perk lowers the magnitude", "[casting][perks]") {
+    Rig base;
+    magic::land_form(*base.world, base.effects, k_player, k_firebolt, k_skeever);
+    const double plain_damage = 100.0 - base.host.states.get(k_skeever, k_health);
+    Rig rig;
+    give_perks(rig, {{k_mod_skills, 1}}); // the same list for caster and target: 41 x0.5 for the skeever
+    magic::land_form(*rig.world, rig.effects, k_player, k_firebolt, k_skeever);
+    CHECK(100.0 - rig.host.states.get(k_skeever, k_health) == Approx(plain_damage * 0.5).margin(0.01));
 }

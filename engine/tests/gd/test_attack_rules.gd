@@ -17,9 +17,11 @@ class FakeData extends AttackData:
 	var gmsts := {}
 	var perks := {}          # entry point -> multiplier added to the value (value * m), or {"set": v}
 	var perk_calls: Array = []  # [entry point, owner, subjects]
+	var perk_extras: Array = []  # the `extra` of each call
 
-	func perk_entry(entry_point: int, owner: int, subjects: Array, value: float) -> float:
+	func perk_entry(entry_point: int, owner: int, subjects: Array, value: float, extra := {}) -> float:
 		perk_calls.append([entry_point, owner, subjects])
+		perk_extras.append(extra)
 		var p: Variant = perks.get(entry_point)
 		if p == null:
 			return value
@@ -451,3 +453,36 @@ func test_power_attack_stamina_perk() -> void:
 	var base := rules.power_attack_cost(P, SWORD)
 	data.perks = {27: 0.75}
 	_near(rules.power_attack_cost(P, SWORD), base * 0.75, "Mod Power Attack Stamina")
+
+
+func test_armor_perks_multiply_each_piece_after_the_rounding() -> void:
+	data.perks = {85: 1.2}
+	var facts := {"weapon_damage": 10.0, "attacker": P, "weapon": SWORD, "target": NPC, "light_armor_skill": 0.0,
+		"worn": [0xA1, 0xA2], "armor": [{"rating": 10.0, "armor_type": 0, "form": 0xA1}, {"rating": 20.0, "armor_type": 0, "form": 0xA2}]}
+	var r := rules.damage(facts)
+	_near(r["armor_rating"], 36.0, "(10 + 20) x 1.2, skill 0")
+	var calls := data.perk_calls.filter(func(c): return c[0] == 85)
+	expect(calls.size() == 2, "one ask per piece")
+	expect(calls[0][1] == NPC and calls[0][2] == [NPC, 0xA1, 0], "owner the wearer, subjects [wearer, armor base]")
+	expect(data.perk_extras[data.perk_calls.find(calls[0])]["worn"] == [0xA1, 0xA2], "the worn bases go along")
+
+
+func test_target_resistance_perks_scale_the_total_rating_of_the_attackers_view() -> void:
+	data.perks = {37: 0.75}
+	var facts := {"weapon_damage": 10.0, "attacker": P, "weapon": SWORD, "target": NPC, "heavy_armor_skill": 0.0,
+		"armor": [{"rating": 40.0, "armor_type": 1, "form": 0xA1}]}
+	_near(rules.damage(facts)["armor_rating"], 30.0, "ignores 25 percent of the armor")
+	var call: Array = data.perk_calls.filter(func(c): return c[0] == 37)[0]
+	expect(call[1] == P and call[2] == [P, SWORD, NPC], "the attacker's perk, [attacker, weapon, target]")
+
+
+func test_percent_blocked_perks_scale_the_blocked_share_before_the_cap() -> void:
+	var facts := {"weapon_damage": 10.0, "weapon": SWORD, "attacker": P, "target": NPC, "attack_mult": 1.0, "armor": [],
+		"blocked": true, "block_skill": 0.0}
+	var plain := float(rules.blocked_percent(facts, {}))
+	data.perks = {39: 1.1}
+	_near(rules.blocked_percent(facts, {}), plain * 1.1, "Shield Wall")
+	var call: Array = data.perk_calls.filter(func(c): return c[0] == 39)[0]
+	expect(call[1] == NPC and call[2] == [NPC, P, SWORD], "the blocker's perk, [blocker, attacker, weapon]")
+	data.perks = {39: 100.0}
+	_near(rules.blocked_percent(facts, {}), AttackRules.BLOCK_CAP, "capped")

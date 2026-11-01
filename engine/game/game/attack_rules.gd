@@ -31,6 +31,9 @@ const EP_POWER_ATTACK_DAMAGE := 28
 const EP_SNEAK_ATTACK_MULT := 18
 const EP_INCOMING_DAMAGE := 36
 const EP_POWER_ATTACK_STAMINA := 27
+const EP_MOD_ARMOR_RATING := 85
+const EP_MOD_TARGET_RESISTANCE := 37
+const EP_MOD_PERCENT_BLOCKED := 39
 ## The GMSTs of the formula with their values in Skyrim.esm (no GMST holds the skill minimum).
 const SETTINGS := {
 	"fDamagePCSkillMax": 1.5, "fArmorScalingFactor": 0.12, "fMaxArmorRating": 80.0,
@@ -194,7 +197,16 @@ func blocked_percent(facts: Dictionary, settings: Dictionary) -> float:
 			percent *= _setting(settings, "fBlockAmountHandToHandMult")
 	if bool(facts.get("power", false)):
 		percent *= _setting(settings, "fBlockPowerAttackMult")
-	return minf(percent, BLOCK_CAP)
+	return minf(blocked_perk_percent(facts, percent), BLOCK_CAP)
+
+
+## The blocker's Mod Percent Blocked perks 39 [blocker, attacker, attacker's weapon base] (Shield Wall, and
+## PerkSkillBoosts' Block mod while IsBlocking) on the share a block stops.
+func blocked_perk_percent(facts: Dictionary, percent: float) -> float:
+	var blocker := int(facts.get("target", 0))
+	return _data.perk_entry(EP_MOD_PERCENT_BLOCKED, blocker,
+		[blocker, int(facts.get("attacker", 0)), int(facts.get("weapon", 0))], percent,
+		{"worn": facts.get("worn", [])})
 
 
 ## Stamina the blocker pays for the hit it stopped: fStaminaBlockBase + fStaminaBlockDmgMult x the
@@ -234,10 +246,28 @@ func armor_percent(facts: Dictionary, settings: Dictionary) -> Dictionary:
 		var skill := float(facts.get("heavy_armor_skill" if int(piece.get("armor_type", 0)) == ARMOR_HEAVY else "light_armor_skill", 0.0))
 		var factor := _lerp(_setting(settings, "fArmorRatingBase"), top, skill / 100.0)
 		var tempered := float(piece["rating"]) + temper_bonus(int(piece.get("quality", 0)), 1.0 if bool(piece.get("chest", false)) else 0.5, true)
-		rating += ceilf(tempered * factor)
+		rating += piece_perk_rating(facts, piece, ceilf(tempered * factor))
 		pieces += 1
+	rating = resistance_perk_rating(facts, rating)
 	var percent := rating * _setting(settings, "fArmorScalingFactor") + _setting(settings, "fArmorBaseFactor") * 100.0 * pieces
 	return {"rating": rating, "percent": minf(_setting(settings, "fMaxArmorRating"), percent)}
+
+
+## One worn piece's rating (after tempering and the skill, rounded up) through the wearer's Mod Armor Rating
+## perks 85 [wearer, armor base] (Juggernaut, Agile Defender, Well Fitted, Custom Fit, Matching Set: UESP
+## Skyrim:Armor multiplies them in after the rounding). `facts.worn` lists the bases worn.
+func piece_perk_rating(facts: Dictionary, piece: Dictionary, rating: float) -> float:
+	var wearer := int(facts.get("target", 0))
+	return _data.perk_entry(EP_MOD_ARMOR_RATING, wearer, [wearer, int(piece.get("form", 0)), 0], rating,
+		{"worn": facts.get("worn", [])})
+
+
+## The target's total armor rating through the attacker's Mod Target Damage Resistance perks 37
+## [attacker, weapon base, target] (Skullcrusher, Bone Breaker: "ignore 25% of armor", x0.75).
+func resistance_perk_rating(facts: Dictionary, rating: float) -> float:
+	var attacker := int(facts.get("attacker", 0))
+	return _data.perk_entry(EP_MOD_TARGET_RESISTANCE, attacker,
+		[attacker, int(facts.get("weapon", 0)), int(facts.get("target", 0))], rating)
 
 
 ## The sneak attack multiplier: the attacker is sneaking and the target does not know of him (else 1),

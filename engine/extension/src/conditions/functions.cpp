@@ -231,6 +231,21 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(p1 != 0 && world.equipped_shout(subject) == p1);
     case fn::has_perk:
         return flag(world.perk_rank(subject, p1) > 0);
+    case fn::has_magic_effect:
+        return flag(world.has_magic_effect(subject, p1));
+    // GetEquipped: the parameter is an item or a form list of items.
+    case fn::get_equipped: {
+        std::vector<std::uint32_t> forms;
+        if (!world.form_list(p1, forms)) {
+            forms = {p1};
+        }
+        return flag(std::ranges::any_of(forms, [&](std::uint32_t f) { return world.is_equipped(subject, f); }));
+    }
+    // The parameter is the hand: 0 left, 1 right.
+    case fn::get_equipped_item_type:
+        return static_cast<double>(world.equipped_item_type(subject, static_cast<std::int32_t>(p1)));
+    case fn::is_blocking:
+        return flag(world.is_blocking(subject));
     // No spells until magic (C5).
     case fn::has_spell:
         return 0.0;

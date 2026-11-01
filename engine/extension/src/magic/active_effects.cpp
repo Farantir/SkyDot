@@ -435,6 +435,18 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
         }
         double magnitude = static_cast<double>(in.magnitude) * options.scale *
                            (options.dual_cast ? k_placeholder_dual_cast_scale : 1.0);
+        double duration = static_cast<double>(in.duration);
+        if (source.kind == SourceKind::spell || source.kind == SourceKind::scroll) {
+            // The caster's perks (Mod Spell Magnitude 29, Duration 30), then the target's (41, 42), before
+            // resistance. Potions, enchantments, poisons and abilities are not spells: no perk applies.
+            magnitude = host_.perk_entry(perk_ep::mod_spell_magnitude, caster, {caster, source.form, target}, magnitude);
+            magnitude = host_.perk_entry(perk_ep::mod_incoming_spell_magnitude, target, {target, source.form, caster}, magnitude);
+            if (duration > 0.0) {
+                duration = host_.perk_entry(perk_ep::mod_spell_duration, caster, {caster, source.form, target}, duration);
+                duration = std::max(0.0, host_.perk_entry(perk_ep::mod_incoming_spell_duration, target,
+                                                         {target, source.form, caster}, duration));
+            }
+        }
         if ((m->flags() & mgef_flag::hostile) != 0) {
             if (m->resist_value() >= 0) {
                 magnitude = resisted_magnitude(magnitude, host_.actor_value(target, static_cast<std::uint32_t>(m->resist_value())), s);
@@ -469,7 +481,7 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
         }
         if (existing != nullptr) {
             existing->magnitude = magnitude;
-            existing->duration = in.duration;
+            existing->duration = duration;
             existing->elapsed = 0.0;
             existing->area = area_units(in.area);
             if (const bool now = conditions_ok(*existing); now != existing->active) {
@@ -501,7 +513,7 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
         inst.caster = caster;
         inst.target = target;
         inst.magnitude = magnitude;
-        inst.duration = in.duration;
+        inst.duration = duration;
         inst.area = area_units(in.area);
         inst.permanent = constant;
         (void)fill_from_mgef(inst);

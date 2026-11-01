@@ -67,6 +67,11 @@ public:
         [[nodiscard]] virtual WorldAccess& world_access() = 0;
         [[nodiscard]] virtual Inventory& inventory() = 0;
         [[nodiscard]] virtual ActorStates& actor_states() = 0;
+        /// `value` after the perks of `owner` at perk entry point `ep` (perks/entry_points.hpp).
+        [[nodiscard]] virtual double perk_entry(std::uint8_t /*ep*/, std::uint32_t /*owner*/,
+                                                std::array<std::uint32_t, 3> /*subjects*/, double value) const {
+            return value;
+        }
         /// The abilities of the perks `ref` has from its NPC_ (PRKR), which are part of its base spell list.
         [[nodiscard]] virtual std::vector<std::uint32_t> perk_abilities(std::uint32_t /*ref*/) { return {}; }
         [[nodiscard]] virtual CreatedForms& created_forms() = 0;
@@ -474,9 +479,11 @@ public:
         if (caster == 0) {
             return static_cast<double>(s->cost());
         }
-        const int school = magic::spell_school(world_, *s);
-        const double skill = school >= 0 ? host_->actor_states().get(caster, static_cast<std::uint32_t>(school)) : 0.0;
-        return magic::spell_cost(world_, *s, skill, settings());
+        return magic::perk_spell_cost(world_, *this, caster, *s, settings());
+    }
+    double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
+                      double value) const override {
+        return host_->perk_entry(ep, owner, subjects, value);
     }
     bool add_spell(std::uint32_t actor, std::uint32_t spell, bool verbose) override {
         if (!host_->actor_states().is_actor(actor)) {

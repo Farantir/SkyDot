@@ -203,6 +203,14 @@ Dictionary SkydotPapyrus::cast_scroll(std::int64_t caster_in, std::int64_t scrol
     return out;
 }
 
+void SkydotPapyrus::set_blocking(std::int64_t actor, bool blocking) {
+    if (blocking) {
+        blocking_.insert(static_cast<std::uint32_t>(actor));
+    } else {
+        blocking_.erase(static_cast<std::uint32_t>(actor));
+    }
+}
+
 double SkydotPapyrus::spell_cost(std::int64_t caster, std::int64_t spell) {
     auto* m = magic_state();
     return m != nullptr ? m->spell_cost(static_cast<std::uint32_t>(spell), static_cast<std::uint32_t>(caster)) : 0.0;

@@ -330,6 +330,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_charge_time(sp.charge_time);
         b.add_cast_duration(sp.cast_duration);
         b.add_range(sp.range);
+        b.add_half_cost_perk(sp.half_cost_perk);
         b.add_effects(items_v);
         spells.push_back(b.Finish());
     }

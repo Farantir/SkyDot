@@ -105,6 +105,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("weapon_charge", "actor", "form", "extra"), &SkydotPapyrus::weapon_charge,
                                 DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("spell_cost", "caster", "spell"), &SkydotPapyrus::spell_cost);
+    godot::ClassDB::bind_method(D_METHOD("set_blocking", "actor", "blocking"), &SkydotPapyrus::set_blocking);
     godot::ClassDB::bind_method(D_METHOD("spend_magicka", "caster", "amount"), &SkydotPapyrus::spend_magicka);
     godot::ClassDB::bind_method(D_METHOD("apply_item_effects", "actor", "form", "extra"),
                                 &SkydotPapyrus::apply_item_effects, DEFVAL(0));
@@ -439,6 +440,7 @@ void SkydotPapyrus::reset() {
     created_.clear();
     dialogue_.reset();
     progression_.clear();
+    blocking_.clear();
     scene_.reset();
     activation_.reset();
     triggers_.clear();
@@ -988,6 +990,22 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     // ---- vm::DialogueRuntime::Host
     vm::ActorHost& actor_host() override { return *this; }
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+
+    // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
+    double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
+                      double value) const override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        if (root == nullptr || ep >= perks::k_entry_point_count) {
+            return value;
+        }
+        const perks::EntryPoints points(*root, owner_.condition_world(),
+                                        [this](std::uint32_t ref) { return owner_.progression_.perks_of(ref); });
+        perks::EntryContext ctx;
+        ctx.owner = owner;
+        ctx.subjects = subjects;
+        ctx.worn = owner_.item_.worn_armor_of(owner);
+        return points.apply(static_cast<perks::EntryPoint>(ep), ctx, value);
+    }
 
     // ---- vm::MagicRuntime::Host: the abilities of an actor's base perks are part of its spell list
     std::vector<std::uint32_t> perk_abilities(std::uint32_t ref) override {

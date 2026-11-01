@@ -118,6 +118,14 @@ bool effects_of_castable(const wfb::World& world, std::uint32_t form, std::vecto
     return false;
 }
 
+double perk_spell_cost(const wfb::World& world, const MagicHost& host, std::uint32_t caster,
+                       const wfb::Spell& spell, const MagicSettings& s) {
+    const int school = spell_school(world, spell);
+    const double skill = school >= 0 ? host.actor_value(caster, static_cast<std::uint32_t>(school)) : 0.0;
+    const double cost = spell_cost(world, spell, skill, s);
+    return std::max(0.0, host.perk_entry(perk_ep::mod_spell_cost, caster, {caster, spell.id(), 0}, cost));
+}
+
 Payment pay_spell(const wfb::World& world, MagicHost& host, SpellBook& book, std::uint32_t caster,
                   std::uint32_t spell, double seconds, double game_days, const MagicSettings& s) {
     Payment out;
@@ -130,9 +138,7 @@ Payment pay_spell(const wfb::World& world, MagicHost& host, SpellBook& book, std
         out.reason = "cooldown";
         return out;
     }
-    const int school = spell_school(world, *sp);
-    const double skill = school >= 0 ? host.actor_value(caster, static_cast<std::uint32_t>(school)) : 0.0;
-    double cost = spell_cost(world, *sp, skill, s);
+    double cost = perk_spell_cost(world, host, caster, *sp, s);
     if (sp->casting_type() == casting::concentration) {
         cost *= seconds > 0.0 ? seconds : 1.0; // per second
     }

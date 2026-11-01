@@ -46,8 +46,9 @@ func land_hit(attacker: int, target: int, weapon: int, extra: int, damage: float
 ## A perk entry point (perks::EntryPoint id) applied to `value` for `owner`'s perks; `subjects` are the
 ## condition subjects of tabs 0, 1, 2 (SkydotPapyrus.perk_entry). 35, 28, 36, 37 are multipliers starting
 ## at 1.0, 18 and 27 start at the value the rules computed.
-func perk_entry(entry_point: int, owner: int, subjects: Array, value: float) -> float:
-	return _papyrus.perk_entry(entry_point, owner, subjects, value)
+## `extra` names the moment (`worn`: the armor bases the owner wears).
+func perk_entry(entry_point: int, owner: int, subjects: Array, value: float, extra := {}) -> float:
+	return _papyrus.perk_entry(entry_point, owner, subjects, value, extra)
 
 
 func stamina(actor: int) -> float:

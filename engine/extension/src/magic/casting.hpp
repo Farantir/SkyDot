@@ -58,6 +58,11 @@ struct CastInfo {
 bool effects_of_castable(const wfb::World& world, std::uint32_t form, std::vector<EffectInput>& inputs,
                          SourceKind& kind);
 
+/// What `caster` pays for `spell` once: the stored cost x the skill multiplier, then the caster's
+/// Mod Spell Cost perks (38; subjects [caster, spell]), at least 0. A concentration spell's is per second.
+[[nodiscard]] double perk_spell_cost(const wfb::World& world, const MagicHost& host, std::uint32_t caster,
+                                     const wfb::Spell& spell, const MagicSettings& s = {});
+
 struct Payment {
     bool ok = false;
     std::string reason; ///< "", "no such spell", "cooldown", "not enough magicka"

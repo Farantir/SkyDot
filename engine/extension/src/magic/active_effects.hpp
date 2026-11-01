@@ -27,6 +27,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <array>
 #include <span>
 #include <string>
 #include <string_view>
@@ -135,6 +136,12 @@ public:
         return {};
     }
     virtual void effect_changed(bool /*started*/, const EffectView& /*effect*/) {}
+    /// `value` after the perks of `owner` at perk entry point `ep` (magic_rules.hpp perk_ep); `subjects`
+    /// are the condition subjects of the effect tabs 0, 1, 2. The default has no perks.
+    [[nodiscard]] virtual double perk_entry(std::uint8_t /*ep*/, std::uint32_t /*owner*/,
+                                            std::array<std::uint32_t, 3> /*subjects*/, double value) const {
+        return value;
+    }
     virtual void log(const std::string& line) = 0;
 };
 

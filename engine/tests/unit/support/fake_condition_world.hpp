@@ -42,6 +42,10 @@ public:
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::int64_t> items;
     std::map<std::uint32_t, std::int32_t> levels;
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> perk_ranks;
+    std::set<std::pair<std::uint32_t, std::uint32_t>> magic_effects; ///< (ref, mgef) active
+    std::set<std::pair<std::uint32_t, std::uint32_t>> equipped;      ///< (ref, form)
+    std::map<std::pair<std::uint32_t, std::int32_t>, std::int32_t> hand_types; ///< (ref, hand) -> type
+    std::set<std::uint32_t> blocking;
     std::map<std::uint32_t, std::uint32_t> cells;
     std::set<std::uint32_t> interiors;
     std::map<std::uint32_t, std::uint32_t> cell_worlds;
@@ -123,6 +127,12 @@ public:
     }
     std::int32_t level(std::uint32_t r) const override { return get(levels, r, 0); }
     std::int32_t perk_rank(std::uint32_t r, std::uint32_t p) const override { return get(perk_ranks, {r, p}, 0); }
+    bool has_magic_effect(std::uint32_t r, std::uint32_t m) const override { return magic_effects.contains({r, m}); }
+    bool is_equipped(std::uint32_t r, std::uint32_t f) const override { return equipped.contains({r, f}); }
+    std::int32_t equipped_item_type(std::uint32_t r, std::int32_t h) const override {
+        return get(hand_types, {r, h == 0 ? 0 : 1}, 0);
+    }
+    bool is_blocking(std::uint32_t r) const override { return blocking.contains(r); }
     std::uint32_t combat_target(std::uint32_t r) const override { return get(combat, r, 0U); }
 
     std::uint32_t cell_of(std::uint32_t r) const override { return get(cells, r, 0U); }

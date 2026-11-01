@@ -356,6 +356,41 @@ std::int64_t ItemRuntime::equipped_item_type(std::uint32_t owner, std::int64_t h
     return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
 }
 
+std::vector<std::uint32_t> ItemRuntime::worn_armor_of(std::uint32_t owner) const {
+    resolve_owner(owner);
+    std::vector<std::uint32_t> out;
+    const auto* equipment = states_.find(owner);
+    if (equipment == nullptr) {
+        return out;
+    }
+    const auto wearable = [this](std::uint32_t form) {
+        const ItemInfo info = item_info_of(form);
+        return info.known && (info.category == ItemCategory::armor || info.category == ItemCategory::clothing);
+    };
+    for (const std::uint32_t form : equipment->worn) {
+        if (wearable(form)) {
+            out.push_back(form);
+        }
+    }
+    if (equipment->left != 0 && is_shield(item_info_of(equipment->left))) {
+        out.push_back(equipment->left);
+    }
+    return out;
+}
+
+bool ItemRuntime::is_equipped(std::uint32_t owner, std::uint32_t form) const {
+    resolve_owner(owner);
+    const auto* equipment = states_.find(owner);
+    return form != 0 && equipment != nullptr && equipment->holds(form);
+}
+
+std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand) const {
+    resolve_owner(owner);
+    const auto* equipment = states_.find(owner);
+    const std::uint32_t form = equipment == nullptr ? 0 : (hand == 0 ? equipment->left : equipment->right);
+    return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
+}
+
 // ---- natives
 
 void ItemRuntime::bind_natives(Vm& vm, Host& host) {

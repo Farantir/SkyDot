@@ -87,7 +87,7 @@ double spell_cost(const wfb::World& world, const wfb::Spell& spell, double skill
     if (stored == 0.0 && (spell.flags() & k_spell_manual_cost) == 0) {
         stored = std::floor(auto_calc_cost(world, spell, s)); // a record that stored nothing
     }
-    return stored * skill_cost_multiplier(skill, s) * k_placeholder_perk_multiplier;
+    return stored * skill_cost_multiplier(skill, s);
 }
 
 double resisted_magnitude(double magnitude, double resist, const MagicSettings& s) {

@@ -94,8 +94,16 @@ struct MagicSettings {
 /// 1 - (skill/400)^0.65, from 1 (skill 0) towards 0.594 (skill 100), clamped to 0..1.
 [[nodiscard]] double skill_cost_multiplier(double skill, const MagicSettings& s = {});
 
-/// PLACEHOLDERS until P6 (perks): the perk, equipment and dual cast multipliers are 1.
-inline constexpr double k_placeholder_perk_multiplier = 1.0;
+/// The perk entry points (perks::EntryPoint ids) the magic rules ask the host about.
+namespace perk_ep {
+inline constexpr std::uint8_t mod_spell_magnitude = 29;
+inline constexpr std::uint8_t mod_spell_duration = 30;
+inline constexpr std::uint8_t mod_spell_cost = 38;
+inline constexpr std::uint8_t mod_incoming_spell_magnitude = 41;
+inline constexpr std::uint8_t mod_incoming_spell_duration = 42;
+} // namespace perk_ep
+
+/// PLACEHOLDER until dual casting exists: its multiplier is 1.
 inline constexpr double k_placeholder_dual_cast_scale = 1.0;
 
 /// The cost the editor stores for one effect: base cost x (magnitude x duration factor)^1.1, with
@@ -105,7 +113,8 @@ inline constexpr double k_placeholder_dual_cast_scale = 1.0;
                                  double area, const MagicSettings& s = {});
 
 /// The cost a spell costs a caster with `skill` in its school: the stored SPIT cost (see adr/0008 for
-/// why it is used also when the editor calculated it), x the skill multiplier x the placeholders.
+/// why it is used also when the editor calculated it), x the skill multiplier. The caster's perks
+/// (Mod Spell Cost 38) are applied by `perk_spell_cost` (casting.hpp).
 [[nodiscard]] double spell_cost(const wfb::World& world, const wfb::Spell& spell, double skill,
                                 const MagicSettings& s = {});
 /// The cost summed from the effects (what the editor would store); for tests and the census.

@@ -425,6 +425,22 @@ std::uint32_t PapyrusConditionWorld::equipped_shout(std::uint32_t ref) const {
     return owner_ != nullptr ? owner_->voice_shout(ref) : 0;
 }
 
+bool PapyrusConditionWorld::has_magic_effect(std::uint32_t ref, std::uint32_t mgef) const {
+    return owner_ != nullptr && owner_->magic_ != nullptr && owner_->magic_->effects.has_effect(ref, mgef);
+}
+
+bool PapyrusConditionWorld::is_equipped(std::uint32_t ref, std::uint32_t form) const {
+    return owner_ != nullptr && owner_->item_.is_equipped(ref, form);
+}
+
+std::int32_t PapyrusConditionWorld::equipped_item_type(std::uint32_t ref, std::int32_t hand) const {
+    return owner_ == nullptr ? 0 : static_cast<std::int32_t>(owner_->item_.hand_item_type(ref, hand));
+}
+
+bool PapyrusConditionWorld::is_blocking(std::uint32_t ref) const {
+    return owner_ != nullptr && owner_->blocking_.contains(ref);
+}
+
 // ---- the shared world, and who uses it --------------------------------------------
 
 conditions::ConditionWorld& SkydotPapyrus::condition_world() {

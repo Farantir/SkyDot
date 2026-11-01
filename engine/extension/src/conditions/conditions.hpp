@@ -182,6 +182,18 @@ public:
     /// The rank of perk `perk` on `ref` (0: none).
     [[nodiscard]] virtual std::int32_t perk_rank(std::uint32_t /*ref*/, std::uint32_t /*perk*/) const { return 0; }
 
+    // ---- magic, equipment, blocking (perk conditions)
+    /// Whether an active effect of magic effect `mgef` is on `ref`.
+    [[nodiscard]] virtual bool has_magic_effect(std::uint32_t /*ref*/, std::uint32_t /*mgef*/) const { return false; }
+    /// Whether `ref` has `form` equipped (worn, or in a hand).
+    [[nodiscard]] virtual bool is_equipped(std::uint32_t /*ref*/, std::uint32_t /*form*/) const { return false; }
+    /// GetEquippedItemType of a hand (0 left, else right): the item type, 0 if empty.
+    [[nodiscard]] virtual std::int32_t equipped_item_type(std::uint32_t /*ref*/, std::int32_t /*hand*/) const {
+        return 0;
+    }
+    /// Whether `ref` has its block up.
+    [[nodiscard]] virtual bool is_blocking(std::uint32_t /*ref*/) const { return false; }
+
     [[nodiscard]] UnknownCounter& unknowns() { return unknowns_; }
     [[nodiscard]] const UnknownCounter& unknowns() const { return unknowns_; }
 

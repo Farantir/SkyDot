@@ -174,6 +174,30 @@ TEST_CASE("GetEquippedShout compares the voice slot with its parameter", "[condi
     CHECK(w.unknowns().counts().empty());
 }
 
+TEST_CASE("HasMagicEffect, GetEquipped, GetEquippedItemType and IsBlocking read the world", "[conditions]") {
+    FakeConditionWorld w;
+    w.magic_effects.insert({0x14, 0x500});
+    w.equipped.insert({0x14, 0x600});
+    w.lists[0x700] = {0x601, 0x600};
+    w.hand_types[{0x14, 0}] = 10; // a shield in the left hand
+    w.hand_types[{0x14, 1}] = 3;
+    w.blocking.insert(0x14);
+    const conditions::ConditionContext c14{.subject = 0x14};
+    const conditions::ConditionContext c15{.subject = 0x15};
+    CHECK(pass({cond(fn::has_magic_effect, 1.0F, 0x500)}, w, c14));
+    CHECK(pass({cond(fn::has_magic_effect, 0.0F, 0x501)}, w, c14));
+    CHECK(pass({cond(fn::has_magic_effect, 0.0F, 0x500)}, w, c15));
+    CHECK(pass({cond(fn::get_equipped, 1.0F, 0x600)}, w, c14));
+    CHECK(pass({cond(fn::get_equipped, 1.0F, 0x700)}, w, c14)); // a form list
+    CHECK(pass({cond(fn::get_equipped, 0.0F, 0x600)}, w, c15));
+    CHECK(pass({cond(fn::get_equipped_item_type, 10.0F, 0)}, w, c14));
+    CHECK(pass({cond(fn::get_equipped_item_type, 3.0F, 1)}, w, c14));
+    CHECK(pass({cond(fn::get_equipped_item_type, 0.0F, 1)}, w, c15));
+    CHECK(pass({cond(fn::is_blocking, 1.0F)}, w, c14));
+    CHECK(pass({cond(fn::is_blocking, 0.0F)}, w, c15));
+    CHECK(w.unknowns().counts().empty());
+}
+
 TEST_CASE("IsChild and IsUndead, GetRestrained rests at 0", "[conditions]") {
     FakeConditionWorld w;
     w.children.insert(0x20);

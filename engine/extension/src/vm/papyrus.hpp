@@ -237,6 +237,8 @@ public:
     godot::Dictionary weapon_charge(std::int64_t actor, std::int64_t form, std::int64_t extra = -1);
     /// What `spell` costs `caster` at its skill (0 for `caster` 0: the stored cost).
     double spell_cost(std::int64_t caster, std::int64_t spell);
+    /// The game layer tells whether `actor` has its block up now (condition IsBlocking 569).
+    void set_blocking(std::int64_t actor, bool blocking);
     /// Take magicka from `caster` as damage, so the regeneration delay applies.
     void spend_magicka(std::int64_t caster, double amount);
     /// The effects of an ALCH, INGR or SCRL (or created potion) on `actor`: {ok, reason, effects}.
@@ -690,6 +692,8 @@ private:
     /// The player's progress and every actor's perks (vm/progression_runtime.hpp; section PRGS).
     vm::ProgressionRuntime progression_;
     godot::Callable progression_handler_;
+    /// The actors with their block up, kept by the game layer (set_blocking); IsBlocking reads it.
+    std::set<std::uint32_t> blocking_;
     friend class DialogueHostImpl;
     /// The scene domain (vm/scene_runtime.hpp); the scene_* methods above only convert for it.
     vm::SceneRuntime scene_;

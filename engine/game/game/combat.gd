@@ -191,6 +191,7 @@ func toggle_weapon() -> void:
 	elif _state == State.DRAWN:
 		_attack = {}
 		_begin(State.SHEATHING, _prefix + "unequip", "weaponSheathe")
+		_sync_block()
 
 
 ## A save was loaded or the game restarted: nothing of the game before it goes on. Besides what
@@ -219,6 +220,7 @@ func on_place_left() -> void:
 	_held_fired = false
 	_left_next = false
 	_blocking = false
+	_sync_block()
 
 
 func weapon_state() -> int:
@@ -323,11 +325,18 @@ func block_pressed() -> bool:
 	if _state != State.DRAWN or not _left_hand_blocks():
 		return false
 	_blocking = true
+	_sync_block()
 	return true
 
 
 func block_released() -> void:
 	_blocking = false
+	_sync_block()
+
+
+## Tell the condition world whether the player's block is up (IsBlocking 569 in perk and effect conditions).
+func _sync_block() -> void:
+	_papyrus.set_blocking(PLAYER_REF, is_blocking())
 
 
 ## Whether the player's block is up now.
@@ -376,6 +385,7 @@ func attack(power := false, left := false) -> bool:
 		_left_next = not use_left
 	if power:
 		rules.pay_power_attack(PLAYER_REF, _weapon_form)
+	_sync_block()
 	attack_started.emit(stem, power)
 	return true
 
@@ -1135,6 +1145,7 @@ static func _segment_distance(a: Vector3, b: Vector3, candidate: Dictionary) -> 
 ## Apply the hit, tell the shells, and leave the impact.
 func _deliver(attacker: int, target: int, weapon: int, extra: int, event: String, flags: int, point: Vector3,
 		attacker_race: Dictionary, weapon_info: Dictionary, ammo := 0) -> Dictionary:
+	_sync_block()
 	if target == PLAYER_REF and attacker != PLAYER_REF and is_blocking() and _in_front_of_player(attacker, point):
 		flags |= SkydotPapyrus.HIT_BLOCKED
 	var result := rules.hit(attacker, target, weapon, extra, event, flags, ammo)

@@ -143,6 +143,7 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
                 piece["quality"] = static_cast<std::int64_t>(extra != nullptr ? vm::temper_quality(extra->health) : 0);
                 piece["chest"] = (info.biped_slots & (1U << 2)) != 0;
                 piece["shield"] = form == shield;
+                piece["form"] = static_cast<std::int64_t>(form);
                 armor.push_back(piece);
             }
         };
@@ -170,6 +171,12 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
     out["light_armor_skill"] = actors_.get(target, vm::av::k_first_skill + 6);  // LightArmor 12
     out["heavy_armor_skill"] = actors_.get(target, vm::av::k_first_skill + 5);  // HeavyArmor 11
     out["armor"] = armor;
+    // The bases worn (WornHasKeyword and the like of the perk entry points), the pieces' forms.
+    godot::Array worn_forms;
+    for (const std::uint32_t form : item_.worn_armor_of(target)) {
+        worn_forms.push_back(static_cast<std::int64_t>(form));
+    }
+    out["worn"] = worn_forms;
     out["power"] = power;
     out["blocked"] = (flags & HIT_BLOCKED) != 0;
     out["block_skill"] = actors_.get(target, vm::av::k_first_skill + 3);  // Block 9
