@@ -33,6 +33,9 @@ public:
     virtual void stop_sound(std::int64_t instance) = 0;
     /// Set the volume of playback `instance` (the `sound_volume` signal).
     virtual void sound_volume(std::int64_t instance, double volume) = 0;
+    /// A script registered for animation events of `sender`: the game layer
+    /// should report them (the `animation_events_wanted` signal).
+    virtual void animation_events_wanted(std::uint32_t sender) = 0;
 };
 
 } // namespace skydot::vm

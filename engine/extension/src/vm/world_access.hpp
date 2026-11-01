@@ -59,6 +59,8 @@ public:
     [[nodiscard]] virtual double game_days() const = 0;
     /// Game seconds per real second (the TimeScale global); 0 when time stands.
     [[nodiscard]] virtual double time_scale() const = 0;
+    /// Whether `ref` has its 3D loaded: placed in the world and not disabled.
+    [[nodiscard]] virtual bool ref_3d_loaded(std::uint32_t ref) const = 0;
 };
 
 } // namespace skydot::vm

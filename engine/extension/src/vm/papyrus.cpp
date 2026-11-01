@@ -656,6 +656,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         out.is_player = ref == k_player_ref;
         return true;
     }
+    bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
     std::int32_t player_level() const override { return 1; }
     double game_days() const override {
         return owner_.clock_.is_valid() ? owner_.clock_->get_game_days() : 0.0;
@@ -698,6 +699,10 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     std::int64_t new_sound_instance() override { return owner_.new_sound_instance(); }
 
+    void animation_events_wanted(std::uint32_t sender) override {
+        owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
+    }
+
 private:
     SkydotPapyrus& owner_;
 };
@@ -709,6 +714,7 @@ void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
 void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {

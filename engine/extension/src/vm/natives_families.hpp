@@ -30,4 +30,7 @@ void bind_weapon_natives(Vm& vm, WorldEvents& events);
 /// Sound.Play, PlayAndWait, StopInstance and SetInstanceVolume.
 void bind_sound_natives(Vm& vm, SoundHost& sounds, WorldEvents& events);
 
+/// Form.GetFormID, the update timers and the animation event registrations.
+void bind_form_natives(Vm& vm, const WorldAccess& world, WorldEvents& events);
+
 } // namespace skydot::vm

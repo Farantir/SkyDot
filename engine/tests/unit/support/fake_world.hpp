@@ -7,6 +7,7 @@
 
 #include <cstdint>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -47,6 +48,9 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         return true;
     }
     bool actor_base(std::uint32_t, vm::ActorBase&) const override { return false; }
+    /// References with their 3D loaded.
+    std::set<std::uint32_t> loaded_3d;
+    bool ref_3d_loaded(std::uint32_t ref) const override { return loaded_3d.contains(ref); }
     std::int32_t player_level() const override { return 7; }
     double game_days() const override { return 3.25; }
     double time_scale() const override { return 20.0; }

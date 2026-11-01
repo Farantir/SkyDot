@@ -37,6 +37,7 @@ struct FakeEvents final : skydot::vm::WorldEvents {
     std::vector<Played> played;
     std::vector<std::int64_t> stopped;
     std::vector<std::pair<std::int64_t, double>> volumes;
+    std::vector<std::uint32_t> animation_senders;
     std::vector<std::string> traces;
     std::vector<Shader> shaders;
     std::vector<Message> messages;
@@ -54,6 +55,7 @@ struct FakeEvents final : skydot::vm::WorldEvents {
     }
     void stop_sound(std::int64_t instance) override { stopped.push_back(instance); }
     void sound_volume(std::int64_t instance, double volume) override { volumes.emplace_back(instance, volume); }
+    void animation_events_wanted(std::uint32_t sender) override { animation_senders.push_back(sender); }
 };
 
 } // namespace skydot::testing
