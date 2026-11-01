@@ -761,7 +761,11 @@ private:
 
     /// Typed questions about the world for natives (vm/world_access.hpp).
     struct Access;
-    std::unique_ptr<vm::WorldAccess> access_;
+    struct AccessDeleter {
+        void operator()(Access* access) const;
+    };
+    /// The adapter the natives families are bound against (made in bind_natives).
+    std::unique_ptr<Access, AccessDeleter> access_;
     std::unique_ptr<vm::Vm> vm_;
     /// The stores of subsystems outside the VM; the VM's registry (new with each `setup`) has this object's own.
     vm::ForgetRegistry outer_forgets_;

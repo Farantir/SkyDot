@@ -5,6 +5,8 @@
 #pragma once
 
 #include "vm/vm.hpp"
+#include "vm/world_access.hpp"
+#include "vm/world_events.hpp"
 
 namespace skydot::vm {
 
@@ -13,5 +15,9 @@ void bind_noop_natives(Vm& vm);
 
 /// Utility.Wait, GetCurrentRealTime, RandomInt and RandomFloat.
 void bind_utility_natives(Vm& vm);
+
+/// Debug.Trace, Notification, MessageBox and Message.Show. `world` and
+/// `events` must outlive the VM.
+void bind_debug_natives(Vm& vm, const WorldAccess& world, WorldEvents& events);
 
 } // namespace skydot::vm

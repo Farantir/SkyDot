@@ -125,6 +125,7 @@ set(SKYDOT_CORE_SOURCES
     src/state/runtime_refs.hpp
     src/vm/natives_world.cpp
     src/vm/natives_noop.cpp
+    src/vm/natives_debug.cpp
     src/vm/natives_utility.cpp
     src/state/ref_states.hpp
     src/vm/save.cpp
@@ -136,6 +137,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/vm.cpp
     src/vm/vm.hpp
     src/vm/world_access.hpp
+    src/vm/world_events.hpp
     src/vm/natives_families.hpp)
 
 # Both copies read the same headers and need flatc's output first.
@@ -281,7 +283,6 @@ target_sources(skydot PRIVATE
     src/session/preload.cpp
     src/session/streamer.cpp
     src/session/streamer.hpp
-    src/vm/natives_debug.cpp
     src/vm/natives_actor_extra.cpp
     src/vm/natives_effectshader.cpp
     src/vm/natives_sound.cpp

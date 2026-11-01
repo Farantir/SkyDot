@@ -43,6 +43,7 @@ add_executable(skydot_core_tests
     test_vm.cpp
     test_ref_forget.cpp
     test_vm_bench.cpp
+    test_vm_natives_debug.cpp
     test_vm_natives_noop.cpp
     test_vm_natives_utility.cpp
     test_vm_natives_world.cpp

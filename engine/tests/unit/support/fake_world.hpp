@@ -36,7 +36,16 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         forms = {0x10, 0x20};
         return true;
     }
-    bool message(std::uint32_t, vm::MessageText&) const override { return false; }
+    /// MESG records by form id.
+    std::map<std::uint32_t, vm::MessageText> messages;
+    bool message(std::uint32_t id, vm::MessageText& out) const override {
+        const auto it = messages.find(id);
+        if (it == messages.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
     bool actor_base(std::uint32_t, vm::ActorBase&) const override { return false; }
     std::int32_t player_level() const override { return 7; }
     double game_days() const override { return 3.25; }

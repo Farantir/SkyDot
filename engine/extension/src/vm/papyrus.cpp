@@ -572,8 +572,8 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess {
-    explicit Access(const SkydotPapyrus& owner) : owner_(owner) {}
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents {
+    explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
     const WorldData* world() const { return owner_.world_.is_valid() ? &owner_.world_->data() : nullptr; }
@@ -664,12 +664,30 @@ struct SkydotPapyrus::Access final : vm::WorldAccess {
         return owner_.clock_.is_valid() ? owner_.clock_->get_time_scale() : 0.0;
     }
 
+    // ---- vm::WorldEvents: each one is the signal it was, with the same arguments.
+
+    void trace(const std::string& text) override {
+        const String shown = natives::to_godot(text);
+        godot::UtilityFunctions::print(String("[Papyrus] ") + shown);
+        owner_.emit_signal("trace", shown);
+    }
+    void message(const std::string& text, bool box, bool help) override {
+        const String shown = natives::to_godot(text);
+        godot::UtilityFunctions::print(String(box ? "[Message] " : help ? "[Help] " : "[Notification] ") + shown);
+        owner_.emit_signal("message", shown, box);
+    }
+
 private:
-    const SkydotPapyrus& owner_;
+    SkydotPapyrus& owner_;
 };
 
+void SkydotPapyrus::AccessDeleter::operator()(Access* access) const { delete access; }
+
+void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
+void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
+
 void SkydotPapyrus::bind_world_natives() {
-    access_ = std::make_unique<Access>(*this);
     vm::bind_world_natives(*vm_, *access_);
     actors_.set_source([this](std::uint32_t ref, vm::ActorBase& out) { return access_->actor_base(ref, out); });
     if (world_.is_valid()) {
@@ -837,11 +855,9 @@ void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, do
     }
 }
 
-void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
-void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
-
 void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
+    access_.reset(new Access(*this));
     using Registration = void (SkydotPapyrus::*)();
     static constexpr Registration table[] = {
         &SkydotPapyrus::bind_debug_natives,
