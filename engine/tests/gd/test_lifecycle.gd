@@ -123,7 +123,7 @@ func test_npc_magic_and_shouts() -> void:
 	var papyrus := Fakes.papyrus()
 	var combat := _combat()
 	var casting := Casting.new(CastingData.new(papyrus, world))
-	var magic := Magic.new(world, SkydotPack.new(), papyrus, _host, combat, null, func() -> Node3D: return null, casting)
+	var magic := Magic.new(world, SkydotPack.new(), papyrus, _host, combat, null, func() -> Node3D: return null, casting, PlayerState.new(PlayerStateData.new(papyrus)))
 	var speech := Speech.new(Sounds.new(world, null, Callable(), Callable()), Callable())
 	for reset in [true, false]:
 		var casts := NpcMagic.new(world, papyrus, magic, combat, casting)
@@ -239,7 +239,7 @@ func test_projectiles_free_their_shots() -> void:
 func test_magic_frees_its_art() -> void:
 	var combat := _combat()
 	for reset in [true, false]:
-		var m := Magic.new(Fakes.world(), SkydotPack.new(), Fakes.papyrus(), _host, combat, null, func() -> Node3D: return null, Casting.new(CastingData.new(Fakes.papyrus(), Fakes.world())))
+		var m := Magic.new(Fakes.world(), SkydotPack.new(), Fakes.papyrus(), _host, combat, null, func() -> Node3D: return null, Casting.new(CastingData.new(Fakes.papyrus(), Fakes.world())), PlayerState.new(PlayerStateData.new(Fakes.papyrus())))
 		var art := Node3D.new()
 		_host.add_child(art)
 		m._effects.append({"node": art, "left": 1.0})

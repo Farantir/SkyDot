@@ -41,6 +41,7 @@ func before_each() -> void:
 	add_child(rig.camera)
 	add_child(rig.player)
 	_session = StubSession.new()
+	_session.player_state = PlayerState.new(PlayerStateData.new(SkydotPapyrus.new()))
 	add_child(_session)
 	_controls = PlayerInput.new(rig)
 	add_child(_controls)
@@ -82,10 +83,10 @@ func test_messages_go_to_the_note() -> void:
 
 
 func test_paralysis_reaches_the_controls() -> void:
-	_session.player_paralyzed = true
+	_session.player_state.set_paralyzed(true)
 	_loop.drive(0.1)
 	expect(_controls.paralyzed, "paralyzed controls")
-	_session.player_paralyzed = false
+	_session.player_state.set_paralyzed(false)
 	_loop.drive(0.1)
 	expect(not _controls.paralyzed, "free controls")
 

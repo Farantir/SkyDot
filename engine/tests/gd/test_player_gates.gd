@@ -7,13 +7,24 @@ extends "gd_test.gd"
 const Fakes := preload("fakes.gd")
 
 
+class FakeData extends PlayerStateData:
+	var dead := false
+	var broken := 0
+
+	func is_dead() -> bool:
+		return dead
+
+	func break_invisibility() -> void:
+		broken += 1
+
+
 class StubMagic extends Magic:
 	var calls: Array[String] = []
 	var left_spell := 1
 	var right_spell := 1
 
 	func _init() -> void:
-		super(null, null, null, null, null, null, Callable(), null)
+		super(null, null, null, null, null, null, Callable(), null, null)
 
 	func spell_in(hand: int) -> int:
 		return left_spell if hand == Magic.LEFT else right_spell
@@ -61,6 +72,7 @@ var _session: GameSession
 var _magic: StubMagic
 var _combat: StubCombat
 var _host: Node3D
+var _data: FakeData
 
 
 func before_each() -> void:
@@ -69,6 +81,8 @@ func before_each() -> void:
 	_session = GameSession.new()
 	add_child(_session)
 	_session.papyrus = Fakes.papyrus()
+	_data = FakeData.new(_session.papyrus)
+	_session.player_state = PlayerState.new(_data)
 	_magic = StubMagic.new()
 	_combat = StubCombat.new(_host)
 	_session.magic = _magic
@@ -85,25 +99,62 @@ func test_free_player_reaches_magic_and_combat() -> void:
 
 
 func test_paralysed_toggle_weapon_does_nothing() -> void:
-	_session.player_paralyzed = true
+	_session.player_state.set_paralyzed(true)
 	_session.toggle_weapon()
 	expect_eq(_combat.calls, [] as Array[String], "combat calls")
 	expect_eq(_magic.calls, [] as Array[String], "magic calls")
 
 
 func test_paralysed_attack_pressed_does_nothing() -> void:
-	_session.player_paralyzed = true
+	_session.player_state.set_paralyzed(true)
 	_session.attack_pressed()
 	expect_eq(_combat.calls, [] as Array[String], "combat calls")
 	expect_eq(_magic.calls, [] as Array[String], "magic calls")
 
 
 func test_paralysed_attack_left_pressed_does_nothing() -> void:
-	_session.player_paralyzed = true
+	_session.player_state.set_paralyzed(true)
 	_session.attack_left_pressed()
 	expect_eq(_magic.calls, [] as Array[String], "magic calls")
 
 
 func test_activate_ref_refused_while_paralysed() -> void:
-	_session.player_paralyzed = true
+	_session.player_state.set_paralyzed(true)
 	expect_eq(_session.activate_ref(0x1234), false, "activate_ref")
+
+
+func test_paralysed_power_and_voice_power_are_refused() -> void:
+	_session.player_state.set_paralyzed(true)
+	expect_eq(_session.cast_power(), {"ok": false, "reason": "paralyzed"}, "cast_power")
+	expect_eq(_session.voice_pressed(), {"ok": false, "reason": "paralyzed"}, "voice power")
+	expect_eq(_magic.calls, [] as Array[String], "magic calls")
+
+
+func test_paralysed_attack_is_refused() -> void:
+	_session.player_state.set_paralyzed(true)
+	expect_eq(_session.attack(), false, "attack")
+	expect_eq(_combat.calls, [] as Array[String], "combat calls")
+
+
+func test_dead_player_is_refused() -> void:
+	_data.dead = true
+	_session.toggle_weapon()
+	_session.attack_pressed()
+	_session.attack_left_pressed()
+	expect_eq(_session.attack(), false, "attack")
+	expect_eq(_session.cast_power(), {"ok": false, "reason": "dead"}, "cast_power")
+	expect_eq(_session.voice_pressed(), {"ok": false, "reason": "dead"}, "voice")
+	expect_eq(_session.activate_ref(0x1234), false, "activate_ref")
+	expect_eq(_session.is_player_dead(), true, "is_player_dead")
+	expect_eq(_combat.calls, [] as Array[String], "combat calls")
+	expect_eq(_magic.calls, [] as Array[String], "magic calls")
+	expect_eq(_data.broken, 0, "invisibility kept")
+
+
+func test_acting_breaks_invisibility() -> void:
+	_session.attack_pressed()
+	expect_eq(_data.broken, 1, "attack_pressed")
+	_session.attack_left_pressed()
+	expect_eq(_data.broken, 2, "attack_left_pressed")
+	_session.cast_spell(0x100)
+	expect_eq(_data.broken, 3, "cast_spell")

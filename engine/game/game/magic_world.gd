@@ -8,7 +8,7 @@
 #   stagger (33)    SkydotAi.stagger; the player only logs it (PLACEHOLDER for a camera shake)
 #   reanimate (22)  the corpse stands up (Corpses.stand_up) and SkydotAi.revive
 #   bound (17)      the equipment changed (the hands and arms refresh); the weapon cannot be dropped
-#   paralysis       on the player: no input, hands lowered (GameSession.player_paralyzed)
+#   paralysis       on the player: no input, hands lowered (PlayerState.set_paralyzed)
 #   slow time (37)  Engine.time_scale while it holds on the player; the player's speeds are
 #                   multiplied by 1/scale (PLACEHOLDER: gravity and the mouse look are not)
 # Lines: `magic: light 0x.. on 0x..`, `magic: 0x.. staggers`, `magic: player paralyzed`.
@@ -26,7 +26,6 @@ const ARCH_SLOW_TIME := 37
 var _session: GameSession
 var _lights := {}  # instance -> {node, target}
 var _bound := {}  # weapon form -> instance (the player's)
-var _paralyzed := false
 var _scale := 1.0
 var _speeds := {}  # the player's own speeds, while slowed
 
@@ -139,10 +138,9 @@ func step(_delta: float) -> void:
 
 
 func _set_paralyzed(value: bool) -> void:
-	if value == _paralyzed:
+	if value == _session.player_state.is_paralyzed():
 		return
-	_paralyzed = value
-	_session.player_paralyzed = value
+	_session.player_state.set_paralyzed(value)
 	if value:
 		_session.lower_hands()
 		print("magic: player paralyzed")

@@ -135,6 +135,7 @@ var _host: Node3D
 var _combat: Combat
 var _projectiles: Projectiles
 var _casting: Casting
+var _player_state: PlayerState
 var _pointer: Callable  # () -> Node3D: where casts start and look from
 var _warn := WarnOnce.new("magic: ")
 
@@ -154,7 +155,8 @@ var _shout_hit_sound := 0
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, combat: Combat,
-		projectiles: Projectiles, pointer: Callable, casting: Casting) -> void:
+		projectiles: Projectiles, pointer: Callable, casting: Casting, player_state: PlayerState) -> void:
+	_player_state = player_state
 	_casting = casting
 	_world = world
 	_pack = pack
@@ -303,7 +305,7 @@ func idle_clip() -> String:
 
 ## `hand`'s attack button went down. A sheathed hand is readied instead.
 func hand_pressed(hand: int) -> void:
-	if _papyrus.is_player_dead() or is_casting(hand):
+	if _player_state.is_dead() or is_casting(hand):
 		return
 	if spell_in(hand) == 0:
 		return
@@ -525,7 +527,7 @@ func _shout_fire(shout: int, held: float) -> void:
 	var words := int(result["words"])
 	var spell := int(result["spell"])
 	last_recovery = float(result["recovery"])
-	_papyrus.break_invisibility(PLAYER_REF)
+	_player_state.acted(PlayerState.SHOUT)
 	var stem := _shout_clip("exhale", words)
 	if stem != "":
 		_clip_left = _length_of(stem)

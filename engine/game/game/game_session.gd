@@ -70,7 +70,7 @@ signal dialogue_closed
 signal subtitle_line(speaker: int, text: String, seconds: float)
 
 ## The player's Health reached 0 (log `death: player killed by 0xA`): the killer, 0 if none.
-## Controls stop (`is_player_dead`) and the AI ends its fights against him; the shell shows the
+## Controls stop (`player_state.is_dead`) and the AI ends its fights against him; the shell shows the
 ## death (fade, "Load the last save?") and asks `reload_or_restart`.
 signal player_died(killer: int)
 
@@ -178,6 +178,11 @@ var npc_magic: NpcMagic
 ## of Casting (or a class of the same interface) here before `open`; the Mod API (M3) hands it out.
 var casting_script: GDScript = Casting
 var casting: Casting
+## The rules of the player's state: which state (dead, paralysed) blocks which action, which actions
+## break invisibility. A script mod names a subclass of PlayerState (or a class of the same interface)
+## here before `open`. Not in the lifecycle: its paralysis flag is re-synced by MagicWorld.
+var player_state_script: GDScript = PlayerState
+var player_state: PlayerState
 ## The rules of a hit: damage, the Stamina of a power attack, reach, strike angle, stagger. A script mod
 ## names a subclass of AttackRules (or a class of the same interface) here before `open`.
 var attack_rules_script: GDScript = AttackRules
@@ -198,8 +203,6 @@ var visual_effects: VisualEffects
 var placed: PlacedRefs
 ## The magic archetypes in the scene (lights, stagger, reanimate, bound weapons, slow time).
 var magic_world: MagicWorld
-## The player is paralysed: the shell reads no input, the hands are lowered.
-var player_paralyzed := false
 var projectiles: Projectiles
 var sounds: Sounds
 ## Spoken lines (dialogue voices), one queue per speaker.
@@ -328,8 +331,10 @@ func _make_game_nodes() -> void:
 		combat.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
 			ai.on_hit(int(result.get("attacker", 0)), target))
 	items_changed.connect(combat.on_items_changed)
+	player_state = player_state_script.new(PlayerStateData.new(papyrus))
 	casting = casting_script.new(CastingData.new(papyrus, world))
-	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer, casting)
+	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer, casting,
+		player_state)
 	items_changed.connect(magic.on_items_changed)
 	magic.spell_landed.connect(spell_landed.emit)
 	magic.scroll_used.connect(func(_spell: int) -> void: items_changed.emit())
@@ -546,7 +551,7 @@ func use_item(form: int, extra := -1) -> bool:
 ## land, no projectile yet (SkydotPapyrus.cast_spell). {ok, reason, cost, instances}.
 func cast_spell(spell: int, target := 0, seconds := 0.0, caster := SkydotPapyrus.PLAYER_REF) -> Dictionary:
 	if caster == SkydotPapyrus.PLAYER_REF:
-		papyrus.break_invisibility(caster)
+		player_state.acted(PlayerState.CAST)
 	return papyrus.cast_spell(caster, spell, target, seconds)
 
 
@@ -725,7 +730,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	_drain_sprint(delta)
 	if ai != null:
 		clock.sync(benchmarking)
-		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not player_state.is_dead())
 		ai.set_player_view(_viewpoint)  # Actor.HasLOS of the player looks from the camera
 		ai.update(delta)
 
@@ -735,7 +740,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 func update_fights(delta: float, feet: Vector3) -> void:
 	_feet = feet
 	if ai != null:
-		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not papyrus.is_player_dead())
+		ai.set_player(SkydotWorld.godot_to_skyrim(feet), not player_state.is_dead())
 		ai.set_player_view(_viewpoint)
 		ai.update_fights(delta)
 
@@ -813,7 +818,7 @@ func is_fading() -> bool:
 ## Draw the player's weapon, or sheathe it (R, gamepad X). Hands that hold spells or scrolls
 ## are readied with it: alone when the right hand holds no weapon, else in step with the weapon.
 func toggle_weapon() -> void:
-	if papyrus.is_player_dead() or player_paralyzed:
+	if not player_state.can(PlayerState.READY):
 		return
 	if magic.hands_with_spells().is_empty():
 		combat.toggle_weapon()
@@ -829,9 +834,9 @@ func toggle_weapon() -> void:
 ## The attack button went down or up: a short press is a light attack, a long
 ## one a power attack (Combat.attack_pressed). A spell in the right hand is cast instead.
 func attack_pressed() -> void:
-	if papyrus.is_player_dead() or player_paralyzed:
+	if not player_state.can(PlayerState.ATTACK):
 		return
-	papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
+	player_state.acted(PlayerState.ATTACK)
 	if magic.spell_in(Magic.RIGHT) != 0:
 		magic.hand_pressed(Magic.RIGHT)
 	elif combat.weapon_state() == Combat.State.SHEATHED and not magic.hands_with_spells().is_empty():
@@ -848,8 +853,8 @@ func attack_released() -> void:
 ## The left hand's attack button (right mouse, left trigger) went down or up: a spell in
 ## the left hand is cast (it is reserved for blocking otherwise).
 func attack_left_pressed() -> void:
-	if not papyrus.is_player_dead() and not player_paralyzed and magic.spell_in(Magic.LEFT) != 0:
-		papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
+	if player_state.can(PlayerState.CAST) and magic.spell_in(Magic.LEFT) != 0:
+		player_state.acted(PlayerState.CAST)
 		magic.hand_pressed(Magic.LEFT)
 
 
@@ -859,19 +864,21 @@ func attack_left_released() -> void:
 
 ## The power key: cast the power in the power slot (Magic.cast_power). {ok, reason}.
 func cast_power() -> Dictionary:
-	return {"ok": false, "reason": "dead"} if papyrus.is_player_dead() else magic.cast_power()
+	var why := player_state.refusal(PlayerState.CAST)
+	if why != "":
+		return {"ok": false, "reason": why}
+	return magic.cast_power()
 
 
 ## The voice key went down: the voice slot holds a power (cast at once, like `cast_power`) or a
 ## shout (it charges while the key is down, Magic.shout_begin). {ok, reason}.
 func voice_pressed() -> Dictionary:
-	if papyrus.is_player_dead():
-		return {"ok": false, "reason": "dead"}
+	var why := player_state.refusal(PlayerState.SHOUT)
+	if why != "":
+		return {"ok": false, "reason": why}
 	var shout := int(papyrus.equipped_shout(SkydotPapyrus.PLAYER_REF))
 	if shout == 0:
 		return cast_power()
-	if player_paralyzed:
-		return {"ok": false, "reason": "paralyzed"}
 	return magic.shout_begin(shout)
 
 
@@ -1025,7 +1032,7 @@ func player_effects() -> Array:
 
 ## Attack now: power or light (Combat.attack).
 func attack(power := false) -> bool:
-	return not papyrus.is_player_dead() and combat.attack(power)
+	return player_state.can(PlayerState.ATTACK) and combat.attack(power)
 
 
 ## The right-hand weapon's form, 0 for bare hands.
@@ -1125,16 +1132,16 @@ func set_pointer(node: Node3D) -> void:
 ## The player activates what the pointer points at (the viewpoint's view unless
 ## set_pointer says otherwise; Shift: picks locks).
 func activate_in_view(force: bool) -> void:
-	if not transition.is_fading() and not papyrus.is_player_dead():
+	if not transition.is_fading() and player_state.can(PlayerState.ACTIVATE):
 		_bridge.activate_in_view(force, _pointer)
 
 
 ## The player activates reference `ref` (not what the pointer shows): the
 ## viewer's --open-container. False if the reference is unknown.
 func activate_ref(ref: int, force := false) -> bool:
-	if player_paralyzed:
+	if not player_state.can(PlayerState.ACTIVATE):
 		return false
-	papyrus.break_invisibility(SkydotPapyrus.PLAYER_REF)
+	player_state.acted(PlayerState.ACTIVATE)
 	return _bridge.activate(place.cell_id, ref, null, force)
 
 
@@ -1320,7 +1327,7 @@ func activation_target() -> Dictionary:
 
 ## Whether the player is dead (Health 0): the shell stops his controls.
 func is_player_dead() -> bool:
-	return papyrus != null and papyrus.is_player_dead()
+	return player_state != null and player_state.is_dead()
 
 
 ## After a death: load the newest save (SaveService.newest) or, with none, start the start

@@ -145,7 +145,7 @@ func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool
 
 ## The controls move the player (not when paralyzed).
 func drive(delta: float) -> void:
-	_controls.paralyzed = _session.player_paralyzed
+	_controls.paralyzed = not _session.player_state.can(PlayerState.MOVE)
 	_controls.apply(delta)
 
 
