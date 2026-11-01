@@ -9,8 +9,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#if defined(__linux__)
 #include <malloc.h>
+#endif
 
+#include <cstddef>
 #include <cstdint>
 #include <map>
 #include <set>
@@ -48,6 +51,18 @@ void add_scripts(Rig& rig) {
     rig.add(script("Waiter", {wait}, vars));
 }
 
+} // namespace
+
+namespace {
+// Bytes the allocator hands out, where the C library tells (glibc on Linux); 0 elsewhere, so the growth check
+// passes trivially there and the store sizes carry the test.
+std::size_t heap_in_use() {
+#if defined(__linux__)
+    return mallinfo2().uordblks;
+#else
+    return 0;
+#endif
+}
 } // namespace
 
 TEST_CASE("a registered store is forgotten with the id, and a token unregisters it", "[vm][forget]") {
@@ -110,7 +125,7 @@ TEST_CASE("10,000 references with scripts, timers, threads and inventory leave e
     for (int i = 0; i < 1000; ++i) {
         one(i);
     }
-    const auto warm = mallinfo2().uordblks;
+    const auto warm = heap_in_use();
     for (int i = 1000; i < 11000; ++i) {
         one(i);
     }
@@ -122,7 +137,7 @@ TEST_CASE("10,000 references with scripts, timers, threads and inventory leave e
     CHECK(vm.animation_registrations() == 0);
     // The detached instances went too: no thread or variable reaches them.
     CHECK(vm.detached_count() == 0);
-    const auto grown = static_cast<long long>(mallinfo2().uordblks) - static_cast<long long>(warm);
+    const auto grown = static_cast<long long>(heap_in_use()) - static_cast<long long>(warm);
     CHECK(grown < 1024 * 1024);
 }
 

@@ -37,11 +37,13 @@ func watch(obj: Object, signal_name: String) -> Array:
 ## failure (unset with SKYDOT_TESTPACK_REQUIRE, or the pack does not open).
 func testpack_world() -> SkydotWorld:
     var dir := OS.get_environment("SKYDOT_TESTPACK")
-    if dir == "":
+    if dir == "" or not DirAccess.dir_exists_absolute(dir):
+        # CI runs the gd tests before the smoke step converts the test pack.
+        var why := "SKYDOT_TESTPACK unset" if dir == "" else "no test pack at " + dir
         if OS.get_environment("SKYDOT_TESTPACK_REQUIRE") != "":
-            failures.append("SKYDOT_TESTPACK is unset and SKYDOT_TESTPACK_REQUIRE is set")
+            failures.append(why + " and SKYDOT_TESTPACK_REQUIRE is set")
         else:
-            skip("SKYDOT_TESTPACK unset")
+            skip(why)
         return null
     var pack := SkydotPack.new()
     if pack.open(dir) != OK:
