@@ -656,6 +656,12 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         out.is_player = ref == k_player_ref;
         return true;
     }
+    std::uint32_t form_from_file(std::int64_t id, const std::string& plugin) const override {
+        if (owner_.world_.is_null()) {
+            return 0;
+        }
+        return static_cast<std::uint32_t>(owner_.world_->get_form_from_file(id, String::utf8(plugin.c_str())));
+    }
     bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
     std::int32_t player_level() const override { return 1; }
     double game_days() const override {
@@ -708,6 +714,38 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void attach_quest_scripts(std::uint32_t quest, bool on_init) override {
         owner_.attach_quest_scripts(quest, on_init);
     }
+    vm::QuestStates& quests() override { return owner_.quests_; }
+    bool start_quest(std::int64_t quest) override { return owner_.start_quest(quest); }
+    void stop_quest(std::int64_t quest) override { owner_.stop_quest(quest); }
+    bool set_stage(std::int64_t quest, std::int64_t stage) override { return owner_.set_stage(quest, stage); }
+    void set_objective(std::uint32_t quest, std::int32_t index, std::uint8_t bit, bool on) override {
+        owner_.set_objective(quest, index, bit, on);
+    }
+    bool owning_quest(std::uint32_t info, std::uint32_t& quest) const override {
+        const auto it = owner_.info_quests_.find(info);
+        if (it == owner_.info_quests_.end()) {
+            return false;
+        }
+        quest = it->second;
+        return true;
+    }
+    bool alias_info(std::uint32_t quest, std::int64_t id, vm::AliasInfo& out) const override {
+        const Array aliases = owner_.quest_info(quest).get("aliases", Array());
+        for (std::int64_t i = 0; i < aliases.size(); ++i) {
+            const Dictionary a = aliases[i];
+            if (static_cast<std::int64_t>(a["id"]) == id) {
+                out.name = natives::utf8(a["name"]);
+                out.location = static_cast<bool>(a["location"]);
+                return true;
+            }
+        }
+        return false;
+    }
+    std::uint32_t alias_handle(std::uint32_t quest, std::uint32_t alias) override {
+        return owner_.alias_handle(quest, alias);
+    }
+    double global_value(std::int64_t global) const override { return owner_.get_global_value(global); }
+    void set_global_value(std::int64_t global, double value) override { owner_.set_global_value(global, value); }
 
 private:
     SkydotPapyrus& owner_;
@@ -722,6 +760,7 @@ void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *acces
 void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
+void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {

@@ -48,6 +48,12 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         return true;
     }
     bool actor_base(std::uint32_t, vm::ActorBase&) const override { return false; }
+    /// Game.GetFormFromFile: "plugin:id" -> form.
+    std::map<std::string, std::uint32_t> file_forms;
+    std::uint32_t form_from_file(std::int64_t id, const std::string& plugin) const override {
+        const auto it = file_forms.find(plugin + ":" + std::to_string(id));
+        return it != file_forms.end() ? it->second : 0;
+    }
     /// References with their 3D loaded.
     std::set<std::uint32_t> loaded_3d;
     bool ref_3d_loaded(std::uint32_t ref) const override { return loaded_3d.contains(ref); }

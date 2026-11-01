@@ -126,6 +126,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/natives_world.cpp
     src/vm/natives_noop.cpp
     src/vm/natives_debug.cpp
+    src/vm/natives_quest.cpp
     src/vm/natives_game.cpp
     src/vm/natives_form.cpp
     src/vm/natives_sound.cpp
@@ -304,7 +305,6 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_triggers.cpp
     src/vm/papyrus_save.cpp
     src/vm/natives_objectreference.cpp
-    src/vm/natives_quest.cpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

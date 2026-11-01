@@ -34,6 +34,10 @@ void bind_sound_natives(Vm& vm, SoundHost& sounds, WorldEvents& events);
 /// Form.GetFormID, the update timers and the animation event registrations.
 void bind_form_natives(Vm& vm, const WorldAccess& world, WorldEvents& events);
 
+/// Quest, Alias, ReferenceAlias, LocationAlias and GlobalVariable natives,
+/// TopicInfo.GetOwningQuest and Game.GetFormFromFile.
+void bind_quest_natives(Vm& vm, const WorldAccess& world, QuestHost& host);
+
 /// Game.GetPlayer and GetForm.
 void bind_game_natives(Vm& vm, QuestHost& quests);
 

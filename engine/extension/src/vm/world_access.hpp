@@ -61,6 +61,9 @@ public:
     [[nodiscard]] virtual double time_scale() const = 0;
     /// Whether `ref` has its 3D loaded: placed in the world and not disabled.
     [[nodiscard]] virtual bool ref_3d_loaded(std::uint32_t ref) const = 0;
+    /// The form with id `id` in the plugin named `plugin` (Game.GetFormFromFile);
+    /// 0 if there is none.
+    [[nodiscard]] virtual std::uint32_t form_from_file(std::int64_t id, const std::string& plugin) const = 0;
 };
 
 } // namespace skydot::vm

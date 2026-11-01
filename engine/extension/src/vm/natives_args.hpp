@@ -7,6 +7,7 @@
 #include "vm/vm.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 
 namespace skydot::natives {
@@ -26,5 +27,14 @@ inline double number(const vm::Value& x) {
     return x.kind() == vm::Kind::floating ? static_cast<double>(x.f())
                                           : (x.kind() == vm::Kind::integer ? static_cast<double>(x.i()) : 0.0);
 }
+
+// Objective state bits.
+constexpr std::uint8_t k_displayed = 0x1;
+constexpr std::uint8_t k_completed = 0x2;
+constexpr std::uint8_t k_failed = 0x4;
+
+// GetOpenState values. Source: the Creation Kit wiki's GetOpenState page.
+constexpr std::int64_t k_open = 1;
+constexpr std::int64_t k_closed = 3;
 
 } // namespace skydot::natives
