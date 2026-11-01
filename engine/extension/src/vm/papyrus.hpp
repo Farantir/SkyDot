@@ -30,6 +30,7 @@
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
 #include "scenes/scenes.hpp"
+#include "vm/combat_runtime.hpp"
 #include "vm/crafting_runtime.hpp"
 #include "vm/dialogue_runtime.hpp"
 #include "vm/scene_runtime.hpp"
@@ -166,22 +167,8 @@ public:
 
     /// What the combat AI answers the combat natives with (set by SkydotAi, which owns the
     /// state; cleared when it goes). Without them every actor is out of combat.
-    struct CombatHooks {
-        std::function<std::int64_t(std::uint32_t ref)> state;    ///< 0 none, 1 combat, 2 searching
-        std::function<std::uint32_t(std::uint32_t ref)> target;
-        std::function<void(std::uint32_t ref, std::uint32_t target)> start;
-        std::function<void(std::uint32_t ref)> stop;
-        std::function<bool(std::uint32_t ref, std::uint32_t target)> has_los;  ///< Actor.HasLOS
-        std::function<bool(std::uint32_t ref)> is_flying;          ///< Actor.IsFlying
-        std::function<std::int64_t(std::uint32_t ref)> flying_state; ///< Actor.GetFlyingState (0..4)
-        std::function<bool(std::uint32_t ref)> can_fly_here;       ///< Actor.CanFlyHere
-        std::function<double(std::uint32_t ref)> length;           ///< ObjectReference.GetLength (units)
-        /// The actor dies in a way that takes time (a death clip, a crash): OnDeath waits for finish_dying.
-        std::function<bool(std::uint32_t ref)> defers_death;
-        /// Actor.EvaluatePackage: choose the package again now.
-        std::function<void(std::uint32_t ref)> evaluate_package;
-    };
-    void set_combat_hooks(CombatHooks hooks) { combat_hooks_ = std::move(hooks); }
+    using CombatHooks = vm::CombatHooks;
+    void set_combat_hooks(CombatHooks hooks) { combat_.set_hooks(std::move(hooks)); }
     /// References the streamer moved out of a cell that goes (a dragon flying on): detach_cell leaves
     /// their scripts loaded. detach_all (the place is left) unloads them all.
     void set_stays_loaded(std::function<bool(std::uint32_t ref)> stays) { stays_loaded_ = std::move(stays); }
@@ -193,8 +180,8 @@ public:
     std::int64_t send_get_up(std::int64_t ref);
     /// An actor's combat hooks are set (the AI): `evaluate` re-picks its package.
     void evaluate_package(std::uint32_t ref) {
-        if (combat_hooks_.evaluate_package) {
-            combat_hooks_.evaluate_package(ref);
+        if (combat_.hooks().evaluate_package) {
+            combat_.hooks().evaluate_package(ref);
         }
     }
     /// Actor.GetEquippedItemType: what `owner` holds in `hand` (0 left, 1
@@ -473,7 +460,7 @@ public:
     // ---- actor values (state/actor_states.hpp): 0 for a reference that is no actor
     // or a name that is no actor value (reported once)
     /// The player is at Health 0 (`player_died` was sent; Health above 0 again clears it).
-    bool is_player_dead() const { return player_dead_; }
+    bool is_player_dead() const { return combat_.player_dead(); }
     /// SetAllowFlying / SetForcedLandingMarker (saved): what the flight AI reads.
     /// SetAllowFlying from the game layer and the tests.
     void set_allowed_to_fly(std::int64_t ref, bool allowed) {
@@ -687,11 +674,10 @@ private:
     void bind_runtime_natives();
     void bind_actor_natives();
     void bind_magic_natives();
-    CombatHooks combat_hooks_;
+    /// The combat domain (vm/combat_runtime.hpp): hooks, ghosts, who hurt the player, his death.
+    vm::CombatRuntime combat_;
     std::function<bool(std::uint32_t ref)> stays_loaded_;
     bool detaching_all_{false};
-    bool player_dead_ = false;
-    std::uint32_t last_damager_ = 0; ///< Who last hurt the player.
     /// Player at Health 0: log `death: player killed by 0xA` and send `player_died` once.
     void check_player_death();
     void bind_item_natives();
@@ -787,8 +773,7 @@ private:
     /// What scripts and the game did to actors' values (ACTV).
     vm::ActorStates actors_;
     /// A ghost takes no hits: true (and says so once per actor) when `ref` is one.
-    bool ghost_ignores_hit(std::uint32_t ref);
-    std::set<std::uint32_t> ghost_reported_;
+    bool ghost_ignores_hit(std::uint32_t ref) { return combat_.ghost_ignores_hit(ref); }
     /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
     /// inventory resolves on the first look at it, also from const queries.
     mutable vm::ItemStates items_;

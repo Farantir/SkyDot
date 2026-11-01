@@ -580,7 +580,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host {
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -842,7 +842,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     bool location_loaded(std::uint32_t location) override { return owner_.location_loaded(location); }
     void evaluate_package(std::uint32_t ref) override { owner_.evaluate_package(ref); }
-    void set_last_damager(std::uint32_t killer) override { owner_.last_damager_ = killer; }
+    void set_last_damager(std::uint32_t killer) override { owner_.combat_.set_last_damager(killer); }
 
     // ---- vm::ReferenceHost
 
@@ -914,7 +914,7 @@ void SkydotPapyrus::bind_world_natives() {
                                                 static_cast<float>(vm::ActorStates::k_combat_stamina_regen_mult))));
     }
     // Who fights is SkydotAi's (the hooks are set later; read when ticking).
-    actors_.set_in_combat([this](std::uint32_t ref) { return combat_hooks_.state && combat_hooks_.state(ref) != 0; });
+    actors_.set_in_combat([this](std::uint32_t ref) { return combat_.in_combat(ref); });
 }
 
 void SkydotPapyrus::bind_actor_natives() {
@@ -923,62 +923,7 @@ void SkydotPapyrus::bind_actor_natives() {
             dragon_soul_absorbed();
         }
     });
-    // Combat: the state lives in SkydotAi (hooks); without it nobody fights.
-    using vm::NativeCall;
-    using vm::NativeResult;
-    using vm::Value;
-    const auto self_state = [this](NativeCall& c) -> std::int64_t {
-        return combat_hooks_.state ? combat_hooks_.state(c.self.form()) : 0;
-    };
-    vm_->bind("Actor", "IsInCombat", [self_state](NativeCall& c) {
-        return NativeResult{.value = Value::boolean(self_state(c) != 0), .wait = -1.0};
-    });
-    vm_->bind("Actor", "GetCombatState", [self_state](NativeCall& c) {
-        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(self_state(c))), .wait = -1.0};
-    });
-    vm_->bind("Actor", "GetCombatTarget", [this](NativeCall& c) {
-        const std::uint32_t target = combat_hooks_.target ? combat_hooks_.target(c.self.form()) : 0;
-        if (target == 0) {
-            return NativeResult{};
-        }
-        return NativeResult{.value = c.vm.object(target, "Actor"), .wait = -1.0};
-    });
-    vm_->bind("Actor", "StartCombat", [this](NativeCall& c) {
-        if (combat_hooks_.start && !c.args.empty() && c.args[0].kind() == vm::Kind::object) {
-            combat_hooks_.start(c.self.form(), c.args[0].form());
-        }
-        return NativeResult{};
-    });
-    // HasLOS(ObjectReference): a ray from the actor's eyes to the target (SkydotAi::has_los). Without
-    // the AI nobody sees anything.
-    vm_->bind("Actor", "HasLOS", [this](NativeCall& c) {
-        const bool seen = combat_hooks_.has_los && !c.args.empty() && c.args[0].kind() == vm::Kind::object &&
-                          combat_hooks_.has_los(c.self.form(), c.args[0].form());
-        return NativeResult{.value = Value::boolean(seen), .wait = -1.0};
-    });
-    // Flight: the node's mover answers (SkydotAi hooks); a grounded or unbuilt actor does not fly.
-    vm_->bind("Actor", "IsFlying", [this](NativeCall& c) {
-        return NativeResult{.value = Value::boolean(combat_hooks_.is_flying && combat_hooks_.is_flying(c.self.form())),
-                            .wait = -1.0};
-    });
-    vm_->bind("Actor", "GetFlyingState", [this](NativeCall& c) {
-        const std::int64_t state = combat_hooks_.flying_state ? combat_hooks_.flying_state(c.self.form()) : 0;
-        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(state)), .wait = -1.0};
-    });
-    vm_->bind("Actor", "CanFlyHere", [this](NativeCall& c) {
-        return NativeResult{.value = Value::boolean(combat_hooks_.can_fly_here && combat_hooks_.can_fly_here(c.self.form())),
-                            .wait = -1.0};
-    });
-    vm_->bind("ObjectReference", "GetLength", [this](NativeCall& c) {
-        const double length = combat_hooks_.length ? combat_hooks_.length(c.self.form()) : 0.0;
-        return NativeResult{.value = Value::floating(static_cast<float>(length)), .wait = -1.0};
-    });
-    vm_->bind("Actor", "StopCombat", [this](NativeCall& c) {
-        if (combat_hooks_.stop) {
-            combat_hooks_.stop(c.self.form());
-        }
-        return NativeResult{};
-    });
+    combat_.bind_natives(*vm_, *access_, *access_);
 }
 
 std::int64_t SkydotPapyrus::send_get_up(std::int64_t ref) {
@@ -1016,7 +961,7 @@ void SkydotPapyrus::flush_deaths() {
         const std::uint32_t killer_ref = actors_.killer_of(ref);
         const vm::Value killer = killer_ref != 0 ? vm_->object(killer_ref, "Actor") : vm::Value{};
         dispatch(ref, "OnDying", {killer});
-        if (combat_hooks_.defers_death && combat_hooks_.defers_death(ref)) {
+        if (combat_.hooks().defers_death && combat_.hooks().defers_death(ref)) {
             actors_.defer_death(ref, k_dying_timeout);
         } else {
             dispatch(ref, "OnDeath", {killer});
@@ -1056,9 +1001,9 @@ void SkydotPapyrus::damage_actor_value(std::int64_t ref, const String& name, dou
 void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, double amount) {
     if (const auto av = vm::av::index_of(utf8(name))) {
         actors_.restore(static_cast<std::uint32_t>(ref), *av, amount);
-        if (player_dead_ && static_cast<std::uint32_t>(ref) == k_player_ref && *av == vm::av::k_health && amount > 0.0) {
-            player_dead_ = false; // brought back (a restart)
-            last_damager_ = 0;
+        if (combat_.player_dead() && static_cast<std::uint32_t>(ref) == k_player_ref && *av == vm::av::k_health &&
+            amount > 0.0) {
+            combat_.player_restored(); // brought back (a restart)
         }
     }
 }
@@ -1496,23 +1441,8 @@ String SkydotPapyrus::get_last_error() const { return last_error_; }
 // ---- tests and inspection -------------------------------------------------
 
 void SkydotPapyrus::check_player_death() {
-    const double health = actors_.get(k_player_ref, vm::av::k_health);
-    if (player_dead_) {
-        // The dead do not regenerate: only a load or a restore brings him back.
-        if (health > 0.0) {
-            actors_.damage(k_player_ref, vm::av::k_health, health);
-        }
-        return;
-    }
-    if (health <= 0.0 && actors_.is_actor(k_player_ref)) {
-        player_dead_ = true;
-        godot::UtilityFunctions::print(String::utf8(
-            (std::string("death: player killed by 0x") + [&] {
-                char hex[16];
-                std::snprintf(hex, sizeof hex, "%X", last_damager_);
-                return std::string(hex);
-            }()).c_str()));
-        emit_signal("player_died", static_cast<std::int64_t>(last_damager_));
+    if (combat_.check_player_death()) {
+        emit_signal("player_died", static_cast<std::int64_t>(combat_.last_damager()));
     }
 }
 

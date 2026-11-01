@@ -194,7 +194,7 @@ Dictionary SkydotPapyrus::land_hit(std::int64_t attacker_id, std::int64_t target
                   static_cast<double>(breakdown.get("armor_percent", 0.0)), damage, before, after);
     godot::UtilityFunctions::print(String::utf8(line));
     if (target == k_player_ref) {
-        last_damager_ = attacker;
+        combat_.set_last_damager(attacker);
         check_player_death();
     }
 
@@ -246,18 +246,6 @@ void SkydotPapyrus::set_corpse_place(std::int64_t ref, std::int64_t space, const
 
 std::int64_t SkydotPapyrus::get_killer(std::int64_t ref) const {
     return static_cast<std::int64_t>(actors_.killer_of(static_cast<std::uint32_t>(ref)));
-}
-
-bool SkydotPapyrus::ghost_ignores_hit(std::uint32_t ref) {
-    if (!actors_.is_ghost(ref)) {
-        return false;
-    }
-    if (ghost_reported_.insert(ref).second) {
-        char line[96];
-        std::snprintf(line, sizeof line, "combat: 0x%X is a ghost and takes no hits", ref);
-        godot::UtilityFunctions::print(godot::String::utf8(line));
-    }
-    return true;
 }
 
 void SkydotPapyrus::dragon_soul_absorbed() {

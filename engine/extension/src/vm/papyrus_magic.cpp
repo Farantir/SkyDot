@@ -157,7 +157,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
                 owner_.actors_.set_killer(ref, caster);
             }
             if (ref == k_player_ref) {
-                owner_.last_damager_ = caster;
+                owner_.combat_.set_last_damager(caster);
             }
         }
     }
