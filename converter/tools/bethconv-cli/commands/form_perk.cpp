@@ -161,6 +161,8 @@ void print_perk_census(const pack::WorldFile& world) {
     // (entry point, function) -> the tab counts seen.
     std::map<std::pair<unsigned, unsigned>, std::set<unsigned>> entries;
     std::map<unsigned, std::size_t> data_types;
+    // condition function -> uses in effect tabs, and the entry points that use it.
+    std::map<unsigned, std::pair<std::size_t, std::set<unsigned>>> tab_functions;
     std::size_t with_tree = 0;
     for (const auto& p : perks) {
         for (const auto& e : p.effects) {
@@ -168,6 +170,13 @@ void print_perk_census(const pack::WorldFile& world) {
             if (e->kind == wfb::PerkEffectKind::entry_point) {
                 entries[{e->entry_point, e->function}].insert(e->tab_count);
                 ++data_types[e->data_type];
+                for (const auto& t : e->tabs) {
+                    for (const auto& c : t->conditions) {
+                        auto& use = tab_functions[c->function];
+                        ++use.first;
+                        use.second.insert(e->entry_point);
+                    }
+                }
             }
         }
     }
@@ -195,7 +204,17 @@ void print_perk_census(const pack::WorldFile& world) {
     for (const auto& [t, n] : data_types) {
         std::printf(" %u=%zu", t, n);
     }
-    std::printf("\n");
+    std::printf("\ncondition functions in effect tabs (index name: uses [entry points]):\n");
+    for (const auto& [fn, use] : tab_functions) {
+        const auto* info = record::condition_function(static_cast<std::uint16_t>(fn));
+        std::printf("  %u %s: %zu [", fn, info != nullptr ? std::string(info->name).c_str() : "?", use.first);
+        const char* sep = "";
+        for (const auto ep : use.second) {
+            std::printf("%s%u", sep, ep);
+            sep = " ";
+        }
+        std::printf("]\n");
+    }
 }
 
 } // namespace bethconv::cli
