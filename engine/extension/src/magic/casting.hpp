@@ -48,6 +48,7 @@ struct CastInfo {
     bool recover = false;           ///< MGEF flag Recover of the costliest effect: its change is undone when it ends (Fortify...).
     std::uint32_t archetype = 0;    ///< Of the costliest effect (archetype::).
     int actor_value = -1;           ///< Its actor value, -1 if none.
+    double base_cost = 0.0; ///< The spell's base magicka cost (stored_spell_cost); a scroll: 0.
     int school = -1; ///< The actor value of the magic skill, -1 if none.
 };
 

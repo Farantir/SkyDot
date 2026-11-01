@@ -111,10 +111,17 @@ func _run(pack_dir: String) -> void:
 	var power_worked_out := rules.damage(power_facts)
 	var hits := 0
 	var last := {}
+	# A landed player hit trains One-Handed by the sword's base damage 7 (x the AVIF use mult, 6.3 by the pack).
+	var xp_before := float(papyrus.get_player_progress()["skill_xp"][6 - 6])
+	var level_before := papyrus.get_base_actor_value(PLAYER, "OneHanded")
 	while not papyrus.is_actor_dead(BANDIT) and hits < 100:
 		last = rules.hit(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0)
 		hits += 1
 		if hits == 1:
+			_session.combat.hit_landed.emit(BANDIT, last, Vector3.ZERO)
+			expect(float(papyrus.get_player_progress()["skill_xp"][6 - 6]) > xp_before
+				or papyrus.get_base_actor_value(PLAYER, "OneHanded") > level_before, "a player hit raises One-Handed progress")
+			expect(_near(float(last.get("weapon_base", 0.0)), 7.0), "the hit result carries the sword's base damage")
 			print("first hit: ", last)
 			expect(_near(last["damage"], expected, 0.001), "the first hit does %f, expected %f" % [last["damage"], expected])
 			expect(_near(last["damage"], worked_out["damage"], 0.001) and _near(last["armor_percent"], worked_out["armor_percent"], 0.001),

@@ -153,6 +153,7 @@ Dictionary SkydotPapyrus::cast_info(std::int64_t form_in) {
     out["archetype"] = static_cast<std::int64_t>(info.archetype);
     out["actor_value"] = info.actor_value;
     out["school"] = info.school;
+    out["base_cost"] = info.base_cost;
     return out;
 }
 

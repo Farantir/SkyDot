@@ -1439,7 +1439,15 @@ refunded, legendary + 1). `crafting_use_amount(use)` is the rule for what a craf
 creating: count * (25 + 3 * value ^ fConstructibleSkilluseExp); improving: 3.8 * delta value ^
 fTemperingSkillUseItemValExp * delta quality ^ 0.5, with the pack's 0.6 where UESP says 0.5; brewing: the potion's
 value + 1; enchanting 1; disenchanting value / 400; recharging 0.05 to 0.6 by soul), `crafting_use(use)` feeds it to
-`use_skill`, and `GameSession` calls it after each craft, temper, mix, enchant, disenchant and recharge. It returns plain Dictionaries and emits nothing; `GameSession.use_skill`,
+`use_skill`, and `GameSession` calls it after each craft, temper, mix, enchant, disenchant and recharge. Combat and magic
+give XP the same way (P6e, UESP Skyrim:Leveling; only the player): `combat_uses(result)` turns `AttackRules.hit`'s result
+(`GameSession._award_hit` on `Combat.hit_landed`) into `[{skill, use}]` through `weapon_use_amount` (One-Handed,
+Two-Handed, Archery: the weapon's base damage per hit on a living actor, friendly included), `sneak_attack_use_amount`
+(30 melee, 2.5 ranged), `block_use_amount` and `armor_use_amounts` (raw damage before armor; the armor share goes equally
+by worn Heavy and Light pieces, an estimate); `magic_use(landing)` turns `Magic.spell_used` (`GameSession._award_spell`)
+into the school's use (base magicka cost from `cast_info.base_cost`; Destruction only on a living target; Restoration
+the HP healed by a healing spell, measured as the target's Health change so instant heals only; concentration per
+0.1 s landing; scrolls, powers and shouts none). It returns plain Dictionaries and emits nothing; `GameSession.use_skill`,
 `increment_skill`, `level_up` and `take_perk` call it and show the GMST texts (`sSkillIncreased`,
 `sLevelUpAvailable`) through `message`. It asks its data through `ProgressionData`
 (`progression_data.gd`), a GDScript seam over `SkydotPapyrus` and `SkydotWorld`
@@ -1485,7 +1493,8 @@ player's death and sends `OnHit` and the death. The AI's decision of when to
 attack and whether lightly or with power (`ai_combat.cpp` `melee_step` and
 `ranged_step`) stays in C++: it is AI-internal tactics run per tick in
 `SkydotAi`, and `CombatHooks` is AI state for Papyrus natives. `Combat` and
-`GameSession.kill_actor` call the session's one `AttackRules`; it holds no
+`GameSession.kill_actor` call the session's one `AttackRules`; `hit` also puts `weapon_type`, `weapon_base`,
+`heavy_pieces`, `light_pieces` and `ranged` (`skill_use_facts`) in its result for `Progression.combat_uses`; it holds no
 state, so it is not in the lifecycle. A script mod changes the rules by
 extending `AttackRules` and overriding a rule method, or replaces it whole with
 a class of the same interface; the session builds whichever

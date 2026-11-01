@@ -113,6 +113,10 @@ inline constexpr double k_placeholder_dual_cast_scale = 1.0;
 [[nodiscard]] double effect_cost(double base_cost, double magnitude, double duration, std::uint32_t casting_type,
                                  double area, const MagicSettings& s = {});
 
+/// The spell's base magicka cost (per second for a concentration spell): the stored SPIT cost, before the caster's
+/// skill and perks. The skill use of a spell is based on it (Progression.magic_use_amount).
+[[nodiscard]] double stored_spell_cost(const wfb::World& world, const wfb::Spell& spell, const MagicSettings& s = {});
+
 /// The cost a spell costs a caster with `skill` in its school: the stored SPIT cost (see adr/0008 for
 /// why it is used also when the editor calculated it), x the skill multiplier. The caster's perks
 /// (Mod Spell Cost 38) are applied by `perk_spell_cost` (casting.hpp).

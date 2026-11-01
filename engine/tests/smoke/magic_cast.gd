@@ -213,6 +213,8 @@ func _run(pack_dir: String) -> void:
 	_max_live = 0
 	_landed.clear()
 	var puffs_before: int = _session.projectiles.puffs_spawned
+	var destruction_before := float(papyrus.get_player_progress()["skill_xp"][20 - 6])
+	var destruction_level := papyrus.get_base_actor_value(PLAYER, "Destruction")
 	_session.attack_pressed()
 	expect(magic.is_casting(Magic.RIGHT), "Flames is held")
 	var held := 0.0
@@ -231,6 +233,8 @@ func _run(pack_dir: String) -> void:
 	print("Flames puffs ", puffs, " for ", _landed.size(), " landings")
 	expect(puffs >= 5 * _landed.size(), "a held flame streams visual puffs between its shots: %d puffs, %d landings" % [puffs, _landed.size()])
 	expect(burning, "the skeever burns (FireDamageConcAimed)")
+	expect(float(papyrus.get_player_progress()["skill_xp"][20 - 6]) > destruction_before
+		or papyrus.get_base_actor_value(PLAYER, "Destruction") > destruction_level, "Flames on the skeever raised Destruction progress")
 	expect(papyrus.is_actor_dead(SKEEVER), "and dies")
 	expect(_landed.size() > 3 and _landed.all(func(l: Dictionary) -> bool: return l["target"] == SKEEVER), "Flames landed on the skeever repeatedly: %d" % _landed.size())
 	_session.attack_released()

@@ -122,8 +122,28 @@ func hit(attacker: int, target: int, weapon: int, extra: int, event: String, fla
 	else:
 		flags &= ~HIT_BLOCKED  # a block that stopped nothing (a weapon against an arrow) is no block
 	out["skill_value"] = float(facts.get("weapon_skill", 0.0))
+	out["weapon_type"] = int(facts.get("weapon_type", 0))
+	out.merge(skill_use_facts(facts))
 	out.merge(_data.land_hit(attacker, target, weapon, extra, float(out["damage"]), String(out["event"]), flags, out))
 	return out
+
+
+## What the skill rules (Progression.combat_uses) need of a hit besides its damage: the weapon's base damage, whether it
+## was ranged (a bow or crossbow, an arrow), and how many heavy and light armor pieces the target wore (clothing and
+## shields count none).
+func skill_use_facts(facts: Dictionary) -> Dictionary:
+	var heavy := 0
+	var light := 0
+	for piece: Dictionary in facts.get("armor", []):
+		if bool(piece.get("shield", false)) or int(piece.get("armor_type", 0)) == ARMOR_CLOTHING:
+			continue
+		if int(piece.get("armor_type", 0)) == ARMOR_HEAVY:
+			heavy += 1
+		else:
+			light += 1
+	var type := int(facts.get("weapon_type", 0))
+	return {"weapon_base": float(facts.get("weapon_damage", 0.0)), "heavy_pieces": heavy, "light_pieces": light,
+		"ranged": type == 7 or type == 9 or int(facts.get("ammo", 0)) != 0}
 
 
 ## The breakdown of the damage of a hit from its `facts` (SkydotPapyrus.hit_facts and `settings`):

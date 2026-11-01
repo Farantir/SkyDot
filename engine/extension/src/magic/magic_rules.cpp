@@ -79,7 +79,7 @@ int spell_school(const wfb::World& world, const wfb::Spell& spell) {
     return school;
 }
 
-double spell_cost(const wfb::World& world, const wfb::Spell& spell, double skill, const MagicSettings& s) {
+double stored_spell_cost(const wfb::World& world, const wfb::Spell& spell, const MagicSettings& s) {
     // The editor stores the calculated cost in SPIT also for spells without the manual flag, and a
     // later plugin that changes an effect's base cost does not rewrite it (Dragonborn raises Flames'
     // fire effect from 1.5 to 2.5; Flames stays at the stored 14, as UESP lists it).
@@ -87,7 +87,11 @@ double spell_cost(const wfb::World& world, const wfb::Spell& spell, double skill
     if (stored == 0.0 && (spell.flags() & k_spell_manual_cost) == 0) {
         stored = std::floor(auto_calc_cost(world, spell, s)); // a record that stored nothing
     }
-    return stored * skill_cost_multiplier(skill, s);
+    return stored;
+}
+
+double spell_cost(const wfb::World& world, const wfb::Spell& spell, double skill, const MagicSettings& s) {
+    return stored_spell_cost(world, spell, s) * skill_cost_multiplier(skill, s);
 }
 
 double resisted_magnitude(double magnitude, double resist, const MagicSettings& s) {

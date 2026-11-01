@@ -111,6 +111,8 @@ signal hand_art_changed(hand: int, model: String)
 signal cast_started(hand: int, spell: int, info: Dictionary)
 ## A spell's effects landed on `target` at `point` (engine space).
 signal spell_landed(hand: int, spell: int, target: int, point: Vector3, hostile: bool)
+## A spell of the player landed: {info, target (0: himself), target_alive, healed} for the skill rules (Progression.magic_use).
+signal spell_used(landing: Dictionary)
 ## A scroll was read and used up (the hands that held the last one are empty).
 signal scroll_used(spell: int)
 ## An NPC's cast was paid (its fire-and-forget release, a concentration spell's start): the caster, the
@@ -739,6 +741,7 @@ func _impact(caster: int, hand: int, spell: int, info: Dictionary, ref: int, poi
 func _land(caster: int, hand: int, spell: int, info: Dictionary, target: int, point: Vector3, consume := true) -> void:
 	var result: Dictionary
 	var at := 0 if target == caster else target
+	var health_before := _papyrus.get_actor_value(target if target != 0 else caster, "Health") if caster == PLAYER_REF else 0.0
 	if caster == PLAYER_REF and consume and bool(info.get("is_scroll", false)):
 		result = _papyrus.cast_scroll(caster, spell, at)
 		if result["ok"]:
@@ -752,6 +755,9 @@ func _land(caster: int, hand: int, spell: int, info: Dictionary, target: int, po
 		if spell == _shout_spell and _shout_hit_sound != 0:
 			sound_wanted.emit(_shout_hit_sound, 0 if target == PLAYER_REF else target)
 		spell_landed.emit(hand, spell, target, point, bool(info.get("hostile", false)))
+		var who := target if target != 0 else caster
+		spell_used.emit({"info": info, "target": at, "target_alive": not _papyrus.is_actor_dead(who),
+			"healed": _papyrus.get_actor_value(who, "Health") - health_before})
 	else:
 		npc_spell_landed.emit(caster, spell, target, point, bool(info.get("hostile", false)))
 

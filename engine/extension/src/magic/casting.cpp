@@ -62,6 +62,7 @@ CastInfo cast_info(const wfb::World& world, std::uint32_t form, const MagicSetti
         out.delivery = spell->delivery();
         out.charge_time = spell->charge_time();
         out.cast_duration = spell->cast_duration();
+        out.base_cost = stored_spell_cost(world, *spell, s);
         out.range = spell->range();
         effects = spell->effects();
     } else {

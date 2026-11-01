@@ -486,3 +486,15 @@ func test_percent_blocked_perks_scale_the_blocked_share_before_the_cap() -> void
 	expect(call[1] == NPC and call[2] == [NPC, P, SWORD], "the blocker's perk, [blocker, attacker, weapon]")
 	data.perks = {39: 100.0}
 	_near(rules.blocked_percent(facts, {}), AttackRules.BLOCK_CAP, "capped")
+
+
+func test_the_skill_use_facts_count_armor_pieces_and_ranged_hits() -> void:
+	var facts := {"weapon_damage": 7.0, "weapon_type": 1, "ammo": 0, "armor": [
+		{"armor_type": 1}, {"armor_type": 1}, {"armor_type": 0}, {"armor_type": 2}, {"armor_type": 1, "shield": true}]}
+	var out := rules.skill_use_facts(facts)
+	expect_eq([out["weapon_base"], out["heavy_pieces"], out["light_pieces"], out["ranged"]], [7.0, 2, 1, false], "melee")
+	facts["weapon_type"] = 7
+	expect_eq(rules.skill_use_facts(facts)["ranged"], true, "a bow")
+	facts["weapon_type"] = 0
+	facts["ammo"] = 0x1234
+	expect_eq(rules.skill_use_facts(facts)["ranged"], true, "an arrow")

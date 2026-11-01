@@ -22,6 +22,28 @@ const SMITHING := 10
 const ALCHEMY := 16
 const ENCHANTING := 23
 const RECHARGE_USE: Array[float] = [0.05, 0.1, 0.2, 0.4, 0.6]
+## The combat and magic skills (actor value indexes) and what their uses are worth (UESP Skyrim:Leveling).
+const ONE_HANDED := 6
+const TWO_HANDED := 7
+const ARCHERY := 8
+const BLOCK := 9
+const HEAVY_ARMOR := 11
+const LIGHT_ARMOR := 12
+const SNEAK := 15
+const ALTERATION := 18
+const CONJURATION := 19
+const DESTRUCTION := 20
+const ILLUSION := 21
+const RESTORATION := 22
+const PLAYER_REF := 0x14
+const SNEAK_ATTACK_MELEE_USE := 30.0
+const SNEAK_ATTACK_RANGED_USE := 2.5
+## Weapon type (WEAP animation type) -> the skill its hits train; fists (0) and staffs (8) train none.
+const WEAPON_SKILL := {1: ONE_HANDED, 2: ONE_HANDED, 3: ONE_HANDED, 4: ONE_HANDED, 5: TWO_HANDED, 6: TWO_HANDED,
+	7: ARCHERY, 9: ARCHERY}
+## SPIT type of a plain spell (powers, abilities and the like train nothing), the healing actor value.
+const SPELL_TYPE_SPELL := 0
+const TICK_SECONDS := 0.1
 const MAX_SKILL := 100.0
 const LEGENDARY_BASE := 15.0
 
@@ -129,6 +151,101 @@ func crafting_use_amount(use: Dictionary) -> float:
 		"recharge":
 			return RECHARGE_USE[clampi(int(use.get("soul", 1)), 1, 5) - 1]
 	return 0.0
+
+
+## The skills a hit trains the player in, from AttackRules.hit's result: [{skill, use}] (skill use before the AVIF
+## use mult, in the order weapon, sneak, block, armor). Nothing for hits between NPCs, and nothing for a hit on a corpse.
+## - the player hits an actor with a skill weapon: `weapon_use_amount` for One-Handed, Two-Handed or Archery
+##   (a friendly target counts; bashes do not exist yet; the player has no bow, so Archery waits for one)
+## - a sneak attack (the result's sneak > 1): `sneak_attack_use_amount` for Sneak (A8: nobody sneaks yet)
+## - a blocked hit on the player: `block_use_amount` for Block
+## - any hit on the player: `armor_use_amounts` for Heavy and Light Armor
+func combat_uses(result: Dictionary) -> Array[Dictionary]:
+	var uses: Array[Dictionary] = []
+	if result.has("error") or float(result.get("health_before", 1.0)) <= 0.0:
+		return uses
+	if int(result.get("attacker", 0)) == PLAYER_REF:
+		var skill := weapon_skill_av(int(result.get("weapon_type", 0)))
+		if skill >= 0:
+			uses.append({"skill": skill, "use": weapon_use_amount(result)})
+		if float(result.get("sneak", 1.0)) > 1.0:
+			uses.append({"skill": SNEAK, "use": sneak_attack_use_amount(result)})
+	elif int(result.get("target", 0)) == PLAYER_REF:
+		if float(result.get("blocked_percent", 0.0)) > 0.0:
+			uses.append({"skill": BLOCK, "use": block_use_amount(result)})
+		var armor := armor_use_amounts(result)
+		for skill: int in armor:
+			uses.append({"skill": skill, "use": armor[skill]})
+	return uses
+
+
+## The skill a weapon of animation type `weapon_type` trains (-1: none).
+func weapon_skill_av(weapon_type: int) -> int:
+	return int(WEAPON_SKILL.get(weapon_type, -1))
+
+
+## One-Handed, Two-Handed and Archery: the weapon's base damage (a bow's own, not the arrow's; not what the
+## hit dealt, UESP Skyrim:Leveling "Base Weapon Damage").
+func weapon_use_amount(result: Dictionary) -> float:
+	return maxf(float(result.get("weapon_base", 0.0)), 0.0)
+
+
+## Block: 1 per point of raw damage (before armor) of the blocked hit. A shield bash (5) waits for bashing.
+func block_use_amount(result: Dictionary) -> float:
+	return maxf(float(result.get("weapon_damage", 0.0)), 0.0)
+
+
+## Heavy and Light Armor: 1 per point of raw damage (before armor) received, shared by the worn pieces of each
+## type equally (ESTIMATE: UESP gives no split). {skill: use}; clothing and shields count no piece.
+func armor_use_amounts(result: Dictionary) -> Dictionary:
+	var heavy := int(result.get("heavy_pieces", 0))
+	var light := int(result.get("light_pieces", 0))
+	var out := {}
+	if heavy + light <= 0:
+		return out
+	var raw := maxf(float(result.get("weapon_damage", 0.0)), 0.0)
+	if heavy > 0:
+		out[HEAVY_ARMOR] = raw * heavy / (heavy + light)
+	if light > 0:
+		out[LIGHT_ARMOR] = raw * light / (heavy + light)
+	return out
+
+
+## Sneak: 30 per melee sneak attack, 2.5 per ranged one. (Becoming hidden, 2.5, and seconds hidden, 0.625 per
+## second, wait for the sneak and detection state, A8.)
+func sneak_attack_use_amount(result: Dictionary) -> float:
+	return SNEAK_ATTACK_RANGED_USE if bool(result.get("ranged", false)) else SNEAK_ATTACK_MELEE_USE
+
+
+## The skill and use a landing of a player's spell earned: {skill, use}, or use 0. `landing` is Magic.spell_used:
+## {info (Casting cast_info: school, base_cost, type, casting_type, is_scroll, hostile, actor_value), target (0 self),
+## target_alive, healed}. Scrolls, powers and shouts give nothing (type != spell, school -1).
+## - concentration: the base cost per second, per landing (TICK_SECONDS)
+## - Destruction: the base cost, only on a living actor other than the caster (the damage dealt is not counted yet)
+## - Restoration: the HP healed by a healing spell (instant heals only), the base cost for other spells
+## - Alteration, Conjuration, Illusion: the base cost when the effect applies
+func magic_use(landing: Dictionary) -> Dictionary:
+	var info: Dictionary = landing.get("info", {})
+	var school := int(info.get("school", -1))
+	var out := {"skill": school, "use": 0.0}
+	if school < ALTERATION or school > RESTORATION or bool(info.get("is_scroll", false)) \
+			or int(info.get("type", SPELL_TYPE_SPELL)) != SPELL_TYPE_SPELL:
+		return out
+	var cost := float(info.get("base_cost", 0.0))
+	if int(info.get("casting_type", 0)) == 2:
+		cost *= TICK_SECONDS
+	match school:
+		DESTRUCTION:
+			if int(landing.get("target", 0)) != 0 and bool(landing.get("target_alive", true)):
+				out["use"] = cost
+		RESTORATION:
+			if not bool(info.get("hostile", false)) and int(info.get("actor_value", -1)) == HEALTH:
+				out["use"] = maxf(float(landing.get("healed", 0.0)), 0.0)
+			else:
+				out["use"] = cost
+		_:
+			out["use"] = cost
+	return out
 
 
 ## Award a craft's skill use: use_skill for the crafting skill with `crafting_use_amount`.

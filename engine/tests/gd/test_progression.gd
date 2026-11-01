@@ -343,3 +343,81 @@ func test_crafting_use_goes_through_the_skill_use_mult() -> void:
 	# Lockpicking stands in for a crafting skill here (its fake use mult is 45, offset 10): 1 enchant = 1 use.
 	var r := pr.crafting_use({"kind": "enchant", "skill": LOCKPICKING, "count": 1.0})
 	expect(is_equal_approx(r["gained"], 55.0), "1 * 45 + 10")
+
+
+# ---- combat and magic uses (UESP Skyrim:Leveling)
+
+func _hit(extra := {}) -> Dictionary:
+	var r := {"attacker": 0x14, "target": 0x39FE4, "weapon_type": 1, "weapon_base": 7.0, "weapon_damage": 10.0,
+		"sneak": 1.0, "blocked_percent": 0.0, "health_before": 20.0, "heavy_pieces": 0, "light_pieces": 0}
+	r.merge(extra, true)
+	return r
+
+
+func test_a_player_hit_trains_the_weapon_skill_by_its_base_damage() -> void:
+	for pair in [[1, 6], [2, 6], [3, 6], [4, 6], [5, 7], [6, 7], [7, 8], [9, 8]]:
+		var uses := pr.combat_uses(_hit({"weapon_type": pair[0]}))
+		expect_eq(uses, [{"skill": pair[1], "use": 7.0}], "weapon type %d" % pair[0])
+	expect_eq(pr.combat_uses(_hit({"weapon_type": 0})), [], "fists train nothing")
+	expect_eq(pr.combat_uses(_hit({"weapon_type": 8})), [], "staffs train nothing")
+
+
+func test_hits_on_corpses_errors_and_between_npcs_train_nothing() -> void:
+	expect_eq(pr.combat_uses(_hit({"health_before": 0.0})), [], "a corpse")
+	expect_eq(pr.combat_uses({"error": "dead"}), [], "an error")
+	expect_eq(pr.combat_uses(_hit({"attacker": 0x1234})), [], "npc on npc")
+
+
+func test_a_sneak_attack_trains_sneak_30_melee_2_5_ranged() -> void:
+	var melee := pr.combat_uses(_hit({"sneak": 3.0}))
+	expect_eq(melee[1], {"skill": 15, "use": 30.0}, "melee")
+	var ranged := pr.combat_uses(_hit({"sneak": 2.0, "weapon_type": 7, "ranged": true}))
+	expect_eq(ranged[1], {"skill": 15, "use": 2.5}, "ranged")
+
+
+func test_a_blocked_hit_on_the_player_trains_block_by_the_raw_damage() -> void:
+	var uses := pr.combat_uses(_hit({"attacker": 0x1234, "target": 0x14, "blocked_percent": 50.0}))
+	expect_eq(uses, [{"skill": 9, "use": 10.0}], "block 10")
+
+
+func test_damage_received_is_shared_by_the_worn_armor_pieces() -> void:
+	var uses := pr.combat_uses(_hit({"attacker": 0x1234, "target": 0x14, "heavy_pieces": 3, "light_pieces": 1}))
+	expect_eq(uses.size(), 2, "both types")
+	expect_eq(uses[0], {"skill": 11, "use": 7.5}, "heavy 3/4")
+	expect_eq(uses[1], {"skill": 12, "use": 2.5}, "light 1/4")
+	expect_eq(pr.combat_uses(_hit({"attacker": 0x1234, "target": 0x14})), [], "no armor, no use")
+
+
+func _spell(school: int, extra := {}, landing := {}) -> Dictionary:
+	var info := {"school": school, "base_cost": 14.0, "type": 0, "casting_type": 1, "is_scroll": false,
+		"hostile": true, "actor_value": -1}
+	info.merge(extra, true)
+	var out := {"info": info, "target": 0x39FE4, "target_alive": true, "healed": 0.0}
+	out.merge(landing, true)
+	return out
+
+
+func test_a_spell_trains_its_school_by_the_base_cost() -> void:
+	for school in [18, 19, 21]:
+		expect_eq(pr.magic_use(_spell(school, {}, {"target": 0})), {"skill": school, "use": 14.0}, "school %d" % school)
+	expect_eq(pr.magic_use(_spell(20)), {"skill": 20, "use": 14.0}, "destruction on an actor")
+
+
+func test_destruction_needs_a_living_target_other_than_the_caster() -> void:
+	expect_eq(pr.magic_use(_spell(20, {}, {"target": 0}))["use"], 0.0, "no target")
+	expect_eq(pr.magic_use(_spell(20, {}, {"target_alive": false}))["use"], 0.0, "a corpse")
+
+
+func test_restoration_counts_hp_healed_for_healing_spells_and_cost_otherwise() -> void:
+	var heal := _spell(22, {"hostile": false, "actor_value": 24}, {"target": 0, "healed": 25.0})
+	expect_eq(pr.magic_use(heal)["use"], 25.0, "25 hp healed")
+	heal["healed"] = -3.0
+	expect_eq(pr.magic_use(heal)["use"], 0.0, "nothing healed")
+	expect_eq(pr.magic_use(_spell(22, {"hostile": false}, {"target": 0}))["use"], 14.0, "a ward costs 14")
+
+
+func test_concentration_counts_per_tick_and_scrolls_powers_give_nothing() -> void:
+	expect(is_equal_approx(pr.magic_use(_spell(20, {"casting_type": 2}))["use"], 1.4), "14/s over 0.1 s")
+	expect_eq(pr.magic_use(_spell(20, {"is_scroll": true}))["use"], 0.0, "scroll")
+	expect_eq(pr.magic_use(_spell(20, {"type": 2}))["use"], 0.0, "power")
+	expect_eq(pr.magic_use(_spell(-1))["use"], 0.0, "no school")

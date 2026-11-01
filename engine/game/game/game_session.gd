@@ -329,6 +329,7 @@ func _make_game_nodes() -> void:
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
 	combat.hit_landed.connect(hit_landed.emit)
+	combat.hit_landed.connect(_award_hit)
 	if ai != null:
 		ai.set_combat(config.combat)
 		combat.ai = ai
@@ -347,6 +348,7 @@ func _make_game_nodes() -> void:
 		player_state)
 	items_changed.connect(magic.on_items_changed)
 	magic.spell_landed.connect(spell_landed.emit)
+	magic.spell_used.connect(_award_spell)
 	magic.scroll_used.connect(func(_spell: int) -> void: items_changed.emit())
 	magic.notice.connect(func(text: String) -> void: message.emit(text, false))
 	magic.sound_wanted.connect(func(sound: int, source: int) -> void: sounds.play(sound, source))
@@ -556,6 +558,20 @@ func use_skill(av: int, amount: float) -> Dictionary:
 	var result := progression.use_skill(av, amount)
 	_announce_progress(result)
 	return result
+
+
+## A hit landed (Combat.hit_landed): the skills it trains the player in (Progression.combat_uses).
+func _award_hit(_target: int, result: Dictionary, _point: Vector3) -> void:
+	for use: Dictionary in progression.combat_uses(result):
+		var gained := use_skill(int(use["skill"]), float(use["use"]))
+		print("skill: %s hit gave %.2f" % [progression.skill_name(int(use["skill"])), float(gained["gained"])])
+
+
+## A spell of the player landed (Magic.spell_used): the school's skill use (Progression.magic_use).
+func _award_spell(landing: Dictionary) -> void:
+	var use := progression.magic_use(landing)
+	if float(use["use"]) > 0.0:
+		use_skill(int(use["skill"]), float(use["use"]))
 
 
 ## Turn what the last craft earned into skill progress (Progression.crafting_use), with the usual notifications.
