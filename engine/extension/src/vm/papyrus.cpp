@@ -113,6 +113,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("has_spell", "actor", "spell"), &SkydotPapyrus::has_spell);
     godot::ClassDB::bind_method(D_METHOD("equip_spell", "actor", "spell", "hand"), &SkydotPapyrus::equip_spell);
     godot::ClassDB::bind_method(D_METHOD("equipped_spell", "actor", "hand"), &SkydotPapyrus::equipped_spell);
+    godot::ClassDB::bind_method(D_METHOD("unequip_spell", "actor", "hand"), &SkydotPapyrus::unequip_spell);
     godot::ClassDB::bind_method(D_METHOD("power_cooldown", "actor", "spell"), &SkydotPapyrus::power_cooldown);
     godot::ClassDB::bind_method(D_METHOD("shout_info", "actor", "shout"), &SkydotPapyrus::shout_info);
     godot::ClassDB::bind_method(D_METHOD("shouts_of", "actor"), &SkydotPapyrus::shouts_of);

@@ -271,6 +271,8 @@ public:
     /// `hand`: 0 left, 1 right, 2 power. A scroll the actor carries may be held in a hand too.
     bool equip_spell(std::int64_t actor, std::int64_t spell, std::int64_t hand);
     std::int64_t equipped_spell(std::int64_t actor, std::int64_t hand);
+    /// Empty `hand` of `actor` (the game layer's casting does this to a scroll no longer carried).
+    void unequip_spell(std::int64_t actor, std::int64_t hand);
     /// Game days until `spell` (a power) may be used again by `actor`; 0 if it may.
     double power_cooldown(std::int64_t actor, std::int64_t spell);
     /// Shouts (magic/shouts.hpp, docs/adr/0008). {found, shout, name, description, words (an Array of

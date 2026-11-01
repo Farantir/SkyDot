@@ -837,6 +837,7 @@ Dictionary SkydotPapyrus::cast_info(std::int64_t form_in) {
     out["form"] = form_in;
     out["name"] = to_godot(info.name);
     out["is_scroll"] = info.is_scroll;
+    out["is_item"] = lookup(m->world_.spells(), static_cast<std::uint32_t>(form_in)) == nullptr; // a SCRL item, not a SPEL
     out["type"] = id(info.type);
     out["casting_type"] = id(info.casting_type);
     out["delivery"] = id(info.delivery);
@@ -994,6 +995,12 @@ bool SkydotPapyrus::equip_spell(std::int64_t actor, std::int64_t spell, std::int
 std::int64_t SkydotPapyrus::equipped_spell(std::int64_t actor, std::int64_t hand) {
     auto* m = magic_state();
     return m != nullptr ? static_cast<std::int64_t>(m->equipped_spell(static_cast<std::uint32_t>(actor), static_cast<int>(hand))) : 0;
+}
+
+void SkydotPapyrus::unequip_spell(std::int64_t actor, std::int64_t hand) {
+    if (auto* m = magic_state()) {
+        m->unequip_spell(static_cast<std::uint32_t>(actor), static_cast<int>(hand));
+    }
 }
 
 double SkydotPapyrus::power_cooldown(std::int64_t actor, std::int64_t spell) {
