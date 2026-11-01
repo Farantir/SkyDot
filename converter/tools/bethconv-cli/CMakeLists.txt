@@ -12,6 +12,7 @@ add_executable(bethconv_cli
     commands/extract.cpp
     commands/form.cpp
     commands/form_magic.cpp
+    commands/form_perk.cpp
     commands/forms.cpp
     commands/info.cpp
     commands/loadorder.cpp

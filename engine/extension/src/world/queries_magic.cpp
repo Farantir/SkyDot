@@ -35,6 +35,8 @@ Dictionary condition_dictionary(const wfb::Condition& c) {
     return d;
 }
 
+} // namespace
+
 Array conditions_array(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list) {
     Array out;
     if (list != nullptr) {
@@ -44,6 +46,8 @@ Array conditions_array(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condit
     }
     return out;
 }
+
+namespace {
 
 /// {effect, magnitude, area, duration, conditions: [condition dictionaries]} per entry.
 Array effect_array(const flatbuffers::Vector<flatbuffers::Offset<wfb::EffectItem>>* effects) {

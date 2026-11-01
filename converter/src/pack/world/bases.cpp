@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bases.hpp"
 
+#include "actor_values.hpp"
 #include "fb_write.hpp"
 
 #include "bethconv/io/span_reader.hpp"
@@ -110,6 +111,15 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         break;
     case FourCC{"MOVT"}.value:
         on_movement_type(merged, data, form_ctx);
+        break;
+    case FourCC{"PERK"}.value:
+        on_perk(merged, data, form_ctx);
+        break;
+    case FourCC{"AVIF"}.value:
+        on_actor_value_info(merged, data, form_ctx);
+        break;
+    case FourCC{"CLAS"}.value:
+        on_class(merged, data, form_ctx);
         break;
     case FourCC{"ARTO"}.value:
         on_art_object(merged, data, form_ctx);
@@ -1003,6 +1013,125 @@ void BaseCollector::on_word_of_power(const record::MergedRecord& merged, io::Spa
     words_of_power_[out.id] = std::move(out);
 }
 
+void BaseCollector::on_perk(const record::MergedRecord& merged, io::SpanReader& data,
+                            const record::FormContext& form_ctx) {
+    auto r = record::parse_perk(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::PerkT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.description = r->description.text;
+    out.trait = r->trait != 0;
+    out.level = r->level;
+    out.ranks = r->ranks;
+    out.playable = r->playable != 0;
+    out.hidden = r->hidden != 0;
+    out.next_perk = shared_.global(merged, r->next_perk, failed);
+    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+    for (const auto& e : r->effects) {
+        auto effect = std::make_unique<wfb::PerkEffectT>();
+        effect->kind = static_cast<wfb::PerkEffectKind>(e.kind);
+        effect->rank = e.rank;
+        effect->priority = e.priority;
+        effect->quest = shared_.global(merged, e.quest, failed);
+        effect->stage = e.stage;
+        effect->spell = shared_.global(merged, e.ability, failed);
+        effect->entry_point = e.entry_point;
+        effect->function = e.function;
+        effect->tab_count = e.tab_count;
+        for (const auto& t : e.tabs) {
+            auto tab = std::make_unique<wfb::PerkConditionTabT>();
+            tab->tab = t.index;
+            tab->conditions = shared_.global_conditions(merged, t.conditions, failed);
+            effect->tabs.push_back(std::move(tab));
+        }
+        effect->data_type = e.data_type;
+        if (e.data_type == 2 && e.values.size() == 2) {
+            effect->actor_value = static_cast<std::int32_t>(e.values[0]);
+            effect->values.push_back(e.values[1]);
+        } else {
+            effect->values = e.values;
+        }
+        effect->form = shared_.global(merged, e.form, failed);
+        effect->text = e.text;
+        effect->script_flags = e.script_flags;
+        out.effects.push_back(std::move(effect));
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    perks_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_actor_value_info(const record::MergedRecord& merged, io::SpanReader& data,
+                                        const record::FormContext& form_ctx) {
+    auto r = record::parse_actor_value_info(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::ActorValueInfoT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.actor_value = actor_value_index(r->editor_id);
+    out.name = r->name.text;
+    out.description = r->description.text;
+    out.abbreviation = r->abbreviation;
+    out.category = r->category;
+    out.has_skill = r->has_skill;
+    out.use_mult = r->use_mult;
+    out.use_offset = r->use_offset;
+    out.improve_mult = r->improve_mult;
+    out.improve_offset = r->improve_offset;
+    for (const auto& n : r->nodes) {
+        auto node = std::make_unique<wfb::PerkTreeNodeT>();
+        node->index = n.index;
+        node->perk = shared_.global(merged, n.perk, failed);
+        node->flags = n.flags;
+        node->grid_x = n.grid_x;
+        node->grid_y = n.grid_y;
+        node->x = n.x;
+        node->y = n.y;
+        node->skill = shared_.global(merged, n.skill, failed);
+        node->links = n.links;
+        out.perk_tree.push_back(std::move(node));
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    actor_value_infos_[out.id] = std::move(out);
+}
+
+void BaseCollector::on_class(const record::MergedRecord& merged, io::SpanReader& data,
+                             const record::FormContext& form_ctx) {
+    auto r = record::parse_actor_class(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::ClassT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.name = r->name.text;
+    out.max_training_level = r->training_level;
+    // DATA byte 4 counts from One-Handed (actor value 6); only a class that trains to some level
+    // teaches (the Vendor* and combat classes leave the skill at a meaningless 0).
+    out.teaches = r->training_level != 0 ? 6 + static_cast<std::int32_t>(r->training_skill) : -1;
+    out.skill_weights.assign(r->skill_weights.begin(), r->skill_weights.end());
+    out.health_weight = r->health_weight;
+    out.magicka_weight = r->magicka_weight;
+    out.stamina_weight = r->stamina_weight;
+    out.bleedout_default = r->bleedout_default;
+    out.voice_points = r->voice_points;
+    classes_[out.id] = std::move(out);
+}
+
 void BaseCollector::on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
     auto r = record::parse_movement_type(data, form_ctx);
@@ -1260,6 +1389,13 @@ void BaseCollector::collect_item(const record::MergedRecord& merged, io::SpanRea
         item.category = wfb::ItemCategory::book;
         item.weight = r->weight;
         item.value = r->value;
+        item.book_flags = r->flags;
+        if ((r->flags & 0x1) != 0) {
+            item.book_skill = static_cast<std::int32_t>(r->teaches);
+        }
+        if ((r->flags & 0x4) != 0) {
+            item.book_spell = shared_.global(merged, record::FormId{r->teaches}, failed);
+        }
         item.playable = (merged.flags & k_record_non_playable) == 0;
     } else if (type == FourCC{"SLGM"}) {
         auto r = record::parse_soul_gem(data, form_ctx);
@@ -1427,6 +1563,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.shouts += shouts_.size();
     stats.words_of_power += words_of_power_.size();
     stats.movement_types += movement_types_.size();
+    stats.perks += perks_.size();
+    stats.actor_value_infos += actor_value_infos_.size();
+    stats.classes += classes_.size();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {
@@ -1482,6 +1621,9 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.art_objects, art_objects_);
     move_into(world.shouts, shouts_);
     move_into(world.words_of_power, words_of_power_);
+    move_into(world.perks, perks_);
+    move_into(world.actor_value_infos, actor_value_infos_);
+    move_into(world.classes, classes_);
     move_into(world.movement_types, movement_types_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {

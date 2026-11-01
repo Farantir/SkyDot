@@ -82,6 +82,11 @@ struct ItemInfo {
     std::uint8_t soul_capacity = 0;
     std::uint32_t soul_gem_linked = 0;
     bool holds_npc_souls = false;
+    /// BOOK (world.fb 38): DATA flags (0x1 teaches a skill, 0x4 a spell), the skill taught as an
+    /// actor value index (-1 none) and the spell taught (0 none).
+    std::uint8_t book_flags = 0;
+    std::int32_t book_skill = -1;
+    std::uint32_t book_spell = 0;
 };
 
 [[nodiscard]] bool is_shield(const ItemInfo& item) noexcept;

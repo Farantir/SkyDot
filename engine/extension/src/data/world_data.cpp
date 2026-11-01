@@ -439,6 +439,26 @@ bool WorldData::base_has_keyword(std::uint32_t base, std::uint32_t keyword) cons
     return std::ranges::find(*b->keywords(), keyword) != b->keywords()->end();
 }
 
+const wfb::Perk* WorldData::perk_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->perks(), id) : nullptr;
+}
+const wfb::ActorValueInfo* WorldData::actor_value_info_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->actor_value_infos(), id) : nullptr;
+}
+const wfb::ActorValueInfo* WorldData::actor_value_info_of(std::int32_t av) const {
+    if (root_ == nullptr || root_->actor_value_infos() == nullptr || av < 0) {
+        return nullptr;
+    }
+    for (const auto* info : *root_->actor_value_infos()) {
+        if (info->actor_value() == av) {
+            return info;
+        }
+    }
+    return nullptr;
+}
+const wfb::Class* WorldData::class_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->classes(), id) : nullptr;
+}
 const wfb::FormList* WorldData::form_list_ptr(std::uint32_t id) const {
     return root_ != nullptr ? lookup(root_->form_lists(), id) : nullptr;
 }

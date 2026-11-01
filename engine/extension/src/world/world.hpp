@@ -253,11 +253,27 @@ public:
     /// rotate_in_place_run, rotate_while_moving_run; game units per second, the rotation values
     /// as stored; a 40-byte SPED has no rotate_while_moving_run: 0); empty if none.
     godot::Dictionary get_movement_type(std::int64_t id) const;
+    /// A perk (PERK; world.fb 38; keys: id, editor_id, name, description, trait, level, ranks, playable,
+    /// hidden, next_perk, conditions (the prerequisites; as in get_magic_effect), effects: [{kind (0 quest,
+    /// 1 ability, 2 entry point), rank, priority, quest, stage, spell, entry_point, function, tab_count,
+    /// tabs: [{tab, conditions}], data_type (EPFT), values (floats), actor_value (-1 none), form, text,
+    /// script_flags}]); empty if none. VMAD fragments are not in the pack.
+    godot::Dictionary get_perk(std::int64_t id) const;
+    /// The AVIF of an actor value index (a skill's 6 to 23; world.fb 38; keys: id, editor_id, actor_value, name,
+    /// description, abbreviation, category, has_skill, use_mult, use_offset, improve_mult, improve_offset,
+    /// perk_tree: [{index, perk (0 the root), flags, grid_x, grid_y, x, y, skill, links (node indices)}]);
+    /// empty if none.
+    godot::Dictionary get_actor_value_info(std::int64_t actor_value) const;
+    /// A class (CLAS; world.fb 38; keys: id, editor_id, name, teaches (actor value index, -1 none),
+    /// max_training_level, skill_weights, health_weight, magicka_weight, stamina_weight, bleedout_default,
+    /// voice_points); empty if none. (`get_class` is a Godot Object method, hence the name.)
+    godot::Dictionary get_class_data(std::int64_t id) const;
     /// The effects of an item base (ALCH, SCRL, INGR) as in get_spell; empty for others.
     godot::Array get_item_effects(std::int64_t form) const;
     /// An NPC_ base as combat reads it (keys: id, editor_id, name, race, level, aggression,
     /// confidence, energy, morality, mood, assistance, template, template_flags, combat_style, crime_faction, spells
-    /// (SPLO as stored), shouts (its SHOU entries; world.fb 36), factions:
+    /// (SPLO as stored), shouts (its SHOU entries; world.fb 36), class (CNAM; 0 none) and perks:
+    /// [{perk, rank}] (PRKR; world.fb 38), factions:
     /// [{faction, rank}]); empty if none. The record's own values, no template.
     godot::Dictionary get_npc(std::int64_t id) const;
     /// A faction (keys: id, editor_id, flags (the whole DATA word), relations: [{faction,

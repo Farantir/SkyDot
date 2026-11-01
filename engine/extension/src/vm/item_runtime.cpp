@@ -55,6 +55,10 @@ ItemInfo ItemRuntime::item_info_of(std::uint32_t form) const {
     info.soul_capacity = item->soul_capacity();
     info.soul_gem_linked = item->soul_gem_linked();
     info.holds_npc_souls = item->holds_npc_souls();
+    // World.fb 38: absent (0, no skill) in older packs.
+    info.book_flags = item->book_flags();
+    info.book_skill = item->book_skill();
+    info.book_spell = item->book_spell();
     return info;
 }
 

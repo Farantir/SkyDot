@@ -256,6 +256,18 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     out["crime_faction"] = static_cast<std::int64_t>(npc->crime_faction());
     // INAM, absent (0) in packs before world.fb 37; as the record has it, not through the template.
     out["death_item"] = static_cast<std::int64_t>(npc->death_item());
+    // World.fb 38: absent (0, none) in older packs. The record's own, no template.
+    out["class"] = static_cast<std::int64_t>(npc->class_id());
+    Array perks;
+    if (npc->perks() != nullptr) {
+        for (const auto* p : *npc->perks()) {
+            Dictionary d;
+            d["perk"] = static_cast<std::int64_t>(p->perk());
+            d["rank"] = static_cast<std::int64_t>(p->rank());
+            perks.push_back(d);
+        }
+    }
+    out["perks"] = perks;
     // SPLO as it is: spells, leveled spell lists and shouts (world.fb 33).
     godot::PackedInt64Array spells;
     if (npc->spells() != nullptr) {

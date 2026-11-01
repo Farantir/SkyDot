@@ -30,6 +30,9 @@ struct Base;
 struct FormList;
 struct Message;
 struct Explosion;
+struct Perk;
+struct ActorValueInfo;
+struct Class;
 struct Destruction;
 struct Ref;
 struct LargeRef;
@@ -65,7 +68,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 37;
+    static constexpr int FORMAT_VERSION = 38;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {
@@ -181,6 +184,12 @@ public:
     /// Whether base form `base` lists `keyword` (KWDA).
     bool base_has_keyword(std::uint32_t base, std::uint32_t keyword) const;
     const bethconv::pack::wfb::FormList* form_list_ptr(std::uint32_t id) const;
+    /// Skills and perks (format 38): a PERK by id, an AVIF by id, the AVIF of actor value `av` (a skill's
+    /// 6 to 23; null if none), a CLAS by id.
+    const bethconv::pack::wfb::Perk* perk_ptr(std::uint32_t id) const;
+    const bethconv::pack::wfb::ActorValueInfo* actor_value_info_ptr(std::uint32_t id) const;
+    const bethconv::pack::wfb::ActorValueInfo* actor_value_info_of(std::int32_t av) const;
+    const bethconv::pack::wfb::Class* class_ptr(std::uint32_t id) const;
     const bethconv::pack::wfb::Message* message_ptr(std::uint32_t id) const;
     const bethconv::pack::wfb::Explosion* explosion_ptr(std::uint32_t id) const;
     /// The DEST of base `base`, or null.

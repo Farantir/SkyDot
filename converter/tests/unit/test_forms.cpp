@@ -986,9 +986,9 @@ TEST_CASE("a truncated WRLD DNAM leaves both heights unset",
 // ---- the type set ---------------------------------------------------------
 
 TEST_CASE("the defined-type set and its lookup agree", "[record][forms]") {
-    // 6 + 15 + 12 + 10 + 5 + 1 (plus IPDS, IPCT, CSTY, ARTO, SHOU, WOOP, MOVT). Pinned so a new definition missing from the list fails
+    // 6 + 15 + 12 + 10 + 5 + 1 (plus IPDS, IPCT, CSTY, ARTO, SHOU, WOOP, MOVT, PERK, AVIF). Pinned so a new definition missing from the list fails
     // here.
-    CHECK(record::defined_types().size() == 68);
+    CHECK(record::defined_types().size() == 70);
     for (const auto type : record::defined_types()) {
         CHECK(record::is_defined_type(type));
     }
@@ -998,7 +998,7 @@ TEST_CASE("the defined-type set and its lookup agree", "[record][forms]") {
         CHECK(seen.insert(type.value).second);
     }
     // Not defined yet.
-    CHECK_FALSE(record::is_defined_type(FourCC{"PERK"}));
+    CHECK_FALSE(record::is_defined_type(FourCC{"SNCT"}));
 }
 
 TEST_CASE("every defined type has a census definition", "[record][forms]") {

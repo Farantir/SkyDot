@@ -133,6 +133,11 @@ void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& 
     out.spells = shared_.global_all(merged, npc->spells, failed);
     out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
     out.death_item = shared_.global(merged, npc->death_item, failed);
+    out.class_id = shared_.global(merged, npc->actor_class, failed);
+    for (const auto& perk : npc->perks) {
+        out.perks.emplace_back(shared_.global(merged, perk.perk, failed),
+                               static_cast<std::uint8_t>(perk.rank));
+    }
     if (failed) {
         ++shared_.stats().unresolved;
     }

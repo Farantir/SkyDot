@@ -739,6 +739,179 @@ io::ParseResult<WordOfPower> parse_word_of_power(io::SpanReader& data, const For
     return out;
 }
 
+io::ParseResult<Perk> parse_perk(io::SpanReader& data, const FormContext& ctx) {
+    Perk out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .name = &out.name};
+    std::vector<Condition>* conditions = &out.conditions;
+    std::uint32_t declared = 0;
+    const auto walked = walk_fields(
+        data, FourCC{"PERK"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DESC"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"PERK"}, field.type, StringKind::description),
+                     out.description);
+            } else if (field.type == FourCC{"NNAM"}) {
+                take(failure, read_formid(body), out.next_perk);
+            } else if (field.type == FourCC{"PRKE"}) {
+                Perk::Effect effect;
+                take(failure, body.get<std::uint8_t>(), effect.kind);
+                take(failure, body.get<std::uint8_t>(), effect.rank);
+                take(failure, body.get<std::uint8_t>(), effect.priority);
+                out.effects.push_back(std::move(effect));
+                conditions = nullptr;
+            } else if (field.type == FourCC{"DATA"}) {
+                if (out.effects.empty()) {
+                    take(failure, body.get<std::uint8_t>(), out.trait);
+                    take(failure, body.get<std::uint8_t>(), out.level);
+                    take(failure, body.get<std::uint8_t>(), out.ranks);
+                    take(failure, body.get<std::uint8_t>(), out.playable);
+                    take(failure, body.get<std::uint8_t>(), out.hidden);
+                } else {
+                    Perk::Effect& effect = out.effects.back();
+                    if (effect.kind == 0) {
+                        take(failure, read_formid(body), effect.quest);
+                        take(failure, body.get<std::uint8_t>(), effect.stage);
+                    } else if (effect.kind == 1) {
+                        take(failure, read_formid(body), effect.ability);
+                    } else {
+                        take(failure, body.get<std::uint8_t>(), effect.entry_point);
+                        take(failure, body.get<std::uint8_t>(), effect.function);
+                        take(failure, body.get<std::uint8_t>(), effect.tab_count);
+                    }
+                }
+            } else if (out.effects.empty() && read_ctda_field(out.conditions, declared, field,
+                                                              body, failure)) {
+                // A prerequisite.
+            } else if (field.type == FourCC{"PRKC"} && !out.effects.empty()) {
+                Perk::Effect::Tab tab;
+                take(failure, body.get<std::uint8_t>(), tab.index);
+                out.effects.back().tabs.push_back(std::move(tab));
+                conditions = &out.effects.back().tabs.back().conditions;
+            } else if (field.type == FourCC{"PRKF"}) {
+                conditions = nullptr;
+            } else if (!out.effects.empty() && field.type == FourCC{"EPFT"}) {
+                take(failure, body.get<std::uint8_t>(), out.effects.back().data_type);
+            } else if (!out.effects.empty() && field.type == FourCC{"EPFD"}) {
+                Perk::Effect& effect = out.effects.back();
+                switch (effect.data_type) {
+                case 1: {
+                    float v{};
+                    take(failure, body.get<float>(), v);
+                    effect.values.push_back(v);
+                    break;
+                }
+                case 2: {
+                    // An actor value index, stored as a float, then the value.
+                    float v{};
+                    take(failure, body.get<float>(), v);
+                    effect.values.push_back(v);
+                    take(failure, body.get<float>(), v);
+                    effect.values.push_back(v);
+                    break;
+                }
+                case 3:
+                case 4:
+                case 5:
+                    take(failure, read_formid(body), effect.form);
+                    break;
+                case 6:
+                    take(failure, read_zstring(body), effect.text);
+                    effect.has_text = true;
+                    break;
+                case 7: {
+                    LString text;
+                    take(failure,
+                         read_lstring(body, ctx, FourCC{"PERK"}, field.type, StringKind::plain),
+                         text);
+                    effect.text = text.text;
+                    effect.has_text = true;
+                    break;
+                }
+                default:
+                    break;
+                }
+            } else if (!out.effects.empty() && field.type == FourCC{"EPF2"}) {
+                LString text;
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"PERK"}, field.type, StringKind::plain),
+                     text);
+                out.effects.back().text = text.text;
+                out.effects.back().has_text = true;
+            } else if (!out.effects.empty() && field.type == FourCC{"EPF3"}) {
+                take(failure, body.get<std::uint16_t>(), out.effects.back().script_flags);
+            } else if (conditions != nullptr && !out.effects.empty() &&
+                       read_ctda_field(*conditions, declared, field, body, failure)) {
+                // A tab's condition.
+            } else {
+                return read_base_object_field(into, FourCC{"PERK"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<ActorValueInfo> parse_actor_value_info(io::SpanReader& data,
+                                                       const FormContext& ctx) {
+    ActorValueInfo out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .name = &out.name};
+    const auto walked = walk_fields(
+        data, FourCC{"AVIF"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DESC"}) {
+                take(failure,
+                     read_lstring(body, ctx, FourCC{"AVIF"}, field.type, StringKind::description),
+                     out.description);
+            } else if (field.type == FourCC{"ANAM"}) {
+                take(failure, read_zstring(body), out.abbreviation);
+            } else if (field.type == FourCC{"CNAM"}) {
+                std::uint32_t value{};
+                take(failure, body.get<std::uint32_t>(), value);
+                if (out.nodes.empty()) {
+                    out.category = value;
+                } else {
+                    out.nodes.back().links.push_back(value);
+                }
+            } else if (field.type == FourCC{"AVSK"}) {
+                out.has_skill = true;
+                take(failure, body.get<float>(), out.use_mult);
+                take(failure, body.get<float>(), out.use_offset);
+                take(failure, body.get<float>(), out.improve_mult);
+                take(failure, body.get<float>(), out.improve_offset);
+            } else if (field.type == FourCC{"PNAM"}) {
+                ActorValueInfo::Node node;
+                take(failure, read_formid(body), node.perk);
+                out.nodes.push_back(std::move(node));
+            } else if (!out.nodes.empty() && field.type == FourCC{"FNAM"}) {
+                take(failure, body.get<std::uint32_t>(), out.nodes.back().flags);
+            } else if (!out.nodes.empty() && field.type == FourCC{"XNAM"}) {
+                take(failure, body.get<std::int32_t>(), out.nodes.back().grid_x);
+            } else if (!out.nodes.empty() && field.type == FourCC{"YNAM"}) {
+                take(failure, body.get<std::int32_t>(), out.nodes.back().grid_y);
+            } else if (!out.nodes.empty() && field.type == FourCC{"HNAM"}) {
+                take(failure, body.get<float>(), out.nodes.back().x);
+            } else if (!out.nodes.empty() && field.type == FourCC{"VNAM"}) {
+                take(failure, body.get<float>(), out.nodes.back().y);
+            } else if (!out.nodes.empty() && field.type == FourCC{"SNAM"}) {
+                take(failure, read_formid(body), out.nodes.back().skill);
+            } else if (!out.nodes.empty() && field.type == FourCC{"INAM"}) {
+                take(failure, body.get<std::uint32_t>(), out.nodes.back().index);
+            } else {
+                return read_base_object_field(into, FourCC{"AVIF"}, field, body, ctx, failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<MovementType> parse_movement_type(io::SpanReader& data, const FormContext& ctx) {
     MovementType out;
     const BaseObjectFields into{.editor_id = &out.editor_id, .bounds = &out.bounds};

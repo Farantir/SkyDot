@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 37;
+inline constexpr std::uint32_t k_world_format_version = 38;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -82,6 +82,10 @@ struct WorldStats {
     std::uint64_t shouts{};
     std::uint64_t words_of_power{};
     std::uint64_t movement_types{};
+    /// PERK, AVIF and CLAS (format 38).
+    std::uint64_t perks{};
+    std::uint64_t actor_value_infos{};
+    std::uint64_t classes{};
     std::uint64_t harvestables{};
     std::uint64_t benches{};
     /// GMST, IPDS and IPCT (format 30).
@@ -245,6 +249,13 @@ public:
     [[nodiscard]] std::optional<wfb::WordOfPowerT> word_of_power(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::MovementTypeT> movement_type(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::ShoutT> shouts() const;
+    [[nodiscard]] std::optional<wfb::PerkT> perk(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::PerkT> perks() const;
+    [[nodiscard]] std::optional<wfb::ActorValueInfoT> actor_value_info(std::uint32_t id) const;
+    /// The AVIF whose `actor_value` is `index` (a skill's 6 to 23), if any.
+    [[nodiscard]] std::optional<wfb::ActorValueInfoT> actor_value_info_of(int index) const;
+    [[nodiscard]] std::vector<wfb::ActorValueInfoT> actor_value_infos() const;
+    [[nodiscard]] std::optional<wfb::ClassT> actor_class(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactDataSetT> impact_data_set(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactT> impact(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::CombatStyleT> combat_style(std::uint32_t id) const;

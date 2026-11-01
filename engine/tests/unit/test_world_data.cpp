@@ -26,6 +26,10 @@ using skydot::testing::LinkSpec;
 using skydot::testing::LockSpec;
 using skydot::testing::PlacedRefSpec;
 using skydot::testing::WorldSpec;
+using skydot::testing::ConditionSpec;
+using skydot::testing::ItemSpec;
+using skydot::testing::PerkEffectSpec;
+namespace wfb = bethconv::pack::wfb;
 
 namespace {
 
@@ -229,4 +233,131 @@ TEST_CASE("a load door's link is a typed record", "[world_data]") {
     CHECK(d.destination_cell == 0x3000);
     CHECK(d.destination_interior);
     CHECK_FALSE(world.data.door_record(0x999, d));
+}
+
+TEST_CASE("perks, skills, classes, taught books and NPC perks are read (world.fb 38)", "[world_data][skills]") {
+    const auto tab = [](std::uint8_t index, std::vector<ConditionSpec> conditions) {
+        return PerkEffectSpec::Tab{.tab = index, .conditions = std::move(conditions)};
+    };
+    WorldSpec spec;
+    spec.format_version = WorldData::FORMAT_VERSION;
+    spec.perks = {
+        {.id = 0x200,
+         .editor_id = "Armsman00",
+         .name = "Armsman",
+         .level = 0,
+         .ranks = 5,
+         .next_perk = 0x201,
+         .conditions = {skydot::testing::condition(448, skydot::testing::eq, 1.0F, 0, 0x300)},
+         .effects = {{.priority = 3,
+                      .entry_point = 0x23,
+                      .function = 3,
+                      .tabs = {tab(0, {skydot::testing::condition(448, skydot::testing::eq, 0.0F, 0, 0x201)}),
+                               tab(1, {skydot::testing::condition(0x10C, skydot::testing::eq, 1.0F, skydot::testing::k_or, 0x1E714),
+                                       skydot::testing::condition(0x10C, skydot::testing::eq, 1.0F, 0, 0x1E711)})},
+                      .data_type = 1,
+                      .values = {1.2F}},
+                     {.priority = 22,
+                      .entry_point = 0x42,
+                      .function = 14,
+                      .data_type = 2,
+                      .values = {0.01F},
+                      .actor_value = 106},
+                     {.kind = wfb::PerkEffectKind::ability, .rank = 1, .spell = 0x500}}},
+        {.id = 0x100, .editor_id = "First", .trait = true, .hidden = true}};
+    spec.actor_value_infos = {{.id = 0x44C,
+                               .editor_id = "AVOneHanded",
+                               .actor_value = 6,
+                               .name = "One-handed",
+                               .has_skill = true,
+                               .use_mult = 6.3F,
+                               .improve_mult = 2.0F,
+                               .perk_tree = {{.index = 0, .links = {7}}, {.index = 7, .perk = 0x200, .grid_x = 2}}},
+                              {.id = 0x45B, .editor_id = "AVMysticism", .actor_value = 21}};
+    spec.classes = {{.id = 0x400,
+                     .editor_id = "TrainerSmithingJourneyman",
+                     .teaches = 10,
+                     .max_training_level = 50,
+                     .skill_weights = {0, 1, 2}}};
+    spec.bases = {{.id = 0x600, .item = ItemSpec{.category = wfb::ItemCategory::book,
+                                                 .book_flags = 1,
+                                                 .book_skill = 8}},
+                  {.id = 0x601, .item = ItemSpec{.category = wfb::ItemCategory::book,
+                                                 .book_flags = 4,
+                                                 .book_spell = 0x500}}};
+    spec.npcs = {{.id = 0x700, .class_id = 0x400, .perks = {{0x200, 2}, {0x100}}}};
+    const OpenWorld world(spec);
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    const WorldData& data = world.data;
+
+    CHECK(data.perk_ptr(0x999) == nullptr);
+    const auto* first = data.perk_ptr(0x100);
+    REQUIRE(first != nullptr);
+    CHECK(first->trait());
+    CHECK(first->hidden());
+    const auto* armsman = data.perk_ptr(0x200);
+    REQUIRE(armsman != nullptr);
+    CHECK(armsman->editor_id()->str() == "Armsman00");
+    CHECK(armsman->ranks() == 5);
+    CHECK(armsman->next_perk() == 0x201);
+    REQUIRE(armsman->conditions() != nullptr);
+    CHECK(armsman->conditions()->size() == 1);
+    REQUIRE(armsman->effects() != nullptr);
+    REQUIRE(armsman->effects()->size() == 3);
+    const auto* damage = armsman->effects()->Get(0);
+    CHECK(damage->kind() == wfb::PerkEffectKind::entry_point);
+    CHECK(damage->entry_point() == 0x23);
+    CHECK(damage->function() == 3);
+    CHECK(damage->tab_count() == 2);
+    REQUIRE(damage->tabs()->size() == 2);
+    CHECK(damage->tabs()->Get(1)->tab() == 1);
+    CHECK(damage->tabs()->Get(1)->conditions()->size() == 2);
+    CHECK(damage->data_type() == 1);
+    CHECK(damage->values()->Get(0) == 1.2F);
+    CHECK(damage->actor_value() == -1);
+    const auto* boost = armsman->effects()->Get(1);
+    CHECK(boost->actor_value() == 106);
+    CHECK(boost->values()->Get(0) == 0.01F);
+    CHECK(armsman->effects()->Get(2)->kind() == wfb::PerkEffectKind::ability);
+    CHECK(armsman->effects()->Get(2)->spell() == 0x500);
+
+    const auto* skill = data.actor_value_info_of(6);
+    REQUIRE(skill != nullptr);
+    CHECK(skill->id() == 0x44C);
+    CHECK(skill->has_skill());
+    CHECK(skill->use_mult() == 6.3F);
+    CHECK(skill->improve_mult() == 2.0F);
+    REQUIRE(skill->perk_tree()->size() == 2);
+    CHECK(skill->perk_tree()->Get(0)->links()->Get(0) == 7);
+    CHECK(skill->perk_tree()->Get(1)->perk() == 0x200);
+    CHECK(skill->perk_tree()->Get(1)->grid_x() == 2);
+    CHECK(data.actor_value_info_ptr(0x45B)->actor_value() == 21);
+    CHECK(data.actor_value_info_of(21)->id() == 0x45B);
+    CHECK(data.actor_value_info_of(7) == nullptr);
+    CHECK(data.actor_value_info_of(-1) == nullptr);
+
+    const auto* clas = data.class_ptr(0x400);
+    REQUIRE(clas != nullptr);
+    CHECK(clas->teaches() == 10);
+    CHECK(clas->max_training_level() == 50);
+    CHECK(clas->skill_weights()->size() == 3);
+    CHECK(data.class_ptr(0x401) == nullptr);
+
+    const auto* skill_book = data.base_ptr(0x600)->item();
+    CHECK(skill_book->book_flags() == 1);
+    CHECK(skill_book->book_skill() == 8);
+    CHECK(skill_book->book_spell() == 0);
+    const auto* tome = data.base_ptr(0x601)->item();
+    CHECK(tome->book_flags() == 4);
+    CHECK(tome->book_skill() == -1);
+    CHECK(tome->book_spell() == 0x500);
+
+    const auto* npc = data.root()->npcs()->LookupByKey(0x700);
+    REQUIRE(npc != nullptr);
+    CHECK(npc->class_id() == 0x400);
+    REQUIRE(npc->perks()->size() == 2);
+    CHECK(npc->perks()->Get(0)->perk() == 0x200);
+    CHECK(npc->perks()->Get(0)->rank() == 2);
+    CHECK(npc->perks()->Get(1)->perk() == 0x100);
+    CHECK(npc->perks()->Get(1)->rank() == 1);
 }

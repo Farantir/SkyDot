@@ -368,6 +368,81 @@ struct MovementType {
     std::array<float, 11> speeds{};
 };
 
+/// PERK: a perk. 375 in SE (Skyrim.esm), 484 effects: 449 entry point, 29 ability, 6 quest.
+struct Perk {
+    std::string editor_id;
+    LString name;
+    LString description; ///< DESC
+
+    /// DATA, 5 bytes: trait, level, ranks, playable, hidden.
+    std::uint8_t trait{};
+    std::uint8_t level{};
+    std::uint8_t ranks{};
+    std::uint8_t playable{};
+    std::uint8_t hidden{};
+    FormId next_perk; ///< NNAM
+
+    /// The record's own CTDAs, before the first PRKE: the prerequisites.
+    std::vector<Condition> conditions;
+
+    /// PRKE ... PRKF.
+    struct Effect {
+        std::uint8_t kind{}; ///< 0 quest, 1 ability, 2 entry point.
+        std::uint8_t rank{};
+        std::uint8_t priority{};
+        FormId quest;        ///< DATA of a quest effect.
+        std::uint8_t stage{};
+        FormId ability;      ///< DATA of an ability effect.
+        std::uint8_t entry_point{};
+        std::uint8_t function{};
+        std::uint8_t tab_count{};
+        /// PRKC and the CTDAs after it.
+        struct Tab {
+            std::uint8_t index{};
+            std::vector<Condition> conditions;
+        };
+        std::vector<Tab> tabs;
+        std::uint8_t data_type{}; ///< EPFT
+        /// EPFD by type: 1 a float, 2 two floats (an actor value index, a value), 3 to 5 a
+        /// FormID, 6 a string, 7 an lstring.
+        std::vector<float> values;
+        FormId form;
+        std::string text;     ///< EPFD of type 6 or 7, else EPF2.
+        std::uint16_t script_flags{}; ///< EPF3
+        bool has_text{};
+    };
+    std::vector<Effect> effects;
+};
+
+/// AVIF: an actor value with its skill data and perk tree. 149 in SE.
+struct ActorValueInfo {
+    std::string editor_id;
+    LString name;
+    LString description; ///< DESC
+    std::string abbreviation; ///< ANAM
+    std::uint32_t category{}; ///< the CNAM before AVSK
+    bool has_skill{};
+    /// AVSK, 16 bytes: use mult, use offset, improve mult, improve offset.
+    float use_mult{};
+    float use_offset{};
+    float improve_mult{};
+    float improve_offset{};
+
+    /// PNAM ... INAM: a node of the perk tree.
+    struct Node {
+        std::uint32_t index{}; ///< INAM
+        FormId perk;           ///< PNAM
+        std::uint32_t flags{}; ///< FNAM
+        std::int32_t grid_x{}; ///< XNAM
+        std::int32_t grid_y{}; ///< YNAM
+        float x{};             ///< HNAM
+        float y{};             ///< VNAM
+        FormId skill;          ///< SNAM
+        std::vector<std::uint32_t> links; ///< CNAM after PNAM
+    };
+    std::vector<Node> nodes;
+};
+
 /// NPC_: an actor. 6,626 in SE, all compressed, 58 distinct field types.
 struct Npc {
     std::string editor_id;
@@ -854,6 +929,9 @@ struct Package {
                                                                const FormContext& ctx);
 [[nodiscard]] io::ParseResult<MovementType> parse_movement_type(io::SpanReader& data,
                                                                 const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Perk> parse_perk(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ActorValueInfo> parse_actor_value_info(io::SpanReader& data,
+                                                                     const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Npc> parse_npc(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Quest> parse_quest(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<FormList> parse_form_list(io::SpanReader& data,

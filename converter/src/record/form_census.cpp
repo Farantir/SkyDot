@@ -87,6 +87,8 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"SHOU"}, &run<parse_shout>},
     {FourCC{"WOOP"}, &run<parse_word_of_power>},
     {FourCC{"MOVT"}, &run<parse_movement_type>},
+    {FourCC{"PERK"}, &run<parse_perk>},
+    {FourCC{"AVIF"}, &run<parse_actor_value_info>},
     {FourCC{"NPC_"}, &run<parse_npc>},
     {FourCC{"QUST"}, &run<parse_quest>},
     {FourCC{"FLST"}, &run<parse_form_list>},

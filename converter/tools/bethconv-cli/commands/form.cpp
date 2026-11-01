@@ -2,6 +2,7 @@
 #include "commands/commands.hpp"
 #include "common.hpp"
 #include "commands/form_magic.hpp"
+#include "commands/form_perk.hpp"
 
 #include "bethconv/pack/world.hpp"
 #include "skydot_formats/vpath.hpp"
@@ -25,6 +26,10 @@ struct FormArgs {
     std::vector<std::uint32_t> impact_data_sets;
     std::vector<std::uint32_t> impacts;
     bool magic{};
+    std::vector<std::uint32_t> perks;
+    std::vector<std::string> avifs;
+    std::vector<std::uint32_t> classes;
+    bool perk_census{};
 };
 
 namespace wfb = bethconv::pack::wfb;
@@ -57,6 +62,18 @@ int cmd_form(const FormArgs& args) {
             }
         }
     }
+    for (const auto id : args.perks) {
+        print_perk(*world, id);
+    }
+    for (const auto& what : args.avifs) {
+        print_avif(*world, what);
+    }
+    for (const auto id : args.classes) {
+        print_class(*world, id);
+    }
+    if (args.perk_census) {
+        print_perk_census(*world);
+    }
     if (args.magic) {
         print_magic_census(*world);
     }
@@ -76,6 +93,10 @@ int cmd_form(const FormArgs& args) {
                     static_cast<double>(i.crit_mult), static_cast<double>(i.stagger),
                     i.impact_data_set, i.first_person_model.c_str(), i.equip_sound,
                     i.unequip_sound);
+        if (i.book_flags != 0) {
+            std::printf("  book flags 0x%X skill %d spell 0x%X\n", static_cast<unsigned>(i.book_flags),
+                        i.book_skill, i.book_spell);
+        }
     }
     for (const auto id : args.races) {
         const auto race = world->race(id);
@@ -137,6 +158,10 @@ void register_form(CLI::App& app) {
     form->add_option("--race", args->races, "A race by FormID, with its attacks");
     form->add_option("--ipds", args->impact_data_sets, "An impact data set by FormID");
     form->add_flag("--magic", args->magic, "Count the magic effect archetypes of spells, potions, scrolls and enchantments, in the whole world and in the first-milestone slice");
+    form->add_option("--perk", args->perks, "A perk by FormID, with its effects, tabs and conditions");
+    form->add_option("--avif", args->avifs, "An actor value by FormID or skill name: use and improve values, perk tree");
+    form->add_option("--class", args->classes, "A class by FormID");
+    form->add_flag("--perk-census", args->perk_census, "Count perk effects by kind and entry point");
     form->add_option("--ipct", args->impacts, "An impact by FormID");
     form->callback([args] { set_exit_status(cmd_form(*args)); });
 }

@@ -1,0 +1,221 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+//
+// Skyrim's actor value indices (0 Aggression ... 163 ReflectDamage) by name, to give an AVIF
+// record its index. Source: CommonLibSSE's RE::ActorValue and UESP "Skyrim:Actor Value
+// Indices"; the AVIF editor ids of Skyrim.esm are "AV" + the name, except the few in
+// `k_aliases` (checked against all 149 AVIF records).
+#pragma once
+
+#include <array>
+#include <cstddef>
+#include <string_view>
+#include <utility>
+
+namespace bethconv::pack::detail {
+
+inline constexpr std::array<std::string_view, 164> k_actor_value_names = {
+    "Aggression",
+    "Confidence",
+    "Energy",
+    "Morality",
+    "Mood",
+    "Assistance",
+    "OneHanded",
+    "TwoHanded",
+    "Marksman",
+    "Block",
+    "Smithing",
+    "HeavyArmor",
+    "LightArmor",
+    "Pickpocket",
+    "Lockpicking",
+    "Sneak",
+    "Alchemy",
+    "Speechcraft",
+    "Alteration",
+    "Conjuration",
+    "Destruction",
+    "Illusion",
+    "Restoration",
+    "Enchanting",
+    "Health",
+    "Magicka",
+    "Stamina",
+    "HealRate",
+    "MagickaRate",
+    "StaminaRate",
+    "SpeedMult",
+    "InventoryWeight",
+    "CarryWeight",
+    "CritChance",
+    "MeleeDamage",
+    "UnarmedDamage",
+    "Mass",
+    "VoicePoints",
+    "VoiceRate",
+    "DamageResist",
+    "PoisonResist",
+    "ResistFire",
+    "ResistShock",
+    "ResistFrost",
+    "ResistMagic",
+    "ResistDisease",
+    "Unknown46",
+    "Unknown47",
+    "Unknown48",
+    "Unknown49",
+    "Unknown50",
+    "Unknown51",
+    "Unknown52",
+    "Paralysis",
+    "Invisibility",
+    "NightEye",
+    "DetectLifeRange",
+    "WaterBreathing",
+    "WaterWalking",
+    "Unknown59",
+    "Fame",
+    "Infamy",
+    "JumpingBonus",
+    "WardPower",
+    "RightItemCharge",
+    "ArmorPerks",
+    "ShieldPerks",
+    "WardDeflection",
+    "Variable01",
+    "Variable02",
+    "Variable03",
+    "Variable04",
+    "Variable05",
+    "Variable06",
+    "Variable07",
+    "Variable08",
+    "Variable09",
+    "Variable10",
+    "BowSpeedBonus",
+    "FavorActive",
+    "FavorsPerDay",
+    "FavorsPerDayTimer",
+    "LeftItemCharge",
+    "AbsorbChance",
+    "Blindness",
+    "WeaponSpeedMult",
+    "ShoutRecoveryMult",
+    "BowStaggerBonus",
+    "Telekinesis",
+    "FavorPointsBonus",
+    "LastBribedIntimidated",
+    "LastFlattered",
+    "MovementNoiseMult",
+    "BypassVendorStolenCheck",
+    "BypassVendorKeywordCheck",
+    "WaitingForPlayer",
+    "OneHandedMod",
+    "TwoHandedMod",
+    "MarksmanMod",
+    "BlockMod",
+    "SmithingMod",
+    "HeavyArmorMod",
+    "LightArmorMod",
+    "PickpocketMod",
+    "LockpickingMod",
+    "SneakingMod",
+    "AlchemyMod",
+    "SpeechcraftMod",
+    "AlterationMod",
+    "ConjurationMod",
+    "DestructionMod",
+    "IllusionMod",
+    "RestorationMod",
+    "EnchantingMod",
+    "OneHandedSkillAdvance",
+    "TwoHandedSkillAdvance",
+    "MarksmanSkillAdvance",
+    "BlockSkillAdvance",
+    "SmithingSkillAdvance",
+    "HeavyArmorSkillAdvance",
+    "LightArmorSkillAdvance",
+    "PickpocketSkillAdvance",
+    "LockpickingSkillAdvance",
+    "SneakingSkillAdvance",
+    "AlchemySkillAdvance",
+    "SpeechcraftSkillAdvance",
+    "AlterationSkillAdvance",
+    "ConjurationSkillAdvance",
+    "DestructionSkillAdvance",
+    "IllusionSkillAdvance",
+    "RestorationSkillAdvance",
+    "EnchantingSkillAdvance",
+    "LeftWeaponSpeedMultiply",
+    "DragonSouls",
+    "CombatHealthRegenMultiply",
+    "OneHandedPowerMod",
+    "TwoHandedPowerMod",
+    "MarksmanPowerMod",
+    "BlockPowerMod",
+    "SmithingPowerMod",
+    "HeavyArmorPowerMod",
+    "LightArmorPowerMod",
+    "PickpocketPowerMod",
+    "LockpickingPowerMod",
+    "SneakingPowerMod",
+    "AlchemyPowerMod",
+    "SpeechcraftPowerMod",
+    "AlterationPowerMod",
+    "ConjurationPowerMod",
+    "DestructionPowerMod",
+    "IllusionPowerMod",
+    "RestorationPowerMod",
+    "EnchantingPowerMod",
+    "DragonRend",
+    "AttackDamageMult",
+    "HealRateMult",
+    "MagickaRateMult",
+    "StaminaRateMult",
+    "WerewolfPerks",
+    "VampirePerks",
+    "GrabActorOffset",
+    "Grabbed",
+    "Unknown162",
+    "ReflectDamage",
+};
+
+/// AVIF editor ids that are not "AV" + a name above.
+inline constexpr std::array<std::pair<std::string_view, std::string_view>, 14> k_actor_value_aliases = {{
+    {"Mysticism", "Illusion"},
+    {"PickPocketMod", "PickpocketMod"},
+    {"PickPocketPowerMod", "PickpocketPowerMod"},
+    {"PickPocketSkillAdvance", "PickpocketSkillAdvance"},
+    {"SneakMod", "SneakingMod"},
+    {"SneakPowerMod", "SneakingPowerMod"},
+    {"SneakSkillAdvance", "SneakingSkillAdvance"},
+    {"FireResist", "ResistFire"},
+    {"FrostResist", "ResistFrost"},
+    {"ElectricResist", "ResistShock"},
+    {"MagicResist", "ResistMagic"},
+    {"CombatHealthRegenMult", "CombatHealthRegenMultiply"},
+    {"LeftWeaponSpeedMult", "LeftWeaponSpeedMultiply"},
+    {"DiseaseResist", "ResistDisease"},
+}};
+
+/// The actor value index of an AVIF record by editor id, -1 if it has none.
+[[nodiscard]] constexpr int actor_value_index(std::string_view editor_id) noexcept {
+    if (!editor_id.starts_with("AV")) {
+        return -1;
+    }
+    std::string_view name = editor_id.substr(2);
+    for (const auto& [alias, target] : k_actor_value_aliases) {
+        if (alias == name) {
+            name = target;
+            break;
+        }
+    }
+    for (std::size_t i = 0; i < k_actor_value_names.size(); ++i) {
+        if (k_actor_value_names[i] == name) {
+            return static_cast<int>(i);
+        }
+    }
+    return -1;
+}
+
+} // namespace bethconv::pack::detail

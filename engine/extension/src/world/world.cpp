@@ -76,6 +76,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_word_of_power", "id"), &SkydotWorld::get_word_of_power);
     godot::ClassDB::bind_method(D_METHOD("get_movement_type", "id"), &SkydotWorld::get_movement_type);
     godot::ClassDB::bind_method(D_METHOD("get_item_effects", "form"), &SkydotWorld::get_item_effects);
+    godot::ClassDB::bind_method(D_METHOD("get_perk", "id"), &SkydotWorld::get_perk);
+    godot::ClassDB::bind_method(D_METHOD("get_actor_value_info", "actor_value"), &SkydotWorld::get_actor_value_info);
+    godot::ClassDB::bind_method(D_METHOD("get_class_data", "id"), &SkydotWorld::get_class_data);
     godot::ClassDB::bind_method(D_METHOD("get_npc", "id"), &SkydotWorld::get_npc);
     godot::ClassDB::bind_method(D_METHOD("get_faction", "id"), &SkydotWorld::get_faction);
     godot::ClassDB::bind_method(D_METHOD("get_impact", "data_set", "material"), &SkydotWorld::get_impact);
@@ -335,6 +338,11 @@ Dictionary SkydotWorld::get_art_object(std::int64_t id) const { return queries::
 Dictionary SkydotWorld::get_shout(std::int64_t id) const { return queries::get_shout(data(), id); }
 Dictionary SkydotWorld::get_word_of_power(std::int64_t id) const { return queries::get_word_of_power(data(), id); }
 Dictionary SkydotWorld::get_movement_type(std::int64_t id) const { return queries::get_movement_type(data(), id); }
+Dictionary SkydotWorld::get_perk(std::int64_t id) const { return queries::get_perk(data(), id); }
+Dictionary SkydotWorld::get_actor_value_info(std::int64_t actor_value) const {
+    return queries::get_actor_value_info(data(), actor_value);
+}
+Dictionary SkydotWorld::get_class_data(std::int64_t id) const { return queries::get_class(data(), id); }
 Array SkydotWorld::get_item_effects(std::int64_t form) const { return queries::get_item_effects(data(), form); }
 Dictionary SkydotWorld::get_npc(std::int64_t id) const { return queries::get_npc(data(), id); }
 Dictionary SkydotWorld::get_faction(std::int64_t id) const { return queries::get_faction(data(), id); }

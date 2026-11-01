@@ -325,6 +325,39 @@ std::optional<wfb::MovementTypeT> WorldFile::movement_type(std::uint32_t id) con
     return unpack(lookup(impl_->root->movement_types(), id));
 }
 
+std::optional<wfb::PerkT> WorldFile::perk(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->perks(), id));
+}
+
+std::vector<wfb::PerkT> WorldFile::perks() const {
+    return unpack_all(impl_->root->perks());
+}
+
+std::optional<wfb::ActorValueInfoT> WorldFile::actor_value_info(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->actor_value_infos(), id));
+}
+
+std::optional<wfb::ActorValueInfoT> WorldFile::actor_value_info_of(int index) const {
+    const auto* list = impl_->root->actor_value_infos();
+    if (list == nullptr) {
+        return std::nullopt;
+    }
+    for (const auto* info : *list) {
+        if (info->actor_value() == index) {
+            return unpack(info);
+        }
+    }
+    return std::nullopt;
+}
+
+std::vector<wfb::ActorValueInfoT> WorldFile::actor_value_infos() const {
+    return unpack_all(impl_->root->actor_value_infos());
+}
+
+std::optional<wfb::ClassT> WorldFile::actor_class(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->classes(), id));
+}
+
 std::vector<wfb::ShoutT> WorldFile::shouts() const {
     return unpack_all(impl_->root->shouts());
 }

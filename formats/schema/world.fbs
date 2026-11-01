@@ -525,6 +525,15 @@ table ItemData {
     soul_gem_linked: uint32;
     /// SLGM record flag 0x20000 "Can Hold NPC Soul" (format 35): a black gem.
     holds_npc_souls: bool;
+    /// BOOK DATA byte 0 (format 38): 0x1 teaches a skill, 0x2 can't be taken, 0x4 teaches
+    /// a spell (xEdit; UESP Skyrim:Skill Books). 0 for anything but a book.
+    book_flags: ubyte;
+    /// BOOK DATA bytes 4 to 7 with flag 0x1 (format 38): the skill as an actor value index
+    /// (8 Marksman for "The Black Arrow, v2"), -1 if the book teaches none.
+    book_skill: int32 = -1;
+    /// BOOK DATA bytes 4 to 7 with flag 0x4 (format 38): the Spell it teaches, in `spells`;
+    /// 0 if none.
+    book_spell: uint32;
 }
 
 /// EFID, EFIT and the CTDAs after them: a magic effect with its strength.
@@ -1632,6 +1641,178 @@ table Npc {
     /// into the inventory when the actor dies; 0 if none. Template inheritance: it comes
     /// with `use_inventory` (the CK shows it on the Inventory tab).
     death_item: uint32;
+    /// CNAM (format 38): a Class in `classes`; 0 if none. Template inheritance: with
+    /// `use_traits` (the CK shows the class on the Traits tab).
+    class_id: uint32;
+    /// PRKR (format 38): the perks it starts with, in record order. Template inheritance:
+    /// with `use_spell_list` (the perks sit beside the spell list in the CK).
+    perks: [NpcPerk];
+}
+
+/// One PRKR entry of an Npc (8 bytes: perk, rank, three unused; format 38).
+struct NpcPerk {
+    /// A Perk in `perks`.
+    perk: uint32;
+    /// The rank it has (1 is the first).
+    rank: ubyte;
+}
+
+/// What a PerkEffect does (PRKE byte 0; format 38).
+enum PerkEffectKind : ubyte {
+    /// Sets a quest stage when the perk is added.
+    quest,
+    /// Adds an ability (a Spell of type ability) while the perk is held.
+    ability,
+    /// Changes a value the game computes at an entry point (damage, cost, ...).
+    entry_point
+}
+
+/// One condition tab of an entry point effect (PRKC then its CTDAs; format 38). Tab 0 is
+/// the perk owner, tab 1 usually the target or the thing worked on (weapon, spell...),
+/// as the entry point's description in the CK wiki says.
+table PerkConditionTab {
+    tab: ubyte;
+    conditions: [Condition];
+}
+
+/// One effect of a Perk (a PRKE ... PRKF block; format 38). Source: xEdit's wbPerkEffect,
+/// checked against Skyrim.esm (Armsman00, PerkSkillBoosts, AlchemySkillBoosts,
+/// crFalmerPoison05, BlockRunner, PlayerWerewolfFeed). PERK VMAD (script fragments) is not
+/// converted.
+table PerkEffect {
+    kind: PerkEffectKind;
+    /// PRKE byte 1: the perk rank the effect belongs to (0 first).
+    rank: ubyte;
+    /// PRKE byte 2: effects at the same entry point apply in ascending priority.
+    priority: ubyte;
+    /// Kind quest (DATA bytes 0 to 3): a Quest, and byte 4: the stage to set.
+    quest: uint32;
+    stage: ushort;
+    /// Kind ability (DATA): a Spell in `spells`.
+    spell: uint32;
+    /// Kind entry point (DATA, 3 bytes): the entry point id (xEdit's
+    /// wbEntryPointsEnum, the CK wiki's list; Armsman00 uses 0x23), the function (1 set value, 2 add
+    /// value, 3 multiply value, 4 add range to value, 5 add actor value mult, 6 absolute
+    /// value, 7 negative absolute value, 8 add leveled list, 9 add activate choice, 10
+    /// select spell, 11 select text, 12 set to actor value mult, 13 multiply actor value
+    /// mult, 14 multiply 1 + actor value mult, 15 set text) and how many condition tabs
+    /// follow.
+    entry_point: ubyte;
+    function: ubyte;
+    tab_count: ubyte;
+    tabs: [PerkConditionTab];
+    /// EPFT: how the data is stored. 0 none, 1 one float, 2 an actor value (stored as a
+    /// float) and a float, 3 a leveled item, 4 a spell or fragment script (EPF2 label,
+    /// EPF3 flags), 5 a spell to select, 6 a string, 7 a localized string.
+    data_type: ubyte;
+    /// EPFD floats: type 1 one value; type 2 the second float (the first is
+    /// `actor_value`).
+    values: [float];
+    /// EPFD type 2: the actor value index, -1 if none.
+    actor_value: int = -1;
+    /// EPFD types 3, 4 and 5: the leveled item or spell; 0 if none.
+    form: uint32;
+    /// EPFD types 6 and 7, else EPF2 (the button label of an activate choice); localized
+    /// where it is an lstring.
+    text: string;
+    /// EPF3: script flags (bit 0 run immediately, bit 1 replace default).
+    script_flags: ushort;
+}
+
+/// PERK (format 38): a perk. Sources: UESP (Skyrim:Perks), xEdit's PERK layout.
+table Perk {
+    id: uint32 (key);
+    editor_id: string;
+    /// FULL, localized.
+    name: string;
+    /// DESC, localized.
+    description: string;
+    /// DATA byte 0: the perk is a trait (a hidden, always-on perk).
+    trait: bool;
+    /// DATA byte 1: the character level it needs.
+    level: ubyte;
+    /// DATA byte 2: how many ranks the perk has.
+    ranks: ubyte;
+    /// DATA byte 3: shown to the player.
+    playable: bool;
+    /// DATA byte 4: hidden in the perk tree.
+    hidden: bool;
+    /// NNAM: the perk of the next rank, 0 if none.
+    next_perk: uint32;
+    /// The perk's own CTDAs: its prerequisites.
+    conditions: [Condition];
+    /// PRKE blocks, in record order.
+    effects: [PerkEffect];
+}
+
+/// One node of a skill's perk tree (INAM block of an AVIF; format 38).
+table PerkTreeNode {
+    /// INAM: the node's index within the tree.
+    index: uint32;
+    /// PNAM: a Perk in `perks`; 0 for the root.
+    perk: uint32;
+    /// FNAM, raw (1 on perk nodes; the root holds junk in this and the grid fields, e.g.
+    /// Smithing's).
+    flags: uint32;
+    /// XNAM and YNAM: the grid position.
+    grid_x: int;
+    grid_y: int;
+    /// HNAM and VNAM: the position in the sky constellation.
+    x: float;
+    y: float;
+    /// SNAM: the skill's ActorValueInfo.
+    skill: uint32;
+    /// Every CNAM of the node: the INAM indices of the nodes it leads to.
+    links: [uint32];
+}
+
+/// AVIF (format 38): an actor value. Sources: UESP (Skyrim:Leveling), xEdit.
+table ActorValueInfo {
+    id: uint32 (key);
+    editor_id: string;
+    /// The engine's actor value index (0 to 163) the editor id "AV<Name>" stands for
+    /// (a few differ: AVMysticism is Illusion, AVPickPocket* is Pickpocket*); -1 if none.
+    actor_value: int = -1;
+    /// FULL, DESC and ANAM (the abbreviation).
+    name: string;
+    description: string;
+    abbreviation: string;
+    /// The first CNAM (before the AVSK): the category, raw.
+    category: uint32;
+    /// Whether it has AVSK (the 18 skills and a few others).
+    has_skill: bool;
+    /// AVSK in xEdit order: Skill Use Mult, Skill Use Offset, Skill Improve Mult, Skill
+    /// Improve Offset. A skill level grows by `improve_mult * level^fSkillUseCurve +
+    /// improve_offset` experience points; one use gives `use_mult * amount + use_offset`.
+    use_mult: float;
+    use_offset: float;
+    improve_mult: float;
+    improve_offset: float;
+    /// The skill's perk nodes, in record order.
+    perk_tree: [PerkTreeNode];
+}
+
+/// CLAS (format 38): a class. Source: xEdit's CLAS DATA layout; the training skill checked on
+/// the Trainer* classes of Skyrim.esm.
+table Class {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// DATA byte 4 + 6 as an actor value index when `max_training_level` is not 0
+    /// (TrainerSmithingJourneyman: 10 Smithing), else -1: Skyrim's Vendor* and
+    /// combat classes carry byte 5 = 0 and a leftover skill.
+    teaches: int = -1;
+    /// DATA byte 5: the highest skill level the class trains to (50, 75, 90).
+    max_training_level: ubyte;
+    /// DATA bytes 6 to 23: weights for the 18 skills in actor value order.
+    skill_weights: [ubyte];
+    /// DATA bytes 32 to 34.
+    health_weight: ubyte;
+    magicka_weight: ubyte;
+    stamina_weight: ubyte;
+    /// DATA bytes 24 to 27 and 28 to 31.
+    bleedout_default: float;
+    voice_points: uint32;
 }
 
 /// The low bits of `Condition.type`.
@@ -2428,6 +2609,12 @@ table World {
     words_of_power: [WordOfPower];
     /// Sorted by id (format 36).
     movement_types: [MovementType];
+    /// Sorted by id (format 38).
+    perks: [Perk];
+    /// Sorted by id (format 38).
+    actor_value_infos: [ActorValueInfo];
+    /// Sorted by id (format 38).
+    classes: [Class];
 }
 
 root_type World;

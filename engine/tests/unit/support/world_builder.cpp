@@ -137,6 +137,11 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         const auto packages_v = n.packages.empty() ? 0 : fbb.CreateVector(n.packages);
         const auto default_packages_v = n.default_packages.empty() ? 0 : fbb.CreateVector(n.default_packages);
         const auto spells_v = n.spells.empty() ? 0 : fbb.CreateVector(n.spells);
+        std::vector<wfb::NpcPerk> npc_perks;
+        for (const auto& p : n.perks) {
+            npc_perks.emplace_back(p.perk, p.rank);
+        }
+        const auto perks_v = npc_perks.empty() ? 0 : fbb.CreateVectorOfStructs(npc_perks);
         wfb::NpcBuilder b(fbb);
         b.add_id(n.id);
         b.add_flags(n.flags);
@@ -155,6 +160,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_default_packages(default_packages_v);
         b.add_spells(spells_v);
         b.add_death_item(n.death_item);
+        b.add_class_id(n.class_id);
+        b.add_perks(perks_v);
         npcs.push_back(b.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Base>> bases;
@@ -173,7 +180,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
             item = wfb::CreateItemData(fbb, i.category, i.weight, i.value, i.playable, i.equip_slot, i.weapon_type,
                                        i.damage, i.armor_rating, i.armor_type, i.biped_slots, i.food, effects_v,
                                        i.enchantment, i.enchantment_amount, 1.0F, 1.0F, -1, 0, 0.0F, 0.0F, 0U, 0, 0U, 0U,
-                                       i.soul, i.soul_capacity, i.soul_gem_linked, i.holds_npc_souls);
+                                       i.soul, i.soul_capacity, i.soul_gem_linked, i.holds_npc_souls, i.book_flags, i.book_skill,
+                                       i.book_spell);
         }
         flatbuffers::Offset<flatbuffers::Vector<std::uint32_t>> keywords = 0;
         if (!b.keywords.empty()) {
@@ -349,6 +357,78 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_translation(translation);
         words.push_back(b.Finish());
     }
+    std::vector<flatbuffers::Offset<wfb::Perk>> perks;
+    for (const auto& p : by_id(spec.perks)) {
+        std::vector<flatbuffers::Offset<wfb::PerkEffect>> effect_list;
+        for (const auto& e : p.effects) {
+            std::vector<flatbuffers::Offset<wfb::PerkConditionTab>> tab_list;
+            for (const auto& t : e.tabs) {
+                const auto tab_conditions = conditions(fbb, t.conditions);
+                tab_list.push_back(wfb::CreatePerkConditionTab(
+                    fbb, t.tab, tab_conditions.empty() ? 0 : fbb.CreateVector(tab_conditions)));
+            }
+            const auto tabs_v = tab_list.empty() ? 0 : fbb.CreateVector(tab_list);
+            const auto values_v = e.values.empty() ? 0 : fbb.CreateVector(e.values);
+            const auto text_v = e.text.empty() ? 0 : fbb.CreateString(e.text);
+            effect_list.push_back(wfb::CreatePerkEffect(
+                fbb, e.kind, e.rank, e.priority, e.quest, e.stage, e.spell, e.entry_point, e.function,
+                static_cast<std::uint8_t>(e.tabs.size()), tabs_v, e.data_type, values_v, e.actor_value, e.form, text_v));
+        }
+        const auto prerequisites = conditions(fbb, p.conditions);
+        const auto editor_id = fbb.CreateString(p.editor_id);
+        const auto name = fbb.CreateString(p.name);
+        const auto prerequisites_v = prerequisites.empty() ? 0 : fbb.CreateVector(prerequisites);
+        const auto effects_v = effect_list.empty() ? 0 : fbb.CreateVector(effect_list);
+        wfb::PerkBuilder b(fbb);
+        b.add_id(p.id);
+        b.add_editor_id(editor_id);
+        b.add_name(name);
+        b.add_trait(p.trait);
+        b.add_level(p.level);
+        b.add_ranks(p.ranks);
+        b.add_playable(p.playable);
+        b.add_hidden(p.hidden);
+        b.add_next_perk(p.next_perk);
+        b.add_conditions(prerequisites_v);
+        b.add_effects(effects_v);
+        perks.push_back(b.Finish());
+    }
+    std::vector<flatbuffers::Offset<wfb::ActorValueInfo>> actor_value_infos;
+    for (const auto& a : by_id(spec.actor_value_infos)) {
+        std::vector<flatbuffers::Offset<wfb::PerkTreeNode>> nodes;
+        for (const auto& n : a.perk_tree) {
+            const auto links_v = n.links.empty() ? 0 : fbb.CreateVector(n.links);
+            nodes.push_back(wfb::CreatePerkTreeNode(fbb, n.index, n.perk, n.perk != 0 ? 1U : 0U, n.grid_x, n.grid_y, 0.0F,
+                                                    0.0F, a.id, links_v));
+        }
+        const auto editor_id = fbb.CreateString(a.editor_id);
+        const auto name = fbb.CreateString(a.name);
+        const auto tree_v = nodes.empty() ? 0 : fbb.CreateVector(nodes);
+        wfb::ActorValueInfoBuilder b(fbb);
+        b.add_id(a.id);
+        b.add_editor_id(editor_id);
+        b.add_actor_value(a.actor_value);
+        b.add_name(name);
+        b.add_has_skill(a.has_skill);
+        b.add_use_mult(a.use_mult);
+        b.add_use_offset(a.use_offset);
+        b.add_improve_mult(a.improve_mult);
+        b.add_improve_offset(a.improve_offset);
+        b.add_perk_tree(tree_v);
+        actor_value_infos.push_back(b.Finish());
+    }
+    std::vector<flatbuffers::Offset<wfb::Class>> classes;
+    for (const auto& c : by_id(spec.classes)) {
+        const auto editor_id = fbb.CreateString(c.editor_id);
+        const auto weights_v = c.skill_weights.empty() ? 0 : fbb.CreateVector(c.skill_weights);
+        wfb::ClassBuilder b(fbb);
+        b.add_id(c.id);
+        b.add_editor_id(editor_id);
+        b.add_teaches(c.teaches);
+        b.add_max_training_level(c.max_training_level);
+        b.add_skill_weights(weights_v);
+        classes.push_back(b.Finish());
+    }
     std::vector<flatbuffers::Offset<wfb::Enchantment>> enchantments;
     for (const auto& en : by_id(spec.enchantments)) {
         std::vector<flatbuffers::Offset<wfb::EffectItem>> items;
@@ -443,6 +523,9 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto effects_v = fbb.CreateVector(effects);
     const auto spells_v = fbb.CreateVector(spells);
     const auto shouts_v = fbb.CreateVector(shouts);
+    const auto perks_v = fbb.CreateVector(perks);
+    const auto actor_value_infos_v = fbb.CreateVector(actor_value_infos);
+    const auto classes_v = fbb.CreateVector(classes);
     const auto words_v = fbb.CreateVector(words);
     const auto enchantments_v = fbb.CreateVector(enchantments);
     const auto form_lists_v = fbb.CreateVector(form_lists);
@@ -464,6 +547,9 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_magic_effects(effects_v);
     world.add_spells(spells_v);
     world.add_shouts(shouts_v);
+    world.add_perks(perks_v);
+    world.add_actor_value_infos(actor_value_infos_v);
+    world.add_classes(classes_v);
     world.add_words_of_power(words_v);
     world.add_enchantments(enchantments_v);
     world.add_form_lists(form_lists_v);

@@ -158,6 +158,13 @@ struct NpcSpec {
     std::vector<std::uint32_t> spells = {};
     /// INAM (world.fb 37).
     std::uint32_t death_item = 0;
+    /// CNAM and PRKR (world.fb 38): the class, and perks with their rank.
+    std::uint32_t class_id = 0;
+    struct PerkRank {
+        std::uint32_t perk;
+        std::uint8_t rank = 1;
+    };
+    std::vector<PerkRank> perks = {};
 };
 
 struct RaceSpec {
@@ -225,6 +232,11 @@ struct ItemSpec {
     std::uint8_t soul_capacity = 0;
     std::uint32_t soul_gem_linked = 0;
     bool holds_npc_souls = false;
+    /// BOOK (world.fb 38): DATA flags (0x1 teaches a skill, 0x4 a spell), the skill (actor value
+    /// index, -1 none) and the spell.
+    std::uint8_t book_flags = 0;
+    std::int32_t book_skill = -1;
+    std::uint32_t book_spell = 0;
 };
 
 /// PFIG, SNAM and PFPC of a plant.
@@ -320,6 +332,74 @@ struct ShoutSpec {
         float recovery;
     };
     std::vector<Word> words = {};
+};
+
+/// One PRKE block of a perk (world.fb 38).
+struct PerkEffectSpec {
+    wfb::PerkEffectKind kind = wfb::PerkEffectKind::entry_point;
+    std::uint8_t rank = 0;
+    std::uint8_t priority = 0;
+    std::uint32_t quest = 0;
+    std::uint16_t stage = 0;
+    std::uint32_t spell = 0;
+    std::uint8_t entry_point = 0;
+    std::uint8_t function = 0;
+    /// PRKC tabs: the tab index and its conditions.
+    struct Tab {
+        std::uint8_t tab = 0;
+        std::vector<ConditionSpec> conditions = {};
+    };
+    std::vector<Tab> tabs = {};
+    std::uint8_t data_type = 0;
+    std::vector<float> values = {};
+    std::int32_t actor_value = -1;
+    std::uint32_t form = 0;
+    std::string text = {};
+};
+
+/// PERK (world.fb 38).
+struct PerkSpec {
+    std::uint32_t id;
+    std::string editor_id = {};
+    std::string name = {};
+    bool trait = false;
+    std::uint8_t level = 0;
+    std::uint8_t ranks = 1;
+    bool playable = true;
+    bool hidden = false;
+    std::uint32_t next_perk = 0;
+    std::vector<ConditionSpec> conditions = {};
+    std::vector<PerkEffectSpec> effects = {};
+};
+
+/// AVIF (world.fb 38): an actor value, with the skill data and perk tree of a skill.
+struct ActorValueInfoSpec {
+    std::uint32_t id;
+    std::string editor_id = {};
+    std::int32_t actor_value = -1;
+    std::string name = {};
+    bool has_skill = false;
+    float use_mult = 0.0F;
+    float use_offset = 0.0F;
+    float improve_mult = 0.0F;
+    float improve_offset = 0.0F;
+    struct Node {
+        std::uint32_t index = 0;
+        std::uint32_t perk = 0;
+        std::int32_t grid_x = 0;
+        std::int32_t grid_y = 0;
+        std::vector<std::uint32_t> links = {};
+    };
+    std::vector<Node> perk_tree = {};
+};
+
+/// CLAS (world.fb 38).
+struct ClassSpec {
+    std::uint32_t id;
+    std::string editor_id = {};
+    std::int32_t teaches = -1;
+    std::uint8_t max_training_level = 0;
+    std::vector<std::uint8_t> skill_weights = {};
 };
 
 /// WOOP (world.fb 36).
@@ -470,6 +550,9 @@ struct WorldSpec {
     std::vector<MagicEffectSpec> magic_effects = {};
     std::vector<SpellSpec> spells = {};
     std::vector<ShoutSpec> shouts = {};
+    std::vector<PerkSpec> perks = {};
+    std::vector<ActorValueInfoSpec> actor_value_infos = {};
+    std::vector<ClassSpec> classes = {};
     std::vector<WordSpec> words_of_power = {};
     std::vector<EnchantmentSpec> enchantments = {};
     std::vector<FormListSpec> form_lists = {};

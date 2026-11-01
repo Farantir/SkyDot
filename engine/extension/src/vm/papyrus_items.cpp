@@ -70,6 +70,9 @@ Dictionary SkydotPapyrus::item_info(std::int64_t form) const {
     out["soul_capacity"] = static_cast<std::int64_t>(info.soul_capacity);
     out["soul_gem_linked"] = static_cast<std::int64_t>(info.soul_gem_linked);
     out["holds_npc_souls"] = info.holds_npc_souls;
+    out["book_flags"] = static_cast<std::int64_t>(info.book_flags);
+    out["book_skill"] = static_cast<std::int64_t>(info.book_skill);
+    out["book_spell"] = static_cast<std::int64_t>(info.book_spell);
     return out;
 }
 

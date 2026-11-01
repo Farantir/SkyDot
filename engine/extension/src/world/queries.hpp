@@ -9,6 +9,8 @@
 
 #include "data/world_data.hpp"
 
+#include "world_generated.h"
+
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_int64_array.hpp>
@@ -94,6 +96,16 @@ godot::Dictionary get_shout(const WorldData& data, std::int64_t id);
 godot::Dictionary get_word_of_power(const WorldData& data, std::int64_t id);
 godot::Dictionary get_movement_type(const WorldData& data, std::int64_t id);
 godot::Array get_item_effects(const WorldData& data, std::int64_t form);
+
+/// CTDAs as Dictionaries {type, function, compare_to, value_global, param1, param2, run_on, reference,
+/// param3} (queries_magic.cpp).
+godot::Array conditions_array(
+    const flatbuffers::Vector<flatbuffers::Offset<bethconv::pack::wfb::Condition>>* list);
+
+/// Skills and perks (queries_skills.cpp; world.fb 38).
+godot::Dictionary get_perk(const WorldData& data, std::int64_t id);
+godot::Dictionary get_actor_value_info(const WorldData& data, std::int64_t actor_value);
+godot::Dictionary get_class(const WorldData& data, std::int64_t id);
 
 godot::Dictionary get_ammo(const WorldData& data, std::int64_t id);
 godot::Dictionary get_projectile(const WorldData& data, std::int64_t id);

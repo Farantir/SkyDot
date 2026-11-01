@@ -136,6 +136,12 @@ private:
                           const record::FormContext& form_ctx);
     void on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
                           const record::FormContext& form_ctx);
+    void on_perk(const record::MergedRecord& merged, io::SpanReader& data,
+                 const record::FormContext& form_ctx);
+    void on_actor_value_info(const record::MergedRecord& merged, io::SpanReader& data,
+                             const record::FormContext& form_ctx);
+    void on_class(const record::MergedRecord& merged, io::SpanReader& data,
+                  const record::FormContext& form_ctx);
     void on_art_object(const record::MergedRecord& merged, io::SpanReader& data,
                        const record::FormContext& form_ctx);
     void on_game_setting(const record::MergedRecord& merged, io::SpanReader& data,
@@ -167,6 +173,9 @@ private:
     std::map<std::uint32_t, wfb::ShoutT> shouts_;
     std::map<std::uint32_t, wfb::WordOfPowerT> words_of_power_;
     std::map<std::uint32_t, wfb::MovementTypeT> movement_types_;
+    std::map<std::uint32_t, wfb::PerkT> perks_;
+    std::map<std::uint32_t, wfb::ActorValueInfoT> actor_value_infos_;
+    std::map<std::uint32_t, wfb::ClassT> classes_;
     std::map<std::uint32_t, wfb::ImpactDataSetT> impact_data_sets_;
     std::map<std::uint32_t, wfb::ImpactT> impacts_;
     std::map<std::uint32_t, wfb::CombatStyleT> combat_styles_;
