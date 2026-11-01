@@ -655,6 +655,20 @@ The target layering, enforced by the `layering` CTest check (include rules only)
 - `vm/` (interpreter, natives, the SkydotPapyrus glue) uses everything below
   but not `build/` or `ai/` directly; `ai/` sits above `vm/`.
 
+### Natives and the world
+
+Papyrus natives families are free functions, `vm::bind_<family>_natives(Vm&, ...)`,
+written against narrow interfaces instead of `SkydotPapyrus`: `WorldAccess`
+(`vm/world_access.hpp`) answers questions about records, placement and the
+clock, `WorldEvents` (`vm/world_events.hpp`) takes the one-way notices to the
+game layer (what were `emit_signal` calls), and a family that changes state of
+its own has one host (`QuestHost`, `ReferenceHost`, `ActorHost`). The
+production adapter is `SkydotPapyrus::Access` (`vm/papyrus.cpp`); the unit
+tests use fakes from `tests/unit/support/` (`fake_world.hpp` and its kin).
+`natives_*.cpp` include neither godot_cpp nor `vm/papyrus.hpp`, so they link
+into the unit tests; the layering check enforces this once every family is
+migrated.
+
 ### 7.1 Entry point and classes
 
 `register_types.cpp` exports `skydot_library_init` and registers its classes
