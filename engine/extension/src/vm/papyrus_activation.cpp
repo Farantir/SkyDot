@@ -10,7 +10,7 @@
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
 #include "state/calendar.hpp"
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 
 #include <algorithm>
 

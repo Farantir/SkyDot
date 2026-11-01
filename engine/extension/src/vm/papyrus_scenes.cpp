@@ -9,7 +9,7 @@
 
 #include "data/scripts.hpp"
 #include "data/fb_search.hpp"
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 

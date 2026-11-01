@@ -2,7 +2,7 @@
 //
 // SkydotPapyrus: quests, their aliases and stages, and global variables.
 // What the game does and this does not is listed in docs/papyrus.md.
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 #include "vm/papyrus.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>

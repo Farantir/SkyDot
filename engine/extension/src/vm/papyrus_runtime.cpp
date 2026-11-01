@@ -3,7 +3,7 @@
 // References made at run time (PlaceAtMe, Delete) and destruction (DamageObject
 // and the stages of a base's DEST). The state is the VM's (state/runtime_refs.hpp)
 // and is saved with it; what the player sees is signalled to the game layer.
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 #include "vm/papyrus.hpp"
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"

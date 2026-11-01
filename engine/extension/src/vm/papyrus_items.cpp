@@ -10,7 +10,7 @@
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
 #include "data/start_inventory.hpp"
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 

@@ -18,6 +18,14 @@ RULES=(
     "vm:(build|ai)/"
 )
 
+# glob (under $SRC):forbidden include prefixes. Natives families are Godot-free
+# free functions over interfaces (ARCHITECTURE.md, "Natives and the world"), so
+# they link into the unit tests. The Godot helpers for papyrus*.cpp live in
+# vm/papyrus_common.hpp, which is not a natives_* file.
+FILE_RULES=(
+    "vm/natives_*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
+)
+
 status=0
 for rule in "${RULES[@]}"; do
     dir=${rule%%:*}
@@ -28,6 +36,22 @@ for rule in "${RULES[@]}"; do
     if [[ -n "$hits" ]]; then
         echo "check-layering: $dir/ must not include these:" >&2
         echo "$hits" >&2
+        status=1
+    fi
+done
+
+for rule in "${FILE_RULES[@]}"; do
+    glob=${rule%%:*}
+    forbidden=${rule#*:}
+    hits=""
+    for f in "$SRC"/$glob; do
+        [[ -f "$f" ]] || continue
+        found=$(grep -nE "^[[:space:]]*#[[:space:]]*include[[:space:]]+[\"<]($forbidden)" "$f" | sed "s|^|$f:|")
+        [[ -n "$found" ]] && hits+="$found"$'\n'
+    done
+    if [[ -n "$hits" ]]; then
+        echo "check-layering: $glob must not include these:" >&2
+        printf '%s' "$hits" >&2
         status=1
     fi
 done

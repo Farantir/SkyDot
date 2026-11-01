@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Helpers shared by the natives_<class>.cpp files.
+// Godot helpers shared by the papyrus*.cpp files (the natives_* files must stay Godot-free).
 #pragma once
 
 #include "data/godot_values.hpp"

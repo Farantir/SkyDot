@@ -10,7 +10,7 @@
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
 #include "vm/natives_actor.hpp"
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 #include "vm/natives_families.hpp"
 #include "vm/natives_world.hpp"
 

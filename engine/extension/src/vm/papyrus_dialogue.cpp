@@ -9,7 +9,7 @@
 #include "data/fb_search.hpp"
 #include "dialogue/voice.hpp"
 #include "skydot_formats/flags.hpp"
-#include "vm/natives_common.hpp"
+#include "vm/papyrus_common.hpp"
 #include "data/scripts.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>

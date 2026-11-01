@@ -657,17 +657,25 @@ The target layering, enforced by the `layering` CTest check (include rules only)
 
 ### Natives and the world
 
-Papyrus natives families are free functions, `vm::bind_<family>_natives(Vm&, ...)`,
-written against narrow interfaces instead of `SkydotPapyrus`: `WorldAccess`
-(`vm/world_access.hpp`) answers questions about records, placement and the
-clock, `WorldEvents` (`vm/world_events.hpp`) takes the one-way notices to the
-game layer (what were `emit_signal` calls), and a family that changes state of
-its own has one host (`QuestHost`, `ReferenceHost`, `ActorHost`). The
-production adapter is `SkydotPapyrus::Access` (`vm/papyrus.cpp`); the unit
-tests use fakes from `tests/unit/support/` (`fake_world.hpp` and its kin).
-`natives_*.cpp` include neither godot_cpp nor `vm/papyrus.hpp`, so they link
-into the unit tests; the layering check enforces this once every family is
-migrated.
+Papyrus natives families are free functions, `vm::bind_<family>_natives(Vm&, ...)`
+(declared in `vm/natives_families.hpp`), written against narrow interfaces instead
+of `SkydotPapyrus`:
+
+- `WorldAccess` (`vm/world_access.hpp`): typed questions about records, placement and the game clock.
+- `WorldEvents` (`vm/world_events.hpp`): the one-way notices to the game layer, one virtual per former `emit_signal`.
+- `QuestHost` (`vm/quest_host.hpp`): quest states, starting, stages, objectives, aliases, globals, quest scripts.
+- `ReferenceHost` (`vm/reference_host.hpp`): reference states, enable/open/lock changes, moving, events, owner inventories.
+- `ActorHost` (`vm/actor_host.hpp`): the actor states, the condition view of the world, and the few asks of the game layer (package evaluation, last damager, loaded locations).
+- `SoundHost` (`vm/sound_host.hpp`): playback ids.
+
+The production adapter is `SkydotPapyrus::Access` (`vm/papyrus.cpp`), which
+implements all of them; the `SkydotPapyrus::bind_*_natives` members are
+one-liners. The unit tests use fakes from `tests/unit/support/`
+(`fake_world.hpp`, `fake_events.hpp`, `fake_hosts.hpp`). `vm/natives_*` include
+neither godot_cpp, `vm/papyrus.hpp`, `world/`, `build/`, `ai/` nor `session/`, so
+they link into the unit tests; `tools/ci/check-layering.sh` (the `layering`
+test) enforces this with a file-pattern rule. The Godot helpers for
+`papyrus*.cpp` are in `vm/papyrus_common.hpp`.
 
 ### 7.1 Entry point and classes
 
