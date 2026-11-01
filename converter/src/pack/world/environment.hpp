@@ -39,7 +39,8 @@ public:
 private:
     void on_worldspace(const record::MergedRecord& merged, io::SpanReader& data,
                        const record::FormContext& form_ctx);
-    void on_water(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_water(const record::MergedRecord& merged, io::SpanReader& data,
+                  const record::FormContext& form_ctx);
     void on_climate(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
     void on_weather(const record::MergedRecord& merged, io::SpanReader& data,

@@ -61,7 +61,7 @@ void EnvironmentCollector::collect(const record::MergedRecord& merged, io::SpanR
         on_worldspace(merged, data, form_ctx);
         break;
     case FourCC{"WATR"}.value:
-        on_water(merged, data);
+        on_water(merged, data, form_ctx);
         break;
     case FourCC{"CLMT"}.value:
         on_climate(merged, data, form_ctx);
@@ -151,69 +151,52 @@ void EnvironmentCollector::collect_large_refs(const record::MergedRecord& merged
     }
 }
 
-/// WATR is not one of the record layer's types; only what rendering needs
-/// is read here. DNAM offsets: UESP's field order, checked against
-/// Skyrim.esm (228 bytes, 232 in some SE records).
-void EnvironmentCollector::on_water(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::WaterT out;
-    out.id = merged.form.value;
-    out.layers.resize(3);
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"ANAM"}) {
-                out.opacity = body.get<std::uint8_t>().value_or(0);
-            } else if (field.type == FourCC{"FNAM"}) {
-                out.flags = body.get<std::uint8_t>().value_or(0);
-            } else if (field.type == FourCC{"NNAM"} || field.type == FourCC{"NAM2"} ||
-                       field.type == FourCC{"NAM3"} || field.type == FourCC{"NAM4"}) {
-                std::string path = archive::normalize_vpath(body.zstring().value_or(""));
-                if (path.starts_with("data/")) {
-                    path.erase(0, 5);
-                }
-                out.noise.push_back(texture_vpath(path));
-            } else if (field.type == FourCC{"DNAM"} && body.remaining() >= 228) {
-                const auto f32 = [&](std::size_t offset) {
-                    io::SpanReader r = body;
-                    (void)r.skip(offset);
-                    return r.get<float>().value_or(0.0F);
-                };
-                const auto u32 = [&](std::size_t offset) {
-                    io::SpanReader r = body;
-                    (void)r.skip(offset);
-                    return r.get<std::uint32_t>().value_or(0) & 0x00FF'FFFFu;
-                };
-                out.sun_specular_power = f32(16);
-                out.reflectivity = f32(20);
-                out.fresnel = f32(24);
-                out.fog_near = f32(32);
-                out.fog_far = f32(36);
-                out.shallow_color = u32(40);
-                out.deep_color = u32(44);
-                out.reflection_color = u32(48);
-                for (std::size_t i = 0; i < 3; ++i) {
-                    out.layers[i] = wfb::WaterLayer(f32(100 + 4 * i), f32(112 + 4 * i),
-                                                    f32(172 + 4 * i), f32(184 + 4 * i));
-                }
-                out.refraction_magnitude = f32(152);
-                out.specular_power = f32(156);
-                out.reflection_magnitude = f32(196);
-                out.noise_falloff = f32(96);
-                out.fog_amount = f32(132);
-                out.sun_sparkle_magnitude = f32(200);
-                out.sun_specular_magnitude = f32(204);
-                out.depth_reflections = f32(208);
-                out.depth_refraction = f32(212);
-                out.depth_normals = f32(216);
-                out.depth_specular = f32(220);
-                out.sun_sparkle_power = f32(224);
-            }
-        });
-    if (!walked) {
+void EnvironmentCollector::on_water(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
+    auto watr = record::parse_water(data, form_ctx);
+    if (!watr) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::WaterT out;
+    out.id = merged.form.value;
+    out.editor_id = watr->editor_id;
+    out.opacity = watr->opacity;
+    out.flags = watr->flags;
+    for (const auto& noise : watr->noise) {
+        std::string path = archive::normalize_vpath(noise);
+        if (path.starts_with("data/")) {
+            path.erase(0, 5);
+        }
+        out.noise.push_back(texture_vpath(path));
+    }
+    const auto& d = watr->dnam;
+    constexpr std::uint32_t k_rgb = 0x00FF'FFFFu;
+    out.sun_specular_power = d.sun_specular_power;
+    out.reflectivity = d.reflectivity;
+    out.fresnel = d.fresnel;
+    out.fog_near = d.fog_near;
+    out.fog_far = d.fog_far;
+    out.shallow_color = d.shallow_color & k_rgb;
+    out.deep_color = d.deep_color & k_rgb;
+    out.reflection_color = d.reflection_color & k_rgb;
+    out.layers.resize(d.layers.size());
+    for (std::size_t i = 0; i < d.layers.size(); ++i) {
+        out.layers[i] = wfb::WaterLayer(d.layers[i].wind_direction, d.layers[i].wind_speed,
+                                        d.layers[i].uv_scale, d.layers[i].amplitude);
+    }
+    out.refraction_magnitude = d.refraction_magnitude;
+    out.specular_power = d.specular_power;
+    out.reflection_magnitude = d.reflection_magnitude;
+    out.noise_falloff = d.noise_falloff;
+    out.fog_amount = d.fog_amount;
+    out.sun_sparkle_magnitude = d.sun_sparkle_magnitude;
+    out.sun_specular_magnitude = d.sun_specular_magnitude;
+    out.depth_reflections = d.depth_reflections;
+    out.depth_refraction = d.depth_refraction;
+    out.depth_normals = d.depth_normals;
+    out.depth_specular = d.depth_specular;
+    out.sun_sparkle_power = d.sun_sparkle_power;
     waters_[out.id] = std::move(out);
 }
 

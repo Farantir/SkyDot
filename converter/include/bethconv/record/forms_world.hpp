@@ -41,6 +41,146 @@ struct LandTexture {
     std::uint32_t inam{};
 };
 
+/// LAND's VHGT, decoded: a float offset, then 33 x 33 signed deltas (3 bytes
+/// of padding follow and are not read).
+struct HeightMap {
+    float offset{};
+    std::vector<std::int8_t> deltas;
+};
+
+/// One VTXT point of an additional terrain layer.
+struct AlphaPoint {
+    std::uint16_t position{}; ///< Vertex index.
+    float opacity{};          ///< As stored; not clamped.
+};
+
+/// XLIG on a placed reference: a light's overrides, 16 bytes of floats (a
+/// 20-byte form exists; the last words are undocumented).
+struct LightOverride {
+    float fov{};
+    float fade{};
+    float end_distance_cap{};
+    float shadow_depth_bias{};
+    static constexpr std::size_t k_size = 16;
+};
+
+/// XCLL (CELL) and DATA (LGTM), decoded. The field comes in three sizes, each
+/// a prefix of the full 92-byte layout (UESP, CELL record):
+///   0..40   ambient, directional, fog near colour, fog near, fog far,
+///           directional rotation XY and Z, directional fade, fog clip
+///           distance, fog power
+///   40..64  the directional ambient colours x+, x-, y+, y-, z+, z-
+///   64..72  specular colour, fresnel power
+///   72..92  fog far colour, fog max, light fade begin and end, and a u32 (the
+///           inherit flags in a CELL; unknown in an LGTM, 0 on all 92 full
+/// Larger than 92 is read as 92. Without the later blocks the far fog colour
+/// is the near one and the fog maximum 1.
+struct CellLighting {
+    std::uint32_t ambient{};
+    std::uint32_t directional{};
+    std::uint32_t fog_near_color{};
+    std::uint32_t fog_far_color{};
+    float fog_near{};
+    float fog_far{};
+    float fog_power{};
+    float fog_max{};
+    std::int32_t directional_rotation_xy{};
+    std::int32_t directional_rotation_z{};
+    float directional_fade{};
+    float light_fade_begin{};
+    float light_fade_end{};
+    std::uint32_t inherit{};
+    /// x+, x-, y+, y-, z+, z-, RGBA bytes.
+    std::array<std::uint32_t, 6> directional_ambient{};
+
+    static constexpr std::size_t k_to_ambient = 64;
+    static constexpr std::size_t k_to_specular = 72;
+    static constexpr std::size_t k_full = 92;
+    static constexpr std::size_t k_specular_and_fresnel = 8;
+};
+
+/// LGTM: a lighting template. DATA has XCLL's layouts up to the light fade
+/// distances (its directional ambient block is unused and it has no inherit
+/// flags); the directional ambient is DALC, 32 bytes on 92 of 97 in
+/// Skyrim.esm and 24 (the colours alone) on the rest. A DATA of no known size
+/// is left out, as is a DALC under 24 bytes.
+struct LightingTemplate {
+    std::optional<CellLighting> data;
+    std::array<std::uint32_t, 6> directional_ambient{};
+    static constexpr std::size_t k_dalc_min_size = 24;
+};
+
+/// WATR: a water type. Only what rendering needs is read.
+struct Water {
+    std::string editor_id;
+    std::uint8_t opacity{};            ///< ANAM, 0..100.
+    std::uint8_t flags{};              ///< FNAM, bit 0 causes damage.
+    std::vector<std::string> noise;    ///< NNAM, NAM2..NAM4: noise textures, as stored.
+
+    /// One of the three noise layers.
+    struct Layer {
+        float wind_direction{}; ///< Degrees.
+        float wind_speed{};
+        float uv_scale{};       ///< Game units per noise tile.
+        float amplitude{};
+    };
+
+    /// DNAM, 228 bytes (232 in some SE records). Offsets are UESP's field
+    /// order, checked against Skyrim.esm; a shorter DNAM is not read at all.
+    /// Colours are RGBA bytes, red in the low byte; the top byte is unused.
+    struct Dnam {
+        float sun_specular_power{};
+        float reflectivity{};
+        float fresnel{};
+        float fog_near{};
+        float fog_far{};
+        std::uint32_t shallow_color{};
+        std::uint32_t deep_color{};
+        std::uint32_t reflection_color{};
+        std::array<Layer, 3> layers{};
+        float refraction_magnitude{};
+        float specular_power{};
+        float reflection_magnitude{};
+        float noise_falloff{};
+        float fog_amount{};
+        float sun_sparkle_magnitude{};
+        float sun_specular_magnitude{};
+        float depth_reflections{};
+        float depth_refraction{};
+        float depth_normals{};
+        float depth_specular{};
+        float sun_sparkle_power{};
+
+        // Byte offsets in DNAM.
+        static constexpr std::size_t k_size = 228;
+        static constexpr std::size_t k_sun_specular_power = 16;
+        static constexpr std::size_t k_reflectivity = 20;
+        static constexpr std::size_t k_fresnel = 24;
+        static constexpr std::size_t k_fog_near = 32;
+        static constexpr std::size_t k_fog_far = 36;
+        static constexpr std::size_t k_shallow_color = 40;
+        static constexpr std::size_t k_deep_color = 44;
+        static constexpr std::size_t k_reflection_color = 48;
+        static constexpr std::size_t k_noise_falloff = 96;
+        static constexpr std::size_t k_layer_wind_direction = 100; ///< Three floats.
+        static constexpr std::size_t k_layer_wind_speed = 112;     ///< Three floats.
+        static constexpr std::size_t k_fog_amount = 132;
+        static constexpr std::size_t k_refraction_magnitude = 152;
+        static constexpr std::size_t k_specular_power = 156;
+        static constexpr std::size_t k_layer_uv_scale = 172;  ///< Three floats.
+        static constexpr std::size_t k_layer_amplitude = 184; ///< Three floats.
+        static constexpr std::size_t k_reflection_magnitude = 196;
+        static constexpr std::size_t k_sun_sparkle_magnitude = 200;
+        static constexpr std::size_t k_sun_specular_magnitude = 204;
+        static constexpr std::size_t k_depth_reflections = 208;
+        static constexpr std::size_t k_depth_refraction = 212;
+        static constexpr std::size_t k_depth_normals = 216;
+        static constexpr std::size_t k_depth_specular = 220;
+        static constexpr std::size_t k_sun_sparkle_power = 224;
+    };
+    Dnam dnam;
+};
+
 /// VOLI: volumetric lighting of a weather and time of day. In Update.esm only.
 /// Every subrecord is one float32.
 struct VolumetricLightingRecord {
@@ -468,6 +608,20 @@ parse_volumetric_lighting(io::SpanReader& data, const FormContext& ctx);
                                                          const FormContext& ctx);
 [[nodiscard]] io::ParseResult<NavMesh> parse_nav_mesh(io::SpanReader& data,
                                                       const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Water> parse_water(io::SpanReader& data, const FormContext& ctx);
+/// Decode LAND's VHGT; an error when it is too short for the grid.
+[[nodiscard]] io::ParseResult<HeightMap> decode_height_map(std::span<const std::byte> vhgt);
+/// Decode an additional layer's VTXT. A trailing partial point is ignored.
+[[nodiscard]] io::ParseResult<std::vector<AlphaPoint>> decode_alpha_points(
+    std::span<const std::byte> vtxt);
+/// Decode XLIG; an error when it is shorter than `LightOverride::k_size`.
+[[nodiscard]] io::ParseResult<LightOverride> decode_light_override(
+    std::span<const std::byte> xlig);
+/// Decode XCLL or an LGTM's DATA; an error for a size that is none of the three.
+[[nodiscard]] io::ParseResult<CellLighting> decode_cell_lighting(
+    std::span<const std::byte> xcll);
+[[nodiscard]] io::ParseResult<LightingTemplate> parse_lighting_template(io::SpanReader& data,
+                                                                        const FormContext& ctx);
 /// Decode NAVM's NVNM. Indices are checked against the counts.
 [[nodiscard]] io::ParseResult<NavMeshGeometry> decode_nav_mesh_geometry(
     std::span<const std::byte> nvnm);

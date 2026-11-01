@@ -596,6 +596,205 @@ io::ParseResult<ShaderParticleGeometry> parse_shader_particle_geometry(io::SpanR
     return out;
 }
 
+io::ParseResult<Water> parse_water(io::SpanReader& data, const FormContext& ctx) {
+    Water out;
+    const auto walked = walk_fields(
+        data, FourCC{"WATR"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"ANAM"}) {
+                take_whole(failure, body, out.opacity);
+            } else if (field.type == FourCC{"FNAM"}) {
+                take_whole(failure, body, out.flags);
+            } else if (field.type == FourCC{"NNAM"} || field.type == FourCC{"NAM2"} ||
+                       field.type == FourCC{"NAM3"} || field.type == FourCC{"NAM4"}) {
+                std::string path;
+                take(failure, read_zstring(body), path);
+                out.noise.push_back(std::move(path));
+            } else if (field.type == FourCC{"DNAM"}) {
+                if (body.remaining() >= Water::Dnam::k_size) {
+                    const io::SpanReader whole = body;
+                    const auto f32 = [&](std::size_t offset, float& dst) {
+                        io::SpanReader r = whole;
+                        skip_bytes(failure, r, offset);
+                        take(failure, r.get<float>(), dst);
+                    };
+                    const auto colour = [&](std::size_t offset, std::uint32_t& dst) {
+                        io::SpanReader r = whole;
+                        skip_bytes(failure, r, offset);
+                        take(failure, r.get<std::uint32_t>(), dst);
+                    };
+                    using D = Water::Dnam;
+                    auto& d = out.dnam;
+                    f32(D::k_sun_specular_power, d.sun_specular_power);
+                    f32(D::k_reflectivity, d.reflectivity);
+                    f32(D::k_fresnel, d.fresnel);
+                    f32(D::k_fog_near, d.fog_near);
+                    f32(D::k_fog_far, d.fog_far);
+                    colour(D::k_shallow_color, d.shallow_color);
+                    colour(D::k_deep_color, d.deep_color);
+                    colour(D::k_reflection_color, d.reflection_color);
+                    for (std::size_t i = 0; i < d.layers.size(); ++i) {
+                        f32(D::k_layer_wind_direction + 4 * i, d.layers[i].wind_direction);
+                        f32(D::k_layer_wind_speed + 4 * i, d.layers[i].wind_speed);
+                        f32(D::k_layer_uv_scale + 4 * i, d.layers[i].uv_scale);
+                        f32(D::k_layer_amplitude + 4 * i, d.layers[i].amplitude);
+                    }
+                    f32(D::k_refraction_magnitude, d.refraction_magnitude);
+                    f32(D::k_specular_power, d.specular_power);
+                    f32(D::k_reflection_magnitude, d.reflection_magnitude);
+                    f32(D::k_noise_falloff, d.noise_falloff);
+                    f32(D::k_fog_amount, d.fog_amount);
+                    f32(D::k_sun_sparkle_magnitude, d.sun_sparkle_magnitude);
+                    f32(D::k_sun_specular_magnitude, d.sun_specular_magnitude);
+                    f32(D::k_depth_reflections, d.depth_reflections);
+                    f32(D::k_depth_refraction, d.depth_refraction);
+                    f32(D::k_depth_normals, d.depth_normals);
+                    f32(D::k_depth_specular, d.depth_specular);
+                    f32(D::k_sun_sparkle_power, d.sun_sparkle_power);
+                    skip_bytes(failure, body, body.remaining());
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+// ---- decoders for raw fields the records keep ------------------------------
+
+io::ParseResult<HeightMap> decode_height_map(std::span<const std::byte> vhgt) {
+    constexpr std::size_t count = Landscape::k_grid * Landscape::k_grid;
+    io::SpanReader r(vhgt, "VHGT");
+    if (vhgt.size() < sizeof(float) + count) {
+        return r.fail(io::ErrorKind::truncated,
+                      "VHGT of " + std::to_string(vhgt.size()) + " bytes is shorter than the grid");
+    }
+    HeightMap out;
+    std::optional<io::ParseError> failure;
+    take(failure, r.get<float>(), out.offset);
+    take(failure, r.array<std::int8_t>(count), out.deltas);
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    return out;
+}
+
+io::ParseResult<std::vector<AlphaPoint>> decode_alpha_points(std::span<const std::byte> vtxt) {
+    io::SpanReader r(vtxt, "VTXT");
+    std::vector<AlphaPoint> out;
+    std::optional<io::ParseError> failure;
+    while (r.remaining() >= Landscape::k_alpha_point_size && !failure) {
+        AlphaPoint point;
+        take(failure, r.get<std::uint16_t>(), point.position);
+        skip_bytes(failure, r, sizeof(std::uint16_t));
+        take(failure, r.get<float>(), point.opacity);
+        out.push_back(point);
+    }
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    return out;
+}
+
+io::ParseResult<LightOverride> decode_light_override(std::span<const std::byte> xlig) {
+    io::SpanReader r(xlig, "XLIG");
+    LightOverride out;
+    std::optional<io::ParseError> failure;
+    take(failure, r.get<float>(), out.fov);
+    take(failure, r.get<float>(), out.fade);
+    take(failure, r.get<float>(), out.end_distance_cap);
+    take(failure, r.get<float>(), out.shadow_depth_bias);
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    return out;
+}
+
+io::ParseResult<CellLighting> decode_cell_lighting(std::span<const std::byte> xcll) {
+    const std::size_t size = xcll.size();
+    io::SpanReader r(xcll, "XCLL");
+    if (size != CellLighting::k_to_ambient && size != CellLighting::k_to_specular &&
+        size < CellLighting::k_full) {
+        return r.fail(io::ErrorKind::bad_value,
+                      "XCLL of " + std::to_string(size) + " bytes is not a known size");
+    }
+    CellLighting out;
+    std::optional<io::ParseError> failure;
+    float fog_clip_distance{};
+    take(failure, r.get<std::uint32_t>(), out.ambient);
+    take(failure, r.get<std::uint32_t>(), out.directional);
+    take(failure, r.get<std::uint32_t>(), out.fog_near_color);
+    take(failure, r.get<float>(), out.fog_near);
+    take(failure, r.get<float>(), out.fog_far);
+    take(failure, r.get<std::int32_t>(), out.directional_rotation_xy);
+    take(failure, r.get<std::int32_t>(), out.directional_rotation_z);
+    take(failure, r.get<float>(), out.directional_fade);
+    take(failure, r.get<float>(), fog_clip_distance);
+    take(failure, r.get<float>(), out.fog_power);
+    for (auto& colour : out.directional_ambient) {
+        take(failure, r.get<std::uint32_t>(), colour);
+    }
+    if (size == CellLighting::k_to_ambient) {
+        out.fog_far_color = out.fog_near_color;
+        out.fog_max = 1.0F;
+    } else {
+        skip_bytes(failure, r, CellLighting::k_specular_and_fresnel);
+        if (size == CellLighting::k_to_specular) {
+            out.fog_far_color = out.fog_near_color;
+            out.fog_max = 1.0F;
+        } else {
+            take(failure, r.get<std::uint32_t>(), out.fog_far_color);
+            take(failure, r.get<float>(), out.fog_max);
+            take(failure, r.get<float>(), out.light_fade_begin);
+            take(failure, r.get<float>(), out.light_fade_end);
+            take(failure, r.get<std::uint32_t>(), out.inherit);
+        }
+    }
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    return out;
+}
+
+io::ParseResult<LightingTemplate> parse_lighting_template(io::SpanReader& data,
+                                                          const FormContext& ctx) {
+    LightingTemplate out;
+    const auto walked = walk_fields(
+        data, FourCC{"LGTM"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                std::vector<std::byte> raw;
+                take(failure, read_verbatim(body), raw);
+                if (!failure) {
+                    if (auto decoded = decode_cell_lighting(raw)) {
+                        out.data = *decoded;
+                    }
+                }
+            } else if (field.type == FourCC{"DALC"}) {
+                if (body.remaining() >= LightingTemplate::k_dalc_min_size) {
+                    for (auto& colour : out.directional_ambient) {
+                        take(failure, body.get<std::uint32_t>(), colour);
+                    }
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<NavMeshGeometry> decode_nav_mesh_geometry(std::span<const std::byte> nvnm) {
     io::SpanReader r(nvnm, "NVNM");
     NavMeshGeometry out;

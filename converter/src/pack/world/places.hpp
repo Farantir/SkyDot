@@ -12,6 +12,7 @@
 #include "bethconv/pack/world_generated.h"
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/forms.hpp"
+#include "bethconv/record/forms_world.hpp"
 #include "bethconv/record/merge.hpp"
 #include "bethconv/record/plugin.hpp"
 
@@ -26,24 +27,7 @@ namespace bethconv::pack::detail {
 /// XCLL as a cell and a lighting template give it. wfb::CellLighting is
 /// read-only, and the directional ambient belongs to the cell table, not to
 /// that struct, so merging the two works on this.
-struct Lighting {
-    std::uint32_t ambient{};
-    std::uint32_t directional{};
-    std::uint32_t fog_near_color{};
-    std::uint32_t fog_far_color{};
-    float fog_near{};
-    float fog_far{};
-    float fog_power{};
-    float fog_max{};
-    std::int32_t directional_rotation_xy{};
-    std::int32_t directional_rotation_z{};
-    float directional_fade{};
-    float light_fade_begin{};
-    float light_fade_end{};
-    std::uint32_t inherit{};
-    /// x+, x-, y+, y-, z+, z-, RGBA bytes; all 0 if unknown.
-    std::array<std::uint32_t, 6> directional_ambient{};
-};
+using Lighting = record::CellLighting;
 
 /// A cell: its table, which the CELL record fills in and its children (the
 /// references, navmeshes and land that name it as their parent) add to, and
@@ -87,7 +71,8 @@ private:
                   io::SpanReader& data, const record::FormContext& form_ctx);
     void on_navmesh(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
-    void on_lighting_template(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_lighting_template(const record::MergedRecord& merged, io::SpanReader& data,
+                              const record::FormContext& form_ctx);
 
     CollectContext& shared_;
     std::map<std::uint32_t, CellEntry> cells_;
