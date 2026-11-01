@@ -15,13 +15,6 @@
 namespace skydot::ai {
 namespace {
 
-/// The game starts on the 17th of Last Seed (month 7, 0-based).
-constexpr int k_start_month = 7;
-constexpr int k_start_date = 17;
-/// The day of the week the game starts on, 0 Sundas … 6 Loredas. Morndas,
-/// as the opening's date reads; not yet compared with GetDayOfWeek in game.
-constexpr int k_start_day_of_week = 1;
-constexpr std::array<int, 12> k_month_days{31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 constexpr int k_minutes_per_day = 24 * 60;
 /// Template chains are short in vanilla (a package, its template); this only
 /// stops loops.
@@ -218,43 +211,7 @@ private:
     std::vector<Node> nodes_;
 };
 
-/// Days since the start to (month, date).
-std::pair<int, int> calendar(double days) {
-    int month = k_start_month;
-    int date = k_start_date;
-    auto left = static_cast<long long>(std::floor(std::max(0.0, days)));
-    while (left > 0) {
-        const int rest = k_month_days[static_cast<std::size_t>(month)] - date;
-        if (left <= rest) {
-            date += static_cast<int>(left);
-            break;
-        }
-        left -= rest + 1;
-        month = (month + 1) % 12;
-        date = 1;
-    }
-    return {month, date};
-}
-
 } // namespace
-
-double Clock::hour() const {
-    const double frac = days - std::floor(days);
-    return frac * 24.0;
-}
-
-int Clock::day_of_week() const {
-    const auto d = static_cast<long long>(std::floor(days)) + k_start_day_of_week;
-    return static_cast<int>(((d % 7) + 7) % 7);
-}
-
-int Clock::month() const {
-    return calendar(days).first;
-}
-
-int Clock::date() const {
-    return calendar(days).second;
-}
 
 bool schedule_active(const wfb::Package& p, const Clock& clock) {
     if (p.month() >= 0 && p.month() != clock.month()) {

@@ -21,6 +21,7 @@
 #pragma once
 
 #include "conditions/conditions.hpp"
+#include "state/calendar.hpp"
 #include "world_generated.h"
 
 #include <concepts>
@@ -33,19 +34,8 @@ namespace skydot::ai {
 
 namespace wfb = bethconv::pack::wfb;
 
-/// Game time.
-struct Clock {
-    /// Days passed since the game started (GameDaysPassed), with the time of
-    /// day as the fraction.
-    double days = 0.0;
-
-    double hour() const;
-    /// 0 Sundas (Sunday) … 6 Loredas (Saturday).
-    int day_of_week() const;
-    /// 0-based month and 1-based day of the month.
-    int month() const;
-    int date() const;
-};
+/// Game time; the arithmetic is state/calendar.hpp's.
+using Clock = vm::Calendar;
 
 /// Whether `p`'s schedule (PSDT) covers `clock`. A start hour opens a window
 /// of `duration` minutes (an hour when 0), which may run past midnight.

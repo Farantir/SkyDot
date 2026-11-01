@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/condition_world.hpp"
 
-#include "ai/packages.hpp"
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"
 #include "skydot_formats/flags.hpp"
+#include "state/calendar.hpp"
 #include "vm/papyrus.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
@@ -395,9 +395,9 @@ double PapyrusConditionWorld::game_days() const {
     return owner_ != nullptr && owner_->clock_.is_valid() ? owner_->clock_->get_game_days() : 0.0;
 }
 
-double PapyrusConditionWorld::hour() const { return ai::Clock{.days = game_days()}.hour(); }
+double PapyrusConditionWorld::hour() const { return vm::Calendar{.days = game_days()}.hour(); }
 
-int PapyrusConditionWorld::day_of_week() const { return ai::Clock{.days = game_days()}.day_of_week(); }
+int PapyrusConditionWorld::day_of_week() const { return vm::Calendar{.days = game_days()}.day_of_week(); }
 
 double PapyrusConditionWorld::random_percent() {
     // xorshift64*

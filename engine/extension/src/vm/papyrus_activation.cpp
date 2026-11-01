@@ -7,10 +7,10 @@
 #include "vm/papyrus.hpp"
 
 #include "actors/behavior_player.hpp"
-#include "ai/packages.hpp"
 #include "build/ref_nodes.hpp"
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
+#include "state/calendar.hpp"
 #include "vm/natives_common.hpp"
 
 #include <algorithm>
@@ -73,7 +73,7 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
         }
         const auto* h = base->harvest();
         const double now = owner_.game_days();
-        const auto season = vm::season_of_month(ai::Clock{.days = now}.month());
+        const auto season = vm::season_of_month(vm::Calendar{.days = now}.month());
         const int chance = vm::harvest_chance(h->seasonal_yield(), season);
         const std::uint32_t times = owner_.harvests_.times(ref);
         const bool success = vm::harvest_succeeds(chance, ref, times);

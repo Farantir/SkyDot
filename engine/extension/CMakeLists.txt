@@ -46,6 +46,8 @@ set(SKYDOT_CORE_SOURCES
     src/ai/magic_choice.hpp
     src/ai/packages.cpp
     src/ai/packages.hpp
+    src/state/calendar.cpp
+    src/state/calendar.hpp
     src/conditions/conditions.cpp
     src/conditions/conditions.hpp
     src/conditions/functions.cpp
