@@ -36,6 +36,20 @@ namespace wfb = bethconv::pack::wfb;
 namespace skydot {
 namespace {
 
+/// The horizontal direction from `to` to `from` (unit; +x if they are within a
+/// unit) and the horizontal distance between them.
+struct FlatAway {
+    Vector3 dir;
+    double length = 0.0;
+};
+
+FlatAway flat_away(const Vector3& from, const Vector3& to) {
+    Vector3 away = from - to;
+    away.z = 0;
+    const double length = static_cast<double>(away.length());
+    return {length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0), length};
+}
+
 constexpr std::uint32_t k_player_npc = 7;
 constexpr std::uint32_t k_player_faction = 0xDB1;
 /// Seconds between an actor's looks for an enemy, and between its combat decisions.
@@ -642,10 +656,7 @@ bool SkydotAi::mage_tick(Mind& m, SkydotActor& actor, double distance, const Vec
     in.roll = roll(m);
     const combat_ai::MageDecision d = combat_ai::decide(in);
     const Vector3 here = m.last;
-    Vector3 away = here - to;
-    away.z = 0;
-    const double length = static_cast<double>(away.length());
-    const Vector3 dir = length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0);
+    const Vector3 dir = flat_away(here, to).dir;
     switch (d.action) {
     case combat_ai::MageAction::weapons:
         return false;
@@ -1045,17 +1056,15 @@ void SkydotAi::melee_tick(Mind& m, SkydotActor& actor, double distance, const Ve
     in.style = c.style;
     in.roll = roll(m);
     const Vector3 here = m.last;
-    Vector3 away = here - to;
-    away.z = 0;
-    const double length = static_cast<double>(away.length());
-    const Vector3 dir = length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0);
-    switch (combat_ai::melee_step(in)) {
+    const Vector3 dir = flat_away(here, to).dir;
+    const combat_ai::MeleeStep step = combat_ai::melee_step(in);
+    switch (step) {
     case combat_ai::MeleeStep::approach:
         combat_walk(m, actor, to, true);
         break;
     case combat_ai::MeleeStep::attack:
     case combat_ai::MeleeStep::power_attack: {
-        const bool power = combat_ai::melee_step(in) == combat_ai::MeleeStep::power_attack;
+        const bool power = step == combat_ai::MeleeStep::power_attack;
         actor.stop();
         c.cooldown = k_attack_period;
         emit_signal("combat_attack", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(c.target),
@@ -1088,10 +1097,7 @@ void SkydotAi::ranged_tick(Mind& m, SkydotActor& actor, double distance, const V
     in.has_melee = c.has_melee;
     in.target_airborne = airborne;
     const Vector3 here = m.last;
-    Vector3 away = here - to;
-    away.z = 0;
-    const double length = static_cast<double>(away.length());
-    const Vector3 dir = length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0);
+    const Vector3 dir = flat_away(here, to).dir;
     switch (combat_ai::ranged_step(in)) {
     case combat_ai::RangedStep::switch_to_melee:
         c.ranged = false;
@@ -1123,10 +1129,7 @@ void SkydotAi::flee_tick(Mind& m, SkydotActor& actor, const Vector3& from) {
         leave_combat(m, &actor);
         return;
     }
-    Vector3 away = m.last - from;
-    away.z = 0;
-    const double length = static_cast<double>(away.length());
-    const Vector3 dir = length > 1.0 ? away / static_cast<float>(length) : Vector3(1, 0, 0);
+    const Vector3 dir = flat_away(m.last, from).dir;
     combat_walk(m, actor, m.last + dir * static_cast<float>(std::min(far - distance, 1500.0)), true);
 }
 
