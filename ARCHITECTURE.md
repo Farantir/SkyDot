@@ -1211,6 +1211,37 @@ silent: no signal, no papyrus call, no sound start. Caches read from the pack,
 `is_connected` of their own callable, not by node meta that a copy or a swapped
 model would carry over.
 
+Casting (ADR 0009). `Casting` (`casting.gd`) owns the rules of the hands for
+every caster, the player and NPCs alike: per `(caster, hand)` the state of the
+attack button on a spell or scroll (idle, charging, charged, concentrating),
+when a press is refused (no spell, dead, a scroll no longer carried, a power
+cooling down, too little Magicka; while shouting), the charge time, a
+concentration paid per step and landed every `TICK_SECONDS`, when a release
+casts, what a fire-and-forget cast or a power pays (a scroll pays nothing, a
+cast ends invisibility), and the voice hand: when a shout is refused (casting,
+recovering, no word) and how long its key charges (`fShoutTime1`/`2` by the
+words usable). Its interface is small and returns plain dictionaries:
+`press(caster, hand)`, `step(caster, hand, dt)` (`charged`, `tick` with `land`
+and `first`, `stop`), `release(caster, hand)` (`cast`, `stop`, or nothing),
+`pay(caster, spell, info)`, `cancel`, `phase_of`/`is_casting`/`hands_of`,
+`shout_begin`/`shout_step`/`shout_end`, `info_of` (the cached `cast_info`).
+It asks its data through `CastingData` (`casting_data.gd`), a GDScript seam of
+narrow questions over `SkydotPapyrus` (equipped spell, `cast_info`, dead,
+Magicka, `spell_cost`, `power_cooldown`, item count, `pay_spell`, shout info,
+voice recovery, GMSTs); the unit tests (`tests/gd/test_casting.gd`) give it a
+fake. C++ keeps the data and its effects: `cast_info`, the cost formula
+(`spell_cost`, also Papyrus's), `pay_spell` (damages Magicka so regeneration
+waits, notes a power's use), `land_spell`/`cast_scroll`/`cast_shout` (which
+words a held time says, the recovery) and the active effects. `Magic` (the
+player) and `NpcMagic` turn its events into clips, art and delivery; neither
+keeps hand state of its own. `GameSession` makes one `Casting` and hands it
+to both; it joins the lifecycle (`reset()` ends every cast, `on_place_left()`
+those of the actors left behind). A script mod changes the rules by extending
+`Casting` and overriding a rule method (`refusal`, `charge_time`, `shout_threshold`,
+`pay`), or replaces it whole with a class of the same interface; the session
+builds whichever `GameSession.casting_script` names, the hook the Mod API (M3)
+will hand out.
+
 | File | Class | What it owns |
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
