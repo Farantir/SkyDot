@@ -4,6 +4,10 @@
 # returns when there is no editor, and they need none.
 add_subdirectory(unit)
 
+# The include layering of the extension's sources (ARCHITECTURE.md section 7).
+add_test(NAME layering COMMAND bash "${CMAKE_SOURCE_DIR}/../tools/ci/check-layering.sh")
+set_tests_properties(layering PROPERTIES LABELS unit)
+
 # Headless Godot runs: the test is the editor actually loading the library.
 # Each script in smoke/ is a SceneTree that exits with its error count.
 #
