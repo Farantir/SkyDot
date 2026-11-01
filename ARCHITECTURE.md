@@ -1219,15 +1219,23 @@ model would carry over.
 ### 8.3 Cell viewer (`game/viewer/`)
 
 The viewer is one shell around `GameSession`; the VR shell (8.3a) is another.
-`cell_viewer.gd` (about 400 lines, with the documentation of every option in
-its header) parses the options, makes a `GameSession` from
+`cell_viewer.gd` (with the documentation of every option in its header)
+parses the options, makes a `GameSession` from
 `ViewerSettings.game_config()`, adds `SkydotImageSpace`, and owns the
-developer tooling: CLI flags, the debug overlay, shots and the benchmark.
+developer tooling: CLI flags, the debug overlay, shots and the benchmark. What
+both shells do the same is `ShellLoop` (below); the viewer keeps the camera
+rig, the keyboard and mouse, its `CanvasLayer`s, the debug keys (position,
+preload, shot, journal, inspect, navmesh, perf, path, LOD, radius, MSAA), the
+viewport quality knobs (MSAA, screen-space AA, 3D scaling), the shots branch of
+the frame and the benchmark.
 
 | File | Class | What it owns |
 | --- | --- | --- |
 | `viewer_settings.gd` | `ViewerSettings` | the options, parsed once into typed fields from the command line or, with `--from-shot`, a shot's JSON (the command line wins); `SHOT_FORMAT` |
 | `hud.gd`, `dialogue_menu.gd`, `subtitles.gd`, `item_menu.gd` | `Hud`, `DialogueMenu`, `Subtitles`, `ItemMenu` | `CanvasLayer` hosts of the views in `game/ui/`; `ItemMenu` opens the inventory (`inventory` action: I, Tab, gamepad Back) and a container's menu on `container_opened`, and keeps the player still while one is open; the `magic` action (P, gamepad R3; left Y in VR) opens `MagicView` (`ui/magic_view.gd`: powers, spells by school, scrolls, active effects; Enter/E equips right, Q/Y left). `--open-inventory`, `--open-magic [--magic-category NAME]` and `--open-container 0xREF` open them from the command line |
+| `shell_loop.gd` | `ShellLoop` | the part both shells share, made by a shell with its rig, `PlayerInput`, settings and a `note` callable. It handles the commands every player has (`activate`, `ready_weapon`, quick save and load, fly, time, next weather) and the attack and voice signals; `inventory` and `magic` come back as its signals (`inventory_requested`, `magic_requested`) for the shell's menus, any other action as `command`. It connects the session's messages and `rig.fell_through` to the note, `place_left` to the image space's adaptation reset, `activations_finished` to the quit countdown and `player_died` to blocking the controls (then `died` for the shell's presentation); `reload_after_death()` reloads or restarts and unblocks. `start()` enters the place and applies the start options; `frame(delta, device_step, hold_streaming)` runs the frame in one order; `drive(delta)` copies paralysis to the controls and moves the player |
+| `start_options.gd` | `StartOptions` | owned by `ShellLoop`: the start and test options that act on the game (`--damage-actor`, `--equip`, `--ready-weapon` (only while sheathed), `--drink`, `--cast`, `--attack-at`, `--equip-spell`, `--cast-at`, `--shout`, `--spawn`, `--kill`, `--npc-give`, `--strip-melee`, `--fight`, `--npc-draw`, `--learn-enchantment`) and their steps (`--kill-after`, `--god`, `--shout-wait`, `--fight`, the aiming ones) |
+| `death_menu.gd` | `DeathMenu` | the viewer's host of `DeathView` (`ui/death_view.gd`): only the camera's fall to the floor and the layer; the load goes through `ShellLoop.reload_after_death` |
 | `image_space_sync.gd` | `ImageSpaceSync` | the per-frame fog and image space sync, shared with the VR shell |
 | `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
 | `first_person_body.gd` | `FirstPersonBody` | the player's arms and weapon (shared with the VR shell): `skeletonfirst` with the skin's and the armor's first-person models (the plan's `parts_1st`), the weapon on the `Weapon` bone, `Camera1st [Cam1]` at the camera, the clips `Combat` names, hidden while sheathed; with a controller node (VR): the weapon only, and `update_hand` sweeps a fast blade into `Combat.hit_segment` |
@@ -1237,10 +1245,15 @@ developer tooling: CLI flags, the debug overlay, shots and the benchmark.
 | `benchmark_run.gd` | `BenchmarkRun` | `--benchmark`: the flight and its frame statistics |
 
 Per frame (`_process`): fog sync and image space; during a `--screenshot`
-run only the shots; then the player held or tracked and the camera following
-it, `GameSession.step`, the notes' age, the countdown that quits an
-`--activate` run, the benchmark, then input. `_input = false` (tools set it)
-turns off `PlayerInput` and the door fades.
+run only the shots (with the loop's option steps); otherwise `ShellLoop.frame`
+in this order: the options' waits (`--kill-after`, `--god`, `--shout-wait`,
+`--fight`), the streamer holds the player, the player tracked and the camera
+following it, the aiming options (`--attack-at`, `--cast-at`, `--shout`), the
+shell's device step (the arms follow the camera), `GameSession.step`, the
+countdown that quits an `--activate` run (`--save-to`, then quit) and the
+activations. Back in the viewer: the notes' age, the benchmark, then
+`ShellLoop.drive` (input). `_input = false` (tools set it) turns off
+`PlayerInput` and the door fades.
 
 ### 8.3a VR shell (`game/vr/`, `game/ui/`)
 
@@ -1252,7 +1265,7 @@ desktop game with the `XRCamera3D` as a plain camera.
 
 | File | Class | What it owns |
 | --- | --- | --- |
-| `vr/vr_shell.gd`, `.tscn` | | starts XR, opens the session with the rig, makes the panels, runs the frame, enters the place from the viewer's options (`ViewerSettings`) |
+| `vr/vr_shell.gd`, `.tscn` | | starts XR, opens the session with the rig, makes the panels, and runs a `ShellLoop` (8.3) that enters the place from the viewer's options (`ViewerSettings`, all the start options) and runs the frame, the commands, death and the quit countdown. The shell keeps what is its own: the XR session, the rig, the panels and their menus (`inventory_requested` and `magic_requested` of the loop and of the controller buttons open them), the weapon in the hand (`update_hand` as the loop's device step), the death fade quad and panel (the panel's `SubViewport` gets no keys, so the shell hands them to `DeathView.handle_input`), the `vr: quit` line and the `--screenshot` mirror, notes as `note:` lines, and only MSAA on the viewport (the XR runtime owns the render size). It has none of the viewer's debug keys |
 | `vr/vr_rig.gd` | `VrRig` (a `PlayerRig`) | `XROrigin3D` at the player's feet, `XRCamera3D`, two controllers; snap turn about the head; controller events as `InputMap` actions |
 | `vr/vr_shell.gd` (combat) | | a `FirstPersonBody` in hand mode on the right controller (the weapon, no arms); a tip speed over 2.5 m/s (placeholder) is an attack. Run only in the desktop fallback and by `combat_melee.gd` |
 | `vr/vr_panel.gd` | `VrPanel` | a view in a `SubViewport` on an unshaded quad: head-locked, or recentred in front of the head |

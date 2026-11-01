@@ -622,6 +622,18 @@ if(SKYDOT_SSE_PACK)
         FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
         TIMEOUT 180)
 
+    # The VR shell's world entry runs the start options too (it once skipped them): --drink.
+    add_test(NAME sse_vr_world_options
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" res://vr/vr_shell.tscn --
+                     --pack "${SKYDOT_SSE_PACK}" --world Tamriel --at 20459,-45300,100 --look 0,0
+                     --time 13.13 --time-scale 0 --drink 0x3EADE --quit-after 20)
+    set_tests_properties(sse_vr_world_options PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        PASS_REGULAR_EXPRESSION "--drink: 0x0003EADE used.*vr: quit"
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 180)
+
     # Bleak Falls Barrow: the pillar lever sits at the pillars' room.
     set(_pillars --cell BleakFallsBarrow01 --at 5006.8,-893.3,-636 --look 197.1,38.5
                  --activate-wait 200 --quit-after 900)

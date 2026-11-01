@@ -19,6 +19,10 @@
 # ones); --screenshot FILE saves the window's picture one frame before the end
 # (desktop fallback only). The viewer's shot series, benchmark and debug overlay are the
 # viewer's.
+#
+# What both shells do the same (the commands, the game's signals, the start options, the
+# frame's order) is ShellLoop; this shell keeps the XR session, the rig, the panels, the
+# weapon in the hand and the death fade.
 extends Node3D
 
 const SESSION_SIGNALS: Array[StringName] = [&"session_begun", &"session_visible", &"session_focussed",
@@ -35,6 +39,7 @@ var _session: GameSession
 var _image_space: SkydotImageSpace
 var _rig: VrRig
 var _controls: PlayerInput
+var _loop: ShellLoop
 var _dialogue_panel: VrPanel
 var _inventory: InventoryView
 var _container: ContainerView
@@ -49,9 +54,6 @@ var _crafting_panel: VrPanel
 var _magic_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
-var _cast_at: CastAt  # --cast-at: the cast still to make
-var _shout_at: ShoutAt  # --shout: the shout still to say
-var _quit_in := -1  # frames until quitting after --activate
 
 
 func _ready() -> void:
@@ -74,11 +76,12 @@ func _ready() -> void:
 		return
 	# The right controller's aim is what activates; a plain camera looks.
 	_session.set_pointer(_rig.right if xr_on else _rig.camera)
+	# Only multisampling: with a runtime the XR interface owns the render size, so the viewer's
+	# --render-scale (3D scaling) and --aa (screen-space AA over a scaled image) stay out.
 	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
 	_create_components()
 	_start_game()
-	if _settings.quit_after >= 0 and not _session.has_activations():
-		_quit_in = _settings.quit_after
+	_loop.arm_quit()
 
 
 ## Start the OpenXR session if a runtime answers. True when one runs.
@@ -113,21 +116,21 @@ func _exit_tree() -> void:
 
 
 func _create_components() -> void:
-	_session.message.connect(func(text: String, _box: bool) -> void: print("note: ", text))
-	_session.activations_finished.connect(func() -> void:
-		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
-	_rig.fell_through.connect(func() -> void: print("note: fell through the world"))
 	_rig.inventory_requested.connect(_on_inventory_requested)
 	_rig.magic_requested.connect(_on_magic_requested)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _settings.interactive
 	_controls.look_speed = _settings.stick_look_speed
 	_controls.invert_look_y = _settings.invert_look_y
-	_controls.command.connect(_on_command)
-	_controls.attack_changed.connect(_on_attack_changed)
-	_controls.attack_left_changed.connect(_on_attack_left_changed)
-	_controls.voice_changed.connect(_on_voice_changed)
 	add_child(_controls)
+	_loop = ShellLoop.new(self, _session, _rig, _controls, _settings, _image_space,
+		func(text: String) -> void: print("note: ", text))
+	# The keys I and M of the desktop fallback; in the headset the controller buttons ask (VrRig).
+	_loop.inventory_requested.connect(_on_inventory_requested)
+	_loop.magic_requested.connect(_on_magic_requested)
+	# The viewer's debug keys (loop.command) are not here.
+	_loop.quit_countdown.connect(_on_quit_countdown)
+	_loop.quitting.connect(func() -> void: print("vr: quit"))
 	# Minimal combat (ADR 0006): the weapon model in the right controller; a
 	# swing faster than FirstPersonBody.SWING_SPEED is the attack. Only the
 	# desktop fallback has been run (the controller stands still there: the
@@ -160,7 +163,7 @@ func _create_components() -> void:
 		_session.container_opened.connect(_on_container_opened)
 		_session.crafting_opened.connect(_on_crafting_opened)
 	_make_death_screen()
-	if not _rig.tracking:
+	if not _rig.tracking:  # the mouse looks only in the desktop fallback (the viewer always captures it)
 		_controls.capture_mouse()
 
 
@@ -170,11 +173,10 @@ func _make_death_screen() -> void:
 	_death = DeathView.new(_session)
 	_death.enabled = func() -> bool: return _controls.enabled
 	_death.load_chosen.connect(func() -> void:
-		if _session.reload_or_restart():
+		if _loop.reload_after_death():
 			_death.end()
 			_death_panel.set_shown(false)
-			_death_fade.visible = false
-			_controls.blocked = false)
+			_death_fade.visible = false)
 	_death.quit_chosen.connect(func() -> void: get_tree().quit(0))
 	_death_panel = VrPanel.new(_death, MENU_PIXELS, MENU_WIDTH)
 	_death_panel.set_shown(false)
@@ -194,8 +196,7 @@ func _make_death_screen() -> void:
 	_death_fade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_death_fade.visible = false
 	_rig.camera.add_child(_death_fade)
-	_session.player_died.connect(func(_killer: int) -> void:
-		_controls.blocked = true
+	_loop.died.connect(func(_killer: int) -> void:  # the loop has blocked the controls
 		_death_fade.visible = true
 		_death_panel.recenter(_rig.camera)
 		_death_panel.set_shown(true))
@@ -293,107 +294,49 @@ func _on_dialogue_engaged(open: bool) -> void:
 	_dialogue_panel.set_shown(open)
 
 
-## The same entering as the viewer's, without shots and benchmark.
+## The same entering as the viewer's (ShellLoop.start), then the menus the options ask for;
+## no shots or benchmark.
 func _start_game() -> void:
 	var settings := _settings
-	if not _session.start_game():
+	if not _loop.start():
 		return
-	if not settings.world.is_empty():
-		if not settings.has_at:
-			_fail("--world needs --at X,Y,Z")
-			return
-		var at := SkydotWorld.skyrim_position(settings.at)
-		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
-		if not _session.enter_world(settings.world, at, target):
-			return
-		_session.give(settings.give)
-		_session.start_quests(settings.start_quests)
-		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
-			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
-		if settings.has_look:
-			_rig.apply_look(settings.look_yaw, settings.look_pitch)
+	if settings.crafting_category != "" and _crafting != null:
+		_crafting.select_category(settings.crafting_category)
+	if _loop.in_world:
 		return
-	var entered := false
-	if settings.has_at and settings.has_target:
-		entered = _session.enter_cell(settings.cell, SkydotWorld.skyrim_position(settings.at),
-			SkydotWorld.skyrim_position(settings.target))
-	else:
-		entered = _session.enter_cell(settings.cell,
-			SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
-	if not entered:
-		return
-	if settings.has_look:
-		_rig.apply_look(settings.look_yaw, settings.look_pitch)
-	if not settings.load_path.is_empty():
-		_session.load_game(settings.load_path)
-	_session.give(settings.give)
-	_session.start_quests(settings.start_quests)
-	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
-		print("--talk: 0x%08X cannot talk" % settings.talk)
-	if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
-		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
 	if settings.open_inventory and _inventory != null:
 		_inventory.open()
 	if settings.open_magic and _magic != null:
 		_magic.open()
 		_magic.select_category(settings.magic_category)
-	for form in settings.equip:
-		_session.equip(form)
-	for entry: Dictionary in settings.equip_spell:
-		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry["form"]):
-			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry["form"])
-		_session.equip_spell(entry["form"], entry["hand"])
-	if settings.cast_at != 0:
-		_cast_at = CastAt.new(_session, _rig, settings.cast_at, settings.cast_at_hand)
-	_shout_at = ShoutAt.apply(_session, _rig, settings)
-	if not settings.spawn.is_empty():
-		SpawnActors.spawn(_session, _rig, settings.spawn, settings.spawn_distance)
-	for form in settings.drink:
-		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
-			_session.give([Vector2i(form, 1)])
-		_session.use_item(form)
-	for entry: Dictionary in settings.cast:
-		_session.cast_spell(entry["spell"], entry["target"])
-	if settings.ready_weapon:
-		_session.toggle_weapon()
 
 
 ## The death screen lives in a SubViewport, which gets no keys: hand it the ones the shell gets.
 func _unhandled_input(event: InputEvent) -> void:
 	if _death != null and _death.is_asking():
-		_death._unhandled_input(event)
+		_death.handle_input(event)
 
 
 func _process(delta: float) -> void:
 	if _controls == null:
 		return
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
-	_session.streamer.hold_player(_rig.player, _session.is_fading())
-	_rig.track()
-	_rig.follow()
+	if _loop.frame(delta, _device_step):
+		_loop.drive(delta)
+
+
+## What this shell's device does each frame before the game steps: the weapon follows the
+## hand (the viewer's follows the camera), and the death fade darkens.
+func _device_step(delta: float) -> void:
 	_body.update_hand(delta)
-	if _cast_at != null:
-		_cast_at.step()
-	if _shout_at != null:
-		_shout_at.step()
 	if _death_fade != null and _death_fade.visible:
 		((_death_fade.mesh as QuadMesh).material as StandardMaterial3D).albedo_color = Color(0, 0, 0, _death.fade)
-	_session.step(delta, _rig.player.global_position)
-	if _quit_in >= 0:
-		_quit_in -= 1
-		if _quit_in == 0 and _settings.has_screenshot:
-			_save_mirror(_settings.screenshot)
-		if _quit_in < 0:
-			if not _settings.save_to.is_empty():
-				_session.save_game(_settings.save_to)
-			print("vr: quit")
-			get_tree().quit(0)
-		return
-	if _session.has_activations():
-		_session.run_activation()
-		return
-	_controls.paralyzed = _session.player_paralyzed
-	_controls.apply(delta)
+
+
+## The last frame of --quit-after: the mirror of the window, while it can still be read.
+func _on_quit_countdown(frames_left: int) -> void:
+	if frames_left == 0 and _settings.has_screenshot:
+		_save_mirror(_settings.screenshot)
 
 
 ## --screenshot: the window's picture one frame before the run ends (in the
@@ -401,44 +344,6 @@ func _process(delta: float) -> void:
 func _save_mirror(path: String) -> void:
 	var image := get_viewport().get_texture().get_image()
 	print("vr: mirror ", image.get_size(), " -> ", path, " ", image.save_png(path))
-
-
-## A key that is not about the player's body; the few the shell has a use for.
-func _on_command(action: StringName, shift: bool) -> void:
-	match action:
-		PlayerInput.ACTIVATE:
-			_session.activate_in_view(shift)
-		PlayerInput.READY_WEAPON:
-			_session.toggle_weapon()
-		PlayerInput.QUICK_SAVE:
-			_session.save_game(SaveService.QUICKSAVE)
-		PlayerInput.QUICK_LOAD:
-			_session.load_game(SaveService.QUICKSAVE)
-		PlayerInput.TOGGLE_FLY:
-			print("note: ", "flying" if _rig.toggle_fly() else "walking")
-
-
-func _on_attack_changed(pressed: bool) -> void:
-	if pressed:
-		_session.attack_pressed()
-	else:
-		_session.attack_released()
-
-
-func _on_attack_left_changed(pressed: bool) -> void:
-	if pressed:
-		_session.attack_left_pressed()
-	else:
-		_session.attack_left_released()
-
-
-func _on_voice_changed(pressed: bool) -> void:
-	if pressed:
-		var voice := _session.voice_pressed()
-		if not voice["ok"]:
-			print("note: voice: ", voice["reason"])
-	else:
-		_session.voice_released()
 
 
 func _fail(message: String) -> void:
