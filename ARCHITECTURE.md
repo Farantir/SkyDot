@@ -1276,6 +1276,30 @@ extending `AttackRules` and overriding a rule method, or replaces it whole with
 a class of the same interface; the session builds whichever
 `GameSession.attack_rules_script` names.
 
+Player state (ADR 0009). `PlayerState` (`player_state.gd`) owns the rules of
+which state of the player blocks which action and which actions break
+invisibility. The actions are named by constants (`MOVE`, `READY` for drawing,
+sheathing and readying the hands, `ATTACK`, `CAST`, `SHOUT`, `ACTIVATE`). Its
+interface: `is_dead()`, `is_paralyzed()` and `set_paralyzed(value)`;
+`refusal(action)` (`""` when allowed, else `"dead"` or `"paralyzed"`; only
+paralysis refuses `MOVE`, the death screen is the shell's, and every other
+action is refused dead first, then paralysed), `can(action)`,
+`breaks_invisibility(action)` (an attack, a cast, a shout or an activation) and
+`acted(action)`, which ends the invisibility when the action breaks it. It
+returns plain values and emits nothing. It asks its data through
+`PlayerStateData` (`player_state_data.gd`), a GDScript seam over
+`SkydotPapyrus`: `is_dead` and `break_invisibility`; the unit tests
+(`tests/gd/test_player_state.gd`) give it a fake. C++ keeps the state: death is
+the player's Health, invisibility is an active effect. The one flag
+`PlayerState` holds itself, paralysis, mirrors the C++ "paralyzed" magic
+override; `MagicWorld` is its only writer and re-syncs it every step and on
+load, so `PlayerState` is not in the lifecycle. Menus and dialogue are gated by
+the shell (`controls.blocked`) and the door fade by the session
+(`PlaceTransition.is_fading`), not by `PlayerState`. A script mod changes the
+rules by extending `PlayerState` and overriding `refusal` or
+`breaks_invisibility`; the session builds whichever
+`GameSession.player_state_script` names.
+
 | File | Class | What it owns |
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
@@ -1290,6 +1314,8 @@ a class of the same interface; the session builds whichever
 | `casting_data.gd` | `CastingData` | the narrow data questions `Casting` asks (equipped spell, `cast_info`, dead, Magicka, cost, cooldown, carried, `pay_spell`, shout info, recovery, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `attack_rules.gd` | `AttackRules` | the rules of a hit for every attacker (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `hit` (facts, damage, landing), the formula `damage` built from `skill_factor`, `armor_percent`, `sneak_mult`, `difficulty`; the power attack's `can_power_attack`, `pays_stamina`, `power_attack_cost`, `pay_power_attack`, `power_delay`; `reach`, `strike_angle`, `stagger`; all of them the mod's to override; no state |
 | `attack_data.gd` | `AttackData` | the narrow data questions `AttackRules` asks (`hit_facts` with the formula's GMSTs, `land_hit`, Stamina, a weapon's weight, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
+| `player_state.gd` | `PlayerState` | which state of the player blocks which action and which actions break invisibility (ADR 0009), a `RefCounted` that returns plain values and emits nothing: `refusal`, `can`, `breaks_invisibility`, `acted`; the paralysis flag `MagicWorld` writes; the mod's to override |
+| `player_state_data.gd` | `PlayerStateData` | the narrow data questions `PlayerState` asks (`is_dead`, `break_invisibility`) over `SkydotPapyrus`; no rules; the unit tests extend it with a fake |
 | `magic.gd` | `Magic` | the player's casting in the scene (7a-3): spells and scrolls in the hands (`LEFT` 0, `RIGHT` 1, `POWER` 2) readied with R, the hand's attack button goes to `Casting` (it holds the hand and the voice, refuses, pays), `Magic` plays the clips and art, shows the refusals and lands the effects with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key, `eye_of` the head an NPC casts from; signals for the arms' clips and the hand art. `NpcMagic` carries out the same hands for actors (target, clips) over the same `Casting` | with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key; signals for the arms' clips and the hand art |
 | `actor_registry.gd` | `ActorRegistry` | the `SkydotActor` nodes under the host, mirrored from the tree's `node_added` / `node_removed` (one hook for every way an actor is built or leaves; `all()` replaces the scans of the whole host by combat, corpses and magic), and per-node caches of the head bone (`head`) and the skinned meshes (`chest`) that `refresh(node)` drops when an actor's parts are rebuilt; `GameSession.actors` |
 | `corpses.gd` | `Corpses` | what a death looks like: the actor's node stops (`SkydotActor.set_dead`), a `PhysicalBoneSimulator3D` ragdoll (13 capsule `PhysicalBone3D`s, cone joints, the killing hit's impulse) runs under its skeleton until it rests or 5 s, then freezes into the bones' poses; stores the corpse place (`set_corpse_place`), marks the node pickable (Search), lays the dead of a place built later down at their place; a skeleton without the human bones logs `death: no ragdoll for <skeleton>` and lies on its side |

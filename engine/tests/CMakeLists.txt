@@ -154,6 +154,7 @@ skydot_gd_test(lifecycle test_lifecycle.gd)
 skydot_gd_test(ref_forget test_ref_forget.gd)
 skydot_gd_test(casting test_casting.gd)
 skydot_gd_test(player_gates test_player_gates.gd)
+skydot_gd_test(player_state test_player_state.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,
