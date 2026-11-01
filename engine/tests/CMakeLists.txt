@@ -151,6 +151,7 @@ skydot_gd_test(placed_race test_placed_race.gd)
 skydot_gd_test(projectiles test_projectiles.gd)
 skydot_gd_test(lifecycle test_lifecycle.gd)
 skydot_gd_test(ref_forget test_ref_forget.gd)
+skydot_gd_test(casting test_casting.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,
