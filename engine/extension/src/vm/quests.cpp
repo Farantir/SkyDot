@@ -43,6 +43,9 @@ std::uint32_t SkydotPapyrus::alias_handle(std::uint32_t quest, std::uint32_t ali
         godot::UtilityFunctions::push_error("Papyrus: the alias handle ids are used up");
         return 0;
     }
+    if (quests_.handle_ids.take_pressure_warning()) {
+        godot::UtilityFunctions::push_warning("Papyrus: the alias handle ids are 90 % used; they are never reused");
+    }
     quests_.add_handle(quest, alias, handle);
     return handle;
 }

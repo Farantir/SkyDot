@@ -39,6 +39,8 @@ public:
         }
         return id;
     }
+    /// True once when the runtime reference ids are 90 % used (`IdAllocator::take_pressure_warning`).
+    [[nodiscard]] bool take_id_warning() noexcept { return ids_.take_pressure_warning(); }
     [[nodiscard]] const PlacedRef* find(std::uint32_t id) const {
         const auto it = refs_.find(id);
         return it != refs_.end() ? &it->second : nullptr;

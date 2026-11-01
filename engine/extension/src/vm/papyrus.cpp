@@ -1308,6 +1308,9 @@ std::int64_t SkydotPapyrus::create_instance(const String& cls) {
         godot::UtilityFunctions::push_error("Papyrus: the 4,096 ids create_instance hands out are used up");
         return 0;
     }
+    if (test_ids_.take_pressure_warning()) {
+        godot::UtilityFunctions::push_warning("Papyrus: the ids create_instance hands out are 90 % used");
+    }
     return vm_->attach(form, utf8(cls)) != nullptr ? form : 0;
 }
 
@@ -1315,6 +1318,8 @@ std::int64_t SkydotPapyrus::new_sound_instance() {
     const auto instance = sound_ids_.allocate();
     if (instance == 0) {
         godot::UtilityFunctions::push_error("Papyrus: the sound instance ids are used up");
+    } else if (sound_ids_.take_pressure_warning()) {
+        godot::UtilityFunctions::push_warning("Papyrus: the sound instance ids are 90 % used");
     }
     return instance;
 }

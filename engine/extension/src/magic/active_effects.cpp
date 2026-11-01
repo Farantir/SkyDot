@@ -490,6 +490,9 @@ std::vector<std::uint32_t> ActiveEffects::apply(std::uint32_t caster, std::uint3
             host_.log("magic: out of effect instance ids");
             break;
         }
+        if (ids_.take_pressure_warning()) {
+            host_.log("magic: the effect instance ids are 90 % used; they are never reused");
+        }
         Instance inst;
         inst.id = id;
         inst.mgef = in.effect;

@@ -141,6 +141,9 @@ std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initial
         godot::UtilityFunctions::push_error("Papyrus: the runtime reference ids are used up; nothing placed");
         return 0;
     }
+    if (vm_->placed().take_id_warning()) {
+        godot::UtilityFunctions::push_warning("Papyrus: the runtime reference ids are 90 % used; they are never reused");
+    }
     if (initially_disabled) {
         states_.disabled[id] = true;
     }

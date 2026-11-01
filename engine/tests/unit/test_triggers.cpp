@@ -228,6 +228,29 @@ TEST_CASE("id ranges: disjoint, checked and exhausted without overlap") {
     CHECK(effects.allocate() == 0);
 }
 
+TEST_CASE("id ranges: a range says once that it is 90 % used, and never reuses an id") {
+    using namespace skydot::vm;
+    IdAllocator test(id_ranges::test_instances); // 4,096 ids: 90 % is 3,687.
+    CHECK(test.capacity() == 4096);
+    for (int i = 0; i < 3686; ++i) {
+        REQUIRE(test.allocate() != 0);
+        REQUIRE_FALSE(test.take_pressure_warning());
+    }
+    CHECK(test.allocate() != 0); // the 3,687th id
+    CHECK(test.take_pressure_warning());
+    CHECK_FALSE(test.take_pressure_warning()); // once
+    for (int i = 3687; i < 4096; ++i) {
+        REQUIRE(test.allocate() != 0);
+    }
+    CHECK_FALSE(test.take_pressure_warning());
+    CHECK(test.allocate() == 0); // exhausted: an error for the owner to log, no id is reused
+    CHECK(test.exhausted());
+    CHECK(test.restore(id_ranges::test_instances.first + 4000)); // a load rearms it
+    CHECK(test.take_pressure_warning());
+    test.clear();
+    CHECK_FALSE(test.take_pressure_warning());
+}
+
 TEST_CASE("id ranges: placed references stay in their range and saves refuse others") {
     using namespace skydot::vm;
     PlacedRefs refs;

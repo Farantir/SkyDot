@@ -4,7 +4,10 @@
 // Form ids made at run time share the 0xFF...... space with the game's own
 // runtime references, so each kind owns a range that no other touches;
 // running out of a range is an error (allocate() returns 0), never an
-// overlap. Sound instances are playback numbers, not forms, with a range of
+// overlap. A range that is nearly used up says so once (`take_pressure_warning`)
+// for its owner to log; ids are never reused (a Value, a saved reference or a
+// script may still hold a forgotten one, and a free list would change the
+// save format). Sound instances are playback numbers, not forms, with a range of
 // their own. Nothing here touches Godot.
 #pragma once
 
@@ -50,6 +53,20 @@ public:
     /// The id allocate() hands out next (last + 1 once used up).
     [[nodiscard]] std::uint32_t next() const noexcept { return static_cast<std::uint32_t>(next_); }
     [[nodiscard]] bool exhausted() const noexcept { return next_ > range_.last; }
+    /// How many ids were handed out (or noted as used), and how many the range holds.
+    [[nodiscard]] std::uint64_t used() const noexcept { return next_ - range_.first; }
+    [[nodiscard]] std::uint64_t capacity() const noexcept {
+        return static_cast<std::uint64_t>(range_.last) - range_.first + 1;
+    }
+    /// True once, the first time it is asked after 90 % of the range is used: the owner logs a warning. It
+    /// rearms with `clear` and `restore` (a load), so a game that is still above 90 % warns once more.
+    [[nodiscard]] bool take_pressure_warning() noexcept {
+        if (warned_ || used() * 10 < capacity() * 9) {
+            return false;
+        }
+        warned_ = true;
+        return true;
+    }
     [[nodiscard]] const IdRange& range() const noexcept { return range_; }
     /// Continue from `next` (a saved state); false, and no change, if it is
     /// outside the range.
@@ -58,6 +75,7 @@ public:
             return false;
         }
         next_ = next;
+        warned_ = false;
         return true;
     }
     /// An id handed out elsewhere (a loaded one): later ids lie above it.
@@ -66,11 +84,15 @@ public:
             next_ = id + std::uint64_t{1};
         }
     }
-    void clear() noexcept { next_ = range_.first; }
+    void clear() noexcept {
+        next_ = range_.first;
+        warned_ = false;
+    }
 
 private:
     IdRange range_;
     std::uint64_t next_;
+    bool warned_ = false;
 };
 
 } // namespace skydot::vm
