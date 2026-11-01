@@ -31,6 +31,7 @@
 #include <godot_cpp/classes/spot_light3d.hpp>
 #include <godot_cpp/classes/time.hpp>
 #include <godot_cpp/core/object.hpp>
+#include <godot_cpp/templates/hash_set.hpp>
 #include <godot_cpp/variant/basis.hpp>
 #include <godot_cpp/variant/color.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
@@ -1354,13 +1355,22 @@ godot::PackedStringArray CellBuilder::exterior_resources(std::int64_t world, std
             add_ref_resources(*ref, out);
         }
     }
+    // What `out` holds, to dedup in O(1); the order of `out` stays the order found.
+    godot::HashSet<String> seen;
+    for (const String& have : out) {
+        seen.insert(have);
+    }
+    const auto add_once = [&](const String& path) {
+        if (!seen.has(path)) {
+            seen.insert(path);
+            out.push_back(path);
+        }
+    };
     const auto* cell = data().exterior_ptr(w, gx, gy);
     if (const auto* water = data().water_ptr(data().water_type(w, cell));
         water != nullptr && water->noise() != nullptr && water->noise()->size() != 0) {
         const String path = String::utf8(water->noise()->Get(0)->c_str());
-        if (!out.has(path)) {
-            out.push_back(path);
-        }
+        add_once(path);
     }
     const auto* land = data().exterior_ptr(data().land_world(w), gx, gy);
     if (land != nullptr && land->terrain() != nullptr && land->terrain()->layers() != nullptr) {
@@ -1373,9 +1383,7 @@ godot::PackedStringArray CellBuilder::exterior_resources(std::int64_t world, std
                     const auto* g = lookup(world_fb()->grasses(), id);
                     if (g != nullptr && g->model() != nullptr && g->model()->size() != 0) {
                         const String path = model_path(g->model()->string_view());
-                        if (!out.has(path)) {
-                            out.push_back(path);
-                        }
+                        add_once(path);
                     }
                 }
             }
@@ -1384,9 +1392,7 @@ godot::PackedStringArray CellBuilder::exterior_resources(std::int64_t world, std
                     continue;
                 }
                 const String path = String::utf8(vpath.c_str());
-                if (!out.has(path)) {
-                    out.push_back(path);
-                }
+                add_once(path);
             }
         }
     }
