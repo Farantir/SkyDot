@@ -27,68 +27,7 @@ String to_godot(const std::string& s) {
     return String::utf8(s.c_str(), static_cast<int>(s.size()));
 }
 
-/// EPTemperingItemIsEnchanted from the item being tempered.
-class TemperOverrides final : public conditions::ConditionOverrides {
-public:
-    explicit TemperOverrides(const crafting::ConditionItem* item) : item_(item) {}
-    std::optional<double> function_value(const wfb::Condition& c, std::uint32_t, const conditions::ConditionContext&) override {
-        if (c.function() == conditions::fn::ep_tempering_item_is_enchanted && item_ != nullptr) {
-            return item_->enchanted ? 1.0 : 0.0;
-        }
-        return std::nullopt;
-    }
-
-private:
-    const crafting::ConditionItem* item_;
-};
-
 } // namespace
-
-struct SkydotPapyrus::CraftingAdapter final : crafting::CraftingHost {
-    explicit CraftingAdapter(SkydotPapyrus& owner) : owner_(owner) {}
-
-    bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list,
-                         const crafting::ConditionItem* item) override {
-        PapyrusConditionWorld world(&owner_);
-        conditions::ConditionContext ctx;
-        ctx.subject = k_player_ref;
-        ctx.unknown = conditions::UnknownPolicy::fails;
-        TemperOverrides overrides(item);
-        return conditions::conditions_pass(list, world, ctx, &overrides);
-    }
-    int bench_type(std::uint32_t bench_ref) const override {
-        const auto* root = owner_.world_->data().root();
-        const auto* base = root != nullptr ? lookup(root->bases(), owner_.base_form_of(bench_ref)) : nullptr;
-        return base != nullptr ? static_cast<int>(base->bench_type()) : 0;
-    }
-    bool bench_has_keyword(std::uint32_t bench_ref, std::uint32_t keyword) const override {
-        return owner_.world_->data().base_has_keyword(owner_.base_form_of(bench_ref), keyword);
-    }
-    std::uint32_t keyword(std::string_view editor_id) const override {
-        return owner_.world_->data().keyword_by_editor_id(editor_id);
-    }
-    void log(const std::string& line) override {
-        owner_.emit_signal("trace", to_godot(line));
-        godot::UtilityFunctions::print(to_godot(line));
-    }
-
-private:
-    SkydotPapyrus& owner_;
-};
-
-crafting::Crafting* SkydotPapyrus::crafting_logic() {
-    if (crafting_) {
-        return crafting_.get();
-    }
-    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
-    if (root == nullptr || !vm_) {
-        return nullptr;
-    }
-    crafting_host_ = std::make_unique<CraftingAdapter>(*this);
-    crafting_ = std::make_unique<crafting::Crafting>(*root, *crafting_host_, vm_->inventory(), items_.extras(),
-                                                     created_, k_player_ref);
-    return crafting_.get();
-}
 
 double SkydotPapyrus::game_days() const {
     return clock_.is_valid() ? clock_->get_game_days() : 0.0;

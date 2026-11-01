@@ -14,7 +14,7 @@
 namespace skydot::testing {
 
 /// 1 -> 2 -> 3 (end); 5 -> 6 -> 5 (a loop).
-struct FakeWorld final : skydot::vm::WorldAccess {
+struct FakeWorld : skydot::vm::WorldAccess {
     std::map<std::uint32_t, std::uint32_t> links{{1, 2}, {2, 3}, {5, 6}, {6, 5}};
     std::uint32_t base_form(std::uint32_t) const override { return 0; }
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {

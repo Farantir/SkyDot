@@ -30,6 +30,7 @@
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
 #include "scenes/scenes.hpp"
+#include "vm/crafting_runtime.hpp"
 #include "vm/dialogue_runtime.hpp"
 #include "vm/scene_runtime.hpp"
 #include "save/save_binding.hpp"
@@ -872,11 +873,9 @@ private:
     vm::CreatedForms created_;
     /// What is harvested (HRVS).
     vm::HarvestStates harvests_;
-    struct CraftingAdapter;
-    std::unique_ptr<crafting::CraftingHost> crafting_host_;
-    std::unique_ptr<crafting::Crafting> crafting_;
-    /// The crafting rules on the VM's inventory; null before setup.
-    crafting::Crafting* crafting_logic();
+    /// The crafting domain (vm/crafting_runtime.hpp); its rules sit on the VM's inventory.
+    vm::CraftingRuntime crafting_;
+    crafting::Crafting* crafting_logic() { return crafting_.logic(); }
     /// A name for any item, also created forms and ones the pack lacks.
     std::string item_name_of(std::uint32_t form) const;
     /// The game day now (GameDaysPassed).

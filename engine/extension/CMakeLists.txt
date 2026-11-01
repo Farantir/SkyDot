@@ -125,6 +125,8 @@ set(SKYDOT_CORE_SOURCES
     src/state/runtime_refs.hpp
     src/vm/dialogue_runtime.cpp
     src/vm/dialogue_runtime.hpp
+    src/vm/crafting_runtime.cpp
+    src/vm/crafting_runtime.hpp
     src/vm/natives_world.cpp
     src/vm/scene_runtime.cpp
     src/vm/scene_runtime.hpp

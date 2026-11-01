@@ -580,7 +580,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host {
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -807,6 +807,20 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
+    // ---- vm::CraftingRuntime::Host
+    vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
+    vm::ItemExtras& item_extras() override { return owner_.items_.extras(); }
+    vm::CreatedForms& created_forms() override { return owner_.created_; }
+    std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
+        return std::make_unique<PapyrusConditionWorld>(&owner_);
+    }
+
+    void announce(const std::string& line) override {
+        const String shown = natives::to_godot(line);
+        owner_.emit_signal("trace", shown);
+        godot::UtilityFunctions::print(shown);
+    }
+
     // ---- vm::DialogueRuntime::Host
     vm::ActorHost& actor_host() override { return *this; }
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
@@ -1075,6 +1089,7 @@ void SkydotPapyrus::bind_natives() {
         (this->*registration)();
     }
     dialogue_.bind(*access_);
+    crafting_.bind(*access_);
     scene_.bind_natives(*vm_, *access_, dialogue_);
 }
 
