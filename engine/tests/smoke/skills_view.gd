@@ -81,7 +81,29 @@ func _run(pack_dir: String) -> void:
 	view.open()
 	expect(view.model.choosing_attribute(), "a banked level asks for the attribute")
 	var level := int(view.model.header["level"])
-	_press(view, &"ui_accept")
-	expect(int(view.model.header["level"]) == level + 1, "accept spends a level")
+	_press(view, &"ui_cancel")
+	expect(view.is_open(), "cancel does not leave the level-up choice")
+	_press(view, &"skills")
+	expect(view.is_open(), "the skills key does not leave the level-up choice")
+	view.close()
+	expect(view.is_open(), "close() without force refuses during the choice")
+	var guard := 0
+	while view.model.choosing_attribute() and guard < 100:
+		guard += 1
+		_press(view, &"ui_accept")
+		expect(int(view.model.header["level"]) == level + guard, "accept spends a level")
+		if view.model.choosing_attribute():
+			_press(view, &"ui_cancel")
+			expect(view.is_open(), "each banked level asks in turn")
+	expect(guard >= 1, "a level was chosen")
+	expect(not view.model.choosing_attribute(), "all banked levels are spent")
+	_press(view, &"ui_cancel")
+	expect(not view.is_open(), "with no level banked cancel closes")
+	# Forced close works even while choosing.
+	session.papyrus.set_player_xp(100000.0)
+	view.open()
+	expect(view.model.choosing_attribute(), "another banked level asks again")
+	view.close(true)
+	expect(not view.is_open(), "close(true) closes even while choosing")
 	print("smoke_skills_view: failures=%d" % failures)
 	quit(failures)

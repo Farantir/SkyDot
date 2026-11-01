@@ -52,8 +52,12 @@ func open() -> void:
 		engaged.emit(true)
 
 
-func close() -> void:
+## The level-up attribute choice cannot be skipped: while it is asked the screen stays open unless `force`
+## (a death, a load or the session ending).
+func close(force := false) -> void:
 	if not _open:
+		return
+	if not force and model != null and model.choosing_attribute():
 		return
 	_open = false
 	engaged.emit(false)
@@ -112,7 +116,7 @@ func _input(event: InputEvent) -> void:
 
 func _level_up_input(event: InputEvent) -> bool:
 	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"skills"):
-		close()
+		pass   # forced: no way out before an attribute is chosen
 	elif event.is_action_pressed(&"ui_down"):
 		_choice = (_choice + 1) % SkillsModel.ATTRIBUTES.size()
 	elif event.is_action_pressed(&"ui_up"):
