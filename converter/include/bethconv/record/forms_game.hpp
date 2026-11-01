@@ -19,7 +19,9 @@
 #include <array>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace bethconv::record {
@@ -963,6 +965,21 @@ struct SoundOutputModel {
 };
 
 // ---- parsing --------------------------------------------------------------
+
+/// FACT's VENV: start hour, end hour (u16 each), radius (u32), then flag
+/// bytes. An error when shorter than the 8 bytes up to the radius.
+struct VendorValues {
+    std::uint16_t start_hour{};
+    std::uint16_t end_hour{};
+    std::uint32_t radius{};
+    static constexpr std::size_t k_size = 8;
+};
+[[nodiscard]] io::ParseResult<VendorValues> decode_vendor_values(std::span<const std::byte> venv);
+
+/// A package input's CNAM as a number: one byte for Bool, four for the rest
+/// (an integer for `Int`, a float otherwise). Nothing for any other size.
+[[nodiscard]] std::optional<float> decode_package_input_number(
+    std::string_view type, std::span<const std::byte> value);
 
 [[nodiscard]] io::ParseResult<KeywordRecord> parse_keyword(io::SpanReader& data,
                                                            const FormContext& ctx);

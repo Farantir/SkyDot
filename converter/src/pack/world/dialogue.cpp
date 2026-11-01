@@ -207,11 +207,10 @@ void DialogueCollector::on_faction(const record::MergedRecord& merged, io::SpanR
     out.editor_id = f->editor_id;
     out.flags = static_cast<wfb::FactionFlags>(f->flags);
     // VENV: start hour, end hour (u16 each), radius (u32), then flag bytes.
-    if (f->vendor_values.size() >= 8) {
-        io::SpanReader v(f->vendor_values, "FACT VENV");
-        out.vendor_start_hour = v.get<std::uint16_t>().value_or(0);
-        out.vendor_end_hour = v.get<std::uint16_t>().value_or(0);
-        out.vendor_radius = v.get<std::uint32_t>().value_or(0);
+    if (const auto venv = record::decode_vendor_values(f->vendor_values)) {
+        out.vendor_start_hour = venv->start_hour;
+        out.vendor_end_hour = venv->end_hour;
+        out.vendor_radius = venv->radius;
     }
     out.vendor_chest = shared_.global(merged, f->vendor_chest, failed);
     for (const auto& relation : f->relations) {

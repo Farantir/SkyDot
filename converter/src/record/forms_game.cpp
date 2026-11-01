@@ -1612,6 +1612,42 @@ io::ParseResult<Package> parse_package(io::SpanReader& data, const FormContext& 
     return out;
 }
 
+io::ParseResult<VendorValues> decode_vendor_values(std::span<const std::byte> venv) {
+    io::SpanReader r(venv, "FACT VENV");
+    if (venv.size() < VendorValues::k_size) {
+        return r.fail(io::ErrorKind::truncated,
+                      "VENV of " + std::to_string(venv.size()) + " bytes");
+    }
+    VendorValues out;
+    std::optional<io::ParseError> failure;
+    take(failure, r.get<std::uint16_t>(), out.start_hour);
+    take(failure, r.get<std::uint16_t>(), out.end_hour);
+    take(failure, r.get<std::uint32_t>(), out.radius);
+    if (failure) {
+        return std::unexpected(std::move(*failure));
+    }
+    return out;
+}
+
+std::optional<float> decode_package_input_number(std::string_view type,
+                                                 std::span<const std::byte> value) {
+    io::SpanReader r(value, "PACK CNAM");
+    if (value.size() == sizeof(std::uint8_t)) {
+        if (const auto v = r.get<std::uint8_t>()) {
+            return static_cast<float>(*v);
+        }
+    } else if (value.size() == sizeof(float)) {
+        if (type == "Int") {
+            if (const auto v = r.get<std::int32_t>()) {
+                return static_cast<float>(*v);
+            }
+        } else if (const auto v = r.get<float>()) {
+            return *v;
+        }
+    }
+    return std::nullopt;
+}
+
 // ---- KYWD, MESG, SNDR, SOUN, SOPM -----------------------------------------
 
 io::ParseResult<KeywordRecord> parse_keyword(io::SpanReader& data, const FormContext& ctx) {

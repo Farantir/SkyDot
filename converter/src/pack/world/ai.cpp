@@ -122,12 +122,8 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
         w->type = in.type;
         // CNAM: one byte for Bool, a word otherwise; Float and ObjectList
         // (a radius) hold floats, Int an integer.
-        io::SpanReader v{in.value, "PACK CNAM"};
-        if (in.value.size() == 1) {
-            w->number = static_cast<float>(v.get<std::uint8_t>().value_or(0));
-        } else if (in.value.size() == 4) {
-            w->number = in.type == "Int" ? static_cast<float>(v.get<std::int32_t>().value_or(0))
-                                         : v.get<float>().value_or(0.0F);
+        if (const auto number = record::decode_package_input_number(in.type, in.value)) {
+            w->number = *number;
         }
         if (in.location) {
             const auto t = in.location->type;
