@@ -127,6 +127,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/natives_noop.cpp
     src/vm/natives_debug.cpp
     src/vm/natives_objectreference.cpp
+    src/vm/natives_actor_extra.cpp
     src/vm/natives_quest.cpp
     src/vm/natives_game.cpp
     src/vm/natives_form.cpp
@@ -293,7 +294,6 @@ target_sources(skydot PRIVATE
     src/session/preload.cpp
     src/session/streamer.cpp
     src/session/streamer.hpp
-    src/vm/natives_actor_extra.cpp
     src/vm/papyrus_activation.cpp
     src/vm/papyrus_conditions.cpp
     src/vm/papyrus_dialogue.cpp

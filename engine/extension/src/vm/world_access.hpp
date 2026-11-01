@@ -88,6 +88,10 @@ public:
     [[nodiscard]] virtual Xyz ref_rotation(std::uint32_t ref) const = 0;
     /// Whether `ref` is disabled now (a script's change, its enable parent's, or the placement's).
     [[nodiscard]] virtual bool ref_disabled(std::uint32_t ref) const = 0;
+    /// Whether NPC_ `npc` has the unique flag.
+    [[nodiscard]] virtual bool npc_unique(std::uint32_t npc) const = 0;
+    /// The quest PACK `package` belongs to; 0 for none or an unknown package.
+    [[nodiscard]] virtual std::uint32_t package_owner_quest(std::uint32_t package) const = 0;
 };
 
 } // namespace skydot::vm

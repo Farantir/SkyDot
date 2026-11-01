@@ -52,6 +52,12 @@ public:
     virtual void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) = 0;
     /// A script opened or closed `ref` (the `open_changed` signal).
     virtual void open_changed(std::uint32_t ref, bool open) = 0;
+    /// A visual effect starts (`play`, with `art` and `duration`; `target` 0 for none) or stops on `ref`
+    /// (the `visual_effect` signal).
+    virtual void visual_effect(std::uint32_t ref, std::uint32_t art, std::uint32_t target, double duration,
+                               bool play) = 0;
+    /// Play the named sub graph animation on `ref` (the `sub_graph_animation` signal).
+    virtual void sub_graph_animation(std::uint32_t ref, const std::string& animation) = 0;
 };
 
 } // namespace skydot::vm

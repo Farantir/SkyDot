@@ -248,4 +248,25 @@ std::int64_t SkydotPapyrus::get_killer(std::int64_t ref) const {
     return static_cast<std::int64_t>(actors_.killer_of(static_cast<std::uint32_t>(ref)));
 }
 
+bool SkydotPapyrus::ghost_ignores_hit(std::uint32_t ref) {
+    if (!actors_.is_ghost(ref)) {
+        return false;
+    }
+    if (ghost_reported_.insert(ref).second) {
+        char line[96];
+        std::snprintf(line, sizeof line, "combat: 0x%X is a ghost and takes no hits", ref);
+        godot::UtilityFunctions::print(godot::String::utf8(line));
+    }
+    return true;
+}
+
+void SkydotPapyrus::dragon_soul_absorbed() {
+    const auto* g = world_.is_valid() ? WorldData::find_gmst(world_->data().root(), "sDragonSoulAcquired") : nullptr;
+    const std::string text = g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0
+                                 ? g->text_value()->str()
+                                 : std::string("Dragon Soul Absorbed");
+    godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
+    emit_signal("message", natives::to_godot(text), false);
+}
+
 } // namespace skydot

@@ -3,6 +3,7 @@
 
 #include "data/actors.hpp"
 #include "data/coordinates.hpp"
+#include "data/fb_search.hpp"
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 #include "actors/behavior_player.hpp"
@@ -580,7 +581,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost {
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -683,6 +684,16 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     vm::Xyz ref_position(std::uint32_t ref) const override { return xyz_from(owner_.position_of(ref)); }
     vm::Xyz ref_rotation(std::uint32_t ref) const override { return xyz_from(owner_.rotation_of(ref)); }
     bool ref_disabled(std::uint32_t ref) const override { return owner_.disabled(ref); }
+    bool npc_unique(std::uint32_t npc) const override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        const auto* record = root != nullptr ? lookup(root->npcs(), npc) : nullptr;
+        return record != nullptr && formats::has_flag(record->flags(), bethconv::pack::wfb::NpcFlags::unique);
+    }
+    std::uint32_t package_owner_quest(std::uint32_t package) const override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        const auto* record = root != nullptr ? lookup(root->packages(), package) : nullptr;
+        return record != nullptr ? record->owner_quest() : 0;
+    }
     bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
     std::int32_t player_level() const override { return 1; }
     double game_days() const override {
@@ -790,6 +801,21 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void open_changed(std::uint32_t ref, bool open) override {
         owner_.emit_signal("open_changed", static_cast<std::int64_t>(ref), open);
     }
+    void visual_effect(std::uint32_t ref, std::uint32_t art, std::uint32_t target, double duration, bool play) override {
+        owner_.emit_signal("visual_effect", static_cast<std::int64_t>(ref), static_cast<std::int64_t>(art),
+                           static_cast<std::int64_t>(target), duration, play);
+    }
+    void sub_graph_animation(std::uint32_t ref, const std::string& animation) override {
+        owner_.emit_signal("sub_graph_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
+    }
+
+    // ---- vm::ActorHost
+
+    vm::ActorStates& actor_states() override { return owner_.actors_; }
+    conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
+    bool location_loaded(std::uint32_t location) override { return owner_.location_loaded(location); }
+    void evaluate_package(std::uint32_t ref) override { owner_.evaluate_package(ref); }
+    void set_last_damager(std::uint32_t killer) override { owner_.last_damager_ = killer; }
 
     // ---- vm::ReferenceHost
 
@@ -839,6 +865,7 @@ void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, 
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
+void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {

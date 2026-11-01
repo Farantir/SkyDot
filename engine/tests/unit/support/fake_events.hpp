@@ -65,6 +65,15 @@ struct FakeEvents final : skydot::vm::WorldEvents {
     std::vector<Knock> knocks;
     std::vector<std::pair<std::uint32_t, std::int32_t>> motion_types;
     std::vector<std::pair<std::uint32_t, bool>> opened;
+    struct Effect {
+        std::uint32_t ref = 0;
+        std::uint32_t art = 0;
+        std::uint32_t target = 0;
+        double duration = 0.0;
+        bool play = false;
+    };
+    std::vector<Effect> effects;
+    std::vector<std::pair<std::uint32_t, std::string>> sub_graphs;
     std::vector<std::string> traces;
     std::vector<Shader> shaders;
     std::vector<Message> messages;
@@ -102,6 +111,13 @@ struct FakeEvents final : skydot::vm::WorldEvents {
         motion_types.emplace_back(ref, motion_type);
     }
     void open_changed(std::uint32_t ref, bool open) override { opened.emplace_back(ref, open); }
+    void visual_effect(std::uint32_t ref, std::uint32_t art, std::uint32_t target, double duration,
+                       bool play) override {
+        effects.push_back({ref, art, target, duration, play});
+    }
+    void sub_graph_animation(std::uint32_t ref, const std::string& animation) override {
+        sub_graphs.emplace_back(ref, animation);
+    }
 };
 
 } // namespace skydot::testing

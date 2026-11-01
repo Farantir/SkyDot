@@ -4,6 +4,8 @@
 // asked, with the knobs a test needs.
 #pragma once
 
+#include "fake_condition_world.hpp"
+#include "vm/actor_host.hpp"
 #include "vm/quest_host.hpp"
 #include "vm/reference_host.hpp"
 #include "vm/sound_host.hpp"
@@ -166,6 +168,34 @@ struct FakeRefs final : skydot::vm::ReferenceHost {
     std::vector<skydot::vm::Inventory::Taken> remove_item_split(std::uint32_t, std::uint32_t, std::int64_t) override {
         return to_take;
     }
+};
+
+/// An actor host over an ActorStates and a FakeConditionWorld of its own, recording what was asked.
+struct FakeActors final : skydot::vm::ActorHost {
+    skydot::vm::ActorStates states;
+    FakeConditionWorld world;
+    /// The references the data knows as actors (the others have no state to change).
+    std::set<std::uint32_t> actors;
+    std::set<std::uint32_t> loaded_locations;
+    std::vector<std::uint32_t> evaluated;
+    std::vector<std::uint32_t> last_damagers;
+
+    FakeActors() {
+        states.set_source([this](std::uint32_t ref, skydot::vm::ActorBase& out) {
+            if (!actors.contains(ref)) {
+                return false;
+            }
+            out = skydot::vm::ActorBase{};
+            out.base[skydot::vm::av::k_health] = 100;
+            out.npc = ref + 0x1000; // the NPC_ a reference is
+            return true;
+        });
+    }
+    skydot::vm::ActorStates& actor_states() override { return states; }
+    skydot::conditions::ConditionWorld& conditions() override { return world; }
+    bool location_loaded(std::uint32_t location) override { return loaded_locations.contains(location); }
+    void evaluate_package(std::uint32_t ref) override { evaluated.push_back(ref); }
+    void set_last_damager(std::uint32_t killer) override { last_damagers.push_back(killer); }
 };
 
 } // namespace skydot::testing

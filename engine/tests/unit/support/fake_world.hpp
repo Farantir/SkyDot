@@ -72,6 +72,14 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         return it != rotations.end() ? it->second : ref_placement(ref).rotation;
     }
     bool ref_disabled(std::uint32_t ref) const override { return disabled.contains(ref); }
+    /// NPC_ records with the unique flag, and PACK -> owning quest.
+    std::set<std::uint32_t> unique_npcs;
+    std::map<std::uint32_t, std::uint32_t> package_quests;
+    bool npc_unique(std::uint32_t npc) const override { return unique_npcs.contains(npc); }
+    std::uint32_t package_owner_quest(std::uint32_t package) const override {
+        const auto it = package_quests.find(package);
+        return it != package_quests.end() ? it->second : 0;
+    }
     /// References with their 3D loaded.
     std::set<std::uint32_t> loaded_3d;
     bool ref_3d_loaded(std::uint32_t ref) const override { return loaded_3d.contains(ref); }

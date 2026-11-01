@@ -794,8 +794,6 @@ private:
     vm::ActorStates actors_;
     /// A ghost takes no hits: true (and says so once per actor) when `ref` is one.
     bool ghost_ignores_hit(std::uint32_t ref);
-    /// Actor.GetRelationshipRank: what a script set, else the RELA record (Papyrus scale), else 0.
-    std::int32_t relationship_rank_of(std::uint32_t a, std::uint32_t b);
     std::set<std::uint32_t> ghost_reported_;
     /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
     /// inventory resolves on the first look at it, also from const queries.

@@ -4,6 +4,7 @@
 // (ARCHITECTURE.md, "Natives and the world"). Each is in vm/natives_<family>.cpp.
 #pragma once
 
+#include "vm/actor_host.hpp"
 #include "vm/vm.hpp"
 #include "vm/quest_host.hpp"
 #include "vm/reference_host.hpp"
@@ -45,5 +46,10 @@ void bind_game_natives(Vm& vm, QuestHost& quests);
 /// ObjectReference natives: enable state, links, placement, animation,
 /// physics, activation, doors and locks, inventory, triggers.
 void bind_objectreference_natives(Vm& vm, const WorldAccess& world, WorldEvents& events, ReferenceHost& host);
+
+/// Actor natives beyond values: factions, kill, relationships, base flags,
+/// ghosts, locations, and the effects and animations the game layer shows;
+/// also the reference's location and worldspace.
+void bind_actor_extra_natives(Vm& vm, const WorldAccess& world, WorldEvents& events, ActorHost& host);
 
 } // namespace skydot::vm
