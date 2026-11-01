@@ -155,7 +155,7 @@ func _set_scale(scale: float) -> void:
 	if is_equal_approx(scale, _scale):
 		return
 	var player := _session.player_object()
-	if player != null and player.has_method("set_walk_speed"):
+	if player != null:
 		if _scale == 1.0:
 			_speeds = {"walk": player.get_walk_speed(), "run": player.get_run_speed(),
 				"sprint": player.get_sprint_speed(), "jump": player.get_jump_height()}

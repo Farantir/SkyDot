@@ -5,7 +5,7 @@
 # and faces where `yaw` and `pitch` say. Input only changes those two; the
 # places put the rig somewhere with place_at (the game's player contract).
 class_name PlayerRig
-extends RefCounted
+extends PlayerBody
 
 
 ## The player fell below the world and was put back, flying.
@@ -13,12 +13,6 @@ signal fell_through
 
 var camera: Camera3D
 var player: SkydotPlayer  # the camera follows its eyes
-var yaw := 0.0  # radians, about the up axis
-var pitch := 0.0
-## What load_section decoded, for place_at.
-var loaded_position := Vector3.ZERO
-var loaded_yaw := 0.0
-var loaded_pitch := 0.0
 var _last_ground := Vector3.ZERO  # where the player last stood
 var _ground_check := 0  # frames until checking the player is not under the land
 
@@ -44,21 +38,28 @@ func _init(settings: ViewerSettings, image_space: SkydotImageSpace, head: Camera
 ##
 ## Put the camera at `position` (a camera position) looking along `new_yaw` and
 ## `new_pitch`, with the player's feet below it.
-func place_at(position: Vector3, new_yaw: float, new_pitch: float) -> void:
-	camera.position = position
+func place_at(new_position: Vector3, new_yaw: float, new_pitch: float) -> void:
+	camera.position = new_position
 	apply_look(new_yaw, new_pitch)
 	# A little above the spot, so feet placed on a floor do not start in it.
-	player.teleport(position - Vector3(0, GameSession.EYE_HEIGHT - 0.05, 0))
+	player.teleport(new_position - Vector3(0, GameSession.EYE_HEIGHT - 0.05, 0))
 	_last_ground = player.global_position
 	_ground_check = 3
 
 
 ## Flying through everything, or walking.
-var flying: bool:
-	get:
-		return player.fly
-	set(value):
-		player.fly = value
+func is_flying() -> bool:
+	return player.fly
+
+
+func set_flying(on: bool) -> void:
+	player.fly = on
+
+
+## The shove goes to the SkydotPlayer.
+func impulse(velocity: Vector3) -> bool:
+	player.impulse(velocity)
+	return true
 
 
 ## Sprinting at the sprint gait (the session drains Stamina meanwhile) and

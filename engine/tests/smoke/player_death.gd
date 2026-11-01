@@ -22,31 +22,6 @@ var _died: Array[int] = []
 var _swings: Array[int] = []
 
 
-class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-	var loaded_position := Vector3.ZERO
-	var loaded_yaw := 0.0
-	var loaded_pitch := 0.0
-
-	func place_at(_at: Vector3, new_yaw: float, new_pitch: float) -> void:
-		yaw = new_yaw
-		pitch = new_pitch
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return var_to_bytes({"position": Vector3.ZERO, "yaw": 0.0, "pitch": 0.0})
-
-	func load_section(bytes: PackedByteArray) -> bool:
-		var state = bytes_to_var(bytes)
-		loaded_position = state["position"]
-		return true
-
-
 func _initialize() -> void:
 	var pack_dir := OS.get_environment("SKYDOT_SSE_PACK")
 	if pack_dir == "":
@@ -92,7 +67,7 @@ func _run(pack_dir: String) -> void:
 	_session.interactive = false
 	_session.failed.connect(func(text: String) -> void: expect(false, "the session fails: " + text))
 	root.add_child(_session)
-	expect(_session.open(config, _camera, FakePlayer.new()), "the session opens")
+	expect(_session.open(config, _camera, PlayerBody.new()), "the session opens")
 	if _session.world == null or _session.ai == null:
 		quit(1)
 		return

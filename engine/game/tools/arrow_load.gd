@@ -18,29 +18,6 @@ var _camera: Camera3D
 var _feet := Vector3.ZERO
 
 
-class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-	var loaded_position := Vector3.ZERO
-	var loaded_yaw := 0.0
-	var loaded_pitch := 0.0
-
-	func place_at(_at: Vector3, new_yaw: float, new_pitch: float) -> void:
-		yaw = new_yaw
-		pitch = new_pitch
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return PackedByteArray()
-
-	func load_section(_bytes: PackedByteArray) -> bool:
-		return true
-
-
 func _initialize() -> void:
 	var argv := OS.get_cmdline_user_args()
 	var args := {}
@@ -67,7 +44,7 @@ func _run(args: Dictionary) -> void:
 	_session.interactive = false
 	_session.failed.connect(func(text: String) -> void: printerr("arrow_load: ", text))
 	root.add_child(_session)
-	if not _session.open(config, _camera, FakePlayer.new()) or not _session.start_game():
+	if not _session.open(config, _camera, PlayerBody.new()) or not _session.start_game():
 		quit(1)
 		return
 	_feet = SkydotWorld.skyrim_position(Vector3(float(args.get("--x", 26500.0)), float(args.get("--y", 1800.0)), 0.0))

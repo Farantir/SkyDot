@@ -29,14 +29,14 @@ var _world: SkydotWorld
 var _host: Node3D  # the place's nodes are added here
 var _config: GameConfig
 var _viewpoint: Camera3D
-var _player: Object
+var _player: PlayerBody
 var _ai: SkydotAi  # null with --ai off
 var _clock: SkydotClock
 var _streamer: SkydotStreamer
 var _flying_by_place := false  # this place turned flying on (a door-less interior), not the player
 
 
-func _init(world: SkydotWorld, host: Node3D, config: GameConfig, viewpoint: Camera3D, player: Object,
+func _init(world: SkydotWorld, host: Node3D, config: GameConfig, viewpoint: Camera3D, player: PlayerBody,
 		ai: SkydotAi, clock: SkydotClock, streamer: SkydotStreamer) -> void:
 	_world = world
 	_host = host

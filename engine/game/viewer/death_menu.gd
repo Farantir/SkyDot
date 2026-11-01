@@ -15,7 +15,6 @@ const ROLL := 1.4
 const FLOOR_HEIGHT := 0.25
 
 var view: DeathView
-var _session: GameSession
 var _rig: PlayerRig
 var _loop: ShellLoop
 var _time := -1.0
@@ -24,7 +23,6 @@ var _eye_start := Vector3.ZERO
 
 func _init(session: GameSession, rig: PlayerRig, loop: ShellLoop) -> void:
 	layer = 20
-	_session = session
 	_rig = rig
 	_loop = loop
 	view = DeathView.new(session)

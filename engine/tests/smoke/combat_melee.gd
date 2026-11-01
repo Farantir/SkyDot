@@ -18,35 +18,12 @@ const STEP := 1.0 / 60.0
 
 var failures := 0
 var _session: GameSession
-var _player: FakePlayer
+var _player: PlayerBody
 var _camera: Camera3D
 var _feet := Vector3.ZERO
 var _hits: Array[Dictionary] = []
 var _states: Array = []
 var _attacks: Array = []
-
-
-class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-	var loaded_position := Vector3.ZERO
-	var loaded_yaw := 0.0
-	var loaded_pitch := 0.0
-
-	func place_at(_at: Vector3, new_yaw: float, new_pitch: float) -> void:
-		yaw = new_yaw
-		pitch = new_pitch
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return PackedByteArray()
-
-	func load_section(_bytes: PackedByteArray) -> bool:
-		return true
 
 
 func _initialize() -> void:
@@ -106,7 +83,7 @@ func _run(pack_dir: String) -> void:
 	config.quests = false
 	config.preload_doors = false
 	config.wander = false
-	_player = FakePlayer.new()
+	_player = PlayerBody.new()
 	_camera = Camera3D.new()
 	root.add_child(_camera)
 	_session = GameSession.new()

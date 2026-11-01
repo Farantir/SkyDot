@@ -18,12 +18,12 @@ var directory := "user://"
 var _papyrus: SkydotPapyrus
 var _place: Place
 var _streamer: SkydotStreamer
-var _player: Object  # GameSession's player contract: save_section, load_section, place_at
+var _player: PlayerBody
 var _bridge: ScriptBridge
 var _clock: SkydotClock
 
 
-func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, player: Object,
+func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, player: PlayerBody,
 		bridge: ScriptBridge, clock: SkydotClock) -> void:
 	_papyrus = papyrus
 	_place = place

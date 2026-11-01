@@ -11,26 +11,6 @@ var failures := 0
 var _session: GameSession
 
 
-class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-
-	func place_at(_at: Vector3, new_yaw: float, new_pitch: float) -> void:
-		yaw = new_yaw
-		pitch = new_pitch
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return PackedByteArray()
-
-	func load_section(_bytes: PackedByteArray) -> bool:
-		return true
-
-
 func _initialize() -> void:
 	var pack_dir := OS.get_environment("SKYDOT_SSE_PACK")
 	if pack_dir == "":
@@ -85,7 +65,7 @@ func _run(pack_dir: String) -> void:
 	_session.interactive = false
 	_session.failed.connect(func(text: String) -> void: expect(false, "the session fails: " + text))
 	root.add_child(_session)
-	expect(_session.open(config, viewpoint, FakePlayer.new()), "the session opens")
+	expect(_session.open(config, viewpoint, PlayerBody.new()), "the session opens")
 	if _session.world == null:
 		quit(1)
 		return

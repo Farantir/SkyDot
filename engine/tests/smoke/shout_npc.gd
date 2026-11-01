@@ -40,26 +40,11 @@ class FakeBody:
 
 
 class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-	var loaded_position := Vector3.ZERO
-	var loaded_yaw := 0.0
-	var loaded_pitch := 0.0
+	extends PlayerBody
 	var player := FakeBody.new()
 
-	func place_at(_at: Vector3, new_yaw: float, new_pitch: float) -> void:
-		yaw = new_yaw
-		pitch = new_pitch
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return PackedByteArray()
-
-	func load_section(_bytes: PackedByteArray) -> bool:
+	func impulse(velocity: Vector3) -> bool:
+		player.impulse(velocity)
 		return true
 
 

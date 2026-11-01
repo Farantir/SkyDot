@@ -1169,11 +1169,11 @@ child process (`bethconv.gd`):
 game, apart from any front end (ADR 0002). `open(config, viewpoint, player)`
 takes a `GameConfig` (what a shell's options say: pack, building, streaming,
 time, the self-driving runs), the camera to stream around and the shell's
-player object; it opens the pack and world and makes `SkydotPapyrus`,
+player, a `PlayerBody`; it opens the pack and world and makes `SkydotPapyrus`,
 `SkydotAi`, `SkydotClock`, `SkydotStreamer` and the parts below, and connects
 every `SkydotPapyrus` signal there or in a part it makes. It runs headless
 (`tests/smoke/game_save.gd` drives it with a bare camera and a stand-in
-player). A shell calls `start_game`, `enter_world`/`enter_cell`, `step`
+`PlayerBody`). A shell calls `start_game`, `enter_world`/`enter_cell`, `step`
 each frame (streaming, preloading, the door fade, scripts, clock hand-off,
 AI), `activate_in_view` (along the viewpoint, or the node `set_pointer` names: a VR
 shell's controller), `save_game`/`load_game`, and listens to `message`,
@@ -1204,6 +1204,7 @@ model would carry over.
 | --- | --- | --- |
 | `game_config.gd` | `GameConfig` | what a session is opened with; defaults are the viewer's |
 | `place.gd` | `Place` | the place shown: entering an interior or a worldspace, its sky, light and environment, the weather start, leaving the old one, actors the AI brings in (never twice), an actor the editor placed disabled that a script enables (`enable_actor`: in its cell, or a flier far outside the loaded cells, Mirmulnir) |
+| `player_body.gd` | `PlayerBody` | the contract for the shell's player object: yaw and pitch, `flying` (over `is_flying`/`set_flying`), `place_at`, `set_view_distance`, the PLYR `save_section`/`load_section` (`loaded_*` for `place_at`), `is_sprinting`/`set_sprint_allowed`, `impulse` (false: no body to push), and the speeds, jump height and back ratios the data sets. The base stores the values and is the stand-in tests use; `PlayerRig` (8.3) extends it |
 | `place_transition.gd` | `PlaceTransition` | the fade phases through a load door and `travel`, which takes what the streamer built ahead |
 | `script_bridge.gd` | `ScriptBridge` | the `SkydotPapyrus` signal handlers (enable, animate, impulse, motion type, open, lock, graph states, quests, messages), carrying out activation outcomes (load doors, plain doors, furniture, containers: `container_opened`), the `--activate` runs |
 | `placed.gd` | `PlacedRefs` | the nodes of references scripts place (PlaceAtMe, explosions, actors quest aliases create at markers: built when their cell is, moved by MoveTo while they wait) and destruction model swaps; the VM owns the references |
@@ -1237,7 +1238,7 @@ the frame and the benchmark.
 | `start_options.gd` | `StartOptions` | owned by `ShellLoop`: the start and test options that act on the game (`--damage-actor`, `--equip`, `--ready-weapon` (only while sheathed), `--drink`, `--cast`, `--attack-at`, `--equip-spell`, `--cast-at`, `--shout`, `--spawn`, `--kill`, `--npc-give`, `--strip-melee`, `--fight`, `--npc-draw`, `--learn-enchantment`) and their steps (`--kill-after`, `--god`, `--shout-wait`, `--fight`, the aiming ones) |
 | `death_menu.gd` | `DeathMenu` | the viewer's host of `DeathView` (`ui/death_view.gd`): only the camera's fall to the floor and the layer; the load goes through `ShellLoop.reload_after_death` |
 | `image_space_sync.gd` | `ImageSpaceSync` | the per-frame fog and image space sync, shared with the VR shell |
-| `player_rig.gd` | `PlayerRig` | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
+| `player_rig.gd` | `PlayerRig` (a `PlayerBody`) | the camera and the `SkydotPlayer`, yaw and pitch, `place_camera`, following the eyes, the walking checks (land lift, fall-through catch) |
 | `first_person_body.gd` | `FirstPersonBody` | the player's arms and weapon (shared with the VR shell): `skeletonfirst` with the skin's and the armor's first-person models (the plan's `parts_1st`), the weapon on the `Weapon` bone, `Camera1st [Cam1]` at the camera, the clips `Combat` names, hidden while sheathed; with a controller node (VR): the weapon only, and `update_hand` sweeps a fast blade into `Combat.hit_segment` |
 | `player_input.gd` | `PlayerInput` | keyboard and mouse. Movement, look and jump go to the rig; every other key is a `command` signal. Keys are InputMap actions declared in `game/project.godot`, so a gamepad or VR shell can map its own events to them; `ready_weapon` (R, X) is a command, `attack_right` (left mouse, right trigger) is `attack_changed(pressed)` (a click that only captures the mouse is no attack); `attack_left` (right mouse, left trigger) is `attack_left_changed(pressed)` (a spell in the left hand), `power` (Z, RB) is a command |
 | `shot_recorder.gd` | `ShotRecorder` | F12 shots (PNG and JSON with place, camera in engine and game terms, time, weather, options, pack hashes, GPU, console commands and the note the user types), `--screenshot`, `--shot-delay` |

@@ -11,25 +11,6 @@ const INSIDE_DOOR := 0x303
 var failures := 0
 
 
-class FakePlayer:
-	extends RefCounted
-	var yaw := 0.0
-	var pitch := 0.0
-	var flying := false
-
-	func place_at(_at: Vector3, _yaw: float, _pitch: float) -> void:
-		pass
-
-	func set_view_distance(_metres: float) -> void:
-		pass
-
-	func save_section() -> PackedByteArray:
-		return PackedByteArray()
-
-	func load_section(_bytes: PackedByteArray) -> bool:
-		return true
-
-
 func _initialize() -> void:
 	var pack_dir := OS.get_environment("SKYDOT_TESTPACK")
 	if pack_dir == "":
@@ -58,7 +39,7 @@ func _run(pack_dir: String) -> void:
 	var session := GameSession.new()
 	session.interactive = false
 	root.add_child(session)
-	expect(session.open(config, viewpoint, FakePlayer.new()), "the session opens")
+	expect(session.open(config, viewpoint, PlayerBody.new()), "the session opens")
 	expect(session.start_game(), "the game starts")
 	expect(session.enter_cell(CELL, SkydotWorld.skyrim_position(Vector3(0, -100, 150)), null), "the interior is entered")
 	var prompt := ActivationPrompt.new(session.world, session.papyrus, session.host, viewpoint)

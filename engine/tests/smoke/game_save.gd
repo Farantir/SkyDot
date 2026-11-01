@@ -271,35 +271,11 @@ func _papyrus_time() -> float:
 ## A stand-in for a shell's player (GameSession's contract): it only keeps
 ## where it was put.
 class TestPlayer:
-    extends RefCounted
-    var yaw := 0.0
-    var pitch := 0.0
-    var flying := false
-    var position := Vector3.ZERO
+    extends PlayerBody
     var view_distance := 0.0
-    var loaded_position := Vector3.ZERO
-    var loaded_yaw := 0.0
-    var loaded_pitch := 0.0
-
-    func place_at(at: Vector3, new_yaw: float, new_pitch: float) -> void:
-        position = at
-        yaw = new_yaw
-        pitch = new_pitch
 
     func set_view_distance(metres: float) -> void:
         view_distance = metres
-
-    func save_section() -> PackedByteArray:
-        return var_to_bytes({"position": position, "yaw": yaw, "pitch": pitch})
-
-    func load_section(bytes: PackedByteArray) -> bool:
-        var state = bytes_to_var(bytes)
-        if typeof(state) != TYPE_DICTIONARY or typeof(state.get("position")) != TYPE_VECTOR3:
-            return false
-        loaded_position = state["position"]
-        loaded_yaw = state["yaw"]
-        loaded_pitch = state["pitch"]
-        return true
 
 
 ## The game, as a shell would make it but with no rig, no input, no overlay:

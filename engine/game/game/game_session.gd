@@ -153,7 +153,7 @@ var _target := {}
 var _target_frame := -1
 var _sprint_allowed := true
 var _feet := Vector3.ZERO  # the player's feet at the last step, engine space
-var _player: Object
+var _player: PlayerBody
 var _bridge: ScriptBridge
 # Dialogue: the speaker, the lines still to speak, the one being spoken (and
 # the seconds left of it), and what comes after the lines.
@@ -200,7 +200,7 @@ var speech: Speech
 
 ## Open the pack and put the game together around `viewpoint` and `player`.
 ## False (with `failed` emitted) if the pack does not open.
-func open(game_config: GameConfig, viewpoint: Camera3D, player: Object) -> bool:
+func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> bool:
 	config = game_config
 	_viewpoint = viewpoint
 	_pointer = viewpoint
@@ -745,8 +745,6 @@ func update_scripts(delta: float, feet: Vector3) -> void:
 ## it may not sprint until Stamina is back above 0. Damaging Stamina also holds
 ## its regeneration back, so it does not recover while sprinting.
 func _drain_sprint(delta: float) -> void:
-	if not (_player.has_method("is_sprinting") and _player.has_method("set_sprint_allowed")):
-		return
 	if _player.is_sprinting():
 		papyrus.damage_actor_value(SkydotPapyrus.PLAYER_REF, "Stamina", _sprint_drain() * delta)
 	var allowed := actor_value(SkydotPapyrus.PLAYER_REF, "Stamina") > 0.0
@@ -770,8 +768,6 @@ func _sprint_drain() -> float:
 ## types (units per second, times SpeedMult / 100) and jumps fJumpHeightMin high.
 ## What the pack lacks leaves the shell's own speeds.
 func _apply_player_movement() -> void:
-	if not _player.has_method("set_walk_speed"):
-		return
 	var metres := SkydotWorld.unit_scale()
 	var jump := world.get_gmst_float("fJumpHeightMin", JUMP_HEIGHT_UNITS)
 	_player.set_jump_height(jump * metres)
@@ -957,11 +953,9 @@ func _push_player(source: int, force: float) -> void:
 		away = -_viewpoint.global_transform.basis.z
 		away.y = 0.0
 	var speed := (away.normalized() + Vector3.UP * Corpses.PLAYER_PUSH_LIFT).normalized() * force * Corpses.PLAYER_PUSH_SPEED_PER_FORCE
-	var body: Object = _player.get("player") if _player != null else null
-	if body == null or not body.has_method("impulse"):
+	if not _player.impulse(speed):
 		print("push: the player is pushed by 0x%08X (force %s): no body to push" % [source, force])
 		return
-	body.impulse(speed)
 	player_pushed.emit(source, speed)
 	print("push: the player is pushed by 0x%08X (force %s, %.1f m/s)" % [source, force, speed.length()])
 
@@ -1358,7 +1352,7 @@ func player_feet() -> Vector3:
 	return _feet
 
 
-func player_object() -> Object:
+func player_object() -> PlayerBody:
 	return _player
 
 
