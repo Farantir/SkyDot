@@ -6,7 +6,8 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdio>
+#include <functional>
+#include <iterator>
 #include <map>
 
 namespace skydot::crafting {
@@ -54,6 +55,24 @@ double effect_cost(float base_cost, float magnitude, std::uint32_t duration) {
 }
 
 } // namespace
+
+int temper_level(double effective_skill) {
+    return std::clamp(static_cast<int>(std::floor((effective_skill + 38.0) * 3.0 / 103.0)), 0, k_temper_max_level);
+}
+
+float temper_health(int level) { return 1.0F + 0.1F * static_cast<float>(std::clamp(level, 0, k_temper_max_level)); }
+
+const char* skill_use_kind_name(SkillUse::Kind kind) {
+    switch (kind) {
+    case SkillUse::Kind::create: return "create";
+    case SkillUse::Kind::improve: return "improve";
+    case SkillUse::Kind::brew: return "brew";
+    case SkillUse::Kind::enchant: return "enchant";
+    case SkillUse::Kind::disenchant: return "disenchant";
+    case SkillUse::Kind::recharge: return "recharge";
+    }
+    return "";
+}
 
 std::string Crafting::effect_name(std::uint32_t effect) const {
     const auto* e = effect_of(world_, effect);
@@ -116,11 +135,29 @@ std::int64_t Crafting::value_of(std::uint32_t form) const {
     return item != nullptr ? item->value() : 0;
 }
 
-void Crafting::log_skill(const char* skill, std::uint32_t form, std::int64_t value) {
-    char id[16];
-    std::snprintf(id, sizeof id, "0x%08X", form);
-    host_.log(std::string("skill: ") + skill + " use (" + id + ", value " + std::to_string(value) +
-              "): XP waits for P6");
+bool Crafting::is_weapon(std::uint32_t form) const {
+    const auto* item = item_of(world_, form);
+    return item != nullptr && item->category() == wfb::ItemCategory::weapon;
+}
+
+std::string Crafting::tier_name(float health, bool weapon) const {
+    const int level = vm::temper_quality(health);
+    if (level <= 0) {
+        return {};
+    }
+    const std::string name = std::string(weapon ? "sHealthDataPrefixWeap" : "sHealthDataPrefixArmo") + std::to_string(level);
+    return host_.gmst_text(name, vm::k_temper_tiers[level - 1].name);
+}
+
+float Crafting::tempered_health(std::uint32_t form, bool is_enchanted) const {
+    perks::EntryContext ctx;
+    ctx.owner = player_;
+    ctx.subjects = {player_, form, 0};
+    ctx.item_enchanted = is_enchanted;
+    // (skill - 13.29) * (1 + perk) + 13.29: the perk entries multiply the part above 13.29.
+    const double above = host_.perk_entry(perks::EntryPoint::ModTemperingHealth, ctx,
+                                          host_.skill(skill_av::smithing) - k_temper_skill_offset);
+    return temper_health(temper_level(above + k_temper_skill_offset));
 }
 
 // ---- create object -----------------------------------------------------------------
@@ -164,9 +201,15 @@ std::int64_t Crafting::craft(std::uint32_t recipe_id, std::int64_t count) {
     if (made > 0) {
         const auto* item = item_of(world_, recipe->product());
         const bool smithing = item != nullptr && (item->category() == wfb::ItemCategory::weapon ||
-                                                  item->category() == wfb::ItemCategory::armor);
+                                                  item->category() == wfb::ItemCategory::armor ||
+                                                  item->category() == wfb::ItemCategory::jewelry);
         if (smithing) {
-            log_skill("Smithing", recipe->product(), value_of(recipe->product()) * made);
+            SkillUse use;
+            use.kind = SkillUse::Kind::create;
+            use.skill = skill_av::smithing;
+            use.count = static_cast<double>(made * std::max<std::int32_t>(recipe->product_count(), 1));
+            use.value = static_cast<double>(value_of(recipe->product()));
+            host_.skill_use(use);
         }
     }
     return made;
@@ -210,7 +253,7 @@ std::vector<TemperRow> Crafting::temper_rows(std::uint32_t bench_ref) const {
             row.extra = extra;
             row.count = inventory_.count_extra(player_, form, extra);
             row.health = health_of(extra);
-            row.next_health = std::max(row.health, k_placeholder_temper_health);
+            row.next_health = std::max(row.health, tempered_health(form, item.enchanted));
             row.components = components_of(*recipe);
             row.craftable = all_held(row.components) && row.next_health > row.health;
             out.push_back(std::move(row));
@@ -229,7 +272,8 @@ bool Crafting::temper(std::uint32_t recipe_id, std::uint32_t form, std::uint32_t
         return false;
     }
     const float now = health_of(extra);
-    if (k_placeholder_temper_health <= now) {
+    const float next = tempered_health(form, item.enchanted);
+    if (next <= now) {
         return false;
     }
     const auto components = components_of(*recipe);
@@ -241,10 +285,16 @@ bool Crafting::temper(std::uint32_t recipe_id, std::uint32_t form, std::uint32_t
     if (const auto* old = extras_.find(extra)) {
         changed = *old;
     }
-    changed.health = k_placeholder_temper_health;
+    changed.health = next;
     (void)inventory_.remove_extra(player_, form, extra, 1);
     inventory_.add(player_, form, 1, extras_.intern(changed));
-    log_skill("Smithing", form, value_of(form));
+    SkillUse use;
+    use.kind = SkillUse::Kind::improve;
+    use.skill = skill_av::smithing;
+    use.delta_quality = static_cast<double>(vm::temper_quality(next) - vm::temper_quality(now));
+    // ESTIMATE: the item's value follows its health (no pack data says how a tempered item is priced).
+    use.delta_value = static_cast<double>(value_of(form)) * static_cast<double>(next - now);
+    host_.skill_use(use);
     return true;
 }
 
@@ -273,7 +323,9 @@ std::vector<AlchemyRow> Crafting::alchemy_rows() const {
 namespace {
 
 /// The effects of an ingredient with their costs at `skill`.
-std::vector<Instance> instances_of(const wfb::World& world, std::uint32_t form, double skill) {
+using EffectMult = std::function<double(std::uint32_t effect)>;
+std::vector<Instance> instances_of(const wfb::World& world, std::uint32_t form, double skill,
+                                   const EffectMult& perk = nullptr) {
     std::vector<Instance> out;
     const auto* item = item_of(world, form);
     const auto* effects = item != nullptr ? item->effects() : nullptr;
@@ -292,11 +344,12 @@ std::vector<Instance> instances_of(const wfb::World& world, std::uint32_t form, 
         inst.index = i;
         inst.magnitude = e->magnitude();
         inst.duration = e->duration();
+        const double strength = factor * (perk ? perk(e->effect()) : 1.0);
         if ((mgef->flags() & k_mgef_power_affects_magnitude) != 0) {
-            inst.magnitude = static_cast<float>(static_cast<double>(inst.magnitude) * factor);
+            inst.magnitude = static_cast<float>(static_cast<double>(inst.magnitude) * strength);
         }
         if ((mgef->flags() & k_mgef_power_affects_duration) != 0) {
-            inst.duration = static_cast<std::uint32_t>(std::lround(static_cast<double>(inst.duration) * factor));
+            inst.duration = static_cast<std::uint32_t>(std::lround(static_cast<double>(inst.duration) * strength));
         }
         inst.cost = effect_cost(mgef->base_cost(), inst.magnitude, inst.duration);
         out.push_back(inst);
@@ -318,34 +371,65 @@ AlchemyPreview Crafting::preview(std::span<const std::uint32_t> forms) const {
             }
         }
     }
-    std::map<std::uint32_t, std::pair<int, Instance>> shared; // effect -> (ingredients with it, strongest)
-    for (const std::uint32_t form : forms) {
-        for (const auto& inst : instances_of(world_, form, k_placeholder_skill)) {
-            auto [it, fresh] = shared.try_emplace(inst.effect, 0, inst);
-            ++it->second.first;
-            if (!fresh && inst.cost > it->second.second.cost) {
-                it->second.second = inst;
+    const double skill = host_.skill(skill_av::alchemy);
+    // The effects the mix shares, the strongest instance of each, most costly first.
+    const auto shared_effects = [&](const EffectMult& perk) {
+        std::map<std::uint32_t, std::pair<int, Instance>> shared; // effect -> (ingredients with it, strongest)
+        for (const std::uint32_t form : forms) {
+            for (const auto& inst : instances_of(world_, form, skill, perk)) {
+                auto [it, fresh] = shared.try_emplace(inst.effect, 0, inst);
+                ++it->second.first;
+                if (!fresh && inst.cost > it->second.second.cost) {
+                    it->second.second = inst;
+                }
             }
         }
-    }
-    std::vector<Instance> effects;
-    for (const auto& [effect, entry] : shared) {
-        if (entry.first >= 2) {
-            effects.push_back(entry.second);
+        std::vector<Instance> found;
+        for (const auto& [effect, entry] : shared) {
+            if (entry.first >= 2) {
+                found.push_back(entry.second);
+            }
         }
-    }
+        std::ranges::stable_sort(found, [](const Instance& a, const Instance& b) { return a.cost > b.cost; });
+        return found;
+    };
+    const auto hostile = [&](std::uint32_t effect) {
+        const auto* m = effect_of(world_, effect);
+        return m != nullptr && (m->flags() & k_mgef_hostile) != 0;
+    };
+    // Whether it is a poison is the strongest effect's nature, before the perks scale anything.
+    auto effects = shared_effects(nullptr);
     if (effects.empty()) {
         return out;
     }
-    std::ranges::stable_sort(effects, [](const Instance& a, const Instance& b) { return a.cost > b.cost; });
+    const bool poison = hostile(effects.front().effect);
+    perks::EntryContext ctx;
+    ctx.owner = player_;
+    ctx.subjects = {player_, 0, 0};
+    ctx.making_poison = poison;
+    // Mod Alchemy Effectiveness (66): Alchemist, Physician, Benefactor, Poisoner multiply an effect's strength.
+    effects = shared_effects([&](std::uint32_t effect) {
+        perks::EntryContext c = ctx;
+        c.alchemy_effect = effect;
+        return host_.perk_entry(perks::EntryPoint::ModAlchemyEffectiveness, c, 1.0);
+    });
+    // Purify Alchemy Ingredients (73): Purity keeps only the effects that suit (a potion's good ones, a
+    // poison's bad ones), unless that would leave nothing.
+    if (host_.perk_entry(perks::EntryPoint::PurifyAlchemyIngredients, ctx, 0.0) > 0.5) {
+        std::vector<Instance> kept;
+        std::ranges::copy_if(effects, std::back_inserter(kept),
+                             [&](const Instance& e) { return hostile(e.effect) == poison; });
+        if (!kept.empty()) {
+            effects = std::move(kept);
+        }
+    }
     double value = 0.0;
     for (const auto& e : effects) {
         out.effects.push_back({e.effect, e.magnitude, e.duration});
         value += e.cost;
     }
     out.value = static_cast<std::int32_t>(std::lround(value));
-    const auto* strongest = effect_of(world_, effects.front().effect);
-    out.poison = strongest != nullptr && (strongest->flags() & k_mgef_hostile) != 0;
+    out.poison = poison;
     out.name = std::string(out.poison ? "Poison of " : "Potion of ") + effect_name(effects.front().effect);
     out.mixable = true;
     return out;
@@ -378,7 +462,7 @@ std::uint32_t Crafting::mix(std::span<const std::uint32_t> forms) {
     inventory_.add(player_, id, 1);
     // Every shared effect becomes known on the ingredients that have it.
     for (const std::uint32_t form : forms) {
-        for (const auto& inst : instances_of(world_, form, k_placeholder_skill)) {
+        for (const auto& inst : instances_of(world_, form, host_.skill(skill_av::alchemy))) {
             const bool shared = std::ranges::any_of(plan.effects, [&](const vm::CreatedEffect& e) {
                 return e.effect == inst.effect;
             });
@@ -387,7 +471,11 @@ std::uint32_t Crafting::mix(std::span<const std::uint32_t> forms) {
             }
         }
     }
-    log_skill("Alchemy", id, plan.value);
+    SkillUse use;
+    use.kind = SkillUse::Kind::brew;
+    use.skill = skill_av::alchemy;
+    use.value = static_cast<double>(plan.value);
+    host_.skill_use(use);
     return id;
 }
 

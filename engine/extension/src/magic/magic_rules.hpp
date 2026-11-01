@@ -101,6 +101,7 @@ inline constexpr std::uint8_t mod_spell_duration = 30;
 inline constexpr std::uint8_t mod_spell_cost = 38;
 inline constexpr std::uint8_t mod_incoming_spell_magnitude = 41;
 inline constexpr std::uint8_t mod_incoming_spell_duration = 42;
+inline constexpr std::uint8_t mod_poison_dose_count = 83; ///< Concentrated Poison (enchanted.hpp).
 } // namespace perk_ep
 
 /// PLACEHOLDER until dual casting exists: its multiplier is 1.

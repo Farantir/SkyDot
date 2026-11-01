@@ -72,6 +72,10 @@ struct Host final : CraftingRuntime::Host {
         return std::make_unique<FakeConditionWorld>();
     }
     void announce(const std::string& line) override { lines.push_back(line); }
+    double player_actor_value(std::uint32_t) override { return 15.0; }
+    double perk_entry(skydot::perks::EntryPoint, const skydot::perks::EntryContext&, double value) override {
+        return value;
+    }
 };
 
 } // namespace

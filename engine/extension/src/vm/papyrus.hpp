@@ -229,7 +229,7 @@ public:
     godot::Dictionary cast_scroll(std::int64_t caster, std::int64_t scroll, std::int64_t target);
     /// Put a poison (an ALCH or created potion the actor carries) on the weapon in its right hand
     /// (bows included; a staff or fists do not count): one poison is used up, the weapon unit gets
-    /// the poison for one hit (the extra's `poison`, `poison_doses`; no perks yet). {ok, reason ("" or
+    /// the poison for one hit (the extra's `poison`, `poison_doses`; Mod Poison Dose Count sets the doses). {ok, reason ("" or
     /// "not a poison", "not carried", "no weapon", "already poisoned", "no actor"), weapon, doses}.
     godot::Dictionary apply_poison(std::int64_t actor, std::int64_t poison);
     /// An enchanted weapon unit's charge for the HUD and the menus: {enchantment (0: none), charge,
@@ -316,6 +316,9 @@ public:
     /// The tempering rows of a smithing bench (type 2 or 7): {recipe, form,
     /// extra, name, tier, next_tier, components, craftable} each.
     godot::Array temper_rows(std::int64_t bench_ref);
+    /// The skill use the crafts since the last call earned: [{kind, skill, count, value, delta_value,
+    /// delta_quality, soul}], cleared. GameSession turns them into skill progress (Progression.crafting_use_amount).
+    godot::Array take_crafting_skill_uses();
     /// Temper one unit of the stack (form, extra).
     bool temper(std::int64_t recipe, std::int64_t form, std::int64_t extra);
     /// The enchanting table (types 3, 4): {disenchant: [{form, extra, name, enchantment, ok, refusal}],
@@ -864,6 +867,8 @@ private:
     magic::SpellBook* spell_book();
     /// The enchanting table over the player's inventory; empty before there is a VM and a world.
     std::optional<magic::Enchanting> enchanting_table();
+    /// The player's Enchanting perks as the enchanting rules ask them (entry points 77, 79, 49, 80).
+    magic::EnchantPerks enchant_perks();
     /// The name a unit shows: its extra's, else its base's.
     std::string unit_name(std::uint32_t form, std::uint32_t extra) const;
     /// The soul an actor that dies now gives: level (1 if unknown) and whether it is an NPC.

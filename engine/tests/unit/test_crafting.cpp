@@ -364,6 +364,26 @@ struct FakeHost final : crafting::CraftingHost {
     bool deny = false; // every recipe's conditions fail
     std::vector<std::string> lines;
     std::vector<bool> enchanted_asked;
+    // The player's skills and what the perk data of the matching perks does to the entry points.
+    double smithing = 15.0;
+    double alchemy = 15.0;
+    double temper_perk = 1.0;     // Steel Smithing and the like: Mod Tempering Health x2
+    double alchemist = 1.0;       // Alchemist rank 1: Mod Alchemy Effectiveness x1.2
+    bool purity = false;          // Purify Alchemy Ingredients 1
+    std::vector<crafting::SkillUse> uses;
+
+    double skill(int av) const override {
+        return av == crafting::skill_av::smithing ? smithing : (av == crafting::skill_av::alchemy ? alchemy : 15.0);
+    }
+    double perk_entry(skydot::perks::EntryPoint ep, const skydot::perks::EntryContext&, double value) const override {
+        switch (ep) {
+        case skydot::perks::EntryPoint::ModTemperingHealth: return value * temper_perk;
+        case skydot::perks::EntryPoint::ModAlchemyEffectiveness: return value * alchemist;
+        case skydot::perks::EntryPoint::PurifyAlchemyIngredients: return purity ? 1.0 : value;
+        default: return value;
+        }
+    }
+    void skill_use(const crafting::SkillUse& use) override { uses.push_back(use); }
 
     bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>*,
                          const crafting::ConditionItem* item) override {
@@ -451,9 +471,11 @@ TEST_CASE("crafting takes the components and gives the product count", "[craftin
     CHECK(r.inventory.count(k_player, k_dagger) == 1);
     CHECK(r.inventory.count(k_player, k_ingot) == 0);
     CHECK(r.inventory.count(k_player, k_strips) == 5);
-    REQUIRE_FALSE(r.host.lines.empty());
-    CHECK(r.host.lines.back().find("skill: Smithing use") == 0);
-    CHECK(r.host.lines.back().find("value 20") != std::string::npos);
+    REQUIRE(r.host.uses.size() == 1); // the leather strips earn nothing; the dagger does
+    CHECK(r.host.uses.back().kind == crafting::SkillUse::Kind::create);
+    CHECK(r.host.uses.back().skill == crafting::skill_av::smithing);
+    CHECK(r.host.uses.back().value == Approx(20.0));
+    CHECK(r.host.uses.back().count == Approx(1.0));
     CHECK(r.crafting.craft(0xDEAD, 1) == 0);
 }
 
@@ -470,7 +492,7 @@ TEST_CASE("tempering needs a carried product and only improves it", "[crafting]"
     CHECK(rows[0].health == Approx(1.0F));
     CHECK(rows[0].next_health == Approx(1.1F));
     CHECK(rows[0].craftable);
-    CHECK(std::string(crafting::Crafting::tier_name(rows[0].next_health)) == "Fine");
+    CHECK(std::string(r.crafting.tier_name(rows[0].next_health, true)) == "Fine");
     CHECK(r.crafting.temper_rows(k_forge).empty()); // not a smithing bench
 
     CHECK(r.crafting.temper(k_temper_dagger, k_dagger, 0));
@@ -481,14 +503,49 @@ TEST_CASE("tempering needs a carried product and only improves it", "[crafting]"
     REQUIRE(rows.size() == 2);
     const auto& tempered = rows[0].extra != 0 ? rows[0] : rows[1];
     CHECK(tempered.health == Approx(1.1F));
-    CHECK_FALSE(tempered.craftable); // already Fine: the placeholder gives no more
+    CHECK_FALSE(tempered.craftable); // already Fine: Smithing 15 gives no more
     CHECK_FALSE(r.crafting.temper(k_temper_dagger, k_dagger, tempered.extra));
     CHECK(r.inventory.count(k_player, k_ingot) == 1);
     // A second plain dagger tempered joins the Fine stack.
     CHECK(r.crafting.temper(k_temper_dagger, k_dagger, 0));
     CHECK(r.inventory.count_extra(k_player, k_dagger, tempered.extra) == 2);
-    REQUIRE_FALSE(r.host.lines.empty());
-    CHECK(r.host.lines.back().find("Smithing") != std::string::npos);
+    REQUIRE_FALSE(r.host.uses.empty());
+    CHECK(r.host.uses.back().kind == crafting::SkillUse::Kind::improve);
+    CHECK(r.host.uses.back().delta_quality == Approx(1.0));
+    CHECK(r.host.uses.back().delta_value == Approx(20.0 * 0.1)); // value 20, health 1.0 to 1.1
+}
+
+TEST_CASE("tempering reaches the quality the Smithing skill and the matching perk give", "[crafting][smithing]") {
+    // UESP Skyrim:Smithing: effective = (skill - 13.29) * (1 + perk) + 13.29; level = floor((eff + 38) * 3 / 103).
+    struct Case {
+        double skill;
+        double perk;
+        float health;
+        const char* tier;
+    };
+    const Case cases[] = {
+        {15, 1, 1.1F, "Fine"},        {15, 2, 1.1F, "Fine"},      // 15 -> 1.54; 16.71 -> 1.59
+        {50, 1, 1.2F, "Superior"},    {50, 2, 1.3F, "Exquisite"}, // 2.56; 86.71 -> 3.63
+        {100, 1, 1.4F, "Flawless"},   {100, 2, 1.6F, "Legendary"}, // 4.02; 186.71 -> 6.54
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.skill, c.perk);
+        Rig r;
+        r.host.smithing = c.skill;
+        r.host.temper_perk = c.perk;
+        r.inventory.add(k_player, k_dagger, 1);
+        r.inventory.add(k_player, k_ingot, 1);
+        const auto rows = r.crafting.temper_rows(k_wheel);
+        REQUIRE(rows.size() == 1);
+        CHECK(rows[0].next_health == Approx(c.health));
+        CHECK(r.crafting.tier_name(rows[0].next_health, true) == c.tier);
+        REQUIRE(r.crafting.temper(k_temper_dagger, k_dagger, 0));
+        const auto after = r.crafting.temper_rows(k_wheel);
+        REQUIRE(after.size() == 1);
+        CHECK(after[0].health == Approx(c.health));
+    }
+    CHECK(crafting::temper_level(186.71) == 6);
+    CHECK(crafting::temper_level(1000.0) == 6); // there is no seventh tier
 }
 
 TEST_CASE("ingredients sharing an effect make a potion, the strongest instance wins", "[crafting][alchemy]") {
@@ -518,6 +575,43 @@ TEST_CASE("ingredients sharing an effect make a potion, the strongest instance w
     CHECK(fortify.effects[0].duration == static_cast<std::uint32_t>(std::lround(60 * 4.3))); // power on duration
 }
 
+TEST_CASE("the Alchemy skill and Alchemist scale a potion's magnitude", "[crafting][alchemy]") {
+    // UESP Skyrim:Alchemy: 4 * base * (1 + 0.5 * skill / 100) * Alchemist; Alpha's Restore Health is 5.
+    struct Case {
+        double skill;
+        double alchemist;
+        double magnitude;
+    };
+    const Case cases[] = {
+        {15, 1.0, 21.5}, {15, 1.2, 25.8},  // 20 * 1.075, x1.2
+        {50, 1.0, 25.0}, {50, 1.2, 30.0},  // 20 * 1.25, x1.2
+    };
+    for (const auto& c : cases) {
+        CAPTURE(c.skill, c.alchemist);
+        Rig r;
+        r.host.alchemy = c.skill;
+        r.host.alchemist = c.alchemist;
+        const auto plan = r.crafting.preview(std::vector<std::uint32_t>{k_a, k_b});
+        REQUIRE(plan.mixable);
+        CHECK(static_cast<double>(plan.effects[0].magnitude) == Approx(c.magnitude).margin(0.001));
+    }
+}
+
+TEST_CASE("Purity keeps the effects that suit the potion or the poison", "[crafting][alchemy]") {
+    Rig r;
+    // Beta: Restore Health 3 and Damage Test 2; Epsilon: Damage Test 1 and Restore Health 1. Both shared.
+    const std::vector<std::uint32_t> be{k_b, k_e};
+    const auto plain = r.crafting.preview(be);
+    REQUIRE(plain.mixable);
+    CHECK(plain.effects.size() == 2);
+    r.host.purity = true;
+    const auto pure = r.crafting.preview(be);
+    REQUIRE(pure.mixable);
+    REQUIRE(pure.effects.size() == 1);
+    CHECK(pure.poison == plain.poison);
+    CHECK((pure.poison ? pure.effects[0].effect == k_harm : pure.effects[0].effect == k_heal));
+}
+
 TEST_CASE("hostile effects make poisons", "[crafting][alchemy]") {
     Rig r;
     const auto plan = r.crafting.preview(std::vector<std::uint32_t>{k_d, k_e});
@@ -542,8 +636,10 @@ TEST_CASE("mixing consumes one of each, creates the potion once and teaches the 
     CHECK(r.created.known(k_a, 0)); // Restore Health is A's first effect
     CHECK_FALSE(r.created.known(k_a, 1));
     CHECK(r.created.known(k_b, 0));
-    REQUIRE_FALSE(r.host.lines.empty());
-    CHECK(r.host.lines.back().find("skill: Alchemy use") == 0);
+    REQUIRE_FALSE(r.host.uses.empty());
+    CHECK(r.host.uses.back().kind == crafting::SkillUse::Kind::brew);
+    CHECK(r.host.uses.back().skill == crafting::skill_av::alchemy);
+    CHECK(r.host.uses.back().value == Approx(static_cast<double>(r.created.find(id)->value)));
     // Again: the same form, now two of them.
     CHECK(r.crafting.mix(ab) == id);
     CHECK(r.inventory.count(k_player, id) == 2);

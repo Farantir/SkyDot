@@ -167,6 +167,9 @@ struct EntryContext {
     /// Tempering (76): the item is enchanted (EPTemperingItemIsEnchanted). Alchemy (66): a poison is made.
     bool item_enchanted = false;
     bool making_poison = false;
+    /// Alchemy (66): the magic effect being scaled (EPAlchemyEffectHasKeyword asks about it; the tab's
+    /// subject stays the owner so HasPerk answers for the owner). 0: the tab's subject is asked.
+    std::uint32_t alchemy_effect = 0;
 };
 
 /// An effect found at an entry point.

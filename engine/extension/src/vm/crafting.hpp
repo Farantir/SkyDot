@@ -19,6 +19,7 @@
 #pragma once
 
 #include "magic/magic_rules.hpp"
+#include "perks/entry_points.hpp"
 #include "state/created_forms.hpp"
 #include "state/inventory.hpp"
 #include "state/item_extras.hpp"
@@ -49,12 +50,24 @@ inline constexpr int smithing_armor = 7;
 inline constexpr std::string_view k_weapon_tempering_keyword = "CraftingSmithingSharpeningWheel";
 inline constexpr std::string_view k_armor_tempering_keyword = "CraftingSmithingArmorTable";
 
-/// PLACEHOLDER (P6, skills and perks): the player's Smithing and Alchemy
-/// skill is a constant until actor skills exist.
-inline constexpr double k_placeholder_skill = 15.0;
-/// PLACEHOLDER (P6): the tempering tier the skill reaches without perks:
-/// skill 15 gives Fine.
-inline constexpr float k_placeholder_temper_health = 1.1F;
+/// Actor value indexes of the crafting skills.
+namespace skill_av {
+inline constexpr int smithing = 10;
+inline constexpr int alchemy = 16;
+inline constexpr int enchanting = 23;
+} // namespace skill_av
+
+/// The skill a host without actor values reports (a unit test's rig).
+inline constexpr double k_default_skill = 15.0;
+
+/// Tempering (UESP Skyrim:Smithing): effective skill = (skill - 13.29) * (1 + perk) + 13.29, the perk
+/// being Mod Tempering Health (76: the matching smithing perks multiply by 2); quality level =
+/// floor((effective + 38) * 3 / 103), 1 Fine to 6 Legendary; an item's health is 1 + 0.1 * level.
+inline constexpr double k_temper_skill_offset = 13.29;
+inline constexpr int k_temper_max_level = 6;
+[[nodiscard]] int temper_level(double effective_skill);
+[[nodiscard]] float temper_health(int level);
+
 /// Fallbacks of the GMSTs fAlchemyIngredientInitMult and fAlchemySkillFactor
 /// (their values in Skyrim.esm), for a world without game settings.
 inline constexpr double k_alchemy_init_mult = 4.0;
@@ -120,9 +133,36 @@ struct ConditionItem {
     bool enchanted = false;
 };
 
+/// What a craft earned in skill use, as plain numbers; the amount is a GDScript rule
+/// (Progression.crafting_use_amount, UESP Skyrim:Leveling).
+struct SkillUse {
+    enum class Kind : std::uint8_t { create, improve, brew, enchant, disenchant, recharge };
+    Kind kind = Kind::create;
+    int skill = 0;          ///< Actor value index.
+    double count = 1.0;     ///< Units made (create), potions (brew), items enchanted.
+    double value = 0.0;     ///< Gold value: the item (create), the potion (brew), the enchantment (disenchant).
+    double delta_value = 0.0;   ///< improve: the value gained.
+    double delta_quality = 0.0; ///< improve: quality levels gained.
+    int soul = 0;           ///< recharge: the soul size 1 to 5.
+};
+[[nodiscard]] const char* skill_use_kind_name(SkillUse::Kind kind);
+
 class CraftingHost {
 public:
     virtual ~CraftingHost() = default;
+    /// The player's current value of skill `av` (skill_av), fortify included.
+    [[nodiscard]] virtual double skill(int /*av*/) const { return k_default_skill; }
+    /// `value` after the player's perks at entry point `ep`.
+    [[nodiscard]] virtual double perk_entry(perks::EntryPoint /*ep*/, const perks::EntryContext& /*ctx*/,
+                                            double value) const {
+        return value;
+    }
+    /// The GMST text `name`, `fallback` if the world has none.
+    [[nodiscard]] virtual std::string gmst_text(std::string_view /*name*/, std::string_view fallback) const {
+        return std::string(fallback);
+    }
+    /// A craft earned skill use.
+    virtual void skill_use(const SkillUse& /*use*/) {}
     /// Whether `list` passes for the player; `item` is the item being tempered, if any.
     [[nodiscard]] virtual bool conditions_pass(
         const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list, const ConditionItem* item) = 0;
@@ -168,8 +208,11 @@ public:
     /// The text of a magic effect with `<mag>` and `<dur>` filled in.
     [[nodiscard]] std::string describe(std::uint32_t effect, float magnitude, std::uint32_t duration) const;
     [[nodiscard]] std::string effect_name(std::uint32_t effect) const;
-    /// The tier an item at `health` shows as ("" if untempered).
-    [[nodiscard]] static const char* tier_name(float health) { return vm::temper_tier_name(health); }
+    /// The tier an item at `health` shows as ("" if untempered): the GMSTs sHealthDataPrefixWeap1..6 and
+    /// ...Armo1..6, the weapon's or the armor's.
+    [[nodiscard]] std::string tier_name(float health, bool weapon) const;
+    /// The health tempering `form` would give the player now (Smithing and the perks); 1 or more.
+    [[nodiscard]] float tempered_health(std::uint32_t form, bool enchanted) const;
 
 private:
     [[nodiscard]] bool listed(const wfb::Recipe& recipe, const ConditionItem* item) const;
@@ -178,7 +221,7 @@ private:
     [[nodiscard]] float health_of(std::uint32_t extra) const;
     [[nodiscard]] bool enchanted(std::uint32_t form, std::uint32_t extra) const;
     void take_components(const std::vector<Component>& components);
-    void log_skill(const char* skill, std::uint32_t form, std::int64_t value);
+    [[nodiscard]] bool is_weapon(std::uint32_t form) const;
     [[nodiscard]] std::int64_t value_of(std::uint32_t form) const;
 
     const wfb::World& world_;

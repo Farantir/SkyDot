@@ -16,7 +16,10 @@
 
 #include "world_generated.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <functional>
 #include <optional>
 #include <set>
 #include <string>
@@ -52,6 +55,32 @@ inline constexpr std::uint32_t k_ench_casting_fire_and_forget = 1;
 /// floor(magnitude * factor), at least 1; an effect whose MGEF has flags `power affects duration`
 /// and not `power affects magnitude` scales its duration instead.
 [[nodiscard]] vm::CreatedEffect scale_effect(const EffectInput& base, std::uint32_t mgef_flags, double factor);
+
+/// The perk entry points of the player's Enchanting; an empty function leaves the value as it is.
+struct EnchantPerks {
+    /// Mod Enchantment Power (77): the multiplier on an effect `mgef` enchanted onto `item` (Enchanter,
+    /// the elemental, Insightful and Corpus perks).
+    std::function<double(std::uint32_t mgef, std::uint32_t item)> power;
+    /// Mod Soul Gem Enchanting (79): the charge a weapon holds from a soul of this size, given the base charge.
+    std::function<double(std::uint8_t soul, double charge)> enchant_charge;
+    /// Mod Soul Gem Recharge (49): the charge recharging gives from `gem`, given the base charge (Soul Squeezer).
+    std::function<double(std::uint32_t gem, double charge)> recharge_charge;
+    /// Mod # Applied Enchantments Allowed (80): how many enchantments one item takes (Extra Effect: 2).
+    std::function<double()> effects_allowed;
+
+    [[nodiscard]] double effect_power(std::uint32_t mgef, std::uint32_t item) const {
+        return power ? power(mgef, item) : 1.0;
+    }
+    [[nodiscard]] double weapon_charge(std::uint8_t soul, double charge) const {
+        return enchant_charge ? enchant_charge(soul, charge) : charge;
+    }
+    [[nodiscard]] double recharge_of(std::uint32_t gem, double charge) const {
+        return recharge_charge ? recharge_charge(gem, charge) : charge;
+    }
+    [[nodiscard]] int allowed() const {
+        return effects_allowed ? std::max(1, static_cast<int>(std::lround(effects_allowed()))) : 1;
+    }
+};
 
 /// What the soul of a dying actor is.
 struct ActorSoul {
@@ -127,7 +156,8 @@ struct MadeEnchantment {
 };
 [[nodiscard]] std::optional<MadeEnchantment> make_enchantment(const wfb::World& world, const wfb::Enchantment& base_ench,
                                                               ItemKind kind, std::uint8_t soul, double skill,
-                                                              const MagicSettings& s = {});
+                                                              const MagicSettings& s = {},
+                                                              const EnchantPerks& perks = {}, std::uint32_t item = 0);
 
 // ---- actions on the player's inventory --------------------------------------------------------
 
@@ -158,6 +188,7 @@ struct RechargeOutcome {
     std::uint32_t new_extra = 0;
     float charge = 0.0F;
     float max = 0.0F;
+    std::uint8_t soul = 0; ///< The soul size of the gem used.
     [[nodiscard]] bool ok() const noexcept { return refusal == Refusal::none; }
 };
 
@@ -173,10 +204,16 @@ class Enchanting {
 public:
     Enchanting(const wfb::World& world, vm::Inventory& inventory, vm::ItemExtras& extras, vm::CreatedForms& created,
                SpellBook& book, EnchantKeywords keywords, std::uint32_t player, double skill = 15.0,
-               const MagicSettings& settings = {})
+               const MagicSettings& settings = {}, EnchantPerks perks = {})
         : world_(world), inventory_(inventory), extras_(extras), created_(created), book_(book), kw_(keywords),
-          player_(player), skill_(skill), settings_(settings) {}
+          player_(player), skill_(skill), settings_(settings), perks_(std::move(perks)) {}
 
+    /// The charge recharging from the gem (its form, the soul it holds) gives, with the perks.
+    [[nodiscard]] double recharge_amount(std::uint32_t gem, std::uint8_t soul) const {
+        return perks_.recharge_of(gem, soul_charge(soul));
+    }
+    /// How many enchantments one item takes (Mod # Applied Enchantments Allowed; the menu takes one).
+    [[nodiscard]] int effects_allowed() const { return perks_.allowed(); }
     /// Destroy one unit and learn its enchantment (the base it was made from, else itself).
     Refusal disenchant(std::uint32_t form, std::uint32_t extra);
     /// What enchanting would give; nothing is changed (the refusal is the reason it cannot).
@@ -203,6 +240,7 @@ private:
     std::uint32_t player_;
     double skill_;
     MagicSettings settings_;
+    EnchantPerks perks_;
 };
 
 } // namespace skydot::magic

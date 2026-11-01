@@ -5,6 +5,7 @@
 
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
+#include "data/world_data.hpp"
 #include "vm/activation.hpp"
 
 namespace skydot::vm {
@@ -65,6 +66,20 @@ bool CraftingRuntime::bench_has_keyword(std::uint32_t bench_ref, std::uint32_t k
 
 std::uint32_t CraftingRuntime::keyword(std::string_view editor_id) const {
     return host_->world_access().find_keyword(std::string(editor_id));
+}
+
+double CraftingRuntime::skill(int av) const {
+    return host_->player_actor_value(static_cast<std::uint32_t>(av));
+}
+
+double CraftingRuntime::perk_entry(perks::EntryPoint ep, const perks::EntryContext& ctx, double value) const {
+    return host_->perk_entry(ep, ctx, value);
+}
+
+std::string CraftingRuntime::gmst_text(std::string_view name, std::string_view fallback) const {
+    const auto* g = WorldData::find_gmst(host_->world_root(), name);
+    return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? g->text_value()->str()
+                                                                                      : std::string(fallback);
 }
 
 void CraftingRuntime::log(const std::string& line) { host_->announce(line); }

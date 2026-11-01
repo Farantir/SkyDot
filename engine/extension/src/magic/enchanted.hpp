@@ -22,11 +22,8 @@
 
 namespace skydot::magic {
 
-/// PLACEHOLDER (P6): the Enchanting skill and perks scale the charge a hit costs; x1, logged.
-inline constexpr double k_placeholder_enchant_cost_scale = 1.0;
-
-/// PLACEHOLDER (P6): hits one poison gives (perks add doses).
-inline constexpr std::uint32_t k_placeholder_poison_doses = 1;
+/// Hits one poison gives before perks (Mod Poison Dose Count, entry point 83, sets it: Concentrated Poison 2).
+inline constexpr std::uint32_t k_base_poison_doses = 1;
 
 /// ENIT flag 0x1: the cost is the stored one; clear: the sum of the effects' costs.
 inline constexpr std::uint32_t k_ench_manual_cost = 0x1;
@@ -50,7 +47,7 @@ struct ResolvedEnchantment {
                                                                      std::uint32_t id, const MagicSettings& s = {});
 
 /// What one hit with the enchantment costs: ENIT cost when manual, else the sum of `effect_cost` of
-/// its effects (fire and forget: a weapon enchantment is one), times the placeholder.
+/// its effects (fire and forget: a weapon enchantment is one). The skill and the perks work when the enchantment is made (a created one stores its cost), not at the hit.
 [[nodiscard]] double enchantment_cost(const wfb::World& world, const wfb::Enchantment& ench,
                                       const MagicSettings& s = {});
 

@@ -294,12 +294,16 @@ MagicRuntime::PoisonResult MagicRuntime::poison_weapon(std::uint32_t actor, std:
         return out;
     }
     (void)items_.remove_item_extra(actor, form, poison_extra, 1);
-    const std::uint32_t after = items_.states().extras().intern(magic::poisoned(changed, form, magic::k_placeholder_poison_doses));
+    // Mod Poison Dose Count (83): Concentrated Poison sets 2 (subjects: the owner, the weapon, the poison).
+    const auto doses = static_cast<std::uint32_t>(std::max<long>(
+        1, std::lround(host_->perk_entry(magic::perk_ep::mod_poison_dose_count, actor, {actor, weapon, form},
+                                         static_cast<double>(magic::k_base_poison_doses)))));
+    const std::uint32_t after = items_.states().extras().intern(magic::poisoned(changed, form, doses));
     move_unit_extra(actor, weapon, weapon_extra, after);
     log("magic: poison " + magic_hex(form) + " put on " + magic_hex(weapon) + " of " + magic_hex(actor));
     out.ok = true;
     out.weapon = weapon;
-    out.doses = magic::k_placeholder_poison_doses;
+    out.doses = static_cast<int>(doses);
     return out;
 }
 

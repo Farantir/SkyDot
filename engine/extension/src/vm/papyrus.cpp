@@ -140,6 +140,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_unhandled_archetypes"), &SkydotPapyrus::get_unhandled_archetypes);
     godot::ClassDB::bind_method(D_METHOD("craft", "recipe", "count"), &SkydotPapyrus::craft);
     godot::ClassDB::bind_method(D_METHOD("temper_rows", "bench_ref"), &SkydotPapyrus::temper_rows);
+    godot::ClassDB::bind_method(D_METHOD("take_crafting_skill_uses"), &SkydotPapyrus::take_crafting_skill_uses);
     godot::ClassDB::bind_method(D_METHOD("temper", "recipe", "form", "extra"), &SkydotPapyrus::temper);
     godot::ClassDB::bind_method(D_METHOD("enchant_rows"), &SkydotPapyrus::enchant_rows);
     godot::ClassDB::bind_method(D_METHOD("learn_enchantment", "enchantment"), &SkydotPapyrus::learn_enchantment);
@@ -979,6 +980,18 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     vm::CreatedForms& created_forms() override { return owner_.created_; }
     std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
         return std::make_unique<PapyrusConditionWorld>(&owner_);
+    }
+    double player_actor_value(std::uint32_t av) override { return owner_.condition_world().actor_value(k_player_ref, av); }
+    double perk_entry(perks::EntryPoint ep, const perks::EntryContext& ctx, double value) override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        if (root == nullptr) {
+            return value;
+        }
+        const perks::EntryPoints points(*root, owner_.condition_world(),
+                                        [this](std::uint32_t ref) { return owner_.progression_.perks_of(ref); });
+        perks::EntryContext full = ctx;
+        full.worn = owner_.item_.worn_armor_of(ctx.owner);
+        return points.apply(ep, full, value);
     }
 
     void announce(const std::string& line) override {

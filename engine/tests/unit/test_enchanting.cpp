@@ -250,6 +250,37 @@ TEST_CASE("apparel magnitudes follow the soul, duration effects scale their dura
     CHECK_FALSE(magic::make_enchantment(*rig.world, *fortify, magic::ItemKind::staff, 5, 15.0).has_value());
 }
 
+TEST_CASE("the Enchanting skill and Enchanter scale a new enchantment's magnitude", "[enchanting][perks]") {
+    // UESP: skill multiplier 1 + s * (s - 0.14) / 3.4 (s = skill / 100), then floor; Enchanter rank 1 is x1.2.
+    // Fortify (base 20) in a grand soul: skill 15 -> 20.0088 (20), x1.2 -> 24.0106 (24);
+    // skill 50 -> 21.0588 (21), x1.2 -> 25.2706 (25).
+    Rig rig;
+    const auto* fortify = skydot::lookup(rig.world->enchantments(), k_en_fortify);
+    REQUIRE(fortify != nullptr);
+    magic::EnchantPerks enchanter;
+    enchanter.power = [](std::uint32_t, std::uint32_t) { return 1.2; };
+    const auto magnitude = [&](double skill, const magic::EnchantPerks& perks) {
+        const auto made = magic::make_enchantment(*rig.world, *fortify, magic::ItemKind::apparel, 5, skill, {}, perks);
+        REQUIRE(made.has_value());
+        return made->ench.effects.at(0).magnitude;
+    };
+    CHECK(magnitude(15.0, {}) == Approx(20.0F));
+    CHECK(magnitude(15.0, enchanter) == Approx(24.0F));
+    CHECK(magnitude(50.0, {}) == Approx(21.0F));
+    CHECK(magnitude(50.0, enchanter) == Approx(25.0F));
+}
+
+TEST_CASE("the enchanting perks change a recharge and the effects an item takes", "[enchanting][perks]") {
+    magic::EnchantPerks squeezer;
+    squeezer.recharge_charge = [](std::uint32_t, double charge) { return charge + 250.0; };
+    squeezer.effects_allowed = [] { return 2.0; };
+    CHECK(squeezer.recharge_of(1, magic::soul_charge(3)) == Approx(1250.0)); // Soul Squeezer: +250
+    CHECK(squeezer.allowed() == 2);                                           // Extra Effect
+    const magic::EnchantPerks none;
+    CHECK(none.recharge_of(1, 1000.0) == Approx(1000.0));
+    CHECK(none.allowed() == 1);
+}
+
 TEST_CASE("a weapon enchantment holds the soul's charge and costs per use; a dear one shrinks to fit", "[enchanting]") {
     Rig rig;
     const auto* fire = skydot::lookup(rig.world->enchantments(), k_en_fire);

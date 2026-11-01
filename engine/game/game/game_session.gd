@@ -558,6 +558,14 @@ func use_skill(av: int, amount: float) -> Dictionary:
 	return result
 
 
+## Turn what the last craft earned into skill progress (Progression.crafting_use), with the usual notifications.
+func _award_crafting() -> void:
+	for use: Dictionary in papyrus.take_crafting_skill_uses():
+		var result := progression.crafting_use(use)
+		print("skill: %s %s gave %.2f" % [progression.skill_name(int(use["skill"])), use["kind"], float(result["gained"])])
+		_announce_progress(result)
+
+
 ## Raise skill `av` by `count` levels (a book, a trainer, IncrementSkill); announced like use_skill.
 func increment_skill(av: int, count: int) -> Dictionary:
 	var result := progression.increment_skill(av, count)
@@ -666,6 +674,7 @@ func recipes(ref: int) -> Array:
 func craft(recipe: int, count := 1) -> int:
 	var made := papyrus.craft(recipe, count)
 	if made > 0:
+		_award_crafting()
 		items_changed.emit()
 	return made
 
@@ -677,6 +686,7 @@ func temper_rows(ref: int) -> Array:
 func temper(recipe: int, form: int, extra: int) -> bool:
 	var done := papyrus.temper(recipe, form, extra)
 	if done:
+		_award_crafting()
 		items_changed.emit()
 	return done
 
@@ -704,6 +714,7 @@ func enchant(item: int, item_extra: int, enchantment: int, gem: int, gem_extra: 
 	if result["ok"]:
 		message.emit("%s enchanted" % result["name"], false)
 		print("enchanting: made %s (created 0x%X, extra %d)" % [result["name"], int(result["created"]), int(result["extra"])])
+		_award_crafting()
 		items_changed.emit()
 	elif result["refusal"] != "":
 		message.emit(result["refusal"], false)
@@ -716,6 +727,7 @@ func disenchant(form: int, extra: int) -> Dictionary:
 	if result["ok"]:
 		message.emit("Learned %s" % result["learned"], false)
 		print("enchanting: learned %s" % result["learned"])
+		_award_crafting()
 		items_changed.emit()
 	elif result["refusal"] != "":
 		message.emit(result["refusal"], false)
@@ -733,6 +745,7 @@ func recharge(item: int, extra: int, gem: int, gem_extra: int) -> Dictionary:
 	if result["ok"]:
 		message.emit("Recharged to %d" % int(result["charge"]), false)
 		print("enchanting: recharged to %d of %d" % [int(result["charge"]), int(result["max"])])
+		_award_crafting()
 		items_changed.emit()
 	elif result["refusal"] != "":
 		message.emit(result["refusal"], false)
@@ -761,6 +774,7 @@ func alchemy_preview(forms: PackedInt64Array) -> Dictionary:
 func alchemy_mix(forms: PackedInt64Array) -> int:
 	var potion := papyrus.alchemy_mix(forms)
 	if potion != 0:
+		_award_crafting()
 		items_changed.emit()
 	return potion
 

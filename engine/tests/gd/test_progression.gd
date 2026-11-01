@@ -301,3 +301,45 @@ func test_skill_use_perk_scales_only_its_skill() -> void:
 	# 45 * 2 * 1.5 + 10 = 145
 	expect(is_equal_approx(pr.use_skill(LOCKPICKING, 2.0)["gained"], 145.0), "Lockpicking x1.5")
 	expect(is_equal_approx(pr.use_skill(ONE_HANDED, 1.0)["gained"], 6.3), "other skills unchanged")
+
+
+# ---- crafting use (UESP Skyrim:Leveling); the amounts before the AVIF use mult
+
+const SMITHING_AV := 10
+const ALCHEMY_AV := 16
+const ENCHANTING_AV := 23
+
+
+func test_creating_an_item_gives_25_plus_3_value_to_the_0_65() -> void:
+	# 20 ^ 0.65 = 7.0099; 25 + 3 * 7.0099 = 46.03; two of them 92.06.
+	var one := pr.crafting_use_amount({"kind": "create", "skill": SMITHING_AV, "count": 1.0, "value": 20.0})
+	expect(absf(one - 46.03) < 0.01, "one dagger: %f" % one)
+	var two := pr.crafting_use_amount({"kind": "create", "skill": SMITHING_AV, "count": 2.0, "value": 20.0})
+	expect(absf(two - 92.06) < 0.02, "two daggers: %f" % two)
+
+
+func test_improving_an_item_uses_the_pack_exponent_for_the_value() -> void:
+	# 3.8 * 2 ^ 0.6 (1.5157) * 1 ^ 0.5 = 5.760; 3.8 * 8 ^ 0.6 (3.4822) * 2 ^ 0.5 = 18.71.
+	var a := pr.crafting_use_amount({"kind": "improve", "delta_value": 2.0, "delta_quality": 1.0})
+	expect(absf(a - 5.760) < 0.01, "value 2, quality 1: %f" % a)
+	var b := pr.crafting_use_amount({"kind": "improve", "delta_value": 8.0, "delta_quality": 2.0})
+	expect(absf(b - 18.71) < 0.02, "value 8, quality 2: %f" % b)
+	expect_eq(pr.crafting_use_amount({"kind": "improve", "delta_value": 0.0, "delta_quality": 0.0}), 0.0, "no improvement")
+
+
+func test_a_potion_gives_its_value_plus_one() -> void:
+	expect_eq(pr.crafting_use_amount({"kind": "brew", "value": 100.0}), 101.0, "value 100")
+
+
+func test_enchanting_disenchanting_and_recharging() -> void:
+	expect_eq(pr.crafting_use_amount({"kind": "enchant", "count": 1.0}), 1.0, "1 per item")
+	expect_eq(pr.crafting_use_amount({"kind": "disenchant", "value": 800.0}), 2.0, "1 per 400 gold")
+	var expected := [0.05, 0.1, 0.2, 0.4, 0.6]
+	for soul in range(1, 6):
+		expect(is_equal_approx(pr.crafting_use_amount({"kind": "recharge", "soul": soul}), expected[soul - 1]), "soul %d" % soul)
+
+
+func test_crafting_use_goes_through_the_skill_use_mult() -> void:
+	# Lockpicking stands in for a crafting skill here (its fake use mult is 45, offset 10): 1 enchant = 1 use.
+	var r := pr.crafting_use({"kind": "enchant", "skill": LOCKPICKING, "count": 1.0})
+	expect(is_equal_approx(r["gained"], 55.0), "1 * 45 + 10")

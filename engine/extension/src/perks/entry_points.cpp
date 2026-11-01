@@ -95,7 +95,7 @@ public:
             }
             return 0.0;
         case k_fn_ep_alchemy_effect_has_keyword: {
-            const auto* m = lookup(world_.magic_effects(), subject);
+            const auto* m = lookup(world_.magic_effects(), ctx_.alchemy_effect != 0 ? ctx_.alchemy_effect : subject);
             return flag(m != nullptr && has(m->keywords(), p1));
         }
         case k_fn_ep_alchemy_making_poison:

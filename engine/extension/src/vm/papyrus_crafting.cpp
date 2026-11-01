@@ -104,8 +104,13 @@ Array SkydotPapyrus::temper_rows(std::int64_t bench_ref) {
     for (const auto& row : logic->temper_rows(static_cast<std::uint32_t>(bench_ref))) {
         Dictionary entry;
         std::string name = item_.item_name_of(row.form);
-        const char* tier = crafting::Crafting::tier_name(row.health);
-        if (tier[0] != '\0') {
+        const bool weapon = [&] {
+            const auto* root = world_->data().root();
+            const auto* b = root != nullptr ? lookup(root->bases(), row.form) : nullptr;
+            return b != nullptr && b->item() != nullptr && b->item()->category() == wfb::ItemCategory::weapon;
+        }();
+        const std::string tier = logic->tier_name(row.health, weapon);
+        if (!tier.empty()) {
             name += std::string(" (") + tier + ")";
         }
         entry["recipe"] = static_cast<std::int64_t>(row.recipe);
@@ -114,7 +119,7 @@ Array SkydotPapyrus::temper_rows(std::int64_t bench_ref) {
         entry["name"] = to_godot(name);
         entry["count"] = row.count;
         entry["tier"] = to_godot(tier);
-        entry["next_tier"] = to_godot(row.next_health > row.health ? crafting::Crafting::tier_name(row.next_health) : "");
+        entry["next_tier"] = to_godot(row.next_health > row.health ? logic->tier_name(row.next_health, weapon) : std::string());
         entry["components"] = components_array(row.components, name_of);
         entry["craftable"] = row.craftable;
         out.push_back(entry);
@@ -139,6 +144,22 @@ bool SkydotPapyrus::temper(std::int64_t recipe, std::int64_t form, std::int64_t 
         item_.refresh_equipment(k_player_ref, base);
     }
     return true;
+}
+
+Array SkydotPapyrus::take_crafting_skill_uses() {
+    Array out;
+    for (const auto& use : crafting_.take_skill_uses()) {
+        Dictionary entry;
+        entry["kind"] = String(crafting::skill_use_kind_name(use.kind));
+        entry["skill"] = static_cast<std::int64_t>(use.skill);
+        entry["count"] = use.count;
+        entry["value"] = use.value;
+        entry["delta_value"] = use.delta_value;
+        entry["delta_quality"] = use.delta_quality;
+        entry["soul"] = static_cast<std::int64_t>(use.soul);
+        out.push_back(entry);
+    }
+    return out;
 }
 
 Array SkydotPapyrus::alchemy_rows() {

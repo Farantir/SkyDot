@@ -84,7 +84,30 @@ std::optional<magic::Enchanting> SkydotPapyrus::enchanting_table() {
     keywords.disallow_enchanting = world_->data().keyword_by_editor_id("MagicDisallowEnchanting");
     keywords.reusable_soul_gem = world_->data().keyword_by_editor_id("ReusableSoulGem");
     return magic::Enchanting(*root, vm_->inventory(), item_.states().extras(), created_, *book, keywords, k_player_ref,
-                             crafting::k_placeholder_skill);
+                             crafting_.skill(crafting::skill_av::enchanting), {}, enchant_perks());
+}
+
+magic::EnchantPerks SkydotPapyrus::enchant_perks() {
+    using perks::EntryPoint;
+    const auto ask = [this](EntryPoint ep, std::array<std::uint32_t, 3> subjects, double value) {
+        perks::EntryContext ctx;
+        ctx.owner = k_player_ref;
+        ctx.subjects = subjects;
+        return crafting_.perk_entry(ep, ctx, value);
+    };
+    magic::EnchantPerks out;
+    // 77: tab 1 is the effect (Fire Enchanter asks its keywords), tab 2 the item.
+    out.power = [ask](std::uint32_t mgef, std::uint32_t item) {
+        return ask(EntryPoint::ModEnchantmentPower, {k_player_ref, mgef, item}, 1.0);
+    };
+    out.enchant_charge = [ask](std::uint8_t soul, double charge) {
+        return ask(EntryPoint::ModSoulGemEnchanting, {k_player_ref, soul, 0}, charge);
+    };
+    out.recharge_charge = [ask](std::uint32_t gem, double charge) {
+        return ask(EntryPoint::ModSoulGemRecharge, {k_player_ref, gem, 0}, charge);
+    };
+    out.effects_allowed = [ask]() { return ask(EntryPoint::ModAppliedEnchantmentsAllowed, {k_player_ref, 0, 0}, 1.0); };
+    return out;
 }
 
 std::string SkydotPapyrus::unit_name(std::uint32_t form, std::uint32_t extra) const {
@@ -114,6 +137,7 @@ Dictionary SkydotPapyrus::enchant_rows() {
     out["items"] = items;
     out["enchantments"] = enchantments;
     out["gems"] = gems;
+    out["effects_allowed"] = 1;
     auto table = enchanting_table();
     auto* logic = crafting_logic();
     auto* book = spell_book();
@@ -122,6 +146,8 @@ Dictionary SkydotPapyrus::enchant_rows() {
         return out;
     }
     item_.resolve_owner(k_player_ref);
+    // Mod # Applied Enchantments Allowed (80): Extra Effect gives 2; the menu can only take one enchantment.
+    out["effects_allowed"] = table->effects_allowed();
     magic::EnchantKeywords kw;
     kw.disallow_enchanting = world_->data().keyword_by_editor_id("MagicDisallowEnchanting");
     kw.reusable_soul_gem = world_->data().keyword_by_editor_id("ReusableSoulGem");
@@ -274,6 +300,7 @@ Dictionary SkydotPapyrus::enchant(std::int64_t item, std::int64_t item_extra, st
     }
     item_.refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
     sync_worn_magic(k_player_ref);
+    crafting_.record({.kind = crafting::SkillUse::Kind::enchant, .skill = crafting::skill_av::enchanting});
     out["ok"] = true;
     out["name"] = to_godot(result.name);
     out["extra"] = static_cast<std::int64_t>(result.new_extra);
@@ -296,9 +323,11 @@ Dictionary SkydotPapyrus::disenchant(std::int64_t form_in, std::int64_t extra_in
     const auto extra = static_cast<std::uint32_t>(extra_in);
     // What it teaches, named before the unit is gone.
     std::string learned;
+    double ench_value = 0.0;
     if (const auto* root = world_->data().root()) {
         const std::uint32_t id = magic::enchantment_of(*root, form, item_.states().extras().find(extra));
         if (const auto* ench = lookup(root->enchantments(), id)) {
+            ench_value = magic::enchantment_cost(*root, *ench);
             const std::uint32_t base = ench->base_enchantment() != 0 ? ench->base_enchantment() : id;
             if (const auto* b = lookup(root->enchantments(), base); b != nullptr && b->name() != nullptr) {
                 learned = b->name()->str();
@@ -311,6 +340,7 @@ Dictionary SkydotPapyrus::disenchant(std::int64_t form_in, std::int64_t extra_in
         return out;
     }
     item_.refresh_equipment(k_player_ref, form);
+    crafting_.record({.kind = crafting::SkillUse::Kind::disenchant, .skill = crafting::skill_av::enchanting, .value = ench_value});
     out["ok"] = true;
     out["learned"] = to_godot(learned);
     return out;
@@ -352,8 +382,9 @@ Array SkydotPapyrus::recharge_options(std::int64_t item_in, std::int64_t extra_i
             row["name"] = to_godot(unit_name(form, gem_extra));
             row["soul"] = static_cast<std::int64_t>(gem.soul);
             row["soul_name"] = soul_name(gem.soul);
-            row["charge"] = magic::soul_charge(gem.soul);
-            row["fills"] = static_cast<double>(info.charge) + magic::soul_charge(gem.soul) >= static_cast<double>(info.max);
+            const double amount = table->recharge_amount(form, gem.soul);
+            row["charge"] = amount;
+            row["fills"] = static_cast<double>(info.charge) + amount >= static_cast<double>(info.max);
             out.push_back(row);
         }
     }
@@ -384,6 +415,8 @@ Dictionary SkydotPapyrus::recharge(std::int64_t item, std::int64_t extra, std::i
         retarget_equipment(k_player_ref, base, old_extra, result.new_extra);
     }
     item_.refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
+    crafting_.record({.kind = crafting::SkillUse::Kind::recharge, .skill = crafting::skill_av::enchanting,
+                      .soul = static_cast<int>(result.soul)});
     out["ok"] = true;
     out["charge"] = static_cast<double>(result.charge);
     out["max"] = static_cast<double>(result.max);

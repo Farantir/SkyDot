@@ -1044,7 +1044,7 @@ Adding a perk carries out its effects centrally: `ProgressionRuntime::add_perk` 
 `perk_removed` (`RemoveSpell`). The abilities of an actor's base perks (NPC_ PRKR, the player's
 included) are part of its base spell list (`MagicRuntime::Host::perk_abilities`). `SkydotPapyrus.perk_entry`,
 `perk_entry_spells` and `perk_entry_texts` are the forwarders for the GDScript rules (`extra`: advance_skill,
-advance_action, advance_object, worn, attack_keywords, item_enchanted, making_poison).
+advance_action, advance_object, worn, attack_keywords, item_enchanted, making_poison, alchemy_effect).
 
 Wired entry points (P6f, so far): `AttackRules` asks 35 Mod Attack Damage and, for a power attack, 28 Mod Power
 Attack Damage (`perk_damage_mult`, a multiplier on the weapon damage before armor; tabs attacker, weapon base,
@@ -1062,7 +1062,24 @@ equipment): 38 Mod Spell Cost in `magic::perk_spell_cost` (used by `pay_spell` a
 spell), and in `ActiveEffects::apply` for spells and scrolls only (not potions, enchantments, poisons or
 abilities) 29 Mod Spell Magnitude and 30 Mod Spell Duration (tabs caster, spell, target) then 41 and 42
 (tabs target, spell, caster), all before resistance. A scroll is not a SPEL, so perks whose conditions read a
-spell do not match it. Not wired yet: crafting (76, 66, 73, 83, 77, 79, 80, 49), detection (57, 47, 48),
+spell do not match it. P6f3 wires crafting, all for the player (NPCs do not craft; the Smithing, Alchemy and
+Enchanting values are the player's current ones, fortify included): `crafting::Crafting` asks, through
+`CraftingHost::perk_entry` (`CraftingRuntime` -> the module host), 76 Mod Tempering Health (`tempered_health`: the
+value is Smithing - 13.29, so the matching smithing perks' x2 doubles the part above 13.29; tabs player, item
+base; `item_enchanted`), 66 Mod Alchemy Effectiveness (`preview`: a multiplier starting at 1 on each effect's
+magnitude, or duration for a duration-only effect; tab 0 is the player and `alchemy_effect` names the effect,
+so HasPerk answers for the owner; `making_poison` from the strongest effect before perks) and 73 Purify Alchemy
+Ingredients (Purity: a potion keeps its beneficial effects, a poison its harmful ones, unless none would be
+left). `magic::Enchanting` takes `EnchantPerks` (built by `SkydotPapyrus::enchant_perks`): 77 Mod Enchantment
+Power (per effect, tabs player, the effect's MGEF, the item; applied after the weapon's charge cap, so a weapon
+keeps its charge and cost per use), 79 Mod Soul Gem Enchanting (the charge a weapon holds; the pack's perks do not
+use it), 49 Mod Soul Gem Recharge (Soul Squeezer adds 250 to the charge of the gem) and 80 Mod # Applied
+Enchantments Allowed (Extra Effect sets 2; `enchant_rows().effects_allowed` exposes it, the menu still takes one
+enchantment). `MagicRuntime::poison_weapon` asks 83 Mod Poison Dose Count (Concentrated Poison sets 2; the
+subjects are the owner, the weapon, the poison). The charge one hit costs is not scaled at the hit: a made
+enchantment stores its cost (set at the Enchanting skill when it was made) and a world ENCH has its own. Soul
+Siphon is entry point 78 Soul % Captured to Weapon and is not wired (the soul trap fills gems only). Not wired
+yet: detection (57, 47, 48),
 criticals (1, 2; no criticals exist), prices (8, 60; no barter), carry weight (10; no limit), lockpicking and
 pickpocketing (no minigames), dual casting (75).
 
@@ -1126,6 +1143,15 @@ domain modules, one at a time. A module is a Godot-free class in
   ones (`WorldAccess`, `QuestHost`, `ActorHost::conditions()`, `WorldEvents`)
   where they fit, else a small `Host` declared in the module header and
   implemented by `SkydotPapyrus::Access`. Unit tests supply fakes.
+
+Crafting (`vm/crafting.*`, `CraftingRuntime`) runs at the player's real skills: the host answers `skill(av)` (Smithing 10,
+Alchemy 16, Enchanting 23), `perk_entry` and the GMST texts (`sHealthDataPrefixWeap1..6` / `Armo1..6` name the tempering
+tier of a weapon or an armor). Tempering: effective skill (skill - 13.29) * (1 + perk) + 13.29, quality level
+floor((effective + 38) * 3 / 103) capped at 6, health 1 + 0.1 * level (UESP Skyrim:Smithing; the perk is entry point 76).
+Alchemy: magnitude 4 * base * (1 + 0.5 * skill / 100) times the Mod Alchemy Effectiveness result. A craft reports what
+it earned as `SkillUse` records (kind, skill, count, value, delta value, delta quality, soul); the Enchanting table
+(`magic::Enchanting`) is built per call with the skill and `EnchantPerks`, and `SkydotPapyrus` records its uses.
+`SkydotPapyrus.take_crafting_skill_uses()` hands them to GDScript and clears them.
 
 `SkydotPapyrus` holds the module as a member (ownership unchanged, ADR 0002/0003).
 `papyrus_<domain>.cpp` keeps only the Godot-bound methods (`_bind_methods`
@@ -1409,7 +1435,11 @@ Health 24, Magicka 25 or Stamina 26 plus `iAVDhmsLevelUp`, Stamina also carry we
 skill's perk tree, the rank before taken, a node leading to it taken or the root, and the PERK's
 own conditions via `SkydotPapyrus.perk_conditions_met`; `on_perk_taken` is the hook for P6d's
 effects) and `make_legendary(av)` (base 100 needed; base 15, the tree's perks removed and
-refunded, legendary + 1). It returns plain Dictionaries and emits nothing; `GameSession.use_skill`,
+refunded, legendary + 1). `crafting_use_amount(use)` is the rule for what a craft earns (UESP Skyrim:Leveling:
+creating: count * (25 + 3 * value ^ fConstructibleSkilluseExp); improving: 3.8 * delta value ^
+fTemperingSkillUseItemValExp * delta quality ^ 0.5, with the pack's 0.6 where UESP says 0.5; brewing: the potion's
+value + 1; enchanting 1; disenchanting value / 400; recharging 0.05 to 0.6 by soul), `crafting_use(use)` feeds it to
+`use_skill`, and `GameSession` calls it after each craft, temper, mix, enchant, disenchant and recharge. It returns plain Dictionaries and emits nothing; `GameSession.use_skill`,
 `increment_skill`, `level_up` and `take_perk` call it and show the GMST texts (`sSkillIncreased`,
 `sLevelUpAvailable`) through `message`. It asks its data through `ProgressionData`
 (`progression_data.gd`), a GDScript seam over `SkydotPapyrus` and `SkydotWorld`

@@ -196,7 +196,8 @@ DisenchantCheck check_disenchant(const wfb::World& world, const EnchantKeywords&
 }
 
 std::optional<MadeEnchantment> make_enchantment(const wfb::World& world, const wfb::Enchantment& base_ench, ItemKind kind,
-                                                std::uint8_t soul, double skill, const MagicSettings& s) {
+                                                std::uint8_t soul, double skill, const MagicSettings& s,
+                                                const EnchantPerks& perks, std::uint32_t item) {
     if ((kind != ItemKind::weapon && kind != ItemKind::apparel) || base_ench.effects() == nullptr ||
         base_ench.effects()->size() == 0 || soul < 1 || soul > 5) {
         return std::nullopt;
@@ -209,7 +210,7 @@ std::optional<MadeEnchantment> make_enchantment(const wfb::World& world, const w
         factor *= soul_magnitude_multiplier(soul);
         out.ench.constant = true;
     } else {
-        const double capacity = soul_charge(soul);
+        const double capacity = perks.weapon_charge(soul, soul_charge(soul));
         const double base_cost = enchantment_cost(world, base_ench, s);
         double cost = weapon_use_cost(base_cost, skill);
         if (cost > capacity) {
@@ -223,7 +224,8 @@ std::optional<MadeEnchantment> make_enchantment(const wfb::World& world, const w
     }
     for (const auto& in : inputs_of(base_ench.effects())) {
         const auto* m = lookup(world.magic_effects(), in.effect);
-        out.ench.effects.push_back(scale_effect(in, m != nullptr ? m->flags() : 0U, factor));
+        out.ench.effects.push_back(
+            scale_effect(in, m != nullptr ? m->flags() : 0U, factor * perks.effect_power(in.effect, item)));
     }
     return out;
 }
@@ -282,7 +284,7 @@ EnchantOutcome Enchanting::plan(const EnchantRequest& req, MadeEnchantment* made
     if (!gem.gem || gem.soul == 0) {
         return refuse(Refusal::no_gem);
     }
-    auto made = make_enchantment(world_, *ench, kind, gem.soul, skill_, settings_);
+    auto made = make_enchantment(world_, *ench, kind, gem.soul, skill_, settings_, perks_, req.item);
     if (!made) {
         return refuse(Refusal::no_effects);
     }
@@ -366,7 +368,8 @@ RechargeOutcome Enchanting::recharge(std::uint32_t item, std::uint32_t item_extr
         out.refusal = Refusal::no_gem;
         return out;
     }
-    out.charge = static_cast<float>(std::min(static_cast<double>(info.max), static_cast<double>(info.charge) + soul_charge(g.soul)));
+    out.soul = g.soul;
+    out.charge = static_cast<float>(std::min(static_cast<double>(info.max), static_cast<double>(info.charge) + recharge_amount(gem, g.soul)));
     vm::ItemExtra changed;
     if (extra != nullptr) {
         changed = *extra;

@@ -43,6 +43,7 @@ perks::EntryContext entry_context(std::int64_t owner, const Array& subjects, con
     ctx.attack_keywords = ids_of(extra.get("attack_keywords", Array()));
     ctx.item_enchanted = static_cast<bool>(extra.get("item_enchanted", false));
     ctx.making_poison = static_cast<bool>(extra.get("making_poison", false));
+    ctx.alchemy_effect = static_cast<std::uint32_t>(static_cast<std::int64_t>(extra.get("alchemy_effect", 0)));
     return ctx;
 }
 

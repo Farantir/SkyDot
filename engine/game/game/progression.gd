@@ -17,6 +17,11 @@ const MAGICKA := 25
 const STAMINA := 26
 const CARRY_WEIGHT := 32
 const EP_MOD_SKILL_USE := 22
+## The crafting skills (actor value indexes) and the skill use of recharging by soul size 1 to 5 (UESP Skyrim:Leveling).
+const SMITHING := 10
+const ALCHEMY := 16
+const ENCHANTING := 23
+const RECHARGE_USE: Array[float] = [0.05, 0.1, 0.2, 0.4, 0.6]
 const MAX_SKILL := 100.0
 const LEGENDARY_BASE := 15.0
 
@@ -95,6 +100,40 @@ func use_skill(av: int, amount: float) -> Dictionary:
 	_add_xp(xp)
 	out["level_up_ready"] = not was_ready and level_up_ready()
 	return out
+
+
+## The skill use (before the AVIF use mult) a craft earned, UESP Skyrim:Leveling. `use` is one of
+## SkydotPapyrus.take_crafting_skill_uses: {kind, skill, count, value, delta_value, delta_quality, soul}.
+## - create (Smithing): count * (fConstructibleSkillUseConst 25 + fConstructibleSkillUseMult 3 * value ^ fConstructibleSkilluseExp 0.65)
+## - improve (Smithing): 3.8 * delta_value ^ fTemperingSkillUseItemValExp * delta_quality ^ 0.5 (the pack's exponent is 0.6;
+##   UESP says 0.5), the quality being the tempering level 1 Fine to 6 Legendary
+## - brew (Alchemy): the potion's value + 1
+## - enchant: 1 per item; disenchant: the enchantment's value / 400; recharge: 0.05 / 0.1 / 0.2 / 0.4 / 0.6 by soul
+func crafting_use_amount(use: Dictionary) -> float:
+	var value := maxf(float(use.get("value", 0.0)), 0.0)
+	match String(use.get("kind", "")):
+		"create":
+			var base := _data.gmst_float("fConstructibleSkillUseConst", 25.0) \
+				+ _data.gmst_float("fConstructibleSkillUseMult", 3.0) * pow(value, _data.gmst_float("fConstructibleSkilluseExp", 0.65))
+			return float(use.get("count", 1.0)) * base
+		"improve":
+			var dv := maxf(float(use.get("delta_value", 0.0)), 0.0)
+			var dq := maxf(float(use.get("delta_quality", 0.0)), 0.0)
+			return 3.8 * pow(dv, _data.gmst_float("fTemperingSkillUseItemValExp", 0.6)) * pow(dq, 0.5)
+		"brew":
+			return (value + 1.0) * float(use.get("count", 1.0))
+		"enchant":
+			return float(use.get("count", 1.0))
+		"disenchant":
+			return value / 400.0
+		"recharge":
+			return RECHARGE_USE[clampi(int(use.get("soul", 1)), 1, 5) - 1]
+	return 0.0
+
+
+## Award a craft's skill use: use_skill for the crafting skill with `crafting_use_amount`.
+func crafting_use(use: Dictionary) -> Dictionary:
+	return use_skill(int(use.get("skill", 0)), crafting_use_amount(use))
 
 
 ## Raise skill `av` by `count` levels at once (books, trainers, IncrementSkill), each giving

@@ -10,7 +10,7 @@ namespace skydot::magic {
 
 double enchantment_cost(const wfb::World& world, const wfb::Enchantment& ench, const MagicSettings& s) {
     if ((ench.flags() & k_ench_manual_cost) != 0 || ench.effects() == nullptr) {
-        return static_cast<double>(ench.cost()) * k_placeholder_enchant_cost_scale;
+        return static_cast<double>(ench.cost());
     }
     double sum = 0.0;
     for (const auto* e : *ench.effects()) {
@@ -21,7 +21,7 @@ double enchantment_cost(const wfb::World& world, const wfb::Enchantment& ench, c
         sum += effect_cost(static_cast<double>(m->base_cost()), static_cast<double>(e->magnitude()),
                            static_cast<double>(e->duration()), casting::fire_and_forget, static_cast<double>(e->area()), s);
     }
-    return sum * k_placeholder_enchant_cost_scale;
+    return sum;
 }
 
 std::optional<ResolvedEnchantment> resolve_enchantment(const wfb::World& world, const vm::CreatedForms* created,

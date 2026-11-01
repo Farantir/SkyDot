@@ -50,6 +50,14 @@ func _count(form: int, extra := 0) -> int:
 	return 0
 
 
+func _smithing_progress() -> float:
+	return float(_session.papyrus.get_player_progress()["skill_xp"][4])  # actor value 10 is the 5th skill (6 is first)
+
+
+func _smithing_level() -> int:
+	return int(_session.papyrus.get_actor_value(PLAYER, "Smithing"))
+
+
 func _activate(ref: int) -> Dictionary:
 	return _session.papyrus.activate_ref(ref, PLAYER, false, SkydotPapyrus.ACTIVATE_PLAYER, false)
 
@@ -156,7 +164,11 @@ func _run(pack_dir: String) -> void:
 			recipe = row
 	expect(not recipe.is_empty() and recipe["craftable"] and int(recipe["product"]) == DAGGER,
 		"the Iron Dagger is craftable: %s" % [recipe])
-	expect(papyrus.craft(R_DAGGER, 1) == 1 and _count(DAGGER) == 1, "one is made")
+	var smithing_before := _smithing_progress()
+	expect(_session.craft(R_DAGGER, 1) == 1 and _count(DAGGER) == 1, "one is made")
+	# Crafting gives skill XP: 25 + 3 * value ^ 0.65 use, Smithing's use mult 1 (one Iron Dagger, value 20: 38.40).
+	var made_gain := _smithing_progress() - smithing_before
+	expect(absf(made_gain - 38.40) < 0.05 or _smithing_level() > 15, "making the dagger raised Smithing: %f" % made_gain)
 
 	# The grindstone tempers it.
 	var stone := _activate(GRINDSTONE)
@@ -166,7 +178,9 @@ func _run(pack_dir: String) -> void:
 		if int(r["recipe"]) == R_TEMPER_DAGGER and int(r["extra"]) == 0:
 			row = r
 	expect(not row.is_empty() and row["craftable"] and row["next_tier"] == "Fine", "tempering is offered: %s" % [row])
-	expect(papyrus.temper(R_TEMPER_DAGGER, DAGGER, 0), "it is tempered")
+	var before_temper := _smithing_progress()
+	expect(_session.temper(R_TEMPER_DAGGER, DAGGER, 0), "it is tempered")
+	expect(_smithing_progress() > before_temper or _smithing_level() > 15, "tempering raised Smithing")
 	var fine := {}
 	for r in _session.inventory(PLAYER):
 		if int(r["form"]) == DAGGER:
@@ -199,6 +213,15 @@ func _run(pack_dir: String) -> void:
 	expect(not listed[FLY_AMANITA]["effects"][0]["known"], "no effect is known yet")
 	var preview := papyrus.alchemy_preview(PackedInt64Array([FLY_AMANITA, GARLIC]))
 	expect(preview.has("mixable") and preview.has("effects"), "the preview has its fields: %s" % [preview])
+	# Alchemist (rank 1) makes potions 20% stronger (Mod Alchemy Effectiveness 66; Restore Health is 0x3EB16),
+	# and Physician adds 25% to a restoring potion once the player has it.
+	var ask := func() -> float:
+		return papyrus.perk_entry(66, PLAYER, [PLAYER, 0, 0], 1.0, {"alchemy_effect": 0x3EB16, "making_poison": false})
+	expect(is_equal_approx(ask.call(), 1.0), "no perk, no change")
+	papyrus.add_perk(PLAYER, 0xBE127)
+	expect(is_equal_approx(ask.call(), 1.2), "Alchemist makes it 1.2: %f" % ask.call())
+	papyrus.add_perk(PLAYER, 0x58215)
+	expect(is_equal_approx(ask.call(), 1.5), "Physician on a restoring effect 1.2 * 1.25: %f" % ask.call())
 	expect(papyrus.alchemy_mix(PackedInt64Array([FLY_AMANITA])) == 0, "one ingredient does not mix")
 	expect(_session.equip(FLY_AMANITA), "Fly Amanita is eaten")
 	for r in papyrus.alchemy_rows():
