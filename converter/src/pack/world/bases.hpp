@@ -69,7 +69,6 @@ struct WorkEntry {
     std::uint32_t sound{};
     std::uint32_t seasonal_yield{};
     std::uint8_t bench_type{};
-    std::uint8_t bench_skill{};
 };
 
 class BaseCollector {

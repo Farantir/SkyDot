@@ -425,8 +425,9 @@ table Base {
     /// 4 enchanting experiment, 5 alchemy, 6 alchemy experiment, 7 smithing
     /// armor (workbench).
     bench_type: ubyte;
-    /// FURN WBDT byte 1 (format 29): the skill the bench uses.
-    bench_skill: ubyte;
+    /// Deprecated in format 39, no longer written: the skill follows from
+    /// the recipe and `bench_type`.
+    bench_skill: ubyte (deprecated);
 }
 
 /// What a plant or tree gives (format 29; FLOR and TREE).
@@ -2294,8 +2295,9 @@ table DialogueInfo {
     flags: DialogueInfoFlags;
     /// ENAM high word.
     reset_hours: uint16;
-    /// CNAM.
-    favor_level: ubyte;
+    /// Deprecated in format 39, no longer written: CNAM is an Oblivion
+    /// leftover that Skyrim ignores.
+    favor_level: ubyte (deprecated);
     /// RNAM: the text the player's menu shows instead of the topic's.
     prompt: string;
     /// ANAM, an NPC_.

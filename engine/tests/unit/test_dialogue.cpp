@@ -116,7 +116,7 @@ public:
                     responses.push_back(wfb::CreateDialogueResponseDirect(fbb, 0, 0, number++, 0, 0, line.c_str()));
                 }
                 infos.push_back(wfb::CreateDialogueInfoDirect(
-                    fbb, i.id, nullptr, i.flags, 0, 0, i.prompt.empty() ? nullptr : i.prompt.c_str(), 0, i.shared,
+                    fbb, i.id, nullptr, i.flags, 0, i.prompt.empty() ? nullptr : i.prompt.c_str(), 0, i.shared,
                     &i.links, 0, 0, &conditions, &responses));
             }
             ts.push_back(wfb::CreateDialogueTopicDirect(

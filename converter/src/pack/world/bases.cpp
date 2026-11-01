@@ -653,7 +653,6 @@ void BaseCollector::collect_work(const record::MergedRecord& merged, io::SpanRea
         }
         entry.editor_id = r->editor_id;
         entry.bench_type = r->bench_type;
-        entry.bench_skill = r->bench_skill;
         if (entry.bench_type == 0) {
             return;
         }
@@ -1407,7 +1406,6 @@ void BaseCollector::finish(wfb::WorldT& world) {
         }
         auto& base = found->second;
         base.bench_type = entry.bench_type;
-        base.bench_skill = entry.bench_skill;
         if (entry.has_harvest) {
             auto harvest = std::make_unique<wfb::HarvestT>();
             harvest->ingredient = entry.ingredient;

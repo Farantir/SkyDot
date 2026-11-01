@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (38; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (39; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,9 +99,53 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls, 36 shouts (SHOU), words of power (WOOP), movement types (MOVT), race flight data and default movement types, 37 the NPC death item (INAM), 38 perks (PERK), actor values (AVIF) with skill data and perk trees, classes (CLAS), the skill or spell a book teaches, NPC class and perks). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls, 36 shouts (SHOU), words of power (WOOP), movement types (MOVT), race flight data and default movement types, 37 the NPC death item (INAM), 38 perks (PERK), actor values (AVIF) with skill data and perk trees, classes (CLAS), the skill or spell a book teaches, NPC class and perks, 39 `Base.bench_skill` and `DialogueInfo.favor_level` deprecated: no longer written, field ids kept). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
+
+### Fields not read yet
+
+Written for the real game's sake; the engine has no reader yet. Each names the
+system that will use it (ids from SYSTEMS.md, or the mechanic where it has no
+row). Format 39 deprecates the two that no system needs.
+
+| Field | Planned (system) |
+|---|---|
+| `LightOverride.end_distance_cap`, `shadow_depth_bias`; `LightData.near_clip` | W2 lights and shadows |
+| `Base.directional_material`, `directional_max_angle` | W2 directional snow materials |
+| `Grass.color_range`, `wave_period`; `LandTexture.specular`; `Water.specular_power` | W2 materials |
+| `Climate.volatility`; `Weather.aurora` | W2 sky (moon phases, aurora) |
+| `Precipitation.center_offset_min`, `center_offset_max` | W2 precipitation |
+| `VolumetricLighting.*` (density, phase, sampling) | W2 godrays |
+| `Region.weather_override`, `RegionWeather.global`; `Weather.wind_direction_range`, `thunder_end` | W3 weather |
+| `Weather.sun_damage` | vampirism (C8) |
+| `Worldspace.default_land_height` | W1 cells without LAND |
+| `NavTriangle.cover` | AI combat cover (A9) |
+| `ItemData.crit_damage`, `crit_mult` | C3 damage |
+| `RaceAttack.knockdown`, `recovery_time`, `stamina_mult` | C1, C2 melee, stagger |
+| `RaceAttack.attack_type` | attack conditions and perks |
+| `Impact.angle_threshold`, `placement_radius` | W10 decals |
+| `Impact.hazard` | magic and impact hazards |
+| `Race.weights` | A1 body weight |
+| `Race.head_parts_male`, `head_parts_female`; `Npc.head_parts` | character creation, fallback heads |
+| `Race.body_parts` | dismemberment and targeting |
+| `ArmorAddon.male_priority`, `female_priority` | I6 equip layering |
+| `Npc.sleeping_outfit` | A3 sleep |
+| `Condition.string1` | Q5 conditions with a string parameter |
+| `PackageBranch.success_completes`, `set_flags`, `clear_flags`; `Package.interrupt_override`, `interrupt_flags`, `idle_flags`, `idle_timer`, `idles`, `on_begin_idle`, `on_end_idle`, `on_change_idle` | A4, A5 package stack, idles |
+| `DialogueInfo.reset_hours`, `walk_away_topic`; `DialogueTopic.subtype` | D1, D3, D4 |
+| `DialogueInfo.audio_output` | dialogue voice output |
+| `DialogueResponse.emotion`, `emotion_value`; `SceneAction.emotion`, `emotion_value` | A16 facial animation |
+| `SceneActor.behaviour_flags`, `SceneAction.head_track_alias`, `delay_min`, `delay_max` | Q6 scenes, A16 |
+| `Quest.event_conditions` | Q quest events |
+| `Faction.vendor_radius`, `vendor_chest` | I7 barter |
+| `Relationship.association` | A11 |
+
+Deprecated in 39 (the converter stops writing them; the field ids stay so old
+packs read):
+
+- `Base.bench_skill`: follows from the recipe and `bench_type`.
+- `DialogueInfo.favor_level`: an Oblivion leftover that Skyrim ignores.
 
 A vector said to be sorted by `id` or `ref` has that field marked `(key)` in
 `world.fbs`: unique, increasing, and found with flatc's `LookupByKey`. A

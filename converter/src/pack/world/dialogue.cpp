@@ -110,7 +110,6 @@ void DialogueCollector::on_info(const record::MergedRecord& merged, io::SpanRead
     out.editor_id = info->editor_id;
     out.flags = static_cast<wfb::DialogueInfoFlags>(info->flags);
     out.reset_hours = info->reset_hours;
-    out.favor_level = info->favor_level;
     out.prompt = info->prompt.text;
     out.speaker = shared_.global(merged, info->speaker, failed);
     out.shared_info = shared_.global(merged, info->shared_info, failed);

@@ -285,7 +285,6 @@ TEST_CASE("world.fb 29 carries recipes, magic effects, harvest data and bench ty
     const auto forge = file->base(0x806);
     REQUIRE(forge.has_value());
     CHECK(forge->bench_type == 1);
-    CHECK(forge->bench_skill == 12);
     REQUIRE(forge->keywords.size() == 1);
     CHECK(forge->keywords[0] == 0x801);
     CHECK(forge->harvest == nullptr);
