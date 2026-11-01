@@ -795,6 +795,73 @@ io::ParseResult<LeveledNpc> parse_leveled_npc(io::SpanReader& data, const FormCo
     return out;
 }
 
+// ---- generic bases --------------------------------------------------------
+
+io::ParseResult<GenericBase> parse_generic_base(io::SpanReader& data, const FormContext& ctx,
+                                                FourCC type, bool read_scripts) {
+    GenericBase out;
+    const bool armor = type == FourCC{"ARMO"};
+    const bool stat = type == FourCC{"STAT"};
+    const bool door = type == FourCC{"DOOR"};
+    const bool has_activate_text = type == FourCC{"ACTI"} || type == FourCC{"FLOR"};
+    // The first of each of these wins, as the world has always taken them.
+    const auto walked = walk_fields(
+        data, type, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            const FourCC tag = field.type;
+            if (tag == FourCC{"DNAM"} && stat) {
+                if (body.remaining() >= GenericBase::k_stat_dnam_size) {
+                    take(failure, body.get<float>(), out.max_angle);
+                    take(failure, body.get<std::uint32_t>(), out.material);
+                }
+            } else if (tag == FourCC{"EDID"}) {
+                if (out.editor_id.empty()) {
+                    take(failure, read_zstring(body), out.editor_id);
+                }
+            } else if (tag == FourCC{"MODL"} && !armor) {
+                if (out.model.empty()) {
+                    take(failure, read_zstring(body), out.model);
+                }
+            } else if (tag == FourCC{"FULL"}) {
+                if (out.name.empty()) {
+                    take(failure, read_lstring(body, ctx, type, tag), out.name);
+                }
+            } else if (tag == FourCC{"RNAM"} && has_activate_text) {
+                take(failure, read_lstring(body, ctx, type, tag), out.activate_text);
+            } else if (tag == FourCC{"MODS"}) {
+                if (out.alternate_textures.empty()) {
+                    take(failure, read_verbatim(body), out.alternate_textures);
+                }
+            } else if (tag == FourCC{"MOD2"}) {
+                if (out.model_male.empty()) {
+                    take(failure, read_zstring(body), out.model_male);
+                }
+            } else if (tag == FourCC{"MOD4"} && armor) {
+                if (out.model_female.empty()) {
+                    take(failure, read_zstring(body), out.model_female);
+                }
+            } else if (tag == FourCC{"FNAM"} && door) {
+                take_whole(failure, body, out.door_flags);
+            } else if (read_keyword_field(out.keywords, field, body, failure)) {
+                // KSIZ and KWDA
+            } else if (read_destruction_field(out.destruction, field, body, failure)) {
+                // DEST, DSTD, DMDL...
+            } else if (tag == FourCC{"VMAD"} && read_scripts) {
+                std::optional<io::ParseError> script_failure;
+                take(script_failure, read_script_data(body), out.scripts);
+                out.script_failed = out.script_failed || script_failure.has_value();
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- EXPL, MATO, ADDN, GRAS -----------------------------------------------
 
 io::ParseResult<Explosion> parse_explosion(io::SpanReader& data, const FormContext& ctx) {

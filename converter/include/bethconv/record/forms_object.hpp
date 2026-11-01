@@ -599,6 +599,30 @@ struct Grass {
     static constexpr std::size_t k_data_min_size = 29;
 };
 
+/// What the world needs from any other base type (STAT, ACTI, DOOR, ARMO...):
+/// its model, name, keywords, scripts and the few type-specific words below.
+/// Which fields apply depends on the record type, so the parse takes it.
+struct GenericBase {
+    std::string editor_id;
+    std::string model;        ///< MODL; not read on ARMO, whose MODL is an armature FormID.
+    std::string model_male;   ///< MOD2, ARMO's male world model.
+    std::string model_female; ///< MOD4, ARMO's female world model.
+    std::vector<std::byte> alternate_textures; ///< MODS, kept raw.
+    LString name;             ///< FULL
+    LString activate_text;    ///< RNAM on ACTI and FLOR.
+    KeywordList keywords;
+    Destruction destruction;
+    ScriptData scripts;       ///< VMAD, when the caller asks for it.
+    bool script_failed{};     ///< VMAD did not parse. The record itself is still good.
+
+    std::uint8_t door_flags{}; ///< DOOR FNAM, one byte; a short field leaves 0.
+
+    /// STAT DNAM, 8 bytes: max angle and the material. Skipped when shorter.
+    float max_angle{};
+    std::uint32_t material{};
+    static constexpr std::size_t k_stat_dnam_size = 8;
+};
+
 // ---- parsing --------------------------------------------------------------
 
 [[nodiscard]] io::ParseResult<TextureSet> parse_texture_set(io::SpanReader& data,
@@ -625,6 +649,11 @@ struct Grass {
 [[nodiscard]] io::ParseResult<Scroll> parse_scroll(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Ammo> parse_ammo(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Weapon> parse_weapon(io::SpanReader& data, const FormContext& ctx);
+/// Parse the fields shared by the base types without a record of their own.
+/// `read_scripts` is false for types whose VMAD carries fragment data.
+[[nodiscard]] io::ParseResult<GenericBase> parse_generic_base(io::SpanReader& data,
+                                                              const FormContext& ctx, FourCC type,
+                                                              bool read_scripts);
 [[nodiscard]] io::ParseResult<Explosion> parse_explosion(io::SpanReader& data,
                                                          const FormContext& ctx);
 [[nodiscard]] io::ParseResult<MaterialObject> parse_material_object(io::SpanReader& data,

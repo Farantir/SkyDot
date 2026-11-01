@@ -222,72 +222,26 @@ void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader&
 void BaseCollector::collect_generic(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
     const bool armor = merged.type == FourCC{"ARMO"};
-    const bool door = merged.type == FourCC{"DOOR"};
-    const bool scripted = !has_fragments(merged.type);
-    std::string editor_id;
-    std::string modl;
-    std::string mod2;
-    std::string mod4;
-    std::vector<std::byte> mods;
-    std::uint32_t flags = 0;
-    record::ScriptData scripts;
-    const bool stat = merged.type == FourCC{"STAT"};
-    float max_angle = 0.0F;
-    std::uint32_t material = 0;
-    record::KeywordList keywords;
-    std::optional<io::ParseError> keyword_failure;
-    record::Destruction destruction;
-    record::LString name;
-    record::LString activate_text;
-    const bool has_activate_text = merged.type == FourCC{"ACTI"} || merged.type == FourCC{"FLOR"};
-    std::optional<io::ParseError> text_failure;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"DNAM"} && stat && body.remaining() >= 8) {
-                max_angle = body.get<float>().value_or(0.0F);
-                material = body.get<std::uint32_t>().value_or(0);
-            } else if (field.type == FourCC{"EDID"} && editor_id.empty()) {
-                editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MODL"} && modl.empty() && !armor) {
-                modl = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"FULL"} && name.empty()) {
-                if (auto read = record::read_lstring(body, form_ctx, merged.type, field.type)) {
-                    name = std::move(*read);
-                } else {
-                    text_failure = read.error();
-                }
-            } else if (field.type == FourCC{"RNAM"} && has_activate_text) {
-                if (auto read = record::read_lstring(body, form_ctx, merged.type, field.type)) {
-                    activate_text = std::move(*read);
-                } else {
-                    text_failure = read.error();
-                }
-            } else if (field.type == FourCC{"MODS"} && mods.empty()) {
-                if (const auto raw = body.bytes(body.remaining())) {
-                    mods.assign(raw->begin(), raw->end());
-                }
-            } else if (field.type == FourCC{"MOD2"} && mod2.empty()) {
-                mod2 = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MOD4"} && mod4.empty() && armor) {
-                mod4 = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"FNAM"} && door) {
-                flags = body.get<std::uint8_t>().value_or(0);
-            } else if (record::read_keyword_field(keywords, field, body, keyword_failure)) {
-                // KSIZ and KWDA
-            } else if (record::read_destruction_field(destruction, field, body, keyword_failure)) {
-                // DEST, DSTD, DMDL...
-            } else if (field.type == FourCC{"VMAD"} && scripted) {
-                if (auto read = record::read_script_data(body)) {
-                    scripts = std::move(*read);
-                } else {
-                    ++shared_.stats().script_errors;
-                }
-            }
-        });
-    if (!walked || keyword_failure || text_failure) {
+    auto base = record::parse_generic_base(data, form_ctx, merged.type, !has_fragments(merged.type));
+    if (!base) {
         ++shared_.stats().parse_errors;
         return;
     }
+    if (base->script_failed) {
+        ++shared_.stats().script_errors;
+    }
+    const std::string& modl = base->model;
+    const std::string& mod2 = base->model_male;
+    const std::string& mod4 = base->model_female;
+    const std::uint32_t flags = base->door_flags;
+    const float max_angle = base->max_angle;
+    const std::uint32_t material = base->material;
+    auto& scripts = base->scripts;
+    auto& keywords = base->keywords;
+    auto& destruction = base->destruction;
+    auto& name = base->name;
+    auto& activate_text = base->activate_text;
+    auto& editor_id = base->editor_id;
     const std::string& path = !modl.empty() ? modl : !mod2.empty() ? mod2 : mod4;
     // A sound marker has no model but is a base, so its placed references resolve.
     if (path.empty() && scripts.empty() && merged.type != FourCC{"SOUN"}) {
@@ -300,7 +254,7 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     out.editor_id = std::move(editor_id);
     out.model = path.empty() ? std::string{} : model_vpath(path);
     if (!armor && !modl.empty()) {
-        keep_alternates(merged, mods);
+        keep_alternates(merged, base->alternate_textures);
     }
     out.flags = flags;
     out.name = name.text;
