@@ -118,6 +118,29 @@ const PARALYSIS_POLL := 0.2
 const GROUND_SECONDS := 10.0
 ## A frozen body's pickable box is its bones' box grown by this (metres).
 const BOUNDS_MARGIN := 0.3
+## The ground probes start this high above the point (metres) and reach this far down: a settled
+## ragdoll, a quick "is there ground" test, and the floor under a point.
+const PROBE_UP := 0.5
+const PROBE_DOWN_SETTLE := 3.0
+const PROBE_DOWN_GROUND := 2.0
+const PROBE_DOWN_FAR := 200.0
+## Horizontal distances (metres) below which a direction is none: a hit from straight above, a
+## ragdoll's head over its pelvis.
+const HIT_MIN_DISTANCE := 0.001
+const LIE_MIN_DISTANCE := 0.1
+## A bone shorter than this (metres) has no direction; a capsule is at least this much taller than wide.
+const BONE_MIN_LENGTH := 0.001
+const CAPSULE_SLACK := 0.001
+## A skeleton scale below this counts as this (guards the division by it).
+const MIN_UNITS_SCALE := 0.0001
+## Sine limit of a wing's droop (keeps the arm from pointing straight down).
+const MAX_DROOP_SINE := 0.95
+## A pose coordinate beyond this (metres) is a broken skeleton and is ignored.
+const MAX_COORDINATE := 1.0e4
+## A body with no bones to measure is picked by this box (metres): a person standing.
+const FALLBACK_BOUNDS := AABB(Vector3(-0.4, 0.0, -0.4), Vector3(0.8, 1.8, 0.8))
+## The AI holds a dead or paralysed actor for this long (seconds): "until it stands again".
+const HOLD_INDEFINITELY := 3600.0
 
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
@@ -157,7 +180,7 @@ func on_hit(target: int, result: Dictionary, _point: Vector3) -> void:
 		return
 	var away := node.global_position - from
 	away.y = 0.0
-	if away.length() < 0.001:
+	if away.length() < HIT_MIN_DISTANCE:
 		return
 	_hits[target] = (away.normalized() + Vector3.UP * HIT_LIFT).normalized() * HIT_IMPULSE
 
@@ -241,7 +264,7 @@ func knock_down(ref: int, source: int, force: float, hold := false) -> bool:
 			from = origin.global_position
 	var away := node.global_position - from
 	away.y = 0.0
-	if away.length() < 0.001:
+	if away.length() < HIT_MIN_DISTANCE:
 		away = -node.global_transform.basis.z  # on top of it: along where it looks
 	away = away.normalized()
 	var speed := (away * PUSH_SPEED_PER_FORCE + Vector3.UP * PUSH_LIFT_PER_FORCE) * force
@@ -252,7 +275,7 @@ func knock_down(ref: int, source: int, force: float, hold := false) -> bool:
 		node.global_position -= Vector3.UP * KNOCK_LIFT
 		return false
 	if ai != null:
-		ai.hold(ref, 3600.0 if hold else GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
+		ai.hold(ref, HOLD_INDEFINITELY if hold else GET_UP_SECONDS + MAX_SECONDS)  # until it stands again
 	for body in _bodies:
 		if body["ref"] == ref:
 			body["hold"] = hold
@@ -332,7 +355,7 @@ func _get_up(body: Dictionary) -> void:
 	skeleton.remove_child(simulator)
 	simulator.free()
 	skeleton.reset_bone_poses()
-	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 3.0,
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * PROBE_UP, at + Vector3.DOWN * PROBE_DOWN_SETTLE,
 		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 	var hit := _host.get_world_3d().direct_space_state.intersect_ray(query)
 	node.global_position = hit["position"] if not hit.is_empty() else Vector3(at.x, node.global_position.y, at.z)
@@ -398,7 +421,7 @@ func _start_pending(delta: float) -> void:
 
 func _has_ground(at: Vector3) -> bool:
 	var space := _host.get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 2.0,
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * PROBE_UP, at + Vector3.DOWN * PROBE_DOWN_GROUND,
 		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 	return not space.intersect_ray(query).is_empty()
 
@@ -497,8 +520,8 @@ func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
 	if not is_instance_valid(node) or not node.is_inside_tree():
 		return
 	var space := _host.get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(node.global_position + Vector3.UP * 0.5,
-		node.global_position + Vector3.DOWN * 200.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
+	var query := PhysicsRayQueryParameters3D.create(node.global_position + Vector3.UP * PROBE_UP,
+		node.global_position + Vector3.DOWN * PROBE_DOWN_FAR, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 	var hit := space.intersect_ray(query)
 	var above: float = node.global_position.y - float(hit["position"].y) if not hit.is_empty() else INF
 	print("death: 0x%08X holds the death pose, %.2f m above the ground" % [ref, above])
@@ -573,7 +596,7 @@ func _lay_wings(skeleton: Skeleton3D, pinned: Dictionary, poses: Dictionary, flo
 		return
 	var to: Vector3 = skeleton.global_transform.basis * (globals[head].origin - globals[pelvis].origin)
 	to.y = 0.0
-	if to.length() < 0.1:
+	if to.length() < LIE_MIN_DISTANCE:
 		return
 	for collar: int in pinned:
 		if not skeleton.get_bone_name(collar).to_lower().contains("collarbone"):
@@ -598,7 +621,7 @@ func _lay_wings(skeleton: Skeleton3D, pinned: Dictionary, poses: Dictionary, flo
 		out = (out - to.normalized() * out.dot(to.normalized())).normalized()  # across the body
 		var reach := arm.length() * skeleton.global_transform.basis.get_scale().x
 		var shoulder: float = (skeleton.global_transform * from.origin).y
-		var droop := asin(clampf((shoulder - floor_y - WING_TIP_HEIGHT) / reach, 0.0, 0.95))
+		var droop := asin(clampf((shoulder - floor_y - WING_TIP_HEIGHT) / reach, 0.0, MAX_DROOP_SINE))
 		var wanted: Vector3 = skeleton.global_transform.basis.inverse() * (out * cos(droop) + Vector3.DOWN * sin(droop))
 		var turned_arm := Quaternion(arm.normalized(), wanted.normalized())
 		var parent := skeleton.get_bone_parent(collar)
@@ -626,7 +649,7 @@ func _finish(ref: int, node: Node3D, skeleton: Skeleton3D) -> void:
 ## The floor under `at` (`at` itself where there is none within 3 m).
 func _floor_under(at: Vector3) -> Vector3:
 	var space := _host.get_world_3d().direct_space_state
-	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * 0.5, at + Vector3.DOWN * 3.0,
+	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * PROBE_UP, at + Vector3.DOWN * PROBE_DOWN_SETTLE,
 		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
 	var hit := space.intersect_ray(query)
 	return hit["position"] if not hit.is_empty() else at
@@ -648,13 +671,13 @@ func _mark_pickable(node: Node3D, skeleton: Skeleton3D) -> void:
 		var inverse := node.global_transform.affine_inverse()
 		for i in skeleton.get_bone_count():
 			var local := skeleton.get_bone_global_pose(i).origin
-			if absf(local.x) > 1.0e4 or absf(local.y) > 1.0e4 or absf(local.z) > 1.0e4:
+			if absf(local.x) > MAX_COORDINATE or absf(local.y) > MAX_COORDINATE or absf(local.z) > MAX_COORDINATE:
 				continue  # a bone parked far away for a prop
 			var at := inverse * (skeleton.global_transform * local)
 			bounds = AABB(at, Vector3.ZERO) if not any else bounds.expand(at)
 			any = true
 	if not any:
-		bounds = AABB(Vector3(-0.4, 0.0, -0.4), Vector3(0.8, 1.8, 0.8))
+		bounds = FALLBACK_BOUNDS
 	node.set_meta("skydot_bounds", bounds.grow(BOUNDS_MARGIN))
 	node.set_meta("skydot_activatable", true)
 
@@ -707,7 +730,7 @@ func _generic_entries(skeleton: Skeleton3D, pinned := {}) -> Array:
 	var has_body := {}  # bone index -> true
 	for index in skeleton.get_bone_count():  # parents come before their children
 		var here := skeleton.get_bone_global_rest(index).origin
-		if absf(here.x) > 1.0e4 or absf(here.y) > 1.0e4 or absf(here.z) > 1.0e4:
+		if absf(here.x) > MAX_COORDINATE or absf(here.y) > MAX_COORDINATE or absf(here.z) > MAX_COORDINATE:
 			continue  # a bone parked far away for a prop
 		if pinned.has(index):
 			continue
@@ -742,7 +765,7 @@ func _make_bone(skeleton: Skeleton3D, entry: Array, units: float) -> PhysicalBon
 		var child := skeleton.find_bone(entry[1])
 		if child >= 0:  # a skeleton may lack the bone
 			var vector := skeleton.get_bone_global_rest(child).origin - from.origin
-			if vector.length() > 0.001:
+			if vector.length() > BONE_MIN_LENGTH:
 				length = vector.length()
 				along = (from.basis.inverse() * vector).normalized()  # in the bone's frame
 	var radius: float = entry[2]
@@ -760,7 +783,7 @@ func _make_bone(skeleton: Skeleton3D, entry: Array, units: float) -> PhysicalBon
 	var length_m := length * units
 	var shape := CapsuleShape3D.new()
 	shape.radius = radius
-	shape.height = maxf(length_m, 2.0 * radius + 0.001)
+	shape.height = maxf(length_m, 2.0 * radius + CAPSULE_SLACK)
 	var collision := CollisionShape3D.new()
 	collision.shape = shape
 	bone.add_child(collision)
@@ -781,4 +804,4 @@ func _make_bone(skeleton: Skeleton3D, entry: Array, units: float) -> PhysicalBon
 
 ## Metres per unit of the skeleton: the scale of its node (the actor's units node).
 static func _units_scale(skeleton: Skeleton3D) -> float:
-	return maxf(skeleton.global_transform.basis.get_scale().x, 0.0001)
+	return maxf(skeleton.global_transform.basis.get_scale().x, MIN_UNITS_SCALE)
