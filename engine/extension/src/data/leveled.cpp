@@ -6,6 +6,7 @@
 #include "skydot_formats/flags.hpp"
 
 #include <algorithm>
+#include <atomic>
 
 namespace skydot::leveled {
 
@@ -122,8 +123,16 @@ std::uint64_t seed_for(std::uint32_t owner, std::uint64_t purpose) noexcept {
     return mix64((static_cast<std::uint64_t>(owner) * k_golden) ^ (k_leveled_salt + purpose));
 }
 
+namespace {
+std::atomic<std::uint16_t> g_player_level{1};
+} // namespace
+
 std::uint16_t player_level() noexcept {
-    return 1;
+    return g_player_level.load(std::memory_order_relaxed);
+}
+
+void set_player_level(std::uint16_t level) noexcept {
+    g_player_level.store(level == 0 ? std::uint16_t{1} : level, std::memory_order_relaxed);
 }
 
 bool is_list(const wfb::World& world, std::uint32_t form) {

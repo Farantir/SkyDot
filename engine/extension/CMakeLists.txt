@@ -125,6 +125,8 @@ set(SKYDOT_CORE_SOURCES
     src/state/runtime_refs.hpp
     src/vm/dialogue_runtime.cpp
     src/vm/dialogue_runtime.hpp
+    src/vm/progression_runtime.cpp
+    src/vm/progression_runtime.hpp
     src/vm/crafting_runtime.cpp
     src/vm/crafting_runtime.hpp
     src/vm/activation_runtime.cpp
@@ -318,6 +320,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_casting.cpp
     src/vm/papyrus_enchantment_effects.cpp
     src/vm/papyrus_magic.cpp
+    src/vm/papyrus_progression.cpp
     src/vm/papyrus_magic_state.hpp
     src/vm/papyrus_shouts.cpp
     src/vm/papyrus_combat.cpp

@@ -1095,7 +1095,11 @@ him), `ActivationRuntime` (the activation rules and sequence of
 `ItemRuntime` (start inventories and outfits, equipment and its events, the
 item natives, the ITST section) and `MagicRuntime` (active effects, spell book,
 shouts, worn enchantments, poisons and weapon charges, the magic natives, the
-MAGC section). Hosts are mostly the shared interfaces plus a few methods; the
+MAGC section) and `ProgressionRuntime` (`vm/progression_runtime.*`: the player's
+skill and character XP, level, perk points, trainings, legendary counts and books
+read, and the perks of every actor as the NPC_'s PRKR changed by overrides; no
+rules, the PRGS section; it keeps `leveled::player_level()` current and answers
+`HasPerk` and the player's `GetLevel`). Hosts are mostly the shared interfaces plus a few methods; the
 scene module takes the dialogue module directly, the magic module the item and
 combat modules. Other domains reach items only through `vm::ItemAccess`
 (`vm/item_access.hpp`: `resolve_owner`, `item_info_of`, `item_name_of`,
@@ -1215,7 +1219,7 @@ CRC-32 trailer. Each state class writes and reads its own section with its
 own version: `HEAD` (engine version, the pack's world hash and load order;
 another pack is refused), `CLCK`, `VMST` (the VM core), `RFST`, `PLCD`,
 `DEST`, `INVT`, `ANIM`, `AEVT` (animation event registrations), `FLST`, `QUST`, `PAPY` (what the binding tracks:
-attached references, trigger occupants, ID counters) and `PLYR`, which
+attached references, trigger occupants, ID counters), `PRGS` (optional: player progress and perk changes; an older save has the defaults) and `PLYR`, which
 `SaveService` writes from GDScript. Unknown tags are skipped; a newer section
 version is refused. There is no compatibility promise before 1.0, but a
 reader may read its older versions (`PLCD` 1, active effects 1, the item and

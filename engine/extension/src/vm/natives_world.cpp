@@ -169,6 +169,9 @@ void bind_world_natives(Vm& vm, const WorldAccess& world) {
     vm.bind("Utility", "GetCurrentGameTime", [&world](NativeCall&) {
         return NativeResult{.value = Value::floating(static_cast<float>(world.game_days()))};
     });
+    vm.bind("Actor", "GetLevel", [&world](NativeCall& c) {
+        return NativeResult{.value = Value::integer(world.actor_level(c.self.form())), .wait = -1.0};
+    });
     vm.bind("ObjectReference", "CalculateEncounterLevel", [&world](NativeCall&) {
         return NativeResult{.value = Value::integer(world.player_level()), .wait = -1.0};
     });

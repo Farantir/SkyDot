@@ -41,6 +41,7 @@ public:
     std::set<std::uint32_t> disabled;
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::int64_t> items;
     std::map<std::uint32_t, std::int32_t> levels;
+    std::map<std::pair<std::uint32_t, std::uint32_t>, std::int32_t> perk_ranks;
     std::map<std::uint32_t, std::uint32_t> cells;
     std::set<std::uint32_t> interiors;
     std::map<std::uint32_t, std::uint32_t> cell_worlds;
@@ -121,6 +122,7 @@ public:
         return get(items, {r, i}, std::int64_t{0});
     }
     std::int32_t level(std::uint32_t r) const override { return get(levels, r, 0); }
+    std::int32_t perk_rank(std::uint32_t r, std::uint32_t p) const override { return get(perk_ranks, {r, p}, 0); }
     std::uint32_t combat_target(std::uint32_t r) const override { return get(combat, r, 0U); }
 
     std::uint32_t cell_of(std::uint32_t r) const override { return get(cells, r, 0U); }

@@ -280,9 +280,13 @@ std::int64_t PapyrusConditionWorld::item_count(std::uint32_t ref, std::uint32_t 
     return owner_->vm_->inventory().count(ref, item);
 }
 
+std::int32_t PapyrusConditionWorld::perk_rank(std::uint32_t ref, std::uint32_t perk) const {
+    return owner_ != nullptr ? owner_->progression_.perk_rank(ref, perk) : 0;
+}
+
 std::int32_t PapyrusConditionWorld::level(std::uint32_t ref) const {
     if (ref == player_ref()) {
-        return 1; // The player has no stats of her own yet.
+        return owner_ != nullptr ? owner_->progression_.player().level : 1;
     }
     const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_stats);
     return n != nullptr ? n->level() : 0;

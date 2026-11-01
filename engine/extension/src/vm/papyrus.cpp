@@ -222,6 +222,19 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_triggers"), &SkydotPapyrus::get_triggers);
     godot::ClassDB::bind_method(D_METHOD("start_game_enabled_quests"),
                                 &SkydotPapyrus::start_game_enabled_quests);
+    godot::ClassDB::bind_method(D_METHOD("get_player_progress"), &SkydotPapyrus::get_player_progress);
+    godot::ClassDB::bind_method(D_METHOD("set_skill_xp", "skill_av", "xp"), &SkydotPapyrus::set_skill_xp);
+    godot::ClassDB::bind_method(D_METHOD("set_player_xp", "xp"), &SkydotPapyrus::set_player_xp);
+    godot::ClassDB::bind_method(D_METHOD("set_player_level", "level"), &SkydotPapyrus::set_player_level);
+    godot::ClassDB::bind_method(D_METHOD("set_perk_points", "points"), &SkydotPapyrus::set_perk_points);
+    godot::ClassDB::bind_method(D_METHOD("set_trainings", "n"), &SkydotPapyrus::set_trainings);
+    godot::ClassDB::bind_method(D_METHOD("set_legendary", "skill_av", "n"), &SkydotPapyrus::set_legendary);
+    godot::ClassDB::bind_method(D_METHOD("mark_book_read", "book"), &SkydotPapyrus::mark_book_read);
+    godot::ClassDB::bind_method(D_METHOD("is_book_read", "book"), &SkydotPapyrus::is_book_read);
+    godot::ClassDB::bind_method(D_METHOD("add_perk", "ref", "perk"), &SkydotPapyrus::add_perk);
+    godot::ClassDB::bind_method(D_METHOD("remove_perk", "ref", "perk"), &SkydotPapyrus::remove_perk);
+    godot::ClassDB::bind_method(D_METHOD("perk_rank", "ref", "perk"), &SkydotPapyrus::perk_rank);
+    godot::ClassDB::bind_method(D_METHOD("get_perks", "ref"), &SkydotPapyrus::get_perks);
     godot::ClassDB::bind_method(D_METHOD("dialogue_can_talk", "ref"), &SkydotPapyrus::dialogue_can_talk);
     godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker"), &SkydotPapyrus::dialogue_open);
     godot::ClassDB::bind_method(D_METHOD("topic_line", "speaker", "topic"), &SkydotPapyrus::topic_line);
@@ -415,6 +428,7 @@ void SkydotPapyrus::reset() {
     item_.clear();
     created_.clear();
     dialogue_.reset();
+    progression_.clear();
     scene_.reset();
     activation_.reset();
     triggers_.clear();
@@ -635,7 +649,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
@@ -755,7 +769,11 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         return record != nullptr ? record->owner_quest() : 0;
     }
     bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
-    std::int32_t player_level() const override { return 1; }
+    std::int32_t player_level() const override { return owner_.progression_.player().level; }
+    std::int32_t actor_level(std::uint32_t ref) const override {
+        const std::int32_t level = owner_.condition_world().level(ref);
+        return level > 0 ? level : 1;
+    }
     double game_days() const override {
         return owner_.clock_.is_valid() ? owner_.clock_->get_game_days() : 0.0;
     }
@@ -1175,6 +1193,8 @@ void SkydotPapyrus::bind_natives() {
         (this->*registration)();
     }
     dialogue_.bind(*access_);
+    progression_.bind(*access_);
+    progression_.clear();
     crafting_.bind(*access_);
     scene_.bind_natives(*vm_, *access_, dialogue_);
 }

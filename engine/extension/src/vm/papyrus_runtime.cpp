@@ -270,6 +270,8 @@ void SkydotPapyrus::register_forgets() {
                 [this](std::set<std::uint32_t>& out) { activation_.held_refs(out); });
     r.add_owned("dialogue_talked", [this](std::uint32_t id) { dialogue_.forget_talked(id); },
                 [this] { return dialogue_.talked_count(); });
+    r.add_owned("perk_overrides", [this](std::uint32_t id) { progression_.forget(id); },
+                [this] { return progression_.override_count(); });
     r.add_owned("scene_pushed_packages", [this](std::uint32_t id) { scene_.forget(id); },
                 [this] { return scene_.pushed_count(); },
                 [this](std::set<std::uint32_t>& out) { scene_.held_refs(out); });

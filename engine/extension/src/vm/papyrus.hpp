@@ -33,6 +33,7 @@
 #include "vm/combat_runtime.hpp"
 #include "vm/crafting_runtime.hpp"
 #include "vm/dialogue_runtime.hpp"
+#include "vm/progression_runtime.hpp"
 #include "vm/scene_runtime.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
@@ -541,6 +542,25 @@ public:
     /// its counters of unbound functions log one warning per function.
     conditions::ConditionWorld& condition_world();
 
+    // ---- progression (vm/papyrus_progression.cpp; the rules are GDScript)
+    /// {skill_xp: [18 floats, index = actor value - 6], xp, level, perk_points, trainings,
+    /// legendary: [18 ints], books_read: [book ids]}.
+    godot::Dictionary get_player_progress() const;
+    void set_skill_xp(std::int64_t skill_av, double xp);
+    void set_player_xp(double xp);
+    void set_player_level(std::int64_t level);
+    void set_perk_points(std::int64_t points);
+    void set_trainings(std::int64_t n);
+    void set_legendary(std::int64_t skill_av, std::int64_t n);
+    void mark_book_read(std::int64_t book);
+    bool is_book_read(std::int64_t book) const;
+    /// Perks of an actor reference (its NPC_'s PRKR plus changes; the player is 0x14); rank 0 removes.
+    void add_perk(std::int64_t ref, std::int64_t perk);
+    void remove_perk(std::int64_t ref, std::int64_t perk);
+    std::int64_t perk_rank(std::int64_t ref, std::int64_t perk) const;
+    /// [{perk, rank}], sorted by perk.
+    godot::Array get_perks(std::int64_t ref) const;
+
     // ---- dialogue (vm/papyrus_dialogue.cpp; the rules are dialogue/dialogue.hpp)
     /// Whether activating `ref` may open a dialogue: a placed actor that is
     /// not the player and not dead.
@@ -646,6 +666,8 @@ private:
     /// What was said (DLGS), the selection logic over it and the INFOs whose
     /// fragment scripts are attached (INFO -> its topic's quest).
     vm::DialogueRuntime dialogue_;
+    /// The player's progress and every actor's perks (vm/progression_runtime.hpp; section PRGS).
+    vm::ProgressionRuntime progression_;
     friend class DialogueHostImpl;
     /// The scene domain (vm/scene_runtime.hpp); the scene_* methods above only convert for it.
     vm::SceneRuntime scene_;
@@ -866,6 +888,7 @@ private:
         std::vector<std::uint8_t> magic_shouts;
         bool has_magic = false;
         vm::HarvestStates harvests;
+        std::optional<vm::ProgressionState> progression;
         dialogue::DialogueStates dialogue;
         std::unique_ptr<scenes::Scenes> scenes;
         HostSnapshot host;

@@ -229,8 +229,9 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
     // The shout in the voice slot of the subject (0 if none); the parameter is a SHOU.
     case fn::get_equipped_shout:
         return flag(p1 != 0 && world.equipped_shout(subject) == p1);
-    // The player has no perks until P6, and no spells until magic (C5).
     case fn::has_perk:
+        return flag(world.perk_rank(subject, p1) > 0);
+    // No spells until magic (C5).
     case fn::has_spell:
         return 0.0;
     default:

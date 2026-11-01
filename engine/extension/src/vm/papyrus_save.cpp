@@ -13,6 +13,7 @@
 //   ITST  (optional) resolved owners, leveled actor picks and equipment, state/item_states.hpp
 //   CRFT  (optional) created potions and alchemy knowledge, state/created_forms.hpp
 //   HRVS  (optional) harvested references, vm/harvest.hpp
+//   PRGS  (optional) player progress and perk changes, vm/progression_runtime.hpp
 //   QUST  u32 quests (id; running, started, completed, failed, active as
 //         u8s; i32 stage; u32 count + done stages; u32 count + objective
 //         index and bits); u32 count + quests with scripts; u32 aliases
@@ -181,6 +182,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
     out.add("ITST", vm::ItemStates::k_section_version, item_.states().save(vm_->inventory()));
     out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
     out.add("HRVS", vm::HarvestStates::k_section_version, activation_.save());
+    out.add("PRGS", vm::ProgressionState::k_section_version, progression_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_.save());
     if (scene_.started()) {
         out.add("SCEN", scenes::Scenes::k_section_version, scene_.save());
@@ -287,6 +289,17 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
             return fail("the HRVS section of the save is damaged");
         }
     }
+    // PRGS is optional: an older save has the defaults (the level of the Player NPC_, no XP, no added perks).
+    if (const auto* prgs = file.find("PRGS")) {
+        if (prgs->version != vm::ProgressionState::k_section_version) {
+            return fail("section PRGS has a version this engine does not read");
+        }
+        vm::ProgressionState state;
+        if (!vm::ProgressionRuntime::load(file.open(*prgs), state, prgs->version)) {
+            return fail("the PRGS section of the save is damaged");
+        }
+        pending->progression = std::move(state);
+    }
     // DLGS is optional: a save without it has said nothing.
     if (const auto* dlgs = file.find("DLGS")) {
         if (dlgs->version != dialogue::DialogueStates::k_section_version) {
@@ -370,6 +383,7 @@ godot::Error SkydotPapyrus::commit_load() {
     created_.adopt(std::move(pending->created));
     activation_.adopt(std::move(pending->harvests));
     dialogue_.adopt(std::move(pending->dialogue));
+    progression_.adopt(std::move(pending->progression));
     // After the items: worn enchantments are derived from what is worn.
     magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book, pending->magic_shouts);
     scene_.adopt(std::move(pending->scenes));

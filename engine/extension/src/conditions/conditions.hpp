@@ -179,6 +179,8 @@ public:
     [[nodiscard]] virtual bool in_dialogue_with_player(std::uint32_t) const { return false; }
     /// The shout in the voice slot of `ref` (a SHOU), 0 if none.
     [[nodiscard]] virtual std::uint32_t equipped_shout(std::uint32_t) const { return 0; }
+    /// The rank of perk `perk` on `ref` (0: none).
+    [[nodiscard]] virtual std::int32_t perk_rank(std::uint32_t /*ref*/, std::uint32_t /*perk*/) const { return 0; }
 
     [[nodiscard]] UnknownCounter& unknowns() { return unknowns_; }
     [[nodiscard]] const UnknownCounter& unknowns() const { return unknowns_; }

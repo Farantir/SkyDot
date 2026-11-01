@@ -83,9 +83,26 @@ func _run(pack_dir: String) -> void:
 	var again := _vm(pack)
 	for ref in expected:
 		expect(_contents(again, ref) == expected[ref], "a second VM resolves 0x%08X the same" % ref)
+	# Progress: the player starts at level 1 with the perks of the Player NPC_ (PerkSkillBoosts 0xCF788).
+	var progress := vm.get_player_progress()
+	expect(progress["level"] == 1 and progress["perk_points"] == 0, "the player starts at level 1: %s" % [progress])
+	expect(vm.has_method("perk_rank") and vm.perk_rank(PLAYER, 0xCF788) == 1, "the player has PerkSkillBoosts")
+	vm.set_skill_xp(6, 12.5)
+	vm.set_player_level(7)
+	vm.set_perk_points(2)
+	vm.mark_book_read(0x2F83C)
+	vm.add_perk(PLAYER, 0xBABE4)
+	vm.remove_perk(PLAYER, 0xCF788)
 	var bytes := vm.save_state()
 	var loaded := _vm(pack)
 	expect(loaded.load_state(bytes) == OK, "the save loads: " + loaded.get_last_error())
+	var back := loaded.get_player_progress()
+	expect(back["level"] == 7 and back["perk_points"] == 2 and back["skill_xp"][0] == 12.5 and loaded.is_book_read(0x2F83C),
+		"the progress is the same after a load: %s" % [back])
+	expect(loaded.perk_rank(PLAYER, 0xBABE4) == 1 and loaded.perk_rank(PLAYER, 0xCF788) == 0, "the perk changes survive a load")
+	vm.set_player_level(1)
+	vm.add_perk(PLAYER, 0xCF788)
+	vm.remove_perk(PLAYER, 0xBABE4)
 	for ref in expected:
 		expect(_contents(loaded, ref) == expected[ref], "0x%08X is the same after a load" % ref)
 

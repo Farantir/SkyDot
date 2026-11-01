@@ -62,8 +62,9 @@ private:
 /// A seed that is the same for one owner reference every time.
 [[nodiscard]] std::uint64_t seed_for(std::uint32_t owner, std::uint64_t purpose = k_purpose_inventory) noexcept;
 
-/// The player's level. One place, until the player levels (P6).
+/// The player's level: one place, kept current by vm::ProgressionRuntime (set, load, reset, new game).
 [[nodiscard]] std::uint16_t player_level() noexcept;
+void set_player_level(std::uint16_t level) noexcept;
 
 /// The value of a GlobalVariable, if it is known.
 using GlobalValue = std::function<std::optional<double>(std::uint32_t global)>;
