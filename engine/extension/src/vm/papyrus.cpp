@@ -837,6 +837,7 @@ void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, do
     }
 }
 
+void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_natives() {

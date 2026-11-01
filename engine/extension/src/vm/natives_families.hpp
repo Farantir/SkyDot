@@ -11,4 +11,7 @@ namespace skydot::vm {
 /// Natives that are meant to do nothing: silent, or logged as not shown.
 void bind_noop_natives(Vm& vm);
 
+/// Utility.Wait, GetCurrentRealTime, RandomInt and RandomFloat.
+void bind_utility_natives(Vm& vm);
+
 } // namespace skydot::vm

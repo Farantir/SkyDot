@@ -125,6 +125,7 @@ set(SKYDOT_CORE_SOURCES
     src/state/runtime_refs.hpp
     src/vm/natives_world.cpp
     src/vm/natives_noop.cpp
+    src/vm/natives_utility.cpp
     src/state/ref_states.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
@@ -301,7 +302,6 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_save.cpp
     src/vm/natives_objectreference.cpp
     src/vm/natives_quest.cpp
-    src/vm/natives_utility.cpp
     src/vm/papyrus.cpp
     src/vm/papyrus.hpp
     src/vm/quests.cpp

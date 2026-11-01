@@ -2,18 +2,18 @@
 //
 // Utility natives: Wait, real time and random numbers (GetCurrentGameTime reads
 // the game clock and is in natives_world.cpp).
-#include "vm/natives_common.hpp"
-#include "vm/papyrus.hpp"
+#include "vm/natives_args.hpp"
+#include "vm/natives_families.hpp"
+
 #include <algorithm>
 
-namespace skydot {
+namespace skydot::vm {
 
-void SkydotPapyrus::bind_utility_natives() {
+void bind_utility_natives(Vm& v) {
     using vm::NativeCall;
     using vm::NativeResult;
     using vm::Value;
     using namespace natives;
-    [[maybe_unused]] auto& v = *vm_;
     [[maybe_unused]] const auto arg = natives::arg;
     [[maybe_unused]] const auto result = natives::result;
     [[maybe_unused]] const auto number = natives::number;
@@ -41,4 +41,4 @@ void SkydotPapyrus::bind_utility_natives() {
     });
 }
 
-} // namespace skydot
+} // namespace skydot::vm
