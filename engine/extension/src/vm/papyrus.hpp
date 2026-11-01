@@ -49,6 +49,7 @@
 #include "state/triggers.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
+#include "vm/activation_runtime.hpp"
 #include "vm/world_access.hpp"
 #include "world/world.hpp"
 
@@ -859,8 +860,6 @@ private:
                      const std::vector<std::uint8_t>& shouts);
     /// Created potions and what is known of ingredients (CRFT).
     vm::CreatedForms created_;
-    /// What is harvested (HRVS).
-    vm::HarvestStates harvests_;
     /// The crafting domain (vm/crafting_runtime.hpp); its rules sit on the VM's inventory.
     vm::CraftingRuntime crafting_;
     crafting::Crafting* crafting_logic() { return crafting_.logic(); }
@@ -871,11 +870,8 @@ private:
     void unequip_all(std::uint32_t owner);
     /// The worn armor of resolved actors, for the actor builder.
     WornProvider worn_provider() const;
-    /// The rules and sequence of activations (vm/activation.hpp); the adapter
-    /// answers what they ask of the world (vm/papyrus_activation.cpp).
-    struct ActivationAdapter;
-    std::unique_ptr<ActivationHost> activation_host_;
-    std::unique_ptr<Activations> activations_;
+    /// The activation domain (vm/activation_runtime.hpp): the rules, the sequence and what is harvested (HRVS).
+    vm::ActivationRuntime activation_;
     void bind_activations();
     godot::Dictionary outcome_dictionary(const ActivationOutcome& outcome) const;
     bool graph_raises_activation(std::uint32_t form) const;

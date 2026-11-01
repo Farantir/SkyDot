@@ -414,10 +414,9 @@ void SkydotPapyrus::reset() {
     clear_magic();
     items_.clear();
     created_.clear();
-    harvests_.clear();
     dialogue_.reset();
     scene_.reset();
-    activations_->clear();
+    activation_.reset();
     triggers_.clear();
     test_ids_.clear();
     sound_ids_.clear();
@@ -636,7 +635,8 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host {
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
+                             vm::ActivationRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -868,6 +868,23 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
+    // ---- vm::ActivationRuntime::Host
+    vm::ReferenceHost& references() override { return *this; }
+    std::uint32_t placed_actor_base(std::uint32_t ref) const override {
+        const auto* actor = world() != nullptr ? world()->actor_ptr(ref) : nullptr;
+        return actor != nullptr ? actor->base() : 0;
+    }
+    bool graph_raises_activation(std::uint32_t ref) const override { return owner_.graph_raises_activation(ref); }
+    std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) override { return owner_.activate(ref, activator); }
+    void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
+        owner_.vm_->schedule(delay, "activate", child, parent, static_cast<std::uint32_t>(ActivationSource::parent));
+    }
+    std::int64_t dropped_count(std::uint32_t ref) const override { return owner_.items_.dropped_count(ref); }
+    std::uint32_t dropped_extra(std::uint32_t ref) const override { return owner_.items_.dropped_extra(ref); }
+    std::string item_name_of(std::uint32_t form) const override { return owner_.item_name_of(form); }
+    std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
+    void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
+
     // ---- vm::CraftingRuntime::Host
     vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
     vm::ItemExtras& item_extras() override { return owner_.items_.extras(); }
@@ -940,6 +957,14 @@ private:
 };
 
 void SkydotPapyrus::AccessDeleter::operator()(Access* access) const { delete access; }
+
+void SkydotPapyrus::bind_activations() {
+    // Activations work before `setup` too: the access object is made now and again by bind_natives.
+    if (!access_) {
+        access_.reset(new Access(*this));
+    }
+    activation_.bind(*access_);
+}
 
 void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
@@ -1069,6 +1094,7 @@ void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, do
 void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
     access_.reset(new Access(*this));
+    activation_.bind(*access_);
     using Registration = void (SkydotPapyrus::*)();
     static constexpr Registration table[] = {
         &SkydotPapyrus::bind_debug_natives,

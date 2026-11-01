@@ -34,12 +34,12 @@ double SkydotPapyrus::game_days() const {
 }
 
 bool SkydotPapyrus::harvested(std::int64_t ref) const {
-    return harvests_.harvested(static_cast<std::uint32_t>(ref), game_days());
+    return activation_.harvests().harvested(static_cast<std::uint32_t>(ref), game_days());
 }
 
 godot::PackedInt64Array SkydotPapyrus::get_harvested_refs() const {
     godot::PackedInt64Array out;
-    for (const std::uint32_t ref : harvests_.harvested_refs(game_days())) {
+    for (const std::uint32_t ref : activation_.harvests().harvested_refs(game_days())) {
         out.push_back(static_cast<std::int64_t>(ref));
     }
     return out;

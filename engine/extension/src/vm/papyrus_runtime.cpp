@@ -248,14 +248,12 @@ void SkydotPapyrus::register_forgets() {
                 [this] { return combat_.ghost_count(); });
     r.add_owned("triggers", [this](std::uint32_t id) { triggers_.forget(id); },
                 [this] { return triggers_.triggers().size() + triggers_.actors().size(); });
-    r.add_owned("harvests", [this](std::uint32_t id) { harvests_.erase(id); }, [this] { return harvests_.size(); });
+    r.add_owned("harvests", [this](std::uint32_t id) { activation_.harvests().erase(id); },
+                [this] { return activation_.harvests().size(); });
     r.add_owned("last_damager", [this](std::uint32_t id) { combat_.forget_damager(id); },
                 [this] { return combat_.damager_count(); });
-    r.add_owned("pending_activations", [this](std::uint32_t id) {
-        if (activations_) {
-            activations_->forget(id);
-        }
-    }, [this] { return activations_ ? activations_->pending_count() : std::size_t{0}; });
+    r.add_owned("pending_activations", [this](std::uint32_t id) { activation_.forget(id); },
+                [this] { return activation_.pending_count(); });
     r.add_owned("dialogue_talked", [this](std::uint32_t id) { dialogue_.forget_talked(id); },
                 [this] { return dialogue_.talked_count(); });
     r.add_owned("scene_pushed_packages", [this](std::uint32_t id) { scene_.forget(id); },
