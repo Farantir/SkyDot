@@ -3,7 +3,7 @@
 // Casting (GAMEPLAY-PLAN 7a-3, docs/adr/0008): what the game layer needs to cast a spell or a
 // scroll (`cast_info`), paying a spell apart from landing its effects (`pay_spell`, `land_form`:
 // an aimed spell is paid at the release and lands at the impact, an area spell is paid once and
-// lands on every actor), and the state of a hand that holds a spell (`HandCast`). Sources: UESP
+// lands on every actor). The state of a hand is Casting's (game/casting.gd). Sources: UESP
 // "Skyrim:Magic Overview" (fire and forget: held for the casting time, released to cast;
 // concentration: magicka per second while held; scrolls are fire and forget and cost no magicka).
 // Nothing here touches Godot.
@@ -80,57 +80,5 @@ struct Landing {
 /// Target 0 and spells of self delivery land on the caster.
 Landing land_form(const wfb::World& world, ActiveEffects& effects, std::uint32_t caster, std::uint32_t form,
                   std::uint32_t target);
-
-// ---- the hand ---------------------------------------------------------------------------------
-
-/// What a hand holds, as `HandCast` needs it.
-struct HandSpell {
-    std::uint32_t casting_type = casting::fire_and_forget;
-    double charge_time = 0.0;
-};
-
-/// One step of a hand: what happened.
-struct HandEvent {
-    enum class Kind : std::uint8_t {
-        none,    ///< Nothing (idle, charging, released too early).
-        charged, ///< Fire and forget: the casting time is full; releasing now casts.
-        cast,    ///< Fire and forget released after the time: pay and land the spell.
-        tick,    ///< Concentration: `seconds` were paid for; land the effects again.
-        stop,    ///< Concentration ended (released, or the payer had no magicka).
-    };
-    Kind kind = Kind::none;
-    double seconds = 0.0; ///< tick: the seconds paid; cast: the seconds held.
-    [[nodiscard]] const char* name() const noexcept;
-};
-
-/// The attack button on one hand that holds a spell: idle -> charging (fire and forget; `charge_time`
-/// seconds while held) -> released (event cast) or idle (released early: nothing, no cost);
-/// concentration: active from the press, each `step` pays for the time and ticks, until released or
-/// the payer says no.
-class HandCast {
-public:
-    enum class Phase : std::uint8_t { idle, charging, concentrating };
-
-    /// The payer: pays for `seconds` of concentration, false if the caster cannot.
-    using Payer = std::function<bool(double seconds)>;
-
-    void press(const HandSpell& spell);
-    HandEvent step(double dt, const Payer& pay);
-    HandEvent release();
-    /// Back to idle without an event (the spell was put away, the caster died).
-    void cancel() { phase_ = Phase::idle; held_ = 0.0; }
-
-    [[nodiscard]] Phase phase() const noexcept { return phase_; }
-    [[nodiscard]] double held() const noexcept { return held_; }
-    /// Fire and forget: how much of the casting time has passed, 0..1 (1 when it is 0 seconds).
-    [[nodiscard]] double progress() const noexcept;
-    [[nodiscard]] bool charged() const noexcept { return phase_ == Phase::charging && held_ >= spell_.charge_time; }
-
-private:
-    Phase phase_ = Phase::idle;
-    HandSpell spell_;
-    double held_ = 0.0;
-    bool announced_ = false;
-};
 
 } // namespace skydot::magic

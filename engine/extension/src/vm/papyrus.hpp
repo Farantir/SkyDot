@@ -243,18 +243,6 @@ public:
     /// An enchanted weapon unit's charge for the HUD and the menus: {enchantment (0: none), charge,
     /// max, cost (per hit)}. `extra` -1: the unit held in the right hand, else the first carried.
     godot::Dictionary weapon_charge(std::int64_t actor, std::int64_t form, std::int64_t extra = -1);
-    /// The attack button on a hand (`hand`: 0 left, 1 right, 2 power) that holds a spell or scroll.
-    /// hand_press starts it: {ok, reason ("" or "no spell", "dead", "cooldown", "not enough magicka",
-    /// "not carried"), spell, casting_type, charge_time, is_scroll}.
-    godot::Dictionary hand_press(std::int64_t actor, std::int64_t hand);
-    /// Advance it by `dt` seconds of the button held: {event ("" nothing, "charged" a fire-and-forget
-    /// spell can now be released, "tick" a concentration spell was paid for `seconds` and lands again,
-    /// "stop" it ended for lack of magicka), seconds, progress (0..1), cost (paid in this step), spell, hand}.
-    godot::Dictionary hand_step(std::int64_t actor, std::int64_t hand, double dt);
-    /// The button is released: {event ("cast" fire and forget held long enough: pay_spell (or
-    /// cast_scroll) and land it; "stop" a concentration spell ended; "" released too early: nothing,
-    /// no cost), seconds (held), spell, is_scroll, hand}.
-    godot::Dictionary hand_release(std::int64_t actor, std::int64_t hand);
     /// What `spell` costs `caster` at its skill (0 for `caster` 0: the stored cost).
     double spell_cost(std::int64_t caster, std::int64_t spell);
     /// Take magicka from `caster` as damage, so the regeneration delay applies.

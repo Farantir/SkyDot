@@ -104,12 +104,6 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         forgets.push_back(registry.add(
             "magic.worn", [this](std::uint32_t ref) { worn.forget(ref); }, [this] { return worn.entries(); }));
         forgets.push_back(registry.add(
-            "magic.hands",
-            [this](std::uint32_t ref) {
-                std::erase_if(hands, [ref](const auto& h) { return h.first.first == ref; });
-            },
-            [this] { return hands.size(); }));
-        forgets.push_back(registry.add(
             "magic.pending",
             [this](std::uint32_t ref) {
                 std::erase_if(pending, [ref](const Pending& p) { return p.view.target == ref; });
@@ -137,8 +131,6 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     magic::ShoutBook shouts;
     /// The constant effects of worn enchanted armor (never saved: derived when an actor is primed).
     magic::WornEnchantments worn;
-    /// The attack button on each hand that holds a spell: (actor, hand) -> state.
-    std::map<std::pair<std::uint32_t, int>, magic::HandCast> hands;
 
     struct Pending {
         bool started;
@@ -1107,7 +1099,6 @@ void SkydotPapyrus::magic_actor_died(std::uint32_t ref) {
     }
     m->effects.on_death(ref);
     m->worn.forget(ref);
-    std::erase_if(m->hands, [ref](const auto& h) { return h.first.first == ref; });
     flush_magic_events();
 }
 
@@ -1120,7 +1111,6 @@ void SkydotPapyrus::clear_magic() {
     m->book.clear();
     m->shouts.clear();
     m->worn.clear();
-    m->hands.clear();
     m->pending.clear();
     m->snapshots.clear();
     m->detach_later.clear();
@@ -1157,7 +1147,6 @@ void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effec
     m->book.clear();
     m->shouts.clear();
     m->worn.clear();
-    m->hands.clear();
     m->pending.clear();
     m->snapshots.clear();
     m->detach_later.clear();
@@ -1365,122 +1354,6 @@ Dictionary SkydotPapyrus::weapon_charge(std::int64_t actor_in, std::int64_t form
     out["charge"] = static_cast<double>(info.charge);
     out["max"] = static_cast<double>(info.max);
     out["cost"] = info.cost;
-    return out;
-}
-
-// ---- the hands -------------------------------------------------------------------------------------
-
-Dictionary SkydotPapyrus::hand_press(std::int64_t actor_in, std::int64_t hand_in) {
-    Dictionary out;
-    out["ok"] = false;
-    out["reason"] = String();
-    out["spell"] = 0;
-    out["casting_type"] = 0;
-    out["charge_time"] = 0.0;
-    out["is_scroll"] = false;
-    auto* m = magic_state();
-    const auto actor = static_cast<std::uint32_t>(actor_in);
-    const int hand = static_cast<int>(hand_in);
-    if (m == nullptr) {
-        out["reason"] = "no spell";
-        return out;
-    }
-    const std::uint32_t form = m->equipped_spell(actor, hand);
-    const auto info = magic::cast_info(m->world_, form, m->settings());
-    if (form == 0 || !info.found) {
-        out["reason"] = "no spell";
-        return out;
-    }
-    if (!caster_can_act(actors_, actor, out)) {
-        return out;
-    }
-    m->prime(actor);
-    out["spell"] = static_cast<std::int64_t>(form);
-    out["casting_type"] = static_cast<std::int64_t>(info.casting_type);
-    out["charge_time"] = static_cast<double>(info.charge_time);
-    out["is_scroll"] = info.is_scroll;
-    if (info.is_scroll) {
-        if (lookup(m->world_.spells(), form) == nullptr && !m->carried_scroll(actor, form)) {
-            m->unequip_spell(actor, hand);
-            out["reason"] = "not carried";
-            return out;
-        }
-    } else {
-        if (!m->book.ready(actor, form, game_days())) {
-            out["reason"] = "cooldown";
-            return out;
-        }
-        const double magicka = actors_.get(actor, vm::av::k_magicka);
-        const double cost = m->spell_cost(form, actor);
-        const bool short_of = info.casting_type == magic::casting::concentration ? magicka <= 0.0
-                                                                                : (cost > 0.0 && magicka < cost);
-        if (short_of) {
-            out["reason"] = "not enough magicka";
-            return out;
-        }
-    }
-    m->hands[{actor, hand}].press({info.casting_type, static_cast<double>(info.charge_time)});
-    out["ok"] = true;
-    return out;
-}
-
-Dictionary SkydotPapyrus::hand_step(std::int64_t actor_in, std::int64_t hand_in, double dt) {
-    Dictionary out;
-    out["event"] = String();
-    out["seconds"] = 0.0;
-    out["progress"] = 0.0;
-    out["cost"] = 0.0;
-    out["spell"] = 0;
-    out["hand"] = hand_in;
-    auto* m = magic_state();
-    const auto actor = static_cast<std::uint32_t>(actor_in);
-    const int hand = static_cast<int>(hand_in);
-    const auto it = m != nullptr ? m->hands.find({actor, hand}) : decltype(m->hands.end()){};
-    if (m == nullptr || it == m->hands.end()) {
-        return out;
-    }
-    magic::HandCast& cast = it->second;
-    const std::uint32_t form = m->equipped_spell(actor, hand);
-    out["spell"] = static_cast<std::int64_t>(form);
-    if (form == 0 || actors_.is_dead(actor)) {
-        const bool was_held = cast.phase() == magic::HandCast::Phase::concentrating;
-        cast.cancel();
-        out["event"] = was_held ? "stop" : "";
-        return out;
-    }
-    double paid = 0.0;
-    const auto event = cast.step(dt, [&](double seconds) {
-        const auto p = magic::pay_spell(m->world_, *m, m->book, actor, form, seconds, game_days(), m->settings());
-        paid += p.ok ? p.cost : 0.0;
-        return p.ok;
-    });
-    out["event"] = event.name();
-    out["seconds"] = event.seconds;
-    out["progress"] = cast.progress();
-    out["cost"] = paid;
-    return out;
-}
-
-Dictionary SkydotPapyrus::hand_release(std::int64_t actor_in, std::int64_t hand_in) {
-    Dictionary out;
-    out["event"] = String();
-    out["seconds"] = 0.0;
-    out["spell"] = 0;
-    out["is_scroll"] = false;
-    out["hand"] = hand_in;
-    auto* m = magic_state();
-    const auto actor = static_cast<std::uint32_t>(actor_in);
-    const int hand = static_cast<int>(hand_in);
-    const auto it = m != nullptr ? m->hands.find({actor, hand}) : decltype(m->hands.end()){};
-    if (m == nullptr || it == m->hands.end()) {
-        return out;
-    }
-    const auto event = it->second.release();
-    const std::uint32_t form = m->equipped_spell(actor, hand);
-    out["event"] = event.name();
-    out["seconds"] = event.seconds;
-    out["spell"] = static_cast<std::int64_t>(form);
-    out["is_scroll"] = magic::cast_info(m->world_, form).is_scroll;
     return out;
 }
 

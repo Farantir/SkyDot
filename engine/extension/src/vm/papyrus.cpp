@@ -100,9 +100,6 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("apply_poison", "actor", "poison"), &SkydotPapyrus::apply_poison);
     godot::ClassDB::bind_method(D_METHOD("weapon_charge", "actor", "form", "extra"), &SkydotPapyrus::weapon_charge,
                                 DEFVAL(-1));
-    godot::ClassDB::bind_method(D_METHOD("hand_press", "actor", "hand"), &SkydotPapyrus::hand_press);
-    godot::ClassDB::bind_method(D_METHOD("hand_step", "actor", "hand", "dt"), &SkydotPapyrus::hand_step);
-    godot::ClassDB::bind_method(D_METHOD("hand_release", "actor", "hand"), &SkydotPapyrus::hand_release);
     godot::ClassDB::bind_method(D_METHOD("spell_cost", "caster", "spell"), &SkydotPapyrus::spell_cost);
     godot::ClassDB::bind_method(D_METHOD("spend_magicka", "caster", "amount"), &SkydotPapyrus::spend_magicka);
     godot::ClassDB::bind_method(D_METHOD("apply_item_effects", "actor", "form", "extra"),

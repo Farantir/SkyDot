@@ -91,8 +91,8 @@ record that stored nothing.
   x seconds) and `land_form` (a SPEL's or a scroll's effects, no cost). `cast_spell`
   is both. Scrolls are SCRL items (fire and forget, delivery of their primary
   effect, no charge time) and cost no magicka.
-- **Hands**: `HandCast` is the pure state of the attack button on a hand
-  (charging, charged, cast; concentration ticks and stops).
+- **Hands**: the state of the attack button on a hand (charging, charged, cast;
+  concentration ticks and stops) is `Casting`'s, in the game layer (ADR 0009).
 - **Enchanted weapons** (`magic/enchanted`): the charge lives in `ItemExtra`
   (`charge`, -1 = full; `charge_max` for a created enchantment, else EAMT).
   A hit costs the ENCH's cost (manual: ENIT cost, else the summed effect cost);

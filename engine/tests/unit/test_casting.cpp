@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Casting (GAMEPLAY-PLAN 7a-3, docs/adr/0008): paying apart from landing, cast_info, the state of a
-// hand (HandCast), enchanted weapons (charge, no charge no effect, NPCs never run out), poisons,
+// Casting (GAMEPLAY-PLAN 7a-3, docs/adr/0008): paying apart from landing, cast_info, enchanted weapons (charge, no charge no effect, NPCs never run out), poisons,
 // worn enchantments, the item extras' old layout, scrolls in a hand and the actors to derive again
 // after a load.
 #include "support/world_builder.hpp"
@@ -275,71 +274,6 @@ TEST_CASE("cast_info says how to cast a spell and a scroll", "[casting]") {
 
     CHECK_FALSE(magic::cast_info(*rig.world, k_sword).found);
     CHECK_FALSE(magic::cast_info(*rig.world, 0x9999).found);
-}
-
-// ---- the hand -------------------------------------------------------------------------------------
-
-TEST_CASE("a fire-and-forget hand charges while held and casts on release", "[casting][hand]") {
-    magic::HandCast hand;
-    const magic::HandCast::Payer never = [](double) { return false; };
-    hand.press({magic::casting::fire_and_forget, 0.5});
-    CHECK(hand.phase() == magic::HandCast::Phase::charging);
-    CHECK(hand.step(0.25, never).kind == magic::HandEvent::Kind::none);
-    CHECK(hand.progress() == Approx(0.5));
-    const auto full = hand.step(0.3, never);
-    CHECK(full.kind == magic::HandEvent::Kind::charged);
-    CHECK(hand.charged());
-    CHECK(hand.step(0.3, never).kind == magic::HandEvent::Kind::none); // announced once
-    const auto cast = hand.release();
-    CHECK(cast.kind == magic::HandEvent::Kind::cast);
-    CHECK(cast.seconds == Approx(0.85));
-    CHECK(hand.phase() == magic::HandCast::Phase::idle);
-    CHECK(hand.release().kind == magic::HandEvent::Kind::none);
-}
-
-TEST_CASE("releasing before the casting time is up casts nothing", "[casting][hand]") {
-    magic::HandCast hand;
-    hand.press({magic::casting::fire_and_forget, 0.5});
-    hand.step(0.4, {});
-    const auto early = hand.release();
-    CHECK(early.kind == magic::HandEvent::Kind::none);
-    CHECK(std::string(early.name()).empty());
-    CHECK(hand.phase() == magic::HandCast::Phase::idle);
-    // Charge time 0 (a scroll): the release casts at once.
-    hand.press({magic::casting::fire_and_forget, 0.0});
-    CHECK(hand.release().kind == magic::HandEvent::Kind::cast);
-}
-
-TEST_CASE("a concentration hand pays and ticks until released or out of magicka", "[casting][hand]") {
-    magic::HandCast hand;
-    double paid = 0.0;
-    double budget = 0.25; // seconds the caster can afford
-    const magic::HandCast::Payer payer = [&](double seconds) {
-        if (budget < seconds) {
-            return false;
-        }
-        budget -= seconds;
-        paid += seconds;
-        return true;
-    };
-    hand.press({magic::casting::concentration, 0.0});
-    const auto t1 = hand.step(0.1, payer);
-    CHECK(t1.kind == magic::HandEvent::Kind::tick);
-    CHECK(t1.seconds == Approx(0.1));
-    CHECK(hand.step(0.1, payer).kind == magic::HandEvent::Kind::tick);
-    const auto out = hand.step(0.1, payer); // 0.05 s left: cannot pay 0.1
-    CHECK(out.kind == magic::HandEvent::Kind::stop);
-    CHECK(paid == Approx(0.2));
-    CHECK(hand.phase() == magic::HandCast::Phase::idle);
-    CHECK(hand.release().kind == magic::HandEvent::Kind::none); // already over
-
-    budget = 10.0;
-    hand.press({magic::casting::concentration, 0.0});
-    hand.step(0.5, payer);
-    const auto released = hand.release();
-    CHECK(released.kind == magic::HandEvent::Kind::stop);
-    CHECK(std::string(released.name()) == "stop");
-    CHECK(hand.step(0.5, payer).kind == magic::HandEvent::Kind::none); // idle does not pay
 }
 
 // ---- enchanted weapons ------------------------------------------------------------------------------
