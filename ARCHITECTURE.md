@@ -1217,8 +1217,10 @@ another pack is refused), `CLCK`, `VMST` (the VM core), `RFST`, `PLCD`,
 `DEST`, `INVT`, `ANIM`, `AEVT` (animation event registrations), `FLST`, `QUST`, `PAPY` (what the binding tracks:
 attached references, trigger occupants, ID counters) and `PLYR`, which
 `SaveService` writes from GDScript. Unknown tags are skipped; a newer section
-version is refused. There is no compatibility promise before 1.0: an older
-section version is refused too, not converted.
+version is refused. There is no compatibility promise before 1.0, but a
+reader may read its older versions (`PLCD` 1, active effects 1, the item and
+actor states' older layouts) where that is cheap; it refuses a version it does
+not know.
 
 Loading is two-phase: the CRC is checked, every section is decoded into
 detached objects (`SkydotPapyrus.prepare`, `decode_host`, `Vm::decode`), and
@@ -1593,9 +1595,9 @@ Several version numbers move independently:
 | CLI JSON | `cli::k_json_version` | — | the JSON the pack tool reads changes |
 | Shot JSON | `ViewerSettings.SHOT_FORMAT` | 1 | the F12 metadata changes |
 | Save container | `save::k_container_version` (`save/save_file.hpp`) | 1 | the framing changes |
-| Save sections | each state class's own constant (`k_section_version`, `k_clock_section_version`, `k_papy_version`, `SaveService.PLYR_VERSION`) | 1, `PAPY` 2 | that class's saved state changes; older versions are refused before 1.0 |
+| Save sections | each state class's own constant (`k_section_version`, `k_clock_section_version`, `k_papy_version`, `SaveService.PLYR_VERSION`) | 1, `PAPY` 2 | that class's saved state changes; a reader may read its older versions |
 
-Readers refuse unknown versions and say which numbers they read.
+Readers refuse versions they do not know and say which numbers they read.
 
 ---
 
