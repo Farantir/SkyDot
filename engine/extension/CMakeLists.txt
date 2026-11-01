@@ -124,6 +124,7 @@ set(SKYDOT_CORE_SOURCES
     src/state/quest_states.hpp
     src/state/runtime_refs.hpp
     src/vm/natives_world.cpp
+    src/vm/natives_noop.cpp
     src/state/ref_states.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
@@ -133,7 +134,8 @@ set(SKYDOT_CORE_SOURCES
     src/vm/value.hpp
     src/vm/vm.cpp
     src/vm/vm.hpp
-    src/vm/world_access.hpp)
+    src/vm/world_access.hpp
+    src/vm/natives_families.hpp)
 
 # Both copies read the same headers and need flatc's output first.
 function(skydot_core_library name)
@@ -285,7 +287,6 @@ target_sources(skydot PRIVATE
     src/vm/natives_weapon.cpp
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
-    src/vm/natives_noop.cpp
     src/vm/papyrus_activation.cpp
     src/vm/papyrus_conditions.cpp
     src/vm/papyrus_dialogue.cpp

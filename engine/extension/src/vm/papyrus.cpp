@@ -10,6 +10,7 @@
 #include "vm/activation.hpp"
 #include "vm/natives_actor.hpp"
 #include "vm/natives_common.hpp"
+#include "vm/natives_families.hpp"
 #include "vm/natives_world.hpp"
 
 #include <godot_cpp/classes/file_access.hpp>
@@ -835,6 +836,8 @@ void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, do
         }
     }
 }
+
+void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
