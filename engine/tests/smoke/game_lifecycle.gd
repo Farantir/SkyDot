@@ -123,11 +123,14 @@ func _run(pack_dir: String) -> void:
 		papyrus.transfer(archer_ref, PLAYER, papyrus.melee_weapon(archer_ref), 1)
 	archer.teleport(home)
 	archer.face(atan2(-forward.x, -forward.z))
+	expect(_session.combat.npc_shoot(archer_ref), "the archer draws on the player")
 	var shooting := await _until(func() -> bool: return not _arrows.is_empty(), 30.0)
 	expect(shooting >= 0.0, "the archer shoots")
 	papyrus.break_invisibility(PLAYER)
 	expect(papyrus.land_spell(PLAYER, PARALYZE, BANDIT)["ok"], "Paralyze lands on the bandit")
 	var staged := await _until(func() -> bool:
+		if _session.combat._shots.is_empty():
+			_session.combat.npc_shoot(archer_ref)
 		return _session.corpses.is_down(BANDIT) and not _session.projectiles._live.is_empty() \
 			and not _session.combat._shots.is_empty(), 40.0)
 	var combat := _session.combat
