@@ -374,6 +374,9 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	var behaviour: String = plan.get("behaviour", "")
 	var equipment := _papyrus.equipment(attacker)
 	var form: int = equipment["right"]
+	# As in the game an actor without Stamina cannot power attack: it attacks normally.
+	if power and not rules.can_power_attack(attacker):
+		power = false
 	var info := _world.get_weapon(form) if form != 0 else {}
 	var type := int(info.get("weapon_type", 0))
 	if _prefix_of(type) == "":
@@ -397,6 +400,8 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 		clip = dir + stem + ".hkx"
 	var speed := maxf(float(info.get("speed", 1.0)), 0.1)
 	_face(node, target)
+	if power:
+		rules.pay_power_attack(attacker, form)
 	if node.has_method("play_action"):
 		node.play_action(clip, speed)
 	_npc_attacks.append({"attacker": attacker, "target": target, "power": power, "weapon": form, "info": info,

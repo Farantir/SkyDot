@@ -150,10 +150,10 @@ func can_power_attack(attacker: int) -> bool:
 	return _data.stamina(attacker) > 0.0
 
 
-## Whether a power attack costs `attacker` Stamina. PLACEHOLDER: only the player pays; NPCs pay
-## nothing until their AI budgets Stamina.
-func pays_stamina(attacker: int) -> bool:
-	return attacker == PLAYER_REF
+## Whether a power attack costs `attacker` Stamina: it does for everyone, the player and NPCs (an
+## NPC without Stamina attacks normally instead, see Combat.npc_attack).
+func pays_stamina(_attacker: int) -> bool:
+	return true
 
 
 ## Stamina a power attack with `weapon_form` costs: (fStaminaAttackWeaponBase + the weapon's weight
@@ -164,7 +164,7 @@ func power_attack_cost(_attacker: int, weapon_form: int) -> float:
 		* _data.gmst_float(GMST_POWER_PENALTY, POWER_PENALTY_FALLBACK)
 
 
-## Pay the Stamina of a power attack (nothing if `attacker` does not pay).
+## Pay the Stamina of a power attack (nothing if `attacker` does not pay, see pays_stamina).
 func pay_power_attack(attacker: int, weapon_form: int) -> void:
 	if pays_stamina(attacker):
 		_data.spend_stamina(attacker, power_attack_cost(attacker, weapon_form))

@@ -185,7 +185,14 @@ func test_power_attack_cost_and_payment() -> void:
 	rules.pay_power_attack(P, SWORD)
 	expect_eq(data.spent, [[P, 84.0]], "the player pays")
 	rules.pay_power_attack(NPC, SWORD)
-	expect_eq(data.spent.size(), 1, "an NPC pays nothing yet")
+	expect_eq(data.spent, [[P, 84.0], [NPC, 84.0]], "an NPC pays too")
+
+
+func test_everyone_pays_stamina() -> void:
+	expect(rules.pays_stamina(P), "the player")
+	expect(rules.pays_stamina(NPC), "an NPC")
+	rules.pay_power_attack(NPC, 0)
+	expect_eq(data.spent, [[NPC, 40.0]], "an NPC power attack with fists")
 
 
 func test_power_delay() -> void:
