@@ -5,6 +5,7 @@
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
 #include "data/scripts.hpp"
+#include "perks/entry_points.hpp"
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 #include "actors/behavior_player.hpp"
@@ -237,6 +238,12 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("perk_rank", "ref", "perk"), &SkydotPapyrus::perk_rank);
     godot::ClassDB::bind_method(D_METHOD("get_perks", "ref"), &SkydotPapyrus::get_perks);
     godot::ClassDB::bind_method(D_METHOD("perk_conditions_met", "perk", "ref"), &SkydotPapyrus::perk_conditions_met);
+    godot::ClassDB::bind_method(D_METHOD("perk_entry", "entry_point", "owner", "subjects", "value", "extra"),
+                                &SkydotPapyrus::perk_entry, DEFVAL(godot::Dictionary()));
+    godot::ClassDB::bind_method(D_METHOD("perk_entry_spells", "entry_point", "owner", "subjects", "extra"),
+                                &SkydotPapyrus::perk_entry_spells, DEFVAL(godot::Dictionary()));
+    godot::ClassDB::bind_method(D_METHOD("perk_entry_texts", "entry_point", "owner", "subjects", "extra"),
+                                &SkydotPapyrus::perk_entry_texts, DEFVAL(godot::Dictionary()));
     godot::ClassDB::bind_method(D_METHOD("set_progression_handler", "handler"), &SkydotPapyrus::set_progression_handler);
     godot::ClassDB::bind_method(D_METHOD("dialogue_can_talk", "ref"), &SkydotPapyrus::dialogue_can_talk);
     godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker"), &SkydotPapyrus::dialogue_open);
@@ -649,6 +656,15 @@ static vm::Xyz xyz_from(const Vector3& p) {
     return {static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z)};
 }
 
+/// What a perk's ability and quest effects do: Actor.AddSpell / RemoveSpell and Quest.SetStage.
+struct PerkEffects final : perks::EffectSink {
+    explicit PerkEffects(SkydotPapyrus& owner) : owner_(owner) {}
+    void add_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.add_spell(actor, spell); }
+    void remove_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.remove_spell(actor, spell); }
+    void set_stage(std::uint32_t quest, std::uint16_t stage) override { owner_.set_stage(quest, stage); }
+    SkydotPapyrus& owner_;
+};
+
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
@@ -972,6 +988,42 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     // ---- vm::DialogueRuntime::Host
     vm::ActorHost& actor_host() override { return *this; }
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+
+    // ---- vm::MagicRuntime::Host: the abilities of an actor's base perks are part of its spell list
+    std::vector<std::uint32_t> perk_abilities(std::uint32_t ref) override {
+        std::vector<std::uint32_t> out;
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        if (root == nullptr) {
+            return out;
+        }
+        for (const auto& [perk, rank] : owner_.progression_.base_perks(ref)) {
+            const auto* p = lookup(root->perks(), perk);
+            if (p == nullptr || p->effects() == nullptr || rank == 0) {
+                continue;
+            }
+            for (const auto* e : *p->effects()) {
+                if (e->kind() == bethconv::pack::wfb::PerkEffectKind::ability && e->spell() != 0 &&
+                    static_cast<unsigned>(e->rank()) + 1U == rank) {
+                    out.push_back(e->spell());
+                }
+            }
+        }
+        return out;
+    }
+
+    // ---- vm::ProgressionRuntime::Host: a perk's ability and quest effects (perks/entry_points.hpp)
+    void perk_gained(std::uint32_t ref, std::uint32_t perk) override {
+        if (const auto* root = world() != nullptr ? world()->root() : nullptr) {
+            PerkEffects sink{owner_};
+            perks::perk_added(*root, ref, perk, sink);
+        }
+    }
+    void perk_lost(std::uint32_t ref, std::uint32_t perk) override {
+        if (const auto* root = world() != nullptr ? world()->root() : nullptr) {
+            PerkEffects sink{owner_};
+            perks::perk_removed(*root, ref, perk, sink);
+        }
+    }
 
     // ---- vm::SceneRuntime::Host
     const bethconv::pack::wfb::World* world_root() const override { return world() != nullptr ? world()->root() : nullptr; }

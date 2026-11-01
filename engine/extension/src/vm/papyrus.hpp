@@ -564,6 +564,20 @@ public:
     godot::Array get_perks(std::int64_t ref) const;
     /// Whether the PERK's own conditions pass for `ref` (the prerequisites; true if it has none or is unknown).
     bool perk_conditions_met(std::int64_t perk, std::int64_t ref);
+    /// The perk entry point `entry_point` (perks::EntryPoint) applied to `value` for `owner`'s perks (an actor
+    /// reference; the player 0x14): `subjects` are the condition subjects of tab 0 (the owner), 1, 2 (a weapon
+    /// base, a target, a spell, an item ...). `extra` (all optional): advance_skill, advance_action,
+    /// advance_object, worn: [armor bases], attack_keywords: [keywords], item_enchanted, making_poison.
+    double perk_entry(std::int64_t entry_point, std::int64_t owner, const godot::Array& subjects, double value,
+                      const godot::Dictionary& extra = godot::Dictionary());
+    /// The spells the owner's Select Spell effects at the entry point name, in application order.
+    godot::PackedInt64Array perk_entry_spells(std::int64_t entry_point, std::int64_t owner,
+                                              const godot::Array& subjects,
+                                              const godot::Dictionary& extra = godot::Dictionary());
+    /// The texts of the Select Text and Set Text effects, in application order.
+    godot::PackedStringArray perk_entry_texts(std::int64_t entry_point, std::int64_t owner,
+                                              const godot::Array& subjects,
+                                              const godot::Dictionary& extra = godot::Dictionary());
     /// The GDScript rule host the progression natives call synchronously (kind: String, args: Array) -> Variant.
     void set_progression_handler(const godot::Callable& handler) { progression_handler_ = handler; }
     [[nodiscard]] const godot::Callable& progression_handler() const { return progression_handler_; }

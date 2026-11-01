@@ -166,3 +166,25 @@ GetEventData 576.
 0.4 % placeholder, 20.6 % unknown (the location-alias functions and HasRefType
 come with alias "find matching" fills). Unit tests: `tests/unit/test_conditions.cpp`
 (a fake `ConditionWorld`) and `test_packages.cpp` (the AI's use).
+
+## Perk entry point conditions (EP*)
+
+A perk effect's condition tabs run through the same evaluator (`perks/entry_points.cpp`), with tab t's subject
+from `EntryContext::subjects[t]` (a reference or a base form) and `ConditionOverrides` for what the entry
+point's moment knows. Functions in tabs (`bethconv form <pack> --perk-census`, uses): HasKeyword 724,
+HasPerk 133, GetIsID 100, SpellHasCastingPerk 75, EPMagic_SpellHasKeyword 69, IsUndead 54, WornApparelHasKeywordCount 46,
+GetIsRace 38, GetLevel 36, WornHasKeyword 39, EPMagic_SpellHasSkill 34, HasMagicEffect 32, GetIsSex 28,
+GetGlobalValue 27, EPMagic_IsAdvanceSkill 19, GetInFaction 18, IsAttackType 16, GetDead 16, GetVMQuestVariable 15 and
+others below 15.
+
+Answered by the overrides: HasKeyword 560 (a spell or magic effect through its effects' keywords; else the
+world's), EPMagic_SpellHasKeyword 693, EPMagic_SpellHasSkill 696 (the spell's school), SpellHasCastingPerk 713
+(SPIT's perk), EPAlchemyEffectHasKeyword 501, EPAlchemyGetMakingPoison 500, EPTemperingItemIsEnchanted 659,
+EPTemperingItemHasKeyword 660, EPMagic_IsAdvanceSkill 681, EPModSkillUsage_IsAdvanceAction 692,
+EPModSkillUsage_AdvanceObjectHasKeyword 691, WornHasKeyword 682, WornApparelHasKeywordCount 722 (from
+`EntryContext::worn`), IsAttackType 697 (from `attack_keywords`).
+
+Still unbound (false, or 0 for a count) in tabs: HasMagicEffect 214 (the evaluator has no active-effect query),
+GetEquipped 182, GetEquippedItemType 597, IsBlocking 569, IsSprinting 568, IsPoison 721, GetLocked 5, GetLockLevel 65,
+GetSleeping 49, HasBeenEaten 127, GetItemCount in tabs is bound; IsSneaking 286, IsInCombat 289 and
+GetPlayerTeammate 453 are placeholders (0).

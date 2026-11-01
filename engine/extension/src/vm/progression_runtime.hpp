@@ -62,6 +62,10 @@ public:
         [[nodiscard]] virtual const bethconv::pack::wfb::World* world_root() const = 0;
         /// The NPC_ behind an actor reference (0x7 for the player); 0 if none.
         [[nodiscard]] virtual std::uint32_t base_of(std::uint32_t ref) const = 0;
+        /// `ref` gained `perk` (it had none) or lost it, by add_perk or remove_perk: the perk's ability and
+        /// quest effects are the host's to carry out (perks/entry_points.hpp). Not called by clear or adopt.
+        virtual void perk_gained(std::uint32_t /*ref*/, std::uint32_t /*perk*/) {}
+        virtual void perk_lost(std::uint32_t /*ref*/, std::uint32_t /*perk*/) {}
     };
 
     static constexpr std::uint32_t k_player_ref = 0x14;
@@ -107,9 +111,10 @@ public:
     /// Every effective perk of `ref` with its rank, sorted by perk id.
     [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint8_t>> perks_of(std::uint32_t ref) const;
 
-private:
-    /// The base PRKR of `ref`'s NPC_ (through its template), perk -> rank.
+    /// The base PRKR of `ref`'s NPC_ (through its template), perk -> rank, before overrides.
     [[nodiscard]] std::map<std::uint32_t, std::uint8_t> base_perks(std::uint32_t ref) const;
+
+private:
 
     Host* host_ = nullptr;
     ProgressionState state_;

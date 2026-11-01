@@ -1017,6 +1017,33 @@ into steps. `SkydotAi` runs them against its clock:
 
 See `engine/docs/ai.md`.
 
+### 7.8b Perks: the entry point engine
+
+`perks/entry_points.*` (Godot-free, `perks/` may use `conditions/` and `magic/`, never `vm/`, `world/` or Godot)
+applies the entry-point effects an actor's perks carry, the way the condition evaluator answers a condition
+list. A PERK effect (world.fb 38, `PerkEffect`) names an entry point (`EntryPoint`, xEdit's wbEntryPointsEnum:
+92 ids, every one named), a value function (`Function`: set, add, multiply, add range, the four actor-value
+forms, absolute, negative absolute, select spell, select text, set text; add leveled list and add activate
+choice are only listed), a priority and condition tabs. `EntryPoints(world, condition_world, perks_of)` is a
+view built per call: `matching(ep, ctx)` collects the effects of the owner's perks (rank = the effect's rank + 1)
+whose tabs all pass, in ascending priority (ties: perk id, record order); `apply(ep, ctx, value)` runs the value
+functions over them (an actor value is the owner's current value); `select_spells` and `select_text` list the
+Select Spell and text effects. Tab t is evaluated with `EntryContext::subjects[t]` as the subject (tab 0 the
+owner, then e.g. the weapon base, the target, a spell), so a subject can be a base form. `EntryOverrides`
+(in the .cpp) answers what only the entry point's moment knows: HasKeyword and EPMagic_SpellHasKeyword /
+SpellHasSkill / SpellHasCastingPerk on a spell, EPAlchemyEffectHasKeyword and EPAlchemyGetMakingPoison,
+EPTempering* , EPMagic_IsAdvanceSkill and EPModSkillUsage_IsAdvanceAction / AdvanceObjectHasKeyword,
+WornHasKeyword and WornApparelHasKeywordCount (`EntryContext::worn`) and IsAttackType
+(`EntryContext::attack_keywords`). The rest are `engine/docs/conditions.md`.
+
+Adding a perk carries out its effects centrally: `ProgressionRuntime::add_perk` and `remove_perk` call the host's
+`perk_gained` / `perk_lost` (not on clear or load; MAGC already saves the spells), which run
+`perks::perk_added` (the ability effects become `Actor.AddSpell`, the player's quest effects `SetStage`) and
+`perk_removed` (`RemoveSpell`). The abilities of an actor's base perks (NPC_ PRKR, the player's
+included) are part of its base spell list (`MagicRuntime::Host::perk_abilities`). `SkydotPapyrus.perk_entry`,
+`perk_entry_spells` and `perk_entry_texts` are the forwarders for the GDScript rules (`extra`: advance_skill,
+advance_action, advance_object, worn, attack_keywords, item_enchanted, making_poison).
+
 ### 7.9 Papyrus
 
 The VM is in `engine/extension/src/vm/` and documented in

@@ -3,6 +3,7 @@
 // SkydotPapyrus's progression forwarders for the GDScript rules (vm/progression_runtime.hpp): the
 // player's XP, level, perk points and books, and the perks of actors.
 #include "conditions/conditions.hpp"
+#include "perks/entry_points.hpp"
 #include "vm/papyrus.hpp"
 
 using godot::Array;
@@ -19,7 +20,76 @@ std::uint32_t skill_index(std::int64_t av) {
     return i >= 0 && i < vm::k_progression_skills ? static_cast<std::uint32_t>(i) : vm::k_progression_skills;
 }
 
+std::vector<std::uint32_t> ids_of(const godot::Variant& v) {
+    std::vector<std::uint32_t> out;
+    if (v.get_type() == godot::Variant::ARRAY) {
+        for (const godot::Variant& item : static_cast<Array>(v)) {
+            out.push_back(static_cast<std::uint32_t>(static_cast<std::int64_t>(item)));
+        }
+    }
+    return out;
+}
+
+perks::EntryContext entry_context(std::int64_t owner, const Array& subjects, const Dictionary& extra) {
+    perks::EntryContext ctx;
+    ctx.owner = static_cast<std::uint32_t>(owner);
+    for (int i = 0; i < 3 && i < subjects.size(); ++i) {
+        ctx.subjects[static_cast<std::size_t>(i)] = static_cast<std::uint32_t>(static_cast<std::int64_t>(subjects[i]));
+    }
+    ctx.advance_skill = static_cast<std::int32_t>(static_cast<std::int64_t>(extra.get("advance_skill", -1)));
+    ctx.advance_action = static_cast<std::int32_t>(static_cast<std::int64_t>(extra.get("advance_action", -1)));
+    ctx.advance_object = static_cast<std::uint32_t>(static_cast<std::int64_t>(extra.get("advance_object", 0)));
+    ctx.worn = ids_of(extra.get("worn", Array()));
+    ctx.attack_keywords = ids_of(extra.get("attack_keywords", Array()));
+    ctx.item_enchanted = static_cast<bool>(extra.get("item_enchanted", false));
+    ctx.making_poison = static_cast<bool>(extra.get("making_poison", false));
+    return ctx;
+}
+
 } // namespace
+
+double SkydotPapyrus::perk_entry(std::int64_t entry_point, std::int64_t owner, const Array& subjects, double value,
+                                 const Dictionary& extra) {
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+        return value;
+    }
+    const perks::EntryPoints points(*root, condition_world(),
+                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
+    return points.apply(static_cast<perks::EntryPoint>(entry_point), entry_context(owner, subjects, extra), value);
+}
+
+godot::PackedInt64Array SkydotPapyrus::perk_entry_spells(std::int64_t entry_point, std::int64_t owner,
+                                                         const Array& subjects, const Dictionary& extra) {
+    godot::PackedInt64Array out;
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+        return out;
+    }
+    const perks::EntryPoints points(*root, condition_world(),
+                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
+    for (const auto spell : points.select_spells(static_cast<perks::EntryPoint>(entry_point),
+                                                 entry_context(owner, subjects, extra))) {
+        out.push_back(spell);
+    }
+    return out;
+}
+
+godot::PackedStringArray SkydotPapyrus::perk_entry_texts(std::int64_t entry_point, std::int64_t owner,
+                                                         const Array& subjects, const Dictionary& extra) {
+    godot::PackedStringArray out;
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+        return out;
+    }
+    const perks::EntryPoints points(*root, condition_world(),
+                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
+    for (const auto& text : points.select_text(static_cast<perks::EntryPoint>(entry_point),
+                                               entry_context(owner, subjects, extra))) {
+        out.push_back(godot::String::utf8(text.c_str()));
+    }
+    return out;
+}
 
 Dictionary SkydotPapyrus::get_player_progress() const {
     const vm::PlayerProgress& p = progression_.player();

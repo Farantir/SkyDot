@@ -184,7 +184,15 @@ std::uint8_t ProgressionRuntime::perk_rank(std::uint32_t ref, std::uint32_t perk
 }
 
 void ProgressionRuntime::add_perk(std::uint32_t ref, std::uint32_t perk, std::uint8_t rank) {
+    const bool had = perk_rank(ref, perk) > 0;
     state_.overrides[ref][perk] = rank;
+    if (host_ != nullptr && had != (rank > 0)) {
+        if (rank > 0) {
+            host_->perk_gained(ref, perk);
+        } else {
+            host_->perk_lost(ref, perk);
+        }
+    }
 }
 
 std::vector<std::pair<std::uint32_t, std::uint8_t>> ProgressionRuntime::perks_of(std::uint32_t ref) const {

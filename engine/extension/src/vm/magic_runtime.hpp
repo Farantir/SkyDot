@@ -67,6 +67,8 @@ public:
         [[nodiscard]] virtual WorldAccess& world_access() = 0;
         [[nodiscard]] virtual Inventory& inventory() = 0;
         [[nodiscard]] virtual ActorStates& actor_states() = 0;
+        /// The abilities of the perks `ref` has from its NPC_ (PRKR), which are part of its base spell list.
+        [[nodiscard]] virtual std::vector<std::uint32_t> perk_abilities(std::uint32_t /*ref*/) { return {}; }
         [[nodiscard]] virtual CreatedForms& created_forms() = 0;
         [[nodiscard]] virtual Vm& vm() = 0;
         /// A condition world of its own for one evaluation.
@@ -105,8 +107,16 @@ public:
                 return std::vector<std::uint32_t>{};
             }
             const std::uint32_t npc = host_->dialogue_npc(ref);
-            return npc != 0 ? magic::base_spells(world_, npc, ref, leveled::player_level())
-                            : std::vector<std::uint32_t>{};
+            if (npc == 0) {
+                return std::vector<std::uint32_t>{};
+            }
+            auto spells = magic::base_spells(world_, npc, ref, leveled::player_level());
+            for (const std::uint32_t ability : host_->perk_abilities(ref)) {
+                if (std::ranges::find(spells, ability) == spells.end()) {
+                    spells.push_back(ability);
+                }
+            }
+            return spells;
         });
         register_forgets();
     }

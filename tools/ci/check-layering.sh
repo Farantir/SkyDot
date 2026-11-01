@@ -15,6 +15,7 @@ RULES=(
     "state:(vm|magic|data|build|ai|world|actors|render|physics|session|assets)/|godot_cpp/"
     "data:(vm|magic|build|ai)/"
     "magic:(vm|build|ai)/"
+    "perks:(vm|build|ai|world|session|render|physics|assets)/|godot_cpp/"
     "vm:(build|ai)/"
 )
 

@@ -136,6 +136,24 @@ func _run(pack_dir: String) -> void:
 	vm.set_perk_points(1)
 	expect(perks.perk_blocker(first) in ["", "conditions"], "a root perk is open or waits for the skill: " + perks.perk_blocker(first))
 	vm.set_perk_points(0)
+	# Perk entry points over the real pack: Armsman00 (Mod Attack Damage x1.2 for a one-handed blade, rank 1 of
+	# 5), the Player NPC_'s base perks with an ability (0x1711C, 0x1711E) have it in the spell list from the start.
+	var world2 := pack.open_world()
+	for row: Dictionary in vm.get_perks(PLAYER):
+		for effect: Dictionary in world2.get_perk(int(row["perk"]))["effects"]:
+			if effect["kind"] == 1:
+				expect(vm.has_spell(PLAYER, int(effect["spell"])), "the player has the ability 0x%X of its base perk 0x%X" % [int(effect["spell"]), int(row["perk"])])
+	vm.remove_perk(PLAYER, 0x1711C)
+	expect(not vm.has_spell(PLAYER, 0x1711D), "removing a perk removes its ability")
+	vm.add_perk(PLAYER, 0x1711C)
+	expect(vm.has_spell(PLAYER, 0x1711D), "adding it again adds the ability")
+	vm.add_perk(PLAYER, 0xBABE4)
+	var armsman: float = vm.perk_entry(35, PLAYER, [PLAYER, IRON_SWORD, 0], 1.0)
+	expect(absf(armsman - 1.2) < 0.0001, "Armsman00 makes an iron sword do x1.2: %s" % armsman)
+	var dagger_less: float = vm.perk_entry(35, PLAYER, [PLAYER, 0, 0], 1.0)
+	expect(absf(dagger_less - 1.0) < 0.0001, "no weapon, no bonus: %s" % dagger_less)
+	vm.remove_perk(PLAYER, 0xBABE4)
+	expect(absf(float(vm.perk_entry(35, PLAYER, [PLAYER, IRON_SWORD, 0], 1.0)) - 1.0) < 0.0001, "removed: x1")
 	vm.set_actor_value(PLAYER, "Lockpicking", lock_before)
 	vm.set_player_xp(0.0)
 	vm.set_skill_xp(14, 0.0)

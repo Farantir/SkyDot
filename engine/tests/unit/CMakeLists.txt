@@ -35,6 +35,7 @@ add_executable(skydot_core_tests
     test_magic.cpp
     test_magic_spells.cpp
     test_shouts.cpp
+    test_perks.cpp
     test_progression.cpp
     test_magic_natives.cpp
     test_casting.cpp
