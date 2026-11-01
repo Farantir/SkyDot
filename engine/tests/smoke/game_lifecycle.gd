@@ -124,7 +124,15 @@ func _run(pack_dir: String) -> void:
 	archer.teleport(home)
 	archer.face(atan2(-forward.x, -forward.z))
 	expect(_session.combat.npc_shoot(archer_ref), "the archer draws on the player")
-	var shooting := await _until(func() -> bool: return not _arrows.is_empty(), 30.0)
+	# A bystander in the line of fire makes the archer hold its arrow (as the game's do): it draws again, as the AI would.
+	var draws := [0.0]
+	var arrow_flew := func() -> bool:
+		draws[0] += STEP  # (_until asks twice per step)
+		if _arrows.is_empty() and draws[0] >= 6.0:
+			draws[0] = 0.0
+			_session.combat.npc_shoot(archer_ref)
+		return not _arrows.is_empty()
+	var shooting := await _until(arrow_flew, 30.0)
 	expect(shooting >= 0.0, "the archer shoots")
 	papyrus.break_invisibility(PLAYER)
 	expect(papyrus.land_spell(PLAYER, PARALYZE, BANDIT)["ok"], "Paralyze lands on the bandit")
