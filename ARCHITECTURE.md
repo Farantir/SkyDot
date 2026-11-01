@@ -644,6 +644,17 @@ each and the few places where the layering is not clean yet (`render/lod` and
 `render/weather` take a `SkydotWorld`; `assets/` includes `physics/` and
 `actors/`).
 
+The target layering, enforced by the `layering` CTest check (include rules only):
+
+- `state/`: pure runtime state the save carries (actor values, inventory, item
+  extras, created forms, actor states, quest states, triggers, reference
+  states, id ranges, the calendar). It includes std, `save/` and the generated
+  flatbuffers headers only; no Godot.
+- `data/` (world.fb as read) may use `state/`, never `vm/` or `magic/`.
+- `magic/` (spell rules) uses `data/` and `state/`, never `vm/`.
+- `vm/` (interpreter, natives, the SkydotPapyrus glue) uses everything below
+  but not `build/` or `ai/` directly; `ai/` sits above `vm/`.
+
 ### 7.1 Entry point and classes
 
 `register_types.cpp` exports `skydot_library_init` and registers its classes
