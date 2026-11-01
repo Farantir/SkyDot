@@ -10,7 +10,7 @@
 #include "dialogue/voice.hpp"
 #include "skydot_formats/flags.hpp"
 #include "vm/natives_common.hpp"
-#include "build/refs.hpp"
+#include "data/scripts.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 

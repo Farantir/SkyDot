@@ -7,7 +7,7 @@
 // to an INFO.
 #include "vm/papyrus.hpp"
 
-#include "build/refs.hpp"
+#include "data/scripts.hpp"
 #include "data/fb_search.hpp"
 #include "vm/natives_common.hpp"
 

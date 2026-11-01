@@ -6,7 +6,6 @@
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 #include "actors/behavior_player.hpp"
-#include "build/ref_nodes.hpp"
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
 #include "vm/natives_actor.hpp"
@@ -1132,7 +1131,7 @@ std::int64_t SkydotPapyrus::activate(std::int64_t ref, std::int64_t activator) {
 }
 
 bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
-    return ref_nodes::find(ref) != nullptr && !disabled(ref);
+    return SkydotWorld::ref_node(ref) != nullptr && !disabled(ref);
 }
 
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {

@@ -7,7 +7,6 @@
 #include "vm/papyrus.hpp"
 
 #include "actors/behavior_player.hpp"
-#include "build/ref_nodes.hpp"
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
 #include "state/calendar.hpp"
@@ -204,7 +203,7 @@ void SkydotPapyrus::complete_activation(std::int64_t ref) {
 }
 
 bool SkydotPapyrus::graph_raises_activation(std::uint32_t form) const {
-    godot::Node* node = ref_nodes::find(form);
+    godot::Node* node = SkydotWorld::ref_node(form);
     if (node == nullptr) {
         return false;
     }

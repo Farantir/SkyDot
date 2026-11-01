@@ -273,6 +273,9 @@ godot::PackedInt64Array SkydotWorld::get_scripted_refs(std::int64_t cell) const 
 godot::Node* SkydotWorld::find_ref_node(std::int64_t ref) const {
     return ref_nodes::find(static_cast<std::uint32_t>(ref));
 }
+godot::Node* SkydotWorld::ref_node(std::uint32_t ref) {
+    return ref_nodes::find(ref);
+}
 std::int64_t SkydotWorld::get_ref_cell(std::int64_t ref) const { return data().cell_of_ref(ref); }
 Array SkydotWorld::get_activate_children(std::int64_t ref) const {
     return queries::get_activate_children(data(), ref);

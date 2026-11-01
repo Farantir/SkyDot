@@ -10,7 +10,7 @@
 
 #include "vm/condition_world.hpp"
 
-#include "build/refs.hpp"
+#include "data/scripts.hpp"
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
 #include "data/actors.hpp"

@@ -232,6 +232,8 @@ target_sources(skydot PRIVATE
     src/build/refs.cpp
     src/data/coordinates.cpp
     src/data/coordinates.hpp
+    src/data/scripts.cpp
+    src/data/scripts.hpp
     src/data/text.hpp
     src/nav/navmesh.cpp
     src/physics/collision.cpp

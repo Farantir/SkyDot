@@ -126,6 +126,8 @@ public:
     /// The node standing for `ref` among what is built (null if unbuilt or
     /// unloaded): a lookup in the registry build/ref_nodes.hpp keeps.
     godot::Node* find_ref_node(std::int64_t ref) const;
+    /// The same lookup without a world: the node of reference `ref` in the process-wide registry, or null.
+    static godot::Node* ref_node(std::uint32_t ref);
     /// The cell holding reference `ref`, or 0.
     std::int64_t get_ref_cell(std::int64_t ref) const;
     /// References activated when `ref` is: Array of ref, cell, delay.
