@@ -7,7 +7,7 @@
 // whose frames do not match the scripts is refused.
 #include "support/vm_rig.hpp"
 #include "save/save_file.hpp"
-#include "vm/inventory.hpp"
+#include "state/inventory.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>

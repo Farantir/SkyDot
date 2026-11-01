@@ -7,7 +7,7 @@
 // bound before it read Dictionaries instead and stay as they are.
 #pragma once
 
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 #include <cstdint>
 #include <string>

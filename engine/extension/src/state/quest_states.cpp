@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "vm/quest_states.hpp"
+#include "state/quest_states.hpp"
 
 #include <array>
 

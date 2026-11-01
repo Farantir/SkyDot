@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The forget registry (vm/ref_forget.hpp) and what the VM keeps per reference. Forgetting an id must leave no
+// The forget registry (state/ref_forget.hpp) and what the VM keeps per reference. Forgetting an id must leave no
 // store holding anything for it: 10,000 references with scripts, timers, threads, inventory and scheduled calls
 // come and go, and every store reports what it held before.
 #include "support/vm_rig.hpp"
-#include "vm/id_ranges.hpp"
-#include "vm/ref_forget.hpp"
+#include "state/id_ranges.hpp"
+#include "state/ref_forget.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

@@ -10,8 +10,8 @@
 #pragma once
 
 #include "magic/active_effects.hpp"
-#include "vm/created_forms.hpp"
-#include "vm/item_extras.hpp"
+#include "state/created_forms.hpp"
+#include "state/item_extras.hpp"
 
 #include <cstdint>
 #include <functional>

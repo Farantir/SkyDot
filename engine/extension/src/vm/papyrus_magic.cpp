@@ -83,7 +83,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         register_forgets();
     }
 
-    /// The magic stores keyed by reference or by effect instance id, in the VM's registry (vm/ref_forget.hpp).
+    /// The magic stores keyed by reference or by effect instance id, in the VM's registry (state/ref_forget.hpp).
     /// The tokens end with this state, which a new VM's setup resets first.
     void register_forgets() {
         auto& registry = owner_.vm_->forgets();

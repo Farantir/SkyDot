@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // SkydotPapyrus's part of a save (save/save_file.hpp, docs/adr/0002-...): the
-// VM's sections come from vm/save.cpp, RFST is vm/ref_states.hpp; here are
+// VM's sections come from vm/save.cpp, RFST is state/ref_states.hpp; here are
 // HEAD, PAPY and QUST, and the two phases of a load.
 //
 //   HEAD  text engine version; text pack world hash; u32 count, then the
@@ -10,8 +10,8 @@
 //   PAPY  u32 count + the references whose scripts were attached; u32 count
 //         of triggers, per trigger the ref and its actors (u32 count + ids);
 //         u32 count of actors with f64 x3 position; u32 next form id
-//   ITST  (optional) resolved owners, leveled actor picks and equipment, vm/item_states.hpp
-//   CRFT  (optional) created potions and alchemy knowledge, vm/created_forms.hpp
+//   ITST  (optional) resolved owners, leveled actor picks and equipment, state/item_states.hpp
+//   CRFT  (optional) created potions and alchemy knowledge, state/created_forms.hpp
 //   HRVS  (optional) harvested references, vm/harvest.hpp
 //   QUST  u32 quests (id; running, started, completed, failed, active as
 //         u8s; i32 stage; u32 count + done stages; u32 count + objective

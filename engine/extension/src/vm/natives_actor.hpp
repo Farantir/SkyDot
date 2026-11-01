@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// The Actor natives over `ActorStates` (vm/actor_states.hpp).
+// The Actor natives over `ActorStates` (state/actor_states.hpp).
 #pragma once
 
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 #include "vm/vm.hpp"
 
 #include <functional>

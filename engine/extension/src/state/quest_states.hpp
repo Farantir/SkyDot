@@ -10,7 +10,7 @@
 #pragma once
 
 #include "save/bytes.hpp"
-#include "vm/id_ranges.hpp"
+#include "state/id_ranges.hpp"
 
 #include <algorithm>
 #include <cstdint>

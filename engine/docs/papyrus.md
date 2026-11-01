@@ -152,7 +152,7 @@ shows XPRM bounds doubled. Not checked against the game.
 | Game | `GetPlayer` (reference 0x14), `GetForm`, `GetFormFromFile` |
 | Form | `GetFormID`, `HasKeyword` (a reference answers for its base's KWDA; only bases that world.fb has, i.e. with a model or scripts, carry keywords), `RegisterForSingleUpdate`, `RegisterForUpdate`, `UnregisterForUpdate` |
 | ObjectReference | `Enable`, `Disable`, `EnableNoWait`, `DisableNoWait` (no fade), `Reset` (signal `ref_moved`: position, rotation), `GetParentCell`, `PlaceAtMe`, `Delete`, `DeleteWhenAble`, `DamageObject`, `ClearDestruction`, `SetDestroyed`, `IsDestroyed`, `GetCurrentDestructionStage`, `IsDisabled`, `IsEnabled`, `Is3DLoaded`, `GetLinkedRef`, `GetNthLinkedRef`, `CalculateEncounterLevel` (the player's level, 1 until stats exist), `GetBaseObject`, `GetPositionX/Y/Z`, `GetAngleX/Y/Z`, `GetScale`, `GetDistance`, `PlayAnimation`, `PlayAnimationAndWait`, `Add/RemoveDependentAnimatedObjectReference`, `ApplyHavokImpulse`, `SetMotionType`, `Activate`, `BlockActivation`, `IsActivationBlocked`, `IsFurnitureInUse`, `SetNoFavorAllowed`, `GetOpenState`, `SetOpen`, `Lock`, `IsLocked`, `GetLockLevel`, `GetTriggerObjectCount`, `GetItemCount`, `AddItem`, `RemoveItem` (the owner's start inventory is resolved first; an item that runs out is taken off) |
-| Actor | `IsDead`, `IsInCombat`, `GetCombatState` (0 none, 1 combat, 2 searching), `GetCombatTarget`, `StartCombat`, `StopCombat` (answered by `SkydotAi`'s combat, `ai/ai_combat.cpp`; `OnCombatStateChanged(akTarget, aeCombatState)` goes to the actor's scripts), the actor value natives, `EquipItem` (adds the item if missing; potions, food, ingredients and scrolls are consumed with a log line, books read with one, neither does anything yet), `UnequipItem`, `UnequipAll`, `IsEquipped`, `GetEquippedItemType` (hand 0 left, 1 right: 0 none, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword, 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow), `GetEquippedWeapon`, `GetEquippedShield` (rules: `vm/equipment.hpp`) |
+| Actor | `IsDead`, `IsInCombat`, `GetCombatState` (0 none, 1 combat, 2 searching), `GetCombatTarget`, `StartCombat`, `StopCombat` (answered by `SkydotAi`'s combat, `ai/ai_combat.cpp`; `OnCombatStateChanged(akTarget, aeCombatState)` goes to the actor's scripts), the actor value natives, `EquipItem` (adds the item if missing; potions, food, ingredients and scrolls are consumed with a log line, books read with one, neither does anything yet), `UnequipItem`, `UnequipAll`, `IsEquipped`, `GetEquippedItemType` (hand 0 left, 1 right: 0 none, 1 sword, 2 dagger, 3 axe, 4 mace, 5 two-handed sword, 6 two-handed axe, 7 bow, 8 staff, 10 shield, 11 torch, 12 crossbow), `GetEquippedWeapon`, `GetEquippedShield` (rules: `state/equipment.hpp`) |
 | Actor, ObjectReference (flight) | `IsFlying`, `GetFlyingState` (0 not flying, 1 taking off, 2 cruising, 3 hovering, 4 landing or crashing; the node's flight mover answers through `SkydotAi`), `CanFlyHere` (an actor that can fly, outside), `SetAllowFlying(abAllowed = true)` / `SetAllowFlyingEx`, `IsAllowedToFly`, `SetForcedLandingMarker(ObjectReference)` (None clears; the dragon lands there at once, and at later landings), `ObjectReference.GetLength` (the actor's bounding length in game units, 0 for anything else). The allowed flag (default true) and the marker are per actor in the ACTV section (version 3; versions 1 and 2 still load) and are read by the flight tactics (`ai/flight.hpp`) |
 | Keyword | `GetKeyword` (by editor id, any case; KYWD table of world.fb) |
 | FormList | `GetSize`, `GetAt`, `Find`, `HasForm` (the FLST's forms, then those added; nested lists are not looked into), `AddForm`, `RemoveAddedForm`, `Revert` (the additions are `Vm::form_lists`, saved with the VM) |
@@ -221,7 +221,7 @@ inventories, which do not exist yet.
 `PlaceAtMe(form, count, persist, disabled)` makes `count` references (at most
 64) of `form` at the caller's position, rotation and scale and in its cell,
 and returns the last. Their ids are runtime ids from 0xFF001000. The VM keeps
-them (`Vm::placed`, `vm/runtime_refs.hpp`; base, cell, transform) and the
+them (`Vm::placed`, `state/runtime_refs.hpp`; base, cell, transform) and the
 base's scripts attach to them, OnInit at once and OnLoad (with OnCellAttach,
 OnCellLoad) when the game layer reports the node built (`ref_built`).
 `ref_placed(ref, base, cell, position, rotation, scale, disabled)` makes
@@ -272,13 +272,13 @@ actor list picks its actor once and the pick is kept. What is held, worn and
 resolved is saved (ITST). `item_info(form)`, `inventory(owner)`,
 `transfer(from, to, form, count[, extra])`, `equip(owner, form[, extra])`,
 `unequip(owner, form[, extra])` and `equipment(owner)` are for the game layer;
-the rules are in `vm/equipment.hpp`. An actor built after a script equipped
+the rules are in `state/equipment.hpp`. An actor built after a script equipped
 something shows it (`SkydotWorld.set_worn_provider`).
 
-Units with extra data (tempered, enchanted; `vm/item_extras.hpp`, ADR 0007)
+Units with extra data (tempered, enchanted; `state/item_extras.hpp`, ADR 0007)
 are rows of their own with an `extra` id (-1 as an argument: any, plain
 first); potions that alchemy made are created forms
-(`vm/created_forms.hpp`, ids 0xFF700000 up; sections CRFT, and ITST version
+(`state/created_forms.hpp`, ids 0xFF700000 up; sections CRFT, and ITST version
 3). Crafting (`vm/crafting.hpp`): `recipes(bench)`, `craft(recipe, count)`,
 `temper_rows(bench)`, `temper(recipe, form, extra)`, `enchant_rows()` (a
 stub), `alchemy_rows()`, `alchemy_preview(forms)`, `alchemy_mix(forms)`.

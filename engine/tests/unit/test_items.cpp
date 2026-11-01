@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Items: the equip rules (vm/equipment.cpp), the state a save keeps
-// (vm/item_states.cpp) and what containers and actors start with
+// Items: the equip rules (state/equipment.cpp), the state a save keeps
+// (state/item_states.cpp) and what containers and actors start with
 // (data/start_inventory.cpp), on worlds built in memory.
 #include "support/world_builder.hpp"
 
@@ -10,8 +10,8 @@
 #include "data/leveled.hpp"
 #include "data/start_inventory.hpp"
 #include "save/bytes.hpp"
-#include "vm/equipment.hpp"
-#include "vm/item_states.hpp"
+#include "state/equipment.hpp"
+#include "state/item_states.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

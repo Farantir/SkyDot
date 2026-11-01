@@ -36,7 +36,7 @@ struct SpellFacts {
     bool hostile{};
     bool recover{};               ///< MGEF flag Recover: the change is undone when the effect ends (Fortify...); clear for Restore Health.
     std::uint32_t archetype{};    ///< Of the costliest effect (magic_rules.hpp `archetype`).
-    int actor_value{-1};          ///< Of the costliest effect, -1 if none (vm/actor_values.hpp).
+    int actor_value{-1};          ///< Of the costliest effect, -1 if none (state/actor_values.hpp).
     bool active{};                ///< Its effects run on the caster now.
 };
 

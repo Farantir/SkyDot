@@ -19,7 +19,7 @@
 
 #include "world_generated.h"
 
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 #include <cstdint>
 #include <functional>

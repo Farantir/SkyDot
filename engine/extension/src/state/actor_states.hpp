@@ -11,7 +11,7 @@
 #pragma once
 
 #include "save/bytes.hpp"
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 #include <cstdint>
 #include <functional>

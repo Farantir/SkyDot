@@ -19,7 +19,7 @@
 
 #include "magic/magic_rules.hpp"
 #include "save/bytes.hpp"
-#include "vm/id_ranges.hpp"
+#include "state/id_ranges.hpp"
 
 #include "world_generated.h"
 

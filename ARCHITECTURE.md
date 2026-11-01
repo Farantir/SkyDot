@@ -689,9 +689,9 @@ Non-Godot helpers: `AssetCache`, `PackStore`, `TerrainBuilder`,
 `WaterMaterials`, `ModelCollision`, `NavIndex`, `ActorPlan`, `Locomotion`,
 packages, `session::GameTime` (the clock's arithmetic), the save container
 (`save::SaveWriter`, `SaveReader`, `ByteWriter`, `ByteReader`), and the whole
-`vm::` namespace (`vm.*`, `script_class.*`, `value.hpp`, `save.cpp`,
-`runtime_refs.hpp`, `ref_states.hpp`, `quest_states.*`, `triggers.*`,
-`id_ranges.hpp`) plus `skydot::Activations` (`vm/activation.*`), none of
+`vm::` namespace (`vm/vm.*`, `script_class.*`, `value.hpp`, `save.cpp`;
+and `state/`: `runtime_refs.hpp`, `ref_states.hpp`, `quest_states.*`,
+`triggers.*`, `id_ranges.hpp`, the inventory, equipment and actor states) plus `skydot::Activations` (`vm/activation.*`), none of
 which depends on Godot.
 
 ### 7.2 Assets: from pack bytes to Godot resources
@@ -1015,13 +1015,13 @@ The VM is in `engine/extension/src/vm/` and documented in
   `Activations` (`vm/activation.*`: who may activate what, locks, activate
   parents, furniture that waits for its graph's `ObjectActivated`, pickup;
   the host answers through `ActivationHost`), `vm::Triggers`
-  (`vm/triggers.*`: XPRM boxes and spheres, who is inside), `vm::QuestStates`
-  (`vm/quest_states.*`: stages, objectives, alias handles and fills,
-  globals), `vm::RefStates` (`vm/ref_states.hpp`: what scripts changed about
+  (`state/triggers.*`: XPRM boxes and spheres, who is inside), `vm::QuestStates`
+  (`state/quest_states.*`: stages, objectives, alias handles and fills,
+  globals), `vm::RefStates` (`state/ref_states.hpp`: what scripts changed about
   a reference: disabled, open, locked, blocked, moved), `vm::PlacedRefs`
-  (`vm/runtime_refs.hpp`: what PlaceAtMe made) and destruction states. Each
+  (`state/runtime_refs.hpp`: what PlaceAtMe made) and destruction states. Each
   writes and reads its own save section (7.12).
-- **IDs** come from one checked allocator (`vm/id_ranges.hpp`): test
+- **IDs** come from one checked allocator (`state/id_ranges.hpp`): test
   instances, runtime references and alias handles own disjoint parts of the
   `0xFF......` space, sound instances a range of their own (`Sound.Play`'s
   and the game layer's, through `new_sound_instance`). A used-up range is an

@@ -8,7 +8,7 @@
 #include "data/fb_search.hpp"
 #include "magic/active_effects.hpp"
 #include "magic/magic_rules.hpp"
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

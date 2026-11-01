@@ -52,7 +52,7 @@ error (B6). The CRC is checked before any section is decoded.
 
 ## Reference state
 
-- `vm/ref_states.hpp` (no Godot, next to `runtime_refs.hpp`): `RefStates`
+- `state/ref_states.hpp` (no Godot, next to `runtime_refs.hpp`): `RefStates`
   holds per reference what scripts changed about it: disabled, open state,
   locked, activation blocked, and the moved-to transform (Skyrim units,
   radians). It replaces `SkydotPapyrus::disabled_`, `open_`, `locked_`,

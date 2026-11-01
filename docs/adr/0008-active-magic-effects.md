@@ -24,7 +24,7 @@ modifiers (fortify, 726 uses), value modifiers (363), dual value modifiers
   ingredient, scroll, ability, poison; form and item extra) cast by a caster
   on a target, with magnitude, duration, elapsed time, area in game units,
   the condition state and, for holds, the modifiers it holds right now.
-  Its id comes from the range `effect_instances` (`vm/id_ranges.hpp`, cut
+  Its id comes from the range `effect_instances` (`state/id_ranges.hpp`, cut
   from the top of the alias handles) because a Script effect's object uses
   the same number as its handle.
 - **Rules.** Duration 0 acts once (and the instance is gone). A timed effect

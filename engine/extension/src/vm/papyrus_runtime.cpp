@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // References made at run time (PlaceAtMe, Delete) and destruction (DamageObject
-// and the stages of a base's DEST). The state is the VM's (vm/runtime_refs.hpp)
+// and the stages of a base's DEST). The state is the VM's (state/runtime_refs.hpp)
 // and is saved with it; what the player sees is signalled to the game layer.
 #include "vm/natives_common.hpp"
 #include "vm/papyrus.hpp"
@@ -220,7 +220,7 @@ void SkydotPapyrus::remove_placed(std::int64_t ref) {
 void SkydotPapyrus::forget_ref(std::int64_t ref) {
     const auto id = static_cast<std::uint32_t>(ref);
     const bool placed = vm_->placed().find(id) != nullptr;
-    // Every store keyed by a reference is in a registry (vm/ref_forget.hpp): the VM's and this object's, then
+    // Every store keyed by a reference is in a registry (state/ref_forget.hpp): the VM's and this object's, then
     // the subsystems' that registered through `forgets()`.
     vm_->forgets().forget(id);
     outer_forgets_.forget(id);

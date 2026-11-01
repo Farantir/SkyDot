@@ -28,9 +28,9 @@
 
 #include "save/save_file.hpp"
 #include "vm/form_lists.hpp"
-#include "vm/inventory.hpp"
-#include "vm/ref_forget.hpp"
-#include "vm/runtime_refs.hpp"
+#include "state/inventory.hpp"
+#include "state/ref_forget.hpp"
+#include "state/runtime_refs.hpp"
 #include "vm/script_class.hpp"
 #include "vm/value.hpp"
 
@@ -131,7 +131,7 @@ public:
     Vm& operator=(const Vm&) = delete;
 
     /// Everything that keeps state per reference id registers here; `forgets().forget(id)` drops an id from all
-    /// of them (vm/ref_forget.hpp). SkydotPapyrus adds its own stores to it.
+    /// of them (state/ref_forget.hpp). SkydotPapyrus adds its own stores to it.
     ForgetRegistry& forgets() noexcept { return forgets_; }
     [[nodiscard]] const ForgetRegistry& forgets() const noexcept { return forgets_; }
     /// Script instances attached (not counting the detached ones kept for values), and those kept.

@@ -5,7 +5,7 @@ and gamepad input. Decided on 2026-10-17:
 
 ## Actor values
 
-- The per-actor state record is C++ (`vm/actor_states.hpp`, no Godot),
+- The per-actor state record is C++ (`state/actor_states.hpp`, no Godot),
   owned by `SkydotPapyrus` beside `RefStates`, because Papyrus natives read
   and write it and it needs unit tests. It is sparse: an actor has a record
   only once a value of it changed; everything else is computed from the data

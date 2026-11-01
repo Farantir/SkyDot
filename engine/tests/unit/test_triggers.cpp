@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Trigger volumes and quest states (vm/triggers.hpp, vm/quest_states.hpp):
+// Trigger volumes and quest states (state/triggers.hpp, state/quest_states.hpp):
 // crossings, and the save round trips.
-#include "vm/quest_states.hpp"
-#include "vm/runtime_refs.hpp"
-#include "vm/triggers.hpp"
+#include "state/quest_states.hpp"
+#include "state/runtime_refs.hpp"
+#include "state/triggers.hpp"
 
 #include <catch2/catch_test_macros.hpp>
 

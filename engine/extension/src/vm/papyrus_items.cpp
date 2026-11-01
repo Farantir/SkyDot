@@ -2,7 +2,7 @@
 //
 // SkydotPapyrus's items: start inventories resolved on first touch, what
 // owners hold and wear, and the natives that equip. The rules are
-// vm/equipment.hpp (pure), the data data/start_inventory.hpp and
+// state/equipment.hpp (pure), the data data/start_inventory.hpp and
 // data/leveled.hpp (pure); this is the glue to the VM's inventory, the
 // world's records and Godot.
 #include "vm/papyrus.hpp"

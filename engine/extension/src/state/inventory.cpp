@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "vm/inventory.hpp"
+#include "state/inventory.hpp"
 
 #include <algorithm>
 

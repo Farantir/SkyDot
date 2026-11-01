@@ -32,17 +32,17 @@
 #include "scenes/scenes.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 #include "vm/condition_world.hpp"
 #include "vm/crafting.hpp"
-#include "vm/created_forms.hpp"
+#include "state/created_forms.hpp"
 #include "vm/harvest.hpp"
-#include "vm/equipment.hpp"
-#include "vm/id_ranges.hpp"
-#include "vm/item_states.hpp"
-#include "vm/quest_states.hpp"
-#include "vm/ref_states.hpp"
-#include "vm/triggers.hpp"
+#include "state/equipment.hpp"
+#include "state/id_ranges.hpp"
+#include "state/item_states.hpp"
+#include "state/quest_states.hpp"
+#include "state/ref_states.hpp"
+#include "state/triggers.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
 #include "vm/world_access.hpp"
@@ -123,7 +123,7 @@ public:
     /// Put `count` of `item` into `owner`'s inventory (the viewer's --give).
     void add_item(std::int64_t owner, std::int64_t item, std::int64_t count);
 
-    // ---- items (vm/papyrus_items.cpp; the rules are vm/equipment.hpp, what
+    // ---- items (vm/papyrus_items.cpp; the rules are state/equipment.hpp, what
     // containers and actors start with is data/start_inventory.hpp)
     /// Resolve `owner`'s start inventory now, if no one has touched it yet:
     /// a container's CNTO, an actor's CNTO and default outfit (worn), the
@@ -138,7 +138,7 @@ public:
     godot::Dictionary item_info(std::int64_t form) const;
     /// `owner`'s items, resolved first, by name: {form, extra, name, tier,
     /// count, weight, value, category, equipped, playable} each. Units that
-    /// carry extra data (tempered, enchanted; vm/item_extras.hpp) are rows of
+    /// carry extra data (tempered, enchanted; state/item_extras.hpp) are rows of
     /// their own (`extra` != 0, `name` with the tier: "Iron Dagger (Fine)");
     /// created forms (alchemy) are rows like any item.
     godot::Array inventory(std::int64_t owner);
@@ -149,7 +149,7 @@ public:
                           std::int64_t extra = -1);
     /// Equip (or consume, or read) one `form` of `owner`'s; false if it is
     /// not carried or cannot be equipped. Weapons go to the right hand, or the
-    /// left where only that fits (see vm/equipment.hpp). `extra` as in transfer.
+    /// left where only that fits (see state/equipment.hpp). `extra` as in transfer.
     bool equip(std::int64_t owner, std::int64_t form, std::int64_t extra = -1);
     /// Take `form` off `owner`; false if it was not equipped. With `extra`
     /// >= 0 only if the unit equipped carries it.
@@ -478,7 +478,7 @@ public:
     /// GetOpenState's values: 0 none, 1 open, 2 opening, 3 closed, 4 closing.
     std::int64_t get_open_state(std::int64_t ref) const;
 
-    // ---- actor values (vm/actor_states.hpp): 0 for a reference that is no actor
+    // ---- actor values (state/actor_states.hpp): 0 for a reference that is no actor
     // or a name that is no actor value (reported once)
     /// The player is at Health 0 (`player_died` was sent; Health above 0 again clears it).
     bool is_player_dead() const { return player_dead_; }

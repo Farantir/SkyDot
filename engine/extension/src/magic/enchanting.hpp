@@ -10,9 +10,9 @@
 
 #include "magic/enchanted.hpp"
 #include "magic/spell_lists.hpp"
-#include "vm/created_forms.hpp"
-#include "vm/inventory.hpp"
-#include "vm/item_extras.hpp"
+#include "state/created_forms.hpp"
+#include "state/inventory.hpp"
+#include "state/item_extras.hpp"
 
 #include "world_generated.h"
 

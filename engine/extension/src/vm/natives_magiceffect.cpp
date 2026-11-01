@@ -5,7 +5,7 @@
 #include "vm/natives_magic.hpp"
 
 #include "data/fb_search.hpp"
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 namespace skydot::vm {
 

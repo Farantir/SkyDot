@@ -10,9 +10,9 @@
 #include "magic/casting.hpp"
 #include "magic/enchanted.hpp"
 #include "magic/magic_save.hpp"
-#include "vm/actor_states.hpp"
-#include "vm/created_forms.hpp"
-#include "vm/item_extras.hpp"
+#include "state/actor_states.hpp"
+#include "state/created_forms.hpp"
+#include "state/item_extras.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

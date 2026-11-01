@@ -2,7 +2,7 @@
 #include "magic/active_effects.hpp"
 
 #include "data/fb_search.hpp"
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 #include <algorithm>
 #include <cmath>

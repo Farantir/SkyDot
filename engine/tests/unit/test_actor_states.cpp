@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// ActorStates (vm/actor_states.hpp): bases from a fake source, every op,
+// ActorStates (state/actor_states.hpp): bases from a fake source, every op,
 // regeneration with its delay, death and the ACTV section; and the Actor
 // natives over it.
 #include "support/vm_rig.hpp"
 
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 #include "vm/natives_actor.hpp"
 
 #include <catch2/catch_approx.hpp>

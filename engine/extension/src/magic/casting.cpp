@@ -2,7 +2,7 @@
 #include "magic/casting.hpp"
 
 #include "data/fb_search.hpp"
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 
 #include <algorithm>
 

@@ -7,7 +7,7 @@
 
 #include "data/fb_search.hpp"
 #include "magic/magic_save.hpp"
-#include "vm/actor_states.hpp"
+#include "state/actor_states.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

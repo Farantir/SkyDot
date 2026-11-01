@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <map>
 
-#include "vm/id_ranges.hpp"
+#include "state/id_ranges.hpp"
 
 namespace skydot::vm {
 

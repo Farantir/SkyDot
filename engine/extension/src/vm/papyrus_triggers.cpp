@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // SkydotPapyrus: the binding of trigger volumes. The volumes, who is inside
-// and the saves are vm/triggers.hpp's; this builds them from the world's
+// and the saves are state/triggers.hpp's; this builds them from the world's
 // records and the built nodes' phantoms, and sends the events.
 #include "vm/papyrus.hpp"
 

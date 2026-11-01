@@ -7,11 +7,11 @@
 
 #include "save/bytes.hpp"
 #include "vm/crafting.hpp"
-#include "vm/created_forms.hpp"
-#include "vm/equipment.hpp"
+#include "state/created_forms.hpp"
+#include "state/equipment.hpp"
 #include "vm/harvest.hpp"
-#include "vm/item_extras.hpp"
-#include "vm/item_states.hpp"
+#include "state/item_extras.hpp"
+#include "state/item_states.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

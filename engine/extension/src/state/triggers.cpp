@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-#include "vm/triggers.hpp"
+#include "state/triggers.hpp"
 
 #include <cmath>
 #include <vector>

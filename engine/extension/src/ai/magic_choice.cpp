@@ -2,7 +2,7 @@
 #include "ai/magic_choice.hpp"
 
 #include "magic/magic_rules.hpp"
-#include "vm/actor_values.hpp"
+#include "state/actor_values.hpp"
 
 #include <algorithm>
 #include <cmath>

@@ -19,9 +19,9 @@
 //         entries, each u32 extra and u64 count
 #pragma once
 
-#include "vm/equipment.hpp"
-#include "vm/inventory.hpp"
-#include "vm/item_extras.hpp"
+#include "state/equipment.hpp"
+#include "state/inventory.hpp"
+#include "state/item_extras.hpp"
 #include "save/bytes.hpp"
 
 #include <cstdint>

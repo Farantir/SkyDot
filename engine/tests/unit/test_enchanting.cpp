@@ -8,9 +8,9 @@
 #include "data/fb_search.hpp"
 #include "magic/enchanting.hpp"
 #include "save/bytes.hpp"
-#include "vm/created_forms.hpp"
-#include "vm/inventory.hpp"
-#include "vm/item_extras.hpp"
+#include "state/created_forms.hpp"
+#include "state/inventory.hpp"
+#include "state/item_extras.hpp"
 
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>

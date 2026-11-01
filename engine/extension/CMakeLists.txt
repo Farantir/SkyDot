@@ -95,41 +95,41 @@ set(SKYDOT_CORE_SOURCES
     src/vm/activation.cpp
     src/vm/activation.hpp
     src/vm/census.cpp
-    src/vm/inventory.cpp
-    src/vm/item_extras.cpp
-    src/vm/item_extras.hpp
-    src/vm/created_forms.cpp
-    src/vm/created_forms.hpp
+    src/state/inventory.cpp
+    src/state/item_extras.cpp
+    src/state/item_extras.hpp
+    src/state/created_forms.cpp
+    src/state/created_forms.hpp
     src/combat/damage.cpp
     src/combat/damage.hpp
     src/vm/crafting.cpp
     src/vm/crafting.hpp
     src/vm/harvest.cpp
     src/vm/harvest.hpp
-    src/vm/inventory.hpp
-    src/vm/equipment.cpp
-    src/vm/equipment.hpp
-    src/vm/item_states.cpp
-    src/vm/item_states.hpp
-    src/vm/actor_states.cpp
-    src/vm/actor_states.hpp
-    src/vm/actor_values.hpp
+    src/state/inventory.hpp
+    src/state/equipment.cpp
+    src/state/equipment.hpp
+    src/state/item_states.cpp
+    src/state/item_states.hpp
+    src/state/actor_states.cpp
+    src/state/actor_states.hpp
+    src/state/actor_values.hpp
     src/vm/natives_actor.cpp
     src/vm/natives_actor.hpp
     src/vm/natives_activemagiceffect.cpp
     src/vm/natives_magic.hpp
     src/vm/natives_magiceffect.cpp
     src/vm/natives_spell.cpp
-    src/vm/quest_states.cpp
-    src/vm/quest_states.hpp
-    src/vm/runtime_refs.hpp
+    src/state/quest_states.cpp
+    src/state/quest_states.hpp
+    src/state/runtime_refs.hpp
     src/vm/natives_world.cpp
-    src/vm/ref_states.hpp
+    src/state/ref_states.hpp
     src/vm/save.cpp
     src/vm/script_class.cpp
     src/vm/script_class.hpp
-    src/vm/triggers.cpp
-    src/vm/triggers.hpp
+    src/state/triggers.cpp
+    src/state/triggers.hpp
     src/vm/value.hpp
     src/vm/vm.cpp
     src/vm/vm.hpp
