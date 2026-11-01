@@ -107,6 +107,7 @@ func _run(args: Dictionary) -> void:
 	var process: Array[float] = []
 	var in_flight := 0
 	var last_physics := Engine.get_physics_frames()
+	var wall_start := Time.get_ticks_usec()
 	for tick in ticks:
 		var flying := 0
 		for shot: Dictionary in _session.projectiles._live:
@@ -128,6 +129,7 @@ func _run(args: Dictionary) -> void:
 			last_physics = Engine.get_physics_frames()
 			physics.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
 			process.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
+	var wall := (Time.get_ticks_usec() - wall_start) / 1000.0 / ticks
 	physics.sort()
 	process.sort()
 	print("arrow_load: actors %d, nodes %d, arrows in flight avg %.1f" % [
@@ -135,6 +137,7 @@ func _run(args: Dictionary) -> void:
 		int(Performance.get_monitor(Performance.OBJECT_NODE_COUNT)), float(in_flight) / ticks])
 	print("arrow_load: physics ms mean %.3f p95 %.3f (%d ticks), process ms mean %.3f p95 %.3f" % [
 		_mean(physics), physics[int(physics.size() * 0.95)], physics.size(), _mean(process), process[int(process.size() * 0.95)]])
+	print("arrow_load: wall ms per frame %.3f" % wall)
 	quit(0)
 
 
