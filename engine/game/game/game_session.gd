@@ -174,6 +174,10 @@ var combat: Combat
 var magic: Magic
 ## What mages cast in a fight (the AI's combat_cast), carried out with Magic's delivery.
 var npc_magic: NpcMagic
+## The rules of the hands and the voice, for the player and NPCs. A script mod names a subclass
+## of Casting (or a class of the same interface) here before `open`; the Mod API (M3) hands it out.
+var casting_script: GDScript = Casting
+var casting: Casting
 ## What shouters say in a fight (the AI's combat_shout), carried out with the player's shout rules.
 var npc_shouts: NpcShouts
 ## The subsystems with a lifecycle: `reset()` on a load or restart, `on_place_left()` when the place is
@@ -319,7 +323,8 @@ func _make_game_nodes() -> void:
 		combat.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
 			ai.on_hit(int(result.get("attacker", 0)), target))
 	items_changed.connect(combat.on_items_changed)
-	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer)
+	casting = casting_script.new(CastingData.new(papyrus, world))
+	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer, casting)
 	items_changed.connect(magic.on_items_changed)
 	magic.spell_landed.connect(spell_landed.emit)
 	magic.scroll_used.connect(func(_spell: int) -> void: items_changed.emit())
@@ -333,7 +338,7 @@ func _make_game_nodes() -> void:
 		magic.spell_landed.connect(func(_hand: int, _spell: int, target: int, _point: Vector3, hostile: bool) -> void:
 			if hostile and target != SkydotPapyrus.PLAYER_REF:
 				ai.on_hit(SkydotPapyrus.PLAYER_REF, target))
-	npc_magic = NpcMagic.new(world, papyrus, magic, combat)
+	npc_magic = NpcMagic.new(world, papyrus, magic, combat, casting)
 	if ai != null:
 		ai.combat_cast.connect(npc_magic.on_cast)
 		# A hostile spell an actor lands on someone raises the alarm, as a weapon's hit does.
@@ -382,7 +387,7 @@ func _make_game_nodes() -> void:
 	_bridge.quest_started.connect(quest_started.emit)
 	_bridge.quest_stage.connect(quest_stage.emit)
 	_bridge.objective_changed.connect(objective_changed.emit)
-	_lifecycle = [actors, projectiles, speech, combat, combat.gear, magic, npc_magic, npc_shouts, corpses, visual_effects,
+	_lifecycle = [actors, projectiles, speech, combat, combat.gear, casting, magic, npc_magic, npc_shouts, corpses, visual_effects,
 		placed, transition]
 	place.left.connect(_on_place_left)
 

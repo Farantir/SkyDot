@@ -117,9 +117,9 @@ record that stored nothing.
 - **The AI only decides** (`SkydotAi::mage_tick`): it emits `combat_cast(ref, target, spell, hand,
   phase)`, `start` when the spell is raised, `release` once the casting time has passed (fire and
   forget), `stop` when a held spell ends or the cast is broken (paralysis, flight, the end of the fight).
-- **The game layer carries it out** (`NpcMagic`): the same `hand_press`/`hand_step`/`hand_release` rules
-  as the player's hands (charge time, concentration paid per step through `pay_spell`, so the Magicka
-  regeneration waits) and `Magic.deliver_from(caster, ...)`, the delivery all casters share (self,
+- **The game layer carries it out** (`NpcMagic`): the same rules as the player's hands, which are
+  `Casting`'s (`press`/`step`/`release`: charge time, a release pays, a concentration is paid per step
+  through `pay_spell`, so the Magicka regeneration waits) and `Magic.deliver_from(caster, ...)`, the delivery all casters share (self,
   touch, projectiles, areas, the same impact and landing). Third-person clips are the first-person
   names of the actor's own behaviour project (`mrh_chargeloop`, `mrh_aimedconcentration`, `mrh_release`
   and their self forms).

@@ -241,6 +241,11 @@ func phase_of(caster: int, hand: int) -> String:
 	return "charged" if state["charged"] else "charging"
 
 
+## The spell or scroll held in `hand` since the press; 0 if the hand is idle.
+func spell_of(caster: int, hand: int) -> int:
+	return int(_state(caster, hand).get("spell", 0))
+
+
 ## The hands of `caster` that are down.
 func hands_of(caster: int) -> Array:
 	return (_hands[caster] as Dictionary).keys() if _hands.has(caster) else []

@@ -83,9 +83,9 @@ func step() -> void:
 		return
 	var need := 0.0
 	if _words == 2:
-		need = _session.world.get_gmst_float(Magic.GMST_SHOUT_TIME1, Magic.SHOUT_TIME1_FALLBACK) + MARGIN
+		need = _session.world.get_gmst_float(Casting.GMST_SHOUT_TIME1, Casting.SHOUT_TIME1_FALLBACK) + MARGIN
 	elif _words >= 3:
-		need = _session.world.get_gmst_float(Magic.GMST_SHOUT_TIME2, Magic.SHOUT_TIME2_FALLBACK) + MARGIN
+		need = _session.world.get_gmst_float(Casting.GMST_SHOUT_TIME2, Casting.SHOUT_TIME2_FALLBACK) + MARGIN
 	if bool(state["fired"]) or float(state["held"]) >= need:
 		print("--shout: voice key up after %.2f s" % float(state["held"]))
 		_session.voice_released()

@@ -1,10 +1,12 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The player's casting (GAMEPLAY-PLAN.md, 7a-3; SYSTEMS.md A9). No camera, input or scene of
-# its own, like Combat: it knows a pointer node (the viewpoint, or a VR controller) and the
-# built actors under the host, both given by the session. The rules (cost, cooldown, the
-# hands' charge and concentration, landing the effects) are SkydotPapyrus's; this class
-# carries them out in the scene.
+# The player's casting in the scene (GAMEPLAY-PLAN.md, 7a-3; SYSTEMS.md A9). No camera, input
+# or scene of its own, like Combat: it knows a pointer node (the viewpoint, or a VR controller)
+# and the built actors under the host, both given by the session. The rules of the hands and the
+# voice (when a press is refused, the charge, the concentration, what is paid, how long the voice
+# key charges) are Casting's (casting.gd), shared with NpcMagic, and the cost and the effects are
+# SkydotPapyrus's; this class keeps the player's controls (readying, the clips, the art, the
+# notices) and carries the casts out in the scene.
 #
 # Hands: a spell or scroll held in a hand (SkydotPapyrus.equip_spell; 0 left, 1 right, 2
 # power) is readied with R (GameSession.toggle_weapon) and cast with that hand's attack
@@ -26,8 +28,8 @@
 # Shouts (GAMEPLAY-PLAN.md, 7b-3): the voice key (GameSession.voice_pressed) opens `shout_begin`
 # when the voice slot holds a shout. The key charges it (the first-person inhale clip): it
 # leaves when the key goes up (`shout_release`) with the seconds held, or by itself once the held
-# time reaches that of the most words usable (SkydotPapyrus.shout_info `usable`: one word fires
-# at the press, two at fShoutTime1, three at fShoutTime2). SkydotPapyrus.cast_shout decides
+# time reaches that of the most words usable (Casting.shout_begin: one word fires at the press,
+# two at fShoutTime1, three at fShoutTime2). SkydotPapyrus.cast_shout decides
 # the words and the recovery; the spell it returns is delivered from the pointer by
 # `deliver_from` like any aimed spell (a voice spell costs nothing, so nothing is paid; the
 # cone projectile lands on every actor in the cone) and `shouted` says it was said. No shout
@@ -65,7 +67,9 @@ const CAST_CONCENTRATION := 2
 const ARCHETYPE_SUMMON := 18
 
 ## Seconds between two landings (and flame bolts) of a concentration spell.
-const TICK_SECONDS := 0.1
+const TICK_SECONDS := Casting.TICK_SECONDS
+## Where the head is, as a fraction of an actor's height.
+const EYE_FRACTION := 0.93
 ## Placeholder: seconds between the visual puffs of a held flame, which fill the stream between its shots.
 const PUFF_SECONDS := 1.0 / 60.0
 ## Placeholder: a touch spell's reach from the eyes in game units, and half its cone in degrees.
@@ -87,13 +91,8 @@ const AIM_DISTANCE := 60.0
 ## MGEF sound kinds (MagicEffectSound.kind): release and on hit.
 const SOUND_RELEASE := 3
 const SOUND_HIT := 5
-## GMSTs: the held seconds that make two and three words of a shout.
-const GMST_SHOUT_TIME1 := "fShoutTime1"
-const GMST_SHOUT_TIME2 := "fShoutTime2"
 ## The seconds an actor is taken to hold a shout: long enough for all the words.
 const NPC_SHOUT_HELD := 99.0
-const SHOUT_TIME1_FALLBACK := 0.2
-const SHOUT_TIME2_FALLBACK := 0.9
 ## Seconds an explosion or hit art model stays.
 const EFFECT_SECONDS := 2.0
 const MASK := SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_CLUTTER | SkydotPlayer.LAYER_TERRAIN
@@ -135,21 +134,19 @@ var _papyrus: SkydotPapyrus
 var _host: Node3D
 var _combat: Combat
 var _projectiles: Projectiles
+var _casting: Casting
 var _pointer: Callable  # () -> Node3D: where casts start and look from
 var _warn := WarnOnce.new("magic: ")
 
 var _ready := Ready.SHEATHED
 var _ready_time := 0.0
 var _ready_length := 0.0
-var _hands := {}  # hand -> {spell, info, phase, timer}: the buttons that are down
 var _clip_left := 0.0  # seconds until a release clip is over and the idle returns
 var _art := {LEFT: "", RIGHT: ""}  # the models last announced per hand
 var _streams := {}  # caster * 4 + hand -> {caster, proj, origin, direction, reach, left, timer}: held flames still puffing
 var _effects: Array[Dictionary] = []  # explosion and hit art models: {node, left}
 var _lengths := {}  # clip stem -> seconds
 var _clock := 0.0
-var _info_cache := {}  # spell -> cast_info
-var _shout := {}  # the key is down on a shout: {shout, held, usable, threshold, fired}
 ## The recovery seconds of the last shout said (the HUD meter's full length).
 var last_recovery := 0.0
 var _shout_spell := 0  # the spell of the last shout said (its on-hit sound plays when it lands)
@@ -157,7 +154,8 @@ var _shout_hit_sound := 0
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, combat: Combat,
-		projectiles: Projectiles, pointer: Callable) -> void:
+		projectiles: Projectiles, pointer: Callable, casting: Casting) -> void:
+	_casting = casting
 	_world = world
 	_pack = pack
 	_papyrus = papyrus
@@ -193,19 +191,17 @@ func ready_state() -> int:
 
 ## Whether `hand`'s button is down on a spell.
 func is_casting(hand: int) -> bool:
-	return _hands.has(hand)
+	return _casting.is_casting(PLAYER_REF, hand)
 
 
-## The phase of `hand`: "" (idle), "charging", "charged", "concentrating".
+## The phase of `hand`: "" (idle), "charging", "charged", "concentrating" (from the press).
 func phase_of(hand: int) -> String:
-	return _hands[hand]["phase"] if _hands.has(hand) else ""
+	return _casting.phase_of(PLAYER_REF, hand)
 
 
 ## cast_info of `spell`, cached ({} if unknown).
 func info_of(spell: int) -> Dictionary:
-	if not _info_cache.has(spell):
-		_info_cache[spell] = _papyrus.cast_info(spell)
-	return _info_cache[spell]
+	return _casting.info_of(spell)
 
 
 ## A save was loaded or the game restarted: the held flames and the explosion and hit art of the game
@@ -226,18 +222,17 @@ func on_place_left() -> void:
 
 ## The equipment changed (or a game was loaded): the hands' spells and their art follow it.
 func on_items_changed() -> void:
-	_info_cache.clear()
-	if is_shouting() and int(_papyrus.equipped_shout(PLAYER_REF)) != int(_shout["shout"]):
-		_shout.clear()
+	_casting.clear_info_cache()
+	if is_shouting() and int(_papyrus.equipped_shout(PLAYER_REF)) != int(shout_state()["shout"]):
+		_casting.shout_end(PLAYER_REF)
 		_play_idle()
-	for hand in _hands.keys():
-		if spell_in(hand) != (_hands[hand]["spell"] as int):
-			_papyrus.hand_release(PLAYER_REF, hand)
-			_hands.erase(hand)
+	for hand in _casting.hands_of(PLAYER_REF):
+		if spell_in(hand) != _casting.spell_of(PLAYER_REF, hand):
+			_casting.cancel(PLAYER_REF, hand)
 	if _ready != Ready.SHEATHED and hands_with_spells().is_empty():
 		_lower(true)
 	_refresh_art()
-	if _ready == Ready.READY and _hands.is_empty():
+	if _ready == Ready.READY and _casting.hands_of(PLAYER_REF).is_empty():
 		hand_clip.emit(idle_clip(), true, 1.0)
 
 
@@ -274,9 +269,8 @@ func set_ready(on: bool, silent := false) -> void:
 
 
 func _lower(silent: bool) -> void:
-	for hand in _hands.keys():
-		_papyrus.hand_release(PLAYER_REF, hand)
-	_hands.clear()
+	for hand in _casting.hands_of(PLAYER_REF):
+		_casting.cancel(PLAYER_REF, hand)
 	var was_ready := _ready != Ready.SHEATHED
 	_ready = Ready.SHEATHED
 	_clip_left = 0.0
@@ -309,7 +303,7 @@ func idle_clip() -> String:
 
 ## `hand`'s attack button went down. A sheathed hand is readied instead.
 func hand_pressed(hand: int) -> void:
-	if _papyrus.is_player_dead() or _hands.has(hand):
+	if _papyrus.is_player_dead() or is_casting(hand):
 		return
 	if spell_in(hand) == 0:
 		return
@@ -321,74 +315,54 @@ func hand_pressed(hand: int) -> void:
 		return
 	if _ready != Ready.READY:
 		return
-	var press := _papyrus.hand_press(PLAYER_REF, hand)
+	var press := _casting.press(PLAYER_REF, hand)
 	if not press["ok"]:
 		cast_refused.emit(hand, spell_in(hand), press["reason"])
 		print("magic: hand %d refused: %s" % [hand, press["reason"]])
 		return
-	var spell := int(press["spell"])
-	var info := info_of(spell)
-	_hands[hand] = {"spell": spell, "info": info, "phase": "charging", "timer": TICK_SECONDS,
-		"scroll": bool(press["is_scroll"]), "started": false}
-	var conc := int(press["casting_type"]) == CAST_CONCENTRATION
-	var stem := _hand_clip("concentration" if conc else "chargeloop", [hand], info)
+	var stem := _hand_clip("concentration" if press["concentration"] else "chargeloop", [hand], press["info"])
 	_clip_left = 0.0
 	hand_clip.emit(stem, true, 1.0)
 
 
-## The button went up: a charged fire-and-forget spell is cast, a concentration spell ends.
+## The button went up: a charged fire-and-forget spell is paid for and cast, a concentration spell ends.
 func hand_released(hand: int) -> void:
-	if not _hands.has(hand):
+	if not is_casting(hand):
 		return
-	var held: Dictionary = _hands[hand]
-	var result := _papyrus.hand_release(PLAYER_REF, hand)
-	_hands.erase(hand)
-	var spell: int = held["spell"]
-	var info: Dictionary = held["info"]
-	var event: String = result["event"]
-	if event == "cast":
-		if _pay(hand, spell, info):
+	var result := _casting.release(PLAYER_REF, hand)
+	var spell := int(result["spell"])
+	var info: Dictionary = result["info"]
+	if String(result["event"]) == "cast":
+		if bool(result["paid"]):
+			_announce(PLAYER_REF, hand, spell, info)
 			_deliver(hand, spell, info, false)
+		else:
+			cast_refused.emit(hand, spell, result["reason"])
+			print("magic: 0x%08X refused: %s" % [spell, result["reason"]])
 		_after_release(hand, info, "release")
-	elif event == "stop":
-		_after_release(hand, info, "")
 	else:
 		_after_release(hand, info, "")
 
 
 ## Cast the power in the power slot now. {ok, reason}.
 func cast_power() -> Dictionary:
-	var spell := spell_in(POWER)
-	if spell == 0:
-		return {"ok": false, "reason": "no power"}
-	if _papyrus.is_player_dead():
-		return {"ok": false, "reason": "dead"}
-	var info := info_of(spell)
-	if not _pay(POWER, spell, info):
+	var result := _casting.cast_power(PLAYER_REF)
+	if not bool(result["ok"]):
+		var reason := String(result["reason"])
+		if reason == "no power" or reason == "dead":
+			return {"ok": false, "reason": reason}
+		cast_refused.emit(POWER, int(result["spell"]), reason)
+		print("magic: 0x%08X refused: %s" % [int(result["spell"]), reason])
 		return {"ok": false, "reason": "refused"}
+	var spell := int(result["spell"])
+	var info: Dictionary = result["info"]
+	_announce(PLAYER_REF, POWER, spell, info)
 	_deliver(POWER, spell, info, false)
 	var stem := _hand_clip("selfrelease" if int(info.get("delivery", 0)) == DELIVER_SELF else "release", [RIGHT], info)
 	if stem != "" and _ready != Ready.SHEATHED:
 		_clip_left = _length_of(stem)
 		hand_clip.emit(stem, false, 1.0)
 	return {"ok": true, "reason": ""}
-
-
-## Pay for a fire-and-forget cast (a scroll is paid for when it lands). False, with
-## `cast_refused`, if it cannot.
-func _pay(hand: int, spell: int, info: Dictionary, caster := PLAYER_REF) -> bool:
-	if bool(info.get("is_scroll", false)):
-		_announce(caster, hand, spell, info)
-		return true
-	_papyrus.break_invisibility(caster)  # casting ends the caster's invisibility
-	var paid := _papyrus.pay_spell(caster, spell, 0.0)
-	if not paid["ok"]:
-		if caster == PLAYER_REF:
-			cast_refused.emit(hand, spell, paid["reason"])
-		print("magic: 0x%08X refused%s: %s" % [spell, "" if caster == PLAYER_REF else " for 0x%X" % caster, paid["reason"]])
-		return false
-	_announce(caster, hand, spell, info)
-	return true
 
 
 func _announce(caster: int, hand: int, spell: int, info: Dictionary) -> void:
@@ -398,15 +372,17 @@ func _announce(caster: int, hand: int, spell: int, info: Dictionary) -> void:
 		npc_cast_started.emit(caster, hand, spell, info)
 
 
-## An NPC's spell leaves it: `pay` takes the cost first (a fire-and-forget release; false if it cannot
-## pay), else the cost was paid already (a tick of a held spell, `again`). The effects leave `eye`
-## along `forward`; `right` is the side of its hands.
+## An NPC's spell leaves it (already paid for, through Casting): the effects leave `eye` along
+## `forward`; `right` is the side of its hands. `again`: a tick of a held spell.
 func npc_deliver(caster: int, hand: int, spell: int, info: Dictionary, eye: Vector3, forward: Vector3,
-		right: Vector3, again: bool, pay := true) -> bool:
-	if pay and not _pay(hand, spell, info, caster):
-		return false
+		right: Vector3, again: bool) -> void:
 	deliver_from(caster, hand, spell, info, eye, forward, right, again)
-	return true
+
+
+## Where `node`'s head is: the eye of an NPC, from which its spells leave.
+static func eye_of(node: Node3D) -> Vector3:
+	var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT
+	return node.global_position + Vector3.UP * (height * EYE_FRACTION)
 
 
 func _after_release(hand: int, info: Dictionary, kind: String) -> void:
@@ -437,11 +413,10 @@ func step(delta: float) -> void:
 			_finish_ready()
 	if _clip_left > 0.0:
 		_clip_left -= delta
-		if _clip_left <= 0.0 and _hands.is_empty():
+		if _clip_left <= 0.0 and _casting.hands_of(PLAYER_REF).is_empty():
 			_play_idle()
-	for hand in _hands.keys():
-		if _hands.has(hand):
-			_step_hand(hand, delta)
+	for hand in _casting.hands_of(PLAYER_REF):
+		_step_hand(hand, delta)
 	_step_shout(delta)
 	_step_streams(delta)
 	for effect in _effects.duplicate():
@@ -469,39 +444,29 @@ func _step_streams(delta: float) -> void:
 
 
 func _step_hand(hand: int, delta: float) -> void:
-	var held: Dictionary = _hands[hand]
-	var step := _papyrus.hand_step(PLAYER_REF, hand, delta)
+	var step := _casting.step(PLAYER_REF, hand, delta)
 	match String(step["event"]):
-		"charged":
-			held["phase"] = "charged"
 		"tick":
-			if not held["started"]:
-				held["started"] = true
-				held["phase"] = "concentrating"
-				cast_started.emit(hand, held["spell"], held["info"])
-			held["timer"] += delta
-			if held["timer"] >= TICK_SECONDS:
-				held["timer"] = 0.0
-				if held["scroll"]:
-					return
-				_deliver(hand, held["spell"], held["info"], true)
+			var info: Dictionary = step["info"]
+			if step["first"]:
+				cast_started.emit(hand, step["spell"], info)
+			if step["land"]:
+				_deliver(hand, step["spell"], info, true)
 		"stop":
-			held["phase"] = "stopped"
-			print("magic: 0x%08X ends: out of Magicka" % held["spell"])
-			_hands.erase(hand)
-			_after_release(hand, held["info"], "")
+			print("magic: 0x%08X ends: %s" % [int(step["spell"]), step["reason"]])
+			_after_release(hand, step["info"], "")
 
 
 # ---- shouts
 
 ## Whether the voice key is down on a shout (it is charging, or has fired and waits for the key to go up).
 func is_shouting() -> bool:
-	return not _shout.is_empty()
+	return _casting.is_shouting(PLAYER_REF)
 
 
 ## The shout being said: {shout, held, usable, threshold, fired}; {} if none.
 func shout_state() -> Dictionary:
-	return _shout.duplicate()
+	return _casting.shout_state(PLAYER_REF)
 
 
 ## The voice key went down on `shout`. {ok, reason}: refused while dead, with a hand casting
@@ -509,31 +474,19 @@ func shout_state() -> Dictionary:
 func shout_begin(shout: int) -> Dictionary:
 	if is_shouting():
 		return {"ok": true, "reason": ""}
-	if _papyrus.is_player_dead():
-		return {"ok": false, "reason": "dead"}
-	if not _hands.is_empty():
-		return _refuse_shout("casting", _world.get_gmst_string("sMagicCastShoutWhileCasting", "You cannot shout while casting a spell"))
-	var info := _papyrus.shout_info(PLAYER_REF, shout)
-	if not bool(info["found"]):
-		return _refuse_shout("unknown shout")
-	var usable := int(info["usable"])
-	if usable <= 0:
-		return _refuse_shout("no word")
-	if _papyrus.voice_recovery(PLAYER_REF) > 0.0:
-		return _refuse_shout("recovering")
-	var threshold := 0.0
-	if usable >= 3:
-		threshold = _world.get_gmst_float(GMST_SHOUT_TIME2, SHOUT_TIME2_FALLBACK)
-	elif usable == 2:
-		threshold = _world.get_gmst_float(GMST_SHOUT_TIME1, SHOUT_TIME1_FALLBACK)
-	_shout = {"shout": shout, "held": 0.0, "usable": usable, "threshold": threshold, "fired": false}
+	var begun := _casting.shout_begin(PLAYER_REF, shout)
+	if not bool(begun["ok"]):
+		var text := ""
+		if begun["reason"] == "casting":
+			text = _world.get_gmst_string("sMagicCastShoutWhileCasting", "You cannot shout while casting a spell")
+		return _refuse_shout(String(begun["reason"]), text)
 	_clip_left = 0.0
-	print("shout: 0x%08X begins (%d usable words)" % [shout, usable])
+	print("shout: 0x%08X begins (%d usable words)" % [shout, int(begun["usable"])])
 	var stem := _shout_clip("inhale")
 	if stem != "":
 		hand_clip.emit(stem, false, 1.0)
-	if usable == 1:
-		_shout_fire()
+	if begun["fire"]:
+		_shout_fire(shout, 0.0)
 	return {"ok": true, "reason": ""}
 
 
@@ -541,18 +494,18 @@ func shout_begin(shout: int) -> Dictionary:
 func shout_release() -> void:
 	if not is_shouting():
 		return
-	if not _shout["fired"]:
-		_shout_fire()
-	_shout.clear()
+	var shout := int(shout_state()["shout"])
+	var result := _casting.shout_release(PLAYER_REF)
+	if result["fire"]:
+		_shout_fire(shout, float(result["held"]))
 
 
 func _step_shout(delta: float) -> void:
-	if not is_shouting() or _shout["fired"]:
+	if not is_shouting():
 		return
-	_shout["held"] += delta
-	if _shout["held"] >= float(_shout["threshold"]):
-		_shout["held"] = float(_shout["threshold"])
-		_shout_fire()
+	var result := _casting.shout_step(PLAYER_REF, delta)
+	if result["fire"]:
+		_shout_fire(int(shout_state()["shout"]), float(result["held"]))
 
 
 func _refuse_shout(reason: String, text := "") -> Dictionary:
@@ -563,10 +516,8 @@ func _refuse_shout(reason: String, text := "") -> Dictionary:
 
 
 ## Say the words held: cast_shout decides, the spell leaves the pointer.
-func _shout_fire() -> void:
-	_shout["fired"] = true
-	var shout: int = _shout["shout"]
-	var result := _speak(PLAYER_REF, shout, float(_shout["held"]))
+func _shout_fire(shout: int, held: float) -> void:
+	var result := _speak(PLAYER_REF, shout, held)
 	if not bool(result["ok"]):
 		_refuse_shout(String(result["reason"]))
 		_play_idle()
@@ -618,8 +569,7 @@ func npc_shout(caster: int, target: int, shout: int, deliver := true) -> Diction
 		return result  # the caller delivers it when its clip says so (NpcShouts: Voice_SpellFire_Event)
 	var node := _world.find_ref_node(caster) as Node3D
 	if node != null:
-		var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT
-		var eye := node.global_position + Vector3.UP * (height * 0.93)
+		var eye := eye_of(node)
 		var forward := (_combat.body_point_of(target) - eye).normalized()
 		if forward.length() < 0.5:
 			forward = -node.global_transform.basis.z

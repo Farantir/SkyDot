@@ -300,7 +300,7 @@ func _run(pack_dir: String) -> void:
 	var effects_before := papyrus.active_effects(mage_c).size()
 	_landed.clear()
 	var node_c := _session.world.find_ref_node(mage_c) as Node3D
-	_session.magic.npc_deliver(mage_c, 1, FLAMES, rune_info, node_c.global_position + Vector3.UP * 1.6, Vector3.UP, Vector3.RIGHT, false, false)
+	_session.magic.npc_deliver(mage_c, 1, FLAMES, rune_info, node_c.global_position + Vector3.UP * 1.6, Vector3.UP, Vector3.RIGHT, false)
 	await _frames(5)
 	expect(not _landed.any(func(l: Array) -> bool: return l[1] == FLAMES and l[2] == mage_c) and papyrus.get_actor_value(mage_c, "Health") >= before and papyrus.active_effects(mage_c).size() <= effects_before,
 		"a location spell that lands nowhere leaves its caster alone")
