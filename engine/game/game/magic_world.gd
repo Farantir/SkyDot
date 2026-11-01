@@ -179,7 +179,7 @@ func on_loaded() -> void:
 		_light_end(instance)
 	_bound.clear()
 	var targets: Array[int] = [SkydotPapyrus.PLAYER_REF]
-	for node in _session.host.find_children("*", "SkydotActor", true, false):
+	for node in _session.actors.all():
 		if node.has_meta("skydot_ref"):
 			targets.append(int(node.get_meta("skydot_ref")))
 	for target in targets:

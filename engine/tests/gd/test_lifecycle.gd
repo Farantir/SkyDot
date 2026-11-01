@@ -38,7 +38,7 @@ func _combat() -> Combat:
 	var sounds := Sounds.new(Fakes.world(), null, Callable(), Callable())
 	_host.add_child(sounds)
 	return Combat.new(Fakes.world(), SkydotPack.new(), Fakes.papyrus(), _host, sounds,
-		func() -> Node3D: return null, func() -> Vector3: return Vector3.ZERO)
+		func() -> Node3D: return null, func() -> Vector3: return Vector3.ZERO, ActorRegistry.new(_host))
 
 
 func _fill_combat(c: Combat) -> Node:
@@ -97,7 +97,7 @@ func test_combat_on_place_left_keeps_the_stance() -> void:
 
 func test_corpses_both() -> void:
 	for reset in [true, false]:
-		var c := Corpses.new(Fakes.world(), Fakes.papyrus(), _host, func() -> Vector3: return Vector3.ZERO)
+		var c := Corpses.new(Fakes.world(), Fakes.papyrus(), _host, func() -> Vector3: return Vector3.ZERO, ActorRegistry.new(_host))
 		var heard := _watch_all(c)
 		c._hits[1] = Vector3.ONE
 		c._pending[1] = 0.5
@@ -116,7 +116,7 @@ func test_corpses_both() -> void:
 
 
 func test_paralysis_poll_forgets_actors_that_are_not_built() -> void:
-	var c := Corpses.new(Fakes.world(), Fakes.papyrus(), _host, func() -> Vector3: return Vector3.ZERO)
+	var c := Corpses.new(Fakes.world(), Fakes.papyrus(), _host, func() -> Vector3: return Vector3.ZERO, ActorRegistry.new(_host))
 	c._paralysed[0x1234] = true  # streamed out: no actor node of it in the host
 	c._poll_paralysis(1.0)
 	expect(c._paralysed.is_empty(), "an actor that is not built is not marked paralysed")
@@ -147,7 +147,7 @@ func test_npc_magic_and_shouts() -> void:
 
 func test_visual_effects_free_their_streams() -> void:
 	for reset in [true, false]:
-		var v := VisualEffects.new(Fakes.world(), _host, func() -> Vector3: return Vector3.ZERO)
+		var v := VisualEffects.new(Fakes.world(), _host, func() -> Vector3: return Vector3.ZERO, ActorRegistry.new(_host))
 		var particles := GPUParticles3D.new()
 		_host.add_child(particles)
 		v._streams["1:2"] = {"node": particles, "ref": 2, "target": 0, "left": 5.0}

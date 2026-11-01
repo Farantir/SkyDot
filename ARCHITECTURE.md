@@ -1185,11 +1185,11 @@ up again; saved with the placed references and ITST); `items_changed` says
 when to redraw. No part has a `_process` of its own.
 
 Lifecycle of the GDScript parts. A part that keeps per-ref state joins
-`GameSession._lifecycle` (projectiles, speech, combat, its gear, magic, NPC
+`GameSession._lifecycle` (the actor registry, projectiles, speech, combat, its gear, magic, NPC
 magic and shouts, corpses, visual effects, placed references, the door
 transition) and has two duck-typed methods, no framework: `reset()` drops all
 per-game state, frees the nodes the part made itself and does what
-`on_place_left()` does; `on_place_left()` drops what is tied to the built
+`on_place_left()` does (the registry's membership mirrors the tree, so both only drop its shape caches); `on_place_left()` drops what is tied to the built
 nodes of the place being left. The session calls `reset()` on a load, between
 the scripts' state being committed and the place being entered
 (`SaveService.committed`: entering builds cells whose state must survive), and
@@ -1210,6 +1210,7 @@ model would carry over.
 | `projectiles.gd` | `Projectiles` | what `Weapon.Fire` launches, in flight and stuck; `shoot_spell` is a spell's shot (missile, lobber, flame bolts) that calls back at its impact |
 | `combat.gd` | `Combat` | the player's weapon (sheathed, drawing, drawn, sheathing) and clip set (`1hm_`, `2hm_`, `2hw_`, `h2h_`), light, left and held power attacks timed by the first-person project's text keys (`HitFrame`), the hit test (reach, strike angle, line of sight) into `apply_hit`, the impact (IPDS, material, IPCT sound and model), `npc_attack` for actors (third-person clip, test from the head), `hit_segment` for a swung blade (VR). `GameSession` has `toggle_weapon`, `attack_pressed/released`, `attack`, `npc_attack`, `kill_actor` and forwards `weapon_state_changed`, `attack_started`, `hit_landed` |
 | `magic.gd` | `Magic` | the player's casting (7a-3): spells and scrolls in the hands (`LEFT` 0, `RIGHT` 1, `POWER` 2) readied with R, the hand's attack button drives `hand_press`/`hand_step`/`hand_release`, the cost is paid with `pay_spell`, the effects land with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key; signals for the arms' clips and the hand art |
+| `actor_registry.gd` | `ActorRegistry` | the `SkydotActor` nodes under the host, mirrored from the tree's `node_added` / `node_removed` (one hook for every way an actor is built or leaves; `all()` replaces the scans of the whole host by combat, corpses and magic), and per-node caches of the head bone (`head`) and the skinned meshes (`chest`) that `refresh(node)` drops when an actor's parts are rebuilt; `GameSession.actors` |
 | `corpses.gd` | `Corpses` | what a death looks like: the actor's node stops (`SkydotActor.set_dead`), a `PhysicalBoneSimulator3D` ragdoll (13 capsule `PhysicalBone3D`s, cone joints, the killing hit's impulse) runs under its skeleton until it rests or 5 s, then freezes into the bones' poses; stores the corpse place (`set_corpse_place`), marks the node pickable (Search), lays the dead of a place built later down at their place; a skeleton without the human bones logs `death: no ragdoll for <skeleton>` and lies on its side |
 | `sounds.gd` | `Sounds` | sound effects from `Sound.Play`, graphs, text keys and sound markers; instance ids come from the engine |
 | `save_service.gd` | `SaveService` | F5, F9, `--save-to`, `--load`: the engine's sections plus `PLYR` (7.12) |

@@ -20,12 +20,14 @@ const WISP_CORE := Color(1.0, 0.92, 0.7)  # warm white
 const WISP_EDGE := Color(1.0, 0.55, 0.12)  # amber
 
 var _world: SkydotWorld
+var actors: ActorRegistry
 var _host: Node3D
 var _player_chest: Callable  # () -> Vector3, the player's chest in engine space
 var _streams := {}  # "effect:ref" -> {"node": GPUParticles3D, "ref": int, "target": int, "left": float}
 
 
-func _init(world: SkydotWorld, host: Node3D, player_chest: Callable) -> void:
+func _init(world: SkydotWorld, host: Node3D, player_chest: Callable, actor_registry: ActorRegistry) -> void:
+	actors = actor_registry
 	_world = world
 	_host = host
 	_player_chest = player_chest
@@ -222,12 +224,4 @@ func _chest(ref: int) -> Variant:
 	var node := _world.find_ref_node(ref) as Node3D
 	if node == null or not node.is_inside_tree():
 		return null
-	var box := AABB()
-	var any := false
-	for mesh in node.find_children("*", "MeshInstance3D", true, false):
-		var body := mesh as MeshInstance3D
-		if body.get_parent() is Skeleton3D:
-			var part := body.global_transform * body.get_aabb()
-			box = part if not any else box.merge(part)
-			any = true
-	return box.get_center() if any else node.global_position + Vector3.UP * 1.2
+	return actors.chest(node)

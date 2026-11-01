@@ -122,6 +122,7 @@ const BOUNDS_MARGIN := 0.3
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
 var _host: Node3D
+var actors: ActorRegistry
 var _player_position: Callable  # () -> Vector3: where the player is, for the direction of its hits
 var _warn := WarnOnce.new("death: ")
 var _hits := {}  # target ref -> impulse vector of the last hit
@@ -134,7 +135,8 @@ var _paralysis_timer := 0.0
 var ai: SkydotAi
 
 
-func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, player_position: Callable) -> void:
+func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, player_position: Callable, actor_registry: ActorRegistry) -> void:
+	actors = actor_registry
 	_player_position = player_position
 	_world = world
 	_papyrus = papyrus
@@ -268,7 +270,7 @@ func _poll_paralysis(delta: float) -> void:
 		return
 	_paralysis_timer = 0.0
 	var seen := {}
-	for node: SkydotActor in _host.find_children("*", "SkydotActor", true, false):
+	for node in actors.all():
 		if not node.has_meta("skydot_ref"):
 			continue
 		var ref: int = node.get_meta("skydot_ref")

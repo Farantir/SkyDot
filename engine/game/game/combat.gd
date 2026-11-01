@@ -174,10 +174,12 @@ var _drawn := {}  # actor ref -> bool, the actors that fight with their weapon o
 var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, drawn}
 ## The weapons on the third-person skeletons.
 var gear: ActorGear
+var actors: ActorRegistry
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, papyrus: SkydotPapyrus, host: Node3D, sounds: Sounds,
-		pointer: Callable, feet: Callable) -> void:
+		pointer: Callable, feet: Callable, actor_registry: ActorRegistry) -> void:
+	actors = actor_registry
 	_world = world
 	_pack = pack
 	_papyrus = papyrus
@@ -740,7 +742,7 @@ func head_point_of(ref: int) -> Vector3:
 	var node := _world.find_ref_node(ref) as Node3D
 	if node == null:
 		return body_point_of(ref)
-	return head_point_in(node)
+	return actors.head(node)
 
 
 ## The head of an actor's node: the head bone of its "Skeleton" (the name the cell builder gives it),
@@ -748,12 +750,10 @@ func head_point_of(ref: int) -> Vector3:
 static func head_point_in(node: Node3D) -> Vector3:
 	var skeleton := node.find_child("Skeleton", true, false) as Skeleton3D
 	if skeleton != null:
-		for want in ["head magicnode", "head"]:
-			for bone in skeleton.get_bone_count():
-				if skeleton.get_bone_name(bone).to_lower().contains(want):
-					return skeleton.to_global(skeleton.get_bone_global_pose(bone).origin)
-	var height: float = node.get("height") if node.get("height") != null else PLAYER_HEIGHT
-	return node.global_position + Vector3.UP * (height * HEAD_FRACTION)
+		var bone := ActorRegistry.head_bone(skeleton)
+		if bone >= 0:
+			return ActorRegistry.head_position(skeleton, bone)
+	return ActorRegistry.head_fallback(node)
 
 
 ## The chest of the actor (or the player) `ref` in engine space; its feet if it has no node.
@@ -1056,9 +1056,8 @@ func _candidates(attacker: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if attacker != PLAYER_REF and not _papyrus.is_actor_dead(PLAYER_REF):
 		out.append({"ref": PLAYER_REF, "feet": _feet.call(), "radius": PLAYER_RADIUS, "height": PLAYER_HEIGHT})
-	for node in _host.find_children("*", "SkydotActor", true, false):
-		var actor := node as SkydotActor
-		if actor == null or not actor.has_meta("skydot_ref") or not actor.is_inside_tree():
+	for actor in actors.all():
+		if not actor.has_meta("skydot_ref"):
 			continue
 		var ref: int = actor.get_meta("skydot_ref")
 		if ref == attacker or _papyrus.is_actor_dead(ref):

@@ -136,6 +136,8 @@ var transition: PlaceTransition
 var saves: SaveService
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
+## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
+var actors: ActorRegistry
 
 ## Off for runs that drive themselves: doors travel without a fade.
 var interactive := true:
@@ -210,6 +212,7 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: Object) -> bool:
 	host = Node3D.new()
 	host.name = "Host"
 	add_child(host)
+	actors = ActorRegistry.new(host)
 	_make_streamer()
 	place = Place.new(world, host, config, _viewpoint, _player, ai, clock, streamer)
 	place.built.connect(_on_interior_built)
@@ -303,7 +306,7 @@ func _make_game_nodes() -> void:
 	speech.line_started.connect(_on_speech_started)
 	speech.line_ended.connect(_on_speech_ended)
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
-		func() -> Vector3: return _feet)
+		func() -> Vector3: return _feet, actors)
 	combat.projectiles = projectiles
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
@@ -341,12 +344,12 @@ func _make_game_nodes() -> void:
 	npc_shouts = NpcShouts.new(world, papyrus, magic, combat, speech, pack)
 	if ai != null:
 		ai.combat_shout.connect(npc_shouts.on_shout)
-	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet)
+	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet, actors)
 	corpses.ai = ai
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
 	actor_arrived.connect(corpses.on_actor_arrived)
-	visual_effects = VisualEffects.new(world, host, func() -> Vector3: return _feet + Vector3.UP * 1.2)
+	visual_effects = VisualEffects.new(world, host, func() -> Vector3: return _feet + Vector3.UP * 1.2, actors)
 	papyrus.visual_effect.connect(visual_effects.on_visual_effect)
 	papyrus.sub_graph_animation.connect(visual_effects.on_sub_graph_animation)
 	papyrus.worn_changed.connect(_on_worn_changed)
@@ -380,7 +383,7 @@ func _make_game_nodes() -> void:
 	_bridge.quest_started.connect(quest_started.emit)
 	_bridge.quest_stage.connect(quest_stage.emit)
 	_bridge.objective_changed.connect(objective_changed.emit)
-	_lifecycle = [projectiles, speech, combat, combat.gear, magic, npc_magic, npc_shouts, corpses, visual_effects,
+	_lifecycle = [actors, projectiles, speech, combat, combat.gear, magic, npc_magic, npc_shouts, corpses, visual_effects,
 		placed, transition]
 	place.left.connect(_on_place_left)
 
@@ -498,6 +501,7 @@ func _on_worn_changed(ref: int) -> void:
 	if ref == SkydotPapyrus.PLAYER_REF or world.find_ref_node(ref) == null:
 		return
 	world.refresh_actor_parts(ref, papyrus.get_ref_base(ref))
+	actors.refresh(world.find_ref_node(ref))
 
 
 ## Everything `from` has, to `to`; returns the number of stacks moved.
