@@ -10,6 +10,7 @@
 #include "dialogue/dialogue.hpp"
 #include "save/bytes.hpp"
 #include "scenes/scenes.hpp"
+#include "vm/dialogue_runtime.hpp"
 #include "vm/quest_host.hpp"
 #include "vm/vm.hpp"
 #include "vm/world_access.hpp"
@@ -34,10 +35,6 @@ public:
         [[nodiscard]] virtual WorldAccess& world_access() = 0;
         [[nodiscard]] virtual QuestHost& quest_host() = 0;
         [[nodiscard]] virtual conditions::ConditionWorld& condition_world() = 0;
-        /// Whether `ref` is a living actor that dialogue can address.
-        [[nodiscard]] virtual bool can_talk(std::uint32_t ref) const = 0;
-        /// The lines `actor` says for `topic` (dialogue's selection); empty without dialogue.
-        [[nodiscard]] virtual std::vector<dialogue::Line> say(std::uint32_t actor, std::uint32_t topic) = 0;
         /// Attach the SF_ scripts of `scene` to its form.
         virtual void attach_scene_scripts(std::uint32_t scene) = 0;
         /// An AI package was pushed (`push`) on or popped from an actor by a scene.
@@ -46,7 +43,7 @@ public:
     };
 
     /// Bind the Scene natives to `vm` and remember the host (SkydotPapyrus::bind_natives).
-    void bind_natives(Vm& vm, Host& host);
+    void bind_natives(Vm& vm, Host& host, DialogueRuntime& dialogue);
     /// Forget the scenes and fragment bookkeeping (a new world).
     void reset();
 
@@ -106,6 +103,7 @@ public:
 private:
     Vm* vm_ = nullptr;
     Host* host_ = nullptr;
+    DialogueRuntime* dialogue_ = nullptr;
     std::unique_ptr<scenes::Scenes> scenes_;
     std::set<std::uint32_t> scripts_attached_;
     bool needs_3d_ = true;

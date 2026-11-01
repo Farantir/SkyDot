@@ -409,11 +409,11 @@ double PapyrusConditionWorld::random_percent() {
 }
 
 bool PapyrusConditionWorld::talked_to_player(std::uint32_t ref) const {
-    return owner_ != nullptr && owner_->dialogue_states_.talked_to_player(ref);
+    return owner_ != nullptr && owner_->dialogue_.talked_to_player(ref);
 }
 
 bool PapyrusConditionWorld::in_dialogue_with_player(std::uint32_t ref) const {
-    return owner_ != nullptr && ref != 0 && owner_->dialogue_states_.speaker() == ref;
+    return owner_ != nullptr && ref != 0 && owner_->dialogue_.speaker() == ref;
 }
 
 std::uint32_t PapyrusConditionWorld::equipped_shout(std::uint32_t ref) const {

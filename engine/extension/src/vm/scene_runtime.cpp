@@ -99,7 +99,7 @@ std::uint32_t SceneRuntime::alias_ref(std::uint32_t quest, std::int32_t alias) c
 }
 
 bool SceneRuntime::actor_ready(std::uint32_t actor) const {
-    if (!host_->can_talk(actor) || host_->world_access().ref_disabled(actor)) {
+    if (!dialogue_->can_talk(actor) || host_->world_access().ref_disabled(actor)) {
         return false;
     }
     return !needs_3d_ || host_->world_access().ref_3d_loaded(actor);
@@ -113,7 +113,8 @@ bool SceneRuntime::conditions_pass(const flatbuffers::Vector<flatbuffers::Offset
 }
 
 std::vector<dialogue::Line> SceneRuntime::say(std::uint32_t actor, std::uint32_t topic) {
-    return host_->say(actor, topic);
+    auto* logic = dialogue_->logic();
+    return logic != nullptr ? logic->say(actor, topic).lines : std::vector<dialogue::Line>{};
 }
 
 void SceneRuntime::run_fragment(std::uint32_t scene, const std::string& script, const std::string& function) {
@@ -149,10 +150,11 @@ void SceneRuntime::log(const std::string& text) { host_->log(text); }
 
 // ---- natives ---------------------------------------------------------------
 
-void SceneRuntime::bind_natives(Vm& vm, Host& host) {
+void SceneRuntime::bind_natives(Vm& vm, Host& host, DialogueRuntime& dialogue) {
     using namespace natives;
     vm_ = &vm;
     host_ = &host;
+    dialogue_ = &dialogue;
     vm.bind("Scene", "Start", [this](NativeCall& c) {
         start(c.self.form(), false);
         return NativeResult{};

@@ -30,6 +30,7 @@
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
 #include "scenes/scenes.hpp"
+#include "vm/dialogue_runtime.hpp"
 #include "vm/scene_runtime.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
@@ -655,11 +656,7 @@ private:
     std::unique_ptr<PapyrusConditionWorld> conditions_;
     /// What was said (DLGS), the selection logic over it and the INFOs whose
     /// fragment scripts are attached (INFO -> its topic's quest).
-    dialogue::DialogueStates dialogue_states_;
-    std::unique_ptr<dialogue::DialogueHost> dialogue_host_;
-    std::unique_ptr<dialogue::Dialogue> dialogue_;
-    std::map<std::uint32_t, std::uint32_t> info_quests_;
-    dialogue::Dialogue* dialogue_logic();
+    vm::DialogueRuntime dialogue_;
     friend class DialogueHostImpl;
     /// The scene domain (vm/scene_runtime.hpp); the scene_* methods above only convert for it.
     vm::SceneRuntime scene_;

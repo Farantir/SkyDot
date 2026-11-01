@@ -415,10 +415,8 @@ void SkydotPapyrus::reset() {
     items_.clear();
     created_.clear();
     harvests_.clear();
-    dialogue_states_.clear();
     dialogue_.reset();
     scene_.reset();
-    info_quests_.clear();
     activations_->clear();
     triggers_.clear();
     test_ids_.clear();
@@ -582,7 +580,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host {
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -755,12 +753,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         owner_.set_objective(quest, index, bit, on);
     }
     bool owning_quest(std::uint32_t info, std::uint32_t& quest) const override {
-        const auto it = owner_.info_quests_.find(info);
-        if (it == owner_.info_quests_.end()) {
-            return false;
-        }
-        quest = it->second;
-        return true;
+        return owner_.dialogue_.owning_quest(info, quest);
     }
     bool alias_info(std::uint32_t quest, std::int64_t id, vm::AliasInfo& out) const override {
         const Array aliases = owner_.quest_info(quest).get("aliases", Array());
@@ -814,16 +807,15 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
+    // ---- vm::DialogueRuntime::Host
+    vm::ActorHost& actor_host() override { return *this; }
+    std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+
     // ---- vm::SceneRuntime::Host
     const bethconv::pack::wfb::World* world_root() const override { return world() != nullptr ? world()->root() : nullptr; }
     vm::WorldAccess& world_access() override { return *this; }
     vm::QuestHost& quest_host() override { return *this; }
     conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
-    bool can_talk(std::uint32_t ref) const override { return owner_.dialogue_can_talk(ref); }
-    std::vector<dialogue::Line> say(std::uint32_t actor, std::uint32_t topic) override {
-        auto* logic = owner_.dialogue_logic();
-        return logic != nullptr ? logic->say(actor, topic).lines : std::vector<dialogue::Line>{};
-    }
     void attach_scene_scripts(std::uint32_t scene) override {
         if (const auto* s = world() != nullptr ? lookup(world()->root()->scenes(), scene) : nullptr) {
             owner_.attach_scripts(scene, script_list(s->scripts(), false), s->quest());
@@ -1082,7 +1074,8 @@ void SkydotPapyrus::bind_natives() {
     for (const Registration registration : table) {
         (this->*registration)();
     }
-    scene_.bind_natives(*vm_, *access_);
+    dialogue_.bind(*access_);
+    scene_.bind_natives(*vm_, *access_, dialogue_);
 }
 
 // ---- values -------------------------------------------------------------------

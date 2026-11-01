@@ -9,6 +9,7 @@
 #include "support/native_calls.hpp"
 #include "support/vm_rig.hpp"
 
+#include "vm/dialogue_runtime.hpp"
 #include "vm/scene_runtime.hpp"
 
 #include <catch2/catch_test_macros.hpp>
@@ -60,12 +61,12 @@ private:
     std::vector<std::uint8_t> bytes_;
 };
 
-struct Host final : SceneRuntime::Host {
+struct Host final : SceneRuntime::Host, skydot::vm::DialogueRuntime::Host {
     Built data;
     FakeWorld world;
     FakeQuests quests;
     FakeConditionWorld conditions;
-    std::set<std::uint32_t> talkers;
+    FakeActors actors;
     std::vector<std::string> events;
     int attached = 0;
 
@@ -73,8 +74,8 @@ struct Host final : SceneRuntime::Host {
     skydot::vm::WorldAccess& world_access() override { return world; }
     skydot::vm::QuestHost& quest_host() override { return quests; }
     skydot::conditions::ConditionWorld& condition_world() override { return conditions; }
-    bool can_talk(std::uint32_t ref) const override { return talkers.contains(ref); }
-    std::vector<skydot::dialogue::Line> say(std::uint32_t, std::uint32_t) override { return {}; }
+    skydot::vm::ActorHost& actor_host() override { return actors; }
+    std::uint32_t base_of(std::uint32_t ref) const override { return ref; }
     void attach_scene_scripts(std::uint32_t) override { ++attached; }
     void package_signal(std::uint32_t actor, std::uint32_t package, bool push) override {
         events.push_back(std::string(push ? "push " : "pop ") + std::to_string(actor) + " " + std::to_string(package));
@@ -85,13 +86,14 @@ struct Host final : SceneRuntime::Host {
 struct Fixture {
     Host host;
     Rig rig;
+    skydot::vm::DialogueRuntime dialogue;
     SceneRuntime scenes;
     Fixture() {
         auto& state = host.quests.states.state(k_quest);
         state.running = state.started = true;
         host.quests.states.add_handle(k_quest, 1, k_handle);
         host.quests.states.set_fill(k_handle, k_a);
-        host.talkers = {k_a};
+        host.actors.actors = {k_a};
         host.world.loaded_3d = {k_a};
 
         rig.add({.name = "Scene",
@@ -111,7 +113,8 @@ struct Fixture {
                                   wrap("playing", "Scene", "IsPlaying", {}, "Bool"),
                                   wrap("owner", "Scene", "GetOwningQuest", {}, "Quest"),
                                   wrap("complete", "Scene", "IsActionComplete", {{"i", "Int"}}, "Bool")}));
-        scenes.bind_natives(rig.vm, host);
+        dialogue.bind(host);
+        scenes.bind_natives(rig.vm, host, dialogue);
     }
     skydot::vm::Value scene() { return rig.vm.object(k_scene, "Scene"); }
     bool noted(const std::string& text) const { return std::ranges::find(rig.notes, text) != rig.notes.end(); }
@@ -122,11 +125,17 @@ struct Fixture {
 TEST_CASE("an actor is ready when it can talk, is enabled and (by default) has its 3D loaded", "[scenes][vm]") {
     Fixture f;
     CHECK(f.scenes.actor_ready(k_a));
-    CHECK_FALSE(f.scenes.actor_ready(0x99)); // cannot talk
+    CHECK_FALSE(f.scenes.actor_ready(0x99)); // not an actor
 
     f.host.world.disabled.insert(k_a);
     CHECK_FALSE(f.scenes.actor_ready(k_a));
     f.host.world.disabled.clear();
+
+    f.host.actors.actors.insert(0x21);
+    f.host.world.loaded_3d.insert(0x21);
+    CHECK(f.scenes.actor_ready(0x21));
+    f.host.actors.states.damage(0x21, skydot::vm::av::k_health, 1000); // dead
+    CHECK_FALSE(f.scenes.actor_ready(0x21));
 
     f.host.world.loaded_3d.clear();
     CHECK_FALSE(f.scenes.actor_ready(k_a));

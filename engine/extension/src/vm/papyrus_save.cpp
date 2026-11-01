@@ -173,7 +173,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
     out.add("ITST", vm::ItemStates::k_section_version, items_.save(vm_->inventory()));
     out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
     out.add("HRVS", vm::HarvestStates::k_section_version, harvests_.save());
-    out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
+    out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_.save());
     if (scene_.started()) {
         out.add("SCEN", scenes::Scenes::k_section_version, scene_.save());
     }
@@ -362,7 +362,7 @@ godot::Error SkydotPapyrus::commit_load() {
     items_.adopt(std::move(pending->items));
     created_.adopt(std::move(pending->created));
     harvests_.adopt(std::move(pending->harvests));
-    dialogue_states_.adopt(std::move(pending->dialogue));
+    dialogue_.adopt(std::move(pending->dialogue));
     // After the items: worn enchantments are derived from what is worn.
     magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book, pending->magic_shouts);
     scene_.adopt(std::move(pending->scenes));

@@ -25,6 +25,7 @@ RULES=(
 # vm/papyrus_common.hpp, which is not a natives_* file.
 FILE_RULES=(
     "vm/natives_*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
+    "vm/dialogue_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
     "vm/scene_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
 )
 
