@@ -6,6 +6,7 @@
 // (vm/papyrus.cpp), and a test records them.
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace skydot::vm {
@@ -20,6 +21,8 @@ public:
     /// notification (the `message` signal). `help` only picks how the log
     /// names it (a help message is a notification).
     virtual void message(const std::string& text, bool box, bool help) = 0;
+    /// EffectShader.Play (`play`) or Stop on `target` (the `effect_shader` signal).
+    virtual void effect_shader(std::uint32_t shader, std::uint32_t target, bool play) = 0;
 };
 
 } // namespace skydot::vm

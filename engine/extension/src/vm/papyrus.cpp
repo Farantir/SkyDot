@@ -677,6 +677,10 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents {
         owner_.emit_signal("message", shown, box);
     }
 
+    void effect_shader(std::uint32_t shader, std::uint32_t target, bool play) override {
+        owner_.emit_signal("effect_shader", static_cast<std::int64_t>(shader), static_cast<std::int64_t>(target), play);
+    }
+
 private:
     SkydotPapyrus& owner_;
 };
@@ -685,6 +689,7 @@ void SkydotPapyrus::AccessDeleter::operator()(Access* access) const { delete acc
 
 void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
+void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {
