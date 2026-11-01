@@ -75,6 +75,12 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	handle_input(event)
+
+
+## The keys of the question. A host whose view gets no keys (a VR panel's SubViewport) hands
+## them in.
+func handle_input(event: InputEvent) -> void:
 	if not is_asking() or not bool(enabled.call()):
 		return
 	if event.is_action_pressed("ui_accept"):

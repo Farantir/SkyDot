@@ -185,19 +185,14 @@ var _session: GameSession
 var _image_space: SkydotImageSpace
 var _rig: PlayerRig
 var _controls: PlayerInput
+var _loop: ShellLoop  # the commands, game signals, start options and frame order both shells share
 var _hud: Hud
 var _dialogue: DialogueMenu
 var _items: ItemMenu
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
 var _body: FirstPersonBody  # the player's arms and weapon
-var _fight_pending: Array[int] = []  # --fight: the actors still to start (not built yet)
-var _kill_in := 0.0  # --kill-after: seconds left before --kill
-var _attack_at := 0  # --attack-at: the actor still to attack
-var _cast_at: CastAt  # --cast-at: the cast still to make
-var _shout_at: ShoutAt  # --shout: the shout still to say
 var _benchmark := BenchmarkRun.new()
-var _quit_in := -1  # frames until quitting after --activate
 
 ## Off for runs that drive themselves (tools set it): the keyboard and mouse
 ## are ignored and doors travel without a fade.
@@ -221,8 +216,7 @@ func _ready() -> void:
 		return
 	_create_components()
 	_start_game()
-	if _settings.quit_after >= 0 and not _session.has_activations():
-		_quit_in = _settings.quit_after  # nothing to activate: --quit-after counts from the start
+	_loop.arm_quit()  # nothing to activate: --quit-after counts from the start
 
 
 ## The camera and player, and the game around them: the session opens the
@@ -249,25 +243,24 @@ func _open_game() -> bool:
 
 ## Make the shell's parts and connect them to the game's signals.
 func _create_components() -> void:
-	_rig.fell_through.connect(func() -> void: _debug.note("fell through the world: flying (V walks)"))
 	_debug = DebugOverlay.new()
 	_debug.setup(_session, _rig.camera, _rig.player)
 	add_child(_debug)
-	_session.message.connect(func(text: String, _box: bool) -> void: _debug.note(text))
 	_session.place_built.connect(func(root: Node, _cell_id: int) -> void: _debug.navmesh_overlay(root))
-	_session.place_left.connect(_image_space.reset_adaptation)
 	_session.place_left.connect(_debug.clear_path)
-	_session.activations_finished.connect(func() -> void:  # let scripts run first
-		_quit_in = _settings.quit_after if _settings.quit_after >= 0 else 5)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _input
 	_controls.look_speed = _settings.stick_look_speed
 	_controls.invert_look_y = _settings.invert_look_y
-	_controls.command.connect(_on_command)
-	_controls.attack_changed.connect(_on_attack_changed)
-	_controls.attack_left_changed.connect(_on_attack_left_changed)
-	_controls.voice_changed.connect(_on_voice_changed)
 	add_child(_controls)
+	_loop = ShellLoop.new(self, _session, _rig, _controls, _settings, _image_space, _debug.note)
+	_loop.command.connect(_on_command)
+	_loop.inventory_requested.connect(func() -> void:
+		if _items != null:
+			_items.open_inventory())
+	_loop.magic_requested.connect(func() -> void:
+		if _items != null:
+			_items.open_magic())
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
 	if _settings.hud:
@@ -281,7 +274,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_container != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
-	add_child(DeathMenu.new(_session, _rig, _controls))
+	add_child(DeathMenu.new(_session, _rig, _loop))
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
 	if _settings.has_screenshot:
@@ -289,31 +282,14 @@ func _create_components() -> void:
 	_controls.capture_mouse()
 
 
-## Start the game and enter the place the options name.
+## Start the game (ShellLoop.start: the place and the options) and show what the options ask
+## of the viewer: menus, the screenshot run, the benchmark.
 func _start_game() -> void:
 	var settings := _settings
-	if not _session.start_game():
+	if not _loop.start():
 		return
-	for entry in settings.damage_actor:
-		_session.papyrus.damage_actor_value(entry["ref"], entry["av"], entry["amount"])
-
-	if not settings.world.is_empty():
-		if not settings.has_at:
-			_fail("--world needs --at X,Y,Z")
-			return
-		var at := SkydotWorld.skyrim_position(settings.at)
-		var target = SkydotWorld.skyrim_position(settings.target) if settings.has_target else null
-		if not _session.enter_world(settings.world, at, target):
-			return
-		_session.give(settings.give)
-		_apply_combat_options()
-		_session.start_quests(settings.start_quests)
-		if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
-			print("--open-container: 0x%08X cannot be activated" % settings.open_container)
-		_select_crafting_category(settings)
-		if settings.has_look:
-			_rig.apply_look(settings.look_yaw, settings.look_pitch)
-		_controls.fly_speed = 10.0
+	_select_crafting_category(settings)
+	if _loop.in_world:
 		if settings.has_benchmark:
 			_benchmark.begin(settings.benchmark, settings.fly_speed)
 			_session.streamer.max_usec = 0
@@ -325,37 +301,13 @@ func _start_game() -> void:
 				print("lod: ", _session.streamer.lod.get_stats())
 			_shots.begin_run(settings.screenshot, [NAN])
 		return
-
-	var fixed_view := settings.has_at and settings.has_target
-	var entered := false
-	if fixed_view:
-		entered = _session.enter_cell(settings.cell, SkydotWorld.skyrim_position(settings.at),
-			SkydotWorld.skyrim_position(settings.target))
-	else:
-		entered = _session.enter_cell(settings.cell,
-			SkydotWorld.skyrim_position(settings.at) if settings.has_at else null, null)
-	if not entered:
-		return
-	if settings.has_look:
-		_rig.apply_look(settings.look_yaw, settings.look_pitch)
-	if not settings.load_path.is_empty():
-		_session.load_game(settings.load_path)
-	_session.give(settings.give)
-	_apply_combat_options()
-	_session.start_quests(settings.start_quests)
-	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
-		print("--talk: 0x%08X cannot talk" % settings.talk)
-	if settings.open_container != 0 and not _session.activate_ref(settings.open_container):
-		print("--open-container: 0x%08X cannot be activated" % settings.open_container)
-	_select_crafting_category(settings)
 	if settings.open_inventory and _items != null:
 		_items.open_inventory()
 	if settings.open_magic and _items != null:
 		_items.open_magic()
 		_items.magic_view.select_category(settings.magic_category)
-
 	if settings.has_screenshot:
-		if fixed_view or (settings.has_at and settings.has_look):  # --look: a shot's view
+		if (settings.has_at and settings.has_target) or (settings.has_at and settings.has_look):  # --look: a shot's view
 			_shots.begin_run(settings.screenshot, [NAN])
 		else:
 			var yaws: Array[float] = []
@@ -370,146 +322,14 @@ func _select_crafting_category(settings: ViewerSettings) -> void:
 		_items.crafting_view.select_category(settings.crafting_category)
 
 
-## --equip, --equip-spell, --ready-weapon, --attack-at, --cast-at and --kill, once the player has what --give gave.
-func _apply_combat_options() -> void:
-	for ench in _settings.learn_enchantment:
-		print("--learn-enchantment: 0x%08X %s" % [ench, "learned" if _session.papyrus.learn_enchantment(ench) else "not learned"])
-	for form in _settings.equip:
-		if not _session.equip(form):
-			print("--equip: 0x%08X cannot be equipped" % form)
-	if _settings.ready_weapon and _session.weapon_state() == Combat.State.SHEATHED:
-		_session.toggle_weapon()
-	for form in _settings.drink:
-		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
-			_session.give([Vector2i(form, 1)])
-		print("--drink: 0x%08X %s" % [form, "used" if _session.use_item(form) else "cannot be used"])
-	for entry: Dictionary in _settings.cast:
-		var result := _session.cast_spell(entry["spell"], entry["target"])
-		print("--cast: 0x%08X %s %s" % [entry["spell"], "cast" if result["ok"] else "refused", result["reason"]])
-	_attack_at = _settings.attack_at
-	for entry: Dictionary in _settings.equip_spell:
-		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry["form"]):
-			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry["form"])
-		print("--equip-spell: 0x%08X in hand %d: %s" % [entry["form"], entry["hand"],
-			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
-	if _settings.cast_at != 0:
-		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
-	if _settings.shout_wait.is_empty():
-		_shout_at = ShoutAt.apply(_session, _rig, _settings)
-	if not _settings.spawn.is_empty():
-		SpawnActors.spawn(_session, _rig, _settings.spawn, _settings.spawn_distance)
-	_kill_in = _settings.kill_after
-	if _kill_in <= 0.0:
-		_kill_now()
-	for entry: Dictionary in _settings.npc_give:
-		_session.papyrus.add_item(entry["ref"], entry["form"], entry["count"])
-	for ref in _settings.strip_melee:
-		while _session.papyrus.melee_weapon(ref) != 0:
-			if _session.papyrus.transfer(ref, SkydotPapyrus.PLAYER_REF, _session.papyrus.melee_weapon(ref), 1) <= 0:
-				break
-	_fight_pending = _settings.fight.duplicate()
-	for ref in _settings.npc_draw:
-		print("--npc-draw: 0x%08X %s" % [ref, "draws" if _session.npc_draw(ref, true) else "cannot draw"])
-
-
-## --god: the player's Health is restored every frame.
-func _god_step() -> void:
-	if _settings.god and _session != null:
-		_session.papyrus.restore_actor_value(SkydotPapyrus.PLAYER_REF, "Health", 100000.0)
-
-
-## --shout-wait EDID:STAGE: apply the shout flags once that quest stage is done.
-func _shout_wait_step() -> void:
-	if _settings.shout_wait.is_empty() or _session == null:
-		return
-	var parts: PackedStringArray = _settings.shout_wait.split(":")
-	var quest := _session.world.find_quest(parts[0])
-	if quest == 0 or parts.size() != 2:
-		return
-	var state: Dictionary = _session.papyrus.get_quest_state(quest)
-	if not (state.get("stages_done", []) as Array).has(int(parts[1])):
-		return
-	print("--shout-wait: %s done" % _settings.shout_wait)
-	_settings.shout_wait = ""
-	_shout_at = ShoutAt.apply(_session, _rig, _settings)
-
-
-## --kill: hit the actors until they are dead.
-func _kill_now() -> void:
-	for ref in _settings.kill:
-		print("--kill: 0x%08X took %d hits" % [ref, _session.kill_actor(ref)])
-
-
-## --attack-at: face the actor and attack when it is in reach, once.
-func _attack_at_step() -> void:
-	if _attack_at == 0 or _session.weapon_state() != Combat.State.DRAWN:
-		return
-	var node := _session.world.find_ref_node(_attack_at) as Node3D
-	if node == null or _session.papyrus.is_actor_dead(_attack_at):
-		return
-	var eye := _rig.camera.global_position
-	var chest := node.global_position + Vector3.UP * 1.2
-	var offset := chest - eye
-	var flat := Vector2(offset.x, offset.z).length()
-	_rig.apply_look(atan2(-offset.x, -offset.z), atan2(offset.y, flat))
-	if flat - float(node.get("radius")) <= _session.combat.reach_metres():
-		print("--attack-at: 0x%08X in reach (%.2f m)" % [_attack_at, flat])
-		_session.attack(_settings.attack_power)
-		_attack_at = 0
-
-
-func _cast_at_step() -> void:
-	if _cast_at != null:
-		_cast_at.step()
-	if _shout_at != null:
-		_shout_at.step()
-
-
-func _on_attack_changed(pressed: bool) -> void:
-	if pressed:
-		_session.attack_pressed()
-	else:
-		_session.attack_released()
-
-
-func _on_attack_left_changed(pressed: bool) -> void:
-	if pressed:
-		_session.attack_left_pressed()
-	else:
-		_session.attack_left_released()
-
-
-func _on_voice_changed(pressed: bool) -> void:
-	if pressed:
-		var voice := _session.voice_pressed()
-		if not voice["ok"]:
-			_debug.note("voice: " + String(voice["reason"]))
-	else:
-		_session.voice_released()
-
-
-## --fight: start the fights of actors that are built now (an exterior streams them in).
-func _fight_step() -> void:
-	for ref in _fight_pending.duplicate():
-		if _session.start_fight(ref):
-			print("--fight: 0x%08X fights" % ref)
-			_fight_pending.erase(ref)
-
-
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
-	if _kill_in > 0.0:
-		_kill_in -= delta
-		if _kill_in <= 0.0:
-			_kill_now()
-	_god_step()
-	_shout_wait_step()
-	_fight_step()
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	_debug.sample_perf(delta)
 	if _shots.is_running() and _settings.shot_live:
 		# --shot-live: the game runs as in play (quests, scenes, the AI), the camera at the shot's view.
+		_loop.options.step(delta)
 		_session.step(delta, _rig.player.global_position)
 		if _settings.has_shot_camera:
 			_rig.camera.global_position = SkydotWorld.skyrim_position(_settings.shot_camera)
@@ -518,6 +338,8 @@ func _process(delta: float) -> void:
 		_shots.step(delta)
 		return
 	if _shots.is_running():
+		# The shot's own frame: the game runs only as far as a still picture needs.
+		_loop.options.step(delta)
 		if _settings.shot_frames > 1 or _settings.shot_delay > 0.0:
 			# A frame series, or a shot after a delay, shows what scripts do over time (a trap
 			# swinging when the feet reach its plate, a shout's push); other single shots stay still.
@@ -532,28 +354,13 @@ func _process(delta: float) -> void:
 		_session.update_dialogue(delta)
 		_session.update_combat(delta)
 		_session.update_fights(delta, _rig.player.global_position)
-		_attack_at_step()
-		_cast_at_step()
+		_loop.options.aim_step()
 		_body.follow()
 		_shots.step(delta)
 		return
-	_session.streamer.hold_player(_rig.player, _session.is_fading())
-	_rig.track()
-	_rig.follow()
-	_attack_at_step()
-	_cast_at_step()
-	_body.follow()
-	_session.step(delta, _rig.player.global_position, _benchmark.is_running())
+	var may_drive := _loop.frame(delta, func(_dt: float) -> void: _body.follow(), _benchmark.is_running())
 	_debug.age(delta)
-	if _quit_in >= 0:
-		_quit_in -= 1
-		if _quit_in < 0:
-			if not _settings.save_to.is_empty():
-				_session.save_game(_settings.save_to)
-			get_tree().quit(0)
-		return
-	if _session.has_activations():
-		_session.run_activation()
+	if not may_drive:
 		return
 	if _benchmark.is_running():
 		if _benchmark.frame(delta, _rig.player, _session.streamer.max_usec):
@@ -561,11 +368,11 @@ func _process(delta: float) -> void:
 				print("lod: ", _session.streamer.lod.get_stats())
 			get_tree().quit(0)
 		return
-	_controls.paralyzed = _session.player_paralyzed
-	_controls.apply(delta)
+	_loop.drive(delta)
 
 
-## A key that is not about the player's body.
+## The keys ShellLoop does not handle: the viewer's debug keys (the overlay, shots, streaming and
+## quality knobs are the viewer's; the VR shell has none of them).
 func _on_command(action: StringName, shift: bool) -> void:
 	match action:
 		PlayerInput.SHOW_POSITION:
@@ -574,31 +381,10 @@ func _on_command(action: StringName, shift: bool) -> void:
 			_debug.note("load doors preload what is behind them" if _session.streamer.toggle_preload() else "load doors load on use")
 		PlayerInput.TAKE_SHOT:
 			_shots.capture(shift)
-		PlayerInput.ACTIVATE:
-			_session.activate_in_view(shift)  # Shift opens locks
-		PlayerInput.QUICK_SAVE:
-			_session.save_game(SaveService.QUICKSAVE)
-		PlayerInput.QUICK_LOAD:
-			_session.load_game(SaveService.QUICKSAVE)
 		PlayerInput.SHOW_JOURNAL:
 			_debug.toggle_journal()
-		PlayerInput.INVENTORY:
-			if _items != null:
-				_items.open_inventory()
-		PlayerInput.MAGIC:
-			if _items != null:
-				_items.open_magic()
-		PlayerInput.READY_WEAPON:
-			_session.toggle_weapon()
-		PlayerInput.CHANGE_TIME:
-			var time_text := _session.clock.shift(-1.0 if shift else 1.0)
-			if not time_text.is_empty():
-				_debug.note(time_text)
 		PlayerInput.INSPECT_ACTOR:
 			_debug.inspect_actor()
-		PlayerInput.NEXT_WEATHER:
-			if _session.clock.has_weather():
-				_session.clock.weather.next_weather()
 		PlayerInput.TOGGLE_NAVMESH:
 			_debug.toggle_navmesh()
 		PlayerInput.TOGGLE_PERF:
@@ -619,8 +405,6 @@ func _on_command(action: StringName, shift: bool) -> void:
 			var next: int = (ViewerSettings.MSAA_STEPS.find(get_viewport().msaa_3d) + 1) % ViewerSettings.MSAA_STEPS.size()
 			get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[next]
 			_debug.note("MSAA " + ("off" if next == 0 else ViewerSettings.MSAA_NAMES[next] + "x"))
-		PlayerInput.TOGGLE_FLY:
-			_debug.note("flying" if _rig.toggle_fly() else "walking")
 
 
 ## [ and ]: what to tell the user about the LOD's detail. A level-8 quad splits
