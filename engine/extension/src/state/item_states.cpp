@@ -14,6 +14,7 @@ const Equipment* ItemStates::find(std::uint32_t owner) const {
 }
 
 void ItemStates::erase(std::uint32_t owner) {
+    note_change();
     resolved_.erase(owner);
     picks_.erase(owner);
     equipment_.erase(owner);
@@ -22,6 +23,7 @@ void ItemStates::erase(std::uint32_t owner) {
 }
 
 void ItemStates::clear() {
+    note_change();
     resolved_.clear();
     picks_.clear();
     equipment_.clear();

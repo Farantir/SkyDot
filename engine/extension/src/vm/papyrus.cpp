@@ -79,6 +79,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("remove_item", "owner", "item", "count"), &SkydotPapyrus::remove_item);
     godot::ClassDB::bind_method(D_METHOD("item_info", "form"), &SkydotPapyrus::item_info);
     godot::ClassDB::bind_method(D_METHOD("inventory", "owner"), &SkydotPapyrus::inventory);
+    godot::ClassDB::bind_static_method("SkydotPapyrus", D_METHOD("inventory_revision"),
+                                       &SkydotPapyrus::inventory_revision);
     godot::ClassDB::bind_method(D_METHOD("transfer", "from", "to", "form", "count", "extra"),
                                 &SkydotPapyrus::transfer, DEFVAL(-1));
     godot::ClassDB::bind_method(D_METHOD("equip", "owner", "form", "extra"), &SkydotPapyrus::equip, DEFVAL(-1));

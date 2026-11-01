@@ -416,6 +416,7 @@ void Vm::commit(Snapshot&& s) {
     timers_ = std::move(s.timers);
     animation_regs_ = std::move(s.animation_regs);
     scheduled_ = std::move(s.scheduled);
+    note_change();
     inventory_ = std::move(s.inventory);
     animation_states_ = std::move(s.animation_states);
     form_lists_ = std::move(s.form_lists);

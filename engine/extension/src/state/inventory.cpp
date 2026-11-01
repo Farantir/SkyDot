@@ -9,6 +9,7 @@ void Inventory::add(std::uint32_t owner, std::uint32_t item, std::int64_t count,
     if (count <= 0) {
         return;
     }
+    note_change();
     owners_[owner][item] += count;
     if (extra != 0) {
         splits_[owner][item][extra] += count;
@@ -17,6 +18,7 @@ void Inventory::add(std::uint32_t owner, std::uint32_t item, std::int64_t count,
 
 std::vector<Inventory::Taken> Inventory::remove_split(std::uint32_t owner, std::uint32_t item, std::int64_t count) {
     std::vector<Taken> out;
+    note_change();
     const auto o = owners_.find(owner);
     if (o == owners_.end() || count <= 0) {
         return out;
@@ -91,6 +93,7 @@ std::int64_t Inventory::remove_extra(std::uint32_t owner, std::uint32_t item, st
     if (taken <= 0) {
         return 0;
     }
+    note_change();
     if (extra != 0) {
         auto& split = splits_[owner][item];
         split[extra] -= taken;
@@ -165,6 +168,7 @@ const Inventory::Items& Inventory::items(std::uint32_t owner) const {
 }
 
 void Inventory::set_splits(Splits splits) {
+    note_change();
     splits_.clear();
     for (auto& [owner, per_item] : splits) {
         for (auto& [item, split] : per_item) {

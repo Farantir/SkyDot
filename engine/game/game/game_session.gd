@@ -128,6 +128,8 @@ var config: GameConfig
 var pack: SkydotPack
 var world: SkydotWorld
 var papyrus: SkydotPapyrus
+var _worn_weight := 0.0
+var _worn_weight_revision := -1
 var ai: SkydotAi  # null with the AI off
 var clock: SkydotClock
 var streamer: SkydotStreamer
@@ -924,12 +926,24 @@ func _drain_sprint(delta: float) -> void:
 		_player.set_sprint_allowed(allowed)
 
 
-## Stamina per second while sprinting, by the weight of the worn armor.
-func _sprint_drain() -> float:
+## The weight of the armor the player wears, summed over the inventory rows.
+func _worn_armor_weight() -> float:
 	var weight := 0.0
 	for row: Dictionary in papyrus.inventory(SkydotPapyrus.PLAYER_REF):
 		if row["equipped"] and row["category"] == "armor":
 			weight += float(row["weight"])
+	return weight
+
+
+## Stamina per second while sprinting, by the weight of the worn armor.
+func _sprint_drain() -> float:
+	# The rows cost about 3 us each, so the weight is kept until the inventory or the
+	# equipment of anyone changes (scripts change them too; the native counter sees all).
+	var revision := SkydotPapyrus.inventory_revision()
+	if revision != _worn_weight_revision:
+		_worn_weight = _worn_armor_weight()
+		_worn_weight_revision = revision
+	var weight := _worn_weight
 	return world.get_gmst_float("fSprintStaminaDrainMult", SPRINT_DRAIN_MULT) \
 		* (world.get_gmst_float("fSprintStaminaWeightBase", SPRINT_WEIGHT_BASE)
 		+ world.get_gmst_float("fSprintStaminaWeightMult", SPRINT_WEIGHT_MULT) * weight)

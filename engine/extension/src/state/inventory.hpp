@@ -14,6 +14,15 @@
 
 namespace skydot::vm {
 
+/// A counter that grows whenever any inventory or any owner's equipment
+/// changes (state/item_states.hpp bumps it too); a cache of what an owner
+/// holds and wears is good while it is unchanged. Starts at 1.
+inline std::uint64_t& change_counter() noexcept {
+    static std::uint64_t counter = 1;
+    return counter;
+}
+inline void note_change() noexcept { ++change_counter(); }
+
 class Inventory {
 public:
     using Items = std::map<std::uint32_t, std::int64_t>;
@@ -47,10 +56,12 @@ public:
     /// All of `owner`'s items (empty if it has none).
     [[nodiscard]] const Items& items(std::uint32_t owner) const;
     void clear() {
+        note_change();
         owners_.clear();
         splits_.clear();
     }
     void erase(std::uint32_t owner) {
+        note_change();
         owners_.erase(owner);
         splits_.erase(owner);
     }

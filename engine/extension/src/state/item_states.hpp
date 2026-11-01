@@ -54,10 +54,17 @@ public:
 
     /// What `owner` holds and wears (empty if nothing).
     [[nodiscard]] const Equipment* find(std::uint32_t owner) const;
-    Equipment& equipment(std::uint32_t owner) { return equipment_[owner]; }
+    /// The caller may change it, so this counts as a change (state/inventory.hpp).
+    Equipment& equipment(std::uint32_t owner) {
+        note_change();
+        return equipment_[owner];
+    }
     [[nodiscard]] const std::map<std::uint32_t, Equipment>& equipments() const { return equipment_; }
     /// Forget `owner`'s equipment, keeping it resolved.
-    void clear_equipment(std::uint32_t owner) { equipment_.erase(owner); }
+    void clear_equipment(std::uint32_t owner) {
+        note_change();
+        equipment_.erase(owner);
+    }
     /// Forget everything about `owner`.
     void erase(std::uint32_t owner);
 
@@ -107,7 +114,10 @@ public:
         return resolved_.size() + picks_.size() + equipment_.size() + dropped_.size() + dropped_extra_.size();
     }
     void clear();
-    void adopt(ItemStates&& other) { *this = std::move(other); }
+    void adopt(ItemStates&& other) {
+        note_change();
+        *this = std::move(other);
+    }
 
     /// `inventory` supplies the splits.
     [[nodiscard]] std::vector<std::uint8_t> save(const Inventory& inventory) const;

@@ -150,6 +150,9 @@ public:
     /// their own (`extra` != 0, `name` with the tier: "Iron Dagger (Fine)");
     /// created forms (alchemy) are rows like any item.
     godot::Array inventory(std::int64_t owner);
+    /// Grows whenever any inventory or equipment changes (items, equip, unequip,
+    /// load); a cache of `inventory` rows is good while it is the same.
+    [[nodiscard]] static std::int64_t inventory_revision();
     /// Move up to `count` of `form` from `from` to `to` (an item that runs out
     /// is taken off); returns how many moved. `extra` names the stack (0
     /// plain, -1 any: plain first, then the extras in id order).

@@ -76,6 +76,10 @@ Dictionary SkydotPapyrus::item_info(std::int64_t form) const {
     return out;
 }
 
+std::int64_t SkydotPapyrus::inventory_revision() {
+    return static_cast<std::int64_t>(vm::change_counter());
+}
+
 Array SkydotPapyrus::inventory(std::int64_t owner) {
     const auto id = static_cast<std::uint32_t>(owner);
     item_.resolve_owner(id);
