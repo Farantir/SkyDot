@@ -366,6 +366,24 @@ cooldowns and the known enchantments, and in a third part the ShoutBook (words k
 shouts added and removed, the voice slot, the recovery left); the temporary modifiers effects hold are not in ACTV, the effects hold them again
 on load.
 
+## Skills, levelling and perks
+
+`ProgressionRuntime::bind_natives` (`vm/progression_runtime.cpp`, P6g). The skill name is an actor value name
+(`av::index_of`: "OneHanded", "Marksman" or "Archery", "Speechcraft" or "Speech", ...); a name that is not one of
+the 18 skills does nothing.
+
+- `Game.AdvanceSkill(skill, amount)`, `IncrementSkill(skill)`, `IncrementSkillBy(skill, n)`: the rules are GDScript
+  (`Progression.use_skill`, `increment_skill`), called synchronously through the progression handler
+  (`SkydotPapyrus.set_progression_handler`; `GameSession._on_progression_request`, with the usual notifications).
+  Without a handler the calls do nothing and log once.
+- `Game.GetPlayerExperience`, `SetPlayerExperience`, `GetExperienceForLevel(level)` (the handler's "level_threshold":
+  fXPLevelUpBase + fXPLevelUpMult x level; 75 + 25 x level without one), `AddPerkPoints` and SKSE `GetPerkPoints`,
+  `SetPerkPoints`, `ModPerkPoints` (never below 0).
+- `Actor.AddPerk`, `RemovePerk`, `HasPerk` on any actor; `AddPerk` does not spend perk points (as in the game) and
+  carries out the perk's ability and quest effects.
+- Not bound: `Game.QueryStat` (35 call sites in Skyrim.esm: no statistics are kept, `IncrementStat` is ignored) and
+  the SKSE `ActorValueInfo` natives (6 call sites).
+
 ## Saving
 
 A save is a sectioned file (`extension/src/save/`, docs/adr/0002-game-state-saves-and-session.md):

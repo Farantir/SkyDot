@@ -620,6 +620,8 @@ func _on_progression_request(kind: String, args: Array) -> Variant:
 			return use_skill(int(args[0]), float(args[1]))
 		"increment_skill":
 			return increment_skill(int(args[0]), int(args[1]))
+		"level_threshold":
+			return progression.level_up_threshold(int(args[0]))
 	return null
 
 

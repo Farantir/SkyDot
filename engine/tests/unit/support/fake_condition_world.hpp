@@ -29,6 +29,7 @@ public:
     std::map<std::uint32_t, std::uint32_t> npcs;
     std::map<std::uint32_t, std::map<std::uint32_t, std::int32_t>> factions;
     std::map<std::uint32_t, std::uint32_t> races;
+    std::map<std::uint32_t, std::uint32_t> classes;
     std::set<std::uint32_t> females;
     std::map<std::uint32_t, std::uint32_t> voices;
     std::map<std::uint32_t, std::pair<std::uint32_t, std::uint32_t>> race_voices;
@@ -100,6 +101,7 @@ public:
         return out;
     }
     std::uint32_t race_of(std::uint32_t r) const override { return get(races, r, 0U); }
+    std::uint32_t class_of(std::uint32_t r) const override { return get(classes, r, 0U); }
     bool is_female(std::uint32_t r) const override { return females.contains(r); }
     std::uint32_t voice_type_of(std::uint32_t r) const override { return get(voices, r, 0U); }
     std::pair<std::uint32_t, std::uint32_t> race_voice_types(std::uint32_t race) const override {

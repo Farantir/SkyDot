@@ -368,6 +368,13 @@ TEST_CASE("identity, faction, item and distance functions", "[conditions]") {
     w.races[0x14] = 0xC2;
     CHECK(pass({cond(fn::get_pc_is_sex, 1.0F, 1)}, w, ctx));
     CHECK(pass({cond(fn::get_pc_is_race, 1.0F, 0xC2)}, w, ctx));
+    // GetIsClass asks the subject's class, GetPCIsClass the player's.
+    w.classes[0x14] = 0x1B;
+    w.classes[0x20] = 0x2C;
+    CHECK(pass({cond(fn::get_pc_is_class, 1.0F, 0x1B)}, w, ctx));
+    CHECK_FALSE(pass({cond(fn::get_pc_is_class, 1.0F, 0x2C)}, w, ctx));
+    CHECK(pass({cond(fn::get_is_class, 1.0F, 0x2C)}, w, {.subject = 0x20}));
+    CHECK_FALSE(pass({cond(fn::get_is_class, 1.0F, 0x1B)}, w, {.subject = 0x20}));
     // ...and a reference parameter may name an alias.
     w.aliases[{0x10, 1}] = 0x30;
     CHECK(pass({cond(fn::get_distance, 250.0F, 1, eq, k_use_aliases)}, w, {.subject = 0x20, .quest = 0x10}));

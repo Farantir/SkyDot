@@ -129,6 +129,10 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(world.race_of(subject) == p1);
     case fn::get_pc_is_race:
         return flag(world.race_of(world.player_ref()) == p1);
+    case fn::get_is_class:
+        return flag(world.class_of(subject) == p1);
+    case fn::get_pc_is_class:
+        return flag(world.class_of(world.player_ref()) == p1);
     case fn::get_is_sex:
         return flag((world.is_female(subject) ? 1U : 0U) == p1);
     case fn::get_pc_is_sex:

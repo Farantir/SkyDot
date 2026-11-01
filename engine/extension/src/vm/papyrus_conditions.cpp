@@ -189,6 +189,11 @@ std::uint32_t PapyrusConditionWorld::race_of(std::uint32_t ref) const {
     return n != nullptr ? n->race() : 0;
 }
 
+std::uint32_t PapyrusConditionWorld::class_of(std::uint32_t ref) const {
+    const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_traits);
+    return n != nullptr ? n->class_id() : 0;
+}
+
 bool PapyrusConditionWorld::is_female(std::uint32_t ref) const {
     const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_traits);
     return n != nullptr && formats::has_flag(n->flags(), wfb::NpcFlags::female);

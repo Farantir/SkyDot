@@ -9,6 +9,7 @@
 #pragma once
 
 #include "save/bytes.hpp"
+#include "vm/vm.hpp"
 #include "world_generated.h"
 
 #include <array>
@@ -16,6 +17,7 @@
 #include <map>
 #include <optional>
 #include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -66,6 +68,12 @@ public:
         /// quest effects are the host's to carry out (perks/entry_points.hpp). Not called by clear or adopt.
         virtual void perk_gained(std::uint32_t /*ref*/, std::uint32_t /*perk*/) {}
         virtual void perk_lost(std::uint32_t /*ref*/, std::uint32_t /*perk*/) {}
+        /// Game.AdvanceSkill / IncrementSkill(By): the rules are GDScript (Progression); false if nobody applied them.
+        virtual bool advance_skill(std::uint32_t /*skill_av*/, double /*amount*/) { return false; }
+        virtual bool increment_skill(std::uint32_t /*skill_av*/, std::int32_t /*count*/) { return false; }
+        /// The character XP needed to leave `level` (Progression.level_up_threshold: fXPLevelUpBase + fXPLevelUpMult x level).
+        [[nodiscard]] virtual double level_threshold(std::int32_t level) const { return 75.0 + 25.0 * level; }
+        virtual void log(const std::string& /*text*/) {}
     };
 
     static constexpr std::uint32_t k_player_ref = 0x14;
@@ -74,6 +82,10 @@ public:
     static constexpr std::uint32_t k_template_spell_list = 0x8;
 
     void bind(Host& host) { host_ = &host; }
+    /// Bind the Papyrus natives: Game.AdvanceSkill, IncrementSkill, IncrementSkillBy, GetPlayerExperience,
+    /// SetPlayerExperience, GetExperienceForLevel, AddPerkPoints and the SKSE GetPerkPoints, SetPerkPoints,
+    /// ModPerkPoints; Actor.AddPerk, RemovePerk, HasPerk. Needs `bind` first.
+    void bind_natives(Vm& vm);
 
     /// A new game: the defaults, the level from the Player NPC_.
     void clear();
@@ -118,6 +130,7 @@ private:
 
     Host* host_ = nullptr;
     ProgressionState state_;
+    bool handler_missing_logged_ = false;
 };
 
 } // namespace skydot::vm

@@ -3,6 +3,7 @@
 
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
+#include "state/actor_values.hpp"
 
 #include <algorithm>
 
@@ -12,6 +13,17 @@ namespace {
 constexpr std::size_t k_override_min_bytes = 8;
 constexpr std::size_t k_perk_min_bytes = 5;
 constexpr int k_template_depth = 8;
+constexpr std::uint32_t k_first_skill = 6;  // OneHanded
+constexpr std::uint32_t k_last_skill = 23;  // Enchanting
+
+/// The actor value of a Papyrus skill name ("OneHanded", "Marksman", "Speechcraft", also the aliases "Archery", "Speech");
+/// -1 for anything that is not one of the 18 skills.
+std::int64_t skill_of(const std::string& name) {
+    const auto index = av::index_of(name);
+    return index && *index >= k_first_skill && *index <= k_last_skill ? static_cast<std::int64_t>(*index) : -1;
+}
+
+NativeResult done() { return NativeResult{}; }
 
 } // namespace
 
@@ -210,6 +222,80 @@ std::vector<std::pair<std::uint32_t, std::uint8_t>> ProgressionRuntime::perks_of
         }
     }
     return out;
+}
+
+} // namespace skydot::vm
+
+namespace skydot::vm {
+
+void ProgressionRuntime::bind_natives(Vm& vm) {
+    // The skill rules are GDScript (Progression): the Host reaches them synchronously. With nobody to apply them the
+    // call does nothing and says so once.
+    const auto skill_call = [this](NativeCall& c, bool advance) {
+        const std::int64_t skill = !c.args.empty() ? skill_of(c.args[0].s()) : -1;
+        if (skill < 0 || host_ == nullptr) {
+            return done();
+        }
+        bool applied = false;
+        if (advance) {
+            applied = host_->advance_skill(static_cast<std::uint32_t>(skill),
+                                           c.args.size() > 1 ? static_cast<double>(c.args[1].f()) : 0.0);
+        } else {
+            applied = host_->increment_skill(static_cast<std::uint32_t>(skill),
+                                             c.args.size() > 1 ? c.args[1].i() : 1);
+        }
+        if (!applied && !handler_missing_logged_) {
+            handler_missing_logged_ = true;
+            host_->log("progression: no skill rules registered: Game.AdvanceSkill and IncrementSkill do nothing");
+        }
+        return done();
+    };
+    vm.bind("Game", "AdvanceSkill", [skill_call](NativeCall& c) { return skill_call(c, true); });
+    vm.bind("Game", "IncrementSkill", [skill_call](NativeCall& c) { return skill_call(c, false); });
+    vm.bind("Game", "IncrementSkillBy", [skill_call](NativeCall& c) { return skill_call(c, false); });
+    vm.bind("Game", "GetPlayerExperience", [this](NativeCall&) {
+        return NativeResult{.value = Value::floating(static_cast<float>(state_.player.xp)), .wait = -1.0};
+    });
+    vm.bind("Game", "SetPlayerExperience", [this](NativeCall& c) {
+        state_.player.xp = std::max(0.0, c.args.empty() ? 0.0 : static_cast<double>(c.args[0].f()));
+        return done();
+    });
+    vm.bind("Game", "GetExperienceForLevel", [this](NativeCall& c) {
+        const auto level = c.args.empty() ? 1 : c.args[0].i();
+        const double need = host_ != nullptr ? host_->level_threshold(level) : 0.0;
+        return NativeResult{.value = Value::floating(static_cast<float>(need)), .wait = -1.0};
+    });
+    vm.bind("Game", "GetPerkPoints", [this](NativeCall&) {
+        return NativeResult{.value = Value::integer(state_.player.perk_points), .wait = -1.0};
+    });
+    vm.bind("Game", "SetPerkPoints", [this](NativeCall& c) {
+        state_.player.perk_points = std::max(0, c.args.empty() ? 0 : c.args[0].i());
+        return done();
+    });
+    const auto mod_points = [this](NativeCall& c) {
+        const std::int32_t sum = state_.player.perk_points + (c.args.empty() ? 0 : c.args[0].i());
+        state_.player.perk_points = std::max(0, sum);
+        return done();
+    };
+    vm.bind("Game", "ModPerkPoints", mod_points);
+    vm.bind("Game", "AddPerkPoints", mod_points);
+    // AddPerk does not spend perk points, as in the game.
+    vm.bind("Actor", "AddPerk", [this](NativeCall& c) {
+        if (!c.args.empty() && c.args[0].form() != 0) {
+            add_perk(c.self.form(), c.args[0].form());
+        }
+        return done();
+    });
+    vm.bind("Actor", "RemovePerk", [this](NativeCall& c) {
+        if (!c.args.empty() && c.args[0].form() != 0) {
+            remove_perk(c.self.form(), c.args[0].form());
+        }
+        return done();
+    });
+    vm.bind("Actor", "HasPerk", [this](NativeCall& c) {
+        const bool has = !c.args.empty() && c.args[0].form() != 0 && has_perk(c.self.form(), c.args[0].form());
+        return NativeResult{.value = Value::boolean(has), .wait = -1.0};
+    });
 }
 
 } // namespace skydot::vm

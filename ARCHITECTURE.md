@@ -1174,7 +1174,10 @@ MAGC section) and `ProgressionRuntime` (`vm/progression_runtime.*`: the player's
 skill and character XP, level, perk points, trainings, legendary counts and books
 read, and the perks of every actor as the NPC_'s PRKR changed by overrides; no
 rules, the PRGS section; it keeps `leveled::player_level()` current and answers
-`HasPerk` and the player's `GetLevel`). Hosts are mostly the shared interfaces plus a few methods; the
+`HasPerk` and the player's `GetLevel`; it binds the skill natives, P6g: `Game.AdvanceSkill`, `IncrementSkill(By)` call the
+GDScript rules synchronously through its Host (`advance_skill`, `increment_skill`, `level_threshold`; `SkydotPapyrus` forwards
+them to `set_progression_handler`'s Callable, kinds "advance_skill", "increment_skill", "level_threshold"), the experience,
+perk point and `Actor.AddPerk`/`RemovePerk`/`HasPerk` natives work on its state). Hosts are mostly the shared interfaces plus a few methods; the
 scene module takes the dialogue module directly, the magic module the item and
 combat modules. Other domains reach items only through `vm::ItemAccess`
 (`vm/item_access.hpp`: `resolve_owner`, `item_info_of`, `item_name_of`,

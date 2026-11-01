@@ -109,6 +109,8 @@ public:
     [[nodiscard]] virtual std::vector<std::uint32_t> factions_of(std::uint32_t ref) const = 0;
     [[nodiscard]] virtual std::uint32_t race_of(std::uint32_t ref) const = 0;
     [[nodiscard]] virtual bool is_female(std::uint32_t ref) const = 0;
+    /// The CLAS of the actor's NPC_ (its template's with the use-traits flag); 0 if none.
+    [[nodiscard]] virtual std::uint32_t class_of(std::uint32_t /*ref*/) const { return 0; }
     /// The NPC_'s own voice type (VTCK); 0 if it has none.
     [[nodiscard]] virtual std::uint32_t voice_type_of(std::uint32_t ref) const = 0;
     /// A race's default voice types: male, female.

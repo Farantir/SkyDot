@@ -122,6 +122,12 @@ func _run(pack_dir: String) -> void:
 			expect(float(papyrus.get_player_progress()["skill_xp"][6 - 6]) > xp_before
 				or papyrus.get_base_actor_value(PLAYER, "OneHanded") > level_before, "a player hit raises One-Handed progress")
 			expect(_near(float(last.get("weapon_base", 0.0)), 7.0), "the hit result carries the sword's base damage")
+			# Game.AdvanceSkill from a Papyrus call reaches the session's skill rules.
+			var before_script := float(papyrus.get_player_progress()["skill_xp"][8 - 6])
+			var before_level := papyrus.get_base_actor_value(PLAYER, "Marksman")
+			papyrus.call_global("Game", "AdvanceSkill", ["Marksman", 5.0])
+			expect(float(papyrus.get_player_progress()["skill_xp"][8 - 6]) > before_script
+				or papyrus.get_base_actor_value(PLAYER, "Marksman") > before_level, "Game.AdvanceSkill raises Archery progress")
 			print("first hit: ", last)
 			expect(_near(last["damage"], expected, 0.001), "the first hit does %f, expected %f" % [last["damage"], expected])
 			expect(_near(last["damage"], worked_out["damage"], 0.001) and _near(last["armor_percent"], worked_out["armor_percent"], 0.001),

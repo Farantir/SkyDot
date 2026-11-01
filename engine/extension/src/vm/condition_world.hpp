@@ -46,6 +46,7 @@ public:
     std::optional<std::int32_t> faction_rank(std::uint32_t ref, std::uint32_t faction) const override;
     std::vector<std::uint32_t> factions_of(std::uint32_t ref) const override;
     std::uint32_t race_of(std::uint32_t ref) const override;
+    std::uint32_t class_of(std::uint32_t ref) const override;
     bool is_female(std::uint32_t ref) const override;
     std::uint32_t voice_type_of(std::uint32_t ref) const override;
     std::pair<std::uint32_t, std::uint32_t> race_voice_types(std::uint32_t race) const override;

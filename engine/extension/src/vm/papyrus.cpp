@@ -1056,6 +1056,28 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         }
     }
 
+    // ---- vm::ProgressionRuntime::Host: the skill rules are GDScript (Progression), reached through the handler
+    bool advance_skill(std::uint32_t skill_av, double amount) override {
+        return ask_progression("advance_skill", skill_av, amount).get_type() != Variant::NIL;
+    }
+    bool increment_skill(std::uint32_t skill_av, std::int32_t count) override {
+        return ask_progression("increment_skill", skill_av, count).get_type() != Variant::NIL;
+    }
+    double level_threshold(std::int32_t level) const override {
+        const Variant answer = ask_progression("level_threshold", level, 0);
+        return answer.get_type() == Variant::NIL ? 75.0 + 25.0 * level : static_cast<double>(answer);
+    }
+    Variant ask_progression(const char* kind, std::int64_t a, double b) const {
+        const godot::Callable& handler = owner_.progression_handler();
+        if (!handler.is_valid()) {
+            return Variant();
+        }
+        godot::Array args;
+        args.push_back(a);
+        args.push_back(b);
+        return handler.call(String(kind), args);
+    }
+
     // ---- vm::SceneRuntime::Host
     const bethconv::pack::wfb::World* world_root() const override { return world() != nullptr ? world()->root() : nullptr; }
     vm::WorldAccess& world_access() override { return *this; }
@@ -1285,6 +1307,7 @@ void SkydotPapyrus::bind_natives() {
     }
     dialogue_.bind(*access_);
     progression_.bind(*access_);
+    progression_.bind_natives(*vm_);
     progression_.clear();
     crafting_.bind(*access_);
     scene_.bind_natives(*vm_, *access_, dialogue_);
