@@ -1065,6 +1065,34 @@ The VM is in `engine/extension/src/vm/` and documented in
   `objective_changed`, `message`, `error`); the game layer (`engine/game/game/`,
   8.2) applies them to nodes.
 
+**Per-domain modules.** `SkydotPapyrus` is being split from one state bag into
+domain modules, one at a time. A module is a Godot-free class in
+`vm/<domain>_runtime.{hpp,cpp}` (first: `vm::SceneRuntime`) that
+
+- owns the domain's state (moved out of `SkydotPapyrus`) and implements the
+  logic's host interface itself (`scenes::SceneHost`, later
+  `dialogue::DialogueHost`, `crafting::CraftingHost`, `ActivationHost`);
+- binds the domain's Papyrus natives (`bind_natives(Vm&, Host&)`);
+- reaches the rest of the engine only through narrow interfaces: the shared
+  ones (`WorldAccess`, `QuestHost`, `ActorHost::conditions()`, `WorldEvents`)
+  where they fit, else a small `Host` declared in the module header and
+  implemented by `SkydotPapyrus::Access`. Unit tests supply fakes.
+
+`SkydotPapyrus` holds the module as a member (ownership unchanged, ADR 0002/0003).
+`papyrus_<domain>.cpp` keeps only the Godot-bound methods (`_bind_methods`
+entries), as forwarders that convert Variant/Dictionary/Array. The GDScript API,
+behaviour and save format do not change; the module writes and restores its
+save section (`save()`, `load()`, `adopt()`). `check-layering.sh` keeps the
+module files free of Godot.
+
+Planned seams: scenes, then dialogue, crafting, activation (each has Godot-free
+logic and a nested adapter today) become modules; enchanting, items, magic and
+combat follow as their natives allow. Stays in `SkydotPapyrus`: the runtime
+(`papyrus_runtime.cpp`: forgets, census, ref lifecycle), save (composes the
+sections of all modules), conditions (`PapyrusConditionWorld` reads quests,
+actors, clock and scenes), triggers and the VM/pack/world binding. These cut
+across every domain, so they are the shell the modules plug into.
+
 ### 7.10 Coordinates
 
 Skyrim is Z-up in game units; Godot is Y-up in metres. The conversion is a
