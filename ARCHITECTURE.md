@@ -1227,6 +1227,20 @@ running game as it was. Writing goes to `<path>.tmp` and is renamed over the
 file. One forget path (`SkydotPapyrus::forget_ref`: `Vm::detach` plus every
 state class) is used by Delete and by finished transient explosions.
 
+Runtime reference ids (PlaceAtMe's, range `runtime_refs`) are reused, under one
+rule (`state/id_ranges.hpp`, `PlacedRefs`). Fresh ids come first; a forgotten id
+is only released (`PlacedRefs::release`, called by `forget_ref` after the VM's
+and the outer registry have run every store) and is reused only once the fresh
+ids run out. Before it is handed out again, the ids a stale holder could still
+use are collected and skipped: `Vm::held_forms` (object values of instance
+variables, frames, results and arrays, attached instances, timers, animation
+registrations, scheduled calls, form list additions) and
+`ForgetRegistry::collect_held`, to which every store that keeps a reference as a
+value, not a key, and does not scrub it on forget registers a collector
+(active effects, actor killers, trigger occupants, scene actors, pending
+activators, AI minds). A new store of that kind must register one. The released
+ids are saved: PLCD version 2 appends them (version 1 loads with none).
+
 ---
 
 ## 8. The Godot project (GDScript)
