@@ -25,7 +25,8 @@ const NODE_PREFIX := "Gear_"
 
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
-var _drawn := {}  # ref -> bool
+var _drawn := {}  # ref -> bool, the actors that fight with their weapon out (the stance)
+var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left}
 var _warn := WarnOnce.new("gear: ")
 
 
@@ -37,22 +38,40 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus) -> void:
 ## A save was loaded or the game restarted: nobody has its weapon out. Silent.
 func reset() -> void:
 	_drawn.clear()
+	_swaps.clear()
 
 
-## The place was left: the stance stays, `on_place_built` applies it to the actors built again.
+## The place was left: the stance stays, `on_place_built` applies it to the actors built again; a model
+## still to change hands does not wait (the actor is gone, and its rebuilt model follows the stance).
 func on_place_left() -> void:
-	pass
+	_swaps.clear()
 
 
-## Whether `ref` shows its weapon in hand.
+## Whether `ref` fights with its weapon out (the stance; its model follows after `set_drawn`'s delay).
 func is_drawn(ref: int) -> bool:
 	return _drawn.get(ref, false)
 
 
-## Show `ref`'s weapon in hand (true) or on its sheath (false).
-func set_drawn(ref: int, drawn: bool) -> void:
+## `ref` draws its weapon (true) or sheathes it: the stance changes at once, the model goes to the hand
+## or the sheath after `delay` seconds (the equip clip's halfway point), `step` brings it.
+func set_drawn(ref: int, drawn: bool, delay := 0.0) -> void:
 	_drawn[ref] = drawn
-	refresh(ref)
+	for swap in _swaps.duplicate():
+		if swap["ref"] == ref:
+			_swaps.erase(swap)
+	if delay > 0.0:
+		_swaps.append({"ref": ref, "left": delay})
+	else:
+		refresh(ref)
+
+
+## Advance the models that change hands by `delta` seconds.
+func step(delta: float) -> void:
+	for swap in _swaps.duplicate():
+		swap["left"] -= delta
+		if swap["left"] <= 0.0:
+			_swaps.erase(swap)
+			refresh(swap["ref"])
 
 
 ## A place was built: the actors in it carry their weapons.

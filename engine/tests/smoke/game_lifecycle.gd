@@ -154,8 +154,8 @@ func _run(pack_dir: String) -> void:
 	expect(_session.load_game(SAVE), "the save loads")
 	expect(combat._shots.is_empty(), "no arrow is still to leave a bow")
 	expect(combat._npc_attacks.is_empty(), "no actor's attack goes on")
-	expect(combat._drawn.is_empty(), "nobody's weapon is out in the stance table")
-	expect(combat._swaps.is_empty() and combat._effects.is_empty(), "no hand change or impact art goes on")
+	expect(combat.gear._drawn.is_empty(), "nobody's weapon is out in the stance table")
+	expect(combat.gear._swaps.is_empty() and combat._effects.is_empty(), "no hand change or impact art goes on")
 	expect(corpses._paralysed.is_empty(), "nobody is marked paralysed")
 	expect(corpses._hits.is_empty() and corpses._live.is_empty(), "no pending hit or death")
 	for body: Dictionary in corpses._bodies:

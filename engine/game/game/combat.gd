@@ -154,8 +154,6 @@ var _rng := RandomNumberGenerator.new()
 var projectiles: Projectiles
 var _attack_tables := {}  # behaviour|race -> _attack_table
 var _locomotions := {}  # behaviour path -> get_locomotion
-var _drawn := {}  # actor ref -> bool, the actors that fight with their weapon out
-var _swaps: Array[Dictionary] = []  # models still to change hands: {ref, left, drawn}
 ## The weapons on the third-person skeletons.
 var gear: ActorGear
 var actors: ActorRegistry
@@ -191,10 +189,9 @@ func toggle_weapon() -> void:
 
 
 ## A save was loaded or the game restarted: nothing of the game before it goes on. Besides what
-## `on_place_left` drops, the actors' stance (`_drawn`) and plans go. Silent (no signal, no sound).
+## `on_place_left` drops, the plans go (the actors' stance is the gear's). Silent (no signal, no sound).
 func reset() -> void:
 	on_place_left()
-	_drawn.clear()
 	_plans.clear()
 	_player_plan = {}
 
@@ -205,7 +202,6 @@ func reset() -> void:
 func on_place_left() -> void:
 	_npc_attacks.clear()
 	_shots.clear()
-	_swaps.clear()
 	_cooldowns.clear()
 	for effect in _effects:
 		var node: Node = effect["node"]
@@ -578,7 +574,7 @@ func _use_weapon(ref: int, ranged: bool) -> void:
 		_papyrus.equip(ref, ammo)
 	gear.refresh(ref)
 	var node := _world.find_ref_node(ref)
-	if node != null and node.has_method("set_stance") and _drawn.get(ref, false):
+	if node != null and node.has_method("set_stance") and gear.is_drawn(ref):
 		_set_stance_of(node, int(_world.get_weapon(want).get("weapon_type", 0)), true)
 
 
@@ -642,9 +638,8 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 	var node := _world.find_ref_node(ref) as Node3D
 	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(ref):
 		return false
-	if _drawn.get(ref, false) == drawn:
+	if gear.is_drawn(ref) == drawn:
 		return true
-	_drawn[ref] = drawn
 	var info := npc_weapon(ref)
 	var type := int(info.get("weapon_type", 0))
 	var behaviour: String = _actor_plan(ref).get("behaviour", "")
@@ -656,17 +651,14 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 			if clip != "":
 				length = node.play_action(clip, 1.0)
 				break
-	if length > 0.0:
-		_swaps.append({"ref": ref, "left": length * GEAR_SWAP_FRACTION, "drawn": drawn})
-	else:
-		gear.set_drawn(ref, drawn)
+	gear.set_drawn(ref, drawn, length * GEAR_SWAP_FRACTION)
 	npc_drawn_changed.emit(ref, drawn)
 	return true
 
 
 ## Whether `ref` fights with its weapon out (`npc_draw`).
 func npc_is_drawn(ref: int) -> bool:
-	return _drawn.get(ref, false)
+	return gear.is_drawn(ref)
 
 
 ## The weapon `ref` fights with, as SkydotWorld.get_weapon: the right hand's, else the bow it
@@ -769,7 +761,6 @@ func step(delta: float) -> void:
 	_step_state(delta)
 	_step_attack(delta)
 	_step_npc_attacks(delta)
-	_step_swaps(delta)
 	_step_shots(delta)
 	_step_effects(delta)
 
@@ -870,14 +861,6 @@ func segment_hit(attacker: int, from: Vector3, to: Vector3) -> Dictionary:
 			if p.distance_to(q) <= float(candidate["radius"]):
 				return {"ref": candidate["ref"], "point": p}
 	return {}
-
-
-func _step_swaps(delta: float) -> void:
-	for swap in _swaps.duplicate():
-		swap["left"] -= delta
-		if swap["left"] <= 0.0:
-			_swaps.erase(swap)
-			gear.set_drawn(swap["ref"], swap["drawn"])
 
 
 func _step_npc_attacks(delta: float) -> void:

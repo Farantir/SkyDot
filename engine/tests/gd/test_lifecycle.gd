@@ -46,7 +46,6 @@ func _fill_combat(c: Combat) -> Node:
 	_host.add_child(art)
 	c._npc_attacks.append({"attacker": 5})
 	c._shots.append({"attacker": 5})
-	c._swaps.append({"ref": 5})
 	c._cooldowns[5] = 1.0
 	c._effects.append({"node": art, "left": 1.0})
 	c._attack = {"time": 0.0}
@@ -54,7 +53,6 @@ func _fill_combat(c: Combat) -> Node:
 	c._held_time = 0.4
 	c._held_fired = true
 	c._left_next = true
-	c._drawn[5] = true
 	c._plans[5] = {"race": 1}
 	c._player_plan = {"race": 1}
 	return art
@@ -63,7 +61,6 @@ func _fill_combat(c: Combat) -> Node:
 func _combat_attack_state_empty(c: Combat, what: String) -> void:
 	expect(c._npc_attacks.is_empty(), "%s: npc attacks" % what)
 	expect(c._shots.is_empty(), "%s: shots" % what)
-	expect(c._swaps.is_empty(), "%s: swaps" % what)
 	expect(c._cooldowns.is_empty(), "%s: cooldowns" % what)
 	expect(c._effects.is_empty(), "%s: effects" % what)
 	expect(c._attack.is_empty(), "%s: attack" % what)
@@ -76,19 +73,18 @@ func test_combat_reset() -> void:
 	var heard := _watch_all(c)
 	c.reset()
 	_combat_attack_state_empty(c, "reset")
-	expect(c._drawn.is_empty() and c._plans.is_empty() and c._player_plan.is_empty(), "reset drops stance and plans")
+	expect(c._plans.is_empty() and c._player_plan.is_empty(), "reset drops the plans")
 	await get_tree().process_frame
 	expect(not is_instance_valid(art), "the impact art is freed")
 	_silent(heard, "Combat.reset")
 
 
-func test_combat_on_place_left_keeps_the_stance() -> void:
+func test_combat_on_place_left_keeps_the_plans() -> void:
 	var c := _combat()
 	var art := _fill_combat(c)
 	var heard := _watch_all(c)
 	c.on_place_left()
 	_combat_attack_state_empty(c, "place left")
-	expect_eq(c._drawn.size(), 1, "the stance stays")
 	expect_eq(c._plans.size(), 1, "the plans stay")
 	await get_tree().process_frame
 	expect(not is_instance_valid(art), "the impact art is freed")
@@ -184,10 +180,18 @@ func test_speech_stops_silently() -> void:
 func test_actor_gear_stance_survives_only_a_place_left() -> void:
 	var g := ActorGear.new(Fakes.world(), Fakes.papyrus())
 	g.set_drawn(5, true)
+	g.set_drawn(6, false, 0.5)
+	expect_eq(g._swaps.size(), 1, "a model waits for its clip")
 	g.on_place_left()
 	expect(g.is_drawn(5), "the stance stays when the place is left")
+	expect(g._swaps.is_empty(), "a model still to change hands does not wait")
+	g.set_drawn(5, false, 0.5)
+	expect(not g.is_drawn(5), "the stance changes at once")
+	g.step(0.6)
+	expect(g._swaps.is_empty(), "the model followed after the delay")
+	g.set_drawn(5, true, 0.5)
 	g.reset()
-	expect(not g.is_drawn(5), "reset drops it")
+	expect(not g.is_drawn(5) and g._swaps.is_empty(), "reset drops the stance and the waiting models")
 
 
 func test_placed_refs() -> void:

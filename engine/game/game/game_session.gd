@@ -715,6 +715,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	update_scenes(delta)
 	speech.update(delta)  # after the dialogue: a line it starts ends first, never after its subtitle
 	combat.step(delta)
+	combat.gear.step(delta)
 	magic.step(delta)
 	npc_magic.step(delta)
 	npc_shouts.step(delta)
@@ -1084,6 +1085,7 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 ## (shots).
 func update_combat(delta: float) -> void:
 	combat.step(delta)
+	combat.gear.step(delta)
 	magic.step(delta)
 	npc_magic.step(delta)
 	npc_shouts.step(delta)
