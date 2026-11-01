@@ -4,6 +4,7 @@
 // FakeQuests and FakeWorld.
 #include "support/fake_hosts.hpp"
 #include "support/fake_world.hpp"
+#include "support/native_calls.hpp"
 #include "support/vm_rig.hpp"
 
 #include "vm/natives_args.hpp"
@@ -16,31 +17,6 @@ using skydot::vm::Op;
 using skydot::vm::Value;
 
 namespace {
-
-/// `Caller.<name>(o, extras...)`: o.<fn>(extras...) returning its result.
-FunctionSpec wrap(const std::string& name, const std::string& cls, const std::string& fn,
-                  std::vector<Param> extra = {}, const std::string& ret = "None") {
-    std::vector<Param> params{{"o", cls}};
-    params.insert(params.end(), extra.begin(), extra.end());
-    std::vector<Param> locals;
-    if (ret != "None") {
-        locals.push_back({"r", ret});
-    }
-    auto f = global_function(name, std::move(params), std::move(locals), ret);
-    std::vector<Arg> args{ident(fn), ident("o"), ident(ret == "None" ? "::NoneVar" : "r")};
-    for (const auto& p : extra) {
-        args.push_back(ident(p.name));
-    }
-    f.add(Op::callmethod, args);
-    if (ret != "None") {
-        f.add(Op::return_, {ident("r")});
-    }
-    return f;
-}
-
-FunctionSpec native(const std::string& name, std::vector<Param> params = {}, const std::string& ret = "None") {
-    return native_function(name, std::move(params), ret, false);
-}
 
 void add_quest_classes(Rig& rig) {
     rig.add({.name = "Quest",

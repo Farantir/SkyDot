@@ -570,9 +570,17 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     return info.get("position", Vector3());
 }
 
+static Vector3 vec3_from(const vm::Xyz& p) {
+    return Vector3(static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]));
+}
+
+static vm::Xyz xyz_from(const Vector3& p) {
+    return {static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z)};
+}
+
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost {
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -662,6 +670,19 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         }
         return static_cast<std::uint32_t>(owner_.world_->get_form_from_file(id, String::utf8(plugin.c_str())));
     }
+    vm::RefPlacement ref_placement(std::uint32_t ref) const override {
+        const Dictionary info = owner_.ref_info(ref);
+        vm::RefPlacement placed;
+        placed.position = xyz_from(info.get("position", Vector3()));
+        placed.rotation = xyz_from(info.get("rotation", Vector3()));
+        placed.disabled = static_cast<bool>(info.get("disabled", false));
+        placed.scale = static_cast<double>(info.get("scale", 1.0));
+        placed.base = static_cast<std::uint32_t>(static_cast<std::int64_t>(info.get("base", 0)));
+        return placed;
+    }
+    vm::Xyz ref_position(std::uint32_t ref) const override { return xyz_from(owner_.position_of(ref)); }
+    vm::Xyz ref_rotation(std::uint32_t ref) const override { return xyz_from(owner_.rotation_of(ref)); }
+    bool ref_disabled(std::uint32_t ref) const override { return owner_.disabled(ref); }
     bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
     std::int32_t player_level() const override { return 1; }
     double game_days() const override {
@@ -747,6 +768,62 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     double global_value(std::int64_t global) const override { return owner_.get_global_value(global); }
     void set_global_value(std::int64_t global, double value) override { owner_.set_global_value(global, value); }
 
+    void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
+        owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_from(position), vec3_from(rotation));
+    }
+    void play_animation(std::uint32_t ref, const std::string& animation) override {
+        owner_.emit_signal("play_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
+    }
+    void havok_impulse(std::uint32_t ref, const vm::Xyz& direction, double magnitude) override {
+        owner_.emit_signal("havok_impulse", static_cast<std::int64_t>(ref), vec3_from(direction), magnitude);
+    }
+    void push_actor(std::uint32_t source, std::uint32_t target, double force) override {
+        owner_.emit_signal("push_actor", static_cast<std::int64_t>(source), static_cast<std::int64_t>(target), force);
+    }
+    void knock_area(std::uint32_t source, double magnitude, double radius) override {
+        owner_.emit_signal("knock_area", static_cast<std::int64_t>(source), magnitude, radius);
+    }
+    void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) override {
+        owner_.emit_signal("motion_type_changed", static_cast<std::int64_t>(ref),
+                           static_cast<std::int64_t>(motion_type));
+    }
+    void open_changed(std::uint32_t ref, bool open) override {
+        owner_.emit_signal("open_changed", static_cast<std::int64_t>(ref), open);
+    }
+
+    // ---- vm::ReferenceHost
+
+    vm::RefStates& ref_states() override { return owner_.states_; }
+    void set_disabled(std::uint32_t ref, bool disabled) override { owner_.set_disabled(ref, disabled); }
+    void clear_destruction(std::uint32_t ref) override { owner_.clear_destruction(ref); }
+    std::int64_t open_state(std::int64_t ref) const override { return owner_.get_open_state(ref); }
+    void set_open_state(std::int64_t ref, std::int64_t state) override { owner_.set_open_state(ref, state); }
+    void set_locked(std::int64_t ref, bool locked) override { owner_.set_locked(ref, locked); }
+    bool is_locked(std::uint32_t ref) const override { return owner_.locked(ref); }
+    std::int64_t lock_level(std::int64_t ref) const override { return owner_.get_lock_level(ref); }
+    std::uint32_t lock_key(std::uint32_t ref) const override {
+        const Variant lock = owner_.ref_info(owner_.lock_holder(ref)).get("lock", Variant());
+        if (lock.get_type() != Variant::DICTIONARY) {
+            return 0;
+        }
+        return static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(lock).get("key", 0)));
+    }
+    std::int64_t trigger_count(std::int64_t ref) const override { return owner_.get_trigger_count(ref); }
+    void move_ref_to(std::uint32_t ref, std::uint32_t target, const vm::Xyz& offset, bool match_rotation) override {
+        owner_.move_ref_to(ref, target, vec3_from(offset), match_rotation);
+    }
+    void relocate_ref(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
+        owner_.relocate_ref(ref, 0, vec3_from(position), vec3_from(rotation));
+    }
+    void send_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
+        owner_.dispatch(ref, event, args);
+    }
+    void resolve_owner(std::uint32_t owner) const override { owner_.resolve_owner(owner); }
+    std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form,
+                                                        std::int64_t count) override {
+        return owner_.remove_item_split(owner, form, count);
+    }
+
 private:
     SkydotPapyrus& owner_;
 };
@@ -761,6 +838,7 @@ void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *access_
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {

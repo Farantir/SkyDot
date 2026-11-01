@@ -54,6 +54,24 @@ struct FakeWorld final : skydot::vm::WorldAccess {
         const auto it = file_forms.find(plugin + ":" + std::to_string(id));
         return it != file_forms.end() ? it->second : 0;
     }
+    /// What the data places references with, where they are now and whether they are disabled.
+    std::map<std::uint32_t, vm::RefPlacement> placements;
+    std::map<std::uint32_t, vm::Xyz> positions;
+    std::map<std::uint32_t, vm::Xyz> rotations;
+    std::set<std::uint32_t> disabled;
+    vm::RefPlacement ref_placement(std::uint32_t ref) const override {
+        const auto it = placements.find(ref);
+        return it != placements.end() ? it->second : vm::RefPlacement{};
+    }
+    vm::Xyz ref_position(std::uint32_t ref) const override {
+        const auto it = positions.find(ref);
+        return it != positions.end() ? it->second : ref_placement(ref).position;
+    }
+    vm::Xyz ref_rotation(std::uint32_t ref) const override {
+        const auto it = rotations.find(ref);
+        return it != rotations.end() ? it->second : ref_placement(ref).rotation;
+    }
+    bool ref_disabled(std::uint32_t ref) const override { return disabled.contains(ref); }
     /// References with their 3D loaded.
     std::set<std::uint32_t> loaded_3d;
     bool ref_3d_loaded(std::uint32_t ref) const override { return loaded_3d.contains(ref); }

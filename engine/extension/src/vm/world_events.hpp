@@ -6,6 +6,8 @@
 // (vm/papyrus.cpp), and a test records them.
 #pragma once
 
+#include "vm/world_access.hpp"
+
 #include <cstdint>
 #include <string>
 
@@ -36,6 +38,20 @@ public:
     /// A script registered for animation events of `sender`: the game layer
     /// should report them (the `animation_events_wanted` signal).
     virtual void animation_events_wanted(std::uint32_t sender) = 0;
+    /// `ref` was moved or reset to this place (the `ref_moved` signal).
+    virtual void ref_moved(std::uint32_t ref, const Xyz& position, const Xyz& rotation) = 0;
+    /// Play the named animation on `ref` (the `play_animation` signal).
+    virtual void play_animation(std::uint32_t ref, const std::string& animation) = 0;
+    /// Push `ref`'s body along `direction` (Skyrim's space) with Havok's `magnitude` (the `havok_impulse` signal).
+    virtual void havok_impulse(std::uint32_t ref, const Xyz& direction, double magnitude) = 0;
+    /// `source` knocks `target` over with `force` (the `push_actor` signal).
+    virtual void push_actor(std::uint32_t source, std::uint32_t target, double force) = 0;
+    /// Everything within `radius` of `source` is knocked away (the `knock_area` signal).
+    virtual void knock_area(std::uint32_t source, double magnitude, double radius) = 0;
+    /// `ref`'s motion type was set (the `motion_type_changed` signal).
+    virtual void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) = 0;
+    /// A script opened or closed `ref` (the `open_changed` signal).
+    virtual void open_changed(std::uint32_t ref, bool open) = 0;
 };
 
 } // namespace skydot::vm

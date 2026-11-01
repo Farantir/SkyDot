@@ -6,6 +6,7 @@
 
 #include "vm/vm.hpp"
 #include "vm/quest_host.hpp"
+#include "vm/reference_host.hpp"
 #include "vm/sound_host.hpp"
 #include "vm/world_access.hpp"
 #include "vm/world_events.hpp"
@@ -40,5 +41,9 @@ void bind_quest_natives(Vm& vm, const WorldAccess& world, QuestHost& host);
 
 /// Game.GetPlayer and GetForm.
 void bind_game_natives(Vm& vm, QuestHost& quests);
+
+/// ObjectReference natives: enable state, links, placement, animation,
+/// physics, activation, doors and locks, inventory, triggers.
+void bind_objectreference_natives(Vm& vm, const WorldAccess& world, WorldEvents& events, ReferenceHost& host);
 
 } // namespace skydot::vm

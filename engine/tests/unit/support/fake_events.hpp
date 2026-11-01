@@ -38,6 +38,33 @@ struct FakeEvents final : skydot::vm::WorldEvents {
     std::vector<std::int64_t> stopped;
     std::vector<std::pair<std::int64_t, double>> volumes;
     std::vector<std::uint32_t> animation_senders;
+    struct Moved {
+        std::uint32_t ref = 0;
+        vm::Xyz position{};
+        vm::Xyz rotation{};
+    };
+    std::vector<Moved> moved;
+    std::vector<std::pair<std::uint32_t, std::string>> animations;
+    struct Impulse {
+        std::uint32_t ref = 0;
+        vm::Xyz direction{};
+        double magnitude = 0.0;
+    };
+    std::vector<Impulse> impulses;
+    struct Push {
+        std::uint32_t source = 0;
+        std::uint32_t target = 0;
+        double force = 0.0;
+    };
+    std::vector<Push> pushes;
+    struct Knock {
+        std::uint32_t source = 0;
+        double magnitude = 0.0;
+        double radius = 0.0;
+    };
+    std::vector<Knock> knocks;
+    std::vector<std::pair<std::uint32_t, std::int32_t>> motion_types;
+    std::vector<std::pair<std::uint32_t, bool>> opened;
     std::vector<std::string> traces;
     std::vector<Shader> shaders;
     std::vector<Message> messages;
@@ -56,6 +83,25 @@ struct FakeEvents final : skydot::vm::WorldEvents {
     void stop_sound(std::int64_t instance) override { stopped.push_back(instance); }
     void sound_volume(std::int64_t instance, double volume) override { volumes.emplace_back(instance, volume); }
     void animation_events_wanted(std::uint32_t sender) override { animation_senders.push_back(sender); }
+    void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
+        moved.push_back({ref, position, rotation});
+    }
+    void play_animation(std::uint32_t ref, const std::string& animation) override {
+        animations.emplace_back(ref, animation);
+    }
+    void havok_impulse(std::uint32_t ref, const vm::Xyz& direction, double magnitude) override {
+        impulses.push_back({ref, direction, magnitude});
+    }
+    void push_actor(std::uint32_t source, std::uint32_t target, double force) override {
+        pushes.push_back({source, target, force});
+    }
+    void knock_area(std::uint32_t source, double magnitude, double radius) override {
+        knocks.push_back({source, magnitude, radius});
+    }
+    void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) override {
+        motion_types.emplace_back(ref, motion_type);
+    }
+    void open_changed(std::uint32_t ref, bool open) override { opened.emplace_back(ref, open); }
 };
 
 } // namespace skydot::testing

@@ -9,6 +9,7 @@
 
 #include "state/actor_values.hpp"
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -22,6 +23,20 @@ struct MessageText {
     std::string text;
     bool box = false;
     std::vector<std::string> buttons;
+};
+
+/// A point or an angle triple (radians) in the game's axes. Values that
+/// started as floats are kept exactly.
+using Xyz = std::array<double, 3>;
+
+/// What the data places `ref` with. The defaults are what a reference the
+/// data does not know has: the origin, enabled, scale 1, no base.
+struct RefPlacement {
+    Xyz position{};
+    Xyz rotation{};
+    bool disabled = false;
+    double scale = 1.0;
+    std::uint32_t base = 0;
 };
 
 class WorldAccess {
@@ -64,6 +79,15 @@ public:
     /// The form with id `id` in the plugin named `plugin` (Game.GetFormFromFile);
     /// 0 if there is none.
     [[nodiscard]] virtual std::uint32_t form_from_file(std::int64_t id, const std::string& plugin) const = 0;
+    /// What the data places `ref` with (also for references scripts placed).
+    [[nodiscard]] virtual RefPlacement ref_placement(std::uint32_t ref) const = 0;
+    /// Where `ref` is now: where a script moved it, where its actor stands, or
+    /// its placement.
+    [[nodiscard]] virtual Xyz ref_position(std::uint32_t ref) const = 0;
+    /// How `ref` is turned now (radians): as a script moved it, else its placement.
+    [[nodiscard]] virtual Xyz ref_rotation(std::uint32_t ref) const = 0;
+    /// Whether `ref` is disabled now (a script's change, its enable parent's, or the placement's).
+    [[nodiscard]] virtual bool ref_disabled(std::uint32_t ref) const = 0;
 };
 
 } // namespace skydot::vm

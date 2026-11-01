@@ -1,264 +1,247 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // ObjectReference natives: enable state, links, placement, animation, physics, activation, doors and locks, triggers.
-#include "vm/natives_common.hpp"
-#include "vm/papyrus.hpp"
 #include "vm/activation.hpp"
+#include "vm/natives_args.hpp"
+#include "vm/natives_families.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <numbers>
+#include <string>
 
-using godot::Array;
-using godot::Dictionary;
-using godot::String;
-using godot::Variant;
-using godot::Vector3;
+namespace skydot::vm {
 
-namespace skydot {
+namespace {
 
-void SkydotPapyrus::bind_objectreference_natives() {
-    using vm::NativeCall;
-    using vm::NativeResult;
-    using vm::Value;
+/// A float's value as the double the interfaces carry.
+double as_float(double x) { return static_cast<double>(static_cast<float>(x)); }
+
+} // namespace
+
+void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& events, ReferenceHost& host) {
     using namespace natives;
-    [[maybe_unused]] auto& v = *vm_;
-    [[maybe_unused]] const auto arg = natives::arg;
-    [[maybe_unused]] const auto result = natives::result;
-    [[maybe_unused]] const auto number = natives::number;
-    v.bind("ObjectReference", "Enable", [this](NativeCall& c) {
-        set_disabled(c.self.form(), false);
+    v.bind("ObjectReference", "Enable", [&host](NativeCall& c) {
+        host.set_disabled(c.self.form(), false);
         return NativeResult{};
     });
-    v.bind("ObjectReference", "Disable", [this](NativeCall& c) {
-        set_disabled(c.self.form(), true);
+    v.bind("ObjectReference", "Disable", [&host](NativeCall& c) {
+        host.set_disabled(c.self.form(), true);
         return NativeResult{};
     });
     // No fade exists, so these are Enable and Disable.
-    v.bind("ObjectReference", "EnableNoWait", [this](NativeCall& c) {
-        set_disabled(c.self.form(), false);
+    v.bind("ObjectReference", "EnableNoWait", [&host](NativeCall& c) {
+        host.set_disabled(c.self.form(), false);
         return NativeResult{};
     });
-    v.bind("ObjectReference", "DisableNoWait", [this](NativeCall& c) {
-        set_disabled(c.self.form(), true);
+    v.bind("ObjectReference", "DisableNoWait", [&host](NativeCall& c) {
+        host.set_disabled(c.self.form(), true);
         return NativeResult{};
     });
     // Back to the placed position and rotation (or to akTarget's), enabled as
     // placed. The move reaches the game layer as `ref_moved`; open and lock
     // state are left alone.
-    v.bind("ObjectReference", "Reset", [this, arg](NativeCall& c) {
+    v.bind("ObjectReference", "Reset", [&world, &events, &host](NativeCall& c) {
         const std::uint32_t ref = c.self.form();
-        const std::uint32_t target = arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0;
-        Vector3 position;
-        Vector3 rotation;
+        const std::uint32_t target = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0;
+        Xyz position{};
+        Xyz rotation{};
+        auto& states = host.ref_states();
         if (target != 0) {
-            position = position_of(target);
-            rotation = rotation_of(target);
-            vm::MovedTo to;
-            for (int i = 0; i < 3; ++i) {
-                to.position[i] = static_cast<double>(position[i]);
-                to.rotation[i] = static_cast<double>(rotation[i]);
+            position = world.ref_position(target);
+            rotation = world.ref_rotation(target);
+            MovedTo to;
+            for (std::size_t i = 0; i < 3; ++i) {
+                to.position[i] = position[i];
+                to.rotation[i] = rotation[i];
             }
-            states_.moved[ref] = to;
+            states.moved[ref] = to;
         } else {
-            states_.moved.erase(ref);
-            const Dictionary info = ref_info(ref);
-            position = info.get("position", Vector3());
-            rotation = info.get("rotation", Vector3());
+            states.moved.erase(ref);
+            const RefPlacement placed = world.ref_placement(ref);
+            position = placed.position;
+            rotation = placed.rotation;
         }
-        emit_signal("ref_moved", static_cast<std::int64_t>(ref), position, rotation);
-        states_.disabled.erase(ref);
-        clear_destruction(ref);
-        set_disabled(ref, static_cast<bool>(ref_info(ref).get("disabled", false)));
+        events.ref_moved(ref, position, rotation);
+        states.disabled.erase(ref);
+        host.clear_destruction(ref);
+        host.set_disabled(ref, world.ref_placement(ref).disabled);
         return NativeResult{};
     });
-    v.bind("ObjectReference", "IsDisabled", [this, result](NativeCall& c) {
-        return result(Value::boolean(disabled(c.self.form())));
+    v.bind("ObjectReference", "IsDisabled", [&world](NativeCall& c) {
+        return result(Value::boolean(world.ref_disabled(c.self.form())));
     });
-    v.bind("ObjectReference", "IsEnabled", [this, result](NativeCall& c) {
-        return result(Value::boolean(!disabled(c.self.form())));
+    v.bind("ObjectReference", "IsEnabled", [&world](NativeCall& c) {
+        return result(Value::boolean(!world.ref_disabled(c.self.form())));
     });
     // Its model is built (the registry forgets nodes as they leave the tree)
     // and it is not disabled.
-    v.bind("ObjectReference", "Is3DLoaded", [this, result](NativeCall& c) {
-        return result(Value::boolean(is_3d_loaded(c.self.form())));
+    v.bind("ObjectReference", "Is3DLoaded", [&world](NativeCall& c) {
+        return result(Value::boolean(world.ref_3d_loaded(c.self.form())));
     });
 
     // ---- links, base, place
     // The link with this keyword (None: the link without one).
-    v.bind("ObjectReference", "GetLinkedRef", [this, arg, result](NativeCall& c) {
-        const std::uint32_t keyword = arg(c, 0).kind() == vm::Kind::object ? arg(c, 0).form() : 0;
-        const Array links = ref_info(c.self.form()).get("links", Array());
-        for (std::int64_t i = 0; i < links.size(); ++i) {
-            const Dictionary link = links[i];
-            if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
-                return result(c.vm.object(
-                    form_of(link["target"]), "ObjectReference"));
-            }
-        }
-        return NativeResult{};
+    v.bind("ObjectReference", "GetLinkedRef", [&world](NativeCall& c) {
+        const std::uint32_t keyword = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0;
+        const std::uint32_t target = world.linked_ref(c.self.form(), keyword);
+        return target != 0 ? result(c.vm.object(target, "ObjectReference")) : NativeResult{};
     });
-    v.bind("ObjectReference", "GetBaseObject", [this, result](NativeCall& c) {
-        const std::int64_t base = ref_info(c.self.form()).get("base", 0);
-        return result(c.vm.object(static_cast<std::uint32_t>(base), "Form"));
+    v.bind("ObjectReference", "GetBaseObject", [&world](NativeCall& c) {
+        return result(c.vm.object(world.ref_placement(c.self.form()).base, "Form"));
     });
     for (const char axis : {'X', 'Y', 'Z'}) {
-        const auto index = static_cast<int>(axis - 'X');
-        v.bind("ObjectReference", std::string("GetPosition") + axis, [this, index, result](NativeCall& c) {
-            return result(Value::floating(static_cast<float>(position_of(c.self.form())[index])));
+        const auto index = static_cast<std::size_t>(axis - 'X');
+        v.bind("ObjectReference", std::string("GetPosition") + axis, [&world, index](NativeCall& c) {
+            return result(Value::floating(static_cast<float>(world.ref_position(c.self.form())[index])));
         });
         // Degrees, as the game reports them.
-        v.bind("ObjectReference", std::string("GetAngle") + axis, [this, index, result](NativeCall& c) {
-            const Vector3 r = rotation_of(c.self.form());
-            return result(Value::floating(static_cast<float>(static_cast<double>(r[index]) * 180.0 / std::numbers::pi)));
+        v.bind("ObjectReference", std::string("GetAngle") + axis, [&world, index](NativeCall& c) {
+            const Xyz r = world.ref_rotation(c.self.form());
+            return result(Value::floating(static_cast<float>(r[index] * 180.0 / std::numbers::pi)));
         });
     }
-    v.bind("ObjectReference", "GetScale", [this, result](NativeCall& c) {
-        return result(Value::floating(static_cast<float>(static_cast<double>(ref_info(c.self.form()).get("scale", 1.0)))));
+    v.bind("ObjectReference", "GetScale", [&world](NativeCall& c) {
+        return result(Value::floating(static_cast<float>(world.ref_placement(c.self.form()).scale)));
     });
-    v.bind("ObjectReference", "GetDistance", [this, arg, result](NativeCall& c) {
-        if (arg(c, 0).kind() != vm::Kind::object) {
+    v.bind("ObjectReference", "GetDistance", [&world](NativeCall& c) {
+        if (arg(c, 0).kind() != Kind::object) {
             return result(Value::floating(0.0F));
         }
-        return result(Value::floating(
-            static_cast<float>(position_of(c.self.form()).distance_to(position_of(arg(c, 0).form())))));
+        const Xyz a = world.ref_position(c.self.form());
+        const Xyz b = world.ref_position(arg(c, 0).form());
+        // In floats, as the positions are.
+        const float dx = static_cast<float>(b[0]) - static_cast<float>(a[0]);
+        const float dy = static_cast<float>(b[1]) - static_cast<float>(a[1]);
+        const float dz = static_cast<float>(b[2]) - static_cast<float>(a[2]);
+        return result(Value::floating(std::sqrt(dx * dx + dy * dy + dz * dz)));
     });
 
     // ---- animation
-    v.bind("ObjectReference", "PlayAnimation", [this, arg, result](NativeCall& c) {
-        emit_signal("play_animation", static_cast<std::int64_t>(c.self.form()),
-                    to_godot(vm::Vm::to_string(arg(c, 0))));
+    v.bind("ObjectReference", "PlayAnimation", [&events](NativeCall& c) {
+        events.play_animation(c.self.form(), Vm::to_string(arg(c, 0)));
         return result(Value::boolean(true));
     });
     // Waits for the named event (a text key of the animation) or a timeout.
     // The signal goes out after the wait is armed: a handler that reports the
     // event synchronously would otherwise be lost.
-    v.bind("ObjectReference", "PlayAnimationAndWait", [this, arg](NativeCall& c) {
-        const auto form = static_cast<std::int64_t>(c.self.form());
-        const String animation = to_godot(vm::Vm::to_string(arg(c, 0)));
+    v.bind("ObjectReference", "PlayAnimationAndWait", [&events](NativeCall& c) {
+        const auto form = c.self.form();
+        const std::string animation = Vm::to_string(arg(c, 0));
         return NativeResult{.value = Value::boolean(true),
-                            .wait = ANIMATION_TIMEOUT,
-                            .wait_for = "anim:" + std::to_string(c.self.form()) + ":" + vm::Vm::to_string(arg(c, 1)),
-                            .after = [this, form, animation] { emit_signal("play_animation", form, animation); }};
+                            .wait = k_animation_timeout,
+                            .wait_for = "anim:" + std::to_string(c.self.form()) + ":" + Vm::to_string(arg(c, 1)),
+                            .after = [&events, form, animation] { events.play_animation(form, animation); }};
     });
     // Physics dependencies between animated objects; nothing to do without physics.
     v.bind("ObjectReference", "AddDependentAnimatedObjectReference",
-           [result](NativeCall&) { return result(Value::boolean(true)); });
+           [](NativeCall&) { return result(Value::boolean(true)); });
     v.bind("ObjectReference", "RemoveDependentAnimatedObjectReference",
-           [result](NativeCall&) { return result(Value::boolean(true)); });
+           [](NativeCall&) { return result(Value::boolean(true)); });
 
     // ---- physics: the game layer owns the bodies
     // Direction in Skyrim's space, magnitude in Havok's (about kg m/s).
-    v.bind("ObjectReference", "ApplyHavokImpulse", [this, arg, number](NativeCall& c) {
-        const Vector3 direction(static_cast<float>(number(arg(c, 0))), static_cast<float>(number(arg(c, 1))),
-                                static_cast<float>(number(arg(c, 2))));
-        emit_signal("havok_impulse", static_cast<std::int64_t>(c.self.form()), direction, number(arg(c, 3)));
+    v.bind("ObjectReference", "ApplyHavokImpulse", [&events](NativeCall& c) {
+        const Xyz direction{as_float(number(arg(c, 0))), as_float(number(arg(c, 1))), as_float(number(arg(c, 2)))};
+        events.havok_impulse(c.self.form(), direction, number(arg(c, 3)));
         return NativeResult{};
     });
     // PushActorAway(Actor, float force): the source knocks the actor over (a shout's push, a dragon's
     // blow); KnockAreaEffect(magnitude, radius): everything within the radius (game units) of the
     // source is knocked away from it. The game layer owns the bodies: it ragdolls and gets them up.
-    v.bind("ObjectReference", "PushActorAway", [this, arg, number](NativeCall& c) {
-        if (arg(c, 0).kind() != vm::Kind::object) {
+    v.bind("ObjectReference", "PushActorAway", [&events](NativeCall& c) {
+        if (arg(c, 0).kind() != Kind::object) {
             return NativeResult{};
         }
-        const auto source = static_cast<std::int64_t>(c.self.form());
-        const auto target = static_cast<std::int64_t>(arg(c, 0).form());
         const double force = number(arg(c, 1));
         std::printf("papyrus: PushActorAway 0x%X pushes 0x%X (force %g)\n", c.self.form(), arg(c, 0).form(), force);
-        emit_signal("push_actor", source, target, force);
+        events.push_actor(c.self.form(), arg(c, 0).form(), force);
         return NativeResult{};
     });
-    v.bind("ObjectReference", "KnockAreaEffect", [this, arg, number](NativeCall& c) {
-        const auto source = static_cast<std::int64_t>(c.self.form());
+    v.bind("ObjectReference", "KnockAreaEffect", [&events](NativeCall& c) {
         const double magnitude = number(arg(c, 0));
         const double radius = number(arg(c, 1));
         std::printf("papyrus: KnockAreaEffect 0x%X (magnitude %g, radius %g)\n", c.self.form(), magnitude, radius);
-        emit_signal("knock_area", source, magnitude, radius);
+        events.knock_area(c.self.form(), magnitude, radius);
         return NativeResult{};
     });
     // ObjectReference.psc: 1 dynamic, 2 sphere, 3 box, 6 thin box inertia
     // (all moving), 4 keyframed, 5 fixed, 7 character.
-    v.bind("ObjectReference", "SetMotionType", [this, arg](NativeCall& c) {
-        emit_signal("motion_type_changed", static_cast<std::int64_t>(c.self.form()),
-                    static_cast<std::int64_t>(arg(c, 0).i()));
+    v.bind("ObjectReference", "SetMotionType", [&events](NativeCall& c) {
+        events.motion_type_changed(c.self.form(), arg(c, 0).i());
         return NativeResult{};
     });
 
     // ---- activation
-    v.bind("ObjectReference", "Activate", [this, arg, result](NativeCall& c) {
+    v.bind("ObjectReference", "Activate", [](NativeCall& c) {
         // Next VM update, on the VM's clock (and in its saves), not inside this call.
-        const std::uint32_t activator = arg(c, 0).form() != 0 ? arg(c, 0).form() : static_cast<std::uint32_t>(PLAYER_REF);
-        vm_->schedule(0.0, "activate", c.self.form(), activator,
-                      static_cast<std::uint32_t>(ActivationSource::script) | (vm::Vm::truthy(arg(c, 1)) ? 0x100u : 0u));
+        const std::uint32_t activator = arg(c, 0).form() != 0 ? arg(c, 0).form() : k_player_ref;
+        c.vm.schedule(0.0, "activate", c.self.form(), activator,
+                      static_cast<std::uint32_t>(ActivationSource::script) | (Vm::truthy(arg(c, 1)) ? 0x100u : 0u));
         return result(Value::boolean(true));
     });
-    v.bind("ObjectReference", "BlockActivation", [this, arg](NativeCall& c) {
-        if (c.args.empty() || vm::Vm::truthy(arg(c, 0))) {
-            states_.blocked.insert(c.self.form());
+    v.bind("ObjectReference", "BlockActivation", [&host](NativeCall& c) {
+        if (c.args.empty() || Vm::truthy(arg(c, 0))) {
+            host.ref_states().blocked.insert(c.self.form());
         } else {
-            states_.blocked.erase(c.self.form());
+            host.ref_states().blocked.erase(c.self.form());
         }
         return NativeResult{};
     });
-    v.bind("ObjectReference", "IsActivationBlocked", [this, result](NativeCall& c) {
-        return result(Value::boolean(states_.blocked.contains(c.self.form())));
+    v.bind("ObjectReference", "IsActivationBlocked", [&host](NativeCall& c) {
+        return result(Value::boolean(host.ref_states().blocked.contains(c.self.form())));
     });
     // No actors use furniture yet.
-    v.bind("ObjectReference", "IsFurnitureInUse", [result](NativeCall&) { return result(Value::boolean(false)); });
+    v.bind("ObjectReference", "IsFurnitureInUse", [](NativeCall&) { return result(Value::boolean(false)); });
     // Followers are not simulated.
     v.bind("ObjectReference", "SetNoFavorAllowed", [](NativeCall&) { return NativeResult{}; });
 
     // ---- doors and locks
-    v.bind("ObjectReference", "GetOpenState", [this, result](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(get_open_state(c.self.form()))));
+    v.bind("ObjectReference", "GetOpenState", [&host](NativeCall& c) {
+        return result(Value::integer(static_cast<std::int32_t>(host.open_state(c.self.form()))));
     });
-    v.bind("ObjectReference", "SetOpen", [this, arg](NativeCall& c) {
-        const bool open = c.args.empty() || vm::Vm::truthy(arg(c, 0));
-        set_open_state(c.self.form(), open ? k_open : k_closed);
-        emit_signal("open_changed", static_cast<std::int64_t>(c.self.form()), open);
+    v.bind("ObjectReference", "SetOpen", [&host, &events](NativeCall& c) {
+        const bool open = c.args.empty() || Vm::truthy(arg(c, 0));
+        host.set_open_state(c.self.form(), open ? k_open : k_closed);
+        events.open_changed(c.self.form(), open);
         return NativeResult{};
     });
-    v.bind("ObjectReference", "Lock", [this, arg](NativeCall& c) {
-        set_locked(c.self.form(), c.args.empty() || vm::Vm::truthy(arg(c, 0)));
+    v.bind("ObjectReference", "Lock", [&host](NativeCall& c) {
+        host.set_locked(c.self.form(), c.args.empty() || Vm::truthy(arg(c, 0)));
         return NativeResult{};
     });
-    v.bind("ObjectReference", "IsLocked", [this, result](NativeCall& c) {
-        return result(Value::boolean(locked(c.self.form())));
+    v.bind("ObjectReference", "IsLocked", [&host](NativeCall& c) {
+        return result(Value::boolean(host.is_locked(c.self.form())));
     });
-    v.bind("ObjectReference", "GetLockLevel", [this, result](NativeCall& c) {
-        const auto level = get_lock_level(c.self.form());
+    v.bind("ObjectReference", "GetLockLevel", [&host](NativeCall& c) {
+        const auto level = host.lock_level(c.self.form());
         return result(Value::integer(static_cast<std::int32_t>(level < 0 ? 0 : level)));
     });
     // The key of the lock (from the data); None if the lock needs none or there is no lock.
-    v.bind("ObjectReference", "GetKey", [this, result](NativeCall& c) {
-        const Variant lock = ref_info(lock_holder(c.self.form())).get("lock", Variant());
-        if (lock.get_type() != Variant::DICTIONARY) {
-            return NativeResult{};
-        }
-        const auto key = static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(lock).get("key", 0)));
+    v.bind("ObjectReference", "GetKey", [&host](NativeCall& c) {
+        const auto key = host.lock_key(c.self.form());
         return key != 0 ? result(c.vm.object(key, "Key")) : NativeResult{};
     });
     // MoveTo(target, x, y, z, matchRotation): to the target's place plus offsets in world axes. An actor moves in
     // the scene (relocate_ref); the player is not moved by scripts yet.
-    v.bind("ObjectReference", "MoveTo", [this, arg, number](NativeCall& c) {
-        if (arg(c, 0).kind() != vm::Kind::object) {
+    v.bind("ObjectReference", "MoveTo", [&host](NativeCall& c) {
+        if (arg(c, 0).kind() != Kind::object) {
             return NativeResult{};
         }
-        const Vector3 offset(static_cast<float>(number(arg(c, 1))), static_cast<float>(number(arg(c, 2))),
-                             static_cast<float>(number(arg(c, 3))));
-        move_ref_to(c.self.form(), arg(c, 0).form(), offset, c.args.size() < 5 || vm::Vm::truthy(arg(c, 4)));
+        const Xyz offset{as_float(number(arg(c, 1))), as_float(number(arg(c, 2))), as_float(number(arg(c, 3)))};
+        host.move_ref_to(c.self.form(), arg(c, 0).form(), offset, c.args.size() < 5 || Vm::truthy(arg(c, 4)));
         return NativeResult{};
     });
     // There is no translation over time: TranslateTo and SplineTranslateTo put the reference at the end point
     // (position in units, angles in degrees) at once and report OnTranslationComplete, so a script that waits for
     // it goes on. Speed, rotation speed and the spline's tangent are ignored.
     for (const char* name : {"TranslateTo", "SplineTranslateTo"}) {
-        v.bind("ObjectReference", name, [this, number, arg](NativeCall& c) {
-            const auto at = [&](std::size_t i) { return static_cast<float>(number(arg(c, i))); };
-            const auto angle = [&](std::size_t i) { return static_cast<float>(number(arg(c, i)) * (std::numbers::pi / 180.0)); };
+        v.bind("ObjectReference", name, [&host](NativeCall& c) {
+            const auto at = [&](std::size_t i) { return as_float(number(arg(c, i))); };
+            const auto angle = [&](std::size_t i) { return as_float(number(arg(c, i)) * (std::numbers::pi / 180.0)); };
             const std::uint32_t ref = c.self.form();
-            relocate_ref(ref, 0, Vector3(at(0), at(1), at(2)), Vector3(angle(3), angle(4), angle(5)));
-            dispatch(ref, "OnTranslationComplete", {});
+            host.relocate_ref(ref, Xyz{at(0), at(1), at(2)}, Xyz{angle(3), angle(4), angle(5)});
+            host.send_event(ref, "OnTranslationComplete", {});
             return NativeResult{};
         });
     }
@@ -268,30 +251,29 @@ void SkydotPapyrus::bind_objectreference_natives() {
     // it counts as nothing and adds or removes nothing. The owner's start
     // inventory is resolved first (vm/papyrus_items.cpp); what runs out is
     // taken off.
-    v.bind("ObjectReference", "GetItemCount", [this, arg, result](NativeCall& c) {
-        if (arg(c, 0).kind() != vm::Kind::object) {
+    v.bind("ObjectReference", "GetItemCount", [&host](NativeCall& c) {
+        if (arg(c, 0).kind() != Kind::object) {
             return result(Value::integer(0));
         }
-        resolve_owner(c.self.form());
-        return result(Value::integer(static_cast<std::int32_t>(vm_->inventory().count(c.self.form(), arg(c, 0).form()))));
+        host.resolve_owner(c.self.form());
+        return result(Value::integer(static_cast<std::int32_t>(c.vm.inventory().count(c.self.form(), arg(c, 0).form()))));
     });
-    v.bind("ObjectReference", "AddItem", [this, arg](NativeCall& c) {
-        if (arg(c, 0).kind() == vm::Kind::object) {
-            resolve_owner(c.self.form());
-            vm_->inventory().add(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+    v.bind("ObjectReference", "AddItem", [&host](NativeCall& c) {
+        if (arg(c, 0).kind() == Kind::object) {
+            host.resolve_owner(c.self.form());
+            c.vm.inventory().add(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
         }
         return NativeResult{};
     });
     // Moves the items to `other` if given, else they are gone.
-    v.bind("ObjectReference", "RemoveItem", [this, arg](NativeCall& c) {
-        if (arg(c, 0).kind() == vm::Kind::object) {
+    v.bind("ObjectReference", "RemoveItem", [&host](NativeCall& c) {
+        if (arg(c, 0).kind() == Kind::object) {
             // Plain units go first; extras (a tempered weapon) move with their stack.
-            const auto taken =
-                remove_item_split(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
-            if (arg(c, 3).kind() == vm::Kind::object) {
-                resolve_owner(arg(c, 3).form());
+            const auto taken = host.remove_item_split(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+            if (arg(c, 3).kind() == Kind::object) {
+                host.resolve_owner(arg(c, 3).form());
                 for (const auto& part : taken) {
-                    vm_->inventory().add(arg(c, 3).form(), arg(c, 0).form(), part.count, part.extra);
+                    c.vm.inventory().add(arg(c, 3).form(), arg(c, 0).form(), part.count, part.extra);
                 }
             }
         }
@@ -299,9 +281,9 @@ void SkydotPapyrus::bind_objectreference_natives() {
     });
 
     // ---- triggers and effects
-    v.bind("ObjectReference", "GetTriggerObjectCount", [this, result](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(get_trigger_count(c.self.form()))));
+    v.bind("ObjectReference", "GetTriggerObjectCount", [&host](NativeCall& c) {
+        return result(Value::integer(static_cast<std::int32_t>(host.trigger_count(c.self.form()))));
     });
 }
 
-} // namespace skydot
+} // namespace skydot::vm

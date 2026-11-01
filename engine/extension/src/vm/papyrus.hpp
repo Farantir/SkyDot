@@ -80,7 +80,6 @@ public:
     /// The player's reference, which activations come from.
     static constexpr std::int64_t PLAYER_REF = static_cast<std::int64_t>(k_player_ref);
     /// Seconds PlayAnimationAndWait waits for its event before carrying on.
-    static constexpr double ANIMATION_TIMEOUT = 10.0;
     /// Sound.PlayAndWait gives up on a clip that never reports its end (a loop).
     /// Alias handles are form ids from here up, above those create_instance
     /// hands out.
