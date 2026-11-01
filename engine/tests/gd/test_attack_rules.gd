@@ -283,6 +283,62 @@ func test_blocked_stagger_is_for_power_attacks() -> void:
 	_near(rules.blocked_stagger({"blocked_percent": 0.0, "power": true}), 0.0, "not blocked")
 
 
+# ---- sneak attacks
+
+func _sneak(weapon_type: int, weapon := SWORD) -> Dictionary:
+	return {"weapon_damage": 10.0, "attack_mult": 1.0, "weapon": weapon, "weapon_type": weapon_type,
+		"attacker_sneaking": true, "target_unaware": true, "attacker_humanoid": true, "armor": []}
+
+
+func test_sneak_multiplier_per_weapon_type() -> void:
+	var expected := {1: 3.0, 2: 3.0, 3: 3.0, 4: 3.0, 5: 2.0, 6: 2.0, 7: 2.0, 8: 1.0, 9: 2.0}
+	for type: int in expected:
+		_near(rules.sneak_mult(_sneak(type)), expected[type], "type %d" % type)
+	_near(rules.damage(_sneak(2))["damage"], 30.0, "a dagger x3 in the damage")
+
+
+func test_sneak_fists_and_beasts() -> void:
+	_near(rules.sneak_mult(_sneak(0, 0)), 2.0, "fists")
+	var beast := _sneak(0, 0)
+	beast["attacker_humanoid"] = false
+	_near(rules.sneak_mult(beast), 1.0, "a beast's natural attack")
+
+
+func test_sneak_needs_sneaking_and_an_unaware_target() -> void:
+	var facts := _sneak(1)
+	facts["attacker_sneaking"] = false
+	_near(rules.sneak_mult(facts), 1.0, "not sneaking")
+	facts = _sneak(1)
+	facts["target_unaware"] = false
+	_near(rules.sneak_mult(facts), 1.0, "aware target")
+
+
+func test_sneak_uses_the_gmsts_and_the_perk_hook() -> void:
+	var facts := _sneak(1)
+	facts["settings"] = {"fCombatSneak1HSwordMult": 5.0}
+	_near(rules.sneak_mult(facts), 5.0, "GMST")
+	_near(rules.sneak_perk_mult(facts), 1.0, "no perks yet")
+
+
+class PerkRules extends AttackRules:
+	func sneak_perk_mult(_facts: Dictionary) -> float:
+		return 2.0
+
+
+func test_the_perk_hook_multiplies() -> void:
+	_near(PerkRules.new(data).sneak_mult(_sneak(2)), 6.0, "x3 x2")
+
+
+func test_a_sneak_attack_flags_the_hit() -> void:
+	data.facts = _sneak(2)
+	rules.hit(P, NPC, SWORD, 0, "", 0)
+	expect_eq(int(data.landed[0][6]) & 2, 2, "HIT_SNEAK")
+	data.facts = _sneak(2)
+	data.facts["target_unaware"] = false
+	rules.hit(P, NPC, SWORD, 0, "", 0)
+	expect_eq(int(data.landed[1][6]) & 2, 0, "no flag")
+
+
 # ---- reach, cone, stagger
 
 func test_reach_in_metres() -> void:

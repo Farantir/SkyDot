@@ -87,7 +87,13 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
         }
     }
 
+    // ActorTypeNPC (Skyrim.esm 0x13794): the attacker's race is a person's, not a beast's.
+    bool attacker_humanoid = true;
+    if (race != nullptr && race->keywords() != nullptr) {
+        attacker_humanoid = std::ranges::find(*race->keywords(), 0x13794U) != race->keywords()->end();
+    }
     double weapon_damage = 0.0;
+    std::int64_t weapon_type = 0;
     std::int32_t skill_av = -1;
     if (weapon != 0) {
         const auto* base = lookup(root->bases(), weapon);
@@ -96,6 +102,7 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
             weapon_damage = static_cast<double>(item->damage());
             skill_av = item->weapon_skill();
         }
+        weapon_type = item_info_of(weapon).weapon_type;
     } else if (race != nullptr) {
         weapon_damage = static_cast<double>(race->unarmed_damage());
     }
@@ -167,6 +174,18 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
     out["blocked"] = (flags & HIT_BLOCKED) != 0;
     out["block_skill"] = actors_.get(target, vm::av::k_first_skill + 3);  // Block 9
     out["target_unarmed"] = target_unarmed;
+    out["weapon_type"] = weapon_type;
+    out["attacker_humanoid"] = attacker_humanoid;
+    // PLACEHOLDER (A8): nobody sneaks yet; IsSneaking is a condition placeholder that answers 0 and the
+    // player has no sneak stance.
+    out["attacker_sneaking"] = false;
+    // Unaware: an NPC whose combat target is not the attacker. ESTIMATE: the player is always aware.
+    bool target_unaware = false;
+    if (target != k_player_ref) {
+        const auto& hooks = combat_.hooks();
+        target_unaware = !hooks.target || hooks.target(target) != attacker;
+    }
+    out["target_unaware"] = target_unaware;
     return out;
 }
 
@@ -200,17 +219,22 @@ Dictionary SkydotPapyrus::land_hit(std::int64_t attacker_id, std::int64_t target
     char line[400];
     int length = std::snprintf(line, sizeof line,
                   "combat: 0x%X hits 0x%X with 0x%X (%s): base %.3f x skill %.3f x attack %.3f x diff %.3f = %.3f, "
-                  "armor %.1f%% -> %.3f (health %.2f -> %.2f)",
+                  "x sneak %.3f, armor %.1f%% -> %.3f (health %.2f -> %.2f)",
                   attacker, target, weapon, event.c_str(), static_cast<double>(breakdown.get("base", 0.0)),
                   static_cast<double>(breakdown.get("skill", 1.0)), static_cast<double>(breakdown.get("attack", 1.0)),
                   static_cast<double>(breakdown.get("difficulty", 1.0)),
                   static_cast<double>(breakdown.get("weapon_damage", 0.0)),
+                  static_cast<double>(breakdown.get("sneak", 1.0)),
                   static_cast<double>(breakdown.get("armor_percent", 0.0)), damage, before, after);
     const double blocked_percent = breakdown.get("blocked_percent", 0.0);
     if (blocked_percent > 0.0 && length > 0 && static_cast<std::size_t>(length) < sizeof line) {
         std::snprintf(line + length, sizeof line - static_cast<std::size_t>(length), ", block %.1f%%", blocked_percent);
     }
     godot::UtilityFunctions::print(String::utf8(line));
+    const double sneak_mult = breakdown.get("sneak", 1.0);
+    if (attacker == k_player_ref && sneak_mult > 1.0) {
+        sneak_attack_notice(sneak_mult);
+    }
     if (target == k_player_ref) {
         combat_.set_last_damager(attacker);
         check_player_death();
@@ -271,6 +295,21 @@ void SkydotPapyrus::dragon_soul_absorbed() {
     const std::string text = g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0
                                  ? g->text_value()->str()
                                  : std::string("Dragon Soul Absorbed");
+    godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
+    emit_signal("message", natives::to_godot(text), false);
+}
+
+void SkydotPapyrus::sneak_attack_notice(double mult) {
+    const auto gmst = [&](const char* name, const char* fallback) {
+        const auto* g = world_.is_valid() ? WorldData::find_gmst(world_->data().root(), name) : nullptr;
+        return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? g->text_value()->str()
+                                                                                         : std::string(fallback);
+    };
+    char number[32];
+    std::snprintf(number, sizeof number, "%.1f", mult);
+    // "Sneak attack for " + "3.0" + "X damage!"
+    const std::string text = gmst("sSuccessfulSneakAttackMain", "Sneak attack for ") + number +
+                             gmst("sSuccessfulSneakAttackEnd", "X damage!");
     godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
     emit_signal("message", natives::to_godot(text), false);
 }

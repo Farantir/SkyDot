@@ -34,7 +34,19 @@ const SETTINGS := {
 	"fShieldBaseFactor": 0.45, "fShieldScalingFactor": 0.2, "fBlockWeaponBase": 0.3,
 	"fBlockWeaponScaling": 0.2, "fBlockAmountWeaponMult": 1.0, "fBlockAmountHandToHandMult": 1.0,
 	"fBlockPowerAttackMult": 0.66, "fStaminaBlockBase": 0.0, "fStaminaBlockDmgMult": 0.25,
+	# Sneak attacks. The bow value is UESP's (x2); fCombatSneakBowMult and fCombatSneakCrossbowMult are not
+	# in Skyrim.esm and the crossbow value is an ESTIMATE.
+	"fCombatSneak1HSwordMult": 3.0, "fCombatSneak1HDaggerMult": 3.0, "fCombatSneak1HAxeMult": 3.0,
+	"fCombatSneak1HMaceMult": 3.0, "fCombatSneak2HSwordMult": 2.0, "fCombatSneak2HAxeMult": 2.0,
+	"fCombatSneakHandMult": 2.0, "fCombatSneakBowMult": 2.0, "fCombatSneakCrossbowMult": 2.0,
 }
+## Weapon type (WEAP animation type) -> the sneak attack GMST; staffs (8) have none: x1.
+const SNEAK_GMST := {
+	1: "fCombatSneak1HSwordMult", 2: "fCombatSneak1HDaggerMult", 3: "fCombatSneak1HAxeMult",
+	4: "fCombatSneak1HMaceMult", 5: "fCombatSneak2HSwordMult", 6: "fCombatSneak2HAxeMult",  # warhammers are 6
+	7: "fCombatSneakBowMult", 9: "fCombatSneakCrossbowMult",
+}
+const HIT_SNEAK := 2
 const HIT_BLOCKED := 8
 ## UESP's measured cap of the blocked share, percent (the esm's fBlockMax is 0.7: not used).
 const BLOCK_CAP := 85.0
@@ -85,6 +97,8 @@ func hit(attacker: int, target: int, weapon: int, extra: int, event: String, fla
 	out["ammo"] = ammo
 	out["event"] = String(facts.get("event", event))
 	out["power"] = (flags & HIT_POWER) != 0
+	if float(out["sneak"]) > 1.0:
+		flags |= HIT_SNEAK
 	if float(out["blocked_percent"]) > 0.0:
 		_data.spend_stamina(target, block_stamina(out, facts.get("settings", {})))
 	else:
@@ -189,8 +203,26 @@ func armor_percent(facts: Dictionary, settings: Dictionary) -> Dictionary:
 	return {"rating": rating, "percent": minf(_setting(settings, "fMaxArmorRating"), percent)}
 
 
-## PLACEHOLDER (A8, sneaking): no sneak attack bonus yet.
-func sneak_mult(_facts: Dictionary) -> float:
+## The sneak attack multiplier: the attacker is sneaking and the target does not know of him (else 1),
+## the weapon type's GMST (fists x fCombatSneakHandMult; a beast's natural attacks x1, ESTIMATE; staffs
+## x1) times `sneak_perk_mult`. PLACEHOLDER (A8): C++ reports nobody sneaking yet.
+func sneak_mult(facts: Dictionary) -> float:
+	if not bool(facts.get("attacker_sneaking", false)) or not bool(facts.get("target_unaware", false)):
+		return 1.0
+	var settings: Dictionary = facts.get("settings", {})
+	var mult := 1.0
+	if int(facts.get("weapon", 0)) == 0:
+		if bool(facts.get("attacker_humanoid", true)):
+			mult = _setting(settings, "fCombatSneakHandMult")
+	elif SNEAK_GMST.has(int(facts.get("weapon_type", 0))):
+		mult = _setting(settings, SNEAK_GMST[int(facts["weapon_type"])])
+	return mult * sneak_perk_mult(facts)
+
+
+## The perks' share of the sneak attack multiplier. The engine has no perk system (entry points) yet:
+## Backstab (one-handed x6 instead of x3), Assassin's Blade (daggers x15) and Deadly Aim (bows x3) would
+## answer here through "Mod Sneak Attack Mult". A mod or a perk system overrides this.
+func sneak_perk_mult(_facts: Dictionary) -> float:
 	return 1.0
 
 

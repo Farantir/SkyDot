@@ -666,6 +666,8 @@ private:
     void send_on_death(std::uint32_t ref);
     /// A script raised the player's DragonSouls: the message sDragonSoulAcquired.
     void dragon_soul_absorbed();
+    /// The notification of a player's sneak attack of `mult` (land_hit).
+    void sneak_attack_notice(double mult);
     void bind_weapon_natives();
     void bind_sound_natives();
     void bind_quest_natives();
