@@ -23,6 +23,8 @@
 using namespace skydot::testing;
 using skydot::vm::Kind;
 using skydot::vm::Op;
+using skydot::vm::ScheduledActivate;
+using skydot::vm::ScheduledCall;
 using skydot::vm::Value;
 using Catch::Matchers::ContainsSubstring;
 
@@ -566,15 +568,14 @@ TEST_CASE("a save whose arrays hold arrays is refused", "[vm][save][errors]") {
 
 TEST_CASE("host calls scheduled on the VM's clock are saved and run once due", "[vm][save]") {
     SaverRig a(saver(), false);
-    std::vector<std::string> ran;
-    const auto record = [&ran](const std::string& kind, std::uint32_t x, std::uint32_t y, std::uint32_t z) {
-        ran.push_back(kind + ":" + std::to_string(x) + ":" + std::to_string(y) + ":" + std::to_string(z));
-    };
+    std::vector<ScheduledActivate> ran;
+    const auto record = [&ran](const ScheduledCall& call) { ran.push_back(std::get<ScheduledActivate>(call)); };
     a.vm().set_scheduled_handler(record);
-    a.vm().schedule(2.0, "activate", 7, 20, 2);
-    a.vm().schedule(0.0, "activate", 8, 20, 1);
+    a.vm().schedule(2.0, ScheduledActivate{7, 20, 2, true});
+    a.vm().schedule(0.0, ScheduledActivate{8, 20, 1, false});
     a.vm().update(0.5);
-    REQUIRE(ran == std::vector<std::string>{"activate:8:20:1"});
+    REQUIRE(ran.size() == 1);
+    CHECK(ran[0].target == 8);
     REQUIRE(a.vm().scheduled_count() == 1);
     const auto bytes = a.vm().save();
 
@@ -587,8 +588,38 @@ TEST_CASE("host calls scheduled on the VM's clock are saved and run once due", "
     b.vm().update(1.0);
     CHECK(ran.empty());
     b.vm().update(1.0);
-    CHECK(ran == std::vector<std::string>{"activate:7:20:2"});
+    REQUIRE(ran.size() == 1);
+    CHECK(ran[0].target == 7);
+    CHECK(ran[0].activator == 20);
+    CHECK(ran[0].source == 2);
+    CHECK(ran[0].default_only);
     CHECK(b.vm().scheduled_count() == 0);
+}
+
+TEST_CASE("detaching a reference drops the scheduled calls it takes part in, in any role", "[vm][save][detach]") {
+    SaverRig a(saver(), false);
+    a.vm().schedule(2.0, ScheduledActivate{7, 20, 0, false});
+    a.vm().schedule(2.0, ScheduledActivate{8, 21, 0, false});
+    a.vm().detach(20);
+    CHECK(a.vm().scheduled_count() == 1);
+    a.vm().detach(8);
+    CHECK(a.vm().scheduled_count() == 0);
+}
+
+TEST_CASE("a save with a scheduled call of unknown kind is refused", "[vm][save][errors]") {
+    SaverRig a(saver(), false);
+    a.vm().schedule(2.0, ScheduledActivate{7, 20, 0, false});
+    auto sections = split(a.vm().save());
+    auto& vmst = section(sections, "VMST");
+    const std::string kind = "activate";
+    const auto at = std::search(vmst.begin(), vmst.end(), kind.begin(), kind.end());
+    REQUIRE(at != vmst.end());
+    *(at + 7) = 'f'; // "activatf"
+    const auto bytes = build(sections);
+    SaverRig b(saver(), false);
+    std::string error;
+    CHECK_FALSE(b.vm().load(bytes, error));
+    CHECK_THAT(error, ContainsSubstring("unknown kind activatf"));
 }
 
 TEST_CASE("inventories add, remove and count per owner", "[vm][inventory]") {
@@ -751,8 +782,8 @@ TEST_CASE("detaching a reference drops its scripts, timers, threads, inventory a
     a.vm().inventory().add(0x20, 0x500, 2);
     a.vm().set_animation_state(0x10, {1, 2, 3});
     a.vm().set_animation_state(0x20, {4});
-    a.vm().schedule(2.0, "activate", 0x10, 0x14, 0);
-    a.vm().schedule(2.0, "activate", 0x20, 0x14, 0);
+    a.vm().schedule(2.0, ScheduledActivate{0x10, 0x14, 0, false});
+    a.vm().schedule(2.0, ScheduledActivate{0x20, 0x14, 0, false});
     REQUIRE(a.vm().thread_count() == 2);
 
     a.vm().detach(0x10);

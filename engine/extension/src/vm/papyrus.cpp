@@ -394,10 +394,10 @@ SkydotPapyrus::~SkydotPapyrus() {
 /// Host calls scheduled on the VM's clock: the activations of Activate and of
 /// activate children.
 void SkydotPapyrus::install_scheduled_handler() {
-    vm_->set_scheduled_handler([this](const std::string& kind, std::uint32_t a, std::uint32_t b, std::uint32_t c) {
-        if (kind == "activate") {
-            const Dictionary outcome = activate_ref(a, b, (c & 0x100u) != 0, c & 0xFFu, false);
-            emit_signal("activation_outcome", static_cast<std::int64_t>(a), outcome);
+    vm_->set_scheduled_handler([this](const vm::ScheduledCall& call) {
+        if (const auto* a = std::get_if<vm::ScheduledActivate>(&call)) {
+            const Dictionary outcome = activate_ref(a->target, a->activator, a->default_only, a->source, false);
+            emit_signal("activation_outcome", static_cast<std::int64_t>(a->target), outcome);
         }
     });
 }
@@ -877,7 +877,8 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     bool graph_raises_activation(std::uint32_t ref) const override { return owner_.graph_raises_activation(ref); }
     std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) override { return owner_.activate(ref, activator); }
     void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
-        owner_.vm_->schedule(delay, "activate", child, parent, static_cast<std::uint32_t>(ActivationSource::parent));
+        owner_.vm_->schedule(
+            delay, vm::ScheduledActivate{child, parent, static_cast<std::uint8_t>(ActivationSource::parent), false});
     }
     vm::ItemAccess& items() override { return owner_.item_; }
     std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }

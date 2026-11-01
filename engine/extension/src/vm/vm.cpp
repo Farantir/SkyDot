@@ -532,8 +532,8 @@ void Vm::fire_timers() {
     }
 }
 
-void Vm::schedule(double delay, std::string kind, std::uint32_t a, std::uint32_t b, std::uint32_t c) {
-    scheduled_.push_back({time_ + std::max(0.0, delay), std::move(kind), a, b, c});
+void Vm::schedule(double delay, ScheduledCall call) {
+    scheduled_.push_back({time_ + std::max(0.0, delay), std::move(call)});
 }
 
 void Vm::fire_scheduled() {
@@ -552,7 +552,7 @@ void Vm::fire_scheduled() {
         for (const auto& d : due) {
             again = true;
             if (scheduled_handler_) {
-                scheduled_handler_(d.kind, d.a, d.b, d.c);
+                scheduled_handler_(d.call);
             }
         }
     }
@@ -569,7 +569,7 @@ Vm::Vm() {
     forgets_.add_owned(
         "vm.scheduled",
         [this](std::uint32_t ref) {
-            std::erase_if(scheduled_, [&](const Scheduled& d) { return d.a == ref; });
+            std::erase_if(scheduled_, [&](const Scheduled& d) { return references(d.call, ref); });
         },
         [this] { return scheduled_.size(); });
 }
@@ -594,7 +594,7 @@ std::vector<std::uint32_t> Vm::attached_forms() const {
 void Vm::detach(std::uint32_t ref) {
     inventory_.erase(ref);
     animation_states_.erase(ref);
-    std::erase_if(scheduled_, [&](const Scheduled& d) { return d.a == ref; });
+    std::erase_if(scheduled_, [&](const Scheduled& d) { return references(d.call, ref); });
     detach_instances(ref);
 }
 

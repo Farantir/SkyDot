@@ -43,6 +43,7 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace skydot::vm {
@@ -96,6 +97,37 @@ struct Thread {
     bool done = false;
     bool keep_result = true; ///< False for events and setters.
     Value result;
+};
+
+/// The kinds of host call the VM keeps on its clock and saves.
+enum class ScheduledKind : std::uint8_t { activate };
+
+/// An activation of `target` by `activator`: `source` is an ActivationSource; `default_only` runs the default
+/// processing without the scripts' OnActivate.
+struct ScheduledActivate {
+    std::uint32_t target = 0;
+    std::uint32_t activator = 0;
+    std::uint8_t source = 0;
+    bool default_only = false;
+};
+
+using ScheduledCall = std::variant<ScheduledActivate>;
+
+[[nodiscard]] inline ScheduledKind kind_of(const ScheduledCall& call) {
+    return static_cast<ScheduledKind>(call.index());
+}
+
+/// Whether `call` involves reference `ref` in any role: the call is dropped when `ref` is forgotten.
+[[nodiscard]] inline bool references(const ScheduledCall& call, std::uint32_t ref) {
+    if (const auto* a = std::get_if<ScheduledActivate>(&call)) {
+        return a->target == ref || a->activator == ref;
+    }
+    return false;
+}
+
+struct Scheduled {
+    double due = 0.0;
+    ScheduledCall call;
 };
 
 class Vm;
@@ -220,11 +252,10 @@ public:
     /// seconds after that if positive. Replaces its earlier registration.
     /// A host call due after `delay` seconds of VM time: the host's own work
     /// (an activate child) kept with the VM's clock and saved with it. When
-    /// due, `handler` gets (kind, a, b, c) as scheduled.
-    using ScheduledHandler = std::function<void(const std::string& kind, std::uint32_t a, std::uint32_t b,
-                                                std::uint32_t c)>;
+    /// due, `handler` gets the call as scheduled.
+    using ScheduledHandler = std::function<void(const ScheduledCall&)>;
     void set_scheduled_handler(ScheduledHandler handler) { scheduled_handler_ = std::move(handler); }
-    void schedule(double delay, std::string kind, std::uint32_t a, std::uint32_t b = 0, std::uint32_t c = 0);
+    void schedule(double delay, ScheduledCall call);
     [[nodiscard]] std::size_t scheduled_count() const noexcept { return scheduled_.size(); }
 
     void register_update(Instance* instance, double delay, double interval);
@@ -280,11 +311,6 @@ public:
         Instance* instance = nullptr;
         std::uint32_t sender = 0;
         std::string event; ///< Lower case.
-    };
-    struct Scheduled {
-        double due = 0.0;
-        std::string kind;
-        std::uint32_t a = 0, b = 0, c = 0;
     };
     /// The VM's saved state decoded into new objects, not yet in use
     /// (`decode`), until `commit` swaps it in.

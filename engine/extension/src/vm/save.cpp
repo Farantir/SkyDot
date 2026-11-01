@@ -9,7 +9,8 @@
 //         count; id, keep_result, wake_at, wait_for, frames: function as
 //         class/state/name/handler, instance, self, registers, pc, result
 //         argument); results (thread id, value); timers (instance, due,
-//         interval); scheduled host calls (due, kind, a, b, c)
+//         interval); scheduled host calls (due, kind text,
+//         three u32 slots; kind "activate": target, activator, source | 0x100 if default only)
 //   INVT  u32 owner count; per owner: owner ref, u32 item count, then item
 //         form, i64 count each
 //   ANIM  u32 count; per reference: ref, u32 length, that many bytes (a
@@ -45,6 +46,7 @@
 #include <functional>
 #include <map>
 #include <set>
+#include <string_view>
 
 namespace skydot::vm {
 
@@ -73,6 +75,9 @@ constexpr std::size_t k_thread_min_bytes = 8 + 1 + 8 + 4 + 4;
 constexpr std::size_t k_result_min_bytes = 8 + k_value_min_bytes;
 /// A timer: instance index (u32), due (f64), interval (f64).
 constexpr std::size_t k_timer_min_bytes = 4 + 8 + 8;
+/// The kind text of a scheduled activation, and the bit of its third slot for default processing only.
+constexpr std::string_view k_scheduled_activate = "activate";
+constexpr std::uint32_t k_scheduled_default_only = 0x100;
 /// A scheduled call: due (f64), kind (u32 length), three arguments (u32 each).
 constexpr std::size_t k_scheduled_min_bytes = 8 + 4 + 3 * 4;
 /// An INVT owner: owner (u32), item count (u32).
@@ -259,10 +264,17 @@ void Vm::save_to(save::SaveWriter& out) const {
     for (const auto& d : scheduled_) {
         const auto start = w.out.size();
         w.f64(d.due);
-        w.text(d.kind);
-        w.u32(d.a);
-        w.u32(d.b);
-        w.u32(d.c);
+        // Each kind keeps its text and three slots.
+        switch (kind_of(d.call)) {
+        case ScheduledKind::activate: {
+            const auto& a = std::get<ScheduledActivate>(d.call);
+            w.text(k_scheduled_activate);
+            w.u32(a.target);
+            w.u32(a.activator);
+            w.u32(a.source | (a.default_only ? k_scheduled_default_only : 0U));
+            break;
+        }
+        }
         w.check_record(start, k_scheduled_min_bytes);
     }
     out.add("VMST", k_section_version, w.out);
@@ -661,8 +673,15 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     }
     for (std::uint32_t n = 0; n < count; ++n) {
         Scheduled d;
-        if (!r.f64(d.due) || !r.text(d.kind) || !r.u32(d.a) || !r.u32(d.b) || !r.u32(d.c)) {
+        std::string kind;
+        std::uint32_t a = 0, b = 0, c = 0;
+        if (!r.f64(d.due) || !r.text(kind) || !r.u32(a) || !r.u32(b) || !r.u32(c)) {
             return fail(truncated);
+        }
+        if (kind == k_scheduled_activate) {
+            d.call = ScheduledActivate{a, b, static_cast<std::uint8_t>(c & 0xFFU), (c & k_scheduled_default_only) != 0};
+        } else {
+            return fail("the save has a scheduled call of unknown kind " + kind);
         }
         out.scheduled.push_back(std::move(d));
     }

@@ -176,8 +176,8 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     v.bind("ObjectReference", "Activate", [](NativeCall& c) {
         // Next VM update, on the VM's clock (and in its saves), not inside this call.
         const std::uint32_t activator = arg(c, 0).form() != 0 ? arg(c, 0).form() : k_player_ref;
-        c.vm.schedule(0.0, "activate", c.self.form(), activator,
-                      static_cast<std::uint32_t>(ActivationSource::script) | (Vm::truthy(arg(c, 1)) ? 0x100u : 0u));
+        c.vm.schedule(0.0, ScheduledActivate{c.self.form(), activator, static_cast<std::uint8_t>(ActivationSource::script),
+                                             Vm::truthy(arg(c, 1))});
         return result(Value::boolean(true));
     });
     v.bind("ObjectReference", "BlockActivation", [&host](NativeCall& c) {

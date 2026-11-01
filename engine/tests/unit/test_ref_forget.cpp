@@ -117,7 +117,7 @@ TEST_CASE("10,000 references with scripts, timers, threads and inventory leave e
         vm.register_update(instance, 5.0, 5.0);
         vm.inventory().add(ref, 0x1000, 3);
         vm.set_animation_state(ref, {1, 2, 3});
-        vm.schedule(10.0, "activate", ref);
+        vm.schedule(10.0, skydot::vm::ScheduledActivate{ref, 0, 0, false});
         vm.update(0.0);
         vm.forgets().forget(ref);
         vm.update(0.01);
