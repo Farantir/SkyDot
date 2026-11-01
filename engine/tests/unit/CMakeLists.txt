@@ -33,6 +33,7 @@ add_executable(skydot_core_tests
     test_magic_natives.cpp
     test_casting.cpp
     test_enchanting.cpp
+    test_finish_grace.cpp
     test_large_refs.cpp
     test_leveled.cpp
     test_mapped_file.cpp

@@ -19,6 +19,7 @@
 #include "magic/active_effects.hpp"
 #include "magic/casting.hpp"
 #include "magic/enchanted.hpp"
+#include "magic/finish_grace.hpp"
 #include "magic/magic_save.hpp"
 #include "magic/shouts.hpp"
 #include "magic/spell_lists.hpp"
@@ -119,7 +120,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
             "magic.script_effects",
             [this](std::uint32_t id) {
                 snapshots.erase(id);
-                std::erase_if(detach_later, [id](const auto& d) { return d.first == id; });
+                detach_later.forget(id);
             },
             [this] { return snapshots.size() + detach_later.size(); }));
     }
@@ -147,8 +148,8 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     bool flushing = false;
     /// Effects that have script objects: handle -> the last view, kept until the object is gone.
     std::map<std::uint32_t, magic::EffectView> snapshots;
-    /// Handles to detach, with the updates left to wait (a script gets its OnEffectFinish first).
-    std::vector<std::pair<std::uint32_t, int>> detach_later;
+    /// Handles to detach, once the VM seconds of grace passed (a script gets its OnEffectFinish first).
+    magic::FinishGrace detach_later;
     bool abilities_primed = false;
     std::vector<vm::ForgetRegistry::Registration> forgets;
 
@@ -670,7 +671,7 @@ void SkydotPapyrus::flush_magic_events() {
                 vm_->send_event(v.id, "OnEffectStart", {target, caster});
             } else {
                 vm_->send_event(v.id, "OnEffectFinish", {target, caster});
-                m->detach_later.emplace_back(v.id, 2);
+                m->detach_later.add(v.id);
             }
         }
     }
@@ -689,15 +690,10 @@ void SkydotPapyrus::tick_magic(double seconds) {
     }
     m->shouts.tick(seconds); // real seconds (docs/adr/0008)
     flush_magic_events();
-    // Script objects of finished effects go once their OnEffectFinish had its updates.
-    for (auto it = m->detach_later.begin(); it != m->detach_later.end();) {
-        if (--it->second <= 0) {
-            vm_->detach(it->first);
-            m->snapshots.erase(it->first);
-            it = m->detach_later.erase(it);
-        } else {
-            ++it;
-        }
+    // Script objects of finished effects go once their OnEffectFinish had its updates (VM seconds).
+    for (const std::uint32_t id : m->detach_later.tick(seconds)) {
+        vm_->detach(id);
+        m->snapshots.erase(id);
     }
 }
 
@@ -1166,6 +1162,13 @@ void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effec
             (void)magic::ShoutBook::load(save::ByteReader(shouts), m->shouts);
         }
         (void)m->effects.load(save::ByteReader(effects));
+    }
+    // The VM was restored first: script objects of effects that are over (finished before the save, or not in the
+    // loaded effects) have nothing to belong to; they get their grace for a handler under way, then go.
+    for (const std::uint32_t form : vm_->attached_forms()) {
+        if (vm::id_ranges::effect_instances.contains(form) && !m->effects.instance(form)) {
+            m->detach_later.add(form);
+        }
     }
     // Abilities are not saved: start them again for whoever is known.
     m->book.reset_abilities();
