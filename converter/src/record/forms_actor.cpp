@@ -2,6 +2,7 @@
 #include "bethconv/record/forms_actor.hpp"
 
 #include <optional>
+#include <type_traits>
 #include <utility>
 
 namespace bethconv::record {
@@ -238,6 +239,56 @@ io::ParseResult<LeveledItem> parse_leveled_spell(io::SpanReader& data, const For
     return parse_leveled_list(data, ctx, FourCC{"LVSP"});
 }
 
+namespace {
+
+/// RACE DATA: the words the world reads, at `Race::DataLayout`'s offsets. A
+/// group is read only when the field reaches the end of its last word.
+void read_race_data(std::optional<io::ParseError>& failure, Race& out) {
+    using L = Race::DataLayout;
+    const std::size_t size = out.data.size();
+    const auto at = [&](std::size_t offset, auto& dst) {
+        io::SpanReader d(out.data, "RACE DATA");
+        skip_bytes(failure, d, offset);
+        using T = std::remove_reference_t<decltype(dst)>;
+        take(failure, d.get<T>(), dst);
+    };
+    if (size >= L::k_end_of_flags) {
+        at(L::k_height, out.height[0]);
+        at(L::k_height + sizeof(float), out.height[1]);
+        at(L::k_weight, out.weight[0]);
+        at(L::k_weight + sizeof(float), out.weight[1]);
+        at(L::k_flags, out.flags);
+    }
+    if (!failure && size >= L::k_end_of_regen) {
+        for (std::size_t i = 0; i < out.skill_boosts.size(); ++i) {
+            at(L::k_skill_boosts + i, out.skill_boosts[i]);
+        }
+        at(L::k_start_health, out.start_health);
+        at(L::k_start_magicka, out.start_magicka);
+        at(L::k_start_stamina, out.start_stamina);
+        at(L::k_carry_weight, out.carry_weight);
+        at(L::k_health_regen, out.health_regen);
+        at(L::k_magicka_regen, out.magicka_regen);
+        at(L::k_stamina_regen, out.stamina_regen);
+    }
+    if (!failure && size >= L::k_end_of_unarmed) {
+        at(L::k_unarmed_damage, out.unarmed_damage);
+        at(L::k_unarmed_reach, out.unarmed_reach);
+    }
+    if (!failure && size >= L::k_end_of_injured) {
+        at(L::k_injured_health, out.injured_health);
+    }
+    if (!failure && size >= L::k_end_of_flags2) {
+        at(L::k_aim_angle_tolerance, out.aim_angle_tolerance);
+        at(L::k_flight_radius, out.flight_radius);
+        at(L::k_angular_acceleration, out.angular_acceleration);
+        at(L::k_angular_tolerance, out.angular_tolerance);
+        at(L::k_flags2, out.flags2);
+    }
+}
+
+} // namespace
+
 io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
     Race out;
     const BaseObjectFields into{.editor_id = &out.editor_id, .name = &out.name, .keywords = &out.keywords};
@@ -340,49 +391,8 @@ io::ParseResult<Race> parse_race(io::SpanReader& data, const FormContext& ctx) {
                 take(failure, read_zstring(body), out.attacks.back().event);
             } else if (t == FourCC{"DATA"}) {
                 take(failure, read_verbatim(body), out.data);
-                if (!failure && out.data.size() >= 36) {
-                    io::SpanReader d(out.data, "RACE DATA");
-                    (void)d.skip(16);
-                    take(failure, d.get<float>(), out.height[0]);
-                    take(failure, d.get<float>(), out.height[1]);
-                    take(failure, d.get<float>(), out.weight[0]);
-                    take(failure, d.get<float>(), out.weight[1]);
-                    take(failure, d.get<std::uint32_t>(), out.flags);
-                }
-                if (!failure && out.data.size() >= 96) {
-                    io::SpanReader d(out.data, "RACE DATA");
-                    for (std::uint8_t& b : out.skill_boosts) {
-                        take(failure, d.get<std::uint8_t>(), b);
-                    }
-                    (void)d.skip(22);
-                    take(failure, d.get<float>(), out.start_health);
-                    take(failure, d.get<float>(), out.start_magicka);
-                    take(failure, d.get<float>(), out.start_stamina);
-                    take(failure, d.get<float>(), out.carry_weight);
-                    (void)d.skip(32);
-                    take(failure, d.get<float>(), out.health_regen);
-                    take(failure, d.get<float>(), out.magicka_regen);
-                    take(failure, d.get<float>(), out.stamina_regen);
-                }
-                if (!failure && out.data.size() >= 104) {
-                    io::SpanReader d(out.data, "RACE DATA");
-                    (void)d.skip(96);
-                    take(failure, d.get<float>(), out.unarmed_damage);
-                    take(failure, d.get<float>(), out.unarmed_reach);
-                }
-                if (!failure && out.data.size() >= 80) {
-                    io::SpanReader d(out.data, "RACE DATA");
-                    (void)d.skip(76);
-                    take(failure, d.get<float>(), out.injured_health);
-                }
-                if (!failure && out.data.size() >= 128) {
-                    io::SpanReader d(out.data, "RACE DATA");
-                    (void)d.skip(108);
-                    take(failure, d.get<float>(), out.aim_angle_tolerance);
-                    take(failure, d.get<float>(), out.flight_radius);
-                    take(failure, d.get<float>(), out.angular_acceleration);
-                    take(failure, d.get<float>(), out.angular_tolerance);
-                    take(failure, d.get<std::uint32_t>(), out.flags2);
+                if (!failure) {
+                    read_race_data(failure, out);
                 }
             } else if (read_base_object_field(into, FourCC{"RACE"}, field, body, ctx, failure)) {
                 return true;

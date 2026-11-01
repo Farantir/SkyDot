@@ -126,6 +126,45 @@ struct Race {
     BodyTemplate body;
     /// DATA, 164 bytes on all 204: kept whole; the heights and flags read.
     std::vector<std::byte> data;
+
+    /// Byte offsets of the DATA words that are read, after xEdit's RACE DATA
+    /// (wbDefinitionsTES5). Each group is only read when the field reaches the
+    /// end of its last word (LE records stop at 128 bytes). Bytes 14..15,
+    /// 52..75 and 80..95 are not read.
+    struct DataLayout {
+        // Height, weight, flags: 16 male height, 20 female height, 24 male
+        // weight, 28 female weight, 32 flags.
+        static constexpr std::size_t k_height = 16;
+        static constexpr std::size_t k_weight = 24;
+        static constexpr std::size_t k_flags = 32;
+        static constexpr std::size_t k_end_of_flags = 36;
+        // Seven (actor value, boost) pairs from byte 0, then the starting
+        // values, carry weight and regeneration.
+        static constexpr std::size_t k_skill_boosts = 0;
+        static constexpr std::size_t k_start_health = 36;
+        static constexpr std::size_t k_start_magicka = 40;
+        static constexpr std::size_t k_start_stamina = 44;
+        static constexpr std::size_t k_carry_weight = 48;
+        static constexpr std::size_t k_health_regen = 84;
+        static constexpr std::size_t k_magicka_regen = 88;
+        static constexpr std::size_t k_stamina_regen = 92;
+        static constexpr std::size_t k_end_of_regen = 96;
+        // Unarmed damage and reach.
+        static constexpr std::size_t k_unarmed_damage = 96;
+        static constexpr std::size_t k_unarmed_reach = 100;
+        static constexpr std::size_t k_end_of_unarmed = 104;
+        // The injured health fraction.
+        static constexpr std::size_t k_injured_health = 76;
+        static constexpr std::size_t k_end_of_injured = 80;
+        // Aim angle tolerance, flight radius, angular acceleration and
+        // tolerance, then the second flag word.
+        static constexpr std::size_t k_aim_angle_tolerance = 108;
+        static constexpr std::size_t k_flight_radius = 112;
+        static constexpr std::size_t k_angular_acceleration = 116;
+        static constexpr std::size_t k_angular_tolerance = 120;
+        static constexpr std::size_t k_flags2 = 124;
+        static constexpr std::size_t k_end_of_flags2 = 128;
+    };
     std::array<float, 2> height{1, 1}; ///< male, female
     std::array<float, 2> weight{1, 1};
     std::uint32_t flags{};             ///< DATA flags: 1 playable, …
