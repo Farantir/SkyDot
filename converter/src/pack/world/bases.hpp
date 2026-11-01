@@ -152,10 +152,12 @@ private:
                    const record::FormContext& form_ctx);
     void on_combat_style(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
-    void on_keyword(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_keyword(const record::MergedRecord& merged, io::SpanReader& data,
+                    const record::FormContext& form_ctx);
     void on_message(const record::MergedRecord& merged, io::SpanReader& data,
                     const record::FormContext& form_ctx);
-    void on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data,
+                               const record::FormContext& form_ctx);
     void on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
                        const record::FormContext& form_ctx);
     void on_texture_set(const record::MergedRecord& merged, io::SpanReader& data,

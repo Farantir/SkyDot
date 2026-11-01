@@ -901,8 +901,78 @@ struct Package {
     }
 };
 
+/// KYWD: a keyword. Only the editor id carries meaning; `Keyword.GetKeyword`
+/// looks keywords up by it.
+struct KeywordRecord {
+    std::string editor_id;
+};
+
+/// MESG: a message. Display time, icon, quest and the buttons' conditions are
+/// not read.
+struct Message {
+    std::string editor_id;
+    std::string title;                ///< FULL
+    std::string text;                 ///< DESC
+    std::vector<std::string> buttons; ///< ITXT, one per button.
+    /// DNAM: bit 0 message box, bit 1 auto display. A short field leaves 0.
+    std::uint32_t flags{};
+};
+
+/// SNDR: a sound descriptor. Layouts checked against Skyrim.esm.
+struct SoundDescriptor {
+    std::string editor_id;
+    std::vector<std::string> files; ///< ANAM, relative to Data\\Sound, with or without that prefix.
+    std::uint32_t descriptor_type{}; ///< CNAM
+    FormId category;                 ///< GNAM
+    FormId output_model;             ///< ONAM, a SOPM.
+
+    /// LNAM, 4 bytes: byte 0 unused, byte 1 looping. Skipped unless 2 bytes.
+    std::uint8_t looping{};
+
+    /// BNAM, 6 bytes: frequency shift and variance (signed), priority, dB
+    /// variance, static attenuation. Skipped unless the full 6 bytes.
+    std::int8_t frequency_shift{};
+    std::int8_t frequency_variance{};
+    std::uint8_t priority{};
+    std::uint8_t db_variance{};
+    std::uint16_t static_attenuation{};
+    static constexpr std::size_t k_lnam_size = 2;
+    static constexpr std::size_t k_bnam_size = 6;
+};
+
+/// SOUN: a sound marker. The old inline sound (FNAM, SNDD) is not read.
+struct SoundMarker {
+    std::string editor_id;
+    FormId descriptor; ///< SDSC, a SNDR.
+};
+
+/// SOPM: a sound output model.
+struct SoundOutputModel {
+    std::string editor_id;
+    std::uint8_t flags{}; ///< NAM1, byte 0.
+    std::uint32_t type{}; ///< MNAM
+
+    /// ANAM, 20 bytes: 4 reserved, min and max distance, 5 curve bytes, 3
+    /// reserved. Skipped unless the full 20 bytes are there.
+    float min_distance{};
+    float max_distance{};
+    std::vector<std::uint8_t> curve;
+    static constexpr std::size_t k_anam_size = 20;
+    static constexpr std::size_t k_anam_reserved = 4;
+    static constexpr std::size_t k_curve_points = 5;
+};
+
 // ---- parsing --------------------------------------------------------------
 
+[[nodiscard]] io::ParseResult<KeywordRecord> parse_keyword(io::SpanReader& data,
+                                                           const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Message> parse_message(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
+                                                                      const FormContext& ctx);
+[[nodiscard]] io::ParseResult<SoundMarker> parse_sound_marker(io::SpanReader& data,
+                                                              const FormContext& ctx);
+[[nodiscard]] io::ParseResult<SoundOutputModel> parse_sound_output_model(io::SpanReader& data,
+                                                                         const FormContext& ctx);
 [[nodiscard]] io::ParseResult<GameSetting> parse_game_setting(io::SpanReader& data,
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<GlobalVariable> parse_global(io::SpanReader& data,

@@ -50,7 +50,7 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
                             const record::FormContext& form_ctx) {
     switch (merged.type.value) {
     case FourCC{"KYWD"}.value:
-        on_keyword(merged, data);
+        on_keyword(merged, data, form_ctx);
         break;
     case FourCC{"MESG"}.value:
         on_message(merged, data, form_ctx);
@@ -86,7 +86,7 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         on_sound_marker(merged, data, form_ctx);
         break;
     case FourCC{"SOPM"}.value:
-        on_sound_output_model(merged, data);
+        on_sound_output_model(merged, data, form_ctx);
         break;
     case FourCC{"EXPL"}.value:
         on_explosion(merged, data);
@@ -409,39 +409,30 @@ void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanRe
 /// to Data\\Sound, with or without that prefix), CNAM type, GNAM category,
 /// ONAM output model, LNAM 4 bytes (byte 1 looping), BNAM 6 bytes.
 void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::SpanReader& data,
-                                        const record::FormContext&) {
-    wfb::SoundDescriptorT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"ANAM"}) {
-                if (auto path = sound_vpath(body.zstring().value_or("")); !path.empty()) {
-                    out.files.push_back(std::move(path));
-                }
-            } else if (field.type == FourCC{"CNAM"}) {
-                out.descriptor_type = body.get<std::uint32_t>().value_or(0);
-            } else if (field.type == FourCC{"GNAM"}) {
-                out.category = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
-            } else if (field.type == FourCC{"ONAM"}) {
-                out.output_model = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
-            } else if (field.type == FourCC{"LNAM"} && body.remaining() >= 2) {
-                (void)body.get<std::uint8_t>();
-                out.looping = body.get<std::uint8_t>().value_or(0);
-            } else if (field.type == FourCC{"BNAM"} && body.remaining() >= 6) {
-                out.frequency_shift = static_cast<std::int8_t>(body.get<std::uint8_t>().value_or(0));
-                out.frequency_variance = static_cast<std::int8_t>(body.get<std::uint8_t>().value_or(0));
-                out.priority = body.get<std::uint8_t>().value_or(0);
-                out.db_variance = body.get<std::uint8_t>().value_or(0);
-                out.static_attenuation = body.get<std::uint16_t>().value_or(0);
-            }
-        });
-    if (!walked) {
+                                        const record::FormContext& form_ctx) {
+    auto sndr = record::parse_sound_descriptor(data, form_ctx);
+    if (!sndr) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::SoundDescriptorT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    out.editor_id = sndr->editor_id;
+    for (const auto& file : sndr->files) {
+        if (auto path = sound_vpath(file); !path.empty()) {
+            out.files.push_back(std::move(path));
+        }
+    }
+    out.descriptor_type = sndr->descriptor_type;
+    out.category = shared_.global(merged, sndr->category, failed);
+    out.output_model = shared_.global(merged, sndr->output_model, failed);
+    out.looping = sndr->looping;
+    out.frequency_shift = sndr->frequency_shift;
+    out.frequency_variance = sndr->frequency_variance;
+    out.priority = sndr->priority;
+    out.db_variance = sndr->db_variance;
+    out.static_attenuation = sndr->static_attenuation;
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -450,22 +441,17 @@ void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::
 
 /// SOUN: EDID and SDSC. The old inline sound (FNAM, SNDD) is not read.
 void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
-                                    const record::FormContext&) {
-    wfb::SoundMarkerT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"SDSC"}) {
-                out.descriptor = shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
-            }
-        });
-    if (!walked) {
+                                    const record::FormContext& form_ctx) {
+    auto soun = record::parse_sound_marker(data, form_ctx);
+    if (!soun) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::SoundMarkerT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    out.editor_id = soun->editor_id;
+    out.descriptor = shared_.global(merged, soun->descriptor, failed);
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -516,19 +502,16 @@ void BaseCollector::on_explosion(const record::MergedRecord& merged, io::SpanRea
 }
 
 /// KYWD: only the editor id, which `Keyword.GetKeyword` looks up.
-void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::KeywordT out;
-    out.id = merged.form.value;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            }
-        });
-    if (!walked) {
+void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReader& data,
+                               const record::FormContext& form_ctx) {
+    auto kywd = record::parse_keyword(data, form_ctx);
+    if (!kywd) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::KeywordT out;
+    out.id = merged.form.value;
+    out.editor_id = kywd->editor_id;
     keywords_[out.id] = std::move(out);
 }
 
@@ -537,67 +520,38 @@ void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReade
 /// conditions are left out.
 void BaseCollector::on_message(const record::MergedRecord& merged, io::SpanReader& data,
                                const record::FormContext& form_ctx) {
-    wfb::MessageT out;
-    out.id = merged.form.value;
-    std::optional<io::ParseError> failure;
-    const auto text = [&](const record::FieldHeader& field, io::SpanReader& body,
-                          record::StringKind kind) {
-        auto read = record::read_lstring(body, form_ctx, FourCC{"MESG"}, field.type, kind);
-        if (!read) {
-            if (!failure) {
-                failure = std::move(read).error();
-            }
-            return std::string{};
-        }
-        return read->text;
-    };
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"FULL"}) {
-                out.title = text(field, body, record::StringKind::plain);
-            } else if (field.type == FourCC{"DESC"}) {
-                out.text = text(field, body, record::StringKind::description);
-            } else if (field.type == FourCC{"ITXT"}) {
-                out.buttons.push_back(text(field, body, record::StringKind::plain));
-            } else if (field.type == FourCC{"DNAM"}) {
-                out.flags = static_cast<wfb::MessageFlags>(body.get<std::uint32_t>().value_or(0));
-            }
-        });
-    if (!walked || failure) {
+    auto mesg = record::parse_message(data, form_ctx);
+    if (!mesg) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::MessageT out;
+    out.id = merged.form.value;
+    out.editor_id = mesg->editor_id;
+    out.title = mesg->title;
+    out.text = mesg->text;
+    out.buttons = mesg->buttons;
+    out.flags = static_cast<wfb::MessageFlags>(mesg->flags);
     messages_[out.id] = std::move(out);
 }
 
 /// SOPM: NAM1 (byte 0 flags), MNAM type, ANAM 20 bytes: 4 reserved, min and
 /// max distance floats, 5 curve bytes, 3 reserved.
-void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::SoundOutputModelT out;
-    out.id = merged.form.value;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"NAM1"}) {
-                out.flags = body.get<std::uint8_t>().value_or(0);
-            } else if (field.type == FourCC{"MNAM"}) {
-                out.type = body.get<std::uint32_t>().value_or(0);
-            } else if (field.type == FourCC{"ANAM"} && body.remaining() >= 20) {
-                (void)body.skip(4);
-                out.min_distance = body.get<float>().value_or(0.0F);
-                out.max_distance = body.get<float>().value_or(0.0F);
-                for (int i = 0; i < 5; ++i) {
-                    out.curve.push_back(body.get<std::uint8_t>().value_or(0));
-                }
-            }
-        });
-    if (!walked) {
+void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data,
+                                          const record::FormContext& form_ctx) {
+    auto sopm = record::parse_sound_output_model(data, form_ctx);
+    if (!sopm) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::SoundOutputModelT out;
+    out.id = merged.form.value;
+    out.editor_id = sopm->editor_id;
+    out.flags = sopm->flags;
+    out.type = sopm->type;
+    out.min_distance = sopm->min_distance;
+    out.max_distance = sopm->max_distance;
+    out.curve.assign(sopm->curve.begin(), sopm->curve.end());
     sound_output_models_[out.id] = std::move(out);
 }
 

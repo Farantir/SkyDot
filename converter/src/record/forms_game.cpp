@@ -1612,4 +1612,157 @@ io::ParseResult<Package> parse_package(io::SpanReader& data, const FormContext& 
     return out;
 }
 
+// ---- KYWD, MESG, SNDR, SOUN, SOPM -----------------------------------------
+
+io::ParseResult<KeywordRecord> parse_keyword(io::SpanReader& data, const FormContext& ctx) {
+    KeywordRecord out;
+    const auto walked = walk_fields(
+        data, FourCC{"KYWD"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type != FourCC{"EDID"}) {
+                return false;
+            }
+            take(failure, read_zstring(body), out.editor_id);
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<Message> parse_message(io::SpanReader& data, const FormContext& ctx) {
+    Message out;
+    const auto text = [&](const FieldHeader& field, io::SpanReader& body, StringKind kind,
+                          std::optional<io::ParseError>& failure) {
+        LString read;
+        take(failure, read_lstring(body, ctx, FourCC{"MESG"}, field.type, kind), read);
+        return std::move(read.text);
+    };
+    const auto walked = walk_fields(
+        data, FourCC{"MESG"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"FULL"}) {
+                out.title = text(field, body, StringKind::plain, failure);
+            } else if (field.type == FourCC{"DESC"}) {
+                out.text = text(field, body, StringKind::description, failure);
+            } else if (field.type == FourCC{"ITXT"}) {
+                out.buttons.push_back(text(field, body, StringKind::plain, failure));
+            } else if (field.type == FourCC{"DNAM"}) {
+                take_whole(failure, body, out.flags);
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
+                                                        const FormContext& ctx) {
+    SoundDescriptor out;
+    const auto walked = walk_fields(
+        data, FourCC{"SNDR"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"ANAM"}) {
+                std::string file;
+                take(failure, read_zstring(body), file);
+                out.files.push_back(std::move(file));
+            } else if (field.type == FourCC{"CNAM"}) {
+                take_whole(failure, body, out.descriptor_type);
+            } else if (field.type == FourCC{"GNAM"}) {
+                take_whole(failure, body, out.category);
+            } else if (field.type == FourCC{"ONAM"}) {
+                take_whole(failure, body, out.output_model);
+            } else if (field.type == FourCC{"LNAM"}) {
+                if (body.remaining() >= SoundDescriptor::k_lnam_size) {
+                    skip_bytes(failure, body, 1);
+                    take(failure, body.get<std::uint8_t>(), out.looping);
+                }
+            } else if (field.type == FourCC{"BNAM"}) {
+                if (body.remaining() >= SoundDescriptor::k_bnam_size) {
+                    take(failure, body.get<std::int8_t>(), out.frequency_shift);
+                    take(failure, body.get<std::int8_t>(), out.frequency_variance);
+                    take(failure, body.get<std::uint8_t>(), out.priority);
+                    take(failure, body.get<std::uint8_t>(), out.db_variance);
+                    take(failure, body.get<std::uint16_t>(), out.static_attenuation);
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<SoundMarker> parse_sound_marker(io::SpanReader& data, const FormContext& ctx) {
+    SoundMarker out;
+    const auto walked = walk_fields(
+        data, FourCC{"SOUN"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"SDSC"}) {
+                take_whole(failure, body, out.descriptor);
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<SoundOutputModel> parse_sound_output_model(io::SpanReader& data,
+                                                           const FormContext& ctx) {
+    SoundOutputModel out;
+    const auto walked = walk_fields(
+        data, FourCC{"SOPM"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"NAM1"}) {
+                take_whole(failure, body, out.flags);
+            } else if (field.type == FourCC{"MNAM"}) {
+                take_whole(failure, body, out.type);
+            } else if (field.type == FourCC{"ANAM"}) {
+                if (body.remaining() >= SoundOutputModel::k_anam_size) {
+                    skip_bytes(failure, body, SoundOutputModel::k_anam_reserved);
+                    take(failure, body.get<float>(), out.min_distance);
+                    take(failure, body.get<float>(), out.max_distance);
+                    for (std::size_t i = 0; i < SoundOutputModel::k_curve_points; ++i) {
+                        std::uint8_t point{};
+                        take(failure, body.get<std::uint8_t>(), point);
+                        out.curve.push_back(point);
+                    }
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+
 } // namespace bethconv::record

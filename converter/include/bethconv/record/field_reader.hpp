@@ -237,6 +237,25 @@ inline void skip_bytes(std::optional<io::ParseError>& failure, io::SpanReader& b
     }
 }
 
+/// Read a scalar from a field that plugins have been seen to cut short: a
+/// payload too small for `T` leaves `dst` as it was and is not a failure.
+/// Only for fields the converter always tolerated truncated; anything else
+/// should use `take`.
+template <typename T>
+void take_whole(std::optional<io::ParseError>& failure, io::SpanReader& body, T& dst) {
+    if (body.remaining() >= sizeof(T)) {
+        take(failure, body.get<T>(), dst);
+    }
+}
+
+/// As above for a FormID stored as one 32-bit word.
+inline void take_whole(std::optional<io::ParseError>& failure, io::SpanReader& body,
+                       FormId& dst) {
+    std::uint32_t raw = dst.value;
+    take_whole(failure, body, raw);
+    dst = FormId{raw};
+}
+
 /// Common per-type parse: walk the fields, let `dispatch` claim known ones and
 /// tally the rest.
 ///
