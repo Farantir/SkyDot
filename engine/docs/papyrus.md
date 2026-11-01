@@ -332,7 +332,10 @@ the work still to come):
 ## Magic
 
 Spells, effects and potions run in `magic/` (docs/adr/0008-active-magic-effects.md);
-`vm/papyrus_magic.cpp` is the glue. The natives are Godot-free and call the game
+`vm::MagicRuntime` (`vm/magic_runtime.{hpp,cpp}`, Godot-free) owns the effects, spell
+book, shouts and worn enchantments and answers `MagicApi`; `vm/papyrus_magic.cpp`,
+`papyrus_casting.cpp`, `papyrus_shouts.cpp` and `papyrus_enchantment_effects.cpp` are the
+Godot glue. The natives are Godot-free and call the game
 through `MagicApi` (`vm/natives_magic.hpp`): `Spell` (`natives_spell.cpp`: Cast,
 RemoteCast, GetMagickaCost, GetEffectiveMagickaCost, GetCastTime, IsHostile, the
 `GetNthEffect...` family, GetPerk), `MagicEffect` (`natives_magiceffect.cpp`:

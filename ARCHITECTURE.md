@@ -1052,11 +1052,11 @@ The VM is in `engine/extension/src/vm/` and documented in
   `SkydotWorld`, loads classes from script assets, attaches base and
   reference scripts with VMAD property values (`attach`, `attach_cell`,
   `attach_built` with `OnLoad`), feeds the triggers (`update_actor`), runs
-  activations (`papyrus_activation.cpp`, `activate_ref` returns an outcome
+  activations (`vm::ActivationRuntime`; `papyrus_activation.cpp`: `activate_ref` returns an outcome
   Dictionary, `activation_outcome` the deferred ones) and quests
   (`vm/quests.cpp`), and answers the VM's `WorldAccess` from `WorldData`'s
   typed queries (`ref_enable`, `base_has_keyword`, `keyword_by_editor_id`
-  with an index built at open, `form_list_ptr`, `message_ptr`, ...), with no
+  with an index built at open, `form_list_ptr`, `message_ptr`, `ref_record`, ...), with no
   Dictionary on the way; game time comes from `SkydotClock`
   (`attach_clock`). Natives that change the world never touch nodes. They
   update the state above and emit signals (`enable_changed`, `open_changed`,
@@ -1088,28 +1088,42 @@ module files free of Godot.
 Modules today (all Godot-free, each with unit tests over fakes, listed in
 `check-layering.sh`): `SceneRuntime` (scenes, the Scene natives),
 `DialogueRuntime` (what was said, selection, INFO fragments' quests, the dice),
-`CraftingRuntime` (crafting rules on the VM's inventory) and `CombatRuntime`
+`CraftingRuntime` (crafting rules on the VM's inventory), `CombatRuntime`
 (the AI's hooks, the combat natives, ghosts, the player's death and who hurt
-him). Hosts are 3 to 9 methods, mostly the shared interfaces; the scene module
-takes the dialogue module directly.
+him), `ActivationRuntime` (the activation rules and sequence of
+`vm/activation.hpp`, pickups, harvests and their HRVS section),
+`ItemRuntime` (start inventories and outfits, equipment and its events, the
+item natives, the ITST section) and `MagicRuntime` (active effects, spell book,
+shouts, worn enchantments, poisons and weapon charges, the magic natives, the
+MAGC section). Hosts are mostly the shared interfaces plus a few methods; the
+scene module takes the dialogue module directly, the magic module the item and
+combat modules. Other domains reach items only through `vm::ItemAccess`
+(`vm/item_access.hpp`: `resolve_owner`, `item_info_of`, `item_name_of`,
+`refresh_equipment`, dropped stacks), not through `SkydotPapyrus`.
 
-Not modules yet, and why: **activation** (its host is `ActivationHost`, 11
-methods answered from the Godot-typed `ref_info` Dictionary, the world's
-activate-children Array and scene nodes), **items** and **magic** (they share
-`items_`, `created_`, the VM inventory and `actors_`, and `papyrus_magic.cpp`
-reaches the triggers, the casting state and the saves besides). Stays in
-`SkydotPapyrus` for good: the runtime (`papyrus_runtime.cpp`: forgets, census,
-ref lifecycle), save (composes the sections of all modules), conditions
-(`PapyrusConditionWorld` reads quests, actors, clock and scenes), triggers and
-the VM/pack/world binding. These cut across every domain, so they are the shell
-the modules plug into.
+The typed world-query layer under them: `WorldData::ref_record` and
+`door_record` (a reference's base, type, placement, XLOC, load door and linked
+refs; a load door's link) and, for the VM, `WorldAccess::ref_info` (the same
+for a reference PlaceAtMe made too) and `WorldAccess::activate_children`.
+`SkydotPapyrus` reads locks, doors, links and placements from these; the
+`ref_info` Dictionary is left only for attaching scripts and triggers (script
+lists, primitives).
 
-Next seam: a typed world-query layer (reference info, activate children, doors
-and placement as typed `WorldAccess`-style queries instead of Dictionaries and
-Arrays). It lets activation move, then items, whose host then needs an item
-interface (`resolve_owner`, `item_name_of`, equipment refresh) rather than the
-whole of `SkydotPapyrus`; magic follows once split into casting, shouts and
-enchantment effects.
+What stays in `SkydotPapyrus` of these domains, and why: the Godot side of
+activation (`activate_ref`/`activation_outcome` Dictionaries, the door data,
+whether a node's behaviour graph raises ObjectActivated, the scheduled
+activation handler); of items, `drop` (it places a runtime reference through
+`place_ref`) and the game layer's inventory rows; of magic, the game layer's
+casting and shout API (`papyrus_casting.cpp`, `papyrus_shouts.cpp`: Dictionary
+in and out, the cast and shout logic written against the module's members; it
+could move, but as a rewrite rather than a move), the effect signals and the
+effect scripts' attachment (`emit_signal`, script lists), summons' placement
+(`place_ref`), the triggers' actor list, the soul-trap signal and `soul_of`
+(`PapyrusConditionWorld`). Stays in `SkydotPapyrus` for good: the runtime
+(`papyrus_runtime.cpp`: forgets, census, ref lifecycle), save (composes the
+sections of all modules), conditions (`PapyrusConditionWorld` reads quests,
+actors, clock and scenes), triggers and the VM/pack/world binding. These cut
+across every domain, so they are the shell the modules plug into.
 
 ### 7.10 Coordinates
 
@@ -1596,7 +1610,7 @@ Readers refuse unknown versions and say which numbers they read.
 | change how a reference is placed | `CellBuilder::place_ref` (`engine/extension/src/build/cell_builder.cpp`), and `Decorator::decorate` (`build/decoration.cpp`) for what is done to its model |
 | change a shader | the file in `engine/game/shaders/` (its header comment says how it is used and which defines it takes; `game/shaders/README.md`); the variants and their defines are chosen in `render/materials.cpp` and `terrain.cpp`, the other shaders are loaded whole by `render/water.cpp`, `lod.cpp`, `weather.cpp`, `materials.cpp` (particles); check with `smoke_shaders`, `game/tools/shader_compile.gd` and `--from-shot` re-renders |
 | add a Papyrus native | the `vm/natives_<script>.cpp` of its script (`bind` calls); state it keeps goes into a Godot-free class in `vm/` with its own save section (7.12) |
-| change who may activate what | `vm/activation.*` (the rules, with unit tests), `vm/papyrus_activation.cpp` (the binding), `game/game/script_bridge.gd` (carrying out the outcome) |
+| change who may activate what | `vm/activation.*` (the rules, with unit tests), `vm/activation_runtime.*` (the module: targets, pickups, harvests), `vm/papyrus_activation.cpp` (the Godot binding), `game/game/script_bridge.gd` (carrying out the outcome) |
 | change streaming or door preloading | `engine/extension/src/session/` (`streamer.cpp`: streaming, `preload.cpp`: building ahead, `held_place.*`), 7.11 |
 | change door transitions | `game/game/` (`place_transition.gd`, `place.gd`) |
 | change how the time of day is handed between weather and AI | `session/game_time.*` (the rules, with unit tests), `session/clock.cpp` |
