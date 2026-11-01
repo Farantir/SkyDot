@@ -572,7 +572,7 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost {
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -703,6 +703,12 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
     }
 
+    // ---- vm::QuestHost
+
+    void attach_quest_scripts(std::uint32_t quest, bool on_init) override {
+        owner_.attach_quest_scripts(quest, on_init);
+    }
+
 private:
     SkydotPapyrus& owner_;
 };
@@ -715,6 +721,7 @@ void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(
 void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 
 void SkydotPapyrus::bind_world_natives() {

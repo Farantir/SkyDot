@@ -46,6 +46,7 @@ add_executable(skydot_core_tests
     test_vm_natives_debug.cpp
     test_vm_natives_effectshader.cpp
     test_vm_natives_form.cpp
+    test_vm_natives_game.cpp
     test_vm_natives_noop.cpp
     test_vm_natives_sound.cpp
     test_vm_natives_utility.cpp
