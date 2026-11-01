@@ -313,7 +313,11 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_items.cpp
     src/vm/papyrus_crafting.cpp
     src/vm/papyrus_enchanting.cpp
+    src/vm/papyrus_casting.cpp
+    src/vm/papyrus_enchantment_effects.cpp
     src/vm/papyrus_magic.cpp
+    src/vm/papyrus_magic_state.hpp
+    src/vm/papyrus_shouts.cpp
     src/vm/papyrus_combat.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
