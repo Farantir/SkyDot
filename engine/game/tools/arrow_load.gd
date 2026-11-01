@@ -6,7 +6,7 @@
 # flight, the physics and process time per tick and the wall time of the initial build.
 #
 #   godot4.7 --headless --fixed-fps 60 --path game --script res://tools/arrow_load.gd -- \
-#       --pack <pack> [--ticks 400] [--arrows 20] [--x 26500 --y 1800] [--settle 600]
+#       --pack <pack> [--ticks 400] [--arrows 20] [--x 26500 --y 1800] [--settle 600] [--combat N]
 extends SceneTree
 
 const PLAYER := 0x14
@@ -73,6 +73,7 @@ func _run(args: Dictionary) -> void:
 		_frame()
 		await process_frame
 
+	await _start_combat(int(args.get("--combat", 0)))
 	var ammo_data := _session.world.get_ammo(IRON_ARROW)
 	var proj := _session.world.get_projectile(ammo_data.get("projectile", 0))
 	var combat := _session.combat
@@ -116,6 +117,28 @@ func _run(args: Dictionary) -> void:
 		_mean(physics), physics[int(physics.size() * 0.95)], physics.size(), _mean(process), process[int(process.size() * 0.95)]])
 	print("arrow_load: wall ms per frame %.3f" % wall)
 	quit(0)
+
+
+## Make the `count` actors nearest to the player fight the player.
+func _start_combat(count: int) -> void:
+	if count <= 0:
+		return
+	var actors: Array = []
+	for node in _session.host.find_children("*", "SkydotActor", true, false):
+		if node.has_meta("skydot_ref") and node is Node3D:
+			actors.append(node)
+	actors.sort_custom(func(a: Node3D, b: Node3D) -> bool:
+		return a.global_position.distance_squared_to(_feet) < b.global_position.distance_squared_to(_feet))
+	var started := 0
+	for node: Node3D in actors:
+		if started >= count:
+			break
+		if _session.start_fight(int(node.get_meta("skydot_ref"))):
+			started += 1
+	print("arrow_load: %d of %d actors in combat with the player" % [started, actors.size()])
+	for i in 30:
+		_frame()
+		await process_frame
 
 
 func _mean(values: Array[float]) -> float:
