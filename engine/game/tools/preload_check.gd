@@ -26,9 +26,16 @@ var _last := 0
 
 func _initialize() -> void:
 	var argv := OS.get_cmdline_user_args()
+	var pack := ""
 	for i in range(0, argv.size() - 1):
 		if argv[i] == "--wait":
 			_wait = float(argv[i + 1])
+		elif argv[i] == "--pack":
+			pack = argv[i + 1]
+	if pack.is_empty():
+		print("preload_check: no --pack given; skipping")
+		quit(77)
+		return
 	_viewer = load("res://viewer/cell_viewer.tscn").instantiate()
 	root.add_child(_viewer)
 	# The keyboard and mouse must not move the view during a measurement.
@@ -47,7 +54,7 @@ func _process(delta: float) -> bool:
 		var nearest := 0
 		var best := INF
 		var eye: Vector3 = _viewer._rig.player.global_position
-		var doors: Dictionary = _viewer._streamer.get_load_doors()
+		var doors: Dictionary = _viewer._session.streamer.get_load_doors()
 		for ref in doors:
 			var d: float = doors[ref].global_position.distance_to(eye)
 			if d < best:
@@ -57,24 +64,24 @@ func _process(delta: float) -> bool:
 			printerr("preload_check: no load door here")
 			quit(1)
 			return true
-		_door = _viewer._world.get_door(nearest)
+		_door = _viewer._session.world.get_door(nearest)
 		_viewer._rig.player.teleport(doors[nearest].global_position + Vector3(0, 0.1, 0))
 		print("preload_check: door 0x%08X, %.1f m away, leads to %s" % [nearest, best,
 			SkydotWorld.godot_to_skyrim(_door["arrival"].origin)])
 		return false
 	if not _travelled:
 		_waited += delta
-		var preparing: SkydotPreparation = _viewer._streamer.get_preparation()
+		var preparing: SkydotPreparation = _viewer._session.streamer.get_preparation()
 		var done: bool = preparing != null and preparing.done
 		if not done and _waited < _wait:
 			return false
 		var started := Time.get_ticks_usec()
-		_viewer._transition.travel(_door)
+		_viewer._session.transition.travel(_door)
 		_travel_ms = (Time.get_ticks_usec() - started) / 1000.0
 		_travelled = true
 		_last = Time.get_ticks_usec()
 		return false
-	if _settled.is_empty() and _after.size() < 300 and (_viewer._streamer.streaming or _after.size() < 30):
+	if _settled.is_empty() and _after.size() < 300 and (_viewer._session.streamer.streaming or _after.size() < 30):
 		_after.append(frame_ms)
 		return false
 	_settled.append(frame_ms)
