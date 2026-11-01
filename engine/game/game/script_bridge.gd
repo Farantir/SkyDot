@@ -4,11 +4,14 @@
 # animate, push and say shows up in the built nodes and on screen, and what
 # the player or a script activates (locks, load doors, plain doors, scripts)
 # is done here. Also the --activate runs: activate references in turn, each
-# in the place the previous one led to.
+# in the place the previous one led to. It wires the signals of SkydotPapyrus to
+# one class each for graph persistence (ScriptGraphs), activation
+# (ScriptActivation), animation events (ScriptAnimationEvents) and clutter
+# physics (ClutterPhysics), and keeps what is left: enabling, moving, quests.
 class_name ScriptBridge
 extends RefCounted
 
-const REACH := 2.6  # metres the camera can activate from
+const REACH := ScriptActivation.REACH  # metres the camera can activate from
 
 ## --activate: every reference was activated; the run may end soon.
 signal activations_finished
@@ -29,19 +32,16 @@ signal crafting_opened(ref: int, bench_type: int)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
-var _activations: Array[int] = []  # --activate: refs still to activate
-var _wait := 0  # frames the first of them has been missing
-var _gap := 0  # frames to pass before the next of them (--activate-wait)
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
-var _host: Node3D  # the place's root, where picking and waking clutter start
 var _viewpoint: Camera3D
-var _config: GameConfig
 var _place: Place
 var _streamer: SkydotStreamer
-var _transition: PlaceTransition
 var _sounds: Sounds
-var _damages: Array[Vector2] = []
+var _graphs: ScriptGraphs
+var _clutter: ClutterPhysics
+var _animation: ScriptAnimationEvents
+var _activation: ScriptActivation
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: Camera3D,
@@ -49,22 +49,27 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 		sounds: Sounds) -> void:
 	_world = world
 	_papyrus = papyrus
-	_host = host
 	_viewpoint = viewpoint
-	_config = config
 	_place = place
 	_streamer = streamer
-	_transition = transition
 	_sounds = sounds
-	_activations.assign(config.activate)
-	_damages.assign(config.damage)
+	_graphs = ScriptGraphs.new(papyrus)
+	_clutter = ClutterPhysics.new(world, host)
+	_animation = ScriptAnimationEvents.new(world, papyrus, _clutter)
+	_activation = ScriptActivation.new(world, papyrus, host, config, transition, sounds, _animation)
+	_activation.activations_finished.connect(activations_finished.emit)
+	_activation.failed.connect(failed.emit)
+	_activation.message.connect(message.emit)
+	_activation.talk_requested.connect(talk_requested.emit)
+	_activation.container_opened.connect(container_opened.emit)
+	_activation.crafting_opened.connect(crafting_opened.emit)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.ref_moved.connect(_on_ref_moved)
-	_papyrus.play_animation.connect(_on_play_animation)
-	_papyrus.animation_events_wanted.connect(_on_animation_events_wanted)
-	_papyrus.havok_impulse.connect(_on_havok_impulse)
-	_papyrus.motion_type_changed.connect(_on_motion_type)
-	_papyrus.activation_outcome.connect(_on_activation_outcome)
+	_papyrus.play_animation.connect(_animation.on_play_animation)
+	_papyrus.animation_events_wanted.connect(_animation.on_animation_events_wanted)
+	_papyrus.havok_impulse.connect(_clutter.on_havok_impulse)
+	_papyrus.motion_type_changed.connect(_clutter.on_motion_type)
+	_papyrus.activation_outcome.connect(_activation.on_activation_outcome)
 	_papyrus.open_changed.connect(_on_open_changed)
 	_papyrus.lock_changed.connect(_on_lock_changed)
 	_papyrus.message.connect(_on_message)
@@ -73,7 +78,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 	_papyrus.objective_changed.connect(_on_objective_changed)
 	_papyrus.effect_shader.connect(_on_effect_shader)
 	_papyrus.visual_effect.connect(_on_visual_effect)
-	_papyrus.sub_graph_animation.connect(_on_sub_graph_animation)
+	_papyrus.sub_graph_animation.connect(_animation.on_sub_graph_animation)
 	_papyrus.trigger.connect(_on_trigger)
 
 
@@ -81,7 +86,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 ## including model-less ones such as triggers, and show script-made changes to
 ## what is enabled.
 func scripts_loaded(root: Node, cell_id: int) -> void:
-	_resume_graphs(root)
+	_graphs.resume(root)
 	if cell_id != 0:
 		_sounds.cell_loaded(root as Node3D, cell_id, Place.ref_nodes(root))
 		_papyrus.attach_cell(cell_id)
@@ -127,45 +132,12 @@ func _report_unloaded(count: int) -> void:
 		print("scripts: %d references unloaded" % count)
 
 
-## Put the behaviour graphs of what was just built where the saves left them
-## (an opened gate stays open), before scripts see the references, and keep
-## the store current when a graph changes or its cell unloads.
-func _resume_graphs(root: Node) -> void:
-	for node in Place.ref_nodes(root):
-		var player := node.find_child("SkydotBehavior", true, false)
-		if player == null:
-			continue
-		var ref: int = node.get_meta("skydot_ref")
-		var bytes := _papyrus.get_animation_state(ref)
-		if not bytes.is_empty() and not player.restore_snapshot(bytes):
-			print("0x%08X: its saved graph state does not fit the graph, so it starts over" % ref)
-		player.state_changed.connect(_record_graph.bind(ref, player))
-		player.leaving.connect(_record_graph.bind(ref, player))
-
-
-func _record_graph(ref: int, player: Node) -> void:
-	_papyrus.set_animation_state(ref, player.get_snapshot())
-
-
-## Record every live graph (for a save).
-func record_graphs() -> void:
-	for player in Engine.get_main_loop().get_nodes_in_group("skydot_behaviors"):
-		_record_graph(player.get_ref(), player)
-
-
-## The live graphs are about to be replaced by a loaded save: what they hold
-## is stale and must not reach the store when their cell unloads.
-func retire_graphs() -> void:
-	for player in Engine.get_main_loop().get_nodes_in_group("skydot_behaviors"):
-		player.retire()
-
-
 func _on_open_changed(ref: int, open: bool) -> void:
 	var node := find_ref_node(ref)
 	print("0x%08X %s by script" % [ref, "opened" if open else "closed"])
 	if node != null:
 		node.set_meta("skydot_open", open)
-		_on_play_animation(ref, "Open" if open else "Close")
+		_animation.on_play_animation(ref, "Open" if open else "Close")
 
 
 func _on_lock_changed(ref: int, locked: bool) -> void:
@@ -214,10 +186,6 @@ func _on_visual_effect(effect: int, ref: int, target: int, seconds: float, playi
 		print("visual effect 0x%08X stops on 0x%08X" % [effect, ref])
 
 
-func _on_sub_graph_animation(ref: int, event_name: String) -> void:
-	print("sub graph animation '%s' on 0x%08X (placeholder: only SkinFadeOut shows)" % [event_name, ref])
-
-
 func _on_trigger(ref: int, actor: int, entered: bool) -> void:
 	var info := _world.get_ref_info(_world.get_ref_cell(ref), ref)
 	var at: Vector3 = info.get("position", Vector3.ZERO)
@@ -229,7 +197,7 @@ func _on_enable_changed(ref: int, enabled: bool) -> void:
 	var node := find_ref_node(ref)
 	if node != null:
 		if not enabled:
-			_wake_around(node)
+			_clutter.wake_around(node)
 		_show_ref(node, enabled)
 	elif enabled and _place != null and _place.enable_actor(ref):
 		# An actor the editor placed disabled: built now, with the scripts of its base (a far one has no cell
@@ -288,241 +256,38 @@ func _show_ref(node: Node, enabled: bool) -> void:
 	node.process_mode = Node.PROCESS_MODE_INHERIT if enabled else Node.PROCESS_MODE_DISABLED
 
 
-## Clutter resting on or against `node` falls once it is gone or moves.
-func _wake_around(node: Node) -> void:
-	var bounds := Place.mesh_bounds(node)
-	if bounds.size != Vector3.ZERO:
-		SkydotWorld.wake_clutter(_host, bounds.get_center(), bounds.size.length() / 2 + 0.5)
-
-
-func _clutter_body(ref: int) -> SkydotDynamicBody:
-	var node := find_ref_node(ref)
-	if node == null:
-		return null
-	var bodies := node.find_children("*", "SkydotDynamicBody", true, false)
-	return bodies[0] if not bodies.is_empty() else null
-
-
-## ApplyHavokImpulse: Skyrim's direction, Havok's magnitude (Havok units are
-## metres here, so it applies as is).
-func _on_havok_impulse(ref: int, direction: Vector3, magnitude: float) -> void:
-	var body := _clutter_body(ref)
-	if body == null:
-		print("0x%08X has no movable body for an impulse" % ref)
-		return
-	body.wake()
-	var godot_direction := SkydotWorld.skyrim_position(direction).normalized()
-	body.apply_central_impulse(godot_direction * magnitude)
-
-
-## SetMotionType: the moving types release clutter, keyframed and fixed hold
-## it. Static models cannot be made to move.
-func _on_motion_type(ref: int, motion_type: int) -> void:
-	var body := _clutter_body(ref)
-	if body == null:
-		print("0x%08X has no movable body for motion type %d" % [ref, motion_type])
-		return
-	if motion_type in [4, 5]:
-		body.freeze = true
-	else:
-		body.wake()
-
-
-func _on_play_animation(ref: int, animation: String) -> void:
-	var node := find_ref_node(ref)
-	if node == null:
-		print("0x%08X is not built, so it plays no %s animation" % [ref, animation])
-	elif not _play_event(node, ref, animation):
-		var graph := node.find_child("SkydotBehavior", true, false)
-		if graph != null:
-			print("0x%08X: its behaviour graph (state %s) and its clips ignore %s" % [ref, graph.get_state(), animation])
-		else:
-			print("0x%08X has no %s animation" % [ref, animation])
-
-
-## The one way an animation event reaches a placed model: its behaviour
-## graph, else the NIF clip of that name. What the model then raises (a text
-## key, the clip's end, a graph event) releases scripts waiting in
-## PlayAnimationAndWait. False if nothing played.
-func _play_event(node: Node, ref: int, event: String) -> bool:
-	_connect_notifies(node, ref)
-	if not SkydotBehavior.play_event(node, event):
-		return false
-	_wake_around(node)
-	return true
-
-
-## A script registered for animation events of `ref` (RegisterForAnimationEvent).
-func _on_animation_events_wanted(ref: int) -> void:
-	var node := find_ref_node(ref)
-	if node != null:
-		_connect_notifies(node, ref)
-
-
-func _connect_notifies(node: Node, ref: int) -> void:
-	var animator := node.get_node_or_null("SkydotAnimator")
-	var player := node.find_child("SkydotBehavior", true, false)
-	var on_text_key := _notify_text_key.bind(ref)
-	var on_name := _notify.bind(ref)
-	# Once per node: the first connection tells.
-	if animator != null:
-		if animator.text_key.is_connected(on_text_key):
-			return
-	elif player != null:
-		if player.event_raised.is_connected(on_name):
-			return
-	elif node is SkydotActor and node.animation_event.is_connected(on_name):
-		return
-	if animator != null:
-		animator.text_key.connect(on_text_key)
-		animator.finished.connect(on_name)
-	if player != null:
-		player.event_raised.connect(on_name)
-	# An actor's clips raise their annotations (FootLeft, HitFrame, SoundPlay.*) as they play.
-	if node is SkydotActor:
-		node.animation_event.connect(on_name)
-
-
-func _notify_text_key(_clip: String, key: String, ref: int) -> void:
-	_papyrus.notify_animation_event(ref, key)
-
-
-func _notify(event: String, ref: int) -> void:
-	_papyrus.notify_animation_event(ref, event)
-
-
-## The player's activation of reference `ref`: SkydotPapyrus.activate_ref
-## decides (parent-only, locks, scripts, activate children) and this applies
-## what it asks of the scene. `force` picks locks. Returns false if the
-## reference could not be found.
-func activate(_cell: int, ref: int, _node: Node, force: bool) -> bool:
-	var outcome := _papyrus.activate_ref(ref, SkydotPapyrus.PLAYER_REF, false,
-		SkydotPapyrus.ACTIVATE_PLAYER, force or _config.pick_locks)
-	if outcome["kind"] == "missing":
-		return false
-	_apply_outcome(outcome, force)
-	return true
-
-
-## A script's Activate or an activate child, once the VM has run it.
-func _on_activation_outcome(_ref: int, outcome: Dictionary) -> void:
-	_apply_outcome(outcome, false)
-
-
-## Do what an activation outcome asks of the scene and say what it noted.
-func _apply_outcome(outcome: Dictionary, picked := false) -> void:
-	var ref: int = outcome["ref"]
-	var label: String = outcome.get("label", "")
-	var node := find_ref_node(ref)
-	if outcome["scripts"] > 0:
-		print(label, " runs ", ", ".join(_papyrus.get_scripts(ref).map(func(s): return s["name"])))
-	match outcome["kind"]:
-		"parent_only", "blocked", "busy":
-			message.emit(outcome["note"], false)
-			return
-		"locked":
-			message.emit(outcome["note"] + "; Shift+F opens it anyway", false)
-			return
-		"door":
-			print(label, " leads to 0x%08X" % outcome["door"]["destination"])
-			_transition.go(outcome["door"])
-			return
-		"furniture":
-			if node != null and _play_event(node, ref, outcome["event"]):
-				return
-			# The graph will not raise ObjectActivated: the use counts now.
-			if outcome.get("deferred", false):
-				_papyrus.complete_activation(ref)
-		"toggle_open":
-			if node != null and _toggle_open(node, ref, label):
-				return
-		"harvest":
-			if node != null:
-				SkydotSwitch.set_index(node, 1)
-			# The ingredient is already in the inventory.
-			var sound: int = outcome.get("harvest_sound", 0)
-			if sound != 0 and int(outcome.get("harvest_count", 0)) > 0:
-				_sounds.play(sound, ref)
-			message.emit(outcome["note"], false)
-			return
-		"crafting":
-			print(label, " is a bench of type ", outcome["bench_type"])
-			crafting_opened.emit(ref, outcome["bench_type"])
-			return
-	if outcome["kind"] == "container":
-		print(label, " opens")
-		container_opened.emit(ref)
-		return
-	if outcome["kind"] == "none" and _papyrus.dialogue_can_talk(ref):
-		talk_requested.emit(ref)
-		return
-	if _papyrus.get_scripts(ref).is_empty():
-		message.emit(outcome["note"], false)
-
-
-func _toggle_open(node: Node, ref: int, label: String) -> bool:
-	var animator := node.get_node_or_null("SkydotAnimator")
-	if animator == null:
-		return false
-	var open: bool = not node.get_meta("skydot_open", false)
-	if not animator.play("Open" if open else "Close"):
-		return false
-	node.set_meta("skydot_open", open)
-	node.remove_meta("skydot_opened_by")  # an actor no longer closes it
-	_papyrus.set_open_state(ref, 1 if open else 3)
-	print(label, " opens" if open else " closes")
-	return true
-
-
 ## The model of reference `ref` among what is built, or null.
 func find_ref_node(ref: int) -> Node:
 	return _world.find_ref_node(ref)
 
 
+## Record every live graph (for a save).
+func record_graphs() -> void:
+	_graphs.record_all()
+
+
+## The live graphs are about to be replaced by a loaded save: what they hold
+## is stale and must not reach the store when their cell unloads.
+func retire_graphs() -> void:
+	_graphs.retire_all()
+
+
+## The player's activation of reference `ref` (see ScriptActivation.activate).
+## Returns false if the reference could not be found.
+func activate(cell: int, ref: int, node: Node, force: bool) -> bool:
+	return _activation.activate(cell, ref, node, force)
+
+
 func has_activations() -> bool:
-	return not _activations.is_empty() or not _damages.is_empty()
+	return _activation.has_activations()
 
 
 ## --activate: activate the next reference once its model is built; quit
 ## when all are done or one never appears.
 func run_activation() -> void:
-	if _gap > 0:
-		_gap -= 1
-		return
-	if _activations.is_empty():
-		_run_damage()
-		return
-	var ref: int = _activations[0]
-	var node := find_ref_node(ref)
-	if node == null:
-		_wait += 1
-		if _wait == 601:  # once
-			failed.emit("reference 0x%08X never appeared" % ref)
-		return
-	_wait = 0
-	_activations.pop_front()
-	activate(node.get_meta("skydot_cell"), ref, node, false)
-	_gap = _config.activate_wait
-	if _activations.is_empty() and _damages.is_empty():
-		activations_finished.emit()
-
-
-## --damage: the next DamageObject, once the activations are done.
-func _run_damage() -> void:
-	var entry: Vector2 = _damages.pop_front()
-	print("damage 0x%08X by %s" % [int(entry.x), entry.y])
-	_papyrus.damage_ref(int(entry.x), entry.y)
-	_gap = _config.activate_wait
-	if _damages.is_empty():
-		activations_finished.emit()
+	_activation.run_activation()
 
 
 ## Activates what the viewpoint looks at. False if there was nothing known to activate.
 func activate_in_view(force: bool, pointer: Node3D) -> bool:
-	var from := pointer.global_position
-	var to := from - pointer.global_transform.basis.z * REACH
-	var hit := _world.pick_ref(_host, from, to)
-	if hit.is_empty():
-		message.emit("nothing to activate", false)
-		return false
-	return activate(hit["cell"], hit["ref"], hit["node"], force)
+	return _activation.activate_in_view(force, pointer)
