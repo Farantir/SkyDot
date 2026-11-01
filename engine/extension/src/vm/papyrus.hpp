@@ -82,7 +82,6 @@ public:
     /// Seconds PlayAnimationAndWait waits for its event before carrying on.
     static constexpr double ANIMATION_TIMEOUT = 10.0;
     /// Sound.PlayAndWait gives up on a clip that never reports its end (a loop).
-    static constexpr double SOUND_TIMEOUT = 30.0;
     /// Alias handles are form ids from here up, above those create_instance
     /// hands out.
     static constexpr std::int64_t ALIAS_HANDLE_BASE = vm::id_ranges::alias_handles.first;

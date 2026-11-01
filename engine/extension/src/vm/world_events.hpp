@@ -26,6 +26,13 @@ public:
     /// Weapon.Fire: launch `ammo`'s projectile from `source` (either may be 0;
     /// the game layer decides what that means) (the `fire_weapon` signal).
     virtual void fire_weapon(std::uint32_t weapon, std::uint32_t source, std::uint32_t ammo) = 0;
+    /// Play `sound` (a SNDR or SOUN) at `source` (0: not positional) as playback
+    /// `instance` (the `play_sound` signal).
+    virtual void play_sound(std::uint32_t sound, std::uint32_t source, std::int64_t instance) = 0;
+    /// Stop playback `instance` (the `stop_sound` signal).
+    virtual void stop_sound(std::int64_t instance) = 0;
+    /// Set the volume of playback `instance` (the `sound_volume` signal).
+    virtual void sound_volume(std::int64_t instance, double volume) = 0;
 };
 
 } // namespace skydot::vm

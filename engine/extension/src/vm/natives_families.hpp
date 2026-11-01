@@ -5,6 +5,7 @@
 #pragma once
 
 #include "vm/vm.hpp"
+#include "vm/sound_host.hpp"
 #include "vm/world_access.hpp"
 #include "vm/world_events.hpp"
 
@@ -25,5 +26,8 @@ void bind_effectshader_natives(Vm& vm, WorldEvents& events);
 
 /// Weapon.Fire.
 void bind_weapon_natives(Vm& vm, WorldEvents& events);
+
+/// Sound.Play, PlayAndWait, StopInstance and SetInstanceVolume.
+void bind_sound_natives(Vm& vm, SoundHost& sounds, WorldEvents& events);
 
 } // namespace skydot::vm
