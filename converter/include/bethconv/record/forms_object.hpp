@@ -524,6 +524,81 @@ struct LeveledNpc {
     }
 };
 
+/// EXPL: an explosion.
+struct Explosion {
+    std::string editor_id;
+    ModelData model; ///< MODL
+
+    /// DATA, 52 bytes: light, two sounds, impact data set, placed object,
+    /// projectile, then force, damage, radius, image space radius, vertical
+    /// offset multiplier, flags and sound level. Skipped unless the first 48
+    /// bytes are there; flags only when 4 more follow.
+    struct Data {
+        FormId light;
+        FormId sound;
+        FormId sound_far;
+        FormId impact_data;
+        FormId placed_object;
+        FormId projectile;
+        float force{};
+        float damage{};
+        float radius{};
+        std::uint32_t flags{};
+    };
+    Data data;
+    static constexpr std::size_t k_data_min_size = 48;
+    static constexpr std::size_t k_unread_after_radius = 8; ///< Image space radius, vertical offset.
+};
+
+/// MATO: a material object (shader parameters of a hit effect).
+struct MaterialObject {
+    std::string editor_id;
+    ModelData model; ///< MODL
+
+    /// DATA: eleven floats then flags. Each word that is missing from a short
+    /// field stays 0.
+    float falloff_scale{};     ///< DATA[0]
+    float falloff_bias{};      ///< DATA[1]
+    float noise_uv_scale{};    ///< DATA[2]
+    float material_uv_scale{}; ///< DATA[3]
+    Vec3 projection;           ///< DATA[4..6]
+    float normal_dampener{};   ///< DATA[7]
+    Vec3 single_pass_color;    ///< DATA[8..10]
+    std::uint32_t flags{};     ///< DATA[11], bit 0 single pass.
+};
+
+/// ADDN: an addon node (a particle effect attachment point).
+struct AddonNode {
+    std::string editor_id;
+    ModelData model; ///< MODL
+    std::optional<std::int32_t> index; ///< DATA, the node index; at least 4 bytes.
+};
+
+/// GRAS: grass.
+struct Grass {
+    std::string editor_id;
+    ModelData model; ///< MODL
+    std::optional<ObjectBounds> bounds; ///< OBND, at least 12 bytes.
+
+    /// DATA, 32 bytes: density, min slope, max slope, a pad byte, units from
+    /// water, 2 pad bytes, water type, position, height and colour range, wave
+    /// period, flags. Skipped unless the first 29 bytes are there.
+    struct Data {
+        std::uint8_t density{};
+        std::uint8_t min_slope{};
+        std::uint8_t max_slope{};
+        std::uint16_t units_from_water{};
+        std::uint32_t water_type{};
+        float position_range{};
+        float height_range{};
+        float color_range{};
+        float wave_period{};
+        std::uint8_t flags{};
+    };
+    Data data;
+    static constexpr std::size_t k_data_min_size = 29;
+};
+
 // ---- parsing --------------------------------------------------------------
 
 [[nodiscard]] io::ParseResult<TextureSet> parse_texture_set(io::SpanReader& data,
@@ -550,6 +625,13 @@ struct LeveledNpc {
 [[nodiscard]] io::ParseResult<Scroll> parse_scroll(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Ammo> parse_ammo(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Weapon> parse_weapon(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Explosion> parse_explosion(io::SpanReader& data,
+                                                         const FormContext& ctx);
+[[nodiscard]] io::ParseResult<MaterialObject> parse_material_object(io::SpanReader& data,
+                                                                   const FormContext& ctx);
+[[nodiscard]] io::ParseResult<AddonNode> parse_addon_node(io::SpanReader& data,
+                                                         const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Grass> parse_grass(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Projectile> parse_projectile(io::SpanReader& data,
                                                            const FormContext& ctx);
 [[nodiscard]] io::ParseResult<IdleMarker> parse_idle_marker(io::SpanReader& data,

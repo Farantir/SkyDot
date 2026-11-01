@@ -59,10 +59,10 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         on_light(merged, data, form_ctx);
         break;
     case FourCC{"MATO"}.value:
-        on_material_object(merged, data);
+        on_material_object(merged, data, form_ctx);
         break;
     case FourCC{"ADDN"}.value:
-        on_addon_node(merged, data);
+        on_addon_node(merged, data, form_ctx);
         break;
     case FourCC{"TXST"}.value:
         on_texture_set(merged, data, form_ctx);
@@ -71,7 +71,7 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         on_land_texture(merged, data, form_ctx);
         break;
     case FourCC{"GRAS"}.value:
-        on_grass(merged, data);
+        on_grass(merged, data, form_ctx);
         break;
     case FourCC{"AMMO"}.value:
         on_ammo(merged, data, form_ctx);
@@ -89,7 +89,7 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
         on_sound_output_model(merged, data, form_ctx);
         break;
     case FourCC{"EXPL"}.value:
-        on_explosion(merged, data);
+        on_explosion(merged, data, form_ctx);
         break;
     case FourCC{"COBJ"}.value:
         on_recipe(merged, data, form_ctx);
@@ -461,40 +461,29 @@ void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::Span
 /// EXPL: MODL and DATA (52 bytes: light, two sounds, impact data set, placed
 /// object, projectile, then force, damage, radius, image space radius,
 /// vertical offset multiplier floats, flags and sound level).
-void BaseCollector::on_explosion(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::ExplosionT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MODL"} && out.model.empty()) {
-                const auto path = std::string(body.zstring().value_or(""));
-                out.model = path.empty() ? std::string{} : model_vpath(path);
-            } else if (field.type == FourCC{"DATA"} && body.remaining() >= 48) {
-                const auto form = [&] {
-                    return shared_.global(merged, record::FormId{body.get<std::uint32_t>().value_or(0)}, failed);
-                };
-                out.light = form();
-                out.sound = form();
-                out.sound_far = form();
-                out.impact_data = form();
-                out.placed_object = form();
-                out.projectile = form();
-                out.force = body.get<float>().value_or(0.0F);
-                out.damage = body.get<float>().value_or(0.0F);
-                out.radius = body.get<float>().value_or(0.0F);
-                (void)body.skip(8); // image space radius, vertical offset multiplier
-                if (body.remaining() >= 4) {
-                    out.flags = body.get<std::uint32_t>().value_or(0);
-                }
-            }
-        });
-    if (!walked) {
+void BaseCollector::on_explosion(const record::MergedRecord& merged, io::SpanReader& data,
+                                  const record::FormContext& form_ctx) {
+    auto expl = record::parse_explosion(data, form_ctx);
+    if (!expl) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::ExplosionT out;
+    out.id = merged.form.value;
+    bool failed = false;
+    out.editor_id = expl->editor_id;
+    out.model = expl->model.path.empty() ? std::string{} : model_vpath(expl->model.path);
+    const auto& d = expl->data;
+    out.light = shared_.global(merged, d.light, failed);
+    out.sound = shared_.global(merged, d.sound, failed);
+    out.sound_far = shared_.global(merged, d.sound_far, failed);
+    out.impact_data = shared_.global(merged, d.impact_data, failed);
+    out.placed_object = shared_.global(merged, d.placed_object, failed);
+    out.projectile = shared_.global(merged, d.projectile, failed);
+    out.force = d.force;
+    out.damage = d.damage;
+    out.radius = d.radius;
+    out.flags = d.flags;
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -555,38 +544,26 @@ void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io
     sound_output_models_[out.id] = std::move(out);
 }
 
-void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::MaterialObjectT out;
-    out.id = merged.form.value;
-    out.projection.assign(3, 0.0F);
-    out.single_pass_color.assign(3, 0.0F);
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MODL"}) {
-                out.model = model_vpath(std::string(body.zstring().value_or("")));
-            } else if (field.type == FourCC{"DATA"}) {
-                std::array<float, 11> d{};
-                for (auto& f : d) {
-                    f = body.remaining() >= 4 ? body.get<float>().value_or(0.0F) : 0.0F;
-                }
-                const std::uint32_t flags =
-                    body.remaining() >= 4 ? body.get<std::uint32_t>().value_or(0) : 0;
-                out.falloff_scale = d[0];
-                out.falloff_bias = d[1];
-                out.noise_uv_scale = d[2];
-                out.material_uv_scale = d[3];
-                out.projection = {d[4], d[5], d[6]};
-                out.normal_dampener = d[7];
-                out.single_pass_color = {d[8], d[9], d[10]};
-                out.single_pass = (flags & 1U) != 0;
-            }
-        });
-    if (!walked) {
+void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data,
+                                       const record::FormContext& form_ctx) {
+    auto mato = record::parse_material_object(data, form_ctx);
+    if (!mato) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::MaterialObjectT out;
+    out.id = merged.form.value;
+    out.editor_id = mato->editor_id;
+    out.model = model_vpath(mato->model.path);
+    out.falloff_scale = mato->falloff_scale;
+    out.falloff_bias = mato->falloff_bias;
+    out.noise_uv_scale = mato->noise_uv_scale;
+    out.material_uv_scale = mato->material_uv_scale;
+    out.projection = {mato->projection.x, mato->projection.y, mato->projection.z};
+    out.normal_dampener = mato->normal_dampener;
+    out.single_pass_color = {mato->single_pass_color.x, mato->single_pass_color.y,
+                             mato->single_pass_color.z};
+    out.single_pass = (mato->flags & 1U) != 0;
     material_objects_[out.id] = std::move(out);
 }
 
@@ -615,65 +592,49 @@ void BaseCollector::on_land_texture(const record::MergedRecord& merged, io::Span
     }
 }
 
-void BaseCollector::on_addon_node(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::AddonNodeT out;
-    out.id = merged.form.value;
-    bool has_index = false;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MODL"}) {
-                out.model = model_vpath(std::string(body.zstring().value_or("")));
-            } else if (field.type == FourCC{"DATA"} && body.remaining() >= 4) {
-                out.index = body.get<std::int32_t>().value_or(0);
-                has_index = true;
-            }
-        });
-    if (!walked || !has_index || out.model.empty()) {
+void BaseCollector::on_addon_node(const record::MergedRecord& merged, io::SpanReader& data,
+                                  const record::FormContext& form_ctx) {
+    auto addn = record::parse_addon_node(data, form_ctx);
+    if (!addn || !addn->index || addn->model.path.empty()) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::AddonNodeT out;
+    out.id = merged.form.value;
+    out.editor_id = addn->editor_id;
+    out.model = model_vpath(addn->model.path);
+    out.index = *addn->index;
     addons_[out.id] = std::move(out);
 }
 
-void BaseCollector::on_grass(const record::MergedRecord& merged, io::SpanReader& data) {
-    wfb::GrassT out;
-    out.id = merged.form.value;
-    const auto walked = record::for_each_field(
-        data, [&](const record::FieldHeader& field, io::SpanReader& body) {
-            if (field.type == FourCC{"EDID"}) {
-                out.editor_id = std::string(body.zstring().value_or(""));
-            } else if (field.type == FourCC{"MODL"}) {
-                out.model = model_vpath(std::string(body.zstring().value_or("")));
-            } else if (field.type == FourCC{"OBND"} && body.remaining() >= 12) {
-                std::array<float, 6> b{};
-                for (float& v : b) {
-                    v = static_cast<float>(body.get<std::int16_t>().value_or(0));
-                }
-                const float dx = b[3] - b[0];
-                const float dy = b[4] - b[1];
-                const float dz = b[5] - b[2];
-                out.bound_radius = 0.5F * std::sqrt(dx * dx + dy * dy + dz * dz);
-            } else if (field.type == FourCC{"DATA"} && body.remaining() >= 29) {
-                out.density = body.get<std::uint8_t>().value_or(0);
-                out.min_slope = body.get<std::uint8_t>().value_or(0);
-                out.max_slope = body.get<std::uint8_t>().value_or(90);
-                (void)body.skip(1);
-                out.units_from_water = body.get<std::uint16_t>().value_or(0);
-                (void)body.skip(2);
-                out.water_type = body.get<std::uint32_t>().value_or(0);
-                out.position_range = body.get<float>().value_or(0.0F);
-                out.height_range = body.get<float>().value_or(0.0F);
-                out.color_range = body.get<float>().value_or(0.0F);
-                out.wave_period = body.get<float>().value_or(0.0F);
-                out.flags = static_cast<wfb::GrassFlags>(body.get<std::uint8_t>().value_or(0));
-            }
-        });
-    if (!walked || out.model.empty()) {
+void BaseCollector::on_grass(const record::MergedRecord& merged, io::SpanReader& data,
+                             const record::FormContext& form_ctx) {
+    auto gras = record::parse_grass(data, form_ctx);
+    if (!gras || gras->model.path.empty()) {
         ++shared_.stats().parse_errors;
         return;
     }
+    wfb::GrassT out;
+    out.id = merged.form.value;
+    out.editor_id = gras->editor_id;
+    out.model = model_vpath(gras->model.path);
+    if (const auto& b = gras->bounds) {
+        const float dx = static_cast<float>(b->x2) - static_cast<float>(b->x1);
+        const float dy = static_cast<float>(b->y2) - static_cast<float>(b->y1);
+        const float dz = static_cast<float>(b->z2) - static_cast<float>(b->z1);
+        out.bound_radius = 0.5F * std::sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    const auto& d = gras->data;
+    out.density = d.density;
+    out.min_slope = d.min_slope;
+    out.max_slope = d.max_slope;
+    out.units_from_water = d.units_from_water;
+    out.water_type = d.water_type;
+    out.position_range = d.position_range;
+    out.height_range = d.height_range;
+    out.color_range = d.color_range;
+    out.wave_period = d.wave_period;
+    out.flags = static_cast<wfb::GrassFlags>(d.flags);
     grasses_[out.id] = std::move(out);
 }
 

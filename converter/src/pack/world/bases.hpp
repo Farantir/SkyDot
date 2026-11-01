@@ -110,18 +110,22 @@ private:
     void keep_alternates(const record::MergedRecord& merged, std::span<const std::byte> mods);
     void on_light(const record::MergedRecord& merged, io::SpanReader& data,
                   const record::FormContext& form_ctx);
-    void on_material_object(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_material_object(const record::MergedRecord& merged, io::SpanReader& data,
+                const record::FormContext& form_ctx);
     void on_land_texture(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
-    void on_addon_node(const record::MergedRecord& merged, io::SpanReader& data);
-    void on_grass(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_addon_node(const record::MergedRecord& merged, io::SpanReader& data,
+                const record::FormContext& form_ctx);
+    void on_grass(const record::MergedRecord& merged, io::SpanReader& data,
+                const record::FormContext& form_ctx);
     void on_ammo(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
     void on_sound_descriptor(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx);
     void on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
                          const record::FormContext& form_ctx);
-    void on_explosion(const record::MergedRecord& merged, io::SpanReader& data);
+    void on_explosion(const record::MergedRecord& merged, io::SpanReader& data,
+                const record::FormContext& form_ctx);
     void on_recipe(const record::MergedRecord& merged, io::SpanReader& data,
                    const record::FormContext& form_ctx);
     void on_magic_effect(const record::MergedRecord& merged, io::SpanReader& data,

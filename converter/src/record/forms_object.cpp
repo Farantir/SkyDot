@@ -795,4 +795,135 @@ io::ParseResult<LeveledNpc> parse_leveled_npc(io::SpanReader& data, const FormCo
     return out;
 }
 
+// ---- EXPL, MATO, ADDN, GRAS -----------------------------------------------
+
+io::ParseResult<Explosion> parse_explosion(io::SpanReader& data, const FormContext& ctx) {
+    Explosion out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"EXPL"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                if (body.remaining() >= Explosion::k_data_min_size) {
+                    auto& d = out.data;
+                    take(failure, read_formid(body), d.light);
+                    take(failure, read_formid(body), d.sound);
+                    take(failure, read_formid(body), d.sound_far);
+                    take(failure, read_formid(body), d.impact_data);
+                    take(failure, read_formid(body), d.placed_object);
+                    take(failure, read_formid(body), d.projectile);
+                    take(failure, body.get<float>(), d.force);
+                    take(failure, body.get<float>(), d.damage);
+                    take(failure, body.get<float>(), d.radius);
+                    skip_bytes(failure, body, Explosion::k_unread_after_radius);
+                    take_whole(failure, body, d.flags);
+                }
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"EXPL"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<MaterialObject> parse_material_object(io::SpanReader& data,
+                                                      const FormContext& ctx) {
+    MaterialObject out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"MATO"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                float* const words[] = {&out.falloff_scale,      &out.falloff_bias,
+                                        &out.noise_uv_scale,     &out.material_uv_scale,
+                                        &out.projection.x,       &out.projection.y,
+                                        &out.projection.z,       &out.normal_dampener,
+                                        &out.single_pass_color.x, &out.single_pass_color.y,
+                                        &out.single_pass_color.z};
+                for (float* const word : words) {
+                    take_whole(failure, body, *word);
+                }
+                take_whole(failure, body, out.flags);
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"MATO"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<AddonNode> parse_addon_node(io::SpanReader& data, const FormContext& ctx) {
+    AddonNode out;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"ADDN"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"DATA"}) {
+                if (body.remaining() >= sizeof(std::int32_t)) {
+                    std::int32_t index{};
+                    take(failure, body.get<std::int32_t>(), index);
+                    out.index = index;
+                }
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"ADDN"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<Grass> parse_grass(io::SpanReader& data, const FormContext& ctx) {
+    Grass out;
+    ObjectBounds bounds;
+    bool has_bounds = false;
+    const BaseObjectFields into{.editor_id = &out.editor_id, .model = &out.model};
+    const auto walked = walk_fields(
+        data, FourCC{"GRAS"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"OBND"}) {
+                if (body.remaining() >= sizeof(ObjectBounds::x1) * 6) {
+                    take(failure, read_object_bounds(body), bounds);
+                    has_bounds = true;
+                }
+                return true;
+            }
+            if (field.type == FourCC{"DATA"}) {
+                if (body.remaining() >= Grass::k_data_min_size) {
+                    auto& d = out.data;
+                    take(failure, body.get<std::uint8_t>(), d.density);
+                    take(failure, body.get<std::uint8_t>(), d.min_slope);
+                    take(failure, body.get<std::uint8_t>(), d.max_slope);
+                    skip_bytes(failure, body, 1);
+                    take(failure, body.get<std::uint16_t>(), d.units_from_water);
+                    skip_bytes(failure, body, 2);
+                    take(failure, body.get<std::uint32_t>(), d.water_type);
+                    take(failure, body.get<float>(), d.position_range);
+                    take(failure, body.get<float>(), d.height_range);
+                    take(failure, body.get<float>(), d.color_range);
+                    take(failure, body.get<float>(), d.wave_period);
+                    take(failure, body.get<std::uint8_t>(), d.flags);
+                }
+                return true;
+            }
+            return read_base_object_field(into, FourCC{"GRAS"}, field, body, ctx, failure);
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    if (has_bounds) {
+        out.bounds = bounds;
+    }
+    return out;
+}
+
 } // namespace bethconv::record
