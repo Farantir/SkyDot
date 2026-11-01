@@ -59,13 +59,20 @@ void HarvestStates::mark(std::uint32_t ref, double now) {
     ++state.times;
 }
 
+namespace {
+/// A harvested ref: ref (u32), day (f64), times (u32).
+constexpr std::size_t k_harvest_min_bytes = 4 + 8 + 4;
+} // namespace
+
 std::vector<std::uint8_t> HarvestStates::save() const {
     save::ByteWriter w;
     w.u32(static_cast<std::uint32_t>(states_.size()));
     for (const auto& [ref, state] : states_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.f64(state.day);
         w.u32(state.times);
+        w.check_record(start, k_harvest_min_bytes);
     }
     return w.out;
 }
@@ -73,7 +80,7 @@ std::vector<std::uint8_t> HarvestStates::save() const {
 bool HarvestStates::load(save::ByteReader r, HarvestStates& out) {
     out.clear();
     std::uint32_t n = 0;
-    if (!r.count(n, 16)) {
+    if (!r.count(n, k_harvest_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {

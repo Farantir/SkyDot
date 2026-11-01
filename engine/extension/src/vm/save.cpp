@@ -57,12 +57,50 @@ constexpr std::uint32_t k_section_version = 1;
 constexpr std::uint32_t k_max_animation_state = 1U << 20; ///< Bytes per reference, against corrupt lengths.
 constexpr std::uint32_t k_no_instance = 0xFFFFFFFFu;
 
+// Minimum sizes of the records below, which the readers hand to ByteReader::count.
+/// A value: kind (u8); the payload of the kinds that have one comes on top.
+constexpr std::size_t k_value_min_bytes = 1;
+/// An attached script: form (u32), class (u32 length), state (u32 length).
+constexpr std::size_t k_instance_min_bytes = 4 + 4 + 4;
+/// One class's variables of an instance: class (u32 length), value count (u32).
+constexpr std::size_t k_variable_level_min_bytes = 4 + 4;
+/// A frame: class, state and function (u32 length each), handler (u8), instance (u32), self (a value),
+/// register count (u32), pc (u32), result argument (u32).
+constexpr std::size_t k_frame_min_bytes = 4 + 4 + 4 + 1 + 4 + k_value_min_bytes + 4 + 4 + 4;
+/// A thread: id (u64), keep-result (u8), wake time (f64), wait-for (u32 length), frame count (u32).
+constexpr std::size_t k_thread_min_bytes = 8 + 1 + 8 + 4 + 4;
+/// A kept result: thread id (u64), value.
+constexpr std::size_t k_result_min_bytes = 8 + k_value_min_bytes;
+/// A timer: instance index (u32), due (f64), interval (f64).
+constexpr std::size_t k_timer_min_bytes = 4 + 8 + 8;
+/// A scheduled call: due (f64), kind (u32 length), three arguments (u32 each).
+constexpr std::size_t k_scheduled_min_bytes = 8 + 4 + 3 * 4;
+/// An INVT owner: owner (u32), item count (u32).
+constexpr std::size_t k_inventory_owner_min_bytes = 4 + 4;
+/// An INVT item: form (u32), amount (u64).
+constexpr std::size_t k_inventory_item_min_bytes = 4 + 8;
+/// An ANIM reference: ref (u32), length (u32).
+constexpr std::size_t k_animation_ref_min_bytes = 4 + 4;
+/// One byte of an ANIM state.
+constexpr std::size_t k_animation_byte_min_bytes = 1;
+/// A form list: list (u32), form count (u32).
+constexpr std::size_t k_form_list_min_bytes = 4 + 4;
+/// A form in a list: form (u32).
+constexpr std::size_t k_form_list_form_min_bytes = 4;
+/// A placed reference: id, base, cell (u32 each), position and rotation (six f64), scale (f64).
+constexpr std::size_t k_placed_ref_min_bytes = 3 * 4 + 7 * 8;
+/// A destruction state: ref (u32), damage (f64), stage (u32), destroyed (u8).
+constexpr std::size_t k_destruction_min_bytes = 4 + 8 + 4 + 1;
+/// An animation event registration: instance index (u32), sender (u32), event (u32 length).
+constexpr std::size_t k_animation_reg_min_bytes = 4 + 4 + 4;
+
 struct SaveContext {
     std::map<const Instance*, std::uint32_t> instance_index;
     std::map<const Array*, std::uint32_t> array_ids;
 };
 
 void write_value(ByteWriter& w, SaveContext& ctx, const Value& v) {
+    const auto start = w.out.size();
     w.u8(static_cast<std::uint8_t>(v.kind()));
     switch (v.kind()) {
     case Kind::none: break;
@@ -90,6 +128,7 @@ void write_value(ByteWriter& w, SaveContext& ctx, const Value& v) {
         break;
     }
     }
+    w.check_record(start, k_value_min_bytes);
 }
 
 /// The section `tag` of `file`, opened; sets `error` and returns false if it is
@@ -135,18 +174,22 @@ void Vm::save_to(save::SaveWriter& out) const {
     }
     w.u32(static_cast<std::uint32_t>(all.size()));
     for (const auto* i : all) {
+        const auto start = w.out.size();
         w.u32(i->form);
         w.text(i->cls->key());
         w.text(i->state());
+        w.check_record(start, k_instance_min_bytes);
     }
     for (const auto* i : all) {
         w.u32(static_cast<std::uint32_t>(i->vars.size()));
         for (const auto& [owner, values] : i->vars) {
+            const auto start = w.out.size();
             w.text(owner->key());
             w.u32(static_cast<std::uint32_t>(values.size()));
             for (const auto& v : values) {
                 write_value(w, ctx, v);
             }
+            w.check_record(start, k_variable_level_min_bytes);
         }
     }
 
@@ -159,12 +202,14 @@ void Vm::save_to(save::SaveWriter& out) const {
         if (t->done) {
             continue;
         }
+        const auto thread_start = w.out.size();
         w.u64(t->id);
         w.u8(t->keep_result ? 1U : 0U);
         w.f64(t->wake_at);
         w.text(t->wait_for);
         w.u32(static_cast<std::uint32_t>(t->frames.size()));
         for (const auto& f : t->frames) {
+            const auto frame_start = w.out.size();
             w.text(f.fn->owner->key());
             w.text(f.fn->state);
             w.text(f.fn->name);
@@ -178,7 +223,9 @@ void Vm::save_to(save::SaveWriter& out) const {
             }
             w.u32(f.pc);
             w.u32(static_cast<std::uint32_t>(f.result_arg));
+            w.check_record(frame_start, k_frame_min_bytes);
         }
+        w.check_record(thread_start, k_thread_min_bytes);
     }
 
     std::vector<std::uint64_t> ids;
@@ -188,8 +235,10 @@ void Vm::save_to(save::SaveWriter& out) const {
     std::ranges::sort(ids);
     w.u32(static_cast<std::uint32_t>(ids.size()));
     for (const auto id : ids) {
+        const auto start = w.out.size();
         w.u64(id);
         write_value(w, ctx, results_.at(id));
+        w.check_record(start, k_result_min_bytes);
     }
 
     // A timer whose instance is not in the save (detached) is dropped.
@@ -200,49 +249,63 @@ void Vm::save_to(save::SaveWriter& out) const {
         if (found == ctx.instance_index.end()) {
             continue;
         }
+        const auto start = w.out.size();
         w.u32(found->second);
         w.f64(t.due);
         w.f64(t.interval);
+        w.check_record(start, k_timer_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(scheduled_.size()));
     for (const auto& d : scheduled_) {
+        const auto start = w.out.size();
         w.f64(d.due);
         w.text(d.kind);
         w.u32(d.a);
         w.u32(d.b);
         w.u32(d.c);
+        w.check_record(start, k_scheduled_min_bytes);
     }
     out.add("VMST", k_section_version, w.out);
 
     ByteWriter inventory;
     inventory.u32(static_cast<std::uint32_t>(inventory_.owners().size()));
     for (const auto& [owner, items] : inventory_.owners()) {
+        const auto start = inventory.out.size();
         inventory.u32(owner);
         inventory.u32(static_cast<std::uint32_t>(items.size()));
         for (const auto& [item, count] : items) {
+            const auto item_start = inventory.out.size();
             inventory.u32(item);
             inventory.u64(static_cast<std::uint64_t>(count));
+            inventory.check_record(item_start, k_inventory_item_min_bytes);
         }
+        inventory.check_record(start, k_inventory_owner_min_bytes);
     }
     out.add("INVT", k_section_version, inventory.out);
 
     ByteWriter animation;
     animation.u32(static_cast<std::uint32_t>(animation_states_.size()));
     for (const auto& [ref, bytes] : animation_states_) {
+        const auto start = animation.out.size();
         animation.u32(ref);
         animation.u32(static_cast<std::uint32_t>(bytes.size()));
         animation.bytes(bytes);
+        animation.check_record(start, k_animation_ref_min_bytes + bytes.size() * k_animation_byte_min_bytes);
     }
     out.add("ANIM", k_section_version, animation.out);
 
     ByteWriter lists;
     lists.u32(static_cast<std::uint32_t>(form_lists_.lists().size()));
     for (const auto& [list, added] : form_lists_.lists()) {
+        const auto start = lists.out.size();
         lists.u32(list);
         lists.u32(static_cast<std::uint32_t>(added.size()));
         for (const auto form : added) {
+            const auto form_start = lists.out.size();
             lists.u32(form);
+            lists.check_record(form_start, k_form_list_form_min_bytes);
         }
+        lists.check_record(start, k_form_list_min_bytes);
     }
     out.add("FLST", k_section_version, lists.out);
 
@@ -257,6 +320,7 @@ void Vm::save_to(save::SaveWriter& out) const {
         if (ref.transient) {
             continue;
         }
+        const auto start = placed.out.size();
         placed.u32(id);
         placed.u32(ref.base);
         placed.u32(ref.cell);
@@ -267,16 +331,19 @@ void Vm::save_to(save::SaveWriter& out) const {
             placed.f64(v);
         }
         placed.f64(ref.scale);
+        placed.check_record(start, k_placed_ref_min_bytes);
     }
     out.add("PLCD", k_section_version, placed.out);
 
     ByteWriter destruction;
     destruction.u32(static_cast<std::uint32_t>(destruction_.states().size()));
     for (const auto& [ref, state] : destruction_.states()) {
+        const auto start = destruction.out.size();
         destruction.u32(ref);
         destruction.f64(state.damage);
         destruction.u32(static_cast<std::uint32_t>(state.stage));
         destruction.u8(state.destroyed ? 1 : 0);
+        destruction.check_record(start, k_destruction_min_bytes);
     }
     out.add("DEST", k_section_version, destruction.out);
 
@@ -288,9 +355,11 @@ void Vm::save_to(save::SaveWriter& out) const {
         if (found == ctx.instance_index.end()) {
             continue;
         }
+        const auto start = animation_events.out.size();
         animation_events.u32(found->second);
         animation_events.u32(r.sender);
         animation_events.text(r.event);
+        animation_events.check_record(start, k_animation_reg_min_bytes);
     }
     out.add("AEVT", k_section_version, animation_events.out);
 }
@@ -410,7 +479,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
                 v = Value::make_array(it->second);
                 return true;
             }
-            if (id != arrays.size() || !r.count(n, 1)) {
+            if (id != arrays.size() || !r.count(n, k_value_min_bytes)) {
                 return false;
             }
             auto array = std::make_shared<Array>(n);
@@ -441,7 +510,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     out.rng = rng;
 
     std::uint32_t count = 0;
-    if (!r.count(count, 12)) {
+    if (!r.count(count, k_instance_min_bytes)) {
         return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
@@ -461,13 +530,13 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     }
     for (auto* instance : index) {
         std::uint32_t levels = 0;
-        if (!r.count(levels, 8)) {
+        if (!r.count(levels, k_variable_level_min_bytes)) {
             return fail(truncated);
         }
         for (std::uint32_t l = 0; l < levels; ++l) {
             std::string cls;
             std::uint32_t n = 0;
-            if (!r.text(cls) || !r.count(n, 1)) {
+            if (!r.text(cls) || !r.count(n, k_value_min_bytes)) {
                 return fail(truncated);
             }
             std::vector<Value> values(n);
@@ -487,7 +556,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         }
     }
 
-    if (!r.count(count, 32)) {
+    if (!r.count(count, k_thread_min_bytes)) {
         return fail(truncated);
     }
     std::set<std::uint64_t> seen_threads;
@@ -496,7 +565,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         std::uint8_t keep = 0;
         std::uint32_t frames = 0;
         if (!r.u64(thread->id) || !r.u8(keep) || !r.f64(thread->wake_at) || !r.text(thread->wait_for) ||
-            !r.count(frames, 16)) {
+            !r.count(frames, k_frame_min_bytes)) {
             return fail(truncated);
         }
         if (!seen_threads.insert(thread->id).second) {
@@ -533,7 +602,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
                 frame.instance = index[instance];
             }
             std::uint32_t regs = 0;
-            if (!r.count(regs, 1) || regs != frame.fn->reg_names.size()) {
+            if (!r.count(regs, k_value_min_bytes) || regs != frame.fn->reg_names.size()) {
                 return fail("the save's frame of " + cls + "." + name + " does not match the script");
             }
             frame.regs.resize(regs);
@@ -564,7 +633,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         out.threads.push_back(std::move(thread));
     }
 
-    if (!r.count(count, 9)) {
+    if (!r.count(count, k_result_min_bytes)) {
         return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
@@ -575,7 +644,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         }
         out.results[id] = std::move(v);
     }
-    if (!r.count(count, 20)) {
+    if (!r.count(count, k_timer_min_bytes)) {
         return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
@@ -587,7 +656,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         t.instance = index[instance];
         out.timers.push_back(t);
     }
-    if (!r.count(count, 24)) {
+    if (!r.count(count, k_scheduled_min_bytes)) {
         return fail(truncated);
     }
     for (std::uint32_t n = 0; n < count; ++n) {
@@ -605,12 +674,12 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return false;
     }
     std::uint32_t owners = 0;
-    if (!r.count(owners, 8)) {
+    if (!r.count(owners, k_inventory_owner_min_bytes)) {
         return fail("truncated INVT section");
     }
     for (std::uint32_t n = 0; n < owners; ++n) {
         std::uint32_t owner = 0, items = 0;
-        if (!r.u32(owner) || !r.count(items, 12)) {
+        if (!r.u32(owner) || !r.count(items, k_inventory_item_min_bytes)) {
             return fail("truncated INVT section");
         }
         for (std::uint32_t k = 0; k < items; ++k) {
@@ -630,12 +699,12 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return false;
     }
     std::uint32_t refs = 0;
-    if (!r.count(refs, 8)) {
+    if (!r.count(refs, k_animation_ref_min_bytes)) {
         return fail("truncated ANIM section");
     }
     for (std::uint32_t n = 0; n < refs; ++n) {
         std::uint32_t ref = 0, length = 0;
-        if (!r.u32(ref) || !r.count(length, 1) || length > k_max_animation_state) {
+        if (!r.u32(ref) || !r.count(length, k_animation_byte_min_bytes) || length > k_max_animation_state) {
             return fail("truncated ANIM section");
         }
         std::vector<std::uint8_t> state(length);
@@ -656,12 +725,12 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return false;
     }
     std::uint32_t lists = 0;
-    if (!r.count(lists, 8)) {
+    if (!r.count(lists, k_form_list_min_bytes)) {
         return fail("truncated FLST section");
     }
     for (std::uint32_t n = 0; n < lists; ++n) {
         std::uint32_t list = 0, forms = 0;
-        if (!r.u32(list) || !r.count(forms, 4)) {
+        if (!r.u32(list) || !r.count(forms, k_form_list_form_min_bytes)) {
             return fail("truncated FLST section");
         }
         for (std::uint32_t k = 0; k < forms; ++k) {
@@ -680,7 +749,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return false;
     }
     std::uint32_t next = 0, kept = 0;
-    if (!r.u32(next) || !r.count(kept, 12 + 7 * 8)) {
+    if (!r.u32(next) || !r.count(kept, k_placed_ref_min_bytes)) {
         return fail("truncated PLCD section");
     }
     for (std::uint32_t n = 0; n < kept; ++n) {
@@ -712,7 +781,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return false;
     }
     std::uint32_t states = 0;
-    if (!r.count(states, 17)) {
+    if (!r.count(states, k_destruction_min_bytes)) {
         return fail("truncated DEST section");
     }
     for (std::uint32_t n = 0; n < states; ++n) {
@@ -739,7 +808,7 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
             return false;
         }
         std::uint32_t regs = 0;
-        if (!r.count(regs, 12)) {
+        if (!r.count(regs, k_animation_reg_min_bytes)) {
             return fail("truncated AEVT section");
         }
         for (std::uint32_t n = 0; n < regs; ++n) {

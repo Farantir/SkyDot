@@ -63,9 +63,19 @@ const ItemExtra* ItemExtras::find(std::uint32_t id) const noexcept {
     return id == 0 || id > table_.size() ? nullptr : &table_[id - 1];
 }
 
+namespace {
+/// An extra in format version 1: health (f64), enchantment (u32), name (u32 length).
+constexpr std::size_t k_item_extra_v1_min_bytes = 8 + 4 + 4;
+/// Version 2 adds charge (f64), charge max (f64), poison (u32), poison doses (u32).
+constexpr std::size_t k_item_extra_v2_min_bytes = k_item_extra_v1_min_bytes + 8 + 8 + 4 + 4;
+/// An extra: the version 2 fields and the soul (u8).
+constexpr std::size_t k_item_extra_min_bytes = k_item_extra_v2_min_bytes + 1;
+} // namespace
+
 void ItemExtras::write(save::ByteWriter& w) const {
     w.u32(static_cast<std::uint32_t>(table_.size()));
     for (const auto& e : table_) {
+        const auto start = w.out.size();
         w.f64(static_cast<double>(e.health));
         w.u32(e.enchantment);
         w.text(e.name);
@@ -74,13 +84,14 @@ void ItemExtras::write(save::ByteWriter& w) const {
         w.u32(e.poison);
         w.u32(e.poison_doses);
         w.u8(e.soul);
+        w.check_record(start, k_item_extra_min_bytes);
     }
 }
 
 bool ItemExtras::read(save::ByteReader& r, ItemExtras& out, std::uint32_t version) {
     out.clear();
     std::uint32_t n = 0;
-    if (!r.count(n, 16)) {
+    if (!r.count(n, version >= 3 ? k_item_extra_min_bytes : (version >= 2 ? k_item_extra_v2_min_bytes : k_item_extra_v1_min_bytes))) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {

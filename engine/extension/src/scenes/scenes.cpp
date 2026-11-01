@@ -455,24 +455,39 @@ void Scenes::adopt(Scenes&& other) {
     outbox_.clear();
 }
 
+namespace {
+/// A scene action: status (u8), time left (f64), actor (u32).
+constexpr std::size_t k_scene_action_min_bytes = 1 + 8 + 4;
+/// A pushed package: actor (u32), package (u32), end phase (u32).
+constexpr std::size_t k_scene_pushed_min_bytes = 4 + 4 + 4;
+/// A running scene: id (u32), phase (u32), action count (u32), pushed count (u32).
+constexpr std::size_t k_scene_run_min_bytes = 4 + 4 + 4 + 4;
+} // namespace
+
 std::vector<std::uint8_t> Scenes::save() const {
     save::ByteWriter w;
     w.u32(static_cast<std::uint32_t>(runs_.size()));
     for (const auto& [id, run] : runs_) {
+        const auto start = w.out.size();
         w.u32(id);
         w.u32(static_cast<std::uint32_t>(run.phase));
         w.u32(static_cast<std::uint32_t>(run.actions.size()));
         for (const auto& a : run.actions) {
+            const auto action_start = w.out.size();
             w.u8(static_cast<std::uint8_t>(a.status));
             w.f64(a.left);
             w.u32(a.actor);
+            w.check_record(action_start, k_scene_action_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(run.pushed.size()));
         for (const auto& p : run.pushed) {
+            const auto pushed_start = w.out.size();
             w.u32(p.actor);
             w.u32(p.package);
             w.u32(p.end_phase);
+            w.check_record(pushed_start, k_scene_pushed_min_bytes);
         }
+        w.check_record(start, k_scene_run_min_bytes);
     }
     return w.out;
 }
@@ -480,14 +495,14 @@ std::vector<std::uint8_t> Scenes::save() const {
 bool Scenes::load(save::ByteReader r, Scenes& out) {
     out.clear();
     std::uint32_t n = 0;
-    if (!r.count(n, 12)) {
+    if (!r.count(n, k_scene_run_min_bytes)) {
         return false;
     }
     for (std::uint32_t k = 0; k < n; ++k) {
         std::uint32_t id = 0;
         std::uint32_t phase = 0;
         std::uint32_t actions = 0;
-        if (!r.u32(id) || !r.u32(phase) || !r.count(actions, 13)) {
+        if (!r.u32(id) || !r.u32(phase) || !r.count(actions, k_scene_action_min_bytes)) {
             return false;
         }
         const auto* scene = out.find(id);
@@ -511,7 +526,7 @@ bool Scenes::load(save::ByteReader r, Scenes& out) {
             run.actions.push_back(a);
         }
         std::uint32_t pushed = 0;
-        if (!r.count(pushed, 12)) {
+        if (!r.count(pushed, k_scene_pushed_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < pushed; ++i) {

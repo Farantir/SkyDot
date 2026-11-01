@@ -251,16 +251,23 @@ void ShoutBook::adopt(ShoutBook&& other) {
 
 namespace {
 
+/// A form id in a set: id (u32).
+constexpr std::size_t k_shout_id_min_bytes = 4;
+/// An actor's record: ref (u32), four set counts (u32 each), equipped (u32), recovery (f64).
+constexpr std::size_t k_shout_record_min_bytes = 4 + 4 * 4 + 4 + 8;
+
 void write_set(save::ByteWriter& w, const std::set<std::uint32_t>& set) {
     w.u32(static_cast<std::uint32_t>(set.size()));
     for (const auto v : set) {
+        const auto start = w.out.size();
         w.u32(v);
+        w.check_record(start, k_shout_id_min_bytes);
     }
 }
 
 bool read_set(save::ByteReader& r, std::set<std::uint32_t>& out) {
     std::uint32_t n = 0;
-    if (!r.count(n, 4)) {
+    if (!r.count(n, k_shout_id_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -287,6 +294,7 @@ std::vector<std::uint8_t> ShoutBook::save() const {
         if (rec.empty()) {
             continue;
         }
+        const auto start = w.out.size();
         w.u32(ref);
         write_set(w, rec.known);
         write_set(w, rec.unlocked);
@@ -294,13 +302,14 @@ std::vector<std::uint8_t> ShoutBook::save() const {
         write_set(w, rec.removed);
         w.u32(rec.equipped);
         w.f64(rec.recovery);
+        w.check_record(start, k_shout_record_min_bytes);
     }
     return w.out;
 }
 
 bool ShoutBook::load(save::ByteReader r, ShoutBook& out) {
     std::uint32_t version = 0, n = 0;
-    if (!r.u32(version) || version != k_section_version || !r.count(n, 32)) {
+    if (!r.u32(version) || version != k_section_version || !r.count(n, k_shout_record_min_bytes)) {
         return false;
     }
     std::map<std::uint32_t, Record> records;

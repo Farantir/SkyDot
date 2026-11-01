@@ -84,32 +84,47 @@ void Triggers::move_actor(std::uint32_t actor, const Vec3& position,
     }
 }
 
+namespace {
+/// An actor inside a trigger: ref (u32).
+constexpr std::size_t k_trigger_occupant_min_bytes = 4;
+/// A trigger: ref (u32), occupant count (u32).
+constexpr std::size_t k_trigger_min_bytes = 4 + 4;
+/// A tracked actor: ref (u32), position (three f64).
+constexpr std::size_t k_trigger_actor_min_bytes = 4 + 3 * 8;
+} // namespace
+
 void Triggers::write(save::ByteWriter& w) const {
     w.u32(static_cast<std::uint32_t>(triggers_.size()));
     for (const auto& [ref, t] : triggers_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.u32(static_cast<std::uint32_t>(t.inside.size()));
         for (const auto a : t.inside) {
+            const auto occupant_start = w.out.size();
             w.u32(a);
+            w.check_record(occupant_start, k_trigger_occupant_min_bytes);
         }
+        w.check_record(start, k_trigger_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(actors_.size()));
     for (const auto& [ref, position] : actors_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.f64(static_cast<double>(position.x));
         w.f64(static_cast<double>(position.y));
         w.f64(static_cast<double>(position.z));
+        w.check_record(start, k_trigger_actor_min_bytes);
     }
 }
 
 bool Triggers::read(save::ByteReader& r, Saved& out) {
     std::uint32_t n = 0;
-    if (!r.count(n, 8)) {
+    if (!r.count(n, k_trigger_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
         std::uint32_t ref = 0, inside = 0;
-        if (!r.u32(ref) || !r.count(inside, 4)) {
+        if (!r.u32(ref) || !r.count(inside, k_trigger_occupant_min_bytes)) {
             return false;
         }
         auto& list = out.inside[ref];
@@ -121,7 +136,7 @@ bool Triggers::read(save::ByteReader& r, Saved& out) {
             list.insert(actor);
         }
     }
-    if (!r.count(n, 28)) {
+    if (!r.count(n, k_trigger_actor_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {

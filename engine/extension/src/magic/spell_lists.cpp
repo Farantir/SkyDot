@@ -265,46 +265,67 @@ void SpellBook::adopt(SpellBook&& other) {
     applied_.clear();
 }
 
+namespace {
+/// A spell id in a list: spell (u32).
+constexpr std::size_t k_spell_id_min_bytes = 4;
+/// A power use: spell (u32), game day (f64).
+constexpr std::size_t k_spell_use_min_bytes = 4 + 8;
+/// A known enchantment: id (u32).
+constexpr std::size_t k_known_enchantment_min_bytes = 4;
+/// An actor's record: ref (u32), added count (u32), removed count (u32), three slots (u32), use count (u32).
+constexpr std::size_t k_spell_record_min_bytes = 4 + 4 + 4 + 3 * 4 + 4;
+} // namespace
+
 std::vector<std::uint8_t> SpellBook::save() const {
     save::ByteWriter w;
     w.u32(k_section_version);
     w.u32(static_cast<std::uint32_t>(records_.size()));
     for (const auto& [ref, rec] : records_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.u32(static_cast<std::uint32_t>(rec.added.size()));
         for (const auto s : rec.added) {
+            const auto id_start = w.out.size();
             w.u32(s);
+            w.check_record(id_start, k_spell_id_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(rec.removed.size()));
         for (const auto s : rec.removed) {
+            const auto id_start = w.out.size();
             w.u32(s);
+            w.check_record(id_start, k_spell_id_min_bytes);
         }
         for (const auto s : rec.slots) {
             w.u32(s);
         }
         w.u32(static_cast<std::uint32_t>(rec.used.size()));
         for (const auto& [spell, day] : rec.used) {
+            const auto use_start = w.out.size();
             w.u32(spell);
             w.f64(day);
+            w.check_record(use_start, k_spell_use_min_bytes);
         }
+        w.check_record(start, k_spell_record_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(known_enchantments_.size()));
     for (const auto e : known_enchantments_) {
+        const auto start = w.out.size();
         w.u32(e);
+        w.check_record(start, k_known_enchantment_min_bytes);
     }
     return w.out;
 }
 
 bool SpellBook::load(save::ByteReader r, SpellBook& out) {
     std::uint32_t version = 0, n = 0;
-    if (!r.u32(version) || version != k_section_version || !r.count(n, 28)) {
+    if (!r.u32(version) || version != k_section_version || !r.count(n, k_spell_record_min_bytes)) {
         return false;
     }
     std::map<std::uint32_t, Record> records;
     for (std::uint32_t i = 0; i < n; ++i) {
         std::uint32_t ref = 0, count = 0;
         Record rec;
-        if (!r.u32(ref) || !r.count(count, 4)) {
+        if (!r.u32(ref) || !r.count(count, k_spell_id_min_bytes)) {
             return false;
         }
         for (std::uint32_t k = 0; k < count; ++k) {
@@ -314,7 +335,7 @@ bool SpellBook::load(save::ByteReader r, SpellBook& out) {
             }
             rec.added.insert(s);
         }
-        if (!r.count(count, 4)) {
+        if (!r.count(count, k_spell_id_min_bytes)) {
             return false;
         }
         for (std::uint32_t k = 0; k < count; ++k) {
@@ -329,7 +350,7 @@ bool SpellBook::load(save::ByteReader r, SpellBook& out) {
                 return false;
             }
         }
-        if (!r.count(count, 12)) {
+        if (!r.count(count, k_spell_use_min_bytes)) {
             return false;
         }
         for (std::uint32_t k = 0; k < count; ++k) {
@@ -343,7 +364,7 @@ bool SpellBook::load(save::ByteReader r, SpellBook& out) {
         records[ref] = std::move(rec);
     }
     std::uint32_t known = 0;
-    if (!r.count(known, 4)) {
+    if (!r.count(known, k_known_enchantment_min_bytes)) {
         return false;
     }
     std::set<std::uint32_t> enchantments;

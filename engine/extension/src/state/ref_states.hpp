@@ -24,6 +24,16 @@ struct MovedTo {
 
 struct RefStates {
     static constexpr std::uint32_t k_section_version = 1;
+    /// A disabled entry: ref (u32), flag (u8).
+    static constexpr std::size_t k_disabled_min_bytes = 4 + 1;
+    /// An open state: ref (u32), value (u64).
+    static constexpr std::size_t k_open_min_bytes = 4 + 8;
+    /// A locked entry: ref (u32), flag (u8).
+    static constexpr std::size_t k_locked_min_bytes = 4 + 1;
+    /// A blocked ref: ref (u32).
+    static constexpr std::size_t k_blocked_min_bytes = 4;
+    /// A move: ref (u32), position and rotation (six f64).
+    static constexpr std::size_t k_moved_min_bytes = 4 + 6 * 8;
 
     std::map<std::uint32_t, bool> disabled; ///< ref -> disabled (false: enabled by a script)
     std::map<std::uint32_t, std::int64_t> open; ///< GetOpenState values
@@ -53,25 +63,34 @@ struct RefStates {
         save::ByteWriter w;
         w.u32(static_cast<std::uint32_t>(disabled.size()));
         for (const auto& [ref, value] : disabled) {
+            const auto start = w.out.size();
             w.u32(ref);
             w.u8(value ? 1 : 0);
+            w.check_record(start, k_disabled_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(open.size()));
         for (const auto& [ref, value] : open) {
+            const auto start = w.out.size();
             w.u32(ref);
             w.u64(static_cast<std::uint64_t>(value));
+            w.check_record(start, k_open_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(locked.size()));
         for (const auto& [ref, value] : locked) {
+            const auto start = w.out.size();
             w.u32(ref);
             w.u8(value ? 1 : 0);
+            w.check_record(start, k_locked_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(blocked.size()));
         for (const auto ref : blocked) {
+            const auto start = w.out.size();
             w.u32(ref);
+            w.check_record(start, k_blocked_min_bytes);
         }
         w.u32(static_cast<std::uint32_t>(moved.size()));
         for (const auto& [ref, to] : moved) {
+            const auto start = w.out.size();
             w.u32(ref);
             for (const double v : to.position) {
                 w.f64(v);
@@ -79,6 +98,7 @@ struct RefStates {
             for (const double v : to.rotation) {
                 w.f64(v);
             }
+            w.check_record(start, k_moved_min_bytes);
         }
         return w.out;
     }
@@ -88,7 +108,7 @@ struct RefStates {
     [[nodiscard]] static bool load(save::ByteReader r, RefStates& out) {
         out = RefStates{};
         std::uint32_t n = 0;
-        if (!r.count(n, 5)) {
+        if (!r.count(n, k_disabled_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
@@ -99,7 +119,7 @@ struct RefStates {
             }
             out.disabled[ref] = v != 0;
         }
-        if (!r.count(n, 12)) {
+        if (!r.count(n, k_open_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
@@ -110,7 +130,7 @@ struct RefStates {
             }
             out.open[ref] = static_cast<std::int64_t>(v);
         }
-        if (!r.count(n, 5)) {
+        if (!r.count(n, k_locked_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
@@ -121,7 +141,7 @@ struct RefStates {
             }
             out.locked[ref] = v != 0;
         }
-        if (!r.count(n, 4)) {
+        if (!r.count(n, k_blocked_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
@@ -131,7 +151,7 @@ struct RefStates {
             }
             out.blocked.insert(ref);
         }
-        if (!r.count(n, 4 + 6 * 8)) {
+        if (!r.count(n, k_moved_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {

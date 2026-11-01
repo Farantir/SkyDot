@@ -4,16 +4,21 @@
 namespace skydot::dialogue {
 namespace {
 
+/// A form id in a set: id (u32).
+constexpr std::size_t k_dialogue_id_min_bytes = 4;
+
 void write_set(save::ByteWriter& w, const std::set<std::uint32_t>& values) {
     w.u32(static_cast<std::uint32_t>(values.size()));
     for (const auto v : values) {
+        const auto start = w.out.size();
         w.u32(v);
+        w.check_record(start, k_dialogue_id_min_bytes);
     }
 }
 
 bool read_set(save::ByteReader& r, std::set<std::uint32_t>& out) {
     std::uint32_t n = 0;
-    if (!r.count(n, 4)) {
+    if (!r.count(n, k_dialogue_id_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {

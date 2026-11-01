@@ -515,19 +515,49 @@ void ActorStates::adopt(ActorStates&& other) {
     due_.clear();
 }
 
+namespace {
+/// An actor value: id (u32), has-base flag (u8), base, modifier and damage (three f64).
+constexpr std::size_t k_actor_value_min_bytes = 4 + 1 + 3 * 8;
+/// A faction membership: faction (u32), rank (u32).
+constexpr std::size_t k_actor_faction_min_bytes = 4 + 4;
+/// An actor record in section version 1: ref (u32), dead (u8), value count (u32).
+constexpr std::size_t k_actor_record_v1_min_bytes = 4 + 1 + 4;
+/// Version 2 adds killer (u32) and the has-corpse flag (u8); the corpse place itself is optional.
+constexpr std::size_t k_actor_record_v2_min_bytes = k_actor_record_v1_min_bytes + 4 + 1;
+/// Version 3 adds no-flying (u8) and landing marker (u32).
+constexpr std::size_t k_actor_record_v3_min_bytes = k_actor_record_v2_min_bytes + 1 + 4;
+/// An actor record: the version 3 fields, ghost (u8) and faction count (u32).
+constexpr std::size_t k_actor_record_min_bytes = k_actor_record_v3_min_bytes + 1 + 4;
+/// A dying actor: ref (u32), time left (f64).
+constexpr std::size_t k_actor_dying_min_bytes = 4 + 8;
+/// Base flags: npc (u32), essential (u8), invulnerable (u8).
+constexpr std::size_t k_actor_base_flags_min_bytes = 4 + 1 + 1;
+/// A relationship: first (u32), second (u32), rank (u32).
+constexpr std::size_t k_actor_relationship_min_bytes = 4 + 4 + 4;
+/// A faction reaction: from (u32), to (u32), reaction (u8).
+constexpr std::size_t k_actor_reaction_min_bytes = 4 + 4 + 1;
+/// A living actor's place: ref (u32), space (u32), x, y, z and rotation (four f64).
+constexpr std::size_t k_actor_living_min_bytes = 4 + 4 + 4 * 8;
+/// A risen actor: ref (u32).
+constexpr std::size_t k_actor_risen_min_bytes = 4;
+} // namespace
+
 std::vector<std::uint8_t> ActorStates::save() const {
     save::ByteWriter w;
     w.u32(static_cast<std::uint32_t>(records_.size()));
     for (const auto& [ref, record] : records_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.u8(record.dead ? 1 : 0);
         w.u32(static_cast<std::uint32_t>(record.values.size()));
         for (const auto& [av, v] : record.values) {
+            const auto value_start = w.out.size();
             w.u32(av);
             w.u8(v.base ? 1 : 0);
             w.f64(v.base.value_or(0.0));
             w.f64(v.modifier);
             w.f64(v.damage);
+            w.check_record(value_start, k_actor_value_min_bytes);
         }
         w.u32(record.killer);
         w.u8(record.corpse ? 1 : 0);
@@ -543,42 +573,55 @@ std::vector<std::uint8_t> ActorStates::save() const {
         w.u8(record.ghost ? 1 : 0);
         w.u32(static_cast<std::uint32_t>(record.factions.size()));
         for (const auto& [faction, rank] : record.factions) {
+            const auto faction_start = w.out.size();
             w.u32(faction);
             w.u32(static_cast<std::uint32_t>(rank));
+            w.check_record(faction_start, k_actor_faction_min_bytes);
         }
+        w.check_record(start, k_actor_record_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(dying_.size()));
     for (const auto& [ref, left] : dying_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.f64(left);
+        w.check_record(start, k_actor_dying_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(base_flags_.size()));
     const auto tri = [](const std::optional<bool>& v) { return static_cast<std::uint8_t>(v ? (*v ? 2 : 1) : 0); };
     for (const auto& [npc, flags] : base_flags_) {
+        const auto start = w.out.size();
         w.u32(npc);
         w.u8(tri(flags.essential));
         w.u8(tri(flags.invulnerable));
+        w.check_record(start, k_actor_base_flags_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(relationships_.size()));
     for (const auto& [key, rank] : relationships_) {
+        const auto start = w.out.size();
         w.u32(static_cast<std::uint32_t>(key >> 32));
         w.u32(static_cast<std::uint32_t>(key & 0xFFFFFFFFU));
         w.u32(static_cast<std::uint32_t>(rank));
+        w.check_record(start, k_actor_relationship_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(reactions_.size()));
     for (const auto& [key, reaction] : reactions_) {
+        const auto start = w.out.size();
         w.u32(static_cast<std::uint32_t>(key >> 32));
         w.u32(static_cast<std::uint32_t>(key & 0xFFFFFFFFU));
         w.u8(reaction);
+        w.check_record(start, k_actor_reaction_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(living_.size()));
     for (const auto& [ref, place] : living_) {
+        const auto start = w.out.size();
         w.u32(ref);
         w.u32(place.space);
         w.f64(place.x);
         w.f64(place.y);
         w.f64(place.z);
         w.f64(place.rot_z);
+        w.check_record(start, k_actor_living_min_bytes);
     }
     std::uint32_t n_risen = 0;
     for (const auto& [ref, record] : records_) {
@@ -587,7 +630,9 @@ std::vector<std::uint8_t> ActorStates::save() const {
     w.u32(n_risen);
     for (const auto& [ref, record] : records_) {
         if (record.risen) {
+            const auto start = w.out.size();
             w.u32(ref);
+            w.check_record(start, k_actor_risen_min_bytes);
         }
     }
     return w.out;
@@ -596,13 +641,16 @@ std::vector<std::uint8_t> ActorStates::save() const {
 bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t version) {
     out = ActorStates{};
     std::uint32_t n = 0;
-    if (!r.count(n, version >= 4 ? 24 : version >= 3 ? 19 : version >= 2 ? 14 : 9)) {
+    if (!r.count(n, version >= 4   ? k_actor_record_min_bytes
+                        : version >= 3 ? k_actor_record_v3_min_bytes
+                        : version >= 2 ? k_actor_record_v2_min_bytes
+                                       : k_actor_record_v1_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
         std::uint32_t ref = 0, values = 0;
         std::uint8_t dead = 0;
-        if (!r.u32(ref) || !r.u8(dead) || !r.count(values, 29)) {
+        if (!r.u32(ref) || !r.u8(dead) || !r.count(values, k_actor_value_min_bytes)) {
             return false;
         }
         Record& record = out.records_[ref];
@@ -647,7 +695,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
         if (version >= 4) {
             std::uint8_t ghost = 0;
             std::uint32_t factions = 0;
-            if (!r.u8(ghost) || !r.count(factions, 8)) {
+            if (!r.u8(ghost) || !r.count(factions, k_actor_faction_min_bytes)) {
                 return false;
             }
             record.ghost = ghost != 0;
@@ -662,7 +710,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
     }
     if (version >= 5) {
         std::uint32_t dying = 0;
-        if (!r.count(dying, 12)) {
+        if (!r.count(dying, k_actor_dying_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < dying; ++i) {
@@ -676,7 +724,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
     }
     if (version >= 6) {
         std::uint32_t n_flags = 0;
-        if (!r.count(n_flags, 6)) {
+        if (!r.count(n_flags, k_actor_base_flags_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n_flags; ++i) {
@@ -694,7 +742,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
             }
         }
         std::uint32_t n_rel = 0;
-        if (!r.count(n_rel, 12)) {
+        if (!r.count(n_rel, k_actor_relationship_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n_rel; ++i) {
@@ -705,7 +753,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
             out.set_relationship_rank(a, b, static_cast<std::int32_t>(rank));
         }
         std::uint32_t n_react = 0;
-        if (!r.count(n_react, 9)) {
+        if (!r.count(n_react, k_actor_reaction_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n_react; ++i) {
@@ -719,7 +767,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
     }
     if (version >= 7) {
         std::uint32_t n_living = 0;
-        if (!r.count(n_living, 40)) {
+        if (!r.count(n_living, k_actor_living_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n_living; ++i) {
@@ -735,7 +783,7 @@ bool ActorStates::load(save::ByteReader r, ActorStates& out, std::uint32_t versi
     }
     if (version >= 8) {
         std::uint32_t n_risen = 0;
-        if (!r.count(n_risen, 4)) {
+        if (!r.count(n_risen, k_actor_risen_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n_risen; ++i) {

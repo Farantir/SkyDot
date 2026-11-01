@@ -79,11 +79,25 @@ void CreatedForms::clear() {
     known_.clear();
 }
 
+namespace {
+/// A potion effect: effect (u32), magnitude (f64), duration (u32).
+constexpr std::size_t k_potion_effect_min_bytes = 4 + 8 + 4;
+/// A potion: id (u32), name (u32 length), value (u32), weight (f64), poison (u8), model (u32 length), effect count (u32).
+constexpr std::size_t k_potion_min_bytes = 4 + 4 + 4 + 8 + 1 + 4 + 4;
+/// A known-ingredient entry: form (u32), mask (u8).
+constexpr std::size_t k_known_ingredient_min_bytes = 4 + 1;
+/// An enchantment effect: effect (u32), magnitude (f64), duration (u32), area (u32).
+constexpr std::size_t k_enchantment_effect_min_bytes = 4 + 8 + 4 + 4;
+/// A created enchantment: id (u32), name (u32 length), base (u32), cost (f64), constant (u8), effect count (u32).
+constexpr std::size_t k_created_enchantment_min_bytes = 4 + 4 + 4 + 8 + 1 + 4;
+} // namespace
+
 std::vector<std::uint8_t> CreatedForms::save() const {
     save::ByteWriter w;
     w.u32(ids_.next());
     w.u32(static_cast<std::uint32_t>(potions_.size()));
     for (const auto& [id, p] : potions_) {
+        const auto start = w.out.size();
         w.u32(id);
         w.text(p.name);
         w.u32(static_cast<std::uint32_t>(p.value));
@@ -92,18 +106,24 @@ std::vector<std::uint8_t> CreatedForms::save() const {
         w.text(p.model);
         w.u32(static_cast<std::uint32_t>(p.effects.size()));
         for (const auto& e : p.effects) {
+            const auto effect_start = w.out.size();
             w.u32(e.effect);
             w.f64(static_cast<double>(e.magnitude));
             w.u32(e.duration);
+            w.check_record(effect_start, k_potion_effect_min_bytes);
         }
+        w.check_record(start, k_potion_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(known_.size()));
     for (const auto& [form, mask] : known_) {
+        const auto start = w.out.size();
         w.u32(form);
         w.u8(mask);
+        w.check_record(start, k_known_ingredient_min_bytes);
     }
     w.u32(static_cast<std::uint32_t>(enchantments_.size()));
     for (const auto& [id, e] : enchantments_) {
+        const auto start = w.out.size();
         w.u32(id);
         w.text(e.name);
         w.u32(e.base);
@@ -111,11 +131,14 @@ std::vector<std::uint8_t> CreatedForms::save() const {
         w.u8(e.constant ? 1 : 0);
         w.u32(static_cast<std::uint32_t>(e.effects.size()));
         for (const auto& f : e.effects) {
+            const auto effect_start = w.out.size();
             w.u32(f.effect);
             w.f64(static_cast<double>(f.magnitude));
             w.u32(f.duration);
             w.u32(f.area);
+            w.check_record(effect_start, k_enchantment_effect_min_bytes);
         }
+        w.check_record(start, k_created_enchantment_min_bytes);
     }
     return w.out;
 }
@@ -124,7 +147,7 @@ bool CreatedForms::load(save::ByteReader r, CreatedForms& out, std::uint32_t ver
     out.clear();
     std::uint32_t next = 0;
     std::uint32_t n = 0;
-    if (!r.u32(next) || !out.ids_.restore(next) || !r.count(n, 25)) {
+    if (!r.u32(next) || !out.ids_.restore(next) || !r.count(n, k_potion_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -133,7 +156,7 @@ bool CreatedForms::load(save::ByteReader r, CreatedForms& out, std::uint32_t ver
         double weight = 0.0;
         std::uint8_t poison = 0;
         if (!r.u32(p.id) || !r.text(p.name) || !r.u32(value) || !r.f64(weight) || !r.u8(poison) ||
-            !r.text(p.model) || !r.count(effects, 16) || !id_ranges::created_forms.contains(p.id)) {
+            !r.text(p.model) || !r.count(effects, k_potion_effect_min_bytes) || !id_ranges::created_forms.contains(p.id)) {
             return false;
         }
         p.value = static_cast<std::int32_t>(value);
@@ -151,7 +174,7 @@ bool CreatedForms::load(save::ByteReader r, CreatedForms& out, std::uint32_t ver
         out.ids_.note_used(p.id);
         out.potions_.emplace(p.id, std::move(p));
     }
-    if (!r.count(n, 5)) {
+    if (!r.count(n, k_known_ingredient_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -163,7 +186,7 @@ bool CreatedForms::load(save::ByteReader r, CreatedForms& out, std::uint32_t ver
         out.known_[form] = static_cast<std::uint8_t>(mask & 0xFU);
     }
     if (version >= 2) {
-        if (!r.count(n, 25)) {
+        if (!r.count(n, k_created_enchantment_min_bytes)) {
             return false;
         }
         for (std::uint32_t i = 0; i < n; ++i) {
@@ -171,7 +194,7 @@ bool CreatedForms::load(save::ByteReader r, CreatedForms& out, std::uint32_t ver
             std::uint8_t constant = 0;
             std::uint32_t effects = 0;
             if (!r.u32(e.id) || !r.text(e.name) || !r.u32(e.base) || !r.f64(e.cost) || !r.u8(constant) ||
-                !r.count(effects, 20) || !id_ranges::created_forms.contains(e.id) || !std::isfinite(e.cost)) {
+                !r.count(effects, k_enchantment_effect_min_bytes) || !id_ranges::created_forms.contains(e.id) || !std::isfinite(e.cost)) {
                 return false;
             }
             e.constant = constant != 0;

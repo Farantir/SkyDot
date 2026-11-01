@@ -5,6 +5,7 @@
 #pragma once
 
 #include <bit>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -32,6 +33,13 @@ public:
         out.insert(out.end(), s.begin(), s.end());
     }
     void bytes(const std::vector<std::uint8_t>& b) { out.insert(out.end(), b.begin(), b.end()); }
+    /// Debug builds: the record written since `start` is at least `min_bytes`
+    /// long, so the reader's count() bound holds.
+    void check_record(std::size_t start, std::size_t min_bytes) const {
+        assert(out.size() - start >= min_bytes);
+        (void)start;
+        (void)min_bytes;
+    }
     std::vector<std::uint8_t> out;
 };
 

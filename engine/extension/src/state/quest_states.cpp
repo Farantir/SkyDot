@@ -5,10 +5,26 @@
 
 namespace skydot::vm {
 
+namespace {
+/// A completed stage: index (u32).
+constexpr std::size_t k_quest_stage_min_bytes = 4;
+/// An objective: index (u32), bits (u8).
+constexpr std::size_t k_quest_objective_min_bytes = 4 + 1;
+/// A quest: id (u32), five flags (u8), stage (u32), done count (u32), objective count (u32).
+constexpr std::size_t k_quest_min_bytes = 4 + 5 + 4 + 4 + 4;
+/// A script-running quest: id (u32).
+constexpr std::size_t k_quest_script_min_bytes = 4;
+/// An alias handle: quest (u32), alias (u32), handle (u32), fill (u32).
+constexpr std::size_t k_quest_handle_min_bytes = 4 + 4 + 4 + 4;
+/// A quest global: id (u32), value (f64).
+constexpr std::size_t k_quest_global_min_bytes = 4 + 8;
+} // namespace
+
 std::vector<std::uint8_t> QuestStates::save() const {
     save::ByteWriter q;
     q.u32(static_cast<std::uint32_t>(quests_.size()));
     for (const auto& [quest, state] : quests_) {
+        const auto start = q.out.size();
         q.u32(quest);
         q.u8(state.running ? 1 : 0);
         q.u8(state.started ? 1 : 0);
@@ -18,29 +34,40 @@ std::vector<std::uint8_t> QuestStates::save() const {
         q.u32(static_cast<std::uint32_t>(state.stage));
         q.u32(static_cast<std::uint32_t>(state.done.size()));
         for (const auto stage : state.done) {
+            const auto stage_start = q.out.size();
             q.u32(static_cast<std::uint32_t>(stage));
+            q.check_record(stage_start, k_quest_stage_min_bytes);
         }
         q.u32(static_cast<std::uint32_t>(state.objectives.size()));
         for (const auto& [index, bits] : state.objectives) {
+            const auto objective_start = q.out.size();
             q.u32(static_cast<std::uint32_t>(index));
             q.u8(bits);
+            q.check_record(objective_start, k_quest_objective_min_bytes);
         }
+        q.check_record(start, k_quest_min_bytes);
     }
     q.u32(static_cast<std::uint32_t>(scripts_.size()));
     for (const auto quest : scripts_) {
+        const auto start = q.out.size();
         q.u32(quest);
+        q.check_record(start, k_quest_script_min_bytes);
     }
     q.u32(static_cast<std::uint32_t>(handles_.size()));
     for (const auto& [key, handle] : handles_) {
+        const auto start = q.out.size();
         q.u32(key.first);
         q.u32(key.second);
         q.u32(handle);
         q.u32(fill(handle));
+        q.check_record(start, k_quest_handle_min_bytes);
     }
     q.u32(static_cast<std::uint32_t>(globals_.size()));
     for (const auto& [global, value] : globals_) {
+        const auto start = q.out.size();
         q.u32(global);
         q.f64(value);
+        q.check_record(start, k_quest_global_min_bytes);
     }
     q.u32(handle_ids.next());
     return q.out;
@@ -49,7 +76,7 @@ std::vector<std::uint8_t> QuestStates::save() const {
 bool QuestStates::load(save::ByteReader r, QuestStates& out) {
     out = QuestStates{};
     std::uint32_t n = 0;
-    if (!r.count(n, 24)) {
+    if (!r.count(n, k_quest_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -60,7 +87,7 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
         for (auto& f : flags) {
             ok = ok && r.u8(f);
         }
-        ok = ok && r.u32(stage) && r.count(done, 4);
+        ok = ok && r.u32(stage) && r.count(done, k_quest_stage_min_bytes);
         if (!ok) {
             return false;
         }
@@ -77,7 +104,7 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
             }
             q.done.insert(static_cast<std::int32_t>(d));
         }
-        if (!r.count(objectives, 5)) {
+        if (!r.count(objectives, k_quest_objective_min_bytes)) {
             return false;
         }
         for (std::uint32_t k = 0; k < objectives; ++k) {
@@ -90,7 +117,7 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
         }
         out.quests_[quest] = std::move(q);
     }
-    if (!r.count(n, 4)) {
+    if (!r.count(n, k_quest_script_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -100,7 +127,7 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
         }
         out.scripts_.insert(quest);
     }
-    if (!r.count(n, 16)) {
+    if (!r.count(n, k_quest_handle_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -113,7 +140,7 @@ bool QuestStates::load(save::ByteReader r, QuestStates& out) {
         out.add_handle(alias[0], alias[1], alias[2]);
         out.set_fill(alias[2], alias[3]);
     }
-    if (!r.count(n, 12)) {
+    if (!r.count(n, k_quest_global_min_bytes)) {
         return false;
     }
     for (std::uint32_t i = 0; i < n; ++i) {

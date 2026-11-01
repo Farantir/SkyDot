@@ -733,6 +733,14 @@ void ActiveEffects::clear() {
     unhandled_.clear();
 }
 
+namespace {
+/// An effect instance in section version 1: id, mgef (u32 each), source kind (u8), source form and extra, index,
+/// caster, target (u32 each), magnitude, duration, elapsed, area, since-check (five f64), flags (u8).
+constexpr std::size_t k_effect_instance_v1_min_bytes = 4 + 4 + 1 + 4 + 4 + 4 + 4 + 4 + 5 * 8 + 1;
+/// An effect instance: the version 1 fields and the summoned ref (u32).
+constexpr std::size_t k_effect_instance_min_bytes = k_effect_instance_v1_min_bytes + 4;
+} // namespace
+
 std::vector<std::uint8_t> ActiveEffects::save() const {
     save::ByteWriter w;
     w.u32(k_section_version);
@@ -748,6 +756,7 @@ std::vector<std::uint8_t> ActiveEffects::save() const {
         if (derived(i)) {
             continue;
         }
+        const auto start = w.out.size();
         w.u32(i.id);
         w.u32(i.mgef);
         w.u8(static_cast<std::uint8_t>(i.source.kind));
@@ -763,13 +772,14 @@ std::vector<std::uint8_t> ActiveEffects::save() const {
         w.f64(i.since_check);
         w.u8(static_cast<std::uint8_t>((i.active ? 1 : 0) | (i.started ? 2 : 0) | (i.permanent ? 4 : 0)));
         w.u32(i.summoned);
+        w.check_record(start, k_effect_instance_min_bytes);
     }
     return w.out;
 }
 
 bool ActiveEffects::load(save::ByteReader r) {
     std::uint32_t version = 0, next = 0, n = 0;
-    if (!r.u32(version) || (version != k_section_version && version != 1) || !r.u32(next) || !r.count(n, 70)) {
+    if (!r.u32(version) || (version != k_section_version && version != 1) || !r.u32(next) || !r.count(n, version >= 2 ? k_effect_instance_min_bytes : k_effect_instance_v1_min_bytes)) {
         return false;
     }
     std::map<std::uint32_t, Instance> loaded;

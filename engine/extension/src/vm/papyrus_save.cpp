@@ -39,6 +39,10 @@ namespace {
 
 constexpr std::uint32_t k_section_version = 1;
 constexpr std::uint32_t k_papy_version = 2; // 2: the sound instance counter
+/// An attached ref: ref (u32).
+constexpr std::size_t k_attached_ref_min_bytes = 4;
+/// A plugin in the load order: name (u32 length).
+constexpr std::size_t k_plugin_min_bytes = 4;
 
 std::string utf8_of(const String& s) {
     const auto bytes = s.utf8();
@@ -69,7 +73,9 @@ void SkydotPapyrus::write_host(save::SaveWriter& out) const {
     ByteWriter p;
     p.u32(static_cast<std::uint32_t>(attached_.size()));
     for (const auto ref : attached_) {
+        const auto start = p.out.size();
         p.u32(ref);
+        p.check_record(start, k_attached_ref_min_bytes);
     }
     triggers_.write(p);
     p.u32(test_ids_.next());
@@ -89,7 +95,7 @@ bool SkydotPapyrus::decode_host(const save::SaveReader& file, HostSnapshot& out,
         return false;
     }
     std::uint32_t n = 0;
-    if (!r.count(n, 4)) {
+    if (!r.count(n, k_attached_ref_min_bytes)) {
         return fail("PAPY");
     }
     for (std::uint32_t i = 0; i < n; ++i) {
@@ -161,7 +167,9 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
     const godot::PackedStringArray order = pack_.is_valid() ? pack_->get_load_order() : godot::PackedStringArray();
     head.u32(static_cast<std::uint32_t>(order.size()));
     for (const auto& plugin : order) {
+        const auto start = head.out.size();
         head.text(utf8_of(plugin));
+        head.check_record(start, k_plugin_min_bytes);
     }
     out.add("HEAD", k_section_version, head.out);
     vm_->save_to(out);
@@ -196,7 +204,7 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
     }
     std::string version, hash;
     std::uint32_t plugins = 0;
-    if (!r.text(version) || !r.text(hash) || !r.count(plugins, 4)) {
+    if (!r.text(version) || !r.text(hash) || !r.count(plugins, k_plugin_min_bytes)) {
         return fail("the HEAD section of the save is damaged");
     }
     std::vector<std::string> order;
