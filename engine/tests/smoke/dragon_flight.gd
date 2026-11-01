@@ -31,6 +31,7 @@ var _camera: Camera3D
 var _feet := Vector3.ZERO
 var _node: SkydotActor
 var _ref := 0
+var _dragons: Array[int] = []  # the dragons this test spawns
 var _clock := 0.0
 var _lost := 0.0
 var _lost_air := 0.0
@@ -215,6 +216,14 @@ func _run(pack_dir: String) -> void:
 	_feet = _ground(centre + Vector3(25.0, 0.0, 0.0))
 	_ref = _session.papyrus.spawn_actor(DRAGON, _session.place.cell_id, SkydotWorld.godot_to_skyrim(centre), 0.0)
 	expect(_ref != 0, "the dragon is spawned")
+	_dragons.append(_ref)
+	# A passing guard joins the fight, as in the game, and shoots the dragon. Disabling every other fighter keeps
+	# the fight player against dragon, so the dragon's health does not depend on how often a bystander hits.
+	_session.ai.combat_state_changed.connect(func(ref: int, _target: int, state: int) -> void:
+		if state != 1 or ref == PLAYER or ref in _dragons:
+			return
+		_log("bystander 0x%X joined the fight: disabled" % ref)
+		_session.papyrus.call_method(ref, "ObjectReference", "Disable", [false]))
 	await _frames(FPS)
 	_node = world.find_ref_node(_ref) as SkydotActor
 	if _node == null:
@@ -290,7 +299,9 @@ func _run(pack_dir: String) -> void:
 	expect(t >= 0.0, "allowed again, it takes off")
 	await _until(func() -> bool: return _node.get_flight_mode() in ["cruise", "orbit"], 30.0)
 	var max_health := _session.papyrus.get_actor_value_max(_ref, "Health")
-	_session.papyrus.damage_actor_value(_ref, "Health", max_health * 0.7)
+	# To a fixed 25 % of its Health, whatever it lost to arrows before.
+	var current := _session.papyrus.get_actor_value(_ref, "Health")
+	_session.papyrus.damage_actor_value(_ref, "Health", current - 0.25 * max_health)
 	landed_before = _landed
 	t = await _until(func() -> bool: return _landed > landed_before, 60.0)
 	expect(t >= 0.0, "injured, it lands: %.1f s" % t)
@@ -309,6 +320,7 @@ func _run(pack_dir: String) -> void:
 	var high := SkydotWorld.godot_to_skyrim(centre + Vector3(0.0, 0.0, 20.0))
 	high.z += 3000.0
 	var ref2: int = _session.papyrus.spawn_actor(DRAGON, _session.place.cell_id, high, 0.0)
+	_dragons.append(ref2)
 	await _frames(FPS)
 	var node2 := world.find_ref_node(ref2) as SkydotActor
 	expect(node2 != null, "the high dragon is built")
