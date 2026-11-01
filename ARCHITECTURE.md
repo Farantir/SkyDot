@@ -1345,6 +1345,33 @@ those of the actors left behind). A script mod changes the rules by extending
 builds whichever `GameSession.casting_script` names, the hook the Mod API (M3)
 will hand out.
 
+Progression (ADR 0009). `Progression` (`progression.gd`) owns the rules of levelling for
+the player: `use_skill(av, amount)` turns skill use into progress (`amount * use_mult +
+use_offset` from the skill's AVIF, times the `skill_use_mult` hook that P6f feeds with the
+Mod Skill Use perk entry point), raises the base skill while the progress reaches
+`improve_mult * L ^ fSkillUseCurve + improve_offset` (`skill_threshold`; nothing accrues at
+100) and gives character XP per increase (`xp_for_skill_level`: the new level times
+`fXPPerSkillRank`, 1.0 as the pack has no such GMST); `increment_skill(av, count)` (books,
+trainers, IncrementSkill) raises the base directly and keeps the progress fraction;
+`level_up_ready()` / `level_up(attribute_av)` (XP >= `fXPLevelUpBase + fXPLevelUpMult * level`;
+Health 24, Magicka 25 or Stamina 26 plus `iAVDhmsLevelUp`, Stamina also carry weight plus
+`fLevelUpCarryWeightMod`, a perk point, the three restored; callable while levels are banked);
+`perk_blocker`/`perk_status`/`can_take_perk`/`take_perk` (a point, not owned, playable, in a
+skill's perk tree, the rank before taken, a node leading to it taken or the root, and the PERK's
+own conditions via `SkydotPapyrus.perk_conditions_met`; `on_perk_taken` is the hook for P6d's
+effects) and `make_legendary(av)` (base 100 needed; base 15, the tree's perks removed and
+refunded, legendary + 1). It returns plain Dictionaries and emits nothing; `GameSession.use_skill`,
+`increment_skill`, `level_up` and `take_perk` call it and show the GMST texts (`sSkillIncreased`,
+`sLevelUpAvailable`) through `message`. It asks its data through `ProgressionData`
+(`progression_data.gd`), a GDScript seam over `SkydotPapyrus` and `SkydotWorld`
+(GMSTs, `get_actor_value_info`, base and current actor values, the progress dictionary and its
+setters, perks and their tree nodes); `tests/gd/test_progression.gd` gives it a fake. The state
+is the engine's (`vm::ProgressionRuntime`, saved in PRGS), so `Progression` holds none and is not
+in the lifecycle. The session registers `_on_progression_request(kind, args)` with
+`SkydotPapyrus.set_progression_handler` for the Papyrus natives (P6g) to call the rules
+synchronously ("advance_skill", "increment_skill"). A script mod extends `Progression` and
+overrides a rule method, or the session builds whichever `GameSession.progression_script` names.
+
 Attack rules (ADR 0009). `AttackRules` (`attack_rules.gd`) owns the rules of a
 hit for every attacker, the player and NPCs alike: the damage of a blow (base =
 weapon + tempering + ammo, times the player's weapon-skill factor, the attack
@@ -1423,6 +1450,8 @@ rules by extending `PlayerState` and overriding `refusal` or
 | `casting_data.gd` | `CastingData` | the narrow data questions `Casting` asks (equipped spell, `cast_info`, dead, Magicka, cost, cooldown, carried, `pay_spell`, shout info, recovery, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `attack_rules.gd` | `AttackRules` | the rules of a hit for every attacker (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `hit` (facts, damage, landing), the formula `damage` built from `skill_factor`, `armor_percent`, `sneak_mult`, `difficulty`; the power attack's `can_power_attack`, `pays_stamina`, `power_attack_cost`, `pay_power_attack`, `power_delay`; `reach`, `strike_angle`, `stagger`; all of them the mod's to override; no state |
 | `attack_data.gd` | `AttackData` | the narrow data questions `AttackRules` asks (`hit_facts` with the formula's GMSTs, `land_hit`, Stamina, a weapon's weight, GMSTs) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
+| `progression.gd` | `Progression` | the rules of levelling for the player (ADR 0009), a `RefCounted` that returns Dictionaries and emits nothing: `use_skill`, `increment_skill`, `level_up_ready`/`level_up`, `perk_blocker`/`perk_status`/`can_take_perk`/`take_perk`, `make_legendary`; the formulas `skill_threshold`, `xp_for_skill_level`, `level_up_threshold` and the hooks `skill_use_mult`, `on_perk_taken` are the mod's to override; no state (it is `SkydotPapyrus`'s progression) |
+| `progression_data.gd` | `ProgressionData` | the narrow data questions `Progression` asks (GMSTs, a skill's AVIF values and perk tree, the player's base and current actor values, set and restore, the progress dictionary and setters, perk data, ranks, add, remove, prerequisite conditions) over `SkydotPapyrus` and `SkydotWorld`; no rules; the unit tests extend it with a fake |
 | `player_state.gd` | `PlayerState` | which state of the player blocks which action and which actions break invisibility (ADR 0009), a `RefCounted` that returns plain values and emits nothing: `refusal`, `can`, `breaks_invisibility`, `acted`; the paralysis flag `MagicWorld` writes; the mod's to override |
 | `player_state_data.gd` | `PlayerStateData` | the narrow data questions `PlayerState` asks (`is_dead`, `break_invisibility`) over `SkydotPapyrus`; no rules; the unit tests extend it with a fake |
 | `magic.gd` | `Magic` | the player's casting in the scene (7a-3): spells and scrolls in the hands (`LEFT` 0, `RIGHT` 1, `POWER` 2) readied with R, the hand's attack button goes to `Casting` (it holds the hand and the voice, refuses, pays), `Magic` plays the clips and art, shows the refusals and lands the effects with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key, `eye_of` the head an NPC casts from; signals for the arms' clips and the hand art. `NpcMagic` carries out the same hands for actors (target, clips) over the same `Casting` | with `land_spell` where the delivery says (self, touch cone, aimed PROJ by type through `Projectiles`, crosshair), area and explosion/hit art at the impact, `cast_power` for the power key; signals for the arms' clips and the hand art |

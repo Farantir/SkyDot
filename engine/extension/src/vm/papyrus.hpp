@@ -496,6 +496,8 @@ public:
     /// How many of `item` `owner` carries (the player's key check).
     std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
     double get_actor_value(std::int64_t ref, const godot::String& name) const;
+    /// The base of an actor value (no modifiers or damage).
+    double get_base_actor_value(std::int64_t ref, const godot::String& name) const;
     double get_actor_value_max(std::int64_t ref, const godot::String& name) const;
     /// Lower `name` of `ref` by `amount`; an actor at Health 0 dies (signal
     /// `actor_died`) unless it is essential or the player.
@@ -560,6 +562,11 @@ public:
     std::int64_t perk_rank(std::int64_t ref, std::int64_t perk) const;
     /// [{perk, rank}], sorted by perk.
     godot::Array get_perks(std::int64_t ref) const;
+    /// Whether the PERK's own conditions pass for `ref` (the prerequisites; true if it has none or is unknown).
+    bool perk_conditions_met(std::int64_t perk, std::int64_t ref);
+    /// The GDScript rule host the progression natives call synchronously (kind: String, args: Array) -> Variant.
+    void set_progression_handler(const godot::Callable& handler) { progression_handler_ = handler; }
+    [[nodiscard]] const godot::Callable& progression_handler() const { return progression_handler_; }
 
     // ---- dialogue (vm/papyrus_dialogue.cpp; the rules are dialogue/dialogue.hpp)
     /// Whether activating `ref` may open a dialogue: a placed actor that is
@@ -668,6 +675,7 @@ private:
     vm::DialogueRuntime dialogue_;
     /// The player's progress and every actor's perks (vm/progression_runtime.hpp; section PRGS).
     vm::ProgressionRuntime progression_;
+    godot::Callable progression_handler_;
     friend class DialogueHostImpl;
     /// The scene domain (vm/scene_runtime.hpp); the scene_* methods above only convert for it.
     vm::SceneRuntime scene_;

@@ -187,6 +187,11 @@ var player_state: PlayerState
 ## names a subclass of AttackRules (or a class of the same interface) here before `open`.
 var attack_rules_script: GDScript = AttackRules
 var attack_rules: AttackRules
+## The rules of levelling: skill use and increases, level-ups, perks, legendary skills. A script mod names a
+## subclass of Progression (or a class of the same interface) here before `open`. It holds no state (the
+## progress is SkydotPapyrus's, saved in PRGS), so it is not in the lifecycle.
+var progression_script: GDScript = Progression
+var progression: Progression
 ## What shouters say in a fight (the AI's combat_shout), carried out with the player's shout rules.
 var npc_shouts: NpcShouts
 ## The subsystems with a lifecycle: `reset()` on a load or restart, `on_place_left()` when the place is
@@ -336,6 +341,8 @@ func _make_game_nodes() -> void:
 	items_changed.connect(combat.on_items_changed)
 	player_state = player_state_script.new(PlayerStateData.new(papyrus))
 	casting = casting_script.new(CastingData.new(papyrus, world))
+	progression = progression_script.new(ProgressionData.new(papyrus, world))
+	papyrus.set_progression_handler(_on_progression_request)
 	magic = Magic.new(world, pack, papyrus, host, combat, projectiles, func() -> Node3D: return _pointer, casting,
 		player_state)
 	items_changed.connect(magic.on_items_changed)
@@ -543,6 +550,55 @@ func equip(form: int, extra := -1) -> bool:
 ## taken from the inventory (SkydotPapyrus.equip does both). A poison waits for the weapon (7a-3):
 ## it logs `magic: poison 0x.. waits for the weapon` and stays. False if it is not carried or is
 ## no such item.
+## The player used skill `av` for `amount` (the action's skill-use value). Says "<skill> Increased to <n>"
+## for each increase and "Level up available." when a level-up became ready. Returns Progression.use_skill.
+func use_skill(av: int, amount: float) -> Dictionary:
+	var result := progression.use_skill(av, amount)
+	_announce_progress(result)
+	return result
+
+
+## Raise skill `av` by `count` levels (a book, a trainer, IncrementSkill); announced like use_skill.
+func increment_skill(av: int, count: int) -> Dictionary:
+	var result := progression.increment_skill(av, count)
+	_announce_progress(result)
+	return result
+
+
+## Spend the banked level on Health 24, Magicka 25 or Stamina 26 (Progression.level_up). Says "Level up
+## available." again if another level is banked.
+func level_up(attribute_av: int) -> Dictionary:
+	var result := progression.level_up(attribute_av)
+	if result["ok"] and progression.level_up_ready():
+		message.emit(world.get_gmst_string("sLevelUpAvailable", "Level up available."), false)
+	return result
+
+
+## Take `perk` with a perk point (Progression.take_perk).
+func take_perk(perk: int) -> Dictionary:
+	return progression.take_perk(perk)
+
+
+func _announce_progress(result: Dictionary) -> void:
+	var format := world.get_gmst_string("sSkillIncreased", "%s Increased to %i")
+	for increase: Dictionary in result["skill_increases"]:
+		message.emit(format.replace("%s", progression.skill_name(increase["av"])).replace("%i", str(increase["level"])),
+			false)
+	if result["level_up_ready"]:
+		message.emit(world.get_gmst_string("sLevelUpAvailable", "Level up available."), false)
+
+
+## What the Papyrus natives (P6g) ask of the rules, synchronously: "advance_skill" (av, amount) and
+## "increment_skill" (av, count). Returns the rule's result Dictionary; null for an unknown kind.
+func _on_progression_request(kind: String, args: Array) -> Variant:
+	match kind:
+		"advance_skill":
+			return use_skill(int(args[0]), float(args[1]))
+		"increment_skill":
+			return increment_skill(int(args[0]), int(args[1]))
+	return null
+
+
 func use_item(form: int, extra := -1) -> bool:
 	var category: String = papyrus.item_info(form).get("category", "")
 	if category not in USABLE:

@@ -2,6 +2,7 @@
 //
 // SkydotPapyrus's progression forwarders for the GDScript rules (vm/progression_runtime.hpp): the
 // player's XP, level, perk points and books, and the perks of actors.
+#include "conditions/conditions.hpp"
 #include "vm/papyrus.hpp"
 
 using godot::Array;
@@ -87,6 +88,15 @@ Array SkydotPapyrus::get_perks(std::int64_t ref) const {
         out.push_back(d);
     }
     return out;
+}
+
+bool SkydotPapyrus::perk_conditions_met(std::int64_t perk, std::int64_t ref) {
+    const auto* p = world_.is_valid() ? world_->data().perk_ptr(static_cast<std::uint32_t>(perk)) : nullptr;
+    if (p == nullptr) {
+        return true;
+    }
+    const conditions::ConditionContext ctx{.subject = static_cast<std::uint32_t>(ref), .target = 0, .quest = 0};
+    return conditions::conditions_pass(p->conditions(), condition_world(), ctx);
 }
 
 } // namespace skydot

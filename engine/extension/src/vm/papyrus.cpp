@@ -192,6 +192,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_runtime_cell", "ref"), &SkydotPapyrus::get_runtime_cell);
     godot::ClassDB::bind_method(D_METHOD("get_item_count", "owner", "item"), &SkydotPapyrus::get_item_count);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value", "ref", "name"), &SkydotPapyrus::get_actor_value);
+    godot::ClassDB::bind_method(D_METHOD("get_base_actor_value", "ref", "name"), &SkydotPapyrus::get_base_actor_value);
     godot::ClassDB::bind_method(D_METHOD("get_actor_value_max", "ref", "name"),
                                 &SkydotPapyrus::get_actor_value_max);
     godot::ClassDB::bind_method(D_METHOD("damage_actor_value", "ref", "name", "amount"),
@@ -235,6 +236,8 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("remove_perk", "ref", "perk"), &SkydotPapyrus::remove_perk);
     godot::ClassDB::bind_method(D_METHOD("perk_rank", "ref", "perk"), &SkydotPapyrus::perk_rank);
     godot::ClassDB::bind_method(D_METHOD("get_perks", "ref"), &SkydotPapyrus::get_perks);
+    godot::ClassDB::bind_method(D_METHOD("perk_conditions_met", "perk", "ref"), &SkydotPapyrus::perk_conditions_met);
+    godot::ClassDB::bind_method(D_METHOD("set_progression_handler", "handler"), &SkydotPapyrus::set_progression_handler);
     godot::ClassDB::bind_method(D_METHOD("dialogue_can_talk", "ref"), &SkydotPapyrus::dialogue_can_talk);
     godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker"), &SkydotPapyrus::dialogue_open);
     godot::ClassDB::bind_method(D_METHOD("topic_line", "speaker", "topic"), &SkydotPapyrus::topic_line);
@@ -1132,6 +1135,11 @@ void SkydotPapyrus::flush_deaths() {
 double SkydotPapyrus::get_actor_value(std::int64_t ref, const String& name) const {
     const auto av = vm::av::index_of(utf8(name));
     return av ? actors_.get(static_cast<std::uint32_t>(ref), *av) : 0.0;
+}
+
+double SkydotPapyrus::get_base_actor_value(std::int64_t ref, const String& name) const {
+    const auto av = vm::av::index_of(utf8(name));
+    return av ? actors_.get_base(static_cast<std::uint32_t>(ref), *av) : 0.0;
 }
 
 double SkydotPapyrus::get_actor_value_max(std::int64_t ref, const String& name) const {

@@ -106,6 +106,40 @@ func _run(pack_dir: String) -> void:
 	for ref in expected:
 		expect(_contents(loaded, ref) == expected[ref], "0x%08X is the same after a load" % ref)
 
+	# The levelling rules over the real pack: Lockpicking's AVSK row, fSkillUseCurve and the save.
+	var rules := Progression.new(ProgressionData.new(vm, pack.open_world()))
+	var lock_before := vm.get_base_actor_value(PLAYER, "Lockpicking")
+	var used := rules.use_skill(14, 100.0)   # 45 * 100 + 10 = 4510 progress
+	var lock_after := vm.get_base_actor_value(PLAYER, "Lockpicking")
+	expect(lock_after > lock_before and not used["skill_increases"].is_empty(),
+		"Lockpicking rises with use: %s -> %s %s" % [lock_before, lock_after, used])
+	expect(rules.skill_name(14) == "Lockpicking", "the skill's name is %s" % rules.skill_name(14))
+	var after_use := vm.get_player_progress()
+	expect(after_use["xp"] > 0.0, "a skill increase gave character XP: %s" % [after_use])
+	var reloaded := _vm(pack)
+	expect(reloaded.load_state(vm.save_state()) == OK, "the save with the levelled skill loads")
+	expect(reloaded.get_player_progress()["xp"] == after_use["xp"], "the XP survives a load")
+	expect(reloaded.get_base_actor_value(PLAYER, "Lockpicking") == lock_after, "the skill survives a load")
+	# Perks: the first node after the root of Lockpicking's tree can be taken with a point; the rank chain holds.
+	var data := ProgressionData.new(vm, pack.open_world())
+	var tree := data.perk_tree(14)
+	var first := 0
+	for node: Dictionary in tree:
+		if node["perk"] != 0 and node["index"] in tree[0]["links"]:
+			first = node["perk"]
+			break
+	expect(first != 0, "Lockpicking's tree has a perk off the root")
+	expect(data.perk_node(first)["av"] == 14, "the perk is placed in the Lockpicking tree")
+	var perks := Progression.new(data)
+	vm.set_perk_points(0)
+	expect(perks.perk_blocker(first) == "points", "no point: " + perks.perk_blocker(first))
+	vm.set_perk_points(1)
+	expect(perks.perk_blocker(first) in ["", "conditions"], "a root perk is open or waits for the skill: " + perks.perk_blocker(first))
+	vm.set_perk_points(0)
+	vm.set_actor_value(PLAYER, "Lockpicking", lock_before)
+	vm.set_player_xp(0.0)
+	vm.set_skill_xp(14, 0.0)
+
 	# The equip slot ids the rules are written against.
 	expect(vm.item_info(IRON_SWORD)["equip_slot"] == 0x13F42 and vm.item_info(IRON_SWORD)["weapon_type"] == 1,
 		"an iron sword is RightHand, a sword")

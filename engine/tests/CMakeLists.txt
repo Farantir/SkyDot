@@ -153,6 +153,7 @@ skydot_gd_test(projectiles test_projectiles.gd)
 skydot_gd_test(lifecycle test_lifecycle.gd)
 skydot_gd_test(ref_forget test_ref_forget.gd)
 skydot_gd_test(casting test_casting.gd)
+skydot_gd_test(progression test_progression.gd)
 skydot_gd_test(player_gates test_player_gates.gd)
 skydot_gd_test(player_state test_player_state.gd)
 
