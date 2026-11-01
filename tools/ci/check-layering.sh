@@ -28,6 +28,7 @@ FILE_RULES=(
     "vm/combat_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
     "vm/crafting_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
     "vm/activation_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
+    "vm/item_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
     "vm/dialogue_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
     "vm/scene_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
 )

@@ -10,6 +10,7 @@
 #include "state/inventory.hpp"
 #include "vm/activation.hpp"
 #include "vm/harvest.hpp"
+#include "vm/item_access.hpp"
 #include "vm/reference_host.hpp"
 #include "vm/world_access.hpp"
 #include "world_generated.h"
@@ -43,13 +44,8 @@ public:
         virtual std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) = 0;
         /// Run an activation of `child` by `parent` (ActivationSource::parent) after `delay` VM seconds.
         virtual void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) = 0;
-        // Items, until the item module exists.
-        /// How many a dropped reference stands for; 0 if it is none.
-        [[nodiscard]] virtual std::int64_t dropped_count(std::uint32_t ref) const = 0;
-        /// The extra id of the units a dropped reference stands for (0: plain).
-        [[nodiscard]] virtual std::uint32_t dropped_extra(std::uint32_t ref) const = 0;
-        /// A name for any item, also created forms and ones the pack lacks.
-        [[nodiscard]] virtual std::string item_name_of(std::uint32_t form) const = 0;
+        /// Start inventories, item names and dropped items.
+        [[nodiscard]] virtual ItemAccess& items() = 0;
         /// The value of GLOB `id`; nullopt if the world has no such global.
         [[nodiscard]] virtual std::optional<double> global_value_of(std::uint32_t id) const = 0;
         /// Forget everything the VM keeps of `ref` (it is gone).

@@ -276,7 +276,7 @@ std::int64_t PapyrusConditionWorld::item_count(std::uint32_t ref, std::uint32_t 
     if (owner_ == nullptr || owner_->vm_ == nullptr) {
         return 0;
     }
-    owner_->resolve_owner(ref);
+    owner_->item_.resolve_owner(ref);
     return owner_->vm_->inventory().count(ref, item);
 }
 

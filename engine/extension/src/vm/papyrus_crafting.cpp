@@ -69,13 +69,13 @@ Array SkydotPapyrus::recipes(std::int64_t bench_ref) {
     if (logic == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
-    const auto name_of = [this](std::uint32_t form) { return item_name_of(form); };
+    item_.resolve_owner(k_player_ref);
+    const auto name_of = [this](std::uint32_t form) { return item_.item_name_of(form); };
     for (const auto& row : logic->recipes(static_cast<std::uint32_t>(bench_ref))) {
         Dictionary entry;
         entry["recipe"] = static_cast<std::int64_t>(row.recipe);
         entry["product"] = static_cast<std::int64_t>(row.product);
-        entry["name"] = to_godot(item_name_of(row.product));
+        entry["name"] = to_godot(item_.item_name_of(row.product));
         entry["count"] = static_cast<std::int64_t>(row.count);
         entry["components"] = components_array(row.components, name_of);
         entry["craftable"] = row.craftable;
@@ -89,7 +89,7 @@ std::int64_t SkydotPapyrus::craft(std::int64_t recipe, std::int64_t count) {
     if (logic == nullptr) {
         return 0;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     return logic->craft(static_cast<std::uint32_t>(recipe), count);
 }
 
@@ -99,11 +99,11 @@ Array SkydotPapyrus::temper_rows(std::int64_t bench_ref) {
     if (logic == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
-    const auto name_of = [this](std::uint32_t form) { return item_name_of(form); };
+    item_.resolve_owner(k_player_ref);
+    const auto name_of = [this](std::uint32_t form) { return item_.item_name_of(form); };
     for (const auto& row : logic->temper_rows(static_cast<std::uint32_t>(bench_ref))) {
         Dictionary entry;
-        std::string name = item_name_of(row.form);
+        std::string name = item_.item_name_of(row.form);
         const char* tier = crafting::Crafting::tier_name(row.health);
         if (tier[0] != '\0') {
             name += std::string(" (") + tier + ")";
@@ -127,16 +127,16 @@ bool SkydotPapyrus::temper(std::int64_t recipe, std::int64_t form, std::int64_t 
     if (logic == nullptr) {
         return false;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto base = static_cast<std::uint32_t>(form);
     const auto old_extra = static_cast<std::uint32_t>(extra);
-    const bool was_equipped = items_.find(k_player_ref) != nullptr && items_.find(k_player_ref)->holds(base, old_extra);
+    const bool was_equipped = item_.states().find(k_player_ref) != nullptr && item_.states().find(k_player_ref)->holds(base, old_extra);
     if (!logic->temper(static_cast<std::uint32_t>(recipe), base, old_extra)) {
         return false;
     }
     // The unit that was equipped is the one that got better.
     if (was_equipped && vm_->inventory().count_extra(k_player_ref, base, old_extra) <= 0) {
-        refresh_equipment(k_player_ref, base);
+        item_.refresh_equipment(k_player_ref, base);
     }
     return true;
 }
@@ -147,11 +147,11 @@ Array SkydotPapyrus::alchemy_rows() {
     if (logic == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     for (const auto& row : logic->alchemy_rows()) {
         Dictionary entry;
         entry["form"] = static_cast<std::int64_t>(row.form);
-        entry["name"] = to_godot(item_name_of(row.form));
+        entry["name"] = to_godot(item_.item_name_of(row.form));
         entry["count"] = row.count;
         Array effects;
         for (const auto& e : row.effects) {
@@ -205,7 +205,7 @@ std::int64_t SkydotPapyrus::alchemy_mix(const godot::PackedInt64Array& forms) {
     if (logic == nullptr) {
         return 0;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     std::vector<std::uint32_t> list;
     for (const auto form : forms) {
         list.push_back(static_cast<std::uint32_t>(form));

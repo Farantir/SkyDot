@@ -83,15 +83,15 @@ std::optional<magic::Enchanting> SkydotPapyrus::enchanting_table() {
     magic::EnchantKeywords keywords;
     keywords.disallow_enchanting = world_->data().keyword_by_editor_id("MagicDisallowEnchanting");
     keywords.reusable_soul_gem = world_->data().keyword_by_editor_id("ReusableSoulGem");
-    return magic::Enchanting(*root, vm_->inventory(), items_.extras(), created_, *book, keywords, k_player_ref,
+    return magic::Enchanting(*root, vm_->inventory(), item_.states().extras(), created_, *book, keywords, k_player_ref,
                              crafting::k_placeholder_skill);
 }
 
 std::string SkydotPapyrus::unit_name(std::uint32_t form, std::uint32_t extra) const {
-    if (const auto* e = items_.extras().find(extra); e != nullptr && !e->name.empty()) {
+    if (const auto* e = item_.states().extras().find(extra); e != nullptr && !e->name.empty()) {
         return e->name;
     }
-    return item_name_of(form);
+    return item_.item_name_of(form);
 }
 
 namespace {
@@ -121,7 +121,7 @@ Dictionary SkydotPapyrus::enchant_rows() {
     if (!table || logic == nullptr || book == nullptr || root == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     magic::EnchantKeywords kw;
     kw.disallow_enchanting = world_->data().keyword_by_editor_id("MagicDisallowEnchanting");
     kw.reusable_soul_gem = world_->data().keyword_by_editor_id("ReusableSoulGem");
@@ -136,7 +136,7 @@ Dictionary SkydotPapyrus::enchant_rows() {
         }
         const auto kind = magic::item_kind(*root, form);
         for (const std::uint32_t extra : stacks) {
-            const auto* e = items_.extras().find(extra);
+            const auto* e = item_.states().extras().find(extra);
             const std::int64_t count = inventory.count_extra(k_player_ref, form, extra);
             Dictionary row;
             row["form"] = static_cast<std::int64_t>(form);
@@ -234,7 +234,7 @@ Dictionary SkydotPapyrus::enchant_preview(std::int64_t item, std::int64_t item_e
     if (!table || logic == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto result = table->preview(request_of(item, item_extra, enchantment, gem, gem_extra, name));
     out["ok"] = result.ok();
     out["refusal"] = refusal_text(result.refusal);
@@ -259,10 +259,10 @@ Dictionary SkydotPapyrus::enchant(std::int64_t item, std::int64_t item_extra, st
     if (!table) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto base = static_cast<std::uint32_t>(item);
     const auto old_extra = static_cast<std::uint32_t>(item_extra);
-    const bool equipped = items_.find(k_player_ref) != nullptr && items_.find(k_player_ref)->holds(base, old_extra);
+    const bool equipped = item_.states().find(k_player_ref) != nullptr && item_.states().find(k_player_ref)->holds(base, old_extra);
     const auto result = table->enchant(request_of(item, item_extra, enchantment, gem, gem_extra, name));
     out["refusal"] = refusal_text(result.refusal);
     if (!result.ok()) {
@@ -272,7 +272,7 @@ Dictionary SkydotPapyrus::enchant(std::int64_t item, std::int64_t item_extra, st
     if (equipped && vm_->inventory().count_extra(k_player_ref, base, old_extra) <= 0) {
         retarget_equipment(k_player_ref, base, old_extra, result.new_extra);
     }
-    refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
+    item_.refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
     sync_worn_magic(k_player_ref);
     out["ok"] = true;
     out["name"] = to_godot(result.name);
@@ -291,13 +291,13 @@ Dictionary SkydotPapyrus::disenchant(std::int64_t form_in, std::int64_t extra_in
     if (!table || logic == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto form = static_cast<std::uint32_t>(form_in);
     const auto extra = static_cast<std::uint32_t>(extra_in);
     // What it teaches, named before the unit is gone.
     std::string learned;
     if (const auto* root = world_->data().root()) {
-        const std::uint32_t id = magic::enchantment_of(*root, form, items_.extras().find(extra));
+        const std::uint32_t id = magic::enchantment_of(*root, form, item_.states().extras().find(extra));
         if (const auto* ench = lookup(root->enchantments(), id)) {
             const std::uint32_t base = ench->base_enchantment() != 0 ? ench->base_enchantment() : id;
             if (const auto* b = lookup(root->enchantments(), base); b != nullptr && b->name() != nullptr) {
@@ -310,7 +310,7 @@ Dictionary SkydotPapyrus::disenchant(std::int64_t form_in, std::int64_t extra_in
     if (refusal != magic::Refusal::none) {
         return out;
     }
-    refresh_equipment(k_player_ref, form);
+    item_.refresh_equipment(k_player_ref, form);
     out["ok"] = true;
     out["learned"] = to_godot(learned);
     return out;
@@ -323,10 +323,10 @@ Array SkydotPapyrus::recharge_options(std::int64_t item_in, std::int64_t extra_i
     if (!table || root == nullptr) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto item = static_cast<std::uint32_t>(item_in);
     const auto extra = static_cast<std::uint32_t>(extra_in);
-    const auto info = magic::weapon_charge(*root, item, items_.extras().find(extra), {}, &created_);
+    const auto info = magic::weapon_charge(*root, item, item_.states().extras().find(extra), {}, &created_);
     if (info.enchantment == 0 || info.charge >= info.max) {
         return out;
     }
@@ -342,7 +342,7 @@ Array SkydotPapyrus::recharge_options(std::int64_t item_in, std::int64_t extra_i
             stacks.push_back(e);
         }
         for (const std::uint32_t gem_extra : stacks) {
-            const auto gem = magic::gem_info(*root, kw, form, items_.extras().find(gem_extra));
+            const auto gem = magic::gem_info(*root, kw, form, item_.states().extras().find(gem_extra));
             if (!gem.gem || gem.soul == 0) {
                 continue;
             }
@@ -371,10 +371,10 @@ Dictionary SkydotPapyrus::recharge(std::int64_t item, std::int64_t extra, std::i
     if (!table) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto base = static_cast<std::uint32_t>(item);
     const auto old_extra = static_cast<std::uint32_t>(extra);
-    const bool equipped = items_.find(k_player_ref) != nullptr && items_.find(k_player_ref)->holds(base, old_extra);
+    const bool equipped = item_.states().find(k_player_ref) != nullptr && item_.states().find(k_player_ref)->holds(base, old_extra);
     const auto result = table->recharge(base, old_extra, static_cast<std::uint32_t>(gem), static_cast<std::uint32_t>(gem_extra));
     out["refusal"] = refusal_text(result.refusal);
     if (!result.ok()) {
@@ -383,7 +383,7 @@ Dictionary SkydotPapyrus::recharge(std::int64_t item, std::int64_t extra, std::i
     if (equipped && vm_->inventory().count_extra(k_player_ref, base, old_extra) <= 0) {
         retarget_equipment(k_player_ref, base, old_extra, result.new_extra);
     }
-    refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
+    item_.refresh_equipment(k_player_ref, static_cast<std::uint32_t>(gem));
     out["ok"] = true;
     out["charge"] = static_cast<double>(result.charge);
     out["max"] = static_cast<double>(result.max);
@@ -403,7 +403,7 @@ Dictionary SkydotPapyrus::fill_gem(std::int64_t actor) {
     if (!table) {
         return out;
     }
-    resolve_owner(k_player_ref);
+    item_.resolve_owner(k_player_ref);
     const auto fill = table->fill_gem(soul_of(static_cast<std::uint32_t>(actor)));
     if (!fill.filled) {
         return out;

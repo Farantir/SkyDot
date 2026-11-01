@@ -129,6 +129,9 @@ set(SKYDOT_CORE_SOURCES
     src/vm/crafting_runtime.hpp
     src/vm/activation_runtime.cpp
     src/vm/activation_runtime.hpp
+    src/vm/item_access.hpp
+    src/vm/item_runtime.cpp
+    src/vm/item_runtime.hpp
     src/vm/combat_runtime.cpp
     src/vm/combat_runtime.hpp
     src/vm/natives_world.cpp

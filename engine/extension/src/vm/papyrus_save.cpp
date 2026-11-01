@@ -170,7 +170,7 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
     if (const auto magc = magic_section(); !magc.empty()) {
         out.add("MAGC", magic::k_magc_version, magc);
     }
-    out.add("ITST", vm::ItemStates::k_section_version, items_.save(vm_->inventory()));
+    out.add("ITST", vm::ItemStates::k_section_version, item_.states().save(vm_->inventory()));
     out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
     out.add("HRVS", vm::HarvestStates::k_section_version, activation_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_.save());
@@ -358,7 +358,7 @@ godot::Error SkydotPapyrus::commit_load() {
                                           static_cast<float>(place.rot_z));
         }
     }
-    items_.adopt(std::move(pending->items));
+    item_.states().adopt(std::move(pending->items));
     created_.adopt(std::move(pending->created));
     activation_.adopt(std::move(pending->harvests));
     dialogue_.adopt(std::move(pending->dialogue));

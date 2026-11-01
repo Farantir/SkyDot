@@ -50,6 +50,7 @@
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
 #include "vm/activation_runtime.hpp"
+#include "vm/item_runtime.hpp"
 #include "vm/world_access.hpp"
 #include "world/world.hpp"
 
@@ -778,42 +779,10 @@ private:
     vm::ActorStates actors_;
     /// A ghost takes no hits: true (and says so once per actor) when `ref` is one.
     bool ghost_ignores_hit(std::uint32_t ref) { return combat_.ghost_ignores_hit(ref); }
-    /// Resolved owners, leveled actor picks, equipment (ITST). Mutable: an
-    /// inventory resolves on the first look at it, also from const queries.
-    mutable vm::ItemStates items_;
-    void resolve_owner(std::uint32_t owner) const;
-    /// A dying actor's death item (INAM, data/start_inventory.hpp) goes into its inventory; called once per
-    /// death by flush_deaths, after the start inventory is resolved so that comes first.
-    void give_death_item(std::uint32_t ref);
-    /// `owner`'s worn armor, and the signal worn_changed if it is not `before` any more.
-    std::set<std::uint32_t> worn_of(std::uint32_t owner) const;
-    void note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before);
-    /// Everything `owner` holds or wears (hands, ammo, worn), for OnObjectEquipped/OnObjectUnequipped.
-    std::set<std::uint32_t> held_of(std::uint32_t owner) const;
-    /// Sends OnObjectUnequipped for what left `before` and OnObjectEquipped for what joined it.
-    void note_held(std::uint32_t owner, const std::set<std::uint32_t>& before);
-    /// OnObjectEquipped/OnObjectUnequipped(form, none) to `owner`'s scripts and aliases.
-    void send_equip_event(std::uint32_t owner, std::uint32_t form, bool equipped);
+    /// The item domain (vm/item_runtime.hpp): start inventories, equipment and the item natives (ITST).
+    vm::ItemRuntime item_;
     /// OnSpellCast(spell) to `caster`'s scripts and aliases.
     void send_spell_cast(std::uint32_t caster, std::uint32_t spell);
-    vm::ItemInfo item_info_of(std::uint32_t form) const;
-    /// Take items from `owner` (resolved first); an item that runs out is
-    /// taken off.
-    std::int64_t remove_item(std::uint32_t owner, std::uint32_t form, std::int64_t count);
-    /// Equip one `form` of `owner`'s; `left` asks for the left hand where
-    /// either will do. Adds the item if `add_missing`.
-    bool equip_item(std::uint32_t owner, std::uint32_t form, bool left, bool add_missing, std::uint32_t extra = 0);
-    bool unequip_item(std::uint32_t owner, std::uint32_t form);
-    /// Like remove_item for the units carrying `extra` only.
-    std::int64_t remove_item_extra(std::uint32_t owner, std::uint32_t form, std::uint32_t extra, std::int64_t count);
-    /// Take items, saying which units (extras) went.
-    std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form, std::int64_t count);
-    /// The extra id of a stack named by the API's `extra` (-1: the first
-    /// carried: plain, else the lowest id); 0 if `form` is not carried.
-    std::uint32_t resolve_extra(std::uint32_t owner, std::uint32_t form, std::int64_t extra) const;
-    /// Unequip what is equipped of `form` once no unit of the equipped
-    /// stack is left.
-    void refresh_equipment(std::uint32_t owner, std::uint32_t form);
     /// The magic of all actors: effects, spell books and the adapters (vm/papyrus_magic.cpp).
     struct MagicRuntime {
         virtual ~MagicRuntime() = default;
@@ -863,13 +832,8 @@ private:
     /// The crafting domain (vm/crafting_runtime.hpp); its rules sit on the VM's inventory.
     vm::CraftingRuntime crafting_;
     crafting::Crafting* crafting_logic() { return crafting_.logic(); }
-    /// A name for any item, also created forms and ones the pack lacks.
-    std::string item_name_of(std::uint32_t form) const;
     /// The game day now (GameDaysPassed).
     double game_days() const;
-    void unequip_all(std::uint32_t owner);
-    /// The worn armor of resolved actors, for the actor builder.
-    WornProvider worn_provider() const;
     /// The activation domain (vm/activation_runtime.hpp): the rules, the sequence and what is harvested (HRVS).
     vm::ActivationRuntime activation_;
     void bind_activations();

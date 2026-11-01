@@ -64,7 +64,7 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
 
     const wfb::Race* race = nullptr;
     if (attacker != 0) {
-        std::uint32_t npc = items_.pick_of(attacker);
+        std::uint32_t npc = item_.states().pick_of(attacker);
         if (npc == 0) {
             npc = dialogue_npc(attacker);
         }
@@ -102,13 +102,13 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
             weapon_damage = static_cast<double>(item->damage());
             skill_av = item->weapon_skill();
         }
-        weapon_type = item_info_of(weapon).weapon_type;
+        weapon_type = item_.item_info_of(weapon).weapon_type;
     } else if (race != nullptr) {
         weapon_damage = static_cast<double>(race->unarmed_damage());
     }
     double ammo_damage = 0.0;
     if (ammo_id != 0) {
-        ammo_damage = static_cast<double>(item_info_of(static_cast<std::uint32_t>(ammo_id)).damage);
+        ammo_damage = static_cast<double>(item_.item_info_of(static_cast<std::uint32_t>(ammo_id)).damage);
     }
     double weapon_skill = 0.0;
     if (skill_av >= 0) {
@@ -116,27 +116,27 @@ Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t targe
     }
     std::int64_t temper_quality = 0;
     if (extra_id != 0) {
-        if (const auto* extra = items_.extras().find(static_cast<std::uint32_t>(extra_id))) {
+        if (const auto* extra = item_.states().extras().find(static_cast<std::uint32_t>(extra_id))) {
             temper_quality = vm::temper_quality(extra->health);
         }
     }
 
-    resolve_owner(target);
+    item_.resolve_owner(target);
     godot::Array armor;
     bool target_unarmed = true;
-    const vm::Equipment* worn = items_.find(target);
+    const vm::Equipment* worn = item_.states().find(target);
     std::uint32_t shield = 0;
     if (worn != nullptr) {
         target_unarmed = worn->right == 0;
-        if (worn->left != 0 && vm::is_shield(item_info_of(worn->left))) {
+        if (worn->left != 0 && vm::is_shield(item_.item_info_of(worn->left))) {
             shield = worn->left;
         }
     }
     if (worn != nullptr) {
         const auto add = [&](std::uint32_t form) {
-            const vm::ItemInfo info = item_info_of(form);
+            const vm::ItemInfo info = item_.item_info_of(form);
             if (info.known && (info.category == vm::ItemCategory::armor || info.category == vm::ItemCategory::clothing)) {
-                const auto* extra = items_.extras().find(worn->worn_extra_of(form));
+                const auto* extra = item_.states().extras().find(worn->worn_extra_of(form));
                 Dictionary piece;
                 piece["rating"] = static_cast<double>(info.armor_rating);
                 piece["armor_type"] = static_cast<std::int64_t>(info.armor_type);

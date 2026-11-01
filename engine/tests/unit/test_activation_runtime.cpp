@@ -41,13 +41,27 @@ struct InfoWorld final : FakeWorld {
     }
 };
 
+struct FakeItems final : skydot::vm::ItemAccess {
+    std::map<std::uint32_t, std::int64_t> dropped;
+    mutable std::vector<std::uint32_t> resolved;
+    void resolve_owner(std::uint32_t owner) const override { resolved.push_back(owner); }
+    skydot::vm::ItemInfo item_info_of(std::uint32_t) const override { return {}; }
+    std::string item_name_of(std::uint32_t form) const override { return "item " + std::to_string(form); }
+    void refresh_equipment(std::uint32_t, std::uint32_t) override {}
+    std::int64_t dropped_count(std::uint32_t ref) const override {
+        const auto it = dropped.find(ref);
+        return it != dropped.end() ? it->second : 0;
+    }
+    std::uint32_t dropped_extra(std::uint32_t) const override { return 0; }
+};
+
 struct Host final : ActivationRuntime::Host {
     BuiltWorld data{plant_world()};
     InfoWorld world;
     FakeRefs refs;
     skydot::vm::Inventory inventory_;
     skydot::vm::ActorStates actors_;
-    std::map<std::uint32_t, std::int64_t> dropped;
+    FakeItems fake_items;
     std::vector<std::uint32_t> forgotten;
     std::vector<std::pair<std::uint32_t, std::int64_t>> activated;
     struct Scheduled {
@@ -70,12 +84,7 @@ struct Host final : ActivationRuntime::Host {
     void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
         scheduled.push_back({delay, child, parent});
     }
-    std::int64_t dropped_count(std::uint32_t ref) const override {
-        const auto it = dropped.find(ref);
-        return it != dropped.end() ? it->second : 0;
-    }
-    std::uint32_t dropped_extra(std::uint32_t) const override { return 0; }
-    std::string item_name_of(std::uint32_t form) const override { return "item " + std::to_string(form); }
+    skydot::vm::ItemAccess& items() override { return fake_items; }
     std::optional<double> global_value_of(std::uint32_t) const override { return std::nullopt; }
     void forget_ref(std::uint32_t ref) override { forgotten.push_back(ref); }
 
@@ -112,7 +121,7 @@ TEST_CASE("the player picks up a loose item and the reference goes", "[activatio
 
 TEST_CASE("a dropped item gives its count and is forgotten", "[activation_runtime]") {
     Rig r;
-    r.host.dropped[k_misc_ref] = 5;
+    r.host.fake_items.dropped[k_misc_ref] = 5;
     r.runtime.activate(k_misc_ref, 0, false, ActivationSource::player, false);
     CHECK(r.host.inventory_.count(skydot::k_player_ref, k_misc_base) == 5);
     CHECK(r.host.forgotten == std::vector<std::uint32_t>{k_misc_ref});

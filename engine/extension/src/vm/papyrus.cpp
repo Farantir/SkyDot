@@ -412,7 +412,7 @@ void SkydotPapyrus::reset() {
     states_.clear();
     actors_.clear();
     clear_magic();
-    items_.clear();
+    item_.clear();
     created_.clear();
     dialogue_.reset();
     scene_.reset();
@@ -431,7 +431,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     }
     pack_ = pack;
     world_ = world;
-    world_->set_worn_provider(worn_provider());
+    world_->set_worn_provider(item_.worn_provider());
     vm_ = std::make_unique<vm::Vm>();
     register_forgets();
     crafting_.reset(); // it refers to the old VM's inventory
@@ -636,7 +636,7 @@ static vm::Xyz xyz_from(const Vector3& p) {
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
                              vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
-                             vm::ActivationRuntime::Host {
+                             vm::ActivationRuntime::Host, vm::ItemRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -879,15 +879,34 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
         owner_.vm_->schedule(delay, "activate", child, parent, static_cast<std::uint32_t>(ActivationSource::parent));
     }
-    std::int64_t dropped_count(std::uint32_t ref) const override { return owner_.items_.dropped_count(ref); }
-    std::uint32_t dropped_extra(std::uint32_t ref) const override { return owner_.items_.dropped_extra(ref); }
-    std::string item_name_of(std::uint32_t form) const override { return owner_.item_name_of(form); }
+    vm::ItemAccess& items() override { return owner_.item_; }
     std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
     void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
 
+    // ---- vm::ItemRuntime::Host
+    vm::Vm& vm() override { return *owner_.vm_; }
+    void dispatch_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
+        owner_.dispatch(ref, event, args);
+    }
+    void sync_worn_magic(std::uint32_t owner) override { owner_.sync_worn_magic(owner); }
+    void worn_changed(std::uint32_t owner) override { owner_.emit_signal("worn_changed", static_cast<std::int64_t>(owner)); }
+    std::optional<bool> apply_consumed(std::uint32_t owner, std::uint32_t form, std::uint32_t extra) override {
+        const auto applied = owner_.apply_item_effects(owner, form, extra);
+        if (String(applied.get("reason", String())) == "poison") {
+            return static_cast<bool>(owner_.poison_weapon(owner, form, static_cast<std::int64_t>(extra)).get("ok", false));
+        }
+        return std::nullopt;
+    }
+    void note_eaten(std::uint32_t form) override {
+        if (auto* logic = owner_.crafting_logic()) {
+            logic->note_eaten(form);
+        }
+    }
+    void item_trace(const std::string& line) override { owner_.emit_signal("trace", natives::to_godot(line)); }
+
     // ---- vm::CraftingRuntime::Host
     vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
-    vm::ItemExtras& item_extras() override { return owner_.items_.extras(); }
+    vm::ItemExtras& item_extras() override { return owner_.item_.states().extras(); }
     vm::CreatedForms& created_forms() override { return owner_.created_; }
     std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
         return std::make_unique<PapyrusConditionWorld>(&owner_);
@@ -946,10 +965,10 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void send_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
         owner_.dispatch(ref, event, args);
     }
-    void resolve_owner(std::uint32_t owner) const override { owner_.resolve_owner(owner); }
+    void resolve_owner(std::uint32_t owner) const override { owner_.item_.resolve_owner(owner); }
     std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form,
                                                         std::int64_t count) override {
-        return owner_.remove_item_split(owner, form, count);
+        return owner_.item_.remove_item_split(owner, form, count);
     }
 
 private:
@@ -958,12 +977,15 @@ private:
 
 void SkydotPapyrus::AccessDeleter::operator()(Access* access) const { delete access; }
 
+void SkydotPapyrus::bind_item_natives() { item_.bind_natives(*vm_, *access_); }
+
 void SkydotPapyrus::bind_activations() {
     // Activations work before `setup` too: the access object is made now and again by bind_natives.
     if (!access_) {
         access_.reset(new Access(*this));
     }
     activation_.bind(*access_);
+    item_.bind(*access_);
 }
 
 void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_, *access_); }
@@ -1037,7 +1059,7 @@ void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {
         magic_actor_died(ref);
         emit_signal("actor_died", static_cast<std::int64_t>(ref));
-        give_death_item(ref);
+        item_.give_death_item(ref);
         // Every death, whoever dealt it (a hit, a spell, a shout, a script): OnDying at once; OnDeath
         // when the actor has finished dying, which for a body that takes time (a death clip, a
         // crash) is when the game layer says it is at rest (`finish_dying`), or after a timeout.
@@ -1095,6 +1117,7 @@ void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
     access_.reset(new Access(*this));
     activation_.bind(*access_);
+    item_.bind(*access_);
     using Registration = void (SkydotPapyrus::*)();
     static constexpr Registration table[] = {
         &SkydotPapyrus::bind_debug_natives,
@@ -1395,12 +1418,12 @@ bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
 }
 
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
-    resolve_owner(static_cast<std::uint32_t>(owner));
+    item_.resolve_owner(static_cast<std::uint32_t>(owner));
     vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
 }
 
 std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) const {
-    resolve_owner(static_cast<std::uint32_t>(owner));
+    item_.resolve_owner(static_cast<std::uint32_t>(owner));
     return vm_->inventory().count(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item));
 }
 

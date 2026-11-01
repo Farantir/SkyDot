@@ -239,7 +239,7 @@ void SkydotPapyrus::register_forgets() {
                 [this] { return vm_->destruction().states().size(); });
     r.add_owned("ref_states", [this](std::uint32_t id) { states_.forget(id); }, [this] { return states_.entries(); });
     r.add_owned("actor_states", [this](std::uint32_t id) { actors_.forget(id); }, [this] { return actors_.entries(); });
-    r.add_owned("item_states", [this](std::uint32_t id) { items_.erase(id); }, [this] { return items_.entries(); });
+    r.add_owned("item_states", [this](std::uint32_t id) { item_.states().erase(id); }, [this] { return item_.states().entries(); });
     r.add_owned("attached", [this](std::uint32_t id) { attached_.erase(id); }, [this] { return attached_.size(); });
     r.add_owned("loaded", [this](std::uint32_t id) { loaded_.erase(id); }, [this] { return loaded_.size(); });
     r.add_owned("volume_loaded", [this](std::uint32_t id) { volume_loaded_.erase(id); },

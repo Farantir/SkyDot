@@ -90,12 +90,12 @@ HarvestResult ActivationRuntime::harvest(std::uint32_t ref, std::int64_t activat
         given.push_back({h->ingredient(), 1});
     }
     const auto who = static_cast<std::uint32_t>(activator);
-    host_->references().resolve_owner(who);
+    host_->items().resolve_owner(who);
     for (const auto& entry : given) {
         host_->inventory().add(who, entry.form, entry.count);
         if (out.form == 0) {
             out.form = entry.form;
-            out.name = host_->item_name_of(entry.form);
+            out.name = host_->items().item_name_of(entry.form);
         }
         if (entry.form == out.form) {
             out.count += entry.count;
@@ -134,10 +134,10 @@ void ActivationRuntime::schedule_child(double delay, std::uint32_t child, std::u
 
 void ActivationRuntime::pick_up(std::uint32_t ref, std::int64_t activator, const ActivationTarget& item) {
     // A dropped item stands for the count it was dropped with, and is gone once taken.
-    const std::int64_t dropped = host_->dropped_count(ref);
-    host_->references().resolve_owner(static_cast<std::uint32_t>(activator));
+    const std::int64_t dropped = host_->items().dropped_count(ref);
+    host_->items().resolve_owner(static_cast<std::uint32_t>(activator));
     host_->inventory().add(static_cast<std::uint32_t>(activator), item.base, dropped > 0 ? dropped : item.count,
-                           host_->dropped_extra(ref));
+                           host_->items().dropped_extra(ref));
     if (dropped > 0) {
         host_->forget_ref(ref);
     } else {

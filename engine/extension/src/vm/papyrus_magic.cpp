@@ -234,15 +234,15 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     }
     void bound_add(std::uint32_t target, std::uint32_t weapon) override {
         // PLACEHOLDER: always the right hand (the MGEF names no hand).
-        if (owner_.equip_item(target, weapon, false, true)) {
+        if (owner_.item_.equip_item(target, weapon, false, true)) {
             log("magic: " + hex(target) + " bound weapon " + hex(weapon) + " added");
         } else {
             log("magic: " + hex(target) + " cannot equip bound weapon " + hex(weapon));
         }
     }
     void bound_remove(std::uint32_t target, std::uint32_t weapon) override {
-        (void)owner_.unequip_item(target, weapon);
-        (void)owner_.remove_item(target, weapon, 1);
+        (void)owner_.item_.unequip_item(target, weapon);
+        (void)owner_.item_.remove_item(target, weapon, 1);
         log("magic: " + hex(target) + " bound weapon " + hex(weapon) + " removed");
     }
     std::vector<std::uint32_t> actors_near(std::uint32_t ref, double radius) const override {
@@ -309,23 +309,23 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
             worn.forget(actor);
             return;
         }
-        owner_.resolve_owner(actor);
+        owner_.item_.resolve_owner(actor);
         std::vector<magic::WornEnchant> list;
-        if (const vm::Equipment* eq = owner_.items_.find(actor)) {
+        if (const vm::Equipment* eq = owner_.item_.states().find(actor)) {
             const auto add = [&](std::uint32_t form, std::uint32_t extra) {
-                const vm::ItemInfo info = owner_.item_info_of(form);
+                const vm::ItemInfo info = owner_.item_.item_info_of(form);
                 if (!info.known || (info.category != vm::ItemCategory::armor && info.category != vm::ItemCategory::clothing &&
                                     info.category != vm::ItemCategory::jewelry)) {
                     return;
                 }
-                if (const std::uint32_t ench = magic::enchantment_of(world_, form, owner_.items_.extras().find(extra))) {
+                if (const std::uint32_t ench = magic::enchantment_of(world_, form, owner_.item_.states().extras().find(extra))) {
                     list.push_back({form, extra, ench});
                 }
             };
             for (const std::uint32_t form : eq->worn) {
                 add(form, eq->worn_extra_of(form));
             }
-            if (eq->left != 0 && vm::is_shield(owner_.item_info_of(eq->left))) {
+            if (eq->left != 0 && vm::is_shield(owner_.item_.item_info_of(eq->left))) {
                 add(eq->left, eq->left_extra);
             }
         }
@@ -338,7 +338,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         if (item == nullptr || item->category() != wfb::ItemCategory::scroll) {
             return false;
         }
-        owner_.resolve_owner(actor);
+        owner_.item_.resolve_owner(actor);
         return owner_.vm_->inventory().count(actor, form) > 0;
     }
     /// The effects of an ALCH, INGR, SCRL or created potion; `poison` if it is one.
@@ -471,7 +471,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
             const bool changed = shouts.equipped(actor) != spell && book.equipped(actor, magic::Slot::power) != spell;
             const bool done = magic::equip_voice(book, shouts, actor, spell); // the voice slot: a power or a shout
             if (done && changed) {
-                owner_.send_equip_event(actor, spell, true);
+                owner_.item_.send_equip_event(actor, spell, true);
             }
             return done;
         }
@@ -479,7 +479,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         const bool changed = equipped_spell(actor, hand) != spell;
         const bool done = book.equip(actor, spell, slot_of(hand), scroll);
         if (done && changed) {
-            owner_.send_equip_event(actor, spell, true);
+            owner_.item_.send_equip_event(actor, spell, true);
         }
         return done;
     }
@@ -506,7 +506,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         const bool changed = shouts.equipped(actor) != shout;
         const bool done = magic::equip_voice(book, shouts, actor, shout);
         if (done && changed) {
-            owner_.send_equip_event(actor, shout, true);
+            owner_.item_.send_equip_event(actor, shout, true);
         }
         return done;
     }
@@ -879,7 +879,7 @@ Dictionary SkydotPapyrus::cast_scroll(std::int64_t caster_in, std::int64_t scrol
     const auto landed = magic::land_form(m->world_, m->effects, caster, scroll, target);
     send_spell_cast(caster, scroll);
     if (item) {
-        (void)remove_item(caster, scroll, 1);
+        (void)item_.remove_item(caster, scroll, 1);
         if (vm_->inventory().count(caster, scroll) <= 0) {
             for (const int hand : {0, 1}) {
                 if (m->equipped_spell(caster, hand) == scroll) {
@@ -1163,7 +1163,7 @@ void SkydotPapyrus::magic_adopt(bool has, const std::vector<std::uint8_t>& effec
     // Abilities are not saved: start them again for whoever is known.
     m->book.reset_abilities();
     std::vector<std::uint32_t> wearers;
-    for (const auto& [owner, equipment] : items_.equipments()) {
+    for (const auto& [owner, equipment] : item_.states().equipments()) {
         if (!equipment.worn.empty() || equipment.left != 0) {
             wearers.push_back(owner);
         }
@@ -1196,10 +1196,10 @@ void SkydotPapyrus::move_unit_extra(std::uint32_t owner, std::uint32_t form, std
 }
 
 void SkydotPapyrus::retarget_equipment(std::uint32_t owner, std::uint32_t form, std::uint32_t from, std::uint32_t to) {
-    if (from == to || owner == 0 || items_.find(owner) == nullptr) {
+    if (from == to || owner == 0 || item_.states().find(owner) == nullptr) {
         return;
     }
-    auto& equipment = items_.equipment(owner);
+    auto& equipment = item_.states().equipment(owner);
     if (equipment.right == form && equipment.right_extra == from) {
         equipment.right_extra = to;
     } else if (equipment.left == form && equipment.left_extra == from) {
@@ -1236,13 +1236,13 @@ Dictionary SkydotPapyrus::hit_magic(std::uint32_t attacker, std::uint32_t target
     in.extra = extra;
     in.attacker_is_player = attacker == k_player_ref;
     in.target_alive = target_alive;
-    in.extra_unique = extra != 0 && vm_->inventory().units_with_extra(extra) == 1 && !items_.extra_dropped(extra);
+    in.extra_unique = extra != 0 && vm_->inventory().units_with_extra(extra) == 1 && !item_.states().extra_dropped(extra);
     const auto poison_inputs = [m](std::uint32_t poison, std::vector<magic::EffectInput>& inputs) {
         magic::SourceKind kind = magic::SourceKind::potion;
         bool is_poison = false;
         return m->item_effects(poison, inputs, kind, is_poison);
     };
-    const auto result = magic::hit_magic(m->world_, m->effects, items_.extras(), in, poison_inputs, m->settings(), &created_);
+    const auto result = magic::hit_magic(m->world_, m->effects, item_.states().extras(), in, poison_inputs, m->settings(), &created_);
     if (result.new_extra != extra) {
         move_unit_extra(attacker, weapon, extra, result.new_extra);
     }
@@ -1281,15 +1281,15 @@ Dictionary SkydotPapyrus::poison_weapon(std::uint32_t actor, std::uint32_t form,
         out["reason"] = "not a poison";
         return out;
     }
-    resolve_owner(actor);
-    const std::uint32_t poison_extra = resolve_extra(actor, form, extra);
+    item_.resolve_owner(actor);
+    const std::uint32_t poison_extra = item_.resolve_extra(actor, form, extra);
     if (vm_->inventory().count_extra(actor, form, poison_extra) <= 0) {
         out["reason"] = "not carried";
         return out;
     }
-    const vm::Equipment* equipment = items_.find(actor);
+    const vm::Equipment* equipment = item_.states().find(actor);
     const std::uint32_t weapon = equipment != nullptr ? equipment->right : 0;
-    const vm::ItemInfo info = item_info_of(weapon);
+    const vm::ItemInfo info = item_.item_info_of(weapon);
     // UESP: a poison goes on the weapon in the right hand, a bow included; a staff or fists have no blade.
     if (weapon == 0 || !info.known || info.category != vm::ItemCategory::weapon || info.weapon_type == 0 ||
         info.weapon_type == 8) {
@@ -1298,15 +1298,15 @@ Dictionary SkydotPapyrus::poison_weapon(std::uint32_t actor, std::uint32_t form,
     }
     const std::uint32_t weapon_extra = equipment->right_extra;
     vm::ItemExtra changed;
-    if (const auto* now = items_.extras().find(weapon_extra)) {
+    if (const auto* now = item_.states().extras().find(weapon_extra)) {
         changed = *now;
     }
     if (!magic::can_poison(changed)) {
         out["reason"] = "already poisoned";
         return out;
     }
-    (void)remove_item_extra(actor, form, poison_extra, 1);
-    const std::uint32_t after = items_.extras().intern(magic::poisoned(changed, form, magic::k_placeholder_poison_doses));
+    (void)item_.remove_item_extra(actor, form, poison_extra, 1);
+    const std::uint32_t after = item_.states().extras().intern(magic::poisoned(changed, form, magic::k_placeholder_poison_doses));
     move_unit_extra(actor, weapon, weapon_extra, after);
     const std::string line = "magic: poison " + hex(form) + " put on " + hex(weapon) + " of " + hex(actor);
     emit_signal("trace", to_godot(line));
@@ -1333,17 +1333,17 @@ Dictionary SkydotPapyrus::weapon_charge(std::int64_t actor_in, std::int64_t form
     }
     const auto actor = static_cast<std::uint32_t>(actor_in);
     const auto form = static_cast<std::uint32_t>(form_in);
-    resolve_owner(actor);
+    item_.resolve_owner(actor);
     std::uint32_t unit = 0;
-    const vm::Equipment* equipment = items_.find(actor);
+    const vm::Equipment* equipment = item_.states().find(actor);
     if (extra >= 0) {
         unit = static_cast<std::uint32_t>(extra);
     } else if (equipment != nullptr && equipment->right == form) {
         unit = equipment->right_extra;
     } else {
-        unit = resolve_extra(actor, form, -1);
+        unit = item_.resolve_extra(actor, form, -1);
     }
-    const auto info = magic::weapon_charge(m->world_, form, items_.extras().find(unit), m->settings(), &created_);
+    const auto info = magic::weapon_charge(m->world_, form, item_.states().extras().find(unit), m->settings(), &created_);
     out["enchantment"] = static_cast<std::int64_t>(info.enchantment);
     out["charge"] = static_cast<double>(info.charge);
     out["max"] = static_cast<double>(info.max);
