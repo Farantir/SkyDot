@@ -8,7 +8,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
 #include <functional>
+#include <random>
 #include <set>
 #include <vector>
 
@@ -385,4 +387,98 @@ TEST_CASE("placed references: a released id is reused once the range runs out, u
     CHECK(refs.add(ref, held_none) == a);
     CHECK(refs.released().empty());
     CHECK(refs.add(ref, held_none) == 0);
+}
+
+namespace {
+
+struct Rng {
+    std::mt19937 gen{1234};
+    float uni(float lo, float hi) {
+        return lo + (hi - lo) * (static_cast<float>(gen() >> 8) / static_cast<float>(1U << 24));
+    }
+};
+
+/// A rotation (yaw, pitch, roll) with the rows scaled by `s`.
+Affine random_affine(Rng& r, bool scaled) {
+    const float a = r.uni(0, 6.28F);
+    const float b = r.uni(0, 6.28F);
+    const float c = r.uni(0, 6.28F);
+    const float ca = std::cos(a), sa = std::sin(a), cb = std::cos(b), sb = std::sin(b);
+    const float cc = std::cos(c), sc = std::sin(c);
+    Affine m;
+    const float rz[3][3] = {{ca, -sa, 0}, {sa, ca, 0}, {0, 0, 1}};
+    const float ry[3][3] = {{cb, 0, sb}, {0, 1, 0}, {-sb, 0, cb}};
+    const float rx[3][3] = {{1, 0, 0}, {0, cc, -sc}, {0, sc, cc}};
+    float t[3][3];
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            t[i][j] = rz[i][0] * ry[0][j] + rz[i][1] * ry[1][j] + rz[i][2] * ry[2][j];
+        }
+    }
+    for (int i = 0; i < 3; ++i) {
+        const float scale = scaled ? r.uni(0.2F, 3.0F) : 1.0F;
+        for (int j = 0; j < 3; ++j) {
+            m.m[i][j] = scale * (t[i][0] * rx[0][j] + t[i][1] * rx[1][j] + t[i][2] * rx[2][j]);
+        }
+    }
+    m.origin = {r.uni(-500, 500), r.uni(-500, 500), r.uni(-500, 500)};
+    return m;
+}
+
+Trigger random_trigger(Rng& r) {
+    Trigger t;
+    t.primitive = r.uni(0, 1) < 0.6F;
+    t.origin = {r.uni(-500, 500), r.uni(-500, 500), r.uni(-500, 500)};
+    t.axes = random_affine(r, false);
+    t.axes.origin = {};
+    t.half = {r.uni(5, 200), r.uni(5, 200), r.uni(5, 200)};
+    t.type = r.uni(0, 1) < 0.5F ? Trigger::k_box : Trigger::k_sphere;
+    const int n = static_cast<int>(r.uni(0, 3.99F));
+    for (int i = 0; i < n; ++i) {
+        Volume v;
+        v.to_local = random_affine(r, true);
+        v.half = {r.uni(5, 200), r.uni(5, 200), r.uni(5, 200)};
+        v.sphere = r.uni(0, 1) < 0.4F;
+        t.volumes.push_back(v);
+    }
+    return t;
+}
+
+} // namespace
+
+TEST_CASE("a trigger's bounds hold every point it contains, and move_actor is unchanged by them", "[triggers]") {
+    Rng r;
+    for (int round = 0; round < 60; ++round) {
+        Trigger shape = random_trigger(r);
+        Triggers triggers;
+        triggers.set_primitive(1, shape);
+        if (!shape.volumes.empty()) {
+            triggers.set_volumes(1, shape.volumes);
+        }
+        const Trigger& t = triggers.triggers().at(1);
+        std::size_t accepted = 0;
+        for (int i = 0; i < 400; ++i) {
+            // Half of the points near the trigger, so that some are inside.
+            const float spread = i % 2 == 0 ? 1200.0F : 150.0F;
+            const Vec3 p{t.origin.x + r.uni(-spread, spread), t.origin.y + r.uni(-spread, spread),
+                         t.origin.z + r.uni(-spread, spread)};
+            const bool in = t.contains(p);
+            if (in) {
+                ++accepted;
+                CHECK(t.in_bounds(p));
+            }
+            // The same actor walks in and out: the inside set follows `contains`.
+            triggers.move_actor(9, p, [](std::uint32_t) { return true; }, [](std::uint32_t, bool) {});
+            CHECK((triggers.inside_count(1) == 1) == in);
+        }
+        (void)accepted;
+    }
+}
+
+TEST_CASE("a trigger with no shape bounds nothing in", "[triggers]") {
+    Trigger t;
+    t.primitive = false;
+    t.update_bounds();
+    CHECK_FALSE(t.in_bounds({0, 0, 0}));
+    CHECK_FALSE(t.contains({0, 0, 0}));
 }

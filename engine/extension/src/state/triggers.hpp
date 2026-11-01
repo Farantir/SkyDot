@@ -51,8 +51,20 @@ struct Trigger {
     Vec3 half;   ///< Half extents; x is the radius of a sphere.
     std::uint32_t type = 0;
     std::set<std::uint32_t> inside;
+    /// World-space box around everything `contains` accepts (derived by
+    /// `update_bounds`, not saved); the default accepts every point.
+    Vec3 bounds_min{-1e30F, -1e30F, -1e30F};
+    Vec3 bounds_max{1e30F, 1e30F, 1e30F};
 
     [[nodiscard]] bool contains(const Vec3& position) const;
+    /// Recompute `bounds_min/max` from the primitive and the volumes.
+    void update_bounds();
+    /// False only if `position` is surely outside every shape; may be true
+    /// where `contains` is false.
+    [[nodiscard]] bool in_bounds(const Vec3& position) const {
+        return position.x >= bounds_min.x && position.x <= bounds_max.x && position.y >= bounds_min.y &&
+               position.y <= bounds_max.y && position.z >= bounds_min.z && position.z <= bounds_max.z;
+    }
 };
 
 class Triggers {
