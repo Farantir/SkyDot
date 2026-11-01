@@ -102,6 +102,10 @@ public:
     /// from here); empty otherwise.
     Inventory::Splits take_splits() { return std::move(loaded_splits_); }
 
+    /// How many entries it holds per owner or reference.
+    [[nodiscard]] std::size_t entries() const {
+        return resolved_.size() + picks_.size() + equipment_.size() + dropped_.size() + dropped_extra_.size();
+    }
     void clear();
     void adopt(ItemStates&& other) { *this = std::move(other); }
 

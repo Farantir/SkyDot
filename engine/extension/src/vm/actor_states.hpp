@@ -169,6 +169,8 @@ public:
 
     /// Drop everything known about `ref`.
     void forget(std::uint32_t ref);
+    /// How many entries it holds per reference (records, bases, dying, living places, deaths, due, pair keys).
+    [[nodiscard]] std::size_t entries() const;
     void clear();
     /// Take the records of `other` (a loaded section), keeping this object's
     /// source; the cache of bases starts empty.

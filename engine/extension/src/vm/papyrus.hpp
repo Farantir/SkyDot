@@ -457,6 +457,11 @@ public:
     /// reference, the reference itself (`ref_deleted`). Delete and finished
     /// effects use it.
     void forget_ref(std::int64_t ref);
+    /// Where subsystems that hold a pointer to this object (the AI, the placement) register their per-reference
+    /// stores; `forget_ref` calls them after the VM's own (vm::ForgetRegistry). It outlives `setup`.
+    vm::ForgetRegistry& forgets() noexcept { return outer_forgets_; }
+    /// Every registered store and how many entries it holds (the VM's, this object's and the subsystems'): name -> size.
+    godot::Dictionary forget_store_sizes() const;
     /// DamageObject from the host (the viewer's --damage).
     void damage_ref(std::int64_t ref, double amount) { damage_object(static_cast<std::uint32_t>(ref), amount); }
     /// The game layer built the node of a placed reference: OnCellAttach,
@@ -765,6 +770,10 @@ private:
     struct Access;
     std::unique_ptr<vm::WorldAccess> access_;
     std::unique_ptr<vm::Vm> vm_;
+    /// The stores of subsystems outside the VM; the VM's registry (new with each `setup`) has this object's own.
+    vm::ForgetRegistry outer_forgets_;
+    /// Register the per-reference stores of this object in the VM's registry (the constructor and `setup`).
+    void register_forgets();
     /// Playback instances (id_ranges::sound_instances): Sound.Play's and the
     /// game layer's, from `new_sound_instance`.
     vm::IdAllocator sound_ids_{vm::id_ranges::sound_instances};

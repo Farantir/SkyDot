@@ -118,6 +118,7 @@ public:
     /// Actors with anything of their own here.
     [[nodiscard]] std::vector<std::uint32_t> refs() const;
     void forget(std::uint32_t ref);
+    [[nodiscard]] std::size_t entries() const { return records_.size() + base_cache_.size(); }
     void clear();
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     [[nodiscard]] static bool load(save::ByteReader r, ShoutBook& out);

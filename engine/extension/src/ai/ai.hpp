@@ -30,6 +30,7 @@
 #include "ai/magic_choice.hpp"
 #include "ai/packages.hpp"
 #include "magic/active_effects.hpp"
+#include "vm/ref_forget.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
@@ -427,6 +428,13 @@ private:
     std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> forced_;
     const std::vector<std::uint32_t>& packages_of(const Mind& m);
     std::unordered_map<std::uint32_t, std::vector<std::pair<std::uint32_t, std::uint32_t>>> doors_;
+    /// Not per-reference (keyed by door, cell or pack data): doors_, lock_cache_, pending_locks_, persistent_,
+    /// spell_facts_, relationships_; overrides_cache_ is dropped for the reference too, but cleared every update. The rest are in the papyrus object's forget registry (vm/ref_forget.hpp).
+    std::vector<vm::ForgetRegistry::Registration> forgets_;
+    bool updating_{};                          ///< `update` runs: forgetting waits for its end (minds are in use).
+    std::vector<std::uint32_t> forgotten_;     ///< References forgotten while it ran.
+    void forget_ref(std::uint32_t ref);
+    void erase_ref(std::uint32_t ref);
 };
 
 } // namespace skydot

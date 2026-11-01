@@ -33,6 +33,8 @@ public:
     }
     void mark_topic(std::uint32_t topic) { topics_.insert(topic); }
     void mark_talked(std::uint32_t speaker) { talked_.insert(speaker); }
+    void forget_talked(std::uint32_t speaker) { talked_.erase(speaker); }
+    [[nodiscard]] std::size_t talked_count() const { return talked_.size(); }
     /// 0 when the dialogue is over.
     void set_speaker(std::uint32_t speaker) { speaker_ = speaker; }
 

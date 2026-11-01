@@ -139,6 +139,7 @@ public:
     void sync(std::uint32_t actor, const std::vector<WornEnchant>& worn);
     /// Forget `actor`'s state without ending anything (the effects went with a death or a load).
     void forget(std::uint32_t actor) { applied_.erase(actor); }
+    [[nodiscard]] std::size_t entries() const { return applied_.size(); }
     void clear() { applied_.clear(); }
     [[nodiscard]] std::vector<WornEnchant> applied(std::uint32_t actor) const;
 

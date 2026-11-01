@@ -427,6 +427,20 @@ std::vector<std::pair<std::uint32_t, std::uint32_t>> Scenes::pushed_packages() c
     return out;
 }
 
+void Scenes::forget(std::uint32_t ref) {
+    for (auto& [id, run] : runs_) {
+        std::erase_if(run.pushed, [ref](const Run::Pushed& p) { return p.actor == ref; });
+    }
+}
+
+std::size_t Scenes::pushed_count() const {
+    std::size_t n = 0;
+    for (const auto& [id, run] : runs_) {
+        n += run.pushed.size();
+    }
+    return n;
+}
+
 void Scenes::clear() {
     runs_.clear();
     waiting_.clear();

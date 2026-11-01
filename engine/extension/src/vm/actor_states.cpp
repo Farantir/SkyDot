@@ -478,6 +478,17 @@ void ActorStates::forget(std::uint32_t ref) {
     living_.erase(ref);
     std::erase(deaths_, ref);
     std::erase(due_, ref);
+    // Pair keys name the actor in either half, (low << 32 | high): both directions go.
+    const auto names = [ref](std::uint64_t key) {
+        return static_cast<std::uint32_t>(key >> 32) == ref || static_cast<std::uint32_t>(key) == ref;
+    };
+    std::erase_if(relationships_, [&](const auto& e) { return names(e.first); });
+    std::erase_if(reactions_, [&](const auto& e) { return names(e.first); });
+}
+
+std::size_t ActorStates::entries() const {
+    return records_.size() + bases_.size() + dying_.size() + living_.size() + deaths_.size() + due_.size() +
+           relationships_.size() + reactions_.size();
 }
 
 void ActorStates::clear() {

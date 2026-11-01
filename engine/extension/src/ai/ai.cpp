@@ -272,6 +272,17 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     minds_.clear();
     package_lists_.clear();
     lock_cache_.clear();
+    forgets_.clear();
+    forgotten_.clear();
+    if (vm_ != nullptr) {
+        auto& registry = vm_->forgets();
+        // One forget (it waits while `update` runs), one size per store.
+        forgets_.push_back(registry.add("ai.minds", [this](std::uint32_t ref) { forget_ref(ref); },
+                                        [this] { return minds_.size() + forgotten_.size(); }));
+        forgets_.push_back(registry.add("ai.package_lists", {}, [this] { return package_lists_.size(); }));
+        forgets_.push_back(registry.add("ai.forced_packages", {}, [this] { return forced_.size(); }));
+        forgets_.push_back(registry.add("ai.attached", {}, [this] { return attached_.size(); }));
+    }
     conditions_ = std::make_unique<Conditions>(*this);
     relationships_.clear();
     relationships_built_ = false;
@@ -1092,10 +1103,36 @@ void SkydotAi::detach(Mind& m) {
     }
 }
 
+void SkydotAi::forget_ref(std::uint32_t ref) {
+    if (updating_) {
+        forgotten_.push_back(ref); // `update` holds minds: the erase waits for its end
+        return;
+    }
+    erase_ref(ref);
+}
+
+void SkydotAi::erase_ref(std::uint32_t ref) {
+    minds_.erase(ref);
+    package_lists_.erase(ref);
+    forced_.erase(ref);
+    overrides_cache_.erase(ref);
+    std::erase(attached_, ref);
+}
+
 void SkydotAi::update(double seconds) {
     if (root() == nullptr) {
         return;
     }
+    struct Updating {
+        SkydotAi& ai;
+        explicit Updating(SkydotAi& a) : ai(a) { ai.updating_ = true; }
+        ~Updating() {
+            ai.updating_ = false;
+            for (const std::uint32_t ref : std::exchange(ai.forgotten_, {})) {
+                ai.erase_ref(ref);
+            }
+        }
+    } updating(*this);
     overrides_cache_.clear();
     clock_.days += seconds * time_scale_ / k_seconds_per_day;
     since_placed_ += seconds * time_scale_;

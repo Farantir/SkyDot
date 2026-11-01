@@ -254,6 +254,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("spawn_actor", "base", "cell", "position", "rotation_z"),
                                 &SkydotPapyrus::spawn_actor);
     godot::ClassDB::bind_method(D_METHOD("forget_ref", "ref"), &SkydotPapyrus::forget_ref);
+    godot::ClassDB::bind_method(D_METHOD("forget_store_sizes"), &SkydotPapyrus::forget_store_sizes);
     godot::ClassDB::bind_method(D_METHOD("damage_ref", "ref", "amount"), &SkydotPapyrus::damage_ref);
     godot::ClassDB::bind_method(D_METHOD("ref_built", "ref"), &SkydotPapyrus::ref_built);
     godot::ClassDB::bind_method(D_METHOD("get_ref_base", "ref"), &SkydotPapyrus::get_ref_base);
@@ -375,6 +376,7 @@ void SkydotPapyrus::_bind_methods() {
 }
 
 SkydotPapyrus::SkydotPapyrus() : vm_(std::make_unique<vm::Vm>()) {
+    register_forgets();
     install_scheduled_handler();
     bind_activations();
 }
@@ -432,6 +434,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
     world_ = world;
     world_->set_worn_provider(worn_provider());
     vm_ = std::make_unique<vm::Vm>();
+    register_forgets();
     crafting_.reset(); // it refers to the old VM's inventory
     magic_.reset();    // the natives bound to it die with the old VM
     install_scheduled_handler();

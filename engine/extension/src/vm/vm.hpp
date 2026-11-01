@@ -29,6 +29,7 @@
 #include "save/save_file.hpp"
 #include "vm/form_lists.hpp"
 #include "vm/inventory.hpp"
+#include "vm/ref_forget.hpp"
 #include "vm/runtime_refs.hpp"
 #include "vm/script_class.hpp"
 #include "vm/value.hpp"
@@ -123,6 +124,21 @@ class Vm {
 public:
     using Loader = std::function<std::optional<std::vector<std::uint8_t>>(const std::string& key)>;
     using Log = std::function<void(const std::string&)>;
+
+    /// Registers the stores the VM keeps per reference (instances, inventory, animation state, scheduled calls).
+    Vm();
+    Vm(const Vm&) = delete;
+    Vm& operator=(const Vm&) = delete;
+
+    /// Everything that keeps state per reference id registers here; `forgets().forget(id)` drops an id from all
+    /// of them (vm/ref_forget.hpp). SkydotPapyrus adds its own stores to it.
+    ForgetRegistry& forgets() noexcept { return forgets_; }
+    [[nodiscard]] const ForgetRegistry& forgets() const noexcept { return forgets_; }
+    /// Script instances attached (not counting the detached ones kept for values), and those kept.
+    [[nodiscard]] std::size_t instance_count() const noexcept;
+    [[nodiscard]] std::size_t detached_count() const noexcept { return detached_.size(); }
+    /// Every form that has instances attached.
+    [[nodiscard]] std::vector<std::uint32_t> attached_forms() const;
 
     void set_loader(Loader loader) { loader_ = std::move(loader); }
     void set_log(Log log) { log_ = std::move(log); }
@@ -384,6 +400,7 @@ private:
     std::vector<Timer> timers_;
     std::vector<AnimationRegistration> animation_regs_;
     std::vector<Scheduled> scheduled_;
+    ForgetRegistry forgets_;
     Inventory inventory_;
     FormListAdditions form_lists_;
     PlacedRefs placed_;
@@ -391,6 +408,8 @@ private:
     std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();
+    /// The instance part of `detach`: timers, registrations and threads of `ref`'s instances.
+    void detach_instances(std::uint32_t ref);
     std::uint64_t rng_ = 0x9E3779B97F4A7C15ULL;
     std::uint64_t next_thread_ = 1;
     bool running_ = false; ///< update or run_ready is running threads.

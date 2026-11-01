@@ -79,6 +79,49 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
             return npc != 0 ? magic::base_spells(world_, npc, ref, leveled::player_level())
                             : std::vector<std::uint32_t>{};
         });
+        register_forgets();
+    }
+
+    /// The magic stores keyed by reference or by effect instance id, in the VM's registry (vm/ref_forget.hpp).
+    /// The tokens end with this state, which a new VM's setup resets first.
+    void register_forgets() {
+        auto& registry = owner_.vm_->forgets();
+        forgets.push_back(registry.add(
+            "magic.effects",
+            [this](std::uint32_t ref) {
+                // The effects on a gone actor end without being undone; their script objects go with them.
+                for (const std::uint32_t id : effects.forget(ref)) {
+                    owner_.vm_->detach(id);
+                    snapshots.erase(id);
+                }
+            },
+            [this] { return effects.entries(); }));
+        forgets.push_back(registry.add(
+            "magic.spell_book", [this](std::uint32_t ref) { book.forget(ref); }, [this] { return book.entries(); }));
+        forgets.push_back(registry.add(
+            "magic.shouts", [this](std::uint32_t ref) { shouts.forget(ref); }, [this] { return shouts.entries(); }));
+        forgets.push_back(registry.add(
+            "magic.worn", [this](std::uint32_t ref) { worn.forget(ref); }, [this] { return worn.entries(); }));
+        forgets.push_back(registry.add(
+            "magic.hands",
+            [this](std::uint32_t ref) {
+                std::erase_if(hands, [ref](const auto& h) { return h.first.first == ref; });
+            },
+            [this] { return hands.size(); }));
+        forgets.push_back(registry.add(
+            "magic.pending",
+            [this](std::uint32_t ref) {
+                std::erase_if(pending, [ref](const Pending& p) { return p.view.target == ref; });
+            },
+            [this] { return pending.size(); }));
+        // Keyed by effect instance id (the VM's own store drops the script objects).
+        forgets.push_back(registry.add(
+            "magic.script_effects",
+            [this](std::uint32_t id) {
+                snapshots.erase(id);
+                std::erase_if(detach_later, [id](const auto& d) { return d.first == id; });
+            },
+            [this] { return snapshots.size() + detach_later.size(); }));
     }
 
     /// PLACEHOLDER: how far in front of the caster a summon appears, Skyrim units.
@@ -107,6 +150,7 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
     /// Handles to detach, with the updates left to wait (a script gets its OnEffectFinish first).
     std::vector<std::pair<std::uint32_t, int>> detach_later;
     bool abilities_primed = false;
+    std::vector<vm::ForgetRegistry::Registration> forgets;
 
     // ---- MagicHost
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return owner_.actors_.get(ref, av); }
@@ -639,6 +683,10 @@ void SkydotPapyrus::tick_magic(double seconds) {
         return;
     }
     m->effects.tick(seconds);
+    for (const std::uint32_t id : m->effects.take_forgotten()) { // forgotten while the effects ran
+        vm_->detach(id);
+        m->snapshots.erase(id);
+    }
     m->shouts.tick(seconds); // real seconds (docs/adr/0008)
     flush_magic_events();
     // Script objects of finished effects go once their OnEffectFinish had its updates.

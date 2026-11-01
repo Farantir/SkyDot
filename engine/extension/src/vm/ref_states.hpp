@@ -39,6 +39,8 @@ struct RefStates {
         blocked.erase(ref);
         moved.erase(ref);
     }
+    /// How many entries it holds, over all its maps.
+    [[nodiscard]] std::size_t entries() const { return disabled.size() + open.size() + locked.size() + blocked.size() + moved.size(); }
     void clear() {
         disabled.clear();
         open.clear();

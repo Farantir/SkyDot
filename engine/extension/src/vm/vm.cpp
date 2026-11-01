@@ -555,10 +555,47 @@ void Vm::fire_scheduled() {
     }
 }
 
+Vm::Vm() {
+    forgets_.add_owned(
+        "vm.instances", [this](std::uint32_t ref) { detach_instances(ref); }, [this] { return instance_count() + timers_.size() + animation_regs_.size(); });
+    forgets_.add_owned(
+        "vm.inventory", [this](std::uint32_t ref) { inventory_.erase(ref); }, [this] { return inventory_.owners().size(); });
+    forgets_.add_owned(
+        "vm.animation_states", [this](std::uint32_t ref) { animation_states_.erase(ref); },
+        [this] { return animation_states_.size(); });
+    forgets_.add_owned(
+        "vm.scheduled",
+        [this](std::uint32_t ref) {
+            std::erase_if(scheduled_, [&](const Scheduled& d) { return d.a == ref; });
+        },
+        [this] { return scheduled_.size(); });
+}
+
+std::size_t Vm::instance_count() const noexcept {
+    std::size_t n = 0;
+    for (const auto& [form, list] : instances_) {
+        n += list.size();
+    }
+    return n;
+}
+
+std::vector<std::uint32_t> Vm::attached_forms() const {
+    std::vector<std::uint32_t> out;
+    out.reserve(instances_.size());
+    for (const auto& [form, list] : instances_) {
+        out.push_back(form);
+    }
+    return out;
+}
+
 void Vm::detach(std::uint32_t ref) {
     inventory_.erase(ref);
     animation_states_.erase(ref);
     std::erase_if(scheduled_, [&](const Scheduled& d) { return d.a == ref; });
+    detach_instances(ref);
+}
+
+void Vm::detach_instances(std::uint32_t ref) {
     const auto it = instances_.find(ref);
     if (it == instances_.end()) {
         return;

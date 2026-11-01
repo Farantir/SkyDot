@@ -45,6 +45,7 @@ public:
     [[nodiscard]] std::vector<std::uint32_t> harvested_refs(double now) const;
     void mark(std::uint32_t ref, double now);
     void erase(std::uint32_t ref) { states_.erase(ref); }
+    [[nodiscard]] std::size_t size() const { return states_.size(); }
     void clear() { states_.clear(); }
     void adopt(HarvestStates&& other) { *this = std::move(other); }
     [[nodiscard]] bool empty() const { return states_.empty(); }

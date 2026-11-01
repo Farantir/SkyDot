@@ -216,18 +216,67 @@ void SkydotPapyrus::remove_placed(std::int64_t ref) {
 
 void SkydotPapyrus::forget_ref(std::int64_t ref) {
     const auto id = static_cast<std::uint32_t>(ref);
-    const bool placed = vm_->placed().remove(id);
-    vm_->detach(id);
-    vm_->destruction().erase(id);
-    states_.forget(id);
-    actors_.forget(id);
-    items_.erase(id);
-    attached_.erase(id);
-    loaded_.erase(id);
-    triggers_.forget(id);
+    const bool placed = vm_->placed().find(id) != nullptr;
+    // Every store keyed by a reference is in a registry (vm/ref_forget.hpp): the VM's and this object's, then
+    // the subsystems' that registered through `forgets()`.
+    vm_->forgets().forget(id);
+    outer_forgets_.forget(id);
     if (placed) {
         emit_signal("ref_deleted", ref);
     }
+}
+
+void SkydotPapyrus::register_forgets() {
+    auto& r = vm_->forgets();
+    // The stores live in this object, which owns the VM and its registry: no tokens needed.
+    r.add_owned("placed", [this](std::uint32_t id) { vm_->placed().remove(id); },
+                [this] { return vm_->placed().refs().size(); });
+    r.add_owned("destruction", [this](std::uint32_t id) { vm_->destruction().erase(id); },
+                [this] { return vm_->destruction().states().size(); });
+    r.add_owned("ref_states", [this](std::uint32_t id) { states_.forget(id); }, [this] { return states_.entries(); });
+    r.add_owned("actor_states", [this](std::uint32_t id) { actors_.forget(id); }, [this] { return actors_.entries(); });
+    r.add_owned("item_states", [this](std::uint32_t id) { items_.erase(id); }, [this] { return items_.entries(); });
+    r.add_owned("attached", [this](std::uint32_t id) { attached_.erase(id); }, [this] { return attached_.size(); });
+    r.add_owned("loaded", [this](std::uint32_t id) { loaded_.erase(id); }, [this] { return loaded_.size(); });
+    r.add_owned("volume_loaded", [this](std::uint32_t id) { volume_loaded_.erase(id); },
+                [this] { return volume_loaded_.size(); });
+    r.add_owned("ghost_reported", [this](std::uint32_t id) { ghost_reported_.erase(id); },
+                [this] { return ghost_reported_.size(); });
+    r.add_owned("triggers", [this](std::uint32_t id) { triggers_.forget(id); },
+                [this] { return triggers_.triggers().size() + triggers_.actors().size(); });
+    r.add_owned("harvests", [this](std::uint32_t id) { harvests_.erase(id); }, [this] { return harvests_.size(); });
+    r.add_owned("last_damager", [this](std::uint32_t id) { last_damager_ = last_damager_ == id ? 0 : last_damager_; },
+                [this] { return last_damager_ != 0 ? std::size_t{1} : std::size_t{0}; });
+    r.add_owned("pending_activations", [this](std::uint32_t id) {
+        if (activations_) {
+            activations_->forget(id);
+        }
+    }, [this] { return activations_ ? activations_->pending_count() : std::size_t{0}; });
+    r.add_owned("dialogue_talked", [this](std::uint32_t id) { dialogue_states_.forget_talked(id); },
+                [this] { return dialogue_states_.talked_count(); });
+    r.add_owned("scene_pushed_packages", [this](std::uint32_t id) {
+        if (scenes_) {
+            scenes_->forget(id);
+        }
+    }, [this] { return scenes_ ? scenes_->pushed_count() : std::size_t{0}; });
+    r.add_owned("quest_alias_fills", [this](std::uint32_t id) { quests_.forget_fill(id); },
+                [this] { return quests_.fills().size(); });
+    r.add_owned("actor_placement", [this](std::uint32_t id) {
+        if (world_.is_valid()) {
+            world_->placement().forget(id);
+        }
+    }, [this] { return world_.is_valid() ? world_->placement().entries() : std::size_t{0}; });
+}
+
+godot::Dictionary SkydotPapyrus::forget_store_sizes() const {
+    godot::Dictionary out;
+    for (const auto& [name, size] : vm_->forgets().sizes()) {
+        out[godot::String::utf8(name.c_str())] = static_cast<std::int64_t>(size);
+    }
+    for (const auto& [name, size] : outer_forgets_.sizes()) {
+        out[godot::String::utf8(name.c_str())] = static_cast<std::int64_t>(size);
+    }
+    return out;
 }
 
 std::int64_t SkydotPapyrus::ref_built(std::int64_t ref) {

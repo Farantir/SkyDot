@@ -30,6 +30,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace skydot::magic {
@@ -179,6 +180,14 @@ public:
     /// How often an effect of an archetype without rules was started.
     [[nodiscard]] const std::map<std::uint32_t, std::uint64_t>& unhandled() const { return unhandled_; }
 
+    /// `ref` is gone for good (a deleted reference): the effects running on it are dropped without being undone
+    /// (its actor values go too), and the ids of the effect instances that went are returned (their script
+    /// objects are the caller's). During `tick` the drop waits for the end of it.
+    std::vector<std::uint32_t> forget(std::uint32_t ref);
+    /// The ids of the instances dropped by a `forget` that waited for `tick` (the caller detaches their scripts).
+    std::vector<std::uint32_t> take_forgotten() { return std::exchange(forgotten_ids_, {}); }
+    /// How many entries it holds that name a reference (instances, the gate log).
+    [[nodiscard]] std::size_t entries() const { return instances_.size() + gate_logged_.size() + pending_forget_.size(); }
     /// Drop everything without undoing it (the actor values were replaced by a load).
     void clear();
     [[nodiscard]] std::vector<std::uint8_t> save() const;
@@ -244,6 +253,9 @@ private:
     std::set<std::uint32_t> logged_;
     bool dual_logged_ = false;
     std::set<std::pair<std::uint32_t, std::uint32_t>> gate_logged_;
+    bool ticking_ = false;
+    std::vector<std::uint32_t> pending_forget_; ///< References forgotten while `tick` ran.
+    std::vector<std::uint32_t> forgotten_ids_;  ///< What those took with them.
     std::vector<std::uint32_t> dispel_later_; ///< Previous summons of a caster, dispelled once the loop is done.
 };
 

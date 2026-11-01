@@ -108,6 +108,10 @@ public:
     void adopt(Scenes&& other);
     /// Every package pushed by the running scenes: actor, package.
     [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint32_t>> pushed_packages() const;
+    /// `ref` is gone: the packages the running scenes pushed on it are dropped (the scenes stay: they are the pack's).
+    void forget(std::uint32_t ref);
+    /// How many pushed packages the running scenes hold.
+    [[nodiscard]] std::size_t pushed_count() const;
     void clear();
 
 private:

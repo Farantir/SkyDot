@@ -73,6 +73,10 @@ public:
         return it != fills_.end() ? it->second : 0;
     }
     void set_fill(std::uint32_t handle, std::uint32_t ref) { fills_[handle] = ref; }
+    /// `ref` is gone: the aliases it filled are empty (the handles stay: they belong to the quest).
+    void forget_fill(std::uint32_t ref) {
+        std::erase_if(fills_, [ref](const auto& e) { return e.second == ref; });
+    }
     /// Empty every alias of `quest`.
     void clear_fills(std::uint32_t quest) {
         for (auto& [handle, fill] : fills_) {

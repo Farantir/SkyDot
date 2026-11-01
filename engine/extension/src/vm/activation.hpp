@@ -69,6 +69,8 @@ public:
     /// Take the entry of `ref`, if it waits.
     std::optional<Entry> take(std::uint32_t ref);
     [[nodiscard]] bool pending(std::uint32_t ref) const { return entries_.count(ref) != 0; }
+    void forget(std::uint32_t ref) { entries_.erase(ref); }
+    [[nodiscard]] std::size_t size() const { return entries_.size(); }
     void clear() { entries_.clear(); }
 
 private:
@@ -183,6 +185,8 @@ public:
     std::optional<ActivationOutcome> complete(std::uint32_t ref);
 
     [[nodiscard]] bool pending(std::uint32_t ref) const { return pending_.pending(ref); }
+    void forget(std::uint32_t ref) { pending_.forget(ref); }
+    [[nodiscard]] std::size_t pending_count() const { return pending_.size(); }
     void clear() { pending_.clear(); }
 
 private:

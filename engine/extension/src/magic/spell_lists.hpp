@@ -76,6 +76,8 @@ public:
     [[nodiscard]] const std::set<std::uint32_t>& known_enchantments() const { return known_enchantments_; }
 
     void forget(std::uint32_t ref);
+    /// How many entries it holds per actor (records, cached bases, applied abilities).
+    [[nodiscard]] std::size_t entries() const { return records_.size() + base_cache_.size() + applied_.size(); }
     void clear();
     [[nodiscard]] std::vector<std::uint8_t> save() const;
     [[nodiscard]] static bool load(save::ByteReader r, SpellBook& out);

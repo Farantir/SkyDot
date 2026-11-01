@@ -65,6 +65,19 @@ public:
     }
     [[nodiscard]] bool is_enabled(std::uint32_t ref) const { return enabled_.contains(ref); }
     void clear_enabled() { enabled_.clear(); }
+    /// `ref` is gone: its place and its enabling.
+    void forget(std::uint32_t ref) {
+        clear_place(ref);
+        enabled_.erase(ref);
+    }
+    /// How many entries it holds per actor (places, enabled, the moved-in lists).
+    [[nodiscard]] std::size_t entries() const {
+        std::size_t n = places_.size() + enabled_.size();
+        for (const auto& [bucket, list] : moved_in_) {
+            n += list.size();
+        }
+        return n;
+    }
     /// Every actor moved from its editor place, and where.
     const std::unordered_map<std::uint32_t, Place>& places() const { return places_; }
     /// Empty if `ref` is no placed actor.

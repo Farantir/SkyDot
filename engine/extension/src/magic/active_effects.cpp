@@ -534,6 +534,7 @@ void ActiveEffects::tick(double seconds) {
     std::vector<std::uint32_t> ended;
     std::vector<std::uint32_t> pulses;
     std::set<std::uint32_t> dirty;
+    ticking_ = true;
     for (auto& [id, i] : instances_) {
         if (i.archetype == archetype::summon_creature && i.started && i.summoned != 0 && host_.is_dead(i.summoned)) {
             ended.push_back(id); // the summon died: the effect ends
@@ -565,6 +566,12 @@ void ActiveEffects::tick(double seconds) {
         i.elapsed += seconds;
         if (!i.permanent && i.elapsed >= i.duration) {
             ended.push_back(id);
+        }
+    }
+    ticking_ = false;
+    for (const std::uint32_t ref : std::exchange(pending_forget_, {})) {
+        for (const std::uint32_t id : forget(ref)) {
+            forgotten_ids_.push_back(id);
         }
     }
     for (const std::uint32_t t : dirty) {
@@ -697,7 +704,26 @@ bool ActiveEffects::check(const wfb::World& world, save::ByteReader r) {
     return scratch.load(r);
 }
 
+std::vector<std::uint32_t> ActiveEffects::forget(std::uint32_t ref) {
+    std::vector<std::uint32_t> gone;
+    if (ticking_) {
+        pending_forget_.push_back(ref);
+        return gone;
+    }
+    for (auto it = instances_.begin(); it != instances_.end();) {
+        if (it->second.target == ref) {
+            gone.push_back(it->first);
+            it = instances_.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    std::erase_if(gate_logged_, [ref](const auto& e) { return e.first == ref; });
+    return gone;
+}
+
 void ActiveEffects::clear() {
+    pending_forget_.clear();
     instances_.clear();
     ids_.clear();
     logged_.clear();
