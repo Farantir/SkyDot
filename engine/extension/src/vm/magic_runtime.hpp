@@ -124,7 +124,18 @@ public:
                     snapshots.erase(id);
                 }
             },
-            [this] { return effects.entries(); }));
+            [this] { return effects.entries(); },
+            // Casters, targets and summoned refs of the held effects, of the views waiting to be sent and of
+            // the snapshots of effects with script objects: values the forget does not scrub.
+            [this](std::set<std::uint32_t>& out) {
+                effects.held_refs(out);
+                for (const auto& p : pending) {
+                    out.insert({p.view.caster, p.view.target, p.view.summoned});
+                }
+                for (const auto& [id, view] : snapshots) {
+                    out.insert({view.caster, view.target, view.summoned});
+                }
+            }));
         forgets.push_back(registry.add(
             "magic.spell_book", [this](std::uint32_t ref) { book.forget(ref); }, [this] { return book.entries(); }));
         forgets.push_back(registry.add(

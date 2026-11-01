@@ -23,6 +23,7 @@
 #include <cstdint>
 #include <map>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -70,6 +71,12 @@ public:
     std::optional<Entry> take(std::uint32_t ref);
     [[nodiscard]] bool pending(std::uint32_t ref) const { return entries_.count(ref) != 0; }
     void forget(std::uint32_t ref) { entries_.erase(ref); }
+    /// Adds the activators of the waiting activations (values `forget` leaves alone).
+    void held_refs(std::set<std::uint32_t>& out) const {
+        for (const auto& [ref, entry] : entries_) {
+            out.insert(static_cast<std::uint32_t>(entry.activator));
+        }
+    }
     [[nodiscard]] std::size_t size() const { return entries_.size(); }
     void clear() { entries_.clear(); }
 
@@ -186,6 +193,7 @@ public:
 
     [[nodiscard]] bool pending(std::uint32_t ref) const { return pending_.pending(ref); }
     void forget(std::uint32_t ref) { pending_.forget(ref); }
+    void held_refs(std::set<std::uint32_t>& out) const { pending_.held_refs(out); }
     [[nodiscard]] std::size_t pending_count() const { return pending_.size(); }
     void clear() { pending_.clear(); }
 

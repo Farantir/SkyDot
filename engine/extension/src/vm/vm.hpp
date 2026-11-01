@@ -117,12 +117,20 @@ using ScheduledCall = std::variant<ScheduledActivate>;
     return static_cast<ScheduledKind>(call.index());
 }
 
+/// Calls `visit(ref)` for every reference slot of `call`, whatever its kind: the one place that lists them.
+template <class Visit>
+void each_reference(const ScheduledCall& call, Visit&& visit) {
+    if (const auto* a = std::get_if<ScheduledActivate>(&call)) {
+        visit(a->target);
+        visit(a->activator);
+    }
+}
+
 /// Whether `call` involves reference `ref` in any role: the call is dropped when `ref` is forgotten.
 [[nodiscard]] inline bool references(const ScheduledCall& call, std::uint32_t ref) {
-    if (const auto* a = std::get_if<ScheduledActivate>(&call)) {
-        return a->target == ref || a->activator == ref;
-    }
-    return false;
+    bool found = false;
+    each_reference(call, [&](std::uint32_t slot) { found = found || slot == ref; });
+    return found;
 }
 
 struct Scheduled {
@@ -353,6 +361,12 @@ public:
     /// detached instances that are themselves reached. `update` runs it when it is quiescent (no thread runs)
     /// after something was detached; a test may call it at any such point. Returns how many were freed.
     std::size_t collect_detached();
+    /// Every form in `range` that something the VM keeps could still use: the object values of instance
+    /// variables, thread frames (self, registers), results and arrays (followed, shared ones once), the forms of
+    /// the attached instances, the instances of timers and animation registrations and the senders of the
+    /// latter, scheduled calls, form list additions and what the hooks of `add_root` show. A forgotten reference
+    /// id is reused only when it is not in this set (and not in the host's, see `PlacedRefs::add`).
+    [[nodiscard]] std::set<std::uint32_t> held_forms(IdRange range) const;
     /// Shows the values a holder outside the VM keeps, for `collect_detached`: the hook calls `visit` on each.
     using RootVisitor = std::function<void(const Value&)>;
     using RootHook = std::function<void(const RootVisitor& visit)>;

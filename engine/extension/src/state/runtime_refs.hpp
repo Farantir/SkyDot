@@ -6,7 +6,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <map>
+#include <set>
 
 #include "state/id_ranges.hpp"
 
@@ -31,9 +33,14 @@ public:
     /// below the alias handles.
     static constexpr std::uint32_t FIRST = id_ranges::runtime_refs.first;
 
-    /// The new reference's id; 0 (and nothing added) once the range is used up.
-    std::uint32_t add(const PlacedRef& ref) {
-        const std::uint32_t id = ids_.allocate();
+    /// The new reference's id: a fresh one, and once those are used up a released one that is not in
+    /// `held()` (called once, only then: every id a stale holder could still use). 0 (and nothing added) if
+    /// there is none.
+    std::uint32_t add(const PlacedRef& ref, const std::function<std::set<std::uint32_t>()>& held = {}) {
+        std::uint32_t id = ids_.allocate();
+        if (id == 0 && !ids_.released().empty()) {
+            id = ids_.reuse(held ? held() : std::set<std::uint32_t>{});
+        }
         if (id != 0) {
             refs_[id] = ref;
         }
@@ -45,7 +52,13 @@ public:
         const auto it = refs_.find(id);
         return it != refs_.end() ? &it->second : nullptr;
     }
+    /// Drops the reference; its id is not free for reuse until `release`.
     bool remove(std::uint32_t id) { return refs_.erase(id) != 0; }
+    /// Free the id of a forgotten reference for reuse (`add`), once every holder of it is forgotten.
+    bool release(std::uint32_t id) { return ids_.release(id); }
+    [[nodiscard]] const std::set<std::uint32_t>& released() const { return ids_.released(); }
+    /// Loading: false for an id that is outside [first, next) or already released.
+    bool restore_released(std::uint32_t id) { return ids_.restore_released(id); }
     /// A script moved the reference (`cell` 0: it stays in its cell); false if there is no such reference.
     bool move(std::uint32_t id, std::uint32_t cell, const double position[3], const double rotation[3]) {
         const auto it = refs_.find(id);

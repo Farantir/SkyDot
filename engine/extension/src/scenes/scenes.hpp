@@ -110,6 +110,17 @@ public:
     [[nodiscard]] std::vector<std::pair<std::uint32_t, std::uint32_t>> pushed_packages() const;
     /// `ref` is gone: the packages the running scenes pushed on it are dropped (the scenes stay: they are the pack's).
     void forget(std::uint32_t ref);
+    /// Adds the actors of the running scenes' actions and pushed packages (values `forget` leaves alone).
+    void held_refs(std::set<std::uint32_t>& out) const {
+        for (const auto& [id, run] : runs_) {
+            for (const auto& a : run.actions) {
+                out.insert(a.actor);
+            }
+            for (const auto& p : run.pushed) {
+                out.insert(p.actor);
+            }
+        }
+    }
     /// How many pushed packages the running scenes hold.
     [[nodiscard]] std::size_t pushed_count() const;
     void clear();

@@ -375,7 +375,7 @@ world hash and load order), the VM's VMST (instances with their variables
 and states, running and waiting threads with every frame, timers, pending
 results, scheduled host calls, the clock and the random state), INVT, MAGC (optional: effects, spells, hands, cooldowns, shouts; version 2), ITST (optional: resolved owners, leveled actor picks, equipment, item extras; an old save without it has every inventory unresolved and resolves it on touch), ANIM
 (behaviour graph snapshots), FLST (forms added to lists), PLCD (placed
-references) and DEST (destruction), then RFST (what scripts changed per
+references and, from version 2, the forgotten ids free for reuse) and DEST (destruction), then RFST (what scripts changed per
 reference: enabled, open, locked, blocked, moved), PAPY (attached references,
 who is inside which trigger, actor positions) and QUST (quests, alias handles
 and fills, globals). The viewer's SaveService adds PLYR (the place and the

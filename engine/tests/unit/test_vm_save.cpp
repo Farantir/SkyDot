@@ -916,3 +916,110 @@ TEST_CASE("a save that lists a thread id twice is refused", "[vm][save]") {
     SaverRig bad(saver(), false);
     CHECK_FALSE(bad.vm().load(build(sections), error));
 }
+
+TEST_CASE("held_forms finds the forms of a range that a variable, an array or a scheduled call still holds",
+          "[vm][held]") {
+    using skydot::vm::id_ranges::runtime_refs;
+    SaverRig s;
+    REQUIRE(s.instance != nullptr);
+    CHECK(s.vm().held_forms(runtime_refs).empty());
+
+    auto& values = s.instance->vars.begin()->second;
+    REQUIRE(values.size() >= 2);
+    const std::uint32_t in_variable = runtime_refs.first + 5;
+    const std::uint32_t in_array = runtime_refs.first + 9;
+    const std::uint32_t outside = 0x14; // not in the range
+    values[0] = Value::object(in_variable, nullptr);
+    auto array = std::make_shared<skydot::vm::Array>();
+    array->push_back(Value::object(in_array, nullptr));
+    array->push_back(Value::object(outside, nullptr));
+    values[1] = Value::make_array(array);
+    CHECK(s.vm().held_forms(runtime_refs) == std::set<std::uint32_t>{in_variable, in_array});
+
+    const std::uint32_t scheduled = runtime_refs.first + 20;
+    s.vm().schedule(5.0, skydot::vm::ScheduledActivate{0x14, scheduled, 0, false});
+    CHECK(s.vm().held_forms(runtime_refs).contains(scheduled));
+    values[0] = Value();
+    CHECK_FALSE(s.vm().held_forms(runtime_refs).contains(in_variable));
+}
+
+namespace {
+
+/// A VM save with placed references 1 and 3 kept and 2 released, as the PLCD section's version 2 holds them.
+struct PlacedSave {
+    Bytes file;
+    std::uint32_t first = 0, second = 0, third = 0;
+};
+
+PlacedSave placed_save() {
+    skydot::vm::Vm a;
+    skydot::vm::PlacedRef rock{.base = 0x1234, .cell = 0x77};
+    PlacedSave out;
+    out.first = a.placed().add(rock);
+    out.second = a.placed().add(rock);
+    out.third = a.placed().add(rock);
+    a.placed().remove(out.second);
+    REQUIRE(a.placed().release(out.second));
+    out.file = a.save();
+    return out;
+}
+
+/// The released ids of a PLCD section of version 2 replaced by `ids`.
+Bytes with_released(const PlacedSave& s, const std::vector<std::uint32_t>& ids) {
+    auto sections = split(s.file);
+    auto& plcd = section(sections, "PLCD");
+    plcd.resize(plcd.size() - 8); // the released count and its one id
+    put_u32(plcd, static_cast<std::uint32_t>(ids.size()));
+    for (const auto id : ids) {
+        put_u32(plcd, id);
+    }
+    return build(sections);
+}
+
+} // namespace
+
+TEST_CASE("released reference ids are part of the VM save", "[vm][save][placed]") {
+    const auto s = placed_save();
+    skydot::vm::Vm b;
+    std::string error;
+    REQUIRE(b.load(s.file, error));
+    CHECK(b.placed().released() == std::set<std::uint32_t>{s.second});
+    CHECK(b.placed().find(s.first) != nullptr);
+    CHECK(b.placed().find(s.second) == nullptr);
+    CHECK(b.placed().next() == s.third + 1);
+
+    // Reuse once the range runs out.
+    REQUIRE(b.placed().set_next(skydot::vm::id_ranges::runtime_refs.last + 1));
+    skydot::vm::PlacedRef rock;
+    CHECK(b.placed().add(rock, [] { return std::set<std::uint32_t>{}; }) == s.second);
+}
+
+TEST_CASE("a PLCD section of version 1 loads with no released ids", "[vm][save][placed]") {
+    const auto s = placed_save();
+    auto sections = split(s.file);
+    for (auto& [tag, version, bytes] : sections) {
+        if (tag == "PLCD") {
+            version = 1;
+            bytes.resize(bytes.size() - 8); // no released ids
+        }
+    }
+    // Version 1 ends after the kept references: drop the count (4) and the id (4) the writer added.
+    skydot::vm::Vm b;
+    std::string error;
+    REQUIRE(b.load(build(sections), error));
+    CHECK(b.placed().released().empty());
+    CHECK(b.placed().find(s.first) != nullptr);
+    CHECK(b.placed().find(s.third) != nullptr);
+}
+
+TEST_CASE("released reference ids that cannot be are refused", "[vm][save][placed][errors]") {
+    const auto s = placed_save();
+    skydot::vm::Vm b;
+    std::string error;
+    CHECK(b.load(with_released(s, {s.second}), error)); // the shape the writer made
+    CHECK_FALSE(b.load(with_released(s, {s.first}), error));         // a kept reference
+    CHECK_FALSE(b.load(with_released(s, {s.third + 1}), error));     // not below next
+    CHECK_FALSE(b.load(with_released(s, {s.second, s.second}), error)); // twice
+    CHECK_FALSE(b.load(with_released(s, {0x1000}), error));          // outside the range
+    CHECK_THAT(error, ContainsSubstring("PLCD"));
+}

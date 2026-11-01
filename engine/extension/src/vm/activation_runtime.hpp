@@ -62,6 +62,7 @@ public:
 
     [[nodiscard]] bool pending(std::uint32_t ref) const { return activations_.pending(ref); }
     void forget(std::uint32_t ref) { activations_.forget(ref); }
+    void held_refs(std::set<std::uint32_t>& out) const { activations_.held_refs(out); }
     [[nodiscard]] std::size_t pending_count() const { return activations_.pending_count(); }
     /// Drop the pending activations and the harvest state (a new game).
     void reset() {

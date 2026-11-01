@@ -16,6 +16,7 @@
 #include <cstdint>
 #include <functional>
 #include <map>
+#include <set>
 #include <optional>
 #include <vector>
 
@@ -169,6 +170,12 @@ public:
 
     /// Drop everything known about `ref`.
     void forget(std::uint32_t ref);
+    /// Adds the references it keeps as values, which `forget` leaves alone: killers and landing markers.
+    void held_refs(std::set<std::uint32_t>& out) const {
+        for (const auto& [ref, record] : records_) {
+            out.insert({record.killer, record.landing_marker});
+        }
+    }
     /// How many entries it holds per reference (records, bases, dying, living places, deaths, due, pair keys).
     [[nodiscard]] std::size_t entries() const;
     void clear();

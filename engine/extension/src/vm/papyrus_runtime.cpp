@@ -137,13 +137,22 @@ std::uint32_t SkydotPapyrus::place_ref(const vm::PlacedRef& placed, bool initial
     const Vector3 rotation(static_cast<float>(placed.rotation[0]), static_cast<float>(placed.rotation[1]),
                            static_cast<float>(placed.rotation[2]));
     const std::uint32_t base = placed.base;
-    const std::uint32_t id = vm_->placed().add(placed);
+    // Fresh ids first; once they run out a forgotten one is reused if nothing can still use it: not a Value of the
+    // VM, and not a reference some store keeps as a value (`ForgetRegistry::collect_held`).
+    const std::uint32_t id = vm_->placed().add(placed, [this] {
+        auto held = vm_->held_forms(vm::id_ranges::runtime_refs);
+        std::set<std::uint32_t> stores;
+        vm_->forgets().collect_held(stores);
+        outer_forgets_.collect_held(stores);
+        held.insert(stores.begin(), stores.end());
+        return held;
+    });
     if (id == 0) {
         godot::UtilityFunctions::push_error("Papyrus: the runtime reference ids are used up; nothing placed");
         return 0;
     }
     if (vm_->placed().take_id_warning()) {
-        godot::UtilityFunctions::push_warning("Papyrus: the runtime reference ids are 90 % used; they are never reused");
+        godot::UtilityFunctions::push_warning("Papyrus: the runtime reference ids are 90 % used; they are reused once the fresh ones run out");
     }
     if (initially_disabled) {
         states_.disabled[id] = true;
@@ -226,6 +235,8 @@ void SkydotPapyrus::forget_ref(std::int64_t ref) {
     vm_->forgets().forget(id);
     outer_forgets_.forget(id);
     if (placed) {
+        // Every store has forgotten it: the id may be handed out again once nothing holds it (`place_ref`).
+        vm_->placed().release(id);
         emit_signal("ref_deleted", ref);
     }
 }
@@ -238,7 +249,8 @@ void SkydotPapyrus::register_forgets() {
     r.add_owned("destruction", [this](std::uint32_t id) { vm_->destruction().erase(id); },
                 [this] { return vm_->destruction().states().size(); });
     r.add_owned("ref_states", [this](std::uint32_t id) { states_.forget(id); }, [this] { return states_.entries(); });
-    r.add_owned("actor_states", [this](std::uint32_t id) { actors_.forget(id); }, [this] { return actors_.entries(); });
+    r.add_owned("actor_states", [this](std::uint32_t id) { actors_.forget(id); }, [this] { return actors_.entries(); },
+                [this](std::set<std::uint32_t>& out) { actors_.held_refs(out); });
     r.add_owned("item_states", [this](std::uint32_t id) { item_.states().erase(id); }, [this] { return item_.states().entries(); });
     r.add_owned("attached", [this](std::uint32_t id) { attached_.erase(id); }, [this] { return attached_.size(); });
     r.add_owned("loaded", [this](std::uint32_t id) { loaded_.erase(id); }, [this] { return loaded_.size(); });
@@ -247,17 +259,20 @@ void SkydotPapyrus::register_forgets() {
     r.add_owned("ghost_reported", [this](std::uint32_t id) { combat_.forget_ghost(id); },
                 [this] { return combat_.ghost_count(); });
     r.add_owned("triggers", [this](std::uint32_t id) { triggers_.forget(id); },
-                [this] { return triggers_.triggers().size() + triggers_.actors().size(); });
+                [this] { return triggers_.triggers().size() + triggers_.actors().size(); },
+                [this](std::set<std::uint32_t>& out) { triggers_.held_refs(out); });
     r.add_owned("harvests", [this](std::uint32_t id) { activation_.harvests().erase(id); },
                 [this] { return activation_.harvests().size(); });
     r.add_owned("last_damager", [this](std::uint32_t id) { combat_.forget_damager(id); },
                 [this] { return combat_.damager_count(); });
     r.add_owned("pending_activations", [this](std::uint32_t id) { activation_.forget(id); },
-                [this] { return activation_.pending_count(); });
+                [this] { return activation_.pending_count(); },
+                [this](std::set<std::uint32_t>& out) { activation_.held_refs(out); });
     r.add_owned("dialogue_talked", [this](std::uint32_t id) { dialogue_.forget_talked(id); },
                 [this] { return dialogue_.talked_count(); });
     r.add_owned("scene_pushed_packages", [this](std::uint32_t id) { scene_.forget(id); },
-                [this] { return scene_.pushed_count(); });
+                [this] { return scene_.pushed_count(); },
+                [this](std::set<std::uint32_t>& out) { scene_.held_refs(out); });
     r.add_owned("quest_alias_fills", [this](std::uint32_t id) { quests_.forget_fill(id); },
                 [this] { return quests_.fills().size(); });
     r.add_owned("actor_placement", [this](std::uint32_t id) {

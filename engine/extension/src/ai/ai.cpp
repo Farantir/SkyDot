@@ -278,7 +278,8 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
         auto& registry = vm_->forgets();
         // One forget (it waits while `update` runs), one size per store.
         forgets_.push_back(registry.add("ai.minds", [this](std::uint32_t ref) { forget_ref(ref); },
-                                        [this] { return minds_.size() + forgotten_.size(); }));
+                                        [this] { return minds_.size() + forgotten_.size(); },
+                                        [this](std::set<std::uint32_t>& out) { held_refs(out); }));
         forgets_.push_back(registry.add("ai.package_lists", {}, [this] { return package_lists_.size(); }));
         forgets_.push_back(registry.add("ai.forced_packages", {}, [this] { return forced_.size(); }));
         forgets_.push_back(registry.add("ai.attached", {}, [this] { return attached_.size(); }));
@@ -1109,6 +1110,21 @@ void SkydotAi::forget_ref(std::uint32_t ref) {
         return;
     }
     erase_ref(ref);
+}
+
+/// The references the minds keep as values (combat target, the one it fears, the door, the spot's reference, the
+/// found lists) and those whose erase waits for the end of `update`: none of them is reused meanwhile.
+void SkydotAi::held_refs(std::set<std::uint32_t>& out) const {
+    out.insert(forgotten_.begin(), forgotten_.end());
+    for (const auto& [ref, m] : minds_) {
+        out.insert({m.combat.target, m.combat.afraid_of, m.door});
+        if (m.target) {
+            out.insert(m.target->ref);
+        }
+        for (const auto& [key, found] : m.lists) {
+            out.insert(found);
+        }
+    }
 }
 
 void SkydotAi::erase_ref(std::uint32_t ref) {

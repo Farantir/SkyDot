@@ -9,6 +9,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <functional>
+#include <set>
 #include <vector>
 
 using namespace skydot;
@@ -289,4 +290,99 @@ TEST_CASE("a crossing callback may forget triggers, including the one it was cal
     CHECK_FALSE(triggers.has(7));
     CHECK_FALSE(triggers.has(8));
     CHECK_FALSE(triggers.has(9));
+}
+
+TEST_CASE("id ranges: released ids are reused smallest first, skipping the held ones") {
+    using namespace skydot::vm;
+    IdAllocator ids(id_ranges::test_instances);
+    CHECK_FALSE(ids.release(id_ranges::test_instances.first)); // not handed out yet
+    std::vector<std::uint32_t> all;
+    for (int i = 0; i < 4096; ++i) {
+        all.push_back(ids.allocate());
+        REQUIRE(all.back() != 0);
+    }
+    CHECK(ids.allocate() == 0);
+    CHECK(ids.reuse({}) == 0); // nothing released
+
+    CHECK_FALSE(ids.release(0xFEFFFFFFu));                       // below the range
+    CHECK_FALSE(ids.release(id_ranges::test_instances.last + 1)); // above it
+    CHECK(ids.release(all[7]));
+    CHECK_FALSE(ids.release(all[7])); // once
+    CHECK(ids.release(all[3]));
+    CHECK(ids.release(all[100]));
+    CHECK(ids.used() == 4096 - 3);
+
+    CHECK(ids.reuse({all[3]}) == all[7]); // the held one is skipped
+    CHECK(ids.released().size() == 2);
+    CHECK(ids.reuse({}) == all[3]);       // smallest first
+    CHECK(ids.reuse({all[100]}) == 0);    // all that is left is held
+    CHECK(ids.released().size() == 1);
+    CHECK(ids.reuse({}) == all[100]);
+    CHECK(ids.reuse({}) == 0);
+    CHECK(ids.used() == 4096);
+
+    CHECK(ids.release(all[5]));
+    ids.clear();
+    CHECK(ids.released().empty());
+    CHECK(ids.used() == 0);
+}
+
+TEST_CASE("id ranges: released ids count as free for the pressure warning, and are restored from a save") {
+    using namespace skydot::vm;
+    IdAllocator ids(id_ranges::test_instances);
+    for (int i = 0; i < 4000; ++i) {
+        REQUIRE(ids.allocate() != 0);
+    }
+    for (int i = 0; i < 400; ++i) {
+        REQUIRE(ids.release(id_ranges::test_instances.first + static_cast<std::uint32_t>(i)));
+    }
+    CHECK(ids.used() == 3600);
+    CHECK_FALSE(ids.take_pressure_warning()); // 3,600 < 3,687
+
+    IdAllocator loaded(id_ranges::test_instances);
+    CHECK(loaded.restore(ids.next()));
+    CHECK(loaded.restore_released(id_ranges::test_instances.first + 5));
+    CHECK_FALSE(loaded.restore_released(id_ranges::test_instances.first + 5)); // twice
+    CHECK_FALSE(loaded.restore_released(ids.next()));                          // not below next
+    CHECK_FALSE(loaded.restore_released(id_ranges::test_instances.first - 1));
+    CHECK(loaded.restore(ids.next())); // restoring the counter keeps the released set
+    CHECK(loaded.released().size() == 1);
+}
+
+TEST_CASE("placed references: a released id is reused once the range runs out, unless something holds it") {
+    using namespace skydot::vm;
+    PlacedRefs refs;
+    PlacedRef ref;
+    ref.base = 0x1234;
+    const auto last = id_ranges::runtime_refs.last;
+    const auto a = refs.add(ref);
+    const auto b = refs.add(ref);
+    REQUIRE(refs.set_next(last + 1)); // the range is used up
+    CHECK(refs.add(ref) == 0);
+
+    int asked = 0;
+    const auto held_none = [&] {
+        ++asked;
+        return std::set<std::uint32_t>{};
+    };
+    CHECK(refs.add(ref, held_none) == 0); // nothing released: held() is not even asked
+    CHECK(asked == 0);
+
+    CHECK(refs.remove(a));
+    CHECK(refs.remove(b));
+    CHECK(refs.released().empty()); // remove does not release
+    CHECK(refs.release(a));
+    CHECK(refs.release(b));
+
+    const auto held_a = [&] {
+        ++asked;
+        return std::set<std::uint32_t>{a};
+    };
+    CHECK(refs.add(ref, held_a) == b); // a is held: the next one is taken
+    CHECK(asked == 1);
+    CHECK(refs.find(b) != nullptr);
+    CHECK(refs.add(ref, held_a) == 0); // only the held one is left
+    CHECK(refs.add(ref, held_none) == a);
+    CHECK(refs.released().empty());
+    CHECK(refs.add(ref, held_none) == 0);
 }

@@ -12,6 +12,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <functional>
+#include <set>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -24,6 +25,9 @@ class ForgetRegistry {
 public:
     using Forget = std::function<void(std::uint32_t)>;
     using Size = std::function<std::size_t()>;
+    /// Adds to `out` the reference ids the store keeps as values (not as keys), which it does not scrub on
+    /// `forget`: an id in them is not reused (`collect_held`).
+    using Held = std::function<void(std::set<std::uint32_t>& out)>;
 
 private:
     struct Store {
@@ -31,6 +35,7 @@ private:
         std::string name;
         Forget forget;
         Size size;
+        Held held;
     };
     struct State {
         std::vector<Store> stores;
@@ -75,14 +80,25 @@ public:
     ForgetRegistry& operator=(const ForgetRegistry&) = delete;
 
     /// Register a store: `forget(ref)` drops what it holds for `ref`, `size()` says how many entries it holds.
-    [[nodiscard]] Registration add(std::string_view name, Forget forget, Size size = {}) {
+    [[nodiscard]] Registration add(std::string_view name, Forget forget, Size size = {}, Held held = {}) {
         const std::uint64_t id = state_->next++;
-        state_->stores.push_back({id, std::string(name), std::move(forget), std::move(size)});
+        state_->stores.push_back({id, std::string(name), std::move(forget), std::move(size), std::move(held)});
         return Registration(state_, id);
     }
     /// The same for a store that lives as long as the registry (or longer and never forgets after it): no token.
-    void add_owned(std::string_view name, Forget forget, Size size = {}) {
-        state_->stores.push_back({state_->next++, std::string(name), std::move(forget), std::move(size)});
+    void add_owned(std::string_view name, Forget forget, Size size = {}, Held held = {}) {
+        state_->stores.push_back({state_->next++, std::string(name), std::move(forget), std::move(size), std::move(held)});
+    }
+
+    /// Adds to `out` every id some store still holds as a value. An id is reused only after `forget` has run
+    /// every store and when it is in no `collect_held` (and not in the VM's own held forms).
+    void collect_held(std::set<std::uint32_t>& out) const {
+        for (std::size_t i = 0; i < state_->stores.size(); ++i) {
+            const Held h = state_->stores[i].held;
+            if (h) {
+                h(out);
+            }
+        }
     }
 
     /// Every store forgets `ref`. A store may register or unregister others meanwhile (the list is walked by index).

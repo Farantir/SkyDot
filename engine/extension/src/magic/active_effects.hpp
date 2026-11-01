@@ -188,6 +188,14 @@ public:
     std::vector<std::uint32_t> take_forgotten() { return std::exchange(forgotten_ids_, {}); }
     /// How many entries it holds that name a reference (instances, the gate log).
     [[nodiscard]] std::size_t entries() const { return instances_.size() + gate_logged_.size() + pending_forget_.size(); }
+    /// Adds the references it holds as values, which `forget` leaves alone: casters, targets, summoned refs and
+    /// the references waiting to be forgotten after `tick`.
+    void held_refs(std::set<std::uint32_t>& out) const {
+        for (const auto& [id, i] : instances_) {
+            out.insert({i.caster, i.target, i.summoned});
+        }
+        out.insert(pending_forget_.begin(), pending_forget_.end());
+    }
     /// Drop everything without undoing it (the actor values were replaced by a load).
     void clear();
     [[nodiscard]] std::vector<std::uint8_t> save() const;

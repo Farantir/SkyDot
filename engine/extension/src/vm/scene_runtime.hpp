@@ -87,6 +87,11 @@ public:
         }
     }
     [[nodiscard]] std::size_t pushed_count() const { return scenes_ != nullptr ? scenes_->pushed_count() : 0; }
+    void held_refs(std::set<std::uint32_t>& out) const {
+        if (scenes_ != nullptr) {
+            scenes_->held_refs(out);
+        }
+    }
 
     // scenes::SceneHost
     bool quest_running(std::uint32_t quest) const override;

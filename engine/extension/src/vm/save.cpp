@@ -20,7 +20,9 @@
 //   AEVT  u32 count; per RegisterForAnimationEvent: instance, sender ref, event
 //         (an optional section: saves from before it have none)
 //   PLCD  u32 next id, u32 count; per kept reference: id, base, cell, f64 x3
-//         position, f64 x3 rotation, f64 scale
+//         position, f64 x3 rotation, f64 scale; version 2 adds u32 count and
+//         the released ids (forgotten, free for reuse; u32 each). Version 1
+//         has none.
 //   DEST  u32 count; per reference: ref, f64 damage, i32 stage (as u32), u8
 //         destroyed
 //
@@ -94,6 +96,10 @@ constexpr std::size_t k_form_list_min_bytes = 4 + 4;
 constexpr std::size_t k_form_list_form_min_bytes = 4;
 /// A placed reference: id, base, cell (u32 each), position and rotation (six f64), scale (f64).
 constexpr std::size_t k_placed_ref_min_bytes = 3 * 4 + 7 * 8;
+/// The version of the PLCD section: 2 adds the released ids.
+constexpr std::uint32_t k_placed_section_version = 2;
+/// A released reference id: id (u32).
+constexpr std::size_t k_released_id_min_bytes = 4;
 /// A destruction state: ref (u32), damage (f64), stage (u32), destroyed (u8).
 constexpr std::size_t k_destruction_min_bytes = 4 + 8 + 4 + 1;
 /// An animation event registration: instance index (u32), sender (u32), event (u32 length).
@@ -137,17 +143,21 @@ void write_value(ByteWriter& w, SaveContext& ctx, const Value& v) {
 }
 
 /// The section `tag` of `file`, opened; sets `error` and returns false if it is
-/// missing or newer than this engine reads.
-bool open_section(const save::SaveReader& file, const char* tag, ByteReader& out, std::string& error) {
+/// missing or newer than this engine reads. A section reads versions 1 to `max_version`; `version` gets the one found.
+bool open_section(const save::SaveReader& file, const char* tag, ByteReader& out, std::string& error,
+                  std::uint32_t max_version = 1, std::uint32_t* version = nullptr) {
     const auto* s = file.find(tag);
     if (s == nullptr) {
         error = std::string("the save lacks its ") + tag + " section";
         return false;
     }
-    if (s->version != k_section_version) {
+    if (s->version < k_section_version || s->version > max_version) {
         error = std::string("section ") + tag + " has version " + std::to_string(s->version) +
-                ", which this engine does not read (it reads " + std::to_string(k_section_version) + ")";
+                ", which this engine does not read (it reads " + std::to_string(max_version) + ")";
         return false;
+    }
+    if (version != nullptr) {
+        *version = s->version;
     }
     out = file.open(*s);
     return true;
@@ -345,7 +355,13 @@ void Vm::save_to(save::SaveWriter& out) const {
         placed.f64(ref.scale);
         placed.check_record(start, k_placed_ref_min_bytes);
     }
-    out.add("PLCD", k_section_version, placed.out);
+    placed.u32(static_cast<std::uint32_t>(placed_.released().size()));
+    for (const auto id : placed_.released()) {
+        const auto start = placed.out.size();
+        placed.u32(id);
+        placed.check_record(start, k_released_id_min_bytes);
+    }
+    out.add("PLCD", k_placed_section_version, placed.out);
 
     ByteWriter destruction;
     destruction.u32(static_cast<std::uint32_t>(destruction_.states().size()));
@@ -764,7 +780,8 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         return fail("bytes after the end of the FLST section");
     }
 
-    if (!open_section(file, "PLCD", r, error)) {
+    std::uint32_t placed_version = 0;
+    if (!open_section(file, "PLCD", r, error, k_placed_section_version, &placed_version)) {
         return false;
     }
     std::uint32_t next = 0, kept = 0;
@@ -791,6 +808,22 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     }
     if (!out.placed.set_next(next)) {
         return fail("the PLCD section's next id lies outside the runtime reference range");
+    }
+    if (placed_version >= 2) {
+        std::uint32_t released = 0;
+        if (!r.count(released, k_released_id_min_bytes)) {
+            return fail("truncated PLCD section");
+        }
+        for (std::uint32_t n = 0; n < released; ++n) {
+            std::uint32_t id = 0;
+            if (!r.u32(id)) {
+                return fail("truncated PLCD section");
+            }
+            // Inside the range, below next, not a kept reference, once.
+            if (out.placed.find(id) != nullptr || !out.placed.restore_released(id)) {
+                return fail("the PLCD section releases a reference id that is kept, repeated or outside the used range");
+            }
+        }
     }
     if (!r.at_end()) {
         return fail("bytes after the end of the PLCD section");

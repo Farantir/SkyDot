@@ -67,6 +67,12 @@ public:
         triggers_.erase(ref);
         actors_.erase(ref);
     }
+    /// Adds the actors inside a trigger, which `forget` leaves in the sets.
+    void held_refs(std::set<std::uint32_t>& out) const {
+        for (const auto& [ref, trigger] : triggers_) {
+            out.insert(trigger.inside.begin(), trigger.inside.end());
+        }
+    }
     /// Forget where `actor` was (it left the screen); the triggers it is inside keep it.
     void forget_position(std::uint32_t actor) { actors_.erase(actor); }
     void clear() {

@@ -5,13 +5,19 @@
 // runtime references, so each kind owns a range that no other touches;
 // running out of a range is an error (allocate() returns 0), never an
 // overlap. A range that is nearly used up says so once (`take_pressure_warning`)
-// for its owner to log; ids are never reused (a Value, a saved reference or a
-// script may still hold a forgotten one, and a free list would change the
-// save format). Sound instances are playback numbers, not forms, with a range of
-// their own. Nothing here touches Godot.
+// for its owner to log.
+//
+// Ids are handed out fresh first. A range whose owner releases forgotten ids
+// (`release`) reuses them only once its fresh ids run out, and only ids whose
+// forget is complete and that nothing still holds: the owner passes the set of
+// ids a stale holder (a Value, a script instance, a timer ...) could still use
+// to `reuse`, which skips them. Released ids are part of the owner's save.
+// Sound instances are playback numbers, not forms, with a range of their own.
+// Nothing here touches Godot.
 #pragma once
 
 #include <cstdint>
+#include <set>
 
 namespace skydot::vm {
 
@@ -41,7 +47,7 @@ inline constexpr IdRange sound_instances{1u, 0x7FFFFFFFu};
 
 class IdAllocator {
 public:
-    explicit constexpr IdAllocator(IdRange range) noexcept : range_(range), next_(range.first) {}
+    explicit IdAllocator(IdRange range) noexcept : range_(range), next_(range.first) {}
 
     /// The next id, or 0 when the range is used up.
     [[nodiscard]] std::uint32_t allocate() noexcept {
@@ -50,11 +56,31 @@ public:
         }
         return static_cast<std::uint32_t>(next_++);
     }
+    /// The smallest released id not in `held`, taken off the released set; 0 if there is none. Call it once
+    /// `allocate` returns 0.
+    [[nodiscard]] std::uint32_t reuse(const std::set<std::uint32_t>& held) {
+        for (auto it = released_.begin(); it != released_.end(); ++it) {
+            if (!held.contains(*it)) {
+                const std::uint32_t id = *it;
+                released_.erase(it);
+                return id;
+            }
+        }
+        return 0;
+    }
+    /// Mark a forgotten id free for `reuse`. Only an id of the range that was handed out (below next()) and is
+    /// not already released; false otherwise.
+    bool release(std::uint32_t id) {
+        return range_.contains(id) && id < next_ && released_.insert(id).second;
+    }
+    [[nodiscard]] const std::set<std::uint32_t>& released() const noexcept { return released_; }
+    /// Loading: an id that was released when saved; false if it is outside [first, next) or already released.
+    bool restore_released(std::uint32_t id) { return release(id); }
     /// The id allocate() hands out next (last + 1 once used up).
     [[nodiscard]] std::uint32_t next() const noexcept { return static_cast<std::uint32_t>(next_); }
     [[nodiscard]] bool exhausted() const noexcept { return next_ > range_.last; }
-    /// How many ids were handed out (or noted as used), and how many the range holds.
-    [[nodiscard]] std::uint64_t used() const noexcept { return next_ - range_.first; }
+    /// How many ids are in use (handed out or noted as used, and not released), and how many the range holds.
+    [[nodiscard]] std::uint64_t used() const noexcept { return next_ - range_.first - released_.size(); }
     [[nodiscard]] std::uint64_t capacity() const noexcept {
         return static_cast<std::uint64_t>(range_.last) - range_.first + 1;
     }
@@ -84,7 +110,8 @@ public:
             next_ = id + std::uint64_t{1};
         }
     }
-    void clear() noexcept {
+    void clear() {
+        released_.clear();
         next_ = range_.first;
         warned_ = false;
     }
@@ -92,6 +119,7 @@ public:
 private:
     IdRange range_;
     std::uint64_t next_;
+    std::set<std::uint32_t> released_;
     bool warned_ = false;
 };
 

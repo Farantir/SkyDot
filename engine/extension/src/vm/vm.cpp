@@ -626,6 +626,77 @@ void Vm::detach_instances(std::uint32_t ref) {
     instances_.erase(it);
 }
 
+std::set<std::uint32_t> Vm::held_forms(IdRange range) const {
+    std::set<std::uint32_t> held;
+    std::unordered_set<const Array*> seen;
+    const auto note = [&](std::uint32_t form) {
+        if (range.contains(form)) {
+            held.insert(form);
+        }
+    };
+    const auto note_instance = [&](const Instance* instance) {
+        if (instance != nullptr) {
+            note(instance->form);
+        }
+    };
+    std::function<void(const Value&)> visit = [&](const Value& v) {
+        if (v.kind() == Kind::object) {
+            note(v.form());
+            note_instance(v.instance());
+        } else if (v.kind() == Kind::array) {
+            const Array* array = v.array().get();
+            if (seen.insert(array).second) {
+                for (const Value& element : *array) {
+                    visit(element);
+                }
+            }
+        }
+    };
+    for (const auto& [form, list] : instances_) {
+        note(form);
+        for (const auto& instance : list) {
+            for (const auto& [cls, values] : instance->vars) {
+                for (const Value& v : values) {
+                    visit(v);
+                }
+            }
+        }
+    }
+    for (const auto& thread : threads_) {
+        for (const Frame& frame : thread->frames) {
+            note_instance(frame.instance);
+            visit(frame.self);
+            for (const Value& v : frame.regs) {
+                visit(v);
+            }
+        }
+        visit(thread->result);
+    }
+    for (const auto& [id, v] : results_) {
+        visit(v);
+    }
+    for (const Timer& t : timers_) {
+        note_instance(t.instance);
+    }
+    for (const AnimationRegistration& r : animation_regs_) {
+        note_instance(r.instance);
+        note(r.sender);
+    }
+    for (const Scheduled& s : scheduled_) {
+        each_reference(s.call, note);
+    }
+    for (const auto& [list, forms] : form_lists_.lists()) {
+        note(list);
+        for (const auto form : forms) {
+            note(form);
+        }
+    }
+    for (const RootHook& hook : roots_) {
+        hook(visit);
+    }
+    return held;
+}
+
 std::size_t Vm::collect_detached() {
     detached_since_collect_ = 0;
     updates_since_collect_ = 0;

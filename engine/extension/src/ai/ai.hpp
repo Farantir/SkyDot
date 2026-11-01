@@ -284,6 +284,7 @@ private:
 
     const bethconv::pack::wfb::World* root() const;
     Mind* mind(std::uint32_t ref);
+    void held_refs(std::set<std::uint32_t>& out) const;
     double roll(Mind& m);
     SkydotActor* node_of(const Mind& m) const;
 
