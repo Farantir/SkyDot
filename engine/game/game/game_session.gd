@@ -315,7 +315,9 @@ func _make_game_nodes() -> void:
 	host.add_child(speech)
 	speech.line_started.connect(_on_speech_started)
 	speech.line_ended.connect(_on_speech_ended)
-	attack_rules = attack_rules_script.new(AttackData.new(papyrus, world))
+	var attack_data := AttackData.new(papyrus, world)
+	attack_data.difficulty_level = config.difficulty
+	attack_rules = attack_rules_script.new(attack_data)
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
 		func() -> Vector3: return _feet, actors, attack_rules)
 	combat.projectiles = projectiles

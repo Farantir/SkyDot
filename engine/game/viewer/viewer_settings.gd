@@ -85,6 +85,7 @@ var preload_distance := 15.0  # metres
 var activate: Array[int] = []  # references to activate in turn, then quit
 var has_activate := false
 var damage: Array[Vector2] = []  # --damage 0xREF=AMOUNT: DamageObject calls after the activations
+var difficulty := 2  # --difficulty N: 0 Novice .. 5 Legendary
 var activate_wait := 0  # frames between two --activate references (0: next frame)
 var quit_after := -1  # frames after the last --activate before quitting (-1: 5)
 var start_quests := PackedStringArray()  # --start-quest EDID[,EDID]: started after the load
@@ -186,6 +187,7 @@ func game_config() -> GameConfig:
 	c.pick_locks = pick_locks
 	c.activate = activate.duplicate()
 	c.damage = damage.duplicate()
+	c.difficulty = difficulty
 	c.activate_wait = activate_wait
 	return c
 
@@ -239,6 +241,7 @@ func _read(args: Dictionary) -> void:
 		var form: int = form_text.hex_to_int() if form_text.begins_with("0x") else form_text.to_int()
 		give.append(Vector2i(form, maxi(1, entry.substr(cut + 1).to_int()) if cut >= 0 else 1))
 	start_quests = PackedStringArray(String(args.get("start-quest", "")).split(",", false))
+	difficulty = clampi(args.get("difficulty", "2").to_int(), 0, 5)
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
 	hud = args.has("hud") or not captures

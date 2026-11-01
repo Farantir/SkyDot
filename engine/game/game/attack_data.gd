@@ -12,6 +12,8 @@ extends RefCounted
 
 var _papyrus: SkydotPapyrus
 var _world: SkydotWorld
+## The difficulty level, 0 (Novice) .. 5 (Legendary): the session's setting (GameConfig.difficulty).
+var difficulty_level := 2
 
 
 func _init(papyrus: SkydotPapyrus = null, world: SkydotWorld = null) -> void:
@@ -29,6 +31,7 @@ func hit_facts(attacker: int, target: int, weapon: int, extra: int, event: Strin
 	for name in AttackRules.SETTINGS:
 		settings[name] = _world.get_gmst_float(name, AttackRules.SETTINGS[name])
 	facts["settings"] = settings
+	facts["difficulty_level"] = difficulty_level
 	return facts
 
 

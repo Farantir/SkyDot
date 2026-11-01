@@ -52,4 +52,5 @@ var set_stage := ""  # EDID:STAGE[,EDID:STAGE...]
 var pick_locks := false
 var activate: Array[int] = []  # references to activate in turn
 var damage: Array[Vector2] = []  # DamageObject calls (ref, amount) after the activations
+var difficulty := 2  # 0 Novice .. 5 Legendary (Adept: no change to the damage)
 var activate_wait := 0  # frames between two of them

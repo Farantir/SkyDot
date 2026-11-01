@@ -39,7 +39,15 @@ const SETTINGS := {
 	"fCombatSneak1HSwordMult": 3.0, "fCombatSneak1HDaggerMult": 3.0, "fCombatSneak1HAxeMult": 3.0,
 	"fCombatSneak1HMaceMult": 3.0, "fCombatSneak2HSwordMult": 2.0, "fCombatSneak2HAxeMult": 2.0,
 	"fCombatSneakHandMult": 2.0, "fCombatSneakBowMult": 2.0, "fCombatSneakCrossbowMult": 2.0,
+	# Difficulty, Novice to Legendary: the damage the player deals and the damage he takes.
+	"fDiffMultHPByPCVE": 2.0, "fDiffMultHPByPCE": 1.5, "fDiffMultHPByPCN": 1.0,
+	"fDiffMultHPByPCH": 0.75, "fDiffMultHPByPCVH": 0.5, "fDiffMultHPByPCL": 0.25,
+	"fDiffMultHPToPCVE": 0.5, "fDiffMultHPToPCE": 0.75, "fDiffMultHPToPCN": 1.0,
+	"fDiffMultHPToPCH": 1.5, "fDiffMultHPToPCVH": 2.0, "fDiffMultHPToPCL": 3.0,
 }
+## The suffixes of the difficulty GMSTs by level 0 (Novice) .. 5 (Legendary); the default is 2 (Adept).
+const DIFFICULTY_SUFFIX: Array[String] = ["VE", "E", "N", "H", "VH", "L"]
+const DIFFICULTY_DEFAULT := 2
 ## Weapon type (WEAP animation type) -> the sneak attack GMST; staffs (8) have none: x1.
 const SNEAK_GMST := {
 	1: "fCombatSneak1HSwordMult", 2: "fCombatSneak1HDaggerMult", 3: "fCombatSneak1HAxeMult",
@@ -226,9 +234,16 @@ func sneak_perk_mult(_facts: Dictionary) -> float:
 	return 1.0
 
 
-## PLACEHOLDER (difficulty setting, P-later): Adept, no GMST holds it.
-func difficulty(_facts: Dictionary) -> float:
-	return 1.0
+## What the difficulty does to the damage: the player's blows by fDiffMultHPByPC, the blows he takes by
+## fDiffMultHPToPC (levels Novice..Legendary, `difficulty_level` of the facts, default Adept); between
+## NPCs 1.
+func difficulty(facts: Dictionary) -> float:
+	var player_hits := bool(facts.get("attacker_is_player", false))
+	if not player_hits and not bool(facts.get("target_is_player", false)):
+		return 1.0
+	var level := clampi(int(facts.get("difficulty_level", DIFFICULTY_DEFAULT)), 0, DIFFICULTY_SUFFIX.size() - 1)
+	var name := ("fDiffMultHPByPC" if player_hits else "fDiffMultHPToPC") + DIFFICULTY_SUFFIX[level]
+	return _setting(facts.get("settings", {}), name)
 
 
 ## Tempering adds, it does not multiply (UESP Skyrim:Smithing): quality level 1 (Fine) to 6

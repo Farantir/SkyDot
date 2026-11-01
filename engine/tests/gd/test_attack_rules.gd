@@ -339,6 +339,33 @@ func test_a_sneak_attack_flags_the_hit() -> void:
 	expect_eq(int(data.landed[1][6]) & 2, 0, "no flag")
 
 
+# ---- difficulty
+
+func _diff(attacker_player: bool, target_player: bool, level: int) -> Dictionary:
+	return {"weapon_damage": 10.0, "attack_mult": 1.0, "armor": [], "attacker_is_player": attacker_player,
+		"target_is_player": target_player, "difficulty_level": level, "has_weapon_skill": false}
+
+
+func test_difficulty_scales_the_players_damage() -> void:
+	_near(rules.damage(_diff(true, false, 2))["damage"], 10.0, "Adept deals x1")
+	_near(rules.damage(_diff(true, false, 4))["damage"], 5.0, "Master deals x0.5")
+	_near(rules.damage(_diff(true, false, 0))["damage"], 20.0, "Novice deals x2")
+	_near(rules.damage(_diff(false, true, 2))["damage"], 10.0, "Adept takes x1")
+	_near(rules.damage(_diff(false, true, 4))["damage"], 20.0, "Master takes x2")
+	_near(rules.damage(_diff(false, true, 5))["damage"], 30.0, "Legendary takes x3")
+
+
+func test_difficulty_leaves_npc_fights_alone() -> void:
+	for level in 6:
+		_near(rules.damage(_diff(false, false, level))["damage"], 10.0, "level %d" % level)
+
+
+func test_difficulty_reads_the_gmsts() -> void:
+	var facts := _diff(true, false, 3)
+	facts["settings"] = {"fDiffMultHPByPCH": 0.6}
+	_near(rules.damage(facts)["damage"], 6.0, "GMST")
+
+
 # ---- reach, cone, stagger
 
 func test_reach_in_metres() -> void:
