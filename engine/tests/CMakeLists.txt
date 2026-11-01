@@ -154,6 +154,7 @@ skydot_gd_test(lifecycle test_lifecycle.gd)
 skydot_gd_test(ref_forget test_ref_forget.gd)
 skydot_gd_test(casting test_casting.gd)
 skydot_gd_test(progression test_progression.gd)
+skydot_gd_test(skills_model test_skills_model.gd)
 skydot_gd_test(player_gates test_player_gates.gd)
 skydot_gd_test(player_state test_player_state.gd)
 
@@ -577,6 +578,16 @@ if(SKYDOT_SSE_PACK)
     add_test(NAME sse_items_session
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/items_session.gd")
     set_tests_properties(sse_items_session PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
+    add_test(NAME sse_skills_view
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/skills_view.gd")
+    set_tests_properties(sse_skills_view PROPERTIES
         LABELS sse
         FIXTURES_REQUIRED godot_scan
         SKIP_RETURN_CODE 77

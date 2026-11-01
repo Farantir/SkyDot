@@ -21,6 +21,7 @@ extends PlayerRig
 signal inventory_requested
 ## The left Y button was pressed.
 signal magic_requested
+signal skills_requested
 
 const SNAP_DEGREES := 30.0
 ## The right stick must pass this to snap-turn and fall below the lower one to
@@ -181,6 +182,9 @@ func _left_button(input_name: String, pressed: bool) -> void:
 
 func _right_button(input_name: String, pressed: bool) -> void:
 	match input_name:
+		"primary_click":
+			if pressed:
+				skills_requested.emit()
 		"trigger_click":
 			_action(PlayerInput.ACTIVATE, pressed)
 		"ax_button":

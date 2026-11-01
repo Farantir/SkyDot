@@ -64,6 +64,11 @@ func _init(data: ProgressionData = null) -> void:
 	_data = data
 
 
+## The data seam (the skills model reads names, levels and perk trees through it).
+func data() -> ProgressionData:
+	return _data
+
+
 func is_skill(av: int) -> bool:
 	return av >= ProgressionData.FIRST_SKILL and av <= ProgressionData.LAST_SKILL
 

@@ -14,6 +14,7 @@ var container_view: ContainerView
 var crafting_view: CraftingView
 var magic_view: MagicView
 var training_view: TrainingView
+var skills_view: SkillsView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -27,7 +28,8 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	crafting_view = CraftingView.new(session)
 	magic_view = MagicView.new(session)
 	training_view = TrainingView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, training_view]:
+	skills_view = SkillsView.new(session)
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, training_view, skills_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: input.blocked = is_open())
@@ -38,7 +40,7 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or training_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or training_view.is_open() or skills_view.is_open()
 
 
 ## The `inventory` key outside a menu: show the inventory (not during a dialogue).
@@ -70,3 +72,11 @@ func open_crafting(ref: int, bench_type: int) -> void:
 	container_view.close()
 	magic_view.close()
 	crafting_view.open(ref, bench_type)
+
+
+## The `skills` key outside a menu: show the skills screen (not during a dialogue); inside it, close it.
+func toggle_skills() -> void:
+	if skills_view.is_open():
+		skills_view.close()
+	elif not is_open() and not _session.is_dialogue_open():
+		skills_view.open()

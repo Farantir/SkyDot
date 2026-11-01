@@ -45,6 +45,8 @@ var _inventory: InventoryView
 var _container: ContainerView
 var _crafting: CraftingView
 var _training: TrainingView
+var _skills: SkillsView
+var _skills_panel: VrPanel
 var _magic: MagicView
 var _death: DeathView
 var _death_panel: VrPanel
@@ -121,6 +123,7 @@ func _exit_tree() -> void:
 func _create_components() -> void:
 	_rig.inventory_requested.connect(_on_inventory_requested)
 	_rig.magic_requested.connect(_on_magic_requested)
+	_rig.skills_requested.connect(_on_skills_requested)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _settings.interactive
 	_controls.look_speed = _settings.stick_look_speed
@@ -131,6 +134,7 @@ func _create_components() -> void:
 	# The keys I and M of the desktop fallback; in the headset the controller buttons ask (VrRig).
 	_loop.inventory_requested.connect(_on_inventory_requested)
 	_loop.magic_requested.connect(_on_magic_requested)
+	_loop.skills_requested.connect(_on_skills_requested)
 	# The viewer's debug keys (loop.command) are not here.
 	_loop.quit_countdown.connect(_on_quit_countdown)
 	_loop.quitting.connect(func() -> void: print("vr: quit"))
@@ -153,7 +157,7 @@ func _create_components() -> void:
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)
 		add_child(_dialogue_panel)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0:
 		_inventory = InventoryView.new(_session)
 		_container = ContainerView.new(_session)
 		_inventory_panel = _menu_panel(_inventory)
@@ -166,6 +170,8 @@ func _create_components() -> void:
 		_training = TrainingView.new(_session)
 		_training_panel = _menu_panel(_training)
 		_session.training_opened.connect(_training.open)
+		_skills = SkillsView.new(_session)
+		_skills_panel = _menu_panel(_skills)
 		_session.container_opened.connect(_on_container_opened)
 		_session.crafting_opened.connect(_on_crafting_opened)
 	_make_death_screen()
@@ -242,8 +248,10 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 		panel = _magic_panel
 	elif view == _training:
 		panel = _training_panel
+	elif view == _skills:
+		panel = _skills_panel
 	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
-		or _training.is_open() or _session.is_dialogue_open()
+		or _training.is_open() or _skills.is_open() or _session.is_dialogue_open()
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -254,7 +262,9 @@ func _on_inventory_requested() -> void:
 	if _inventory == null:
 		print("vr: inventory (the HUD is off)")
 		return
-	if _training.is_open():
+	if _skills.is_open():
+		_skills.close()
+	elif _training.is_open():
 		_training.close()
 	elif _inventory.is_open():
 		_inventory.close()
@@ -266,6 +276,18 @@ func _on_inventory_requested() -> void:
 		_magic.close()
 	elif not _session.is_dialogue_open():
 		_inventory.open()
+
+
+## The right stick click (or L on the desktop): the skills screen, or closes it.
+func _on_skills_requested() -> void:
+	if _skills == null:
+		print("vr: skills (the HUD is off)")
+		return
+	if _skills.is_open():
+		_skills.close()
+	elif not _inventory.is_open() and not _container.is_open() and not _crafting.is_open() and not _magic.is_open() \
+			and not _training.is_open() and not _session.is_dialogue_open():
+		_skills.open()
 
 
 ## The left Y button: the magic menu, or closes the menu that is open.
@@ -322,6 +344,13 @@ func _start_game() -> void:
 	if settings.open_magic and _magic != null:
 		_magic.open()
 		_magic.select_category(settings.magic_category)
+	if settings.open_skills != "" and _skills != null:
+		if settings.grant_perks > 0:
+			_session.papyrus.set_perk_points(settings.grant_perks)
+		if settings.grant_xp > 0.0:
+			_session.papyrus.set_player_xp(settings.grant_xp)
+		_skills.open()
+		_skills.select_skill(settings.open_skills)
 
 
 ## The death screen lives in a SubViewport, which gets no keys: hand it the ones the shell gets.

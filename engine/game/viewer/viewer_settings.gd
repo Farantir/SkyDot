@@ -108,6 +108,9 @@ var open_inventory := false  # --open-inventory: show the inventory after the lo
 var open_magic := false  # --open-magic: show the magic menu after the load
 var learn_enchantment: Array[int] = []  # --learn-enchantment 0xENCH[,...]: the player knows those enchantments (for the enchanting table)
 var crafting_category := ""  # --crafting-category NAME|N: the enchanting table's category (Disenchant, Item, Enchantment, Soul gem)
+var open_skills := ""  # --open-skills NAME: show the skills screen on that skill ("-": the first)
+var grant_perks := 0  # --grant-perks N: set the player perk points after the load (for --open-skills)
+var grant_xp := 0.0  # --grant-xp N: set the player XP after the load (a banked level-up for --open-skills)
 var magic_category := ""  # --magic-category NAME: the category it shows (Powers, Destruction, Scrolls...)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
@@ -248,6 +251,9 @@ func _read(args: Dictionary) -> void:
 	open_inventory = args.has("open-inventory")
 	open_magic = args.has("open-magic")
 	magic_category = args.get("magic-category", "")
+	open_skills = args.get("open-skills", "")
+	grant_xp = float(args.get("grant-xp", "0"))
+	grant_perks = int(args.get("grant-perks", "0"))
 	crafting_category = args.get("crafting-category", "")
 	for entry: String in args.get("learn-enchantment", "").split(",", false):
 		learn_enchantment.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())

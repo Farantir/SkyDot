@@ -101,7 +101,7 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
 # picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
@@ -261,6 +261,9 @@ func _create_components() -> void:
 	_loop.magic_requested.connect(func() -> void:
 		if _items != null:
 			_items.open_magic())
+	_loop.skills_requested.connect(func() -> void:
+		if _items != null:
+			_items.toggle_skills())
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
 	if _settings.hud:
@@ -271,7 +274,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _loop))
@@ -307,6 +310,13 @@ func _start_game() -> void:
 	if settings.open_magic and _items != null:
 		_items.open_magic()
 		_items.magic_view.select_category(settings.magic_category)
+	if settings.open_skills != "" and _items != null:
+		if settings.grant_perks > 0:
+			_session.papyrus.set_perk_points(settings.grant_perks)
+		if settings.grant_xp > 0.0:
+			_session.papyrus.set_player_xp(settings.grant_xp)
+		_items.skills_view.open()
+		_items.skills_view.select_skill(settings.open_skills)
 	if settings.has_screenshot:
 		if (settings.has_at and settings.has_target) or (settings.has_at and settings.has_look):  # --look: a shot's view
 			_shots.begin_run(settings.screenshot, [NAN])

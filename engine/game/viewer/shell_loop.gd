@@ -21,6 +21,7 @@ signal command(action: StringName, shift: bool)
 ## I and M: the shell opens (or closes) its menu.
 signal inventory_requested
 signal magic_requested
+signal skills_requested
 ## The player died; the controls are blocked. The shell shows the death: its camera fall or fade.
 signal died(killer: int)
 ## Each frame of the quit countdown, after it counted down (0: the last frame of the run).
@@ -196,6 +197,8 @@ func _on_command(action: StringName, shift: bool) -> void:
 			inventory_requested.emit()
 		PlayerInput.MAGIC:
 			magic_requested.emit()
+		PlayerInput.SKILLS:
+			skills_requested.emit()
 		_:
 			command.emit(action, shift)
 

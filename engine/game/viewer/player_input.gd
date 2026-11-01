@@ -57,6 +57,7 @@ const CYCLE_MSAA := &"cycle_msaa"
 const TOGGLE_FLY := &"toggle_fly"
 const INVENTORY := &"inventory"
 const MAGIC := &"magic"
+const SKILLS := &"skills"
 const READY_WEAPON := &"ready_weapon"
 # Held, like the attacks: the voice key (Z, gamepad RB, the VR grips) casts the power in the voice
 # slot when it goes down, or charges the shout there while it is down (`voice_changed`).
@@ -67,7 +68,7 @@ const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, READY_WEAPON]
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
