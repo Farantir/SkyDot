@@ -47,7 +47,8 @@ var _crafting: CraftingView
 var _magic: MagicView
 var _death: DeathView
 var _death_panel: VrPanel
-var _death_fade: MeshInstance3D  # a black quad on the head: the fade
+var _death_fade: MeshInstance3D  # a black quad on the head: the death fade and the door fade (max of the two)
+var _door_fade := 0.0  # PlaceTransition.fade
 var _inventory_panel: VrPanel
 var _container_panel: VrPanel
 var _crafting_panel: VrPanel
@@ -175,8 +176,7 @@ func _make_death_screen() -> void:
 	_death.load_chosen.connect(func() -> void:
 		if _loop.reload_after_death():
 			_death.end()
-			_death_panel.set_shown(false)
-			_death_fade.visible = false)
+			_death_panel.set_shown(false))
 	_death.quit_chosen.connect(func() -> void: get_tree().quit(0))
 	_death_panel = VrPanel.new(_death, MENU_PIXELS, MENU_WIDTH)
 	_death_panel.set_shown(false)
@@ -196,8 +196,11 @@ func _make_death_screen() -> void:
 	_death_fade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_death_fade.visible = false
 	_rig.camera.add_child(_death_fade)
+	# The door fade is a CanvasLayer in the flat viewer, which a headset does not draw: the quad shows it.
+	_session.transition.fade_changed.connect(func(alpha: float) -> void:
+		_door_fade = alpha
+		_update_fade())
 	_loop.died.connect(func(_killer: int) -> void:  # the loop has blocked the controls
-		_death_fade.visible = true
 		_death_panel.recenter(_rig.camera)
 		_death_panel.set_shown(true))
 
@@ -329,8 +332,16 @@ func _process(delta: float) -> void:
 ## hand (the viewer's follows the camera), and the death fade darkens.
 func _device_step(delta: float) -> void:
 	_body.update_hand(delta)
-	if _death_fade != null and _death_fade.visible:
-		((_death_fade.mesh as QuadMesh).material as StandardMaterial3D).albedo_color = Color(0, 0, 0, _death.fade)
+	_update_fade()
+
+
+## The black quad: the stronger of the death fade and the door fade.
+func _update_fade() -> void:
+	if _death_fade == null:
+		return
+	var alpha := maxf(_door_fade, _death.fade if _death.is_showing() else 0.0)
+	_death_fade.visible = alpha > 0.0
+	((_death_fade.mesh as QuadMesh).material as StandardMaterial3D).albedo_color = Color(0, 0, 0, alpha)
 
 
 ## The last frame of --quit-after: the mirror of the window, while it can still be read.

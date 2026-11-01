@@ -224,7 +224,6 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 		ai.actor_arrived.connect(actor_arrived.emit)
 	transition = PlaceTransition.new(place, streamer)
 	transition.interactive = interactive
-	add_child(transition)
 	_make_game_nodes()
 	saves = SaveService.new(papyrus, place, streamer, _player, _bridge, clock)
 	saves.committed.connect(_reset_game_state)

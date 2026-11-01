@@ -205,7 +205,6 @@ func test_placed_refs() -> void:
 
 func test_place_transition_survives_a_place_left() -> void:
 	var t := PlaceTransition.new(null, null)
-	add_child(t)
 	t.begin_fade({"ref": 1})
 	t.on_place_left()
 	expect(t.is_fading(), "the transition itself leaves the place: it goes on")

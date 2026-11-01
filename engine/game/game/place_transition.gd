@@ -3,10 +3,14 @@
 # Going through a load door: fade to black, travel on a black frame, wait
 # until the new place is built (outside: the cells in range and the LOD) and a
 # few frames are drawn (the first frame of a new place is slow), fade back.
-# Without a person at the keyboard (or headless) it travels at once. A layer
-# over everything, with the black rectangle on it.
+# Without a person at the keyboard (or headless) it travels at once. It only
+# keeps the fade as a number (`fade`, `fade_changed`); drawing it is the shell's
+# (the flat viewer's FadeLayer, the VR shell's quad on the head).
 class_name PlaceTransition
-extends CanvasLayer
+extends RefCounted
+
+## The fade changed: 0 clear, 1 black. Also back to 0 when a transition is cancelled.
+signal fade_changed(alpha: float)
 
 const FADE_SECONDS := 0.35
 const SETTLE_FRAMES := 3  # drawn after the place is built
@@ -17,7 +21,12 @@ enum Phase { NONE, OUT, TRAVEL, WAIT, IN }
 ## False for runs that drive themselves: doors travel at once, without a fade.
 var interactive := true
 var phase := Phase.NONE
-var _fade: ColorRect  # black over everything during a door transition
+## How black the screen is during a door transition: 0 clear, 1 black.
+var fade := 0.0:
+	set(value):
+		if value != fade:
+			fade = value
+			fade_changed.emit(value)
 var _door := {}  # the door being gone through
 var _wait := 0.0  # seconds in WAIT
 var _frames := 0  # frames since the place was built
@@ -28,13 +37,6 @@ var _streamer: SkydotStreamer
 func _init(place: Place, streamer: SkydotStreamer) -> void:
 	_place = place
 	_streamer = streamer
-	layer = 100  # over the notes
-	_fade = ColorRect.new()
-	_fade.color = Color(0, 0, 0, 0)
-	_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fade.visible = false
-	add_child(_fade)
 
 
 func is_fading() -> bool:
@@ -55,7 +57,6 @@ func begin_fade(door: Dictionary) -> void:
 		return
 	_door = door
 	phase = Phase.OUT
-	_fade.visible = true
 
 
 ## Drop a door transition half way (a loaded save replaces the place it was
@@ -65,8 +66,7 @@ func cancel() -> void:
 	_door = {}
 	_wait = 0.0
 	_frames = 0
-	_fade.color.a = 0.0
-	_fade.visible = false
+	fade = 0.0
 
 
 ## A save was loaded or the game restarted: a door transition half way is dropped. Silent.
@@ -83,8 +83,8 @@ func on_place_left() -> void:
 func step(delta: float) -> void:
 	match phase:
 		Phase.OUT:
-			_fade.color.a = minf(1.0, _fade.color.a + delta / FADE_SECONDS)
-			if _fade.color.a >= 1.0:
+			fade = minf(1.0, fade + delta / FADE_SECONDS)
+			if fade >= 1.0:
 				phase = Phase.TRAVEL  # this frame draws black first
 		Phase.TRAVEL:
 			travel(_door)
@@ -100,10 +100,9 @@ func step(delta: float) -> void:
 			if _frames > SETTLE_FRAMES or _wait > TIMEOUT:
 				phase = Phase.IN
 		Phase.IN:
-			_fade.color.a = maxf(0.0, _fade.color.a - delta / FADE_SECONDS)
-			if _fade.color.a <= 0.0:
+			fade = maxf(0.0, fade - delta / FADE_SECONDS)
+			if fade <= 0.0:
 				phase = Phase.NONE
-				_fade.visible = false
 
 
 ## Arrive through a load door: its XTEL gives the spot and the facing.

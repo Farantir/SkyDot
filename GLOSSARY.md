@@ -35,12 +35,16 @@ How a session is played: flatscreen or VR. A property of the session; any Pack c
 _Avoid_: platform, edition
 
 **Game layer**:
-The game's logic and world state (scripts, AI, activation, saves), which knows nothing of camera, input devices, debug overlay or shell settings.
+The game's logic and world state (scripts, AI, activation, saves), which knows nothing of camera, input devices, debug overlay or shell settings. It draws no interface: the door fade is a value it keeps and the Shell draws.
 _Avoid_: viewer, game
 
 **Shell**:
-The program that hosts the Game layer for one Mode and owns camera, input and presentation.
+The program that hosts the Game layer for one Mode and owns camera, input and presentation (menus, notes, the door fade's drawing).
 _Avoid_: frontend, client
+
+**Player body**:
+The Game layer's contract for the Shell's player object (`PlayerBody`): where it looks, putting it somewhere, its speeds, sprinting, shoves and its save section. The Shell's camera rig extends it; tests use the base as a stand-in.
+_Avoid_: player (the person), rig
 
 **Flat shell**:
 The Shell for flatscreen Mode.

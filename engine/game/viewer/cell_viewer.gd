@@ -275,6 +275,7 @@ func _create_components() -> void:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _loop))
+	add_child(FadeLayer.new(_session.transition))  # the door fade (the session keeps its value)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
 	if _settings.has_screenshot:
