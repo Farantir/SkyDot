@@ -101,6 +101,12 @@ func _run(pack_dir: String) -> void:
 	var facts := data.hit_facts(PLAYER, BANDIT, IRON_SWORD, 0, "attackStart", 0)
 	var worked_out := rules.damage(facts)
 	expect(_near(worked_out["damage"], expected, 0.001), "AttackRules works out %f, expected %f" % [worked_out["damage"], expected])
+	# Perks: Armsman00 (Mod Attack Damage x1.2 for a one-handed blade) raises the player's blow by 20%.
+	papyrus.add_perk(PLAYER, 0xBABE4)
+	var armsman: Dictionary = rules.damage(facts)
+	papyrus.remove_perk(PLAYER, 0xBABE4)
+	expect(_near(float(armsman["damage"]), float(worked_out["damage"]) * 1.2, 0.001),
+		"Armsman00 makes the blow x1.2: %f vs %f" % [armsman["damage"], worked_out["damage"]])
 	var power_facts := data.hit_facts(PLAYER, ARVEL, IRON_SWORD, 0, "attackPowerStartInPlace", SkydotPapyrus.HIT_POWER)
 	var power_worked_out := rules.damage(power_facts)
 	var hits := 0

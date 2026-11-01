@@ -119,6 +119,11 @@ func remove_perk(id: int) -> void:
 	_papyrus.remove_perk(PLAYER_REF, id)
 
 
+## SkydotPapyrus.perk_entry for the player's perks (`extra` names the moment: advance_skill ...).
+func perk_entry(entry_point: int, subjects: Array, value: float, extra := {}) -> float:
+	return _papyrus.perk_entry(entry_point, PLAYER_REF, subjects, value, extra)
+
+
 ## Whether the PERK's own conditions (its prerequisites) pass for the player.
 func perk_conditions_met(id: int) -> bool:
 	return _papyrus.perk_conditions_met(id, PLAYER_REF)

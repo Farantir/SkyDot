@@ -16,6 +16,7 @@ const HEALTH := 24
 const MAGICKA := 25
 const STAMINA := 26
 const CARRY_WEIGHT := 32
+const EP_MOD_SKILL_USE := 22
 const MAX_SKILL := 100.0
 const LEGENDARY_BASE := 15.0
 
@@ -34,9 +35,10 @@ func skill_name(av: int) -> String:
 	return String(_data.skill_info(av).get("name", ""))
 
 
-## The skill's multiplier on what use gives. P6f feeds the Mod Skill Use perk entry point here.
-func skill_use_mult(_av: int) -> float:
-	return 1.0
+## The skill's multiplier on what use gives: Mod Skill Use 22 [player] with the advanced skill in the
+## context (the skill perks' "x% faster" entries; their EPMagic_IsAdvanceSkill tab picks the skill).
+func skill_use_mult(av: int) -> float:
+	return _data.perk_entry(EP_MOD_SKILL_USE, [ProgressionData.PLAYER_REF, 0, 0], 1.0, {"advance_skill": av})
 
 
 ## The skill progress needed to go from base level `level` to `level + 1`:

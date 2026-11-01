@@ -1044,6 +1044,16 @@ included) are part of its base spell list (`MagicRuntime::Host::perk_abilities`)
 `perk_entry_spells` and `perk_entry_texts` are the forwarders for the GDScript rules (`extra`: advance_skill,
 advance_action, advance_object, worn, attack_keywords, item_enchanted, making_poison).
 
+Wired entry points (P6f, so far): `AttackRules` asks 35 Mod Attack Damage and, for a power attack, 28 Mod Power
+Attack Damage (`perk_damage_mult`, a multiplier on the weapon damage before armor; tabs attacker, weapon base,
+target), 18 Mod Sneak Attack Mult (`sneak_perk_mult`, applied to the weapon type's multiplier), 36 Mod Incoming
+Damage (`incoming_perk_mult` on the damage that gets through; tabs victim, attacker, attacker's weapon) and 27
+Mod Power Attack Stamina (`power_attack_cost`), through `AttackData.perk_entry`; `Progression.skill_use_mult`
+asks 22 Mod Skill Use with the advanced skill. Not wired yet: 37, 85 and 39 (armor and block), spell cost,
+magnitude and duration (38, 29, 30, 41, 42), crafting (76, 66, 73, 83, 77, 79, 80, 49), detection (57, 47, 48),
+criticals (1, 2; no criticals exist), prices (8, 60; no barter), carry weight (10; no limit), lockpicking and
+pickpocketing (no minigames), dual casting (75).
+
 ### 7.9 Papyrus
 
 The VM is in `engine/extension/src/vm/` and documented in
@@ -1417,7 +1427,7 @@ plain dictionaries and emits nothing. Its interface: `hit(attacker, target,
 weapon, extra, event, flags, ammo)` (the breakdown of `damage(facts)` merged
 with what landing it gave; `{error}` when the target is no actor, dead or a
 ghost), `damage(facts)` built from `skill_factor`, `armor_percent`,
-`blocked_percent`, `sneak_mult` (with the perk hook `sneak_perk_mult`, 1.0
+`blocked_percent`, `sneak_mult` (with the perk hook `sneak_perk_mult(facts, mult)`, which asks Mod Sneak Attack Mult 18; before P6f 1.0
 until perks exist) and `difficulty`, `block_stamina`, `blocked_stagger`,
 `can_power_attack`, `pays_stamina`,
 `power_attack_cost`, `pay_power_attack`, `power_delay`, `reach`,

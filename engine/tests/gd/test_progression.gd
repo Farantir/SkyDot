@@ -51,6 +51,11 @@ class FakeData extends ProgressionData:
 	func gmst_int(name: String, fallback: int) -> int:
 		return {"iAVDhmsLevelUp": 10}.get(name, fallback)
 
+	var skill_use_perk := {}   # skill -> Mod Skill Use multiplier
+
+	func perk_entry(_ep: int, _subjects: Array, value: float, extra := {}) -> float:
+		return value * float(skill_use_perk.get(int(extra.get("advance_skill", -1)), 1.0))
+
 	func skill_info(av: int) -> Dictionary:
 		if av == 14:
 			return {"name": "Lockpicking", "use_mult": 45.0, "use_offset": 10.0,
@@ -289,3 +294,10 @@ func test_legendary_resets_and_refunds() -> void:
 func test_legendary_needs_100() -> void:
 	expect_eq(pr.make_legendary(LOCKPICKING)["reason"], "level", "15 is not 100")
 	expect_eq(d.bases[LOCKPICKING], 15.0, "unchanged")
+
+
+func test_skill_use_perk_scales_only_its_skill() -> void:
+	d.skill_use_perk = {LOCKPICKING: 1.5}
+	# 45 * 2 * 1.5 + 10 = 145
+	expect(is_equal_approx(pr.use_skill(LOCKPICKING, 2.0)["gained"], 145.0), "Lockpicking x1.5")
+	expect(is_equal_approx(pr.use_skill(ONE_HANDED, 1.0)["gained"], 6.3), "other skills unchanged")

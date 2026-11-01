@@ -15,6 +15,15 @@ class FakeData extends AttackData:
 	var spent: Array = []    # [actor, amount]
 	var weights := {}        # form -> float
 	var gmsts := {}
+	var perks := {}          # entry point -> multiplier added to the value (value * m), or {"set": v}
+	var perk_calls: Array = []  # [entry point, owner, subjects]
+
+	func perk_entry(entry_point: int, owner: int, subjects: Array, value: float) -> float:
+		perk_calls.append([entry_point, owner, subjects])
+		var p: Variant = perks.get(entry_point)
+		if p == null:
+			return value
+		return float(p["set"]) if p is Dictionary else value * float(p)
 
 	func hit_facts(_attacker: int, _target: int, _weapon: int, _extra: int, _event: String, _flags: int, _ammo := 0) -> Dictionary:
 		return facts
@@ -317,12 +326,12 @@ func test_sneak_uses_the_gmsts_and_the_perk_hook() -> void:
 	var facts := _sneak(1)
 	facts["settings"] = {"fCombatSneak1HSwordMult": 5.0}
 	_near(rules.sneak_mult(facts), 5.0, "GMST")
-	_near(rules.sneak_perk_mult(facts), 1.0, "no perks yet")
+	_near(rules.sneak_perk_mult(facts, 3.0), 3.0, "no perks")
 
 
 class PerkRules extends AttackRules:
-	func sneak_perk_mult(_facts: Dictionary) -> float:
-		return 2.0
+	func sneak_perk_mult(_facts: Dictionary, mult: float) -> float:
+		return mult * 2.0
 
 
 func test_the_perk_hook_multiplies() -> void:
@@ -401,3 +410,44 @@ func test_a_mod_overrides_a_rule() -> void:
 class ModRules extends AttackRules:
 	func sneak_mult(_facts: Dictionary) -> float:
 		return 2.0
+
+
+func _perk_facts() -> Dictionary:
+	return {"attacker": P, "target": NPC, "weapon": SWORD, "weapon_damage": 10.0, "attack_mult": 1.0,
+		"weapon_skill": 15.0, "has_weapon_skill": false, "settings": {}}
+
+
+func test_perk_multipliers_scale_the_weapon_damage_before_armor() -> void:
+	data.perks = {35: 1.2, 28: 1.5}
+	var light := rules.damage(_perk_facts())
+	_near(light["perks"], 1.2, "Mod Attack Damage")
+	data.perks = {}
+	_near(light["weapon_damage"], float(rules.damage(_perk_facts())["weapon_damage"]) * 1.2, "x1.2 on the weapon damage")
+	data.perks = {35: 1.2, 28: 1.5}
+	var power_facts := _perk_facts()
+	power_facts["power"] = true
+	_near(rules.damage(power_facts)["perks"], 1.8, "x1.2 x1.5 for a power attack")
+	expect_eq(data.perk_calls[0], [35, P, [P, SWORD, NPC]], "tab subjects: attacker, weapon, target")
+
+
+func test_incoming_damage_perks_belong_to_the_victim() -> void:
+	data.perks = {36: 0.5}
+	var plain := rules.damage(_perk_facts())
+	data.perks = {}
+	var base := rules.damage(_perk_facts())
+	_near(plain["damage"], float(base["damage"]) * 0.5, "halved")
+	data.perks = {36: 0.5}
+	rules.damage(_perk_facts())
+	var call: Array = data.perk_calls.back()
+	expect_eq(call, [36, NPC, [NPC, P, SWORD]], "victim, attacker, attacker's weapon")
+
+
+func test_sneak_perk_sets_the_multiplier() -> void:
+	data.perks = {18: {"set": 6.0}}
+	_near(rules.sneak_mult(_sneak(1)), 6.0, "Backstab")
+
+
+func test_power_attack_stamina_perk() -> void:
+	var base := rules.power_attack_cost(P, SWORD)
+	data.perks = {27: 0.75}
+	_near(rules.power_attack_cost(P, SWORD), base * 0.75, "Mod Power Attack Stamina")

@@ -25,6 +25,12 @@ extends RefCounted
 
 const PLAYER_REF := 0x14
 const HIT_POWER := 1
+## Perk entry points (perks::EntryPoint) the rules ask.
+const EP_ATTACK_DAMAGE := 35
+const EP_POWER_ATTACK_DAMAGE := 28
+const EP_SNEAK_ATTACK_MULT := 18
+const EP_INCOMING_DAMAGE := 36
+const EP_POWER_ATTACK_STAMINA := 27
 ## The GMSTs of the formula with their values in Skyrim.esm (no GMST holds the skill minimum).
 const SETTINGS := {
 	"fDamagePCSkillMax": 1.5, "fArmorScalingFactor": 0.12, "fMaxArmorRating": 80.0,
@@ -98,6 +104,7 @@ func hit(attacker: int, target: int, weapon: int, extra: int, event: String, fla
 	var facts := _data.hit_facts(attacker, target, weapon, extra, event, flags, ammo)
 	if facts.has("error"):
 		return facts
+	facts["power"] = (flags & HIT_POWER) != 0
 	var out := damage(facts)
 	out["attacker"] = attacker
 	out["target"] = target
@@ -127,13 +134,35 @@ func damage(facts: Dictionary) -> Dictionary:
 	var attack := float(facts.get("attack_mult", 1.0))
 	var diff := difficulty(facts)
 	var sneak := sneak_mult(facts)
-	var weapon := base * skill * attack * diff * sneak
+	var perks := perk_damage_mult(facts)
+	var weapon := base * skill * attack * diff * sneak * perks
 	var armor := armor_percent(facts, settings)
 	var arriving := weapon * (1.0 - float(armor["percent"]) / 100.0)
 	var blocked := blocked_percent(facts, settings)
-	return {"base": base, "skill": skill, "attack": attack, "difficulty": diff, "sneak": sneak,
+	var final := arriving * (1.0 - blocked / 100.0) * incoming_perk_mult(facts)
+	return {"base": base, "skill": skill, "attack": attack, "difficulty": diff, "sneak": sneak, "perks": perks,
 		"weapon_damage": weapon, "armor_rating": armor["rating"], "armor_percent": armor["percent"],
-		"damage_before_block": arriving, "blocked_percent": blocked, "damage": arriving * (1.0 - blocked / 100.0)}
+		"damage_before_block": arriving, "blocked_percent": blocked, "damage": final}
+
+
+## The attacker's perks' multiplier on the weapon damage (UESP Skyrim:Damage: with the skill factor, before
+## armor): Mod Attack Damage 35 [attacker, weapon base, target], and for a power attack Mod Power Attack
+## Damage 28 [attacker, weapon base, target].
+func perk_damage_mult(facts: Dictionary) -> float:
+	var attacker := int(facts.get("attacker", 0))
+	var subjects := [attacker, int(facts.get("weapon", 0)), int(facts.get("target", 0))]
+	var mult := _data.perk_entry(EP_ATTACK_DAMAGE, attacker, subjects, 1.0)
+	if bool(facts.get("power", false)):
+		mult *= _data.perk_entry(EP_POWER_ATTACK_DAMAGE, attacker, subjects, 1.0)
+	return mult
+
+
+## The victim's perks' multiplier on the damage that gets through: Mod Incoming Damage 36
+## [victim, attacker, attacker's weapon base].
+func incoming_perk_mult(facts: Dictionary) -> float:
+	var victim := int(facts.get("target", 0))
+	return _data.perk_entry(EP_INCOMING_DAMAGE, victim,
+		[victim, int(facts.get("attacker", 0)), int(facts.get("weapon", 0))], 1.0)
 
 
 ## The share of the damage a block stops, percent (0 if the hit was not blocked): UESP Skyrim:Block.
@@ -224,14 +253,15 @@ func sneak_mult(facts: Dictionary) -> float:
 			mult = _setting(settings, "fCombatSneakHandMult")
 	elif SNEAK_GMST.has(int(facts.get("weapon_type", 0))):
 		mult = _setting(settings, SNEAK_GMST[int(facts["weapon_type"])])
-	return mult * sneak_perk_mult(facts)
+	return sneak_perk_mult(facts, mult)
 
 
-## The perks' share of the sneak attack multiplier. The engine has no perk system (entry points) yet:
-## Backstab (one-handed x6 instead of x3), Assassin's Blade (daggers x15) and Deadly Aim (bows x3) would
-## answer here through "Mod Sneak Attack Mult". A mod or a perk system overrides this.
-func sneak_perk_mult(_facts: Dictionary) -> float:
-	return 1.0
+## The sneak attack multiplier after the perks: Mod Sneak Attack Mult 18 [attacker, weapon base, target]
+## applied to the weapon type's `mult` (Backstab sets one-handed to 6, Assassin's Blade daggers to 15, Deadly Aim bows to 3).
+func sneak_perk_mult(facts: Dictionary, mult: float) -> float:
+	var attacker := int(facts.get("attacker", 0))
+	return _data.perk_entry(EP_SNEAK_ATTACK_MULT, attacker,
+		[attacker, int(facts.get("weapon", 0)), int(facts.get("target", 0))], mult)
 
 
 ## What the difficulty does to the damage: the player's blows by fDiffMultHPByPC, the blows he takes by
@@ -271,10 +301,12 @@ func pays_stamina(_attacker: int) -> bool:
 
 ## Stamina a power attack with `weapon_form` costs: (fStaminaAttackWeaponBase + the weapon's weight
 ## times fStaminaAttackWeaponMult) times fPowerAttackStaminaPenalty. A light attack costs none.
-func power_attack_cost(_attacker: int, weapon_form: int) -> float:
-	return (_data.gmst_float(GMST_ATTACK_BASE, ATTACK_BASE_FALLBACK)
+func power_attack_cost(attacker: int, weapon_form: int) -> float:
+	var cost := (_data.gmst_float(GMST_ATTACK_BASE, ATTACK_BASE_FALLBACK)
 		+ _data.weight(weapon_form) * _data.gmst_float(GMST_ATTACK_MULT, ATTACK_MULT_FALLBACK)) \
 		* _data.gmst_float(GMST_POWER_PENALTY, POWER_PENALTY_FALLBACK)
+	# Mod Power Attack Stamina 27 [attacker, weapon base] (Stamina perks make power attacks cheaper).
+	return _data.perk_entry(EP_POWER_ATTACK_STAMINA, attacker, [attacker, weapon_form, 0], cost)
 
 
 ## Pay the Stamina of a power attack (nothing if `attacker` does not pay, see pays_stamina).
