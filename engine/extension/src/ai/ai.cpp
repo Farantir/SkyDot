@@ -746,8 +746,8 @@ bool SkydotAi::has_lock(std::uint32_t door) const {
         return it->second;
     }
     const auto lock_of = [&](std::uint32_t ref) {
-        const auto cell = world_->get_ref_cell(ref);
-        return world_->get_ref_info(cell, ref).get("lock", Variant()).get_type() == Variant::DICTIONARY;
+        WorldData::RefRecord record;
+        return world_->data().ref_record(ref, record) && record.locked;
     };
     if (lock_of(door)) {
         return true;

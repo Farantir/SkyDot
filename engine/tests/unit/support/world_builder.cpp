@@ -77,13 +77,48 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         for (const std::uint32_t id : c.disabled_refs) {
             placed[id] = wfb::RefFlags::initially_disabled;
         }
+        std::map<std::uint32_t, PlacedRefSpec> full;
         for (const auto& [id, flags] : placed) {
-            refs.emplace_back(id, std::uint32_t{0}, wfb::Vec3f(), wfb::Vec3f(), 1.0F, flags, std::uint32_t{0});
+            full[id] = {.id = id, .flags = flags};
         }
+        for (const auto& r : c.placed) {
+            full[r.id] = r;
+        }
+        for (const auto& [id, r] : full) {
+            refs.emplace_back(id, r.base, wfb::Vec3f(r.position[0], r.position[1], r.position[2]),
+                              wfb::Vec3f(r.rotation[0], r.rotation[1], r.rotation[2]), r.scale, r.flags,
+                              r.enable_parent);
+        }
+        std::vector<wfb::Lock> locks;
+        for (const auto& l : c.locks) {
+            locks.emplace_back(l.ref, l.level, std::uint8_t{0}, l.key);
+        }
+        std::ranges::sort(locks, {}, &wfb::Lock::ref);
+        std::vector<wfb::LinkedRef> links;
+        for (const auto& l : c.links) {
+            links.emplace_back(l.ref, l.keyword, l.target);
+        }
+        std::ranges::stable_sort(links, {}, &wfb::LinkedRef::ref);
+        std::vector<wfb::DoorLink> doors;
+        for (const auto& d : c.doors) {
+            doors.emplace_back(d.ref, d.destination, wfb::Vec3f(d.position[0], d.position[1], d.position[2]),
+                               wfb::Vec3f(d.rotation[0], d.rotation[1], d.rotation[2]));
+        }
+        std::ranges::sort(doors, {}, &wfb::DoorLink::ref);
         const auto refs_v = fbb.CreateVectorOfStructs(refs);
+        const auto locks_v = locks.empty() ? 0 : fbb.CreateVectorOfStructs(locks);
+        const auto links_v = links.empty() ? 0 : fbb.CreateVectorOfStructs(links);
+        const auto doors_v = doors.empty() ? 0 : fbb.CreateVectorOfStructs(doors);
         wfb::CellBuilder cell(fbb);
         cell.add_id(c.id);
+        cell.add_world(c.world);
+        if (c.interior) {
+            cell.add_flags(wfb::CellFlags::interior);
+        }
         cell.add_refs(refs_v);
+        cell.add_locks(locks_v);
+        cell.add_links(links_v);
+        cell.add_doors(doors_v);
         cells.push_back(cell.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Npc>> npcs;
@@ -157,6 +192,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         if (!b.name.empty()) {
             name = fbb.CreateString(b.name);
         }
+        const auto editor_id = b.editor_id.empty() ? 0 : fbb.CreateString(b.editor_id);
         wfb::BaseBuilder base(fbb);
         base.add_id(b.id);
         base.add_flags(b.flags);
@@ -166,6 +202,8 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         base.add_items(items_v);
         base.add_harvest(harvest);
         base.add_bench_type(b.bench_type);
+        base.add_type(b.type);
+        base.add_editor_id(editor_id);
         bases.push_back(base.Finish());
     }
     std::vector<flatbuffers::Offset<wfb::Race>> races;
@@ -383,6 +421,14 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
                                                      some(large_cell_refs)));
     }
 
+    std::vector<wfb::ActorRef> actors;
+    auto sorted_actors = spec.actors;
+    std::ranges::sort(sorted_actors, {}, &ActorRefSpec::ref);
+    for (const auto& a : sorted_actors) {
+        actors.emplace_back(a.ref, a.base, a.cell, wfb::Vec3f(a.position[0], a.position[1], a.position[2]),
+                            wfb::Vec3f(a.rotation[0], a.rotation[1], a.rotation[2]), wfb::RefFlags{});
+    }
+    const auto actors_v = actors.empty() ? 0 : fbb.CreateVectorOfStructs(actors);
     const auto bases_v = fbb.CreateVector(bases);
     const auto cells_v = fbb.CreateVector(cells);
     const auto worlds_v = fbb.CreateVector(worlds);
@@ -405,6 +451,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_format_version(static_cast<std::uint32_t>(spec.format_version));
     world.add_worlds(worlds_v);
     world.add_cells(cells_v);
+    world.add_actors(actors_v);
     world.add_bases(bases_v);
     world.add_npcs(npcs_v);
     world.add_races(races_v);

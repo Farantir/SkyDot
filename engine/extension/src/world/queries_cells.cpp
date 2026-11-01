@@ -239,12 +239,8 @@ Dictionary get_base(const WorldData& data, std::int64_t id) {
     if (base == nullptr) {
         return out;
     }
-    const auto type = base->type();
-    const char chars[5] = {static_cast<char>(type & 0xFF), static_cast<char>((type >> 8) & 0xFF),
-                           static_cast<char>((type >> 16) & 0xFF),
-                           static_cast<char>((type >> 24) & 0xFF), 0};
     out["id"] = static_cast<std::int64_t>(base->id());
-    out["type"] = String(chars);
+    out["type"] = String(WorldData::type_name(base->type()).c_str());
     out["editor_id"] = to_godot(base->editor_id());
     out["model"] = to_godot(base->model());
     out["name"] = to_godot(base->name());

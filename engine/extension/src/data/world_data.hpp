@@ -11,6 +11,7 @@
 #include "assets/mapped_file.hpp"
 #include "skydot_formats/units.hpp"
 
+#include <array>
 #include <cmath>
 #include <cstdint>
 #include <memory>
@@ -130,6 +131,38 @@ public:
         bool initially_disabled = false;
     };
     bool ref_enable(std::uint32_t ref, RefEnable& out) const;
+    /// The four letters of a record type id ("DOOR", "NPC_"), as the engine names them.
+    [[nodiscard]] static std::string type_name(std::uint32_t type);
+    /// A reference as the VM needs it: what queries::get_ref_info's Dictionary says, typed.
+    struct RefRecord {
+        std::uint32_t id = 0, cell = 0, base = 0;
+        std::string type;       // the base's record type name, as the Dictionary's "type" ("NPC_" for a placed actor)
+        std::string editor_id;  // the base's (empty for a placed actor)
+        bool actor = false;     // a placed actor (ACHR), not a REFR
+        bool parent_activate_only = false;
+        bool initially_disabled = false; // the Dictionary's "disabled" (false for an actor)
+        std::array<float, 3> position{}, rotation{};
+        float scale = 1.0f;
+        bool locked = false; // XLOC present
+        std::int32_t lock_level = 0;
+        std::uint32_t lock_key = 0;
+        bool load_door = false; // in doors()
+        std::uint32_t door_destination = 0;
+        struct Link {
+            std::uint32_t keyword = 0, target = 0;
+        };
+        std::vector<Link> links;
+    };
+    /// `ref` found through its cell (cell_of_ref): a REFR or a placed actor. False if unknown.
+    bool ref_record(std::uint32_t ref, RefRecord& out) const;
+    /// A load door's link, typed: what queries::get_door says, as raw game-unit position and radians.
+    struct DoorRecord {
+        std::uint32_t ref = 0, cell = 0, destination = 0, destination_cell = 0, destination_world = 0;
+        bool destination_interior = false;
+        std::array<float, 3> arrival_position{}, arrival_rotation{};
+    };
+    /// False if `ref` is no load door.
+    bool door_record(std::uint32_t ref, DoorRecord& out) const;
     /// The GMST `name` (any case; format 30) by binary search, or null.
     static const bethconv::pack::wfb::GameSetting* find_gmst(const bethconv::pack::wfb::World* root,
                                                              std::string_view name);

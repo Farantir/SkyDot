@@ -17,6 +17,21 @@ namespace skydot::testing {
 struct FakeWorld : skydot::vm::WorldAccess {
     std::map<std::uint32_t, std::uint32_t> links{{1, 2}, {2, 3}, {5, 6}, {6, 5}};
     std::uint32_t base_form(std::uint32_t) const override { return 0; }
+    /// What the data says of references, and what activating them activates.
+    std::map<std::uint32_t, vm::RefInfo> infos;
+    std::map<std::uint32_t, std::vector<vm::ActivateChild>> activate_child_lists;
+    bool ref_info(std::uint32_t ref, vm::RefInfo& out) const override {
+        const auto it = infos.find(ref);
+        if (it == infos.end()) {
+            return false;
+        }
+        out = it->second;
+        return true;
+    }
+    std::vector<vm::ActivateChild> activate_children(std::uint32_t ref) const override {
+        const auto it = activate_child_lists.find(ref);
+        return it != activate_child_lists.end() ? it->second : std::vector<vm::ActivateChild>{};
+    }
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
         const auto it = links.find(ref);
         return keyword == 0 && it != links.end() ? it->second : 0;

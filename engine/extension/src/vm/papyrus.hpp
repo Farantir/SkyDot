@@ -447,9 +447,7 @@ public:
     /// OnCellLoad and OnLoad. Returns how many handlers ran.
     std::int64_t ref_built(std::int64_t ref);
     /// The base form of a reference, placed or runtime; 0 if unknown.
-    std::int64_t get_ref_base(std::int64_t ref) const {
-        return static_cast<std::int64_t>(ref_info(static_cast<std::uint32_t>(ref)).get("base", 0));
-    }
+    std::int64_t get_ref_base(std::int64_t ref) const;
     bool is_activation_blocked(std::int64_t ref) const;
     /// The lock level if `ref` is locked, else -1.
     std::int64_t get_lock_level(std::int64_t ref) const;
@@ -703,7 +701,10 @@ private:
     std::int64_t attach_scripts(std::uint32_t form, const godot::Array& scripts,
                                 std::uint32_t owner_quest);
     godot::Variant to_variant(const vm::Value& v) const;
+    /// Only for attaching scripts and triggers now; the typed facts are `ref_record`.
     godot::Dictionary ref_info(std::uint32_t ref) const;
+    /// The typed facts about a reference, placed or made by PlaceAtMe; false if unknown.
+    bool ref_record(std::uint32_t ref, vm::RefInfo& out) const;
     /// ref_info for a PlaceAtMe reference: its base's scripts, where it was put.
     godot::Dictionary placed_info(const vm::PlacedRef& placed) const;
     /// The cell a reference is in, placed or runtime; 0 if unknown.

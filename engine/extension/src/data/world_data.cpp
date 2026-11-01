@@ -290,6 +290,85 @@ bool WorldData::ref_enable(std::uint32_t ref, RefEnable& out) const {
     return true;
 }
 
+std::string WorldData::type_name(std::uint32_t type) {
+    const char chars[5] = {static_cast<char>(type & 0xFF), static_cast<char>((type >> 8) & 0xFF),
+                           static_cast<char>((type >> 16) & 0xFF), static_cast<char>((type >> 24) & 0xFF), 0};
+    return chars;
+}
+
+bool WorldData::ref_record(std::uint32_t ref, RefRecord& out) const {
+    const auto* cell = cell_ptr(cell_of_ref(ref));
+    if (cell == nullptr) {
+        return false;
+    }
+    out = RefRecord{};
+    out.id = ref;
+    out.cell = cell->id();
+    const auto* placed = lookup(cell->refs(), ref);
+    if (placed == nullptr) {
+        // A placed actor: an NPC_ with no enable parent, lock, door or links.
+        const auto* actor = actor_ptr(ref);
+        if (actor == nullptr) {
+            return false;
+        }
+        out.base = actor->base();
+        out.type = "NPC_";
+        out.actor = true;
+        out.position = {actor->position().x(), actor->position().y(), actor->position().z()};
+        out.rotation = {actor->rotation().x(), actor->rotation().y(), actor->rotation().z()};
+        return true;
+    }
+    const auto* base = base_ptr(placed->base());
+    out.base = placed->base();
+    if (base != nullptr) {
+        out.type = type_name(base->type());
+        if (base->editor_id() != nullptr) {
+            out.editor_id = base->editor_id()->str();
+        }
+    }
+    out.parent_activate_only = formats::has_flag(placed->flags(), wfb::RefFlags::parent_activate_only);
+    out.initially_disabled = initially_disabled(*placed);
+    out.position = {placed->position().x(), placed->position().y(), placed->position().z()};
+    out.rotation = {placed->rotation().x(), placed->rotation().y(), placed->rotation().z()};
+    out.scale = placed->scale();
+    if (const auto* lock = lookup(cell->locks(), ref)) {
+        out.locked = true;
+        out.lock_level = static_cast<std::int32_t>(lock->level());
+        out.lock_key = lock->key();
+    }
+    if (const auto it = doors_.find(ref); it != doors_.end()) {
+        out.load_door = true;
+        out.door_destination = it->second.second->destination();
+    }
+    if (const auto* links = cell->links()) {
+        for (auto i = first_at_least(links, ref, [](const wfb::LinkedRef* e) { return e->ref(); });
+             i < links->size() && links->Get(i)->ref() == ref; ++i) {
+            out.links.push_back({links->Get(i)->keyword(), links->Get(i)->target()});
+        }
+    }
+    return true;
+}
+
+bool WorldData::door_record(std::uint32_t ref, DoorRecord& out) const {
+    const auto it = doors_.find(ref);
+    if (it == doors_.end()) {
+        return false;
+    }
+    const auto& [cell, link] = it->second;
+    out = DoorRecord{};
+    out.ref = link->ref();
+    out.cell = cell->id();
+    out.destination = link->destination();
+    const auto dest = doors_.find(link->destination());
+    const wfb::Cell* dest_cell = dest != doors_.end() ? dest->second.first : nullptr;
+    out.destination_cell = dest_cell != nullptr ? dest_cell->id() : 0;
+    out.destination_world = dest_cell != nullptr ? dest_cell->world() : 0;
+    out.destination_interior = dest_cell != nullptr && formats::has_flag(dest_cell->flags(), wfb::CellFlags::interior);
+    out.arrival_position = {link->position().x(), link->position().y(), link->position().z()};
+    out.arrival_rotation = {link->rotation().x(), link->rotation().y(), link->rotation().z()};
+    return true;
+}
+
 const wfb::GameSetting* WorldData::find_gmst(const wfb::World* root, std::string_view name) {
     const auto* list = root != nullptr ? root->gmsts() : nullptr;
     if (list == nullptr) {

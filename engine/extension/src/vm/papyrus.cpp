@@ -467,6 +467,64 @@ Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
     return world_->get_ref_info(world_->get_ref_cell(ref), ref);
 }
 
+static Vector3 vec3_of_xyz(const vm::Xyz& p) {
+    return Vector3(static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]));
+}
+
+bool SkydotPapyrus::ref_record(std::uint32_t ref, vm::RefInfo& out) const {
+    if (world_.is_null()) {
+        return false;
+    }
+    out = vm::RefInfo{};
+    if (const auto* placed = vm_->placed().find(ref)) {
+        out.base = placed->base;
+        out.cell = placed->cell;
+        std::copy(std::begin(placed->position), std::end(placed->position), out.placement.position.begin());
+        std::copy(std::begin(placed->rotation), std::end(placed->rotation), out.placement.rotation.begin());
+        out.placement.scale = placed->scale;
+        out.placement.base = placed->base;
+        if (const auto* base = world_->data().base_ptr(placed->base)) {
+            out.type = WorldData::type_name(base->type());
+            if (base->editor_id() != nullptr) {
+                out.editor_id = base->editor_id()->str();
+            }
+        }
+        return true;
+    }
+    WorldData::RefRecord record;
+    if (!world_->data().ref_record(ref, record)) {
+        return false;
+    }
+    const auto widen = [](const std::array<float, 3>& v) {
+        return vm::Xyz{static_cast<double>(v[0]), static_cast<double>(v[1]), static_cast<double>(v[2])};
+    };
+    out.base = record.base;
+    out.cell = record.cell;
+    out.type = std::move(record.type);
+    out.editor_id = std::move(record.editor_id);
+    out.actor = record.actor;
+    out.parent_activate_only = record.parent_activate_only;
+    out.placement.position = widen(record.position);
+    out.placement.rotation = widen(record.rotation);
+    out.placement.disabled = record.initially_disabled;
+    out.placement.scale = static_cast<double>(record.scale);
+    out.placement.base = record.base;
+    out.locked = record.locked;
+    out.lock_level = record.lock_level;
+    out.lock_key = record.lock_key;
+    out.load_door = record.load_door;
+    out.door_destination = record.door_destination;
+    for (const auto& link : record.links) {
+        out.links.push_back({link.keyword, link.target});
+    }
+    return true;
+}
+
+std::int64_t SkydotPapyrus::get_ref_base(std::int64_t ref) const {
+    vm::RefInfo info;
+    return ref_record(static_cast<std::uint32_t>(ref), info) ? static_cast<std::int64_t>(info.base) : 0;
+}
+
 std::uint32_t SkydotPapyrus::base_form_of(std::uint32_t ref) const {
     if (const auto* placed = vm_->placed().find(ref)) {
         return placed->base;
@@ -517,17 +575,13 @@ std::uint32_t SkydotPapyrus::lock_holder(std::uint32_t ref) const {
     // The two doors of a load door share one lock, and the plugin stores it
     // on one side only (Faendal's house: the inside door). A door without a
     // lock of its own answers with its partner's.
-    const Dictionary info = ref_info(ref);
-    if (info.get("lock", Variant()).get_type() == Variant::DICTIONARY) {
+    vm::RefInfo info;
+    if (!ref_record(ref, info) || info.locked || !info.load_door) {
         return ref;
     }
-    const Variant door = info.get("door", Variant());
-    if (door.get_type() != Variant::DICTIONARY) {
-        return ref;
-    }
-    const auto other =
-        form_of(Dictionary(door).get("destination", 0));
-    if (other != 0 && ref_info(other).get("lock", Variant()).get_type() == Variant::DICTIONARY) {
+    const auto other = info.door_destination;
+    vm::RefInfo partner;
+    if (other != 0 && ref_record(other, partner) && partner.locked) {
         return other;
     }
     return ref;
@@ -539,14 +593,16 @@ bool SkydotPapyrus::locked(std::uint32_t ref) const {
         return it->second;
     }
     // A reference with XLOC starts locked.
-    return ref_info(ref).get("lock", Variant()).get_type() == Variant::DICTIONARY;
+    vm::RefInfo info;
+    return ref_record(ref, info) && info.locked;
 }
 
 Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
         return vec3_of(it->second.rotation);
     }
-    return ref_info(ref).get("rotation", Vector3());
+    vm::RefInfo info;
+    return ref_record(ref, info) ? vec3_of_xyz(info.placement.rotation) : Vector3();
 }
 
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
@@ -562,11 +618,11 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (moved != nullptr) {
         return moved->position;
     }
-    const Dictionary info = ref_info(ref);
-    if (info.is_empty() && world_.is_valid()) {
-        return world_->get_actor(ref).get("position", Vector3()); // a placed actor
+    vm::RefInfo info;
+    if (!ref_record(ref, info)) {
+        return world_.is_valid() ? Vector3(world_->get_actor(ref).get("position", Vector3())) : Vector3();
     }
-    return info.get("position", Vector3());
+    return vec3_of_xyz(info.placement.position);
 }
 
 static Vector3 vec3_from(const vm::Xyz& p) {
@@ -590,14 +646,25 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         return owner_.base_form_of(ref);
     }
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
-        const Array links = owner_.ref_info(ref).get("links", Array());
-        for (std::int64_t i = 0; i < links.size(); ++i) {
-            const Dictionary link = links[i];
-            if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
-                return form_of(link["target"]);
+        vm::RefInfo info;
+        if (owner_.ref_record(ref, info)) {
+            for (const auto& link : info.links) {
+                if (link.keyword == keyword) {
+                    return link.target;
+                }
             }
         }
         return 0;
+    }
+    bool ref_info(std::uint32_t ref, vm::RefInfo& out) const override { return owner_.ref_record(ref, out); }
+    std::vector<vm::ActivateChild> activate_children(std::uint32_t ref) const override {
+        std::vector<vm::ActivateChild> out;
+        if (world() != nullptr) {
+            for (const auto& [child, cell, delay] : world()->activate_children(ref)) {
+                out.push_back({child, static_cast<double>(delay)});
+            }
+        }
+        return out;
     }
     std::uint32_t parent_cell(std::uint32_t ref) const override {
         return owner_.cell_of(ref);
@@ -671,14 +738,8 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         return static_cast<std::uint32_t>(owner_.world_->get_form_from_file(id, String::utf8(plugin.c_str())));
     }
     vm::RefPlacement ref_placement(std::uint32_t ref) const override {
-        const Dictionary info = owner_.ref_info(ref);
-        vm::RefPlacement placed;
-        placed.position = xyz_from(info.get("position", Vector3()));
-        placed.rotation = xyz_from(info.get("rotation", Vector3()));
-        placed.disabled = static_cast<bool>(info.get("disabled", false));
-        placed.scale = static_cast<double>(info.get("scale", 1.0));
-        placed.base = static_cast<std::uint32_t>(static_cast<std::int64_t>(info.get("base", 0)));
-        return placed;
+        vm::RefInfo info;
+        return owner_.ref_record(ref, info) ? info.placement : vm::RefPlacement{};
     }
     vm::Xyz ref_position(std::uint32_t ref) const override { return xyz_from(owner_.position_of(ref)); }
     vm::Xyz ref_rotation(std::uint32_t ref) const override { return xyz_from(owner_.rotation_of(ref)); }
@@ -855,11 +916,8 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     bool is_locked(std::uint32_t ref) const override { return owner_.locked(ref); }
     std::int64_t lock_level(std::int64_t ref) const override { return owner_.get_lock_level(ref); }
     std::uint32_t lock_key(std::uint32_t ref) const override {
-        const Variant lock = owner_.ref_info(owner_.lock_holder(ref)).get("lock", Variant());
-        if (lock.get_type() != Variant::DICTIONARY) {
-            return 0;
-        }
-        return static_cast<std::uint32_t>(static_cast<std::int64_t>(Dictionary(lock).get("key", 0)));
+        vm::RefInfo info;
+        return owner_.ref_record(owner_.lock_holder(ref), info) && info.locked ? info.lock_key : 0;
     }
     std::int64_t trigger_count(std::int64_t ref) const override { return owner_.get_trigger_count(ref); }
     void move_ref_to(std::uint32_t ref, std::uint32_t target, const vm::Xyz& offset, bool match_rotation) override {
@@ -1360,8 +1418,8 @@ std::int64_t SkydotPapyrus::get_lock_level(std::int64_t ref) const {
     if (!locked(form)) {
         return -1;
     }
-    const Variant lock = ref_info(form).get("lock", Variant());
-    return lock.get_type() == Variant::DICTIONARY ? static_cast<std::int64_t>(Dictionary(lock)["level"]) : 0;
+    vm::RefInfo info;
+    return ref_record(form, info) && info.locked ? static_cast<std::int64_t>(info.lock_level) : 0;
 }
 
 void SkydotPapyrus::set_locked(std::int64_t ref, bool value) {
@@ -1381,7 +1439,8 @@ std::int64_t SkydotPapyrus::get_open_state(std::int64_t ref) const {
     if (const auto it = states_.open.find(form); it != states_.open.end()) {
         return it->second;
     }
-    return String(ref_info(form).get("type", String())) == "DOOR" ? k_closed : 0;
+    vm::RefInfo info;
+    return ref_record(form, info) && info.type == "DOOR" ? k_closed : 0;
 }
 
 void SkydotPapyrus::set_open_state(std::int64_t ref, std::int64_t state) {

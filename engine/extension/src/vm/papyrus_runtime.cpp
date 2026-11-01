@@ -124,7 +124,8 @@ std::uint32_t SkydotPapyrus::place_at(std::uint32_t source, std::uint32_t base, 
         placed.position[i] = static_cast<double>(position[i]);
         placed.rotation[i] = static_cast<double>(rotation[i]);
     }
-    placed.scale = static_cast<double>(ref_info(source).get("scale", 1.0));
+    vm::RefInfo source_info;
+    placed.scale = ref_record(source, source_info) ? source_info.placement.scale : 1.0;
     placed.transient = explosion != nullptr;
     return place_ref(placed, initially_disabled);
 }

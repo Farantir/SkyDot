@@ -12,6 +12,7 @@
 
 #include "world_generated.h"
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <utility>
@@ -243,6 +244,9 @@ struct BaseSpec {
     std::vector<std::uint32_t> keywords = {};
     std::optional<HarvestSpec> harvest = {};
     std::uint8_t bench_type = 0;
+    /// The record type id ("DOOR" as 0x524F4F44) and the editor id.
+    std::uint32_t type = 0;
+    std::string editor_id = {};
 };
 
 /// COBJ.
@@ -376,8 +380,53 @@ struct LeveledListSpec {
 
 // ---- cells ------------------------------------------------------------------
 
+/// A reference with its record fields (a `CellSpec::refs` entry has the defaults).
+struct PlacedRefSpec {
+    std::uint32_t id;
+    std::uint32_t base = 0;
+    std::array<float, 3> position = {};
+    std::array<float, 3> rotation = {};
+    float scale = 1.0F;
+    wfb::RefFlags flags = {};
+    std::uint32_t enable_parent = 0;
+};
+
+/// XLOC, XLKR and a load door's link, of a reference of the cell.
+struct LockSpec {
+    std::uint32_t ref;
+    std::uint8_t level = 0;
+    std::uint32_t key = 0;
+};
+struct LinkSpec {
+    std::uint32_t ref;
+    std::uint32_t keyword = 0;
+    std::uint32_t target = 0;
+};
+struct DoorSpec {
+    std::uint32_t ref;
+    std::uint32_t destination = 0;
+    std::array<float, 3> position = {};
+    std::array<float, 3> rotation = {};
+};
+
+/// A placed actor (ACHR), found through its cell.
+struct ActorRefSpec {
+    std::uint32_t ref;
+    std::uint32_t base = 0;
+    std::uint32_t cell = 0;
+    std::array<float, 3> position = {};
+    std::array<float, 3> rotation = {};
+};
+
 struct CellSpec {
     std::uint32_t id;
+    bool interior = false;
+    std::uint32_t world = 0;
+    /// References with all their fields; one with the id of an entry of `refs` replaces it.
+    std::vector<PlacedRefSpec> placed = {};
+    std::vector<LockSpec> locks = {};
+    std::vector<LinkSpec> links = {};
+    std::vector<DoorSpec> doors = {};
     /// The references placed in it, in any order.
     std::vector<std::uint32_t> refs = {};
     /// More references, flagged initially disabled.
@@ -408,6 +457,7 @@ struct WorldSpec {
     int format_version = 10;
     std::vector<WorldspaceSpec> worlds = {};
     std::vector<CellSpec> cells = {};
+    std::vector<ActorRefSpec> actors = {};
     std::vector<BaseSpec> bases = {};
     std::vector<NpcSpec> npcs = {};
     std::vector<RaceSpec> races = {};

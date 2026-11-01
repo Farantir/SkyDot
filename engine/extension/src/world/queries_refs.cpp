@@ -26,12 +26,7 @@ namespace skydot::queries {
 
 namespace {
 
-String type_name(std::uint32_t type) {
-    const char chars[5] = {static_cast<char>(type & 0xFF), static_cast<char>((type >> 8) & 0xFF),
-                           static_cast<char>((type >> 16) & 0xFF),
-                           static_cast<char>((type >> 24) & 0xFF), 0};
-    return String(chars);
-}
+String type_name(std::uint32_t type) { return String(WorldData::type_name(type).c_str()); }
 
 /// Elements of a struct vector sorted by `ref()` that belong to `ref`: for the
 /// vectors a reference can have several entries in.
@@ -56,25 +51,19 @@ const wfb::Ref* find_ref(const wfb::Cell& cell, std::uint32_t id) {
 
 Dictionary get_door(const WorldData& data, std::int64_t ref) {
     Dictionary out;
-    const auto& doors = data.doors();
-    const auto it = doors.find(static_cast<std::uint32_t>(ref));
-    if (it == doors.end()) {
+    WorldData::DoorRecord door;
+    if (!data.door_record(static_cast<std::uint32_t>(ref), door)) {
         return out;
     }
-    const auto& [cell, link] = it->second;
-    out["ref"] = static_cast<std::int64_t>(link->ref());
-    out["cell"] = static_cast<std::int64_t>(cell->id());
-    out["destination"] = static_cast<std::int64_t>(link->destination());
-    const auto dest = doors.find(link->destination());
-    const wfb::Cell* dest_cell = dest != doors.end() ? dest->second.first : nullptr;
-    out["destination_cell"] = static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->id() : 0);
-    out["destination_world"] =
-        static_cast<std::int64_t>(dest_cell != nullptr ? dest_cell->world() : 0);
-    out["destination_interior"] =
-        dest_cell != nullptr && formats::has_flag(dest_cell->flags(), wfb::CellFlags::interior);
-    const auto& p = link->position();
-    const auto& r = link->rotation();
-    out["arrival"] = skyrim_transform(Vector3(p.x(), p.y(), p.z()), Vector3(r.x(), r.y(), r.z()), 1.0);
+    out["ref"] = static_cast<std::int64_t>(door.ref);
+    out["cell"] = static_cast<std::int64_t>(door.cell);
+    out["destination"] = static_cast<std::int64_t>(door.destination);
+    out["destination_cell"] = static_cast<std::int64_t>(door.destination_cell);
+    out["destination_world"] = static_cast<std::int64_t>(door.destination_world);
+    out["destination_interior"] = door.destination_interior;
+    const auto& p = door.arrival_position;
+    const auto& r = door.arrival_rotation;
+    out["arrival"] = skyrim_transform(Vector3(p[0], p[1], p[2]), Vector3(r[0], r[1], r[2]), 1.0);
     return out;
 }
 

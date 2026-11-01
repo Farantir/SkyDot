@@ -33,8 +33,8 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
     explicit ActivationAdapter(SkydotPapyrus& owner) : owner_(owner) {}
 
     bool target(std::uint32_t ref, ActivationTarget& out) const override {
-        const Dictionary info = owner_.ref_info(ref);
-        if (info.is_empty()) {
+        vm::RefInfo info;
+        if (!owner_.ref_record(ref, info)) {
             // A placed actor is no reference of its cell: its base is the NPC_.
             const auto* actor = owner_.world_.is_valid() ? owner_.world_->data().actor_ptr(ref) : nullptr;
             if (actor == nullptr) {
@@ -45,13 +45,13 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
             out.dead = owner_.actors_.is_dead(ref);
             return true;
         }
-        out.base = form_of(info.get("base", 0));
-        out.type = natives::utf8(String(info.get("type", String())));
-        out.editor_id = natives::utf8(String(info.get("editor_id", String())));
-        out.parent_activate_only = static_cast<bool>(info.get("parent_activate_only", false));
-        out.load_door = info.get("door", Variant()).get_type() == Variant::DICTIONARY;
+        out.base = info.base;
+        out.type = info.type;
+        out.editor_id = info.editor_id;
+        out.parent_activate_only = info.parent_activate_only;
+        out.load_door = info.load_door;
         // XCNT is not in the reference info yet: one of them.
-        out.count = static_cast<std::int64_t>(info.get("count", 1));
+        out.count = 1;
         out.dead = owner_.actors_.is_dead(ref);
         if (const auto* base = base_of(out.base)) {
             out.harvestable = (out.type == "FLOR" || out.type == "TREE") && base->harvest() != nullptr &&
@@ -114,10 +114,8 @@ struct SkydotPapyrus::ActivationAdapter final : ActivationHost {
     bool activation_blocked(std::uint32_t ref) const override { return owner_.is_activation_blocked(ref); }
     std::vector<Child> activate_children(std::uint32_t ref) const override {
         std::vector<Child> out;
-        const Array children = owner_.world_->get_activate_children(ref);
-        for (std::int64_t i = 0; i < children.size(); ++i) {
-            const Dictionary child = children[i];
-            out.push_back({form_of(child["ref"]), static_cast<double>(child.get("delay", 0.0))});
+        for (const auto& [child, cell, delay] : owner_.world_->data().activate_children(ref)) {
+            out.push_back({child, static_cast<double>(delay)});
         }
         return out;
     }

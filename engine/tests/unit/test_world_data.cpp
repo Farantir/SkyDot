@@ -8,6 +8,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -17,7 +18,13 @@
 
 using skydot::WorldData;
 using skydot::testing::BuiltWorld;
+using skydot::testing::ActorRefSpec;
+using skydot::testing::BaseSpec;
 using skydot::testing::CellSpec;
+using skydot::testing::DoorSpec;
+using skydot::testing::LinkSpec;
+using skydot::testing::LockSpec;
+using skydot::testing::PlacedRefSpec;
 using skydot::testing::WorldSpec;
 
 namespace {
@@ -128,4 +135,98 @@ TEST_CASE("typed queries answer from the indexes, and a closed world answers not
     CHECK(closed.keyword_by_editor_id("x") == 0);
     CHECK(closed.form_list_ptr(1) == nullptr);
     CHECK(closed.message_ptr(1) == nullptr);
+}
+
+TEST_CASE("a reference is a typed record with its lock, door and links", "[world_data]") {
+    constexpr std::uint32_t k_door = 0x524F'4F44; // "DOOR"
+    namespace wfb = skydot::testing::wfb;
+    const OpenWorld world({
+        .cells = {{.id = 0x3000,
+                   .interior = true,
+                   .placed = {{.id = 0x100,
+                               .base = 0x50,
+                               .position = {1.0F, 2.0F, 3.0F},
+                               .rotation = {0.5F, 0.0F, 1.5F},
+                               .scale = 0.5F,
+                               .flags = wfb::RefFlags::parent_activate_only},
+                              {.id = 0x101, .base = 0x51, .flags = wfb::RefFlags::initially_disabled}},
+                   .locks = {{.ref = 0x100, .level = 75, .key = 0x60}},
+                   .links = {{.ref = 0x100, .keyword = 0x70, .target = 0x101}, {.ref = 0x100, .keyword = 0, .target = 0x102}},
+                   .doors = {{.ref = 0x100, .destination = 0x200, .position = {10.0F, 20.0F, 30.0F}, .rotation = {0.0F, 0.0F, 3.0F}}}},
+                  {.id = 0x4000,
+                   .world = 0x7,
+                   .placed = {{.id = 0x200, .base = 0x50}}}},
+        .actors = {{.ref = 0x300, .base = 0x900, .cell = 0x3000, .position = {4.0F, 5.0F, 6.0F}, .rotation = {0.0F, 0.0F, 2.0F}}},
+        .bases = {{.id = 0x50, .type = k_door, .editor_id = "TestDoor"}},
+    });
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    const WorldData& data = world.data;
+    // The door side is only in the cell that holds the link: 0x200 is in 0x4000 with a link back.
+    WorldData::RefRecord r;
+    REQUIRE(data.ref_record(0x100, r));
+    CHECK(r.id == 0x100);
+    CHECK(r.cell == 0x3000);
+    CHECK(r.base == 0x50);
+    CHECK(r.type == "DOOR");
+    CHECK(r.editor_id == "TestDoor");
+    CHECK_FALSE(r.actor);
+    CHECK(r.parent_activate_only);
+    CHECK_FALSE(r.initially_disabled);
+    CHECK(r.position == std::array<float, 3>{1.0F, 2.0F, 3.0F});
+    CHECK(r.rotation == std::array<float, 3>{0.5F, 0.0F, 1.5F});
+    CHECK(r.scale == 0.5F);
+    CHECK(r.locked);
+    CHECK(r.lock_level == 75);
+    CHECK(r.lock_key == 0x60);
+    CHECK(r.load_door);
+    CHECK(r.door_destination == 0x200);
+    REQUIRE(r.links.size() == 2);
+    CHECK(r.links[0].keyword == 0x70);
+    CHECK(r.links[0].target == 0x101);
+    CHECK(r.links[1].keyword == 0);
+    CHECK(r.links[1].target == 0x102);
+
+    REQUIRE(data.ref_record(0x101, r));
+    CHECK(r.initially_disabled);
+    CHECK(r.type.empty()); // its base is unknown
+    CHECK_FALSE(r.locked);
+    CHECK_FALSE(r.load_door);
+    CHECK(r.links.empty());
+
+    REQUIRE(data.ref_record(0x300, r));
+    CHECK(r.actor);
+    CHECK(r.type == "NPC_");
+    CHECK(r.editor_id.empty());
+    CHECK(r.base == 0x900);
+    CHECK(r.cell == 0x3000);
+    CHECK(r.position == std::array<float, 3>{4.0F, 5.0F, 6.0F});
+    CHECK(r.rotation == std::array<float, 3>{0.0F, 0.0F, 2.0F});
+    CHECK(r.scale == 1.0F);
+    CHECK_FALSE(r.locked);
+
+    CHECK_FALSE(data.ref_record(0x999, r));
+    CHECK_FALSE(WorldData().ref_record(0x100, r));
+}
+
+TEST_CASE("a load door's link is a typed record", "[world_data]") {
+    const OpenWorld world({.cells = {
+        {.id = 0x3000, .interior = true, .placed = {{.id = 0x100}},
+         .doors = {{.ref = 0x100, .destination = 0x200, .position = {10.0F, 20.0F, 30.0F}, .rotation = {0.0F, 0.0F, 3.0F}}}},
+        {.id = 0x4000, .world = 0x7, .placed = {{.id = 0x200}},
+         .doors = {{.ref = 0x200, .destination = 0x100}}}}});
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    WorldData::DoorRecord d;
+    REQUIRE(world.data.door_record(0x100, d));
+    CHECK(d.ref == 0x100);
+    CHECK(d.cell == 0x3000);
+    CHECK(d.destination == 0x200);
+    CHECK(d.destination_cell == 0x4000);
+    CHECK(d.destination_world == 0x7);
+    CHECK_FALSE(d.destination_interior);
+    CHECK(d.arrival_position == std::array<float, 3>{10.0F, 20.0F, 30.0F});
+    CHECK(d.arrival_rotation == std::array<float, 3>{0.0F, 0.0F, 3.0F});
+    REQUIRE(world.data.door_record(0x200, d));
+    CHECK(d.destination_cell == 0x3000);
+    CHECK(d.destination_interior);
+    CHECK_FALSE(world.data.door_record(0x999, d));
 }

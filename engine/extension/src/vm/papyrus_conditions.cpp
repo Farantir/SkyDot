@@ -341,11 +341,12 @@ std::uint32_t PapyrusConditionWorld::linked_ref(std::uint32_t ref, std::uint32_t
     if (owner_ == nullptr) {
         return 0;
     }
-    const godot::Array links = owner_->ref_info(ref).get("links", godot::Array());
-    for (std::int64_t i = 0; i < links.size(); ++i) {
-        const godot::Dictionary link = links[i];
-        if (static_cast<std::int64_t>(link["keyword"]) == keyword) {
-            return static_cast<std::uint32_t>(static_cast<std::int64_t>(link["target"]));
+    vm::RefInfo info;
+    if (owner_->ref_record(ref, info)) {
+        for (const auto& link : info.links) {
+            if (link.keyword == keyword) {
+                return link.target;
+            }
         }
     }
     return 0;

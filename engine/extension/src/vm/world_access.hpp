@@ -39,6 +39,30 @@ struct RefPlacement {
     std::uint32_t base = 0;
 };
 
+struct RefLink {
+    std::uint32_t keyword = 0, target = 0;
+};
+
+/// What the data and the runtime say of a reference: a placed REFR/actor, or one PlaceAtMe made.
+struct RefInfo {
+    std::uint32_t base = 0, cell = 0;
+    std::string type, editor_id; // the base's record type name ("DOOR") and editor id
+    bool actor = false, parent_activate_only = false;
+    RefPlacement placement; // position/rotation as placed (game units/radians), initial disabled, scale, base
+    bool locked = false;
+    std::int32_t lock_level = 0;
+    std::uint32_t lock_key = 0; // XLOC as placed, not the runtime lock state
+    bool load_door = false;
+    std::uint32_t door_destination = 0;
+    std::vector<RefLink> links;
+};
+
+/// A reference activated when another is: after `delay` seconds.
+struct ActivateChild {
+    std::uint32_t ref = 0;
+    double delay = 0.0;
+};
+
 class WorldAccess {
 public:
     virtual ~WorldAccess() = default;
@@ -48,6 +72,10 @@ public:
     /// What `ref` is linked to with `keyword` (0: the link without a keyword);
     /// 0 if there is no such link.
     [[nodiscard]] virtual std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const = 0;
+    /// The facts about `ref`: its record, placement, lock, door and links. False if it is unknown.
+    [[nodiscard]] virtual bool ref_info(std::uint32_t ref, RefInfo& out) const = 0;
+    /// The references activated when `ref` is, with their delays, sorted.
+    [[nodiscard]] virtual std::vector<ActivateChild> activate_children(std::uint32_t ref) const = 0;
     /// The cell `ref` is placed in; 0 if unknown.
     [[nodiscard]] virtual std::uint32_t parent_cell(std::uint32_t ref) const = 0;
     /// Whether `cell` is an interior.
