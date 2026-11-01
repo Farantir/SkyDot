@@ -18,6 +18,7 @@
 // player holds every component.
 #pragma once
 
+#include "magic/magic_rules.hpp"
 #include "state/created_forms.hpp"
 #include "state/inventory.hpp"
 #include "state/item_extras.hpp"
@@ -62,8 +63,8 @@ inline constexpr double k_alchemy_skill_factor = 1.5;
 inline constexpr float k_potion_weight = 0.5F;
 /// MGEF flags.
 inline constexpr std::uint32_t k_mgef_hostile = 0x1;
-inline constexpr std::uint32_t k_mgef_power_affects_magnitude = 0x200000;
-inline constexpr std::uint32_t k_mgef_power_affects_duration = 0x400000;
+inline constexpr std::uint32_t k_mgef_power_affects_magnitude = magic::mgef_flag::power_affects_magnitude;
+inline constexpr std::uint32_t k_mgef_power_affects_duration = magic::mgef_flag::power_affects_duration;
 
 struct Component {
     std::uint32_t form = 0;

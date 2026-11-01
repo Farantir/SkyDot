@@ -50,6 +50,8 @@ inline constexpr std::uint32_t hostile = 0x1;
 inline constexpr std::uint32_t recover = 0x2;
 inline constexpr std::uint32_t detrimental = 0x4;
 inline constexpr std::uint32_t no_duration = 0x200;
+inline constexpr std::uint32_t power_affects_magnitude = 0x200000;
+inline constexpr std::uint32_t power_affects_duration = 0x400000;
 inline constexpr std::uint32_t no_death_dispel = 0x10000000;
 } // namespace mgef_flag
 

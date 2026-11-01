@@ -2,7 +2,7 @@
 #include "magic/enchanting.hpp"
 
 #include "data/fb_search.hpp"
-#include "vm/crafting.hpp"
+#include "magic/magic_rules.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -49,8 +49,8 @@ double weapon_use_cost(double base_cost, double skill) {
 
 vm::CreatedEffect scale_effect(const EffectInput& base, std::uint32_t mgef_flags, double factor) {
     vm::CreatedEffect out{base.effect, base.magnitude, base.duration, base.area};
-    const bool duration = (mgef_flags & crafting::k_mgef_power_affects_duration) != 0 &&
-                          (mgef_flags & crafting::k_mgef_power_affects_magnitude) == 0;
+    const bool duration = (mgef_flags & mgef_flag::power_affects_duration) != 0 &&
+                          (mgef_flags & mgef_flag::power_affects_magnitude) == 0;
     if (duration) {
         if (base.duration > 0) {
             out.duration = static_cast<std::uint32_t>(std::max(1.0, std::floor(static_cast<double>(base.duration) * factor)));
