@@ -730,7 +730,7 @@ func body_point_of(ref: int) -> Vector3:
 	var node := _world.find_ref_node(ref) as Node3D
 	if node == null:
 		return Vector3.ZERO
-	var height: float = node.get("height") if node.get("height") != null else PLAYER_HEIGHT
+	var height := ActorRegistry.height_of(node)
 	return node.global_position + Vector3.UP * (height * CHEST_FRACTION)
 
 
@@ -820,8 +820,8 @@ func _release(shot: Dictionary) -> void:
 		var other := _world.find_ref_node(target) as Node3D
 		if other == null:
 			return
-		chest = other.global_position + Vector3.UP * float(other.get("height")) * CHEST_FRACTION
-	var height: float = node.get_height() if node.has_method("get_height") else 1.8
+		chest = other.global_position + Vector3.UP * ActorRegistry.height_of(other) * CHEST_FRACTION
+	var height := ActorRegistry.height_of(node)
 	var origin := node.global_position + Vector3.UP * height * SHOT_HEIGHT_FRACTION
 	var ammo_data := _world.get_ammo(shot["ammo"])
 	var proj := _world.get_projectile(int(ammo_data.get("projectile", 0)))
@@ -906,7 +906,7 @@ func _npc_strike(data: Dictionary) -> void:
 	var node := _world.find_ref_node(attacker) as Node3D
 	if node == null or not node.is_inside_tree() or _papyrus.is_actor_dead(attacker):
 		return
-	var height: float = node.get_height() if node.has_method("get_height") else 1.8
+	var height := ActorRegistry.height_of(node)
 	var origin := node.global_position + Vector3.UP * height * HEAD_FRACTION
 	var forward := -node.global_transform.basis.z
 	var plan := _actor_plan(attacker)

@@ -124,5 +124,10 @@ static func head_position(skeleton: Skeleton3D, bone: int) -> Vector3:
 
 
 static func head_fallback(node: Node3D) -> Vector3:
-	var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT
-	return node.global_position + Vector3.UP * (height * Combat.HEAD_FRACTION)
+	return node.global_position + Vector3.UP * (height_of(node) * Combat.HEAD_FRACTION)
+
+
+## The body height of `node`, metres: its `height` (a SkydotActor's), the player's when it has none.
+static func height_of(node: Object) -> float:
+	var height: Variant = node.get("height")
+	return float(height) if height != null else Combat.PLAYER_HEIGHT

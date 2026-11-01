@@ -381,7 +381,7 @@ func npc_deliver(caster: int, hand: int, spell: int, info: Dictionary, eye: Vect
 
 ## Where `node`'s head is: the eye of an NPC, from which its spells leave.
 static func eye_of(node: Node3D) -> Vector3:
-	var height: float = node.get("height") if node.get("height") != null else Combat.PLAYER_HEIGHT
+	var height := ActorRegistry.height_of(node)
 	return node.global_position + Vector3.UP * (height * EYE_FRACTION)
 
 
