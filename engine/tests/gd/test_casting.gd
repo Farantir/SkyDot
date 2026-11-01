@@ -363,6 +363,28 @@ func test_shout_thresholds_by_words() -> void:
 	expect(not rel["fire"], "release after firing says nothing")
 	expect(not casting.is_shouting(P), "cleared")
 
+func test_shout_words_by_held_time() -> void:
+	data.shouts[SHOUT]["usable"] = 3
+	expect_eq(casting.shout_words(P, SHOUT, 0.0), 1, "0 s: one")
+	expect_eq(casting.shout_words(P, SHOUT, 0.19), 1, "just below fShoutTime1: one")
+	expect_eq(casting.shout_words(P, SHOUT, 0.2), 2, "exactly fShoutTime1 is two")
+	expect_eq(casting.shout_words(P, SHOUT, 0.5), 2, "0.5 s: two")
+	expect_eq(casting.shout_words(P, SHOUT, 0.89), 2, "just below fShoutTime2: two")
+	expect_eq(casting.shout_words(P, SHOUT, 0.9), 3, "exactly fShoutTime2 is three")
+	expect_eq(casting.shout_words(P, SHOUT, 99.0), 3, "an NPC's long hold: three")
+	data.gmsts["fShoutTime1"] = 0.6
+	data.gmsts["fShoutTime2"] = 1.0
+	expect_eq(casting.shout_words(P, SHOUT, 0.5), 1, "the GMSTs move the thresholds")
+	expect_eq(casting.shout_words(P, SHOUT, 1.0), 3, "and the third")
+
+func test_shout_words_are_limited_to_the_usable_ones() -> void:
+	data.shouts[SHOUT]["usable"] = 2
+	expect_eq(casting.shout_words(P, SHOUT, 5.0), 2, "three held, two usable")
+	expect_eq(casting.shout_words(P, SHOUT, 0.0), 1, "one held")
+	data.shouts[SHOUT]["usable"] = 1
+	expect_eq(casting.shout_words(P, SHOUT, 5.0), 1, "one usable")
+	expect_eq(casting.shout_words(P, 0x999, 5.0), 3, "unknown shout: the native refuses it")
+
 func test_shout_gmst_overrides() -> void:
 	data.gmsts["fShoutTime2"] = 1.5
 	expect_eq(casting.shout_begin(P, SHOUT)["threshold"], 1.5, "GMST read")

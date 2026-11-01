@@ -162,7 +162,7 @@ record that stored nothing.
   recovery left. The base shouts of a non-player actor come from `base_shouts` (its NPC_ and race
   lists, leveled lists resolved). The player (0x14) also has every shout with a known word, unless
   removed.
-- **Words spoken.** Holding the button for less than `fShoutTime1` (0.2 s) speaks one word, less than
+- **Words spoken.** (`Casting.shout_words` decides; `cast_shout` takes the count.) Holding the button for less than `fShoutTime1` (0.2 s) speaks one word, less than
   `fShoutTime2` (0.9 s) two, else three. **(Guess)**: that these two GMSTs are the thresholds is from
   their names and UESP's tap / short hold / full hold. The player speaks at most the leading run of
   the shout's words that are known and unlocked; any other actor speaks all of them. With none

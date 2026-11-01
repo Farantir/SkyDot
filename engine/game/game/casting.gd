@@ -15,7 +15,7 @@
 # while casting, recovering, with no word), `shout_step` (fires at the threshold), `shout_release`.
 #
 # A script mod extends this class and overrides a rule method (`refusal`, `charge_time`,
-# `shout_threshold`, `pay`), or replaces the class whole (GameSession.casting_script).
+# `shout_threshold`, `shout_words`, `pay`), or replaces the class whole (GameSession.casting_script).
 # Lifecycle, silent: `reset()` drops every hand and shout, `on_place_left()` those of every
 # caster but the player. The cast_info cache stays.
 class_name Casting
@@ -296,6 +296,19 @@ func shout_threshold(_caster: int, usable: int) -> float:
 	if usable == 2:
 		return _data.gmst_float(GMST_SHOUT_TIME1, SHOUT_TIME1_FALLBACK)
 	return 0.0
+
+
+## How many words `caster` says of `shout` after holding the key `held` seconds: one below
+## fShoutTime1, two below fShoutTime2, else three, never more than the words usable. SkydotPapyrus
+## .cast_shout clamps it again and works out the recovery of that many words.
+func shout_words(caster: int, shout: int, held: float) -> int:
+	var words := 1
+	if held >= _data.gmst_float(GMST_SHOUT_TIME2, SHOUT_TIME2_FALLBACK):
+		words = 3
+	elif held >= _data.gmst_float(GMST_SHOUT_TIME1, SHOUT_TIME1_FALLBACK):
+		words = 2
+	var usable := int(_data.shout_info(caster, shout).get("usable", 0))
+	return mini(words, usable) if usable > 0 else words
 
 
 ## Advance the key by `dt`. {fire, held}: `fire` once, when `held` (clamped) reaches the threshold.

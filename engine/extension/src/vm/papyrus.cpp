@@ -122,7 +122,7 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::unlock_word_with_soul);
     godot::ClassDB::bind_method(D_METHOD("voice_recovery", "actor"), &SkydotPapyrus::voice_recovery);
     godot::ClassDB::bind_method(D_METHOD("set_voice_recovery", "actor", "seconds"), &SkydotPapyrus::set_voice_recovery);
-    godot::ClassDB::bind_method(D_METHOD("cast_shout", "actor", "shout", "held_seconds", "target"),
+    godot::ClassDB::bind_method(D_METHOD("cast_shout", "actor", "shout", "words", "target"),
                                 &SkydotPapyrus::cast_shout, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("active_effects", "actor"), &SkydotPapyrus::active_effects);
     godot::ClassDB::bind_method(D_METHOD("magic_overrides", "ref"), &SkydotPapyrus::magic_overrides);

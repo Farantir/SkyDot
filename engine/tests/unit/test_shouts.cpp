@@ -69,7 +69,6 @@ struct Rig {
     magic::ActiveEffects effects{*world, host};
     magic::SpellBook spells{*world, effects};
     magic::ShoutBook book{*world};
-    magic::ShoutSettings settings;
     Rig() {
         // The dragon (0x15) has Unrelenting Force from its NPC_.
         book.set_base_source([](std::uint32_t ref) {
@@ -88,17 +87,6 @@ struct Rig {
 };
 
 } // namespace
-
-TEST_CASE("a held shout button speaks one, two or three words", "[shouts]") {
-    const magic::ShoutSettings s;
-    CHECK(magic::words_for_hold(0.0, s) == 1);
-    CHECK(magic::words_for_hold(0.1, s) == 1);
-    CHECK(magic::words_for_hold(0.2, s) == 2); // exactly fShoutTime1 is already two
-    CHECK(magic::words_for_hold(0.5, s) == 2);
-    CHECK(magic::words_for_hold(0.9, s) == 3);
-    CHECK(magic::words_for_hold(1.0, s) == 3);
-    CHECK(magic::words_for_hold(0.5, {.shout_time1 = 0.6, .shout_time2 = 1.0}) == 1);
-}
 
 TEST_CASE("recovery is the last word's time times the multiplier", "[shouts]") {
     Rig rig;
@@ -179,7 +167,7 @@ TEST_CASE("a dragon soul unlocks a known, locked word", "[shouts]") {
 TEST_CASE("a shout speaks as many words as held and usable, casts the last one's spell and recovers", "[shouts]") {
     Rig rig;
     rig.learn({k_fus, k_ro}, {k_fus, k_ro});
-    auto r = rig.book.shout(k_player, k_unrelenting, 1.0, rig.settings, 0.5); // three held, two usable
+    auto r = rig.book.shout(k_player, k_unrelenting, 3, 0.5); // three asked, two usable
     REQUIRE(r.ok);
     CHECK(r.words == 2);
     CHECK(r.spell == k_spell2);
@@ -187,7 +175,7 @@ TEST_CASE("a shout speaks as many words as held and usable, casts the last one's
     CHECK(rig.book.recovery_left(k_player) == Approx(10));
     CHECK_FALSE(rig.book.ready(k_player));
 
-    r = rig.book.shout(k_player, k_unrelenting, 0.0, rig.settings, 1.0);
+    r = rig.book.shout(k_player, k_unrelenting, 1, 1.0);
     CHECK_FALSE(r.ok);
     CHECK(r.reason == "recovering");
     rig.book.tick(4.0);
@@ -196,7 +184,7 @@ TEST_CASE("a shout speaks as many words as held and usable, casts the last one's
     CHECK(rig.book.recovery_left(k_player) == Approx(0));
     CHECK(rig.book.ready(k_player));
 
-    r = rig.book.shout(k_player, k_unrelenting, 0.0, rig.settings, 1.0);
+    r = rig.book.shout(k_player, k_unrelenting, 1, 1.0);
     REQUIRE(r.ok);
     CHECK(r.words == 1);
     CHECK(r.spell == k_spell1);
@@ -206,13 +194,13 @@ TEST_CASE("a shout speaks as many words as held and usable, casts the last one's
 TEST_CASE("a shout is refused without a usable word or a shout", "[shouts]") {
     Rig rig;
     rig.learn({k_ro, k_dah}, {k_ro, k_dah}); // no Fus: the player has the shout, speaks nothing
-    auto r = rig.book.shout(k_player, k_unrelenting, 1.0, rig.settings, 1.0);
+    auto r = rig.book.shout(k_player, k_unrelenting, 3, 1.0);
     CHECK_FALSE(r.ok);
     CHECK(r.reason == "no word");
     CHECK(rig.book.recovery_left(k_player) == Approx(0));
-    r = rig.book.shout(k_player, k_other_shout, 1.0, rig.settings, 1.0);
+    r = rig.book.shout(k_player, k_other_shout, 3, 1.0);
     CHECK(r.reason == "unknown shout");
-    r = rig.book.shout(k_dragon, k_unrelenting, 1.0, rig.settings, 1.0);
+    r = rig.book.shout(k_dragon, k_unrelenting, 3, 1.0);
     REQUIRE(r.ok);
     CHECK(r.words == 3);
     CHECK(r.spell == k_spell3);

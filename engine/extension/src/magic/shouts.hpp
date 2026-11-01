@@ -23,22 +23,12 @@
 
 namespace skydot::magic {
 
-/// GMSTs fShoutTime1 and fShoutTime2: held seconds below which one, then two, words are spoken.
-/// That they are the word thresholds is a guess from their names (docs/adr/0008).
-struct ShoutSettings {
-    double shout_time1 = 0.2;
-    double shout_time2 = 0.9;
-};
-
 /// The spelling of a word of power for display. Skyrim.esm stores a word's FULL in the dragon font's
 /// keystrokes: a digit stands for a vowel digraph (Dah is "D4", Faas "F1s", Feim "F2m", Zii "Z3", Koor
 /// "K8r"). The game draws it in the dragon font; this gives the Latin spelling UESP uses. Only the digits
 /// the data uses are mapped (1 aa, 2 ei, 3 ii, 4 ah, 8 oo; read off the shouts Unrelenting Force, Whirlwind
 /// Sprint, Fade, Ethereal, Fear, Elemental Fury, Clear Skies, whose words are known); any other digit stays.
 [[nodiscard]] std::string word_spelling(const std::string& full);
-
-/// Words spoken after holding the button for `seconds`: 1 below time1, 2 below time2, else 3.
-[[nodiscard]] int words_for_hold(double seconds, const ShoutSettings& settings);
 
 /// Seconds before `shout` can be used again after `words` words (1 to 3): the SNAM recovery of the
 /// last word spoken times `mult` (the ShoutRecoveryMult actor value), never below 0. 0 for an
@@ -109,11 +99,10 @@ public:
     [[nodiscard]] bool ready(std::uint32_t ref) const { return recovery_left(ref) <= 0.0; }
     void tick(double seconds);
 
-    /// Shout `shout` after holding for `held_seconds` with recovery multiplier `mult`: refuses while
-    /// recovering or with no usable word; else speaks min(words_for_hold, usable) words, casts the
-    /// spell of the last, and starts the recovery.
-    ShoutRelease shout(std::uint32_t ref, std::uint32_t shout, double held_seconds, const ShoutSettings& settings,
-                       double mult);
+    /// Shout `shout`, asking for `words` words (the game layer's rule: how long the button was held),
+    /// with recovery multiplier `mult`: refuses while recovering or with no usable word; else speaks
+    /// min(words, usable) words (at least one), casts the spell of the last, and starts the recovery.
+    ShoutRelease shout(std::uint32_t ref, std::uint32_t shout, int words, double mult);
 
     /// Actors with anything of their own here.
     [[nodiscard]] std::vector<std::uint32_t> refs() const;

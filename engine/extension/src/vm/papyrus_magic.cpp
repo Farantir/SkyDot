@@ -281,12 +281,6 @@ struct SkydotPapyrus::MagicState final : SkydotPapyrus::MagicRuntime, magic::Mag
         return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? g->text_value()->str()
                                                                                          : std::string(fallback);
     }
-    [[nodiscard]] magic::ShoutSettings shout_settings() const {
-        magic::ShoutSettings s;
-        s.shout_time1 = game_setting("fShoutTime1", s.shout_time1);
-        s.shout_time2 = game_setting("fShoutTime2", s.shout_time2);
-        return s;
-    }
     [[nodiscard]] std::string word_name(std::uint32_t word) const {
         const auto* w = lookup(world_.words_of_power(), word);
         return w != nullptr && w->name() != nullptr ? magic::word_spelling(w->name()->str()) : hex(word);
@@ -1473,7 +1467,7 @@ void SkydotPapyrus::set_voice_recovery(std::int64_t actor, double seconds) {
     }
 }
 
-Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_in, double held_seconds,
+Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_in, std::int64_t words_in,
                                      std::int64_t target_in) {
     Dictionary out;
     out["ok"] = false;
@@ -1492,7 +1486,7 @@ Dictionary SkydotPapyrus::cast_shout(std::int64_t actor_in, std::int64_t shout_i
     }
     m->prime(actor);
     const double mult = actors_.get(actor, vm::av::k_shout_recovery_mult);
-    const auto shouted = m->shouts.shout(actor, static_cast<std::uint32_t>(shout_in), held_seconds, m->shout_settings(), mult);
+    const auto shouted = m->shouts.shout(actor, static_cast<std::uint32_t>(shout_in), static_cast<int>(words_in), mult);
     out["reason"] = to_godot(shouted.reason);
     if (!shouted.ok) {
         return out;

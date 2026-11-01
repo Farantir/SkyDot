@@ -1232,8 +1232,8 @@ Magicka, `spell_cost`, `power_cooldown`, item count, `pay_spell`, shout info,
 voice recovery, GMSTs); the unit tests (`tests/gd/test_casting.gd`) give it a
 fake. C++ keeps the data and its effects: `cast_info`, the cost formula
 (`spell_cost`, also Papyrus's), `pay_spell` (damages Magicka so regeneration
-waits, notes a power's use), `land_spell`/`cast_scroll`/`cast_shout` (which
-words a held time says, the recovery) and the active effects. `Magic` (the
+waits, notes a power's use), `land_spell`/`cast_scroll`/`cast_shout` (the spell
+and the recovery of the words `Casting.shout_words` says for a held time) and the active effects. `Magic` (the
 player) and `NpcMagic` turn its events into clips, art and delivery; neither
 keeps hand state of its own. `GameSession` makes one `Casting` and hands it
 to both; it joins the lifecycle (`reset()` ends every cast, `on_place_left()`

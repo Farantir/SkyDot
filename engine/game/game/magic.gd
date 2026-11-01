@@ -538,7 +538,7 @@ func _shout_fire(shout: int, held: float) -> void:
 ## words, the spell and the recovery; the spell's release sound plays and its hit sound is remembered
 ## for the landings. Returns cast_shout's result with the spell's cast `info`; nothing is delivered.
 func _speak(caster: int, shout: int, held: float) -> Dictionary:
-	var result := _papyrus.cast_shout(caster, shout, held, 0)
+	var result := _papyrus.cast_shout(caster, shout, _casting.shout_words(caster, shout, held), 0)
 	if not bool(result["ok"]):
 		return result
 	var spell := int(result["spell"])

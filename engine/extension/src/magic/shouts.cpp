@@ -24,13 +24,6 @@ std::string word_spelling(const std::string& full) {
 }
 
 
-int words_for_hold(double seconds, const ShoutSettings& settings) {
-    if (seconds < settings.shout_time1) {
-        return 1;
-    }
-    return seconds < settings.shout_time2 ? 2 : 3;
-}
-
 double recovery_seconds(const wfb::World& world, std::uint32_t shout, int words, double mult) {
     const auto* s = lookup(world.shouts(), shout);
     if (s == nullptr || s->words() == nullptr || words < 1 || static_cast<std::size_t>(words) > s->words()->size()) {
@@ -209,8 +202,7 @@ void ShoutBook::tick(double seconds) {
     }
 }
 
-ShoutRelease ShoutBook::shout(std::uint32_t ref, std::uint32_t shout, double held_seconds,
-                              const ShoutSettings& settings, double mult) {
+ShoutRelease ShoutBook::shout(std::uint32_t ref, std::uint32_t shout, int words, double mult) {
     ShoutRelease out;
     const auto* s = shout_of(shout);
     if (s == nullptr || s->words() == nullptr || !has_shout(ref, shout)) {
@@ -226,7 +218,7 @@ ShoutRelease ShoutBook::shout(std::uint32_t ref, std::uint32_t shout, double hel
         out.reason = "no word";
         return out;
     }
-    out.words = std::min(words_for_hold(held_seconds, settings), usable);
+    out.words = std::clamp(words, 1, usable);
     out.spell = s->words()->Get(static_cast<flatbuffers::uoffset_t>(out.words - 1))->spell();
     out.recovery = recovery_seconds(world_, shout, out.words, mult);
     set_recovery(ref, out.recovery);

@@ -281,12 +281,13 @@ public:
     /// Real seconds until `actor` may shout again.
     double voice_recovery(std::int64_t actor);
     void set_voice_recovery(std::int64_t actor, double seconds);
-    /// Shout `shout` after holding the button `held_seconds`: {ok, reason ("" or "unknown shout" /
+    /// Shout `shout`, asking for `words` words (Casting decides it from the held time; it is clamped to the
+    /// usable ones, at least one): {ok, reason ("" or "unknown shout" /
     /// "recovering" / "no word" / "no caster" / "dead"), words, spell (the SPEL of the last word
     /// spoken: the game layer lands it with land_spell per actor hit), recovery (seconds, set)}. With a
     /// `target` the spell lands on it here. Voice spells cost nothing. Casting and shouting excluding
     /// each other (sMagicCastShoutWhileCasting) is the game layer's.
-    godot::Dictionary cast_shout(std::int64_t actor, std::int64_t shout, double held_seconds, std::int64_t target = 0);
+    godot::Dictionary cast_shout(std::int64_t actor, std::int64_t shout, std::int64_t words, std::int64_t target = 0);
     /// What runs on `actor`: {instance, mgef, name, magnitude, duration, elapsed, remaining (-1 if
     /// constant), source (a form), source_kind (0 spell, 1 enchantment, 2 potion, 3 ingredient, 4
     /// scroll, 5 ability, 6 poison), caster, archetype, active}.
