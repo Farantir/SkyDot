@@ -1314,17 +1314,24 @@ will hand out.
 Attack rules (ADR 0009). `AttackRules` (`attack_rules.gd`) owns the rules of a
 hit for every attacker, the player and NPCs alike: the damage of a blow (base =
 weapon + tempering + ammo, times the player's weapon-skill factor, the attack
-event's multiplier, difficulty and sneak, less the target's armor: the pieces
-scaled by its armor skill, capped at `fMaxArmorRating`), the Stamina of a power
-attack (who may start one, who pays, what it costs), the hold time that makes
+event's multiplier, the difficulty (`fDiffMultHPByPC*`/`fDiffMultHPToPC*` at
+`GameConfig.difficulty`, Adept by default) and the sneak attack multiplier
+(`fCombatSneak*Mult` by weapon type, when the attacker sneaks and the target
+does not know of him), less the target's armor: the pieces scaled by its armor
+skill, capped at `fMaxArmorRating`; then less the share a block stops: a
+shield's or a weapon's, UESP Skyrim:Block, capped at 85%), the Stamina of a
+power attack (who may start one, what it costs; everyone pays, and an NPC
+without Stamina attacks normally) and of a blocked hit, the stagger of a
+blocked power attack, the hold time that makes
 one (`fInitialPowerAttackDelay`), how far a blow reaches, the half cone of a
 race's attack, and how hard a dragon's tail or wing blow staggers. It returns
 plain dictionaries and emits nothing. Its interface: `hit(attacker, target,
 weapon, extra, event, flags, ammo)` (the breakdown of `damage(facts)` merged
 with what landing it gave; `{error}` when the target is no actor, dead or a
 ghost), `damage(facts)` built from `skill_factor`, `armor_percent`,
-`sneak_mult` and `difficulty` (the last two are placeholders, 1.0),
-`can_power_attack`, `pays_stamina` (only the player pays today),
+`blocked_percent`, `sneak_mult` (with the perk hook `sneak_perk_mult`, 1.0
+until perks exist) and `difficulty`, `block_stamina`, `blocked_stagger`,
+`can_power_attack`, `pays_stamina`,
 `power_attack_cost`, `pay_power_attack`, `power_delay`, `reach`,
 `strike_angle`, `stagger`. It asks its data through `AttackData`
 (`attack_data.gd`), a GDScript seam over `SkydotPapyrus` and `SkydotWorld`:
