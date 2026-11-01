@@ -38,6 +38,7 @@ add_executable(skydot_core_tests
     test_mapped_file.cpp
     test_packages.cpp
     test_save_file.cpp
+    test_scene_runtime.cpp
     test_scenes.cpp
     test_triggers.cpp
     test_vm.cpp

@@ -20,10 +20,12 @@ RULES=(
 
 # glob (under $SRC):forbidden include prefixes. Natives families are Godot-free
 # free functions over interfaces (ARCHITECTURE.md, "Natives and the world"), so
-# they link into the unit tests. The Godot helpers for papyrus*.cpp live in
+# they link into the unit tests; so do the per-domain modules
+# (vm/<domain>_runtime.*, listed one by one). The Godot helpers for papyrus*.cpp live in
 # vm/papyrus_common.hpp, which is not a natives_* file.
 FILE_RULES=(
     "vm/natives_*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
+    "vm/scene_runtime.*:godot_cpp/|vm/papyrus\\.hpp|world/|build/|ai/|session/"
 )
 
 status=0

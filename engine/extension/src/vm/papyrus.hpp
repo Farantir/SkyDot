@@ -30,6 +30,7 @@
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
 #include "scenes/scenes.hpp"
+#include "vm/scene_runtime.hpp"
 #include "save/save_binding.hpp"
 #include "session/clock.hpp"
 #include "state/actor_states.hpp"
@@ -586,7 +587,7 @@ public:
     bool scene_is_playing(std::int64_t scene) const;
     /// Whether a scene's actors must have their 3D loaded (default), else a
     /// living placed actor is enough (headless tests).
-    void set_scene_actors_need_3d(bool need) { scene_needs_3d_ = need; }
+    void set_scene_actors_need_3d(bool need) { scene_.set_actors_need_3d(need); }
 
     // ---- quests
     /// Start every start-game-enabled quest, as a new game does. Returns how
@@ -660,13 +661,8 @@ private:
     std::map<std::uint32_t, std::uint32_t> info_quests_;
     dialogue::Dialogue* dialogue_logic();
     friend class DialogueHostImpl;
-    friend class SceneHostImpl;
-    std::unique_ptr<scenes::SceneHost> scene_host_;
-    std::unique_ptr<scenes::Scenes> scenes_;
-    std::set<std::uint32_t> scene_scripts_;
-    bool scene_needs_3d_ = true;
-    scenes::Scenes* scene_logic();
-    void bind_scene_natives();
+    /// The scene domain (vm/scene_runtime.hpp); the scene_* methods above only convert for it.
+    vm::SceneRuntime scene_;
     /// The NPC_ behind an actor reference (the player: 0x7); 0 if none.
     std::uint32_t dialogue_npc(std::uint32_t ref) const;
     godot::Dictionary dialogue_dictionary(const dialogue::Result& result) const;

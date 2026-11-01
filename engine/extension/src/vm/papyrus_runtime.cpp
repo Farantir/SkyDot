@@ -257,11 +257,8 @@ void SkydotPapyrus::register_forgets() {
     }, [this] { return activations_ ? activations_->pending_count() : std::size_t{0}; });
     r.add_owned("dialogue_talked", [this](std::uint32_t id) { dialogue_states_.forget_talked(id); },
                 [this] { return dialogue_states_.talked_count(); });
-    r.add_owned("scene_pushed_packages", [this](std::uint32_t id) {
-        if (scenes_) {
-            scenes_->forget(id);
-        }
-    }, [this] { return scenes_ ? scenes_->pushed_count() : std::size_t{0}; });
+    r.add_owned("scene_pushed_packages", [this](std::uint32_t id) { scene_.forget(id); },
+                [this] { return scene_.pushed_count(); });
     r.add_owned("quest_alias_fills", [this](std::uint32_t id) { quests_.forget_fill(id); },
                 [this] { return quests_.fills().size(); });
     r.add_owned("actor_placement", [this](std::uint32_t id) {

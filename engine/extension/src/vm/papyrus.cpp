@@ -4,6 +4,7 @@
 #include "data/actors.hpp"
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
+#include "data/scripts.hpp"
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
 #include "actors/behavior_player.hpp"
@@ -416,8 +417,7 @@ void SkydotPapyrus::reset() {
     harvests_.clear();
     dialogue_states_.clear();
     dialogue_.reset();
-    scenes_.reset();
-    scene_scripts_.clear();
+    scene_.reset();
     info_quests_.clear();
     activations_->clear();
     triggers_.clear();
@@ -581,7 +581,8 @@ static vm::Xyz xyz_from(const Vector3& p) {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost {
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
+                             vm::SceneRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -813,6 +814,26 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
+    // ---- vm::SceneRuntime::Host
+    const bethconv::pack::wfb::World* world_root() const override { return world() != nullptr ? world()->root() : nullptr; }
+    vm::WorldAccess& world_access() override { return *this; }
+    vm::QuestHost& quest_host() override { return *this; }
+    conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
+    bool can_talk(std::uint32_t ref) const override { return owner_.dialogue_can_talk(ref); }
+    std::vector<dialogue::Line> say(std::uint32_t actor, std::uint32_t topic) override {
+        auto* logic = owner_.dialogue_logic();
+        return logic != nullptr ? logic->say(actor, topic).lines : std::vector<dialogue::Line>{};
+    }
+    void attach_scene_scripts(std::uint32_t scene) override {
+        if (const auto* s = world() != nullptr ? lookup(world()->root()->scenes(), scene) : nullptr) {
+            owner_.attach_scripts(scene, script_list(s->scripts(), false), s->quest());
+        }
+    }
+    void package_signal(std::uint32_t actor, std::uint32_t package, bool push) override {
+        owner_.emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), push);
+    }
+    void log(const std::string& text) override { godot::UtilityFunctions::print(natives::to_godot(text)); }
+
     bool location_loaded(std::uint32_t location) override { return owner_.location_loaded(location); }
     void evaluate_package(std::uint32_t ref) override { owner_.evaluate_package(ref); }
     void set_last_damager(std::uint32_t killer) override { owner_.last_damager_ = killer; }
@@ -1050,7 +1071,6 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_weapon_natives,
         &SkydotPapyrus::bind_sound_natives,
         &SkydotPapyrus::bind_quest_natives,
-        &SkydotPapyrus::bind_scene_natives,
         &SkydotPapyrus::bind_noop_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,
@@ -1062,6 +1082,7 @@ void SkydotPapyrus::bind_natives() {
     for (const Registration registration : table) {
         (this->*registration)();
     }
+    scene_.bind_natives(*vm_, *access_);
 }
 
 // ---- values -------------------------------------------------------------------

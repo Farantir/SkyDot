@@ -174,8 +174,8 @@ void SkydotPapyrus::write_sections(const godot::Ref<SkydotSaveWriter>& writer) {
     out.add("CRFT", vm::CreatedForms::k_section_version, created_.save());
     out.add("HRVS", vm::HarvestStates::k_section_version, harvests_.save());
     out.add("DLGS", dialogue::DialogueStates::k_section_version, dialogue_states_.save());
-    if (scenes_ != nullptr) {
-        out.add("SCEN", scenes::Scenes::k_section_version, scenes_->save());
+    if (scene_.started()) {
+        out.add("SCEN", scenes::Scenes::k_section_version, scene_.save());
     }
     write_host(out);
 }
@@ -293,9 +293,8 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
         if (scen->version != scenes::Scenes::k_section_version) {
             return fail("section SCEN has a version this engine does not read");
         }
-        auto* logic = scene_logic();
-        pending->scenes = logic != nullptr ? std::make_unique<scenes::Scenes>(*world_->data().root(), *scene_host_) : nullptr;
-        if (pending->scenes == nullptr || !scenes::Scenes::load(file.open(*scen), *pending->scenes)) {
+        pending->scenes = scene_.load(file.open(*scen));
+        if (pending->scenes == nullptr) {
             return fail("the SCEN section of the save is damaged");
         }
     }
@@ -366,17 +365,7 @@ godot::Error SkydotPapyrus::commit_load() {
     dialogue_states_.adopt(std::move(pending->dialogue));
     // After the items: worn enchantments are derived from what is worn.
     magic_adopt(pending->has_magic, pending->magic_effects, pending->magic_book, pending->magic_shouts);
-    if (auto* logic = scene_logic()) {
-        if (pending->scenes != nullptr) {
-            logic->adopt(std::move(*pending->scenes));
-            // The AI forgot the pushed packages with the rest of its state.
-            for (const auto& [actor, package] : logic->pushed_packages()) {
-                emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), true);
-            }
-        } else {
-            logic->clear();
-        }
-    }
+    scene_.adopt(std::move(pending->scenes));
     HostSnapshot& host = pending->host;
     for (const auto ref : host.attached) {
         attached_.insert(ref);
