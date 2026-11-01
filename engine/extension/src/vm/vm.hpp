@@ -320,6 +320,18 @@ public:
     /// Drop all instances, threads, timers and results; keep classes and natives.
     void clear();
 
+    /// Free the detached instances no Value points to any more. Values hold raw `Instance*`, so an instance
+    /// `detach` took out can only go once nothing reaches it: the roots are every live instance's variables,
+    /// the frames and results of the threads, the results, timers and animation registrations, and what the
+    /// hooks of `add_root` show, followed through arrays (shared, so visited once) and through the variables of
+    /// detached instances that are themselves reached. `update` runs it when it is quiescent (no thread runs)
+    /// after something was detached; a test may call it at any such point. Returns how many were freed.
+    std::size_t collect_detached();
+    /// Shows the values a holder outside the VM keeps, for `collect_detached`: the hook calls `visit` on each.
+    using RootVisitor = std::function<void(const Value&)>;
+    using RootHook = std::function<void(const RootVisitor& visit)>;
+    void add_root(RootHook hook) { roots_.push_back(std::move(hook)); }
+
     /// Papyrus conversions.
     [[nodiscard]] static Value default_for(std::string_view type);
     [[nodiscard]] Value cast(const Value& v, std::string_view type);
@@ -395,6 +407,9 @@ private:
     std::unordered_map<std::uint32_t, std::vector<std::unique_ptr<Instance>>> instances_;
     /// Instances `detach` took out, kept so values pointing at them stay valid.
     std::vector<std::unique_ptr<Instance>> detached_;
+    std::vector<RootHook> roots_;
+    std::size_t detached_since_collect_ = 0; ///< Detached since the last collection.
+    std::size_t updates_since_collect_ = 0;
     std::vector<std::unique_ptr<Thread>> threads_;
     std::unordered_map<std::uint64_t, Value> results_;
     std::vector<Timer> timers_;

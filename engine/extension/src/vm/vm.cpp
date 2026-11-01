@@ -6,12 +6,15 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <unordered_set>
 
 namespace skydot::vm {
 
 namespace {
 
 constexpr std::size_t k_max_depth = 512;
+/// Updates between looks at detached instances that are still reached (a waiting thread holds one).
+constexpr std::size_t k_collect_period = 64;
 /// Papyrus arrays hold at most 128 elements.
 constexpr std::int32_t k_max_array = 128;
 
@@ -618,12 +621,87 @@ void Vm::detach_instances(std::uint32_t ref) {
             }
         }
         detached_.push_back(std::move(instance));
+        ++detached_since_collect_;
     }
     instances_.erase(it);
 }
 
+std::size_t Vm::collect_detached() {
+    detached_since_collect_ = 0;
+    updates_since_collect_ = 0;
+    if (detached_.empty() || running_) {
+        return 0;
+    }
+    std::unordered_set<const Instance*> marked;
+    std::unordered_set<const Array*> seen;
+    std::vector<const Instance*> work;
+    const auto mark_instance = [&](const Instance* instance) {
+        if (instance != nullptr && marked.insert(instance).second) {
+            work.push_back(instance);
+        }
+    };
+    std::function<void(const Value&)> mark = [&](const Value& v) {
+        if (v.kind() == Kind::object) {
+            mark_instance(v.instance());
+        } else if (v.kind() == Kind::array) {
+            const Array* array = v.array().get();
+            if (seen.insert(array).second) {
+                for (const Value& element : *array) {
+                    mark(element);
+                }
+            }
+        }
+    };
+    const auto mark_variables = [&](const Instance& instance) {
+        for (const auto& [cls, values] : instance.vars) {
+            for (const Value& v : values) {
+                mark(v);
+            }
+        }
+    };
+    // Roots: the live instances (their variables), the threads, the results, the timers and registrations.
+    for (const auto& [form, list] : instances_) {
+        for (const auto& instance : list) {
+            mark_variables(*instance);
+        }
+    }
+    for (const auto& thread : threads_) {
+        for (const Frame& frame : thread->frames) {
+            mark_instance(frame.instance);
+            mark(frame.self);
+            for (const Value& v : frame.regs) {
+                mark(v);
+            }
+        }
+        mark(thread->result);
+    }
+    for (const auto& [id, v] : results_) {
+        mark(v);
+    }
+    for (const Timer& t : timers_) {
+        mark_instance(t.instance);
+    }
+    for (const AnimationRegistration& r : animation_regs_) {
+        mark_instance(r.instance);
+    }
+    for (const RootHook& hook : roots_) {
+        hook(mark);
+    }
+    // What a reached detached instance holds is reached too.
+    while (!work.empty()) {
+        const Instance* instance = work.back();
+        work.pop_back();
+        mark_variables(*instance);
+    }
+    const std::size_t before = detached_.size();
+    std::erase_if(detached_, [&](const std::unique_ptr<Instance>& i) { return !marked.contains(i.get()); });
+    return before - detached_.size();
+}
+
 void Vm::clear() {
     detached_.clear();
+    detached_since_collect_ = 0;
+    updates_since_collect_ = 0;
     inventory_.clear();
     form_lists_.clear();
     placed_.clear();
@@ -675,6 +753,11 @@ void Vm::update(double seconds) {
     // Results nobody takes (events, setters) should not pile up.
     if (results_.size() > 4096) {
         results_.clear();
+    }
+    // Quiescent: no thread runs. Instances `detach` took out go once no value reaches them; what is still
+    // reached (a waiting thread, a variable of a live script) is looked at again every k_collect_period updates.
+    if (!detached_.empty() && (detached_since_collect_ != 0 || ++updates_since_collect_ >= k_collect_period)) {
+        collect_detached();
     }
 }
 
