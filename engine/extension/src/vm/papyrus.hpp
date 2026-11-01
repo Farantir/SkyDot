@@ -128,6 +128,8 @@ public:
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
     /// Put `count` of `item` into `owner`'s inventory (the viewer's --give).
     void add_item(std::int64_t owner, std::int64_t item, std::int64_t count);
+    /// Take up to `count` of `item` out of `owner`'s inventory and destroy them (a spell tome read); returns how many.
+    std::int64_t remove_item(std::int64_t owner, std::int64_t item, std::int64_t count);
 
     // ---- items (vm/papyrus_items.cpp; the rules are state/equipment.hpp, what
     // containers and actors start with is data/start_inventory.hpp)

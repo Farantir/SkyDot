@@ -1462,6 +1462,20 @@ in the lifecycle. The session registers `_on_progression_request(kind, args)` wi
 synchronously ("advance_skill", "increment_skill"). A script mod extends `Progression` and
 overrides a rule method, or the session builds whichever `GameSession.progression_script` names.
 
+Books and training (P6h). `Progression.read_book(book)` is the rule of reading: a skill book raises its skill by
+one through `increment_skill` (Adjust Book Skill Points, entry point 5, on the count; the character XP comes with
+it) the first time, and marks the base read in `ProgressionRuntime` (no copy teaches again); a spell tome adds its
+spell and is used up (`SkydotPapyrus.remove_item`), a known spell keeps it. `GameSession.equip` hands a "book"
+item to `GameSession.read_book`, which says `sSkillIncreased`, `sSpellAdded` or `sAlreadyKnown`; activating a book
+in the world stays a pickup (no book view). `Progression.training_info` and `train` are the rule of a trainer: the
+class of the trainer's NPC_ gives the skill and the limit, a session costs `fTrainingMultCost * level` times 1, 3
+(`iTrainingExpertCost`, above 50) or 5 (`iTrainingMasterCost`, above 75) plus 50 (UESP Skyrim:Trainers), five per
+character level (`level_up` resets `trainings`), the gold goes to the trainer and the skill up by one; the refusals
+are `sCanNotTrainAnymore`, `sCanNotTrainHigher` and `sInsufficientGoldToTrain`. Training starts from the dialogue:
+`SkydotPapyrus.dialogue_choose` reports `service: "training"` for the vanilla topic `OffersTrainingTopic`
+(no script calls `Game.ShowTrainingMenu`), the session emits `training_opened(trainer)` after the topic's lines
+and the dialogue stays open underneath, quiet while `service_open`.
+
 Attack rules (ADR 0009). `AttackRules` (`attack_rules.gd`) owns the rules of a
 hit for every attacker, the player and NPCs alike: the damage of a blow (base =
 weapon + tempering + ammo, times the player's weapon-skill factor, the attack
@@ -1607,6 +1621,7 @@ desktop game with the `XRCamera3D` as a plain camera.
 | `vr/vr_shell.gd` (combat) | | a `FirstPersonBody` in hand mode on the right controller (the weapon, no arms); a tip speed over 2.5 m/s (placeholder) is an attack. Run only in the desktop fallback and by `combat_melee.gd` |
 | `vr/vr_panel.gd` | `VrPanel` | a view in a `SubViewport` on an unshaded quad: head-locked, or recentred in front of the head |
 | `ui/hud_view.gd`, `subtitles_view.gd`, `dialogue_view.gd` | `HudView`, `SubtitlesView`, `DialogueView` | the shell widgets as `Control`s with no host; the dialogue takes `ui_*` actions and `activate` |
+| `ui/training_view.gd`, `training_model.gd` | `TrainingView`, `TrainingModel` | a trainer's menu (skill, level and limit, cost, gold, sessions left, the refusal text; accept trains, cancel closes) over a plain view model; hosted by `ItemMenu` and on a `VrPanel` |
 | `ui/inventory_view.gd`, `container_view.gd`, `item_rows.gd` | `InventoryView`, `ContainerView`, `ItemRows` | the item menus (categories, columns, equipped mark; two columns with move and take all), driven by `ui_*`, `inventory` and `menu_drop` (R, X); the VR shell puts each on a `VrPanel` in front of the head, the left menu button opens the inventory and activating a container its menu |
 
 ### 8.4 Tools and tests

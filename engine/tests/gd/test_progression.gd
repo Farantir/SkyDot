@@ -46,14 +46,16 @@ class FakeData extends ProgressionData:
 
 	func gmst_float(name: String, fallback: float) -> float:
 		return {"fSkillUseCurve": 1.95, "fXPLevelUpBase": 75.0, "fXPLevelUpMult": 25.0,
-				"fLevelUpCarryWeightMod": 5.0}.get(name, fallback)
+				"fLevelUpCarryWeightMod": 5.0, "fTrainingMultCost": 10.0}.get(name, fallback)
 
 	func gmst_int(name: String, fallback: int) -> int:
-		return {"iAVDhmsLevelUp": 10}.get(name, fallback)
+		return {"iAVDhmsLevelUp": 10, "iTrainingExpertCost": 3, "iTrainingMasterCost": 5}.get(name, fallback)
 
 	var skill_use_perk := {}   # skill -> Mod Skill Use multiplier
 
-	func perk_entry(_ep: int, _subjects: Array, value: float, extra := {}) -> float:
+	func perk_entry(ep: int, _subjects: Array, value: float, extra := {}) -> float:
+		if ep == 5:
+			return book_points
 		return value * float(skill_use_perk.get(int(extra.get("advance_skill", -1)), 1.0))
 
 	func skill_info(av: int) -> Dictionary:
@@ -112,6 +114,53 @@ class FakeData extends ProgressionData:
 
 	func perk_tree(av: int) -> Array:
 		return trees.get(av, [])
+
+	var books := {
+		0xB1: {"category": "book", "book_flags": 1, "book_skill": 14, "book_spell": 0},
+		0xB2: {"category": "book", "book_flags": 4, "book_skill": -1, "book_spell": 0x5000},
+		0xB3: {"category": "book", "book_flags": 0, "book_skill": -1, "book_spell": 0},
+		0xA1: {"category": "weapon"},
+	}
+	var read_books := {}
+	var spells := {}
+	var taken: Array = []
+	var trainings_set: Array = []
+	var gold_held := 1000
+	var paid: Array = []
+	var klass := {"teaches": 14, "max_training_level": 50}
+	var book_points := 1.0   # what Adjust Book Skill Points answers
+
+	func item_info(form: int) -> Dictionary:
+		return books.get(form, {})
+
+	func book_read(book: int) -> bool:
+		return read_books.has(book)
+
+	func mark_book_read(book: int) -> void:
+		read_books[book] = true
+
+	func has_spell(spell: int) -> bool:
+		return spells.has(spell)
+
+	func add_spell(spell: int) -> void:
+		spells[spell] = true
+
+	func set_trainings(count: int) -> void:
+		prog["trainings"] = count
+		trainings_set.append(count)
+
+	func trainer_class(_trainer: int) -> Dictionary:
+		return klass
+
+	func gold() -> int:
+		return gold_held
+
+	func pay_gold(trainer: int, amount: int) -> bool:
+		if gold_held < amount:
+			return false
+		gold_held -= amount
+		paid.append([trainer, amount])
+		return true
 
 var d: FakeData
 var pr: Progression
@@ -421,3 +470,101 @@ func test_concentration_counts_per_tick_and_scrolls_powers_give_nothing() -> voi
 	expect_eq(pr.magic_use(_spell(20, {"is_scroll": true}))["use"], 0.0, "scroll")
 	expect_eq(pr.magic_use(_spell(20, {"type": 2}))["use"], 0.0, "power")
 	expect_eq(pr.magic_use(_spell(-1))["use"], 0.0, "no school")
+
+
+# ---- books
+
+func test_a_skill_book_raises_its_skill_once() -> void:
+	var r := pr.read_book(0xB1)
+	expect(r["ok"] and r["kind"] == "skill", "read")
+	expect_eq(d.bases[LOCKPICKING], 16.0, "+1")
+	expect(d.prog["xp"] > 0.0, "character XP")
+	expect_eq(r["skill_increases"].size(), 1, "one increase")
+	var again := pr.read_book(0xB1)
+	expect(not again["ok"] and again["reason"] == "read", "a second read does nothing")
+	expect_eq(d.bases[LOCKPICKING], 16.0, "still 16")
+
+
+func test_book_skill_points_perk_scales_the_count() -> void:
+	d.book_points = 2.0
+	pr.read_book(0xB1)
+	expect_eq(d.bases[LOCKPICKING], 17.0, "+2")
+
+
+func test_a_spell_tome_teaches_and_is_used_up() -> void:
+	var r := pr.read_book(0xB2)
+	expect(r["ok"] and r["consumed"] and r["spell"] == 0x5000, "taught")
+	expect(d.spells.has(0x5000), "known")
+
+
+func test_a_known_spell_keeps_the_tome() -> void:
+	d.spells[0x5000] = true
+	var r := pr.read_book(0xB2)
+	expect(not r["ok"] and not r["consumed"] and r["reason"] == "known", "kept")
+
+
+func test_plain_books_and_other_items_teach_nothing() -> void:
+	expect(pr.read_book(0xB3)["ok"] == false, "plain book")
+	expect(pr.read_book(0xA1)["reason"] == "unknown", "not a book")
+
+
+# ---- training
+
+func test_training_cost_follows_the_uesp_formula() -> void:
+	expect_eq(pr.training_cost(20), 250, "common: 10b + 50")
+	expect_eq(pr.training_cost(50), 550, "50 is still common")
+	expect_eq(pr.training_cost(51), 3 * 10 * 51 + 50, "expert")
+	expect_eq(pr.training_cost(76), 5 * 10 * 76 + 50, "master")
+
+
+func test_training_raises_the_skill_and_pays_the_trainer() -> void:
+	d.bases[LOCKPICKING] = 20.0
+	var r := pr.train(0x777)
+	expect(r["ok"], "trained")
+	expect_eq(d.bases[LOCKPICKING], 21.0, "+1")
+	expect_eq(d.gold_held, 750, "250 gold")
+	expect_eq(d.paid, [[0x777, 250]], "to the trainer")
+	expect_eq(d.prog["trainings"], 1, "counted")
+
+
+func test_five_sessions_per_level_and_level_up_resets() -> void:
+	d.bases[LOCKPICKING] = 20.0
+	d.gold_held = 100000
+	for i in 5:
+		expect(pr.train(1)["ok"], "session %d" % i)
+	var r := pr.train(1)
+	expect(not r["ok"] and r["reason"] == "sessions", "the sixth is refused")
+	expect_eq(d.bases[LOCKPICKING], 25.0, "five levels")
+	d.prog["xp"] = 10000.0
+	pr.level_up(HEALTH)
+	expect_eq(d.prog["trainings"], 0, "level-up resets")
+	expect(pr.train(1)["ok"], "trains again")
+
+
+func test_trainer_maximum_and_gold_limit() -> void:
+	d.bases[LOCKPICKING] = 50.0
+	expect(pr.train(1)["reason"] == "level", "the trainer's max")
+	d.bases[LOCKPICKING] = 30.0
+	d.gold_held = 100
+	var r := pr.train(1)
+	expect(not r["ok"] and r["reason"] == "gold", "too little gold")
+	expect_eq(d.bases[LOCKPICKING], 30.0, "unchanged")
+	expect_eq(d.gold_held, 100, "gold kept")
+	d.klass = {"teaches": -1, "max_training_level": 0}
+	expect(pr.training_info(1)["reason"] == "none", "teaches nothing")
+
+
+func test_training_model_lines() -> void:
+	var m := TrainingModel.new()
+	m.skill_name = "Lockpicking"
+	m.level = 30
+	m.max_level = 50
+	m.cost = 350
+	m.gold = 100
+	m.sessions_left = 4
+	m.refusal = "You have insufficient gold to train."
+	var lines := m.lines()
+	expect_eq(lines.size(), 5, "title, skill, cost, sessions, refusal")
+	expect(lines[1].contains("30") and lines[1].contains("50"), "level and max")
+	expect(lines[2].contains("350") and lines[2].contains("100"), "cost and gold")
+	expect_eq(lines[4], m.refusal, "refusal last")

@@ -81,7 +81,7 @@ func _entries() -> Array:
 
 
 func _input(event: InputEvent) -> void:
-	if not _session.is_dialogue_open() or not enabled.call():
+	if not _session.is_dialogue_open() or _session.service_open or not enabled.call():
 		return
 	var handled := true
 	if event.is_action_pressed(&"ui_cancel") or (event is InputEventKey and event.pressed

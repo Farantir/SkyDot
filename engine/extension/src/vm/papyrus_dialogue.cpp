@@ -3,6 +3,7 @@
 // SkydotPapyrus's dialogue surface: selection (dialogue/dialogue.hpp) with the
 // world, the quests and the condition functions behind it, and INFO fragments,
 // whose TIF__ scripts attach to the INFO form as TopicInfo objects.
+#include <string>
 #include "vm/papyrus.hpp"
 
 #include "data/actors.hpp"
@@ -108,14 +109,24 @@ Dictionary SkydotPapyrus::dialogue_open(std::int64_t speaker) {
 
 Dictionary SkydotPapyrus::dialogue_choose(std::int64_t topic) {
     auto* logic = dialogue_.logic();
-    // The vendor services topic opens the barter menu, which does not exist yet.
+    // The service topics: the vendor's opens the barter menu, which does not exist yet; the trainer's
+    // ("OffersTrainingTopic") is reported as `service` "training" for the shell to open the training menu.
+    std::string service;
     if (const auto* root = world_.is_valid() ? world_->data().root() : nullptr) {
         const auto* t = lookup(root->dialogue_topics(), static_cast<std::uint32_t>(topic));
-        if (t != nullptr && t->editor_id() != nullptr && t->editor_id()->str() == "OfferServicesTopic") {
-            godot::UtilityFunctions::print("barter: not implemented");
+        if (t != nullptr && t->editor_id() != nullptr) {
+            if (t->editor_id()->str() == "OfferServicesTopic") {
+                godot::UtilityFunctions::print("barter: not implemented");
+            } else if (t->editor_id()->str() == "OffersTrainingTopic") {
+                service = "training";
+            }
         }
     }
-    return logic != nullptr ? dialogue_dictionary(logic->choose(static_cast<std::uint32_t>(topic))) : Dictionary();
+    Dictionary out = logic != nullptr ? dialogue_dictionary(logic->choose(static_cast<std::uint32_t>(topic))) : Dictionary();
+    if (!service.empty()) {
+        out["service"] = String::utf8(service.c_str());
+    }
+    return out;
 }
 
 void SkydotPapyrus::dialogue_close() {

@@ -13,6 +13,7 @@ var inventory_view: InventoryView
 var container_view: ContainerView
 var crafting_view: CraftingView
 var magic_view: MagicView
+var training_view: TrainingView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -25,17 +26,19 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	container_view = ContainerView.new(session)
 	crafting_view = CraftingView.new(session)
 	magic_view = MagicView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view]:
+	training_view = TrainingView.new(session)
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, training_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: input.blocked = is_open())
 		add_child(view)
 	session.container_opened.connect(open_container)
 	session.crafting_opened.connect(open_crafting)
+	session.training_opened.connect(training_view.open)
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or training_view.is_open()
 
 
 ## The `inventory` key outside a menu: show the inventory (not during a dialogue).

@@ -149,3 +149,62 @@ func perk_node(id: int) -> Dictionary:
 					guard += 1
 		_nodes[-1] = {}
 	return _nodes.get(id, {})
+
+
+# ---- books and training
+
+## SkydotPapyrus.item_info of a book: {category, book_flags, book_skill, book_spell, ...}.
+func item_info(form: int) -> Dictionary:
+	return _papyrus.item_info(form)
+
+
+func book_read(book: int) -> bool:
+	return _papyrus.is_book_read(book)
+
+
+func mark_book_read(book: int) -> void:
+	_papyrus.mark_book_read(book)
+
+
+func has_spell(spell: int) -> bool:
+	return _papyrus.has_spell(PLAYER_REF, spell)
+
+
+func add_spell(spell: int) -> void:
+	_papyrus.add_spell(PLAYER_REF, spell)
+
+
+## The name of a form (a spell) for a message; empty if it has none.
+func form_name(form: int) -> String:
+	return String(_world.get_base(form).get("name", ""))
+
+
+## Destroy one `form` from the player's inventory; false if it was not carried.
+func take_item(form: int) -> bool:
+	return _papyrus.remove_item(PLAYER_REF, form, 1) > 0
+
+
+func set_trainings(count: int) -> void:
+	_papyrus.set_trainings(count)
+
+
+## The trainer's class data: {teaches (skill AV, -1 none), max_training_level, ...}; empty if it has none.
+## `trainer` is a reference (its base's NPC_ is read) or an NPC_ base.
+func trainer_class(trainer: int) -> Dictionary:
+	var base := _papyrus.get_ref_base(trainer)
+	var npc := _world.get_npc(base if base != 0 else trainer)
+	return _world.get_class_data(int(npc.get("class", 0))) if not npc.is_empty() else {}
+
+
+const GOLD := 0xF
+
+
+func gold() -> int:
+	return _papyrus.get_item_count(PLAYER_REF, GOLD)
+
+
+## Move `amount` gold from the player to `trainer`; false if the player has too little.
+func pay_gold(trainer: int, amount: int) -> bool:
+	if gold() < amount:
+		return false
+	return _papyrus.transfer(PLAYER_REF, trainer, GOLD, amount, -1) >= amount

@@ -44,6 +44,7 @@ var _dialogue_panel: VrPanel
 var _inventory: InventoryView
 var _container: ContainerView
 var _crafting: CraftingView
+var _training: TrainingView
 var _magic: MagicView
 var _death: DeathView
 var _death_panel: VrPanel
@@ -52,6 +53,7 @@ var _door_fade := 0.0  # PlaceTransition.fade
 var _inventory_panel: VrPanel
 var _container_panel: VrPanel
 var _crafting_panel: VrPanel
+var _training_panel: VrPanel
 var _magic_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
@@ -161,6 +163,9 @@ func _create_components() -> void:
 		_crafting_panel = _menu_panel(_crafting)
 		_magic = MagicView.new(_session)
 		_magic_panel = _menu_panel(_magic)
+		_training = TrainingView.new(_session)
+		_training_panel = _menu_panel(_training)
+		_session.training_opened.connect(_training.open)
 		_session.container_opened.connect(_on_container_opened)
 		_session.crafting_opened.connect(_on_crafting_opened)
 	_make_death_screen()
@@ -235,7 +240,10 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 		panel = _crafting_panel
 	elif view == _magic:
 		panel = _magic_panel
-	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open()
+	elif view == _training:
+		panel = _training_panel
+	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
+		or _training.is_open() or _session.is_dialogue_open()
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -246,7 +254,9 @@ func _on_inventory_requested() -> void:
 	if _inventory == null:
 		print("vr: inventory (the HUD is off)")
 		return
-	if _inventory.is_open():
+	if _training.is_open():
+		_training.close()
+	elif _inventory.is_open():
 		_inventory.close()
 	elif _container.is_open():
 		_container.close()

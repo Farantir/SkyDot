@@ -542,6 +542,8 @@ func transfer_all(from: int, to: int) -> int:
 ## The player equips (or consumes, or reads) one `form`. False if it is not
 ## carried or cannot be equipped.
 func equip(form: int, extra := -1) -> bool:
+	if papyrus.item_info(form).get("category", "") == "book":
+		return read_book(form)
 	var done := papyrus.equip(SkydotPapyrus.PLAYER_REF, form, extra)
 	if done:
 		items_changed.emit()
@@ -589,6 +591,29 @@ func increment_skill(av: int, count: int) -> Dictionary:
 	return result
 
 
+## The player reads `book` from the inventory (Progression.read_book): a skill book raises its skill once and says
+## "<skill> Increased to <n>", a spell tome teaches its spell ("New Spell Learned") and is used up, a known spell says
+## "You already know <spell>" and keeps the tome. Returns true if the book is carried and could be read.
+func read_book(book: int) -> bool:
+	if papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, book) <= 0:
+		return false
+	var result := progression.read_book(book)
+	if result["reason"] == "unknown":
+		return false
+	if result["ok"]:
+		if result["kind"] == "spell":
+			message.emit(world.get_gmst_string("sSpellAdded", "New Spell Learned"), false)
+			papyrus.remove_item(SkydotPapyrus.PLAYER_REF, book, 1)
+			items_changed.emit()
+		else:
+			_announce_progress(result)
+	elif result["reason"] == "known":
+		message.emit("%s %s" % [world.get_gmst_string("sAlreadyKnown", "You already know"),
+			world.get_base(int(result["spell"])).get("name", "")], false)
+	print("book: read 0x%X %s -> %s" % [book, result["kind"], result["reason"] if result["reason"] != "" else "ok"])
+	return true
+
+
 ## Spend the banked level on Health 24, Magicka 25 or Stamina 26 (Progression.level_up). Says "Level up
 ## available." again if another level is banked.
 func level_up(attribute_av: int) -> Dictionary:
@@ -601,6 +626,46 @@ func level_up(attribute_av: int) -> Dictionary:
 ## Take `perk` with a perk point (Progression.take_perk).
 func take_perk(perk: int) -> Dictionary:
 	return progression.take_perk(perk)
+
+
+# ---- training
+
+## The training the dialogue's "Train" topic opened, the trainer's reference (0: none). The training view shows it.
+signal training_opened(trainer: int)
+
+## Whether a service menu (training) is on top of the dialogue; the dialogue view then leaves the keys alone.
+var service_open := false
+
+
+## What `trainer` offers now: Progression.training_info.
+func training_info(trainer: int) -> Dictionary:
+	return progression.training_info(trainer)
+
+
+## The refusal text of a training_info reason ("" for none), the vanilla texts.
+func training_refusal(reason: String) -> String:
+	match reason:
+		"sessions":
+			return world.get_gmst_string("sCanNotTrainAnymore", "You must level up to train more.")
+		"level":
+			return world.get_gmst_string("sCanNotTrainHigher", "This NPC cannot help you train any higher.")
+		"gold":
+			return world.get_gmst_string("sInsufficientGoldToTrain", "You have insufficient gold to train.")
+	return ""
+
+
+## Buy one training session from `trainer` (Progression.train); a refusal says its text, a raised skill its usual
+## "<skill> Increased to <n>". Returns Progression.train's result.
+func train(trainer: int) -> Dictionary:
+	var result := progression.train(trainer)
+	if result["ok"]:
+		_announce_progress(result)
+		items_changed.emit()
+	else:
+		var text := training_refusal(String(result["reason"]))
+		if text != "":
+			message.emit(text, false)
+	return result
 
 
 func _announce_progress(result: Dictionary) -> void:
@@ -1345,6 +1410,8 @@ func update_dialogue(delta: float) -> void:
 		return
 	var after := _talk_after
 	_talk_after = {}
+	if after.get("service", "") == "training":
+		training_opened.emit(_talk_speaker)
 	if after["closed"]:
 		_finish_talk()
 	else:

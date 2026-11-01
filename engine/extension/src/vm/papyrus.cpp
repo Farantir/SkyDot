@@ -76,6 +76,7 @@ void SkydotPapyrus::_bind_methods() {
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("add_item", "owner", "item", "count"), &SkydotPapyrus::add_item);
     godot::ClassDB::bind_method(D_METHOD("resolve", "owner"), &SkydotPapyrus::resolve);
+    godot::ClassDB::bind_method(D_METHOD("remove_item", "owner", "item", "count"), &SkydotPapyrus::remove_item);
     godot::ClassDB::bind_method(D_METHOD("item_info", "form"), &SkydotPapyrus::item_info);
     godot::ClassDB::bind_method(D_METHOD("inventory", "owner"), &SkydotPapyrus::inventory);
     godot::ClassDB::bind_method(D_METHOD("transfer", "from", "to", "form", "count", "extra"),
@@ -1588,6 +1589,15 @@ bool SkydotPapyrus::is_3d_loaded(std::uint32_t ref) const {
 void SkydotPapyrus::add_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
     item_.resolve_owner(static_cast<std::uint32_t>(owner));
     vm_->inventory().add(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count);
+}
+
+std::int64_t SkydotPapyrus::remove_item(std::int64_t owner, std::int64_t item, std::int64_t count) {
+    item_.resolve_owner(static_cast<std::uint32_t>(owner));
+    std::int64_t removed = 0;
+    for (const auto& part : item_.remove_item_split(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item), count)) {
+        removed += part.count;
+    }
+    return removed;
 }
 
 std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) const {

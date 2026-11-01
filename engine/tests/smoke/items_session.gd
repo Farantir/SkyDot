@@ -130,5 +130,29 @@ func _run(pack_dir: String) -> void:
 	var outcome := _session.papyrus.activate_ref(dropped, PLAYER, false, SkydotPapyrus.ACTIVATE_PLAYER, false)
 	expect(outcome["kind"] == "pickup", "activating it picks it up: %s" % [outcome["kind"]])
 	expect(int(_contents(PLAYER).get(dagger, 0)) == before, "with its count")
+	_books_and_training()
 	print("smoke_items_session: failures=%d" % failures)
 	quit(failures)
+
+
+## P6h: a skill book (SkillBlock5) raises Block once, a spell tome teaches and is used up (a known spell keeps it),
+## Ghorza gra-Bagol's class teaches Smithing up to 50.
+func _books_and_training() -> void:
+	const BLOCK_AV := 9
+	const BATTLE_OF_RED_MOUNTAIN := 0x2F83C   # SkillBlock5
+	const TOME_REVENANT := 0xA26F2
+	const REVENANT := 0x96D94
+	const GHORZA := 0x1339A
+	var block := _session.papyrus.get_base_actor_value(PLAYER, "Block")
+	_session.papyrus.add_item(PLAYER, BATTLE_OF_RED_MOUNTAIN, 2)
+	expect(_session.equip(BATTLE_OF_RED_MOUNTAIN), "the skill book is read")
+	expect(_session.papyrus.get_base_actor_value(PLAYER, "Block") == block + 1.0, "Block rose by one")
+	expect(_session.papyrus.is_book_read(BATTLE_OF_RED_MOUNTAIN), "the book is marked read")
+	expect(_session.equip(BATTLE_OF_RED_MOUNTAIN), "the second copy is read")
+	expect(_session.papyrus.get_base_actor_value(PLAYER, "Block") == block + 1.0, "and teaches nothing")
+	_session.papyrus.add_item(PLAYER, TOME_REVENANT, 2)
+	expect(_session.equip(TOME_REVENANT) and _session.papyrus.has_spell(PLAYER, REVENANT), "the tome teaches Revenant")
+	expect(int(_contents(PLAYER).get(TOME_REVENANT, 0)) == 1, "and is used up")
+	expect(_session.equip(TOME_REVENANT) and int(_contents(PLAYER).get(TOME_REVENANT, 0)) == 1, "a known spell keeps the tome")
+	var offer := _session.training_info(GHORZA)
+	expect(offer["skill"] == Progression.SMITHING and offer["max_level"] == 50, "Ghorza trains Smithing up to 50: %s" % [offer])

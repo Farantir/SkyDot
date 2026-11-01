@@ -36,6 +36,16 @@ const DESTRUCTION := 20
 const ILLUSION := 21
 const RESTORATION := 22
 const PLAYER_REF := 0x14
+## BOOK flags (the DATA flags): teaches a skill, teaches a spell.
+const BOOK_TEACHES_SKILL := 0x1
+const BOOK_TEACHES_SPELL := 0x4
+const EP_ADJUST_BOOK_SKILL_POINTS := 5
+## Training sessions per character level (UESP Skyrim:Trainers: "up to five times per level").
+const TRAININGS_PER_LEVEL := 5
+## What one session costs besides the skill part (UESP: n(10b + 5n + 45), n(30b + 15n + 35), n(50b + 25n + 25) at n = 1).
+const TRAINING_BASE_COST := 50
+const EXPERT_FROM := 50
+const MASTER_FROM := 75
 const SNEAK_ATTACK_MELEE_USE := 30.0
 const SNEAK_ATTACK_RANGED_USE := 2.5
 ## Weapon type (WEAP animation type) -> the skill its hits train; fists (0) and staffs (8) train none.
@@ -282,6 +292,103 @@ func increment_skill(av: int, count: int) -> Dictionary:
 	return out
 
 
+## Read `book` (a BOOK base the player carries), UESP Skyrim:Skill_Books and Spell_Tomes. Returns
+## {ok, kind ("skill", "spell" or "none"), consumed (the tome is used up: the caller removes it), reason,
+## skill (AV), spell, skill_increases, level_up_ready}; reason is "unknown" (no such book), "read" (a skill
+## book this game has read: no effect, any copy), "known" (the spell is known: the tome stays).
+## - a skill book raises its skill by 1 (Adjust Book Skill Points 5 [player] on the count) through
+##   increment_skill, which gives the character XP, and marks the book base read
+## - a spell tome teaches its spell and is used up
+func read_book(book: int) -> Dictionary:
+	var out := {"ok": false, "kind": "none", "consumed": false, "reason": "unknown", "skill": -1, "spell": 0,
+			"skill_increases": [], "level_up_ready": false}
+	var info := _data.item_info(book)
+	var flags := int(info.get("book_flags", 0))
+	if info.get("category", "") != "book":
+		return out
+	out["reason"] = ""
+	if flags & BOOK_TEACHES_SKILL:
+		out["kind"] = "skill"
+		out["skill"] = int(info.get("book_skill", -1))
+		if _data.book_read(book):
+			out["reason"] = "read"
+			return out
+		_data.mark_book_read(book)
+		var count := roundi(_data.perk_entry(EP_ADJUST_BOOK_SKILL_POINTS, [ProgressionData.PLAYER_REF, 0, 0], 1.0))
+		var raised := increment_skill(int(out["skill"]), count)
+		out["skill_increases"] = raised["skill_increases"]
+		out["level_up_ready"] = raised["level_up_ready"]
+		out["ok"] = true
+	elif flags & BOOK_TEACHES_SPELL:
+		out["kind"] = "spell"
+		out["spell"] = int(info.get("book_spell", 0))
+		if out["spell"] == 0:
+			return out
+		if _data.has_spell(out["spell"]):
+			out["reason"] = "known"
+			return out
+		_data.add_spell(out["spell"])
+		out["consumed"] = true
+		out["ok"] = true
+	return out
+
+
+## One training session with `trainer` (a reference): {skill (AV, -1: teaches nothing), level (the skill's base),
+## max_level (the trainer's), cost, sessions_left, gold, reason ("" if possible, else "none", "sessions" -> sCanNotTrainAnymore,
+## "level" -> sCanNotTrainHigher, "gold" -> sInsufficientGoldToTrain)}.
+func training_info(trainer: int) -> Dictionary:
+	var clas := _data.trainer_class(trainer)
+	var skill := int(clas.get("teaches", -1))
+	var out := {"skill": skill, "level": 0, "max_level": int(clas.get("max_training_level", 0)), "cost": 0,
+			"sessions_left": 0, "gold": _data.gold(), "reason": "none"}
+	if not is_skill(skill):
+		return out
+	var level := int(_data.base_av(skill))
+	out["level"] = level
+	out["cost"] = training_cost(level)
+	out["sessions_left"] = maxi(TRAININGS_PER_LEVEL - int(_data.progress()["trainings"]), 0)
+	if out["sessions_left"] <= 0:
+		out["reason"] = "sessions"
+	elif level >= int(out["max_level"]) or level >= MAX_SKILL:
+		out["reason"] = "level"
+	elif out["gold"] < out["cost"]:
+		out["reason"] = "gold"
+	else:
+		out["reason"] = ""
+	return out
+
+
+## The gold of one session at skill level `level` (UESP Skyrim:Trainers, one session of n(10b + 5n + 45) and its
+## expert and master forms): fTrainingMultCost * b * (1, iTrainingExpertCost above 50, iTrainingMasterCost above 75) + 50.
+func training_cost(level: int) -> int:
+	var mult := 1
+	if level > MASTER_FROM:
+		mult = _data.gmst_int("iTrainingMasterCost", 5)
+	elif level > EXPERT_FROM:
+		mult = _data.gmst_int("iTrainingExpertCost", 3)
+	return roundi(_data.gmst_float("fTrainingMultCost", 10.0) * mult * level) + TRAINING_BASE_COST
+
+
+## Train once: the gold goes from the player to the trainer, the skill goes up by 1 (increment_skill: character XP
+## too) and the session counts. Returns training_info's dictionary plus {ok, skill_increases, level_up_ready}.
+func train(trainer: int) -> Dictionary:
+	var out := training_info(trainer)
+	out["ok"] = false
+	out["skill_increases"] = []
+	out["level_up_ready"] = false
+	if out["reason"] != "":
+		return out
+	if not _data.pay_gold(trainer, int(out["cost"])):
+		out["reason"] = "gold"
+		return out
+	_data.set_trainings(int(_data.progress()["trainings"]) + 1)
+	var raised := increment_skill(int(out["skill"]), 1)
+	out["skill_increases"] = raised["skill_increases"]
+	out["level_up_ready"] = raised["level_up_ready"]
+	out["ok"] = true
+	return out
+
+
 ## Spend the banked level on Health 24, Magicka 25 or Stamina 26: XP -= threshold, level + 1,
 ## that attribute + iAVDhmsLevelUp (Stamina also CarryWeight + fLevelUpCarryWeightMod), one
 ## perk point, the three attributes restored. Callable again while still ready. Returns
@@ -300,6 +407,7 @@ func level_up(attribute_av: int) -> Dictionary:
 	if attribute_av == STAMINA:
 		_data.mod_base_av(CARRY_WEIGHT, _data.gmst_float("fLevelUpCarryWeightMod", 5.0))
 	_data.set_perk_points(int(p["perk_points"]) + 1)
+	_data.set_trainings(0)  # the sessions are per level
 	for a in [HEALTH, MAGICKA, STAMINA]:
 		_data.restore_av(a)
 	return {"ok": true, "level": level + 1, "reason": ""}
