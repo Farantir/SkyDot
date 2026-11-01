@@ -84,6 +84,8 @@ func _run(pack_dir: String) -> void:
 		quit(1)
 		return
 	node.animation_event.connect(func(event: String) -> void: _events.append(event))
+	# Where it stands before the player comes within its aggro radius (under load it may run to him within 60 frames).
+	var home := node.global_position
 	# Stand within its aggro radius, on the ground.
 	# A spot 5 m off with a clear line from the wolf's eyes to the player's (trees and rocks stand about).
 	var space := node.get_world_3d().direct_space_state
@@ -96,7 +98,6 @@ func _run(pack_dir: String) -> void:
 			break
 	await _frames(60)
 	expect(papyrus.get_actor_value(WOLF, "Aggression") == 0, "the wolf is unaggressive: its aggro radius makes it attack")
-	var home := node.global_position
 	var waited := await _until(func() -> bool: return _session.ai.get_combat_state(WOLF) == 1, 15.0)
 	expect(waited >= 0.0, "the wolf enters combat with the player")
 	var hit_time := await _until(func() -> bool: return _hits.any(func(h: Dictionary) -> bool: return h["result"]["attacker"] == WOLF), 30.0)
