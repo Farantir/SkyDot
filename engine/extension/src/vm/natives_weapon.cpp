@@ -1,26 +1,20 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // Weapon natives.
-#include "vm/natives_common.hpp"
-#include "vm/papyrus.hpp"
+#include "vm/natives_args.hpp"
+#include "vm/natives_families.hpp"
 
-namespace skydot {
+namespace skydot::vm {
 
-void SkydotPapyrus::bind_weapon_natives() {
-    using vm::NativeCall;
-    using vm::NativeResult;
+void bind_weapon_natives(Vm& v, WorldEvents& events) {
     using namespace natives;
-    [[maybe_unused]] auto& v = *vm_;
-    [[maybe_unused]] const auto arg = natives::arg;
     // Fire(akSource, akAmmo): the game layer launches the ammo's projectile
     // from the source. Both may be 0 (None); the game layer decides what that
     // means for the weapon.
-    v.bind("Weapon", "Fire", [this, arg](NativeCall& c) {
-        emit_signal("fire_weapon", static_cast<std::int64_t>(c.self.form()),
-                    static_cast<std::int64_t>(arg(c, 0).form()),
-                    static_cast<std::int64_t>(arg(c, 1).form()));
+    v.bind("Weapon", "Fire", [&events](NativeCall& c) {
+        events.fire_weapon(c.self.form(), arg(c, 0).form(), arg(c, 1).form());
         return NativeResult{};
     });
 }
 
-} // namespace skydot
+} // namespace skydot::vm

@@ -23,6 +23,9 @@ public:
     virtual void message(const std::string& text, bool box, bool help) = 0;
     /// EffectShader.Play (`play`) or Stop on `target` (the `effect_shader` signal).
     virtual void effect_shader(std::uint32_t shader, std::uint32_t target, bool play) = 0;
+    /// Weapon.Fire: launch `ammo`'s projectile from `source` (either may be 0;
+    /// the game layer decides what that means) (the `fire_weapon` signal).
+    virtual void fire_weapon(std::uint32_t weapon, std::uint32_t source, std::uint32_t ammo) = 0;
 };
 
 } // namespace skydot::vm

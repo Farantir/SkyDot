@@ -23,4 +23,7 @@ void bind_debug_natives(Vm& vm, const WorldAccess& world, WorldEvents& events);
 /// EffectShader.Play and Stop.
 void bind_effectshader_natives(Vm& vm, WorldEvents& events);
 
+/// Weapon.Fire.
+void bind_weapon_natives(Vm& vm, WorldEvents& events);
+
 } // namespace skydot::vm

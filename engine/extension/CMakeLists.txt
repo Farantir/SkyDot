@@ -126,6 +126,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/natives_world.cpp
     src/vm/natives_noop.cpp
     src/vm/natives_debug.cpp
+    src/vm/natives_weapon.cpp
     src/vm/natives_effectshader.cpp
     src/vm/natives_utility.cpp
     src/state/ref_states.hpp
@@ -286,7 +287,6 @@ target_sources(skydot PRIVATE
     src/session/streamer.hpp
     src/vm/natives_actor_extra.cpp
     src/vm/natives_sound.cpp
-    src/vm/natives_weapon.cpp
     src/vm/natives_form.cpp
     src/vm/natives_game.cpp
     src/vm/papyrus_activation.cpp
