@@ -144,10 +144,17 @@ func _run(pack_dir: String) -> void:
 			expect(papyrus.transfer(archer_ref, PLAYER, form, 1) > 0, "his melee weapon goes")
 		expect(not papyrus.ranged_weapon(archer_ref).is_empty(), "he has a bow now")
 		_session.kill_actor(BANDIT)
+		# The player must be the archer's only foe, or its arrows go to someone else.
+		for other in node.get_parent().find_children("*", "SkydotActor", true, false):
+			var other_ref: int = other.get_meta("skydot_ref", 0)
+			if other_ref != 0 and other_ref != archer_ref and other_ref != PLAYER and not papyrus.is_actor_dead(other_ref):
+				_session.kill_actor(other_ref)
 		await _frames(10)
-		archer.teleport(home)
+		archer.teleport(home - forward * 3.0)  # 9 m from the player: outside the bow's back-off distance
 		archer.face(atan2(-forward.x, -forward.z))
 		var arrows_before := _arrows.size()
+		var on_player := await _until(func() -> bool: return ai.get_combat_target(archer_ref) == PLAYER, 15.0)
+		expect(on_player >= 0.0, "the archer fights the player")
 		var shot := await _until(func() -> bool: return _arrows.size() > arrows_before, 30.0)
 		print("archer 0x%X: first arrow after %s s; states %s" % [archer_ref, shot, _states])
 		expect(shot >= 0.0, "an arrow leaves the archer's bow")
