@@ -16,6 +16,28 @@ const MSAA_NAMES := ["off", "2", "4", "8"]
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
 const AA_NAMES := ["off", "fxaa", "smaa"]
 
+## --npc-give: `count` of `form` go to the actor `ref`.
+class NpcGive:
+	var ref: int
+	var form: int
+	var count: int
+
+	func _init(ref_: int, form_: int, count_: int) -> void:
+		ref = ref_
+		form = form_
+		count = count_
+
+
+## --equip-spell: the player equips the spell `form` in `hand` (Magic.LEFT, RIGHT, POWER).
+class SpellEquip:
+	var form: int
+	var hand: int
+
+	func _init(form_: int, hand_: int) -> void:
+		form = form_
+		hand = hand_
+
+
 ## Why the options cannot be used; empty when they can.
 var error := ""
 ## --from-shot: the note stored with the shot, to print.
@@ -119,11 +141,11 @@ var attack_at := 0  # --attack-at 0xREF[,power]: face that actor and attack once
 var attack_power := false
 var fight: Array[int] = []  # --fight 0xREF[,...]: those actors fight the player after the load
 var strip_melee: Array[int] = []  # --strip-melee 0xREF[,...]: those actors lose their melee weapons
-var npc_give: Array[Dictionary] = []  # --npc-give 0xREF:0xFORM[xN],...: {ref, form, count}
+var npc_give: Array[NpcGive] = []  # --npc-give 0xREF:0xFORM[xN],...
 var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
-var equip_spell: Array[Dictionary] = []  # --equip-spell 0xFORM[,left|right|power]: {form, hand} (Magic.RIGHT by default)
+var equip_spell: Array[SpellEquip] = []  # --equip-spell 0xFORM[,left|right|power] (Magic.RIGHT by default)
 var cast_at := 0  # --cast-at 0xREF[,left|right]: ready the hands, face that actor, cast the hand's spell at it
 var cast_at_hand := 1
 var teach_word: Array[int] = []  # --teach-word 0xWOOP[,...]: the player learns those words of power (known, locked)
@@ -219,6 +241,37 @@ func _read(args: Dictionary) -> void:
 		error = "usage: -- --pack DIR (--cell EDITOR_ID | --world EDITOR_ID --at X,Y,Z)" \
 			+ " [--screenshot out.png]"
 		return
+	_read_run(args)
+	_read_ui(args)
+	_read_actors(args)
+	if not error.is_empty():
+		return
+	_read_magic(args)
+	stick_look_speed = maxf(args.get("stick-look-speed", "3").to_float(), 0.0)
+	invert_look_y = args.has("invert-look-y")
+	interactive = not (captures or has_activate or args.has("no-input"))
+	_read_render(args)
+	_read_shots(args)
+	if not error.is_empty():
+		return
+	_read_place(args)
+
+
+## A form id: "0x" and hex digits, or decimal.
+static func _form(text: String) -> int:
+	return text.hex_to_int() if text.begins_with("0x") else text.to_int()
+
+
+## A comma list of form ids; empty entries are dropped unless `keep_empty`.
+static func _forms(text: String, keep_empty := false) -> Array[int]:
+	var out: Array[int] = []
+	for entry: String in text.split(",", keep_empty):
+		out.append(_form(entry))
+	return out
+
+
+## What the run is: the pack, the capture, and the actions that end it.
+func _read_run(args: Dictionary) -> void:
 	pack = args["pack"]
 	cell = args.get("cell", "")
 	world = args.get("world", "")
@@ -230,23 +283,24 @@ func _read(args: Dictionary) -> void:
 	captures = has_screenshot or has_benchmark
 	has_activate = args.has("activate")
 	if has_activate:
-		for id in args["activate"].split(","):
-			activate.append(id.hex_to_int() if id.begins_with("0x") else id.to_int())
+		activate.append_array(_forms(args["activate"], true))
 	for entry: String in args.get("damage", "").split(",", false):
 		var eq := entry.find("=")
-		var ref_text := entry if eq < 0 else entry.substr(0, eq)
-		var ref: int = ref_text.hex_to_int() if ref_text.begins_with("0x") else ref_text.to_int()
+		var ref := _form(entry if eq < 0 else entry.substr(0, eq))
 		damage.append(Vector2(ref, entry.substr(eq + 1).to_float() if eq >= 0 else 1.0))
 		has_activate = true  # a run with damage ends by itself
 	for entry: String in args.get("give", "").split(",", false):
 		var cut := entry.find("x", 2)  # 0xFORMxN: the count follows the second x
-		var form_text := entry if cut < 0 else entry.substr(0, cut)
-		var form: int = form_text.hex_to_int() if form_text.begins_with("0x") else form_text.to_int()
+		var form := _form(entry if cut < 0 else entry.substr(0, cut))
 		give.append(Vector2i(form, maxi(1, entry.substr(cut + 1).to_int()) if cut >= 0 else 1))
 	start_quests = PackedStringArray(String(args.get("start-quest", "")).split(",", false))
 	difficulty = clampi(args.get("difficulty", "2").to_int(), 0, 5)
 	activate_wait = maxi(0, args.get("activate-wait", "0").to_int())
 	quit_after = maxi(0, args["quit-after"].to_int()) if args.has("quit-after") else -1
+
+
+## The menus and screens the run opens.
+func _read_ui(args: Dictionary) -> void:
 	hud = args.has("hud") or not captures
 	open_inventory = args.has("open-inventory")
 	open_magic = args.has("open-magic")
@@ -255,49 +309,59 @@ func _read(args: Dictionary) -> void:
 	grant_xp = float(args.get("grant-xp", "0"))
 	grant_perks = int(args.get("grant-perks", "0"))
 	crafting_category = args.get("crafting-category", "")
-	for entry: String in args.get("learn-enchantment", "").split(",", false):
-		learn_enchantment.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	learn_enchantment.append_array(_forms(args.get("learn-enchantment", "")))
 	if args.has("open-container"):
-		var container_text: String = args["open-container"]
-		open_container = container_text.hex_to_int() if container_text.begins_with("0x") else container_text.to_int()
+		open_container = _form(args["open-container"])
 	if args.has("talk"):
-		var talk_text: String = args["talk"]
-		talk = talk_text.hex_to_int() if talk_text.begins_with("0x") else talk_text.to_int()
+		talk = _form(args["talk"])
+
+
+## The actors the run fights, gives to, spawns or casts at; sets `error` on a bad --damage-actor.
+func _read_actors(args: Dictionary) -> void:
 	ready_weapon = args.has("ready-weapon") or args.has("attack-at")
 	if args.has("attack-at"):
 		var parts: PackedStringArray = String(args["attack-at"]).split(",")
-		attack_at = parts[0].hex_to_int() if parts[0].begins_with("0x") else parts[0].to_int()
+		attack_at = _form(parts[0])
 		attack_power = parts.size() > 1 and parts[1] in ["power", "1", "true"]
-	for entry: String in args.get("kill", "").split(",", false):
-		kill.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in args.get("fight", "").split(",", false):
-		fight.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in args.get("strip-melee", "").split(",", false):
-		strip_melee.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+	kill.append_array(_forms(args.get("kill", "")))
+	fight.append_array(_forms(args.get("fight", "")))
+	strip_melee.append_array(_forms(args.get("strip-melee", "")))
 	for entry: String in args.get("npc-give", "").split(",", false):
 		var halves: PackedStringArray = entry.split(":")
 		if halves.size() == 2:
 			var cut: int = halves[1].rfind("x")
 			var has_count := cut > 1
-			npc_give.append({"ref": halves[0].hex_to_int(),
-				"form": (halves[1].substr(0, cut) if has_count else halves[1]).hex_to_int(),
-				"count": halves[1].substr(cut + 1).to_int() if has_count else 1})
-	for entry: String in args.get("npc-draw", "").split(",", false):
-		npc_draw.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in args.get("equip", "").split(",", false):
-		equip.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+			npc_give.append(NpcGive.new(halves[0].hex_to_int(),
+				(halves[1].substr(0, cut) if has_count else halves[1]).hex_to_int(),
+				halves[1].substr(cut + 1).to_int() if has_count else 1))
+	npc_draw.append_array(_forms(args.get("npc-draw", "")))
+	equip.append_array(_forms(args.get("equip", "")))
+	kill_after = maxf(0.0, str(args.get("kill-after", "0")).to_float())
+	spawn_distance = maxf(0.5, str(args.get("spawn-distance", str(SpawnActors.DISTANCE))).to_float())
+	spawn.append_array(_forms(args.get("spawn", "")))
+	drink.append_array(_forms(args.get("drink", "")))
+	for entry: String in args.get("cast", "").split(",", false):
+		var halves: PackedStringArray = entry.split("@")
+		cast.append({"spell": _form(halves[0]), "target": 0 if halves.size() < 2 else _form(halves[1])})
+	for entry: String in args.get("damage-actor", "").split(",", false):
+		var parts: PackedStringArray = entry.split(":")
+		if parts.size() != 3 or parts[1].is_empty():
+			error = "--damage-actor wants 0xREF:ActorValue:AMOUNT, got " + entry
+			return
+		damage_actor.append({"ref": _form(parts[0]), "av": parts[1], "amount": parts[2].to_float()})
+
+
+## The player's spells, words and shouts.
+func _read_magic(args: Dictionary) -> void:
 	for entry: String in str(args.get("equip-spell", "")).split(",", false):
 		if entry in ["left", "right", "power"] and not equip_spell.is_empty():
-			equip_spell[-1]["hand"] = _hand_of(entry)  # the hand of the form before it
+			equip_spell[-1].hand = _hand_of(entry)  # the hand of the form before it
 		else:
-			equip_spell.append({"form": entry.hex_to_int() if entry.begins_with("0x") else entry.to_int(), "hand": 1})
-	for entry: String in str(args.get("teach-word", "")).split(",", false):
-		teach_word.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in str(args.get("unlock-word", "")).split(",", false):
-		unlock_word.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
+			equip_spell.append(SpellEquip.new(_form(entry), 1))
+	teach_word.append_array(_forms(str(args.get("teach-word", ""))))
+	unlock_word.append_array(_forms(str(args.get("unlock-word", ""))))
 	if args.has("equip-shout"):
-		var shout_text: String = args["equip-shout"]
-		equip_shout = shout_text.hex_to_int() if shout_text.begins_with("0x") else shout_text.to_int()
+		equip_shout = _form(args["equip-shout"])
 	if args.has("dragon-souls"):
 		dragon_souls = maxi(0, str(args["dragon-souls"]).to_int())
 	shout_side = str(args.get("shout-side", "0")).to_int()
@@ -306,32 +370,15 @@ func _read(args: Dictionary) -> void:
 		var shout_parts: PackedStringArray = String(args["shout"]).split(",")
 		shout_words = clampi(shout_parts[0].to_int(), 1, 3)
 		if shout_parts.size() > 1:
-			shout_at = shout_parts[1].hex_to_int() if shout_parts[1].begins_with("0x") else shout_parts[1].to_int()
+			shout_at = _form(shout_parts[1])
 	if args.has("cast-at"):
 		var cast_parts: PackedStringArray = String(args["cast-at"]).split(",")
-		cast_at = cast_parts[0].hex_to_int() if cast_parts[0].begins_with("0x") else cast_parts[0].to_int()
+		cast_at = _form(cast_parts[0])
 		cast_at_hand = _hand_of(cast_parts[1]) if cast_parts.size() > 1 else 1
-	kill_after = maxf(0.0, str(args.get("kill-after", "0")).to_float())
-	spawn_distance = maxf(0.5, str(args.get("spawn-distance", str(SpawnActors.DISTANCE))).to_float())
-	for entry: String in args.get("spawn", "").split(",", false):
-		spawn.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in args.get("drink", "").split(",", false):
-		drink.append(entry.hex_to_int() if entry.begins_with("0x") else entry.to_int())
-	for entry: String in args.get("cast", "").split(",", false):
-		var halves: PackedStringArray = entry.split("@")
-		cast.append({"spell": halves[0].hex_to_int() if halves[0].begins_with("0x") else halves[0].to_int(),
-			"target": 0 if halves.size() < 2 else (halves[1].hex_to_int() if halves[1].begins_with("0x") else halves[1].to_int())})
-	for entry: String in args.get("damage-actor", "").split(",", false):
-		var parts: PackedStringArray = entry.split(":")
-		if parts.size() != 3 or parts[1].is_empty():
-			error = "--damage-actor wants 0xREF:ActorValue:AMOUNT, got " + entry
-			return
-		damage_actor.append({"ref": parts[0].hex_to_int() if parts[0].begins_with("0x") else parts[0].to_int(),
-			"av": parts[1], "amount": parts[2].to_float()})
-	stick_look_speed = maxf(args.get("stick-look-speed", "3").to_float(), 0.0)
-	invert_look_y = args.has("invert-look-y")
-	interactive = not (captures or has_activate or args.has("no-input"))
 
+
+## What is built, the sky and the render quality.
+func _read_render(args: Dictionary) -> void:
 	materials = args.get("materials", "on") != "off"
 	effects = args.get("effects", "on") != "off"
 	grass = args.get("grass", "on") != "off"
@@ -376,6 +423,9 @@ func _read(args: Dictionary) -> void:
 	preload_doors = args.get("preload-doors", "off" if captures else "on") != "off"
 	preload_distance = args.get("preload-distance", "15").to_float()
 
+
+## Saving, loading and the shot camera; sets `error` on a bad --shot-camera.
+func _read_shots(args: Dictionary) -> void:
 	save_to = args.get("save-to", "")
 	load_path = args.get("load", "")
 	shot_delay = args.get("shot-delay", "0").to_float()
@@ -386,7 +436,6 @@ func _read(args: Dictionary) -> void:
 	fly_speed = args.get("fly-speed", "20").to_float()
 	shot_dir = args.get("shot-dir", "user://screenshots")
 	shot_notes = args.get("shot-notes", "on") != "off"
-
 	if args.has("shot-camera") and args.has("shot-look"):
 		var from = _vec3(args["shot-camera"])
 		var to = _vec3(args["shot-look"])
@@ -396,6 +445,10 @@ func _read(args: Dictionary) -> void:
 		has_shot_camera = true
 		shot_camera = from
 		shot_look = to
+
+
+## Where to start; sets `error` on a bad --at or --target.
+func _read_place(args: Dictionary) -> void:
 	has_at = args.has("at")
 	if has_at:
 		var value = _vec3(args["at"])

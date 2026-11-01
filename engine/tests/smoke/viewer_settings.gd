@@ -109,8 +109,21 @@ func _captures() -> void:
     expect(magic.cast.size() == 2 and magic.cast[0] == {"spell": 0x12FCD, "target": 0x39FE4}
         and magic.cast[1] == {"spell": 0x12FCC, "target": 0}, "--cast lists spell and target, 0 for self")
     var spells := parse(["--pack", "p", "--cell", "C", "--equip-spell", "0x12FCD,left,0x12FD0,0x1234,power", "--cast-at", "0x3B9F7,left"])
-    expect(spells.equip_spell == [{"form": 0x12FCD, "hand": 0}, {"form": 0x12FD0, "hand": 1}, {"form": 0x1234, "hand": 2}],
-        "--equip-spell lists forms, each with its hand (right by default): %s" % [spells.equip_spell])
+    var forms_hands: Array[Vector2i] = []
+    for entry in spells.equip_spell:
+        forms_hands.append(Vector2i(entry.form, entry.hand))
+    expect(forms_hands == [Vector2i(0x12FCD, 0), Vector2i(0x12FD0, 1), Vector2i(0x1234, 2)],
+        "--equip-spell lists forms, each with its hand (right by default): %s" % [forms_hands])
+    var gifts := parse(["--pack", "p", "--cell", "C", "--npc-give", "0x1A:0x12E49x3,0x1B:0x12E4A", "--kill", "0x10,20", "--spawn", "0x5,7",
+        "--open-container", "0x30", "--talk", "40", "--attack-at", "0x50,power", "--cast", "0x60@0x70,0x61", "--equip", "0x80"])
+    expect(gifts.npc_give.size() == 2 and gifts.npc_give[0].ref == 0x1A and gifts.npc_give[0].form == 0x12E49
+        and gifts.npc_give[0].count == 3 and gifts.npc_give[1].ref == 0x1B and gifts.npc_give[1].form == 0x12E4A
+        and gifts.npc_give[1].count == 1, "--npc-give reads REF:FORM[xN] into typed entries")
+    expect(gifts.kill == [0x10, 20] and gifts.spawn == [5, 7] and gifts.open_container == 0x30 and gifts.talk == 40
+        and gifts.attack_at == 0x50 and gifts.attack_power and gifts.equip == [0x80],
+        "forms are hex with 0x and decimal without, in lists too")
+    expect(gifts.cast.size() == 2 and gifts.cast[0]["spell"] == 0x60 and gifts.cast[0]["target"] == 0x70
+        and gifts.cast[1]["spell"] == 0x61 and gifts.cast[1]["target"] == 0, "--cast reads SPELL[@TARGET]")
     expect(spells.cast_at == 0x3B9F7 and spells.cast_at_hand == 0, "--cast-at names the actor and the hand")
     var plain := parse(["--pack", "p", "--cell", "C", "--cast-at", "0x3B9F7"])
     expect(plain.cast_at_hand == 1 and plain.equip_spell.is_empty(), "--cast-at casts with the right hand by default")

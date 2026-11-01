@@ -42,11 +42,11 @@ func apply() -> void:
 		var result := _session.cast_spell(entry["spell"], entry["target"])
 		print("--cast: 0x%08X %s %s" % [entry["spell"], "cast" if result["ok"] else "refused", result["reason"]])
 	_attack_at = _settings.attack_at
-	for entry: Dictionary in _settings.equip_spell:
-		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry["form"]):
-			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry["form"])
-		print("--equip-spell: 0x%08X in hand %d: %s" % [entry["form"], entry["hand"],
-			"ok" if _session.equip_spell(entry["form"], entry["hand"]) else "cannot be equipped"])
+	for entry: ViewerSettings.SpellEquip in _settings.equip_spell:
+		if not _session.papyrus.has_spell(SkydotPapyrus.PLAYER_REF, entry.form):
+			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry.form)
+		print("--equip-spell: 0x%08X in hand %d: %s" % [entry.form, entry.hand,
+			"ok" if _session.equip_spell(entry.form, entry.hand) else "cannot be equipped"])
 	if _settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
 	if _settings.shout_wait.is_empty():
@@ -56,8 +56,8 @@ func apply() -> void:
 	_kill_in = _settings.kill_after
 	if _kill_in <= 0.0:
 		_kill_now()
-	for entry: Dictionary in _settings.npc_give:
-		_session.papyrus.add_item(entry["ref"], entry["form"], entry["count"])
+	for entry: ViewerSettings.NpcGive in _settings.npc_give:
+		_session.papyrus.add_item(entry.ref, entry.form, entry.count)
 	for ref in _settings.strip_melee:
 		while _session.papyrus.melee_weapon(ref) != 0:
 			if _session.papyrus.transfer(ref, SkydotPapyrus.PLAYER_REF, _session.papyrus.melee_weapon(ref), 1) <= 0:
