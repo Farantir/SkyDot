@@ -76,5 +76,7 @@ if [[ ! -f "$project/.godot/extension_list.cfg" ]]; then
     "$godot" --headless --path "$project" --import >/dev/null 2>&1 || true
 fi
 
+export SKYDOT_BETHCONV="$bethconv"
+
 echo "== starting the pack tool ($godot, $preset)"
 exec "$godot" --path "$project" "${godot_args[@]}"

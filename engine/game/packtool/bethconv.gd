@@ -32,8 +32,8 @@ var _readers: Array[Thread] = []
 var _queries: Array[Thread] = []
 
 
-## Pick the binary: `preferred` if it exists, else one next to this program,
-## else a converter build in the source tree (release first).
+## Pick the binary: `preferred` if it exists, else $SKYDOT_BETHCONV, else one
+## next to this program, else a converter build in the source tree (release first).
 func locate(preferred: String = "") -> String:
 	path = ""
 	for candidate in candidates(preferred):
@@ -48,6 +48,11 @@ static func candidates(preferred: String = "") -> PackedStringArray:
 	var out := PackedStringArray()
 	if not preferred.is_empty():
 		out.append(preferred)
+	# tools/packtool.sh names the converter it built, since the overlay project
+	# it runs (engine/build/play-project) is not where the path below assumes.
+	var from_env := OS.get_environment("SKYDOT_BETHCONV")
+	if not from_env.is_empty():
+		out.append(from_env)
 	out.append(OS.get_executable_path().get_base_dir().path_join(exe))
 	# Running from the repository: engine/game -> converter/build/<preset>.
 	var repo := ProjectSettings.globalize_path("res://").path_join("../../converter/build").simplify_path()
