@@ -317,6 +317,7 @@ func _make_game_nodes() -> void:
 	projectiles = Projectiles.new(world, pack, world.find_ref_node)
 	host.add_child(projectiles)
 	sounds = Sounds.new(world, pack, world.find_ref_node, papyrus.new_sound_instance)
+	sounds.range_scale = config.sound_range
 	host.add_child(sounds)
 	speech = Speech.new(sounds, world.find_ref_node)
 	host.add_child(speech)

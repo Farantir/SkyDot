@@ -43,6 +43,9 @@
 # neutrally (saturation, brightness, contrast 1, no tint), as the game's frame
 # with SkyrimRemote's `@imagespace sat=1 bright=1 contrast=1 tint_amount=0`.
 # --volumetric off leaves out the weather's volumetric lighting haze (default on).
+# --sound-range FACTOR (0.25..8, default 1, the game's) stretches every
+# positional sound's fade distances: 2 is heard twice as far, with more
+# sounds playing at once.
 # Outside, SkydotWeather runs time and weather: --time HOURS (default 12) to
 # start at, --time-scale (game seconds per second, default 20, 0 stops time),
 # --weather EDITOR_ID to keep one weather; otherwise the region's or

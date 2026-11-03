@@ -50,6 +50,8 @@ var _looped := {}  # vpath -> the same stream, set to loop
 var _decoded := {}  # vpath -> AudioStream for load_stream, or null
 var _by_name := {}  # lowercase editor id -> SNDR id, 0 if there is none
 var _models := {}  # SOPM id -> its dictionary
+## Times every min and max distance (--sound-range): 1 is the game's.
+var range_scale := 1.0
 ## Where sounds are heard from; null: the viewport's current camera.
 var listener: Node3D
 var _live := {}  # instance -> {name, player, base_db, user_db, positional, loops, min, max, curve}
@@ -269,8 +271,8 @@ func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, 
 	var model := _model(descriptor["output_model"])
 	var positional := node is Node3D and (model.is_empty() or int(model["flags"]) & FLAG_ATTENUATES != 0)
 	var loops: bool = int(descriptor["looping"]) & LOOP != 0
-	var range_min := DEFAULT_MIN if model.is_empty() else float(model["min_distance"])
-	var range_max := DEFAULT_MAX if model.is_empty() else float(model["max_distance"])
+	var range_min := (DEFAULT_MIN if model.is_empty() else float(model["min_distance"])) * range_scale
+	var range_max := (DEFAULT_MAX if model.is_empty() else float(model["max_distance"])) * range_scale
 	var curve: Array = DEFAULT_CURVE if model.is_empty() or model["curve"].size() != 5 \
 		else Array(model["curve"])
 	if positional and not loops and _distance(node as Node3D) > range_max:

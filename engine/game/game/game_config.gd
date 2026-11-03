@@ -24,6 +24,7 @@ var combat := true  # actors that see an enemy fight (SkydotAi.set_combat)
 var has_tiling := false
 var tiling := 0.0  # land texture repeats per cell
 var foliage_bias := 0.5  # mip levels blurrier for alpha-tested trees and grass
+var sound_range := 1.0  # times the output models' distances: how far positional sounds carry
 var shadows := true  # the sun's, outside
 
 # How the world streams.
