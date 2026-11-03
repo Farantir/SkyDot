@@ -99,3 +99,13 @@ AGPL code is never linked.
 The engine carries an additional permission for script mods
 (`LICENSE-EXCEPTION.md`): mods made only of scripts and data that use only the
 mod API may use any licence. Native mods stay under the GPL.
+
+## AI Notice
+
+This Repository contains sourcecode that is in large parts AI generated or co-authored.
+
+## No Decompilation
+
+This Project only mimics the Behaviour of Skyrims Engine observed through playing the game, researching other community projects and inspecting the asset files. No Decompilation is used
+
+
