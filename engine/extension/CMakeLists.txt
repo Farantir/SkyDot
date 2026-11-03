@@ -356,7 +356,10 @@ get_target_property(_godotcpp_suffix godot-cpp GODOTCPP_SUFFIX)
 
 # Output goes straight to game/bin/, where the .gdextension file looks, so with
 # `reloadable = true` a rebuild reloads in the running editor. No install step.
-set(_output_dir "${CMAKE_SOURCE_DIR}/game/bin")
+# SKYDOT_OUTPUT_DIR moves it (linux-play: the overlay project's bin/, so the
+# optimised library never replaces the debug one in game/bin/).
+set(SKYDOT_OUTPUT_DIR "${CMAKE_SOURCE_DIR}/game/bin" CACHE PATH "Where the extension library is written")
+set(_output_dir "${SKYDOT_OUTPUT_DIR}")
 
 set_target_properties(skydot PROPERTIES
     CXX_VISIBILITY_PRESET hidden

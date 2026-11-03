@@ -21,5 +21,12 @@ else()
         -Wnull-dereference -Wdouble-promotion -Wformat=2 -Wimplicit-fallthrough)
     if(SKYDOT_WERROR)
         target_compile_options(skydot_warnings INTERFACE -Werror)
+        # gcc reports -Wnull-dereference in flatbuffers code inlined at -O2
+        # (vector.h), although the header is a system include: stays a
+        # warning there, so optimised builds do not need SKYDOT_WERROR=OFF.
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(skydot_warnings INTERFACE
+                $<$<NOT:$<CONFIG:Debug>>:-Wno-error=null-dereference>)
+        endif()
     endif()
 endif()

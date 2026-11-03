@@ -27,6 +27,19 @@
       }
     },
     {
+      "name": "linux-play",
+      "displayName": "Linux Play (optimised template_debug, for playing from the editor binary)",
+      "description": "What tools/packtool.sh starts: optimised like linux-release, but named template_debug so the editor binary loads it. The library lands in build/play-project/bin/, the overlay project packtool.sh runs, never in game/bin/. No tests.",
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "GODOTCPP_TARGET": "template_debug",
+        "GODOTCPP_USE_STATIC_CPP": "OFF",
+        "SKYDOT_BUILD_TESTS": "OFF",
+        "SKYDOT_OUTPUT_DIR": "${sourceDir}/build/play-project/bin"
+      }
+    },
+    {
       "name": "linux-release",
       "displayName": "Linux Release (template_release)",
       "inherits": "base",
@@ -71,6 +84,10 @@
     {
       "name": "linux-debug",
       "configurePreset": "linux-debug"
+    },
+    {
+      "name": "linux-play",
+      "configurePreset": "linux-play"
     },
     {
       "name": "linux-release",
