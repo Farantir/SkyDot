@@ -182,6 +182,11 @@ func _from_shot() -> void:
     expect(not s.large_refs and s.large_ref_radius == 4, "the shot's large reference options")
     expect(parse(["--from-shot", path, "--large-refs", "on"]).large_refs, "--large-refs wins over the shot's")
     expect(parse(["--from-shot", path, "--pack", "mine"]).pack == "mine", "--pack wins over the shot's")
+    # skycompare's still: the shot frozen, the actors held, a capture key does not disturb the reading
+    var still := parse(["--from-shot", path, "--no-input", "--fov", "50.53", "--time-scale", "0",
+            "--wander", "off", "--ai", "off", "--screenshot", "still.png"])
+    expect(still.error == "" and not still.interactive and not still.wander and not still.ai, "a frozen still")
+    expect(still.fov == 50.53 and still.time_scale == 0.0 and still.has_screenshot, "still fov, time, shot")
     file = FileAccess.open(path, FileAccess.WRITE)
     file.store_string(JSON.stringify({"format": 99}))
     file.close()

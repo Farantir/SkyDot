@@ -5,7 +5,10 @@
 # camera in engine and game terms, time, weather, viewer options, pack hashes,
 # GPU and the game console commands for the same spot. Shift+F12 leaves out
 # the text overlay. After the capture the viewer pauses and asks what is
-# wrong; Enter stores the text as the JSON's "note".
+# wrong; Enter stores the text as the JSON's "note" and, for skycompare, a
+# "capture" spec: kind, seconds, trigger and category from the dialog's row
+# (the category is remembered for the session) and an optional region dragged
+# on the frozen frame (right click clears it).
 # --screenshot FILE takes its shots on its own (FILE_0.png, ...) and quits.
 # With --shot-frames N (one view) it saves N frames instead, every
 # --shot-every rendered frames (FILE_0000.png, ...), to follow an effect over
@@ -16,6 +19,12 @@ extends RefCounted
 
 const SETTLE_FRAMES := 30  # for shaders to compile and textures to stream in
 const LOOK_PITCH := -0.15  # the four views of a cell, slightly down
+const CAPTURE_KINDS: Array[String] = ["still", "anim", "sound", "anim+sound"]
+const CAPTURE_CATEGORIES: Array[String] = ["lighting", "geometry", "fx", "physics", "actors", "ui", "audio", "other"]
+## Trigger presets of skycompare; one ending in ":" takes the text of the field next to the list.
+const CAPTURE_TRIGGERS: Array[String] = ["none", "cast:", "idle:", "activate:nearest-door", "time:", "weather:"]
+
+static var _last_category := CAPTURE_CATEGORIES.size() - 1  # remembered for the session
 
 var _host: Node3D
 var _settings: ViewerSettings
@@ -38,6 +47,15 @@ var _dialog: PanelContainer  # asks for a shot's note
 var _note_text: TextEdit
 var _note_json := ""  # the shot the note goes to
 var _note_mouse := Input.MOUSE_MODE_VISIBLE  # restored afterwards
+var _kind: OptionButton
+var _seconds: SpinBox
+var _trigger: OptionButton
+var _trigger_arg: LineEdit
+var _category: OptionButton
+var _region_layer: Control  # covers the frozen frame; the region is dragged on it
+var _region := Rect2()  # in viewport pixels; size zero = whole frame
+var _drag_from := Vector2.ZERO
+var _dragging := false
 
 
 func _init(host: Node3D, settings: ViewerSettings, world: SkydotWorld, rig: PlayerRig, place: Place,
@@ -169,7 +187,18 @@ func _ask_note(json_path: String) -> void:
 		_note_text.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 		_note_text.gui_input.connect(_note_input)
 		box.add_child(_note_text)
+		box.add_child(_capture_row())
+		var hint := Label.new()
+		hint.text = "Drag on the picture to mark the part to compare, right click clears it (none = whole frame)."
+		box.add_child(hint)
 		_dialog.add_child(box)
+		_region_layer = Control.new()
+		_region_layer.process_mode = Node.PROCESS_MODE_ALWAYS
+		_region_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_region_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+		_region_layer.gui_input.connect(_region_input)
+		_region_layer.draw.connect(_region_draw)
+		_debug.add_child(_region_layer)
 		_debug.add_child(_dialog)
 		_dialog.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM,
 			Control.PRESET_MODE_MINSIZE, 24)
@@ -180,8 +209,79 @@ func _ask_note(json_path: String) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_host.get_tree().paused = true  # time, weather and the player wait
 	_note_text.text = ""
+	_region = Rect2()
+	_dragging = false
+	_category.select(_last_category)
 	_dialog.visible = true
+	_region_layer.visible = true
+	_region_layer.queue_redraw()
 	_note_text.grab_focus()
+
+
+## kind, seconds, trigger and category of the capture spec.
+func _capture_row() -> HBoxContainer:
+	var row := HBoxContainer.new()
+	_kind = _options(CAPTURE_KINDS, "what skycompare captures")
+	_seconds = SpinBox.new()
+	_seconds.min_value = 1
+	_seconds.max_value = 30
+	_seconds.value = 3
+	_seconds.suffix = " s"
+	_seconds.tooltip_text = "seconds of an animation or sound"
+	_trigger = _options(CAPTURE_TRIGGERS, "what starts the animation or sound")
+	_trigger_arg = LineEdit.new()
+	_trigger_arg.placeholder_text = "form id, idle, hour or weather"
+	_trigger_arg.custom_minimum_size = Vector2(150, 0)
+	_category = _options(CAPTURE_CATEGORIES, "what the comparison is about")
+	for control in [_kind, _seconds, _trigger, _trigger_arg, _category]:
+		row.add_child(control)
+		control.focus_mode = Control.FOCUS_CLICK  # Tab stays in the note
+	return row
+
+
+func _options(items: Array[String], tip: String) -> OptionButton:
+	var button := OptionButton.new()
+	for item in items:
+		button.add_item(item)
+	button.tooltip_text = tip
+	return button
+
+
+## The "capture" key of the shot's JSON, from the dialog.
+func _capture_spec() -> Dictionary:
+	var trigger := CAPTURE_TRIGGERS[_trigger.selected]
+	if trigger.ends_with(":"):
+		var arg := _trigger_arg.text.strip_edges()
+		trigger = trigger + arg if not arg.is_empty() else "none"
+	var spec := {"kind": CAPTURE_KINDS[_kind.selected], "seconds": int(_seconds.value), "trigger": trigger,
+		"category": CAPTURE_CATEGORIES[_category.selected]}
+	if _region.has_area():
+		spec["region"] = [int(_region.position.x), int(_region.position.y), int(_region.end.x), int(_region.end.y)]
+	return spec
+
+
+func _region_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			_dragging = event.pressed
+			if event.pressed:
+				_drag_from = event.position
+				_region = Rect2(event.position, Vector2.ZERO)
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			_region = Rect2()
+			_dragging = false
+		_region_layer.queue_redraw()
+	elif event is InputEventMouseMotion and _dragging:
+		var size := _host.get_viewport().get_visible_rect().size
+		var to: Vector2 = event.position.clamp(Vector2.ZERO, size)
+		_region = Rect2(_drag_from.min(to), (to - _drag_from).abs())
+		_region_layer.queue_redraw()
+
+
+func _region_draw() -> void:
+	if _region.has_area():
+		_region_layer.draw_rect(_region, Color(1, 0.85, 0.2, 0.15), true)
+		_region_layer.draw_rect(_region, Color(1, 0.85, 0.2), false, 2.0)
 
 
 func _note_input(event: InputEvent) -> void:
@@ -198,17 +298,21 @@ func _note_input(event: InputEvent) -> void:
 
 func _end_note(save: bool) -> void:
 	var text := _note_text.text.strip_edges()
-	if save and not text.is_empty():
+	if save:
+		_last_category = _category.selected
 		var meta = JSON.parse_string(FileAccess.get_file_as_string(_note_json))
 		var file := FileAccess.open(_note_json, FileAccess.WRITE) if meta is Dictionary else null
 		if file != null:
-			meta["note"] = text
+			if not text.is_empty():
+				meta["note"] = text
+			meta["capture"] = _capture_spec()
 			file.store_string(JSON.stringify(meta, "  ") + "\n")
 			file.close()
 			_debug.note("note saved")
 		else:
 			_debug.note("note not saved: cannot write " + ProjectSettings.globalize_path(_note_json))
 	_dialog.visible = false
+	_region_layer.visible = false
 	_note_text.release_focus()
 	_host.get_tree().paused = false
 	Input.mouse_mode = _note_mouse
