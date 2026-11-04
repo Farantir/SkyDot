@@ -403,11 +403,13 @@ func _add_environment(cell: Dictionary) -> void:
 		env.set_meta("skydot_directional_ambient", cell["directional_ambient"])
 	interior_image_space = _world.get_image_space(cell.get("image_space", 0))
 	if lighting != null:
-		# Lit effects take no directional light indoors, only their own
-		# emittance (effect.gdshaderinc): with XCLL's directional colour the
-		# Bleak Falls Barrow mist came out bluer than the game's, and its
-		# cobwebs, which have no emittance, showed where the game's do not.
-		env.set_meta("skydot_effect_light", Vector3.ZERO)
+		# Lit effects take XCLL's directional colour indoors, except those
+		# lit by their own emittance (XEMI), which take none: with it the
+		# Bleak Falls Barrow mist came out greyer than the game's
+		# (effect.gdshaderinc).
+		var d: Color = lighting["directional"]
+		env.set_meta("skydot_effect_light", Vector3(d.r, d.g, d.b))
+		env.set_meta("skydot_effect_light_xemi", Vector3.ZERO)
 		env.ambient_light_color = lighting["ambient"]
 		env.ambient_light_energy = 1.0
 		if lighting["fog_far"] > lighting["fog_near"]:

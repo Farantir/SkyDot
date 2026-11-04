@@ -841,6 +841,7 @@ void SkydotWeather::update_sky(double delta) {
     // Lit effects take the weather's sunlight as it is: no image-space scale,
     // and the moonlight at night (see effect.gdshaderinc).
     environment_->set_meta("skydot_effect_light", shader_rgb(mix(a.sunlight, b.sunlight)));
+    environment_->set_meta("skydot_effect_light_xemi", shader_rgb(mix(a.sunlight, b.sunlight)));
     environment_->set_meta("skydot_sky_upper", shader_rgb(mix(a.upper, b.upper)));
     environment_->set_meta("skydot_sky_horizon", shader_rgb(mix(a.horizon, b.horizon)));
     environment_->set_meta("skydot_sky_lower", shader_rgb(mix(a.lower, b.lower)));

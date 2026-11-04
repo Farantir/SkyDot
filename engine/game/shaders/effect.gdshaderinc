@@ -97,7 +97,15 @@ void vertex() {
 // 190/131/65); SkyDot now 21/15/10 there (it was 41/31/22 with the scene's
 // lights, which also lit the cobwebs the game hardly shows). SkyDot's mist
 // still covers about five times the game's area (open).
+// Inside, shapes without XEMI take the cell's directional colour (XCLL) as
+// DLightColor: with none, Bleak Falls Barrow's lit spider webs (lighting
+// influence 1, alpha blended) were black and its additive light beams
+// (FXAmbBeamDust) were gone. The mist (XEMI) keeps none (skydot_effect_light_xemi
+// zero inside): with the directional colour it came out greyer than the
+// game's. Point lights are left out: with them the mist and the cobwebs
+// above it came out several times the game's brightness.
 global uniform vec3 skydot_effect_light;
+global uniform vec3 skydot_effect_light_xemi;
 uniform float lighting_influence = 0.55;
 uniform bool external_emittance = false;
 instance uniform vec3 effect_emittance = vec3(0.0);
@@ -184,6 +192,9 @@ void fragment() {
 	ALPHA = alpha;
 #endif
 #ifdef SKYDOT_LIT
-	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * (1.1 * skydot_effect_light + (external_emittance ? effect_emittance : vec3(0.0))));
+	// The flag alone is set on most effect shapes (the webs too); only a
+	// reference with XEMI gives a colour.
+	bool emitting = external_emittance && any(greaterThan(effect_emittance, vec3(0.0)));
+	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * (emitting ? 1.1 * skydot_effect_light_xemi + effect_emittance : 1.1 * skydot_effect_light));
 #endif
 }
