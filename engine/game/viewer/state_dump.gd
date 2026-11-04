@@ -15,6 +15,12 @@ static func _id(value: int) -> String:
 	return "0x%08X" % value
 
 
+## The nif path as the dumps give it: lower case, "/" separators, without "meshes/".
+static func model_path(path: String) -> String:
+	var m := path.to_lower().replace("\\", "/")
+	return m.trim_prefix("meshes/")
+
+
 static func _cells_in(node: Node, out: Dictionary) -> void:
 	if node is Node3D and node.has_meta("skydot_cell"):
 		out[int(node.get_meta("skydot_cell"))] = true
@@ -55,23 +61,34 @@ static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float
 			if pos.distance_to(eye) > radius:
 				continue
 			var base: int = entry["base"]
-			refs.append({"id": _id(id), "base": _id(base),
-				"pos": [snappedf(pos.x, 0.1), snappedf(pos.y, 0.1), snappedf(pos.z, 0.1)],
-				"enabled": not entry["disabled"], "loaded3d": node != null})
 			var info: Dictionary = world.get_base(base)
+			var model := model_path(str(info.get("model", "")))
+			var edid := str(info.get("editor_id", ""))
+			var ident := {"model": model}
+			if edid != "":
+				ident["edid"] = edid
+			var ref_entry := {"id": _id(id), "base": _id(base),
+				"pos": [snappedf(pos.x, 0.1), snappedf(pos.y, 0.1), snappedf(pos.z, 0.1)],
+				"enabled": not entry["disabled"], "loaded3d": node != null}
+			ref_entry.merge(ident)
+			refs.append(ref_entry)
 			if info.get("light") is Dictionary:
 				var light: Dictionary = info["light"]
 				var color: Color = light["color"]
 				var fade: float = light["fade"]
-				lights.append({"id": _id(id), "base": _id(base),
+				var light_entry := {"id": _id(id), "base": _id(base),
 					"color": [snappedf(color.r, 0.001), snappedf(color.g, 0.001), snappedf(color.b, 0.001)],
 					"radius": roundf(light["radius"] / scale),
 					"fade": snappedf(fade if fade > 0.0 else 1.0, 0.001),
-					"shadow": (int(light["flags"]) & SHADOW_FLAGS) != 0})
-			if node != null:
+					"shadow": (int(light["flags"]) & SHADOW_FLAGS) != 0}
+				light_entry.merge(ident)
+				lights.append(light_entry)
+			if node != null and not model.contains("marker"):
 				var kind := effect_kind(node)
 				if kind != "":
-					effects.append({"id": _id(id), "kind": kind, "base": _id(base)})
+					var effect_entry := {"id": _id(id), "kind": kind, "base": _id(base)}
+					effect_entry.merge(ident)
+					effects.append(effect_entry)
 	for list in [refs, lights, effects]:
 		list.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["id"] < b["id"])
 	return {"engine": "skydot", "camera": [snappedf(eye.x, 0.1), snappedf(eye.y, 0.1), snappedf(eye.z, 0.1)],
