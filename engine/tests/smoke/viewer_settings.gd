@@ -186,6 +186,9 @@ func _from_shot() -> void:
     var still := parse(["--from-shot", path, "--no-input", "--fov", "50.53", "--time-scale", "0",
             "--wander", "off", "--ai", "off", "--screenshot", "still.png"])
     expect(still.error == "" and not still.interactive and not still.wander and not still.ai, "a frozen still")
+    var dumped := parse(["--from-shot", path, "--dump", "d.json", "--dump-radius", "2000", "--screenshot", "s.png"])
+    expect(dumped.dump == "d.json" and dumped.dump_radius == 2000.0, "--dump and --dump-radius")
+    expect(still.dump == "" and still.dump_radius == 4096.0, "no dump by default")
     expect(still.fov == 50.53 and still.time_scale == 0.0 and still.has_screenshot, "still fov, time, shot")
     file = FileAccess.open(path, FileAccess.WRITE)
     file.store_string(JSON.stringify({"format": 99}))

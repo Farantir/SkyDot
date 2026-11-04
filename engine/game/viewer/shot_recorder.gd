@@ -9,6 +9,7 @@
 # "capture" spec: kind, seconds, trigger and category from the dialog's row
 # (the category is remembered for the session) and an optional region dragged
 # on the frozen frame (right click clears it).
+# --dump FILE writes the state dump (state_dump.gd) just before the first shot.
 # --screenshot FILE takes its shots on its own (FILE_0.png, ...) and quits.
 # With --shot-frames N (one view) it saves N frames instead, every
 # --shot-every rendered frames (FILE_0000.png, ...), to follow an effect over
@@ -101,6 +102,13 @@ func step(delta: float) -> void:
 	if _views.size() == 1 and _settings.shot_frames > 1:
 		_step_series()
 		return
+	if not _settings.dump.is_empty() and _index == 0:
+		var dump := StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius)
+		if StateDump.write(_settings.dump, dump):
+			print("dump: ", _settings.dump, " ", dump["refs"].size(), " refs ", dump["lights"].size(), " lights ",
+				dump["effects"].size(), " effects")
+		else:
+			printerr("cannot write the dump ", _settings.dump)
 	var index := _index
 	_index += 1
 	print("perf: ", JSON.stringify(_debug.perf))

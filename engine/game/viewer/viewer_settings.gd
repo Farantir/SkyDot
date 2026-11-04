@@ -117,6 +117,8 @@ var save_to := ""  # saves when the --activate run ends
 var load_path := ""  # loads at start
 var has_screenshot := false
 var screenshot := ""
+var dump := ""  # --dump FILE: the state dump (StateDump) written with a --screenshot run
+var dump_radius := 4096.0  # --dump-radius: game units around the camera
 var shot_delay := 0.0  # seconds the world runs before --screenshot captures
 var shot_frames := 1  # --screenshot of one view: consecutive frames to save (an effect over time)
 var shot_every := 1  # of those, every this many rendered frames
@@ -431,6 +433,8 @@ func _read_render(args: Dictionary) -> void:
 func _read_shots(args: Dictionary) -> void:
 	save_to = args.get("save-to", "")
 	load_path = args.get("load", "")
+	dump = args.get("dump", "")
+	dump_radius = maxf(args.get("dump-radius", "4096").to_float(), 1.0)
 	shot_delay = args.get("shot-delay", "0").to_float()
 	shot_frames = maxi(args.get("shot-frames", "1").to_int(), 1)
 	shot_every = maxi(args.get("shot-every", "1").to_int(), 1)
