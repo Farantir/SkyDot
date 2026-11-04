@@ -64,7 +64,7 @@ static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float
 			var info: Dictionary = world.get_base(base)
 			var model := model_path(str(info.get("model", "")))
 			var edid := str(info.get("editor_id", ""))
-			var ident := {"model": model}
+			var ident := {"model": model, "type": str(info.get("type", "")), "name": str(info.get("name", ""))}
 			if edid != "":
 				ident["edid"] = edid
 			var ref_entry := {"id": _id(id), "base": _id(base),
