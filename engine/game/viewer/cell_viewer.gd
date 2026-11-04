@@ -284,6 +284,8 @@ func _create_components() -> void:
 	add_child(FadeLayer.new(_session.transition))  # the door fade (the session keeps its value)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
 		_session.clock, _debug)
+	_shots.session = _session
+	_shots.body = _body
 	if _settings.has_screenshot:
 		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"
 	_controls.capture_mouse()

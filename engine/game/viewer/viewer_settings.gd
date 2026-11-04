@@ -10,6 +10,7 @@ extends RefCounted
 const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
+const CAPTURE_FPS := 30.0
 const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon", "god", "shot-live"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
@@ -117,6 +118,8 @@ var save_to := ""  # saves when the --activate run ends
 var load_path := ""  # loads at start
 var has_screenshot := false
 var screenshot := ""
+var capture_seconds := 0.0  # --capture-seconds S: a live frame series of S seconds at 30 fps (skycompare)
+var trigger := "none"  # --trigger PRESET: what starts it ("cast:0xFORM"; "none")
 var dump := ""  # --dump FILE: the state dump (StateDump) written with a --screenshot run
 var dump_radius := 4096.0  # --dump-radius: game units around the camera
 var shot_delay := 0.0  # seconds the world runs before --screenshot captures
@@ -438,6 +441,17 @@ func _read_shots(args: Dictionary) -> void:
 	shot_delay = args.get("shot-delay", "0").to_float()
 	shot_frames = maxi(args.get("shot-frames", "1").to_int(), 1)
 	shot_every = maxi(args.get("shot-every", "1").to_int(), 1)
+	capture_seconds = maxf(args.get("capture-seconds", "0").to_float(), 0.0)
+	trigger = args.get("trigger", "none")
+	if trigger.begins_with("cast:"):
+		# the spell in the right hand, the hands drawn: the trigger presses the attack button
+		equip_spell.append(SpellEquip.new(trigger.trim_prefix("cast:").hex_to_int(), 1))
+		ready_weapon = true
+	if capture_seconds > 0.0:
+		# A frame series of the live game, one frame per 1/30 s (run with --fixed-fps 30).
+		shot_frames = ceili(capture_seconds * CAPTURE_FPS)
+		shot_every = 1
+		shot_live = true
 	for id in args.get("hide-refs", "").split(",", false):
 		hide_refs.append(id.hex_to_int())
 	fly_speed = args.get("fly-speed", "20").to_float()

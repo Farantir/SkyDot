@@ -41,6 +41,12 @@ var _views: Array[float] = []  # yaw of each shot still to take; NAN keeps the v
 var _delay := 0.0  # seconds the world runs before the first shot
 var _frames := 0
 var _index := 0
+var session: GameSession  # set by the viewer: the --trigger acts through it
+var body: Node3D  # the player's arms, set by the viewer: hidden during a cast trigger (the game's console cast has none)
+var _dumped := false
+var _triggered := false
+var _trigger_wait := 0
+var _pressed := false
 var _pending: Array[int] = []  # --shot-frames: PNG writes still running
 # F12
 var _busy := false
@@ -99,16 +105,17 @@ func step(delta: float) -> void:
 		if _frames == SETTLE_FRAMES - 1 and not _settings.hide_refs.is_empty():
 			_hide_refs(_host)
 		return
-	if _views.size() == 1 and _settings.shot_frames > 1:
-		_step_series()
-		return
-	if not _settings.dump.is_empty() and _index == 0:
+	if not _settings.dump.is_empty() and not _dumped:
+		_dumped = true
 		var dump := StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius)
 		if StateDump.write(_settings.dump, dump):
 			print("dump: ", _settings.dump, " ", dump["refs"].size(), " refs ", dump["lights"].size(), " lights ",
 				dump["effects"].size(), " effects")
 		else:
 			printerr("cannot write the dump ", _settings.dump)
+	if _views.size() == 1 and _settings.shot_frames > 1:
+		_step_series()
+		return
 	var index := _index
 	_index += 1
 	print("perf: ", JSON.stringify(_debug.perf))
@@ -128,6 +135,12 @@ func step(delta: float) -> void:
 ## --shot-frames: one frame of the series every --shot-every frames, then quit.
 ## The PNGs are written on worker threads so the frame rate stays even.
 func _step_series() -> void:
+	if _index == 0 and not _triggered:
+		if not _trigger_ready():
+			return
+		_triggered = true
+		_fire_trigger()
+	_trigger_step()
 	if (_frames - SETTLE_FRAMES) % _settings.shot_every != 0:
 		return
 	var image := _host.get_viewport().get_texture().get_image()
@@ -140,6 +153,57 @@ func _step_series() -> void:
 		WorkerThreadPool.wait_for_task_completion(task)
 	print("screenshots: %d frames, %s_0000.png .. %s" % [_index, _path.get_basename(), path.get_file()])
 	_host.get_tree().quit(0)
+
+
+## --trigger cast:0xFORM: the hands are drawn (by --ready-weapon, from the start); the series waits for
+## them, then the attack button goes down, as a finger would press it. A concentration spell is held to
+## the end; a fire-and-forget spell is released once charged (`_trigger_step`).
+func _trigger_ready() -> bool:
+	if not _settings.trigger.begins_with("cast:") or session == null:
+		return true
+	_trigger_wait += 1
+	_hide_arms()
+	return session.magic.ready_state() == Magic.Ready.READY or _trigger_wait > 300
+
+
+func _hide_arms() -> void:
+	if body != null and _settings.trigger.begins_with("cast:"):
+		for part in body.find_children("*", "MeshInstance3D", true, false):
+			if part.skin != null:  # the arms are skinned; the casting art is not
+				part.visible = false
+
+
+func _trigger_step() -> void:
+	_hide_arms()
+	if not _settings.trigger.begins_with("cast:") or session == null or not _pressed:
+		return
+	var spell := _settings.trigger.trim_prefix("cast:").hex_to_int()
+	if int(session.magic.info_of(spell).get("casting_type", 1)) != Magic.CAST_CONCENTRATION \
+			and session.magic.phase_of(Magic.RIGHT) == "charged":
+		session.attack_released()
+		_pressed = false
+
+
+func _write_frames_json(trigger_frame: int) -> void:
+	var file := FileAccess.open(_path.get_base_dir().path_join("frames.json"), FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify({"trigger_frame": trigger_frame, "fps": int(ViewerSettings.CAPTURE_FPS),
+			"trigger": _settings.trigger}) + "\n")
+		file.close()
+
+
+## --trigger, at the first frame of a --capture-seconds series; frames.json (next to the frames) says
+## which frame it was (the series starts there) and the frame rate.
+func _fire_trigger() -> void:
+	var spec := _settings.trigger
+	if spec.begins_with("cast:") and session != null:
+		_pressed = true
+		session.attack_pressed()
+		print("--trigger: attack with 0x%08X (hands %s)" % [spec.trim_prefix("cast:").hex_to_int(),
+			session.magic.ready_state()])
+	elif spec != "none":
+		printerr("--trigger: unknown or unsupported preset ", spec)
+	_write_frames_json(0)
 
 
 ## F12: the frame as a PNG and a JSON file describing it. The PNG is written
