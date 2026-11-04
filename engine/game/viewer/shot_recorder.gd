@@ -188,7 +188,7 @@ func _write_frames_json(trigger_frame: int) -> void:
 	var file := FileAccess.open(_path.get_base_dir().path_join("frames.json"), FileAccess.WRITE)
 	if file != null:
 		file.store_string(JSON.stringify({"trigger_frame": trigger_frame, "fps": int(ViewerSettings.CAPTURE_FPS),
-			"trigger": _settings.trigger}) + "\n")
+			"movie_frame": Engine.get_frames_drawn(), "trigger": _settings.trigger}) + "\n")
 		file.close()
 
 
@@ -201,6 +201,13 @@ func _fire_trigger() -> void:
 		session.attack_pressed()
 		print("--trigger: attack with 0x%08X (hands %s)" % [spec.trim_prefix("cast:").hex_to_int(),
 			session.magic.ready_state()])
+	elif spec.begins_with("activate:") and session != null:
+		var ref := 0
+		if spec != "activate:nearest-door":
+			ref = spec.trim_prefix("activate:").hex_to_int()
+		else:
+			ref = StateDump.nearest_door(StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius))
+		print("--trigger: activate 0x%08X: %s" % [ref, session.activate_ref(ref, true)])
 	elif spec != "none":
 		printerr("--trigger: unknown or unsupported preset ", spec)
 	_write_frames_json(0)

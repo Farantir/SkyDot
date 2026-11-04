@@ -95,6 +95,22 @@ static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float
 		"radius": radius, "refs": refs, "lights": lights, "effects": effects}
 
 
+## The enabled, built DOOR ref nearest to the camera (0 if none), from a `build` result: the same pick skycompare
+## makes for the game from the dump.
+static func nearest_door(dump: Dictionary) -> int:
+	var eye := Vector3(dump["camera"][0], dump["camera"][1], dump["camera"][2])
+	var best := 0
+	var best_distance := INF
+	for ref: Dictionary in dump["refs"]:
+		if ref.get("type") != "DOOR" or not ref["enabled"] or not ref["loaded3d"]:
+			continue
+		var d := Vector3(ref["pos"][0], ref["pos"][1], ref["pos"][2]).distance_squared_to(eye)
+		if d < best_distance:
+			best_distance = d
+			best = String(ref["id"]).hex_to_int()
+	return best
+
+
 static func write(path: String, dump: Dictionary) -> bool:
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
