@@ -296,6 +296,11 @@ public:
     /// depend on it.
     void reuse(const AssetSlot& slot);
 
+    /// Keep an entry of the pack's earlier index whose path this run does not
+    /// convert (a skipped pass, outside --filter), if its asset is still
+    /// stored. False if it is not.
+    bool keep(const VpathEntry& entry);
+
     void fail(PackFailure failure);
     void warn(PackWarning warning);
 

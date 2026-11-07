@@ -140,6 +140,23 @@ void PackWriter::reuse(const AssetSlot& slot) {
     }
 }
 
+bool PackWriter::keep(const VpathEntry& entry) {
+    const auto hash = parse_hex_hash(entry.hex);
+    if (!hash || !store_.contains(*hash)) {
+        return false;
+    }
+    index_.push_back(IndexEntry{.vpath = entry.vpath, .hex = entry.hex, .kind = entry.kind, .source = entry.source});
+    switch (entry.kind) {
+    case AssetKind::mesh: ++stats_.meshes; break;
+    case AssetKind::texture: ++stats_.textures; break;
+    case AssetKind::script: ++stats_.scripts; break;
+    case AssetKind::lod: ++stats_.lod; break;
+    case AssetKind::animation: ++stats_.animations; break;
+    case AssetKind::sound: ++stats_.sounds; break;
+    }
+    return true;
+}
+
 void PackWriter::fail(PackFailure failure) {
     if (is_unsupported(failure)) {
         ++stats_.unsupported;

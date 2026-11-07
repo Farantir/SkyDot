@@ -8,6 +8,9 @@
 #include "bethconv/animation/animation_data.hpp"
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/pack/inputs.hpp"
+#include "bethconv/pack/vpath_index.hpp"
+
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
@@ -84,6 +87,39 @@ namespace {
         return AssetKind::sound;
     }
     return std::nullopt;
+}
+
+/// The world and texture records of the manifest a pack already has (none if
+/// there is none or it does not read).
+[[nodiscard]] PackManifest read_old_manifest(const std::filesystem::path& path) {
+    PackManifest out;
+    auto mapped = io::MappedFile::open(path);
+    if (!mapped) {
+        return out;
+    }
+    const auto bytes = mapped->bytes();
+    const auto doc = nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
+                                           reinterpret_cast<const char*>(bytes.data()) + bytes.size(),
+                                           nullptr, false);
+    if (!doc.is_object()) {
+        return out;
+    }
+    if (const auto t = doc.find("textures"); t != doc.end() && t->is_object()) {
+        out.textures = TextureRecord{.max_size = t->value("max_size", 0U),
+                                     .complete_mip_chains = t->value("complete_mip_chains", false),
+                                     .uncompressed = t->value("uncompressed", std::string("keep"))};
+    }
+    if (const auto w = doc.find("world"); w != doc.end() && w->is_object()) {
+        const auto hash = parse_hex_hash(w->value("hash", std::string()));
+        if (hash) {
+            out.world = WorldRecord{.cells = w->value("cells", std::uint64_t{0}),
+                                    .refs = w->value("refs", std::uint64_t{0}),
+                                    .bases = w->value("bases", std::uint64_t{0}),
+                                    .file_bytes = w->value("bytes", std::uint64_t{0}),
+                                    .hash = *hash};
+        }
+    }
+    return out;
 }
 
 /// Hash a file on disk for the manifest, without holding it.
@@ -569,6 +605,30 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                          .hash = options.hash_archives && !is_directory
                                      ? hash_file(source.path, options.converter)
                                      : std::nullopt});
+    }
+
+    // ---- what this run leaves alone ----------------------------------
+    // A run that skips a pass (--no-meshes, --no-world, ...) or converts only
+    // --filter keeps the pack's index entries, world and texture record for
+    // what it did not touch; without this a world-only run left an empty
+    // vpath.idx. --prune means "only this run's".
+    if (!options.prune_orphans) {
+        if (auto old = VpathIndex::read(options.out / "vpath.idx"); old) {
+            for (const auto& entry : old->entries()) {
+                const bool filtered_out =
+                    !options.filter.empty() && entry.vpath.find(options.filter) == std::string::npos;
+                if (filtered_out || !kind_of(entry.vpath, extension_of_vpath(entry.vpath), options)) {
+                    writer->keep(entry);
+                }
+            }
+        }
+        const auto old_manifest = read_old_manifest(options.out / "manifest.json");
+        if (!options.convert_textures && !manifest.textures && old_manifest.textures) {
+            manifest.textures = old_manifest.textures;
+        }
+        if (!options.write_world && !manifest.world && old_manifest.world) {
+            manifest.world = old_manifest.world;
+        }
     }
 
     auto stats = writer->finish(manifest);

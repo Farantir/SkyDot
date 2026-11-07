@@ -130,6 +130,12 @@ nlohmann::json read_json(const std::filesystem::path& path) {
     return nlohmann::json::parse(in);
 }
 
+std::string read_text(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    REQUIRE(in.good());
+    return {std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+}
+
 /// The set of asset files on disk, by their `<bb>/<hash><ext>` names.
 /// Stored assets as "<hex><ext>", whichever layout the pack uses.
 std::set<std::string> assets_in(const std::filesystem::path& root) {
@@ -257,6 +263,47 @@ TEST_CASE("each pass can be turned off on its own", "[convert]") {
         CHECK_FALSE(read_json(out.path() / "pack" / "manifest.json").contains("world"));
         // Assets-only still writes assets (for re-testing without a merge).
         CHECK(result->pack.converted == 5);
+    }
+}
+
+TEST_CASE("a run that skips passes keeps the pack's index and records for them", "[convert]") {
+    Fixture fixture;
+    TempDir out;
+    const auto pack = out.path() / "pack";
+    REQUIRE(convert(fixture.set, fixture.order(), options_for(pack)).has_value());
+    const auto full_index = read_text(pack / "vpath.idx");
+    const auto full = read_json(pack / "manifest.json");
+
+    SECTION("world only") {
+        auto options = options_for(pack);
+        options.convert_meshes = options.convert_textures = options.convert_scripts = false;
+        options.convert_lod = options.convert_animations = options.convert_sounds = false;
+        REQUIRE(convert(fixture.set, fixture.order(), options).has_value());
+        CHECK(read_text(pack / "vpath.idx") == full_index);
+        const auto again = read_json(pack / "manifest.json");
+        // Counts of what the pack holds; "bytes" is what this run converted.
+        for (const auto* key : {"distinct", "index_entries", "meshes", "textures", "scripts", "animations", "sounds"}) {
+            CHECK(again["assets"][key] == full["assets"][key]);
+        }
+        CHECK(again["textures"] == full["textures"]);
+        CHECK(again["world"]["hash"] == full["world"]["hash"]);
+    }
+
+    SECTION("assets only keeps the world record") {
+        auto options = options_for(pack);
+        options.write_world = false;
+        REQUIRE(convert(fixture.set, fixture.order(), options).has_value());
+        CHECK(read_text(pack / "vpath.idx") == full_index);
+        CHECK(read_json(pack / "manifest.json")["world"] == full["world"]);
+    }
+
+    SECTION("prune keeps only this run's") {
+        auto options = options_for(pack);
+        options.convert_meshes = false;
+        options.prune_orphans = true;
+        const auto result = convert(fixture.set, fixture.order(), options);
+        REQUIRE(result.has_value());
+        CHECK(result->pack.meshes == 0);
     }
 }
 
