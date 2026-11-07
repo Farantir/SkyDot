@@ -70,10 +70,15 @@ echo "== building the engine extension ($preset)"
     { [[ -d build/$preset ]] || cmake --preset "$preset"; } &&
     cmake --build --preset "$preset")
 
-# Godot only loads extensions an editor scan has listed.
-if [[ ! -f "$project/.godot/extension_list.cfg" ]]; then
-    echo "== first start: scanning the project"
+# Godot only loads extensions and global classes (class_name) an editor scan
+# has listed: scan on the first start and whenever a script is newer than the
+# class cache, or a new class_name stays undeclared and its users fail to load.
+cache="$project/.godot/global_script_class_cache.cfg"
+if [[ ! -f "$project/.godot/extension_list.cfg" || ! -f "$cache" ]] ||
+    [[ -n "$(find -L "$project" -path "$project/.godot" -prune -o -name '*.gd' -newer "$cache" -print -quit)" ]]; then
+    echo "== scripts changed: scanning the project"
     "$godot" --headless --path "$project" --import >/dev/null 2>&1 || true
+    touch "$cache"  # the scan leaves an unchanged cache untouched
 fi
 
 export SKYDOT_BETHCONV="$bethconv"
