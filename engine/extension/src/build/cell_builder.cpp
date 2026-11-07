@@ -88,10 +88,14 @@ constexpr float k_region_emittance_scale = 0.6F;
 // game's 0.23-0.27, where disabling the light in the game takes 0.02 off the
 // whole frame (skycompare 134202, 2026-11-07); the mist does not follow the
 // shadowed torch next to it either (effect.gdshaderinc). Unshadowed lights
-// still light the webs.
+// still light the webs. A light reaches a shape whose layers share any bit
+// with its cull mask, so the shapes sit on this layer alone: left on layer 1
+// as well they still took the spot, which then added 0.15 to the whole
+// frame's luma; on this layer alone it adds 0.022, its floor patch, as in the
+// game (0.020; 134202 at 0.263 against the game's 0.265).
 constexpr std::uint32_t k_effect_layer = 1U << 10U;
 
-// Puts the lit effect shapes under `node` on k_effect_layer as well.
+// Moves the lit effect shapes under `node` to k_effect_layer.
 void tag_effect_shapes(godot::Node* node) {
     const godot::TypedArray<godot::Node> shapes = node->find_children("*", "MeshInstance3D", true, false);
     for (int64_t i = 0; i < shapes.size(); ++i) {
@@ -102,7 +106,7 @@ void tag_effect_shapes(godot::Node* node) {
         for (int32_t s = 0; s < shape->get_mesh()->get_surface_count(); ++s) {
             const godot::Ref<godot::ShaderMaterial> m = shape->get_active_material(s);
             if (m.is_valid() && m->get_shader_parameter("lighting_influence").get_type() != godot::Variant::NIL) {
-                shape->set_layer_mask(shape->get_layer_mask() | k_effect_layer);
+                shape->set_layer_mask(k_effect_layer);
                 break;
             }
         }
