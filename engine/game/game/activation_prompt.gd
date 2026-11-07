@@ -16,6 +16,8 @@ const REQUIRES_KEY := 255
 const TAKEN := ["WEAP", "ARMO", "MISC", "ALCH", "INGR", "KEYM", "AMMO", "SLGM", "SCRL"]
 ## LightFlags bit 1: a lantern or torch that can be carried.
 const LIGHT_CARRIED := 2
+## The GMSTs furniture is worded with, and their Skyrim.esm English text.
+const FURNITURE_VERBS := {"sFurnitureSleep": "Sleep", "sUse": "Use", "sSit": "Sit"}
 
 var _world: SkydotWorld
 var _papyrus: SkydotPapyrus
@@ -83,7 +85,8 @@ func describe(cell: int, ref: int) -> Dictionary:
 			elif harvestable and _papyrus.harvested(ref):
 				verb = ""
 		"FURN":
-			verb = "Sleep" if _is_bed(base) else "Sit"
+			var setting := furniture_verb_setting(_is_bed(base), int(base.get("bench_type", 0)))
+			verb = _world.get_gmst_string(setting, FURNITURE_VERBS[setting])
 		"BOOK":
 			verb = "Read"
 		"LIGH":
@@ -100,6 +103,18 @@ func describe(cell: int, ref: int) -> Dictionary:
 		var key: int = lock["key"] if lock is Dictionary else 0
 		verb = "Unlock" if key != 0 and _papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, key) > 0 else "Pick lock"
 	return {"ref": ref, "verb": verb, "name": name, "lock_level": lock_level}
+
+
+## The GMST a piece of furniture's verb is: a bed sleeps, a workbench (a FURN
+## with a WBDT bench type: forge, tanning rack, cooking pot, enchanter...) is
+## used, anything else is sat on. In the game (checked 2026-11-07) the forge,
+## the armor workbench, the arcane enchanter and the cooking pot all say "Use".
+static func furniture_verb_setting(is_bed: bool, bench_type: int) -> String:
+	if is_bed:
+		return "sFurnitureSleep"
+	if bench_type != 0:
+		return "sUse"
+	return "sSit"
 
 
 ## "Novice" ... "Master", or "Requires key" for lock level 255.

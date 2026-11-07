@@ -14,6 +14,13 @@ func test_lock_text_levels() -> void:
             [24, "Novice"], [1, "Novice"], [0, "Novice"]]:
         expect_eq(ActivationPrompt.lock_text(c[0]), c[1], "level %d" % c[0])
 
+func test_furniture_verbs() -> void:
+    expect_eq(ActivationPrompt.furniture_verb_setting(true, 0), "sFurnitureSleep", "a bed")
+    expect_eq(ActivationPrompt.furniture_verb_setting(false, 0), "sSit", "a chair")
+    for bench in [1, 2, 3, 5, 7]:
+        expect_eq(ActivationPrompt.furniture_verb_setting(false, bench), "sUse", "bench type %d" % bench)
+    expect_eq(ActivationPrompt.FURNITURE_VERBS["sUse"], "Use", "the fallback text")
+
 func test_fake_papyrus_is_usable() -> void:
     var gear := ActorGear.new(Fakes.world(), Fakes.papyrus())
     expect(gear != null, "ActorGear takes the fakes")

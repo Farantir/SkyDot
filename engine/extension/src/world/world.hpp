@@ -89,7 +89,8 @@ public:
     /// disabled, persistent, enable_parent.
     godot::Array get_refs(std::int64_t cell_id) const;
     /// id, type, editor_id, model, light (Dictionary or null), flags, scripts
-    /// (as in get_ref_info). Empty if the base has no model, light or script.
+    /// (as in get_ref_info), bench_type (FURN WBDT, 0 if no workbench).
+    /// Empty if the base has no model, light or script.
     godot::Dictionary get_base(std::int64_t id) const;
 
     /// A load door: ref, cell, destination (the door it leads to),
