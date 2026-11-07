@@ -10,9 +10,9 @@
 // setup_sky() makes a sky-only weather for an interior with the "show sky"
 // flag: the weathers of one fixed region (the cell's XCCM) rotate, and only the
 // sky shows (Sky resource, clouds, stars, sun, moons). It has no environment,
-// sun light or precipitation of its own, is not in the group "skydot_weather",
-// and sets nothing on the caller's environment: the caller puts get_sky() on
-// its own.
+// sun light or precipitation of its own, sets nothing on the caller's
+// environment (the caller puts get_sky() on its own), and is in the group
+// "skydot_weather" as any weather: SkydotEmittance follows it.
 #pragma once
 
 #include "render/sun_path.hpp"
@@ -104,6 +104,9 @@ public:
     /// `weather`'s Effect Lighting colour (NAM0 index 9) at the running time
     /// of day (white if the pack has no such weather).
     godot::Color effect_light_of(std::int64_t weather) const;
+    /// The running weather's Effect Lighting colour, faded from the previous
+    /// weather's as the sky is.
+    godot::Color effect_light() const;
 
     void _ready() override;
     void _process(double delta) override;

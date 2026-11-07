@@ -372,15 +372,34 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
 
 void CellBuilder::apply_effect_emittance(godot::Node3D* node, const wfb::Ref& ref, std::uint32_t cell) {
     // XEMI naming a light: lit effect shaders take its colour x fade x
-    // k_effect_emittance_scale as their point light (effect.gdshaderinc). A
-    // region's (weather emittance) is handled with the reference's own light
-    // in place_ref.
+    // k_effect_emittance_scale as their point light (effect.gdshaderinc).
+    // XEMI naming a region: its weather's Effect Lighting colour, which a
+    // SkydotEmittance under the node keeps up to date (a light reference's
+    // region is handled with its own light in place_ref).
     const auto* c = data().cell_ptr(cell);
     if (!options_.effects || c == nullptr || c->light_emitters() == nullptr) {
         return;
     }
     const auto* e = lookup(c->light_emitters(), ref.id());
-    const auto* source = e != nullptr ? data().base_ptr(e->source()) : nullptr;
+    if (e == nullptr) {
+        return;
+    }
+    const auto* regions = data().root()->regions();
+    const auto* region = regions != nullptr ? lookup(regions, e->source()) : nullptr;
+    if (region != nullptr && region->weathers() != nullptr && region->weathers()->size() > 0) {
+        godot::PackedInt64Array weathers;
+        godot::PackedInt64Array chances;
+        for (const auto* w : *region->weathers()) {
+            weathers.push_back(w->weather());
+            chances.push_back(w->chance());
+        }
+        auto* emittance = memnew(SkydotEmittance);
+        emittance->set_name("SkydotEmittance");
+        emittance->configure(godot::Color(1, 1, 1), weathers, chances);
+        node->add_child(emittance);
+        return;
+    }
+    const auto* source = data().base_ptr(e->source());
     const auto* l = source != nullptr && source->has_light() ? source->light() : nullptr;
     if (l == nullptr) {
         return;

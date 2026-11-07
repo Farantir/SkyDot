@@ -158,6 +158,11 @@ godot::Color SkydotWeather::effect_light_of(std::int64_t weather) const {
     return found != nullptr ? sky_of(found).effect_light : godot::Color(1, 1, 1);
 }
 
+godot::Color SkydotWeather::effect_light() const {
+    const godot::Color to = effect_light_of(to_);
+    return from_ != 0 && transition_ < 1.0 ? effect_light_of(from_).lerp(to, static_cast<float>(transition_)) : to;
+}
+
 void SkydotWeather::_ready() {
     // Lights that follow a region's weather (SkydotEmittance) find it here.
     add_to_group("skydot_weather");
@@ -188,10 +193,8 @@ godot::Error SkydotWeather::setup_sky(const Ref<SkydotWorld>& pack_world, std::i
     }
     sky_only_ = true;
     fixed_region_ = found->id();
-    // Interiors have no business with lights that follow the weather.
-    if (is_in_group("skydot_weather")) {
-        remove_from_group("skydot_weather");
-    }
+    // It stays in the group: lights and effects whose XEMI names a region
+    // follow this weather inside too (SkydotEmittance).
     return configure(pack_world, found->world(), camera);
 }
 

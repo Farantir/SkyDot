@@ -55,7 +55,8 @@ interior (the Bleak Falls Barrow cave-ins). `Place` makes a sky-only
 that region's, the camera's position does not matter, and the climate of the
 region's worldspace gives sun, stars and moons. It draws only the sky (Sky
 resource, clouds, stars, sun, moons); it has no WorldEnvironment, sun light or
-precipitation, is not in the group `skydot_weather`, and leaves ambient, fog and
+precipitation, is in the group `skydot_weather` (lights and effects whose XEMI
+names a region take its Effect Lighting colour, `SkydotEmittance`), and leaves ambient, fog and
 the image space to the cell (XCLL, XCIM). `Place` puts `get_sky()` on the cell's
 environment as the background, with sky reflections off. The clock runs the
 time and `--weather` fixes the weather as outside.

@@ -89,8 +89,9 @@ void vertex() {
 // in). Adding the ambient does not: it fixes one waterfall's colour and breaks
 // the other's. Interiors have none (place.gd).
 // The point light is the reference's own emittance, for shapes flagged
-// External_Emittance (XEMI naming a LIGH: its colour x fade,
-// effect_emittance), not the lights around it: in Bleak Falls Barrow
+// External_Emittance (XEMI naming a LIGH: its colour x fade; naming a REGN:
+// its weather's Effect Lighting colour, SkydotEmittance; effect_emittance),
+// not the lights around it: in Bleak Falls Barrow
 // (game-refs-2026-10-19/s31_212820*) disabling the torch 190 units from the
 // mist FXFog01 changes the mist by 4/1/0 in the frame's centre, where the mist
 // adds 28/19/11 in the hue of its XEMI light (FXLightBleakDraugrTorch

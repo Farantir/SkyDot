@@ -9,8 +9,17 @@
 // whole frame at 13:12 (34/21/10 off the wall next to it), and SkyDot's light
 // times Effect Lighting takes 16/8/1 (34/18/4); at 22:00 the game 20/14/2,
 // SkyDot 27/19/5 (game-refs-2026-10-11, brazier_toggle.txt). The light is its
-// own colour times that colour; with no weather running (an interior) it stays
-// as it is.
+// own colour times that colour; with no weather running (an interior without
+// sky) it stays as it is. A show-sky interior's weather counts.
+//
+// Under a node that is no light (an effect whose XEMI names a region) it sets
+// the lit effect shaders' `effect_emittance` on the shapes below that node
+// instead (effect.gdshaderinc). When the running weather is one of the
+// region's, its colour is the running weather's: Bleak Falls Barrow's light
+// beams (XEMI WeatherMountains, its own sky region) add 0.553:1:1.146 of
+// green in the game at 4:44 under SkyrimCloudySN, whose night Effect Lighting
+// is 84/148/169 (0.568:1:1.142); the region's chance-weighted mean is
+// 0.74:1:1.04.
 #pragma once
 
 #include <godot_cpp/classes/node.hpp>
@@ -34,7 +43,8 @@ public:
     void configure(const godot::Color& gamma, const godot::PackedInt64Array& weathers,
                    const godot::PackedInt64Array& chances);
 
-    /// The tint now: the chance-weighted mean of the weathers' Effect Lighting colour
+    /// The tint now: the running weather's Effect Lighting colour if it is
+    /// one of the region's, else the chance-weighted mean of the weathers'
     /// at the running time of day, or white if no weather runs.
     godot::Color tint();
 

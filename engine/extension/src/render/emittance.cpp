@@ -5,9 +5,11 @@
 #include "render/materials.hpp"
 #include "render/weather.hpp"
 
+#include <godot_cpp/classes/geometry_instance3d.hpp>
 #include <godot_cpp/classes/light3d.hpp>
 #include <godot_cpp/classes/scene_tree.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/typed_array.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -46,6 +48,11 @@ godot::Color SkydotEmittance::tint() {
     if (weather == nullptr || weathers_.empty()) {
         return {1, 1, 1, 1};
     }
+    for (const auto& entry : weathers_) {
+        if (entry.first == weather->get_weather()) {
+            return weather->effect_light();
+        }
+    }
     double r = 0;
     double g = 0;
     double b = 0;
@@ -75,8 +82,8 @@ void SkydotEmittance::_process(double delta) {
 }
 
 void SkydotEmittance::apply() {
-    auto* light = godot::Object::cast_to<godot::Light3D>(get_parent());
-    if (light == nullptr) {
+    godot::Node* parent = get_parent();
+    if (parent == nullptr) {
         return;
     }
     const godot::Color t = tint();
@@ -84,6 +91,17 @@ void SkydotEmittance::apply() {
         return;
     }
     applied_ = t;
+    auto* light = godot::Object::cast_to<godot::Light3D>(parent);
+    if (light == nullptr) {
+        const godot::Vector3 emittance(gamma_.r * t.r, gamma_.g * t.g, gamma_.b * t.b);
+        const godot::TypedArray<godot::Node> shapes = parent->find_children("*", "GeometryInstance3D", true, false);
+        for (int64_t i = 0; i < shapes.size(); ++i) {
+            if (auto* shape = godot::Object::cast_to<godot::GeometryInstance3D>(shapes[i])) {
+                shape->set_instance_shader_parameter("effect_emittance", emittance);
+            }
+        }
+        return;
+    }
     light->set_visible(std::max({t.r, t.g, t.b}) > k_dark);
     SkydotMaterials::set_game_light(light, godot::Color(gamma_.r * t.r, gamma_.g * t.g, gamma_.b * t.b));
     if (auto* flicker = godot::Object::cast_to<SkydotFlicker>(light->get_node_or_null("SkydotFlicker"))) {
