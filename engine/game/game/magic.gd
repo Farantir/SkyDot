@@ -21,8 +21,9 @@
 # Projectiles by its type (missile and lobber fly with their speed and gravity, flames leave as
 # short bolts ten times a second from the casting hand's magic node while the PROJ's model is held
 # there, pointing the way the caster aims, a new one every relaunch interval (`_step_flames`); beams
-# are a ray, cones a cone test) and lands where it arrives; target actor and target location land
-# at the crosshair. An area (area_units)
+# are a ray, cones a cone test) and lands where it arrives; a shot that meets a destructible reference
+# damages it by the Health it would take (DamageObject: its destruction stages open); target actor
+# and target location land at the crosshair. An area (area_units)
 # lands on every actor within it around the impact, the explosion model of the spell's
 # effect (else its PROJ) appears there, and so does the effect's hit art. A scroll lands the
 # same way and is used up by its first landing (an aimed scroll that meets nothing is not).
@@ -65,6 +66,7 @@ const DELIVER_AIMED := 2
 const DELIVER_TARGET_ACTOR := 3
 const DELIVER_TARGET_LOCATION := 4
 const CAST_CONCENTRATION := 2
+const HEALTH := 24  # the actor value a damage spell lowers
 ## MGEF archetype of a summon creature effect.
 const ARCHETYPE_SUMMON := 18
 
@@ -761,7 +763,10 @@ func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictiona
 	var flame := int(proj["type"]) == PROJ_FLAME
 	_projectiles.shoot_spell(origin, direction, proj,
 		func(from: Vector3, to: Vector3) -> Dictionary: return _combat.segment_hit(caster, from, to),
-		func(ref: int, point: Vector3, _collider: Object) -> void: _impact(caster, hand, spell, info, ref, point),
+		func(ref: int, point: Vector3, collider: Object) -> void:
+			_impact(caster, hand, spell, info, ref, point)
+			if ref == 0:
+				_damage_object(_ref_of(collider), info),
 		reach, not flame, not flame)
 	if flame:
 		var key := caster * 4 + hand
@@ -773,6 +778,32 @@ func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictiona
 		held["aim"] = aim
 		held["forward"] = forward
 		held["left"] = TICK_SECONDS * 1.5
+
+
+## The reference a physics body belongs to (0: none).
+static func _ref_of(collider: Object) -> int:
+	var node := collider as Node
+	while node != null:
+		if node.has_meta("skydot_ref"):
+			return int(node.get_meta("skydot_ref"))
+		node = node.get_parent()
+	return 0
+
+
+## A spell met reference `ref`: a destructible one takes the Health the spell would take from an actor
+## in this landing (a hostile value modifier on Health: its magnitude, per tick for a concentration
+## spell), as DamageObject; its destruction stages open by it.
+func _damage_object(ref: int, info: Dictionary) -> void:
+	if ref == 0 or not bool(info.get("hostile", false)) or int(info.get("archetype", -1)) != 0 \
+			or int(info.get("actor_value", -1)) != HEALTH:
+		return
+	var base := int(_world.get_ref_info(_world.get_ref_cell(ref), ref).get("base", 0))
+	if base == 0 or _world.get_destruction(base).is_empty():
+		return
+	var amount := float(info.get("magnitude", 0.0))
+	if int(info.get("casting_type", 0)) == CAST_CONCENTRATION:
+		amount *= TICK_SECONDS
+	_papyrus.damage_ref(ref, amount)
 
 
 ## The first thing the crosshair's ray meets (an actor, else the world): {ref, point}; the point
