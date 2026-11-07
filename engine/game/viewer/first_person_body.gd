@@ -372,6 +372,34 @@ func _on_art(hand: int, model_path: String) -> void:
 	_art_nodes[hand] = attachment
 
 
+## The magic node of `hand` (Magic.LEFT, RIGHT) on the arms, where a held flame's spray leaves (hand
+## mode: that hand's controller); null without arms.
+func magic_node(hand: int) -> Node3D:
+	if _hand != null:
+		return _hand if hand == Magic.RIGHT else _left_hand
+	return bone_node(MAGIC_BONES.get(hand, ""))
+
+
+## A node that follows the arms' bone `bone` (MagicEffectsNode, the magic nodes), in the NIF units a
+## model built for it brings its own conversion from (as the casting art's holder); null without arms
+## or without that bone.
+func bone_node(bone: String) -> Node3D:
+	if _skeleton == null or bone.is_empty() or _skeleton.find_bone(bone) < 0:
+		return null
+	var name := "Bone_" + bone.validate_node_name()
+	var attachment := _skeleton.get_node_or_null(name) as BoneAttachment3D
+	if attachment == null:
+		attachment = BoneAttachment3D.new()
+		attachment.name = name
+		attachment.bone_name = bone
+		_skeleton.add_child(attachment)
+		var holder := Node3D.new()
+		holder.name = "Holder"
+		holder.transform = _units_transform().affine_inverse()
+		attachment.add_child(holder)
+	return attachment.get_node("Holder") as Node3D
+
+
 ## Play first-person clip `clip` (a name without path or extension); a loop for
 ## the idle.
 func _play(clip: String, loops: bool, speed: float) -> void:

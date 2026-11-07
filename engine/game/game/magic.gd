@@ -19,8 +19,10 @@
 # Delivery (CastInfo.delivery): self lands on the player; touch lands on the nearest actor in
 # front within a hand's reach; aimed launches the PROJ of the spell's costliest effect through
 # Projectiles by its type (missile and lobber fly with their speed and gravity, flames leave as
-# short bolts ten times a second, beams are a ray, cones a cone test) and lands where it
-# arrives; target actor and target location land at the crosshair. An area (area_units)
+# short bolts ten times a second from the casting hand's magic node while the PROJ's model is held
+# there, pointing the way the caster aims, a new one every relaunch interval (`_step_flames`); beams
+# are a ray, cones a cone test) and lands where it arrives; target actor and target location land
+# at the crosshair. An area (area_units)
 # lands on every actor within it around the impact, the explosion model of the spell's
 # effect (else its PROJ) appears there, and so does the effect's hit art. A scroll lands the
 # same way and is used up by its first landing (an aimed scroll that meets nothing is not).
@@ -70,8 +72,6 @@ const ARCHETYPE_SUMMON := 18
 const TICK_SECONDS := Casting.TICK_SECONDS
 ## Where the head is, as a fraction of an actor's height.
 const EYE_FRACTION := 0.93
-## Placeholder: seconds between the visual puffs of a held flame, which fill the stream between its shots.
-const PUFF_SECONDS := 1.0 / 60.0
 ## Placeholder: a touch spell's reach from the eyes in game units, and half its cone in degrees.
 const TOUCH_REACH_UNITS := 128.0
 const TOUCH_ANGLE := 50.0
@@ -95,6 +95,8 @@ const SOUND_HIT := 5
 const NPC_SHOUT_HELD := 99.0
 ## Seconds an explosion or hit art model stays.
 const EFFECT_SECONDS := 2.0
+## The magic nodes of the hands on a character's skeleton.
+const MAGIC_NODES := {LEFT: "NPC L MagicNode [LMag]", RIGHT: "NPC R MagicNode [RMag]"}
 const MASK := SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_CLUTTER | SkydotPlayer.LAYER_TERRAIN
 
 enum Ready { SHEATHED, READYING, READY }
@@ -139,6 +141,8 @@ var _projectiles: Projectiles
 var _casting: Casting
 var _player_state: PlayerState
 var _pointer: Callable  # () -> Node3D: where casts start and look from
+## (hand) -> Node3D: the player's magic node of that hand (the first-person arms'), or null. Set by the shell.
+var hand_node := Callable()
 var _warn := WarnOnce.new("magic: ")
 
 var _ready := Ready.SHEATHED
@@ -146,7 +150,7 @@ var _ready_time := 0.0
 var _ready_length := 0.0
 var _clip_left := 0.0  # seconds until a release clip is over and the idle returns
 var _art := {LEFT: "", RIGHT: ""}  # the models last announced per hand
-var _streams := {}  # caster * 4 + hand -> {caster, proj, origin, direction, reach, left, timer}: held flames still puffing
+var _flames := {}  # caster * 4 + hand -> {sprays: [{node, age}], caster, hand, origin, forward, proj, aim, left, relaunch}
 var _effects: Array[Dictionary] = []  # explosion and hit art models: {node, left}
 var _lengths := {}  # clip stem -> seconds
 var _clock := 0.0
@@ -211,7 +215,11 @@ func info_of(spell: int) -> Dictionary:
 ## A save was loaded or the game restarted: the held flames and the explosion and hit art of the game
 ## before it go. The hands, shout and caches stay (`on_items_changed` re-reads the hands). Silent.
 func reset() -> void:
-	_streams.clear()
+	for flame: Dictionary in _flames.values():
+		for spray: Dictionary in flame["sprays"]:
+			if is_instance_valid(spray["node"]):
+				spray["node"].queue_free()
+	_flames.clear()
 	for effect in _effects:
 		var node: Node = effect["node"]
 		if is_instance_valid(node):
@@ -422,7 +430,7 @@ func step(delta: float) -> void:
 	for hand in _casting.hands_of(PLAYER_REF):
 		_step_hand(hand, delta)
 	_step_shout(delta)
-	_step_streams(delta)
+	_step_flames(delta)
 	for effect in _effects.duplicate():
 		effect["left"] -= delta
 		if effect["left"] <= 0.0 or not is_instance_valid(effect["node"]):
@@ -431,20 +439,82 @@ func step(delta: float) -> void:
 			_effects.erase(effect)
 
 
-## Between two shots of a held flame, puff its model from the last shot's origin so the stream has no gaps.
-## A stream ends when the next shot does not renew it (the hand let go).
-func _step_streams(delta: float) -> void:
-	for key in _streams.keys():
-		var stream: Dictionary = _streams[key]
-		stream["left"] -= delta
-		if stream["left"] <= 0.0 or _projectiles == null:
-			_streams.erase(key)
-			continue
-		stream["timer"] += delta
-		while stream["timer"] >= PUFF_SECONDS:
-			stream["timer"] -= PUFF_SECONDS
-			_projectiles.shoot_spell(stream["origin"], stream["direction"], stream["proj"], Callable(), Callable(),
-				stream["reach"], false, true)
+## A held flame, as the game's FlameProjectile: every relaunch interval a new spray (the PROJ's model)
+## leaves at the casting hand's magic node. Each grows along the aim at the PROJ's speed until it meets
+## something or reaches the range (its SprayRange variable fFlameProjectileLength is that length over
+## the range) and goes when it has flown the range; all follow the hand and the aim. The flame ends
+## when the next shot does not renew it (the hand let go): its sprays stop emitting and fade.
+func _step_flames(delta: float) -> void:
+	for key in _flames.keys():
+		var flame: Dictionary = _flames[key]
+		flame["left"] -= delta
+		var held: bool = flame["left"] > 0.0 and _projectiles != null
+		var proj: Dictionary = flame["proj"]
+		var speed := float(proj["speed"]) * SkydotWorld.unit_scale()
+		var reach := float(proj["range"]) * SkydotWorld.unit_scale()
+		if held:
+			flame["relaunch"] -= delta
+			if flame["relaunch"] <= 0.0:
+				_relaunch(flame)
+		var place := _flame_place(flame)
+		for spray: Dictionary in flame["sprays"].duplicate():
+			spray["age"] += delta
+			var node: Node3D = spray["node"]
+			if not held or not is_instance_valid(node) or spray["age"] * speed >= reach:
+				if _projectiles != null:
+					_projectiles.stop_spray(node)
+				flame["sprays"].erase(spray)
+				continue
+			node.global_transform = place["at"]
+			var length := minf(spray["age"] * speed, place["distance"])
+			Projectiles.set_spray_length(node, clampf(length / reach, 0.0, 1.0) if reach > 0.0 else 1.0)
+		if not held:
+			_flames.erase(key)
+
+
+## A new spray of a held flame; the next one after the PROJ's relaunch interval.
+func _relaunch(flame: Dictionary) -> void:
+	var proj: Dictionary = flame["proj"]
+	var interval := float(proj.get("relaunch_interval", 0.0))
+	flame["relaunch"] += interval if interval > 0.0 else TICK_SECONDS
+	var node := _projectiles.spray(proj)
+	if node != null:
+		flame["sprays"].append({"node": node, "age": 0.0})
+		node.global_transform = _flame_place(flame)["at"]
+
+
+## Where a held flame's sprays are: at the caster's magic node of its hand (else where its last shot
+## left), pointing the way the caster aims (for the player the view now, for an NPC its last cast's
+## forward; not at the aimed point: a spray turned towards a web a hand's length ahead showed its
+## vapour cone from the side, which the game does not); `distance` how far the aimed point is.
+func _flame_place(flame: Dictionary) -> Dictionary:
+	var caster: int = flame["caster"]
+	var hand_at: Variant = _hand_position(caster, flame["hand"])
+	var origin: Vector3 = hand_at if hand_at != null else flame["origin"]
+	var direction: Vector3 = flame["forward"]
+	var aim: Vector3 = flame["aim"]
+	var pointer: Node3D = _pointer.call() if caster == PLAYER_REF and _pointer.is_valid() else null
+	if pointer != null and pointer.is_inside_tree():
+		direction = -pointer.global_transform.basis.z
+		aim = _aim_point(caster, pointer.global_position, direction)
+	return {"at": Transform3D(Projectiles.facing(direction), origin), "distance": origin.distance_to(aim)}
+
+
+## Where the caster's magic node of `hand` is (NPC L/R MagicNode): the player's from the shell's
+## `hand_node`, an NPC's from its skeleton. Null when there is none.
+func _hand_position(caster: int, hand: int) -> Variant:
+	if caster == PLAYER_REF:
+		var node: Node3D = hand_node.call(hand) if hand_node.is_valid() else null
+		return node.global_position if node != null and node.is_inside_tree() else null
+	var actor := _world.find_ref_node(caster) as Node3D
+	if actor == null or not actor.is_inside_tree():
+		return null
+	var bone_name: String = MAGIC_NODES.get(hand, "")
+	for skeleton: Skeleton3D in actor.find_children("*", "Skeleton3D", true, false):
+		var bone := skeleton.find_bone(bone_name)
+		if bone >= 0:
+			return skeleton.global_transform * skeleton.get_bone_global_pose(bone).origin
+	return null
 
 
 func _step_hand(hand: int, delta: float) -> void:
@@ -677,7 +747,10 @@ func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictiona
 	if _projectiles == null:
 		return
 	var side := -1.0 if hand == LEFT else (1.0 if hand == RIGHT else 0.0)
-	var origin := eye + forward * SHOT_AHEAD + right * SHOT_SIDE * side - Vector3.UP * SHOT_BELOW
+	# The game launches a flame from the casting hand's magic node (a web a hand's length ahead burns).
+	var hand_at: Variant = _hand_position(caster, hand) if int(proj["type"]) == PROJ_FLAME else null
+	var origin: Vector3 = hand_at if hand_at != null \
+		else eye + forward * SHOT_AHEAD + right * SHOT_SIDE * side - Vector3.UP * SHOT_BELOW
 	var blocked := _host.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(eye, origin, MASK))
 	if not blocked.is_empty():
 		origin = eye  # the hand is inside a wall: the shot leaves from the eyes
@@ -688,13 +761,18 @@ func _shoot(caster: int, hand: int, spell: int, info: Dictionary, proj: Dictiona
 	var flame := int(proj["type"]) == PROJ_FLAME
 	_projectiles.shoot_spell(origin, direction, proj,
 		func(from: Vector3, to: Vector3) -> Dictionary: return _combat.segment_hit(caster, from, to),
-		func(ref: int, point: Vector3) -> void: _impact(caster, hand, spell, info, ref, point),
-		reach, not flame)
+		func(ref: int, point: Vector3, _collider: Object) -> void: _impact(caster, hand, spell, info, ref, point),
+		reach, not flame, not flame)
 	if flame:
 		var key := caster * 4 + hand
-		var timer: float = _streams[key]["timer"] if _streams.has(key) else 0.0
-		_streams[key] = {"proj": proj, "origin": origin, "direction": direction, "reach": reach,
-			"left": TICK_SECONDS * 1.5, "timer": timer}
+		if not _flames.has(key):
+			_flames[key] = {"sprays": [], "caster": caster, "hand": hand, "relaunch": 0.0}
+		var held: Dictionary = _flames[key]
+		held["origin"] = origin
+		held["proj"] = proj
+		held["aim"] = aim
+		held["forward"] = forward
+		held["left"] = TICK_SECONDS * 1.5
 
 
 ## The first thing the crosshair's ray meets (an actor, else the world): {ref, point}; the point

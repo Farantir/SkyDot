@@ -212,7 +212,7 @@ func _run(pack_dir: String) -> void:
 	var burning := false
 	_max_live = 0
 	_landed.clear()
-	var puffs_before: int = _session.projectiles.puffs_spawned
+	var sprays_before: int = _session.projectiles.sprays_built
 	var destruction_before := float(papyrus.get_player_progress()["skill_xp"][20 - 6])
 	var destruction_level := papyrus.get_base_actor_value(PLAYER, "Destruction")
 	_session.attack_pressed()
@@ -229,9 +229,9 @@ func _run(pack_dir: String) -> void:
 		", bolts at most ", _max_live, ", landings ", _landed.size())
 	expect(monotonic and last < start_magicka - 5.0, "Magicka drains while it is held and never comes back")
 	expect(_max_live >= 1, "flame bolts fly")
-	var puffs: int = _session.projectiles.puffs_spawned - puffs_before
-	print("Flames puffs ", puffs, " for ", _landed.size(), " landings")
-	expect(puffs >= 5 * _landed.size(), "a held flame streams visual puffs between its shots: %d puffs, %d landings" % [puffs, _landed.size()])
+	var sprays: int = _session.projectiles.sprays_built - sprays_before
+	print("Flames sprays ", sprays, " for ", _landed.size(), " landings")
+	expect(sprays >= 2 and sprays <= int(held / 0.175) + 2, "a held flame relaunches its spray at the hand every relaunch interval (0.175 s): %d sprays in %.1f s" % [sprays, held])
 	expect(burning, "the skeever burns (FireDamageConcAimed)")
 	expect(float(papyrus.get_player_progress()["skill_xp"][20 - 6]) > destruction_before
 		or papyrus.get_base_actor_value(PLAYER, "Destruction") > destruction_level, "Flames on the skeever raised Destruction progress")

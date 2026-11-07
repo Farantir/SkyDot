@@ -243,13 +243,16 @@ func test_magic_frees_its_art() -> void:
 		var art := Node3D.new()
 		_host.add_child(art)
 		m._effects.append({"node": art, "left": 1.0})
-		m._streams[1] = {"left": 1.0}
+		var spray := Node3D.new()
+		_host.add_child(spray)
+		m._flames[1] = {"sprays": [{"node": spray, "age": 0.0}], "caster": 0x14, "hand": 1, "left": 1.0}
 		var heard := _watch_all(m)
 		if reset:
 			m.reset()
 		else:
 			m.on_place_left()
-		expect(m._effects.is_empty() and m._streams.is_empty(), "effects and streams (%s)" % reset)
+		expect(m._effects.is_empty() and m._flames.is_empty(), "effects and flames (%s)" % reset)
 		await get_tree().process_frame
 		expect(not is_instance_valid(art), "the art is freed (%s)" % reset)
+		expect(not is_instance_valid(spray), "the spray is freed (%s)" % reset)
 		_silent(heard, "Magic")

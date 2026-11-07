@@ -15,7 +15,6 @@ class_name Projectiles
 extends Node3D
 
 const MAX_LIVE := 64
-const MAX_PUFFS := 96  # visual-only puffs in flight; they count apart from MAX_LIVE and never push a shot out
 const STUCK_SECONDS := 30.0  # a stuck projectile is removed this long after it was fired
 const GRAVITY := 9.81  # m/s^2, times the projectile's gravity multiplier
 ## Nodes of a model that mark where its projectiles leave, by lowercase name part.
@@ -23,14 +22,17 @@ const MUZZLE_NAMES := ["projectile", "fire", "muzzle", "launch"]
 const MASK := 1 | 2 | 8  # world, clutter, terrain
 const FLAG_MUZZLE_FLASH := 0x8  # PROJ DATA flags
 const FLAG_PICKUP := 0x40  # PROJ DATA flags: can be picked up; the others vanish on impact
-const FLASH_FADE_SECONDS := 2.0  # a muzzle flash is freed this long after its emitters stop
+const FLASH_FADE_SECONDS := 2.0
+## A placed light's brightness per unit of fade, as the cell builder builds lights (k_light_fade_scale,
+## fitted on single game lights).
+const LIGHT_FADE_SCALE := 0.6  # a muzzle flash is freed this long after its emitters stop
 
 var _world: SkydotWorld
 var _pack: SkydotPack
 var _find_ref: Callable  # reference id -> its built node, or null
 var _live: Array[Dictionary] = []  # node, velocity (m/s), age, travelled (m), range (m), stuck, exclude
 var _warn := WarnOnce.new()
-var puffs_spawned := 0  # visual-only puffs launched so far (smoke tests read it)
+var sprays_built := 0  # flame sprays held at a hand so far (smoke tests read it)
 
 
 func _init(world: SkydotWorld, pack: SkydotPack, find_ref: Callable) -> void:
@@ -169,14 +171,17 @@ func shoot(ammo: int, origin: Vector3, direction: Vector3, proj: Dictionary, amm
 ## A spell's shot from `origin` along `direction`, made of the PROJ `proj` (SkydotWorld.get_projectile):
 ## its model, speed, gravity and range (`range_metres` > 0 shortens it). `actor_test` (from, to) ->
 ## {ref, point} or {} says whether the step enters an actor's body, as for `shoot`. At the impact
-## `on_impact(ref, point)` is called once, `ref` 0 when the shot met the world, and the shot is gone.
-## A shot that flies its range without meeting anything is gone silently. `flash`: also puff the
-## PROJ's muzzle flash (flames do not, they leave ten times a second). `puff`: a visual-only copy
-## (the stream between a flame's shots): no actor test, no callback, gone on the world or at its
-## range, and counted apart so it never pushes a shot out.
+## `on_impact(ref, point, collider)` is called once, `ref` 0 when the shot met the world (`collider`
+## what it met there, else null), and the shot is gone. A shot that flies its range without meeting
+## anything is gone silently. `flash`: also puff the PROJ's muzzle flash. `shown` false: the shot
+## has no model (a flame's shots: its spray is held at the hand, see `spray`).
 func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_test: Callable,
-		on_impact: Callable, range_metres := 0.0, flash := true, puff := false) -> void:
-	var model: Node3D = _world.build_model(proj["model"]) if proj["model"] != "" else null
+		on_impact: Callable, range_metres := 0.0, flash := true, shown := true) -> void:
+	var model: Node3D = null
+	if not shown:
+		model = Node3D.new()
+	elif proj["model"] != "":
+		model = _world.build_model(proj["model"])
 	if model == null:
 		_warn.once("nospellmodel%d" % int(proj["id"]), "spell projectile 0x%08X has no model" % int(proj["id"]))
 		model = _fallback_dart()
@@ -185,13 +190,8 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 	_cold_start(model)
 	add_child(model)
 	model.global_transform = Transform3D(facing(direction), origin)
-	if puff:
-		puffs_spawned += 1
-		while _count(true) >= MAX_PUFFS:
-			_remove(_first(true))
-	else:
-		while _count(false) >= MAX_LIVE:
-			_remove(_first(false))
+	while _live.size() >= MAX_LIVE:
+		_remove(0)
 	var reach := float(proj["range"]) * SkydotWorld.unit_scale()
 	if range_metres > 0.0:
 		reach = minf(reach, range_metres) if reach > 0.0 else range_metres
@@ -205,15 +205,103 @@ func shoot_spell(origin: Vector3, direction: Vector3, proj: Dictionary, actor_te
 		"range": reach,
 		"stuck": false,
 		"exclude": _bodies(model),  # a spray model brings colliders of its own
-		"puff": puff,
+		"actor_test": actor_test,
+		"on_hit": func(ref: int, point: Vector3) -> void: on_impact.call(ref, point, null),
+		"on_world": on_impact,
 	}
-	if not puff:
-		shot["actor_test"] = actor_test
-		shot["on_hit"] = on_impact
-		shot["on_world"] = on_impact
 	_live.append(shot)
 	if flash:
 		_muzzle_flash(proj, origin, direction)
+
+
+## A flame PROJ's model at a caster's hand, as the game's FlameProjectile shows it: at the casting
+## hand's magic node, pointing the way the caster aims, while the shots that land leave from there
+## (`shoot_spell` with `shown` false; Magic relaunches sprays). The caller places it every frame. Built cold, without the
+## PROJ's light (with MagicLightFireball01 a hand's length from a web, the web lit up white where the
+## game's stays grey). Its SprayRange behaviour runs: mSprayStart, and at its "end" key the cast
+## state, a blend of mSprayShort (1 - fFlameProjectileLength) and mSprayLong (fFlameProjectileLength),
+## which the caller sets with `set_spray_length`. Null when the PROJ has no model.
+func spray(proj: Dictionary) -> Node3D:
+	var path: String = proj.get("model", "")
+	var model := _world.build_model(path) if path != "" else null
+	if model == null:
+		_warn.once("nospray%d" % int(proj["id"]), "flame projectile 0x%08X has no model" % int(proj["id"]))
+		return null
+	_cold_start(model)
+	add_child(model)
+	model.set_meta("flame_length", 0.0)
+	var animator := model.get_node_or_null("SkydotAnimator")
+	if animator != null and animator.play("mSprayStart"):
+		animator.text_key.connect(func(clip: String, key: String) -> void:
+			if key == "end" and clip.nocasecmp_to("mSprayStart") == 0:
+				animator.play_blend("mSprayShort", "mSprayLong", model.get_meta("flame_length", 0.0)))
+	sprays_built += 1
+	return model
+
+
+## The SprayRange variable fFlameProjectileLength of a spray (0..1): the share of mSprayLong.
+static func set_spray_length(model: Node3D, length: float) -> void:
+	model.set_meta("flame_length", length)
+	var animator := model.get_node_or_null("SkydotAnimator")
+	if animator != null:
+		animator.set_blend_weight(length)
+
+
+## The hand let go: the spray's meshes go at once, its emitters stop and the model is removed once
+## the last particle has faded.
+func stop_spray(model: Node3D) -> void:
+	if not is_instance_valid(model):
+		return
+	for mesh in model.find_children("*", "MeshInstance3D", true, false):
+		(mesh as MeshInstance3D).visible = false
+	_stop_flash(model)
+
+
+## Play a model's NIF sequences as its magic behaviour graph does (BeginLoopEnd): the first now, each
+## next one when the one before reaches its "end" text key. False if the model has no animator or
+## not the first sequence.
+static func play_in_order(model: Node, sequences: Array) -> bool:
+	var animator := model.get_node_or_null("SkydotAnimator")
+	if animator == null or sequences.is_empty() or not animator.play(sequences[0]):
+		return false
+	animator.text_key.connect(func(clip: String, key: String) -> void:
+		var at := -1
+		for i in sequences.size():
+			if String(sequences[i]).nocasecmp_to(clip) == 0:
+				at = i
+		if key == "end" and at >= 0 and at + 1 < sequences.size():
+			animator.play(sequences[at + 1]))
+	return true
+
+
+## The LIGH `light` as a model's light: at its AttachLight node (else its root), so it follows what the
+## model's sequences do with that node. Built as the cell builder builds a placed light (radius,
+## colour times fade times LIGHT_FADE_SCALE, no shadow). Null for no light.
+static func attach_light(world: SkydotWorld, model: Node3D, light: int) -> OmniLight3D:
+	var data: Variant = world.get_base(light).get("light") if light != 0 else null
+	if data == null:
+		return null
+	var node := OmniLight3D.new()
+	node.name = "Light%08X" % light
+	node.omni_range = maxf(float(data["radius"]), 0.01)
+	node.omni_attenuation = 0.0
+	node.shadow_enabled = false
+	var fade := float(data["fade"]) if float(data["fade"]) > 0.0 else 1.0
+	SkydotMaterials.set_game_light(node, (data["color"] as Color) * (fade * LIGHT_FADE_SCALE))
+	var at := model.find_child("AttachLight", true, false) as Node3D
+	if at != null:
+		# The node is in the model's NIF units: the light keeps the scene's metres.
+		var units := 1.0
+		var up: Node = at
+		while up != null and up != model:
+			if up is Node3D:
+				units *= (up as Node3D).transform.basis.get_scale().x
+			up = up.get_parent()
+		node.scale = Vector3.ONE / maxf(units, 1e-6)
+		at.add_child(node)
+	else:
+		model.add_child(node)
+	return node
 
 
 ## A basis looking along `direction`, also when that is straight up or down (looking_at with UP
@@ -264,7 +352,7 @@ func _advance(shot: Dictionary, delta: float, space: PhysicsDirectSpaceState3D) 
 		if not shot["pickable"]:
 			_vanish(shot)
 		if shot.has("on_world"):
-			shot["on_world"].call(0, hit["position"])
+			shot["on_world"].call(0, hit["position"], hit["collider"])
 		return
 	shot["travelled"] += from.distance_to(to)
 	node.global_transform = Transform3D(facing(velocity.normalized()), to)
@@ -282,20 +370,6 @@ func _cold_start(model: Node) -> void:
 func _vanish(shot: Dictionary) -> void:
 	(shot["node"] as Node3D).visible = false
 	shot["age"] = STUCK_SECONDS + 1.0
-
-
-func _count(puffs: bool) -> int:
-	var n := 0
-	for shot in _live:
-		n += 1 if shot.get("puff", false) == puffs else 0
-	return n
-
-
-func _first(puffs: bool) -> int:
-	for i in _live.size():
-		if _live[i].get("puff", false) == puffs:
-			return i
-	return 0
 
 
 func _remove(index: int) -> void:

@@ -269,6 +269,7 @@ func _create_components() -> void:
 			_items.toggle_skills())
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
+	_session.magic.hand_node = _body.magic_node
 	if _settings.hud:
 		_hud = Hud.new(_session, _controls)
 		add_child(_hud)

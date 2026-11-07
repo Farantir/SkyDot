@@ -144,6 +144,7 @@ func _create_components() -> void:
 	# mouse button attacks as in the viewer).
 	_body = FirstPersonBody.new(_session, null, _rig.right, _rig.left)
 	add_child(_body)
+	_session.magic.hand_node = _body.magic_node
 	if _settings.hud:
 		var hud := HudView.new(_session, _key_label)
 		hud.show_crosshair = not _rig.tracking
