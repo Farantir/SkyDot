@@ -116,8 +116,8 @@ struct Light {
         flicker_slow = 0x0040,
         pulse = 0x0080,
         pulse_slow = 0x0100,
-        spot_light = 0x0400,
-        spot_shadow = 0x0800,
+        spot_light = 0x0200,
+        spot_shadow = 0x0400,
     };
     [[nodiscard]] bool has(Flag f) const noexcept {
         return (light_flags & static_cast<std::uint32_t>(f)) != 0;

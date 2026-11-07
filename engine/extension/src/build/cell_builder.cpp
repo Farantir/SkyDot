@@ -72,6 +72,43 @@ constexpr float k_light_fade_scale = 0.6F;
 // k_light_fade_scale: at 0.6 the mist came out 62/46/29.
 constexpr float k_effect_emittance_scale = 0.8F;
 
+// An effect's region emittance (XEMI naming a REGN) per unit of the weather's
+// Effect Lighting. The game's TESRegion::emittanceColor, read with the region
+// running SkyrimOvercastSnow, equals SkyDot's colour (0.702/0.820/0.851 at
+// 12:31), yet Bleak Falls Barrow's light beams (FXAmbBeamDust) added 1.5-1.8
+// times less than SkyDot's at 1.0, in the same hue, from both skycompare
+// cameras (211502, 133601) at 4:44, 12:31 and 18:30 (neutral grade, beams
+// disabled and enabled, 2026-11-07).
+constexpr float k_region_emittance_scale = 0.6F;
+
+// The render layer of the lit effect shapes, which shadow-casting lights
+// leave out. Effect.hlsl adds the point lights the game hands it, and those
+// are not its shadowed ones: Bleak Falls Barrow's spider webs took the
+// sunlight spot 0x6ED64 (fade 5) and came out white, 0.39 luma against the
+// game's 0.23-0.27, where disabling the light in the game takes 0.02 off the
+// whole frame (skycompare 134202, 2026-11-07); the mist does not follow the
+// shadowed torch next to it either (effect.gdshaderinc). Unshadowed lights
+// still light the webs.
+constexpr std::uint32_t k_effect_layer = 1U << 10U;
+
+// Puts the lit effect shapes under `node` on k_effect_layer as well.
+void tag_effect_shapes(godot::Node* node) {
+    const godot::TypedArray<godot::Node> shapes = node->find_children("*", "MeshInstance3D", true, false);
+    for (int64_t i = 0; i < shapes.size(); ++i) {
+        auto* shape = godot::Object::cast_to<godot::MeshInstance3D>(shapes[i]);
+        if (shape == nullptr || shape->get_mesh().is_null()) {
+            continue;
+        }
+        for (int32_t s = 0; s < shape->get_mesh()->get_surface_count(); ++s) {
+            const godot::Ref<godot::ShaderMaterial> m = shape->get_active_material(s);
+            if (m.is_valid() && m->get_shader_parameter("lighting_influence").get_type() != godot::Variant::NIL) {
+                shape->set_layer_mask(shape->get_layer_mask() | k_effect_layer);
+                break;
+            }
+        }
+    }
+}
+
 /// Editor markers, which the game does not draw: bases flagged as markers
 /// (XMarker, furniture markers), and the helpers in `meshes/markers/` and
 /// `meshes/marker*.nif` that some unflagged activators use. Not every model
@@ -248,6 +285,7 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
                     Decoration decoration{stats, &ref, base, cell, scene.ptr()};
                     decorator_.decorate(node, decoration);
                     apply_effect_emittance(node, ref, cell);
+                    tag_effect_shapes(node);
                     root->add_child(node);
                     ++stats.placed;
                 }
@@ -295,12 +333,26 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         const bool interior =
             in_cell != nullptr && formats::has_flag(in_cell->flags(), wfb::CellFlags::interior);
         const auto range = static_cast<float>(static_cast<double>(radius) * formats::k_metres_per_unit);
-        if (formats::has_flag(l->flags(), wfb::LightFlags::spot_light)) {
+        if (formats::has_flag(l->flags(), wfb::LightFlags::spot_light | wfb::LightFlags::spot_shadow)) {
             auto* spot = memnew(godot::SpotLight3D);
             spot->set_param(godot::Light3D::PARAM_RANGE, range);
             spot->set_param(godot::Light3D::PARAM_SPOT_ANGLE, std::clamp(fov / 2.0F, 1.0F, 89.0F));
+            // The game's cone has no falloff towards its edge: Bleak Falls
+            // Barrow's sunlight (0x372A9, FOV 90) lit 14-16 % of the frame
+            // through the ceiling hole in the game, 13-16 % with a hard edge
+            // and 9 % with Godot's default falloff (skycompare 211502,
+            // 133601, 2026-11-07). Not 0: Godot raises the clamped rim to
+            // this power, and 0^0 lit everything around the cone.
+            spot->set_param(godot::Light3D::PARAM_SPOT_ATTENUATION, 0.01F);
             spot->set_param(godot::Light3D::PARAM_ATTENUATION, 0.0F);
-            const bool spot_shadow = interior && formats::has_flag(l->flags(), wfb::LightFlags::spot_shadow);
+            // A Gamebryo spotlight shines along its reference's local +X
+            // (Godot's spot along -Z): along -Z the sunlight above Bleak
+            // Falls Barrow's ceiling hole shone sideways into the rock and
+            // its patch on the rubble and floor was missing. A shadow
+            // spotlight (0x2EDEC) casts shadows: the game lights the rubble
+            // and floor through the hole only.
+            placed.basis = placed.basis * godot::Basis(Vector3(0, 1, 0), -std::numbers::pi_v<float> / 2.0F);
+            const bool spot_shadow = interior && formats::has_flag(l->flags(), k_light_shadow);
             spot->set_shadow(options_.all_light_shadows);
             spot->set_meta("skydot_game_shadow", spot_shadow);
             light = spot;
@@ -328,6 +380,7 @@ void CellBuilder::place_ref(godot::Node3D* root, const wfb::Ref& ref, std::uint3
         // SkydotShadowBudget: the game shadows four at a time.
         if (static_cast<bool>(light->get_meta("skydot_game_shadow"))) {
             light->add_to_group(SkydotShadowBudget::GROUP);
+            light->set_cull_mask(light->get_cull_mask() & ~k_effect_layer);
         }
         SkydotMaterials::set_game_light(light, unpack_color(l->color()) * std::max(fade, 0.0F));
         light->set_negative(formats::has_flag(l->flags(), wfb::LightFlags::negative));
@@ -395,7 +448,7 @@ void CellBuilder::apply_effect_emittance(godot::Node3D* node, const wfb::Ref& re
         }
         auto* emittance = memnew(SkydotEmittance);
         emittance->set_name("SkydotEmittance");
-        emittance->configure(godot::Color(1, 1, 1), weathers, chances);
+        emittance->configure(godot::Color(1, 1, 1) * k_region_emittance_scale, weathers, chances);
         node->add_child(emittance);
         return;
     }

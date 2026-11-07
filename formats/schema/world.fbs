@@ -338,9 +338,11 @@ table Cell {
     location: uint32;
 }
 
-/// `LightData.flags`: LIGH DATA flags (source: UESP, LIGH record). A
-/// hemisphere shadow light has no direction of its own; the engine draws it as
-/// an omni light with shadows.
+/// `LightData.flags`: LIGH DATA flags (source: CommonLibSSE TES_LIGHT_FLAGS).
+/// Every shadow spotlight is a spotlight. A hemisphere shadow light has no
+/// direction of its own; the engine draws it as an omni light with shadows.
+/// Until 2026-11-07 the names from bit 10 on were one bit too high (bit 13,
+/// portal-strict, counted as omni shadow); the stored bits never changed.
 enum LightFlags : uint32 (bit_flags) {
     dynamic,
     can_be_carried,
@@ -350,10 +352,11 @@ enum LightFlags : uint32 (bit_flags) {
     flicker_slow,
     pulse,
     pulse_slow,
-    spot_light = 10,
+    spot_light = 9,
     spot_shadow,
     hemisphere_shadow,
-    omni_shadow
+    omni_shadow,
+    portal_strict
 }
 
 /// LIGH DATA and FNAM. Color is RGBA bytes, red in the low byte.
