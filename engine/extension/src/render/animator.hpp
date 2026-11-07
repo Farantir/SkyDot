@@ -49,6 +49,13 @@ public:
     /// Start a named clip (any letter case) from its beginning; unnamed clips
     /// keep running. Returns false if there is no such clip.
     bool play(const godot::String& clip);
+    /// Start two named clips together, blended by weight as a behaviour
+    /// graph's blender of Gamebryo sequences does (BGSGamebryoSequenceGenerator
+    /// with BMF_ONE_MINUS_PERCENT and BMF_PERCENT): node transforms are mixed,
+    /// `first` with 1 - `weight`, `second` with `weight`; the other channels
+    /// come from the heavier one. `first` keeps the text keys and `finished`.
+    bool play_blend(const godot::String& first, const godot::String& second, double weight);
+    void set_blend_weight(double weight);
     void stop();
     /// Run the unnamed clips whose controllers the NIF leaves inactive, from
     /// their start, as the game does for a projectile's (a dart's trail grows
@@ -112,6 +119,8 @@ private:
     std::shared_ptr<const EffectAsset> asset_;
     std::vector<Target> targets_;
     int playing_ = -1;
+    int blend_ = -1;           ///< The clip blended with `playing_`, -1 for none.
+    float blend_weight_ = 0.0F; ///< The weight of `blend_`.
     double clip_time_ = 0.0;
     double last_local_ = -1.0; ///< Clip time last evaluated; -1 before the first.
     bool finished_ = false;
@@ -121,6 +130,8 @@ private:
 
     void bind(const std::shared_ptr<const EffectAsset>& asset, godot::Node* root);
     void bind_material(Target& target, std::size_t slot);
+    /// Apply `playing_` at `first_time` mixed with `blend_` (see play_blend).
+    void blend_clips(std::size_t first, double first_time, double seconds_into_clip);
     /// One evaluation; without `pose` only time passes (text keys, `finished`).
     void step(double seconds, double seconds_into_clip, bool pose);
     void apply_clip(std::size_t clip, double local_time);

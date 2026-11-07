@@ -151,6 +151,8 @@ void SkydotAnimator::_bind_methods() {
     godot::ClassDB::bind_static_method("SkydotAnimator", D_METHOD("attach", "root", "materials"),
                                        &SkydotAnimator::attach);
     godot::ClassDB::bind_method(D_METHOD("play", "clip"), &SkydotAnimator::play);
+    godot::ClassDB::bind_method(D_METHOD("play_blend", "first", "second", "weight"), &SkydotAnimator::play_blend);
+    godot::ClassDB::bind_method(D_METHOD("set_blend_weight", "weight"), &SkydotAnimator::set_blend_weight);
     godot::ClassDB::bind_method(D_METHOD("stop"), &SkydotAnimator::stop);
     godot::ClassDB::bind_method(D_METHOD("start_controllers"), &SkydotAnimator::start_controllers);
     godot::ClassDB::bind_method(D_METHOD("get_playing"), &SkydotAnimator::get_playing);
@@ -292,6 +294,7 @@ bool SkydotAnimator::play(const String& clip) {
         // The game's event names are not case-sensitive.
         if (!clip.is_empty() && asset_->clips[i].name.nocasecmp_to(clip) == 0) {
             playing_ = static_cast<int>(i);
+            blend_ = -1;
             clip_time_ = 0.0;
             finished_ = false;
             last_local_ = asset_->clips[i].start - 1e-6;
@@ -301,7 +304,27 @@ bool SkydotAnimator::play(const String& clip) {
     return false;
 }
 
-void SkydotAnimator::stop() { playing_ = -1; }
+bool SkydotAnimator::play_blend(const String& first, const String& second, double weight) {
+    if (asset_ == nullptr || !play(first)) {
+        return false;
+    }
+    for (std::size_t i = 0; i < asset_->clips.size(); ++i) {
+        if (!second.is_empty() && asset_->clips[i].name.nocasecmp_to(second) == 0) {
+            blend_ = static_cast<int>(i);
+        }
+    }
+    set_blend_weight(weight);
+    return blend_ >= 0;
+}
+
+void SkydotAnimator::set_blend_weight(double weight) {
+    blend_weight_ = static_cast<float>(std::clamp(weight, 0.0, 1.0));
+}
+
+void SkydotAnimator::stop() {
+    playing_ = -1;
+    blend_ = -1;
+}
 
 void SkydotAnimator::start_controllers() {
     controllers_started_ = true;
@@ -361,7 +384,9 @@ void SkydotAnimator::step(double seconds, double seconds_into_clip, bool pose) {
         // A sequence starts at its start time, whatever its phase.
         const double now =
             clip.local_time((clip.start - clip.phase) / clip.frequency + seconds_into_clip);
-        if (pose) {
+        if (pose && blend_ >= 0) {
+            blend_clips(static_cast<std::size_t>(playing_), now, seconds_into_clip);
+        } else if (pose) {
             apply_clip(static_cast<std::size_t>(playing_), now);
         }
         const String name = clip.name;
@@ -577,6 +602,60 @@ void SkydotAnimator::bind_material(Target& t, std::size_t slot) {
     t.specular_color = param(m, "specular_color", Vector3(1, 1, 1));
     t.env_scale = param_float(m, "env_scale", 1.0f);
     t.alpha_cutoff = param_float(m, "alpha_cutoff", 0.5f);
+}
+
+void SkydotAnimator::blend_clips(std::size_t first, double first_time, double seconds_into_clip) {
+    const Clip& other = asset_->clips[static_cast<std::size_t>(blend_)];
+    const double second_time =
+        other.local_time((other.start - other.phase) / other.frequency + seconds_into_clip);
+    const float w = blend_weight_;
+    // The lighter clip first, so the heavier one's other channels win.
+    const bool second_heavier = w >= 0.5F;
+    apply_clip(second_heavier ? first : static_cast<std::size_t>(blend_), second_heavier ? first_time : second_time);
+    struct Pose {
+        bool translation, euler, rotation, scale;
+        Vector3 t, e;
+        Quaternion q;
+        float s;
+    };
+    std::vector<Pose> lighter(targets_.size());
+    for (std::size_t i = 0; i < targets_.size(); ++i) {
+        Target& t = targets_[i];
+        lighter[i] = {t.has_translation, t.has_euler, t.has_rotation, t.has_scale, t.translation, t.euler, t.rotation,
+                      t.scale};
+        t.has_translation = t.has_euler = t.has_rotation = t.has_scale = false;
+    }
+    apply_clip(second_heavier ? static_cast<std::size_t>(blend_) : first, second_heavier ? second_time : first_time);
+    // The heavier clip's share of the mix.
+    const float h = second_heavier ? w : 1.0F - w;
+    for (std::size_t i = 0; i < targets_.size(); ++i) {
+        Target& t = targets_[i];
+        const Pose& l = lighter[i];
+        if (t.has_translation && l.translation) {
+            t.translation = l.t.lerp(t.translation, h);
+        } else if (l.translation) {
+            t.has_translation = true;
+            t.translation = l.t;
+        }
+        if (t.has_euler && l.euler) {
+            t.euler = l.e.lerp(t.euler, h);
+        } else if (l.euler) {
+            t.has_euler = true;
+            t.euler = l.e;
+        }
+        if (t.has_rotation && l.rotation) {
+            t.rotation = l.q.slerp(t.rotation, h);
+        } else if (l.rotation) {
+            t.has_rotation = true;
+            t.rotation = l.q;
+        }
+        if (t.has_scale && l.scale) {
+            t.scale = l.s + (t.scale - l.s) * h;
+        } else if (l.scale) {
+            t.has_scale = true;
+            t.scale = l.s;
+        }
+    }
 }
 
 godot::Transform3D SkydotAnimator::pose_of(const Target& t) {
