@@ -8,7 +8,10 @@
 # wrong; Enter stores the text as the JSON's "note" and, for skycompare, a
 # "capture" spec: kind, seconds, trigger and category from the dialog's row
 # (the category is remembered for the session) and an optional region dragged
-# on the frozen frame (right click clears it).
+# on the frozen frame (right click clears it). The trigger list has the
+# player's actions (cast:/attack:, with a hold: auto, tap or seconds; see
+# CaptureTrigger), which use what the JSON's "player" block says the hands
+# and the voice slot held at F12 (`player_block`).
 # --dump FILE writes the state dump (state_dump.gd) just before the first shot.
 # --screenshot FILE takes its shots on its own (FILE_0.png, ...) and quits.
 # With --shot-frames N (one view) it saves N frames instead, every
@@ -22,8 +25,12 @@ const SETTLE_FRAMES := 30  # for shaders to compile and textures to stream in
 const LOOK_PITCH := -0.15  # the four views of a cell, slightly down
 const CAPTURE_KINDS: Array[String] = ["still", "anim", "sound", "anim+sound"]
 const CAPTURE_CATEGORIES: Array[String] = ["lighting", "geometry", "fx", "physics", "actors", "ui", "audio", "other"]
-## Trigger presets of skycompare; one ending in ":" takes the text of the field next to the list.
-const CAPTURE_TRIGGERS: Array[String] = ["none", "cast:", "idle:", "activate:nearest-door", "time:", "weather:"]
+## Trigger presets of skycompare; one ending in ":" takes the text of the field next to the list. The
+## player's actions (cast:, attack:) use what the hands and the voice slot hold (the shot's "player" block).
+const CAPTURE_TRIGGERS: Array[String] = ["none", "cast:right", "cast:left", "cast:dual", "cast:shout", "attack:right",
+	"attack:left", "attack:dual", "attack:bash", "idle:", "activate:nearest-door", "time:", "weather:"]
+## How long a player trigger's button is held ("hold" of the capture spec: auto, tap or seconds).
+const CAPTURE_HOLDS: Array[String] = ["auto", "tap", "0.5", "1", "1.5", "2", "3", "5"]
 
 static var _last_category := CAPTURE_CATEGORIES.size() - 1  # remembered for the session
 
@@ -42,11 +49,9 @@ var _delay := 0.0  # seconds the world runs before the first shot
 var _frames := 0
 var _index := 0
 var session: GameSession  # set by the viewer: the --trigger acts through it
-var body: Node3D  # the player's arms, set by the viewer: hidden during a cast trigger (the game's console cast has none)
 var _dumped := false
 var _triggered := false
-var _trigger_wait := 0
-var _pressed := false
+var _player_trigger: CaptureTrigger  # --trigger cast:/attack:, made at the first frame of the series
 var _pending: Array[int] = []  # --shot-frames: PNG writes still running
 # F12
 var _busy := false
@@ -58,6 +63,7 @@ var _kind: OptionButton
 var _seconds: SpinBox
 var _trigger: OptionButton
 var _trigger_arg: LineEdit
+var _hold: OptionButton
 var _category: OptionButton
 var _region_layer: Control  # covers the frozen frame; the region is dragged on it
 var _region := Rect2()  # in viewport pixels; size zero = whole frame
@@ -140,7 +146,8 @@ func _step_series() -> void:
 			return
 		_triggered = true
 		_fire_trigger()
-	_trigger_step()
+	if _player_trigger != null:
+		_player_trigger.step(_host.get_process_delta_time())
 	if (_frames - SETTLE_FRAMES) % _settings.shot_every != 0:
 		return
 	var image := _host.get_viewport().get_texture().get_image()
@@ -155,33 +162,14 @@ func _step_series() -> void:
 	_host.get_tree().quit(0)
 
 
-## --trigger cast:0xFORM: the hands are drawn (by --ready-weapon, from the start); the series waits for
-## them, then the attack button goes down, as a finger would press it. A concentration spell is held to
-## the end; a fire-and-forget spell is released once charged (`_trigger_step`).
+## A player trigger (CaptureTrigger) waits for the hands to be drawn (--ready-weapon draws them from the
+## start); the series starts then.
 func _trigger_ready() -> bool:
-	if not _settings.trigger.begins_with("cast:") or session == null:
+	if not CaptureTrigger.handles(_settings.trigger) or session == null:
 		return true
-	_trigger_wait += 1
-	_hide_arms()
-	return session.magic.ready_state() == Magic.Ready.READY or _trigger_wait > 300
-
-
-func _hide_arms() -> void:
-	if body != null and _settings.trigger.begins_with("cast:"):
-		for part in body.find_children("*", "MeshInstance3D", true, false):
-			if part.skin != null:  # the arms are skinned; the casting art is not
-				part.visible = false
-
-
-func _trigger_step() -> void:
-	_hide_arms()
-	if not _settings.trigger.begins_with("cast:") or session == null or not _pressed:
-		return
-	var spell := _settings.trigger.trim_prefix("cast:").hex_to_int()
-	if int(session.magic.info_of(spell).get("casting_type", 1)) != Magic.CAST_CONCENTRATION \
-			and session.magic.phase_of(Magic.RIGHT) == "charged":
-		session.attack_released()
-		_pressed = false
+	if _player_trigger == null:
+		_player_trigger = CaptureTrigger.new(session, _settings.trigger, _settings.hold, _settings.capture_seconds)
+	return _player_trigger.is_ready()
 
 
 func _write_frames_json(trigger_frame: int) -> void:
@@ -196,11 +184,8 @@ func _write_frames_json(trigger_frame: int) -> void:
 ## which frame it was (the series starts there) and the frame rate.
 func _fire_trigger() -> void:
 	var spec := _settings.trigger
-	if spec.begins_with("cast:") and session != null:
-		_pressed = true
-		session.attack_pressed()
-		print("--trigger: attack with 0x%08X (hands %s)" % [spec.trim_prefix("cast:").hex_to_int(),
-			session.magic.ready_state()])
+	if _player_trigger != null:
+		print("--trigger: ", _player_trigger.fire())
 	elif spec.begins_with("activate:") and session != null:
 		var ref := 0
 		if spec != "activate:nearest-door":
@@ -309,10 +294,15 @@ func _capture_row() -> HBoxContainer:
 	_seconds.tooltip_text = "seconds of an animation or sound"
 	_trigger = _options(CAPTURE_TRIGGERS, "what starts the animation or sound")
 	_trigger_arg = LineEdit.new()
-	_trigger_arg.placeholder_text = "form id, idle, hour or weather"
+	_trigger_arg.placeholder_text = "idle, hour or weather"
 	_trigger_arg.custom_minimum_size = Vector2(150, 0)
+	_trigger.item_selected.connect(func(index: int) -> void: _trigger_arg.editable = CAPTURE_TRIGGERS[index].ends_with(":"))
+	_trigger_arg.editable = false
+	_hold = _options(CAPTURE_HOLDS, "how long a cast or attack button is held: auto (a concentration spell and a "
+		+ "block for the capture, a charged spell until charged, else a tap), tap, or seconds (a charge, a power "
+		+ "attack, more words of a shout)")
 	_category = _options(CAPTURE_CATEGORIES, "what the comparison is about")
-	for control in [_kind, _seconds, _trigger, _trigger_arg, _category]:
+	for control in [_kind, _seconds, _trigger, _trigger_arg, _hold, _category]:
 		row.add_child(control)
 		control.focus_mode = Control.FOCUS_CLICK  # Tab stays in the note
 	return row
@@ -334,6 +324,9 @@ func _capture_spec() -> Dictionary:
 		trigger = trigger + arg if not arg.is_empty() else "none"
 	var spec := {"kind": CAPTURE_KINDS[_kind.selected], "seconds": int(_seconds.value), "trigger": trigger,
 		"category": CAPTURE_CATEGORIES[_category.selected]}
+	if CaptureTrigger.handles(trigger):
+		var hold := CAPTURE_HOLDS[_hold.selected]
+		spec["hold"] = hold if hold in ["auto", "tap"] else hold.to_float()
 	if _region.has_area():
 		spec["region"] = [int(_region.position.x), int(_region.position.y), int(_region.end.x), int(_region.end.y)]
 	return spec
@@ -495,7 +488,63 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 			"driver": RenderingServer.get_video_adapter_api_version(),
 		},
 		"game_console": console,
+		"player": player_block(session),
 	}
+
+
+## A shot's "player" block: what the hands and the voice slot hold ({form, kind}; kind spell, weapon, shield,
+## torch or empty; the voice: shout with its unlocked words, power or empty), whether the weapon or the
+## hands are drawn, and what the player is doing. skycompare makes the same in both engines before a
+## trigger (ViewerSettings reads it back as start options). {} without a game.
+static func player_block(game: GameSession) -> Dictionary:
+	if game == null:
+		return {}
+	var magic := game.magic
+	var gear := game.equipment()
+	var block := {}
+	for hand in [Magic.RIGHT, Magic.LEFT]:
+		var side := "right" if hand == Magic.RIGHT else "left"
+		var spell := magic.spell_in(hand)
+		var item := int(gear.get(side, 0))
+		var kind := "empty"
+		if spell != 0:
+			kind = "spell"
+			item = spell
+		elif item != 0:
+			match String(game.papyrus.item_info(item).get("category", "")):
+				"weapon":
+					kind = "weapon"
+				"armor":
+					kind = "shield"
+				"light":
+					kind = "torch"
+				_:
+					kind = "other"
+		block[side] = {"form": "0x%08X" % item, "kind": kind}
+	var shout := int(game.papyrus.equipped_shout(SkydotPapyrus.PLAYER_REF))
+	var power := magic.spell_in(Magic.POWER)
+	if shout != 0:
+		var words: Array[String] = []
+		for word: Dictionary in game.papyrus.shout_info(SkydotPapyrus.PLAYER_REF, shout).get("words", []):
+			if word.get("known", false) and word.get("unlocked", false):
+				words.append("0x%08X" % int(word["word"]))
+		block["voice"] = {"form": "0x%08X" % shout, "kind": "shout", "words": words}
+	elif power != 0:
+		block["voice"] = {"form": "0x%08X" % power, "kind": "power"}
+	else:
+		block["voice"] = {"form": "0x00000000", "kind": "empty"}
+	block["drawn"] = game.weapon_state() != Combat.State.SHEATHED or magic.is_ready()
+	var action := "idle"
+	if not game.combat.current_attack().is_empty():
+		action = "attacking"
+	elif game.combat.is_blocking():
+		action = "blocking"
+	elif magic.is_casting(Magic.LEFT) or magic.is_casting(Magic.RIGHT):
+		action = "casting"
+	elif magic.is_shouting():
+		action = "shouting"
+	block["action"] = action
+	return block
 
 
 ## --hide-refs: hides the references with those form IDs. Lights carry no

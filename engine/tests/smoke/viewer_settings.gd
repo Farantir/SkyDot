@@ -190,10 +190,34 @@ func _from_shot() -> void:
     expect(dumped.dump == "d.json" and dumped.dump_radius == 2000.0, "--dump and --dump-radius")
     expect(still.dump == "" and still.dump_radius == 4096.0, "no dump by default")
     var anim := parse(["--from-shot", path, "--capture-seconds", "3", "--trigger", "cast:0x12FCD", "--screenshot", "f/sd.png"])
-    expect(anim.capture_seconds == 3.0 and anim.trigger == "cast:0x12FCD", "--capture-seconds and --trigger")
+    expect(anim.capture_seconds == 3.0 and anim.trigger == "cast:right", "--capture-seconds; cast:0xFORM is cast:right")
+    expect(anim.equip_spell.size() == 1 and anim.equip_spell[0].form == 0x12FCD and anim.equip_spell[0].hand == 1,
+            "the old cast:0xFORM puts the spell in the right hand")
+    expect(anim.ready_weapon and anim.hold == "auto", "a cast trigger draws the hands; hold auto by default")
+    var bash := parse(["--from-shot", path, "--capture-seconds", "2", "--trigger", "attack:bash", "--hold", "1.5"])
+    expect(bash.error == "" and bash.trigger == "attack:bash" and bash.hold == "1.5" and bash.ready_weapon, "attack:bash, hold 1.5")
+    var shout := parse(["--from-shot", path, "--capture-seconds", "2", "--trigger", "cast:shout", "--hold", "tap"])
+    expect(shout.error == "" and not shout.ready_weapon, "a shout draws nothing")
+    expect(parse(["--from-shot", path, "--trigger", "cast:feet"]).error.begins_with("--trigger wants"), "an unknown trigger")
+    expect(parse(["--from-shot", path, "--trigger", "cast:left", "--hold", "long"]).error.begins_with("--hold wants"), "a bad hold")
     expect(anim.shot_frames == 90 and anim.shot_every == 1 and anim.shot_live, "three seconds are 90 live frames")
     expect(still.capture_seconds == 0.0 and still.trigger == "none" and not still.shot_live, "stills have no trigger")
     expect(still.fov == 50.53 and still.time_scale == 0.0 and still.has_screenshot, "still fov, time, shot")
+    # the shot's "player" block comes back as start options
+    file = FileAccess.open(path, FileAccess.WRITE)
+    file.store_string(JSON.stringify({
+        "format": 1, "place": {"kind": "interior", "cell": "C"}, "pack": {"path": "/some/pack"},
+        "player": {"right": {"form": "0x00012EB7", "kind": "weapon"}, "left": {"form": "0x00012FCD", "kind": "spell"},
+            "voice": {"form": "0x00013E07", "kind": "shout", "words": ["0x00013E22"]}, "drawn": true, "action": "idle"}}))
+    file.close()
+    var geared := parse(["--from-shot", path])
+    expect(geared.error == "" and geared.give.size() == 1 and geared.give[0] == Vector2i(0x12EB7, 1), "the weapon is given")
+    expect(geared.equip.size() == 1 and geared.equip[0] == 0x12EB7, "and equipped")
+    expect(geared.equip_spell.size() == 1 and geared.equip_spell[0].form == 0x12FCD and geared.equip_spell[0].hand == 0,
+            "the spell in the left hand")
+    expect(geared.equip_shout == 0x13E07 and geared.teach_word.size() == 1 and geared.teach_word[0] == 0x13E22
+            and geared.unlock_word.size() == 1 and geared.unlock_word[0] == 0x13E22, "the shout and its words")
+    expect(geared.ready_weapon, "drawn")
     file = FileAccess.open(path, FileAccess.WRITE)
     file.store_string(JSON.stringify({"format": 99}))
     file.close()

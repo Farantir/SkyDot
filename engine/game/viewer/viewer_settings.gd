@@ -29,6 +29,11 @@ class NpcGive:
 		count = count_
 
 
+## The player's actions skycompare's --trigger presses, with what the slot or hand holds.
+const TRIGGERS: Array[String] = ["cast:left", "cast:right", "cast:dual", "cast:shout", "attack:left", "attack:right",
+	"attack:dual", "attack:bash"]
+
+
 ## --equip-spell: the player equips the spell `form` in `hand` (Magic.LEFT, RIGHT, POWER).
 class SpellEquip:
 	var form: int
@@ -119,7 +124,8 @@ var load_path := ""  # loads at start
 var has_screenshot := false
 var screenshot := ""
 var capture_seconds := 0.0  # --capture-seconds S: a live frame series of S seconds at 30 fps (skycompare)
-var trigger := "none"  # --trigger PRESET: what starts it ("cast:0xFORM"; "none")
+var trigger := "none"  # --trigger PRESET: what starts it (TRIGGERS; "cast:0xFORM" is read as cast:right)
+var hold := "auto"  # --hold auto|tap|SECONDS: how long the trigger's button is held (auto: by what the hand holds)
 var dump := ""  # --dump FILE: the state dump (StateDump) written with a --screenshot run
 var dump_radius := 4096.0  # --dump-radius: game units around the camera
 var shot_delay := 0.0  # seconds the world runs before --screenshot captures
@@ -443,10 +449,19 @@ func _read_shots(args: Dictionary) -> void:
 	shot_every = maxi(args.get("shot-every", "1").to_int(), 1)
 	capture_seconds = maxf(args.get("capture-seconds", "0").to_float(), 0.0)
 	trigger = args.get("trigger", "none")
-	if trigger.begins_with("cast:"):
-		# the spell in the right hand, the hands drawn: the trigger presses the attack button
+	hold = str(args.get("hold", "auto"))
+	if trigger.begins_with("cast:0x"):
+		# the old form: that spell in the right hand, then cast:right
 		equip_spell.append(SpellEquip.new(trigger.trim_prefix("cast:").hex_to_int(), 1))
-		ready_weapon = true
+		trigger = "cast:right"
+	if trigger.begins_with("cast:") or trigger.begins_with("attack:"):
+		if not trigger in TRIGGERS:
+			error = "--trigger wants one of %s, got %s" % [", ".join(TRIGGERS), trigger]
+			return
+		if trigger != "cast:shout":
+			ready_weapon = true  # the hands are drawn before the button goes down, as in the game's job
+	if not (hold in ["auto", "tap"] or hold.is_valid_float()):
+		error = "--hold wants auto, tap or seconds, got " + hold
 	if capture_seconds > 0.0:
 		# A frame series of the live game, one frame per 1/30 s (run with --fixed-fps 30).
 		shot_frames = ceili(capture_seconds * CAPTURE_FPS)
@@ -567,9 +582,44 @@ static func _arguments_from_shot(path: String) -> Dictionary:
 		out["quests"] = "off"
 	if viewer.get("materials", true) == false:
 		out["materials"] = "off"
+	_player_from_shot(shot.get("player", {}), out)
 	if not str(shot.get("note", "")).is_empty():
 		out["note"] = shot["note"]
 	return out
+
+
+## The shot's "player" block (ShotRecorder.player_block) as the start options that make it again: the items
+## given and equipped, the spells in the hands, the shout with its words, the hands drawn.
+static func _player_from_shot(player: Dictionary, out: Dictionary) -> void:
+	if player.is_empty():
+		return
+	var give_list: PackedStringArray = []
+	var spells: PackedStringArray = []
+	for hand in ["right", "left"]:
+		var slot: Dictionary = player.get(hand, {})
+		var form := str(slot.get("form", "0x00000000"))
+		match str(slot.get("kind", "empty")):
+			"spell":
+				spells.append_array([form, hand])
+			"weapon", "shield", "torch":
+				give_list.append(form)
+	var voice: Dictionary = player.get("voice", {})
+	match str(voice.get("kind", "empty")):
+		"shout":
+			out["equip-shout"] = str(voice["form"])
+			var words := ",".join(PackedStringArray(voice.get("words", [])))
+			if not words.is_empty():
+				out["teach-word"] = words
+				out["unlock-word"] = words
+		"power":
+			spells.append_array([str(voice["form"]), "power"])
+	if not give_list.is_empty():
+		out["give"] = ",".join(give_list)
+		out["equip"] = ",".join(give_list)
+	if not spells.is_empty():
+		out["equip-spell"] = ",".join(spells)
+	if player.get("drawn", false):
+		out["ready-weapon"] = ""
 
 
 ## --equip-spell and --cast-at: "left" is 0, "right" 1, "power" 2 (Magic.LEFT, RIGHT, POWER).
