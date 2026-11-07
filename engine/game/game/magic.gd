@@ -145,6 +145,9 @@ var _player_state: PlayerState
 var _pointer: Callable  # () -> Node3D: where casts start and look from
 ## (hand) -> Node3D: the player's magic node of that hand (the first-person arms'), or null. Set by the shell.
 var hand_node := Callable()
+## (bone name) -> Node3D: a node on the player's own skeleton bone (the first-person arms'), for art put
+## on the player (a hit effect art's AttachT node); null if none. Set by the shell.
+var player_bone := Callable()
 var _warn := WarnOnce.new("magic: ")
 
 var _ready := Ready.SHEATHED

@@ -270,6 +270,7 @@ func _create_components() -> void:
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
 	_session.magic.hand_node = _body.magic_node
+	_session.magic.player_bone = _body.bone_node
 	if _settings.hud:
 		_hud = Hud.new(_session, _controls)
 		add_child(_hud)

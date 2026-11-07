@@ -145,6 +145,7 @@ func _create_components() -> void:
 	_body = FirstPersonBody.new(_session, null, _rig.right, _rig.left)
 	add_child(_body)
 	_session.magic.hand_node = _body.magic_node
+	_session.magic.player_bone = _body.bone_node
 	if _settings.hud:
 		var hud := HudView.new(_session, _key_label)
 		hud.show_crosshair = not _rig.tracking

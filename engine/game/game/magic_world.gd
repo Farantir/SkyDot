@@ -4,7 +4,11 @@
 # `SkydotPapyrus.magic_effect_event`. The rules live in the VM (ActiveEffects, `magic_overrides`)
 # and the AI (SkydotAi obeys calm, fear, frenzy, paralysis, invisibility and commands); this
 # builds what only a scene can:
-#   light (12)      an OmniLight3D from the LIGH the MGEF names, held LIGHT_HEIGHT above the target
+#   light (12)      the MGEF's hit effect art (LightSpellActorFX) on the node its AttachT names
+#                   (NamedNode&MagicEffectsNode) of the target's skeleton, playing mBegin, mLoop and,
+#                   when the effect ends, mEnd, with the LIGH the MGEF names at the art's AttachLight
+#                   node; on the player that is the first-person arms' skeleton. Without the art or
+#                   the node (an NPC: not done) an OmniLight3D held LIGHT_HEIGHT above the target.
 #   stagger (33)    SkydotAi.stagger; the player only logs it (PLACEHOLDER for a camera shake)
 #   reanimate (22)  the corpse stands up (Corpses.stand_up) and SkydotAi.revive
 #   bound (17)      the equipment changed (the hands and arms refresh); the weapon cannot be dropped
@@ -47,7 +51,7 @@ func _on_event(info: Dictionary) -> void:
 	match int(info.get("archetype", -1)):
 		ARCH_LIGHT:
 			if started:
-				_light_start(int(info["instance"]), target, int(info.get("associated", 0)))
+				_light_start(int(info["instance"]), target, int(info.get("associated", 0)), int(info.get("mgef", 0)))
 			else:
 				_light_end(int(info["instance"]))
 		ARCH_STAGGER:
@@ -85,8 +89,15 @@ func _reanimate(target: int) -> void:
 
 # ---- light
 
-func _light_start(instance: int, target: int, light: int) -> void:
+func _light_start(instance: int, target: int, light: int, mgef := 0) -> void:
 	if _lights.has(instance):
+		return
+	var art := _hit_art(target, mgef)
+	if art != null:
+		Projectiles.attach_light(_session.world, art, light)
+		Projectiles.play_in_order(art, ["mBegin", "mLoop"])
+		_lights[instance] = {"node": art, "target": target, "art": true}
+		print("magic: light 0x%08X on 0x%08X with %s" % [light, target, art.name])
 		return
 	var data: Dictionary = _session.world.get_base(light).get("light", {}) if light != 0 else {}
 	var node := OmniLight3D.new()
@@ -100,13 +111,53 @@ func _light_start(instance: int, target: int, light: int) -> void:
 	print("magic: light 0x%08X on 0x%08X" % [light, target])
 
 
+## The hit effect art of `mgef` built on the node of the target's skeleton its AttachT names
+## ("NamedNode&MagicEffectsNode"); null if the effect has none or the target has no such node.
+func _hit_art(target: int, mgef: int) -> Node3D:
+	var art_id := int(_session.world.get_magic_effect(mgef).get("hit_effect_art", 0)) if mgef != 0 else 0
+	var path: String = _session.world.get_art_object(art_id).get("model", "") if art_id != 0 else ""
+	if path == "" or target != SkydotPapyrus.PLAYER_REF or not _session.magic.player_bone.is_valid():
+		return null
+	var model := _session.world.build_model(path)
+	if model == null:
+		return null
+	var holder: Node3D = null
+	for entry: String in _attach_targets(model):
+		if entry.begins_with("NamedNode&"):
+			holder = _session.magic.player_bone.call(entry.trim_prefix("NamedNode&"))
+	if holder == null:
+		model.free()
+		return null
+	model.name = "HitArt_%s" % path.get_file().get_basename()
+	holder.add_child(model)
+	return model
+
+
+## The converter's AttachT entries of a built model (its root extras).
+static func _attach_targets(model: Node) -> Array:
+	for node: Node in [model, model.get_node_or_null("bethconv_z_up_to_y_up")]:
+		if node != null and node.has_meta("extras"):
+			var extras: Dictionary = node.get_meta("extras")
+			var block: Dictionary = extras.get("bethconv", {})
+			if block.has("attach_targets"):
+				return block["attach_targets"]
+	return []
+
+
 func _light_end(instance: int) -> void:
 	if _lights.has(instance):
-		var node: Node = _lights[instance]["node"]
-		if is_instance_valid(node):
-			node.queue_free()
+		var entry: Dictionary = _lights[instance]
+		var node: Node = entry["node"]
 		_lights.erase(instance)
 		print("magic: light %d ends" % instance)
+		if not is_instance_valid(node):
+			return
+		var animator := node.get_node_or_null("SkydotAnimator") if entry.get("art", false) else null
+		if animator != null and animator.play("mEnd"):
+			# The effect's end: the art plays mEnd (the graph's StopEffect) and goes when it is over.
+			animator.finished.connect(func(_clip: String) -> void: node.queue_free())
+		else:
+			node.queue_free()
 
 
 func lights() -> int:
@@ -130,7 +181,7 @@ func _follow(node: OmniLight3D, target: int) -> void:
 func step(_delta: float) -> void:
 	for instance: int in _lights.keys():
 		var entry: Dictionary = _lights[instance]
-		if is_instance_valid(entry["node"]):
+		if is_instance_valid(entry["node"]) and not entry.get("art", false):
 			_follow(entry["node"], entry["target"])
 	var overrides: Dictionary = _session.papyrus.magic_overrides(SkydotPapyrus.PLAYER_REF)
 	_set_paralyzed(bool(overrides.get("paralyzed", false)))
@@ -184,7 +235,8 @@ func on_loaded() -> void:
 		for effect: Dictionary in _session.papyrus.active_effects(target):
 			match int(effect.get("archetype", -1)):
 				ARCH_LIGHT:
-					_light_start(int(effect["instance"]), target, int(effect.get("associated", 0)))
+					_light_start(int(effect["instance"]), target, int(effect.get("associated", 0)),
+						int(effect.get("mgef", 0)))
 				ARCH_BOUND:
 					if target == SkydotPapyrus.PLAYER_REF:
 						_bound[int(effect.get("associated", 0))] = int(effect["instance"])
