@@ -44,6 +44,7 @@ constexpr std::uint32_t k_inherit_fade = 0x40;
 constexpr std::uint32_t k_inherit_fog_power = 0x100;
 constexpr std::uint32_t k_inherit_fog_max = 0x200;
 constexpr std::uint32_t k_inherit_light_fade = 0x400;
+constexpr std::uint32_t k_inherit_all = 0x7FF;
 
 /// The lighting of an interior as the game uses it: XCLL with the inherited
 /// values taken from the lighting template, or the template's alone when the
@@ -59,7 +60,17 @@ std::optional<Lighting> resolve_lighting(
         return t;
     }
     Lighting out = *entry.xcll;
-    const auto inherits = [&](std::uint32_t bit) { return (out.inherit & bit) != 0; };
+    // No flag at all takes the whole template, directional ambient included.
+    // Measured in the game (setfog on a neutral frame, 2026-11-07): Bleak
+    // Falls Barrow 01 (flags 0, XCLL fog 0-12000, its template
+    // BleakFallsBarrowFar 1500-10000) is pixel for pixel the frame with
+    // setfog 1500 10000 and clearly not 0 12000; PotemasCatacombs02 and
+    // WindhelmHouseofClanShatterShield (flags 0) match their templates' fog
+    // too, not their own. Bleak Falls Barrow's @ambient is exactly the
+    // template's DALC (constant 0.2144/0.1941/0.1288, z 0.1314/0.1216/0.0824),
+    // not the cell's.
+    const std::uint32_t flags = out.inherit != 0 ? out.inherit : k_inherit_all;
+    const auto inherits = [&](std::uint32_t bit) { return (flags & bit) != 0; };
     if (inherits(k_inherit_ambient)) {
         out.ambient = t.ambient;
         out.directional_ambient = t.directional_ambient;

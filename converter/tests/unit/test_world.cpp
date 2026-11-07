@@ -1834,6 +1834,7 @@ void make_lighting(const TempDir& dir) {
     lit_cell(cells, 0x0000'0B0A, "InheritsFull", 92, all_inherited, k_lt_full);
     lit_cell(cells, 0x0000'0B0B, "OnlyBad", 0, 0, k_lt_bad);
     lit_cell(cells, 0x0000'0B0C, "OwnTooShort", 40, 0, 0);
+    lit_cell(cells, 0x0000'0B0D, "NoFlagsFull", 92, 0, k_lt_full);
     ByteWriter sub_block;
     bethconv::test::write_group(sub_block, 0, 3, cells.span());
     ByteWriter block;
@@ -1855,7 +1856,7 @@ TEST_CASE("world.fb decodes the 64, 72 and 92-byte lighting layouts", "[pack][wo
     const auto out = dir / "world.fb";
     const auto stats = pack::write_world(world, order, out);
     REQUIRE(stats.has_value());
-    CHECK(stats->cells == 12);
+    CHECK(stats->cells == 13);
     CHECK(stats->lighting_templates == 3);
     // The template and the cell whose DATA/XCLL has no layout: 80 bytes of
     // LGTM DATA, 80 and 40 of XCLL.
@@ -1965,6 +1966,17 @@ TEST_CASE("world.fb decodes the 64, 72 and 92-byte lighting layouts", "[pack][wo
     CHECK(inherits_full.lighting->ambient() == 0x0101);
     CHECK(inherits_full.lighting->fog_max() == 0.6F);
     CHECK(inherits_full.lighting->light_fade_begin() == 200.0F);
+
+    // An XCLL with no inherit flag at all takes the whole template, its
+    // directional ambient too, as the game shows Bleak Falls Barrow.
+    const auto no_flags = cell("NoFlagsFull");
+    REQUIRE(no_flags.has_lighting);
+    CHECK(no_flags.lighting->ambient() == 0x0101);
+    CHECK(no_flags.lighting->fog_near() == 500.0F);
+    CHECK(no_flags.lighting->fog_max() == 0.6F);
+    CHECK(no_flags.lighting->light_fade_begin() == 200.0F);
+    REQUIRE(no_flags.directional_ambient.size() == 6);
+    CHECK(no_flags.directional_ambient[0] == 0x00B0'0001);
 
     // A template with no layout is none: the cell keeps what it has.
     CHECK_FALSE(cell("OnlyBad").has_lighting);
