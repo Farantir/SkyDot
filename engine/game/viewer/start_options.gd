@@ -32,8 +32,6 @@ func apply() -> void:
 	for form in _settings.equip:
 		if not _session.equip(form):
 			print("--equip: 0x%08X cannot be equipped" % form)
-	if _settings.ready_weapon and _session.weapon_state() == Combat.State.SHEATHED:
-		_session.toggle_weapon()
 	for form in _settings.drink:
 		if _session.papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, form) == 0:
 			_session.give([Vector2i(form, 1)])
@@ -47,6 +45,9 @@ func apply() -> void:
 			_session.papyrus.add_spell(SkydotPapyrus.PLAYER_REF, entry.form)
 		print("--equip-spell: 0x%08X in hand %d: %s" % [entry.form, entry.hand,
 			"ok" if _session.equip_spell(entry.form, entry.hand) else "cannot be equipped"])
+	# Drawn after the spells are in the hands, so they are readied with the weapon (or alone).
+	if _settings.ready_weapon and _session.weapon_state() == Combat.State.SHEATHED:
+		_session.toggle_weapon()
 	if _settings.cast_at != 0:
 		_cast_at = CastAt.new(_session, _rig, _settings.cast_at, _settings.cast_at_hand)
 	if _settings.shout_wait.is_empty():
