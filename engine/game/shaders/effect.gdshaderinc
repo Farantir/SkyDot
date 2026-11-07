@@ -103,15 +103,25 @@ void vertex() {
 // influence 1, alpha blended) were black and its additive light beams
 // (FXAmbBeamDust) were gone. The mist (XEMI) keeps none (skydot_effect_light_xemi
 // zero inside): with the directional colour it came out greyer than the
-// game's. Point lights are left out: with them the mist and the cobwebs
-// above it came out several times the game's brightness.
+// game's. Point lights add to the shapes without emittance only (light()):
+// the game's mist does not follow the torch next to it (above), but its
+// spider webs take the hue of the cyan lights around them (0x2EDF0,
+// 0.71/0.97/0.99, fade 5): Bleak Falls Barrow's web close-up went from 22 %
+// to 4 % under the game's luma and the spider room from 25 % to 1 %
+// (skycompare 2026-11-07, shots 133737 and 134202).
 global uniform vec3 skydot_effect_light;
 global uniform vec3 skydot_effect_light_xemi;
 uniform float lighting_influence = 0.55;
 uniform bool external_emittance = false;
 instance uniform vec3 effect_emittance = vec3(0.0);
-// All light comes through EMISSION; the scene's lights add nothing.
+varying flat float point_light_share;
+// Point lights add to DLightColor for shapes without emittance (Community
+// Shaders, Effect.hlsl GetLightingColor: no N.L); the directional light is
+// skydot_effect_light, in EMISSION.
 void light() {
+	if (!LIGHT_IS_DIRECTIONAL) {
+		DIFFUSE_LIGHT += point_light_share * ATTENUATION * LIGHT_COLOR / PI;
+	}
 }
 #endif
 
@@ -196,6 +206,7 @@ void fragment() {
 	// The flag alone is set on most effect shapes (the webs too); only a
 	// reference with XEMI gives a colour.
 	bool emitting = external_emittance && any(greaterThan(effect_emittance, vec3(0.0)));
+	point_light_share = emitting ? 0.0 : lighting_influence;
 	EMISSION += ALBEDO * ((1.0 - lighting_influence) + lighting_influence * (emitting ? 1.1 * skydot_effect_light_xemi + effect_emittance : 1.1 * skydot_effect_light));
 #endif
 }
