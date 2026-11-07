@@ -352,6 +352,9 @@ struct Model {
     /// BSBehaviorGraphExtraData: the behaviour graph file, as stored
     /// (`Traps\WallTrap\WallTrapCW\WallTraps.hkx`); empty when there is none.
     std::string behavior_graph;
+    /// NiStringsExtraData "AttachT": where an art object's model goes on the
+    /// actor it is put on (`NamedNode&MagicEffectsNode`); empty when there is none.
+    std::vector<std::string> attach_targets;
 
     std::vector<Node> nodes;
     std::vector<std::size_t> roots;

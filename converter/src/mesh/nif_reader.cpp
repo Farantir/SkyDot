@@ -1184,6 +1184,15 @@ io::ParseResult<Model> read_nif(std::span<const std::byte> bytes, std::string_vi
                 break;
             }
         }
+        for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
+            if (auto* strings = nif.GetHeader().GetBlock<nifly::NiStringsExtraData>(i);
+                strings != nullptr && strings->name.get() == "AttachT") {
+                for (auto& entry : strings->stringsData) {
+                    model.attach_targets.push_back(entry.get());
+                }
+                break;
+            }
+        }
     } catch (const std::exception& e) {
         return std::unexpected(
             fail(origin, ErrorKind::corrupt, std::format("nifly threw: {}", e.what())));

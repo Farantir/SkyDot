@@ -338,6 +338,13 @@ private:
         if (!model_.behavior_graph.empty()) {
             j["bethconv"]["behavior_graph"] = json_text(model_.behavior_graph);
         }
+        if (!model_.attach_targets.empty()) {
+            nlohmann::json targets = nlohmann::json::array();
+            for (const std::string& target : model_.attach_targets) {
+                targets.push_back(json_text(target));
+            }
+            j["bethconv"]["attach_targets"] = std::move(targets);
+        }
         if (!model_.animations.empty()) {
             nlohmann::json clips = nlohmann::json::array();
             for (const AnimationClip& clip : model_.animations) {
