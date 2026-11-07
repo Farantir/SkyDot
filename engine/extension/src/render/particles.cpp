@@ -170,6 +170,12 @@ void SkydotParticles::setup(const Dictionary& block, const Ref<godot::ShaderMate
     }
 }
 
+void SkydotParticles::set_emitter_object(godot::Node3D* node) {
+    for (Emitter& em : emitters_) {
+        em.node = node;
+    }
+}
+
 std::int64_t SkydotParticles::get_emitter_count() const {
     return static_cast<std::int64_t>(emitters_.size());
 }

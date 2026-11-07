@@ -44,6 +44,11 @@ public:
     /// lifetime (the default, for ambient effects); a projectile's starts empty.
     /// Only before the node enters the tree.
     void set_warm_start(bool warm) { warm_start_ = warm; }
+    /// Emit from `node` instead of the emitter objects the NIF names: a master
+    /// particle system (an ADDN model) emits from the AddOnNode that carries
+    /// it, at its place and along its Z, as BSPSysMultiTargetEmitterCtlr does.
+    /// Only before the node enters the tree.
+    void set_emitter_object(godot::Node3D* node);
     std::int64_t get_emitter_count() const;
     /// Particles per second each emitter starts with.
     double get_birth_rate() const;

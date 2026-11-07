@@ -5,6 +5,7 @@
 #include "actors/behavior_player.hpp"
 #include "render/animator.hpp"
 #include "render/billboard.hpp"
+#include "render/particles.hpp"
 #include "render/switch_node.hpp"
 #include "physics/collision.hpp"
 #include "render/effect_asset.hpp"
@@ -488,21 +489,25 @@ std::int64_t Decorator::attach_addons(godot::Node* model) {
         DecorationStats unused;
         Decoration inner{unused};
         decorate(addon, inner);
-        // The AddOnNode sits in the model's NIF space (under its axis and
-        // unit conversion), and the addon brings its own conversion: hang it
-        // from the model's root where the AddOnNode is, without converting
-        // twice.
+        // The addon hangs from its AddOnNode, so it follows what moves that
+        // node (a flame spray's movers). The AddOnNode sits in the model's NIF
+        // space (under its axis and unit conversion), and the addon brings its
+        // own conversion: undo that one, so it is not converted twice.
         godot::Transform3D at;
-        for (godot::Node* n = node; n != nullptr && n != model; n = n->get_parent()) {
-            if (auto* spatial = godot::Object::cast_to<godot::Node3D>(n)) {
-                at = spatial->get_transform() * at;
-            }
-        }
         if (auto* own = godot::Object::cast_to<godot::Node3D>(addon->get_node_or_null("bethconv_z_up_to_y_up"))) {
-            at = at * own->get_transform().affine_inverse();
+            at = own->get_transform().affine_inverse();
         }
         addon->set_transform(at);
-        model->add_child(addon);
+        // An ADDN model is a master particle system: its particles leave from
+        // the AddOnNode, at its place and along its axes, not from the emitter
+        // objects in the addon's own file.
+        const godot::TypedArray<godot::Node> systems = addon->find_children("*", "SkydotParticles", true, false);
+        for (int64_t s = 0; s < systems.size(); ++s) {
+            if (auto* system = godot::Object::cast_to<SkydotParticles>(systems[s])) {
+                system->set_emitter_object(node);
+            }
+        }
+        node->add_child(addon);
         ++attached;
     }
     return attached;
