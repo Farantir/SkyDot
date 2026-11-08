@@ -250,6 +250,22 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return static_cast<double>(world.equipped_item_type(subject, static_cast<std::int32_t>(p1)));
     case fn::is_blocking:
         return flag(world.is_blocking(subject));
+    // ---- furniture: GetSitting and GetSleeping give the state numbers (0 not, 2 sitting down, 3 sitting or
+    // asleep, 4 getting up or waking); the others are 1 or 0.
+    case fn::get_sitting:
+        return static_cast<double>(world.sitting_state(subject));
+    case fn::get_sleeping:
+        return static_cast<double>(world.sleeping_state(subject));
+    case fn::is_furniture_anim_type:
+        return flag(p1 != 0 && world.furniture_anim_type(subject) == static_cast<std::int32_t>(p1));
+    case fn::is_entering_interaction_quick:
+        return flag(world.entering_interaction_quick(subject));
+    // The variable's name is CIS1; 0 when the graph has no such variable.
+    case fn::get_graph_variable_int:
+        if (c.string1() == nullptr || c.string1()->size() == 0) {
+            return 0.0;
+        }
+        return static_cast<double>(world.graph_variable_int(subject, c.string1()->str()).value_or(0));
     // No spells until magic (C5).
     case fn::has_spell:
         return 0.0;

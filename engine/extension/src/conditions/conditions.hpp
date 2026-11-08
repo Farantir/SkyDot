@@ -196,6 +196,22 @@ public:
     /// Whether `ref` has its block up.
     [[nodiscard]] virtual bool is_blocking(std::uint32_t /*ref*/) const { return false; }
 
+    // ---- furniture (the actor `ref` is using or about to use a furniture marker)
+    /// GetSitting: 0 not sitting, 2 sitting down, 3 sitting, 4 getting up.
+    [[nodiscard]] virtual std::int32_t sitting_state(std::uint32_t /*ref*/) const { return 0; }
+    /// GetSleeping: 0 not sleeping, 3 asleep, 4 waking up.
+    [[nodiscard]] virtual std::int32_t sleeping_state(std::uint32_t /*ref*/) const { return 0; }
+    /// The animation type of the furniture marker `ref` is using or about to use (1 sit, 2 sleep, 3 lean),
+    /// 0 if none.
+    [[nodiscard]] virtual std::int32_t furniture_anim_type(std::uint32_t /*ref*/) const { return 0; }
+    /// IsEnteringInteractionQuick: `ref` is entering its furniture instantly (placed in it on load).
+    [[nodiscard]] virtual bool entering_interaction_quick(std::uint32_t /*ref*/) const { return false; }
+    /// An integer variable of `ref`'s behaviour graph; nothing if there is none of that name.
+    [[nodiscard]] virtual std::optional<std::int32_t> graph_variable_int(std::uint32_t /*ref*/,
+                                                                        const std::string& /*name*/) const {
+        return std::nullopt;
+    }
+
     [[nodiscard]] UnknownCounter& unknowns() { return unknowns_; }
     [[nodiscard]] const UnknownCounter& unknowns() const { return unknowns_; }
 

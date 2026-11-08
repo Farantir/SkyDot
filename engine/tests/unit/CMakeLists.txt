@@ -18,6 +18,7 @@ add_executable(skydot_core_tests
     test_actors.cpp
     test_activation.cpp
     test_behavior.cpp
+    test_idle_choice.cpp
     test_actor_graph.cpp
     test_conditions.cpp
     test_combat_ai.cpp

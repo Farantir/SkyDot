@@ -43,6 +43,8 @@ set(SKYDOT_CORE_SOURCES
     src/actors/behavior_machine.cpp
     src/actors/behavior_machine.hpp
     src/ai/combat_rules.cpp
+    src/ai/idle_choice.cpp
+    src/ai/idle_choice.hpp
     src/ai/combat_rules.hpp
     src/ai/flight.cpp
     src/ai/flight.hpp

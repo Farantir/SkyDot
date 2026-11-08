@@ -2,6 +2,7 @@
 #include "world_builder.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <map>
 #include <set>
 #include <utility>
@@ -24,7 +25,8 @@ std::vector<flatbuffers::Offset<wfb::Condition>> conditions(Fbb& fbb, const std:
     std::vector<flatbuffers::Offset<wfb::Condition>> out;
     for (const auto& c : list) {
         out.push_back(wfb::CreateConditionDirect(fbb, c.type, c.function, c.value, c.value_global, c.param1, c.param2,
-                                                 c.run_on, c.reference, c.param3, nullptr,
+                                                 c.run_on, c.reference, c.param3,
+                                                 c.string1.empty() ? nullptr : c.string1.c_str(),
                                                  c.string2.empty() ? nullptr : c.string2.c_str()));
     }
     return out;
@@ -572,5 +574,21 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     }
     world_ = wfb::GetWorld(bytes_.data());
 }
+
+} // namespace skydot::testing
+
+namespace skydot::testing {
+
+OpenWorld::OpenWorld(const WorldSpec& spec)
+    : path_(std::filesystem::temp_directory_path() /
+            ("skydot_world_data_test_" + std::to_string(reinterpret_cast<std::uintptr_t>(this)) + ".fb")) {
+    const BuiltWorld built(spec);
+    std::ofstream out(path_, std::ios::binary | std::ios::trunc);
+    out.write(reinterpret_cast<const char*>(built.bytes().data()), static_cast<std::streamsize>(built.bytes().size()));
+    out.close();
+    result = data.open(path_.string());
+}
+
+OpenWorld::~OpenWorld() { std::filesystem::remove(path_); }
 
 } // namespace skydot::testing

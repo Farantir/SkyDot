@@ -402,3 +402,36 @@ TEST_CASE("places and dialogue state", "[conditions]") {
     CHECK(pass({cond(fn::get_current_time, 14.5F), cond(fn::get_day_of_week, 3.0F),
                 cond(fn::get_random_percent, 41.0F)}, w));
 }
+
+TEST_CASE("furniture functions read the states of the subject", "[conditions][furniture]") {
+    FakeConditionWorld world;
+    world.sitting[1] = 3;
+    world.sleeping[2] = 4;
+    world.furniture_types[1] = 1;
+    world.furniture_types[2] = 2;
+    world.entering_quick.insert(2);
+    world.graph_ints[{1, "iState"}] = 7;
+
+    conditions::ConditionContext on1;
+    on1.subject = 1;
+    conditions::ConditionContext on2;
+    on2.subject = 2;
+    CHECK(pass({cond(fn::get_sitting, 3.0F)}, world, on1));
+    CHECK_FALSE(pass({cond(fn::get_sitting, 3.0F)}, world, on2));
+    CHECK(pass({cond(fn::get_sitting, 0.0F)}, world, on2));
+    CHECK(pass({cond(fn::get_sleeping, 4.0F)}, world, on2));
+    CHECK(pass({cond(fn::get_sleeping, 3.0F, 0, ge)}, world, on2));
+    CHECK_FALSE(pass({cond(fn::get_sleeping, 3.0F, 0, ge)}, world, on1));
+    CHECK(pass({cond(fn::is_furniture_anim_type, 1.0F, 1)}, world, on1));
+    CHECK_FALSE(pass({cond(fn::is_furniture_anim_type, 1.0F, 2)}, world, on1));
+    CHECK(pass({cond(fn::is_furniture_anim_type, 1.0F, 2)}, world, on2));
+    CHECK(pass({cond(fn::is_entering_interaction_quick, 1.0F)}, world, on2));
+    CHECK(pass({cond(fn::is_entering_interaction_quick, 0.0F)}, world, on1));
+    ConditionSpec variable = cond(fn::get_graph_variable_int, 7.0F);
+    variable.string1 = "iState";
+    CHECK(pass({variable}, world, on1));
+    CHECK_FALSE(pass({variable}, world, on2));
+    variable.string1 = "iOther";
+    variable.value = 0.0F;
+    CHECK(pass({variable}, world, on1)); // unknown variable: 0
+}

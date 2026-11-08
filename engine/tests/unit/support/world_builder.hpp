@@ -10,6 +10,10 @@
 // are not here.
 #pragma once
 
+#include "data/world_data.hpp"
+
+#include <filesystem>
+
 #include "world_generated.h"
 
 #include <array>
@@ -49,6 +53,7 @@ struct ConditionSpec {
     std::uint32_t reference = 0;
     std::int32_t param3 = -1;
     std::string string2 = {};
+    std::string string1 = {};
 };
 
 /// `function` compared with `value` by `compare`, plus flags.
@@ -587,6 +592,21 @@ public:
 private:
     std::vector<std::uint8_t> bytes_;
     const wfb::World* world_ = nullptr;
+};
+
+/// The built world.fb in a temp file that is removed with the test, opened as WorldData.
+class OpenWorld {
+public:
+    explicit OpenWorld(const WorldSpec& spec);
+    ~OpenWorld();
+    OpenWorld(const OpenWorld&) = delete;
+    OpenWorld& operator=(const OpenWorld&) = delete;
+
+    WorldData data;
+    WorldData::OpenResult result;
+
+private:
+    std::filesystem::path path_;
 };
 
 } // namespace skydot::testing

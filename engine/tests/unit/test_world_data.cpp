@@ -18,6 +18,7 @@
 
 using skydot::WorldData;
 using skydot::testing::BuiltWorld;
+using skydot::testing::OpenWorld;
 using skydot::testing::ActorRefSpec;
 using skydot::testing::BaseSpec;
 using skydot::testing::CellSpec;
@@ -32,29 +33,6 @@ using skydot::testing::PerkEffectSpec;
 namespace wfb = bethconv::pack::wfb;
 
 namespace {
-
-/// The built world.fb in a temp file that is removed with the test, opened as WorldData.
-class OpenWorld {
-public:
-    explicit OpenWorld(const WorldSpec& spec)
-        : path_(std::filesystem::temp_directory_path() / "skydot_world_data_test.fb") {
-        const BuiltWorld built(spec);
-        std::ofstream out(path_, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char*>(built.bytes().data()),
-                  static_cast<std::streamsize>(built.bytes().size()));
-        out.close();
-        result = data.open(path_.string());
-    }
-    ~OpenWorld() { std::filesystem::remove(path_); }
-    OpenWorld(const OpenWorld&) = delete;
-    OpenWorld& operator=(const OpenWorld&) = delete;
-
-    WorldData data;
-    WorldData::OpenResult result;
-
-private:
-    std::filesystem::path path_;
-};
 
 } // namespace
 
