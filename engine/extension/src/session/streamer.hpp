@@ -233,9 +233,9 @@ private:
     void finish_cell(const CellKey& key, godot::Node3D* cell);
     /// Actors of finished cells wait for ground (SkydotActor::set_awaiting_world) until the world
     /// they could stand on is built: none while the cells entered with `start` (`batch_`) are still
-    /// being built; after that, as cells stream in at the edge, each once its own cell and, within
-    /// `k_border_margin` of a border, the cell across it are (one out of range is waited for, too:
-    /// a deck or floor of the next cell may be what it stands on).
+    /// being built; after that, as cells stream in at the edge, each once its own cell and the eight
+    /// around it are (one out of range is waited for, too: a deck or floor of the next cell may be
+    /// what it stands on).
     void release_actors();
     std::vector<std::uint64_t> awaiting_; ///< Instance ids.
     bool batch_ = false;

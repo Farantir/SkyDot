@@ -137,8 +137,8 @@ slopes, step-up, pushing clutter) steered by itself.
   only once the world it may stand on is built: an interior's actors come
   last in its build; in a worldspace the streamer first builds every cell
   of the grid it enters (at the start, through a door), and as cells stream
-  in at the edge later, an actor within 1024 units of a border waits for
-  the cell across it, too (Alvor at the Riverwood forge stands on a deck
+  in at the edge later, an actor waits until its own cell and the eight
+  around it are built (Alvor at the Riverwood forge stands on a deck
   that is part of the cell north of his; the terrain under it is not where
   he stands).
 - **Walking.** `walk_to(target, run)` asks the navigation map for a path
