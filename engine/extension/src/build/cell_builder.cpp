@@ -1048,7 +1048,6 @@ CellBuilder::ActorSpec CellBuilder::spec_of(const wfb::ActorRef& actor, const Ac
     const auto& p = actor.position();
     spec.position = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
     spec.rotation_z = place != nullptr ? place->rotation_z : actor.rotation().z();
-    spec.space = place != nullptr ? place->space : 0U;
     return spec;
 }
 
@@ -1178,25 +1177,6 @@ bool CellBuilder::refresh_actor_parts(godot::Node3D* node, std::uint32_t ref, st
     return true;
 }
 
-std::optional<double> CellBuilder::navmesh_floor(const ActorSpec& actor) const {
-    // Feet this near (game units) a navmesh triangle stand on its floor.
-    constexpr double k_floor_nav_reach = 48.0;
-    std::int64_t space = actor.space;
-    if (space == 0) {
-        const auto* cell = data().cell_ptr(actor.cell);
-        if (cell == nullptr) {
-            return std::nullopt;
-        }
-        const bool interior = formats::has_flag(cell->flags(), wfb::CellFlags::interior) || cell->world() == 0;
-        space = interior ? static_cast<std::int64_t>(cell->id()) : static_cast<std::int64_t>(cell->world());
-    }
-    const auto at = nearest_nav_point(data(), space, actor.position, k_floor_nav_reach);
-    if (!at) {
-        return std::nullopt;
-    }
-    return static_cast<double>(skyrim_position(*at).y);
-}
-
 void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats) {
     if (actor.disabled) {
         ++stats.disabled;
@@ -1229,7 +1209,6 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
     node->set_name(hex_id(actor.ref) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
     node->set_transform(skyrim_transform(actor.position, Vector3(0, 0, actor.rotation_z), 1.0));
-    node->set_navmesh_floor(navmesh_floor(actor));
     auto* units = memnew(godot::Node3D);
     units->set_name("bethconv_z_up_to_y_up");
     units->set_transform(godot::Transform3D(

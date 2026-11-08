@@ -134,12 +134,7 @@ slopes, step-up, pushing clutter) steered by itself.
   Rays (`pick_ref`, ground checks) do not hit them.
 - **Ground.** It holds still until a ray finds the world or terrain under
   it (cells stream their collision in after their actors), and goes back
-  home to wait again if it falls 30 m below it. Where the game's navmesh
-  has a floor at its feet (a triangle within 48 units, looked up when it is
-  built), only ground within 0.5 m of that floor counts: the floor may be
-  part of the next cell, built later, and what lies below it then (Alvor at
-  the Riverwood forge, whose deck is in the cell north of his, found the
-  terrain under it and stood in the wall) is not where it stands.
+  home to wait again if it falls 30 m below it.
 - **Walking.** `walk_to(target, run)` asks the navigation map for a path
   (from within 1.5 m of the navmesh) and follows its corners, turning at
   5 rad/s; a corner behind it turns it on the spot. Speeds are the clips'

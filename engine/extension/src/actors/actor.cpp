@@ -52,8 +52,6 @@ constexpr double k_ground_poll = 0.25;
 constexpr double k_lost_depth = 30.0;
 /// A held actor with no ground within 4 m looks this far down (metres) before it waits on.
 constexpr double k_drop_search = 40.0;
-/// Ground this far (metres) above or below the navmesh floor at a held actor's feet is that floor.
-constexpr double k_navmesh_floor_slack = 0.5;
 constexpr double k_blend = 0.25;
 /// Doors: how often to look for one ahead (seconds), how far past the body
 /// (metres), how long to stand while it swings, and when to close it behind
@@ -726,11 +724,6 @@ bool SkydotActor::find_ground(double delta) {
         return false;
     }
     const Vector3 ground = hit["position"];
-    if (navmesh_floor_ && std::abs(static_cast<double>(ground.y) - *navmesh_floor_) > k_navmesh_floor_slack) {
-        // The game's navmesh has a floor at its feet that is not built yet (it belongs to a cell
-        // next to the actor's, built later): what lies below is not where it stands. It waits.
-        return false;
-    }
     teleport(ground);
     return true;
 }

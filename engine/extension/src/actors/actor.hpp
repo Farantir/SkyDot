@@ -39,7 +39,6 @@
 #include <godot_cpp/variant/packed_vector3_array.hpp>
 
 #include <functional>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -96,11 +95,6 @@ public:
     void set_seed(std::int64_t seed);
     /// Facing about +Y, radians, as `SkydotPlayer.set_look` takes it.
     void face(double yaw);
-
-    /// The height (Godot y) of the game's navmesh floor at the actor's feet, which the builder
-    /// looks up: while held, it waits for ground there instead of dropping onto whatever lies
-    /// below (the floor may belong to a neighbouring cell that is built later).
-    void set_navmesh_floor(std::optional<double> y) { navmesh_floor_ = y; }
 
     /// Where clips and stances come from (the builder's asset cache).
     void set_clip_source(ClipSource clips, StanceSource stances) {
@@ -248,7 +242,6 @@ private:
     godot::Vector3 home_;
     bool home_set_{false};
     double ground_wait_{0.0};
-    std::optional<double> navmesh_floor_;
     godot::String playing_;
     std::int32_t lod_{0};
     bool on_screen_{true};

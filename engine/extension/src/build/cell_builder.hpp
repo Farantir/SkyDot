@@ -37,7 +37,6 @@
 #include <cstdint>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -197,18 +196,12 @@ private:
         std::uint32_t ref{};
         std::uint32_t base{};
         std::uint32_t cell{};
-        /// The space `position` is in when the AI moved the actor (an interior or a worldspace),
-        /// else 0: its own cell's.
-        std::uint32_t space{};
         bool disabled{};
         godot::Vector3 position;
         float rotation_z{};
     };
     ActorSpec spec_of(const bethconv::pack::wfb::ActorRef& actor, const ActorPlacement::Place* place);
     void place_actor(godot::Node3D* root, const ActorSpec& actor, BuildStats& stats);
-    /// The height (Godot y) of the game's navmesh floor at the actor's feet; nothing if no navmesh
-    /// triangle is that near.
-    [[nodiscard]] std::optional<double> navmesh_floor(const ActorSpec& actor) const;
     /// The skin, worn armor and head of `plan` as meshes on `skeleton` (hair hidden under a helmet,
     /// the skin tone applied). `node` is the actor, which instantiates the parts for a moment.
     void attach_actor_parts(godot::Node3D* node, godot::Skeleton3D* skeleton, const ActorPlan& plan, BuildStats& stats);
