@@ -7,8 +7,9 @@
 // time passes and fed back into the machine. Nothing here touches Godot.
 //
 // Simplifications, all on purpose:
-//   - Transition conditions (hkbExpressionCondition, e.g. "!BPlayerNear") are
-//     treated as true.
+//   - Transition conditions (hkbExpressionCondition, e.g. "iSyncIdleLocomotion > 0") are
+//     evaluated over the graph variables (BehaviorSet::set_variable; initial values from
+//     the graph); one that does not parse counts as true.
 //   - Transition blends are instant: the new state's pose replaces the old.
 //   - A transition to the state already current is ignored.
 //   - Of a state's transitions the first matching one wins (no priorities).
@@ -21,6 +22,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace bethconv::pack::afb {
@@ -54,6 +56,8 @@ struct BehaviorTransition {
     /// toNestedStateId: the state id to start the target state's nested
     /// machine in, instead of its start state; -1 for none.
     int to_nested_state{-1};
+    /// The expression the transition is taken only if it holds (hkbExpressionCondition), else empty.
+    std::string condition{};
 };
 
 struct BehaviorState {
@@ -89,6 +93,8 @@ struct BehaviorGraphDef {
     std::vector<BehaviorClip> clips;
     std::vector<BehaviorDef> machines;
     std::vector<int> roots;
+    /// The graph variables' initial values by lower-case name (joined graphs share them).
+    std::unordered_map<std::string, float> variables;
 };
 
 /// The first behaviour graph of an animation asset; events are named, clips
@@ -121,13 +127,19 @@ struct BehaviorOutput {
 /// The clips of a graph, shared by its machines (a graph of hundreds of
 /// machines and thousands of clips is not copied per machine).
 using BehaviorClips = std::shared_ptr<std::vector<BehaviorClip>>;
+/// The variables of a graph by lower-case name, shared by its machines.
+using BehaviorVariables = std::shared_ptr<std::unordered_map<std::string, float>>;
+
+/// Whether the expression holds over the variables (`!a && (b == 1 || c >= 2.5)`); unknown
+/// variables are 0. An expression that does not parse holds.
+[[nodiscard]] bool evaluate_condition(std::string_view expression, const std::unordered_map<std::string, float>& variables);
 
 class BehaviorMachine {
 public:
     /// A machine with the clips of `def`, which it keeps for itself.
     explicit BehaviorMachine(BehaviorDef def);
     /// A machine over clips shared with others; `def.clips` is ignored.
-    BehaviorMachine(BehaviorDef def, BehaviorClips clips);
+    BehaviorMachine(BehaviorDef def, BehaviorClips clips, BehaviorVariables variables = nullptr);
 
     /// Enter the start state, or the state with id `state_id` if it is not
     /// -1 and the machine has it.
@@ -150,6 +162,12 @@ public:
     /// (BehaviorTransition::to_nested_state), -1 if it had none or the state
     /// was not entered by a transition.
     [[nodiscard]] int nested_entry() const { return nested_entry_; }
+    /// Whether an event now would take a transition (the current state's, else a wildcard whose condition holds).
+    [[nodiscard]] bool handles(std::string_view event) const;
+    /// Go to the state with id `state_id` without an event (as a transition would, exit and enter events
+    /// included); nested_entry is the nested state to start its machine in (-1 for its start state). False
+    /// if the machine has no such state. Does nothing if it is in it.
+    bool enter_state(int state_id, int nested_entry, BehaviorOutput& out);
     /// Leave the machine unstarted again (its state is forgotten, no events).
     void stop();
 
@@ -172,12 +190,14 @@ public:
 
 private:
     [[nodiscard]] int find_state(int id) const;
+    [[nodiscard]] const BehaviorTransition* find_transition(std::string_view event) const;
     void change(int index, std::string_view cause, BehaviorOutput& out);
     void raise(std::string event, bool echo, BehaviorOutput& out);
     void drain(BehaviorOutput& out, bool* first_matched = nullptr);
 
     BehaviorDef def_;
     BehaviorClips clips_;
+    BehaviorVariables variables_;
     int current_{-1};
     int nested_entry_{-1};
     float time_{};
@@ -201,6 +221,12 @@ public:
     void start(BehaviorOutput& out);
     void send(std::string_view event, BehaviorOutput& out);
     void advance(float seconds, BehaviorOutput& out);
+    /// Whether a running machine takes a transition for the event.
+    [[nodiscard]] bool handles(std::string_view event) const;
+    /// Put the running machine `machine` into the state `state_id` without an event (BehaviorMachine::enter_state;
+    /// `nested_entry` is the state its nested machines start in), then start and stop the machines its state change
+    /// brings and takes away. False if it does not run or has no such state.
+    bool enter_state(int machine, int state_id, int nested_entry, BehaviorOutput& out);
 
     /// The graph's definition; its `clips` are empty, see `clips()`.
     [[nodiscard]] const BehaviorGraphDef& def() const { return def_; }
@@ -209,6 +235,10 @@ public:
     /// Set a clip's duration (the host learns it when it loads the animation); the machines
     /// see it from their next step on.
     void set_clip_duration(int clip, float seconds);
+    /// A graph variable (case does not matter); the machines' conditions and start states read
+    /// them. Unknown names are 0.
+    void set_variable(std::string_view name, float value);
+    [[nodiscard]] float variable(std::string_view name) const;
     [[nodiscard]] std::size_t machine_count() const { return machines_.size(); }
     /// Machines running now, in index order.
     [[nodiscard]] std::vector<int> running() const;
@@ -229,6 +259,7 @@ private:
 
     BehaviorGraphDef def_;
     BehaviorClips clips_;
+    BehaviorVariables variables_;
     std::vector<BehaviorMachine> machines_;
     std::vector<bool> running_;
 };

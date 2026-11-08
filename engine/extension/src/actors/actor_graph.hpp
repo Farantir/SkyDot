@@ -41,6 +41,8 @@ struct ActorGraphDef {
     /// How many states of nested machines lie above each machine (a root: 0).
     std::vector<int> depth;
     AnimationProject project;
+    /// For each machine the states that nest it: (machine, state id).
+    std::vector<std::vector<std::pair<int, int>>> parents;
     std::string behaviour; ///< The root behaviour graph's virtual path.
     std::string missing;   ///< Why there is no graph, or empty.
 
@@ -84,10 +86,23 @@ public:
     /// when a state with that clip is entered.
     ActorGraph(std::shared_ptr<const ActorGraphDef> def, std::function<float(const std::string&)> duration);
 
+    /// The variables the game sets for an actor before its graph runs (a non-player character: IsNPC 1,
+    /// IsPlayer 0, third person); the graph's own initial values are the player's.
+    void configure(bool player);
     BehaviorOutput start();
     BehaviorOutput send(std::string_view event);
+    /// Send an event that takes the actor into a furniture (or out of its way): as `send`, but an event no
+    /// running machine takes and that a machine nested below a running one handles (a wildcard of the
+    /// furniture machines, which run only while the actor is in a furniture state) first puts the running
+    /// machines into the states that nest it, as the game's enter events do, then delivers it. The machine
+    /// that left its state and the state it left are remembered: `in_furniture` says whether it has come back.
+    BehaviorOutput send_entering(std::string_view event);
+    /// The root-most machine `send_entering` took out of its state is not back in it.
+    [[nodiscard]] bool in_furniture() const;
     /// Events the graph raises come back in `events`, state changes in `changes`.
     BehaviorOutput advance(float seconds);
+    /// A graph variable the game sets from outside (IsNPC, ...); see BehaviorSet::set_variable.
+    void set_variable(std::string_view name, float value) { set_.set_variable(name, value); }
 
     /// The clip of the deepest running machine whose current state has one; nothing when none of
     /// the running states has a clip (the actor's normal animation then).
@@ -104,6 +119,8 @@ private:
     std::function<float(const std::string&)> duration_;
     BehaviorSet set_;
     std::vector<bool> known_;
+    int home_machine_{-1};
+    int home_state_{-1};
 };
 
 } // namespace skydot

@@ -82,6 +82,8 @@ void SkydotFurniture::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("get_markers", "model"), &SkydotFurniture::get_markers);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_start"), &SkydotFurniture::graph_start);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_send", "event"), &SkydotFurniture::graph_send);
+    godot::ClassDB::bind_method(godot::D_METHOD("graph_enter", "event"), &SkydotFurniture::graph_enter);
+    godot::ClassDB::bind_method(godot::D_METHOD("graph_in_furniture"), &SkydotFurniture::graph_in_furniture);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_advance", "seconds"), &SkydotFurniture::graph_advance);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_playing"), &SkydotFurniture::graph_playing);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_root_motion"), &SkydotFurniture::graph_root_motion);
@@ -134,6 +136,7 @@ bool SkydotFurniture::open_graph(const String& behaviour) {
         return false;
     }
     graph_ = std::make_unique<ActorGraph>(def, [&library](const std::string& file) { return library.clip_duration(file); });
+    graph_->configure(false);
     return true;
 }
 
@@ -174,6 +177,9 @@ Dictionary SkydotFurniture::report(const BehaviorOutput& out) const {
 
 Dictionary SkydotFurniture::graph_start() { return graph_ ? report(graph_->start()) : Dictionary(); }
 Dictionary SkydotFurniture::graph_send(const String& event) { return graph_ ? report(graph_->send(utf8(event))) : Dictionary(); }
+Dictionary SkydotFurniture::graph_enter(const String& event) {
+    return graph_ ? report(graph_->send_entering(utf8(event))) : Dictionary();
+}
 Dictionary SkydotFurniture::graph_advance(double seconds) {
     return graph_ ? report(graph_->advance(static_cast<float>(seconds))) : Dictionary();
 }

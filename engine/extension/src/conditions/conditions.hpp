@@ -122,6 +122,10 @@ public:
     [[nodiscard]] virtual bool has_keyword(std::uint32_t ref, std::uint32_t keyword) const = 0;
     /// The actor's race has the child flag (RACE DATA 0x4).
     [[nodiscard]] virtual bool is_child(std::uint32_t) const { return false; }
+    /// The actor's base has the essential flag (ACBS).
+    [[nodiscard]] virtual bool is_essential(std::uint32_t) const { return false; }
+    /// The actor rides a flying mount (a dragon).
+    [[nodiscard]] virtual bool is_on_flying_mount(std::uint32_t) const { return false; }
     [[nodiscard]] virtual double actor_value(std::uint32_t ref, std::uint32_t av) const = 0;
     [[nodiscard]] virtual double base_actor_value(std::uint32_t ref, std::uint32_t av) const = 0;
     [[nodiscard]] virtual double actor_value_percent(std::uint32_t ref, std::uint32_t av) const = 0;
@@ -206,9 +210,9 @@ public:
     [[nodiscard]] virtual std::int32_t furniture_anim_type(std::uint32_t /*ref*/) const { return 0; }
     /// IsEnteringInteractionQuick: `ref` is entering its furniture instantly (placed in it on load).
     [[nodiscard]] virtual bool entering_interaction_quick(std::uint32_t /*ref*/) const { return false; }
-    /// IsFurnitureEntryType: the entry type of the furniture `ref` enters or leaves by, in the value the
-    /// condition's parameter holds (0x10000 for the front of a chair in vanilla); 0 if none. Which
-    /// values the sides have is not established yet.
+    /// IsFurnitureEntryType: the entry `ref` enters or leaves its furniture by, as the furniture
+    /// marker's entry bit (0x1 front, 0x2 behind, 0x4 right, 0x8 left, 0x10 up); 0 if none. The condition's
+    /// parameter is this bit shifted left by 16.
     [[nodiscard]] virtual std::int32_t furniture_entry_type(std::uint32_t /*ref*/) const { return 0; }
     /// IsExitingInstant: `ref` leaves its furniture without the animation.
     [[nodiscard]] virtual bool exiting_instant(std::uint32_t /*ref*/) const { return false; }

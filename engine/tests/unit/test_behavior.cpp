@@ -433,3 +433,72 @@ TEST_CASE("a snapshot that does not fit the graph is refused and changes nothing
     BehaviorSet different(BehaviorGraphDef{});
     CHECK_FALSE(different.load(good));
 }
+
+TEST_CASE("conditions are evaluated over the graph variables", "[behavior]") {
+    using std::unordered_map;
+    const unordered_map<std::string, float> vars{{"a", 1.0F}, {"b", 0.0F}, {"count", 3.0F}, {"1stprot", 2.0F}};
+    CHECK(evaluate_condition("", vars));
+    CHECK(evaluate_condition("a", vars));
+    CHECK_FALSE(evaluate_condition("b", vars));
+    CHECK(evaluate_condition("!b && a == 1", vars));
+    CHECK(evaluate_condition("( count > 2 ) && ( count <= 3 )", vars));
+    CHECK(evaluate_condition("b || count != 3", vars) == false);
+    CHECK(evaluate_condition("(b) || (1stPRot >= 2)", vars));
+    CHECK_FALSE(evaluate_condition("unknown == 1", vars)); // unknown variables are 0
+    CHECK(evaluate_condition("unknown == 0", vars));
+    CHECK(evaluate_condition("count - 1 == 2.0", vars));
+    CHECK(evaluate_condition("a &&", vars)); // does not parse: holds
+}
+
+TEST_CASE("a transition's condition decides, and a bound start state takes the variable", "[behavior]") {
+    BehaviorGraphDef def;
+    BehaviorDef root;
+    root.start_state = 0;
+    root.start_variable = "mode";
+    root.states = {{0, "Zero", -1, {}, {}, {{"Go", 5, -1, "gate > 0"}, {"Go", 6}}},
+                   {1, "One", -1, {}, {}, {}},
+                   {5, "Gated", -1, {}, {}, {}},
+                   {6, "Plain", -1, {}, {}, {}}};
+    def.machines = {root};
+    def.roots = {0};
+    def.variables = {{"mode", 1.0F}, {"gate", 0.0F}};
+    BehaviorSet set(def);
+    BehaviorOutput out;
+    set.start(out);
+    CHECK(set.machine(0).state()->name == "One"); // the start state is the variable's value
+    CHECK(set.variable("MODE") == 1.0F);
+    set.set_variable("Mode", 0.0F);
+    BehaviorSet again(def);
+    again.set_variable("mode", 0.0F);
+    again.start(out);
+    CHECK(again.machine(0).state()->name == "Zero");
+    again.send("Go", out);
+    CHECK(again.machine(0).state()->name == "Plain"); // gate is 0: the first transition does not hold
+    BehaviorSet gated(def);
+    gated.set_variable("mode", 0.0F);
+    gated.set_variable("gate", 1.0F);
+    gated.start(out);
+    gated.send("Go", out);
+    CHECK(gated.machine(0).state()->name == "Gated");
+}
+
+TEST_CASE("a machine can be put into a state without an event, its nested machine at a given state", "[behavior]") {
+    BehaviorGraphDef def;
+    BehaviorDef root;
+    root.start_state = 0;
+    root.states = {{0, "Idle", -1, {}, {"Left"}, {}}, {1, "Trap", -1, {"Entered"}, {}, {}, "", {1}}};
+    BehaviorDef nested;
+    nested.start_state = 7;
+    nested.states = {{7, "Land", -1, {}, {}, {}}, {8, "HoleIdle", -1, {}, {}, {}}};
+    def.machines = {root, nested};
+    def.roots = {0};
+    BehaviorSet set(def);
+    BehaviorOutput out;
+    set.start(out);
+    CHECK_FALSE(set.enter_state(1, 8, -1, out)); // not running
+    CHECK(set.enter_state(0, 1, 8, out));
+    CHECK(set.machine(1).state()->name == "HoleIdle");
+    CHECK(has(out.events, "Left"));
+    CHECK(has(out.events, "Entered"));
+    CHECK_FALSE(set.enter_state(0, 99, -1, out));
+}

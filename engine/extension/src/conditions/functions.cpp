@@ -143,6 +143,10 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
         return flag(world.has_keyword(subject, p1));
     case fn::is_child:
         return flag(world.is_child(subject));
+    case fn::is_essential:
+        return flag(world.is_essential(subject));
+    case fn::is_on_flying_mount:
+        return flag(world.is_on_flying_mount(subject));
     case fn::is_undead:
         return flag(world.has_keyword(subject, fn::k_actor_type_undead));
     case fn::get_level:
@@ -259,7 +263,10 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
     case fn::is_furniture_anim_type:
         return flag(p1 != 0 && world.furniture_anim_type(subject) == static_cast<std::int32_t>(p1));
     case fn::is_furniture_entry_type:
-        return flag(p1 != 0 && world.furniture_entry_type(subject) == static_cast<std::int32_t>(p1));
+        // The parameter is the entry bit shifted left by 16 (front 0x10000, behind 0x20000, right 0x40000,
+        // left 0x80000, up 0x100000); the world gives the entry bit the actor enters or leaves by.
+        return flag(p1 >= 65536.0 && static_cast<std::uint32_t>(world.furniture_entry_type(subject)) ==
+                                         (static_cast<std::uint32_t>(p1) >> 16));
     case fn::is_exiting_instant:
         return flag(world.exiting_instant(subject));
     case fn::is_entering_interaction_quick:

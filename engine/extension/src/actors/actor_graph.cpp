@@ -4,6 +4,7 @@
 #include "assets/vpath.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 
 namespace skydot {
@@ -31,6 +32,10 @@ public:
         BehaviorGraphDef graph = behavior_graph_from_asset(*asset);
         if (graph.machines.empty()) {
             return {};
+        }
+        // Variables are joined by name; the first graph to name one (the root's) gives its value.
+        for (const auto& [name, value] : graph.variables) {
+            out_.graph.variables.try_emplace(name, value);
         }
         const int machine_base = static_cast<int>(out_.graph.machines.size());
         const int clip_base = static_cast<int>(out_.graph.clips.size());
@@ -145,6 +150,14 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
         return def;
     }
     def->depth = depths(def->graph);
+    def->parents.assign(def->graph.machines.size(), {});
+    for (std::size_t m = 0; m < def->graph.machines.size(); ++m) {
+        for (const BehaviorState& state : def->graph.machines[m].states) {
+            for (const int id : state.nested) {
+                def->parents[static_cast<std::size_t>(id)].emplace_back(static_cast<int>(m), state.id);
+            }
+        }
+    }
     return def;
 }
 
@@ -257,6 +270,13 @@ void ActorGraph::resolve_durations() {
     }
 }
 
+void ActorGraph::configure(bool player) {
+    set_.set_variable("IsNPC", player ? 0.0F : 1.0F);
+    set_.set_variable("IsPlayer", player ? 1.0F : 0.0F);
+    set_.set_variable("IsFirstPerson", 0.0F);
+    set_.set_variable("i1stPerson", 0.0F);
+}
+
 BehaviorOutput ActorGraph::start() {
     BehaviorOutput out;
     set_.start(out);
@@ -276,6 +296,100 @@ BehaviorOutput ActorGraph::advance(float seconds) {
     set_.advance(seconds, out);
     resolve_durations();
     return out;
+}
+
+namespace {
+
+/// The state id a running machine is in, -1 if it is not.
+int state_id_of(const BehaviorSet& set, int machine) {
+    const BehaviorState* state = set.machine(machine).state();
+    return state != nullptr ? state->id : -1;
+}
+
+} // namespace
+
+BehaviorOutput ActorGraph::send_entering(std::string_view event) {
+    const std::size_t count = set_.machine_count();
+    std::vector<int> before(count, -1);
+    for (const int m : set_.running()) {
+        before[static_cast<std::size_t>(m)] = state_id_of(set_, m);
+    }
+    BehaviorOutput out;
+    if (!set_.handles(event)) {
+        // The machines with a wildcard for the event, and the way up from each to a running machine.
+        struct Step {
+            int machine;
+            int state;
+        };
+        struct Node {
+            int machine;
+            std::vector<Step> down; ///< From the running machine down to `machine`.
+        };
+        std::vector<Node> queue;
+        std::vector<bool> seen(count, false);
+        for (std::size_t m = 0; m < count; ++m) {
+            const auto& wildcard = def_->graph.machines[m].wildcard;
+            const bool wants = std::ranges::any_of(wildcard, [&](const BehaviorTransition& t) {
+                return t.event.size() == event.size() &&
+                       std::ranges::equal(t.event, event, [](char a, char b) {
+                           return std::tolower(static_cast<unsigned char>(a)) == std::tolower(static_cast<unsigned char>(b));
+                       });
+            });
+            if (wants) {
+                queue.push_back({static_cast<int>(m), {}});
+                seen[m] = true;
+            }
+        }
+        for (std::size_t q = 0; q < queue.size(); ++q) {
+            const Node node = queue[q];
+            bool found = false;
+            for (const auto& [parent, state] : def_->parents[static_cast<std::size_t>(node.machine)]) {
+                if (before[static_cast<std::size_t>(parent)] >= 0) {
+                    // Put the running machines into the states on the way down.
+                    std::vector<Step> path{{parent, state}};
+                    path.insert(path.end(), node.down.begin(), node.down.end());
+                    for (std::size_t i = 0; i < path.size(); ++i) {
+                        // Each machine nested below starts in the state the next step enters.
+                        set_.enter_state(path[i].machine, path[i].state, i + 1 < path.size() ? path[i + 1].state : -1, out);
+                    }
+                    found = true;
+                    break;
+                }
+                if (!seen[static_cast<std::size_t>(parent)]) {
+                    seen[static_cast<std::size_t>(parent)] = true;
+                    std::vector<Step> down{{parent, state}};
+                    down.insert(down.end(), node.down.begin(), node.down.end());
+                    queue.push_back({parent, std::move(down)});
+                }
+            }
+            if (found) {
+                break;
+            }
+        }
+    }
+    BehaviorOutput sent;
+    set_.send(event, sent);
+    out.accepted = sent.accepted;
+    out.changes.insert(out.changes.end(), sent.changes.begin(), sent.changes.end());
+    out.events.insert(out.events.end(), sent.events.begin(), sent.events.end());
+    resolve_durations();
+    // The root-most machine that left a state is the one the furniture ends in.
+    home_machine_ = -1;
+    home_state_ = -1;
+    for (std::size_t m = 0; m < count; ++m) {
+        if (before[m] >= 0 && set_.machine(static_cast<int>(m)).state() != nullptr &&
+            state_id_of(set_, static_cast<int>(m)) != before[m] &&
+            (home_machine_ < 0 || def_->depth[m] < def_->depth[static_cast<std::size_t>(home_machine_)])) {
+            home_machine_ = static_cast<int>(m);
+            home_state_ = before[m];
+        }
+    }
+    return out;
+}
+
+bool ActorGraph::in_furniture() const {
+    return home_machine_ >= 0 && set_.machine(home_machine_).state() != nullptr &&
+           state_id_of(set_, home_machine_) != home_state_;
 }
 
 std::optional<PlayingClip> ActorGraph::playing() const {

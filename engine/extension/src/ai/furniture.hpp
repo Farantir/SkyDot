@@ -44,6 +44,9 @@ public:
     /// Each returns {events, changes (strings "machine: from -> to"), playing}.
     godot::Dictionary graph_start();
     godot::Dictionary graph_send(const godot::String& event);
+    /// ActorGraph::send_entering: an event that takes the actor into a furniture.
+    godot::Dictionary graph_enter(const godot::String& event);
+    bool graph_in_furniture() const { return graph_ && graph_->in_furniture(); }
     godot::Dictionary graph_advance(double seconds);
     /// {} when no state has a clip, else {clip, file, time, mode, speed}.
     godot::Dictionary graph_playing() const;

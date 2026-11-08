@@ -94,6 +94,8 @@ inline constexpr std::uint16_t is_commanded_actor = 700;
 /// GetRestrained: placeholder at 0 (no restraint system); calm, fear, fury and paralysis want 0.
 inline constexpr std::uint16_t get_restrained = 244;
 inline constexpr std::uint16_t is_child = 365;
+inline constexpr std::uint16_t is_essential = 354;
+inline constexpr std::uint16_t is_on_flying_mount = 730;
 inline constexpr std::uint16_t is_undead = 715;
 /// ActorTypeUndead (KYWD): on the undead NPC_ or race.
 inline constexpr std::uint32_t k_actor_type_undead = 0x13796;

@@ -246,6 +246,11 @@ bool PapyrusConditionWorld::is_child(std::uint32_t ref) const {
     return r != nullptr && (r->flags() & 0x4U) != 0;
 }
 
+bool PapyrusConditionWorld::is_essential(std::uint32_t ref) const {
+    const auto* n = resolved(ref, wfb::NpcTemplateFlags::use_traits);
+    return n != nullptr && formats::has_flag(n->flags(), wfb::NpcFlags::essential);
+}
+
 double PapyrusConditionWorld::actor_value(std::uint32_t ref, std::uint32_t av) const {
     return owner_ != nullptr ? owner_->actors_.get(ref, av) : 0.0;
 }

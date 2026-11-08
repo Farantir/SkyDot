@@ -22,7 +22,142 @@ bool same_event(std::string_view a, std::string_view b) {
 
 constexpr int k_max_chain = 64; ///< Events handled in one step, against loops.
 
+std::string lower(std::string_view s) {
+    std::string out(s);
+    for (char& c : out) {
+        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+    return out;
+}
+
+/// Recursive descent over `||`, `&&`, comparisons, `+ -`, unary `! -`, parentheses, numbers and
+/// variable names (a name may start with a digit: `1stPRot`).
+class Expression {
+public:
+    Expression(std::string_view text, const std::unordered_map<std::string, float>& vars) : text_(text), vars_(vars) {}
+
+    /// False in `ok` when the text does not parse.
+    float evaluate(bool& ok) {
+        const float v = parse_or();
+        skip();
+        ok = ok_ && pos_ == text_.size();
+        return v;
+    }
+
+private:
+    void skip() {
+        while (pos_ < text_.size() && std::isspace(static_cast<unsigned char>(text_[pos_])) != 0) {
+            ++pos_;
+        }
+    }
+    bool eat(std::string_view token) {
+        skip();
+        if (text_.substr(pos_, token.size()) == token) {
+            pos_ += token.size();
+            return true;
+        }
+        return false;
+    }
+    float parse_or() {
+        float v = parse_and();
+        while (eat("||")) {
+            const float r = parse_and();
+            v = (v != 0.0F || r != 0.0F) ? 1.0F : 0.0F;
+        }
+        return v;
+    }
+    float parse_and() {
+        float v = parse_compare();
+        while (eat("&&")) {
+            const float r = parse_compare();
+            v = (v != 0.0F && r != 0.0F) ? 1.0F : 0.0F;
+        }
+        return v;
+    }
+    float parse_compare() {
+        const float l = parse_sum();
+        if (eat("==")) {
+            return l == parse_sum() ? 1.0F : 0.0F;
+        }
+        if (eat("!=")) {
+            return l != parse_sum() ? 1.0F : 0.0F;
+        }
+        if (eat("<=")) {
+            return l <= parse_sum() ? 1.0F : 0.0F;
+        }
+        if (eat(">=")) {
+            return l >= parse_sum() ? 1.0F : 0.0F;
+        }
+        if (eat("<")) {
+            return l < parse_sum() ? 1.0F : 0.0F;
+        }
+        if (eat(">")) {
+            return l > parse_sum() ? 1.0F : 0.0F;
+        }
+        return l;
+    }
+    float parse_sum() {
+        float v = parse_unary();
+        for (;;) {
+            if (eat("+")) {
+                v += parse_unary();
+            } else if (eat("-")) {
+                v -= parse_unary();
+            } else {
+                return v;
+            }
+        }
+    }
+    float parse_unary() {
+        if (eat("!")) {
+            return parse_unary() == 0.0F ? 1.0F : 0.0F;
+        }
+        if (eat("-")) {
+            return -parse_unary();
+        }
+        if (eat("(")) {
+            const float v = parse_or();
+            if (!eat(")")) {
+                ok_ = false;
+            }
+            return v;
+        }
+        skip();
+        const std::size_t start = pos_;
+        while (pos_ < text_.size() &&
+               (std::isalnum(static_cast<unsigned char>(text_[pos_])) != 0 || text_[pos_] == '_' || text_[pos_] == '.')) {
+            ++pos_;
+        }
+        if (pos_ == start) {
+            ok_ = false;
+            return 0.0F;
+        }
+        const std::string word(text_.substr(start, pos_ - start));
+        char* end = nullptr;
+        const float number = std::strtof(word.c_str(), &end);
+        if (end == word.c_str() + word.size()) {
+            return number;
+        }
+        const auto it = vars_.find(lower(word));
+        return it == vars_.end() ? 0.0F : it->second;
+    }
+
+    std::string_view text_;
+    const std::unordered_map<std::string, float>& vars_;
+    std::size_t pos_{};
+    bool ok_{true};
+};
+
 } // namespace
+
+bool evaluate_condition(std::string_view expression, const std::unordered_map<std::string, float>& variables) {
+    if (expression.empty()) {
+        return true;
+    }
+    bool ok = true;
+    const float v = Expression(expression, variables).evaluate(ok);
+    return !ok || v != 0.0F;
+}
 
 BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
     BehaviorGraphDef def;
@@ -47,8 +182,8 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
             return;
         }
         for (const auto* t : *list) {
-            // Conditions are not evaluated: see the header.
-            to.push_back({event_name(t->event()), t->to_state(), t->to_nested_state()});
+            to.push_back({event_name(t->event()), t->to_state(), t->to_nested_state(),
+                          t->has_condition() && t->condition() != nullptr ? t->condition()->str() : std::string()});
         }
     };
     // Clips: every clip generator of the file, indexed as the states say.
@@ -67,6 +202,11 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
                 }
             }
             def.clips.push_back(std::move(clip));
+        }
+    }
+    if (const auto* names = graph->variable_names(); names != nullptr && graph->variable_values() != nullptr) {
+        for (flatbuffers::uoffset_t i = 0; i < names->size() && i < graph->variable_values()->size(); ++i) {
+            def.variables.try_emplace(lower(names->Get(i)->string_view()), graph->variable_values()->Get(i));
         }
     }
     const auto machine_count = static_cast<int>(machines->size());
@@ -135,11 +275,26 @@ BehaviorDef behavior_from_asset(const afb::Animation& asset) {
 BehaviorMachine::BehaviorMachine(BehaviorDef def) : def_(std::move(def)) {
     clips_ = std::make_shared<std::vector<BehaviorClip>>(std::move(def_.clips));
     def_.clips.clear();
+    variables_ = std::make_shared<std::unordered_map<std::string, float>>();
 }
 
-BehaviorMachine::BehaviorMachine(BehaviorDef def, BehaviorClips clips)
-    : def_(std::move(def)), clips_(std::move(clips)) {
+BehaviorMachine::BehaviorMachine(BehaviorDef def, BehaviorClips clips, BehaviorVariables variables)
+    : def_(std::move(def)), clips_(std::move(clips)),
+      variables_(variables ? std::move(variables) : std::make_shared<std::unordered_map<std::string, float>>()) {
     def_.clips.clear();
+}
+
+bool BehaviorMachine::enter_state(int state_id, int nested_entry, BehaviorOutput& out) {
+    const int index = find_state(state_id);
+    if (index < 0) {
+        return false;
+    }
+    if (index != current_) {
+        change(index, "", out);
+        nested_entry_ = nested_entry;
+        drain(out);
+    }
+    return true;
 }
 
 void BehaviorMachine::stop() {
@@ -161,6 +316,28 @@ int BehaviorMachine::find_state(int id) const {
     }
     return -1;
 }
+
+const BehaviorTransition* BehaviorMachine::find_transition(std::string_view event) const {
+    if (current_ < 0) {
+        return nullptr;
+    }
+    const auto holds = [&](const BehaviorTransition& t) {
+        return same_event(t.event, event) && evaluate_condition(t.condition, *variables_);
+    };
+    for (const auto& t : def_.states[static_cast<std::size_t>(current_)].transitions) {
+        if (holds(t)) {
+            return &t;
+        }
+    }
+    for (const auto& t : def_.wildcard) {
+        if (holds(t)) {
+            return &t;
+        }
+    }
+    return nullptr;
+}
+
+bool BehaviorMachine::handles(std::string_view event) const { return find_transition(event) != nullptr; }
 
 const BehaviorState* BehaviorMachine::state() const {
     return current_ >= 0 ? &def_.states[static_cast<std::size_t>(current_)] : nullptr;
@@ -263,22 +440,7 @@ void BehaviorMachine::drain(BehaviorOutput& out, bool* first_matched) {
         if (current_ < 0) {
             continue;
         }
-        const BehaviorState& here = def_.states[static_cast<std::size_t>(current_)];
-        const BehaviorTransition* taken = nullptr;
-        for (const auto& t : here.transitions) {
-            if (same_event(t.event, event)) {
-                taken = &t;
-                break;
-            }
-        }
-        if (taken == nullptr) {
-            for (const auto& t : def_.wildcard) {
-                if (same_event(t.event, event)) {
-                    taken = &t;
-                    break;
-                }
-            }
-        }
+        const BehaviorTransition* taken = find_transition(event);
         if (guard == 0 && first_matched != nullptr) {
             *first_matched = taken != nullptr;
         }
@@ -367,10 +529,18 @@ constexpr int k_max_broadcast = 64; ///< Events passed between machines in one s
 BehaviorSet::BehaviorSet(BehaviorGraphDef def) : def_(std::move(def)) {
     clips_ = std::make_shared<std::vector<BehaviorClip>>(std::move(def_.clips));
     def_.clips.clear();
+    variables_ = std::make_shared<std::unordered_map<std::string, float>>(def_.variables);
     for (const BehaviorDef& machine : def_.machines) {
-        machines_.emplace_back(machine, clips_);
+        machines_.emplace_back(machine, clips_, variables_);
     }
     running_.assign(machines_.size(), false);
+}
+
+void BehaviorSet::set_variable(std::string_view name, float value) { (*variables_)[lower(name)] = value; }
+
+float BehaviorSet::variable(std::string_view name) const {
+    const auto it = variables_->find(lower(name));
+    return it == variables_->end() ? 0.0F : it->second;
 }
 
 void BehaviorSet::set_clip_duration(int clip, float seconds) {
@@ -402,28 +572,32 @@ void BehaviorSet::merge(int machine, BehaviorOutput& part, BehaviorOutput& out) 
 
 void BehaviorSet::refresh(BehaviorOutput& out) {
     for (int round = 0; round < 8; ++round) {
+        // Wanted: the roots, and what the current state of a wanted, running machine nests.
         std::vector<bool> wanted(machines_.size(), false);
+        std::vector<std::size_t> queue;
         for (const int root : def_.roots) {
-            if (root >= 0 && static_cast<std::size_t>(root) < wanted.size()) {
+            if (root >= 0 && static_cast<std::size_t>(root) < wanted.size() && !wanted[static_cast<std::size_t>(root)]) {
                 wanted[static_cast<std::size_t>(root)] = true;
-            }
-        }
-        for (std::size_t i = 0; i < machines_.size(); ++i) {
-            const BehaviorState* state = running_[i] ? machines_[i].state() : nullptr;
-            if (state != nullptr) {
-                for (const int id : state->nested) {
-                    wanted[static_cast<std::size_t>(id)] = true;
-                }
+                queue.push_back(static_cast<std::size_t>(root));
             }
         }
         // The state a machine starts in when a running machine's current state
         // nests it and was entered with a toNestedStateId.
         std::vector<int> entry(machines_.size(), -1);
-        for (std::size_t i = 0; i < machines_.size(); ++i) {
+        for (std::size_t q = 0; q < queue.size(); ++q) {
+            const std::size_t i = queue[q];
             const BehaviorState* state = running_[i] ? machines_[i].state() : nullptr;
-            if (state != nullptr && machines_[i].nested_entry() >= 0) {
-                for (const int id : state->nested) {
-                    entry[static_cast<std::size_t>(id)] = machines_[i].nested_entry();
+            if (state == nullptr) {
+                continue;
+            }
+            for (const int id : state->nested) {
+                const auto n = static_cast<std::size_t>(id);
+                if (machines_[i].nested_entry() >= 0) {
+                    entry[n] = machines_[i].nested_entry();
+                }
+                if (!wanted[n]) {
+                    wanted[n] = true;
+                    queue.push_back(n);
                 }
             }
         }
@@ -432,7 +606,11 @@ void BehaviorSet::refresh(BehaviorOutput& out) {
             if (wanted[i] && !running_[i]) {
                 running_[i] = true;
                 BehaviorOutput part;
-                machines_[i].start(part, entry[i]);
+                int first = entry[i];
+                if (first < 0 && !machines_[i].def().start_variable.empty()) {
+                    first = static_cast<int>(variable(machines_[i].def().start_variable));
+                }
+                machines_[i].start(part, first);
                 merge(static_cast<int>(i), part, out);
                 changed = true;
             } else if (!wanted[i] && running_[i]) {
@@ -448,6 +626,26 @@ void BehaviorSet::refresh(BehaviorOutput& out) {
 }
 
 void BehaviorSet::start(BehaviorOutput& out) { refresh(out); }
+
+bool BehaviorSet::handles(std::string_view event) const {
+    for (std::size_t i = 0; i < machines_.size(); ++i) {
+        if (running_[i] && machines_[i].handles(event)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool BehaviorSet::enter_state(int machine, int state_id, int nested_entry, BehaviorOutput& out) {
+    if (machine < 0 || static_cast<std::size_t>(machine) >= machines_.size() || !running_[static_cast<std::size_t>(machine)]) {
+        return false;
+    }
+    BehaviorOutput part;
+    const bool ok = machines_[static_cast<std::size_t>(machine)].enter_state(state_id, nested_entry, part);
+    merge(machine, part, out);
+    refresh(out);
+    return ok;
+}
 
 namespace {
 

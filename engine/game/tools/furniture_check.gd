@@ -68,9 +68,10 @@ func _show(label: String, out: Dictionary) -> void:
 	print("   %s: events %s changes %s playing %s" % [label, out.get("events"), out.get("changes"), out.get("playing")])
 
 
-# Send `event`, then advance in `step` seconds until the playing clip is `until_gone` / `seconds` pass.
-func _play(event: String, seconds: float, step: float = 0.25) -> void:
-	_show("send " + event, _fur.graph_send(event))
+# Send `event` (entering: the graph may route it into the furniture states), then advance in `step`
+# seconds until nothing plays / `seconds` pass.
+func _play(event: String, seconds: float, step: float = 0.25, entering: bool = false) -> void:
+	_show("send " + event, _fur.graph_enter(event) if entering else _fur.graph_send(event))
 	var t := 0.0
 	var last: Dictionary = _fur.graph_playing()
 	while t < seconds:
@@ -103,7 +104,7 @@ func _spider() -> void:
 	print("-- enter (placed in it on load)")
 	_show("start", _fur.graph_start())
 	var enter := _choose(actor, furniture, {"quick": 1, "anim_type": type, "sleeping": 3})
-	_play(enter.get("event", ""), 2.0)
+	_play(enter.get("event", ""), 2.0, 0.25, true)
 	print("-- exit (waking, GetSleeping 4)")
 	var exit := _choose(actor, furniture, {"quick": 0, "anim_type": type, "sleeping": 4})
 	_play(exit.get("event", ""), 12.0)
@@ -137,7 +138,7 @@ func _draugr() -> void:
 	_fur.graph_start()
 	print("-- enter instantly")
 	var enter := _choose(actor, furniture, {"quick": 1, "anim_type": type, "sleeping": 3})
-	_play(enter.get("event", ""), 3.0)
+	_play(enter.get("event", ""), 3.0, 0.25, true)
 	print("-- exit")
 	var exit := _choose(actor, furniture, {"quick": 0, "anim_type": type, "sleeping": 4})
 	_play(exit.get("event", ""), 12.0)
@@ -163,23 +164,28 @@ func _sigrid() -> void:
 	if not _open(actor):
 		return
 	var cell := _world.find_cell("RiverwoodAlvorsHouse")
-	for item in [["chair", Vector3(-697, -210, 242), 1], ["bed", Vector3(-221, -184, 240), 2]]:
+	for item in [["chair", Vector3(-697, -210, 242)], ["bed", Vector3(-221, -184, 240)]]:
 		var furniture := _nearest_furniture(cell, item[1])
 		var type := _anim_type(furniture)
+		var sit := type == 1
 		print("-- %s 0x%X" % [item[0], furniture])
-		# Walking in: the entry side is a fact (1 to 5 as the CK lists them), sitting down is GetSitting 2.
-		var walk_event := ""
-		for entry in range(0, 6):
-			var walking := _choose(actor, furniture, {"quick": 0, "anim_type": type, "sitting": 2 if type == 1 else 0, "sleeping": 0, "entry": entry})
-			if walk_event == "" and walking.has("event"):
-				walk_event = walking["event"]
-		var instant := _choose(actor, furniture, {"quick": 1, "anim_type": type, "sitting": 0, "sleeping": 0})
-		var occupied := {"quick": 0, "anim_type": type, "sitting": 3 if type == 1 else 0, "sleeping": 3 if type == 2 else 0}
-		_choose(actor, furniture, occupied)
-		var leaving := {"quick": 0, "anim_type": type, "sitting": 4 if type == 1 else 0, "sleeping": 4 if type == 2 else 0}
-		var exit := _choose(actor, furniture, leaving)
-		for event in [walk_event, instant.get("event", ""), exit.get("event", "")]:
-			_fur.open_graph(_behaviour(actor))
-			_fur.graph_start()
-			print("   -- graph, event ", event)
-			_play(event, 6.0)
+		# The entry is the marker's entry bit the actor uses (1 front, 2 behind, 4 right, 8 left, 0x10 up).
+		for entry in [1, 4, 8]:
+			var down := {"quick": 0, "anim_type": type, "sitting": 2 if sit else 0, "sleeping": 0 if sit else 2, "entry": entry}
+			var walk := _choose(actor, furniture, down)
+			var instant := _choose(actor, furniture, {"quick": 1, "anim_type": type, "sitting": 0, "sleeping": 0, "entry": entry})
+			var up := {"quick": 0, "anim_type": type, "sitting": 4 if sit else 0, "sleeping": 0 if sit else 4, "entry": entry}
+			var leave := _choose(actor, furniture, up)
+			if entry != 4 and entry != 8:
+				continue
+			for event in [walk.get("event", ""), instant.get("event", "")]:
+				if event == "":
+					continue
+				_open(actor)
+				_fur.graph_start()
+				print("   -- enter ", event)
+				_play(event, 4.0, 0.25, true)
+				if leave.has("event"):
+					print("   in furniture: ", _fur.graph_in_furniture())
+					_play(leave["event"], 8.0)
+					print("   in furniture after the exit: ", _fur.graph_in_furniture())
