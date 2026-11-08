@@ -360,6 +360,9 @@ private:
     /// Walk towards `spot`; true once within `reach` game units of it.
     bool go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds);
     void next_step(Mind& m);
+    /// An actor just attached with its package under way is in the furniture the package ends in (as the
+    /// game loads it), driven or not; it walks, enters and gets up only when driven.
+    void place_in_furniture(Mind& m, SkydotActor& actor);
     void leave(Mind& m, SkydotActor& actor, std::uint32_t door);
     void detach(Mind& m);
     /// An attached actor opened or closed a plain door (`door_toggled`).

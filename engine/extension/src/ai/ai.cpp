@@ -1100,6 +1100,9 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
             choose(*m);
             // With no package it keeps wandering about its place.
             actor->set_wander(m->package == 0 ? world_->get_actor_wander() : false);
+            if (m->package != 0 && actor->is_inside_tree()) {
+                place_in_furniture(*m, *actor); // placed where its package uses furniture: in it, as on load
+            }
             ++count;
             continue;
         }
@@ -1276,6 +1279,8 @@ void SkydotAi::update(double seconds) {
         }
         if (drive_ && m->package != 0) {
             steer(*m, *actor, elapsed);
+        } else if (m->package != 0 && m->fresh) {
+            place_in_furniture(*m, *actor); // attached before it was in the tree
         }
     }
     // Those not built: a slice per frame, a whole pass every few game minutes.
@@ -1292,6 +1297,26 @@ void SkydotAi::update(double seconds) {
         }
         if (place_cursor_ >= persistent_.size()) {
             place_cursor_ = static_cast<std::size_t>(-1);
+        }
+    }
+}
+
+void SkydotAi::place_in_furniture(Mind& m, SkydotActor& actor) {
+    // Attached with its package under way: the placement put it where the package ends, in the
+    // furniture it ends in (the game's instant enter on load).
+    m.fresh = false;
+    for (std::size_t i = m.step; i < m.steps.size(); ++i) {
+        if (m.steps[i].procedure == ai::Procedure::find) {
+            do_find(m, m.steps[i]);
+        }
+        if (furniture_target(m, m.steps[i])) {
+            m.step = i;
+            m.step_started = true;
+            m.step_time = 0.0;
+            m.placed = true;
+            m.target = step_spot(m, m.steps[i]);
+            furniture_step(m, actor, m.steps[i], 0.0);
+            return;
         }
     }
 }
