@@ -88,6 +88,8 @@ void SkydotFurniture::_bind_methods() {
     godot::ClassDB::bind_method(godot::D_METHOD("graph_playing"), &SkydotFurniture::graph_playing);
     godot::ClassDB::bind_method(godot::D_METHOD("graph_root_motion"), &SkydotFurniture::graph_root_motion);
     godot::ClassDB::bind_method(godot::D_METHOD("root_motion", "clip", "time"), &SkydotFurniture::root_motion);
+    godot::ClassDB::bind_method(godot::D_METHOD("motion_keys", "clip"), &SkydotFurniture::motion_keys);
+    godot::ClassDB::bind_method(godot::D_METHOD("character_animations", "part"), &SkydotFurniture::character_animations);
 }
 
 godot::Error SkydotFurniture::setup(const godot::Ref<SkydotWorld>& world) {
@@ -204,6 +206,56 @@ Dictionary SkydotFurniture::graph_root_motion() const {
 
 Dictionary SkydotFurniture::root_motion(const String& clip, double time) const {
     return graph_ ? motion_dictionary(graph_->def().root_motion(utf8(clip), static_cast<float>(time))) : Dictionary();
+}
+
+} // namespace skydot
+
+namespace skydot {
+
+Dictionary SkydotFurniture::motion_keys(const String& clip) const {
+    Dictionary out;
+    if (!graph_) {
+        return out;
+    }
+    const AnimationProject& project = graph_->def().project;
+    const ProjectClip* c = project.clip(utf8(clip));
+    if (c == nullptr) {
+        return out;
+    }
+    out["animation"] = static_cast<std::int64_t>(c->animation);
+    const auto it = project.motions.find(c->animation);
+    if (it == project.motions.end()) {
+        return out;
+    }
+    out["duration"] = static_cast<double>(it->second.duration);
+    godot::Array moves;
+    for (const auto& k : it->second.translations) {
+        moves.push_back(godot::Vector4(k[0], k[1], k[2], k[3]));
+    }
+    out["translations"] = moves;
+    godot::Array turns;
+    for (const auto& k : it->second.rotations) {
+        turns.push_back(static_cast<double>(k[0]));
+    }
+    out["rotation_times"] = turns;
+    return out;
+}
+
+} // namespace skydot
+
+namespace skydot {
+
+godot::PackedStringArray SkydotFurniture::character_animations(const String& part) const {
+    godot::PackedStringArray out;
+    if (graph_) {
+        const String want = part.to_lower();
+        for (const std::string& name : graph_->def().character_animations) {
+            if (String::utf8(name.c_str()).to_lower().contains(want)) {
+                out.push_back(String::utf8(name.c_str()));
+            }
+        }
+    }
+    return out;
 }
 
 } // namespace skydot

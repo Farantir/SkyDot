@@ -54,6 +54,10 @@ public:
     godot::Dictionary graph_root_motion() const;
     /// The motion of project clip `clip` at `time` seconds, or {}.
     godot::Dictionary root_motion(const godot::String& clip, double time) const;
+    /// The translation keys [[time, x, y, z]...] and the rotation key times of project clip `clip`.
+    godot::Dictionary motion_keys(const godot::String& clip) const;
+    /// The animation files the open graph's character lists that contain `part` (any case).
+    godot::PackedStringArray character_animations(const godot::String& part) const;
 
 protected:
     static void _bind_methods();

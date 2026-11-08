@@ -54,9 +54,9 @@ Bytes motion_asset(std::uint32_t id, float duration, const std::vector<afb::Moti
     return finish(b, ab.Finish());
 }
 
-Bytes character_asset(const std::string& behavior) {
+Bytes character_asset(const std::string& behavior, const std::vector<std::string>& animations = {}) {
     Fbb b;
-    const auto c = afb::CreateCharacter(b, 0, 0, 0, b.CreateString(behavior));
+    const auto c = afb::CreateCharacter(b, 0, 0, 0, b.CreateString(behavior), b.CreateVectorOfStrings(animations));
     const auto list = b.CreateVector(std::vector{c});
     afb::AnimationBuilder ab(b);
     ab.add_format_version(6);
@@ -219,4 +219,34 @@ TEST_CASE("an event only a nested machine handles puts the machines into the sta
     graph.send("Leave");
     CHECK_FALSE(graph.in_furniture()); // back in the state it left
     CHECK_FALSE(graph.playing().has_value());
+}
+
+TEST_CASE("a character that lists its own file of a clip's name plays that one", "[actor_graph]") {
+    auto files = pack();
+    files["meshes/x/characters/c.hkx"] = character_asset("Behaviors\\Root.hkx", {"Animations\\female\\a.hkx", "Animations\\b.hkx"});
+    files["meshes/x/animations/female/a.hkx"] = clip_asset(1.0F);
+    ActorGraphLibrary library([&](const std::string& vpath) {
+        const auto it = files.find(vpath);
+        return it != files.end() ? it->second : Bytes{};
+    });
+    const auto def = library.graph("x/p.hkx");
+    REQUIRE(def->missing.empty());
+    // ClipA named Animations\a.hkx: the character has female\a.hkx; ClipB is listed as it is.
+    CHECK(def->clip_files == std::vector<std::string>{"meshes/x/animations/female/a.hkx", "meshes/x/animations/b.hkx"});
+}
+
+TEST_CASE("root motion before a clip's first key comes from the origin", "[actor_graph]") {
+    auto files = pack();
+    files["meshes/animationdata/boundanims/anims_p.txt"] =
+        motion_asset(6, 2.0F, {{2.0F, 0, 20.0F, 0}}, {{2.0F, 0, 0, 0.70710678F, 0.70710678F}});
+    ActorGraphLibrary library([&](const std::string& vpath) {
+        const auto it = files.find(vpath);
+        return it != files.end() ? it->second : Bytes{};
+    });
+    const auto def = library.graph("x/p.hkx");
+    REQUIRE(def->missing.empty());
+    CHECK(def->root_motion("ClipA", 0.0F)->y == Approx(0.0F));
+    CHECK(def->root_motion("ClipA", 1.0F)->y == Approx(10.0F));
+    CHECK(def->root_motion("ClipA", 1.0F)->yaw == Approx(1.5707963F / 2.0F).margin(1e-3));
+    CHECK(def->root_motion("ClipA", 5.0F)->y == Approx(20.0F));
 }

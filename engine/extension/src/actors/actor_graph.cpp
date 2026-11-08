@@ -131,6 +131,11 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
         const std::vector<std::uint8_t> bytes = read(def->project.folder + file);
         const auto* asset = animation_asset(bytes);
         if (asset != nullptr && asset->characters() != nullptr && asset->characters()->size() > 0) {
+            if (const auto* animations = asset->characters()->Get(0)->animations()) {
+                for (const auto* a : *animations) {
+                    def->character_animations.push_back(a->str());
+                }
+            }
             const auto* behavior = asset->characters()->Get(0)->behavior();
             if (behavior != nullptr) {
                 root = normalize_path(def->project.folder + behavior->str());
@@ -148,6 +153,29 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
     if (def->graph.machines.empty() || def->graph.roots.empty()) {
         def->missing = "no behaviour graph " + root;
         return def;
+    }
+    // A behaviour names one file for every character (Animations\male\Chair_RightEnter.hkx); a character
+    // that lists its own of that name (Animations\female\Chair_RightEnter.hkx) plays that one.
+    {
+        const auto base = [](const std::string& path) { return path.substr(path.rfind('/') + 1); };
+        std::unordered_map<std::string, std::string> listed;
+        std::unordered_map<std::string, std::string> by_name; ///< Empty path: the name is listed twice.
+        for (const std::string& name : def->character_animations) {
+            const std::string path = normalize_path(def->project.folder + name);
+            listed.emplace(path, path);
+            const auto [it, fresh] = by_name.emplace(base(path), path);
+            if (!fresh && it->second != path) {
+                it->second.clear();
+            }
+        }
+        for (std::string& file : def->clip_files) {
+            if (listed.contains(file)) {
+                continue;
+            }
+            if (const auto it = by_name.find(base(file)); it != by_name.end() && !it->second.empty()) {
+                file = it->second;
+            }
+        }
     }
     def->depth = depths(def->graph);
     def->parents.assign(def->graph.machines.size(), {});
@@ -179,9 +207,11 @@ std::optional<RootMotion> ActorGraphDef::root_motion(const std::string& clip, fl
             ++next;
         }
         if (next == 0) {
-            out.x = keys[0][1];
-            out.y = keys[0][2];
-            out.z = keys[0][3];
+            // Before the first key the body comes from where the clip starts: the origin.
+            const float f = keys[0][0] > 0.0F ? std::max(time, 0.0F) / keys[0][0] : 1.0F;
+            out.x = lerp(0.0F, keys[0][1], f);
+            out.y = lerp(0.0F, keys[0][2], f);
+            out.z = lerp(0.0F, keys[0][3], f);
         } else if (next == keys.size()) {
             out.x = keys.back()[1];
             out.y = keys.back()[2];
@@ -203,9 +233,17 @@ std::optional<RootMotion> ActorGraphDef::root_motion(const std::string& clip, fl
             ++next;
         }
         std::array<float, 4> q{};
-        if (next == 0 || next == keys.size()) {
-            const auto& k = keys[next == 0 ? 0 : keys.size() - 1];
+        if (next == keys.size()) {
+            const auto& k = keys.back();
             q = {k[1], k[2], k[3], k[4]};
+        } else if (next == 0) {
+            // From no turn at the start of the clip to the first key.
+            const auto& b = keys[0];
+            const float f = b[0] > 0.0F ? std::max(time, 0.0F) / b[0] : 1.0F;
+            const float dot = b[4];
+            const float sign = dot < 0.0F ? -1.0F : 1.0F;
+            q = {lerp(0.0F, sign * b[1], f), lerp(0.0F, sign * b[2], f), lerp(0.0F, sign * b[3], f),
+                 lerp(1.0F, sign * b[4], f)};
         } else {
             const auto& a = keys[next - 1];
             const auto& b = keys[next];

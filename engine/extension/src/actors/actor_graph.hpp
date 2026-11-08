@@ -44,6 +44,8 @@ struct ActorGraphDef {
     /// For each machine the states that nest it: (machine, state id).
     std::vector<std::vector<std::pair<int, int>>> parents;
     std::string behaviour; ///< The root behaviour graph's virtual path.
+    /// The animation files the character lists (hkbCharacterStringData::animationNames), as written.
+    std::vector<std::string> character_animations;
     std::string missing;   ///< Why there is no graph, or empty.
 
     [[nodiscard]] bool empty() const { return graph.machines.empty(); }
