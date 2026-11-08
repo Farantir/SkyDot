@@ -32,3 +32,6 @@ in one commit.
   objects or cells? Fix the mechanism for all of them and check a few of the
   others, not only the reported case. Never key a fix to one ref, editor ID,
   race, mesh or cell.
+
+A review checks every change against these three rules. A guessed constant, a
+fix for one case, or a parallel system is a finding even when the code works.
