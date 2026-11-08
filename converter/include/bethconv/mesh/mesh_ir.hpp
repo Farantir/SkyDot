@@ -344,6 +344,15 @@ struct CollisionShape {
     Transform transform{};       ///< Body and shape transforms, composed.
 };
 
+/// One position of a BSFurnitureMarkerNode (or the older BSFurnitureMarker), as the NIF
+/// stores it (user version 12 and up; the older layout is left out).
+struct FurnitureMarker {
+    Vec3 offset{};                       ///< NIF units, in the root node's space.
+    float heading{};                     ///< Radians.
+    std::uint16_t animation_type{};      ///< 1 sit, 2 sleep, 3 lean.
+    std::uint16_t entry_points{};        ///< Bit mask of the sides it can be entered from.
+};
+
 /// Everything one NIF becomes.
 struct Model {
     std::string source;          ///< Virtual path, for diagnostics and extras.
@@ -355,6 +364,9 @@ struct Model {
     /// NiStringsExtraData "AttachT": where an art object's model goes on the
     /// actor it is put on (`NamedNode&MagicEffectsNode`); empty when there is none.
     std::vector<std::string> attach_targets;
+    /// BSFurnitureMarkerNode / BSFurnitureMarker positions, in block order; empty for a model that
+    /// is not furniture.
+    std::vector<FurnitureMarker> furniture_markers;
 
     std::vector<Node> nodes;
     std::vector<std::size_t> roots;

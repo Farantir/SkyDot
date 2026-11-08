@@ -1184,6 +1184,23 @@ io::ParseResult<Model> read_nif(std::span<const std::byte> bytes, std::string_vi
                 break;
             }
         }
+        if (version.User() >= 12) {
+            for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
+                // BSFurnitureMarkerNode derives from BSFurnitureMarker.
+                const auto* marker = nif.GetHeader().GetBlock<nifly::BSFurnitureMarker>(i);
+                if (marker == nullptr) {
+                    continue;
+                }
+                for (std::size_t k = 0; k < marker->positions.size(); ++k) {
+                    const nifly::FurniturePosition& position = marker->positions.data()[k];
+                    model.furniture_markers.push_back(FurnitureMarker{
+                        .offset = {position.offset.x, position.offset.y, position.offset.z},
+                        .heading = position.heading,
+                        .animation_type = position.animationType,
+                        .entry_points = position.entryPoints});
+                }
+            }
+        }
         for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
             if (auto* strings = nif.GetHeader().GetBlock<nifly::NiStringsExtraData>(i);
                 strings != nullptr && strings->name.get() == "AttachT") {

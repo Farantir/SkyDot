@@ -8,6 +8,8 @@
 #include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
+#include <godot_cpp/variant/string_name.hpp>
+#include <godot_cpp/variant/variant.hpp>
 
 #include <cstdint>
 #include <memory>
@@ -97,5 +99,10 @@ std::unordered_map<std::int64_t, godot::Node*> nodes_by_id(godot::Node* root);
 
 /// The `bethconv` block of a node's extras, or an empty dictionary.
 godot::Dictionary bethconv_extras(const godot::Node* node);
+
+/// The converter extra `key` of a model: from the first node of `root`'s top three levels whose
+/// `bethconv` block has it (the root block sits on the root or the axis-conversion node under it);
+/// nil if none does.
+godot::Variant bethconv_model_extra(const godot::Node* root, const godot::StringName& key, int depth = 0);
 
 } // namespace skydot

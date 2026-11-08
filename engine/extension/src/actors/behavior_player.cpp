@@ -47,20 +47,10 @@ const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
 }
 
 /// The converter's `behavior_graph` extra, on the model's root block.
-std::string behavior_graph_path(godot::Node* node, int depth = 0) {
-    const godot::Dictionary block = bethconv_extras(node);
-    if (block.has("behavior_graph")) {
-        return std::string(String(block["behavior_graph"]).utf8().get_data());
-    }
-    if (depth < 3) {
-        for (int i = 0; i < node->get_child_count(); ++i) {
-            std::string path = behavior_graph_path(node->get_child(i), depth + 1);
-            if (!path.empty()) {
-                return path;
-            }
-        }
-    }
-    return {};
+std::string behavior_graph_path(godot::Node* node) {
+    const godot::Variant path = bethconv_model_extra(node, "behavior_graph");
+    return path.get_type() == godot::Variant::NIL ? std::string()
+                                                  : std::string(String(path).utf8().get_data());
 }
 
 void collect_nodes(godot::Node* node, std::unordered_map<std::string, godot::Node3D*>& out) {

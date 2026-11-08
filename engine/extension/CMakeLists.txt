@@ -281,6 +281,8 @@ target_sources(skydot PRIVATE
     src/render/switch_node.hpp
     src/render/effect_asset.cpp
     src/render/effect_asset.hpp
+    src/render/furniture_markers.cpp
+    src/render/furniture_markers.hpp
     src/render/emittance.cpp
     src/render/emittance.hpp
     src/render/flicker.cpp

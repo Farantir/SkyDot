@@ -174,6 +174,14 @@ int cmd_mesh(const std::vector<std::filesystem::path>& sources,
                     print_bounds(prim.positions, 1.0f);
                 }
             }
+            for (const auto& marker : model->furniture_markers) {
+                std::printf("    furniture marker offset (%.1f %.1f %.1f) heading %.3f type %u "
+                            "entry 0x%X\n",
+                            static_cast<double>(marker.offset.x), static_cast<double>(marker.offset.y),
+                            static_cast<double>(marker.offset.z), static_cast<double>(marker.heading),
+                            static_cast<unsigned>(marker.animation_type),
+                            static_cast<unsigned>(marker.entry_points));
+            }
             for (const auto& shape : model->collision) {
                 std::printf("    collision %-18s verts=%zu tris=%zu\n",
                             shape.block_name.c_str(), shape.vertices.size(),

@@ -338,6 +338,18 @@ private:
         if (!model_.behavior_graph.empty()) {
             j["bethconv"]["behavior_graph"] = json_text(model_.behavior_graph);
         }
+        if (!model_.furniture_markers.empty()) {
+            nlohmann::json markers = nlohmann::json::array();
+            for (const FurnitureMarker& marker : model_.furniture_markers) {
+                markers.push_back({
+                    {"offset", floats({marker.offset.x, marker.offset.y, marker.offset.z})},
+                    {"heading", json_number(marker.heading)},
+                    {"animation_type", marker.animation_type},
+                    {"entry_points", marker.entry_points},
+                });
+            }
+            j["bethconv"]["furniture_markers"] = std::move(markers);
+        }
         if (!model_.attach_targets.empty()) {
             nlohmann::json targets = nlohmann::json::array();
             for (const std::string& target : model_.attach_targets) {

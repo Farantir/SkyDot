@@ -296,6 +296,25 @@ Dictionary bethconv_extras(const godot::Node* node) {
     return block.get_type() == Variant::DICTIONARY ? Dictionary(block) : Dictionary();
 }
 
+godot::Variant bethconv_model_extra(const godot::Node* root, const godot::StringName& key, int depth) {
+    if (root == nullptr) {
+        return {};
+    }
+    const Dictionary block = bethconv_extras(root);
+    if (block.has(key)) {
+        return block[key];
+    }
+    if (depth < 3) {
+        for (std::int32_t i = 0; i < root->get_child_count(); ++i) {
+            const Variant found = bethconv_model_extra(root->get_child(i), key, depth + 1);
+            if (found.get_type() != Variant::NIL) {
+                return found;
+            }
+        }
+    }
+    return {};
+}
+
 std::unordered_map<std::int64_t, godot::Node*> nodes_by_id(godot::Node* root) {
     std::unordered_map<std::int64_t, godot::Node*> out;
     bool hidden = false;

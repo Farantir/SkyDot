@@ -410,7 +410,7 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
 /// (BSBehaviorGraphExtraData) in the root extras. 25: an art object's attach
 /// targets (NiStringsExtraData AttachT) in the root extras.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/25;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/26;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +
