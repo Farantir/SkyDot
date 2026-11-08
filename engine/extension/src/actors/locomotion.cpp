@@ -2,6 +2,7 @@
 #include "actors/locomotion.hpp"
 
 #include "animation_generated.h"
+#include "actors/animation_project.hpp"
 #include "assets/vpath.hpp"
 
 #include <algorithm>
@@ -81,36 +82,6 @@ struct Motion {
 
 } // namespace
 
-std::string normalize_path(const std::string& path) {
-    std::string s = ascii_lower(path);
-    std::replace(s.begin(), s.end(), '\\', '/');
-    std::vector<std::string> parts;
-    std::size_t start = 0;
-    while (start <= s.size()) {
-        auto end = s.find('/', start);
-        if (end == std::string::npos) {
-            end = s.size();
-        }
-        const std::string part = s.substr(start, end - start);
-        if (part == "..") {
-            if (!parts.empty()) {
-                parts.pop_back();
-            }
-        } else if (!part.empty() && part != ".") {
-            parts.push_back(part);
-        }
-        start = end + 1;
-    }
-    std::string out;
-    for (const auto& p : parts) {
-        if (!out.empty()) {
-            out += '/';
-        }
-        out += p;
-    }
-    return out;
-}
-
 Locomotion find_locomotion(const std::string& behaviour,
                            const std::function<godot::PackedByteArray(const std::string&)>& bytes,
                            const std::function<bool(const std::string&)>& exists) {
@@ -122,93 +93,56 @@ Locomotion find_locomotion(const std::string& behaviour,
         out.missing = "no behaviour project";
         return out;
     }
-    const std::string folder = path.substr(0, slash + 1);
-    const std::string project = path.substr(slash + 1, dot - slash - 1);
-
-    // The project's own files, else its entry in the single file (the only
-    // place the DLC creatures' are).
-    using Strings = flatbuffers::Vector<flatbuffers::Offset<flatbuffers::String>>;
-    using Clips = flatbuffers::Vector<flatbuffers::Offset<afb::ProjectClip>>;
-    using Motions = flatbuffers::Vector<flatbuffers::Offset<afb::Motion>>;
-    const Strings* files = nullptr;
-    const Clips* clips = nullptr;
-    const Motions* motion_list = nullptr;
-    const godot::PackedByteArray project_bytes = bytes("meshes/animationdata/" + project + ".txt");
-    const godot::PackedByteArray bound_bytes = bytes("meshes/animationdata/boundanims/anims_" + project + ".txt");
-    godot::PackedByteArray single_bytes;
-    if (const auto* proj = read_asset(project_bytes); proj != nullptr && proj->project_clips() != nullptr) {
-        files = proj->project_files();
-        clips = proj->project_clips();
-        if (const auto* bound = read_asset(bound_bytes)) {
-            motion_list = bound->motions();
-        }
-    } else {
-        single_bytes = bytes("meshes/animationdatasinglefile.txt");
-        if (const auto* single = read_asset(single_bytes); single != nullptr && single->projects() != nullptr) {
-            for (const auto* p : *single->projects()) {
-                if (p->name() != nullptr && ascii_lower(p->name()->str()) == project) {
-                    files = p->files();
-                    clips = p->clips();
-                    motion_list = p->motions();
-                    break;
-                }
-            }
-        }
-    }
-    if (clips == nullptr) {
-        out.missing = "no animationdata for " + project;
+    const AnimationProject project = read_animation_project(behaviour, [&](const std::string& vpath) {
+        const godot::PackedByteArray raw = bytes(vpath);
+        return raw.is_empty() ? std::vector<std::uint8_t>() : std::vector<std::uint8_t>(raw.ptr(), raw.ptr() + raw.size());
+    });
+    if (!project.missing.empty()) {
+        out.missing = project.missing;
         return out;
     }
+    const std::string& folder = project.folder;
     // Clip name -> animation file, from the project's behaviour graphs.
     std::unordered_map<std::string, std::string> generators;
-    if (files != nullptr) {
-        for (const auto* f : *files) {
-            const std::string file = normalize_path(f->str());
-            if (!file.starts_with("behaviors")) {
-                continue;
-            }
-            const godot::PackedByteArray graph_bytes = bytes(folder + file);
-            const auto* graph = read_asset(graph_bytes);
-            if (graph == nullptr || graph->clip_generators() == nullptr) {
-                continue;
-            }
-            for (const auto* g : *graph->clip_generators()) {
-                const auto* name = g->name();
-                const auto* animation = g->animation();
-                if (name != nullptr && animation != nullptr) {
-                    generators.emplace(ascii_lower(name->str()), normalize_path(folder + animation->str()));
-                }
+    for (const std::string& file : project.files) {
+        if (!file.starts_with("behaviors")) {
+            continue;
+        }
+        const godot::PackedByteArray graph_bytes = bytes(folder + file);
+        const auto* graph = read_asset(graph_bytes);
+        if (graph == nullptr || graph->clip_generators() == nullptr) {
+            continue;
+        }
+        for (const auto* g : *graph->clip_generators()) {
+            const auto* name = g->name();
+            const auto* animation = g->animation();
+            if (name != nullptr && animation != nullptr) {
+                generators.emplace(ascii_lower(name->str()), normalize_path(folder + animation->str()));
             }
         }
     }
     if (generators.empty()) {
-        out.missing = "no clip generators in the behaviours of " + project;
+        out.missing = "no clip generators in the behaviours of " + project.name;
         return out;
     }
     std::unordered_map<std::uint32_t, Motion> motions;
-    if (motion_list != nullptr) {
-        for (const auto* m : *motion_list) {
-            Motion motion{m->duration(), 0.0F};
-            if (const auto* keys = m->translations(); keys != nullptr && keys->size() > 0) {
-                motion.forward = keys->Get(keys->size() - 1)->y();
-            }
-            motions[m->animation()] = motion;
+    for (const auto& [id, m] : project.motions) {
+        Motion motion{m.duration, 0.0F};
+        if (!m.translations.empty()) {
+            motion.forward = m.translations.back()[2];
         }
+        motions[id] = motion;
     }
 
-    const auto clip_of = [&](const afb::ProjectClip& c) {
+    const auto clip_of = [&](const ProjectClip& c) {
         GaitClip g;
-        g.name = c.name() != nullptr ? c.name()->str() : std::string();
-        g.playback = c.speed() > 0.0F ? c.speed() : 1.0F;
+        g.name = c.name;
+        g.playback = c.speed;
         if (const auto it = generators.find(ascii_lower(g.name)); it != generators.end()) {
             g.file = it->second;
         }
-        if (const auto* entries = c.annotations()) {
-            for (const auto* a : *entries) {
-                g.notes.emplace_back(a->time(), a->text() != nullptr ? a->text()->str() : std::string());
-            }
-        }
-        if (const auto it = motions.find(c.animation()); it != motions.end() && it->second.duration > 0.0F) {
+        g.notes = c.notes;
+        if (const auto it = motions.find(c.animation); it != motions.end() && it->second.duration > 0.0F) {
             g.speed = it->second.forward / it->second.duration * g.playback;
         }
         return g;
@@ -220,32 +154,29 @@ Locomotion find_locomotion(const std::string& behaviour,
     // `accept` takes.
     const auto pick = [&](std::initializer_list<std::string_view> names, const auto& accept, bool needs_motion) {
         for (const std::string_view want : names) {
-            for (const auto* c : *clips) {
-                if (c->name() != nullptr && bare(c->name()->str()) == want) {
-                    if (GaitClip g = clip_of(*c); usable(g, needs_motion)) {
+            for (const ProjectClip& c : project.clips) {
+                if (bare(c.name) == want) {
+                    if (GaitClip g = clip_of(c); usable(g, needs_motion)) {
                         return g;
                     }
                 }
             }
         }
         GaitClip best;
-        for (const auto* c : *clips) {
-            if (c->name() == nullptr || !accept(c->name()->str())) {
+        for (const ProjectClip& c : project.clips) {
+            if (!accept(c.name)) {
                 continue;
             }
-            GaitClip g = clip_of(*c);
+            GaitClip g = clip_of(c);
             if (usable(g, needs_motion) && (best.empty() || g.name.size() < best.name.size())) {
                 best = g;
             }
         }
         return best;
     };
-    for (const auto* c : *clips) {
-        if (c->name() == nullptr) {
-            continue;
-        }
-        if (GaitClip g = clip_of(*c); !g.file.empty() && exists(g.file)) {
-            out.clips.emplace(bare(c->name()->str()), std::move(g));
+    for (const ProjectClip& c : project.clips) {
+        if (GaitClip g = clip_of(c); !g.file.empty() && exists(g.file)) {
+            out.clips.emplace(bare(c.name), std::move(g));
         }
     }
     for (const auto& [name, clip] : out.clips) {

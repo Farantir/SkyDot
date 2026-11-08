@@ -21,6 +21,8 @@
 // and whose animation moves forward.
 #pragma once
 
+#include "actors/animation_project.hpp"
+
 #include <godot_cpp/variant/packed_byte_array.hpp>
 
 #include <functional>
@@ -78,8 +80,5 @@ struct Stance {
 
 /// The stance `prefix` (any case) of `locomotion`'s project, found by name.
 Stance find_stance(const Locomotion& locomotion, std::string_view prefix);
-
-/// Lowercase, forward slashes, `.` and `..` resolved.
-std::string normalize_path(const std::string& path);
 
 } // namespace skydot

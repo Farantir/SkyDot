@@ -310,7 +310,7 @@ bool SkydotBehavior::raises_event(const godot::String& event) const {
     const std::string name = event.utf8().get_data();
     const auto same = [&](const std::string& other) { return other == name; };
     const BehaviorGraphDef& def = set_->def();
-    for (const BehaviorClip& clip : def.clips) {
+    for (const BehaviorClip& clip : set_->clips()) {
         for (const BehaviorTrigger& trigger : clip.triggers) {
             if (same(trigger.event)) {
                 return true;

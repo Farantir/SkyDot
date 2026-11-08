@@ -132,7 +132,15 @@ BehaviorDef behavior_from_asset(const afb::Animation& asset) {
     return def;
 }
 
-BehaviorMachine::BehaviorMachine(BehaviorDef def) : def_(std::move(def)) {}
+BehaviorMachine::BehaviorMachine(BehaviorDef def) : def_(std::move(def)) {
+    clips_ = std::make_shared<std::vector<BehaviorClip>>(std::move(def_.clips));
+    def_.clips.clear();
+}
+
+BehaviorMachine::BehaviorMachine(BehaviorDef def, BehaviorClips clips)
+    : def_(std::move(def)), clips_(std::move(clips)) {
+    def_.clips.clear();
+}
 
 void BehaviorMachine::stop() {
     current_ = -1;
@@ -192,9 +200,9 @@ bool BehaviorMachine::restore(const Snapshot& s) {
     }
     const BehaviorState& state = def_.states[static_cast<std::size_t>(index)];
     const std::size_t triggers =
-        state.clip >= 0 ? def_.clips[static_cast<std::size_t>(state.clip)].triggers.size() : 0;
+        state.clip >= 0 ? (*clips_)[static_cast<std::size_t>(state.clip)].triggers.size() : 0;
     if (s.fired.size() != triggers || s.held_clip < -1 ||
-        s.held_clip >= static_cast<int>(def_.clips.size())) {
+        s.held_clip >= static_cast<int>(clips_->size())) {
         return false;
     }
     current_ = index;
@@ -236,7 +244,7 @@ void BehaviorMachine::change(int index, std::string_view cause, BehaviorOutput& 
     time_ = 0.0F;
     backwards_ = false;
     if (now.clip >= 0) {
-        const BehaviorClip& clip = def_.clips[static_cast<std::size_t>(now.clip)];
+        const BehaviorClip& clip = (*clips_)[static_cast<std::size_t>(now.clip)];
         time_ = clip.mode == 2 ? clip.user_fraction * clip.duration : clip.start_time;
         fired_.assign(clip.triggers.size(), false);
     } else {
@@ -297,7 +305,7 @@ void BehaviorMachine::advance(float seconds, BehaviorOutput& out) {
     if (clip_index < 0 || seconds <= 0.0F) {
         return;
     }
-    const BehaviorClip& clip = def_.clips[static_cast<std::size_t>(clip_index)];
+    const BehaviorClip& clip = (*clips_)[static_cast<std::size_t>(clip_index)];
     if (clip.mode == 2) {
         return; // Held at the user-controlled fraction.
     }
@@ -357,12 +365,18 @@ constexpr int k_max_broadcast = 64; ///< Events passed between machines in one s
 } // namespace
 
 BehaviorSet::BehaviorSet(BehaviorGraphDef def) : def_(std::move(def)) {
-    for (BehaviorDef& machine : def_.machines) {
-        BehaviorDef copy = machine;
-        copy.clips = def_.clips;
-        machines_.emplace_back(std::move(copy));
+    clips_ = std::make_shared<std::vector<BehaviorClip>>(std::move(def_.clips));
+    def_.clips.clear();
+    for (const BehaviorDef& machine : def_.machines) {
+        machines_.emplace_back(machine, clips_);
     }
     running_.assign(machines_.size(), false);
+}
+
+void BehaviorSet::set_clip_duration(int clip, float seconds) {
+    if (clip >= 0 && static_cast<std::size_t>(clip) < clips_->size()) {
+        (*clips_)[static_cast<std::size_t>(clip)].duration = seconds;
+    }
 }
 
 std::vector<int> BehaviorSet::running() const {

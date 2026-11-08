@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <span>
 #include <string>
 #include <string_view>
@@ -117,9 +118,16 @@ struct BehaviorOutput {
     bool accepted{};
 };
 
+/// The clips of a graph, shared by its machines (a graph of hundreds of
+/// machines and thousands of clips is not copied per machine).
+using BehaviorClips = std::shared_ptr<std::vector<BehaviorClip>>;
+
 class BehaviorMachine {
 public:
+    /// A machine with the clips of `def`, which it keeps for itself.
     explicit BehaviorMachine(BehaviorDef def);
+    /// A machine over clips shared with others; `def.clips` is ignored.
+    BehaviorMachine(BehaviorDef def, BehaviorClips clips);
 
     /// Enter the start state, or the state with id `state_id` if it is not
     /// -1 and the machine has it.
@@ -169,6 +177,7 @@ private:
     void drain(BehaviorOutput& out, bool* first_matched = nullptr);
 
     BehaviorDef def_;
+    BehaviorClips clips_;
     int current_{-1};
     int nested_entry_{-1};
     float time_{};
@@ -193,7 +202,13 @@ public:
     void send(std::string_view event, BehaviorOutput& out);
     void advance(float seconds, BehaviorOutput& out);
 
+    /// The graph's definition; its `clips` are empty, see `clips()`.
     [[nodiscard]] const BehaviorGraphDef& def() const { return def_; }
+    /// The clips of every machine.
+    [[nodiscard]] const std::vector<BehaviorClip>& clips() const { return *clips_; }
+    /// Set a clip's duration (the host learns it when it loads the animation); the machines
+    /// see it from their next step on.
+    void set_clip_duration(int clip, float seconds);
     [[nodiscard]] std::size_t machine_count() const { return machines_.size(); }
     /// Machines running now, in index order.
     [[nodiscard]] std::vector<int> running() const;
@@ -213,6 +228,7 @@ private:
     void merge(int machine, BehaviorOutput& part, BehaviorOutput& out);
 
     BehaviorGraphDef def_;
+    BehaviorClips clips_;
     std::vector<BehaviorMachine> machines_;
     std::vector<bool> running_;
 };
