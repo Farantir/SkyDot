@@ -507,7 +507,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/26` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/27` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep`; for a texture some material alpha-tests, `;cov/1;t=<threshold>`, plus `;floor` in the default mode (alpha coverage mips) | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -538,7 +538,9 @@ active child index) on NiSwitchNodes other than LOD nodes (node extras; flora
 show child 1 once harvested), `mesh/26` `extras.bethconv.furniture_markers`
 (`[{offset: [x, y, z] in NIF units, heading: radians, animation_type: 1 sit,
 2 sleep, 3 lean, entry_points: bit mask}]`, from `BSFurnitureMarkerNode` or
-`BSFurnitureMarker`, on the root node); the list in
+`BSFurnitureMarker`, on the root node), `mesh/27` `extras.bethconv.ragdoll`
+(a skeleton's rigid bodies and constraints, on the root node; see "Ragdolls in
+meshes" below); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 
@@ -751,6 +753,60 @@ plates, trigger boxes) carries `extras.bethconv.phantoms` instead of
 `layer` is the phantom's collision filter, `transform` composes the phantom's own
 4x4 with every transform shape above the leaf, Havok units, node frame). Other
 phantom shapes are skipped with a converter warning.
+
+### Ragdolls in meshes
+
+A NIF with rigid bodies that have constraints, or that hang on
+`bhkBlendCollisionObject`s (every actor's `skeleton.nif`), carries
+`extras.bethconv.ragdoll` on the root node (next to the provenance):
+`{bodies: [...], constraints: [...]}`. Every rigid body on a node of the NIF
+is a body, in node order; their shapes stay in `extras.bethconv.collision` as
+well.
+
+**Space and units.** Everything of a body is in its **bone's frame** (the
+node the collision object sits on, the bone of the same name in the
+animation skeleton), in **metres**, in Skyrim's axes (Z up), angles in
+radians. Havok lengths are multiplied by 69.99124 (game units per Havok
+unit) and 0.0142875 (metres per game unit), together 0.99999. Verified on
+the 57 skeleton NIFs of vanilla SE: a `bhkRigidBody`'s stored translation
+(times 69.99124) and rotation are its node's transform at bind in the NIF
+root's space (the converter warns past 0.5 game units or 1.6°; none of
+them is), so the body's frame is the node's. A `bhkRigidBodyT` has its own
+translation and rotation relative to its node (`body_transform`). Per body:
+
+| Key | Meaning |
+| --- | --- |
+| `bone`, `node` | the node's name and IR index (the `id` of its node extras) |
+| `block`, `collision_object`, `collision_flags` | `bhkRigidBody` or `bhkRigidBodyT`; the collision object's block name and flags |
+| `heir_gain`, `vel_gain` | `bhkBlendCollisionObject`'s gains (0 for other objects) |
+| `body_transform` | `translation` (m), `rotation` (quaternion x, y, z, w): the Havok body's frame in the bone's (identity for `bhkRigidBody`) |
+| `bone_bind` | the bone at bind in the NIF root's space: `translation` (m), `rotation` |
+| `shapes` | per leaf shape (list, MOPP and transform shapes unwrapped, as in the collision extras): `kind`, `block`, `havok_material`, `transform` (`translation` m, `rotation`, in the bone's frame), `radius` (m; a box's or hull's convex radius), `point_a`/`point_b` (capsule, cylinder, m), `half_extents` (box, m), `vertices` (flat x, y, z, m) |
+| `mass` | kg |
+| `center_of_mass` | m, bone frame |
+| `inertia` | 3x3 row-major, kg m², bone frame (the body's tensor turned by `body_transform`) |
+| `linear_damping`, `angular_damping`, `time_factor`, `gravity_factor`, `friction`, `rolling_friction_multiplier`, `restitution` | as stored |
+| `max_linear_velocity`, `max_angular_velocity`, `penetration_depth` | m/s, rad/s, m |
+| `motion_type`, `deactivator_type`, `solver_deactivation`, `quality_type` | as stored (`hkMotionType`, ...; the human's and the spider's bodies are motion 4, quality 1) |
+| `filter` | the Havok filter: `layer` (8 biped for ragdolls), `flags_and_part` (bits 0-4 the part number, 5-7 flags; nif.xml `HavokFilter`), `group` |
+| `constraints` | indices into `constraints` of the ones this body's `bhkRigidBody` lists |
+
+Per constraint (a `bhkMalleableConstraint` or `bhkBreakableConstraint` is
+unwrapped: `type` is the wrapped one's, and `wrapper` (`malleable` or
+`breakable`), `strength` (breakable: the threshold), `tau`, `damping` (files
+before 20.2.0.7 only) and `remove_when_broken` are added):
+
+| Key | Meaning |
+| --- | --- |
+| `type`, `block` | `ragdoll`, `limited_hinge`, `hinge`, `ball_and_socket`, `stiff_spring` or `prismatic`; the block name |
+| `body_a`, `body_b`, `priority` | body indices; in vanilla A is the child, B the parent |
+| `in_a`, `in_b` | the frame in A's and in B's bone frame: `pivot` (m) and the axes, by type: ragdoll `twist`, `plane`, `motor`; hinge and limited hinge `axle`, `perp_1`, `perp_2`; prismatic `sliding`, `rotation`, `plane`; ball-and-socket and stiff spring only `pivot` |
+| `cone_max`, `plane_min`, `plane_max`, `twist_min`, `twist_max` | ragdoll limits, radians |
+| `min_angle`, `max_angle` | limited hinge limits, radians |
+| `max_friction` | ragdoll and limited hinge: Havok's constraint friction, a torque as stored |
+| `min_distance`, `max_distance`, `friction` | prismatic (m, m, as stored) |
+| `length` | stiff spring, m |
+| `motor` | ragdoll, limited hinge, prismatic: `type` (`none`, `position`, `velocity`, `spring`), then `enabled`, `min_force`, `max_force` and the type's own (`tau`, `damping`, `proportional_recovery_velocity`, `constant_recovery_velocity`; `tau`, `velocity_target`, `use_velocity_target_from_constraint_targets`; `spring_constant`, `spring_damping`) |
 
 ### Path encodings differ between `vpath.idx` and GLB URIs
 

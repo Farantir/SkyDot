@@ -190,8 +190,7 @@ void add_images(ordered_json& doc, std::string_view prefix, ViewGlb& out) {
 
 } // namespace
 
-io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_view prefix,
-                                  std::string_view origin) {
+io::ParseResult<GlbChunks> glb_chunks(std::span<const std::byte> glb, std::string_view origin) {
     io::SpanReader reader(glb, origin);
 
     const auto magic = reader.tag();
@@ -237,8 +236,20 @@ io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_vi
     if (!tail) {
         return std::unexpected(tail.error());
     }
+    return GlbChunks{.json = *json_text, .tail = *tail};
+}
 
-    auto doc = ordered_json::parse(*json_text, nullptr, /*allow_exceptions=*/false);
+
+io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_view prefix,
+                                  std::string_view origin) {
+    const auto chunks = glb_chunks(glb, origin);
+    if (!chunks) {
+        return std::unexpected(chunks.error());
+    }
+    const std::string_view json_text = chunks->json;
+    const std::span<const std::byte> tail = chunks->tail;
+
+    auto doc = ordered_json::parse(json_text, nullptr, /*allow_exceptions=*/false);
     if (doc.is_discarded() || !doc.is_object()) {
         return view_error(origin, io::ErrorKind::corrupt,
                           "the GLB's JSON chunk does not parse as a JSON object");
@@ -315,7 +326,7 @@ io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_vi
 
     io::ByteWriter writer;
     const std::uint32_t chunk_bytes = static_cast<std::uint32_t>(rewritten.size());
-    const std::size_t total = 12 + 8 + rewritten.size() + tail->size();
+    const std::size_t total = 12 + 8 + rewritten.size() + tail.size();
     writer.reserve_more(total);
     writer.put(k_glb_magic.value);
     writer.put(k_glb_version);
@@ -323,7 +334,7 @@ io::ParseResult<ViewGlb> view_glb(std::span<const std::byte> glb, std::string_vi
     writer.put(chunk_bytes);
     writer.put(k_chunk_json.value);
     writer.put_bytes(std::as_bytes(std::span<const char>(rewritten)));
-    writer.put_bytes(*tail);
+    writer.put_bytes(tail);
     out.bytes = writer.take();
     return out;
 }

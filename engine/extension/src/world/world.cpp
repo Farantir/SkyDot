@@ -5,6 +5,7 @@
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
 #include "physics/collision.hpp"
+#include "render/ragdoll.hpp"
 #include "world/queries.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
@@ -161,6 +162,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_actors"), &SkydotWorld::get_actors);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actors"), "set_actors", "get_actors");
     godot::ClassDB::bind_method(D_METHOD("get_actor_plan", "ref"), &SkydotWorld::get_actor_plan);
+    godot::ClassDB::bind_method(D_METHOD("get_ragdoll", "ref", "base"), &SkydotWorld::get_ragdoll, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
     godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
@@ -509,6 +511,7 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
     out["skin_tone"] = godot::Color(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);
     out["hide_hair"] = plan.hide_hair;
     out["skeleton"] = String::utf8(plan.skeleton.c_str());
+    out["skeleton_model"] = String::utf8(plan.skeleton_model.c_str());
     out["idle"] = String::utf8(plan.idle.c_str());
     out["behaviour"] = String::utf8(plan.behaviour.c_str());
     godot::PackedStringArray parts;
@@ -567,6 +570,30 @@ godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
         return {};
     }
     return plan_dictionary(builder_.actor_plan(*actor));
+}
+
+godot::Dictionary SkydotWorld::get_ragdoll(std::int64_t ref, std::int64_t base) {
+    ActorPlan plan;
+    if (base != 0) {
+        plan = builder_.npc_plan(static_cast<std::uint32_t>(base), static_cast<std::uint32_t>(ref));
+    } else if (const auto* actor = data().actor_ptr(ref); actor != nullptr) {
+        plan = builder_.actor_plan(*actor);
+    }
+    if (plan.skeleton_model.empty()) {
+        return {};
+    }
+    if (const auto found = ragdolls_.find(plan.skeleton_model); found != ragdolls_.end()) {
+        return found->second.duplicate(true);
+    }
+    godot::Node3D* model = builder_.build_model(String::utf8(plan.skeleton_model.c_str()));
+    if (model == nullptr) {
+        // Not kept: the pack may not be attached yet.
+        return {};
+    }
+    const godot::Dictionary ragdoll = model_ragdoll(model);
+    godot::memdelete(model);
+    ragdolls_.emplace(plan.skeleton_model, ragdoll);
+    return ragdoll.duplicate(true);
 }
 
 godot::Dictionary SkydotWorld::get_npc_plan(std::int64_t npc, std::int64_t ref) const {

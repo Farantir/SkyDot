@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdio>
 #include <filesystem>
@@ -44,6 +45,53 @@ void print_bounds(const std::vector<bethconv::mesh::Vec3>& points, float scale) 
                 static_cast<double>(lo[0] * scale), static_cast<double>(lo[1] * scale),
                 static_cast<double>(lo[2] * scale), static_cast<double>(hi[0] * scale),
                 static_cast<double>(hi[1] * scale), static_cast<double>(hi[2] * scale));
+}
+
+/// The ragdoll as read: bodies (Havok units shown in metres) and constraints, angles in degrees.
+void print_ragdoll(const bethconv::mesh::Ragdoll& ragdoll) {
+    using bethconv::mesh::ConstraintKind;
+    if (ragdoll.bodies.empty()) {
+        return;
+    }
+    const auto m = [](float havok) {
+        return static_cast<double>(havok * bethconv::mesh::k_havok_scale) * skydot::formats::k_metres_per_unit;
+    };
+    const auto deg = [](float radians) { return static_cast<double>(radians) * 180.0 / 3.14159265358979323846; };
+    std::printf("    ragdoll: %zu bodies, %zu constraints\n", ragdoll.bodies.size(), ragdoll.constraints.size());
+    for (std::size_t i = 0; i < ragdoll.bodies.size(); ++i) {
+        const auto& b = ragdoll.bodies[i];
+        std::printf("      body %zu '%s' %s on %s mass %.2f damping %.2f/%.2f friction %.2f restitution %.2f "
+                    "layer %u part 0x%02X group %u motion %u quality %u\n",
+                    i, b.bone.c_str(), b.block_name.c_str(), b.collision_object.c_str(),
+                    static_cast<double>(b.mass), static_cast<double>(b.linear_damping),
+                    static_cast<double>(b.angular_damping), static_cast<double>(b.friction),
+                    static_cast<double>(b.restitution), static_cast<unsigned>(b.layer),
+                    static_cast<unsigned>(b.flags_and_part), static_cast<unsigned>(b.group),
+                    static_cast<unsigned>(b.motion_type), static_cast<unsigned>(b.quality_type));
+        for (const auto& s : b.shapes) {
+            std::printf("        %s radius %.3f m", s.block_name.c_str(), m(s.radius));
+            if (s.kind == bethconv::mesh::CollisionKind::capsule) {
+                const double dx = m(s.point_a.x - s.point_b.x);
+                const double dy = m(s.point_a.y - s.point_b.y);
+                const double dz = m(s.point_a.z - s.point_b.z);
+                std::printf(" segment %.3f m", std::sqrt(dx * dx + dy * dy + dz * dz));
+            }
+            std::printf("\n");
+        }
+    }
+    for (const auto& c : ragdoll.constraints) {
+        std::printf("      %s%s%s '%s' -> '%s'", c.block_name.c_str(), c.wrapper.empty() ? "" : " wrapping ",
+                    c.wrapper.empty() ? "" : std::to_string(static_cast<int>(c.kind)).c_str(),
+                    ragdoll.bodies[c.body_a].bone.c_str(), ragdoll.bodies[c.body_b].bone.c_str());
+        if (c.kind == ConstraintKind::ragdoll) {
+            std::printf(" cone %.1f plane %.1f..%.1f twist %.1f..%.1f", deg(c.cone_max), deg(c.plane_min),
+                        deg(c.plane_max), deg(c.twist_min), deg(c.twist_max));
+        } else if (c.kind == ConstraintKind::limited_hinge) {
+            std::printf(" angle %.1f..%.1f", deg(c.min_angle), deg(c.max_angle));
+        }
+        std::printf(" friction %.2f motor %u\n", static_cast<double>(c.max_friction),
+                    static_cast<unsigned>(c.motor.type));
+    }
 }
 
 /// Result of one NIF, for the summary and sweep totals.
@@ -182,6 +230,7 @@ int cmd_mesh(const std::vector<std::filesystem::path>& sources,
                             static_cast<unsigned>(marker.animation_type),
                             static_cast<unsigned>(marker.entry_points));
             }
+            print_ragdoll(model->ragdoll);
             for (const auto& shape : model->collision) {
                 std::printf("    collision %-18s verts=%zu tris=%zu\n",
                             shape.block_name.c_str(), shape.vertices.size(),

@@ -1470,12 +1470,47 @@ void write_file(const fs::path& path, std::span<const std::byte> bytes) {
 /// An actor: a three-bone skeleton, a clip that turns the head bone 90
 /// degrees about Z over 10 frames with a "FootLeft" annotation at 0.1 s, and a
 /// cube skinned to the head, placed 120 units up like Skyrim's body parts.
+/// Its ragdoll skeleton follows as the game's files have it: one `Ragdoll_<bone>` per body of
+/// skeleton.nif, at rest where the bodies are.
 std::vector<std::byte> actor_skeleton() {
     bethconv::test::HkxBuilder b(8);
     b.add_skeleton("NPC Root [Root]", {{"NPC Root [Root]", -1, {0, 0, 0}, {0, 0, 0, 1}},
                                        {"NPC Spine [Spn0]", 0, {0, 0, 70}, {0, 0, 0, 1}},
                                        {"NPC Head [Head]", 1, {0, 0, 50}, {0, 0, 0, 1}}});
+    b.add_skeleton("Ragdoll_NPC Spine [Spn0]", {{"Ragdoll_NPC Spine [Spn0]", -1, {0, 0, 70}, {0, 0, 0, 1}},
+                                                {"Ragdoll_NPC Head [Head]", 0, {0, 0, 50}, {0, 0, 0, 1}}});
     return b.bytes();
+}
+
+/// The race's skeleton model: the same bones, with a ragdoll: a capsule body on the spine and
+/// one on the head, the head held by a ragdoll constraint at its origin (formats/pack-format.md,
+/// "Ragdolls in meshes").
+std::vector<std::byte> actor_skeleton_model() {
+    bethconv::test::NifBuilder builder(bethconv::test::NifFlavor::se);
+    auto* root_bone = builder.add_node("NPC Root [Root]");
+    auto* spine = builder.add_node("NPC Spine [Spn0]", root_bone);
+    auto* head = builder.add_node("NPC Head [Head]", spine);
+    spine->transform.translation = nifly::Vector3(0, 0, 70);
+    head->transform.translation = nifly::Vector3(0, 0, 50);
+    const float havok = bethconv::mesh::k_havok_scale;
+    auto* spine_body = builder.add_ragdoll_body(spine, {0, 0, 70}, {0, 0, 0}, {0, 0, 40.0F / havok},
+                                                10.0F / havok, 20.0F, 2);
+    auto* head_body = builder.add_ragdoll_body(head, {0, 0, 120}, {0, 0, 0}, {0, 0, 10.0F / havok},
+                                               8.0F / havok, 4.0F, 1);
+    auto constraint = std::make_unique<nifly::bhkRagdollConstraint>();
+    auto& d = constraint->ragdoll;
+    d.twistA = d.twistB = nifly::Vector4(0, 0, 1, 0);
+    d.planeA = d.planeB = nifly::Vector4(1, 0, 0, 0);
+    d.motorA = d.motorB = nifly::Vector4(0, 1, 0, 0);
+    d.pivotB = nifly::Vector4(0, 0, 50.0F / havok, 0);
+    d.coneMaxAngle = 0.7F;
+    d.planeMinAngle = -0.26F;
+    d.planeMaxAngle = 0.26F;
+    d.twistMinAngle = -0.7F;
+    d.twistMaxAngle = 0.7F;
+    d.maxFriction = 10.0F;
+    builder.add_constraint(std::move(constraint), head_body, spine_body);
+    return builder.bytes();
 }
 
 std::vector<std::byte> actor_clip() {
@@ -1602,6 +1637,7 @@ std::size_t write_data_folder(const fs::path& data) {
         bethconv::testing::build_dds(DdsSpec{.width = 8, .height = 8, .mips = 4}));
 
     put("meshes/testpack/actor/skeleton.hkx", actor_skeleton());
+    put("meshes/testpack/actor/skeleton.nif", actor_skeleton_model());
     put("meshes/testpack/actor/turnhead.hkx", actor_clip());
     // The idle the race's behaviour folder offers; same bytes, one asset.
     put("meshes/testpack/actor/animations/mt_idle.hkx", actor_clip());

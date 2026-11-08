@@ -188,6 +188,7 @@ public:
             model_.roots.push_back(walk(root));
         }
         resolve_skins();
+        read_ragdoll();
         if (opt_.read_animations) {
             controllers_.finish();
         }
@@ -269,7 +270,7 @@ private:
         }
 
         if (opt_.read_collision) {
-            read_collision(obj, model_.nodes[index].name);
+            read_collision(obj, index);
         }
 
         if (depth >= k_max_node_depth) {
@@ -606,7 +607,8 @@ private:
         return model_.materials.size() - 1;
     }
 
-    void read_collision(nifly::NiAVObject* obj, const std::string& node_name) {
+    void read_collision(nifly::NiAVObject* obj, std::size_t node) {
+        const std::string& node_name = model_.nodes[node].name;
         auto* collision =
             nif_.GetHeader().GetBlock<nifly::bhkNiCollisionObject>(obj->collisionRef);
         if (collision == nullptr) {
@@ -621,6 +623,12 @@ private:
         if (body == nullptr) {
             return;
         }
+        rigid_bodies_.push_back(PendingBody{.node = node,
+                                            .object = obj,
+                                            .collision = collision,
+                                            .body = body,
+                                            .first_shape = model_.collision.size(),
+                                            .end_shape = model_.collision.size()});
         auto* shape = nif_.GetHeader().GetBlock<nifly::bhkShape>(body->shapeRef);
         if (shape == nullptr) {
             return;
@@ -641,6 +649,284 @@ private:
             ctx.transform.rotation = quat_to_matrix(body->rotation);
         }
         read_collision_shape(shape, ctx, 0);
+        rigid_bodies_.back().end_shape = model_.collision.size();
+    }
+
+    /// A rigid body met in the walk, for the ragdoll.
+    struct PendingBody {
+        std::size_t node{};
+        nifly::NiAVObject* object{};
+        nifly::bhkNiCollisionObject* collision{};
+        nifly::bhkRigidBody* body{};
+        std::size_t first_shape{}, end_shape{}; ///< Its leaves in Model::collision.
+    };
+    std::vector<PendingBody> rigid_bodies_;
+
+    /// `obj`'s transform in the NIF root's space (game units), through its parents.
+    nifly::MatTransform to_root(nifly::NiAVObject* obj) const {
+        nifly::MatTransform out = obj->transform;
+        nifly::NiObject* at = obj;
+        // Bounded like the walk, so a cycle cannot loop.
+        for (std::size_t depth = 0; depth < k_max_node_depth; ++depth) {
+            nifly::NiNode* parent = nif_.GetParentNode(at);
+            if (parent == nullptr) {
+                break;
+            }
+            out = parent->transform.ComposeTransforms(out);
+            at = parent;
+        }
+        return out;
+    }
+
+    static Vec3 vec3_of(const nifly::Vector4& v) { return Vec3{v.x, v.y, v.z}; }
+
+    static ConstraintMotor motor_of(const nifly::MotorDesc& desc) {
+        ConstraintMotor m;
+        m.type = static_cast<std::uint8_t>(desc.motorType);
+        switch (desc.motorType) {
+        case nifly::MOTOR_POSITION: {
+            const auto& p = desc.motorPosition;
+            m.enabled = p.motorEnabled;
+            m.min_force = p.minForce;
+            m.max_force = p.maxForce;
+            m.tau = p.tau;
+            m.damping = p.damping;
+            m.proportional_recovery_velocity = p.proportionalRecoveryVelocity;
+            m.constant_recovery_velocity = p.constantRecoveryVelocity;
+            break;
+        }
+        case nifly::MOTOR_VELOCITY: {
+            const auto& v = desc.motorVelocity;
+            m.enabled = v.motorEnabled;
+            m.min_force = v.minForce;
+            m.max_force = v.maxForce;
+            m.tau = v.tau;
+            m.velocity_target = v.velocityTarget;
+            m.use_velocity_target_from_constraint_targets = v.useVelocityTargetFromConstraintTargets;
+            break;
+        }
+        case nifly::MOTOR_SPRING: {
+            const auto& s = desc.motorSpringDamper;
+            m.enabled = s.motorEnabled;
+            m.min_force = s.minForce;
+            m.max_force = s.maxForce;
+            m.spring_constant = s.springConstant;
+            m.spring_damping = s.springDamping;
+            break;
+        }
+        case nifly::MOTOR_NONE:
+            break;
+        }
+        return m;
+    }
+
+    static void read_desc(const nifly::RagdollDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::ragdoll;
+        c.a = {vec3_of(d.pivotA), {vec3_of(d.twistA), vec3_of(d.planeA), vec3_of(d.motorA)}};
+        c.b = {vec3_of(d.pivotB), {vec3_of(d.twistB), vec3_of(d.planeB), vec3_of(d.motorB)}};
+        c.cone_max = d.coneMaxAngle;
+        c.plane_min = d.planeMinAngle;
+        c.plane_max = d.planeMaxAngle;
+        c.twist_min = d.twistMinAngle;
+        c.twist_max = d.twistMaxAngle;
+        c.max_friction = d.maxFriction;
+        c.motor = motor_of(d.motorDesc);
+    }
+    static void read_desc(const nifly::LimitedHingeDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::limited_hinge;
+        c.a = {vec3_of(d.pivotA), {vec3_of(d.axleA), vec3_of(d.axleInA1), vec3_of(d.axleInA2)}};
+        c.b = {vec3_of(d.pivotB), {vec3_of(d.axleB), vec3_of(d.axleInB1), vec3_of(d.axleInB2)}};
+        c.min_angle = d.minAngle;
+        c.max_angle = d.maxAngle;
+        c.max_friction = d.maxFriction;
+        c.motor = motor_of(d.motorDesc);
+    }
+    static void read_desc(const nifly::HingeDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::hinge;
+        c.a = {vec3_of(d.pivotA), {vec3_of(d.axleA), vec3_of(d.axleInA1), vec3_of(d.axleInA2)}};
+        c.b = {vec3_of(d.pivotB), {vec3_of(d.axleB), vec3_of(d.axleInB1), vec3_of(d.axleInB2)}};
+    }
+    static void read_desc(const nifly::PrismaticDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::prismatic;
+        c.a = {vec3_of(d.pivotA), {vec3_of(d.slidingA), vec3_of(d.rotationA), vec3_of(d.planeA)}};
+        c.b = {vec3_of(d.pivotB), {vec3_of(d.slidingB), vec3_of(d.rotationB), vec3_of(d.planeB)}};
+        c.min_distance = d.minDistance;
+        c.max_distance = d.maxDistance;
+        c.max_friction = d.friction;
+        c.motor = motor_of(d.motorDesc);
+    }
+    static void read_desc(const nifly::BallAndSocketDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::ball_and_socket;
+        c.a.pivot = vec3_of(d.translationA);
+        c.b.pivot = vec3_of(d.translationB);
+    }
+    static void read_desc(const nifly::StiffSpringDesc& d, RagdollConstraint& c) {
+        c.kind = ConstraintKind::stiff_spring;
+        c.a.pivot = vec3_of(d.pivotA);
+        c.b.pivot = vec3_of(d.pivotB);
+        c.length = d.length;
+    }
+
+    /// A wrapped constraint (bhkMalleableConstraint, bhkBreakableConstraint): its kind's
+    /// description, per hkConstraintType. False for a kind nifly does not read.
+    static bool read_wrapped(const nifly::ConstraintData& data, RagdollConstraint& c) {
+        switch (data.type) {
+        case nifly::BallAndSocket: read_desc(data.desc1, c); return true;
+        case nifly::Hinge: read_desc(data.desc2, c); return true;
+        case nifly::LimitedHinge: read_desc(data.desc3, c); return true;
+        case nifly::Prismatic: read_desc(data.desc4, c); return true;
+        case nifly::Ragdoll: read_desc(data.desc5, c); return true;
+        case nifly::StiffSpring: read_desc(data.desc6, c); return true;
+        }
+        return false;
+    }
+
+    /// The constraint block's description; false (with a warning) for one it cannot read.
+    bool read_constraint(nifly::bhkConstraint& block, RagdollConstraint& c) {
+        c.block_name = block.GetBlockName();
+        c.priority = block.priority;
+        if (auto* r = dynamic_cast<nifly::bhkRagdollConstraint*>(&block)) {
+            read_desc(r->ragdoll, c);
+        } else if (auto* lh = dynamic_cast<nifly::bhkLimitedHingeConstraint*>(&block)) {
+            read_desc(lh->limitedHinge, c);
+        } else if (auto* h = dynamic_cast<nifly::bhkHingeConstraint*>(&block)) {
+            read_desc(h->hinge, c);
+        } else if (auto* p = dynamic_cast<nifly::bhkPrismaticConstraint*>(&block)) {
+            read_desc(p->prismatic, c);
+        } else if (auto* bs = dynamic_cast<nifly::bhkBallAndSocketConstraint*>(&block)) {
+            read_desc(bs->ballAndSocket, c);
+        } else if (auto* ss = dynamic_cast<nifly::bhkStiffSpringConstraint*>(&block)) {
+            read_desc(ss->stiffSpring, c);
+        } else if (auto* m = dynamic_cast<nifly::bhkMalleableConstraint*>(&block)) {
+            c.wrapper = "malleable";
+            c.strength = m->subConstraint.strength;
+            c.tau = m->subConstraint.tau;
+            c.damping = m->subConstraint.damping;
+            if (!read_wrapped(m->subConstraint, c)) {
+                return false;
+            }
+        } else if (auto* br = dynamic_cast<nifly::bhkBreakableConstraint*>(&block)) {
+            c.wrapper = "breakable";
+            c.strength = br->subConstraint.strength;
+            c.remove_when_broken = br->removeWhenBroken;
+            if (!read_wrapped(br->subConstraint, c)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+        return true;
+    }
+
+    /// The ragdoll: every rigid body met in the walk, when one of them has constraints or
+    /// hangs on a bhkBlendCollisionObject (a skeleton's), and their constraints.
+    void read_ragdoll() {
+        const bool any = std::ranges::any_of(rigid_bodies_, [](const PendingBody& p) {
+            return p.body->constraintRefs.GetSize() != 0 ||
+                   dynamic_cast<nifly::bhkBlendCollisionObject*>(p.collision) != nullptr;
+        });
+        if (!any) {
+            return;
+        }
+        auto& header = nif_.GetHeader();
+        std::unordered_map<std::uint32_t, std::size_t> body_by_block;
+        for (const PendingBody& p : rigid_bodies_) {
+            body_by_block.try_emplace(nif_.GetBlockID(p.body), body_by_block.size());
+        }
+        Ragdoll& out = model_.ragdoll;
+        std::unordered_map<std::uint32_t, std::size_t> constraint_by_block;
+        for (const PendingBody& p : rigid_bodies_) {
+            const nifly::bhkRigidBody& rb = *p.body;
+            RagdollBody body;
+            body.node = p.node;
+            body.bone = model_.nodes[p.node].name;
+            body.block_name = p.body->GetBlockName();
+            body.collision_object = p.collision->GetBlockName();
+            body.collision_flags = p.collision->flags;
+            if (const auto* blend = dynamic_cast<nifly::bhkBlendCollisionObject*>(p.collision)) {
+                body.heir_gain = blend->heirGain;
+                body.vel_gain = blend->velGain;
+            }
+            const nifly::MatTransform bind = to_root(p.object);
+            body.bone_bind = to_transform(bind);
+            const Vec4 rotation{rb.rotation.x, rb.rotation.y, rb.rotation.z, rb.rotation.w};
+            if (dynamic_cast<const nifly::bhkRigidBodyT*>(p.body) != nullptr) {
+                body.body.translation = vec3_of(rb.translation);
+                body.body.rotation = rotation;
+            } else {
+                // A bhkRigidBody stores where its node is at bind, in Havok units; it follows the
+                // node, so its frame is the node's. Say so when the two disagree.
+                const nifly::Vector3 stored = nifly::Vector3(rb.translation.x, rb.translation.y,
+                                                             rb.translation.z) * k_havok_scale;
+                const Vec4& q = body.bone_bind.rotation;
+                const float dot = std::abs(q.x * rotation.x + q.y * rotation.y + q.z * rotation.z +
+                                           q.w * rotation.w);
+                if (stored.DistanceTo(bind.translation) > 0.5f || dot < 0.9999f) {
+                    model_.warnings.push_back(std::format(
+                        "ragdoll body on '{}': stored transform is not the node's at bind", body.bone));
+                }
+            }
+            body.shapes.assign(model_.collision.begin() + static_cast<std::ptrdiff_t>(p.first_shape),
+                               model_.collision.begin() + static_cast<std::ptrdiff_t>(p.end_shape));
+            body.mass = rb.mass;
+            body.center_of_mass = vec3_of(rb.center);
+            std::ranges::copy(rb.inertiaMatrix, body.inertia.begin());
+            body.linear_damping = rb.linearDamping;
+            body.angular_damping = rb.angularDamping;
+            body.time_factor = rb.timeFactor;
+            body.gravity_factor = rb.gravityFactor;
+            body.friction = rb.friction;
+            body.rolling_friction_multiplier = rb.rollingFrictionMult;
+            body.restitution = rb.restitution;
+            body.max_linear_velocity = rb.maxLinearVelocity;
+            body.max_angular_velocity = rb.maxAngularVelocity;
+            body.penetration_depth = rb.penetrationDepth;
+            body.motion_type = rb.motionSystem;
+            body.deactivator_type = rb.deactivatorType;
+            body.solver_deactivation = rb.solverDeactivation;
+            body.quality_type = rb.qualityType;
+            body.layer = rb.collisionFilter.layer;
+            body.flags_and_part = rb.collisionFilter.flagsAndParts;
+            body.group = rb.collisionFilter.group;
+
+            for (std::uint32_t k = 0; k < rb.constraintRefs.GetSize(); ++k) {
+                const std::uint32_t block = rb.constraintRefs.GetBlockRef(k);
+                if (const auto found = constraint_by_block.find(block); found != constraint_by_block.end()) {
+                    body.constraints.push_back(found->second);
+                    continue;
+                }
+                auto* constraint = header.GetBlock<nifly::bhkConstraint>(block);
+                RagdollConstraint c;
+                if (constraint == nullptr || !read_constraint(*constraint, c)) {
+                    model_.warnings.push_back(std::format(
+                        "ragdoll body on '{}': constraint block {} is not one that is read ({})", body.bone,
+                        block, constraint != nullptr ? constraint->GetBlockName() : "none"));
+                    continue;
+                }
+                // The wrapper's own entities; a wrapped constraint repeats them.
+                const auto entity = [&](std::uint32_t i) -> std::optional<std::size_t> {
+                    const std::uint32_t index = constraint->entityRefs.GetBlockRef(static_cast<std::uint32_t>(i));
+                    const auto found = body_by_block.find(index);
+                    if (found == body_by_block.end()) {
+                        return std::nullopt;
+                    }
+                    return found->second;
+                };
+                const auto a = entity(0);
+                const auto b = entity(1);
+                if (!a || !b) {
+                    model_.warnings.push_back(std::format(
+                        "ragdoll body on '{}': {} joins a body that is not on a node", body.bone, c.block_name));
+                    continue;
+                }
+                c.body_a = *a;
+                c.body_b = *b;
+                constraint_by_block.emplace(block, out.constraints.size());
+                body.constraints.push_back(out.constraints.size());
+                out.constraints.push_back(std::move(c));
+            }
+            out.bodies.push_back(std::move(body));
+        }
     }
 
     /// A trigger volume: the phantom's own transform and its box or sphere,

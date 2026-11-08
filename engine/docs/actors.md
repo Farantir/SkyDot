@@ -61,7 +61,12 @@ What an actor is built from is decided from `world.fb` alone
   reference, so a bandit looks the same after a reload.
 - **Skeleton.** The race's skeleton NIF for the sex, with `.hkx` instead
   of `.nif`: `character assets/skeleton.hkx`, `character assets
-  female/skeleton_female.hkx`.
+  female/skeleton_female.hkx`. The NIF itself (`skeleton_model` in the plan)
+  carries the game's ragdoll: `SkydotWorld.get_ragdoll(ref, base = 0)` gives
+  its rigid bodies and constraints (each body in its bone's frame, metres, Z
+  up; keys in `extension/src/render/ragdoll.hpp`, the data in
+  `formats/pack-format.md`, "Ragdolls in meshes"), read once per skeleton
+  model; empty when the skeleton has none.
 - **Worn.** The default outfit's armor (a leveled entry resolved as above);
   the first item on a slot keeps it. The skin (the NPC's WNAM, else the
   race's) adds its addons where nothing worn covers their slots: bodies

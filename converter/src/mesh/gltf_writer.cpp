@@ -179,6 +179,39 @@ std::string_view collision_kind_name(CollisionKind kind) {
     return "unsupported";
 }
 
+std::string_view constraint_kind_name(ConstraintKind kind) {
+    switch (kind) {
+    case ConstraintKind::ball_and_socket: return "ball_and_socket";
+    case ConstraintKind::hinge: return "hinge";
+    case ConstraintKind::limited_hinge: return "limited_hinge";
+    case ConstraintKind::prismatic: return "prismatic";
+    case ConstraintKind::ragdoll: return "ragdoll";
+    case ConstraintKind::stiff_spring: return "stiff_spring";
+    }
+    return "unknown";
+}
+
+/// Metres per Havok unit: game units per Havok unit times metres per game unit (0.99999).
+constexpr float k_metres_per_havok =
+    static_cast<float>(skydot::formats::k_havok_scale * skydot::formats::k_metres_per_unit);
+
+/// `v` turned by unit quaternion `q`.
+Vec3 rotate(const Vec4& q, const Vec3& v) {
+    // v + 2w (u x v) + 2 u x (u x v), u the vector part.
+    const Vec3 uv{q.y * v.z - q.z * v.y, q.z * v.x - q.x * v.z, q.x * v.y - q.y * v.x};
+    const Vec3 uuv{q.y * uv.z - q.z * uv.y, q.z * uv.x - q.x * uv.z, q.x * uv.y - q.y * uv.x};
+    return {v.x + 2 * (q.w * uv.x + uuv.x), v.y + 2 * (q.w * uv.y + uuv.y), v.z + 2 * (q.w * uv.z + uuv.z)};
+}
+
+Vec3 scaled(const Vec3& v, float s) { return {v.x * s, v.y * s, v.z * s}; }
+
+/// A point of a body's frame (Havok units) in its bone's frame, in metres.
+Vec3 bone_point(const Transform& body, const Vec3& p) {
+    const Vec3 r = rotate(body.rotation, p);
+    return scaled({r.x + body.translation.x, r.y + body.translation.y, r.z + body.translation.z},
+                  k_metres_per_havok);
+}
+
 /// Builds the single glTF buffer and allocates accessors, each aligned to its
 /// component size (JOINTS_0 u16 and POSITION f32 share the buffer).
 class BufferBuilder {
@@ -349,6 +382,9 @@ private:
                 });
             }
             j["bethconv"]["furniture_markers"] = std::move(markers);
+        }
+        if (!model_.ragdoll.bodies.empty()) {
+            j["bethconv"]["ragdoll"] = ragdoll_json();
         }
         if (!model_.attach_targets.empty()) {
             nlohmann::json targets = nlohmann::json::array();
@@ -568,6 +604,209 @@ private:
             j["unsupported"] = std::move(names);
         }
         return j;
+    }
+
+    static nlohmann::json transform_json(const Vec3& translation, const Vec4& rotation) {
+        return {{"translation", vec(translation)}, {"rotation", vec(rotation)}};
+    }
+
+    /// `extras.bethconv.ragdoll` (formats/pack-format.md): per body everything in its bone's
+    /// frame, metres, Skyrim's axes (Z up).
+    [[nodiscard]] nlohmann::json ragdoll_json() const {
+        const Ragdoll& ragdoll = model_.ragdoll;
+        const float s = k_metres_per_havok;
+        nlohmann::json bodies = nlohmann::json::array();
+        for (const RagdollBody& b : ragdoll.bodies) {
+            nlohmann::json j;
+            j["bone"] = json_text(b.bone);
+            j["node"] = b.node;
+            j["block"] = json_text(b.block_name);
+            j["collision_object"] = json_text(b.collision_object);
+            j["collision_flags"] = b.collision_flags;
+            j["heir_gain"] = json_number(b.heir_gain);
+            j["vel_gain"] = json_number(b.vel_gain);
+            j["body_transform"] = transform_json(scaled(b.body.translation, s), b.body.rotation);
+            j["bone_bind"] = transform_json(scaled(b.bone_bind.translation, static_cast<float>(
+                                                                                 skydot::formats::k_metres_per_unit)),
+                                            b.bone_bind.rotation);
+            nlohmann::json shapes = nlohmann::json::array();
+            for (const CollisionShape& shape : b.shapes) {
+                nlohmann::json e;
+                e["kind"] = collision_kind_name(shape.kind);
+                e["block"] = json_text(shape.block_name);
+                e["havok_material"] = shape.havok_material;
+                e["transform"] = transform_json(scaled(shape.transform.translation, s), shape.transform.rotation);
+                e["radius"] = json_number(shape.radius * s);
+                switch (shape.kind) {
+                case CollisionKind::box:
+                    e["half_extents"] = vec(scaled(shape.half_extents, s));
+                    break;
+                case CollisionKind::capsule:
+                case CollisionKind::cylinder:
+                    e["point_a"] = vec(scaled(shape.point_a, s));
+                    e["point_b"] = vec(scaled(shape.point_b, s));
+                    break;
+                default:
+                    break;
+                }
+                if (!shape.vertices.empty()) {
+                    nlohmann::json verts = nlohmann::json::array();
+                    for (const Vec3& v : shape.vertices) {
+                        verts.push_back(json_number(v.x * s));
+                        verts.push_back(json_number(v.y * s));
+                        verts.push_back(json_number(v.z * s));
+                    }
+                    e["vertices"] = std::move(verts);
+                }
+                if (!shape.indices.empty()) {
+                    e["indices"] = shape.indices;
+                }
+                shapes.push_back(std::move(e));
+            }
+            j["shapes"] = std::move(shapes);
+            j["mass"] = json_number(b.mass);
+            j["center_of_mass"] = vec(bone_point(b.body, b.center_of_mass));
+            // hkMatrix3 rows of 4; turned into the bone's frame (R I R^T), kg m^2.
+            std::array<std::array<float, 3>, 3> rot{};
+            for (std::size_t c = 0; c < 3; ++c) {
+                const Vec3 axis = rotate(b.body.rotation, Vec3{c == 0 ? 1.0f : 0.0f, c == 1 ? 1.0f : 0.0f,
+                                                               c == 2 ? 1.0f : 0.0f});
+                rot[0][c] = axis.x;
+                rot[1][c] = axis.y;
+                rot[2][c] = axis.z;
+            }
+            nlohmann::json inertia = nlohmann::json::array();
+            for (std::size_t r = 0; r < 3; ++r) {
+                for (std::size_t c = 0; c < 3; ++c) {
+                    float sum = 0.0f;
+                    for (std::size_t k = 0; k < 3; ++k) {
+                        for (std::size_t l = 0; l < 3; ++l) {
+                            sum += rot[r][k] * b.inertia[k * 4 + l] * rot[c][l];
+                        }
+                    }
+                    inertia.push_back(json_number(sum * s * s));
+                }
+            }
+            j["inertia"] = std::move(inertia);
+            j["linear_damping"] = json_number(b.linear_damping);
+            j["angular_damping"] = json_number(b.angular_damping);
+            j["time_factor"] = json_number(b.time_factor);
+            j["gravity_factor"] = json_number(b.gravity_factor);
+            j["friction"] = json_number(b.friction);
+            j["rolling_friction_multiplier"] = json_number(b.rolling_friction_multiplier);
+            j["restitution"] = json_number(b.restitution);
+            j["max_linear_velocity"] = json_number(b.max_linear_velocity * s);
+            j["max_angular_velocity"] = json_number(b.max_angular_velocity);
+            j["penetration_depth"] = json_number(b.penetration_depth * s);
+            j["motion_type"] = b.motion_type;
+            j["deactivator_type"] = b.deactivator_type;
+            j["solver_deactivation"] = b.solver_deactivation;
+            j["quality_type"] = b.quality_type;
+            j["filter"] = {{"layer", b.layer}, {"flags_and_part", b.flags_and_part}, {"group", b.group}};
+            j["constraints"] = b.constraints;
+            bodies.push_back(std::move(j));
+        }
+
+        nlohmann::json constraints = nlohmann::json::array();
+        for (const RagdollConstraint& c : ragdoll.constraints) {
+            nlohmann::json j;
+            j["type"] = constraint_kind_name(c.kind);
+            j["block"] = json_text(c.block_name);
+            if (!c.wrapper.empty()) {
+                j["wrapper"] = c.wrapper;
+                j["strength"] = json_number(c.strength);
+                j["tau"] = json_number(c.tau);
+                j["damping"] = json_number(c.damping);
+                j["remove_when_broken"] = c.remove_when_broken;
+            }
+            j["body_a"] = c.body_a;
+            j["body_b"] = c.body_b;
+            j["priority"] = c.priority;
+            static constexpr std::array<std::string_view, 3> k_ragdoll_axes{"twist", "plane", "motor"};
+            static constexpr std::array<std::string_view, 3> k_hinge_axes{"axle", "perp_1", "perp_2"};
+            static constexpr std::array<std::string_view, 3> k_prismatic_axes{"sliding", "rotation", "plane"};
+            const std::array<std::string_view, 3>* axes = nullptr;
+            switch (c.kind) {
+            case ConstraintKind::ragdoll: axes = &k_ragdoll_axes; break;
+            case ConstraintKind::hinge:
+            case ConstraintKind::limited_hinge: axes = &k_hinge_axes; break;
+            case ConstraintKind::prismatic: axes = &k_prismatic_axes; break;
+            default: break;
+            }
+            const auto frame = [&](const ConstraintFrame& f, std::size_t body) {
+                const Transform& t = ragdoll.bodies[body].body;
+                nlohmann::json out;
+                out["pivot"] = vec(bone_point(t, f.pivot));
+                if (axes != nullptr) {
+                    for (std::size_t k = 0; k < 3; ++k) {
+                        out[std::string((*axes)[k])] = vec(rotate(t.rotation, f.axes[k]));
+                    }
+                }
+                return out;
+            };
+            j["in_a"] = frame(c.a, c.body_a);
+            j["in_b"] = frame(c.b, c.body_b);
+            switch (c.kind) {
+            case ConstraintKind::ragdoll:
+                j["cone_max"] = json_number(c.cone_max);
+                j["plane_min"] = json_number(c.plane_min);
+                j["plane_max"] = json_number(c.plane_max);
+                j["twist_min"] = json_number(c.twist_min);
+                j["twist_max"] = json_number(c.twist_max);
+                j["max_friction"] = json_number(c.max_friction);
+                break;
+            case ConstraintKind::limited_hinge:
+                j["min_angle"] = json_number(c.min_angle);
+                j["max_angle"] = json_number(c.max_angle);
+                j["max_friction"] = json_number(c.max_friction);
+                break;
+            case ConstraintKind::prismatic:
+                j["min_distance"] = json_number(c.min_distance * s);
+                j["max_distance"] = json_number(c.max_distance * s);
+                j["friction"] = json_number(c.max_friction);
+                break;
+            case ConstraintKind::stiff_spring:
+                j["length"] = json_number(c.length * s);
+                break;
+            default:
+                break;
+            }
+            if (c.kind == ConstraintKind::ragdoll || c.kind == ConstraintKind::limited_hinge ||
+                c.kind == ConstraintKind::prismatic) {
+                const ConstraintMotor& m = c.motor;
+                static constexpr std::array<std::string_view, 4> k_motor{"none", "position", "velocity", "spring"};
+                nlohmann::json motor;
+                motor["type"] = m.type < k_motor.size() ? k_motor[m.type] : std::string_view("unknown");
+                if (m.type != 0) {
+                    motor["enabled"] = m.enabled;
+                    motor["min_force"] = json_number(m.min_force);
+                    motor["max_force"] = json_number(m.max_force);
+                }
+                switch (m.type) {
+                case 1:
+                    motor["tau"] = json_number(m.tau);
+                    motor["damping"] = json_number(m.damping);
+                    motor["proportional_recovery_velocity"] = json_number(m.proportional_recovery_velocity);
+                    motor["constant_recovery_velocity"] = json_number(m.constant_recovery_velocity);
+                    break;
+                case 2:
+                    motor["tau"] = json_number(m.tau);
+                    motor["velocity_target"] = json_number(m.velocity_target);
+                    motor["use_velocity_target_from_constraint_targets"] =
+                        m.use_velocity_target_from_constraint_targets;
+                    break;
+                case 3:
+                    motor["spring_constant"] = json_number(m.spring_constant);
+                    motor["spring_damping"] = json_number(m.spring_damping);
+                    break;
+                default:
+                    break;
+                }
+                j["motor"] = std::move(motor);
+            }
+            constraints.push_back(std::move(j));
+        }
+        return {{"bodies", std::move(bodies)}, {"constraints", std::move(constraints)}};
     }
 
     /// Collision for the node that owns the bhkCollisionObject, not one

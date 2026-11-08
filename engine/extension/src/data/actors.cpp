@@ -298,6 +298,7 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
     if (skeleton.empty()) {
         skeleton = at(race->skeletons(), 1 - sex);
     }
+    plan.skeleton_model = skeleton;
     plan.skeleton = with_extension(skeleton, ".hkx");
     if (plan.skeleton.empty() || !exists(plan.skeleton)) {
         plan.missing = "no animation skeleton beside " + skeleton;

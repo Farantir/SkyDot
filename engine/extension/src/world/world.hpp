@@ -424,6 +424,11 @@ public:
     /// The plan for placed actor `ref` (keys: npc, race, female, scale,
     /// skeleton, idle, parts, missing), for tools and tests.
     godot::Dictionary get_actor_plan(std::int64_t ref) const;
+    /// The game's ragdoll of actor `ref` (placed; with `base`, the NPC_ `base` as `ref`, as
+    /// `get_npc_plan`): its race's skeleton model's rigid bodies and constraints, each body in
+    /// its bone's frame, metres, Z up (keys in render/ragdoll.hpp). Read once per skeleton model
+    /// and kept; empty if the actor has no plan or its skeleton no ragdoll.
+    godot::Dictionary get_ragdoll(std::int64_t ref, std::int64_t base = 0);
     /// Actors walk around their place while no AI packages are read (see
     /// actor.hpp). On by default; off, they stand in their idle.
     void set_actor_wander(bool enabled) { builder_.options().actor_wander = enabled; }
@@ -522,6 +527,8 @@ private:
     ActorPlacement placement_{data_};
     /// Builds cells and holds the settings and caches that go with it.
     CellBuilder builder_{data_, placement_};
+    /// get_ragdoll's, by skeleton model.
+    std::unordered_map<std::string, godot::Dictionary> ragdolls_;
     double foliage_bias_ = 0.5;
     godot::String error_;
 };

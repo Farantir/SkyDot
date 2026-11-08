@@ -17,6 +17,7 @@ add_executable(bethconv_unit_tests
     test_nif_reader.cpp
     test_nif_animation.cpp
     test_gltf_writer.cpp
+    test_nif_ragdoll.cpp
     test_dds.cpp
     test_mip_tail.cpp
     test_mip_drop.cpp
@@ -77,7 +78,7 @@ target_include_directories(bethconv_unit_tests SYSTEM PRIVATE ${FFMPEG_INCLUDE_D
 # into this file, which is a false positive (GCC 14 in CI is clean). Only this
 # source; the library keeps the full warning set.
 if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_source_files_properties(test_gltf_writer.cpp PROPERTIES
+    set_source_files_properties(test_gltf_writer.cpp test_nif_ragdoll.cpp PROPERTIES
         COMPILE_OPTIONS -Wno-null-dereference)
 endif()
 

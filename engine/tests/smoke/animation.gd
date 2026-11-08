@@ -36,7 +36,8 @@ func _run(pack_dir: String) -> void:
 
     var skeleton_bytes := pack.get_bytes(ACTOR + "skeleton.hkx")
     var info: Dictionary = SkydotAnimation.describe(skeleton_bytes)
-    expect(info.get("skeletons", []) == ["NPC Root [Root]"], "describe names the skeleton: %s" % info)
+    expect(info.get("skeletons", []) == ["NPC Root [Root]", "Ragdoll_NPC Spine [Spn0]"],
+           "describe names the animation and the ragdoll skeleton: %s" % info)
     expect(SkydotAnimation.describe(PackedByteArray([1, 2, 3])).has("error"), "garbage is described as an error")
 
     var skeleton: Skeleton3D = SkydotAnimation.build_skeleton(skeleton_bytes)

@@ -294,6 +294,8 @@ target_sources(skydot PRIVATE
     src/render/effect_asset.hpp
     src/render/furniture_markers.cpp
     src/render/furniture_markers.hpp
+    src/render/ragdoll.cpp
+    src/render/ragdoll.hpp
     src/render/emittance.cpp
     src/render/emittance.hpp
     src/render/flicker.cpp

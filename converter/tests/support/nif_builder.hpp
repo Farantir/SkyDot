@@ -14,6 +14,8 @@
 #include <Shaders.hpp>
 #include <bhk.hpp>
 
+#include "skydot_formats/units.hpp"
+
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -171,6 +173,60 @@ public:
         object->bodyRef.index = body_index;
         object->targetRef.index = nif_.GetBlockID(owner);
         owner->collisionRef.index = header.AddBlock(std::move(object));
+        return raw;
+    }
+
+    /// A skeleton's ragdoll body on `bone`: a bhkBlendCollisionObject whose bhkRigidBody holds a
+    /// capsule from `a` to `b` (Havok units, the bone's frame) and stores `bind` (the bone's
+    /// translation in the NIF root's space, game units) in Havok units, as the game's files do.
+    /// The filter is layer 8 (biped) with `part` in flags_and_part. With `offset`, a
+    /// bhkRigidBodyT that far from its bone (Havok units, the bone's frame) instead.
+    nifly::bhkRigidBody* add_ragdoll_body(nifly::NiNode* bone, const nifly::Vector3& bind,
+                                          const nifly::Vector3& a, const nifly::Vector3& b,
+                                          float radius, float mass, std::uint8_t part,
+                                          std::optional<nifly::Vector3> offset = {}) {
+        auto& header = nif_.GetHeader();
+        auto capsule = std::make_unique<nifly::bhkCapsuleShape>();
+        capsule->point1 = a;
+        capsule->point2 = b;
+        capsule->radius1 = radius;
+        capsule->radius2 = radius;
+        const auto shape_index = header.AddBlock(std::move(capsule));
+        std::unique_ptr<nifly::bhkRigidBody> rigid = offset ? std::make_unique<nifly::bhkRigidBodyT>()
+                                                            : std::make_unique<nifly::bhkRigidBody>();
+        rigid->shapeRef.index = shape_index;
+        rigid->collisionFilter = nifly::HavokFilter{8, part, 0};
+        rigid->collisionFilterCopy = rigid->collisionFilter;
+        const auto havok = static_cast<float>(skydot::formats::k_havok_scale);
+        rigid->translation = offset ? nifly::Vector4(offset->x, offset->y, offset->z, 0.0f)
+                                    : nifly::Vector4(bind.x / havok, bind.y / havok, bind.z / havok, 0.0f);
+        rigid->mass = mass;
+        rigid->motionSystem = 4;
+        rigid->qualityType = 1;
+        auto* raw = rigid.get();
+        const auto body_index = header.AddBlock(std::move(rigid));
+        auto object = std::make_unique<nifly::bhkBlendCollisionObject>();
+        object->flags = 137;
+        object->heirGain = 1.0f;
+        object->velGain = 1.0f;
+        object->bodyRef.index = body_index;
+        object->targetRef.index = nif_.GetBlockID(bone);
+        bone->collisionRef.index = header.AddBlock(std::move(object));
+        return raw;
+    }
+
+    /// Join `child` to `parent` with `constraint` (entity A the child, B the parent, as the
+    /// game's skeletons do), listed on the child's rigid body. Returns the constraint.
+    template <typename ConstraintType>
+    ConstraintType* add_constraint(std::unique_ptr<ConstraintType> constraint, nifly::bhkRigidBody* child,
+                                   nifly::bhkRigidBody* parent) {
+        auto& header = nif_.GetHeader();
+        auto* raw = constraint.get();
+        constraint->entityRefs.SetKeepEmptyRefs();
+        constraint->entityRefs.AddBlockRef(nif_.GetBlockID(child));
+        constraint->entityRefs.AddBlockRef(nif_.GetBlockID(parent));
+        constraint->priority = 1;
+        child->constraintRefs.AddBlockRef(header.AddBlock(std::move(constraint)));
         return raw;
     }
 

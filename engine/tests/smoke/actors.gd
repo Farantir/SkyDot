@@ -54,6 +54,33 @@ func _run(pack_dir: String) -> void:
     expect(is_equal_approx(loco["run"]["speed"], 280.0), "run speed: %s" % loco["run"])
     expect(world.get_locomotion("meshes/nothing/here.hkx")["missing"] != "", "an unknown project has none")
 
+    # The race's skeleton model carries the game's ragdoll: a body on the spine and one on the
+    # head (bone frames, metres), the head held by a ragdoll constraint at its origin.
+    expect(plan.get("skeleton_model", "") == ACTOR + "skeleton.nif", "the plan names the skeleton model: %s" % plan)
+    var ragdoll: Dictionary = world.get_ragdoll(0x307)
+    var bodies: Array = ragdoll.get("bodies", [])
+    var constraints: Array = ragdoll.get("constraints", [])
+    expect(bodies.size() == 2 and constraints.size() == 1, "two bodies, one constraint: %s" % ragdoll)
+    if bodies.size() == 2 and constraints.size() == 1:
+        var head: Dictionary = bodies[1]
+        expect(head["bone"] == "NPC Head [Head]" and is_equal_approx(head["mass"], 4.0), "the head body: %s" % head)
+        expect(head["layer"] == 8 and head["part_number"] == 1, "its havok filter: %s" % head)
+        expect(head["bone_bind"].origin.is_equal_approx(Vector3(0, 0, 120 * S)), "bound 120 units up: %s" % head["bone_bind"])
+        var capsule: Dictionary = head["shapes"][0]
+        expect(capsule["kind"] == "capsule" and absf(capsule["point_b"].z - 10 * S) < 1e-4,
+               "a capsule 10 units long: %s" % capsule)
+        expect(head["constraints"] == PackedInt32Array([0]), "the head lists its constraint")
+        var joint: Dictionary = constraints[0]
+        expect(joint["type"] == "ragdoll" and joint["body_a"] == 1 and joint["body_b"] == 0,
+               "a ragdoll constraint from the head to the spine: %s" % joint)
+        expect(joint["in_b"]["pivot"].is_equal_approx(Vector3(0, 0, 50 * S)) and joint["in_a"]["twist"] == Vector3(0, 0, 1),
+               "its frames in each bone: %s" % joint)
+        expect(is_equal_approx(joint["cone_max"], 0.7) and is_equal_approx(joint["max_friction"], 10.0),
+               "its limits and friction: %s" % joint)
+    bodies.clear()
+    expect(world.get_ragdoll(0x307).get("bodies", []).size() == 2, "the kept ragdoll is not the one handed out")
+    expect(world.get_ragdoll(0x7FFFFF).is_empty(), "no actor, no ragdoll")
+
     var cell := world.build_cell(world.find_cell("TestpackInterior"))
     var actor := cell.find_child("0x00000307*", false, false) as SkydotActor
     expect(actor != null, "the placed actor is a SkydotActor")

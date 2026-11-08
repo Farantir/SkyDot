@@ -353,6 +353,95 @@ struct FurnitureMarker {
     std::uint16_t entry_points{};        ///< Bit mask of the sides it can be entered from.
 };
 
+/// A Havok constraint's kind, as hkConstraintType numbers it (nif.xml, `hkConstraintType`).
+enum class ConstraintKind : std::uint8_t {
+    ball_and_socket = 0,
+    hinge = 1,
+    limited_hinge = 2,
+    prismatic = 6,
+    ragdoll = 7,
+    stiff_spring = 8,
+};
+
+/// A constraint's frame in one of its bodies, Havok units, in that body's frame. The axes
+/// mean, by kind: ragdoll twist, plane, motor; hinge and limited hinge the axle and its two
+/// perpendiculars (axleInA1/2); prismatic sliding, rotation, plane. Unused ones stay zero.
+struct ConstraintFrame {
+    Vec3 pivot{};
+    std::array<Vec3, 3> axes{};
+};
+
+/// hkpConstraintMotor (nifly MotorDesc): 0 none, 1 position, 2 velocity, 3 spring damper.
+struct ConstraintMotor {
+    std::uint8_t type{};
+    bool enabled{};
+    float min_force{}, max_force{};
+    float tau{}, damping{};                            ///< position, velocity (tau only)
+    float proportional_recovery_velocity{};            ///< position
+    float constant_recovery_velocity{};                ///< position
+    float velocity_target{};                           ///< velocity
+    bool use_velocity_target_from_constraint_targets{}; ///< velocity
+    float spring_constant{}, spring_damping{};         ///< spring damper
+};
+
+/// One constraint between two ragdoll bodies, as the NIF stores it. A malleable or breakable
+/// wrapper is unwrapped: `kind` is the wrapped constraint's, `wrapper` names the wrapper.
+struct RagdollConstraint {
+    ConstraintKind kind{};
+    std::string block_name;      ///< The NIF block (the wrapper's, if wrapped).
+    std::string wrapper;         ///< "", "malleable" or "breakable".
+    float strength{};            ///< Wrapper: malleable strength, breakable threshold.
+    float tau{}, damping{};      ///< Malleable, files before 20.2.0.7 only.
+    bool remove_when_broken{};   ///< Breakable.
+    std::size_t body_a{}, body_b{}; ///< Indices into Ragdoll::bodies (Skyrim: A child, B parent).
+    std::uint32_t priority{};
+    ConstraintFrame a, b;
+    float cone_max{}, plane_min{}, plane_max{}, twist_min{}, twist_max{}; ///< ragdoll, radians
+    float min_angle{}, max_angle{};   ///< limited hinge, radians
+    float max_friction{};             ///< ragdoll, limited hinge; prismatic friction
+    float min_distance{}, max_distance{}; ///< prismatic, Havok units
+    float length{};                   ///< stiff spring, Havok units
+    ConstraintMotor motor;            ///< ragdoll, limited hinge, prismatic
+};
+
+/// One bhkRigidBody of a ragdoll and the node it drives.
+struct RagdollBody {
+    std::size_t node{};          ///< Index into Model::nodes: the bone.
+    std::string bone;            ///< That node's name.
+    std::string block_name;      ///< bhkRigidBody or bhkRigidBodyT.
+    std::string collision_object; ///< bhkBlendCollisionObject, bhkCollisionObject, ...
+    std::uint16_t collision_flags{}; ///< The collision object's flags.
+    float heir_gain{}, vel_gain{};   ///< bhkBlendCollisionObject.
+    /// The body's frame in the bone's: a bhkRigidBodyT's own translation (Havok units) and
+    /// rotation; the identity for a bhkRigidBody, whose stored transform is the bone's at bind
+    /// in the NIF's space (checked in the reader).
+    Transform body{};
+    /// The bone at bind, in the NIF root's space (game units, Z up), from the node tree.
+    Transform bone_bind{};
+    /// Its shapes in the bone's frame, Havok units, as Model::collision has them (list shapes
+    /// flattened, transform shapes composed into `transform`).
+    std::vector<CollisionShape> shapes;
+    float mass{};
+    Vec3 center_of_mass{};       ///< Havok units, body frame.
+    std::array<float, 12> inertia{}; ///< 3 rows of 4 (hkMatrix3), body frame.
+    float linear_damping{}, angular_damping{};
+    float time_factor{1}, gravity_factor{1};
+    float friction{}, rolling_friction_multiplier{1}, restitution{};
+    float max_linear_velocity{}, max_angular_velocity{}; ///< Havok units / s, rad / s
+    float penetration_depth{};   ///< Havok units.
+    std::uint8_t motion_type{}, deactivator_type{}, solver_deactivation{}, quality_type{};
+    std::uint8_t layer{};        ///< Havok filter: collision layer.
+    std::uint8_t flags_and_part{}; ///< Havok filter: bits 0-4 part number, 5-7 flags.
+    std::uint16_t group{};       ///< Havok filter: system group.
+    std::vector<std::size_t> constraints; ///< Indices into Ragdoll::constraints this body lists.
+};
+
+/// The ragdoll of a skeleton NIF: its rigid bodies and the constraints between them.
+struct Ragdoll {
+    std::vector<RagdollBody> bodies;
+    std::vector<RagdollConstraint> constraints;
+};
+
 /// Everything one NIF becomes.
 struct Model {
     std::string source;          ///< Virtual path, for diagnostics and extras.
@@ -377,6 +466,9 @@ struct Model {
     /// Trigger volumes (bhkSimpleShapePhantom): box or sphere shapes only,
     /// same units and frame as `collision`; `layer` is the phantom's filter.
     std::vector<CollisionShape> phantoms;
+    /// Rigid bodies with constraints, or on bhkBlendCollisionObjects (a skeleton's ragdoll);
+    /// empty for anything else. The same bodies stay in `collision` too.
+    Ragdoll ragdoll;
     std::vector<AnimationClip> animations;
     std::vector<ParticleSystem> particles;
 

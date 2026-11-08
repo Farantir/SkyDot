@@ -120,6 +120,16 @@ struct ViewGlb {
     std::uint64_t uris{}; ///< Image URIs rebased or added.
 };
 
+/// A GLB's JSON chunk and the bytes after it (BIN and any later chunks), views into `glb`.
+struct GlbChunks {
+    std::string_view json;
+    std::span<const std::byte> tail;
+};
+
+/// Split a GLB (glTF 2.0 §3.2-3.3: header, JSON chunk first). Not a GLB, another container
+/// version or a first chunk that is not JSON is an error.
+[[nodiscard]] io::ParseResult<GlbChunks> glb_chunks(std::span<const std::byte> glb, std::string_view origin);
+
 /// A pack GLB made loadable from the view: images are added from the
 /// materials' extras with `prefix` in front of each URI. A GLB that already has
 /// images (packs before v5) gets `prefix` on every relative `images[].uri`

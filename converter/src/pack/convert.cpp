@@ -408,9 +408,11 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
 /// extras. 21: soft lighting and rim light power in the material extras.
 /// 22: phantom trigger volumes in the node extras. 23: behaviour graph file
 /// (BSBehaviorGraphExtraData) in the root extras. 25: an art object's attach
-/// targets (NiStringsExtraData AttachT) in the root extras.
+/// targets (NiStringsExtraData AttachT) in the root extras. 26: furniture
+/// markers in the root extras. 27: a skeleton's ragdoll (rigid bodies and
+/// constraints) in the root extras.
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/26;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/27;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +
