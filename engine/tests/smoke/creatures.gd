@@ -4,16 +4,20 @@
 # 6j): in BleakFallsBarrow01 a live skeever (aggression 1, an aggro radius of 1000
 # units) enters combat with the player, runs at him, attacks with a clip of its
 # project (`Attack*`) and bites for the race's unarmed damage, and dies to
-# `kill_actor` with a generic ragdoll. An ambush draugr (aggression 0, no aggro radius)
-# stays dormant until its script wakes it (`OnActivate` from the player sets Aggression 2,
-# as masterAmbushScript does), then fights with its weapon and dies. The frostbite spider
-# moves and fights too. The player cannot die here. Skips without the pack.
+# `kill_actor` with a generic ragdoll. An ambush draugr (aggression 0, no aggro radius) sleeps in
+# its alcove (the furniture use of the AI: GetSleeping 3) and stays there with the player close by;
+# when combat starts it gets up (GetSleeping 4, the exit clip of its graph), its scripts hear
+# OnGetUp (masterAmbushScript sets Aggression 2) and it fights with its weapon and dies. The
+# frostbite spider hangs in its shaft until the player enters the trigger, drops out of it (the
+# exit and fall clips of its graph), lands, then moves and fights. The player cannot die here.
+# Skips without the pack.
 extends SceneTree
 
 const PLAYER := 0x14
 const SKEEVER := 0x3B9F7
 const DRAUGR := 0x380B5
 const SPIDER := 0x3A1E1
+const SPIDER_TRIGGER := 0xAA83E
 const STEP := 1.0 / 60.0
 
 var failures := 0
@@ -100,7 +104,7 @@ func _run(pack_dir: String) -> void:
 	config.pack = pack_dir
 	config.quests = false
 	config.preload_doors = false
-	config.wander = false
+	config.wander = true  # the AI drives the actors (the sleepers go into their furniture)
 	_camera = Camera3D.new()
 	root.add_child(_camera)
 	_session = GameSession.new()
@@ -134,25 +138,46 @@ func _run(pack_dir: String) -> void:
 
 	await _fight(SKEEVER, "skeever", "combat")
 
-	# The ambush draugr stays where it is, whatever happens in sight, until woken.
+	# The ambush draugr sleeps in its alcove, whatever happens in sight, until combat starts.
 	var draugr := _session.world.find_ref_node(DRAUGR) as Node3D
 	expect(draugr != null, "the draugr is built")
 	if draugr != null:
+		var bed_at := draugr.global_position
 		await _stand_before(draugr, 12.0)
 		await _frames(180)
+		var lying: Dictionary = _session.ai.get_furniture_state(DRAUGR)
+		expect(lying.get("state", 0) == 3 and lying.get("begun", false), "the draugr lies in its alcove (GetSleeping 3): %s" % lying)
 		expect(_session.ai.get_combat_state(DRAUGR) == 0 and papyrus.get_actor_value(DRAUGR, "Aggression") == 0,
 			"the ambush draugr is dormant while the player is far")
-		# The player walks up to it: the sleeper hears him (OnGetUp) and masterAmbushScript sets Aggression 2.
-		await _stand_before(draugr, 3.0)
-		var woke := await _until(func() -> bool: return papyrus.get_actor_value(DRAUGR, "Aggression") == 2, 5.0)
-		expect(woke >= 0.0, "the script woke it on approach: Aggression %s" % papyrus.get_actor_value(DRAUGR, "Aggression"))
+		# 250 units (3.6 m) from it for eight seconds: it is in the trigger 0x38098, whose script sets Aggression 2,
+		# and still asleep (as in the game): nothing wakes a sleeper but combat.
+		await _stand_before(draugr, 250.0 * SkydotWorld.unit_scale())
+		await _frames(480)
+		expect(_session.ai.get_furniture_state(DRAUGR).get("state", 0) == 3 and _session.ai.get_combat_state(DRAUGR) == 0,
+			"the draugr sleeps on with the player close by: %s combat %s" % [_session.ai.get_furniture_state(DRAUGR), _session.ai.get_combat_state(DRAUGR)])
+		expect(draugr.global_position.distance_to(bed_at) < 0.01, "it did not move")
+		# Combat starts: it gets up (GetSleeping 4), its scripts hear OnGetUp (Aggression 2), and it is out after the clip.
+		_session.ai.start_combat(DRAUGR, PLAYER)
+		await _frames(30)
+		expect(_session.ai.get_furniture_state(DRAUGR).get("state", 0) == 4, "combat makes it get up: GetSleeping 4: %s" % _session.ai.get_furniture_state(DRAUGR))
+		var up := await _until(func() -> bool: return _session.ai.get_furniture_state(DRAUGR).is_empty(), 10.0)
+		expect(up >= 0.0, "the draugr is out of the alcove after its exit clip (%.1f s)" % up)
+		expect(draugr.global_position.distance_to(bed_at) > 0.3, "it moved out: %.2f m" % draugr.global_position.distance_to(bed_at))
 		await _fight(DRAUGR, "draugr", "")
 
-	# The frostbite spider (dropped from the ceiling, found the floor).
-	var spider := _session.world.find_ref_node(SPIDER) as Node3D
+	# The frostbite spider hangs in its shaft until the player enters trigger 0xAA83E, then drops.
+	var spider := _session.world.find_ref_node(SPIDER) as SkydotActor
 	expect(spider != null, "the spider is built")
 	if spider != null:
-		_session.ai.start_combat(SPIDER, PLAYER)
+		var shaft := spider.global_position
+		var hanging: Dictionary = _session.ai.get_furniture_state(SPIDER)
+		expect(hanging.get("state", 0) == 3, "the spider sleeps in its furniture (GetSleeping 3): %s" % hanging)
+		_feet = SkydotWorld.skyrim_position(_session.world.get_ref_info(_session.world.get_ref_cell(SPIDER_TRIGGER), SPIDER_TRIGGER)["position"])
+		var dropped := await _until(func() -> bool: return _session.ai.get_furniture_state(SPIDER).get("state", 0) == 4, 5.0)
+		expect(dropped >= 0.0, "the trigger makes it leave the furniture (GetSleeping 4)")
+		var landed := await _until(func() -> bool: return spider.is_on_floor() and _session.ai.get_furniture_state(SPIDER).is_empty(), 15.0)
+		expect(landed >= 0.0, "it drops out of the shaft and lands")
+		expect(shaft.y - spider.global_position.y > 10.0, "it came down: %.1f m" % (shaft.y - spider.global_position.y))
 		await _fight(SPIDER, "spider", "combat")
 	print("smoke_creatures: failures=%d" % failures)
 	quit(failures)

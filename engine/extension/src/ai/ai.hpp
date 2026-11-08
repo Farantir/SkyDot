@@ -19,6 +19,12 @@
 //   space the actor (or the procedure's place) is in. Locks go through
 //   SkydotPapyrus, which keeps them.
 //
+// - An actor whose step uses a furniture (sleep, sit, eat, an idle marker, activate on a FURN with
+//   markers) goes into it as the game does (ai_furniture.cpp, furniture_use.hpp): placed in it on
+//   load it enters instantly; otherwise it walks to the marker's entry point and plays the enter
+//   clips of its behaviour graph, with their root motion moving the body; it gets up when its step
+//   no longer uses the furniture or combat starts. GetSitting and GetSleeping report the state.
+//
 // Conditions see quests, globals and disabled references through
 // SkydotPapyrus, and the actor's NPC_, factions and linked references
 // through world.fb. Functions without an answer here count as 0 (see
@@ -27,6 +33,7 @@
 
 #include "ai/combat_rules.hpp"
 #include "ai/flight.hpp"
+#include "ai/furniture_use.hpp"
 #include "ai/magic_choice.hpp"
 #include "ai/packages.hpp"
 #include "magic/active_effects.hpp"
@@ -184,6 +191,32 @@ private:
         std::uint32_t ref{}; ///< The reference it was taken from, if any.
     };
 
+    /// An actor using (or about to use) a furniture: the marker, the graph that plays the enter, stay and
+    /// exit clips, and the state GetSitting and GetSleeping report. See ai_furniture.cpp.
+    struct FurnitureUse {
+        std::uint32_t ref{};            ///< The furniture reference.
+        int marker{};                   ///< Index of the marker in the model.
+        int anim_type{};                ///< 1 sit, 2 sleep, 3 lean.
+        ai::Pose at;                    ///< The marker's pose in the world.
+        ai::Pose start;                 ///< Where a walked-in enter starts (the entry point).
+        std::uint16_t entry{};          ///< The entry bit the actor comes and goes by.
+        std::string enter_event;        ///< The IDLE's event that enters.
+        bool quick_enter{};             ///< IsEnteringInteractionQuick: placed in it on load.
+        bool quick_exit{};              ///< IsExitingInteractionQuick.
+        ai::UseState state{ai::UseState::entering};
+        bool begun{};                   ///< The enter has started: the graph runs and the body is the use's.
+        bool reported{};                ///< GetSitting and GetSleeping say `state` (they say 0 before the enter).
+        bool exit_asked{};              ///< The actor is to get up as soon as it sits or lies.
+        bool exit_sent{};               ///< The exit event went to the graph.
+        bool released{};                ///< FallStart: the body is the physics' (the state is 0 from here).
+        bool landed{};                  ///< LandStart went to the graph.
+        bool get_up_sent{};             ///< OnGetUp went to the actor's scripts.
+        double since_release{};         ///< Seconds the body has been the physics'.
+        std::shared_ptr<const ActorGraphDef> def; ///< The actor's behaviour graph.
+        double scale{1.0};              ///< Its size: the scale of the root motion.
+        std::unique_ptr<ai::GraphRun> run;
+    };
+
     /// What a mind knows of its fight.
     struct CombatMind {
         std::uint32_t target{};
@@ -274,7 +307,10 @@ private:
         std::uint64_t dice{};            ///< RNG state.
         bool announced{};                ///< actor_arrived sent for its place.
         CombatMind combat;
-        bool woken{};                    ///< Sent OnGetUp after the player came close while it slept.
+        std::shared_ptr<FurnitureUse> furniture; ///< The furniture it uses or walks to.
+        std::uint32_t furniture_skip{};  ///< A furniture it cannot use (no idle, no graph): not tried again.
+        bool fresh{};                    ///< Attached and not yet at a step that moves: placed, not walking.
+        bool placed{};                   ///< The current step began with the actor placed (not walked) to it.
     };
 
     class Conditions;
@@ -304,7 +340,7 @@ private:
     std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const;
     /// The nearest reference within `radius` of `around` whose base matches a
     /// PTDA target selector (object id or object type).
-    std::uint32_t find_ref(const Spot& around, std::int32_t type, std::uint32_t value) const;
+    std::uint32_t find_ref(const Spot& around, std::int32_t type, std::uint32_t value, std::uint32_t asker);
 
     /// The load doors of `space`: door ref -> destination space.
     const std::vector<std::pair<std::uint32_t, std::uint32_t>>& doors_of(std::uint32_t space);
@@ -329,6 +365,47 @@ private:
     /// An attached actor opened or closed a plain door (`door_toggled`).
     void on_door_toggled(std::int64_t ref, std::int64_t open_state);
 
+    // ---- furniture (ai_furniture.cpp) ----
+
+    /// The furniture a step uses: a reference whose base is a FURN with markers.
+    struct FurnitureTarget {
+        std::uint32_t ref{};
+        std::uint32_t base{};
+        ai::Pose pose;
+        const std::vector<FurnitureMarker>* markers{};
+    };
+    std::optional<FurnitureTarget> furniture_target(Mind& m, const ai::Step& s);
+    const std::vector<FurnitureMarker>& markers_of(std::uint32_t base);
+    std::uint32_t base_of_ref(std::uint32_t ref) const;
+    /// A furniture step (go to the marker's entry point, enter, stay); false if the step is no furniture
+    /// step or the furniture cannot be used (the caller then goes and stays as before).
+    bool furniture_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
+    /// Choose the marker, entry and enter idle of `target` for `m`; null when it cannot be used.
+    std::shared_ptr<FurnitureUse> furniture_plan(Mind& m, const FurnitureTarget& target, const ai::Step& s,
+                                                 bool instant);
+    /// The IDLE event for the use in its current state; empty if the tree gives none.
+    std::string furniture_event(Mind& m);
+    void furniture_begin(Mind& m, SkydotActor& actor, bool instant);
+    /// Run the use one step; true while the actor is in it (and not free to walk or fight).
+    bool furniture_tick(Mind& m, SkydotActor& actor, double seconds);
+    void furniture_exit(Mind& m, SkydotActor& actor);
+    /// The use is over (or given up): the body and the AI are the actor's again.
+    void furniture_end(Mind& m, SkydotActor* actor, bool failed);
+    bool furniture_wanted(Mind& m, const FurnitureUse& u);
+    bool furniture_claimed(std::uint32_t ref, int marker, std::uint32_t except) const;
+    /// Every marker of the furniture is the claim of another mind (found for it, or in use): Find passes it by.
+    bool furniture_taken(std::uint32_t ref, std::uint32_t base, std::uint32_t except);
+    void furniture_apply(Mind& m, SkydotActor& actor);
+    void furniture_events(Mind& m, SkydotActor& actor, const std::vector<std::string>& events);
+    std::unordered_map<std::uint32_t, std::vector<FurnitureMarker>> markers_; ///< By base.
+    std::unordered_map<std::string, ai::Pose> enter_travels_;                 ///< By behaviour and event.
+
+public:
+    /// What `ref` does with a furniture: ref, marker, entry, state (as GetSitting/GetSleeping report it),
+    /// begun, released, event, position (Skyrim) and yaw (Skyrim degrees); empty if it uses none.
+    godot::Dictionary get_furniture_state(std::int64_t ref);
+
+private:
     bool combat_tick(Mind& m, SkydotActor& actor, double seconds);
     void enter_combat(Mind& m, SkydotActor& actor, std::uint32_t target);
     void leave_combat(Mind& m, SkydotActor* actor);

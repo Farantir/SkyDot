@@ -58,9 +58,10 @@ Find put in an ObjectList input.
 | --- | --- |
 | Travel | walks there (within the radius, at least 96 units); done on arrival |
 | Sandbox, Wander, Guard | walks there, then wanders within the radius (at least 256 units) |
-| Sleep, Sit, Eat, UseIdleMarker, Activate, HoldPosition | walks to the bed, chair, marker or place and stands there |
+| Sleep, Sit, Eat, UseIdleMarker, Activate on furniture with markers | goes into the furniture (`actors.md`, "Using furniture"): placed in it on load, else walks to the marker's entry point and plays the enter clips; gets up when the step ends or combat starts |
+| Sleep, Sit, Eat, UseIdleMarker, Activate, HoldPosition otherwise | walks to the bed, chair, marker or place and stands there |
 | Patrol | walks from the start marker along its linked references (no keyword), round again |
-| Find | the nearest bed (FURN named "bed"), chair ("chair", "bench", "stool", "throne", "seat"), furniture or base within the radius, for the steps after it |
+| Find | the nearest bed (FURN named "bed"), chair ("chair", "bench", "stool", "throne", "seat"), furniture or base within the radius that no other actor has found or uses, for the steps after it |
 | UnlockDoors, LockDoors | the load doors of the place's interior (outside: those within its radius + 1024 units); only doors with a lock are locked |
 | Wait | stands for its seconds |
 | anything else (Follow, Escort, ForceGreet, UseWeapon, …) | stands |
@@ -171,8 +172,10 @@ Alvor's house at 08:00 Alvor and Sigrid leave through the front door.
 - Quest alias packages (ALPC), scene packages, combat and dialogue
   interruptions, package OnBegin/OnEnd idles and fragments (the VMAD is kept
   raw).
-- Furniture: actors stand next to beds and chairs instead of using them
-  (furniture markers and entry animations are next).
+- Furniture: the beds and chairs of Find are used (`actors.md`). A Sandbox in front of a furniture
+  step (the Eat, Sit and Sleep templates) gives way to it as soon as the furniture can be used;
+  what the game does there is not known. Ownership is not read, so an NPC's own bed is the nearest
+  free one.
 - Doors on the way are not opened; actors pass through closed doors inside
   a space as the navmesh allows. Load doors are used without the door
   animation.

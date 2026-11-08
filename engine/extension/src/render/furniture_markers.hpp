@@ -6,6 +6,8 @@
 // lean) and from which sides it can be entered.
 #pragma once
 
+#include "data/furniture_marker.hpp"
+
 #include <godot_cpp/classes/node.hpp>
 
 #include <array>
@@ -13,17 +15,6 @@
 #include <vector>
 
 namespace skydot {
-
-struct FurnitureMarker {
-    /// NIF units, in the model root's space (z up).
-    std::array<float, 3> offset{};
-    /// Radians.
-    float heading{};
-    /// 1 sit, 2 sleep, 3 lean.
-    std::uint16_t animation_type{};
-    /// Bit mask of the sides it can be entered from.
-    std::uint16_t entry_points{};
-};
 
 /// The markers of an instantiated model (see SkydotMaterials for how models are
 /// built), in the NIF's order; empty if it is not furniture.

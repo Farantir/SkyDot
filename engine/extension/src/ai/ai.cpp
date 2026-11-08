@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ai/ai.hpp"
 
+#include "ai/idle_choice.hpp"
+
 #include "assets/vpath.hpp"
 #include "actors/actor.hpp"
 #include "data/actors.hpp"
@@ -33,6 +35,8 @@ namespace skydot {
 namespace {
 
 constexpr double k_seconds_per_day = 86400.0;
+/// ActionActivate: the root of the IDLE trees of using furniture.
+constexpr std::uint32_t k_action_activate = 0x13009;
 /// Game seconds between moves of actors that are not built.
 constexpr double k_place_interval = 5.0 * 60.0;
 /// Game seconds within which a pass counts as current (settle_actors).
@@ -160,6 +164,33 @@ public:
         }
     }
 
+    // The furniture an actor uses (ai_furniture.cpp): GetSitting and GetSleeping give the state, the rest
+    // are the facts of the enter or exit under way.
+    std::int32_t sitting_state(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr && u->anim_type != 2 ? reported(*u) : 0;
+    }
+    std::int32_t sleeping_state(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr && u->anim_type == 2 ? reported(*u) : 0;
+    }
+    std::int32_t furniture_anim_type(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr ? u->anim_type : 0;
+    }
+    bool entering_interaction_quick(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr && u->quick_enter;
+    }
+    std::int32_t furniture_entry_type(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr ? u->entry : 0;
+    }
+    bool exiting_interaction_quick(std::uint32_t ref) const override {
+        const FurnitureUse* u = use_of(ref);
+        return u != nullptr && u->quick_exit;
+    }
+
     /// The "cell" of an actor is its space: the interior cell, or the
     /// worldspace outside.
     std::uint32_t cell_of(std::uint32_t ref) const override { return spot_of(ref).space; }
@@ -182,6 +213,14 @@ public:
     int day_of_week() const override { return ai_.clock_.day_of_week(); }
 
 private:
+    const FurnitureUse* use_of(std::uint32_t ref) const {
+        const auto it = ai_.minds_.find(ref);
+        return it != ai_.minds_.end() && it->second.furniture && it->second.furniture->reported ? it->second.furniture.get()
+                                                                                                : nullptr;
+    }
+    /// The state as the game reports it: 0 once the body is the physics' (FallStart).
+    static std::int32_t reported(const FurnitureUse& u) { return u.released ? 0 : static_cast<std::int32_t>(u.state); }
+
     Spot spot_of(std::uint32_t ref) const {
         if (mind != nullptr && ref == mind->ref) {
             return ai_.actor_spot(*mind);
@@ -198,6 +237,22 @@ SkydotAi::~SkydotAi() {
         vm_->set_combat_hooks({});
         vm_->set_stays_loaded({});
     }
+}
+
+// ---- the IDLE of using furniture (ai_furniture.cpp) ----
+
+std::string SkydotAi::furniture_event(Mind& m) {
+    FurnitureUse& u = *m.furniture;
+    conditions_->mind = &m;
+    conditions::ConditionContext context;
+    context.subject = m.ref;
+    context.target = u.ref;
+    context.unknown = conditions::UnknownPolicy::zero;
+    const bool was = u.reported;
+    u.reported = true;
+    const auto choice = ai::choose_idle(world_->data(), k_action_activate, u.def->behaviour, *conditions_, context);
+    u.reported = was;
+    return choice ? choice->event : std::string();
 }
 
 // ---- setup ------------------------------------------------------------------
@@ -230,6 +285,7 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_actor_state", "ref"), &SkydotAi::get_actor_state);
     ClassDB::bind_method(D_METHOD("get_packages", "ref"), &SkydotAi::get_packages);
     ClassDB::bind_method(D_METHOD("get_destination", "ref"), &SkydotAi::get_destination);
+    ClassDB::bind_method(D_METHOD("get_furniture_state", "ref"), &SkydotAi::get_furniture_state);
     ClassDB::bind_method(D_METHOD("push_package", "ref", "package"), &SkydotAi::push_package);
     ClassDB::bind_method(D_METHOD("pop_package", "ref", "package"), &SkydotAi::pop_package);
     BIND_CONSTANT(PLACE_BUDGET_USEC);
@@ -541,7 +597,7 @@ std::optional<SkydotAi::Spot> SkydotAi::target_spot(Mind& m, const wfb::PackageI
     case object_type: {
         Spot around = actor_spot(m);
         around.radius = std::max(k_min_search, static_cast<double>(in.target_count()));
-        return ref_spot(find_ref(around, in.target_type(), in.target_value()));
+        return ref_spot(find_ref(around, in.target_type(), in.target_value(), m.ref));
     }
     case linked_reference:
         return ref_spot(linked_ref(m.ref, in.target_value()));
@@ -559,7 +615,7 @@ std::optional<SkydotAi::Spot> SkydotAi::target_spot(Mind& m, const wfb::PackageI
     }
 }
 
-std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uint32_t value) const {
+std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uint32_t value, std::uint32_t asker) {
     std::vector<const wfb::Cell*> cells;
     const auto* space = world_->data().cell_ptr(around.space);
     if (space != nullptr && formats::has_flag(space->flags(), wfb::CellFlags::interior)) {
@@ -610,6 +666,10 @@ std::uint32_t SkydotAi::find_ref(const Spot& around, std::int32_t type, std::uin
                 !matches(world_->data().base_ptr(r->base()))) {
                 continue;
             }
+            // Furniture another actor has found or is using does not do for this one.
+            if (asker != 0 && furniture_taken(r->id(), r->base(), asker)) {
+                continue;
+            }
             const Vector3 p(r->position().x(), r->position().y(), r->position().z());
             const auto d = static_cast<double>(p.distance_squared_to(around.position));
             if (d <= best_d) {
@@ -657,7 +717,7 @@ void SkydotAi::do_find(Mind& m, const ai::Step& s) {
         return;
     }
     around->radius = std::max(around->radius, k_min_search);
-    m.lists[s.list_key] = find_ref(*around, s.target->target_type(), s.target->target_value());
+    m.lists[s.list_key] = find_ref(*around, s.target->target_type(), s.target->target_value(), m.ref);
 }
 
 std::optional<SkydotAi::Spot> SkydotAi::settled_spot(Mind& m) {
@@ -1019,6 +1079,8 @@ std::int64_t SkydotAi::attach_built(godot::Node* root_node) {
                 continue;
             }
             m->node = actor->get_instance_id();
+            m->fresh = true; // a step it finds running is one it was placed in, not walked to
+            m->furniture.reset();
             const auto where = world_->placement().where(ref);
             const bool runtime = !where &&
                                  world_->data().actor_ptr(ref) == nullptr;
@@ -1091,6 +1153,7 @@ void SkydotAi::detach(Mind& m) {
     // Freed with its cell: it stays where it was, or where it was going.
     std::erase(attached_, m.ref);
     m.node = 0;
+    m.furniture.reset();
     if (m.space == 0) {
         return;
     }
@@ -1120,6 +1183,9 @@ void SkydotAi::held_refs(std::set<std::uint32_t>& out) const {
         out.insert({m.combat.target, m.combat.afraid_of, m.door});
         if (m.target) {
             out.insert(m.target->ref);
+        }
+        if (m.furniture) {
+            out.insert(m.furniture->ref);
         }
         for (const auto& [key, found] : m.lists) {
             out.insert(found);
@@ -1181,6 +1247,9 @@ void SkydotAi::update(double seconds) {
         }
         // The dead (a corpse placed dead too) have no AI: no package, no fight.
         if (vm_ != nullptr && vm_->is_actor_dead(ref)) {
+            if (m->furniture) {
+                furniture_end(*m, actor, false); // the body is the death's
+            }
             m->combat.paralyzed = m->combat.calmed = m->combat.frenzied = m->combat.following = false;
             m->combat.afraid_of = 0;
             m->combat.stagger = 0.0;
@@ -1201,6 +1270,9 @@ void SkydotAi::update(double seconds) {
         if (m->think <= 0.0) {
             m->think = k_think_interval * (lod == 0 ? 1.0 : lod == 1 ? 2.0 : 4.0);
             choose(*m);
+        }
+        if (m->furniture && m->furniture->begun && furniture_tick(*m, *actor, elapsed)) {
+            continue; // it sits, lies or gets up: the graph has the body
         }
         if (drive_ && m->package != 0) {
             steer(*m, *actor, elapsed);
@@ -1352,10 +1424,35 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
         }
         return;
     }
+    if (m.fresh && !m.step_started) {
+        // Attached with its package under way: the placement has put it where the package ends, in the
+        // furniture it ends in.
+        for (std::size_t i = m.step; i < m.steps.size(); ++i) {
+            if (m.steps[i].procedure == Procedure::find) {
+                do_find(m, m.steps[i]);
+            }
+            if (furniture_target(m, m.steps[i])) {
+                m.step = i;
+                break;
+            }
+        }
+    }
     const ai::Step& s = m.steps[m.step];
+    if (m.furniture && !m.furniture->begun) {
+        // A furniture it was on its way to is dropped when the step no longer goes there.
+        const auto wanted = furniture_target(m, s);
+        if (!wanted || wanted->ref != m.furniture->ref) {
+            m.furniture.reset();
+        }
+    }
     if (!m.step_started) {
         m.step_started = true;
         m.step_time = 0.0;
+        if (s.procedure != Procedure::find && s.procedure != Procedure::wait && s.procedure != Procedure::other &&
+            s.procedure != Procedure::unlock_doors && s.procedure != Procedure::lock_doors) {
+            m.placed = m.fresh; // the first step that moves it starts with the actor where the placement put it
+            m.fresh = false;
+        }
         m.target = step_spot(m, s);
         if (s.procedure == Procedure::patrol && m.target) {
             load_patrol(m);
@@ -1389,6 +1486,16 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
     case Procedure::sandbox:
     case Procedure::wander:
     case Procedure::guard: {
+        // A sandbox in front of a step that uses furniture (the Sit, Eat and Sleep templates) gives way to it
+        // as soon as the furniture can be used.
+        for (std::size_t later = m.step + 1; later < m.steps.size(); ++later) {
+            if (furniture_target(m, m.steps[later])) {
+                while (m.step < later) {
+                    next_step(m);
+                }
+                return;
+            }
+        }
         if (!m.target) {
             actor.set_wander(true);
         } else {
@@ -1423,8 +1530,14 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
             }
         }
         return;
-    default: // Sleep, sit, eat, idle markers, activate, hold position: go and stay.
+    default: // Sleep, sit, eat, idle markers, activate, hold position: use the furniture, or go and stay.
         actor.set_wander(false);
+        if (furniture_step(m, actor, s, seconds)) {
+            if (timed_out) {
+                next_step(m);
+            }
+            return;
+        }
         if (m.target) {
             go(m, actor, *m.target, std::max(m.target->radius, k_stand_reach), seconds);
         }
@@ -1456,6 +1569,11 @@ Dictionary SkydotAi::get_actor_state(std::int64_t ref) {
         steps.push_back(String(ai::procedure_name(s.procedure)));
     }
     out["steps"] = steps;
+    godot::PackedFloat64Array seconds;
+    for (const auto& s : m->steps) {
+        seconds.push_back(s.seconds);
+    }
+    out["step_seconds"] = seconds;
     out["step"] = static_cast<std::int64_t>(m->step);
     out["procedure"] = m->step < m->steps.size() ? String(ai::procedure_name(m->steps[m->step].procedure)) : String();
     out["attached"] = node_of(*m) != nullptr;

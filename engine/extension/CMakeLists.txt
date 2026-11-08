@@ -43,6 +43,8 @@ set(SKYDOT_CORE_SOURCES
     src/actors/behavior_machine.cpp
     src/actors/behavior_machine.hpp
     src/ai/combat_rules.cpp
+    src/ai/furniture_use.cpp
+    src/ai/furniture_use.hpp
     src/ai/idle_choice.cpp
     src/ai/idle_choice.hpp
     src/ai/combat_rules.hpp
@@ -254,6 +256,7 @@ target_sources(skydot PRIVATE
     src/ai/furniture.hpp
     src/ai/ai_combat.cpp
     src/ai/ai_flight.cpp
+    src/ai/ai_furniture.cpp
     src/ai/ai.hpp
     src/assets/asset_cache.cpp
     src/assets/asset_cache.hpp

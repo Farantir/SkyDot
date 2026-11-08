@@ -174,6 +174,54 @@ all three actors walk and stay on the floor; around Riverwood 13 of 13
 (guards, chickens, a dog, a cow, a horse) wander for a minute without
 falling or sticking.
 
+## Using furniture (`SkydotAi`, `ai/furniture_use.*`, `ai/ai_furniture.cpp`)
+
+A package step that uses furniture (Sleep, Sit, Eat, UseIdleMarker, Activate, on a reference whose base
+is a FURN with markers) puts the actor into it as the game does, with one system for every actor and
+every furniture: the data decide, nothing is keyed to a reference, race or editor id.
+
+- **Marker.** The model's furniture markers (BSFurnitureMarkerNode, `render/furniture_markers.*`)
+  give offset, heading, animation type (1 sit, 2 sleep, 3 lean) and the allowed entries (bits 0x1
+  front, 0x2 behind, 0x4 right, 0x8 left, 0x10 up). The body goes to the reference's position plus
+  the offset turned by the reference's rotation (the height is the reference's: the clips pose the
+  body on the seat), facing the reference's rotation plus the heading. The first marker of the
+  step's kind that nobody else has found or uses is taken; Find passes by furniture whose markers
+  are all taken.
+- **Idle.** `IdleChooser` (`ai/idle_choice.*`) walks the IDLE tree of ActionActivate
+  for the root behaviour of the actor's graph with the conditions of the AI: GetSitting and
+  GetSleeping (0 not, 2 entering, 3 in, 4 leaving; 0 again from the moment the body is released to
+  the physics), IsFurnitureAnimType, IsEnteringInteractionQuick, IsFurnitureEntryType (the parameter is
+  the entry bit shifted left by 16), the furniture's keywords, the actor's linked reference.
+- **Graph.** `ActorGraph` (`actors/actor_graph.*`) is the race's behaviour project joined with the
+  graphs it references (human: `0_Master.hkx` with `MT_Behavior.hkx`), conditions evaluated over
+  its variables (initial values from the pack, IsNPC/IsPlayer/i1stPerson set for non-player actors).
+  The enter events of the quick idles are wildcards of machines that run only inside the furniture
+  states, so `send_entering` first puts the running machines into the states that nest the handling
+  machine (the game's own route is not known: this gives the same graph states). The use ends
+  when the root-most machine that left its state is back in it.
+- **Root motion.** The clips' root motion (animationdata, from the origin for the part before the
+  first key) scaled by the race's height and turned by the actor's facing moves the body (`GraphRun`
+  integrates it clip by clip); a character that lists its own file of a clip's name (female
+  `Animations\female\...`) plays that one and uses its project's motion.
+- **Placed.** An actor attached with its package under way (a cell loading) is placed in the
+  furniture its package ends in and enters with the quick idle (`IsEnteringInteractionQuick` 1): the
+  body at the marker, the graph's idle looping, held (`SkydotActor::set_scripted`: no gravity,
+  no ground search, no gait).
+- **Walking in.** Otherwise it walks to the entry point: the start of the enter, found by running
+  the enter idle's graph from the origin and taking its whole displacement off the marker, on the
+  side of the entry nearest the actor. Then the enter clips play with their root motion (state 2),
+  and GetSitting/GetSleeping 3 follows when the graph raises IdleChairSitting or IdleBedSleeping.
+- **Getting up.** When the step no longer uses the furniture (the package changed or ended, a script
+  evaluated it) or combat starts, the exit idle plays (state 4) with its root motion. FallStart
+  hands the body to the physics (a spider dropping out of its shaft; LandStart goes to the graph when
+  the feet are down), IdleBedGetUp and IdleChairGetUp are OnGetUp for the actor's scripts, and the
+  use ends when the graph is back in the state it left; the AI (and the fight that was waiting) go on.
+  Nothing else wakes a sleeper: it sleeps on with the player at its side until it notices him.
+
+`game/tools/furniture_check.gd` runs the pieces on a pack (idles chosen, graph clips, root motion);
+`game/tools/furniture_use_check.gd` runs the whole use in a built cell and prints positions and
+states over time (the spider of Bleak Falls, a draugr in its alcove, Sigrid at table and in bed).
+
 ## Level of detail (`SkydotActor`)
 
 Every actor in every loaded cell used to get its full per-frame work: the
@@ -292,9 +340,10 @@ navmesh.
   name): no turning or start/stop clips, no strafing, no blending beyond the
   cross-fade, additive clips (blend hint 1), float tracks
   (`hkVis`/`hkFade` slots), paired animations' second actor.
-- AI: packages and schedules are run (`ai.md`); sitting and sleeping in
-  furniture, swimming and
-  avoidance (actors bump into each other) are not.
+- AI: packages and schedules are run (`ai.md`), furniture is used (above); swimming and
+  avoidance (actors bump into each other) are not. Furniture: two actors on one bench seat by
+  marker order, not by which side they come from; sandbox idles that use furniture on their own are
+  not run; the bed an NPC sleeps in follows the Find (nearest free), not the reference owner.
 - Creatures that only fly, swim or hover (dragons, slaughterfish, wisps)
   have no walk and stand; those with only a run stand too.
 - Wolves, bears, deer and other creatures without a named idle use the
