@@ -262,6 +262,61 @@ double SkydotActor::play_clip(const godot::String& clip, double speed, bool loop
     return length;
 }
 
+void SkydotActor::set_scripted(bool scripted) {
+    if (scripted_ == scripted) {
+        return;
+    }
+    scripted_ = scripted;
+    wake_ = true;
+    scripted_clip_ = "";
+    if (scripted) {
+        stop();
+        wander_ = false;
+        clear_look_target();
+        set_velocity(Vector3());
+        set_hold(true);
+    } else {
+        // The gait takes over again from wherever the body is.
+        playing_ = "";
+        action_left_ = 0.0;
+        set_hold(false);
+    }
+}
+
+void SkydotActor::place_body(const Vector3& feet, double yaw) {
+    teleport(feet);
+    face(yaw);
+    set_hold(true);
+    wake_ = true;
+}
+
+void SkydotActor::release_body() {
+    set_hold(false);
+    wake_ = true;
+}
+
+bool SkydotActor::play_scripted(const godot::String& clip, double speed, bool loop, double time) {
+    godot::AnimationPlayer* anim = player();
+    if (anim == nullptr || !scripted_) {
+        return false;
+    }
+    if (clip == scripted_clip_ && anim->is_playing()) {
+        return true; // the AnimationPlayer keeps its own time
+    }
+    if (clip == scripted_clip_ && !loop) {
+        return true; // played to its end and holds the last pose
+    }
+    if (play_clip(clip, speed, loop, k_blend) <= 0.0) {
+        return false;
+    }
+    scripted_clip_ = clip;
+    action_left_ = 0.0;
+    if (time > 0.01) {
+        anim->seek(r(time), true);
+    }
+    return true;
+}
+
 void SkydotActor::set_look_target(const Vector3& point) {
     look_target_ = point;
     look_active_ = true;
@@ -967,6 +1022,11 @@ void SkydotActor::_physics_process(double engine_delta) {
     if (flight_active_) {
         // The mover has the body: no gravity, no slide, no steering, no throttling.
         flight_tick(engine_delta);
+        return;
+    }
+    if (scripted_) {
+        // The AI places the body and gives the clips: held, or falling once released.
+        SkydotPlayer::_physics_process(engine_delta);
         return;
     }
     // Level of detail: a farther actor steps less often, and then for the

@@ -121,6 +121,22 @@ public:
     /// The name of the clip playing now ("idle", "stance_walk", an action's...), for tests.
     godot::String get_playing() const { return playing_; }
 
+    // ---- scripted body (furniture): the AI places and animates it --------------------------------
+    /// While scripted the actor does not walk, wander, look for ground or play its gait: it is held where
+    /// `place_body` puts it (no gravity) and plays the clips `play_scripted` is given. Turning it off hands
+    /// the body back (gravity acts, the gait returns).
+    void set_scripted(bool scripted);
+    bool is_scripted() const { return scripted_; }
+    /// Put the feet at `feet` (Godot space) facing `yaw` (about +Y, radians), with no velocity.
+    void place_body(const godot::Vector3& feet, double yaw);
+    /// Gravity acts on a scripted body (it falls and lands); `place_body` holds it again.
+    void release_body();
+    bool body_released() const { return scripted_ && !get_hold(); }
+    /// Play the clip (a virtual path to a .hkx) from `time` seconds, looped or once and held at its end, at
+    /// `speed`. Playing the clip already playing at about that time changes nothing. False if the actor cannot
+    /// play it.
+    bool play_scripted(const godot::String& clip, double speed, bool loop, double time);
+
     /// The actor died: it stops walking and thinking, its AnimationPlayer stops (a ragdoll or
     /// a frozen pose takes over the bones), and its cylinder leaves every collision layer so
     /// that it blocks nobody. The node stays; the game layer lays the body down.
@@ -254,6 +270,8 @@ private:
     double anim_wait_{0.0};    ///< Seconds since the animation last advanced.
     double step_wait_{0.0};    ///< Seconds since the physics last stepped.
     bool frozen_{false};       ///< `set_frozen`.
+    bool scripted_{false};     ///< `set_scripted`.
+    godot::String scripted_clip_; ///< The clip `play_scripted` plays now.
     bool awaiting_world_{false}; ///< `set_awaiting_world`.
     bool dead_{false};         ///< `set_dead`: nothing moves it any more.
     godot::String death_clip_;
