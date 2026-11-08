@@ -1854,6 +1854,39 @@ table Condition {
     string2: string;
 }
 
+/// `Idle.flags`: IDLE DATA flags (source: xEdit).
+enum IdleFlags : ubyte (bit_flags) {
+    parent,
+    sequence,
+    no_attacking,
+    blocking
+}
+
+/// An IDLE: a node of the tree an actor asks for an animation (format 40).
+/// Under an AACT (`parent`, e.g. ActionActivate) the children are one root per
+/// behaviour graph (`behaviour`), below them groups and leaves; the first leaf
+/// whose conditions, and its ancestors', pass gives the `event` to send to the
+/// graph. Siblings are ordered by `previous`.
+table Idle {
+    id: uint32 (key);
+    editor_id: string;
+    /// ENAM; empty on a root or a group.
+    event: string;
+    /// DNAM, as stored (the behaviour file, on a root).
+    behaviour: string;
+    /// ANAM, first form: an IDLE or an AACT. Global.
+    parent: uint32;
+    /// ANAM, second form: the previous sibling (an IDLE), 0 for the first.
+    previous: uint32;
+    conditions: [Condition];
+    /// DATA: looping seconds, replay delay in seconds.
+    loop_min: ubyte;
+    loop_max: ubyte;
+    flags: IdleFlags;
+    animation_group_section: ubyte;
+    replay_delay: ushort;
+}
+
 /// One data input of a package, matched to the template's by `key`.
 table PackageInput {
     key: byte;
@@ -2620,6 +2653,8 @@ table World {
     actor_value_infos: [ActorValueInfo];
     /// Sorted by id (format 38).
     classes: [Class];
+    /// Sorted by id (format 40).
+    idles: [Idle];
 }
 
 root_type World;

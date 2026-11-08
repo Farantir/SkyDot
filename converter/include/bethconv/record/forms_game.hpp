@@ -82,6 +82,25 @@ struct ActorClass {
     std::uint8_t flags{};
 };
 
+/// IDLE: an idle animation entry in the tree actors ask for animations. 3,285 in SE.
+/// Source: xEdit's wbDefinitionsTES5.pas (IDLE).
+struct Idle {
+    std::string editor_id;
+    std::string event;     ///< ENAM: the behaviour event sent to the graph.
+    std::string behaviour; ///< DNAM: the behaviour file (on a root), as stored.
+    FormId parent;         ///< ANAM, first form: an IDLE or an AACT.
+    FormId previous;       ///< ANAM, second form: the previous sibling, or none.
+    std::vector<Condition> conditions;
+    std::uint32_t declared_condition_count{};
+
+    /// DATA, 6 bytes on all 3,285.
+    std::uint8_t loop_min{};
+    std::uint8_t loop_max{};
+    std::uint8_t flags{};
+    std::uint8_t animation_group_section{};
+    std::uint16_t replay_delay{};
+};
+
 /// FACT: a faction (relations, ownership, vendors). 1,424 in SE.
 struct Faction {
     std::string editor_id;
@@ -994,6 +1013,7 @@ struct VendorValues {
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<GlobalVariable> parse_global(io::SpanReader& data,
                                                            const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Idle> parse_idle(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<ActorClass> parse_actor_class(io::SpanReader& data,
                                                             const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Faction> parse_faction(io::SpanReader& data,

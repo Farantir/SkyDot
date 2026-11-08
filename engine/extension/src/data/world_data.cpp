@@ -82,6 +82,7 @@ void WorldData::build_indexes() {
             }
         }
     }
+    build_idle_children();
     if (const auto* actors = root_->actors()) {
         // Sorted by ref, so the first seen is the lowest.
         for (const auto* a : *actors) {
@@ -437,6 +438,64 @@ bool WorldData::base_has_keyword(std::uint32_t base, std::uint32_t keyword) cons
         return false;
     }
     return std::ranges::find(*b->keywords(), keyword) != b->keywords()->end();
+}
+
+const wfb::Idle* WorldData::idle_ptr(std::uint32_t id) const {
+    return root_ != nullptr ? lookup(root_->idles(), id) : nullptr;
+}
+
+const std::vector<const wfb::Idle*>& WorldData::idle_children(std::uint32_t parent) const {
+    static const std::vector<const wfb::Idle*> none;
+    const auto it = idle_children_.find(parent);
+    return it != idle_children_.end() ? it->second : none;
+}
+
+/// Siblings are ordered by `previous`: a head is a child whose previous is not one of its siblings, and
+/// each child is followed by those naming it as their previous (more than one only in a broken mod, then
+/// in id order). A cycle, which has no head, is appended in id order.
+void WorldData::build_idle_children() {
+    const auto* idles = root_->idles();
+    if (idles == nullptr) {
+        return;
+    }
+    std::unordered_map<std::uint32_t, std::vector<const wfb::Idle*>> by_parent;
+    for (const auto* idle : *idles) { // sorted by id
+        by_parent[idle->parent()].push_back(idle);
+    }
+    for (auto& [parent, siblings] : by_parent) {
+        std::unordered_map<std::uint32_t, std::vector<const wfb::Idle*>> after;
+        std::unordered_map<std::uint32_t, const wfb::Idle*> member;
+        for (const auto* idle : siblings) {
+            member.emplace(idle->id(), idle);
+            after[idle->previous()].push_back(idle);
+        }
+        std::vector<const wfb::Idle*> ordered;
+        ordered.reserve(siblings.size());
+        std::unordered_map<std::uint32_t, bool> done;
+        const auto emit_chain = [&](const wfb::Idle* head) {
+            std::vector<const wfb::Idle*> stack{head};
+            while (!stack.empty()) {
+                const auto* idle = stack.back();
+                stack.pop_back();
+                if (!done.emplace(idle->id(), true).second) {
+                    continue;
+                }
+                ordered.push_back(idle);
+                if (const auto next = after.find(idle->id()); next != after.end()) {
+                    stack.insert(stack.end(), next->second.rbegin(), next->second.rend());
+                }
+            }
+        };
+        for (const auto* idle : siblings) {
+            if (member.find(idle->previous()) == member.end()) {
+                emit_chain(idle);
+            }
+        }
+        for (const auto* idle : siblings) {
+            emit_chain(idle);
+        }
+        idle_children_.emplace(parent, std::move(ordered));
+    }
 }
 
 const wfb::Perk* WorldData::perk_ptr(std::uint32_t id) const {

@@ -106,6 +106,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"PERK"}.value:
     case FourCC{"AVIF"}.value:
     case FourCC{"CLAS"}.value:
+    case FourCC{"IDLE"}.value:
         bases_.collect(merged, data, form_ctx);
         break;
     case FourCC{"SOUN"}.value:

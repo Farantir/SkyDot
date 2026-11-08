@@ -233,6 +233,41 @@ io::ParseResult<ActorClass> parse_actor_class(io::SpanReader& data, const FormCo
     return out;
 }
 
+// ---- IDLE -----------------------------------------------------------------
+
+io::ParseResult<Idle> parse_idle(io::SpanReader& data, const FormContext& ctx) {
+    Idle out;
+    const auto walked = walk_fields(
+        data, FourCC{"IDLE"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"ENAM"}) {
+                take(failure, read_zstring(body), out.event);
+            } else if (field.type == FourCC{"DNAM"}) {
+                take(failure, read_zstring(body), out.behaviour);
+            } else if (field.type == FourCC{"ANAM"}) {
+                take(failure, read_formid(body), out.parent);
+                take(failure, read_formid(body), out.previous);
+            } else if (field.type == FourCC{"DATA"}) {
+                take(failure, body.get<std::uint8_t>(), out.loop_min);
+                take(failure, body.get<std::uint8_t>(), out.loop_max);
+                take(failure, body.get<std::uint8_t>(), out.flags);
+                take(failure, body.get<std::uint8_t>(), out.animation_group_section);
+                take(failure, body.get<std::uint16_t>(), out.replay_delay);
+            } else {
+                return read_ctda_field(out.conditions, out.declared_condition_count, field, body,
+                                       failure);
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 // ---- FACT -----------------------------------------------------------------
 
 io::ParseResult<Faction> parse_faction(io::SpanReader& data, const FormContext& ctx) {

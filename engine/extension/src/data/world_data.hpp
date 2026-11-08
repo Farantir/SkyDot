@@ -33,6 +33,7 @@ struct Explosion;
 struct Perk;
 struct ActorValueInfo;
 struct Class;
+struct Idle;
 struct Destruction;
 struct Ref;
 struct LargeRef;
@@ -68,7 +69,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 39;
+    static constexpr int FORMAT_VERSION = 40;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {
@@ -190,6 +191,11 @@ public:
     const bethconv::pack::wfb::ActorValueInfo* actor_value_info_ptr(std::uint32_t id) const;
     const bethconv::pack::wfb::ActorValueInfo* actor_value_info_of(std::int32_t av) const;
     const bethconv::pack::wfb::Class* class_ptr(std::uint32_t id) const;
+    /// An IDLE by id (format 40), or null.
+    const bethconv::pack::wfb::Idle* idle_ptr(std::uint32_t id) const;
+    /// The IDLEs whose parent is `parent` (an IDLE or an AACT), in the order the game asks them: along
+    /// the previous-sibling chain, starting with the child whose previous is not a sibling. Empty if none.
+    const std::vector<const bethconv::pack::wfb::Idle*>& idle_children(std::uint32_t parent) const;
     const bethconv::pack::wfb::Message* message_ptr(std::uint32_t id) const;
     const bethconv::pack::wfb::Explosion* explosion_ptr(std::uint32_t id) const;
     /// The DEST of base `base`, or null.
@@ -240,6 +246,7 @@ public:
 
 private:
     void build_indexes();
+    void build_idle_children();
 
     std::unique_ptr<MappedFile> map_;
     const bethconv::pack::wfb::World* root_{};
@@ -266,6 +273,8 @@ private:
     std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::ActorRef*>> cell_actors_;
     std::unordered_map<std::uint64_t, std::vector<const bethconv::pack::wfb::ActorRef*>> persistent_actors_;
     std::unordered_map<std::uint32_t, std::uint32_t> actor_of_;
+    /// IDLE parent -> its children in sibling order, from `build_indexes`.
+    std::unordered_map<std::uint32_t, std::vector<const bethconv::pack::wfb::Idle*>> idle_children_;
     /// Lowercase editor id -> KYWD id (the first of equal names).
     std::unordered_map<std::string, std::uint32_t> keywords_;
 };

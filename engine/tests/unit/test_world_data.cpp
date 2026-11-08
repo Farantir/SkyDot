@@ -361,3 +361,42 @@ TEST_CASE("perks, skills, classes, taught books and NPC perks are read (world.fb
     CHECK(npc->perks()->Get(1)->perk() == 0x100);
     CHECK(npc->perks()->Get(1)->rank() == 1);
 }
+
+TEST_CASE("idles are read by id and their children come in sibling order (world.fb 40)", "[world_data][idles]") {
+    WorldSpec spec;
+    spec.format_version = WorldData::FORMAT_VERSION;
+    // Children of 0x13, listed out of order: 0x300 (after 0x301), 0x301 (first), 0x302 (after 0x300); a
+    // second parent holds one child, and 0x400's previous belongs to another parent.
+    spec.idles = {
+        {.id = 0x300, .editor_id = "Second", .event = "evB", .parent = 0x13, .previous = 0x301},
+        {.id = 0x301, .editor_id = "First", .behaviour = "a.hkx", .parent = 0x13},
+        {.id = 0x302,
+         .editor_id = "Third",
+         .event = "evC",
+         .parent = 0x13,
+         .previous = 0x300,
+         .conditions = {skydot::testing::condition(613, skydot::testing::eq, 4.0F)}},
+        {.id = 0x400, .editor_id = "Lone", .parent = 0x301, .previous = 0x302},
+    };
+    const OpenWorld world(spec);
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    const WorldData& data = world.data;
+
+    const auto* third = data.idle_ptr(0x302);
+    REQUIRE(third != nullptr);
+    CHECK(third->event()->str() == "evC");
+    CHECK(third->previous() == 0x300);
+    REQUIRE(third->conditions() != nullptr);
+    CHECK(third->conditions()->size() == 1);
+    CHECK(data.idle_ptr(0x999) == nullptr);
+    CHECK(data.idle_ptr(0x301)->behaviour()->str() == "a.hkx");
+
+    const auto& children = data.idle_children(0x13);
+    REQUIRE(children.size() == 3);
+    CHECK(children[0]->id() == 0x301);
+    CHECK(children[1]->id() == 0x300);
+    CHECK(children[2]->id() == 0x302);
+    REQUIRE(data.idle_children(0x301).size() == 1);
+    CHECK(data.idle_children(0x301)[0]->id() == 0x400);
+    CHECK(data.idle_children(0x77).empty());
+}

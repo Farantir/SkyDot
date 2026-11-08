@@ -403,6 +403,17 @@ struct ClassSpec {
     std::vector<std::uint8_t> skill_weights = {};
 };
 
+/// IDLE (world.fb 40).
+struct IdleSpec {
+    std::uint32_t id;
+    std::string editor_id = {};
+    std::string event = {};
+    std::string behaviour = {};
+    std::uint32_t parent = 0;
+    std::uint32_t previous = 0;
+    std::vector<ConditionSpec> conditions = {};
+};
+
 /// WOOP (world.fb 36).
 struct WordSpec {
     std::uint32_t id;
@@ -554,6 +565,7 @@ struct WorldSpec {
     std::vector<PerkSpec> perks = {};
     std::vector<ActorValueInfoSpec> actor_value_infos = {};
     std::vector<ClassSpec> classes = {};
+    std::vector<IdleSpec> idles = {};
     std::vector<WordSpec> words_of_power = {};
     std::vector<EnchantmentSpec> enchantments = {};
     std::vector<FormListSpec> form_lists = {};

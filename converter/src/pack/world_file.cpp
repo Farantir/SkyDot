@@ -358,6 +358,14 @@ std::optional<wfb::ClassT> WorldFile::actor_class(std::uint32_t id) const {
     return unpack(lookup(impl_->root->classes(), id));
 }
 
+std::optional<wfb::IdleT> WorldFile::idle(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->idles(), id));
+}
+
+std::vector<wfb::IdleT> WorldFile::idles() const {
+    return unpack_all(impl_->root->idles());
+}
+
 std::vector<wfb::ShoutT> WorldFile::shouts() const {
     return unpack_all(impl_->root->shouts());
 }

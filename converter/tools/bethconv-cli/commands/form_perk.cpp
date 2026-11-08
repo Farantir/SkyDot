@@ -155,6 +155,29 @@ void print_class(const pack::WorldFile& world, std::uint32_t id) {
     std::printf("\n");
 }
 
+void print_idle(const pack::WorldFile& world, std::uint32_t id) {
+    // An action (AACT) is no IDLE, but IDLEs hang under it.
+    if (const auto idle = world.idle(id)) {
+        std::printf("idle 0x%X %s: event '%s' behaviour '%s' parent 0x%X previous 0x%X loop %u-%u "
+                    "flags %u section %u replay %u, %zu conditions\n",
+                    id, idle->editor_id.c_str(), idle->event.c_str(), idle->behaviour.c_str(),
+                    idle->parent, idle->previous, idle->loop_min, idle->loop_max,
+                    static_cast<unsigned>(idle->flags), idle->animation_group_section,
+                    idle->replay_delay, idle->conditions.size());
+        for (const auto& c : idle->conditions) {
+            print_condition(*c, "  ");
+        }
+    } else {
+        std::printf("idle 0x%X: none\n", id);
+    }
+    for (const auto& child : world.idles()) {
+        if (child.parent == id) {
+            std::printf("  child 0x%X %s behaviour '%s' previous 0x%X\n", child.id,
+                        child.editor_id.c_str(), child.behaviour.c_str(), child.previous);
+        }
+    }
+}
+
 void print_perk_census(const pack::WorldFile& world) {
     const auto perks = world.perks();
     std::size_t kinds[3]{};

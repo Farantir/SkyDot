@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 39;
+inline constexpr std::uint32_t k_world_format_version = 40;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -86,6 +86,8 @@ struct WorldStats {
     std::uint64_t perks{};
     std::uint64_t actor_value_infos{};
     std::uint64_t classes{};
+    /// IDLE (format 40).
+    std::uint64_t idles{};
     std::uint64_t harvestables{};
     std::uint64_t benches{};
     /// GMST, IPDS and IPCT (format 30).
@@ -256,6 +258,8 @@ public:
     [[nodiscard]] std::optional<wfb::ActorValueInfoT> actor_value_info_of(int index) const;
     [[nodiscard]] std::vector<wfb::ActorValueInfoT> actor_value_infos() const;
     [[nodiscard]] std::optional<wfb::ClassT> actor_class(std::uint32_t id) const;
+    [[nodiscard]] std::optional<wfb::IdleT> idle(std::uint32_t id) const;
+    [[nodiscard]] std::vector<wfb::IdleT> idles() const;
     [[nodiscard]] std::optional<wfb::ImpactDataSetT> impact_data_set(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactT> impact(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::CombatStyleT> combat_style(std::uint32_t id) const;

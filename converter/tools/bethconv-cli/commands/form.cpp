@@ -29,6 +29,7 @@ struct FormArgs {
     std::vector<std::uint32_t> perks;
     std::vector<std::string> avifs;
     std::vector<std::uint32_t> classes;
+    std::vector<std::uint32_t> idles;
     bool perk_census{};
 };
 
@@ -70,6 +71,9 @@ int cmd_form(const FormArgs& args) {
     }
     for (const auto id : args.classes) {
         print_class(*world, id);
+    }
+    for (const auto id : args.idles) {
+        print_idle(*world, id);
     }
     if (args.perk_census) {
         print_perk_census(*world);
@@ -161,6 +165,7 @@ void register_form(CLI::App& app) {
     form->add_option("--perk", args->perks, "A perk by FormID, with its effects, tabs and conditions");
     form->add_option("--avif", args->avifs, "An actor value by FormID or skill name: use and improve values, perk tree");
     form->add_option("--class", args->classes, "A class by FormID");
+    form->add_option("--idle", args->idles, "An IDLE by FormID, with its conditions and children");
     form->add_flag("--perk-census", args->perk_census, "Count perk effects by kind and entry point");
     form->add_option("--ipct", args->impacts, "An impact by FormID");
     form->callback([args] { set_exit_status(cmd_form(*args)); });

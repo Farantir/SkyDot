@@ -112,6 +112,9 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"MOVT"}.value:
         on_movement_type(merged, data, form_ctx);
         break;
+    case FourCC{"IDLE"}.value:
+        on_idle(merged, data, form_ctx);
+        break;
     case FourCC{"PERK"}.value:
         on_perk(merged, data, form_ctx);
         break;
@@ -1000,6 +1003,33 @@ void BaseCollector::on_class(const record::MergedRecord& merged, io::SpanReader&
     classes_[out.id] = std::move(out);
 }
 
+void BaseCollector::on_idle(const record::MergedRecord& merged, io::SpanReader& data,
+                            const record::FormContext& form_ctx) {
+    auto r = record::parse_idle(data, form_ctx);
+    if (!r) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::IdleT out;
+    out.id = merged.form.value;
+    out.editor_id = r->editor_id;
+    out.event = r->event;
+    out.behaviour = r->behaviour;
+    out.parent = shared_.global(merged, r->parent, failed);
+    out.previous = shared_.global(merged, r->previous, failed);
+    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+    out.loop_min = r->loop_min;
+    out.loop_max = r->loop_max;
+    out.flags = static_cast<wfb::IdleFlags>(r->flags);
+    out.animation_group_section = r->animation_group_section;
+    out.replay_delay = r->replay_delay;
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    idles_[out.id] = std::move(out);
+}
+
 void BaseCollector::on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
     auto r = record::parse_movement_type(data, form_ctx);
@@ -1433,6 +1463,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.perks += perks_.size();
     stats.actor_value_infos += actor_value_infos_.size();
     stats.classes += classes_.size();
+    stats.idles += idles_.size();
     for (const auto& [id, base] : bases_) {
         stats.scripts += base.scripts.size();
         if (base.has_light) {
@@ -1491,6 +1522,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.perks, perks_);
     move_into(world.actor_value_infos, actor_value_infos_);
     move_into(world.classes, classes_);
+    move_into(world.idles, idles_);
     move_into(world.movement_types, movement_types_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {

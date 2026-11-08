@@ -81,6 +81,7 @@ constexpr Dispatch k_dispatch[] = {
     {FourCC{"GMST"}, &run<parse_game_setting>},
     {FourCC{"GLOB"}, &run<parse_global>},
     {FourCC{"CLAS"}, &run<parse_actor_class>},
+    {FourCC{"IDLE"}, &run<parse_idle>},
     {FourCC{"FACT"}, &run<parse_faction>},
     {FourCC{"ENCH"}, &run<parse_enchantment>},
     {FourCC{"SPEL"}, &run<parse_spell>},

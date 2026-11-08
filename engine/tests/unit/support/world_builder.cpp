@@ -430,6 +430,12 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
         b.add_skill_weights(weights_v);
         classes.push_back(b.Finish());
     }
+    std::vector<flatbuffers::Offset<wfb::Idle>> idles;
+    for (const auto& i : by_id(spec.idles)) {
+        const auto cs = conditions(fbb, i.conditions);
+        idles.push_back(wfb::CreateIdleDirect(fbb, i.id, i.editor_id.c_str(), some(i.event), some(i.behaviour),
+                                              i.parent, i.previous, some(cs)));
+    }
     std::vector<flatbuffers::Offset<wfb::Enchantment>> enchantments;
     for (const auto& en : by_id(spec.enchantments)) {
         std::vector<flatbuffers::Offset<wfb::EffectItem>> items;
@@ -527,6 +533,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     const auto perks_v = fbb.CreateVector(perks);
     const auto actor_value_infos_v = fbb.CreateVector(actor_value_infos);
     const auto classes_v = fbb.CreateVector(classes);
+    const auto idles_v = fbb.CreateVector(idles);
     const auto words_v = fbb.CreateVector(words);
     const auto enchantments_v = fbb.CreateVector(enchantments);
     const auto form_lists_v = fbb.CreateVector(form_lists);
@@ -551,6 +558,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_perks(perks_v);
     world.add_actor_value_infos(actor_value_infos_v);
     world.add_classes(classes_v);
+    world.add_idles(idles_v);
     world.add_words_of_power(words_v);
     world.add_enchantments(enchantments_v);
     world.add_form_lists(form_lists_v);
