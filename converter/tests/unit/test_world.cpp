@@ -1079,6 +1079,13 @@ void make_quests(const TempDir& dir) {
     xlkr.u32(0x0000'0A00); // a keyword in Base.esm's space
     xlkr.u32(0x0100'0B01); // itself, local
     bethconv::test::write_field(achr, "XLKR", xlkr);
+    ByteWriter xapd;
+    xapd.u8(0x01); // only its parents activate it
+    bethconv::test::write_field(achr, "XAPD", xapd);
+    ByteWriter xapr;
+    xapr.u32(0x0100'0B01); // itself, local
+    xapr.f32(0.25F);
+    bethconv::test::write_field(achr, "XAPR", xapr);
     ByteWriter refrs;
     bethconv::test::write_record(refrs, "ACHR", 0x0100'0B01, achr.span(), 0x200); // Starts Dead
     ByteWriter temporary;
@@ -1167,6 +1174,13 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(room->links[0].ref() == 0x0200'0B01);
     CHECK(room->links[0].keyword() == 0x0000'0A00);
     CHECK(room->links[0].target() == 0x0200'0B01);
+    // And its activate parents (an ambush trigger activates the creature).
+    REQUIRE(room->activate_parents.size() == 1);
+    CHECK(room->activate_parents[0].ref() == 0x0200'0B01);
+    CHECK(room->activate_parents[0].parent() == 0x0200'0B01);
+    CHECK(room->activate_parents[0].delay() == 0.25F);
+    CHECK((static_cast<std::uint32_t>(actors[0].flags()) &
+           static_cast<std::uint32_t>(bethconv::pack::wfb::RefFlags::parent_activate_only)) != 0);
 
     const auto plugins = file->plugins();
     REQUIRE(plugins.size() == 3);

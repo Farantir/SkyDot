@@ -354,13 +354,27 @@ void PlaceCollector::on_actor(const record::MergedRecord& merged,
     if ((merged.flags & k_starts_dead) != 0) {
         flags |= wfb::RefFlags::starts_dead;
     }
+    if ((actor->activate_parent_flags & 0x01u) != 0) {
+        flags |= wfb::RefFlags::parent_activate_only;
+    }
     actors_.emplace_back(id, shared_.global(merged, actor->base, failed), merged.parent.value,
                          to_fb(actor->position), to_fb(actor->rotation), flags);
+    auto& cell = cells_[merged.parent.value].cell;
     // Packages walk to linked references (beds, work markers, patrols).
     for (const auto& link : actor->linked_references) {
-        cells_[merged.parent.value].cell.links.emplace_back(
-            id, shared_.global(merged, link.keyword, failed),
-            shared_.global(merged, link.target, failed));
+        cell.links.emplace_back(id, shared_.global(merged, link.keyword, failed),
+                                shared_.global(merged, link.target, failed));
+    }
+    // The actor's own scripts, on top of its NPC_'s (masterAmbushScript with its properties), and
+    // the references whose activation activates it (an ambush trigger).
+    if (!actor->scripts.empty()) {
+        auto& scripts = cell.scripts.emplace_back(std::make_unique<wfb::RefScriptsT>());
+        scripts->ref = id;
+        scripts->scripts = shared_.global_scripts(merged, actor->scripts, failed);
+    }
+    for (const auto& parent : actor->activate_parents) {
+        cell.activate_parents.emplace_back(id, shared_.global(merged, parent.reference, failed),
+                                           parent.delay);
     }
     if (failed) {
         ++shared_.stats().unresolved;
