@@ -23,6 +23,7 @@
 #include "render/particles.hpp"
 #include "actors/actor.hpp"
 #include "ai/ai.hpp"
+#include "ai/furniture.hpp"
 #include "physics/player.hpp"
 #include "render/weather.hpp"
 #include "save/save_binding.hpp"
@@ -61,6 +62,7 @@ void skydot_initialize(godot::ModuleInitializationLevel level) {
     GDREGISTER_CLASS(skydot::SkydotWeather);
     GDREGISTER_CLASS(skydot::SkydotImageSpace);
     GDREGISTER_CLASS(skydot::SkydotAi);
+    GDREGISTER_CLASS(skydot::SkydotFurniture);
     GDREGISTER_CLASS(skydot::SkydotClock);
     GDREGISTER_CLASS(skydot::SkydotSaveWriter);
     GDREGISTER_CLASS(skydot::SkydotSaveReader);

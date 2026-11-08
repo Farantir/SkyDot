@@ -19,6 +19,7 @@
 #include "build/build_options.hpp"
 #include "build/decoration.hpp"
 #include "render/grass.hpp"
+#include "actors/actor_graph.hpp"
 #include "actors/locomotion.hpp"
 #include "render/materials.hpp"
 #include "render/terrain.hpp"
@@ -140,6 +141,8 @@ public:
     ActorPlan npc_plan(std::uint32_t npc, std::uint32_t ref) const;
     /// The clips of a behaviour project; read once, then kept.
     const Locomotion& locomotion_of(const std::string& behaviour);
+    /// The actor graphs of behaviour projects, read once, then kept; the pack's bytes of a path.
+    ActorGraphLibrary& graph_library();
 
 private:
     struct BuildStats;
@@ -228,6 +231,8 @@ private:
     std::unordered_map<std::uint32_t, GrassModel> grass_models_;
     /// Behaviour project -> its idle, walk and run clips.
     std::unordered_map<std::string, Locomotion> locomotion_;
+    std::unique_ptr<ActorGraphLibrary> graph_library_;
+    godot::PackedByteArray asset_bytes(const std::string& vpath);
     /// meshes/animationdatasinglefile.txt, read once for every project it holds.
     godot::PackedByteArray animation_single_file_;
     bool animation_single_file_read_{false};

@@ -427,6 +427,15 @@ TEST_CASE("furniture functions read the states of the subject", "[conditions][fu
     CHECK(pass({cond(fn::is_furniture_anim_type, 1.0F, 2)}, world, on2));
     CHECK(pass({cond(fn::is_entering_interaction_quick, 1.0F)}, world, on2));
     CHECK(pass({cond(fn::is_entering_interaction_quick, 0.0F)}, world, on1));
+    world.entry_types[1] = 3;
+    world.exiting_instants.insert(2);
+    CHECK(pass({cond(fn::is_furniture_entry_type, 1.0F, 3)}, world, on1));
+    CHECK_FALSE(pass({cond(fn::is_furniture_entry_type, 1.0F, 1)}, world, on1));
+    CHECK(pass({cond(fn::is_exiting_instant, 1.0F)}, world, on2));
+    CHECK(pass({cond(fn::is_exiting_instant, 0.0F)}, world, on1));
+    world.exiting_quick.insert(1);
+    CHECK(pass({cond(fn::is_exiting_interaction_quick, 1.0F)}, world, on1));
+    CHECK(pass({cond(fn::is_exiting_interaction_quick, 0.0F)}, world, on2));
     ConditionSpec variable = cond(fn::get_graph_variable_int, 7.0F);
     variable.string1 = "iState";
     CHECK(pass({variable}, world, on1));

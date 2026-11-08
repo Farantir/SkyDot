@@ -951,22 +951,34 @@ CellBuilder::ActorClips CellBuilder::actor_clips(const ActorPlan& plan) {
     return out;
 }
 
+godot::PackedByteArray CellBuilder::asset_bytes(const std::string& vpath) {
+    if (assets_ == nullptr) {
+        return {};
+    }
+    if (vpath == "meshes/animationdatasinglefile.txt") {
+        if (!animation_single_file_read_) {
+            animation_single_file_ = assets_->bytes(vpath);
+            animation_single_file_read_ = true;
+        }
+        return animation_single_file_;
+    }
+    return assets_->bytes(vpath);
+}
+
+ActorGraphLibrary& CellBuilder::graph_library() {
+    if (!graph_library_) {
+        graph_library_ = std::make_unique<ActorGraphLibrary>([this](const std::string& vpath) {
+            const godot::PackedByteArray raw = asset_bytes(vpath);
+            return raw.is_empty() ? std::vector<std::uint8_t>() : std::vector<std::uint8_t>(raw.ptr(), raw.ptr() + raw.size());
+        });
+    }
+    return *graph_library_;
+}
+
 const Locomotion& CellBuilder::locomotion_of(const std::string& behaviour) {
     auto it = locomotion_.find(behaviour);
     if (it == locomotion_.end()) {
-        const auto bytes = [&](const std::string& vpath) {
-            if (assets_ == nullptr) {
-                return godot::PackedByteArray();
-            }
-            if (vpath == "meshes/animationdatasinglefile.txt") {
-                if (!animation_single_file_read_) {
-                    animation_single_file_ = assets_->bytes(vpath);
-                    animation_single_file_read_ = true;
-                }
-                return animation_single_file_;
-            }
-            return assets_->bytes(vpath);
-        };
+        const auto bytes = [&](const std::string& vpath) { return asset_bytes(vpath); };
         const auto exists = [&](const std::string& vpath) { return assets_ != nullptr && assets_->has(vpath); };
         it = locomotion_.emplace(behaviour, find_locomotion(behaviour, bytes, exists)).first;
     }

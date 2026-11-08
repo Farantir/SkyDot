@@ -250,6 +250,8 @@ target_sources(skydot PRIVATE
     src/actors/locomotion.cpp
     src/actors/locomotion.hpp
     src/ai/ai.cpp
+    src/ai/furniture.cpp
+    src/ai/furniture.hpp
     src/ai/ai_combat.cpp
     src/ai/ai_flight.cpp
     src/ai/ai.hpp

@@ -490,11 +490,10 @@ std::string read_sequence_generator(Packfile& pf, std::size_t a) {
 }
 
 /// What the generators of a graph are: state machines (by index) and
-/// blenders, whose children are generators in turn.
+/// the generators that wrap others (see child_generators).
 struct GeneratorKinds {
     std::map<std::size_t, std::string> sequences; ///< Sequence generator -> its sequence name.
     std::map<std::size_t, std::int32_t> machines;
-    std::set<std::size_t> blenders;
     /// hkbBehaviorReferenceGenerator -> the behaviour file it names.
     std::map<std::size_t, std::string> references;
 };
@@ -586,14 +585,15 @@ std::string bound_variable(Packfile& pf, std::size_t object, std::string_view me
 }
 
 /// The state machines that run side by side under `generator`: itself if it
-/// is one, the machines of a blender's children (blenders nest).
+/// is one, else those found below it through child_generators (blenders,
+/// modifier generators, selectors... nest).
 void root_machines(Packfile& pf, std::size_t generator, const GeneratorKinds& kinds,
                    std::vector<std::int32_t>& out, int depth = 0) {
     if (const auto machine = kinds.machines.find(generator); machine != kinds.machines.end()) {
         out.push_back(machine->second);
         return;
     }
-    if (depth > 8 || !kinds.blenders.contains(generator)) {
+    if (depth > 16) {
         return;
     }
     for (const std::size_t child : child_generators(pf, generator)) {
@@ -1260,9 +1260,6 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
         }
         for (const std::size_t a : pf.objects_of("hkbStateMachine")) {
             kinds.machines[a] = static_cast<std::int32_t>(kinds.machines.size());
-        }
-        for (const std::size_t a : pf.objects_of("hkbBlenderGenerator")) {
-            kinds.blenders.insert(a);
         }
         // hkbBehaviorReferenceGenerator: behaviorName follows hkbNode, at +72
         // like a clip generator's animationName.

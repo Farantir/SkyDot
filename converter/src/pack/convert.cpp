@@ -466,7 +466,8 @@ std::string ConvertOptions::animation_settings() const {
     // root machines (animation asset format 3). 5: the behaviour file a state
     // references and the variable a machine's start state is bound to
     // (animation asset format 4). 6: toNestedStateId of transitions (format 5).
-    return "animation/6;decoded";
+    // 7: nested machines are found below every wrapping generator, not only blenders.
+    return "animation/7;decoded";
 }
 
 std::string ConvertOptions::sound_settings() const {

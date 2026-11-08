@@ -116,11 +116,11 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
         def->missing = def->project.missing;
         return def;
     }
-    // The character: the project file entry that reads as a character (most keep it in
-    // "Characters\...", some in "LargeCharacters\...").
+    // The character: the project file entry that reads as a character ("Characters\...",
+    // "Characters Female\...", "LargeCharacters\..."); behaviours are not looked at.
     std::string root;
     for (const std::string& file : def->project.files) {
-        if (file.find("characters/") == std::string::npos) {
+        if (file.starts_with("behaviors") || file.find("character") == std::string::npos) {
             continue;
         }
         const std::vector<std::uint8_t> bytes = read(def->project.folder + file);

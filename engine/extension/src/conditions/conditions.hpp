@@ -206,6 +206,14 @@ public:
     [[nodiscard]] virtual std::int32_t furniture_anim_type(std::uint32_t /*ref*/) const { return 0; }
     /// IsEnteringInteractionQuick: `ref` is entering its furniture instantly (placed in it on load).
     [[nodiscard]] virtual bool entering_interaction_quick(std::uint32_t /*ref*/) const { return false; }
+    /// IsFurnitureEntryType: the entry type of the furniture `ref` enters or leaves by, in the value the
+    /// condition's parameter holds (0x10000 for the front of a chair in vanilla); 0 if none. Which
+    /// values the sides have is not established yet.
+    [[nodiscard]] virtual std::int32_t furniture_entry_type(std::uint32_t /*ref*/) const { return 0; }
+    /// IsExitingInstant: `ref` leaves its furniture without the animation.
+    [[nodiscard]] virtual bool exiting_instant(std::uint32_t /*ref*/) const { return false; }
+    /// IsExitingInteractionQuick: `ref` is leaving its furniture instantly (forced out).
+    [[nodiscard]] virtual bool exiting_interaction_quick(std::uint32_t /*ref*/) const { return false; }
     /// An integer variable of `ref`'s behaviour graph; nothing if there is none of that name.
     [[nodiscard]] virtual std::optional<std::int32_t> graph_variable_int(std::uint32_t /*ref*/,
                                                                         const std::string& /*name*/) const {

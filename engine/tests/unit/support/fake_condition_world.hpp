@@ -47,8 +47,8 @@ public:
     std::set<std::pair<std::uint32_t, std::uint32_t>> equipped;      ///< (ref, form)
     std::map<std::pair<std::uint32_t, std::int32_t>, std::int32_t> hand_types; ///< (ref, hand) -> type
     std::set<std::uint32_t> blocking;
-    std::map<std::uint32_t, std::int32_t> sitting, sleeping, furniture_types;
-    std::set<std::uint32_t> entering_quick;
+    std::map<std::uint32_t, std::int32_t> sitting, sleeping, furniture_types, entry_types;
+    std::set<std::uint32_t> entering_quick, exiting_quick, exiting_instants;
     std::map<std::pair<std::uint32_t, std::string>, std::int32_t> graph_ints;
     std::map<std::uint32_t, std::uint32_t> cells;
     std::set<std::uint32_t> interiors;
@@ -142,6 +142,9 @@ public:
     std::int32_t sleeping_state(std::uint32_t r) const override { return get(sleeping, r, 0); }
     std::int32_t furniture_anim_type(std::uint32_t r) const override { return get(furniture_types, r, 0); }
     bool entering_interaction_quick(std::uint32_t r) const override { return entering_quick.contains(r); }
+    std::int32_t furniture_entry_type(std::uint32_t r) const override { return get(entry_types, r, 0); }
+    bool exiting_instant(std::uint32_t r) const override { return exiting_instants.contains(r); }
+    bool exiting_interaction_quick(std::uint32_t r) const override { return exiting_quick.contains(r); }
     std::optional<std::int32_t> graph_variable_int(std::uint32_t r, const std::string& n) const override {
         const auto it = graph_ints.find({r, n});
         return it != graph_ints.end() ? std::optional<std::int32_t>(it->second) : std::nullopt;

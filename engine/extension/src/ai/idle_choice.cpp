@@ -12,9 +12,14 @@ namespace wfb = bethconv::pack::wfb;
 
 constexpr int k_max_depth = 32; ///< Only against a loop in a broken tree.
 
+/// A behaviour file as an IDLE's DNAM spells it (`actors/character/behaviors/0_master.hkx`): lower case,
+/// forward slashes, no leading `meshes/`.
 std::string spelled(std::string_view path) {
     std::string out = ascii_lower(std::string(path));
     std::ranges::replace(out, '\\', '/');
+    if (out.starts_with("meshes/")) {
+        out.erase(0, 7);
+    }
     return out;
 }
 

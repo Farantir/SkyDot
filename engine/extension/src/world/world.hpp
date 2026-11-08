@@ -502,6 +502,8 @@ public:
     /// The open world.fb and its indexes; a closed WorldData until `open`
     /// succeeds.
     const WorldData& data() const { return *data_; }
+    /// The actor graphs of behaviour projects (actors/actor_graph.hpp).
+    ActorGraphLibrary& graph_library() { return builder_.graph_library(); }
     /// Where actors are, when not where the editor placed them.
     ActorPlacement& placement() { return placement_; }
     const ActorPlacement& placement() const { return placement_; }
