@@ -465,8 +465,8 @@ std::string ConvertOptions::animation_settings() const {
     // (animation asset format 2). 4: sequence generators, nested machines and
     // root machines (animation asset format 3). 5: the behaviour file a state
     // references and the variable a machine's start state is bound to
-    // (animation asset format 4).
-    return "animation/5;decoded";
+    // (animation asset format 4). 6: toNestedStateId of transitions (format 5).
+    return "animation/6;decoded";
 }
 
 std::string ConvertOptions::sound_settings() const {

@@ -185,7 +185,7 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
         std::vector<flatbuffers::Offset<afb::StateTransition>> out;
         for (const auto& t : list) {
             const auto condition = b.CreateString(t.condition);
-            out.push_back(afb::CreateStateTransition(b, t.event, t.to_state, t.has_condition, condition));
+            out.push_back(afb::CreateStateTransition(b, t.event, t.to_state, t.has_condition, condition, t.to_nested_state));
         }
         return b.CreateVector(out);
     };
@@ -498,7 +498,8 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
             return;
         }
         for (const auto* t : *list) {
-            to.push_back(animation::StateTransition{t->event(), t->to_state(), t->has_condition(), text(t->condition())});
+            to.push_back(animation::StateTransition{t->event(), t->to_state(), t->has_condition(), text(t->condition()),
+                                                           t->to_nested_state()});
         }
     };
     const auto read_ints = [](const auto* list, std::vector<std::int32_t>& to) {

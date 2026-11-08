@@ -152,6 +152,10 @@ table StateTransition {
     to_state: int;
     has_condition: bool;
     condition: string;
+    /// Added in format 5: toNestedStateId when it is valid (the state id to
+    /// enter in the target state's nested machine instead of its start
+    /// state), else -1.
+    to_nested_state: int = -1;
 }
 
 table BehaviorState {

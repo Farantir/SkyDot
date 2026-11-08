@@ -243,7 +243,7 @@ TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavio
     cg.add_triggers(triggers);
     const auto clip = cg.Finish();
     const auto clips = b.CreateVector(std::vector{clip});
-    const auto transition = afb::CreateStateTransition(b, 0, 1, true, b.CreateString("!x"));
+    const auto transition = afb::CreateStateTransition(b, 0, 1, true, b.CreateString("!x"), 4);
     const auto transitions = b.CreateVector(std::vector{transition});
     const auto s0 = afb::CreateBehaviorState(b, 0, b.CreateString("Start"), 0, 0, 0, transitions);
     const auto s1 = afb::CreateBehaviorState(b, 1, b.CreateString("End"), -1, 0, 0, 0, 0, 0,
@@ -272,6 +272,7 @@ TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavio
     REQUIRE(def.states[0].transitions.size() == 1);
     CHECK(def.states[0].transitions[0].event == "Go");
     CHECK(def.states[0].transitions[0].to_state == 1);
+    CHECK(def.states[0].transitions[0].to_nested_state == 4);
     REQUIRE(def.clips.size() == 1);
     CHECK(def.clips[0].speed == Approx(0.8F));
     REQUIRE(def.clips[0].triggers.size() == 1);
@@ -334,6 +335,36 @@ TEST_CASE("a state that runs machines starts them side by side, and its events g
     CHECK(has(out.events, "Apex"));
     CHECK(set.machine(2).state()->name == "Hit");
     CHECK(set.machine(2).state()->sequence == "playanim03");
+}
+
+TEST_CASE("a transition with a nested state id starts the nested machine there", "[behavior]") {
+    BehaviorGraphDef def;
+    BehaviorDef root;
+    root.start_state = 0;
+    root.states = {{0, "Idle", -1, {}, {}, {}}, {1, "Trap", -1, {}, {}, {}, "", {1}}};
+    root.wildcard = {{"EnterPlain", 1, -1}, {"EnterHole", 1, 8}};
+    BehaviorDef nested;
+    nested.start_state = 7;
+    nested.states = {{7, "Land", -1, {}, {}, {}}, {8, "HoleIdle", -1, {}, {}, {{"Exit", 7}}}};
+    def.machines = {root, nested};
+    def.roots = {0};
+    {
+        BehaviorSet set(def);
+        BehaviorOutput out;
+        set.start(out);
+        set.send("EnterPlain", out);
+        CHECK(set.machine(1).state()->name == "Land");
+    }
+    BehaviorSet set(def);
+    BehaviorOutput out;
+    set.start(out);
+    CHECK(set.running() == std::vector<int>{0});
+    set.send("EnterHole", out);
+    REQUIRE(set.machine(1).state() != nullptr);
+    CHECK(set.machine(1).state()->name == "HoleIdle");
+    out = {};
+    set.send("Exit", out);
+    CHECK(set.machine(1).state()->name == "Land");
 }
 
 TEST_CASE("a graph's roots are the machines that run; others wait to be named", "[behavior]") {

@@ -630,7 +630,7 @@ converts.
 ## Animation assets
 
 Every `.hkx` becomes an `.animfb`: a FlatBuffer (identifier `BAN1`, schema
-`formats/schema/animation.fbs`, its own `format_version`, 4) with whatever
+`formats/schema/animation.fbs`, its own `format_version`, 5) with whatever
 skeletons (`hkaSkeleton`) and clips (`hkaSplineCompressedAnimation` or
 `hkaInterleavedUncompressedAnimation`, with their binding and annotations)
 the file holds, a behaviour character's names (`hkbCharacterStringData`)
@@ -643,7 +643,9 @@ format 2). A state also keeps the behaviour file its generator references
 (`hkbBehaviorReferenceGenerator`, found through blenders, bone switches,
 selectors, modifier generators and state tagging; `behavior`) and a machine the
 graph variable its `startStateId` is bound to (`hkbVariableBindingSet`;
-`start_state_variable`; format 4). Other generators, modifiers and physics are
+`start_state_variable`; format 4). A transition keeps `to_nested_state`
+(toNestedStateId when its valid flag is set, else -1; format 5): the state to enter in the
+target state's nested machine. Other generators, modifiers and physics are
 not decoded; such files still convert, so every path resolves.
 
 Clips stay B-splines, as Havok stores them: sampled per frame, vanilla SE's

@@ -48,7 +48,7 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
         }
         for (const auto* t : *list) {
             // Conditions are not evaluated: see the header.
-            to.push_back({event_name(t->event()), t->to_state()});
+            to.push_back({event_name(t->event()), t->to_state(), t->to_nested_state()});
         }
     };
     // Clips: every clip generator of the file, indexed as the states say.
@@ -136,6 +136,7 @@ BehaviorMachine::BehaviorMachine(BehaviorDef def) : def_(std::move(def)) {}
 
 void BehaviorMachine::stop() {
     current_ = -1;
+    nested_entry_ = -1;
     time_ = 0.0F;
     held_clip_ = -1;
     held_time_ = 0.0F;
@@ -161,8 +162,11 @@ int BehaviorMachine::clip() const {
     return current_ >= 0 ? def_.states[static_cast<std::size_t>(current_)].clip : -1;
 }
 
-void BehaviorMachine::start(BehaviorOutput& out) {
-    const int index = find_state(def_.start_state);
+void BehaviorMachine::start(BehaviorOutput& out, int state_id) {
+    int index = state_id >= 0 ? find_state(state_id) : -1;
+    if (index < 0) {
+        index = find_state(def_.start_state);
+    }
     if (index < 0) {
         return;
     }
@@ -227,6 +231,7 @@ void BehaviorMachine::change(int index, std::string_view cause, BehaviorOutput& 
         }
     }
     current_ = index;
+    nested_entry_ = -1;
     const BehaviorState& now = def_.states[static_cast<std::size_t>(index)];
     time_ = 0.0F;
     backwards_ = false;
@@ -277,6 +282,7 @@ void BehaviorMachine::drain(BehaviorOutput& out, bool* first_matched) {
             continue;
         }
         change(target, event, out);
+        nested_entry_ = taken->to_nested_state;
     }
     queue_.clear();
 }
@@ -396,12 +402,23 @@ void BehaviorSet::refresh(BehaviorOutput& out) {
                 }
             }
         }
+        // The state a machine starts in when a running machine's current state
+        // nests it and was entered with a toNestedStateId.
+        std::vector<int> entry(machines_.size(), -1);
+        for (std::size_t i = 0; i < machines_.size(); ++i) {
+            const BehaviorState* state = running_[i] ? machines_[i].state() : nullptr;
+            if (state != nullptr && machines_[i].nested_entry() >= 0) {
+                for (const int id : state->nested) {
+                    entry[static_cast<std::size_t>(id)] = machines_[i].nested_entry();
+                }
+            }
+        }
         bool changed = false;
         for (std::size_t i = 0; i < machines_.size(); ++i) {
             if (wanted[i] && !running_[i]) {
                 running_[i] = true;
                 BehaviorOutput part;
-                machines_[i].start(part);
+                machines_[i].start(part, entry[i]);
                 merge(static_cast<int>(i), part, out);
                 changed = true;
             } else if (!wanted[i] && running_[i]) {

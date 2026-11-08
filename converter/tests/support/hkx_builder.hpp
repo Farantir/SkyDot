@@ -77,6 +77,7 @@ struct HkxTransition {
     std::int32_t event{};
     std::int32_t to_state{};
     std::string condition; ///< hkbExpressionCondition when not empty.
+    std::int32_t to_nested_state{-1}; ///< toNestedStateId with its valid flag when not -1.
 };
 
 struct HkxState {
@@ -282,6 +283,13 @@ public:
             for (std::size_t i = 0; i < list.size(); ++i) {
                 put<std::int32_t>(d + 72 * i + 48, list[i].event);
                 put<std::int32_t>(d + 72 * i + 52, list[i].to_state);
+                if (list[i].to_nested_state >= 0) {
+                    put<std::int32_t>(d + 72 * i + 60, list[i].to_nested_state);
+                    put<std::int16_t>(d + 72 * i + 66, 0x2000);
+                } else {
+                    // A stale id without the valid flag must be ignored.
+                    put<std::int32_t>(d + 72 * i + 60, 5);
+                }
                 if (!list[i].condition.empty()) {
                     const std::size_t c = object("hkbExpressionCondition", 32);
                     string_ptr(c + 16, list[i].condition);

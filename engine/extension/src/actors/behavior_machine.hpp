@@ -50,6 +50,9 @@ struct BehaviorClip {
 struct BehaviorTransition {
     std::string event;
     int to_state{-1}; ///< A state id.
+    /// toNestedStateId: the state id to start the target state's nested
+    /// machine in, instead of its start state; -1 for none.
+    int to_nested_state{-1};
 };
 
 struct BehaviorState {
@@ -118,8 +121,9 @@ class BehaviorMachine {
 public:
     explicit BehaviorMachine(BehaviorDef def);
 
-    /// Enter the start state.
-    void start(BehaviorOutput& out);
+    /// Enter the start state, or the state with id `state_id` if it is not
+    /// -1 and the machine has it.
+    void start(BehaviorOutput& out, int state_id = -1);
     /// An event from outside; not echoed in `out.events`.
     void send(std::string_view event, BehaviorOutput& out);
     void advance(float seconds, BehaviorOutput& out);
@@ -134,6 +138,10 @@ public:
     [[nodiscard]] float pose_time() const { return clip() >= 0 ? time_ : held_time_; }
     [[nodiscard]] const BehaviorState* state() const;
     [[nodiscard]] const BehaviorDef& def() const { return def_; }
+    /// The nested state id of the transition that entered the current state
+    /// (BehaviorTransition::to_nested_state), -1 if it had none or the state
+    /// was not entered by a transition.
+    [[nodiscard]] int nested_entry() const { return nested_entry_; }
     /// Leave the machine unstarted again (its state is forgotten, no events).
     void stop();
 
@@ -162,6 +170,7 @@ private:
 
     BehaviorDef def_;
     int current_{-1};
+    int nested_entry_{-1};
     float time_{};
     int held_clip_{-1}; ///< The last clip played, for states without one.
     float held_time_{};

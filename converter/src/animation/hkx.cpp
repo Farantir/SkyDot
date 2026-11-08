@@ -461,6 +461,12 @@ std::vector<StateTransition> transition_infos(Packfile& pf, std::size_t at) {
         StateTransition tr;
         tr.event = b.at<std::int32_t>(t + 48);
         tr.to_state = b.at<std::int32_t>(t + 52);
+        // fromNestedStateId at +56, toNestedStateId at +60, priority int16 at
+        // +64, flags int16 at +66 (hk_2010.2 hkbStateMachineTransitionInfo);
+        // 0x2000 is FLAG_TO_NESTED_STATE_ID_IS_VALID.
+        if ((static_cast<std::uint16_t>(b.at<std::int16_t>(t + 66)) & 0x2000u) != 0) {
+            tr.to_nested_state = b.at<std::int32_t>(t + 60);
+        }
         if (const auto condition = pf.pointer(t + 40)) {
             tr.has_condition = true;
             // hkbExpressionCondition: expression hkStringPtr at +16; other

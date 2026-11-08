@@ -353,6 +353,8 @@ TEST_CASE("a behaviour graph's events, clip generators and state machine are rea
         CHECK(m.states[2].transitions[0].condition == "!BPlayerNear");
         REQUIRE(m.wildcard_transitions.size() == 1);
         CHECK(m.wildcard_transitions[0].event == 13);
+        CHECK(m.wildcard_transitions[0].to_nested_state == -1);
+        CHECK(m.states[0].transitions[1].to_nested_state == -1);
     };
     check(*read);
     const auto asset = bethconv::pack::write_animation_asset(*read);
@@ -392,6 +394,28 @@ TEST_CASE("sequence generators, nested machines and the root of a graph are read
         CHECK(rest.generator == -1);
         CHECK(rest.nested_machines.empty());
         CHECK(g.state_machines[static_cast<std::size_t>(index["Inner1"])].states[0].sequence == "playanim02");
+    };
+    check(*read);
+    const auto back = bethconv::pack::read_animation_asset(bethconv::pack::write_animation_asset(*read), "b.animfb");
+    REQUIRE(back.has_value());
+    check(*back);
+}
+
+TEST_CASE("a transition keeps its nested target state when the flag says it is valid", "[animation][hkx]") {
+    using bethconv::test::HkxState;
+    using bethconv::test::HkxTransition;
+    HkxBuilder b(8);
+    b.add_behavior_strings({"A", "B"}, {});
+    const auto m = b.add_state_machine("M", 0, {HkxState{0, "S", static_cast<std::size_t>(-1), {}, {}, {}}},
+                                       {HkxTransition{0, 0, "", 8}, HkxTransition{1, 0, "", -1}});
+    b.add_behavior_graph(m);
+    const auto read = read_hkx(b.bytes(), "b.hkx");
+    REQUIRE(read.has_value());
+    const auto check = [](const bethconv::animation::HkxFile& file) {
+        const auto& w = file.behavior_graphs[0].state_machines[0].wildcard_transitions;
+        REQUIRE(w.size() == 2);
+        CHECK(w[0].to_nested_state == 8);
+        CHECK(w[1].to_nested_state == -1);
     };
     check(*read);
     const auto back = bethconv::pack::read_animation_asset(bethconv::pack::write_animation_asset(*read), "b.animfb");

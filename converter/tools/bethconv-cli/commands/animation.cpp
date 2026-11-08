@@ -33,8 +33,11 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
         const auto print_transitions = [&](const char* indent,
                                            const std::vector<bethconv::animation::StateTransition>& list) {
             for (const auto& t : list) {
-                std::printf("%s%s -> %d%s%s\n", indent, event_name(t.event).c_str(), t.to_state,
-                            t.has_condition ? " if " : "", t.condition.c_str());
+                std::printf("%s%s -> %d", indent, event_name(t.event).c_str(), t.to_state);
+                if (t.to_nested_state >= 0) {
+                    std::printf(" (nested %d)", t.to_nested_state);
+                }
+                std::printf("%s%s\n", t.has_condition ? " if " : "", t.condition.c_str());
             }
         };
         std::printf("# %s: %zu events, %zu variables\n", vpath.c_str(), graph.event_names.size(),

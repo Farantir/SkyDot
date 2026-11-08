@@ -159,6 +159,10 @@ struct StateTransition {
     std::int32_t to_state{-1}; ///< A state id.
     bool has_condition{};
     std::string condition; ///< Expression text of an hkbExpressionCondition.
+    /// A state id inside the target state's nested machine to enter instead
+    /// of that machine's start state (toNestedStateId, only with
+    /// FLAG_TO_NESTED_STATE_ID_IS_VALID); -1 when not valid.
+    std::int32_t to_nested_state{-1};
 };
 
 struct BehaviorState {
