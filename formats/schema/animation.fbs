@@ -196,6 +196,10 @@ table BehaviorGraph {
     /// Added in format 3: the machines that run side by side (indexes into
     /// state_machines); empty = only the first.
     root_machines: [int];
+    /// Added in format 6: the initial value of each variable (variable_names
+    /// order; bools as 0/1, ints and reals as numbers; 0 for the vector,
+    /// quaternion and pointer variables), empty if the file has none.
+    variable_values: [float];
 }
 
 /// A clip generator of a behaviour project, as the animationdata files list

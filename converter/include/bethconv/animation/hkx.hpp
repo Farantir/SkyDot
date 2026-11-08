@@ -200,6 +200,11 @@ struct StateMachine {
 struct BehaviorGraph {
     std::vector<std::string> event_names;
     std::vector<std::string> variable_names;
+    /// The initial value of each variable (`variable_names` order) from the graph's
+    /// hkbVariableValueSet: bool, int8/16/32 and real as numbers; 0 for the vector,
+    /// quaternion and pointer variables. Empty when the layout is 4-byte or the
+    /// file has no value set.
+    std::vector<float> variable_values;
     std::vector<StateMachine> state_machines;
     /// Indexes into state_machines of the machines that run side by side: the
     /// root generator if it is a machine, else the machines of the children

@@ -212,7 +212,9 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
         const auto events = b.CreateVectorOfStrings(graph.event_names);
         const auto variables = b.CreateVectorOfStrings(graph.variable_names);
         const auto machines_off = b.CreateVector(machines);
-        graphs.push_back(afb::CreateBehaviorGraph(b, events, variables, machines_off, b.CreateVector(graph.root_machines)));
+        const auto roots_off = b.CreateVector(graph.root_machines);
+        const auto values_off = b.CreateVector(graph.variable_values);
+        graphs.push_back(afb::CreateBehaviorGraph(b, events, variables, machines_off, roots_off, values_off));
     }
 
     const auto skeletons_off = b.CreateVector(skeletons);
@@ -521,6 +523,9 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
                 }
             }
             read_ints(g->root_machines(), graph.root_machines);
+            if (const auto* values = g->variable_values()) {
+                graph.variable_values.assign(values->begin(), values->end());
+            }
             if (const auto* machines = g->state_machines()) {
                 for (const auto* m : *machines) {
                     animation::StateMachine machine;

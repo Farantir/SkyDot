@@ -467,7 +467,9 @@ std::string ConvertOptions::animation_settings() const {
     // references and the variable a machine's start state is bound to
     // (animation asset format 4). 6: toNestedStateId of transitions (format 5).
     // 7: nested machines are found below every wrapping generator, not only blenders.
-    return "animation/7;decoded";
+    // 8: the initial values of the graph variables (animation asset format 6). 9: a state's clip is
+    // found below modifier generators, selectors and blenders too.
+    return "animation/9;decoded";
 }
 
 std::string ConvertOptions::sound_settings() const {

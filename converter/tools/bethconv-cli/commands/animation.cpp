@@ -45,6 +45,10 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
         for (std::size_t i = 0; i < graph.event_names.size(); ++i) {
             std::printf("  event %zu %s\n", i, graph.event_names[i].c_str());
         }
+        for (std::size_t i = 0; i < graph.variable_names.size(); ++i) {
+            std::printf("  variable %zu %s = %g\n", i, graph.variable_names[i].c_str(),
+                        i < graph.variable_values.size() ? static_cast<double>(graph.variable_values[i]) : 0.0);
+        }
         std::printf("  root machines:");
         for (const auto id : graph.root_machines) {
             const auto index = static_cast<std::size_t>(id);

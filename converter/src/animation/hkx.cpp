@@ -433,6 +433,39 @@ std::vector<std::string> string_array(Packfile& pf, std::size_t at, const char* 
     return out;
 }
 
+/// The initial values of a behaviour graph's variables. hkbBehaviorGraphData (SE, 8-byte
+/// pointers): attributeDefaults at +16, variableInfos at +32 (6 bytes each: role int16, role
+/// flags int16, type int8), characterPropertyInfos +48, eventInfos +64, word min and max
+/// values +80 and +96, the variableInitialValues pointer at +112. hkbVariableValueSet: the
+/// word values (4 bytes each) at +16, in the order of the variables of a word type (0 bool,
+/// 1 int8, 2 int16, 3 int32, 4 real); the others (vector3, vector4, quaternion, pointer)
+/// have none. Empty when the counts do not fit the variable names.
+std::vector<float> read_variable_values(Packfile& pf, std::size_t data, std::size_t variables) {
+    std::vector<float> out;
+    const auto infos = pf.array(data + 32, 6, "variable infos");
+    const auto set = pf.pointer(data + 112);
+    if (!set || infos.count != variables || !pf.bytes().ok()) {
+        return out;
+    }
+    const auto words = pf.array(*set + 16, 4, "variable word values");
+    Bytes& b = pf.bytes();
+    std::size_t next = 0;
+    for (std::size_t i = 0; i < infos.count && b.ok(); ++i) {
+        const auto type = b.at<std::int8_t>(infos.data + i * 6 + 4);
+        float value = 0.0F;
+        if (type >= 0 && type <= 4) {
+            if (next >= words.count) {
+                return {};
+            }
+            const std::size_t at = words.data + next++ * 4;
+            value = type == 4 ? b.at<float>(at)
+                              : static_cast<float>(type == 0 ? b.at<std::int32_t>(at) != 0 : b.at<std::int32_t>(at));
+        }
+        out.push_back(value);
+    }
+    return b.ok() ? out : std::vector<float>{};
+}
+
 /// hkbStateMachineEventPropertyArray at the pointer stored at `at`: event ids.
 std::vector<std::int32_t> event_properties(Packfile& pf, std::size_t at) {
     std::vector<std::int32_t> out;
@@ -584,6 +617,24 @@ std::string bound_variable(Packfile& pf, std::size_t object, std::string_view me
     return {};
 }
 
+/// The clip generator `generator` is, or the first found below the generators that wrap others
+/// (modifier generators, selectors, blenders...); -1 if there is none.
+std::int32_t clip_below(Packfile& pf, std::size_t generator, const std::map<std::size_t, std::int32_t>& clips,
+                        int depth = 0) {
+    if (const auto it = clips.find(generator); it != clips.end()) {
+        return it->second;
+    }
+    if (depth > 16) {
+        return -1;
+    }
+    for (const std::size_t child : child_generators(pf, generator)) {
+        if (const std::int32_t found = clip_below(pf, child, clips, depth + 1); found >= 0) {
+            return found;
+        }
+    }
+    return -1;
+}
+
 /// The state machines that run side by side under `generator`: itself if it
 /// is one, else those found below it through child_generators (blenders,
 /// modifier generators, selectors... nest).
@@ -625,8 +676,7 @@ StateMachine read_state_machine(Packfile& pf, std::size_t a,
         s.exit_events = event_properties(pf, *info + 72);
         s.transitions = transition_infos(pf, *info + 80);
         if (const auto generator = pf.pointer(*info + 88)) {
-            const auto it = generators.find(*generator);
-            s.generator = it == generators.end() ? -1 : it->second;
+            s.generator = clip_below(pf, *generator, generators);
             if (const auto sequence = kinds.sequences.find(*generator); sequence != kinds.sequences.end()) {
                 s.sequence = sequence->second;
             }
@@ -1254,6 +1304,11 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
         out.behavior_graphs.push_back(std::move(graph));
     }
     if (pf.ptr() == 8 && !out.behavior_graphs.empty()) {
+        for (const std::size_t a : pf.objects_of("hkbBehaviorGraphData")) {
+            out.behavior_graphs.front().variable_values =
+                read_variable_values(pf, a, out.behavior_graphs.front().variable_names.size());
+            break;
+        }
         GeneratorKinds kinds;
         for (const std::size_t a : pf.objects_of("BGSGamebryoSequenceGenerator")) {
             kinds.sequences[a] = read_sequence_generator(pf, a);
