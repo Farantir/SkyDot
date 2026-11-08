@@ -1,0 +1,305 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#include "actors/actor_graph.hpp"
+
+#include "assets/vpath.hpp"
+
+#include <algorithm>
+#include <cmath>
+
+namespace skydot {
+namespace {
+
+namespace afb = bethconv::pack::afb;
+
+/// Joins behaviour graphs into one definition, expanding references.
+class Expander {
+public:
+    Expander(ActorGraphDef& out, const AssetReader& read) : out_(out), read_(read) {}
+
+    /// The root machines of the graph file `file` (a virtual path) in the joined graph; nothing if the
+    /// pack lacks it or it has no machines. A file included twice is joined once.
+    std::vector<int> include(const std::string& file) {
+        if (const auto done = included_.find(file); done != included_.end()) {
+            return done->second;
+        }
+        included_[file] = {}; // a reference back to a graph being joined finds nothing
+        const std::vector<std::uint8_t> bytes = read_(file);
+        const auto* asset = animation_asset(bytes);
+        if (asset == nullptr) {
+            return {};
+        }
+        BehaviorGraphDef graph = behavior_graph_from_asset(*asset);
+        if (graph.machines.empty()) {
+            return {};
+        }
+        const int machine_base = static_cast<int>(out_.graph.machines.size());
+        const int clip_base = static_cast<int>(out_.graph.clips.size());
+        for (BehaviorClip& clip : graph.clips) {
+            out_.clip_files.push_back(normalize_path(out_.project.folder + clip.animation));
+            out_.graph.clips.push_back(std::move(clip));
+        }
+        for (BehaviorDef& machine : graph.machines) {
+            for (BehaviorState& state : machine.states) {
+                if (state.clip >= 0) {
+                    state.clip += clip_base;
+                }
+                for (int& id : state.nested) {
+                    id += machine_base;
+                }
+            }
+            out_.graph.machines.push_back(std::move(machine));
+        }
+        std::vector<int> roots;
+        for (const int root : graph.roots) {
+            roots.push_back(root + machine_base);
+        }
+        included_[file] = roots;
+        // Expand the references of the machines just added (they may add more).
+        const int end = static_cast<int>(out_.graph.machines.size());
+        for (int m = machine_base; m < end; ++m) {
+            for (std::size_t s = 0; s < out_.graph.machines[static_cast<std::size_t>(m)].states.size(); ++s) {
+                const std::string behavior =
+                    out_.graph.machines[static_cast<std::size_t>(m)].states[s].behavior;
+                if (behavior.empty()) {
+                    continue;
+                }
+                const std::vector<int> referenced = include(normalize_path(out_.project.folder + behavior));
+                auto& nested = out_.graph.machines[static_cast<std::size_t>(m)].states[s].nested;
+                for (const int id : referenced) {
+                    if (std::ranges::find(nested, id) == nested.end()) {
+                        nested.push_back(id);
+                    }
+                }
+            }
+        }
+        return roots;
+    }
+
+private:
+    ActorGraphDef& out_;
+    const AssetReader& read_;
+    std::unordered_map<std::string, std::vector<int>> included_;
+};
+
+/// The machines' depths: roots 0, a state's nested machines one deeper than the machine.
+std::vector<int> depths(const BehaviorGraphDef& graph) {
+    std::vector<int> depth(graph.machines.size(), -1);
+    std::vector<int> queue;
+    for (const int root : graph.roots) {
+        if (root >= 0 && static_cast<std::size_t>(root) < depth.size() && depth[static_cast<std::size_t>(root)] < 0) {
+            depth[static_cast<std::size_t>(root)] = 0;
+            queue.push_back(root);
+        }
+    }
+    for (std::size_t i = 0; i < queue.size(); ++i) {
+        const int m = queue[i];
+        for (const BehaviorState& state : graph.machines[static_cast<std::size_t>(m)].states) {
+            for (const int id : state.nested) {
+                if (depth[static_cast<std::size_t>(id)] < 0) {
+                    depth[static_cast<std::size_t>(id)] = depth[static_cast<std::size_t>(m)] + 1;
+                    queue.push_back(id);
+                }
+            }
+        }
+    }
+    return depth;
+}
+
+float lerp(float a, float b, float f) { return a + (b - a) * f; }
+
+} // namespace
+
+std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behaviour, const AssetReader& read) {
+    auto def = std::make_shared<ActorGraphDef>();
+    def->project = read_animation_project(behaviour, read);
+    if (!def->project.missing.empty()) {
+        def->missing = def->project.missing;
+        return def;
+    }
+    // The character: the project file entry that reads as a character (most keep it in
+    // "Characters\...", some in "LargeCharacters\...").
+    std::string root;
+    for (const std::string& file : def->project.files) {
+        if (file.find("characters/") == std::string::npos) {
+            continue;
+        }
+        const std::vector<std::uint8_t> bytes = read(def->project.folder + file);
+        const auto* asset = animation_asset(bytes);
+        if (asset != nullptr && asset->characters() != nullptr && asset->characters()->size() > 0) {
+            const auto* behavior = asset->characters()->Get(0)->behavior();
+            if (behavior != nullptr) {
+                root = normalize_path(def->project.folder + behavior->str());
+            }
+            break;
+        }
+    }
+    if (root.empty()) {
+        def->missing = "no character with a behaviour in " + def->project.name;
+        return def;
+    }
+    def->behaviour = root;
+    Expander expander(*def, read);
+    def->graph.roots = expander.include(root);
+    if (def->graph.machines.empty() || def->graph.roots.empty()) {
+        def->missing = "no behaviour graph " + root;
+        return def;
+    }
+    def->depth = depths(def->graph);
+    return def;
+}
+
+std::optional<RootMotion> ActorGraphDef::root_motion(const std::string& clip, float time) const {
+    const ProjectClip* project_clip = project.clip(clip);
+    if (project_clip == nullptr) {
+        return std::nullopt;
+    }
+    const auto it = project.motions.find(project_clip->animation);
+    if (it == project.motions.end()) {
+        return std::nullopt;
+    }
+    const ProjectMotion& motion = it->second;
+    RootMotion out;
+    if (!motion.translations.empty()) {
+        const auto& keys = motion.translations;
+        std::size_t next = 0;
+        while (next < keys.size() && keys[next][0] < time) {
+            ++next;
+        }
+        if (next == 0) {
+            out.x = keys[0][1];
+            out.y = keys[0][2];
+            out.z = keys[0][3];
+        } else if (next == keys.size()) {
+            out.x = keys.back()[1];
+            out.y = keys.back()[2];
+            out.z = keys.back()[3];
+        } else {
+            const auto& a = keys[next - 1];
+            const auto& b = keys[next];
+            const float span = b[0] - a[0];
+            const float f = span > 0.0F ? (time - a[0]) / span : 1.0F;
+            out.x = lerp(a[1], b[1], f);
+            out.y = lerp(a[2], b[2], f);
+            out.z = lerp(a[3], b[3], f);
+        }
+    }
+    if (!motion.rotations.empty()) {
+        const auto& keys = motion.rotations;
+        std::size_t next = 0;
+        while (next < keys.size() && keys[next][0] < time) {
+            ++next;
+        }
+        std::array<float, 4> q{};
+        if (next == 0 || next == keys.size()) {
+            const auto& k = keys[next == 0 ? 0 : keys.size() - 1];
+            q = {k[1], k[2], k[3], k[4]};
+        } else {
+            const auto& a = keys[next - 1];
+            const auto& b = keys[next];
+            const float span = b[0] - a[0];
+            const float f = span > 0.0F ? (time - a[0]) / span : 1.0F;
+            // Normalised lerp along the shorter arc.
+            const float dot = a[1] * b[1] + a[2] * b[2] + a[3] * b[3] + a[4] * b[4];
+            const float sign = dot < 0.0F ? -1.0F : 1.0F;
+            for (std::size_t i = 0; i < 4; ++i) {
+                q[i] = lerp(a[i + 1], sign * b[i + 1], f);
+            }
+        }
+        const float length = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
+        if (length > 0.0F) {
+            for (float& c : q) {
+                c /= length;
+            }
+            out.yaw = std::atan2(2.0F * (q[3] * q[2] + q[0] * q[1]), 1.0F - 2.0F * (q[1] * q[1] + q[2] * q[2]));
+        }
+    }
+    return out;
+}
+
+std::shared_ptr<const ActorGraphDef> ActorGraphLibrary::graph(const std::string& behaviour) {
+    std::string key = normalize_path(behaviour);
+    if (!key.starts_with("meshes/")) {
+        key = "meshes/" + key;
+    }
+    auto it = graphs_.find(key);
+    if (it == graphs_.end()) {
+        it = graphs_.emplace(key, build_actor_graph(key, read_)).first;
+    }
+    return it->second;
+}
+
+float ActorGraphLibrary::clip_duration(const std::string& vpath) {
+    const auto it = durations_.find(vpath);
+    if (it != durations_.end()) {
+        return it->second;
+    }
+    float seconds = 0.0F;
+    const std::vector<std::uint8_t> bytes = read_(vpath);
+    if (const auto* asset = animation_asset(bytes); asset != nullptr && asset->clips() != nullptr && asset->clips()->size() > 0) {
+        seconds = asset->clips()->Get(0)->duration();
+    }
+    durations_.emplace(vpath, seconds);
+    return seconds;
+}
+
+ActorGraph::ActorGraph(std::shared_ptr<const ActorGraphDef> def, std::function<float(const std::string&)> duration)
+    : def_(std::move(def)), duration_(std::move(duration)), set_(def_->graph) {
+    known_.assign(def_->graph.clips.size(), false);
+}
+
+void ActorGraph::resolve_durations() {
+    for (const int m : set_.running()) {
+        const int clip = set_.machine(m).clip();
+        if (clip >= 0 && !known_[static_cast<std::size_t>(clip)]) {
+            known_[static_cast<std::size_t>(clip)] = true;
+            set_.set_clip_duration(clip, duration_ ? duration_(def_->clip_files[static_cast<std::size_t>(clip)]) : 0.0F);
+        }
+    }
+}
+
+BehaviorOutput ActorGraph::start() {
+    BehaviorOutput out;
+    set_.start(out);
+    resolve_durations();
+    return out;
+}
+
+BehaviorOutput ActorGraph::send(std::string_view event) {
+    BehaviorOutput out;
+    set_.send(event, out);
+    resolve_durations();
+    return out;
+}
+
+BehaviorOutput ActorGraph::advance(float seconds) {
+    BehaviorOutput out;
+    set_.advance(seconds, out);
+    resolve_durations();
+    return out;
+}
+
+std::optional<PlayingClip> ActorGraph::playing() const {
+    int best = -1;
+    for (const int m : set_.running()) {
+        if (set_.machine(m).clip() < 0) {
+            continue;
+        }
+        if (best < 0 || def_->depth[static_cast<std::size_t>(m)] > def_->depth[static_cast<std::size_t>(best)]) {
+            best = m;
+        }
+    }
+    if (best < 0) {
+        return std::nullopt;
+    }
+    const BehaviorMachine& machine = set_.machine(best);
+    const auto clip_index = static_cast<std::size_t>(machine.clip());
+    const BehaviorClip& clip = set_.clips()[clip_index];
+    return PlayingClip{clip.name, def_->clip_files[clip_index], machine.clip_time(), clip.mode, clip.speed};
+}
+
+std::optional<RootMotion> ActorGraph::root_motion() const {
+    const auto now = playing();
+    return now ? def_->root_motion(now->clip, now->time) : std::nullopt;
+}
+
+} // namespace skydot
