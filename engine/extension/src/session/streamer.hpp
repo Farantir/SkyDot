@@ -8,7 +8,9 @@
 // begins the nearest cells in range whose resources the asset cache has
 // loaded, all within `build_budget_usec`: a cell is built in steps, hidden
 // until it is done, then shown, masked out of the worldspace's LOD, announced
-// (`cell_finished`) and its AI actors attached. The LOD runs beyond the cells.
+// (`cell_finished`) and its AI actors attached. Its actors look for the ground
+// under them only once the cells they may stand on are built (release_actors).
+// The LOD runs beyond the cells.
 //
 // Preloading (preload.cpp). Near a load door the place behind it (an interior,
 // or the cells and LOD around the arrival spot outside) is built a little each
@@ -229,6 +231,14 @@ private:
     godot::Node3D* host() const;
     godot::Camera3D* camera() const;
     void finish_cell(const CellKey& key, godot::Node3D* cell);
+    /// Actors of finished cells wait for ground (SkydotActor::set_awaiting_world) until the world
+    /// they could stand on is built: none while the cells entered with `start` (`batch_`) are still
+    /// being built; after that, as cells stream in at the edge, each once its own cell and, within
+    /// `k_border_margin` of a border, the cell across it are (one out of range is waited for, too:
+    /// a deck or floor of the next cell may be what it stands on).
+    void release_actors();
+    std::vector<std::uint64_t> awaiting_; ///< Instance ids.
+    bool batch_ = false;
     godot::Ref<SkydotPreparation> begin_preparation(const godot::Dictionary& door);
     void advance_preparation(std::int64_t budget_usec);
 

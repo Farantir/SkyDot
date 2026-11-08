@@ -143,6 +143,8 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_stance"), &SkydotActor::get_stance);
     ClassDB::bind_method(D_METHOD("play_action", "clip", "speed"), &SkydotActor::play_action);
     ClassDB::bind_method(D_METHOD("is_acting"), &SkydotActor::is_acting);
+    ClassDB::bind_method(D_METHOD("set_awaiting_world", "awaiting"), &SkydotActor::set_awaiting_world);
+    ClassDB::bind_method(D_METHOD("is_awaiting_world"), &SkydotActor::is_awaiting_world);
     ClassDB::bind_method(D_METHOD("set_look_target", "point"), &SkydotActor::set_look_target);
     ClassDB::bind_method(D_METHOD("clear_look_target"), &SkydotActor::clear_look_target);
     ClassDB::bind_method(D_METHOD("has_look_target"), &SkydotActor::has_look_target);
@@ -692,7 +694,7 @@ void SkydotActor::stop() {
 
 bool SkydotActor::find_ground(double delta) {
     ground_wait_ -= delta;
-    if (ground_wait_ > 0.0 || !is_inside_tree()) {
+    if (ground_wait_ > 0.0 || !is_inside_tree() || awaiting_world_) {
         return false;
     }
     ground_wait_ = k_ground_poll;

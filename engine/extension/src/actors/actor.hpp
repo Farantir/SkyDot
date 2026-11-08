@@ -144,6 +144,11 @@ public:
     /// (a reanimated body) puts a dead actor back as it was alive.
     void set_frozen(bool frozen);
     bool is_frozen() const { return frozen_; }
+    /// Built with a streamed cell, an actor does not look for ground until the streamer says the
+    /// cells it could stand on are built (`false`): what lies below it now may be the ground of a
+    /// neighbouring cell that is not built yet (a deck, a floor), not where it stands.
+    void set_awaiting_world(bool awaiting) { awaiting_world_ = awaiting; ground_wait_ = 0.0; }
+    bool is_awaiting_world() const { return awaiting_world_; }
 
     /// Level of detail: 0 near (everything every frame), 1 middle, 2 far.
     /// Near without a camera.
@@ -249,6 +254,7 @@ private:
     double anim_wait_{0.0};    ///< Seconds since the animation last advanced.
     double step_wait_{0.0};    ///< Seconds since the physics last stepped.
     bool frozen_{false};       ///< `set_frozen`.
+    bool awaiting_world_{false}; ///< `set_awaiting_world`.
     bool dead_{false};         ///< `set_dead`: nothing moves it any more.
     godot::String death_clip_;
     godot::String death_state_;

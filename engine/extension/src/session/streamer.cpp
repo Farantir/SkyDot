@@ -26,6 +26,8 @@ namespace skydot {
 namespace {
 
 constexpr double k_cell_units = SkydotWorld::CELL_UNITS;
+/// How close (game units) to a cell's border an actor must stand for the neighbour's ground to count.
+constexpr double k_border_margin = 1024.0;
 
 std::int64_t now_usec() { return static_cast<std::int64_t>(godot::Time::get_singleton()->get_ticks_usec()); }
 
@@ -211,7 +213,10 @@ double SkydotStreamer::view_distance() const {
     return static_cast<double>(radius_ + 1) * k_cell_units * SkydotWorld::UNIT_SCALE * 1.5;
 }
 
-void SkydotStreamer::start(std::int64_t id) { world_id_ = id; }
+void SkydotStreamer::start(std::int64_t id) {
+    world_id_ = id;
+    batch_ = true;
+}
 
 void SkydotStreamer::clear() {
     for (const auto& [key, id] : loaded_) {
@@ -226,6 +231,8 @@ void SkydotStreamer::clear() {
         }
     }
     building_.clear();
+    awaiting_.clear();
+    batch_ = false;
     load_doors_.clear();
     world_id_ = 0;
     lod_ = 0;
@@ -265,6 +272,7 @@ void SkydotStreamer::adopt(const godot::Ref<SkydotPreparation>& prepared) {
             loaded_[key] = 0;
             continue;
         }
+        cell->set_meta("skydot_streamed", true);
         if (key == centre) {
             held_place::release(cell);
             cell->set_visible(false); // until finished
@@ -279,6 +287,8 @@ void SkydotStreamer::update() {
     }
     const auto started = now_usec();
     streaming_ = step();
+    batch_ = batch_ && streaming_;
+    release_actors();
     if (SkydotLod* lod = get_lod()) {
         lod_busy_ = lod->update(camera()->get_global_position(), LOD_BUDGET_USEC) > 0;
     }
@@ -289,6 +299,8 @@ void SkydotStreamer::load_everything() {
     while (step()) {
         godot::OS::get_singleton()->delay_msec(5);
     }
+    batch_ = false;
+    release_actors();
     while (get_lod() != nullptr && get_lod()->update(camera()->get_global_position(), 1000000) > 0) {
         godot::OS::get_singleton()->delay_msec(5);
     }
@@ -406,6 +418,7 @@ bool SkydotStreamer::step() {
             continue;
         }
         cell->set_visible(false);
+        cell->set_meta("skydot_streamed", true); // its actors wait for the ground of the cells next to it
         host()->add_child(cell);
         if (world_->continue_build(cell, left)) {
             finish_cell(key, cell);
@@ -431,6 +444,48 @@ void SkydotStreamer::finish_cell(const CellKey& key, Node3D* cell) {
         lod->set_cell_loaded(key.first, key.second, true);
     }
     loaded_[key] = cell->get_instance_id();
+    for (const godot::Variant& child : cell->find_children("*", "SkydotActor", true, false)) {
+        if (auto* actor = godot::Object::cast_to<SkydotActor>(child); actor != nullptr && actor->is_awaiting_world()) {
+            awaiting_.push_back(actor->get_instance_id());
+        }
+    }
+}
+
+void SkydotStreamer::release_actors() {
+    if (batch_) {
+        return; // the cells entered with `start` are all built first
+    }
+    const double near = k_border_margin / k_cell_units;
+    for (auto it = awaiting_.begin(); it != awaiting_.end();) {
+        auto* actor = godot::Object::cast_to<SkydotActor>(godot::ObjectDB::get_instance(*it));
+        if (actor == nullptr || !actor->is_awaiting_world()) {
+            it = awaiting_.erase(it);
+            continue;
+        }
+        const Vector3 p = actor->get_global_position() / static_cast<float>(SkydotWorld::UNIT_SCALE);
+        const double fx = static_cast<double>(p.x) / k_cell_units;
+        const double fy = -static_cast<double>(p.z) / k_cell_units;
+        const auto cx = static_cast<std::int32_t>(std::floor(fx));
+        const auto cy = static_cast<std::int32_t>(std::floor(fy));
+        // Its own cell, and across each border it stands near, the cell there (and the corner one).
+        const std::int32_t sx = fx - cx < near ? -1 : cx + 1 - fx < near ? 1 : 0;
+        const std::int32_t sy = fy - cy < near ? -1 : cy + 1 - fy < near ? 1 : 0;
+        bool ready = true;
+        for (const std::int32_t dx : {0, sx}) {
+            for (const std::int32_t dy : {0, sy}) {
+                const CellKey key{cx + dx, cy + dy};
+                // A square the worldspace has no cell for has nothing to wait for.
+                ready = ready && (loaded_.contains(key) ||
+                                  world_->get_exterior_cell(world_id_, key.first, key.second) == 0);
+            }
+        }
+        if (ready) {
+            actor->set_awaiting_world(false);
+            it = awaiting_.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void SkydotStreamer::hold_player(SkydotPlayer* player, bool fading) {

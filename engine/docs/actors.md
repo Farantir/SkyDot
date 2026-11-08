@@ -133,8 +133,14 @@ slopes, step-up, pushing clutter) steered by itself.
   world, clutter, the player and each other, and the player with them.
   Rays (`pick_ref`, ground checks) do not hit them.
 - **Ground.** It holds still until a ray finds the world or terrain under
-  it (cells stream their collision in after their actors), and goes back
-  home to wait again if it falls 30 m below it.
+  it, and goes back home to wait again if it falls 30 m below it. It looks
+  only once the world it may stand on is built: an interior's actors come
+  last in its build; in a worldspace the streamer first builds every cell
+  of the grid it enters (at the start, through a door), and as cells stream
+  in at the edge later, an actor within 1024 units of a border waits for
+  the cell across it, too (Alvor at the Riverwood forge stands on a deck
+  that is part of the cell north of his; the terrain under it is not where
+  he stands).
 - **Walking.** `walk_to(target, run)` asks the navigation map for a path
   (from within 1.5 m of the navmesh) and follows its corners, turning at
   5 rad/s; a corner behind it turns it on the spot. Speeds are the clips'

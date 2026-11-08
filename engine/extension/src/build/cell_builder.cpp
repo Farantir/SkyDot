@@ -683,7 +683,11 @@ bool CellBuilder::continue_build(godot::Node3D* root, std::int64_t budget_usec) 
             return false;
         }
         const auto& at = job.actors[job.next_actor++];
-        place_actor(root, spec_of(*at.actor, at.place), job.stats);
+        ActorSpec spec = spec_of(*at.actor, at.place);
+        // A cell the streamer builds (it sets the meta) lets its actors look for ground only once
+        // the cells around are built, too (SkydotStreamer::release_actors).
+        spec.awaits_world = root->has_meta("skydot_streamed");
+        place_actor(root, spec, job.stats);
     }
     Dictionary out = stats_dictionary(job.stats);
     if (job.exterior) {
@@ -1206,6 +1210,7 @@ void CellBuilder::place_actor(godot::Node3D* root, const ActorSpec& actor, Build
 
     const auto* npc = lookup(world_fb()->npcs(), plan.npc);
     auto* node = memnew(SkydotActor);
+    node->set_awaiting_world(actor.awaits_world);
     node->set_name(hex_id(actor.ref) + " " + (npc != nullptr ? to_godot(npc->editor_id()) : String()));
     // Actors stand upright: only the rotation about Z counts.
     node->set_transform(skyrim_transform(actor.position, Vector3(0, 0, actor.rotation_z), 1.0));
