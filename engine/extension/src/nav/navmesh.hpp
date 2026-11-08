@@ -14,6 +14,7 @@
 #include <godot_cpp/variant/vector3.hpp>
 
 #include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 
@@ -46,5 +47,11 @@ godot::Node3D* build_navmeshes(const bethconv::pack::wfb::Cell& cell, const NavI
 /// triangle, position).
 godot::Dictionary navmesh_info(const bethconv::pack::wfb::NavMesh& nav,
                                const bethconv::pack::wfb::Cell& cell, const NavIndex& index);
+
+/// The point of `space`'s navmeshes (an interior cell, or a worldspace: the cells around
+/// `position` as far as `reach`) nearest `position`, within `reach` game units; nothing if none is
+/// that near. Skyrim coordinates.
+std::optional<godot::Vector3> nearest_nav_point(const WorldData& data, std::int64_t space,
+                                                const godot::Vector3& position, double reach);
 
 } // namespace skydot
