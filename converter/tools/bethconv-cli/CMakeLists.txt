@@ -20,6 +20,7 @@ add_executable(bethconv_cli
     commands/mesh.cpp
     commands/mo2.cpp
     commands/probe.cpp
+    commands/ragdoll.cpp
     commands/records.cpp
     commands/scan.cpp
     commands/script.cpp

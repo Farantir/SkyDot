@@ -14,6 +14,7 @@
 //   merge     collapse a load order into one flat world
 //   extract   pull virtual paths out of the archive set
 //   mesh      convert NIFs to glTF, or report what is in them
+//   ragdoll   a pack's skeleton ragdolls, checked against their hkx
 //   texture   pass DDS through, completing the mip chain
 //   script    decode compiled Papyrus scripts
 //   animation decode Havok skeletons and animations
@@ -40,6 +41,7 @@ void register_strings(CLI::App& app);
 void register_merge(CLI::App& app);
 void register_extract(CLI::App& app);
 void register_mesh(CLI::App& app);
+void register_ragdoll(CLI::App& app);
 void register_texture(CLI::App& app);
 void register_script(CLI::App& app);
 void register_animation(CLI::App& app);

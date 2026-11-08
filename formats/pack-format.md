@@ -808,6 +808,17 @@ before 20.2.0.7 only) and `remove_when_broken` are added):
 | `length` | stiff spring, m |
 | `motor` | ragdoll, limited hinge, prismatic: `type` (`none`, `position`, `velocity`, `spring`), then `enabled`, `min_force`, `max_force` and the type's own (`tau`, `damping`, `proportional_recovery_velocity`, `constant_recovery_velocity`; `tau`, `velocity_target`, `use_velocity_target_from_constraint_targets`; `spring_constant`, `spring_damping`) |
 
+**The pose the constraint frames fit.** `skeleton.hkx` beside the NIF holds a
+second copy of the ragdoll: a skeleton of `Ragdoll_<bone>` bones whose
+reference pose (game units) is where the bodies rest. `bethconv ragdoll
+<pack>` compares the two. Vanilla SE: where both name the bodies alike
+(human, wolf and dog, deer, sabre cat, troll, vampire lord) the constraint
+pivots coincide in the hkx ragdoll pose, while at the NIF's bind they lie up
+to 6 cm (human calves) to 12 cm (canine front legs) apart, and the NIF bind
+differs from that pose by up to 30° at the human feet; the human hkx ragdoll
+also stands 6.8 cm off the NIF's. Many creatures' hkx ragdoll bones carry
+other names (`NPC COM01`), so the check pairs them by position.
+
 ### Path encodings differ between `vpath.idx` and GLB URIs
 
 In `vpath.idx` and in extras a path is unescaped: lowercase, forward slashes.
