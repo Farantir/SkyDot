@@ -18,7 +18,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in animation.fbs changes.
-inline constexpr std::uint32_t k_animation_format_version = 3;
+inline constexpr std::uint32_t k_animation_format_version = 4;
 
 [[nodiscard]] std::vector<std::byte> write_animation_asset(const animation::HkxFile& file);
 

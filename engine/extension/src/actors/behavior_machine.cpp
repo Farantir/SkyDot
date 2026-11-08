@@ -73,6 +73,7 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
     for (const auto* machine : *machines) {
         BehaviorDef m;
         m.start_state = machine->start_state();
+        m.start_variable = machine->start_state_variable() != nullptr ? machine->start_state_variable()->str() : std::string();
         transitions(machine->wildcard_transitions(), m.wildcard);
         if (const auto* states = machine->states()) {
             for (const auto* s : *states) {
@@ -84,6 +85,7 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
                     state.clip = -1;
                 }
                 state.sequence = s->sequence() != nullptr ? s->sequence()->str() : std::string();
+                state.behavior = s->behavior() != nullptr ? s->behavior()->str() : std::string();
                 if (const auto* nested = s->nested_machines()) {
                     for (const auto id : *nested) {
                         if (id >= 0 && id < machine_count) {

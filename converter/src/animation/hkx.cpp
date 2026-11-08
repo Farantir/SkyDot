@@ -489,12 +489,98 @@ struct GeneratorKinds {
     std::map<std::size_t, std::string> sequences; ///< Sequence generator -> its sequence name.
     std::map<std::size_t, std::int32_t> machines;
     std::set<std::size_t> blenders;
+    /// hkbBehaviorReferenceGenerator -> the behaviour file it names.
+    std::map<std::size_t, std::string> references;
 };
 
+/// The generators directly under `generator`, by its class (offsets measured
+/// on 0_master.hkx, SE: hkbGenerator ends at 72, the BS* classes keep their
+/// first member at 80). Blenders and bone switches hold them in child objects
+/// whose generator pointer is at +48. A state machine's generators belong to
+/// its own states, so it has none here.
+std::vector<std::size_t> child_generators(Packfile& pf, std::size_t generator) {
+    std::vector<std::size_t> out;
+    const std::string* cls = pf.class_of(generator);
+    if (cls == nullptr) {
+        return out;
+    }
+    const auto add = [&](std::size_t at) {
+        if (const auto target = pf.pointer(at)) {
+            out.push_back(*target);
+        }
+    };
+    const auto add_children = [&](std::size_t at) {
+        const auto children = pf.array(at, 8, "generator children");
+        for (std::size_t i = 0; i < children.count && pf.bytes().ok(); ++i) {
+            if (const auto child = pf.pointer(children.data + i * 8)) {
+                add(*child + 48);
+            }
+        }
+    };
+    if (*cls == "hkbBlenderGenerator") {
+        add_children(generator + 96);
+    } else if (*cls == "BSBoneSwitchGenerator") {
+        add(generator + 80); // pDefaultGenerator
+        add_children(generator + 88);
+    } else if (*cls == "hkbManualSelectorGenerator") {
+        const auto selected = pf.array(generator + 72, 8, "selector generators");
+        for (std::size_t i = 0; i < selected.count && pf.bytes().ok(); ++i) {
+            add(selected.data + i * 8);
+        }
+    } else if (*cls == "hkbModifierGenerator") {
+        add(generator + 80);
+    } else if (*cls == "BSiStateTaggingGenerator" || *cls == "BSCyclicBlendTransitionGenerator") {
+        add(generator + 80); // pDefaultGenerator, pBlenderGenerator
+    }
+    return out;
+}
+
+/// The behaviour file `generator` references: itself if it is an
+/// hkbBehaviorReferenceGenerator, else the first found below it; empty if none.
+std::string referenced_behavior(Packfile& pf, std::size_t generator, const GeneratorKinds& kinds,
+                                int depth = 0) {
+    if (const auto reference = kinds.references.find(generator); reference != kinds.references.end()) {
+        return reference->second;
+    }
+    if (depth > 16) {
+        return {};
+    }
+    for (const std::size_t child : child_generators(pf, generator)) {
+        if (std::string found = referenced_behavior(pf, child, kinds, depth + 1); !found.empty()) {
+            return found;
+        }
+    }
+    return {};
+}
+
+/// The name of the graph variable bound to the member `member` of the
+/// hkbBindable at `object`, or empty. hkbBindable holds the binding set
+/// pointer right after hkReferencedObject; hkbVariableBindingSet holds its
+/// bindings hkArray there, 40 bytes each: memberPath hkStringPtr, memberClass,
+/// three offsets, variableIndex at +28 (measured on the vanilla behaviours:
+/// every path is a member name, also in sets of several bindings).
+std::string bound_variable(Packfile& pf, std::size_t object, std::string_view member,
+                           const std::vector<std::string>& variables) {
+    const auto set = pf.pointer(object + pf.referenced());
+    if (!set) {
+        return {};
+    }
+    const auto list = pf.array(*set + pf.referenced(), 40, "variable bindings");
+    for (std::size_t i = 0; i < list.count && pf.bytes().ok(); ++i) {
+        const std::size_t binding = list.data + i * 40;
+        if (pf.string(binding) != member) {
+            continue;
+        }
+        const auto index = pf.bytes().at<std::int32_t>(binding + 28);
+        if (index >= 0 && static_cast<std::size_t>(index) < variables.size()) {
+            return variables[static_cast<std::size_t>(index)];
+        }
+    }
+    return {};
+}
+
 /// The state machines that run side by side under `generator`: itself if it
-/// is one, the machines of a blender's children (blenders nest). hkbBlender-
-/// Generator: children hkArray at +96; hkbBlenderGeneratorChild: generator
-/// pointer at +48.
+/// is one, the machines of a blender's children (blenders nest).
 void root_machines(Packfile& pf, std::size_t generator, const GeneratorKinds& kinds,
                    std::vector<std::int32_t>& out, int depth = 0) {
     if (const auto machine = kinds.machines.find(generator); machine != kinds.machines.end()) {
@@ -504,15 +590,8 @@ void root_machines(Packfile& pf, std::size_t generator, const GeneratorKinds& ki
     if (depth > 8 || !kinds.blenders.contains(generator)) {
         return;
     }
-    const auto children = pf.array(generator + 96, 8, "blender children");
-    for (std::size_t i = 0; i < children.count && pf.bytes().ok(); ++i) {
-        const auto child = pf.pointer(children.data + i * 8);
-        if (!child) {
-            continue;
-        }
-        if (const auto inner = pf.pointer(*child + 48)) {
-            root_machines(pf, *inner, kinds, out, depth + 1);
-        }
+    for (const std::size_t child : child_generators(pf, generator)) {
+        root_machines(pf, child, kinds, out, depth + 1);
     }
 }
 
@@ -522,11 +601,13 @@ void root_machines(Packfile& pf, std::size_t generator, const GeneratorKinds& ki
 /// `kinds` the other generators a state may run.
 StateMachine read_state_machine(Packfile& pf, std::size_t a,
                                 const std::map<std::size_t, std::int32_t>& generators,
-                                const GeneratorKinds& kinds) {
+                                const GeneratorKinds& kinds,
+                                const std::vector<std::string>& variables) {
     Bytes& b = pf.bytes();
     StateMachine m;
     m.name = pf.string(a + 56);
     m.start_state = b.at<std::int32_t>(a + 104);
+    m.start_state_variable = bound_variable(pf, a, "startStateId", variables);
     const auto states = pf.array(a + 144, 8, "state machine states");
     for (std::size_t i = 0; i < states.count && b.ok(); ++i) {
         const auto info = pf.pointer(states.data + i * 8);
@@ -544,6 +625,7 @@ StateMachine read_state_machine(Packfile& pf, std::size_t a,
                 s.sequence = sequence->second;
             }
             root_machines(pf, *generator, kinds, s.nested_machines);
+            s.behavior = referenced_behavior(pf, *generator, kinds);
         }
         s.name = pf.string(*info + 96);
         s.id = b.at<std::int32_t>(*info + 104);
@@ -1176,12 +1258,17 @@ io::ParseResult<HkxFile> read_hkx(std::span<const std::byte> bytes, std::string_
         for (const std::size_t a : pf.objects_of("hkbBlenderGenerator")) {
             kinds.blenders.insert(a);
         }
+        // hkbBehaviorReferenceGenerator: behaviorName follows hkbNode, at +72
+        // like a clip generator's animationName.
+        for (const std::size_t a : pf.objects_of("hkbBehaviorReferenceGenerator")) {
+            kinds.references[a] = pf.string(a + 72);
+        }
         BehaviorGraph& graph = out.behavior_graphs.front();
         for (const std::size_t a : pf.objects_of("hkbStateMachine")) {
             if (!b.ok()) {
                 break;
             }
-            graph.state_machines.push_back(read_state_machine(pf, a, generator_index, kinds));
+            graph.state_machines.push_back(read_state_machine(pf, a, generator_index, kinds, graph.variable_names));
         }
         // hkbBehaviorGraph: the root generator pointer is at +128.
         for (const std::size_t a : pf.objects_of("hkbBehaviorGraph")) {

@@ -335,6 +335,35 @@ public:
         return o;
     }
 
+    /// hkbBehaviorReferenceGenerator (SE): name at +56, behaviorName at +72.
+    std::size_t add_reference_generator(const std::string& name, const std::string& behavior) {
+        const std::size_t o = object("hkbBehaviorReferenceGenerator", 80);
+        string_ptr(o + 56, name);
+        string_ptr(o + 72, behavior);
+        return o;
+    }
+
+    /// hkbModifierGenerator (SE) over `generator`, at +80.
+    std::size_t add_modifier_generator(std::size_t generator) {
+        const std::size_t o = object("hkbModifierGenerator", 88);
+        pointer(o + 80, generator);
+        return o;
+    }
+
+    /// An hkbVariableBindingSet (SE) on the hkbBindable `target` (binding set
+    /// pointer at +16): 40-byte bindings, memberPath at +0 and the index of the
+    /// graph variable at +28.
+    void bind_variables(std::size_t target, const std::vector<std::pair<std::string, std::int32_t>>& bindings) {
+        const std::size_t set = object("hkbVariableBindingSet", 48);
+        const std::size_t table = blob(bindings.size() * 40, 16);
+        for (std::size_t i = 0; i < bindings.size(); ++i) {
+            string_ptr(table + 40 * i, bindings[i].first);
+            put<std::int32_t>(table + 40 * i + 28, bindings[i].second);
+        }
+        array(set + 16, table, bindings.size());
+        pointer(target + 16, set);
+    }
+
     /// hkbBehaviorGraph (SE) whose root generator is `root`, at +128.
     void add_behavior_graph(std::size_t root) {
         const std::size_t o = object("hkbBehaviorGraph", 160);

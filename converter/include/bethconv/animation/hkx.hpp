@@ -172,6 +172,9 @@ struct BehaviorState {
     /// Indexes into BehaviorGraph::state_machines of the machines the state's
     /// generator runs side by side (a machine, or a blender's child machines).
     std::vector<std::int32_t> nested_machines;
+    /// The behaviour file an hkbBehaviorReferenceGenerator in the state's
+    /// generator (or in a blender's children) names, as stored; empty if none.
+    std::string behavior;
     std::vector<std::int32_t> enter_events;
     std::vector<std::int32_t> exit_events;
     std::vector<StateTransition> transitions;
@@ -182,6 +185,9 @@ struct BehaviorState {
 struct StateMachine {
     std::string name;
     std::int32_t start_state{};
+    /// The name of the graph variable bound to `startStateId`
+    /// (hkbVariableBindingSet), empty if the start state is not bound.
+    std::string start_state_variable;
     std::vector<BehaviorState> states;
     std::vector<StateTransition> wildcard_transitions;
 };

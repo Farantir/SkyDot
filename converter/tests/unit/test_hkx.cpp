@@ -399,6 +399,46 @@ TEST_CASE("sequence generators, nested machines and the root of a graph are read
     check(*back);
 }
 
+TEST_CASE("states keep the behaviour file they reference and machines the variable their start is bound to",
+          "[animation][hkx]") {
+    using bethconv::test::HkxState;
+    HkxBuilder b(8);
+    b.add_behavior_strings({"Go"}, {"Alpha", "iState", "Gamma"});
+    const auto reference = b.add_reference_generator("MT_BFR", "Behaviors\\MT_Behavior.hkx");
+    const auto wrapped = b.add_modifier_generator(reference);
+    const auto sequence = b.add_sequence_generator("Seq", "playanim01");
+    const auto blended = b.add_blender({sequence, wrapped});
+    const auto inner = b.add_state_machine("Inner", 2, {HkxState{2, "Idle", sequence, {}, {}, {}}});
+    // isActive first: only the startStateId binding names the start variable.
+    b.bind_variables(inner, {{"isActive", 0}, {"startStateId", 1}});
+    const auto outer = b.add_state_machine(
+        "Outer", 0, {HkxState{0, "Direct", reference, {}, {}, {}}, HkxState{1, "Wrapped", wrapped, {}, {}, {}},
+                     HkxState{2, "Blend", blended, {}, {}, {}}, HkxState{3, "Plain", sequence, {}, {}, {}}});
+    b.bind_variables(outer, {{"isActive", 2}});
+    b.add_behavior_graph(outer);
+    const auto read = read_hkx(b.bytes(), "behavior.hkx");
+    REQUIRE(read.has_value());
+    const auto check = [](const bethconv::animation::HkxFile& file) {
+        REQUIRE(file.behavior_graphs.size() == 1);
+        const auto& g = file.behavior_graphs[0];
+        REQUIRE(g.state_machines.size() == 2);
+        const auto& first = g.state_machines[0].name == "Outer" ? g.state_machines[0] : g.state_machines[1];
+        const auto& second = g.state_machines[0].name == "Outer" ? g.state_machines[1] : g.state_machines[0];
+        CHECK(first.start_state_variable.empty());
+        CHECK(second.start_state_variable == "iState");
+        REQUIRE(first.states.size() == 4);
+        CHECK(first.states[0].behavior == "Behaviors\\MT_Behavior.hkx");
+        CHECK(first.states[1].behavior == "Behaviors\\MT_Behavior.hkx");
+        CHECK(first.states[2].behavior == "Behaviors\\MT_Behavior.hkx");
+        CHECK(first.states[3].behavior.empty());
+        CHECK(second.states[0].behavior.empty());
+    };
+    check(*read);
+    const auto back = bethconv::pack::read_animation_asset(bethconv::pack::write_animation_asset(*read), "b.animfb");
+    REQUIRE(back.has_value());
+    check(*back);
+}
+
 TEST_CASE("a graph whose root is a blender runs the machines of its children", "[animation][hkx]") {
     HkxBuilder b(8);
     b.add_behavior_strings({}, {});

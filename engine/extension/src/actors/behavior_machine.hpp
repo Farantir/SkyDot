@@ -64,6 +64,9 @@ struct BehaviorState {
     /// Machines (indexes into BehaviorGraphDef::machines) that run side by
     /// side while this state is current.
     std::vector<int> nested{};
+    /// The behaviour file the state's generator references
+    /// (hkbBehaviorReferenceGenerator), as the graph states it; empty if none.
+    std::string behavior{};
 };
 
 struct BehaviorDef {
@@ -71,6 +74,9 @@ struct BehaviorDef {
     std::vector<BehaviorState> states;
     std::vector<BehaviorTransition> wildcard;
     std::vector<BehaviorClip> clips;
+    /// The graph variable `start_state` is bound to (the variable's value
+    /// replaces it); empty if it is not.
+    std::string start_variable{};
 };
 
 /// A behaviour graph: its state machines (each without clips of its own),

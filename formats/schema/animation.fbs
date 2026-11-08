@@ -168,6 +168,10 @@ table BehaviorState {
     /// into BehaviorGraph.state_machines).
     sequence: string;
     nested_machines: [int];
+    /// Added in format 4: the behaviour file an hkbBehaviorReferenceGenerator
+    /// in the state's generator (or in a blender's children) names, as stored
+    /// (`Behaviors\Chair.hkx`); empty if none.
+    behavior: string;
 }
 
 table StateMachine {
@@ -175,6 +179,10 @@ table StateMachine {
     start_state: int;
     states: [BehaviorState];
     wildcard_transitions: [StateTransition];
+    /// Added in format 4: the name of the graph variable bound to
+    /// `startStateId` (the initial `start_state` is the variable's value
+    /// then), empty if it is not bound.
+    start_state_variable: string;
 }
 
 table BehaviorGraph {

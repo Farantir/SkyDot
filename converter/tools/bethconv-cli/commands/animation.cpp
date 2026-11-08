@@ -49,7 +49,11 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
         }
         std::printf("\n");
         for (const auto& m : graph.state_machines) {
-            std::printf("  machine '%s' start %d, %zu states\n", m.name.c_str(), m.start_state, m.states.size());
+            std::printf("  machine '%s' start %d", m.name.c_str(), m.start_state);
+            if (!m.start_state_variable.empty()) {
+                std::printf(" (variable %s)", m.start_state_variable.c_str());
+            }
+            std::printf(", %zu states\n", m.states.size());
             print_transitions("    wildcard ", m.wildcard_transitions);
             for (const auto& st : m.states) {
                 std::printf("    state %d '%s'", st.id, st.name.c_str());
@@ -65,6 +69,9 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
                 }
                 if (!st.sequence.empty()) {
                     std::printf(" sequence '%s'", st.sequence.c_str());
+                }
+                if (!st.behavior.empty()) {
+                    std::printf(" behavior '%s'", st.behavior.c_str());
                 }
                 if (!st.nested_machines.empty()) {
                     std::printf(" runs machines");

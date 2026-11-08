@@ -463,8 +463,10 @@ std::string ConvertOptions::animation_settings() const {
     // 2: behaviour characters and clip generators; animationdata text files.
     // 3: clip playback and triggers, behaviour events and state machines
     // (animation asset format 2). 4: sequence generators, nested machines and
-    // root machines (animation asset format 3).
-    return "animation/4;decoded";
+    // root machines (animation asset format 3). 5: the behaviour file a state
+    // references and the variable a machine's start state is bound to
+    // (animation asset format 4).
+    return "animation/5;decoded";
 }
 
 std::string ConvertOptions::sound_settings() const {

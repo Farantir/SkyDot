@@ -31,7 +31,7 @@ namespace {
 namespace afb = bethconv::pack::afb;
 using godot::String;
 
-constexpr std::uint32_t k_animation_format = 3;
+constexpr std::uint32_t k_animation_format = 4;
 
 const afb::Animation* read_asset(const godot::PackedByteArray& bytes) {
     const auto* data = bytes.ptr();

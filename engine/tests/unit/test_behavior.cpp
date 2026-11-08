@@ -246,9 +246,10 @@ TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavio
     const auto transition = afb::CreateStateTransition(b, 0, 1, true, b.CreateString("!x"));
     const auto transitions = b.CreateVector(std::vector{transition});
     const auto s0 = afb::CreateBehaviorState(b, 0, b.CreateString("Start"), 0, 0, 0, transitions);
-    const auto s1 = afb::CreateBehaviorState(b, 1, b.CreateString("End"), -1);
+    const auto s1 = afb::CreateBehaviorState(b, 1, b.CreateString("End"), -1, 0, 0, 0, 0, 0,
+                                             b.CreateString("Behaviors\\MT_Behavior.hkx"));
     const auto states = b.CreateVector(std::vector{s0, s1});
-    const auto machine = afb::CreateStateMachine(b, b.CreateString("M"), 0, states);
+    const auto machine = afb::CreateStateMachine(b, b.CreateString("M"), 0, states, 0, b.CreateString("iState"));
     const auto machines = b.CreateVector(std::vector{machine});
     const auto events = b.CreateVectorOfStrings(std::vector<std::string>{"Go", "Done"});
     const auto graph = afb::CreateBehaviorGraph(b, events, 0, machines);
@@ -265,6 +266,9 @@ TEST_CASE("an animation asset's graph becomes a behaviour definition", "[behavio
     CHECK(def.states[0].name == "Start");
     CHECK(def.states[0].clip == 0);
     CHECK(def.states[1].clip == -1);
+    CHECK(def.start_variable == "iState");
+    CHECK(def.states[0].behavior.empty());
+    CHECK(def.states[1].behavior == "Behaviors\\MT_Behavior.hkx");
     REQUIRE(def.states[0].transitions.size() == 1);
     CHECK(def.states[0].transitions[0].event == "Go");
     CHECK(def.states[0].transitions[0].to_state == 1);
