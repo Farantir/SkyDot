@@ -63,6 +63,7 @@ void SkydotPlayer::_bind_methods() {
     ClassDB::bind_integer_constant(self, "", "LAYER_ACTOR", physics_layer::actor);
     ClassDB::bind_integer_constant(self, "", "LAYER_TERRAIN", physics_layer::terrain);
     ClassDB::bind_integer_constant(self, "", "LAYER_NPC", physics_layer::npc);
+    ClassDB::bind_integer_constant(self, "", "LAYER_DEAD_BIPED", physics_layer::dead_biped);
 
     ClassDB::bind_method(D_METHOD("set_input", "move", "vertical", "gait"), &SkydotPlayer::set_input);
     ClassDB::bind_method(D_METHOD("set_look", "yaw", "pitch"), &SkydotPlayer::set_look);

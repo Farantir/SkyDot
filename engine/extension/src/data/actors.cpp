@@ -261,6 +261,7 @@ ActorPlan plan_actor(const wfb::World& w, std::uint32_t npc_id, std::uint32_t re
         return plan;
     }
     plan.race = race->id();
+    plan.race_flags = race->flags();
     if (const auto* movement = lookup(w.movement_types(), race->movement_walk()); movement != nullptr &&
                                                                                  movement->rotate_in_place_walk() > 0.0F) {
         plan.turn_rate = movement->rotate_in_place_walk();

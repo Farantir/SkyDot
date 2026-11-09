@@ -43,6 +43,9 @@ inline constexpr std::uint32_t clutter = 2; ///< Movable objects.
 inline constexpr std::uint32_t actor = 4;   ///< The player.
 inline constexpr std::uint32_t terrain = 8; ///< Exterior land.
 inline constexpr std::uint32_t npc = 16;    ///< Placed actors (SkydotActor).
+/// Ragdoll bodies (the dead, the knocked down, the paralysed): the game's DEADBIP layer, which
+/// collides with itself, the world and clutter, not with the living.
+inline constexpr std::uint32_t dead_biped = 32;
 /// What walking things and clutter collide with.
 inline constexpr std::uint32_t solid = world | clutter | terrain;
 } // namespace physics_layer

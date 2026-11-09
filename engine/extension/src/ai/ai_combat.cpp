@@ -885,6 +885,11 @@ bool SkydotAi::hold(std::int64_t ref_id, double seconds) {
     const auto ref = static_cast<std::uint32_t>(ref_id);
     Mind* m = mind(ref);
     SkydotActor* actor = m != nullptr ? node_of(*m) : nullptr;
+    // An actor that goes down (dead, knocked down, paralysed: its body is the ragdoll's) leaves the
+    // furniture it uses, as at death in the tick, before anything places or animates it there again.
+    if (m != nullptr && m->furniture && seconds > 0.0) {
+        furniture_end(*m, actor, false);
+    }
     if (actor == nullptr || !alive(ref)) {
         return false;
     }

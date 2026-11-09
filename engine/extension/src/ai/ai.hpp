@@ -161,7 +161,8 @@ public:
     /// living actor.
     double stagger(std::int64_t ref, double magnitude);
     /// `ref` is knocked down (the game layer ragdolls it): its AI pauses for `seconds` (0 lets it go on)
-    /// and its walk stops, with no clip. False if `ref` is not a built, living actor.
+    /// and its walk stops, with no clip. With `seconds` above 0 it also leaves the furniture it uses (a
+    /// dead actor too: the ragdoll takes the body). False if `ref` is not a built, living actor.
     bool hold(std::int64_t ref, double seconds);
     /// `ref` lives again (reanimate): its node is alive for the SkydotActor again (set_dead(false)),
     /// its combat and package are forgotten and the AI takes it up again. Call it once the game

@@ -506,6 +506,7 @@ godot::Dictionary plan_dictionary(const skydot::ActorPlan& plan) {
     godot::Dictionary out;
     out["npc"] = static_cast<std::int64_t>(plan.npc);
     out["race"] = static_cast<std::int64_t>(plan.race);
+    out["race_flags"] = static_cast<std::int64_t>(plan.race_flags);
     out["female"] = plan.female;
     out["scale"] = plan.scale;
     out["skin_tone"] = godot::Color(plan.skin_tone[0], plan.skin_tone[1], plan.skin_tone[2]);

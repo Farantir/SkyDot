@@ -45,6 +45,8 @@ struct FlightPlan {
 struct ActorPlan {
     std::uint32_t npc{};    ///< The NPC_ that supplied traits.
     std::uint32_t race{};
+    /// The RACE's DATA flags (0x80 flies, 0x400000 no knockdowns, ...; world.fbs Race.flags).
+    std::uint32_t race_flags{};
     bool female{};
     /// Radians per second the race turns in place (its walk MOVT's rotate_in_place), 0 without a MOVT.
     float turn_rate{};
