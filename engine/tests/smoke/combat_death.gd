@@ -161,7 +161,11 @@ func _run(pack_dir: String) -> void:
 		var down := _pelvis(draugr)
 		print("draugr pelvis ", down, " feet ", draugr_feet)
 		_check_limits(DRAUGR, draugr, "draugr")
-		expect(draugr.is_dead() and down.y - draugr_feet.y < 0.7, "the draugr lies down: %.2f m" % (down.y - draugr_feet.y))
+		# Above what is under him: with the AI off (the game's tai) the load lays him in his sarcophagus.
+		var under := _camera.get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(
+			down, down + Vector3.DOWN * 3.0, SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN))
+		var floor_y: float = under["position"].y if not under.is_empty() else draugr_feet.y
+		expect(draugr.is_dead() and down.y - floor_y < 0.7, "the draugr lies down: %.2f m" % (down.y - floor_y))
 		expect(not papyrus.get_corpse_place(DRAUGR).is_empty(), "the draugr has a corpse place")
 	else:
 		expect(false, "the draugr is built")

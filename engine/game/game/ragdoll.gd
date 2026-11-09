@@ -256,8 +256,9 @@ func _make_bone(body: Dictionary, units: float) -> PhysicalBone3D:
 	bone.angular_damp_mode = PhysicalBone3D.DAMP_MODE_REPLACE
 	bone.linear_damp = float(body.get("linear_damping", 0.0))
 	bone.angular_damp = float(body.get("angular_damping", 0.0))
-	bone.friction = float(body.get("friction", 0.5))
-	bone.bounce = float(body.get("restitution", 0.0))
+	# Godot takes 0..1 only; a skeleton that stores more (seen in sse_combat_death) keeps 1.
+	bone.friction = clampf(float(body.get("friction", 0.5)), 0.0, 1.0)
+	bone.bounce = clampf(float(body.get("restitution", 0.0)), 0.0, 1.0)
 	# The body's frame on the bone: the offset is in skeleton units (Godot takes the scale off the body,
 	# so shapes and joints are in metres).
 	var frame := _body_frame(body)
