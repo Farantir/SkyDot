@@ -82,3 +82,20 @@ tasks (4.7, 2026-10-05; one per asset, and as up to four looping tasks, with
 5x5 block through `request_exterior` took 5 to 9 % longer (median of 15 runs,
 479 -> 501 ms and 468 -> 499 ms, 12 cores), while the viewer's
 `--benchmark 20` and `preload_check.gd` came out the same.
+
+## Jolt joints for ragdolls (4.7.2, 2026-11-09)
+
+Measured with `tests/gd/test_ragdoll_joints.gd` (game/game/ragdoll.gd makes the joints):
+
+- `PhysicsServer3D.joint_make_generic_6dof(joint, a, frame_a, b, frame_b)` with Jolt measures the
+  angle of A's frame against B's the way Havok's constraints do: the game's limits go over unchanged
+  (a knee of -110..0° bends one way, to -110°).
+- Twist (X) limits and a 6DOF with Y and Z locked (a hinge) hold to within 0.1°.
+- An angular motor of target velocity 0 and force limit F holds against a torque under F and gives way
+  to one over it (F = 10 N m: 5 N m turned it 0°, 40 N m to its limit): Havok's constraint friction.
+  Godot's hinge joint has no such limit, so hinges are 6DOFs too.
+- Swing limits on Y and Z do not make Havok's round cone with asymmetric plane limits: driven toward
+  189 directions, a child went up to 31.9° past Havok's cone and plane (about 60° at the cone's
+  diagonals for 45° limits) and stopped up to 21.7° short of directions Havok allows.
+- PhysicalBone3D's own `joint_type` builds the parent's frame from the pose at the time, so the
+  ragdoll leaves it at NONE and makes the joints itself.
