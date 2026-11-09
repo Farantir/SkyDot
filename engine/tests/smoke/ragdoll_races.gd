@@ -23,6 +23,11 @@ const RACES := [
 	["dragon", "Tamriel", 0, 0x1CA03, Vector3(25560, -21217, -3598), 90.0, "a_dragon_rest.json", 40.0],
 ]
 
+## Where the game's pushes were measured (c_*_f*.result.json): the player at PUSH_FROM on the Whiterun
+## plain (Tamriel), the actor moved 300 units ahead of it, at PUSH_AT.
+const PUSH_FROM := Vector3(11690, -13844, -4700)
+const PUSH_AT := Vector3(11896, -13823, -4793)
+
 var failures := 0
 var _session: GameSession
 var _camera: Camera3D
@@ -99,8 +104,16 @@ func _run(pack_dir: String) -> void:
 
 func _race(race: Array, out_dir: String) -> void:
 	var name: String = race[0]
+	var push := float(OS.get_environment("RAGDOLL_PUSH")) if OS.has_environment("RAGDOLL_PUSH") else 0.0
+	if push > 0.0:
+		race = race.duplicate()
+		race[1] = "Tamriel"
+		race[2] = 0
+		race[4] = PUSH_AT
+		if race[3] == 0:
+			return  # a placed actor (the spider) is not moved
 	var at: Vector3 = race[4]
-	_feet = SkydotWorld.skyrim_position(at + Vector3(0, 300, 0))
+	_feet = SkydotWorld.skyrim_position(PUSH_FROM if push > 0.0 else at + Vector3(0, 300, 0))
 	_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT  # an exterior streams around the camera
 	var entered := _session.enter_world("Tamriel", _feet, null) if race[1] == "Tamriel" \
 		else _session.enter_cell(race[1], _feet, null)
@@ -138,7 +151,6 @@ func _race(race: Array, out_dir: String) -> void:
 	var bind := Checks.bind_against_rest(skeleton, data)
 	print("%s: engine skeleton against the NIF bind: %.2f cm (%s), %.1f deg" % [name, bind["cm"], bind["at"], bind["degrees"]])
 
-	var push := float(OS.get_environment("RAGDOLL_PUSH")) if OS.has_environment("RAGDOLL_PUSH") else 0.0
 	if push > 0.0:
 		await _push(name, ref, node, push)
 		return

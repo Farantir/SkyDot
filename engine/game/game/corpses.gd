@@ -73,7 +73,8 @@ const MAX_SECONDS := 20.0
 ## m/s up, turning at PUSH_SPIN_PER_FORCE rad/s per unit about the horizontal axis that tips it over
 ## (a fit of the bodies' first velocities, human F5/F15/F30: 0.37, 0.30, 0.26). Measured constants:
 ## no GMST matches them (fKnockbackDamageMult 5, fKnockbackForceMax 128, fKnockbackTime 0.3 are the
-## stagger's).
+## stagger's; fGameplayImpulseMultBiped 0.04 and fProjectileKnockMultBiped 0.25 scale impulses of hits
+## and projectiles, not PushActorAway's velocity; Skyrim.esm sets no fPushActorAway* GMST).
 const PUSH_SPEED_PER_FORCE := 0.70
 const PUSH_LIFT_PER_FORCE := 0.25
 const PUSH_SPIN_PER_FORCE := 0.30

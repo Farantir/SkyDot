@@ -99,4 +99,20 @@ flying.
   self-collision table and what Jolt cannot match are in its header and
   `godot-notes.md`). Chains, hanging lanterns and other multi-body models
   stay static.
+- Contact materials do not follow the game. Godot 4.7's Jolt module combines
+  friction as min(a, b) and restitution as clamp(a + b, 0, 1)
+  (`modules/jolt_physics/spaces/jolt_space_3d.cpp`, `SetCombineFriction` /
+  `SetCombineRestitution`; no per-space override from GDExtension); Havok's
+  rule (said to be sqrt(a b) for both) has no source here to cite. Only
+  clutter gets its NIF friction and restitution; statics, animated bodies and
+  terrain keep Godot's default (friction 1, bounce 0), which under min/sum
+  leaves a ragdoll its own values (0.3 / 0.8 for the human, wolf and draugr).
+  The terrain's material in the game is unknown (LTEX HNAM holds 2/0 for 66 of
+  68 vanilla textures). Measured (sse_ragdoll_races RAGDOLL_PUSH=15 at the
+  game's place on the Whiterun plain, 2026-11-09): travel human 17.2 m (game
+  13.1), wolf 18.8 (18), draugr 21.4 (14.5); a ragdoll friction of 0.6 would
+  bring the human to 13.5 m, restitution barely matters (0 to 0.8: 18.2 to
+  17.2 m). Same friction data, the wolf matches and the bipeds slide too far:
+  the gap is not one combine factor. Needs the game's terrain and static
+  materials and its combine rule measured (SkyrimRemote) before a fix.
 - Per-triangle Havok materials (sound, footsteps) are not kept.
