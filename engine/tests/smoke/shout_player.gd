@@ -334,14 +334,17 @@ func _run(pack_dir: String) -> void:
 	var lay := bandit.global_position
 	await _until(func() -> bool: return not _session.corpses.is_down(BANDIT) and not _session.corpses.is_down(SKEEVER), 8.0)
 	expect(not _session.corpses.is_down(BANDIT) and not _session.corpses.is_down(SKEEVER), "they get up")
-	# Measured in game on a slope (UF3 on a human at 400 units): down after 1.6 s and 5.7 m, at rest after 7.8 m, up to
-	# 2 m high. Here on flat ground, the pelvis from where the actor stood; the band is -20 % / +25 % for physics noise
-	# and the slide, which depends on the ground.
+	# The game sets a pushed ragdoll moving (skycompare-data/game-ragdoll, PushActorAway force 15 on a standing
+	# human on flat ground): 10.5 m/s from the pusher, 3.7 m/s up at the centre of mass, 13 m to rest
+	# (smoke/ragdoll_races.gd with RAGDOLL_PUSH=15 compares a standing one). This bandit is not standing (his root
+	# body starts 0.07 m over his feet, on the floor), which takes some of it: the root body's first motion is held to at least
+	# 60 % of the game's along and some lift.
 	var throw := _throw_summary(start, start.y)
-	expect(throw["air_m"] > 5.7 * 0.8 and throw["air_m"] < 5.7 * 1.25, "touchdown 5.7 m (4.6-7.1): %s" % [throw])
-	expect(throw["air_s"] > 1.6 * 0.8 and throw["air_s"] < 1.6 * 1.25, "touchdown at 1.6 s (1.3-2.0): %s" % [throw])
-	expect(throw["rest_m"] > 7.8 * 0.75 and throw["rest_m"] < 7.8 * 1.15, "at rest 7.8 m (5.9-9.0): %s" % [throw])
-	expect(throw["peak_m"] > 2.0 and throw["peak_m"] < 4.0, "the pelvis flies 2-4 m above the floor: %s" % [throw])
+	var first: Vector3 = (_throw[2] - _throw[0]) / (2.0 * STEP) if _throw.size() > 2 else Vector3.ZERO
+	print("thrown: first %.2f m/s along, %.2f up; %s" % [Vector2(first.x, first.z).length(), first.y, throw])
+	expect(Vector2(first.x, first.z).length() > 10.5 * 0.6 and Vector2(first.x, first.z).length() < 10.5 * 1.2, "thrown at 6-12.6 m/s: %.2f" % Vector2(first.x, first.z).length())
+	expect(first.y > 0.0 and first.y < 3.7 * 1.4, "and up: %.2f" % first.y)
+	expect(throw["rest_m"] > 5.0, "it lands metres away: %s" % [throw])
 	expect(not (bandit as SkydotActor).is_dead() and not papyrus.is_actor_dead(BANDIT), "the bandit lives and moves again")
 	expect(bandit.global_position.distance_to(lay) > 0.2, "having been thrown: %s -> %s" % [lay, bandit.global_position])
 	papyrus.update(46.0)

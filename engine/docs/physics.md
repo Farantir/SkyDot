@@ -94,6 +94,9 @@ flying.
 - Not seen on screen yet: feel of the speeds, the step-up, swimming.
 - Explosions do not wake clutter, and `SetMotionType` cannot make a static
   model move (only models built as clutter can).
-- No constraints: chains, hanging lanterns and multi-body ragdolls stay
-  static.
+- Constraints only in actors' ragdolls (`game/game/ragdoll.gd`: the race
+  skeleton's bodies and constraints as Jolt 6DOF joints; limits, the
+  self-collision table and what Jolt cannot match are in its header and
+  `godot-notes.md`). Chains, hanging lanterns and other multi-body models
+  stay static.
 - Per-triangle Havok materials (sound, footsteps) are not kept.

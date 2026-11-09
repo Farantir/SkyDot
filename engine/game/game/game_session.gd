@@ -1125,18 +1125,19 @@ func _on_shouted(_shout: int, words: int, _spell: int, _info: Dictionary) -> voi
 		speech.say(SkydotPapyrus.PLAYER_REF, line)
 
 
-## PushActorAway: a living actor is knocked down (Corpses.knock_down); the player's own knock-down is
-## not done (PLACEHOLDER: no ragdoll for the player).
+## PushActorAway: a living actor is knocked down (Corpses.knock_down). The player has no third-person
+## body in the world to fall as (PLACEHOLDER: no ragdoll for the player): it is shoved instead.
 func _on_push_actor(source: int, target: int, force: float) -> void:
 	if target == SkydotPapyrus.PLAYER_REF:
 		_push_player(source, force)
 		return
 	if not corpses.knock_down(target, source, force):
-		print("push: 0x%08X is not knocked down (dead, not built or down already)" % target)
+		print("push: 0x%08X is not knocked down (dead, not built, down already, or its race is not)" % target)
 
 
-## The player is shoved away from `source` (no ragdoll, no lost control): a velocity along source to
-## player with Corpses' player speed per unit of force and lift, which the walk's acceleration takes out again.
+## The player is shoved away from `source` (no ragdoll, no lost control): the velocity the game's push gives
+## a ragdoll's centre of mass (Corpses.push_motion, one law for every push), which the walk's acceleration takes
+## out again.
 func _push_player(source: int, force: float) -> void:
 	var node := world.find_ref_node(source) as Node3D
 	var away := Vector3.ZERO if node == null else _feet - node.global_position
@@ -1144,7 +1145,7 @@ func _push_player(source: int, force: float) -> void:
 	if away.length() < 0.001:
 		away = -_viewpoint.global_transform.basis.z
 		away.y = 0.0
-	var speed := (away.normalized() + Vector3.UP * Corpses.PLAYER_PUSH_LIFT).normalized() * force * Corpses.PLAYER_PUSH_SPEED_PER_FORCE
+	var speed: Vector3 = Corpses.push_motion(away.normalized(), force, true)["linear"]
 	if not _player.impulse(speed):
 		print("push: the player is pushed by 0x%08X (force %s): no body to push" % [source, force])
 		return

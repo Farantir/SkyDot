@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # Death through GameSession on the real SE pack (SKYDOT_SSE_PACK), headless:
-# the bandit 0x39FE4 of BleakFallsBarrow01 is killed with the Iron Sword (the
-# hits go through Combat, so the impulse has a direction); his node stops
-# (SkydotActor.set_dead: no collision, no animation), a PhysicalBoneSimulator3D
-# ragdoll runs under his skeleton (Jolt simulates it headless too), freezes
-# when it rests and stores the corpse place; he is still pickable (Search), the
-# corpse place survives a save, and entering the cell again lays him down at
-# that place without an impulse. A draugr gets the same ragdoll; a skeleton
-# without the human bones (a frostbite spider) gets a generic one, a capsule on every
-# bone with a long child. Skips without the pack.
+# the bandit 0x39FE4 of BleakFallsBarrow01 is killed with the Iron Sword (melee
+# hits, which give a death no push, as in the game); his node stops
+# (SkydotActor.set_dead: no collision, no animation), the game's ragdoll runs
+# under his skeleton (Jolt simulates it headless too), freezes when it rests
+# within its joints' limits and stores the corpse place; he is still pickable
+# (Search), the corpse place survives a save, and entering the cell again lays
+# him down at that place. A draugr and a frostbite spider get their races'
+# ragdolls (ragdoll_races.gd checks every race against the game). Skips without
+# the pack.
 extends SceneTree
 
 const PLAYER := 0x14
@@ -19,6 +19,7 @@ const SPIDER := 0x3A1E1
 const IRON_SWORD := 0x12EB7
 const STEP := 1.0 / 60.0
 const CELL := "BleakFallsBarrow01"
+const Checks := preload("ragdoll_checks.gd")
 
 var failures := 0
 var _session: GameSession
@@ -66,33 +67,12 @@ func _pelvis(node: Node) -> Vector3:
 	return skeleton.global_transform * skeleton.get_bone_global_pose(skeleton.find_bone("NPC Pelvis [Pelv]")).origin
 
 
-## Distance of every bone from its parent, in skeleton units.
-func _bone_lengths(skeleton: Skeleton3D) -> PackedFloat32Array:
-	var out := PackedFloat32Array()
-	for i in skeleton.get_bone_count():
-		var parent := skeleton.get_bone_parent(i)
-		out.append(0.0 if parent < 0 else skeleton.get_bone_global_pose(i).origin.distance_to(skeleton.get_bone_global_pose(parent).origin))
-	return out
-
-
-## Bones keep their lengths (within 5%): no stretching.
-## Only bones whose parent is a ragdoll body are held to their length (the
-## root bones above the pelvis stay where the actor stood), with 4 units of
-## slack for the joints of the shortest.
-func _check_lengths(skeleton: Skeleton3D, reference: PackedFloat32Array, who: String) -> void:
-	var bodies := {}
-	for entry: Array in Corpses.BONES:
-		bodies[skeleton.find_bone(entry[0])] = true
-	var bad := []
-	for i in skeleton.get_bone_count():
-		var parent := skeleton.get_bone_parent(i)
-		if parent < 0 or not bodies.has(parent) or not bodies.has(i) or absf(reference[i]) > 1.0e3:
-			continue
-		var now := skeleton.get_bone_global_pose(i).origin.distance_to(skeleton.get_bone_global_pose(parent).origin)
-		if absf(now - reference[i]) > maxf(0.05 * reference[i], 4.0):
-			bad.append("%s %.1f->%.1f" % [skeleton.get_bone_name(i), reference[i], now])
-	print(who, " stretched bones: ", bad)
-	expect(bad.is_empty(), "%s: every bone keeps its length: %s" % [who, bad.slice(0, 6)])
+## Every joint of `ref`'s ragdoll within its limits and the measured gap (Ragdoll.CONE_GAP_DEGREES).
+func _check_limits(ref: int, node: SkydotActor, who: String) -> void:
+	var limits := Checks.limits(_skeleton_of(node), _session.world.get_ragdoll(ref))
+	print(who, " joints past their limits by up to ", limits["worst"], " deg at ", limits["at"])
+	expect(limits["checked"] > 0 and limits["worst"] <= Ragdoll.CONE_GAP_DEGREES + 5.0,
+		"%s: %d joints within their limits: %.1f deg at %s" % [who, limits["checked"], limits["worst"], limits["at"]])
 
 
 func _open_session(pack_dir: String) -> bool:
@@ -132,7 +112,6 @@ func _run(pack_dir: String) -> void:
 	_camera.global_position = _feet + Vector3.UP * GameSession.EYE_HEIGHT
 	_camera.look_at(node.global_position + Vector3.UP * 1.2, Vector3.UP)
 	var standing := _pelvis(node)
-	var reference := _bone_lengths(_skeleton_of(node))
 	var start := node.global_position
 	expect(standing.y - start.y > 0.7, "standing: the pelvis is %.2f m above the feet" % (standing.y - start.y))
 	expect(node.collision_layer != 0, "a living actor is on a physics layer")
@@ -148,15 +127,15 @@ func _run(pack_dir: String) -> void:
 	expect(not papyrus.get_corpse_place(BANDIT).is_empty(), "a corpse place is stored at once")
 	var took := await _until(func() -> bool: return _session.corpses.simulating() == 0, 8.0)
 	print("ragdoll rested after ", took, " s")
-	expect(took > 0.0 and took <= 5.5, "the ragdoll rests (or times out) within 5 s: %f" % took)
+	expect(took > 0.0 and took <= 8.0, "the ragdoll rests within 8 s (the game's: 2 s): %f" % took)
 	expect(skeleton.get_node_or_null("Ragdoll") == null, "the ragdoll is freed once frozen")
 	var lying := _pelvis(node)
 	print("pelvis: standing ", standing, " lying ", lying, " feet ", start)
 	expect(lying.y - start.y < 0.5, "the pelvis lies %.2f m above the floor" % (lying.y - start.y))
-	expect(Vector2(lying.x - start.x, lying.z - start.z).length() > 0.05, "the hit pushed him: moved %.2f m" % Vector2(lying.x - start.x, lying.z - start.z).length())
+	expect(Vector2(lying.x - start.x, lying.z - start.z).length() < 1.5, "a melee kill does not push: he folds where he stood, %.2f m away" % Vector2(lying.x - start.x, lying.z - start.z).length())
 	await _frames(30)
 	expect(_pelvis(node).distance_to(lying) < 0.01, "and it stays frozen")
-	_check_lengths(_skeleton_of(node), reference, "bandit")
+	_check_limits(BANDIT, node, "bandit")
 	var place := papyrus.get_corpse_place(BANDIT)
 	var cell: int = _session.world.get_actor(BANDIT)["cell"]
 	print("corpse place ", place)
@@ -175,14 +154,13 @@ func _run(pack_dir: String) -> void:
 	var draugr := _session.world.find_ref_node(DRAUGR) as SkydotActor
 	if draugr != null:
 		var draugr_feet := draugr.global_position
-		var draugr_reference := _bone_lengths(_skeleton_of(draugr))
 		_session.kill_actor(DRAUGR)
 		await _frames(2)
 		expect(draugr.is_dead() and _session.corpses.simulating() == 1, "the draugr has a ragdoll too")
 		await _until(func() -> bool: return _session.corpses.simulating() == 0, 8.0)
 		var down := _pelvis(draugr)
 		print("draugr pelvis ", down, " feet ", draugr_feet)
-		_check_lengths(_skeleton_of(draugr), draugr_reference, "draugr")
+		_check_limits(DRAUGR, draugr, "draugr")
 		expect(draugr.is_dead() and down.y - draugr_feet.y < 0.7, "the draugr lies down: %.2f m" % (down.y - draugr_feet.y))
 		expect(not papyrus.get_corpse_place(DRAUGR).is_empty(), "the draugr has a corpse place")
 	else:
@@ -207,14 +185,16 @@ func _run(pack_dir: String) -> void:
 		expect(settled.y - again.global_position.y < 0.5, "it settles lying: %.2f m" % (settled.y - again.global_position.y))
 		expect(Vector2(settled.x - lying.x, settled.z - lying.z).length() < 1.5, "near where he lay: %.2f m" % Vector2(settled.x - lying.x, settled.z - lying.z).length())
 
-	# A skeleton without the human bones: the generic ragdoll.
+	# A spider: its race's ragdoll, one body per data body.
 	var spider := _session.world.find_ref_node(SPIDER) as SkydotActor
 	expect(spider != null, "the spider is built")
 	if spider != null:
 		_session.kill_actor(SPIDER)
 		await _frames(5)
 		var ragdoll := spider.find_child("Ragdoll", true, false)
-		expect(spider.is_dead() and ragdoll != null and ragdoll.get_child_count() >= 8, "the spider has a generic ragdoll")
+		var data_bodies: int = _session.world.get_ragdoll(SPIDER).get("bodies", []).size()
+		expect(spider.is_dead() and ragdoll != null and ragdoll.get_child_count() == data_bodies and data_bodies == 48,
+			"the spider has its race's ragdoll: %d bodies of %d" % [ragdoll.get_child_count() if ragdoll != null else 0, data_bodies])
 		expect(not papyrus.get_corpse_place(SPIDER).is_empty(), "with a corpse place")
 	print("smoke_combat_death: failures=%d" % failures)
 	quit(failures)

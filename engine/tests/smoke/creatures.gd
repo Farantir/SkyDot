@@ -4,7 +4,7 @@
 # 6j): in BleakFallsBarrow01 a live skeever (aggression 1, an aggro radius of 1000
 # units) enters combat with the player, runs at him, attacks with a clip of its
 # project (`Attack*`) and bites for the race's unarmed damage, and dies to
-# `kill_actor` with a generic ragdoll. An ambush draugr (aggression 0, no aggro radius) sleeps in
+# `kill_actor` with its race's ragdoll. An ambush draugr (aggression 0, no aggro radius) sleeps in
 # its alcove (the furniture use of the AI: GetSleeping 3) and stays there with the player close by;
 # when combat starts it gets up (GetSleeping 4, the exit clip of its graph), its scripts hear
 # OnGetUp (masterAmbushScript sets Aggression 2) and it fights with its weapon and dies. The

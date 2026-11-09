@@ -66,7 +66,8 @@ What an actor is built from is decided from `world.fb` alone
   its rigid bodies and constraints (each body in its bone's frame, metres, Z
   up; keys in `extension/src/render/ragdoll.hpp`, the data in
   `formats/pack-format.md`, "Ragdolls in meshes"), read once per skeleton
-  model; empty when the skeleton has none.
+  model; empty when the skeleton has none. Death, knock-down and paralysis
+  ragdoll every race with it (`game/game/ragdoll.gd`, `corpses.gd`).
 - **Worn.** The default outfit's armor (a leveled entry resolved as above);
   the first item on a slot keeps it. The skin (the NPC's WNAM, else the
   race's) adds its addons where nothing worn covers their slots: bodies

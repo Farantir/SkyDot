@@ -3,7 +3,7 @@
 # A wolf near Riverwood on the real SE pack (SKYDOT_SSE_PACK), headless: EncWolf
 # 0x9F361 (aggression 0, an aggro radius of 1500 units) on the road east of Riverwood
 # attacks the player who comes within it, with a clip of its project, and dies to
-# `kill_actor` in a generic ragdoll. Skips without the pack.
+# `kill_actor` in its race's ragdoll. Skips without the pack.
 extends SceneTree
 
 const PLAYER := 0x14
