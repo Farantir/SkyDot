@@ -60,6 +60,17 @@ struct BehaviorTransition {
     std::string condition{};
 };
 
+/// A ragdoll modifier active while a state runs (the converter's RagdollControl, format 7).
+struct BehaviorRagdollControl {
+    enum class Kind : std::uint8_t { keyframed_bones, rigid_body, powered };
+    Kind kind{};
+    std::string name;
+    std::vector<int> bones;     ///< Ragdoll skeleton bone indices; empty: every bone.
+    std::vector<float> weights; ///< Powered: per bone; empty: 1.
+    std::vector<float> values;  ///< The control data (formats/schema/animation.fbs).
+    int world_from_model_mode{-1};
+};
+
 struct BehaviorState {
     int id{};
     std::string name;
@@ -75,6 +86,9 @@ struct BehaviorState {
     /// The behaviour file the state's generator references
     /// (hkbBehaviorReferenceGenerator), as the graph states it; empty if none.
     std::string behavior{};
+    /// The ragdoll modifiers between the state's generator and its clips or nested machines,
+    /// outermost first.
+    std::vector<BehaviorRagdollControl> ragdoll{};
 };
 
 struct BehaviorDef {

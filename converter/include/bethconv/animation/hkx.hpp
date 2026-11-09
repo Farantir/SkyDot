@@ -165,6 +165,41 @@ struct StateTransition {
     std::int32_t to_nested_state{-1};
 };
 
+/// A ragdoll modifier of hk_2010.2.0 (layouts as CommonLibSSE's
+/// hkbPoweredRagdollControlData and hkbWorldFromModelModeData, ported from
+/// activeragdoll, and measured on the SE behaviours: hkbModifier ends at 80).
+enum class RagdollControlKind : std::uint8_t {
+    /// hkbKeyframeBonesModifier: `keyframedBonesList`, the bones the rigid-body
+    /// controller drives to the pose; the others are powered or limp.
+    keyframed_bones,
+    /// hkbRigidBodyRagdollControlsModifier: hkbRigidBodyRagdollControlData,
+    /// i.e. hkaKeyFrameHierarchyUtility::ControlData (hierarchyGain,
+    /// velocityDamping, accelerationGain, velocityGain, positionGain,
+    /// positionMaxLinearVelocity, positionMaxAngularVelocity, snapGain,
+    /// snapMaxLinearVelocity, snapMaxAngularVelocity, snapMaxLinearDistance,
+    /// snapMaxAngularDistance) and durationToBlend.
+    rigid_body,
+    /// hkbPoweredRagdollControlsModifier: hkbPoweredRagdollControlData
+    /// (maxForce, tau, damping, proportionalRecoveryVelocity,
+    /// constantRecoveryVelocity), the constraint motors' parameters.
+    powered,
+};
+
+struct RagdollControl {
+    RagdollControlKind kind{};
+    std::string name;
+    /// Bone indices of the character's ragdoll skeleton (the hkx skeleton
+    /// whose bones are `Ragdoll_*`); empty: every bone.
+    std::vector<std::int16_t> bones;
+    /// Powered: boneWeights per ragdoll bone; empty: 1 for every bone.
+    std::vector<float> weights;
+    /// The control data, in the order the kind lists them.
+    std::vector<float> values;
+    /// Powered: worldFromModelModeData.mode (0 use old, 1 use input, 2
+    /// compute, 3 none, 4 use root bone); -1 for the other kinds.
+    std::int8_t world_from_model_mode{-1};
+};
+
 struct BehaviorState {
     std::int32_t id{};
     std::string name;
@@ -182,6 +217,11 @@ struct BehaviorState {
     std::vector<std::int32_t> enter_events;
     std::vector<std::int32_t> exit_events;
     std::vector<StateTransition> transitions;
+    /// The enabled ragdoll modifiers of the modifier generators (and their
+    /// modifier lists) between the state's generator and its clips or nested
+    /// machines, outermost first. Modifiers behind an hkbEventDrivenModifier
+    /// (on only between two events) are not among them.
+    std::vector<RagdollControl> ragdoll_controls;
 };
 
 /// hkbStateMachine. Only read from 8-byte-pointer files (SE); the 4-byte

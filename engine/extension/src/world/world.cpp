@@ -163,6 +163,8 @@ void SkydotWorld::_bind_methods() {
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actors"), "set_actors", "get_actors");
     godot::ClassDB::bind_method(D_METHOD("get_actor_plan", "ref"), &SkydotWorld::get_actor_plan);
     godot::ClassDB::bind_method(D_METHOD("get_ragdoll", "ref", "base"), &SkydotWorld::get_ragdoll, DEFVAL(0));
+    godot::ClassDB::bind_method(D_METHOD("get_ragdoll_controls", "ref", "clip", "base"), &SkydotWorld::get_ragdoll_controls,
+                                DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
     godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
@@ -595,6 +597,51 @@ godot::Dictionary SkydotWorld::get_ragdoll(std::int64_t ref, std::int64_t base) 
     godot::memdelete(model);
     ragdolls_.emplace(plan.skeleton_model, ragdoll);
     return ragdoll.duplicate(true);
+}
+
+godot::Array SkydotWorld::get_ragdoll_controls(std::int64_t ref, const godot::String& clip, std::int64_t base) {
+    ActorPlan plan;
+    if (base != 0) {
+        plan = builder_.npc_plan(static_cast<std::uint32_t>(base), static_cast<std::uint32_t>(ref));
+    } else if (const auto* actor = data().actor_ptr(ref); actor != nullptr) {
+        plan = builder_.actor_plan(*actor);
+    }
+    godot::Array out;
+    if (plan.behaviour.empty()) {
+        return out;
+    }
+    const auto def = graph_library().graph(plan.behaviour);
+    static constexpr const char* k_kinds[] = {"keyframed_bones", "rigid_body", "powered"};
+    for (const BehaviorRagdollControl& c : def->ragdoll_controls(normalize_path(clip.utf8().get_data()))) {
+        godot::Dictionary d;
+        d["kind"] = k_kinds[static_cast<int>(c.kind)];
+        d["name"] = String::utf8(c.name.c_str());
+        godot::Array bones;
+        for (const int index : c.bones) {
+            if (index < 0 || static_cast<std::size_t>(index) >= def->ragdoll_bones.size()) {
+                continue;
+            }
+            const auto& bone = def->ragdoll_bones[static_cast<std::size_t>(index)];
+            godot::Dictionary b;
+            b["name"] = String::utf8(bone.name.c_str());
+            b["position"] = godot::Vector3(bone.x, bone.y, bone.z);
+            bones.push_back(b);
+        }
+        d["bones"] = bones;
+        godot::PackedFloat32Array weights;
+        for (const float w : c.weights) {
+            weights.push_back(w);
+        }
+        d["weights"] = weights;
+        godot::PackedFloat32Array values;
+        for (const float v : c.values) {
+            values.push_back(v);
+        }
+        d["values"] = values;
+        d["mode"] = c.world_from_model_mode;
+        out.push_back(d);
+    }
+    return out;
 }
 
 godot::Dictionary SkydotWorld::get_npc_plan(std::int64_t npc, std::int64_t ref) const {

@@ -112,6 +112,67 @@ std::vector<int> depths(const BehaviorGraphDef& graph) {
 
 float lerp(float a, float b, float f) { return a + (b - a) * f; }
 
+/// The skeleton of a skeleton file whose bones are `Ragdoll_*` (the ragdoll skeleton beside the
+/// animation one), with model-space positions from its reference pose; empty if there is none.
+std::vector<ActorGraphDef::RagdollBone> ragdoll_skeleton(const std::vector<std::uint8_t>& bytes) {
+    std::vector<ActorGraphDef::RagdollBone> out;
+    const auto* asset = animation_asset(bytes);
+    if (asset == nullptr || asset->skeletons() == nullptr) {
+        return out;
+    }
+    for (const auto* skeleton : *asset->skeletons()) {
+        const auto* bones = skeleton->bones();
+        const auto* parents = skeleton->parents();
+        const auto* pose = skeleton->reference_pose();
+        if (bones == nullptr || parents == nullptr || pose == nullptr || bones->size() == 0 ||
+            parents->size() != bones->size() || pose->size() != bones->size() ||
+            !bones->Get(0)->string_view().starts_with("Ragdoll_")) {
+            continue;
+        }
+        struct Model {
+            float t[3];
+            float q[4]; // x, y, z, w
+        };
+        const auto rotate = [](const float* q, const float* v, float* r) {
+            // r = q v q*, with t = 2 (q.xyz x v)
+            const float tx = 2.0F * (q[1] * v[2] - q[2] * v[1]);
+            const float ty = 2.0F * (q[2] * v[0] - q[0] * v[2]);
+            const float tz = 2.0F * (q[0] * v[1] - q[1] * v[0]);
+            r[0] = v[0] + q[3] * tx + (q[1] * tz - q[2] * ty);
+            r[1] = v[1] + q[3] * ty + (q[2] * tx - q[0] * tz);
+            r[2] = v[2] + q[3] * tz + (q[0] * ty - q[1] * tx);
+        };
+        std::vector<Model> model(bones->size());
+        for (flatbuffers::uoffset_t i = 0; i < bones->size(); ++i) {
+            const auto* p = pose->Get(i);
+            const float local_t[3] = {p->tx(), p->ty(), p->tz()};
+            const float local_q[4] = {p->rx(), p->ry(), p->rz(), p->rw()};
+            const int parent = parents->Get(i);
+            Model& m = model[i];
+            if (parent < 0 || static_cast<flatbuffers::uoffset_t>(parent) >= i) {
+                std::copy(local_t, local_t + 3, m.t);
+                std::copy(local_q, local_q + 4, m.q);
+            } else {
+                const Model& pm = model[static_cast<std::size_t>(parent)];
+                float r[3];
+                rotate(pm.q, local_t, r);
+                for (int a = 0; a < 3; ++a) {
+                    m.t[a] = pm.t[a] + r[a];
+                }
+                const float* a = pm.q;
+                const float* b = local_q;
+                m.q[0] = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1];
+                m.q[1] = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+                m.q[2] = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3];
+                m.q[3] = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+            }
+            out.push_back({bones->Get(i)->str(), m.t[0], m.t[1], m.t[2]});
+        }
+        return out;
+    }
+    return out;
+}
+
 } // namespace
 
 std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behaviour, const AssetReader& read) {
@@ -135,6 +196,9 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
                 for (const auto* a : *animations) {
                     def->character_animations.push_back(a->str());
                 }
+            }
+            if (const auto* ragdoll = asset->characters()->Get(0)->ragdoll(); ragdoll != nullptr && ragdoll->size() > 0) {
+                def->ragdoll_bones = ragdoll_skeleton(read(normalize_path(def->project.folder + ragdoll->str())));
             }
             const auto* behavior = asset->characters()->Get(0)->behavior();
             if (behavior != nullptr) {
@@ -187,6 +251,36 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
         }
     }
     return def;
+}
+
+std::vector<BehaviorRagdollControl> ActorGraphDef::ragdoll_controls(const std::string& clip_file) const {
+    for (std::size_t m = 0; m < graph.machines.size(); ++m) {
+        for (const BehaviorState& state : graph.machines[m].states) {
+            if (state.clip < 0 || static_cast<std::size_t>(state.clip) >= clip_files.size() ||
+                clip_files[static_cast<std::size_t>(state.clip)] != clip_file) {
+                continue;
+            }
+            // The chain of nesting states, innermost first, then reversed: outermost first.
+            std::vector<const BehaviorState*> chain{&state};
+            std::size_t machine = m;
+            for (int guard = 0; guard < 64 && !parents[machine].empty(); ++guard) {
+                const auto [parent, id] = parents[machine].front();
+                const auto& states = graph.machines[static_cast<std::size_t>(parent)].states;
+                const auto it = std::ranges::find_if(states, [id](const BehaviorState& s) { return s.id == id; });
+                if (it == states.end()) {
+                    break;
+                }
+                chain.push_back(&*it);
+                machine = static_cast<std::size_t>(parent);
+            }
+            std::vector<BehaviorRagdollControl> out;
+            for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
+                out.insert(out.end(), (*it)->ragdoll.begin(), (*it)->ragdoll.end());
+            }
+            return out;
+        }
+    }
+    return {};
 }
 
 std::optional<RootMotion> ActorGraphDef::root_motion(const std::string& clip, float time) const {

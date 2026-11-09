@@ -154,8 +154,21 @@ func _race(race: Array, out_dir: String) -> void:
 		if skeleton.find_bone(String(b["bone"])) >= 0:
 			expected += 1
 	expect(counted == expected and expected == bodies.size(), "%s: one body per data body: %d made, %d data, %d on bones" % [name, counted, bodies.size(), expected])
-	var rested := await _until(func() -> bool: return node.find_child("Ragdoll", true, false) == null, race[7])
+	# The centre of mass while it falls: when it last moved more than 2 cm in 0.1 s (the game's "COM
+	# still after").
+	var centres: Array[Vector3] = []
+	var follow := func() -> bool:
+		var body := _session.corpses._body_of(ref)
+		if not body.is_empty():
+			centres.append((body["ragdoll"] as Ragdoll).centre())
+		return node.find_child("Ragdoll", true, false) == null
+	var rested := await _until(follow, race[7])
 	print("%s: rested after %.1f s" % [name, rested + maxf(started, 0.0)])
+	var moving_until := 0.0
+	for i in range(6, centres.size()):
+		if centres[i].distance_to(centres[i - 6]) > 0.02:
+			moving_until = i * STEP
+	print("%s: the centre of mass moved until %.1f s" % [name, moving_until + maxf(started, 0.0)])
 	expect(rested >= 0.0, "%s: the ragdoll rests within %.0f s" % [name, race[7]])
 
 	var limits := Checks.limits(skeleton, data)

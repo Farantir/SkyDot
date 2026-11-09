@@ -635,6 +635,91 @@ std::int32_t clip_below(Packfile& pf, std::size_t generator, const std::map<std:
     return -1;
 }
 
+/// A ragdoll modifier's hkbBoneIndexArray (an hkbBindable, its int16
+/// hkArray at +48) or hkbBoneWeightArray (float hkArray at +48).
+template <typename T>
+std::vector<T> bindable_array(Packfile& pf, std::size_t at, const char* what) {
+    std::vector<T> out;
+    const auto object = pf.pointer(at);
+    if (!object) {
+        return out;
+    }
+    const auto arr = pf.array(*object + 48, sizeof(T), what);
+    for (std::size_t i = 0; i < arr.count && pf.bytes().ok(); ++i) {
+        out.push_back(pf.bytes().at<T>(arr.data + i * sizeof(T)));
+    }
+    return out;
+}
+
+/// The enabled ragdoll modifiers of `modifier` (itself, or an hkbModifierList's
+/// modifiers, at +80). Offsets after hkbModifier (enable at +72, members from
+/// +80): powered controlData at +80 (16-aligned, 5 floats), bones +112,
+/// worldFromModelModeData +120 (mode at +126), boneWeights +128; rigid body
+/// controlData +80 (12 floats and durationToBlend), bones +144; keyframe bones
+/// keyframeInfo array +80, keyframedBonesList +96.
+void ragdoll_modifiers(Packfile& pf, std::size_t modifier, std::vector<RagdollControl>& out, int depth = 0) {
+    const std::string* cls = pf.class_of(modifier);
+    Bytes& b = pf.bytes();
+    if (cls == nullptr || depth > 8) {
+        return;
+    }
+    if (*cls == "hkbModifierList") {
+        const auto list = pf.array(modifier + 80, 8, "modifier list");
+        for (std::size_t i = 0; i < list.count && b.ok(); ++i) {
+            if (const auto m = pf.pointer(list.data + i * 8)) {
+                ragdoll_modifiers(pf, *m, out, depth + 1);
+            }
+        }
+        return;
+    }
+    const auto floats = [&](std::size_t at, std::size_t count) {
+        std::vector<float> v;
+        for (std::size_t i = 0; i < count; ++i) {
+            v.push_back(b.at<float>(at + 4 * i));
+        }
+        return v;
+    };
+    RagdollControl c;
+    if (*cls == "hkbKeyframeBonesModifier") {
+        c.kind = RagdollControlKind::keyframed_bones;
+        c.bones = bindable_array<std::int16_t>(pf, modifier + 96, "keyframed bones");
+    } else if (*cls == "hkbRigidBodyRagdollControlsModifier") {
+        c.kind = RagdollControlKind::rigid_body;
+        c.values = floats(modifier + 80, 13);
+        c.bones = bindable_array<std::int16_t>(pf, modifier + 144, "rigid body bones");
+    } else if (*cls == "hkbPoweredRagdollControlsModifier") {
+        c.kind = RagdollControlKind::powered;
+        c.values = floats(modifier + 80, 5);
+        c.bones = bindable_array<std::int16_t>(pf, modifier + 112, "powered bones");
+        c.world_from_model_mode = b.at<std::int8_t>(modifier + 126);
+        c.weights = bindable_array<float>(pf, modifier + 128, "powered bone weights");
+    } else {
+        return;
+    }
+    if (b.at<std::uint8_t>(modifier + 72) == 0) {
+        return; // not enabled
+    }
+    c.name = pf.string(modifier + 56);
+    out.push_back(std::move(c));
+}
+
+/// The ragdoll modifiers of the modifier generators from `generator` down to
+/// its clips and nested machines (a machine's own states carry theirs),
+/// outermost first.
+void ragdoll_controls(Packfile& pf, std::size_t generator, std::vector<RagdollControl>& out, int depth = 0) {
+    if (depth > 16) {
+        return;
+    }
+    if (const std::string* cls = pf.class_of(generator); cls != nullptr && *cls == "hkbModifierGenerator") {
+        if (const auto modifier = pf.pointer(generator + 72)) {
+            ragdoll_modifiers(pf, *modifier, out);
+        }
+    }
+    for (const std::size_t child : child_generators(pf, generator)) {
+        ragdoll_controls(pf, child, out, depth + 1);
+    }
+}
+
 /// The state machines that run side by side under `generator`: itself if it
 /// is one, else those found below it through child_generators (blenders,
 /// modifier generators, selectors... nest).
@@ -682,6 +767,7 @@ StateMachine read_state_machine(Packfile& pf, std::size_t a,
             }
             root_machines(pf, *generator, kinds, s.nested_machines);
             s.behavior = referenced_behavior(pf, *generator, kinds);
+            ragdoll_controls(pf, *generator, s.ragdoll_controls);
         }
         s.name = pf.string(*info + 96);
         s.id = b.at<std::int32_t>(*info + 104);

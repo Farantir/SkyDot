@@ -46,6 +46,21 @@ class RagdollPose:
 					skeleton.set_bone_global_pose(index, Corpses.bone_pose(skeleton, bone))
 
 
+## Keeps the animation's global poses of the bones with a body before the ragdoll's simulator writes
+## over them (it is the skeleton's first modifier): the targets of the rigid-body controller.
+class AnimatedPose:
+	extends SkeletonModifier3D
+	var indices: Array[int] = []
+	var poses := {}  # bone index -> global pose (skeleton space)
+
+	func _process_modification_with_delta(_delta: float) -> void:
+		var skeleton := get_skeleton()
+		if skeleton == null:
+			return
+		for index in indices:
+			poses[index] = skeleton.get_bone_global_pose(index)
+
+
 ## Frozen when every body is slower than REST_SPEED (m/s) for REST_SECONDS (PLACEHOLDER: the game's
 ## rest test is not known; its ragdolls settled in 2 s (human) to 18 s (a dragon's limbs)), or after
 ## MAX_SECONDS (PLACEHOLDER).
@@ -367,6 +382,13 @@ func step(delta: float) -> void:
 			_bodies.erase(body)
 			continue
 		body["time"] += delta
+		if body.has("animated"):
+			# Driven by its clip: not at rest until the clip has ended.
+			(body["ragdoll"] as Ragdoll).drive((body["animated"] as AnimatedPose).poses, delta)
+			body["still"] = 0.0
+			if body["time"] < MAX_SECONDS:
+				continue
+			_end_drive(body)
 		var moving := false
 		for bone: PhysicalBone3D in body["bones"]:
 			if bone.linear_velocity.length() > REST_SPEED:
@@ -428,10 +450,10 @@ func _lay_down(ref: int, push: Dictionary, knocked := false) -> bool:
 
 ## The game's ragdoll of `node`'s skeleton from the pose it has (`posed`: it plays or holds a death
 ## clip; the animation is let go of and a body without a ragdoll stays as it is).
-func _ragdoll_body(ref: int, node: SkydotActor, push: Dictionary, knocked: bool, posed: bool) -> bool:
+func _ragdoll_body(ref: int, node: SkydotActor, push: Dictionary, knocked: bool, posed: bool, controls := []) -> bool:
 	var found := node.find_children("*", "Skeleton3D", true, false)
 	var skeleton: Skeleton3D = found.front() if not found.is_empty() else null
-	if posed:
+	if posed and controls.is_empty():
 		var anim := node.get_node_or_null("AnimationPlayer") as AnimationPlayer
 		if anim != null:
 			anim.active = false  # the skeleton keeps the pose; the simulation takes it from there
@@ -474,8 +496,18 @@ func _ragdoll_body(ref: int, node: SkydotActor, push: Dictionary, knocked: bool,
 	for bone in ragdoll.bones:
 		if bone != null:
 			bones.append(bone)
-	_bodies.append({"ref": ref, "node": node, "skeleton": skeleton, "ragdoll": ragdoll, "bones": bones,
-		"time": 0.0, "still": 0.0, "knocked": knocked})
+	var entry := {"ref": ref, "node": node, "skeleton": skeleton, "ragdoll": ragdoll, "bones": bones,
+		"time": 0.0, "still": 0.0, "knocked": knocked}
+	if not controls.is_empty() and ragdoll.set_drive(controls):
+		# The clip goes on posing the skeleton; the rigid-body controller drives the bodies toward it.
+		var animated := AnimatedPose.new()
+		for i in ragdoll.driven:
+			animated.indices.append(skeleton.find_bone(ragdoll.bones[i].bone_name))
+		skeleton.add_child(animated)
+		skeleton.move_child(animated, 0)
+		entry["animated"] = animated
+		print("death: 0x%08X drives %d of %d bodies with the clip" % [ref, ragdoll.driven.size(), bones.size()])
+	_bodies.append(entry)
 	var skeleton_name := String(_plan(ref).get("skeleton_model", "?"))
 	_warn.once("ragdoll" + skeleton_name, "ragdoll for %s (%d bodies, %d joints)" % [skeleton_name, bones.size(), ragdoll.joints.size()])
 	if not knocked:
@@ -504,19 +536,46 @@ func _plan(ref: int) -> Dictionary:
 
 
 ## A race with a death clip (the dragon's mtdeathintro) plays it once and holds the last frame; a flyer
-## crashes first. A body built dead is posed at the end of the clip directly. When the pose is held
-## (`SkydotActor.death_pose_done`) the generic ragdoll takes the body from that pose, which then rests,
-## freezes and is stored as any creature's.
+## crashes first. A body built dead is posed at the end of the clip directly. If the graph's state that
+## plays the clip drives the ragdoll (SkydotWorld.get_ragdoll_controls), the ragdoll takes the body when
+## the clip starts and is driven toward its pose (Ragdoll.drive) until it ends; otherwise it takes the
+## body from the held pose (`SkydotActor.death_pose_done`). Either way it then rests limp, freezes and is
+## stored as any creature's.
 func _pose_death(ref: int, node: SkydotActor) -> bool:
 	var rebuilt := not _live.has(ref)
 	_live.erase(ref)
 	node.death_pose_done.connect(_on_death_pose_done.bind(ref, node), CONNECT_ONE_SHOT)
+	# The behaviour graph's state that plays the clip may drive the ragdoll with it (the game's
+	# AnimateToRagdoll states: hkbKeyframeBonesModifier + hkbRigidBodyRagdollControlsModifier).
+	var controls := _world.get_ragdoll_controls(ref, node.get_death_clip())
+	if controls.is_empty():
+		var base := int(_papyrus.get_ref_base(ref))
+		if base != 0:
+			controls = _world.get_ragdoll_controls(ref, node.get_death_clip(), base)
+	if not rebuilt and not controls.is_empty():
+		node.death_clip_started.connect(_on_death_clip_started.bind(ref, node, controls), CONNECT_ONE_SHOT)
 	if not rebuilt:
 		print("death: 0x%08X plays %s%s" % [ref, node.get_death_clip().get_file(), " after a crash" if node.is_flying() else ""])
 	if not node.start_death(rebuilt):
 		node.death_pose_done.disconnect(_on_death_pose_done.bind(ref, node))
+		if node.death_clip_started.is_connected(_on_death_clip_started.bind(ref, node, controls)):
+			node.death_clip_started.disconnect(_on_death_clip_started.bind(ref, node, controls))
 		return false
 	return true
+
+
+## The death clip starts: the ragdoll takes the body now, driven toward the clip's pose until it ends.
+func _on_death_clip_started(ref: int, node: SkydotActor, controls: Array) -> void:
+	if is_instance_valid(node) and node.is_inside_tree():
+		_ragdoll_body(ref, node, {}, false, true, controls)
+
+
+## The body of `ref` the ragdoll simulates, or empty.
+func _body_of(ref: int) -> Dictionary:
+	for body in _bodies:
+		if body["ref"] == ref:
+			return body
+	return {}
 
 
 func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
@@ -534,9 +593,26 @@ func _on_death_pose_done(ref: int, node: SkydotActor) -> void:
 	# The creature has finished dying when the clip is done (the game's dragon: OnDeath ~2 s after the
 	# kill, stage 80), not when the body that then collapses has come to rest.
 	_papyrus.finish_dying(ref)
-	# The clip is only the intro: the body collapses from its last pose and rests as other creatures' do,
-	# without a push (the game drives a powered ragdoll with the clip; SkyDot plays the clip, then this).
+	# The clip is only the intro: the body goes limp and rests as other creatures' do, without a push.
+	# Driven by the clip (the graph's state has a rigid-body controller) it is already a ragdoll;
+	# otherwise it collapses from the clip's last pose.
+	var driven := _body_of(ref)
+	if not driven.is_empty() and driven.has("animated"):
+		_end_drive(driven)
+		return
 	_ragdoll_body(ref, node, {}, false, true)
+
+
+## The drive of a body ends (its clip did, or the body freezes): limp, the animation let go of.
+func _end_drive(body: Dictionary) -> void:
+	(body["ragdoll"] as Ragdoll).end_drive()
+	var animated: AnimatedPose = body.get("animated")
+	body.erase("animated")
+	if is_instance_valid(animated):
+		animated.queue_free()
+	var anim := (body["node"] as Node).get_node_or_null("AnimationPlayer") as AnimationPlayer
+	if anim != null:
+		anim.active = false
 
 
 ## Freeze the ragdoll into the bones' poses, free it, store the corpse place.

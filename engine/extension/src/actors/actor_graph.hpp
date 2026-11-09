@@ -47,6 +47,20 @@ struct ActorGraphDef {
     /// The animation files the character lists (hkbCharacterStringData::animationNames), as written.
     std::vector<std::string> character_animations;
     std::string missing;   ///< Why there is no graph, or empty.
+    /// The character's ragdoll skeleton (hkbCharacterStringData::ragdollName's hkx skeleton whose bones
+    /// are `Ragdoll_*`): bone names as stored and positions in model space (game units), the bones the
+    /// graph's ragdoll modifiers index. Empty when the character has none.
+    struct RagdollBone {
+        std::string name;
+        float x{};
+        float y{};
+        float z{};
+    };
+    std::vector<RagdollBone> ragdoll_bones;
+
+    /// The ragdoll modifiers active while the state that plays `clip_file` (a virtual path) runs: those of
+    /// the states that nest its machine, outermost first, then its own. Empty if no state plays it.
+    [[nodiscard]] std::vector<BehaviorRagdollControl> ragdoll_controls(const std::string& clip_file) const;
 
     [[nodiscard]] bool empty() const { return graph.machines.empty(); }
     /// The project clip `name` (a clip generator's name, any case) at `time` seconds, interpolated;

@@ -67,7 +67,15 @@ What an actor is built from is decided from `world.fb` alone
   up; keys in `extension/src/render/ragdoll.hpp`, the data in
   `formats/pack-format.md`, "Ragdolls in meshes"), read once per skeleton
   model; empty when the skeleton has none. Death, knock-down and paralysis
-  ragdoll every race with it (`game/game/ragdoll.gd`, `corpses.gd`).
+  ragdoll every race with it (`game/game/ragdoll.gd`, `corpses.gd`). The
+  behaviour graph's state that plays the death clip names the ragdoll
+  modifiers it runs (`SkydotWorld.get_ragdoll_controls(ref, clip)`; the
+  AnimateToRagdoll states: hkbKeyframeBonesModifier and
+  hkbRigidBodyRagdollControlsModifier): the ragdoll takes the body when the
+  clip starts, its keyframed bones driven toward the clip's pose by the
+  rigid-body controller (`Ragdoll.drive`, hkaKeyFrameHierarchyUtility's gains),
+  the others limp; when the clip ends all go limp. Modifiers behind an
+  event (the powered get-up matching) are not decoded.
 - **Worn.** The default outfit's armor (a leveled entry resolved as above);
   the first item on a slot keeps it. The skin (the NPC's WNAM, else the
   race's) adds its addons where nothing worn covers their slots: bodies

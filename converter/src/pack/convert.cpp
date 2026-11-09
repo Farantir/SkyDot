@@ -470,8 +470,9 @@ std::string ConvertOptions::animation_settings() const {
     // (animation asset format 4). 6: toNestedStateId of transitions (format 5).
     // 7: nested machines are found below every wrapping generator, not only blenders.
     // 8: the initial values of the graph variables (animation asset format 6). 9: a state's clip is
-    // found below modifier generators, selectors and blenders too.
-    return "animation/9;decoded";
+    // found below modifier generators, selectors and blenders too. 10: the ragdoll modifiers of a
+    // state's generator (animation asset format 7).
+    return "animation/10;decoded";
 }
 
 std::string ConvertOptions::sound_settings() const {

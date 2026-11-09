@@ -650,7 +650,15 @@ graph variable its `startStateId` is bound to (`hkbVariableBindingSet`;
 target state's nested machine. A graph keeps its variables' initial values (`variable_values`, in
 `variable_names` order, from `hkbBehaviorGraphData`'s `hkbVariableValueSet`; format 6), and a state's
 clip is the first clip generator found below its generator, also through modifier generators,
-selectors and blenders. Other generators, modifiers and physics are
+selectors and blenders. A state keeps the enabled ragdoll modifiers of the modifier generators (and
+their modifier lists) between its generator and its clips or nested machines, outermost first
+(`ragdoll_controls`; format 7): hkbKeyframeBonesModifier (the bones the rigid-body controller
+drives), hkbRigidBodyRagdollControlsModifier (hkaKeyFrameHierarchyUtility's control data and
+durationToBlend) and hkbPoweredRagdollControlsModifier (maxForce, tau, damping, the two recovery
+velocities, bones, weights, world-from-model mode), bones as indices of the character's `Ragdoll_*`
+skeleton; layouts as CommonLibSSE's ports from activeragdoll, offsets measured on SE. Vanilla SE: 243
+on states (rigid body and keyframed bones; every powered one is behind an hkbEventDrivenModifier, which
+is not followed). Other generators, modifiers and physics are
 not decoded; such files still convert, so every path resolves.
 
 Clips stay B-splines, as Havok stores them: sampled per frame, vanilla SE's

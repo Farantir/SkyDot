@@ -63,6 +63,15 @@ var scale := 1.0
 var joints: Array[RID] = []
 ## Constraints left out (a body missing, a kind not made).
 var skipped := 0
+## Each body's centre of mass in its own frame (metres), set by `start`.
+var centres: Array[Vector3] = []
+## Each body's parent body (the B of the constraint whose A it is), -1 for the root.
+var parents: Array[int] = []
+## The rigid-body controller (`set_drive`): the control data (empty: none), the bodies it drives, and
+## per driven body what the last step wanted ({com, rot, v, w}).
+var drive_values := PackedFloat32Array()
+var driven: Array[int] = []
+var _drive_last := {}
 
 
 ## The ragdoll of `skeleton` from `ragdoll` (SkydotWorld.get_ragdoll), or null if no body's bone is on
@@ -107,6 +116,7 @@ func start() -> void:
 			simulator.add_child(bone)
 	simulator.physical_bones_start_simulation()
 	var bodies: Array = data.get("bodies", [])
+	centres.resize(bones.size())
 	for i in bones.size():
 		var bone := bones[i]
 		if bone == null:
@@ -114,12 +124,18 @@ func start() -> void:
 		var body: Dictionary = bodies[i]
 		# Godot's body has its centre of mass at the shapes' centre: the data's (bone frame, metres) here.
 		var com: Vector3 = _body_frame(body).affine_inverse() * (Vector3(body.get("center_of_mass", Vector3.ZERO)) * scale)
+		centres[i] = com
 		PhysicsServer3D.body_set_param(bone.get_rid(), PhysicsServer3D.BODY_PARAM_CENTER_OF_MASS, com)
 		var inertia: Basis = body.get("inertia", Basis())
 		var diagonal := Vector3(inertia.x.x, inertia.y.y, inertia.z.z) * scale * scale * scale  # m * r^2: s * s^2
 		if diagonal.x > 0.0 and diagonal.y > 0.0 and diagonal.z > 0.0:
 			PhysicsServer3D.body_set_param(bone.get_rid(), PhysicsServer3D.BODY_PARAM_INERTIA, diagonal)
+	parents.resize(bones.size())
+	parents.fill(-1)
 	for constraint: Dictionary in data.get("constraints", []):
+		var child := int(constraint.get("body_a", -1))
+		if child >= 0 and child < parents.size():
+			parents[child] = int(constraint.get("body_b", -1))
 		var joint := make_joint(constraint)
 		if joint.is_valid():
 			joints.append(joint)
@@ -352,6 +368,153 @@ func set_motion(linear: Vector3, spin: Vector3) -> void:
 			var v := linear + spin.cross(bone.global_position - at)
 			PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, v)
 			PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, spin)
+
+
+# ---- the rigid-body controller
+
+## The behaviour graph's ragdoll modifiers active now (SkydotWorld.get_ragdoll_controls, outermost
+## first) drive the ragdoll as the game's hkbRagdollDriver does: the bones of the
+## hkbKeyframeBonesModifiers (every bone if one lists none) are the "keyframed" ones, which the
+## rigid-body controller (hkaRagdollRigidBodyController, the hkbRigidBodyRagdollControlsModifier's
+## hkaKeyFrameHierarchyUtility control data; the outermost modifier writes last, so it wins) moves
+## toward the animation's pose by setting the dynamic bodies' velocities; the other bones are limp.
+## Only the graph's own states' modifiers: those behind an event (hkbEventDrivenModifier, e.g. the
+## powered "PoweredRagdollMatching" of the get-up) are not decoded. `skeleton_rest` maps a ragdoll
+## skeleton bone (hkx `Ragdoll_*` name) to a body: by name without the prefix, else the body whose bone
+## stands nearest to it at rest. False, and no drive, without a rigid-body control or a driven body.
+func set_drive(controls: Array) -> bool:
+	drive_values = PackedFloat32Array()
+	driven.clear()
+	_drive_last.clear()
+	var keyframed := {}
+	var all := false
+	var any_keyframes := false
+	for control: Dictionary in controls:
+		match String(control.get("kind", "")):
+			"rigid_body":
+				if drive_values.is_empty():
+					drive_values = control.get("values", PackedFloat32Array())
+			"keyframed_bones":
+				any_keyframes = true
+				var listed: Array = control.get("bones", [])
+				if listed.is_empty():
+					all = true
+				for bone: Dictionary in listed:
+					var body := _body_of_ragdoll_bone(String(bone.get("name", "")), Vector3(bone.get("position", Vector3.ZERO)))
+					if body >= 0:
+						keyframed[body] = true
+	if drive_values.size() < 12 or not any_keyframes:
+		drive_values = PackedFloat32Array()
+		return false
+	for i in bones.size():
+		if bones[i] != null and (all or keyframed.has(i)):
+			driven.append(i)
+	return not driven.is_empty()
+
+
+## The drive's end: the bodies go limp.
+func end_drive() -> void:
+	drive_values = PackedFloat32Array()
+	driven.clear()
+	_drive_last.clear()
+
+
+## The body of the ragdoll skeleton bone `hkx_name` at `at` (model space, game units, Z up, as the
+## skeleton's own rest poses); -1 if none.
+func _body_of_ragdoll_bone(hkx_name: String, at: Vector3) -> int:
+	var name := hkx_name.trim_prefix("Ragdoll_")
+	var bodies: Array = data.get("bodies", [])
+	for i in bones.size():
+		if bones[i] != null and String(bodies[i].get("bone", "")) == name:
+			return i
+	var best := -1
+	var best_distance := INF
+	for i in bones.size():
+		if bones[i] == null:
+			continue
+		var index := skeleton.find_bone(bones[i].bone_name)
+		var d := skeleton.get_bone_global_rest(index).origin.distance_to(at)  # both Skyrim's model space
+		if d < best_distance:
+			best_distance = d
+			best = i
+	return best
+
+
+## One step of the rigid-body controller toward `poses` (skeleton bone index -> the animation's global
+## pose in the skeleton's space), `delta` seconds after the last. hkaKeyFrameHierarchyUtility, its
+## ControlData in Havok units (metres, radians), as its members are documented and activeragdoll
+## (github.com/adamhynek/activeragdoll, hkaKeyFrameHierarchyUtility_CalculateApplyKeyframeData)
+## re-implements the target: a body's target is its animated pose, pulled by hierarchyGain toward its
+## parent body's actual pose times the animated pose relative to the parent. Then its velocity:
+## velocityDamping takes that share off, accelerationGain adds that share of the change of the
+## target's velocity, velocityGain moves that share of the way to the target's velocity, positionGain
+## adds that share of the position error per step (at most positionMax*Velocity), snapGain the same
+## at full strength within snapMax*Distance and scaled down beyond (at most snapMax*Velocity).
+func drive(poses: Dictionary, delta: float) -> void:
+	if drive_values.is_empty() or delta <= 0.0:
+		return
+	var v := drive_values
+	var hierarchy_gain := v[0]
+	var targets := {}
+	for i in driven:
+		var bone := bones[i]
+		var index := skeleton.find_bone(bone.bone_name)
+		if not poses.has(index) or not is_instance_valid(bone) or not bone.is_inside_tree():
+			continue
+		targets[i] = _body_at(poses[index], bone)
+	for i: int in targets:
+		var bone := bones[i]
+		var target: Transform3D = targets[i]
+		var parent := parents[i] if i < parents.size() else -1
+		if hierarchy_gain > 0.0 and parent >= 0 and targets.has(parent) and bones[parent] != null:
+			var parent_target: Transform3D = targets[parent]
+			var follow := bones[parent].global_transform * (parent_target.affine_inverse() * target)
+			target = Transform3D(Basis(target.basis.get_rotation_quaternion().slerp(
+				follow.basis.get_rotation_quaternion(), hierarchy_gain)), target.origin.lerp(follow.origin, hierarchy_gain))
+		var com := target * centres[i]
+		var rot := target.basis.get_rotation_quaternion()
+		var last: Dictionary = _drive_last.get(i, {"com": com, "rot": rot, "v": Vector3.ZERO, "w": Vector3.ZERO})
+		var want_v: Vector3 = (com - Vector3(last["com"])) / delta
+		var want_w: Vector3 = _rotation_vector(last["rot"], rot) / delta
+		var now := bone.global_transform
+		var lin := _gain_velocity(bone.linear_velocity, want_v, last["v"], com - now * centres[i], delta, v, 5, 8, 10)
+		var ang := _gain_velocity(bone.angular_velocity, want_w, last["w"],
+			_rotation_vector(now.basis.get_rotation_quaternion(), rot), delta, v, 6, 9, 11)
+		PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, lin)
+		PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, ang)
+		_drive_last[i] = {"com": com, "rot": rot, "v": want_v, "w": want_w}
+
+
+## The velocity the controller gives a body (linear or angular): `current`, the target's velocity
+## `want` and its last `before`, the position (or rotation vector) error `error`; `max_at`, `snap_max_at`
+## and `snap_distance_at` index the position, snap velocity and snap distance limits in `v`.
+static func _gain_velocity(current: Vector3, want: Vector3, before: Vector3, error: Vector3, delta: float,
+		v: PackedFloat32Array, max_at: int, snap_max_at: int, snap_distance_at: int) -> Vector3:
+	var out := current * (1.0 - v[1])
+	out += (want - before) * v[2]
+	out += (want - out) * v[3]
+	out += (error * (v[4] / delta)).limit_length(v[max_at])
+	var distance := error.length()
+	var snap := v[7] * (1.0 if distance <= v[snap_distance_at] else v[snap_distance_at] / distance)
+	out += (error * (snap / delta)).limit_length(v[snap_max_at])
+	return out
+
+
+## The global transform the body of `bone` has when its bone has the skeleton-space pose `pose` (as
+## the simulator places it: no scale).
+func _body_at(pose: Transform3D, bone: PhysicalBone3D) -> Transform3D:
+	var g := skeleton.global_transform
+	var placed := pose * bone.body_offset
+	return Transform3D(g.basis.orthonormalized() * placed.basis.orthonormalized(), g * placed.origin)
+
+
+## The rotation (axis times angle, radians) that turns `from` into `to`, the short way.
+static func _rotation_vector(from: Quaternion, to: Quaternion) -> Vector3:
+	var turn := to * from.inverse()
+	if turn.w < 0.0:
+		turn = -turn
+	var angle := turn.get_angle()
+	return turn.get_axis() * angle if angle > 1.0e-6 else Vector3.ZERO
 
 
 ## Havok's angles of `constraint` with its bodies turned by `turn_a` and `turn_b` (their frames'

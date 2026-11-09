@@ -167,6 +167,7 @@ void SkydotActor::_bind_methods() {
     ADD_SIGNAL(godot::MethodInfo("flight_landed"));
     ADD_SIGNAL(godot::MethodInfo("flight_crashed"));
     ADD_SIGNAL(godot::MethodInfo("death_pose_done"));
+    ADD_SIGNAL(godot::MethodInfo("death_clip_started"));
     ADD_SIGNAL(godot::MethodInfo("animation_event", PropertyInfo(Variant::STRING, "event")));
     ADD_SIGNAL(godot::MethodInfo("door_toggled", PropertyInfo(Variant::INT, "ref"),
                                  PropertyInfo(Variant::INT, "open_state")));
@@ -431,6 +432,7 @@ void SkydotActor::begin_death_clip(bool seek_end) {
     death_state_ = "clip";
     death_left_ = length;
     set_physics_process(false);
+    emit_signal("death_clip_started");
 }
 
 void SkydotActor::hold_death_pose() {

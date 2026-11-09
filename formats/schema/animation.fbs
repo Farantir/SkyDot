@@ -158,6 +158,39 @@ table StateTransition {
     to_nested_state: int = -1;
 }
 
+/// Added in format 7: a ragdoll modifier active while a state runs (see
+/// BehaviorState.ragdoll_controls). Layouts of hk_2010.2.0 as CommonLibSSE's
+/// (ported from activeragdoll) and measured on the SE behaviours.
+enum RagdollControlKind : ubyte {
+    /// hkbKeyframeBonesModifier: the bones (keyframedBonesList) the rigid-body
+    /// controller drives to the animation's pose; the others are powered or
+    /// limp. `values` empty.
+    KeyframedBones,
+    /// hkbRigidBodyRagdollControlsModifier: `values` = hkaKeyFrameHierarchyUtility
+    /// ControlData (hierarchyGain, velocityDamping, accelerationGain,
+    /// velocityGain, positionGain, positionMaxLinearVelocity,
+    /// positionMaxAngularVelocity, snapGain, snapMaxLinearVelocity,
+    /// snapMaxAngularVelocity, snapMaxLinearDistance, snapMaxAngularDistance;
+    /// Havok units, metres and radians) and durationToBlend.
+    RigidBody,
+    /// hkbPoweredRagdollControlsModifier: `values` = hkbPoweredRagdollControlData
+    /// (maxForce, tau, damping, proportionalRecoveryVelocity,
+    /// constantRecoveryVelocity), the constraint motors' parameters.
+    Powered,
+}
+table RagdollControl {
+    kind: RagdollControlKind;
+    name: string;
+    /// Bone indices of the character's ragdoll skeleton (the hkx skeleton
+    /// whose bones are `Ragdoll_*`, Character.ragdoll); empty: every bone.
+    bones: [short];
+    /// Powered: boneWeights per ragdoll bone; empty: 1 for every bone.
+    weights: [float];
+    values: [float];
+    /// Powered: worldFromModelModeData.mode (0 use old, 1 use input,
+    /// 2 compute, 3 none, 4 use root bone); -1 otherwise.
+    world_from_model_mode: byte = -1;
+}
 table BehaviorState {
     id: int;
     name: string;
@@ -176,6 +209,11 @@ table BehaviorState {
     /// in the state's generator (or in a blender's children) names, as stored
     /// (`Behaviors\Chair.hkx`); empty if none.
     behavior: string;
+    /// Added in format 7: the enabled ragdoll modifiers of the modifier
+    /// generators (and their modifier lists) between the state's generator
+    /// and its clips or nested machines, outermost first; those behind an
+    /// hkbEventDrivenModifier (on only between two events) are left out.
+    ragdoll_controls: [RagdollControl];
 }
 
 table StateMachine {

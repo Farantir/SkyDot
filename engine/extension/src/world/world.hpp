@@ -429,6 +429,13 @@ public:
     /// its bone's frame, metres, Z up (keys in render/ragdoll.hpp). Read once per skeleton model
     /// and kept; empty if the actor has no plan or its skeleton no ragdoll.
     godot::Dictionary get_ragdoll(std::int64_t ref, std::int64_t base = 0);
+    /// The ragdoll modifiers of the behaviour graph that are active while the state playing the clip
+    /// `clip` (a virtual path) runs, for actor `ref` (`base` as in get_ragdoll), outermost first
+    /// (ActorGraphDef::ragdoll_controls): each {kind: "keyframed_bones" | "rigid_body" | "powered",
+    /// name, bones: [{name, position}] (the character's ragdoll skeleton bones, model space in game
+    /// units; empty: every bone), weights, values (formats/schema/animation.fbs), mode}. Empty when
+    /// the actor has no graph or no state plays the clip.
+    godot::Array get_ragdoll_controls(std::int64_t ref, const godot::String& clip, std::int64_t base = 0);
     /// Actors walk around their place while no AI packages are read (see
     /// actor.hpp). On by default; off, they stand in their idle.
     void set_actor_wander(bool enabled) { builder_.options().actor_wander = enabled; }

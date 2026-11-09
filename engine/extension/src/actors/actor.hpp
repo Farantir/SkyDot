@@ -151,7 +151,8 @@ public:
     /// its animation plays the death clip once and holds the last frame. A flyer in flight crashes
     /// first (the mover's crash approach and crash clips, down to the ground), then plays it.
     /// `seek_end` (a body built again) poses the end of the clip directly. Raises `death_pose_done`
-    /// when the pose is held (at once for `seek_end`); false if it was dead already.
+    /// when the pose is held (at once for `seek_end`) and `death_clip_started` when the clip starts
+    /// playing (not for `seek_end`); false if it was dead already.
     bool start_death(bool seek_end);
     /// "" (not dying), "crash" (falling from the air), "clip" (the death clip plays), "held".
     godot::String get_death_state() const { return death_state_; }

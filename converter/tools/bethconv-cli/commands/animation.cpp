@@ -93,6 +93,29 @@ void print_behavior(const bethconv::animation::HkxFile& file, const std::string&
                     std::printf(" exit:%s", event_name(id).c_str());
                 }
                 std::printf("\n");
+                for (const auto& c : st.ragdoll_controls) {
+                    static constexpr const char* k_kinds[] = {"keyframed bones", "rigid body", "powered"};
+                    std::printf("      ragdoll %s '%s'", k_kinds[static_cast<int>(c.kind)], c.name.c_str());
+                    for (const float v : c.values) {
+                        std::printf(" %g", static_cast<double>(v));
+                    }
+                    if (c.world_from_model_mode >= 0) {
+                        std::printf(" mode %d", c.world_from_model_mode);
+                    }
+                    std::printf(" bones [");
+                    for (const auto bone : c.bones) {
+                        std::printf(" %d", bone);
+                    }
+                    std::printf(" ]");
+                    if (!c.weights.empty()) {
+                        std::printf(" weights [");
+                        for (const float w : c.weights) {
+                            std::printf(" %g", static_cast<double>(w));
+                        }
+                        std::printf(" ]");
+                    }
+                    std::printf("\n");
+                }
                 print_transitions("      ", st.transitions);
             }
         }

@@ -244,6 +244,24 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
                     }
                 }
                 transitions(s->transitions(), state.transitions);
+                if (const auto* controls = s->ragdoll_controls()) {
+                    for (const auto* c : *controls) {
+                        BehaviorRagdollControl control;
+                        control.kind = static_cast<BehaviorRagdollControl::Kind>(c->kind());
+                        control.name = c->name() != nullptr ? c->name()->str() : std::string();
+                        if (c->bones() != nullptr) {
+                            control.bones.assign(c->bones()->begin(), c->bones()->end());
+                        }
+                        if (c->weights() != nullptr) {
+                            control.weights.assign(c->weights()->begin(), c->weights()->end());
+                        }
+                        if (c->values() != nullptr) {
+                            control.values.assign(c->values()->begin(), c->values()->end());
+                        }
+                        control.world_from_model_mode = c->world_from_model_mode();
+                        state.ragdoll.push_back(std::move(control));
+                    }
+                }
                 m.states.push_back(std::move(state));
             }
         }

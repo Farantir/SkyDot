@@ -199,9 +199,16 @@ std::vector<std::byte> write_animation_asset(const animation::HkxFile& file) {
                 const auto enter = b.CreateVector(st.enter_events);
                 const auto exit = b.CreateVector(st.exit_events);
                 const auto transitions = transitions_of(st.transitions);
+                std::vector<flatbuffers::Offset<afb::RagdollControl>> controls;
+                for (const auto& c : st.ragdoll_controls) {
+                    controls.push_back(afb::CreateRagdollControl(
+                        b, static_cast<afb::RagdollControlKind>(c.kind), b.CreateString(c.name), b.CreateVector(c.bones),
+                        b.CreateVector(c.weights), b.CreateVector(c.values), c.world_from_model_mode));
+                }
+                const auto controls_off = b.CreateVector(controls);
                 states.push_back(afb::CreateBehaviorState(b, st.id, name, st.generator, enter, exit, transitions,
                                                          b.CreateString(st.sequence), b.CreateVector(st.nested_machines),
-                                                         b.CreateString(st.behavior)));
+                                                         b.CreateString(st.behavior), controls_off));
             }
             const auto name = b.CreateString(m.name);
             const auto states_off = b.CreateVector(states);
@@ -545,6 +552,24 @@ io::ParseResult<animation::HkxFile> read_animation_asset(std::span<const std::by
                             read_ints(st->enter_events(), state.enter_events);
                             read_ints(st->exit_events(), state.exit_events);
                             read_transitions(st->transitions(), state.transitions);
+                            if (const auto* controls = st->ragdoll_controls()) {
+                                for (const auto* c : *controls) {
+                                    animation::RagdollControl control;
+                                    control.kind = static_cast<animation::RagdollControlKind>(c->kind());
+                                    control.name = text(c->name());
+                                    if (c->bones() != nullptr) {
+                                        control.bones.assign(c->bones()->begin(), c->bones()->end());
+                                    }
+                                    if (c->weights() != nullptr) {
+                                        control.weights.assign(c->weights()->begin(), c->weights()->end());
+                                    }
+                                    if (c->values() != nullptr) {
+                                        control.values.assign(c->values()->begin(), c->values()->end());
+                                    }
+                                    control.world_from_model_mode = c->world_from_model_mode();
+                                    state.ragdoll_controls.push_back(std::move(control));
+                                }
+                            }
                             machine.states.push_back(std::move(state));
                         }
                     }
