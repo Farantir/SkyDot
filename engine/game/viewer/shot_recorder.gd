@@ -28,8 +28,10 @@ const CAPTURE_CATEGORIES: Array[String] = ["lighting", "geometry", "fx", "physic
 ## Trigger presets of skycompare; one ending in ":" takes the text of the field next to the list. The
 ## player's actions (cast:, attack:) use what the hands and the voice slot hold (the shot's "player" block).
 const CAPTURE_TRIGGERS: Array[String] = ["none", "cast:right", "cast:left", "cast:dual", "cast:shout", "attack:right",
-	"attack:left", "attack:dual", "attack:bash", "idle:", "activate:nearest-door", "time:", "weather:"]
+	"attack:left", "attack:dual", "attack:bash", "idle:", "activate:nearest-door", "kill:", "time:", "weather:"]
 ## How long a player trigger's button is held ("hold" of the capture spec: auto, tap or seconds).
+## Frames --trigger kill: waits for its actors to be built (60 fps: 10 s).
+const KILL_WAIT_FRAMES := 600
 const CAPTURE_HOLDS: Array[String] = ["auto", "tap", "0.5", "1", "1.5", "2", "3", "5"]
 
 static var _last_category := CAPTURE_CATEGORIES.size() - 1  # remembered for the session
@@ -51,6 +53,7 @@ var _index := 0
 var session: GameSession  # set by the viewer: the --trigger acts through it
 var _dumped := false
 var _triggered := false
+var _kill_waited := 0  # frames --trigger kill: has waited for its actors' nodes
 var _player_trigger: CaptureTrigger  # --trigger cast:/attack:, made at the first frame of the series
 var _pending: Array[int] = []  # --shot-frames: PNG writes still running
 # F12
@@ -165,11 +168,22 @@ func _step_series() -> void:
 ## A player trigger (CaptureTrigger) waits for the hands to be drawn (--ready-weapon draws them from the
 ## start); the series starts then.
 func _trigger_ready() -> bool:
+	if _settings.trigger.begins_with("kill:") and session != null:
+		return _kill_targets_built()
 	if not CaptureTrigger.handles(_settings.trigger) or session == null:
 		return true
 	if _player_trigger == null:
 		_player_trigger = CaptureTrigger.new(session, _settings.trigger, _settings.hold, _settings.capture_seconds)
 	return _player_trigger.is_ready()
+
+
+## kill: waits (at most KILL_WAIT_FRAMES) until every named actor has its node, so the kill finds it.
+func _kill_targets_built() -> bool:
+	_kill_waited += 1
+	for text in _settings.trigger.trim_prefix("kill:").split(",", false):
+		if session.world.find_ref_node(text.strip_edges().hex_to_int()) == null:
+			return _kill_waited > KILL_WAIT_FRAMES
+	return true
 
 
 func _write_frames_json(trigger_frame: int) -> void:
@@ -193,6 +207,14 @@ func _fire_trigger() -> void:
 		else:
 			ref = StateDump.nearest_door(StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius))
 		print("--trigger: activate 0x%08X: %s" % [ref, session.activate_ref(ref, true)])
+	elif spec.begins_with("kill:") and session != null:
+		# The game's console `kill` on each ref: GameSession.kill_actor, the path a death takes (no push).
+		for text in spec.trim_prefix("kill:").split(",", false):
+			var ref := text.strip_edges().hex_to_int()
+			var hits := session.kill_actor(ref)
+			print("--trigger: kill 0x%08X: %d hits, dead %s" % [ref, hits, session.papyrus.is_actor_dead(ref)])
+			if not session.papyrus.is_actor_dead(ref):
+				printerr("--trigger: 0x%08X is not dead (not loaded?)" % ref)
 	elif spec != "none":
 		printerr("--trigger: unknown or unsupported preset ", spec)
 	_write_frames_json(0)
