@@ -130,7 +130,7 @@ var world: SkydotWorld
 var papyrus: SkydotPapyrus
 var _worn_weight := 0.0
 var _worn_weight_revision := -1
-var ai: SkydotAi  # null with the AI off
+var ai: SkydotAi  # with the AI off (config.ai) it does not process (SkydotAi.processing)
 var clock: SkydotClock
 var streamer: SkydotStreamer
 var place: Place
@@ -273,19 +273,20 @@ func _open_world() -> bool:
 	world.navigation = config.navigation
 	world.actors = config.actors
 	world.actor_wander = config.wander
-	if config.ai:
-		ai = SkydotAi.new()
-		if ai.setup(world, papyrus) == OK:
-			clock.attach_ai(ai)
-			ai.drive = world.actor_wander
-			ai.actor_left.connect(_on_actor_left)
-			papyrus.scene_package.connect(func(actor: int, package: int, push: bool) -> void:
-				if push:
-					ai.push_package(actor, package)
-				else:
-					ai.pop_package(actor, package))
-		else:
-			ai = null
+	# The AI off is the game's (`tai`): it is there, places what the load places, and does nothing else.
+	ai = SkydotAi.new()
+	if ai.setup(world, papyrus) == OK:
+		ai.processing = config.ai
+		clock.attach_ai(ai)
+		ai.drive = world.actor_wander
+		ai.actor_left.connect(_on_actor_left)
+		papyrus.scene_package.connect(func(actor: int, package: int, push: bool) -> void:
+			if push:
+				ai.push_package(actor, package)
+			else:
+				ai.pop_package(actor, package))
+	else:
+		ai = null
 	world.foliage_bias = config.foliage_bias
 	if config.has_tiling:
 		world.terrain_tiling = config.tiling

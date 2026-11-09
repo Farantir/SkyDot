@@ -85,6 +85,11 @@ public:
     /// built (packages still decide where that is).
     void set_drive(bool v) { drive_ = v; }
     bool get_drive() const { return drive_; }
+    /// Whether the AI runs at all. Off is the game's AI off (`tai`): no packages are chosen or
+    /// followed after the load, no fights start, the VM hears nothing of the actors; what the load
+    /// placed stays, a furniture it placed an actor in included (the Bleak Falls spider in its shaft).
+    void set_processing(bool v) { processing_ = v; }
+    bool get_processing() const { return processing_; }
 
     /// The space shown: an interior cell, or a worldspace. Actors whose
     /// package brings them into it arrive through a door.
@@ -485,6 +490,7 @@ private:
     ai::Clock clock_;
     double time_scale_{TIME_SCALE};
     bool drive_{true};
+    bool processing_{true};
     std::uint32_t space_{};
     double since_placed_{}; ///< Game seconds since the last pass started.
     bool placed_{}; ///< Whether any pass has run.

@@ -752,6 +752,9 @@ void SkydotAi::leave_combat(Mind& m, SkydotActor* actor) {
 }
 
 bool SkydotAi::start_combat(std::int64_t ref, std::int64_t target) {
+    if (!processing_) {
+        return false;
+    }
     Mind* m = mind(static_cast<std::uint32_t>(ref));
     SkydotActor* actor = m != nullptr ? node_of(*m) : nullptr;
     if (actor == nullptr || !alive(static_cast<std::uint32_t>(ref)) || ref == target) {
@@ -768,6 +771,9 @@ void SkydotAi::stop_combat(std::int64_t ref) {
 }
 
 void SkydotAi::update_fights(double seconds) {
+    if (!processing_) {
+        return;
+    }
     overrides_cache_.clear();
     const std::vector<std::uint32_t> attached = attached_;
     for (const std::uint32_t ref : attached) {

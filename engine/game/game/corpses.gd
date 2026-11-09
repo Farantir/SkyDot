@@ -383,6 +383,7 @@ func step(delta: float) -> void:
 			_bodies.erase(body)
 			continue
 		body["time"] += delta
+		(body["ragdoll"] as Ragdoll).wake_clutter(delta)
 		if body.has("animated"):
 			# Driven by its clip: not at rest until the clip has ended.
 			(body["ragdoll"] as Ragdoll).drive((body["animated"] as AnimatedPose).poses, delta)
@@ -420,9 +421,12 @@ func _start_pending(delta: float) -> void:
 			if _pending[ref] > GROUND_SECONDS:
 				_pending.erase(ref)
 			continue
-		# A race with a death clip does not wait for ground: it may die in the air and falls first.
+		# Only a body built dead waits for the ground (its cell's collision may come later). One that dies
+		# here falls as a ragdoll at once, as the game's do (dynamic a frame after the death; the Bleak
+		# Falls spider falls from its shaft to the grate); a race with a death clip may die in the air
+		# and falls first.
 		var posed := node is SkydotActor and (node as SkydotActor).has_death_clip()
-		if not posed and _pending[ref] < GROUND_SECONDS and not _has_ground(node.global_position):
+		if not posed and not _live.has(ref) and _pending[ref] < GROUND_SECONDS and not _has_ground(node.global_position):
 			continue
 		_pending.erase(ref)
 		_lay_down(ref, _hits.get(ref, {}) if _live.has(ref) else {})

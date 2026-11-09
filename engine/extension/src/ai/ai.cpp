@@ -271,6 +271,9 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("set_time_scale", "value"), &SkydotAi::set_time_scale);
     ClassDB::bind_method(D_METHOD("get_time_scale"), &SkydotAi::get_time_scale);
     ADD_PROPERTY(PropertyInfo(Variant::FLOAT, "time_scale"), "set_time_scale", "get_time_scale");
+    ClassDB::bind_method(D_METHOD("set_processing", "value"), &SkydotAi::set_processing);
+    ClassDB::bind_method(D_METHOD("get_processing"), &SkydotAi::get_processing);
+    ADD_PROPERTY(PropertyInfo(Variant::BOOL, "processing"), "set_processing", "get_processing");
     ClassDB::bind_method(D_METHOD("set_drive", "value"), &SkydotAi::set_drive);
     ClassDB::bind_method(D_METHOD("get_drive"), &SkydotAi::get_drive);
     ADD_PROPERTY(PropertyInfo(Variant::BOOL, "drive"), "set_drive", "get_drive");
@@ -1235,6 +1238,16 @@ void SkydotAi::update(double seconds) {
             continue;
         }
         m->last = SkydotWorld::godot_to_skyrim(actor->get_global_position());
+        if (!processing_) {
+            // AI off: only what the load does (placed in its furniture) and the furniture's animation.
+            if (m->package != 0 && m->fresh) {
+                place_in_furniture(*m, *actor);
+            }
+            if (m->furniture && m->furniture->begun) {
+                furniture_tick(*m, *actor, seconds);
+            }
+            continue;
+        }
         // Actors far from the camera wait between updates (the game's lower
         // process levels): the time since the last one is what they get.
         const std::int32_t lod = actor->get_lod();

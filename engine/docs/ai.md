@@ -156,7 +156,9 @@ conditions (and what each condition evaluates to), then for each hour the
 package chosen, its steps and where it sends them. `ai_run.gd` builds a place
 with collision, runs the clock and prints arrivals, departures, locks and
 every few seconds each actor's package, step and position. In the viewer, I
-tells what the nearest actor is doing; `--ai off` turns packages off.
+tells what the nearest actor is doing; `--ai off` is the game's AI off (`tai`, `SkydotAi.processing` false): the load
+still places actors where their packages put them, in their furniture too,
+and nothing else runs (no packages followed, no fights).
 `smoke_ai` covers the test pack's NPC: home by night, out through the door
 by day, unlocking the door outside.
 

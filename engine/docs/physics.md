@@ -37,8 +37,13 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
   scaled instead) and moves the model with it, from `_integrate_forces`,
   which only runs while it is awake. It starts frozen as placed: Jolt
   activates bodies when they enter the space, so sleep alone does not hold.
-  `wake()` unfreezes it; the player wakes what it walks into, and woken
-  clutter wakes frozen clutter it hits. `SkydotWorld.wake_clutter` wakes
+  `wake()` unfreezes it; the player wakes what it walks into, woken
+  clutter wakes frozen clutter it hits, and a ragdoll wakes what its bodies
+  touch or reach within the frame (`Ragdoll.wake_clutter`), as a sleeping
+  Havok body is dynamic the moment it is hit. Clutter placed in the air
+  stays there until touched; the Bleak Falls spider's fall shows the game's
+  bones were already down (open: whether the game lets such clutter fall
+  on load). `SkydotWorld.wake_clutter` wakes
   what lies near a point: the viewer calls it around a reference a script
   disables or animates, so what rested on it falls. Papyrus
   `ApplyHavokImpulse` wakes and pushes clutter; `SetMotionType` releases it

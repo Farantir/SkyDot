@@ -99,6 +99,10 @@ static func make(on: Skeleton3D, ragdoll: Dictionary) -> Ragdoll:
 	return out
 
 
+## Clutter bodies one shape of a ragdoll body wakes at most per frame.
+const MAX_CONTACTS := 8
+
+
 ## The bodies made (bones with a body).
 func body_count() -> int:
 	var n := 0
@@ -368,6 +372,32 @@ func set_motion(linear: Vector3, spin: Vector3) -> void:
 			var v := linear + spin.cross(bone.global_position - at)
 			PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_LINEAR_VELOCITY, v)
 			PhysicsServer3D.body_set_state(bone.get_rid(), PhysicsServer3D.BODY_STATE_ANGULAR_VELOCITY, spin)
+
+
+## Frozen clutter (SkydotDynamicBody, static until woken) that a body touches or reaches within this
+## frame's motion starts moving, as a sleeping Havok body is a dynamic one the moment a body hits it.
+## Woken only on contact it would stand as a wall for that step (the Bleak Falls spider fell off its
+## course on the bones in its shaft). Called once a frame with the frame's `delta`.
+func wake_clutter(delta: float) -> void:
+	var space := skeleton.get_world_3d().direct_space_state if skeleton.is_inside_tree() else null
+	if space == null:
+		return
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.collision_mask = SkydotPlayer.LAYER_CLUTTER
+	for bone in bones:
+		if bone == null or not bone.is_inside_tree():
+			continue
+		query.margin = bone.linear_velocity.length() * delta
+		for child in bone.get_children():
+			var shape := child as CollisionShape3D
+			if shape == null or shape.shape == null:
+				continue
+			query.shape = shape.shape
+			query.transform = shape.global_transform
+			for hit in space.intersect_shape(query, MAX_CONTACTS):
+				var other: Object = hit.get("collider")
+				if other is SkydotDynamicBody and (other as SkydotDynamicBody).freeze:
+					(other as SkydotDynamicBody).wake()
 
 
 # ---- the rigid-body controller

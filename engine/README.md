@@ -189,7 +189,8 @@ max over a second, draw calls, primitives, objects; also in a shot's JSON, and
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting. Placed NPCs and creatures stand
 dressed in their outfits and follow their AI packages, walking the navmesh
-(`--ai off` keeps them where they were placed, wandering about it; `--wander
+(`--ai off` is the game's AI off: they stay where the load placed them, a
+furniture included, wandering about it; `--wander
 off` keeps them in their idle, `--actors off` builds none; see
 `docs/actors.md` and `docs/ai.md`). `--shot-delay
 SECONDS` lets the world run before a `--screenshot`.
