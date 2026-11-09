@@ -37,7 +37,7 @@ Bytes strings_asset(const std::vector<std::string>& files, const std::vector<std
     const auto f = b.CreateVectorOfStrings(files);
     const auto c = b.CreateVector(list);
     afb::AnimationBuilder ab(b);
-    ab.add_format_version(6);
+    ab.add_format_version(7);
     ab.add_project_files(f);
     ab.add_project_clips(c);
     return finish(b, ab.Finish());
@@ -49,7 +49,7 @@ Bytes motion_asset(std::uint32_t id, float duration, const std::vector<afb::Moti
     const auto m = afb::CreateMotionDirect(b, id, duration, &keys, &turns);
     const auto list = b.CreateVector(std::vector{m});
     afb::AnimationBuilder ab(b);
-    ab.add_format_version(6);
+    ab.add_format_version(7);
     ab.add_motions(list);
     return finish(b, ab.Finish());
 }
@@ -59,7 +59,7 @@ Bytes character_asset(const std::string& behavior, const std::vector<std::string
     const auto c = afb::CreateCharacter(b, 0, 0, 0, b.CreateString(behavior), b.CreateVectorOfStrings(animations));
     const auto list = b.CreateVector(std::vector{c});
     afb::AnimationBuilder ab(b);
-    ab.add_format_version(6);
+    ab.add_format_version(7);
     ab.add_characters(list);
     return finish(b, ab.Finish());
 }
@@ -69,7 +69,7 @@ Bytes clip_asset(float duration) {
     const auto c = afb::CreateClip(b, afb::ClipEncoding::Spline, duration);
     const auto list = b.CreateVector(std::vector{c});
     afb::AnimationBuilder ab(b);
-    ab.add_format_version(6);
+    ab.add_format_version(7);
     ab.add_clips(list);
     return finish(b, ab.Finish());
 }
@@ -110,7 +110,7 @@ Bytes graph_asset(const std::vector<std::string>& events,
     const auto gens = b.CreateVector(generators);
     const auto graphs = b.CreateVector(std::vector{g});
     afb::AnimationBuilder ab(b);
-    ab.add_format_version(6);
+    ab.add_format_version(7);
     ab.add_clip_generators(gens);
     ab.add_behavior_graphs(graphs);
     return finish(b, ab.Finish());
