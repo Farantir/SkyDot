@@ -56,6 +56,9 @@ enum class RecordFlag : std::uint32_t {
     visible_when_distant = 0x00008000,
     compressed = 0x00040000,       ///< Record data is zlib-compressed.
     cant_wait = 0x00080000,
+    /// REFR "Don't Havok Settle" (xEdit): the editor left it where it was put,
+    /// not where Havok would let it rest.
+    dont_havok_settle = 0x20000000,
 };
 
 [[nodiscard]] constexpr bool has_flag(std::uint32_t flags, RecordFlag f) noexcept {

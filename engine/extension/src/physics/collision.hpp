@@ -109,10 +109,15 @@ inline constexpr const char* k_phantoms_meta = "skydot_phantoms";
 /// server; safe on a worker.
 void tag_phantoms(godot::Node* root);
 
+/// Meta on a reference's root whose movable bodies are simulated from load:
+/// the reference has `RefFlags.dont_havok_settle` (formats/schema/world.fbs).
+inline constexpr const char* k_settle_meta = "skydot_settle";
+
 /// Movable clutter. Placed under the model's owning node but simulated in
 /// world space; it moves `model` (the reference's root) along. Frozen as
-/// placed until `wake`: the player wakes what it walks into, and woken
-/// clutter wakes frozen clutter it hits.
+/// placed until `wake` (or simulated from load when `model` has
+/// k_settle_meta): the player wakes what it walks into, and woken clutter
+/// wakes frozen clutter it hits.
 class SkydotDynamicBody : public godot::RigidBody3D {
     GDCLASS(SkydotDynamicBody, godot::RigidBody3D)
 

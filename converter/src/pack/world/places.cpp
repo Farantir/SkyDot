@@ -219,6 +219,9 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
     if (record::has_flag(merged.flags, record::RecordFlag::visible_when_distant)) {
         flags |= wfb::RefFlags::visible_when_distant;
     }
+    if (record::has_flag(merged.flags, record::RecordFlag::dont_havok_settle)) {
+        flags |= wfb::RefFlags::dont_havok_settle;
+    }
     cell.refs.emplace_back(id, shared_.global(merged, ref->base, failed), to_fb(ref->position),
                            to_fb(ref->rotation), ref->scale, flags, enable_parent);
     if (!ref->scripts.empty()) {

@@ -39,7 +39,15 @@ enum RefFlags : uint32 (bit_flags) {
     visible_when_distant,
     /// ACHR only: the actor starts dead (record flag 0x200 "Starts Dead", xEdit; format 31
     /// packs written after 2026-10-18). Corpses at a dungeon's entrance are such refs.
-    starts_dead = 5
+    starts_dead = 5,
+    /// REFR only: record flag 0x20000000 "Don't Havok Settle" (xEdit; format
+    /// 41). The editor did not settle it, so the game lets its movable body
+    /// fall or settle once the cell loads, while every other one rests as
+    /// placed until something touches it (measured in Skyrim, 2026-11-13: the
+    /// Bleak Falls Barrow shaft bones and web sacs, all flagged, lie on the
+    /// floor 1 s after coc with the player 11,000 units away; Dragonsreach and
+    /// the Sleeping Giant have none flagged and nothing falls there).
+    dont_havok_settle = 6
 }
 
 /// One placed reference (REFR). Deleted references are not included.

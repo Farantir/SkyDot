@@ -624,9 +624,14 @@ void SkydotDynamicBody::_ready() {
         model_offset_ = body.affine_inverse() * model_->get_global_transform();
     }
     // Frozen as placed until something touches it: Jolt activates bodies as
-    // they enter the space, so sleeping would not hold.
+    // they enter the space, so sleeping would not hold. A reference the
+    // editor did not settle (k_settle_meta) is simulated from load, as the
+    // game's: it falls or settles, then sleeps.
     set_freeze_mode(FREEZE_MODE_STATIC);
     set_freeze_enabled(true);
+    if (model_ != nullptr && model_->has_meta(k_settle_meta)) {
+        wake();
+    }
 }
 
 int wake_clutter(godot::Node* root, const Vector3& centre, godot::real_t radius) {

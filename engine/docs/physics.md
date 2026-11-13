@@ -41,9 +41,17 @@ meshes"). `SkydotWorld` attaches bodies when it places a model;
   clutter wakes frozen clutter it hits, and a ragdoll wakes what its bodies
   touch or reach within the frame (`Ragdoll.wake_clutter`), as a sleeping
   Havok body is dynamic the moment it is hit. Clutter placed in the air
-  stays there until touched; the Bleak Falls spider's fall shows the game's
-  bones were already down (open: whether the game lets such clutter fall
-  on load). `SkydotWorld.wake_clutter` wakes
+  stays there until touched, as in the game, except a reference with
+  `RefFlags.dont_havok_settle` (REFR record flag 0x20000000, "Don't Havok
+  Settle"): the editor did not settle it, and the game lets it fall or
+  settle once the cell loads (measured 2026-11-13 with whole-cell dumps
+  after coc: the Bleak Falls Barrow shaft bones and web sacs, flagged, lie
+  on the floor 1 s after the load with the player 11,000 units away, while
+  Dragonsreach and the Sleeping Giant, nothing flagged, keep their wall
+  antlers and table food where placed; simulating all clutter from load
+  dropped 99 Dragonsreach refs the game keeps). The cell builder marks such
+  a reference (`k_settle_meta`) and its body wakes in `_ready`.
+  `SkydotWorld.wake_clutter` wakes
   what lies near a point: the viewer calls it around a reference a script
   disables or animates, so what rested on it falls. Papyrus
   `ApplyHavokImpulse` wakes and pushes clutter; `SetMotionType` releases it

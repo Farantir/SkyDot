@@ -247,7 +247,8 @@ void make_mod(const TempDir& dir) {
     bethconv::test::write_record(refrs, "REFR", 0x0100'0B02,
                                  scripted_refr_payload().span()); // own chair
     bethconv::test::write_record(refrs, "REFR", 0x0100'0B03,
-                                 refr_payload(0x0000'0801, 30.0F, 1.0F).span()); // Base light
+                                 refr_payload(0x0000'0801, 30.0F, 1.0F).span(),
+                                 0x2000'0000); // Base light, "Don't Havok Settle"
     ByteWriter temporary;
     bethconv::test::write_group(temporary, cell, 9, refrs.span());
     ByteWriter cell_children;
@@ -695,6 +696,9 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     // not 0x01000A00 (which would be Other.esm's space).
     CHECK(cell->refs[0].id() == 0x0200'0B01);
     CHECK(cell->refs[0].base() == 0x0000'0800);
+    // Record flag 0x20000000 "Don't Havok Settle" is kept; the wall has none.
+    CHECK_FALSE(skydot::formats::has_flag(cell->refs[0].flags(), pack::wfb::RefFlags::dont_havok_settle));
+    CHECK(skydot::formats::has_flag(cell->refs[2].flags(), pack::wfb::RefFlags::dont_havok_settle));
     CHECK(cell->refs[1].base() == 0x0200'0A00);
     CHECK(cell->refs[1].scale() == 2.0F);
     CHECK(cell->refs[1].position().x() == 20.0F);

@@ -12,6 +12,7 @@
 #include "data/fb_search.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
+#include "skydot_formats/flags.hpp"
 
 #include "world_generated.h"
 
@@ -140,6 +141,9 @@ struct Decorator::Steps {
         }
     }
     static void collision(Decorator& self, godot::Node3D* node, Decoration& d) {
+        if (formats::has_flag(d.ref->flags(), wfb::RefFlags::dont_havok_settle)) {
+            node->set_meta(k_settle_meta, true); // its movable bodies fall or settle from load
+        }
         if (const auto& body = d.scene->collision(); body && self.options_.collision) {
             d.stats.bodies += body->attach(node);
         }
