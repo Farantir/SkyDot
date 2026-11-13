@@ -511,13 +511,19 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     }
 
     std::vector<wfb::ActorRef> actors;
+    std::vector<wfb::ActorEnableParent> actor_enable_parents;
     auto sorted_actors = spec.actors;
     std::ranges::sort(sorted_actors, {}, &ActorRefSpec::ref);
     for (const auto& a : sorted_actors) {
         actors.emplace_back(a.ref, a.base, a.cell, wfb::Vec3f(a.position[0], a.position[1], a.position[2]),
-                            wfb::Vec3f(a.rotation[0], a.rotation[1], a.rotation[2]), wfb::RefFlags{});
+                            wfb::Vec3f(a.rotation[0], a.rotation[1], a.rotation[2]), a.flags);
+        if (a.enable_parent != 0) {
+            actor_enable_parents.emplace_back(a.ref, a.enable_parent);
+        }
     }
     const auto actors_v = actors.empty() ? 0 : fbb.CreateVectorOfStructs(actors);
+    const auto actor_enable_parents_v =
+        actor_enable_parents.empty() ? 0 : fbb.CreateVectorOfStructs(actor_enable_parents);
     const auto bases_v = fbb.CreateVector(bases);
     const auto cells_v = fbb.CreateVector(cells);
     const auto worlds_v = fbb.CreateVector(worlds);
@@ -545,6 +551,7 @@ BuiltWorld::BuiltWorld(const WorldSpec& spec) {
     world.add_worlds(worlds_v);
     world.add_cells(cells_v);
     world.add_actors(actors_v);
+    world.add_actor_enable_parents(actor_enable_parents_v);
     world.add_bases(bases_v);
     world.add_npcs(npcs_v);
     world.add_races(races_v);

@@ -1301,6 +1301,15 @@ struct ActorRef {
     flags: RefFlags;
 }
 
+/// A placed actor's enable parent (ACHR XESP, format 41): the actor's enable
+/// state is the parent's, or its opposite when the actor's flags have
+/// `enable_opposite`. Kept apart from `ActorRef` so packs before 41 still
+/// read; an actor not listed has no enable parent.
+struct ActorEnableParent {
+    ref: uint32 (key);
+    parent: uint32;
+}
+
 /// One sex's body part of a race (RACE NAM1 section): INDX 0 upper body,
 /// 1 lower body, 2 hand, 3 foot, 4 tail.
 table RaceBodyPart {
@@ -2655,6 +2664,8 @@ table World {
     classes: [Class];
     /// Sorted by id (format 40).
     idles: [Idle];
+    /// Sorted by ref (format 41).
+    actor_enable_parents: [ActorEnableParent];
 }
 
 root_type World;

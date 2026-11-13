@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <string>
 #include <tuple>
@@ -69,7 +70,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 40;
+    static constexpr int FORMAT_VERSION = 41;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {
@@ -222,6 +223,11 @@ public:
     std::vector<std::uint32_t> enable_children(std::uint32_t ref) const;
     /// Initially disabled, following the enable parent chain.
     bool initially_disabled(const bethconv::pack::wfb::Ref& ref) const;
+    /// As for a placed reference: a placed actor follows its enable parent
+    /// (format 41), else its own flag.
+    bool initially_disabled(const bethconv::pack::wfb::ActorRef& actor) const;
+    /// A placed actor's enable parent (ACHR XESP); 0 if none or before format 41.
+    std::uint32_t actor_enable_parent(std::uint32_t ref) const;
     /// Initially disabled, as a large reference's own flags and enable parent
     /// (a placed reference, found in its cell) say.
     bool initially_disabled(const bethconv::pack::wfb::LargeRef& ref) const;
@@ -264,6 +270,9 @@ private:
     std::unordered_multimap<std::uint32_t, std::uint32_t> enable_children_;
     /// Enable parents by id.
     std::unordered_map<std::uint32_t, const bethconv::pack::wfb::Ref*> enable_parents_;
+    /// The initial state of an enable parent (a placed reference or actor), through its own
+    /// parents; nullopt if `parent` is neither or the chain is too deep.
+    std::optional<bool> parent_initially_disabled(std::uint32_t parent, int depth) const;
     DoorIndex doors_;
     /// Every reference with the cell holding it, `ref << 32 | cell`, sorted by
     /// ref.

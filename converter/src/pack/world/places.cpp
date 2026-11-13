@@ -357,6 +357,12 @@ void PlaceCollector::on_actor(const record::MergedRecord& merged,
     if ((actor->activate_parent_flags & 0x01u) != 0) {
         flags |= wfb::RefFlags::parent_activate_only;
     }
+    if (actor->enable_parent) {
+        actor_enable_parents_.emplace_back(id, shared_.global(merged, actor->enable_parent->parent, failed));
+        if (actor->enable_parent->set_enable_state_opposite()) {
+            flags |= wfb::RefFlags::enable_opposite;
+        }
+    }
     actors_.emplace_back(id, shared_.global(merged, actor->base, failed), merged.parent.value,
                          to_fb(actor->position), to_fb(actor->rotation), flags);
     auto& cell = cells_[merged.parent.value].cell;
@@ -502,6 +508,8 @@ void PlaceCollector::finish(wfb::WorldT& world) {
     std::ranges::sort(actors_, {}, &wfb::ActorRef::ref);
     stats.actors += actors_.size();
     world.actors = std::move(actors_);
+    std::ranges::sort(actor_enable_parents_, {}, &wfb::ActorEnableParent::ref);
+    world.actor_enable_parents = std::move(actor_enable_parents_);
 }
 
 } // namespace bethconv::pack::detail

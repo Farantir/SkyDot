@@ -1086,6 +1086,10 @@ void make_quests(const TempDir& dir) {
     xapr.u32(0x0100'0B01); // itself, local
     xapr.f32(0.25F);
     bethconv::test::write_field(achr, "XAPR", xapr);
+    ByteWriter xesp;
+    xesp.u32(0x0000'0E00); // its enable parent, in Base.esm's space
+    xesp.u32(0x1);         // set enable state to opposite of parent
+    bethconv::test::write_field(achr, "XESP", xesp);
     ByteWriter refrs;
     bethconv::test::write_record(refrs, "ACHR", 0x0100'0B01, achr.span(), 0x200); // Starts Dead
     ByteWriter temporary;
@@ -1167,6 +1171,13 @@ TEST_CASE("world.fb carries quests, globals and actors with global FormIDs", "[p
     CHECK(actors[0].rotation().z() == 0.5F);
     CHECK((static_cast<std::uint32_t>(actors[0].flags()) &
            static_cast<std::uint32_t>(bethconv::pack::wfb::RefFlags::starts_dead)) != 0);
+    // Its enable parent (XESP), as a reference's: the parent apart, "opposite" in the flags.
+    CHECK((static_cast<std::uint32_t>(actors[0].flags()) &
+           static_cast<std::uint32_t>(bethconv::pack::wfb::RefFlags::enable_opposite)) != 0);
+    const auto enable_parents = file->actor_enable_parents();
+    REQUIRE(enable_parents.size() == 1);
+    CHECK(enable_parents[0].ref() == 0x0200'0B01);
+    CHECK(enable_parents[0].parent() == 0x0000'0E00);
     // A placed actor's linked references are its cell's, like a reference's.
     const auto room = file->cell(0x0200'0B00);
     REQUIRE(room.has_value());

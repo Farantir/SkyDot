@@ -401,7 +401,7 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
     if (w.actors() != nullptr) {
         for (const auto* a : *w.actors()) {
             if (formats::has_flag(a->flags(), wfb::RefFlags::persistent) &&
-                !formats::has_flag(a->flags(), wfb::RefFlags::initially_disabled) &&
+                !world_->data().initially_disabled(*a) &&
                 !ai::package_list(w, a->base(), a->ref()).empty()) {
                 persistent_.push_back(a->ref());
             }

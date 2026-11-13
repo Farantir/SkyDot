@@ -920,7 +920,7 @@ void CellBuilder::add_job(godot::Node3D* root, std::shared_ptr<BuildJob> job) {
 }
 
 std::vector<std::string> CellBuilder::actor_resources(const wfb::ActorRef& actor) {
-    if (formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled) && !placement_.is_enabled(actor.ref())) {
+    if (data().initially_disabled(actor) && !placement_.is_enabled(actor.ref())) {
         return {};
     }
     auto plan = plan_for(*world_fb(), actor.base(), actor.ref(), assets_, worn_);
@@ -1060,7 +1060,7 @@ CellBuilder::ActorSpec CellBuilder::spec_of(const wfb::ActorRef& actor, const Ac
     spec.ref = actor.ref();
     spec.base = actor.base();
     spec.cell = actor.cell();
-    spec.disabled = formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled) && !placement_.is_enabled(actor.ref());
+    spec.disabled = data().initially_disabled(actor) && !placement_.is_enabled(actor.ref());
     const auto& p = actor.position();
     spec.position = place != nullptr ? place->position : Vector3(p.x(), p.y(), p.z());
     spec.rotation_z = place != nullptr ? place->rotation_z : actor.rotation().z();

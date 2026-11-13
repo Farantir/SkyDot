@@ -78,6 +78,7 @@ private:
     std::map<std::uint32_t, CellEntry> cells_;
     std::map<std::uint32_t, LightingTemplateEntry> lighting_templates_;
     std::vector<wfb::ActorRef> actors_;
+    std::vector<wfb::ActorEnableParent> actor_enable_parents_;
 };
 
 } // namespace bethconv::pack::detail

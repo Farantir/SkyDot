@@ -227,6 +227,17 @@ std::vector<wfb::ActorRef> WorldFile::actors() const {
     return out;
 }
 
+std::vector<wfb::ActorEnableParent> WorldFile::actor_enable_parents() const {
+    std::vector<wfb::ActorEnableParent> out;
+    if (const auto* parents = impl_->root->actor_enable_parents()) {
+        out.reserve(parents->size());
+        for (const auto* p : *parents) {
+            out.push_back(*p);
+        }
+    }
+    return out;
+}
+
 std::vector<wfb::WorldspaceT> WorldFile::worldspaces() const {
     return unpack_all(impl_->root->worlds());
 }

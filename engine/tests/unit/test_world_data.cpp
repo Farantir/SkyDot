@@ -190,6 +190,47 @@ TEST_CASE("a reference is a typed record with its lock, door and links", "[world
     CHECK_FALSE(WorldData().ref_record(0x100, r));
 }
 
+TEST_CASE("a placed actor follows its enable parent (world.fb 41)", "[world_data]") {
+    // Bleak Falls Barrow: the frost troll 0x1D218 and "Thomas" 0x1CE86 have no
+    // disabled flag of their own; their XESP parent, XMarker 0x108A5C, is disabled.
+    const OpenWorld world({
+        .format_version = WorldData::FORMAT_VERSION,
+        .cells = {{.id = 0x371DE,
+                   .interior = true,
+                   .placed = {{.id = 0x108A5C, .base = 0x50, .flags = wfb::RefFlags::initially_disabled},
+                              {.id = 0x500, .base = 0x50}}}},
+        .actors = {{.ref = 0x1CE86, .base = 0x901, .cell = 0x371DE, .enable_parent = 0x108A5C},
+                   {.ref = 0x1D218, .base = 0x900, .cell = 0x371DE, .enable_parent = 0x108A5C},
+                   {.ref = 0x1D219, .base = 0x900, .cell = 0x371DE, .flags = wfb::RefFlags::enable_opposite,
+                    .enable_parent = 0x108A5C},
+                   {.ref = 0x1D21A, .base = 0x900, .cell = 0x371DE, .flags = wfb::RefFlags::initially_disabled,
+                    .enable_parent = 0x500},
+                   {.ref = 0x1D21B, .base = 0x900, .cell = 0x371DE, .enable_parent = 0x1D218},
+                   {.ref = 0x1D21C, .base = 0x900, .cell = 0x371DE, .flags = wfb::RefFlags::initially_disabled},
+                   {.ref = 0x1D21D, .base = 0x900, .cell = 0x371DE}},
+    });
+    REQUIRE(world.result.status == WorldData::Status::ok);
+    const WorldData& data = world.data;
+    const auto disabled = [&](std::uint32_t ref) {
+        const auto* a = data.actor_ptr(ref);
+        REQUIRE(a != nullptr);
+        return data.initially_disabled(*a);
+    };
+    CHECK(disabled(0x1D218));
+    CHECK(disabled(0x1CE86));
+    CHECK_FALSE(disabled(0x1D219)); // the opposite of its disabled parent
+    CHECK_FALSE(disabled(0x1D21A)); // an enabled parent overrides its own flag
+    CHECK(disabled(0x1D21B));       // a parent that is itself an actor, through its parent
+    CHECK(disabled(0x1D21C));       // no parent: its own flag
+    CHECK_FALSE(disabled(0x1D21D));
+    WorldData::RefEnable info;
+    REQUIRE(data.ref_enable(0x1D218, info));
+    CHECK(info.enable_parent == 0x108A5C);
+    CHECK_FALSE(info.opposite);
+    CHECK(info.initially_disabled);
+    CHECK(data.enable_children(0x108A5C) == std::vector<std::uint32_t>{0x1CE86, 0x1D218, 0x1D219});
+}
+
 TEST_CASE("a load door's link is a typed record", "[world_data]") {
     const OpenWorld world({.cells = {
         {.id = 0x3000, .interior = true, .placed = {{.id = 0x100}},

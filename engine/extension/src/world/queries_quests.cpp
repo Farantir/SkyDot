@@ -280,7 +280,7 @@ Dictionary get_actor(const WorldData& data, std::int64_t ref) {
     out["cell"] = static_cast<std::int64_t>(it->cell());
     out["position"] = vec3_of(it->position());
     out["rotation"] = vec3_of(it->rotation());
-    out["disabled"] = formats::has_flag(it->flags(), wfb::RefFlags::initially_disabled);
+    out["disabled"] = data.initially_disabled(*it);
     out["persistent"] = formats::has_flag(it->flags(), wfb::RefFlags::persistent);
     return out;
 }

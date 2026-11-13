@@ -109,6 +109,11 @@ void WorldData::build_indexes() {
             }
         }
     }
+    if (const auto* parents = root_->actor_enable_parents()) {
+        for (const auto* p : *parents) {
+            enable_children_.emplace(p->parent(), p->ref());
+        }
+    }
     std::size_t ref_count = 0;
     for (const auto* cell : *cells) {
         ref_count += cell->refs() != nullptr ? cell->refs()->size() : 0;
@@ -274,12 +279,12 @@ const wfb::Ref* WorldData::ref_ptr(std::uint32_t ref) const {
 bool WorldData::ref_enable(std::uint32_t ref, RefEnable& out) const {
     const auto* r = ref_ptr(ref);
     if (r == nullptr) {
-        // A placed actor: it has no enable parent, only the editor's flag.
+        // A placed actor: its enable parent (format 41), else the editor's flag.
         if (const auto* a = actor_ptr(ref)) {
             out.base = a->base();
-            out.enable_parent = 0;
-            out.opposite = false;
-            out.initially_disabled = formats::has_flag(a->flags(), wfb::RefFlags::initially_disabled);
+            out.enable_parent = actor_enable_parent(ref);
+            out.opposite = formats::has_flag(a->flags(), wfb::RefFlags::enable_opposite);
+            out.initially_disabled = initially_disabled(*a);
             return true;
         }
         return false;
@@ -568,17 +573,50 @@ std::vector<std::uint32_t> WorldData::enable_children(std::uint32_t ref) const {
 bool WorldData::initially_disabled(const wfb::Ref& ref) const {
     // A reference with an enable parent takes the parent's state (inverted if
     // flagged); its own flag counts only when the parent is unknown.
-    const wfb::Ref* r = &ref;
-    bool opposite = false;
-    for (int depth = 0; depth < 16 && r->enable_parent() != 0; ++depth) {
-        const auto it = enable_parents_.find(r->enable_parent());
-        if (it == enable_parents_.end()) {
-            break;
+    if (ref.enable_parent() != 0) {
+        if (const auto parent = parent_initially_disabled(ref.enable_parent(), 0)) {
+            return *parent != formats::has_flag(ref.flags(), wfb::RefFlags::enable_opposite);
         }
-        opposite ^= formats::has_flag(r->flags(), wfb::RefFlags::enable_opposite);
-        r = it->second;
     }
-    return formats::has_flag(r->flags(), wfb::RefFlags::initially_disabled) != opposite;
+    return formats::has_flag(ref.flags(), wfb::RefFlags::initially_disabled);
+}
+
+bool WorldData::initially_disabled(const wfb::ActorRef& actor) const {
+    // As for a reference (ACHR XESP, format 41): the Bleak Falls Barrow frost
+    // troll's own flag is clear, its parent XMarker is disabled.
+    if (const auto parent_id = actor_enable_parent(actor.ref()); parent_id != 0) {
+        if (const auto parent = parent_initially_disabled(parent_id, 0)) {
+            return *parent != formats::has_flag(actor.flags(), wfb::RefFlags::enable_opposite);
+        }
+    }
+    return formats::has_flag(actor.flags(), wfb::RefFlags::initially_disabled);
+}
+
+std::uint32_t WorldData::actor_enable_parent(std::uint32_t ref) const {
+    const auto* parents = root_ != nullptr ? root_->actor_enable_parents() : nullptr;
+    const auto* found = parents != nullptr ? lookup(parents, ref) : nullptr;
+    return found != nullptr ? found->parent() : 0;
+}
+
+std::optional<bool> WorldData::parent_initially_disabled(std::uint32_t parent, int depth) const {
+    if (depth >= 16) {
+        return std::nullopt;
+    }
+    const auto own = [&](std::uint32_t grand, wfb::RefFlags flags) -> bool {
+        if (grand != 0) {
+            if (const auto state = parent_initially_disabled(grand, depth + 1)) {
+                return *state != formats::has_flag(flags, wfb::RefFlags::enable_opposite);
+            }
+        }
+        return formats::has_flag(flags, wfb::RefFlags::initially_disabled);
+    };
+    if (const auto it = enable_parents_.find(parent); it != enable_parents_.end()) {
+        return own(it->second->enable_parent(), it->second->flags());
+    }
+    if (const auto* a = actor_ptr(parent)) {
+        return own(actor_enable_parent(parent), a->flags());
+    }
+    return std::nullopt;
 }
 
 bool WorldData::initially_disabled(const wfb::LargeRef& ref) const {

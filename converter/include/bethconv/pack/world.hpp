@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 40;
+inline constexpr std::uint32_t k_world_format_version = 41;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -231,6 +231,8 @@ public:
     [[nodiscard]] std::optional<wfb::QuestT> quest(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::GlobalT> global(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::ActorRef> actors() const;
+    /// Placed actors' enable parents (format 41), sorted by ref.
+    [[nodiscard]] std::vector<wfb::ActorEnableParent> actor_enable_parents() const;
     [[nodiscard]] std::optional<wfb::NpcT> npc(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::PackageT> package(std::uint32_t id) const;
     [[nodiscard]] std::size_t package_count() const noexcept;

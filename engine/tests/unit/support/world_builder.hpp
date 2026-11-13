@@ -513,6 +513,9 @@ struct ActorRefSpec {
     std::uint32_t cell = 0;
     std::array<float, 3> position = {};
     std::array<float, 3> rotation = {};
+    wfb::RefFlags flags = {};
+    /// ACHR XESP (world.fb 41): written to `actor_enable_parents` when not 0.
+    std::uint32_t enable_parent = 0;
 };
 
 struct CellSpec {
