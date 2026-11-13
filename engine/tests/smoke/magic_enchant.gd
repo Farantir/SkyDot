@@ -21,6 +21,7 @@ extends SceneTree
 
 const PLAYER := 0x14
 const FIRE_SWORD := 0x17009
+const BANDIT := 0x39FE4
 const POISON := 0x3A5A4  # Weak Poison: Damage Health
 const IRON_SWORD := 0x12EB7
 const FIRE_DAGGER := 0x896B4  # Iron Dagger of Burning
@@ -91,21 +92,6 @@ func _stand_before(node: Node3D, distance: float) -> void:
 	expect(false, "no clear place to stand before the target")
 
 
-## The built actor with the most Health (the enchantment's effects must not kill it in one hit).
-func _toughest() -> int:
-	var best := 0
-	var best_health := 0.0
-	for node in _session.host.find_children("*", "SkydotActor", true, false):
-		if not node.has_meta("skydot_ref"):
-			continue
-		var ref: int = node.get_meta("skydot_ref")
-		var health := _session.papyrus.get_actor_value_max(ref, "Health")
-		if health > best_health and not _session.papyrus.is_actor_dead(ref) and ref != PLAYER:
-			best = ref
-			best_health = health
-	return best
-
-
 ## One light attack through the session; the hit it lands (the last of `_hits`), after the clip is over.
 func _swing() -> Dictionary:
 	var before := _hits.size()
@@ -140,10 +126,14 @@ func _run(pack_dir: String) -> void:
 	var papyrus := _session.papyrus
 	_session.hit_landed.connect(func(target: int, result: Dictionary, _point: Vector3) -> void:
 		_hits.append({"target": target, "result": result}))
-	var target := _toughest()
+	# The bandit of sse_combat_melee, made tough as the console's setav would (the enchantment's effects
+	# must not kill it in one hit): the cell's toughest built actor was the frost troll, which its
+	# disabled enable parent keeps out, then the Frostbite Spider, out of reach in its shaft.
+	var target := BANDIT
+	papyrus.set_actor_value(target, "Health", 300.0)
 	var bandit := _session.world.find_ref_node(target) as Node3D
-	print("target 0x%X with %f Health" % [target, papyrus.get_actor_value_max(target, "Health")])
-	expect(bandit != null and papyrus.get_actor_value_max(target, "Health") > 80.0, "a tough actor is built")
+	print("target 0x%X with %f Health" % [target, papyrus.get_actor_value(target, "Health")])
+	expect(bandit != null and papyrus.get_actor_value(target, "Health") > 80.0, "a tough actor is built")
 	if bandit == null:
 		quit(1)
 		return
