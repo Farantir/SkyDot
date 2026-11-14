@@ -12,7 +12,9 @@
 # player's actions (cast:/attack:, with a hold: auto, tap or seconds; see
 # CaptureTrigger), which use what the JSON's "player" block says the hands
 # and the voice slot held at F12 (`player_block`).
-# --dump FILE writes the state dump (state_dump.gd) just before the first shot.
+# --dump FILE writes the state dump (state_dump.gd) just before the first shot;
+# for a --shot-frames series after its last frame, as SkyrimRemote's job dumps
+# the game after its capture (a killed actor lies where its ragdoll took it).
 # --screenshot FILE takes its shots on its own (FILE_0.png, ...) and quits.
 # With --shot-frames N (one view) it saves N frames instead, every
 # --shot-every rendered frames (FILE_0000.png, ...), to follow an effect over
@@ -114,17 +116,10 @@ func step(delta: float) -> void:
 		if _frames == SETTLE_FRAMES - 1 and not _settings.hide_refs.is_empty():
 			_hide_refs(_host)
 		return
-	if not _settings.dump.is_empty() and not _dumped:
-		_dumped = true
-		var dump := StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius)
-		if StateDump.write(_settings.dump, dump):
-			print("dump: ", _settings.dump, " ", dump["refs"].size(), " refs ", dump["lights"].size(), " lights ",
-				dump["effects"].size(), " effects")
-		else:
-			printerr("cannot write the dump ", _settings.dump)
 	if _views.size() == 1 and _settings.shot_frames > 1:
 		_step_series()
 		return
+	_write_dump()
 	var index := _index
 	_index += 1
 	print("perf: ", JSON.stringify(_debug.perf))
@@ -139,6 +134,20 @@ func step(delta: float) -> void:
 	if not is_nan(_views[0]):
 		_rig.apply_look(_views[0], LOOK_PITCH)
 	_frames = 20  # the next shot waits ten frames
+
+
+## --dump, once.
+func _write_dump() -> void:
+	if _settings.dump.is_empty() or _dumped:
+		return
+	_dumped = true
+	var dump := StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius,
+		session.papyrus if session != null else null)
+	if StateDump.write(_settings.dump, dump):
+		print("dump: ", _settings.dump, " ", dump["refs"].size(), " refs ", dump["lights"].size(), " lights ",
+			dump["effects"].size(), " effects")
+	else:
+		printerr("cannot write the dump ", _settings.dump)
 
 
 ## --shot-frames: one frame of the series every --shot-every frames, then quit.
@@ -162,6 +171,7 @@ func _step_series() -> void:
 	for task in _pending:
 		WorkerThreadPool.wait_for_task_completion(task)
 	print("screenshots: %d frames, %s_0000.png .. %s" % [_index, _path.get_basename(), path.get_file()])
+	_write_dump()
 	_host.get_tree().quit(0)
 
 
@@ -205,7 +215,8 @@ func _fire_trigger() -> void:
 		if spec != "activate:nearest-door":
 			ref = spec.trim_prefix("activate:").hex_to_int()
 		else:
-			ref = StateDump.nearest_door(StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius))
+			ref = StateDump.nearest_door(StateDump.build(_host, _world, _rig.camera.global_position, _settings.dump_radius,
+			session.papyrus if session != null else null))
 		print("--trigger: activate 0x%08X: %s" % [ref, session.activate_ref(ref, true)])
 	elif spec.begins_with("kill:") and session != null:
 		# The game's console `kill` on each ref: GameSession.kill_actor, the path a death takes (no push).

@@ -75,7 +75,13 @@ What an actor is built from is decided from `world.fb` alone
   clip starts, its keyframed bones driven toward the clip's pose by the
   rigid-body controller (`Ragdoll.drive`, hkaKeyFrameHierarchyUtility's gains),
   the others limp; when the clip ends all go limp. Modifiers behind an
-  event (the powered get-up matching) are not decoded.
+  event (the powered get-up matching) are not decoded. While a ragdoll has
+  the body (falling, lying, knocked down) the reference is where its root
+  body is (`SkydotPapyrus.set_ragdoll_position`: GetPositionX/Y/Z,
+  distances, conditions, the viewer's state dump), as the game's ref
+  position equals the first ragdoll body's every frame (measured); it is
+  not saved, so a corpse built again reports its corpse place (the floor
+  under that body) until its ragdoll runs.
 - **Worn.** The default outfit's armor (a leveled entry resolved as above);
   the first item on a slot keeps it. The skin (the NPC's WNAM, else the
   race's) adds its addons where nothing worn covers their slots: bodies

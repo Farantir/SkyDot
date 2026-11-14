@@ -407,6 +407,15 @@ public:
     void update_actor(std::int64_t actor, const godot::Vector3& position);
     /// The actor left the screen: its position is the placement's from now on.
     void forget_actor_position(std::int64_t actor);
+    /// While a ragdoll has `actor`'s body (dead, knocked down, paralysed) the reference is where the
+    /// ragdoll's root body is (`position`, Skyrim space): GetPositionX/Y/Z, distances and conditions
+    /// report it, as the game's ref position follows that body (measured: equal to the first ragdoll
+    /// body's position every frame, while falling and at rest). `clear_ragdoll_position` when it stands
+    /// again. Not saved: a corpse built again reports its corpse place until its ragdoll runs.
+    void set_ragdoll_position(std::int64_t actor, const godot::Vector3& position);
+    void clear_ragdoll_position(std::int64_t actor);
+    /// The position set_ragdoll_position gave, or null.
+    godot::Variant get_ragdoll_position(std::int64_t actor) const;
 
     /// Advance the VM's clock and run what is ready.
     void update(double seconds);
@@ -899,6 +908,8 @@ private:
     bool graph_raises_activation(std::uint32_t form) const;
     /// Trigger volumes and the actors moving through them.
     vm::Triggers triggers_;
+    /// Where the ragdolls have the bodies of actors (set_ragdoll_position), Skyrim space.
+    std::map<std::uint32_t, godot::Vector3> ragdoll_positions_;
     vm::IdAllocator test_ids_{vm::id_ranges::test_instances};
     /// Quests, their aliases and the globals scripts set (QUST).
     vm::QuestStates quests_;

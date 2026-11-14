@@ -57,7 +57,7 @@ static func _actors_in(node: Node, world: SkydotWorld, cells: Dictionary, out: D
 				pending.append(child)
 
 
-static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float) -> Dictionary:
+static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float, papyrus: SkydotPapyrus = null) -> Dictionary:
 	var eye := SkydotWorld.godot_to_skyrim(camera)
 	var cells := {}
 	_cells_in(host, cells)
@@ -85,6 +85,10 @@ static func build(host: Node, world: SkydotWorld, camera: Vector3, radius: float
 		var pos: Vector3 = actor["position"]
 		if node is Node3D:
 			pos = SkydotWorld.godot_to_skyrim(node.global_position)
+		# A ragdoll has the body (dead, knocked down): the reference is where its root body is, as the game's.
+		var lying: Variant = papyrus.get_ragdoll_position(id) if papyrus != null else null
+		if lying is Vector3:
+			pos = lying
 		# A built actor is enabled whatever its editor flag says (a script or the AI enabled it).
 		_add(dump, world, id, actor["base"], node, pos, node != null or not actor["disabled"], eye, actor)
 	for list in [dump["refs"], dump["lights"], dump["effects"]]:

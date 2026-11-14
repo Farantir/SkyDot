@@ -220,6 +220,7 @@ func _queue(ref: int) -> void:
 func stand_up(ref: int) -> bool:
 	_pending.erase(ref)
 	_hits.erase(ref)
+	_papyrus.clear_ragdoll_position(ref)
 	for body in _bodies.duplicate():
 		if body["ref"] == ref:
 			(body["ragdoll"] as Ragdoll).stop()
@@ -348,6 +349,7 @@ func _get_up(body: Dictionary) -> void:
 	if root != null:
 		at = skeleton.global_transform * bone_pose(skeleton, root).origin
 	ragdoll.stop()
+	_papyrus.clear_ragdoll_position(ref)
 	skeleton.reset_bone_poses()
 	var query := PhysicsRayQueryParameters3D.create(at + Vector3.UP * PROBE_UP, at + Vector3.DOWN * PROBE_DOWN_SETTLE,
 		SkydotPlayer.LAYER_WORLD | SkydotPlayer.LAYER_TERRAIN)
@@ -369,6 +371,15 @@ static func _root_bone(ragdoll: Ragdoll) -> PhysicalBone3D:
 	return null
 
 
+## The reference is where the ragdoll's root body is (its frame's origin), as the game's ref position
+## follows the first ragdoll body while the ragdoll has the actor (measured: equal every frame of a fall,
+## a push and a rest; game-ragdoll a_*_rest, c_*_f15).
+func _report_position(ref: int, ragdoll: Ragdoll) -> void:
+	var root := _root_bone(ragdoll)
+	if root != null:
+		_papyrus.set_ragdoll_position(ref, SkydotWorld.godot_to_skyrim(root.global_position))
+
+
 ## Number of ragdolls still simulating.
 func simulating() -> int:
 	return _bodies.size()
@@ -383,6 +394,7 @@ func step(delta: float) -> void:
 			_bodies.erase(body)
 			continue
 		body["time"] += delta
+		_report_position(body["ref"], body["ragdoll"])
 		(body["ragdoll"] as Ragdoll).wake_clutter(delta)
 		if body.has("animated"):
 			# Driven by its clip: not at rest until the clip has ended.
@@ -476,6 +488,7 @@ func _ragdoll_body(ref: int, node: SkydotActor, push: Dictionary, knocked: bool,
 		_finish(ref, node, skeleton)
 		return true
 	ragdoll.start()
+	_report_position(ref, ragdoll)
 	# Godot's simulator writes a body's pose into the bone through the skeleton's inverse transform,
 	# scale included: under the actor's units node (about 0.0147) a bone's basis comes out 68 times
 	# too large and the skin explodes into huge planes. This modifier runs after it (it is the
@@ -630,6 +643,7 @@ func _freeze(body: Dictionary) -> void:
 		poses[skeleton.find_bone(bone.bone_name)] = bone_pose(skeleton, bone)
 	var root := _root_bone(ragdoll)
 	var root_at := skeleton.global_transform * (poses[skeleton.find_bone(root.bone_name)] as Transform3D).origin
+	_report_position(body["ref"], ragdoll)
 	ragdoll.stop()
 	_settle_poses(skeleton, poses)
 	_set_place(body["ref"], node, root_at)

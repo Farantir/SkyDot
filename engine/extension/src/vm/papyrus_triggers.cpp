@@ -110,6 +110,19 @@ void SkydotPapyrus::forget_actor_position(std::int64_t actor) {
     triggers_.forget_position(form);
 }
 
+void SkydotPapyrus::set_ragdoll_position(std::int64_t actor, const Vector3& position) {
+    ragdoll_positions_[static_cast<std::uint32_t>(actor)] = position;
+}
+
+void SkydotPapyrus::clear_ragdoll_position(std::int64_t actor) {
+    ragdoll_positions_.erase(static_cast<std::uint32_t>(actor));
+}
+
+godot::Variant SkydotPapyrus::get_ragdoll_position(std::int64_t actor) const {
+    const auto it = ragdoll_positions_.find(static_cast<std::uint32_t>(actor));
+    return it != ragdoll_positions_.end() ? godot::Variant(it->second) : godot::Variant();
+}
+
 void SkydotPapyrus::update_actor(std::int64_t actor, const Vector3& position) {
     const auto form = static_cast<std::uint32_t>(actor);
     triggers_.move_actor(

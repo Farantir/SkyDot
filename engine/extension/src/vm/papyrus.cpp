@@ -171,6 +171,10 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::notify_sound_finished);
     godot::ClassDB::bind_method(D_METHOD("update_actor", "actor", "position"),
                                 &SkydotPapyrus::update_actor);
+    godot::ClassDB::bind_method(D_METHOD("set_ragdoll_position", "actor", "position"),
+                                &SkydotPapyrus::set_ragdoll_position);
+    godot::ClassDB::bind_method(D_METHOD("clear_ragdoll_position", "actor"), &SkydotPapyrus::clear_ragdoll_position);
+    godot::ClassDB::bind_method(D_METHOD("get_ragdoll_position", "actor"), &SkydotPapyrus::get_ragdoll_position);
     godot::ClassDB::bind_method(D_METHOD("update", "seconds"), &SkydotPapyrus::update);
     godot::ClassDB::bind_method(D_METHOD("call_global", "cls", "fn", "args"),
                                 &SkydotPapyrus::call_global);
@@ -448,6 +452,7 @@ void SkydotPapyrus::reset() {
     scene_.reset();
     activation_.reset();
     triggers_.clear();
+    ragdoll_positions_.clear();
     test_ids_.clear();
     sound_ids_.clear();
     quests_.clear();
@@ -637,6 +642,9 @@ Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (const auto it = states_.moved.find(ref); it != states_.moved.end()) {
         return vec3_of(it->second.position);
+    }
+    if (const auto it = ragdoll_positions_.find(ref); it != ragdoll_positions_.end()) {
+        return it->second;
     }
     // An actor on screen reports where it is (the AI, a few times a second); one that is not, or lies dead,
     // is where the placement says (its walk off screen, its corpse place).
