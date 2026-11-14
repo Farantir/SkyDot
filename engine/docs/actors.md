@@ -75,7 +75,20 @@ What an actor is built from is decided from `world.fb` alone
   clip starts, its keyframed bones driven toward the clip's pose by the
   rigid-body controller (`Ragdoll.drive`, hkaKeyFrameHierarchyUtility's gains),
   the others limp; when the clip ends all go limp. Modifiers behind an
-  event (the powered get-up matching) are not decoded. While a ragdoll has
+  event (the powered get-up matching) are not decoded. Any other death
+  goes as the game picks it: the IDLE tree of ActionDeathWait (AACT
+  0x5DD59) for the actor's root behaviour graph, its conditions asked of
+  the world data (`SkydotWorld.get_death_animation`), gives the event: a
+  wolf's, bear's or spriggan's WolfDeath/BearDeathWait/SprigganDeathWait
+  send DeathAnimation, whose AnimateToRagdoll state plays its clip with
+  the ragdoll driven toward it (the same drive) until the graph raises
+  Ragdoll (wolf 0.28 s); a draugr's or troll's tree gives Ragdoll, the
+  Frostbite Spider's DeathAnimation only for the large and giant races on
+  a roll of 50 or less, a chaurus's on a roll under 50; those go limp at
+  once (measured with the console kill against `sae DeathAnimation` on a
+  living actor, 2026-11-14: kill and event agree for wolf, bear and
+  spriggan, the draugr's and troll's kills are limp). A pushed death is
+  not animated (unmeasured). While a ragdoll has
   the body (falling, lying, knocked down) the reference is where its root
   body is (`SkydotPapyrus.set_ragdoll_position`: GetPositionX/Y/Z,
   distances, conditions, the viewer's state dump), as the game's ref

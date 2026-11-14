@@ -543,6 +543,64 @@ std::optional<PlayingClip> ActorGraph::playing() const {
     return PlayingClip{clip.name, def_->clip_files[clip_index], machine.clip_time(), clip.mode, clip.speed};
 }
 
+std::vector<BehaviorRagdollControl> ActorGraph::ragdoll_controls() const {
+    std::vector<int> machines = set_.running();
+    std::ranges::stable_sort(machines, [this](int a, int b) {
+        return def_->depth[static_cast<std::size_t>(a)] < def_->depth[static_cast<std::size_t>(b)];
+    });
+    std::vector<BehaviorRagdollControl> out;
+    for (const int m : machines) {
+        if (const BehaviorState* state = set_.machine(m).state(); state != nullptr) {
+            out.insert(out.end(), state->ragdoll.begin(), state->ragdoll.end());
+        }
+    }
+    return out;
+}
+
+std::optional<DeathAnimation> death_animation(const std::shared_ptr<const ActorGraphDef>& def,
+                                              const std::function<float(const std::string&)>& duration,
+                                              std::string_view event) {
+    if (def == nullptr || def->empty()) {
+        return std::nullopt;
+    }
+    ActorGraph graph(def, duration);
+    graph.configure(false);
+    graph.start();
+    if (event.empty() || !graph.send(event).accepted) {
+        return std::nullopt;
+    }
+    const auto playing = graph.playing();
+    if (!playing) {
+        return std::nullopt;
+    }
+    DeathAnimation out;
+    out.clip_file = playing->file;
+    out.controls = graph.ragdoll_controls();
+    if (out.controls.empty()) {
+        return std::nullopt;
+    }
+    // Until the graph raises Ragdoll (a clip trigger, or the clip's end), in frames as the game steps it;
+    // a clip that never raises it (a looping one) is played once.
+    const float length = duration ? duration(playing->file) : 0.0F;
+    constexpr float k_step = 1.0F / 60.0F;
+    const float limit = std::max(length, 0.0F) + 1.0F;
+    float time = 0.0F;
+    out.ragdoll_after = length;
+    while (time < limit) {
+        const BehaviorOutput step = graph.advance(k_step);
+        time += k_step;
+        const bool ragdoll = std::ranges::any_of(step.events, [](const std::string& e) {
+            return e == "Ragdoll" || e == "RagdollInstant";
+        });
+        const auto now = graph.playing();
+        if (ragdoll || !now || now->file != out.clip_file) {
+            out.ragdoll_after = time;
+            break;
+        }
+    }
+    return out;
+}
+
 std::optional<RootMotion> ActorGraph::root_motion() const {
     const auto now = playing();
     return now ? def_->root_motion(now->clip, now->time) : std::nullopt;

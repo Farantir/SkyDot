@@ -12,6 +12,7 @@
 #include "assets/asset_cache.hpp"
 #include "actors/actor_placement.hpp"
 #include "build/cell_builder.hpp"
+#include "conditions/conditions.hpp"
 #include "world/queries.hpp"
 #include "data/world_data.hpp"
 #include "skydot_formats/units.hpp"
@@ -32,8 +33,8 @@
 
 #include <array>
 #include <cstdint>
-#include <string>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -436,6 +437,12 @@ public:
     /// units; empty: every bone), weights, values (formats/schema/animation.fbs), mode}. Empty when
     /// the actor has no graph or no state plays the clip.
     godot::Array get_ragdoll_controls(std::int64_t ref, const godot::String& clip, std::int64_t base = 0);
+    /// How the actor dies: the death event the game picks from the IDLE tree of ActionDeathWait for its behaviour
+    /// graph (the conditions asked of the world data: race, a dice roll, ...) and what the graph does with it
+    /// (actors/actor_graph.hpp, DeathAnimation): {event, idle (editor id), and when the state the event enters
+    /// plays a clip that drives the ragdoll: clip (virtual path), ragdoll_after (seconds until the graph raises
+    /// Ragdoll), controls (as get_ragdoll_controls)}. Empty when the graph has no tree there.
+    godot::Dictionary get_death_animation(std::int64_t ref, std::int64_t base = 0);
     /// Actors walk around their place while no AI packages are read (see
     /// actor.hpp). On by default; off, they stand in their idle.
     void set_actor_wander(bool enabled) { builder_.options().actor_wander = enabled; }
@@ -516,6 +523,8 @@ public:
     const WorldData& data() const { return *data_; }
     /// The actor graphs of behaviour projects (actors/actor_graph.hpp).
     ActorGraphLibrary& graph_library() { return builder_.graph_library(); }
+    /// The behaviour file of a placed actor, or of an NPC base for `ref` (`base` not 0); empty without one.
+    std::string behaviour_of(std::int64_t ref, std::int64_t base);
     /// Where actors are, when not where the editor placed them.
     ActorPlacement& placement() { return placement_; }
     const ActorPlacement& placement() const { return placement_; }
@@ -526,6 +535,10 @@ protected:
     static void _bind_methods();
 
 private:
+    /// get_death_animation's graph runs by behaviour file and event.
+    std::unordered_map<std::string, godot::Dictionary> death_animations_;
+    /// The conditions of the death IDLEs (their dice roll on from death to death).
+    std::unique_ptr<conditions::ConditionWorld> death_facts_;
     godot::Error fail(godot::Error code, const godot::String& why);
 
     /// The open world.fb; a closed WorldData until `open` succeeds.

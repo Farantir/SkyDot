@@ -68,6 +68,23 @@ struct ActorGraphDef {
     [[nodiscard]] std::optional<RootMotion> root_motion(const std::string& clip, float time) const;
 };
 
+/// What the graph does with the game's death event (the AnimateToRagdoll states of creature graphs): the
+/// clip the state it enters plays, how long until the graph raises Ragdoll or RagdollInstant (the
+/// state's clip trigger, or its end) and the ragdoll modifiers that drive the body meanwhile.
+struct DeathAnimation {
+    std::string clip_file;  ///< The animation's virtual path.
+    float ragdoll_after{};  ///< Seconds from the event to the ragdoll going limp.
+    std::vector<BehaviorRagdollControl> controls;
+};
+
+/// The death animation of `def` for the death event `event` (the IDLE the game picks under ActionDeathWait:
+/// "DeathAnimation" for a wolf, "Ragdoll" for a draugr): an NPC's graph (`ActorGraph::configure(false)`)
+/// started and sent the event; nothing when no machine takes it, the state it enters plays no clip or no
+/// ragdoll modifier drives the body (the ragdoll then goes limp at once).
+[[nodiscard]] std::optional<DeathAnimation> death_animation(const std::shared_ptr<const ActorGraphDef>& def,
+                                                           const std::function<float(const std::string&)>& duration,
+                                                           std::string_view event);
+
 /// The actor graph of a race's behaviour project (`actors/character/defaultmale.hkx`).
 std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behaviour, const AssetReader& read);
 
@@ -127,6 +144,8 @@ public:
     [[nodiscard]] const BehaviorSet& set() const { return set_; }
     /// Root motion of the clip now playing at its time, nothing if there is none.
     [[nodiscard]] std::optional<RootMotion> root_motion() const;
+    /// The ragdoll modifiers of the running machines' current states, the outermost machines' first.
+    [[nodiscard]] std::vector<BehaviorRagdollControl> ragdoll_controls() const;
 
 private:
     void resolve_durations();

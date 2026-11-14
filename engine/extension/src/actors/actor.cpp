@@ -135,6 +135,7 @@ void SkydotActor::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_death_clip"), &SkydotActor::get_death_clip);
     ClassDB::bind_method(D_METHOD("has_death_clip"), &SkydotActor::has_death_clip);
     ClassDB::bind_method(D_METHOD("start_death", "seek_end"), &SkydotActor::start_death);
+    ClassDB::bind_method(D_METHOD("play_death_animation", "clip"), &SkydotActor::play_death_animation);
     ClassDB::bind_method(D_METHOD("get_death_state"), &SkydotActor::get_death_state);
     ClassDB::bind_method(D_METHOD("set_frozen", "frozen"), &SkydotActor::set_frozen);
     ClassDB::bind_method(D_METHOD("is_frozen"), &SkydotActor::is_frozen);
@@ -381,6 +382,31 @@ void SkydotActor::stop_for_death() {
     set_velocity(Vector3());
     set_collision_layer(0);
     set_collision_mask(0);
+}
+
+double SkydotActor::play_death_animation(const godot::String& clip) {
+    godot::AnimationPlayer* anim = player();
+    if (dead_ || anim == nullptr) {
+        return 0.0;
+    }
+    dead_ = true;
+    death_anim_ = true;
+    stop_for_death();
+    frozen_ = false;
+    anim->set_active(true);
+    anim->set_callback_mode_process(godot::AnimationMixer::ANIMATION_CALLBACK_MODE_PROCESS_IDLE);
+    manual_ = false;
+    const double length = play_clip(clip, 1.0, false);
+    if (length <= 0.0) {
+        dead_ = false;
+        death_anim_ = false;
+        set_collision_layer(body_layer());
+        set_collision_mask(body_mask());
+        return 0.0;
+    }
+    set_process(true);
+    set_physics_process(false);
+    return length;
 }
 
 bool SkydotActor::start_death(bool seek_end) {

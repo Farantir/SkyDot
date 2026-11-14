@@ -154,6 +154,11 @@ public:
     /// when the pose is held (at once for `seek_end`) and `death_clip_started` when the clip starts
     /// playing (not for `seek_end`); false if it was dead already.
     bool start_death(bool seek_end);
+    /// The actor died and its behaviour graph plays a death animation (SkydotWorld.get_death_animation):
+    /// like `set_dead(true)` it stops thinking and blocking, but its animation plays `clip` once (the
+    /// ragdoll's drive follows it) until `set_dead(true)` ends it. The clip's length, 0 (and nothing
+    /// changes) if it was dead already or the clip cannot be played.
+    double play_death_animation(const godot::String& clip);
     /// "" (not dying), "crash" (falling from the air), "clip" (the death clip plays), "held".
     godot::String get_death_state() const { return death_state_; }
     /// Paralysed (magic): it does not walk, wander or change its clip, its animation holds the

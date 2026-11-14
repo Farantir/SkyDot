@@ -7,6 +7,8 @@
 #include "physics/collision.hpp"
 #include "render/ragdoll.hpp"
 #include "world/queries.hpp"
+#include "ai/idle_choice.hpp"
+#include "vm/condition_world.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
 
@@ -164,6 +166,8 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_actor_plan", "ref"), &SkydotWorld::get_actor_plan);
     godot::ClassDB::bind_method(D_METHOD("get_ragdoll", "ref", "base"), &SkydotWorld::get_ragdoll, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("get_ragdoll_controls", "ref", "clip", "base"), &SkydotWorld::get_ragdoll_controls,
+                                DEFVAL(0));
+    godot::ClassDB::bind_method(D_METHOD("get_death_animation", "ref", "base"), &SkydotWorld::get_death_animation,
                                 DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
     godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
@@ -599,29 +603,22 @@ godot::Dictionary SkydotWorld::get_ragdoll(std::int64_t ref, std::int64_t base) 
     return ragdoll.duplicate(true);
 }
 
-godot::Array SkydotWorld::get_ragdoll_controls(std::int64_t ref, const godot::String& clip, std::int64_t base) {
-    ActorPlan plan;
-    if (base != 0) {
-        plan = builder_.npc_plan(static_cast<std::uint32_t>(base), static_cast<std::uint32_t>(ref));
-    } else if (const auto* actor = data().actor_ptr(ref); actor != nullptr) {
-        plan = builder_.actor_plan(*actor);
-    }
+namespace {
+
+/// Ragdoll modifiers as get_ragdoll_controls gives them.
+godot::Array controls_array(const ActorGraphDef& def, const std::vector<BehaviorRagdollControl>& controls) {
     godot::Array out;
-    if (plan.behaviour.empty()) {
-        return out;
-    }
-    const auto def = graph_library().graph(plan.behaviour);
     static constexpr const char* k_kinds[] = {"keyframed_bones", "rigid_body", "powered"};
-    for (const BehaviorRagdollControl& c : def->ragdoll_controls(normalize_path(clip.utf8().get_data()))) {
+    for (const BehaviorRagdollControl& c : controls) {
         godot::Dictionary d;
         d["kind"] = k_kinds[static_cast<int>(c.kind)];
         d["name"] = String::utf8(c.name.c_str());
         godot::Array bones;
         for (const int index : c.bones) {
-            if (index < 0 || static_cast<std::size_t>(index) >= def->ragdoll_bones.size()) {
+            if (index < 0 || static_cast<std::size_t>(index) >= def.ragdoll_bones.size()) {
                 continue;
             }
-            const auto& bone = def->ragdoll_bones[static_cast<std::size_t>(index)];
+            const auto& bone = def.ragdoll_bones[static_cast<std::size_t>(index)];
             godot::Dictionary b;
             b["name"] = String::utf8(bone.name.c_str());
             b["position"] = godot::Vector3(bone.x, bone.y, bone.z);
@@ -641,6 +638,87 @@ godot::Array SkydotWorld::get_ragdoll_controls(std::int64_t ref, const godot::St
         d["mode"] = c.world_from_model_mode;
         out.push_back(d);
     }
+    return out;
+}
+
+} // namespace
+
+std::string SkydotWorld::behaviour_of(std::int64_t ref, std::int64_t base) {
+    ActorPlan plan;
+    if (base != 0) {
+        plan = builder_.npc_plan(static_cast<std::uint32_t>(base), static_cast<std::uint32_t>(ref));
+    } else if (const auto* actor = data().actor_ptr(ref); actor != nullptr) {
+        plan = builder_.actor_plan(*actor);
+    }
+    return plan.behaviour;
+}
+
+godot::Array SkydotWorld::get_ragdoll_controls(std::int64_t ref, const godot::String& clip, std::int64_t base) {
+    const std::string behaviour = behaviour_of(ref, base);
+    if (behaviour.empty()) {
+        return {};
+    }
+    const auto def = graph_library().graph(behaviour);
+    return controls_array(*def, def->ragdoll_controls(normalize_path(clip.utf8().get_data())));
+}
+
+namespace {
+
+/// The AACT ActionDeathWait: the root of the IDLE trees the game picks a dying actor's death event from
+/// (measured with the console kill: a wolf, bear or spriggan plays its graph's DeathAnimation, a draugr, troll or
+/// Frostbite Spider goes limp, as their trees under this action say).
+constexpr std::uint32_t k_action_death_wait = 0x5DD59;
+
+/// The world as the death IDLEs' conditions ask about it, the actor's base given for a runtime one.
+class DeathFacts final : public PapyrusConditionWorld {
+public:
+    DeathFacts(const SkydotWorld* world) : PapyrusConditionWorld(nullptr, world) {}
+    std::uint32_t npc_of(std::uint32_t ref) const override {
+        return ref == actor && base != 0 ? base : PapyrusConditionWorld::npc_of(ref);
+    }
+    std::uint32_t actor{};
+    std::uint32_t base{};
+};
+
+} // namespace
+
+godot::Dictionary SkydotWorld::get_death_animation(std::int64_t ref, std::int64_t base) {
+    const std::string behaviour = behaviour_of(ref, base);
+    if (behaviour.empty()) {
+        return {};
+    }
+    const auto def = graph_library().graph(behaviour);
+    if (!death_facts_) {
+        death_facts_ = std::make_unique<DeathFacts>(this);
+    }
+    auto& facts = static_cast<DeathFacts&>(*death_facts_);
+    facts.actor = static_cast<std::uint32_t>(ref);
+    facts.base = static_cast<std::uint32_t>(base);
+    conditions::ConditionContext context;
+    context.subject = static_cast<std::uint32_t>(ref);
+    context.unknown = conditions::UnknownPolicy::zero;
+    const auto choice = ai::choose_idle(data(), k_action_death_wait, def->behaviour, facts, context);
+    godot::Dictionary out;
+    if (!choice) {
+        return out;
+    }
+    out["event"] = String::utf8(choice->event.c_str());
+    if (const auto* idle = data().idle_ptr(choice->idle); idle != nullptr && idle->editor_id() != nullptr) {
+        out["idle"] = String::utf8(idle->editor_id()->c_str());
+    }
+    const std::string key = behaviour + "|" + choice->event;
+    auto it = death_animations_.find(key);
+    if (it == death_animations_.end()) {
+        godot::Dictionary d;
+        if (const auto anim = death_animation(
+                def, [this](const std::string& vpath) { return graph_library().clip_duration(vpath); }, choice->event)) {
+            d["clip"] = String::utf8(anim->clip_file.c_str());
+            d["ragdoll_after"] = anim->ragdoll_after;
+            d["controls"] = controls_array(*def, anim->controls);
+        }
+        it = death_animations_.emplace(key, d).first;
+    }
+    out.merge(it->second.duplicate(true));
     return out;
 }
 
