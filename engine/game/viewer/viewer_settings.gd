@@ -167,6 +167,7 @@ var dragon_souls := -1  # --dragon-souls N: the player's DragonSouls (-1: unchan
 var shout_words := 0  # --shout N[,0xREF]: say N words (hold the voice key for them) facing that actor
 var shout_at := 0
 var shout_side := 0  # --shout-side K: the first of twelve sides round the actor --shout-from tries
+var death_roll := -1  # --death-roll N (test only): every GetRandomPercent of a death IDLE answers N (0-99; <= 50 takes a "<= 50" branch)
 var kill_after := 0.0  # --kill-after SECONDS: --kill waits that long (a spawned actor needs its scripts first)
 var shout_from := 0.0  # --shout-from METRES: stand that far from the actor first (a shot)
 var spawn: Array[int] = []  # --spawn 0xNPC_[,...]: those actors (NPC_ or LVLN) appear in front of the player after the load
@@ -349,6 +350,7 @@ func _read_actors(args: Dictionary) -> void:
 				halves[1].substr(cut + 1).to_int() if has_count else 1))
 	npc_draw.append_array(_forms(args.get("npc-draw", "")))
 	equip.append_array(_forms(args.get("equip", "")))
+	death_roll = clampi(int(str(args.get("death-roll", "-1"))), -1, 99)
 	kill_after = maxf(0.0, str(args.get("kill-after", "0")).to_float())
 	spawn_distance = maxf(0.5, str(args.get("spawn-distance", str(SpawnActors.DISTANCE))).to_float())
 	spawn.append_array(_forms(args.get("spawn", "")))

@@ -238,6 +238,8 @@ func _open_game() -> bool:
 	_input = _settings.interactive
 	if not _session.open(_settings.game_config(), _rig.camera, _rig):
 		return false
+	if _settings.death_roll >= 0:
+		_session.world.set_death_roll(_settings.death_roll)  # test only: the death IDLEs' dice
 	get_viewport().msaa_3d = ViewerSettings.MSAA_STEPS[_settings.msaa_index]
 	get_viewport().screen_space_aa = ViewerSettings.AA_STEPS[_settings.aa_index]
 	get_viewport().scaling_3d_scale = _settings.render_scale

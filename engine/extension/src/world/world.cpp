@@ -179,6 +179,7 @@ void SkydotWorld::_bind_methods() {
                                 DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("get_death_animation", "ref", "base"), &SkydotWorld::get_death_animation,
                                 DEFVAL(0));
+    godot::ClassDB::bind_method(D_METHOD("set_death_roll", "percent"), &SkydotWorld::set_death_roll);
     godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("get_model_ragdoll", "model"), &SkydotWorld::get_model_ragdoll);
     godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
     godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
@@ -701,8 +702,10 @@ public:
     std::uint32_t npc_of(std::uint32_t ref) const override {
         return ref == actor && base != 0 ? base : PapyrusConditionWorld::npc_of(ref);
     }
+    double random_percent() override { return forced >= 0 ? static_cast<double>(forced) : PapyrusConditionWorld::random_percent(); }
     std::uint32_t actor{};
     std::uint32_t base{};
+    std::int64_t forced = -1;
 };
 
 } // namespace
@@ -719,6 +722,7 @@ godot::Dictionary SkydotWorld::get_death_animation(std::int64_t ref, std::int64_
     auto& facts = static_cast<DeathFacts&>(*death_facts_);
     facts.actor = static_cast<std::uint32_t>(ref);
     facts.base = static_cast<std::uint32_t>(base);
+    facts.forced = death_roll_;
     conditions::ConditionContext context;
     context.subject = static_cast<std::uint32_t>(ref);
     context.unknown = conditions::UnknownPolicy::zero;

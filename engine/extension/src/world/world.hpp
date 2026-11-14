@@ -468,6 +468,9 @@ public:
     /// plays a clip that drives the ragdoll: clip (virtual path), ragdoll_after (seconds until the graph raises
     /// Ragdoll), controls (as get_ragdoll_controls)}. Empty when the graph has no tree there.
     godot::Dictionary get_death_animation(std::int64_t ref, std::int64_t base = 0);
+    /// Test only (--death-roll N): every GetRandomPercent the death IDLEs ask answers N (0-99) instead of the
+    /// dice; negative gives the dice back.
+    void set_death_roll(std::int64_t percent) { death_roll_ = percent; }
     /// The ragdoll of a placed model (a reference's root): as get_ragdoll gives a skeleton model's; empty if
     /// it has none.
     static godot::Dictionary get_model_ragdoll(godot::Node* model);
@@ -567,6 +570,7 @@ private:
     std::unordered_map<std::string, godot::Dictionary> death_animations_;
     /// The conditions of the death IDLEs (their dice roll on from death to death).
     std::unique_ptr<conditions::ConditionWorld> death_facts_;
+    std::int64_t death_roll_ = -1;
     godot::Error fail(godot::Error code, const godot::String& why);
 
     /// The open world.fb; a closed WorldData until `open` succeeds.
