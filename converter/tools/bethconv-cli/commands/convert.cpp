@@ -44,6 +44,7 @@ struct ConvertArgs {
     bool no_lod = false;
     bool no_animations = false;
     bool no_sounds = false;
+    bool no_ui = false;
     bool no_mip_fix = false;
     bethconv::pack::AlphaCoverage alpha_coverage = bethconv::pack::AlphaCoverage::floor;
     bool no_collision = false;
@@ -189,6 +190,7 @@ int cmd_convert(const ConvertArgs& args) {
     options.convert_lod = !args.no_lod;
     options.convert_animations = !args.no_animations;
     options.convert_sounds = !args.no_sounds;
+    options.convert_ui = !args.no_ui;
     options.fix_mip_tail = !args.no_mip_fix;
     options.alpha_coverage = args.alpha_coverage;
     options.max_texture_size = args.max_texture_size;
@@ -312,7 +314,7 @@ int cmd_convert(const ConvertArgs& args) {
                      static_cast<unsigned long long>(w.script_errors));
     }
     std::fprintf(text, "  assets        %llu written, %llu deduped, %llu distinct "
-                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD, %llu animations, %llu sounds)\n",
+                 "(%llu meshes, %llu textures, %llu scripts, %llu LOD, %llu animations, %llu sounds, %llu UI)\n",
                  static_cast<unsigned long long>(stats.converted),
                  static_cast<unsigned long long>(stats.deduped),
                  static_cast<unsigned long long>(stats.distinct_assets),
@@ -321,7 +323,8 @@ int cmd_convert(const ConvertArgs& args) {
                  static_cast<unsigned long long>(stats.scripts),
                  static_cast<unsigned long long>(stats.lod),
                  static_cast<unsigned long long>(stats.animations),
-                 static_cast<unsigned long long>(stats.sounds));
+                 static_cast<unsigned long long>(stats.sounds),
+                 static_cast<unsigned long long>(stats.ui));
     std::fprintf(text, "                %.1f MiB written, %.1f MiB not re-converted\n",
                  static_cast<double>(stats.asset_bytes) / (1024.0 * 1024.0),
                  static_cast<double>(stats.dedupe_saved_bytes) / (1024.0 * 1024.0));
@@ -423,6 +426,7 @@ int cmd_convert(const ConvertArgs& args) {
                                     {"lod", stats.lod},
                                     {"animations", stats.animations},
                                     {"sounds", stats.sounds},
+                                    {"ui", stats.ui},
                                     {"bytes_written", stats.asset_bytes},
                                     {"store_bytes", stats.store_bytes}}},
             {"textures", ordered_json{{"max_size", args.max_texture_size},
@@ -471,6 +475,7 @@ struct ConvertCli {
     bool no_lod = false;
     bool no_animations = false;
     bool no_sounds = false;
+    bool no_ui = false;
     bool no_mip_fix = false;
     std::string alpha_coverage{"floor"};
     bool no_collision = false;
@@ -523,6 +528,7 @@ void register_convert(CLI::App& app) {
     convert->add_flag("--no-lod", args->no_lod, "Skip terrain, object and tree LOD");
     convert->add_flag("--no-animations", args->no_animations, "Skip Havok files (.hkx)");
     convert->add_flag("--no-sounds", args->no_sounds, "Skip sounds (.wav, .fuz voices, .xwm music)");
+    convert->add_flag("--no-ui", args->no_ui, "Skip the menus (interface/ .swf and .txt)");
     convert->add_flag("--no-mip-fix", args->no_mip_fix,
                       "Leave short DDS mip chains alone (control run)");
     convert->add_option("--alpha-coverage", args->alpha_coverage,
@@ -583,6 +589,7 @@ void register_convert(CLI::App& app) {
                                                 .no_lod = args->no_lod,
                                                 .no_animations = args->no_animations,
                                                 .no_sounds = args->no_sounds,
+                                                .no_ui = args->no_ui,
                                                 .no_mip_fix = args->no_mip_fix,
                                                 .alpha_coverage = *bethconv::pack::alpha_coverage_from_string(args->alpha_coverage),
                                                 .no_collision = args->no_collision,

@@ -25,6 +25,7 @@ add_executable(bethconv_cli
     commands/scan.cpp
     commands/script.cpp
     commands/strings.cpp
+    commands/swf.cpp
     commands/target.cpp
     commands/texture.cpp
     commands/view.cpp)

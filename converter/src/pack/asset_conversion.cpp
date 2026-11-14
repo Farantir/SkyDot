@@ -14,6 +14,7 @@
 #include "bethconv/texture/dds.hpp"
 #include "bethconv/texture/mip_drop.hpp"
 #include "bethconv/texture/mip_tail.hpp"
+#include "bethconv/ui/ui_bundle.hpp"
 
 #include <string>
 #include <utility>
@@ -308,6 +309,22 @@ AssetConversion convert_sound(std::span<const std::byte> source, std::string_vie
         at += 8 + size + (size & 1U);
     }
     return reject(source.size(), "no fmt chunk");
+}
+
+AssetConversion convert_ui(std::span<const std::byte> source, std::string_view vpath,
+                           std::string_view extension) {
+    AssetConversion out;
+    if (extension == ".txt") {
+        out.bytes = ui::convert_ui_text(source, vpath);
+        return out;
+    }
+    auto zip = ui::convert_swf(source, vpath);
+    if (!zip) {
+        out.failure = failure_from(vpath, "ui", zip.error());
+        return out;
+    }
+    out.bytes = std::move(*zip);
+    return out;
 }
 
 } // namespace bethconv::pack

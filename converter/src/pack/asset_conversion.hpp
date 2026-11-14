@@ -94,4 +94,9 @@ struct AssetConversion {
 [[nodiscard]] AssetConversion convert_sound(std::span<const std::byte> source,
                                             std::string_view vpath, std::string_view extension);
 
+/// `extension` is the vpath's, with the dot: a .swf becomes its UI bundle, a
+/// .txt a ZIP of its text as UTF-8 (ui/ui_bundle.hpp).
+[[nodiscard]] AssetConversion convert_ui(std::span<const std::byte> source,
+                                         std::string_view vpath, std::string_view extension);
+
 } // namespace bethconv::pack

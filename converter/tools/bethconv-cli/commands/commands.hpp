@@ -53,5 +53,6 @@ void register_detect(CLI::App& app);
 void register_mo2(CLI::App& app);
 void register_target(CLI::App& app);
 void register_info(CLI::App& app);
+void register_swf(CLI::App& app);
 
 } // namespace bethconv::cli

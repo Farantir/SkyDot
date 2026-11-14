@@ -1,10 +1,11 @@
-# Pack format v7
+# Pack format v8
 
 The interface between converter and engine. The converter writes packs; the
-engine reads only packs. Everything below is stable in v7. The last section
+engine reads only packs. Everything below is stable in v8. The last section
 lists what is not promised.
 
-Later v7 packs (sound fingerprint `sound/2`) also hold voices and music as `sound` assets, as Ogg Vorbis (see "Sound assets"); engines that read sound assets must sniff the first bytes (`RIFF` WAV, `OggS`, `SDVC`), not trust the extension. v7 adds sound effects: every `.wav` (16-bit PCM, passed through unchanged) is an asset
+v8 adds the menus: every `.swf` and `.txt` under `interface/` is an asset of a
+new kind, `ui`, with extension `.zip` (see "UI assets"). Later v7 packs (sound fingerprint `sound/2`) also hold voices and music as `sound` assets, as Ogg Vorbis (see "Sound assets"); engines that read sound assets must sniff the first bytes (`RIFF` WAV, `OggS`, `SDVC`), not trust the extension. v7 adds sound effects: every `.wav` (16-bit PCM, passed through unchanged) is an asset
 of a new kind, `sound`, with extension `.wav`. v6 adds animations: every Havok file (`.hkx`) becomes an `.animfb` asset of
 a new kind, `animation`, holding its skeletons and clips; later v6 packs add
 behaviour graphs' clip generators and the animationdata text files (clip
@@ -16,7 +17,7 @@ a new kind, `lod`. v3 decodes scripts: a script asset is a `.pexfb` FlatBuffer i
 original `.pex`. v2 added `world.fb` (cells, references and base objects,
 decoded and with global FormIDs) and the manifest's `world` key.
 
-v6 and v7 packs written by earlier converters may also contain `records.fb` and a
+v6 to v8 packs written by earlier converters may also contain `records.fb` and a
 manifest `records` key; readers ignore both, whether or not the file is there.
 
 ## Overview
@@ -29,7 +30,7 @@ same input gives a byte-identical pack.
 
 ## Versioning
 
-`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 7. It
+`k_pack_format_version` (`converter/include/bethconv/pack/vpath_index.hpp`) is 8. It
 appears in `manifest.json`, `report.json` and the `vpath.idx` header, and
 `world.fb` carries a `format_version` of its own. Each is checked separately so
 a reader can say which file it cannot read.
@@ -48,7 +49,7 @@ pack/
   manifest.json                      what the pack is and what built it
   world.fb                           cells, references, base objects
   assets.idx                         content hash -> offset, size, kind
-  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb, .wav bytes)
+  assets-0001.blob                   every asset (.glb, .dds, .pexfb, .lodfb, .animfb, .wav, .zip bytes)
   vpath.idx                          virtual path -> content hash
   report.json                        every skipped, failed and warned input
 ```
@@ -71,7 +72,7 @@ newline):
 
 | Key | Content |
 | --- | --- |
-| `pack_format_version` | `6` |
+| `pack_format_version` | `8` |
 | `converter` | writer name and version |
 | `language` | language used to resolve strings |
 | `textures` | how textures were converted: `max_size` (largest side in pixels, 0 for full size; larger textures lost their top mip levels), `complete_mip_chains`, and `uncompressed` (`keep`, `bc7` or `compact`: what happened to textures the game stores uncompressed; BC7 files carry a DX10 header, format 98); absent when textures were not converted |
@@ -531,6 +532,7 @@ Per kind, mentioning only settings that affect that kind:
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 | animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
 | sound | `.wav` (historical: the bytes may be WAV, Ogg or a voice container) | `sound/<n>;pcm16;vorbis-q<q>` | `sound/2;pcm16;vorbis-q0.4` |
+| ui | `.zip` | `ui/<n>;bundle=<bundle version>` | `ui/1;bundle=1` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
 whenever a writer's output changes (a changed option already changes its
@@ -618,6 +620,34 @@ reader tells them apart by the first four bytes.
 
 A stream that does not decode (not XWMA, truncated, unknown codec) is a failure
 like any other. `--no-sounds` skips all three.
+
+## UI assets
+
+The menus are Scaleform movies; SkyDot does not run them but takes their
+assets out (`converter/src/ui/`, ADR 0010). Every `.swf` and `.txt` under
+`interface/` becomes a `ui` asset, a ZIP (method 0 or 8, UTF-8 names, every
+date 1980-01-01, so the bytes are deterministic). The vpath keeps its own
+extension. `--no-ui` skips them.
+
+- **Movie** (`.swf`, FWS or zlib CWS; LZMA ZWS is a failure): the bundle of
+  `converter/include/bethconv/ui/ui_bundle.hpp`, version 1:
+
+  | Path | Content |
+  | --- | --- |
+  | `manifest.json` (first) | stage, frame rate; fonts (name as text fields and `fontconfig.txt` ask for it, `full_name`, bold, italic, glyph count, ascent/descent/leading in ems, file); bitmaps (size, file); characters (type, exports, bounds `[x, y, w, h]` px, `scaling_grid`, `svg`, sprites' `frames`, `labels`, `frame_svgs` and frame-0 `display` list with depth, character, instance name, matrix `[a, b, c, d, tx, ty]` (px), colour transform `[mr, mg, mb, ma, ar, ag, ab, aa]`, clip depth, filters, blend mode; text fields' font, height, colour, alignment, margins, variable, initial text, flags); `exports`, `imports` (url and names: the menus take fonts from `gfxfontlib.swf` and components from `inventory components/*.swf`); the main timeline's `display`; tag counts; `notes` for what did not decode |
+  | `fonts/<name>.ttf` | each DefineFont2/3 with glyphs: TrueType, 2048 units per em, outlines oriented for the non-zero rule, cmap format 4, kern format 0 |
+  | `png/<id>.png` | each DefineBitsLossless/2, straight alpha |
+  | `jpg/<id>.jpg` | each JPEG bitmap (tables merged; a DefineBitsJPEG3 alpha plane is not applied) |
+  | `svg/<id>.svg` | each shape, button (up state) and sprite (frame 0), viewBox the character's bounds in pixels; bitmaps inline as data URIs |
+  | `svg/<id>_f<n>.svg` | the labelled frames of a sprite, and every frame of an exported sprite of up to 32 frames |
+  | `svg/root.svg` | the main timeline's frame 0 on the stage |
+
+  Text fields and imported characters are not drawn into the SVGs; the
+  manifest places them. Filters, blend modes and colour transforms other than
+  on colours are not drawn either.
+- **Text** (`.txt`: `fontconfig.txt`, `translate_<language>.txt`, the control
+  maps): a ZIP with the one file under its base name, UTF-16LE with a byte
+  order mark turned into UTF-8, anything else as it came.
 
 ## LOD
 
@@ -707,7 +737,7 @@ only in the single file (LE's is in `Update.bsa`). The text formats:
 Tab-separated, sorted, one line per virtual path, after two comment lines:
 
 ```
-# bethconv vpath index v7
+# bethconv vpath index v8
 # virtual path\tcontent hash\tkind\twinning source
 meshes/clutter/apple01.nif\t3f9c…\tmesh\tSkyrim - Meshes0.bsa
 ```
@@ -897,7 +927,7 @@ the machine.
 - No hash-table iteration order in files. `vpath.idx` and all `report.json`
   arrays are sorted.
 
-## Not promised in v7
+## Not promised in v8
 
 - **Resolved text.** There is no per-language string file; names cannot be
   resolved from a pack alone.

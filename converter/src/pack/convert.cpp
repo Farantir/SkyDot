@@ -9,6 +9,7 @@
 #include "bethconv/io/mapped_file.hpp"
 #include "bethconv/pack/inputs.hpp"
 #include "bethconv/pack/vpath_index.hpp"
+#include "bethconv/ui/ui_bundle.hpp"
 
 #include <nlohmann/json.hpp>
 
@@ -85,6 +86,10 @@ namespace {
     if ((extension == ".wav" || extension == ".fuz" || extension == ".xwm") &&
         options.convert_sounds) {
         return AssetKind::sound;
+    }
+    if ((extension == ".swf" || extension == ".txt") && vpath.starts_with("interface/") &&
+        options.convert_ui) {
+        return AssetKind::ui;
     }
     return std::nullopt;
 }
@@ -221,6 +226,8 @@ struct Prepared {
         return convert_animation(bytes, vpath);
     case AssetKind::sound:
         return convert_sound(bytes, vpath, extension);
+    case AssetKind::ui:
+        return convert_ui(bytes, vpath, extension);
     }
     return {};
 }
@@ -479,6 +486,12 @@ std::string ConvertOptions::sound_settings() const {
     return "sound/2;pcm16;vorbis-q0.4";
 }
 
+/// The leading version must be bumped whenever the bundle changes for
+/// unchanged input (ui/ui_bundle.hpp).
+std::string ConvertOptions::ui_settings() const {
+    return "ui/1;bundle=" + std::to_string(ui::k_bundle_version);
+}
+
 io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
                                        const record::LoadOrder& order,
                                        const ConvertOptions& options) {
@@ -490,6 +503,7 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
     pack_options.lod_settings = options.lod_settings();
     pack_options.animation_settings = options.animation_settings();
     pack_options.sound_settings = options.sound_settings();
+    pack_options.ui_settings = options.ui_settings();
     pack_options.prune_orphans = options.prune_orphans;
     pack_options.layout = options.layout;
 

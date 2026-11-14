@@ -106,6 +106,10 @@ add_library(bethconv_core STATIC
     pack/world_file.cpp
     script/pex.cpp
     script/pex_script.cpp
+    ui/swf_reader.cpp
+    ui/swf_svg.cpp
+    ui/swf_files.cpp
+    ui/ui_bundle.cpp
     ${BETHCONV_FB_HEADERS}
 )
 add_dependencies(bethconv_core bethconv_fbs)

@@ -52,6 +52,7 @@ add_executable(bethconv_unit_tests
     test_world_idles.cpp
     test_scene.cpp
     test_xwma.cpp
+    test_swf.cpp
 )
 
 # The synthetic-plugin builder in tests/support deflates payloads directly.

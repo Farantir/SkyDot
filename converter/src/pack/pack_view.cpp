@@ -588,6 +588,8 @@ io::ParseResult<ViewResult> materialize_view(const std::filesystem::path& pack,
             ++result.stats.animations;
         } else if (entry->kind == AssetKind::sound) {
             ++result.stats.sounds;
+        } else if (entry->kind == AssetKind::ui) {
+            ++result.stats.ui;
         } else {
             ++result.stats.scripts;
         }

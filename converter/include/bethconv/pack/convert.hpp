@@ -71,6 +71,10 @@ struct ConvertOptions {
     /// Sound effects (.wav, 16-bit PCM), voices (.fuz) and music (.xwm) as sound
     /// assets; the last two are re-encoded as Ogg Vorbis.
     bool convert_sounds = true;
+    /// The menus under interface/: each .swf as a ZIP of its fonts, shapes,
+    /// bitmaps and manifest (ui/ui_bundle.hpp), each .txt (fontconfig,
+    /// translations, control maps) as a ZIP of its UTF-8 text.
+    bool convert_ui = true;
 
     mesh::ReadOptions mesh_read;
 
@@ -136,6 +140,7 @@ struct ConvertOptions {
     [[nodiscard]] std::string lod_settings() const;
     [[nodiscard]] std::string animation_settings() const;
     [[nodiscard]] std::string sound_settings() const;
+    [[nodiscard]] std::string ui_settings() const;
 };
 
 /// Results of `convert`.

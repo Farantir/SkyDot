@@ -39,6 +39,7 @@ int main(int argc, char** argv) {
     register_extract(app);
     register_mesh(app);
     register_ragdoll(app);
+    register_swf(app);
 
     CLI11_PARSE(app, argc, argv);
     return exit_status();
