@@ -134,8 +134,11 @@ func _space_at(ear: Vector3, interior: int, world_id: int) -> int:
 	var best_volume := INF
 	var alive := []
 	for s: Dictionary in _spaces:
+		# Validity first: a typed assignment of a freed node is a script error.
+		if not is_instance_valid(s["anchor"]):
+			continue
 		var anchor: Node3D = s["anchor"]
-		if not is_instance_valid(anchor) or not anchor.is_inside_tree():
+		if not anchor.is_inside_tree():
 			continue
 		alive.append(s)
 		var local: Vector3 = anchor.global_transform.affine_inverse() * ear
