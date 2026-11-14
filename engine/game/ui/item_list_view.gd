@@ -3,8 +3,8 @@
 # The one item list every item menu draws (ADR 0010): a titled panel with horizontal tabs, a search box, a
 # table of sortable columns, the item card of the row under the cursor and the keys the row offers. It reads an
 # ItemListModel and nothing else; what an action does is the host's business (InventoryView, MagicView,
-# ContainerView, FavoritesView), told through `action_requested`. Colours and sizes come from the Theme
-# resource ui/theme/menu_theme.tres, so the game's own fonts and frames can replace them later.
+# ContainerView, FavoritesView), told through `action_requested`. Colours, sizes, the font and the frames come
+# from the game's own menus when the pack has them (UiTheme over UiAssets), else from ui/theme/menu_theme.tres.
 #
 # The host owns the keyboard contract (enabled, cancel, closing) and passes events to `handle_input`, which
 # answers whether it used one: up and down (or the left stick) move the cursor, left and right and page up
@@ -53,6 +53,11 @@ func _init(list_model: ItemListModel) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	model.changed.connect(queue_redraw)
+	resized.connect(_retheme)
+
+
+func _retheme() -> void:
+	theme = UiTheme.item_list(THEME, size.y)
 
 
 ## Whether the search box has the keyboard.
@@ -219,13 +224,23 @@ func _row_at(at: Vector2, layout: Dictionary) -> int:
 # ---- layout and drawing
 
 func _font_size() -> int:
-	return int(maxf(get_theme_constant(&"min_font_size", TYPE), size.y / 38.0))
+	var per_stage := size.y / 38.0
+	if has_theme_constant(&"font_size_720", TYPE):
+		per_stage = size.y * get_theme_constant(&"font_size_720", TYPE) / UiTheme.STAGE_HEIGHT
+	return int(maxf(get_theme_constant(&"min_font_size", TYPE), per_stage))
+
+
+## The row pitch: the game's entry spacing, scaled as the font is, else 1.45 lines.
+func _line(fs: int) -> float:
+	if has_theme_constant(&"row_pitch_720", TYPE) and has_theme_constant(&"font_size_720", TYPE):
+		return fs * float(get_theme_constant(&"row_pitch_720", TYPE)) / get_theme_constant(&"font_size_720", TYPE)
+	return fs * 1.45
 
 
 ## Where everything is: the panel, the tab rectangles, the search box, the columns (x and width), the rows.
 func _layout() -> Dictionary:
 	var fs := _font_size()
-	var line := fs * 1.45
+	var line := _line(fs)
 	var panel := Rect2(size * region.position, size * region.size)
 	var left := panel.position.x + fs
 	var width := panel.size.x - fs * 2.0
@@ -289,8 +304,11 @@ func _draw() -> void:
 	var fs: int = layout["fs"]
 	var line: float = layout["line"]
 	var font := get_theme_default_font()
-	draw_rect(panel, get_theme_color(&"panel", TYPE))
-	draw_rect(panel, get_theme_color(&"border", TYPE), false, float(get_theme_constant(&"border_width", TYPE)))
+	if has_theme_stylebox(&"panel", TYPE):
+		draw_style_box(get_theme_stylebox(&"panel", TYPE), panel)
+	else:
+		draw_rect(panel, get_theme_color(&"panel", TYPE))
+		draw_rect(panel, get_theme_color(&"border", TYPE), false, float(get_theme_constant(&"border_width", TYPE)))
 	var left: float = layout["left"]
 	# title and status
 	_text(font, title, fs, Vector2(left, layout["title_y"]), &"selected" if focused else &"dim")
@@ -328,8 +346,7 @@ func _draw() -> void:
 		if column["id"] == sort["column"] and column.get("sortable", true):
 			text += " ^" if sort["ascending"] else " v"
 		_cell(font, text, fs, entry, layout["header_y"], column.get("numeric", false), &"header")
-	draw_line(Vector2(left, layout["header_y"] + line * 0.25), Vector2(left + layout["width"], layout["header_y"] + line * 0.25),
-		get_theme_color(&"border", TYPE), 1.0)
+	_rule(left, layout["header_y"] + line * 0.25, layout["width"])
 	# rows
 	var rows := model.rows()
 	var fit: int = layout["fit"]
@@ -356,7 +373,7 @@ func _draw() -> void:
 		_text(font, "Nothing here", fs, Vector2(left, layout["rows_top"]), &"dim")
 	# card
 	var card_top: float = layout["card_top"]
-	draw_line(Vector2(left, card_top - line * 0.8), Vector2(left + layout["width"], card_top - line * 0.8), get_theme_color(&"border", TYPE), 1.0)
+	_rule(left, card_top - line * 0.8, layout["width"])
 	var x := left
 	for field: Dictionary in model.card():
 		var text := "%s %s" % [field["label"], field["text"]]
@@ -369,6 +386,15 @@ func _draw() -> void:
 		_text(font, detail_lines[i]["text"], fs, Vector2(left, card_top + line * (i + 1)), StringName(detail_lines[i].get("tone", "dim")))
 	# hint
 	_text(font, notice if notice != "" else _hint(), fs, Vector2(left, panel.end.y - fs * 0.8), &"dim")
+
+
+## A horizontal rule: the game's line when the theme has it, else a thin border-coloured line.
+func _rule(x: float, y: float, width: float) -> void:
+	if has_theme_icon(&"divider", TYPE):
+		var icon := get_theme_icon(&"divider", TYPE)
+		draw_texture_rect(icon, Rect2(x, y - icon.get_height() * 0.5, width, icon.get_height()), false)
+	else:
+		draw_line(Vector2(x, y), Vector2(x + width, y), get_theme_color(&"border", TYPE), 1.0)
 
 
 func _hint() -> String:

@@ -9,6 +9,11 @@
 # charges and, after one, as the recovery runs out (GameSession.voice_meter); it fades like the bars.
 # PLACEHOLDER: Skyrim shows the recovery in the compass, and there is no compass yet. This is the view: a Control that fills its host
 # (the flat viewer's CanvasLayer, a VR shell's panel).
+#
+# When the pack has the game's menus (UiAssets), the bars and the crosshair are hudmenu.swf's own: the meters
+# HUDMovieBaseInstance/{Magica,Health,Stamina}/*Meter_mc and the Crosshair, placed as the movie places them on its
+# 1280x720 stage, fitted into the view (UiDraw; the fill moves under the meter's mask as Components.Meter does).
+# Without them the bars are plain rectangles.
 class_name HudView
 extends Control
 
@@ -29,10 +34,13 @@ const VOICE_HEIGHT := 6.0
 const VOICE_DROP := 0.035
 const VOICE_COLOUR := Color(0.85, 0.75, 0.35)
 const BARS := [
-	{"av": "Magicka", "colour": Color(0.2, 0.45, 0.9), "anchor": 0.0},
-	{"av": "Health", "colour": Color(0.78, 0.12, 0.1), "anchor": 0.5},
-	{"av": "Stamina", "colour": Color(0.25, 0.7, 0.2), "anchor": 1.0},
+	{"av": "Magicka", "colour": Color(0.2, 0.45, 0.9), "anchor": 0.0, "meter": "HUDMovieBaseInstance/Magica/MagickaMeter_mc"},
+	{"av": "Health", "colour": Color(0.78, 0.12, 0.1), "anchor": 0.5, "meter": "HUDMovieBaseInstance/Health/HealthMeter_mc"},
+	{"av": "Stamina", "colour": Color(0.25, 0.7, 0.2), "anchor": 1.0, "meter": "HUDMovieBaseInstance/Stamina/StaminaMeter_mc"},
 ]
+const HUD_SWF := "hudmenu"
+const STAGE := Vector2(1280.0, 720.0)
+const CROSSHAIR := "HUDMovieBaseInstance/Crosshair"
 
 var _session: GameSession
 ## Draws the crosshair (a VR shell leaves it out: the controller's ray points).
@@ -97,6 +105,11 @@ func _draw_bar(bar: Dictionary, area: Vector2, now: int) -> void:
 	var alpha := _alpha(name, value, maximum, now)
 	if alpha <= 0.0 or maximum <= 0.0:
 		return
+	var meter := UiAssets.instance(HUD_SWF, bar["meter"]) if UiAssets.available() else {}
+	if not meter.is_empty():
+		UiDraw.character(self, HUD_SWF, meter["id"], _stage(area, meter["xform"]), Color(1.0, 1.0, 1.0, alpha),
+			clampf(value / maximum, 0.0, 1.0))
+		return
 	var width := area.x * BAR_WIDTH
 	var height := maxf(3.0, BAR_HEIGHT * area.y / 1080.0)
 	var margin := area.x * MARGIN
@@ -126,10 +139,26 @@ func _draw_voice(area: Vector2) -> void:
 
 
 func _draw_crosshair(area: Vector2) -> void:
+	var game := UiAssets.instance(HUD_SWF, CROSSHAIR) if UiAssets.available() else {}
+	if not game.is_empty():
+		UiDraw.character(self, HUD_SWF, game["id"], _stage(area, game["xform"]))
+		return
 	var centre := area * 0.5
 	var radius := maxf(2.0, area.y / 540.0)
 	draw_circle(centre, radius + 1.0, Color(0.0, 0.0, 0.0, 0.6))
 	draw_circle(centre, radius, Color(1.0, 1.0, 1.0, 0.85))
+
+
+## hudmenu.swf's stage in the view for an element placed by `xform`: scaled to fit (Scaleform's show-all) and
+## centred across; down the view an element in the stage's top third keeps to the top, one in its bottom third
+## to the bottom and one between to the middle, as the game's HUD moves them to the screen's edges (measured
+## at 1100x800: the bars sit 50 px above the bottom, the compass 40 px below the top).
+func _stage(area: Vector2, xform: Transform2D) -> Transform2D:
+	var scale := minf(area.x / STAGE.x, area.y / STAGE.y)
+	var spare := area - STAGE * scale
+	var y := xform.origin.y
+	var down := 0.0 if y < STAGE.y / 3.0 else (1.0 if y > STAGE.y * 2.0 / 3.0 else 0.5)
+	return Transform2D(0.0, Vector2(scale, scale), 0.0, Vector2(spare.x * 0.5, spare.y * down)) * xform
 
 
 func _draw_prompt(area: Vector2) -> void:

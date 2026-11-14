@@ -266,6 +266,7 @@ func _open_world() -> bool:
 	if world == null:
 		failed.emit(pack.get_error())
 		return false
+	UiAssets.use_pack(pack)
 	papyrus = SkydotPapyrus.new()
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)

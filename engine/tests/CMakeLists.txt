@@ -159,6 +159,8 @@ skydot_gd_test(skills_model test_skills_model.gd)
 skydot_gd_test(player_gates test_player_gates.gd)
 skydot_gd_test(player_state test_player_state.gd)
 skydot_gd_test(item_list_model test_item_list_model.gd)
+skydot_gd_test(ui_assets test_ui_assets.gd)
+set_property(TEST gd_ui_assets APPEND PROPERTY ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,
