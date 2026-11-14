@@ -78,6 +78,12 @@ public:
     /// The asset's bytes as stored (GLB, DDS, decoded script or LOD data);
     /// empty if absent.
     godot::PackedByteArray get_bytes(const godot::String& vpath) const;
+    /// A member of a ZIP asset (the `ui` kind: interface/*.swf bundles and
+    /// interface/*.txt), e.g. ("interface/hudmenu.swf", "manifest.json").
+    /// Empty if the asset or member is missing or broken.
+    godot::PackedByteArray get_zip_file(const godot::String& vpath, const godot::String& member) const;
+    /// The members of a ZIP asset, in stored order.
+    godot::PackedStringArray get_zip_names(const godot::String& vpath) const;
     /// A mesh, built from its GLB; null if absent. Cached; `instantiate` it.
     godot::Ref<SkydotModel> load_scene(const godot::String& vpath) const;
     /// A texture (Cubemap for cube maps); null if absent. Cached.

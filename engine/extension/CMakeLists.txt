@@ -64,6 +64,8 @@ set(SKYDOT_CORE_SOURCES
     src/conditions/functions.hpp
     src/assets/mapped_file.cpp
     src/assets/mapped_file.hpp
+    src/assets/zip_reader.cpp
+    src/assets/zip_reader.hpp
     src/assets/vpath.hpp
     src/data/actors.cpp
     src/dialogue/dialogue.cpp

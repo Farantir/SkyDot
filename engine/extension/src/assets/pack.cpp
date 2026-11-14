@@ -2,6 +2,7 @@
 #include "assets/pack.hpp"
 
 #include "assets/vpath.hpp"
+#include "assets/zip_reader.hpp"
 
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/display_server.hpp>
@@ -91,6 +92,8 @@ void SkydotPack::_bind_methods() {
 
     ClassDB::bind_method(D_METHOD("has", "vpath"), &SkydotPack::has);
     ClassDB::bind_method(D_METHOD("get_bytes", "vpath"), &SkydotPack::get_bytes);
+    ClassDB::bind_method(D_METHOD("get_zip_file", "vpath", "member"), &SkydotPack::get_zip_file);
+    ClassDB::bind_method(D_METHOD("get_zip_names", "vpath"), &SkydotPack::get_zip_names);
     ClassDB::bind_method(D_METHOD("load_scene", "vpath"), &SkydotPack::load_scene);
     ClassDB::bind_method(D_METHOD("load_texture", "vpath"), &SkydotPack::load_texture);
     ClassDB::bind_method(D_METHOD("get_store_layout"), &SkydotPack::get_store_layout);
@@ -348,6 +351,32 @@ PackedByteArray SkydotPack::get_bytes(const String& vpath) const {
         return {};
     }
     return AssetCache::read_bytes(*store_, to_std(normalize_vpath(vpath)));
+}
+
+PackedByteArray SkydotPack::get_zip_file(const String& vpath, const String& member) const {
+    const PackedByteArray zip = get_bytes(vpath);
+    if (zip.is_empty()) {
+        return {};
+    }
+    const auto bytes = skydot::assets::zip_read(
+        std::span<const std::uint8_t>(zip.ptr(), static_cast<std::size_t>(zip.size())),
+        to_std(member));
+    PackedByteArray out;
+    if (bytes) {
+        out.resize(static_cast<std::int64_t>(bytes->size()));
+        std::copy(bytes->begin(), bytes->end(), out.ptrw());
+    }
+    return out;
+}
+
+PackedStringArray SkydotPack::get_zip_names(const String& vpath) const {
+    const PackedByteArray zip = get_bytes(vpath);
+    PackedStringArray out;
+    for (const auto& e : skydot::assets::zip_entries(
+             std::span<const std::uint8_t>(zip.ptr(), static_cast<std::size_t>(zip.size())))) {
+        out.push_back(String::utf8(e.name.c_str()));
+    }
+    return out;
 }
 
 godot::Ref<SkydotModel> SkydotPack::load_scene(const String& vpath) const {
