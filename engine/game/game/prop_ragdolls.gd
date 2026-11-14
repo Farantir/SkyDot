@@ -53,7 +53,12 @@ func _build(node: Node3D) -> void:
 		if bone != null:
 			fix.bones.append(bone)
 	skeleton.add_child(fix)
-	_live.append({"node": node, "ragdoll": ragdoll})
+	var entry := {"node": node, "ragdoll": ragdoll}
+	_live.append(entry)
+	# The joints go before the bodies they join (a joint left on a freed body crashes Jolt).
+	node.tree_exiting.connect(func() -> void:
+		ragdoll.stop()
+		_live.erase(entry), CONNECT_ONE_SHOT)
 
 
 ## Ragdolls whose model is gone free their joints.
