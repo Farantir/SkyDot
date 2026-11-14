@@ -169,6 +169,7 @@ void SkydotWorld::_bind_methods() {
                                 DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("get_death_animation", "ref", "base"), &SkydotWorld::get_death_animation,
                                 DEFVAL(0));
+    godot::ClassDB::bind_static_method("SkydotWorld", D_METHOD("get_model_ragdoll", "model"), &SkydotWorld::get_model_ragdoll);
     godot::ClassDB::bind_method(D_METHOD("set_actor_wander", "enabled"), &SkydotWorld::set_actor_wander);
     godot::ClassDB::bind_method(D_METHOD("get_actor_wander"), &SkydotWorld::get_actor_wander);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::BOOL, "actor_wander"), "set_actor_wander", "get_actor_wander");
@@ -577,6 +578,10 @@ godot::Dictionary SkydotWorld::get_actor_plan(std::int64_t ref) const {
         return {};
     }
     return plan_dictionary(builder_.actor_plan(*actor));
+}
+
+godot::Dictionary SkydotWorld::get_model_ragdoll(godot::Node* model) {
+    return model_ragdoll(model);
 }
 
 godot::Dictionary SkydotWorld::get_ragdoll(std::int64_t ref, std::int64_t base) {

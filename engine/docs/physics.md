@@ -107,11 +107,23 @@ flying.
 - Not seen on screen yet: feel of the speeds, the step-up, swimming.
 - Explosions do not wake clutter, and `SetMotionType` cannot make a static
   model move (only models built as clutter can).
-- Constraints only in actors' ragdolls (`game/game/ragdoll.gd`: the race
+- Constraints in actors' ragdolls (`game/game/ragdoll.gd`: the race
   skeleton's bodies and constraints as Jolt 6DOF joints; limits, the
   self-collision table and what Jolt cannot match are in its header and
-  `godot-notes.md`). Chains, hanging lanterns and other multi-body models
-  stay static.
+  `godot-notes.md`) and in placed models that are ragdolls of their own:
+  movable bodies on skinned bones joined by the NIF's constraints
+  (`ModelCollision::ragdoll`, e.g. the web-wrapped "Dessicated Corpse",
+  effects/fxspiderwebkitdinnerhumangnd.nif: three capsules on Bone01-03,
+  clutter layer, two ragdoll constraints). A reference with
+  `dont_havok_settle` gets no fixed bodies for them but the meta
+  `skydot_ragdoll`, and `PropRagdolls` (game/game/prop_ragdolls.gd) builds
+  the ragdoll with the actors' builder on the clutter layer, simulated from
+  the load (the Bleak Falls Barrow sacs 0x486FA/0x486FC fall about 370 units
+  to the floor, as in the game). Open: such a model the editor settled keeps
+  its bodies fixed and is not woken by touch; constrained models whose
+  bodies are not on skin bones (book covers, amulet chains, signs, hanging
+  lanterns) stay static; the state dump reports such a reference at its
+  placement, the body the game's ref position follows is not measured.
 - Contact materials do not follow the game. Godot 4.7's Jolt module combines
   friction as min(a, b) and restitution as clamp(a + b, 0, 1)
   (`modules/jolt_physics/spaces/jolt_space_3d.cpp`, `SetCombineFriction` /

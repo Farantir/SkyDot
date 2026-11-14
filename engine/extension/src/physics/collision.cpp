@@ -4,6 +4,7 @@
 #include "data/godot_values.hpp"
 
 #include "render/effect_asset.hpp"
+#include "render/ragdoll.hpp"
 
 #include <godot_cpp/classes/animatable_body3d.hpp>
 #include <godot_cpp/classes/bone_attachment3d.hpp>
@@ -447,6 +448,18 @@ std::shared_ptr<ModelCollision> ModelCollision::take_from(godot::Node* root) {
     if (out->bodies_.empty()) {
         return {};
     }
+    // Movable bodies on bones, joined by the model's ragdoll constraints: the model's own ragdoll.
+    const auto is_movable_bone = [](const Body& b) { return b.motion == Motion::dynamic && !b.bone.is_empty(); };
+    const auto movable = std::ranges::count_if(out->bodies_, [](const Body& b) { return b.motion == Motion::dynamic; });
+    const Dictionary ragdoll = model_ragdoll(root);
+    const Variant constraints = ragdoll.get("constraints", Variant());
+    if (movable >= 2 && constraints.get_type() == Variant::ARRAY && !Array(constraints).is_empty() &&
+        std::ranges::all_of(out->bodies_, [&](const Body& b) { return b.motion != Motion::dynamic || is_movable_bone(b); })) {
+        out->ragdoll_ = true;
+        for (Body& body : out->bodies_) {
+            body.in_ragdoll = body.motion == Motion::dynamic;
+        }
+    }
     // One movable body made of convex shapes can simulate; anything else
     // (several bodies, a mesh shape, a constraint we do not convert) stays put.
     const bool simulate =
@@ -528,8 +541,15 @@ int ModelCollision::attach(godot::Node3D* instance) const {
         return 0;
     }
     int count = 0;
+    const bool own_ragdoll = ragdoll_ && instance->has_meta(k_settle_meta);
+    if (own_ragdoll) {
+        instance->set_meta(k_ragdoll_meta, true);
+    }
     for (std::size_t i = 0; i < bodies_.size(); ++i) {
         const Body& body = bodies_[i];
+        if (own_ragdoll && body.in_ragdoll) {
+            continue;
+        }
         auto* owner = godot::Object::cast_to<godot::Node3D>(instance->get_node_or_null(body.node));
         if (owner == nullptr) {
             continue;

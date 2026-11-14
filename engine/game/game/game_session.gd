@@ -204,6 +204,8 @@ var npc_shouts: NpcShouts
 var _lifecycle: Array[Object] = []
 ## What a death looks like: ragdolls, corpse places.
 var corpses: Corpses
+## Placed models that are ragdolls of their own (web sacs).
+var prop_ragdolls: PropRagdolls
 ## What visual effects and skin fades look like (placeholders).
 var visual_effects: VisualEffects
 ## What scripts place, fire and play.
@@ -375,6 +377,7 @@ func _make_game_nodes() -> void:
 	if ai != null:
 		ai.combat_shout.connect(npc_shouts.on_shout)
 	corpses = Corpses.new(world, papyrus, host, func() -> Vector3: return _feet, actors)
+	prop_ragdolls = PropRagdolls.new(world)
 	corpses.ai = ai
 	actor_died.connect(corpses.on_died)
 	combat.hit_landed.connect(corpses.on_hit)
@@ -1583,6 +1586,7 @@ func _on_cell_built(cell: Node3D, cell_id: int) -> void:
 	_bridge.scripts_loaded(cell, cell_id)
 	placed.cell_built(cell_id)
 	corpses.on_place_built(cell)
+	prop_ragdolls.on_place_built(cell)
 	combat.gear.on_place_built(cell)
 	place_built.emit(cell, cell_id)
 

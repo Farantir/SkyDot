@@ -443,6 +443,9 @@ public:
     /// plays a clip that drives the ragdoll: clip (virtual path), ragdoll_after (seconds until the graph raises
     /// Ragdoll), controls (as get_ragdoll_controls)}. Empty when the graph has no tree there.
     godot::Dictionary get_death_animation(std::int64_t ref, std::int64_t base = 0);
+    /// The ragdoll of a placed model (a reference's root): as get_ragdoll gives a skeleton model's; empty if
+    /// it has none.
+    static godot::Dictionary get_model_ragdoll(godot::Node* model);
     /// Actors walk around their place while no AI packages are read (see
     /// actor.hpp). On by default; off, they stand in their idle.
     void set_actor_wander(bool enabled) { builder_.options().actor_wander = enabled; }

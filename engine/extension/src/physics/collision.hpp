@@ -77,6 +77,8 @@ public:
         double friction{0.5};
         double restitution{0.4};
         std::vector<Shape> shapes;
+        /// A movable body of the model's ragdoll (`ragdoll()`).
+        bool in_ragdoll{};
     };
 
     /// Read `root`'s collision extras into bodies and remove them from the
@@ -88,11 +90,17 @@ public:
     int attach(godot::Node3D* instance) const;
 
     [[nodiscard]] const std::vector<Body>& bodies() const { return bodies_; }
+    /// The model is a ragdoll of its own (a web sac, a hanging body: movable bodies on skeleton bones joined
+    /// by constraints, `extras.bethconv.ragdoll`). A reference with k_settle_meta gets none of those bodies
+    /// from `attach` but k_ragdoll_meta: the game simulates it from load, and the viewer builds the ragdoll
+    /// (game/game/prop_ragdolls.gd); any other copy has them fixed, resting as placed.
+    [[nodiscard]] bool ragdoll() const { return ragdoll_; }
 
 private:
     const std::vector<godot::Ref<godot::Shape3D>>& shapes_of(std::size_t body) const;
 
     std::vector<Body> bodies_;
+    bool ragdoll_{};
     /// Per body, created on first `attach`.
     mutable std::vector<std::vector<godot::Ref<godot::Shape3D>>> made_;
 };
@@ -112,6 +120,9 @@ void tag_phantoms(godot::Node* root);
 /// Meta on a reference's root whose movable bodies are simulated from load:
 /// the reference has `RefFlags.dont_havok_settle` (formats/schema/world.fbs).
 inline constexpr const char* k_settle_meta = "skydot_settle";
+
+/// Meta on a reference's root whose model's ragdoll the viewer is to build (ModelCollision::ragdoll).
+inline constexpr const char* k_ragdoll_meta = "skydot_ragdoll";
 
 /// Movable clutter. Placed under the model's owning node but simulated in
 /// world space; it moves `model` (the reference's root) along. Frozen as
