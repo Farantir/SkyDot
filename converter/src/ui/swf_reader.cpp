@@ -4,6 +4,8 @@
 #include "bethconv/io/deflate.hpp"
 #include "swf_bits.hpp"
 
+#include <zlib.h>
+
 #include <algorithm>
 #include <cstring>
 #include <string>
@@ -127,11 +129,30 @@ io::ParseResult<SwfBody> decompress_swf(std::span<const std::byte> file, std::st
         return out;
     }
     if (sig == "CWS" || sig == "CFX") {
-        auto body = io::inflate_exact(file.subspan(8), length - 8, origin, 8);
-        if (!body) {
-            return std::unexpected(body.error());
+        // Not inflate_exact: some movies (fonts_pl.swf) end their zlib stream
+        // short of its end marker once the declared length is out. The
+        // declared length is what counts, as for the player.
+        const std::size_t want = length - 8;
+        if (want > io::k_max_inflate_size) {
+            return fail(ErrorKind::too_large, 4, "declares " + std::to_string(want) + " bytes");
         }
-        out.body = std::move(*body);
+        out.body.resize(want);
+        z_stream z{};
+        if (inflateInit(&z) != Z_OK) {
+            return fail(ErrorKind::corrupt, 8, "zlib init");
+        }
+        z.next_in = reinterpret_cast<Bytef*>(const_cast<std::byte*>(file.data() + 8));
+        z.avail_in = static_cast<uInt>(file.size() - 8);
+        z.next_out = reinterpret_cast<Bytef*>(out.body.data());
+        z.avail_out = static_cast<uInt>(want);
+        const int rc = inflate(&z, Z_FINISH);
+        const std::size_t got = z.total_out;
+        inflateEnd(&z);
+        if (got != want || (rc != Z_STREAM_END && rc != Z_BUF_ERROR && rc != Z_OK)) {
+            return fail(ErrorKind::corrupt, 8,
+                        "zlib body gave " + std::to_string(got) + " of " + std::to_string(want) +
+                            " bytes (zlib " + std::to_string(rc) + ")");
+        }
         return out;
     }
     if (sig == "ZWS") {
