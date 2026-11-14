@@ -158,6 +158,7 @@ skydot_gd_test(progression test_progression.gd)
 skydot_gd_test(skills_model test_skills_model.gd)
 skydot_gd_test(player_gates test_player_gates.gd)
 skydot_gd_test(player_state test_player_state.gd)
+skydot_gd_test(item_list_model test_item_list_model.gd)
 
 # The viewer walks through the test pack's door pair: out of the interior,
 # then (locks picked) back in through the locked outside door. Needs the pack,

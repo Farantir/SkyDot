@@ -1,26 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# What the inventory and container views share: the categories of the item
-# list, which rows each shows (non-playable items never), and the text of a
-# row. Pure functions over the rows `GameSession.inventory` returns.
+# What the item list's sources share: which rows are listed (non-playable items
+# never) and the text of a row. Pure functions over the rows `GameSession.inventory` returns.
 class_name ItemRows
 extends RefCounted
-
-## Menu categories, in order; each lists the item categories (world.fbs
-## ItemCategory names) it shows. All shows every playable item.
-const CATEGORIES: Array[Dictionary] = [
-	{"name": "All", "items": []},
-	{"name": "Weapons", "items": ["weapon", "ammo"]},
-	{"name": "Apparel", "items": ["armor", "clothing", "jewelry"]},
-	{"name": "Potions", "items": ["potion"]},
-	{"name": "Scrolls", "items": ["scroll"]},
-	{"name": "Food", "items": ["food"]},
-	{"name": "Ingredients", "items": ["ingredient"]},
-	{"name": "Books", "items": ["book"]},
-	{"name": "Keys", "items": ["key"]},
-	{"name": "Misc", "items": ["misc", "soul_gem", "light"]},
-]
-
 
 ## Soul sizes by number (SLGM SOUL).
 const SOULS: Array[String] = ["", "petty", "lesser", "common", "greater", "grand"]
@@ -32,16 +15,9 @@ static func is_listed(row: Dictionary) -> bool:
 	return row["playable"] and row["name"] != ""
 
 
-## The playable rows of `rows` that category `index` shows.
-static func visible(rows: Array, index := 0) -> Array:
-	var wanted: Array = CATEGORIES[index]["items"]
-	var out: Array = []
-	for row: Dictionary in rows:
-		if not is_listed(row):
-			continue
-		if wanted.is_empty() or wanted.has(row["category"]):
-			out.append(row)
-	return out
+## The rows of `rows` a list may show: playable and named.
+static func visible(rows: Array) -> Array:
+	return rows.filter(is_listed)
 
 
 ## "Iron Sword" or "Arrow (12)": a name with its count.
