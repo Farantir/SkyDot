@@ -15,6 +15,7 @@ namespace fn {
 inline constexpr std::uint16_t get_distance = 1;
 inline constexpr std::uint16_t get_actor_value = 14;
 inline constexpr std::uint16_t get_current_time = 18;
+inline constexpr std::uint16_t get_is_current_weather = 149;
 inline constexpr std::uint16_t get_disabled = 35;
 inline constexpr std::uint16_t get_detected = 45;
 inline constexpr std::uint16_t get_dead = 46;

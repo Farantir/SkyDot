@@ -6,6 +6,7 @@
 #include "skydot_formats/flags.hpp"
 #include "state/calendar.hpp"
 #include "vm/papyrus.hpp"
+#include "render/weather.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -408,6 +409,11 @@ std::optional<std::pair<std::int32_t, std::int32_t>> PapyrusConditionWorld::vend
 
 double PapyrusConditionWorld::game_days() const {
     return owner_ != nullptr && owner_->clock_.is_valid() ? owner_->clock_->get_game_days() : 0.0;
+}
+
+std::uint32_t PapyrusConditionWorld::current_weather() const {
+    const auto* weather = owner_ != nullptr && owner_->clock_.is_valid() ? owner_->clock_->get_weather() : nullptr;
+    return weather != nullptr ? static_cast<std::uint32_t>(weather->get_weather()) : 0;
 }
 
 double PapyrusConditionWorld::hour() const { return vm::Calendar{.days = game_days()}.hour(); }

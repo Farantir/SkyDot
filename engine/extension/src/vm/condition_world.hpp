@@ -78,6 +78,7 @@ public:
     std::optional<std::pair<std::int32_t, std::int32_t>> vendor_hours(std::uint32_t faction) const override;
 
     double hour() const override;
+    std::uint32_t current_weather() const override;
     int day_of_week() const override;
     double game_days() const override;
     double random_percent() override;

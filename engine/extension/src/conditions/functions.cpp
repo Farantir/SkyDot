@@ -225,6 +225,8 @@ std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subj
     // ---- clock, chance
     case fn::get_current_time:
         return world.hour();
+    case fn::get_is_current_weather:
+        return world.current_weather() == p1 && p1 != 0 ? 1.0 : 0.0;
     case fn::get_day_of_week:
         return static_cast<double>(world.day_of_week());
     case fn::get_random_percent:

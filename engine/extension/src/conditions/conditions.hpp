@@ -179,6 +179,8 @@ public:
     [[nodiscard]] virtual double game_days() const = 0;
     /// A whole number 0-99.
     [[nodiscard]] virtual double random_percent() = 0;
+    /// The sky's current weather (WTHR id), 0 if none or unknown.
+    [[nodiscard]] virtual std::uint32_t current_weather() const { return 0; }
 
     // ---- dialogue (answered from D1 on)
     [[nodiscard]] virtual bool talked_to_player(std::uint32_t) const { return false; }
