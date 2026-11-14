@@ -4,7 +4,7 @@
 # pack; runs anywhere.
 extends SceneTree
 
-const k_index_header := "# bethconv vpath index v7\n"
+const k_index_header := "# bethconv vpath index v8\n"
 const k_index_columns := "# virtual path\tcontent hash\tkind\twinning source\n"
 
 var failures := 0
@@ -36,7 +36,7 @@ func _check_registered() -> void:
     expect(ClassDB.class_exists("SkydotPack"), "SkydotPack is registered")
     expect(ClassDB.can_instantiate("SkydotPack"), "SkydotPack can be instantiated")
     var pack := SkydotPack.new()
-    expect(pack.PACK_FORMAT_VERSION == 7, "the engine reads pack format v7")
+    expect(pack.PACK_FORMAT_VERSION == 8, "the engine reads pack format v8")
     expect(ClassDB.class_exists("SkydotWorld"), "SkydotWorld is registered")
     expect(ClassDB.class_exists("SkydotMaterials"), "SkydotMaterials is registered")
     expect(ClassDB.class_exists("SkydotBillboard"), "SkydotBillboard is registered")
@@ -175,18 +175,18 @@ func _check_refusals() -> void:
     var v4 := root.path_join("v4")
     _write_pack(v4, 4, k_index_header + k_index_columns)
     expect(pack.open(v4) == ERR_UNAVAILABLE, "a v4 pack is refused")
-    expect(pack.get_error().contains("version 4") and pack.get_error().contains("v7"),
+    expect(pack.get_error().contains("version 4") and pack.get_error().contains("v8"),
            "the refusal names both versions: " + pack.get_error())
     expect(not pack.is_open(), "a refused pack is closed")
 
-    # A v7 manifest whose index header is from another version.
+    # A v8 manifest whose index header is from another version.
     var idx1 := root.path_join("idx1")
-    _write_pack(idx1, 7, "# bethconv vpath index v1\n")
+    _write_pack(idx1, 8, "# bethconv vpath index v1\n")
     expect(pack.open(idx1) == ERR_FILE_UNRECOGNIZED, "an index header this engine does not know")
 
-    # A v7 manifest whose index has more lines than the manifest counted.
+    # A v8 manifest whose index has more lines than the manifest counted.
     var extra := root.path_join("extra")
-    _write_pack(extra, 7, k_index_header + k_index_columns
+    _write_pack(extra, 8, k_index_header + k_index_columns
         + "meshes/a.nif\t" + "0".repeat(64) + "\tmesh\tsrc\n")
     expect(pack.open(extra) == ERR_FILE_CORRUPT, "an index the manifest did not count")
     expect(pack.get_error().contains("1 entries but manifest.json says 0"),
@@ -194,7 +194,7 @@ func _check_refusals() -> void:
 
     # An empty but valid pack: manifest and index both count zero.
     var ok := root.path_join("ok")
-    _write_pack(ok, 7, k_index_header + k_index_columns)
+    _write_pack(ok, 8, k_index_header + k_index_columns)
     expect(pack.open(ok) == OK, "an empty pack opens: " + pack.get_error())
     expect(pack.is_open() and pack.get_index_count() == 0 and not pack.has_world(),
            "and reports itself empty")
@@ -204,19 +204,19 @@ func _check_refusals() -> void:
     # reads it any more: the key and the file are ignored, even a missing or
     # damaged file.
     var norec := root.path_join("norec")
-    _write_pack(norec, 7, k_index_header + k_index_columns, true)
+    _write_pack(norec, 8, k_index_header + k_index_columns, true)
     expect(pack.open(norec) == OK, "a records key whose file is missing is ignored: " + pack.get_error())
     expect(pack.is_open() and pack.get_error() == "", "and the pack is open")
 
     var badrec := root.path_join("badrec")
-    _write_pack(badrec, 7, k_index_header + k_index_columns, true)
+    _write_pack(badrec, 8, k_index_header + k_index_columns, true)
     var f := FileAccess.open(badrec.path_join("records.fb"), FileAccess.WRITE)
     f.store_string("NOTASNAP".rpad(64, " "))
     f.close()
     expect(pack.open(badrec) == OK, "a records.fb without its magic is ignored: " + pack.get_error())
 
     var rec2 := root.path_join("rec2")
-    _write_pack(rec2, 7, k_index_header + k_index_columns, true)
+    _write_pack(rec2, 8, k_index_header + k_index_columns, true)
     var header := PackedByteArray()
     header.resize(64)
     for i in 8:
@@ -230,7 +230,7 @@ func _check_refusals() -> void:
 
     # A world key whose file is missing.
     var noworld := root.path_join("noworld")
-    _write_pack(noworld, 7, k_index_header + k_index_columns, false, true)
+    _write_pack(noworld, 8, k_index_header + k_index_columns, false, true)
     expect(pack.open(noworld) == ERR_FILE_NOT_FOUND, "a missing world.fb is refused")
 
     # A damaged world.fb is refused by SkydotWorld.
@@ -248,17 +248,17 @@ func _check_refusals() -> void:
 
     # The blob layout: its index must be there and well formed.
     var noidx := root.path_join("noidx")
-    _write_pack(noidx, 7, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(noidx, 8, k_index_header + k_index_columns, false, false, "blob")
     expect(pack.open(noidx) == ERR_FILE_NOT_FOUND, "a blob pack without assets.idx is refused")
     var badidx := root.path_join("badidx")
-    _write_pack(badidx, 7, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(badidx, 8, k_index_header + k_index_columns, false, false, "blob")
     f = FileAccess.open(badidx.path_join("assets.idx"), FileAccess.WRITE)
     f.store_string("BCAI")
     f.close()
     FileAccess.open(badidx.path_join("assets-0001.blob"), FileAccess.WRITE).close()
     expect(pack.open(badidx) == ERR_FILE_CORRUPT, "a truncated assets.idx is refused")
     var blob := root.path_join("blob")
-    _write_pack(blob, 7, k_index_header + k_index_columns, false, false, "blob")
+    _write_pack(blob, 8, k_index_header + k_index_columns, false, false, "blob")
     var index := PackedByteArray()
     index.resize(24)
     for i in 4:
@@ -272,7 +272,7 @@ func _check_refusals() -> void:
     expect(pack.open(blob) == OK, "an empty blob pack opens: " + pack.get_error())
     expect(pack.get_store_layout() == "blob", "and says it is one")
     var odd := root.path_join("odd")
-    _write_pack(odd, 7, k_index_header + k_index_columns, false, false, "zip")
+    _write_pack(odd, 8, k_index_header + k_index_columns, false, false, "zip")
     expect(pack.open(odd) == ERR_FILE_UNRECOGNIZED, "an unknown store layout is refused")
 
 func _write_pack(dir: String, version: int, index_text: String, with_records := false,

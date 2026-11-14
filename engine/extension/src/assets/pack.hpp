@@ -8,7 +8,7 @@
 //
 // `open` checks, in order, and refuses on any failure:
 //
-//   manifest.json   `pack_format_version` must be 6
+//   manifest.json   `pack_format_version` must be 8
 //   world.fb        exists (if the manifest's `world` key is present)
 //   vpath.idx       header line, and a line count equal to the manifest's
 //                   `assets.index_entries`
@@ -46,7 +46,7 @@ class SkydotPack : public godot::RefCounted {
 
 public:
     /// The pack format version this engine reads (manifest and vpath.idx).
-    static constexpr int PACK_FORMAT_VERSION = 7;
+    static constexpr int PACK_FORMAT_VERSION = 8;
 
     /// Mount a pack directory. On refusal the pack stays closed, `get_error`
     /// explains, and the return code gives the category.
