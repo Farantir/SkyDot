@@ -72,6 +72,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_region_sounds", "world", "x", "y"), &SkydotWorld::get_region_sounds);
     godot::ClassDB::bind_method(D_METHOD("get_region_sound_data", "region"), &SkydotWorld::get_region_sound_data);
     godot::ClassDB::bind_method(D_METHOD("get_weather_sounds", "weather"), &SkydotWorld::get_weather_sounds);
+    godot::ClassDB::bind_method(D_METHOD("get_weather_classification", "weather"), &SkydotWorld::get_weather_classification);
     godot::ClassDB::bind_method(D_METHOD("get_footstep_set", "id"), &SkydotWorld::get_footstep_set);
     godot::ClassDB::bind_method(D_METHOD("get_footstep", "id"), &SkydotWorld::get_footstep);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_float", "name", "fallback"), &SkydotWorld::get_gmst_float);
@@ -344,6 +345,7 @@ godot::PackedInt64Array SkydotWorld::get_sound_alternates(std::int64_t id) const
 godot::Array SkydotWorld::get_region_sounds(std::int64_t world, double x, double y) const { return queries::get_region_sounds(data(), world, x, y); }
 Dictionary SkydotWorld::get_region_sound_data(std::int64_t region) const { return queries::get_region_sound_data(data(), region); }
 godot::Array SkydotWorld::get_weather_sounds(std::int64_t weather) const { return queries::get_weather_sounds(data(), weather); }
+std::int64_t SkydotWorld::get_weather_classification(std::int64_t weather) const { return queries::get_weather_classification(data(), weather); }
 Dictionary SkydotWorld::get_footstep_set(std::int64_t id) const { return queries::get_footstep_set(data(), id); }
 Dictionary SkydotWorld::get_footstep(std::int64_t id) const { return queries::get_footstep(data(), id); }
 double SkydotWorld::get_gmst_float(const String& name, double fallback) const {

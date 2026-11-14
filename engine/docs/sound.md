@@ -129,3 +129,60 @@ sound). world.fb `footsteps`, `footstep_sets`, `ArmorAddon.footstep_set`.
 `get_region_sound_data(region)`, `get_weather_sounds`, `get_footstep_set`,
 `get_footstep`; `get_cell` has `acoustic_space`. `SkydotPapyrus.
 sound_conditions_met(sound, ref)` runs a descriptor's conditions.
+
+## Playing (game/game/sounds.gd, game/game/ambience.gd)
+
+- **Choosing the descriptor.** A descriptor asked for gives way to the first
+  of its alternates (SNAM points at it) whose conditions pass, recursively;
+  one whose own conditions fail does not play. A loop whose conditions fail
+  starts silent and fades in when they pass; every looping sound's conditions
+  are asked again every 2 s and it fades over 2 s (both estimated). Ambient
+  regions' birds and insects are gated so (GetCurrentTime, and Dawnguard's
+  GetIsCurrentWeather on the eclipse weather).
+- **Level.** File level - static attenuation - dB variance + the category
+  (static volumes up the SNCT chain, times the menu sliders:
+  `Sounds.category_volumes`, defaults UNAM) + the output model:
+  - HRTF (MNAM 0), attenuating, with a source: an AudioStreamPlayer3D on the
+    source, Godot's distance attenuation and air-absorption filter off, the
+    SOPM curve on top, and `Sounds.HRTF_DB` (-10 dB). Measured with the
+    skycompare sound series (2026-11-14): the game plays these sounds about
+    12 dB below SkyDot's level before (the waterwheel loop at its min distance
+    -43.7 dB RMS against -30.9, the Bannered Mare door -38.5 against -27.3);
+    the category is 1.8 dB of that.
+  - Defined speaker output (MNAM 1): an AudioStreamPlayer at the front pair's
+    level of its speaker rows; attenuating, with a source, the curve still
+    scales it by distance (the "2D" water, wind and dungeon loops). The
+    Bannered Mare interior loop (SOMStereo_verb) plays within 3 dB of its data
+    in the game.
+  - Godot's air-absorption filter took up to 10 dB more off far sounds than
+    the curve; the game follows the curve (the waterwheel series: -1, -4, -9 dB
+    at 240, 440, 640 units against the curve's -1, -4, -7).
+- **Looping.** 0x08 loops between the file's sampler (smpl) loop points (the
+  whole file in all vanilla loops); the envelopes 0x10/0x20 ("LPM" files:
+  `mag_flames_fire_lpm.wav` loops frames 12862..72839 of 135251) play their
+  start, loop, and when stopped finish the pass and play the tail (XAudio2's
+  ExitLoop). Fast and slow are not told apart.
+- **Markers.** A cell's SOUN references start when the cell is built; loops
+  are held out of range and stop with the cell. A one-shot marker plays once.
+- **Ambience** (game/game/ambience.gd), checked every second:
+  - the acoustic space: the innermost placed ASPC box holding the listener,
+    else the cell's XCAS (an exterior cell's where the listener stands). Its
+    ambient loop plays non-positionally, its region's sounds while inside;
+  - exteriors: the regions with sounds whose areas hold the listener, by
+    priority, down to the first with the override flag; an RDSA entry plays
+    when its weather flags hold the current weather's class (an interior's
+    region always). Loops play while that holds, one-shots are rolled each
+    second with their chance and play at a random point around the listener,
+    between the min distance and halfway to the max (estimated);
+  - the weather's SNAM loops (types 0-2); thunder (3) is not played.
+  - Everything that starts or stops fades over 2 s (estimated), so walking
+    between spaces and regions crossfades.
+- **Range setting.** `--sound-range FACTOR` (0.25..8, default 1 = the game's;
+  `ViewerSettings.sound_range` -> `GameConfig.sound_range` ->
+  `Sounds.range_scale`) multiplies every output model's min and max distance,
+  region one-shot distances too.
+- **Not done:** reverb (REVB, SOPM reverb send), priority and voice limits,
+  loudness culling, rumble, footsteps (data in world.fb 42: FSTS/FSTP/ARMA
+  SNDD; needs the material under the foot), thunder, music (W7), dialogue
+  voices' categories and output models (speech.gd keeps Godot's inverse
+  distance).

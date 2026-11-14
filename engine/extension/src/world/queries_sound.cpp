@@ -218,6 +218,12 @@ Array get_weather_sounds(const WorldData& data, std::int64_t weather) {
     return out;
 }
 
+std::int64_t get_weather_classification(const WorldData& data, std::int64_t weather) {
+    const auto* w = lookup(data.root() != nullptr ? data.root()->weathers() : nullptr,
+                           static_cast<std::uint32_t>(weather));
+    return w != nullptr ? static_cast<std::int64_t>(w->classification()) : 0;
+}
+
 Dictionary get_footstep_set(const WorldData& data, std::int64_t id) {
     Dictionary out;
     const auto* f = lookup(data.root() != nullptr ? data.root()->footstep_sets() : nullptr,

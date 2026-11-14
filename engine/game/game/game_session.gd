@@ -214,6 +214,8 @@ var placed: PlacedRefs
 var magic_world: MagicWorld
 var projectiles: Projectiles
 var sounds: Sounds
+## The acoustic space, region and weather sounds where the listener is.
+var ambience: Ambience
 ## Spoken lines (dialogue voices), one queue per speaker.
 var speech: Speech
 
@@ -321,7 +323,18 @@ func _make_game_nodes() -> void:
 	host.add_child(projectiles)
 	sounds = Sounds.new(world, pack, world.find_ref_node, papyrus.new_sound_instance)
 	sounds.range_scale = config.sound_range
+	sounds.conditions_met = papyrus.sound_conditions_met
 	host.add_child(sounds)
+	ambience = Ambience.new(world, sounds)
+	ambience.where = func() -> Dictionary:
+		return {"world": streamer.world_id if place.cell_id == 0 else 0, "interior": place.cell_id}
+	ambience.weather = func() -> int:
+		for n in place.nodes:
+			if n is SkydotWeather and is_instance_valid(n):
+				return int(n.get_state()["weather"])
+		return 0
+	sounds.ambience = ambience
+	host.add_child(ambience)
 	speech = Speech.new(sounds, world.find_ref_node)
 	host.add_child(speech)
 	speech.line_started.connect(_on_speech_started)

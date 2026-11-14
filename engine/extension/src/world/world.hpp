@@ -213,6 +213,9 @@ public:
     godot::Dictionary get_region_sound_data(std::int64_t region) const;
     /// WTHR SNAM: [{sound, type}].
     godot::Array get_weather_sounds(std::int64_t weather) const;
+    /// `Weather.classification` bits: 1 pleasant, 2 cloudy, 4 rainy, 8 snow (the
+    /// RDSA flags' order); 0 if none.
+    std::int64_t get_weather_classification(std::int64_t weather) const;
     /// FSTS: id, editor_id, walk, run, sprint, sneak, swim (FSTP ids).
     godot::Dictionary get_footstep_set(std::int64_t id) const;
     /// FSTP: id, editor_id, impact_data_set, tag.
