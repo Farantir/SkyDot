@@ -178,8 +178,10 @@ func _run(pack_dir: String) -> void:
     var hour: float = _clock.get_hour()
     var camera_at: Vector3 = _player.position
 
+    _session.favorites.assign(2, 0x12EB7)
     _session.save_game(SAVE_PATH)
     expect(FileAccess.file_exists(SAVE_PATH), "a save is written")
+    _session.favorites.clear()
 
     # ---- change everything ------------------------------------------------
     _call("Remove", [kept])
@@ -219,6 +221,7 @@ func _run(pack_dir: String) -> void:
 
     # ---- load and compare -------------------------------------------------
     expect(_session.load_game(SAVE_PATH), "the save loads")
+    expect(_session.favorites.has(0x12EB7) and _session.favorites.form_at(2) == 0x12EB7, "the favorites and their hotkey are back")
     await _frames(4)
     expect(_papyrus.get_error_count() == 0, "no script error on the way: %s" % _papyrus.get_last_error())
     expect(_papyrus.get_ref_base(kept) == CUBE_BASE and _world.find_ref_node(kept) != null,

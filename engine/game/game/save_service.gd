@@ -7,6 +7,7 @@ extends RefCounted
 
 const QUICKSAVE := "user://quicksave.skydot"
 const PLYR_VERSION := 1
+const FAVS_VERSION := 1
 
 ## A save's script state is in place, the place is not entered yet: the parts that keep state of the
 ## game before it drop it now (GameSession._reset_game_state).
@@ -21,6 +22,8 @@ var _streamer: SkydotStreamer
 var _player: PlayerBody
 var _bridge: ScriptBridge
 var _clock: SkydotClock
+## The favorites to save and load (FAVS); a save without the section has none.
+var favorites: Favorites
 
 
 func _init(papyrus: SkydotPapyrus, place: Place, streamer: SkydotStreamer, player: PlayerBody,
@@ -43,6 +46,8 @@ func save(path: String) -> bool:
 	_papyrus.write_sections(writer)
 	_clock.write_section(writer)
 	writer.add_section("PLYR", PLYR_VERSION, _player_section())
+	if favorites != null:
+		writer.add_section("FAVS", FAVS_VERSION, favorites.save_bytes())
 	if writer.write(ProjectSettings.globalize_path(path)) != OK:
 		printerr("cannot save to ", path, ": ", writer.get_error())
 		return false
@@ -84,10 +89,15 @@ func load_game(path: String) -> bool:
 		_papyrus.cancel_load()
 		printerr("cannot load ", path, ": ", _clock.get_last_error())
 		return false
+	var favorite_state := {}
+	if favorites != null and reader.has_section("FAVS") and reader.get_section_version("FAVS") == FAVS_VERSION:
+		favorite_state = Favorites.decode(reader.get_section("FAVS"))
 	_bridge.retire_graphs()
 	_papyrus.commit_load()
 	_clock.commit_load()
 	committed.emit()
+	if favorites != null:
+		favorites.adopt(favorite_state)  # an older save has none
 	var at: Vector3 = _player.loaded_position
 	if int(player["world"]) != 0:
 		if not _place.enter_exterior(int(player["world"]), at, null):

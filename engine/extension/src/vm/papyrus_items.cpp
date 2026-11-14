@@ -155,6 +155,14 @@ Array SkydotPapyrus::inventory(std::int64_t owner) {
     return out;
 }
 
+void SkydotPapyrus::set_favorites(const godot::PackedInt64Array& forms) {
+    std::set<std::uint32_t> set;
+    for (const std::int64_t form : forms) {
+        set.insert(static_cast<std::uint32_t>(form));
+    }
+    item_.set_favorites(std::move(set));
+}
+
 std::int64_t SkydotPapyrus::transfer(std::int64_t from, std::int64_t to, std::int64_t form, std::int64_t count,
                                      std::int64_t extra) {
     const auto source = static_cast<std::uint32_t>(from);

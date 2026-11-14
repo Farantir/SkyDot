@@ -136,6 +136,9 @@ var streamer: SkydotStreamer
 var place: Place
 var transition: PlaceTransition
 var saves: SaveService
+## What the player marked a favorite, and the hotkeys 1-8 (saved as FAVS; scripts see it through
+## Game.IsObjectFavorited).
+var favorites := Favorites.new()
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -249,6 +252,7 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 	_make_game_nodes()
 	saves = SaveService.new(papyrus, place, streamer, _player, _bridge, clock)
 	saves.committed.connect(_reset_game_state)
+	saves.favorites = favorites
 	return true
 
 
@@ -265,6 +269,8 @@ func _open_world() -> bool:
 	papyrus = SkydotPapyrus.new()
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)
+	favorites.changed.connect(_push_favorites)
+	_push_favorites()
 	papyrus.actor_died.connect(actor_died.emit)
 	papyrus.soul_trapped.connect(_on_soul_trapped)
 	papyrus.player_died.connect(player_died.emit)
@@ -1517,6 +1523,44 @@ func activation_target() -> Dictionary:
 		_target_frame = frame
 		_target = _prompt.target(_pointer) if _prompt != null and not transition.is_fading() else {}
 	return _target
+
+
+# ---- favorites
+
+## Scripts ask Game.IsObjectFavorited: the VM keeps a copy of the favorite forms.
+func _push_favorites() -> void:
+	papyrus.set_favorites(PackedInt64Array(favorites.forms()))
+
+
+## Mark `form` (an item, spell, scroll or shout) a favorite or unmark it; the new state.
+func toggle_favorite(form: int) -> bool:
+	return favorites.toggle(form)
+
+
+## Use a favorite as the quick favorites menu and the hotkeys do: a potion, food or ingredient is used, a worn
+## item is taken off and another put on, a spell or scroll goes in `hand` (a power in the power slot), a shout in
+## the voice slot. False if the player has no such thing.
+func use_favorite(form: int, hand := Magic.RIGHT) -> bool:
+	var category: String = papyrus.item_info(form).get("category", "")
+	if category in USABLE:
+		return use_item(form)
+	if category != "" and category != "scroll":
+		for row: Dictionary in inventory():
+			if int(row["form"]) == form and row["equipped"]:
+				return unequip(form, int(row["extra"]))
+		return equip(form)
+	var info := spell_info(form)
+	if not info.is_empty():
+		return equip_spell(form, Magic.POWER if int(info["type"]) >= 2 else hand)
+	if papyrus.shouts_of(SkydotPapyrus.PLAYER_REF).has(form):
+		return equip_shout(form)
+	return false
+
+
+## The hotkey `slot` (1-8): use what is on it. False if the slot is free or the thing is gone.
+func use_hotkey(slot: int) -> bool:
+	var form := favorites.form_at(slot)
+	return form != 0 and not is_dialogue_open() and use_favorite(form)
 
 
 # ---- saves

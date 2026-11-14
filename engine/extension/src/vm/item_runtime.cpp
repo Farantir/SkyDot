@@ -399,6 +399,10 @@ void ItemRuntime::bind_natives(Vm& vm, Host& host) {
     using natives::result;
     const auto is_object = [](NativeCall& c, std::size_t i) { return arg(c, i).kind() == Kind::object; };
 
+    // Game.IsObjectFavorited(akForm): marked as a favorite in the item or magic menu.
+    vm.bind("Game", "IsObjectFavorited", [this, is_object](NativeCall& c) {
+        return result(Value::boolean(is_object(c, 0) && is_favorite(arg(c, 0).form())));
+    });
     vm.bind("Actor", "EquipItem", [this, is_object](NativeCall& c) {
         if (is_object(c, 0)) {
             equip_item(c.self.form(), arg(c, 0).form(), false, true);

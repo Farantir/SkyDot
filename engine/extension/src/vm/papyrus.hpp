@@ -128,6 +128,8 @@ public:
     std::int64_t activate(std::int64_t ref, std::int64_t activator = PLAYER_REF);
     /// Put `count` of `item` into `owner`'s inventory (the viewer's --give).
     void add_item(std::int64_t owner, std::int64_t item, std::int64_t count);
+    /// The forms marked as favorites in the menus (Game.IsObjectFavorited answers from them).
+    void set_favorites(const godot::PackedInt64Array& forms);
     /// Take up to `count` of `item` out of `owner`'s inventory and destroy them (a spell tome read); returns how many.
     std::int64_t remove_item(std::int64_t owner, std::int64_t item, std::int64_t count);
 

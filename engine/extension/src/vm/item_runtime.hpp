@@ -78,6 +78,11 @@ public:
     [[nodiscard]] std::int64_t dropped_count(std::uint32_t ref) const override { return states_.dropped_count(ref); }
     [[nodiscard]] std::uint32_t dropped_extra(std::uint32_t ref) const override { return states_.dropped_extra(ref); }
 
+    /// The forms the player marked as favorites (Game.IsObjectFavorited); the game layer keeps them and passes
+    /// them here whenever they change.
+    void set_favorites(std::set<std::uint32_t> forms) { favorites_ = std::move(forms); }
+    [[nodiscard]] bool is_favorite(std::uint32_t form) const { return favorites_.contains(form); }
+
     /// A dying actor's death item (INAM) goes into its inventory; called once per death, after the start
     /// inventory is resolved so that comes first.
     void give_death_item(std::uint32_t ref);
@@ -122,6 +127,7 @@ private:
 
     Host* host_ = nullptr;
     mutable ItemStates states_;
+    std::set<std::uint32_t> favorites_;
 };
 
 } // namespace skydot::vm

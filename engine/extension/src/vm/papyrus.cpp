@@ -75,6 +75,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("activate", "ref", "activator"), &SkydotPapyrus::activate,
                                 DEFVAL(PLAYER_REF));
     godot::ClassDB::bind_method(D_METHOD("add_item", "owner", "item", "count"), &SkydotPapyrus::add_item);
+    godot::ClassDB::bind_method(D_METHOD("set_favorites", "forms"), &SkydotPapyrus::set_favorites);
     godot::ClassDB::bind_method(D_METHOD("resolve", "owner"), &SkydotPapyrus::resolve);
     godot::ClassDB::bind_method(D_METHOD("remove_item", "owner", "item", "count"), &SkydotPapyrus::remove_item);
     godot::ClassDB::bind_method(D_METHOD("item_info", "form"), &SkydotPapyrus::item_info);
