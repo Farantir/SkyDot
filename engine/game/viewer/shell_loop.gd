@@ -22,6 +22,8 @@ signal command(action: StringName, shift: bool)
 signal inventory_requested
 signal magic_requested
 signal skills_requested
+## Q: the quick favorites menu.
+signal favorites_requested
 ## The player died; the controls are blocked. The shell shows the death: its camera fall or fade.
 signal died(killer: int)
 ## Each frame of the quit countdown, after it counted down (0: the last frame of the run).
@@ -99,6 +101,8 @@ func start() -> bool:
 	if not settings.load_path.is_empty():
 		_session.load_game(settings.load_path)
 	_session.give(settings.give)
+	for form in settings.favorite:
+		_session.favorites.set_favorite(form, true)
 	options.apply()
 	_session.start_quests(settings.start_quests)
 	if settings.talk != 0 and not _session.dialogue_open(settings.talk):
@@ -199,6 +203,11 @@ func _on_command(action: StringName, shift: bool) -> void:
 			magic_requested.emit()
 		PlayerInput.SKILLS:
 			skills_requested.emit()
+		PlayerInput.FAVORITES:
+			if not _rig.player.flying:  # Q flies down in the viewer's free flight
+				favorites_requested.emit()
+		&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8":
+			_session.use_hotkey(int(String(action).trim_prefix("hotkey_")))
 		_:
 			command.emit(action, shift)
 

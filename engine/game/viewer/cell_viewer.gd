@@ -104,7 +104,7 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-category Destruction chooses the category). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
 # picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
@@ -123,7 +123,8 @@
 # default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start shows the
 # journal. Sprinting costs Stamina (7 a second) and stops when it is out.
 # --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
-# at the start, after --load (like player.additem). --equip 0xFORM[,...] then equips them.
+# at the start, after --load (like player.additem). --equip 0xFORM[,...] then equips them, --favorite 0xFORM[,...] marks
+# items or spells as favorites (for shots of the item menus).
 # Combat: R (gamepad X) draws and sheathes the weapon (the first-person arms and the
 # weapon show while it is drawn: first_person_body.gd), the left mouse button
 # (right trigger) attacks, a hold longer than fInitialPowerAttackDelay is a power
@@ -266,6 +267,9 @@ func _create_components() -> void:
 	_loop.magic_requested.connect(func() -> void:
 		if _items != null:
 			_items.open_magic())
+	_loop.favorites_requested.connect(func() -> void:
+		if _items != null:
+			_items.open_favorites())
 	_loop.skills_requested.connect(func() -> void:
 		if _items != null:
 			_items.toggle_skills())
@@ -281,7 +285,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _loop))
@@ -315,6 +319,10 @@ func _start_game() -> void:
 		return
 	if settings.open_inventory and _items != null:
 		_items.open_inventory()
+		if settings.inventory_tab != "":
+			_items.inventory_view.model.select_tab(settings.inventory_tab)
+	if settings.open_favorites and _items != null:
+		_items.open_favorites()
 	if settings.open_magic and _items != null:
 		_items.open_magic()
 		_items.magic_view.select_category(settings.magic_category)

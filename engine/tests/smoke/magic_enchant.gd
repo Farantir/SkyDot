@@ -310,11 +310,11 @@ func _enchanting(papyrus: SkydotPapyrus, target: int) -> void:
 	inventory.size = Vector2(1280, 720)
 	root.add_child(inventory)
 	inventory.open()
-	inventory._category = 1
-	inventory._refresh()
-	for i in inventory._rows.size():
-		if int(inventory._rows[i]["form"]) == IRON_SWORD and int(inventory._rows[i]["extra"]) == papyrus.equipment(PLAYER)["right_extra"]:
-			inventory._selected = i
+	inventory.model.select_tab("Weapons")
+	var inv_rows: Array = inventory.model.rows()
+	for i in inv_rows.size():
+		if int(inv_rows[i]["form"]) == IRON_SWORD and int(inv_rows[i]["extra"]) == papyrus.equipment(PLAYER)["right_extra"]:
+			inventory.model.select(i)
 	expect(InventoryView.rechargeable(inventory.current()), "the sword can take a charge: %s" % [inventory.current()])
 	inventory.recharge_current()
 	inventory.close()

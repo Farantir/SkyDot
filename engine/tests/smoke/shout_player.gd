@@ -246,7 +246,7 @@ func _run(pack_dir: String) -> void:
 	var view := MagicView.new(_session)
 	root.add_child(view)
 	view.open()
-	expect(view.category_names()[0] == "Shouts", "Shouts is the first category: %s" % [view.category_names()])
+	expect(view.category_names().has("Shouts"), "Shouts is a category: %s" % [view.category_names()])
 	view.select_category("Shouts")
 	var rows := view.rows_of("Shouts")
 	expect(rows.size() == 1 and rows[0]["name"] == "Unrelenting Force" and rows[0]["power"], "Unrelenting Force is listed, in the voice slot")

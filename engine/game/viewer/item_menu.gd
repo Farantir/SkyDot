@@ -13,6 +13,7 @@ var inventory_view: InventoryView
 var container_view: ContainerView
 var crafting_view: CraftingView
 var magic_view: MagicView
+var favorites_view: FavoritesView
 var training_view: TrainingView
 var skills_view: SkillsView
 var _session: GameSession
@@ -27,12 +28,13 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	container_view = ContainerView.new(session)
 	crafting_view = CraftingView.new(session)
 	magic_view = MagicView.new(session)
+	favorites_view = FavoritesView.new(session)
 	training_view = TrainingView.new(session)
 	skills_view = SkillsView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, training_view, skills_view]:
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
-		view.engaged.connect(func(_open: bool) -> void: input.blocked = is_open())
+		view.engaged.connect(func(_open: bool) -> void: _on_engaged())
 		add_child(view)
 	session.container_opened.connect(open_container)
 	session.crafting_opened.connect(open_crafting)
@@ -40,7 +42,25 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or training_view.is_open() or skills_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open()
+
+
+## A menu opened or closed: the player stands still while one is open, and the mouse is free to point at it.
+func _on_engaged() -> void:
+	var open := is_open()
+	_input.blocked = open
+	if _input.enabled and DisplayServer.get_name() != "headless":
+		if open:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			_input.capture_mouse()
+
+
+## The Q key outside a menu: the quick favorites menu (not during a dialogue).
+func open_favorites() -> void:
+	if is_open() or _session.is_dialogue_open():
+		return
+	favorites_view.open()
 
 
 ## The `inventory` key outside a menu: show the inventory (not during a dialogue).
@@ -62,6 +82,7 @@ func open_container(ref: int) -> void:
 		return
 	inventory_view.close()
 	magic_view.close()
+	favorites_view.close()
 	container_view.open(ref)
 
 

@@ -11,7 +11,7 @@ const SHOT_FORMAT := 1  # "format" of the JSON a shot writes (ShotRecorder)
 const MSAA_STEPS := [Viewport.MSAA_DISABLED, Viewport.MSAA_2X, Viewport.MSAA_4X, Viewport.MSAA_8X]
 ## Options without a value: the next token is another option, not theirs.
 const CAPTURE_FPS := 30.0
-const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "ready-weapon", "god", "shot-live"]
+const FLAGS := ["no-input", "hud", "invert-look-y", "open-inventory", "open-magic", "open-favorites", "ready-weapon", "god", "shot-live"]
 const MSAA_NAMES := ["off", "2", "4", "8"]
 ## --aa: screen-space anti-aliasing after the frame is drawn (not temporal).
 const AA_STEPS := [Viewport.SCREEN_SPACE_AA_DISABLED, Viewport.SCREEN_SPACE_AA_FXAA, Viewport.SCREEN_SPACE_AA_SMAA]
@@ -139,6 +139,7 @@ var fly_speed := 20.0  # m/s during the benchmark
 var captures := false  # screenshot or benchmark: still time, still actors
 var hud := true  # health, magicka and stamina bars, crosshair, activation prompt
 var open_inventory := false  # --open-inventory: show the inventory after the load
+var open_favorites := false  # --open-favorites: show the quick favorites menu after the load
 var open_magic := false  # --open-magic: show the magic menu after the load
 var learn_enchantment: Array[int] = []  # --learn-enchantment 0xENCH[,...]: the player knows those enchantments (for the enchanting table)
 var crafting_category := ""  # --crafting-category NAME|N: the enchanting table's category (Disenchant, Item, Enchantment, Soul gem)
@@ -146,6 +147,7 @@ var open_skills := ""  # --open-skills NAME: show the skills screen on that skil
 var grant_perks := 0  # --grant-perks N: set the player perk points after the load (for --open-skills)
 var grant_xp := 0.0  # --grant-xp N: set the player XP after the load (a banked level-up for --open-skills)
 var magic_category := ""  # --magic-category NAME: the category it shows (Powers, Destruction, Scrolls...)
+var inventory_tab := ""  # --inventory-tab NAME: the tab --open-inventory shows (Weapons, Potions, ...)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var ready_weapon := false  # --ready-weapon: draw the weapon after the load
@@ -156,6 +158,7 @@ var strip_melee: Array[int] = []  # --strip-melee 0xREF[,...]: those actors lose
 var npc_give: Array[NpcGive] = []  # --npc-give 0xREF:0xFORM[xN],...
 var npc_draw: Array[int] = []  # --npc-draw 0xREF[,...]: those actors draw their weapons after the load
 var kill: Array[int] = []  # --kill 0xREF[,...]: hit those actors with the weapon in hand until dead
+var favorite: Array[int] = []  # --favorite 0xFORM[,...]: marked as favorites (a shot of the item menus)
 var equip: Array[int] = []  # --equip 0xFORM[,...]: the player equips those (after --give)
 var equip_spell: Array[SpellEquip] = []  # --equip-spell 0xFORM[,left|right|power] (Magic.RIGHT by default)
 var cast_at := 0  # --cast-at 0xREF[,left|right]: ready the hands, face that actor, cast the hand's spell at it
@@ -317,7 +320,9 @@ func _read_run(args: Dictionary) -> void:
 func _read_ui(args: Dictionary) -> void:
 	hud = args.has("hud") or not captures
 	open_inventory = args.has("open-inventory")
+	inventory_tab = args.get("inventory-tab", "")
 	open_magic = args.has("open-magic")
+	open_favorites = args.has("open-favorites")
 	magic_category = args.get("magic-category", "")
 	open_skills = args.get("open-skills", "")
 	grant_xp = float(args.get("grant-xp", "0"))
@@ -350,6 +355,7 @@ func _read_actors(args: Dictionary) -> void:
 				halves[1].substr(cut + 1).to_int() if has_count else 1))
 	npc_draw.append_array(_forms(args.get("npc-draw", "")))
 	equip.append_array(_forms(args.get("equip", "")))
+	favorite.append_array(_forms(args.get("favorite", "")))
 	death_roll = clampi(int(str(args.get("death-roll", "-1"))), -1, 99)
 	kill_after = maxf(0.0, str(args.get("kill-after", "0")).to_float())
 	spawn_distance = maxf(0.5, str(args.get("spawn-distance", str(SpawnActors.DISTANCE))).to_float())
