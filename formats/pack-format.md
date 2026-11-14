@@ -89,7 +89,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (41; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (42; 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -99,7 +99,7 @@ lighting templates (LGTM) resolved, directional materials (MATO, STAT DNAM),
 grass (GRAS, LTEX GNAM), addon nodes (ADDN) and placed lights' XRDS and
 XLIG, 11 large references (WRLD RNAM), per worldspace, 12 placed lights' XEMI,
 the region whose weather's sunlight colour tints the light, 13 volumetric
-lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls, 36 shouts (SHOU), words of power (WOOP), movement types (MOVT), race flight data and default movement types, 37 the NPC death item (INAM), 38 perks (PERK), actor values (AVIF) with skill data and perk trees, classes (CLAS), the skill or spell a book teaches, NPC class and perks, 39 `Base.bench_skill` and `DialogueInfo.favor_level` deprecated: no longer written, field ids kept, 40 idles (IDLE), 41 placed actors' enable parents (ACHR XESP) and the REFR flag "Don't Havok Settle"). Format 9 only adds:
+lighting (VOLI) and weathers' links to it (WTHR HNAM), 14 water sun sparkle, fog amount and depth controls (WATR DNAM), 15 grass bound radius (GRAS OBND), 16 base records' alternate textures (MODS), 17 interiors' sky region (XCCM), 18 land texture snow flag, 19 AMMO and PROJ, 20 PROJ muzzle flash, 21 sound descriptors (SNDR), sound markers (SOUN) and output models (SOPM), 22 keywords (KYWD, KWDA on bases), form lists (FLST) and messages (MESG), 23 explosions (EXPL) and base destruction (DEST), 24 actor base values (ACBS, DNAM, AIDT, RACE DATA) and base names, 25 cell and worldspace names, 26 dialogue and conditions, 27 scenes, 28 item data, container contents and leveled list chance globals, 29 recipes, magic effects, enchantments, item effects, harvest data and bench types, 30 game settings, weapon combat data, race attacks, first-person models and impacts, 31 combat styles, the NPC combat style and crime faction, faction relations, 32 the aggro radius of NPC_, 33 magic: spells, effect conditions, magic effect data, art objects, projectile, enchantment and NPC spell data, 34 race keywords (RACE KWDA), 35 soul gems: contained soul, capacity, linked filled gem, holds NPC souls, 36 shouts (SHOU), words of power (WOOP), movement types (MOVT), race flight data and default movement types, 37 the NPC death item (INAM), 38 perks (PERK), actor values (AVIF) with skill data and perk trees, classes (CLAS), the skill or spell a book teaches, NPC class and perks, 39 `Base.bench_skill` and `DialogueInfo.favor_level` deprecated: no longer written, field ids kept, 40 idles (IDLE), 41 placed actors' enable parents (ACHR XESP) and the REFR flag "Don't Havok Settle", 42 the sound path: SNDR conditions, alternates and LNAM bytes, SOPM reverb send and speaker output, sound categories (SNCT), acoustic spaces (ASPC, as bases too, and CELL XCAS), reverbs (REVB), region sounds (REGN RDSA), weather sounds (WTHR SNAM), footsteps (FSTP, FSTS, ARMA SNDD)). Format 9 only adds:
 an engine reading 9 reads 8, whose actors then have no packages. Written during a merge pass, so every FormID in it is
 global: resolved through the winning plugin's master list.
 
@@ -373,6 +373,16 @@ test bits by these names, through `has_flag` in
   `conditions` (CTDA), `loop_min`/`loop_max` (DATA looping seconds), `flags` (parent, sequence, no
   attacking, blocking), `animation_group_section` and `replay_delay`. The children of a parent are
   ordered by the `previous` chain (the first is the one whose previous is no sibling).
+- The sound path (format 42, meanings in `engine/docs/sound.md`): `SoundDescriptor`
+  gains `alternate_for` (SNAM), `conditions` (CTDA), `lnam_unknown0`, `lnam_unknown2`,
+  `rumble` and `fnam`; `SoundOutputModel` gains `reverb_send` (NAM1 byte 3),
+  `speaker_output` (ONAM, 3 x 8 percentages) and `anam_unknown`, and its four form version
+  30 records (no NAM1) take their flags from FNAM and their speaker output from SNAM.
+  New lists: `sound_categories` (SNCT), `acoustic_spaces` (ASPC; an ASPC is a `Base`
+  without a model too, so its placed XPRM boxes resolve), `reverbs` (REVB), `footsteps`
+  (FSTP) and `footstep_sets` (FSTS). `Cell.acoustic_space` (XCAS), `Region.sounds` with
+  `sound_priority` and `sound_override` (RDAT type 7; `regions` now holds regions with
+  weathers or sounds), `Weather.sounds` (SNAM) and `ArmorAddon.footstep_set` (SNDD).
 - Placed actors' enable parents (format 41): `actor_enable_parents` (sorted by ref: the ACHR
   `ref` and its XESP `parent`, global); the XESP "set enable state to opposite" bit is
   `RefFlags.enable_opposite` in the actor's `flags`. A separate list so `ActorRef` keeps its

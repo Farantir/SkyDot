@@ -247,6 +247,7 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("perk_rank", "ref", "perk"), &SkydotPapyrus::perk_rank);
     godot::ClassDB::bind_method(D_METHOD("get_perks", "ref"), &SkydotPapyrus::get_perks);
     godot::ClassDB::bind_method(D_METHOD("perk_conditions_met", "perk", "ref"), &SkydotPapyrus::perk_conditions_met);
+    godot::ClassDB::bind_method(D_METHOD("sound_conditions_met", "sound", "ref"), &SkydotPapyrus::sound_conditions_met);
     godot::ClassDB::bind_method(D_METHOD("perk_entry", "entry_point", "owner", "subjects", "value", "extra"),
                                 &SkydotPapyrus::perk_entry, DEFVAL(godot::Dictionary()));
     godot::ClassDB::bind_method(D_METHOD("perk_entry_spells", "entry_point", "owner", "subjects", "extra"),

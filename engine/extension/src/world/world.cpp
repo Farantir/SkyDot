@@ -65,6 +65,15 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_explosion", "id"), &SkydotWorld::get_explosion);
     godot::ClassDB::bind_method(D_METHOD("tag_runtime_ref", "ref", "cell", "node"), &SkydotWorld::tag_runtime_ref);
     godot::ClassDB::bind_method(D_METHOD("get_sound_output_model", "id"), &SkydotWorld::get_sound_output_model);
+    godot::ClassDB::bind_method(D_METHOD("get_sound_category", "id"), &SkydotWorld::get_sound_category);
+    godot::ClassDB::bind_method(D_METHOD("get_acoustic_space", "id"), &SkydotWorld::get_acoustic_space);
+    godot::ClassDB::bind_method(D_METHOD("get_reverb", "id"), &SkydotWorld::get_reverb);
+    godot::ClassDB::bind_method(D_METHOD("get_sound_alternates", "id"), &SkydotWorld::get_sound_alternates);
+    godot::ClassDB::bind_method(D_METHOD("get_region_sounds", "world", "x", "y"), &SkydotWorld::get_region_sounds);
+    godot::ClassDB::bind_method(D_METHOD("get_region_sound_data", "region"), &SkydotWorld::get_region_sound_data);
+    godot::ClassDB::bind_method(D_METHOD("get_weather_sounds", "weather"), &SkydotWorld::get_weather_sounds);
+    godot::ClassDB::bind_method(D_METHOD("get_footstep_set", "id"), &SkydotWorld::get_footstep_set);
+    godot::ClassDB::bind_method(D_METHOD("get_footstep", "id"), &SkydotWorld::get_footstep);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_float", "name", "fallback"), &SkydotWorld::get_gmst_float);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_int", "name", "fallback"), &SkydotWorld::get_gmst_int);
     godot::ClassDB::bind_method(D_METHOD("get_gmst_string", "name", "fallback"), &SkydotWorld::get_gmst_string);
@@ -328,6 +337,15 @@ void SkydotWorld::tag_runtime_ref(std::int64_t ref, std::int64_t cell, godot::No
     ref_nodes::add(static_cast<std::uint32_t>(ref), node);
 }
 Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return queries::get_sound_output_model(data(), id); }
+Dictionary SkydotWorld::get_sound_category(std::int64_t id) const { return queries::get_sound_category(data(), id); }
+Dictionary SkydotWorld::get_acoustic_space(std::int64_t id) const { return queries::get_acoustic_space(data(), id); }
+Dictionary SkydotWorld::get_reverb(std::int64_t id) const { return queries::get_reverb(data(), id); }
+godot::PackedInt64Array SkydotWorld::get_sound_alternates(std::int64_t id) const { return queries::get_sound_alternates(data(), id); }
+godot::Array SkydotWorld::get_region_sounds(std::int64_t world, double x, double y) const { return queries::get_region_sounds(data(), world, x, y); }
+Dictionary SkydotWorld::get_region_sound_data(std::int64_t region) const { return queries::get_region_sound_data(data(), region); }
+godot::Array SkydotWorld::get_weather_sounds(std::int64_t weather) const { return queries::get_weather_sounds(data(), weather); }
+Dictionary SkydotWorld::get_footstep_set(std::int64_t id) const { return queries::get_footstep_set(data(), id); }
+Dictionary SkydotWorld::get_footstep(std::int64_t id) const { return queries::get_footstep(data(), id); }
 double SkydotWorld::get_gmst_float(const String& name, double fallback) const {
     return queries::get_gmst_float(data(), name, fallback);
 }

@@ -307,6 +307,9 @@ void EnvironmentCollector::on_weather(const record::MergedRecord& merged, io::Sp
     for (const auto image_space : weather->image_spaces) {
         out.image_spaces.push_back(shared_.global(merged, image_space, failed));
     }
+    for (const auto& sound : weather->sounds) {
+        out.sounds.emplace_back(shared_.global(merged, sound.sound, failed), sound.type);
+    }
     for (const auto voli : weather->volumetric_lighting) {
         out.volumetric_lighting.push_back(shared_.global(merged, voli, failed));
     }
@@ -395,8 +398,8 @@ void EnvironmentCollector::on_precipitation(const record::MergedRecord& merged,
     precipitations_[out.id] = std::move(out);
 }
 
-/// Regions with a weather list (RDAT type 3); the others are not needed
-/// yet.
+/// Regions with a weather list (RDAT type 3) or sounds (RDAT type 7, RDSA);
+/// the others are not needed yet.
 void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
     auto region = record::parse_region(data, form_ctx);
@@ -405,12 +408,21 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
         return;
     }
     constexpr std::uint32_t k_weather = 3;
+    constexpr std::uint32_t k_sound = 7;
     bool failed = false;
     wfb::RegionT out;
     out.id = merged.form.value;
     out.editor_id = region->editor_id;
     out.world = shared_.global(merged, region->worldspace, failed);
     for (const auto& entry : region->entries) {
+        if (entry.type == k_sound) {
+            out.sound_priority = entry.priority;
+            out.sound_override = (entry.flags & 0x1U) != 0;
+            for (const auto& s : entry.sounds) {
+                out.sounds.emplace_back(shared_.global(merged, s.sound, failed), s.flags, s.chance);
+            }
+            continue;
+        }
         if (entry.type != k_weather || entry.weathers.empty()) {
             continue;
         }
@@ -421,7 +433,7 @@ void EnvironmentCollector::on_region(const record::MergedRecord& merged, io::Spa
                                       shared_.global(merged, w.global, failed));
         }
     }
-    if (out.weathers.empty()) {
+    if (out.weathers.empty() && out.sounds.empty()) {
         return;
     }
     for (const auto& area : region->areas) {

@@ -163,6 +163,16 @@ private:
                     const record::FormContext& form_ctx);
     void on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data,
                                const record::FormContext& form_ctx);
+    void on_sound_category(const record::MergedRecord& merged, io::SpanReader& data,
+                           const record::FormContext& form_ctx);
+    void on_acoustic_space(const record::MergedRecord& merged, io::SpanReader& data,
+                           const record::FormContext& form_ctx);
+    void on_reverb(const record::MergedRecord& merged, io::SpanReader& data,
+                   const record::FormContext& form_ctx);
+    void on_footstep(const record::MergedRecord& merged, io::SpanReader& data,
+                     const record::FormContext& form_ctx);
+    void on_footstep_set(const record::MergedRecord& merged, io::SpanReader& data,
+                         const record::FormContext& form_ctx);
     void on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
                        const record::FormContext& form_ctx);
     void on_texture_set(const record::MergedRecord& merged, io::SpanReader& data,
@@ -197,6 +207,11 @@ private:
     std::map<std::uint32_t, wfb::SoundDescriptorT> sound_descriptors_;
     std::map<std::uint32_t, wfb::SoundMarkerT> sound_markers_;
     std::map<std::uint32_t, wfb::SoundOutputModelT> sound_output_models_;
+    std::map<std::uint32_t, wfb::SoundCategoryT> sound_categories_;
+    std::map<std::uint32_t, wfb::AcousticSpaceT> acoustic_spaces_;
+    std::map<std::uint32_t, wfb::ReverbT> reverbs_;
+    std::map<std::uint32_t, wfb::FootstepT> footsteps_;
+    std::map<std::uint32_t, wfb::FootstepSetT> footstep_sets_;
     std::map<std::uint32_t, wfb::ExplosionT> explosions_;
     std::map<std::uint32_t, wfb::KeywordT> keywords_;
     std::map<std::uint32_t, wfb::MessageT> messages_;

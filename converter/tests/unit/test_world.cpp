@@ -1342,7 +1342,8 @@ void make_actors(const TempDir& dir) {
     field_text(sndr, "ANAM", "\\Data\\Sound\\FX\\OBJ\\Pull_01.wav");
     field_text(sndr, "ANAM", "FX\\OBJ\\Pull_02.wav");
     field_u32(sndr, "ONAM", 0x0100'0E72);
-    field_u32(sndr, "LNAM", 0x0000'0801);
+    field_u32(sndr, "LNAM", 0x5300'0801);
+    field_u32(sndr, "SNAM", 0x0100'0E74);
     ByteWriter bnam;
     bnam.u8(0xFE); // -2 %
     bnam.u8(5);
@@ -1353,6 +1354,56 @@ void make_actors(const TempDir& dir) {
     ByteWriter sndrs;
     bethconv::test::write_record(sndrs, "SNDR", 0x0100'0E70, sndr.span());
     top_group(file, "SNDR", sndrs);
+
+    ByteWriter snct;
+    field_text(snct, "EDID", "TestCategory");
+    field_u32(snct, "FNAM", 2);
+    field_u32(snct, "PNAM", 0x0100'0E75);
+    ByteWriter vnam;
+    vnam.u16(58981);
+    bethconv::test::write_field(snct, "VNAM", vnam);
+    ByteWriter snct_root;
+    field_text(snct_root, "EDID", "TestMaster");
+    ByteWriter vnam_root;
+    vnam_root.u16(65535);
+    bethconv::test::write_field(snct_root, "VNAM", vnam_root);
+    ByteWriter snct_unam;
+    snct_unam.u16(52428);
+    bethconv::test::write_field(snct_root, "UNAM", snct_unam);
+    ByteWriter sncts;
+    bethconv::test::write_record(sncts, "SNCT", 0x0100'0E73, snct.span());
+    bethconv::test::write_record(sncts, "SNCT", 0x0100'0E75, snct_root.span());
+    top_group(file, "SNCT", sncts);
+
+    ByteWriter aspc;
+    field_text(aspc, "EDID", "TestCaveSpace");
+    field_u32(aspc, "SNAM", 0x0100'0E70);
+    field_u32(aspc, "BNAM", 0x0100'0E76);
+    ByteWriter aspcs;
+    bethconv::test::write_record(aspcs, "ASPC", 0x0100'0E77, aspc.span());
+    top_group(file, "ASPC", aspcs);
+
+    ByteWriter fstp;
+    field_text(fstp, "EDID", "TestFootLeft");
+    field_u32(fstp, "DATA", 0x0100'0E78);
+    field_text(fstp, "ANAM", "FootLeft");
+    ByteWriter fstps;
+    bethconv::test::write_record(fstps, "FSTP", 0x0100'0E79, fstp.span());
+    top_group(file, "FSTP", fstps);
+    ByteWriter fsts;
+    field_text(fsts, "EDID", "TestFootstepSet");
+    ByteWriter xcnt;
+    for (const std::uint32_t n : {1U, 0U, 0U, 1U, 0U}) {
+        xcnt.u32(n);
+    }
+    bethconv::test::write_field(fsts, "XCNT", xcnt);
+    ByteWriter fsts_data;
+    fsts_data.u32(0x0100'0E79);
+    fsts_data.u32(0x0100'0E79);
+    bethconv::test::write_field(fsts, "DATA", fsts_data);
+    ByteWriter fstss;
+    bethconv::test::write_record(fstss, "FSTS", 0x0100'0E7A, fsts.span());
+    top_group(file, "FSTS", fstss);
 
     ByteWriter soun;
     field_text(soun, "EDID", "TestDrips");
@@ -1677,6 +1728,33 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(sndr_out->priority == 0x80);
     CHECK(sndr_out->db_variance == 3);
     CHECK(sndr_out->static_attenuation == 132);
+    CHECK(sndr_out->lnam_unknown0 == 1);
+    CHECK(sndr_out->rumble == 0x53);
+    CHECK(sndr_out->alternate_for == 0x0200'0E74);
+    const auto snct_out = file->sound_category(0x0200'0E73);
+    REQUIRE(snct_out.has_value());
+    CHECK(snct_out->flags == 2);
+    CHECK(snct_out->parent == 0x0200'0E75);
+    CHECK(std::abs(snct_out->static_volume - 0.9F) < 1e-4F);
+    CHECK(snct_out->default_menu_volume == 1.0F);
+    const auto master_out = file->sound_category(0x0200'0E75);
+    REQUIRE(master_out.has_value());
+    CHECK(master_out->parent == 0);
+    CHECK(std::abs(master_out->default_menu_volume - 0.8F) < 1e-4F);
+    const auto aspc_out = file->acoustic_space(0x0200'0E77);
+    REQUIRE(aspc_out.has_value());
+    CHECK(aspc_out->ambient == 0x0200'0E70);
+    CHECK(aspc_out->reverb == 0x0200'0E76);
+    CHECK(file->base(0x0200'0E77).has_value()); // placed acoustic spaces resolve
+    const auto fstp_out = file->footstep(0x0200'0E79);
+    REQUIRE(fstp_out.has_value());
+    CHECK(fstp_out->tag == "FootLeft");
+    CHECK(fstp_out->impact_data_set == 0x0200'0E78);
+    const auto fsts_out = file->footstep_set(0x0200'0E7A);
+    REQUIRE(fsts_out.has_value());
+    CHECK(fsts_out->walk == std::vector<std::uint32_t>{0x0200'0E79});
+    CHECK(fsts_out->run.empty());
+    CHECK(fsts_out->sneak == std::vector<std::uint32_t>{0x0200'0E79});
     const auto soun_out = file->sound_marker(0x0200'0E71);
     REQUIRE(soun_out.has_value());
     CHECK(soun_out->editor_id == "TestDrips");
@@ -1691,6 +1769,7 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(sopm_out->min_distance == 300.0F);
     CHECK(sopm_out->max_distance == 4000.0F);
     CHECK(sopm_out->curve == std::vector<std::uint8_t>{100, 70, 35, 15, 0});
+    CHECK(sopm_out->reverb_send == 0x23);
 
     CHECK(stats->ammos == 1);
     CHECK(stats->projectiles == 1);

@@ -195,6 +195,28 @@ public:
     /// min_distance and max_distance (game units), curve (5 bytes). Empty if
     /// not an output model.
     godot::Dictionary get_sound_output_model(std::int64_t id) const;
+    /// Format 42 (see engine/docs/sound.md). SNCT: id, editor_id, name, flags
+    /// (1 mute when submerged, 2 on the menu), parent, static_volume,
+    /// default_menu_volume.
+    godot::Dictionary get_sound_category(std::int64_t id) const;
+    /// ASPC: id, editor_id, ambient (SNDR), region (REGN), reverb (REVB).
+    godot::Dictionary get_acoustic_space(std::int64_t id) const;
+    /// REVB: the DATA fields by name.
+    godot::Dictionary get_reverb(std::int64_t id) const;
+    /// The SNDRs whose SNAM ("Alternate Sound For") is `id`.
+    godot::PackedInt64Array get_sound_alternates(std::int64_t id) const;
+    /// The regions of `world` (or its parent) with sounds whose areas hold
+    /// (x, y), game units: [{id, editor_id, priority, override, sounds:
+    /// [{sound, flags, chance}]}].
+    godot::Array get_region_sounds(std::int64_t world, double x, double y) const;
+    /// One region's sounds as get_region_sounds' entries; empty if none.
+    godot::Dictionary get_region_sound_data(std::int64_t region) const;
+    /// WTHR SNAM: [{sound, type}].
+    godot::Array get_weather_sounds(std::int64_t weather) const;
+    /// FSTS: id, editor_id, walk, run, sprint, sneak, swim (FSTP ids).
+    godot::Dictionary get_footstep_set(std::int64_t id) const;
+    /// FSTP: id, editor_id, impact_data_set, tag.
+    godot::Dictionary get_footstep(std::int64_t id) const;
     /// AMMO: id, projectile (a PROJ id), flags, model (virtual path or empty).
     /// Empty if not an ammo.
     /// The game setting `name` (any case) as a number, `fallback` if the world has none.

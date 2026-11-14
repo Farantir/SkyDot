@@ -947,8 +947,15 @@ struct SoundDescriptor {
     FormId category;                 ///< GNAM
     FormId output_model;             ///< ONAM, a SOPM.
 
-    /// LNAM, 4 bytes: byte 0 unused, byte 1 looping. Skipped unless 2 bytes.
+    /// LNAM, 4 bytes: byte 0 undocumented, byte 1 looping, byte 2
+    /// undocumented, byte 3 the rumble send value. Skipped unless 4 bytes.
+    std::uint8_t lnam_unknown0{};
     std::uint8_t looping{};
+    std::uint8_t lnam_unknown2{};
+    std::uint8_t rumble{};
+    FormId alternate_for;              ///< SNAM, a SNDR.
+    std::vector<Condition> conditions; ///< CTDA with its CIS1/CIS2.
+    std::uint32_t fnam{};              ///< FNAM, undocumented.
 
     /// BNAM, 6 bytes: frequency shift and variance (signed), priority, dB
     /// variance, static attenuation. Skipped unless the full 6 bytes.
@@ -957,7 +964,7 @@ struct SoundDescriptor {
     std::uint8_t priority{};
     std::uint8_t db_variance{};
     std::uint16_t static_attenuation{};
-    static constexpr std::size_t k_lnam_size = 2;
+    static constexpr std::size_t k_lnam_size = 4;
     static constexpr std::size_t k_bnam_size = 6;
 };
 
@@ -971,7 +978,18 @@ struct SoundMarker {
 struct SoundOutputModel {
     std::string editor_id;
     std::uint8_t flags{}; ///< NAM1, byte 0.
+    std::uint8_t reverb_send{}; ///< NAM1, byte 3: percent.
+    bool has_nam1{};
     std::uint32_t type{}; ///< MNAM
+    /// ONAM, 24 bytes: 3 input rows of 8 speaker percentages.
+    std::vector<std::uint8_t> output;
+    /// Form version 30 (no NAM1): FNAM flags, CNAM undocumented (2), SNAM 16
+    /// bytes, 2 input rows (left, right) of 8 speaker percentages.
+    std::uint32_t old_flags{};
+    std::uint32_t old_cnam{};
+    std::vector<std::uint8_t> old_output;
+    /// ANAM bytes 0..3 and 17..19, undocumented.
+    std::vector<std::uint8_t> anam_unknown;
 
     /// ANAM, 20 bytes: 4 reserved, min and max distance, 5 curve bytes, 3
     /// reserved. Skipped unless the full 20 bytes are there.
@@ -981,6 +999,59 @@ struct SoundOutputModel {
     static constexpr std::size_t k_anam_size = 20;
     static constexpr std::size_t k_anam_reserved = 4;
     static constexpr std::size_t k_curve_points = 5;
+};
+
+/// SNCT: a sound category.
+struct SoundCategory {
+    std::string editor_id;
+    LString name;               ///< FULL
+    std::uint32_t flags{};      ///< FNAM
+    FormId parent;              ///< PNAM, an SNCT.
+    std::uint16_t volume{};     ///< VNAM, static volume multiplier * 65535.
+    std::uint16_t menu_volume{};///< UNAM, the slider's default * 65535.
+    bool has_menu_volume{};
+};
+
+/// ASPC: an acoustic space.
+struct AcousticSpace {
+    std::string editor_id;
+    FormId ambient; ///< SNAM, a SNDR.
+    FormId region;  ///< RDAT, a REGN.
+    FormId reverb;  ///< BNAM, a REVB.
+};
+
+/// REVB: reverb parameters, DATA 14 bytes.
+struct Reverb {
+    std::string editor_id;
+    std::uint16_t decay_time{};
+    std::uint16_t hf_reference{};
+    std::int8_t room_filter{};
+    std::int8_t room_hf_filter{};
+    std::int8_t reflections{};
+    std::int8_t reverb_amplitude{};
+    std::uint8_t decay_hf_ratio{};
+    std::uint8_t reflect_delay{};
+    std::uint8_t reverb_delay{};
+    std::uint8_t diffusion{};
+    std::uint8_t density{};
+    std::uint8_t unknown{};
+    static constexpr std::size_t k_data_size = 14;
+};
+
+/// FSTP: a footstep, DATA an IPDS, ANAM the animation tag.
+struct Footstep {
+    std::string editor_id;
+    FormId impact_data_set;
+    std::string tag;
+};
+
+/// FSTS: XCNT five counts (walk, run, sprint, sneak, swim), DATA the FSTPs
+/// of all five lists one after another.
+struct FootstepSet {
+    std::string editor_id;
+    std::vector<std::uint32_t> counts;
+    std::vector<FormId> footsteps;
+    static constexpr std::size_t k_lists = 5;
 };
 
 // ---- parsing --------------------------------------------------------------
@@ -1009,6 +1080,14 @@ struct VendorValues {
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<SoundOutputModel> parse_sound_output_model(io::SpanReader& data,
                                                                          const FormContext& ctx);
+[[nodiscard]] io::ParseResult<SoundCategory> parse_sound_category(io::SpanReader& data,
+                                                                  const FormContext& ctx);
+[[nodiscard]] io::ParseResult<AcousticSpace> parse_acoustic_space(io::SpanReader& data,
+                                                                  const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Reverb> parse_reverb(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<Footstep> parse_footstep(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<FootstepSet> parse_footstep_set(io::SpanReader& data,
+                                                              const FormContext& ctx);
 [[nodiscard]] io::ParseResult<GameSetting> parse_game_setting(io::SpanReader& data,
                                                               const FormContext& ctx);
 [[nodiscard]] io::ParseResult<GlobalVariable> parse_global(io::SpanReader& data,

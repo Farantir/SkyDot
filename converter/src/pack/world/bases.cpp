@@ -88,6 +88,21 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"SOPM"}.value:
         on_sound_output_model(merged, data, form_ctx);
         break;
+    case FourCC{"SNCT"}.value:
+        on_sound_category(merged, data, form_ctx);
+        break;
+    case FourCC{"ASPC"}.value:
+        on_acoustic_space(merged, data, form_ctx);
+        break;
+    case FourCC{"REVB"}.value:
+        on_reverb(merged, data, form_ctx);
+        break;
+    case FourCC{"FSTP"}.value:
+        on_footstep(merged, data, form_ctx);
+        break;
+    case FourCC{"FSTS"}.value:
+        on_footstep_set(merged, data, form_ctx);
+        break;
     case FourCC{"EXPL"}.value:
         on_explosion(merged, data, form_ctx);
         break;
@@ -246,8 +261,10 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
     auto& activate_text = base->activate_text;
     auto& editor_id = base->editor_id;
     const std::string& path = !modl.empty() ? modl : !mod2.empty() ? mod2 : mod4;
-    // A sound marker has no model but is a base, so its placed references resolve.
-    if (path.empty() && scripts.empty() && merged.type != FourCC{"SOUN"}) {
+    // A sound marker or an acoustic space has no model but is a base, so its
+    // placed references resolve.
+    if (path.empty() && scripts.empty() && merged.type != FourCC{"SOUN"} &&
+        merged.type != FourCC{"ASPC"}) {
         return;
     }
     bool failed = false;
@@ -390,6 +407,12 @@ void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::
     out.priority = sndr->priority;
     out.db_variance = sndr->db_variance;
     out.static_attenuation = sndr->static_attenuation;
+    out.alternate_for = shared_.global(merged, sndr->alternate_for, failed);
+    out.conditions = shared_.global_conditions(merged, sndr->conditions, failed);
+    out.lnam_unknown0 = sndr->lnam_unknown0;
+    out.lnam_unknown2 = sndr->lnam_unknown2;
+    out.rumble = sndr->rumble;
+    out.fnam = sndr->fnam;
     if (failed) {
         ++shared_.stats().unresolved;
     }
@@ -481,8 +504,11 @@ void BaseCollector::on_message(const record::MergedRecord& merged, io::SpanReade
     messages_[out.id] = std::move(out);
 }
 
-/// SOPM: NAM1 (byte 0 flags), MNAM type, ANAM 20 bytes: 4 reserved, min and
-/// max distance floats, 5 curve bytes, 3 reserved.
+/// SOPM: NAM1 (byte 0 flags, byte 3 reverb send), MNAM type, ONAM speaker
+/// output, ANAM 20 bytes: 4 undocumented, min and max distance floats, 5 curve
+/// bytes, 3 undocumented. The 4 records of form version 30 have no NAM1: FNAM
+/// holds their flags (1 on all four, all of them "...Linear" or "Rad" models
+/// with distances) and SNAM a speaker output of two input rows.
 void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data,
                                           const record::FormContext& form_ctx) {
     auto sopm = record::parse_sound_output_model(data, form_ctx);
@@ -498,7 +524,140 @@ void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io
     out.min_distance = sopm->min_distance;
     out.max_distance = sopm->max_distance;
     out.curve.assign(sopm->curve.begin(), sopm->curve.end());
+    out.reverb_send = sopm->reverb_send;
+    out.anam_unknown.assign(sopm->anam_unknown.begin(), sopm->anam_unknown.end());
+    constexpr std::size_t k_row = 8;
+    if (!sopm->has_nam1) {
+        out.flags = static_cast<std::uint8_t>(sopm->old_flags);
+        if (sopm->old_output.size() == 2 * k_row) {
+            // Row 0 (a mono input) to the front pair, rows 1 and 2 as stored.
+            out.speaker_output.assign(3 * k_row, 0);
+            out.speaker_output[0] = 100;
+            out.speaker_output[1] = 100;
+            std::copy(sopm->old_output.begin(), sopm->old_output.end(), out.speaker_output.begin() + k_row);
+        }
+    } else {
+        out.speaker_output.assign(sopm->output.begin(), sopm->output.end());
+    }
     sound_output_models_[out.id] = std::move(out);
+}
+
+/// SNCT: FNAM flags, PNAM parent, VNAM and UNAM volumes as u16 / 65535.
+void BaseCollector::on_sound_category(const record::MergedRecord& merged, io::SpanReader& data,
+                                      const record::FormContext& form_ctx) {
+    auto snct = record::parse_sound_category(data, form_ctx);
+    if (!snct) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::SoundCategoryT out;
+    out.id = merged.form.value;
+    out.editor_id = snct->editor_id;
+    out.name = snct->name.text;
+    out.flags = snct->flags;
+    out.parent = shared_.global(merged, snct->parent, failed);
+    constexpr float k_full = 65535.0F;
+    out.static_volume = static_cast<float>(snct->volume) / k_full;
+    out.default_menu_volume = snct->has_menu_volume ? static_cast<float>(snct->menu_volume) / k_full : 1.0F;
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    sound_categories_[out.id] = std::move(out);
+}
+
+/// ASPC: SNAM ambient loop, RDAT region, BNAM reverb. The record is a base
+/// too (collect_generic), so its placed references (XPRM boxes) resolve.
+void BaseCollector::on_acoustic_space(const record::MergedRecord& merged, io::SpanReader& data,
+                                      const record::FormContext& form_ctx) {
+    auto aspc = record::parse_acoustic_space(data, form_ctx);
+    if (!aspc) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::AcousticSpaceT out;
+    out.id = merged.form.value;
+    out.editor_id = aspc->editor_id;
+    out.ambient = shared_.global(merged, aspc->ambient, failed);
+    out.region = shared_.global(merged, aspc->region, failed);
+    out.reverb = shared_.global(merged, aspc->reverb, failed);
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    acoustic_spaces_[out.id] = std::move(out);
+}
+
+/// REVB: DATA 14 bytes (xEdit's layout).
+void BaseCollector::on_reverb(const record::MergedRecord& merged, io::SpanReader& data,
+                              const record::FormContext& form_ctx) {
+    auto revb = record::parse_reverb(data, form_ctx);
+    if (!revb) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::ReverbT out;
+    out.id = merged.form.value;
+    out.editor_id = revb->editor_id;
+    out.decay_time_ms = revb->decay_time;
+    out.hf_reference_hz = revb->hf_reference;
+    out.room_filter = revb->room_filter;
+    out.room_hf_filter = revb->room_hf_filter;
+    out.reflections = revb->reflections;
+    out.reverb_amplitude = revb->reverb_amplitude;
+    out.decay_hf_ratio = revb->decay_hf_ratio;
+    out.reflect_delay = revb->reflect_delay;
+    out.reverb_delay_ms = revb->reverb_delay;
+    out.diffusion_percent = revb->diffusion;
+    out.density_percent = revb->density;
+    out.unknown = revb->unknown;
+    reverbs_[out.id] = std::move(out);
+}
+
+/// FSTP: DATA impact data set, ANAM tag.
+void BaseCollector::on_footstep(const record::MergedRecord& merged, io::SpanReader& data,
+                                const record::FormContext& form_ctx) {
+    auto fstp = record::parse_footstep(data, form_ctx);
+    if (!fstp) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::FootstepT out;
+    out.id = merged.form.value;
+    out.editor_id = fstp->editor_id;
+    out.impact_data_set = shared_.global(merged, fstp->impact_data_set, failed);
+    out.tag = fstp->tag;
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    footsteps_[out.id] = std::move(out);
+}
+
+/// FSTS: XCNT five counts, DATA the footsteps of the five lists in order.
+void BaseCollector::on_footstep_set(const record::MergedRecord& merged, io::SpanReader& data,
+                                    const record::FormContext& form_ctx) {
+    auto fsts = record::parse_footstep_set(data, form_ctx);
+    if (!fsts) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    wfb::FootstepSetT out;
+    out.id = merged.form.value;
+    out.editor_id = fsts->editor_id;
+    std::vector<std::uint32_t>* lists[record::FootstepSet::k_lists] = {&out.walk, &out.run, &out.sprint,
+                                                                       &out.sneak, &out.swim};
+    std::size_t at = 0;
+    for (std::size_t i = 0; i < record::FootstepSet::k_lists && i < fsts->counts.size(); ++i) {
+        for (std::uint32_t n = 0; n < fsts->counts[i] && at < fsts->footsteps.size(); ++n, ++at) {
+            lists[i]->push_back(shared_.global(merged, fsts->footsteps[at], failed));
+        }
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
+    footstep_sets_[out.id] = std::move(out);
 }
 
 void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data,
@@ -1476,6 +1635,11 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.sound_descriptors += sound_descriptors_.size();
     stats.sound_markers += sound_markers_.size();
     stats.sound_output_models += sound_output_models_.size();
+    stats.sound_categories += sound_categories_.size();
+    stats.acoustic_spaces += acoustic_spaces_.size();
+    stats.reverbs += reverbs_.size();
+    stats.footsteps += footsteps_.size();
+    stats.footstep_sets += footstep_sets_.size();
     stats.explosions += explosions_.size();
     stats.keywords += keywords_.size();
     stats.messages += messages_.size();
@@ -1503,6 +1667,11 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.sound_descriptors, sound_descriptors_);
     move_into(world.sound_markers, sound_markers_);
     move_into(world.sound_output_models, sound_output_models_);
+    move_into(world.sound_categories, sound_categories_);
+    move_into(world.acoustic_spaces, acoustic_spaces_);
+    move_into(world.reverbs, reverbs_);
+    move_into(world.footsteps, footsteps_);
+    move_into(world.footstep_sets, footstep_sets_);
     move_into(world.explosions, explosions_);
     move_into(world.keywords, keywords_);
     move_into(world.messages, messages_);

@@ -258,6 +258,7 @@ void ActorCollector::on_armor_addon(const record::MergedRecord& merged, io::Span
     out.slots = addon->body.slots;
     out.race = shared_.global(merged, addon->race, failed);
     out.additional_races = shared_.global_all(merged, addon->additional_races, failed);
+    out.footstep_set = shared_.global(merged, addon->footstep_sound, failed);
     out.male_model = addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path);
     out.female_model =
         addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path);

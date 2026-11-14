@@ -442,6 +442,26 @@ std::optional<wfb::SoundOutputModelT> WorldFile::sound_output_model(std::uint32_
     return unpack(lookup(impl_->root->sound_output_models(), id));
 }
 
+std::optional<wfb::SoundCategoryT> WorldFile::sound_category(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->sound_categories(), id));
+}
+
+std::optional<wfb::AcousticSpaceT> WorldFile::acoustic_space(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->acoustic_spaces(), id));
+}
+
+std::optional<wfb::ReverbT> WorldFile::reverb(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->reverbs(), id));
+}
+
+std::optional<wfb::FootstepT> WorldFile::footstep(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->footsteps(), id));
+}
+
+std::optional<wfb::FootstepSetT> WorldFile::footstep_set(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->footstep_sets(), id));
+}
+
 std::optional<wfb::ExplosionT> WorldFile::explosion(std::uint32_t id) const {
     return unpack(lookup(impl_->root->explosions(), id));
 }

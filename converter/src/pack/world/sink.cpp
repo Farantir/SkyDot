@@ -92,6 +92,10 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     }
     case FourCC{"SNDR"}.value:
     case FourCC{"SOPM"}.value:
+    case FourCC{"SNCT"}.value:
+    case FourCC{"REVB"}.value:
+    case FourCC{"FSTP"}.value:
+    case FourCC{"FSTS"}.value:
     case FourCC{"KYWD"}.value:
     case FourCC{"MESG"}.value:
     case FourCC{"GMST"}.value:
@@ -110,6 +114,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
         bases_.collect(merged, data, form_ctx);
         break;
     case FourCC{"SOUN"}.value:
+    case FourCC{"ASPC"}.value:
     case FourCC{"EXPL"}.value:
     case FourCC{"COBJ"}.value:
     case FourCC{"MGEF"}.value:

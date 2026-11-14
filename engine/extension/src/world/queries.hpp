@@ -67,6 +67,15 @@ std::int64_t find_sound_descriptor(const WorldData& data, const godot::String& e
 std::int64_t find_sound_marker(const WorldData& data, const godot::String& editor_id);
 godot::Dictionary get_sound_marker(const WorldData& data, std::int64_t id);
 godot::Dictionary get_sound_output_model(const WorldData& data, std::int64_t id);
+godot::Dictionary get_sound_category(const WorldData& data, std::int64_t id);
+godot::Dictionary get_acoustic_space(const WorldData& data, std::int64_t id);
+godot::Dictionary get_reverb(const WorldData& data, std::int64_t id);
+godot::PackedInt64Array get_sound_alternates(const WorldData& data, std::int64_t id);
+godot::Array get_region_sounds(const WorldData& data, std::int64_t world, double x, double y);
+godot::Dictionary get_region_sound_data(const WorldData& data, std::int64_t region);
+godot::Array get_weather_sounds(const WorldData& data, std::int64_t weather);
+godot::Dictionary get_footstep_set(const WorldData& data, std::int64_t id);
+godot::Dictionary get_footstep(const WorldData& data, std::int64_t id);
 
 // ---- keywords, form lists, messages (queries_forms.cpp) -------------------
 std::int64_t find_keyword(const WorldData& data, const godot::String& editor_id);

@@ -583,6 +583,9 @@ public:
     godot::Array get_perks(std::int64_t ref) const;
     /// Whether the PERK's own conditions pass for `ref` (the prerequisites; true if it has none or is unknown).
     bool perk_conditions_met(std::int64_t perk, std::int64_t ref);
+    /// Whether the SNDR's conditions pass, run on `ref` (the source; 0 the
+    /// player). True if it has none or is unknown.
+    bool sound_conditions_met(std::int64_t sound, std::int64_t ref);
     /// The perk entry point `entry_point` (perks::EntryPoint) applied to `value` for `owner`'s perks (an actor
     /// reference; the player 0x14): `subjects` are the condition subjects of tab 0 (the owner), 1, 2 (a weapon
     /// base, a target, a spell, an item ...). `extra` (all optional): advance_skill, advance_action,

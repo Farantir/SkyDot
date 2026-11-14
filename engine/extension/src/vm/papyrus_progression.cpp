@@ -5,6 +5,7 @@
 #include "conditions/conditions.hpp"
 #include "perks/entry_points.hpp"
 #include "vm/papyrus.hpp"
+#include "data/fb_search.hpp"
 
 using godot::Array;
 using godot::Dictionary;
@@ -168,6 +169,17 @@ bool SkydotPapyrus::perk_conditions_met(std::int64_t perk, std::int64_t ref) {
     }
     const conditions::ConditionContext ctx{.subject = static_cast<std::uint32_t>(ref), .target = 0, .quest = 0};
     return conditions::conditions_pass(p->conditions(), condition_world(), ctx);
+}
+
+bool SkydotPapyrus::sound_conditions_met(std::int64_t sound, std::int64_t ref) {
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    const auto* d = root != nullptr ? lookup(root->sound_descriptors(), static_cast<std::uint32_t>(sound)) : nullptr;
+    if (d == nullptr || d->conditions() == nullptr || d->conditions()->size() == 0) {
+        return true;
+    }
+    const auto subject = static_cast<std::uint32_t>(ref != 0 ? ref : 0x14);
+    const conditions::ConditionContext ctx{.subject = subject, .target = 0, .quest = 0};
+    return conditions::conditions_pass(d->conditions(), condition_world(), ctx);
 }
 
 } // namespace skydot

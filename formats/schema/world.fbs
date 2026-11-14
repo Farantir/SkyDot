@@ -344,6 +344,9 @@ table Cell {
     /// XLCN (format 26): a Location in `locations`; 0 if none. Exterior cells
     /// have one too.
     location: uint32;
+    /// XCAS (format 42): an AcousticSpace, 0 if none (542 interiors and 114
+    /// exterior cells in Skyrim.esm).
+    acoustic_space: uint32;
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: CommonLibSSE TES_LIGHT_FLAGS).
@@ -1003,6 +1006,20 @@ table Region {
     weather_priority: ubyte;
     /// RDAT flags bit 0.
     weather_override: bool;
+    /// RDAT type 7 (format 42): the region's sounds, its priority and
+    /// override flag. A region is in `regions` if it has weathers or sounds.
+    sounds: [RegionSound];
+    sound_priority: ubyte;
+    sound_override: bool;
+}
+
+/// RDSA (format 42): a sound of a region. `flags`: bit 0 pleasant, 1 cloudy,
+/// 2 rainy, 3 snowy (the weather classes it plays in); `chance` as stored
+/// (1 for loops; 0.01..0.1 for one-shots).
+struct RegionSound {
+    sound: uint32;
+    flags: uint32;
+    chance: float;
 }
 
 /// `Weather.classification`.
@@ -1059,6 +1076,15 @@ table Weather {
     /// HNAM (format 13): a VolumetricLighting per time of day (sunrise, day,
     /// sunset, night); 0 where none.
     volumetric_lighting: [uint32];
+    /// SNAM (format 42): the weather's sounds and when each plays.
+    sounds: [WeatherSound];
+}
+
+/// WTHR SNAM (format 42): a SoundDescriptor and its type: 0 default (plays
+/// all the time), 1 precipitation, 2 wind, 3 thunder (source: xEdit).
+struct WeatherSound {
+    sound: uint32;
+    type: uint32;
 }
 
 /// VOLI (format 13, Update.esm only): volumetric lighting. The floats are the
@@ -1512,6 +1538,8 @@ table ArmorAddon {
     /// MOD4 and MOD5 (format 30): the first-person models; empty if none.
     male_model_1st: string;
     female_model_1st: string;
+    /// SNDD (format 42): a FootstepSet, 0 if none.
+    footstep_set: uint32;
 }
 
 /// OTFT: ARMO and LVLI.
@@ -2099,6 +2127,21 @@ table SoundDescriptor {
     priority: uint8;
     db_variance: uint8;
     static_attenuation: uint16;
+    /// SNAM (format 42): "Alternate Sound For", the descriptor this one stands
+    /// in for: when that one is played and these conditions pass, this one
+    /// plays instead. 0 if none.
+    alternate_for: uint32;
+    /// CTDA (format 42): run on the sound's source reference.
+    conditions: [Condition];
+    /// LNAM bytes 0, 2 and 3 (format 42), as stored: 0, 1, 2 or 4 on byte 0
+    /// and 0 on byte 2 in Skyrim.esm, neither documented; byte 3 the rumble
+    /// send value (small / 7 + (big / 7) * 16).
+    lnam_unknown0: uint8;
+    lnam_unknown2: uint8;
+    rumble: uint8;
+    /// FNAM (format 42) as stored, undocumented: 1, 2, 0x11, 0x12, 0x14 or 0
+    /// on 63 descriptors of Skyrim.esm.
+    fnam: uint32;
 }
 
 /// SOUN (format 21): a sound marker, placed in cells (ambient loops).
@@ -2117,11 +2160,105 @@ table SoundMarker {
 table SoundOutputModel {
     id: uint32 (key);
     editor_id: string;
+    /// Bit 0 attenuates with distance, bit 1 allows rumble. A record of form
+    /// version 30 (4 in Skyrim.esm, the *Linear models) has no NAM1: its flags
+    /// are FNAM's (format 42; before 42 they were 0).
     flags: uint8;
+    /// MNAM: 0 uses HRTF (a mono source placed in 3D), 1 defined speaker
+    /// output (`speaker_output` routes the channels, distance only scales).
     type: uint32;
     min_distance: float;
     max_distance: float;
     curve: [ubyte];
+    /// NAM1 byte 3 (format 42): percent of the signal sent to the acoustic
+    /// space's reverb. 0 on the version 30 records.
+    reverb_send: uint8;
+    /// ONAM (format 42): percent per speaker, 3 rows of 8 (the input
+    /// channels: mono, stereo left, stereo right; the speakers: front left,
+    /// front right, centre, LFE, rear left, rear right, side left, side right).
+    /// The version 30 records' SNAM holds 2 rows (left, right); they become
+    /// rows 1 and 2 and row 0 sends to front left and right. Empty if none.
+    speaker_output: [ubyte];
+    /// ANAM bytes 0..3 and 17..19 (format 42), as stored: undocumented.
+    anam_unknown: [ubyte];
+}
+
+/// SNCT (format 42): a sound category. A sound's volume is the product of
+/// `static_volume` up its parent chain, times the user's slider of each
+/// category with `menu` (default `default_menu_volume`).
+table SoundCategory {
+    id: uint32 (key);
+    editor_id: string;
+    name: string;
+    /// FNAM: bit 0 mute when submerged, bit 1 should appear on menu (a user
+    /// slider), bit 2 immune to time speed (not set in Skyrim.esm).
+    flags: uint32;
+    /// PNAM: the parent SoundCategory, 0 at the root.
+    parent: uint32;
+    /// VNAM / 65535.
+    static_volume: float;
+    /// UNAM / 65535: the slider's default; 1 without UNAM.
+    default_menu_volume: float = 1.0;
+}
+
+/// ASPC (format 42): an acoustic space. A cell's (XCAS) is where the listener
+/// is unless a placed one (a reference with an XPRM box) holds the listener.
+table AcousticSpace {
+    id: uint32 (key);
+    editor_id: string;
+    /// SNAM: the ambient loop (a SoundDescriptor), 0 if none.
+    ambient: uint32;
+    /// RDAT: a Region whose sounds play while inside, 0 if none.
+    region: uint32;
+    /// BNAM: a Reverb, 0 if none.
+    reverb: uint32;
+}
+
+/// REVB (format 42): reverb parameters (DATA, 14 bytes). Field meanings from
+/// xEdit's REVB definition; the I3DL2 / XAudio2 reverb these feed.
+table Reverb {
+    id: uint32 (key);
+    editor_id: string;
+    decay_time_ms: uint16;
+    hf_reference_hz: uint16;
+    /// Hundreds of mB (dB / 100 * 100): -100..0.
+    room_filter: int8;
+    room_hf_filter: int8;
+    reflections: int8;
+    reverb_amplitude: int8;
+    /// Times 100.
+    decay_hf_ratio: uint8;
+    /// Milliseconds, scaled (xEdit: x 0.83).
+    reflect_delay: uint8;
+    reverb_delay_ms: uint8;
+    diffusion_percent: uint8;
+    density_percent: uint8;
+    unknown: uint8;
+}
+
+/// FSTP (format 42): a footstep. `tag` is the animation event that plays it
+/// (FootLeft, FootRight, FootSprintLeft, ...); the sound comes from the impact
+/// data set by the material under the foot.
+table Footstep {
+    id: uint32 (key);
+    editor_id: string;
+    /// DATA: an ImpactDataSet.
+    impact_data_set: uint32;
+    /// ANAM.
+    tag: string;
+}
+
+/// FSTS (format 42): a footstep set. XCNT gives the counts of the five lists
+/// that DATA holds one after another: walking, running, sprinting, sneaking,
+/// swimming.
+table FootstepSet {
+    id: uint32 (key);
+    editor_id: string;
+    walk: [uint32];
+    run: [uint32];
+    sprint: [uint32];
+    sneak: [uint32];
+    swim: [uint32];
 }
 
 /// KYWD (format 22): `Keyword.GetKeyword` finds one by editor id.
@@ -2674,6 +2811,16 @@ table World {
     idles: [Idle];
     /// Sorted by ref (format 41).
     actor_enable_parents: [ActorEnableParent];
+    /// Sorted by id (format 42).
+    sound_categories: [SoundCategory];
+    /// Sorted by id (format 42).
+    acoustic_spaces: [AcousticSpace];
+    /// Sorted by id (format 42).
+    reverbs: [Reverb];
+    /// Sorted by id (format 42).
+    footsteps: [Footstep];
+    /// Sorted by id (format 42).
+    footstep_sets: [FootstepSet];
 }
 
 root_type World;
