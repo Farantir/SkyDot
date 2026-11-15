@@ -619,7 +619,9 @@ void BaseCollector::on_image_space_modifier(const record::MergedRecord& merged, 
     image_space_modifiers_[out.id] = std::move(out);
 }
 
-/// DOBJ: the slots of the default object manager; a later record's slot wins.
+/// DOBJ: the slots of the default object manager. Every version comes here in
+/// load order (WorldSink::on_superseded), so a later plugin's slot wins and the
+/// slots it does not list keep the earlier value.
 void BaseCollector::on_default_objects(const record::MergedRecord& merged, io::SpanReader& data,
                                        const record::FormContext& form_ctx) {
     auto dobj = record::parse_default_objects(data, form_ctx);

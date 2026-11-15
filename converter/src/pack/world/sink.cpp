@@ -10,7 +10,12 @@ using io::FourCC;
 
 void WorldSink::on_superseded(const record::MergedRecord& merged, const record::RecordContext&,
                               io::SpanReader& data, const record::FormContext& form_ctx) {
-    if (!merged.deleted) {
+    if (merged.deleted) {
+        return;
+    }
+    if (merged.type == FourCC{"DOBJ"}) {
+        bases_.collect(merged, data, form_ctx);
+    } else {
         environment_.collect_large_refs(merged, data, form_ctx);
     }
 }

@@ -41,9 +41,11 @@ public:
     void on_record(const record::MergedRecord& merged, const record::RecordContext& ctx,
                    io::SpanReader& data, const record::FormContext& form_ctx) override;
 
-    /// WRLD only: the large-reference lists of every version add up.
+    /// WRLD's large-reference lists and DOBJ's slots add up over every version
+    /// (each plugin's DOBJ lists only the slots it sets: Update.esm's shares
+    /// none of Skyrim.esm's 303, Dragonborn.esm's lacks IMID).
     [[nodiscard]] bool wants_superseded(record::FourCC type) const override {
-        return type == record::FourCC{"WRLD"};
+        return type == record::FourCC{"WRLD"} || type == record::FourCC{"DOBJ"};
     }
     void on_superseded(const record::MergedRecord& merged, const record::RecordContext& ctx,
                        io::SpanReader& data, const record::FormContext& form_ctx) override;
