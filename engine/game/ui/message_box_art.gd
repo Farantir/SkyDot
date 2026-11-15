@@ -26,7 +26,7 @@ const BUTTON_PAD := 4.0
 const BUTTON_GAP := 25.0
 const LINE_LEADING := 2.0
 ## Measured against the game (1100x800): the buttons sit lower and the divider higher than the script's arithmetic gives.
-const BUTTON_DROP := 7.0
+const BUTTON_DROP := 17.0
 const DIVIDER_RISE := 6.0
 
 

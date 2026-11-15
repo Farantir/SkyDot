@@ -815,12 +815,12 @@ func _draw_columns(font: Font, th: Theme, fill: Transform2D) -> void:
 	var at_cat := _category_index()
 	for i in names.size():
 		var y := LIST_CENTRE_Y + (i - at_cat) * LIST_PITCH
-		if _mode == Mode.ENCHANT and i > 0:
-			y += 14.0  # the rule under Disenchant opens the three parts of the enchanting
+		if _mode == Mode.ENCHANT:
+			y += _enchant_gap(i, at_cat)
 		if y > 40.0 and y < BAR_TOP - 10.0:
 			_stage_text(font, names[i], Vector2(LIST_X, y), 26.0 if i == at_cat else 20.0, Color.WHITE if i == at_cat else _dim)
 	if _mode == Mode.ENCHANT:
-		var rule_y := LIST_CENTRE_Y + (0 - at_cat) * LIST_PITCH + 20.0
+		var rule_y := LIST_CENTRE_Y + (0 - at_cat) * LIST_PITCH + _enchant_gap(0, at_cat) + 40.0
 		draw_line(fill * Vector2(LIST_X, rule_y), fill * Vector2(LIST_X + 110.0, rule_y), line_colour, 1.0)
 	var rows := _column_rows()
 	var at := maxi(rows.find(_selected), 0)
@@ -841,6 +841,15 @@ func _draw_columns(font: Font, th: Theme, fill: Transform2D) -> void:
 	var row := current()
 	_draw_card(font, th, fill, row)
 	_draw_requires(font)
+
+
+## Enchanting's category column (measured against the game with Item chosen: Disenchant 101 stage px above it, then
+## 60.5 and 40.5 px): the chosen row has 20 px of room either side, and the rule under Disenchant opens 40 px.
+func _enchant_gap(i: int, chosen: int) -> float:
+	var rule := 40.0 if i > 0 else 0.0
+	if chosen > 0:
+		rule -= 40.0
+	return rule + (20.0 if i > chosen else -20.0 if i < chosen else 0.0)
 
 
 ## The little arrow the game puts before a marked row (an outlined triangle pointing right).
@@ -1014,9 +1023,9 @@ func _draw_bottom_bar(font: Font) -> void:
 	for button: Array in buttons:
 		var icon := UiAssets.exported(SWF, String(button[0]))
 		if icon >= 0:
-			UiDraw.character(self, SWF, icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(x, 662.0)))
-		_stage_text(font, String(button[1]), Vector2(x + 28.0, 684.0), 20.0, Color.WHITE)
-		x += 28.0 + font.get_string_size(String(button[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x + 16.0
+			UiDraw.character(self, SWF, icon, fill * Transform2D(Vector2(1.1, 0.0), Vector2(0.0, 1.1), Vector2(x, 661.0)))
+		_stage_text(font, String(button[1]), Vector2(x + 32.0, 684.0), 20.0, Color.WHITE)
+		x += 32.0 + font.get_string_size(String(button[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x + 16.0
 	_draw_skill(font, fill)
 
 
@@ -1024,12 +1033,31 @@ func _draw_skill(font: Font, fill: Transform2D) -> void:
 	var skill: String = SKILLS.get(_mode, "Smithing")
 	var level := int(_session.actor_value(0x14, skill))
 	_stage_text(font, skill, Vector2(770.0, 680.0), 16.0, _dim)
-	_stage_text(font, str(level), Vector2(833.0, 684.0), 20.0, Color.WHITE)
-	_stage_text(font, str(mini(level + 1, 100)), Vector2(1015.0, 684.0), 20.0, Color.WHITE)
-	var bar := Rect2(fill * Vector2(868.0, 671.0), Vector2(140.0, 14.0) * Vector2(fill.x.x, fill.y.y))
-	draw_rect(bar, Color(0.0, 0.0, 0.0, 0.6))
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * _skill_fraction(skill), bar.size.y)), Color(0.35, 0.45, 0.75, 0.9))
-	draw_rect(bar, Color(1.0, 1.0, 1.0, 0.55), false, 1.0)
+	_stage_text(font, str(level), Vector2(821.0, 684.0), 20.0, Color.WHITE)
+	_stage_text(font, str(mini(level + 1, 100)), Vector2(1005.0, 684.0), 20.0, Color.WHITE)
+	_draw_skill_meter(fill, _skill_fraction(skill))
+
+
+## The skill meter of the bottom bar's "Crafting" frame (bottombar.swf, PlayerInfoCard at (503, 16) in the bar at
+## y 646.55): the frame art (the unnamed shape) and LevelMeterInstance at the fraction, as BottomBar draws its meters.
+func _draw_skill_meter(fill: Transform2D, fraction: float) -> void:
+	var swf := BottomBar.SWF
+	var frame := UiAssets.label_frame(swf, BottomBar.CARD_SPRITE, "Crafting")
+	if frame < 0:
+		return
+	var card := fill * Transform2D(0.0, Vector2(503.0 + BottomBar.GROUP_SHIFT, 646.55 + 16.0))
+	for entry: Dictionary in UiAssets.display_list(swf, BottomBar.CARD_SPRITE, frame):
+		var id := int(entry["character"])
+		if entry.get("name", "") == "" and UiAssets.character(swf, id).get("type", "") == "shape":
+			UiDraw.character(self, swf, id, card * UiDraw.matrix(entry["matrix"]))
+		elif entry.get("name", "") == "LevelMeterInstance":
+			var look := UiDraw.Look.new()
+			look.fills["Meter_mc"] = fraction
+			var xform := card * UiDraw.matrix(entry["matrix"])
+			for bar: Dictionary in UiAssets.character(swf, id).get("display", []):
+				var m: Array = bar["matrix"]
+				var tall := Transform2D(Vector2(m[0], 0.0), Vector2(0.0, BottomBar.METER_HEIGHT), Vector2(m[4], BottomBar.METER_ORIGIN_Y))
+				UiDraw.character(self, swf, int(bar["character"]), xform * tall, Color.WHITE, look, Rect2(), 0, "Meter_mc")
 
 
 ## How far the skill is to its next level (the xp over Progression.skill_threshold).

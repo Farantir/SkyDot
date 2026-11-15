@@ -67,7 +67,7 @@ static func _draw_topics(canvas: CanvasItem, stage: Transform2D, font: Font, ent
 		scale: float) -> void:
 	var holder := stage * Transform2D(Vector2(HOLDER_SCALE, 0.0), Vector2(0.0, HOLDER_SCALE), ROOT + HOLDER)
 	_draw_instance(canvas, stage, "ListPanel")
-	if entries.size() > 1:
+	if entries.size() > SLOTS:  # the arrows show only when the list scrolls (the game shows none for three topics)
 		_draw_instance(canvas, stage, "ScrollIndicators")
 	var px := _px(TEXT_SIZE * HOLDER_SCALE, scale)
 	var centre := mini(selected, entries.size() - 1)
