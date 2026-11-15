@@ -22,7 +22,9 @@ render_mode unshaded;
 render_mode alpha_to_coverage;
 #endif
 #if defined(SKYDOT_ALPHA_ADD)
-render_mode depth_draw_never, blend_add;
+// Additive as premultiplied alpha with ALPHA 0: the same colour as blend_add, and the target's alpha stays as it
+// was, as in the game (an additive layer covers nothing: the skills screen's sky lets the world show through).
+render_mode depth_draw_never, blend_premul_alpha;
 #elif defined(SKYDOT_ALPHA_MUL)
 render_mode depth_draw_never, blend_mul, fog_disabled;
 #elif defined(SKYDOT_ALPHA_BLEND)
@@ -178,7 +180,7 @@ void fragment() {
 	color *= emission_strength;
 #ifdef SKYDOT_ALPHA_ADD
 	ALBEDO = max(color * alpha, vec3(0.0));
-	ALPHA = 1.0;
+	ALPHA = 0.0;
 	// Fog would mix the transparent (black) parts towards its colour, and
 	// adding that draws every quad as a square far away. Fade towards black
 	// by the fog's amount instead.

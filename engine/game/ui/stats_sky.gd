@@ -42,6 +42,7 @@ const LINE_LENGTH := 56.2
 ## while slower than the remaining distance allows (1.3).
 const STOP_SPEED := 0.01
 const CATCH_UP := 1.3
+const HELD_RATE := 0.5
 ## CameraMovementInstance: 100 frames, the script steps 8 of them every 41 ms.
 const MOVE_STEP := 0.08
 const MOVE_TICK := 0.041
@@ -51,9 +52,11 @@ const INTRO_Z := [-3000.0, -2983.8, -2937.0, -2862.2, -2762.1, -2639.1, -2496.1,
 const INTRO_STEP := 1.0 / 30.0
 
 const DECODE_SHADER := """shader_type canvas_item;
+render_mode blend_premul_alpha;
 void fragment() {
-	vec3 c = texture(TEXTURE, UV).rgb;
-	COLOR = vec4(mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)), 1.0);
+	vec4 t = texture(TEXTURE, UV);
+	vec3 c = t.rgb;
+	COLOR = vec4(mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)), t.a);
 }
 """
 
@@ -97,10 +100,11 @@ func _init(session: GameSession) -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
 	_viewport.msaa_3d = Viewport.MSAA_4X
+	# The game draws the sky over the (paused) world, which shows through where the nebula is thin.
+	_viewport.transparent_bg = true
 	add_child(_viewport)
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_COLOR
-	environment.background_color = Color.BLACK
+	environment.background_mode = Environment.BG_CLEAR_COLOR
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
 	var world_environment := WorldEnvironment.new()
@@ -110,7 +114,8 @@ func _init(session: GameSession) -> void:
 	_camera.current = true
 	# The effect shader works in the game's gamma space (textures, blending; materials.hpp) and the world's camera
 	# hands Godot linear colour in its image space pass; here the sky has no such pass, so Godot's output encoding
-	# would brighten the gamma values again: the container draws the picture decoded back to what the game shows.
+	# would brighten the gamma values again: the container draws the picture decoded back to what the game shows, over
+	# the world as the game draws it (premultiplied: the nebula's coverage hides the world, additive layers add).
 	var decode := ShaderMaterial.new()
 	decode.shader = Shader.new()
 	decode.shader.code = DECODE_SHADER
@@ -412,7 +417,10 @@ func _step_turn(delta: float) -> void:
 			velocity = 0.0
 			yaw = round(yaw / SKILL_ANGLE) * SKILL_ANGLE
 			glow(facing(), true)
-	yaw += velocity * delta
+	# While a key is held the game turns half as far as the velocity says (measured, SkyrimRemote held D: 1.0 s -> 2
+	# skills, 2.0 s -> 4, the settle afterwards as the exe's formula): the turn is applied on every other frame of a
+	# held key. Let go, the settle runs at full rate.
+	yaw += velocity * delta * (HELD_RATE if _held else 1.0)
 
 
 ## Where the camera stands and what it looks at, in NIF space.

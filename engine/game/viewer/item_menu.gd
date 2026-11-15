@@ -51,7 +51,10 @@ func _on_engaged() -> void:
 	_input.blocked = open
 	# The world behind an open item menu, as the game shows it: the image space modifier of DOBJ IMID.
 	var imid := _session.world.get_default_object("IMID") if _session.world != null else 0
-	ImageSpaceSync.modifier = _session.world.get_image_space_modifier(imid) if open and imid != 0 else {}
+	# Not behind the skills screen: StatsMenu asks for its own modifier (SkillMenuIdle), which Skyrim.esm lacks, so the
+	# world shows sharp through the sky.
+	var item_menu := open and not skills_view.is_open()
+	ImageSpaceSync.modifier = _session.world.get_image_space_modifier(imid) if item_menu and imid != 0 else {}
 	if _input.enabled and DisplayServer.get_name() != "headless":
 		if open:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
