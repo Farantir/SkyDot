@@ -15,31 +15,30 @@ const FPS := 24.0
 ## Messages.MAX_SHOWN, Y_SPACING (frames of 2 px), END_ANIM_FRAME as the movie sets them.
 const MAX_SHOWN := 4
 const Y_SPACING := 15
-## The script moves a line 2 px a frame (30 px in all), but the settled pitch in the game is 40.7 stage px
-## (two shots at 1100x800 agree): the same step count with the pitch as the total.
-const MESSAGE_PITCH := 40.7
 const END_FRAME := 80
 ## The MessageText clip: frames 0-13 fade in (it stops there), "FadeOut" starts at 14.
 const FADE_OUT_FRAME := 14
 const MESSAGE_SIZE := 24.0
 const MESSAGE_BOX := Vector2(327.6, 59.7)
 const NAME_SIZE := 24.0
+## Menus stretch their stage to the window as the game does (UiDraw.stage_fill): positions follow the x and y scales,
+## glyphs the x scale.
+const SAFE := HudGame.SAFE_ZONE
+
 ## The info line's labels and numbers look bigger in the game than the movie's sizes (15, 24) give: measured.
 const INFO_SIZE := 18.0
 const VALUE_SIZE := 28.0
 ## The two lines' pitch and the bar, measured against the game (stage pixels).
-const LINE_PITCH := 40.7
-const BAR_HEIGHT := 3.0
+const LINE_PITCH := 31.5
+const BAR_HEIGHT := 2.0
 const SUBTITLE_SIZE := 22.0
 const GREY := Color("999999")
 const SHADOW := Color(0.0, 0.0, 0.0, 0.8)
-## The rollover's fields sit lower in the game than their authored places give at 1100x800 (measured with
-## SkyrimRemote, skycompare-data/ui-step4/): stage pixels added to the name, the rule and the info line.
-const NAME_DROP := 24.0
-const INFO_DROP := 43.0
-const BAR_DROP := 40.0
-## The message block sits this much lower than its lock at the top left gives at 1100x800 (measured).
-const MESSAGE_DROP := 28.0
+const NAME_DROP := 1.5
+const INFO_DROP := 3.0
+const BAR_DROP := 0.0
+## The message block sits this much lower than its lock at the top left gives (measured at 1100x800).
+const MESSAGE_DROP := 16.5
 
 var _queue: Array[String] = []
 ## {text, frame (float, the clip's), y}
@@ -91,7 +90,7 @@ func _frame() -> void:
 	# the onEnterFrame of a new message: the others move 2 px a frame while ySpacing runs
 	if _animating and _shift < Y_SPACING:
 		for i in range(_shown.size() - 1):
-			_shown[i]["y"] += MESSAGE_PITCH / Y_SPACING
+			_shown[i]["y"] += 2.0
 		_shift += 1
 		if _shift == Y_SPACING:
 			_animating = false
@@ -140,9 +139,10 @@ func _alpha(entry: Dictionary) -> float:
 
 
 func draw_messages(canvas: CanvasItem, area: Vector2) -> void:
-	var xform := HudGame.placed(area, BASE + "MessagesBlock", "TL")
+	var xform := _place(area, BASE + "MessagesBlock", "TL")
 	var font := _font()
 	var scale := xform.get_scale().x
+	var ys := xform.get_scale().y
 	for entry: Dictionary in _shown:
 		var alpha := _alpha(entry)
 		if alpha <= 0.0:
@@ -156,7 +156,7 @@ func draw_messages(canvas: CanvasItem, area: Vector2) -> void:
 			lines = _wrap(font, text, size * scale, (MESSAGE_BOX.x - 4.0) * scale)
 		var px := int(round(size * scale))
 		for k in lines.size():
-			var at := origin + Vector2(0.0, k * size * 1.17 * scale + font.get_ascent(px))
+			var at := origin + Vector2(0.0, k * size * 1.17 * ys + font.get_ascent(px))
 			_draw(canvas, font, lines[k], at, px, Color(1, 1, 1, alpha), HORIZONTAL_ALIGNMENT_LEFT, -1.0)
 
 
@@ -170,7 +170,7 @@ func draw_rollover(canvas: CanvasItem, area: Vector2, prompt: Dictionary, key: S
 	var px := int(round(NAME_SIZE * scale))
 	var width := (1280.0 - 4.0) * scale
 	var verb: String = prompt["verb"]
-	var line_pitch := LINE_PITCH * scale
+	var line_pitch := LINE_PITCH * name_xform.get_scale().y
 	var top := name_xform.origin
 	var verb_at := top + Vector2(0.0, font.get_ascent(px))
 	_draw(canvas, font, verb, verb_at, px, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, width)
@@ -188,8 +188,7 @@ func draw_rollover(canvas: CanvasItem, area: Vector2, prompt: Dictionary, key: S
 	if weight < 0.0 and value < 0:
 		return
 	var bar := _field(area, "GrayBarInstance", 0.0, BAR_DROP)
-	var bar_scale := bar.get_scale().x
-	canvas.draw_rect(Rect2(bar.origin, Vector2(258.4, BAR_HEIGHT) * bar_scale), Color(0.75, 0.75, 0.75, 0.85))
+	canvas.draw_rect(Rect2(bar.origin, Vector2(258.4 * bar.get_scale().x, BAR_HEIGHT * bar.get_scale().y)), Color(0.75, 0.75, 0.75, 0.85))
 	_draw_info(canvas, area, font, weight, value)
 
 
@@ -251,7 +250,7 @@ func draw_subtitle(canvas: CanvasItem, area: Vector2, text: String) -> void:
 	var found := UiAssets.instance(SWF, BASE + "SubtitleTextHolder/textField")
 	if found.is_empty():
 		return
-	var holder := HudGame.placed(area, BASE + "SubtitleTextHolder", "B")
+	var holder := _place(area, BASE + "SubtitleTextHolder", "B")
 	var field: Dictionary = UiAssets.instance(SWF, BASE + "SubtitleTextHolder/textField")
 	var offset: Vector2 = (field["xform"] as Transform2D).origin - (UiAssets.instance(SWF, BASE + "SubtitleTextHolder")["xform"] as Transform2D).origin
 	var xform := holder * Transform2D(0.0, offset)
@@ -261,16 +260,34 @@ func draw_subtitle(canvas: CanvasItem, area: Vector2, text: String) -> void:
 	var width := (800.0 - 4.0) * scale
 	var lines := _wrap(font, text, px, width)
 	# verticalAutoSize "bottom": the last line ends at the field's bottom (62.5 high)
-	var bottom := xform.origin.y + 62.5 * scale
+	var bottom := xform.origin.y + 62.5 * xform.get_scale().y
 	var pitch := font.get_height(px) + 2.0 * scale
 	for k in lines.size():
 		var y := bottom - (lines.size() - 1 - k) * pitch - font.get_descent(px)
 		_draw(canvas, font, lines[k], Vector2(xform.origin.x, y), px, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, width)
 
 
+## An instance's transform in the view: the stage stretched to the window, its origin moved as GlobalFunc.Lock(`lock`)
+## moves it (the whole stage is visible, so the safe zone is the only inset).
+static func _place(area: Vector2, path: String, lock := "") -> Transform2D:
+	var found := UiAssets.instance(SWF, path)
+	if found.is_empty():
+		return Transform2D()
+	var xform: Transform2D = found["xform"]
+	if lock.contains("T"):
+		xform.origin.y = SAFE.y
+	if lock.contains("B"):
+		xform.origin.y = HudGame.STAGE.y - SAFE.y
+	if lock.contains("L"):
+		xform.origin.x = SAFE.x
+	if lock.contains("R"):
+		xform.origin.x = HudGame.STAGE.x - SAFE.x
+	return UiDraw.stage_fill(area, HudGame.STAGE) * xform
+
+
 ## A field's transform in the view, moved down by `drop` stage pixels.
 func _field(area: Vector2, instance: String, _unused: float, drop: float) -> Transform2D:
-	var xform := HudGame.placed(area, BASE + instance)
+	var xform := _place(area, BASE + instance)
 	xform.origin += Vector2(0.0, drop * xform.get_scale().y)
 	return xform
 

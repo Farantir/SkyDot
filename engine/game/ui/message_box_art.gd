@@ -31,13 +31,18 @@ static func available() -> bool:
 	return UiAssets.available() and UiAssets.exported(SWF, "MessageBoxButton") >= 0
 
 
-## Stage pixels to view pixels: the whole stage fitted and centred.
+## Glyph scale (the x scale: the game stretches menus to the window, glyphs keep x).
 static func scale_for(area: Vector2) -> float:
-	return minf(area.x / STAGE.x, area.y / STAGE.y)
+	return area.x / STAGE.x
 
 
+## Stage pixels to view pixels: the stage stretched to the window.
 static func _to_view(area: Vector2, stage: Vector2) -> Vector2:
-	return area * 0.5 + (stage - CENTRE) * scale_for(area)
+	return UiDraw.stage_fill(area, STAGE) * stage
+
+
+static func _size(area: Vector2, stage_size: Vector2) -> Vector2:
+	return stage_size * Vector2(area.x / STAGE.x, area.y / STAGE.y)
 
 
 ## Where everything goes, in view pixels: {background: Rect2, divider: Rect2, lines: [{text, at (baseline left of
@@ -64,7 +69,7 @@ static func layout(area: Vector2, text: String, buttons: Array) -> Dictionary:
 	var bg_h := message_h + button_h + HEIGHT_MARGIN * 2.0 + SPACER
 	var top := -bg_h / 2.0
 	var out := {"px": px, "scale": scale, "lines": [], "buttons": []}
-	out["background"] = Rect2(_to_view(area, CENTRE + Vector2(-bg_w / 2.0, top)), Vector2(bg_w, bg_h) * scale)
+	out["background"] = Rect2(_to_view(area, CENTRE + Vector2(-bg_w / 2.0, top)), _size(area, Vector2(bg_w, bg_h)))
 	var message_top := top + HEIGHT_MARGIN
 	for i in lines.size():
 		var at := _to_view(area, CENTRE + Vector2(-TEXT_WIDTH / 2.0, message_top + 2.0 + i * line_h)) \
@@ -73,12 +78,12 @@ static func layout(area: Vector2, text: String, buttons: Array) -> Dictionary:
 	var button_centre := bg_h / 2.0 - HEIGHT_MARGIN - button_h / 2.0
 	var divider_y := button_centre - button_h / 2.0 - SPACER / 2.0 - 2.0
 	out["divider"] = Rect2(_to_view(area, CENTRE + Vector2(-(bg_w - WIDTH_MARGIN * 2.0) / 2.0, divider_y - 1.15)),
-		Vector2(bg_w - WIDTH_MARGIN * 2.0, 2.3) * scale)
+		_size(area, Vector2(bg_w - WIDTH_MARGIN * 2.0, 2.3)))
 	var x := -total / 2.0
 	for i in buttons.size():
 		var centre := Vector2(x + widths[i] / 2.0, button_centre)
 		var rect := Rect2(_to_view(area, CENTRE + centre - Vector2(widths[i] / 2.0, button_h / 2.0)),
-			Vector2(widths[i], button_h) * scale)
+			_size(area, Vector2(widths[i], button_h)))
 		var label_w := font.get_string_size(buttons[i], HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
 		var text_at := Vector2(rect.get_center().x - label_w * 0.5, rect.get_center().y) \
 			+ Vector2(0.0, (font.get_ascent(px) - font.get_descent(px)) * 0.5)

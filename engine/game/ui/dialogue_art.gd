@@ -36,10 +36,9 @@ static func available() -> bool:
 	return UiAssets.available() and UiAssets.exported(SWF, "TopicList") >= 0
 
 
-## The stage fitted to `area` (the whole stage visible, centred).
+## The stage stretched to `area`, as the game shows its menus (glyphs keep the x scale).
 static func fit(area: Vector2) -> Transform2D:
-	var scale := minf(area.x / 1280.0, area.y / 720.0)
-	return Transform2D(Vector2(scale, 0.0), Vector2(0.0, scale), area * 0.5 - Vector2(640.0, 360.0) * scale)
+	return UiDraw.stage_fill(area, Vector2(1280.0, 720.0))
 
 
 ## `entries`: [{text, said}] the topics in order; `selected` the chosen index (entries.size() = Goodbye); `speaker`
@@ -105,7 +104,7 @@ static func _draw_line(canvas: CanvasItem, stage: Transform2D, font: Font, line:
 	var lines := _wrap(font, line, px, width)
 	var top := stage * (ROOT + SUBTITLE_AT)
 	var pitch := font.get_height(px) + 2.0 * scale
-	var bottom := top.y + SUBTITLE_BOX.y * scale
+	var bottom := top.y + SUBTITLE_BOX.y * stage.get_scale().y
 	for k in lines.size():
 		var y := bottom - (lines.size() - 1 - k) * pitch - font.get_descent(px)
 		_text(canvas, font, lines[k], Vector2(top.x, y), px, Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER, width)
