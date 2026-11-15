@@ -25,6 +25,9 @@ const BUTTON_TEXT_CENTRE := 14.9
 const BUTTON_PAD := 4.0
 const BUTTON_GAP := 25.0
 const LINE_LEADING := 2.0
+## Measured against the game (1100x800): the buttons sit lower and the divider higher than the script's arithmetic gives.
+const BUTTON_DROP := 7.0
+const DIVIDER_RISE := 6.0
 
 
 static func available() -> bool:
@@ -75,8 +78,8 @@ static func layout(area: Vector2, text: String, buttons: Array) -> Dictionary:
 		var at := _to_view(area, CENTRE + Vector2(-TEXT_WIDTH / 2.0, message_top + 2.0 + i * line_h)) \
 			+ Vector2(0.0, font.get_ascent(px))
 		out["lines"].append({"text": lines[i], "at": at, "width": (TEXT_WIDTH - 4.0) * scale})
-	var button_centre := bg_h / 2.0 - HEIGHT_MARGIN - button_h / 2.0
-	var divider_y := button_centre - button_h / 2.0 - SPACER / 2.0 - 2.0
+	var button_centre := bg_h / 2.0 - HEIGHT_MARGIN - button_h / 2.0 + BUTTON_DROP
+	var divider_y := button_centre - BUTTON_DROP - button_h / 2.0 - SPACER / 2.0 - 2.0 - DIVIDER_RISE
 	out["divider"] = Rect2(_to_view(area, CENTRE + Vector2(-(bg_w - WIDTH_MARGIN * 2.0) / 2.0, divider_y - 1.15)),
 		_size(area, Vector2(bg_w - WIDTH_MARGIN * 2.0, 2.3)))
 	var x := -total / 2.0
@@ -110,7 +113,7 @@ static func draw(canvas: CanvasItem, area: Vector2, text: String, buttons: Array
 	for i in buttons.size():
 		var button: Dictionary = look["buttons"][i]
 		boxes.append(button["rect"])
-		if i == selected:
+		if i == selected and buttons.size() > 1:  # the game shows no indicator on a lone button
 			_nine_slice(canvas, 5, button["indicator"], scale)
 		_text(canvas, font, button["text"], button["text_at"], px, HORIZONTAL_ALIGNMENT_LEFT, -1.0)
 	return boxes

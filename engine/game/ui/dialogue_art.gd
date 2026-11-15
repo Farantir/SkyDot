@@ -26,10 +26,14 @@ const SUBTITLE_SIZE := 22.0
 const SUBTITLE_BOX := Vector2(800.0, 65.9)
 const SPEAKER_AT := Vector2(-53.0, 126.2)
 const SPEAKER_BOX := Vector2(200.0, 32.5)
-const EXIT_AT := Vector2(345.0, 360.0)
+const EXIT_KEY_X := 1192.0
+const EXIT_TEXT_X := 1220.0
+const EXIT_CENTRE_Y := 690.0
 const EXIT_SIZE := 20.0
+const EXIT_LABEL := "Exit"
+## The panel is much fainter in the game than its authored gradient (measured).
+const PANEL_ALPHA := 0.6
 const SAID := Color(0.376, 0.376, 0.376)
-const GOODBYE := "Goodbye"
 
 
 static func available() -> bool:
@@ -82,19 +86,18 @@ static func _draw_topics(canvas: CanvasItem, stage: Transform2D, font: Font, ent
 			HORIZONTAL_ALIGNMENT_LEFT, -1.0)
 
 
-## The Goodbye button: its text (the movie's Button skin is a placeholder) with the key's art left of it.
-static func _draw_exit(canvas: CanvasItem, stage: Transform2D, font: Font, chosen: bool, key: String,
+## The exit button as the game shows it (measured at 1100x800: key art and "Exit" at the bottom right; the movie's
+## Button skin is a placeholder and its script moves the button): the key's art, then the word.
+static func _draw_exit(canvas: CanvasItem, stage: Transform2D, font: Font, _chosen: bool, key: String,
 		scale: float) -> void:
 	var px := _px(EXIT_SIZE, scale)
-	var at := stage * (ROOT + EXIT_AT + Vector2(2.0, 2.0))
-	var colour := Color(1, 1, 1, 1.0 if chosen else 0.6)
-	var width := font.get_string_size(GOODBYE, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
-	at.x -= width * 0.5 - 60.0 * scale
+	var centre := stage * Vector2(EXIT_TEXT_X, EXIT_CENTRE_Y)
 	var id := UiAssets.exported(SWF, key) if not key.is_empty() else -1
 	if id >= 0:
 		UiDraw.character(canvas, SWF, id, Transform2D(Vector2(scale, 0.0), Vector2(0.0, scale),
-			at + Vector2(-30.0 * scale, -2.0 * scale)), Color(1, 1, 1, colour.a))
-	_text(canvas, font, GOODBYE, at + Vector2(0.0, font.get_ascent(px)), px, colour, HORIZONTAL_ALIGNMENT_LEFT, -1.0)
+			stage * Vector2(EXIT_KEY_X, EXIT_CENTRE_Y) - Vector2(0.0, 13.0 * scale)))
+	_text(canvas, font, EXIT_LABEL, centre + Vector2(0.0, (font.get_ascent(px) - font.get_descent(px)) * 0.5), px,
+		Color.WHITE, HORIZONTAL_ALIGNMENT_LEFT, -1.0)
 
 
 ## SubtitleText: centred in its 800 px field, the last line at the field's bottom.
@@ -114,7 +117,8 @@ static func _draw_line(canvas: CanvasItem, stage: Transform2D, font: Font, line:
 static func _draw_instance(canvas: CanvasItem, stage: Transform2D, name: String) -> void:
 	var found := UiAssets.instance(SWF, "DialogueMenu_mc/TopicListHolder/" + name)
 	if not found.is_empty():
-		UiDraw.character(canvas, SWF, int(found["id"]), stage * (found["xform"] as Transform2D))
+		UiDraw.character(canvas, SWF, int(found["id"]), stage * (found["xform"] as Transform2D),
+			Color(1, 1, 1, PANEL_ALPHA if name == "ListPanel" else 1.0))
 
 
 static func _px(size: float, scale: float) -> int:
