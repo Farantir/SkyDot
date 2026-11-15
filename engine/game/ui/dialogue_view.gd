@@ -86,8 +86,7 @@ func _input(event: InputEvent) -> void:
 	if not _session.is_dialogue_open() or _session.service_open or not enabled.call():
 		return
 	var handled := true
-	if event.is_action_pressed(&"ui_cancel") or (event is InputEventKey and event.pressed
-			and not event.echo and event.keycode == KEY_TAB):
+	if event.is_action_pressed(&"ui_cancel"):
 		_session.dialogue_close()
 	elif event.is_action_pressed(&"ui_down"):
 		_move(1)

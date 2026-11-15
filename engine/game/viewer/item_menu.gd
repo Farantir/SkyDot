@@ -3,8 +3,8 @@
 # The flat viewer's host of the inventory, container and crafting menus
 # (ui/inventory_view.gd, ui/container_view.gd, ui/crafting_view.gd, ui/magic_view.gd): a CanvasLayer over the window.
 # While either is open the player stands still and the other keys do nothing.
-# The `inventory` action (I, Tab, the gamepad's Back) opens the inventory or
-# closes whichever menu is open; a container opens when GameSession says
+# The `inventory` action (I) opens the inventory, `tween_menu` (Tab, the gamepad's B) the Tween menu, whose
+# directions open the skills, magic and item menus; a menu's cancel (Tab, Esc) closes it. A container opens when GameSession says
 # `container_opened`, a workbench's menu on `crafting_opened`; the `magic` action (P, gamepad R3) opens the magic menu.
 class_name ItemMenu
 extends CanvasLayer
@@ -16,6 +16,7 @@ var magic_view: MagicView
 var favorites_view: FavoritesView
 var training_view: TrainingView
 var skills_view: SkillsView
+var tween_view: TweenView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -31,7 +32,9 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	favorites_view = FavoritesView.new(session)
 	training_view = TrainingView.new(session)
 	skills_view = SkillsView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view]:
+	tween_view = TweenView.new(session)
+	tween_view.chosen.connect(_on_tween_chosen)
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: _on_engaged())
@@ -42,13 +45,14 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open()
 
 
 ## The open menu for a shot's "menu" block: {open, tab, selected, mode}; empty when none is open.
 func describe() -> Dictionary:
 	var names := {"inventory": inventory_view, "container": container_view, "crafting": crafting_view,
-		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view}
+		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view,
+		"tween": tween_view}
 	for name: String in names:
 		var view: Control = names[name]
 		if not view.is_open():
@@ -58,6 +62,8 @@ func describe() -> Dictionary:
 		if model is ItemListModel:
 			out["tab"] = model.tab
 			out["selected"] = model.selected
+		if view == tween_view:
+			out["selected"] = TweenView.LABELS[tween_view.selection]
 		var mode: Variant = view.get(&"_mode")
 		if mode != null:
 			out["mode"] = CraftingView.Mode.keys()[mode]
@@ -87,6 +93,24 @@ func open_favorites() -> void:
 	if is_open() or _session.is_dialogue_open():
 		return
 	favorites_view.open()
+
+
+## The `tween_menu` key (Tab) outside a menu: the Tween menu (not during a dialogue).
+func open_tween() -> void:
+	if is_open() or _session.is_dialogue_open():
+		return
+	tween_view.open()
+
+
+## A direction of the Tween menu was opened (the Tween menu has closed).
+func _on_tween_chosen(direction: String) -> void:
+	match direction:
+		"inventory":
+			inventory_view.open()
+		"magic":
+			magic_view.open()
+		"skills":
+			skills_view.open()
 
 
 ## The `inventory` key outside a menu: show the inventory (not during a dialogue).

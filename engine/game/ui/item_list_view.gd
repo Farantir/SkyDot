@@ -161,7 +161,13 @@ func _mouse_input(event: InputEvent) -> bool:
 		MOUSE_BUTTON_LEFT:
 			_click(at, layout, event.double_click)
 		_:
-			return false
+			# Another button on a row is that row's action bound to it (the right button: the left hand, as the
+			# control map's Item Menus LeftEquip).
+			var index := _row_at(at, layout)
+			if index < 0:
+				return false
+			model.select(index)
+			return _action_input(event)
 	return true
 
 
@@ -417,7 +423,9 @@ static func _fallback_key(action: StringName) -> String:
 		&"menu_drop":
 			return "R"
 		&"menu_equip_left":
-			return "Q"
+			return "Right Click"
+		&"menu_charge":
+			return "T"
 		&"menu_favorite":
 			return "F"
 	return String(action)

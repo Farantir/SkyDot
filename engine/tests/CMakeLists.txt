@@ -160,6 +160,7 @@ skydot_gd_test(player_gates test_player_gates.gd)
 skydot_gd_test(player_state test_player_state.gd)
 skydot_gd_test(item_list_model test_item_list_model.gd)
 skydot_gd_test(ui_assets test_ui_assets.gd)
+skydot_gd_test(control_map test_control_map.gd)
 set_property(TEST gd_ui_assets APPEND PROPERTY ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
 # The viewer walks through the test pack's door pair: out of the interior,

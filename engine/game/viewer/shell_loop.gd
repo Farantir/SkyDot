@@ -24,6 +24,8 @@ signal magic_requested
 signal skills_requested
 ## Q: the quick favorites menu.
 signal favorites_requested
+## Tab: the Tween menu.
+signal tween_requested
 ## The player died; the controls are blocked. The shell shows the death: its camera fall or fade.
 signal died(killer: int)
 ## Each frame of the quit countdown, after it counted down (0: the last frame of the run).
@@ -181,7 +183,8 @@ func fail(message: String) -> void:
 func _on_command(action: StringName, shift: bool) -> void:
 	match action:
 		PlayerInput.ACTIVATE:
-			_session.activate_in_view(shift)  # Shift opens locks
+			if not _rig.is_flying():  # E flies up in the viewer's free flight
+				_session.activate_in_view(shift)  # Shift opens locks
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
 		PlayerInput.QUICK_SAVE:
@@ -203,8 +206,12 @@ func _on_command(action: StringName, shift: bool) -> void:
 			magic_requested.emit()
 		PlayerInput.SKILLS:
 			skills_requested.emit()
+		PlayerInput.TWEEN_MENU:
+			tween_requested.emit()
+		PlayerInput.MAP, PlayerInput.WAIT:
+			pass  # no map or wait menu yet
 		PlayerInput.FAVORITES:
-			if not _rig.player.flying:  # Q flies down in the viewer's free flight
+			if not _rig.is_flying():  # Q flies down in the viewer's free flight
 				favorites_requested.emit()
 		&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8":
 			_session.use_hotkey(int(String(action).trim_prefix("hotkey_")))

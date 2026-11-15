@@ -60,6 +60,11 @@ const MAGIC := &"magic"
 const SKILLS := &"skills"
 const READY_WEAPON := &"ready_weapon"
 const FAVORITES := &"favorites"
+## The game's Tween menu (Tab): Skills, Items, Magic, Map.
+const TWEEN_MENU := &"tween_menu"
+## The game's map and wait keys: no map or wait menu yet, so they do nothing (M and T keep the debug keys').
+const MAP := &"map"
+const WAIT := &"wait"
 # Held, like the attacks: the voice key (Z, gamepad RB, the VR grips) casts the power in the voice
 # slot when it goes down, or charges the shout there while it is down (`voice_changed`).
 const POWER := &"power"
@@ -69,14 +74,16 @@ const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON, FAVORITES,
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON, FAVORITES, TWEEN_MENU, MAP, WAIT,
 	&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8"]
 
 const LOOK_PER_PIXEL := 0.004  # radians
 const PITCH_LIMIT := 1.5  # radians up or down
 ## A left stick pushed less than this far walks.
 ## Xbox layout button names by Godot's JoyButton index.
-const PAD_LABELS := ["A", "B", "X", "Y", "Back", "Guide", "Start", "L3", "R3", "LB", "RB"]
+const PAD_LABELS := ["A", "B", "X", "Y", "Back", "Guide", "Start", "L3", "R3", "LB", "RB", "Up", "Down", "Left", "Right"]
+const MOUSE_LABELS := {MOUSE_BUTTON_LEFT: "Left Click", MOUSE_BUTTON_RIGHT: "Right Click", MOUSE_BUTTON_MIDDLE: "Middle Click",
+	MOUSE_BUTTON_WHEEL_UP: "Wheel Up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel Down"}
 const WALK_DEFLECTION := 0.5
 ## The stick turns the view up and down this much as fast as sideways.
 const PITCH_SPEED_FACTOR := 0.7
@@ -142,7 +149,15 @@ func key_label(action: StringName) -> String:
 		if uses_gamepad and event is InputEventJoypadButton:
 			return PAD_LABELS[event.button_index] if event.button_index < PAD_LABELS.size() else "Pad"
 		if not uses_gamepad and event is InputEventKey:
-			return OS.get_keycode_string(event.keycode if event.keycode != 0 else event.physical_keycode)
+			if event.keycode != 0:
+				return OS.get_keycode_string(event.keycode)
+			# Bound by position (the game's scan codes): the key's label on this keyboard's layout.
+			var label := DisplayServer.keyboard_get_label_from_physical(event.physical_keycode)
+			return OS.get_keycode_string(label if label != KEY_NONE else event.physical_keycode)
+	if not uses_gamepad:
+		for event in InputMap.action_get_events(action):
+			if event is InputEventMouseButton:
+				return MOUSE_LABELS.get(event.button_index, "Mouse")
 	return ""
 
 

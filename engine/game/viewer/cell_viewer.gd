@@ -270,6 +270,9 @@ func _create_components() -> void:
 	_loop.favorites_requested.connect(func() -> void:
 		if _items != null:
 			_items.open_favorites())
+	_loop.tween_requested.connect(func() -> void:
+		if _items != null:
+			_items.open_tween())
 	_loop.skills_requested.connect(func() -> void:
 		if _items != null:
 			_items.toggle_skills())

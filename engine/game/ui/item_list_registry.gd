@@ -105,7 +105,7 @@ static var tab_columns: Dictionary = {
 static var actions: Dictionary = {
 	"use": {"id": "use", "label": "equip", "input": &"ui_accept", "menus": ["inventory"], "kinds": ["item"]},
 	"drop": {"id": "drop", "label": "drop", "input": &"menu_drop", "menus": ["inventory"], "kinds": ["item"]},
-	"recharge": {"id": "recharge", "label": "recharge", "input": &"menu_equip_left", "menus": ["inventory"],
+	"recharge": {"id": "recharge", "label": "recharge", "input": &"menu_charge", "menus": ["inventory"],
 		"kinds": ["item"], "when": "rechargeable"},
 	"favorite": {"id": "favorite", "label": "favorite", "input": &"menu_favorite", "menus": ["inventory", "magic"],
 		"kinds": ["item", "spell", "power", "shout", "scroll"]},

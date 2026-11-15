@@ -2,8 +2,8 @@
 #
 # The inventory menu: the shared item list (ItemListView) with the player's items in the Favorites, Weapons,
 # Apparel, ... Keys tabs. Up and down choose an item, left and right a tab (or the mouse), accept equips or
-# unequips it (a potion or food is used up, a book read; neither does anything yet), `menu_drop` (R, X) drops the
-# stack, `menu_favorite` (F, gamepad RB) marks it a favorite, `menu_equip_left` (Q, gamepad Y) recharges an
+# unequips it (a potion or food is used up, a book read; neither does anything yet), `menu_drop` (R, gamepad X) drops the
+# stack, `menu_favorite` (F, gamepad Y) marks it a favorite, `menu_charge` (T) recharges an
 # enchanted weapon below its maximum from a filled soul gem (the smallest one that fills it, else the largest),
 # `menu_search` types in the search box, cancel, Tab or I closes. Items that are not playable are hidden.
 # This is the view's host, a Control that fills its host (the viewer's CanvasLayer, a VR shell's panel); it

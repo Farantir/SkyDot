@@ -267,6 +267,7 @@ func _open_world() -> bool:
 		failed.emit(pack.get_error())
 		return false
 	UiAssets.use_pack(pack)
+	ControlMap.apply_from_pack()  # the game's key bindings (project.godot's stay without a control map)
 	papyrus = SkydotPapyrus.new()
 	papyrus.setup(pack, world)
 	papyrus.attach_clock(clock)

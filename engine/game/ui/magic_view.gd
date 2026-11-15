@@ -4,7 +4,7 @@
 # (Alteration ... Restoration), Other, Scrolls (carried), Shouts, Powers and Active Effects tabs. A spell row
 # has its Magicka cost ("/s" for concentration) and L, R or LR for the hand(s) it is in; one the player cannot
 # pay now is dimmed but listed. Up and down choose an entry, left and right a tab, accept (Enter, E) puts it in
-# the right hand, `menu_equip_left` (Q, the gamepad's Y) in the left; a power goes to the power slot whichever
+# the right hand, `menu_equip_left` (the right mouse button, the left trigger) in the left; a power goes to the power slot whichever
 # is used; `menu_favorite` (F) marks it a favorite. Cancel, P or the `magic` action closes. Shouts: a row is a
 # shout the player has, marked E in the voice slot; accept or `menu_equip_left` puts it there
 # (GameSession.equip_shout), and under the list the selected shout shows its three words with their

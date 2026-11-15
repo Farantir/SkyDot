@@ -3,7 +3,7 @@
 # The quick favorites menu (Q): every favorite item, spell, scroll and shout in one item list
 # (ItemListView). Up and down choose, accept uses the entry as the game does (equips or takes off an item,
 # uses a potion, puts a spell in the right hand, a shout in the voice slot) and closes the menu,
-# `menu_equip_left` (Q, gamepad Y) puts a spell or scroll in the left hand, the keys 1-8 put the entry on
+# `menu_equip_left` (the right mouse button, the left trigger) puts a spell or scroll in the left hand, the keys 1-8 put the entry on
 # that hotkey (outside the menu the same keys use it), `menu_favorite` (F) removes the entry from the
 # favorites, cancel or Tab closes. A Control that fills its host (see InventoryView for the contract).
 class_name FavoritesView
@@ -73,8 +73,8 @@ func _input(event: InputEvent) -> void:
 	var handled := true
 	if _list.is_searching():
 		_list.handle_input(event)
-	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"inventory"):
-		close()
+	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"favorites"):
+		close()  # the control map's Favorites menu Cancel: the Favorites key, Tab or Esc
 	elif _hotkey_pressed(event):
 		pass
 	elif not _list.handle_input(event):

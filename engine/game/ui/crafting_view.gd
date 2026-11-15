@@ -216,6 +216,10 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return  # the LineEdit takes the keys
 	var handled := true
+	if event is InputEventMouseButton or event is InputEventMouseMotion:
+		if _mouse_input(event):
+			get_viewport().set_input_as_handled()
+		return
 	if _columns_input(event):
 		get_viewport().set_input_as_handled()
 		return
@@ -394,7 +398,8 @@ func _first_of_cat() -> int:
 
 
 ## Keys of the column layout: the grouped lists (forge, tempering) have their own; at the enchanting table up/down
-## choose Disenchant / Item / Enchantment / Soul Gem until accept or right enters the list, cancel or left leaves it.
+## choose Disenchant / Item / Enchantment / Soul Gem until accept or right enters the list, left leaves it. Cancel
+## (Tab, Esc) closes the menu from either column, as the game's forge does (SkyrimRemote: Tab in the item column exits).
 ## The alchemy lab has the one category, so its list has the focus from the start.
 func _columns_input(event: InputEvent) -> bool:
 	if _grouped():
@@ -411,7 +416,7 @@ func _columns_input(event: InputEvent) -> bool:
 			_selected = 0
 			_update_model()
 			queue_redraw()
-	elif event.is_action_pressed(&"ui_left") or (event.is_action_pressed(&"ui_cancel") and _in_items):
+	elif event.is_action_pressed(&"ui_left"):
 		_in_items = false
 		queue_redraw()
 	else:
@@ -420,7 +425,7 @@ func _columns_input(event: InputEvent) -> bool:
 
 
 ## Keys of the grouped lists: up/down move in the focused column, accept / right enter the items (accept then crafts),
-## cancel / left leave them. Returns whether the event was used.
+## left leaves them; cancel closes the menu (_input). Returns whether the event was used.
 func _grouped_input(event: InputEvent) -> bool:
 	if event.is_action_pressed(&"ui_down") or event.is_action_pressed(&"ui_up"):
 		_move(1 if event.is_action_pressed(&"ui_down") else -1)
@@ -432,7 +437,7 @@ func _grouped_input(event: InputEvent) -> bool:
 			_selected = _first_of_cat()
 			_update_model()
 			queue_redraw()
-	elif event.is_action_pressed(&"ui_left") or (event.is_action_pressed(&"ui_cancel") and _in_items):
+	elif event.is_action_pressed(&"ui_left"):
 		_in_items = false
 		queue_redraw()
 	elif event.is_action_pressed(&"ui_accept"):
@@ -440,6 +445,66 @@ func _grouped_input(event: InputEvent) -> bool:
 	else:
 		return false
 	return true
+
+
+## The mouse as craftingmenu.swf takes it: the wheel over the category column scrolls the categories
+## (CenteredScrollingList.onMouseWheel), over the item column or the item's 3D view it moves the item selection
+## (CraftingMenu.onMouseWheel: up is moveSelectionUp) once the items have the focus; a click picks a category or an
+## item, a click on the chosen item accepts it. Hovering does not select (the centred lists move only by keys,
+## wheel and clicks). True if the event was used.
+func _mouse_input(event: InputEvent) -> bool:
+	if not event is InputEventMouseButton or not event.pressed:
+		return false
+	var at: Vector2 = UiDraw.stage_fill(size, STAGE).affine_inverse() * make_input_local(event).position
+	if at.y >= BAR_TOP:
+		return false
+	var in_categories := at.x < CATEGORY_COLUMN_RIGHT
+	var step := 0
+	match event.button_index:
+		MOUSE_BUTTON_WHEEL_UP:
+			step = -1
+		MOUSE_BUTTON_WHEEL_DOWN:
+			step = 1
+		MOUSE_BUTTON_LEFT:
+			_click(at, in_categories)
+			return true
+		_:
+			return false
+	if in_categories:
+		_in_items = false
+		_move(step)
+	elif _in_items:
+		_move(step)
+	return true
+
+
+## A left click at stage point `at`: the category or item row there, by the rows' centred places (_draw_columns).
+func _click(at: Vector2, in_categories: bool) -> void:
+	if in_categories:
+		var names := _category_names()
+		var offset := int(round((at.y - LIST_CENTRE_Y) / LIST_PITCH))
+		var target := _category_index() + offset
+		if target < 0 or target >= names.size() or offset == 0 and not _in_items:
+			return
+		_in_items = false
+		_move(offset)
+		return
+	if at.x > ITEM_COLUMN_RIGHT:
+		return
+	var rows := _column_rows()
+	if rows.is_empty():
+		return
+	var at_row := maxi(rows.find(_selected), 0)
+	var target := at_row + int(round((at.y - ITEM_ROW_Y) / LIST_PITCH))
+	if target < 0 or target >= rows.size():
+		return
+	if _in_items and rows[target] == _selected:
+		accept()
+		return
+	_in_items = true
+	_selected = rows[target]
+	_update_model()
+	queue_redraw()
 
 
 func _stick(value: float) -> void:
@@ -596,6 +661,9 @@ const HEADER_Y := 41.0
 const LIST_X := 33.0
 const LIST_CENTRE_Y := 392.0  # the chosen row stands here: the list is centred on it (CenteredList)
 const LIST_PITCH := 40.5
+const CATEGORY_COLUMN_RIGHT := 203.6  # the line between the category and the item columns (_draw_columns)
+const ITEM_COLUMN_RIGHT := 473.7
+const ITEM_ROW_Y := 386.0  # the chosen item's row
 const LIST_WIDTH := 560.0
 const BAR_TOP := 650.0  # BottomBarInfo's line (the movie places the bar at y 646.55)
 const CARD_RECT := Rect2(636.0, 400.0, 560.0, 236.0)  # ItemInfoHolder at (635.5, 418.85): its card and requirements
@@ -757,7 +825,7 @@ func _draw_columns(font: Font, th: Theme, fill: Transform2D) -> void:
 	var rows := _column_rows()
 	var at := maxi(rows.find(_selected), 0)
 	for n in rows.size():
-		var y := 386.0 + (n - at) * LIST_PITCH
+		var y := ITEM_ROW_Y + (n - at) * LIST_PITCH
 		if y < 40.0 or y > BAR_TOP - 10.0:
 			continue
 		var row: Dictionary = _rows[rows[n]]
@@ -977,7 +1045,7 @@ func _skill_fraction(skill: String) -> float:
 
 func _update_model_rect() -> void:
 	if _model_view != null:
-		_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28)
+		_model_view.region = Rect2(0.48, 0.08, 0.3, 0.64)  # the game's forge centres the item at about x 0.63, y 0.4
 
 
 func _empty_text() -> String:
