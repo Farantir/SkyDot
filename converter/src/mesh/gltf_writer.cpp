@@ -383,6 +383,13 @@ private:
             }
             j["bethconv"]["furniture_markers"] = std::move(markers);
         }
+        if (model_.inventory_marker) {
+            const InventoryMarker& inv = *model_.inventory_marker;
+            j["bethconv"]["inventory_marker"] = {
+                {"rotation", floats({inv.rotation.x, inv.rotation.y, inv.rotation.z})},
+                {"zoom", json_number(inv.zoom)},
+            };
+        }
         if (!model_.ragdoll.bodies.empty()) {
             j["bethconv"]["ragdoll"] = ragdoll_json();
         }

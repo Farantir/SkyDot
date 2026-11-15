@@ -1488,6 +1488,16 @@ io::ParseResult<Model> read_nif(std::span<const std::byte> bytes, std::string_vi
             }
         }
         for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
+            if (const auto* inv = nif.GetHeader().GetBlock<nifly::BSInvMarker>(i)) {
+                model.inventory_marker = InventoryMarker{
+                    .rotation = {static_cast<float>(inv->rotationX) / 1000.0F,
+                                 static_cast<float>(inv->rotationY) / 1000.0F,
+                                 static_cast<float>(inv->rotationZ) / 1000.0F},
+                    .zoom = inv->zoom};
+                break;
+            }
+        }
+        for (std::uint32_t i = 0; i < nif.GetHeader().GetNumBlocks(); ++i) {
             if (auto* strings = nif.GetHeader().GetBlock<nifly::NiStringsExtraData>(i);
                 strings != nullptr && strings->name.get() == "AttachT") {
                 for (auto& entry : strings->stringsData) {

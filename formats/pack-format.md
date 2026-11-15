@@ -527,7 +527,7 @@ Per kind, mentioning only settings that affect that kind:
 
 | Kind | Extension | Fingerprint | Current |
 | --- | --- | --- | --- |
-| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/27` |
+| mesh | `.glb` | `mesh/<n>;` flags, unit scale as `%.9g` | `mesh/28` |
 | texture | `.dds` | `texture/<n>;` flags, `;max=<px>` when limited, `;encode=<mode>` unless `keep`; for a texture some material alpha-tests, `;cov/1;t=<threshold>`, plus `;floor` in the default mode (alpha coverage mips) | `texture/1` |
 | script | `.pexfb` | `script/<n>;decoded` | `script/2` |
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
@@ -561,7 +561,9 @@ show child 1 once harvested), `mesh/26` `extras.bethconv.furniture_markers`
 2 sleep, 3 lean, entry_points: bit mask}]`, from `BSFurnitureMarkerNode` or
 `BSFurnitureMarker`, on the root node), `mesh/27` `extras.bethconv.ragdoll`
 (a skeleton's rigid bodies and constraints, on the root node; see "Ragdolls in
-meshes" below); the list in
+meshes" below), `mesh/28` `extras.bethconv.inventory_marker` (`{rotation: [x, y, z]
+radians, zoom}` from the `BSInvMarker` "INV", on the root node: how the menus'
+3D view turns the model, Gamebryo's clockwise sense, Z then Y then X); the list in
 `ConvertOptions::mesh_settings` has the rest. Without a bump, dedupe would keep
 reusing stale assets.
 

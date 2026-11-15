@@ -353,6 +353,13 @@ struct FurnitureMarker {
     std::uint16_t entry_points{};        ///< Bit mask of the sides it can be entered from.
 };
 
+/// BSInvMarker "INV": how the menus' 3D view turns and zooms the model. Angles in radians as stored
+/// (the NIF keeps thousandths of a radian), Gamebryo's clockwise sense, applied Z, then Y, then X.
+struct InventoryMarker {
+    Vec3 rotation{};
+    float zoom = 1.0F;
+};
+
 /// A Havok constraint's kind, as hkConstraintType numbers it (nif.xml, `hkConstraintType`).
 enum class ConstraintKind : std::uint8_t {
     ball_and_socket = 0,
@@ -456,6 +463,8 @@ struct Model {
     /// BSFurnitureMarkerNode / BSFurnitureMarker positions, in block order; empty for a model that
     /// is not furniture.
     std::vector<FurnitureMarker> furniture_markers;
+    /// BSInvMarker on the model, if it has one.
+    std::optional<InventoryMarker> inventory_marker;
 
     std::vector<Node> nodes;
     std::vector<std::size_t> roots;
