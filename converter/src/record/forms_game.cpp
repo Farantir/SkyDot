@@ -1961,6 +1961,100 @@ io::ParseResult<Reverb> parse_reverb(io::SpanReader& data, const FormContext& ct
     return out;
 }
 
+io::ParseResult<ImageSpaceModifier> parse_image_space_modifier(io::SpanReader& data,
+                                                               const FormContext& ctx) {
+    ImageSpaceModifier out;
+    // The first key's value (time 0) of a (time, value...) curve.
+    const auto first = [](io::SpanReader& body, std::optional<io::ParseError>& failure, float* values,
+                          std::size_t count) {
+        if (body.remaining() < sizeof(float) * (1 + count)) {
+            return;
+        }
+        float time = 0.0F;
+        take(failure, body.get<float>(), time);
+        for (std::size_t i = 0; i < count; ++i) {
+            take(failure, body.get<float>(), values[i]);
+        }
+        skip_bytes(failure, body, body.remaining());
+    };
+    const auto walked = walk_fields(
+        data, FourCC{"IMAD"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            const auto t = field.type;
+            if (t == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (t == FourCC{"DNAM"}) {
+                if (body.remaining() >= 8) {
+                    float flags = 0.0F;
+                    take(failure, body.get<float>(), flags);
+                    take(failure, body.get<float>(), out.duration);
+                }
+                skip_bytes(failure, body, body.remaining());
+            } else if (t == FourCC{"WNAM"}) {
+                first(body, failure, &out.dof_strength, 1);
+            } else if (t == FourCC{"XNAM"}) {
+                first(body, failure, &out.dof_distance, 1);
+            } else if (t == FourCC{"YNAM"}) {
+                first(body, failure, &out.dof_range, 1);
+            } else if (t == FourCC{"BNAM"}) {
+                first(body, failure, &out.blur_radius, 1);
+            } else if (t == FourCC{"NAM4"}) {
+                first(body, failure, &out.motion_blur, 1);
+            } else if (t == FourCC{"RNAM"}) {
+                first(body, failure, &out.radial_blur, 1);
+            } else if (t == FourCC{"TNAM"}) {
+                first(body, failure, out.tint.data(), 4);
+            } else if (t == FourCC{"NAM3"}) {
+                first(body, failure, out.fade_color.data(), 4);
+            } else if (t.value >> 8 == (FourCC{"\0IAD"}.value >> 8)) {
+                const auto index = static_cast<std::size_t>(t.value & 0xFFU);
+                if (index < ImageSpaceModifier::k_iad_count) {
+                    first(body, failure, &out.multiply[index], 1);
+                } else if (index >= 0x40 && index - 0x40 < ImageSpaceModifier::k_iad_count) {
+                    first(body, failure, &out.add[index - 0x40], 1);
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
+io::ParseResult<DefaultObjects> parse_default_objects(io::SpanReader& data, const FormContext& ctx) {
+    DefaultObjects out;
+    const auto walked = walk_fields(
+        data, FourCC{"DOBJ"}, ctx,
+        [&](const FieldHeader& field, io::SpanReader& body,
+            std::optional<io::ParseError>& failure) {
+            if (field.type == FourCC{"EDID"}) {
+                take(failure, read_zstring(body), out.editor_id);
+            } else if (field.type == FourCC{"DNAM"}) {
+                while (!failure && body.remaining() >= 8) {
+                    std::uint32_t key = 0;
+                    FormId form;
+                    take(failure, body.get<std::uint32_t>(), key);
+                    take(failure, read_formid(body), form);
+                    out.slots.emplace_back(key, form);
+                }
+                skip_bytes(failure, body, body.remaining());
+            } else {
+                return false;
+            }
+            return true;
+        });
+    if (!walked) {
+        return std::unexpected(walked.error());
+    }
+    return out;
+}
+
 io::ParseResult<Footstep> parse_footstep(io::SpanReader& data, const FormContext& ctx) {
     Footstep out;
     const auto walked = walk_fields(

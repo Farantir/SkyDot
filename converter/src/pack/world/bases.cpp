@@ -97,6 +97,12 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"REVB"}.value:
         on_reverb(merged, data, form_ctx);
         break;
+    case FourCC{"IMAD"}.value:
+        on_image_space_modifier(merged, data, form_ctx);
+        break;
+    case FourCC{"DOBJ"}.value:
+        on_default_objects(merged, data, form_ctx);
+        break;
     case FourCC{"FSTP"}.value:
         on_footstep(merged, data, form_ctx);
         break;
@@ -586,6 +592,48 @@ void BaseCollector::on_acoustic_space(const record::MergedRecord& merged, io::Sp
         ++shared_.stats().unresolved;
     }
     acoustic_spaces_[out.id] = std::move(out);
+}
+
+/// IMAD: the first key of each curve (record/forms_game.hpp).
+void BaseCollector::on_image_space_modifier(const record::MergedRecord& merged, io::SpanReader& data,
+                                            const record::FormContext& form_ctx) {
+    auto imad = record::parse_image_space_modifier(data, form_ctx);
+    if (!imad) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    wfb::ImageSpaceModifierT out;
+    out.id = merged.form.value;
+    out.editor_id = imad->editor_id;
+    out.duration = imad->duration;
+    out.dof_strength = imad->dof_strength;
+    out.dof_distance = imad->dof_distance;
+    out.dof_range = imad->dof_range;
+    out.blur_radius = imad->blur_radius;
+    out.motion_blur = imad->motion_blur;
+    out.radial_blur = imad->radial_blur;
+    out.tint.assign(imad->tint.begin(), imad->tint.end());
+    out.fade_color.assign(imad->fade_color.begin(), imad->fade_color.end());
+    out.multiply.assign(imad->multiply.begin(), imad->multiply.end());
+    out.add.assign(imad->add.begin(), imad->add.end());
+    image_space_modifiers_[out.id] = std::move(out);
+}
+
+/// DOBJ: the slots of the default object manager; a later record's slot wins.
+void BaseCollector::on_default_objects(const record::MergedRecord& merged, io::SpanReader& data,
+                                       const record::FormContext& form_ctx) {
+    auto dobj = record::parse_default_objects(data, form_ctx);
+    if (!dobj) {
+        ++shared_.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    for (const auto& [key, form] : dobj->slots) {
+        default_objects_[key] = shared_.global(merged, form, failed);
+    }
+    if (failed) {
+        ++shared_.stats().unresolved;
+    }
 }
 
 /// REVB: DATA 14 bytes (xEdit's layout).
@@ -1638,6 +1686,8 @@ void BaseCollector::finish(wfb::WorldT& world) {
     stats.sound_categories += sound_categories_.size();
     stats.acoustic_spaces += acoustic_spaces_.size();
     stats.reverbs += reverbs_.size();
+    stats.image_space_modifiers += image_space_modifiers_.size();
+    stats.default_objects += default_objects_.size();
     stats.footsteps += footsteps_.size();
     stats.footstep_sets += footstep_sets_.size();
     stats.explosions += explosions_.size();
@@ -1670,6 +1720,10 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.sound_categories, sound_categories_);
     move_into(world.acoustic_spaces, acoustic_spaces_);
     move_into(world.reverbs, reverbs_);
+    move_into(world.image_space_modifiers, image_space_modifiers_);
+    for (const auto& [key, form] : default_objects_) {
+        world.default_objects.emplace_back(key, form);
+    }
     move_into(world.footsteps, footsteps_);
     move_into(world.footstep_sets, footstep_sets_);
     move_into(world.explosions, explosions_);

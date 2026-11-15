@@ -347,6 +347,55 @@ table Cell {
     /// XCAS (format 42): an AcousticSpace, 0 if none (542 interiors and 114
     /// exterior cells in Skyrim.esm).
     acoustic_space: uint32;
+    /// Sorted by ref (format 43): the map markers among `refs`.
+    map_markers: [MapMarker];
+}
+
+/// REFR XMRK (format 43): a map marker, the reference that stands for a
+/// location on the world map and the compass. FNAM flags: 1 visible, 2 can
+/// travel to, 4 "show all hidden". TNAM: the marker type, its first byte
+/// (hudmenu.swf's compass shows marker type N as frame N of its marker clip).
+table MapMarker {
+    ref: uint32 (key);
+    flags: ubyte;
+    type: ubyte;
+    /// FULL, resolved in the pack's language.
+    name: string;
+}
+
+/// DOBJ DNAM (format 43): one default object, the engine's named slot (a
+/// four-letter code such as "IMID", stored as its four bytes read
+/// little-endian) and the form in it.
+struct DefaultObject {
+    key: uint32 (key);
+    form: uint32;
+}
+
+/// IMAD (format 43): an image space modifier, the values of each keyed curve
+/// at its first key (time 0). Duration from DNAM.
+table ImageSpaceModifier {
+    id: uint32 (key);
+    editor_id: string;
+    duration: float;
+    /// WNAM, XNAM, YNAM: depth of field strength, distance and range (units).
+    dof_strength: float;
+    dof_distance: float;
+    dof_range: float;
+    /// BNAM: blur radius; NAM4 motion blur strength; RNAM radial blur strength.
+    blur_radius: float;
+    motion_blur: float;
+    radial_blur: float;
+    /// TNAM tint and NAM3 fade colour: red, green, blue, alpha.
+    tint: [float];
+    fade_color: [float];
+    /// The 0x00..0x14 IAD curves (multiply) and 0x40..0x54 (add), 21 each:
+    /// 0 eye adapt speed, 1 bloom blur radius, 2 bloom threshold, 3 bloom
+    /// scale, 4 target lum min, 5 target lum max, 6 sunlight scale, 7 sky
+    /// scale, 17 cinematic saturation, 18 cinematic brightness, 19 cinematic
+    /// contrast (xEdit's IMAD definition). Absent curves are 1 (multiply) and
+    /// 0 (add).
+    multiply: [float];
+    add: [float];
 }
 
 /// `LightData.flags`: LIGH DATA flags (source: CommonLibSSE TES_LIGHT_FLAGS).
@@ -2821,6 +2870,10 @@ table World {
     footsteps: [Footstep];
     /// Sorted by id (format 42).
     footstep_sets: [FootstepSet];
+    /// Sorted by key (format 43): the last DOBJ's slots.
+    default_objects: [DefaultObject];
+    /// Sorted by id (format 43).
+    image_space_modifiers: [ImageSpaceModifier];
 }
 
 root_type World;

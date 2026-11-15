@@ -167,6 +167,10 @@ private:
                            const record::FormContext& form_ctx);
     void on_acoustic_space(const record::MergedRecord& merged, io::SpanReader& data,
                            const record::FormContext& form_ctx);
+    void on_image_space_modifier(const record::MergedRecord& merged, io::SpanReader& data,
+                                 const record::FormContext& form_ctx);
+    void on_default_objects(const record::MergedRecord& merged, io::SpanReader& data,
+                            const record::FormContext& form_ctx);
     void on_reverb(const record::MergedRecord& merged, io::SpanReader& data,
                    const record::FormContext& form_ctx);
     void on_footstep(const record::MergedRecord& merged, io::SpanReader& data,
@@ -210,6 +214,8 @@ private:
     std::map<std::uint32_t, wfb::SoundCategoryT> sound_categories_;
     std::map<std::uint32_t, wfb::AcousticSpaceT> acoustic_spaces_;
     std::map<std::uint32_t, wfb::ReverbT> reverbs_;
+    std::map<std::uint32_t, wfb::ImageSpaceModifierT> image_space_modifiers_;
+    std::map<std::uint32_t, std::uint32_t> default_objects_; ///< slot -> form, the last DOBJ's
     std::map<std::uint32_t, wfb::FootstepT> footsteps_;
     std::map<std::uint32_t, wfb::FootstepSetT> footstep_sets_;
     std::map<std::uint32_t, wfb::ExplosionT> explosions_;

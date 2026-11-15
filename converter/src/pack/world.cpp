@@ -122,6 +122,8 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
     const auto reverbs = pack_all(builder, root.reverbs);
     const auto footsteps = pack_all(builder, root.footsteps);
     const auto footstep_sets = pack_all(builder, root.footstep_sets);
+    const auto default_objects = builder.CreateVectorOfStructs(root.default_objects);
+    const auto image_space_modifiers = pack_all(builder, root.image_space_modifiers);
     wfb::FinishWorldBuffer(
         builder, wfb::CreateWorld(builder, k_world_format_version, worlds, land_textures, waters,
                                   climates, weathers, cells, bases, quests, globals, actors,
@@ -136,7 +138,7 @@ io::ParseResult<WorldStats> write_world(const record::MergedWorld& world,
                                   art_objects, shouts, words_of_power, movement_types, perks,
                                   actor_value_infos, classes, idles, actor_enable_parents,
                                   sound_categories, acoustic_spaces, reverbs, footsteps,
-                                  footstep_sets));
+                                  footstep_sets, default_objects, image_space_modifiers));
 
     const std::span<const std::uint8_t> buffer(builder.GetBufferPointer(), builder.GetSize());
     std::string error;

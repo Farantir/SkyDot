@@ -374,6 +374,16 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                 if (!failure) {
                     out.activate_parents.push_back(parent);
                 }
+            } else if (field.type == FourCC{"XMRK"}) {
+                out.map_marker.emplace();
+            } else if (out.map_marker && field.type == FourCC{"FNAM"}) {
+                take(failure, body.get<std::uint8_t>(), out.map_marker->flags);
+            } else if (out.map_marker && field.type == FourCC{"FULL"}) {
+                take(failure, read_lstring(body, ctx, FourCC{"REFR"}, field.type),
+                     out.map_marker->name);
+            } else if (out.map_marker && field.type == FourCC{"TNAM"}) {
+                take(failure, body.get<std::uint8_t>(), out.map_marker->type);
+                skip_bytes(failure, body, body.remaining());
             } else if (field.type == FourCC{"XLOC"}) {
                 Reference::Lock lock;
                 take(failure, body.get<std::uint8_t>(), lock.level);

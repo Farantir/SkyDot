@@ -345,6 +345,16 @@ struct Reference {
     /// XRGD/XRGB (ragdoll state saved by the Creation Kit) and editor-only
     /// fields are tallied, not stored.
 
+    /// XMRK (empty) then FNAM, FULL, TNAM: the reference is a map marker.
+    /// FNAM: 1 visible, 2 can travel to, 4 show all hidden; TNAM: the marker
+    /// type (first byte) and an unused byte. Source: UESP, REFR record.
+    struct MapMarker {
+        std::uint8_t flags{};
+        LString name;
+        std::uint8_t type{};
+    };
+    std::optional<MapMarker> map_marker;
+
     /// Placement-relevant header flags, copied so consumers need no header.
     bool initially_disabled{};
     bool persistent{};

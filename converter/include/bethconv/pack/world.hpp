@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 42;
+inline constexpr std::uint32_t k_world_format_version = 43;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -107,6 +107,9 @@ struct WorldStats {
     std::uint64_t sound_categories{};
     std::uint64_t acoustic_spaces{};
     std::uint64_t reverbs{};
+    std::uint64_t map_markers{};
+    std::uint64_t image_space_modifiers{};
+    std::uint64_t default_objects{};
     std::uint64_t footsteps{};
     std::uint64_t footstep_sets{};
     /// KYWD, FLST and MESG (format 22).

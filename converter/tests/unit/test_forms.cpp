@@ -11,6 +11,7 @@
 #include "bethconv/record/field_reader.hpp"
 #include "bethconv/record/form_census.hpp"
 #include "bethconv/record/forms.hpp"
+#include "bethconv/record/forms_game.hpp"
 #include "bethconv/record/forms_world.hpp"
 
 #include "../support/esm_builder.hpp"
@@ -1122,4 +1123,77 @@ TEST_CASE("NVNM with bad indices, another version or extra bytes fails",
     for (std::size_t cut = 0; cut < whole.bytes().size(); cut += 7) {
         CHECK_FALSE(record::decode_nav_mesh_geometry(whole.span().first(cut)).has_value());
     }
+}
+
+// ---- map markers, IMAD, DOBJ ----------------------------------------------
+
+TEST_CASE("a REFR with XMRK is a map marker with flags, name and type", "[record][forms][refr]") {
+    ByteWriter payload;
+    write_field(payload, "XMRK", ByteWriter{});
+    ByteWriter fnam;
+    fnam.u8(0x03);
+    write_field(payload, "FNAM", fnam);
+    ByteWriter full;
+    full.raw(std::string_view("Riverwood"));
+    full.u8(0);
+    write_field(payload, "FULL", full);
+    ByteWriter tnam;
+    tnam.u8(2);
+    tnam.u8(0);
+    write_field(payload, "TNAM", tnam);
+
+    Tally tally;
+    auto reader = reader_over(payload);
+    const auto refr = record::parse_reference(refr_header(), reader,
+                                              {.localized = false, .tally = &tally});
+    REQUIRE(refr.has_value());
+    REQUIRE(refr->map_marker.has_value());
+    CHECK(refr->map_marker->flags == 3);
+    CHECK(refr->map_marker->name.text == "Riverwood");
+    CHECK(refr->map_marker->type == 2);
+    CHECK(tally.leftover().empty());
+}
+
+TEST_CASE("an IMAD keeps each curve's first key; a DOBJ its slots", "[record][forms]") {
+    ByteWriter payload;
+    ByteWriter dnam;
+    dnam.f32(0.0F);
+    dnam.f32(1.0F);
+    write_field(payload, "DNAM", dnam);
+    const auto curve = [&](std::string_view type, float first, float second) {
+        ByteWriter w;
+        w.f32(0.0F);
+        w.f32(first);
+        w.f32(1.0F);
+        w.f32(second);
+        write_field(payload, type, w);
+    };
+    curve("WNAM", 1.0F, 0.0F);
+    curve("XNAM", 128.0F, 0.0F);
+    curve("YNAM", 768.0F, 0.0F);
+    ByteWriter iad;
+    iad.f32(0.0F);
+    iad.f32(-0.15F);
+    write_field(payload, "RIAD", iad); // 0x40 + 0x12: cinematic brightness, add
+    auto reader = reader_over(payload);
+    const auto imad = record::parse_image_space_modifier(reader, {.localized = false, .tally = nullptr});
+    REQUIRE(imad.has_value());
+    CHECK(imad->duration == 1.0F);
+    CHECK(imad->dof_strength == 1.0F);
+    CHECK(imad->dof_distance == 128.0F);
+    CHECK(imad->dof_range == 768.0F);
+    CHECK(imad->add[0x12] == -0.15F);
+    CHECK(imad->multiply[0x12] == 1.0F);
+
+    ByteWriter dobj;
+    ByteWriter slots;
+    slots.raw(std::string_view("IMID"));
+    slots.u32(0x000434BB);
+    write_field(dobj, "DNAM", slots);
+    auto dobj_reader = reader_over(dobj);
+    const auto objects = record::parse_default_objects(dobj_reader, {.localized = false, .tally = nullptr});
+    REQUIRE(objects.has_value());
+    REQUIRE(objects->slots.size() == 1);
+    CHECK(objects->slots[0].first == FourCC{"IMID"}.value);
+    CHECK(objects->slots[0].second.value == 0x000434BBu);
 }

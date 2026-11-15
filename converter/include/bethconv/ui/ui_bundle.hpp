@@ -3,8 +3,9 @@
 // A menu movie's assets as files (docs/adr/0010-menus-and-skyui-compatibility.md):
 //
 //   manifest.json        what the movie holds: fonts, bitmaps, characters with
-//                        their bounds, frames, labels, scaling grids and first
-//                        display list, text fields, exports and imports
+//                        their bounds, frames, labels, scaling grids, first
+//                        display list and the timeline after it, text
+//                        fields, exports and imports
 //   fonts/<name>.ttf     each DefineFont2/3 with glyphs, as a TrueType font
 //   png/<id>.png         each lossless bitmap (straight alpha); jpg/<id>.jpg
 //   svg/<id>.svg         each shape, button (up state) and sprite (first frame)
@@ -34,7 +35,8 @@ namespace bethconv::ui {
 inline constexpr std::uint32_t k_all_frames_limit = 32;
 
 /// Version of the bundle layout and manifest keys.
-inline constexpr int k_bundle_version = 1;
+/// 2: sprites' timelines after frame 0.
+inline constexpr int k_bundle_version = 2;
 
 struct BundleFile {
     std::string path;

@@ -142,6 +142,56 @@ Json display_json(const std::vector<DisplayObject>& list) {
     return out;
 }
 
+/// The events after frame 0, for a reader to step a sprite to any frame from
+/// `display`: {"f": frame, "d": depth} plus "rm": 1 for a removal, else the
+/// fields the PlaceObject set ("c" character, "m" matrix, "x" colour
+/// transform, "n" name, "k" clip depth, "r" ratio, "mv": 1 for a move).
+Json timeline_json(const Timeline& t) {
+    Json out = Json::array();
+    std::uint32_t frame = 0;
+    for (const TimelineEvent& e : t.events) {
+        if (e.kind == TimelineEvent::show_frame) {
+            ++frame;
+            continue;
+        }
+        if (frame == 0) {
+            continue; // in `display`
+        }
+        const PlaceObject& p = e.placement;
+        Json j;
+        j["f"] = frame;
+        j["d"] = p.depth;
+        if (e.kind == TimelineEvent::remove) {
+            j["rm"] = 1;
+            out.push_back(std::move(j));
+            continue;
+        }
+        if (p.move) {
+            j["mv"] = 1;
+        }
+        if (p.character) {
+            j["c"] = *p.character;
+        }
+        if (p.matrix) {
+            j["m"] = matrix_json(*p.matrix);
+        }
+        if (p.color) {
+            j["x"] = color_json(*p.color);
+        }
+        if (p.name) {
+            j["n"] = text(*p.name);
+        }
+        if (p.clip_depth) {
+            j["k"] = *p.clip_depth;
+        }
+        if (p.ratio) {
+            j["r"] = *p.ratio;
+        }
+        out.push_back(std::move(j));
+    }
+    return out;
+}
+
 } // namespace
 
 std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) {
@@ -312,6 +362,9 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
                 j["frame_svgs"] = std::move(frame_svgs);
             }
             j["display"] = display_json(display_list(t, 0));
+            if (t.frame_count > 1) {
+                j["timeline"] = timeline_json(t);
+            }
         }
         if (auto b = m.buttons.find(id); b != m.buttons.end()) {
             Json records = Json::array();

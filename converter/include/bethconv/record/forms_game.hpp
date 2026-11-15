@@ -1038,6 +1038,35 @@ struct Reverb {
     static constexpr std::size_t k_data_size = 14;
 };
 
+/// IMAD: an image space modifier. Each effect is a curve of keys, (time,
+/// value) float pairs (colours: time, red, green, blue, alpha); this keeps
+/// each curve's first key, the value at time 0. DNAM's second float is the
+/// duration. The IAD fields are named by their first byte: 0x00-0x14 multiply,
+/// 0x40-0x54 add, one per HDR/cinematic parameter (xEdit's IMAD definition).
+struct ImageSpaceModifier {
+    std::string editor_id;
+    float duration{};
+    float dof_strength{};  ///< WNAM
+    float dof_distance{};  ///< XNAM
+    float dof_range{};     ///< YNAM
+    float blur_radius{};   ///< BNAM
+    float motion_blur{};   ///< NAM4
+    float radial_blur{};   ///< RNAM
+    std::array<float, 4> tint{};        ///< TNAM
+    std::array<float, 4> fade_color{};  ///< NAM3
+    static constexpr std::size_t k_iad_count = 21;
+    std::array<float, k_iad_count> multiply{};
+    std::array<float, k_iad_count> add{};
+    ImageSpaceModifier() { multiply.fill(1.0F); }
+};
+
+/// DOBJ: the default object manager, DNAM pairs of a four-letter slot and a
+/// form (8 bytes each).
+struct DefaultObjects {
+    std::string editor_id;
+    std::vector<std::pair<std::uint32_t, FormId>> slots;
+};
+
 /// FSTP: a footstep, DATA an IPDS, ANAM the animation tag.
 struct Footstep {
     std::string editor_id;
@@ -1085,6 +1114,10 @@ struct VendorValues {
 [[nodiscard]] io::ParseResult<AcousticSpace> parse_acoustic_space(io::SpanReader& data,
                                                                   const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Reverb> parse_reverb(io::SpanReader& data, const FormContext& ctx);
+[[nodiscard]] io::ParseResult<ImageSpaceModifier> parse_image_space_modifier(io::SpanReader& data,
+                                                                            const FormContext& ctx);
+[[nodiscard]] io::ParseResult<DefaultObjects> parse_default_objects(io::SpanReader& data,
+                                                                    const FormContext& ctx);
 [[nodiscard]] io::ParseResult<Footstep> parse_footstep(io::SpanReader& data, const FormContext& ctx);
 [[nodiscard]] io::ParseResult<FootstepSet> parse_footstep_set(io::SpanReader& data,
                                                               const FormContext& ctx);

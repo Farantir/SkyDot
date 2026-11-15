@@ -266,6 +266,14 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
     if (ref->primitive) {
         cell.primitives.emplace_back(id, to_fb(ref->primitive->bounds), ref->primitive->type);
     }
+    if (ref->map_marker) {
+        auto marker = std::make_unique<wfb::MapMarkerT>();
+        marker->ref = id;
+        marker->flags = ref->map_marker->flags;
+        marker->type = ref->map_marker->type;
+        marker->name = ref->map_marker->name.text;
+        cell.map_markers.push_back(std::move(marker));
+    }
     if (ref->teleport) {
         cell.doors.emplace_back(id,
                                 shared_.global(merged, ref->teleport->destination_door, failed),
@@ -474,6 +482,8 @@ void PlaceCollector::finish(wfb::WorldT& world) {
         std::ranges::stable_sort(cell.light_overrides, {}, &wfb::LightOverride::ref);
         std::ranges::stable_sort(cell.light_emitters, {}, &wfb::LightEmitter::ref);
         std::ranges::sort(cell.navmeshes, {}, [](const auto& n) { return n->id; });
+        std::ranges::sort(cell.map_markers, {}, [](const auto& m) { return m->ref; });
+        stats.map_markers += cell.map_markers.size();
 
         stats.refs += cell.refs.size();
         stats.doors += cell.doors.size();

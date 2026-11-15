@@ -90,7 +90,8 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (42; 3 added scripts, locks, linked refs, activate parents,
+own `format_version` (43; 43 added map markers (Cell.map_markers, REFR XMRK),
+default objects (DOBJ) and image space modifiers (IMAD, each curve's first key); 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
 regions, 7 base record flags, 8 what actors are built from, 9 AI packages,
@@ -532,7 +533,7 @@ Per kind, mentioning only settings that affect that kind:
 | lod | `.lodfb` | `lod/<n>;decoded` | `lod/1` |
 | animation | `.animfb` | `animation/<n>;decoded` | `animation/1` |
 | sound | `.wav` (historical: the bytes may be WAV, Ogg or a voice container) | `sound/<n>;pcm16;vorbis-q<q>` | `sound/2;pcm16;vorbis-q0.4` |
-| ui | `.zip` | `ui/<n>;bundle=<bundle version>` | `ui/1;bundle=1` |
+| ui | `.zip` | `ui/<n>;bundle=<bundle version>` | `ui/1;bundle=2` |
 
 `%.9g` keeps floats identical across machines. The leading number is bumped
 whenever a writer's output changes (a changed option already changes its
@@ -630,7 +631,8 @@ date 1980-01-01, so the bytes are deterministic). The vpath keeps its own
 extension. `--no-ui` skips them.
 
 - **Movie** (`.swf`, FWS or zlib CWS; LZMA ZWS is a failure): the bundle of
-  `converter/include/bethconv/ui/ui_bundle.hpp`, version 1:
+  `converter/include/bethconv/ui/ui_bundle.hpp`, version 2 (2 added each sprite's
+  `timeline` after frame 0: `{f, d}` plus `rm`, or the PlaceObject's `c`, `m`, `x`, `n`, `k`, `r`, `mv`):
 
   | Path | Content |
   | --- | --- |
