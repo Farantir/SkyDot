@@ -96,6 +96,9 @@ func _input(event: InputEvent) -> void:
 func _draw() -> void:
 	if not _open or _model == null:
 		return
+	if TrainingDraw.available():
+		TrainingDraw.draw(self, _model, "AcceptButton" if _model.can_train else "")
+		return
 	var area := size
 	var font := ThemeDB.fallback_font
 	var font_size := int(maxf(14.0, area.y / 38.0))

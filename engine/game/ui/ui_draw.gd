@@ -15,10 +15,23 @@ class_name UiDraw
 extends RefCounted
 
 
+## Translation keys whose English text is not the key (interface/translate_english.txt).
+const TRANSLATED := {"Player Gold": "Gold"}
+
+
 class Look:
 	var frames := {}
 	var fills := {}
 	var moves := {}
+	## Draw the movie's text fields (edit_text): off by default. `texts` instance name (or "#id" of the character) -> text (a field inside a
+	## named sprite can be keyed "Parent/field"); a field not named keeps its authored text, "$Key" shown as "Key".
+	var draw_texts := false
+	var texts := {}
+	## instance name -> frame: a named sprite (a button's "over") drawn at that frame.
+	var named_frames := {}
+	## Instance names not drawn (a placeholder skin the game's script replaces).
+	var hidden := {}
+	var colours := {}  # instance name -> Color for a text field
 
 
 ## Draw `id` of `swf` at `frame` with `xform` (movie pixels to the canvas) times `modulate`; `clip`, if not
@@ -26,11 +39,27 @@ class Look:
 static func character(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, modulate := Color.WHITE,
 		look: Look = null, clip := Rect2(), frame := 0, name := "") -> void:
 	var entry := UiAssets.character(swf, id)
+	if look != null and look.hidden.has(name):
+		return
 	match entry.get("type", ""):
 		"shape":
 			_shape(canvas, swf, id, xform, modulate, clip)
 		"sprite":
 			_sprite(canvas, swf, entry, xform, modulate, look if look != null else Look.new(), clip, frame, name)
+		"edit_text":
+			if look != null and look.draw_texts:
+				var text: String = look.texts.get("#%d" % id, look.texts.get(name, _plain(String(entry.get("text", "")))))
+				if text != "":
+					field(canvas, swf, id, xform, text, look.colours.get(name, Color(0.0, 0.0, 0.0, 0.0)))
+
+
+## A field's authored text without its markup; "$Key" (a translation key) as "Key".
+static func _plain(text: String) -> String:
+	var re := RegEx.new()
+	re.compile("<[^>]*>")
+	text = re.sub(text, "", true).strip_edges()
+	text = text.substr(1) if text.begins_with("$") else text
+	return TRANSLATED.get(text, text)
 
 
 static func matrix(values: Array) -> Transform2D:
@@ -64,7 +93,9 @@ static func _shape(canvas: CanvasItem, swf: String, id: int, xform: Transform2D,
 static func _sprite(canvas: CanvasItem, swf: String, entry: Dictionary, xform: Transform2D, modulate: Color,
 		look: Look, clip: Rect2, frame: int, name: String) -> void:
 	var id := int(entry["id"])
-	if look.frames.has(id):
+	if look.named_frames.has(name):
+		frame = int(look.named_frames[name])
+	elif look.frames.has(id):
 		frame = int(look.frames[id])
 	elif not look.fills.is_empty():
 		var empty := UiAssets.label_frame(swf, id, "Empty")
@@ -76,8 +107,11 @@ static func _sprite(canvas: CanvasItem, swf: String, entry: Dictionary, xform: T
 		var placed: Dictionary = list[i]
 		var local := _placed(placed, look)
 		if not placed.has("clip_depth"):
+			var child_name: String = placed.get("name", "")
+			if look.texts.has(name + "/" + child_name):
+				child_name = name + "/" + child_name
 			character(canvas, swf, int(placed["character"]), xform * local, modulate * _tint(placed.get("color", [])),
-				look, _into(local, clip), 0, placed.get("name", ""))
+				look, _into(local, clip), 0, child_name)
 			i += 1
 			continue
 		# A mask: the depths up to clip_depth are drawn inside its bounds.
@@ -135,3 +169,9 @@ static func field(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, 
 	canvas.draw_string_outline(font, Vector2(left.x, base.y), text, align, width, size_px, 3, Color(0.0, 0.0, 0.0, 0.8))
 	canvas.draw_string(font, Vector2(left.x, base.y), text, align, width, size_px, tint)
 	return font.get_string_size(text, align, width, size_px)
+
+
+## Movie pixels of a `stage`-sized movie to a canvas `size`, the way the game shows its menus: the stage is stretched to
+## the window (not letterboxed), so the x and y scales differ off 16:9; glyphs keep the x scale (see `field`).
+static func stage_fill(size: Vector2, stage: Vector2) -> Transform2D:
+	return Transform2D(Vector2(size.x / stage.x, 0.0), Vector2(0.0, size.y / stage.y), Vector2.ZERO)

@@ -285,7 +285,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0:
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _loop))
@@ -333,6 +333,8 @@ func _start_game() -> void:
 			_session.papyrus.set_player_xp(settings.grant_xp)
 		_items.skills_view.open()
 		_items.skills_view.select_skill(settings.open_skills)
+	if settings.open_training != 0 and _items != null:
+		_items.training_view.open(settings.open_training)
 	if settings.has_screenshot:
 		if (settings.has_at and settings.has_target) or (settings.has_at and settings.has_look):  # --look: a shot's view
 			_shots.begin_run(settings.screenshot, [NAN])

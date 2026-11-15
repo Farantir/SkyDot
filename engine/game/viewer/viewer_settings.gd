@@ -148,6 +148,7 @@ var grant_perks := 0  # --grant-perks N: set the player perk points after the lo
 var grant_xp := 0.0  # --grant-xp N: set the player XP after the load (a banked level-up for --open-skills)
 var magic_category := ""  # --magic-tab (or --magic-category) NAME: the tab it shows (Powers, Destruction, Scrolls...)
 var inventory_tab := ""  # --inventory-tab NAME: the tab --open-inventory shows (Weapons, Potions, ...)
+var open_training := 0  # --open-training 0xREF: the trainer menu of this NPC after the load (for shots)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
 var ready_weapon := false  # --ready-weapon: draw the weapon after the load
@@ -328,6 +329,8 @@ func _read_ui(args: Dictionary) -> void:
 	grant_xp = float(args.get("grant-xp", "0"))
 	grant_perks = int(args.get("grant-perks", "0"))
 	crafting_category = args.get("crafting-category", "")
+	if args.has("open-training"):
+		open_training = _form(args["open-training"])
 	learn_enchantment.append_array(_forms(args.get("learn-enchantment", "")))
 	if args.has("open-container"):
 		open_container = _form(args["open-container"])
