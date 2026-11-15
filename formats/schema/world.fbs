@@ -1479,6 +1479,8 @@ table Race {
     movement_fly: uint32;
     movement_sneak: uint32;
     movement_sprint: uint32;
+    /// FULL (format 44): the race's name, as the skills screen's header shows it ("Nord").
+    name: string;
 }
 
 /// One word of a Shout (SHOU SNAM, 12 bytes; format 36).

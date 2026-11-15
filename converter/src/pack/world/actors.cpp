@@ -199,6 +199,7 @@ void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader&
     out.movement_fly = shared_.global(merged, race->movement_fly, failed);
     out.movement_sneak = shared_.global(merged, race->movement_sneak, failed);
     out.movement_sprint = shared_.global(merged, race->movement_sprint, failed);
+    out.name = race->name.text;
     out.impact_material = shared_.global(merged, race->impact_material, failed);
     out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
     out.spells = shared_.global_all(merged, race->spells, failed);

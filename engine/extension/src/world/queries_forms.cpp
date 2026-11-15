@@ -322,6 +322,7 @@ Dictionary get_race(const WorldData& data, std::int64_t race_id) {
     }
     out["id"] = race_id;
     out["editor_id"] = to_godot(race->editor_id());
+    out["name"] = to_godot(race->name());
     out["unarmed_damage"] = static_cast<double>(race->unarmed_damage());
     out["unarmed_reach"] = static_cast<double>(race->unarmed_reach());
     out["impact_material"] = static_cast<std::int64_t>(race->impact_material());

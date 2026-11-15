@@ -147,6 +147,7 @@ void make_combat(const TempDir& dir) {
 
     ByteWriter race;
     text(race, "EDID", "TestRace");
+    text(race, "FULL", "Test Folk");
     {
         ByteWriter data;
         zeros(data, 96);
@@ -263,6 +264,7 @@ TEST_CASE("world.fb 30 carries game settings, weapon combat data, race attacks a
     const auto race = file->race(0x813);
     REQUIRE(race.has_value());
     CHECK(race->unarmed_damage == 4.0F);
+    CHECK(race->name == "Test Folk");
     CHECK(race->unarmed_reach == 96.0F);
     CHECK(race->impact_material == 0x840);
     CHECK(race->impact_data_set == 0x821);
