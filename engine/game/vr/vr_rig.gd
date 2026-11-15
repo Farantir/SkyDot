@@ -22,6 +22,8 @@ signal inventory_requested
 ## The left Y button was pressed.
 signal magic_requested
 signal skills_requested
+## The right grip was pressed: the favorites menu (in a menu it marks the item).
+signal favorites_requested
 
 const SNAP_DEGREES := 30.0
 ## The right stick must pass this to snap-turn and fall below the lower one to
@@ -182,6 +184,9 @@ func _left_button(input_name: String, pressed: bool) -> void:
 
 func _right_button(input_name: String, pressed: bool) -> void:
 	match input_name:
+		"grip_click":
+			if pressed:
+				favorites_requested.emit()
 		"primary_click":
 			if pressed:
 				skills_requested.emit()

@@ -48,6 +48,8 @@ var _training: TrainingView
 var _skills: SkillsView
 var _skills_panel: VrPanel
 var _magic: MagicView
+var _favorites: FavoritesView
+var _favorites_panel: VrPanel
 var _death: DeathView
 var _death_panel: VrPanel
 var _death_fade: MeshInstance3D  # a black quad on the head: the death fade and the door fade (max of the two)
@@ -124,6 +126,7 @@ func _create_components() -> void:
 	_rig.inventory_requested.connect(_on_inventory_requested)
 	_rig.magic_requested.connect(_on_magic_requested)
 	_rig.skills_requested.connect(_on_skills_requested)
+	_rig.favorites_requested.connect(_on_favorites_requested)
 	_controls = PlayerInput.new(_rig)
 	_controls.enabled = _settings.interactive
 	_controls.look_speed = _settings.stick_look_speed
@@ -163,12 +166,16 @@ func _create_components() -> void:
 		_inventory = InventoryView.new(_session)
 		_container = ContainerView.new(_session)
 		_inventory_panel = _menu_panel(_inventory)
+		# The item's model is a real object beside the panel, not a picture in it (ADR 0006, 0010).
+		_inventory.preview().use_world_node(_inventory_panel, Vector3(MENU_WIDTH * 0.5 + 0.25, 0.0, 0.05))
 		_container_panel = _menu_panel(_container)
 		_crafting = CraftingView.new(_session)
 		_crafting.can_name = false  # no keyboard: an enchanted item keeps its default name
 		_crafting_panel = _menu_panel(_crafting)
 		_magic = MagicView.new(_session)
 		_magic_panel = _menu_panel(_magic)
+		_favorites = FavoritesView.new(_session)
+		_favorites_panel = _menu_panel(_favorites)
 		_training = TrainingView.new(_session)
 		_training_panel = _menu_panel(_training)
 		_session.training_opened.connect(_training.open)
@@ -252,7 +259,9 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 		panel = _training_panel
 	elif view == _skills:
 		panel = _skills_panel
-	_controls.blocked = open or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
+	elif view == _favorites:
+		panel = _favorites_panel
+	_controls.blocked = open or _favorites.is_open() or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
 		or _training.is_open() or _skills.is_open() or _session.is_dialogue_open()
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
@@ -290,6 +299,21 @@ func _on_skills_requested() -> void:
 	elif not _inventory.is_open() and not _container.is_open() and not _crafting.is_open() and not _magic.is_open() \
 			and not _training.is_open() and not _session.is_dialogue_open():
 		_skills.open()
+
+
+## The right grip: the favorites menu; in the inventory or magic menu it marks the item under the cursor.
+func _on_favorites_requested() -> void:
+	if _favorites == null:
+		return
+	if _inventory.is_open() or _magic.is_open():
+		var press := InputEventAction.new()
+		press.action = &"menu_favorite"
+		press.pressed = true
+		Input.parse_input_event(press)
+	elif _favorites.is_open():
+		_favorites.close()
+	elif not _container.is_open() and not _crafting.is_open() and not _skills.is_open() and not _session.is_dialogue_open():
+		_favorites.open()
 
 
 ## The left Y button: the magic menu, or closes the menu that is open.
