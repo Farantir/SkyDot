@@ -24,9 +24,8 @@ signal engaged(open: bool)
 
 enum Mode { RECIPES, TEMPER, ALCHEMY, ENCHANT }
 
-const NORMAL := Color(0.92, 0.92, 0.92)
-const DIM := Color(0.6, 0.6, 0.6)
-const SELECTED := Color(1.0, 0.9, 0.5)
+const THEME := preload("theme/menu_theme.tres")
+const TYPE := &"ItemListView"
 const SHORT := Color(0.9, 0.5, 0.45)
 const MARKED := Color(0.6, 0.9, 0.6)
 const STICK_THRESHOLD := 0.6
@@ -34,6 +33,11 @@ const MAX_INGREDIENTS := 3
 const ENCHANT_CATEGORIES: Array[String] = ["Disenchant", "Item", "Enchantment", "Soul gem"]
 const ENCHANT_KEYS: Array[String] = ["disenchant", "items", "enchantments", "gems"]
 
+# The text colours: the game's (UiTheme) when the pack has them, set by _draw.
+var _normal := Color(0.92, 0.92, 0.92)
+var _dim := Color(0.6, 0.6, 0.6)
+var _head := Color(1.0, 0.9, 0.5)  # titles and headings
+var _highlight := Color(1.0, 1.0, 1.0, 0.0)  # the chosen row's fill
 var _session: GameSession
 var _open := false
 var _bench := 0
@@ -407,18 +411,33 @@ func _draw() -> void:
 	if not _open:
 		return
 	var area := size
-	var font := ThemeDB.fallback_font
-	var font_size := int(maxf(14.0, area.y / 38.0))
-	var line := font_size * 1.45
-	var panel := Rect2(area * Vector2(0.1, 0.08), area * Vector2(0.8, 0.84))
-	draw_rect(panel, Color(0.04, 0.04, 0.05, 0.88))
-	draw_rect(panel, Color(0.5, 0.45, 0.35), false, 2.0)
-	var split := panel.size.x * 0.52
-	var left := panel.position.x + font_size
-	var right := panel.position.x + split + font_size
-	var top := panel.position.y + font_size * 2.0
-	_text(font, _title if _title != "" else "Workbench", font_size, Vector2(left, top - font_size * 0.4), SELECTED, split - font_size * 2.0)
-	draw_line(Vector2(panel.position.x + split, panel.position.y + 4.0), Vector2(panel.position.x + split, panel.end.y - 4.0), Color(0.5, 0.45, 0.35))
+	var th := UiTheme.item_list(THEME, area.y)
+	var font: Font = th.default_font if th.default_font != null else ThemeDB.fallback_font
+	# The game's look (item list font, size, row pitch, colours, the item card's frame) when the pack has it.
+	var font_size := int(maxf(12.0, roundf(float(th.get_constant(&"font_size_720", TYPE)) * area.y / UiTheme.STAGE_HEIGHT))) \
+		if th.has_constant(&"font_size_720", TYPE) else int(maxf(14.0, area.y / 38.0))
+	var line := float(th.get_constant(&"row_pitch_720", TYPE)) * area.y / UiTheme.STAGE_HEIGHT \
+		if th.has_constant(&"row_pitch_720", TYPE) else font_size * 1.45
+	var panel := Rect2(area * Vector2(0.06, 0.08), area * Vector2(0.88, 0.84))
+	var split := panel.size.x * 0.5
+	var gap := font_size * 0.4
+	if UiAssets.available():
+		_normal = th.get_color(&"normal", TYPE)
+		_dim = th.get_color(&"dim", TYPE)
+		_head = _dim
+		_highlight = th.get_color(&"highlight", TYPE)
+	var frame := th.get_stylebox(&"panel", TYPE) if th.has_stylebox(&"panel", TYPE) else null
+	if frame != null:
+		draw_style_box(frame, Rect2(panel.position, Vector2(split - gap, panel.size.y)))
+		draw_style_box(frame, Rect2(panel.position + Vector2(split + gap, 0.0), Vector2(panel.size.x - split - gap, panel.size.y)))
+	else:
+		draw_rect(panel, Color(0.04, 0.04, 0.05, 0.88))
+		draw_rect(panel, Color(0.5, 0.45, 0.35), false, 2.0)
+		draw_line(Vector2(panel.position.x + split, panel.position.y + 4.0), Vector2(panel.position.x + split, panel.end.y - 4.0), Color(0.5, 0.45, 0.35))
+	var left := panel.position.x + font_size * 1.5
+	var right := panel.position.x + split + gap + font_size * 1.5
+	var top := panel.position.y + font_size * 2.5
+	_text(font, _title if _title != "" else "Workbench", font_size, Vector2(left, top - font_size * 0.4), _head, split - font_size * 3.0)
 	var offset := 1.0
 	if _mode == Mode.ENCHANT:
 		offset = 2.0
@@ -427,29 +446,31 @@ func _draw() -> void:
 			tabs += ("[%s] " if i == _category else " %s  ") % ENCHANT_CATEGORIES[i]
 		# All four names stay readable: a smaller font when the bar is wider than the left side.
 		var tab_size := font_size
-		while tab_size > 8 and font.get_string_size(tabs, HORIZONTAL_ALIGNMENT_LEFT, -1, tab_size).x > split - font_size * 2.0:
+		while tab_size > 8 and font.get_string_size(tabs, HORIZONTAL_ALIGNMENT_LEFT, -1, tab_size).x > split - font_size * 3.0:
 			tab_size -= 1
-		_text(font, tabs, tab_size, Vector2(left, top + line), SELECTED, split - font_size * 2.0)
+		_text(font, tabs, tab_size, Vector2(left, top + line), _head, split - font_size * 3.0)
 	var rows_fit := int((panel.end.y - top - line * (offset + 2.0)) / line)
 	var first := clampi(_selected - rows_fit / 2, 0, maxi(_rows.size() - rows_fit, 0))
 	for i in range(first, mini(first + rows_fit, _rows.size())):
 		var row: Dictionary = _rows[i]
 		var y := top + line * (i - first + offset)
 		var chosen := i == _selected
-		var colour := SELECTED if chosen else (NORMAL if _row_ok(row) else DIM)
+		var colour := _normal if chosen or _row_ok(row) else _dim
+		if chosen and _highlight.a > 0.0:
+			draw_rect(Rect2(left - font_size * 0.5, y - line * 0.75, split - font_size * 2.0, line), _highlight)
 		if _mode == Mode.ALCHEMY and _marked.has(int(row["form"])) and not chosen:
 			colour = MARKED
-		_text(font, ("> " if chosen else "  ") + _row_text(row), font_size, Vector2(left, y), colour, split - font_size * 2.0)
+		_text(font, ("> " if chosen and _highlight.a <= 0.0 else "") + _row_text(row), font_size, Vector2(left, y), colour, split - font_size * 3.0)
 	if _rows.is_empty():
-		_text(font, _empty_text(), font_size, Vector2(left, top + line * offset), DIM, split - font_size * 2.0)
-	_draw_details(font, font_size, line, Vector2(right, top), panel.end.x - right - font_size, panel)
+		_text(font, _empty_text(), font_size, Vector2(left, top + line * offset), _dim, split - font_size * 3.0)
+	_draw_details(font, font_size, line, Vector2(right, top), panel.end.x - right - font_size * 1.5, panel)
 	var hint := "%s %s   %s close" % [_key(&"ui_accept", "Enter"), _accept_text(), _key(&"inventory", "I")]
 	if _mode == Mode.ALCHEMY:
 		hint = "%s mark   %s mix   %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_drop", "R"), _key(&"inventory", "I")]
 	elif _mode == Mode.ENCHANT:
 		hint = "%s %s   %s enchant   %s%s   left/right category   %s close" % [_key(&"ui_accept", "Enter"),
 			"disenchant" if _category == 0 else "mark", _key(&"menu_drop", "R"), _key(&"menu_equip_left", "Q") + " name" if can_name else "", "", _key(&"inventory", "I")]
-	_text(font, hint, font_size, Vector2(left, panel.end.y - font_size * 0.8), DIM, panel.size.x - font_size * 2.0)
+	_text(font, hint, font_size, Vector2(left, panel.end.y - font_size * 0.8), _dim, panel.size.x - font_size * 2.0)
 
 
 func _empty_text() -> String:
@@ -482,30 +503,30 @@ func _draw_details(font: Font, font_size: int, line: float, at: Vector2, width: 
 		Mode.RECIPES, Mode.TEMPER:
 			if row.is_empty():
 				return
-			_text(font, "Needs", font_size, Vector2(at.x, y), SELECTED, width)
+			_text(font, "Needs", font_size, Vector2(at.x, y), _head, width)
 			for c: Dictionary in row["components"]:
 				y += line
 				var have := int(c["have"])
 				var need := int(c["need"])
-				_text(font, "%s %d/%d" % [c["name"], have, need], font_size, Vector2(at.x, y), NORMAL if have >= need else SHORT, width)
+				_text(font, "%s %d/%d" % [c["name"], have, need], font_size, Vector2(at.x, y), _normal if have >= need else SHORT, width)
 		Mode.ALCHEMY:
 			if not row.is_empty():
-				_text(font, "Effects", font_size, Vector2(at.x, y), SELECTED, width)
+				_text(font, "Effects", font_size, Vector2(at.x, y), _head, width)
 				for effect: Dictionary in row["effects"]:
 					y += line
-					_text(font, effect["name"], font_size, Vector2(at.x, y), NORMAL if effect["known"] else DIM, width)
+					_text(font, effect["name"], font_size, Vector2(at.x, y), _normal if effect["known"] else _dim, width)
 			y = maxf(y + line * 1.5, panel.position.y + panel.size.y * 0.5)
 			if _marked.size() < 2:
-				_text(font, "Mark two or three ingredients", font_size, Vector2(at.x, y), DIM, width)
+				_text(font, "Mark two or three ingredients", font_size, Vector2(at.x, y), _dim, width)
 			elif not _preview.get("mixable", false):
 				_text(font, "These do not mix", font_size, Vector2(at.x, y), SHORT, width)
 			else:
 				_text(font, _preview["name"], font_size, Vector2(at.x, y), MARKED, width)
 				for effect: Dictionary in _preview["effects"]:
 					y += line
-					_text(font, effect["description"], font_size, Vector2(at.x, y), NORMAL, width)
+					_text(font, effect["description"], font_size, Vector2(at.x, y), _normal, width)
 				y += line
-				_text(font, "Value %d" % int(_preview["value"]), font_size, Vector2(at.x, y), DIM, width)
+				_text(font, "Value %d" % int(_preview["value"]), font_size, Vector2(at.x, y), _dim, width)
 		Mode.ENCHANT:
 			_draw_enchant_details(font, font_size, line, at, width, row)
 
@@ -515,8 +536,8 @@ func _draw_enchant_details(font: Font, font_size: int, line: float, at: Vector2,
 	if _category == 0:
 		if row.is_empty():
 			return
-		_text(font, "Destroys the item and teaches", font_size, Vector2(at.x, y), SELECTED, width)
-		_text(font, String(row["enchantment"]), font_size, Vector2(at.x, y + line), NORMAL, width)
+		_text(font, "Destroys the item and teaches", font_size, Vector2(at.x, y), _head, width)
+		_text(font, String(row["enchantment"]), font_size, Vector2(at.x, y + line), _normal, width)
 		if not row["ok"]:
 			_text(font, String(row["refusal"]), font_size, Vector2(at.x, y + line * 2.0), SHORT, width)
 		return
@@ -525,18 +546,18 @@ func _draw_enchant_details(font: Font, font_size: int, line: float, at: Vector2,
 		var text := "-"
 		if _marks.has(category):
 			text = String(_marks[category]["name"])
-		_text(font, "%s: %s" % [labels[category], text], font_size, Vector2(at.x, y), MARKED if _marks.has(category) else DIM, width)
+		_text(font, "%s: %s" % [labels[category], text], font_size, Vector2(at.x, y), MARKED if _marks.has(category) else _dim, width)
 		y += line
 	if _category == 2 and not row.is_empty():
 		for effect: String in row["effects"]:
 			y += line
-			_text(font, effect, font_size, Vector2(at.x, y), NORMAL, width)
+			_text(font, effect, font_size, Vector2(at.x, y), _normal, width)
 		y += line
 	y += line * 0.5
 	if _preview.is_empty():
-		_text(font, "Mark an item, an enchantment and a soul gem", font_size, Vector2(at.x, y), DIM, width)
+		_text(font, "Mark an item, an enchantment and a soul gem", font_size, Vector2(at.x, y), _dim, width)
 		return
-	_text(font, ("Name: " + (_name if _name != "" else "(default)")), font_size, Vector2(at.x, y), DIM, width)
+	_text(font, ("Name: " + (_name if _name != "" else "(default)")), font_size, Vector2(at.x, y), _dim, width)
 	y += line
 	if _preview["name"] != "":
 		_text(font, String(_preview["name"]), font_size, Vector2(at.x, y), MARKED if _preview["ok"] else SHORT, width)
@@ -545,13 +566,13 @@ func _draw_enchant_details(font: Font, font_size: int, line: float, at: Vector2,
 		_text(font, String(_preview["refusal"]), font_size, Vector2(at.x, y), SHORT, width)
 		return
 	for effect: String in _preview["effects"]:
-		_text(font, effect, font_size, Vector2(at.x, y), NORMAL, width)
+		_text(font, effect, font_size, Vector2(at.x, y), _normal, width)
 		y += line
 	if _preview["constant"]:
-		_text(font, "Worn: constant effect", font_size, Vector2(at.x, y), DIM, width)
+		_text(font, "Worn: constant effect", font_size, Vector2(at.x, y), _dim, width)
 	else:
 		_text(font, "Charge %d, %d uses (%.0f each)" % [int(_preview["charge"]), int(_preview["uses"]), float(_preview["cost"])],
-			font_size, Vector2(at.x, y), DIM, width)
+			font_size, Vector2(at.x, y), _dim, width)
 
 
 func _key(action: StringName, fallback: String) -> String:
