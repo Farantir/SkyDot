@@ -55,6 +55,9 @@ var _marks := {}  # enchanting: category (1 item, 2 enchantment, 3 soul gem) -> 
 var _name := ""  # the name typed for the enchanted item
 var _naming := false
 var _name_edit: LineEdit
+var _cats: Array[String] = []  # smithing: the categories in play (CATEGORY_ORDER), grouped lists as the game shows them
+var _cat := 0
+var _in_items := false  # the focus is on the item column
 var _model_view: ItemPreview  # the 3D preview of the item under the cursor
 ## Whether a name can be typed (a keyboard host; a VR shell keeps the default name).
 var can_name := true
@@ -73,7 +76,7 @@ func _init(session: GameSession) -> void:
 	_name_edit.text_submitted.connect(_name_done)
 	add_child(_name_edit)
 	_model_view = ItemPreview.new(session)
-	_model_view.region = Rect2(0.34, 0.1, 0.3, 0.5)
+	_model_view.region = Rect2(0.58, 0.2, 0.22, 0.38) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
 	add_child(_model_view)
 
 
@@ -95,6 +98,8 @@ func open(ref: int, bench_type: int) -> void:
 	_marked.clear()
 	_marks.clear()
 	_category = 0
+	_cat = 0
+	_in_items = false
 	_name = ""
 	var was_open := _open
 	_open = true
@@ -164,6 +169,7 @@ func _refresh() -> void:
 			_enchant = _session.enchant_rows()
 			_rows = _enchant[ENCHANT_KEYS[_category]]
 			_prune_marks()
+	_group()
 	_selected = clampi(_selected, 0, maxi(_rows.size() - 1, 0))
 	_update_model()
 	_preview = _session.alchemy_preview(PackedInt64Array(_marked)) if _mode == Mode.ALCHEMY and _marked.size() >= 2 else {}
@@ -210,6 +216,9 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return  # the LineEdit takes the keys
 	var handled := true
+	if _grouped() and _grouped_input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _mode == Mode.ENCHANT and event.is_action_pressed(&"ui_right"):
 		_change_category(1)
 	elif _mode == Mode.ENCHANT and event.is_action_pressed(&"ui_left"):
@@ -236,6 +245,15 @@ func _input(event: InputEvent) -> void:
 
 ## The enchanting table's category by name ("Soul gem") or number; no-op elsewhere.
 func select_category(category: String) -> void:
+	if _grouped():  # the forge and tempering: a category by name, its items focused (for shots)
+		var found := _cats.find(category.to_upper())
+		if found >= 0:
+			_cat = found
+			_selected = _first_of_cat()
+			_in_items = true
+			_update_model()
+			queue_redraw()
+		return
 	if _mode != Mode.ENCHANT:
 		return
 	var index := -1
@@ -274,6 +292,90 @@ func _name_done(text: String) -> void:
 	_refresh()
 
 
+const CATEGORY_ORDER: Array[String] = ["HIDE", "IRON", "STUDDED", "LEATHER", "JEWELRY", "BUILDING MATERIALS", "MISC"]
+
+
+## Whether the list is grouped in categories with a column of its own (the forge and the tempering benches).
+func _grouped() -> bool:
+	return _mode == Mode.RECIPES or _mode == Mode.TEMPER
+
+
+## The game's category of a recipe's product. PLACEHOLDER: the game's crafting menu groups by the product's keywords
+## (not in the pack's base data); here the product's editor id and type stand in (Hide, Iron, Studded, Leather,
+## jewelry by name, MISC items are building materials). Tempering lists WEAPONS and ARMOR.
+func _category_of(row: Dictionary) -> String:
+	var info := _session.item_info(int(row["product"]) if row.has("product") else int(row["form"]))
+	var kind := String(info.get("category", ""))
+	if _mode == Mode.TEMPER:
+		return "WEAPONS" if kind == "weapon" else "ARMOR"
+	var name := String(row["name"])
+	var eid := String(info.get("editor_id", ""))
+	if kind == "misc":
+		return "BUILDING MATERIALS"
+	for jewel in ["Necklace", "Ring", "Amulet", "Circlet"]:
+		if name.contains(jewel):
+			return "JEWELRY"
+	for material in [["Hide", "HIDE"], ["Studded", "STUDDED"], ["Leather", "LEATHER"], ["Iron", "IRON"]]:
+		if eid.contains(material[0]) or name.contains(material[0]):
+			return material[1]
+	return "MISC"
+
+
+func _group() -> void:
+	if not _grouped():
+		_cats.clear()
+		return
+	var found := {}
+	for row: Dictionary in _rows:
+		found[_category_of(row)] = true
+	_cats.clear()
+	var order: Array[String] = CATEGORY_ORDER if _mode == Mode.RECIPES else ["WEAPONS", "ARMOR"]
+	for c in order:
+		if found.has(c):
+			_cats.append(c)
+	_cat = clampi(_cat, 0, maxi(_cats.size() - 1, 0))
+	if _selected < _rows.size() and not _cats.is_empty() and _category_of(_rows[_selected]) != _cats[_cat]:
+		_selected = _first_of_cat()
+
+
+func _cat_rows() -> Array[int]:
+	var out: Array[int] = []
+	if _cats.is_empty():
+		return out
+	for i in _rows.size():
+		if _category_of(_rows[i]) == _cats[_cat]:
+			out.append(i)
+	return out
+
+
+func _first_of_cat() -> int:
+	var rows := _cat_rows()
+	return rows[0] if not rows.is_empty() else 0
+
+
+## Keys of the grouped lists: up/down move in the focused column, accept / right enter the items (accept then crafts),
+## cancel / left leave them. Returns whether the event was used.
+func _grouped_input(event: InputEvent) -> bool:
+	if event.is_action_pressed(&"ui_down") or event.is_action_pressed(&"ui_up"):
+		_move(1 if event.is_action_pressed(&"ui_down") else -1)
+	elif event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_Y:
+		_stick(event.axis_value)
+	elif event.is_action_pressed(&"ui_right") or (event.is_action_pressed(&"ui_accept") and not _in_items):
+		if not _in_items and not _cat_rows().is_empty():
+			_in_items = true
+			_selected = _first_of_cat()
+			_update_model()
+			queue_redraw()
+	elif event.is_action_pressed(&"ui_left") or (event.is_action_pressed(&"ui_cancel") and _in_items):
+		_in_items = false
+		queue_redraw()
+	elif event.is_action_pressed(&"ui_accept"):
+		accept()
+	else:
+		return false
+	return true
+
+
 func _stick(value: float) -> void:
 	if absf(value) < STICK_THRESHOLD:
 		_stick_ready = true
@@ -284,6 +386,16 @@ func _stick(value: float) -> void:
 
 func _move(step: int) -> void:
 	if _rows.is_empty():
+		return
+	if _grouped() and not _cats.is_empty():
+		if _in_items:
+			var rows := _cat_rows()
+			_selected = rows[(rows.find(_selected) + step + rows.size()) % rows.size()]
+		else:
+			_cat = (_cat + step + _cats.size()) % _cats.size()
+			_selected = _first_of_cat()
+		_update_model()
+		queue_redraw()
 		return
 	_selected = (_selected + step + _rows.size()) % _rows.size()
 	_update_model()
@@ -421,7 +533,7 @@ const LIST_FONT := "$EverywhereMediumFont"
 const HEADER_RIGHT := 1123.0  # the MenuDescription's right edge
 const HEADER_Y := 41.0
 const LIST_X := 33.0
-const LIST_CENTRE_Y := 384.0  # the chosen row stands here: the list is centred on it (CenteredList)
+const LIST_CENTRE_Y := 392.0  # the chosen row stands here: the list is centred on it (CenteredList)
 const LIST_PITCH := 40.5
 const LIST_WIDTH := 560.0
 const BAR_TOP := 650.0  # BottomBarInfo's line (the movie places the bar at y 646.55)
@@ -496,6 +608,11 @@ func _draw() -> void:
 	var line_colour := Color(1.0, 1.0, 1.0, 0.55)
 	draw_line(Vector2(0.0, BAR_TOP * sy), Vector2(area.x, BAR_TOP * sy), line_colour, 1.0)
 	_stage_text(font, _header(), Vector2(HEADER_RIGHT, HEADER_Y), 26.0, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
+	if _grouped() and not _cats.is_empty():
+		_draw_grouped(font, th, fill)
+		_draw_bottom_bar(font)
+		_update_model_rect()
+		return
 	if _mode == Mode.ENCHANT:
 		var tabs := ""
 		for i in ENCHANT_CATEGORIES.size():
@@ -526,18 +643,102 @@ func _draw() -> void:
 	_update_model_rect()
 
 
+## The game's three columns (categories, items, the item's card), measured in side_crafting_forge.png: lines at
+## 175, 197 and 407 px of 1100, the chosen category big and white, the item column dim until it has the focus.
+func _draw_grouped(font: Font, th: Theme, fill: Transform2D) -> void:
+	var line_colour := Color(1.0, 1.0, 1.0, 0.5)
+	for x in [203.6, 229.3, 473.7]:
+		draw_line(fill * Vector2(x, 0.0), fill * Vector2(x, BAR_TOP), line_colour, 1.0)
+	for i in _cats.size():
+		var y := LIST_CENTRE_Y + (i - _cat) * LIST_PITCH
+		if y > 40.0 and y < BAR_TOP - 10.0:
+			_stage_text(font, _cats[i], Vector2(LIST_X, y), 26.0 if i == _cat else 20.0, Color.WHITE if i == _cat else _dim)
+	var rows := _cat_rows()
+	var at := maxi(rows.find(_selected), 0)
+	for n in rows.size():
+		var y := 386.0 + (n - at) * LIST_PITCH
+		if y < 40.0 or y > BAR_TOP - 10.0:
+			continue
+		var row: Dictionary = _rows[rows[n]]
+		var chosen := n == at
+		var colour := Color.WHITE if chosen and _in_items else _dim
+		if chosen and _in_items and not _row_ok(row):
+			colour = _dim
+		_stage_text(font, _row_text(row), Vector2(252.0, y), 20.0 if chosen else 18.0, colour, HORIZONTAL_ALIGNMENT_LEFT, 215.0)
+	var row := current()
+	if row.is_empty():
+		return
+	var info := _session.item_info(int(row["product"]) if row.has("product") else int(row["form"]))
+	var frame := th.get_stylebox(&"panel", TYPE) if th.has_stylebox(&"panel", TYPE) else null
+	var card := Rect2(fill * Vector2(640.0, 415.0), Vector2(419.0, 143.0) * Vector2(fill.x.x, fill.y.y))
+	if frame != null:
+		draw_style_box(frame, card)
+	var middle := 850.0
+	_stage_centred(font, String(row["name"]).to_upper(), Vector2(middle, 477.0), 30.0, Color.WHITE)
+	var armor_type := int(info.get("armor_type", 0))
+	if String(info.get("category", "")) == "armor":
+		_stage_text(font, ["Light Armor", "Heavy Armor", "Clothing"][clampi(armor_type, 0, 2)], Vector2(667.0, 436.0), 14.0, _dim)
+	var stats: Array = []
+	if String(info.get("category", "")) == "armor":
+		stats.append(["ARMOR", "%d" % int(info.get("armor_rating", 0))])
+	elif String(info.get("category", "")) == "weapon":
+		stats.append(["DAMAGE", "%d" % int(info.get("damage", 0))])
+	stats.append(["WEIGHT", ("%.1f" % float(info.get("weight", 0))).trim_suffix(".0")])
+	stats.append(["VALUE", "%d" % int(info.get("value", 0))])
+	var x := 679.0
+	for pair: Array in stats:
+		_stage_text(font, pair[0], Vector2(x, 509.0), 14.0, _dim)
+		var label_w := font.get_string_size(pair[0], HORIZONTAL_ALIGNMENT_LEFT, -1, int(roundf(14.0 * fill.x.x))).x / fill.x.x
+		_stage_text(font, pair[1], Vector2(x + label_w + 6.0, 512.0), 30.0, Color.WHITE)
+		x += 125.0
+	var parts: Array[String] = []
+	for c: Dictionary in row.get("components", []):
+		parts.append(("%d %s" % [int(c["need"]), c["name"]]) if int(c["need"]) > 1 else String(c["name"]))
+	if not parts.is_empty():
+		var text := ", ".join(parts)
+		var head := "Requires: "
+		var px := int(roundf(22.0 * fill.x.x))
+		var total := (font.get_string_size(head + text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x) / fill.x.x
+		var start := middle - total * 0.5
+		_stage_text(font, head, Vector2(start, 630.0), 22.0, Color.WHITE)
+		_stage_text(font, text, Vector2(start + font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x, 630.0), 22.0, _dim)
+
+
+func _stage_centred(font: Font, text: String, at: Vector2, size_stage: float, colour: Color) -> void:
+	var fill := UiDraw.stage_fill(size, STAGE)
+	var px := maxi(int(roundf(size_stage * fill.x.x)), 6)
+	var wide := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x
+	var origin := fill * at - Vector2(wide * 0.5, 0.0)
+	draw_string_outline(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, 3, Color(0.0, 0.0, 0.0, 0.8))
+	draw_string(font, origin, text, HORIZONTAL_ALIGNMENT_LEFT, -1, px, colour)
+
+
 func _draw_bottom_bar(font: Font) -> void:
 	var fill := UiDraw.stage_fill(size, STAGE)
 	var exit_icon := UiAssets.exported(SWF, "Tab")
+	var exit_x := 12.0
+	if _grouped():
+		var accept_icon := UiAssets.exported(SWF, "E")
+		if accept_icon >= 0:
+			UiDraw.character(self, SWF, accept_icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(12.0, 662.0)))
+		_stage_text(font, "Create" if _mode == Mode.RECIPES else "Improve", Vector2(40.0, 684.0), 20.0, Color.WHITE)
+		exit_x = 93.0
 	if exit_icon >= 0:
-		UiDraw.character(self, SWF, exit_icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(12.0, 662.0)))
-	_stage_text(font, "Exit", Vector2(46.0, 684.0), 20.0, Color.WHITE)
+		UiDraw.character(self, SWF, exit_icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(exit_x, 662.0)))
+	_stage_text(font, "Exit", Vector2(exit_x + 24.0, 684.0), 20.0, Color.WHITE)
+	if _grouped():
+		_draw_skill(font, fill)
+		return
 	var hint := _accept_text() if _mode != Mode.ENCHANT else ("disenchant" if _category == 0 else "mark")
 	if _mode == Mode.ALCHEMY:
 		hint = "mark   %s mix" % _key(&"menu_drop", "R")
 	elif _mode == Mode.ENCHANT:
 		hint += "   %s enchant   %s name   left/right category" % [_key(&"menu_drop", "R"), _key(&"menu_equip_left", "Q")] if can_name else "   %s enchant" % _key(&"menu_drop", "R")
 	_stage_text(font, "%s %s" % [_key(&"ui_accept", "Enter"), hint], Vector2(140.0, 684.0), 20.0, _dim, HORIZONTAL_ALIGNMENT_LEFT, 520.0)
+	_draw_skill(font, fill)
+
+
+func _draw_skill(font: Font, fill: Transform2D) -> void:
 	var skill: String = SKILLS.get(_mode, "Smithing")
 	var level := int(_session.actor_value(0x14, skill))
 	_stage_text(font, skill, Vector2(770.0, 680.0), 16.0, _dim)
@@ -545,12 +746,24 @@ func _draw_bottom_bar(font: Font) -> void:
 	_stage_text(font, str(mini(level + 1, 100)), Vector2(1015.0, 684.0), 20.0, Color.WHITE)
 	var bar := Rect2(fill * Vector2(868.0, 671.0), Vector2(140.0, 14.0) * Vector2(fill.x.x, fill.y.y))
 	draw_rect(bar, Color(0.0, 0.0, 0.0, 0.6))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * _skill_fraction(skill), bar.size.y)), Color(0.35, 0.45, 0.75, 0.9))
 	draw_rect(bar, Color(1.0, 1.0, 1.0, 0.55), false, 1.0)
+
+
+## How far the skill is to its next level (the xp over Progression.skill_threshold).
+func _skill_fraction(skill: String) -> float:
+	var av: int = {"Smithing": Progression.SMITHING, "Alchemy": Progression.ALCHEMY, "Enchanting": Progression.ENCHANTING}[skill]
+	var level := int(_session.actor_value(0x14, skill))
+	var need := _session.progression.skill_threshold(av, level)
+	if need <= 0.0:
+		return 0.0
+	var xp := float(_session.progression.data().progress()["skill_xp"][av - ProgressionData.FIRST_SKILL])
+	return clampf(xp / need, 0.0, 1.0)
 
 
 func _update_model_rect() -> void:
 	if _model_view != null:
-		_model_view.region = Rect2(0.34, 0.1, 0.3, 0.5)
+		_model_view.region = Rect2(0.58, 0.2, 0.22, 0.38) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
 
 
 func _empty_text() -> String:
