@@ -50,6 +50,13 @@ const INTRO_Z := [-3000.0, -2983.8, -2937.0, -2862.2, -2762.1, -2639.1, -2496.1,
 	-1571.0, -1362.4, -1152.0, -942.5, -736.4, -536.6, -345.4, -165.6, 0.0]
 const INTRO_STEP := 1.0 / 30.0
 
+const DECODE_SHADER := """shader_type canvas_item;
+void fragment() {
+	vec3 c = texture(TEXTURE, UV).rgb;
+	COLOR = vec4(mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c)), 1.0);
+}
+"""
+
 var _session: GameSession
 var _viewport: SubViewport
 var _camera: Camera3D
@@ -101,6 +108,13 @@ func _init(session: GameSession) -> void:
 	_viewport.add_child(world_environment)
 	_camera = Camera3D.new()
 	_camera.current = true
+	# The effect shader works in the game's gamma space (textures, blending; materials.hpp) and the world's camera
+	# hands Godot linear colour in its image space pass; here the sky has no such pass, so Godot's output encoding
+	# would brighten the gamma values again: the container draws the picture decoded back to what the game shows.
+	var decode := ShaderMaterial.new()
+	decode.shader = Shader.new()
+	decode.shader.code = DECODE_SHADER
+	material = decode
 	_viewport.add_child(_camera)
 	_frame = _root
 	_viewport.add_child(_root)
