@@ -49,11 +49,13 @@ var voice_fill := 0.0
 var voice_alpha := 0.0
 var _voice_active := -1000000  # msec the voice was last busy
 var _game: HudGame
+var _texts: HudTexts
 
 
 func _init(session: GameSession, key_label: Callable) -> void:
 	_session = session
 	_key_label = key_label
+	session.message.connect(_on_message)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
@@ -64,6 +66,9 @@ func _process(_delta: float) -> void:
 		if _game == null:
 			_game = HudGame.new()
 		_game.step(_values(), _delta)
+		if _texts == null:
+			_texts = HudTexts.new()
+		_texts.step(_delta)
 	var voice := _session.voice_meter()
 	var now := Time.get_ticks_msec()
 	if voice["recovering"] or voice["charging"]:
@@ -75,6 +80,15 @@ func _process(_delta: float) -> void:
 		if voice_alpha > 0.0:
 			voice_fill = 1.0  # the recovery ran out: full, then gone
 	queue_redraw()
+
+
+## A notification ("Iron Sword Added", a quest line): the movie's message queue shows it. Without the menus'
+## assets the debug overlay's notes show it instead.
+func _on_message(text: String, _box: bool) -> void:
+	if HudGame.available():
+		if _texts == null:
+			_texts = HudTexts.new()
+		_texts.show_message(text)
 
 
 ## Actor value -> [value, maximum] of the three meters.
@@ -95,7 +109,8 @@ func _draw() -> void:
 		_draw_voice(area)
 		if show_crosshair:
 			_game.draw_crosshair(self, area)
-		_draw_prompt(area)
+		_texts.draw_messages(self, area)
+		_draw_rollover(area)
 		return
 	for bar: Dictionary in BARS:
 		_draw_bar(bar, area, now)
@@ -168,6 +183,14 @@ func _draw_compass(area: Vector2) -> void:
 	var where: Dictionary = _session.ambience.where.call() if _session.ambience != null else {}
 	_game.draw_compass(self, area, heading, SkydotWorld.godot_to_skyrim(_session.player_feet()), int(where.get("world", 0)),
 		_session.world)
+
+
+## The rollover as the game draws it (HudTexts).
+func _draw_rollover(area: Vector2) -> void:
+	if _prompt.is_empty():
+		return
+	var lock := ActivationPrompt.lock_text(_prompt["lock_level"])
+	_texts.draw_rollover(self, area, _prompt, _key_label.call(&"activate"), lock)
 
 
 func _draw_prompt(area: Vector2) -> void:

@@ -4,7 +4,9 @@
 # the picture fades to black over FADE_SECONDS and asks "Load the last save?".
 # Enter, the gamepad's A (the `ui_accept` action) or a click chooses to load (`load_chosen`:
 # the shell calls GameSession.reload_or_restart); Escape or B (`ui_cancel`) quits
-# (`quit_chosen`). This is the view, a Control that fills its host (the flat viewer's
+# (`quit_chosen`). With the game's menus in the pack the question is its message box (MessageBoxArt, as
+# messagebox.swf lays it out) with Yes and No: left/right/up/down (or a mouse over a button) pick, Enter or A or a click
+# choose, Escape or B quit. This is the view, a Control that fills its host (the flat viewer's
 # CanvasLayer, a VR shell's panel); the shell lowers the camera and stops the controls.
 class_name DeathView
 extends Control
@@ -21,10 +23,14 @@ const PROMPT_DELAY := 0.0
 const TITLE := "You died."
 const QUESTION := "Load the last save?"
 const KEYS := "Enter / A: load      Esc / B: quit"
+const BUTTONS := ["Yes", "No"]
 
 ## 0 clear, 1 black.
 var fade := 0.0
 var _time := -1.0
+## The message box's chosen button (0 Yes) and where the buttons are drawn (for the mouse).
+var selected := 0
+var _boxes: Array[Rect2] = []
 ## Whether the view listens at all (false in runs that drive themselves).
 var enabled: Callable = func() -> bool: return true
 
@@ -41,6 +47,7 @@ func _init(session: GameSession = null) -> void:
 func begin() -> void:
 	_time = 0.0
 	fade = 0.0
+	selected = 0
 	visible = true
 	queue_redraw()
 
@@ -83,11 +90,45 @@ func _unhandled_input(event: InputEvent) -> void:
 func handle_input(event: InputEvent) -> void:
 	if not is_asking() or not bool(enabled.call()):
 		return
+	if _boxed():
+		if event.is_action_pressed("ui_left") or event.is_action_pressed("ui_up"):
+			selected = maxi(selected - 1, 0)
+			queue_redraw()
+		elif event.is_action_pressed("ui_right") or event.is_action_pressed("ui_down"):
+			selected = mini(selected + 1, BUTTONS.size() - 1)
+			queue_redraw()
+		elif event is InputEventMouseMotion or (event is InputEventMouseButton and event.pressed):
+			var hit := _button_at(event.position)
+			if hit >= 0 and hit != selected:
+				selected = hit
+				queue_redraw()
+			if hit >= 0 and event is InputEventMouseButton:
+				_choose(hit)
+				return
 	if event.is_action_pressed("ui_accept"):
 		get_viewport().set_input_as_handled()
-		load_chosen.emit()
+		_choose(selected if _boxed() else 0)
 	elif event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
+		quit_chosen.emit()
+
+
+func _boxed() -> bool:
+	return MessageBoxArt.available()
+
+
+func _button_at(position: Vector2) -> int:
+	for i in _boxes.size():
+		if _boxes[i].has_point(position):
+			return i
+	return -1
+
+
+func _choose(index: int) -> void:
+	get_viewport().set_input_as_handled()
+	if index == 0:
+		load_chosen.emit()
+	else:
 		quit_chosen.emit()
 
 
@@ -96,6 +137,9 @@ func _draw() -> void:
 		return
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, fade))
 	if not is_asking():
+		return
+	if _boxed():
+		_boxes = MessageBoxArt.draw(self, size, QUESTION, BUTTONS, selected)
 		return
 	var font := get_theme_default_font()
 	var big := 44

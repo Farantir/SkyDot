@@ -2,7 +2,9 @@
 #
 # The dialogue menu: the speaker's name and subtitle at the bottom centre, the
 # topics to pick from centred right (topics already said are greyed), and a
-# Goodbye entry of its own at the end. Text only. Up/down (arrows, d-pad, left
+# Goodbye entry of its own at the end. With the game's menus in the pack (DialogueArt) it is dialoguemenu.swf's
+# layout: a panel behind the topics centred on the chosen one, the speaker's name mid-screen, the line at the
+# bottom, Goodbye at the bottom right; without them plain text. Up/down (arrows, d-pad, left
 # stick) move, Enter or A choose, Escape, Tab or B say goodbye; the activate
 # key (F, or A while a line plays) skips the line being spoken. It listens to
 # GameSession's dialogue signals and calls its dialogue_* methods, and knows
@@ -136,6 +138,10 @@ func _choose() -> void:
 
 func _draw() -> void:
 	if not _open:
+		return
+	if DialogueArt.available():
+		DialogueArt.draw(self, size, _speaker, _line, _entries().slice(0, _topics.size()), _selected,
+			not _topics.is_empty(), "Tab")
 		return
 	var area := size
 	var font := ThemeDB.fallback_font

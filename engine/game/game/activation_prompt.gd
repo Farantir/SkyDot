@@ -102,7 +102,13 @@ func describe(cell: int, ref: int) -> Dictionary:
 		var lock: Variant = info.get("lock")
 		var key: int = lock["key"] if lock is Dictionary else 0
 		verb = "Unlock" if key != 0 and _papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, key) > 0 else "Pick lock"
-	return {"ref": ref, "verb": verb, "name": name, "lock_level": lock_level}
+	var out := {"ref": ref, "verb": verb, "name": name, "lock_level": lock_level}
+	if type in TAKEN or type == "BOOK":  # the rollover's info line: weight and value, as the game shows for items
+		var item: Dictionary = _papyrus.item_info(info["base"])
+		if item.get("found", false):
+			out["weight"] = float(item["weight"])
+			out["value"] = int(item["value"])
+	return out
 
 
 ## The GMST a piece of furniture's verb is: a bed sleeps, a workbench (a FURN

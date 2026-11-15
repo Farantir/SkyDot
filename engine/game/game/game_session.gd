@@ -1521,7 +1521,7 @@ func actor_value_max(ref: int, name: String) -> float:
 
 
 ## What activating what the pointer points at would do: {ref, verb, name,
-## lock_level} (lock_level -1: not locked), or {} if nothing is in reach or it
+## lock_level} (lock_level -1: not locked; items also weight and value), or {} if nothing is in reach or it
 ## has no name. Worked out once per frame.
 func activation_target() -> Dictionary:
 	var frame := Engine.get_process_frames()

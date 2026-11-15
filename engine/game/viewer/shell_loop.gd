@@ -236,7 +236,8 @@ func _on_voice_changed(pressed: bool) -> void:
 
 
 func _on_message(text: String, _box: bool) -> void:
-	_note.call(text)
+	if not HudGame.available():  # with the game's menus the HUD's message queue shows it
+		_note.call(text)
 
 
 func _on_fell_through() -> void:

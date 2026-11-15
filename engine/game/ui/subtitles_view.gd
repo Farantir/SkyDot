@@ -13,6 +13,7 @@ const RANGE := 20.0
 
 var _session: GameSession
 var _shown: Array = []  # {text, left}
+var _texts := HudTexts.new()
 
 
 func _init(session: GameSession) -> void:
@@ -43,6 +44,10 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var area := size
+	if HudTexts.available():  # the game's own subtitle field (hudmenu.swf): one line at a time, the newest
+		if not _shown.is_empty():
+			_texts.draw_subtitle(self, area, _shown.back()["text"])
+		return
 	var font := ThemeDB.fallback_font
 	var font_size := int(maxf(14.0, area.y / 40.0))
 	var y := area.y * 0.58
