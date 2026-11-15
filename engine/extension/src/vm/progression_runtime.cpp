@@ -253,6 +253,18 @@ void ProgressionRuntime::bind_natives(Vm& vm) {
     vm.bind("Game", "AdvanceSkill", [skill_call](NativeCall& c) { return skill_call(c, true); });
     vm.bind("Game", "IncrementSkill", [skill_call](NativeCall& c) { return skill_call(c, false); });
     vm.bind("Game", "IncrementSkillBy", [skill_call](NativeCall& c) { return skill_call(c, false); });
+    // The misc stats (the journal's General Stats) are GDScript's JournalLog, reached like the skill rules.
+    vm.bind("Game", "IncrementStat", [this](NativeCall& c) {
+        if (host_ != nullptr && !c.args.empty()) {
+            host_->increment_stat(c.args[0].s(), c.args.size() > 1 ? c.args[1].i() : 1);
+        }
+        return done();
+    });
+    vm.bind("Game", "QueryStat", [this](NativeCall& c) {
+        const std::optional<std::int32_t> value =
+            host_ != nullptr && !c.args.empty() ? host_->query_stat(c.args[0].s()) : std::nullopt;
+        return NativeResult{.value = Value::integer(value.value_or(0)), .wait = -1.0};
+    });
     vm.bind("Game", "GetPlayerExperience", [this](NativeCall&) {
         return NativeResult{.value = Value::floating(static_cast<float>(state_.player.xp)), .wait = -1.0};
     });

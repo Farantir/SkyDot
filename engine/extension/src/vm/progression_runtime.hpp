@@ -73,6 +73,10 @@ public:
         virtual bool increment_skill(std::uint32_t /*skill_av*/, std::int32_t /*count*/) { return false; }
         /// The character XP needed to leave `level` (Progression.level_up_threshold: fXPLevelUpBase + fXPLevelUpMult x level).
         [[nodiscard]] virtual double level_threshold(std::int32_t level) const { return 75.0 + 25.0 * level; }
+        /// Game.IncrementStat / QueryStat: the misc stats are the journal's (GDScript JournalLog); false / nullopt
+        /// when nobody keeps them.
+        virtual bool increment_stat(const std::string& /*stat*/, std::int32_t /*by*/) { return false; }
+        [[nodiscard]] virtual std::optional<std::int32_t> query_stat(const std::string& /*stat*/) const { return std::nullopt; }
         virtual void log(const std::string& /*text*/) {}
     };
 

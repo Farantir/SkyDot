@@ -42,7 +42,6 @@ void bind_noop_natives(Vm& vm) {
     vm.ignore("Game", "ShakeCamera");
     vm.ignore("Game", "ShakeController");
     vm.ignore("Game", "AddAchievement");
-    vm.ignore("Game", "IncrementStat");
     // Image space modifiers (a word wall's glow, a potion's tint) are screen effects that wait for the
     // renderer's post-processing: the call is logged, nothing is drawn.
     for (const char* fn : {"Apply", "ApplyCrossFade", "Remove", "PopTo"}) {

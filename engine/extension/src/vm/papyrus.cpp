@@ -1080,6 +1080,26 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         const Variant answer = ask_progression("level_threshold", level, 0);
         return answer.get_type() == Variant::NIL ? 75.0 + 25.0 * level : static_cast<double>(answer);
     }
+    bool increment_stat(const std::string& stat, std::int32_t by) override {
+        return ask_progression_stat("increment_stat", stat, by).get_type() != Variant::NIL;
+    }
+    std::optional<std::int32_t> query_stat(const std::string& stat) const override {
+        const Variant answer = ask_progression_stat("query_stat", stat, 0);
+        if (answer.get_type() == Variant::INT || answer.get_type() == Variant::FLOAT) {
+            return static_cast<std::int32_t>(static_cast<std::int64_t>(answer));
+        }
+        return std::nullopt;
+    }
+    Variant ask_progression_stat(const char* kind, const std::string& stat, std::int32_t by) const {
+        const godot::Callable& handler = owner_.progression_handler();
+        if (!handler.is_valid()) {
+            return Variant();
+        }
+        godot::Array args;
+        args.push_back(natives::to_godot(stat));
+        args.push_back(by);
+        return handler.call(String(kind), args);
+    }
     Variant ask_progression(const char* kind, std::int64_t a, double b) const {
         const godot::Callable& handler = owner_.progression_handler();
         if (!handler.is_valid()) {
