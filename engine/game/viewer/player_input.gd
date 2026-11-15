@@ -118,6 +118,17 @@ func _init(rig: PlayerRig) -> void:
 	_rig = rig
 
 
+func _ready() -> void:
+	get_window().window_input.connect(_window_input)
+
+
+## F12 also while a menu has the keyboard: the window hands every event here before any node's `_input`, so a menu
+## that takes all keys does not swallow it (without a menu `_unhandled_input` sends it, as every other command).
+func _window_input(event: InputEvent) -> void:
+	if enabled and blocked and event.is_action_pressed(TAKE_SHOT):
+		command.emit(TAKE_SHOT, event is InputEventWithModifiers and event.shift_pressed)
+
+
 ## Capture the mouse for looking, unless there is no window or no one at the
 ## keyboard.
 func capture_mouse() -> void:

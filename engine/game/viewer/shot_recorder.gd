@@ -53,6 +53,7 @@ var _delay := 0.0  # seconds the world runs before the first shot
 var _frames := 0
 var _index := 0
 var session: GameSession  # set by the viewer: the --trigger acts through it
+var menu_state := Callable()  # set by the viewer: () -> Dictionary, the open menu for the shot's "menu" block
 var _dumped := false
 var _triggered := false
 var _kill_waited := 0  # frames --trigger kill: has waited for its actors' nodes
@@ -295,8 +296,13 @@ func _ask_note(json_path: String) -> void:
 		_region_layer.mouse_filter = Control.MOUSE_FILTER_STOP
 		_region_layer.gui_input.connect(_region_input)
 		_region_layer.draw.connect(_region_draw)
-		_debug.add_child(_region_layer)
-		_debug.add_child(_dialog)
+		# Its own layer over the menus (item menus 12, death 20), so a shot of an open menu can be noted too.
+		var layer := CanvasLayer.new()
+		layer.layer = 30
+		layer.process_mode = Node.PROCESS_MODE_ALWAYS
+		_debug.add_child(layer)
+		layer.add_child(_region_layer)
+		layer.add_child(_dialog)
 		_dialog.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM,
 			Control.PRESET_MODE_MINSIZE, 24)
 		_dialog.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -522,6 +528,7 @@ func _shot_metadata(overlay_hidden: bool) -> Dictionary:
 		},
 		"game_console": console,
 		"player": player_block(session),
+		"menu": menu_state.call() if menu_state.is_valid() else {},
 	}
 
 

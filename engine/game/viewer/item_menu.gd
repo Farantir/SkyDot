@@ -45,6 +45,26 @@ func is_open() -> bool:
 	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open()
 
 
+## The open menu for a shot's "menu" block: {open, tab, selected, mode}; empty when none is open.
+func describe() -> Dictionary:
+	var names := {"inventory": inventory_view, "container": container_view, "crafting": crafting_view,
+		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view}
+	for name: String in names:
+		var view: Control = names[name]
+		if not view.is_open():
+			continue
+		var out := {"open": name}
+		var model: Variant = view.get(&"model")
+		if model is ItemListModel:
+			out["tab"] = model.tab
+			out["selected"] = model.selected
+		var mode: Variant = view.get(&"_mode")
+		if mode != null:
+			out["mode"] = CraftingView.Mode.keys()[mode]
+		return out
+	return {}
+
+
 ## A menu opened or closed: the player stands still while one is open, and the mouse is free to point at it.
 func _on_engaged() -> void:
 	var open := is_open()
