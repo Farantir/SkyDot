@@ -16,6 +16,11 @@ const SWF := "inventory components/bottombar"
 const STAGE := Vector2(1280.0, 720.0)
 const BAR_HEIGHT := 75.0  # the stage's height under BottomBar_mc's origin
 const CARD := Vector2(503.0, 16.0)
+## The game draws the gold's value and the meter this far left of where the movie's matrices put them (measured
+## against the game, 1100x800, three digits of gold; the movie's script moves them).
+const GROUP_SHIFT := -21.0
+const METER_HEIGHT := 0.9  # of Meter_mc, against the movie matrix's 0.6737 (measured: the game's fill)
+const METER_ORIGIN_Y := 31.3  # keeps Meter_mc's centre where its own matrix has it
 const CARD_SPRITE := 329
 const FIELDS := {
 	"label": {"font": "$EverywhereMediumFont", "size": 16.0, "colour": Color("999999"), "box": Vector2(-2.0, 51.05)},
@@ -51,11 +56,14 @@ func _draw() -> void:
 	var card := bar * Transform2D(0.0, CARD)
 	var frame := UiAssets.label_frame(SWF, CARD_SPRITE, "Default" if kind == "inventory" else "Magic")
 	var entries := UiAssets.display_list(SWF, CARD_SPRITE, maxi(frame, 0))
+	for entry: Dictionary in entries:
+		if entry.get("name", "") == "" and UiAssets.character(SWF, int(entry["character"])).get("type", "") == "shape":
+			UiDraw.character(self, SWF, int(entry["character"]), card * UiDraw.matrix(entry["matrix"]) * Transform2D(0.0, Vector2(GROUP_SHIFT if kind == "inventory" else 0.0, 0.0)))  # the meter's frame
 	if kind == "inventory":
 		var gold_field := _entry(entries, "PlayerGoldValue")
 		var weight_field := _entry(entries, "CarryWeightValue")
 		_field(card, _entry(entries, "PlayerGoldLabel"), "Gold", "label")
-		_field(card, gold_field, str(gold), "value")
+		_field(card * Transform2D(0.0, Vector2(GROUP_SHIFT, 0.0)), gold_field, str(gold), "value")
 		_field(card, _entry(entries, "CarryWeightLabel"), "Carry Weight", "label")
 		_field(card, weight_field, "%d/%d" % [roundi(carry_weight), roundi(carry_capacity)], "value")
 		_meter(card, _entry(entries, "HealthRect"), health)
@@ -70,12 +78,23 @@ func _entry(entries: Array, name: String) -> Dictionary:
 	return {}
 
 
+## The meter rect's bar, as the game shows it in this bar: Meter_mc stands as the movie places it in x but at full
+## height (measured against the game: its fill is 1/0.6737 as tall as the movie's matrix draws it, the frame's
+## inner height), at the fill `pair` says.
 func _meter(card: Transform2D, entry: Dictionary, pair: Vector2) -> void:
 	if entry.is_empty():
 		return
 	var look := UiDraw.Look.new()
 	look.fills["Meter_mc"] = clampf(pair.x / pair.y, 0.0, 1.0) if pair.y > 0.0 else 0.0
-	UiDraw.character(self, SWF, int(entry["character"]), card * UiDraw.matrix(entry["matrix"]), Color.WHITE, look)
+	var rect_xform := card * Transform2D(0.0, Vector2(GROUP_SHIFT if kind == "inventory" else 0.0, 0.0)) * UiDraw.matrix(entry["matrix"])
+	for instance: Dictionary in UiAssets.character(SWF, int(entry["character"])).get("display", []):
+		if instance.get("name", "") != "MeterInstance":
+			continue
+		var instance_xform := rect_xform * UiDraw.matrix(instance["matrix"])
+		for bar: Dictionary in UiAssets.character(SWF, int(instance["character"])).get("display", []):
+			var m: Array = bar["matrix"]
+			var tall := Transform2D(Vector2(m[0], 0.0), Vector2(0.0, METER_HEIGHT), Vector2(m[4], METER_ORIGIN_Y))
+			UiDraw.character(self, SWF, int(bar["character"]), instance_xform * tall, Color.WHITE, look, Rect2(), 0, "Meter_mc")
 
 
 ## A text field of the movie: right aligned in its box, `kind` of FIELDS says the font.

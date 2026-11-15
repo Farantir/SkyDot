@@ -11,20 +11,29 @@
 class_name ItemPreview
 extends Control
 
-const START_YAW := deg_to_rad(35.0)
-const START_PITCH := deg_to_rad(-15.0)
+const START_YAW := 0.0
+const START_PITCH := 0.0
 const PITCH_LIMIT := deg_to_rad(80.0)
 const DRAG_RADIANS_PER_PIXEL := 0.012
 const STICK_SPEED := 2.5  # radians per second at full deflection
 const STICK_DEAD := 0.25
 const ZOOM_STEP := 1.1
 const ZOOM_MIN := 0.5
-const ZOOM_MAX := 4.0
-const CAMERA_DISTANCE := 1.7
+const ZOOM_MAX := 1.6
 const FOV := 30.0
 
-## Where the preview is, as fractions of this control (the host's area).
-var region := Rect2(0.64, 0.14, 0.3, 0.5)
+## The game's placement of the 3D item (Skyrim.ini [Interface], read with getini in the game, 2026-11-15):
+## fInventory3DItemPosX/Y/Z and fInventory3DItemPosScale, and the ...Wide set used from 16:10 up. Y is the
+## distance in front of the camera, the others offsets from it; the scale makes the item's bound fill that much
+## more or less of the screen. Measured with the Iron Sword (SkyrimRemote @item3d, 1100x800, the narrow set): its
+## bound spans 0.35 of the screen's height, centred 0.4 down, the blade pointing up, flat to the viewer.
+const INI_NARROW := {"x": -38.0, "y": -500.0, "z": 16.0, "scale": 1.87}
+const INI_WIDE := {"x": -29.0, "y": -500.0, "z": 12.0, "scale": 1.5}
+const WIDE_ASPECT := 1.6
+const ITEM_HEIGHT := 0.35  # of the screen's height, with the narrow set's scale
+
+## Where the preview is, as fractions of this control (the host's area): the free area right of the list.
+var region := Rect2(0.64, 0.08, 0.3, 0.64)
 ## Radians per second the model turns by itself (the VR host sets it).
 var auto_spin := 0.0
 
@@ -137,7 +146,10 @@ func clear() -> void:
 	show_item(-1)
 
 
-## The model's bounds, in the holder's space: it is scaled to one unit across and centred.
+## The game's pose: the longest side of the model's bounds points up, the next one across, so a blade stands
+## upright and flat to the viewer (what the game shows at first look), the model scaled to one unit and centred.
+## An armor or anything else keeps its own orientation (the authored up is up) when its longest side already
+## is the vertical one.
 func _fit() -> void:
 	_holder.transform = Transform3D.IDENTITY
 	var box := AABB()
@@ -145,20 +157,40 @@ func _fit() -> void:
 	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
 		if mesh.mesh == null:
 			continue
-		var local := mesh.get_aabb()
 		var to_holder: Transform3D = _holder.global_transform.affine_inverse() * mesh.global_transform if mesh.is_inside_tree() else mesh.transform
-		var moved := to_holder * local
+		var moved := to_holder * mesh.get_aabb()
 		box = moved if first else box.merge(moved)
 		first = false
 	if first or box.get_longest_axis_size() <= 0.0:
 		return
+	var sizes := [box.size.x, box.size.y, box.size.z]
+	var order := [0, 1, 2]
+	order.sort_custom(func(a: int, b: int) -> bool: return sizes[a] > sizes[b])
+	var basis := Basis.IDENTITY
+	var weapon := String(_session.item_info(_form).get("category", "")) in ["weapon", "ammo"]
+	if weapon and order[0] != 1:
+		# Authored hilt up in this frame: the blade points up in the game, so turn it half a turn about the depth.
+		var up := Vector3.ZERO
+		up[order[0]] = -1.0
+		var across := Vector3.ZERO
+		across[order[1]] = -1.0
+		var depth := across.cross(up)
+		# The rotation taking `up` to +Y, `across` to +X: the inverse of the basis with those columns.
+		basis = Basis(across, up, depth).inverse()
 	var scale := 1.0 / box.get_longest_axis_size()
-	_holder.transform = Transform3D(Basis.from_scale(Vector3.ONE * scale), -box.get_center() * scale)
+	_holder.transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), -(basis * box.get_center()) * scale)
+
+
+func _distance() -> float:
+	var aspect := size.x / maxf(size.y, 1.0)
+	var ini := INI_WIDE if aspect >= WIDE_ASPECT else INI_NARROW
+	var fraction := ITEM_HEIGHT * float(ini["scale"]) / float(INI_NARROW["scale"]) / region.size.y  # of the preview's height
+	return 1.0 / (2.0 * fraction * tan(deg_to_rad(FOV) * 0.5))
 
 
 func _apply() -> void:
 	_pivot.rotation = Vector3(_pitch, _yaw, 0.0)
-	_camera.position = Vector3(0.0, 0.0, CAMERA_DISTANCE / _zoom)
+	_camera.position = Vector3(0.0, 0.0, _distance() / _zoom)
 
 
 ## Mouse drag and wheel inside the preview; true if the event was used.
