@@ -5,7 +5,7 @@
 #
 # Placement (HUDMenu.InitExtensions, decompiled from hudmenu.swf): the meters are locked to the screen's edges
 # with GlobalFunc.Lock, Health "B", Magicka "BL", Stamina "BR", the compass "T": their origin moves to the
-# visible rectangle's edge inset by the safe rectangle. The movie is scaled to fit (show-all, 1280x720 stage).
+# visible rectangle's edge inset by the safe rectangle. The movie's stage is stretched to the window as the game does.
 # The safe zone is fSafeZoneX/Y:Interface, 15 in the game (read with getini, SkyrimRemote, 2026-11-15).
 #
 # Meters: the Health/Magica/Stamina sprites fade their meter in over their first 40 frames (alpha 0 to 1, label
@@ -76,9 +76,8 @@ func _pause_frame(meter: Dictionary) -> float:
 
 ## The stage-to-view transform and the visible rectangle in stage pixels.
 static func _fit(area: Vector2) -> Array:
-	var scale := minf(area.x / STAGE.x, area.y / STAGE.y)
-	var visible := Rect2((STAGE - area / scale) * 0.5, area / scale)
-	return [Transform2D(0.0, Vector2(scale, scale), 0.0, -visible.position * scale), visible]
+	# The game stretches the stage to the window (UiDraw.stage_fill): the whole stage is visible.
+	return [UiDraw.stage_fill(area, STAGE), Rect2(Vector2.ZERO, STAGE)]
 
 
 ## An instance's transform in the view, its origin moved as GlobalFunc.Lock(`lock`) moves it.
