@@ -114,15 +114,21 @@ func _input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 
 
+## The attribute under the level-up choice (the game's buttons stand Magicka, Health, Stamina left to right).
+func _choice_av() -> int:
+	return LevelUpDraw.ORDER[_choice]
+
+
 func _level_up_input(event: InputEvent) -> bool:
+	var count: int = LevelUpDraw.ORDER.size()
 	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"skills"):
 		pass   # forced: no way out before an attribute is chosen
-	elif event.is_action_pressed(&"ui_down"):
-		_choice = (_choice + 1) % SkillsModel.ATTRIBUTES.size()
-	elif event.is_action_pressed(&"ui_up"):
-		_choice = (_choice + SkillsModel.ATTRIBUTES.size() - 1) % SkillsModel.ATTRIBUTES.size()
+	elif event.is_action_pressed(&"ui_down") or event.is_action_pressed(&"ui_right"):
+		_choice = (_choice + 1) % count
+	elif event.is_action_pressed(&"ui_up") or event.is_action_pressed(&"ui_left"):
+		_choice = (_choice + count - 1) % count
 	elif event.is_action_pressed(&"ui_accept"):
-		model.choose_attribute(SkillsModel.ATTRIBUTES[_choice])
+		model.choose_attribute(_choice_av())
 	else:
 		return event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	return true
@@ -150,6 +156,9 @@ func _stick(event: InputEventJoypadMotion) -> void:
 
 func _draw() -> void:
 	if not _open or model == null:
+		return
+	if model.choosing_attribute() and LevelUpDraw.available():
+		LevelUpDraw.draw(self, _choice_av())
 		return
 	var area := size
 	var font := ThemeDB.fallback_font
@@ -265,8 +274,8 @@ func _draw_level_up(font: Font, font_size: int, line: float, panel: Rect2) -> vo
 	_text(font, "Level Up: choose an attribute (level %d, %d waiting)" % [model.header["level"], model.header["banked"]],
 		font_size, Vector2(x, y), SELECTED, panel.size.x * 0.6)
 	y += line * 2.0
-	for i in SkillsModel.ATTRIBUTES.size():
-		var av: int = SkillsModel.ATTRIBUTES[i]
+	for i in LevelUpDraw.ORDER.size():
+		var av: int = LevelUpDraw.ORDER[i]
 		var label := "%s  +%d" % [model.attribute_name(av), model.attribute_gain()]
 		if av == Progression.STAMINA:
 			label += "  (and carry weight)"

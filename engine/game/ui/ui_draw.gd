@@ -106,3 +106,32 @@ static func _into(local: Transform2D, clip: Rect2) -> Rect2:
 	if clip.size == Vector2.ZERO:
 		return clip
 	return (local.affine_inverse() * clip).abs()
+
+
+## A text field (edit_text) of a movie, drawn in its box as the movie places it: `xform` is movie pixels to the canvas
+## (the field's own placement included). Font, size and alignment are the field's; `colour` replaces its colour when
+## given. Text gets a dark outline (the movies' DropShadow). Returns the drawn size of the text in canvas pixels.
+static func field(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, text: String,
+		colour := Color(0.0, 0.0, 0.0, 0.0)) -> Vector2:
+	var entry := UiAssets.character(swf, id)
+	if entry.get("type", "") != "edit_text":
+		return Vector2.ZERO
+	var font := UiAssets.font(String(entry.get("font", "")))
+	if font == null:
+		font = ThemeDB.fallback_font
+	var scale := xform.get_scale().x
+	var size_px := maxi(int(round(float(entry.get("height", 20.0)) * scale)), 6)
+	var box := UiAssets.bounds(swf, id)
+	var left := xform * Vector2(box.position.x + 2.0, 0.0)
+	var width := (box.size.x - 4.0) * scale
+	var align := HORIZONTAL_ALIGNMENT_LEFT
+	match String(entry.get("align", "left")):
+		"center":
+			align = HORIZONTAL_ALIGNMENT_CENTER
+		"right":
+			align = HORIZONTAL_ALIGNMENT_RIGHT
+	var base := xform * Vector2(0.0, box.position.y + 2.0 + float(entry.get("height", 20.0)) * 0.9)
+	var tint := colour if colour.a > 0.0 else Color(String(entry.get("color", "#ffffffff")))
+	canvas.draw_string_outline(font, Vector2(left.x, base.y), text, align, width, size_px, 3, Color(0.0, 0.0, 0.0, 0.8))
+	canvas.draw_string(font, Vector2(left.x, base.y), text, align, width, size_px, tint)
+	return font.get_string_size(text, align, width, size_px)
