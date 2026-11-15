@@ -183,8 +183,7 @@ func fail(message: String) -> void:
 func _on_command(action: StringName, shift: bool) -> void:
 	match action:
 		PlayerInput.ACTIVATE:
-			if not _rig.is_flying():  # E flies up in the viewer's free flight
-				_session.activate_in_view(shift)  # Shift opens locks
+			_session.activate_in_view(shift)  # Shift opens locks
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
 		PlayerInput.QUICK_SAVE:
@@ -208,11 +207,10 @@ func _on_command(action: StringName, shift: bool) -> void:
 			skills_requested.emit()
 		PlayerInput.TWEEN_MENU:
 			tween_requested.emit()
-		PlayerInput.MAP, PlayerInput.WAIT:
-			pass  # no map or wait menu yet
+		PlayerInput.MAP, PlayerInput.WAIT, PlayerInput.JOURNAL:
+			pass  # no map, wait or journal menu yet
 		PlayerInput.FAVORITES:
-			if not _rig.is_flying():  # Q flies down in the viewer's free flight
-				favorites_requested.emit()
+			favorites_requested.emit()
 		&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8":
 			_session.use_hotkey(int(String(action).trim_prefix("hotkey_")))
 		_:

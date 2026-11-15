@@ -62,9 +62,12 @@ const READY_WEAPON := &"ready_weapon"
 const FAVORITES := &"favorites"
 ## The game's Tween menu (Tab): Skills, Items, Magic, Map.
 const TWEEN_MENU := &"tween_menu"
-## The game's map and wait keys: no map or wait menu yet, so they do nothing (M and T keep the debug keys').
+## The game's map, wait and journal keys (M, T, J): no map, wait or journal menu yet, so they do nothing. The
+## viewer's debug keys keep off every key the game's control map binds (fly up/down on the numpad's + and -, the
+## debug journal F10, the time F8, MSAA F7).
 const MAP := &"map"
 const WAIT := &"wait"
+const JOURNAL := &"journal"
 # Held, like the attacks: the voice key (Z, gamepad RB, the VR grips) casts the power in the voice
 # slot when it goes down, or charges the shout there while it is down (`voice_changed`).
 const POWER := &"power"
@@ -74,7 +77,7 @@ const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
 const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
-	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON, FAVORITES, TWEEN_MENU, MAP, WAIT,
+	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON, FAVORITES, TWEEN_MENU, MAP, WAIT, JOURNAL,
 	&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8"]
 
 const LOOK_PER_PIXEL := 0.004  # radians

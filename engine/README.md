@@ -165,7 +165,7 @@ screen is black, and fades back when the new place is built (outside: the
 cells in range and the LOD), a few frames later so the first slow frame of
 a new place is not seen; the player is held meanwhile. Time starts at `--time` (default 12) and runs at
 `--time-scale` (default 20); `--weather SkyrimClear` keeps one weather,
-otherwise the region's or climate's weathers take turns. T and Shift+T move
+otherwise the region's or climate's weathers take turns. F8 and Shift+F8 move
 the time by an hour, K changes the weather. `--benchmark 10` flies east and
 prints frame times (pass `--disable-vsync` to Godot when the window is not
 visible, or the compositor throttles it).
@@ -173,18 +173,20 @@ visible, or the compositor throttles it).
 The mouse looks (Esc releases it, a click captures it again). The keys are
 InputMap actions (`game/project.godot`, read by `viewer/player_input.gd`), so a
 gamepad or VR shell can map its own events to them. You walk with
-collision: WASD moves, Shift sprints, Ctrl walks, Space jumps (and swims up in
-water); V toggles flying through everything (Q/E down/up, Shift faster).
+collision: WASD moves, Alt sprints, Shift walks, Space jumps (and swims up in
+water); V toggles flying through everything (numpad -/+ down/up, Shift faster).
+The game's keys come from its controlmap.txt; the viewer's debug keys keep off them
+(M, T and J, the game's map, wait and journal, do nothing yet).
 `--walk off` starts flying, `--collision off` builds no physics bodies;
 `--benchmark` and `--screenshot` always fly. Without `--at` an interior is
-entered at its door from outside. See `docs/physics.md`. F activates what the camera looks at (within 2.6 m); Shift+F
+entered at its door from outside. See `docs/physics.md`. E activates what the camera looks at (within 2.6 m); Shift+E
 or `--pick-locks on` ignores locks. F5 saves the scripts' state and the place,
-F9 loads it. J shows the journal; quest stages and objectives show at the top
+F9 loads it. F10 shows the journal; quest stages and objectives show at the top
 left. N shows the navmeshes, G draws a path from the feet to where the
 camera looks (`--navigation off` builds none; see `docs/navigation.md`).
 F3 toggles the performance line at the top right (fps, frame time mean and
 max over a second, draw calls, primitives, objects; also in a shot's JSON, and
-`--screenshot` prints it as `perf:`). P shows the camera's position and facing in the game's terms, and
+`--screenshot` prints it as `perf:`). Home shows the camera's position and facing in the game's terms, and
 `--look Z,X` takes the same angles as `player.getangle z` and `x`.
 `--set-stage MQ101:10` sets a quest stage at start, `--quests off` keeps
 start-game-enabled quests from starting. Placed NPCs and creatures stand

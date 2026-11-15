@@ -321,7 +321,7 @@ func _launch() -> void:
 	if pid <= 0:
 		PackToolUi.set_note(_viewer_note, "Could not start the viewer.", "error")
 	else:
-		PackToolUi.set_note(_viewer_note, "Viewer started (process %d). F12 saves a screenshot with its place and settings; Esc releases the mouse; all keys are listed at the top of viewer/cell_viewer.gd." % pid, "ok")
+		PackToolUi.set_note(_viewer_note, "Viewer started (process %d). The game's keys work as in the game; the viewer's own debug keys keep off them (F12 saves a screenshot with its place and settings, F7 MSAA, F8 the time, F10 the quest journal, numpad +/- fly up/down; Esc releases the mouse); all keys are listed at the top of viewer/cell_viewer.gd." % pid, "ok")
 		_tool.remember_pack(_selected)
 
 

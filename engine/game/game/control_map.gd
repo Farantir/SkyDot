@@ -43,7 +43,7 @@ const ACTIONS := {
 	&"quick_save": ["Main Gameplay", "Quicksave"],
 	&"quick_load": ["Main Gameplay", "Quickload"],
 	&"wait": ["Main Gameplay", "Wait"],
-	&"show_journal": ["Main Gameplay", "Journal"],
+	&"journal": ["Main Gameplay", "Journal"],
 	&"inventory": ["Main Gameplay", "Quick Inventory"],
 	&"magic": ["Main Gameplay", "Quick Magic"],
 	&"skills": ["Main Gameplay", "Quick Stats"],

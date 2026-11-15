@@ -26,7 +26,7 @@
 # format 11) show as models out to --large-ref-radius cells (default 5, the
 # game's uLargeRefLODGridSize 11); --large-refs off shows only the LOD there
 # (SkydotLargeRefs, engine/docs/lod.md). --msaa off|2|4|8 smooths edges (multisampling;
-# default 4, about 0.3 ms at 1080p); M switches between them. Alpha-tested leaves
+# default 4, about 0.3 ms at 1080p); F7 switches between them. Alpha-tested leaves
 # are antialiased by it too (alpha to coverage). --aa off|fxaa|smaa adds a
 # screen-space pass over the frame (default off; it is not temporal: nothing
 # smears between frames). --foliage-bias LEVELS (default 0.5) samples the albedo of
@@ -49,22 +49,27 @@
 # Outside, SkydotWeather runs time and weather: --time HOURS (default 12) to
 # start at, --time-scale (game seconds per second, default 20, 0 stops time),
 # --weather EDITOR_ID to keep one weather; otherwise the region's or
-# climate's weathers take turns. T and Shift+T move the time by an hour, K
+# climate's weathers take turns. F8 and Shift+F8 move the time by an hour, K
 # changes the weather.
 #
-# Controls: the mouse looks (Esc releases it, a click captures it again; the
-# right button looks while released), WASD to move, Shift sprints, Ctrl walks,
+# Controls: the game's keys are the game's own (game/control_map.gd reads its controlmap.txt: E activates,
+# Tab the Tween menu, I/P// the menus, Q favorites); M, T and J (map, wait, journal) do nothing until those
+# menus exist. The viewer's debug keys keep off the keys the game binds in play: F3, F7, F8, F10, F12, the
+# numpad's + and -, G, K, N, O, U, V, [ ], - =, Home (V, O and Home are bound only in the game's debug and
+# Creations menu contexts; F12 stays the shot key though Main Gameplay lists it as CameraPath, a developer key).
+# The mouse looks (Esc releases it, a click captures it again; the
+# right button looks while released), WASD to move, Alt sprints, Shift walks,
 # Space jumps (and swims up). The player walks with collision (SkydotPlayer):
 # it falls, climbs steps, swims in exterior water and pushes clutter. V
-# toggles flying through everything, with Q/E down/up and Shift faster
+# toggles flying through everything, with the numpad's - and + down/up and Shift faster
 # (--walk off starts flying; --benchmark and --screenshot always fly;
 # --collision off builds no physics bodies and flies). Without
 # --at, an interior is entered where its door from outside leads.
-# F activates what the camera looks at: its scripts run (SkydotPapyrus), a load
+# E activates what the camera looks at: its scripts run (SkydotPapyrus), a load
 # door leads to its destination, a plain door opens or closes, and references
 # whose activate parent it is are activated in turn. Locked doors stay shut;
 # both doors of a load door share the lock a plugin stores on one of them.
-# Shift+F (or --pick-locks) opens them anyway, and they stay unlocked. Scripts
+# Shift+E (or --pick-locks) opens them anyway, and they stay unlocked. Scripts
 # attach as cells are built; what they enable, disable, open and animate shows
 # up here, and the camera's feet walk through their trigger volumes. F5 saves
 # the scripts' state and the place, F9 loads it (user://quicksave.skydot).
@@ -79,7 +84,7 @@
 # place is built (outside: the cells in range and the LOD) and fades back.
 # Start-game-enabled quests start with the viewer (--quests off to skip);
 # --set-stage EDID:STAGE[,EDID:STAGE...] then sets stages. Quest stages,
-# objectives and script notifications show at the top left; J prints the
+# objectives and script notifications show at the top left; F10 prints the
 # running quests with their stage and shown objectives.
 # F12 saves a screenshot and, next to it, a JSON file with what is needed to
 # get the same view again: place, camera (in engine and game terms), time,
@@ -120,8 +125,8 @@
 # `magic: effect 0x1CEA4 on 0x14 start mag 10 dur 1`, `magic: effect ... end`.
 # A gamepad plays as Skyrim SE's Xbox layout (player_input.gd): the left stick
 # moves, the right stick looks (--stick-look-speed RAD_PER_S at full deflection,
-# default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start shows the
-# journal. Sprinting costs Stamina (7 a second) and stops when it is out.
+# default 3; --invert-look-y), A activates, Y jumps, LB sprints, Start is the game's journal
+# (nothing yet). Sprinting costs Stamina (7 a second) and stops when it is out.
 # --give 0xFORM[xN],0xFORM... puts those items (N of each, default 1) into the player's inventory
 # at the start, after --load (like player.additem). --equip 0xFORM[,...] then equips them, --favorite 0xFORM[,...] marks
 # items or spells as favorites (for shots of the item menus).
@@ -167,7 +172,7 @@
 # elsewhere than at the player, Skyrim units, for a side view of a fight; --shot-live runs the whole game during
 # the series, quests, scenes and AI, as in play: MQ104); --hide-refs ID[,ID...]
 # (hex form IDs) hides those references in them, as the game's `disable`. Inside, time runs too (--time-scale);
-# T and Shift+T move it there as well. I tells what the nearest actor's
+# F8 and Shift+F8 move it there as well. I tells what the nearest actor's
 # package is.
 # --at X,Y,Z --target X,Y,Z (Skyrim game units, as `bethconv cell` prints)
 # places the camera. With --screenshot, renders four views from the cell's centre
