@@ -55,7 +55,7 @@ var _marks := {}  # enchanting: category (1 item, 2 enchantment, 3 soul gem) -> 
 var _name := ""  # the name typed for the enchanted item
 var _naming := false
 var _name_edit: LineEdit
-var _cats: Array[String] = []  # smithing: the categories in play (CATEGORY_ORDER), grouped lists as the game shows them
+var _cats: Array[String] = []  # smithing: the categories in play (see MATERIALS), grouped lists as the game shows them
 var _cat := 0
 var _in_items := false  # the focus is on the item column
 var _model_view: ItemPreview  # the 3D preview of the item under the cursor
@@ -292,7 +292,15 @@ func _name_done(text: String) -> void:
 	_refresh()
 
 
-const CATEGORY_ORDER: Array[String] = ["HIDE", "IRON", "STUDDED", "LEATHER", "JEWELRY", "BUILDING MATERIALS", "MISC"]
+## The categories the game names with GMSTs (sHide, sIron, ...), in the order the forge shows the ones seen in the game
+## (Hide, Iron, Studded, Leather, Jewelry, Building materials, Misc); the other materials follow Leather in the game's
+## material order (unchecked in the game: only these were on screen).
+const MATERIALS: Array[String] = ["Hide", "Iron", "Studded", "Leather", "Steel", "Dwarven", "Elven", "Orcish", "Glass", "Ebony",
+	"Daedric", "Dragon", "Imperial", "Falmer"]
+const MATERIAL_SUFFIXES: Array[String] = ["", "Banded", "Plate", "Gilded", "Scale", "Scaled", "Light", "Heavy"]
+const JEWELRY_KEYWORDS: Array[String] = ["JewelryExpensive", "ClothingNecklace", "ClothingRing", "ArmorJewelry", "ClothingCirclet"]
+static var _keyword_category := {}  # keyword form -> "Hide" ...; filled once from the pack's keyword table
+static var _jewelry := {}
 
 
 ## Whether the list is grouped in categories with a column of its own (the forge and the tempering benches).
@@ -300,25 +308,43 @@ func _grouped() -> bool:
 	return _mode == Mode.RECIPES or _mode == Mode.TEMPER
 
 
-## The game's category of a recipe's product. PLACEHOLDER: the game's crafting menu groups by the product's keywords
-## (not in the pack's base data); here the product's editor id and type stand in (Hide, Iron, Studded, Leather,
-## jewelry by name, MISC items are building materials). Tempering lists WEAPONS and ARMOR.
+func _load_keywords() -> void:
+	if not _keyword_category.is_empty():
+		return
+	for material in MATERIALS:
+		for prefix in ["ArmorMaterial", "WeapMaterial"]:
+			for suffix in MATERIAL_SUFFIXES:
+				var id := _session.world.find_keyword(prefix + material + suffix)
+				if id != 0:
+					_keyword_category[id] = material
+	for name in JEWELRY_KEYWORDS:
+		var id := _session.world.find_keyword(name)
+		if id != 0:
+			_jewelry[id] = true
+	_keyword_category[0] = ""  # never empty again
+
+
+## The game's category of a recipe's product: by its material keyword (ArmorMaterialHide -> the sHide text), jewelry by
+## its keywords, other misc items as building materials. Tempering lists the sWeapons / sArmor groups.
+## Which keyword the game ranks first when an item has several is unknown (the first listed wins).
 func _category_of(row: Dictionary) -> String:
-	var info := _session.item_info(int(row["product"]) if row.has("product") else int(row["form"]))
+	var form := int(row["product"]) if row.has("product") else int(row["form"])
+	var info := _session.item_info(form)
 	var kind := String(info.get("category", ""))
 	if _mode == Mode.TEMPER:
-		return "WEAPONS" if kind == "weapon" else "ARMOR"
-	var name := String(row["name"])
-	var eid := String(info.get("editor_id", ""))
+		return _session.world.get_gmst_string("sWeapons", "Weapons").to_upper() if kind == "weapon" else _session.world.get_gmst_string("sArmor", "Armor").to_upper()
+	_load_keywords()
+	var keywords := _session.world.get_base_keywords(form)
+	for keyword in keywords:
+		if _jewelry.has(int(keyword)):
+			return _session.world.get_gmst_string("sJewelry", "Jewelry").to_upper()
+	for keyword in keywords:
+		if _keyword_category.has(int(keyword)):
+			var material: String = _keyword_category[int(keyword)]
+			return _session.world.get_gmst_string("s" + material, material).to_upper()
 	if kind == "misc":
 		return "BUILDING MATERIALS"
-	for jewel in ["Necklace", "Ring", "Amulet", "Circlet"]:
-		if name.contains(jewel):
-			return "JEWELRY"
-	for material in [["Hide", "HIDE"], ["Studded", "STUDDED"], ["Leather", "LEATHER"], ["Iron", "IRON"]]:
-		if eid.contains(material[0]) or name.contains(material[0]):
-			return material[1]
-	return "MISC"
+	return _session.world.get_gmst_string("sMisc", "Misc").to_upper()
 
 
 func _group() -> void:
@@ -329,7 +355,17 @@ func _group() -> void:
 	for row: Dictionary in _rows:
 		found[_category_of(row)] = true
 	_cats.clear()
-	var order: Array[String] = CATEGORY_ORDER if _mode == Mode.RECIPES else ["WEAPONS", "ARMOR"]
+	var order: Array[String] = []
+	if _mode == Mode.RECIPES:
+		for material in MATERIALS.slice(0, 4):
+			order.append(_session.world.get_gmst_string("s" + material, material).to_upper())
+		order.append(_session.world.get_gmst_string("sJewelry", "Jewelry").to_upper())
+		for material in MATERIALS.slice(4):
+			order.append(_session.world.get_gmst_string("s" + material, material).to_upper())
+		order.append("BUILDING MATERIALS")
+		order.append(_session.world.get_gmst_string("sMisc", "Misc").to_upper())
+	else:
+		order = [_session.world.get_gmst_string("sWeapons", "Weapons").to_upper(), _session.world.get_gmst_string("sArmor", "Armor").to_upper()]
 	for c in order:
 		if found.has(c):
 			_cats.append(c)
