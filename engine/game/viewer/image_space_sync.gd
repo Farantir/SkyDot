@@ -11,8 +11,11 @@ extends RefCounted
 ## menus set the inventory menu's, DOBJ IMID, MenuImageSpace): its cinematic saturation, brightness and contrast
 ## multiply and add onto the grade's, and its depth of field blurs the far world.
 static var modifier := {}
-## Godot's far blur amount for an IMAD depth of field strength of 1. Calibrated against the game's inventory at
-## 1100x800 (skycompare-data/ui-theme/side_inventory.png): the IMAD gives distance and range, not a radius.
+## Godot's far blur amount for an IMAD depth of field strength of 1. The game's ISDepthOfField mixes the frame
+## with a blurred copy by saturate((depth - distance) / range) * strength (Community Shaders' ISDepthOfField.hlsl);
+## at 1100x800 its fully blurred far world fits a Gaussian of sigma ~5 px, and this amount gives Godot's bokeh about
+## that (sigma 5-6, SkyrimRemote frames with and without the inventory at Riverwood, 2026-11-15). The ramp
+## measured on the ground (tilt 70..15 degrees) follows the formula with ISMTween's 128 and 768.
 const DOF_AMOUNT := 0.15
 
 

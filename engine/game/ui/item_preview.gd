@@ -20,15 +20,31 @@ const STICK_DEAD := 0.25
 const ZOOM_STEP := 1.1
 const ZOOM_MIN := 0.5
 const ZOOM_MAX := 1.6
-const FOV := 30.0
 
-## The game's placement of the 3D item (Skyrim.ini [Interface], read with getini in the game, 2026-11-15):
-## fInventory3DItemPosX/Y/Z and fInventory3DItemPosScale, and the ...Wide set used from 16:10 up. Y is the
-## distance in front of the camera, the others offsets from it; the scale makes the item's bound fill that much
-## more or less of the screen. Measured with the Iron Sword (SkyrimRemote @item3d, 1100x800, the narrow set): its
-## bound spans 0.35 of the screen's height, centred 0.4 down, the blade pointing up, flat to the viewer.
+## The game's item camera and placement (SkyrimSE.exe 1.6.1170: the UI scene's camera setup next to
+## fUICameraNearDistance, Inventory3DManager's Begin3D and its model fit; INI values read with getini in the game,
+## 2026-11-15, all the defaults). The camera sits at the UI scene's origin looking along its -Y, Z up, X to the
+## left. Its frustum is 0.75 * tan(fDefaultFOV * 0.15) wide either side of the centre (radians; 80 degrees give
+## 12), the height by the screen's aspect.
+const DEFAULT_FOV := 80.0  # fDefaultFOV:Display
+const FRUSTUM_ANGLE := 0.15
+const FRUSTUM_WIDTH := 0.75
+## fInventory3DItemPosX/Y/Z and fInventory3DItemPosScale; the ...Wide set when the screen is wider than 4:3. The
+## model's bound sphere (Gamebryo's world bound, see bound_sphere) is scaled to fInventory3DBoundRadiusScale *
+## PosScale * the inventory marker's zoom game units, centred on the item position; screens wider than 16:9
+## shrink it by 16:9 over their aspect.
 const INI_NARROW := {"x": -38.0, "y": -500.0, "z": 16.0, "scale": 1.87}
 const INI_WIDE := {"x": -29.0, "y": -500.0, "z": 12.0, "scale": 1.5}
+const WIDE_ASPECT := 4.0 / 3.0
+const MAX_ASPECT := 16.0 / 9.0
+const BOUND_RADIUS_SCALE := 12.5  # fInventory3DBoundRadiusScale
+## The item menus' light (MenuLight of the Inventory light scheme): fInventoryMenuLightX/Y/Z,
+## fInventoryLightDiffuseColorR/G/B, fInventoryLightRadius, fInventoryLightDimmerValue; the second light has
+## radius 0 and adds nothing. The game's point lights fade as 1 - (distance / radius)^2.
+const MENU_LIGHTS := [
+	{"position": Vector3(100.0, -350.0, 100.0), "color": Color(0.98, 0.95, 0.83), "radius": 400.0, "dimmer": 1.75},
+	{"position": Vector3(100.0, -350.0, 100.0), "color": Color(0.98, 0.95, 0.83), "radius": 0.0, "dimmer": 1.75},
+]
 ## A model without a marker is not turned: the Iron Helmet's ground model (helmetgnd.nif has none) shows its face
 ## upright in the game (SkyrimRemote @item3d 0x12E4D).
 const DEFAULT_ROTATION := Vector3.ZERO
@@ -36,20 +52,22 @@ const DEFAULT_ROTATION := Vector3.ZERO
 const TO_GODOT := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
 ## The preview's camera looks along Godot's -Z; the game's item camera looks along Skyrim's -Y (Godot's +Z): half a turn.
 const FACING := Basis(Vector3.UP, PI)
-## The bound (half the box's diagonal) at zoom 1, in the units _distance() frames: fitted to the game's sizes at
-## 1100x800 (SkyrimRemote @item3d: Iron Sword 280 px tall, Iron Dagger 190, Iron Shield 257 across, potion 116; this
-## gives them within about 25 %: the game's own bound is not the box's).
-const BOUND_UNITS := 0.42
-const WIDE_ASPECT := 1.6
-const ITEM_HEIGHT := 0.35  # of the screen's height, with the narrow set's scale
+## The UI scene has no fog, but SkyDot's materials fog by the global weather fog (metres from the camera): the
+## preview's scene is built this much smaller than the game's units, so the item sits centimetres from its camera.
+const SCENE_SCALE := 0.01
+const NEAR := 15.0  # fUICameraNearDistance
+const FAR := 20480.0  # fUICameraFarDistance
 
-## Where the preview is, as fractions of this control (the host's area): centred where the game centres the item's
-## bound (x 0.68, y 0.395 of the screen at 1100x800, the same for a sword, a dagger, a shield and a potion).
+## Where a drag turns the item, as fractions of this control (the host's area; InventoryMenu's MouseRotationRect).
 var region := Rect2(0.53, 0.075, 0.3, 0.64)
+## Where the item's bound centre shows, as fractions of this control; negative: where the game's INI puts it.
+var item_center := Vector2(-1.0, -1.0)
 ## Radians per second the model turns by itself (the VR host sets it).
 var auto_spin := 0.0
 
 var _session: GameSession
+## The preview's own image space pass (neutral unless a host sets one).
+var image_space := SkydotImageSpace.new()
 var _viewport: SubViewport
 var _container: SubViewportContainer
 var _camera: Camera3D
@@ -80,20 +98,26 @@ func _init(session: GameSession) -> void:
 	_container.add_child(_viewport)
 	var environment := Environment.new()
 	environment.background_mode = Environment.BG_CLEAR_COLOR
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color(0.55, 0.55, 0.6)
-	environment.ambient_light_energy = 0.8
+	environment.ambient_light_source = Environment.AMBIENT_SOURCE_DISABLED
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = environment
 	_viewport.add_child(world_environment)
 	_camera = Camera3D.new()
-	_camera.fov = FOV
+	_camera.keep_aspect = Camera3D.KEEP_WIDTH
+	_camera.fov = rad_to_deg(2.0 * atan(FRUSTUM_WIDTH * tan(deg_to_rad(DEFAULT_FOV) * FRUSTUM_ANGLE)))
+	_camera.near = NEAR * SkydotWorld.unit_scale() * SCENE_SCALE
+	_camera.far = FAR * SkydotWorld.unit_scale() * SCENE_SCALE
 	_camera.current = true
+	# SkyDot's materials draw the game's gamma-space numbers; the image space pass turns them into linear colour.
+	_camera.compositor = Compositor.new()
+	_camera.compositor.compositor_effects = [image_space]
 	_viewport.add_child(_camera)
-	var light := DirectionalLight3D.new()
-	light.rotation = Vector3(deg_to_rad(-40.0), deg_to_rad(-30.0), 0.0)
-	light.light_energy = 1.4
-	_viewport.add_child(light)
+	for light: Dictionary in MENU_LIGHTS:
+		if float(light["radius"]) > 0.0:
+			var omni := OmniLight3D.new()
+			omni.set_meta(&"menu_light", light)
+			_viewport.add_child(omni)
+			_lights.append(omni)
 	_pivot.add_child(_holder)
 	_viewport.add_child(_pivot)
 	_container.visible = false
@@ -103,10 +127,9 @@ func _init(session: GameSession) -> void:
 
 
 func _place() -> void:
-	var rect := Rect2(size * region.position, size * region.size)
-	_container.position = rect.position
-	_container.size = rect.size
-	_viewport.size = Vector2i(maxi(int(rect.size.x), 16), maxi(int(rect.size.y), 16))
+	_container.position = Vector2.ZERO
+	_container.size = size
+	_apply()
 
 
 ## The rectangle the preview takes, in this control's pixels.
@@ -160,25 +183,60 @@ func clear() -> void:
 
 ## The game's pose: the model's own inventory marker (BSInvMarker "INV", converter mesh/28) turns it, Gamebryo's
 ## clockwise angles applied Z, then Y, then X, then seen from the model's +Y side with Skyrim's Z up (the camera looks
-## along the game's -Y: a shield shows its face, a war axe its blade on the right, as in the game); a model without one is not turned. The marker's zoom scales
-## it, the model's bound (the half diagonal of its box) sized to BOUND_UNITS, centred on the bound's centre.
+## along the game's -Y: a shield shows its face, a war axe its blade on the right, as in the game); a model without
+## one is not turned. The holder scales the model's bound sphere to a radius of the marker's zoom, centred on the
+## pivot; _apply scales the pivot to the game's size.
 func _fit() -> void:
 	_holder.transform = Transform3D.IDENTITY
-	var box := AABB()
-	var first := true
-	for mesh: MeshInstance3D in _model.find_children("*", "MeshInstance3D", true, false):
-		if mesh.mesh == null:
-			continue
-		var to_holder: Transform3D = _holder.global_transform.affine_inverse() * mesh.global_transform if mesh.is_inside_tree() else mesh.transform
-		var moved := to_holder * mesh.get_aabb()
-		box = moved if first else box.merge(moved)
-		first = false
-	if first or box.get_longest_axis_size() <= 0.0:
+	var bound := bound_sphere(_model, _holder)
+	if bound["radius"] <= 0.0:
 		return
 	var marker := inventory_marker(_model)
 	var basis := marker_basis(marker["rotation"])
-	var scale := float(marker["zoom"]) * BOUND_UNITS / (box.size.length() * 0.5)
-	_holder.transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), -(basis * box.get_center()) * scale)
+	var scale := float(marker["zoom"]) / float(bound["radius"])
+	_holder.transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), -(basis * (bound["center"] as Vector3)) * scale)
+
+
+## The model's bound as Gamebryo's world bound (NiAVObject::worldBound, Inventory3DManager sizes the item by its
+## radius): each shape's sphere (the box centre of its vertices, out to the farthest one), merged two at a time
+## into the smallest sphere holding both (NiBound::Merge). {center, radius} in `space`'s coordinates.
+static func bound_sphere(model: Node3D, space: Node3D) -> Dictionary:
+	var center := Vector3.ZERO
+	var radius := 0.0
+	for mesh: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		if mesh.mesh == null:
+			continue
+		var to_space: Transform3D = space.global_transform.affine_inverse() * mesh.global_transform if mesh.is_inside_tree() else mesh.transform
+		var points := PackedVector3Array()
+		for surface in mesh.mesh.get_surface_count():
+			points.append_array(mesh.mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX])
+		if points.is_empty():
+			continue
+		var box := AABB(points[0], Vector3.ZERO)
+		for point in points:
+			box = box.expand(point)
+		var c := box.get_center()
+		var r := 0.0
+		for point in points:
+			r = maxf(r, point.distance_squared_to(c))
+		r = sqrt(r) * to_space.basis.get_scale().x
+		c = to_space * c
+		if radius <= 0.0:
+			center = c
+			radius = r
+			continue
+		var d := c - center
+		var length := d.length()
+		var grow := r - radius
+		if grow * grow >= length * length:
+			if grow >= 0.0:
+				center = c
+				radius = r
+			continue
+		if length > 0.00001:
+			center += d * ((length + grow) / (2.0 * length))
+		radius = 0.5 * (length + radius + r)
+	return {"center": center, "radius": radius}
 
 
 ## The model's inventory marker: {rotation: Vector3 radians, zoom}; the marker's defaults when it has none.
@@ -200,16 +258,37 @@ static func marker_basis(rotation: Vector3) -> Basis:
 	return FACING * TO_GODOT * skyrim * TO_GODOT.inverse()
 
 
-func _distance() -> float:
-	var aspect := size.x / maxf(size.y, 1.0)
-	var ini := INI_WIDE if aspect >= WIDE_ASPECT else INI_NARROW
-	var fraction := ITEM_HEIGHT * float(ini["scale"]) / float(INI_NARROW["scale"]) / region.size.y  # of the preview's height
-	return 1.0 / (2.0 * fraction * tan(deg_to_rad(FOV) * 0.5))
-
-
+## The game's item position and size for this screen: the INI set by aspect, the item where the host asks for it
+## (item_center) at the game's depth, the pivot scaled so a bound radius of 1 is the game's size; the light faded
+## for the item's distance from it.
 func _apply() -> void:
 	_pivot.rotation = Vector3(_pitch, _yaw, 0.0)
-	_camera.position = Vector3(0.0, 0.0, _distance() / _zoom)
+	if _in_world:
+		return
+	var unit := SkydotWorld.unit_scale() * SCENE_SCALE
+	var aspect := size.x / maxf(size.y, 1.0)
+	var ini: Dictionary = INI_WIDE if aspect > WIDE_ASPECT else INI_NARROW
+	# The game's UI space (X left, Y away from the camera's view, Z up) in the camera's: x = -X, y = Z, z = Y.
+	var at := Vector3(-float(ini["x"]), float(ini["z"]), float(ini["y"]))
+	if item_center.x >= 0.0:
+		var half_width := FRUSTUM_WIDTH * tan(deg_to_rad(DEFAULT_FOV) * FRUSTUM_ANGLE) * -at.z
+		at.x = (item_center.x * 2.0 - 1.0) * half_width
+		at.y = (1.0 - item_center.y * 2.0) * half_width / maxf(aspect, 0.01)
+	var scale := BOUND_RADIUS_SCALE * float(ini["scale"]) * _zoom
+	if aspect > MAX_ASPECT:
+		scale *= MAX_ASPECT / aspect
+	_pivot.position = at * unit
+	_pivot.scale = Vector3.ONE * scale * unit
+	for omni: OmniLight3D in _lights:
+		var light: Dictionary = omni.get_meta(&"menu_light")
+		var p: Vector3 = light["position"]
+		var radius := float(light["radius"])
+		var from := Vector3(-p.x, p.z, p.y)
+		var fade := 1.0 - pow(clampf(from.distance_to(at) / radius, 0.0, 1.0), 2.0)
+		omni.position = from * unit
+		SkydotMaterials.set_game_light(omni, (light["color"] as Color) * float(light["dimmer"]) * fade)
+		omni.omni_range = radius * unit * 100.0  # the fade is in the energy: no further fall-off over the item
+		omni.omni_attenuation = 0.0
 
 
 ## Mouse drag and wheel inside the preview; true if the event was used.
@@ -273,10 +352,11 @@ func use_world_node(parent: Node3D, at: Vector3, metres := 0.3) -> void:
 	_pivot.get_parent().remove_child(_pivot)
 	parent.add_child(_pivot)
 	_pivot.position = at
-	_pivot.scale = Vector3.ONE * metres
+	_pivot.scale = Vector3.ONE * metres * 0.5  # the holder's bound radius is 1
 	_container.visible = false
 	set_deferred("auto_spin", 0.8)
 	_in_world = true
 
 
 var _in_world := false
+var _lights: Array[OmniLight3D] = []

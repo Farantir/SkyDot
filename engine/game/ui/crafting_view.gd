@@ -1073,7 +1073,8 @@ func _skill_fraction(skill: String) -> float:
 
 func _update_model_rect() -> void:
 	if _model_view != null:
-		_model_view.region = Rect2(0.48, 0.08, 0.3, 0.64)  # the game's forge centres the item at about x 0.63, y 0.4
+		_model_view.region = Rect2(0.48, 0.08, 0.3, 0.64)
+		_model_view.item_center = Vector2(0.63, 0.4)  # the game's forge centres the item at about x 0.63, y 0.4 (measured)
 
 
 func _empty_text() -> String:
