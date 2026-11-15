@@ -3,8 +3,8 @@
 # The death screen (GAMEPLAY-PLAN.md, 6k): when GameSession says the player died the picture fades to black
 # over FADE_SECONDS and, RELOAD_SECONDS after the death, the last save loads by itself (`load_chosen`: the
 # shell calls GameSession.reload_or_restart), as the game does: there is no question. Enter or A skips the
-# wait; Escape or B quits (`quit_chosen`). A mouse click skips the wait too. PLACEHOLDER: the 5 s is
-# fPlayerDeathReloadTime's default, not yet measured in the game. This is the view, a Control that fills its
+# wait; Escape or B quits (`quit_chosen`). A mouse click skips the wait too. The delay is the GMST
+# fPlayerDeathReloadTime (5 in Skyrim.esm). This is the view, a Control that fills its
 # host (the flat viewer's CanvasLayer, a VR shell's panel); the shell lowers the camera and stops the controls.
 class_name DeathView
 extends Control
@@ -16,8 +16,8 @@ signal quit_chosen
 
 ## Seconds from the death to full black.
 const FADE_SECONDS := 2.0
-## Seconds from the death to the automatic reload (fPlayerDeathReloadTime).
-const RELOAD_SECONDS := 5.0
+## Seconds from the death to the automatic reload: fPlayerDeathReloadTime (5 in Skyrim.esm; the default here).
+var reload_seconds := 5.0
 
 ## 0 clear, 1 black.
 var fade := 0.0
@@ -32,6 +32,8 @@ func _init(session: GameSession = null) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
 	if session != null:
+		if session.world != null:
+			reload_seconds = session.world.get_gmst_float("fPlayerDeathReloadTime", reload_seconds)
 		session.player_died.connect(func(_killer: int) -> void: begin())
 
 
@@ -67,7 +69,7 @@ func step(delta: float) -> void:
 	_time += delta
 	fade = clampf(_time / FADE_SECONDS, 0.0, 1.0)
 	queue_redraw()
-	if enabled.call() and _time >= RELOAD_SECONDS:
+	if enabled.call() and _time >= reload_seconds:
 		_reload()
 
 
