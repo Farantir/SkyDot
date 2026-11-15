@@ -25,7 +25,7 @@ const WHEEL_ROWS := 3
 
 var model: ItemListModel
 ## Where the panel is, as fractions of this control (the host's area).
-var region := Rect2(0.1, 0.08, 0.8, 0.84)
+var region := Rect2(0.1, 0.06, 0.8, 0.82)
 var title := ""
 ## Right-aligned header texts, left to right.
 var status: Array[String] = []

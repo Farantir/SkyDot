@@ -33,6 +33,7 @@ var model: ItemListModel
 var _session: GameSession
 var _open := false
 var _list: ItemListView
+var _bar: BottomBar
 var _since_refresh := 0.0
 var _confirm := {}  # the word to unlock once the player says yes: {word, name}
 var _notice := ""  # the last refusal, shown in the menu
@@ -53,6 +54,9 @@ func _init(session: GameSession) -> void:
 	_list.action_requested.connect(_on_action)
 	model.changed.connect(_update_detail)
 	add_child(_list)
+	_bar = BottomBar.new("magic")
+	_bar.visible = false
+	add_child(_bar)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	session.items_changed.connect(_refresh)
@@ -68,6 +72,7 @@ func open() -> void:
 		return
 	_open = true
 	_list.visible = true
+	_bar.visible = true
 	engaged.emit(true)
 	_refresh()
 
@@ -78,6 +83,7 @@ func close() -> void:
 	_open = false
 	_confirm = {}
 	_list.visible = false
+	_bar.visible = false
 	_list.stop_search()
 	_update_detail()
 	engaged.emit(false)
@@ -108,8 +114,9 @@ func _refresh() -> void:
 	if not _open:
 		return
 	model.set_rows(ItemListSources.magic(_session))
-	_list.status = ["Magicka %d / %d" % [roundi(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Magicka")),
-		roundi(_session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Magicka"))], "Dragon Souls: %d" % _session.dragon_souls()]
+	_bar.magicka = Vector2(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Magicka"), _session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Magicka"))
+	_bar.queue_redraw()
+	_list.status = ["Magicka %d / %d" % [roundi(_bar.magicka.x), roundi(_bar.magicka.y)], "Dragon Souls: %d" % _session.dragon_souls()]
 
 
 func _process(delta: float) -> void:

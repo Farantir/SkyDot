@@ -15,6 +15,7 @@ var _container := 0
 var _column := 0  # 0 the container, 1 the player
 var _models: Array[ItemListModel] = []
 var _lists: Array[ItemListView] = []
+var _bar: BottomBar
 var enabled: Callable = func() -> bool: return true
 var key_label: Callable = func(_action: StringName) -> String: return ""
 
@@ -24,7 +25,7 @@ func _init(session: GameSession) -> void:
 	for column in 2:
 		var model := ItemListModel.new("container", session.favorites)
 		var list := ItemListView.new(model)
-		list.region = Rect2(0.1 + 0.4 * column, 0.08, 0.4, 0.84)
+		list.region = Rect2(0.1 + 0.4 * column, 0.06, 0.4, 0.82)
 		list.arrows_change_tab = false
 		list.visible = false
 		list.key_label = func(action: StringName) -> String: return key_label.call(action)
@@ -33,6 +34,9 @@ func _init(session: GameSession) -> void:
 		_lists.append(list)
 		add_child(list)
 	_lists[1].title = "Inventory"
+	_bar = BottomBar.new("inventory")
+	_bar.visible = false
+	add_child(_bar)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	session.items_changed.connect(_refresh)
@@ -58,6 +62,7 @@ func open(ref: int) -> void:
 	_open = true
 	for list in _lists:
 		list.visible = true
+	_bar.visible = true
 	_focus(0)
 	if not was_open:
 		engaged.emit(true)
@@ -72,6 +77,7 @@ func close() -> void:
 	for list in _lists:
 		list.visible = false
 		list.stop_search()
+	_bar.visible = false
 	engaged.emit(false)
 
 
@@ -85,7 +91,15 @@ func _refresh() -> void:
 	_models[0].set_rows(ItemListSources.inventory(_session, _container))
 	_models[1].set_rows(ItemListSources.inventory(_session))
 	_lists[0].status = ["Weight %.1f" % ItemRows.total_weight(_session.inventory(_container))]
-	_lists[1].status = ["Weight %.1f" % ItemRows.total_weight(_session.inventory())]
+	var carried := _session.inventory()
+	_lists[1].status = ["Weight %.1f" % ItemRows.total_weight(carried)]
+	for row: Dictionary in carried:
+		if int(row["form"]) == 0xF:
+			_bar.gold = int(row["count"])
+	_bar.carry_weight = ItemRows.total_weight(carried)
+	_bar.carry_capacity = _session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
+	_bar.health = Vector2(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Health"), _session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Health"))
+	_bar.queue_redraw()
 
 
 func _input(event: InputEvent) -> void:

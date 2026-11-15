@@ -24,7 +24,7 @@ func _init(session: GameSession) -> void:
 	model = ItemListModel.new("favorites", session.favorites)
 	_list = ItemListView.new(model)
 	_list.title = "Favorites"
-	_list.region = Rect2(0.3, 0.12, 0.4, 0.76)
+	_list.region = Rect2(0.3, 0.1, 0.4, 0.74)
 	_list.status = ["Keys 1-8 set a hotkey"]
 	_list.visible = false
 	_list.key_label = func(action: StringName) -> String: return key_label.call(action)
