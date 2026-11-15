@@ -422,13 +422,13 @@ func level_up(attribute_av: int) -> Dictionary:
 ## "unknown", "has", "points", "playable", "tree" (in no skill's tree), "rank" (the rank before
 ## is missing), "link" (no node leading to it is taken), "conditions". A mod adds a condition by
 ## overriding this.
-func perk_blocker(perk: int) -> String:
+func perk_blocker(perk: int, ignore_points := false) -> String:
 	var info := _data.perk(perk)
 	if info.is_empty():
 		return "unknown"
 	if _data.perk_rank(perk) > 0:
 		return "has"
-	if int(_data.progress()["perk_points"]) <= 0:
+	if not ignore_points and int(_data.progress()["perk_points"]) <= 0:
 		return "points"
 	if not bool(info.get("playable", false)):
 		return "playable"

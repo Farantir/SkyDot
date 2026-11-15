@@ -8,12 +8,11 @@
 class_name SkillsModel
 extends RefCounted
 
-## The ring in the menu's order, by arc (UESP Skyrim:Skills): Warrior, Mage, Thief; actor value indexes.
-const ARCS: Array = [
-	{"name": "Warrior", "skills": [6, 7, 8, 9, 10, 11]},
-	{"name": "Mage", "skills": [18, 19, 20, 21, 22, 23]},
-	{"name": "Thief", "skills": [12, 15, 14, 13, 17, 16]},
-]
+## The ring in the game's order (StatsMenu's skillTrees in SkyrimSE.exe; tree N hangs under the sky's PointN and
+## the ring runs left to right in this order): actor value indexes.
+const RING: Array[int] = [23, 10, 11, 9, 7, 6, 8, 12, 15, 14, 13, 17, 16, 21, 19, 20, 22, 18]
+## The tree the menu opens on the first time (the exe's static, 15: Destruction); later the last one shown.
+static var last_selected := 15
 const ATTRIBUTES: Array[int] = [Progression.HEALTH, Progression.MAGICKA, Progression.STAMINA]
 const ATTRIBUTE_NAMES := {24: "Health", 25: "Magicka", 26: "Stamina"}
 const FUNC_GET_BASE_ACTOR_VALUE := 277
@@ -24,12 +23,13 @@ var _data: ProgressionData
 
 ## {level, xp, xp_need, xp_fraction, perk_points, level_up_ready, banked (levels waiting)}.
 var header := {}
-## [{av, name, arc, level, base, fraction, legendary}] in ring order.
+## [{av, name, description, level, base, fraction, legendary}] in ring order.
 var skills: Array[Dictionary] = []
 ## Index into `skills`.
-var selected := 0
-## The selected skill's stars: [{index, pos (Vector2 in 0..1, y down), perk, name, description, rank, ranks,
-## required_level, status ("taken", "available", "locked"), blocker, blocker_text, links (indexes)}].
+var selected := last_selected
+## The selected skill's stars: [{index, pos (Vector2 in 0..1, y down), grid (XNAM + HNAM, YNAM + VNAM), grid_x, perk, name, description, rank, ranks,
+## required_level, status ("taken", "available", "locked"), blocker, blocker_text, unlockable (all but a perk point
+## there), links (indexes)}].
 var nodes: Array[Dictionary] = []
 ## The node index (NODE `index`) under the cursor, -1 for none.
 var cursor := -1
@@ -54,9 +54,8 @@ func choosing_attribute() -> bool:
 func refresh() -> void:
 	_build_header()
 	skills.clear()
-	for arc: Dictionary in ARCS:
-		for av: int in arc["skills"]:
-			skills.append(_skill_entry(av, String(arc["name"])))
+	for av: int in RING:
+		skills.append(_skill_entry(av))
 	selected = clampi(selected, 0, skills.size() - 1)
 	_build_nodes()
 
@@ -79,6 +78,7 @@ func current_node() -> Dictionary:
 ## Previous (-1) or next (+1) skill around the ring.
 func select_skill(step: int) -> void:
 	selected = posmod(selected + step, skills.size())
+	last_selected = selected
 	pending = {}
 	note = ""
 	_build_nodes()
@@ -195,20 +195,40 @@ func _build_header() -> void:
 			"perk_points": int(p["perk_points"]), "level_up_ready": banked > 0, "banked": banked}
 
 
-func _skill_entry(av: int, arc: String) -> Dictionary:
+func _skill_entry(av: int) -> Dictionary:
 	var p := _data.progress()
 	var base := int(_data.base_av(av))
 	var need := _progression.skill_threshold(av, base)
 	var fraction := 0.0
 	if base < Progression.MAX_SKILL and need > 0.0:
 		fraction = clampf(float(p["skill_xp"][av - ProgressionData.FIRST_SKILL]) / need, 0.0, 1.0)
-	return {"av": av, "name": _progression.skill_name(av), "arc": arc, "level": int(_data.current_av(av)),
+	return {"av": av, "name": _progression.skill_name(av), "description": String(_data.skill_info(av).get("description", "")),
+			"level": int(_data.current_av(av)),
 			"base": base, "fraction": fraction, "legendary": int(p["legendary"][av - ProgressionData.FIRST_SKILL])}
 
 
 func _build_nodes() -> void:
-	nodes.clear()
-	var av: int = skills[selected]["av"]
+	nodes = tree_nodes(int(skills[selected]["av"]))
+	if cursor < 0 or node(cursor).is_empty():
+		cursor = start_node()
+
+
+## Every skill's stars for the sky: ring index -> {nodes (as `nodes`), width (the largest XNAM of its perk
+## nodes, which the game centres the tree on)}.
+func trees() -> Dictionary:
+	var out := {}
+	for i in skills.size():
+		var list := tree_nodes(int(skills[i]["av"])) if i != selected else nodes
+		var width := 0
+		for n: Dictionary in list:
+			width = maxi(width, int(n["grid_x"]))
+		out[i] = {"nodes": list, "width": width}
+	return out
+
+
+## The stars of skill `av`'s tree (see `nodes`).
+func tree_nodes(av: int) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
 	var tree := _data.perk_tree(av)
 	var raw: Array[Dictionary] = []
 	for t: Dictionary in tree:
@@ -238,29 +258,28 @@ func _build_nodes() -> void:
 		var required := _required_level(chain[0 if current == 0 else chain.find(current)], av)
 		var status := "taken"
 		var blocker := ""
+		var unlockable := false
 		if current != 0:
 			blocker = _progression.perk_blocker(current)
 			status = "available" if blocker == "" else "locked"
+			unlockable = blocker == "" or (blocker == "points" and _progression.perk_blocker(current, true) == "")
 		var links: Array = []
 		for l in t.get("links", []):
 			if shown.has(int(l)):
 				links.append(int(l))
 		# y grows upward in the data (later perks higher); the screen's y grows down.
-		nodes.append({"index": int(t["index"]), "pos": Vector2((q.x - lo.x) / span.x, 1.0 - (q.y - lo.y) / span.y),
+		out.append({"index": int(t["index"]), "pos": Vector2((q.x - lo.x) / span.x, 1.0 - (q.y - lo.y) / span.y),
+				"grid": q, "grid_x": int(t.get("grid_x", 0)),
 				"perk": shown_perk, "perk_to_take": current, "name": String(info.get("name", "")),
 				"description": String(info.get("description", "")), "rank": taken, "ranks": chain.size(),
 				"required_level": required, "status": status, "blocker": blocker,
-				"blocker_text": blocker_text(blocker, required, av), "links": links})
-	if cursor < 0 or node(cursor).is_empty():
-		cursor = _start_node()
+				"blocker_text": blocker_text(blocker, required, av), "unlockable": unlockable, "links": links})
+	return out
 
 
-## The star the cursor starts on: the first available one, else the lowest.
-func _start_node() -> int:
+## The star a tree opens on: the lowest (the game zooms to the tree's first star).
+func start_node() -> int:
 	var best := -1
-	for n: Dictionary in nodes:
-		if n["status"] == "available":
-			return n["index"]
 	var low := -1.0
 	for n: Dictionary in nodes:
 		if n["pos"].y > low:

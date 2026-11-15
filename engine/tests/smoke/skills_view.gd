@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The skills screen on the real SE pack (SKYDOT_SSE_PACK): the model's ring and header, the One-Handed tree
-# (11 stars, Armsman available with a perk point), taking Armsman through the view's keys (accept asks, accept
-# confirms) and the status becoming taken, and the level-up choice when a level is banked. Headless; skips
+# The skills screen on the real SE pack (SKYDOT_SSE_PACK): the model's ring and header, the sky with every tree, the
+# One-Handed tree (11 stars, Armsman available with a perk point), taking Armsman through the view's keys (accept
+# zooms in, accept asks, accept confirms) and the status becoming taken, and the level-up choice when a level is banked. Headless; skips
 # without the pack.
 extends SceneTree
 
@@ -57,7 +57,20 @@ func _run(pack_dir: String) -> void:
 	view.open()
 	view.select_skill("OneHanded")
 	var m := view.model
+	# The ring turns while a direction is held and slows into the next skill when let go.
+	var start := view.sky.facing()
+	view.sky.turn(1.0)
+	for i in 6:  # a tenth of a second held
+		view.sky._step_turn(1.0 / 60.0)
+	view.sky.turn(0.0)
+	var steps := 0
+	while view.sky.is_turning() and steps < 600:
+		view.sky._step_turn(1.0 / 60.0)
+		steps += 1
+	expect(view.sky.facing() == (start + 1) % 18, "a tap turns one skill to the right: %d -> %d" % [start, view.sky.facing()])
+	view.select_skill("OneHanded")
 	expect(m.skills.size() == 18, "18 skills")
+	expect(view.sky._stars.size() == 18, "every tree's stars in the sky: %d" % view.sky._stars.size())
 	expect(m.current_skill()["av"] == 6, "One-handed is selected: %s" % [m.current_skill()["name"]])
 	expect(m.nodes.size() == 10, "11 tree nodes, the root not a star: %d stars" % m.nodes.size())
 	expect(m.header["perk_points"] == 1, "one perk point")
@@ -68,7 +81,10 @@ func _run(pack_dir: String) -> void:
 	expect(not armsman.is_empty() and armsman["status"] == "available", "Armsman is available: %s" % [armsman.get("status")])
 	expect(armsman.get("ranks", 0) == 5, "Armsman has five ranks: %s" % [armsman.get("ranks")])
 	expect(String(armsman.get("description", "")).contains("20%"), "with its description: %s" % [armsman.get("description")])
-	expect(m.current_node().get("name", "") == "Armsman", "the cursor starts on it")
+	_press(view, &"ui_accept")
+	expect(view._in_tree, "accept zooms into the tree")
+	expect(m.current_node().get("name", "") == "Armsman", "the cursor starts on its lowest star")
+	expect(view.sky.zoomed(), "the camera flies to it")
 	_press(view, &"ui_accept")
 	expect(m.pending.get("kind", "") == "perk", "accept asks")
 	_press(view, &"ui_accept")

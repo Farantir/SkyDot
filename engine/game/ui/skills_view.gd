@@ -1,29 +1,30 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The skills screen (the `skills` action: L, the gamepad's right stick click, VR: the right stick click) over
-# SkillsModel. With a level banked it first asks for Health, Magicka or Stamina (up and down choose, accept
-# spends the level). Then: the ring of skills along the top (Page Up / Page Down or the shoulder buttons change
-# the skill), the selected skill's perk tree as stars joined by lines (taken filled, available ringed bright,
-# locked dim; the cursor is a box), the star under the cursor described on the right, and the level, XP bar
-# and perk points along the bottom. The arrows move the cursor, accept asks to take the perk and again to
-# confirm, `menu_drop` (R, X) asks to make a skill at 100 legendary, cancel declines or closes. A Control that
-# fills its host (see InventoryView for the contract); the numbers and the actions are SkillsModel's.
+# The skills screen (the `skills` action: L, the gamepad's right stick click, VR: the right stick click) as the
+# game's StatsMenu: the 3D sky with every skill's constellation (StatsSky) under the movie's chrome
+# (StatsMenuDraw), over SkillsModel. With a level banked it first asks for Magicka, Health or Stamina
+# (LevelUpDraw over the sky; the arrows choose, accept spends the level, nothing leaves it).
+#   The ring: left / right (Page Up / Page Down, the shoulders, the left stick) turn the sky while held and it
+#   slows into a skill when let go; up or accept zooms into the facing skill's tree; down, cancel or the skills
+#   key closes.
+#   A tree: the camera flies to the star under the cursor and the arrows (left stick) move it to the nearest star
+#   that way, down from the lowest star or cancel goes back to the ring; accept asks to take the perk
+#   (sStatsPerkConfirm) and accept again takes it; `menu_drop` (R, X) asks to make a skill at 100 legendary.
+# A Control that fills its host (see InventoryView for the contract); the numbers and the actions are SkillsModel's.
 class_name SkillsView
 extends Control
 
 signal engaged(open: bool)
 
-const NORMAL := Color(0.92, 0.92, 0.92)
-const DIM := Color(0.5, 0.5, 0.5)
-const SELECTED := Color(1.0, 0.9, 0.5)
-const AVAILABLE := Color(0.6, 0.9, 1.0)
-const TAKEN := Color(1.0, 0.85, 0.4)
-const SHORT := Color(0.9, 0.5, 0.45)
 const STICK_THRESHOLD := 0.6
+const PLAYER_NPC := 7
 
 var model: SkillsModel
+var sky: StatsSky
 var _session: GameSession
+var _chrome := Control.new()
 var _open := false
+var _in_tree := false
 var _choice := 0   # the attribute under the level-up choice
 var _stick_ready := true
 var enabled: Callable = func() -> bool: return true
@@ -34,6 +35,13 @@ func _init(session: GameSession) -> void:
 	_session = session
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	sky = StatsSky.new(session)
+	sky.visible = false
+	add_child(sky)
+	_chrome.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_chrome.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chrome.draw.connect(_draw_chrome)
+	add_child(_chrome)
 
 
 func is_open() -> bool:
@@ -43,9 +51,13 @@ func is_open() -> bool:
 func open() -> void:
 	model = SkillsModel.new(_session)
 	_choice = 0
+	_in_tree = false
 	var was_open := _open
 	_open = true
-	queue_redraw()
+	sky.visible = true
+	sky.build(model.trees())
+	sky.open(model.selected)
+	_redraw()
 	print("skills: opens (level %d, %d perk points%s)" % [model.header["level"], model.header["perk_points"],
 		", level-up ready" if model.choosing_attribute() else ""])
 	if not was_open:
@@ -60,19 +72,43 @@ func close(force := false) -> void:
 	if not force and model != null and model.choosing_attribute():
 		return
 	_open = false
+	sky.visible = false
 	engaged.emit(false)
-	queue_redraw()
+	_redraw()
 
 
-## Select a skill by AV or name (the debug flag); no-op for unknown ones.
+## Select a skill by AV or name (the debug flag --open-skills); no-op for unknown ones. Steps after colons follow:
+## "tree" zooms into it, then "up" / "down" / "left" / "right" move the cursor ("Destruction:tree:up").
 func select_skill(skill: String) -> void:
 	if model == null:
 		return
+	var steps := skill.split(":")
+	var name := steps[0].to_lower().replace("-", "")
 	for i in model.skills.size():
 		var s: Dictionary = model.skills[i]
-		if String(s["name"]).to_lower().replace("-", "") == skill.to_lower().replace("-", "") or str(s["av"]) == skill:
+		if String(s["name"]).to_lower().replace("-", "") == name or str(s["av"]) == name:
 			model.select_skill(i - model.selected)
-	queue_redraw()
+			sky.open(model.selected)
+	var dirs := {"up": Vector2.UP, "down": Vector2.DOWN, "left": Vector2.LEFT, "right": Vector2.RIGHT}
+	for step in steps.slice(1):
+		if step == "tree":
+			_zoom_in()
+		elif dirs.has(step) and _in_tree:
+			_move(dirs[step])
+	_redraw()
+
+
+func _redraw() -> void:
+	_chrome.queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	if not _open or model == null:
+		return
+	# The ring follows the sky: the skill the camera faces is the selected one once it rests.
+	if not _in_tree and not sky.is_turning() and sky.facing() != model.selected:
+		model.select_skill(sky.facing() - model.selected)
+	_redraw()
 
 
 func _input(event: InputEvent) -> void:
@@ -81,37 +117,87 @@ func _input(event: InputEvent) -> void:
 	var handled := true
 	if model.choosing_attribute():
 		handled = _level_up_input(event)
-	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"skills"):
+	elif _in_tree:
+		handled = _tree_input(event)
+	else:
+		handled = _ring_input(event)
+	_redraw()
+	if handled:
+		get_viewport().set_input_as_handled()
+
+
+func _ring_input(event: InputEvent) -> bool:
+	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"skills") or event.is_action_pressed(&"ui_down"):
+		close()
+	elif event.is_action_pressed(&"ui_accept") or event.is_action_pressed(&"ui_up"):
+		_zoom_in()
+	elif event.is_action(&"ui_right") or event.is_action(&"ui_page_down") or _button(event, JOY_BUTTON_RIGHT_SHOULDER):
+		sky.turn(1.0 if event.is_pressed() else 0.0)
+	elif event.is_action(&"ui_left") or event.is_action(&"ui_page_up") or _button(event, JOY_BUTTON_LEFT_SHOULDER):
+		sky.turn(-1.0 if event.is_pressed() else 0.0)
+	elif event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_X:
+		var value: float = event.axis_value
+		sky.turn(signf(value) if absf(value) >= STICK_THRESHOLD else 0.0)
+	else:
+		return event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
+	return true
+
+
+func _tree_input(event: InputEvent) -> bool:
+	if event.is_action_pressed(&"skills"):
+		close()
+	elif event.is_action_pressed(&"ui_cancel"):
 		if model.pending.is_empty():
-			close()
+			_zoom_out()
 		else:
 			model.cancel()
 	elif event.is_action_pressed(&"ui_accept"):
 		if not model.pending.is_empty():
 			model.confirm()
+			sky.set_status(model.selected, model.nodes)
 		else:
 			model.ask_take()
 	elif event.is_action_pressed(&"menu_drop"):
 		model.ask_legendary()
-	elif event.is_action_pressed(&"ui_page_down") or _button(event, JOY_BUTTON_RIGHT_SHOULDER):
-		model.select_skill(1)
-	elif event.is_action_pressed(&"ui_page_up") or _button(event, JOY_BUTTON_LEFT_SHOULDER):
-		model.select_skill(-1)
 	elif event.is_action_pressed(&"ui_down"):
-		model.move_cursor(Vector2.DOWN)
+		_move(Vector2.DOWN)
 	elif event.is_action_pressed(&"ui_up"):
-		model.move_cursor(Vector2.UP)
+		_move(Vector2.UP)
 	elif event.is_action_pressed(&"ui_left"):
-		model.move_cursor(Vector2.LEFT)
+		_move(Vector2.LEFT)
 	elif event.is_action_pressed(&"ui_right"):
-		model.move_cursor(Vector2.RIGHT)
+		_move(Vector2.RIGHT)
 	elif event is InputEventJoypadMotion and (event.axis == JOY_AXIS_LEFT_X or event.axis == JOY_AXIS_LEFT_Y):
 		_stick(event)
 	else:
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	queue_redraw()
-	if handled:
-		get_viewport().set_input_as_handled()
+		return event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
+	return true
+
+
+func _zoom_in() -> void:
+	if model.nodes.is_empty():
+		return
+	sky.turn(0.0)
+	_in_tree = true
+	model.cursor = model.start_node()
+	sky.zoom(model.selected, model.cursor)
+
+
+func _zoom_out() -> void:
+	_in_tree = false
+	model.cancel()
+	sky.zoom(-1, -1)
+
+
+## Move the cursor; down from the lowest star leaves the tree.
+func _move(dir: Vector2) -> void:
+	var before := model.cursor
+	model.move_cursor(dir)
+	if model.cursor == before:
+		if dir == Vector2.DOWN:
+			_zoom_out()
+		return
+	sky.zoom(model.selected, model.cursor)
 
 
 ## The attribute under the level-up choice (the game's buttons stand Magicka, Health, Stamina left to right).
@@ -135,7 +221,7 @@ func _level_up_input(event: InputEvent) -> bool:
 
 
 func _button(event: InputEvent, index: int) -> bool:
-	return event is InputEventJoypadButton and event.pressed and event.button_index == index
+	return event is InputEventJoypadButton and event.button_index == index
 
 
 func _stick(event: InputEventJoypadMotion) -> void:
@@ -147,164 +233,53 @@ func _stick(event: InputEventJoypadMotion) -> void:
 		return
 	_stick_ready = false
 	if event.axis == JOY_AXIS_LEFT_Y:
-		model.move_cursor(Vector2.DOWN if value > 0.0 else Vector2.UP)
+		_move(Vector2.DOWN if value > 0.0 else Vector2.UP)
 	else:
-		model.move_cursor(Vector2.RIGHT if value > 0.0 else Vector2.LEFT)
+		_move(Vector2.RIGHT if value > 0.0 else Vector2.LEFT)
 
 
 # ---- drawing
 
-func _draw() -> void:
+func _draw_chrome() -> void:
 	if not _open or model == null:
 		return
-	if model.choosing_attribute() and LevelUpDraw.available():
-		LevelUpDraw.draw(self, _choice_av())
-		return
-	var area := size
-	var font := ThemeDB.fallback_font
-	var font_size := int(maxf(14.0, area.y / 38.0))
-	var line := font_size * 1.45
-	var panel := Rect2(area * Vector2(0.05, 0.05), area * Vector2(0.9, 0.9))
-	draw_rect(panel, Color(0.03, 0.03, 0.05, 0.92))
-	draw_rect(panel, Color(0.5, 0.45, 0.35), false, 2.0)
-	_draw_bottom(font, font_size, line, panel)
 	if model.choosing_attribute():
-		_draw_level_up(font, font_size, line, panel)
+		if LevelUpDraw.available():
+			LevelUpDraw.draw(_chrome, _choice_av())
 		return
-	_draw_ring(font, font_size, line, panel)
-	var tree := Rect2(panel.position + Vector2(font_size, line * 4.0), Vector2(panel.size.x * 0.6, panel.size.y - line * 7.0))
-	_draw_tree(font_size, tree)
-	_draw_info(font, font_size, line, Rect2(Vector2(tree.end.x + font_size, tree.position.y),
-		Vector2(panel.end.x - tree.end.x - font_size * 2.0, tree.size.y)))
-
-
-func _draw_bottom(font: Font, font_size: int, line: float, panel: Rect2) -> void:
-	var h: Dictionary = model.header
-	var y := panel.end.y - font_size * 0.8
-	var x := panel.position.x + font_size
-	_text(font, "Level %d" % h["level"], font_size, Vector2(x, y), SELECTED, 200.0)
-	var bar := Rect2(Vector2(x + font_size * 7.0, y - font_size), Vector2(panel.size.x * 0.35, font_size * 0.8))
-	draw_rect(bar, Color(0.15, 0.15, 0.18))
-	draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(h["xp_fraction"]), bar.size.y)), Color(0.8, 0.7, 0.35))
-	draw_rect(bar, DIM, false, 1.0)
-	_text(font, "Perk points: %d" % h["perk_points"], font_size, Vector2(bar.end.x + font_size, y), NORMAL, 300.0)
-	var hint := "%s take  %s legendary  PgUp/PgDn skill  %s close" % [_key(&"ui_accept", "Enter"), _key(&"menu_drop", "R"),
-		_key(&"skills", "L")]
-	if model.choosing_attribute():
-		hint = "%s choose" % _key(&"ui_accept", "Enter")
-	_text(font, hint, int(font_size * 0.85), Vector2(x, y - line), DIM, panel.size.x - font_size * 2.0)
-
-
-func _draw_ring(font: Font, font_size: int, line: float, panel: Rect2) -> void:
-	var count := model.skills.size()
-	var width := (panel.size.x - font_size * 2.0) / 7.0
-	for offset in range(-3, 4):
-		var s: Dictionary = model.skills[posmod(model.selected + offset, count)]
-		var x := panel.position.x + font_size + (offset + 3) * width
-		var colour := SELECTED if offset == 0 else (NORMAL if absi(offset) == 1 else DIM)
-		_text(font, "%s %d" % [s["name"], s["level"]], font_size, Vector2(x, panel.position.y + line), colour, width - 6.0)
-		var bar := Rect2(Vector2(x, panel.position.y + line * 1.3), Vector2(width - 10.0, font_size * 0.4))
-		draw_rect(bar, Color(0.15, 0.15, 0.18))
-		draw_rect(Rect2(bar.position, Vector2(bar.size.x * float(s["fraction"]), bar.size.y)), colour)
-	var s: Dictionary = model.current_skill()
-	var legend := "   Legendary x%d" % s["legendary"] if int(s["legendary"]) > 0 else ""
-	_text(font, "%s arc: %s %d (base %d)%s" % [s["arc"], s["name"], s["level"], s["base"], legend], font_size,
-		Vector2(panel.position.x + font_size, panel.position.y + line * 2.8), SELECTED, panel.size.x - font_size * 2.0)
-
-
-func _star_at(area: Rect2, pos: Vector2) -> Vector2:
-	var inner := area.grow(-20.0)
-	return inner.position + pos * inner.size
-
-
-func _draw_tree(font_size: int, area: Rect2) -> void:
-	var radius := font_size * 0.6
-	for n: Dictionary in model.nodes:
-		for l: int in n["links"]:
-			var other := model.node(l)
-			if other.is_empty():
+	if not StatsMenuDraw.available():
+		return
+	var perk := model.current_node() if _in_tree else {}
+	var labels: Array = []
+	if _in_tree:
+		for n: Dictionary in model.nodes:
+			var at: Variant = sky.star_screen(model.selected, int(n["index"]))
+			if at == null:
 				continue
-			var colour := TAKEN if n["status"] == "taken" and other["status"] == "taken" else DIM
-			draw_line(_star_at(area, n["pos"]), _star_at(area, other["pos"]), colour, 2.0)
-	for n: Dictionary in model.nodes:
-		var at := _star_at(area, n["pos"])
-		match n["status"]:
-			"taken":
-				draw_circle(at, radius, TAKEN)
-			"available":
-				draw_circle(at, radius, Color(0.04, 0.04, 0.06))
-				draw_arc(at, radius, 0.0, TAU, 24, AVAILABLE, 3.0)
-			_:
-				draw_arc(at, radius, 0.0, TAU, 24, DIM, 1.5)
-		if n["index"] == model.cursor:
-			draw_rect(Rect2(at - Vector2.ONE * (radius + 5.0), Vector2.ONE * (radius + 5.0) * 2.0), SELECTED, false, 2.0)
+			var text := String(n["name"])
+			if int(n["ranks"]) > 1:
+				text += " (%d/%d)" % [n["rank"], n["ranks"]]
+			labels.append({"text": text, "at": at})
+		if not model.pending.is_empty():
+			perk = perk.duplicate()
+			perk["description"] = _session.world.get_gmst_string("sStatsPerkConfirm", String(model.pending["text"])) \
+				if model.pending["kind"] == "perk" and _session.world != null else String(model.pending["text"])
+		elif model.note != "":
+			perk = perk.duplicate()
+			perk["description"] = model.note
+	StatsMenuDraw.draw(_chrome, _player_info(), model.skills, model.selected, rad_to_deg(sky.yaw), perk, labels)
 
 
-func _draw_info(font: Font, font_size: int, line: float, area: Rect2) -> void:
-	var n: Dictionary = model.current_node()
-	var y := area.position.y + line
-	if n.is_empty():
-		_text(font, "No perks", font_size, Vector2(area.position.x, y), DIM, area.size.x)
-		return
-	_text(font, String(n["name"]), font_size, Vector2(area.position.x, y), SELECTED, area.size.x)
-	y += line
-	if int(n["ranks"]) > 1:
-		_text(font, "Rank %d of %d" % [n["rank"], n["ranks"]], font_size, Vector2(area.position.x, y), NORMAL, area.size.x)
-		y += line
-	if int(n["required_level"]) > 0:
-		_text(font, "Requires skill %d" % n["required_level"], font_size, Vector2(area.position.x, y), NORMAL, area.size.x)
-		y += line
-	for part in _wrap(font, String(n["description"]), font_size, area.size.x):
-		_text(font, part, font_size, Vector2(area.position.x, y), NORMAL, area.size.x)
-		y += line
-	var status: String = n["status"]
-	var text := "Taken" if status == "taken" else ("Available" if status == "available" else String(n["blocker_text"]))
-	_text(font, text, font_size, Vector2(area.position.x, y), TAKEN if status == "taken" else (AVAILABLE if status == "available" else SHORT), area.size.x)
-	y += line * 1.5
-	if not model.pending.is_empty():
-		_text(font, "%s  %s yes   %s no" % [model.pending["text"], _key(&"ui_accept", "Enter"), _key(&"ui_cancel", "Esc")],
-			font_size, Vector2(area.position.x, y), SELECTED, area.size.x)
-	elif model.note != "":
-		_text(font, model.note, font_size, Vector2(area.position.x, y), SHORT, area.size.x)
-
-
-func _draw_level_up(font: Font, font_size: int, line: float, panel: Rect2) -> void:
-	var x := panel.position.x + panel.size.x * 0.3
-	var y := panel.position.y + panel.size.y * 0.25
-	_text(font, "Level Up: choose an attribute (level %d, %d waiting)" % [model.header["level"], model.header["banked"]],
-		font_size, Vector2(x, y), SELECTED, panel.size.x * 0.6)
-	y += line * 2.0
-	for i in LevelUpDraw.ORDER.size():
-		var av: int = LevelUpDraw.ORDER[i]
-		var label := "%s  +%d" % [model.attribute_name(av), model.attribute_gain()]
-		if av == Progression.STAMINA:
-			label += "  (and carry weight)"
-		_text(font, ("> " if i == _choice else "  ") + label, font_size, Vector2(x, y), SELECTED if i == _choice else NORMAL, panel.size.x * 0.6)
-		y += line
-
-
-func _wrap(font: Font, text: String, font_size: int, width: float) -> Array[String]:
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current == "" else current + " " + word
-		if current != "" and font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > width:
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	if current != "":
-		lines.append(current)
-	return lines
-
-
-func _key(action: StringName, fallback: String) -> String:
-	var label: String = key_label.call(action)
-	return label if label != "" else fallback
-
-
-func _text(font: Font, text: String, font_size: int, at: Vector2, colour: Color, width: float) -> void:
-	while text.length() > 3 and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > width:
-		text = text.substr(0, text.length() - 3) + ".."
-	draw_string_outline(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 3, Color(0.0, 0.0, 0.0, 0.8))
-	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, colour)
+## The header's and the bottom bar's values: the player's name and race, level and its progress, perk points,
+## Health, Magicka and Stamina.
+func _player_info() -> Dictionary:
+	var info := {"level": model.header["level"], "xp_fraction": model.header["xp_fraction"],
+		"perk_points": model.header["perk_points"]}
+	if _session.world != null:
+		var plan: Dictionary = _session.world.get_npc_plan(PLAYER_NPC, SkydotPapyrus.PLAYER_REF)
+		info["name"] = String(_session.world.get_npc(PLAYER_NPC).get("name", ""))
+		info["race"] = String(_session.world.get_race(int(plan.get("race", 0))).get("name", ""))
+	for av: String in ["Health", "Magicka", "Stamina"]:
+		info[av.to_lower()] = Vector2(_session.actor_value(SkydotPapyrus.PLAYER_REF, av),
+			_session.actor_value_max(SkydotPapyrus.PLAYER_REF, av))
+	return info

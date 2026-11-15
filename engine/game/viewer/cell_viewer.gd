@@ -104,7 +104,7 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none, "NAME:tree:up" zooms into its tree and moves the cursor up; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
 # picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);

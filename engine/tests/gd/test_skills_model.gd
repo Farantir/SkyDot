@@ -125,17 +125,27 @@ func before_each() -> void:
 	d = FakeData.new()
 	session = FakeSession.new()
 	session.progression = Progression.new(d)
+	SkillsModel.last_selected = 5  # One-handed, the fake's tree
 	m = SkillsModel.new(session)
 
 
-func test_the_ring_has_the_18_skills_in_arc_order() -> void:
+func test_the_ring_has_the_18_skills_in_the_game_order() -> void:
 	expect_eq(m.skills.size(), 18, "18")
 	var avs: Array = m.skills.map(func(s: Dictionary) -> int: return s["av"])
-	expect_eq(avs, [6, 7, 8, 9, 10, 11, 18, 19, 20, 21, 22, 23, 12, 15, 14, 13, 17, 16], "warrior, mage, thief")
-	expect_eq(m.skills[0]["arc"], "Warrior", "arc")
-	expect_eq(m.skills[0]["name"], "One-handed", "name")
+	expect_eq(avs, [23, 10, 11, 9, 7, 6, 8, 12, 15, 14, 13, 17, 16, 21, 19, 20, 22, 18], "StatsMenu's skillTrees")
+	expect_eq(m.skills[5]["name"], "One-handed", "name")
+	m.selected = 0
 	m.select_skill(-1)
-	expect_eq(m.skills[m.selected]["av"], 16, "wraps backwards")
+	expect_eq(m.skills[m.selected]["av"], 18, "wraps backwards")
+
+
+func test_the_sky_gets_every_tree_with_its_width() -> void:
+	var trees := m.trees()
+	expect_eq(trees.size(), 18, "18 trees")
+	var one: Dictionary = trees[5]
+	expect_eq(one["nodes"].size(), 3, "One-handed's stars")
+	expect_eq(one["width"], 2, "the largest XNAM of its perk nodes")
+	expect_eq(one["nodes"][0]["grid"], Vector2(2.0, 0.0), "XNAM + HNAM, YNAM + VNAM")
 
 
 func test_header_counts_banked_levels() -> void:
