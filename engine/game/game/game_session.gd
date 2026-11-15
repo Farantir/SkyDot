@@ -139,6 +139,10 @@ var saves: SaveService
 ## What the player marked a favorite, and the hotkeys 1-8 (saved as FAVS; scripts see it through
 ## Game.IsObjectFavorited).
 var favorites := Favorites.new()
+## Gold001: the gold the player carries (Most Gold Carried).
+const GOLD := 0xF
+## The journal's own records (quest log order, active quests, misc stats, play time): JournalLog, saved in JRNL.
+var journal: JournalLog
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -253,6 +257,12 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 	saves = SaveService.new(papyrus, place, streamer, _player, _bridge, clock)
 	saves.committed.connect(_reset_game_state)
 	saves.favorites = favorites
+	journal = JournalLog.new(SessionJournalData.new(self))
+	saves.journal = journal
+	saves.describe = describe_save
+	quest_stage.connect(_on_journal_stage)
+	objective_changed.connect(journal.on_objective)
+	items_changed.connect(count_gold)
 	return true
 
 
@@ -618,6 +628,33 @@ func _award_crafting() -> void:
 
 
 ## Raise skill `av` by `count` levels (a book, a trainer, IncrementSkill); announced like use_skill.
+## The journal's Data: quests, their state and the names of what their aliases hold, from this session.
+class SessionJournalData extends JournalLog.Data:
+	var _session: GameSession
+
+	func _init(session: GameSession) -> void:
+		_session = session
+
+	func quest_info(quest: int) -> Dictionary:
+		return _session.world.get_quest(quest)
+
+	func quest_state(quest: int) -> Dictionary:
+		return _session.papyrus.get_quest_state(quest)
+
+	func running_quests() -> Array:
+		return Array(_session.papyrus.get_running_quests())
+
+	func ref_name(ref: int) -> String:
+		var name := String(_session.world.get_actor(ref).get("name", ""))
+		if name == "":
+			var info := _session.world.get_ref_info(_session.world.get_ref_cell(ref), ref)
+			name = String(_session.world.get_base(int(info.get("base", 0))).get("name", "")) if info.has("base") else ""
+		return name
+
+	func days_passed() -> int:
+		return int(floor(_session.clock.get_game_days())) if _session.clock != null else 0
+
+
 func increment_skill(av: int, count: int) -> Dictionary:
 	var result := progression.increment_skill(av, count)
 	_announce_progress(result)
@@ -634,11 +671,14 @@ func read_book(book: int) -> bool:
 	if result["reason"] == "unknown":
 		return false
 	if result["ok"]:
+		journal.count("Books Read")
 		if result["kind"] == "spell":
+			journal.count("Spells Learned")
 			message.emit(world.get_gmst_string("sSpellAdded", "New Spell Learned"), false)
 			papyrus.remove_item(SkydotPapyrus.PLAYER_REF, book, 1)
 			items_changed.emit()
 		else:
+			journal.count("Skill Books Read")
 			_announce_progress(result)
 	elif result["reason"] == "known":
 		message.emit("%s %s" % [world.get_gmst_string("sAlreadyKnown", "You already know"),
@@ -692,6 +732,7 @@ func training_refusal(reason: String) -> String:
 func train(trainer: int) -> Dictionary:
 	var result := progression.train(trainer)
 	if result["ok"]:
+		journal.count("Training Sessions")
 		_announce_progress(result)
 		items_changed.emit()
 	else:
@@ -702,6 +743,8 @@ func train(trainer: int) -> Dictionary:
 
 
 func _announce_progress(result: Dictionary) -> void:
+	if journal != null and not (result["skill_increases"] as Array).is_empty():
+		journal.count("Skill Increases", (result["skill_increases"] as Array).size())
 	var format := world.get_gmst_string("sSkillIncreased", "%s Increased to %i")
 	for increase: Dictionary in result["skill_increases"]:
 		message.emit(format.replace("%s", progression.skill_name(increase["av"])).replace("%i", str(increase["level"])),
@@ -720,6 +763,11 @@ func _on_progression_request(kind: String, args: Array) -> Variant:
 			return increment_skill(int(args[0]), int(args[1]))
 		"level_threshold":
 			return progression.level_up_threshold(int(args[0]))
+		"increment_stat":
+			journal.count(String(args[0]), int(args[1]))
+			return true
+		"query_stat":
+			return journal.value(String(args[0]))
 	return null
 
 
@@ -830,6 +878,7 @@ func enchant(item: int, item_extra: int, enchantment: int, gem: int, gem_extra: 
 	if result["ok"]:
 		message.emit("%s enchanted" % result["name"], false)
 		print("enchanting: made %s (created 0x%X, extra %d)" % [result["name"], int(result["created"]), int(result["extra"])])
+		journal.count("Magic Items Made")
 		_award_crafting()
 		items_changed.emit()
 	elif result["refusal"] != "":
@@ -890,6 +939,7 @@ func alchemy_preview(forms: PackedInt64Array) -> Dictionary:
 func alchemy_mix(forms: PackedInt64Array) -> int:
 	var potion := papyrus.alchemy_mix(forms)
 	if potion != 0:
+		journal.count("Potions Mixed")  # PLACEHOLDER: a poison counts here too (the item info has no poison flag)
 		_award_crafting()
 		items_changed.emit()
 	return potion
@@ -900,6 +950,7 @@ func alchemy_mix(forms: PackedInt64Array) -> int:
 ## the player's position (engine space).
 func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	_feet = feet
+	journal.play_seconds += delta
 	streamer.update()
 	streamer.preload_step(feet)
 	if transition.is_fading():
@@ -1125,6 +1176,8 @@ func dragon_souls() -> int:
 ## said on the message line (sFailSpendSoul with no soul).
 func unlock_word(word: int) -> Dictionary:
 	var result := papyrus.unlock_word_with_soul(SkydotPapyrus.PLAYER_REF, word)
+	if result["ok"]:
+		journal.count("Words Of Power Unlocked")
 	if not result["ok"] and not String(result["reason"]).is_empty():
 		message.emit(result["reason"], false)
 	items_changed.emit()
@@ -1146,6 +1199,7 @@ func voice_meter() -> Dictionary:
 
 
 func _on_shouted(_shout: int, words: int, _spell: int, _info: Dictionary) -> void:
+	journal.count("Times Shouted")
 	for topic: int in SHOUT_TOPICS[clampi(words, 1, 3)]:
 		var line := papyrus.topic_line(SkydotPapyrus.PLAYER_REF, topic)
 		if line.is_empty() or String(line.get("voice", "")).is_empty():
@@ -1596,11 +1650,47 @@ func reload_or_restart() -> bool:
 	return done
 
 
-func save_game(path: String) -> bool:
+## Save to `path`; `extra` adds to what the load list shows of it (the journal's picture of the world).
+func save_game(path: String, extra := {}) -> bool:
 	if transition.is_fading():
 		print("not saving during a door transition")  # the place is half built
 		return false
-	return saves.save(path)
+	return saves.save(path, extra)
+
+
+## What the journal's load list shows of a save made now (INFO): the player's name, race and level and where he is.
+func describe_save() -> Dictionary:
+	var npc := world.get_npc(0x7)
+	var race: String = world.get_race(int(npc.get("race", 0))).get("name", "") if npc.has("race") else ""
+	var level := int(progression.data().progress()["level"]) if progression != null else 1
+	var location := ""
+	if streamer.world_id != 0:
+		for entry: Dictionary in world.list_worlds():
+			if int(entry.get("id", 0)) == streamer.world_id:
+				location = String(entry.get("name", entry.get("editor_id", "")))
+	else:
+		var cell := world.get_cell(place.cell_id)
+		location = String(cell.get("name", "")) if String(cell.get("name", "")) != "" else String(cell.get("editor_id", ""))
+	return {"name": npc.get("name", ""), "race": race, "level": level, "location": location}
+
+
+## A stage wrote to the journal; once its entry has completed the quest, the stats count it.
+func _on_journal_stage(quest: int, stage: int, text: String) -> void:
+	journal.on_quest_stage(quest, stage, text)
+	_count_completed.call_deferred(quest)
+
+
+func _count_completed(quest: int) -> void:
+	var state := papyrus.get_quest_state(quest)
+	var entry: Dictionary = journal.quests.get(quest, {})
+	if state.get("completed", false) and not entry.is_empty() and not entry.get("counted", false):
+		entry["counted"] = true
+		journal.on_quest_completed(quest)
+
+
+## Most Gold Carried: the most gold the player has held (after every change of the items, and when the journal opens).
+func count_gold() -> void:
+	journal.at_least("Most Gold Carried", papyrus.get_item_count(SkydotPapyrus.PLAYER_REF, GOLD))
 
 
 func load_game(path: String) -> bool:

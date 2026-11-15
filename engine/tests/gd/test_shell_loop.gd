@@ -16,7 +16,7 @@ class StubSession extends GameSession:
 	func toggle_weapon() -> void:
 		calls.append("toggle_weapon")
 
-	func save_game(path: String) -> bool:
+	func save_game(path: String, _extra := {}) -> bool:
 		calls.append("save " + path)
 		return true
 
