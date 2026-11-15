@@ -29,6 +29,8 @@ const FOV := 30.0
 ## bound spans 0.35 of the screen's height, centred 0.4 down, the blade pointing up, flat to the viewer.
 const INI_NARROW := {"x": -38.0, "y": -500.0, "z": 16.0, "scale": 1.87}
 const INI_WIDE := {"x": -29.0, "y": -500.0, "z": 12.0, "scale": 1.5}
+## Radians about X that stand a flat armor model up (front to the viewer).
+const ARMOR_STAND := -PI * 0.5
 const WIDE_ASPECT := 1.6
 const ITEM_HEIGHT := 0.35  # of the screen's height, with the narrow set's scale
 
@@ -177,6 +179,9 @@ func _fit() -> void:
 		var depth := across.cross(up)
 		# The rotation taking `up` to +Y, `across` to +X: the inverse of the basis with those columns.
 		basis = Basis(across, up, depth).inverse()
+	elif not weapon and order[2] == 1 and String(_session.item_info(_form).get("category", "")) == "armor":
+		# An armor's ground model lies flat (its thinnest side up); the game shows it standing, front to the viewer.
+		basis = Basis(Vector3.RIGHT, ARMOR_STAND)
 	var scale := 1.0 / box.get_longest_axis_size()
 	_holder.transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), -(basis * box.get_center()) * scale)
 

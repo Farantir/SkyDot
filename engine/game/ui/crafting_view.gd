@@ -76,7 +76,7 @@ func _init(session: GameSession) -> void:
 	_name_edit.text_submitted.connect(_name_done)
 	add_child(_name_edit)
 	_model_view = ItemPreview.new(session)
-	_model_view.region = Rect2(0.58, 0.2, 0.22, 0.38) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
+	_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
 	add_child(_model_view)
 
 
@@ -716,7 +716,7 @@ func _draw_grouped(font: Font, th: Theme, fill: Transform2D) -> void:
 		_stage_text(font, ["Light Armor", "Heavy Armor", "Clothing"][clampi(armor_type, 0, 2)], Vector2(667.0, 436.0), 14.0, _dim)
 	var stats: Array = []
 	if String(info.get("category", "")) == "armor":
-		stats.append(["ARMOR", "%d" % int(info.get("armor_rating", 0))])
+		stats.append(["ARMOR", "%d" % _shown_armor(info)])
 	elif String(info.get("category", "")) == "weapon":
 		stats.append(["DAMAGE", "%d" % int(info.get("damage", 0))])
 	stats.append(["WEIGHT", ("%.1f" % float(info.get("weight", 0))).trim_suffix(".0")])
@@ -738,6 +738,19 @@ func _draw_grouped(font: Font, th: Theme, fill: Transform2D) -> void:
 		var start := middle - total * 0.5
 		_stage_text(font, head, Vector2(start, 630.0), 22.0, Color.WHITE)
 		_stage_text(font, text, Vector2(start + font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x, 630.0), 22.0, _dim)
+
+
+## The armor rating the item card shows: the base rating scaled by the player's skill in its weight class, rounded up
+## (lerp(fArmorRatingBase, fArmorRatingPCMax, skill / 100), as in AttackRules.armor_percent); clothing as is.
+## Tempering is not applied (the card is of an item not yet made).
+func _shown_armor(info: Dictionary) -> int:
+	var base := float(info.get("armor_rating", 0.0))
+	var type := int(info.get("armor_type", 0))
+	if type > 1:
+		return roundi(base)
+	var skill := float(_session.actor_value(0x14, "HeavyArmor" if type == 1 else "LightArmor"))
+	var factor := lerpf(AttackRules.SETTINGS["fArmorRatingBase"], AttackRules.SETTINGS["fArmorRatingPCMax"], skill / 100.0)
+	return int(ceilf(base * factor))
 
 
 func _stage_centred(font: Font, text: String, at: Vector2, size_stage: float, colour: Color) -> void:
@@ -799,7 +812,7 @@ func _skill_fraction(skill: String) -> float:
 
 func _update_model_rect() -> void:
 	if _model_view != null:
-		_model_view.region = Rect2(0.58, 0.2, 0.22, 0.38) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
+		_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
 
 
 func _empty_text() -> String:
