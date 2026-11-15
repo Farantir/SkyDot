@@ -76,7 +76,7 @@ func _init(session: GameSession) -> void:
 	_name_edit.text_submitted.connect(_name_done)
 	add_child(_name_edit)
 	_model_view = ItemPreview.new(session)
-	_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
+	_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28)
 	add_child(_model_view)
 
 
@@ -99,7 +99,7 @@ func open(ref: int, bench_type: int) -> void:
 	_marks.clear()
 	_category = 0
 	_cat = 0
-	_in_items = false
+	_in_items = _mode == Mode.ALCHEMY
 	_name = ""
 	var was_open := _open
 	_open = true
@@ -216,7 +216,7 @@ func _input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		return  # the LineEdit takes the keys
 	var handled := true
-	if _grouped() and _grouped_input(event):
+	if _columns_input(event):
 		get_viewport().set_input_as_handled()
 		return
 	if _mode == Mode.ENCHANT and event.is_action_pressed(&"ui_right"):
@@ -263,6 +263,7 @@ func select_category(category: String) -> void:
 	if index < 0:
 		index = category.to_int()
 	_category = clampi(index, 0, ENCHANT_CATEGORIES.size() - 1)
+	_in_items = true
 	_selected = 0
 	_refresh()
 
@@ -389,6 +390,32 @@ func _first_of_cat() -> int:
 	return rows[0] if not rows.is_empty() else 0
 
 
+## Keys of the column layout: the grouped lists (forge, tempering) have their own; at the enchanting table up/down
+## choose Disenchant / Item / Enchantment / Soul Gem until accept or right enters the list, cancel or left leaves it.
+## The alchemy lab has the one category, so its list has the focus from the start.
+func _columns_input(event: InputEvent) -> bool:
+	if _grouped():
+		return _grouped_input(event)
+	if _mode != Mode.ENCHANT or _naming:
+		return false
+	if event.is_action_pressed(&"ui_down") or event.is_action_pressed(&"ui_up"):
+		_move(1 if event.is_action_pressed(&"ui_down") else -1)
+	elif event is InputEventJoypadMotion and event.axis == JOY_AXIS_LEFT_Y:
+		_stick(event.axis_value)
+	elif event.is_action_pressed(&"ui_right") or (event.is_action_pressed(&"ui_accept") and not _in_items):
+		if not _in_items and not _rows.is_empty():
+			_in_items = true
+			_selected = 0
+			_update_model()
+			queue_redraw()
+	elif event.is_action_pressed(&"ui_left") or (event.is_action_pressed(&"ui_cancel") and _in_items):
+		_in_items = false
+		queue_redraw()
+	else:
+		return false
+	return true
+
+
 ## Keys of the grouped lists: up/down move in the focused column, accept / right enter the items (accept then crafts),
 ## cancel / left leave them. Returns whether the event was used.
 func _grouped_input(event: InputEvent) -> bool:
@@ -421,6 +448,9 @@ func _stick(value: float) -> void:
 
 
 func _move(step: int) -> void:
+	if _mode == Mode.ENCHANT and not _in_items:
+		_change_category(step)
+		return
 	if _rows.is_empty():
 		return
 	if _grouped() and not _cats.is_empty():
@@ -515,11 +545,10 @@ func _row_text(row: Dictionary) -> String:
 		Mode.RECIPES:
 			return row["name"] + (" x%d" % int(row["count"]) if int(row["count"]) > 1 else "")
 		Mode.TEMPER:
-			var text: String = row["name"]
-			return text + (" -> " + row["next_tier"] if row["next_tier"] != "" else " (best)")
+			return String(row["name"])
 		Mode.ALCHEMY:
 			var text: String = row["name"] + (" (%d)" % int(row["count"]) if int(row["count"]) > 1 else "")
-			return ("[x] " if _marked.has(int(row["form"])) else "[ ] ") + text
+			return text
 		Mode.ENCHANT:
 			return _enchant_row_text(row)
 	return row["name"]
@@ -538,7 +567,7 @@ func _enchant_row_text(row: Dictionary) -> String:
 
 
 func _mark_text(row: Dictionary) -> String:
-	return "[x] " if _marks.has(_category) and _same_row(_category, _marks[_category], row) else "[ ] "
+	return ""  # a marked row is shown white (see _draw_columns), as the game shows the marked parts under "Requires:"
 
 
 ## Enchanting: whether the row at `row` can be used as it stands.
@@ -592,7 +621,15 @@ func _header() -> String:
 			gmst = "sEnchantDeconstructMenuDescription" if _category == 0 else "sEnchantMenuDescription"
 			fallback = "Choose an item to destroy and learn its effects" if _category == 0 else "Choose an item to destroy and learn its Enchantment, or combine an Item, Enchantment, and Soul Gem to create magic items"
 	var text := _session.world.get_gmst_string(gmst, fallback)
-	return "%s: %s" % [_title, text] if _title != "" else text
+	var name := _title
+	match _mode:  # the game names these menus by their skill, not by the furniture
+		Mode.TEMPER:
+			name = _session.world.get_gmst_string("sWeaponSmithing" if _bench_type == 2 else "sArmorSmithing", "Weapon Smithing" if _bench_type == 2 else "Armor Smithing")
+		Mode.ALCHEMY:
+			name = _session.world.get_gmst_string("sAlchemy", "Alchemy")
+		Mode.ENCHANT:
+			name = _session.world.get_gmst_string("sEnchanting", "Enchanting")
+	return "%s: %s" % [name, text] if name != "" else text
 
 
 ## Text in stage pixels (the game stretches the stage to the window; glyphs keep the x scale).
@@ -643,53 +680,83 @@ func _draw() -> void:
 	# The movie's lines: above the bottom bar, and the list's column.
 	var line_colour := Color(1.0, 1.0, 1.0, 0.55)
 	draw_line(Vector2(0.0, BAR_TOP * sy), Vector2(area.x, BAR_TOP * sy), line_colour, 1.0)
-	_stage_text(font, _header(), Vector2(HEADER_RIGHT, HEADER_Y), 26.0, Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-	if _grouped() and not _cats.is_empty():
-		_draw_grouped(font, th, fill)
-		_draw_bottom_bar(font)
-		_update_model_rect()
-		return
-	if _mode == Mode.ENCHANT:
-		var tabs := ""
-		for i in ENCHANT_CATEGORIES.size():
-			tabs += ("[%s] " if i == _category else " %s  ") % ENCHANT_CATEGORIES[i]
-		_stage_text(font, tabs, Vector2(LIST_X, 74.0), 20.0, _normal, HORIZONTAL_ALIGNMENT_LEFT, LIST_WIDTH)
-	# The list, centred on the chosen row as the game's category list is.
-	for i in _rows.size():
-		var y := LIST_CENTRE_Y + (i - _selected) * LIST_PITCH
-		if y < 100.0 or y > BAR_TOP - 10.0:
-			continue
-		var row: Dictionary = _rows[i]
-		var chosen := i == _selected
-		var colour := _normal if chosen and _row_ok(row) else _dim
-		if _mode == Mode.ALCHEMY and _marked.has(int(row["form"])):
-			colour = MARKED
-		_stage_text(font, _row_text(row), Vector2(LIST_X, y), 26.0 if chosen else 20.0, colour, HORIZONTAL_ALIGNMENT_LEFT, LIST_WIDTH)
-	if _rows.is_empty():
-		_stage_text(font, _empty_text(), Vector2(LIST_X, LIST_CENTRE_Y), 20.0, _dim, HORIZONTAL_ALIGNMENT_LEFT, LIST_WIDTH)
-	# The card: requirements, effects, the preview of what is made.
-	var frame := th.get_stylebox(&"panel", TYPE) if th.has_stylebox(&"panel", TYPE) else null
-	var card := Rect2(fill * CARD_RECT.position, CARD_RECT.size * Vector2(sx, sy))
-	if frame != null and not _rows.is_empty():
-		draw_style_box(frame, card)
-	if not _rows.is_empty() or _mode == Mode.ENCHANT:
-		var px := int(roundf(20.0 * sx))
-		_draw_details(font, px, 30.0 * sy, card.position + Vector2(px * 1.5, px * 2.2), card.size.x - px * 2.0, card)
+	var header_lines := _wrap(font, _header(), 26.0, HEADER_WIDTH)
+	for i in header_lines.size():
+		_stage_centred(font, header_lines[i], Vector2(HEADER_CENTRE, HEADER_Y + i * 28.0), 26.0, Color.WHITE)
+	_draw_columns(font, th, fill)
 	_draw_bottom_bar(font)
 	_update_model_rect()
+	return
 
 
-## The game's three columns (categories, items, the item's card), measured in side_crafting_forge.png: lines at
-## 175, 197 and 407 px of 1100, the chosen category big and white, the item column dim until it has the focus.
-func _draw_grouped(font: Font, th: Theme, fill: Transform2D) -> void:
+const HEADER_CENTRE := 950.0  # the description's centre (measured: 816 px of 1100)
+const HEADER_WIDTH := 560.0
+
+
+## The words of `text` in lines no wider than `width` stage pixels at `size_stage`.
+func _wrap(font: Font, text: String, size_stage: float, width: float) -> Array[String]:
+	var px := maxi(int(roundf(size_stage * UiDraw.stage_fill(size, STAGE).x.x)), 6)
+	var lines: Array[String] = []
+	var current := ""
+	for word in text.split(" "):
+		var trial := word if current == "" else current + " " + word
+		if current != "" and font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / UiDraw.stage_fill(size, STAGE).x.x > width:
+			lines.append(current)
+			current = word
+		else:
+			current = trial
+	if current != "":
+		lines.append(current)
+	return lines
+
+
+## The category column of the mode: names, the chosen one, and whether names are upper case (the forge's are).
+func _category_names() -> Array[String]:
+	if _grouped():
+		return _cats
+	if _mode == Mode.ENCHANT:
+		var names: Array[String] = []
+		for name in ENCHANT_CATEGORIES:
+			names.append(name)
+		return names
+	return ["INGREDIENTS"]
+
+
+func _category_index() -> int:
+	if _grouped():
+		return _cat
+	return _category if _mode == Mode.ENCHANT else 0
+
+
+## The rows of the item column (indices into _rows).
+func _column_rows() -> Array[int]:
+	if _grouped():
+		return _cat_rows()
+	var out: Array[int] = []
+	for i in _rows.size():
+		out.append(i)
+	return out
+
+
+## The game's three columns (categories, items, the item's card), measured in side_crafting_forge.png and the
+## alchemy / enchanting shots: lines at 175, 197 and 407 px of 1100, the chosen category big and white, the item
+## column dim until it has the focus.
+func _draw_columns(font: Font, th: Theme, fill: Transform2D) -> void:
 	var line_colour := Color(1.0, 1.0, 1.0, 0.5)
 	for x in [203.6, 229.3, 473.7]:
 		draw_line(fill * Vector2(x, 0.0), fill * Vector2(x, BAR_TOP), line_colour, 1.0)
-	for i in _cats.size():
-		var y := LIST_CENTRE_Y + (i - _cat) * LIST_PITCH
+	var names := _category_names()
+	var at_cat := _category_index()
+	for i in names.size():
+		var y := LIST_CENTRE_Y + (i - at_cat) * LIST_PITCH
+		if _mode == Mode.ENCHANT and i > 0:
+			y += 14.0  # the rule under Disenchant opens the three parts of the enchanting
 		if y > 40.0 and y < BAR_TOP - 10.0:
-			_stage_text(font, _cats[i], Vector2(LIST_X, y), 26.0 if i == _cat else 20.0, Color.WHITE if i == _cat else _dim)
-	var rows := _cat_rows()
+			_stage_text(font, names[i], Vector2(LIST_X, y), 26.0 if i == at_cat else 20.0, Color.WHITE if i == at_cat else _dim)
+	if _mode == Mode.ENCHANT:
+		var rule_y := LIST_CENTRE_Y + (0 - at_cat) * LIST_PITCH + 20.0
+		draw_line(fill * Vector2(LIST_X, rule_y), fill * Vector2(LIST_X + 110.0, rule_y), line_colour, 1.0)
+	var rows := _column_rows()
 	var at := maxi(rows.find(_selected), 0)
 	for n in rows.size():
 		var y := 386.0 + (n - at) * LIST_PITCH
@@ -697,47 +764,114 @@ func _draw_grouped(font: Font, th: Theme, fill: Transform2D) -> void:
 			continue
 		var row: Dictionary = _rows[rows[n]]
 		var chosen := n == at
-		var colour := Color.WHITE if chosen and _in_items else _dim
-		if chosen and _in_items and not _row_ok(row):
-			colour = _dim
+		var colour := Color.WHITE if chosen and _in_items and _row_ok(row) else _dim
+		if _mode == Mode.ALCHEMY and _marked.has(int(row["form"])):
+			colour = MARKED
+		elif _mode == Mode.ENCHANT and _category > 0 and _marks.has(_category) and _same_row(_category, _marks[_category], row):
+			colour = MARKED
 		_stage_text(font, _row_text(row), Vector2(252.0, y), 20.0 if chosen else 18.0, colour, HORIZONTAL_ALIGNMENT_LEFT, 215.0)
 	var row := current()
-	if row.is_empty():
+	_draw_card(font, th, fill, row)
+	_draw_requires(font)
+
+
+## The card at the bottom centre: the name, the stats of an item (weapon, armor), or the effects of an ingredient or
+## enchantment, or what the marked parts would make.
+func _draw_card(font: Font, th: Theme, fill: Transform2D, row: Dictionary) -> void:
+	if row.is_empty() and _preview.is_empty():
 		return
-	var info := _session.item_info(int(row["product"]) if row.has("product") else int(row["form"]))
 	var frame := th.get_stylebox(&"panel", TYPE) if th.has_stylebox(&"panel", TYPE) else null
 	var card := Rect2(fill * Vector2(640.0, 415.0), Vector2(419.0, 143.0) * Vector2(fill.x.x, fill.y.y))
 	if frame != null:
 		draw_style_box(frame, card)
 	var middle := 850.0
+	var made: bool = (_mode == Mode.ALCHEMY and bool(_preview.get("mixable", false))) or (_mode == Mode.ENCHANT and not _preview.is_empty() and bool(_preview.get("ok", false)))
+	if made:
+		_stage_centred(font, String(_preview["name"]).to_upper(), Vector2(middle, 465.0), 26.0, Color.WHITE)
+		var y := 492.0
+		var lines: Array = []
+		if _mode == Mode.ALCHEMY:
+			for effect: Dictionary in _preview["effects"]:
+				lines.append(String(effect["description"]))
+		else:
+			lines.append_array(_preview["effects"])
+			lines.append("Worn: constant effect" if _preview["constant"] else "Charge %d, %d uses" % [int(_preview["charge"]), int(_preview["uses"])])
+		for text: String in lines.slice(0, 3):
+			_stage_centred(font, text, Vector2(middle, y), 18.0, _normal)
+			y += 22.0
+		return
+	if row.is_empty():
+		return
 	_stage_centred(font, String(row["name"]).to_upper(), Vector2(middle, 477.0), 30.0, Color.WHITE)
-	var armor_type := int(info.get("armor_type", 0))
-	if String(info.get("category", "")) == "armor":
-		_stage_text(font, ["Light Armor", "Heavy Armor", "Clothing"][clampi(armor_type, 0, 2)], Vector2(667.0, 436.0), 14.0, _dim)
-	var stats: Array = []
-	if String(info.get("category", "")) == "armor":
-		stats.append(["ARMOR", "%d" % _shown_armor(info)])
-	elif String(info.get("category", "")) == "weapon":
-		stats.append(["DAMAGE", "%d" % int(info.get("damage", 0))])
-	stats.append(["WEIGHT", ("%.1f" % float(info.get("weight", 0))).trim_suffix(".0")])
-	stats.append(["VALUE", "%d" % int(info.get("value", 0))])
-	var x := 679.0
-	for pair: Array in stats:
-		_stage_text(font, pair[0], Vector2(x, 509.0), 14.0, _dim)
-		var label_w := font.get_string_size(pair[0], HORIZONTAL_ALIGNMENT_LEFT, -1, int(roundf(14.0 * fill.x.x))).x / fill.x.x
-		_stage_text(font, pair[1], Vector2(x + label_w + 6.0, 512.0), 30.0, Color.WHITE)
-		x += 125.0
-	var parts: Array[String] = []
-	for c: Dictionary in row.get("components", []):
-		parts.append(("%d %s" % [int(c["need"]), c["name"]]) if int(c["need"]) > 1 else String(c["name"]))
-	if not parts.is_empty():
-		var text := ", ".join(parts)
-		var head := "Requires: "
-		var px := int(roundf(22.0 * fill.x.x))
-		var total := (font.get_string_size(head + text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x) / fill.x.x
-		var start := middle - total * 0.5
-		_stage_text(font, head, Vector2(start, 630.0), 22.0, Color.WHITE)
-		_stage_text(font, text, Vector2(start + font.get_string_size(head, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x, 630.0), 22.0, _dim)
+	var form := int(row["product"]) if row.has("product") else int(row.get("form", 0))
+	var info := _session.item_info(form) if form != 0 and _mode != Mode.ALCHEMY else {}
+	var kind := String(info.get("category", ""))
+	if kind == "armor":
+		_stage_text(font, ["Light Armor", "Heavy Armor", "Clothing"][clampi(int(info.get("armor_type", 0)), 0, 2)], Vector2(667.0, 436.0), 14.0, _dim)
+	if kind == "armor" or kind == "weapon":
+		var stats: Array = []
+		stats.append(["ARMOR", "%d" % _shown_armor(info)] if kind == "armor" else ["DAMAGE", "%d" % int(info.get("damage", 0))])
+		stats.append(["WEIGHT", ("%.1f" % float(info.get("weight", 0))).trim_suffix(".0")])
+		stats.append(["VALUE", "%d" % int(info.get("value", 0))])
+		var x := 679.0
+		for pair: Array in stats:
+			_stage_text(font, pair[0], Vector2(x, 509.0), 14.0, _dim)
+			var label_w := font.get_string_size(pair[0], HORIZONTAL_ALIGNMENT_LEFT, -1, int(roundf(14.0 * fill.x.x))).x / fill.x.x
+			_stage_text(font, pair[1], Vector2(x + label_w + 6.0, 512.0), 30.0, Color.WHITE)
+			x += 125.0
+		return
+	var y := 505.0
+	var effects: Array = []
+	if row.has("effects"):
+		for effect: Variant in row["effects"]:
+			effects.append(String(effect["name"]) if effect is Dictionary else String(effect))
+	elif row.has("soul_name"):
+		effects.append("%s (%d)" % [row["soul_name"], int(row["charge"])])
+	elif row.has("enchantment"):
+		effects.append(String(row["enchantment"]))
+	for text: String in effects.slice(0, 3):
+		_stage_centred(font, text, Vector2(middle, y), 18.0, _normal)
+		y += 22.0
+
+
+## "Requires: ..." under the card: what the recipe needs, or the slots of the mode with the marked parts in white.
+func _draw_requires(font: Font) -> void:
+	var segments: Array = []  # [text, bright]
+	match _mode:
+		Mode.RECIPES, Mode.TEMPER:
+			var row := current()
+			var parts: Array[String] = []
+			for c: Dictionary in row.get("components", []):
+				parts.append(("%d %s" % [int(c["need"]), c["name"]]) if int(c["need"]) > 1 else String(c["name"]))
+			if parts.is_empty():
+				return
+			segments = [[", ".join(parts), false]]
+		Mode.ALCHEMY:
+			var names: Array[String] = []
+			for form in _marked:
+				for row: Dictionary in _rows:
+					if int(row["form"]) == form:
+						names.append(String(row["name"]))
+			for i in 3:
+				segments.append([names[i] if i < names.size() else ("Ingredient" if i < 2 else "Optional"), i < names.size()])
+		Mode.ENCHANT:
+			for i in 3:
+				var labels := ["Item", "Enchantment", "Soul Gem"]
+				segments.append([String(_marks[i + 1]["name"]) if _marks.has(i + 1) else labels[i], _marks.has(i + 1)])
+	var px := int(roundf(22.0 * UiDraw.stage_fill(size, STAGE).x.x))
+	var fill_x := UiDraw.stage_fill(size, STAGE).x.x
+	var texts: Array[String] = ["Requires: "]
+	for i in segments.size():
+		texts.append(String(segments[i][0]) + (", " if i < segments.size() - 1 and segments.size() > 1 else ""))
+	var total := 0.0
+	for text in texts:
+		total += font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill_x
+	var x := 850.0 - total * 0.5
+	_stage_text(font, texts[0], Vector2(x, 630.0), 22.0, Color.WHITE)
+	x += font.get_string_size(texts[0], HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill_x
+	for i in segments.size():
+		_stage_text(font, texts[i + 1], Vector2(x, 630.0), 22.0, Color.WHITE if segments[i][1] else _dim)
+		x += font.get_string_size(texts[i + 1], HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill_x
 
 
 ## The armor rating the item card shows: the base rating scaled by the player's skill in its weight class, rounded up
@@ -764,26 +898,25 @@ func _stage_centred(font: Font, text: String, at: Vector2, size_stage: float, co
 
 func _draw_bottom_bar(font: Font) -> void:
 	var fill := UiDraw.stage_fill(size, STAGE)
-	var exit_icon := UiAssets.exported(SWF, "Tab")
-	var exit_x := 12.0
-	if _grouped():
-		var accept_icon := UiAssets.exported(SWF, "E")
-		if accept_icon >= 0:
-			UiDraw.character(self, SWF, accept_icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(12.0, 662.0)))
-		_stage_text(font, "Create" if _mode == Mode.RECIPES else "Improve", Vector2(40.0, 684.0), 20.0, Color.WHITE)
-		exit_x = 93.0
-	if exit_icon >= 0:
-		UiDraw.character(self, SWF, exit_icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(exit_x, 662.0)))
-	_stage_text(font, "Exit", Vector2(exit_x + 24.0, 684.0), 20.0, Color.WHITE)
-	if _grouped():
-		_draw_skill(font, fill)
-		return
-	var hint := _accept_text() if _mode != Mode.ENCHANT else ("disenchant" if _category == 0 else "mark")
-	if _mode == Mode.ALCHEMY:
-		hint = "mark   %s mix" % _key(&"menu_drop", "R")
-	elif _mode == Mode.ENCHANT:
-		hint += "   %s enchant   %s name   left/right category" % [_key(&"menu_drop", "R"), _key(&"menu_equip_left", "Q")] if can_name else "   %s enchant" % _key(&"menu_drop", "R")
-	_stage_text(font, "%s %s" % [_key(&"ui_accept", "Enter"), hint], Vector2(140.0, 684.0), 20.0, _dim, HORIZONTAL_ALIGNMENT_LEFT, 520.0)
+	var buttons: Array = []  # [icon export, label]
+	var can_select := not _rows.is_empty() and (_in_items or _mode != Mode.ENCHANT)
+	match _mode:
+		Mode.RECIPES:
+			buttons = [["E", "Create"], ["Tab", "Exit"]] if can_select else [["Tab", "Exit"]]
+		Mode.TEMPER:
+			buttons = [["E", "Select"], ["Tab", "Exit"]] if can_select else [["Tab", "Exit"]]
+		Mode.ALCHEMY:
+			buttons = [["E", "Select"], ["Tab", "Exit"], ["R", "Craft"]] if can_select else [["Tab", "Exit"]]
+		Mode.ENCHANT:
+			buttons = [["E", "Select"], ["Tab", "Exit"], ["R", "Craft"]] if _in_items else [["Tab", "Exit"], ["R", "Craft"]]
+	var x := 12.0
+	var px := int(roundf(20.0 * fill.x.x))
+	for button: Array in buttons:
+		var icon := UiAssets.exported(SWF, String(button[0]))
+		if icon >= 0:
+			UiDraw.character(self, SWF, icon, fill * Transform2D(Vector2(0.8, 0.0), Vector2(0.0, 0.8), Vector2(x, 662.0)))
+		_stage_text(font, String(button[1]), Vector2(x + 28.0, 684.0), 20.0, Color.WHITE)
+		x += 28.0 + font.get_string_size(String(button[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x + 16.0
 	_draw_skill(font, fill)
 
 
@@ -812,7 +945,7 @@ func _skill_fraction(skill: String) -> float:
 
 func _update_model_rect() -> void:
 	if _model_view != null:
-		_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28) if _grouped() else Rect2(0.34, 0.1, 0.3, 0.5)
+		_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28)
 
 
 func _empty_text() -> String:
