@@ -30,7 +30,7 @@ const SHORT := Color(0.9, 0.5, 0.45)
 const MARKED := Color(0.6, 0.9, 0.6)
 const STICK_THRESHOLD := 0.6
 const MAX_INGREDIENTS := 3
-const ENCHANT_CATEGORIES: Array[String] = ["Disenchant", "Item", "Enchantment", "Soul gem"]
+const ENCHANT_CATEGORIES: Array[String] = ["Disenchant", "Item", "Enchantment", "Soul Gem"]
 const ENCHANT_KEYS: Array[String] = ["disenchant", "items", "enchantments", "gems"]
 
 # The text colours: the game's (UiTheme) when the pack has them, set by _draw.
@@ -820,7 +820,7 @@ func _draw_columns(font: Font, th: Theme, fill: Transform2D) -> void:
 		if y > 40.0 and y < BAR_TOP - 10.0:
 			_stage_text(font, names[i], Vector2(LIST_X, y), 26.0 if i == at_cat else 20.0, Color.WHITE if i == at_cat else _dim)
 	if _mode == Mode.ENCHANT:
-		var rule_y := LIST_CENTRE_Y + (0 - at_cat) * LIST_PITCH + _enchant_gap(0, at_cat) + 40.0
+		var rule_y := LIST_CENTRE_Y + (0 - at_cat) * LIST_PITCH + _enchant_gap(0, at_cat) + (52.0 if at_cat == 0 else 34.0)
 		draw_line(fill * Vector2(LIST_X, rule_y), fill * Vector2(LIST_X + 110.0, rule_y), line_colour, 1.0)
 	var rows := _column_rows()
 	var at := maxi(rows.find(_selected), 0)
@@ -1023,16 +1023,16 @@ func _draw_bottom_bar(font: Font) -> void:
 	for button: Array in buttons:
 		var icon := UiAssets.exported(SWF, String(button[0]))
 		if icon >= 0:
-			UiDraw.character(self, SWF, icon, fill * Transform2D(Vector2(1.1, 0.0), Vector2(0.0, 1.1), Vector2(x, 661.0)))
-		_stage_text(font, String(button[1]), Vector2(x + 32.0, 684.0), 20.0, Color.WHITE)
-		x += 32.0 + font.get_string_size(String(button[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x + 16.0
+			UiDraw.character(self, SWF, icon, fill * Transform2D(Vector2(0.98, 0.0), Vector2(0.0, 0.98), Vector2(x + 1.5, 662.5)))
+		_stage_text(font, String(button[1]), Vector2(x + 32.0, 682.0), 20.0, Color.WHITE)
+		x += 32.0 + font.get_string_size(String(button[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill.x.x + 8.0
 	_draw_skill(font, fill)
 
 
 func _draw_skill(font: Font, fill: Transform2D) -> void:
 	var skill: String = SKILLS.get(_mode, "Smithing")
 	var level := int(_session.actor_value(0x14, skill))
-	_stage_text(font, skill, Vector2(770.0, 680.0), 16.0, _dim)
+	_stage_text(font, skill, Vector2(758.0, 680.0), 16.0, _dim)
 	_stage_text(font, str(level), Vector2(821.0, 684.0), 20.0, Color.WHITE)
 	_stage_text(font, str(mini(level + 1, 100)), Vector2(1005.0, 684.0), 20.0, Color.WHITE)
 	_draw_skill_meter(fill, _skill_fraction(skill))
@@ -1145,7 +1145,7 @@ func _draw_enchant_details(font: Font, font_size: int, line: float, at: Vector2,
 		if not row["ok"]:
 			_text(font, String(row["refusal"]), font_size, Vector2(at.x, y + line * 2.0), SHORT, width)
 		return
-	var labels := ["", "Item", "Enchantment", "Soul gem"]
+	var labels := ["", "Item", "Enchantment", "Soul Gem"]
 	for category in [1, 2, 3]:
 		var text := "-"
 		if _marks.has(category):

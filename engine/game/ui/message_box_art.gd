@@ -26,8 +26,10 @@ const BUTTON_PAD := 4.0
 const BUTTON_GAP := 25.0
 const LINE_LEADING := 2.0
 ## Measured against the game (1100x800): the buttons sit lower and the divider higher than the script's arithmetic gives.
-const BUTTON_DROP := 17.0
-const DIVIDER_RISE := 6.0
+const BUTTON_DROP := 8.5
+const DIVIDER_RISE := 10.5
+## The game's box is taller than the script's arithmetic gives (measured at 1100x800); the text keeps its place.
+const EXTRA_HEIGHT := 6.3
 
 
 static func available() -> bool:
@@ -69,11 +71,11 @@ static func layout(area: Vector2, text: String, buttons: Array) -> Dictionary:
 	total += BUTTON_GAP * maxi(buttons.size() - 1, 0)
 	var button_h := line_h + BUTTON_PAD  # the text field once the movie has fitted it to one line
 	var bg_w := maxf(total + WIDTH_MARGIN * 2.0, widest + 60.0)
-	var bg_h := message_h + button_h + HEIGHT_MARGIN * 2.0 + SPACER
+	var bg_h := message_h + button_h + HEIGHT_MARGIN * 2.0 + SPACER + EXTRA_HEIGHT
 	var top := -bg_h / 2.0
 	var out := {"px": px, "scale": scale, "lines": [], "buttons": []}
 	out["background"] = Rect2(_to_view(area, CENTRE + Vector2(-bg_w / 2.0, top)), _size(area, Vector2(bg_w, bg_h)))
-	var message_top := top + HEIGHT_MARGIN
+	var message_top := top + HEIGHT_MARGIN + EXTRA_HEIGHT / 2.0
 	for i in lines.size():
 		var at := _to_view(area, CENTRE + Vector2(-TEXT_WIDTH / 2.0, message_top + 2.0 + i * line_h)) \
 			+ Vector2(0.0, font.get_ascent(px))
