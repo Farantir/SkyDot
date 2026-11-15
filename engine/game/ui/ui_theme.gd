@@ -9,7 +9,8 @@
 #   colours     the entry text's colour for rows and the item card's label colour (its most used grey) for dim
 #               text and column titles
 #   panel       the item card's frame (the largest sprite in itemcard.swf with a scaling grid), as a
-#               StyleBoxTexture whose margins are its 9-slice grid
+#               StyleBoxTexture whose margins are its 9-slice grid, at the alpha ITEM CARD BASE places the
+#               card's background with
 #   divider     the category list's divider line (inventorylists.swf), stretched; its colour (fainter) marks
 #               the chosen row and tab
 #
@@ -61,6 +62,7 @@ static func item_list(fallback: Theme, height: float) -> Theme:
 			box.texture_margin_top = (grid.position.y - bounds.position.y) * scale
 			box.texture_margin_right = (bounds.end.x - grid.end.x) * scale
 			box.texture_margin_bottom = (bounds.end.y - grid.end.y) * scale
+			box.modulate_color = Color(1.0, 1.0, 1.0, _card_alpha())
 			theme.set_stylebox(&"panel", TYPE, box)
 	var rule := _list_rule()
 	if rule >= 0:
@@ -91,6 +93,15 @@ static func _list_entry() -> Dictionary:
 			var pitch := ys[1] - ys[0] if ys.size() > 1 else float(field["height"]) * 1.6
 			return {"font": field["font"], "height": field["height"], "color": field.get("color", "#ffffffff"), "pitch": pitch}
 	return {}
+
+
+## The alpha ITEM CARD BASE places its card background with (0.6 in the game's itemcard.swf), 1 if none.
+static func _card_alpha() -> float:
+	var base := UiAssets.exported(ITEMCARD, "ITEM CARD BASE")
+	for placed: Dictionary in UiAssets.character(ITEMCARD, base).get("display", []):
+		if int(placed["depth"]) == 1 and (placed.get("color", []) as Array).size() == 8:
+			return float(placed["color"][3])
+	return 1.0
 
 
 ## The grey most of the item card's text fields use (its labels), or transparent.

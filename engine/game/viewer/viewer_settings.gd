@@ -146,7 +146,7 @@ var crafting_category := ""  # --crafting-category NAME|N: the enchanting table'
 var open_skills := ""  # --open-skills NAME: show the skills screen on that skill ("-": the first)
 var grant_perks := 0  # --grant-perks N: set the player perk points after the load (for --open-skills)
 var grant_xp := 0.0  # --grant-xp N: set the player XP after the load (a banked level-up for --open-skills)
-var magic_category := ""  # --magic-category NAME: the category it shows (Powers, Destruction, Scrolls...)
+var magic_category := ""  # --magic-tab (or --magic-category) NAME: the tab it shows (Powers, Destruction, Scrolls...)
 var inventory_tab := ""  # --inventory-tab NAME: the tab --open-inventory shows (Weapons, Potions, ...)
 var open_container := 0  # --open-container 0xREF: activate this reference as the player after the load
 var talk := 0  # --talk 0xREF: open a dialogue with this actor after the load
@@ -323,7 +323,7 @@ func _read_ui(args: Dictionary) -> void:
 	inventory_tab = args.get("inventory-tab", "")
 	open_magic = args.has("open-magic")
 	open_favorites = args.has("open-favorites")
-	magic_category = args.get("magic-category", "")
+	magic_category = args.get("magic-tab", args.get("magic-category", ""))
 	open_skills = args.get("open-skills", "")
 	grant_xp = float(args.get("grant-xp", "0"))
 	grant_perks = int(args.get("grant-perks", "0"))

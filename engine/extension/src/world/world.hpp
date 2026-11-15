@@ -203,6 +203,14 @@ public:
     godot::Dictionary get_acoustic_space(std::int64_t id) const;
     /// REVB: the DATA fields by name.
     godot::Dictionary get_reverb(std::int64_t id) const;
+    /// The map markers (REFR XMRK, format 43) in `world`'s cells: ref, type, flags, name and position
+    /// (game units). Empty for older packs.
+    godot::Array get_map_markers(std::int64_t world) const;
+    /// DOBJ: the form in a default object slot ("IMID", the inventory menu's image space modifier); 0 if none.
+    std::int64_t get_default_object(const godot::String& key) const;
+    /// IMAD: each curve's first key (dof_strength/distance/range, blur_radius, motion_blur, radial_blur,
+    /// tint, fade_color, multiply and add of the 21 HDR/cinematic parameters); empty if none.
+    godot::Dictionary get_image_space_modifier(std::int64_t id) const;
     /// The SNDRs whose SNAM ("Alternate Sound For") is `id`.
     godot::PackedInt64Array get_sound_alternates(std::int64_t id) const;
     /// The regions of `world` (or its parent) with sounds whose areas hold

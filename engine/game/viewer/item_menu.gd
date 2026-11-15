@@ -49,6 +49,9 @@ func is_open() -> bool:
 func _on_engaged() -> void:
 	var open := is_open()
 	_input.blocked = open
+	# The world behind an open item menu, as the game shows it: the image space modifier of DOBJ IMID.
+	var imid := _session.world.get_default_object("IMID") if _session.world != null else 0
+	ImageSpaceSync.modifier = _session.world.get_image_space_modifier(imid) if open and imid != 0 else {}
 	if _input.enabled and DisplayServer.get_name() != "headless":
 		if open:
 			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

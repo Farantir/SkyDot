@@ -68,6 +68,9 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_sound_category", "id"), &SkydotWorld::get_sound_category);
     godot::ClassDB::bind_method(D_METHOD("get_acoustic_space", "id"), &SkydotWorld::get_acoustic_space);
     godot::ClassDB::bind_method(D_METHOD("get_reverb", "id"), &SkydotWorld::get_reverb);
+    godot::ClassDB::bind_method(D_METHOD("get_map_markers", "world"), &SkydotWorld::get_map_markers);
+    godot::ClassDB::bind_method(D_METHOD("get_default_object", "key"), &SkydotWorld::get_default_object);
+    godot::ClassDB::bind_method(D_METHOD("get_image_space_modifier", "id"), &SkydotWorld::get_image_space_modifier);
     godot::ClassDB::bind_method(D_METHOD("get_sound_alternates", "id"), &SkydotWorld::get_sound_alternates);
     godot::ClassDB::bind_method(D_METHOD("get_region_sounds", "world", "x", "y"), &SkydotWorld::get_region_sounds);
     godot::ClassDB::bind_method(D_METHOD("get_region_sound_data", "region"), &SkydotWorld::get_region_sound_data);
@@ -342,6 +345,13 @@ Dictionary SkydotWorld::get_sound_output_model(std::int64_t id) const { return q
 Dictionary SkydotWorld::get_sound_category(std::int64_t id) const { return queries::get_sound_category(data(), id); }
 Dictionary SkydotWorld::get_acoustic_space(std::int64_t id) const { return queries::get_acoustic_space(data(), id); }
 Dictionary SkydotWorld::get_reverb(std::int64_t id) const { return queries::get_reverb(data(), id); }
+Array SkydotWorld::get_map_markers(std::int64_t world) const { return queries::get_map_markers(data(), world); }
+std::int64_t SkydotWorld::get_default_object(const String& key) const {
+    return queries::get_default_object(data(), key);
+}
+Dictionary SkydotWorld::get_image_space_modifier(std::int64_t id) const {
+    return queries::get_image_space_modifier(data(), id);
+}
 godot::PackedInt64Array SkydotWorld::get_sound_alternates(std::int64_t id) const { return queries::get_sound_alternates(data(), id); }
 godot::Array SkydotWorld::get_region_sounds(std::int64_t world, double x, double y) const { return queries::get_region_sounds(data(), world, x, y); }
 Dictionary SkydotWorld::get_region_sound_data(std::int64_t region) const { return queries::get_region_sound_data(data(), region); }

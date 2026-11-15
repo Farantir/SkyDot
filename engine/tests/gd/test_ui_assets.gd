@@ -69,3 +69,32 @@ func test_hud_meters() -> void:
 	var stamina := UiAssets.instance("hudmenu", "HUDMovieBaseInstance/Stamina/StaminaMeter_mc")
 	expect((stamina["xform"] as Transform2D).x.x < 0.0, "the stamina meter is mirrored")
 	expect(UiAssets.texture("hudmenu", int(stamina["id"]), 1.0) != null, "and draws")
+
+
+func test_timeline_and_world_ui_data() -> void:
+	var pack := _sse()
+	if pack == null:
+		return
+	# Components.Meter: the fill slides under the mask from Full (frame 0) to Empty.
+	var magicka := UiAssets.instance("hudmenu", "HUDMovieBaseInstance/Magica/MagickaMeter_mc")
+	var id := int(magicka["id"])
+	var empty := UiAssets.label_frame("hudmenu", id, "Empty")
+	expect(empty > 0, "the meter has an Empty label")
+	var full_x := 0.0
+	var empty_x := 0.0
+	for entry: Dictionary in UiAssets.display_list("hudmenu", id, 0):
+		if int(entry["depth"]) == 3:
+			full_x = float(entry["matrix"][4])
+	for entry: Dictionary in UiAssets.display_list("hudmenu", id, empty):
+		if int(entry["depth"]) == 3:
+			empty_x = float(entry["matrix"][4])
+	expect(full_x - empty_x > 300.0, "the fill moved left by its width: %s -> %s" % [full_x, empty_x])
+	var world := pack.open_world()
+	var imid := world.get_default_object("IMID")
+	expect(imid != 0, "DOBJ IMID, kept from Skyrim.esm although later DOBJs do not list it")
+	var imad := world.get_image_space_modifier(imid)
+	expect(float(imad.get("dof_distance", 0.0)) == 128.0 and float(imad.get("dof_range", 0.0)) == 768.0,
+		"the inventory's depth of field")
+	var markers := world.get_map_markers(world.find_world("Tamriel"))
+	var riverwood := markers.filter(func(m: Dictionary) -> bool: return m["name"] == "Riverwood")
+	expect(riverwood.size() == 1, "Riverwood's map marker, by its name")

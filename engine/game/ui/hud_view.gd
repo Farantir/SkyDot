@@ -10,10 +10,8 @@
 # PLACEHOLDER: Skyrim shows the recovery in the compass, and there is no compass yet. This is the view: a Control that fills its host
 # (the flat viewer's CanvasLayer, a VR shell's panel).
 #
-# When the pack has the game's menus (UiAssets), the bars and the crosshair are hudmenu.swf's own: the meters
-# HUDMovieBaseInstance/{Magica,Health,Stamina}/*Meter_mc and the Crosshair, placed as the movie places them on its
-# 1280x720 stage, fitted into the view (UiDraw; the fill moves under the meter's mask as Components.Meter does).
-# Without them the bars are plain rectangles.
+# When the pack has the game's menus, the meters, the crosshair and the compass are hudmenu.swf's own, placed,
+# filled and faded as its scripts and the game do (HudGame). Without them the bars are plain rectangles.
 class_name HudView
 extends Control
 
@@ -34,13 +32,10 @@ const VOICE_HEIGHT := 6.0
 const VOICE_DROP := 0.035
 const VOICE_COLOUR := Color(0.85, 0.75, 0.35)
 const BARS := [
-	{"av": "Magicka", "colour": Color(0.2, 0.45, 0.9), "anchor": 0.0, "meter": "HUDMovieBaseInstance/Magica/MagickaMeter_mc"},
-	{"av": "Health", "colour": Color(0.78, 0.12, 0.1), "anchor": 0.5, "meter": "HUDMovieBaseInstance/Health/HealthMeter_mc"},
-	{"av": "Stamina", "colour": Color(0.25, 0.7, 0.2), "anchor": 1.0, "meter": "HUDMovieBaseInstance/Stamina/StaminaMeter_mc"},
+	{"av": "Magicka", "colour": Color(0.2, 0.45, 0.9), "anchor": 0.0},
+	{"av": "Health", "colour": Color(0.78, 0.12, 0.1), "anchor": 0.5},
+	{"av": "Stamina", "colour": Color(0.25, 0.7, 0.2), "anchor": 1.0},
 ]
-const HUD_SWF := "hudmenu"
-const STAGE := Vector2(1280.0, 720.0)
-const CROSSHAIR := "HUDMovieBaseInstance/Crosshair"
 
 var _session: GameSession
 ## Draws the crosshair (a VR shell leaves it out: the controller's ray points).
@@ -53,6 +48,7 @@ var _prompt := {}
 var voice_fill := 0.0
 var voice_alpha := 0.0
 var _voice_active := -1000000  # msec the voice was last busy
+var _game: HudGame
 
 
 func _init(session: GameSession, key_label: Callable) -> void:
@@ -64,6 +60,10 @@ func _init(session: GameSession, key_label: Callable) -> void:
 
 func _process(_delta: float) -> void:
 	_prompt = _session.activation_target()
+	if HudGame.available():
+		if _game == null:
+			_game = HudGame.new()
+		_game.step(_values(), _delta)
 	var voice := _session.voice_meter()
 	var now := Time.get_ticks_msec()
 	if voice["recovering"] or voice["charging"]:
@@ -77,9 +77,26 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 
 
+## Actor value -> [value, maximum] of the three meters.
+func _values() -> Dictionary:
+	var out := {}
+	for bar: Dictionary in BARS:
+		out[bar["av"]] = [_session.actor_value(SkydotPapyrus.PLAYER_REF, bar["av"]),
+			_session.actor_value_max(SkydotPapyrus.PLAYER_REF, bar["av"])]
+	return out
+
+
 func _draw() -> void:
 	var area := size
 	var now := Time.get_ticks_msec()
+	if _game != null:
+		_game.draw_meters(self, area, _values())
+		_draw_compass(area)
+		_draw_voice(area)
+		if show_crosshair:
+			_game.draw_crosshair(self, area)
+		_draw_prompt(area)
+		return
 	for bar: Dictionary in BARS:
 		_draw_bar(bar, area, now)
 	_draw_voice(area)
@@ -104,11 +121,6 @@ func _draw_bar(bar: Dictionary, area: Vector2, now: int) -> void:
 	var value := _session.actor_value(SkydotPapyrus.PLAYER_REF, name)
 	var alpha := _alpha(name, value, maximum, now)
 	if alpha <= 0.0 or maximum <= 0.0:
-		return
-	var meter := UiAssets.instance(HUD_SWF, bar["meter"]) if UiAssets.available() else {}
-	if not meter.is_empty():
-		UiDraw.character(self, HUD_SWF, meter["id"], _stage(area, meter["xform"]), Color(1.0, 1.0, 1.0, alpha),
-			clampf(value / maximum, 0.0, 1.0))
 		return
 	var width := area.x * BAR_WIDTH
 	var height := maxf(3.0, BAR_HEIGHT * area.y / 1080.0)
@@ -139,26 +151,23 @@ func _draw_voice(area: Vector2) -> void:
 
 
 func _draw_crosshair(area: Vector2) -> void:
-	var game := UiAssets.instance(HUD_SWF, CROSSHAIR) if UiAssets.available() else {}
-	if not game.is_empty():
-		UiDraw.character(self, HUD_SWF, game["id"], _stage(area, game["xform"]))
-		return
 	var centre := area * 0.5
 	var radius := maxf(2.0, area.y / 540.0)
 	draw_circle(centre, radius + 1.0, Color(0.0, 0.0, 0.0, 0.6))
 	draw_circle(centre, radius, Color(1.0, 1.0, 1.0, 0.85))
 
 
-## hudmenu.swf's stage in the view for an element placed by `xform`: scaled to fit (Scaleform's show-all) and
-## centred across; down the view an element in the stage's top third keeps to the top, one in its bottom third
-## to the bottom and one between to the middle, as the game's HUD moves them to the screen's edges (measured
-## at 1100x800: the bars sit 50 px above the bottom, the compass 40 px below the top).
-func _stage(area: Vector2, xform: Transform2D) -> Transform2D:
-	var scale := minf(area.x / STAGE.x, area.y / STAGE.y)
-	var spare := area - STAGE * scale
-	var y := xform.origin.y
-	var down := 0.0 if y < STAGE.y / 3.0 else (1.0 if y > STAGE.y * 2.0 / 3.0 else 0.5)
-	return Transform2D(0.0, Vector2(scale, scale), 0.0, Vector2(spare.x * 0.5, spare.y * down)) * xform
+## The game's compass: the player's heading and position in game terms, the worldspace's map markers outside.
+func _draw_compass(area: Vector2) -> void:
+	var camera := get_viewport().get_camera_3d() if get_viewport() != null else null
+	if camera == null:
+		return
+	var from := SkydotWorld.godot_to_skyrim(camera.global_position)
+	var ahead := SkydotWorld.godot_to_skyrim(camera.global_position - camera.global_basis.z) - from
+	var heading := rad_to_deg(atan2(ahead.x, ahead.y))
+	var where: Dictionary = _session.ambience.where.call() if _session.ambience != null else {}
+	_game.draw_compass(self, area, heading, SkydotWorld.godot_to_skyrim(_session.player_feet()), int(where.get("world", 0)),
+		_session.world)
 
 
 func _draw_prompt(area: Vector2) -> void:

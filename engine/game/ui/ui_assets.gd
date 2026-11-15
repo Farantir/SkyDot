@@ -20,6 +20,7 @@ static var _characters := {}  # swf vpath -> {id: character}
 static var _textures := {}  # "swf|id|frame|scale" -> Texture2D (null when it does not draw)
 static var _fonts := {}  # fontconfig name -> Font (null when missing)
 static var _fontconfig := {}  # parsed fontconfig: {"libs": [vpath], "map": {name: [font, style]}}
+static var _lists := {}  # "swf|id|frame" -> display list
 
 
 ## Hand over the pack the session opened (null forgets it).
@@ -32,6 +33,7 @@ static func use_pack(pack: SkydotPack) -> void:
 	_textures.clear()
 	_fonts.clear()
 	_fontconfig.clear()
+	_lists.clear()
 
 
 ## Whether the pack holds the menus' assets.
@@ -97,6 +99,53 @@ static func instance(swf: String, path: String) -> Dictionary:
 		id = int(found["character"])
 		display = character(swf, id).get("display", [])
 	return {"id": id, "xform": xform}
+
+
+## A sprite's display list at `frame` (0-based): frame 0's from the manifest, stepped through its timeline
+## (places, moves and removes, as the player applies them). Entries as in the manifest's "display".
+static func display_list(swf: String, id: int, frame: int) -> Array:
+	var entry := character(swf, id)
+	if frame <= 0 or not entry.has("timeline"):
+		return entry.get("display", [])
+	frame = mini(frame, int(entry.get("frames", 1)) - 1)
+	var key := "%s|%d|%d" % [swf_path(swf), id, frame]
+	if _lists.has(key):
+		return _lists[key]
+	var by_depth := {}
+	for placed: Dictionary in entry.get("display", []):
+		by_depth[int(placed["depth"])] = placed.duplicate()
+	for event: Dictionary in entry["timeline"]:
+		if int(event["f"]) > frame:
+			break
+		var depth := int(event["d"])
+		if event.has("rm"):
+			by_depth.erase(depth)
+			continue
+		var current: Dictionary = by_depth.get(depth, {})
+		if not event.has("mv") or current.is_empty():
+			if not event.has("c"):
+				continue
+			current = {"depth": depth, "matrix": [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]}
+		else:
+			current = current.duplicate()
+		if event.has("c"):
+			current["character"] = event["c"]
+		if event.has("m"):
+			current["matrix"] = event["m"]
+		if event.has("x"):
+			current["color"] = event["x"]
+		if event.has("n"):
+			current["name"] = event["n"]
+		if event.has("k"):
+			current["clip_depth"] = event["k"]
+		by_depth[depth] = current
+	var depths := by_depth.keys()
+	depths.sort()
+	var list := []
+	for depth: int in depths:
+		list.append(by_depth[depth])
+	_lists[key] = list
+	return list
 
 
 ## The frame a sprite's label stands for, or -1.

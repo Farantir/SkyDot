@@ -70,6 +70,9 @@ godot::Dictionary get_sound_output_model(const WorldData& data, std::int64_t id)
 godot::Dictionary get_sound_category(const WorldData& data, std::int64_t id);
 godot::Dictionary get_acoustic_space(const WorldData& data, std::int64_t id);
 godot::Dictionary get_reverb(const WorldData& data, std::int64_t id);
+godot::Array get_map_markers(const WorldData& data, std::int64_t world);
+std::int64_t get_default_object(const WorldData& data, const godot::String& key);
+godot::Dictionary get_image_space_modifier(const WorldData& data, std::int64_t id);
 godot::PackedInt64Array get_sound_alternates(const WorldData& data, std::int64_t id);
 godot::Array get_region_sounds(const WorldData& data, std::int64_t world, double x, double y);
 godot::Dictionary get_region_sound_data(const WorldData& data, std::int64_t region);
