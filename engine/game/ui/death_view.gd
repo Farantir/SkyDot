@@ -1,13 +1,11 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# The death screen (GAMEPLAY-PLAN.md, 6k): when GameSession says the player died
-# the picture fades to black over FADE_SECONDS and asks "Load the last save?".
-# Enter, the gamepad's A (the `ui_accept` action) or a click chooses to load (`load_chosen`:
-# the shell calls GameSession.reload_or_restart); Escape or B (`ui_cancel`) quits
-# (`quit_chosen`). With the game's menus in the pack the question is its message box (MessageBoxArt, as
-# messagebox.swf lays it out) with Yes and No: left/right/up/down (or a mouse over a button) pick, Enter or A or a click
-# choose, Escape or B quit. This is the view, a Control that fills its host (the flat viewer's
-# CanvasLayer, a VR shell's panel); the shell lowers the camera and stops the controls.
+# The death screen (GAMEPLAY-PLAN.md, 6k): when GameSession says the player died the picture fades to black
+# over FADE_SECONDS and, RELOAD_SECONDS after the death, the last save loads by itself (`load_chosen`: the
+# shell calls GameSession.reload_or_restart), as the game does: there is no question. Enter or A skips the
+# wait; Escape or B quits (`quit_chosen`). A mouse click skips the wait too. PLACEHOLDER: the 5 s is
+# fPlayerDeathReloadTime's default, not yet measured in the game. This is the view, a Control that fills its
+# host (the flat viewer's CanvasLayer, a VR shell's panel); the shell lowers the camera and stops the controls.
 class_name DeathView
 extends Control
 
@@ -18,19 +16,13 @@ signal quit_chosen
 
 ## Seconds from the death to full black.
 const FADE_SECONDS := 2.0
-## Seconds after the fade before the prompt shows (it appears as the black is whole).
-const PROMPT_DELAY := 0.0
-const TITLE := "You died."
-const QUESTION := "Load the last save?"
-const KEYS := "Enter / A: load      Esc / B: quit"
-const BUTTONS := ["Yes", "No"]
+## Seconds from the death to the automatic reload (fPlayerDeathReloadTime).
+const RELOAD_SECONDS := 5.0
 
 ## 0 clear, 1 black.
 var fade := 0.0
 var _time := -1.0
-## The message box's chosen button (0 Yes) and where the buttons are drawn (for the mouse).
-var selected := 0
-var _boxes: Array[Rect2] = []
+var _reloaded := false
 ## Whether the view listens at all (false in runs that drive themselves).
 var enabled: Callable = func() -> bool: return true
 
@@ -47,7 +39,7 @@ func _init(session: GameSession = null) -> void:
 func begin() -> void:
 	_time = 0.0
 	fade = 0.0
-	selected = 0
+	_reloaded = false
 	visible = true
 	queue_redraw()
 
@@ -63,9 +55,9 @@ func is_showing() -> bool:
 	return _time >= 0.0
 
 
-## Whether the question is asked (the fade is whole).
+## Whether the screen is black and the reload may be skipped with a key.
 func is_asking() -> bool:
-	return _time >= FADE_SECONDS + PROMPT_DELAY
+	return _time >= FADE_SECONDS
 
 
 ## Advance the fade by `delta` seconds (the view does it itself each frame while shown).
@@ -75,6 +67,8 @@ func step(delta: float) -> void:
 	_time += delta
 	fade = clampf(_time / FADE_SECONDS, 0.0, 1.0)
 	queue_redraw()
+	if enabled.call() and _time >= RELOAD_SECONDS:
+		_reload()
 
 
 func _process(delta: float) -> void:
@@ -85,69 +79,26 @@ func _unhandled_input(event: InputEvent) -> void:
 	handle_input(event)
 
 
-## The keys of the question. A host whose view gets no keys (a VR panel's SubViewport) hands
-## them in.
+## The keys: Enter or A skips the wait, Escape or B quits. A host whose view gets no keys (a VR panel's
+## SubViewport) hands them in.
 func handle_input(event: InputEvent) -> void:
 	if not is_asking() or not bool(enabled.call()):
 		return
-	if _boxed():
-		if event.is_action_pressed("ui_left") or event.is_action_pressed("ui_up"):
-			selected = maxi(selected - 1, 0)
-			queue_redraw()
-		elif event.is_action_pressed("ui_right") or event.is_action_pressed("ui_down"):
-			selected = mini(selected + 1, BUTTONS.size() - 1)
-			queue_redraw()
-		elif event is InputEventMouseMotion or (event is InputEventMouseButton and event.pressed):
-			var hit := _button_at(event.position)
-			if hit >= 0 and hit != selected:
-				selected = hit
-				queue_redraw()
-			if hit >= 0 and event is InputEventMouseButton:
-				_choose(hit)
-				return
-	if event.is_action_pressed("ui_accept"):
+	if event.is_action_pressed("ui_accept") or (event is InputEventMouseButton and event.pressed):
 		get_viewport().set_input_as_handled()
-		_choose(selected if _boxed() else 0)
+		_reload()
 	elif event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
 		quit_chosen.emit()
 
 
-func _boxed() -> bool:
-	return MessageBoxArt.available()
-
-
-func _button_at(position: Vector2) -> int:
-	for i in _boxes.size():
-		if _boxes[i].has_point(position):
-			return i
-	return -1
-
-
-func _choose(index: int) -> void:
-	get_viewport().set_input_as_handled()
-	if index == 0:
-		load_chosen.emit()
-	else:
-		quit_chosen.emit()
+func _reload() -> void:
+	if _reloaded:
+		return
+	_reloaded = true
+	load_chosen.emit()
 
 
 func _draw() -> void:
-	if _time < 0.0:
-		return
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, fade))
-	if not is_asking():
-		return
-	if _boxed():
-		_boxes = MessageBoxArt.draw(self, size, QUESTION, BUTTONS, selected)
-		return
-	var font := get_theme_default_font()
-	var big := 44
-	var small := 24
-	var centre := size / 2.0
-	for line: Array in [[TITLE, big, -40.0], [QUESTION, small + 6, 20.0], [KEYS, small - 4, 70.0]]:
-		var text: String = line[0]
-		var font_size: int = line[1]
-		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		draw_string(font, centre + Vector2(-width / 2.0, line[2]), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
-			Color(0.9, 0.9, 0.9))
+	if _time >= 0.0:
+		draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, fade))
