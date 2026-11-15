@@ -6,8 +6,8 @@
 # (wheel), the right stick turns it too. A VR host calls `use_world_node`: the model is then a real 3D object
 # beside the panel and turns slowly by itself. Spells have no model and show nothing.
 #
-# The game's own angle and place are the engine's, not in the movie: InventoryMenu only gives the area where a
-# drag rotates the item (MouseRotationRect, the right of the stage's centre); the pose here is a three-quarter view.
+# The pose is the model's own: its inventory marker (BSInvMarker) turns and zooms it (see _fit); InventoryMenu only
+# gives the area where a drag rotates the item (MouseRotationRect, the right of the stage's centre).
 class_name ItemPreview
 extends Control
 
@@ -29,13 +29,23 @@ const FOV := 30.0
 ## bound spans 0.35 of the screen's height, centred 0.4 down, the blade pointing up, flat to the viewer.
 const INI_NARROW := {"x": -38.0, "y": -500.0, "z": 16.0, "scale": 1.87}
 const INI_WIDE := {"x": -29.0, "y": -500.0, "z": 12.0, "scale": 1.5}
-## Radians about X that stand a flat armor model up (front to the viewer).
-const ARMOR_STAND := -PI * 0.5
+## A model without a marker is not turned: the Iron Helmet's ground model (helmetgnd.nif has none) shows its face
+## upright in the game (SkyrimRemote @item3d 0x12E4D).
+const DEFAULT_ROTATION := Vector3.ZERO
+## Skyrim's axes (Z up) to Godot's (Y up, Skyrim's +Y to -Z), as the converter turns the models.
+const TO_GODOT := Basis(Vector3(1, 0, 0), Vector3(0, 0, -1), Vector3(0, 1, 0))
+## The preview's camera looks along Godot's -Z; the game's item camera looks along Skyrim's -Y (Godot's +Z): half a turn.
+const FACING := Basis(Vector3.UP, PI)
+## The bound (half the box's diagonal) at zoom 1, in the units _distance() frames: fitted to the game's sizes at
+## 1100x800 (SkyrimRemote @item3d: Iron Sword 280 px tall, Iron Dagger 190, Iron Shield 257 across, potion 116; this
+## gives them within about 25 %: the game's own bound is not the box's).
+const BOUND_UNITS := 0.42
 const WIDE_ASPECT := 1.6
 const ITEM_HEIGHT := 0.35  # of the screen's height, with the narrow set's scale
 
-## Where the preview is, as fractions of this control (the host's area): the free area right of the list.
-var region := Rect2(0.64, 0.08, 0.3, 0.64)
+## Where the preview is, as fractions of this control (the host's area): centred where the game centres the item's
+## bound (x 0.68, y 0.395 of the screen at 1100x800, the same for a sword, a dagger, a shield and a potion).
+var region := Rect2(0.53, 0.075, 0.3, 0.64)
 ## Radians per second the model turns by itself (the VR host sets it).
 var auto_spin := 0.0
 
@@ -148,10 +158,10 @@ func clear() -> void:
 	show_item(-1)
 
 
-## The game's pose: the longest side of the model's bounds points up, the next one across, so a blade stands
-## upright and flat to the viewer (what the game shows at first look), the model scaled to one unit and centred.
-## An armor or anything else keeps its own orientation (the authored up is up) when its longest side already
-## is the vertical one.
+## The game's pose: the model's own inventory marker (BSInvMarker "INV", converter mesh/28) turns it, Gamebryo's
+## clockwise angles applied Z, then Y, then X, then seen from the model's +Y side with Skyrim's Z up (the camera looks
+## along the game's -Y: a shield shows its face, a war axe its blade on the right, as in the game); a model without one is not turned. The marker's zoom scales
+## it, the model's bound (the half diagonal of its box) sized to BOUND_UNITS, centred on the bound's centre.
 func _fit() -> void:
 	_holder.transform = Transform3D.IDENTITY
 	var box := AABB()
@@ -165,25 +175,29 @@ func _fit() -> void:
 		first = false
 	if first or box.get_longest_axis_size() <= 0.0:
 		return
-	var sizes := [box.size.x, box.size.y, box.size.z]
-	var order := [0, 1, 2]
-	order.sort_custom(func(a: int, b: int) -> bool: return sizes[a] > sizes[b])
-	var basis := Basis.IDENTITY
-	var weapon := String(_session.item_info(_form).get("category", "")) in ["weapon", "ammo"]
-	if weapon and order[0] != 1:
-		# Authored hilt up in this frame: the blade points up in the game, so turn it half a turn about the depth.
-		var up := Vector3.ZERO
-		up[order[0]] = -1.0
-		var across := Vector3.ZERO
-		across[order[1]] = -1.0
-		var depth := across.cross(up)
-		# The rotation taking `up` to +Y, `across` to +X: the inverse of the basis with those columns.
-		basis = Basis(across, up, depth).inverse()
-	elif not weapon and order[2] == 1 and String(_session.item_info(_form).get("category", "")) == "armor":
-		# An armor's ground model lies flat (its thinnest side up); the game shows it standing, front to the viewer.
-		basis = Basis(Vector3.RIGHT, ARMOR_STAND)
-	var scale := 1.0 / box.get_longest_axis_size()
+	var marker := inventory_marker(_model)
+	var basis := marker_basis(marker["rotation"])
+	var scale := float(marker["zoom"]) * BOUND_UNITS / (box.size.length() * 0.5)
 	_holder.transform = Transform3D(basis * Basis.from_scale(Vector3.ONE * scale), -(basis * box.get_center()) * scale)
+
+
+## The model's inventory marker: {rotation: Vector3 radians, zoom}; the marker's defaults when it has none.
+static func inventory_marker(model: Node) -> Dictionary:
+	for node: Node in [model, model.get_node_or_null("bethconv_z_up_to_y_up")]:
+		if node != null and node.has_meta("extras"):
+			var block: Dictionary = (node.get_meta("extras") as Dictionary).get("bethconv", {})
+			if block.has("inventory_marker"):
+				var marker: Dictionary = block["inventory_marker"]
+				var r: Array = marker["rotation"]
+				return {"rotation": Vector3(r[0], r[1], r[2]), "zoom": float(marker["zoom"])}
+	return {"rotation": DEFAULT_ROTATION, "zoom": 1.0}
+
+
+## The marker's rotation as a basis of Godot's space (the model as built: Y up, Skyrim's +Y is -Z). Gamebryo's
+## X/Y/Z rotations turn clockwise (the standard ones by minus the angle); the product X * Y * Z turns by Z first.
+static func marker_basis(rotation: Vector3) -> Basis:
+	var skyrim := Basis(Vector3(1, 0, 0), -rotation.x) * Basis(Vector3(0, 1, 0), -rotation.y) * Basis(Vector3(0, 0, 1), -rotation.z)
+	return FACING * TO_GODOT * skyrim * TO_GODOT.inverse()
 
 
 func _distance() -> float:
