@@ -32,6 +32,8 @@ class Look:
 	## Instance names not drawn (a placeholder skin the game's script replaces).
 	var hidden := {}
 	var colours := {}  # instance name -> Color for a text field
+	## Glyphs stretched with the stage (field's `stretch`), as the game draws them.
+	var stretch_texts := false
 
 
 ## Draw `id` of `swf` at `frame` with `xform` (movie pixels to the canvas) times `modulate`; `clip`, if not
@@ -50,7 +52,7 @@ static func character(canvas: CanvasItem, swf: String, id: int, xform: Transform
 			if look != null and look.draw_texts:
 				var text: String = look.texts.get("#%d" % id, look.texts.get(name, _plain(String(entry.get("text", "")))))
 				if text != "":
-					field(canvas, swf, id, xform, text, look.colours.get(name, Color(0.0, 0.0, 0.0, 0.0)))
+					field(canvas, swf, id, xform, text, look.colours.get(name, Color(0.0, 0.0, 0.0, 0.0)), look.stretch_texts)
 
 
 ## A field's authored text without its markup; "$Key" (a translation key) as "Key".
@@ -145,8 +147,11 @@ static func _into(local: Transform2D, clip: Rect2) -> Rect2:
 ## A text field (edit_text) of a movie, drawn in its box as the movie places it: `xform` is movie pixels to the canvas
 ## (the field's own placement included). Font, size and alignment are the field's; `colour` replaces its colour when
 ## given. Text gets a dark outline (the movies' DropShadow). Returns the drawn size of the text in canvas pixels.
+## `stretch`: the glyphs are stretched by the transform's y/x scale ratio, as Scaleform's exact-fit stage draws them
+## (measured in the journal's game captures at 1100x800: glyphs 1.29 times as tall as the x scale makes them);
+## without it they keep the x scale's proportions.
 static func field(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, text: String,
-		colour := Color(0.0, 0.0, 0.0, 0.0)) -> Vector2:
+		colour := Color(0.0, 0.0, 0.0, 0.0), stretch := false) -> Vector2:
 	var entry := UiAssets.character(swf, id)
 	if entry.get("type", "") != "edit_text":
 		return Vector2.ZERO
@@ -166,8 +171,13 @@ static func field(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, 
 			align = HORIZONTAL_ALIGNMENT_RIGHT
 	var base := xform * Vector2(0.0, box.position.y + 2.0 + float(entry.get("height", 20.0)) * 0.9)
 	var tint := colour if colour.a > 0.0 else Color(String(entry.get("color", "#ffffffff")))
-	canvas.draw_string_outline(font, Vector2(left.x, base.y), text, align, width, size_px, 3, Color(0.0, 0.0, 0.0, 0.8))
-	canvas.draw_string(font, Vector2(left.x, base.y), text, align, width, size_px, tint)
+	var ratio := xform.get_scale().y / maxf(scale, 0.0001) if stretch else 1.0
+	if ratio != 1.0:
+		canvas.draw_set_transform(Vector2.ZERO, 0.0, Vector2(1.0, ratio))
+	canvas.draw_string_outline(font, Vector2(left.x, base.y / ratio), text, align, width, size_px, 3, Color(0.0, 0.0, 0.0, 0.8))
+	canvas.draw_string(font, Vector2(left.x, base.y / ratio), text, align, width, size_px, tint)
+	if ratio != 1.0:
+		canvas.draw_set_transform_matrix(Transform2D.IDENTITY)
 	return font.get_string_size(text, align, width, size_px)
 
 

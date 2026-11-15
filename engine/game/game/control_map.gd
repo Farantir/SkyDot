@@ -44,6 +44,7 @@ const ACTIONS := {
 	&"quick_load": ["Main Gameplay", "Quickload"],
 	&"wait": ["Main Gameplay", "Wait"],
 	&"journal": ["Main Gameplay", "Journal"],
+	&"pause": ["Main Gameplay", "Pause"],
 	&"inventory": ["Main Gameplay", "Quick Inventory"],
 	&"magic": ["Main Gameplay", "Quick Magic"],
 	&"skills": ["Main Gameplay", "Quick Stats"],

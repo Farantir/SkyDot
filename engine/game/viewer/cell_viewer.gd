@@ -53,11 +53,11 @@
 # changes the weather.
 #
 # Controls: the game's keys are the game's own (game/control_map.gd reads its controlmap.txt: E activates,
-# Tab the Tween menu, I/P// the menus, Q favorites); M, T and J (map, wait, journal) do nothing until those
-# menus exist. The viewer's debug keys keep off the keys the game binds in play: F3, F7, F8, F10, F12, the
+# Tab the Tween menu, I/P// the menus, Q favorites, J the journal on Quests, Esc on the tab it was closed on);
+# M and T (map, wait) do nothing until those menus exist. The viewer's debug keys keep off the keys the game binds in play: F3, F7, F8, F10, F12, the
 # numpad's + and -, G, K, N, O, U, V, [ ], - =, Home (V, O and Home are bound only in the game's debug and
 # Creations menu contexts; F12 stays the shot key though Main Gameplay lists it as CameraPath, a developer key).
-# The mouse looks (Esc releases it, a click captures it again; the
+# The mouse looks (Esc opens the journal and frees it, a click captures it again; the
 # right button looks while released), WASD to move, Alt sprints, Shift walks,
 # Space jumps (and swims up). The player walks with collision (SkydotPlayer):
 # it falls, climbs steps, swims in exterior water and pushes clutter. V
@@ -109,7 +109,8 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
-# --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none, "NAME:tree:up" zooms into its tree and moves the cursor up; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
+# --open-journal quests|stats|system shows the journal on that tab (--journal-category N picks the stats page's
+# category). --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none, "NAME:tree:up" zooms into its tree and moves the cursor up; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
 # picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
@@ -278,6 +279,9 @@ func _create_components() -> void:
 	_loop.tween_requested.connect(func() -> void:
 		if _items != null:
 			_items.open_tween())
+	_loop.journal_requested.connect(func(pause: bool) -> void:
+		if _items == null or not _items.open_journal(pause):
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)  # no journal: Esc frees the mouse
 	_loop.skills_requested.connect(func() -> void:
 		if _items != null:
 			_items.toggle_skills())
@@ -293,7 +297,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0 or _settings.open_journal != "":
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
 	add_child(DeathMenu.new(_session, _rig, _loop))
@@ -345,6 +349,11 @@ func _start_game() -> void:
 			_session.papyrus.set_player_xp(settings.grant_xp)
 		_items.skills_view.open()
 		_items.skills_view.select_skill(settings.open_skills)
+	if settings.open_journal != "" and _items != null:
+		_items.journal_view.category = settings.journal_category
+		_items.journal_view.open(["quests", "stats", "system"].find(settings.open_journal))
+		if settings.journal_system != "":
+			_items.journal_view.system.debug_state(settings.journal_system)
 	if settings.open_training != 0 and _items != null:
 		_items.training_view.open(settings.open_training)
 	if settings.has_screenshot:

@@ -17,6 +17,7 @@ var favorites_view: FavoritesView
 var training_view: TrainingView
 var skills_view: SkillsView
 var tween_view: TweenView
+var journal_view: JournalView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -34,7 +35,8 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	skills_view = SkillsView.new(session)
 	tween_view = TweenView.new(session)
 	tween_view.chosen.connect(_on_tween_chosen)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view]:
+	journal_view = JournalView.new(session)
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view, journal_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: _on_engaged())
@@ -45,14 +47,14 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open() or journal_view.is_open()
 
 
 ## The open menu for a shot's "menu" block: {open, tab, selected, mode}; empty when none is open.
 func describe() -> Dictionary:
 	var names := {"inventory": inventory_view, "container": container_view, "crafting": crafting_view,
 		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view,
-		"tween": tween_view}
+		"tween": tween_view, "journal": journal_view}
 	for name: String in names:
 		var view: Control = names[name]
 		if not view.is_open():
@@ -64,8 +66,13 @@ func describe() -> Dictionary:
 			out["selected"] = model.selected
 		if view == tween_view:
 			out["selected"] = TweenView.LABELS[tween_view.selection]
+		if view == journal_view:
+			out["tab"] = journal_view.tab
+			out["selected"] = journal_view.title_index if journal_view.tab == JournalView.QUESTS else journal_view.category
+			if journal_view.tab == JournalView.SYSTEM:
+				out["mode"] = JournalSystem.State.keys()[journal_view.system.state]
 		var mode: Variant = view.get(&"_mode")
-		if mode != null:
+		if mode != null and view == crafting_view:
 			out["mode"] = CraftingView.Mode.keys()[mode]
 		return out
 	return {}
@@ -100,6 +107,17 @@ func open_tween() -> void:
 	if is_open() or _session.is_dialogue_open():
 		return
 	tween_view.open()
+
+
+## The Journal key (J) outside a menu opens the journal on Quests, Pause (Esc) on the tab it was closed on; not during
+## a dialogue. False when the pack has no journal movie (the shell frees the mouse instead, as before).
+func open_journal(pause: bool) -> bool:
+	if not JournalView.available():
+		return false
+	if is_open() or _session.is_dialogue_open():
+		return true
+	journal_view.open(-1 if pause else JournalView.QUESTS)
+	return true
 
 
 ## A direction of the Tween menu was opened (the Tween menu has closed).
