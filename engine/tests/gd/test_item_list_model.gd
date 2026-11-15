@@ -171,3 +171,34 @@ func test_favorites_hotkeys_and_save_round_trip() -> void:
 	expect(Favorites.decode(PackedByteArray([1, 2, 3])).is_empty() and Favorites.decode(var_to_bytes([1])).is_empty(), "garbage is refused")
 	restored.adopt({})
 	expect(restored.forms().is_empty() and restored.form_at(7) == 0, "an old save (no section) has none")
+
+
+func test_weapon_and_apparel_tabs_have_damage_and_armor_columns() -> void:
+	var ids := func(menu: String, tab: String) -> Array:
+		return ItemListRegistry.columns_of(menu, tab).map(func(c: Dictionary) -> String: return c["id"])
+	expect_eq(ids.call("inventory", "weapons"), ["mark", "name", "damage", "weight", "value", "vw"], "weapons: damage")
+	expect_eq(ids.call("inventory", "apparel"), ["mark", "name", "armor", "weight", "value", "vw"], "apparel: armor")
+	expect_eq(ids.call("inventory", "potions"), ["mark", "name", "weight", "value", "vw"], "other tabs keep the default")
+	expect_eq(ids.call("container", "weapons"), ["mark", "name", "damage", "weight", "value"], "container weapons")
+	var model := _model()
+	model.set_rows([_item(SWORD, "Iron Sword", "weapons", 9.0, 25, {"damage": 7}), _item(DAGGER, "Dagger", "weapons", 2.0, 10, {"damage": 4}),
+		_item(BOW, "Bow", "weapons", 7.0, 50, {"damage": 9})])
+	model.select_tab("Weapons")
+	model.sort_by("damage")
+	expect_eq(_names(model.rows()), ["Bow", "Iron Sword", "Dagger"], "damage sorts high to low")
+	expect_eq(ItemListRegistry.field_text("damage", model.rows()[0]), "9", "damage text")
+	expect_eq(ItemListRegistry.field_text("armor", model.rows()[0]), "", "no armor on a weapon")
+	expect(model.card().any(func(f: Dictionary) -> bool: return f["label"] == "Damage" and f["text"] == "9"), "the card has Damage")
+
+
+func test_barter_and_gift_lists_are_the_containers() -> void:
+	for menu in ["barter", "gift"]:
+		var model := ItemListModel.new(menu)
+		var row := _item(SWORD, "Iron Sword", "weapons", 9.0, 25, {"price": 25})
+		model.set_rows([row, _item(SHIRT, "Fine Clothes", "apparel", 1.0, 125, {"price": 125})])
+		expect_eq(model.tab_names()[0], "All", "%s tabs are the container's" % menu)
+		expect_eq(model.rows().size(), 2, "%s lists everything" % menu)
+		expect(ItemListRegistry.actions_for(menu, row).any(func(a: Dictionary) -> bool: return a["id"] == "move"), "%s moves stacks" % menu)
+	expect(ItemListRegistry.columns_of("barter", "all").any(func(c: Dictionary) -> bool: return c["id"] == "price"), "barter has a price column")
+	expect(not ItemListRegistry.columns_of("gift", "all").any(func(c: Dictionary) -> bool: return c["id"] == "price"), "gift has none")
+	expect_eq(ItemListRegistry.field_text("price", {"price": 31}), "31", "price text")

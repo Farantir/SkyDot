@@ -13,11 +13,21 @@ const HOURS_PER_DAY := 24.0
 
 ## What `owner` carries as list rows (the playable, named ones), each a row of kind "item".
 static func inventory(session: GameSession, owner := SkydotPapyrus.PLAYER_REF) -> Array:
-	return from_items(session.inventory(owner))
+	return from_items(session.inventory(owner), session)
 
 
-## The list rows of GameSession.inventory rows `items`.
-static func from_items(items: Array) -> Array:
+## What a trader would deal in, as rows with a `price`. There is no barter flow yet (no prices from
+## fBarterMin/fBarterMax and Speechcraft), so the price is the item's value.
+static func barter(session: GameSession, owner: int) -> Array:
+	var out := inventory(session, owner)
+	for row: Dictionary in out:
+		row["price"] = int(row["value"])
+	return out
+
+
+## The list rows of GameSession.inventory rows `items`; with `session`, a weapon's or armor's base Damage or
+## Armor rating (the game shows them with skill and perks; those are not applied yet).
+static func from_items(items: Array, session: GameSession = null) -> Array:
 	var out: Array = []
 	for source: Dictionary in ItemRows.visible(items):
 		var row := source.duplicate()
@@ -26,6 +36,12 @@ static func from_items(items: Array) -> Array:
 		row["label"] = ItemRows.label(source)
 		var weight := float(source["weight"])
 		row["vw"] = float(source["value"]) / weight if weight > 0.0 else 0.0
+		if session != null:
+			var info := session.item_info(int(source["form"]))
+			if source["category"] in ["weapon", "ammo"]:
+				row["damage"] = roundi(float(info.get("damage", 0.0)))
+			elif source["category"] == "armor":
+				row["armor"] = roundi(float(info.get("armor_rating", 0.0)))
 		out.append(row)
 	return out
 

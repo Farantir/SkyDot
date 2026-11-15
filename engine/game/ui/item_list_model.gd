@@ -70,7 +70,7 @@ func set_rows(rows: Array) -> void:
 ## Ids of the tabs shown: those of the menu, minus the ones that hide while empty.
 func tab_ids() -> Array[String]:
 	var out: Array[String] = []
-	for def: Dictionary in ItemListRegistry.tabs.get(menu, []):
+	for def: Dictionary in ItemListRegistry.tabs_of(menu):
 		if def.get("hidden_empty", false) and _rows_of(def).is_empty():
 			continue
 		out.append(def["id"])
@@ -120,7 +120,7 @@ func rows() -> Array:
 
 ## The rows of tab `id_or_name` whatever the search says, in that tab's sort order.
 func rows_of_tab(id_or_name: String) -> Array:
-	for def: Dictionary in ItemListRegistry.tabs.get(menu, []):
+	for def: Dictionary in ItemListRegistry.tabs_of(menu):
 		if def["id"] == id_or_name or def["name"] == id_or_name:
 			var rows := _rows_of(def)
 			_sort_rows(rows, def["id"])
@@ -198,7 +198,7 @@ func card() -> Array[Dictionary]:
 # ---- internals
 
 func _def(id: String) -> Dictionary:
-	for def: Dictionary in ItemListRegistry.tabs.get(menu, []):
+	for def: Dictionary in ItemListRegistry.tabs_of(menu):
 		if def["id"] == id:
 			return def
 	return {}

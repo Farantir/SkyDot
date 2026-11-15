@@ -532,6 +532,11 @@ func inventory(owner := SkydotPapyrus.PLAYER_REF) -> Array:
 	return papyrus.inventory(owner)
 
 
+## The static facts of an item (SkydotPapyrus.item_info: category, weight, value, damage, armor_rating, ...).
+func item_info(form: int) -> Dictionary:
+	return papyrus.item_info(form)
+
+
 ## What the player holds and wears: {right, left, ammo, worn: [forms]}.
 func equipment() -> Dictionary:
 	return papyrus.equipment(SkydotPapyrus.PLAYER_REF)

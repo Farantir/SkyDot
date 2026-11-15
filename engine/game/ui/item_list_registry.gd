@@ -48,6 +48,8 @@ static var tabs: Dictionary = {
 	# The quick favorites popup: favorite items and spells together.
 	"favorites": [{"id": "all", "name": "Favorites", "all": true}],
 }
+## Barter and gift lists are a container's: a menu id lists the tabs, columns and actions of another.
+const SAME_AS := {"barter": "container", "gift": "container"}
 
 ## Columns by id: {id, title, numeric (sorts high to low first), sortable, width (a share of the table; 0 takes the
 ## rest), key (the row field to sort by; the id if absent)}.
@@ -57,6 +59,9 @@ static var columns: Dictionary = {
 	"weight": {"id": "weight", "title": "Weight", "numeric": true, "width": 0.11},
 	"value": {"id": "value", "title": "Value", "numeric": true, "width": 0.11},
 	"vw": {"id": "vw", "title": "Value/Weight", "numeric": true, "width": 0.18},
+	"damage": {"id": "damage", "title": "Damage", "numeric": true, "width": 0.11},
+	"armor": {"id": "armor", "title": "Armor", "numeric": true, "width": 0.11},
+	"price": {"id": "price", "title": "Price", "numeric": true, "width": 0.11},
 	"count": {"id": "count", "title": "Count", "numeric": true, "width": 0.09},
 	"cost": {"id": "cost", "title": "Cost", "numeric": true, "width": 0.14},
 	"hands": {"id": "hands", "title": "Hand", "width": 0.09},
@@ -68,8 +73,22 @@ static var columns: Dictionary = {
 
 ## The columns of a tab, by menu and tab id (the "*" entry is the default of the menu).
 static var tab_columns: Dictionary = {
-	"inventory": {"*": ["mark", "name", "weight", "value", "vw"]},
-	"container": {"*": ["mark", "name", "weight", "value"]},
+	"inventory": {
+		"*": ["mark", "name", "weight", "value", "vw"],
+		"weapons": ["mark", "name", "damage", "weight", "value", "vw"],
+		"apparel": ["mark", "name", "armor", "weight", "value", "vw"],
+	},
+	"container": {
+		"*": ["mark", "name", "weight", "value"],
+		"weapons": ["mark", "name", "damage", "weight", "value"],
+		"apparel": ["mark", "name", "armor", "weight", "value"],
+	},
+	# Barter: what a trader asks or pays. No barter flow exists yet, so `price` is the item's value.
+	"barter": {
+		"*": ["mark", "name", "weight", "price"],
+		"weapons": ["mark", "name", "damage", "weight", "price"],
+		"apparel": ["mark", "name", "armor", "weight", "price"],
+	},
 	"magic": {
 		"*": ["mark", "name", "cost", "hands"],
 		"favorites": ["mark", "name", "cost", "hands", "kind"],
@@ -105,7 +124,7 @@ static var actions: Dictionary = {
 
 ## The card of a row, by row kind: [{label, field}]. `field_text` formats a field.
 static var card_fields: Dictionary = {
-	"item": [{"label": "Weight", "field": "weight"}, {"label": "Value", "field": "value"}, {"label": "Value/Weight", "field": "vw"},
+	"item": [{"label": "Damage", "field": "damage"}, {"label": "Armor", "field": "armor"}, {"label": "Weight", "field": "weight"}, {"label": "Value", "field": "value"}, {"label": "Value/Weight", "field": "vw"},
 		{"label": "Charge", "field": "charge"}, {"label": "Soul", "field": "soul"}],
 	"scroll": [{"label": "Cost", "field": "cost"}, {"label": "Hand", "field": "hands"}, {"label": "Count", "field": "count"}],
 	"spell": [{"label": "Cost", "field": "cost"}, {"label": "Hand", "field": "hands"}],
@@ -113,6 +132,11 @@ static var card_fields: Dictionary = {
 	"shout": [{"label": "Words", "field": "words_known"}],
 	"effect": [{"label": "Magnitude", "field": "magnitude"}, {"label": "Time left", "field": "remaining"}],
 }
+
+
+## The tabs of `menu` (a barter or gift menu has its container's).
+static func tabs_of(menu: String) -> Array:
+	return tabs.get(menu, tabs.get(SAME_AS.get(menu, ""), []))
 
 
 static func register_tab(menu: String, tab: Dictionary, at := -1) -> void:
@@ -134,7 +158,7 @@ static func register_action(action: Dictionary) -> void:
 
 ## The column definitions of tab `tab` of `menu`.
 static func columns_of(menu: String, tab: String) -> Array[Dictionary]:
-	var by_tab: Dictionary = tab_columns.get(menu, {})
+	var by_tab: Dictionary = tab_columns.get(menu, tab_columns.get(SAME_AS.get(menu, ""), {}))
 	var ids: Array = by_tab.get(tab, by_tab.get("*", ["name"]))
 	var out: Array[Dictionary] = []
 	for id: String in ids:
@@ -156,7 +180,7 @@ static func actions_for(menu: String, row: Dictionary) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for id: String in actions:
 		var action: Dictionary = actions[id]
-		if not (action["menus"] as Array).has(menu):
+		if not (action["menus"] as Array).has(menu) and not (action["menus"] as Array).has(SAME_AS.get(menu, "")):
 			continue
 		if row.is_empty():
 			if action.get("global", false):
@@ -203,6 +227,12 @@ static func field_text(field: String, row: Dictionary) -> String:
 			return str(int(row["value"])) if row.has("value") else ""
 		"vw":
 			return "%.1f" % float(row["vw"]) if row.has("vw") else ""
+		"damage":
+			return str(int(row["damage"])) if row.has("damage") else ""
+		"armor":
+			return str(int(row["armor"])) if row.has("armor") else ""
+		"price":
+			return str(int(row["price"])) if row.has("price") else ""
 		"count":
 			return str(int(row["count"])) if row.has("count") else ""
 		"cost":
