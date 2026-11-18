@@ -139,10 +139,10 @@ bool inside_polygon(const flatbuffers::Vector<float>* points, double x, double y
     bool in = false;
     const flatbuffers::uoffset_t n = points->size() / 2;
     for (flatbuffers::uoffset_t i = 0, j = n - 1; i < n; j = i++) {
-        const double xi = points->Get(2 * i);
-        const double yi = points->Get(2 * i + 1);
-        const double xj = points->Get(2 * j);
-        const double yj = points->Get(2 * j + 1);
+        const double xi = static_cast<double>(points->Get(2 * i));
+        const double yi = static_cast<double>(points->Get(2 * i + 1));
+        const double xj = static_cast<double>(points->Get(2 * j));
+        const double yj = static_cast<double>(points->Get(2 * j + 1));
         if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
             in = !in;
         }

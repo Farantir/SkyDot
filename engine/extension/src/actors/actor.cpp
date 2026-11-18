@@ -314,7 +314,7 @@ bool SkydotActor::play_scripted(const godot::String& clip, double speed, bool lo
     scripted_clip_ = clip;
     action_left_ = 0.0;
     if (time > 0.01) {
-        anim->seek(r(time), true);
+        anim->seek(static_cast<double>(r(time)), true);
     }
     return true;
 }

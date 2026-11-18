@@ -663,12 +663,12 @@ godot::Array controls_array(const ActorGraphDef& def, const std::vector<Behavior
         d["bones"] = bones;
         godot::PackedFloat32Array weights;
         for (const float w : c.weights) {
-            weights.push_back(w);
+            weights.push_back(static_cast<double>(w));
         }
         d["weights"] = weights;
         godot::PackedFloat32Array values;
         for (const float v : c.values) {
-            values.push_back(v);
+            values.push_back(static_cast<double>(v));
         }
         d["values"] = values;
         d["mode"] = c.world_from_model_mode;
