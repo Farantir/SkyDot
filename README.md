@@ -18,9 +18,9 @@ once after cloning.
 
 ## How to play
 
-SkyDot is early: 0.1.0 lets you walk around Skyrim, not play it yet. You
-need your own copy of Skyrim Special Edition (Legendary Edition and VR data
-convert too).
+SkyDot is early: 0.2.0 plays the start of the game, but not all of it, and
+much is still rough. You need your own copy of Skyrim Special Edition
+(Legendary Edition and VR data convert too).
 
 1. Download the archive for your system from the
    [releases](https://github.com/Farantir/SkyDot/releases) and unpack it
@@ -29,18 +29,38 @@ convert too).
 2. **Convert** tab: pick your Skyrim install (found automatically when Steam
    installed it), optionally a Mod Organizer 2 profile, and a folder for the
    pack. Converting the whole game takes a while and needs about 35 GB.
+   Packs from 0.1.0 must be converted again, and its saves do not load.
 3. **Packs** tab: pick the pack, choose where to start (a worldspace or an
    interior) and press *Open in the viewer*.
 
-In the viewer: the mouse looks (Esc releases it, a click captures it again),
-WASD moves, Shift sprints, Ctrl walks, Space jumps, F opens doors and
-activates things, V toggles flying (Q/E down/up). F5 saves, F9 loads. All keys
-are listed at the top of `engine/game/viewer/cell_viewer.gd`.
+The keys are the game's own, read from its `controlmap.txt`: WASD moves, Alt
+sprints, Shift walks, Space jumps, E activates, the mouse buttons attack and
+cast, Tab opens the Tween menu, I/P// the inventory, magic and skills, J the
+journal, T waits, Q the favorites. F5 saves, F9 loads, F12 takes a
+screenshot. A gamepad works too. The viewer's debug keys (V flies, K changes
+the weather, F8 moves the time) are listed at the top of
+`engine/game/viewer/cell_viewer.gd`.
 
-What works: the world streams in with its LOD, weather and time of day; doors
-and load doors; NPCs follow their daily schedules; quests and their scripts
-run; saving and loading. Not yet: combat, dialogue, menus, the inventory and
-the HUD.
+What works:
+
+- **World**: streaming with LOD, weather and time of day, lights and
+  shadows, image space, grass, physics with loose clutter, destruction,
+  positional and ambient sound.
+- **Scripts and quests**: the Papyrus VM, quest stages and objectives,
+  conditions, scenes; the main quest runs up to the dragon at the Western
+  Watchtower.
+- **Actors**: NPCs with their schedules and packages, dialogue with voice
+  and subtitles, creatures, dragons, combat AI, death and ragdolls.
+- **Player**: a first-person body, melee and archery, magic and shouts,
+  actor values, skills, levelling and perks; levers, traps and puzzles;
+  harvesting; smithing, tempering, alchemy and enchanting.
+- **Menus** in the game's look, taken from your install's own menu files:
+  HUD and compass, inventory, magic, containers, favorites, crafting,
+  dialogue, skills and perks, level-up, training, journal, sleep and wait.
+- **VR** (OpenXR) and the Steam Deck, both still lightly tested.
+
+Not yet: the map, music, crime, followers, horses, merchants, lockpicking,
+books, the third-person camera, character creation and the main menu.
 
 From the command line the viewer starts directly:
 `./skydot.x86_64 -- --pack DIR --world Tamriel --at X,Y,Z` or
