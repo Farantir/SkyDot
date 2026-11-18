@@ -144,7 +144,7 @@ Bytes square_shape(std::uint16_t id, std::uint32_t rgba) {
     return b.out;
 }
 
-Bytes place2(std::uint16_t depth, std::optional<std::uint16_t> character, bool move,
+Bytes place2(std::uint16_t depth, std::optional<int> character, bool move,
              std::optional<std::pair<int, int>> translate, std::string_view name = {}) {
     Bits b;
     std::uint32_t flags = move ? 1U : 0U;
@@ -154,7 +154,7 @@ Bytes place2(std::uint16_t depth, std::optional<std::uint16_t> character, bool m
     b.u8(flags);
     b.u16(depth);
     if (character) {
-        b.u16(*character);
+        b.u16(static_cast<std::uint16_t>(*character));
     }
     if (translate) {
         b.matrix(translate->first, translate->second);

@@ -329,14 +329,14 @@ std::u16string utf16(std::string_view s) {
         std::uint32_t cp = c;
         std::size_t n = 1;
         if (c >= 0xF0 && i + 3 < s.size()) {
-            cp = ((c & 7U) << 18) | ((s[i + 1] & 0x3FU) << 12) | ((s[i + 2] & 0x3FU) << 6) |
-                 (s[i + 3] & 0x3FU);
+            cp = ((c & 7U) << 18) | ((static_cast<unsigned char>(s[i + 1]) & 0x3FU) << 12) | ((static_cast<unsigned char>(s[i + 2]) & 0x3FU) << 6) |
+                 (static_cast<unsigned char>(s[i + 3]) & 0x3FU);
             n = 4;
         } else if (c >= 0xE0 && i + 2 < s.size()) {
-            cp = ((c & 15U) << 12) | ((s[i + 1] & 0x3FU) << 6) | (s[i + 2] & 0x3FU);
+            cp = ((c & 15U) << 12) | ((static_cast<unsigned char>(s[i + 1]) & 0x3FU) << 6) | (static_cast<unsigned char>(s[i + 2]) & 0x3FU);
             n = 3;
         } else if (c >= 0xC0 && i + 1 < s.size()) {
-            cp = ((c & 31U) << 6) | (s[i + 1] & 0x3FU);
+            cp = ((c & 31U) << 6) | (static_cast<unsigned char>(s[i + 1]) & 0x3FU);
             n = 2;
         }
         i += n;
@@ -664,7 +664,7 @@ std::optional<std::vector<std::byte>> write_ttf(const Font& font) {
                 postscript.push_back(c);
             }
         }
-        const std::vector<std::pair<std::uint16_t, std::string>> names{
+        const std::vector<std::pair<int, std::string>> names{
             {0, font.copyright},  {1, family}, {2, style}, {3, "bethconv: " + family + " " + style},
             {4, font.full_name.empty() ? family + (style == "Regular" ? "" : " " + style)
                                     : font.full_name},
@@ -680,7 +680,7 @@ std::optional<std::vector<std::byte>> write_ttf(const Font& font) {
             records.u16(3);
             records.u16(1);
             records.u16(0x0409);
-            records.u16(id);
+            records.u16(static_cast<std::uint16_t>(id));
             records.u16(static_cast<std::uint32_t>(u.size() * 2));
             records.u16(static_cast<std::uint32_t>(strings.size()));
             for (const char16_t c : u) {
