@@ -24,7 +24,6 @@ var _papyrus: SkydotPapyrus
 var _host: Node
 var _viewpoint: Camera3D
 var _world_names := {}  # worldspace id -> FULL name
-var _bed_keyword := 0
 
 
 func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node, viewpoint: Camera3D) -> void:
@@ -32,7 +31,6 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node, viewpoint: Ca
 	_papyrus = papyrus
 	_host = host
 	_viewpoint = viewpoint
-	_bed_keyword = world.find_keyword("FurnitureBedRoleKeyword")
 
 
 ## {ref, verb, name, lock_level} for what `pointer` (a Node3D; its -Z axis is
@@ -85,7 +83,7 @@ func describe(cell: int, ref: int) -> Dictionary:
 			elif harvestable and _papyrus.harvested(ref):
 				verb = ""
 		"FURN":
-			var setting := furniture_verb_setting(_is_bed(base), int(base.get("bench_type", 0)))
+			var setting := furniture_verb_setting(Rest.is_bed(_world.find_ref_node(ref)), int(base.get("bench_type", 0)))
 			verb = _world.get_gmst_string(setting, FURNITURE_VERBS[setting])
 		"BOOK":
 			verb = "Read"
@@ -160,9 +158,3 @@ func _world_name(id: int) -> String:
 		for entry: Dictionary in _world.list_worlds():
 			_world_names[entry["id"]] = entry.get("name", "")
 	return _world_names.get(id, "")
-
-
-func _is_bed(base: Dictionary) -> bool:
-	if String(base.get("editor_id", "")).containsn("bed"):
-		return true
-	return _bed_keyword != 0 and _world.get_base_keywords(base["id"]).has(_bed_keyword)

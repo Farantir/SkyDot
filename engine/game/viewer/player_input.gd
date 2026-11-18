@@ -62,7 +62,7 @@ const READY_WEAPON := &"ready_weapon"
 const FAVORITES := &"favorites"
 ## The game's Tween menu (Tab): Skills, Items, Magic, Map.
 const TWEEN_MENU := &"tween_menu"
-## The game's map and wait keys (M, T): no map or wait menu yet, so they do nothing; J opens the journal. The
+## The game's map key (M): no map menu yet, so it does nothing; T opens the Sleep/Wait menu, J the journal. The
 ## viewer's debug keys keep off every key the game's control map binds (fly up/down on the numpad's + and -, the
 ## debug journal F10, the time F8, MSAA F7).
 const MAP := &"map"

@@ -29,6 +29,8 @@ signal talk_requested(ref: int)
 signal container_opened(ref: int)
 ## The player activated a workbench (a FURN with a bench type): its menu.
 signal crafting_opened(ref: int, bench_type: int)
+## The player activated a bed.
+signal bed_activated(ref: int)
 
 ## After the start-game quests have started: quest changes print from then on.
 var quests_ready := false
@@ -63,6 +65,7 @@ func _init(world: SkydotWorld, papyrus: SkydotPapyrus, host: Node3D, viewpoint: 
 	_activation.talk_requested.connect(talk_requested.emit)
 	_activation.container_opened.connect(container_opened.emit)
 	_activation.crafting_opened.connect(crafting_opened.emit)
+	_activation.bed_activated.connect(bed_activated.emit)
 	_papyrus.enable_changed.connect(_on_enable_changed)
 	_papyrus.ref_moved.connect(_on_ref_moved)
 	_papyrus.play_animation.connect(_animation.on_play_animation)

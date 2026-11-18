@@ -73,7 +73,7 @@ func _run(pack_dir: String) -> void:
     expect(scenes == 4, "4 scenes")
     expect(surfaces == 4, "4 surfaces")
 
-    # The interior cell builds with its cube, door and lever in place, their
+    # The interior cell builds with its cube, door, lever and two beds in place, their
     # Skyrim materials textured from the extras.
     var world := pack.open_world()
     expect(world != null, "world.fb opens: " + pack.get_error())
@@ -82,9 +82,9 @@ func _run(pack_dir: String) -> void:
         world.actors = false
         var cell := world.build_cell(world.find_cell("TestpackInterior"))
         var stats: Dictionary = cell.get_meta("skydot_stats")
-        expect(stats["placed"] == 3 and stats["lights"] == 1 and stats["missing"].is_empty(),
+        expect(stats["placed"] == 5 and stats["lights"] == 1 and stats["missing"].is_empty(),
                "the interior builds completely: %s" % stats)
-        expect(stats["materials"] == 3, "each surface gets a Skyrim material: %s" % stats)
+        expect(stats["materials"] == 5, "each surface gets a Skyrim material: %s" % stats)
         var converted := 0
         for mi in _find_meshes(cell):
             var m := mi.get_surface_override_material(0) as ShaderMaterial
@@ -95,8 +95,8 @@ func _run(pack_dir: String) -> void:
                 albedo += 1
             if m.get_shader_parameter("normal_tex") is Texture2D:
                 normals += 1
-        expect(converted == 3, "as a surface override")
-        expect(albedo == 3 and normals == 3, "each with its albedo and normal map: %d, %d" % [albedo, normals])
+        expect(converted == 5, "as a surface override")
+        expect(albedo == 5 and normals == 5, "each with its albedo and normal map: %d, %d" % [albedo, normals])
         _check_pick(world, cell)
         cell.free()
         _check_exterior(world)

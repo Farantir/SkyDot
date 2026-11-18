@@ -144,7 +144,7 @@ func _check_world(pack: SkydotPack) -> void:
     if world == null:
         return
     expect(world.get_cell_count() == 4, "4 cells, got %d" % world.get_cell_count())
-    expect(world.get_base_count() == 19, "19 bases, got %d" % world.get_base_count())
+    expect(world.get_base_count() == 20, "20 bases, got %d" % world.get_base_count())
 
     # Sound: SNDR with both file spellings normalized, its SOPM, and the SOUN.
     var sound_id := world.find_sound_descriptor("TESTPACKCLICKSD")
@@ -175,17 +175,17 @@ func _check_world(pack: SkydotPack) -> void:
         expect(ambient.is_equal_approx(Color8(0x48, 0x38, 0x30)), "ambient color: %s" % ambient)
 
     var refs := world.get_refs(id)
-    expect(refs.size() == 5, "5 references, got %d" % refs.size())
+    expect(refs.size() == 7, "7 references, got %d" % refs.size())
     var cube: Dictionary = world.get_base(refs[0]["base"])
     expect(cube.get("model", "") == "meshes/testpack/cube_se.nif", "the cube's model: %s" % cube)
     var torch: Dictionary = world.get_base(refs[1]["base"])
     expect(torch.get("light") != null, "the torch is a light")
 
-    # Models load from the pack itself: cube, door and lever, and the light.
+    # Models load from the pack itself: cube, door, lever and two beds, and the light.
     var root := world.build_cell(id)
     var stats: Dictionary = root.get_meta("skydot_stats")
     expect(stats["lights"] == 1, "one light built: %s" % stats)
-    expect(stats["placed"] == 3 and stats["missing"].is_empty(), "three models placed: %s" % stats)
+    expect(stats["placed"] == 5 and stats["missing"].is_empty(), "five models placed: %s" % stats)
     root.free()
 
     _check_doors(world, id)

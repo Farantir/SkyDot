@@ -45,6 +45,11 @@ func set_flying(on: bool) -> void:
 	_flying = on
 
 
+## Falling or jumping: off the ground and not flying (the Wait menu's sNoWaitInAir).
+func is_in_air() -> bool:
+	return false
+
+
 ## Put the player at `position` (a camera position) looking along `new_yaw` and `new_pitch`.
 func place_at(new_position: Vector3, new_yaw: float, new_pitch: float) -> void:
 	position = new_position

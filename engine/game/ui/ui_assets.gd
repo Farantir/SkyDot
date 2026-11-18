@@ -148,6 +148,14 @@ static func display_list(swf: String, id: int, frame: int) -> Array:
 	return list
 
 
+## A named child of sprite `id` (its frame-0 display entry: character, matrix, ...), empty when missing.
+static func child(swf: String, id: int, name: String) -> Dictionary:
+	for placed: Dictionary in character(swf, id).get("display", []):
+		if placed.get("name", "") == name:
+			return placed
+	return {}
+
+
 ## The frame a sprite's label stands for, or -1.
 static func label_frame(swf: String, id: int, label: String) -> int:
 	for entry: Dictionary in character(swf, id).get("labels", []):

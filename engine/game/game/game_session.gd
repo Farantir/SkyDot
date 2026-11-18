@@ -85,6 +85,8 @@ signal container_opened(ref: int)
 ## object, 2 grindstone, 3/4 enchanting, 5/6 alchemy, 7 armor workbench). The
 ## shell shows the crafting menu.
 signal crafting_opened(ref: int, bench_type: int)
+## The player activated a bed it may sleep in: the shell shows the Sleep menu (a refused bed says why instead).
+signal sleep_requested(bed: int)
 ## Something moved between inventories, or was equipped or dropped.
 signal items_changed
 
@@ -143,6 +145,8 @@ var favorites := Favorites.new()
 const GOLD := 0xF
 ## The journal's own records (quest log order, active quests, misc stats, play time): JournalLog, saved in JRNL.
 var journal: JournalLog
+## Waiting and sleeping (the Sleep/Wait menu's rules).
+var rest: Rest
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -258,6 +262,7 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 	saves.committed.connect(_reset_game_state)
 	saves.favorites = favorites
 	journal = JournalLog.new(SessionJournalData.new(self))
+	rest = Rest.new(self)
 	saves.journal = journal
 	saves.describe = describe_save
 	quest_stage.connect(_on_journal_stage)
@@ -441,6 +446,7 @@ func _make_game_nodes() -> void:
 	_bridge.talk_requested.connect(dialogue_open)
 	_bridge.container_opened.connect(container_opened.emit)
 	_bridge.crafting_opened.connect(crafting_opened.emit)
+	_bridge.bed_activated.connect(_on_bed_activated)
 	_bridge.activations_finished.connect(activations_finished.emit)
 	_bridge.failed.connect(failed.emit)
 	_bridge.message.connect(message.emit)
@@ -456,6 +462,7 @@ func _make_game_nodes() -> void:
 func _reset_game_state() -> void:
 	for part in _lifecycle:
 		part.reset()
+	rest.reset()
 
 
 func _on_place_left() -> void:
@@ -975,6 +982,20 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 		ai.update(delta)
 
 
+## Falling or jumping (the Wait menu refuses then).
+func player_in_air() -> bool:
+	return _player != null and _player.is_in_air()
+
+
+## A bed was activated: the Sleep menu, or the game's reason why not (an owned bed, enemies, in the air).
+func _on_bed_activated(bed: int) -> void:
+	var refusal := rest.refusal(true, bed)
+	if refusal.is_empty():
+		sleep_requested.emit(bed)
+	else:
+		message.emit(refusal, false)
+
+
 ## The fights under way only, for runs that keep the world still (shots). The player's feet are
 ## kept as `step` keeps them: fighters and NPC spells aim at them.
 func update_fights(delta: float, feet: Vector3) -> void:
@@ -1312,6 +1333,8 @@ func _on_combat_state(ref: int, target: int, state: int) -> void:
 	elif state == 0:
 		combat.npc_draw(ref, false)
 	papyrus.combat_state_changed(ref, target, state)
+	if rest != null:
+		rest.on_combat_state(ref, target, state)
 
 
 ## PLACEHOLDER: the shove of a stagger blow on the player, force per magnitude (see _push_player).

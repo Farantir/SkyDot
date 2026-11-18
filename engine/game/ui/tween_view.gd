@@ -168,8 +168,8 @@ func date_text() -> String:
 
 
 ## `days` passed since the game's start (day 0: Sundas, 17th of Last Seed, 4E 201) and the hour as the game words
-## them; `gmst` names a month or day.
-static func format_date(days: float, hour: float, gmst: Callable) -> String:
+## them; `gmst` names a month or day. The Sleep/Wait menu's time has no year (`with_year` false).
+static func format_date(days: float, hour: float, gmst: Callable, with_year := true) -> String:
 	var day := int(floor(days))
 	var weekday: String = gmst.call(DAYS[day % 7])
 	var month := 7
@@ -184,7 +184,8 @@ static func format_date(days: float, hour: float, gmst: Callable) -> String:
 	var minutes := int(floor(fposmod(hour, 24.0) * 60.0))
 	var h := minutes / 60
 	var clock := "%d:%02d %s" % [12 if h % 12 == 0 else h % 12, minutes % 60, "AM" if h < 12 else "PM"]
-	return "%s, %s, %d%s of %s, 4E %d" % [weekday, clock, day_of_month, _ordinal(day_of_month), gmst.call(MONTHS[month]), year]
+	var date := "%s, %s, %d%s of %s" % [weekday, clock, day_of_month, _ordinal(day_of_month), gmst.call(MONTHS[month])]
+	return date + (", 4E %d" % year if with_year else "")
 
 
 static func _ordinal(n: int) -> String:

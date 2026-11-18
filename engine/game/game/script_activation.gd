@@ -19,6 +19,8 @@ signal message(text: String, box: bool)
 signal talk_requested(ref: int)
 signal container_opened(ref: int)
 signal crafting_opened(ref: int, bench_type: int)
+## The player activated a bed (furniture with a sleep marker, Rest.is_bed): the Sleep menu, if the player may sleep there.
+signal bed_activated(ref: int)
 
 var _activations: Array[int] = []  # --activate: refs still to activate
 var _wait := 0  # frames the first of them has been missing
@@ -83,6 +85,11 @@ func apply_outcome(outcome: Dictionary, picked := false) -> void:
 			_transition.go(outcome["door"])
 			return
 		"furniture":
+			if Rest.is_bed(node):
+				if outcome.get("deferred", false):
+					_papyrus.complete_activation(ref)  # no enter animation: the use counts now
+				bed_activated.emit(ref)
+				return
 			if node != null and _animation.play_event(node, ref, outcome["event"]):
 				return
 			# The graph will not raise ObjectActivated: the use counts now.

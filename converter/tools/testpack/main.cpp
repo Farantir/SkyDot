@@ -775,6 +775,7 @@ std::vector<std::byte> build_plugin() {
         furn(0x0000'0510, "TestpackForge", 1, 0x0000'0500);
         furn(0x0000'0511, "TestpackGrindstone", 2, 0x0000'0501);
         furn(0x0000'0512, "TestpackAlchemyLab", 5, 0);
+        furn(0x0000'0513, "TestpackBed", 0, 0); // a bed (its cube has no sleep marker)
         bethconv::test::write_group(file, tag_value("FURN"), 0, furns.span());
 
         ByteWriter mgefs;
@@ -1406,6 +1407,20 @@ std::vector<std::byte> build_plugin() {
                         xlkr.u32(0);
                         xlkr.u32(0x0000'0301);
                         bethconv::test::write_field(out, "XLKR", xlkr);
+                        return out.bytes();
+                    }()},
+                   // Two beds: one nobody owns, one the actor's (XOWN), which the player may not sleep in.
+                   {.form = 0x0000'0308, .base = 0x0000'0513, .x = 200, .y = -150, .z = 0},
+                   {.form = 0x0000'0309,
+                    .base = 0x0000'0513,
+                    .x = 300,
+                    .y = -150,
+                    .z = 0,
+                    .extra = [] {
+                        ByteWriter xown;
+                        xown.u32(0x0000'0164);
+                        ByteWriter out;
+                        bethconv::test::write_field(out, "XOWN", xown);
                         return out.bytes();
                     }()},
                },

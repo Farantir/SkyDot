@@ -28,6 +28,8 @@ signal favorites_requested
 signal tween_requested
 ## The Journal key (J): the journal on its Quests tab; Pause (Esc): on the tab it was closed on.
 signal journal_requested(pause: bool)
+## The Wait key (T): the Sleep/Wait menu for a wait.
+signal wait_requested
 ## The player died; the controls are blocked. The shell shows the death: its camera fall or fade.
 signal died(killer: int)
 ## Each frame of the quit countdown, after it counted down (0: the last frame of the run).
@@ -213,8 +215,10 @@ func _on_command(action: StringName, shift: bool) -> void:
 			journal_requested.emit(false)
 		PlayerInput.PAUSE:
 			journal_requested.emit(true)
-		PlayerInput.MAP, PlayerInput.WAIT:
-			pass  # no map or wait menu yet
+		PlayerInput.WAIT:
+			wait_requested.emit()
+		PlayerInput.MAP:
+			pass  # no map menu yet
 		PlayerInput.FAVORITES:
 			favorites_requested.emit()
 		&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8":

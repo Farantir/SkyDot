@@ -18,6 +18,7 @@ var training_view: TrainingView
 var skills_view: SkillsView
 var tween_view: TweenView
 var journal_view: JournalView
+var sleep_wait_view: SleepWaitView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -36,7 +37,8 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	tween_view = TweenView.new(session)
 	tween_view.chosen.connect(_on_tween_chosen)
 	journal_view = JournalView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view, journal_view]:
+	sleep_wait_view = SleepWaitView.new(session)
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view, journal_view, sleep_wait_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: _on_engaged())
@@ -44,17 +46,18 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	session.container_opened.connect(open_container)
 	session.crafting_opened.connect(open_crafting)
 	session.training_opened.connect(training_view.open)
+	session.sleep_requested.connect(open_sleep)
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open() or journal_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open() or journal_view.is_open() or sleep_wait_view.is_open()
 
 
 ## The open menu for a shot's "menu" block: {open, tab, selected, mode}; empty when none is open.
 func describe() -> Dictionary:
 	var names := {"inventory": inventory_view, "container": container_view, "crafting": crafting_view,
 		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view,
-		"tween": tween_view, "journal": journal_view}
+		"tween": tween_view, "journal": journal_view, "sleep_wait": sleep_wait_view}
 	for name: String in names:
 		var view: Control = names[name]
 		if not view.is_open():
@@ -71,6 +74,9 @@ func describe() -> Dictionary:
 			out["selected"] = journal_view.title_index if journal_view.tab == JournalView.QUESTS else journal_view.category
 			if journal_view.tab == JournalView.SYSTEM:
 				out["mode"] = JournalSystem.State.keys()[journal_view.system.state]
+		if view == sleep_wait_view:
+			out["mode"] = "sleep" if sleep_wait_view.sleeping else "wait"
+			out["selected"] = sleep_wait_view.hours()
 		var mode: Variant = view.get(&"_mode")
 		if mode != null and view == crafting_view:
 			out["mode"] = CraftingView.Mode.keys()[mode]
@@ -118,6 +124,21 @@ func open_journal(pause: bool) -> bool:
 		return true
 	journal_view.open(-1 if pause else JournalView.QUESTS)
 	return true
+
+
+## The Wait key (T) outside a menu: the Sleep/Wait menu to wait (not during a dialogue). The game refuses with a
+## message when the player may not wait (Rest.refusal).
+func open_wait() -> void:
+	if is_open() or _session.is_dialogue_open() or not SleepWaitView.available():
+		return
+	sleep_wait_view.open(false)
+
+
+## A bed the player may sleep in was activated (GameSession.sleep_requested): the menu to sleep.
+func open_sleep(bed: int) -> void:
+	if is_open() or not SleepWaitView.available():
+		return
+	sleep_wait_view.open(true, bed)
 
 
 ## A direction of the Tween menu was opened (the Tween menu has closed).

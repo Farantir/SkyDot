@@ -119,6 +119,7 @@ skydot_smoke_test(smoke_weather weather.gd)
 skydot_smoke_test(smoke_session session.gd)
 skydot_smoke_test(smoke_game_save game_save.gd)
 skydot_smoke_test(smoke_journal journal.gd)
+skydot_smoke_test(smoke_sleep_wait sleep_wait.gd)
 skydot_smoke_test(smoke_activation_prompt activation_prompt.gd)
 skydot_smoke_test(smoke_shaders shaders.gd "SCRIPT ERROR")
 skydot_smoke_test(smoke_viewer_settings viewer_settings.gd)
@@ -273,6 +274,16 @@ if(SKYDOT_SSE_PACK)
     add_test(NAME sse_actor_values
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/actor_values.gd")
     set_tests_properties(sse_actor_values PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
+    add_test(NAME sse_sleep_wait
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/sleep_wait_sse.gd")
+    set_tests_properties(sse_sleep_wait PROPERTIES
         LABELS sse
         FIXTURES_REQUIRED godot_scan
         SKIP_RETURN_CODE 77

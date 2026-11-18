@@ -56,6 +56,11 @@ func set_flying(on: bool) -> void:
 	player.fly = on
 
 
+## Off the ground and not flying.
+func is_in_air() -> bool:
+	return not player.fly and not player.hold and not player.is_on_floor()
+
+
 ## The shove goes to the SkydotPlayer.
 func impulse(velocity: Vector3) -> bool:
 	player.impulse(velocity)
