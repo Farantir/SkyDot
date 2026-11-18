@@ -379,7 +379,7 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                     out.activate_parents.push_back(parent);
                 }
             } else if (field.type == FourCC{"XMRK"}) {
-                out.map_marker.emplace();
+                out.map_marker = Reference::MapMarker{};
             } else if (out.map_marker && field.type == FourCC{"FNAM"}) {
                 take(failure, body.get<std::uint8_t>(), out.map_marker->flags);
             } else if (out.map_marker && field.type == FourCC{"FULL"}) {
