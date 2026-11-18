@@ -112,6 +112,29 @@ void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io:
     out.min_y = w->min_y;
     out.max_x = w->max_x;
     out.max_y = w->max_y;
+    if (w->map_data) {
+        const auto& m = *w->map_data;
+        out.has_map_data = true;
+        out.map_nw_x = m.nw_x;
+        out.map_nw_y = m.nw_y;
+        out.map_se_x = m.se_x;
+        out.map_se_y = m.se_y;
+        out.map_min_height = m.min_height;
+        out.map_max_height = m.max_height;
+        out.map_initial_pitch = m.initial_pitch;
+        // The exe's built-in cloud bank (a string next to the MapMenu code) when
+        // the record names none, as on Tamriel.
+        out.cloud_model = w->cloud_model.empty()
+                              ? std::string{"meshes/sky/skyrimworldmapcloudbank.nif"}
+                              : model_vpath(w->cloud_model);
+    }
+    if (w->map_offset) {
+        out.has_map_offset = true;
+        out.map_offset_scale = w->map_offset->scale;
+        out.map_offset_x = w->map_offset->x;
+        out.map_offset_y = w->map_offset->y;
+        out.map_offset_z = w->map_offset->z;
+    }
     take_large_lists(merged, *w, failed);
     if (failed) {
         ++shared_.stats().unresolved;
@@ -549,6 +572,20 @@ void EnvironmentCollector::resolve_large_refs(const wfb::WorldT& world, wfb::Wor
 void EnvironmentCollector::finish(wfb::WorldT& world) {
     for (auto& [id, out] : worlds_) {
         resolve_large_refs(world, out, large_entries_[id]);
+        // The worldspace whose map applies: its own, else up the parent chain
+        // while each step uses its parent's map data. The step count bounds a cycle.
+        const wfb::WorldspaceT* at = &out;
+        for (int steps = 0; at != nullptr && steps < 16; ++steps) {
+            if (at->has_map_data) {
+                out.map_world = at->id;
+                break;
+            }
+            if (!has_flag(at->parent_flags, wfb::ParentFlags::map_data)) {
+                break;
+            }
+            const auto parent = worlds_.find(at->parent);
+            at = parent == worlds_.end() ? nullptr : &parent->second;
+        }
     }
     auto& stats = shared_.stats();
     stats.worlds += worlds_.size();

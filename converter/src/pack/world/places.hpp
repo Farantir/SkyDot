@@ -61,6 +61,7 @@ public:
     void finish(wfb::WorldT& world);
 
 private:
+    void resolve_arrivals();
     void on_cell(const record::MergedRecord& merged, io::SpanReader& data,
                  const record::FormContext& form_ctx);
     void on_reference(const record::MergedRecord& merged, const record::RecordContext& ctx,

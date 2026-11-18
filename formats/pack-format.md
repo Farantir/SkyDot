@@ -90,7 +90,7 @@ newline):
 ## `world.fb`
 
 A plain FlatBuffer (identifier `BWD1`), schema `formats/schema/world.fbs`, with its
-own `format_version` (45; 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
+own `format_version` (46; 46 added the world map and fast travel data (below: Worldspace.map_*, MapMarker.radius/arrival_*); 45 added ownership: REFR and CELL XOWN with XRNK (Cell.owners, Cell.owner, Cell.owner_rank); 44 added the race's name (Race.name, FULL); 43 added map markers (Cell.map_markers, REFR XMRK),
 default objects (DOBJ) and image space modifiers (IMAD, each curve's first key); 3 added scripts, locks, linked refs, activate parents,
 primitives and base flags, 4 quests, globals, placed actors and plugins, 5
 navmeshes, 6 cloud layers, weather data, precipitation and weather
@@ -385,6 +385,40 @@ test bits by these names, through `has_flag` in
   (FSTP) and `footstep_sets` (FSTS). `Cell.acoustic_space` (XCAS), `Region.sounds` with
   `sound_priority` and `sound_override` (RDAT type 7; `regions` now holds regions with
   weathers or sounds), `Weather.sounds` (SNAM) and `ArmorAddon.footstep_set` (SNDD).
+- World map and fast travel (format 46; research in `skycompare-data/map-research.md`).
+  `Worldspace`: `has_map_data` with `map_nw_x/y`, `map_se_x/y` (int16 cells), `map_min_height`,
+  `map_max_height`, `map_initial_pitch` (degrees) from WRLD MNAM (28 bytes: two int32 leftovers,
+  4 x int16, 3 floats; only Tamriel, Solstheim and test worlds have it); `map_world` = the worldspace
+  whose map applies (itself, else the nearest WNAM ancestor reached through PNAM bit 2 "use map
+  data" (`ParentFlags.map_data`, value 4), else 0); `cloud_model` from MODL as a vpath, set with
+  `has_map_data`, the exe default `meshes/sky/skyrimworldmapcloudbank.nif` when MODL is empty
+  (Tamriel); `has_map_offset` with `map_offset_scale/x/y/z` from ONAM (16 bytes). WRLD DATA bit 1
+  (0x02) "can't fast travel" is in `Worldspace.flags` as before; CELL DATA bit 2
+  (`CellFlags.cant_travel_from_here`) is in `Cell.flags` as before. `MapMarker.radius`: REFR XRDS (0 = none;
+  the engine then uses iMapMarkerRevealDistance 1000); `arrival_ref`: the keyword-less XLKR target
+  (an XMarkerHeading; 0 if none) with `arrival_position`/`arrival_rotation` from that reference's
+  placement (null if it is not in the pack). DOBJ WMWE (WorldMapWeather) needs nothing new: `default_objects`
+  keeps every slot. The map's GMSTs (iMapMarkerRevealDistance, fFastTravelSpeedMult, the sFastTravel/sNoFastTravel
+  texts) come with the GMST table, checked with `bethconv form --gmst`; fFastTravelSpeedMult is not a GMST in the
+  ESMs (a game setting in the exe: the measured trips set 1 and 2).
+  Engine constants without an ESM source (`[MapMenu]` exe defaults, read with SkyrimRemote `@setting` in Skyrim SE
+  1.7.104, research section 2; values marked guess there are guesses): fMapWorldZoomSpeed 2,
+  fMapWorldMinPanSpeed/MaxPanSpeed 60000/75000, fMapWorldMinPitch/MaxPitch 15/75, fMapWorldYawRange 80,
+  fMapWorldHeightAdjustmentForce 4, fMapWorldTransitionHeight 10000, fMapLookMouseSpeed/GamepadSpeed 3/1.5,
+  fMapZoomMouseSpeed 2, fMapMoveKeyboardSpeed 0.02, fMapTransitionSpeed 0.75, fMapMenuNearClipPlane 128,
+  fMaxMarkerSelectionDist 0.003, fGamepadCursorSensitivity 2, fMapWorldCursorMoveArea 0.9,
+  fMapLoopFadeTimeSeconds 1, iRightStickRepeatRate 250, uLockedTerrainLOD 32, uLockedObjectMapLOD 16,
+  sMapWorldDefaultWorldSpace Tamriel, bWorldMapNoSkyDepthBlur false, sWorldMapOverlayNormalTexture
+  `textures/terrain/worldmapoverlay_n.dds` (strength fMapMenuOverlayNormalStrength 1.1, scale
+  fMapMenuOverlayScale 3.5e-5), sWorldMapOverlayNormalSnowTexture `textures/terrain/worldmapoverlaysnow_n.dds`
+  (0.4, 4.5e-5), fWorldMapFocalDepth 45000, fWorldMapMaximumDepthBlur 0.45, fWorldMapDepthBlurScale 0.3,
+  fWorldMapNearDepthBlurScale 4, fMapLocalHeight 40000, fMapLocalMinFrustumWidth 4000,
+  fMapLocalMouseZoomSpeed/GamepadZoomSpeed 0.1/0.03, fMapLocalMousePanSpeed/GamepadPanSpeed 20/100,
+  fMapLocalCursorPanSpeed 2000, fMapLocalMarkerSelectionDist 0.03, fFastTravelFadeSecs 0.5,
+  fMapMarkerUpdateTime 0.05; fast-travel speed 8 units per game second (research section 6, measured).
+  The cloud bank NIFs (`meshes/sky/skyrimworldmapcloudbank.nif`, Solstheim's
+  `meshes/dlc02/sky/dlc2worldmapcloudbank_low.nif`) and the two overlay textures are in the asset
+  pack by the plain sweep (checked in the user's SE pack).
 - Placed actors' enable parents (format 41): `actor_enable_parents` (sorted by ref: the ACHR
   `ref` and its XESP `parent`, global); the XESP "set enable state to opposite" bit is
   `RefFlags.enable_opposite` in the actor's `flags`. A separate list so `ActorRef` keeps its

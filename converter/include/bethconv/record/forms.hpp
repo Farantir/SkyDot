@@ -202,6 +202,32 @@ struct Worldspace {
     /// floats, despite the wiki).
     std::optional<std::pair<std::int16_t, std::int16_t>> centre_cell;
 
+    /// MNAM (world map, 28 bytes): two int32 usable-dimension leftovers (0 in
+    /// Skyrim), the NW and SE cell as int16 pairs, then camera min/max height
+    /// and initial pitch (degrees). Present on Tamriel, Solstheim and the test
+    /// worlds (xEdit, wbWRLD MNAM).
+    struct MapData {
+        std::int16_t nw_x{};
+        std::int16_t nw_y{};
+        std::int16_t se_x{};
+        std::int16_t se_y{};
+        float min_height{};
+        float max_height{};
+        float initial_pitch{};
+    };
+    std::optional<MapData> map_data;
+    std::string cloud_model; ///< MODL, the world map's cloud bank; empty on Tamriel.
+
+    /// ONAM, 16 bytes: scale and the cell offsets that place this world on its
+    /// parent's map.
+    struct MapOffset {
+        float scale{1.0F};
+        float x{};
+        float y{};
+        float z{};
+    };
+    std::optional<MapOffset> map_offset;
+
     /// NAM0 / NAM9, 8 bytes each on all 37: min and max corner in game units.
     float min_x{};
     float min_y{};

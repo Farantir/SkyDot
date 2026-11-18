@@ -377,6 +377,17 @@ table MapMarker {
     type: ubyte;
     /// FULL, resolved in the pack's language.
     name: string;
+    /// XRDS (format 46): the discovery radius, 0 if none (the engine then uses
+    /// iMapMarkerRevealDistance, 1000).
+    radius: float;
+    /// XLKR (format 46): the linked reference without keyword, the arrival point
+    /// of fast travel (an XMarkerHeading); 0 if none. `arrival_position` and
+    /// `arrival_rotation` (radians, as `Ref.rotation`) are that reference's
+    /// placement, null when it is not in the pack. Without one the marker's own
+    /// placement is the arrival.
+    arrival_ref: uint32;
+    arrival_position: Vec3f;
+    arrival_rotation: Vec3f;
 }
 
 /// DOBJ DNAM (format 43): one default object, the engine's named slot (a
@@ -1190,7 +1201,11 @@ table ImageSpace {
 
 /// `Worldspace.parent_flags`: PNAM, which properties come from the parent.
 enum ParentFlags : uint16 (bit_flags) {
-    land_data
+    land_data,
+    lod_data,
+    /// "Use Map Data" (value 4): the worldspace has no map of its own; the
+    /// parent's applies (see `Worldspace.map_world`).
+    map_data
 }
 
 /// A reference drawn as a large reference (format 11): one of the worldspace's
@@ -1258,6 +1273,34 @@ table Worldspace {
     large_cell_refs: [uint32];
     /// FULL (format 25): the name a load door into the worldspace shows; empty if none.
     name: string;
+    /// WRLD MNAM (format 46): the world map's data, present on the worldspaces
+    /// that have it themselves (Tamriel, Solstheim, the test worlds). The usable
+    /// area is the cells NW (top left, x west, y north) to SE inclusive, times 4096
+    /// units; the camera's height runs from `map_min_height` to `map_max_height`;
+    /// `map_initial_pitch` in degrees.
+    has_map_data: bool;
+    map_nw_x: short;
+    map_nw_y: short;
+    map_se_x: short;
+    map_se_y: short;
+    map_min_height: float;
+    map_max_height: float;
+    map_initial_pitch: float;
+    /// The worldspace whose map data applies here (format 46): itself when
+    /// `has_map_data`; otherwise the nearest ancestor (WNAM chain) with it while
+    /// each step has PNAM "use map data"; 0 if the world has no map.
+    map_world: uint32;
+    /// MODL (format 46): the world map's cloud bank model, as a vpath
+    /// (meshes/...), for a worldspace with `has_map_data`: its MODL, or when empty the
+    /// game's built-in default `meshes/sky/skyrimworldmapcloudbank.nif`.
+    cloud_model: string;
+    /// ONAM (format 46): where the world sits on its parent's map (scale and cell
+    /// offsets); absent when `has_map_offset` is false (then scale 1, offsets 0).
+    has_map_offset: bool;
+    map_offset_scale: float = 1.0;
+    map_offset_x: float;
+    map_offset_y: float;
+    map_offset_z: float;
 }
 
 /// `QuestLogEntry.flags`.

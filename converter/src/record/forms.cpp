@@ -277,6 +277,36 @@ io::ParseResult<Worldspace> parse_worldspace(io::SpanReader& data, const FormCon
                 if (!failure) {
                     out.large_refs.push_back(std::move(cell));
                 }
+            } else if (field.type == FourCC{"MNAM"}) {
+                Worldspace::MapData map;
+                std::int32_t usable_x{};
+                std::int32_t usable_y{};
+                take(failure, body.get<std::int32_t>(), usable_x);
+                take(failure, body.get<std::int32_t>(), usable_y);
+                take(failure, body.get<std::int16_t>(), map.nw_x);
+                take(failure, body.get<std::int16_t>(), map.nw_y);
+                take(failure, body.get<std::int16_t>(), map.se_x);
+                take(failure, body.get<std::int16_t>(), map.se_y);
+                // The camera heights and pitch are TES5-only: absent in a short MNAM.
+                if (!failure && body.remaining() >= 3 * sizeof(float)) {
+                    take(failure, body.get<float>(), map.min_height);
+                    take(failure, body.get<float>(), map.max_height);
+                    take(failure, body.get<float>(), map.initial_pitch);
+                }
+                if (!failure) {
+                    out.map_data = map;
+                }
+            } else if (field.type == FourCC{"MODL"}) {
+                take(failure, read_zstring(body), out.cloud_model);
+            } else if (field.type == FourCC{"ONAM"}) {
+                Worldspace::MapOffset offset;
+                take(failure, body.get<float>(), offset.scale);
+                take(failure, body.get<float>(), offset.x);
+                take(failure, body.get<float>(), offset.y);
+                take(failure, body.get<float>(), offset.z);
+                if (!failure) {
+                    out.map_offset = offset;
+                }
             } else if (field.type == FourCC{"NAM0"}) {
                 take(failure, body.get<float>(), out.min_x);
                 take(failure, body.get<float>(), out.min_y);

@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <span>
+#include <unordered_map>
 #include <utility>
 
 namespace bethconv::pack::detail {
@@ -277,6 +278,14 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         marker->flags = ref->map_marker->flags;
         marker->type = ref->map_marker->type;
         marker->name = ref->map_marker->name.text;
+        marker->radius = ref->has_radius ? ref->radius : 0.0F;
+        // XLKR without a keyword: the arrival point (an XMarkerHeading).
+        for (const auto& link : ref->linked_references) {
+            if (link.keyword.is_null()) {
+                marker->arrival_ref = shared_.global(merged, link.target, failed);
+                break;
+            }
+        }
         cell.map_markers.push_back(std::move(marker));
     }
     if (ref->teleport) {
@@ -466,8 +475,32 @@ void PlaceCollector::on_lighting_template(const record::MergedRecord& merged,
     lighting_templates_[merged.form.value] = std::move(out);
 }
 
+/// A map marker's arrival reference may stand in any cell: give each marker its
+/// placement once every cell's references are collected.
+void PlaceCollector::resolve_arrivals() {
+    std::unordered_map<std::uint32_t, const wfb::Ref*> placed;
+    for (const auto& [id, entry] : cells_) {
+        for (const auto& r : entry.cell.refs) {
+            placed.emplace(r.id(), &r);
+        }
+    }
+    for (auto& [id, entry] : cells_) {
+        for (auto& marker : entry.cell.map_markers) {
+            if (marker->arrival_ref == 0) {
+                continue;
+            }
+            const auto it = placed.find(marker->arrival_ref);
+            if (it != placed.end()) {
+                marker->arrival_position = std::make_unique<wfb::Vec3f>(it->second->position());
+                marker->arrival_rotation = std::make_unique<wfb::Vec3f>(it->second->rotation());
+            }
+        }
+    }
+}
+
 void PlaceCollector::finish(wfb::WorldT& world) {
     auto& stats = shared_.stats();
+    resolve_arrivals();
     world.cells.reserve(cells_.size());
     for (auto& [id, entry] : cells_) { // std::map: sorted by id
         auto& cell = entry.cell;

@@ -908,6 +908,79 @@ TEST_CASE("WRLD WCTR is two int16 cell coordinates, not two floats",
     CHECK(tally.leftover().empty());
 }
 
+TEST_CASE("WRLD MNAM, MODL and ONAM carry the world map's data", "[record][forms][wrld]") {
+    ByteWriter payload;
+    ByteWriter mnam;
+    mnam.u32(0);
+    mnam.u32(0);
+    mnam.u16(static_cast<std::uint16_t>(-30));
+    mnam.u16(15);
+    mnam.u16(40);
+    mnam.u16(static_cast<std::uint16_t>(-40));
+    mnam.f32(50000.0F);
+    mnam.f32(80000.0F);
+    mnam.f32(50.0F);
+    write_field(payload, "MNAM", mnam);
+    ByteWriter modl;
+    modl.raw(std::string_view("DLC02\\Sky\\Cloud.nif"));
+    modl.u8(0);
+    write_field(payload, "MODL", modl);
+    ByteWriter onam;
+    onam.f32(2.5F);
+    onam.f32(-8192.0F);
+    onam.f32(73728.0F);
+    onam.f32(-20480.0F);
+    write_field(payload, "ONAM", onam);
+
+    Tally tally;
+    auto reader = reader_over(payload);
+    const auto wrld = record::parse_worldspace(reader, {.localized = false, .tally = &tally});
+    REQUIRE(wrld.has_value());
+    REQUIRE(wrld->map_data.has_value());
+    CHECK(wrld->map_data->nw_x == -30);
+    CHECK(wrld->map_data->nw_y == 15);
+    CHECK(wrld->map_data->se_x == 40);
+    CHECK(wrld->map_data->se_y == -40);
+    CHECK(wrld->map_data->min_height == 50000.0F);
+    CHECK(wrld->map_data->max_height == 80000.0F);
+    CHECK(wrld->map_data->initial_pitch == 50.0F);
+    CHECK(wrld->cloud_model == "DLC02\\Sky\\Cloud.nif");
+    REQUIRE(wrld->map_offset.has_value());
+    CHECK(wrld->map_offset->scale == 2.5F);
+    CHECK(wrld->map_offset->y == 73728.0F);
+    CHECK(tally.leftover().empty());
+}
+
+TEST_CASE("a REFR map marker keeps its XRDS radius and its keyword-less XLKR arrival",
+          "[record][forms][refr]") {
+    ByteWriter payload;
+    write_field(payload, "XMRK", ByteWriter{});
+    ByteWriter xrds;
+    xrds.f32(4500.0F);
+    write_field(payload, "XRDS", xrds);
+    ByteWriter keyed;
+    keyed.u32(0x111);
+    keyed.u32(0x222);
+    write_field(payload, "XLKR", keyed);
+    ByteWriter plain;
+    plain.u32(0);
+    plain.u32(0xC07EF);
+    write_field(payload, "XLKR", plain);
+
+    Tally tally;
+    auto reader = reader_over(payload);
+    const auto refr = record::parse_reference(refr_header(), reader,
+                                              {.localized = false, .tally = &tally});
+    REQUIRE(refr.has_value());
+    REQUIRE(refr->map_marker.has_value());
+    CHECK(refr->has_radius);
+    CHECK(refr->radius == 4500.0F);
+    REQUIRE(refr->linked_references.size() == 2);
+    CHECK(refr->linked_references[1].keyword.is_null());
+    CHECK(refr->linked_references[1].target.value == 0xC07EF);
+    CHECK(tally.leftover().empty());
+}
+
 namespace {
 
 ByteWriter large_ref_field(std::int16_t y, std::int16_t x, std::uint32_t declared,

@@ -203,11 +203,28 @@ int cmd_cell_lod(const std::filesystem::path& pack, const std::string& world_nam
     return 0;
 }
 
+void print_map_marker(const bethconv::pack::wfb::MapMarkerT& marker) {
+    std::printf("  map marker 0x%08X \"%s\" type %u flags %u radius %.0f arrival 0x%08X",
+                marker.ref, marker.name.c_str(), static_cast<unsigned>(marker.type),
+                static_cast<unsigned>(marker.flags), static_cast<double>(marker.radius),
+                marker.arrival_ref);
+    if (marker.arrival_position && marker.arrival_rotation) {
+        std::printf(" at (%.2f %.2f %.2f) rot (%.4f %.4f %.4f)",
+                    static_cast<double>(marker.arrival_position->x()),
+                    static_cast<double>(marker.arrival_position->y()),
+                    static_cast<double>(marker.arrival_position->z()),
+                    static_cast<double>(marker.arrival_rotation->x()),
+                    static_cast<double>(marker.arrival_rotation->y()),
+                    static_cast<double>(marker.arrival_rotation->z()));
+    }
+    std::printf("\n");
+}
+
 /// Inspect cells in a pack's world.fb. With `--models`, print only the unique
 /// model paths the cell's references use (input for `view --from`).
 int cmd_cell(const std::filesystem::path& pack, const std::string& which, const std::string& filter,
              bool list, bool models, bool worlds, const std::string& world_name,
-             const std::string& grid, int radius, bool lod, bool json) {
+             const std::string& grid, int radius, bool lod, bool json, bool markers) {
     using nlohmann::ordered_json;
     auto world = bethconv::pack::WorldFile::open(pack / "world.fb");
     if (!world) {
@@ -250,6 +267,22 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                                          {"cells", std::move(cells)}});
         return 0;
     }
+    if (markers) {
+        const std::string wanted = skydot::formats::ascii_lower(filter);
+        for (std::size_t i = 0; i < world->cell_count(); ++i) {
+            const auto cell = world->cell_at(i);
+            if (!cell) {
+                continue;
+            }
+            for (const auto& marker : cell->map_markers) {
+                if (skydot::formats::ascii_lower(marker->name).find(wanted) !=
+                    std::string::npos) {
+                    print_map_marker(*marker);
+                }
+            }
+        }
+        return 0;
+    }
     if (worlds) {
         for (const auto& w : world->worldspaces()) {
             std::printf("0x%08X  %-28s parent 0x%08X%s  bounds (%.0f %.0f)-(%.0f %.0f)\n", w.id,
@@ -257,6 +290,27 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
                         bethconv::pack::uses_parent_land(w) ? " (its land)" : "",
                         static_cast<double>(w.min_x), static_cast<double>(w.min_y),
                         static_cast<double>(w.max_x), static_cast<double>(w.max_y));
+            if (w.map_world != 0 || w.has_map_data) {
+                std::printf("    map: world 0x%08X", w.map_world);
+                if (w.has_map_data) {
+                    std::printf(" NW (%d %d) SE (%d %d) height %.0f..%.0f pitch %.0f cloud %s",
+                                w.map_nw_x, w.map_nw_y, w.map_se_x, w.map_se_y,
+                                static_cast<double>(w.map_min_height),
+                                static_cast<double>(w.map_max_height),
+                                static_cast<double>(w.map_initial_pitch), w.cloud_model.c_str());
+                }
+                if (w.has_map_offset) {
+                    std::printf(" offset scale %g (%g %g %g)",
+                                static_cast<double>(w.map_offset_scale),
+                                static_cast<double>(w.map_offset_x),
+                                static_cast<double>(w.map_offset_y),
+                                static_cast<double>(w.map_offset_z));
+                }
+                std::printf("\n");
+            }
+            if ((w.flags & 0x02u) != 0) {
+                std::printf("    can't fast travel (DATA bit 1)\n");
+            }
         }
         return 0;
     }
@@ -363,6 +417,9 @@ int cmd_cell(const std::filesystem::path& pack, const std::string& which, const 
         std::printf("  link 0x%08X -> 0x%08X keyword 0x%08X\n", link.ref(), link.target(),
                     link.keyword());
     }
+    for (const auto& marker : cell->map_markers) {
+        print_map_marker(*marker);
+    }
     for (const auto& parent : cell->activate_parents) {
         std::printf("  activate parent 0x%08X of 0x%08X delay %.2f\n", parent.parent(), parent.ref(),
                     static_cast<double>(parent.delay()));
@@ -396,6 +453,7 @@ struct CellArgs {
     int radius = 0;
     bool lod = false;
     bool json = false;
+    bool markers = false;
 };
 
 } // namespace
@@ -413,6 +471,8 @@ void register_cell(CLI::App& app) {
     cell->add_flag("--models", args->models,
                    "Print unique model paths only (with --world, also land textures)");
     cell->add_flag("--worlds", args->worlds, "List worldspaces");
+    cell->add_flag("--markers", args->markers,
+                   "List the map markers whose name contains --filter (lowercase text)");
     cell->add_option("--world", args->world, "Worldspace editor id: select an exterior region");
     cell->add_option("--grid", args->grid, "With --world: centre cell as X,Y (default 0,0)");
     cell->add_option("--radius", args->radius, "With --world: cells around the centre (default 0)");
@@ -422,7 +482,7 @@ void register_cell(CLI::App& app) {
     cell->callback([args] {
         set_exit_status(cmd_cell(args->pack, args->which, args->filter, args->list, args->models,
                                  args->worlds, args->world, args->grid, args->radius, args->lod,
-                                 args->json));
+                                 args->json, args->markers));
     });
 }
 
