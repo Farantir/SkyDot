@@ -104,7 +104,11 @@ void SkydotClock::sync(bool benchmarking) {
 
 String SkydotClock::shift(double hours) {
     if (auto* weather = get_weather()) {
-        weather->set_hour(session::shifted_hour(weather->get_hour(), hours));
+        // Past midnight the day moves on too (a wait or a sleep through the night).
+        const double moved = std::max(0.0, static_cast<double>(weather->get_day()) * 24.0 + weather->get_hour() + hours);
+        const double day = std::floor(moved / 24.0);
+        weather->set_day(static_cast<std::int64_t>(day));
+        weather->set_hour(moved - day * 24.0);
         return String::utf8(session::hour_text(weather->get_hour()).c_str());
     }
     if (ai_.is_valid()) {

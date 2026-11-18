@@ -27,13 +27,13 @@ TEST_CASE("an ignored native is silent and gives the default of its return type"
 TEST_CASE("the event registrations nothing raises are ignored on Form, Alias and ActiveMagicEffect", "[vm][natives]") {
     Rig rig;
     for (const char* cls : {"Form", "Alias", "ActiveMagicEffect"}) {
-        rig.add({.name = cls, .functions = {native_function("RegisterForSleep", {}, "None", true)}});
+        rig.add({.name = cls, .functions = {native_function("RegisterForLOS", {}, "None", true)}});
     }
     skydot::vm::bind_noop_natives(rig.vm);
 
     auto f = global_function("run", {}, {}, "Int");
     for (const char* cls : {"Form", "Alias", "ActiveMagicEffect"}) {
-        call_static(f, cls, "RegisterForSleep");
+        call_static(f, cls, "RegisterForLOS");
     }
     f.add(Op::return_, {integer(5)});
     rig.add(script("Caller", {f}));

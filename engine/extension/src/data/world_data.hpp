@@ -70,7 +70,7 @@ class WorldData {
 public:
     /// The world.fb format version this engine writes against. Format 8
     /// (before AI packages) still reads; its actors have no packages.
-    static constexpr int FORMAT_VERSION = 44;
+    static constexpr int FORMAT_VERSION = 45;
     static constexpr int FORMAT_VERSION_MIN = 8;
 
     enum class Status {
@@ -153,6 +153,10 @@ public:
         std::uint32_t lock_key = 0;
         bool load_door = false; // in doors()
         std::uint32_t door_destination = 0;
+        /// Its owner as placed (REFR XOWN, else its cell's XOWN; format 45): an NPC_ or a FACT, 0 if none, and for a
+        /// faction the least rank that owns it (-1 every member).
+        std::uint32_t owner = 0;
+        std::int32_t owner_rank = -1;
         struct Link {
             std::uint32_t keyword = 0, target = 0;
         };

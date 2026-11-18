@@ -499,6 +499,18 @@ public:
             .faction_rank(static_cast<std::uint32_t>(ref), static_cast<std::uint32_t>(faction))
             .value_or(-1);
     }
+    /// Who owns `ref` (vm/ownership.hpp): {owner (an NPC_ or FACT, 0 nobody), faction, rank, player}; `player`:
+    /// the player owns it, as the NPC_ 0x7 or as a member of the owning faction at its least rank.
+    godot::Dictionary get_owner(std::int64_t ref);
+    /// The player lies down to sleep from `from_days` to `end_days` (game days passed): OnSleepStart to every
+    /// script that called RegisterForSleep; `sleep_stop` sends OnSleepStop. Return how many scripts began.
+    std::int64_t sleep_start(double from_days, double end_days) {
+        return static_cast<std::int64_t>(vm_->send_sleep_start(from_days, end_days));
+    }
+    std::int64_t sleep_stop(bool interrupted) { return static_cast<std::int64_t>(vm_->send_sleep_stop(interrupted)); }
+    /// The actors recover as `seconds` of play would let them (Health, Magicka and Stamina regenerate): the time a
+    /// wait or a sleep skips, nothing else of the VM's time passes.
+    void recover(double seconds) { actors_.tick(seconds); }
     /// The body of `ref` is at rest (the game layer): OnDeath runs if it was waiting. False if not.
     bool finish_dying(std::int64_t ref);
     /// Seconds OnDeath waits for finish_dying at the longest (game time).

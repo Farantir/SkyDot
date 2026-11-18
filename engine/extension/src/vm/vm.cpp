@@ -478,6 +478,39 @@ bool Vm::has_animation_event(const Instance* instance, std::uint32_t sender, std
     });
 }
 
+void Vm::register_sleep(Instance* instance) {
+    if (std::ranges::find(sleep_regs_, instance) == sleep_regs_.end()) {
+        sleep_regs_.push_back(instance);
+    }
+}
+
+void Vm::unregister_sleep(Instance* instance) { std::erase(sleep_regs_, instance); }
+
+std::size_t Vm::send_sleep_start(double from, double desired_end) {
+    std::size_t began = 0;
+    for (Instance* i : std::vector<Instance*>(sleep_regs_)) {
+        const auto* fn = find_in_chain(i->cls, i->state_key(), "onsleepstart");
+        if (fn != nullptr && !fn->native &&
+            start({fn, i}, Value::object(i->form, i->cls, i),
+                  {Value::floating(static_cast<float>(from)), Value::floating(static_cast<float>(desired_end))}, false) != 0) {
+            ++began;
+        }
+    }
+    return began;
+}
+
+std::size_t Vm::send_sleep_stop(bool interrupted) {
+    std::size_t began = 0;
+    for (Instance* i : std::vector<Instance*>(sleep_regs_)) {
+        const auto* fn = find_in_chain(i->cls, i->state_key(), "onsleepstop");
+        if (fn != nullptr && !fn->native &&
+            start({fn, i}, Value::object(i->form, i->cls, i), {Value::boolean(interrupted)}, false) != 0) {
+            ++began;
+        }
+    }
+    return began;
+}
+
 std::vector<Instance*> Vm::send_animation_event(std::uint32_t sender, std::string_view event) {
     const auto key = to_lower(event);
     std::vector<Instance*> listeners;
@@ -608,6 +641,7 @@ void Vm::detach_instances(std::uint32_t ref) {
         const Instance* gone = instance.get();
         std::erase_if(timers_, [&](const Timer& t) { return t.instance == gone; });
         std::erase_if(animation_regs_, [&](const AnimationRegistration& r) { return r.instance == gone; });
+        std::erase(sleep_regs_, gone);
         for (auto& t : threads_) {
             if (t->done) {
                 continue;
@@ -682,6 +716,9 @@ std::set<std::uint32_t> Vm::held_forms(IdRange range) const {
         note_instance(r.instance);
         note(r.sender);
     }
+    for (const Instance* i : sleep_regs_) {
+        note_instance(i);
+    }
     for (const Scheduled& s : scheduled_) {
         each_reference(s.call, note);
     }
@@ -755,6 +792,9 @@ std::size_t Vm::collect_detached() {
     for (const AnimationRegistration& r : animation_regs_) {
         mark_instance(r.instance);
     }
+    for (const Instance* i : sleep_regs_) {
+        mark_instance(i);
+    }
     for (const RootHook& hook : roots_) {
         hook(mark);
     }
@@ -777,6 +817,8 @@ void Vm::clear() {
     form_lists_.clear();
     placed_.clear();
     destruction_.clear();
+    owners_.clear();
+    sleep_regs_.clear();
     animation_states_.clear();
     scheduled_.clear();
     threads_.clear();

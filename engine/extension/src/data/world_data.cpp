@@ -342,6 +342,13 @@ bool WorldData::ref_record(std::uint32_t ref, RefRecord& out) const {
         out.lock_level = static_cast<std::int32_t>(lock->level());
         out.lock_key = lock->key();
     }
+    if (const auto* owned = lookup(cell->owners(), ref)) {
+        out.owner = owned->owner();
+        out.owner_rank = owned->rank();
+    } else {
+        out.owner = cell->owner();
+        out.owner_rank = cell->owner_rank();
+    }
     if (const auto it = doors_.find(ref); it != doors_.end()) {
         out.load_door = true;
         out.door_destination = it->second.second->destination();

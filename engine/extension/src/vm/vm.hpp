@@ -296,6 +296,19 @@ public:
     [[nodiscard]] const PlacedRefs& placed() const noexcept { return placed_; }
     DestructionStates& destruction() noexcept { return destruction_; }
     [[nodiscard]] const DestructionStates& destruction() const noexcept { return destruction_; }
+    /// Owners scripts set (SetActorOwner, SetFactionOwner); saved with the VM.
+    OwnerStates& owners() noexcept { return owners_; }
+    [[nodiscard]] const OwnerStates& owners() const noexcept { return owners_; }
+
+    /// RegisterForSleep: `instance` wants OnSleepStart and OnSleepStop when the player sleeps (one registration
+    /// per script). Saved with the VM.
+    void register_sleep(Instance* instance);
+    void unregister_sleep(Instance* instance);
+    [[nodiscard]] std::size_t sleep_registrations() const noexcept { return sleep_regs_.size(); }
+    /// The player lies down for a sleep from `start` to `desired_end` (game days passed): OnSleepStart(start,
+    /// desired_end) to every registered script; `stop` sends OnSleepStop(interrupted). Return how many began.
+    std::size_t send_sleep_start(double from, double desired_end);
+    std::size_t send_sleep_stop(bool interrupted);
 
     /// Opaque per-reference animation state (a behaviour graph's snapshot),
     /// kept and saved for the host; the VM does not look into it.
@@ -333,6 +346,8 @@ public:
         FormListAdditions form_lists;
         PlacedRefs placed;
         DestructionStates destruction;
+        OwnerStates owners;
+        std::vector<Instance*> sleep_regs;
         std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states;
         double time = 0.0;
         std::uint64_t next_thread = 1;
@@ -460,6 +475,8 @@ private:
     FormListAdditions form_lists_;
     PlacedRefs placed_;
     DestructionStates destruction_;
+    OwnerStates owners_;
+    std::vector<Instance*> sleep_regs_;
     std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;
     void fire_scheduled();

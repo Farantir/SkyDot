@@ -67,8 +67,9 @@ func _clock(world: SkydotWorld, world_id: int, camera: Camera3D) -> void:
     weather.day = 2
     clock.sync(false)
     expect(ai.time_scale == 0.0 and _near(ai.days, 2.0 + 23.0 / 24.0), "the AI follows the weather, stopped")
-    expect(clock.shift(1.0) == "00:00" and weather.hour == 0.0, "an hour later wraps past midnight")
-    expect(clock.shift(-1.0) == "23:00", "and back")
+    expect(clock.shift(1.0) == "00:00" and weather.hour == 0.0 and weather.day == 3,
+        "an hour later wraps past midnight into the next day")
+    expect(clock.shift(-1.0) == "23:00" and weather.day == 2, "and back")
     var state := clock.describe()
     expect(state["hour"] == weather.hour and state["day"] == 2 and state["time_scale"] == 20.0,
         "outside, a shot gets hour, day and speed: %s" % [state])

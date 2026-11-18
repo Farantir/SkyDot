@@ -44,6 +44,19 @@ void bind_form_natives(Vm& v, const WorldAccess& world, WorldEvents& events) {
             events.animation_events_wanted(sender);
             return result(Value::boolean(true));
         });
+        // Sleep: OnSleepStart and OnSleepStop when the player sleeps (the Sleep menu; Vm::send_sleep_start).
+        v.bind(cls, "RegisterForSleep", [](NativeCall& c) {
+            if (c.self.instance() != nullptr) {
+                c.vm.register_sleep(c.self.instance());
+            }
+            return NativeResult{};
+        });
+        v.bind(cls, "UnregisterForSleep", [](NativeCall& c) {
+            if (c.self.instance() != nullptr) {
+                c.vm.unregister_sleep(c.self.instance());
+            }
+            return NativeResult{};
+        });
         v.bind(cls, "UnregisterForAnimationEvent", [](NativeCall& c) {
             if (c.self.instance() != nullptr) {
                 c.vm.unregister_animation_event(c.self.instance(), arg(c, 0).form(), arg(c, 1).s());

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/papyrus.hpp"
+#include "vm/ownership.hpp"
 
 #include "data/actors.hpp"
 #include "data/coordinates.hpp"
@@ -197,6 +198,10 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_locked", "ref", "locked"), &SkydotPapyrus::set_locked);
     godot::ClassDB::bind_method(D_METHOD("get_open_state", "ref"), &SkydotPapyrus::get_open_state);
     godot::ClassDB::bind_method(D_METHOD("is_actor_dead", "ref"), &SkydotPapyrus::is_actor_dead);
+    godot::ClassDB::bind_method(D_METHOD("get_owner", "ref"), &SkydotPapyrus::get_owner);
+    godot::ClassDB::bind_method(D_METHOD("sleep_start", "from_days", "end_days"), &SkydotPapyrus::sleep_start);
+    godot::ClassDB::bind_method(D_METHOD("sleep_stop", "interrupted"), &SkydotPapyrus::sleep_stop);
+    godot::ClassDB::bind_method(D_METHOD("recover", "seconds"), &SkydotPapyrus::recover);
     godot::ClassDB::bind_method(D_METHOD("is_actor_ghost", "ref"), &SkydotPapyrus::is_actor_ghost);
     godot::ClassDB::bind_method(D_METHOD("finish_dying", "ref"), &SkydotPapyrus::finish_dying);
     godot::ClassDB::bind_method(D_METHOD("faction_rank", "ref", "faction"), &SkydotPapyrus::faction_rank);
@@ -550,6 +555,8 @@ bool SkydotPapyrus::ref_record(std::uint32_t ref, vm::RefInfo& out) const {
     out.lock_key = record.lock_key;
     out.load_door = record.load_door;
     out.door_destination = record.door_destination;
+    out.owner = record.owner;
+    out.owner_rank = record.owner_rank;
     for (const auto& link : record.links) {
         out.links.push_back({link.keyword, link.target});
     }
@@ -797,6 +804,10 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         const auto* root = world() != nullptr ? world()->root() : nullptr;
         const auto* record = root != nullptr ? lookup(root->npcs(), npc) : nullptr;
         return record != nullptr && formats::has_flag(record->flags(), bethconv::pack::wfb::NpcFlags::unique);
+    }
+    bool is_npc(std::uint32_t form) const override {
+        const auto* root = world() != nullptr ? world()->root() : nullptr;
+        return root != nullptr && lookup(root->npcs(), form) != nullptr;
     }
     std::uint32_t package_owner_quest(std::uint32_t package) const override {
         const auto* root = world() != nullptr ? world()->root() : nullptr;
@@ -1846,5 +1857,22 @@ std::int64_t SkydotPapyrus::get_thread_count() const {
     return static_cast<std::int64_t>(vm_->thread_count());
 }
 double SkydotPapyrus::get_time() const { return vm_->time(); }
+
+godot::Dictionary SkydotPapyrus::get_owner(std::int64_t ref) {
+    const vm::OwnerState owner = vm::owner_of(*vm_, *access_, static_cast<std::uint32_t>(ref));
+    godot::Dictionary out;
+    out["owner"] = static_cast<std::int64_t>(owner.owner);
+    out["faction"] = owner.faction;
+    out["rank"] = owner.rank;
+    bool player = false;
+    if (owner.owner != 0 && !owner.faction) {
+        player = owner.owner == 0x7; // the player's NPC_
+    } else if (owner.owner != 0) {
+        const std::int64_t rank = faction_rank(PLAYER_REF, owner.owner);
+        player = rank >= 0 && rank >= owner.rank;
+    }
+    out["player"] = player;
+    return out;
+}
 
 } // namespace skydot

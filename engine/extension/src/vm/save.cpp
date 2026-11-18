@@ -104,6 +104,10 @@ constexpr std::size_t k_released_id_min_bytes = 4;
 constexpr std::size_t k_destruction_min_bytes = 4 + 8 + 4 + 1;
 /// An animation event registration: instance index (u32), sender (u32), event (u32 length).
 constexpr std::size_t k_animation_reg_min_bytes = 4 + 4 + 4;
+/// An owner a script set: ref, owner (u32 each), faction (u8), rank (i32).
+constexpr std::size_t k_owner_min_bytes = 4 + 4 + 1 + 4;
+/// A sleep registration: instance index (u32).
+constexpr std::size_t k_sleep_reg_min_bytes = 4;
 
 struct SaveContext {
     std::map<const Instance*, std::uint32_t> instance_index;
@@ -390,6 +394,30 @@ void Vm::save_to(save::SaveWriter& out) const {
         animation_events.check_record(start, k_animation_reg_min_bytes);
     }
     out.add("AEVT", k_section_version, animation_events.out);
+
+    ByteWriter owners;
+    owners.u32(static_cast<std::uint32_t>(owners_.states().size()));
+    for (const auto& [ref, state] : owners_.states()) {
+        const auto start = owners.out.size();
+        owners.u32(ref);
+        owners.u32(state.owner);
+        owners.u8(state.faction ? 1 : 0);
+        owners.u32(static_cast<std::uint32_t>(state.rank));
+        owners.check_record(start, k_owner_min_bytes);
+    }
+    out.add("OWNR", k_section_version, owners.out);
+
+    ByteWriter sleep;
+    sleep.u32(static_cast<std::uint32_t>(
+        std::ranges::count_if(sleep_regs_, [&](const Instance* i) { return ctx.instance_index.contains(i); })));
+    for (const Instance* i : sleep_regs_) {
+        if (const auto found = ctx.instance_index.find(i); found != ctx.instance_index.end()) {
+            const auto start = sleep.out.size();
+            sleep.u32(found->second);
+            sleep.check_record(start, k_sleep_reg_min_bytes);
+        }
+    }
+    out.add("SLEP", k_section_version, sleep.out);
 }
 
 std::vector<std::uint8_t> Vm::save() const {
@@ -422,6 +450,8 @@ void Vm::commit(Snapshot&& s) {
     form_lists_ = std::move(s.form_lists);
     placed_ = std::move(s.placed);
     destruction_ = std::move(s.destruction);
+    owners_ = std::move(s.owners);
+    sleep_regs_ = std::move(s.sleep_regs);
     time_ = s.time;
     rng_ = s.rng;
     next_thread_ = s.next_thread;
@@ -875,6 +905,51 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         }
         if (!r.at_end()) {
             return fail("bytes after the end of the AEVT section");
+        }
+    }
+
+    // Saves from before ownership and sleep have no OWNR and SLEP sections.
+    if (file.find("OWNR") != nullptr) {
+        if (!open_section(file, "OWNR", r, error)) {
+            return false;
+        }
+        std::uint32_t owner_count = 0;
+        if (!r.count(owner_count, k_owner_min_bytes)) {
+            return fail("truncated OWNR section");
+        }
+        for (std::uint32_t n = 0; n < owner_count; ++n) {
+            std::uint32_t ref = 0;
+            std::uint8_t faction = 0;
+            std::uint32_t rank = 0;
+            OwnerState state;
+            if (!r.u32(ref) || !r.u32(state.owner) || !r.u8(faction) || !r.u32(rank)) {
+                return fail("truncated OWNR section");
+            }
+            state.faction = faction != 0;
+            state.rank = static_cast<std::int32_t>(rank);
+            out.owners.set(ref, state);
+        }
+        if (!r.at_end()) {
+            return fail("bytes after the end of the OWNR section");
+        }
+    }
+    if (file.find("SLEP") != nullptr) {
+        if (!open_section(file, "SLEP", r, error)) {
+            return false;
+        }
+        std::uint32_t sleep_count = 0;
+        if (!r.count(sleep_count, k_sleep_reg_min_bytes)) {
+            return fail("truncated SLEP section");
+        }
+        for (std::uint32_t n = 0; n < sleep_count; ++n) {
+            std::uint32_t instance = 0;
+            if (!r.u32(instance) || instance >= index.size()) {
+                return fail("truncated SLEP section");
+            }
+            out.sleep_regs.push_back(index[instance]);
+        }
+        if (!r.at_end()) {
+            return fail("bytes after the end of the SLEP section");
         }
     }
     return true;

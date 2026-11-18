@@ -12,11 +12,11 @@
 namespace skydot::vm {
 
 void bind_noop_natives(Vm& vm) {
-    // Event registrations for things nothing raises: nobody sleeps, no actor
-    // has line of sight, no stats are tracked. The scripts wait for events
-    // that never come, as they would in a world without them.
+    // Event registrations for things nothing raises: no actor has line of
+    // sight, no stats are tracked. The scripts wait for events that never
+    // come, as they would in a world without them. (Sleep: natives_form.cpp.)
     for (const char* cls : {"Form", "Alias", "ActiveMagicEffect"}) {
-        for (const char* fn : {"RegisterForSleep", "UnregisterForSleep", "RegisterForLOS", "UnregisterForLOS",
+        for (const char* fn : {"RegisterForLOS", "UnregisterForLOS",
                                "RegisterForSingleLOSGain", "RegisterForSingleLOSLost",
                                "RegisterForTrackedStatsEvent", "UnregisterForTrackedStatsEvent"}) {
             vm.ignore(cls, fn);

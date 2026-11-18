@@ -54,7 +54,7 @@ public:
     /// benchmark).
     void sync(bool benchmarking);
 
-    /// Move the time by `hours`. Returns "HH:MM" for the new time, or "" when
+    /// Move the time by `hours` (past midnight into the next day). Returns "HH:MM" for the new time, or "" when
     /// nothing keeps the time (inside, with the AI off).
     godot::String shift(double hours);
 

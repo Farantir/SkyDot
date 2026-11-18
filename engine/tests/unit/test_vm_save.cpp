@@ -61,7 +61,12 @@ ScriptSpec saver(bool with_step = true, bool extra_local = false) {
     auto on_animation = method("OnAnimationEvent", {{"akSource", "Int"}, {"asEventName", "String"}});
     note(on_animation, "anim");
 
-    std::vector<FunctionSpec> functions{run, on_update, on_animation};
+    auto on_sleep_start = method("OnSleepStart", {{"afSleepStartTime", "Float"}, {"afDesiredSleepEndTime", "Float"}});
+    note(on_sleep_start, "sleep");
+    auto on_sleep_stop = method("OnSleepStop", {{"abInterrupted", "Bool"}});
+    note(on_sleep_stop, "woke");
+
+    std::vector<FunctionSpec> functions{run, on_update, on_animation, on_sleep_start, on_sleep_stop};
     if (with_step) {
         functions.push_back(step);
     }
@@ -876,6 +881,41 @@ TEST_CASE("animation event registrations: any case, one per script, dropped with
     // Forgetting the holder's reference takes its registrations with it.
     vm.detach(0x10);
     CHECK(vm.animation_registrations() == 0);
+}
+
+TEST_CASE("sleep registrations: one per script, OnSleepStart and OnSleepStop, saved, dropped with the instance",
+          "[vm][save][sleep]") {
+    SaverRig a;
+    auto& vm = a.vm();
+    CHECK(vm.send_sleep_start(1.0, 1.5) == 0); // nobody registered
+    vm.register_sleep(a.instance);
+    vm.register_sleep(a.instance);
+    CHECK(vm.sleep_registrations() == 1);
+    CHECK(vm.send_sleep_start(1.0, 1.5) == 1);
+    vm.update(0.0);
+    CHECK(vm.send_sleep_stop(false) == 1);
+    vm.update(0.0);
+    CHECK(a.rig.notes == std::vector<std::string>{"sleep", "woke"});
+
+    const auto bytes = vm.save();
+    SaverRig b(saver(), false);
+    std::string error;
+    REQUIRE(b.vm().load(bytes, error));
+    CHECK(b.vm().sleep_registrations() == 1);
+    CHECK(b.vm().save() == bytes);
+
+    // A save from before the section (none) loads with no registrations.
+    auto sections = split(bytes);
+    std::erase_if(sections, [](const auto& s) { return std::get<0>(s) == "SLEP"; });
+    SaverRig c(saver(), false);
+    REQUIRE(c.vm().load(build(sections), error));
+    CHECK(c.vm().sleep_registrations() == 0);
+
+    vm.unregister_sleep(a.instance);
+    CHECK(vm.sleep_registrations() == 0);
+    vm.register_sleep(a.instance);
+    vm.detach(0x10);
+    CHECK(vm.sleep_registrations() == 0);
 }
 
 TEST_CASE("saving skips timers whose instance is not in the save", "[vm][save]") {

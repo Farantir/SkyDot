@@ -4,6 +4,7 @@
 #include "vm/activation.hpp"
 #include "vm/natives_args.hpp"
 #include "vm/natives_families.hpp"
+#include "vm/ownership.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -217,6 +218,23 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         const auto level = host.lock_level(c.self.form());
         return result(Value::integer(static_cast<std::int32_t>(level < 0 ? 0 : level)));
     });
+    // Ownership (vm/ownership.hpp): the data's owner unless a script set another. An inn's RentRoom gives the
+    // player its bed (SetActorOwner) and takes it back the next day.
+    v.bind("ObjectReference", "GetActorOwner", [&world](NativeCall& c) {
+        const OwnerState owner = owner_of(c.vm, world, c.self.form());
+        return owner.owner != 0 && !owner.faction ? result(c.vm.object(owner.owner, "ActorBase")) : NativeResult{};
+    });
+    v.bind("ObjectReference", "GetFactionOwner", [&world](NativeCall& c) {
+        const OwnerState owner = owner_of(c.vm, world, c.self.form());
+        return owner.owner != 0 && owner.faction ? result(c.vm.object(owner.owner, "Faction")) : NativeResult{};
+    });
+    for (const auto& [fn, faction] : {std::pair{"SetActorOwner", false}, std::pair{"SetFactionOwner", true}}) {
+        v.bind("ObjectReference", fn, [faction](NativeCall& c) {
+            const std::uint32_t owner = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0U;
+            c.vm.owners().set(c.self.form(), {.owner = owner, .faction = owner != 0 && faction, .rank = -1});
+            return NativeResult{};
+        });
+    }
     // The key of the lock (from the data); None if the lock needs none or there is no lock.
     v.bind("ObjectReference", "GetKey", [&host](NativeCall& c) {
         const auto key = host.lock_key(c.self.form());

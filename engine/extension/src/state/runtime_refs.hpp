@@ -123,4 +123,26 @@ private:
     std::map<std::uint32_t, DestructionState> states_;
 };
 
+/// Who owns a reference since a script said so (SetActorOwner, SetFactionOwner): an NPC_ or a FACT (0: nobody),
+/// over the data's XOWN. `faction` tells which; `rank` is a faction owner's least rank (-1 every member).
+struct OwnerState {
+    std::uint32_t owner = 0;
+    bool faction = false;
+    std::int32_t rank = -1;
+};
+
+class OwnerStates {
+public:
+    [[nodiscard]] const OwnerState* find(std::uint32_t ref) const {
+        const auto it = states_.find(ref);
+        return it != states_.end() ? &it->second : nullptr;
+    }
+    void set(std::uint32_t ref, const OwnerState& state) { states_[ref] = state; }
+    void clear() { states_.clear(); }
+    [[nodiscard]] const std::map<std::uint32_t, OwnerState>& states() const { return states_; }
+
+private:
+    std::map<std::uint32_t, OwnerState> states_;
+};
+
 } // namespace skydot::vm

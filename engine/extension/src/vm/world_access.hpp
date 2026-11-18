@@ -55,6 +55,9 @@ struct RefInfo {
     bool load_door = false;
     std::uint32_t door_destination = 0;
     std::vector<RefLink> links;
+    /// The owner as placed (XOWN, else the cell's): an NPC_ or a FACT, 0 if none; a faction's least rank (-1 any).
+    std::uint32_t owner = 0;
+    std::int32_t owner_rank = -1;
 };
 
 /// A reference activated when another is: after `delay` seconds.
@@ -122,6 +125,8 @@ public:
     [[nodiscard]] virtual bool npc_unique(std::uint32_t npc) const = 0;
     /// The quest PACK `package` belongs to; 0 for none or an unknown package.
     [[nodiscard]] virtual std::uint32_t package_owner_quest(std::uint32_t package) const = 0;
+    /// Whether `form` is an NPC_ (an owner is an NPC_ or a FACT).
+    [[nodiscard]] virtual bool is_npc(std::uint32_t /*form*/) const { return false; }
 };
 
 } // namespace skydot::vm
