@@ -102,10 +102,12 @@ namespace {
     if (!mapped) {
         return out;
     }
-    const auto bytes = mapped->bytes();
-    const auto doc = nlohmann::json::parse(reinterpret_cast<const char*>(bytes.data()),
-                                           reinterpret_cast<const char*>(bytes.data()) + bytes.size(),
-                                           nullptr, false);
+    auto reader = mapped->reader();
+    const auto text = reader.chars(reader.remaining());
+    if (!text) {
+        return out;
+    }
+    const auto doc = nlohmann::json::parse(*text, nullptr, false);
     if (!doc.is_object()) {
         return out;
     }

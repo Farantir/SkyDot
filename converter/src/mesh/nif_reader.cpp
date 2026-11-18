@@ -17,6 +17,7 @@
 #include <cmath>
 #include <exception>
 #include <format>
+#include <span>
 #include <unordered_map>
 #include <utility>
 
@@ -1477,8 +1478,9 @@ io::ParseResult<Model> read_nif(std::span<const std::byte> bytes, std::string_vi
                 if (marker == nullptr) {
                     continue;
                 }
-                for (std::size_t k = 0; k < marker->positions.size(); ++k) {
-                    const nifly::FurniturePosition& position = marker->positions.data()[k];
+                const std::span<const nifly::FurniturePosition> positions(marker->positions.data(),
+                                                                          marker->positions.size());
+                for (const nifly::FurniturePosition& position : positions) {
                     model.furniture_markers.push_back(FurnitureMarker{
                         .offset = {position.offset.x, position.offset.y, position.offset.z},
                         .heading = position.heading,
