@@ -692,7 +692,7 @@ TEST_CASE("a half-cost perk halves the cost of the spells that name it only", "[
     Rig rig;
     const double flames = magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_flames));
     const double healing = magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_healing));
-    give_perks(rig, {{k_novice_destruction, 1}});
+    give_perks(rig, {{k_novice_destruction, std::uint8_t{1}}});
     CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_flames)) ==
           Approx(flames * 0.5));
     CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *skydot::lookup(rig.world->spells(), k_healing)) ==
@@ -705,7 +705,7 @@ TEST_CASE("a school mod of 25 costs x0.75, and a magnitude perk raises the damag
     Rig rig;
     const auto* flames = skydot::lookup(rig.world->spells(), k_flames);
     const double plain = magic::perk_spell_cost(*rig.world, rig.host, k_player, *flames);
-    give_perks(rig, {{k_mod_skills, 1}});
+    give_perks(rig, {{k_mod_skills, std::uint8_t{1}}});
     rig.host.perk_fake.values[{k_player, 108}] = 25.0;
     CHECK(magic::perk_spell_cost(*rig.world, rig.host, k_player, *flames) == Approx(plain * 0.75));
 
@@ -714,7 +714,7 @@ TEST_CASE("a school mod of 25 costs x0.75, and a magnitude perk raises the damag
     const double plain_damage = 100.0 - base.host.states.get(k_skeever, k_health);
     REQUIRE(plain_damage > 0.0);
     Rig perked;
-    give_perks(perked, {{k_augmented, 1}});
+    give_perks(perked, {{k_augmented, std::uint8_t{1}}});
     magic::land_form(*perked.world, perked.effects, k_player, k_firebolt, k_skeever);
     CHECK(100.0 - perked.host.states.get(k_skeever, k_health) == Approx(plain_damage * 1.25).margin(0.01));
 }
@@ -724,7 +724,7 @@ TEST_CASE("the target's incoming perk lowers the magnitude", "[casting][perks]")
     magic::land_form(*base.world, base.effects, k_player, k_firebolt, k_skeever);
     const double plain_damage = 100.0 - base.host.states.get(k_skeever, k_health);
     Rig rig;
-    give_perks(rig, {{k_mod_skills, 1}}); // the same list for caster and target: 41 x0.5 for the skeever
+    give_perks(rig, {{k_mod_skills, std::uint8_t{1}}}); // the same list for caster and target: 41 x0.5 for the skeever
     magic::land_form(*rig.world, rig.effects, k_player, k_firebolt, k_skeever);
     CHECK(100.0 - rig.host.states.get(k_skeever, k_health) == Approx(plain_damage * 0.5).margin(0.01));
 }

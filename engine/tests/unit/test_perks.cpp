@@ -115,21 +115,21 @@ TEST_CASE("effects apply in priority order, ties by perk then record", "[perks]"
     // 10: *2 at priority 5, then +3 at priority 9 -> 23; set 1 at priority 7 between them -> 1*... see below.
     Rig a({{.id = 0x100, .effects = {entry(EP::ModAttackDamage, Fn::MultiplyValue, {2.0F}, 5),
                                       entry(EP::ModAttackDamage, Fn::AddValue, {3.0F}, 9)}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     CHECK(a.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(23.0));
     // A set after a multiply discards it; before the multiply it keeps it.
     Rig after({{.id = 0x100, .effects = {entry(EP::ModAttackDamage, Fn::SetValue, {7.0F}, 9),
                                          entry(EP::ModAttackDamage, Fn::MultiplyValue, {2.0F}, 5)}}},
-              {{0x100, 1}});
+              {{0x100, std::uint8_t{1}}});
     CHECK(after.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(7.0));
     Rig before({{.id = 0x100, .effects = {entry(EP::ModAttackDamage, Fn::SetValue, {7.0F}, 1),
                                           entry(EP::ModAttackDamage, Fn::MultiplyValue, {2.0F}, 5)}}},
-               {{0x100, 1}});
+               {{0x100, std::uint8_t{1}}});
     CHECK(before.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(14.0));
     // Same priority: the lower perk id first (set 4, then perk 0x101 adds 1 -> 5; not 4 if the set came last).
     Rig tie({{.id = 0x102, .effects = {entry(EP::ModAttackDamage, Fn::SetValue, {4.0F}, 3)}},
              {.id = 0x101, .effects = {entry(EP::ModAttackDamage, Fn::AddValue, {1.0F}, 3)}}},
-            {{0x101, 1}, {0x102, 1}});
+            {{0x101, std::uint8_t{1}}, {0x102, std::uint8_t{1}}});
     CHECK(tie.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(4.0)); // 0x101: 11, then 0x102 sets 4
     // Another entry point is untouched.
     CHECK(tie.apply(EP::ModIncomingDamage, attack(), 10.0) == Approx(10.0));
@@ -138,7 +138,7 @@ TEST_CASE("effects apply in priority order, ties by perk then record", "[perks]"
 TEST_CASE("the owner's current actor value feeds function 14", "[perks]") {
     // PerkSkillBoosts: * (1 + 0.01 * OneHanded) at Mod Attack Damage.
     Rig r({{.id = 0x100, .effects = {entry(EP::ModAttackDamage, Fn::MultiplyOnePlusActorValueMult, {0.01F}, 20, {}, 6)}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     r.fake.values[{k_owner, 6}] = 50.0;
     CHECK(r.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(15.0));
 }
@@ -150,7 +150,7 @@ TEST_CASE("a failing tab skips the effect, tab t reads subject t", "[perks]") {
             .effects = {entry(EP::ModAttackDamage, Fn::MultiplyValue, {1.2F}, 0,
                               {tab(1, {condition(fn::has_keyword, eq, 1.0F, 0, k_kw_blade)}),
                                tab(2, {condition(fn::get_is_id, ne, 1.0F, 0, k_owner)})})}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     CHECK(r.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(10.0)); // no keyword
     r.fake.keywords.insert({k_sword, k_kw_blade});
     r.fake.npcs[k_target] = 0x5000;
@@ -169,11 +169,11 @@ TEST_CASE("a rank chain with HasPerk(next) == 0 applies only the highest rank", 
         {.id = 0x101, .next_perk = 0x102,
          .effects = {entry(EP::ModAttackDamage, Fn::MultiplyValue, {1.4F}, 0, lowest_only(0x102))}},
         {.id = 0x102, .effects = {entry(EP::ModAttackDamage, Fn::MultiplyValue, {1.6F}, 0, {})}}};
-    Rig one(chain, {{0x100, 1}});
+    Rig one(chain, {{0x100, std::uint8_t{1}}});
     CHECK(one.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(12.0));
-    Rig two(chain, {{0x100, 1}, {0x101, 1}});
+    Rig two(chain, {{0x100, std::uint8_t{1}}, {0x101, std::uint8_t{1}}});
     CHECK(two.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(14.0));
-    Rig three(chain, {{0x100, 1}, {0x101, 1}, {0x102, 1}});
+    Rig three(chain, {{0x100, std::uint8_t{1}}, {0x101, std::uint8_t{1}}, {0x102, std::uint8_t{1}}});
     CHECK(three.apply(EP::ModAttackDamage, attack(), 10.0) == Approx(16.0));
 }
 
@@ -181,9 +181,9 @@ TEST_CASE("an effect applies at its own rank", "[perks]") {
     auto second = entry(EP::ModAttackDamage, Fn::AddValue, {5.0F});
     second.rank = 1;
     Rig r({{.id = 0x100, .ranks = 2, .effects = {entry(EP::ModAttackDamage, Fn::AddValue, {1.0F}), second}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     CHECK(r.apply(EP::ModAttackDamage, attack(), 0.0) == Approx(1.0));
-    r.owned = {{0x100, 2}};
+    r.owned = {{0x100, std::uint8_t{2}}};
     CHECK(r.apply(EP::ModAttackDamage, attack(), 0.0) == Approx(5.0));
     r.owned.clear();
     CHECK(r.apply(EP::ModAttackDamage, attack(), 0.0) == Approx(0.0));
@@ -196,7 +196,7 @@ TEST_CASE("EPMagic_SpellHasSkill and SpellHasKeyword read a spell subject", "[pe
                               {tab(1, {condition(696, eq, 1.0F, 0, 20)})}),
                         entry(EP::ModSpellCost, Fn::MultiplyValue, {0.5F}, 2,
                               {tab(1, {condition(693, eq, 1.0F, 0, k_kw_fire)})})}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     perks::EntryContext c;
     c.owner = k_owner;
     c.subjects = {k_owner, k_flames, 0};
@@ -206,7 +206,7 @@ TEST_CASE("EPMagic_SpellHasSkill and SpellHasKeyword read a spell subject", "[pe
     // HasKeyword on a spell also looks at its effects.
     Rig k({{.id = 0x100, .effects = {entry(EP::ModSpellCost, Fn::AddValue, {1.0F}, 0,
                                            {tab(1, {condition(conditions::fn::has_keyword, eq, 1.0F, 0, k_kw_fire)})})}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     c.subjects[1] = k_flames;
     CHECK(k.apply(EP::ModSpellCost, c, 0.0) == Approx(1.0));
 }
@@ -217,7 +217,7 @@ TEST_CASE("the context answers the skill-use, worn and attack-type conditions", 
                         entry(EP::ModArmorRating, Fn::MultiplyValue, {2.0F}, 0,
                               {tab(0, {condition(722, ge, 2.0F, 0, k_kw_blade)})}),
                         entry(EP::ModAttackDamage, Fn::AddValue, {10.0F}, 0, {tab(0, {condition(697, eq, 1.0F, 0, 0xA00)})})}}},
-          {{0x100, 1}});
+          {{0x100, std::uint8_t{1}}});
     perks::EntryContext c;
     c.owner = k_owner;
     c.advance_skill = 14;
@@ -242,7 +242,7 @@ TEST_CASE("Select Spell and Select Text list their data", "[perks]") {
     PerkEffectSpec text = entry(EP::SetActivateLabel, Fn::SetText, {}, 0);
     text.data_type = 7;
     text.text = "Steal";
-    Rig r({{.id = 0x100, .effects = {spell, text}}}, {{0x100, 1}});
+    Rig r({{.id = 0x100, .effects = {spell, text}}}, {{0x100, std::uint8_t{1}}});
     CHECK(r.points().select_spells(EP::ApplyCombatHitSpell, attack()) == std::vector<std::uint32_t>{k_flames});
     CHECK(r.points().select_text(EP::SetActivateLabel, attack()) == std::vector<std::string>{"Steal"});
     CHECK(r.points().select_spells(EP::ModSpellCost, attack()).empty());
