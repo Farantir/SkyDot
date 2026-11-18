@@ -151,7 +151,8 @@ struct Cell {
     FormId music;                ///< XCMO
     FormId acoustic_space;       ///< XCAS
     FormId encounter_zone;       ///< XEZN
-    FormId owner;                ///< XOWN
+    FormId owner;                ///< XOWN: an NPC_ or a FACT.
+    std::int32_t owner_rank{-1}; ///< XRNK: the least rank of a FACT owner that owns it; -1 any member.
     FormId sky_lighting;         ///< LNAM/XNAM pair; XNAM is a 1-byte water noise index.
     std::vector<FormId> regions; ///< XCLR, an array of REGN FormIDs.
 
@@ -299,7 +300,8 @@ struct Reference {
     };
     std::optional<Primitive> primitive;
 
-    FormId owner;            ///< XOWN
+    FormId owner;            ///< XOWN: an NPC_ or a FACT.
+    std::int32_t owner_rank{-1}; ///< XRNK: the least rank of a FACT owner that owns it; -1 any member.
     FormId emittance;        ///< XEMI, the light source whose colour this takes.
     FormId light_ref;        ///< XLRT / XLRM room-and-light markers use these too.
     float radius{};          ///< XRDS, 4 bytes on 11,148.

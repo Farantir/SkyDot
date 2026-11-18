@@ -140,6 +140,12 @@ ByteWriter scripted_refr_payload() {
     xloc.u32(0);
     xloc.u32(0);
     bethconv::test::write_field(payload, "XLOC", xloc);
+    ByteWriter xown;
+    xown.u32(0x0100'0B03);
+    bethconv::test::write_field(payload, "XOWN", xown);
+    ByteWriter xrnk;
+    xrnk.u32(2);
+    bethconv::test::write_field(payload, "XRNK", xrnk);
     ByteWriter xlkr;
     xlkr.u32(0);
     xlkr.u32(0x0100'0B03);
@@ -735,6 +741,12 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     REQUIRE(cell->locks.size() == 1);
     CHECK(cell->locks[0].level() == 255);
     CHECK(cell->locks[0].key() == 0x0200'0A00);
+    REQUIRE(cell->owners.size() == 1);
+    CHECK(cell->owners[0].ref() == 0x0200'0B02);
+    CHECK(cell->owners[0].owner() == 0x0200'0B03);
+    CHECK(cell->owners[0].rank() == 2);
+    CHECK(cell->owner == 0);
+    CHECK(cell->owner_rank == -1);
     REQUIRE(cell->links.size() == 1);
     CHECK(cell->links[0].target() == 0x0200'0B03);
     REQUIRE(cell->activate_parents.size() == 1);

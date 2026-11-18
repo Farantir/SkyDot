@@ -106,6 +106,15 @@ struct Lock {
     key: uint32;
 }
 
+/// REFR XOWN and XRNK (format 45): who owns a reference. `owner` is an NPC_
+/// or a FACT; for a faction, `rank` is the least rank that owns it (-1: every
+/// member). A reference without one is owned by its cell's owner, if any.
+struct RefOwner {
+    ref: uint32 (key);
+    owner: uint32;
+    rank: int;
+}
+
 /// XLKR: a linked reference, optionally named by a keyword.
 struct LinkedRef {
     ref: uint32;
@@ -349,6 +358,13 @@ table Cell {
     acoustic_space: uint32;
     /// Sorted by ref (format 43): the map markers among `refs`.
     map_markers: [MapMarker];
+    /// CELL XOWN and XRNK (format 45): the cell's owner (an NPC_ or a FACT, 0
+    /// if none) and, for a faction, the least rank that owns it (-1: every
+    /// member). It owns the references that have no owner of their own.
+    owner: uint32;
+    owner_rank: int = -1;
+    /// Sorted by ref (format 45): the references with an owner of their own.
+    owners: [RefOwner];
 }
 
 /// REFR XMRK (format 43): a map marker, the reference that stands for a

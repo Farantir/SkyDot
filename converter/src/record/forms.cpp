@@ -177,6 +177,8 @@ io::ParseResult<Cell> parse_cell(io::SpanReader& data, const FormContext& ctx) {
                 take(failure, read_formid(body), out.encounter_zone);
             } else if (field.type == FourCC{"XOWN"}) {
                 take(failure, read_formid(body), out.owner);
+            } else if (field.type == FourCC{"XRNK"}) {
+                take(failure, body.get<std::int32_t>(), out.owner_rank);
             } else if (field.type == FourCC{"LNAM"}) {
                 take(failure, read_formid(body), out.sky_lighting);
             } else if (field.type == FourCC{"XCLR"}) {
@@ -341,6 +343,8 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                 }
             } else if (field.type == FourCC{"XOWN"}) {
                 take(failure, read_formid(body), out.owner);
+            } else if (field.type == FourCC{"XRNK"}) {
+                take(failure, body.get<std::int32_t>(), out.owner_rank);
             } else if (field.type == FourCC{"XEMI"}) {
                 take(failure, read_formid(body), out.emittance);
             } else if (field.type == FourCC{"XLRT"}) {

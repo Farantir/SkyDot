@@ -178,6 +178,8 @@ void PlaceCollector::on_cell(const record::MergedRecord& merged, io::SpanReader&
     out.sky_region = shared_.global(merged, cell->sky_region, failed);
     out.location = shared_.global(merged, cell->location, failed);
     out.acoustic_space = shared_.global(merged, cell->acoustic_space, failed);
+    out.owner = shared_.global(merged, cell->owner, failed);
+    out.owner_rank = cell->owner_rank;
     out.persistent = record::has_flag(merged.flags, record::RecordFlag::persistent);
     out.water = shared_.global(merged, cell->water, failed);
     if (failed) {
@@ -250,6 +252,9 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
     }
     if (!ref->emittance.is_null()) {
         cell.light_emitters.emplace_back(id, shared_.global(merged, ref->emittance, failed));
+    }
+    if (!ref->owner.is_null()) {
+        cell.owners.emplace_back(id, shared_.global(merged, ref->owner, failed), ref->owner_rank);
     }
     if (ref->lock) {
         cell.locks.emplace_back(id, ref->lock->level, ref->lock->flags,
@@ -476,6 +481,7 @@ void PlaceCollector::finish(wfb::WorldT& world) {
         std::ranges::sort(cell.doors, {}, &wfb::DoorLink::ref);
         std::ranges::stable_sort(cell.scripts, {}, [](const auto& s) { return s->ref; });
         std::ranges::stable_sort(cell.locks, {}, &wfb::Lock::ref);
+        std::ranges::stable_sort(cell.owners, {}, &wfb::RefOwner::ref);
         std::ranges::stable_sort(cell.links, {}, &wfb::LinkedRef::ref);
         std::ranges::stable_sort(cell.activate_parents, {}, &wfb::ActivateParent::ref);
         std::ranges::stable_sort(cell.primitives, {}, &wfb::Primitive::ref);
