@@ -145,6 +145,8 @@ Dictionary get_cell(const WorldData& data, std::int64_t id) {
     out["editor_id"] = to_godot(cell->editor_id());
     out["name"] = to_godot(cell->name());
     out["interior"] = formats::has_flag(cell->flags(), wfb::CellFlags::interior);
+    // CELL DATA "Can't Travel From Here" (an interior's: sNoFastTravelCell).
+    out["cant_travel_from_here"] = formats::has_flag(cell->flags(), wfb::CellFlags::cant_travel_from_here);
     out["world"] = static_cast<std::int64_t>(cell->world());
     out["grid"] = cell->has_grid() ? godot::Variant(godot::Vector2i(cell->grid_x(), cell->grid_y()))
                                    : godot::Variant();

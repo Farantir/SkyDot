@@ -85,6 +85,15 @@ public:
     void set_tree_distance(double cells);
     double get_tree_distance() const;
 
+    /// The world map's locked levels ([MapMenu] uLockedTerrainLOD 32, uLockedObjectMapLOD 16): the whole LOD
+    /// grid's terrain at `terrain_level` and objects at `object_level`, wherever the camera is, and no trees.
+    /// 0 for either goes back to the distance quadtree. Set before the first update.
+    void set_map_levels(std::int64_t terrain_level, std::int64_t object_level);
+    /// The height (game units) of the shown terrain LOD under (x, y) (game units): the coarsest built terrain quad
+    /// there, its triangles as drawn; NAN where none is built. The world map's camera stands on this ground
+    /// (measured: LOD level 32's surface within 5 units, the land itself up to 350 off).
+    double get_terrain_height(double x, double y);
+
     /// levels (level -> quads shown), objects, tree_quads, trees, pending,
     /// loaded_cells, and large_refs (SkydotLargeRefs::get_stats) when on.
     godot::Dictionary get_stats() const;
@@ -138,6 +147,8 @@ private:
     int lowest_ = 4;
     int highest_ = 32;
     double split_distance_ = 1.5;
+    int map_terrain_level_ = 0;
+    int map_object_level_ = 0;
     double tree_distance_ = 16.0;
 
     struct TreeType {
@@ -151,6 +162,13 @@ private:
     godot::Ref<godot::Texture2D> noise_;
 
     std::map<Quad, Shown> shown_;
+    /// A terrain quad's triangles in game units (x, y, z per corner, 9 floats a triangle), bucketed by cell.
+    struct Surface {
+        std::vector<float> triangles;
+        std::vector<std::vector<std::uint32_t>> buckets; ///< level x level, row-major from the south-west cell
+    };
+    std::map<Quad, Surface> surfaces_;
+    const Surface& surface(const Quad& q, godot::Node3D* node);
     /// Threaded loads: path -> resource, null once failed; absent while not
     /// requested.
     std::unordered_map<std::string, godot::Ref<godot::Resource>> resources_;

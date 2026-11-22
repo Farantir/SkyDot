@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <string_view>
 
 using godot::Array;
 using godot::Dictionary;
@@ -85,6 +86,8 @@ void SkydotLod::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("set_tree_distance", "cells"), &SkydotLod::set_tree_distance);
     godot::ClassDB::bind_method(D_METHOD("get_tree_distance"), &SkydotLod::get_tree_distance);
     godot::ClassDB::bind_method(D_METHOD("get_stats"), &SkydotLod::get_stats);
+    godot::ClassDB::bind_method(D_METHOD("set_map_levels", "terrain_level", "object_level"), &SkydotLod::set_map_levels);
+    godot::ClassDB::bind_method(D_METHOD("get_terrain_height", "x", "y"), &SkydotLod::get_terrain_height);
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "split_distance"), "set_split_distance",
                  "get_split_distance");
     ADD_PROPERTY(godot::PropertyInfo(godot::Variant::FLOAT, "tree_distance"), "set_tree_distance",
@@ -320,9 +323,112 @@ String SkydotLod::vpath(const Quad& q, const char* kind) const {
     return String::utf8(out.c_str());
 }
 
+void SkydotLod::set_map_levels(std::int64_t terrain_level, std::int64_t object_level) {
+    map_terrain_level_ = static_cast<int>(terrain_level);
+    map_object_level_ = static_cast<int>(object_level);
+}
+
+namespace {
+
+void collect_faces(godot::Node* node, const godot::Transform3D& parent, std::vector<godot::Vector3>& out) {
+    const auto* spatial = godot::Object::cast_to<godot::Node3D>(node);
+    const godot::Transform3D xform = spatial != nullptr ? parent * spatial->get_transform() : parent;
+    if (const auto* mesh_node = godot::Object::cast_to<godot::MeshInstance3D>(node)) {
+        if (mesh_node->get_mesh().is_valid()) {
+            const godot::PackedVector3Array faces = mesh_node->get_mesh()->get_faces();
+            for (std::int64_t i = 0; i < faces.size(); ++i) {
+                out.push_back(SkydotWorld::godot_to_skyrim(xform.xform(faces[i])));
+            }
+        }
+    }
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        collect_faces(node->get_child(i), xform, out);
+    }
+}
+
+} // namespace
+
+const SkydotLod::Surface& SkydotLod::surface(const Quad& q, godot::Node3D* node) {
+    if (const auto it = surfaces_.find(q); it != surfaces_.end()) {
+        return it->second;
+    }
+    Surface made;
+    made.buckets.resize(static_cast<std::size_t>(q.level * q.level));
+    std::vector<godot::Vector3> corners;
+    for (std::int32_t i = 0; i < node->get_child_count(); ++i) {
+        auto* child = godot::Object::cast_to<godot::Node3D>(node->get_child(i));
+        if (child != nullptr && child->has_meta("skydot_lod_terrain")) {
+            collect_faces(child, godot::Transform3D(), corners);
+        }
+    }
+    const auto clamp_cell = [&](double v, int origin) {
+        return std::clamp(static_cast<int>(std::floor(v / k_cell_units)) - origin, 0, q.level - 1);
+    };
+    for (std::size_t t = 0; t + 2 < corners.size(); t += 3) {
+        const auto index = static_cast<std::uint32_t>(made.triangles.size() / 9);
+        double lo_x = 1e30;
+        double lo_y = 1e30;
+        double hi_x = -1e30;
+        double hi_y = -1e30;
+        for (std::size_t k = 0; k < 3; ++k) {
+            const godot::Vector3& c = corners[t + k];
+            made.triangles.insert(made.triangles.end(), {c.x, c.y, c.z});
+            lo_x = std::min(lo_x, static_cast<double>(c.x));
+            lo_y = std::min(lo_y, static_cast<double>(c.y));
+            hi_x = std::max(hi_x, static_cast<double>(c.x));
+            hi_y = std::max(hi_y, static_cast<double>(c.y));
+        }
+        for (int by = clamp_cell(lo_y, q.y); by <= clamp_cell(hi_y, q.y); ++by) {
+            for (int bx = clamp_cell(lo_x, q.x); bx <= clamp_cell(hi_x, q.x); ++bx) {
+                made.buckets[static_cast<std::size_t>(by * q.level + bx)].push_back(index);
+            }
+        }
+    }
+    return surfaces_.emplace(q, std::move(made)).first->second;
+}
+
+double SkydotLod::get_terrain_height(double x, double y) {
+    const double cx = x / k_cell_units;
+    const double cy = y / k_cell_units;
+    // The coarsest shown quad holding the point (the world map's level 32).
+    for (auto it = shown_.rbegin(); it != shown_.rend(); ++it) {
+        const Quad& q = it->first;
+        if (q.level <= 0 || cx < q.x || cy < q.y || cx >= q.x + q.level || cy >= q.y + q.level ||
+            it->second.node == nullptr) {
+            continue;
+        }
+        const Surface& s = surface(q, it->second.node);
+        const auto bx = std::clamp(static_cast<int>(std::floor(cx)) - q.x, 0, q.level - 1);
+        const auto by = std::clamp(static_cast<int>(std::floor(cy)) - q.y, 0, q.level - 1);
+        for (const std::uint32_t t : s.buckets[static_cast<std::size_t>(by * q.level + bx)]) {
+            const float* v = &s.triangles[static_cast<std::size_t>(t) * 9];
+            const double ax = v[0], ay = v[1], az = v[2];
+            const double bx2 = v[3], by2 = v[4], bz = v[5];
+            const double qx = v[6], qy = v[7], qz = v[8];
+            const double d = (by2 - qy) * (ax - qx) + (qx - bx2) * (ay - qy);
+            if (std::abs(d) < 1e-9) {
+                continue;
+            }
+            const double l1 = ((by2 - qy) * (x - qx) + (qx - bx2) * (y - qy)) / d;
+            const double l2 = ((qy - ay) * (x - qx) + (ax - qx) * (y - qy)) / d;
+            const double l3 = 1.0 - l1 - l2;
+            constexpr double k_edge = -1e-6;
+            if (l1 >= k_edge && l2 >= k_edge && l3 >= k_edge) {
+                return l1 * az + l2 * bz + l3 * qz;
+            }
+        }
+    }
+    return std::nan("");
+}
+
 std::vector<String> SkydotLod::scenes_for(const Quad& q) const {
     std::vector<String> out;
+    // The world map's quads carry only their kind when the two locked levels differ.
+    const bool map = map_terrain_level_ > 0 || map_object_level_ > 0;
     for (const char* kind : {"btr", "bto"}) {
+        if (map && (std::string_view(kind) == "btr" ? q.level != map_terrain_level_ : q.level != map_object_level_)) {
+            continue;
+        }
         const String v = vpath(q, kind);
         const std::string key = utf8(v);
         auto it = exists_.find(key);
@@ -542,6 +648,7 @@ godot::Node3D* SkydotLod::build(const Quad& q, bool trees, Shown& stats) {
         }
         const bool terrain = path.get_base_dir().get_file() != "objects";
         if (terrain) {
+            node->set_meta("skydot_lod_terrain", true);
             // Terrain vertices are relative to the quad's south-west corner.
             node->set_position(SkydotWorld::skyrim_position(
                 Vector3(static_cast<float>(q.x * k_cell_units), static_cast<float>(q.y * k_cell_units), 0.0F)));
@@ -563,14 +670,32 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
     const double cy = static_cast<double>(game.y) / k_cell_units;
 
     std::set<Quad> wanted;
-    for (int y = south_west_y_; y < south_west_y_ + stride_; y += highest_) {
-        for (int x = south_west_x_; x < south_west_x_ + stride_; x += highest_) {
-            select(Quad{.level = highest_, .x = x, .y = y}, cx, cy, wanted);
+    const bool map = map_terrain_level_ > 0 || map_object_level_ > 0;
+    if (map) {
+        // The world map: every quad of the locked levels, whatever the camera's distance.
+        for (const int level : {map_terrain_level_, map_object_level_}) {
+            if (level < lowest_ || level > highest_) {
+                continue;
+            }
+            for (int y = south_west_y_; y < south_west_y_ + stride_; y += level) {
+                for (int x = south_west_x_; x < south_west_x_ + stride_; x += level) {
+                    const Quad q{.level = level, .x = x, .y = y};
+                    if (!scenes_for(q).empty()) {
+                        wanted.insert(q);
+                    }
+                }
+            }
+        }
+    } else {
+        for (int y = south_west_y_; y < south_west_y_ + stride_; y += highest_) {
+            for (int x = south_west_x_; x < south_west_x_ + stride_; x += highest_) {
+                select(Quad{.level = highest_, .x = x, .y = y}, cx, cy, wanted);
+            }
         }
     }
-    // Trees: level-4 quads within tree_distance (marked with a negative level).
+    // Trees: level-4 quads within tree_distance (marked with a negative level); none on the world map.
     std::set<Quad> wanted_trees;
-    if (tree_atlas_.is_valid() && !tree_types_.empty()) {
+    if (!map && tree_atlas_.is_valid() && !tree_types_.empty()) {
         const int r = static_cast<int>(std::ceil(tree_distance_ / lowest_)) + 1;
         const int qx = south_west_x_ + static_cast<int>(std::floor((cx - south_west_x_) / lowest_)) * lowest_;
         const int qy = south_west_y_ + static_cast<int>(std::floor((cy - south_west_y_) / lowest_)) * lowest_;
@@ -644,6 +769,7 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
             }
         }
         if (drop) {
+            surfaces_.erase(q);
             it->second.node->queue_free();
             it = shown_.erase(it);
         } else {
