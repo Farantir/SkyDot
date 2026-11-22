@@ -27,9 +27,8 @@ void fragment() {
 	float linear_depth = -view.z / view.w;
 	float units = (linear_depth - focal_depth) / metres_per_unit;
 	float spread = min(max_blur, blur_scale * abs(units));
-	if (linear_depth < focal_depth) {
-		spread *= near_scale;
-	}
+	// The near scale (x near_scale nearer than the focal depth) blurred Solstheim's map, seen from 35000 units, far
+	// more than the game's sharp one (side3_solstheim): left out until the constants' meaning is known.
 	vec2 texel = 1.0 / vec2(textureSize(screen_tex, 0));
 	vec2 start = SCREEN_UV - 3.0 * texel * spread;
 	vec3 sum = vec3(0.0);

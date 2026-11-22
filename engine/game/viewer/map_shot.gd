@@ -10,8 +10,22 @@
 #   answer=N         the question's button N (0 Yes)
 #   block            Game.EnableFastTravel(false)
 #   cursor=X:Y       the cursor at view pixel (X, Y) (default the middle)
+#   close, open      close the map, open it again
+#   rss              print the process's resident memory (Linux, /proc/self/status) after a few frames
 class_name MapShot
 extends RefCounted
+
+
+## VmRSS of this process, "" where /proc is missing.
+static func rss() -> String:
+	var f := FileAccess.open("/proc/self/status", FileAccess.READ)
+	if f == null:
+		return ""
+	while not f.eof_reached():
+		var line := f.get_line()
+		if line.begins_with("VmRSS"):
+			return line.substr(6).strip_edges()
+	return ""
 
 
 static func apply(items: ItemMenu, ops: String) -> void:
@@ -50,6 +64,14 @@ static func apply(items: ItemMenu, ops: String) -> void:
 				view.answer(int(value))
 			"block":
 				session.papyrus.set_fast_travel_enabled(false)
+			"close":
+				view.close()
+			"open":
+				view.open()
+			"rss":
+				for i in 30:
+					await view.get_tree().process_frame
+				print("map: rss %s" % rss())
 			"cursor":
 				var p := value.split(":")
 				view.cursor = Vector2(float(p[0]), float(p[1]))

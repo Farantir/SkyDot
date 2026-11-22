@@ -11,7 +11,12 @@ extends RefCounted
 ## menus set the inventory menu's, DOBJ IMID, MenuImageSpace): its cinematic saturation, brightness and contrast
 ## multiply and add onto the grade's, and its depth of field blurs the far world.
 static var modifier := {}
-## The world map's weather (WorldMapWeather) while the map is open: its image space instead of the place's.
+## The world map's weather (WorldMapWeather) while the map is open. Its ToD image spaces (ISWorldMapWeatherDAY, ...:
+## contrast 1.45, eye adaptation) graded our map far darker than the game's (noon mean 68/86/86 against the game's
+## 114/131/131, 23:00 6/12/14 against 57/71/76), the scene ungraded comes close in brightness (103/134/144,
+## 35/49/51) but too blue; with the image space's tint alone the hue is the game's (95/103/101 at noon, 82/82/76 at
+## 8:01 against 110/117/108), a quarter too dark. So the map is graded by the tint only (how the game grades its map
+## is not known).
 static var weather_override: SkydotWeather
 ## Godot's far blur amount for an IMAD depth of field strength of 1. The game's ISDepthOfField mixes the frame
 ## with a blurred copy by saturate((depth - distance) / range) * strength (Community Shaders' ISDepthOfField.hlsl);
@@ -24,14 +29,14 @@ const DOF_AMOUNT := 0.15
 static func apply(viewport: Viewport, settings: ViewerSettings, session: GameSession,
 		image_space: SkydotImageSpace) -> void:
 	SkydotMaterials.sync_fog(viewport.find_world_3d().environment)
-	if not settings.image_space:
+	if weather_override != null and is_instance_valid(weather_override) and settings.image_space:
+		image_space.set_image_space({"tint": weather_override.get_image_space().get("tint")})
+	elif not settings.image_space:
 		image_space.clear()
 	else:
 		var space: Dictionary
 		# A sky seen from an interior ("show sky") does not grade the cell.
-		if weather_override != null and is_instance_valid(weather_override):
-			space = weather_override.get_image_space()
-		elif session.clock.has_weather() and not session.clock.weather.is_sky_only():
+		if session.clock.has_weather() and not session.clock.weather.is_sky_only():
 			space = session.clock.weather.get_image_space()
 			if not settings.volumetric:
 				space.erase("volumetric")

@@ -141,6 +141,7 @@ endfunction()
 
 skydot_gd_test(activation_prompt test_activation_prompt.gd)
 skydot_gd_test(place_transition test_place_transition.gd)
+skydot_gd_test(map_camera test_map_camera.gd)
 skydot_gd_test(combat_head test_combat_head.gd)
 skydot_gd_test(ragdoll_joints test_ragdoll_joints.gd)
 skydot_gd_test(actor_registry test_actor_registry.gd)
