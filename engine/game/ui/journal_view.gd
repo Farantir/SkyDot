@@ -18,6 +18,8 @@ class_name JournalView
 extends Control
 
 signal engaged(open: bool)
+## Show on Map (M): the journal closes for the world map.
+signal show_on_map
 
 const SWF := "quest_journal"
 const STAGE := Vector2(1280.0, 720.0)
@@ -221,7 +223,8 @@ func _quests_input(event: InputEvent) -> bool:
 		_toggle_active()
 		return true
 	if event is InputEventKey and event.pressed and event.physical_keycode == KEY_M:
-		return true  # Show on Map: there is no map yet
+		show_on_map.emit()  # the world map (its quest targets are not shown yet)
+		return true
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var hit := _centered_hit("QuestsFader/Page_mc/TitleList_mc/List_mc", titles.size(), title_index, event.position)
 		if hit >= 0 and not titles[hit]["divider"]:

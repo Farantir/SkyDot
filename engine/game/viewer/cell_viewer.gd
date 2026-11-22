@@ -54,7 +54,7 @@
 #
 # Controls: the game's keys are the game's own (game/control_map.gd reads its controlmap.txt: E activates,
 # Tab the Tween menu, I/P// the menus, Q favorites, J the journal on Quests, Esc on the tab it was closed on);
-# T the Sleep/Wait menu to wait (a bed's activation opens it to sleep); M (map) does nothing until that menu exists. The viewer's debug keys keep off the keys the game binds in play: F3, F7, F8, F10, F12, the
+# T the Sleep/Wait menu to wait (a bed's activation opens it to sleep); M the world map (ui/map_view.gd). The viewer's debug keys keep off the keys the game binds in play: F3, F7, F8, F10, F12, the
 # numpad's + and -, G, K, N, O, U, V, [ ], - =, Home (V, O and Home are bound only in the game's debug and
 # Creations menu contexts; F12 stays the shot key though Main Gameplay lists it as CameraPath, a developer key).
 # The mouse looks (Esc opens the journal and frees it, a click captures it again; the
@@ -109,6 +109,7 @@
 # --start-quest EDID[,EDID...] starts those quests after the load (a scene
 # with "begin on quest start" then begins once its actors are loaded); the
 # scenes' lines show as subtitles under the crosshair for speakers within 20 m.
+# --open-map OPS shows the world map after the load and does OPS (viewer/map_shot.gd), for shots.
 # --open-journal quests|stats|system shows the journal on that tab (--journal-category N picks the stats page's
 # category). --open-sleep-wait wait|sleep[:HOURS] shows the Sleep/Wait menu (T; a bed's activation for sleep) with
 # its slider at HOURS (the game refuses as it would: enemies near, in the air). --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none, "NAME:tree:up" zooms into its tree and moves the cursor up; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
@@ -301,9 +302,15 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0 or _settings.open_journal != "" or _settings.open_sleep_wait != "":
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0 or _settings.open_journal != "" or _settings.open_sleep_wait != "" or _settings.open_map != "":
 		_items = ItemMenu.new(_session, _controls)
 		add_child(_items)
+		# The world map: the main camera moves up while the world waits (viewer/map_scene.gd).
+		var map_scene := MapScene.new(_session, _rig.camera)
+		add_child(map_scene)
+		_items.map_view.scene = map_scene
+		_loop.paused = func() -> bool: return _items.map_view.is_open()
+		_loop.map_requested.connect(_items.open_map)
 	add_child(DeathMenu.new(_session, _rig, _loop))
 	add_child(FadeLayer.new(_session.transition))  # the door fade (the session keeps its value)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
@@ -325,6 +332,8 @@ func _start_game() -> void:
 	if not _loop.start():
 		return
 	_select_crafting_category(settings)
+	if settings.open_map != "" and _items != null and not (_loop.in_world and settings.has_screenshot):
+		MapShot.apply(_items, settings.open_map)
 	if _loop.in_world:
 		if settings.has_benchmark:
 			_benchmark.begin(settings.benchmark, settings.fly_speed)
@@ -335,6 +344,8 @@ func _start_game() -> void:
 			_session.streamer.load_everything()
 			if _session.streamer.lod != null:
 				print("lod: ", _session.streamer.lod.get_stats())
+			if settings.open_map != "" and _items != null:
+				MapShot.apply(_items, settings.open_map)  # after the place is built: the map hides it
 			_shots.begin_run(settings.screenshot, [NAN])
 		return
 	if settings.open_inventory and _items != null:
@@ -387,6 +398,8 @@ func _process(delta: float) -> void:
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
 	if _hud != null and _items != null:
 		_hud.visible = not _items.is_open()  # the game hides its HUD while an item menu is open
+	if _items != null:
+		_body.visible = not _items.map_view.is_open()  # the arms stay below while the camera is up
 	_debug.sample_perf(delta)
 	if _shots.is_running() and _settings.shot_live:
 		# --shot-live: the game runs as in play (quests, scenes, the AI), the camera at the shot's view.

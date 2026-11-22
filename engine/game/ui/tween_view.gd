@@ -9,7 +9,7 @@
 #   cancel (Tab, Esc)    closes the menu (back to the game)
 #   mouse                over a direction's input rect highlights it, a click opens it; the wheel does nothing
 # Opening a direction closes this menu and opens the viewer's menu for it (`chosen`); the game keeps TweenMenu hidden
-# under it, and Tab there returns to the game, the same as here. Map opens nothing: there is no map yet.
+# under it, and Tab there returns to the game, the same as here. Map opens the world map (ui/map_view.gd).
 # The skills header says LEVEL UP when a level-up is due (the movie's bLevelUp).
 class_name TweenView
 extends Control
@@ -77,9 +77,9 @@ func press(index: int) -> void:
 		queue_redraw()
 
 
-## Open the highlighted direction (OpenHighlightedMenu); Map has nothing to open.
+## Open the highlighted direction (OpenHighlightedMenu).
 func open_selected() -> void:
-	if selection <= 0 or DIRECTIONS[selection] == "map":
+	if selection <= 0:
 		return
 	var direction: String = DIRECTIONS[selection]
 	close()

@@ -128,7 +128,7 @@ func marker(ref: int) -> Dictionary:
 func map_place() -> Dictionary:
 	var world := _session.streamer.world_id
 	if world != 0 and map_world(world) != 0:
-		return {"world": map_world(world), "position": _eye(_session.player_feet())}
+		return {"world": map_world(world), "position": SkydotWorld.godot_to_skyrim(_session.viewpoint_position())}
 	if not last_exterior.is_empty() and map_world(int(last_exterior["world"])) != 0:
 		return {"world": map_world(int(last_exterior["world"])), "position": last_exterior["position"]}
 	return {}
@@ -166,7 +166,7 @@ func _discover(world: int, at: Vector3) -> void:
 	for m: Dictionary in _data_markers(world):
 		var ref := int(m["ref"])
 		var flags := _session.papyrus.get_map_marker_flags(ref)
-		if flags < 0 or flags & CAN_TRAVEL:
+		if flags < 0 or flags & CAN_TRAVEL or _session.papyrus.is_ref_disabled(ref):
 			continue
 		var radius := float(m["radius"]) if float(m["radius"]) > 0.0 else reveal
 		if (m["position"] as Vector3).distance_to(at) <= radius:

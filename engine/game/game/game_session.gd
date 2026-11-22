@@ -1737,6 +1737,11 @@ func player_feet() -> Vector3:
 	return _feet
 
 
+## Where the player's eye (the first-person camera) is now, engine space.
+func viewpoint_position() -> Vector3:
+	return _viewpoint.global_position
+
+
 func player_object() -> PlayerBody:
 	return _player
 

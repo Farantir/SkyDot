@@ -19,6 +19,7 @@ var skills_view: SkillsView
 var tween_view: TweenView
 var journal_view: JournalView
 var sleep_wait_view: SleepWaitView
+var map_view: MapView
 var _session: GameSession
 var _input: PlayerInput
 
@@ -38,7 +39,12 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	tween_view.chosen.connect(_on_tween_chosen)
 	journal_view = JournalView.new(session)
 	sleep_wait_view = SleepWaitView.new(session)
-	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view, journal_view, sleep_wait_view]:
+	map_view = MapView.new(session)
+	map_view.journal_requested.connect(func() -> void: journal_view.open(JournalView.QUESTS))
+	journal_view.show_on_map.connect(func() -> void:
+		journal_view.close()
+		open_map())
+	for view: Control in [inventory_view, container_view, crafting_view, magic_view, favorites_view, training_view, skills_view, tween_view, journal_view, sleep_wait_view, map_view]:
 		view.enabled = func() -> bool: return input.enabled
 		view.key_label = input.key_label
 		view.engaged.connect(func(_open: bool) -> void: _on_engaged())
@@ -50,14 +56,14 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 
 
 func is_open() -> bool:
-	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open() or journal_view.is_open() or sleep_wait_view.is_open()
+	return inventory_view.is_open() or container_view.is_open() or crafting_view.is_open() or magic_view.is_open() or favorites_view.is_open() or training_view.is_open() or skills_view.is_open() or tween_view.is_open() or journal_view.is_open() or sleep_wait_view.is_open() or map_view.is_open()
 
 
 ## The open menu for a shot's "menu" block: {open, tab, selected, mode}; empty when none is open.
 func describe() -> Dictionary:
 	var names := {"inventory": inventory_view, "container": container_view, "crafting": crafting_view,
 		"magic": magic_view, "favorites": favorites_view, "training": training_view, "skills": skills_view,
-		"tween": tween_view, "journal": journal_view, "sleep_wait": sleep_wait_view}
+		"tween": tween_view, "journal": journal_view, "sleep_wait": sleep_wait_view, "map": map_view}
 	for name: String in names:
 		var view: Control = names[name]
 		if not view.is_open():
@@ -74,6 +80,8 @@ func describe() -> Dictionary:
 			out["selected"] = journal_view.title_index if journal_view.tab == JournalView.QUESTS else journal_view.category
 			if journal_view.tab == JournalView.SYSTEM:
 				out["mode"] = JournalSystem.State.keys()[journal_view.system.state]
+		if view == map_view:
+			out.merge(map_view.describe())
 		if view == sleep_wait_view:
 			out["mode"] = "sleep" if sleep_wait_view.sleeping else "wait"
 			out["selected"] = sleep_wait_view.hours()
@@ -92,7 +100,7 @@ func _on_engaged() -> void:
 	var imid := _session.world.get_default_object("IMID") if _session.world != null else 0
 	# Not behind the skills screen: StatsMenu asks for its own modifier (SkillMenuIdle), which Skyrim.esm lacks, so the
 	# world shows sharp through the sky.
-	var item_menu := open and not skills_view.is_open()
+	var item_menu := open and not skills_view.is_open() and not map_view.is_open()
 	ImageSpaceSync.modifier = _session.world.get_image_space_modifier(imid) if item_menu and imid != 0 else {}
 	if _input.enabled and DisplayServer.get_name() != "headless":
 		if open:
@@ -134,6 +142,14 @@ func open_wait() -> void:
 	sleep_wait_view.open(false)
 
 
+## The Quick Map key (M) outside a menu, the Tween menu's Map, the journal's Show on Map: the world map (not during
+## a dialogue; nothing where the place has no world map).
+func open_map() -> void:
+	if is_open() or _session.is_dialogue_open() or not MapView.available():
+		return
+	map_view.open()
+
+
 ## A bed the player may sleep in was activated (GameSession.sleep_requested): the menu to sleep.
 func open_sleep(bed: int) -> void:
 	if is_open() or not SleepWaitView.available():
@@ -150,6 +166,8 @@ func _on_tween_chosen(direction: String) -> void:
 			magic_view.open()
 		"skills":
 			skills_view.open()
+		"map":
+			open_map()
 
 
 ## The `inventory` key outside a menu: show the inventory (not during a dialogue).

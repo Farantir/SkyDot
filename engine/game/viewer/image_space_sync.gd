@@ -11,6 +11,8 @@ extends RefCounted
 ## menus set the inventory menu's, DOBJ IMID, MenuImageSpace): its cinematic saturation, brightness and contrast
 ## multiply and add onto the grade's, and its depth of field blurs the far world.
 static var modifier := {}
+## The world map's weather (WorldMapWeather) while the map is open: its image space instead of the place's.
+static var weather_override: SkydotWeather
 ## Godot's far blur amount for an IMAD depth of field strength of 1. The game's ISDepthOfField mixes the frame
 ## with a blurred copy by saturate((depth - distance) / range) * strength (Community Shaders' ISDepthOfField.hlsl);
 ## at 1100x800 its fully blurred far world fits a Gaussian of sigma ~5 px, and this amount gives Godot's bokeh about
@@ -27,7 +29,9 @@ static func apply(viewport: Viewport, settings: ViewerSettings, session: GameSes
 	else:
 		var space: Dictionary
 		# A sky seen from an interior ("show sky") does not grade the cell.
-		if session.clock.has_weather() and not session.clock.weather.is_sky_only():
+		if weather_override != null and is_instance_valid(weather_override):
+			space = weather_override.get_image_space()
+		elif session.clock.has_weather() and not session.clock.weather.is_sky_only():
 			space = session.clock.weather.get_image_space()
 			if not settings.volumetric:
 				space.erase("volumetric")

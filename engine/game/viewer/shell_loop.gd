@@ -30,6 +30,8 @@ signal tween_requested
 signal journal_requested(pause: bool)
 ## The Wait key (T): the Sleep/Wait menu for a wait.
 signal wait_requested
+## The Quick Map key (M): the world map.
+signal map_requested
 ## The player died; the controls are blocked. The shell shows the death: its camera fall or fade.
 signal died(killer: int)
 ## Each frame of the quit countdown, after it counted down (0: the last frame of the run).
@@ -43,6 +45,8 @@ var options: StartOptions
 var quit_in := -1
 ## Whether start() entered a worldspace (not an interior).
 var in_world := false
+## True while the world waits (the world map is open): frame() runs nothing of the game.
+var paused: Callable = func() -> bool: return false
 
 var _host: Node
 var _session: GameSession
@@ -131,6 +135,8 @@ func arm_quit() -> void:
 ## False when the shell must not drive the player this frame: the run is quitting or an
 ## --activate is running.
 func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool:
+	if paused.call():
+		return false
 	options.step(delta)
 	_session.streamer.hold_player(_rig.player, _session.is_fading())
 	_rig.track()
@@ -218,7 +224,7 @@ func _on_command(action: StringName, shift: bool) -> void:
 		PlayerInput.WAIT:
 			wait_requested.emit()
 		PlayerInput.MAP:
-			pass  # no map menu yet
+			map_requested.emit()
 		PlayerInput.FAVORITES:
 			favorites_requested.emit()
 		&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8":

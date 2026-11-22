@@ -104,6 +104,14 @@ func pan(direction: Vector2, delta: float) -> void:
 	position.y = xy.y
 
 
+## Move the camera to `xy` (game units) as a pan gets there: clamped, z kept.
+func move_to(xy: Vector2) -> void:
+	xy = _clamped(xy)
+	offset = xy - Vector2(target.x, target.y)
+	position.x = xy.x
+	position.y = xy.y
+
+
 ## Each frame: the ground follows the land under the camera; z is pushed up over rising land; the zoom fraction
 ## is what z stands above the ground.
 func step(delta: float) -> void:

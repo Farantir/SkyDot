@@ -58,6 +58,16 @@ const ACTIONS := {
 	&"menu_equip_left": ["Item Menus", "LeftEquip"],
 	&"menu_drop": ["Item Menus", "XButton"],
 	&"menu_favorite": ["Item Menus", "YButton"],
+	&"map_up": ["Map Menu", "Up"],
+	&"map_down": ["Map Menu", "Down"],
+	&"map_left": ["Map Menu", "Left"],
+	&"map_right": ["Map Menu", "Right"],
+	&"map_cancel": ["Map Menu", "Cancel"],
+	&"map_click": ["Map Menu", "Click"],
+	&"map_place_marker": ["Map Menu", "PlacePlayerMarker"],
+	&"map_player_position": ["Map Menu", "PlayerPosition"],
+	&"map_local": ["Map Menu", "LocalMap"],
+	&"map_journal": ["Map Menu", "Journal"],
 	&"menu_charge": ["Inventory", "ChargeItem"],
 }
 

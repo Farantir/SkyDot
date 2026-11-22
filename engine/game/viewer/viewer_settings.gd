@@ -145,6 +145,7 @@ var learn_enchantment: Array[int] = []  # --learn-enchantment 0xENCH[,...]: the 
 var crafting_category := ""  # --crafting-category NAME|N: the enchanting table's category (Disenchant, Item, Enchantment, Soul gem)
 var open_journal := ""  # --open-journal quests|stats|system: show the journal on that tab after the load
 var journal_category := 0  # --journal-category N: the stats page's category (0 GENERAL ... 5 CRIME)
+var open_map := ""  # --open-map OPS: the world map after the load, then OPS (map_shot.gd: zoom=F;pan=DX:DY;discover=0xREF|all;prompt=0xREF;answer=N;block)
 var open_sleep_wait := ""  # --open-sleep-wait wait[:HOURS]|sleep[:HOURS]: the Sleep/Wait menu after the load, its slider at HOURS
 var journal_system := ""  # --journal-system STATE[:N]: the System tab's panel (save, load, characters, settings:N, controls, quit, confirm-load, confirm-quit)
 var open_skills := ""  # --open-skills NAME: show the skills screen on that skill ("-": the first)
@@ -334,6 +335,7 @@ func _read_ui(args: Dictionary) -> void:
 	journal_category = int(args.get("journal-category", "0"))
 	journal_system = args.get("journal-system", "")
 	open_sleep_wait = args.get("open-sleep-wait", "")
+	open_map = args.get("open-map", "")
 	grant_xp = float(args.get("grant-xp", "0"))
 	grant_perks = int(args.get("grant-perks", "0"))
 	crafting_category = args.get("crafting-category", "")
