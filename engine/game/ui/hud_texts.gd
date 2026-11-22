@@ -40,7 +40,16 @@ const BAR_DROP := 0.0
 ## The message block sits this much lower than its lock at the top left gives (measured at 1100x800).
 const MESSAGE_DROP := 16.5
 
+## AnimatedLetter (QuestUpdateBaseInstance.AnimatedLetter_mc): the quest-update line, "<NAME> DISCOVERED" among them.
+const LETTER_CLIP := "AnimatedLetter_mc"
+const LETTER_SPACE := 15.0  # AnimatedLetter.SpaceWidth
+const LETTER_END := 104.0  # AnimatedLetter.EndPosition
+const LETTER_TRIM := 5.0  # getLineMetrics(0).width - 5
+
 var _queue: Array[String] = []
+## The quest-update letters shown: {text, x (in AnimatedLetter_mc's parent), frame (the letter clip's)}.
+var _letters: Array = []
+var _letter_queue: Array[String] = []
 ## {text, frame (float, the clip's), y}
 var _shown: Array = []
 var _animating := false  # a new message is pushing the others down
@@ -52,6 +61,70 @@ var _clock := 0.0
 ## Whether the pack can draw these texts.
 static func available() -> bool:
 	return HudGame.available()
+
+
+## QuestNotification.ShowNotification with a text (AnimatedLetter.ShowQuestUpdate): the letters of `text` upper-cased,
+## laid out centred on -EndPosition, one more appearing each frame, each playing the letter clip from StartAnim.
+func show_quest_update(text: String) -> void:
+	if not text.is_empty():
+		_letter_queue.append(text.to_upper())
+
+
+func has_quest_update() -> bool:
+	return not _letters.is_empty() or not _letter_queue.is_empty()
+
+
+func _start_letters(text: String) -> void:
+	var font := _font()
+	var px := _letter_px()
+	var widths: Array[float] = []
+	var total := 0.0
+	for i in text.length():
+		var w := font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, px).x - LETTER_TRIM
+		if text[i] == " " or w <= 0.0:
+			w = LETTER_SPACE
+		widths.append(w)
+		total += w
+	var start := -0.5 * total - LETTER_END
+	var spacing := 0.0
+	var old := 0.0
+	_letters.clear()
+	for i in text.length():
+		var x := start + spacing + old * 0.5 + widths[i] * 0.5
+		spacing = x - start
+		old = widths[i]
+		_letters.append({"text": text[i], "x": x, "frame": -float(i)})  # ShowLetter: one a frame
+
+
+## The letter's field size in the letter clip's own pixels (LetterTextInstance's 55).
+func _letter_px() -> int:
+	return 55
+
+
+func _letter_frames() -> int:
+	return int(UiAssets.character(SWF, UiAssets.exported(SWF, LETTER_CLIP)).get("frames", 1))
+
+
+## The letters, drawn as the letter clip at each one's frame over the quest update base.
+func draw_quest_update(canvas: CanvasItem, area: Vector2) -> void:
+	if _letters.is_empty():
+		return
+	var base := _place(area, BASE + "QuestUpdateBaseInstance")
+	var clip := UiAssets.child(SWF, int(UiAssets.instance(SWF, BASE + "QuestUpdateBaseInstance").get("id", -1)), LETTER_CLIP)
+	var id := UiAssets.exported(SWF, LETTER_CLIP)
+	if clip.is_empty() or id < 0:
+		return
+	var placed := UiDraw.matrix(clip["matrix"])
+	for letter: Dictionary in _letters:
+		var frame := int(letter["frame"])
+		if frame < 0:
+			continue
+		var look := UiDraw.Look.new()
+		look.draw_texts = true
+		look.stretch_texts = true
+		look.texts["LetterTextInstance"] = String(letter["text"])
+		var at := Transform2D(placed.x, placed.y, Vector2(float(letter["x"]), placed.origin.y))
+		UiDraw.character(canvas, SWF, id, base * at, Color.WHITE, look, Rect2(), frame + 1)
 
 
 ## HUDMenu.ShowMessage: queue a notification.
@@ -83,6 +156,16 @@ func step(delta: float) -> void:
 
 ## One movie frame: the clips advance, then Messages.Update runs.
 func _frame() -> void:
+	if _letters.is_empty() and not _letter_queue.is_empty():
+		_start_letters(_letter_queue.pop_front())
+	elif not _letters.is_empty():
+		var last := _letter_frames() - 1
+		var done := true
+		for letter: Dictionary in _letters:
+			letter["frame"] = float(letter["frame"]) + 1.0
+			done = done and int(letter["frame"]) >= last
+		if done:
+			_letters.clear()
 	for entry: Dictionary in _shown:
 		var frame: float = entry["frame"]
 		if frame < FADE_OUT_FRAME - 1 or entry["fading"]:

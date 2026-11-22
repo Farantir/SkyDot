@@ -179,8 +179,9 @@ func discover(ref: int, name: String) -> void:
 	print("map: discovered 0x%08X %s" % [ref, name])
 	if _session.journal != null:
 		_session.journal.count("Locations Discovered")
-	discovered.emit(ref, name)
-	_session.message.emit(text("sDiscoveredText").replace("%s", name.to_upper()), false)
+	discovered.emit(ref, name)  # the HUD shows "<NAME> DISCOVERED" as a quest update (HudView)
+	if not HudTexts.available():
+		_session.message.emit(text("sDiscoveredText").replace("%s", name.to_upper()), false)
 
 
 ## The notification that refuses fast travel to `m` now, "" when the player may travel.

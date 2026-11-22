@@ -56,8 +56,19 @@ func _init(session: GameSession, key_label: Callable) -> void:
 	_session = session
 	_key_label = key_label
 	session.message.connect(_on_message)
+	if session.world_map != null:
+		session.world_map.discovered.connect(_on_discovered)
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+## A map marker discovered: "<NAME> DISCOVERED" as a quest update (sDiscoveredText; the HUD's notification queue
+## keeps it only without the game's movie).
+func _on_discovered(_ref: int, name: String) -> void:
+	if HudTexts.available():
+		if _texts == null:
+			_texts = HudTexts.new()
+		_texts.show_quest_update(_session.world_map.text("sDiscoveredText").replace("%s", name))
 
 
 func _process(_delta: float) -> void:
@@ -110,6 +121,7 @@ func _draw() -> void:
 		if show_crosshair:
 			_game.draw_crosshair(self, area)
 		_texts.draw_messages(self, area)
+		_texts.draw_quest_update(self, area)
 		_draw_rollover(area)
 		return
 	for bar: Dictionary in BARS:
