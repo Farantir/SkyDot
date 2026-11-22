@@ -11,7 +11,7 @@
 #                 (sDiscoveredText) shown; Game.FastTravel requests are taken here
 #   refusal()     why fast travel to a marker is refused, the game's HUD notification texts (sNoFastTravel*)
 #   travel()      fast travel: the fade (fFastTravelFadeSecs 0.5), the arrival at the marker's linked heading marker
-#                 (XLKR) with its heading, else the marker; game time passes as distance / (8 x fFastTravelSpeedMult)
+#                 (XLKR) with its heading, else on the marker as placed, in its worldspace (measured: Windhelm); game time passes as distance / (8 x fFastTravelSpeedMult)
 #                 seconds (measured: Riverwood -> Whiterun 39845 units, 1.38 h) and the actors recover over it as a
 #                 wait does (Rest.RECOVERY_PER_HOUR)
 #   custom marker (Place Marker) and the last exterior position, saved (WMAP).
@@ -216,9 +216,14 @@ static func travel_hours(from: Vector3, to: Vector3) -> float:
 
 ## Fast travel to marker `m` (a markers() entry): behind the fade the time passes and the player arrives.
 func travel(m: Dictionary) -> void:
-	# The arrival is in the marker's worldspace's parent on the map (Whiterun's marker stands in WhiterunWorld at
-	# the gate outside: the game lands the player in Tamriel there).
-	var world := int(m.get("map_world", m.get("world", 0)))
+	# The arrival's worldspace: the linked heading marker's (Whiterun's 0xC07EF is in WhiterunWorld: the game's
+	# autosave after that trip was named WhiterunWorld); without one the marker's own (measured with SkyrimRemote: Windhelm's
+	# marker, which has none, put the player on the marker itself, heading 0 as it is placed, in WindhelmWorld).
+	var world := int(m.get("world", 0))
+	if int(m.get("arrival_ref", 0)) != 0 and m.has("arrival_position"):
+		var cell := _session.world.get_ref_cell(int(m["arrival_ref"]))
+		if cell != 0 and int(_session.world.get_cell(cell).get("world", 0)) != 0:
+			world = int(_session.world.get_cell(cell)["world"])
 	var pos: Vector3 = m.get("arrival_position", m["position"])
 	var rot: Vector3 = m.get("arrival_rotation", m.get("rotation", Vector3.ZERO))
 	var arrival := SkydotWorld.skyrim_transform(pos, Vector3(0.0, 0.0, rot.z), 1.0)

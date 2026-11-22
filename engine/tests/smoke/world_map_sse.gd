@@ -170,3 +170,15 @@ func _fast_travel() -> void:
 	var yaw := _session.player_object().yaw
 	# Godot yaw 0 looks along -Z (game north); the game's heading 90 (east, +X) is a Godot yaw of -90 degrees.
 	expect(absf(wrapf(yaw + PI / 2.0, -PI, PI)) < 0.01, "facing east, heading 90 (Godot yaw %.3f)" % yaw)
+	# The heading marker's worldspace: 0xC07EF is in WhiterunWorld (the game's autosave after this trip was named
+	# WhiterunWorld, map-research.md "Incidents").
+	expect(_session.streamer.world_id == _session.world.find_world("WhiterunWorld"), "in WhiterunWorld (the heading marker's)")
+	# Windhelm's marker has no heading marker: the game put the player on the marker (135025.8, 35596.59), heading 0,
+	# in WindhelmWorld (SkyrimRemote, skycompare-data/map3/j13.json).
+	_session.papyrus.set_map_marker_flags(0x38436, 3)
+	_session.world_map.travel(_session.world_map.marker(0x38436))
+	await process_frame
+	arrived = SkydotWorld.godot_to_skyrim(_session.player_object().position)
+	expect(Vector2(arrived.x, arrived.y).distance_to(Vector2(135025.8, 35596.59)) < 3.0, "Windhelm: on its marker (got %s)" % arrived)
+	expect(_session.streamer.world_id == _session.world.find_world("WindhelmWorld"), "Windhelm: in WindhelmWorld")
+	expect(absf(wrapf(_session.player_object().yaw, -PI, PI)) < 0.01, "Windhelm: heading 0")
