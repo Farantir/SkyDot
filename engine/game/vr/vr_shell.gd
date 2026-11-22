@@ -59,6 +59,8 @@ var _container_panel: VrPanel
 var _crafting_panel: VrPanel
 var _training_panel: VrPanel
 var _magic_panel: VrPanel
+var _map: MapView
+var _map_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 
@@ -183,6 +185,15 @@ func _create_components() -> void:
 		_skills_panel = _menu_panel(_skills)
 		_session.container_opened.connect(_on_container_opened)
 		_session.crafting_opened.connect(_on_crafting_opened)
+		# The world map: the origin floats up over the map world (MapScene.origin), the movie's overlay on a panel.
+		if MapView.available():
+			_map = MapView.new(_session)
+			_map.scene = MapScene.new(_session, _rig.camera)
+			_map.scene.origin = _rig.origin
+			add_child(_map.scene)
+			_map_panel = _menu_panel(_map)
+			_loop.paused = func() -> bool: return _map.is_open()
+			_loop.map_requested.connect(_on_map_requested)
 	_make_death_screen()
 	if not _rig.tracking:  # the mouse looks only in the desktop fallback (the viewer always captures it)
 		_controls.capture_mouse()
@@ -261,8 +272,10 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 		panel = _skills_panel
 	elif view == _favorites:
 		panel = _favorites_panel
+	elif view == _map:
+		panel = _map_panel
 	_controls.blocked = open or _favorites.is_open() or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
-		or _training.is_open() or _skills.is_open() or _session.is_dialogue_open()
+		or _training.is_open() or _skills.is_open() or _session.is_dialogue_open() or (_map != null and _map.is_open())
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -327,6 +340,16 @@ func _on_magic_requested() -> void:
 		return
 	elif not _session.is_dialogue_open():
 		_magic.open()
+
+
+## M on the desktop fallback (no controller button yet): the world map, or closes it.
+func _on_map_requested() -> void:
+	if _map == null:
+		return
+	if _map.is_open():
+		_map.close()
+	elif not _inventory.is_open() and not _magic.is_open() and not _skills.is_open() and not _session.is_dialogue_open():
+		_map.open()
 
 
 ## Activating a container opens its menu.

@@ -24,6 +24,10 @@ var camera: MapCamera
 var world := 0
 ## Off: no depth blur, clouds or object LOD (tests).
 var effects := true
+## A tracked head (the VR shell): the camera is not ours to place, so this node (the XR origin) is moved instead
+## to put the head where the map camera stands; the head then looks around from there (Skyrim VR floats the
+## player above the map). Null: the camera itself is placed (the flat viewer).
+var origin: Node3D
 
 var _session: GameSession
 var _view: Camera3D
@@ -36,6 +40,7 @@ var _detached: Array[Node] = []
 var _near := 0.05
 var _far := 4000.0
 var _was_transform := Transform3D.IDENTITY
+var _was_origin := Transform3D.IDENTITY
 var _settled := false
 
 
@@ -78,6 +83,8 @@ func open(place: Dictionary) -> bool:
 	_near = _view.near
 	_far = _view.far
 	_was_transform = _view.global_transform
+	if origin != null:
+		_was_origin = origin.global_transform
 	var scale := SkydotWorld.unit_scale()
 	_view.near = MapCamera.NEAR_CLIP * scale
 	_view.far = FAR * scale
@@ -101,7 +108,10 @@ func close() -> void:
 	_blur = null
 	_view.near = _near
 	_view.far = _far
-	_view.global_transform = _was_transform
+	if origin != null:
+		origin.global_transform = _was_origin
+	else:
+		_view.global_transform = _was_transform
 	_show_place()
 	_session.world.call_deferred("trim_cache")
 
@@ -117,7 +127,15 @@ func step(delta: float) -> void:
 			_settled = true
 			camera.open(camera.target)
 	camera.step(delta)
-	_view.global_transform = camera.transform()
+	if origin != null:
+		# The head's pose in the origin stays the player's; the origin goes where that puts the head on the map
+		# camera's position, facing its way.
+		var head := origin.global_transform.affine_inverse() * _view.global_transform
+		var wanted := camera.transform()
+		var level := Transform3D(Basis(Vector3.UP, wanted.basis.get_euler().y), wanted.origin)
+		origin.global_transform = level * Transform3D(Basis.IDENTITY, -head.origin)
+	else:
+		_view.global_transform = camera.transform()
 
 
 ## Where `position` (game units) is on the view (pixels), null behind the camera.
