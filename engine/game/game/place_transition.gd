@@ -28,6 +28,7 @@ var fade := 0.0:
 			fade = value
 			fade_changed.emit(value)
 var _door := {}  # the door being gone through
+var _fade_seconds := FADE_SECONDS  # a fast travel's door names its own (fade_seconds)
 var _wait := 0.0  # seconds in WAIT
 var _frames := 0  # frames since the place was built
 var _place: Place
@@ -56,6 +57,7 @@ func begin_fade(door: Dictionary) -> void:
 	if phase != Phase.NONE:
 		return
 	_door = door
+	_fade_seconds = float(door.get("fade_seconds", FADE_SECONDS))
 	phase = Phase.OUT
 
 
@@ -83,7 +85,7 @@ func on_place_left() -> void:
 func step(delta: float) -> void:
 	match phase:
 		Phase.OUT:
-			fade = minf(1.0, fade + delta / FADE_SECONDS)
+			fade = minf(1.0, fade + delta / _fade_seconds)
 			if fade >= 1.0:
 				phase = Phase.TRAVEL  # this frame draws black first
 		Phase.TRAVEL:
@@ -100,7 +102,7 @@ func step(delta: float) -> void:
 			if _frames > SETTLE_FRAMES or _wait > TIMEOUT:
 				phase = Phase.IN
 		Phase.IN:
-			fade = maxf(0.0, fade - delta / FADE_SECONDS)
+			fade = maxf(0.0, fade - delta / _fade_seconds)
 			if fade <= 0.0:
 				phase = Phase.NONE
 
@@ -108,6 +110,9 @@ func step(delta: float) -> void:
 ## Arrive through a load door: its XTEL gives the spot and the facing.
 ## What was built ahead for the place behind it is used.
 func travel(door: Dictionary) -> void:
+	var on_travel: Callable = door.get("on_travel", Callable())
+	if on_travel.is_valid():
+		on_travel.call()  # a fast travel's time passes behind the black
 	var arrival: Transform3D = door["arrival"]
 	var eye := arrival.origin + Vector3(0, GameSession.EYE_HEIGHT, 0)
 	var forward := -arrival.basis.z

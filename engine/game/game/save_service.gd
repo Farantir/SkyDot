@@ -10,6 +10,7 @@ const PLYR_VERSION := 1
 const FAVS_VERSION := 1
 const JRNL_VERSION := 1
 const INFO_VERSION := 1
+const WMAP_VERSION := 1
 ## A save the journal's System tab makes: save001.skydot, save002.skydot, ... (the game numbers its saves).
 const SAVE_PREFIX := "save"
 
@@ -30,6 +31,8 @@ var _clock: SkydotClock
 var favorites: Favorites
 ## The journal's log, stats and play time (JRNL); a save without the section starts it empty.
 var journal: JournalLog
+## The world map's custom marker and last exterior position (WMAP); a save without it has neither.
+var world_map: WorldMap
 ## What the load list shows of a save (INFO): name, race, level, location ({} when nobody says).
 var describe: Callable
 
@@ -58,6 +61,8 @@ func save(path: String, extra := {}) -> bool:
 		writer.add_section("FAVS", FAVS_VERSION, favorites.save_bytes())
 	if journal != null:
 		writer.add_section("JRNL", JRNL_VERSION, journal.save_bytes())
+	if world_map != null:
+		writer.add_section("WMAP", WMAP_VERSION, world_map.save_bytes())
 	var info: Dictionary = describe.call() if describe.is_valid() else {}
 	info.merge(extra, true)
 	info["saved_at"] = int(Time.get_unix_time_from_system())
@@ -165,6 +170,9 @@ func load_game(path: String) -> bool:
 	var favorite_state := {}
 	if favorites != null and reader.has_section("FAVS") and reader.get_section_version("FAVS") == FAVS_VERSION:
 		favorite_state = Favorites.decode(reader.get_section("FAVS"))
+	var map_state := {}
+	if world_map != null and reader.has_section("WMAP") and reader.get_section_version("WMAP") == WMAP_VERSION:
+		map_state = WorldMap.decode(reader.get_section("WMAP"))
 	_bridge.retire_graphs()
 	_papyrus.commit_load()
 	_clock.commit_load()
@@ -173,6 +181,8 @@ func load_game(path: String) -> bool:
 		favorites.adopt(favorite_state)  # an older save has none
 	if journal != null:
 		journal.adopt(journal_state)
+	if world_map != null:
+		world_map.adopt(map_state)
 	var at: Vector3 = _player.loaded_position
 	if int(player["world"]) != 0:
 		if not _place.enter_exterior(int(player["world"]), at, null):

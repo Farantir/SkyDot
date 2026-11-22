@@ -147,6 +147,8 @@ const GOLD := 0xF
 var journal: JournalLog
 ## Waiting and sleeping (the Sleep/Wait menu's rules).
 var rest: Rest
+## The world map's rules: markers, discovery, fast travel, the custom marker (game/world_map.gd), saved in WMAP.
+var world_map: WorldMap
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -263,7 +265,9 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 	saves.favorites = favorites
 	journal = JournalLog.new(SessionJournalData.new(self))
 	rest = Rest.new(self)
+	world_map = WorldMap.new(self)
 	saves.journal = journal
+	saves.world_map = world_map
 	saves.describe = describe_save
 	quest_stage.connect(_on_journal_stage)
 	objective_changed.connect(journal.on_objective)
@@ -463,6 +467,7 @@ func _reset_game_state() -> void:
 	for part in _lifecycle:
 		part.reset()
 	rest.reset()
+	world_map.reset()
 
 
 func _on_place_left() -> void:
@@ -960,6 +965,8 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	journal.play_seconds += delta
 	streamer.update()
 	streamer.preload_step(feet)
+	if not transition.is_fading():
+		world_map.step(delta, feet)
 	if transition.is_fading():
 		transition.step(delta)
 	update_scripts(delta, feet)

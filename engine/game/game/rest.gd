@@ -81,6 +81,14 @@ func on_combat_state(ref: int, target: int, state: int) -> void:
 		_foes.erase(ref)
 
 
+## Whether an actor fights the player now (the dead dropped).
+func fighting() -> bool:
+	for foe: int in _foes.keys():
+		if _session.papyrus.is_actor_dead(foe):
+			_foes.erase(foe)
+	return not _foes.is_empty()
+
+
 ## The message that refuses a rest (a wait, or a sleep in `bed`), or "" when the player may rest.
 func refusal(sleeping: bool, bed := 0) -> String:
 	var prefix := "sNoSleep" if sleeping else "sNoWait"
