@@ -28,11 +28,10 @@ void bind_noop_natives(Vm& vm) {
     vm.ignore("Keyword", "SendStoryEventAndWait");
     // No blame or crime until there is combat.
     vm.ignore("ObjectReference", "SetActorCause");
-    // Impact effects at a node of a model (a dragon's footfall dust, its tail stomp), map markers shown on
-    // the map (there is no map yet) and a named idle animation (an actor plays the animation its package
-    // names; the script's idle is not looked up): logged, nothing shown.
-    for (const auto& [cls, fn] : {std::pair{"ObjectReference", "PlayImpactEffect"}, std::pair{"ObjectReference", "AddToMap"},
-                                  std::pair{"Actor", "PlayIdle"}}) {
+    // Impact effects at a node of a model (a dragon's footfall dust, its tail stomp) and a named idle animation
+    // (an actor plays the animation its package names; the script's idle is not looked up): logged, nothing
+    // shown. (AddToMap: natives_map.cpp.)
+    for (const auto& [cls, fn] : {std::pair{"ObjectReference", "PlayImpactEffect"}, std::pair{"Actor", "PlayIdle"}}) {
         vm.bind(cls, fn, [cls, fn](NativeCall& c) {
             std::printf("papyrus: %s.%s 0x%X (not shown)\n", cls, fn, c.self.form());
             return NativeResult{};

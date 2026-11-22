@@ -299,6 +299,9 @@ public:
     /// Owners scripts set (SetActorOwner, SetFactionOwner); saved with the VM.
     OwnerStates& owners() noexcept { return owners_; }
     [[nodiscard]] const OwnerStates& owners() const noexcept { return owners_; }
+    /// Map marker flags scripts and discovery set, fast travel's script block; saved with the VM (MMRK).
+    MapState& map() noexcept { return map_; }
+    [[nodiscard]] const MapState& map() const noexcept { return map_; }
 
     /// RegisterForSleep: `instance` wants OnSleepStart and OnSleepStop when the player sleeps (one registration
     /// per script). Saved with the VM.
@@ -347,6 +350,7 @@ public:
         PlacedRefs placed;
         DestructionStates destruction;
         OwnerStates owners;
+        MapState map;
         std::vector<Instance*> sleep_regs;
         std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states;
         double time = 0.0;
@@ -476,6 +480,7 @@ private:
     PlacedRefs placed_;
     DestructionStates destruction_;
     OwnerStates owners_;
+    MapState map_;
     std::vector<Instance*> sleep_regs_;
     std::map<std::uint32_t, std::vector<std::uint8_t>> animation_states_;
     ScheduledHandler scheduled_handler_;

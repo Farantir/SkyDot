@@ -357,6 +357,9 @@ public:
     godot::Array list_worlds() const;
     /// Form id of the worldspace with this editor id (case-insensitive), or 0.
     std::int64_t find_world(const godot::String& editor_id) const;
+    /// The land's height at (x, y) (game units) in `world` (its land worldspace's LAND, bilinear between the
+    /// 33x33 vertices); NAN where there is no land. The world map's camera stands this high above the ground.
+    double get_land_height(std::int64_t world, double x, double y) const;
     /// Form id of `world`'s exterior cell at grid (x, y), or 0.
     std::int64_t get_exterior_cell(std::int64_t world, std::int64_t x, std::int64_t y) const;
     /// Build exterior cell (x, y) of `world` under a new Node3D: terrain (from

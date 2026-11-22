@@ -818,6 +818,7 @@ void Vm::clear() {
     placed_.clear();
     destruction_.clear();
     owners_.clear();
+    map_.clear();
     sleep_regs_.clear();
     animation_states_.clear();
     scheduled_.clear();

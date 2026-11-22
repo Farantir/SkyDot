@@ -5,6 +5,7 @@
 #include "nav/navmesh.hpp"
 #include "build/refs.hpp"
 #include "data/text.hpp"
+#include "render/terrain.hpp"
 
 #include "skydot_formats/flags.hpp"
 #include "skydot_formats/units.hpp"
@@ -387,6 +388,26 @@ Array list_worlds(const WorldData& data) {
                               : godot::Variant();
         entry["bounds"] = godot::Rect2(w->min_x(), w->min_y(), w->max_x() - w->min_x(),
                                        w->max_y() - w->min_y());
+        entry["flags"] = static_cast<std::int64_t>(w->flags());
+        // The world map (format 46): the worldspace whose map applies (0 none) and, on one with its own MNAM,
+        // the usable cells NW..SE, the camera's height range, the initial pitch (degrees) and the cloud bank.
+        entry["map_world"] = static_cast<std::int64_t>(w->map_world());
+        if (w->has_map_data()) {
+            entry["map_nw"] = godot::Vector2i(w->map_nw_x(), w->map_nw_y());
+            entry["map_se"] = godot::Vector2i(w->map_se_x(), w->map_se_y());
+            entry["map_min_height"] = static_cast<double>(w->map_min_height());
+            entry["map_max_height"] = static_cast<double>(w->map_max_height());
+            entry["map_initial_pitch"] = static_cast<double>(w->map_initial_pitch());
+            entry["cloud_model"] = to_godot(w->cloud_model());
+        }
+        if (w->has_map_offset()) {
+            Dictionary offset;
+            offset["scale"] = static_cast<double>(w->map_offset_scale());
+            offset["x"] = static_cast<double>(w->map_offset_x());
+            offset["y"] = static_cast<double>(w->map_offset_y());
+            offset["z"] = static_cast<double>(w->map_offset_z());
+            entry["map_offset"] = offset;
+        }
         out.push_back(entry);
     }
     return out;
@@ -404,6 +425,31 @@ std::int64_t find_world(const WorldData& data, const String& editor_id) {
         }
     }
     return 0;
+}
+
+double get_land_height(const WorldData& data, std::int64_t world, double x, double y) {
+    constexpr double k_side = static_cast<double>(formats::k_cell_units);
+    constexpr int k_grid = 33;
+    const auto gx = static_cast<std::int32_t>(std::floor(x / k_side));
+    const auto gy = static_cast<std::int32_t>(std::floor(y / k_side));
+    const auto* tile = data.exterior_ptr(data.land_world(static_cast<std::uint32_t>(world)), gx, gy);
+    if (tile == nullptr || tile->terrain() == nullptr) {
+        return std::nan("");
+    }
+    const std::vector<float> h = TerrainBuilder::heights(*tile->terrain());
+    if (h.size() < static_cast<std::size_t>(k_grid * k_grid)) {
+        return std::nan("");
+    }
+    const double step = k_side / (k_grid - 1);
+    const double fx = std::clamp((x - gx * k_side) / step, 0.0, k_grid - 1.0);
+    const double fy = std::clamp((y - gy * k_side) / step, 0.0, k_grid - 1.0);
+    const int c0 = std::min(static_cast<int>(fx), k_grid - 2);
+    const int r0 = std::min(static_cast<int>(fy), k_grid - 2);
+    const double tx = fx - c0;
+    const double ty = fy - r0;
+    const auto at = [&](int r, int c) { return static_cast<double>(h[static_cast<std::size_t>(r * k_grid + c)]); };
+    return (at(r0, c0) * (1 - tx) + at(r0, c0 + 1) * tx) * (1 - ty) +
+           (at(r0 + 1, c0) * (1 - tx) + at(r0 + 1, c0 + 1) * tx) * ty;
 }
 
 std::int64_t get_exterior_cell(const WorldData& data, std::int64_t world, std::int64_t x, std::int64_t y) {

@@ -122,6 +122,7 @@ void SkydotWorld::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("get_enable_children", "ref"),
                                 &SkydotWorld::get_enable_children);
     godot::ClassDB::bind_method(D_METHOD("list_worlds"), &SkydotWorld::list_worlds);
+    godot::ClassDB::bind_method(D_METHOD("get_land_height", "world", "x", "y"), &SkydotWorld::get_land_height);
     godot::ClassDB::bind_method(D_METHOD("find_world", "editor_id"), &SkydotWorld::find_world);
     godot::ClassDB::bind_method(D_METHOD("get_exterior_cell", "world", "x", "y"),
                                 &SkydotWorld::get_exterior_cell);
@@ -400,6 +401,9 @@ std::int64_t SkydotWorld::find_npc(const String& editor_id) const { return queri
 
 Array SkydotWorld::list_worlds() const { return queries::list_worlds(data()); }
 std::int64_t SkydotWorld::find_world(const String& editor_id) const { return queries::find_world(data(), editor_id); }
+double SkydotWorld::get_land_height(std::int64_t world, double x, double y) const {
+    return queries::get_land_height(data(), world, x, y);
+}
 std::int64_t SkydotWorld::get_exterior_cell(std::int64_t world, std::int64_t x, std::int64_t y) const {
     return queries::get_exterior_cell(data(), world, x, y);
 }

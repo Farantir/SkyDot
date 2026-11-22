@@ -159,6 +159,7 @@ set(SKYDOT_CORE_SOURCES
     src/vm/natives_actor_extra.cpp
     src/vm/natives_quest.cpp
     src/vm/natives_game.cpp
+    src/vm/natives_map.cpp
     src/vm/natives_form.cpp
     src/vm/natives_sound.cpp
     src/vm/natives_weapon.cpp

@@ -74,6 +74,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <unordered_map>
@@ -511,6 +512,20 @@ public:
     /// The actors recover as `seconds` of play would let them (Health, Magicka and Stamina regenerate): the time a
     /// wait or a sleep skips, nothing else of the VM's time passes.
     void recover(double seconds) { actors_.tick(seconds); }
+    /// A map marker's flags now (1 visible, 2 can travel to, 4 "show all" hidden): what scripts or discovery set,
+    /// else the data's XMRK FNAM; -1 when `ref` is no map marker.
+    std::int64_t get_map_marker_flags(std::int64_t ref) const;
+    /// Discovery (or a test) sets a marker's flags; saved with the VM (MMRK). False when `ref` is no map marker.
+    bool set_map_marker_flags(std::int64_t ref, std::int64_t flags);
+    /// Game.EnableFastTravel's script block: false while scripts forbid fast travel.
+    bool is_fast_travel_enabled() const { return vm_->map().fast_travel_enabled; }
+    void set_fast_travel_enabled(bool enabled) { vm_->map().fast_travel_enabled = enabled; }
+    /// Game.FastTravel's destination reference, once (0 when none waits).
+    std::int64_t take_fast_travel_request() {
+        const std::uint32_t dest = vm_->map().travel_request;
+        vm_->map().travel_request = 0;
+        return static_cast<std::int64_t>(dest);
+    }
     /// The body of `ref` is at rest (the game layer): OnDeath runs if it was waiting. False if not.
     bool finish_dying(std::int64_t ref);
     /// Seconds OnDeath waits for finish_dying at the longest (game time).
@@ -757,6 +772,11 @@ private:
     void bind_noop_natives();
     void bind_world_natives();
     void bind_runtime_natives();
+    void bind_map_natives();
+    /// The data's map marker flags by reference (XMRK FNAM of every cell's markers), made on first use.
+    [[nodiscard]] std::optional<std::uint8_t> data_marker_flags(std::uint32_t ref) const;
+    mutable std::unordered_map<std::uint32_t, std::uint8_t> marker_flags_;
+    mutable bool marker_flags_read_ = false;
     void bind_actor_natives();
     void bind_magic_natives();
     /// The combat domain (vm/combat_runtime.hpp): hooks, ghosts, who hurt the player, his death.

@@ -106,6 +106,8 @@ constexpr std::size_t k_destruction_min_bytes = 4 + 8 + 4 + 1;
 constexpr std::size_t k_animation_reg_min_bytes = 4 + 4 + 4;
 /// An owner a script set: ref, owner (u32 each), faction (u8), rank (i32).
 constexpr std::size_t k_owner_min_bytes = 4 + 4 + 1 + 4;
+/// A map marker's flags: ref (u32), flags (u8).
+constexpr std::size_t k_map_marker_min_bytes = 4 + 1;
 /// A sleep registration: instance index (u32).
 constexpr std::size_t k_sleep_reg_min_bytes = 4;
 
@@ -418,6 +420,17 @@ void Vm::save_to(save::SaveWriter& out) const {
         }
     }
     out.add("SLEP", k_section_version, sleep.out);
+
+    ByteWriter map;
+    map.u8(map_.fast_travel_enabled ? 1 : 0);
+    map.u32(static_cast<std::uint32_t>(map_.states().size()));
+    for (const auto& [ref, flags] : map_.states()) {
+        const auto start = map.out.size();
+        map.u32(ref);
+        map.u8(flags);
+        map.check_record(start, k_map_marker_min_bytes);
+    }
+    out.add("MMRK", k_section_version, map.out);
 }
 
 std::vector<std::uint8_t> Vm::save() const {
@@ -451,6 +464,7 @@ void Vm::commit(Snapshot&& s) {
     placed_ = std::move(s.placed);
     destruction_ = std::move(s.destruction);
     owners_ = std::move(s.owners);
+    map_ = std::move(s.map);
     sleep_regs_ = std::move(s.sleep_regs);
     time_ = s.time;
     rng_ = s.rng;
@@ -931,6 +945,29 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
         }
         if (!r.at_end()) {
             return fail("bytes after the end of the OWNR section");
+        }
+    }
+    // Saves from before the world map have no MMRK section: the data's flags, fast travel allowed.
+    if (file.find("MMRK") != nullptr) {
+        if (!open_section(file, "MMRK", r, error)) {
+            return false;
+        }
+        std::uint8_t enabled = 1;
+        std::uint32_t marker_count = 0;
+        if (!r.u8(enabled) || !r.count(marker_count, k_map_marker_min_bytes)) {
+            return fail("truncated MMRK section");
+        }
+        out.map.fast_travel_enabled = enabled != 0;
+        for (std::uint32_t n = 0; n < marker_count; ++n) {
+            std::uint32_t ref = 0;
+            std::uint8_t flags = 0;
+            if (!r.u32(ref) || !r.u8(flags)) {
+                return fail("truncated MMRK section");
+            }
+            out.map.set(ref, flags);
+        }
+        if (!r.at_end()) {
+            return fail("bytes after the end of the MMRK section");
         }
     }
     if (file.find("SLEP") != nullptr) {

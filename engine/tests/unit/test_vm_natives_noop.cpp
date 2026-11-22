@@ -47,12 +47,12 @@ TEST_CASE("the logged natives are bound and return None", "[vm][natives]") {
     rig.add({.name = "ImageSpaceModifier",
              .functions = {native_function("Apply", {{"strength", "Float"}}, "None", false),
                            native_function("RemoveCrossFade", {}, "None", true)}});
-    rig.add({.name = "ObjectReference", .functions = {native_function("AddToMap", {}, "None", false)}});
+    rig.add({.name = "ObjectReference", .functions = {native_function("PlayImpactEffect", {}, "None", false)}});
     skydot::vm::bind_noop_natives(rig.vm);
 
     auto f = global_function("run", {{"m", "ImageSpaceModifier"}, {"o", "ObjectReference"}}, {}, "Int");
     f.add(Op::callmethod, {ident("Apply"), ident("m"), ident("::NoneVar"), floating(1.0F)})
-        .add(Op::callmethod, {ident("AddToMap"), ident("o"), ident("::NoneVar")});
+        .add(Op::callmethod, {ident("PlayImpactEffect"), ident("o"), ident("::NoneVar")});
     call_static(f, "ImageSpaceModifier", "RemoveCrossFade");
     f.add(Op::return_, {integer(1)});
     rig.add(script("Caller", {f}));

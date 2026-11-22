@@ -145,4 +145,30 @@ private:
     std::map<std::uint32_t, OwnerState> states_;
 };
 
+/// The world map's state that scripts and discovery change (XMRK FNAM flags over the data's: 1 visible, 2 can travel
+/// to, 4 "show all" hidden) and whether scripts allow fast travel (Game.EnableFastTravel). A request to travel
+/// (Game.FastTravel) waits here for the game layer to take it.
+class MapState {
+public:
+    [[nodiscard]] const std::uint8_t* find(std::uint32_t ref) const {
+        const auto it = flags_.find(ref);
+        return it != flags_.end() ? &it->second : nullptr;
+    }
+    void set(std::uint32_t ref, std::uint8_t flags) { flags_[ref] = flags; }
+    void clear() {
+        flags_.clear();
+        fast_travel_enabled = true;
+        travel_request = 0;
+    }
+    [[nodiscard]] const std::map<std::uint32_t, std::uint8_t>& states() const { return flags_; }
+
+    /// Game.EnableFastTravel(false) blocks fast travel (sNoFastTravelScriptBlock) until it is enabled again.
+    bool fast_travel_enabled = true;
+    /// Game.FastTravel's destination, 0 when none waits (not saved: the game layer takes it the next frame).
+    std::uint32_t travel_request = 0;
+
+private:
+    std::map<std::uint32_t, std::uint8_t> flags_;
+};
+
 } // namespace skydot::vm

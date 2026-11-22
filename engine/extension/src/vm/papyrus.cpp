@@ -202,6 +202,11 @@ void SkydotPapyrus::_bind_methods() {
     godot::ClassDB::bind_method(D_METHOD("sleep_start", "from_days", "end_days"), &SkydotPapyrus::sleep_start);
     godot::ClassDB::bind_method(D_METHOD("sleep_stop", "interrupted"), &SkydotPapyrus::sleep_stop);
     godot::ClassDB::bind_method(D_METHOD("recover", "seconds"), &SkydotPapyrus::recover);
+    godot::ClassDB::bind_method(D_METHOD("get_map_marker_flags", "ref"), &SkydotPapyrus::get_map_marker_flags);
+    godot::ClassDB::bind_method(D_METHOD("set_map_marker_flags", "ref", "flags"), &SkydotPapyrus::set_map_marker_flags);
+    godot::ClassDB::bind_method(D_METHOD("is_fast_travel_enabled"), &SkydotPapyrus::is_fast_travel_enabled);
+    godot::ClassDB::bind_method(D_METHOD("set_fast_travel_enabled", "enabled"), &SkydotPapyrus::set_fast_travel_enabled);
+    godot::ClassDB::bind_method(D_METHOD("take_fast_travel_request"), &SkydotPapyrus::take_fast_travel_request);
     godot::ClassDB::bind_method(D_METHOD("is_actor_ghost", "ref"), &SkydotPapyrus::is_actor_ghost);
     godot::ClassDB::bind_method(D_METHOD("finish_dying", "ref"), &SkydotPapyrus::finish_dying);
     godot::ClassDB::bind_method(D_METHOD("faction_rank", "ref", "faction"), &SkydotPapyrus::faction_rank);
@@ -1203,6 +1208,41 @@ void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_
 void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
 void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *access_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
+void SkydotPapyrus::bind_map_natives() {
+    vm::bind_map_natives(*vm_, [this](std::uint32_t ref) { return data_marker_flags(ref); });
+}
+
+std::optional<std::uint8_t> SkydotPapyrus::data_marker_flags(std::uint32_t ref) const {
+    if (!marker_flags_read_ && world_.is_valid()) {
+        marker_flags_read_ = true;
+        const auto* root = world_->data().root();
+        if (root != nullptr && root->cells() != nullptr) {
+            for (const auto* cell : *root->cells()) {
+                if (cell->map_markers() != nullptr) {
+                    for (const auto* marker : *cell->map_markers()) {
+                        marker_flags_.emplace(marker->ref(), marker->flags());
+                    }
+                }
+            }
+        }
+    }
+    const auto it = marker_flags_.find(ref);
+    return it != marker_flags_.end() ? std::optional<std::uint8_t>(it->second) : std::nullopt;
+}
+
+std::int64_t SkydotPapyrus::get_map_marker_flags(std::int64_t ref) const {
+    const auto flags = vm::map_marker_flags(*vm_, [this](std::uint32_t r) { return data_marker_flags(r); },
+                                            static_cast<std::uint32_t>(ref));
+    return flags.has_value() ? static_cast<std::int64_t>(*flags) : -1;
+}
+
+bool SkydotPapyrus::set_map_marker_flags(std::int64_t ref, std::int64_t flags) {
+    if (!data_marker_flags(static_cast<std::uint32_t>(ref)).has_value()) {
+        return false;
+    }
+    vm_->map().set(static_cast<std::uint32_t>(ref), static_cast<std::uint8_t>(flags & 0xFF));
+    return true;
+}
 
 void SkydotPapyrus::bind_world_natives() {
     vm::bind_world_natives(*vm_, *access_);
@@ -1339,6 +1379,7 @@ void SkydotPapyrus::bind_natives() {
         &SkydotPapyrus::bind_sound_natives,
         &SkydotPapyrus::bind_quest_natives,
         &SkydotPapyrus::bind_noop_natives,
+        &SkydotPapyrus::bind_map_natives,
         &SkydotPapyrus::bind_world_natives,
         &SkydotPapyrus::bind_actor_natives,
         &SkydotPapyrus::bind_actor_extra_natives,

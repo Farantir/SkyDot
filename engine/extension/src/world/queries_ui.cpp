@@ -40,6 +40,19 @@ Array get_map_markers(const WorldData& data, std::int64_t world) {
             m["flags"] = static_cast<std::int64_t>(marker->flags());
             m["name"] = to_godot(marker->name());
             m["position"] = godot::Vector3(ref->position().x(), ref->position().y(), ref->position().z());
+            m["rotation"] = godot::Vector3(ref->rotation().x(), ref->rotation().y(), ref->rotation().z());
+            m["cell"] = static_cast<std::int64_t>(cell->id());
+            // Format 46: the discovery radius (XRDS, 0: iMapMarkerRevealDistance) and the arrival of fast travel
+            // (the keyword-less XLKR's placement; null without one: the marker's own placement).
+            m["radius"] = static_cast<double>(marker->radius());
+            m["arrival_ref"] = static_cast<std::int64_t>(marker->arrival_ref());
+            if (marker->arrival_position() != nullptr) {
+                const auto* p = marker->arrival_position();
+                m["arrival_position"] = godot::Vector3(p->x(), p->y(), p->z());
+                const auto* r = marker->arrival_rotation();
+                m["arrival_rotation"] =
+                    r != nullptr ? godot::Vector3(r->x(), r->y(), r->z()) : godot::Vector3();
+            }
             out.push_back(m);
         }
     }

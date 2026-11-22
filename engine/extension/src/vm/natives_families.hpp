@@ -12,6 +12,10 @@
 #include "vm/world_access.hpp"
 #include "vm/world_events.hpp"
 
+#include <cstdint>
+#include <functional>
+#include <optional>
+
 namespace skydot::vm {
 
 /// Natives that are meant to do nothing: silent, or logged as not shown.
@@ -39,6 +43,15 @@ void bind_form_natives(Vm& vm, const WorldAccess& world, WorldEvents& events);
 /// Quest, Alias, ReferenceAlias, LocationAlias and GlobalVariable natives,
 /// TopicInfo.GetOwningQuest and Game.GetFormFromFile.
 void bind_quest_natives(Vm& vm, const WorldAccess& world, QuestHost& host);
+
+/// A map marker's flags in the data (XMRK FNAM), nullopt when the reference is no map marker.
+using MarkerFlagsSource = std::function<std::optional<std::uint8_t>(std::uint32_t)>;
+/// A map marker's flags now: what scripts or discovery set (Vm::map), else the data's.
+[[nodiscard]] std::optional<std::uint8_t> map_marker_flags(const Vm& vm, const MarkerFlagsSource& data,
+                                                           std::uint32_t ref);
+/// ObjectReference.AddToMap, EnableFastTravel, IsMapMarkerVisible, CanFastTravelToMarker; Game.EnableFastTravel,
+/// IsFastTravelEnabled and FastTravel (vm/natives_map.cpp).
+void bind_map_natives(Vm& vm, MarkerFlagsSource data);
 
 /// Game.GetPlayer and GetForm.
 void bind_game_natives(Vm& vm, QuestHost& quests);

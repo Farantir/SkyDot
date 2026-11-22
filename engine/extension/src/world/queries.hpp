@@ -35,6 +35,7 @@ godot::Dictionary get_base(const WorldData& data, std::int64_t id);
 godot::PackedInt64Array get_cell_actors(const WorldData& data, std::int64_t cell);
 godot::Array list_worlds(const WorldData& data);
 std::int64_t find_world(const WorldData& data, const godot::String& editor_id);
+double get_land_height(const WorldData& data, std::int64_t world, double x, double y);
 std::int64_t get_exterior_cell(const WorldData& data, std::int64_t world, std::int64_t x, std::int64_t y);
 godot::Array get_navmeshes(const WorldData& data, std::int64_t cell_id);
 godot::Dictionary get_navmesh(const WorldData& data, std::int64_t id);
