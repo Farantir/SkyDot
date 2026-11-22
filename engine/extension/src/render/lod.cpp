@@ -410,9 +410,9 @@ double SkydotLod::get_terrain_height(double x, double y) {
         const auto by = std::clamp(static_cast<int>(std::floor(cy)) - q.y, 0, q.level - 1);
         for (const std::uint32_t t : s.buckets[static_cast<std::size_t>(by * q.level + bx)]) {
             const float* v = &s.triangles[static_cast<std::size_t>(t) * 9];
-            const double ax = v[0], ay = v[1], az = v[2];
-            const double bx2 = v[3], by2 = v[4], bz = v[5];
-            const double qx = v[6], qy = v[7], qz = v[8];
+            const auto ax = static_cast<double>(v[0]), ay = static_cast<double>(v[1]), az = static_cast<double>(v[2]);
+            const auto bx2 = static_cast<double>(v[3]), by2 = static_cast<double>(v[4]), bz = static_cast<double>(v[5]);
+            const auto qx = static_cast<double>(v[6]), qy = static_cast<double>(v[7]), qz = static_cast<double>(v[8]);
             const double d = (by2 - qy) * (ax - qx) + (qx - bx2) * (ay - qy);
             if (std::abs(d) < 1e-9) {
                 continue;

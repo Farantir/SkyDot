@@ -21,10 +21,10 @@ constexpr std::uint32_t k_rock = 0x1234; // no map marker
 
 std::optional<std::uint8_t> data_flags(std::uint32_t ref) {
     if (ref == k_marker) {
-        return 0;
+        return std::uint8_t{0};
     }
     if (ref == k_capital) {
-        return 1;
+        return std::uint8_t{1};
     }
     return std::nullopt;
 }
