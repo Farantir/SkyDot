@@ -148,6 +148,8 @@ private:
     int highest_ = 32;
     double split_distance_ = 1.5;
     int map_terrain_level_ = 0;
+    godot::Ref<godot::Texture2D> overlay_;
+    godot::Ref<godot::Texture2D> overlay_snow_;
     int map_object_level_ = 0;
     double tree_distance_ = 16.0;
 

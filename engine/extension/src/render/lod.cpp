@@ -326,6 +326,14 @@ String SkydotLod::vpath(const Quad& q, const char* kind) const {
 void SkydotLod::set_map_levels(std::int64_t terrain_level, std::int64_t object_level) {
     map_terrain_level_ = static_cast<int>(terrain_level);
     map_object_level_ = static_cast<int>(object_level);
+    // The world map's overlay normal maps ([MapMenu] sWorldMapOverlayNormalTexture and ...SnowTexture, exe defaults
+    // in formats/pack-format.md), laid over the terrain by lod_terrain.gdshader's world_map.
+    for (auto [path, slot] : {std::pair{"textures/terrain/worldmapoverlay_n.dds", &overlay_},
+                              std::pair{"textures/terrain/worldmapoverlaysnow_n.dds", &overlay_snow_}}) {
+        *slot = map_terrain_level_ > 0 && pack_.is_valid() && pack_->has(String(path))
+                    ? Ref<godot::Texture2D>(pack_->load_texture(String(path)))
+                    : Ref<godot::Texture2D>();
+    }
 }
 
 namespace {
@@ -492,6 +500,12 @@ Ref<godot::ShaderMaterial> SkydotLod::material(const Ref<godot::Shader>& shader,
     if (shader == terrain_shader_) {
         m->set_shader_parameter("noise_tex", noise_);
         m->set_shader_parameter("has_noise", noise_.is_valid());
+        if (overlay_.is_valid() && overlay_snow_.is_valid()) {
+            m->set_shader_parameter("world_map", true);
+            m->set_shader_parameter("overlay_tex", overlay_);
+            m->set_shader_parameter("overlay_snow_tex", overlay_snow_);
+            m->set_shader_parameter("metres_per_unit", formats::k_metres_per_unit);
+        }
     }
     apply_mask(m);
     // The shapes the game's LOD made of large references hide where those are drawn.
