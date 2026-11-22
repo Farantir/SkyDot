@@ -46,8 +46,12 @@ const ICON_TYPES := ["EmptyMarker", "CityMarker", "TownMarker", "SettlementMarke
 const BUTTONS := [["LocalMapButton", "L", "$Local Map"], ["JournalButton", "J", "$Journal"],
 	["LeftButton", "Wheel", "$Zoom"], ["PlayerLocButton", "E", "$Current Location"],
 	["RightButton", "Mouse1", "$Set Destination"]]
-## A marker's HitAreaClip (35 x 35 movie pixels around it).
-const HIT_HALF := 17.5
+## SetSelectedMarker: the marker nearest the cursor within fMaxMarkerSelectionDist (0.003) of the squared distance in
+## screen fractions (measured, map3/j15: Whiterun stayed selected out to 59.4 px of a 1085 px wide screen, 0.0547 =
+## sqrt(0.003); 30 px below it too).
+const SELECTION_DIST := 0.003
+## The left stick's cursor speed: not measured (view heights a second).
+const CURSOR_SPEED := 0.8
 ## The DescriptionHolder's last "Show" frame (Show 1 .. Hide 8).
 const DESCRIPTION_FRAME := 7
 ## The marker clips' "over" transition: frames 10 to 19.
@@ -158,12 +162,22 @@ func _held_input(delta: float) -> void:
 	for entry: Array in [[&"map_up", Vector2.UP], [&"map_down", Vector2.DOWN], [&"map_left", Vector2.LEFT], [&"map_right", Vector2.RIGHT]]:
 		if InputMap.has_action(entry[0]) and Input.is_action_pressed(entry[0]):
 			pan += entry[1]
+	if pan != Vector2.ZERO:
+		# Screen up is the map's north turned by the camera's yaw.
+		scene.camera.pan(Vector2(pan.x, -pan.y).limit_length(1.0), delta)
+	# The left stick moves the cursor (Map Menu "Cursor": a 0.5 s push panned nothing, measured); its speed,
+	# fGamepadCursorSensitivity 2, is not measured: taken as CURSOR_SPEED of the view's height a second.
 	var stick := Vector2(Input.get_joy_axis(0, JOY_AXIS_LEFT_X), Input.get_joy_axis(0, JOY_AXIS_LEFT_Y))
 	if stick.length() > 0.2:
-		pan += stick
-	if pan != Vector2.ZERO:
-		# Screen up is the map's north (the camera's yaw is 0 when it opens).
-		scene.camera.pan(Vector2(pan.x, -pan.y).limit_length(1.0), delta)
+		cursor = (cursor + stick * CURSOR_SPEED * size.y * delta).clamp(Vector2.ZERO, size)
+	# Edge panning: the cursor in the screen's outer band pans the map (measured).
+	var edge := MapCamera.edge_pan(cursor, size)
+	if edge != Vector2.ZERO:
+		scene.camera.pan(edge.limit_length(1.0), delta, MapCamera.EDGE_FACTOR)
+	# The right stick looks (Map Menu "Look").
+	var look := Vector2(Input.get_joy_axis(0, JOY_AXIS_RIGHT_X), Input.get_joy_axis(0, JOY_AXIS_RIGHT_Y))
+	if look.length() > 0.2:
+		scene.camera.look(look.x * MapCamera.STICK_YAW_RATE * delta, look.y * MapCamera.STICK_PITCH_RATE * delta)
 	var zoom := Input.get_joy_axis(0, JOY_AXIS_TRIGGER_LEFT) - Input.get_joy_axis(0, JOY_AXIS_TRIGGER_RIGHT)
 	if absf(zoom) > 0.1:
 		scene.camera.zoom_by(zoom * MapCamera.ZOOM_RATE * delta)
@@ -174,6 +188,11 @@ func _input(event: InputEvent) -> void:
 		return
 	var handled := event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	if event is InputEventMouseMotion:
+		if prompt == Prompt.NONE and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT) != 0:
+			# MapLookMode (right mouse): the camera turns, the cursor stays.
+			var rel: Vector2 = event.relative
+			scene.camera.look(rel.x * MapCamera.LOOK_YAW_PER_COUNT, rel.y * MapCamera.LOOK_PITCH_PER_COUNT)
+			return
 		cursor = event.position
 		if prompt != Prompt.NONE:
 			_hover_prompt(event.position)
@@ -190,9 +209,9 @@ func _input(event: InputEvent) -> void:
 	elif _pressed(event, &"map_place_marker"):
 		_set_destination(cursor)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
-		scene.camera.zoom_by(-MapCamera.WHEEL_SPEED * MapCamera.WHEEL_SECONDS * MapCamera.ZOOM_RATE)
+		scene.camera.zoom_by(-MapCamera.WHEEL_STEP)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-		scene.camera.zoom_by(MapCamera.WHEEL_SPEED * MapCamera.WHEEL_SECONDS * MapCamera.ZOOM_RATE)
+		scene.camera.zoom_by(MapCamera.WHEEL_STEP)
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		click(event.position)
 	elif _pressed(event, &"map_click"):
@@ -349,12 +368,12 @@ func _refresh() -> void:
 	_add_shown(fill_inverse, scene.camera.target, WorldMap.YOU_ARE_HERE_TYPE, JournalView.translate("$Current Location"),
 		heading, false, {})
 	selected = {}
-	var best := INF
-	var at := fill_inverse * cursor
+	var best := SELECTION_DIST
+	var fill_xform := fill()
 	for s: Dictionary in shown:
-		var d: Vector2 = (s["at"] as Vector2) - at
-		if absf(d.x) <= HIT_HALF and absf(d.y) <= HIT_HALF and d.length() < best:
-			best = d.length()
+		var d: Vector2 = (fill_xform * (s["at"] as Vector2) - cursor) / size
+		if d.length_squared() < best:
+			best = d.length_squared()
 			selected = s
 	queue_redraw()
 
@@ -420,10 +439,12 @@ func _draw_marker(s: Dictionary, over: bool) -> void:
 	if s["undiscovered"]:
 		# CreateMarkers: the "<Icon>Undiscovered" clip on IconClip (Castle Karstaag's export is misnamed in the
 		# movie, so the game never finds it either).
+		# It is IconClip's child, so it takes IconClip's placement and colour at the marker's frame (alpha 0.6 up).
 		var overlay := UiAssets.exported(SWF, clip_name + "Undiscovered")
-		var icon := UiAssets.child(SWF, id, "IconClip")
-		if overlay >= 0 and not icon.is_empty():
-			UiDraw.character(self, SWF, overlay, xform * UiDraw.matrix(icon["matrix"]))
+		if overlay >= 0:
+			for placed: Dictionary in UiAssets.display_list(SWF, id, frame):
+				if placed.get("name", "") == "IconClip":
+					UiDraw.character(self, SWF, overlay, xform * UiDraw.matrix(placed["matrix"]), UiDraw._tint(placed.get("color", [])))
 	if over and text_clip.is_empty():
 		var holder := UiAssets.exported(SWF, "DescriptionHolder")
 		if holder >= 0:

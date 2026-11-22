@@ -63,3 +63,22 @@ func test_a_pan_keeps_z_and_the_zoom_follows_the_ground() -> void:
 	expect(cam.position.z >= cam.min_height + 29000.0, "pushed above min + ground %f" % cam.position.z)
 	cam.recenter()
 	expect_eq(cam.zoom, 0.25, "E: the opening zoom again")
+
+
+func test_look_mode_stays_in_the_map_menu_limits() -> void:
+	var cam := _camera(0.0)
+	cam.open(Vector3.ZERO)
+	cam.look(10.0, 10.0)
+	expect_eq(cam.yaw, deg_to_rad(40.0), "yaw at +fMapWorldYawRange / 2")
+	expect_eq(cam.pitch, deg_to_rad(75.0), "pitch at fMapWorldMaxPitch")
+	cam.look(-10.0, -10.0)
+	expect_eq(cam.yaw, deg_to_rad(-40.0), "yaw at -40")
+	expect_eq(cam.pitch, deg_to_rad(15.0), "pitch at fMapWorldMinPitch")
+
+
+func test_edge_panning_band() -> void:
+	var size := Vector2(1100.0, 800.0)
+	expect_eq(MapCamera.edge_pan(size * 0.5, size), Vector2.ZERO, "the middle does not pan")
+	expect_eq(MapCamera.edge_pan(Vector2(1100.0, 400.0), size), Vector2(1.0, 0.0), "the right edge: full speed east")
+	expect(absf(MapCamera.edge_pan(Vector2(1062.4, 400.0), size).x - 0.32) < 0.01, "0.32 into the band")
+	expect_eq(MapCamera.edge_pan(Vector2(0.0, 0.0), size), Vector2(-1.0, 1.0), "the top left corner: north-west")

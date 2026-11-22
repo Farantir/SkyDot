@@ -16,8 +16,8 @@
 #   ground  follows the land under the camera at fMapWorldHeightAdjustmentForce (4) a second, not at once (it
 #           kept changing a second after a pan stopped).
 #   E       back to the opening state.
-# Look mode (right mouse / right stick, fMapWorldYawRange, Min/MaxPitch) is not measured (no input for it in
-# SkyrimRemote) and not done.
+#   look    the right mouse button or the right stick turn the camera in place (LOOK_*, STICK_*), within the
+#           [MapMenu] yaw range and pitch limits.
 class_name MapCamera
 extends RefCounted
 
@@ -33,10 +33,26 @@ const ZOOM_RATE := 1.31
 ## Measured (j12): a held W moved the offset 0.813 x lerp(Min, Max, zoom) a second (zoom 0: 24628 in 0.5 s,
 ## 0.25: 26144, 1: 30688; 1 s and 2 s holds 51966 and 51826 a second at 0.25), no ramp after the first frames.
 const PAN_KEY_FACTOR := 0.813
-## A mouse wheel notch: fMapZoomMouseSpeed (2) times this much of a second of trigger. NOT measured (no wheel in
-## SkyrimRemote): taken as one 30 fps frame.
-const WHEEL_SECONDS := 1.0 / 30.0
-const WHEEL_SPEED := 2.0
+## Measured (map3/j15, SkyrimRemote @menukey mouse=8/9): a wheel notch moves the zoom fraction 0.2 (0.25 -> 0.051,
+## 0 -> 0.589 after three).
+const WHEEL_STEP := 0.2
+## Look mode (map3/j15): the right mouse button held, a mouse move turns the camera in place, 0.00039 rad of yaw and
+## 0.00027 of pitch per count (100 and 300 counts a frame; small moves of 10 turned about twice that), down to the
+## right; the right stick turns it 0.0129 rad of yaw and 0.0092 of pitch a second at full deflection (up looks up).
+## The limits are the [MapMenu] settings, fMapWorldYawRange 80 (+-40 deg) and fMapWorldMin/MaxPitch 15..75; the
+## measured turns (yaw -38 .. +30 deg, pitch 22 .. 73 deg) stayed inside them.
+const LOOK_YAW_PER_COUNT := 0.00039
+const LOOK_PITCH_PER_COUNT := 0.00027
+const STICK_YAW_RATE := 0.0129
+const STICK_PITCH_RATE := 0.0092
+const YAW_RANGE := deg_to_rad(80.0)
+const MIN_PITCH := deg_to_rad(15.0)
+const MAX_PITCH := deg_to_rad(75.0)
+## Edge panning (map3/j15): the cursor in the outer 5% of the screen (fMapWorldCursorMoveArea 0.9) pans that way at
+## up to EDGE_FACTOR x lerp(Min, Max, zoom) a second, growing with how far into the band it is (at the edge 65600
+## units in 2 s, 0.36 into the band 22500).
+const CURSOR_AREA := 0.9
+const EDGE_FACTOR := 0.51
 
 var min_height := 50000.0
 var max_height := 80000.0
@@ -95,9 +111,25 @@ func zoom_by(amount: float) -> void:
 	position.z = _z_for(zoom)
 
 
+## Look mode: turn by `yaw_by`, `pitch_by` radians (pitch positive looks further down), within the limits.
+func look(yaw_by: float, pitch_by: float) -> void:
+	yaw = clampf(yaw + yaw_by, -YAW_RANGE * 0.5, YAW_RANGE * 0.5)
+	pitch = clampf(pitch + pitch_by, MIN_PITCH, MAX_PITCH)
+
+
+## Edge panning with the cursor at `at` of a view `size`: the pan speed's share for each axis (x east, y north).
+static func edge_pan(at: Vector2, size: Vector2) -> Vector2:
+	var margin := (1.0 - CURSOR_AREA) * 0.5
+	var f := at / size
+	var out := Vector2.ZERO
+	out.x = clampf((f.x - (1.0 - margin)) / margin, 0.0, 1.0) - clampf((margin - f.x) / margin, 0.0, 1.0)
+	out.y = clampf((margin - f.y) / margin, 0.0, 1.0) - clampf((f.y - (1.0 - margin)) / margin, 0.0, 1.0)
+	return out
+
+
 ## Pan by `direction` (x east, y north; length up to 1 for full speed) for `delta` seconds of a held key.
-func pan(direction: Vector2, delta: float) -> void:
-	var speed := PAN_KEY_FACTOR * lerpf(MIN_PAN_SPEED, MAX_PAN_SPEED, clampf(zoom, 0.0, 1.0))
+func pan(direction: Vector2, delta: float, factor := PAN_KEY_FACTOR) -> void:
+	var speed := factor * lerpf(MIN_PAN_SPEED, MAX_PAN_SPEED, clampf(zoom, 0.0, 1.0))
 	var xy := _clamped(Vector2(position.x, position.y) + direction.rotated(-yaw) * speed * delta)
 	offset = xy - Vector2(target.x, target.y)
 	position.x = xy.x
