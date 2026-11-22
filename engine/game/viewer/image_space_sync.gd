@@ -11,12 +11,12 @@ extends RefCounted
 ## menus set the inventory menu's, DOBJ IMID, MenuImageSpace): its cinematic saturation, brightness and contrast
 ## multiply and add onto the grade's, and its depth of field blurs the far world.
 static var modifier := {}
-## The world map's weather (WorldMapWeather) while the map is open. Its ToD image spaces (ISWorldMapWeatherDAY, ...:
-## contrast 1.45, eye adaptation) graded our map far darker than the game's (noon mean 68/86/86 against the game's
-## 114/131/131, 23:00 6/12/14 against 57/71/76), the scene ungraded comes close in brightness (103/134/144,
-## 35/49/51) but too blue; with the image space's tint alone the hue is the game's (95/103/101 at noon, 82/82/76 at
-## 8:01 against 110/117/108), a quarter too dark. So the map is graded by the tint only (how the game grades its map
-## is not known).
+## The world map's weather (WorldMapWeather) while the map is open: the map is graded by its image space with the
+## eye adaptation frozen. Measured with SkyrimRemote (map3/j15): with the map open the game's image space data is the
+## ISWorldMapWeather blend (8:01: saturation 1.72, contrast 1.49, tint 0.77), and overriding it changed nothing of
+## the map's frame (r2_default vs r2_default_pregrade, r2_noon_noadapt): the image space stands still in the menu.
+## Graded so our map has the game's grey-green hue and contrast (side4_default) but comes out about a third darker
+## (77/82/73 against 110/117/108 at 8:01): the exposure the game froze is not known.
 static var weather_override: SkydotWeather
 ## Godot's far blur amount for an IMAD depth of field strength of 1. The game's ISDepthOfField mixes the frame
 ## with a blurred copy by saturate((depth - distance) / range) * strength (Community Shaders' ISDepthOfField.hlsl);
@@ -30,7 +30,12 @@ static func apply(viewport: Viewport, settings: ViewerSettings, session: GameSes
 		image_space: SkydotImageSpace) -> void:
 	SkydotMaterials.sync_fog(viewport.find_world_3d().environment)
 	if weather_override != null and is_instance_valid(weather_override) and settings.image_space:
-		image_space.set_image_space({"tint": weather_override.get_image_space().get("tint")})
+		# The map's ISWorldMapWeather blend, its eye adaptation frozen where it stood (the menu pauses it).
+		var full := weather_override.get_image_space()
+		var hdr: PackedFloat32Array = (full.get("hdr", PackedFloat32Array()) as PackedFloat32Array).duplicate()
+		if hdr.size() > 0:
+			hdr[0] = 0.0
+		image_space.set_image_space({"hdr": hdr, "cinematic": full.get("cinematic"), "tint": full.get("tint")})
 	elif not settings.image_space:
 		image_space.clear()
 	else:

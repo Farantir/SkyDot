@@ -5,7 +5,9 @@
 # under it, lit by WorldMapWeather (DOBJ WMWE) and its time-of-day image spaces instead of the region's weather,
 # with the world map's cloud bank (WRLD MODL, else meshes/sky/skyrimworldmapcloudbank.nif; measured with SkyrimRemote
 # @node: at the world's origin, the model's own planes at z 0, 1000, 1500 and 12500 and scale 8, nothing fading
-# with the zoom, only its UV animation running) and ISWorldMap's depth blur (map_blur.gdshader).
+# with the zoom, only its UV animation running). No ISWorldMap depth blur: the game's map frame is sharper (mean
+# horizontal gradient 3.48 in game_map_default) than ours drawn without any blur (2.40); a 7x7 box blur as
+# Community Shaders' ISWorldMap.hlsl has it with the [MapMenu] defaults halved ours (1.08).
 # Shell code both shells use: `open` hides the place's nodes (a weather or an interior's environment is taken out
 # of the tree so the map's light and sky are the only ones; out of the tree its clock stands still), `close` puts
 # everything back and frees what the map loaded.
@@ -17,16 +19,15 @@ const TERRAIN_LEVEL := 32
 const OBJECT_LEVEL := 16
 ## The map camera's far plane (measured: the NiCamera's frustum far 353840 with the map open).
 const FAR := 353840.0
-const BLUR_SHADER := preload("res://shaders/map_blur.gdshader")
 
 var camera: MapCamera
 ## The map world shown (0 when closed).
 var world := 0
-## Off: no depth blur, clouds or object LOD (tests).
+## Off: no clouds or object LOD (tests).
 var effects := true
-## A tracked head (the VR shell): the camera is not ours to place, so this node (the XR origin) is moved instead
-## to put the head where the map camera stands; the head then looks around from there (Skyrim VR floats the
-## player above the map). Null: the camera itself is placed (the flat viewer).
+## A tracked head (the VR shell): the camera is not ours to place, so this node (the XR origin) is moved and
+## turned instead, to put the head where the map camera stands looking its way; the head then looks around from
+## there (Skyrim VR floats the player above the map). Null: the camera itself is placed (the flat viewer).
 var origin: Node3D
 
 var _session: GameSession
@@ -34,7 +35,6 @@ var _view: Camera3D
 var _lod: SkydotLod
 var _weather: SkydotWeather
 var _clouds: Node3D
-var _blur: MeshInstance3D
 var _hidden: Array[Node3D] = []
 var _detached: Array[Node] = []
 var _near := 0.05
@@ -88,8 +88,6 @@ func open(place: Dictionary) -> bool:
 	var scale := SkydotWorld.unit_scale()
 	_view.near = MapCamera.NEAR_CLIP * scale
 	_view.far = FAR * scale
-	if effects:
-		_add_blur()
 	step(0.0)
 	return true
 
@@ -99,13 +97,12 @@ func close() -> void:
 		return
 	world = 0
 	ImageSpaceSync.weather_override = null
-	for node in [_lod, _weather, _clouds, _blur]:
+	for node in [_lod, _weather, _clouds]:
 		if node != null and is_instance_valid(node):
 			node.queue_free()
 	_lod = null
 	_weather = null
 	_clouds = null
-	_blur = null
 	_view.near = _near
 	_view.far = _far
 	if origin != null:
@@ -132,8 +129,9 @@ func step(delta: float) -> void:
 		# camera's position, facing its way.
 		var head := origin.global_transform.affine_inverse() * _view.global_transform
 		var wanted := camera.transform()
-		var level := Transform3D(Basis(Vector3.UP, wanted.basis.get_euler().y), wanted.origin)
-		origin.global_transform = level * Transform3D(Basis.IDENTITY, -head.origin)
+		# The whole view is tilted by the map camera's pitch too, so looking straight ahead looks down at the
+		# map as the flat view does (the head's own tilt adds to it).
+		origin.global_transform = wanted * Transform3D(Basis.IDENTITY, -head.origin)
 	else:
 		_view.global_transform = camera.transform()
 
@@ -237,24 +235,12 @@ func _add_clouds(model: String) -> void:
 		return
 	_clouds.name = "map_clouds"
 	add_child(_clouds)
-
-
-## ISWorldMap: a 7x7 box blur of the frame whose spread grows with the distance from the focal depth (shaders/
-## map_blur.gdshader), on a quad just before the camera.
-func _add_blur() -> void:
-	_blur = MeshInstance3D.new()
-	_blur.name = "map_blur"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(2.0, 2.0)
-	quad.flip_faces = true
-	_blur.mesh = quad
-	var material := ShaderMaterial.new()
-	material.shader = BLUR_SHADER
-	var scale := SkydotWorld.unit_scale()
-	material.set_shader_parameter("focal_depth", 45000.0 * scale)
-	material.set_shader_parameter("metres_per_unit", scale)
-	material.render_priority = Material.RENDER_PRIORITY_MIN  # before the clouds
-	_blur.material_override = material
-	_blur.extra_cull_margin = 16384.0
-	_blur.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_view.add_child(_blur)
+	# Lit by the weather's sunlight (8:01: 0.66/0.52/0.38) and faded by its soft depth (7000 units, the valleys
+	# lie that close under the planes) the bank came out a few faint brown wisps; the game's (game_map_default,
+	# game_map_out) is bright white and covers the valleys in large patches, as it does unlit and without the soft
+	# fade (side4_default). How the game lights it on the map is not known.
+	for mi in _clouds.find_children("*", "MeshInstance3D", true, false):
+		var m := (mi as MeshInstance3D).get_active_material(0) as ShaderMaterial
+		if m != null:
+			m.set_shader_parameter("lighting_influence", 0.0)
+			m.set_shader_parameter("soft_effect", false)
