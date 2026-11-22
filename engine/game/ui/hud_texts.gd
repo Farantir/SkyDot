@@ -101,8 +101,15 @@ func _letter_px() -> int:
 	return 55
 
 
+## The letter clip's character (QuestUpdateBaseInstance's AnimatedLetter_mc; not exported), -1 without it.
+func _letter_id() -> int:
+	var base := UiAssets.instance(SWF, BASE + "QuestUpdateBaseInstance")
+	var clip := UiAssets.child(SWF, int(base.get("id", -1)), LETTER_CLIP) if not base.is_empty() else {}
+	return int(clip["character"]) if not clip.is_empty() else -1
+
+
 func _letter_frames() -> int:
-	return int(UiAssets.character(SWF, UiAssets.exported(SWF, LETTER_CLIP)).get("frames", 1))
+	return int(UiAssets.character(SWF, _letter_id()).get("frames", 1))
 
 
 ## The letters, drawn as the letter clip at each one's frame over the quest update base.
@@ -111,7 +118,7 @@ func draw_quest_update(canvas: CanvasItem, area: Vector2) -> void:
 		return
 	var base := _place(area, BASE + "QuestUpdateBaseInstance")
 	var clip := UiAssets.child(SWF, int(UiAssets.instance(SWF, BASE + "QuestUpdateBaseInstance").get("id", -1)), LETTER_CLIP)
-	var id := UiAssets.exported(SWF, LETTER_CLIP)
+	var id := _letter_id()
 	if clip.is_empty() or id < 0:
 		return
 	var placed := UiDraw.matrix(clip["matrix"])
