@@ -136,6 +136,7 @@ func arm_quit() -> void:
 ## --activate is running.
 func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool:
 	if paused.call():
+		_count_quit()
 		return false
 	options.step(delta)
 	_session.streamer.hold_player(_rig.player, _session.is_fading())
@@ -145,18 +146,25 @@ func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool
 	if device_step.is_valid():
 		device_step.call(delta)
 	_session.step(delta, _rig.player.global_position, hold_streaming)
-	if quit_in >= 0:
-		quit_in -= 1
-		quit_countdown.emit(quit_in)
-		if quit_in < 0:
-			if not _settings.save_to.is_empty():
-				_session.save_game(_settings.save_to)
-			quitting.emit()
-			_host.get_tree().quit(0)
+	if _count_quit():
 		return false
 	if _session.has_activations():
 		_session.run_activation()
 		return false
+	return true
+
+
+## The --quit-after countdown, also while the world waits (the map is open). True while it counts.
+func _count_quit() -> bool:
+	if quit_in < 0:
+		return false
+	quit_in -= 1
+	quit_countdown.emit(quit_in)
+	if quit_in < 0:
+		if not _settings.save_to.is_empty():
+			_session.save_game(_settings.save_to)
+		quitting.emit()
+		_host.get_tree().quit(0)
 	return true
 
 

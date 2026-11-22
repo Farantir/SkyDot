@@ -15,7 +15,7 @@
 #
 # Takes the options that put the player somewhere and run the game (--pack,
 # --cell, --world, --at, --target, --look, --time, --load, --give,
-# --start-quest, --talk, --activate, --quit-after, --no-input and the quality
+# --start-quest, --talk, --activate, --quit-after, --no-input, --open-map (opens the world map) and the quality
 # ones); --screenshot FILE saves the window's picture one frame before the end
 # (desktop fallback only). The viewer's shot series, benchmark and debug overlay are the
 # viewer's.
@@ -164,7 +164,7 @@ func _create_components() -> void:
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)
 		add_child(_dialogue_panel)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0:
+	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_map != "":
 		_inventory = InventoryView.new(_session)
 		_container = ContainerView.new(_session)
 		_inventory_panel = _menu_panel(_inventory)
@@ -386,6 +386,8 @@ func _start_game() -> void:
 		return
 	if settings.crafting_category != "" and _crafting != null:
 		_crafting.select_category(settings.crafting_category)
+	if settings.open_map != "" and _map != null:
+		print("vr: map ", "open" if _map.open() else "has no map here")
 	if _loop.in_world:
 		return
 	if settings.open_inventory and _inventory != null:
