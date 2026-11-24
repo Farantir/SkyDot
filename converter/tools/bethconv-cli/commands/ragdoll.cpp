@@ -67,6 +67,17 @@ double distance(const Vec& a, const Vec& b) {
     return std::sqrt((a[0] - b[0]) * (a[0] - b[0]) + (a[1] - b[1]) * (a[1] - b[1]) + (a[2] - b[2]) * (a[2] - b[2]));
 }
 
+/// `j[key]` for a const JSON value that may lack the key or not be an object: an
+/// empty object then, so lookups, sizes and loops over it see nothing.
+const nlohmann::json& field(const nlohmann::json& j, const char* key) {
+    static const nlohmann::json none = nlohmann::json::object();
+    if (!j.is_object()) {
+        return none;
+    }
+    const auto it = j.find(key);
+    return it == j.end() ? none : *it;
+}
+
 Vec vec_of(const nlohmann::json& j) {
     Vec out{};
     if (j.is_array()) {
@@ -100,7 +111,7 @@ nlohmann::json ragdoll_of(const nlohmann::json& doc) {
         }
         const auto block = extras->find("bethconv");
         if (block != extras->end() && block->is_object() && block->contains("ragdoll")) {
-            return (*block)["ragdoll"];
+            return field(*block, "ragdoll");
         }
     }
     return nullptr;
@@ -166,18 +177,18 @@ std::optional<pack::AssetReader::Bytes> read_entry(const pack::AssetReader& asse
 }
 
 void print_detail(const nlohmann::json& ragdoll) {
-    const auto& bodies = ragdoll["bodies"];
+    const auto& bodies = field(ragdoll, "bodies");
     for (std::size_t i = 0; i < bodies.size(); ++i) {
         const auto& b = bodies[i];
-        const Vec at = vec_of(b["bone_bind"]["translation"]);
+        const Vec at = vec_of(field(field(b, "bone_bind"), "translation"));
         std::printf("    body %zu '%s' %s mass %.2f layer %d part 0x%02X shapes %zu at (%.3f %.3f %.3f) m\n", i,
                     b.value("bone", "").c_str(), b.value("block", "").c_str(), b.value("mass", 0.0),
-                    b["filter"].value("layer", 0), b["filter"].value("flags_and_part", 0), b["shapes"].size(),
-                    at[0], at[1], at[2]);
-        for (const auto& s : b["shapes"]) {
+                    field(b, "filter").value("layer", 0), field(b, "filter").value("flags_and_part", 0),
+                    field(b, "shapes").size(), at[0], at[1], at[2]);
+        for (const auto& s : field(b, "shapes")) {
             std::printf("      %s radius %.3f", s.value("kind", "").c_str(), s.value("radius", 0.0));
             if (s.contains("point_a")) {
-                std::printf(" length %.3f", distance(vec_of(s["point_a"]), vec_of(s["point_b"])));
+                std::printf(" length %.3f", distance(vec_of(field(s, "point_a")), vec_of(field(s, "point_b"))));
             }
             std::printf("\n");
         }
@@ -185,7 +196,7 @@ void print_detail(const nlohmann::json& ragdoll) {
     const auto deg = [](const nlohmann::json& c, const char* key) {
         return c.value(key, 0.0) * 180.0 / std::numbers::pi;
     };
-    for (const auto& c : ragdoll["constraints"]) {
+    for (const auto& c : field(ragdoll, "constraints")) {
         const auto name = [&](const char* key) {
             const std::size_t index = c.value(key, std::size_t{0});
             return index < bodies.size() ? bodies[index].value("bone", "") : std::string("?");
@@ -241,7 +252,7 @@ int cmd_ragdoll(const std::filesystem::path& pack_dir, const std::string& filter
             continue;
         }
         const nlohmann::json ragdoll = ragdoll_of(doc);
-        if (!ragdoll.is_object() || !ragdoll["bodies"].is_array() || !ragdoll["constraints"].is_array()) {
+        if (!ragdoll.is_object() || !field(ragdoll, "bodies").is_array() || !field(ragdoll, "constraints").is_array()) {
             if (detail) {
                 std::printf("%s: no ragdoll\n", entry.vpath.c_str());
             }
@@ -249,11 +260,11 @@ int cmd_ragdoll(const std::filesystem::path& pack_dir, const std::string& filter
         }
         ++with_ragdoll;
         std::map<std::string, std::size_t> by_type;
-        for (const auto& c : ragdoll["constraints"]) {
+        for (const auto& c : field(ragdoll, "constraints")) {
             ++by_type[c.value("type", "?")];
         }
-        std::printf("%s: %zu bodies, %zu constraints", entry.vpath.c_str(), ragdoll["bodies"].size(),
-                    ragdoll["constraints"].size());
+        std::printf("%s: %zu bodies, %zu constraints", entry.vpath.c_str(), field(ragdoll, "bodies").size(),
+                    field(ragdoll, "constraints").size());
         for (const auto& [type, count] : by_type) {
             std::printf(" (%zu %s)", count, type.c_str());
         }
@@ -286,15 +297,15 @@ int cmd_ragdoll(const std::filesystem::path& pack_dir, const std::string& filter
             ++disagree;
             continue;
         }
-        const auto& bodies = ragdoll["bodies"];
+        const auto& bodies = field(ragdoll, "bodies");
         // Each body's frame at bind: the bone's, then the body's own transform in it.
         std::vector<Pose> nif_pose;
         for (const auto& body : bodies) {
-            const Vec bone_at = vec_of(body["bone_bind"]["translation"]);
-            const Quat bone_rot = quat_of(body["bone_bind"]["rotation"]);
-            const Vec offset = rotate(bone_rot, vec_of(body["body_transform"]["translation"]));
+            const Vec bone_at = vec_of(field(field(body, "bone_bind"), "translation"));
+            const Quat bone_rot = quat_of(field(field(body, "bone_bind"), "rotation"));
+            const Vec offset = rotate(bone_rot, vec_of(field(field(body, "body_transform"), "translation")));
             nif_pose.push_back({{bone_at[0] + offset[0], bone_at[1] + offset[1], bone_at[2] + offset[2]},
-                                multiply(bone_rot, quat_of(body["body_transform"]["rotation"]))});
+                                multiply(bone_rot, quat_of(field(field(body, "body_transform"), "rotation")))});
         }
         // Bodies by name, then the rest by nearest position (relative to the first body).
         std::vector<std::optional<std::string>> partner(bodies.size());
@@ -385,11 +396,11 @@ int cmd_ragdoll(const std::filesystem::path& pack_dir, const std::string& filter
                 const auto& body = bodies[at];
                 // Pivots are in the bone's frame; undo the body's transform for the hkx pose,
                 // which places the body.
-                Vec p = vec_of(c[frame_key]["pivot"]);
+                Vec p = vec_of(field(field(c, frame_key), "pivot"));
                 Pose pose = nif_pose[at];
-                const Vec bt = vec_of(body["body_transform"]["translation"]);
+                const Vec bt = vec_of(field(field(body, "body_transform"), "translation"));
                 p = {p[0] - bt[0], p[1] - bt[1], p[2] - bt[2]};
-                const Quat br = quat_of(body["body_transform"]["rotation"]);
+                const Quat br = quat_of(field(field(body, "body_transform"), "rotation"));
                 p = rotate({-br[0], -br[1], -br[2], br[3]}, p);
                 if (hkx_pose) {
                     pose = hkx_bodies->at(*partner[at]);
@@ -408,7 +419,7 @@ int cmd_ragdoll(const std::filesystem::path& pack_dir, const std::string& filter
         double gap_hkx = 0;
         std::string gap_bind_at;
         std::string gap_hkx_at;
-        for (const auto& c : ragdoll["constraints"]) {
+        for (const auto& c : field(ragdoll, "constraints")) {
             const std::size_t a = c.value("body_a", std::size_t{0});
             const std::string at = a < bodies.size() ? bodies[a].value("bone", "") : "?";
             if (const auto g = pivot_gap(c, false); g && *g > gap_bind) {
