@@ -5,7 +5,8 @@
 #   markers()     the map world's markers with their flags now (XMRK FNAM over what scripts and discovery set,
 #                 SkydotPapyrus get_map_marker_flags): 1 visible, 2 can travel to; shown_markers() those the map
 #                 shows (visible, not disabled)
-#   step()        discovery: a marker not yet discovered (no "can travel" flag) whose XRDS radius (else
+#   step()        discovery, every DISCOVERY_SECONDS over the markers not yet found (cached per map, dropped on a
+#                 load): a marker not yet discovered (no "can travel" flag) whose XRDS radius (else
 #                 iMapMarkerRevealDistance) the player comes within is discovered: flags 0 -> 3 (measured with
 #                 SkyrimRemote @marker, skycompare-data/map-research.md section 5: Riverwood XRDS 4500 at 4402, Bleak
 #                 Falls Barrow 5000 at 4909, South Skybound Watch without XRDS at 917), "<NAME> DISCOVERED"
@@ -38,6 +39,8 @@ const YOU_ARE_HERE_TYPE := 66
 ## World DATA "Can't Fast Travel".
 const WORLD_NO_TRAVEL := 0x02
 const WMAP_VERSION := 1
+## Seconds between two discovery checks of step().
+const DISCOVERY_SECONDS := 0.25
 
 const FALLBACK := {
 	"sDiscoveredText": "%s DISCOVERED",
@@ -66,6 +69,8 @@ var last_exterior := {}
 var _session: GameSession
 var _markers := {}  # world -> Array of the data's marker dictionaries
 var _worlds := {}  # world id -> list_worlds entry
+var _undiscovered := {}  # map world -> its data markers without "can travel" when last checked
+var _discovery_clock := 0.0
 
 
 func _init(session: GameSession) -> void:
@@ -146,14 +151,19 @@ func map_place() -> Dictionary:
 func reset() -> void:
 	custom_marker = {}
 	last_exterior = {}
+	_undiscovered.clear()
 
 
 ## Each frame of play: the last exterior position, discovery, script fast travel.
-func step(_delta: float, feet: Vector3) -> void:
+func step(delta: float, feet: Vector3) -> void:
 	var world := _session.streamer.world_id
 	if world != 0:
-		last_exterior = {"world": world, "position": _eye(feet)}
-		_discover(map_world(world), SkydotWorld.godot_to_skyrim(feet))
+		last_exterior["world"] = world
+		last_exterior["position"] = _eye(feet)
+		_discovery_clock += delta
+		if _discovery_clock >= DISCOVERY_SECONDS:
+			_discovery_clock = 0.0
+			_discover(map_world(world), SkydotWorld.godot_to_skyrim(feet))
 	var request := _session.papyrus.take_fast_travel_request()
 	if request != 0:
 		var m := marker(request)
@@ -171,14 +181,33 @@ func _discover(world: int, at: Vector3) -> void:
 	if world == 0:
 		return
 	var reveal := float(_session.world.get_gmst_int("iMapMarkerRevealDistance", int(REVEAL_DISTANCE)))
-	for m: Dictionary in _data_markers(world):
+	var list := _undiscovered_on(world)
+	var i := 0
+	while i < list.size():
+		var m: Dictionary = list[i]
 		var ref := int(m["ref"])
 		var flags := _session.papyrus.get_map_marker_flags(ref)
-		if flags < 0 or flags & CAN_TRAVEL or _session.papyrus.is_ref_disabled(ref):
+		if flags < 0 or flags & CAN_TRAVEL:
+			list.remove_at(i)  # discovered meanwhile (a script, the map's own)
 			continue
 		var radius := float(m["radius"]) if float(m["radius"]) > 0.0 else reveal
-		if (m["position"] as Vector3).distance_to(at) <= radius:
+		if not _session.papyrus.is_ref_disabled(ref) and (m["position"] as Vector3).distance_to(at) <= radius:
 			discover(ref, String(m["name"]))
+			list.remove_at(i)
+			continue
+		i += 1
+
+
+## The data markers of `world`'s map not discovered when last checked (built on first use after a load).
+func _undiscovered_on(world: int) -> Array:
+	if not _undiscovered.has(world):
+		var list := []
+		for m: Dictionary in _data_markers(world):
+			var flags := _session.papyrus.get_map_marker_flags(int(m["ref"]))
+			if flags >= 0 and flags & CAN_TRAVEL == 0:
+				list.append(m)
+		_undiscovered[world] = list
+	return _undiscovered[world]
 
 
 ## Discover a marker: flags 0 -> 3 (visible, travel), the HUD's "<NAME> DISCOVERED".
@@ -275,3 +304,4 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 func adopt(state: Dictionary) -> void:
 	custom_marker = state.get("custom", {})
 	last_exterior = state.get("exterior", {})
+	_undiscovered.clear()

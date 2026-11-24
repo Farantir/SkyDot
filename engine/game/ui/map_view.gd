@@ -76,6 +76,8 @@ var _moving_marker := false
 var _travelling := false
 var _boxes: Array[Rect2] = []
 var _texts: HudTexts
+## WorldMap.shown_markers of the map's world, gathered on open and step_now (the world waits while the map is open).
+var _markers: Array = []
 
 
 func _init(session: GameSession) -> void:
@@ -104,6 +106,7 @@ func open() -> bool:
 	prompt = Prompt.NONE
 	cursor = size * 0.5
 	_texts = HudTexts.new() if HudTexts.available() else null
+	_markers = _session.world_map.shown_markers(scene.world)
 	visible = true
 	if enabled.call() and DisplayServer.get_name() != "headless":
 		Input.warp_mouse(cursor)
@@ -114,6 +117,7 @@ func open() -> bool:
 
 func _closed() -> void:
 	prompt = Prompt.NONE
+	_markers = []
 	if scene != null:
 		scene.close()
 	visible = false
@@ -123,6 +127,7 @@ func _closed() -> void:
 func step_now() -> void:
 	if _open:
 		scene.step(0.0)
+		_markers = _session.world_map.shown_markers(scene.world)
 		_refresh()
 
 
@@ -339,7 +344,7 @@ func _refresh() -> void:
 		return
 	var wm := _session.world_map
 	var fill_inverse := fill().affine_inverse()
-	for m: Dictionary in wm.shown_markers(scene.world):
+	for m: Dictionary in _markers:
 		_add_shown(fill_inverse, m["position"], int(m["type"]), String(m["name"]), 0.0,
 			int(m["flags"]) & WorldMap.CAN_TRAVEL == 0, m)
 	if not wm.custom_marker.is_empty() and int(wm.custom_marker["world"]) == scene.world:

@@ -5,7 +5,7 @@
 #   the camera's opening pose for Riverwood, Whiterun and Solstheim within 1 unit (MapCamera with the pack's MNAM
 #   and LAND heights);
 #   discovery at the measured radii (Riverwood XRDS 4500: not at 4601, at 4402; South Skybound Watch without XRDS:
-#   not at 1130, at 917);
+#   not at 1130, at 917); the cache of markers still to discover drops the found ones and a load rebuilds it;
 #   fast travel Riverwood -> Whiterun lands on 0xC07EF facing 90 degrees and 1.38 hours later.
 # Headless; skips without the pack.
 extends SceneTree
@@ -148,6 +148,24 @@ func _discovery() -> void:
 		expect(_session.papyrus.get_map_marker_flags(c[0]) == 3, "0x%X: discovered at %.0f (flags 3)" % [c[0], c[2]])
 	expect(_session.world_map.refusal(markers[WHITERUN].merged({"flags": 1}, true)) != "",
 		"Whiterun, visible but not discovered, refuses fast travel")
+	_discovery_cache()
+
+
+func _waiting(ref: int) -> bool:
+	return _session.world_map._undiscovered_on(TAMRIEL).any(func(m: Dictionary) -> bool: return int(m["ref"]) == ref)
+
+
+func _discovery_cache() -> void:
+	var wm := _session.world_map
+	expect(not _waiting(RIVERWOOD) and not _waiting(SKYBOUND), "the discovered markers left the cache")
+	expect(_waiting(WHITERUN), "Whiterun waits to be discovered")
+	var flags := _session.papyrus.get_map_marker_flags(WHITERUN)
+	_session.papyrus.set_map_marker_flags(WHITERUN, 3)
+	wm._discover(TAMRIEL, Vector3(1.0e7, 1.0e7, 0.0))
+	expect(not _waiting(WHITERUN), "a marker discovered elsewhere leaves the cache at the next check")
+	_session.papyrus.set_map_marker_flags(WHITERUN, flags)
+	wm.reset()
+	expect(_waiting(WHITERUN), "a load rebuilds the cache")
 
 
 func _fast_travel() -> void:
