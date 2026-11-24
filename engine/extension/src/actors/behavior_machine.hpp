@@ -9,7 +9,7 @@
 // Simplifications, all on purpose:
 //   - Transition conditions (hkbExpressionCondition, e.g. "iSyncIdleLocomotion > 0") are
 //     evaluated over the graph variables (BehaviorSet::set_variable; initial values from
-//     the graph); one that does not parse counts as true.
+//     the graph); one that does not parse counts as true (the graph's loader lists it).
 //   - Transition blends are instant: the new state's pose replaces the old.
 //   - A transition to the state already current is ignored.
 //   - Of a state's transitions the first matching one wins (no priorities).
@@ -50,14 +50,44 @@ struct BehaviorClip {
     float duration{};
 };
 
+/// A transition condition (`!a && (b == 1 || c >= 2.5)`), parsed once. Unknown variables are 0; an
+/// empty text holds, and so does one that does not parse (`parsed()` false).
+class BehaviorCondition {
+public:
+    BehaviorCondition() = default;
+    /// Implicit, so a transition can be written with its text.
+    BehaviorCondition(std::string_view text);
+    BehaviorCondition(const char* text) : BehaviorCondition(std::string_view(text)) {}
+    BehaviorCondition(const std::string& text) : BehaviorCondition(std::string_view(text)) {}
+
+    [[nodiscard]] bool holds(const std::unordered_map<std::string, float>& variables) const;
+    [[nodiscard]] bool parsed() const { return parsed_; }
+    [[nodiscard]] const std::string& text() const { return text_; }
+
+private:
+    /// Postfix: a value pushes, an operator pops its operands and pushes the result.
+    struct Op {
+        enum class Kind : std::uint8_t { number, variable, negate, logical_not, add, subtract, less, less_equal,
+                                         greater, greater_equal, equal, not_equal, logical_and, logical_or };
+        Kind kind{};
+        float number{};
+        std::string variable; ///< Lower case.
+    };
+    friend class ConditionParser;
+
+    std::string text_;
+    std::vector<Op> ops_;
+    bool parsed_{true};
+};
+
 struct BehaviorTransition {
     std::string event;
     int to_state{-1}; ///< A state id.
     /// toNestedStateId: the state id to start the target state's nested
     /// machine in, instead of its start state; -1 for none.
     int to_nested_state{-1};
-    /// The expression the transition is taken only if it holds (hkbExpressionCondition), else empty.
-    std::string condition{};
+    /// The transition is taken only if it holds (hkbExpressionCondition); empty: always.
+    BehaviorCondition condition{};
 };
 
 /// A ragdoll modifier active while a state runs (the converter's RagdollControl, format 7).
@@ -109,6 +139,8 @@ struct BehaviorGraphDef {
     std::vector<int> roots;
     /// The graph variables' initial values by lower-case name (joined graphs share them).
     std::unordered_map<std::string, float> variables;
+    /// The transition conditions that do not parse (they hold), for the loader to log.
+    std::vector<std::string> bad_conditions;
 };
 
 /// The first behaviour graph of an animation asset; events are named, clips
@@ -144,8 +176,7 @@ using BehaviorClips = std::shared_ptr<std::vector<BehaviorClip>>;
 /// The variables of a graph by lower-case name, shared by its machines.
 using BehaviorVariables = std::shared_ptr<std::unordered_map<std::string, float>>;
 
-/// Whether the expression holds over the variables (`!a && (b == 1 || c >= 2.5)`); unknown
-/// variables are 0. An expression that does not parse holds.
+/// Whether the expression holds over the variables (BehaviorCondition, parsed for this one call).
 [[nodiscard]] bool evaluate_condition(std::string_view expression, const std::unordered_map<std::string, float>& variables);
 
 class BehaviorMachine {

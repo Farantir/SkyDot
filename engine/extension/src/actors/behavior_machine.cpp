@@ -23,19 +23,22 @@ bool same_event(std::string_view a, std::string_view b) {
 
 constexpr int k_max_chain = 64; ///< Events handled in one step, against loops.
 
+} // namespace
 
 /// Recursive descent over `||`, `&&`, comparisons, `+ -`, unary `! -`, parentheses, numbers and
-/// variable names (a name may start with a digit: `1stPRot`).
-class Expression {
+/// variable names (a name may start with a digit: `1stPRot`), writing the condition's postfix ops.
+class ConditionParser {
 public:
-    Expression(std::string_view text, const std::unordered_map<std::string, float>& vars) : text_(text), vars_(vars) {}
+    using Op = BehaviorCondition::Op;
+    using Kind = Op::Kind;
 
-    /// False in `ok` when the text does not parse.
-    float evaluate(bool& ok) {
-        const float v = parse_or();
+    ConditionParser(std::string_view text, std::vector<Op>& out) : text_(text), out_(out) {}
+
+    /// False when the text does not parse.
+    bool parse() {
+        parse_or();
         skip();
-        ok = ok_ && pos_ == text_.size();
-        return v;
+        return ok_ && pos_ == text_.size();
     }
 
 private:
@@ -52,69 +55,66 @@ private:
         }
         return false;
     }
-    float parse_or() {
-        float v = parse_and();
+    void emit(Kind kind) { out_.push_back({kind, 0.0F, {}}); }
+    void parse_or() {
+        parse_and();
         while (eat("||")) {
-            const float r = parse_and();
-            v = (v != 0.0F || r != 0.0F) ? 1.0F : 0.0F;
+            parse_and();
+            emit(Kind::logical_or);
         }
-        return v;
     }
-    float parse_and() {
-        float v = parse_compare();
+    void parse_and() {
+        parse_compare();
         while (eat("&&")) {
-            const float r = parse_compare();
-            v = (v != 0.0F && r != 0.0F) ? 1.0F : 0.0F;
+            parse_compare();
+            emit(Kind::logical_and);
         }
-        return v;
     }
-    float parse_compare() {
-        const float l = parse_sum();
-        if (eat("==")) {
-            return l == parse_sum() ? 1.0F : 0.0F;
-        }
-        if (eat("!=")) {
-            return l != parse_sum() ? 1.0F : 0.0F;
-        }
-        if (eat("<=")) {
-            return l <= parse_sum() ? 1.0F : 0.0F;
-        }
-        if (eat(">=")) {
-            return l >= parse_sum() ? 1.0F : 0.0F;
-        }
-        if (eat("<")) {
-            return l < parse_sum() ? 1.0F : 0.0F;
-        }
-        if (eat(">")) {
-            return l > parse_sum() ? 1.0F : 0.0F;
-        }
-        return l;
-    }
-    float parse_sum() {
-        float v = parse_unary();
-        for (;;) {
-            if (eat("+")) {
-                v += parse_unary();
-            } else if (eat("-")) {
-                v -= parse_unary();
-            } else {
-                return v;
+    void parse_compare() {
+        parse_sum();
+        // Two-character operators first, so `<=` is not read as `<`.
+        static constexpr std::pair<std::string_view, Kind> k_compares[] = {
+            {"==", Kind::equal}, {"!=", Kind::not_equal}, {"<=", Kind::less_equal},
+            {">=", Kind::greater_equal}, {"<", Kind::less}, {">", Kind::greater}};
+        for (const auto& [token, kind] : k_compares) {
+            if (eat(token)) {
+                parse_sum();
+                emit(kind);
+                return;
             }
         }
     }
-    float parse_unary() {
+    void parse_sum() {
+        parse_unary();
+        for (;;) {
+            if (eat("+")) {
+                parse_unary();
+                emit(Kind::add);
+            } else if (eat("-")) {
+                parse_unary();
+                emit(Kind::subtract);
+            } else {
+                return;
+            }
+        }
+    }
+    void parse_unary() {
         if (eat("!")) {
-            return parse_unary() == 0.0F ? 1.0F : 0.0F;
+            parse_unary();
+            emit(Kind::logical_not);
+            return;
         }
         if (eat("-")) {
-            return -parse_unary();
+            parse_unary();
+            emit(Kind::negate);
+            return;
         }
         if (eat("(")) {
-            const float v = parse_or();
+            parse_or();
             if (!eat(")")) {
                 ok_ = false;
             }
-            return v;
+            return;
         }
         skip();
         const std::size_t start = pos_;
@@ -124,33 +124,77 @@ private:
         }
         if (pos_ == start) {
             ok_ = false;
-            return 0.0F;
+            emit(Kind::number);
+            return;
         }
         const std::string word(text_.substr(start, pos_ - start));
         char* end = nullptr;
         const float number = std::strtof(word.c_str(), &end);
         if (end == word.c_str() + word.size()) {
-            return number;
+            out_.push_back({Kind::number, number, {}});
+        } else {
+            out_.push_back({Kind::variable, 0.0F, ascii_lower(word)});
         }
-        const auto it = vars_.find(ascii_lower(word));
-        return it == vars_.end() ? 0.0F : it->second;
     }
 
     std::string_view text_;
-    const std::unordered_map<std::string, float>& vars_;
+    std::vector<Op>& out_;
     std::size_t pos_{};
     bool ok_{true};
 };
 
-} // namespace
+BehaviorCondition::BehaviorCondition(std::string_view text) : text_(text) {
+    if (!text.empty() && !ConditionParser(text, ops_).parse()) {
+        parsed_ = false;
+        ops_.clear();
+    }
+}
 
-bool evaluate_condition(std::string_view expression, const std::unordered_map<std::string, float>& variables) {
-    if (expression.empty()) {
+bool BehaviorCondition::holds(const std::unordered_map<std::string, float>& variables) const {
+    if (ops_.empty()) {
         return true;
     }
-    bool ok = true;
-    const float v = Expression(expression, variables).evaluate(ok);
-    return !ok || v != 0.0F;
+    std::vector<float> stack;
+    stack.reserve(ops_.size());
+    const auto truth = [](bool b) { return b ? 1.0F : 0.0F; };
+    for (const Op& op : ops_) {
+        using Kind = Op::Kind;
+        if (op.kind == Kind::number) {
+            stack.push_back(op.number);
+            continue;
+        }
+        if (op.kind == Kind::variable) {
+            const auto it = variables.find(op.variable);
+            stack.push_back(it == variables.end() ? 0.0F : it->second);
+            continue;
+        }
+        if (op.kind == Kind::negate || op.kind == Kind::logical_not) {
+            float& v = stack.back();
+            v = op.kind == Kind::negate ? -v : truth(v == 0.0F);
+            continue;
+        }
+        const float r = stack.back();
+        stack.pop_back();
+        float& l = stack.back();
+        switch (op.kind) {
+        case Kind::add: l = l + r; break;
+        case Kind::subtract: l = l - r; break;
+        case Kind::less: l = truth(l < r); break;
+        case Kind::less_equal: l = truth(l <= r); break;
+        case Kind::greater: l = truth(l > r); break;
+        case Kind::greater_equal: l = truth(l >= r); break;
+        case Kind::equal: l = truth(l == r); break;
+        case Kind::not_equal: l = truth(l != r); break;
+        case Kind::logical_and: l = truth(l != 0.0F && r != 0.0F); break;
+        case Kind::logical_or: l = truth(l != 0.0F || r != 0.0F); break;
+        default: break;
+        }
+    }
+    return stack.back() != 0.0F;
+}
+
+bool evaluate_condition(std::string_view expression, const std::unordered_map<std::string, float>& variables) {
+    return BehaviorCondition(expression).holds(variables);
 }
 
 BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
@@ -176,8 +220,14 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
             return;
         }
         for (const auto* t : *list) {
-            to.push_back({event_name(t->event()), t->to_state(), t->to_nested_state(),
-                          t->has_condition() && t->condition() != nullptr ? t->condition()->str() : std::string()});
+            BehaviorTransition transition{event_name(t->event()), t->to_state(), t->to_nested_state(),
+                                          t->has_condition() && t->condition() != nullptr
+                                              ? BehaviorCondition(t->condition()->string_view())
+                                              : BehaviorCondition()};
+            if (!transition.condition.parsed()) {
+                def.bad_conditions.push_back(transition.condition.text());
+            }
+            to.push_back(std::move(transition));
         }
     };
     // Clips: every clip generator of the file, indexed as the states say.
@@ -334,7 +384,7 @@ const BehaviorTransition* BehaviorMachine::find_transition(std::string_view even
         return nullptr;
     }
     const auto holds = [&](const BehaviorTransition& t) {
-        return same_event(t.event, event) && evaluate_condition(t.condition, *variables_);
+        return same_event(t.event, event) && t.condition.holds(*variables_);
     };
     for (const auto& t : def_.states[static_cast<std::size_t>(current_)].transitions) {
         if (holds(t)) {

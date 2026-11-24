@@ -37,6 +37,9 @@ public:
         for (const auto& [name, value] : graph.variables) {
             out_.graph.variables.try_emplace(name, value);
         }
+        for (std::string& bad : graph.bad_conditions) {
+            out_.graph.bad_conditions.push_back(file + ": " + std::move(bad));
+        }
         const int machine_base = static_cast<int>(out_.graph.machines.size());
         const int clip_base = static_cast<int>(out_.graph.clips.size());
         for (BehaviorClip& clip : graph.clips) {
@@ -369,6 +372,11 @@ std::shared_ptr<const ActorGraphDef> ActorGraphLibrary::graph(const std::string&
     auto it = graphs_.find(key);
     if (it == graphs_.end()) {
         it = graphs_.emplace(key, build_actor_graph(key, read_)).first;
+        if (log_) {
+            for (const std::string& bad : it->second->graph.bad_conditions) {
+                log_("behaviour: condition " + bad + " does not parse; it holds");
+            }
+        }
     }
     return it->second;
 }

@@ -91,7 +91,9 @@ std::shared_ptr<const ActorGraphDef> build_actor_graph(const std::string& behavi
 /// Graphs cached by behaviour file, and the lengths of clip animations by file.
 class ActorGraphLibrary {
 public:
-    explicit ActorGraphLibrary(AssetReader read) : read_(std::move(read)) {}
+    /// `log` gets the problems of each graph built (the conditions that do not parse); may be empty.
+    explicit ActorGraphLibrary(AssetReader read, std::function<void(const std::string&)> log = {})
+        : read_(std::move(read)), log_(std::move(log)) {}
 
     /// Never null; `missing` says why it is empty.
     std::shared_ptr<const ActorGraphDef> graph(const std::string& behaviour);
@@ -100,6 +102,7 @@ public:
 
 private:
     AssetReader read_;
+    std::function<void(const std::string&)> log_;
     std::unordered_map<std::string, std::shared_ptr<const ActorGraphDef>> graphs_;
     std::unordered_map<std::string, float> durations_;
 };

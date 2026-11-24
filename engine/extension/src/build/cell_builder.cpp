@@ -967,10 +967,13 @@ godot::PackedByteArray CellBuilder::asset_bytes(const std::string& vpath) {
 
 ActorGraphLibrary& CellBuilder::graph_library() {
     if (!graph_library_) {
-        graph_library_ = std::make_unique<ActorGraphLibrary>([this](const std::string& vpath) {
-            const godot::PackedByteArray raw = asset_bytes(vpath);
-            return raw.is_empty() ? std::vector<std::uint8_t>() : std::vector<std::uint8_t>(raw.ptr(), raw.ptr() + raw.size());
-        });
+        graph_library_ = std::make_unique<ActorGraphLibrary>(
+            [this](const std::string& vpath) {
+                const godot::PackedByteArray raw = asset_bytes(vpath);
+                return raw.is_empty() ? std::vector<std::uint8_t>()
+                                      : std::vector<std::uint8_t>(raw.ptr(), raw.ptr() + raw.size());
+            },
+            [](const std::string& line) { godot::UtilityFunctions::print(String::utf8(line.c_str())); });
     }
     return *graph_library_;
 }

@@ -450,6 +450,23 @@ TEST_CASE("conditions are evaluated over the graph variables", "[behavior]") {
     CHECK(evaluate_condition("a &&", vars)); // does not parse: holds
 }
 
+TEST_CASE("a condition is parsed once and keeps evaluating as the variables change", "[behavior]") {
+    std::unordered_map<std::string, float> vars{{"speed", 0.0F}};
+    const skydot::BehaviorCondition condition("Speed > 1 && !(speed >= 5)");
+    CHECK(condition.parsed());
+    CHECK_FALSE(condition.holds(vars));
+    vars["speed"] = 2.0F;
+    CHECK(condition.holds(vars));
+    vars["speed"] = 5.0F;
+    CHECK_FALSE(condition.holds(vars));
+    CHECK(skydot::BehaviorCondition("-speed + 6 == 1").holds(vars));
+    const skydot::BehaviorCondition broken("speed > (1");
+    CHECK_FALSE(broken.parsed());
+    CHECK(broken.holds(vars)); // fail-open
+    CHECK(broken.text() == "speed > (1");
+    CHECK(skydot::BehaviorCondition().parsed());
+}
+
 TEST_CASE("a transition's condition decides, and a bound start state takes the variable", "[behavior]") {
     BehaviorGraphDef def;
     BehaviorDef root;

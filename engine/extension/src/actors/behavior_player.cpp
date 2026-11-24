@@ -160,6 +160,12 @@ SkydotBehavior* SkydotBehavior::attach_from(godot::Node* model, const BytesFn& b
         return nullptr;
     }
     BehaviorGraphDef def = behavior_graph_from_asset(*behavior_asset);
+    if (!def.bad_conditions.empty() && first_report(project + "|conditions")) {
+        for (const std::string& bad : def.bad_conditions) {
+            godot::UtilityFunctions::print(String("behaviour %s: condition %s does not parse; it holds") %
+                                           godot::Array::make(String::utf8(project.c_str()), String::utf8(bad.c_str())));
+        }
+    }
     if (std::ranges::all_of(def.machines, [](const BehaviorDef& m) { return m.states.empty(); })) {
         return nullptr;
     }
