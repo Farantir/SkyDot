@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # MenuHost (viewer/menu_host.gd) and the loop's rules around it (ShellLoop): one menu at a time, which menus pause
-# the world, who blocks the controls, and that a load closes every menu. The session is never opened (the fake VM
-# and world); menus whose movie the test has no pack for are marked open directly.
+# the world, who blocks the controls, that a load closes every menu, and the journal settings it applies. The
+# session is never opened (the fake VM and world); menus whose movie the test has no pack for are marked open directly.
 extends "gd_test.gd"
 const Fakes := preload("fakes.gd")
 
@@ -173,3 +173,13 @@ func test_a_load_closes_every_menu() -> void:
 func test_no_save_while_dead() -> void:
 	_session.dead = true
 	expect(not _session.save_game("user://test_dead.skydot"), "refused")
+
+
+func test_invert_y_in_the_journal_settings_reaches_the_controls() -> void:
+	var system := _host.journal_view.system
+	system.settings_index = 0
+	system.option_index = 0  # $Invert Y
+	system._change_option(1)
+	expect(_controls.invert_look_y, "checked: the right stick looks down")
+	system._change_option(1)
+	expect(not _controls.invert_look_y, "unchecked again")

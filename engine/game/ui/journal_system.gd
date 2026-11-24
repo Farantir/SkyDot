@@ -11,7 +11,7 @@
 #                 chosen one's picture, "name, race, Level n", play time and date; Enter asks "Load this game? All
 #                 unsaved progress will be lost."
 #   SETTINGS      Gameplay, Display, Audio; Enter shows the options (sliders, steppers, check boxes); left/right change
-#                 the chosen one (only those SkyDot has do something: Invert Y)
+#                 the chosen one (`setting_changed`; only those SkyDot has do something: Invert Y)
 #   CONTROLS      the Main Gameplay events of the control map with their keys (no remapping)
 #   QUIT_LIST     Main Menu, Desktop; Enter asks "Quit to desktop?  Any unsaved progress will be lost." (no main
 #                 menu exists: Main Menu's question leads nowhere)
@@ -20,6 +20,9 @@
 # in SkyDot and stay closed, as the game does for an empty list.
 class_name JournalSystem
 extends RefCounted
+
+## An option of SETTINGS changed (or was reset): its name ("$Invert Y") and value; MenuHost applies those SkyDot has.
+signal setting_changed(name: String, value: Variant)
 
 enum State { MAIN, SAVE_LIST, CHARACTERS, LOAD_LIST, SETTINGS, OPTIONS, CONTROLS, QUIT_LIST, CONFIRM }
 
@@ -208,6 +211,7 @@ func input(event: InputEvent) -> bool:
 				_ask("$Reset settings to default values?", func() -> void:
 					for i in options.size():
 						values[settings_index][i] = options[i][2]
+						setting_changed.emit(String(options[i][0]), options[i][2])
 					state = State.OPTIONS, State.OPTIONS)
 				return true
 			if delta != 0:
@@ -346,10 +350,7 @@ func _change_option(direction: int) -> void:
 			row[option_index] = posmod(int(row[option_index]) + direction, (option[3] as Array).size())
 		2:
 			row[option_index] = 1 - int(row[option_index])
-	if option[0] == "$Invert Y":
-		var input := _view.get_tree().root.find_children("*", "PlayerInput", true, false)
-		for node: Node in input:
-			node.set(&"invert_look_y", int(row[option_index]) == 1)
+	setting_changed.emit(String(option[0]), row[option_index])
 
 
 func _scroll_to(index: int) -> void:
