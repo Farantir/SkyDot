@@ -56,7 +56,7 @@ var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 func _ready() -> void:
 	_settings = ViewerSettings.from_arguments(OS.get_cmdline_user_args())
 	if not _settings.error.is_empty():
-		_fail(_settings.error)
+		ShellLoop.fail_run(self, _settings.error)
 		return
 	var xr_on := _start_xr()
 	_image_space = SkydotImageSpace.new()
@@ -66,7 +66,7 @@ func _ready() -> void:
 	add_child(_rig.player)
 	_session = GameSession.new()
 	_session.name = "GameSession"
-	_session.failed.connect(_fail)
+	_session.failed.connect(func(message: String) -> void: ShellLoop.fail_run(self, message))
 	add_child(_session)
 	_session.interactive = _settings.interactive
 	if not _session.open(_settings.game_config(), _rig.camera, _rig):
@@ -344,9 +344,3 @@ func _on_quit_countdown(frames_left: int) -> void:
 func _save_mirror(path: String) -> void:
 	var image := get_viewport().get_texture().get_image()
 	print("vr: mirror ", image.get_size(), " -> ", path, " ", image.save_png(path))
-
-
-func _fail(message: String) -> void:
-	push_error(message)
-	printerr(message)
-	get_tree().quit(1)

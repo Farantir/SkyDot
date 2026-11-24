@@ -212,9 +212,14 @@ func input_enabled() -> bool:
 
 ## A run that cannot go on: say so and quit with an error.
 func fail(message: String) -> void:
+	fail_run(_host, message)
+
+
+## `fail` for a shell before its loop exists: quits `host`'s tree.
+static func fail_run(host: Node, message: String) -> void:
 	push_error(message)
 	printerr(message)
-	_host.get_tree().quit(1)
+	host.get_tree().quit(1)
 
 
 ## A key that is not about the player's body. The keys every shell has are handled here, the

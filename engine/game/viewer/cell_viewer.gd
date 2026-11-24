@@ -222,7 +222,7 @@ func _ready() -> void:
 	if not _settings.shot_note.is_empty():
 		print("shot note: ", _settings.shot_note)
 	if not _settings.error.is_empty():
-		_fail(_settings.error)
+		ShellLoop.fail_run(self, _settings.error)
 		return
 	if not _open_game():
 		return
@@ -240,7 +240,7 @@ func _open_game() -> bool:
 	add_child(_rig.player)
 	_session = GameSession.new()
 	_session.name = "GameSession"
-	_session.failed.connect(_fail)
+	_session.failed.connect(func(message: String) -> void: ShellLoop.fail_run(self, message))
 	add_child(_session)
 	# Runs that capture, measure or activate on their own ignore the keyboard
 	# and mouse, so a stray touch cannot move the view.
@@ -440,9 +440,3 @@ func _lod_text(split: float) -> String:
 ## - and =: what to tell the user about the cells in full detail.
 func _radius_text(radius: int) -> String:
 	return "full detail within %d cells (%d x %d)" % [radius, 2 * radius + 1, 2 * radius + 1]
-
-
-func _fail(message: String) -> void:
-	push_error(message)
-	printerr(message)
-	get_tree().quit(1)
