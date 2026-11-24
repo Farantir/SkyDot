@@ -7,6 +7,87 @@
 
 namespace skydot {
 
+struct SkydotPapyrus::MagicHost final : vm::MagicRuntime::Host {
+    explicit MagicHost(SkydotPapyrus& owner) : owner_(owner) {}
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
+    vm::ActorStates& actor_states() override { return owner_.actors_; }
+    void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
+
+    std::uint32_t dialogue_npc(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+    std::uint32_t place_summon_ref(const vm::PlacedRef& placed) override { return owner_.place_ref(placed, false); }
+    std::vector<std::uint32_t> triggered_actors() const override {
+        std::vector<std::uint32_t> out;
+        for (const auto& [actor, position] : owner_.triggers_.actors()) {
+            out.push_back(actor);
+        }
+        return out;
+    }
+    void magic_trace(const std::string& line) override { owner_.trace_line(line); }
+    void magic_notification(const std::string& text) override { owner_.show_message(text, false, false); }
+    void effect_event(const magic::EffectView& v, bool started) override {
+        owner_.emit_signal("magic_effect_changed", static_cast<std::int64_t>(v.target), static_cast<std::int64_t>(v.mgef),
+                           static_cast<std::int64_t>(v.archetype), started, static_cast<std::int64_t>(v.id));
+        owner_.emit_signal("magic_effect_event", effect_event_dictionary(v, started));
+    }
+    void attach_effect_scripts(std::uint32_t id, std::uint32_t mgef) override {
+        const auto* root = owner_.world_root();
+        const auto* record = root != nullptr ? lookup(root->magic_effects(), mgef) : nullptr;
+        owner_.attach_scripts(id, script_list(record != nullptr ? record->scripts() : nullptr, false), 0);
+    }
+
+    vm::Vm& vm() override { return *owner_.vm_; }
+    vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
+    vm::CreatedForms& created_forms() override { return owner_.created_; }
+    std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
+        return std::make_unique<PapyrusConditionWorld>(&owner_);
+    }
+
+    // The perks' entry points for spell cost, magnitude and duration.
+    double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
+                      double value) const override {
+        if (ep >= perks::k_entry_point_count) {
+            return value;
+        }
+        perks::EntryContext ctx;
+        ctx.owner = owner;
+        ctx.subjects = subjects;
+        return owner_.apply_entry_point(static_cast<perks::EntryPoint>(ep), std::move(ctx), value);
+    }
+
+    // The abilities of an actor's base perks are part of its spell list.
+    std::vector<std::uint32_t> perk_abilities(std::uint32_t ref) override {
+        std::vector<std::uint32_t> out;
+        const auto* root = owner_.world_root();
+        if (root == nullptr) {
+            return out;
+        }
+        for (const auto& [perk, rank] : owner_.progression_.base_perks(ref)) {
+            const auto* p = lookup(root->perks(), perk);
+            if (p == nullptr || p->effects() == nullptr || rank == 0) {
+                continue;
+            }
+            for (const auto* e : *p->effects()) {
+                if (e->kind() == bethconv::pack::wfb::PerkEffectKind::ability && e->spell() != 0 &&
+                    static_cast<unsigned>(e->rank()) + 1U == rank) {
+                    out.push_back(e->spell());
+                }
+            }
+        }
+        return out;
+    }
+    SkydotPapyrus& owner_;
+};
+
+void SkydotPapyrus::MagicHostDeleter::operator()(MagicHost* host) const { delete host; }
+
+std::unique_ptr<SkydotPapyrus::MagicHost, SkydotPapyrus::MagicHostDeleter> SkydotPapyrus::new_magic_host() {
+    return std::unique_ptr<MagicHost, MagicHostDeleter>(new MagicHost(*this));
+}
+
+std::unique_ptr<vm::MagicRuntime> SkydotPapyrus::new_magic(const bethconv::pack::wfb::World& root) {
+    return std::make_unique<vm::MagicRuntime>(*magic_host_, root, item_, combat_);
+}
+
 vm::MagicRuntime* SkydotPapyrus::magic_state() {
     if (magic_) {
         return magic_.get();

@@ -855,13 +855,6 @@ private:
     void reset();
     void install_scheduled_handler();
 
-    /// Typed questions about the world for natives (vm/world_access.hpp).
-    struct Access;
-    struct AccessDeleter {
-        void operator()(Access* access) const;
-    };
-    /// The adapter the natives families are bound against (made in bind_natives).
-    std::unique_ptr<Access, AccessDeleter> access_;
     /// The adaptors the runtimes and natives families are bound against, one per Host interface, each
     /// next to its domain's binding (papyrus_<domain>.cpp).
     struct CombatHost;
@@ -903,6 +896,13 @@ private:
     struct ItemHost;
     std::unique_ptr<vm::ItemRuntime::Host> new_item_host();
     std::unique_ptr<vm::ItemRuntime::Host> item_host_ = new_item_host();
+    /// The magic host is held by its own type: vm/magic_runtime.hpp stays out of this header.
+    struct MagicHost;
+    struct MagicHostDeleter {
+        void operator()(MagicHost* host) const;
+    };
+    std::unique_ptr<MagicHost, MagicHostDeleter> new_magic_host();
+    std::unique_ptr<MagicHost, MagicHostDeleter> magic_host_ = new_magic_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {
