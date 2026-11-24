@@ -3,7 +3,7 @@
 # The VR shell (ADR 0006): a second shell around the same GameSession as the
 # viewer, a spike of the milestone-2 boundary. It reads the viewer's game
 # options (ViewerSettings), puts the player in a VrRig, shows the HUD, the
-# subtitles and the dialogue menu as panels (vr_panel.gd) and runs the frame.
+# subtitles, the dialogue and the game's menus (MenuHost) as panels (vr_panel.gd) and runs the frame.
 #
 #   godot4.7 --path game --xr-mode on res://vr/vr_shell.tscn -- \
 #       --pack DIR --cell EDITOR_ID [--quit-after FRAMES] [--no-input]
@@ -15,7 +15,8 @@
 #
 # Takes the options that put the player somewhere and run the game (--pack,
 # --cell, --world, --at, --target, --look, --time, --load, --give,
-# --start-quest, --talk, --activate, --quit-after, --no-input, --open-map (opens the world map) and the quality
+# --start-quest, --talk, --activate, --quit-after, --no-input, --open-map (opens the world map), the --open-* menu
+# options (MenuHost) and the quality
 # ones); --screenshot FILE saves the window's picture one frame before the end
 # (desktop fallback only). The viewer's shot series, benchmark and debug overlay are the
 # viewer's.
@@ -41,26 +42,13 @@ var _rig: VrRig
 var _controls: PlayerInput
 var _loop: ShellLoop
 var _dialogue_panel: VrPanel
-var _inventory: InventoryView
-var _container: ContainerView
-var _crafting: CraftingView
-var _training: TrainingView
-var _skills: SkillsView
-var _skills_panel: VrPanel
-var _magic: MagicView
-var _favorites: FavoritesView
-var _favorites_panel: VrPanel
+var _hud_panel: VrPanel
+var _menus: MenuHost  # the game's menus, each on a panel put in front of the head when it opens
+var _panels: Dictionary = {}  # GameMenu -> VrPanel
 var _death: DeathView
 var _death_panel: VrPanel
 var _death_fade: MeshInstance3D  # a black quad on the head: the death fade and the door fade (max of the two)
 var _door_fade := 0.0  # PlaceTransition.fade
-var _inventory_panel: VrPanel
-var _container_panel: VrPanel
-var _crafting_panel: VrPanel
-var _training_panel: VrPanel
-var _magic_panel: VrPanel
-var _map: MapView
-var _map_panel: VrPanel
 var _xr: XRInterface
 var _body: FirstPersonBody  # the weapon in the right hand (no arms in VR)
 
@@ -136,10 +124,6 @@ func _create_components() -> void:
 	add_child(_controls)
 	_loop = ShellLoop.new(self, _session, _rig, _controls, _settings, _image_space,
 		func(text: String) -> void: print("note: ", text))
-	# The keys I and M of the desktop fallback; in the headset the controller buttons ask (VrRig).
-	_loop.inventory_requested.connect(_on_inventory_requested)
-	_loop.magic_requested.connect(_on_magic_requested)
-	_loop.skills_requested.connect(_on_skills_requested)
 	# The viewer's debug keys (loop.command) are not here.
 	_loop.quit_countdown.connect(_on_quit_countdown)
 	_loop.quitting.connect(func() -> void: print("vr: quit"))
@@ -154,7 +138,7 @@ func _create_components() -> void:
 	if _settings.hud:
 		var hud := HudView.new(_session, _key_label)
 		hud.show_crosshair = not _rig.tracking
-		_head_panel(hud, HUD_PIXELS, HUD_WIDTH, Vector3(0, -0.45, -1.5))
+		_hud_panel = _head_panel(hud, HUD_PIXELS, HUD_WIDTH, Vector3(0, -0.45, -1.5))
 	if _settings.hud or not _settings.start_quests.is_empty():
 		_head_panel(SubtitlesView.new(_session), HUD_PIXELS, HUD_WIDTH, Vector3(0, -0.75, -1.5))
 	if _settings.hud or _settings.talk != 0:
@@ -164,36 +148,23 @@ func _create_components() -> void:
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)
 		add_child(_dialogue_panel)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_map != "":
-		_inventory = InventoryView.new(_session)
-		_container = ContainerView.new(_session)
-		_inventory_panel = _menu_panel(_inventory)
+	if _settings.wants_menus():
+		# The keys of the desktop fallback open them as in the viewer (MenuHost.attach); in the headset the
+		# controller buttons ask (VrRig).
+		_menus = MenuHost.new(_session, _controls, _place_menu, _key_label)
+		_menus.frees_mouse = not _rig.tracking
+		_menus.attach(_loop)
+		_menus.engaged.connect(_on_menu_engaged)
 		# The item's model is a real object beside the panel, not a picture in it (ADR 0006, 0010).
-		_inventory.preview().use_world_node(_inventory_panel, Vector3(MENU_WIDTH * 0.5 + 0.25, 0.0, 0.05))
-		_container_panel = _menu_panel(_container)
-		_crafting = CraftingView.new(_session)
-		_crafting.can_name = false  # no keyboard: an enchanted item keeps its default name
-		_crafting_panel = _menu_panel(_crafting)
-		_magic = MagicView.new(_session)
-		_magic_panel = _menu_panel(_magic)
-		_favorites = FavoritesView.new(_session)
-		_favorites_panel = _menu_panel(_favorites)
-		_training = TrainingView.new(_session)
-		_training_panel = _menu_panel(_training)
-		_session.training_opened.connect(_training.open)
-		_skills = SkillsView.new(_session)
-		_skills_panel = _menu_panel(_skills)
-		_session.container_opened.connect(_on_container_opened)
-		_session.crafting_opened.connect(_on_crafting_opened)
+		_menus.inventory_view.preview().use_world_node(_panels[_menus.inventory_view],
+			Vector3(MENU_WIDTH * 0.5 + 0.25, 0.0, 0.05))
+		_menus.crafting_view.can_name = false  # no keyboard: an enchanted item keeps its default name
 		# The world map: the origin floats up over the map world (MapScene.origin), the movie's overlay on a panel.
 		if MapView.available():
-			_map = MapView.new(_session)
-			_map.scene = MapScene.new(_session, _rig.camera)
-			_map.scene.origin = _rig.origin
-			add_child(_map.scene)
-			_map_panel = _menu_panel(_map)
-			_loop.paused = func() -> bool: return _map.is_open()
-			_loop.map_requested.connect(_on_map_requested)
+			_menus.map_view.scene = MapScene.new(_session, _rig.camera)
+			_menus.map_view.scene.origin = _rig.origin
+			add_child(_menus.map_view.scene)
+			_loop.paused = func() -> bool: return _menus.map_view.is_open()
 	_make_death_screen()
 	if not _rig.tracking:  # the mouse looks only in the desktop fallback (the viewer always captures it)
 		_controls.capture_mouse()
@@ -237,45 +208,28 @@ func _make_death_screen() -> void:
 
 
 ## A panel locked to the head.
-func _head_panel(view: Control, pixels: Vector2i, width: float, at: Vector3) -> void:
+func _head_panel(view: Control, pixels: Vector2i, width: float, at: Vector3) -> VrPanel:
 	var panel := VrPanel.new(view, pixels, width)
 	panel.position = at
 	_rig.camera.add_child(panel)
+	return panel
 
 
 func _key_label(action: StringName) -> String:
 	return "Trigger" if _rig.tracking and action == &"activate" else _controls.key_label(action)
 
 
-## An item menu (ui/) on a panel put in front of the head when it opens.
-func _menu_panel(view: Control) -> VrPanel:
-	view.enabled = func() -> bool: return _controls.enabled
-	view.key_label = _key_label
-	view.engaged.connect(_on_menu_engaged.bind(view))
+## A menu (ui/) on a panel, hidden until it opens (MenuHost's `place`).
+func _place_menu(view: GameMenu) -> void:
 	var panel := VrPanel.new(view, MENU_PIXELS, MENU_WIDTH)
 	panel.set_shown(false)
 	add_child(panel)
-	return panel
+	_panels[view] = panel
 
 
-func _on_menu_engaged(open: bool, view: Control) -> void:
-	var panel := _inventory_panel
-	if view == _container:
-		panel = _container_panel
-	elif view == _crafting:
-		panel = _crafting_panel
-	elif view == _magic:
-		panel = _magic_panel
-	elif view == _training:
-		panel = _training_panel
-	elif view == _skills:
-		panel = _skills_panel
-	elif view == _favorites:
-		panel = _favorites_panel
-	elif view == _map:
-		panel = _map_panel
-	_controls.blocked = open or _favorites.is_open() or _inventory.is_open() or _container.is_open() or _crafting.is_open() or _magic.is_open() \
-		or _training.is_open() or _skills.is_open() or _session.is_dialogue_open() or (_map != null and _map.is_open())
+## A menu opened or closed: its panel comes up in front of the head, or goes.
+func _on_menu_engaged(view: GameMenu, open: bool) -> void:
+	var panel: VrPanel = _panels[view]
 	if open and not panel.visible:
 		panel.recenter(_rig.camera)
 	panel.set_shown(open)
@@ -283,92 +237,48 @@ func _on_menu_engaged(open: bool, view: Control) -> void:
 
 ## The left menu button: the inventory, or closes the menu that is open.
 func _on_inventory_requested() -> void:
-	if _inventory == null:
+	if _menus == null:
 		print("vr: inventory (the HUD is off)")
 		return
-	if _skills.is_open():
-		_skills.close()
-	elif _training.is_open():
-		_training.close()
-	elif _inventory.is_open():
-		_inventory.close()
-	elif _container.is_open():
-		_container.close()
-	elif _crafting.is_open():
-		_crafting.close()
-	elif _magic.is_open():
-		_magic.close()
-	elif not _session.is_dialogue_open():
-		_inventory.open()
+	var open := _menus.open_view()
+	if open != null:
+		open.close()
+	else:
+		_menus.open_inventory()
 
 
-## The right stick click (or L on the desktop): the skills screen, or closes it.
+## The right stick click: the skills screen, or closes it.
 func _on_skills_requested() -> void:
-	if _skills == null:
+	if _menus == null:
 		print("vr: skills (the HUD is off)")
 		return
-	if _skills.is_open():
-		_skills.close()
-	elif not _inventory.is_open() and not _container.is_open() and not _crafting.is_open() and not _magic.is_open() \
-			and not _training.is_open() and not _session.is_dialogue_open():
-		_skills.open()
+	_menus.toggle_skills()
 
 
 ## The right grip: the favorites menu; in the inventory or magic menu it marks the item under the cursor.
 func _on_favorites_requested() -> void:
-	if _favorites == null:
+	if _menus == null:
 		return
-	if _inventory.is_open() or _magic.is_open():
+	if _menus.inventory_view.is_open() or _menus.magic_view.is_open():
 		var press := InputEventAction.new()
 		press.action = &"menu_favorite"
 		press.pressed = true
 		Input.parse_input_event(press)
-	elif _favorites.is_open():
-		_favorites.close()
-	elif not _container.is_open() and not _crafting.is_open() and not _skills.is_open() and not _session.is_dialogue_open():
-		_favorites.open()
+	elif _menus.favorites_view.is_open():
+		_menus.favorites_view.close()
+	else:
+		_menus.open_favorites()
 
 
-## The left Y button: the magic menu, or closes the menu that is open.
+## The left Y button: the magic menu, or closes it.
 func _on_magic_requested() -> void:
-	if _magic == null:
+	if _menus == null:
 		print("vr: magic (the HUD is off)")
 		return
-	if _magic.is_open():
-		_magic.close()
-	elif _inventory.is_open() or _container.is_open() or _crafting.is_open():
-		return
-	elif not _session.is_dialogue_open():
-		_magic.open()
-
-
-## M on the desktop fallback (no controller button yet): the world map, or closes it.
-func _on_map_requested() -> void:
-	if _map == null:
-		return
-	if _map.is_open():
-		_map.close()
-	elif not _inventory.is_open() and not _magic.is_open() and not _skills.is_open() and not _session.is_dialogue_open():
-		_map.open()
-
-
-## Activating a container opens its menu.
-func _on_container_opened(ref: int) -> void:
-	if _session.is_dialogue_open():
-		return
-	_inventory.close()
-	_magic.close()
-	_container.open(ref)
-
-
-## Activating a workbench opens its menu.
-func _on_crafting_opened(ref: int, bench_type: int) -> void:
-	if _session.is_dialogue_open():
-		return
-	_inventory.close()
-	_container.close()
-	_magic.close()
-	_crafting.open(ref, bench_type)
+	if _menus.magic_view.is_open():
+		_menus.magic_view.close()
+	else:
+		_menus.open_magic()
 
 
 func _on_dialogue_engaged(open: bool) -> void:
@@ -384,24 +294,11 @@ func _start_game() -> void:
 	var settings := _settings
 	if not _loop.start():
 		return
-	if settings.crafting_category != "" and _crafting != null:
-		_crafting.select_category(settings.crafting_category)
-	if settings.open_map != "" and _map != null:
-		print("vr: map ", "open" if _map.open() else "has no map here")
-	if _loop.in_world:
+	if _menus == null:
 		return
-	if settings.open_inventory and _inventory != null:
-		_inventory.open()
-	if settings.open_magic and _magic != null:
-		_magic.open()
-		_magic.select_category(settings.magic_category)
-	if settings.open_skills != "" and _skills != null:
-		if settings.grant_perks > 0:
-			_session.papyrus.set_perk_points(settings.grant_perks)
-		if settings.grant_xp > 0.0:
-			_session.papyrus.set_player_xp(settings.grant_xp)
-		_skills.open()
-		_skills.select_skill(settings.open_skills)
+	if settings.open_map != "":
+		print("vr: map ", "open" if _menus.map_view.open() else "has no map here")
+	_menus.open_start_menus(settings, _loop.in_world)
 
 
 ## The death screen lives in a SubViewport, which gets no keys: hand it the ones the shell gets.
@@ -414,6 +311,10 @@ func _process(delta: float) -> void:
 	if _controls == null:
 		return
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
+	if _menus != null:
+		if _hud_panel != null:
+			_hud_panel.visible = not _menus.hides_hud()
+		_body.menu_hidden = _menus.hides_body()
 	if _loop.frame(delta, _device_step):
 		_loop.drive(delta)
 
