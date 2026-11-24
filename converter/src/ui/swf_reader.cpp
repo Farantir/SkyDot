@@ -708,7 +708,7 @@ void read_filters(BitReader& r, std::vector<std::string>& names) {
     }
 }
 
-PlaceObject read_place(std::span<const std::byte> data, std::uint16_t code) {
+std::optional<PlaceObject> read_place(std::span<const std::byte> data, std::uint16_t code) {
     BitReader r(data);
     PlaceObject p;
     if (code == tag_place_object) {
@@ -717,6 +717,9 @@ PlaceObject read_place(std::span<const std::byte> data, std::uint16_t code) {
         p.matrix = read_matrix(r);
         if (r.remaining() > 0) {
             p.color = read_cxform(r, false);
+        }
+        if (!r.ok()) {
+            return std::nullopt;
         }
         return p;
     }
@@ -756,6 +759,9 @@ PlaceObject read_place(std::span<const std::byte> data, std::uint16_t code) {
     }
     if ((flags2 & 0x20U) != 0) {
         p.visible = r.u8() != 0;
+    }
+    if (!r.ok()) {
+        return std::nullopt;
     }
     return p;
 }
@@ -857,6 +863,10 @@ struct MovieReader {
 
     void count(std::uint16_t code) { ++movie.tag_counts[tag_name(code)]; }
 
+    void bad(const RawTag& tag, const char* what) {
+        note(std::string(what) + " at body offset " + std::to_string(tag.offset) + " did not decode");
+    }
+
     /// One timeline (root or sprite); definition tags only at the root, but a
     /// sprite holding one is read the same way.
     void read_timeline(const std::vector<RawTag>& tags, Timeline& timeline, int depth) {
@@ -872,8 +882,12 @@ struct MovieReader {
             case tag_place_object:
             case tag_place_object2:
             case tag_place_object3:
-                timeline.events.push_back(TimelineEvent{.kind = TimelineEvent::place,
-                                                        .placement = read_place(data, tag.code)});
+                if (auto p = read_place(data, tag.code)) {
+                    timeline.events.push_back(
+                        TimelineEvent{.kind = TimelineEvent::place, .placement = std::move(*p)});
+                } else {
+                    bad(tag, "place");
+                }
                 break;
             case tag_remove_object:
             case tag_remove_object2: {
@@ -883,12 +897,21 @@ struct MovieReader {
                 }
                 TimelineEvent e{.kind = TimelineEvent::remove, .placement = {}};
                 e.placement.depth = r.u16();
+                if (!r.ok()) {
+                    bad(tag, "remove");
+                    break;
+                }
                 timeline.events.push_back(std::move(e));
                 break;
             }
             case tag_frame_label: {
                 BitReader r(data);
-                timeline.labels.push_back(FrameLabel{.name = read_string(r), .frame = frame});
+                std::string name = read_string(r);
+                if (!r.ok()) {
+                    bad(tag, "frame label");
+                    break;
+                }
+                timeline.labels.push_back(FrameLabel{.name = std::move(name), .frame = frame});
                 break;
             }
             default: read_definition(tag, depth); break;
@@ -898,10 +921,7 @@ struct MovieReader {
 
     void read_definition(const RawTag& tag, int depth) {
         const auto data = tag.data;
-        const auto bad = [&](const char* what) {
-            note(std::string(what) + " at body offset " + std::to_string(tag.offset) +
-                 " did not decode");
-        };
+        const auto bad = [&](const char* what) { this->bad(tag, what); };
         switch (tag.code) {
         case tag_define_shape:
         case tag_define_shape2:
@@ -976,6 +996,10 @@ struct MovieReader {
             const auto id = r.u16();
             std::string name = read_string(r);
             std::string copyright = read_string(r);
+            if (!r.ok()) {
+                bad("font name");
+                break;
+            }
             if (auto it = movie.fonts.find(id); it != movie.fonts.end()) {
                 it->second.full_name = name;
                 it->second.copyright = copyright;

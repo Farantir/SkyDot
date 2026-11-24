@@ -317,6 +317,31 @@ TEST_CASE("the display list follows places, moves and removes per frame", "[swf]
     CHECK(second[0].matrix.ty == 400);
 }
 
+TEST_CASE("truncated timeline tags are noted and skipped", "[swf]") {
+    Bytes t;
+    tag(t, tag_define_shape3, square_shape(1, 0xFF0000FFU));
+    Bytes place = place2(1, 1, false, std::pair{0, 0}, "name");
+    place.resize(place.size() - 2); // the name loses its end
+    tag(t, tag_place_object2, place);
+    tag(t, tag_remove_object2, Bytes{std::byte{1}});
+    tag(t, tag_frame_label, Bytes{std::byte{'x'}});
+    Bits font_name;
+    font_name.u16(1);
+    font_name.str("Name");
+    tag(t, tag_define_font_name, font_name.out); // no copyright string
+    tag(t, tag_show_frame, {});
+    tag(t, tag_end, {});
+    auto movie = read_swf(fws(t), "cut.swf");
+    REQUIRE(movie);
+    REQUIRE(movie->root.events.size() == 1);
+    CHECK(movie->root.events[0].kind == TimelineEvent::show_frame);
+    CHECK(movie->root.labels.empty());
+    REQUIRE(movie->notes.size() == 4);
+    for (const char* what : {"place", "remove", "frame label", "font name"}) {
+        CHECK(std::ranges::any_of(movie->notes, [&](const std::string& n) { return n.starts_with(what); }));
+    }
+}
+
 TEST_CASE("a shape and a sprite frame draw as SVG with their bounds", "[swf]") {
     auto movie = read_swf(fws(sample_tags()), "test.swf");
     REQUIRE(movie);
