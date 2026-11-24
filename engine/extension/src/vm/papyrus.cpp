@@ -491,6 +491,7 @@ godot::Error SkydotPapyrus::setup(const godot::Ref<SkydotPack>& pack,
         godot::UtilityFunctions::push_warning(String("Papyrus: ") + to_godot(message));
         emit_signal("error", to_godot(message));
     });
+    vm_->set_note([](const std::string& line) { godot::UtilityFunctions::print(to_godot(line)); });
     bind_natives();
     return godot::OK;
 }
@@ -1682,8 +1683,9 @@ void SkydotPapyrus::notify_animation_event(std::int64_t ref, const String& event
     for (const auto* instance : vm_->send_animation_event(sender, utf8(event))) {
         const auto key = instance->cls->key() + ":" + vm::to_lower(utf8(event));
         if (animation_event_logged_.insert(key).second) {
-            std::printf("papyrus: OnAnimationEvent %s from 0x%08X reaches %s\n", utf8(event).c_str(), sender,
-                        instance->cls->name().c_str());
+            char id[16];
+            std::snprintf(id, sizeof id, "0x%08X", sender);
+            vm_->note("papyrus: OnAnimationEvent " + utf8(event) + " from " + id + " reaches " + instance->cls->name());
         }
         ++animation_events_delivered_;
     }

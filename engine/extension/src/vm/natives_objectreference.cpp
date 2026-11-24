@@ -155,14 +155,20 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
             return NativeResult{};
         }
         const double force = number(arg(c, 1));
-        std::printf("papyrus: PushActorAway 0x%X pushes 0x%X (force %g)\n", c.self.form(), arg(c, 0).form(), force);
+        char line[128];
+        std::snprintf(line, sizeof line, "papyrus: PushActorAway 0x%X pushes 0x%X (force %g)", c.self.form(),
+                      arg(c, 0).form(), force);
+        c.vm.note(line);
         events.push_actor(c.self.form(), arg(c, 0).form(), force);
         return NativeResult{};
     });
     v.bind("ObjectReference", "KnockAreaEffect", [&events](NativeCall& c) {
         const double magnitude = number(arg(c, 0));
         const double radius = number(arg(c, 1));
-        std::printf("papyrus: KnockAreaEffect 0x%X (magnitude %g, radius %g)\n", c.self.form(), magnitude, radius);
+        char line[128];
+        std::snprintf(line, sizeof line, "papyrus: KnockAreaEffect 0x%X (magnitude %g, radius %g)", c.self.form(),
+                      magnitude, radius);
+        c.vm.note(line);
         events.knock_area(c.self.form(), magnitude, radius);
         return NativeResult{};
     });

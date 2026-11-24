@@ -33,7 +33,9 @@ void bind_noop_natives(Vm& vm) {
     // shown. (AddToMap: natives_map.cpp.)
     for (const auto& [cls, fn] : {std::pair{"ObjectReference", "PlayImpactEffect"}, std::pair{"Actor", "PlayIdle"}}) {
         vm.bind(cls, fn, [cls, fn](NativeCall& c) {
-            std::printf("papyrus: %s.%s 0x%X (not shown)\n", cls, fn, c.self.form());
+            char line[128];
+            std::snprintf(line, sizeof line, "papyrus: %s.%s 0x%X (not shown)", cls, fn, c.self.form());
+            c.vm.note(line);
             return NativeResult{};
         });
     }
@@ -45,12 +47,15 @@ void bind_noop_natives(Vm& vm) {
     // renderer's post-processing: the call is logged, nothing is drawn.
     for (const char* fn : {"Apply", "ApplyCrossFade", "Remove", "PopTo"}) {
         vm.bind("ImageSpaceModifier", fn, [fn](NativeCall& c) {
-            std::printf("papyrus: ImageSpaceModifier.%s 0x%X (no screen effect)\n", fn, c.self.form());
+            char line[128];
+            std::snprintf(line, sizeof line, "papyrus: ImageSpaceModifier.%s 0x%X (no screen effect)", fn,
+                          c.self.form());
+            c.vm.note(line);
             return NativeResult{};
         });
     }
-    vm.bind("ImageSpaceModifier", "RemoveCrossFade", [](NativeCall&) {
-        std::printf("papyrus: ImageSpaceModifier.RemoveCrossFade (no screen effect)\n");
+    vm.bind("ImageSpaceModifier", "RemoveCrossFade", [](NativeCall& c) {
+        c.vm.note("papyrus: ImageSpaceModifier.RemoveCrossFade (no screen effect)");
         return NativeResult{};
     });
 }

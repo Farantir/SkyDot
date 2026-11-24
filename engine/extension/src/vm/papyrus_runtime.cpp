@@ -73,8 +73,11 @@ void SkydotPapyrus::relocate_ref(std::uint32_t ref, std::uint32_t cell, const Ve
     }
     if (ref == k_player_ref) {
         // The player stands where the game layer put him; nothing teleports him from a script yet.
-        std::printf("papyrus: the player was asked to move to (%.0f, %.0f, %.0f); not done\n", static_cast<double>(position.x),
-                    static_cast<double>(position.y), static_cast<double>(position.z));
+        char line[128];
+        std::snprintf(line, sizeof line, "papyrus: the player was asked to move to (%.0f, %.0f, %.0f); not done",
+                      static_cast<double>(position.x), static_cast<double>(position.y),
+                      static_cast<double>(position.z));
+        vm_->note(line);
         return;
     }
     vm::MovedTo to;

@@ -182,6 +182,8 @@ public:
 
     void set_loader(Loader loader) { loader_ = std::move(loader); }
     void set_log(Log log) { log_ = std::move(log); }
+    /// Where `note` lines go; none drops them.
+    void set_note(Log note) { note_ = std::move(note); }
 
     /// Bind `cls.fn` (any case). Replaces an earlier binding.
     void bind(std::string_view cls, std::string_view fn, Native native);
@@ -403,6 +405,12 @@ public:
     [[nodiscard]] Value object(std::uint32_t form, std::string_view cls);
 
     void error(const std::string& message);
+    /// A line of what the scripts did that is no error (a native logged rather than done).
+    void note(const std::string& line) const {
+        if (note_) {
+            note_(line);
+        }
+    }
 
 private:
     struct Found {
@@ -455,6 +463,7 @@ private:
 
     Loader loader_;
     Log log_;
+    Log note_;
     std::map<std::string, std::unique_ptr<ScriptClass>, std::less<>> classes_;
     std::set<std::string, std::less<>> missing_;
     std::unordered_map<std::string, Native> natives_;
