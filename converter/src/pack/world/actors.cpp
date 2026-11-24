@@ -74,209 +74,170 @@ void ActorCollector::collect(const record::MergedRecord& merged, io::SpanReader&
 
 void ActorCollector::on_npc(const record::MergedRecord& merged, io::SpanReader& data,
                             const record::FormContext& form_ctx) {
-    auto npc = record::parse_npc(data, form_ctx);
-    if (!npc) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::NpcT out;
-    out.id = merged.form.value;
-    out.editor_id = npc->editor_id;
-    out.name = npc->name.text;
-    out.flags = static_cast<wfb::NpcFlags>(npc->flags);
-    out.level = npc->level;
-    out.race = shared_.global(merged, npc->race, failed);
-    out.template_ = shared_.global(merged, npc->npc_template, failed);
-    out.template_flags = static_cast<wfb::NpcTemplateFlags>(npc->template_flags);
-    out.skin = shared_.global(merged, npc->worn_armor, failed);
-    out.default_outfit = shared_.global(merged, npc->default_outfit, failed);
-    out.sleeping_outfit = shared_.global(merged, npc->sleeping_outfit, failed);
-    out.height = npc->height;
-    out.weight = npc->weight;
-    out.head_parts = shared_.global_all(merged, npc->head_parts, failed);
-    out.packages = shared_.global_all(merged, npc->packages, failed);
-    default_package_lists_[out.id] = shared_.global(merged, npc->default_package_list, failed);
-    for (const auto& f : npc->factions) {
-        out.factions.emplace_back(shared_.global(merged, f.faction, failed), f.rank);
-    }
-    for (const auto& item : npc->items) {
-        out.items.emplace_back(shared_.global(merged, item.item, failed), item.count);
-    }
-    out.face_model = face_model(shared_.order(), merged);
-    out.skin_tone = {npc->skin_red, npc->skin_green, npc->skin_blue};
-    // The ACBS offsets are signed; the record keeps the raw words.
-    out.health_offset = static_cast<std::int16_t>(npc->health_offset);
-    out.magicka_offset = static_cast<std::int16_t>(npc->magicka_offset);
-    out.stamina_offset = static_cast<std::int16_t>(npc->stamina_offset);
-    out.calc_min_level = npc->calc_min_level;
-    out.calc_max_level = npc->calc_max_level;
-    out.speed_multiplier = npc->speed_multiplier;
-    out.health = npc->health;
-    out.magicka = npc->magicka;
-    out.stamina = npc->stamina;
-    out.skill_values.assign(npc->skill_values.begin(), npc->skill_values.end());
-    out.skill_offsets.assign(npc->skill_offsets.begin(), npc->skill_offsets.end());
-    out.aggression = npc->aggression;
-    out.confidence = npc->confidence;
-    out.energy = npc->energy;
-    out.morality = npc->morality;
-    out.mood = npc->mood;
-    out.assistance = npc->assistance;
-    out.voice_type = shared_.global(merged, npc->voice_type, failed);
-    out.combat_style = shared_.global(merged, npc->combat_style, failed);
-    out.crime_faction = shared_.global(merged, npc->crime_faction, failed);
-    out.aggro_radius_behaviour = npc->aggro_radius_behaviour;
-    out.aggro_warn = npc->warn;
-    out.aggro_warn_attack = npc->warn_or_attack;
-    out.aggro_attack = npc->attack;
-    out.spells = shared_.global_all(merged, npc->spells, failed);
-    out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
-    out.death_item = shared_.global(merged, npc->death_item, failed);
-    out.class_id = shared_.global(merged, npc->actor_class, failed);
-    for (const auto& perk : npc->perks) {
-        out.perks.emplace_back(shared_.global(merged, perk.perk, failed),
-                               static_cast<std::uint8_t>(perk.rank));
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    npcs_[out.id] = std::move(out);
+    collect_into(shared_, npcs_, merged, record::parse_npc(data, form_ctx),
+                 [&](auto& npc, wfb::NpcT& out, bool& failed) {
+        out.name = npc->name.text;
+        out.flags = static_cast<wfb::NpcFlags>(npc->flags);
+        out.level = npc->level;
+        out.race = shared_.global(merged, npc->race, failed);
+        out.template_ = shared_.global(merged, npc->npc_template, failed);
+        out.template_flags = static_cast<wfb::NpcTemplateFlags>(npc->template_flags);
+        out.skin = shared_.global(merged, npc->worn_armor, failed);
+        out.default_outfit = shared_.global(merged, npc->default_outfit, failed);
+        out.sleeping_outfit = shared_.global(merged, npc->sleeping_outfit, failed);
+        out.height = npc->height;
+        out.weight = npc->weight;
+        out.head_parts = shared_.global_all(merged, npc->head_parts, failed);
+        out.packages = shared_.global_all(merged, npc->packages, failed);
+        default_package_lists_[out.id] = shared_.global(merged, npc->default_package_list, failed);
+        for (const auto& f : npc->factions) {
+            out.factions.emplace_back(shared_.global(merged, f.faction, failed), f.rank);
+        }
+        for (const auto& item : npc->items) {
+            out.items.emplace_back(shared_.global(merged, item.item, failed), item.count);
+        }
+        out.face_model = face_model(shared_.order(), merged);
+        out.skin_tone = {npc->skin_red, npc->skin_green, npc->skin_blue};
+        // The ACBS offsets are signed; the record keeps the raw words.
+        out.health_offset = static_cast<std::int16_t>(npc->health_offset);
+        out.magicka_offset = static_cast<std::int16_t>(npc->magicka_offset);
+        out.stamina_offset = static_cast<std::int16_t>(npc->stamina_offset);
+        out.calc_min_level = npc->calc_min_level;
+        out.calc_max_level = npc->calc_max_level;
+        out.speed_multiplier = npc->speed_multiplier;
+        out.health = npc->health;
+        out.magicka = npc->magicka;
+        out.stamina = npc->stamina;
+        out.skill_values.assign(npc->skill_values.begin(), npc->skill_values.end());
+        out.skill_offsets.assign(npc->skill_offsets.begin(), npc->skill_offsets.end());
+        out.aggression = npc->aggression;
+        out.confidence = npc->confidence;
+        out.energy = npc->energy;
+        out.morality = npc->morality;
+        out.mood = npc->mood;
+        out.assistance = npc->assistance;
+        out.voice_type = shared_.global(merged, npc->voice_type, failed);
+        out.combat_style = shared_.global(merged, npc->combat_style, failed);
+        out.crime_faction = shared_.global(merged, npc->crime_faction, failed);
+        out.aggro_radius_behaviour = npc->aggro_radius_behaviour;
+        out.aggro_warn = npc->warn;
+        out.aggro_warn_attack = npc->warn_or_attack;
+        out.aggro_attack = npc->attack;
+        out.spells = shared_.global_all(merged, npc->spells, failed);
+        out.keywords = shared_.global_all(merged, npc->keywords.keywords, failed);
+        out.death_item = shared_.global(merged, npc->death_item, failed);
+        out.class_id = shared_.global(merged, npc->actor_class, failed);
+        for (const auto& perk : npc->perks) {
+            out.perks.emplace_back(shared_.global(merged, perk.perk, failed),
+                                   static_cast<std::uint8_t>(perk.rank));
+        }
+    });
 }
 
 void ActorCollector::on_race(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
-    auto race = record::parse_race(data, form_ctx);
-    if (!race) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::RaceT out;
-    out.id = merged.form.value;
-    out.editor_id = race->editor_id;
-    out.skeletons.resize(2);
-    out.behaviours.resize(2);
-    for (std::size_t sex = 0; sex < 2; ++sex) {
-        const auto& s = race->sexes[sex];
-        out.skeletons[sex] = s.skeleton.empty() ? std::string{} : model_vpath(s.skeleton);
-        out.behaviours[sex] = s.behaviour.empty() ? std::string{} : model_vpath(s.behaviour);
-        for (const auto& part : s.body_parts) {
-            auto& p = out.body_parts.emplace_back(std::make_unique<wfb::RaceBodyPartT>());
-            p->female = sex == 1;
-            p->index = part.index;
-            p->model = part.model.empty() ? std::string{} : model_vpath(part.model);
+    collect_into(shared_, races_, merged, record::parse_race(data, form_ctx),
+                 [&](auto& race, wfb::RaceT& out, bool& failed) {
+        out.skeletons.resize(2);
+        out.behaviours.resize(2);
+        for (std::size_t sex = 0; sex < 2; ++sex) {
+            const auto& s = race->sexes[sex];
+            out.skeletons[sex] = s.skeleton.empty() ? std::string{} : model_vpath(s.skeleton);
+            out.behaviours[sex] = s.behaviour.empty() ? std::string{} : model_vpath(s.behaviour);
+            for (const auto& part : s.body_parts) {
+                auto& p = out.body_parts.emplace_back(std::make_unique<wfb::RaceBodyPartT>());
+                p->female = sex == 1;
+                p->index = part.index;
+                p->model = part.model.empty() ? std::string{} : model_vpath(part.model);
+            }
+            (sex == 0 ? out.head_parts_male : out.head_parts_female) =
+                shared_.global_all(merged, s.head_parts, failed);
         }
-        (sex == 0 ? out.head_parts_male : out.head_parts_female) =
-            shared_.global_all(merged, s.head_parts, failed);
-    }
-    out.skin = shared_.global(merged, race->skin, failed);
-    out.heights.assign(race->height.begin(), race->height.end());
-    out.weights.assign(race->weight.begin(), race->weight.end());
-    out.flags = race->flags;
-    out.armor_race = shared_.global(merged, race->armor_race, failed);
-    out.skill_boosts.assign(race->skill_boosts.begin(), race->skill_boosts.end());
-    out.start_health = race->start_health;
-    out.start_magicka = race->start_magicka;
-    out.start_stamina = race->start_stamina;
-    out.carry_weight = race->carry_weight;
-    out.health_regen = race->health_regen;
-    out.magicka_regen = race->magicka_regen;
-    out.stamina_regen = race->stamina_regen;
-    out.voice_types = {shared_.global(merged, race->voice_male, failed),
-                       shared_.global(merged, race->voice_female, failed)};
-    out.unarmed_damage = race->unarmed_damage;
-    out.unarmed_reach = race->unarmed_reach;
-    out.injured_health = race->injured_health;
-    out.aim_angle_tolerance = race->aim_angle_tolerance;
-    out.flight_radius = race->flight_radius;
-    out.angular_acceleration = race->angular_acceleration;
-    out.angular_tolerance = race->angular_tolerance;
-    out.flags2 = race->flags2;
-    out.movement_walk = shared_.global(merged, race->movement_walk, failed);
-    out.movement_run = shared_.global(merged, race->movement_run, failed);
-    out.movement_swim = shared_.global(merged, race->movement_swim, failed);
-    out.movement_fly = shared_.global(merged, race->movement_fly, failed);
-    out.movement_sneak = shared_.global(merged, race->movement_sneak, failed);
-    out.movement_sprint = shared_.global(merged, race->movement_sprint, failed);
-    out.name = race->name.text;
-    out.impact_material = shared_.global(merged, race->impact_material, failed);
-    out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
-    out.spells = shared_.global_all(merged, race->spells, failed);
-    out.keywords = shared_.global_all(merged, race->keywords.keywords, failed);
-    for (const auto& a : race->attacks) {
-        auto& attack = out.attacks.emplace_back(std::make_unique<wfb::RaceAttackT>());
-        attack->event = a.event;
-        attack->damage_mult = a.damage_mult;
-        attack->chance = a.chance;
-        attack->spell = shared_.global(merged, a.spell, failed);
-        attack->flags = a.flags;
-        attack->attack_angle = a.attack_angle;
-        attack->strike_angle = a.strike_angle;
-        attack->stagger = a.stagger;
-        attack->attack_type = shared_.global(merged, a.attack_type, failed);
-        attack->knockdown = a.knockdown;
-        attack->recovery_time = a.recovery_time;
-        attack->stamina_mult = a.stamina_mult;
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    races_[out.id] = std::move(out);
+        out.skin = shared_.global(merged, race->skin, failed);
+        out.heights.assign(race->height.begin(), race->height.end());
+        out.weights.assign(race->weight.begin(), race->weight.end());
+        out.flags = race->flags;
+        out.armor_race = shared_.global(merged, race->armor_race, failed);
+        out.skill_boosts.assign(race->skill_boosts.begin(), race->skill_boosts.end());
+        out.start_health = race->start_health;
+        out.start_magicka = race->start_magicka;
+        out.start_stamina = race->start_stamina;
+        out.carry_weight = race->carry_weight;
+        out.health_regen = race->health_regen;
+        out.magicka_regen = race->magicka_regen;
+        out.stamina_regen = race->stamina_regen;
+        out.voice_types = {shared_.global(merged, race->voice_male, failed),
+                           shared_.global(merged, race->voice_female, failed)};
+        out.unarmed_damage = race->unarmed_damage;
+        out.unarmed_reach = race->unarmed_reach;
+        out.injured_health = race->injured_health;
+        out.aim_angle_tolerance = race->aim_angle_tolerance;
+        out.flight_radius = race->flight_radius;
+        out.angular_acceleration = race->angular_acceleration;
+        out.angular_tolerance = race->angular_tolerance;
+        out.flags2 = race->flags2;
+        out.movement_walk = shared_.global(merged, race->movement_walk, failed);
+        out.movement_run = shared_.global(merged, race->movement_run, failed);
+        out.movement_swim = shared_.global(merged, race->movement_swim, failed);
+        out.movement_fly = shared_.global(merged, race->movement_fly, failed);
+        out.movement_sneak = shared_.global(merged, race->movement_sneak, failed);
+        out.movement_sprint = shared_.global(merged, race->movement_sprint, failed);
+        out.name = race->name.text;
+        out.impact_material = shared_.global(merged, race->impact_material, failed);
+        out.impact_data_set = shared_.global(merged, race->impact_data_set, failed);
+        out.spells = shared_.global_all(merged, race->spells, failed);
+        out.keywords = shared_.global_all(merged, race->keywords.keywords, failed);
+        for (const auto& a : race->attacks) {
+            auto& attack = out.attacks.emplace_back(std::make_unique<wfb::RaceAttackT>());
+            attack->event = a.event;
+            attack->damage_mult = a.damage_mult;
+            attack->chance = a.chance;
+            attack->spell = shared_.global(merged, a.spell, failed);
+            attack->flags = a.flags;
+            attack->attack_angle = a.attack_angle;
+            attack->strike_angle = a.strike_angle;
+            attack->stagger = a.stagger;
+            attack->attack_type = shared_.global(merged, a.attack_type, failed);
+            attack->knockdown = a.knockdown;
+            attack->recovery_time = a.recovery_time;
+            attack->stamina_mult = a.stamina_mult;
+        }
+    });
 }
 
 void ActorCollector::on_armor(const record::MergedRecord& merged, io::SpanReader& data,
                               const record::FormContext& form_ctx) {
-    auto armor = record::parse_armor(data, form_ctx);
-    if (!armor) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ArmorT out;
-    out.id = merged.form.value;
-    out.editor_id = armor->editor_id;
-    out.slots = armor->body.slots;
-    out.race = shared_.global(merged, armor->race, failed);
-    out.addons = shared_.global_all(merged, armor->addons, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    armors_[out.id] = std::move(out);
+    collect_into(shared_, armors_, merged, record::parse_armor(data, form_ctx),
+                 [&](auto& armor, wfb::ArmorT& out, bool& failed) {
+        out.slots = armor->body.slots;
+        out.race = shared_.global(merged, armor->race, failed);
+        out.addons = shared_.global_all(merged, armor->addons, failed);
+    });
 }
 
 void ActorCollector::on_armor_addon(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto addon = record::parse_armor_addon(data, form_ctx);
-    if (!addon) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ArmorAddonT out;
-    out.id = merged.form.value;
-    out.editor_id = addon->editor_id;
-    out.slots = addon->body.slots;
-    out.race = shared_.global(merged, addon->race, failed);
-    out.additional_races = shared_.global_all(merged, addon->additional_races, failed);
-    out.footstep_set = shared_.global(merged, addon->footstep_sound, failed);
-    out.male_model = addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path);
-    out.female_model =
-        addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path);
-    out.male_priority = addon->male_priority;
-    out.female_priority = addon->female_priority;
-    out.male_model_1st = addon->male_first_person.empty()
-                             ? std::string{}
-                             : model_vpath(addon->male_first_person.path);
-    out.female_model_1st = addon->female_first_person.empty()
-                               ? std::string{}
-                               : model_vpath(addon->female_first_person.path);
-    out.male_weight_slider = addon->male_weight_slider;
-    out.female_weight_slider = addon->female_weight_slider;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    armor_addons_[out.id] = std::move(out);
+    collect_into(shared_, armor_addons_, merged, record::parse_armor_addon(data, form_ctx),
+                 [&](auto& addon, wfb::ArmorAddonT& out, bool& failed) {
+        out.slots = addon->body.slots;
+        out.race = shared_.global(merged, addon->race, failed);
+        out.additional_races = shared_.global_all(merged, addon->additional_races, failed);
+        out.footstep_set = shared_.global(merged, addon->footstep_sound, failed);
+        out.male_model =
+            addon->male_model.empty() ? std::string{} : model_vpath(addon->male_model.path);
+        out.female_model =
+            addon->female_model.empty() ? std::string{} : model_vpath(addon->female_model.path);
+        out.male_priority = addon->male_priority;
+        out.female_priority = addon->female_priority;
+        out.male_model_1st = addon->male_first_person.empty()
+                                 ? std::string{}
+                                 : model_vpath(addon->male_first_person.path);
+        out.female_model_1st = addon->female_first_person.empty()
+                                   ? std::string{}
+                                   : model_vpath(addon->female_first_person.path);
+        out.male_weight_slider = addon->male_weight_slider;
+        out.female_weight_slider = addon->female_weight_slider;
+    });
 }
 
 void ActorCollector::on_outfit(const record::MergedRecord& merged, io::SpanReader& data,

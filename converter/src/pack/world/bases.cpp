@@ -208,36 +208,27 @@ void BaseCollector::keep_alternates(const record::MergedRecord& merged,
 
 void BaseCollector::on_light(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
-    auto light = record::parse_light(data, form_ctx);
-    if (!light) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::BaseT out;
-    out.id = merged.form.value;
-    out.type = merged.type.value;
-    out.editor_id = light->editor_id;
-    out.model = light->model.path.empty() ? std::string{} : model_vpath(light->model.path);
-    keep_alternates(merged, light->model.alternate_textures);
-    out.has_light = true;
-    out.light = std::make_unique<wfb::LightData>(
-        light->radius, light->colour, static_cast<wfb::LightFlags>(light->light_flags),
-        light->falloff_exponent, light->fov, light->near_clip, light->fade, light->flicker_period,
-        light->flicker_intensity_amplitude, light->flicker_movement_amplitude);
-    out.scripts = shared_.global_scripts(merged, light->scripts, failed);
-    out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
-    if (light->has(record::Light::Flag::can_be_carried)) {
-        out.name = light->name.text;
-        out.item = std::make_unique<wfb::ItemDataT>();
-        out.item->category = wfb::ItemCategory::light;
-        out.item->weight = light->weight;
-        out.item->value = static_cast<std::int32_t>(light->value);
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    bases_[out.id] = std::move(out);
+    collect_into(shared_, bases_, merged, record::parse_light(data, form_ctx),
+                 [&](auto& light, wfb::BaseT& out, bool& failed) {
+        out.type = merged.type.value;
+        out.model = light->model.path.empty() ? std::string{} : model_vpath(light->model.path);
+        keep_alternates(merged, light->model.alternate_textures);
+        out.has_light = true;
+        out.light = std::make_unique<wfb::LightData>(
+            light->radius, light->colour, static_cast<wfb::LightFlags>(light->light_flags),
+            light->falloff_exponent, light->fov, light->near_clip, light->fade,
+            light->flicker_period, light->flicker_intensity_amplitude,
+            light->flicker_movement_amplitude);
+        out.scripts = shared_.global_scripts(merged, light->scripts, failed);
+        out.record_flags = static_cast<wfb::RecordFlags>(merged.flags);
+        if (light->has(record::Light::Flag::can_be_carried)) {
+            out.name = light->name.text;
+            out.item = std::make_unique<wfb::ItemDataT>();
+            out.item->category = wfb::ItemCategory::light;
+            out.item->weight = light->weight;
+            out.item->value = static_cast<std::int32_t>(light->value);
+        }
+    });
 }
 
 /// Any other type: keep it as a base if it has a model or scripts. ARMO's
@@ -323,20 +314,11 @@ void BaseCollector::collect_generic(const record::MergedRecord& merged, io::Span
 
 void BaseCollector::on_ammo(const record::MergedRecord& merged, io::SpanReader& data,
                             const record::FormContext& form_ctx) {
-    auto ammo = record::parse_ammo(data, form_ctx);
-    if (!ammo) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::AmmoT out;
-    out.id = merged.form.value;
-    out.projectile = shared_.global(merged, ammo->projectile, failed);
-    out.flags = ammo->flags;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    ammos_[out.id] = std::move(out);
+    collect_into(shared_, ammos_, merged, record::parse_ammo(data, form_ctx),
+                 [&](auto& ammo, wfb::AmmoT& out, bool& failed) {
+        out.projectile = shared_.global(merged, ammo->projectile, failed);
+        out.flags = ammo->flags;
+    });
 }
 
 void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanReader& data,
@@ -390,58 +372,39 @@ void BaseCollector::on_projectile(const record::MergedRecord& merged, io::SpanRe
 /// ONAM output model, LNAM 4 bytes (byte 1 looping), BNAM 6 bytes.
 void BaseCollector::on_sound_descriptor(const record::MergedRecord& merged, io::SpanReader& data,
                                         const record::FormContext& form_ctx) {
-    auto sndr = record::parse_sound_descriptor(data, form_ctx);
-    if (!sndr) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::SoundDescriptorT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    out.editor_id = sndr->editor_id;
-    for (const auto& file : sndr->files) {
-        if (auto path = sound_vpath(file); !path.empty()) {
-            out.files.push_back(std::move(path));
+    collect_into(shared_, sound_descriptors_, merged,
+                 record::parse_sound_descriptor(data, form_ctx),
+                 [&](auto& sndr, wfb::SoundDescriptorT& out, bool& failed) {
+        for (const auto& file : sndr->files) {
+            if (auto path = sound_vpath(file); !path.empty()) {
+                out.files.push_back(std::move(path));
+            }
         }
-    }
-    out.descriptor_type = sndr->descriptor_type;
-    out.category = shared_.global(merged, sndr->category, failed);
-    out.output_model = shared_.global(merged, sndr->output_model, failed);
-    out.looping = sndr->looping;
-    out.frequency_shift = sndr->frequency_shift;
-    out.frequency_variance = sndr->frequency_variance;
-    out.priority = sndr->priority;
-    out.db_variance = sndr->db_variance;
-    out.static_attenuation = sndr->static_attenuation;
-    out.alternate_for = shared_.global(merged, sndr->alternate_for, failed);
-    out.conditions = shared_.global_conditions(merged, sndr->conditions, failed);
-    out.lnam_unknown0 = sndr->lnam_unknown0;
-    out.lnam_unknown2 = sndr->lnam_unknown2;
-    out.rumble = sndr->rumble;
-    out.fnam = sndr->fnam;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    sound_descriptors_[out.id] = std::move(out);
+        out.descriptor_type = sndr->descriptor_type;
+        out.category = shared_.global(merged, sndr->category, failed);
+        out.output_model = shared_.global(merged, sndr->output_model, failed);
+        out.looping = sndr->looping;
+        out.frequency_shift = sndr->frequency_shift;
+        out.frequency_variance = sndr->frequency_variance;
+        out.priority = sndr->priority;
+        out.db_variance = sndr->db_variance;
+        out.static_attenuation = sndr->static_attenuation;
+        out.alternate_for = shared_.global(merged, sndr->alternate_for, failed);
+        out.conditions = shared_.global_conditions(merged, sndr->conditions, failed);
+        out.lnam_unknown0 = sndr->lnam_unknown0;
+        out.lnam_unknown2 = sndr->lnam_unknown2;
+        out.rumble = sndr->rumble;
+        out.fnam = sndr->fnam;
+    });
 }
 
 /// SOUN: EDID and SDSC. The old inline sound (FNAM, SNDD) is not read.
 void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto soun = record::parse_sound_marker(data, form_ctx);
-    if (!soun) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::SoundMarkerT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    out.editor_id = soun->editor_id;
-    out.descriptor = shared_.global(merged, soun->descriptor, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    sound_markers_[out.id] = std::move(out);
+    collect_into(shared_, sound_markers_, merged, record::parse_sound_marker(data, form_ctx),
+                 [&](auto& soun, wfb::SoundMarkerT& out, bool& failed) {
+        out.descriptor = shared_.global(merged, soun->descriptor, failed);
+    });
 }
 
 /// EXPL: MODL and DATA (52 bytes: light, two sounds, impact data set, placed
@@ -449,45 +412,28 @@ void BaseCollector::on_sound_marker(const record::MergedRecord& merged, io::Span
 /// vertical offset multiplier floats, flags and sound level).
 void BaseCollector::on_explosion(const record::MergedRecord& merged, io::SpanReader& data,
                                   const record::FormContext& form_ctx) {
-    auto expl = record::parse_explosion(data, form_ctx);
-    if (!expl) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::ExplosionT out;
-    out.id = merged.form.value;
-    bool failed = false;
-    out.editor_id = expl->editor_id;
-    out.model = expl->model.path.empty() ? std::string{} : model_vpath(expl->model.path);
-    const auto& d = expl->data;
-    out.light = shared_.global(merged, d.light, failed);
-    out.sound = shared_.global(merged, d.sound, failed);
-    out.sound_far = shared_.global(merged, d.sound_far, failed);
-    out.impact_data = shared_.global(merged, d.impact_data, failed);
-    out.placed_object = shared_.global(merged, d.placed_object, failed);
-    out.projectile = shared_.global(merged, d.projectile, failed);
-    out.force = d.force;
-    out.damage = d.damage;
-    out.radius = d.radius;
-    out.flags = d.flags;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    explosions_[out.id] = std::move(out);
+    collect_into(shared_, explosions_, merged, record::parse_explosion(data, form_ctx),
+                 [&](auto& expl, wfb::ExplosionT& out, bool& failed) {
+        out.model = expl->model.path.empty() ? std::string{} : model_vpath(expl->model.path);
+        const auto& d = expl->data;
+        out.light = shared_.global(merged, d.light, failed);
+        out.sound = shared_.global(merged, d.sound, failed);
+        out.sound_far = shared_.global(merged, d.sound_far, failed);
+        out.impact_data = shared_.global(merged, d.impact_data, failed);
+        out.placed_object = shared_.global(merged, d.placed_object, failed);
+        out.projectile = shared_.global(merged, d.projectile, failed);
+        out.force = d.force;
+        out.damage = d.damage;
+        out.radius = d.radius;
+        out.flags = d.flags;
+    });
 }
 
 /// KYWD: only the editor id, which `Keyword.GetKeyword` looks up.
 void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReader& data,
                                const record::FormContext& form_ctx) {
-    auto kywd = record::parse_keyword(data, form_ctx);
-    if (!kywd) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::KeywordT out;
-    out.id = merged.form.value;
-    out.editor_id = kywd->editor_id;
-    keywords_[out.id] = std::move(out);
+    collect_into(shared_, keywords_, merged, record::parse_keyword(data, form_ctx),
+                 [](auto&, wfb::KeywordT&) {});
 }
 
 /// MESG: FULL title, DESC text, DNAM flags (bit 0 message box, bit 1 auto
@@ -495,19 +441,13 @@ void BaseCollector::on_keyword(const record::MergedRecord& merged, io::SpanReade
 /// conditions are left out.
 void BaseCollector::on_message(const record::MergedRecord& merged, io::SpanReader& data,
                                const record::FormContext& form_ctx) {
-    auto mesg = record::parse_message(data, form_ctx);
-    if (!mesg) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::MessageT out;
-    out.id = merged.form.value;
-    out.editor_id = mesg->editor_id;
-    out.title = mesg->title;
-    out.text = mesg->text;
-    out.buttons = mesg->buttons;
-    out.flags = static_cast<wfb::MessageFlags>(mesg->flags);
-    messages_[out.id] = std::move(out);
+    collect_into(shared_, messages_, merged, record::parse_message(data, form_ctx),
+                 [&](auto& mesg, wfb::MessageT& out) {
+        out.title = mesg->title;
+        out.text = mesg->text;
+        out.buttons = mesg->buttons;
+        out.flags = static_cast<wfb::MessageFlags>(mesg->flags);
+    });
 }
 
 /// SOPM: NAM1 (byte 0 flags, byte 3 reverb send), MNAM type, ONAM speaker
@@ -517,106 +457,78 @@ void BaseCollector::on_message(const record::MergedRecord& merged, io::SpanReade
 /// with distances) and SNAM a speaker output of two input rows.
 void BaseCollector::on_sound_output_model(const record::MergedRecord& merged, io::SpanReader& data,
                                           const record::FormContext& form_ctx) {
-    auto sopm = record::parse_sound_output_model(data, form_ctx);
-    if (!sopm) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::SoundOutputModelT out;
-    out.id = merged.form.value;
-    out.editor_id = sopm->editor_id;
-    out.flags = sopm->flags;
-    out.type = sopm->type;
-    out.min_distance = sopm->min_distance;
-    out.max_distance = sopm->max_distance;
-    out.curve.assign(sopm->curve.begin(), sopm->curve.end());
-    out.reverb_send = sopm->reverb_send;
-    out.anam_unknown.assign(sopm->anam_unknown.begin(), sopm->anam_unknown.end());
-    constexpr std::size_t k_row = 8;
-    if (!sopm->has_nam1) {
-        out.flags = static_cast<std::uint8_t>(sopm->old_flags);
-        if (sopm->old_output.size() == 2 * k_row) {
-            // Row 0 (a mono input) to the front pair, rows 1 and 2 as stored.
-            out.speaker_output.assign(3 * k_row, 0);
-            out.speaker_output[0] = 100;
-            out.speaker_output[1] = 100;
-            std::copy(sopm->old_output.begin(), sopm->old_output.end(), out.speaker_output.begin() + k_row);
+    collect_into(shared_, sound_output_models_, merged,
+                 record::parse_sound_output_model(data, form_ctx),
+                 [&](auto& sopm, wfb::SoundOutputModelT& out) {
+        out.flags = sopm->flags;
+        out.type = sopm->type;
+        out.min_distance = sopm->min_distance;
+        out.max_distance = sopm->max_distance;
+        out.curve.assign(sopm->curve.begin(), sopm->curve.end());
+        out.reverb_send = sopm->reverb_send;
+        out.anam_unknown.assign(sopm->anam_unknown.begin(), sopm->anam_unknown.end());
+        constexpr std::size_t k_row = 8;
+        if (!sopm->has_nam1) {
+            out.flags = static_cast<std::uint8_t>(sopm->old_flags);
+            if (sopm->old_output.size() == 2 * k_row) {
+                // Row 0 (a mono input) to the front pair, rows 1 and 2 as stored.
+                out.speaker_output.assign(3 * k_row, 0);
+                out.speaker_output[0] = 100;
+                out.speaker_output[1] = 100;
+                std::copy(sopm->old_output.begin(), sopm->old_output.end(),
+                          out.speaker_output.begin() + k_row);
+            }
+        } else {
+            out.speaker_output.assign(sopm->output.begin(), sopm->output.end());
         }
-    } else {
-        out.speaker_output.assign(sopm->output.begin(), sopm->output.end());
-    }
-    sound_output_models_[out.id] = std::move(out);
+    });
 }
 
 /// SNCT: FNAM flags, PNAM parent, VNAM and UNAM volumes as u16 / 65535.
 void BaseCollector::on_sound_category(const record::MergedRecord& merged, io::SpanReader& data,
                                       const record::FormContext& form_ctx) {
-    auto snct = record::parse_sound_category(data, form_ctx);
-    if (!snct) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::SoundCategoryT out;
-    out.id = merged.form.value;
-    out.editor_id = snct->editor_id;
-    out.name = snct->name.text;
-    out.flags = snct->flags;
-    out.parent = shared_.global(merged, snct->parent, failed);
-    constexpr float k_full = 65535.0F;
-    out.static_volume = static_cast<float>(snct->volume) / k_full;
-    out.default_menu_volume = snct->has_menu_volume ? static_cast<float>(snct->menu_volume) / k_full : 1.0F;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    sound_categories_[out.id] = std::move(out);
+    collect_into(shared_, sound_categories_, merged, record::parse_sound_category(data, form_ctx),
+                 [&](auto& snct, wfb::SoundCategoryT& out, bool& failed) {
+        out.name = snct->name.text;
+        out.flags = snct->flags;
+        out.parent = shared_.global(merged, snct->parent, failed);
+        constexpr float k_full = 65535.0F;
+        out.static_volume = static_cast<float>(snct->volume) / k_full;
+        out.default_menu_volume =
+            snct->has_menu_volume ? static_cast<float>(snct->menu_volume) / k_full : 1.0F;
+    });
 }
 
 /// ASPC: SNAM ambient loop, RDAT region, BNAM reverb. The record is a base
 /// too (collect_generic), so its placed references (XPRM boxes) resolve.
 void BaseCollector::on_acoustic_space(const record::MergedRecord& merged, io::SpanReader& data,
                                       const record::FormContext& form_ctx) {
-    auto aspc = record::parse_acoustic_space(data, form_ctx);
-    if (!aspc) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::AcousticSpaceT out;
-    out.id = merged.form.value;
-    out.editor_id = aspc->editor_id;
-    out.ambient = shared_.global(merged, aspc->ambient, failed);
-    out.region = shared_.global(merged, aspc->region, failed);
-    out.reverb = shared_.global(merged, aspc->reverb, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    acoustic_spaces_[out.id] = std::move(out);
+    collect_into(shared_, acoustic_spaces_, merged, record::parse_acoustic_space(data, form_ctx),
+                 [&](auto& aspc, wfb::AcousticSpaceT& out, bool& failed) {
+        out.ambient = shared_.global(merged, aspc->ambient, failed);
+        out.region = shared_.global(merged, aspc->region, failed);
+        out.reverb = shared_.global(merged, aspc->reverb, failed);
+    });
 }
 
 /// IMAD: the first key of each curve (record/forms_game.hpp).
 void BaseCollector::on_image_space_modifier(const record::MergedRecord& merged, io::SpanReader& data,
                                             const record::FormContext& form_ctx) {
-    auto imad = record::parse_image_space_modifier(data, form_ctx);
-    if (!imad) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::ImageSpaceModifierT out;
-    out.id = merged.form.value;
-    out.editor_id = imad->editor_id;
-    out.duration = imad->duration;
-    out.dof_strength = imad->dof_strength;
-    out.dof_distance = imad->dof_distance;
-    out.dof_range = imad->dof_range;
-    out.blur_radius = imad->blur_radius;
-    out.motion_blur = imad->motion_blur;
-    out.radial_blur = imad->radial_blur;
-    out.tint.assign(imad->tint.begin(), imad->tint.end());
-    out.fade_color.assign(imad->fade_color.begin(), imad->fade_color.end());
-    out.multiply.assign(imad->multiply.begin(), imad->multiply.end());
-    out.add.assign(imad->add.begin(), imad->add.end());
-    image_space_modifiers_[out.id] = std::move(out);
+    collect_into(shared_, image_space_modifiers_, merged,
+                 record::parse_image_space_modifier(data, form_ctx),
+                 [&](auto& imad, wfb::ImageSpaceModifierT& out) {
+        out.duration = imad->duration;
+        out.dof_strength = imad->dof_strength;
+        out.dof_distance = imad->dof_distance;
+        out.dof_range = imad->dof_range;
+        out.blur_radius = imad->blur_radius;
+        out.motion_blur = imad->motion_blur;
+        out.radial_blur = imad->radial_blur;
+        out.tint.assign(imad->tint.begin(), imad->tint.end());
+        out.fade_color.assign(imad->fade_color.begin(), imad->fade_color.end());
+        out.multiply.assign(imad->multiply.begin(), imad->multiply.end());
+        out.add.assign(imad->add.begin(), imad->add.end());
+    });
 }
 
 /// DOBJ: the slots of the default object manager. Every version comes here in
@@ -641,96 +553,65 @@ void BaseCollector::on_default_objects(const record::MergedRecord& merged, io::S
 /// REVB: DATA 14 bytes (xEdit's layout).
 void BaseCollector::on_reverb(const record::MergedRecord& merged, io::SpanReader& data,
                               const record::FormContext& form_ctx) {
-    auto revb = record::parse_reverb(data, form_ctx);
-    if (!revb) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::ReverbT out;
-    out.id = merged.form.value;
-    out.editor_id = revb->editor_id;
-    out.decay_time_ms = revb->decay_time;
-    out.hf_reference_hz = revb->hf_reference;
-    out.room_filter = revb->room_filter;
-    out.room_hf_filter = revb->room_hf_filter;
-    out.reflections = revb->reflections;
-    out.reverb_amplitude = revb->reverb_amplitude;
-    out.decay_hf_ratio = revb->decay_hf_ratio;
-    out.reflect_delay = revb->reflect_delay;
-    out.reverb_delay_ms = revb->reverb_delay;
-    out.diffusion_percent = revb->diffusion;
-    out.density_percent = revb->density;
-    out.unknown = revb->unknown;
-    reverbs_[out.id] = std::move(out);
+    collect_into(shared_, reverbs_, merged, record::parse_reverb(data, form_ctx),
+                 [&](auto& revb, wfb::ReverbT& out) {
+        out.decay_time_ms = revb->decay_time;
+        out.hf_reference_hz = revb->hf_reference;
+        out.room_filter = revb->room_filter;
+        out.room_hf_filter = revb->room_hf_filter;
+        out.reflections = revb->reflections;
+        out.reverb_amplitude = revb->reverb_amplitude;
+        out.decay_hf_ratio = revb->decay_hf_ratio;
+        out.reflect_delay = revb->reflect_delay;
+        out.reverb_delay_ms = revb->reverb_delay;
+        out.diffusion_percent = revb->diffusion;
+        out.density_percent = revb->density;
+        out.unknown = revb->unknown;
+    });
 }
 
 /// FSTP: DATA impact data set, ANAM tag.
 void BaseCollector::on_footstep(const record::MergedRecord& merged, io::SpanReader& data,
                                 const record::FormContext& form_ctx) {
-    auto fstp = record::parse_footstep(data, form_ctx);
-    if (!fstp) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::FootstepT out;
-    out.id = merged.form.value;
-    out.editor_id = fstp->editor_id;
-    out.impact_data_set = shared_.global(merged, fstp->impact_data_set, failed);
-    out.tag = fstp->tag;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    footsteps_[out.id] = std::move(out);
+    collect_into(shared_, footsteps_, merged, record::parse_footstep(data, form_ctx),
+                 [&](auto& fstp, wfb::FootstepT& out, bool& failed) {
+        out.impact_data_set = shared_.global(merged, fstp->impact_data_set, failed);
+        out.tag = fstp->tag;
+    });
 }
 
 /// FSTS: XCNT five counts, DATA the footsteps of the five lists in order.
 void BaseCollector::on_footstep_set(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto fsts = record::parse_footstep_set(data, form_ctx);
-    if (!fsts) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::FootstepSetT out;
-    out.id = merged.form.value;
-    out.editor_id = fsts->editor_id;
-    std::vector<std::uint32_t>* lists[record::FootstepSet::k_lists] = {&out.walk, &out.run, &out.sprint,
-                                                                       &out.sneak, &out.swim};
-    std::size_t at = 0;
-    for (std::size_t i = 0; i < record::FootstepSet::k_lists && i < fsts->counts.size(); ++i) {
-        for (std::uint32_t n = 0; n < fsts->counts[i] && at < fsts->footsteps.size(); ++n, ++at) {
-            lists[i]->push_back(shared_.global(merged, fsts->footsteps[at], failed));
+    collect_into(shared_, footstep_sets_, merged, record::parse_footstep_set(data, form_ctx),
+                 [&](auto& fsts, wfb::FootstepSetT& out, bool& failed) {
+        std::vector<std::uint32_t>* lists[record::FootstepSet::k_lists] = {
+            &out.walk, &out.run, &out.sprint, &out.sneak, &out.swim};
+        std::size_t at = 0;
+        for (std::size_t i = 0; i < record::FootstepSet::k_lists && i < fsts->counts.size(); ++i) {
+            for (std::uint32_t n = 0; n < fsts->counts[i] && at < fsts->footsteps.size();
+                 ++n, ++at) {
+                lists[i]->push_back(shared_.global(merged, fsts->footsteps[at], failed));
+            }
         }
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    footstep_sets_[out.id] = std::move(out);
+    });
 }
 
 void BaseCollector::on_material_object(const record::MergedRecord& merged, io::SpanReader& data,
                                        const record::FormContext& form_ctx) {
-    auto mato = record::parse_material_object(data, form_ctx);
-    if (!mato) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::MaterialObjectT out;
-    out.id = merged.form.value;
-    out.editor_id = mato->editor_id;
-    out.model = model_vpath(mato->model.path);
-    out.falloff_scale = mato->falloff_scale;
-    out.falloff_bias = mato->falloff_bias;
-    out.noise_uv_scale = mato->noise_uv_scale;
-    out.material_uv_scale = mato->material_uv_scale;
-    out.projection = {mato->projection.x, mato->projection.y, mato->projection.z};
-    out.normal_dampener = mato->normal_dampener;
-    out.single_pass_color = {mato->single_pass_color.x, mato->single_pass_color.y,
-                             mato->single_pass_color.z};
-    out.single_pass = (mato->flags & 1U) != 0;
-    material_objects_[out.id] = std::move(out);
+    collect_into(shared_, material_objects_, merged, record::parse_material_object(data, form_ctx),
+                 [&](auto& mato, wfb::MaterialObjectT& out) {
+        out.model = model_vpath(mato->model.path);
+        out.falloff_scale = mato->falloff_scale;
+        out.falloff_bias = mato->falloff_bias;
+        out.noise_uv_scale = mato->noise_uv_scale;
+        out.material_uv_scale = mato->material_uv_scale;
+        out.projection = {mato->projection.x, mato->projection.y, mato->projection.z};
+        out.normal_dampener = mato->normal_dampener;
+        out.single_pass_color = {mato->single_pass_color.x, mato->single_pass_color.y,
+                                 mato->single_pass_color.z};
+        out.single_pass = (mato->flags & 1U) != 0;
+    });
 }
 
 void BaseCollector::on_land_texture(const record::MergedRecord& merged, io::SpanReader& data,
@@ -911,26 +792,16 @@ void BaseCollector::collect_work(const record::MergedRecord& merged, io::SpanRea
 
 void BaseCollector::on_recipe(const record::MergedRecord& merged, io::SpanReader& data,
                               const record::FormContext& form_ctx) {
-    auto r = record::parse_constructible_object(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::RecipeT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.product = shared_.global(merged, r->created_object, failed);
-    out.product_count = r->created_count;
-    out.bench_keyword = shared_.global(merged, r->workbench_keyword, failed);
-    for (const auto& it : r->items) {
-        out.components.emplace_back(shared_.global(merged, it.item, failed), it.count);
-    }
-    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    recipes_[out.id] = std::move(out);
+    collect_into(shared_, recipes_, merged, record::parse_constructible_object(data, form_ctx),
+                 [&](auto& r, wfb::RecipeT& out, bool& failed) {
+        out.product = shared_.global(merged, r->created_object, failed);
+        out.product_count = r->created_count;
+        out.bench_keyword = shared_.global(merged, r->workbench_keyword, failed);
+        for (const auto& it : r->items) {
+            out.components.emplace_back(shared_.global(merged, it.item, failed), it.count);
+        }
+        out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+    });
 }
 
 void BaseCollector::on_magic_effect(const record::MergedRecord& merged, io::SpanReader& data,
@@ -997,288 +868,207 @@ void BaseCollector::on_magic_effect(const record::MergedRecord& merged, io::Span
 
 void BaseCollector::on_enchantment(const record::MergedRecord& merged, io::SpanReader& data,
                                    const record::FormContext& form_ctx) {
-    auto r = record::parse_enchantment(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::EnchantmentT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.cost = r->cost;
-    out.charge = r->amount;
-    out.effects = effect_items(shared_, merged, r->effects, failed);
-    out.flags = r->flags;
-    out.casting_type = r->cast_type;
-    out.delivery = r->target_type;
-    out.enchantment_type = r->enchantment_type;
-    out.charge_time = r->charge_time;
-    out.base_enchantment = shared_.global(merged, r->base_enchantment, failed);
-    if (r->worn_restrictions) {
-        out.worn_restrictions = shared_.global(merged, *r->worn_restrictions, failed);
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    enchantments_[out.id] = std::move(out);
+    collect_into(shared_, enchantments_, merged, record::parse_enchantment(data, form_ctx),
+                 [&](auto& r, wfb::EnchantmentT& out, bool& failed) {
+        out.name = r->name.text;
+        out.cost = r->cost;
+        out.charge = r->amount;
+        out.effects = effect_items(shared_, merged, r->effects, failed);
+        out.flags = r->flags;
+        out.casting_type = r->cast_type;
+        out.delivery = r->target_type;
+        out.enchantment_type = r->enchantment_type;
+        out.charge_time = r->charge_time;
+        out.base_enchantment = shared_.global(merged, r->base_enchantment, failed);
+        if (r->worn_restrictions) {
+            out.worn_restrictions = shared_.global(merged, *r->worn_restrictions, failed);
+        }
+    });
 }
 
 void BaseCollector::on_spell(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
-    auto r = record::parse_spell(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::SpellT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.cost = r->cost;
-    out.flags = r->flags;
-    out.type = r->type;
-    out.charge_time = r->charge_time;
-    out.casting_type = r->cast_type;
-    out.delivery = r->target_type;
-    out.cast_duration = r->cast_duration;
-    out.range = r->range;
-    out.half_cost_perk = shared_.global(merged, r->half_cost_perk, failed);
-    out.equip_slot = shared_.global(merged, r->equip_type, failed);
-    out.effects = effect_items(shared_, merged, r->effects, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    spells_[out.id] = std::move(out);
+    collect_into(shared_, spells_, merged, record::parse_spell(data, form_ctx),
+                 [&](auto& r, wfb::SpellT& out, bool& failed) {
+        out.name = r->name.text;
+        out.cost = r->cost;
+        out.flags = r->flags;
+        out.type = r->type;
+        out.charge_time = r->charge_time;
+        out.casting_type = r->cast_type;
+        out.delivery = r->target_type;
+        out.cast_duration = r->cast_duration;
+        out.range = r->range;
+        out.half_cost_perk = shared_.global(merged, r->half_cost_perk, failed);
+        out.equip_slot = shared_.global(merged, r->equip_type, failed);
+        out.effects = effect_items(shared_, merged, r->effects, failed);
+    });
 }
 
 void BaseCollector::on_shout(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
-    auto r = record::parse_shout(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ShoutT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.description = r->description.text;
-    out.menu_display_object = shared_.global(merged, r->menu_display_object, failed);
-    for (const auto& w : r->words) {
-        out.words.emplace_back(shared_.global(merged, w.word, failed),
-                               shared_.global(merged, w.spell, failed), w.recovery);
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    shouts_[out.id] = std::move(out);
+    collect_into(shared_, shouts_, merged, record::parse_shout(data, form_ctx),
+                 [&](auto& r, wfb::ShoutT& out, bool& failed) {
+        out.name = r->name.text;
+        out.description = r->description.text;
+        out.menu_display_object = shared_.global(merged, r->menu_display_object, failed);
+        for (const auto& w : r->words) {
+            out.words.emplace_back(shared_.global(merged, w.word, failed),
+                                   shared_.global(merged, w.spell, failed), w.recovery);
+        }
+    });
 }
 
 void BaseCollector::on_word_of_power(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
-    auto r = record::parse_word_of_power(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::WordOfPowerT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.translation = r->translation.text;
-    words_of_power_[out.id] = std::move(out);
+    collect_into(shared_, words_of_power_, merged, record::parse_word_of_power(data, form_ctx),
+                 [&](auto& r, wfb::WordOfPowerT& out) {
+        out.name = r->name.text;
+        out.translation = r->translation.text;
+    });
 }
 
 void BaseCollector::on_perk(const record::MergedRecord& merged, io::SpanReader& data,
                             const record::FormContext& form_ctx) {
-    auto r = record::parse_perk(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::PerkT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.description = r->description.text;
-    out.trait = r->trait != 0;
-    out.level = r->level;
-    out.ranks = r->ranks;
-    out.playable = r->playable != 0;
-    out.hidden = r->hidden != 0;
-    out.next_perk = shared_.global(merged, r->next_perk, failed);
-    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
-    for (const auto& e : r->effects) {
-        auto effect = std::make_unique<wfb::PerkEffectT>();
-        effect->kind = static_cast<wfb::PerkEffectKind>(e.kind);
-        effect->rank = e.rank;
-        effect->priority = e.priority;
-        effect->quest = shared_.global(merged, e.quest, failed);
-        effect->stage = e.stage;
-        effect->spell = shared_.global(merged, e.ability, failed);
-        effect->entry_point = e.entry_point;
-        effect->function = e.function;
-        effect->tab_count = e.tab_count;
-        for (const auto& t : e.tabs) {
-            auto tab = std::make_unique<wfb::PerkConditionTabT>();
-            tab->tab = t.index;
-            tab->conditions = shared_.global_conditions(merged, t.conditions, failed);
-            effect->tabs.push_back(std::move(tab));
+    collect_into(shared_, perks_, merged, record::parse_perk(data, form_ctx),
+                 [&](auto& r, wfb::PerkT& out, bool& failed) {
+        out.name = r->name.text;
+        out.description = r->description.text;
+        out.trait = r->trait != 0;
+        out.level = r->level;
+        out.ranks = r->ranks;
+        out.playable = r->playable != 0;
+        out.hidden = r->hidden != 0;
+        out.next_perk = shared_.global(merged, r->next_perk, failed);
+        out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+        for (const auto& e : r->effects) {
+            auto effect = std::make_unique<wfb::PerkEffectT>();
+            effect->kind = static_cast<wfb::PerkEffectKind>(e.kind);
+            effect->rank = e.rank;
+            effect->priority = e.priority;
+            effect->quest = shared_.global(merged, e.quest, failed);
+            effect->stage = e.stage;
+            effect->spell = shared_.global(merged, e.ability, failed);
+            effect->entry_point = e.entry_point;
+            effect->function = e.function;
+            effect->tab_count = e.tab_count;
+            for (const auto& t : e.tabs) {
+                auto tab = std::make_unique<wfb::PerkConditionTabT>();
+                tab->tab = t.index;
+                tab->conditions = shared_.global_conditions(merged, t.conditions, failed);
+                effect->tabs.push_back(std::move(tab));
+            }
+            effect->data_type = e.data_type;
+            if (e.data_type == 2 && e.values.size() == 2) {
+                effect->actor_value = static_cast<std::int32_t>(e.values[0]);
+                effect->values.push_back(e.values[1]);
+            } else {
+                effect->values = e.values;
+            }
+            effect->form = shared_.global(merged, e.form, failed);
+            effect->text = e.text;
+            effect->script_flags = e.script_flags;
+            out.effects.push_back(std::move(effect));
         }
-        effect->data_type = e.data_type;
-        if (e.data_type == 2 && e.values.size() == 2) {
-            effect->actor_value = static_cast<std::int32_t>(e.values[0]);
-            effect->values.push_back(e.values[1]);
-        } else {
-            effect->values = e.values;
-        }
-        effect->form = shared_.global(merged, e.form, failed);
-        effect->text = e.text;
-        effect->script_flags = e.script_flags;
-        out.effects.push_back(std::move(effect));
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    perks_[out.id] = std::move(out);
+    });
 }
 
 void BaseCollector::on_actor_value_info(const record::MergedRecord& merged, io::SpanReader& data,
                                         const record::FormContext& form_ctx) {
-    auto r = record::parse_actor_value_info(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ActorValueInfoT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.actor_value = actor_value_index(r->editor_id);
-    out.name = r->name.text;
-    out.description = r->description.text;
-    out.abbreviation = r->abbreviation;
-    out.category = r->category;
-    out.has_skill = r->has_skill;
-    out.use_mult = r->use_mult;
-    out.use_offset = r->use_offset;
-    out.improve_mult = r->improve_mult;
-    out.improve_offset = r->improve_offset;
-    for (const auto& n : r->nodes) {
-        auto node = std::make_unique<wfb::PerkTreeNodeT>();
-        node->index = n.index;
-        node->perk = shared_.global(merged, n.perk, failed);
-        node->flags = n.flags;
-        node->grid_x = n.grid_x;
-        node->grid_y = n.grid_y;
-        node->x = n.x;
-        node->y = n.y;
-        node->skill = shared_.global(merged, n.skill, failed);
-        node->links = n.links;
-        out.perk_tree.push_back(std::move(node));
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    actor_value_infos_[out.id] = std::move(out);
+    collect_into(shared_, actor_value_infos_, merged,
+                 record::parse_actor_value_info(data, form_ctx),
+                 [&](auto& r, wfb::ActorValueInfoT& out, bool& failed) {
+        out.actor_value = actor_value_index(r->editor_id);
+        out.name = r->name.text;
+        out.description = r->description.text;
+        out.abbreviation = r->abbreviation;
+        out.category = r->category;
+        out.has_skill = r->has_skill;
+        out.use_mult = r->use_mult;
+        out.use_offset = r->use_offset;
+        out.improve_mult = r->improve_mult;
+        out.improve_offset = r->improve_offset;
+        for (const auto& n : r->nodes) {
+            auto node = std::make_unique<wfb::PerkTreeNodeT>();
+            node->index = n.index;
+            node->perk = shared_.global(merged, n.perk, failed);
+            node->flags = n.flags;
+            node->grid_x = n.grid_x;
+            node->grid_y = n.grid_y;
+            node->x = n.x;
+            node->y = n.y;
+            node->skill = shared_.global(merged, n.skill, failed);
+            node->links = n.links;
+            out.perk_tree.push_back(std::move(node));
+        }
+    });
 }
 
 void BaseCollector::on_class(const record::MergedRecord& merged, io::SpanReader& data,
                              const record::FormContext& form_ctx) {
-    auto r = record::parse_actor_class(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::ClassT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name.text;
-    out.max_training_level = r->training_level;
-    // DATA byte 4 counts from One-Handed (actor value 6); only a class that trains to some level
-    // teaches (the Vendor* and combat classes leave the skill at a meaningless 0).
-    out.teaches = r->training_level != 0 ? 6 + static_cast<std::int32_t>(r->training_skill) : -1;
-    out.skill_weights.assign(r->skill_weights.begin(), r->skill_weights.end());
-    out.health_weight = r->health_weight;
-    out.magicka_weight = r->magicka_weight;
-    out.stamina_weight = r->stamina_weight;
-    out.bleedout_default = r->bleedout_default;
-    out.voice_points = r->voice_points;
-    classes_[out.id] = std::move(out);
+    collect_into(shared_, classes_, merged, record::parse_actor_class(data, form_ctx),
+                 [&](auto& r, wfb::ClassT& out) {
+        out.name = r->name.text;
+        out.max_training_level = r->training_level;
+        // DATA byte 4 counts from One-Handed (actor value 6); only a class that trains to
+        // some level teaches (the Vendor* and combat classes leave the skill at a
+        // meaningless 0).
+        out.teaches =
+            r->training_level != 0 ? 6 + static_cast<std::int32_t>(r->training_skill) : -1;
+        out.skill_weights.assign(r->skill_weights.begin(), r->skill_weights.end());
+        out.health_weight = r->health_weight;
+        out.magicka_weight = r->magicka_weight;
+        out.stamina_weight = r->stamina_weight;
+        out.bleedout_default = r->bleedout_default;
+        out.voice_points = r->voice_points;
+    });
 }
 
 void BaseCollector::on_idle(const record::MergedRecord& merged, io::SpanReader& data,
                             const record::FormContext& form_ctx) {
-    auto r = record::parse_idle(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::IdleT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.event = r->event;
-    out.behaviour = r->behaviour;
-    out.parent = shared_.global(merged, r->parent, failed);
-    out.previous = shared_.global(merged, r->previous, failed);
-    out.conditions = shared_.global_conditions(merged, r->conditions, failed);
-    out.loop_min = r->loop_min;
-    out.loop_max = r->loop_max;
-    out.flags = static_cast<wfb::IdleFlags>(r->flags);
-    out.animation_group_section = r->animation_group_section;
-    out.replay_delay = r->replay_delay;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    idles_[out.id] = std::move(out);
+    collect_into(shared_, idles_, merged, record::parse_idle(data, form_ctx),
+                 [&](auto& r, wfb::IdleT& out, bool& failed) {
+        out.event = r->event;
+        out.behaviour = r->behaviour;
+        out.parent = shared_.global(merged, r->parent, failed);
+        out.previous = shared_.global(merged, r->previous, failed);
+        out.conditions = shared_.global_conditions(merged, r->conditions, failed);
+        out.loop_min = r->loop_min;
+        out.loop_max = r->loop_max;
+        out.flags = static_cast<wfb::IdleFlags>(r->flags);
+        out.animation_group_section = r->animation_group_section;
+        out.replay_delay = r->replay_delay;
+    });
 }
 
 void BaseCollector::on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
-    auto r = record::parse_movement_type(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::MovementTypeT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.name = r->name;
-    out.left_walk = r->speeds[0];
-    out.left_run = r->speeds[1];
-    out.right_walk = r->speeds[2];
-    out.right_run = r->speeds[3];
-    out.forward_walk = r->speeds[4];
-    out.forward_run = r->speeds[5];
-    out.back_walk = r->speeds[6];
-    out.back_run = r->speeds[7];
-    out.rotate_in_place_walk = r->speeds[8];
-    out.rotate_in_place_run = r->speeds[9];
-    out.rotate_while_moving_run = r->speeds[10];
-    movement_types_[out.id] = std::move(out);
+    collect_into(shared_, movement_types_, merged, record::parse_movement_type(data, form_ctx),
+                 [&](auto& r, wfb::MovementTypeT& out) {
+        out.name = r->name;
+        out.left_walk = r->speeds[0];
+        out.left_run = r->speeds[1];
+        out.right_walk = r->speeds[2];
+        out.right_run = r->speeds[3];
+        out.forward_walk = r->speeds[4];
+        out.forward_run = r->speeds[5];
+        out.back_walk = r->speeds[6];
+        out.back_run = r->speeds[7];
+        out.rotate_in_place_walk = r->speeds[8];
+        out.rotate_in_place_run = r->speeds[9];
+        out.rotate_while_moving_run = r->speeds[10];
+    });
 }
 
 void BaseCollector::on_art_object(const record::MergedRecord& merged, io::SpanReader& data,
                                   const record::FormContext& form_ctx) {
-    auto r = record::parse_art_object(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::ArtObjectT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    if (!r->model.empty()) {
-        out.model = model_vpath(r->model.path);
-    }
-    out.art_type = r->art_type;
-    art_objects_[out.id] = std::move(out);
+    collect_into(shared_, art_objects_, merged, record::parse_art_object(data, form_ctx),
+                 [&](auto& r, wfb::ArtObjectT& out) {
+        if (!r->model.empty()) {
+            out.model = model_vpath(r->model.path);
+        }
+        out.art_type = r->art_type;
+    });
 }
 
 void BaseCollector::on_game_setting(const record::MergedRecord& /*merged*/, io::SpanReader& data,
@@ -1323,94 +1113,68 @@ void BaseCollector::on_game_setting(const record::MergedRecord& /*merged*/, io::
 
 void BaseCollector::on_impact_data_set(const record::MergedRecord& merged, io::SpanReader& data,
                                        const record::FormContext& form_ctx) {
-    auto r = record::parse_impact_data_set(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ImpactDataSetT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    for (const auto& entry : r->entries) {
-        out.entries.emplace_back(shared_.global(merged, entry.material, failed),
-                                 shared_.global(merged, entry.impact, failed));
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    impact_data_sets_[out.id] = std::move(out);
+    collect_into(shared_, impact_data_sets_, merged, record::parse_impact_data_set(data, form_ctx),
+                 [&](auto& r, wfb::ImpactDataSetT& out, bool& failed) {
+        for (const auto& entry : r->entries) {
+            out.entries.emplace_back(shared_.global(merged, entry.material, failed),
+                                     shared_.global(merged, entry.impact, failed));
+        }
+    });
 }
 
 void BaseCollector::on_impact(const record::MergedRecord& merged, io::SpanReader& data,
                               const record::FormContext& form_ctx) {
-    auto r = record::parse_impact(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::ImpactT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.model = r->model.empty() ? std::string{} : model_vpath(r->model.path);
-    out.duration = r->duration;
-    out.orientation = r->orientation;
-    out.angle_threshold = r->angle_threshold;
-    out.placement_radius = r->placement_radius;
-    out.flags = r->flags;
-    out.sound1 = shared_.global(merged, r->sound1, failed);
-    out.sound2 = shared_.global(merged, r->sound2, failed);
-    out.hazard = shared_.global(merged, r->hazard, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    impacts_[out.id] = std::move(out);
+    collect_into(shared_, impacts_, merged, record::parse_impact(data, form_ctx),
+                 [&](auto& r, wfb::ImpactT& out, bool& failed) {
+        out.model = r->model.empty() ? std::string{} : model_vpath(r->model.path);
+        out.duration = r->duration;
+        out.orientation = r->orientation;
+        out.angle_threshold = r->angle_threshold;
+        out.placement_radius = r->placement_radius;
+        out.flags = r->flags;
+        out.sound1 = shared_.global(merged, r->sound1, failed);
+        out.sound2 = shared_.global(merged, r->sound2, failed);
+        out.hazard = shared_.global(merged, r->hazard, failed);
+    });
 }
 
 void BaseCollector::on_combat_style(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto r = record::parse_combat_style(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::CombatStyleT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.offensive_mult = r->general[0];
-    out.defensive_mult = r->general[1];
-    out.group_offensive_mult = r->general[2];
-    out.melee_score_mult = r->general[3];
-    out.magic_score_mult = r->general[4];
-    out.ranged_score_mult = r->general[5];
-    out.shout_score_mult = r->general[6];
-    out.unarmed_score_mult = r->general[7];
-    out.staff_score_mult = r->general[8];
-    out.avoid_threat_chance = r->general[9];
-    out.attack_staggered_mult = r->melee[0];
-    out.power_attack_staggered_mult = r->melee[1];
-    out.power_attack_blocking_mult = r->melee[2];
-    out.bash_mult = r->melee[3];
-    out.bash_recoil_mult = r->melee[4];
-    out.bash_attack_mult = r->melee[5];
-    out.bash_power_attack_mult = r->melee[6];
-    out.special_attack_mult = r->melee[7];
-    out.circle_mult = r->close_range[0];
-    out.fallback_mult = r->close_range[1];
-    out.flank_distance = r->close_range[2];
-    out.stalk_time = r->close_range[3];
-    out.strafe_mult = r->long_range;
-    out.hover_chance = r->flight[0];
-    out.dive_bomb_chance = r->flight[1];
-    out.ground_attack_chance = r->flight[2];
-    out.hover_time = r->flight[3];
-    out.ground_attack_time = r->flight[4];
-    out.perch_attack_chance = r->flight[5];
-    out.perch_attack_time = r->flight[6];
-    out.flying_attack_chance = r->flight[7];
-    out.flags = r->flags;
-    combat_styles_[out.id] = std::move(out);
+    collect_into(shared_, combat_styles_, merged, record::parse_combat_style(data, form_ctx),
+                 [&](auto& r, wfb::CombatStyleT& out) {
+        out.offensive_mult = r->general[0];
+        out.defensive_mult = r->general[1];
+        out.group_offensive_mult = r->general[2];
+        out.melee_score_mult = r->general[3];
+        out.magic_score_mult = r->general[4];
+        out.ranged_score_mult = r->general[5];
+        out.shout_score_mult = r->general[6];
+        out.unarmed_score_mult = r->general[7];
+        out.staff_score_mult = r->general[8];
+        out.avoid_threat_chance = r->general[9];
+        out.attack_staggered_mult = r->melee[0];
+        out.power_attack_staggered_mult = r->melee[1];
+        out.power_attack_blocking_mult = r->melee[2];
+        out.bash_mult = r->melee[3];
+        out.bash_recoil_mult = r->melee[4];
+        out.bash_attack_mult = r->melee[5];
+        out.bash_power_attack_mult = r->melee[6];
+        out.special_attack_mult = r->melee[7];
+        out.circle_mult = r->close_range[0];
+        out.fallback_mult = r->close_range[1];
+        out.flank_distance = r->close_range[2];
+        out.stalk_time = r->close_range[3];
+        out.strafe_mult = r->long_range;
+        out.hover_chance = r->flight[0];
+        out.dive_bomb_chance = r->flight[1];
+        out.ground_attack_chance = r->flight[2];
+        out.hover_time = r->flight[3];
+        out.ground_attack_time = r->flight[4];
+        out.perch_attack_chance = r->flight[5];
+        out.perch_attack_time = r->flight[6];
+        out.flying_attack_chance = r->flight[7];
+        out.flags = r->flags;
+    });
 }
 
 bool BaseCollector::is_item_type(io::FourCC type) noexcept {

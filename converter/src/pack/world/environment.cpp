@@ -88,58 +88,48 @@ void EnvironmentCollector::collect(const record::MergedRecord& merged, io::SpanR
 
 void EnvironmentCollector::on_worldspace(const record::MergedRecord& merged, io::SpanReader& data,
                                          const record::FormContext& form_ctx) {
-    auto w = record::parse_worldspace(data, form_ctx);
-    if (!w) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::WorldspaceT out;
-    out.id = merged.form.value;
-    out.editor_id = w->editor_id;
-    out.name = w->name.text;
-    out.parent = shared_.global(merged, w->parent, failed);
-    out.parent_flags = static_cast<wfb::ParentFlags>(w->parent_flags);
-    out.flags = w->flags;
-    if (w->default_land_height && w->default_water_height) {
-        out.has_defaults = true;
-        out.default_land_height = *w->default_land_height;
-        out.default_water_height = *w->default_water_height;
-    }
-    out.water = shared_.global(merged, w->water, failed);
-    out.climate = shared_.global(merged, w->climate, failed);
-    out.min_x = w->min_x;
-    out.min_y = w->min_y;
-    out.max_x = w->max_x;
-    out.max_y = w->max_y;
-    if (w->map_data) {
-        const auto& m = *w->map_data;
-        out.has_map_data = true;
-        out.map_nw_x = m.nw_x;
-        out.map_nw_y = m.nw_y;
-        out.map_se_x = m.se_x;
-        out.map_se_y = m.se_y;
-        out.map_min_height = m.min_height;
-        out.map_max_height = m.max_height;
-        out.map_initial_pitch = m.initial_pitch;
-        // The exe's built-in cloud bank (a string next to the MapMenu code) when
-        // the record names none, as on Tamriel.
-        out.cloud_model = w->cloud_model.empty()
-                              ? std::string{"meshes/sky/skyrimworldmapcloudbank.nif"}
-                              : model_vpath(w->cloud_model);
-    }
-    if (w->map_offset) {
-        out.has_map_offset = true;
-        out.map_offset_scale = w->map_offset->scale;
-        out.map_offset_x = w->map_offset->x;
-        out.map_offset_y = w->map_offset->y;
-        out.map_offset_z = w->map_offset->z;
-    }
-    take_large_lists(merged, *w, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    worlds_[out.id] = std::move(out);
+    collect_into(shared_, worlds_, merged, record::parse_worldspace(data, form_ctx),
+                 [&](auto& w, wfb::WorldspaceT& out, bool& failed) {
+        out.name = w->name.text;
+        out.parent = shared_.global(merged, w->parent, failed);
+        out.parent_flags = static_cast<wfb::ParentFlags>(w->parent_flags);
+        out.flags = w->flags;
+        if (w->default_land_height && w->default_water_height) {
+            out.has_defaults = true;
+            out.default_land_height = *w->default_land_height;
+            out.default_water_height = *w->default_water_height;
+        }
+        out.water = shared_.global(merged, w->water, failed);
+        out.climate = shared_.global(merged, w->climate, failed);
+        out.min_x = w->min_x;
+        out.min_y = w->min_y;
+        out.max_x = w->max_x;
+        out.max_y = w->max_y;
+        if (w->map_data) {
+            const auto& m = *w->map_data;
+            out.has_map_data = true;
+            out.map_nw_x = m.nw_x;
+            out.map_nw_y = m.nw_y;
+            out.map_se_x = m.se_x;
+            out.map_se_y = m.se_y;
+            out.map_min_height = m.min_height;
+            out.map_max_height = m.max_height;
+            out.map_initial_pitch = m.initial_pitch;
+            // The exe's built-in cloud bank (a string next to the MapMenu code) when
+            // the record names none, as on Tamriel.
+            out.cloud_model = w->cloud_model.empty()
+                                  ? std::string{"meshes/sky/skyrimworldmapcloudbank.nif"}
+                                  : model_vpath(w->cloud_model);
+        }
+        if (w->map_offset) {
+            out.has_map_offset = true;
+            out.map_offset_scale = w->map_offset->scale;
+            out.map_offset_x = w->map_offset->x;
+            out.map_offset_y = w->map_offset->y;
+            out.map_offset_z = w->map_offset->z;
+        }
+        take_large_lists(merged, *w, failed);
+    });
 }
 
 /// A WRLD's RNAM lists replace those of the same cell from earlier versions: a
@@ -176,51 +166,45 @@ void EnvironmentCollector::collect_large_refs(const record::MergedRecord& merged
 
 void EnvironmentCollector::on_water(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto watr = record::parse_water(data, form_ctx);
-    if (!watr) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::WaterT out;
-    out.id = merged.form.value;
-    out.editor_id = watr->editor_id;
-    out.opacity = watr->opacity;
-    out.flags = watr->flags;
-    for (const auto& noise : watr->noise) {
-        std::string path = archive::normalize_vpath(noise);
-        if (path.starts_with("data/")) {
-            path.erase(0, 5);
+    collect_into(shared_, waters_, merged, record::parse_water(data, form_ctx),
+                 [&](auto& watr, wfb::WaterT& out) {
+        out.opacity = watr->opacity;
+        out.flags = watr->flags;
+        for (const auto& noise : watr->noise) {
+            std::string path = archive::normalize_vpath(noise);
+            if (path.starts_with("data/")) {
+                path.erase(0, 5);
+            }
+            out.noise.push_back(texture_vpath(path));
         }
-        out.noise.push_back(texture_vpath(path));
-    }
-    const auto& d = watr->dnam;
-    constexpr std::uint32_t k_rgb = 0x00FF'FFFFu;
-    out.sun_specular_power = d.sun_specular_power;
-    out.reflectivity = d.reflectivity;
-    out.fresnel = d.fresnel;
-    out.fog_near = d.fog_near;
-    out.fog_far = d.fog_far;
-    out.shallow_color = d.shallow_color & k_rgb;
-    out.deep_color = d.deep_color & k_rgb;
-    out.reflection_color = d.reflection_color & k_rgb;
-    out.layers.resize(d.layers.size());
-    for (std::size_t i = 0; i < d.layers.size(); ++i) {
-        out.layers[i] = wfb::WaterLayer(d.layers[i].wind_direction, d.layers[i].wind_speed,
-                                        d.layers[i].uv_scale, d.layers[i].amplitude);
-    }
-    out.refraction_magnitude = d.refraction_magnitude;
-    out.specular_power = d.specular_power;
-    out.reflection_magnitude = d.reflection_magnitude;
-    out.noise_falloff = d.noise_falloff;
-    out.fog_amount = d.fog_amount;
-    out.sun_sparkle_magnitude = d.sun_sparkle_magnitude;
-    out.sun_specular_magnitude = d.sun_specular_magnitude;
-    out.depth_reflections = d.depth_reflections;
-    out.depth_refraction = d.depth_refraction;
-    out.depth_normals = d.depth_normals;
-    out.depth_specular = d.depth_specular;
-    out.sun_sparkle_power = d.sun_sparkle_power;
-    waters_[out.id] = std::move(out);
+        const auto& d = watr->dnam;
+        constexpr std::uint32_t k_rgb = 0x00FF'FFFFu;
+        out.sun_specular_power = d.sun_specular_power;
+        out.reflectivity = d.reflectivity;
+        out.fresnel = d.fresnel;
+        out.fog_near = d.fog_near;
+        out.fog_far = d.fog_far;
+        out.shallow_color = d.shallow_color & k_rgb;
+        out.deep_color = d.deep_color & k_rgb;
+        out.reflection_color = d.reflection_color & k_rgb;
+        out.layers.resize(d.layers.size());
+        for (std::size_t i = 0; i < d.layers.size(); ++i) {
+            out.layers[i] = wfb::WaterLayer(d.layers[i].wind_direction, d.layers[i].wind_speed,
+                                            d.layers[i].uv_scale, d.layers[i].amplitude);
+        }
+        out.refraction_magnitude = d.refraction_magnitude;
+        out.specular_power = d.specular_power;
+        out.reflection_magnitude = d.reflection_magnitude;
+        out.noise_falloff = d.noise_falloff;
+        out.fog_amount = d.fog_amount;
+        out.sun_sparkle_magnitude = d.sun_sparkle_magnitude;
+        out.sun_specular_magnitude = d.sun_specular_magnitude;
+        out.depth_reflections = d.depth_reflections;
+        out.depth_refraction = d.depth_refraction;
+        out.depth_normals = d.depth_normals;
+        out.depth_specular = d.depth_specular;
+        out.sun_sparkle_power = d.sun_sparkle_power;
+    });
 }
 
 void EnvironmentCollector::on_climate(const record::MergedRecord& merged, io::SpanReader& data,
@@ -371,54 +355,44 @@ void EnvironmentCollector::on_image_space(const record::MergedRecord& merged, io
 void EnvironmentCollector::on_volumetric_lighting(const record::MergedRecord& merged,
                                                   io::SpanReader& data,
                                                   const record::FormContext& form_ctx) {
-    auto voli = record::parse_volumetric_lighting(data, form_ctx);
-    if (!voli) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::VolumetricLightingT out;
-    out.id = merged.form.value;
-    out.editor_id = voli->editor_id;
-    out.intensity = voli->intensity;
-    out.custom_color_contribution = voli->custom_color_contribution;
-    out.red = voli->red;
-    out.green = voli->green;
-    out.blue = voli->blue;
-    out.density_contribution = voli->density_contribution;
-    out.density_size = voli->density_size;
-    out.density_wind_speed = voli->density_wind_speed;
-    out.density_falling_speed = voli->density_falling_speed;
-    out.phase_contribution = voli->phase_contribution;
-    out.phase_scattering = voli->phase_scattering;
-    out.sampling_range_factor = voli->sampling_range_factor;
-    volumetric_lightings_[out.id] = std::move(out);
+    collect_into(shared_, volumetric_lightings_, merged,
+                 record::parse_volumetric_lighting(data, form_ctx),
+                 [&](auto& voli, wfb::VolumetricLightingT& out) {
+        out.intensity = voli->intensity;
+        out.custom_color_contribution = voli->custom_color_contribution;
+        out.red = voli->red;
+        out.green = voli->green;
+        out.blue = voli->blue;
+        out.density_contribution = voli->density_contribution;
+        out.density_size = voli->density_size;
+        out.density_wind_speed = voli->density_wind_speed;
+        out.density_falling_speed = voli->density_falling_speed;
+        out.phase_contribution = voli->phase_contribution;
+        out.phase_scattering = voli->phase_scattering;
+        out.sampling_range_factor = voli->sampling_range_factor;
+    });
 }
 
 void EnvironmentCollector::on_precipitation(const record::MergedRecord& merged,
                                             io::SpanReader& data,
                                             const record::FormContext& form_ctx) {
-    auto spgd = record::parse_shader_particle_geometry(data, form_ctx);
-    if (!spgd) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::PrecipitationT out;
-    out.id = merged.form.value;
-    out.editor_id = spgd->editor_id;
-    out.texture = texture_vpath(spgd->texture);
-    out.gravity_velocity = spgd->gravity_velocity;
-    out.rotation_velocity = spgd->rotation_velocity;
-    out.size_x = spgd->particle_size_x;
-    out.size_y = spgd->particle_size_y;
-    out.center_offset_min = spgd->center_offset_min;
-    out.center_offset_max = spgd->center_offset_max;
-    out.rotation_range = spgd->initial_rotation_range;
-    out.subtextures_x = spgd->subtextures_x;
-    out.subtextures_y = spgd->subtextures_y;
-    out.type = static_cast<std::uint8_t>(spgd->type);
-    out.box_size = spgd->box_size;
-    out.density = spgd->particle_density;
-    precipitations_[out.id] = std::move(out);
+    collect_into(shared_, precipitations_, merged,
+                 record::parse_shader_particle_geometry(data, form_ctx),
+                 [&](auto& spgd, wfb::PrecipitationT& out) {
+        out.texture = texture_vpath(spgd->texture);
+        out.gravity_velocity = spgd->gravity_velocity;
+        out.rotation_velocity = spgd->rotation_velocity;
+        out.size_x = spgd->particle_size_x;
+        out.size_y = spgd->particle_size_y;
+        out.center_offset_min = spgd->center_offset_min;
+        out.center_offset_max = spgd->center_offset_max;
+        out.rotation_range = spgd->initial_rotation_range;
+        out.subtextures_x = spgd->subtextures_x;
+        out.subtextures_y = spgd->subtextures_y;
+        out.type = static_cast<std::uint8_t>(spgd->type);
+        out.box_size = spgd->box_size;
+        out.density = spgd->particle_density;
+    });
 }
 
 /// Regions with a weather list (RDAT type 3) or sounds (RDAT type 7, RDSA);

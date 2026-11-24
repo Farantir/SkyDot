@@ -51,48 +51,28 @@ void DialogueCollector::collect(const record::MergedRecord& merged, io::SpanRead
 
 void DialogueCollector::on_branch(const record::MergedRecord& merged, io::SpanReader& data,
                                   const record::FormContext& form_ctx) {
-    auto b = record::parse_dialogue_branch(data, form_ctx);
-    if (!b) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::DialogueBranchT out;
-    out.id = merged.form.value;
-    out.editor_id = b->editor_id;
-    out.quest = shared_.global(merged, b->quest, failed);
-    out.start_topic = shared_.global(merged, b->start_topic, failed);
-    out.flags = static_cast<wfb::DialogueBranchFlags>(b->flags);
-    out.category = b->category;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    branches_[out.id] = std::move(out);
+    collect_into(shared_, branches_, merged, record::parse_dialogue_branch(data, form_ctx),
+                 [&](auto& b, wfb::DialogueBranchT& out, bool& failed) {
+        out.quest = shared_.global(merged, b->quest, failed);
+        out.start_topic = shared_.global(merged, b->start_topic, failed);
+        out.flags = static_cast<wfb::DialogueBranchFlags>(b->flags);
+        out.category = b->category;
+    });
 }
 
 void DialogueCollector::on_topic(const record::MergedRecord& merged, io::SpanReader& data,
                                  const record::FormContext& form_ctx) {
-    auto t = record::parse_dialogue_topic(data, form_ctx);
-    if (!t) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::DialogueTopicT out;
-    out.id = merged.form.value;
-    out.editor_id = t->editor_id;
-    out.text = t->text.text;
-    out.quest = shared_.global(merged, t->quest, failed);
-    out.branch = shared_.global(merged, t->branch, failed);
-    out.priority = t->priority;
-    out.flags = static_cast<wfb::DialogueTopicFlags>(t->flags);
-    out.category = t->category;
-    out.subtype = t->subtype;
-    out.subtype_code = t->subtype_code.value;
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    topics_[out.id] = std::move(out);
+    collect_into(shared_, topics_, merged, record::parse_dialogue_topic(data, form_ctx),
+                 [&](auto& t, wfb::DialogueTopicT& out, bool& failed) {
+        out.text = t->text.text;
+        out.quest = shared_.global(merged, t->quest, failed);
+        out.branch = shared_.global(merged, t->branch, failed);
+        out.priority = t->priority;
+        out.flags = static_cast<wfb::DialogueTopicFlags>(t->flags);
+        out.category = t->category;
+        out.subtype = t->subtype;
+        out.subtype_code = t->subtype_code.value;
+    });
 }
 
 void DialogueCollector::on_info(const record::MergedRecord& merged, io::SpanReader& data,
@@ -140,86 +120,50 @@ void DialogueCollector::on_info(const record::MergedRecord& merged, io::SpanRead
 
 void DialogueCollector::on_voice_type(const record::MergedRecord& merged, io::SpanReader& data,
                                       const record::FormContext& form_ctx) {
-    auto v = record::parse_voice_type(data, form_ctx);
-    if (!v) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    wfb::VoiceTypeT out;
-    out.id = merged.form.value;
-    out.editor_id = v->editor_id;
-    out.flags = v->flags;
-    voice_types_[out.id] = std::move(out);
+    collect_into(shared_, voice_types_, merged, record::parse_voice_type(data, form_ctx),
+                 [&](auto& v, wfb::VoiceTypeT& out) {
+        out.flags = v->flags;
+    });
 }
 
 void DialogueCollector::on_location(const record::MergedRecord& merged, io::SpanReader& data,
                                     const record::FormContext& form_ctx) {
-    auto l = record::parse_location(data, form_ctx);
-    if (!l) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::LocationT out;
-    out.id = merged.form.value;
-    out.editor_id = l->editor_id;
-    out.name = l->name.text;
-    out.parent = shared_.global(merged, l->parent, failed);
-    out.keywords = shared_.global_all(merged, l->keywords.keywords, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    locations_[out.id] = std::move(out);
+    collect_into(shared_, locations_, merged, record::parse_location(data, form_ctx),
+                 [&](auto& l, wfb::LocationT& out, bool& failed) {
+        out.name = l->name.text;
+        out.parent = shared_.global(merged, l->parent, failed);
+        out.keywords = shared_.global_all(merged, l->keywords.keywords, failed);
+    });
 }
 
 void DialogueCollector::on_relationship(const record::MergedRecord& merged, io::SpanReader& data,
                                         const record::FormContext& form_ctx) {
-    auto r = record::parse_relationship(data, form_ctx);
-    if (!r) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::RelationshipT out;
-    out.id = merged.form.value;
-    out.editor_id = r->editor_id;
-    out.parent = shared_.global(merged, r->parent, failed);
-    out.child = shared_.global(merged, r->child, failed);
-    out.rank = r->rank;
-    out.association = shared_.global(merged, r->association, failed);
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    relationships_[out.id] = std::move(out);
+    collect_into(shared_, relationships_, merged, record::parse_relationship(data, form_ctx),
+                 [&](auto& r, wfb::RelationshipT& out, bool& failed) {
+        out.parent = shared_.global(merged, r->parent, failed);
+        out.child = shared_.global(merged, r->child, failed);
+        out.rank = r->rank;
+        out.association = shared_.global(merged, r->association, failed);
+    });
 }
 
 void DialogueCollector::on_faction(const record::MergedRecord& merged, io::SpanReader& data,
                                    const record::FormContext& form_ctx) {
-    auto f = record::parse_faction(data, form_ctx);
-    if (!f) {
-        ++shared_.stats().parse_errors;
-        return;
-    }
-    bool failed = false;
-    wfb::FactionT out;
-    out.id = merged.form.value;
-    out.editor_id = f->editor_id;
-    out.flags = static_cast<wfb::FactionFlags>(f->flags);
-    // VENV: start hour, end hour (u16 each), radius (u32), then flag bytes.
-    if (const auto venv = record::decode_vendor_values(f->vendor_values)) {
-        out.vendor_start_hour = venv->start_hour;
-        out.vendor_end_hour = venv->end_hour;
-        out.vendor_radius = venv->radius;
-    }
-    out.vendor_chest = shared_.global(merged, f->vendor_chest, failed);
-    for (const auto& relation : f->relations) {
-        out.relations.emplace_back(shared_.global(merged, relation.faction, failed),
-                                   relation.modifier, relation.combat_reaction);
-    }
-    if (failed) {
-        ++shared_.stats().unresolved;
-    }
-    factions_[out.id] = std::move(out);
+    collect_into(shared_, factions_, merged, record::parse_faction(data, form_ctx),
+                 [&](auto& f, wfb::FactionT& out, bool& failed) {
+        out.flags = static_cast<wfb::FactionFlags>(f->flags);
+        // VENV: start hour, end hour (u16 each), radius (u32), then flag bytes.
+        if (const auto venv = record::decode_vendor_values(f->vendor_values)) {
+            out.vendor_start_hour = venv->start_hour;
+            out.vendor_end_hour = venv->end_hour;
+            out.vendor_radius = venv->radius;
+        }
+        out.vendor_chest = shared_.global(merged, f->vendor_chest, failed);
+        for (const auto& relation : f->relations) {
+            out.relations.emplace_back(shared_.global(merged, relation.faction, failed),
+                                       relation.modifier, relation.combat_reaction);
+        }
+    });
 }
 
 void DialogueCollector::on_scene(const record::MergedRecord& merged, io::SpanReader& data,

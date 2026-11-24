@@ -14,11 +14,13 @@
 #include "bethconv/record/vmad.hpp"
 #include "skydot_formats/vpath.hpp"
 
+#include <concepts>
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace bethconv::pack::detail {
@@ -55,6 +57,35 @@ private:
     const record::LoadOrder& order_;
     WorldStats stats_;
 };
+
+/// A collector's handler frame: a record that did not parse is counted; else
+/// `fill(parsed, out[, failed])` maps it onto a table that already has its id
+/// (and editor id), a FormID it could not resolve is counted, and the table
+/// goes into `map` under its id.
+template <class Map, class Parsed, class Fill>
+void collect_into(CollectContext& shared, Map& map, const record::MergedRecord& merged,
+                  Parsed&& parsed, Fill&& fill) {
+    using Out = typename Map::mapped_type;
+    if (!parsed) {
+        ++shared.stats().parse_errors;
+        return;
+    }
+    bool failed = false;
+    Out out;
+    out.id = merged.form.value;
+    if constexpr (requires { out.editor_id = parsed->editor_id; }) {
+        out.editor_id = parsed->editor_id;
+    }
+    if constexpr (std::invocable<Fill&, Parsed&, Out&, bool&>) {
+        fill(parsed, out, failed);
+    } else {
+        fill(parsed, out);
+    }
+    if (failed) {
+        ++shared.stats().unresolved;
+    }
+    map[out.id] = std::move(out);
+}
 
 /// MODL values are relative to `Data\meshes\`, though some plugins include the
 /// prefix, and TXST paths to `Data\textures\`: normalized virtual paths, the
