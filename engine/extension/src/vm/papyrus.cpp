@@ -683,7 +683,7 @@ struct PerkEffects final : perks::EffectSink {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
                              vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
@@ -849,10 +849,6 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void sound_volume(std::int64_t instance, double volume) override {
         owner_.emit_signal("sound_volume", instance, volume);
     }
-
-    // ---- vm::SoundHost
-
-    std::int64_t new_sound_instance() override { return owner_.new_sound_instance(); }
 
     void animation_events_wanted(std::uint32_t sender) override {
         owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
@@ -1172,7 +1168,7 @@ void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_
 void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
 void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
-void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_host_, *access_); }
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }

@@ -344,6 +344,7 @@ target_sources(skydot PRIVATE
     src/vm/papyrus_magic_state.hpp
     src/vm/papyrus_shouts.cpp
     src/vm/papyrus_combat.cpp
+    src/vm/papyrus_world.cpp
     src/vm/papyrus_scenes.cpp
     src/vm/papyrus_runtime.cpp
     src/vm/papyrus_triggers.cpp
