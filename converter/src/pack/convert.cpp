@@ -643,8 +643,11 @@ io::ParseResult<ConvertResult> convert(const archive::ArchiveSet& set,
             for (const auto& entry : old->entries()) {
                 const bool filtered_out =
                     !options.filter.empty() && entry.vpath.find(options.filter) == std::string::npos;
-                if (filtered_out || !kind_of(entry.vpath, extension_of_vpath(entry.vpath), options)) {
-                    writer->keep(entry);
+                if ((filtered_out || !kind_of(entry.vpath, extension_of_vpath(entry.vpath), options)) &&
+                    !writer->keep(entry)) {
+                    writer->warn(PackWarning{.vpath = entry.vpath,
+                                             .detail = "kept from the earlier index, but its asset "
+                                                       "is no longer stored; dropped from vpath.idx"});
                 }
             }
         }

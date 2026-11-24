@@ -297,6 +297,28 @@ TEST_CASE("a run that skips passes keeps the pack's index and records for them",
         CHECK(read_json(pack / "manifest.json")["world"] == full["world"]);
     }
 
+    SECTION("a kept entry whose asset is gone is reported") {
+        // The mesh's index line, pointing at a hash the store does not hold.
+        std::string index = full_index;
+        const auto line = index.find("\nmeshes/fixture.nif\t");
+        REQUIRE(line != std::string::npos);
+        const auto hex = index.find('\t', line) + 1;
+        index.replace(hex, 64, std::string(64, 'f'));
+        {
+            std::ofstream file(pack / "vpath.idx", std::ios::binary);
+            file << index;
+        }
+        auto options = options_for(pack);
+        options.convert_meshes = false;
+        const auto result = convert(fixture.set, fixture.order(), options);
+        REQUIRE(result.has_value());
+        const auto report = read_json(pack / "report.json");
+        const auto& warnings = report["warnings"];
+        CHECK(std::ranges::any_of(warnings, [](const nlohmann::json& w) {
+            return w["vpath"] == "meshes/fixture.nif";
+        }));
+    }
+
     SECTION("prune keeps only this run's") {
         auto options = options_for(pack);
         options.convert_meshes = false;
