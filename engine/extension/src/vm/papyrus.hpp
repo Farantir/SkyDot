@@ -857,6 +857,13 @@ private:
     };
     /// The adapter the natives families are bound against (made in bind_natives).
     std::unique_ptr<Access, AccessDeleter> access_;
+    /// The adaptors the runtimes and natives families are bound against, one per Host interface, each
+    /// next to its domain's binding (papyrus_<domain>.cpp).
+    struct CombatHost;
+    std::unique_ptr<vm::CombatRuntime::Host> new_combat_host();
+    std::unique_ptr<vm::CombatRuntime::Host> combat_host_ = new_combat_host();
+    /// A line for the output only (the runtimes' log).
+    void print_line(const std::string& text);
     std::unique_ptr<vm::Vm> vm_;
     /// The stores of subsystems outside the VM; the VM's registry (new with each `setup`) has this object's own.
     vm::ForgetRegistry outer_forgets_;

@@ -40,6 +40,14 @@ bool same_event(const flatbuffers::String* have, const std::string& wanted) {
 
 } // namespace
 
+struct SkydotPapyrus::CombatHost final : vm::CombatRuntime::Host {
+    explicit CombatHost(SkydotPapyrus& owner) : owner_(owner) {}
+    void log(const std::string& text) override { owner_.print_line(text); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::CombatRuntime::Host> SkydotPapyrus::new_combat_host() { return std::make_unique<CombatHost>(*this); }
+
 Dictionary SkydotPapyrus::hit_facts(std::int64_t attacker_id, std::int64_t target_id, std::int64_t weapon_id,
                                     std::int64_t extra_id, const String& attack_event, std::int64_t flags,
                                     std::int64_t ammo_id) {

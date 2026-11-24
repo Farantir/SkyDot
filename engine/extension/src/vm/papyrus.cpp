@@ -684,7 +684,7 @@ struct PerkEffects final : perks::EffectSink {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::SoundHost, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host, vm::CombatRuntime::Host,
+                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
@@ -1111,7 +1111,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void package_signal(std::uint32_t actor, std::uint32_t package, bool push) override {
         owner_.emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), push);
     }
-    void log(const std::string& text) override { godot::UtilityFunctions::print(natives::to_godot(text)); }
+    void log(const std::string& text) override { owner_.print_line(text); }
 
     bool location_loaded(std::uint32_t location) override { return owner_.location_loaded(location); }
     void evaluate_package(std::uint32_t ref) override { owner_.evaluate_package(ref); }
@@ -1243,7 +1243,7 @@ void SkydotPapyrus::bind_actor_natives() {
             dragon_soul_absorbed();
         }
     });
-    combat_.bind_natives(*vm_, *access_, *access_);
+    combat_.bind_natives(*vm_, *access_, *combat_host_);
 }
 
 std::int64_t SkydotPapyrus::send_get_up(std::int64_t ref) {
@@ -1275,6 +1275,8 @@ void SkydotPapyrus::trace_line(const std::string& line) {
     emit_signal("trace", shown);
     godot::UtilityFunctions::print(shown);
 }
+
+void SkydotPapyrus::print_line(const std::string& text) { godot::UtilityFunctions::print(natives::to_godot(text)); }
 
 void SkydotPapyrus::flush_deaths() {
     for (const auto ref : actors_.take_deaths()) {
