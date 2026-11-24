@@ -3,6 +3,8 @@
 // SkydotPapyrus's progression forwarders for the GDScript rules (vm/progression_runtime.hpp): the
 // player's XP, level, perk points and books, and the perks of actors.
 #include "conditions/conditions.hpp"
+#include "state/actor_values.hpp"
+#include "state/player_ref.hpp"
 #include "perks/entry_points.hpp"
 #include "vm/papyrus.hpp"
 #include "data/fb_search.hpp"
@@ -13,11 +15,9 @@ using godot::Dictionary;
 namespace skydot {
 namespace {
 
-constexpr std::int64_t k_first_skill = 6;
-
 /// A skill's index (actor value - 6), or the count when `av` is no skill.
 std::uint32_t skill_index(std::int64_t av) {
-    const std::int64_t i = av - k_first_skill;
+    const std::int64_t i = av - vm::av::k_first_skill;
     return i >= 0 && i < vm::k_progression_skills ? static_cast<std::uint32_t>(i) : vm::k_progression_skills;
 }
 
@@ -188,7 +188,7 @@ bool SkydotPapyrus::sound_conditions_met(std::int64_t sound, std::int64_t ref) {
     if (d == nullptr || d->conditions() == nullptr || d->conditions()->size() == 0) {
         return true;
     }
-    const auto subject = static_cast<std::uint32_t>(ref != 0 ? ref : 0x14);
+    const auto subject = static_cast<std::uint32_t>(ref != 0 ? ref : k_player_ref);
     const conditions::ConditionContext ctx{.subject = subject, .target = 0, .quest = 0};
     return conditions::conditions_pass(d->conditions(), condition_world(), ctx);
 }

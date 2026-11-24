@@ -42,14 +42,8 @@ std::int64_t find_keyword(const WorldData& data, const String& editor_id) {
 }
 
 godot::PackedInt64Array get_base_keywords(const WorldData& data, std::int64_t base) {
-    godot::PackedInt64Array out;
     const auto* b = lookup(data.root() != nullptr ? data.root()->bases() : nullptr, static_cast<std::uint32_t>(base));
-    if (b != nullptr && b->keywords() != nullptr) {
-        for (const auto k : *b->keywords()) {
-            out.push_back(k);
-        }
-    }
-    return out;
+    return ids_array(b != nullptr ? b->keywords() : nullptr);
 }
 
 Dictionary get_form_list(const WorldData& data, std::int64_t id) {
@@ -59,13 +53,7 @@ Dictionary get_form_list(const WorldData& data, std::int64_t id) {
         return out;
     }
     out["editor_id"] = to_godot(l->editor_id());
-    godot::PackedInt64Array forms;
-    if (l->forms() != nullptr) {
-        for (const auto f : *l->forms()) {
-            forms.push_back(f);
-        }
-    }
-    out["forms"] = forms;
+    out["forms"] = ids_array(l->forms());
     return out;
 }
 
@@ -269,13 +257,7 @@ Dictionary get_npc(const WorldData& data, std::int64_t id) {
     }
     out["perks"] = perks;
     // SPLO as it is: spells, leveled spell lists and shouts (world.fb 33).
-    godot::PackedInt64Array spells;
-    if (npc->spells() != nullptr) {
-        for (const auto s : *npc->spells()) {
-            spells.push_back(s);
-        }
-    }
-    out["spells"] = spells;
+    out["spells"] = ids_array(npc->spells());
     out["shouts"] = shouts_in(data, npc->spells());
     Array factions;
     if (npc->factions() != nullptr) {
@@ -327,13 +309,7 @@ Dictionary get_race(const WorldData& data, std::int64_t race_id) {
     out["unarmed_reach"] = static_cast<double>(race->unarmed_reach());
     out["impact_material"] = static_cast<std::int64_t>(race->impact_material());
     out["impact_data_set"] = static_cast<std::int64_t>(race->impact_data_set());
-    godot::PackedInt64Array spells;
-    if (race->spells() != nullptr) {
-        for (const auto s : *race->spells()) {
-            spells.push_back(s);
-        }
-    }
-    out["spells"] = spells;
+    out["spells"] = ids_array(race->spells());
     out["shouts"] = shouts_in(data, race->spells());
     // world.fb 36; absent in older packs: 0.
     out["injured_health"] = static_cast<double>(race->injured_health());

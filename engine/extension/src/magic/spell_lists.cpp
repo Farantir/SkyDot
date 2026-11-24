@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "magic/spell_lists.hpp"
+#include "state/player_ref.hpp"
 
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
@@ -10,9 +11,6 @@
 namespace skydot::magic {
 
 namespace {
-
-/// The player's reference (build/refs.hpp k_player_ref).
-constexpr std::uint32_t k_player_actor = 0x14;
 
 /// NpcTemplateFlags bit 3 (0x8): the spell list comes from the template.
 constexpr std::uint32_t k_template_spell_list = 0x8;
@@ -392,7 +390,7 @@ std::set<std::uint32_t> actors_to_rederive(const SpellBook& book, const ActiveEf
     std::set<std::uint32_t> out(known.begin(), known.end());
     out.merge(effects.targets());
     out.insert(wearers.begin(), wearers.end());
-    out.insert(k_player_actor);
+    out.insert(k_player_ref);
     return out;
 }
 

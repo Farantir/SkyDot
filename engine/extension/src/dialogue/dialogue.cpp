@@ -85,7 +85,7 @@ const wfb::DialogueBranch* Dialogue::branch_of(const wfb::DialogueTopic& topic) 
 
 conditions::ConditionContext Dialogue::context(const wfb::DialogueTopic& topic) const {
     return {.subject = speaker_,
-            .target = k_player,
+            .target = k_player_ref,
             .quest = topic.quest(),
             .unknown = conditions::UnknownPolicy::fails};
 }

@@ -14,14 +14,13 @@ namespace {
 constexpr std::size_t k_override_min_bytes = 8;
 constexpr std::size_t k_perk_min_bytes = 5;
 constexpr int k_template_depth = 8;
-constexpr std::uint32_t k_first_skill = 6;  // OneHanded
-constexpr std::uint32_t k_last_skill = 23;  // Enchanting
+constexpr std::uint32_t k_last_skill = av::k_first_skill + av::k_skill_count - 1; // Enchanting
 
 /// The actor value of a Papyrus skill name ("OneHanded", "Marksman", "Speechcraft", also the aliases "Archery", "Speech");
 /// -1 for anything that is not one of the 18 skills.
 std::int64_t skill_of(const std::string& name) {
     const auto index = av::index_of(name);
-    return index && *index >= k_first_skill && *index <= k_last_skill ? static_cast<std::int64_t>(*index) : -1;
+    return index && *index >= av::k_first_skill && *index <= k_last_skill ? static_cast<std::int64_t>(*index) : -1;
 }
 
 using natives::flag;

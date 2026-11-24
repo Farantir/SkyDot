@@ -23,6 +23,18 @@
 
 namespace skydot::queries {
 
+/// A flatbuffer vector of ids as an array; empty for a missing one.
+template <typename T>
+godot::PackedInt64Array ids_array(const flatbuffers::Vector<T>* v) {
+    godot::PackedInt64Array out;
+    if (v != nullptr) {
+        for (const auto x : *v) {
+            out.push_back(static_cast<std::int64_t>(x));
+        }
+    }
+    return out;
+}
+
 // ---- cells, bases, worldspaces (queries_cells.cpp) ------------------------
 std::int64_t get_cell_count(const WorldData& data);
 std::int64_t get_base_count(const WorldData& data);

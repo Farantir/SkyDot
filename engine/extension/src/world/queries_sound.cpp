@@ -231,22 +231,13 @@ Dictionary get_footstep_set(const WorldData& data, std::int64_t id) {
     if (f == nullptr) {
         return out;
     }
-    const auto list = [](const flatbuffers::Vector<std::uint32_t>* v) {
-        godot::PackedInt64Array a;
-        if (v != nullptr) {
-            for (const auto x : *v) {
-                a.push_back(x);
-            }
-        }
-        return a;
-    };
     out["id"] = static_cast<std::int64_t>(f->id());
     out["editor_id"] = to_godot(f->editor_id());
-    out["walk"] = list(f->walk());
-    out["run"] = list(f->run());
-    out["sprint"] = list(f->sprint());
-    out["sneak"] = list(f->sneak());
-    out["swim"] = list(f->swim());
+    out["walk"] = ids_array(f->walk());
+    out["run"] = ids_array(f->run());
+    out["sprint"] = ids_array(f->sprint());
+    out["sneak"] = ids_array(f->sneak());
+    out["swim"] = ids_array(f->swim());
     return out;
 }
 

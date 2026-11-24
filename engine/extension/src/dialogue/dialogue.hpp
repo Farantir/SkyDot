@@ -27,6 +27,7 @@
 #pragma once
 
 #include "conditions/conditions.hpp"
+#include "state/player_ref.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "world_generated.h"
 
@@ -76,7 +77,6 @@ struct Result {
 
 class Dialogue {
 public:
-    static constexpr std::uint32_t k_player = 0x14;
     /// Invisible Continue chains stop here (a loop in the data).
     static constexpr int k_max_chain = 8;
 

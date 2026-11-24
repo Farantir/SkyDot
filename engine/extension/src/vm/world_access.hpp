@@ -8,6 +8,7 @@
 #pragma once
 
 #include "state/actor_values.hpp"
+#include "state/player_ref.hpp"
 
 #include <array>
 #include <cstdint>
@@ -97,7 +98,7 @@ public:
     /// The player's level; 1 until the player has stats.
     [[nodiscard]] virtual std::int32_t player_level() const = 0;
     /// Actor.GetLevel: the player's level, an NPC's by its base (1 if unknown).
-    [[nodiscard]] virtual std::int32_t actor_level(std::uint32_t ref) const { return ref == 0x14 ? player_level() : 1; }
+    [[nodiscard]] virtual std::int32_t actor_level(std::uint32_t ref) const { return ref == k_player_ref ? player_level() : 1; }
     /// The values actor `ref` starts with, from the data; false if `ref` is
     /// no actor (the player, 0x14, is the NPC_ 0x7).
     [[nodiscard]] virtual bool actor_base(std::uint32_t ref, ActorBase& out) const = 0;

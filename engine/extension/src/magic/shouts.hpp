@@ -13,6 +13,7 @@
 #pragma once
 
 #include "magic/spell_lists.hpp"
+#include "state/player_ref.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -53,8 +54,6 @@ struct ShoutRelease {
 class ShoutBook {
 public:
     static constexpr std::uint32_t k_section_version = 1;
-    /// The reference whose words are learned and unlocked; every other actor speaks every word.
-    static constexpr std::uint32_t k_player = 0x14;
 
     /// The resolved base shouts of an actor reference (NPC_ + race); empty for a non-actor.
     using BaseSource = std::function<std::vector<std::uint32_t>(std::uint32_t ref)>;

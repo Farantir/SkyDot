@@ -20,6 +20,8 @@
 //     blocked the activation.
 #pragma once
 
+#include "state/player_ref.hpp"
+
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -29,9 +31,6 @@
 #include <vector>
 
 namespace skydot {
-
-/// The player's reference, which activations come from.
-inline constexpr std::uint32_t k_player_ref = 0x14;
 
 enum class ActivationSource { player = 0, script = 1, parent = 2 };
 

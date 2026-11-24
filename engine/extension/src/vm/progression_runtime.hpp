@@ -9,6 +9,7 @@
 #pragma once
 
 #include "save/bytes.hpp"
+#include "state/player_ref.hpp"
 #include "vm/vm.hpp"
 #include "world_generated.h"
 
@@ -80,7 +81,6 @@ public:
         virtual void log(const std::string& /*text*/) {}
     };
 
-    static constexpr std::uint32_t k_player_ref = 0x14;
     static constexpr std::uint32_t k_player_base = 0x7;
     /// NPC template flag "use spell list" (0x8): the perks come from the template with the spells.
     static constexpr std::uint32_t k_template_spell_list = 0x8;

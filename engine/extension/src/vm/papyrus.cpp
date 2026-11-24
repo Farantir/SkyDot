@@ -5,6 +5,7 @@
 #include "data/actors.hpp"
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
+#include "data/godot_values.hpp"
 #include "data/scripts.hpp"
 #include "perks/entry_points.hpp"
 #include "skydot_formats/flags.hpp"
@@ -514,10 +515,6 @@ Dictionary SkydotPapyrus::ref_info(std::uint32_t ref) const {
     return world_->get_ref_info(world_->get_ref_cell(ref), ref);
 }
 
-static Vector3 vec3_of_xyz(const vm::Xyz& p) {
-    return Vector3(static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]));
-}
-
 bool SkydotPapyrus::ref_record(std::uint32_t ref, vm::RefInfo& out) const {
     if (world_.is_null()) {
         return false;
@@ -651,7 +648,7 @@ Vector3 SkydotPapyrus::rotation_of(std::uint32_t ref) const {
         return vec3_of(it->second.rotation);
     }
     vm::RefInfo info;
-    return ref_record(ref, info) ? vec3_of_xyz(info.placement.rotation) : Vector3();
+    return ref_record(ref, info) ? vec3_of(info.placement.rotation) : Vector3();
 }
 
 Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
@@ -674,11 +671,7 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     if (!ref_record(ref, info)) {
         return world_.is_valid() ? Vector3(world_->get_actor(ref).get("position", Vector3())) : Vector3();
     }
-    return vec3_of_xyz(info.placement.position);
-}
-
-static Vector3 vec3_from(const vm::Xyz& p) {
-    return Vector3(static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2]));
+    return vec3_of(info.placement.position);
 }
 
 static vm::Xyz xyz_from(const Vector3& p) {
@@ -905,13 +898,13 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     void set_global_value(std::int64_t global, double value) override { owner_.set_global_value(global, value); }
 
     void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
-        owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_from(position), vec3_from(rotation));
+        owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_of(position), vec3_of(rotation));
     }
     void play_animation(std::uint32_t ref, const std::string& animation) override {
         owner_.emit_signal("play_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
     }
     void havok_impulse(std::uint32_t ref, const vm::Xyz& direction, double magnitude) override {
-        owner_.emit_signal("havok_impulse", static_cast<std::int64_t>(ref), vec3_from(direction), magnitude);
+        owner_.emit_signal("havok_impulse", static_cast<std::int64_t>(ref), vec3_of(direction), magnitude);
     }
     void push_actor(std::uint32_t source, std::uint32_t target, double force) override {
         owner_.emit_signal("push_actor", static_cast<std::int64_t>(source), static_cast<std::int64_t>(target), force);
@@ -1153,10 +1146,10 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     }
     std::int64_t trigger_count(std::int64_t ref) const override { return owner_.get_trigger_count(ref); }
     void move_ref_to(std::uint32_t ref, std::uint32_t target, const vm::Xyz& offset, bool match_rotation) override {
-        owner_.move_ref_to(ref, target, vec3_from(offset), match_rotation);
+        owner_.move_ref_to(ref, target, vec3_of(offset), match_rotation);
     }
     void relocate_ref(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
-        owner_.relocate_ref(ref, 0, vec3_from(position), vec3_from(rotation));
+        owner_.relocate_ref(ref, 0, vec3_of(position), vec3_of(rotation));
     }
     void send_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
         owner_.dispatch(ref, event, args);

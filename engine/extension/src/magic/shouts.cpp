@@ -62,7 +62,7 @@ std::vector<std::uint32_t> ShoutBook::shouts_of(std::uint32_t ref) {
             add(s);
         }
     }
-    if (ref == k_player && rec != records_.end() && world_.shouts() != nullptr) {
+    if (ref == k_player_ref && rec != records_.end() && world_.shouts() != nullptr) {
         for (const auto* sh : *world_.shouts()) {
             if (sh->words() == nullptr) {
                 continue;
@@ -144,7 +144,7 @@ int ShoutBook::usable_words(std::uint32_t ref, std::uint32_t shout) const {
         return 0;
     }
     const int total = static_cast<int>(std::min<std::size_t>(s->words()->size(), 3));
-    if (ref != k_player) {
+    if (ref != k_player_ref) {
         return total;
     }
     int run = 0;

@@ -117,13 +117,7 @@ Dictionary get_actor_value_info(const WorldData& data, std::int64_t actor_value)
             d["x"] = static_cast<double>(n->x());
             d["y"] = static_cast<double>(n->y());
             d["skill"] = whole(n->skill());
-            godot::PackedInt64Array links;
-            if (n->links() != nullptr) {
-                for (const auto l : *n->links()) {
-                    links.push_back(static_cast<std::int64_t>(l));
-                }
-            }
-            d["links"] = links;
+            d["links"] = ids_array(n->links());
             tree.push_back(d);
         }
     }
@@ -142,13 +136,7 @@ Dictionary get_class(const WorldData& data, std::int64_t id) {
     out["name"] = to_godot(c->name());
     out["teaches"] = static_cast<std::int64_t>(c->teaches());
     out["max_training_level"] = static_cast<std::int64_t>(c->max_training_level());
-    godot::PackedInt64Array weights;
-    if (c->skill_weights() != nullptr) {
-        for (const auto w : *c->skill_weights()) {
-            weights.push_back(static_cast<std::int64_t>(w));
-        }
-    }
-    out["skill_weights"] = weights;
+    out["skill_weights"] = ids_array(c->skill_weights());
     out["health_weight"] = static_cast<std::int64_t>(c->health_weight());
     out["magicka_weight"] = static_cast<std::int64_t>(c->magicka_weight());
     out["stamina_weight"] = static_cast<std::int64_t>(c->stamina_weight());

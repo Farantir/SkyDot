@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "perks/entry_points.hpp"
+#include "state/player_ref.hpp"
 
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
@@ -277,7 +278,7 @@ void perk_added(const wfb::World& world, std::uint32_t actor, std::uint32_t perk
             sink.add_ability(actor, e.spell());
         }
     });
-    if (actor != 0x14) {
+    if (actor != k_player_ref) {
         return; // a quest stage is the player's perk's effect
     }
     each_effect(world, perk, wfb::PerkEffectKind::quest, [&](const wfb::PerkEffect& e) {

@@ -140,20 +140,8 @@ Dictionary get_magic_effect(const WorldData& data, std::int64_t id) {
     out["casting_sound_level"] = whole(m->casting_sound_level());
     out["ai_score"] = num(m->ai_score());
     out["ai_delay_time"] = num(m->ai_delay_time());
-    godot::PackedInt64Array keywords;
-    if (m->keywords() != nullptr) {
-        for (const auto k : *m->keywords()) {
-            keywords.push_back(k);
-        }
-    }
-    out["keywords"] = keywords;
-    godot::PackedInt64Array counters;
-    if (m->counter_effects() != nullptr) {
-        for (const auto k : *m->counter_effects()) {
-            counters.push_back(k);
-        }
-    }
-    out["counter_effects"] = counters;
+    out["keywords"] = ids_array(m->keywords());
+    out["counter_effects"] = ids_array(m->counter_effects());
     Array sounds;
     if (m->sounds() != nullptr) {
         for (const auto* s : *m->sounds()) {

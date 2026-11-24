@@ -9,6 +9,7 @@
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector3.hpp>
 
+#include <array>
 #include <cstdint>
 
 namespace skydot {
@@ -20,6 +21,11 @@ inline std::uint32_t form_of(const godot::Variant& v) {
 
 /// A vector from three doubles (a position or rotation in Skyrim space).
 inline godot::Vector3 vec3_of(const double (&v)[3]) {
+    return godot::Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
+}
+
+/// A vector from three doubles (vm::Xyz).
+inline godot::Vector3 vec3_of(const std::array<double, 3>& v) {
     return godot::Vector3(static_cast<float>(v[0]), static_cast<float>(v[1]), static_cast<float>(v[2]));
 }
 

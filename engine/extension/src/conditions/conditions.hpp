@@ -27,6 +27,7 @@
 #pragma once
 
 #include "world_generated.h"
+#include "state/player_ref.hpp"
 
 #include <cstdint>
 #include <functional>
@@ -100,7 +101,7 @@ public:
                                                                 const std::string& name) const = 0;
 
     // ---- actors
-    [[nodiscard]] virtual std::uint32_t player_ref() const { return 0x14; }
+    [[nodiscard]] virtual std::uint32_t player_ref() const { return k_player_ref; }
     /// The NPC_ an actor reference is (the player: 0x7); 0 if it is none.
     [[nodiscard]] virtual std::uint32_t npc_of(std::uint32_t ref) const = 0;
     /// The rank of `ref` in `faction`, templates resolved; nothing if not a member.

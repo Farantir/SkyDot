@@ -789,7 +789,7 @@ void SkydotAi::update_fights(double seconds) {
 
 std::int64_t SkydotAi::get_reaction(std::int64_t a, std::int64_t b) {
     const auto known = [this](std::int64_t ref) {
-        return ref == 0x14 || mind(static_cast<std::uint32_t>(ref)) != nullptr;
+        return ref == k_player_ref || mind(static_cast<std::uint32_t>(ref)) != nullptr;
     };
     if (!known(a) || !known(b)) {
         return -1;
