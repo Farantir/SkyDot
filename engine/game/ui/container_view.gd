@@ -75,18 +75,13 @@ func current() -> Dictionary:
 func _refresh() -> void:
 	if not _open:
 		return
-	_models[0].set_rows(ItemListSources.inventory(_session, _container))
-	_models[1].set_rows(ItemListSources.inventory(_session))
-	_lists[0].status = ["Weight %.1f" % ItemRows.total_weight(_session.inventory(_container))]
+	var theirs := _session.inventory(_container)
 	var carried := _session.inventory()
+	_models[0].set_rows(ItemListSources.from_items(theirs, _session))
+	_models[1].set_rows(ItemListSources.from_items(carried, _session))
+	_lists[0].status = ["Weight %.1f" % ItemRows.total_weight(theirs)]
 	_lists[1].status = ["Weight %.1f" % ItemRows.total_weight(carried)]
-	for row: Dictionary in carried:
-		if int(row["form"]) == 0xF:
-			_bar.gold = int(row["count"])
-	_bar.carry_weight = ItemRows.total_weight(carried)
-	_bar.carry_capacity = _session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
-	_bar.health = Vector2(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Health"), _session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Health"))
-	_bar.queue_redraw()
+	_bar.fill_from(_session, carried)
 
 
 func _menu_input(event: InputEvent) -> void:

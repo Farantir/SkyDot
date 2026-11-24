@@ -196,15 +196,12 @@ func trainer_class(trainer: int) -> Dictionary:
 	return _world.get_class_data(int(npc.get("class", 0))) if not npc.is_empty() else {}
 
 
-const GOLD := 0xF
-
-
 func gold() -> int:
-	return _papyrus.get_item_count(PLAYER_REF, GOLD)
+	return _papyrus.get_item_count(PLAYER_REF, GameSession.GOLD)
 
 
 ## Move `amount` gold from the player to `trainer`; false if the player has too little.
 func pay_gold(trainer: int, amount: int) -> bool:
 	if gold() < amount:
 		return false
-	return _papyrus.transfer(PLAYER_REF, trainer, GOLD, amount, -1) >= amount
+	return _papyrus.transfer(PLAYER_REF, trainer, GameSession.GOLD, amount, -1) >= amount

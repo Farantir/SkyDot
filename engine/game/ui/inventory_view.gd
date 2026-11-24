@@ -67,16 +67,8 @@ func _refresh() -> void:
 		return
 	var raw := _session.inventory()
 	model.set_rows(ItemListSources.from_items(raw, _session))
-	var gold := 0
-	for row: Dictionary in raw:
-		if int(row["form"]) == 0xF:
-			gold = int(row["count"])
 	_list.status = []
-	_bar.gold = gold
-	_bar.carry_weight = ItemRows.total_weight(raw)
-	_bar.carry_capacity = _session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
-	_bar.health = Vector2(_session.actor_value(SkydotPapyrus.PLAYER_REF, "Health"), _session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Health"))
-	_bar.queue_redraw()
+	_bar.fill_from(_session, raw)
 
 
 ## The preview shows the item under the cursor.

@@ -42,6 +42,19 @@ func _init(bar_kind := "inventory") -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
+## The gold, carry weight and Health of the player from `session`, with `carried` the player's
+## GameSession.inventory rows.
+func fill_from(session: GameSession, carried: Array) -> void:
+	gold = 0
+	for row: Dictionary in carried:
+		if int(row["form"]) == GameSession.GOLD:
+			gold = int(row["count"])
+	carry_weight = ItemRows.total_weight(carried)
+	carry_capacity = session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
+	health = Vector2(session.actor_value(SkydotPapyrus.PLAYER_REF, "Health"), session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Health"))
+	queue_redraw()
+
+
 ## Whether the pack has the movie.
 static func available() -> bool:
 	return UiAssets.available() and UiAssets.exported(SWF, "BottomBar") >= 0

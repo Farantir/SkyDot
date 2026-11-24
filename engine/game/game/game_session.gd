@@ -143,7 +143,7 @@ var saves: SaveService
 ## What the player marked a favorite, and the hotkeys 1-8 (saved as FAVS; scripts see it through
 ## Game.IsObjectFavorited).
 var favorites := Favorites.new()
-## Gold001: the gold the player carries (Most Gold Carried).
+## Gold001, the gold the player carries (Most Gold Carried, the bottom bar, training).
 const GOLD := 0xF
 ## The journal's own records (quest log order, active quests, misc stats, play time): JournalLog, saved in JRNL.
 var journal: JournalLog
