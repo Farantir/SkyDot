@@ -600,6 +600,8 @@ Vm::Vm() {
         "vm.animation_states", [this](std::uint32_t ref) { animation_states_.erase(ref); },
         [this] { return animation_states_.size(); });
     forgets_.add_owned(
+        "vm.owners", [this](std::uint32_t ref) { owners_.erase(ref); }, [this] { return owners_.states().size(); });
+    forgets_.add_owned(
         "vm.scheduled",
         [this](std::uint32_t ref) {
             std::erase_if(scheduled_, [&](const Scheduled& d) { return references(d.call, ref); });

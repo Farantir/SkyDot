@@ -101,10 +101,20 @@ public:
         }
     }
 
-    /// Every store forgets `ref`. A store may register or unregister others meanwhile (the list is walked by index).
+    /// Every store forgets `ref`. A store may register or unregister others meanwhile: the stores registered when
+    /// the call began are walked, less those gone by their turn.
     void forget(std::uint32_t ref) const {
-        for (std::size_t i = 0; i < state_->stores.size(); ++i) {
-            const Forget f = state_->stores[i].forget; // a copy: the store may be removed while it runs
+        std::vector<std::uint64_t> ids;
+        ids.reserve(state_->stores.size());
+        for (const auto& s : state_->stores) {
+            ids.push_back(s.id);
+        }
+        for (const std::uint64_t id : ids) {
+            const auto it = std::ranges::find(state_->stores, id, &Store::id);
+            if (it == state_->stores.end()) {
+                continue;
+            }
+            const Forget f = it->forget; // a copy: the store may be removed while it runs
             if (f) {
                 f(ref);
             }

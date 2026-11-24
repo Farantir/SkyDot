@@ -138,6 +138,7 @@ public:
         return it != states_.end() ? &it->second : nullptr;
     }
     void set(std::uint32_t ref, const OwnerState& state) { states_[ref] = state; }
+    void erase(std::uint32_t ref) { states_.erase(ref); }
     void clear() { states_.clear(); }
     [[nodiscard]] const std::map<std::uint32_t, OwnerState>& states() const { return states_; }
 

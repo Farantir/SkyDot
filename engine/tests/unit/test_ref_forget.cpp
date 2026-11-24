@@ -85,6 +85,26 @@ TEST_CASE("a registered store is forgotten with the id, and a token unregisters 
     CHECK(b == std::set<std::uint32_t>{5}); // no longer called
 }
 
+TEST_CASE("a store that unregisters an earlier one does not make forget skip the next", "[vm][forget]") {
+    ForgetRegistry registry;
+    std::set<std::uint32_t> c{7};
+    ForgetRegistry::Registration first = registry.add("first", [](std::uint32_t) {});
+    registry.add_owned("second", [&](std::uint32_t) { first.reset(); });
+    registry.add_owned("third", [&](std::uint32_t id) { c.erase(id); });
+    registry.forget(7);
+    CHECK(c.empty());
+    CHECK(registry.count() == 2);
+}
+
+TEST_CASE("a forgotten reference has no owner a script gave it", "[vm][forget]") {
+    Vm vm;
+    vm.owners().set(0xFF000123, {.owner = 0x13BBF, .faction = false, .rank = -1});
+    REQUIRE(vm.owners().find(0xFF000123) != nullptr);
+    vm.forgets().forget(0xFF000123);
+    CHECK(vm.owners().find(0xFF000123) == nullptr);
+    CHECK(sizes_of(vm.forgets()).at("vm.owners") == 0);
+}
+
 TEST_CASE("a token that outlives its registry is harmless", "[vm][forget]") {
     ForgetRegistry::Registration token;
     {

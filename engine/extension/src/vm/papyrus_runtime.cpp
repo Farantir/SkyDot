@@ -275,6 +275,9 @@ void SkydotPapyrus::register_forgets() {
     r.add_owned("scene_pushed_packages", [this](std::uint32_t id) { scene_.forget(id); },
                 [this] { return scene_.pushed_count(); },
                 [this](std::set<std::uint32_t>& out) { scene_.held_refs(out); });
+    r.add_owned("blocking", [this](std::uint32_t id) { blocking_.erase(id); }, [this] { return blocking_.size(); });
+    r.add_owned("ragdoll_positions", [this](std::uint32_t id) { ragdoll_positions_.erase(id); },
+                [this] { return ragdoll_positions_.size(); });
     r.add_owned("quest_alias_fills", [this](std::uint32_t id) { quests_.forget_fill(id); },
                 [this] { return quests_.fills().size(); });
     r.add_owned("actor_placement", [this](std::uint32_t id) {

@@ -10,7 +10,7 @@ const REF := 0xFF001234
 const STORES := ["vm.instances", "vm.inventory", "vm.animation_states", "vm.scheduled", "placed", "destruction",
 	"ref_states", "actor_states", "item_states", "attached", "loaded", "volume_loaded", "ghost_reported", "triggers",
 	"harvests", "last_damager", "pending_activations", "dialogue_talked", "scene_pushed_packages",
-	"quest_alias_fills", "actor_placement"]
+	"quest_alias_fills", "actor_placement", "vm.owners", "blocking", "ragdoll_positions"]
 
 
 func test_every_store_is_registered() -> void:
@@ -25,7 +25,10 @@ func test_forgetting_a_reference_restores_every_store() -> void:
 	papyrus.set_locked(REF, true)
 	papyrus.set_open_state(REF, 3)
 	papyrus.set_animation_state(REF, PackedByteArray([1, 2, 3]))
+	papyrus.set_blocking(REF, true)
+	papyrus.set_ragdoll_position(REF, Vector3.ONE)
 	var during := papyrus.forget_store_sizes()
 	expect(during != before, "state set on a reference shows in the stores: %s" % [during])
 	papyrus.forget_ref(REF)
 	expect_eq(papyrus.forget_store_sizes(), before, "forget_ref restores every store")
+	expect(papyrus.get_ragdoll_position(REF) == null, "a reused id has no ragdoll position")
