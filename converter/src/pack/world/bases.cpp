@@ -12,6 +12,7 @@
 #include "bethconv/record/forms_object.hpp"
 #include "bethconv/record/forms_world.hpp"
 
+#include "skydot_formats/actor_values.hpp"
 #include "skydot_formats/vpath.hpp"
 
 #include <algorithm>
@@ -1010,11 +1011,12 @@ void BaseCollector::on_class(const record::MergedRecord& merged, io::SpanReader&
                  [&](auto& r, wfb::ClassT& out) {
         out.name = r->name.text;
         out.max_training_level = r->training_level;
-        // DATA byte 4 counts from One-Handed (actor value 6); only a class that trains to
-        // some level teaches (the Vendor* and combat classes leave the skill at a
-        // meaningless 0).
-        out.teaches =
-            r->training_level != 0 ? 6 + static_cast<std::int32_t>(r->training_skill) : -1;
+        // DATA byte 4 counts from One-Handed; only a class that trains to some level teaches
+        // (the Vendor* and combat classes leave the skill at a meaningless 0).
+        out.teaches = r->training_level != 0
+                          ? static_cast<std::int32_t>(skydot::formats::k_first_skill_actor_value +
+                                                      r->training_skill)
+                          : -1;
         out.skill_weights.assign(r->skill_weights.begin(), r->skill_weights.end());
         out.health_weight = r->health_weight;
         out.magicka_weight = r->magicka_weight;

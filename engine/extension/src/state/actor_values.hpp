@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
-// Skyrim's fixed actor value index list (0 Aggression ... 163 ReflectDamage)
-// and the names Papyrus passes. Source: CommonLibSSE's RE::ActorValue and
-// UESP "Skyrim:Actor Value Indices". Nothing here touches Godot.
+// Skyrim's fixed actor value indices (the names are shared with the converter,
+// skydot_formats/actor_values.hpp) and the other spellings Papyrus passes.
+// Nothing here touches Godot.
 #pragma once
+
+#include "skydot_formats/actor_values.hpp"
 
 #include <array>
 #include <cstddef>
@@ -13,12 +15,12 @@
 
 namespace skydot::vm::av {
 
-constexpr std::size_t k_count = 164;
+constexpr std::size_t k_count = skydot::formats::k_actor_value_count;
 
 constexpr std::uint32_t k_aggression = 0;
 constexpr std::uint32_t k_assistance = 5;
-constexpr std::uint32_t k_first_skill = 6; ///< OneHanded; Enchanting is 23.
-constexpr std::uint32_t k_skill_count = 18;
+constexpr std::uint32_t k_first_skill = skydot::formats::k_first_skill_actor_value; ///< OneHanded.
+constexpr std::uint32_t k_skill_count = skydot::formats::k_skill_count;
 constexpr std::uint32_t k_health = 24;
 constexpr std::uint32_t k_magicka = 25;
 constexpr std::uint32_t k_stamina = 26;
@@ -34,172 +36,7 @@ constexpr std::uint32_t k_magicka_rate_mult = 156;
 constexpr std::uint32_t k_stamina_rate_mult = 157;
 
 /// The name of each index, in index order.
-inline constexpr std::array<std::string_view, k_count> k_names = {
-    "Aggression",
-    "Confidence",
-    "Energy",
-    "Morality",
-    "Mood",
-    "Assistance",
-    "OneHanded",
-    "TwoHanded",
-    "Marksman",
-    "Block",
-    "Smithing",
-    "HeavyArmor",
-    "LightArmor",
-    "Pickpocket",
-    "Lockpicking",
-    "Sneak",
-    "Alchemy",
-    "Speechcraft",
-    "Alteration",
-    "Conjuration",
-    "Destruction",
-    "Illusion",
-    "Restoration",
-    "Enchanting",
-    "Health",
-    "Magicka",
-    "Stamina",
-    "HealRate",
-    "MagickaRate",
-    "StaminaRate",
-    "SpeedMult",
-    "InventoryWeight",
-    "CarryWeight",
-    "CritChance",
-    "MeleeDamage",
-    "UnarmedDamage",
-    "Mass",
-    "VoicePoints",
-    "VoiceRate",
-    "DamageResist",
-    "PoisonResist",
-    "ResistFire",
-    "ResistShock",
-    "ResistFrost",
-    "ResistMagic",
-    "ResistDisease",
-    "Unknown46",
-    "Unknown47",
-    "Unknown48",
-    "Unknown49",
-    "Unknown50",
-    "Unknown51",
-    "Unknown52",
-    "Paralysis",
-    "Invisibility",
-    "NightEye",
-    "DetectLifeRange",
-    "WaterBreathing",
-    "WaterWalking",
-    "Unknown59",
-    "Fame",
-    "Infamy",
-    "JumpingBonus",
-    "WardPower",
-    "RightItemCharge",
-    "ArmorPerks",
-    "ShieldPerks",
-    "WardDeflection",
-    "Variable01",
-    "Variable02",
-    "Variable03",
-    "Variable04",
-    "Variable05",
-    "Variable06",
-    "Variable07",
-    "Variable08",
-    "Variable09",
-    "Variable10",
-    "BowSpeedBonus",
-    "FavorActive",
-    "FavorsPerDay",
-    "FavorsPerDayTimer",
-    "LeftItemCharge",
-    "AbsorbChance",
-    "Blindness",
-    "WeaponSpeedMult",
-    "ShoutRecoveryMult",
-    "BowStaggerBonus",
-    "Telekinesis",
-    "FavorPointsBonus",
-    "LastBribedIntimidated",
-    "LastFlattered",
-    "MovementNoiseMult",
-    "BypassVendorStolenCheck",
-    "BypassVendorKeywordCheck",
-    "WaitingForPlayer",
-    "OneHandedMod",
-    "TwoHandedMod",
-    "MarksmanMod",
-    "BlockMod",
-    "SmithingMod",
-    "HeavyArmorMod",
-    "LightArmorMod",
-    "PickpocketMod",
-    "LockpickingMod",
-    "SneakingMod",
-    "AlchemyMod",
-    "SpeechcraftMod",
-    "AlterationMod",
-    "ConjurationMod",
-    "DestructionMod",
-    "IllusionMod",
-    "RestorationMod",
-    "EnchantingMod",
-    "OneHandedSkillAdvance",
-    "TwoHandedSkillAdvance",
-    "MarksmanSkillAdvance",
-    "BlockSkillAdvance",
-    "SmithingSkillAdvance",
-    "HeavyArmorSkillAdvance",
-    "LightArmorSkillAdvance",
-    "PickpocketSkillAdvance",
-    "LockpickingSkillAdvance",
-    "SneakingSkillAdvance",
-    "AlchemySkillAdvance",
-    "SpeechcraftSkillAdvance",
-    "AlterationSkillAdvance",
-    "ConjurationSkillAdvance",
-    "DestructionSkillAdvance",
-    "IllusionSkillAdvance",
-    "RestorationSkillAdvance",
-    "EnchantingSkillAdvance",
-    "LeftWeaponSpeedMultiply",
-    "DragonSouls",
-    "CombatHealthRegenMultiply",
-    "OneHandedPowerMod",
-    "TwoHandedPowerMod",
-    "MarksmanPowerMod",
-    "BlockPowerMod",
-    "SmithingPowerMod",
-    "HeavyArmorPowerMod",
-    "LightArmorPowerMod",
-    "PickpocketPowerMod",
-    "LockpickingPowerMod",
-    "SneakingPowerMod",
-    "AlchemyPowerMod",
-    "SpeechcraftPowerMod",
-    "AlterationPowerMod",
-    "ConjurationPowerMod",
-    "DestructionPowerMod",
-    "IllusionPowerMod",
-    "RestorationPowerMod",
-    "EnchantingPowerMod",
-    "DragonRend",
-    "AttackDamageMult",
-    "HealRateMult",
-    "MagickaRateMult",
-    "StaminaRateMult",
-    "WerewolfPerks",
-    "VampirePerks",
-    "GrabActorOffset",
-    "Grabbed",
-    "Unknown162",
-    "ReflectDamage"
-};
+inline constexpr const auto& k_names = skydot::formats::k_actor_value_names;
 
 /// Other spellings scripts use for an index (the CK's names differ from the
 /// engine's for a few).

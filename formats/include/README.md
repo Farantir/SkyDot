@@ -16,6 +16,8 @@ the one definition of the tables and their flag enums).
   per Havok unit.
 - `asset_kind.hpp`: the kinds of asset, their word in `vpath.idx`, their
   extension and the path of their loose file.
+- `actor_values.hpp`: the 164 actor value names by index and where the
+  skills start; each side keeps its own alias spellings.
 
 A header here must compile warning-free in both builds: C++20, and the
 converter's and the engine's warning flags.
