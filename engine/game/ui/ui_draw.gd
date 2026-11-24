@@ -11,12 +11,21 @@
 #   moves       instance name -> Vector2: its position in its parent, as a script's _x/_y would set it
 #
 # Assumes no rotation or skew where masks are: they are the axis-aligned bounds of their shapes.
+#
+# Also the menus' shared texts: `translate` ("$Key" in the game's language), the date, and `wrap`.
 class_name UiDraw
 extends RefCounted
 
 
 ## Translation keys whose English text is not the key (interface/translate_english.txt).
 const TRANSLATED := {"Player Gold": "Gold"}
+## Months' and days' GMSTs (the menus' date), the game's calendar: day 0 is Sundas, 17th of Last Seed, 4E 201.
+const MONTHS := ["sMonthJanuary", "sMonthFebruary", "sMonthMarch", "sMonthApril", "sMonthMay", "sMonthJune",
+	"sMonthJuly", "sMonthAugust", "sMonthSeptember", "sMonthOctober", "sMonthNovember", "sMonthDecember"]
+const MONTH_DAYS := [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+const DAYS := ["sDaySunday", "sDayMonday", "sDayTuesday", "sDayWednesday", "sDayThursday", "sDayFriday", "sDaySaturday"]
+
+static var _translations := {}  # translate's cache: key -> text
 
 
 class Look:
@@ -200,3 +209,70 @@ static func wrap(font: Font, text: String, px: int, width: float) -> Array[Strin
 			current = trial
 	lines.append(current)
 	return lines
+
+
+## A Look for a menu whose texts are drawn, glyphs stretched with the stage as the game draws them.
+static func text_look() -> Look:
+	var out := Look.new()
+	out.draw_texts = true
+	out.stretch_texts = true
+	return out
+
+
+## A "$Key" of the movie in the game's language (interface/translate_english.txt); the key without "$" when the
+## pack has no translation for it.
+static func translate(key: String) -> String:
+	if not key.begins_with("$"):
+		return key
+	if _translations.is_empty():
+		var bytes := UiAssets.file("interface/translate_english.txt", "translate_english.txt") if UiAssets.available() else PackedByteArray()
+		var text := bytes.get_string_from_utf8()
+		for line in text.split("\n"):
+			var tab_at := line.find("\t")
+			if line.begins_with("$") and tab_at > 0:
+				_translations[line.substr(0, tab_at)] = line.substr(tab_at + 1).strip_edges()
+		if _translations.is_empty():
+			_translations["$"] = ""
+	return _translations.get(key, key.substr(1))
+
+
+## The menus' date now ("Sundas, 8:01 AM, 17th of Last Seed, 4E 201", format_date); "" without a clock or world.
+static func date_text(session: GameSession, with_year := true) -> String:
+	if session.clock == null or session.world == null:
+		return ""
+	return format_date(session.clock.get_game_days(), session.clock.get_hour(),
+		func(setting: String) -> String: return session.world.get_gmst_string(setting, ""), with_year)
+
+
+## `days` passed since the game's start (day 0: Sundas, 17th of Last Seed, 4E 201) and the hour as the game words
+## them; `gmst` names a month or day. The Sleep/Wait menu's time has no year (`with_year` false).
+static func format_date(days: float, hour: float, gmst: Callable, with_year := true) -> String:
+	var day := int(floor(days))
+	var weekday: String = gmst.call(DAYS[day % 7])
+	var month := 7
+	var day_of_month := 17 + day
+	var year := 201
+	while day_of_month > MONTH_DAYS[month]:
+		day_of_month -= MONTH_DAYS[month]
+		month += 1
+		if month == 12:
+			month = 0
+			year += 1
+	var minutes := int(floor(fposmod(hour, 24.0) * 60.0))
+	var h := minutes / 60
+	var clock := "%d:%02d %s" % [12 if h % 12 == 0 else h % 12, minutes % 60, "AM" if h < 12 else "PM"]
+	var date := "%s, %s, %d%s of %s" % [weekday, clock, day_of_month, _ordinal(day_of_month), gmst.call(MONTHS[month])]
+	return date + (", 4E %d" % year if with_year else "")
+
+
+static func _ordinal(n: int) -> String:
+	if n % 100 >= 11 and n % 100 <= 13:
+		return "th"
+	match n % 10:
+		1:
+			return "st"
+		2:
+			return "nd"
+		3:
+			return "rd"
+	return "th"

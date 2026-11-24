@@ -225,11 +225,11 @@ func _draw() -> void:
 	var menu := UiAssets.instance(SWF, MENU)
 	if menu.is_empty():
 		return
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.hidden["ButtonRect"] = true
-	look.texts["QuestionInstance"] = JournalView.translate("$Rest how long?" if sleeping else "$Wait how long?")
+	look.texts["QuestionInstance"] = UiDraw.translate("$Rest how long?" if sleeping else "$Wait how long?")
 	look.texts["HoursText"] = str(hours())
-	look.texts["CurrentTime"] = _time_text()
+	look.texts["CurrentTime"] = UiDraw.date_text(_session, false)  # SetCurrentTime: no year
 	var slider_id := -1
 	var slider := _placed("HoursSlider")
 	if not slider.is_empty():
@@ -274,13 +274,5 @@ func _draw_buttons() -> void:
 		var field := UiAssets.child(SWF, button_id, "textField")
 		if not field.is_empty():
 			var field_id := int(field["character"])
-			UiDraw.field(self, SWF, field_id, xform * UiDraw.matrix(field["matrix"]), JournalView.translate(entry[1]),
+			UiDraw.field(self, SWF, field_id, xform * UiDraw.matrix(field["matrix"]), UiDraw.translate(entry[1]),
 				Color(String(UiAssets.character(SWF, field_id).get("color", "#ffffffff"))), true)
-
-
-## SetCurrentTime: the date and hour without the year.
-func _time_text() -> String:
-	if _session.clock == null or _session.world == null:
-		return ""
-	return TweenView.format_date(_session.clock.get_game_days(), _session.clock.get_hour(),
-		func(setting: String) -> String: return _session.world.get_gmst_string(setting, ""), false)

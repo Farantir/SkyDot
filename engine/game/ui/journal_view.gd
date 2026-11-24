@@ -48,7 +48,6 @@ var category := 0
 var _session: GameSession
 ## The tab the menu was closed on: Esc opens it there (RememberCurrentTabIndex / RestoreSavedSettings).
 var _saved_tab := QUESTS
-static var _translations := {}
 
 
 func _init(session: GameSession) -> void:
@@ -297,7 +296,7 @@ func _draw() -> void:
 	var menu := UiAssets.instance(SWF, MENU)
 	if menu.is_empty():
 		return
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	for name: String in FADERS + TABS + ["BottomBar"]:
 		look.hidden[name] = true
 	UiDraw.character(self, SWF, int(menu["id"]), fill() * (menu["xform"] as Transform2D), Color.WHITE, look)
@@ -319,9 +318,9 @@ func _draw_tabs() -> void:
 			continue
 		var id := int(placed["id"])
 		var frame := UiAssets.label_frame(SWF, id, "selected_up" if i == tab else "up")
-		var look := JournalView.look()
+		var look := UiDraw.text_look()
 		look.draw_texts = true
-		look.texts["textField"] = translate(TAB_TEXT[i])
+		look.texts["textField"] = UiDraw.translate(TAB_TEXT[i])
 		UiDraw.character(self, SWF, id, placed["xform"], Color.WHITE, look, Rect2(), maxi(frame, 0))
 
 
@@ -339,7 +338,7 @@ func _draw_quests() -> void:
 	if page.is_empty():
 		return
 	var page_xform: Transform2D = page["xform"]
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.draw_texts = true
 	look.hidden = {"TitleList_mc": true, "objectiveList": true, "questTitleText": true, "questDescriptionText": true,
 		"NoQuestsText": true, "questTitleEndpieces": true, "objectivesHeader": true}
@@ -348,7 +347,7 @@ func _draw_quests() -> void:
 	if titles.is_empty():
 		var none := _child(int(page["id"]), "NoQuestsText")
 		if not none.is_empty():
-			UiDraw.field(self, SWF, int(none["character"]), page_xform * UiDraw.matrix(none["matrix"]), translate("$No Active Quests"), Color(0, 0, 0, 0), true)
+			UiDraw.field(self, SWF, int(none["character"]), page_xform * UiDraw.matrix(none["matrix"]), UiDraw.translate("$No Active Quests"), Color(0, 0, 0, 0), true)
 		return
 	# The title list.
 	var rows := []
@@ -387,9 +386,9 @@ func _draw_quests() -> void:
 	if not header.is_empty() and not misc:
 		var header_xform := UiDraw.matrix(header["matrix"])
 		header_xform.origin.y = desc_y + desc_bottom + HEADER_GAP
-		var hlook := JournalView.look()
+		var hlook := UiDraw.text_look()
 		hlook.draw_texts = true
-		hlook.texts["#535"] = translate("$OBJECTIVES")
+		hlook.texts["#535"] = UiDraw.translate("$OBJECTIVES")
 		UiDraw.character(self, SWF, int(header["character"]), page_xform * header_xform, Color.WHITE, hlook)
 		list_y = header_xform.origin.y + UiAssets.bounds(SWF, int(header["character"])).end.y + LIST_GAP
 	var objectives := journal.objectives(quest)
@@ -404,17 +403,17 @@ func _draw_stats() -> void:
 	var page := at("StatsFader/Page_mc")
 	if page.is_empty():
 		return
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.hidden = {"CategoryList_mc": true, "StatsList_mc": true}
 	UiDraw.character(self, SWF, int(page["id"]), page["xform"], Color.WHITE, look)
 	var rows := []
 	for name: String in JournalLog.CATEGORIES:
-		rows.append({"textField": translate("$" + name)})
+		rows.append({"textField": UiDraw.translate("$" + name)})
 	draw_centered_list("StatsFader/Page_mc/CategoryList_mc/List_mc", rows, category)
 	var stats := []
 	if _session.journal != null:
 		for row: Dictionary in _session.journal.stat_rows(category):
-			stats.append({"textField": translate("$" + String(row["text"])), "valueText": str(row["value"])})
+			stats.append({"textField": UiDraw.translate("$" + String(row["text"])), "valueText": str(row["value"])})
 	draw_list("StatsFader/Page_mc/StatsList_mc", stats, -1, 0)
 
 
@@ -424,7 +423,7 @@ func _draw_bottom_bar() -> void:
 	var bar := at("BottomBar")
 	if bar.is_empty():
 		return
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.draw_texts = true
 	look.hidden["ButtonRect"] = true
 	if tab == QUESTS:
@@ -435,19 +434,19 @@ func _draw_bottom_bar() -> void:
 		var level := int(progress["level"])
 		look.texts["LevelNumberLabel"] = str(level)
 		look.fills["LevelProgressBar"] = clampf(float(progress["xp"]) / maxf(progression.level_up_threshold(level), 1.0), 0.0, 1.0)
-	look.texts["#684"] = translate("$LEVEL")
-	look.texts["DateText"] = _date_text()
+	look.texts["#684"] = UiDraw.translate("$LEVEL")
+	look.texts["DateText"] = UiDraw.date_text(_session)
 	UiDraw.character(self, SWF, int(bar["id"]), bar["xform"], Color.WHITE, look)
 	var buttons := []
 	if tab == QUESTS and not titles.is_empty():
 		var chosen: Dictionary = titles[title_index]
 		if not chosen["completed"]:
-			buttons.append(["Enter", translate("$Toggle Active"), 1.0])
+			buttons.append(["Enter", UiDraw.translate("$Toggle Active"), 1.0])
 			# UpdateShowOnMapButtonAlpha: full when an objective has a quest target, else dimmed.
 			var targets := false
 			for o: Dictionary in _current_objectives():
 				targets = targets or _objective_has_target(o)
-			buttons.append(["M", translate("$Show on Map"), 1.0 if targets else 0.5])
+			buttons.append(["M", UiDraw.translate("$Show on Map"), 1.0 if targets else 0.5])
 	elif tab == SYSTEM:
 		buttons = system.buttons()
 	draw_buttons("BottomBar/ButtonRect", buttons)
@@ -553,7 +552,7 @@ func draw_scrollbar(list_id: int, list_xform: Transform2D, position: int, max_po
 	var thumb_bounds := UiAssets.bounds(SWF, int(thumb["character"]))
 	var thumb_h := maxf(10.0, minf(track_rect.size.y, float(page) / float(max_position + page) * track_rect.size.y))
 	var thumb_y := track_rect.position.y + float(position) / float(maxi(max_position, 1)) * (track_rect.size.y - thumb_h)
-	var look := look()
+	var look := UiDraw.text_look()
 	look.hidden["thumb"] = true
 	look.named_frames["upArrow"] = UiAssets.label_frame(SWF, _child_id(bar_id, "upArrow"), "disabled" if position == 0 else "up")
 	look.named_frames["downArrow"] = UiAssets.label_frame(SWF, _child_id(bar_id, "downArrow"), "disabled" if position >= max_position else "up")
@@ -624,7 +623,7 @@ func draw_entry(clip: Dictionary, list_xform: Transform2D, y: float, row: Dictio
 	var id := int(clip["character"])
 	var local := UiDraw.matrix(clip["matrix"])
 	local.origin.y = y
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.draw_texts = true
 	for key: String in row:
 		if row[key] is String and key != "frame":
@@ -713,14 +712,6 @@ func text_block(field_id: int, xform: Transform2D, text: String) -> float:
 	return lines * ratio / maxf(xform.get_scale().y, 0.001) + 2.0
 
 
-## A Look for this menu: its texts drawn, glyphs stretched with the stage as the game draws them.
-static func look() -> UiDraw.Look:
-	var out := UiDraw.Look.new()
-	out.draw_texts = true
-	out.stretch_texts = true
-	return out
-
-
 ## A named child of a sprite (its display entry), empty when missing.
 static func _child(id: int, name: String) -> Dictionary:
 	for placed: Dictionary in UiAssets.character(SWF, id).get("display", []):
@@ -756,27 +747,3 @@ static func _border_height(id: int) -> float:
 
 static func _clip_height(clip: Dictionary) -> float:
 	return (UiDraw.matrix(clip["matrix"]) * UiAssets.bounds(SWF, int(clip["character"]))).size.y
-
-
-func _date_text() -> String:
-	if _session.clock == null or _session.world == null:
-		return ""
-	return TweenView.format_date(_session.clock.get_game_days(), _session.clock.get_hour(),
-		func(setting: String) -> String: return _session.world.get_gmst_string(setting, ""))
-
-
-## A "$Key" of the movie in the game's language (interface/translate_english.txt); the key without "$" when the
-## pack has no translation for it.
-static func translate(key: String) -> String:
-	if not key.begins_with("$"):
-		return key
-	if _translations.is_empty():
-		var bytes := UiAssets.file("interface/translate_english.txt", "translate_english.txt") if UiAssets.available() else PackedByteArray()
-		var text := bytes.get_string_from_utf8()
-		for line in text.split("\n"):
-			var tab_at := line.find("\t")
-			if line.begins_with("$") and tab_at > 0:
-				_translations[line.substr(0, tab_at)] = line.substr(tab_at + 1).strip_edges()
-		if _translations.is_empty():
-			_translations["$"] = ""
-	return _translations.get(key, key.substr(1))

@@ -350,7 +350,7 @@ func _refresh() -> void:
 	# The player's arrow turns against his heading (measured: heading 58.7 deg, the arrow at 301 deg in
 	# game_map_default); Godot's yaw is minus the heading. The map's up is the camera's yaw.
 	var heading := rad_to_deg(_session.player_object().yaw) + rad_to_deg(scene.camera.yaw)
-	_add_shown(fill_inverse, scene.camera.target, WorldMap.YOU_ARE_HERE_TYPE, JournalView.translate("$Current Location"),
+	_add_shown(fill_inverse, scene.camera.target, WorldMap.YOU_ARE_HERE_TYPE, UiDraw.translate("$Current Location"),
 		heading, false, {})
 	selected = {}
 	var best := SELECTION_DIST
@@ -429,7 +429,7 @@ func _draw_marker(s: Dictionary, over: bool) -> void:
 	if over and text_clip.is_empty():
 		var holder := UiAssets.exported(SWF, "DescriptionHolder")
 		if holder >= 0:
-			var hold := JournalView.look()
+			var hold := UiDraw.text_look()
 			hold.texts["Title"] = String(s["name"])
 			hold.hidden["LineItem0"] = true
 			UiDraw.character(self, SWF, holder, fill() * Transform2D(0.0, s["at"]), Color.WHITE, hold, Rect2(), DESCRIPTION_FRAME)
@@ -442,10 +442,10 @@ func _draw_bottom_bar() -> void:
 	if bar.is_empty():
 		return
 	var xform := fill() * Transform2D(0.0, Vector2(0.0, STAGE.y - HudGame.SAFE_ZONE.y))
-	var look := JournalView.look()
-	look.texts["DateText"] = _date_text()
+	var look := UiDraw.text_look()
+	look.texts["DateText"] = UiDraw.date_text(_session)
 	for b: Array in BUTTONS:
-		look.texts[b[0] + "/textField"] = JournalView.translate(b[2])
+		look.texts[b[0] + "/textField"] = UiDraw.translate(b[2])
 	look.hidden["border"] = true  # the buttons' placeholder skin
 	UiDraw.character(self, SWF, int(bar["id"]), xform, Color.WHITE, look)
 	for b: Array in BUTTONS:
@@ -458,13 +458,6 @@ func _draw_bottom_bar() -> void:
 		var height := UiAssets.bounds(SWF, int(button["character"])).size.y
 		UiDraw.character(self, SWF, art, at * Transform2D(0.0, Vector2(-art_bounds.size.x - art_bounds.position.x - 1.0,
 			(height - art_bounds.size.y) * 0.5 - art_bounds.position.y)))
-
-
-func _date_text() -> String:
-	if _session.clock == null or _session.world == null:
-		return ""
-	return TweenView.format_date(_session.clock.get_game_days(), _session.clock.get_hour(),
-		func(setting: String) -> String: return _session.world.get_gmst_string(setting, ""))
 
 
 ## For a shot's "menu" block.

@@ -407,11 +407,11 @@ func _list_rows() -> Array:
 	var rows := []
 	match state:
 		State.CHARACTERS:
-			rows.append({"textField": JournalView.translate("$ShowAllSave"), "SaveNumber": ""})
+			rows.append({"textField": UiDraw.translate("$ShowAllSave"), "SaveNumber": ""})
 			rows.append({"textField": _player_name(), "SaveNumber": ""})
 		State.SAVE_LIST, State.LOAD_LIST:
 			if state == State.SAVE_LIST:
-				rows.append({"textField": JournalView.translate("$[NEW SAVE]"), "SaveNumber": ""})
+				rows.append({"textField": UiDraw.translate("$[NEW SAVE]"), "SaveNumber": ""})
 			for save: Dictionary in _saves:
 				rows.append({"textField": String(save.get("location", "")), "SaveNumber": String(save.get("number", ""))})
 		State.CONFIRM:
@@ -461,7 +461,7 @@ func mappings() -> Array:
 			art = key_art(int(event["keys"][0]))
 		elif not (event.get("mouse", []) as Array).is_empty():
 			art = "Mouse%d" % (int(event["mouse"][0]) + 1)  # the movie's Mouse1..Mouse8 art (M1 the left button)
-		out.append({"textField": JournalView.translate("$" + fields[0]), "art": art})
+		out.append({"textField": UiDraw.translate("$" + fields[0]), "art": art})
 	return out
 
 
@@ -487,15 +487,15 @@ func buttons() -> Array:
 		State.SAVE_LIST:
 			# onSaveHighlight: Delete only on a save, not on [NEW SAVE].
 			if list_index == 0:
-				return [["Esc", JournalView.translate("$Cancel"), 1.0]]
-			return [["X", JournalView.translate("$Delete"), 1.0], ["Esc", JournalView.translate("$Cancel"), 1.0]]
+				return [["Esc", UiDraw.translate("$Cancel"), 1.0]]
+			return [["X", UiDraw.translate("$Delete"), 1.0], ["Esc", UiDraw.translate("$Cancel"), 1.0]]
 		State.LOAD_LIST:
-			return [["X", JournalView.translate("$Delete"), 1.0], ["T", JournalView.translate("$CharacterSelection"), 1.0],
-				["Esc", JournalView.translate("$Cancel"), 1.0]]
+			return [["X", UiDraw.translate("$Delete"), 1.0], ["T", UiDraw.translate("$CharacterSelection"), 1.0],
+				["Esc", UiDraw.translate("$Cancel"), 1.0]]
 		State.CHARACTERS:
-			return [["Esc", JournalView.translate("$Cancel"), 1.0]]
+			return [["Esc", UiDraw.translate("$Cancel"), 1.0]]
 		State.OPTIONS, State.CONTROLS:
-			return [["T", JournalView.translate("$Defaults"), 1.0], ["Esc", JournalView.translate("$Cancel"), 1.0]]
+			return [["T", UiDraw.translate("$Defaults"), 1.0], ["Esc", UiDraw.translate("$Cancel"), 1.0]]
 	return []
 
 
@@ -506,7 +506,7 @@ func draw(view: JournalView) -> void:
 	if page.is_empty():
 		return
 	var shown := _shown_panels()
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	look.draw_texts = true
 	for name: String in PANELS:
 		if not shown.has(name):
@@ -518,7 +518,7 @@ func draw(view: JournalView) -> void:
 	UiDraw.character(view, JournalView.SWF, int(page["id"]), page["xform"], Color.WHITE, look)
 	var rows := []
 	for key: String in CATEGORIES:
-		rows.append({"textField": JournalView.translate(key)})
+		rows.append({"textField": UiDraw.translate(key)})
 	view.draw_centered_list(PAGE + "/CategoryList_mc/List_mc", rows, main_index)
 	var panel_state := state if state != State.CONFIRM else confirm.get("back", State.MAIN) as State
 	match panel_state:
@@ -527,23 +527,23 @@ func draw(view: JournalView) -> void:
 		State.SETTINGS:
 			var srows := []
 			for key: String in SETTINGS_LIST:
-				srows.append({"textField": JournalView.translate(key)})
+				srows.append({"textField": UiDraw.translate(key)})
 			view.draw_list(PAGE + "/SettingsPanel/List_mc", srows, settings_index, 0)
 		State.OPTIONS:
 			_draw_options(view)
 		State.CONTROLS:
 			_draw_mappings(view)
 		State.QUIT_LIST:
-			view.draw_list(PAGE + "/PCQuitPanel/List_mc", [{"textField": JournalView.translate("$Main Menu")},
-				{"textField": JournalView.translate("$Desktop")}], quit_index, 0)
+			view.draw_list(PAGE + "/PCQuitPanel/List_mc", [{"textField": UiDraw.translate("$Main Menu")},
+				{"textField": UiDraw.translate("$Desktop")}], quit_index, 0)
 	if state == State.CONFIRM:
 		var text := view.at(PAGE + "/ConfirmPanel/ConfirmText")
 		if not text.is_empty():
 			var field := JournalView._child(int(text["id"]), "textField")
 			view.text_block(int(field["character"]), (text["xform"] as Transform2D) * UiDraw.matrix(field["matrix"]),
-				JournalView.translate(String(confirm["text"])))
-		view.draw_buttons(PAGE + "/ConfirmPanel/ButtonRect", [["Enter", JournalView.translate("$Yes"), 1.0],
-			["Tab", JournalView.translate("$No"), 1.0]], ["AcceptMouseButton", "CancelMouseButton"])
+				UiDraw.translate(String(confirm["text"])))
+		view.draw_buttons(PAGE + "/ConfirmPanel/ButtonRect", [["Enter", UiDraw.translate("$Yes"), 1.0],
+			["Tab", UiDraw.translate("$No"), 1.0]], ["AcceptMouseButton", "CancelMouseButton"])
 
 
 func _shown_panels() -> Dictionary:
@@ -589,7 +589,7 @@ func _draw_saves(view: JournalView, panel_state: State) -> void:
 	if info.is_empty():
 		return
 	var texts := {"textField": "%s, %s, %s %d" % [save.get("name", ""), save.get("race", ""),
-			JournalView.translate("$Level"), int(save.get("level", 1))],
+			UiDraw.translate("$Level"), int(save.get("level", 1))],
 		"PlayTimeText": save.get("play_time", ""), "DateText": save.get("date", "")}
 	for name: String in texts:
 		var field := JournalView._child(int(info["id"]), name)
@@ -630,7 +630,7 @@ func _draw_options(view: JournalView) -> void:
 		var type := int(option[1])
 		# SettingsOptionItem: the chosen option at full alpha, the others at 30%.
 		var alpha := 1.0 if i == option_index else UNSELECTED_ALPHA
-		var row := {"textField": JournalView.translate(option[0]), "fit": ["textField"], "hide": [],
+		var row := {"textField": UiDraw.translate(option[0]), "fit": ["textField"], "hide": [],
 			"colours": {"optionStepper/textField": Color(1, 1, 1, alpha)}}
 		if type != 0:
 			row["hide"].append("scrollBar")
@@ -638,7 +638,7 @@ func _draw_options(view: JournalView) -> void:
 			row["hide"].append("optionStepper")
 		else:
 			var key: String = (option[3] as Array)[int(value)]
-			row["optionStepper/textField"] = DIFFICULTY_TEXT.get(key, JournalView.translate(key))
+			row["optionStepper/textField"] = DIFFICULTY_TEXT.get(key, UiDraw.translate(key))
 		if type != 2:
 			row["hide"].append("checkBox")
 		var clip: Dictionary = clips[slot]
@@ -670,7 +670,7 @@ func _draw_slider(view: JournalView, item: int, item_xform: Transform2D, value: 
 		return
 	var track_rect := UiDraw.matrix(track["matrix"]) * UiAssets.bounds(JournalView.SWF, int(track["character"]))
 	var thumb_h := UiAssets.bounds(JournalView.SWF, int(thumb["character"])).end.y
-	var look := JournalView.look()
+	var look := UiDraw.text_look()
 	var thumb_at := UiDraw.matrix(thumb["matrix"]).origin
 	thumb_at.y = track_rect.position.y + (track_rect.size.y - thumb_h) * clampf(value, 0.0, 1.0)
 	look.moves["thumb"] = thumb_at

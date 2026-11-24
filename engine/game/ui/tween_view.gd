@@ -21,11 +21,6 @@ const SWF := "tweenmenu"
 const LABELS := ["None", "Skills", "Magic", "Inventory", "Map"]
 const DIRECTIONS := ["", "skills", "magic", "inventory", "map"]
 const INPUT_RECTS := {"SkillsInputRect": 1, "MagicInputRect": 2, "ItemsInputRect": 3, "MapInputRect": 4}
-## Months' and days' GMSTs (the bottom bar's date), the game's calendar: day 0 is Sundas, 17th of Last Seed, 4E 201.
-const MONTHS := ["sMonthJanuary", "sMonthFebruary", "sMonthMarch", "sMonthApril", "sMonthMay", "sMonthJune",
-	"sMonthJuly", "sMonthAugust", "sMonthSeptember", "sMonthOctober", "sMonthNovember", "sMonthDecember"]
-const MONTH_DAYS := [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-const DAYS := ["sDaySunday", "sDayMonday", "sDayTuesday", "sDayWednesday", "sDayThursday", "sDayFriday", "sDaySaturday"]
 
 ## The highlighted direction: 0 none, 1 Skills, 2 Magic, 3 Items, 4 Map.
 var selection := 0
@@ -134,47 +129,5 @@ func _draw() -> void:
 		look.fills["LevelProgressBar"] = clampf(float(progress["xp"]) / maxf(progression.level_up_threshold(level), 1.0), 0.0, 1.0)
 		if progression.level_up_ready():
 			look.texts["SkillsText_mc/textField"] = "LEVEL UP"
-	look.texts["DateText"] = date_text()
+	look.texts["DateText"] = UiDraw.date_text(_session)
 	UiDraw.character(self, SWF, int(menu["id"]), fill() * (menu["xform"] as Transform2D), Color.WHITE, look)
-
-
-## The bottom bar's date: "Sundas, 8:01 AM, 17th of Last Seed, 4E 201".
-func date_text() -> String:
-	if _session.clock == null or _session.world == null:
-		return ""
-	return format_date(_session.clock.get_game_days(), _session.clock.get_hour(),
-		func(setting: String) -> String: return _session.world.get_gmst_string(setting, ""))
-
-
-## `days` passed since the game's start (day 0: Sundas, 17th of Last Seed, 4E 201) and the hour as the game words
-## them; `gmst` names a month or day. The Sleep/Wait menu's time has no year (`with_year` false).
-static func format_date(days: float, hour: float, gmst: Callable, with_year := true) -> String:
-	var day := int(floor(days))
-	var weekday: String = gmst.call(DAYS[day % 7])
-	var month := 7
-	var day_of_month := 17 + day
-	var year := 201
-	while day_of_month > MONTH_DAYS[month]:
-		day_of_month -= MONTH_DAYS[month]
-		month += 1
-		if month == 12:
-			month = 0
-			year += 1
-	var minutes := int(floor(fposmod(hour, 24.0) * 60.0))
-	var h := minutes / 60
-	var clock := "%d:%02d %s" % [12 if h % 12 == 0 else h % 12, minutes % 60, "AM" if h < 12 else "PM"]
-	var date := "%s, %s, %d%s of %s" % [weekday, clock, day_of_month, _ordinal(day_of_month), gmst.call(MONTHS[month])]
-	return date + (", 4E %d" % year if with_year else "")
-
-
-static func _ordinal(n: int) -> String:
-	if n % 100 >= 11 and n % 100 <= 13:
-		return "th"
-	match n % 10:
-		1:
-			return "st"
-		2:
-			return "nd"
-		3:
-			return "rd"
-	return "th"
