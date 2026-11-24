@@ -884,6 +884,9 @@ private:
     struct ReferenceHost;
     std::unique_ptr<vm::ReferenceHost> new_reference_host();
     std::unique_ptr<vm::ReferenceHost> reference_host_ = new_reference_host();
+    struct SceneHost;
+    std::unique_ptr<vm::SceneRuntime::Host> new_scene_host();
+    std::unique_ptr<vm::SceneRuntime::Host> scene_host_ = new_scene_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {

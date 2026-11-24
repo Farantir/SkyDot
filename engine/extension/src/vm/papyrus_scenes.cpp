@@ -5,12 +5,36 @@
 // are scenes/scenes.hpp, the host and the Scene natives are SceneRuntime.
 #include "vm/papyrus.hpp"
 
+#include "data/fb_search.hpp"
+#include "data/scripts.hpp"
 #include "vm/papyrus_common.hpp"
+#include "world_generated.h"
 
 using godot::Array;
 using godot::Dictionary;
 
 namespace skydot {
+
+struct SkydotPapyrus::SceneHost final : vm::SceneRuntime::Host {
+    explicit SceneHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
+    vm::QuestHost& quest_host() override { return *owner_.quest_host_; }
+    conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
+    void attach_scene_scripts(std::uint32_t scene) override {
+        const auto* root = owner_.world_root();
+        if (const auto* s = root != nullptr ? lookup(root->scenes(), scene) : nullptr) {
+            owner_.attach_scripts(scene, script_list(s->scripts(), false), s->quest());
+        }
+    }
+    void package_signal(std::uint32_t actor, std::uint32_t package, bool push) override {
+        owner_.emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), push);
+    }
+    void log(const std::string& text) override { owner_.print_line(text); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::SceneRuntime::Host> SkydotPapyrus::new_scene_host() { return std::make_unique<SceneHost>(*this); }
 
 Array SkydotPapyrus::scenes_update(double seconds) {
     Array out;

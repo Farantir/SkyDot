@@ -680,7 +680,7 @@ struct PerkEffects final : perks::EffectSink {
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldEvents,
-                             vm::SceneRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
+                             vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
@@ -925,21 +925,10 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
         return handler.call(String(kind), args);
     }
 
-    // ---- vm::SceneRuntime::Host
+    // ---- shared by several hosts
     const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
     vm::WorldAccess& world_access() override { return *owner_.world_host_; }
-    vm::QuestHost& quest_host() override { return *owner_.quest_host_; }
-    conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
-    void attach_scene_scripts(std::uint32_t scene) override {
-        if (const auto* s = world() != nullptr ? lookup(world()->root()->scenes(), scene) : nullptr) {
-            owner_.attach_scripts(scene, script_list(s->scripts(), false), s->quest());
-        }
-    }
-    void package_signal(std::uint32_t actor, std::uint32_t package, bool push) override {
-        owner_.emit_signal("scene_package", static_cast<std::int64_t>(actor), static_cast<std::int64_t>(package), push);
-    }
     void log(const std::string& text) override { owner_.print_line(text); }
-
 
 private:
     SkydotPapyrus& owner_;
@@ -1168,7 +1157,7 @@ void SkydotPapyrus::bind_natives() {
     progression_.bind_natives(*vm_);
     progression_.clear();
     crafting_.bind(*access_);
-    scene_.bind_natives(*vm_, *access_, dialogue_);
+    scene_.bind_natives(*vm_, *scene_host_, dialogue_);
 }
 
 // ---- values -------------------------------------------------------------------
