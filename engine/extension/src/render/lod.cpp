@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/lod.hpp"
+#include "data/text.hpp"
 #include "render/large_refs.hpp"
 #include "render/materials.hpp"
 #include "render/shader_source.hpp"
@@ -39,11 +40,6 @@ namespace {
 
 constexpr auto k_cell_units = static_cast<double>(formats::k_cell_units);
 constexpr std::uint32_t k_lod_format = 1;
-
-std::string utf8(const String& s) {
-    const auto bytes = s.utf8();
-    return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
-}
 
 /// A verified LOD asset's root, or null.
 const lfb::Lod* read_lod(const godot::PackedByteArray& bytes) {

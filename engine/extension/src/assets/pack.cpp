@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "assets/pack.hpp"
 
+#include "data/text.hpp"
 #include "assets/vpath.hpp"
 #include "assets/zip_reader.hpp"
 
@@ -43,9 +44,6 @@ std::string to_std(const String& s) {
     return std::string(s.utf8().get_data());
 }
 
-String to_godot(std::string_view s) {
-    return String::utf8(s.data(), static_cast<int>(s.size()));
-}
 
 // A size as a String; Godot's num_uint64 takes a signed argument.
 String count(std::size_t n) {

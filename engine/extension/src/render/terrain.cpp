@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/terrain.hpp"
+#include "data/text.hpp"
 #include "render/materials.hpp"
 #include "render/shader_source.hpp"
 
@@ -41,9 +42,6 @@ namespace {
 constexpr float k_spacing = 128.0F; // game units between vertices
 constexpr int k_last = TerrainBuilder::k_grid - 1;
 
-String to_godot(const std::string& s) {
-    return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
 
 } // namespace
 

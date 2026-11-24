@@ -38,14 +38,6 @@ namespace skydot {
 
 namespace {
 
-std::string utf8(const String& s) {
-    const auto bytes = s.utf8();
-    return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
-}
-
-String to_godot(const std::string& s) {
-    return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
 
 bool scalar_type(std::string_view type) {
     return type == "int" || type == "float" || type == "bool" || type == "string";

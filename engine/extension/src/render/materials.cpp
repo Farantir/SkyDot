@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "render/materials.hpp"
 
+#include "data/text.hpp"
 #include "render/effect_asset.hpp"
 #include "render/image_space.hpp"
 #include "render/lod.hpp"
@@ -686,14 +687,6 @@ Ref<godot::ShaderMaterial> SkydotMaterials::particle_material(const Dictionary& 
     return out;
 }
 
-namespace {
-
-std::string utf8(const String& s) {
-    const auto bytes = s.utf8();
-    return std::string(bytes.get_data(), static_cast<std::size_t>(bytes.length()));
-}
-
-} // namespace
 
 std::shared_ptr<const EffectAsset> SkydotMaterials::effects(godot::Node* root) {
     const String path = root->get_scene_file_path();

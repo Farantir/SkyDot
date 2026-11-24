@@ -11,6 +11,7 @@
 #include "vm/condition_world.hpp"
 
 #include "data/scripts.hpp"
+#include "data/text.hpp"
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
 #include "data/actors.hpp"
@@ -40,8 +41,6 @@ namespace skydot {
 namespace magic_glue {
 
 namespace wfb = bethconv::pack::wfb;
-
-inline String to_godot(const std::string& s) { return String::utf8(s.c_str(), static_cast<int>(s.size())); }
 
 inline std::string hex(std::uint32_t v) { return vm::magic_hex(v); }
 

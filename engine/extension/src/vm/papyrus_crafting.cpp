@@ -7,6 +7,7 @@
 
 #include "conditions/functions.hpp"
 #include "data/fb_search.hpp"
+#include "data/text.hpp"
 
 #include <godot_cpp/variant/utility_functions.hpp>
 
@@ -23,9 +24,6 @@ namespace {
 
 namespace wfb = bethconv::pack::wfb;
 
-String to_godot(const std::string& s) {
-    return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
 
 } // namespace
 

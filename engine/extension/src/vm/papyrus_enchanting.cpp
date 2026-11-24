@@ -6,6 +6,7 @@
 #include "vm/papyrus.hpp"
 
 #include "data/fb_search.hpp"
+#include "data/text.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -20,14 +21,6 @@ namespace {
 
 namespace wfb = bethconv::pack::wfb;
 
-String to_godot(const std::string& s) {
-    return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
-
-std::string utf8(const String& s) {
-    const auto bytes = s.utf8();
-    return std::string(bytes.get_data(), static_cast<std::size_t>(bytes.length()));
-}
 
 const char* refusal_text(magic::Refusal r) {
     switch (r) {

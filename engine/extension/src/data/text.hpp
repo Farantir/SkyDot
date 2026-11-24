@@ -16,6 +16,11 @@
 
 namespace skydot {
 
+/// UTF-8 text as a Godot string.
+inline godot::String to_godot(std::string_view s) {
+    return godot::String::utf8(s.data(), static_cast<int>(s.size()));
+}
+
 /// A FlatBuffers string (UTF-8) as a Godot string; empty for null.
 inline godot::String to_godot(const flatbuffers::String* s) {
     return s == nullptr ? godot::String() : godot::String::utf8(s->c_str(), static_cast<int>(s->size()));

@@ -6,6 +6,7 @@
 // data/leveled.hpp (pure); this is the glue to the VM's inventory, the
 // world's records and Godot.
 #include "vm/papyrus.hpp"
+#include "assets/vpath.hpp"
 
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
@@ -27,14 +28,6 @@ namespace {
 
 namespace wfb = bethconv::pack::wfb;
 
-String to_godot(const std::string& s) {
-    return String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
-
-std::string lower(std::string s) {
-    std::ranges::transform(s, s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
 
 } // namespace
 
@@ -109,7 +102,7 @@ Array SkydotPapyrus::inventory(std::int64_t owner) {
                     name += std::string(" (") + tier + ")";
                 }
             }
-            rows.push_back({lower(name), form, extra, count, std::move(name), tier, info});
+            rows.push_back({ascii_lower(name), form, extra, count, std::move(name), tier, info});
         };
         if (const std::int64_t plain = inventory.count_extra(id, form, 0); plain > 0) {
             add_row(0, plain);

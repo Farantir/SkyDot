@@ -2,6 +2,7 @@
 #include "ai/furniture.hpp"
 
 #include "ai/idle_choice.hpp"
+#include "data/text.hpp"
 #include "render/furniture_markers.hpp"
 #include "vm/condition_world.hpp"
 #include "world/world.hpp"
@@ -16,7 +17,6 @@ using godot::Dictionary;
 using godot::String;
 using godot::Variant;
 
-std::string utf8(const String& s) { return s.utf8().get_data(); }
 
 /// The game as far as the pack knows it, plus the furniture facts a caller states.
 class Facts final : public PapyrusConditionWorld {

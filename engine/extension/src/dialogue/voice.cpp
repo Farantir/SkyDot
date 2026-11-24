@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "dialogue/voice.hpp"
+#include "assets/vpath.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,10 +9,6 @@
 namespace skydot::dialogue {
 namespace {
 
-std::string lower(std::string s) {
-    std::ranges::transform(s, s.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-    return s;
-}
 
 constexpr std::size_t k_name_limit = 25;
 constexpr std::size_t k_quest_limit = 10;
@@ -20,8 +17,8 @@ constexpr std::size_t k_quest_limit = 10;
 
 std::string voice_stem(const std::string& quest_edid, const std::string& topic_edid, std::uint32_t local_id,
                        unsigned number) {
-    std::string q = lower(quest_edid);
-    std::string t = lower(topic_edid);
+    std::string q = ascii_lower(quest_edid);
+    std::string t = ascii_lower(topic_edid);
     if (q.size() + t.size() > k_name_limit) {
         q.resize(std::min(q.size(), k_quest_limit));
         t.resize(std::min(t.size(), k_name_limit - q.size()));
@@ -49,7 +46,7 @@ bool plugin_of_form(const bethconv::pack::wfb::World& world, std::uint32_t form,
 }
 
 std::string voice_path(const std::string& plugin_file, const std::string& voice_type_edid, const std::string& stem) {
-    return "sound/voice/" + lower(plugin_file) + "/" + lower(voice_type_edid) + "/" + stem + ".fuz";
+    return "sound/voice/" + ascii_lower(plugin_file) + "/" + ascii_lower(voice_type_edid) + "/" + stem + ".fuz";
 }
 
 } // namespace skydot::dialogue

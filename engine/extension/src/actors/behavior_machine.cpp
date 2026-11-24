@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "actors/behavior_machine.hpp"
+#include "assets/vpath.hpp"
 
 #include "animation_generated.h"
 
@@ -22,13 +23,6 @@ bool same_event(std::string_view a, std::string_view b) {
 
 constexpr int k_max_chain = 64; ///< Events handled in one step, against loops.
 
-std::string lower(std::string_view s) {
-    std::string out(s);
-    for (char& c : out) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return out;
-}
 
 /// Recursive descent over `||`, `&&`, comparisons, `+ -`, unary `! -`, parentheses, numbers and
 /// variable names (a name may start with a digit: `1stPRot`).
@@ -138,7 +132,7 @@ private:
         if (end == word.c_str() + word.size()) {
             return number;
         }
-        const auto it = vars_.find(lower(word));
+        const auto it = vars_.find(ascii_lower(word));
         return it == vars_.end() ? 0.0F : it->second;
     }
 
@@ -206,7 +200,7 @@ BehaviorGraphDef behavior_graph_from_asset(const afb::Animation& asset) {
     }
     if (const auto* names = graph->variable_names(); names != nullptr && graph->variable_values() != nullptr) {
         for (flatbuffers::uoffset_t i = 0; i < names->size() && i < graph->variable_values()->size(); ++i) {
-            def.variables.try_emplace(lower(names->Get(i)->string_view()), graph->variable_values()->Get(i));
+            def.variables.try_emplace(ascii_lower(names->Get(i)->string_view()), graph->variable_values()->Get(i));
         }
     }
     const auto machine_count = static_cast<int>(machines->size());
@@ -554,10 +548,10 @@ BehaviorSet::BehaviorSet(BehaviorGraphDef def) : def_(std::move(def)) {
     running_.assign(machines_.size(), false);
 }
 
-void BehaviorSet::set_variable(std::string_view name, float value) { (*variables_)[lower(name)] = value; }
+void BehaviorSet::set_variable(std::string_view name, float value) { (*variables_)[ascii_lower(name)] = value; }
 
 float BehaviorSet::variable(std::string_view name) const {
-    const auto it = variables_->find(lower(name));
+    const auto it = variables_->find(ascii_lower(name));
     return it == variables_->end() ? 0.0F : it->second;
 }
 

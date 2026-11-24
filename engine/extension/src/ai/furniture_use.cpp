@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "ai/furniture_use.hpp"
+#include "assets/vpath.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,13 +15,6 @@ constexpr double k_step = 1.0 / 30.0;
 /// A walked-in enter that has not seated the actor after this long is given up in `enter_travel`.
 constexpr double k_enter_limit = 60.0;
 
-std::string lowered(std::string_view s) {
-    std::string out(s);
-    for (char& c : out) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return out;
-}
 
 /// The pose after `m`, a clip's motion at some time, when the instance started at `base` with motion `ref`.
 Pose moved(const Pose& base, const RootMotion& ref, const RootMotion& m, double scale) {
@@ -95,12 +89,12 @@ void GraphRun::set_pose(const Pose& pose) {
 
 void GraphRun::note(const std::vector<std::string>& events) {
     for (const std::string& e : events) {
-        seen_.push_back(lowered(e));
+        seen_.push_back(ascii_lower(e));
     }
 }
 
 bool GraphRun::saw(std::string_view event) const {
-    const std::string want = lowered(event);
+    const std::string want = ascii_lower(event);
     return std::ranges::find(seen_, want) != seen_.end();
 }
 

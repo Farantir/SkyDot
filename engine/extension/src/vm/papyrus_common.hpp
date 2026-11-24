@@ -4,6 +4,7 @@
 #pragma once
 
 #include "data/godot_values.hpp"
+#include "data/text.hpp"
 #include "vm/natives_args.hpp"
 #include "vm/vm.hpp"
 
@@ -14,13 +15,7 @@
 
 namespace skydot::natives {
 
-inline godot::String to_godot(const std::string& s) {
-    return godot::String::utf8(s.c_str(), static_cast<int>(s.size()));
-}
-
-inline std::string utf8(const godot::String& s) {
-    const auto bytes = s.utf8();
-    return {bytes.get_data(), static_cast<std::size_t>(bytes.length())};
-}
+using skydot::to_godot;
+using skydot::utf8;
 
 } // namespace skydot::natives

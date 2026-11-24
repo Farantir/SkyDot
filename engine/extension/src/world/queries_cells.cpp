@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "world/queries.hpp"
+#include "assets/vpath.hpp"
 #include "data/coordinates.hpp"
 #include "data/fb_search.hpp"
 #include "nav/navmesh.hpp"
@@ -34,11 +35,7 @@ bool contains_ci(const flatbuffers::String* haystack, const std::string& needle_
     if (haystack == nullptr) {
         return false;
     }
-    std::string lower(haystack->string_view());
-    std::ranges::transform(lower, lower.begin(), [](unsigned char c) {
-        return static_cast<char>((c >= 'A' && c <= 'Z') ? c - 'A' + 'a' : c);
-    });
-    return lower.find(needle_lower) != std::string::npos;
+    return ascii_lower(haystack->string_view()).find(needle_lower) != std::string::npos;
 }
 
 /// Game units per exterior cell side.
