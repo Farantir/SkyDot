@@ -9,11 +9,9 @@
 #   Enter / Tab   OK (the hours) / Cancel; the buttons are the movie's MouseButtons with the CrossPlatformButtons
 #                 art ("Enter", "Tab"); a click on them does the same
 #   OK            controls disabled (slider and track at their "disabled" frames, the thumb no longer moves), then
-#                 one hour passes per HOUR_SECONDS (Rest.hour) while HoursText counts down and CurrentTime follows;
-#                 a sleep fades the world to black under the menu and back after it. Measured with SkyrimRemote
-#                 (skycompare-data/ui-sleepwait, 2026-11-15): the first hour lands about 1 s after OK and each
-#                 further one about 1.07 s later, the game's time standing still between them; the menu closes
-#                 after the last hour.
+#                 the rest runs (Rest.step: an hour per Rest.HOUR_SECONDS, the game's time standing still between
+#                 them) while HoursText counts down and CurrentTime follows; a sleep fades the world to black under
+#                 the menu and back after it. The menu closes when the rest is over.
 # The game refuses a rest before the menu opens (Rest.refusal: a HUD message instead).
 class_name SleepWaitView
 extends Control
@@ -30,8 +28,8 @@ const OFFSET_LEFT := 2.0
 const OFFSET_RIGHT := 40.0
 ## SleepWaitMenu.handleInput: Page Up / Page Down move the slider by this.
 const PAGE_STEP := 4.0
-## Real seconds per hour of a rest (measured in the game, see above).
-const HOUR_SECONDS := 1.05
+## How long the world takes to fade to black behind a sleep, and back (an hour of the rest).
+const HOUR_SECONDS := Rest.HOUR_SECONDS
 
 var enabled: Callable = func() -> bool: return true
 var key_label: Callable = func(_action: StringName) -> String: return ""
@@ -39,11 +37,14 @@ var key_label: Callable = func(_action: StringName) -> String: return ""
 var value := MINIMUM
 var sleeping := false
 ## The rest under way: hours still to pass (0 when the menu waits for a choice).
-var hours_left := 0
+var hours_left: int:
+	get:
+		return _session.rest.hours_left if _resting and _session.rest != null else 0
 
 var _session: GameSession
 var _open := false
-var _clock := 0.0
+## Whether this menu began the rest under way.
+var _resting := false
 ## How black the world is behind a sleep (0 to 1); it fades back after the menu closes.
 var _fade := 0.0
 var _dragging := false
@@ -69,7 +70,7 @@ func is_open() -> bool:
 
 ## The menu for a wait (`bed` 0) or a sleep in `bed`. A rest the game refuses shows its message instead.
 func open(sleep: bool, bed := 0) -> void:
-	if _open or _session.rest == null:
+	if _open or _session.rest == null or _session.rest.is_resting():
 		return
 	var refusal := _session.rest.refusal(sleep, bed)
 	if not refusal.is_empty():
@@ -78,17 +79,19 @@ func open(sleep: bool, bed := 0) -> void:
 	_open = true
 	sleeping = sleep
 	value = MINIMUM
-	hours_left = 0
+	_resting = false
 	_dragging = false
 	visible = true
 	queue_redraw()
 	engaged.emit(true)
 
 
+## Closing does not stop a rest under way: Rest.step finishes it.
 func close() -> void:
 	if not _open:
 		return
 	_open = false
+	_resting = false
 	visible = _fade > 0.0
 	engaged.emit(false)
 
@@ -102,10 +105,9 @@ func hours() -> int:
 func accept() -> void:
 	if not _open or hours_left > 0:
 		return
-	hours_left = hours()
 	_thumb_value = value
-	_clock = 0.0
-	_session.rest.begin(sleeping, hours_left)
+	_session.rest.begin(sleeping, hours())
+	_resting = true
 	queue_redraw()
 
 
@@ -117,20 +119,13 @@ func set_value(to: float) -> void:
 
 
 func _process(delta: float) -> void:
-	if _open and hours_left > 0:
-		_clock += delta
+	if _resting and not _session.rest.is_resting():
+		_resting = false
+		close()
+	if _open and _resting:
 		if sleeping:
 			_fade = minf(1.0, _fade + delta / HOUR_SECONDS)
-		if _clock >= HOUR_SECONDS:
-			_clock -= HOUR_SECONDS
-			_session.rest.hour()
-			hours_left -= 1
-			value = float(hours_left) if hours_left > 0 else value
-			var stopped := _session.rest.interrupted()
-			if hours_left <= 0 or stopped:
-				_session.rest.finish(stopped and hours_left > 0)
-				hours_left = 0
-				close()
+		value = float(hours_left)
 		queue_redraw()
 	elif not _open and _fade > 0.0:
 		_fade = maxf(0.0, _fade - delta / HOUR_SECONDS)

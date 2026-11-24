@@ -69,7 +69,8 @@ func _run(pack_dir: String) -> void:
 	view.accept()
 	for i in 5:
 		if view.is_open():
-			view._process(SleepWaitView.HOUR_SECONDS)
+			_session.rest.step(Rest.HOUR_SECONDS)
+			view._process(Rest.HOUR_SECONDS)
 	var after := _session.actor_value(PLAYER, "Health")
 	print("an hour's wait: Health %.2f -> %.2f (the game: 10.10 -> 13.71), hour %.2f -> %.2f" % [before, after, hour,
 		_session.clock.get_hour()])

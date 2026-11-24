@@ -135,6 +135,8 @@ func arm_quit() -> void:
 ## False when the shell must not drive the player this frame: the run is quitting or an
 ## --activate is running.
 func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool:
+	if _session.rest != null:
+		_session.rest.step(delta)  # also while the world waits under the Sleep/Wait menu
 	if paused.call():
 		_count_quit()
 		return false

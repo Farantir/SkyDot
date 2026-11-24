@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Waiting and sleeping, the Sleep/Wait menu's rules (ui/sleep_wait_view.gd draws and times the menu):
+# Waiting and sleeping, the Sleep/Wait menu's rules (ui/sleep_wait_view.gd draws the menu):
 #   refusal()   why the player may not rest now, as the game words it (GMSTs sNoWait* / sNoSleep*): enemies fight
 #               the player, the player is in the air, a bed someone else owns (vm/ownership.hpp: the bed's owner, an
 #               inn's rented bed is the player's through RentRoomScript's SetActorOwner)
 #   begin()     the clock stands still between the hours (in the game no time passes between them); a sleep sends
 #               OnSleepStart to the scripts that called RegisterForSleep
+#   step()      the rest's time, driven by the shell's loop also while the world waits under the menu: an hour
+#               passes every HOUR_SECONDS; after the last one, or one in which an enemy began fighting the player,
+#               the rest finishes, however the menu was closed
 #   hour()      one hour passes: the clock (the AI and the weather follow it), the actors recover as two hours of
 #               play would let them (RECOVERY_PER_HOUR, measured), the journal's Hours Waiting / Hours Slept count
 #   finish()    the clock runs again; a sleep sends OnSleepStop (PlayerSleepQuest gives Rested or Well Rested)
@@ -29,6 +32,12 @@ const FALLBACK := {
 const RECOVERY_PER_HOUR := 7200.0
 ## A furniture marker's animation type for sleeping (BSFurnitureMarker: 1 sit, 2 sleep, 4 lean).
 const SLEEP_MARKER := 2
+## Real seconds per hour of a rest. Measured with SkyrimRemote (skycompare-data/ui-sleepwait, 2026-11-15): the first
+## hour lands about 1 s after OK and each further one about 1.07 s later.
+const HOUR_SECONDS := 1.05
+
+## Hours of the rest under way still to pass (0: none).
+var hours_left := 0
 
 var _session: GameSession
 ## The actors fighting the player (SkydotAi's combat state, target the player).
@@ -36,6 +45,8 @@ var _foes := {}
 var _sleeping := false
 var _resting := false
 var _time_scale := 0.0
+## Real seconds since the last hour of the rest passed.
+var _hour_clock := 0.0
 
 
 func _init(session: GameSession) -> void:
@@ -64,9 +75,16 @@ static func is_bed(model: Node, depth := 0) -> bool:
 	return false
 
 
-## A load: nobody fights the player any more.
+## A load or a restart: nobody fights the player any more, and a rest under way ends. The clock runs again at the
+## scale from before unless the load set one (the scripts of a loaded game never heard of the sleep: no OnSleepStop).
 func reset() -> void:
 	_foes.clear()
+	if not _resting:
+		return
+	_resting = false
+	hours_left = 0
+	if _session.clock.get_time_scale() == 0.0:
+		_session.clock.set_time_scale(_time_scale)
 
 
 func is_resting() -> bool:
@@ -110,11 +128,28 @@ func refusal(sleeping: bool, bed := 0) -> String:
 func begin(sleeping: bool, hours: int) -> void:
 	_resting = true
 	_sleeping = sleeping
+	hours_left = hours
+	_hour_clock = 0.0
 	_time_scale = _session.clock.get_time_scale()
 	_session.clock.set_time_scale(0.0)
 	if sleeping:
 		var now := _session.clock.get_game_days()
 		_session.papyrus.sleep_start(now, now + hours / 24.0)
+
+
+## `delta` real seconds of the rest under way.
+func step(delta: float) -> void:
+	if not _resting:
+		return
+	_hour_clock += delta
+	if _hour_clock < HOUR_SECONDS:
+		return
+	_hour_clock -= HOUR_SECONDS
+	hour()
+	hours_left -= 1
+	var stopped := interrupted()
+	if hours_left <= 0 or stopped:
+		finish(stopped and hours_left > 0)
 
 
 ## One hour of the rest passes.
@@ -136,6 +171,7 @@ func finish(interrupted_early: bool) -> void:
 	if not _resting:
 		return
 	_resting = false
+	hours_left = 0
 	_session.clock.set_time_scale(_time_scale)
 	if _sleeping:
 		_session.papyrus.sleep_stop(interrupted_early)

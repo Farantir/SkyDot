@@ -111,3 +111,15 @@ func test_quit_countdown_after_activations() -> void:
 	expect_eq(_loop.quit_in, -1, "not counting")
 	_session.activations_finished.emit()
 	expect_eq(_loop.quit_in, 5, "five frames when --quit-after is not given")
+
+
+func test_a_rest_runs_while_the_world_waits() -> void:
+	_session.clock = SkydotClock.new()
+	_session.clock.setup(10.0, 20.0, false)
+	_session.papyrus = SkydotPapyrus.new()
+	_session.rest = Rest.new(_session)
+	_session.rest.begin(false, 1)
+	_loop.paused = func() -> bool: return true
+	_loop.frame(Rest.HOUR_SECONDS, Callable())
+	expect(not _session.rest.is_resting(), "the hour passed and the rest is over")
+	expect_eq(_session.clock.get_time_scale(), 20.0, "the clock runs again")

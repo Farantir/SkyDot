@@ -43,7 +43,13 @@ func _rest() -> void:
 	for i in 30:
 		if not _view.is_open():
 			return
-		_view._process(SleepWaitView.HOUR_SECONDS)
+		_hour()
+
+
+## One hour of the rest's time (the shell's loop steps it), then the menu's frame.
+func _hour() -> void:
+	_session.rest.step(Rest.HOUR_SECONDS)
+	_view._process(Rest.HOUR_SECONDS)
 
 
 func _hours_between(before: float, after: float) -> float:
@@ -135,9 +141,9 @@ func _run(pack_dir: String) -> void:
 	_view.open(false)
 	_view.set_value(5.0)
 	_key(&"ui_accept")
-	_view._process(SleepWaitView.HOUR_SECONDS)
+	_hour()
 	_session.rest.on_combat_state(ACTOR, SkydotPapyrus.PLAYER_REF, 1)
-	_view._process(SleepWaitView.HOUR_SECONDS)
+	_hour()
 	expect(not _view.is_open() and _session.journal.value("Hours Waiting") == 5,
 		"a foe stops the wait after its hour: %s" % [_session.journal.value("Hours Waiting")])
 	expect(_session.clock.get_time_scale() == scale, "the time runs again after the interruption")
