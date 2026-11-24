@@ -22,6 +22,7 @@ class SkydotPapyrus;
 class SkydotWorld;
 class WorldData;
 namespace vm {
+class ItemRuntime;
 struct QuestState;
 }
 
@@ -30,8 +31,7 @@ public:
     /// `owner` may be null (an AI set up without scripts): quests, actor
     /// values, inventory and script variables then answer nothing. `world`
     /// is used then for the data; with an owner it is the owner's.
-    explicit PapyrusConditionWorld(const SkydotPapyrus* owner, const SkydotWorld* world = nullptr)
-        : owner_(owner), world_(world) {}
+    explicit PapyrusConditionWorld(SkydotPapyrus* owner, const SkydotWorld* world = nullptr);
 
     std::int32_t quest_stage(std::uint32_t quest) const override;
     bool stage_done(std::uint32_t quest, std::int32_t stage) const override;
@@ -102,6 +102,8 @@ private:
     std::uint32_t base_form(std::uint32_t ref) const;
 
     const SkydotPapyrus* owner_;
+    /// The owner's items: a query resolves the start inventory it looks at.
+    vm::ItemRuntime* items_;
     const SkydotWorld* world_;
     std::uint64_t dice_ = 0x9E3779B97F4A7C15ull;
     /// RELA ranks by (a << 32 | b), both orders; built on first use.

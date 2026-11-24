@@ -62,16 +62,16 @@ public:
     /// Remember the host and bind the item natives on `vm`.
     void bind_natives(Vm& vm, Host& host);
 
-    /// Resolved owners, leveled actor picks, equipment and extras (ITST). Mutable: an inventory resolves on
-    /// the first look at it, also from const queries.
-    [[nodiscard]] ItemStates& states() const { return states_; }
+    /// Resolved owners, leveled actor picks, equipment and extras (ITST).
+    [[nodiscard]] ItemStates& states() { return states_; }
+    [[nodiscard]] const ItemStates& states() const { return states_; }
     void clear() { states_.clear(); }
     /// The ITST section's bytes (over the VM's inventory).
     [[nodiscard]] std::vector<std::uint8_t> save() const { return states_.save(host_->inventory()); }
     void adopt(ItemStates&& loaded) { states_.adopt(std::move(loaded)); }
 
     // ItemAccess
-    void resolve_owner(std::uint32_t owner) const override;
+    void resolve_owner(std::uint32_t owner) override;
     [[nodiscard]] ItemInfo item_info_of(std::uint32_t form) const override;
     [[nodiscard]] std::string item_name_of(std::uint32_t form) const override { return item_info_of(form).name; }
     void refresh_equipment(std::uint32_t owner, std::uint32_t form) override;
@@ -109,15 +109,15 @@ public:
     void send_equip_event(std::uint32_t owner, std::uint32_t form, bool equipped);
     /// The armor and clothing bases `owner` wears, a shield in the left hand included (perk conditions
     /// WornHasKeyword and WornApparelHasKeywordCount).
-    [[nodiscard]] std::vector<std::uint32_t> worn_armor_of(std::uint32_t owner) const;
+    [[nodiscard]] std::vector<std::uint32_t> worn_armor_of(std::uint32_t owner);
     /// Whether `owner` has `form` equipped (a hand or worn); for the conditions.
-    [[nodiscard]] bool is_equipped(std::uint32_t owner, std::uint32_t form) const;
+    [[nodiscard]] bool is_equipped(std::uint32_t owner, std::uint32_t form);
     /// The form in `owner`'s left or right hand; 0 if empty.
-    [[nodiscard]] std::uint32_t hand_form(std::uint32_t owner, bool left) const;
+    [[nodiscard]] std::uint32_t hand_form(std::uint32_t owner, bool left);
     /// GetEquippedItemType of `owner`'s hand (0 left, else right); 0 if empty.
-    [[nodiscard]] std::int64_t hand_item_type(std::uint32_t owner, std::int64_t hand) const;
+    [[nodiscard]] std::int64_t hand_item_type(std::uint32_t owner, std::int64_t hand);
     /// The forms `owner` carries at least one of (resolved first).
-    [[nodiscard]] std::vector<std::uint32_t> carried_forms(std::uint32_t owner) const;
+    [[nodiscard]] std::vector<std::uint32_t> carried_forms(std::uint32_t owner);
     /// The worn armor of resolved actors, for the actor builder.
     [[nodiscard]] WornProvider worn_provider() const;
 
@@ -128,7 +128,7 @@ private:
     void note_worn(std::uint32_t owner, const std::set<std::uint32_t>& before);
 
     Host* host_ = nullptr;
-    mutable ItemStates states_;
+    ItemStates states_;
     std::set<std::uint32_t> favorites_;
 };
 

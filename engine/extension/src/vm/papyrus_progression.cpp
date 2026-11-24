@@ -59,7 +59,7 @@ std::optional<perks::EntryPoints> SkydotPapyrus::entry_points() {
                               [this](std::uint32_t ref) { return progression_.perks_of(ref); });
 }
 
-perks::EntryContext SkydotPapyrus::with_worn(perks::EntryContext ctx) const {
+perks::EntryContext SkydotPapyrus::with_worn(perks::EntryContext ctx) {
     if (ctx.worn.empty()) {
         ctx.worn = item_.worn_armor_of(ctx.owner);
     }

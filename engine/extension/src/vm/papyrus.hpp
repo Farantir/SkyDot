@@ -543,7 +543,7 @@ public:
     [[nodiscard]] const vm::ActorStates& actor_states() const { return actors_; }
     bool is_actor_dead(std::int64_t ref) const { return actors_.is_dead(static_cast<std::uint32_t>(ref)); }
     /// How many of `item` `owner` carries (the player's key check).
-    std::int64_t get_item_count(std::int64_t owner, std::int64_t item) const;
+    std::int64_t get_item_count(std::int64_t owner, std::int64_t item);
     double get_actor_value(std::int64_t ref, const godot::String& name) const;
     /// The base of an actor value (no modifiers or damage).
     double get_base_actor_value(std::int64_t ref, const godot::String& name) const;
@@ -926,7 +926,7 @@ private:
     std::optional<perks::EntryPoints> entry_points();
     /// `ctx` with the owner's worn armour bases when the caller gave none (WornHasKeyword and
     /// WornApparelHasKeywordCount ask them).
-    perks::EntryContext with_worn(perks::EntryContext ctx) const;
+    perks::EntryContext with_worn(perks::EntryContext ctx);
     /// The name a unit shows: its extra's, else its base's.
     std::string unit_name(std::uint32_t form, std::uint32_t extra) const;
     /// The soul an actor that dies now gives: level (1 if unknown) and whether it is an NPC.

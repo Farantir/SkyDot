@@ -15,7 +15,7 @@ class ItemAccess {
 public:
     virtual ~ItemAccess() = default;
     /// Give `owner` its start inventory and outfit, once.
-    virtual void resolve_owner(std::uint32_t owner) const = 0;
+    virtual void resolve_owner(std::uint32_t owner) = 0;
     /// What the data (or alchemy) says of item `form`; `known` is false for anything else.
     [[nodiscard]] virtual ItemInfo item_info_of(std::uint32_t form) const = 0;
     /// A name for any item, also created forms and ones the pack lacks.

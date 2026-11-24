@@ -45,6 +45,9 @@ const wfb::Race* race_in(const wfb::World* world, std::uint32_t race) {
 
 } // namespace
 
+PapyrusConditionWorld::PapyrusConditionWorld(SkydotPapyrus* owner, const SkydotWorld* world)
+    : owner_(owner), items_(owner != nullptr ? &owner->item_ : nullptr), world_(world) {}
+
 const WorldData* PapyrusConditionWorld::data() const {
     if (owner_ != nullptr) {
         return owner_->world_.is_valid() ? &owner_->world_->data() : nullptr;
@@ -287,7 +290,7 @@ std::int64_t PapyrusConditionWorld::item_count(std::uint32_t ref, std::uint32_t 
     if (owner_ == nullptr || owner_->vm_ == nullptr) {
         return 0;
     }
-    owner_->item_.resolve_owner(ref);
+    items_->resolve_owner(ref);
     return owner_->vm_->inventory().count(ref, item);
 }
 
@@ -446,11 +449,11 @@ bool PapyrusConditionWorld::has_magic_effect(std::uint32_t ref, std::uint32_t mg
 }
 
 bool PapyrusConditionWorld::is_equipped(std::uint32_t ref, std::uint32_t form) const {
-    return owner_ != nullptr && owner_->item_.is_equipped(ref, form);
+    return owner_ != nullptr && items_->is_equipped(ref, form);
 }
 
 std::int32_t PapyrusConditionWorld::equipped_item_type(std::uint32_t ref, std::int32_t hand) const {
-    return owner_ == nullptr ? 0 : static_cast<std::int32_t>(owner_->item_.hand_item_type(ref, hand));
+    return owner_ == nullptr ? 0 : static_cast<std::int32_t>(items_->hand_item_type(ref, hand));
 }
 
 bool PapyrusConditionWorld::is_blocking(std::uint32_t ref) const {

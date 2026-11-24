@@ -1668,7 +1668,7 @@ std::int64_t SkydotPapyrus::remove_item(std::int64_t owner, std::int64_t item, s
     return removed;
 }
 
-std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) const {
+std::int64_t SkydotPapyrus::get_item_count(std::int64_t owner, std::int64_t item) {
     item_.resolve_owner(static_cast<std::uint32_t>(owner));
     return vm_->inventory().count(static_cast<std::uint32_t>(owner), static_cast<std::uint32_t>(item));
 }

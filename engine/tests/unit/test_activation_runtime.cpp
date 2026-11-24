@@ -43,8 +43,8 @@ struct InfoWorld final : FakeWorld {
 
 struct FakeItems final : skydot::vm::ItemAccess {
     std::map<std::uint32_t, std::int64_t> dropped;
-    mutable std::vector<std::uint32_t> resolved;
-    void resolve_owner(std::uint32_t owner) const override { resolved.push_back(owner); }
+    std::vector<std::uint32_t> resolved;
+    void resolve_owner(std::uint32_t owner) override { resolved.push_back(owner); }
     skydot::vm::ItemInfo item_info_of(std::uint32_t) const override { return {}; }
     std::string item_name_of(std::uint32_t form) const override { return "item " + std::to_string(form); }
     void refresh_equipment(std::uint32_t, std::uint32_t) override {}

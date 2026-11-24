@@ -62,7 +62,7 @@ ItemInfo ItemRuntime::item_info_of(std::uint32_t form) const {
     return info;
 }
 
-void ItemRuntime::resolve_owner(std::uint32_t owner) const {
+void ItemRuntime::resolve_owner(std::uint32_t owner) {
     if (owner == 0 || states_.resolved(owner)) {
         return;
     }
@@ -350,7 +350,7 @@ bool ItemRuntime::unequip_extra(std::uint32_t owner, std::uint32_t form, std::op
     return done;
 }
 
-std::vector<std::uint32_t> ItemRuntime::worn_armor_of(std::uint32_t owner) const {
+std::vector<std::uint32_t> ItemRuntime::worn_armor_of(std::uint32_t owner) {
     resolve_owner(owner);
     std::vector<std::uint32_t> out;
     const auto* equipment = states_.find(owner);
@@ -372,24 +372,24 @@ std::vector<std::uint32_t> ItemRuntime::worn_armor_of(std::uint32_t owner) const
     return out;
 }
 
-bool ItemRuntime::is_equipped(std::uint32_t owner, std::uint32_t form) const {
+bool ItemRuntime::is_equipped(std::uint32_t owner, std::uint32_t form) {
     resolve_owner(owner);
     const auto* equipment = states_.find(owner);
     return form != 0 && equipment != nullptr && equipment->holds(form);
 }
 
-std::uint32_t ItemRuntime::hand_form(std::uint32_t owner, bool left) const {
+std::uint32_t ItemRuntime::hand_form(std::uint32_t owner, bool left) {
     resolve_owner(owner);
     const auto* equipment = states_.find(owner);
     return equipment == nullptr ? 0 : (left ? equipment->left : equipment->right);
 }
 
-std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand) const {
+std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand) {
     const std::uint32_t form = hand_form(owner, hand == 0);
     return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
 }
 
-std::vector<std::uint32_t> ItemRuntime::carried_forms(std::uint32_t owner) const {
+std::vector<std::uint32_t> ItemRuntime::carried_forms(std::uint32_t owner) {
     resolve_owner(owner);
     std::vector<std::uint32_t> forms;
     for (const auto& [form, total] : host_->inventory().items(owner)) {
