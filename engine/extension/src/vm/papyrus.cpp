@@ -683,7 +683,7 @@ struct PerkEffects final : perks::EffectSink {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::QuestHost, vm::ReferenceHost, vm::ActorHost,
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::QuestHost, vm::ReferenceHost,
                              vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
@@ -917,10 +917,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
         owner_.emit_signal("sub_graph_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
     }
 
-    // ---- vm::ActorHost
-
     vm::ActorStates& actor_states() override { return owner_.actors_; }
-    conditions::ConditionWorld& conditions() override { return owner_.condition_world(); }
     // ---- vm::ActivationRuntime::Host
     vm::ReferenceHost& references() override { return *this; }
     std::uint32_t placed_actor_base(std::uint32_t ref) const override {
@@ -1000,7 +997,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
     void announce(const std::string& line) override { owner_.trace_line(line); }
 
     // ---- vm::DialogueRuntime::Host
-    vm::ActorHost& actor_host() override { return *this; }
+    vm::ActorHost& actor_host() override { return *owner_.actor_host_; }
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
 
     // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
@@ -1109,10 +1106,6 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
     }
     void log(const std::string& text) override { owner_.print_line(text); }
 
-    bool location_loaded(std::uint32_t location) override { return owner_.location_loaded(location); }
-    void evaluate_package(std::uint32_t ref) override { owner_.evaluate_package(ref); }
-    void set_last_damager(std::uint32_t killer) override { owner_.combat_.set_last_damager(killer); }
-
     // ---- vm::ReferenceHost
 
     vm::RefStates& ref_states() override { return owner_.states_; }
@@ -1173,7 +1166,7 @@ void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, 
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }
 void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
-void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *access_); }
+void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *actor_host_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 void SkydotPapyrus::bind_map_natives() {
     vm::bind_map_natives(*vm_, [this](std::uint32_t ref) { return data_marker_flags(ref); });
@@ -1239,7 +1232,7 @@ void SkydotPapyrus::bind_actor_natives() {
             dragon_soul_absorbed();
         }
     });
-    combat_.bind_natives(*vm_, *access_, *combat_host_);
+    combat_.bind_natives(*vm_, *actor_host_, *combat_host_);
 }
 
 std::int64_t SkydotPapyrus::send_get_up(std::int64_t ref) {

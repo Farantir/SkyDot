@@ -52,6 +52,7 @@
 #include "state/triggers.hpp"
 #include "vm/vm.hpp"
 #include "vm/activation.hpp"
+#include "vm/actor_host.hpp"
 #include "vm/activation_runtime.hpp"
 #include "vm/item_runtime.hpp"
 #include "vm/world_access.hpp"
@@ -866,6 +867,9 @@ private:
     struct SoundHost;
     std::unique_ptr<vm::SoundHost> new_sound_host();
     std::unique_ptr<vm::SoundHost> sound_host_ = new_sound_host();
+    struct ActorHost;
+    std::unique_ptr<vm::ActorHost> new_actor_host();
+    std::unique_ptr<vm::ActorHost> actor_host_ = new_actor_host();
     /// A line for the output only (the runtimes' log).
     void print_line(const std::string& text);
     std::unique_ptr<vm::Vm> vm_;
