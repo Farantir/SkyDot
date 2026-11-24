@@ -1013,15 +1013,8 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     }
     double player_actor_value(std::uint32_t av) override { return owner_.condition_world().actor_value(k_player_ref, av); }
     double perk_entry(perks::EntryPoint ep, const perks::EntryContext& ctx, double value) override {
-        const auto* root = world() != nullptr ? world()->root() : nullptr;
-        if (root == nullptr) {
-            return value;
-        }
-        const perks::EntryPoints points(*root, owner_.condition_world(),
-                                        [this](std::uint32_t ref) { return owner_.progression_.perks_of(ref); });
-        perks::EntryContext full = ctx;
-        full.worn = owner_.item_.worn_armor_of(ctx.owner);
-        return points.apply(ep, full, value);
+        const auto points = owner_.entry_points();
+        return points ? points->apply(ep, owner_.with_worn(ctx), value) : value;
     }
 
     void announce(const std::string& line) override {
@@ -1037,17 +1030,14 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
     // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
     double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
                       double value) const override {
-        const auto* root = world() != nullptr ? world()->root() : nullptr;
-        if (root == nullptr || ep >= perks::k_entry_point_count) {
+        const auto points = owner_.entry_points();
+        if (!points || ep >= perks::k_entry_point_count) {
             return value;
         }
-        const perks::EntryPoints points(*root, owner_.condition_world(),
-                                        [this](std::uint32_t ref) { return owner_.progression_.perks_of(ref); });
         perks::EntryContext ctx;
         ctx.owner = owner;
         ctx.subjects = subjects;
-        ctx.worn = owner_.item_.worn_armor_of(owner);
-        return points.apply(static_cast<perks::EntryPoint>(ep), ctx, value);
+        return points->apply(static_cast<perks::EntryPoint>(ep), owner_.with_worn(std::move(ctx)), value);
     }
 
     // ---- vm::MagicRuntime::Host: the abilities of an actor's base perks are part of its spell list

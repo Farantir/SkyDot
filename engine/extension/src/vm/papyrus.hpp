@@ -26,6 +26,7 @@
 #include "data/actors.hpp"
 #include "magic/active_effects.hpp"
 #include "magic/enchanting.hpp"
+#include "perks/entry_points.hpp"
 #include "dialogue/dialogue.hpp"
 #include "dialogue/dialogue_states.hpp"
 #include "data/godot_values.hpp"
@@ -618,7 +619,8 @@ public:
     /// The perk entry point `entry_point` (perks::EntryPoint) applied to `value` for `owner`'s perks (an actor
     /// reference; the player 0x14): `subjects` are the condition subjects of tab 0 (the owner), 1, 2 (a weapon
     /// base, a target, a spell, an item ...). `extra` (all optional): advance_skill, advance_action,
-    /// advance_object, worn: [armor bases], attack_keywords: [keywords], item_enchanted, making_poison.
+    /// advance_object, worn: [armor bases] (default: what the owner wears), attack_keywords: [keywords],
+    /// item_enchanted, making_poison.
     double perk_entry(std::int64_t entry_point, std::int64_t owner, const godot::Array& subjects, double value,
                       const godot::Dictionary& extra = godot::Dictionary());
     /// The spells the owner's Select Spell effects at the entry point name, in application order.
@@ -920,6 +922,11 @@ private:
     std::optional<magic::Enchanting> enchanting_table();
     /// The player's Enchanting perks as the enchanting rules ask them (entry points 77, 79, 49, 80).
     magic::EnchantPerks enchant_perks();
+    /// The perks' entry points over the world's data, with the actors' perks; none without a world.
+    std::optional<perks::EntryPoints> entry_points();
+    /// `ctx` with the owner's worn armour bases when the caller gave none (WornHasKeyword and
+    /// WornApparelHasKeywordCount ask them).
+    perks::EntryContext with_worn(perks::EntryContext ctx) const;
     /// The name a unit shows: its extra's, else its base's.
     std::string unit_name(std::uint32_t form, std::uint32_t extra) const;
     /// The soul an actor that dies now gives: level (1 if unknown) and whether it is an NPC.

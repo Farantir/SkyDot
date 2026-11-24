@@ -21,6 +21,7 @@ const IRON_ARMOR := 0x00012E49
 const IRON_SHIELD := 0x00012EB6
 const IRON_BATTLEAXE := 0x00013980
 const IRON_DAGGER := 0x0001397E
+const TOWER_OF_STRENGTH := 0x00058F6C
 
 var failures := 0
 
@@ -194,3 +195,11 @@ func _run(pack_dir: String) -> void:
 	var after := _vm(pack)
 	expect(after.load_state(vm.save_state()) == OK, "saves with equipment")
 	expect(after.equipment(PLAYER) == equipment, "the equipment survives a load")
+	# Tower of Strength (Mod Incoming Stagger x0.5 while WornHasKeyword ArmorHeavy and not ArmorLight) asks what the owner
+	# wears when the caller does not pass `worn`.
+	vm.add_perk(PLAYER, TOWER_OF_STRENGTH)
+	var stagger: float = vm.perk_entry(33, PLAYER, [PLAYER, 0, 0], 1.0)
+	expect(absf(stagger - 0.5) < 0.0001, "in iron armor Tower of Strength halves stagger: %s" % stagger)
+	expect(absf(float(vm.perk_entry(33, PLAYER, [PLAYER, 0, 0], 1.0, {"worn": [IRON_SWORD]})) - 1.0) < 0.0001,
+		"a given worn list wins")
+	vm.remove_perk(PLAYER, TOWER_OF_STRENGTH)

@@ -50,28 +50,41 @@ perks::EntryContext entry_context(std::int64_t owner, const Array& subjects, con
 
 } // namespace
 
+std::optional<perks::EntryPoints> SkydotPapyrus::entry_points() {
+    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
+    if (root == nullptr) {
+        return std::nullopt;
+    }
+    return perks::EntryPoints(*root, condition_world(),
+                              [this](std::uint32_t ref) { return progression_.perks_of(ref); });
+}
+
+perks::EntryContext SkydotPapyrus::with_worn(perks::EntryContext ctx) const {
+    if (ctx.worn.empty()) {
+        ctx.worn = item_.worn_armor_of(ctx.owner);
+    }
+    return ctx;
+}
+
 double SkydotPapyrus::perk_entry(std::int64_t entry_point, std::int64_t owner, const Array& subjects, double value,
                                  const Dictionary& extra) {
-    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
-    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+    const auto points = entry_points();
+    if (!points || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
         return value;
     }
-    const perks::EntryPoints points(*root, condition_world(),
-                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
-    return points.apply(static_cast<perks::EntryPoint>(entry_point), entry_context(owner, subjects, extra), value);
+    return points->apply(static_cast<perks::EntryPoint>(entry_point), with_worn(entry_context(owner, subjects, extra)),
+                         value);
 }
 
 godot::PackedInt64Array SkydotPapyrus::perk_entry_spells(std::int64_t entry_point, std::int64_t owner,
                                                          const Array& subjects, const Dictionary& extra) {
     godot::PackedInt64Array out;
-    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
-    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+    const auto points = entry_points();
+    if (!points || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
         return out;
     }
-    const perks::EntryPoints points(*root, condition_world(),
-                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
-    for (const auto spell : points.select_spells(static_cast<perks::EntryPoint>(entry_point),
-                                                 entry_context(owner, subjects, extra))) {
+    for (const auto spell : points->select_spells(static_cast<perks::EntryPoint>(entry_point),
+                                                  with_worn(entry_context(owner, subjects, extra)))) {
         out.push_back(spell);
     }
     return out;
@@ -80,14 +93,12 @@ godot::PackedInt64Array SkydotPapyrus::perk_entry_spells(std::int64_t entry_poin
 godot::PackedStringArray SkydotPapyrus::perk_entry_texts(std::int64_t entry_point, std::int64_t owner,
                                                          const Array& subjects, const Dictionary& extra) {
     godot::PackedStringArray out;
-    const auto* root = world_.is_valid() ? world_->data().root() : nullptr;
-    if (root == nullptr || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
+    const auto points = entry_points();
+    if (!points || entry_point < 0 || entry_point >= static_cast<std::int64_t>(perks::k_entry_point_count)) {
         return out;
     }
-    const perks::EntryPoints points(*root, condition_world(),
-                                    [this](std::uint32_t ref) { return progression_.perks_of(ref); });
-    for (const auto& text : points.select_text(static_cast<perks::EntryPoint>(entry_point),
-                                               entry_context(owner, subjects, extra))) {
+    for (const auto& text : points->select_text(static_cast<perks::EntryPoint>(entry_point),
+                                                with_worn(entry_context(owner, subjects, extra)))) {
         out.push_back(godot::String::utf8(text.c_str()));
     }
     return out;
