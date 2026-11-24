@@ -180,7 +180,7 @@ func _play(ref: int, cast: Dictionary, what: String) -> void:
 
 
 func _play_clip(ref: int, cast: Dictionary, file: String) -> void:
-	var node := _world.find_ref_node(ref)
-	if node != null and node.has_method("play_action"):
-		cast["clip_left"] = float(node.play_action(file, 1.0))
+	var actor := _world.find_ref_node(ref) as SkydotActor
+	if actor != null:
+		cast["clip_left"] = actor.play_action(file, 1.0)
 		cast["clip_file"] = file

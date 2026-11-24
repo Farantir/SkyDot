@@ -90,10 +90,10 @@ func on_shout(ref: int, target: int, shout: int, phase: String) -> void:
 ## `shout_hoverinhale`/`shout_hoverexhale<flame|fireball>` or `shout_flightinhale`/`shout_flightexhale...` as
 ## {inhale, exhale} (the exhale stem lacks the kind); {} on the ground or without them.
 func _air_stems(ref: int) -> Dictionary:
-	var node := _world.find_ref_node(ref)
-	if node == null or not node.has_method("get_flying_state"):
+	var actor := _world.find_ref_node(ref) as SkydotActor
+	if actor == null:
 		return {}
-	var state := int(node.get_flying_state())
+	var state := actor.get_flying_state()
 	if state != 2 and state != 3:
 		return {}
 	var prefix := "shout_hover" if state == 3 else "shout_flight"
@@ -121,26 +121,25 @@ func _breathe(ref: int, target: int, shout: int, kind: String) -> void:
 	var result := _magic.npc_shout(ref, target, shout, false)
 	if not bool(result["ok"]):
 		return
-	var node := _world.find_ref_node(ref)
+	var actor := _world.find_ref_node(ref) as SkydotActor
 	var length := 0.0
 	var air := _air_stems(ref)
 	var fire_now := false
-	if node != null and node.has_method("play_action"):
+	if actor != null:
 		if air.is_empty():
-			length = float(node.play_action(_combat.clip_of(ref, "clip_shout_exhale_" + kind), 1.0))
+			length = actor.play_action(_combat.clip_of(ref, "clip_shout_exhale_" + kind), 1.0)
 			print("npc shout: 0x%X plays clip_shout_exhale_%s (%.2f s)" % [ref, kind, length])
 		else:
 			var stem: String = air["exhale"] + ("flame" if kind == "firebreath" else "fireball")
-			length = float(node.play_action(_clip(ref, stem), 1.0))
+			length = actor.play_action(_clip(ref, stem), 1.0)
 			print("npc shout: 0x%X plays %s (%.2f s)" % [ref, stem, length])
 			# A flight exhale clip without the release key would never let the breath leave: it leaves now.
-			fire_now = not _clip_has_event(node, EVENT_FIRE)
+			fire_now = not _clip_has_event(actor, EVENT_FIRE)
 			if fire_now:
 				_warn.once("noevent" + stem, "%s has no %s key: the breath leaves at its start" % [stem, EVENT_FIRE])
-		if node.has_signal("animation_event"):
-			var watcher := _on_animation_event.bind(ref)
-			if not node.is_connected("animation_event", watcher):  # once per node
-				node.connect("animation_event", watcher)
+		var watcher := _on_animation_event.bind(ref)
+		if not actor.animation_event.is_connected(watcher):  # once per node
+			actor.animation_event.connect(watcher)
 	var info: Dictionary = result["info"]
 	_breaths[ref] = {"spell": int(result["spell"]), "info": info, "target": target,
 		"concentration": int(info.get("casting_type", 0)) == Magic.CAST_CONCENTRATION, "state": "wait", "tick": 0.0,
@@ -226,12 +225,12 @@ func _voice(ref: int, words: int) -> void:
 
 
 func _play(ref: int, stems: Array, what: String) -> void:
-	var node := _world.find_ref_node(ref)
+	var actor := _world.find_ref_node(ref) as SkydotActor
 	for stem: String in stems:
 		var file := _clip(ref, stem)
 		if file != "":
-			if node != null and node.has_method("play_action"):
-				node.play_action(file, 1.0)
+			if actor != null:
+				actor.play_action(file, 1.0)
 				print("npc shout: 0x%X plays %s" % [ref, stem])
 			return
 	_warn.once("noclip" + what, "no %s clip in the project of 0x%X (tried %s)" % [what, ref, stems])

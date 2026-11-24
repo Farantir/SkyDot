@@ -457,8 +457,9 @@ func npc_attack(attacker: int, power := false, target := PLAYER_REF) -> bool:
 	_face(node, target)
 	if power:
 		rules.pay_power_attack(attacker, form)
-	if node.has_method("play_action"):
-		node.play_action(clip, speed)
+	var actor := node as SkydotActor
+	if actor != null:
+		actor.play_action(clip, speed)
 	_npc_attacks.append({"attacker": attacker, "target": target, "power": power, "weapon": form, "info": info,
 		"extra": int(equipment["right_extra"]), "time": 0.0, "hit": false, "speed": speed,
 		"hit_time": timing["hit"], "length": timing["stop"], "event": directional.get("event", ""),
@@ -489,10 +490,11 @@ func npc_shoot(attacker: int, target := PLAYER_REF) -> bool:
 	var behaviour: String = _actor_plan(attacker).get("behaviour", "")
 	var length := 0.0
 	var release := 0.0
+	var actor := node as SkydotActor
 	for stem in BOW_CLIPS:
 		var clip := _clip_file(behaviour, stem, "")
-		if clip != "" and node.has_method("play_action"):
-			length = node.play_action(clip, 1.0)
+		if clip != "" and actor != null:
+			length = actor.play_action(clip, 1.0)
 			if length > 0.0:
 				release = length * BOW_RELEASE_FRACTION
 				for note: Dictionary in _project_notes(PROJECTS + behaviour.get_file().get_basename() + ".txt", stem):
@@ -581,11 +583,12 @@ func _target_position(target: int) -> Vector3:
 
 ## The blows of a dragon's tail and wings are felt all round it (animation events of its clips).
 func _watch_blows(node: Node3D, attacker: int) -> void:
-	if not node.has_signal("animation_event"):
+	var actor := node as SkydotActor
+	if actor == null:
 		return
 	var blow := _on_blow.bind(attacker)
-	if not node.is_connected("animation_event", blow):  # once per node
-		node.connect("animation_event", blow)
+	if not actor.animation_event.is_connected(blow):  # once per node
+		actor.animation_event.connect(blow)
 
 
 func _on_blow(event: String, attacker: int) -> void:
@@ -608,12 +611,12 @@ func _on_blow(event: String, attacker: int) -> void:
 
 ## Put the weapon `ranged` (the bow with its arrows) or the melee weapon in `ref`'s hands, as
 ## the game's AI does when the fight changes, and show it. No clip plays.
-func _set_stance_of(node: Node, type: int, drawn: bool) -> void:
+func _set_stance_of(actor: SkydotActor, type: int, drawn: bool) -> void:
 	if not drawn:
-		node.set_stance("")
+		actor.set_stance("")
 		return
 	for stance: String in STANCE_PREFIX.get(type, [CREATURE_STANCE]):
-		if node.set_stance(stance):
+		if actor.set_stance(stance):
 			return
 
 
@@ -633,9 +636,9 @@ func _use_weapon(ref: int, ranged: bool) -> void:
 	if ammo != 0:
 		_papyrus.equip(ref, ammo)
 	gear.refresh(ref)
-	var node := _world.find_ref_node(ref)
-	if node != null and node.has_method("set_stance") and gear.is_drawn(ref):
-		_set_stance_of(node, int(_world.get_weapon(want).get("weapon_type", 0)), true)
+	var actor := _world.find_ref_node(ref) as SkydotActor
+	if actor != null and gear.is_drawn(ref):
+		_set_stance_of(actor, int(_world.get_weapon(want).get("weapon_type", 0)), true)
 
 
 ## Words that make a clip no plain attack of a project's clip table.
@@ -704,12 +707,13 @@ func npc_draw(ref: int, drawn: bool) -> bool:
 	var type := int(info.get("weapon_type", 0))
 	var behaviour: String = _actor_plan(ref).get("behaviour", "")
 	var length := 0.0
-	if node.has_method("set_stance"):
-		_set_stance_of(node, type, drawn)
+	var actor := node as SkydotActor
+	if actor != null:
+		_set_stance_of(actor, type, drawn)
 		for prefix: String in EQUIP_PREFIX.get(type, []):
 			var clip := _clip_file(behaviour, prefix + ("_equip" if drawn else "_unequip"), "")
 			if clip != "":
-				length = node.play_action(clip, 1.0)
+				length = actor.play_action(clip, 1.0)
 				break
 	gear.set_drawn(ref, drawn, length * GEAR_SWAP_FRACTION)
 	npc_drawn_changed.emit(ref, drawn)
@@ -796,9 +800,10 @@ func body_point_of(ref: int) -> Vector3:
 
 ## Turn `node` to face the actor (or the player) `target`.
 func _face(node: Node3D, target: int) -> void:
-	if not node.has_method("face"):
+	var actor := node as SkydotActor
+	if actor == null:
 		return
-	if node.has_method("get_turn_rate") and float(node.get_turn_rate()) < SNAP_TURN_RATE:
+	if actor.get_turn_rate() < SNAP_TURN_RATE:
 		return  # a slow turner is turned by its look target
 	var at: Vector3
 	if target == PLAYER_REF:
@@ -810,7 +815,7 @@ func _face(node: Node3D, target: int) -> void:
 		at = other.global_position
 	var offset := at - node.global_position
 	if Vector2(offset.x, offset.z).length() > 0.01:
-		node.face(atan2(-offset.x, -offset.z))
+		actor.face(atan2(-offset.x, -offset.z))
 
 
 # ---- the frame
