@@ -360,6 +360,45 @@ TEST_CASE("a shape and a sprite frame draw as SVG with their bounds", "[swf]") {
     CHECK_FALSE(character_svg(*movie, 99));
 }
 
+TEST_CASE("sprites that place each other twice per level stop at the node budget", "[swf]") {
+    // Sprite 1 is empty, so the visits stay cheap.
+    Bytes t;
+    constexpr std::uint16_t top = 18; // 2^17 leaves
+    for (std::uint16_t id = 1; id <= top; ++id) {
+        Bytes inner;
+        if (id > 1) {
+            tag(inner, tag_place_object2, place2(1, id - 1, false, std::pair{0, 0}));
+            tag(inner, tag_place_object2, place2(2, id - 1, false, std::pair{20, 0}));
+        }
+        tag(inner, tag_show_frame, {});
+        tag(inner, tag_end, {});
+        Bits sprite;
+        sprite.u16(id);
+        sprite.u16(1);
+        Bytes data = sprite.out;
+        data.insert(data.end(), inner.begin(), inner.end());
+        tag(t, tag_define_sprite, data);
+    }
+    tag(t, tag_show_frame, {});
+    tag(t, tag_end, {});
+    auto movie = read_swf(fws(t), "nest.swf");
+    REQUIRE(movie);
+
+    bool cut = false;
+    REQUIRE(character_svg(*movie, top, 0, &cut));
+    CHECK(cut);
+    cut = false;
+    (void)character_bounds(*movie, top, 0, &cut);
+    CHECK(cut);
+    REQUIRE(character_svg(*movie, 3, 0, &cut));
+    CHECK_FALSE(cut);
+
+    const auto files = bundle_files(*movie, "interface/nest.swf");
+    const std::string manifest = as_string(files.front().bytes);
+    CHECK(manifest.find("character 18: drawing stopped") != std::string::npos);
+    CHECK(manifest.find("character 3: drawing stopped") == std::string::npos);
+}
+
 TEST_CASE("a DefineFont3 becomes a TrueType font with its outlines oriented", "[swf][ttf]") {
     // Glyph 'O': an outer square and a hole, both drawn the same way round;
     // Flash fills even-odd, so the hole must come out the other way round.

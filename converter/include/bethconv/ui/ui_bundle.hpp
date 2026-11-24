@@ -55,17 +55,24 @@ struct BundleFile {
 /// font without glyphs (a device font reference).
 [[nodiscard]] std::optional<std::vector<std::byte>> write_ttf(const Font& font);
 
+/// Characters one drawing (or bounds query) visits at most. Sprites that place
+/// each other several times per level multiply; past this the drawing stops
+/// and `cut` is set.
+inline constexpr std::size_t k_max_svg_nodes = 50'000;
+
 /// One character drawn at frame `frame` as a standalone SVG (pixels), its
 /// viewBox the character's bounds. Nullopt if the id is not drawable.
 [[nodiscard]] std::optional<std::string> character_svg(const SwfMovie& movie, std::uint16_t id,
-                                                       std::uint32_t frame = 0);
+                                                       std::uint32_t frame = 0,
+                                                       bool* cut = nullptr);
 
 /// The main timeline at `frame` on the stage rectangle.
-[[nodiscard]] std::string root_svg(const SwfMovie& movie, std::uint32_t frame = 0);
+[[nodiscard]] std::string root_svg(const SwfMovie& movie, std::uint32_t frame = 0,
+                                   bool* cut = nullptr);
 
 /// Bounds of a character at a frame in its own space, twips. Empty if none.
 [[nodiscard]] Rect character_bounds(const SwfMovie& movie, std::uint16_t id,
-                                    std::uint32_t frame = 0);
+                                    std::uint32_t frame = 0, bool* cut = nullptr);
 
 /// Every file of the bundle, in a fixed order, manifest first.
 [[nodiscard]] std::vector<BundleFile> bundle_files(const SwfMovie& movie, std::string_view vpath);

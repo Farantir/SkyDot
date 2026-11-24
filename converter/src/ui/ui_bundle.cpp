@@ -322,6 +322,9 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
 
     Json characters = Json::array();
     std::vector<BundleFile> svg_files;
+    // Characters whose drawing hit k_max_svg_nodes.
+    std::set<std::uint16_t> cut_ids;
+    bool cut = false;
     for (const std::uint16_t id : ids) {
         Json j;
         j["id"] = id;
@@ -334,14 +337,20 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
         if (exported) {
             j["exports"] = export_json(names->second);
         }
-        const Rect bounds = character_bounds(m, id, 0);
+        const Rect bounds = character_bounds(m, id, 0, &cut);
+        if (cut) {
+            cut_ids.insert(id);
+        }
         if (!bounds.empty()) {
             j["bounds"] = rect_px(bounds);
         }
         if (auto grid = m.scaling_grids.find(id); grid != m.scaling_grids.end()) {
             j["scaling_grid"] = rect_px(grid->second);
         }
-        if (auto svg = character_svg(m, id, 0)) {
+        if (auto svg = character_svg(m, id, 0, &cut)) {
+            if (cut) {
+                cut_ids.insert(id);
+            }
             const std::string path = "svg/" + std::to_string(id) + ".svg";
             j["svg"] = path;
             svg_files.push_back(BundleFile{.path = path, .bytes = bytes_of(*svg)});
@@ -358,7 +367,10 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
             }
             Json frame_svgs = Json::object();
             for (const std::uint32_t f : extra_frames(s->second, exported)) {
-                if (auto svg = character_svg(m, id, f)) {
+                if (auto svg = character_svg(m, id, f, &cut)) {
+                    if (cut) {
+                        cut_ids.insert(id);
+                    }
                     const std::string path =
                         "svg/" + std::to_string(id) + "_f" + std::to_string(f) + ".svg";
                     frame_svgs[std::to_string(f)] = path;
@@ -457,9 +469,19 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
         tags[name] = count;
     }
     manifest["tags"] = std::move(tags);
+    bool root_cut = false;
+    std::string root = root_svg(m, 0, &root_cut);
     Json notes = Json::array();
     for (const auto& n : m.notes) {
         notes.push_back(text(n));
+    }
+    for (const std::uint16_t id : cut_ids) {
+        notes.push_back("character " + std::to_string(id) + ": drawing stopped after " +
+                        std::to_string(k_max_svg_nodes) + " nested characters");
+    }
+    if (root_cut) {
+        notes.push_back("root: drawing stopped after " + std::to_string(k_max_svg_nodes) +
+                        " nested characters");
     }
     manifest["notes"] = std::move(notes);
 
@@ -470,7 +492,7 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
     for (auto& f : image_files) {
         files.push_back(std::move(f));
     }
-    files.push_back(BundleFile{.path = "svg/root.svg", .bytes = bytes_of(root_svg(m, 0))});
+    files.push_back(BundleFile{.path = "svg/root.svg", .bytes = bytes_of(root)});
     for (auto& f : svg_files) {
         files.push_back(std::move(f));
     }

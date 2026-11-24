@@ -228,12 +228,13 @@ public:
 
     std::string defs;
     std::string body;
+    bool cut = false;
 
     /// Draw `id` at `frame` with the full transform `mat`. In clip mode only
     /// geometry is written (paths with a transform), for a <clipPath>.
     void character(std::uint16_t id, std::uint32_t frame, const Matrix& mat,
                    const ColorTransform& cx, int depth, std::string& out, bool clip) {
-        if (depth > k_max_nesting) {
+        if (depth > k_max_nesting || !spend()) {
             return;
         }
         if (auto s = m_.shapes.find(id); s != m_.shapes.end()) {
@@ -257,7 +258,7 @@ public:
 
     void timeline(const Timeline& t, std::uint32_t frame, const Matrix& mat,
                   const ColorTransform& cx, int depth, std::string& out, bool clip) {
-        const auto list = display_list(t, frame);
+        const auto& list = displayed(t, frame);
         for (std::size_t i = 0; i < list.size(); ++i) {
             const DisplayObject& o = list[i];
             if (!o.visible) {
@@ -300,7 +301,7 @@ public:
 
     FRect bounds(std::uint16_t id, std::uint32_t frame, const Matrix& mat, int depth) {
         FRect r;
-        if (depth > k_max_nesting) {
+        if (depth > k_max_nesting || !spend()) {
             return r;
         }
         if (auto s = m_.shapes.find(id); s != m_.shapes.end()) {
@@ -308,7 +309,7 @@ public:
         } else if (auto t = m_.edit_texts.find(id); t != m_.edit_texts.end()) {
             r.add(t->second.bounds, mat);
         } else if (auto sp = m_.sprites.find(id); sp != m_.sprites.end()) {
-            const auto list = display_list(sp->second.timeline, frame);
+            const auto& list = displayed(sp->second.timeline, frame);
             for (std::size_t i = 0; i < list.size(); ++i) {
                 const auto& o = list[i];
                 const Matrix m = o.matrix.then(mat);
@@ -340,7 +341,27 @@ public:
 private:
     const SwfMovie& m_;
     int next_id_ = 0;
+    std::size_t nodes_ = 0;
+    std::map<std::pair<const Timeline*, std::uint32_t>, std::vector<DisplayObject>> lists_;
     std::map<std::uint16_t, std::string> image_uri_;
+
+    /// A sprite placed many times builds its display list once.
+    const std::vector<DisplayObject>& displayed(const Timeline& t, std::uint32_t frame) {
+        auto [it, fresh] = lists_.try_emplace({&t, frame});
+        if (fresh) {
+            it->second = display_list(t, frame);
+        }
+        return it->second;
+    }
+
+    bool spend() {
+        if (nodes_ >= k_max_svg_nodes) {
+            cut = true;
+            return false;
+        }
+        ++nodes_;
+        return true;
+    }
 
     const std::string& image_uri(const Bitmap& b) {
         auto it = image_uri_.find(b.id);
@@ -561,9 +582,12 @@ std::string document(const FRect& box, const std::string& defs, const std::strin
 
 } // namespace
 
-Rect character_bounds(const SwfMovie& movie, std::uint16_t id, std::uint32_t frame) {
+Rect character_bounds(const SwfMovie& movie, std::uint16_t id, std::uint32_t frame, bool* cut) {
     Renderer r(movie);
     const FRect b = r.bounds(id, frame, Matrix{}, 0);
+    if (cut != nullptr) {
+        *cut = r.cut;
+    }
     if (b.empty()) {
         return {};
     }
@@ -574,20 +598,27 @@ Rect character_bounds(const SwfMovie& movie, std::uint16_t id, std::uint32_t fra
 }
 
 std::optional<std::string> character_svg(const SwfMovie& movie, std::uint16_t id,
-                                         std::uint32_t frame) {
+                                         std::uint32_t frame, bool* cut) {
     if (!movie.shapes.contains(id) && !movie.sprites.contains(id) && !movie.buttons.contains(id)) {
         return std::nullopt;
     }
     Renderer r(movie);
     std::string body;
     r.character(id, frame, Matrix{}, ColorTransform{}, 0, body, false);
-    return document(r.bounds(id, frame, Matrix{}, 0), r.defs, body);
+    const FRect box = r.bounds(id, frame, Matrix{}, 0);
+    if (cut != nullptr) {
+        *cut = r.cut;
+    }
+    return document(box, r.defs, body);
 }
 
-std::string root_svg(const SwfMovie& movie, std::uint32_t frame) {
+std::string root_svg(const SwfMovie& movie, std::uint32_t frame, bool* cut) {
     Renderer r(movie);
     std::string body;
     r.timeline(movie.root, frame, Matrix{}, ColorTransform{}, 0, body, false);
+    if (cut != nullptr) {
+        *cut = r.cut;
+    }
     FRect stage;
     stage.add(movie.frame_size, Matrix{});
     return document(stage, r.defs, body);
