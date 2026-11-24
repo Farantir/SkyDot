@@ -248,6 +248,16 @@ void take_whole(std::optional<io::ParseError>& failure, io::SpanReader& body, T&
     }
 }
 
+/// As above for scalars laid out back to back: read only when the payload
+/// holds all of them.
+template <typename... T>
+    requires(sizeof...(T) > 1)
+void take_whole(std::optional<io::ParseError>& failure, io::SpanReader& body, T&... dst) {
+    if (body.remaining() >= (sizeof(T) + ...)) {
+        (take(failure, body.get<T>(), dst), ...);
+    }
+}
+
 /// As above for a FormID stored as one 32-bit word.
 inline void take_whole(std::optional<io::ParseError>& failure, io::SpanReader& body,
                        FormId& dst) {

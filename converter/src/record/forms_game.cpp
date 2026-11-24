@@ -1757,12 +1757,8 @@ io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
             } else if (field.type == FourCC{"ONAM"}) {
                 take_whole(failure, body, out.output_model);
             } else if (field.type == FourCC{"LNAM"}) {
-                if (body.remaining() >= SoundDescriptor::k_lnam_size) {
-                    take(failure, body.get<std::uint8_t>(), out.lnam_unknown0);
-                    take(failure, body.get<std::uint8_t>(), out.looping);
-                    take(failure, body.get<std::uint8_t>(), out.lnam_unknown2);
-                    take(failure, body.get<std::uint8_t>(), out.rumble);
-                }
+                take_whole(failure, body, out.lnam_unknown0, out.looping, out.lnam_unknown2,
+                           out.rumble);
             } else if (field.type == FourCC{"SNAM"}) {
                 take(failure, read_formid(body), out.alternate_for);
             } else if (field.type == FourCC{"FNAM"}) {
@@ -1770,13 +1766,8 @@ io::ParseResult<SoundDescriptor> parse_sound_descriptor(io::SpanReader& data,
             } else if (read_ctda_field(out.conditions, declared, field, body, failure)) {
                 // A condition.
             } else if (field.type == FourCC{"BNAM"}) {
-                if (body.remaining() >= SoundDescriptor::k_bnam_size) {
-                    take(failure, body.get<std::int8_t>(), out.frequency_shift);
-                    take(failure, body.get<std::int8_t>(), out.frequency_variance);
-                    take(failure, body.get<std::uint8_t>(), out.priority);
-                    take(failure, body.get<std::uint8_t>(), out.db_variance);
-                    take(failure, body.get<std::uint16_t>(), out.static_attenuation);
-                }
+                take_whole(failure, body, out.frequency_shift, out.frequency_variance,
+                           out.priority, out.db_variance, out.static_attenuation);
             } else {
                 return false;
             }
@@ -1936,20 +1927,10 @@ io::ParseResult<Reverb> parse_reverb(io::SpanReader& data, const FormContext& ct
             if (field.type == FourCC{"EDID"}) {
                 take(failure, read_zstring(body), out.editor_id);
             } else if (field.type == FourCC{"DATA"}) {
-                if (body.remaining() >= Reverb::k_data_size) {
-                    take(failure, body.get<std::uint16_t>(), out.decay_time);
-                    take(failure, body.get<std::uint16_t>(), out.hf_reference);
-                    take(failure, body.get<std::int8_t>(), out.room_filter);
-                    take(failure, body.get<std::int8_t>(), out.room_hf_filter);
-                    take(failure, body.get<std::int8_t>(), out.reflections);
-                    take(failure, body.get<std::int8_t>(), out.reverb_amplitude);
-                    take(failure, body.get<std::uint8_t>(), out.decay_hf_ratio);
-                    take(failure, body.get<std::uint8_t>(), out.reflect_delay);
-                    take(failure, body.get<std::uint8_t>(), out.reverb_delay);
-                    take(failure, body.get<std::uint8_t>(), out.diffusion);
-                    take(failure, body.get<std::uint8_t>(), out.density);
-                    take(failure, body.get<std::uint8_t>(), out.unknown);
-                }
+                take_whole(failure, body, out.decay_time, out.hf_reference, out.room_filter,
+                           out.room_hf_filter, out.reflections, out.reverb_amplitude,
+                           out.decay_hf_ratio, out.reflect_delay, out.reverb_delay,
+                           out.diffusion, out.density, out.unknown);
             } else {
                 return false;
             }
@@ -1985,11 +1966,8 @@ io::ParseResult<ImageSpaceModifier> parse_image_space_modifier(io::SpanReader& d
             if (t == FourCC{"EDID"}) {
                 take(failure, read_zstring(body), out.editor_id);
             } else if (t == FourCC{"DNAM"}) {
-                if (body.remaining() >= 8) {
-                    float flags = 0.0F;
-                    take(failure, body.get<float>(), flags);
-                    take(failure, body.get<float>(), out.duration);
-                }
+                float flags = 0.0F;
+                take_whole(failure, body, flags, out.duration);
                 skip_bytes(failure, body, body.remaining());
             } else if (t == FourCC{"WNAM"}) {
                 first(body, failure, &out.dof_strength, 1);

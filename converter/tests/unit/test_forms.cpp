@@ -18,6 +18,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <optional>
 #include <set>
 #include <span>
 #include <string>
@@ -1088,6 +1089,38 @@ TEST_CASE("every defined type has a census definition", "[record][forms]") {
         INFO("record type " << type.to_string());
         CHECK(census.total_failed() == 0);
         CHECK(census.total_parsed() == 1);
+    }
+}
+
+TEST_CASE("take_whole reads scalars back to back only when all of them fit",
+          "[record][forms]") {
+    ByteWriter w;
+    w.u16(0x0102);
+    w.u8(0xFF);
+    w.u8(7);
+    {
+        auto reader = reader_over(w);
+        std::optional<io::ParseError> failure;
+        std::uint16_t a = 0;
+        std::int8_t b = 0;
+        std::uint8_t c = 0;
+        record::take_whole(failure, reader, a, b, c);
+        CHECK_FALSE(failure);
+        CHECK(a == 0x0102);
+        CHECK(b == -1);
+        CHECK(c == 7);
+        CHECK(reader.remaining() == 0);
+    }
+    {
+        auto reader = reader_over(w);
+        std::optional<io::ParseError> failure;
+        std::uint16_t a = 5;
+        std::uint32_t b = 6;
+        record::take_whole(failure, reader, a, b);
+        CHECK_FALSE(failure);
+        CHECK(a == 5);
+        CHECK(b == 6);
+        CHECK(reader.remaining() == 4);
     }
 }
 

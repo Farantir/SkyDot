@@ -964,8 +964,6 @@ struct SoundDescriptor {
     std::uint8_t priority{};
     std::uint8_t db_variance{};
     std::uint16_t static_attenuation{};
-    static constexpr std::size_t k_lnam_size = 4;
-    static constexpr std::size_t k_bnam_size = 6;
 };
 
 /// SOUN: a sound marker. The old inline sound (FNAM, SNDD) is not read.
@@ -1035,7 +1033,6 @@ struct Reverb {
     std::uint8_t diffusion{};
     std::uint8_t density{};
     std::uint8_t unknown{};
-    static constexpr std::size_t k_data_size = 14;
 };
 
 /// IMAD: an image space modifier. Each effect is a curve of keys, (time,
