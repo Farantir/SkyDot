@@ -142,6 +142,10 @@ row). Format 39 deprecates the two that no system needs.
 | `Quest.event_conditions` | Q quest events |
 | `Faction.vendor_radius`, `vendor_chest` | I7 barter |
 | `Relationship.association` | A11 |
+| `Idle.loop_min`, `loop_max`, `flags`, `animation_group_section`, `replay_delay` | A5 idles, A2 behaviour graphs |
+| `SoundDescriptor.rumble` (queried, unused); `SoundOutputModel.reverb_send` (queried, unused) | W6 controller rumble, reverb |
+| `Reverb.*` (queried by `get_reverb`, unused) | W6 reverb |
+| `SoundDescriptor.lnam_unknown0`, `lnam_unknown2`, `fnam`; `SoundOutputModel.anam_unknown`; `Reverb.unknown` | none known: undocumented bytes kept as stored |
 
 Deprecated in 39 (the converter stops writing them; the field ids stay so old
 packs read):
