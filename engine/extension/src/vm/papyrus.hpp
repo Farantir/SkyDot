@@ -865,6 +865,9 @@ private:
     struct CombatHost;
     std::unique_ptr<vm::CombatRuntime::Host> new_combat_host();
     std::unique_ptr<vm::CombatRuntime::Host> combat_host_ = new_combat_host();
+    struct WorldHost;
+    std::unique_ptr<vm::WorldAccess> new_world_host();
+    std::unique_ptr<vm::WorldAccess> world_host_ = new_world_host();
     struct SoundHost;
     std::unique_ptr<vm::SoundHost> new_sound_host();
     std::unique_ptr<vm::SoundHost> sound_host_ = new_sound_host();

@@ -668,10 +668,6 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     return vec3_of(info.placement.position);
 }
 
-static vm::Xyz xyz_from(const Vector3& p) {
-    return {static_cast<double>(p.x), static_cast<double>(p.y), static_cast<double>(p.z)};
-}
-
 /// What a perk's ability and quest effects do: Actor.AddSpell / RemoveSpell and Quest.SetStage.
 struct PerkEffects final : perks::EffectSink {
     explicit PerkEffects(SkydotPapyrus& owner) : owner_(owner) {}
@@ -681,144 +677,15 @@ struct PerkEffects final : perks::EffectSink {
     SkydotPapyrus& owner_;
 };
 
-/// The world as natives ask about it: the Dictionaries behind it stay private
+/// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::ReferenceHost,
+struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ReferenceHost,
                              vm::SceneRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
     const WorldData* world() const { return owner_.world_data(); }
-
-    std::uint32_t base_form(std::uint32_t ref) const override {
-        return owner_.base_form_of(ref);
-    }
-    std::uint32_t linked_ref(std::uint32_t ref, std::uint32_t keyword) const override {
-        vm::RefInfo info;
-        if (owner_.ref_record(ref, info)) {
-            for (const auto& link : info.links) {
-                if (link.keyword == keyword) {
-                    return link.target;
-                }
-            }
-        }
-        return 0;
-    }
-    bool ref_info(std::uint32_t ref, vm::RefInfo& out) const override { return owner_.ref_record(ref, out); }
-    std::vector<vm::ActivateChild> activate_children(std::uint32_t ref) const override {
-        std::vector<vm::ActivateChild> out;
-        if (world() != nullptr) {
-            for (const auto& [child, cell, delay] : world()->activate_children(ref)) {
-                out.push_back({child, static_cast<double>(delay)});
-            }
-        }
-        return out;
-    }
-    std::uint32_t parent_cell(std::uint32_t ref) const override {
-        return owner_.cell_of(ref);
-    }
-    bool cell_interior(std::uint32_t cell) const override {
-        return !owner_.world_.is_null() && static_cast<bool>(owner_.world_->get_cell(cell).get("interior", false));
-    }
-    bool cell_attached(std::uint32_t cell) const override { return owner_.attached_cells_.contains(cell); }
-    bool has_keyword(std::uint32_t form, std::uint32_t keyword) const override {
-        if (world() == nullptr) {
-            return false;
-        }
-        // A reference answers for its base; anything else is taken for a base.
-        const auto placed = base_form(form);
-        return world()->base_has_keyword(placed != 0 ? placed : form, keyword);
-    }
-    std::uint32_t find_keyword(const std::string& editor_id) const override {
-        return world() != nullptr ? world()->keyword_by_editor_id(editor_id) : 0;
-    }
-    bool form_list(std::uint32_t list, std::vector<std::uint32_t>& forms) const override {
-        const auto* l = world() != nullptr ? world()->form_list_ptr(list) : nullptr;
-        if (l == nullptr) {
-            return false;
-        }
-        if (l->forms() != nullptr) {
-            forms.assign(l->forms()->begin(), l->forms()->end());
-        }
-        return true;
-    }
-    bool message(std::uint32_t id, vm::MessageText& out) const override {
-        const auto* m = world() != nullptr ? world()->message_ptr(id) : nullptr;
-        if (m == nullptr) {
-            return false;
-        }
-        const auto text = [](const flatbuffers::String* s) { return s != nullptr ? s->str() : std::string(); };
-        out.title = text(m->title());
-        out.text = text(m->text());
-        out.box = formats::has_flag(m->flags(), bethconv::pack::wfb::MessageFlags::message_box);
-        if (m->buttons() != nullptr) {
-            for (const auto* b : *m->buttons()) {
-                out.buttons.push_back(text(b));
-            }
-        }
-        return true;
-    }
-    bool actor_base(std::uint32_t ref, vm::ActorBase& out) const override {
-        const WorldData* data = world();
-        if (data == nullptr || data->root() == nullptr) {
-            return false;
-        }
-        // The player is the NPC_ 0x7; a placed actor names its NPC_; one a
-        // script placed has it as its base.
-        std::uint32_t npc = 0;
-        if (ref == k_player_ref) {
-            npc = 0x7;
-        } else if (const auto* actor = data->actor_ptr(ref)) {
-            npc = actor->base();
-        } else {
-            npc = owner_.base_form_of(ref);
-        }
-        if (npc == 0 || !actor_base_values(*data->root(), npc, ref, out)) {
-            return false;
-        }
-        out.is_player = ref == k_player_ref;
-        return true;
-    }
-    std::uint32_t form_from_file(std::int64_t id, const std::string& plugin) const override {
-        if (owner_.world_.is_null()) {
-            return 0;
-        }
-        return static_cast<std::uint32_t>(owner_.world_->get_form_from_file(id, String::utf8(plugin.c_str())));
-    }
-    vm::RefPlacement ref_placement(std::uint32_t ref) const override {
-        vm::RefInfo info;
-        return owner_.ref_record(ref, info) ? info.placement : vm::RefPlacement{};
-    }
-    vm::Xyz ref_position(std::uint32_t ref) const override { return xyz_from(owner_.position_of(ref)); }
-    vm::Xyz ref_rotation(std::uint32_t ref) const override { return xyz_from(owner_.rotation_of(ref)); }
-    bool ref_disabled(std::uint32_t ref) const override { return owner_.disabled(ref); }
-    bool npc_unique(std::uint32_t npc) const override {
-        const auto* root = world() != nullptr ? world()->root() : nullptr;
-        const auto* record = root != nullptr ? lookup(root->npcs(), npc) : nullptr;
-        return record != nullptr && formats::has_flag(record->flags(), bethconv::pack::wfb::NpcFlags::unique);
-    }
-    bool is_npc(std::uint32_t form) const override {
-        const auto* root = world() != nullptr ? world()->root() : nullptr;
-        return root != nullptr && lookup(root->npcs(), form) != nullptr;
-    }
-    std::uint32_t package_owner_quest(std::uint32_t package) const override {
-        const auto* root = world() != nullptr ? world()->root() : nullptr;
-        const auto* record = root != nullptr ? lookup(root->packages(), package) : nullptr;
-        return record != nullptr ? record->owner_quest() : 0;
-    }
-    bool ref_3d_loaded(std::uint32_t ref) const override { return owner_.is_3d_loaded(ref); }
-    std::int32_t player_level() const override { return owner_.progression_.player().level; }
-    std::int32_t actor_level(std::uint32_t ref) const override {
-        const std::int32_t level = owner_.condition_world().level(ref);
-        return level > 0 ? level : 1;
-    }
-    double game_days() const override {
-        return owner_.clock_.is_valid() ? owner_.clock_->get_game_days() : 0.0;
-    }
-    double time_scale() const override {
-        return owner_.clock_.is_valid() ? owner_.clock_->get_time_scale() : 0.0;
-    }
 
     // ---- vm::WorldEvents: each one is the signal it was, with the same arguments.
 
@@ -1060,7 +927,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Refer
 
     // ---- vm::SceneRuntime::Host
     const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
-    vm::WorldAccess& world_access() override { return *this; }
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
     vm::QuestHost& quest_host() override { return *owner_.quest_host_; }
     conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
     void attach_scene_scripts(std::uint32_t scene) override {
@@ -1124,16 +991,16 @@ void SkydotPapyrus::bind_activations() {
     item_.bind(*access_);
 }
 
-void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *world_host_, *access_); }
 void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
 void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_host_, *access_); }
-void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *world_host_, *access_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *quest_host_); }
-void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *quest_host_); }
-void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
-void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *actor_host_); }
+void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *world_host_, *quest_host_); }
+void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *world_host_, *access_, *access_); }
+void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *world_host_, *access_, *actor_host_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 void SkydotPapyrus::bind_map_natives() {
     vm::bind_map_natives(*vm_, [this](std::uint32_t ref) { return data_marker_flags(ref); });
@@ -1172,8 +1039,8 @@ bool SkydotPapyrus::set_map_marker_flags(std::int64_t ref, std::int64_t flags) {
 }
 
 void SkydotPapyrus::bind_world_natives() {
-    vm::bind_world_natives(*vm_, *access_);
-    actors_.set_source([this](std::uint32_t ref, vm::ActorBase& out) { return access_->actor_base(ref, out); });
+    vm::bind_world_natives(*vm_, *world_host_);
+    actors_.set_source([this](std::uint32_t ref, vm::ActorBase& out) { return world_host_->actor_base(ref, out); });
     if (world_.is_valid()) {
         const WorldData& data = world_->data();
         actors_.set_regen_delays(
@@ -1836,7 +1703,7 @@ std::int64_t SkydotPapyrus::get_thread_count() const {
 double SkydotPapyrus::get_time() const { return vm_->time(); }
 
 godot::Dictionary SkydotPapyrus::get_owner(std::int64_t ref) {
-    const vm::OwnerState owner = vm::owner_of(*vm_, *access_, static_cast<std::uint32_t>(ref));
+    const vm::OwnerState owner = vm::owner_of(*vm_, *world_host_, static_cast<std::uint32_t>(ref));
     godot::Dictionary out;
     out["owner"] = static_cast<std::int64_t>(owner.owner);
     out["faction"] = owner.faction;
