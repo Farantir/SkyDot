@@ -198,6 +198,12 @@ var shot_notes := true  # ask what is wrong after a shot
 var has_pck := false  # given, though ignored
 
 
+## Whether the game's menus are made: with the HUD, or when an option opens one.
+func wants_menus() -> bool:
+	return hud or open_inventory or open_magic or open_favorites or open_skills != "" or open_container != 0 \
+		or open_training != 0 or open_journal != "" or open_sleep_wait != "" or open_map != ""
+
+
 ## What the game session is opened with, from these options.
 func game_config() -> GameConfig:
 	var c := GameConfig.new()

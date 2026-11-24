@@ -69,6 +69,14 @@ var _warned := {}
 var _built := false
 
 
+## Hidden behind a menu (the world map), whatever the weapon's state.
+var menu_hidden := false:
+	set(value):
+		if value != menu_hidden:
+			menu_hidden = value
+			_show_nodes()
+
+
 ## `camera` is what the body hangs in front of (flat mode); `hand`, if given,
 ## is the controller that holds the weapon (hand mode, no arms).
 func _init(session: GameSession, camera: Node3D, hand: Node3D = null, left_hand: Node3D = null) -> void:
@@ -250,7 +258,7 @@ func _build_weapon() -> void:
 		_weapon_node.name = "Weapon"
 		_weapon_node.add_child(model)
 		_hand.add_child(_weapon_node)
-		_weapon_node.visible = _weapon_shown
+		_weapon_node.visible = _weapon_shown and not menu_hidden
 		return
 	if _skeleton == null or _weapon_bone < 0:
 		model.free()
@@ -307,10 +315,14 @@ func _show() -> void:
 	_shown = _weapon_shown or _magic_shown
 	if _shown and not _built:
 		_build()
+	_show_nodes()
+
+
+func _show_nodes() -> void:
 	if _hand == null:
-		visible = _shown
+		visible = _shown and not menu_hidden
 	elif _weapon_node != null:
-		_weapon_node.visible = _weapon_shown
+		_weapon_node.visible = _weapon_shown and not menu_hidden
 
 
 func _on_magic_ready(is_ready: bool) -> void:

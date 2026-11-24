@@ -114,7 +114,7 @@
 # category). --open-sleep-wait wait|sleep[:HOURS] shows the Sleep/Wait menu (T; a bed's activation for sleep) with
 # its slider at HOURS (the game refuses as it would: enemies near, in the air). --open-favorites shows the quick favorites menu (Q). --open-skills NAME shows the skills screen (L; NAME picks the skill, "-" none, "NAME:tree:up" zooms into its tree and moves the cursor up; --grant-xp N sets the player XP first, to bank a level-up, --grant-perks N the perk points). --open-magic shows the magic menu (P) after the load (--magic-tab Destruction, or --magic-category, chooses the tab). --open-inventory shows the inventory after the load, --open-container 0xREF activates that
 # reference as the player (a container or a workbench opens its menu, --crafting-category NAME|N
-# picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; item_menu.gd); both with --hud
+# picks the enchanting table's category, --learn-enchantment 0xENCH[,...] teaches enchantments; menu_host.gd); both with --hud
 # or on their own. --talk 0xREF opens a dialogue with that actor after the load (dialogue_menu.gd);
 # with --screenshot the lines play out first (--shot-delay).
 # --hud forces the health, magicka and stamina bars, the crosshair and the
@@ -200,7 +200,7 @@ var _controls: PlayerInput
 var _loop: ShellLoop  # the commands, game signals, start options and frame order both shells share
 var _hud: Hud
 var _dialogue: DialogueMenu
-var _items: ItemMenu
+var _menus: MenuHost  # the game's menus, on a CanvasLayer over the window
 var _debug: DebugOverlay  # notes, journal, navmesh, path; Shift+F12 hides it for a shot
 var _shots: ShotRecorder
 var _body: FirstPersonBody  # the player's arms and weapon
@@ -269,27 +269,9 @@ func _create_components() -> void:
 	add_child(_controls)
 	_loop = ShellLoop.new(self, _session, _rig, _controls, _settings, _image_space, _debug.note)
 	_loop.command.connect(_on_command)
-	_loop.inventory_requested.connect(func() -> void:
-		if _items != null:
-			_items.open_inventory())
-	_loop.magic_requested.connect(func() -> void:
-		if _items != null:
-			_items.open_magic())
-	_loop.favorites_requested.connect(func() -> void:
-		if _items != null:
-			_items.open_favorites())
-	_loop.tween_requested.connect(func() -> void:
-		if _items != null:
-			_items.open_tween())
-	_loop.journal_requested.connect(func(pause: bool) -> void:
-		if _items == null or not _items.open_journal(pause):
-			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)  # no journal: Esc frees the mouse
-	_loop.wait_requested.connect(func() -> void:
-		if _items != null:
-			_items.open_wait())
-	_loop.skills_requested.connect(func() -> void:
-		if _items != null:
-			_items.toggle_skills())
+	_loop.journal_requested.connect(func(_pause: bool) -> void:
+		if _menus == null:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE)  # no menus: Esc frees the mouse
 	_body = FirstPersonBody.new(_session, _rig.camera)
 	add_child(_body)
 	_session.magic.hand_node = _body.magic_node
@@ -302,15 +284,17 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
 		add_child(_dialogue)
-	if _settings.hud or _settings.open_inventory or _settings.open_magic or _settings.open_favorites or _settings.open_skills != "" or _settings.open_container != 0 or _settings.open_training != 0 or _settings.open_journal != "" or _settings.open_sleep_wait != "" or _settings.open_map != "":
-		_items = ItemMenu.new(_session, _controls)
-		add_child(_items)
+	if _settings.wants_menus():
+		var layer := CanvasLayer.new()
+		layer.layer = 12
+		_menus = MenuHost.new(_session, _controls, layer.add_child)
+		_menus.attach(_loop)
+		add_child(layer)
 		# The world map: the main camera moves up while the world waits (viewer/map_scene.gd).
 		var map_scene := MapScene.new(_session, _rig.camera)
 		add_child(map_scene)
-		_items.map_view.scene = map_scene
-		_loop.paused = func() -> bool: return _items.map_view.is_open()
-		_loop.map_requested.connect(_items.open_map)
+		_menus.map_view.scene = map_scene
+		_loop.paused = func() -> bool: return _menus.map_view.is_open()
 	add_child(DeathMenu.new(_session, _rig, _loop))
 	add_child(FadeLayer.new(_session.transition))  # the door fade (the session keeps its value)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
@@ -319,7 +303,7 @@ func _create_components() -> void:
 	_shots.menu_state = func() -> Dictionary:
 		if _dialogue != null and _session.is_dialogue_open():
 			return {"open": "dialogue"}
-		return _items.describe() if _items != null else {}
+		return _menus.describe() if _menus != null else {}
 	if _settings.has_screenshot:
 		_debug.toggle_perf()  # kept out of rendered comparison shots; still printed as "perf:"
 	_controls.capture_mouse()
@@ -331,9 +315,10 @@ func _start_game() -> void:
 	var settings := _settings
 	if not _loop.start():
 		return
-	_select_crafting_category(settings)
-	if settings.open_map != "" and _items != null and not (_loop.in_world and settings.has_screenshot):
-		MapShot.apply(_items, settings.open_map)
+	if settings.open_map != "" and _menus != null and not (_loop.in_world and settings.has_screenshot):
+		MapShot.apply(_menus, settings.open_map)
+	if _menus != null:
+		_menus.open_start_menus(settings, _loop.in_world)
 	if _loop.in_world:
 		if settings.has_benchmark:
 			_benchmark.begin(settings.benchmark, settings.fly_speed)
@@ -344,38 +329,10 @@ func _start_game() -> void:
 			_session.streamer.load_everything()
 			if _session.streamer.lod != null:
 				print("lod: ", _session.streamer.lod.get_stats())
-			if settings.open_map != "" and _items != null:
-				MapShot.apply(_items, settings.open_map)  # after the place is built: the map hides it
+			if settings.open_map != "" and _menus != null:
+				MapShot.apply(_menus, settings.open_map)  # after the place is built: the map hides it
 			_shots.begin_run(settings.screenshot, [NAN])
 		return
-	if settings.open_inventory and _items != null:
-		_items.open_inventory()
-		if settings.inventory_tab != "":
-			_items.inventory_view.model.select_tab(settings.inventory_tab)
-	if settings.open_favorites and _items != null:
-		_items.open_favorites()
-	if settings.open_magic and _items != null:
-		_items.open_magic()
-		_items.magic_view.select_category(settings.magic_category)
-	if settings.open_skills != "" and _items != null:
-		if settings.grant_perks > 0:
-			_session.papyrus.set_perk_points(settings.grant_perks)
-		if settings.grant_xp > 0.0:
-			_session.papyrus.set_player_xp(settings.grant_xp)
-		_items.skills_view.open()
-		_items.skills_view.select_skill(settings.open_skills)
-	if settings.open_journal != "" and _items != null:
-		_items.journal_view.category = settings.journal_category
-		_items.journal_view.open(["quests", "stats", "system"].find(settings.open_journal))
-		if settings.journal_system != "":
-			_items.journal_view.system.debug_state(settings.journal_system)
-	if settings.open_sleep_wait != "" and _items != null:
-		var parts := settings.open_sleep_wait.split(":")
-		_items.sleep_wait_view.open(parts[0] == "sleep")
-		if parts.size() > 1:
-			_items.sleep_wait_view.set_value(float(parts[1]))
-	if settings.open_training != 0 and _items != null:
-		_items.training_view.open(settings.open_training)
 	if settings.has_screenshot:
 		if (settings.has_at and settings.has_target) or (settings.has_at and settings.has_look):  # --look: a shot's view
 			_shots.begin_run(settings.screenshot, [NAN])
@@ -386,20 +343,14 @@ func _start_game() -> void:
 			_shots.begin_run(settings.screenshot, yaws)
 
 
-## --crafting-category: the category an opened enchanting table shows.
-func _select_crafting_category(settings: ViewerSettings) -> void:
-	if settings.crafting_category != "" and _items != null:
-		_items.crafting_view.select_category(settings.crafting_category)
-
-
 func _process(delta: float) -> void:
 	if _shots == null:
 		return
 	ImageSpaceSync.apply(get_viewport(), _settings, _session, _image_space)
-	if _hud != null and _items != null:
-		_hud.visible = not _items.is_open()  # the game hides its HUD while an item menu is open
-	if _items != null:
-		_body.visible = not _items.map_view.is_open()  # the arms stay below while the camera is up
+	if _hud != null and _menus != null:
+		_hud.visible = not _menus.hides_hud()
+	if _menus != null:
+		_body.menu_hidden = _menus.hides_body()
 	_debug.sample_perf(delta)
 	if _shots.is_running() and _settings.shot_live:
 		# --shot-live: the game runs as in play (quests, scenes, the AI), the camera at the shot's view.

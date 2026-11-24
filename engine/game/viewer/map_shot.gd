@@ -28,7 +28,7 @@ static func rss() -> String:
 	return ""
 
 
-static func apply(items: ItemMenu, ops: String) -> void:
+static func apply(items: MenuHost, ops: String) -> void:
 	var view := items.map_view
 	var session: GameSession = view._session
 	if not view.open():
