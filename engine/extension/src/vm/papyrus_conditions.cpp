@@ -5,6 +5,7 @@
 #include "data/fb_search.hpp"
 #include "skydot_formats/flags.hpp"
 #include "state/calendar.hpp"
+#include "vm/magic_runtime.hpp"
 #include "vm/papyrus.hpp"
 #include "render/weather.hpp"
 

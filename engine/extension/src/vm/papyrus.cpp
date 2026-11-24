@@ -13,6 +13,7 @@
 #include "actors/behavior_player.hpp"
 #include "physics/collision.hpp"
 #include "vm/activation.hpp"
+#include "vm/magic_runtime.hpp"
 #include "vm/natives_actor.hpp"
 #include "vm/papyrus_common.hpp"
 #include "vm/natives_families.hpp"

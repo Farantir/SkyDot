@@ -9,15 +9,9 @@
 #pragma once
 
 #include "conditions/conditions.hpp"
-#include "data/actors.hpp"
-#include "data/fb_search.hpp"
-#include "data/leveled.hpp"
-#include "data/world_data.hpp"
 #include "magic/active_effects.hpp"
-#include "magic/casting.hpp"
 #include "magic/enchanted.hpp"
 #include "magic/finish_grace.hpp"
-#include "magic/magic_save.hpp"
 #include "magic/shouts.hpp"
 #include "magic/spell_lists.hpp"
 #include "save/bytes.hpp"
@@ -33,14 +27,14 @@
 #include "vm/world_access.hpp"
 #include "world_generated.h"
 
-#include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace skydot::vm {
@@ -96,86 +90,15 @@ public:
         virtual void attach_effect_scripts(std::uint32_t id, std::uint32_t mgef) = 0;
     };
 
-    MagicRuntime(Host& host, const wfb::World& world, ItemRuntime& items, CombatRuntime& combat)
-        : host_(&host), world_(world), items_(items), combat_(combat), effects(world, *this), book(world, effects), shouts(world),
-          worn(world, effects, &host.created_forms()) {
-        shouts.set_base_source([this](std::uint32_t ref) {
-            if (!host_->actor_states().is_actor(ref)) {
-                return std::vector<std::uint32_t>{};
-            }
-            const std::uint32_t npc = host_->dialogue_npc(ref);
-            return npc != 0 ? magic::base_shouts(world_, npc, ref, leveled::player_level())
-                            : std::vector<std::uint32_t>{};
-        });
-        book.set_base_source([this](std::uint32_t ref) {
-            if (!host_->actor_states().is_actor(ref)) {
-                return std::vector<std::uint32_t>{};
-            }
-            const std::uint32_t npc = host_->dialogue_npc(ref);
-            if (npc == 0) {
-                return std::vector<std::uint32_t>{};
-            }
-            auto spells = magic::base_spells(world_, npc, ref, leveled::player_level());
-            for (const std::uint32_t ability : host_->perk_abilities(ref)) {
-                if (std::ranges::find(spells, ability) == spells.end()) {
-                    spells.push_back(ability);
-                }
-            }
-            return spells;
-        });
-        register_forgets();
-    }
+    MagicRuntime(Host& host, const wfb::World& world, ItemRuntime& items, CombatRuntime& combat);
 
     /// The magic stores keyed by reference or by effect instance id, in the VM's registry (state/ref_forget.hpp).
     /// The tokens end with this state, which a new VM's setup resets first.
-    void register_forgets() {
-        auto& registry = host_->vm().forgets();
-        forgets.push_back(registry.add(
-            "magic.effects",
-            [this](std::uint32_t ref) {
-                // The effects on a gone actor end without being undone; their script objects go with them.
-                for (const std::uint32_t id : effects.forget(ref)) {
-                    host_->vm().detach(id);
-                    snapshots.erase(id);
-                }
-            },
-            [this] { return effects.entries(); },
-            // Casters, targets and summoned refs of the held effects, of the views waiting to be sent and of
-            // the snapshots of effects with script objects: values the forget does not scrub.
-            [this](std::set<std::uint32_t>& out) {
-                effects.held_refs(out);
-                for (const auto& p : pending) {
-                    out.insert({p.view.caster, p.view.target, p.view.summoned});
-                }
-                for (const auto& [id, view] : snapshots) {
-                    out.insert({view.caster, view.target, view.summoned});
-                }
-            }));
-        forgets.push_back(registry.add(
-            "magic.spell_book", [this](std::uint32_t ref) { book.forget(ref); }, [this] { return book.entries(); }));
-        forgets.push_back(registry.add(
-            "magic.shouts", [this](std::uint32_t ref) { shouts.forget(ref); }, [this] { return shouts.entries(); }));
-        forgets.push_back(registry.add(
-            "magic.worn", [this](std::uint32_t ref) { worn.forget(ref); }, [this] { return worn.entries(); }));
-        forgets.push_back(registry.add(
-            "magic.pending",
-            [this](std::uint32_t ref) {
-                std::erase_if(pending, [ref](const Pending& p) { return p.view.target == ref; });
-            },
-            [this] { return pending.size(); }));
-        // Keyed by effect instance id (the VM's own store drops the script objects).
-        forgets.push_back(registry.add(
-            "magic.script_effects",
-            [this](std::uint32_t id) {
-                snapshots.erase(id);
-                detach_later.forget(id);
-            },
-            [this] { return snapshots.size() + detach_later.size(); }));
-    }
+    void register_forgets();
 
     /// PLACEHOLDER: how far in front of the caster a summon appears, Skyrim units.
     static constexpr double k_summon_distance = 150.0;
-    static std::uint32_t actor_level_of(const wfb::Npc& npc) { return skydot::actor_level(npc); }
+    static std::uint32_t actor_level_of(const wfb::Npc& npc);
 
     Host* host_;
     const wfb::World& world_;
@@ -203,20 +126,7 @@ public:
 
     // ---- MagicHost
     double actor_value(std::uint32_t ref, std::uint32_t av) const override { return host_->actor_states().get(ref, av); }
-    void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t caster) override {
-        if (av == vm::av::k_health && amount > 0.0 && combat_.ghost_ignores_hit(ref)) {
-            return;
-        }
-        host_->actor_states().damage(ref, av, amount);
-        if (caster != 0 && av == vm::av::k_health) {
-            if (host_->actor_states().get(ref, vm::av::k_health) <= 0.0 && host_->actor_states().killer_of(ref) == 0) {
-                host_->actor_states().set_killer(ref, caster);
-            }
-            if (ref == k_player_ref) {
-                combat_.set_last_damager(caster);
-            }
-        }
-    }
+    void damage_value(std::uint32_t ref, std::uint32_t av, double amount, std::uint32_t caster) override;
     void restore_value(std::uint32_t ref, std::uint32_t av, double amount) override {
         host_->actor_states().restore(ref, av, amount);
     }
@@ -224,376 +134,82 @@ public:
         host_->actor_states().mod_temp(ref, av, delta);
     }
     bool conditions_pass(const flatbuffers::Vector<flatbuffers::Offset<wfb::Condition>>* list, std::uint32_t subject,
-                         std::uint32_t caster) override {
-        const auto cw = host_->new_condition_world();
-        conditions::ConditionContext ctx;
-        ctx.subject = subject;
-        ctx.target = caster;
-        ctx.unknown = conditions::UnknownPolicy::fails;
-        return conditions::conditions_pass(list, *cw, ctx, nullptr);
-    }
+                         std::uint32_t caster) override;
     bool is_dead(std::uint32_t ref) const override { return host_->actor_states().is_dead(ref); }
-    double game_setting(std::string_view name, double fallback) const override {
-        return static_cast<double>(WorldData::gmst_float(&world_, name, static_cast<float>(fallback)));
-    }
+    double game_setting(std::string_view name, double fallback) const override;
     void effect_changed(bool started, const magic::EffectView& e) override { pending.push_back({started, e}); }
 
     // ---- archetypes (UESP; placeholders marked in magic/active_effects.cpp)
-    std::uint32_t actor_level(std::uint32_t ref) const override {
-        if (ref == k_player_ref) {
-            return leveled::player_level();
-        }
-        if (!host_->actor_states().is_actor(ref)) {
-            return 0;
-        }
-        const auto* npc = resolve_npc(world_, host_->dialogue_npc(ref), wfb::NpcTemplateFlags::use_stats, ref);
-        return npc != nullptr ? actor_level_of(*npc) : 0;
-    }
-    std::uint32_t place_summon(std::uint32_t caster, std::uint32_t npc_base) override {
-        PlacedRef placed;
-        placed.base = npc_base;
-        placed.cell = host_->world_access().parent_cell(caster);
-        const Xyz position = host_->world_access().ref_position(caster);
-        const Xyz rotation = host_->world_access().ref_rotation(caster);
-        // PLACEHOLDER: 150 units in front of the caster (rotation z is the heading, radians).
-        const double heading = rotation[2];
-        placed.position[0] = position[0] + std::sin(heading) * k_summon_distance;
-        placed.position[1] = position[1] + std::cos(heading) * k_summon_distance;
-        placed.position[2] = position[2];
-        for (std::size_t i = 0; i < 3; ++i) {
-            placed.rotation[i] = rotation[i];
-        }
-        placed.scale = 1.0;
-        const std::uint32_t ref = host_->place_summon_ref(placed);
-        if (ref == 0 || !host_->actor_states().is_actor(ref)) {
-            if (ref != 0) {
-                host_->forget_ref(ref);
-            }
-            return 0;
-        }
-        log("magic: " + magic_hex(npc_base) + " summoned " + magic_hex(ref) + " for " + magic_hex(caster));
-        return ref;
-    }
-    void remove_summon(std::uint32_t ref) override {
-        log("magic: summon " + magic_hex(ref) + " gone");
-        host_->forget_ref(ref);
-    }
-    void reanimate(std::uint32_t target, std::uint32_t caster) override {
-        host_->actor_states().revive(target);
-        log("magic: " + magic_hex(target) + " reanimated for " + magic_hex(caster));
-    }
-    void end_reanimate(std::uint32_t target) override {
-        // PLACEHOLDER: it just dies (UESP: it turns to ash).
-        host_->actor_states().damage(target, vm::av::k_health, 1e9);
-    }
-    void bound_add(std::uint32_t target, std::uint32_t weapon) override {
-        // PLACEHOLDER: always the right hand (the MGEF names no hand).
-        if (items_.equip_item(target, weapon, false, true)) {
-            log("magic: " + magic_hex(target) + " bound weapon " + magic_hex(weapon) + " added");
-        } else {
-            log("magic: " + magic_hex(target) + " cannot equip bound weapon " + magic_hex(weapon));
-        }
-    }
-    void bound_remove(std::uint32_t target, std::uint32_t weapon) override {
-        (void)items_.unequip_item(target, weapon);
-        (void)items_.remove_item(target, weapon, 1);
-        log("magic: " + magic_hex(target) + " bound weapon " + magic_hex(weapon) + " removed");
-    }
-    std::vector<std::uint32_t> actors_near(std::uint32_t ref, double radius) const override {
-        std::vector<std::uint32_t> out;
-        const auto float_position = [this](std::uint32_t actor) {
-            const Xyz p = host_->world_access().ref_position(actor);
-            return std::array<float, 3>{static_cast<float>(p[0]), static_cast<float>(p[1]), static_cast<float>(p[2])};
-        };
-        const auto at = float_position(ref);
-        const auto consider = [&](std::uint32_t actor) {
-            if (actor == ref || !host_->actor_states().is_actor(actor) || host_->actor_states().is_dead(actor)) {
-                return;
-            }
-            // The distance as the float vector math of the engine rounds it.
-            const auto p = float_position(actor);
-            const float dx = p[0] - at[0];
-            const float dy = p[1] - at[1];
-            const float dz = p[2] - at[2];
-            if (static_cast<double>(std::sqrt(dx * dx + dy * dy + dz * dz)) <= radius) {
-                out.push_back(actor);
-            }
-        };
-        for (const std::uint32_t actor : host_->triggered_actors()) {
-            if (actor != k_player_ref) {
-                consider(actor);
-            }
-        }
-        consider(k_player_ref);
-        return out;
-    }
+    std::uint32_t actor_level(std::uint32_t ref) const override;
+    std::uint32_t place_summon(std::uint32_t caster, std::uint32_t npc_base) override;
+    void remove_summon(std::uint32_t ref) override;
+    void reanimate(std::uint32_t target, std::uint32_t caster) override;
+    void end_reanimate(std::uint32_t target) override;
+    void bound_add(std::uint32_t target, std::uint32_t weapon) override;
+    void bound_remove(std::uint32_t target, std::uint32_t weapon) override;
+    std::vector<std::uint32_t> actors_near(std::uint32_t ref, double radius) const override;
     void log(const std::string& line) override { host_->magic_trace(line); }
 
     // ---- helpers
-    [[nodiscard]] magic::MagicSettings settings() const {
-        magic::MagicSettings s;
-        s.max_resistance = game_setting("fPlayerMaxResistance", s.max_resistance);
-        s.skill_cost_exponent = game_setting("fMagicPCSkillCostScale", s.skill_cost_exponent);
-        s.area_cost_mult = game_setting("fMagicAreaBaseCostMult", s.area_cost_mult);
-        return s;
-    }
+    [[nodiscard]] magic::MagicSettings settings() const;
     /// The text of a text GMST, or `fallback`.
-    [[nodiscard]] std::string game_text(std::string_view name, const char* fallback) const {
-        const auto* g = WorldData::find_gmst(&world_, name);
-        return g != nullptr && g->text_value() != nullptr && g->text_value()->size() > 0 ? g->text_value()->str()
-                                                                                         : std::string(fallback);
-    }
-    [[nodiscard]] std::string word_name(std::uint32_t word) const {
-        const auto* w = lookup(world_.words_of_power(), word);
-        return w != nullptr && w->name() != nullptr ? magic::word_spelling(w->name()->str()) : magic_hex(word);
-    }
-    void message(const std::string& text) {
-        host_->magic_notification(text);
-    }
-    [[nodiscard]] std::string spell_name(std::uint32_t spell) const {
-        const auto* s = lookup(world_.spells(), spell);
-        return s != nullptr && s->name() != nullptr ? s->name()->str() : magic_hex(spell);
-    }
-    void prime(std::uint32_t actor) {
-        if (host_->actor_states().is_actor(actor)) {
-            book.ensure_abilities(actor);
-            sync_worn(actor);
-        }
-    }
+    [[nodiscard]] std::string game_text(std::string_view name, const char* fallback) const;
+    [[nodiscard]] std::string word_name(std::uint32_t word) const;
+    void message(const std::string& text) { host_->magic_notification(text); }
+    [[nodiscard]] std::string spell_name(std::uint32_t spell) const;
+    void prime(std::uint32_t actor);
     /// What `actor` wears with an enchantment (armor, clothing, jewelry and a shield; a weapon's is
     /// not constant) is on it as constant effects; nothing on the dead.
-    void sync_worn(std::uint32_t actor) {
-        if (!host_->actor_states().is_actor(actor)) {
-            return;
-        }
-        if (host_->actor_states().is_dead(actor)) {
-            worn.forget(actor);
-            return;
-        }
-        items_.resolve_owner(actor);
-        std::vector<magic::WornEnchant> list;
-        if (const vm::Equipment* eq = items_.states().find(actor)) {
-            const auto add = [&](std::uint32_t form, std::uint32_t extra) {
-                const vm::ItemInfo info = items_.item_info_of(form);
-                if (!info.known || (info.category != vm::ItemCategory::armor && info.category != vm::ItemCategory::clothing &&
-                                    info.category != vm::ItemCategory::jewelry)) {
-                    return;
-                }
-                if (const std::uint32_t ench = magic::enchantment_of(world_, form, items_.states().extras().find(extra))) {
-                    list.push_back({form, extra, ench});
-                }
-            };
-            for (const std::uint32_t form : eq->worn) {
-                add(form, eq->worn_extra_of(form));
-            }
-            if (eq->left != 0 && vm::is_shield(items_.item_info_of(eq->left))) {
-                add(eq->left, eq->left_extra);
-            }
-        }
-        worn.sync(actor, list);
-    }
+    void sync_worn(std::uint32_t actor);
     /// A scroll item `actor` carries.
-    [[nodiscard]] bool carried_scroll(std::uint32_t actor, std::uint32_t form) {
-        const auto* base = lookup(world_.bases(), form);
-        const auto* item = base != nullptr ? base->item() : nullptr;
-        if (item == nullptr || item->category() != wfb::ItemCategory::scroll) {
-            return false;
-        }
-        items_.resolve_owner(actor);
-        return host_->inventory().count(actor, form) > 0;
-    }
+    [[nodiscard]] bool carried_scroll(std::uint32_t actor, std::uint32_t form);
     /// The effects of an ALCH, INGR, SCRL or created potion; `poison` if it is one.
     bool item_effects(std::uint32_t form, std::vector<magic::EffectInput>& inputs, magic::SourceKind& kind,
-                      bool& poison) {
-        kind = magic::SourceKind::potion;
-        poison = false;
-        const auto* base = lookup(world_.bases(), form);
-        const auto* item = base != nullptr ? base->item() : nullptr;
-        if (item != nullptr) {
-            inputs = magic::inputs_of(item->effects());
-            switch (item->category()) {
-            case wfb::ItemCategory::ingredient: kind = magic::SourceKind::ingredient; break;
-            case wfb::ItemCategory::scroll: kind = magic::SourceKind::scroll; break;
-            case wfb::ItemCategory::potion:
-                // The pack has no ALCH poison flag (ENIT 0x20000): a potion whose effects are all hostile is one.
-                if (!item->food() && !inputs.empty()) {
-                    poison = std::ranges::all_of(inputs, [&](const magic::EffectInput& in) {
-                        const auto* m = lookup(world_.magic_effects(), in.effect);
-                        return m != nullptr && (m->flags() & magic::mgef_flag::hostile) != 0;
-                    });
-                }
-                break;
-            default: break;
-            }
-            return true;
-        }
-        if (const auto* created = host_->created_forms().find(form)) {
-            poison = created->poison;
-            std::int32_t index = 0;
-            for (const auto& e : created->effects) {
-                inputs.push_back({e.effect, e.magnitude, 0, e.duration, index++});
-            }
-            return true;
-        }
-        return false;
-    }
-    static magic::SourceKind kind_of(const wfb::Spell& s) {
-        switch (s.type()) {
-        case magic::spell_type::ability: return magic::SourceKind::ability;
-        case magic::spell_type::poison: return magic::SourceKind::poison;
-        default: return s.casting_type() == magic::casting::scroll ? magic::SourceKind::scroll : magic::SourceKind::spell;
-        }
-    }
+                      bool& poison);
+    static magic::SourceKind kind_of(const wfb::Spell& s);
 
     /// Put the effects of `spell` on `target`; the ids made.
     std::vector<std::uint32_t> land(std::uint32_t caster, std::uint32_t blame, std::uint32_t spell,
-                                    std::uint32_t target) {
-        const auto* s = lookup(world_.spells(), spell);
-        if (s == nullptr) {
-            return {};
-        }
-        const std::uint32_t source_actor = blame != 0 ? blame : caster;
-        prime(source_actor);
-        prime(target);
-        const auto inputs = magic::inputs_of(s->effects());
-        auto ids = effects.apply(source_actor, target, {kind_of(*s), spell, 0}, inputs);
-        return ids;
-    }
+                                    std::uint32_t target);
 
     // ---- MagicApi
-    bool cast(std::uint32_t spell, std::uint32_t caster, std::uint32_t blame, std::uint32_t target) override {
-        if (lookup(world_.spells(), spell) == nullptr || caster == 0) {
-            return false;
-        }
-        const std::uint32_t on = target != 0 ? target : caster;
-        log("magic: " + magic_hex(blame != 0 ? blame : caster) + " casts " + magic_hex(spell) + " on " + magic_hex(on) + " (script)");
-        land(caster, blame, spell, on);
-        flush();
-        return true;
-    }
-    double spell_cost(std::uint32_t spell, std::uint32_t caster) override {
-        const auto* s = lookup(world_.spells(), spell);
-        if (s == nullptr) {
-            return 0.0;
-        }
-        if (caster == 0) {
-            return static_cast<double>(s->cost());
-        }
-        return magic::perk_spell_cost(world_, *this, caster, *s, settings());
-    }
+    bool cast(std::uint32_t spell, std::uint32_t caster, std::uint32_t blame, std::uint32_t target) override;
+    double spell_cost(std::uint32_t spell, std::uint32_t caster) override;
     double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
                       double value) const override {
         return host_->perk_entry(ep, owner, subjects, value);
     }
-    bool add_spell(std::uint32_t actor, std::uint32_t spell, bool verbose) override {
-        if (!host_->actor_states().is_actor(actor)) {
-            return false;
-        }
-        prime(actor);
-        const bool added = book.add_spell(actor, spell);
-        if (added && verbose && actor == k_player_ref) {
-            message(spell_name(spell) + " added");
-        }
-        flush();
-        return added;
-    }
-    bool remove_spell(std::uint32_t actor, std::uint32_t spell) override {
-        prime(actor);
-        const bool removed = book.remove_spell(actor, spell);
-        flush();
-        return removed;
-    }
+    bool add_spell(std::uint32_t actor, std::uint32_t spell, bool verbose) override;
+    bool remove_spell(std::uint32_t actor, std::uint32_t spell) override;
     bool has_spell(std::uint32_t actor, std::uint32_t spell) override {
         return host_->actor_states().is_actor(actor) && book.has_spell(actor, spell);
     }
-    bool dispel_spell(std::uint32_t actor, std::uint32_t spell) override {
-        const bool any = effects.dispel(actor, spell) != 0;
-        flush();
-        return any;
-    }
-    void dispel_all_spells(std::uint32_t actor) override {
-        effects.dispel_all(actor);
-        flush();
-    }
-    bool has_magic_effect(std::uint32_t actor, std::uint32_t mgef) override {
-        prime(actor);
-        return effects.has_effect(actor, mgef);
-    }
-    bool has_magic_effect_keyword(std::uint32_t actor, std::uint32_t keyword) override {
-        prime(actor);
-        return effects.has_effect_keyword(actor, keyword);
-    }
+    bool dispel_spell(std::uint32_t actor, std::uint32_t spell) override;
+    void dispel_all_spells(std::uint32_t actor) override;
+    bool has_magic_effect(std::uint32_t actor, std::uint32_t mgef) override;
+    bool has_magic_effect_keyword(std::uint32_t actor, std::uint32_t keyword) override;
     static magic::Slot slot_of(int hand) {
         return hand == 0 ? magic::Slot::left : (hand == 1 ? magic::Slot::right : magic::Slot::power);
     }
-    bool equip_spell(std::uint32_t actor, std::uint32_t spell, int hand) override {
-        if (hand == 2) {
-            const bool changed = shouts.equipped(actor) != spell && book.equipped(actor, magic::Slot::power) != spell;
-            const bool done = magic::equip_voice(book, shouts, actor, spell); // the voice slot: a power or a shout
-            if (done && changed) {
-                items_.send_equip_event(actor, spell, true);
-            }
-            return done;
-        }
-        const bool scroll = !book.has_spell(actor, spell) && carried_scroll(actor, spell);
-        const bool changed = equipped_spell(actor, hand) != spell;
-        const bool done = book.equip(actor, spell, slot_of(hand), scroll);
-        if (done && changed) {
-            items_.send_equip_event(actor, spell, true);
-        }
-        return done;
-    }
+    bool equip_spell(std::uint32_t actor, std::uint32_t spell, int hand) override;
     void unequip_spell(std::uint32_t actor, int hand) override { book.unequip(actor, slot_of(hand)); }
     std::uint32_t equipped_spell(std::uint32_t actor, int hand) override { return book.equipped(actor, slot_of(hand)); }
     // ---- shouts
-    bool teach_word(std::uint32_t word) override {
-        const bool learned = shouts.teach_word(k_player_ref, word);
-        if (learned) {
-            message(game_text("sShoutAdded", "Word of Power Learned") + ": " + word_name(word));
-        }
-        return learned;
-    }
+    bool teach_word(std::uint32_t word) override;
     bool unlock_word(std::uint32_t word) override { return shouts.unlock_word(k_player_ref, word); }
     bool is_word_unlocked(std::uint32_t word) override { return shouts.is_word_unlocked(k_player_ref, word); }
     bool add_shout(std::uint32_t actor, std::uint32_t shout) override {
         return host_->actor_states().is_actor(actor) && shouts.add_shout(actor, shout);
     }
     bool remove_shout(std::uint32_t actor, std::uint32_t shout) override { return shouts.remove_shout(actor, shout); }
-    bool equip_shout(std::uint32_t actor, std::uint32_t shout) override {
-        if (!shouts.is_shout(shout)) {
-            return false;
-        }
-        const bool changed = shouts.equipped(actor) != shout;
-        const bool done = magic::equip_voice(book, shouts, actor, shout);
-        if (done && changed) {
-            items_.send_equip_event(actor, shout, true);
-        }
-        return done;
-    }
-    void unequip_shout(std::uint32_t actor, std::uint32_t shout) override {
-        if (shout == 0 || shouts.equipped(actor) == shout) {
-            shouts.unequip(actor);
-        }
-    }
+    bool equip_shout(std::uint32_t actor, std::uint32_t shout) override;
+    void unequip_shout(std::uint32_t actor, std::uint32_t shout) override;
     std::uint32_t equipped_shout(std::uint32_t actor) override { return shouts.equipped(actor); }
     void set_voice_recovery(std::uint32_t actor, double seconds) override { shouts.set_recovery(actor, seconds); }
     double voice_recovery(std::uint32_t actor) override { return shouts.recovery_left(actor); }
 
-    std::optional<Effect> effect(std::uint32_t handle) override {
-        if (const auto live = effects.instance(handle)) {
-            return Effect{live->mgef, live->target, live->caster, live->magnitude, live->duration, live->elapsed};
-        }
-        const auto snap = snapshots.find(handle);
-        if (snap == snapshots.end()) {
-            return std::nullopt;
-        }
-        const auto& v = snap->second;
-        return Effect{v.mgef, v.target, v.caster, v.magnitude, v.duration, v.elapsed};
-    }
-    void dispel_effect(std::uint32_t handle) override {
-        effects.dispel_instance(handle);
-        flush();
-    }
+    std::optional<Effect> effect(std::uint32_t handle) override;
+    void dispel_effect(std::uint32_t handle) override;
 
     // ---- events, ticks, deaths, the save section (magic_runtime.cpp)
     /// Send what effects started or finished since the last call (the signals, Papyrus events).

@@ -53,7 +53,6 @@
 #include "vm/activation.hpp"
 #include "vm/activation_runtime.hpp"
 #include "vm/item_runtime.hpp"
-#include "vm/magic_runtime.hpp"
 #include "vm/world_access.hpp"
 #include "world/world.hpp"
 
@@ -82,6 +81,10 @@
 #include <vector>
 
 namespace skydot {
+
+namespace vm {
+class MagicRuntime;
+}
 
 class SkydotPapyrus : public godot::RefCounted {
     GDCLASS(SkydotPapyrus, godot::RefCounted)
