@@ -8,7 +8,8 @@
 # false: the wall only glows (Dark1State) and nothing is taught; turned to the target between the inner
 # and the middle radius HasLOS is true and the wall goes to Dark3State, within the inner radius Game.TeachWord
 # tells "Word of Power Learned: Fus", the wall lights (LightState) and WordFus 0x13E22 is known and not
-# unlocked; the quest stage the trigger names is set. Skips without the pack.
+# unlocked; the quest stage the trigger names is set. Loaded in place and attached again, the trigger volume
+# gets its load events again. Skips without the pack.
 extends SceneTree
 
 const PLAYER := 0x14
@@ -184,5 +185,15 @@ func _run(pack_dir: String) -> void:
 	print("word wall: events ", _events)
 	print("word wall: graph states ", _states)
 	print("word wall: quest 0x%X stage %d -> %d" % [quest, stage_before, after])
+
+	# ---- loaded in place: the trigger volume (no node) gets its load events again
+	var volumes := func() -> int: return papyrus.forget_store_sizes()["volume_loaded"]
+	var loaded_volumes: int = volumes.call()
+	expect(loaded_volumes > 0, "the trigger volume got its load events")
+	expect(papyrus.load_state(papyrus.save_state()) == OK, "loads in place: " + papyrus.get_last_error())
+	expect(volumes.call() == 0, "a load forgets which volumes got their load events (%d)" % volumes.call())
+	papyrus.attach_cell(cell)
+	papyrus.attach_built(wall.get_parent())
+	expect(volumes.call() == loaded_volumes, "attached again, they get them again (%d)" % volumes.call())
 	print("smoke_word_wall: ", "OK" if failures == 0 else "%d failure(s)" % failures)
 	quit(1 if failures > 0 else 0)

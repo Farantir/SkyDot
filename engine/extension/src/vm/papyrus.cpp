@@ -453,6 +453,7 @@ void SkydotPapyrus::reset() {
     attached_.clear();
     attached_cells_.clear();
     loaded_.clear();
+    volume_loaded_.clear();
     states_.clear();
     actors_.clear();
     clear_magic();
