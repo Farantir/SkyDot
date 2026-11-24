@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -55,4 +56,25 @@ TEST_CASE("a damaged member fails its CRC", "[zip]") {
     bad[30 + 5] ^= 0x01; // first byte of a.txt's data
     CHECK_FALSE(zip_read(bad, "a.txt"));
     CHECK(zip_entries(std::vector<std::uint8_t>{1, 2, 3}).empty());
+}
+
+TEST_CASE("a size the compressed bytes cannot hold is refused before anything is allocated", "[zip]") {
+    CHECK_FALSE(inflate_raw(k_dynamic, std::size_t{1} << 62));
+    CHECK_FALSE(inflate_raw(k_dynamic, 1648 - 1)); // the output outgrows the size: it stops there
+    // dir/b.txt's central directory entry claiming 4 GiB.
+    std::vector<std::uint8_t> big = k_zip;
+    const auto entries = zip_entries(big);
+    REQUIRE(entries.size() == 2);
+    std::size_t at = 0;
+    for (std::size_t i = 0; i + 4 <= big.size(); ++i) {
+        if (big[i] == 0x50 && big[i + 1] == 0x4b && big[i + 2] == 0x01 && big[i + 3] == 0x02) {
+            at = i; // the last central directory header is dir/b.txt's
+        }
+    }
+    REQUIRE(at != 0);
+    for (std::size_t k = 0; k < 4; ++k) {
+        big[at + 24 + k] = 0xFF;
+    }
+    REQUIRE(zip_entries(big)[1].size == 0xFFFFFFFFU);
+    CHECK_FALSE(zip_read(big, "dir/b.txt"));
 }

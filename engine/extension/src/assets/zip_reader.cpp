@@ -41,7 +41,9 @@ struct Huffman {
 
 class Inflater {
 public:
-    Inflater(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out) : in_(in), out_(out) {}
+    /// `limit`: the most output allowed; more fails the stream.
+    Inflater(std::span<const std::uint8_t> in, std::vector<std::uint8_t>& out, std::size_t limit)
+        : in_(in), out_(out), limit_(limit) {}
 
     bool run() {
         bool last = false;
@@ -66,6 +68,7 @@ public:
 private:
     std::span<const std::uint8_t> in_;
     std::vector<std::uint8_t>& out_;
+    std::size_t limit_;
     std::size_t pos_ = 0;
     std::uint32_t bitbuf_ = 0;
     int bitcnt_ = 0;
@@ -95,7 +98,7 @@ private:
         const std::uint32_t len = le16(in_, pos_);
         const std::uint32_t nlen = le16(in_, pos_ + 2);
         pos_ += 4;
-        if (len != (~nlen & 0xFFFFU) || pos_ + len > in_.size()) {
+        if (len != (~nlen & 0xFFFFU) || pos_ + len > in_.size() || out_.size() + len > limit_) {
             return false;
         }
         out_.insert(out_.end(), in_.begin() + static_cast<std::ptrdiff_t>(pos_),
@@ -169,6 +172,9 @@ private:
                 return false;
             }
             if (symbol < 256) {
+                if (out_.size() >= limit_) {
+                    return false;
+                }
                 out_.push_back(static_cast<std::uint8_t>(symbol));
                 continue;
             }
@@ -187,7 +193,7 @@ private:
             }
             const auto di = static_cast<std::size_t>(ds);
             const std::size_t dist = k_dbase[di] + bits(k_dext[di]);
-            if (error_ || dist > out_.size()) {
+            if (error_ || dist > out_.size() || out_.size() + len > limit_) {
                 return false;
             }
             const std::size_t from = out_.size() - dist;
@@ -274,9 +280,15 @@ private:
 
 std::optional<std::vector<std::uint8_t>> inflate_raw(std::span<const std::uint8_t> in,
                                                      std::size_t size) {
+    // Deflate expands at most 1032:1 (a 258 byte match in two 1-bit codes); a larger size is a broken entry.
+    constexpr std::size_t k_max_ratio = 1032;
+    constexpr std::size_t k_slack = 64;
+    if (size > in.size() * k_max_ratio + k_slack) {
+        return std::nullopt;
+    }
     std::vector<std::uint8_t> out;
     out.reserve(size);
-    Inflater inflater(in, out);
+    Inflater inflater(in, out, size);
     if (!inflater.run() || out.size() != size) {
         return std::nullopt;
     }
