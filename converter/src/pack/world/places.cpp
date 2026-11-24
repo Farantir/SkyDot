@@ -233,23 +233,19 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
         scripts->ref = id;
         scripts->scripts = shared_.global_scripts(merged, ref->scripts, failed);
     }
-    if (ref->has_radius || ref->light_data.size() >= record::LightOverride::k_size) {
-        bool has_light_data = false;
-        float fov = 0.0F;
-        float fade = 0.0F;
-        float end_distance_cap = 0.0F;
-        float shadow_depth_bias = 0.0F;
-        if (ref->light_data.size() >= record::LightOverride::k_size) {
-            if (const auto light = record::decode_light_override(ref->light_data)) {
-                has_light_data = true;
-                fov = light->fov;
-                fade = light->fade;
-                end_distance_cap = light->end_distance_cap;
-                shadow_depth_bias = light->shadow_depth_bias;
-            }
+    std::optional<record::LightOverride> light;
+    if (!ref->light_data.empty()) {
+        if (auto decoded = record::decode_light_override(ref->light_data)) {
+            light = *decoded;
+        } else {
+            ++shared_.stats().parse_errors;
         }
-        cell.light_overrides.emplace_back(id, ref->has_radius, ref->radius, has_light_data, fov,
-                                          fade, end_distance_cap, shadow_depth_bias);
+    }
+    if (ref->has_radius || light) {
+        cell.light_overrides.emplace_back(id, ref->has_radius, ref->radius, light.has_value(),
+                                          light ? light->fov : 0.0F, light ? light->fade : 0.0F,
+                                          light ? light->end_distance_cap : 0.0F,
+                                          light ? light->shadow_depth_bias : 0.0F);
     }
     if (!ref->emittance.is_null()) {
         cell.light_emitters.emplace_back(id, shared_.global(merged, ref->emittance, failed));
@@ -342,6 +338,8 @@ void PlaceCollector::on_land(const record::MergedRecord& merged, io::SpanReader&
                 layer->points.push_back(point.position);
                 layer->opacity.push_back(static_cast<std::uint8_t>(opacity * 255.0F + 0.5F));
             }
+        } else {
+            ++shared_.stats().parse_errors;
         }
         terrain->layers.push_back(std::move(layer));
     }

@@ -2108,7 +2108,8 @@ namespace {
 /// (0xE13) plain, B (0xE11) initially disabled and C (0xE12) deleted, and a
 /// WRLD whose RNAM lists A, B, C, D and a reference that does not exist (E,
 /// 0xE14) for the cell (0, 0), and D then A for the cell x 1, y 0.
-void make_large_refs(const TempDir& dir) {
+/// `short_xlig` gives A an XLIG too short for a light override.
+void make_large_refs(const TempDir& dir, bool short_xlig = false) {
     ByteWriter file;
     bethconv::test::write_tes4(file, 0x1, {});
 
@@ -2125,7 +2126,14 @@ void make_large_refs(const TempDir& dir) {
     bethconv::test::write_field(cell_payload, "XCLC", xclc);
 
     ByteWriter refs;
-    bethconv::test::write_record(refs, "REFR", 0x0000'0E10, refr_payload(0x0000'0800, 1.0F, 1.0F).span());
+    ByteWriter a = refr_payload(0x0000'0800, 1.0F, 1.0F);
+    if (short_xlig) {
+        ByteWriter xlig;
+        xlig.f32(90.0F);
+        xlig.f32(1.0F);
+        bethconv::test::write_field(a, "XLIG", xlig);
+    }
+    bethconv::test::write_record(refs, "REFR", 0x0000'0E10, a.span());
     bethconv::test::write_record(refs, "REFR", 0x0000'0E11, refr_payload(0x0000'0800, 2.0F, 1.0F).span(),
                                  0x800);
     bethconv::test::write_record(refs, "REFR", 0x0000'0E12, ByteWriter{}.span(), 0x20);
@@ -2172,6 +2180,20 @@ void make_large_refs(const TempDir& dir) {
 }
 
 } // namespace
+
+TEST_CASE("a reference with an XLIG too short to decode is counted as a parse error", "[pack][world]") {
+    const TempDir dir;
+    make_large_refs(dir, true);
+    record::PluginList list;
+    list.plugins.push_back(record::ListedPlugin{.name = "LargeWorld.esm", .active = true});
+    const auto order = record::LoadOrder::build(
+        dir.path(), list,
+        record::LoadOrderOptions{.active_only = true, .add_implicit_masters = false, .always_loaded = {}});
+    const auto world = record::MergedWorld::build(order);
+    const auto stats = pack::write_world(world, order, dir / "world.fb");
+    REQUIRE(stats.has_value());
+    CHECK(stats->parse_errors == 1);
+}
 
 TEST_CASE("world.fb lists a worldspace's large references, without deleted or disabled ones",
           "[pack][world][large]") {
