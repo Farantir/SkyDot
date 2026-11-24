@@ -8,9 +8,12 @@
 #include "perks/entry_points.hpp"
 #include "vm/papyrus.hpp"
 #include "data/fb_search.hpp"
+#include "vm/papyrus_common.hpp"
 
 using godot::Array;
 using godot::Dictionary;
+using godot::String;
+using godot::Variant;
 
 namespace skydot {
 namespace {
@@ -48,7 +51,85 @@ perks::EntryContext entry_context(std::int64_t owner, const Array& subjects, con
     return ctx;
 }
 
+/// What a perk's ability and quest effects do: Actor.AddSpell / RemoveSpell and Quest.SetStage.
+struct PerkEffects final : perks::EffectSink {
+    explicit PerkEffects(SkydotPapyrus& owner) : owner_(owner) {}
+    void add_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.add_spell(actor, spell); }
+    void remove_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.remove_spell(actor, spell); }
+    void set_stage(std::uint32_t quest, std::uint16_t stage) override { owner_.set_stage(quest, stage); }
+    SkydotPapyrus& owner_;
+};
+
 } // namespace
+
+struct SkydotPapyrus::ProgressionHost final : vm::ProgressionRuntime::Host {
+    explicit ProgressionHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
+    std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+    void log(const std::string& text) override { owner_.print_line(text); }
+
+    // A perk's ability and quest effects (perks/entry_points.hpp).
+    void perk_gained(std::uint32_t ref, std::uint32_t perk) override {
+        if (const auto* root = owner_.world_root()) {
+            PerkEffects sink{owner_};
+            perks::perk_added(*root, ref, perk, sink);
+        }
+    }
+    void perk_lost(std::uint32_t ref, std::uint32_t perk) override {
+        if (const auto* root = owner_.world_root()) {
+            PerkEffects sink{owner_};
+            perks::perk_removed(*root, ref, perk, sink);
+        }
+    }
+
+
+    // The skill rules are GDScript (Progression), reached through the handler.
+    bool advance_skill(std::uint32_t skill_av, double amount) override {
+        return ask_progression("advance_skill", skill_av, amount).get_type() != Variant::NIL;
+    }
+    bool increment_skill(std::uint32_t skill_av, std::int32_t count) override {
+        return ask_progression("increment_skill", skill_av, count).get_type() != Variant::NIL;
+    }
+    double level_threshold(std::int32_t level) const override {
+        const Variant answer = ask_progression("level_threshold", level, 0);
+        return answer.get_type() == Variant::NIL ? 75.0 + 25.0 * level : static_cast<double>(answer);
+    }
+    bool increment_stat(const std::string& stat, std::int32_t by) override {
+        return ask_progression_stat("increment_stat", stat, by).get_type() != Variant::NIL;
+    }
+    std::optional<std::int32_t> query_stat(const std::string& stat) const override {
+        const Variant answer = ask_progression_stat("query_stat", stat, 0);
+        if (answer.get_type() == Variant::INT || answer.get_type() == Variant::FLOAT) {
+            return static_cast<std::int32_t>(static_cast<std::int64_t>(answer));
+        }
+        return std::nullopt;
+    }
+    Variant ask_progression_stat(const char* kind, const std::string& stat, std::int32_t by) const {
+        const godot::Callable& handler = owner_.progression_handler();
+        if (!handler.is_valid()) {
+            return Variant();
+        }
+        godot::Array args;
+        args.push_back(natives::to_godot(stat));
+        args.push_back(by);
+        return handler.call(String(kind), args);
+    }
+    Variant ask_progression(const char* kind, std::int64_t a, double b) const {
+        const godot::Callable& handler = owner_.progression_handler();
+        if (!handler.is_valid()) {
+            return Variant();
+        }
+        godot::Array args;
+        args.push_back(a);
+        args.push_back(b);
+        return handler.call(String(kind), args);
+    }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::ProgressionRuntime::Host> SkydotPapyrus::new_progression_host() {
+    return std::make_unique<ProgressionHost>(*this);
+}
 
 std::optional<perks::EntryPoints> SkydotPapyrus::entry_points() {
     const auto* root = world_.is_valid() ? world_->data().root() : nullptr;

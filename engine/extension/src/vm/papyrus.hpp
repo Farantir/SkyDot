@@ -890,6 +890,9 @@ private:
     struct CraftingHost;
     std::unique_ptr<vm::CraftingRuntime::Host> new_crafting_host();
     std::unique_ptr<vm::CraftingRuntime::Host> crafting_host_ = new_crafting_host();
+    struct ProgressionHost;
+    std::unique_ptr<vm::ProgressionRuntime::Host> new_progression_host();
+    std::unique_ptr<vm::ProgressionRuntime::Host> progression_host_ = new_progression_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {

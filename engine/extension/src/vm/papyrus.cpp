@@ -668,19 +668,9 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
     return vec3_of(info.placement.position);
 }
 
-/// What a perk's ability and quest effects do: Actor.AddSpell / RemoveSpell and Quest.SetStage.
-struct PerkEffects final : perks::EffectSink {
-    explicit PerkEffects(SkydotPapyrus& owner) : owner_(owner) {}
-    void add_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.add_spell(actor, spell); }
-    void remove_ability(std::uint32_t actor, std::uint32_t spell) override { owner_.remove_spell(actor, spell); }
-    void set_stage(std::uint32_t quest, std::uint16_t stage) override { owner_.set_stage(quest, stage); }
-    SkydotPapyrus& owner_;
-};
-
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldEvents,
-                             vm::ProgressionRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
@@ -822,9 +812,6 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
         return std::make_unique<PapyrusConditionWorld>(&owner_);
     }
 
-    // ---- vm::ProgressionRuntime::Host
-    std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
-
     // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
     double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
                       double value) const override {
@@ -857,62 +844,6 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
             }
         }
         return out;
-    }
-
-    // ---- vm::ProgressionRuntime::Host: a perk's ability and quest effects (perks/entry_points.hpp)
-    void perk_gained(std::uint32_t ref, std::uint32_t perk) override {
-        if (const auto* root = world() != nullptr ? world()->root() : nullptr) {
-            PerkEffects sink{owner_};
-            perks::perk_added(*root, ref, perk, sink);
-        }
-    }
-    void perk_lost(std::uint32_t ref, std::uint32_t perk) override {
-        if (const auto* root = world() != nullptr ? world()->root() : nullptr) {
-            PerkEffects sink{owner_};
-            perks::perk_removed(*root, ref, perk, sink);
-        }
-    }
-
-    // ---- vm::ProgressionRuntime::Host: the skill rules are GDScript (Progression), reached through the handler
-    bool advance_skill(std::uint32_t skill_av, double amount) override {
-        return ask_progression("advance_skill", skill_av, amount).get_type() != Variant::NIL;
-    }
-    bool increment_skill(std::uint32_t skill_av, std::int32_t count) override {
-        return ask_progression("increment_skill", skill_av, count).get_type() != Variant::NIL;
-    }
-    double level_threshold(std::int32_t level) const override {
-        const Variant answer = ask_progression("level_threshold", level, 0);
-        return answer.get_type() == Variant::NIL ? 75.0 + 25.0 * level : static_cast<double>(answer);
-    }
-    bool increment_stat(const std::string& stat, std::int32_t by) override {
-        return ask_progression_stat("increment_stat", stat, by).get_type() != Variant::NIL;
-    }
-    std::optional<std::int32_t> query_stat(const std::string& stat) const override {
-        const Variant answer = ask_progression_stat("query_stat", stat, 0);
-        if (answer.get_type() == Variant::INT || answer.get_type() == Variant::FLOAT) {
-            return static_cast<std::int32_t>(static_cast<std::int64_t>(answer));
-        }
-        return std::nullopt;
-    }
-    Variant ask_progression_stat(const char* kind, const std::string& stat, std::int32_t by) const {
-        const godot::Callable& handler = owner_.progression_handler();
-        if (!handler.is_valid()) {
-            return Variant();
-        }
-        godot::Array args;
-        args.push_back(natives::to_godot(stat));
-        args.push_back(by);
-        return handler.call(String(kind), args);
-    }
-    Variant ask_progression(const char* kind, std::int64_t a, double b) const {
-        const godot::Callable& handler = owner_.progression_handler();
-        if (!handler.is_valid()) {
-            return Variant();
-        }
-        godot::Array args;
-        args.push_back(a);
-        args.push_back(b);
-        return handler.call(String(kind), args);
     }
 
     // ---- shared by several hosts
@@ -1143,7 +1074,7 @@ void SkydotPapyrus::bind_natives() {
         (this->*registration)();
     }
     dialogue_.bind(*dialogue_host_);
-    progression_.bind(*access_);
+    progression_.bind(*progression_host_);
     progression_.bind_natives(*vm_);
     progression_.clear();
     crafting_.bind(*crafting_host_);
