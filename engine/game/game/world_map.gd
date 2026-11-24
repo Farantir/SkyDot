@@ -55,8 +55,6 @@ const FALLBACK := {
 
 ## A marker was discovered (its name).
 signal discovered(ref: int, name: String)
-## A fast travel began (the shell closes its map).
-signal travel_started(ref: int)
 
 ## The player's own marker: {world, position (game units)}, {} when none.
 var custom_marker := {}
@@ -66,7 +64,6 @@ var last_exterior := {}
 var _session: GameSession
 var _markers := {}  # world -> Array of the data's marker dictionaries
 var _worlds := {}  # world id -> list_worlds entry
-var _hidden_checked := 0.0
 
 
 func _init(session: GameSession) -> void:
@@ -238,7 +235,6 @@ func travel(m: Dictionary) -> void:
 		"on_travel": func() -> void: _pass_time(hours),
 	}
 	print("map: fast travel to 0x%08X %s, %.2f h" % [int(m["ref"]), String(m["name"]), hours])
-	travel_started.emit(int(m["ref"]))
 	_session.transition.go(door)
 
 
