@@ -2,10 +2,12 @@
 //
 // The save container (save/save_file.hpp): sections round trip, a damaged,
 // truncated or foreign file is refused before anything is decoded, unknown
-// tags are skipped, and writing goes through a temporary file.
+// tags are skipped, optional sections are read in their version range, and
+// writing goes through a temporary file.
 #include "save/save_file.hpp"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include <filesystem>
 #include <fstream>
@@ -95,6 +97,48 @@ TEST_CASE("a section running past the end or a repeated tag is refused even with
     auto bytes = future.finish();
     bytes[4] = 9; // container version
     CHECK_FALSE(r.parse(bytes, error));
+}
+
+TEST_CASE("an optional section is skipped when missing and read only in its version range", "[save]") {
+    using Catch::Matchers::ContainsSubstring;
+    SaveReader r;
+    std::string error;
+    REQUIRE(r.parse(sample(), error));
+    int calls = 0;
+    std::uint32_t seen = 0;
+    std::uint8_t first = 0;
+    const auto loader = [&](ByteReader& in, std::uint32_t version) {
+        ++calls;
+        seen = version;
+        return in.u8(first);
+    };
+
+    SECTION("a missing section is not an error and calls nothing") {
+        CHECK(read_optional(r, "ACTV", 1, 1, loader, error));
+        CHECK(calls == 0);
+    }
+    SECTION("a version in the range is loaded with that version") {
+        CHECK(read_optional(r, "VMST", 1, 3, [&](ByteReader&, std::uint32_t v) { return ++calls, seen = v, true; },
+                            error));
+        CHECK(calls == 1);
+        CHECK(seen == 2);
+        CHECK(read_optional(r, "HEAD", 1, 1, loader, error));
+        CHECK(first == 1);
+    }
+    SECTION("a version below or above the range is refused without loading") {
+        CHECK_FALSE(read_optional(r, "VMST", 3, 4, loader, error));
+        CHECK_THAT(error, ContainsSubstring("VMST has version 2") && ContainsSubstring("reads 3 to 4"));
+        CHECK_FALSE(read_optional(r, "VMST", 1, 1, loader, error));
+        CHECK_THAT(error, ContainsSubstring("VMST has version 2") && ContainsSubstring("reads 1)"));
+        CHECK(calls == 0);
+    }
+    SECTION("a failing loader keeps its own error or the section is called damaged") {
+        CHECK_FALSE(read_optional(r, "VMST", 2, 2, loader, error));
+        CHECK(error == "the VMST section of the save is damaged");
+        CHECK_FALSE(read_optional(
+            r, "HEAD", 1, 1, [&](ByteReader&, std::uint32_t) { return error = "bad HEAD", false; }, error));
+        CHECK(error == "bad HEAD");
+    }
 }
 
 TEST_CASE("writing goes through a temporary file and replaces the old one", "[save]") {

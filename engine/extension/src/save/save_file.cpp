@@ -223,4 +223,30 @@ const SectionView* SaveReader::find(std::string_view tag) const {
     return nullptr;
 }
 
+bool read_optional(const SaveReader& file, std::string_view tag, std::uint32_t min_version, std::uint32_t max_version,
+                   const std::function<bool(ByteReader&, std::uint32_t)>& loader, std::string& error) {
+    const auto* section = file.find(tag);
+    if (section == nullptr) {
+        return true;
+    }
+    const std::string name(tag);
+    if (section->version < min_version || section->version > max_version) {
+        error = "section " + name + " has version " + std::to_string(section->version) +
+                ", which this engine does not read (it reads " +
+                (min_version == max_version ? std::to_string(max_version)
+                                            : std::to_string(min_version) + " to " + std::to_string(max_version)) +
+                ")";
+        return false;
+    }
+    auto bytes = file.open(*section);
+    error.clear();
+    if (!loader(bytes, section->version)) {
+        if (error.empty()) {
+            error = "the " + name + " section of the save is damaged";
+        }
+        return false;
+    }
+    return true;
+}
+
 } // namespace skydot::save

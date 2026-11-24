@@ -11,6 +11,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -59,5 +60,12 @@ private:
     std::vector<std::uint8_t> bytes_;
     std::vector<SectionView> sections_;
 };
+
+/// Read the optional section `tag`: true without calling `loader` when the save
+/// lacks it. A version outside `min_version`..`max_version` fails; so does a
+/// `loader` returning false, with its own `error` or "the TAG section of the
+/// save is damaged". The loader gets the section's bytes and version.
+bool read_optional(const SaveReader& file, std::string_view tag, std::uint32_t min_version, std::uint32_t max_version,
+                   const std::function<bool(ByteReader&, std::uint32_t)>& loader, std::string& error);
 
 } // namespace skydot::save

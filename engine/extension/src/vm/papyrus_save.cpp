@@ -239,85 +239,80 @@ godot::Error SkydotPapyrus::prepare(const save::SaveReader& file) {
         return fail("the RFST section of the save is damaged");
     }
     // ACTV is optional: a save without it has no changed actor values.
-    if (const auto* actv = file.find("ACTV")) {
-        if (actv->version < 1 || actv->version > vm::ActorStates::k_section_version) {
-            return fail("section ACTV has a version this engine does not read");
-        }
-        if (!vm::ActorStates::load(file.open(*actv), pending->actors, actv->version)) {
-            return fail("the ACTV section of the save is damaged");
-        }
+    if (!save::read_optional(
+            file, "ACTV", 1, vm::ActorStates::k_section_version,
+            [&](ByteReader& in, std::uint32_t v) { return vm::ActorStates::load(in, pending->actors, v); }, why)) {
+        return fail(why);
     }
     // ITST is optional: a save without it has nothing equipped, and the owners
     // that hold items count as resolved; the others resolve on touch.
-    if (const auto* itst = file.find("ITST")) {
-        if (itst->version < 1 || itst->version > vm::ItemStates::k_section_version) {
-            return fail("section ITST has a version this engine does not read");
-        }
-        if (!vm::ItemStates::load(file.open(*itst), pending->items, itst->version)) {
-            return fail("the ITST section of the save is damaged");
-        }
-        // The splits belong to the inventory the VM takes over.
-        pending->vm.inventory.set_splits(pending->items.take_splits());
-    } else {
+    if (file.find("ITST") == nullptr) {
         // An old save: what is in INVT already has its start items.
         pending->items.mark_holders_resolved(pending->vm.inventory);
     }
+    if (!save::read_optional(
+            file, "ITST", 1, vm::ItemStates::k_section_version,
+            [&](ByteReader& in, std::uint32_t v) {
+                if (!vm::ItemStates::load(in, pending->items, v)) {
+                    return false;
+                }
+                // The splits belong to the inventory the VM takes over.
+                pending->vm.inventory.set_splits(pending->items.take_splits());
+                return true;
+            },
+            why)) {
+        return fail(why);
+    }
     // MAGC is optional: a save without it has no effect running and no spell changed.
-    if (const auto* magc = file.find("MAGC")) {
-        if (magc->version < magic::k_magc_min_version || magc->version > magic::k_magc_version) {
-            return fail("section MAGC has a version this engine does not read");
-        }
-        if (!magic_decode(file.open(*magc), pending->magic_effects, pending->magic_book, pending->magic_shouts)) {
-            return fail("the MAGC section of the save is damaged");
-        }
-        pending->has_magic = true;
+    if (!save::read_optional(file, "MAGC", magic::k_magc_min_version, magic::k_magc_version,
+                             [&](ByteReader& in, std::uint32_t) {
+                                 pending->has_magic = magic_decode(in, pending->magic_effects,
+                                                                   pending->magic_book, pending->magic_shouts);
+                                 return pending->has_magic;
+                             },
+                             why)) {
+        return fail(why);
     }
     // CRFT and HRVS are optional: an older save has nothing created, known or harvested.
-    if (const auto* crft = file.find("CRFT")) {
-        if (crft->version < 1 || crft->version > vm::CreatedForms::k_section_version) {
-            return fail("section CRFT has a version this engine does not read");
-        }
-        if (!vm::CreatedForms::load(file.open(*crft), pending->created, crft->version)) {
-            return fail("the CRFT section of the save is damaged");
-        }
+    if (!save::read_optional(
+            file, "CRFT", 1, vm::CreatedForms::k_section_version,
+            [&](ByteReader& in, std::uint32_t v) { return vm::CreatedForms::load(in, pending->created, v); }, why)) {
+        return fail(why);
     }
-    if (const auto* hrvs = file.find("HRVS")) {
-        if (hrvs->version != vm::HarvestStates::k_section_version) {
-            return fail("section HRVS has a version this engine does not read");
-        }
-        if (!vm::HarvestStates::load(file.open(*hrvs), pending->harvests)) {
-            return fail("the HRVS section of the save is damaged");
-        }
+    if (!save::read_optional(
+            file, "HRVS", vm::HarvestStates::k_section_version, vm::HarvestStates::k_section_version,
+            [&](ByteReader& in, std::uint32_t) { return vm::HarvestStates::load(in, pending->harvests); }, why)) {
+        return fail(why);
     }
     // PRGS is optional: an older save has the defaults (the level of the Player NPC_, no XP, no added perks).
-    if (const auto* prgs = file.find("PRGS")) {
-        if (prgs->version != vm::ProgressionState::k_section_version) {
-            return fail("section PRGS has a version this engine does not read");
-        }
-        vm::ProgressionState state;
-        if (!vm::ProgressionRuntime::load(file.open(*prgs), state, prgs->version)) {
-            return fail("the PRGS section of the save is damaged");
-        }
-        pending->progression = std::move(state);
+    if (!save::read_optional(file, "PRGS", vm::ProgressionState::k_section_version,
+                             vm::ProgressionState::k_section_version,
+                             [&](ByteReader& in, std::uint32_t v) {
+                                 vm::ProgressionState state;
+                                 if (!vm::ProgressionRuntime::load(in, state, v)) {
+                                     return false;
+                                 }
+                                 pending->progression = std::move(state);
+                                 return true;
+                             },
+                             why)) {
+        return fail(why);
     }
     // DLGS is optional: a save without it has said nothing.
-    if (const auto* dlgs = file.find("DLGS")) {
-        if (dlgs->version != dialogue::DialogueStates::k_section_version) {
-            return fail("section DLGS has a version this engine does not read");
-        }
-        if (!dialogue::DialogueStates::load(file.open(*dlgs), pending->dialogue)) {
-            return fail("the DLGS section of the save is damaged");
-        }
+    if (!save::read_optional(
+            file, "DLGS", dialogue::DialogueStates::k_section_version, dialogue::DialogueStates::k_section_version,
+            [&](ByteReader& in, std::uint32_t) { return dialogue::DialogueStates::load(in, pending->dialogue); },
+            why)) {
+        return fail(why);
     }
     // SCEN is optional: a save without it has no scene running.
-    if (const auto* scen = file.find("SCEN")) {
-        if (scen->version != scenes::Scenes::k_section_version) {
-            return fail("section SCEN has a version this engine does not read");
-        }
-        pending->scenes = scene_.load(file.open(*scen));
-        if (pending->scenes == nullptr) {
-            return fail("the SCEN section of the save is damaged");
-        }
+    if (!save::read_optional(file, "SCEN", scenes::Scenes::k_section_version, scenes::Scenes::k_section_version,
+                             [&](ByteReader& in, std::uint32_t) {
+                                 pending->scenes = scene_.load(in);
+                                 return pending->scenes != nullptr;
+                             },
+                             why)) {
+        return fail(why);
     }
     if (!decode_host(file, pending->host, why)) {
         return fail(why);

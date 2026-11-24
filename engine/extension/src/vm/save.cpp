@@ -900,94 +900,100 @@ bool Vm::decode(const save::SaveReader& file, Snapshot& out, std::string& error)
     }
 
     // Saves from before animation events have no AEVT section.
-    if (file.find("AEVT") != nullptr) {
-        if (!open_section(file, "AEVT", r, error)) {
-            return false;
-        }
-        std::uint32_t regs = 0;
-        if (!r.count(regs, k_animation_reg_min_bytes)) {
-            return fail("truncated AEVT section");
-        }
-        for (std::uint32_t n = 0; n < regs; ++n) {
-            AnimationRegistration reg;
-            std::uint32_t instance = 0;
-            if (!r.u32(instance) || !r.u32(reg.sender) || !r.text(reg.event) || instance >= index.size()) {
-                return fail("truncated AEVT section");
-            }
-            reg.instance = index[instance];
-            out.animation_regs.push_back(std::move(reg));
-        }
-        if (!r.at_end()) {
-            return fail("bytes after the end of the AEVT section");
-        }
+    if (!save::read_optional(
+            file, "AEVT", k_section_version, k_section_version,
+            [&](ByteReader& in, std::uint32_t) {
+                std::uint32_t regs = 0;
+                if (!in.count(regs, k_animation_reg_min_bytes)) {
+                    return fail("truncated AEVT section");
+                }
+                for (std::uint32_t n = 0; n < regs; ++n) {
+                    AnimationRegistration reg;
+                    std::uint32_t instance = 0;
+                    if (!in.u32(instance) || !in.u32(reg.sender) || !in.text(reg.event)) {
+                        return fail("truncated AEVT section");
+                    }
+                    if (instance >= index.size()) {
+                        return false;
+                    }
+                    reg.instance = index[instance];
+                    out.animation_regs.push_back(std::move(reg));
+                }
+                return in.at_end() || fail("bytes after the end of the AEVT section");
+            },
+            error)) {
+        return false;
     }
 
     // Saves from before ownership and sleep have no OWNR and SLEP sections.
-    if (file.find("OWNR") != nullptr) {
-        if (!open_section(file, "OWNR", r, error)) {
-            return false;
-        }
-        std::uint32_t owner_count = 0;
-        if (!r.count(owner_count, k_owner_min_bytes)) {
-            return fail("truncated OWNR section");
-        }
-        for (std::uint32_t n = 0; n < owner_count; ++n) {
-            std::uint32_t ref = 0;
-            std::uint8_t faction = 0;
-            std::uint32_t rank = 0;
-            OwnerState state;
-            if (!r.u32(ref) || !r.u32(state.owner) || !r.u8(faction) || !r.u32(rank)) {
-                return fail("truncated OWNR section");
-            }
-            state.faction = faction != 0;
-            state.rank = static_cast<std::int32_t>(rank);
-            out.owners.set(ref, state);
-        }
-        if (!r.at_end()) {
-            return fail("bytes after the end of the OWNR section");
-        }
+    if (!save::read_optional(
+            file, "OWNR", k_section_version, k_section_version,
+            [&](ByteReader& in, std::uint32_t) {
+                std::uint32_t owner_count = 0;
+                if (!in.count(owner_count, k_owner_min_bytes)) {
+                    return fail("truncated OWNR section");
+                }
+                for (std::uint32_t n = 0; n < owner_count; ++n) {
+                    std::uint32_t ref = 0;
+                    std::uint8_t faction = 0;
+                    std::uint32_t rank = 0;
+                    OwnerState state;
+                    if (!in.u32(ref) || !in.u32(state.owner) || !in.u8(faction) || !in.u32(rank)) {
+                        return fail("truncated OWNR section");
+                    }
+                    state.faction = faction != 0;
+                    state.rank = static_cast<std::int32_t>(rank);
+                    out.owners.set(ref, state);
+                }
+                return in.at_end() || fail("bytes after the end of the OWNR section");
+            },
+            error)) {
+        return false;
     }
     // Saves from before the world map have no MMRK section: the data's flags, fast travel allowed.
-    if (file.find("MMRK") != nullptr) {
-        if (!open_section(file, "MMRK", r, error)) {
-            return false;
-        }
-        std::uint8_t enabled = 1;
-        std::uint32_t marker_count = 0;
-        if (!r.u8(enabled) || !r.count(marker_count, k_map_marker_min_bytes)) {
-            return fail("truncated MMRK section");
-        }
-        out.map.fast_travel_enabled = enabled != 0;
-        for (std::uint32_t n = 0; n < marker_count; ++n) {
-            std::uint32_t ref = 0;
-            std::uint8_t flags = 0;
-            if (!r.u32(ref) || !r.u8(flags)) {
-                return fail("truncated MMRK section");
-            }
-            out.map.set(ref, flags);
-        }
-        if (!r.at_end()) {
-            return fail("bytes after the end of the MMRK section");
-        }
+    if (!save::read_optional(
+            file, "MMRK", k_section_version, k_section_version,
+            [&](ByteReader& in, std::uint32_t) {
+                std::uint8_t enabled = 1;
+                std::uint32_t marker_count = 0;
+                if (!in.u8(enabled) || !in.count(marker_count, k_map_marker_min_bytes)) {
+                    return fail("truncated MMRK section");
+                }
+                out.map.fast_travel_enabled = enabled != 0;
+                for (std::uint32_t n = 0; n < marker_count; ++n) {
+                    std::uint32_t ref = 0;
+                    std::uint8_t flags = 0;
+                    if (!in.u32(ref) || !in.u8(flags)) {
+                        return fail("truncated MMRK section");
+                    }
+                    out.map.set(ref, flags);
+                }
+                return in.at_end() || fail("bytes after the end of the MMRK section");
+            },
+            error)) {
+        return false;
     }
-    if (file.find("SLEP") != nullptr) {
-        if (!open_section(file, "SLEP", r, error)) {
-            return false;
-        }
-        std::uint32_t sleep_count = 0;
-        if (!r.count(sleep_count, k_sleep_reg_min_bytes)) {
-            return fail("truncated SLEP section");
-        }
-        for (std::uint32_t n = 0; n < sleep_count; ++n) {
-            std::uint32_t instance = 0;
-            if (!r.u32(instance) || instance >= index.size()) {
-                return fail("truncated SLEP section");
-            }
-            out.sleep_regs.push_back(index[instance]);
-        }
-        if (!r.at_end()) {
-            return fail("bytes after the end of the SLEP section");
-        }
+    if (!save::read_optional(
+            file, "SLEP", k_section_version, k_section_version,
+            [&](ByteReader& in, std::uint32_t) {
+                std::uint32_t sleep_count = 0;
+                if (!in.count(sleep_count, k_sleep_reg_min_bytes)) {
+                    return fail("truncated SLEP section");
+                }
+                for (std::uint32_t n = 0; n < sleep_count; ++n) {
+                    std::uint32_t instance = 0;
+                    if (!in.u32(instance)) {
+                        return fail("truncated SLEP section");
+                    }
+                    if (instance >= index.size()) {
+                        return false;
+                    }
+                    out.sleep_regs.push_back(index[instance]);
+                }
+                return in.at_end() || fail("bytes after the end of the SLEP section");
+            },
+            error)) {
+        return false;
     }
     return true;
 }
