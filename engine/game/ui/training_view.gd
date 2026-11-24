@@ -60,7 +60,7 @@ func _closed() -> void:
 func train() -> Dictionary:
 	if not _open:
 		return {"ok": false}
-	var result := _session.train(_trainer)
+	var result := _session.training.train(_trainer)
 	_refresh()
 	return result
 

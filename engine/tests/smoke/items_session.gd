@@ -154,5 +154,5 @@ func _books_and_training() -> void:
 	expect(_session.equip(TOME_REVENANT) and _session.papyrus.has_spell(PLAYER, REVENANT), "the tome teaches Revenant")
 	expect(int(_contents(PLAYER).get(TOME_REVENANT, 0)) == 1, "and is used up")
 	expect(_session.equip(TOME_REVENANT) and int(_contents(PLAYER).get(TOME_REVENANT, 0)) == 1, "a known spell keeps the tome")
-	var offer := _session.training_info(GHORZA)
+	var offer := _session.training.info(GHORZA)
 	expect(offer["skill"] == Progression.SMITHING and offer["max_level"] == 50, "Ghorza trains Smithing up to 50: %s" % [offer])

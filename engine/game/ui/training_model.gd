@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # What the training menu shows (ui/training_view.gd draws it, a restyled UI replaces the drawing; ADR 0010):
-# plain strings and flags from GameSession.training_info, no drawing and no input. Built by `of`.
+# plain strings and flags from SessionTraining.info, no drawing and no input. Built by `of`.
 class_name TrainingModel
 extends RefCounted
 
@@ -19,7 +19,7 @@ var can_train := false
 
 ## The model of `trainer`'s offer now.
 static func of(session: GameSession, trainer: int) -> TrainingModel:
-	var info := session.training_info(trainer)
+	var info := session.training.info(trainer)
 	var model := TrainingModel.new()
 	model.trainer_name = session.ref_name(trainer)
 	model.skill_name = session.progression.skill_name(int(info["skill"]))
@@ -29,7 +29,7 @@ static func of(session: GameSession, trainer: int) -> TrainingModel:
 	model.gold = int(info["gold"])
 	model.sessions_left = int(info["sessions_left"])
 	model.can_train = info["reason"] == ""
-	model.refusal = session.training_refusal(String(info["reason"]))
+	model.refusal = session.training.refusal(String(info["reason"]))
 	return model
 
 

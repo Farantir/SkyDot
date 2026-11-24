@@ -65,6 +65,8 @@ signal dialogue_line(speaker: int, text: String, seconds: float)
 signal dialogue_topics(list: Array)
 ## The dialogue is over (a Goodbye line, or `dialogue_close`).
 signal dialogue_closed
+## The dialogue's "Train" topic opened training with the trainer's reference. The training view shows it.
+signal training_opened(trainer: int)
 ## A scene's line starts: the speaker's reference, the subtitle text and how
 ## long it lasts. The shell decides whether the player is near enough to see it.
 signal subtitle_line(speaker: int, text: String, seconds: float)
@@ -149,6 +151,10 @@ const GOLD := 0xF
 var journal: JournalLog
 ## Waiting and sleeping (the Sleep/Wait menu's rules).
 var rest: Rest
+## Training with a trainer (the Training menu's rules).
+var training: SessionTraining
+## Whether a service menu (training) is on top of the dialogue; the dialogue view then leaves the keys alone.
+var service_open := false
 ## The world map's rules: markers, discovery, fast travel, the custom marker (game/world_map.gd), saved in WMAP.
 var world_map: WorldMap
 ## The root of the place's nodes (cells, sky, LOD, placed references).
@@ -267,6 +273,7 @@ func open(game_config: GameConfig, viewpoint: Camera3D, player: PlayerBody) -> b
 	saves.favorites = favorites
 	journal = JournalLog.new(SessionJournalData.new(self))
 	rest = Rest.new(self)
+	training = SessionTraining.new(self)
 	world_map = WorldMap.new(self)
 	saves.journal = journal
 	saves.world_map = world_map
@@ -617,7 +624,7 @@ func equip(form: int, extra := -1) -> bool:
 ## for each increase and "Level up available." when a level-up became ready. Returns Progression.use_skill.
 func use_skill(av: int, amount: float) -> Dictionary:
 	var result := progression.use_skill(av, amount)
-	_announce_progress(result)
+	announce_progress(result)
 	return result
 
 
@@ -640,40 +647,13 @@ func _award_crafting() -> void:
 	for use: Dictionary in papyrus.take_crafting_skill_uses():
 		var result := progression.crafting_use(use)
 		print("skill: %s %s gave %.2f" % [progression.skill_name(int(use["skill"])), use["kind"], float(result["gained"])])
-		_announce_progress(result)
+		announce_progress(result)
 
 
 ## Raise skill `av` by `count` levels (a book, a trainer, IncrementSkill); announced like use_skill.
-## The journal's Data: quests, their state and the names of what their aliases hold, from this session.
-class SessionJournalData extends JournalLog.Data:
-	var _session: GameSession
-
-	func _init(session: GameSession) -> void:
-		_session = session
-
-	func quest_info(quest: int) -> Dictionary:
-		return _session.world.get_quest(quest)
-
-	func quest_state(quest: int) -> Dictionary:
-		return _session.papyrus.get_quest_state(quest)
-
-	func running_quests() -> Array:
-		return Array(_session.papyrus.get_running_quests())
-
-	func ref_name(ref: int) -> String:
-		var name := String(_session.world.get_actor(ref).get("name", ""))
-		if name == "":
-			var info := _session.world.get_ref_info(_session.world.get_ref_cell(ref), ref)
-			name = String(_session.world.get_base(int(info.get("base", 0))).get("name", "")) if info.has("base") else ""
-		return name
-
-	func days_passed() -> int:
-		return int(floor(_session.clock.get_game_days())) if _session.clock != null else 0
-
-
 func increment_skill(av: int, count: int) -> Dictionary:
 	var result := progression.increment_skill(av, count)
-	_announce_progress(result)
+	announce_progress(result)
 	return result
 
 
@@ -695,7 +675,7 @@ func read_book(book: int) -> bool:
 			items_changed.emit()
 		else:
 			journal.count("Skill Books Read")
-			_announce_progress(result)
+			announce_progress(result)
 	elif result["reason"] == "known":
 		message.emit("%s %s" % [world.get_gmst_string("sAlreadyKnown", "You already know"),
 			world.get_base(int(result["spell"])).get("name", "")], false)
@@ -717,48 +697,8 @@ func take_perk(perk: int) -> Dictionary:
 	return progression.take_perk(perk)
 
 
-# ---- training
-
-## The training the dialogue's "Train" topic opened, the trainer's reference (0: none). The training view shows it.
-signal training_opened(trainer: int)
-
-## Whether a service menu (training) is on top of the dialogue; the dialogue view then leaves the keys alone.
-var service_open := false
-
-
-## What `trainer` offers now: Progression.training_info.
-func training_info(trainer: int) -> Dictionary:
-	return progression.training_info(trainer)
-
-
-## The refusal text of a training_info reason ("" for none), the vanilla texts.
-func training_refusal(reason: String) -> String:
-	match reason:
-		"sessions":
-			return world.get_gmst_string("sCanNotTrainAnymore", "You must level up to train more.")
-		"level":
-			return world.get_gmst_string("sCanNotTrainHigher", "This NPC cannot help you train any higher.")
-		"gold":
-			return world.get_gmst_string("sInsufficientGoldToTrain", "You have insufficient gold to train.")
-	return ""
-
-
-## Buy one training session from `trainer` (Progression.train); a refusal says its text, a raised skill its usual
-## "<skill> Increased to <n>". Returns Progression.train's result.
-func train(trainer: int) -> Dictionary:
-	var result := progression.train(trainer)
-	if result["ok"]:
-		journal.count("Training Sessions")
-		_announce_progress(result)
-		items_changed.emit()
-	else:
-		var text := training_refusal(String(result["reason"]))
-		if text != "":
-			message.emit(text, false)
-	return result
-
-
-func _announce_progress(result: Dictionary) -> void:
+## The skill increases of a Progression result as messages (and Skill Increases), and "Level up available.".
+func announce_progress(result: Dictionary) -> void:
 	if journal != null and not (result["skill_increases"] as Array).is_empty():
 		journal.count("Skill Increases", (result["skill_increases"] as Array).size())
 	var format := world.get_gmst_string("sSkillIncreased", "%s Increased to %i")
