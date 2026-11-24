@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 //
 // A byte buffer seen as unsigned chars, for the FlatBuffers verifier, or as
-// text.
+// text; a codec's sample plane seen as floats.
 //
 // The view is one reinterpret_cast, which check-raw-access.sh rejects in the
 // parser directories. Keeping the cast here, next to ByteWriter and
@@ -24,6 +24,12 @@ namespace bethconv::io {
 /// `bytes` as text (a mapped text file).
 [[nodiscard]] inline std::string_view as_chars(std::span<const std::byte> bytes) noexcept {
     return {reinterpret_cast<const char*>(bytes.data()), bytes.size()};
+}
+
+/// A codec's sample plane (libav hands out `uint8_t*`) as the floats it holds.
+[[nodiscard]] inline std::span<const float> as_floats(const std::uint8_t* plane,
+                                                      std::size_t count) noexcept {
+    return {reinterpret_cast<const float*>(plane), count};
 }
 
 } // namespace bethconv::io

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/audio/xwma.hpp"
 
+#include "bethconv/io/byte_view.hpp"
+#include "bethconv/io/span_reader.hpp"
+
 #include <ogg/ogg.h>
 #include <vorbis/codec.h>
 #include <vorbis/vorbisenc.h>
@@ -15,7 +18,7 @@ extern "C" {
 }
 
 #include <algorithm>
-#include <cstring>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -60,40 +63,35 @@ void put_u32(std::vector<std::byte>& out, std::uint32_t value) {
 
 // --- libav input over a memory span -----------------------------------------
 
-struct MemoryReader {
-    std::span<const std::byte> data;
-    std::size_t position = 0;
-};
-
 int read_packet(void* opaque, std::uint8_t* buffer, int size) {
-    auto* reader = static_cast<MemoryReader*>(opaque);
-    const std::size_t left = reader->data.size() - reader->position;
-    if (left == 0) {
+    auto* reader = static_cast<io::SpanReader*>(opaque);
+    const auto bytes = reader->bytes(std::min(reader->remaining(), static_cast<std::size_t>(size)));
+    if (!bytes || bytes->empty()) {
         return AVERROR_EOF;
     }
-    const auto count = std::min(left, static_cast<std::size_t>(size));
-    std::memcpy(buffer, reader->data.data() + reader->position, count);
-    reader->position += count;
-    return static_cast<int>(count);
+    std::ranges::transform(*bytes, buffer, [](std::byte b) { return std::to_integer<std::uint8_t>(b); });
+    return static_cast<int>(bytes->size());
 }
 
 std::int64_t seek_packet(void* opaque, std::int64_t offset, int whence) {
-    auto* reader = static_cast<MemoryReader*>(opaque);
-    const auto size = static_cast<std::int64_t>(reader->data.size());
+    auto* reader = static_cast<io::SpanReader*>(opaque);
+    const auto size = static_cast<std::int64_t>(reader->size());
     if ((whence & AVSEEK_SIZE) != 0) {
         return size;
     }
     std::int64_t target = 0;
     switch (whence & ~AVSEEK_FORCE) {
     case SEEK_SET: target = offset; break;
-    case SEEK_CUR: target = static_cast<std::int64_t>(reader->position) + offset; break;
+    case SEEK_CUR: target = static_cast<std::int64_t>(reader->position()) + offset; break;
     case SEEK_END: target = size + offset; break;
     default: return AVERROR(EINVAL);
     }
     if (target < 0 || target > size) {
         return AVERROR(EINVAL);
     }
-    reader->position = static_cast<std::size_t>(target);
+    if (!reader->seek(static_cast<std::size_t>(target))) {
+        return AVERROR(EINVAL);
+    }
     return target;
 }
 
@@ -180,7 +178,7 @@ public:
     void write(const float* const* planes, int count) {
         float** buffer = vorbis_analysis_buffer(&dsp_, count);
         for (int c = 0; c < channels_; ++c) {
-            std::memcpy(buffer[c], planes[c], static_cast<std::size_t>(count) * sizeof(float));
+            std::copy_n(planes[c], count, buffer[c]);
         }
         vorbis_analysis_wrote(&dsp_, count);
         drain();
@@ -213,10 +211,11 @@ private:
     }
 
     void append(const ogg_page& page) {
-        const auto* header = reinterpret_cast<const std::byte*>(page.header);
-        const auto* body = reinterpret_cast<const std::byte*>(page.body);
-        out_.insert(out_.end(), header, header + page.header_len);
-        out_.insert(out_.end(), body, body + page.body_len);
+        const auto to_byte = [](unsigned char c) { return static_cast<std::byte>(c); };
+        std::ranges::transform(std::span(page.header, static_cast<std::size_t>(page.header_len)),
+                               std::back_inserter(out_), to_byte);
+        std::ranges::transform(std::span(page.body, static_cast<std::size_t>(page.body_len)),
+                               std::back_inserter(out_), to_byte);
     }
 
     vorbis_info info_{};
@@ -235,13 +234,16 @@ private:
 
 io::ParseResult<std::vector<std::byte>> xwma_to_ogg(std::span<const std::byte> xwma,
                                                     std::string_view origin) {
-    if (xwma.size() < 12 || std::memcmp(xwma.data(), "RIFF", 4) != 0 ||
-        std::memcmp(xwma.data() + 8, "XWMA", 4) != 0) {
+    io::SpanReader header(xwma, origin);
+    const auto riff = header.chars(4);
+    const auto size = header.skip(4);
+    const auto form = header.chars(4);
+    if (!riff || !size || !form || *riff != "RIFF" || *form != "XWMA") {
         return fail(origin, 0, ErrorKind::bad_magic, "not an XWMA RIFF");
     }
     quiet_libav();
 
-    MemoryReader reader{.data = xwma};
+    io::SpanReader reader(xwma, origin);
     constexpr int k_io_buffer = 4096;
     auto* io_buffer = static_cast<std::uint8_t*>(av_malloc(k_io_buffer));
     if (io_buffer == nullptr) {
@@ -326,16 +328,22 @@ io::ParseResult<std::vector<std::byte>> xwma_to_ogg(std::span<const std::byte> x
             }
             const int count = frame->nb_samples;
             if (frame->format == AV_SAMPLE_FMT_FLTP) {
-                writer.write(reinterpret_cast<const float* const*>(frame->extended_data), count);
+                std::vector<const float*> planes(static_cast<std::size_t>(channels));
+                for (int c = 0; c < channels; ++c) {
+                    planes[static_cast<std::size_t>(c)] =
+                        io::as_floats(frame->extended_data[c], static_cast<std::size_t>(count)).data();
+                }
+                writer.write(planes.data(), count);
             } else if (frame->format == AV_SAMPLE_FMT_FLT) {
                 interleaved_split.assign(static_cast<std::size_t>(channels),
                                          std::vector<float>(static_cast<std::size_t>(count)));
-                const auto* in = reinterpret_cast<const float*>(frame->extended_data[0]);
+                const auto in = io::as_floats(frame->extended_data[0],
+                                              static_cast<std::size_t>(count) * static_cast<std::size_t>(channels));
                 std::vector<const float*> planes(static_cast<std::size_t>(channels));
                 for (int c = 0; c < channels; ++c) {
                     auto& plane = interleaved_split[static_cast<std::size_t>(c)];
                     for (int s = 0; s < count; ++s) {
-                        plane[static_cast<std::size_t>(s)] = in[s * channels + c];
+                        plane[static_cast<std::size_t>(s)] = in[static_cast<std::size_t>(s * channels + c)];
                     }
                     planes[static_cast<std::size_t>(c)] = plane.data();
                 }
@@ -355,23 +363,23 @@ io::ParseResult<std::vector<std::byte>> xwma_to_ogg(std::span<const std::byte> x
             break;
         }
         if (code < 0) {
-            return fail(origin, reader.position, ErrorKind::corrupt,
+            return fail(origin, reader.position(), ErrorKind::corrupt,
                         "libavformat: " + av_message(code));
         }
         const bool mine = packet->stream_index == stream->index;
         const int sent = mine ? avcodec_send_packet(decoder.get(), packet.get()) : 0;
         av_packet_unref(packet.get());
         if (sent < 0) {
-            return fail(origin, reader.position, ErrorKind::corrupt,
+            return fail(origin, reader.position(), ErrorKind::corrupt,
                         "libavcodec: " + av_message(sent));
         }
         if (mine && !take_frames()) {
-            return fail(origin, reader.position, ErrorKind::corrupt, problem);
+            return fail(origin, reader.position(), ErrorKind::corrupt, problem);
         }
     }
     avcodec_send_packet(decoder.get(), nullptr);
     if (!take_frames()) {
-        return fail(origin, reader.position, ErrorKind::corrupt, problem);
+        return fail(origin, reader.position(), ErrorKind::corrupt, problem);
     }
     return writer.finish();
 }

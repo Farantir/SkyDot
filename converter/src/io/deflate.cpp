@@ -67,6 +67,60 @@ ParseResult<std::vector<std::byte>> inflate_exact(std::span<const std::byte> com
     return out;
 }
 
+ParseResult<std::vector<std::byte>> inflate_prefix(std::span<const std::byte> compressed,
+                                                   std::size_t size, std::string_view origin,
+                                                   std::size_t origin_offset) {
+    const auto make_error = [&](ErrorKind kind, std::string detail) {
+        return std::unexpected(ParseError{.origin = std::string(origin),
+                                          .offset = origin_offset,
+                                          .kind = kind,
+                                          .detail = std::move(detail)});
+    };
+    if (size > k_max_inflate_size) {
+        return make_error(ErrorKind::too_large, "declares " + std::to_string(size) + " bytes");
+    }
+    std::vector<std::byte> out(size);
+    z_stream stream{};
+    if (::inflateInit(&stream) != Z_OK) {
+        return make_error(ErrorKind::corrupt, "zlib init");
+    }
+    stream.next_in = const_cast<Bytef*>(static_cast<const Bytef*>(
+        static_cast<const void*>(compressed.data())));
+    stream.avail_in = static_cast<uInt>(compressed.size());
+    stream.next_out = static_cast<Bytef*>(static_cast<void*>(out.data()));
+    stream.avail_out = static_cast<uInt>(out.size());
+    const int rc = ::inflate(&stream, Z_FINISH);
+    const auto produced = static_cast<std::size_t>(stream.total_out);
+    ::inflateEnd(&stream);
+    if (produced != size || (rc != Z_STREAM_END && rc != Z_BUF_ERROR && rc != Z_OK)) {
+        return make_error(ErrorKind::corrupt, "zlib body gave " + std::to_string(produced) +
+                                                  " of " + std::to_string(size) + " bytes (zlib " +
+                                                  std::to_string(rc) + ")");
+    }
+    return out;
+}
+
+std::vector<std::byte> deflate_bytes(std::span<const std::byte> data, bool raw) {
+    z_stream stream{};
+    ::deflateInit2(&stream, 6, Z_DEFLATED, raw ? -15 : 15, 8, Z_DEFAULT_STRATEGY);
+    std::vector<std::byte> out(::deflateBound(&stream, static_cast<uLong>(data.size())) + 16);
+    stream.next_in = const_cast<Bytef*>(static_cast<const Bytef*>(
+        static_cast<const void*>(data.data())));
+    stream.avail_in = static_cast<uInt>(data.size());
+    stream.next_out = static_cast<Bytef*>(static_cast<void*>(out.data()));
+    stream.avail_out = static_cast<uInt>(out.size());
+    ::deflate(&stream, Z_FINISH);
+    out.resize(stream.total_out);
+    ::deflateEnd(&stream);
+    return out;
+}
+
+std::uint32_t crc32_of(std::span<const std::byte> data, std::uint32_t seed) {
+    return static_cast<std::uint32_t>(
+        ::crc32(seed, static_cast<const Bytef*>(static_cast<const void*>(data.data())),
+                static_cast<uInt>(data.size())));
+}
+
 ParseResult<std::vector<std::byte>> lz4_decompress_exact(std::span<const std::byte> compressed,
                                                          std::size_t expected_size,
                                                          std::string_view origin,

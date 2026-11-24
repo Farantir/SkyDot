@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "bethconv/ui/swf.hpp"
 
+#include "bethconv/io/byte_view.hpp"
 #include "bethconv/io/deflate.hpp"
+#include "bethconv/io/span_reader.hpp"
 #include "swf_bits.hpp"
 
-#include <zlib.h>
 
 #include <algorithm>
-#include <cstring>
 #include <string>
 #include <utility>
 
@@ -109,23 +109,27 @@ io::ParseResult<SwfBody> decompress_swf(std::span<const std::byte> file, std::st
                                           .kind = kind,
                                           .detail = std::move(detail)});
     };
-    if (file.size() < 8) {
+    SwfBody out;
+    io::SpanReader header(file, origin);
+    const auto signature = header.chars(3);
+    const auto version = header.get<std::uint8_t>();
+    const auto declared = header.get<std::uint32_t>();
+    if (!signature || !version || !declared) {
         return fail(ErrorKind::truncated, 0, "shorter than the 8-byte SWF header");
     }
-    SwfBody out;
-    out.signature.assign(reinterpret_cast<const char*>(file.data()), 3);
-    out.version = std::to_integer<std::uint8_t>(file[3]);
-    std::uint32_t length = 0;
-    for (int i = 0; i < 4; ++i) {
-        length |= std::to_integer<std::uint32_t>(file[4 + static_cast<std::size_t>(i)]) << (8 * i);
-    }
+    out.signature = *signature;
+    out.version = *version;
+    const std::uint32_t length = *declared;
     if (length < 8) {
         return fail(ErrorKind::bad_value, 4, "file length " + std::to_string(length));
     }
     const std::string& sig = out.signature;
     if (sig == "FWS" || sig == "GFX") {
-        const std::size_t n = std::min<std::size_t>(file.size(), length) - 8;
-        out.body.assign(file.begin() + 8, file.begin() + 8 + static_cast<std::ptrdiff_t>(n));
+        const auto body = header.bytes(std::min<std::size_t>(file.size(), length) - 8);
+        if (!body) {
+            return std::unexpected(body.error());
+        }
+        out.body.assign(body->begin(), body->end());
         return out;
     }
     if (sig == "CWS" || sig == "CFX") {
@@ -136,23 +140,11 @@ io::ParseResult<SwfBody> decompress_swf(std::span<const std::byte> file, std::st
         if (want > io::k_max_inflate_size) {
             return fail(ErrorKind::too_large, 4, "declares " + std::to_string(want) + " bytes");
         }
-        out.body.resize(want);
-        z_stream z{};
-        if (inflateInit(&z) != Z_OK) {
-            return fail(ErrorKind::corrupt, 8, "zlib init");
+        auto body = io::inflate_prefix(*header.bytes(header.remaining()), want, origin, 8);
+        if (!body) {
+            return std::unexpected(std::move(body).error());
         }
-        z.next_in = reinterpret_cast<Bytef*>(const_cast<std::byte*>(file.data() + 8));
-        z.avail_in = static_cast<uInt>(file.size() - 8);
-        z.next_out = reinterpret_cast<Bytef*>(out.body.data());
-        z.avail_out = static_cast<uInt>(want);
-        const int rc = inflate(&z, Z_FINISH);
-        const std::size_t got = z.total_out;
-        inflateEnd(&z);
-        if (got != want || (rc != Z_STREAM_END && rc != Z_BUF_ERROR && rc != Z_OK)) {
-            return fail(ErrorKind::corrupt, 8,
-                        "zlib body gave " + std::to_string(got) + " of " + std::to_string(want) +
-                            " bytes (zlib " + std::to_string(rc) + ")");
-        }
+        out.body = std::move(*body);
         return out;
     }
     if (sig == "ZWS") {
@@ -164,26 +156,21 @@ io::ParseResult<SwfBody> decompress_swf(std::span<const std::byte> file, std::st
 io::ParseResult<std::vector<RawTag>> split_tags(std::span<const std::byte> stream,
                                                 std::size_t base_offset, std::string_view origin) {
     std::vector<RawTag> tags;
-    std::size_t pos = 0;
-    while (pos + 2 <= stream.size()) {
-        const std::size_t start = pos;
-        const std::uint32_t header = std::to_integer<std::uint32_t>(stream[pos]) |
-                                     (std::to_integer<std::uint32_t>(stream[pos + 1]) << 8);
-        pos += 2;
+    io::SpanReader r(stream, origin);
+    while (r.remaining() >= 2) {
+        const std::size_t start = r.position();
+        const std::uint32_t header = *r.get<std::uint16_t>();
         const auto code = static_cast<std::uint16_t>(header >> 6);
         std::size_t length = header & 0x3FU;
         if (length == 0x3F) {
-            if (pos + 4 > stream.size()) {
+            const auto long_length = r.get<std::uint32_t>();
+            if (!long_length) {
                 break;
             }
-            length = 0;
-            for (int i = 0; i < 4; ++i) {
-                length |= std::to_integer<std::size_t>(stream[pos + static_cast<std::size_t>(i)])
-                          << (8 * i);
-            }
-            pos += 4;
+            length = *long_length;
         }
-        if (length > stream.size() - pos) {
+        const auto data = r.bytes(length);
+        if (!data) {
             return std::unexpected(ParseError{.origin = std::string(origin),
                                               .offset = base_offset + start,
                                               .kind = ErrorKind::truncated,
@@ -191,9 +178,7 @@ io::ParseResult<std::vector<RawTag>> split_tags(std::span<const std::byte> strea
                                                         std::to_string(length) +
                                                         " bytes runs past the stream"});
         }
-        tags.push_back(RawTag{.code = code, .data = stream.subspan(pos, length),
-                              .offset = base_offset + start});
-        pos += length;
+        tags.push_back(RawTag{.code = code, .data = *data, .offset = base_offset + start});
         if (code == tag_end) {
             break;
         }
@@ -435,9 +420,8 @@ std::vector<std::uint8_t> inflate_bytes(std::span<const std::byte> data, std::si
         ok = false;
         return {};
     }
-    std::vector<std::uint8_t> bytes(out->size());
-    std::memcpy(bytes.data(), out->data(), out->size());
-    return bytes;
+    const auto bytes = io::as_u8(*out);
+    return {bytes.begin(), bytes.end()};
 }
 
 std::optional<Bitmap> read_lossless(std::span<const std::byte> data, std::uint16_t code) {

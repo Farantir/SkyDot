@@ -7,6 +7,7 @@
 #include "bethconv/io/parse_error.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <span>
 #include <string_view>
 #include <vector>
@@ -23,6 +24,19 @@ inline constexpr std::size_t k_max_inflate_size = 256u * 1024u * 1024u;
 [[nodiscard]] ParseResult<std::vector<std::byte>> inflate_exact(
     std::span<const std::byte> compressed, std::size_t expected_size,
     std::string_view origin, std::size_t origin_offset);
+
+/// Inflate the first `size` bytes of a zlib stream, as a Flash player reads a
+/// CWS body: the declared size counts, and a stream that stops short of its end
+/// marker once that much is out is fine. Fails if fewer bytes come out.
+[[nodiscard]] ParseResult<std::vector<std::byte>> inflate_prefix(
+    std::span<const std::byte> compressed, std::size_t size, std::string_view origin,
+    std::size_t origin_offset);
+
+/// Deflate at level 6: a zlib stream, or raw deflate (ZIP members) when `raw`.
+[[nodiscard]] std::vector<std::byte> deflate_bytes(std::span<const std::byte> data, bool raw);
+
+/// CRC-32 (PNG, ZIP), continuing from `seed`.
+[[nodiscard]] std::uint32_t crc32_of(std::span<const std::byte> data, std::uint32_t seed = 0);
 
 /// Decompress an LZ4 frame of known size (BSA v105 blocks). Same contract as
 /// inflate_exact.

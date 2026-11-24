@@ -5,7 +5,7 @@
 // with nothing that varies between runs.
 #include "bethconv/ui/ui_bundle.hpp"
 
-#include <zlib.h>
+#include "bethconv/io/deflate.hpp"
 
 #include <algorithm>
 #include <array>
@@ -52,24 +52,7 @@ public:
     }
 };
 
-std::vector<std::byte> zlib_compress(std::span<const std::byte> in, int window_bits) {
-    z_stream z{};
-    deflateInit2(&z, 6, Z_DEFLATED, window_bits, 8, Z_DEFAULT_STRATEGY);
-    std::vector<std::byte> out(deflateBound(&z, static_cast<uLong>(in.size())) + 16);
-    z.next_in = reinterpret_cast<Bytef*>(const_cast<std::byte*>(in.data()));
-    z.avail_in = static_cast<uInt>(in.size());
-    z.next_out = reinterpret_cast<Bytef*>(out.data());
-    z.avail_out = static_cast<uInt>(out.size());
-    deflate(&z, Z_FINISH);
-    out.resize(z.total_out);
-    deflateEnd(&z);
-    return out;
-}
-
-std::uint32_t crc(std::span<const std::byte> data, std::uint32_t seed = 0) {
-    return static_cast<std::uint32_t>(
-        crc32(seed, reinterpret_cast<const Bytef*>(data.data()), static_cast<uInt>(data.size())));
-}
+std::uint32_t crc(std::span<const std::byte> data) { return io::crc32_of(data); }
 
 } // namespace
 
@@ -79,9 +62,9 @@ std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
     raw.reserve(static_cast<std::size_t>(height) * (width * 4 + 1));
     for (std::uint32_t y = 0; y < height; ++y) {
         raw.push_back(std::byte{0});
-        const auto* row = rgba.data() + static_cast<std::size_t>(y) * width * 4;
-        for (std::size_t i = 0; i < static_cast<std::size_t>(width) * 4; ++i) {
-            raw.push_back(static_cast<std::byte>(row[i]));
+        const std::size_t pitch = static_cast<std::size_t>(width) * 4;
+        for (const std::uint8_t v : rgba.subspan(y * pitch, pitch)) {
+            raw.push_back(static_cast<std::byte>(v));
         }
     }
     Be png;
@@ -104,7 +87,7 @@ std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
     ihdr.u8(0);
     ihdr.u8(0);
     chunk("IHDR", ihdr.bytes);
-    chunk("IDAT", zlib_compress(raw, 15));
+    chunk("IDAT", io::deflate_bytes(raw, false));
     chunk("IEND", {});
     return std::move(png.bytes);
 }
@@ -124,7 +107,7 @@ std::vector<std::byte> write_zip(std::span<const BundleFile> files) {
     constexpr std::uint32_t k_dos_date = (0U << 9) | (1U << 5) | 1U; // 1980-01-01
     for (const BundleFile& f : files) {
         const std::uint32_t sum = crc(f.bytes);
-        auto deflated = zlib_compress(f.bytes, -15);
+        auto deflated = io::deflate_bytes(f.bytes, true);
         const bool stored = deflated.size() >= f.bytes.size();
         const std::span<const std::byte> data =
             stored ? std::span<const std::byte>(f.bytes) : std::span<const std::byte>(deflated);

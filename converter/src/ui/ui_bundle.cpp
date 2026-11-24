@@ -5,6 +5,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include <string>
@@ -49,8 +50,9 @@ template <class Names> Json export_json(const Names& names) {
 }
 
 std::vector<std::byte> bytes_of(std::string_view s) {
-    const auto* p = reinterpret_cast<const std::byte*>(s.data());
-    return {p, p + s.size()};
+    std::vector<std::byte> out(s.size());
+    std::ranges::transform(s, out.begin(), [](char c) { return static_cast<std::byte>(c); });
+    return out;
 }
 
 std::string font_file_name(const Font& f) {
