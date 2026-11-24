@@ -592,16 +592,18 @@ void Vm::fire_scheduled() {
 }
 
 Vm::Vm() {
-    forgets_.add_owned(
-        "vm.instances", [this](std::uint32_t ref) { detach_instances(ref); }, [this] { return instance_count() + timers_.size() + animation_regs_.size(); });
-    forgets_.add_owned(
-        "vm.inventory", [this](std::uint32_t ref) { inventory_.erase(ref); }, [this] { return inventory_.owners().size(); });
-    forgets_.add_owned(
-        "vm.animation_states", [this](std::uint32_t ref) { animation_states_.erase(ref); },
+    // Each store forgets through the registry and through `detach`, from this one list.
+    const auto own = [this](std::string_view name, ForgetRegistry::Forget forget, ForgetRegistry::Size size) {
+        own_forgets_.push_back(forget);
+        forgets_.add_owned(name, std::move(forget), std::move(size));
+    };
+    own("vm.instances", [this](std::uint32_t ref) { detach_instances(ref); },
+        [this] { return instance_count() + timers_.size() + animation_regs_.size(); });
+    own("vm.inventory", [this](std::uint32_t ref) { inventory_.erase(ref); }, [this] { return inventory_.owners().size(); });
+    own("vm.animation_states", [this](std::uint32_t ref) { animation_states_.erase(ref); },
         [this] { return animation_states_.size(); });
-    forgets_.add_owned(
-        "vm.owners", [this](std::uint32_t ref) { owners_.erase(ref); }, [this] { return owners_.states().size(); });
-    forgets_.add_owned(
+    own("vm.owners", [this](std::uint32_t ref) { owners_.erase(ref); }, [this] { return owners_.states().size(); });
+    own(
         "vm.scheduled",
         [this](std::uint32_t ref) {
             std::erase_if(scheduled_, [&](const Scheduled& d) { return references(d.call, ref); });
@@ -627,10 +629,9 @@ std::vector<std::uint32_t> Vm::attached_forms() const {
 }
 
 void Vm::detach(std::uint32_t ref) {
-    inventory_.erase(ref);
-    animation_states_.erase(ref);
-    std::erase_if(scheduled_, [&](const Scheduled& d) { return references(d.call, ref); });
-    detach_instances(ref);
+    for (const auto& forget : own_forgets_) {
+        forget(ref);
+    }
 }
 
 void Vm::detach_instances(std::uint32_t ref) {

@@ -218,8 +218,9 @@ public:
     Instance* attach(std::uint32_t form, std::string_view class_name);
     [[nodiscard]] std::vector<Instance*> instances(std::uint32_t form) const;
     /// Forget everything the VM holds for `ref`: its script instances, their
-    /// timers, the threads running on them, scheduled host calls, inventory and
-    /// animation state. Safe from inside a native running on one of them.
+    /// timers, the threads running on them, scheduled host calls, inventory,
+    /// animation state and the owner a script gave it: the VM's own stores in
+    /// `forgets()`. Safe from inside a native running on one of them.
     void detach(std::uint32_t ref);
     /// The attached instance of exactly this class, or null.
     [[nodiscard]] Instance* instance(std::uint32_t form, std::string_view class_name) const;
@@ -475,6 +476,8 @@ private:
     std::vector<AnimationRegistration> animation_regs_;
     std::vector<Scheduled> scheduled_;
     ForgetRegistry forgets_;
+    /// The forget functions of the VM's own stores in `forgets_`, which `detach` runs.
+    std::vector<ForgetRegistry::Forget> own_forgets_;
     Inventory inventory_;
     FormListAdditions form_lists_;
     PlacedRefs placed_;

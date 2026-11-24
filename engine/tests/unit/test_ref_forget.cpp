@@ -105,6 +105,15 @@ TEST_CASE("a forgotten reference has no owner a script gave it", "[vm][forget]")
     CHECK(sizes_of(vm.forgets()).at("vm.owners") == 0);
 }
 
+TEST_CASE("detach forgets what every VM store holds, the owner a script gave too", "[vm][forget]") {
+    Vm vm;
+    vm.owners().set(0xFF000123, {.owner = 0x13BBF, .faction = false, .rank = -1});
+    vm.inventory().add(0xFF000123, 0xF, 5);
+    vm.detach(0xFF000123);
+    CHECK(vm.owners().find(0xFF000123) == nullptr);
+    CHECK(vm.inventory().count(0xFF000123, 0xF) == 0);
+}
+
 TEST_CASE("a token that outlives its registry is harmless", "[vm][forget]") {
     ForgetRegistry::Registration token;
     {
