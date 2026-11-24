@@ -957,10 +957,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         }
         return out;
     }
-    void magic_trace(const std::string& line) override {
-        owner_.emit_signal("trace", natives::to_godot(line));
-        godot::UtilityFunctions::print(natives::to_godot(line));
-    }
+    void magic_trace(const std::string& line) override { owner_.trace_line(line); }
     void magic_notification(const std::string& text) override {
         godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
         owner_.emit_signal("message", natives::to_godot(text), false);
@@ -1010,11 +1007,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Sound
         return points ? points->apply(ep, owner_.with_worn(ctx), value) : value;
     }
 
-    void announce(const std::string& line) override {
-        const String shown = natives::to_godot(line);
-        owner_.emit_signal("trace", shown);
-        godot::UtilityFunctions::print(shown);
-    }
+    void announce(const std::string& line) override { owner_.trace_line(line); }
 
     // ---- vm::DialogueRuntime::Host
     vm::ActorHost& actor_host() override { return *this; }
@@ -1281,6 +1274,12 @@ bool SkydotPapyrus::finish_dying(std::int64_t ref) {
     }
     send_on_death(id);
     return true;
+}
+
+void SkydotPapyrus::trace_line(const std::string& line) {
+    const String shown = natives::to_godot(line);
+    emit_signal("trace", shown);
+    godot::UtilityFunctions::print(shown);
 }
 
 void SkydotPapyrus::flush_deaths() {

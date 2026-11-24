@@ -63,6 +63,39 @@ inline bool caster_can_act(const vm::ActorStates& actors, std::uint32_t caster, 
     return true;
 }
 
+/// The answer of a cast to the game layer: refused with no reason (and a zero cost and instance count where
+/// the cast has them) until the cast says otherwise.
+struct CastReply {
+    Dictionary out;
+    CastReply(bool cost, bool instances) {
+        out["ok"] = false;
+        out["reason"] = String();
+        if (cost) {
+            out["cost"] = 0.0;
+        }
+        if (instances) {
+            out["instances"] = 0;
+        }
+    }
+    /// False with the reason set unless the source was `found` and `caster` can act.
+    bool open(bool found, const char* missing, const vm::ActorStates& actors, std::uint32_t caster) {
+        if (!found) {
+            out["reason"] = missing;
+            return false;
+        }
+        return caster_can_act(actors, caster, out);
+    }
+    Dictionary refuse(const char* reason) {
+        out["reason"] = reason;
+        return out;
+    }
+    Dictionary landed(const magic::Landing& landing) {
+        out["ok"] = landing.ok;
+        out["reason"] = to_godot(landing.reason);
+        out["instances"] = static_cast<std::int64_t>(landing.instances.size());
+        return out;
+    }
+};
 
 } // namespace magic_glue
 

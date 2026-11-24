@@ -10,45 +10,31 @@ namespace skydot {
 
 
 Dictionary SkydotPapyrus::pay_spell(std::int64_t caster_in, std::int64_t spell_in, double seconds) {
-    Dictionary out;
-    out["ok"] = false;
-    out["reason"] = String();
-    out["cost"] = 0.0;
+    CastReply reply(true, false);
     auto* m = magic_state();
     const auto caster = static_cast<std::uint32_t>(caster_in);
     const auto spell = static_cast<std::uint32_t>(spell_in);
-    if (m == nullptr || lookup(m->world_.spells(), spell) == nullptr) {
-        out["reason"] = "no such spell";
-        return out;
-    }
-    if (!caster_can_act(actors_, caster, out)) {
-        return out;
+    if (!reply.open(m != nullptr && lookup(m->world_.spells(), spell) != nullptr, "no such spell", actors_, caster)) {
+        return reply.out;
     }
     m->prime(caster);
     const auto paid = magic::pay_spell(m->world_, *m, m->book, caster, spell, seconds, game_days(), m->settings());
-    out["ok"] = paid.ok;
-    out["reason"] = to_godot(paid.reason);
-    out["cost"] = paid.cost;
+    reply.out["ok"] = paid.ok;
+    reply.out["reason"] = to_godot(paid.reason);
+    reply.out["cost"] = paid.cost;
     if (paid.ok && seconds <= 0.0) {
         send_spell_cast(caster, spell); // a concentration spell pays every frame: one event per cast
     }
-    return out;
+    return reply.out;
 }
 
 Dictionary SkydotPapyrus::land_spell(std::int64_t caster_in, std::int64_t form_in, std::int64_t target_in) {
-    Dictionary out;
-    out["ok"] = false;
-    out["reason"] = String();
-    out["instances"] = 0;
+    CastReply reply(false, true);
     auto* m = magic_state();
     const auto caster = static_cast<std::uint32_t>(caster_in);
     const auto form = static_cast<std::uint32_t>(form_in);
-    if (m == nullptr || !magic::cast_info(m->world_, form).found) {
-        out["reason"] = "no such spell";
-        return out;
-    }
-    if (!caster_can_act(actors_, caster, out)) {
-        return out;
+    if (!reply.open(m != nullptr && magic::cast_info(m->world_, form).found, "no such spell", actors_, caster)) {
+        return reply.out;
     }
     const std::uint32_t target = target_in != 0 ? static_cast<std::uint32_t>(target_in) : caster;
     m->prime(caster);
@@ -56,29 +42,18 @@ Dictionary SkydotPapyrus::land_spell(std::int64_t caster_in, std::int64_t form_i
     const auto landed = magic::land_form(m->world_, m->effects, caster, form, target);
     flush_magic_events();
     flush_deaths();
-    out["ok"] = landed.ok;
-    out["reason"] = to_godot(landed.reason);
-    out["instances"] = static_cast<std::int64_t>(landed.instances.size());
-    return out;
+    return reply.landed(landed);
 }
 
 Dictionary SkydotPapyrus::cast_spell(std::int64_t caster_in, std::int64_t spell_in, std::int64_t target_in,
                                      double seconds) {
-    Dictionary out;
-    out["ok"] = false;
-    out["reason"] = String();
-    out["cost"] = 0.0;
-    out["instances"] = 0;
+    CastReply reply(true, true);
     auto* m = magic_state();
     const auto caster = static_cast<std::uint32_t>(caster_in);
     const auto spell = static_cast<std::uint32_t>(spell_in);
     const auto* s = m != nullptr ? lookup(m->world_.spells(), spell) : nullptr;
-    if (s == nullptr) {
-        out["reason"] = "no such spell";
-        return out;
-    }
-    if (!caster_can_act(actors_, caster, out)) {
-        return out;
+    if (!reply.open(s != nullptr, "no such spell", actors_, caster)) {
+        return reply.out;
     }
     m->prime(caster);
     std::uint32_t target = static_cast<std::uint32_t>(target_in);
@@ -91,17 +66,15 @@ Dictionary SkydotPapyrus::cast_spell(std::int64_t caster_in, std::int64_t spell_
         fresh = fresh && !(e.source.form == spell && e.caster == caster);
     }
     const auto paid = magic::pay_spell(m->world_, *m, m->book, caster, spell, seconds, game_days(), m->settings());
-    out["reason"] = to_godot(paid.reason);
-    out["cost"] = paid.cost;
+    reply.out["reason"] = to_godot(paid.reason);
+    reply.out["cost"] = paid.cost;
     if (!paid.ok) {
-        return out;
+        return reply.out;
     }
     m->prime(target);
     if (fresh) {
-        const std::string line = "magic: " + hex(caster) + " casts " + hex(spell) + " on " + hex(target) + " (cost " +
-                                 number(std::round(paid.cost * 100.0) / 100.0) + ")";
-        emit_signal("trace", to_godot(line));
-        godot::UtilityFunctions::print(to_godot(line));
+        trace_line("magic: " + hex(caster) + " casts " + hex(spell) + " on " + hex(target) + " (cost " +
+                   number(std::round(paid.cost * 100.0) / 100.0) + ")");
     }
     const auto landed = magic::land_form(m->world_, m->effects, caster, spell, target);
     if (fresh) {
@@ -109,9 +82,7 @@ Dictionary SkydotPapyrus::cast_spell(std::int64_t caster_in, std::int64_t spell_
     }
     flush_magic_events();
     flush_deaths();
-    out["ok"] = true;
-    out["instances"] = static_cast<std::int64_t>(landed.instances.size());
-    return out;
+    return reply.landed(landed);
 }
 
 Dictionary SkydotPapyrus::cast_info(std::int64_t form_in) {
@@ -158,32 +129,22 @@ Dictionary SkydotPapyrus::cast_info(std::int64_t form_in) {
 }
 
 Dictionary SkydotPapyrus::cast_scroll(std::int64_t caster_in, std::int64_t scroll_in, std::int64_t target_in) {
-    Dictionary out;
-    out["ok"] = false;
-    out["reason"] = String();
-    out["instances"] = 0;
+    CastReply reply(false, true);
     auto* m = magic_state();
     const auto caster = static_cast<std::uint32_t>(caster_in);
     const auto scroll = static_cast<std::uint32_t>(scroll_in);
     const auto info = m != nullptr ? magic::cast_info(m->world_, scroll) : magic::CastInfo{};
-    if (!info.found || !info.is_scroll) {
-        out["reason"] = "no such scroll";
-        return out;
-    }
-    if (!caster_can_act(actors_, caster, out)) {
-        return out;
+    if (!reply.open(info.found && info.is_scroll, "no such scroll", actors_, caster)) {
+        return reply.out;
     }
     const bool item = lookup(m->world_.spells(), scroll) == nullptr; // a SCRL; a SPEL scroll is not carried
     if (item && !m->carried_scroll(caster, scroll)) {
-        out["reason"] = "not carried";
-        return out;
+        return reply.refuse("not carried");
     }
     const std::uint32_t target = target_in != 0 ? static_cast<std::uint32_t>(target_in) : caster;
     m->prime(caster);
     m->prime(target);
-    const std::string line = "magic: " + hex(caster) + " reads " + hex(scroll) + " on " + hex(target);
-    emit_signal("trace", to_godot(line));
-    godot::UtilityFunctions::print(to_godot(line));
+    trace_line("magic: " + hex(caster) + " reads " + hex(scroll) + " on " + hex(target));
     const auto landed = magic::land_form(m->world_, m->effects, caster, scroll, target);
     send_spell_cast(caster, scroll);
     if (item) {
@@ -198,10 +159,7 @@ Dictionary SkydotPapyrus::cast_scroll(std::int64_t caster_in, std::int64_t scrol
     }
     flush_magic_events();
     flush_deaths();
-    out["ok"] = landed.ok;
-    out["reason"] = to_godot(landed.reason);
-    out["instances"] = static_cast<std::int64_t>(landed.instances.size());
-    return out;
+    return reply.landed(landed);
 }
 
 void SkydotPapyrus::set_blocking(std::int64_t actor, bool blocking) {

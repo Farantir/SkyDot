@@ -886,6 +886,8 @@ private:
     bool ghost_ignores_hit(std::uint32_t ref) { return combat_.ghost_ignores_hit(ref); }
     /// The item domain (vm/item_runtime.hpp): start inventories, equipment and the item natives (ITST).
     vm::ItemRuntime item_;
+    /// A line for the trace signal and the output.
+    void trace_line(const std::string& line);
     /// OnSpellCast(spell) to `caster`'s scripts and aliases.
     void send_spell_cast(std::uint32_t caster, std::uint32_t spell);
     /// The magic of all actors: effects, spell books and the adapters (vm/papyrus_magic.cpp).
