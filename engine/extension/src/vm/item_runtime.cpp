@@ -396,22 +396,24 @@ std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand)
 void ItemRuntime::bind_natives(Vm& vm, Host& host) {
     host_ = &host;
     using natives::arg;
+    using natives::flag;
+    using natives::is_object;
+    using natives::object_form;
     using natives::result;
-    const auto is_object = [](NativeCall& c, std::size_t i) { return arg(c, i).kind() == Kind::object; };
 
     // Game.IsObjectFavorited(akForm): marked as a favorite in the item or magic menu.
-    vm.bind("Game", "IsObjectFavorited", [this, is_object](NativeCall& c) {
-        return result(Value::boolean(is_object(c, 0) && is_favorite(arg(c, 0).form())));
+    vm.bind("Game", "IsObjectFavorited", [this](NativeCall& c) {
+        return flag(is_object(c, 0) && is_favorite(object_form(c, 0)));
     });
-    vm.bind("Actor", "EquipItem", [this, is_object](NativeCall& c) {
+    vm.bind("Actor", "EquipItem", [this](NativeCall& c) {
         if (is_object(c, 0)) {
-            equip_item(c.self.form(), arg(c, 0).form(), false, true);
+            equip_item(c.self.form(), object_form(c, 0), false, true);
         }
         return NativeResult{};
     });
-    vm.bind("Actor", "UnequipItem", [this, is_object](NativeCall& c) {
+    vm.bind("Actor", "UnequipItem", [this](NativeCall& c) {
         if (is_object(c, 0)) {
-            unequip_item(c.self.form(), arg(c, 0).form());
+            unequip_item(c.self.form(), object_form(c, 0));
         }
         return NativeResult{};
     });
@@ -419,10 +421,10 @@ void ItemRuntime::bind_natives(Vm& vm, Host& host) {
         unequip_all(c.self.form());
         return NativeResult{};
     });
-    vm.bind("Actor", "IsEquipped", [this, is_object](NativeCall& c) {
+    vm.bind("Actor", "IsEquipped", [this](NativeCall& c) {
         resolve_owner(c.self.form());
         const auto* equipment = states_.find(c.self.form());
-        return result(Value::boolean(is_object(c, 0) && equipment != nullptr && equipment->holds(arg(c, 0).form())));
+        return flag(is_object(c, 0) && equipment != nullptr && equipment->holds(object_form(c, 0)));
     });
     // aiHand: 0 left, 1 right.
     vm.bind("Actor", "GetEquippedItemType", [this](NativeCall& c) {

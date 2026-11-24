@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/progression_runtime.hpp"
+#include "vm/natives_args.hpp"
 
 #include "data/fb_search.hpp"
 #include "data/leveled.hpp"
@@ -22,6 +23,11 @@ std::int64_t skill_of(const std::string& name) {
     const auto index = av::index_of(name);
     return index && *index >= k_first_skill && *index <= k_last_skill ? static_cast<std::int64_t>(*index) : -1;
 }
+
+using natives::flag;
+using natives::int_or;
+using natives::object_form;
+using natives::result;
 
 NativeResult done() { return NativeResult{}; }
 
@@ -242,7 +248,7 @@ void ProgressionRuntime::bind_natives(Vm& vm) {
                                            c.args.size() > 1 ? static_cast<double>(c.args[1].f()) : 0.0);
         } else {
             applied = host_->increment_skill(static_cast<std::uint32_t>(skill),
-                                             c.args.size() > 1 ? c.args[1].i() : 1);
+                                             int_or(c, 1, 1));
         }
         if (!applied && !handler_missing_logged_) {
             handler_missing_logged_ = true;
@@ -256,36 +262,36 @@ void ProgressionRuntime::bind_natives(Vm& vm) {
     // The misc stats (the journal's General Stats) are GDScript's JournalLog, reached like the skill rules.
     vm.bind("Game", "IncrementStat", [this](NativeCall& c) {
         if (host_ != nullptr && !c.args.empty()) {
-            host_->increment_stat(c.args[0].s(), c.args.size() > 1 ? c.args[1].i() : 1);
+            host_->increment_stat(c.args[0].s(), int_or(c, 1, 1));
         }
         return done();
     });
     vm.bind("Game", "QueryStat", [this](NativeCall& c) {
         const std::optional<std::int32_t> value =
             host_ != nullptr && !c.args.empty() ? host_->query_stat(c.args[0].s()) : std::nullopt;
-        return NativeResult{.value = Value::integer(value.value_or(0)), .wait = -1.0};
+        return result(Value::integer(value.value_or(0)));
     });
     vm.bind("Game", "GetPlayerExperience", [this](NativeCall&) {
-        return NativeResult{.value = Value::floating(static_cast<float>(state_.player.xp)), .wait = -1.0};
+        return result(Value::floating(static_cast<float>(state_.player.xp)));
     });
     vm.bind("Game", "SetPlayerExperience", [this](NativeCall& c) {
         state_.player.xp = std::max(0.0, c.args.empty() ? 0.0 : static_cast<double>(c.args[0].f()));
         return done();
     });
     vm.bind("Game", "GetExperienceForLevel", [this](NativeCall& c) {
-        const auto level = c.args.empty() ? 1 : c.args[0].i();
+        const auto level = int_or(c, 0, 1);
         const double need = host_ != nullptr ? host_->level_threshold(level) : 0.0;
-        return NativeResult{.value = Value::floating(static_cast<float>(need)), .wait = -1.0};
+        return result(Value::floating(static_cast<float>(need)));
     });
     vm.bind("Game", "GetPerkPoints", [this](NativeCall&) {
-        return NativeResult{.value = Value::integer(state_.player.perk_points), .wait = -1.0};
+        return result(Value::integer(state_.player.perk_points));
     });
     vm.bind("Game", "SetPerkPoints", [this](NativeCall& c) {
-        state_.player.perk_points = std::max(0, c.args.empty() ? 0 : c.args[0].i());
+        state_.player.perk_points = std::max(0, int_or(c, 0, 0));
         return done();
     });
     const auto mod_points = [this](NativeCall& c) {
-        const std::int32_t sum = state_.player.perk_points + (c.args.empty() ? 0 : c.args[0].i());
+        const std::int32_t sum = state_.player.perk_points + int_or(c, 0, 0);
         state_.player.perk_points = std::max(0, sum);
         return done();
     };
@@ -293,20 +299,20 @@ void ProgressionRuntime::bind_natives(Vm& vm) {
     vm.bind("Game", "AddPerkPoints", mod_points);
     // AddPerk does not spend perk points, as in the game.
     vm.bind("Actor", "AddPerk", [this](NativeCall& c) {
-        if (!c.args.empty() && c.args[0].form() != 0) {
-            add_perk(c.self.form(), c.args[0].form());
+        if (object_form(c, 0) != 0) {
+            add_perk(c.self.form(), object_form(c, 0));
         }
         return done();
     });
     vm.bind("Actor", "RemovePerk", [this](NativeCall& c) {
-        if (!c.args.empty() && c.args[0].form() != 0) {
-            remove_perk(c.self.form(), c.args[0].form());
+        if (object_form(c, 0) != 0) {
+            remove_perk(c.self.form(), object_form(c, 0));
         }
         return done();
     });
     vm.bind("Actor", "HasPerk", [this](NativeCall& c) {
-        const bool has = !c.args.empty() && c.args[0].form() != 0 && has_perk(c.self.form(), c.args[0].form());
-        return NativeResult{.value = Value::boolean(has), .wait = -1.0};
+        const bool has = object_form(c, 0) != 0 && has_perk(c.self.form(), object_form(c, 0));
+        return flag(has);
     });
 }
 

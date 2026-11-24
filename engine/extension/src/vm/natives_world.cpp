@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "vm/natives_world.hpp"
+#include "vm/natives_args.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -81,81 +82,80 @@ std::vector<std::uint32_t> form_list_contents(const Vm& vm, const WorldAccess& w
 }
 
 void bind_world_natives(Vm& vm, const WorldAccess& world) {
+    using namespace natives;
     // ObjectReference.psc: the nth linked ref in the chain of this reference's
     // links without a keyword (DartTrap picks a port with it). 0 is not
     // documented; it gives the reference itself (assumed, not checked).
     vm.bind("ObjectReference", "GetNthLinkedRef", [&world](NativeCall& c) {
-        const std::int32_t n = c.args.empty() ? 0 : c.args[0].i();
+        const std::int32_t n = int_or(c, 0, 0);
         const std::uint32_t target = nth_linked_ref(world, c.self.form(), n);
-        return NativeResult{.value = target != 0 ? c.vm.object(target, "ObjectReference") : Value{}, .wait = -1.0};
+        return result(target != 0 ? c.vm.object(target, "ObjectReference") : Value{});
     });
     // The cell is a form of its own (class Cell, the cell record's id).
     vm.bind("ObjectReference", "GetParentCell", [&world](NativeCall& c) {
         const std::uint32_t cell = world.parent_cell(c.self.form());
-        return NativeResult{.value = cell != 0 ? c.vm.object(cell, "Cell") : Value{}, .wait = -1.0};
+        return result(cell != 0 ? c.vm.object(cell, "Cell") : Value{});
     });
     vm.bind("Cell", "IsInterior", [&world](NativeCall& c) {
-        return NativeResult{.value = Value::boolean(world.cell_interior(c.self.form())), .wait = -1.0};
+        return flag(world.cell_interior(c.self.form()));
     });
     vm.bind("Cell", "IsAttached", [&world](NativeCall& c) {
-        return NativeResult{.value = Value::boolean(world.cell_attached(c.self.form())), .wait = -1.0};
+        return flag(world.cell_attached(c.self.form()));
     });
 
     // ---- keywords
     vm.bind("Keyword", "GetKeyword", [&world](NativeCall& c) {
-        const std::uint32_t keyword = c.args.empty() ? 0 : world.find_keyword(Vm::to_string(c.args[0]));
-        return NativeResult{.value = keyword != 0 ? c.vm.object(keyword, "Keyword") : Value{}, .wait = -1.0};
+        const std::uint32_t keyword = c.args.empty() ? 0 : world.find_keyword(Vm::to_string(arg(c, 0)));
+        return result(keyword != 0 ? c.vm.object(keyword, "Keyword") : Value{});
     });
     vm.bind("Form", "HasKeyword", [&world](NativeCall& c) {
-        const bool has = !c.args.empty() && c.args[0].kind() == Kind::object &&
-                         world.has_keyword(c.self.form(), c.args[0].form());
-        return NativeResult{.value = Value::boolean(has), .wait = -1.0};
+        const bool has = is_object(c, 0) &&
+                         world.has_keyword(c.self.form(), object_form(c, 0));
+        return flag(has);
     });
 
     // ---- form lists
     vm.bind("FormList", "GetSize", [&world](NativeCall& c) {
-        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(
-                                form_list_contents(c.vm, world, c.self.form()).size())),
-                            .wait = -1.0};
+        return result(Value::integer(static_cast<std::int32_t>(form_list_contents(c.vm, world, c.self.form()).size())));
     });
     vm.bind("FormList", "GetAt", [&world](NativeCall& c) {
         const auto forms = form_list_contents(c.vm, world, c.self.form());
-        const std::int32_t at = c.args.empty() ? -1 : c.args[0].i();
+        const std::int32_t at = int_or(c, 0, -1);
         if (at < 0 || static_cast<std::size_t>(at) >= forms.size()) {
             return NativeResult{};
         }
-        return NativeResult{.value = c.vm.object(forms[static_cast<std::size_t>(at)], "Form"), .wait = -1.0};
+        return result(c.vm.object(forms[static_cast<std::size_t>(at)], "Form"));
     });
     // The index of the form, -1 if it is not in the list.
     vm.bind("FormList", "Find", [&world](NativeCall& c) {
         const auto forms = form_list_contents(c.vm, world, c.self.form());
         std::int32_t found = -1;
-        if (!c.args.empty() && c.args[0].kind() == Kind::object) {
-            const auto it = std::ranges::find(forms, c.args[0].form());
+        if (is_object(c, 0)) {
+            const auto it = std::ranges::find(forms, object_form(c, 0));
             found = it != forms.end() ? static_cast<std::int32_t>(it - forms.begin()) : -1;
         }
-        return NativeResult{.value = Value::integer(found), .wait = -1.0};
+        return result(Value::integer(found));
     });
     vm.bind("FormList", "HasForm", [&world](NativeCall& c) {
         const auto forms = form_list_contents(c.vm, world, c.self.form());
-        const bool has = !c.args.empty() && c.args[0].kind() == Kind::object &&
-                         std::ranges::find(forms, c.args[0].form()) != forms.end();
-        return NativeResult{.value = Value::boolean(has), .wait = -1.0};
+        const bool has = is_object(c, 0) &&
+                         std::ranges::find(forms, object_form(c, 0)) != forms.end();
+        return flag(has);
     });
     // A form the list holds already is not added twice.
     vm.bind("FormList", "AddForm", [&world](NativeCall& c) {
-        if (!c.args.empty() && c.args[0].kind() == Kind::object) {
+        if (is_object(c, 0)) {
             const auto forms = form_list_contents(c.vm, world, c.self.form());
-            if (std::ranges::find(forms, c.args[0].form()) == forms.end()) {
-                c.vm.form_lists().add(c.self.form(), c.args[0].form());
+            if (std::ranges::find(forms, object_form(c, 0)) == forms.end()) {
+                c.vm.form_lists().add(c.self.form(), object_form(c, 0));
             }
         }
         return NativeResult{};
     });
     // Only forms scripts added can be taken out; the world's stay.
     vm.bind("FormList", "RemoveAddedForm", [](NativeCall& c) {
-        if (!c.args.empty() && c.args[0].kind() == Kind::object) {
-            c.vm.form_lists().remove(c.self.form(), c.args[0].form());
+        if (is_object(c, 0)) {
+            c.vm.form_lists().remove(c.self.form(), object_form(c, 0));
         }
         return NativeResult{};
     });
@@ -170,10 +170,10 @@ void bind_world_natives(Vm& vm, const WorldAccess& world) {
         return NativeResult{.value = Value::floating(static_cast<float>(world.game_days()))};
     });
     vm.bind("Actor", "GetLevel", [&world](NativeCall& c) {
-        return NativeResult{.value = Value::integer(world.actor_level(c.self.form())), .wait = -1.0};
+        return result(Value::integer(world.actor_level(c.self.form())));
     });
     vm.bind("ObjectReference", "CalculateEncounterLevel", [&world](NativeCall&) {
-        return NativeResult{.value = Value::integer(world.player_level()), .wait = -1.0};
+        return result(Value::integer(world.player_level()));
     });
 }
 

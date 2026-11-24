@@ -168,15 +168,15 @@ void SceneRuntime::bind_natives(Vm& vm, Host& host, DialogueRuntime& dialogue) {
         return NativeResult{};
     });
     vm.bind("Scene", "IsPlaying", [this](NativeCall& c) {
-        return result(Value::boolean(is_playing(c.self.form())));
+        return flag(is_playing(c.self.form()));
     });
     vm.bind("Scene", "GetOwningQuest", [this](NativeCall& c) {
         const auto* root = host_->world_root();
         const auto* s = root != nullptr ? lookup(root->scenes(), c.self.form()) : nullptr;
-        return NativeResult{.value = s != nullptr ? c.vm.object(s->quest(), "Quest") : Value{}, .wait = -1.0};
+        return result(s != nullptr ? c.vm.object(s->quest(), "Quest") : Value{});
     });
     vm.bind("Scene", "IsActionComplete", [this](NativeCall& c) {
-        return result(Value::boolean(action_complete(c.self.form(), static_cast<std::uint32_t>(arg(c, 0).i()))));
+        return flag(action_complete(c.self.form(), static_cast<std::uint32_t>(arg(c, 0).i())));
     });
 }
 

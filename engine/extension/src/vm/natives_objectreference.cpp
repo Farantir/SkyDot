@@ -44,7 +44,7 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     // state are left alone.
     v.bind("ObjectReference", "Reset", [&world, &events, &host](NativeCall& c) {
         const std::uint32_t ref = c.self.form();
-        const std::uint32_t target = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0;
+        const std::uint32_t target = object_form(c, 0);
         Xyz position{};
         Xyz rotation{};
         auto& states = host.ref_states();
@@ -70,21 +70,21 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsDisabled", [&world](NativeCall& c) {
-        return result(Value::boolean(world.ref_disabled(c.self.form())));
+        return flag(world.ref_disabled(c.self.form()));
     });
     v.bind("ObjectReference", "IsEnabled", [&world](NativeCall& c) {
-        return result(Value::boolean(!world.ref_disabled(c.self.form())));
+        return flag(!world.ref_disabled(c.self.form()));
     });
     // Its model is built (the registry forgets nodes as they leave the tree)
     // and it is not disabled.
     v.bind("ObjectReference", "Is3DLoaded", [&world](NativeCall& c) {
-        return result(Value::boolean(world.ref_3d_loaded(c.self.form())));
+        return flag(world.ref_3d_loaded(c.self.form()));
     });
 
     // ---- links, base, place
     // The link with this keyword (None: the link without one).
     v.bind("ObjectReference", "GetLinkedRef", [&world](NativeCall& c) {
-        const std::uint32_t keyword = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0;
+        const std::uint32_t keyword = object_form(c, 0);
         const std::uint32_t target = world.linked_ref(c.self.form(), keyword);
         return target != 0 ? result(c.vm.object(target, "ObjectReference")) : NativeResult{};
     });
@@ -106,7 +106,7 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         return result(Value::floating(static_cast<float>(world.ref_placement(c.self.form()).scale)));
     });
     v.bind("ObjectReference", "GetDistance", [&world](NativeCall& c) {
-        if (arg(c, 0).kind() != Kind::object) {
+        if (!is_object(c, 0)) {
             return result(Value::floating(0.0F));
         }
         const Xyz a = world.ref_position(c.self.form());
@@ -121,7 +121,7 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     // ---- animation
     v.bind("ObjectReference", "PlayAnimation", [&events](NativeCall& c) {
         events.play_animation(c.self.form(), Vm::to_string(arg(c, 0)));
-        return result(Value::boolean(true));
+        return flag(true);
     });
     // Waits for the named event (a text key of the animation) or a timeout.
     // The signal goes out after the wait is armed: a handler that reports the
@@ -136,9 +136,9 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     });
     // Physics dependencies between animated objects; nothing to do without physics.
     v.bind("ObjectReference", "AddDependentAnimatedObjectReference",
-           [](NativeCall&) { return result(Value::boolean(true)); });
+           [](NativeCall&) { return flag(true); });
     v.bind("ObjectReference", "RemoveDependentAnimatedObjectReference",
-           [](NativeCall&) { return result(Value::boolean(true)); });
+           [](NativeCall&) { return flag(true); });
 
     // ---- physics: the game layer owns the bodies
     // Direction in Skyrim's space, magnitude in Havok's (about kg m/s).
@@ -151,7 +151,7 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     // blow); KnockAreaEffect(magnitude, radius): everything within the radius (game units) of the
     // source is knocked away from it. The game layer owns the bodies: it ragdolls and gets them up.
     v.bind("ObjectReference", "PushActorAway", [&events](NativeCall& c) {
-        if (arg(c, 0).kind() != Kind::object) {
+        if (!is_object(c, 0)) {
             return NativeResult{};
         }
         const double force = number(arg(c, 1));
@@ -179,10 +179,10 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         const std::uint32_t activator = arg(c, 0).form() != 0 ? arg(c, 0).form() : k_player_ref;
         c.vm.schedule(0.0, ScheduledActivate{c.self.form(), activator, static_cast<std::uint8_t>(ActivationSource::script),
                                              Vm::truthy(arg(c, 1))});
-        return result(Value::boolean(true));
+        return flag(true);
     });
     v.bind("ObjectReference", "BlockActivation", [&host](NativeCall& c) {
-        if (c.args.empty() || Vm::truthy(arg(c, 0))) {
+        if (bool_or(c, 0, true)) {
             host.ref_states().blocked.insert(c.self.form());
         } else {
             host.ref_states().blocked.erase(c.self.form());
@@ -190,10 +190,10 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsActivationBlocked", [&host](NativeCall& c) {
-        return result(Value::boolean(host.ref_states().blocked.contains(c.self.form())));
+        return flag(host.ref_states().blocked.contains(c.self.form()));
     });
     // No actors use furniture yet.
-    v.bind("ObjectReference", "IsFurnitureInUse", [](NativeCall&) { return result(Value::boolean(false)); });
+    v.bind("ObjectReference", "IsFurnitureInUse", [](NativeCall&) { return flag(false); });
     // Followers are not simulated.
     v.bind("ObjectReference", "SetNoFavorAllowed", [](NativeCall&) { return NativeResult{}; });
 
@@ -202,17 +202,17 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
         return result(Value::integer(static_cast<std::int32_t>(host.open_state(c.self.form()))));
     });
     v.bind("ObjectReference", "SetOpen", [&host, &events](NativeCall& c) {
-        const bool open = c.args.empty() || Vm::truthy(arg(c, 0));
+        const bool open = bool_or(c, 0, true);
         host.set_open_state(c.self.form(), open ? k_open : k_closed);
         events.open_changed(c.self.form(), open);
         return NativeResult{};
     });
     v.bind("ObjectReference", "Lock", [&host](NativeCall& c) {
-        host.set_locked(c.self.form(), c.args.empty() || Vm::truthy(arg(c, 0)));
+        host.set_locked(c.self.form(), bool_or(c, 0, true));
         return NativeResult{};
     });
     v.bind("ObjectReference", "IsLocked", [&host](NativeCall& c) {
-        return result(Value::boolean(host.is_locked(c.self.form())));
+        return flag(host.is_locked(c.self.form()));
     });
     v.bind("ObjectReference", "GetLockLevel", [&host](NativeCall& c) {
         const auto level = host.lock_level(c.self.form());
@@ -230,7 +230,7 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     });
     for (const auto& [fn, faction] : {std::pair{"SetActorOwner", false}, std::pair{"SetFactionOwner", true}}) {
         v.bind("ObjectReference", fn, [faction](NativeCall& c) {
-            const std::uint32_t owner = arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0U;
+            const std::uint32_t owner = object_form(c, 0);
             c.vm.owners().set(c.self.form(), {.owner = owner, .faction = owner != 0 && faction, .rank = -1});
             return NativeResult{};
         });
@@ -243,11 +243,11 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     // MoveTo(target, x, y, z, matchRotation): to the target's place plus offsets in world axes. An actor moves in
     // the scene (relocate_ref); the player is not moved by scripts yet.
     v.bind("ObjectReference", "MoveTo", [&host](NativeCall& c) {
-        if (arg(c, 0).kind() != Kind::object) {
+        if (!is_object(c, 0)) {
             return NativeResult{};
         }
         const Xyz offset{as_float(number(arg(c, 1))), as_float(number(arg(c, 2))), as_float(number(arg(c, 3)))};
-        host.move_ref_to(c.self.form(), arg(c, 0).form(), offset, c.args.size() < 5 || Vm::truthy(arg(c, 4)));
+        host.move_ref_to(c.self.form(), arg(c, 0).form(), offset, bool_or(c, 4, true));
         return NativeResult{};
     });
     // There is no translation over time: TranslateTo and SplineTranslateTo put the reference at the end point
@@ -270,25 +270,25 @@ void bind_objectreference_natives(Vm& v, const WorldAccess& world, WorldEvents& 
     // inventory is resolved first (vm/papyrus_items.cpp); what runs out is
     // taken off.
     v.bind("ObjectReference", "GetItemCount", [&host](NativeCall& c) {
-        if (arg(c, 0).kind() != Kind::object) {
+        if (!is_object(c, 0)) {
             return result(Value::integer(0));
         }
         host.resolve_owner(c.self.form());
         return result(Value::integer(static_cast<std::int32_t>(c.vm.inventory().count(c.self.form(), arg(c, 0).form()))));
     });
     v.bind("ObjectReference", "AddItem", [&host](NativeCall& c) {
-        if (arg(c, 0).kind() == Kind::object) {
+        if (is_object(c, 0)) {
             host.resolve_owner(c.self.form());
-            c.vm.inventory().add(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
+            c.vm.inventory().add(c.self.form(), arg(c, 0).form(), int_or(c, 1, 1));
         }
         return NativeResult{};
     });
     // Moves the items to `other` if given, else they are gone.
     v.bind("ObjectReference", "RemoveItem", [&host](NativeCall& c) {
-        if (arg(c, 0).kind() == Kind::object) {
+        if (is_object(c, 0)) {
             // Plain units go first; extras (a tempered weapon) move with their stack.
-            const auto taken = host.remove_item_split(c.self.form(), arg(c, 0).form(), c.args.size() > 1 ? arg(c, 1).i() : 1);
-            if (arg(c, 3).kind() == Kind::object) {
+            const auto taken = host.remove_item_split(c.self.form(), arg(c, 0).form(), int_or(c, 1, 1));
+            if (is_object(c, 3)) {
                 host.resolve_owner(arg(c, 3).form());
                 for (const auto& part : taken) {
                     c.vm.inventory().add(arg(c, 3).form(), arg(c, 0).form(), part.count, part.extra);

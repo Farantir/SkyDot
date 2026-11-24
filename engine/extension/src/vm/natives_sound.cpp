@@ -18,10 +18,10 @@ void bind_sound_natives(Vm& v, SoundHost& sounds, WorldEvents& events) {
     v.bind("Sound", "Play", [&sounds, &events](NativeCall& c) {
         const std::int64_t instance = sounds.new_sound_instance();
         if (instance == 0) {
-            return NativeResult{.value = Value::integer(0), .wait = -1.0};
+            return result(Value::integer(0));
         }
         events.play_sound(c.self.form(), arg(c, 0).form(), instance);
-        return NativeResult{.value = Value::integer(static_cast<std::int32_t>(instance)), .wait = -1.0};
+        return result(Value::integer(static_cast<std::int32_t>(instance)));
     });
     // PlayAndWait waits for `notify_sound_finished(instance)`, which the game
     // layer sends when the clip ends (at once if there is none to play). A
@@ -30,7 +30,7 @@ void bind_sound_natives(Vm& v, SoundHost& sounds, WorldEvents& events) {
     v.bind("Sound", "PlayAndWait", [&sounds, &events](NativeCall& c) {
         const std::int64_t instance = sounds.new_sound_instance();
         if (instance == 0) {
-            return NativeResult{.value = Value::boolean(false), .wait = -1.0};
+            return flag(false);
         }
         const auto sound = c.self.form();
         const auto source = arg(c, 0).form();

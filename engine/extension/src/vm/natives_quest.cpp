@@ -11,21 +11,18 @@ namespace skydot::vm {
 
 void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
     using namespace natives;
-    const auto flag = [](NativeCall& c, std::size_t i, bool fallback) {
-        return c.args.size() > i ? Vm::truthy(arg(c, i)) : fallback;
-    };
     const auto state_of = [&host](NativeCall& c) -> QuestState& { return host.quests().state(c.self.form()); };
 
     // ---- TopicInfo: the INFO a fragment script is attached to
     v.bind("TopicInfo", "GetOwningQuest", [&host](NativeCall& c) {
         std::uint32_t quest = 0;
         const bool found = host.owning_quest(c.self.form(), quest);
-        return NativeResult{.value = found ? c.vm.object(quest, "Quest") : Value{}, .wait = -1.0};
+        return result(found ? c.vm.object(quest, "Quest") : Value{});
     });
 
     // ---- Quest
     v.bind("Quest", "Start", [&host](NativeCall& c) {
-        return result(Value::boolean(host.start_quest(c.self.form())));
+        return flag(host.start_quest(c.self.form()));
     });
     v.bind("Quest", "Stop", [&host](NativeCall& c) {
         host.stop_quest(c.self.form());
@@ -40,16 +37,16 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
         return NativeResult{};
     });
     v.bind("Quest", "IsRunning", [state_of](NativeCall& c) {
-        return result(Value::boolean(state_of(c).running));
+        return flag(state_of(c).running);
     });
     v.bind("Quest", "IsStopped", [state_of](NativeCall& c) {
-        return result(Value::boolean(!state_of(c).running));
+        return flag(!state_of(c).running);
     });
     // Starting and stopping are immediate here.
-    v.bind("Quest", "IsStarting", [](NativeCall&) { return result(Value::boolean(false)); });
-    v.bind("Quest", "IsStopping", [](NativeCall&) { return result(Value::boolean(false)); });
+    v.bind("Quest", "IsStarting", [](NativeCall&) { return flag(false); });
+    v.bind("Quest", "IsStopping", [](NativeCall&) { return flag(false); });
     v.bind("Quest", "IsCompleted", [state_of](NativeCall& c) {
-        return result(Value::boolean(state_of(c).completed));
+        return flag(state_of(c).completed);
     });
     v.bind("Quest", "CompleteQuest", [state_of](NativeCall& c) {
         state_of(c).completed = true;
@@ -62,19 +59,19 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
     }
     for (const char* name : {"SetStage", "SetCurrentStageID"}) {
         v.bind("Quest", name, [&host](NativeCall& c) {
-            return result(Value::boolean(host.set_stage(c.self.form(), arg(c, 0).i())));
+            return flag(host.set_stage(c.self.form(), arg(c, 0).i()));
         });
     }
     for (const char* name : {"GetStageDone", "IsStageDone"}) {
         v.bind("Quest", name, [state_of](NativeCall& c) {
-            return result(Value::boolean(state_of(c).done.contains(arg(c, 0).i())));
+            return flag(state_of(c).done.contains(arg(c, 0).i()));
         });
     }
     v.bind("Quest", "IsActive", [state_of](NativeCall& c) {
-        return result(Value::boolean(state_of(c).active));
+        return flag(state_of(c).active);
     });
-    v.bind("Quest", "SetActive", [state_of, flag](NativeCall& c) {
-        state_of(c).active = flag(c, 0, true);
+    v.bind("Quest", "SetActive", [state_of](NativeCall& c) {
+        state_of(c).active = bool_or(c, 0, true);
         return NativeResult{};
     });
     v.bind("Quest", "GetAlias", [&host](NativeCall& c) {
@@ -86,9 +83,9 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
         return result(c.vm.object(host.alias_handle(c.self.form(), static_cast<std::uint32_t>(id)),
                                   alias.location ? "LocationAlias" : "ReferenceAlias"));
     });
-    const auto objective = [&host, flag](std::uint8_t bit) {
-        return [&host, flag, bit](NativeCall& c) {
-            host.set_objective(c.self.form(), arg(c, 0).i(), bit, flag(c, 1, true));
+    const auto objective = [&host](std::uint8_t bit) {
+        return [&host, bit](NativeCall& c) {
+            host.set_objective(c.self.form(), arg(c, 0).i(), bit, bool_or(c, 1, true));
             return NativeResult{};
         };
     };
@@ -99,7 +96,7 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
         return [state_of, bit](NativeCall& c) {
             const auto& objectives = state_of(c).objectives;
             const auto it = objectives.find(arg(c, 0).i());
-            return result(Value::boolean(it != objectives.end() && (it->second & bit) != 0));
+            return flag(it != objectives.end() && (it->second & bit) != 0);
         };
     };
     v.bind("Quest", "IsObjectiveDisplayed", is_objective(k_displayed));
@@ -118,7 +115,7 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
     }
     // Text replacement with globals is not drawn; the call succeeds.
     v.bind("Quest", "UpdateCurrentInstanceGlobal", [](NativeCall&) {
-        return result(Value::boolean(true));
+        return flag(true);
     });
     v.bind("Quest", "PrepareForReinitializing", [](NativeCall&) { return NativeResult{}; });
 
@@ -159,16 +156,16 @@ void bind_quest_natives(Vm& v, const WorldAccess& world, QuestHost& host) {
     for (const auto& [cls, name] : {std::pair{"ReferenceAlias", "ForceRefTo"},
                                     std::pair{"LocationAlias", "ForceLocationTo"}}) {
         v.bind(cls, name, [&host](NativeCall& c) {
-            host.quests().set_fill(c.self.form(), arg(c, 0).kind() == Kind::object ? arg(c, 0).form() : 0);
+            host.quests().set_fill(c.self.form(), object_form(c, 0));
             return NativeResult{};
         });
     }
     v.bind("ReferenceAlias", "ForceRefIfEmpty", [&host, fill_of](NativeCall& c) {
-        if (fill_of(c) != 0 || arg(c, 0).kind() != Kind::object) {
-            return result(Value::boolean(false));
+        if (fill_of(c) != 0 || !is_object(c, 0)) {
+            return flag(false);
         }
         host.quests().set_fill(c.self.form(), arg(c, 0).form());
-        return result(Value::boolean(true));
+        return flag(true);
     });
     for (const char* cls : {"ReferenceAlias", "LocationAlias"}) {
         v.bind(cls, "Clear", [&host](NativeCall& c) {

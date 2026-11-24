@@ -374,7 +374,7 @@ std::uint64_t Vm::start(Found found, Value self, std::vector<Value> args, bool k
         NativeCall call{*this, *thread, std::move(self), converted};
         const Native* native = native_of(found.fn);
         const NativeResult result =
-            native != nullptr ? (*native)(call) : NativeResult{.value = unbound_result(found.fn), .wait = -1.0};
+            native != nullptr ? (*native)(call) : NativeResult{.value = unbound_result(found.fn)};
         if (keep_result) {
             results_[id] = result.value;
         }
