@@ -32,8 +32,13 @@ struct SwfArgs {
     bool allow_slow_target = false;
 };
 
-void print_tags(std::span<const std::byte> stream, std::size_t base, int indent,
+void print_tags(std::span<const std::byte> stream, std::size_t base, int depth,
                 std::string_view origin) {
+    const int indent = depth * 4;
+    if (depth > ui::k_max_sprite_nesting + 1) {
+        std::printf("%*s<sprites nested too deep>\n", indent, "");
+        return;
+    }
     auto tags = ui::split_tags(stream, base, origin);
     if (!tags) {
         std::printf("%*s<%s>\n", indent, "", tags.error().to_string().c_str());
@@ -43,7 +48,7 @@ void print_tags(std::span<const std::byte> stream, std::size_t base, int indent,
         std::printf("%*s%8zu  %-24s %4u  %zu bytes\n", indent, "", t.offset,
                     ui::tag_name(t.code).c_str(), t.code, t.data.size());
         if (t.code == ui::tag_define_sprite && t.data.size() >= 4) {
-            print_tags(t.data.subspan(4), t.offset + 4, indent + 4, origin);
+            print_tags(t.data.subspan(4), t.offset + 4, depth + 1, origin);
         }
     }
 }

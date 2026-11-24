@@ -34,9 +34,11 @@ enum TagCode : std::uint16_t {
     tag_place_object = 4,
     tag_remove_object = 5,
     tag_define_bits = 6,
+    tag_define_button = 7,
     tag_jpeg_tables = 8,
     tag_define_font = 10,
     tag_define_text = 11,
+    tag_define_sound = 14,
     tag_define_bits_lossless = 20,
     tag_define_bits_jpeg2 = 21,
     tag_define_shape2 = 22,
@@ -54,6 +56,7 @@ enum TagCode : std::uint16_t {
     tag_define_font2 = 48,
     tag_export_assets = 56,
     tag_import_assets = 57,
+    tag_define_video_stream = 60,
     tag_place_object3 = 70,
     tag_import_assets2 = 71,
     tag_define_font_align_zones = 73,
@@ -63,7 +66,11 @@ enum TagCode : std::uint16_t {
     tag_define_morph_shape2 = 84,
     tag_define_font_name = 88,
     tag_define_bits_jpeg4 = 90,
+    tag_define_font4 = 91,
 };
+
+/// DefineSprites nested deeper than this are not read (a valid movie nests none).
+inline constexpr int k_max_sprite_nesting = 8;
 
 /// A short name for a tag code ("DefineShape3", "GFx_1009" ...).
 [[nodiscard]] std::string tag_name(std::uint16_t code);

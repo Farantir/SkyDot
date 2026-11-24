@@ -1004,7 +1004,7 @@ struct MovieReader {
             s.timeline.frame_count = r.u16();
             auto inner = split_tags(data.subspan(std::min<std::size_t>(4, data.size())),
                                     tag.offset + 4, origin);
-            if (!r.ok() || !inner || depth > 8) {
+            if (!r.ok() || !inner || depth > k_max_sprite_nesting) {
                 bad("sprite");
                 break;
             }
@@ -1073,11 +1073,10 @@ struct MovieReader {
         case tag_define_text2:
         case tag_define_morph_shape:
         case tag_define_morph_shape2:
-        case 7:  // DefineButton
-        case 14: // DefineSound
-        case 91: // DefineFont4
-        case 60: // DefineVideoStream
-        {
+        case tag_define_button:
+        case tag_define_sound:
+        case tag_define_font4:
+        case tag_define_video_stream: {
             BitReader r(data);
             const auto id = r.u16();
             if (r.ok()) {
@@ -1149,10 +1148,9 @@ std::vector<DisplayObject> display_list(const Timeline& timeline, std::uint32_t 
             DisplayObject fresh;
             fresh.depth = p.depth;
             it = list.insert_or_assign(p.depth, fresh).first;
-        } else if (p.character) {
-            // A move with a character replaces it and keeps the rest.
         }
         DisplayObject& o = it->second;
+        // A move with a character replaces the character and keeps the rest.
         if (p.character) {
             o.character = *p.character;
         }
