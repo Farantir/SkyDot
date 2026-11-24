@@ -684,12 +684,12 @@ struct PerkEffects final : perks::EffectSink {
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::QuestHost, vm::ReferenceHost,
-                             vm::SceneRuntime::Host, vm::DialogueRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
+                             vm::SceneRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
-    const WorldData* world() const { return owner_.world_.is_valid() ? &owner_.world_->data() : nullptr; }
+    const WorldData* world() const { return owner_.world_data(); }
 
     std::uint32_t base_form(std::uint32_t ref) const override {
         return owner_.base_form_of(ref);
@@ -996,8 +996,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
 
     void announce(const std::string& line) override { owner_.trace_line(line); }
 
-    // ---- vm::DialogueRuntime::Host
-    vm::ActorHost& actor_host() override { return *owner_.actor_host_; }
+    // ---- vm::ProgressionRuntime::Host
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
 
     // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
@@ -1092,7 +1091,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
     }
 
     // ---- vm::SceneRuntime::Host
-    const bethconv::pack::wfb::World* world_root() const override { return world() != nullptr ? world()->root() : nullptr; }
+    const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
     vm::WorldAccess& world_access() override { return *this; }
     vm::QuestHost& quest_host() override { return *this; }
     conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
@@ -1358,7 +1357,7 @@ void SkydotPapyrus::bind_natives() {
     for (const Registration registration : table) {
         (this->*registration)();
     }
-    dialogue_.bind(*access_);
+    dialogue_.bind(*dialogue_host_);
     progression_.bind(*access_);
     progression_.bind_natives(*vm_);
     progression_.clear();

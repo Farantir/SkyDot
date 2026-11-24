@@ -42,6 +42,18 @@ double line_seconds(const std::string& text) {
 
 } // namespace
 
+struct SkydotPapyrus::DialogueHost final : vm::DialogueRuntime::Host {
+    explicit DialogueHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const wfb::World* world_root() const override { return owner_.world_root(); }
+    vm::ActorHost& actor_host() override { return *owner_.actor_host_; }
+    std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::DialogueRuntime::Host> SkydotPapyrus::new_dialogue_host() {
+    return std::make_unique<DialogueHost>(*this);
+}
+
 std::uint32_t SkydotPapyrus::dialogue_npc(std::uint32_t ref) const {
     if (ref == k_player_ref) {
         return 0x7;

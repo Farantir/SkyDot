@@ -870,6 +870,15 @@ private:
     struct ActorHost;
     std::unique_ptr<vm::ActorHost> new_actor_host();
     std::unique_ptr<vm::ActorHost> actor_host_ = new_actor_host();
+    struct DialogueHost;
+    std::unique_ptr<vm::DialogueRuntime::Host> new_dialogue_host();
+    std::unique_ptr<vm::DialogueRuntime::Host> dialogue_host_ = new_dialogue_host();
+    /// The typed world data and its root, null without a world.
+    const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
+    const bethconv::pack::wfb::World* world_root() const {
+        const WorldData* data = world_data();
+        return data != nullptr ? data->root() : nullptr;
+    }
     /// A line for the output only (the runtimes' log).
     void print_line(const std::string& text);
     std::unique_ptr<vm::Vm> vm_;
