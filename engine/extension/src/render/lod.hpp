@@ -164,6 +164,9 @@ private:
     godot::Ref<godot::Texture2D> noise_;
 
     std::map<Quad, Shown> shown_;
+    /// The world map's quads, kept until setup or the map levels change.
+    std::set<Quad> map_wanted_;
+    bool map_wanted_valid_ = false;
     /// A terrain quad's triangles in game units (x, y, z per corner, 9 floats a triangle), bucketed by cell.
     struct Surface {
         std::vector<float> triangles;

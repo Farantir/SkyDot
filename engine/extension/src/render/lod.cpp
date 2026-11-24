@@ -103,6 +103,7 @@ godot::Error SkydotLod::setup(const Ref<SkydotPack>& pack, const Ref<SkydotWorld
     pack_ = pack;
     world_ = world;
     world_id_ = world_id;
+    map_wanted_valid_ = false;
 
     // The worldspace's own LOD, else that of the one whose land it shows.
     std::vector<String> names;
@@ -322,6 +323,7 @@ String SkydotLod::vpath(const Quad& q, const char* kind) const {
 void SkydotLod::set_map_levels(std::int64_t terrain_level, std::int64_t object_level) {
     map_terrain_level_ = static_cast<int>(terrain_level);
     map_object_level_ = static_cast<int>(object_level);
+    map_wanted_valid_ = false;
     // The world map's overlay normal maps ([MapMenu] sWorldMapOverlayNormalTexture and ...SnowTexture, exe defaults
     // in formats/pack-format.md), laid over the terrain by lod_terrain.gdshader's world_map.
     for (auto [path, slot] : {std::pair{"textures/terrain/worldmapoverlay_n.dds", &overlay_},
@@ -679,10 +681,12 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
     const double cx = static_cast<double>(game.x) / k_cell_units;
     const double cy = static_cast<double>(game.y) / k_cell_units;
 
-    std::set<Quad> wanted;
+    std::set<Quad> near;
     const bool map = map_terrain_level_ > 0 || map_object_level_ > 0;
-    if (map) {
+    if (map && !map_wanted_valid_) {
         // The world map: every quad of the locked levels, whatever the camera's distance.
+        map_wanted_.clear();
+        map_wanted_valid_ = true;
         for (const int level : {map_terrain_level_, map_object_level_}) {
             if (level < lowest_ || level > highest_) {
                 continue;
@@ -691,18 +695,19 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
                 for (int x = south_west_x_; x < south_west_x_ + stride_; x += level) {
                     const Quad q{.level = level, .x = x, .y = y};
                     if (!scenes_for(q).empty()) {
-                        wanted.insert(q);
+                        map_wanted_.insert(q);
                     }
                 }
             }
         }
-    } else {
+    } else if (!map) {
         for (int y = south_west_y_; y < south_west_y_ + stride_; y += highest_) {
             for (int x = south_west_x_; x < south_west_x_ + stride_; x += highest_) {
-                select(Quad{.level = highest_, .x = x, .y = y}, cx, cy, wanted);
+                select(Quad{.level = highest_, .x = x, .y = y}, cx, cy, near);
             }
         }
     }
+    const std::set<Quad>& wanted = map ? map_wanted_ : near;
     // Trees: level-4 quads within tree_distance (marked with a negative level); none on the world map.
     std::set<Quad> wanted_trees;
     if (!map && tree_atlas_.is_valid() && !tree_types_.empty()) {
@@ -763,20 +768,21 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
         shown_.emplace(q, shown);
     }
 
-    // Drop what is no longer wanted once what replaces it is up.
+    // Drop what is no longer wanted once what replaces it is up. The drop keeps wanted quads, so
+    // which of them are missing holds through it.
+    std::vector<Quad> missing;
+    for (const auto& q : wanted) {
+        if (!shown_.contains(q)) {
+            missing.push_back(q);
+        }
+    }
     for (auto it = shown_.begin(); it != shown_.end();) {
         const Quad& q = it->first;
         bool drop = false;
         if (q.level < 0) {
             drop = !wanted_trees.contains(q);
         } else if (!wanted.contains(q)) {
-            drop = true;
-            for (const auto& w : wanted) {
-                if (w.overlaps(q) && !shown_.contains(w)) {
-                    drop = false;
-                    break;
-                }
-            }
+            drop = std::ranges::none_of(missing, [&](const Quad& w) { return w.overlaps(q); });
         }
         if (drop) {
             surfaces_.erase(q);
@@ -797,11 +803,9 @@ std::int64_t SkydotLod::update(const Vector3& camera, std::int64_t budget_usec) 
     // Drop loaded scenes no quad holds and no wanted quad still needs.
     if (resources_.size() > 2 * wanted.size() + 64) {
         std::set<std::string> needed;
-        for (const auto& q : wanted) {
-            if (!shown_.contains(q)) {
-                for (const auto& path : scenes_for(q)) {
-                    needed.insert(utf8(path));
-                }
+        for (const auto& q : missing) {
+            for (const auto& path : scenes_for(q)) {
+                needed.insert(utf8(path));
             }
         }
         std::erase_if(resources_, [&](const auto& e) {
