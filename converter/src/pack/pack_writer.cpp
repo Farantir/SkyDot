@@ -30,6 +30,18 @@ using bethconv::io::json_text;
     return std::as_bytes(std::span<const char>(text));
 }
 
+void count_kind(PackStats& stats, AssetKind kind) {
+    switch (kind) {
+    case AssetKind::mesh: ++stats.meshes; break;
+    case AssetKind::texture: ++stats.textures; break;
+    case AssetKind::script: ++stats.scripts; break;
+    case AssetKind::lod: ++stats.lod; break;
+    case AssetKind::animation: ++stats.animations; break;
+    case AssetKind::sound: ++stats.sounds; break;
+    case AssetKind::ui: ++stats.ui; break;
+    }
+}
+
 } // namespace
 
 PackWriter::~PackWriter() = default;
@@ -116,15 +128,7 @@ io::ParseResult<void> PackWriter::store(const AssetSlot& slot,
 
     ++stats_.converted;
     stats_.asset_bytes += converted.size();
-    switch (slot.kind) {
-    case AssetKind::mesh: ++stats_.meshes; break;
-    case AssetKind::texture: ++stats_.textures; break;
-    case AssetKind::script: ++stats_.scripts; break;
-    case AssetKind::lod: ++stats_.lod; break;
-    case AssetKind::animation: ++stats_.animations; break;
-    case AssetKind::sound: ++stats_.sounds; break;
-    case AssetKind::ui: ++stats_.ui; break;
-    }
+    count_kind(stats_, slot.kind);
     return {};
 }
 
@@ -132,15 +136,7 @@ void PackWriter::reuse(const AssetSlot& slot) {
     record(slot);
     ++stats_.deduped;
     stats_.dedupe_saved_bytes += slot.source_bytes;
-    switch (slot.kind) {
-    case AssetKind::mesh: ++stats_.meshes; break;
-    case AssetKind::texture: ++stats_.textures; break;
-    case AssetKind::script: ++stats_.scripts; break;
-    case AssetKind::lod: ++stats_.lod; break;
-    case AssetKind::animation: ++stats_.animations; break;
-    case AssetKind::sound: ++stats_.sounds; break;
-    case AssetKind::ui: ++stats_.ui; break;
-    }
+    count_kind(stats_, slot.kind);
 }
 
 bool PackWriter::keep(const VpathEntry& entry) {
@@ -149,15 +145,7 @@ bool PackWriter::keep(const VpathEntry& entry) {
         return false;
     }
     index_.push_back(IndexEntry{.vpath = entry.vpath, .hex = entry.hex, .kind = entry.kind, .source = entry.source});
-    switch (entry.kind) {
-    case AssetKind::mesh: ++stats_.meshes; break;
-    case AssetKind::texture: ++stats_.textures; break;
-    case AssetKind::script: ++stats_.scripts; break;
-    case AssetKind::lod: ++stats_.lod; break;
-    case AssetKind::animation: ++stats_.animations; break;
-    case AssetKind::sound: ++stats_.sounds; break;
-    case AssetKind::ui: ++stats_.ui; break;
-    }
+    count_kind(stats_, entry.kind);
     return true;
 }
 
