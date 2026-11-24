@@ -100,6 +100,11 @@ func open(ref: int, bench_type: int) -> void:
 		engaged.emit(true)
 
 
+## What the open bench makes.
+func mode() -> Mode:
+	return _mode
+
+
 static func mode_of(bench_type: int) -> Mode:
 	match bench_type:
 		2, 7:

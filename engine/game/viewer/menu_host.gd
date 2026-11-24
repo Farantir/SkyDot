@@ -154,7 +154,7 @@ func describe() -> Dictionary:
 		out["mode"] = "sleep" if sleep_wait_view.sleeping else "wait"
 		out["selected"] = sleep_wait_view.hours()
 	if view == crafting_view:
-		out["mode"] = CraftingView.Mode.keys()[crafting_view.get(&"_mode")]
+		out["mode"] = CraftingView.Mode.keys()[crafting_view.mode()]
 	return out
 
 

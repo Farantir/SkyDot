@@ -68,6 +68,29 @@ const KEY_PREFIX := "sound:"
 const RECHECK := 2.0
 const GATE_FADE := 2.0
 
+## A playing instance.
+class Live:
+	var name: String  # "<editor id> ref 0x..." for the log
+	var edid: String
+	var player: Node  # its AudioStreamPlayer or AudioStreamPlayer3D
+	var source: Node3D  # what it is heard from when the distance counts, else null
+	var base_db: float
+	var user_db := 0.0  # set_volume's
+	var distanced: bool
+	var loops: bool
+	var envelope: bool  # an envelope loop: stopping plays its tail
+	var range_min: float
+	var range_max: float
+	var curve: Array  # the SOPM curve, five volumes in percent
+	var held := false  # a loop out of range, stopped until the listener comes near
+	var at := 0.0  # where a held loop resumes
+	var fade: float
+	var fade_target := 1.0
+	var fade_rate: float
+	var stop_at_zero := false
+	var gated: int  # the SNDR whose conditions fade a loop in and out, 0 for none
+	var ref: int
+
 var _world: SkydotWorld
 var _pack: SkydotPack
 var _find_ref: Callable  # reference id -> its built node, or null
@@ -92,7 +115,7 @@ var category_volumes := {}:
 ## (sound, ref) -> whether the SNDR's conditions pass on that source; unset:
 ## every condition passes.
 var conditions_met: Callable
-var _live := {}  # instance -> entry (see _play_stream)
+var _live: Dictionary[int, Live] = {}  # instance -> its state
 var _recheck := 0.0
 ## Told about each built cell (its placed acoustic spaces); may be null.
 var ambience: Ambience
@@ -160,16 +183,16 @@ func play_ambient(sound: int, node: Node, fade_in: float) -> int:
 ## Sound.StopInstance. An envelope loop finishes its loop and plays its tail
 ## first; `fade` > 0 fades out over that many seconds instead.
 func stop(instance: int, fade := 0.0) -> void:
-	var entry: Dictionary = _live.get(instance, {})
-	if entry.is_empty():
+	var entry: Live = _live.get(instance)
+	if entry == null:
 		return
-	var player: Node = entry["player"]
+	var player := entry.player
 	if fade > 0.0 and is_instance_valid(player):
-		entry["fade_target"] = 0.0
-		entry["fade_rate"] = 1.0 / fade
-		entry["stop_at_zero"] = true
+		entry.fade_target = 0.0
+		entry.fade_rate = 1.0 / fade
+		entry.stop_at_zero = true
 		return
-	if entry["envelope"] and is_instance_valid(player) and player.playing and not entry["held"]:
+	if entry.envelope and is_instance_valid(player) and player.playing and not entry.held:
 		_exit_loop(entry)
 		return
 	if is_instance_valid(player):
@@ -180,10 +203,10 @@ func stop(instance: int, fade := 0.0) -> void:
 
 ## Sound.SetInstanceVolume: `volume` is a factor, 1 the sound's own level.
 func set_volume(instance: int, volume: float) -> void:
-	var entry: Dictionary = _live.get(instance, {})
-	if entry.is_empty() or not is_instance_valid(entry["player"]):
+	var entry: Live = _live.get(instance)
+	if entry == null or not is_instance_valid(entry.player):
 		return
-	entry["user_db"] = linear_to_db(maxf(volume, 0.0))
+	entry.user_db = linear_to_db(maxf(volume, 0.0))
 	_update(entry, 0.0)
 
 
@@ -193,7 +216,8 @@ func is_playing(instance: int) -> bool:
 
 ## The descriptor's editor id of a playing instance, "" if none.
 func instance_name(instance: int) -> String:
-	return String(_live.get(instance, {}).get("edid", ""))
+	var entry: Live = _live.get(instance)
+	return entry.edid if entry != null else ""
 
 
 ## Play what a node's animator and behaviour graph ask for: NIF text keys
@@ -374,8 +398,8 @@ func _start(asked: Dictionary, node: Node, ref: int, instance: int, fade_in := 0
 			if not _play_stream(descriptor, stream, file, node, ref, instance, fade_in):
 				return false
 			if gated_off:
-				_live[instance]["fade"] = 0.0
-				_live[instance]["fade_target"] = 0.0
+				(_live[instance] as Live).fade = 0.0
+				(_live[instance] as Live).fade_target = 0.0
 			return true
 	_fail.call_deferred(instance)
 	return false
@@ -422,20 +446,29 @@ func _play_stream(descriptor: Dictionary, stream: AudioStreamWAV, file: String, 
 		p.stream = stream
 		player = p
 	player.volume_db = SILENT_DB
-	var entry := {"name": "%s ref 0x%08X" % [descriptor["editor_id"], ref], "edid": descriptor["editor_id"],
-		"player": player, "source": node if distanced else null, "base_db": db, "user_db": 0.0,
-		"distanced": distanced, "loops": loops, "envelope": kind != LOOP and loops,
-		"min": range_min, "max": range_max, "curve": curve, "held": false, "at": 0.0,
-		"fade": 0.0 if fade_in > 0.0 else 1.0, "fade_target": 1.0,
-		"fade_rate": 1.0 / fade_in if fade_in > 0.0 else 0.0, "stop_at_zero": false,
-		"gated": int(descriptor["id"]) if loops and descriptor.get("has_conditions", false) else 0, "ref": ref}
+	var entry := Live.new()
+	entry.name = "%s ref 0x%08X" % [descriptor["editor_id"], ref]
+	entry.edid = descriptor["editor_id"]
+	entry.player = player
+	entry.source = node as Node3D if distanced else null
+	entry.base_db = db
+	entry.distanced = distanced
+	entry.loops = loops
+	entry.envelope = kind != LOOP and loops
+	entry.range_min = range_min
+	entry.range_max = range_max
+	entry.curve = curve
+	entry.fade = 0.0 if fade_in > 0.0 else 1.0
+	entry.fade_rate = 1.0 / fade_in if fade_in > 0.0 else 0.0
+	entry.gated = int(descriptor["id"]) if loops and descriptor.get("has_conditions", false) else 0
+	entry.ref = ref
 	_live[instance] = entry
 	player.finished.connect(_ended.bind(instance))
 	player.tree_exiting.connect(_ended.bind(instance))
 	(node if node != null else self).add_child(player)
 	if distanced and loops and _distance(node as Node3D) > range_max:
-		entry["held"] = true  # out of range: starts when the listener comes near
-		print("sound %s held, out of range" % entry["name"])
+		entry.held = true  # out of range: starts when the listener comes near
+		print("sound %s held, out of range" % entry.name)
 	else:
 		player.play()
 	_update(entry, 0.0)
@@ -485,58 +518,58 @@ func _process(delta: float) -> void:
 	if recheck:
 		_recheck = RECHECK
 	for instance: int in _live.keys():
-		var entry: Dictionary = _live.get(instance, {})
-		if not entry.is_empty():
-			if recheck and entry["gated"] != 0 and not entry["stop_at_zero"]:
+		var entry: Live = _live.get(instance)
+		if entry != null:
+			if recheck and entry.gated != 0 and not entry.stop_at_zero:
 				# A loop gated by conditions (a tavern's night loop) fades out and
 				# back in as they change.
-				var on := _passes({"id": entry["gated"], "has_conditions": true}, entry["ref"])
-				if on != (entry["fade_target"] > 0.0):
-					entry["fade_target"] = 1.0 if on else 0.0
-					entry["fade_rate"] = 1.0 / GATE_FADE
+				var on := _passes({"id": entry.gated, "has_conditions": true}, entry.ref)
+				if on != (entry.fade_target > 0.0):
+					entry.fade_target = 1.0 if on else 0.0
+					entry.fade_rate = 1.0 / GATE_FADE
 			_update(entry, delta)
-			if entry["stop_at_zero"] and entry["fade"] <= 0.0:
+			if entry.stop_at_zero and entry.fade <= 0.0:
 				stop(instance)
 
 
 ## Volume from the fade and the distance curve; a loop out of range is held
 ## (stopped, its position kept) until the listener comes back.
-func _update(entry: Dictionary, delta: float) -> void:
-	var player: Node = entry["player"]
+func _update(entry: Live, delta: float) -> void:
+	var player := entry.player
 	if not is_instance_valid(player) or not player.is_inside_tree():
 		return
-	if entry["fade"] != entry["fade_target"]:
-		entry["fade"] = move_toward(entry["fade"], entry["fade_target"], entry["fade_rate"] * delta) \
-			if entry["fade_rate"] > 0.0 else entry["fade_target"]
-	var db: float = entry["base_db"] + entry["user_db"]
-	if entry["fade"] < 1.0:
-		db += linear_to_db(entry["fade"]) if entry["fade"] > 0.0 else SILENT_DB
-	var source: Node3D = entry["source"]
-	if entry["distanced"] and is_instance_valid(source):
+	if entry.fade != entry.fade_target:
+		entry.fade = move_toward(entry.fade, entry.fade_target, entry.fade_rate * delta) \
+			if entry.fade_rate > 0.0 else entry.fade_target
+	var db := entry.base_db + entry.user_db
+	if entry.fade < 1.0:
+		db += linear_to_db(entry.fade) if entry.fade > 0.0 else SILENT_DB
+	var source := entry.source
+	if entry.distanced and is_instance_valid(source):
 		var distance := _distance(source)
-		var out_of_range: bool = distance > entry["max"]
-		if entry["loops"] and out_of_range != entry["held"]:
+		var out_of_range := distance > entry.range_max
+		if entry.loops and out_of_range != entry.held:
 			# Stopped, not paused: a stopped player is not mixed, and a 3D
 			# player drops stream_paused when its playback starts a tick late.
-			entry["held"] = out_of_range
+			entry.held = out_of_range
 			if out_of_range:
-				entry["at"] = player.get_playback_position()
+				entry.at = player.get_playback_position()
 				player.stop()
 			else:
-				player.play(entry["at"])
-			print("sound %s %s" % [entry["name"], "held, out of range" if out_of_range else "resumed"])
+				player.play(entry.at)
+			print("sound %s %s" % [entry.name, "held, out of range" if out_of_range else "resumed"])
 		var gain := 0.0 if out_of_range else _curve_gain(entry, distance)
 		db += linear_to_db(gain) if gain > 0.0 else SILENT_DB
 	player.volume_db = maxf(db, SILENT_DB)
 
 
 ## The SOPM curve at `distance` game units: a volume factor 0..1.
-static func _curve_gain(entry: Dictionary, distance: float) -> float:
-	var curve: Array = entry["curve"]
-	var span: float = entry["max"] - entry["min"]
-	if distance <= entry["min"] or span <= 0.0:
+static func _curve_gain(entry: Live, distance: float) -> float:
+	var curve := entry.curve
+	var span := entry.range_max - entry.range_min
+	if distance <= entry.range_min or span <= 0.0:
 		return curve[0] / 100.0
-	var at := minf((distance - entry["min"]) / span, 1.0) * 4.0
+	var at := minf((distance - entry.range_min) / span, 1.0) * 4.0
 	var i := mini(int(at), 3)
 	return lerpf(curve[i], curve[i + 1], at - i) / 100.0
 
@@ -559,14 +592,14 @@ func ear_position() -> Variant:
 
 ## An envelope loop was stopped: let the current pass end at the loop end,
 ## then play the tail after it (XAudio2's ExitLoop).
-func _exit_loop(entry: Dictionary) -> void:
-	var player: Node = entry["player"]
+func _exit_loop(entry: Live) -> void:
+	var player := entry.player
 	var stream: AudioStreamWAV = player.stream
 	var rate := float(stream.mix_rate) * maxf(player.pitch_scale, 0.01)
 	var position: float = player.get_playback_position()
 	var to_end := maxf(stream.loop_end / rate - position, 0.0)
 	var tail := _tail_of(stream)
-	entry["envelope"] = false
+	entry.envelope = false
 	if tail == null:
 		get_tree().create_timer(to_end).timeout.connect(func() -> void:
 			if is_instance_valid(player):
@@ -595,12 +628,12 @@ static func _tail_of(stream: AudioStreamWAV) -> AudioStreamWAV:
 
 ## A playing instance ended (or its node left the tree): once per instance.
 func _ended(instance: int) -> void:
-	var entry: Dictionary = _live.get(instance, {})
-	if entry.is_empty():
+	var entry: Live = _live.get(instance)
+	if entry == null:
 		return
 	_live.erase(instance)
-	if is_instance_valid(entry["player"]) and not entry["player"].is_queued_for_deletion():
-		entry["player"].queue_free()
+	if is_instance_valid(entry.player) and not entry.player.is_queued_for_deletion():
+		entry.player.queue_free()
 	finished.emit(instance)
 
 

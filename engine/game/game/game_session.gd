@@ -647,7 +647,7 @@ func _award_hit(_target: int, result: Dictionary, _point: Vector3) -> void:
 
 
 ## A spell of the player landed (Magic.spell_used): the school's skill use (Progression.magic_use).
-func _award_spell(landing: Dictionary) -> void:
+func _award_spell(landing: Progression.SpellLanding) -> void:
 	var use := progression.magic_use(landing)
 	if float(use["use"]) > 0.0:
 		use_skill(int(use["skill"]), float(use["use"]))

@@ -57,6 +57,21 @@ const TICK_SECONDS := 0.1
 const MAX_SKILL := 100.0
 const LEGENDARY_BASE := 15.0
 
+## A landing of the player's spell (Magic.spell_used): `info` is Casting cast_info (school, base_cost, type,
+## casting_type, is_scroll, hostile, actor_value), `target` 0 for himself, `healed` the target's Health gained.
+class SpellLanding:
+	var info: Dictionary
+	var target: int
+	var target_alive: bool
+	var healed: float
+
+	func _init(spell_info: Dictionary, on: int, alive := true, health_gained := 0.0) -> void:
+		info = spell_info
+		target = on
+		target_alive = alive
+		healed = health_gained
+
+
 var _data: ProgressionData
 
 
@@ -232,15 +247,13 @@ func sneak_attack_use_amount(result: Dictionary) -> float:
 	return SNEAK_ATTACK_RANGED_USE if bool(result.get("ranged", false)) else SNEAK_ATTACK_MELEE_USE
 
 
-## The skill and use a landing of a player's spell earned: {skill, use}, or use 0. `landing` is Magic.spell_used:
-## {info (Casting cast_info: school, base_cost, type, casting_type, is_scroll, hostile, actor_value), target (0 self),
-## target_alive, healed}. Scrolls, powers and shouts give nothing (type != spell, school -1).
+## The skill and use a landing of a player's spell earned: {skill, use}, or use 0. Scrolls, powers and shouts give nothing (type != spell, school -1).
 ## - concentration: the base cost per second, per landing (TICK_SECONDS)
 ## - Destruction: the base cost, only on a living actor other than the caster (the damage dealt is not counted yet)
 ## - Restoration: the HP healed by a healing spell (instant heals only), the base cost for other spells
 ## - Alteration, Conjuration, Illusion: the base cost when the effect applies
-func magic_use(landing: Dictionary) -> Dictionary:
-	var info: Dictionary = landing.get("info", {})
+func magic_use(landing: SpellLanding) -> Dictionary:
+	var info := landing.info
 	var school := int(info.get("school", -1))
 	var out := {"skill": school, "use": 0.0}
 	if school < ALTERATION or school > RESTORATION or bool(info.get("is_scroll", false)) \
@@ -251,11 +264,11 @@ func magic_use(landing: Dictionary) -> Dictionary:
 		cost *= TICK_SECONDS
 	match school:
 		DESTRUCTION:
-			if int(landing.get("target", 0)) != 0 and bool(landing.get("target_alive", true)):
+			if landing.target != 0 and landing.target_alive:
 				out["use"] = cost
 		RESTORATION:
 			if not bool(info.get("hostile", false)) and int(info.get("actor_value", -1)) == HEALTH:
-				out["use"] = maxf(float(landing.get("healed", 0.0)), 0.0)
+				out["use"] = maxf(landing.healed, 0.0)
 			else:
 				out["use"] = cost
 		_:

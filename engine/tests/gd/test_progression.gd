@@ -437,13 +437,12 @@ func test_damage_received_is_shared_by_the_worn_armor_pieces() -> void:
 	expect_eq(pr.combat_uses(_hit({"attacker": 0x1234, "target": 0x14})), [], "no armor, no use")
 
 
-func _spell(school: int, extra := {}, landing := {}) -> Dictionary:
+func _spell(school: int, extra := {}, landing := {}) -> Progression.SpellLanding:
 	var info := {"school": school, "base_cost": 14.0, "type": 0, "casting_type": 1, "is_scroll": false,
 		"hostile": true, "actor_value": -1}
 	info.merge(extra, true)
-	var out := {"info": info, "target": 0x39FE4, "target_alive": true, "healed": 0.0}
-	out.merge(landing, true)
-	return out
+	return Progression.SpellLanding.new(info, landing.get("target", 0x39FE4), landing.get("target_alive", true),
+		landing.get("healed", 0.0))
 
 
 func test_a_spell_trains_its_school_by_the_base_cost() -> void:
@@ -460,7 +459,7 @@ func test_destruction_needs_a_living_target_other_than_the_caster() -> void:
 func test_restoration_counts_hp_healed_for_healing_spells_and_cost_otherwise() -> void:
 	var heal := _spell(22, {"hostile": false, "actor_value": 24}, {"target": 0, "healed": 25.0})
 	expect_eq(pr.magic_use(heal)["use"], 25.0, "25 hp healed")
-	heal["healed"] = -3.0
+	heal.healed = -3.0
 	expect_eq(pr.magic_use(heal)["use"], 0.0, "nothing healed")
 	expect_eq(pr.magic_use(_spell(22, {"hostile": false}, {"target": 0}))["use"], 14.0, "a ward costs 14")
 

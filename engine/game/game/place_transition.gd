@@ -28,7 +28,8 @@ var fade := 0.0:
 			fade = value
 			fade_changed.emit(value)
 var _door := {}  # the door being gone through
-var _fade_seconds := FADE_SECONDS  # a fast travel's door names its own (fade_seconds)
+var _fade_seconds := FADE_SECONDS  # a fast travel names its own
+var _on_travel := Callable()  # called on the black frame before the travel (a fast travel's time passing)
 var _wait := 0.0  # seconds in WAIT
 var _frames := 0  # frames since the place was built
 var _place: Place
@@ -44,20 +45,22 @@ func is_fading() -> bool:
 	return phase != Phase.NONE
 
 
-## Go through `door`: behind a fade if someone is watching, else at once.
-func go(door: Dictionary) -> void:
+## Go through `door`: behind a fade of `fade_seconds` if someone is watching, else at once. `on_travel` is called
+## just before the travel (a fast travel's time passes behind the black).
+func go(door: Dictionary, fade_seconds := FADE_SECONDS, on_travel := Callable()) -> void:
 	if interactive and DisplayServer.get_name() != "headless":
-		begin_fade(door)
+		begin_fade(door, fade_seconds, on_travel)
 	else:
-		travel(door)
+		travel(door, on_travel)
 
 
 ## Go through `door` behind a fade to black (step).
-func begin_fade(door: Dictionary) -> void:
+func begin_fade(door: Dictionary, fade_seconds := FADE_SECONDS, on_travel := Callable()) -> void:
 	if phase != Phase.NONE:
 		return
 	_door = door
-	_fade_seconds = float(door.get("fade_seconds", FADE_SECONDS))
+	_fade_seconds = fade_seconds
+	_on_travel = on_travel
 	phase = Phase.OUT
 
 
@@ -66,6 +69,7 @@ func begin_fade(door: Dictionary) -> void:
 func cancel() -> void:
 	phase = Phase.NONE
 	_door = {}
+	_on_travel = Callable()
 	_wait = 0.0
 	_frames = 0
 	fade = 0.0
@@ -89,8 +93,9 @@ func step(delta: float) -> void:
 			if fade >= 1.0:
 				phase = Phase.TRAVEL  # this frame draws black first
 		Phase.TRAVEL:
-			travel(_door)
+			travel(_door, _on_travel)
 			_door = {}
+			_on_travel = Callable()
 			phase = Phase.WAIT
 			_wait = 0.0
 			_frames = 0
@@ -109,10 +114,9 @@ func step(delta: float) -> void:
 
 ## Arrive through a load door: its XTEL gives the spot and the facing.
 ## What was built ahead for the place behind it is used.
-func travel(door: Dictionary) -> void:
-	var on_travel: Callable = door.get("on_travel", Callable())
+func travel(door: Dictionary, on_travel := Callable()) -> void:
 	if on_travel.is_valid():
-		on_travel.call()  # a fast travel's time passes behind the black
+		on_travel.call()
 	var arrival: Transform3D = door["arrival"]
 	var eye := arrival.origin + Vector3(0, GameSession.EYE_HEIGHT, 0)
 	var forward := -arrival.basis.z

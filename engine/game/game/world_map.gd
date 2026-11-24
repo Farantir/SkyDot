@@ -264,11 +264,10 @@ func travel(m: Dictionary) -> void:
 	var hours := travel_hours(from, pos)
 	var door := {
 		"ref": int(m["ref"]), "arrival": arrival, "destination_interior": false, "destination_world": world,
-		"destination_cell": 0, "destination": -1, "fade_seconds": FADE_SECONDS,
-		"on_travel": func() -> void: _pass_time(hours),
+		"destination_cell": 0, "destination": -1,
 	}
 	print("map: fast travel to 0x%08X %s, %.2f h" % [int(m["ref"]), String(m["name"]), hours])
-	_session.transition.go(door)
+	_session.transition.go(door, FADE_SECONDS, _pass_time.bind(hours))
 
 
 func _pass_time(hours: float) -> void:
