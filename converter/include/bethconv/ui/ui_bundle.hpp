@@ -44,8 +44,10 @@ struct BundleFile {
 };
 
 /// RGBA8 rows top-down to a PNG (colour type 6, filter 0, zlib level 6).
-[[nodiscard]] std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
-                                               std::span<const std::uint8_t> rgba);
+/// Nullopt if zlib fails.
+[[nodiscard]] std::optional<std::vector<std::byte>> write_png(std::uint32_t width,
+                                                              std::uint32_t height,
+                                                              std::span<const std::uint8_t> rgba);
 
 /// A DefineFont2/3 as a TrueType font: quadratic outlines from the glyph
 /// shapes (y flipped, 2048 units per em), cmap format 4 from the code table,

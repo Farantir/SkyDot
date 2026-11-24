@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 namespace bethconv::io {
 
@@ -100,18 +101,23 @@ ParseResult<std::vector<std::byte>> inflate_prefix(std::span<const std::byte> co
     return out;
 }
 
-std::vector<std::byte> deflate_bytes(std::span<const std::byte> data, bool raw) {
+std::optional<std::vector<std::byte>> deflate_bytes(std::span<const std::byte> data, bool raw) {
     z_stream stream{};
-    ::deflateInit2(&stream, 6, Z_DEFLATED, raw ? -15 : 15, 8, Z_DEFAULT_STRATEGY);
+    if (::deflateInit2(&stream, 6, Z_DEFLATED, raw ? -15 : 15, 8, Z_DEFAULT_STRATEGY) != Z_OK) {
+        return std::nullopt;
+    }
     std::vector<std::byte> out(::deflateBound(&stream, static_cast<uLong>(data.size())) + 16);
     stream.next_in = const_cast<Bytef*>(static_cast<const Bytef*>(
         static_cast<const void*>(data.data())));
     stream.avail_in = static_cast<uInt>(data.size());
     stream.next_out = static_cast<Bytef*>(static_cast<void*>(out.data()));
     stream.avail_out = static_cast<uInt>(out.size());
-    ::deflate(&stream, Z_FINISH);
+    const int rc = ::deflate(&stream, Z_FINISH);
     out.resize(stream.total_out);
     ::deflateEnd(&stream);
+    if (rc != Z_STREAM_END) {
+        return std::nullopt;
+    }
     return out;
 }
 

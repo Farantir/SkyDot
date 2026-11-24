@@ -482,8 +482,9 @@ TEST_CASE("a premultiplied lossless bitmap comes out straight as PNG", "[swf][pn
     CHECK(bm.rgba[5] == 255);
     CHECK(bm.rgba[7] == 255);
     const auto png = write_png(bm.width, bm.height, bm.rgba);
-    CHECK(as_string(png).substr(1, 3) == "PNG");
-    CHECK(as_string(png).substr(12, 4) == "IHDR");
+    REQUIRE(png);
+    CHECK(as_string(*png).substr(1, 3) == "PNG");
+    CHECK(as_string(*png).substr(12, 4) == "IHDR");
 }
 
 TEST_CASE("a text field keeps its font, size, colour and text", "[swf]") {

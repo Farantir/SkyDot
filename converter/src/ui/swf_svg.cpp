@@ -349,7 +349,9 @@ private:
         }
         std::string uri;
         if (!b.rgba.empty()) {
-            uri = "data:image/png;base64," + base64(write_png(b.width, b.height, b.rgba));
+            if (const auto png = write_png(b.width, b.height, b.rgba)) {
+                uri = "data:image/png;base64," + base64(*png);
+            }
         } else if (!b.encoded.empty()) {
             uri = "data:image/" + b.encoded_type + ";base64," + base64(b.encoded);
         }

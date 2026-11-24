@@ -284,9 +284,10 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
         j["tag"] = tag_name(b.tag);
         std::string path;
         if (!b.rgba.empty()) {
-            path = "png/" + std::to_string(id) + ".png";
-            image_files.push_back(
-                BundleFile{.path = path, .bytes = write_png(b.width, b.height, b.rgba)});
+            if (auto png = write_png(b.width, b.height, b.rgba)) {
+                path = "png/" + std::to_string(id) + ".png";
+                image_files.push_back(BundleFile{.path = path, .bytes = std::move(*png)});
+            }
         } else if (!b.encoded.empty()) {
             const std::string ext = b.encoded_type == "jpeg" ? "jpg" : b.encoded_type;
             path = ext + "/" + std::to_string(id) + "." + ext;

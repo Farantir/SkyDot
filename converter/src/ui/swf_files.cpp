@@ -56,8 +56,8 @@ std::uint32_t crc(std::span<const std::byte> data) { return io::crc32_of(data); 
 
 } // namespace
 
-std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
-                                 std::span<const std::uint8_t> rgba) {
+std::optional<std::vector<std::byte>> write_png(std::uint32_t width, std::uint32_t height,
+                                                std::span<const std::uint8_t> rgba) {
     std::vector<std::byte> raw;
     raw.reserve(static_cast<std::size_t>(height) * (width * 4 + 1));
     for (std::uint32_t y = 0; y < height; ++y) {
@@ -66,6 +66,10 @@ std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
         for (const std::uint8_t v : rgba.subspan(y * pitch, pitch)) {
             raw.push_back(static_cast<std::byte>(v));
         }
+    }
+    const auto idat = io::deflate_bytes(raw, false);
+    if (!idat) {
+        return std::nullopt;
     }
     Be png;
     for (const std::uint32_t b : {0x89U, 0x50U, 0x4EU, 0x47U, 0x0DU, 0x0AU, 0x1AU, 0x0AU}) {
@@ -87,7 +91,7 @@ std::vector<std::byte> write_png(std::uint32_t width, std::uint32_t height,
     ihdr.u8(0);
     ihdr.u8(0);
     chunk("IHDR", ihdr.bytes);
-    chunk("IDAT", io::deflate_bytes(raw, false));
+    chunk("IDAT", *idat);
     chunk("IEND", {});
     return std::move(png.bytes);
 }
@@ -107,10 +111,10 @@ std::vector<std::byte> write_zip(std::span<const BundleFile> files) {
     constexpr std::uint32_t k_dos_date = (0U << 9) | (1U << 5) | 1U; // 1980-01-01
     for (const BundleFile& f : files) {
         const std::uint32_t sum = crc(f.bytes);
-        auto deflated = io::deflate_bytes(f.bytes, true);
-        const bool stored = deflated.size() >= f.bytes.size();
+        const auto deflated = io::deflate_bytes(f.bytes, true);
+        const bool stored = !deflated || deflated->size() >= f.bytes.size();
         const std::span<const std::byte> data =
-            stored ? std::span<const std::byte>(f.bytes) : std::span<const std::byte>(deflated);
+            stored ? std::span<const std::byte>(f.bytes) : std::span<const std::byte>(*deflated);
         const auto offset = static_cast<std::uint32_t>(out.size());
         const auto method = stored ? 0U : 8U;
         const auto header = [&](std::vector<std::byte>& v, bool is_central) {
