@@ -830,9 +830,10 @@ private:
             return;
         }
         auto& header = nif_.GetHeader();
+        // Each pending body becomes out.bodies[i]; a block met twice points at its first.
         std::unordered_map<std::uint32_t, std::size_t> body_by_block;
-        for (const PendingBody& p : rigid_bodies_) {
-            body_by_block.try_emplace(nif_.GetBlockID(p.body), body_by_block.size());
+        for (std::size_t i = 0; i < rigid_bodies_.size(); ++i) {
+            body_by_block.try_emplace(nif_.GetBlockID(rigid_bodies_[i].body), i);
         }
         Ragdoll& out = model_.ragdoll;
         std::unordered_map<std::uint32_t, std::size_t> constraint_by_block;

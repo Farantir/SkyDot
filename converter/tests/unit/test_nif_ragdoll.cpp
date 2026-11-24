@@ -259,3 +259,23 @@ TEST_CASE("a ragdoll body away from its bone, or a constraint that cannot be rea
         CHECK(model->ragdoll.constraints.size() == 1);
     }
 }
+
+TEST_CASE("a rigid body shared by two nodes does not shift the bodies after it", "[mesh][nif][ragdoll]") {
+    Skeleton s;
+    // A second node on the spine's collision object: the spine's body is met twice.
+    auto* copy = s.builder.add_node("NPC Spine Copy", s.spine_node);
+    copy->collisionRef.index = s.spine_node->collisionRef.index;
+    auto* arm_node = s.builder.add_node("NPC Arm", s.spine_node);
+    arm_node->transform.translation = nifly::Vector3(10.0f, 0.0f, 0.0f);
+    auto* arm = s.builder.add_ragdoll_body(arm_node, {10, 0, 70}, {0, 0, 0}, {0.1f, 0, 0}, 0.05f, 2.0f, 3);
+    s.builder.add_constraint(std::make_unique<nifly::bhkRagdollConstraint>(), arm, s.spine);
+
+    auto model = bethconv::mesh::read_nif(s.builder.bytes(), "skeleton.nif");
+    REQUIRE(model.has_value());
+    const auto& ragdoll = model->ragdoll;
+    REQUIRE(ragdoll.bodies.size() == 4);
+    CHECK(ragdoll.bodies[3].bone == "NPC Arm");
+    REQUIRE(ragdoll.constraints.size() == 2);
+    CHECK(ragdoll.constraints[1].body_a == 3);
+    CHECK(ragdoll.constraints[1].body_b == 1);
+}
