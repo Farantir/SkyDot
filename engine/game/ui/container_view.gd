@@ -2,22 +2,17 @@
 # item list (ItemListView) with its own tabs, columns, search and card. Left and right (or the mouse) choose the
 # side, up and down an item, page up and down the tab, accept moves the whole stack to the other side,
 # `menu_drop` (R, X) takes everything the container holds, cancel, Tab or I closes. Items that are not playable
-# are hidden. A Control that fills its host (see InventoryView for the contract); opened by the shell when
+# are hidden. A Control that fills its host (GameMenu); opened by the shell when
 # GameSession says `container_opened`.
 class_name ContainerView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 var _session: GameSession
-var _open := false
 var _container := 0
 var _column := 0  # 0 the container, 1 the player
 var _models: Array[ItemListModel] = []
 var _lists: Array[ItemListView] = []
 var _bar: BottomBar
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -40,10 +35,6 @@ func _init(session: GameSession) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	session.items_changed.connect(_refresh)
-
-
-func is_open() -> bool:
-	return _open
 
 
 ## The container reference being shown (0 when closed).
@@ -69,16 +60,12 @@ func open(ref: int) -> void:
 	_refresh()
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_container = 0
 	for list in _lists:
 		list.visible = false
 		list.stop_search()
 	_bar.visible = false
-	engaged.emit(false)
 
 
 func current() -> Dictionary:
@@ -102,9 +89,7 @@ func _refresh() -> void:
 	_bar.queue_redraw()
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	var list := _lists[_column]
 	if event is InputEventMouseButton and event.pressed:
@@ -123,9 +108,8 @@ func _input(event: InputEvent) -> void:
 		for other in 2:
 			if other != _column and _lists[other].handle_input(event):  # the mouse, over the other side
 				break
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 func _focus(column: int) -> void:

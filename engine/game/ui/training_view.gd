@@ -4,23 +4,18 @@
 # level and the trainer's limit, the cost of a session, the player's gold and the sessions left at this level.
 # Accept buys a session (Progression.train: the skill goes up by one), cancel, Tab or I closes; a refusal shows its
 # vanilla text. The dialogue stays open underneath and its keys are quiet while this is open (`service_open`).
-# A Control that fills its host (see InventoryView for the contract); the numbers are TrainingModel's, the rules
+# A Control that fills its host (GameMenu); the numbers are TrainingModel's, the rules
 # Progression's.
 class_name TrainingView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 const NORMAL := Color(0.92, 0.92, 0.92)
 const SELECTED := Color(1.0, 0.9, 0.5)
 const SHORT := Color(0.9, 0.5, 0.45)
 
 var _session: GameSession
-var _open := false
 var _trainer := 0
 var _model: TrainingModel
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -30,8 +25,9 @@ func _init(session: GameSession) -> void:
 	session.items_changed.connect(_refresh)
 
 
-func is_open() -> bool:
-	return _open
+## Not measured in the game whether training pauses the world: it keeps running, as the dialogue it opens from.
+func pauses() -> bool:
+	return false
 
 
 ## The trainer being talked to (0 when closed).
@@ -54,13 +50,9 @@ func open(trainer_ref: int) -> void:
 		engaged.emit(true)
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_trainer = 0
 	_session.service_open = false
-	engaged.emit(false)
 	queue_redraw()
 
 
@@ -79,18 +71,15 @@ func _refresh() -> void:
 		queue_redraw()
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"inventory"):
 		close()
 	elif event.is_action_pressed(&"ui_accept"):
 		train()
 	else:
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 func _draw() -> void:

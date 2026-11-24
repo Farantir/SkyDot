@@ -15,9 +15,7 @@
 # shell's panel); it takes its input from the InputMap, and knows the game only through GameSession (via
 # ItemListSources). While it is open it emits `engaged(true)` so the shell keeps the player still.
 class_name MagicView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 const REFRESH_SECONDS := 0.5
 const NOTICE_SECONDS := 4.0
@@ -31,17 +29,12 @@ const EFFECTS := "Active Effects"
 
 var model: ItemListModel
 var _session: GameSession
-var _open := false
 var _list: ItemListView
 var _bar: BottomBar
 var _since_refresh := 0.0
 var _confirm := {}  # the word to unlock once the player says yes: {word, name}
 var _notice := ""  # the last refusal, shown in the menu
 var _notice_left := 0.0
-## Whether the menu listens at all (false in runs that drive themselves).
-var enabled: Callable = func() -> bool: return true
-## What the key labels say, by action (the viewer's gamepad or keyboard).
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -63,10 +56,6 @@ func _init(session: GameSession) -> void:
 	session.magic_effect_changed.connect(func(_t: int, _m: int, _a: int, _s: bool, _i: int) -> void: _refresh())
 
 
-func is_open() -> bool:
-	return _open
-
-
 func open() -> void:
 	if _open:
 		return
@@ -77,16 +66,12 @@ func open() -> void:
 	_refresh()
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_confirm = {}
 	_list.visible = false
 	_bar.visible = false
 	_list.stop_search()
 	_update_detail()
-	engaged.emit(false)
 
 
 ## Names of the tabs shown, in order.
@@ -132,9 +117,7 @@ func _process(delta: float) -> void:
 		_refresh()
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if not _confirm.is_empty():
 		# A question is open: yes or no, nothing else.
@@ -142,17 +125,15 @@ func _input(event: InputEvent) -> void:
 			answer_confirmation(true)
 		elif event.is_action_pressed(&"ui_cancel"):
 			answer_confirmation(false)
-		if event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton:
-			get_viewport().set_input_as_handled()
+		_consume(event)
 		return
 	if _list.is_searching():
 		_list.handle_input(event)
 	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"magic"):
 		close()
 	elif not _list.handle_input(event):
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 func _on_action(action: StringName, row: Dictionary) -> void:

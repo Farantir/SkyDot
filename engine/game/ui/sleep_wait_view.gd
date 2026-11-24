@@ -14,12 +14,9 @@
 #                 the menu and back after it. The menu closes when the rest is over.
 # The game refuses a rest before the menu opens (Rest.refusal: a HUD message instead).
 class_name SleepWaitView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 const SWF := "sleepwaitmenu"
-const STAGE := Vector2(1280.0, 720.0)
 const MENU := "SleepWaitMenu_mc"
 ## The HoursSlider's parameters as the movie places it (PlaceObject clip actions).
 const MINIMUM := 1.0
@@ -31,8 +28,6 @@ const PAGE_STEP := 4.0
 ## How long the world takes to fade to black behind a sleep, and back (an hour of the rest).
 const HOUR_SECONDS := Rest.HOUR_SECONDS
 
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 ## The slider's value (Slider.value, a float; the hours are its floor).
 var value := MINIMUM
 var sleeping := false
@@ -42,7 +37,6 @@ var hours_left: int:
 		return _session.rest.hours_left if _resting and _session.rest != null else 0
 
 var _session: GameSession
-var _open := false
 ## Whether this menu began the rest under way.
 var _resting := false
 ## How black the world is behind a sleep (0 to 1); it fades back after the menu closes.
@@ -64,10 +58,6 @@ static func available() -> bool:
 	return UiAssets.available() and not UiAssets.instance(SWF, MENU).is_empty()
 
 
-func is_open() -> bool:
-	return _open
-
-
 ## The menu for a wait (`bed` 0) or a sleep in `bed`. A rest the game refuses shows its message instead.
 func open(sleep: bool, bed := 0) -> void:
 	if _open or _session.rest == null or _session.rest.is_resting():
@@ -87,13 +77,9 @@ func open(sleep: bool, bed := 0) -> void:
 
 
 ## Closing does not stop a rest under way: Rest.step finishes it.
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_resting = false
 	visible = _fade > 0.0
-	engaged.emit(false)
 
 
 ## The hours chosen (getSliderValue: the floor of the slider's value).
@@ -133,10 +119,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
-	var handled := event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
+func _menu_input(event: InputEvent) -> void:
 	if hours_left == 0:
 		if event is InputEventMouseMotion:
 			if _dragging:
@@ -162,8 +145,7 @@ func _input(event: InputEvent) -> void:
 			_click(event)
 		elif event is InputEventMouseButton and not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			_dragging = false
-	if handled:
-		get_viewport().set_input_as_handled()
+	_consume(event)
 
 
 func _click(event: InputEventMouseButton) -> void:
@@ -193,10 +175,6 @@ func _drag_to(point: Vector2) -> void:
 
 
 # ---- drawing
-
-func fill() -> Transform2D:
-	return UiDraw.stage_fill(size, STAGE)
-
 
 ## A child of the menu clip: {id, xform (to this control), matrix} or empty.
 func _placed(name: String) -> Dictionary:

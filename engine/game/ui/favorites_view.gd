@@ -5,18 +5,13 @@
 # uses a potion, puts a spell in the right hand, a shout in the voice slot) and closes the menu,
 # `menu_equip_left` (the right mouse button, the left trigger) puts a spell or scroll in the left hand, the keys 1-8 put the entry on
 # that hotkey (outside the menu the same keys use it), `menu_favorite` (F) removes the entry from the
-# favorites, cancel or Tab closes. A Control that fills its host (see InventoryView for the contract).
+# favorites, cancel or Tab closes. A Control that fills its host (GameMenu).
 class_name FavoritesView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 var model: ItemListModel
 var _session: GameSession
-var _open := false
 var _list: ItemListView
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -36,10 +31,6 @@ func _init(session: GameSession) -> void:
 	session.favorites.changed.connect(_refresh)
 
 
-func is_open() -> bool:
-	return _open
-
-
 func open() -> void:
 	if _open:
 		return
@@ -49,13 +40,9 @@ func open() -> void:
 	_refresh()
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_list.visible = false
 	_list.stop_search()
-	engaged.emit(false)
 
 
 func current() -> Dictionary:
@@ -67,9 +54,7 @@ func _refresh() -> void:
 		model.set_rows(ItemListSources.favorites(_session))
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if _list.is_searching():
 		_list.handle_input(event)
@@ -78,9 +63,8 @@ func _input(event: InputEvent) -> void:
 	elif _hotkey_pressed(event):
 		pass
 	elif not _list.handle_input(event):
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 func _hotkey_pressed(event: InputEvent) -> bool:

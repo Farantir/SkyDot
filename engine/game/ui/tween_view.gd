@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
 # The game's Tween menu (Tab): four directions around a compass, Skills up, Magic left, Items right, Map down, over
-# the world (the item menus' image space, ItemMenu), with the bottom bar's level, level meter and date. Drawn from
+# the world (the item menus' image space, MenuHost), with the bottom bar's level, level meter and date. Drawn from
 # tweenmenu.swf (TweenMenu_mc: Selections_mc's frames None/Skills/Magic/Inventory/Map highlight a direction) and
 # driven as its ActionScript does (TweenMenu.handleInput, onInputRectMouseOver/Click):
 #   up/left/right/down   highlight that direction; the highlighted one again opens it
@@ -12,14 +12,11 @@
 # under it, and Tab there returns to the game, the same as here. Map opens the world map (ui/map_view.gd).
 # The skills header says LEVEL UP when a level-up is due (the movie's bLevelUp).
 class_name TweenView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 ## A direction was opened: "skills", "magic", "inventory" or "map".
 signal chosen(direction: String)
 
 const SWF := "tweenmenu"
-const STAGE := Vector2(1280.0, 720.0)
 ## Selections_mc's frame labels by selection index (TweenMenu.FrameToLabelMap).
 const LABELS := ["None", "Skills", "Magic", "Inventory", "Map"]
 const DIRECTIONS := ["", "skills", "magic", "inventory", "map"]
@@ -30,13 +27,10 @@ const MONTHS := ["sMonthJanuary", "sMonthFebruary", "sMonthMarch", "sMonthApril"
 const MONTH_DAYS := [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 const DAYS := ["sDaySunday", "sDayMonday", "sDayTuesday", "sDayWednesday", "sDayThursday", "sDayFriday", "sDaySaturday"]
 
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 ## The highlighted direction: 0 none, 1 Skills, 2 Magic, 3 Items, 4 Map.
 var selection := 0
 
 var _session: GameSession
-var _open := false
 
 
 func _init(session: GameSession) -> void:
@@ -44,10 +38,6 @@ func _init(session: GameSession) -> void:
 	set_anchors_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	visible = false
-
-
-func is_open() -> bool:
-	return _open
 
 
 func open() -> void:
@@ -60,12 +50,8 @@ func open() -> void:
 	engaged.emit(true)
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	visible = false
-	engaged.emit(false)
 
 
 ## Highlight `index`, or open it when it is highlighted already (TweenMenu.handleInput).
@@ -86,9 +72,7 @@ func open_selected() -> void:
 	chosen.emit(direction)
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if event is InputEventMouseMotion:
 		var over := _rect_at(event.position)
@@ -113,13 +97,8 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"tween_menu"):
 		close()
 	else:
-		handled = event is InputEventKey or event is InputEventJoypadButton
-	if handled:
-		get_viewport().set_input_as_handled()
-
-
-func _fill() -> Transform2D:
-	return UiDraw.stage_fill(size, STAGE)
+		handled = false
+	_consume(event, handled)
 
 
 ## The direction whose input rect (the movie's invisible hit areas) holds `at` (this control's pixels), else 0.
@@ -128,7 +107,7 @@ func _rect_at(at: Vector2) -> int:
 		var placed := UiAssets.instance(SWF, "TweenMenu_mc/" + name)
 		if placed.is_empty():
 			continue
-		var rect: Rect2 = (_fill() * (placed["xform"] as Transform2D)) * UiAssets.bounds(SWF, int(placed["id"]))
+		var rect: Rect2 = (fill() * (placed["xform"] as Transform2D)) * UiAssets.bounds(SWF, int(placed["id"]))
 		if rect.has_point(at):
 			return INPUT_RECTS[name]
 	return 0
@@ -156,7 +135,7 @@ func _draw() -> void:
 		if progression.level_up_ready():
 			look.texts["SkillsText_mc/textField"] = "LEVEL UP"
 	look.texts["DateText"] = date_text()
-	UiDraw.character(self, SWF, int(menu["id"]), _fill() * (menu["xform"] as Transform2D), Color.WHITE, look)
+	UiDraw.character(self, SWF, int(menu["id"]), fill() * (menu["xform"] as Transform2D), Color.WHITE, look)
 
 
 ## The bottom bar's date: "Sundas, 8:01 AM, 17th of Last Seed, 4E 201".

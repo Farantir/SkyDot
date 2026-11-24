@@ -6,25 +6,17 @@
 # stack, `menu_favorite` (F, gamepad Y) marks it a favorite, `menu_charge` (T) recharges an
 # enchanted weapon below its maximum from a filled soul gem (the smallest one that fills it, else the largest),
 # `menu_search` types in the search box, cancel, Tab or I closes. Items that are not playable are hidden.
-# This is the view's host, a Control that fills its host (the viewer's CanvasLayer, a VR shell's panel); it
-# takes its input from the InputMap, so any shell can feed them, and it knows the game only through
-# GameSession's item methods (via ItemListSources and the model). While it is open it emits `engaged(true)`
-# so the shell keeps the player still.
+# A GameMenu that fills its host (MenuHost on the viewer's CanvasLayer or a VR shell's panel); it takes its input
+# from the InputMap, so any shell can feed them, and it knows the game only through GameSession's item methods
+# (via ItemListSources and the model).
 class_name InventoryView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 var model: ItemListModel
 var _session: GameSession
-var _open := false
 var _list: ItemListView
 var _preview: ItemPreview
 var _bar: BottomBar
-## Whether the menu listens at all (false in runs that drive themselves).
-var enabled: Callable = func() -> bool: return true
-## What the key labels say, by action (the viewer's gamepad or keyboard).
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -48,10 +40,6 @@ func _init(session: GameSession) -> void:
 	session.items_changed.connect(_refresh)
 
 
-func is_open() -> bool:
-	return _open
-
-
 func open() -> void:
 	if _open:
 		return
@@ -62,15 +50,11 @@ func open() -> void:
 	_refresh()
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_list.visible = false
 	_bar.visible = false
 	_preview.clear()
 	_list.stop_search()
-	engaged.emit(false)
 
 
 ## The item under the cursor, {} if the list is empty.
@@ -108,9 +92,7 @@ func preview() -> ItemPreview:
 	return _preview
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if _list.is_searching():
 		_list.handle_input(event)
@@ -119,9 +101,8 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"inventory"):
 		close()
 	elif not _list.handle_input(event):
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 func _on_action(action: StringName, _row: Dictionary) -> void:

@@ -15,14 +15,11 @@
 # them (each clip below the previous one by its height, up to the list's border height), the chosen entry of a
 # centred list at 100% alpha and the others at 60% (the PC's rule in CenteredScrollingList.SetEntry).
 class_name JournalView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 ## Show on Map (M): the journal closes for the world map.
 signal show_on_map
 
 const SWF := "quest_journal"
-const STAGE := Vector2(1280.0, 720.0)
 const MENU := "QuestJournalFader/Menu_mc"
 const TABS := ["QuestsTab", "StatsTab", "SystemTab"]
 const TAB_TEXT := ["$QUESTS", "$GENERAL STATS", "$SYSTEM"]
@@ -38,8 +35,6 @@ const LIST_GAP := 10.0
 ## JournalBottomBar.PositionButtons: 20 between a button's text and the next button's art.
 const BUTTON_GAP := 20.0
 
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 var tab := QUESTS
 var system: JournalSystem
 ## The quest list (JournalLog.title_list) and the chosen entry; the objectives' focus and chosen one (-1 none).
@@ -51,7 +46,6 @@ var objective_index := -1
 var category := 0
 
 var _session: GameSession
-var _open := false
 ## The tab the menu was closed on: Esc opens it there (RememberCurrentTabIndex / RestoreSavedSettings).
 var _saved_tab := QUESTS
 static var _translations := {}
@@ -86,10 +80,6 @@ static func available() -> bool:
 	return UiAssets.available() and not UiAssets.instance(SWF, MENU).is_empty()
 
 
-func is_open() -> bool:
-	return _open
-
-
 ## Open on `which` (QUESTS, STATS, SYSTEM), or on the tab it was last closed on (-1, the Pause key).
 func open(which := -1) -> void:
 	if _open:
@@ -105,13 +95,9 @@ func open(which := -1) -> void:
 	engaged.emit(true)
 
 
-func close() -> void:
-	if not _open:
-		return
+func _closed() -> void:
 	_saved_tab = tab
-	_open = false
 	visible = false
-	engaged.emit(false)
 
 
 func switch_tab(to: int) -> void:
@@ -144,9 +130,7 @@ func _process(delta: float) -> void:
 		system.step(delta)
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		_hover(event.position)
 		return
@@ -164,9 +148,8 @@ func _input(event: InputEvent) -> void:
 		elif event.is_action_pressed(&"ui_cancel") or event.is_action_pressed(&"journal"):
 			close()
 		else:
-			handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+			handled = false
+	if _consume(event, handled):
 		queue_redraw()
 
 
@@ -293,10 +276,6 @@ func _hover(at: Vector2) -> void:
 # ---- drawing
 
 ## Movie pixels to this control: the stage stretched to the window, as the game shows its menus.
-func fill() -> Transform2D:
-	return UiDraw.stage_fill(size, STAGE)
-
-
 ## An instance under Menu_mc by its path ("QuestsFader/Page_mc/..."): {id, xform} with xform to this control.
 ## BottomBar is locked to the bottom of the visible stage less the safe zone (Quest_Journal.InitExtensions:
 ## Lock("B"), _y = visibleRect.bottom - safeRect.y).

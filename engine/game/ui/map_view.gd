@@ -20,14 +20,11 @@
 # Not done: the local map (L; interiors open the world map at the last exterior position), quest markers, look mode,
 # the game's own cursor art (the system's pointer shows).
 class_name MapView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 ## J: the journal instead of the map.
 signal journal_requested
 
 const SWF := "map"
-const STAGE := Vector2(1280.0, 720.0)
 const ICON_TYPES := ["EmptyMarker", "CityMarker", "TownMarker", "SettlementMarker", "CaveMarker", "CampMarker",
 	"FortMarker", "NordicRuinMarker", "DwemerMarker", "ShipwreckMarker", "GroveMarker", "LandmarkMarker",
 	"DragonlairMarker", "FarmMarker", "WoodMillMarker", "MineMarker", "ImperialCampMarker", "StormcloakCampMarker",
@@ -62,8 +59,6 @@ const PLAYER_SCALE := 1.5
 
 enum Prompt { NONE, TRAVEL, UNDISCOVERED, MOVE_MARKER }
 
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 ## The 3D side (the shell's): without one the map does not open.
 var scene: MapScene
 ## Where the cursor points (view pixels); the game starts it in the middle.
@@ -77,7 +72,6 @@ var selected := {}
 var shown: Array = []
 
 var _session: GameSession
-var _open := false
 var _moving_marker := false
 var _travelling := false
 var _boxes: Array[Rect2] = []
@@ -96,10 +90,6 @@ func _init(session: GameSession) -> void:
 
 static func available() -> bool:
 	return UiAssets.available() and UiAssets.exported(SWF, "YouAreHereMarker") >= 0
-
-
-func is_open() -> bool:
-	return _open
 
 
 ## Open on the player (or the last exterior position). False when this place has no world map.
@@ -122,14 +112,11 @@ func open() -> bool:
 	return true
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	prompt = Prompt.NONE
-	scene.close()
+	if scene != null:
+		scene.close()
 	visible = false
-	engaged.emit(false)
 
 
 ## A frame of the map without time passing (the camera placed, the markers projected): for MapShot.
@@ -183,10 +170,9 @@ func _held_input(delta: float) -> void:
 		scene.camera.zoom_by(zoom * MapCamera.ZOOM_RATE * delta)
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call() or _travelling:
+func _menu_input(event: InputEvent) -> void:
+	if _travelling:
 		return
-	var handled := event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	if event is InputEventMouseMotion:
 		if prompt == Prompt.NONE and (event.button_mask & MOUSE_BUTTON_MASK_RIGHT) != 0:
 			# MapLookMode (right mouse): the camera turns, the cursor stays.
@@ -216,8 +202,7 @@ func _input(event: InputEvent) -> void:
 		click(event.position)
 	elif _pressed(event, &"map_click"):
 		click(cursor)
-	if handled:
-		get_viewport().set_input_as_handled()
+	_consume(event)
 
 
 static func _pressed(event: InputEvent, action: StringName) -> bool:
@@ -388,10 +373,6 @@ func _add_shown(fill_inverse: Transform2D, position: Vector3, type: int, name: S
 
 
 # ---- drawing
-
-func fill() -> Transform2D:
-	return UiDraw.stage_fill(size, STAGE)
-
 
 func _draw() -> void:
 	if not _open or not UiAssets.available():

@@ -16,11 +16,9 @@
 # does not fit the marked item is dimmed); the right side previews the result and
 # `menu_drop` enchants. `menu_equip_left` (Q, gamepad Y) types a name for it on a
 # keyboard; empty keeps "<item> of <enchantment>". A Control that fills its host
-# (see InventoryView for the contract); the game logic stays in GameSession.
+# (GameMenu); the game logic stays in GameSession.
 class_name CraftingView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 enum Mode { RECIPES, TEMPER, ALCHEMY, ENCHANT }
 
@@ -39,7 +37,6 @@ var _dim := Color(0.6, 0.6, 0.6)
 var _head := Color(1.0, 0.9, 0.5)  # titles and headings
 var _highlight := Color(1.0, 1.0, 1.0, 0.0)  # the chosen row's fill
 var _session: GameSession
-var _open := false
 var _bench := 0
 var _bench_type := 0
 var _title := ""
@@ -61,8 +58,6 @@ var _in_items := false  # the focus is on the item column
 var _model_view: ItemPreview  # the 3D preview of the item under the cursor
 ## Whether a name can be typed (a keyboard host; a VR shell keeps the default name).
 var can_name := true
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -78,10 +73,6 @@ func _init(session: GameSession) -> void:
 	_model_view = ItemPreview.new(session)
 	_model_view.region = Rect2(0.6, 0.22, 0.2, 0.28)
 	add_child(_model_view)
-
-
-func is_open() -> bool:
-	return _open
 
 
 ## The bench being used (0 when closed).
@@ -131,15 +122,11 @@ func _unit() -> String:
 	return "items"
 
 
-func close() -> void:
-	if not _open:
-		return
-	_open = false
+func _closed() -> void:
 	_bench = 0
 	_model_view.clear()
 	_naming = false
 	_name_edit.visible = false
-	engaged.emit(false)
 	queue_redraw()
 
 
@@ -207,9 +194,7 @@ func _enchant_preview() -> Dictionary:
 		int(gem["form"]), int(gem["extra"]), _name)
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	if _naming:
 		if event is InputEventKey and event.pressed and event.keycode == KEY_ESCAPE:
 			_name_done(_name)  # keeps the name it had
@@ -245,9 +230,8 @@ func _input(event: InputEvent) -> void:
 	elif event.is_action_pressed(&"menu_drop"):
 		mix()
 	else:
-		handled = event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
-	if handled:
-		get_viewport().set_input_as_handled()
+		handled = false
+	_consume(event, handled)
 
 
 ## The enchanting table's category by name ("Soul gem") or number; no-op elsewhere.
@@ -455,7 +439,7 @@ func _grouped_input(event: InputEvent) -> bool:
 func _mouse_input(event: InputEvent) -> bool:
 	if not event is InputEventMouseButton or not event.pressed:
 		return false
-	var at: Vector2 = UiDraw.stage_fill(size, STAGE).affine_inverse() * make_input_local(event).position
+	var at: Vector2 = fill().affine_inverse() * make_input_local(event).position
 	if at.y >= BAR_TOP:
 		return false
 	var in_categories := at.x < CATEGORY_COLUMN_RIGHT
@@ -653,7 +637,6 @@ func _row_ok(row: Dictionary) -> bool:
 
 
 const SWF := "craftingmenu"
-const STAGE := Vector2(1280.0, 720.0)
 const LIST_FONT := "$EverywhereMediumFont"
 # craftingmenu.swf's placements (stage pixels), the list's measured against the game (side_crafting_forge.png).
 const HEADER_RIGHT := 1123.0  # the MenuDescription's right edge
@@ -761,12 +744,12 @@ const HEADER_WIDTH := 560.0
 
 ## The words of `text` in lines no wider than `width` stage pixels at `size_stage`.
 func _wrap(font: Font, text: String, size_stage: float, width: float) -> Array[String]:
-	var px := maxi(int(roundf(size_stage * UiDraw.stage_fill(size, STAGE).x.x)), 6)
+	var px := maxi(int(roundf(size_stage * fill().x.x)), 6)
 	var lines: Array[String] = []
 	var current := ""
 	for word in text.split(" "):
 		var trial := word if current == "" else current + " " + word
-		if current != "" and font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / UiDraw.stage_fill(size, STAGE).x.x > width:
+		if current != "" and font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill().x.x > width:
 			lines.append(current)
 			current = word
 		else:
@@ -955,8 +938,8 @@ func _draw_requires(font: Font) -> void:
 			for i in 3:
 				var labels := ["Item", "Enchantment", "Soul Gem"]
 				segments.append([String(_marks[i + 1]["name"]) if _marks.has(i + 1) else labels[i], _marks.has(i + 1)])
-	var px := int(roundf(22.0 * UiDraw.stage_fill(size, STAGE).x.x))
-	var fill_x := UiDraw.stage_fill(size, STAGE).x.x
+	var px := int(roundf(22.0 * fill().x.x))
+	var fill_x := fill().x.x
 	var texts: Array[String] = ["Requires: "]
 	for i in segments.size():
 		texts.append(String(segments[i][0]) + (", " if i < segments.size() - 1 and segments.size() > 1 else ""))

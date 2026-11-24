@@ -10,11 +10,9 @@
 #   A tree: the camera flies to the star under the cursor and the arrows (left stick) move it to the nearest star
 #   that way, down from the lowest star or cancel goes back to the ring; accept asks to take the perk
 #   (sStatsPerkConfirm) and accept again takes it; `menu_drop` (R, X) asks to make a skill at 100 legendary.
-# A Control that fills its host (see InventoryView for the contract); the numbers and the actions are SkillsModel's.
+# A Control that fills its host (GameMenu); the numbers and the actions are SkillsModel's.
 class_name SkillsView
-extends Control
-
-signal engaged(open: bool)
+extends GameMenu
 
 const STICK_THRESHOLD := 0.6
 const PLAYER_NPC := 7
@@ -23,12 +21,9 @@ var model: SkillsModel
 var sky: StatsSky
 var _session: GameSession
 var _chrome := Control.new()
-var _open := false
 var _in_tree := false
 var _choice := 0   # the attribute under the level-up choice
 var _stick_ready := true
-var enabled: Callable = func() -> bool: return true
-var key_label: Callable = func(_action: StringName) -> String: return ""
 
 
 func _init(session: GameSession) -> void:
@@ -42,10 +37,6 @@ func _init(session: GameSession) -> void:
 	_chrome.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_chrome.draw.connect(_draw_chrome)
 	add_child(_chrome)
-
-
-func is_open() -> bool:
-	return _open
 
 
 func open() -> void:
@@ -66,14 +57,12 @@ func open() -> void:
 
 ## The level-up attribute choice cannot be skipped: while it is asked the screen stays open unless `force`
 ## (a death, a load or the session ending).
-func close(force := false) -> void:
-	if not _open:
-		return
-	if not force and model != null and model.choosing_attribute():
-		return
-	_open = false
+func _may_close(force: bool) -> bool:
+	return force or model == null or not model.choosing_attribute()
+
+
+func _closed() -> void:
 	sky.visible = false
-	engaged.emit(false)
 	_redraw()
 
 
@@ -111,9 +100,7 @@ func _process(_delta: float) -> void:
 	_redraw()
 
 
-func _input(event: InputEvent) -> void:
-	if not _open or not enabled.call():
-		return
+func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if model.choosing_attribute():
 		handled = _level_up_input(event)
