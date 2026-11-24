@@ -185,3 +185,18 @@ static func field(canvas: CanvasItem, swf: String, id: int, xform: Transform2D, 
 ## the window (not letterboxed), so the x and y scales differ off 16:9; glyphs keep the x scale (see `field`).
 static func stage_fill(size: Vector2, stage: Vector2) -> Transform2D:
 	return Transform2D(Vector2(size.x / stage.x, 0.0), Vector2(0.0, size.y / stage.y), Vector2.ZERO)
+
+
+## The words of `text` in lines no wider than `width` pixels at `px`; a word wider than that stands alone.
+static func wrap(font: Font, text: String, px: int, width: float) -> Array[String]:
+	var lines: Array[String] = []
+	var current := ""
+	for word in text.split(" "):
+		var trial := word if current.is_empty() else current + " " + word
+		if font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > width and not current.is_empty():
+			lines.append(current)
+			current = word
+		else:
+			current = trial
+	lines.append(current)
+	return lines

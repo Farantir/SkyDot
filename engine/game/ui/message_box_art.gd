@@ -57,7 +57,7 @@ static func layout(area: Vector2, text: String, buttons: Array) -> Dictionary:
 	var font := _font()
 	var px := int(round(TEXT_SIZE * scale))
 	var line_h := font.get_height(px) / scale + LINE_LEADING
-	var lines := _wrap(font, text, px, (TEXT_WIDTH - 4.0) * scale)
+	var lines := UiDraw.wrap(font, text, px, (TEXT_WIDTH - 4.0) * scale)
 	var widest := 0.0
 	for line in lines:
 		widest = maxf(widest, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / scale)
@@ -155,17 +155,3 @@ static func _stretch(canvas: CanvasItem, id: int, rect: Rect2, scale: float) -> 
 static func _font() -> Font:
 	var font := UiAssets.font("$EverywhereMediumFont")
 	return font if font != null else ThemeDB.fallback_font
-
-
-static func _wrap(font: Font, text: String, px: int, width: float) -> Array[String]:
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current.is_empty() else current + " " + word
-		if font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > width and not current.is_empty():
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	lines.append(current)
-	return lines

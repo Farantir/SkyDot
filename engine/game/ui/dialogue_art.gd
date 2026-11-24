@@ -104,7 +104,7 @@ static func _draw_exit(canvas: CanvasItem, stage: Transform2D, font: Font, _chos
 static func _draw_line(canvas: CanvasItem, stage: Transform2D, font: Font, line: String, scale: float) -> void:
 	var px := _px(SUBTITLE_SIZE, scale)
 	var width := (SUBTITLE_BOX.x - 4.0) * scale
-	var lines := _wrap(font, line, px, width)
+	var lines := UiDraw.wrap(font, line, px, width)
 	var top := stage * (ROOT + SUBTITLE_AT)
 	var pitch := font.get_height(px) + 2.0 * scale
 	var bottom := top.y + SUBTITLE_BOX.y * stage.get_scale().y
@@ -134,17 +134,3 @@ static func _text(canvas: CanvasItem, font: Font, text: String, at: Vector2, px:
 static func _font() -> Font:
 	var font := UiAssets.font("$EverywhereMediumFont")
 	return font if font != null else ThemeDB.fallback_font
-
-
-static func _wrap(font: Font, text: String, px: int, width: float) -> Array[String]:
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current.is_empty() else current + " " + word
-		if font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x > width and not current.is_empty():
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	lines.append(current)
-	return lines

@@ -240,10 +240,10 @@ func draw_messages(canvas: CanvasItem, area: Vector2) -> void:
 		var origin := xform * Vector2(2.4, 2.4 + MESSAGE_DROP + float(entry["y"]))
 		var text: String = entry["text"]
 		var size := MESSAGE_SIZE
-		var lines := _wrap(font, text, size * scale, (MESSAGE_BOX.x - 4.0) * scale)
+		var lines := UiDraw.wrap(font, text, int(size * scale), (MESSAGE_BOX.x - 4.0) * scale)
 		while lines.size() * size * 1.17 > MESSAGE_BOX.y - 2.0 and size > 10.0:  # textAutoSize "shrink"
 			size -= 1.0
-			lines = _wrap(font, text, size * scale, (MESSAGE_BOX.x - 4.0) * scale)
+			lines = UiDraw.wrap(font, text, int(size * scale), (MESSAGE_BOX.x - 4.0) * scale)
 		var px := int(round(size * scale))
 		for k in lines.size():
 			var at := origin + Vector2(0.0, k * size * 1.17 * ys + font.get_ascent(px))
@@ -348,7 +348,7 @@ func draw_subtitle(canvas: CanvasItem, area: Vector2, text: String) -> void:
 	var font := _font()
 	var px := int(round(SUBTITLE_SIZE * scale))
 	var width := (800.0 - 4.0) * scale
-	var lines := _wrap(font, text, px, width)
+	var lines := UiDraw.wrap(font, text, px, width)
 	# verticalAutoSize "bottom": the last line ends at the field's bottom (62.5 high)
 	var bottom := xform.origin.y + 62.5 * xform.get_scale().y
 	var pitch := font.get_height(px) + 2.0 * scale
@@ -391,17 +391,3 @@ func _draw(canvas: CanvasItem, font: Font, text: String, at: Vector2, px: int, c
 		align: HorizontalAlignment, width: float) -> void:
 	canvas.draw_string_outline(font, at, text, align, width, px, 3, Color(SHADOW, SHADOW.a * colour.a))
 	canvas.draw_string(font, at, text, align, width, px, colour)
-
-
-static func _wrap(font: Font, text: String, px: float, width: float) -> Array[String]:
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current.is_empty() else current + " " + word
-		if font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, int(px)).x > width and not current.is_empty():
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	lines.append(current)
-	return lines

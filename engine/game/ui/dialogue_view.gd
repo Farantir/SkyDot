@@ -147,7 +147,7 @@ func _draw() -> void:
 	var font_size := int(maxf(14.0, area.y / 36.0))
 	if not _line.is_empty():
 		var y := area.y * 0.88
-		var lines := _wrap(font, _line, font_size, area.x * 0.7)
+		var lines := UiDraw.wrap(font, _line, font_size, area.x * 0.7)
 		var line_height := font_size * 1.3
 		if not _speaker.is_empty():
 			_draw_centred(font, _speaker, int(font_size * 0.85), area.x * 0.5,
@@ -180,18 +180,3 @@ func _draw_text(font: Font, text: String, font_size: int, at: Vector2, colour: C
 func _draw_centred(font: Font, text: String, font_size: int, centre_x: float, y: float, colour: Color) -> void:
 	var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_draw_text(font, text, font_size, Vector2(centre_x - width * 0.5, y), colour)
-
-
-## `text` broken into lines of at most `width` pixels.
-func _wrap(font: Font, text: String, font_size: int, width: float) -> Array[String]:
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current.is_empty() else current + " " + word
-		if font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > width and not current.is_empty():
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	lines.append(current)
-	return lines

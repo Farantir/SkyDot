@@ -729,7 +729,7 @@ func _draw() -> void:
 	# The movie's lines: above the bottom bar, and the list's column.
 	var line_colour := Color(1.0, 1.0, 1.0, 0.55)
 	draw_line(Vector2(0.0, BAR_TOP * sy), Vector2(area.x, BAR_TOP * sy), line_colour, 1.0)
-	var header_lines := _wrap(font, _header(), 26.0, HEADER_WIDTH)
+	var header_lines := UiDraw.wrap(font, _header(), maxi(int(roundf(26.0 * sx)), 6), HEADER_WIDTH * sx)
 	for i in header_lines.size():
 		_stage_centred(font, header_lines[i], Vector2(HEADER_CENTRE, HEADER_Y + i * 28.0), 26.0, Color.WHITE)
 	_draw_columns(font, th, fill)
@@ -740,23 +740,6 @@ func _draw() -> void:
 
 const HEADER_CENTRE := 950.0  # the description's centre (measured: 816 px of 1100)
 const HEADER_WIDTH := 560.0
-
-
-## The words of `text` in lines no wider than `width` stage pixels at `size_stage`.
-func _wrap(font: Font, text: String, size_stage: float, width: float) -> Array[String]:
-	var px := maxi(int(roundf(size_stage * fill().x.x)), 6)
-	var lines: Array[String] = []
-	var current := ""
-	for word in text.split(" "):
-		var trial := word if current == "" else current + " " + word
-		if current != "" and font.get_string_size(trial, HORIZONTAL_ALIGNMENT_LEFT, -1, px).x / fill().x.x > width:
-			lines.append(current)
-			current = word
-		else:
-			current = trial
-	if current != "":
-		lines.append(current)
-	return lines
 
 
 ## The category column of the mode: names, the chosen one, and whether names are upper case (the forge's are).
