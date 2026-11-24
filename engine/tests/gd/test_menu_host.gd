@@ -162,6 +162,14 @@ func test_a_menu_blocks_and_closing_it_frees() -> void:
 	_host.inventory_view.close()
 	expect(not _controls.blocked, "free when closed")
 
+
+func test_a_load_closes_every_menu() -> void:
+	_mark_open(_host.skills_view)
+	_session._reset_game_state()
+	expect(not _host.is_open(), "the menus are closed")
+	expect(not _controls.blocked, "the controls are free")
+
+
 func test_no_save_while_dead() -> void:
 	_session.dead = true
 	expect(not _session.save_game("user://test_dead.skydot"), "refused")

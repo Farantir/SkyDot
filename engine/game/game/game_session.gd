@@ -73,6 +73,8 @@ signal subtitle_line(speaker: int, text: String, seconds: float)
 ## Controls stop (`player_state.is_dead`) and the AI ends its fights against him; the shell shows the
 ## death (fade, "Load the last save?") and asks `reload_or_restart`.
 signal player_died(killer: int)
+## A save was loaded or the game restarts, after the session dropped the game before: the shell closes its menus.
+signal game_reset
 
 ## A magic effect started acting on `target` or ended (SkydotPapyrus.magic_effect_changed): the
 ## MGEF, its archetype and the instance. For presentation: lights, art, the active effects list.
@@ -469,6 +471,7 @@ func _reset_game_state() -> void:
 		part.reset()
 	rest.reset()
 	world_map.reset()
+	game_reset.emit()
 
 
 func _on_place_left() -> void:

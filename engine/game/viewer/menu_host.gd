@@ -4,6 +4,7 @@
 # Sleep/Wait, world map) and their rules, for both shells: which may open when, that one is open at a time,
 # whether the world waits behind them (`pauses`), what the shell hides, and which keys and game signals open
 # them. A shell only places the views: the viewer on a CanvasLayer, the VR shell on its panels (`place`).
+# A load or a restart closes every menu (GameSession.game_reset).
 class_name MenuHost
 extends RefCounted
 
@@ -66,6 +67,7 @@ func _init(session: GameSession, input: PlayerInput, place: Callable, key_label 
 	session.crafting_opened.connect(open_crafting)
 	session.training_opened.connect(training_view.open)
 	session.sleep_requested.connect(open_sleep)
+	session.game_reset.connect(close_all.bind(true))
 
 
 ## The keys of the loop (ShellLoop) open the menus.
