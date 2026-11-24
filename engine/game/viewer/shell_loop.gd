@@ -47,7 +47,7 @@ var options: StartOptions
 var quit_in := -1
 ## Whether start() entered a worldspace (not an interior).
 var in_world := false
-## True while the world waits (the world map is open): frame() runs nothing of the game.
+## True while the world waits for another reason than a menu: frame() runs nothing of the game.
 var paused: Callable = func() -> bool: return false
 ## The game's menus (MenuHost.attach); null in a run without them.
 var menus: MenuHost
@@ -145,7 +145,7 @@ func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool
 	update_blocked()
 	if _session.rest != null:
 		_session.rest.step(delta)  # also while the world waits under the Sleep/Wait menu
-	if paused.call():
+	if is_paused():
 		_count_quit()
 		return false
 	options.step(delta)
@@ -162,6 +162,11 @@ func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool
 		_session.run_activation()
 		return false
 	return true
+
+
+## Whether the world waits: behind a menu that pauses the game (MenuHost.pauses; the dialogue does not), or `paused`.
+func is_paused() -> bool:
+	return paused.call() or (menus != null and menus.pauses())
 
 
 ## The --quit-after countdown, also while the world waits (the map is open). True while it counts.

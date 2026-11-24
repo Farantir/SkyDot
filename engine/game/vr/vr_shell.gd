@@ -164,7 +164,6 @@ func _create_components() -> void:
 			_menus.map_view.scene = MapScene.new(_session, _rig.camera)
 			_menus.map_view.scene.origin = _rig.origin
 			add_child(_menus.map_view.scene)
-			_loop.paused = func() -> bool: return _menus.map_view.is_open()
 	_make_death_screen()
 	if not _rig.tracking:  # the mouse looks only in the desktop fallback (the viewer always captures it)
 		_controls.capture_mouse()

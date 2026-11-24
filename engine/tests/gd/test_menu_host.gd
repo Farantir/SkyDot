@@ -117,6 +117,23 @@ func test_no_menu_of_the_player_opens_in_a_dialogue() -> void:
 	_loop.skills_requested.emit()
 	_session.container_opened.emit(0x1234)
 	expect(not _host.is_open(), "no menu opened")
+
+
+func test_every_menu_but_training_pauses_the_world() -> void:
+	expect(not _loop.is_paused(), "nothing open: the world runs")
+	for view in _host.views:
+		_mark_open(view)
+		expect_eq(_loop.is_paused(), view != _host.training_view, "paused under %s" % view.get_script().get_global_name())
+		view.close(true)
+	expect(not _loop.is_paused(), "all closed: the world runs")
+
+
+func test_the_dialogue_does_not_pause_the_world() -> void:
+	_talk()
+	expect(not _loop.is_paused(), "the world runs in a dialogue")
+	expect(_controls.blocked, "the player stands still")
+
+
 func test_closing_training_in_a_dialogue_keeps_the_controls_blocked() -> void:
 	_talk()
 	_mark_open(_host.training_view)

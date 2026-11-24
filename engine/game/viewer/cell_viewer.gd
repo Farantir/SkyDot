@@ -294,7 +294,6 @@ func _create_components() -> void:
 		var map_scene := MapScene.new(_session, _rig.camera)
 		add_child(map_scene)
 		_menus.map_view.scene = map_scene
-		_loop.paused = func() -> bool: return _menus.map_view.is_open()
 	add_child(DeathMenu.new(_session, _rig, _loop))
 	add_child(FadeLayer.new(_session.transition))  # the door fade (the session keeps its value)
 	_shots = ShotRecorder.new(self, _settings, _session.world, _rig, _session.place, _session.streamer,
