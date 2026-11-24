@@ -107,15 +107,17 @@ public:
     [[nodiscard]] std::set<std::uint32_t> held_of(std::uint32_t owner) const;
     /// OnObjectEquipped/OnObjectUnequipped(form, none) to `owner`'s scripts and aliases.
     void send_equip_event(std::uint32_t owner, std::uint32_t form, bool equipped);
-    /// GetEquippedItemType of `owner`'s hand (0 left, else right); 0 if empty.
-    [[nodiscard]] std::int64_t equipped_item_type(std::uint32_t owner, std::int64_t hand);
     /// The armor and clothing bases `owner` wears, a shield in the left hand included (perk conditions
     /// WornHasKeyword and WornApparelHasKeywordCount).
     [[nodiscard]] std::vector<std::uint32_t> worn_armor_of(std::uint32_t owner) const;
     /// Whether `owner` has `form` equipped (a hand or worn); for the conditions.
     [[nodiscard]] bool is_equipped(std::uint32_t owner, std::uint32_t form) const;
-    /// equipped_item_type for a const caller (the conditions).
+    /// The form in `owner`'s left or right hand; 0 if empty.
+    [[nodiscard]] std::uint32_t hand_form(std::uint32_t owner, bool left) const;
+    /// GetEquippedItemType of `owner`'s hand (0 left, else right); 0 if empty.
     [[nodiscard]] std::int64_t hand_item_type(std::uint32_t owner, std::int64_t hand) const;
+    /// The forms `owner` carries at least one of (resolved first).
+    [[nodiscard]] std::vector<std::uint32_t> carried_forms(std::uint32_t owner) const;
     /// The worn armor of resolved actors, for the actor builder.
     [[nodiscard]] WornProvider worn_provider() const;
 

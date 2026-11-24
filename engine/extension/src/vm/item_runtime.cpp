@@ -349,12 +349,6 @@ bool ItemRuntime::unequip_extra(std::uint32_t owner, std::uint32_t form, std::op
     }
     return done;
 }
-std::int64_t ItemRuntime::equipped_item_type(std::uint32_t owner, std::int64_t hand) {
-    resolve_owner(owner);
-    const auto* equipment = states_.find(owner);
-    const std::uint32_t form = equipment == nullptr ? 0 : (hand == 0 ? equipment->left : equipment->right);
-    return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
-}
 
 std::vector<std::uint32_t> ItemRuntime::worn_armor_of(std::uint32_t owner) const {
     resolve_owner(owner);
@@ -384,11 +378,26 @@ bool ItemRuntime::is_equipped(std::uint32_t owner, std::uint32_t form) const {
     return form != 0 && equipment != nullptr && equipment->holds(form);
 }
 
-std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand) const {
+std::uint32_t ItemRuntime::hand_form(std::uint32_t owner, bool left) const {
     resolve_owner(owner);
     const auto* equipment = states_.find(owner);
-    const std::uint32_t form = equipment == nullptr ? 0 : (hand == 0 ? equipment->left : equipment->right);
+    return equipment == nullptr ? 0 : (left ? equipment->left : equipment->right);
+}
+
+std::int64_t ItemRuntime::hand_item_type(std::uint32_t owner, std::int64_t hand) const {
+    const std::uint32_t form = hand_form(owner, hand == 0);
     return form == 0 ? 0 : vm::equipped_item_type(item_info_of(form));
+}
+
+std::vector<std::uint32_t> ItemRuntime::carried_forms(std::uint32_t owner) const {
+    resolve_owner(owner);
+    std::vector<std::uint32_t> forms;
+    for (const auto& [form, total] : host_->inventory().items(owner)) {
+        if (total > 0) {
+            forms.push_back(form);
+        }
+    }
+    return forms;
 }
 
 // ---- natives
@@ -422,27 +431,20 @@ void ItemRuntime::bind_natives(Vm& vm, Host& host) {
         return NativeResult{};
     });
     vm.bind("Actor", "IsEquipped", [this](NativeCall& c) {
-        resolve_owner(c.self.form());
-        const auto* equipment = states_.find(c.self.form());
-        return flag(is_object(c, 0) && equipment != nullptr && equipment->holds(object_form(c, 0)));
+        return flag(is_object(c, 0) && is_equipped(c.self.form(), object_form(c, 0)));
     });
     // aiHand: 0 left, 1 right.
     vm.bind("Actor", "GetEquippedItemType", [this](NativeCall& c) {
-        return result(Value::integer(static_cast<std::int32_t>(equipped_item_type(c.self.form(), arg(c, 0).i()))));
+        return result(Value::integer(static_cast<std::int32_t>(hand_item_type(c.self.form(), arg(c, 0).i()))));
     });
     vm.bind("Actor", "GetEquippedWeapon", [this](NativeCall& c) {
-        resolve_owner(c.self.form());
-        const auto* equipment = states_.find(c.self.form());
-        const std::uint32_t form =
-            equipment == nullptr ? 0 : (Vm::truthy(arg(c, 0)) ? equipment->left : equipment->right);
+        const std::uint32_t form = hand_form(c.self.form(), Vm::truthy(arg(c, 0)));
         const auto info = item_info_of(form);
         return form != 0 && info.category == ItemCategory::weapon ? result(c.vm.object(form, "Weapon"))
                                                                      : NativeResult{};
     });
     vm.bind("Actor", "GetEquippedShield", [this](NativeCall& c) {
-        resolve_owner(c.self.form());
-        const auto* equipment = states_.find(c.self.form());
-        const std::uint32_t form = equipment == nullptr ? 0 : equipment->left;
+        const std::uint32_t form = hand_form(c.self.form(), true);
         return form != 0 && is_shield(item_info_of(form)) ? result(c.vm.object(form, "Armor"))
                                                               : NativeResult{};
     });

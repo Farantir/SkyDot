@@ -217,16 +217,9 @@ Dictionary SkydotPapyrus::equipment(std::int64_t owner) {
 }
 
 Dictionary SkydotPapyrus::ranged_weapon(std::int64_t owner) {
-    const auto id = static_cast<std::uint32_t>(owner);
-    item_.resolve_owner(id);
     Dictionary out;
-    std::vector<std::uint32_t> forms;
-    for (const auto& [form, total] : vm_->inventory().items(id)) {
-        if (total > 0) {
-            forms.push_back(form);
-        }
-    }
-    const auto gear = vm::choose_gear(forms, [this](std::uint32_t form) { return item_.item_info_of(form); });
+    const auto gear = vm::choose_gear(item_.carried_forms(static_cast<std::uint32_t>(owner)),
+                                      [this](std::uint32_t form) { return item_.item_info_of(form); });
     if (gear.bow != 0) {
         out["weapon"] = static_cast<std::int64_t>(gear.bow);
         out["ammo"] = static_cast<std::int64_t>(gear.ammo);
@@ -235,20 +228,14 @@ Dictionary SkydotPapyrus::ranged_weapon(std::int64_t owner) {
 }
 
 std::int64_t SkydotPapyrus::melee_weapon(std::int64_t owner) {
-    const auto id = static_cast<std::uint32_t>(owner);
-    item_.resolve_owner(id);
-    std::vector<std::uint32_t> forms;
-    for (const auto& [form, total] : vm_->inventory().items(id)) {
-        if (total > 0) {
-            forms.push_back(form);
-        }
-    }
     return static_cast<std::int64_t>(
-        vm::choose_gear(forms, [this](std::uint32_t form) { return item_.item_info_of(form); }).melee);
+        vm::choose_gear(item_.carried_forms(static_cast<std::uint32_t>(owner)),
+                        [this](std::uint32_t form) { return item_.item_info_of(form); })
+            .melee);
 }
 
 std::int64_t SkydotPapyrus::equipped_item_type(std::int64_t owner, std::int64_t hand) {
-    return item_.equipped_item_type(static_cast<std::uint32_t>(owner), hand);
+    return item_.hand_item_type(static_cast<std::uint32_t>(owner), hand);
 }
 
 std::int64_t SkydotPapyrus::drop(std::int64_t owner, std::int64_t form, std::int64_t count, std::int64_t cell,

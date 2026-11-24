@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Before engine changes leave the machine: the clang strict build and unit
+# tests (tools/ci/check-strict.sh), and the play project packtool.sh starts
+# (packtool.sh --smoke). SKYDOT_SKIP_STRICT=1 skips both.
+set -e
+[[ "${SKYDOT_SKIP_STRICT:-}" == 1 ]] && exit 0
+z=0000000000000000000000000000000000000000
+strict=0
+smoke=0
+while read -r _ local_sha _ remote_sha; do
+    [[ "$local_sha" == "$z" ]] && continue
+    range=$local_sha; [[ "$remote_sha" != "$z" ]] && range=$remote_sha..$local_sha
+    changed=$(git diff --name-only "$range")
+    grep -qE '^(engine|formats)/' <<< "$changed" && strict=1
+    grep -qE '^(engine|formats)/|^tools/(packtool\.sh|ci/play_smoke\.gd)$' <<< "$changed" && smoke=1
+done
+[[ $strict -eq 1 ]] && ./tools/ci/check-strict.sh
+if [[ $smoke -eq 1 ]]; then
+    out=$(./tools/packtool.sh --smoke 2>&1) || { grep 'play smoke\|error' <<< "$out" | tail -20; exit 1; }
+    grep 'play smoke' <<< "$out"
+fi
+exit 0
