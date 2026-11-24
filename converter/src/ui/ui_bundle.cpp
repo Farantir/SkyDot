@@ -40,6 +40,14 @@ std::string rgba_hex(const Rgba& c) {
 
 std::string text(std::string_view s) { return io::json_text(s); }
 
+template <class Names> Json export_json(const Names& names) {
+    Json n = Json::array();
+    for (const auto& name : names) {
+        n.push_back(text(name));
+    }
+    return n;
+}
+
 std::vector<std::byte> bytes_of(std::string_view s) {
     const auto* p = reinterpret_cast<const std::byte*>(s.data());
     return {p, p + s.size()};
@@ -248,7 +256,7 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
         j["kerning_pairs"] = f.kerning.size();
         j["align_zones"] = f.has_align_zones;
         if (auto names = export_names.find(id); names != export_names.end()) {
-            j["exports"] = names->second;
+            j["exports"] = export_json(names->second);
         }
         if (auto ttf = write_ttf(f)) {
             std::string name = font_file_name(f);
@@ -286,7 +294,7 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
             j["file"] = path;
         }
         if (auto names = export_names.find(id); names != export_names.end()) {
-            j["exports"] = names->second;
+            j["exports"] = export_json(names->second);
         }
         bitmaps.push_back(std::move(j));
     }
@@ -321,11 +329,7 @@ std::vector<BundleFile> bundle_files(const SwfMovie& m, std::string_view vpath) 
         const auto names = export_names.find(id);
         const bool exported = names != export_names.end();
         if (exported) {
-            Json n = Json::array();
-            for (const auto& name : names->second) {
-                n.push_back(text(name));
-            }
-            j["exports"] = std::move(n);
+            j["exports"] = export_json(names->second);
         }
         const Rect bounds = character_bounds(m, id, 0);
         if (!bounds.empty()) {

@@ -511,6 +511,39 @@ TEST_CASE("the bundle is a ZIP with the manifest first", "[swf][zip]") {
     CHECK(*convert_swf(fws(sample_tags()), "interface/test.swf") == *zip);
 }
 
+TEST_CASE("a bitmap exported under a cp1252 name still makes a manifest", "[swf][zip]") {
+    Bytes px(4, std::byte{0xFF});
+    uLongf size = compressBound(4);
+    Bytes packed(size);
+    REQUIRE(compress(reinterpret_cast<Bytef*>(packed.data()), &size,
+                     reinterpret_cast<const Bytef*>(px.data()), 4) == Z_OK);
+    packed.resize(size);
+    Bits b;
+    b.u16(7);
+    b.u8(5);
+    b.u16(1);
+    b.u16(1);
+    Bytes data = b.out;
+    data.insert(data.end(), packed.begin(), packed.end());
+    Bytes t;
+    tag(t, tag_define_bits_lossless2, data);
+    Bits exports;
+    exports.u16(1);
+    exports.u16(7);
+    exports.str("Gr\xFCn"); // not UTF-8
+    tag(t, tag_export_assets, exports.out);
+    tag(t, tag_show_frame, {});
+    tag(t, tag_end, {});
+    auto movie = read_swf(fws(t), "bits.swf");
+    REQUIRE(movie);
+    std::vector<BundleFile> files;
+    REQUIRE_NOTHROW(files = bundle_files(*movie, "interface/bits.swf"));
+    const auto manifest = std::find_if(files.begin(), files.end(),
+                                       [](const BundleFile& f) { return f.path == "manifest.json"; });
+    REQUIRE(manifest != files.end());
+    CHECK(as_string(manifest->bytes).find("\"Gr%FCn\"") != std::string::npos);
+}
+
 TEST_CASE("a UTF-16 translation file becomes UTF-8", "[swf]") {
     Bytes in{std::byte{0xFF}, std::byte{0xFE}, std::byte{'$'}, std::byte{0},
              std::byte{0xE4}, std::byte{0},    std::byte{'\n'}, std::byte{0}};
