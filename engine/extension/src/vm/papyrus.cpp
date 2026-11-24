@@ -679,7 +679,7 @@ struct PerkEffects final : perks::EffectSink {
 
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ReferenceHost,
+struct SkydotPapyrus::Access final : vm::WorldEvents,
                              vm::SceneRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
@@ -754,7 +754,7 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ReferenceHost,
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     // ---- vm::ActivationRuntime::Host
-    vm::ReferenceHost& references() override { return *this; }
+    vm::ReferenceHost& references() override { return *owner_.reference_host_; }
     std::uint32_t placed_actor_base(std::uint32_t ref) const override {
         const auto* actor = world() != nullptr ? world()->actor_ptr(ref) : nullptr;
         return actor != nullptr ? actor->base() : 0;
@@ -940,35 +940,6 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ReferenceHost,
     }
     void log(const std::string& text) override { owner_.print_line(text); }
 
-    // ---- vm::ReferenceHost
-
-    vm::RefStates& ref_states() override { return owner_.states_; }
-    void set_disabled(std::uint32_t ref, bool disabled) override { owner_.set_disabled(ref, disabled); }
-    void clear_destruction(std::uint32_t ref) override { owner_.clear_destruction(ref); }
-    std::int64_t open_state(std::int64_t ref) const override { return owner_.get_open_state(ref); }
-    void set_open_state(std::int64_t ref, std::int64_t state) override { owner_.set_open_state(ref, state); }
-    void set_locked(std::int64_t ref, bool locked) override { owner_.set_locked(ref, locked); }
-    bool is_locked(std::uint32_t ref) const override { return owner_.locked(ref); }
-    std::int64_t lock_level(std::int64_t ref) const override { return owner_.get_lock_level(ref); }
-    std::uint32_t lock_key(std::uint32_t ref) const override {
-        vm::RefInfo info;
-        return owner_.ref_record(owner_.lock_holder(ref), info) && info.locked ? info.lock_key : 0;
-    }
-    std::int64_t trigger_count(std::int64_t ref) const override { return owner_.get_trigger_count(ref); }
-    void move_ref_to(std::uint32_t ref, std::uint32_t target, const vm::Xyz& offset, bool match_rotation) override {
-        owner_.move_ref_to(ref, target, vec3_of(offset), match_rotation);
-    }
-    void relocate_ref(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
-        owner_.relocate_ref(ref, 0, vec3_of(position), vec3_of(rotation));
-    }
-    void send_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
-        owner_.dispatch(ref, event, args);
-    }
-    void resolve_owner(std::uint32_t owner) const override { owner_.item_.resolve_owner(owner); }
-    std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form,
-                                                        std::int64_t count) override {
-        return owner_.item_.remove_item_split(owner, form, count);
-    }
 
 private:
     SkydotPapyrus& owner_;
@@ -999,7 +970,7 @@ void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_h
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *world_host_, *access_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *quest_host_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *world_host_, *quest_host_); }
-void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *world_host_, *access_, *access_); }
+void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *world_host_, *access_, *reference_host_); }
 void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *world_host_, *access_, *actor_host_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 void SkydotPapyrus::bind_map_natives() {

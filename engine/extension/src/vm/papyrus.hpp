@@ -36,6 +36,7 @@
 #include "vm/dialogue_runtime.hpp"
 #include "vm/progression_runtime.hpp"
 #include "vm/quest_host.hpp"
+#include "vm/reference_host.hpp"
 #include "vm/scene_runtime.hpp"
 #include "vm/sound_host.hpp"
 #include "save/save_binding.hpp"
@@ -880,6 +881,9 @@ private:
     struct QuestHost;
     std::unique_ptr<vm::QuestHost> new_quest_host();
     std::unique_ptr<vm::QuestHost> quest_host_ = new_quest_host();
+    struct ReferenceHost;
+    std::unique_ptr<vm::ReferenceHost> new_reference_host();
+    std::unique_ptr<vm::ReferenceHost> reference_host_ = new_reference_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {

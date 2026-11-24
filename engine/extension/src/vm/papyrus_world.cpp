@@ -177,4 +177,38 @@ struct SkydotPapyrus::ActorHost final : vm::ActorHost {
 
 std::unique_ptr<vm::ActorHost> SkydotPapyrus::new_actor_host() { return std::make_unique<ActorHost>(*this); }
 
+struct SkydotPapyrus::ReferenceHost final : vm::ReferenceHost {
+    explicit ReferenceHost(SkydotPapyrus& owner) : owner_(owner) {}
+    vm::RefStates& ref_states() override { return owner_.states_; }
+    void set_disabled(std::uint32_t ref, bool disabled) override { owner_.set_disabled(ref, disabled); }
+    void clear_destruction(std::uint32_t ref) override { owner_.clear_destruction(ref); }
+    std::int64_t open_state(std::int64_t ref) const override { return owner_.get_open_state(ref); }
+    void set_open_state(std::int64_t ref, std::int64_t state) override { owner_.set_open_state(ref, state); }
+    void set_locked(std::int64_t ref, bool locked) override { owner_.set_locked(ref, locked); }
+    bool is_locked(std::uint32_t ref) const override { return owner_.locked(ref); }
+    std::int64_t lock_level(std::int64_t ref) const override { return owner_.get_lock_level(ref); }
+    std::uint32_t lock_key(std::uint32_t ref) const override {
+        vm::RefInfo info;
+        return owner_.ref_record(owner_.lock_holder(ref), info) && info.locked ? info.lock_key : 0;
+    }
+    std::int64_t trigger_count(std::int64_t ref) const override { return owner_.get_trigger_count(ref); }
+    void move_ref_to(std::uint32_t ref, std::uint32_t target, const vm::Xyz& offset, bool match_rotation) override {
+        owner_.move_ref_to(ref, target, vec3_of(offset), match_rotation);
+    }
+    void relocate_ref(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
+        owner_.relocate_ref(ref, 0, vec3_of(position), vec3_of(rotation));
+    }
+    void send_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
+        owner_.dispatch(ref, event, args);
+    }
+    void resolve_owner(std::uint32_t owner) const override { owner_.item_.resolve_owner(owner); }
+    std::vector<vm::Inventory::Taken> remove_item_split(std::uint32_t owner, std::uint32_t form,
+                                                        std::int64_t count) override {
+        return owner_.item_.remove_item_split(owner, form, count);
+    }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::ReferenceHost> SkydotPapyrus::new_reference_host() { return std::make_unique<ReferenceHost>(*this); }
+
 } // namespace skydot
