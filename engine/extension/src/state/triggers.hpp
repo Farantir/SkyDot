@@ -74,12 +74,10 @@ public:
     /// The volumes of a model's phantoms; makes a volumes-only trigger if
     /// `ref` is none yet. Empty `volumes`: nothing happens.
     void set_volumes(std::uint32_t ref, std::vector<Volume> volumes);
-    /// Forget trigger `ref` and, if it is one, the actor `ref`.
-    void forget(std::uint32_t ref) {
-        triggers_.erase(ref);
-        actors_.erase(ref);
-    }
-    /// Adds the actors inside a trigger, which `forget` leaves in the sets.
+    /// Forget trigger `ref` and, if it is one, the actor `ref`: it leaves the triggers it was inside, which
+    /// are returned (in reference order) for their OnTriggerLeave.
+    std::vector<std::uint32_t> forget(std::uint32_t ref);
+    /// Adds the actors inside a trigger.
     void held_refs(std::set<std::uint32_t>& out) const {
         for (const auto& [ref, trigger] : triggers_) {
             out.insert(trigger.inside.begin(), trigger.inside.end());

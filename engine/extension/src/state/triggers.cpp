@@ -137,6 +137,18 @@ void Triggers::set_volumes(std::uint32_t ref, std::vector<Volume> volumes) {
     it->second.update_bounds();
 }
 
+std::vector<std::uint32_t> Triggers::forget(std::uint32_t ref) {
+    triggers_.erase(ref);
+    actors_.erase(ref);
+    std::vector<std::uint32_t> left;
+    for (auto& [trigger, t] : triggers_) {
+        if (t.inside.erase(ref) != 0) {
+            left.push_back(trigger);
+        }
+    }
+    return left;
+}
+
 void Triggers::move_actor(std::uint32_t actor, const Vec3& position,
                           const std::function<bool(std::uint32_t)>& notices,
                           const std::function<void(std::uint32_t, bool)>& crossed) {

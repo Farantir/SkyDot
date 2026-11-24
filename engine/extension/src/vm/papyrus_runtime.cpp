@@ -261,7 +261,13 @@ void SkydotPapyrus::register_forgets() {
                 [this] { return volume_loaded_.size(); });
     r.add_owned("ghost_reported", [this](std::uint32_t id) { combat_.forget_ghost(id); },
                 [this] { return combat_.ghost_count(); });
-    r.add_owned("triggers", [this](std::uint32_t id) { triggers_.forget(id); },
+    // A forgotten actor leaves the triggers it was inside (the game's rule for a deleted or disabled one is
+    // unverified).
+    r.add_owned("triggers", [this](std::uint32_t id) {
+        for (const std::uint32_t trigger : triggers_.forget(id)) {
+            send_trigger_crossed(trigger, id, false);
+        }
+    },
                 [this] { return triggers_.triggers().size() + triggers_.actors().size(); },
                 [this](std::set<std::uint32_t>& out) { triggers_.held_refs(out); });
     r.add_owned("harvests", [this](std::uint32_t id) { activation_.harvests().erase(id); },

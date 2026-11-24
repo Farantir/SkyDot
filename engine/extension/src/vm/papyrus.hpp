@@ -886,6 +886,8 @@ private:
     bool ghost_ignores_hit(std::uint32_t ref) { return combat_.ghost_ignores_hit(ref); }
     /// The item domain (vm/item_runtime.hpp): start inventories, equipment and the item natives (ITST).
     vm::ItemRuntime item_;
+    /// The `trigger` signal and OnTriggerEnter or OnTriggerLeave(actor) to `trigger`'s scripts.
+    void send_trigger_crossed(std::uint32_t trigger, std::uint32_t actor, bool entered);
     /// A line for the trace signal and the output.
     void trace_line(const std::string& line);
     /// OnSpellCast(spell) to `caster`'s scripts and aliases.

@@ -112,6 +112,24 @@ TEST_CASE("forgetting a reference drops it as a trigger and as an actor", "[trig
     CHECK(triggers.actor_position(7) == nullptr);
 }
 
+TEST_CASE("a forgotten actor leaves the triggers it was inside", "[triggers]") {
+    Triggers triggers;
+    triggers.set_primitive(7, box_at({0, 0, 0}, {10, 10, 10}));
+    triggers.set_primitive(8, box_at({100, 0, 0}, {10, 10, 10}));
+    triggers.set_primitive(9, box_at({0, 0, 0}, {20, 20, 20}));
+    Crossings log;
+    log.move(triggers, 0x55, {0, 0, 0});
+    log.move(triggers, 0x66, {5, 0, 0});
+    REQUIRE(triggers.inside_count(7) == 2);
+    CHECK(triggers.forget(0x55) == std::vector<std::uint32_t>{7, 9});
+    CHECK(triggers.inside_count(7) == 1);
+    CHECK(triggers.inside_count(9) == 1);
+    std::set<std::uint32_t> held;
+    triggers.held_refs(held);
+    CHECK(held == std::set<std::uint32_t>{0x66});
+    CHECK(triggers.forget(0x55).empty());
+}
+
 TEST_CASE("the inside sets and actors round trip; unknown triggers are dropped on restore", "[triggers][save]") {
     Triggers triggers;
     triggers.set_primitive(7, box_at({0, 0, 0}, {10, 10, 10}));

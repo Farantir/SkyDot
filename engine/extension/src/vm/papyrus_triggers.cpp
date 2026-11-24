@@ -130,10 +130,12 @@ void SkydotPapyrus::update_actor(std::int64_t actor, const Vector3& position) {
         // A disabled trigger notices no one (the E3 demo's set-stage boxes on
         // the way to Bleak Falls would start its quest and swap the barrow door).
         [this](std::uint32_t trigger) { return !disabled(trigger); },
-        [this, actor, form](std::uint32_t trigger, bool entered) {
-            emit_signal("trigger", static_cast<std::int64_t>(trigger), actor, entered);
-            dispatch(trigger, entered ? "OnTriggerEnter" : "OnTriggerLeave", {vm_->object(form, "ObjectReference")});
-        });
+        [this, form](std::uint32_t trigger, bool entered) { send_trigger_crossed(trigger, form, entered); });
+}
+
+void SkydotPapyrus::send_trigger_crossed(std::uint32_t trigger, std::uint32_t actor, bool entered) {
+    emit_signal("trigger", static_cast<std::int64_t>(trigger), static_cast<std::int64_t>(actor), entered);
+    dispatch(trigger, entered ? "OnTriggerEnter" : "OnTriggerLeave", {vm_->object(actor, "ObjectReference")});
 }
 
 std::int64_t SkydotPapyrus::get_trigger_count(std::int64_t ref) const {
