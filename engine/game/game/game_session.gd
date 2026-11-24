@@ -464,6 +464,7 @@ func _make_game_nodes() -> void:
 
 ## Drop the per-game state of every joining subsystem (a save was loaded, the game restarts).
 func _reset_game_state() -> void:
+	_drop_talk()
 	for part in _lifecycle:
 		part.reset()
 	rest.reset()
@@ -1581,6 +1582,26 @@ func _on_speech_ended(_speaker: int, line: Dictionary) -> void:
 	if _scene_lines[key] <= 0:
 		_scene_lines.erase(key)
 		papyrus.scene_action_done(line["scene"], line["action"])
+
+
+## The dialogue and the scenes' lines of the game before a load or a restart are dropped: no fragment of theirs runs
+## against the game after it, and no service menu is left on top.
+func _drop_talk() -> void:
+	var speaker := _talk_speaker
+	if speaker != 0:
+		speech.stop(speaker)
+		papyrus.dialogue_close()
+	_talk_speaker = 0
+	_talk_lines = []
+	_talk_current = {}
+	_talk_left = 0.0
+	_talk_after = {}
+	_talk_topics = []
+	_scene_held = []
+	_scene_lines = {}
+	service_open = false
+	if speaker != 0:
+		dialogue_closed.emit()
 
 
 func _finish_talk() -> void:
