@@ -670,8 +670,7 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldEvents,
-                             vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
+struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -743,19 +742,7 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
     }
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
-    // ---- vm::ActivationRuntime::Host
-    vm::ReferenceHost& references() override { return *owner_.reference_host_; }
-    std::uint32_t placed_actor_base(std::uint32_t ref) const override {
-        const auto* actor = world() != nullptr ? world()->actor_ptr(ref) : nullptr;
-        return actor != nullptr ? actor->base() : 0;
-    }
-    bool graph_raises_activation(std::uint32_t ref) const override { return owner_.graph_raises_activation(ref); }
-    std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) override { return owner_.activate(ref, activator); }
-    void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
-        owner_.vm_->schedule(
-            delay, vm::ScheduledActivate{child, parent, static_cast<std::uint8_t>(ActivationSource::parent), false});
-    }
-    vm::ItemAccess& items() override { return owner_.item_; }
+    std::uint32_t placed_actor_base(std::uint32_t ref) const override { return owner_.placed_actor_base(ref); }
     std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
     void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
 
@@ -868,7 +855,7 @@ void SkydotPapyrus::bind_activations() {
     if (!access_) {
         access_.reset(new Access(*this));
     }
-    activation_.bind(*access_);
+    activation_.bind(*activation_host_);
     item_.bind(*access_);
 }
 
@@ -1048,7 +1035,7 @@ void SkydotPapyrus::restore_actor_value(std::int64_t ref, const String& name, do
 void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
     access_.reset(new Access(*this));
-    activation_.bind(*access_);
+    activation_.bind(*activation_host_);
     item_.bind(*access_);
     using Registration = void (SkydotPapyrus::*)();
     static constexpr Registration table[] = {

@@ -23,6 +23,30 @@ String godot_of(const std::string& s) { return String::utf8(s.c_str(), static_ca
 
 } // namespace
 
+struct SkydotPapyrus::ActivationHost final : vm::ActivationRuntime::Host {
+    explicit ActivationHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
+    vm::ReferenceHost& references() override { return *owner_.reference_host_; }
+    vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
+    vm::ActorStates& actor_states() override { return owner_.actors_; }
+    std::uint32_t placed_actor_base(std::uint32_t ref) const override { return owner_.placed_actor_base(ref); }
+    bool graph_raises_activation(std::uint32_t ref) const override { return owner_.graph_raises_activation(ref); }
+    std::int64_t send_activate(std::uint32_t ref, std::int64_t activator) override { return owner_.activate(ref, activator); }
+    void schedule_activation(double delay, std::uint32_t child, std::uint32_t parent) override {
+        owner_.vm_->schedule(
+            delay, vm::ScheduledActivate{child, parent, static_cast<std::uint8_t>(ActivationSource::parent), false});
+    }
+    vm::ItemAccess& items() override { return owner_.item_; }
+    std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
+    void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::ActivationRuntime::Host> SkydotPapyrus::new_activation_host() {
+    return std::make_unique<ActivationHost>(*this);
+}
+
 Dictionary SkydotPapyrus::outcome_dictionary(const ActivationOutcome& outcome) const {
     Dictionary out;
     out["ref"] = static_cast<std::int64_t>(outcome.ref);

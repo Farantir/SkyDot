@@ -893,11 +893,20 @@ private:
     struct ProgressionHost;
     std::unique_ptr<vm::ProgressionRuntime::Host> new_progression_host();
     std::unique_ptr<vm::ProgressionRuntime::Host> progression_host_ = new_progression_host();
+    struct ActivationHost;
+    std::unique_ptr<vm::ActivationRuntime::Host> new_activation_host();
+    std::unique_ptr<vm::ActivationRuntime::Host> activation_host_ = new_activation_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {
         const WorldData* data = world_data();
         return data != nullptr ? data->root() : nullptr;
+    }
+    /// The NPC_ a placed actor names, 0 for anything else.
+    std::uint32_t placed_actor_base(std::uint32_t ref) const {
+        const WorldData* data = world_data();
+        const auto* actor = data != nullptr ? data->actor_ptr(ref) : nullptr;
+        return actor != nullptr ? actor->base() : 0;
     }
     /// A line for the output only (the runtimes' log).
     void print_line(const std::string& text);
