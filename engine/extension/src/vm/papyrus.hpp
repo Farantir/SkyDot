@@ -887,6 +887,9 @@ private:
     struct SceneHost;
     std::unique_ptr<vm::SceneRuntime::Host> new_scene_host();
     std::unique_ptr<vm::SceneRuntime::Host> scene_host_ = new_scene_host();
+    struct CraftingHost;
+    std::unique_ptr<vm::CraftingRuntime::Host> new_crafting_host();
+    std::unique_ptr<vm::CraftingRuntime::Host> crafting_host_ = new_crafting_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {
@@ -972,6 +975,8 @@ private:
     /// `ctx` with the owner's worn armour bases when the caller gave none (WornHasKeyword and
     /// WornApparelHasKeywordCount ask them).
     perks::EntryContext with_worn(perks::EntryContext ctx);
+    /// `value` through the perks' entry point `ep` (with what `ctx.owner` wears); unchanged without a world.
+    double apply_entry_point(perks::EntryPoint ep, perks::EntryContext ctx, double value);
     /// The name a unit shows: its extra's, else its base's.
     std::string unit_name(std::uint32_t form, std::uint32_t extra) const;
     /// The soul an actor that dies now gives: level (1 if unknown) and whether it is an NPC.

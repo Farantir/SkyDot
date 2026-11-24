@@ -24,8 +24,29 @@ namespace {
 
 namespace wfb = bethconv::pack::wfb;
 
-
 } // namespace
+
+struct SkydotPapyrus::CraftingHost final : vm::CraftingRuntime::Host {
+    explicit CraftingHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const wfb::World* world_root() const override { return owner_.world_root(); }
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
+    vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
+    vm::ItemExtras& item_extras() override { return owner_.item_.states().extras(); }
+    vm::CreatedForms& created_forms() override { return owner_.created_; }
+    std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
+        return std::make_unique<PapyrusConditionWorld>(&owner_);
+    }
+    void announce(const std::string& line) override { owner_.trace_line(line); }
+    double player_actor_value(std::uint32_t av) override { return owner_.condition_world().actor_value(k_player_ref, av); }
+    double perk_entry(perks::EntryPoint ep, const perks::EntryContext& ctx, double value) override {
+        return owner_.apply_entry_point(ep, ctx, value);
+    }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::CraftingRuntime::Host> SkydotPapyrus::new_crafting_host() {
+    return std::make_unique<CraftingHost>(*this);
+}
 
 double SkydotPapyrus::game_days() const {
     return clock_.is_valid() ? clock_->get_game_days() : 0.0;

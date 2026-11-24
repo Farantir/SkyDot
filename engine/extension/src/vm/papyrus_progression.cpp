@@ -66,6 +66,11 @@ perks::EntryContext SkydotPapyrus::with_worn(perks::EntryContext ctx) {
     return ctx;
 }
 
+double SkydotPapyrus::apply_entry_point(perks::EntryPoint ep, perks::EntryContext ctx, double value) {
+    const auto points = entry_points();
+    return points ? points->apply(ep, with_worn(std::move(ctx)), value) : value;
+}
+
 double SkydotPapyrus::perk_entry(std::int64_t entry_point, std::int64_t owner, const Array& subjects, double value,
                                  const Dictionary& extra) {
     const auto points = entry_points();

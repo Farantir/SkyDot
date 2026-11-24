@@ -680,7 +680,7 @@ struct PerkEffects final : perks::EffectSink {
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
 struct SkydotPapyrus::Access final : vm::WorldEvents,
-                             vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
+                             vm::ProgressionRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
@@ -816,20 +816,11 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
     }
     void item_trace(const std::string& line) override { owner_.emit_signal("trace", natives::to_godot(line)); }
 
-    // ---- vm::CraftingRuntime::Host
     vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
-    vm::ItemExtras& item_extras() override { return owner_.item_.states().extras(); }
     vm::CreatedForms& created_forms() override { return owner_.created_; }
     std::unique_ptr<conditions::ConditionWorld> new_condition_world() override {
         return std::make_unique<PapyrusConditionWorld>(&owner_);
     }
-    double player_actor_value(std::uint32_t av) override { return owner_.condition_world().actor_value(k_player_ref, av); }
-    double perk_entry(perks::EntryPoint ep, const perks::EntryContext& ctx, double value) override {
-        const auto points = owner_.entry_points();
-        return points ? points->apply(ep, owner_.with_worn(ctx), value) : value;
-    }
-
-    void announce(const std::string& line) override { owner_.trace_line(line); }
 
     // ---- vm::ProgressionRuntime::Host
     std::uint32_t base_of(std::uint32_t ref) const override { return owner_.dialogue_npc(ref); }
@@ -837,14 +828,13 @@ struct SkydotPapyrus::Access final : vm::WorldEvents,
     // ---- vm::MagicRuntime::Host: the perks' entry points for spell cost, magnitude and duration
     double perk_entry(std::uint8_t ep, std::uint32_t owner, std::array<std::uint32_t, 3> subjects,
                       double value) const override {
-        const auto points = owner_.entry_points();
-        if (!points || ep >= perks::k_entry_point_count) {
+        if (ep >= perks::k_entry_point_count) {
             return value;
         }
         perks::EntryContext ctx;
         ctx.owner = owner;
         ctx.subjects = subjects;
-        return points->apply(static_cast<perks::EntryPoint>(ep), owner_.with_worn(std::move(ctx)), value);
+        return owner_.apply_entry_point(static_cast<perks::EntryPoint>(ep), std::move(ctx), value);
     }
 
     // ---- vm::MagicRuntime::Host: the abilities of an actor's base perks are part of its spell list
@@ -1156,7 +1146,7 @@ void SkydotPapyrus::bind_natives() {
     progression_.bind(*access_);
     progression_.bind_natives(*vm_);
     progression_.clear();
-    crafting_.bind(*access_);
+    crafting_.bind(*crafting_host_);
     scene_.bind_natives(*vm_, *scene_host_, dialogue_);
 }
 
