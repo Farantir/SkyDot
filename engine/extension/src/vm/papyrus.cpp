@@ -670,76 +670,11 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldEvents, vm::MagicRuntime::Host {
+struct SkydotPapyrus::Access final : vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
     const WorldData* world() const { return owner_.world_data(); }
-
-    // ---- vm::WorldEvents: each one is the signal it was, with the same arguments.
-
-    void trace(const std::string& text) override {
-        const String shown = natives::to_godot(text);
-        godot::UtilityFunctions::print(String("[Papyrus] ") + shown);
-        owner_.emit_signal("trace", shown);
-    }
-    void message(const std::string& text, bool box, bool help) override {
-        const String shown = natives::to_godot(text);
-        godot::UtilityFunctions::print(String(box ? "[Message] " : help ? "[Help] " : "[Notification] ") + shown);
-        owner_.emit_signal("message", shown, box);
-    }
-
-    void effect_shader(std::uint32_t shader, std::uint32_t target, bool play) override {
-        owner_.emit_signal("effect_shader", static_cast<std::int64_t>(shader), static_cast<std::int64_t>(target), play);
-    }
-
-    void fire_weapon(std::uint32_t weapon, std::uint32_t source, std::uint32_t ammo) override {
-        owner_.emit_signal("fire_weapon", static_cast<std::int64_t>(weapon), static_cast<std::int64_t>(source),
-                           static_cast<std::int64_t>(ammo));
-    }
-
-    void play_sound(std::uint32_t sound, std::uint32_t source, std::int64_t instance) override {
-        owner_.emit_signal("play_sound", static_cast<std::int64_t>(sound), static_cast<std::int64_t>(source), instance);
-    }
-    void stop_sound(std::int64_t instance) override { owner_.emit_signal("stop_sound", instance); }
-    void sound_volume(std::int64_t instance, double volume) override {
-        owner_.emit_signal("sound_volume", instance, volume);
-    }
-
-    void animation_events_wanted(std::uint32_t sender) override {
-        owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
-    }
-
-
-    void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
-        owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_of(position), vec3_of(rotation));
-    }
-    void play_animation(std::uint32_t ref, const std::string& animation) override {
-        owner_.emit_signal("play_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
-    }
-    void havok_impulse(std::uint32_t ref, const vm::Xyz& direction, double magnitude) override {
-        owner_.emit_signal("havok_impulse", static_cast<std::int64_t>(ref), vec3_of(direction), magnitude);
-    }
-    void push_actor(std::uint32_t source, std::uint32_t target, double force) override {
-        owner_.emit_signal("push_actor", static_cast<std::int64_t>(source), static_cast<std::int64_t>(target), force);
-    }
-    void knock_area(std::uint32_t source, double magnitude, double radius) override {
-        owner_.emit_signal("knock_area", static_cast<std::int64_t>(source), magnitude, radius);
-    }
-    void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) override {
-        owner_.emit_signal("motion_type_changed", static_cast<std::int64_t>(ref),
-                           static_cast<std::int64_t>(motion_type));
-    }
-    void open_changed(std::uint32_t ref, bool open) override {
-        owner_.emit_signal("open_changed", static_cast<std::int64_t>(ref), open);
-    }
-    void visual_effect(std::uint32_t ref, std::uint32_t art, std::uint32_t target, double duration, bool play) override {
-        owner_.emit_signal("visual_effect", static_cast<std::int64_t>(ref), static_cast<std::int64_t>(art),
-                           static_cast<std::int64_t>(target), duration, play);
-    }
-    void sub_graph_animation(std::uint32_t ref, const std::string& animation) override {
-        owner_.emit_signal("sub_graph_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
-    }
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
     void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
@@ -755,10 +690,7 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::MagicRuntime::Host {
         return out;
     }
     void magic_trace(const std::string& line) override { owner_.trace_line(line); }
-    void magic_notification(const std::string& text) override {
-        godot::UtilityFunctions::print(natives::to_godot("[Notification] " + text));
-        owner_.emit_signal("message", natives::to_godot(text), false);
-    }
+    void magic_notification(const std::string& text) override { owner_.show_message(text, false, false); }
     void effect_event(const magic::EffectView& v, bool started) override {
         owner_.emit_signal("magic_effect_changed", static_cast<std::int64_t>(v.target), static_cast<std::int64_t>(v.mgef),
                            static_cast<std::int64_t>(v.archetype), started, static_cast<std::int64_t>(v.id));
@@ -835,16 +767,16 @@ void SkydotPapyrus::bind_activations() {
     item_.bind(*item_host_);
 }
 
-void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *world_host_, *access_); }
+void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *world_host_, *events_host_); }
 void SkydotPapyrus::bind_utility_natives() { vm::bind_utility_natives(*vm_); }
-void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *access_); }
-void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
-void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_host_, *access_); }
-void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *world_host_, *access_); }
+void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(*vm_, *events_host_); }
+void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *events_host_); }
+void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_host_, *events_host_); }
+void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *world_host_, *events_host_); }
 void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *quest_host_); }
 void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *world_host_, *quest_host_); }
-void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *world_host_, *access_, *reference_host_); }
-void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *world_host_, *access_, *actor_host_); }
+void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *world_host_, *events_host_, *reference_host_); }
+void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *world_host_, *events_host_, *actor_host_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }
 void SkydotPapyrus::bind_map_natives() {
     vm::bind_map_natives(*vm_, [this](std::uint32_t ref) { return data_marker_flags(ref); });

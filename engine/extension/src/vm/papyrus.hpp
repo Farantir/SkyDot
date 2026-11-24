@@ -58,6 +58,7 @@
 #include "vm/activation_runtime.hpp"
 #include "vm/item_runtime.hpp"
 #include "vm/world_access.hpp"
+#include "vm/world_events.hpp"
 #include "world/world.hpp"
 
 #include <godot_cpp/classes/node.hpp>
@@ -869,6 +870,9 @@ private:
     struct WorldHost;
     std::unique_ptr<vm::WorldAccess> new_world_host();
     std::unique_ptr<vm::WorldAccess> world_host_ = new_world_host();
+    struct EventsHost;
+    std::unique_ptr<vm::WorldEvents> new_events_host();
+    std::unique_ptr<vm::WorldEvents> events_host_ = new_events_host();
     struct SoundHost;
     std::unique_ptr<vm::SoundHost> new_sound_host();
     std::unique_ptr<vm::SoundHost> sound_host_ = new_sound_host();
@@ -911,6 +915,8 @@ private:
         const auto* actor = data != nullptr ? data->actor_ptr(ref) : nullptr;
         return actor != nullptr ? actor->base() : 0;
     }
+    /// A message box, help text or notification: the output and the message signal.
+    void show_message(const std::string& text, bool box, bool help);
     /// A line for the output only (the runtimes' log).
     void print_line(const std::string& text);
     std::unique_ptr<vm::Vm> vm_;

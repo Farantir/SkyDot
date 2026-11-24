@@ -2,11 +2,14 @@
 //
 // The hosts the natives families ask the world and the game layer through.
 #include "vm/papyrus.hpp"
+#include "vm/papyrus_common.hpp"
 
 #include "data/actors.hpp"
 #include "data/fb_search.hpp"
 #include "skydot_formats/flags.hpp"
 #include "world_generated.h"
+
+#include <godot_cpp/variant/utility_functions.hpp>
 
 namespace skydot {
 
@@ -210,5 +213,76 @@ struct SkydotPapyrus::ReferenceHost final : vm::ReferenceHost {
 };
 
 std::unique_ptr<vm::ReferenceHost> SkydotPapyrus::new_reference_host() { return std::make_unique<ReferenceHost>(*this); }
+
+/// Each event is the signal it was, with the same arguments.
+struct SkydotPapyrus::EventsHost final : vm::WorldEvents {
+    explicit EventsHost(SkydotPapyrus& owner) : owner_(owner) {}
+    void trace(const std::string& text) override {
+        const godot::String shown = natives::to_godot(text);
+        godot::UtilityFunctions::print(godot::String("[Papyrus] ") + shown);
+        owner_.emit_signal("trace", shown);
+    }
+    void message(const std::string& text, bool box, bool help) override { owner_.show_message(text, box, help); }
+
+    void effect_shader(std::uint32_t shader, std::uint32_t target, bool play) override {
+        owner_.emit_signal("effect_shader", static_cast<std::int64_t>(shader), static_cast<std::int64_t>(target), play);
+    }
+
+    void fire_weapon(std::uint32_t weapon, std::uint32_t source, std::uint32_t ammo) override {
+        owner_.emit_signal("fire_weapon", static_cast<std::int64_t>(weapon), static_cast<std::int64_t>(source),
+                           static_cast<std::int64_t>(ammo));
+    }
+
+    void play_sound(std::uint32_t sound, std::uint32_t source, std::int64_t instance) override {
+        owner_.emit_signal("play_sound", static_cast<std::int64_t>(sound), static_cast<std::int64_t>(source), instance);
+    }
+    void stop_sound(std::int64_t instance) override { owner_.emit_signal("stop_sound", instance); }
+    void sound_volume(std::int64_t instance, double volume) override {
+        owner_.emit_signal("sound_volume", instance, volume);
+    }
+
+    void animation_events_wanted(std::uint32_t sender) override {
+        owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
+    }
+
+    void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
+        owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_of(position), vec3_of(rotation));
+    }
+    void play_animation(std::uint32_t ref, const std::string& animation) override {
+        owner_.emit_signal("play_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
+    }
+    void havok_impulse(std::uint32_t ref, const vm::Xyz& direction, double magnitude) override {
+        owner_.emit_signal("havok_impulse", static_cast<std::int64_t>(ref), vec3_of(direction), magnitude);
+    }
+    void push_actor(std::uint32_t source, std::uint32_t target, double force) override {
+        owner_.emit_signal("push_actor", static_cast<std::int64_t>(source), static_cast<std::int64_t>(target), force);
+    }
+    void knock_area(std::uint32_t source, double magnitude, double radius) override {
+        owner_.emit_signal("knock_area", static_cast<std::int64_t>(source), magnitude, radius);
+    }
+    void motion_type_changed(std::uint32_t ref, std::int32_t motion_type) override {
+        owner_.emit_signal("motion_type_changed", static_cast<std::int64_t>(ref),
+                           static_cast<std::int64_t>(motion_type));
+    }
+    void open_changed(std::uint32_t ref, bool open) override {
+        owner_.emit_signal("open_changed", static_cast<std::int64_t>(ref), open);
+    }
+    void visual_effect(std::uint32_t ref, std::uint32_t art, std::uint32_t target, double duration, bool play) override {
+        owner_.emit_signal("visual_effect", static_cast<std::int64_t>(ref), static_cast<std::int64_t>(art),
+                           static_cast<std::int64_t>(target), duration, play);
+    }
+    void sub_graph_animation(std::uint32_t ref, const std::string& animation) override {
+        owner_.emit_signal("sub_graph_animation", static_cast<std::int64_t>(ref), natives::to_godot(animation));
+    }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::WorldEvents> SkydotPapyrus::new_events_host() { return std::make_unique<EventsHost>(*this); }
+
+void SkydotPapyrus::show_message(const std::string& text, bool box, bool help) {
+    const godot::String shown = natives::to_godot(text);
+    godot::UtilityFunctions::print(godot::String(box ? "[Message] " : help ? "[Help] " : "[Notification] ") + shown);
+    emit_signal("message", shown, box);
+}
 
 } // namespace skydot
