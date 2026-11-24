@@ -683,7 +683,7 @@ struct PerkEffects final : perks::EffectSink {
 
 /// The world as natives ask about it: the Dictionaries behind it stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::QuestHost, vm::ReferenceHost,
+struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::ReferenceHost,
                              vm::SceneRuntime::Host, vm::ProgressionRuntime::Host, vm::CraftingRuntime::Host,
                              vm::ActivationRuntime::Host, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
@@ -854,38 +854,6 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
         owner_.emit_signal("animation_events_wanted", static_cast<std::int64_t>(sender));
     }
 
-    // ---- vm::QuestHost
-
-    void attach_quest_scripts(std::uint32_t quest, bool on_init) override {
-        owner_.attach_quest_scripts(quest, on_init);
-    }
-    vm::QuestStates& quests() override { return owner_.quests_; }
-    bool start_quest(std::int64_t quest) override { return owner_.start_quest(quest); }
-    void stop_quest(std::int64_t quest) override { owner_.stop_quest(quest); }
-    bool set_stage(std::int64_t quest, std::int64_t stage) override { return owner_.set_stage(quest, stage); }
-    void set_objective(std::uint32_t quest, std::int32_t index, std::uint8_t bit, bool on) override {
-        owner_.set_objective(quest, index, bit, on);
-    }
-    bool owning_quest(std::uint32_t info, std::uint32_t& quest) const override {
-        return owner_.dialogue_.owning_quest(info, quest);
-    }
-    bool alias_info(std::uint32_t quest, std::int64_t id, vm::AliasInfo& out) const override {
-        const Array aliases = owner_.quest_info(quest).get("aliases", Array());
-        for (std::int64_t i = 0; i < aliases.size(); ++i) {
-            const Dictionary a = aliases[i];
-            if (static_cast<std::int64_t>(a["id"]) == id) {
-                out.name = natives::utf8(a["name"]);
-                out.location = static_cast<bool>(a["location"]);
-                return true;
-            }
-        }
-        return false;
-    }
-    std::uint32_t alias_handle(std::uint32_t quest, std::uint32_t alias) override {
-        return owner_.alias_handle(quest, alias);
-    }
-    double global_value(std::int64_t global) const override { return owner_.get_global_value(global); }
-    void set_global_value(std::int64_t global, double value) override { owner_.set_global_value(global, value); }
 
     void ref_moved(std::uint32_t ref, const vm::Xyz& position, const vm::Xyz& rotation) override {
         owner_.emit_signal("ref_moved", static_cast<std::int64_t>(ref), vec3_of(position), vec3_of(rotation));
@@ -1093,7 +1061,7 @@ struct SkydotPapyrus::Access final : vm::WorldAccess, vm::WorldEvents, vm::Quest
     // ---- vm::SceneRuntime::Host
     const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
     vm::WorldAccess& world_access() override { return *this; }
-    vm::QuestHost& quest_host() override { return *this; }
+    vm::QuestHost& quest_host() override { return *owner_.quest_host_; }
     conditions::ConditionWorld& condition_world() override { return owner_.condition_world(); }
     void attach_scene_scripts(std::uint32_t scene) override {
         if (const auto* s = world() != nullptr ? lookup(world()->root()->scenes(), scene) : nullptr) {
@@ -1162,8 +1130,8 @@ void SkydotPapyrus::bind_effectshader_natives() { vm::bind_effectshader_natives(
 void SkydotPapyrus::bind_weapon_natives() { vm::bind_weapon_natives(*vm_, *access_); }
 void SkydotPapyrus::bind_sound_natives() { vm::bind_sound_natives(*vm_, *sound_host_, *access_); }
 void SkydotPapyrus::bind_form_natives() { vm::bind_form_natives(*vm_, *access_, *access_); }
-void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *access_); }
-void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *access_); }
+void SkydotPapyrus::bind_game_natives() { vm::bind_game_natives(*vm_, *quest_host_); }
+void SkydotPapyrus::bind_quest_natives() { vm::bind_quest_natives(*vm_, *access_, *quest_host_); }
 void SkydotPapyrus::bind_objectreference_natives() { vm::bind_objectreference_natives(*vm_, *access_, *access_, *access_); }
 void SkydotPapyrus::bind_actor_extra_natives() { vm::bind_actor_extra_natives(*vm_, *access_, *access_, *actor_host_); }
 void SkydotPapyrus::bind_noop_natives() { vm::bind_noop_natives(*vm_); }

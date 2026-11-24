@@ -35,6 +35,7 @@
 #include "vm/crafting_runtime.hpp"
 #include "vm/dialogue_runtime.hpp"
 #include "vm/progression_runtime.hpp"
+#include "vm/quest_host.hpp"
 #include "vm/scene_runtime.hpp"
 #include "vm/sound_host.hpp"
 #include "save/save_binding.hpp"
@@ -873,6 +874,9 @@ private:
     struct DialogueHost;
     std::unique_ptr<vm::DialogueRuntime::Host> new_dialogue_host();
     std::unique_ptr<vm::DialogueRuntime::Host> dialogue_host_ = new_dialogue_host();
+    struct QuestHost;
+    std::unique_ptr<vm::QuestHost> new_quest_host();
+    std::unique_ptr<vm::QuestHost> quest_host_ = new_quest_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {

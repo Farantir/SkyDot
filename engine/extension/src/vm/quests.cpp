@@ -26,6 +26,43 @@ using natives::utf8;
 
 } // namespace
 
+struct SkydotPapyrus::QuestHost final : vm::QuestHost {
+    explicit QuestHost(SkydotPapyrus& owner) : owner_(owner) {}
+    void attach_quest_scripts(std::uint32_t quest, bool on_init) override {
+        owner_.attach_quest_scripts(quest, on_init);
+    }
+    vm::QuestStates& quests() override { return owner_.quests_; }
+    bool start_quest(std::int64_t quest) override { return owner_.start_quest(quest); }
+    void stop_quest(std::int64_t quest) override { owner_.stop_quest(quest); }
+    bool set_stage(std::int64_t quest, std::int64_t stage) override { return owner_.set_stage(quest, stage); }
+    void set_objective(std::uint32_t quest, std::int32_t index, std::uint8_t bit, bool on) override {
+        owner_.set_objective(quest, index, bit, on);
+    }
+    bool owning_quest(std::uint32_t info, std::uint32_t& quest) const override {
+        return owner_.dialogue_.owning_quest(info, quest);
+    }
+    bool alias_info(std::uint32_t quest, std::int64_t id, vm::AliasInfo& out) const override {
+        const Array aliases = owner_.quest_info(quest).get("aliases", Array());
+        for (std::int64_t i = 0; i < aliases.size(); ++i) {
+            const Dictionary a = aliases[i];
+            if (static_cast<std::int64_t>(a["id"]) == id) {
+                out.name = utf8(a["name"]);
+                out.location = static_cast<bool>(a["location"]);
+                return true;
+            }
+        }
+        return false;
+    }
+    std::uint32_t alias_handle(std::uint32_t quest, std::uint32_t alias) override {
+        return owner_.alias_handle(quest, alias);
+    }
+    double global_value(std::int64_t global) const override { return owner_.get_global_value(global); }
+    void set_global_value(std::int64_t global, double value) override { owner_.set_global_value(global, value); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::QuestHost> SkydotPapyrus::new_quest_host() { return std::make_unique<QuestHost>(*this); }
+
 const Dictionary& SkydotPapyrus::quest_info(std::uint32_t quest) const {
     auto it = quest_info_.find(quest);
     if (it == quest_info_.end()) {
