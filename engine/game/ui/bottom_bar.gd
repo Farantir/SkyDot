@@ -49,7 +49,7 @@ func fill_from(session: GameSession, carried: Array) -> void:
 	for row: Dictionary in carried:
 		if int(row["form"]) == GameSession.GOLD:
 			gold = int(row["count"])
-	carry_weight = ItemRows.total_weight(carried)
+	carry_weight = GameSession.weight_of(carried)
 	carry_capacity = session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
 	health = Vector2(session.actor_value(SkydotPapyrus.PLAYER_REF, "Health"), session.actor_value_max(SkydotPapyrus.PLAYER_REF, "Health"))
 	queue_redraw()

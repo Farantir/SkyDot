@@ -16,5 +16,10 @@ func _init(session: GameSession, input: PlayerInput) -> void:
 	add_child(_view)
 
 
+## () -> bool: whether a service menu is on top of the dialogue (DialogueView.service_open).
+func set_service_open(service_open: Callable) -> void:
+	_view.service_open = service_open
+
+
 func is_open() -> bool:
 	return _view.is_open()

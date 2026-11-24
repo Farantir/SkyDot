@@ -76,6 +76,8 @@ func _init(host: Node, session: GameSession, rig: PlayerRig, controls: PlayerInp
 	controls.attack_left_changed.connect(_on_attack_left_changed)
 	controls.voice_changed.connect(_on_voice_changed)
 	session.message.connect(_on_message)
+	if session.world_map != null:
+		session.world_map.discovered.connect(_on_discovered)
 	session.activations_finished.connect(_on_activations_finished)
 	session.place_left.connect(image_space.reset_adaptation)
 	session.player_died.connect(_on_player_died)
@@ -293,6 +295,12 @@ func _on_voice_changed(pressed: bool) -> void:
 func _on_message(text: String, _box: bool) -> void:
 	if not HudGame.available():  # with the game's menus the HUD's message queue shows it
 		_note.call(text)
+
+
+## A map marker discovered: without the game's HUD (which shows it as a quest update) a note.
+func _on_discovered(_ref: int, name: String) -> void:
+	if not HudGame.available():
+		_note.call(_session.world_map.text("sDiscoveredText").replace("%s", name.to_upper()))
 
 
 func _on_fell_through() -> void:

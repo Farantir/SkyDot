@@ -144,6 +144,14 @@ func test_closing_training_in_a_dialogue_keeps_the_controls_blocked() -> void:
 	expect(not _controls.blocked, "free once the dialogue is over")
 
 
+func test_the_dialogue_closing_closes_training() -> void:
+	_talk()
+	_mark_open(_host.training_view)
+	expect(_host.service_open(), "the dialogue's keys are quiet under training")
+	_end_talk()
+	expect(not _host.training_view.is_open() and not _host.service_open(), "training closed with the dialogue")
+
+
 func test_closing_a_menu_keeps_the_dead_blocked() -> void:
 	_host.open_inventory()
 	_session.dead = true

@@ -66,6 +66,7 @@ func _init(session: GameSession, input: PlayerInput, place: Callable, key_label 
 	session.container_opened.connect(open_container)
 	session.crafting_opened.connect(open_crafting)
 	session.training_opened.connect(training_view.open)
+	session.dialogue_closed.connect(training_view.close)
 	journal_view.system.setting_changed.connect(func(name: String, value: Variant) -> void:
 		if name == "$Invert Y":
 			input.invert_look_y = int(value) == 1)
@@ -99,6 +100,11 @@ func open_view() -> GameMenu:
 		if view.is_open():
 			return view
 	return null
+
+
+## Whether a service menu (training) is open over the dialogue.
+func service_open() -> bool:
+	return training_view.is_open()
 
 
 ## Whether the world waits: a menu is open that pauses the game (all but training; the dialogue does not).

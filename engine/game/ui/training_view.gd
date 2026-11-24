@@ -3,7 +3,8 @@
 # A trainer's menu (GameSession's `training_opened`, after the "Train" topic): the skill the trainer teaches, its
 # level and the trainer's limit, the cost of a session, the player's gold and the sessions left at this level.
 # Accept buys a session (Progression.train: the skill goes up by one), cancel, Tab or I closes; a refusal shows its
-# vanilla text. The dialogue stays open underneath and its keys are quiet while this is open (`service_open`).
+# vanilla text. The dialogue stays open underneath, its keys quiet while this is open (DialogueView.service_open);
+# the dialogue closing closes this too (MenuHost).
 # A Control that fills its host (GameMenu); the numbers are TrainingModel's, the rules
 # Progression's.
 class_name TrainingView
@@ -43,7 +44,6 @@ func open(trainer_ref: int) -> void:
 	_trainer = trainer_ref
 	var was_open := _open
 	_open = true
-	_session.service_open = true
 	_refresh()
 	print("training: %s offers %s (%d gold)" % [_model.trainer_name, _model.skill_name, _model.cost])
 	if not was_open:
@@ -52,7 +52,6 @@ func open(trainer_ref: int) -> void:
 
 func _closed() -> void:
 	_trainer = 0
-	_session.service_open = false
 	queue_redraw()
 
 

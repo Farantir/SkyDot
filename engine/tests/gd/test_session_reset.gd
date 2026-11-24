@@ -31,14 +31,12 @@ func test_a_reset_drops_the_dialogue_and_the_scene_lines() -> void:
 	_session._talk_topics = [{"id": 0x1235}]
 	_session._scene_held = [{"speaker": SPEAKER, "scene": 1, "action": 2, "lines": []}]
 	_session._scene_lines = {"1:2": 1}
-	_session.service_open = true
 	var closed := watch(_session, "dialogue_closed")
 	_session._reset_game_state()
 	expect(not _session.is_dialogue_open(), "no dialogue is open")
 	expect(_session._talk_lines.is_empty() and _session._talk_current.is_empty() and _session._talk_after.is_empty()
 		and _session._talk_topics.is_empty(), "no line or topic is left")
 	expect(_session._scene_held.is_empty() and _session._scene_lines.is_empty(), "no scene line is left")
-	expect(not _session.service_open, "no service menu is on top")
 	expect_eq(closed.size(), 1, "the dialogue view hears it closed")
 
 

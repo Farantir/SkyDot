@@ -3,13 +3,15 @@
 # The world map's rules (the game layer; ui/map_view.gd draws the map, viewer/map_scene.gd its 3D view):
 #   map_of()      the worldspace whose map applies (WRLD map_world, PNAM "use map data") and its MNAM data
 #   markers()     the map world's markers with their flags now (XMRK FNAM over what scripts and discovery set,
-#                 SkydotPapyrus get_map_marker_flags): 1 visible, 2 can travel to
+#                 SkydotPapyrus get_map_marker_flags): 1 visible, 2 can travel to; shown_markers() those the map
+#                 shows (visible, not disabled)
 #   step()        discovery: a marker not yet discovered (no "can travel" flag) whose XRDS radius (else
 #                 iMapMarkerRevealDistance) the player comes within is discovered: flags 0 -> 3 (measured with
 #                 SkyrimRemote @marker, skycompare-data/map-research.md section 5: Riverwood XRDS 4500 at 4402, Bleak
 #                 Falls Barrow 5000 at 4909, South Skybound Watch without XRDS at 917), "<NAME> DISCOVERED"
 #                 (sDiscoveredText) shown; Game.FastTravel requests are taken here
-#   refusal()     why fast travel to a marker is refused, the game's HUD notification texts (sNoFastTravel*)
+#   refusal()     why fast travel to a marker is refused, the game's HUD notification texts (sNoFastTravel*);
+#                 overencumbered is GameSession.overencumbered
 #   travel()      fast travel: the fade (fFastTravelFadeSecs 0.5), the arrival at the marker's linked heading marker
 #                 (XLKR) with its heading, else on the marker as placed, in its worldspace (measured: Windhelm); game time passes as distance / (8 x fFastTravelSpeedMult)
 #                 seconds (measured: Riverwood -> Whiterun 39845 units, 1.38 h) and the actors recover over it as a
@@ -95,6 +97,15 @@ func markers(world: int) -> Array:
 	return out
 
 
+## The markers the map shows: markers() that are visible (flag 1) and not disabled.
+func shown_markers(world: int) -> Array:
+	var out := []
+	for m: Dictionary in markers(world):
+		if int(m["flags"]) & VISIBLE and not _session.papyrus.is_ref_disabled(int(m["ref"])):
+			out.append(m)
+	return out
+
+
 func _data_markers(world: int) -> Array:
 	if not _markers.has(world):
 		var list := []
@@ -176,9 +187,7 @@ func discover(ref: int, name: String) -> void:
 	print("map: discovered 0x%08X %s" % [ref, name])
 	if _session.journal != null:
 		_session.journal.count("Locations Discovered")
-	discovered.emit(ref, name)  # the HUD shows "<NAME> DISCOVERED" as a quest update (HudView)
-	if not HudTexts.available():
-		_session.message.emit(text("sDiscoveredText").replace("%s", name.to_upper()), false)
+	discovered.emit(ref, name)  # "<NAME> DISCOVERED": the HUD's quest update (HudView), else the shell's note
 
 
 ## The notification that refuses fast travel to `m` now, "" when the player may travel.
@@ -196,14 +205,9 @@ func refusal(m: Dictionary) -> String:
 		return text("sNoFastTravelCombat")
 	if _session.player_in_air():
 		return text("sNoFastTravelInAir")
-	if _overencumbered():
+	if _session.overencumbered():
 		return text("sNoFastTravelOverencumbered")
 	return ""
-
-
-func _overencumbered() -> bool:
-	var capacity := _session.actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
-	return ItemRows.total_weight(_session.inventory()) > capacity
 
 
 ## Game hours a fast travel from `from` to `to` (game units) takes: the distance on the map (x, y; Riverwood ->

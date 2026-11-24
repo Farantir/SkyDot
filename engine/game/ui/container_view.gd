@@ -79,8 +79,8 @@ func _refresh() -> void:
 	var carried := _session.inventory()
 	_models[0].set_rows(ItemListSources.from_items(theirs, _session))
 	_models[1].set_rows(ItemListSources.from_items(carried, _session))
-	_lists[0].status = ["Weight %.1f" % ItemRows.total_weight(theirs)]
-	_lists[1].status = ["Weight %.1f" % ItemRows.total_weight(carried)]
+	_lists[0].status = ["Weight %.1f" % GameSession.weight_of(theirs)]
+	_lists[1].status = ["Weight %.1f" % GameSession.weight_of(carried)]
 	_bar.fill_from(_session, carried)
 
 

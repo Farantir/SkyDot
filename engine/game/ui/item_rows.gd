@@ -32,11 +32,3 @@ static func label(row: Dictionary) -> String:
 
 static func weight_text(row: Dictionary) -> String:
 	return "%.1f" % float(row["weight"])
-
-
-## The total weight of `rows`, for the header.
-static func total_weight(rows: Array) -> float:
-	var total := 0.0
-	for row: Dictionary in rows:
-		total += float(row["weight"]) * int(row["count"])
-	return total

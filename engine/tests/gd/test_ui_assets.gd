@@ -41,6 +41,18 @@ func _sse() -> SkydotPack:
 	return pack
 
 
+func test_the_session_pack_reaches_the_menus() -> void:
+	var pack := _sse()
+	if pack == null:
+		return
+	UiAssets.use_pack(null)
+	PackFiles.use(pack)
+	expect(UiAssets.available(), "PackFiles hands the pack to UiAssets")
+	expect(not PackFiles.zip_file(ControlMap.PATH, ControlMap.PATH.get_file()).is_empty(), "the control map reads")
+	PackFiles.use(null)
+	expect(not UiAssets.available(), "and forgets it")
+
+
 func test_game_fonts_and_theme() -> void:
 	if _sse() == null:
 		return

@@ -183,7 +183,7 @@ static func event_of(contexts: Array, context: String, event: String) -> Diction
 
 ## Rebind ACTIONS from the pack's control map. False (nothing changed) when the pack has none.
 static func apply_from_pack() -> bool:
-	var text := UiAssets.file(PATH, PATH.get_file()).get_string_from_utf8()
+	var text := PackFiles.zip_file(PATH, PATH.get_file()).get_string_from_utf8()
 	return apply(text)
 
 

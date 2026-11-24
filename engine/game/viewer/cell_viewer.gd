@@ -283,6 +283,7 @@ func _create_components() -> void:
 		add_child(Subtitles.new(_session))
 	if _settings.hud or _settings.talk != 0:
 		_dialogue = DialogueMenu.new(_session, _controls)
+		_dialogue.set_service_open(func() -> bool: return _menus != null and _menus.service_open())
 		add_child(_dialogue)
 	if _settings.wants_menus():
 		var layer := CanvasLayer.new()

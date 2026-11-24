@@ -34,6 +34,8 @@ var _open := false
 var _stick_ready := true
 ## Whether the menu listens at all (false in runs that drive themselves).
 var enabled: Callable = func() -> bool: return true
+## () -> bool: whether a service menu (training) is on top; its keys are then its own. Set by the host.
+var service_open: Callable = func() -> bool: return false
 
 
 func _init(session: GameSession) -> void:
@@ -83,7 +85,7 @@ func _entries() -> Array:
 
 
 func _input(event: InputEvent) -> void:
-	if not _session.is_dialogue_open() or _session.service_open or not enabled.call():
+	if not _session.is_dialogue_open() or service_open.call() or not enabled.call():
 		return
 	var handled := true
 	if event.is_action_pressed(&"ui_cancel"):

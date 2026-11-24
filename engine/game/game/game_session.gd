@@ -153,8 +153,6 @@ var journal: JournalLog
 var rest: Rest
 ## Training with a trainer (the Training menu's rules).
 var training: SessionTraining
-## Whether a service menu (training) is on top of the dialogue; the dialogue view then leaves the keys alone.
-var service_open := false
 ## The world map's rules: markers, discovery, fast travel, the custom marker (game/world_map.gd), saved in WMAP.
 var world_map: WorldMap
 ## The root of the place's nodes (cells, sky, LOD, placed references).
@@ -294,7 +292,7 @@ func _open_world() -> bool:
 	if world == null:
 		failed.emit(pack.get_error())
 		return false
-	UiAssets.use_pack(pack)
+	PackFiles.use(pack)
 	ControlMap.apply_from_pack()  # the game's key bindings (project.godot's stay without a control map)
 	papyrus = SkydotPapyrus.new()
 	papyrus.setup(pack, world)
@@ -564,6 +562,19 @@ func give(items: Array[Vector2i]) -> void:
 ## equipped, playable}] by name.
 func inventory(owner := SkydotPapyrus.PLAYER_REF) -> Array:
 	return papyrus.inventory(owner)
+
+
+## The total weight of inventory rows: weight times count.
+static func weight_of(rows: Array) -> float:
+	var total := 0.0
+	for row: Dictionary in rows:
+		total += float(row["weight"]) * int(row["count"])
+	return total
+
+
+## Whether the player carries more than his CarryWeight.
+func overencumbered() -> bool:
+	return weight_of(inventory()) > actor_value(SkydotPapyrus.PLAYER_REF, "CarryWeight")
 
 
 ## The static facts of an item (SkydotPapyrus.item_info: category, weight, value, damage, armor_rating, ...).
@@ -1542,7 +1553,6 @@ func _drop_talk() -> void:
 	_talk_topics = []
 	_scene_held = []
 	_scene_lines = {}
-	service_open = false
 	if speaker != 0:
 		dialogue_closed.emit()
 

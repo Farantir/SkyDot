@@ -62,8 +62,8 @@ func _init(session: GameSession, key_label: Callable) -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
-## A map marker discovered: "<NAME> DISCOVERED" as a quest update (sDiscoveredText; the HUD's notification queue
-## keeps it only without the game's movie).
+## A map marker discovered: "<NAME> DISCOVERED" as a quest update (sDiscoveredText; without the game's movie the
+## shell notes it, ShellLoop).
 func _on_discovered(_ref: int, name: String) -> void:
 	if HudTexts.available():
 		if _texts == null:

@@ -339,11 +339,9 @@ func _refresh() -> void:
 		return
 	var wm := _session.world_map
 	var fill_inverse := fill().affine_inverse()
-	for m: Dictionary in wm.markers(scene.world):
-		var flags := int(m["flags"])
-		if flags & WorldMap.VISIBLE == 0 or _session.papyrus.is_ref_disabled(int(m["ref"])):
-			continue
-		_add_shown(fill_inverse, m["position"], int(m["type"]), String(m["name"]), 0.0, flags & WorldMap.CAN_TRAVEL == 0, m)
+	for m: Dictionary in wm.shown_markers(scene.world):
+		_add_shown(fill_inverse, m["position"], int(m["type"]), String(m["name"]), 0.0,
+			int(m["flags"]) & WorldMap.CAN_TRAVEL == 0, m)
 	if not wm.custom_marker.is_empty() and int(wm.custom_marker["world"]) == scene.world:
 		_add_shown(fill_inverse, wm.custom_marker["position"], WorldMap.PLAYER_SET_TYPE, wm.text("sPlayerSetMarkerName"),
 			0.0, false, wm.custom_marker)

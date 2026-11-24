@@ -144,6 +144,7 @@ func _create_components() -> void:
 	if _settings.hud or _settings.talk != 0:
 		var dialogue := DialogueView.new(_session)
 		dialogue.enabled = func() -> bool: return _controls.enabled
+		dialogue.service_open = func() -> bool: return _menus != null and _menus.service_open()
 		dialogue.engaged.connect(_on_dialogue_engaged)
 		_dialogue_panel = VrPanel.new(dialogue, MENU_PIXELS, MENU_WIDTH)
 		_dialogue_panel.set_shown(false)

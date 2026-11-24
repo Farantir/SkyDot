@@ -9,7 +9,7 @@
 # (fontconfig_ru.txt etc. for the pack's language) maps it to a font name and style ("Futura CondensedLight"
 # Normal) and lists the font libraries (fontlib "Interface\fonts_en.swf") that hold it.
 #
-# One pack at a time: GameSession hands it over with `use_pack` when it opens one. Without a pack, or with a pack
+# One pack at a time: the one PackFiles holds (GameSession hands it over there). Without a pack, or with a pack
 # from before the ui kind, `available()` is false and callers keep their fallback look (ui/theme/menu_theme.tres).
 class_name UiAssets
 extends RefCounted
@@ -23,7 +23,12 @@ static var _fontconfig := {}  # parsed fontconfig: {"libs": [vpath], "map": {nam
 static var _lists := {}  # "swf|id|frame" -> display list
 
 
-## Hand over the pack the session opened (null forgets it).
+static func _static_init() -> void:
+	PackFiles.listen(use_pack)
+	use_pack(PackFiles.pack)
+
+
+## Read from `pack` from now on (null forgets it); PackFiles calls this for the session's.
 static func use_pack(pack: SkydotPack) -> void:
 	if pack == _pack:
 		return
