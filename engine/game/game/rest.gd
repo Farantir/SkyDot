@@ -40,7 +40,8 @@ const HOUR_SECONDS := 1.05
 var hours_left := 0
 
 var _session: GameSession
-## The actors fighting the player (SkydotAi's combat state, target the player).
+## The actors fighting the player (SkydotAi's combat state, target the player). One detached (left behind in a
+## place the player left, still in combat) does not count while it is away.
 var _foes := {}
 var _sleeping := false
 var _resting := false
@@ -99,21 +100,21 @@ func on_combat_state(ref: int, target: int, state: int) -> void:
 		_foes.erase(ref)
 
 
-## Whether an actor fights the player now (the dead dropped).
+## Whether an actor fights the player now: a foe alive and attached (the dead dropped).
 func fighting() -> bool:
+	var any := false
 	for foe: int in _foes.keys():
 		if _session.papyrus.is_actor_dead(foe):
 			_foes.erase(foe)
-	return not _foes.is_empty()
+		elif _session.papyrus.is_3d_loaded(foe):
+			any = true
+	return any
 
 
 ## The message that refuses a rest (a wait, or a sleep in `bed`), or "" when the player may rest.
 func refusal(sleeping: bool, bed := 0) -> String:
 	var prefix := "sNoSleep" if sleeping else "sNoWait"
-	for foe: int in _foes.keys():
-		if _session.papyrus.is_actor_dead(foe):
-			_foes.erase(foe)
-	if not _foes.is_empty():
+	if fighting():
 		return _text(prefix + "HostileActorsNear")
 	if _session.player_in_air():
 		return _text(prefix + "InAir")
@@ -163,7 +164,7 @@ func hour() -> void:
 
 ## Whether a rest under way must stop: an enemy began fighting the player.
 func interrupted() -> bool:
-	return _resting and not _foes.is_empty()
+	return _resting and fighting()
 
 
 ## The rest is over (`interrupted`: before its hours were done).

@@ -132,7 +132,11 @@ func _run(pack_dir: String) -> void:
 	_view.open(true, OWNED_BED)
 	expect(not _view.is_open() and refusals == ["You cannot sleep in an owned bed."], "the owned bed says why: %s" % [refusals])
 
-	# ---- a foe: no wait, and a rest under way stops
+	# ---- a foe: no wait, and a rest under way stops. The test pack's actor is not built: a stand-in body (a foe
+	# without one is left behind and does not count).
+	var body := Node3D.new()
+	root.add_child(body)
+	_session.world.tag_runtime_ref(ACTOR, 0, body)
 	_session.rest.on_combat_state(ACTOR, SkydotPapyrus.PLAYER_REF, 1)
 	refusals.clear()
 	_view.open(false)
