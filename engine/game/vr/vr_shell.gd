@@ -202,7 +202,7 @@ func _make_death_screen() -> void:
 	_session.transition.fade_changed.connect(func(alpha: float) -> void:
 		_door_fade = alpha
 		_update_fade())
-	_loop.died.connect(func(_killer: int) -> void:  # the loop has blocked the controls
+	_loop.died.connect(func(_killer: int) -> void:  # the loop blocks the controls of the dead
 		_death_panel.recenter(_rig.camera)
 		_death_panel.set_shown(true))
 
@@ -282,7 +282,6 @@ func _on_magic_requested() -> void:
 
 
 func _on_dialogue_engaged(open: bool) -> void:
-	_controls.blocked = open
 	if open and not _dialogue_panel.visible:
 		_dialogue_panel.recenter(_rig.camera)
 	_dialogue_panel.set_shown(open)

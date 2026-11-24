@@ -11,6 +11,8 @@
 #             nothing else keeps the player from being driven.
 #   drive():  paralysis to the controls, then the controls' movement.
 #
+# The loop alone sets PlayerInput.blocked (`update_blocked`): from death, the open menu and the dialogue.
+#
 # Keys that are not about the player's body but are not shared (the viewer's debug keys) come
 # back through `command`.
 class_name ShellLoop
@@ -47,6 +49,8 @@ var quit_in := -1
 var in_world := false
 ## True while the world waits (the world map is open): frame() runs nothing of the game.
 var paused: Callable = func() -> bool: return false
+## The game's menus (MenuHost.attach); null in a run without them.
+var menus: MenuHost
 
 var _host: Node
 var _session: GameSession
@@ -75,6 +79,9 @@ func _init(host: Node, session: GameSession, rig: PlayerRig, controls: PlayerInp
 	session.activations_finished.connect(_on_activations_finished)
 	session.place_left.connect(image_space.reset_adaptation)
 	session.player_died.connect(_on_player_died)
+	session.dialogue_line.connect(func(_speaker: int, _text: String, _seconds: float) -> void: update_blocked())
+	session.dialogue_topics.connect(func(_list: Array) -> void: update_blocked())
+	session.dialogue_closed.connect(update_blocked)
 	rig.fell_through.connect(_on_fell_through)
 
 
@@ -135,6 +142,7 @@ func arm_quit() -> void:
 ## False when the shell must not drive the player this frame: the run is quitting or an
 ## --activate is running.
 func frame(delta: float, device_step: Callable, hold_streaming := false) -> bool:
+	update_blocked()
 	if _session.rest != null:
 		_session.rest.step(delta)  # also while the world waits under the Sleep/Wait menu
 	if paused.call():
@@ -170,6 +178,12 @@ func _count_quit() -> bool:
 	return true
 
 
+## Keep the controls from the player while he is dead, a menu is open or the dialogue is: the player stands
+## still and his keys are not commands. Worked out from all three, so no one closing undoes another.
+func update_blocked() -> void:
+	_controls.blocked = _session.is_player_dead() or (menus != null and menus.is_open()) or _session.is_dialogue_open()
+
+
 ## The controls move the player (not when paralyzed).
 func drive(delta: float) -> void:
 	_controls.paralyzed = not _session.player_state.can(PlayerState.MOVE)
@@ -182,7 +196,7 @@ func reload_after_death() -> bool:
 	if not _session.reload_or_restart():
 		printerr("death: nothing to load and no start place")
 		return false
-	_controls.blocked = false
+	update_blocked()
 	return true
 
 
@@ -280,5 +294,5 @@ func _on_activations_finished() -> void:  # let scripts run first
 
 
 func _on_player_died(killer: int) -> void:
-	_controls.blocked = true
+	update_blocked()
 	died.emit(killer)

@@ -167,6 +167,7 @@ skydot_gd_test(control_map test_control_map.gd)
 skydot_gd_test(journal test_journal.gd)
 skydot_gd_test(rest test_rest.gd)
 skydot_gd_test(session_reset test_session_reset.gd)
+skydot_gd_test(menu_host test_menu_host.gd)
 set_property(TEST gd_ui_assets APPEND PROPERTY ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
 # The viewer walks through the test pack's door pair: out of the interior,

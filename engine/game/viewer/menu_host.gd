@@ -70,6 +70,8 @@ func _init(session: GameSession, input: PlayerInput, place: Callable, key_label 
 
 ## The keys of the loop (ShellLoop) open the menus.
 func attach(loop: ShellLoop) -> void:
+	loop.menus = self
+	engaged.connect(func(_view: GameMenu, _open: bool) -> void: loop.update_blocked())
 	loop.inventory_requested.connect(open_inventory)
 	loop.magic_requested.connect(open_magic)
 	loop.favorites_requested.connect(open_favorites)
@@ -285,7 +287,6 @@ func _on_tween_chosen(direction: String) -> void:
 ## A menu opened or closed: the world behind an item menu blurs, the mouse is free to point at it.
 func _on_engaged(open: bool, view: GameMenu) -> void:
 	var any := is_open()
-	_input.blocked = any
 	# The world behind an open item menu, as the game shows it: the image space modifier of DOBJ IMID.
 	var imid := _session.world.get_default_object("IMID") if _session.world != null else 0
 	# Not behind the skills screen: StatsMenu asks for its own modifier (SkillMenuIdle), which Skyrim.esm lacks, so the

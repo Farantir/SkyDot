@@ -9,6 +9,10 @@ extends "gd_test.gd"
 class StubSession extends GameSession:
 	var calls: Array[String] = []
 	var reload_ok := true
+	var dead := false
+
+	func is_player_dead() -> bool:
+		return dead
 
 	func activate_in_view(force: bool) -> void:
 		calls.append("activate %s" % force)
@@ -26,6 +30,8 @@ class StubSession extends GameSession:
 
 	func reload_or_restart() -> bool:
 		calls.append("reload_or_restart")
+		if reload_ok:
+			dead = false
 		return reload_ok
 
 
@@ -93,6 +99,7 @@ func test_paralysis_reaches_the_controls() -> void:
 
 func test_death_blocks_and_a_reload_frees() -> void:
 	var died := watch(_loop, "died")
+	_session.dead = true
 	_session.player_died.emit(7)
 	expect(_controls.blocked, "blocked at death")
 	expect_eq(died, [[7]], "the shell is told")
@@ -101,6 +108,7 @@ func test_death_blocks_and_a_reload_frees() -> void:
 
 
 func test_a_failed_reload_keeps_the_controls_blocked() -> void:
+	_session.dead = true
 	_session.player_died.emit(7)
 	_session.reload_ok = false
 	expect(not _loop.reload_after_death(), "the reload fails")

@@ -1703,6 +1703,9 @@ func reload_or_restart() -> bool:
 
 ## Save to `path`; `extra` adds to what the load list shows of it (the journal's picture of the world).
 func save_game(path: String, extra := {}) -> bool:
+	if is_player_dead():
+		print("not saving: the player is dead")
+		return false
 	if transition.is_fading():
 		print("not saving during a door transition")  # the place is half built
 		return false

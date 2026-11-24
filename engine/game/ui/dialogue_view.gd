@@ -11,7 +11,7 @@
 # nothing else of the game. This is the view, a Control that fills its host
 # (the viewer's CanvasLayer, a VR shell's panel); it takes its input from the
 # InputMap's ui_* actions and `activate`, so any shell can feed them. While it
-# is open it emits `engaged(true)` so the shell keeps the player still.
+# is open it emits `engaged(true)` so the shell shows it.
 class_name DialogueView
 extends Control
 
