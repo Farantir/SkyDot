@@ -31,6 +31,39 @@ namespace wfb = bethconv::pack::wfb;
 
 } // namespace
 
+struct SkydotPapyrus::ItemHost final : vm::ItemRuntime::Host {
+    explicit ItemHost(SkydotPapyrus& owner) : owner_(owner) {}
+    const wfb::World* world_root() const override { return owner_.world_root(); }
+    vm::WorldAccess& world_access() override { return *owner_.world_host_; }
+    vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
+    vm::CreatedForms& created_forms() override { return owner_.created_; }
+    vm::Vm& vm() override { return *owner_.vm_; }
+    std::uint32_t placed_actor_base(std::uint32_t ref) const override { return owner_.placed_actor_base(ref); }
+    std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
+    void log(const std::string& line) override { owner_.print_line(line); }
+    void dispatch_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
+        owner_.dispatch(ref, event, args);
+    }
+    void sync_worn_magic(std::uint32_t owner) override { owner_.sync_worn_magic(owner); }
+    void worn_changed(std::uint32_t owner) override { owner_.emit_signal("worn_changed", static_cast<std::int64_t>(owner)); }
+    std::optional<bool> apply_consumed(std::uint32_t owner, std::uint32_t form, std::uint32_t extra) override {
+        const auto applied = owner_.apply_item_effects(owner, form, extra);
+        if (String(applied.get("reason", String())) == "poison") {
+            return static_cast<bool>(owner_.poison_weapon(owner, form, static_cast<std::int64_t>(extra)).get("ok", false));
+        }
+        return std::nullopt;
+    }
+    void note_eaten(std::uint32_t form) override {
+        if (auto* logic = owner_.crafting_logic()) {
+            logic->note_eaten(form);
+        }
+    }
+    void item_trace(const std::string& line) override { owner_.emit_signal("trace", to_godot(line)); }
+    SkydotPapyrus& owner_;
+};
+
+std::unique_ptr<vm::ItemRuntime::Host> SkydotPapyrus::new_item_host() { return std::make_unique<ItemHost>(*this); }
+
 // ---- the game layer's view ------------------------------------------------------
 
 void SkydotPapyrus::resolve(std::int64_t owner) {

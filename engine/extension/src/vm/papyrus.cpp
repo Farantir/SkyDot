@@ -670,7 +670,7 @@ Vector3 SkydotPapyrus::position_of(std::uint32_t ref) const {
 
 /// The hosts not yet split into their own adaptors: the Dictionaries behind them stay private
 /// to SkydotPapyrus.
-struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ItemRuntime::Host, vm::MagicRuntime::Host {
+struct SkydotPapyrus::Access final : vm::WorldEvents, vm::MagicRuntime::Host {
     explicit Access(SkydotPapyrus& owner) : owner_(owner) {}
 
     /// The typed world data, null without a world.
@@ -742,8 +742,6 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ItemRuntime::Host, vm:
     }
 
     vm::ActorStates& actor_states() override { return owner_.actors_; }
-    std::uint32_t placed_actor_base(std::uint32_t ref) const override { return owner_.placed_actor_base(ref); }
-    std::optional<double> global_value_of(std::uint32_t id) const override { return owner_.get_global_value(id); }
     void forget_ref(std::uint32_t ref) override { owner_.forget_ref(ref); }
 
     // ---- vm::MagicRuntime::Host
@@ -772,26 +770,7 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ItemRuntime::Host, vm:
         owner_.attach_scripts(id, script_list(record != nullptr ? record->scripts() : nullptr, false), 0);
     }
 
-    // ---- vm::ItemRuntime::Host
     vm::Vm& vm() override { return *owner_.vm_; }
-    void dispatch_event(std::uint32_t ref, std::string_view event, const std::vector<vm::Value>& args) override {
-        owner_.dispatch(ref, event, args);
-    }
-    void sync_worn_magic(std::uint32_t owner) override { owner_.sync_worn_magic(owner); }
-    void worn_changed(std::uint32_t owner) override { owner_.emit_signal("worn_changed", static_cast<std::int64_t>(owner)); }
-    std::optional<bool> apply_consumed(std::uint32_t owner, std::uint32_t form, std::uint32_t extra) override {
-        const auto applied = owner_.apply_item_effects(owner, form, extra);
-        if (String(applied.get("reason", String())) == "poison") {
-            return static_cast<bool>(owner_.poison_weapon(owner, form, static_cast<std::int64_t>(extra)).get("ok", false));
-        }
-        return std::nullopt;
-    }
-    void note_eaten(std::uint32_t form) override {
-        if (auto* logic = owner_.crafting_logic()) {
-            logic->note_eaten(form);
-        }
-    }
-    void item_trace(const std::string& line) override { owner_.emit_signal("trace", natives::to_godot(line)); }
 
     vm::Inventory& inventory() override { return owner_.vm_->inventory(); }
     vm::CreatedForms& created_forms() override { return owner_.created_; }
@@ -833,10 +812,7 @@ struct SkydotPapyrus::Access final : vm::WorldEvents, vm::ItemRuntime::Host, vm:
         return out;
     }
 
-    // ---- shared by several hosts
-    const bethconv::pack::wfb::World* world_root() const override { return owner_.world_root(); }
     vm::WorldAccess& world_access() override { return *owner_.world_host_; }
-    void log(const std::string& text) override { owner_.print_line(text); }
 
 private:
     SkydotPapyrus& owner_;
@@ -848,7 +824,7 @@ std::unique_ptr<vm::MagicRuntime> SkydotPapyrus::new_magic(const bethconv::pack:
     return std::make_unique<vm::MagicRuntime>(*access_, root, item_, combat_);
 }
 
-void SkydotPapyrus::bind_item_natives() { item_.bind_natives(*vm_, *access_); }
+void SkydotPapyrus::bind_item_natives() { item_.bind_natives(*vm_, *item_host_); }
 
 void SkydotPapyrus::bind_activations() {
     // Activations work before `setup` too: the access object is made now and again by bind_natives.
@@ -856,7 +832,7 @@ void SkydotPapyrus::bind_activations() {
         access_.reset(new Access(*this));
     }
     activation_.bind(*activation_host_);
-    item_.bind(*access_);
+    item_.bind(*item_host_);
 }
 
 void SkydotPapyrus::bind_debug_natives() { vm::bind_debug_natives(*vm_, *world_host_, *access_); }
@@ -1036,7 +1012,7 @@ void SkydotPapyrus::bind_natives() {
     // One registration per class, each in vm/natives_<class>.cpp.
     access_.reset(new Access(*this));
     activation_.bind(*activation_host_);
-    item_.bind(*access_);
+    item_.bind(*item_host_);
     using Registration = void (SkydotPapyrus::*)();
     static constexpr Registration table[] = {
         &SkydotPapyrus::bind_debug_natives,

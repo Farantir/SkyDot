@@ -896,6 +896,9 @@ private:
     struct ActivationHost;
     std::unique_ptr<vm::ActivationRuntime::Host> new_activation_host();
     std::unique_ptr<vm::ActivationRuntime::Host> activation_host_ = new_activation_host();
+    struct ItemHost;
+    std::unique_ptr<vm::ItemRuntime::Host> new_item_host();
+    std::unique_ptr<vm::ItemRuntime::Host> item_host_ = new_item_host();
     /// The typed world data and its root, null without a world.
     const WorldData* world_data() const { return world_.is_valid() ? &world_->data() : nullptr; }
     const bethconv::pack::wfb::World* world_root() const {
