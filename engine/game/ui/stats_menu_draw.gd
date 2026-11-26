@@ -22,6 +22,10 @@ const ORIGIN := Vector2(640.15, 360.05)
 const LOCATIONS: Array[float] = [-150.0, -10.0, 130.0, 270.0, 410.0, 640.0, 870.0, 1010.0, 1150.0, 1290.0, 1430.0]
 const RING_ORIGIN := Vector2(1.0, 492.05)
 const SKILL_ANGLE := 20.0
+## SkillText_mc's LabelInstance about the ring's line: half its width, its top and bottom (stage units).
+const RING_LABEL_HALF_WIDTH := 108.0
+const RING_LABEL_TOP := -27.0
+const RING_LABEL_BOTTOM := 36.0
 const MAX_PERK_NAME_HEIGHT := 115.0
 const LEVEL_COLOUR := Color.WHITE
 const LABEL_COLOUR := Color("999999")
@@ -86,13 +90,21 @@ static func _fraction(v: Vector2) -> float:
 
 ## The ring as AnimatedSkillText.SetAngle places it.
 static func _ring(canvas: CanvasItem, stage: Transform2D, skills: Array, angle: float) -> void:
-	var count := skills.size()
+	var text_id := UiAssets.exported(SWF, "SkillText_mc")
+	for place: Array in ring_places(skills.size(), angle):
+		var scale: float = place[2]
+		_skill_text(canvas, stage * Transform2D(0.0, RING_ORIGIN + Vector2(place[1], 0.0)) * Transform2D(0.0, Vector2(scale, scale), 0.0, Vector2.ZERO),
+			text_id, skills[place[0]], 1.0 - (scale - 1.0) / 2.5)
+
+
+## The skills on the ring at camera angle `angle` (degrees): [skill, x (stage, from RING_ORIGIN), scale] each.
+static func ring_places(count: int, angle: float) -> Array:
 	var at := fposmod(angle, SKILL_ANGLE * count)
 	var base_index := int(floorf(at / SKILL_ANGLE))
 	var t := fposmod(at, SKILL_ANGLE) / SKILL_ANGLE
 	var half := int(floorf((LOCATIONS.size() - 2) / 2.0)) + 1
 	var low := posmod(base_index - half, count)
-	var text_id := UiAssets.exported(SWF, "SkillText_mc")
+	var out := []
 	for i in count:
 		var slot := posmod(i - low, count) - 1
 		if slot < 0 or slot > LOCATIONS.size() - 2:  # outside the window: SetAngle parks it at LocationsA[0], off the stage
@@ -103,8 +115,24 @@ static func _ring(canvas: CanvasItem, stage: Transform2D, skills: Array, angle: 
 			scale = 1.0 + 0.75 * (1.0 - t)
 		elif slot == 5:
 			scale = 1.0 + 0.75 * t
-		_skill_text(canvas, stage * Transform2D(0.0, RING_ORIGIN + Vector2(x, 0.0)) * Transform2D(0.0, Vector2(scale, scale), 0.0, Vector2.ZERO),
-			text_id, skills[i], 1.0 - (scale - 1.0) / 2.5)
+		out.append([i, x, scale])
+	return out
+
+
+## The skill whose ring label (LabelInstance, centred, 216 wide, 27 above to 36 below the ring's line, times its
+## scale) is under `point` (pixels of a view `size` big); -1 if none.
+static func ring_skill_at(size: Vector2, count: int, angle: float, point: Vector2) -> int:
+	var local := UiDraw.stage_fill(size, STAGE).affine_inverse() * point - RING_ORIGIN
+	var best := -1
+	var best_d := INF
+	for place: Array in ring_places(count, angle):
+		var scale: float = place[2]
+		var d := absf(local.x - float(place[1]))
+		if d <= RING_LABEL_HALF_WIDTH * scale and local.y >= RING_LABEL_TOP * scale and local.y <= RING_LABEL_BOTTOM * scale \
+				and d < best_d:
+			best = place[0]
+			best_d = d
+	return best
 
 
 ## One SkillText_mc: the label "NAME level", ShortBar (its own y scale as SetAngle sets it) and the legendary icon.

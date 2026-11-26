@@ -31,6 +31,86 @@ func _press(view: SkillsView, action: StringName) -> void:
 	view._input(event)
 
 
+func _mouse_event(view: SkillsView, at: Vector2, button := MOUSE_BUTTON_LEFT) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = at
+	view._input(motion)
+	if button == MOUSE_BUTTON_NONE:
+		return
+	var click := InputEventMouseButton.new()
+	click.position = at
+	click.button_index = button
+	click.pressed = true
+	view._input(click)
+
+
+func _settle(view: SkillsView) -> void:
+	var steps := 0
+	while view.sky.is_turning() and steps < 600:
+		view.sky._step_turn(1.0 / 60.0)
+		steps += 1
+	view.sky._move_t = 1.0
+	view.sky._intro_t = -1.0
+	view.sky._place_camera()
+	view._process(0.0)
+
+
+## The mouse: a click on a ring label or on a constellation turns to that skill, on the faced one zooms in; in the
+## tree the star under the mouse is the cursor's, a click asks, a second takes, a right click goes back.
+func _mouse(view: SkillsView, session: GameSession) -> void:
+	var m := view.model
+	var size := view.sky.size
+	expect(size.x > 0.0 and size.y > 0.0, "the sky has a size: %s" % size)
+	_mouse_event(view, size * 0.5, MOUSE_BUTTON_RIGHT)
+	expect(not view._in_tree, "a right click leaves the tree")
+	_settle(view)
+	var start := view.sky.facing()
+	# A ring label two skills to the right.
+	var target := (start + 2) % 18
+	var label := Vector2.ZERO
+	for place: Array in StatsMenuDraw.ring_places(18, rad_to_deg(view.sky.yaw)):
+		if place[0] == target:
+			label = UiDraw.stage_fill(size, StatsMenuDraw.STAGE) * (StatsMenuDraw.RING_ORIGIN + Vector2(place[1], 5.0))
+	expect(view.skill_at(label) == target, "the label at %s is skill %d: %d" % [label, target, view.skill_at(label)])
+	_mouse_event(view, label)
+	_settle(view)
+	expect(view.sky.facing() == target and m.selected == target, "a click on its label turns to skill %d: %d, %d" % [target, view.sky.facing(), m.selected])
+	# The constellation to the left.
+	var left := (target + 17) % 18
+	var at: Variant = view.sky.tree_screen(left)
+	expect(at != null, "the left constellation is in front")
+	if at == null:
+		return
+	var px: Vector2 = at * size
+	expect(view.skill_at(px) == left, "the constellation at %s is skill %d: %d" % [px, left, view.skill_at(px)])
+	_mouse_event(view, px)
+	_settle(view)
+	expect(view.sky.facing() == left and m.selected == left, "a click on it turns to skill %d: %d" % [left, view.sky.facing()])
+	# The faced one: into its tree.
+	view.select_skill("OneHanded")
+	_settle(view)
+	_mouse_event(view, (view.sky.tree_screen(view.sky.facing()) as Vector2) * size)
+	expect(view._in_tree and m.current_skill()["av"] == 6, "a click on the faced constellation zooms into One-handed")
+	_settle(view)
+	session.papyrus.set_perk_points(1)
+	m.refresh()
+	var pick := {}
+	for n: Dictionary in m.nodes:
+		if n["status"] == "available" and n["index"] != m.cursor:
+			pick = n
+	expect(not pick.is_empty(), "another perk to take")
+	if pick.is_empty():
+		return
+	var star: Vector2 = view.sky.star_screen(m.selected, int(pick["index"])) * size
+	expect(view.sky.star_at(m.selected, star / size) == pick["index"], "the star under %s is %s" % [star, pick["name"]])
+	_mouse_event(view, star, MOUSE_BUTTON_NONE)
+	expect(m.cursor == pick["index"], "the mouse over %s puts the cursor there: %s" % [pick["name"], m.current_node().get("name")])
+	_mouse_event(view, star)
+	expect(m.pending.get("kind", "") == "perk", "a click asks to take %s" % pick["name"])
+	_mouse_event(view, star)
+	expect(int(m.node(pick["index"])["rank"]) == 1, "a second click takes %s" % pick["name"])
+
+
 func _run(pack_dir: String) -> void:
 	await process_frame
 	var config := GameConfig.new()
@@ -92,6 +172,7 @@ func _run(pack_dir: String) -> void:
 	expect(armsman["rank"] == 1, "Armsman rank 1 is taken: %s" % [armsman["rank"]])
 	expect(m.header["perk_points"] == 0, "the point is spent")
 	expect(armsman["status"] == "locked" and armsman["blocker_text"] != "", "the next rank is locked: %s" % [armsman["blocker_text"]])
+	_mouse(view, session)
 	# A banked level asks for an attribute first.
 	session.papyrus.set_player_xp(100000.0)
 	view.open()

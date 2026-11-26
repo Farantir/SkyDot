@@ -104,6 +104,8 @@ func _menu_input(event: InputEvent) -> void:
 	var handled := true
 	if model.choosing_attribute():
 		handled = _level_up_input(event)
+	elif event is InputEventMouse:
+		handled = _mouse_input(event)
 	elif _in_tree:
 		handled = _tree_input(event)
 	else:
@@ -159,6 +161,52 @@ func _tree_input(event: InputEvent) -> bool:
 	else:
 		return event is InputEventKey or event is InputEventJoypadButton or event is InputEventMouseButton
 	return true
+
+
+## The mouse. The ring: a click on a skill's label or its constellation turns to it, on the faced one zooms in.
+## A tree: the star under the mouse is the cursor's (the camera stays, so the stars stay under the mouse); a click
+## on it asks to take its perk and a second click takes it; a right click goes back as cancel does.
+func _mouse_input(event: InputEventMouse) -> bool:
+	var at := (sky.get_global_transform_with_canvas().affine_inverse() * event.position) / sky.size
+	var button := event as InputEventMouseButton
+	var click := button != null and button.pressed and button.button_index == MOUSE_BUTTON_LEFT
+	if button != null and button.pressed and button.button_index == MOUSE_BUTTON_RIGHT:
+		var cancel := InputEventAction.new()
+		cancel.action = &"ui_cancel"
+		cancel.pressed = true
+		return _tree_input(cancel) if _in_tree else _ring_input(cancel)
+	if not _in_tree:
+		if click:
+			var skill := skill_at(event.position)
+			if skill >= 0 and skill == sky.facing() and not sky.is_turning():
+				_zoom_in()
+			elif skill >= 0:
+				sky.turn_to(skill)
+		return button != null
+	var star := sky.star_at(model.selected, at)
+	if star < 0:
+		return button != null
+	if star != model.cursor:
+		model.cursor = star
+		model.cancel()
+		model.note = ""
+	if click:
+		if model.pending.is_empty():
+			model.ask_take()
+		else:
+			model.confirm()
+			sky.set_status(model.selected, model.nodes)
+	return button != null
+
+
+## The skill a click at `position` (the viewport's pixels) means on the ring: its label, else the constellation
+## nearest across; -1 if none.
+func skill_at(position: Vector2) -> int:
+	var local := _chrome.get_global_transform_with_canvas().affine_inverse() * position
+	var skill := StatsMenuDraw.ring_skill_at(_chrome.size, model.skills.size(), rad_to_deg(sky.yaw), local)
+	if skill >= 0:
+		return skill
+	return sky.tree_at((sky.get_global_transform_with_canvas().affine_inverse() * position) / sky.size)
 
 
 func _zoom_in() -> void:

@@ -43,6 +43,11 @@ const LINE_LENGTH := 56.2
 const STOP_SPEED := 0.01
 const CATCH_UP := 1.3
 const HELD_RATE := 0.5
+## turn_to (a click on another skill): the turn closes this share of what is left per second, at most the held
+## turn's top speed (assumed: the game's mouse turn is not measured).
+const GOAL_RATE := 6.0
+## A star is under the mouse within this share of the view's height.
+const STAR_PICK_RADIUS := 0.04
 ## CameraMovementInstance: 100 frames, the script steps 8 of them every 41 ms.
 const MOVE_STEP := 0.08
 const MOVE_TICK := 0.041
@@ -74,6 +79,7 @@ var _settings := {}
 var yaw := 0.0
 var velocity := 0.0
 var _input_dir := 0.0
+var _goal := NAN  # turn_to: the yaw the camera turns to, NAN when none
 var _held := false
 var _ramp_ms := 0.0
 var _ramp_from := 0.0
@@ -100,11 +106,13 @@ func _init(session: GameSession) -> void:
 	_viewport = SubViewport.new()
 	_viewport.own_world_3d = true
 	_viewport.msaa_3d = Viewport.MSAA_4X
-	# The game draws the sky over the (paused) world, which shows through where the nebula is thin.
-	_viewport.transparent_bg = true
+	# The sky hides the world: where the nebula is thin the game shows black, not the world (the user's shot of an
+	# exterior by day; the measured interior shots read the same, their world being dark there).
+	_viewport.transparent_bg = false
 	add_child(_viewport)
 	var environment := Environment.new()
-	environment.background_mode = Environment.BG_CLEAR_COLOR
+	environment.background_mode = Environment.BG_COLOR
+	environment.background_color = Color.BLACK
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color.WHITE
 	var world_environment := WorldEnvironment.new()
@@ -114,8 +122,7 @@ func _init(session: GameSession) -> void:
 	_camera.current = true
 	# The effect shader works in the game's gamma space (textures, blending; materials.hpp) and the world's camera
 	# hands Godot linear colour in its image space pass; here the sky has no such pass, so Godot's output encoding
-	# would brighten the gamma values again: the container draws the picture decoded back to what the game shows, over
-	# the world as the game draws it (premultiplied: the nebula's coverage hides the world, additive layers add).
+	# would brighten the gamma values again: the container draws the picture decoded back to what the game shows.
 	var decode := ShaderMaterial.new()
 	decode.shader = Shader.new()
 	decode.shader.code = DECODE_SHADER
@@ -313,6 +320,7 @@ func open(t: int) -> void:
 	yaw = t * SKILL_ANGLE
 	velocity = 0.0
 	_held = false
+	_goal = NAN
 	_zoom_tree = -1
 	_move = {}
 	_move_t = 1.0
@@ -330,6 +338,7 @@ func turn(direction: float) -> void:
 	if direction == _input_dir:
 		return
 	_input_dir = direction
+	_goal = NAN
 	if direction != 0.0:
 		if not is_turning():
 			glow(facing(), false)
@@ -347,7 +356,67 @@ func facing() -> int:
 
 
 func is_turning() -> bool:
-	return _held or velocity != 0.0
+	return _held or velocity != 0.0 or not is_nan(_goal)
+
+
+## Turn the shortest way to face tree `t` and stop there (a click on its constellation or its ring label).
+func turn_to(t: int) -> void:
+	if _zoom_tree >= 0:
+		return
+	var left := wrapf(t * SKILL_ANGLE - yaw, -PI, PI)
+	if absf(left) < 0.0001:
+		return
+	if not is_turning():
+		glow(facing(), false)
+	_held = false
+	_input_dir = 0.0
+	_goal = yaw + left
+
+
+## The middle of tree `t`'s constellation on the screen (what the camera looks at when it faces it), as fractions
+## of this view; null when behind the camera.
+func tree_screen(t: int) -> Variant:
+	if t < 0 or t >= _points.size() or not _camera.is_inside_tree():
+		return null
+	var look := Vector3(_s("fStatsSkillsLookAtX"), _s("fStatsSkillsLookAtY"), _s("fStatsSkillsLookAtZ"))
+	return _fraction(_frame.global_transform * (_frame.global_transform.affine_inverse() * _points[t].global_position + look))
+
+
+## The tree whose constellation's middle is nearest across to `at` (fractions of this view); -1 if none is in front.
+func tree_at(at: Vector2) -> int:
+	var best := -1
+	var best_d := INF
+	for t in _points.size():
+		var p: Variant = tree_screen(t)
+		if p == null or (p as Vector2).x < -0.5 or (p as Vector2).x > 1.5:
+			continue
+		var d := absf((p as Vector2).x - at.x)
+		if d < best_d:
+			best = t
+			best_d = d
+	return best
+
+
+## The star of tree `t` under `at` (fractions of this view), the nearest within STAR_PICK_RADIUS; -1 if none.
+func star_at(t: int, at: Vector2) -> int:
+	var size := Vector2(_viewport.size)
+	var best := -1
+	var best_d := STAR_PICK_RADIUS * size.y
+	for node: int in _stars.get(t, {}):
+		var p: Variant = star_screen(t, node)
+		if p == null:
+			continue
+		var d := ((p as Vector2) - at) * size
+		if d.length() <= best_d:
+			best = node
+			best_d = d.length()
+	return best
+
+
+func _fraction(at: Vector3) -> Variant:
+	if _camera.is_position_behind(at):
+		return null
+	return _camera.unproject_position(at) / Vector2(_viewport.size)
 
 
 ## Move the camera to star `node` of tree `t` (-1: back out to the ring).
@@ -369,10 +438,7 @@ func star_screen(t: int, node: int) -> Variant:
 	var entry: Dictionary = _stars.get(t, {}).get(node, {})
 	if entry.is_empty() or not is_instance_valid(entry["node"]):
 		return null
-	var at: Vector3 = (entry["node"] as Node3D).global_position
-	if _camera.is_position_behind(at):
-		return null
-	return _camera.unproject_position(at) / Vector2(_viewport.size)
+	return _fraction((entry["node"] as Node3D).global_position)
 
 
 func _process(_delta: float) -> void:
@@ -396,6 +462,16 @@ func _process(_delta: float) -> void:
 
 func _step_turn(delta: float) -> void:
 	if _zoom_tree >= 0:
+		return
+	if not is_nan(_goal):
+		var left := _goal - yaw
+		velocity = signf(left) * minf(absf(left) * GOAL_RATE, 1.0 / _s("fStatsRotationSpeedMax"))
+		yaw += velocity * delta
+		if absf(left) < 0.002 or signf(_goal - yaw) != signf(left):
+			yaw = round(_goal / SKILL_ANGLE) * SKILL_ANGLE
+			velocity = 0.0
+			_goal = NAN
+			glow(facing(), true)
 		return
 	if _held:
 		_ramp_ms += delta * 1000.0
