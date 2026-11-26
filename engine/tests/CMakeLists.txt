@@ -40,9 +40,10 @@ set(SKYDOT_TESTPACK "${_default_testpack}" CACHE PATH
 
 # A pack of world.fb format 11 with large references (a Skyrim SE conversion
 # with Tamriel and its LOD): smoke_large_refs runs the layer against it. Empty
-# runs that test's pack-free half only.
+# runs that test's pack-free half only; a pack of an old pack format skips the
+# test with the reason.
 set(SKYDOT_LARGE_REF_PACK "$ENV{SKYDOT_LARGE_REF_PACK}" CACHE PATH
-    "A format 11 pack with large references; empty skips the layer test")
+    "A pack (world.fb format 11) with large references; empty skips the layer test")
 
 # A converted Skyrim SE pack: the `sse` tests replay activators of the real
 # game data headless (no screenshot files; positions are in the tests below).

@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Large references (pack format 11): the query, and SkydotLargeRefs under
+# Large references (world.fb format 11): the query, and SkydotLargeRefs under
 # SkydotLod.
 #
 # The test pack (converter/tools/testpack) is of format 10 and has none, so
@@ -8,11 +8,14 @@
 # fails nothing: no layer, no stats, empty queries. The layer itself needs a
 # pack with them: SKYDOT_LARGE_REF_PACK names one (a Skyrim SE conversion of
 # format 11, worldspace Tamriel, with its LOD); without it that half skips.
+# A pack of a format this engine no longer reads skips too, naming the format:
+# reconvert it or point SKYDOT_LARGE_REF_PACK at a current one.
 extends SceneTree
 
 const CELL := 4096.0
 
 var failures := 0
+var stale_pack := ""
 
 func _init() -> void:
     var pack_dir := OS.get_environment("SKYDOT_TESTPACK")
@@ -32,6 +35,10 @@ func _init() -> void:
     else:
         print("smoke_large_refs: the layer is not run (SKYDOT_LARGE_REF_PACK unset)")
     print("smoke_large_refs: failures=", failures)
+    if failures == 0 and stale_pack != "":
+        print("smoke_large_refs: SKIP (the layer is not run: ", stale_pack, ")")
+        quit(77)
+        return
     quit(failures)
 
 func expect(ok: bool, what: String) -> void:
@@ -81,7 +88,11 @@ func _without(pack_dir: String) -> void:
 
 func _with(pack_dir: String) -> void:
     var pack := SkydotPack.new()
-    expect(pack.open(pack_dir) == OK, "the large reference pack opens: " + pack.get_error())
+    var opened := pack.open(pack_dir)
+    if opened != OK and pack.get_error().contains("is not one this engine reads"):
+        stale_pack = "SKYDOT_LARGE_REF_PACK is an old pack, reconvert it: " + pack.get_error()
+        return
+    expect(opened == OK, "the large reference pack opens: " + pack.get_error())
     var world := pack.open_world()
     if world == null:
         expect(false, "its world.fb opens")
