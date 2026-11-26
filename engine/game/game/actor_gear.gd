@@ -103,7 +103,12 @@ func refresh(ref: int) -> bool:
 	# The bow in hand is the weapon of an actor that has no other.
 	var bow_in_hand := drawn and right_info.is_empty() and not bow_info.is_empty()
 	if not right_info.is_empty():
-		_attach(skeleton, "Weapon", right_info, HAND_BONE if drawn else _sheath(right_info))
+		if drawn:
+			# The game leaves the model's scabbard (its "Scb" shape) on the sheath and draws the blade alone.
+			_attach(skeleton, "Weapon", right_info, HAND_BONE, Parts.BLADE)
+			_attach(skeleton, "Scabbard", right_info, _sheath(right_info), Parts.SCABBARD)
+		else:
+			_attach(skeleton, "Weapon", right_info, _sheath(right_info))
 	if not bow_info.is_empty():
 		_attach(skeleton, "Bow", bow_info, BOW_DRAWN_BONE if bow_in_hand else SHEATH_BONES[7])
 	var left: int = equipment["left"]
@@ -126,7 +131,18 @@ static func find_bone(skeleton: Skeleton3D, name: String) -> int:
 	return -1
 
 
-func _attach(skeleton: Skeleton3D, label: String, info: Dictionary, bone_name: String) -> void:
+## Which shapes of a weapon model to show: all, all but the scabbard, the scabbard alone.
+enum Parts { WHOLE, BLADE, SCABBARD }
+
+
+## A weapon model's scabbard shape ("Scb", the name every vanilla weapon NIF uses).
+static func is_scabbard(node: Node) -> bool:
+	var name := String(node.name).to_lower()
+	return name == "scb" or name.begins_with("scb:")
+
+
+func _attach(skeleton: Skeleton3D, label: String, info: Dictionary, bone_name: String,
+		parts := Parts.WHOLE) -> void:
 	var path: String = info.get("model", "")
 	var bone := find_bone(skeleton, bone_name)
 	if path == "" or bone < 0:
@@ -136,6 +152,15 @@ func _attach(skeleton: Skeleton3D, label: String, info: Dictionary, bone_name: S
 	if model == null:
 		_warn.once("model" + path, "cannot build %s" % path)
 		return
+	if parts != Parts.WHOLE:
+		var any := false
+		for mesh in model.find_children("*", "MeshInstance3D", true, false):
+			var scabbard := is_scabbard(mesh)
+			any = any or scabbard
+			(mesh as MeshInstance3D).visible = scabbard == (parts == Parts.SCABBARD)
+		if parts == Parts.SCABBARD and not any:
+			model.free()  # no scabbard (an axe, a mace): nothing stays on the sheath
+			return
 	var attachment := BoneAttachment3D.new()
 	attachment.name = NODE_PREFIX + label
 	attachment.bone_name = skeleton.get_bone_name(bone)

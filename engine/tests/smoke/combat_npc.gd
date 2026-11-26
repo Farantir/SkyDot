@@ -127,6 +127,18 @@ func _run(pack_dir: String) -> void:
 	expect(node.get_stance() == "1hm" and node.is_acting(), "stance 1hm and the equip clip plays: %s" % node.get_stance())
 	await _until(func() -> bool: return _gear_bones(node).get("Gear_Weapon", "") == "weapon", 3.0)
 	expect(_gear_bones(node).get("Gear_Weapon", "") == "weapon", "the weapon is on the WEAPON bone: %s" % [_gear_bones(node)])
+	# The scabbard stays on the sheath: none shows in the hand, and one hangs on the sheath bone if the model has it.
+	var shown_scabbards := func(label: String) -> int:
+		var count := 0
+		for attachment in node.find_children(label, "BoneAttachment3D", true, false):
+			for mesh in attachment.find_children("*", "MeshInstance3D", true, false):
+				count += 1 if ActorGear.is_scabbard(mesh) and (mesh as MeshInstance3D).visible else 0
+		return count
+	expect(shown_scabbards.call("Gear_Weapon") == 0, "no scabbard in the hand")
+	var scabbard_bone: String = _gear_bones(node).get("Gear_Scabbard", "")
+	print("drawn: scabbard on '%s', %d shown" % [scabbard_bone, shown_scabbards.call("Gear_Scabbard")])
+	expect(scabbard_bone == "" or (scabbard_bone == sheath and shown_scabbards.call("Gear_Scabbard") > 0),
+		"a scabbard stays on %s: %s" % [sheath, _gear_bones(node)])
 	await _until(func() -> bool: return not node.is_acting(), 3.0)
 	expect(not node.is_acting(), "the equip clip ends")
 
