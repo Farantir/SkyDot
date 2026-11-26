@@ -15,6 +15,9 @@
 #   tools/packtool.sh --rebuild  also rebuild the converter even if it exists
 #   tools/packtool.sh --debug    run engine/game/ with the debug library
 #                                (engine/build/linux-debug) instead
+#   tools/packtool.sh --smoke    build and scan as for a start, then check
+#                                headless that every script compiles and the
+#                                tool finds bethconv (tools/ci/play_smoke.gd)
 #
 # GODOT=/path/to/godot overrides the Godot 4.7 binary; VCPKG_ROOT defaults to
 # ~/.local/opt/vcpkg. Extra arguments after -- go to Godot.
@@ -26,13 +29,15 @@ export VCPKG_ROOT="${VCPKG_ROOT:-$HOME/.local/opt/vcpkg}"
 
 rebuild=0
 debug=0
+smoke=0
 godot_args=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --rebuild) rebuild=1 ;;
         --debug) debug=1 ;;
+        --smoke) smoke=1 ;;
         --) shift; godot_args=("$@"); break ;;
-        -h|--help) sed -n '3,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '3,23p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown argument: $1 (see --help)" >&2; exit 2 ;;
     esac
     shift
@@ -82,6 +87,10 @@ if [[ ! -f "$project/.godot/extension_list.cfg" || ! -f "$cache" ]] ||
 fi
 
 export SKYDOT_BETHCONV="$bethconv"
+
+if [[ $smoke -eq 1 ]]; then
+    exec "$godot" --headless --path "$project" --script "$repo/tools/ci/play_smoke.gd"
+fi
 
 echo "== starting the pack tool ($godot, $preset)"
 exec "$godot" --path "$project" "${godot_args[@]}"

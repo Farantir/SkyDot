@@ -51,6 +51,19 @@
       "description": "Static libstdc++ is off so the link works without libstdc++-static; a build for other machines turns it back on (docs/godot-notes.md)."
     },
     {
+      "name": "linux-clang-werror",
+      "displayName": "Linux clang strict (as CI's linux-clang-debug)",
+      "description": "What tools/ci/check-strict.sh builds before a push: clang, warnings as errors. The library lands in build/linux-clang-werror/bin/, never in game/bin/; static libstdc++ is off so it links here.",
+      "inherits": "linux-debug",
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "SKYDOT_WERROR": "ON",
+        "GODOTCPP_USE_STATIC_CPP": "OFF",
+        "SKYDOT_OUTPUT_DIR": "${sourceDir}/build/linux-clang-werror/bin"
+      }
+    },
+    {
       "name": "windows-debug",
       "displayName": "Windows Debug (MSVC, template_debug, hot reload)",
       "inherits": "base",
@@ -92,6 +105,10 @@
     {
       "name": "linux-release",
       "configurePreset": "linux-release"
+    },
+    {
+      "name": "linux-clang-werror",
+      "configurePreset": "linux-clang-werror"
     },
     {
       "name": "windows-debug",

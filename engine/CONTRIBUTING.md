@@ -62,11 +62,18 @@ copied or linked.
   via `SkydotPack.get_error()` and in the error log.
 - Warnings are errors, `-Wconversion` included (`cmake/SkydotWarnings.cmake`).
   godot-cpp's headers are `SYSTEM`.
-- Before a PR:
+- Before a PR (the pre-push hook runs the last two):
   ```sh
   cmake --build --preset linux-debug && ctest --preset linux-debug
   ../tools/ci/check-no-game-data.sh
+  ../tools/ci/check-strict.sh        # clang, warnings as errors, as CI
+  ../tools/packtool.sh --smoke       # the play project's scripts compile
   ```
+- MSVC's C4242 shows up only in CI: an `int` turned into a narrower type
+  inside a standard template (`std::optional<std::uint8_t>` returned from an
+  `int` literal, a pair or vector of `std::uint8_t` built from `int`s).
+  Reviews flag it; write the narrow type explicitly (`std::uint8_t{1}`,
+  `static_cast`).
 - Code that does not touch Godot goes in `skydot_core` (see
   `extension/CMakeLists.txt`) and is covered by Catch2 tests in `tests/unit/`,
   which build their inputs in memory and need no editor. Anything else is a
