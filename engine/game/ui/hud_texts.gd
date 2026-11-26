@@ -20,6 +20,8 @@ const END_FRAME := 80
 const FADE_OUT_FRAME := 14
 const MESSAGE_SIZE := 24.0
 const MESSAGE_BOX := Vector2(327.6, 59.7)
+## The smallest the shrinking message font gets (assumed; Scaleform's own limit is not known).
+const MESSAGE_MIN_SIZE := 8.0
 const NAME_SIZE := 24.0
 ## Menus stretch their stage to the window as the game does (UiDraw.stage_fill): positions follow the x and y scales,
 ## glyphs the x scale.
@@ -232,22 +234,25 @@ func draw_messages(canvas: CanvasItem, area: Vector2) -> void:
 	var xform := _place(area, BASE + "MessagesBlock", "TL")
 	var font := _font()
 	var scale := xform.get_scale().x
-	var ys := xform.get_scale().y
 	for entry: Dictionary in _shown:
 		var alpha := _alpha(entry)
 		if alpha <= 0.0:
 			continue
 		var origin := xform * Vector2(2.4, 2.4 + MESSAGE_DROP + float(entry["y"]))
 		var text: String = entry["text"]
-		var size := MESSAGE_SIZE
-		var lines := UiDraw.wrap(font, text, int(size * scale), (MESSAGE_BOX.x - 4.0) * scale)
-		while lines.size() * size * 1.17 > MESSAGE_BOX.y - 2.0 and size > 10.0:  # textAutoSize "shrink"
-			size -= 1.0
-			lines = UiDraw.wrap(font, text, int(size * scale), (MESSAGE_BOX.x - 4.0) * scale)
-		var px := int(round(size * scale))
-		for k in lines.size():
-			var at := origin + Vector2(0.0, k * size * 1.17 * ys + font.get_ascent(px))
-			_draw(canvas, font, lines[k], at, px, Color(1, 1, 1, alpha), HORIZONTAL_ALIGNMENT_LEFT, -1.0)
+		var px := message_px(font, text, scale)
+		_draw(canvas, font, text, origin + Vector2(0.0, font.get_ascent(px)), px, Color(1, 1, 1, alpha),
+			HORIZONTAL_ALIGNMENT_LEFT, -1.0)
+
+
+## The message field (tf1) is one line, neither multiline nor wrapped, with textAutoSize "shrink": a text wider
+## than the box gets a smaller font, so it never runs into the message below. Pixels at `scale`.
+static func message_px(font: Font, text: String, scale: float) -> int:
+	var size := MESSAGE_SIZE
+	var width := (MESSAGE_BOX.x - 4.0) * scale
+	while size > MESSAGE_MIN_SIZE and font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(round(size * scale))).x > width:
+		size -= 1.0
+	return int(round(size * scale))
 
 
 ## The activation rollover: `prompt` as GameSession.activation_target gives it, `key` the activate key's name.

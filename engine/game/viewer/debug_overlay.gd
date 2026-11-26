@@ -11,6 +11,8 @@ extends CanvasLayer
 
 const NOTE_SECONDS := 8.0
 const NOTE_LINES := 6
+## With the game's HUD, the notes start this far down the window (its four message lines end above).
+const NOTES_BELOW_HUD := 0.3
 
 ## F3 toggles the performance line.
 var show_perf := true
@@ -172,6 +174,8 @@ func _show_lines() -> void:
 	for line in _lines:
 		texts.append(line.text)
 	_notes.text = "\n".join(texts)
+	# The game's HUD shows its messages at the top left: the notes go below them.
+	_notes.position.y = NOTES_BELOW_HUD * _notes.get_viewport_rect().size.y if HudGame.available() and _notes.is_inside_tree() else 16.0
 
 
 ## Toggle the journal on screen: running quests with displayed objectives, as
