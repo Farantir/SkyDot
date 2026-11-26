@@ -991,9 +991,26 @@ func _player_strike(power: bool, left: bool) -> void:
 	var event := EVENT_POWER if power else (EVENT_LIGHT_LEFT if left else EVENT_LIGHT)
 	var hit := _find_target(PLAYER_REF, origin, forward, _weapon, race, event, power)
 	if hit.is_empty():
+		_strike_object(origin, forward, rules.reach(_weapon, race))
 		return
 	var flags := SkydotPapyrus.HIT_POWER if power else 0
 	_deliver(PLAYER_REF, hit["ref"], _weapon_form, _weapon_extra, event, flags, hit["point"], race, _weapon)
+
+
+## A swing that met no actor: the first thing along the aim within `reach` (metres), if it is a destructible
+## reference (a web), takes the weapon's damage as DamageObject; its destruction stages open by it.
+func _strike_object(origin: Vector3, forward: Vector3, reach: float) -> void:
+	if _host == null or not _host.is_inside_tree():
+		return
+	var query := PhysicsRayQueryParameters3D.create(origin, origin + forward * reach, Magic.MASK)
+	var found := _host.get_world_3d().direct_space_state.intersect_ray(query)
+	if found.is_empty():
+		return
+	var ref := Magic._ref_of(found["collider"])
+	var base := int(_world.get_ref_info(_world.get_ref_cell(ref), ref).get("base", 0)) if ref != 0 else 0
+	if base == 0 or _world.get_destruction(base).is_empty():
+		return
+	_papyrus.damage_ref(ref, maxf(float(_weapon.get("damage", 0.0)), 1.0))
 
 
 func _npc_strike(data: Dictionary) -> void:
