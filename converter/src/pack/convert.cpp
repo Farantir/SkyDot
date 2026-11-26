@@ -420,9 +420,9 @@ void convert_assets(const archive::ArchiveSet& set, const ConvertOptions& option
 /// targets (NiStringsExtraData AttachT) in the root extras. 26: furniture
 /// markers in the root extras. 27: a skeleton's ragdoll (rigid bodies and
 /// constraints) in the root extras. 28: the inventory marker (BSInvMarker) in
-/// the root extras.
+/// the root extras. 29: transform shapes read column-major (their offsets were lost).
 std::string ConvertOptions::mesh_settings() const {
-    return "mesh/28;" + flag("collision", mesh_read.read_collision) + ";" +
+    return "mesh/29;" + flag("collision", mesh_read.read_collision) + ";" +
            flag("animations", mesh_read.read_animations) + ";" +
            flag("skinning", mesh_read.read_skinning) + ";" +
            flag("skip_empty", mesh_read.skip_empty_shapes) + ";" +
