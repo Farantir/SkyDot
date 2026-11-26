@@ -1512,7 +1512,7 @@ void make_actors(const TempDir& dir) {
     ctda.u32(0xFFFF'FFFF);
     bethconv::test::write_field(pack, "CTDA", ctda);
     ByteWriter pkcu;
-    pkcu.u32(3);
+    pkcu.u32(5);
     pkcu.u32(0x0100'0E41);
     pkcu.u32(1);
     bethconv::test::write_field(pack, "PKCU", pkcu);
@@ -1530,7 +1530,17 @@ void make_actors(const TempDir& dir) {
     bethconv::test::write_field(pack, "PTDA", ptda);
     field_text(pack, "ANAM", "Int");
     field_u32(pack, "CNAM", 7);
-    for (const int key : {0, 3, 5}) {
+    field_text(pack, "ANAM", "Topic"); // a DIAL
+    ByteWriter pdto;
+    pdto.u32(0);
+    pdto.u32(0x0100'0E7F);
+    bethconv::test::write_field(pack, "PDTO", pdto);
+    field_text(pack, "ANAM", "Topic"); // a subtype: no DIAL
+    ByteWriter subtype;
+    subtype.u32(1);
+    subtype.u32(0x4F4C'4548); // HELO
+    bethconv::test::write_field(pack, "PDTO", subtype);
+    for (const int key : {0, 3, 5, 7, 8}) {
         ByteWriter unam;
         unam.u8(static_cast<std::uint8_t>(key));
         bethconv::test::write_field(pack, "UNAM", unam);
@@ -1841,7 +1851,7 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     REQUIRE(pack->conditions.size() == 1);
     CHECK(pack->conditions[0]->function == 72);
     CHECK(pack->conditions[0]->param1 == 0x0200'0E30);
-    REQUIRE(pack->inputs.size() == 3);
+    REQUIRE(pack->inputs.size() == 5);
     CHECK(pack->inputs[0]->key == 0);
     CHECK(pack->inputs[0]->location_type == 0);
     CHECK(pack->inputs[0]->location_value == 0x0200'0E30);
@@ -1852,6 +1862,10 @@ TEST_CASE("world.fb carries what actors are built from, with global FormIDs", "[
     CHECK(pack->inputs[1]->target_value == 27); // an object type stays as it is
     CHECK(pack->inputs[2]->type == "Int");
     CHECK(pack->inputs[2]->number == 7.0F);
+    CHECK(pack->inputs[2]->topic == 0);
+    CHECK(pack->inputs[3]->type == "Topic");
+    CHECK(pack->inputs[3]->topic == 0x0200'0E7F); // global, as the other form ids
+    CHECK(pack->inputs[4]->topic == 0);
     CHECK(pack->branches.empty());
 }
 

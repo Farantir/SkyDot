@@ -2066,6 +2066,8 @@ table PackageInput {
     target_type: int = -1;
     target_value: uint32;
     target_count: int;
+    /// PDTO, for Topic: the DIAL (format 47); 0 for a subtype or none.
+    topic: uint32;
 }
 
 /// `PackageBranch.flags`: PRCB flags.

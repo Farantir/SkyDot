@@ -141,6 +141,10 @@ void AiCollector::on_package(const record::MergedRecord& merged, io::SpanReader&
                                   : in.target->value;
             w->target_count = in.target->count;
         }
+        // PDTO: a DIAL is kept; a subtype (four characters) is not.
+        if (!in.topics.empty() && in.topics.front().type == 0) {
+            w->topic = shared_.global(merged, FormId{in.topics.front().value}, failed);
+        }
         for (const auto& named : pack->public_inputs) {
             if (named.key == in.key) {
                 w->name = named.name;
@@ -183,7 +187,7 @@ AiCollector::write_packages(flatbuffers::FlatBufferBuilder& builder) {
             const auto name = optional_string(builder, in->name);
             inputs.push_back(wfb::CreatePackageInput(
                 builder, in->key, type, name, in->number, in->location_type, in->location_value,
-                in->location_radius, in->target_type, in->target_value, in->target_count));
+                in->location_radius, in->target_type, in->target_value, in->target_count, in->topic));
         }
         std::vector<flatbuffers::Offset<wfb::PackageBranch>> branches;
         branches.reserve(p.branches.size());
