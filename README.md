@@ -18,7 +18,7 @@ once after cloning.
 
 ## How to play
 
-SkyDot is early: 0.2.0 plays the start of the game, but not all of it, and
+SkyDot is early: 0.3.0 plays the start of the game, but not all of it, and
 much is still rough. You need your own copy of Skyrim Special Edition
 (Legendary Edition and VR data convert too).
 
@@ -29,14 +29,14 @@ much is still rough. You need your own copy of Skyrim Special Edition
 2. **Convert** tab: pick your Skyrim install (found automatically when Steam
    installed it), optionally a Mod Organizer 2 profile, and a folder for the
    pack. Converting the whole game takes a while and needs about 35 GB.
-   Packs from 0.1.0 must be converted again, and its saves do not load.
+   Packs from earlier versions must be converted again.
 3. **Packs** tab: pick the pack, choose where to start (a worldspace or an
    interior) and press *Open in the viewer*.
 
 The keys are the game's own, read from its `controlmap.txt`: WASD moves, Alt
 sprints, Shift walks, Space jumps, E activates, the mouse buttons attack and
-cast, Tab opens the Tween menu, I/P// the inventory, magic and skills, J the
-journal, T waits, Q the favorites. F5 saves, F9 loads, F12 takes a
+cast, Tab opens the Tween menu, I/P// the inventory, magic and skills, M the
+map, J the journal, T waits, Q the favorites. F5 saves, F9 loads, F12 takes a
 screenshot. A gamepad works too. The viewer's debug keys (V flies, K changes
 the weather, F8 moves the time) are listed at the top of
 `engine/game/viewer/cell_viewer.gd`.
@@ -56,10 +56,11 @@ What works:
   harvesting; smithing, tempering, alchemy and enchanting.
 - **Menus** in the game's look, taken from your install's own menu files:
   HUD and compass, inventory, magic, containers, favorites, crafting,
-  dialogue, skills and perks, level-up, training, journal, sleep and wait.
+  dialogue, skills and perks, level-up, training, journal, sleep and wait;
+  the world map with discovery and fast travel.
 - **VR** (OpenXR) and the Steam Deck, both still lightly tested.
 
-Not yet: the map, music, crime, followers, horses, merchants, lockpicking,
+Not yet: music, crime, followers, horses, merchants, lockpicking,
 books, the third-person camera, character creation and the main menu.
 
 From the command line the viewer starts directly:
