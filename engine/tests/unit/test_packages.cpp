@@ -462,6 +462,9 @@ TEST_CASE("procedures are known by their record names, the rest do nothing", "[a
         {"Wait", Procedure::wait},
         {"UnlockDoors", Procedure::unlock_doors},
         {"LockDoors", Procedure::lock_doors},
+        {"ForceGreet", Procedure::force_greet},
+        {"Follow", Procedure::follow},
+        {"Escort", Procedure::escort},
     };
     std::vector<std::string> names{ai::procedure_name(Procedure::other)};
     for (const auto& [name, procedure] : known) {
@@ -469,8 +472,8 @@ TEST_CASE("procedures are known by their record names, the rest do nothing", "[a
         CHECK(ai::procedure_of(name) == procedure);
         names.emplace_back(ai::procedure_name(procedure));
     }
-    // Follow, Escort, UseWeapon and the like have no handling: the actor stays put.
-    for (const char* name : {"Follow", "Escort", "UseWeapon", "", "travel"}) {
+    // UseWeapon, KeepAnEyeOn and the like have no handling: the actor stays put.
+    for (const char* name : {"UseWeapon", "KeepAnEyeOn", "", "travel"}) {
         CHECK(ai::procedure_of(name) == Procedure::other);
     }
     // Each has a name of its own for logs.
@@ -854,4 +857,85 @@ TEST_CASE("a random node asks each child's conditions once", "[ai][plan]") {
     const auto steps = plan_with(host, random_of({procedure("Travel", {}, {condition(k_true, eq, 1.0F)})}));
     CHECK(names(steps) == Names{"Travel"});
     CHECK(host.asked == 1);
+}
+
+// ---- the inputs a procedure reads by position --------------------------------
+
+TEST_CASE("a step keeps the inputs its procedure names in order, repeats and gaps included", "[ai][plan]") {
+    // The Follow template names its min distance twice (00 01 01 04 06 08).
+    Planner p({{.id = 1,
+                .inputs = {input(0, "SingleRef"), input(1, "Float", 128.0F), input(4, "Bool", 1.0F)},
+                .tree = procedure("Follow", {0, 1, 1, 4, 255, 9})}});
+    const auto steps = p.steps();
+    REQUIRE(steps.size() == 1);
+    const auto& s = steps[0];
+    CHECK(s.procedure == ai::Procedure::follow);
+    REQUIRE(s.params.size() == 6);
+    CHECK(s.params[0] == p.package.input(0));
+    CHECK(s.params[1] == p.package.input(1));
+    CHECK(s.params[2] == p.package.input(1));
+    CHECK(s.params[3] == p.package.input(4));
+    CHECK(s.params[4] == nullptr); // no key
+    CHECK(s.params[5] == nullptr); // no such input
+    CHECK(s.number(1) == 128.0);
+    CHECK(s.number(3) == 1.0);
+    CHECK(s.number(4, 256.0) == 256.0);
+    CHECK(s.number(9, 5.0) == 5.0);
+    CHECK(s.target == p.package.input(0));
+}
+
+TEST_CASE("two plans are the same when their steps run the same procedures with the same inputs", "[ai][plan]") {
+    Planner p({{.id = 1,
+                .inputs = {input(1, "Location"), input(2, "Float", 1.0F)},
+                .tree = sequence({procedure("Travel", {1}), procedure("ForceGreet", {2})})}});
+    const auto a = p.steps();
+    const auto b = p.steps();
+    REQUIRE(a.size() == 2);
+    CHECK(a[0].same_as(b[0]));
+    CHECK(a[1].same_as(b[1]));
+    CHECK_FALSE(a[0].same_as(a[1]));
+}
+
+TEST_CASE("a tree is planned again while it runs when a branch asks where actors are", "[ai][plan]") {
+    const auto within = condition(ai::k_get_within_package_location, eq, 1.0F, 0, 4);
+    const auto detected = condition(ai::k_get_detected, eq, 1.0F);
+    CHECK(ai::replans(Planner({{.id = 1, .tree = sequence({procedure("Travel", {}, {within})})}}).package));
+    CHECK(ai::replans(Planner({{.id = 1, .tree = stacked({procedure("Wait"), procedure("Travel", {}, {detected})})}})
+                          .package));
+    CHECK_FALSE(ai::replans(Planner({{.id = 1, .tree = sequence({procedure("Travel", {}, {truth(true)})})}}).package));
+    CHECK_FALSE(ai::replans(Planner({{.id = 1}}).package));
+}
+
+TEST_CASE("a condition run on package data asks about the reference its input names", "[ai][plan]") {
+    // The ForceGreet template asks whether the player (input 0x11) is within the trigger location.
+    ConditionSpec on_input = condition(k_true, eq, 1.0F);
+    on_input.run_on = ai::k_run_on_package_data;
+    on_input.param3 = 0x11;
+    const auto tree = procedure("Travel", {}, {on_input});
+    Planner named({{.id = 1, .inputs = {InputSpec{.key = 0x11, .type = "SingleRef", .target_type = 0, .target_value = 0x30}},
+                    .tree = tree}});
+    CHECK(names(named.steps()) == Names{"Travel"});
+    CHECK(named.host.subjects == std::vector<std::uint32_t>{0x30});
+    Planner self({{.id = 1, .inputs = {InputSpec{.key = 0x11, .type = "SingleRef", .target_type = 6}}, .tree = tree}});
+    CHECK(names(self.steps()) == Names{"Travel"});
+    CHECK(self.host.subjects == std::vector<std::uint32_t>{k_actor});
+}
+
+TEST_CASE("the reference an input names directly", "[ai][packages]") {
+    const BuiltWorld world(WorldSpec{
+        .packages = {{.id = 1,
+                      .inputs = {InputSpec{.key = 0, .type = "SingleRef", .target_type = 0, .target_value = 0x55},
+                                 InputSpec{.key = 1, .type = "TargetSelector", .target_type = 6},
+                                 InputSpec{.key = 2, .type = "Location", .location_type = 0, .location_value = 0x66},
+                                 InputSpec{.key = 3, .type = "Location", .location_type = 12},
+                                 InputSpec{.key = 4, .type = "Location", .location_type = 1, .location_value = 0x77},
+                                 input(5, "Float", 3.0F)}}}});
+    const auto pkg = ai::resolve_package(*world, 1);
+    const auto ref = [&](std::int32_t key) { return ai::input_ref(*pkg.input(key), k_actor); };
+    CHECK(ref(0) == 0x55);
+    CHECK(ref(1) == k_actor);
+    CHECK(ref(2) == 0x66);
+    CHECK(ref(3) == k_actor);
+    CHECK(ref(4) == 0); // in a cell, not near a reference
+    CHECK(ref(5) == 0);
 }

@@ -14,7 +14,8 @@
 //   children in order, a Stacked node the first child whose conditions
 //   pass, a Random node one at random, a Simultaneous node its first moving
 //   (or staying) procedure for as long as its Wait siblings say, after its
-//   Find siblings. Branch conditions are evaluated then, not again.
+//   Find siblings. Branch conditions are evaluated then, not again, unless
+//   they read where actors are (`replans`).
 //
 // Source for the record layout: xEdit's wbDefinitionsTES5.pas (PACK); for
 // what procedures do, how the vanilla templates use them (docs/ai.md).
@@ -86,7 +87,7 @@ const wfb::Package* find_package(const wfb::World& world, std::uint32_t id);
 Package resolve_package(const wfb::World& world, std::uint32_t id);
 
 /// What a step of a package does. Procedures without their own handling
-/// (Follow, Escort, UseWeapon, …) are `other`: the actor stays put.
+/// (UseWeapon, KeepAnEyeOn, …) are `other`: the actor stays put.
 enum class Procedure : std::uint8_t {
     travel,
     sandbox,
@@ -103,6 +104,9 @@ enum class Procedure : std::uint8_t {
     wait,
     unlock_doors,
     lock_doors,
+    force_greet,
+    follow,
+    escort,
     other,
 };
 
@@ -123,6 +127,15 @@ struct Step {
     /// Seconds after which the step is done (a Wait, or a Wait running
     /// alongside); 0: done when the procedure is, or never.
     double seconds = 0.0;
+    /// The inputs the procedure names, in its own parameter order (null for
+    /// an unset key or one the package lacks): Follow, Escort and ForceGreet
+    /// read their distances and topic by position.
+    std::vector<const wfb::PackageInput*> params;
+
+    /// The number of `params[i]` (a Bool, Int or Float), or `fallback`.
+    [[nodiscard]] double number(std::size_t i, double fallback = 0.0) const;
+    /// Whether two plans run the same procedures with the same inputs.
+    [[nodiscard]] bool same_as(const Step& other) const;
 };
 
 /// Seeded random numbers for Random nodes and GetRandomPercent.
@@ -135,6 +148,10 @@ std::vector<Step> plan_steps(const Package& pkg, const ConditionSource& source, 
 /// Whether the tree starts over when its steps are done (PRCB bit 0 on the
 /// root).
 bool repeats(const Package& pkg);
+/// Whether a branch condition of the tree reads where actors are
+/// (GetWithinPackageLocation, GetDetected): its plan is made again while it
+/// runs, as the ForceGreet template waits for the player to come close.
+bool replans(const Package& pkg);
 
 /// The package `actor` (whose NPC_ is `npc`) runs at `clock`: its NPC_'s
 /// packages, then its default package list, leaving out those `skip` names
@@ -156,5 +173,15 @@ std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t n
 /// GetNumericPackageData (612), which conditions inside a tree use to read
 /// the package's own inputs.
 inline constexpr std::uint16_t k_get_numeric_package_data = 612;
+inline constexpr std::uint16_t k_get_detected = 45;
+inline constexpr std::uint16_t k_get_within_package_location = 325;
+/// CTDA run on 6: the condition's subject is the reference of package data
+/// input `param3`.
+inline constexpr std::uint32_t k_run_on_package_data = 6;
+
+/// The reference a SingleRef, TargetSelector or near-reference Location
+/// input names when it names one directly (a specific reference, or `actor`
+/// itself); 0 otherwise.
+std::uint32_t input_ref(const wfb::PackageInput& in, std::uint32_t actor);
 
 } // namespace skydot::ai

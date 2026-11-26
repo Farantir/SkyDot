@@ -650,8 +650,9 @@ public:
     /// The player starts talking to `speaker`. {lines: [{text, seconds, info,
     /// first, last}], topics: [{id, text, said}], closed}. Lines are spoken
     /// one after the other; the host runs `dialogue_fragment` for an INFO at
-    /// its `first` line's start and its `last` line's end.
-    godot::Dictionary dialogue_open(std::int64_t speaker);
+    /// its `first` line's start and its `last` line's end. With `topic`
+    /// (a ForceGreet's), the speaker says that topic first.
+    godot::Dictionary dialogue_open(std::int64_t speaker, std::int64_t topic = 0);
     /// `speaker` says `topic` (a line the player's shouts, a grunt, a bark): the first INFO of the topic
     /// that passes for the speaker, as one line of `dialogue_open` ({text, seconds, voice, info, topic,
     /// first, last}); {} if no INFO passes or the topic is unknown. Its fragments are not run.

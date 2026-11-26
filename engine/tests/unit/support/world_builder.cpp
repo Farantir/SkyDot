@@ -53,7 +53,9 @@ flatbuffers::Offset<wfb::Package> package(Fbb& fbb, const PackageSpec& p) {
     const auto cs = conditions(fbb, p.conditions);
     std::vector<flatbuffers::Offset<wfb::PackageInput>> inputs;
     for (const auto& in : p.inputs) {
-        inputs.push_back(wfb::CreatePackageInputDirect(fbb, in.key, in.type.c_str(), nullptr, in.number));
+        inputs.push_back(wfb::CreatePackageInputDirect(fbb, in.key, in.type.c_str(), nullptr, in.number,
+                                                       in.location_type, in.location_value, in.location_radius,
+                                                       in.target_type, in.target_value));
     }
     std::vector<flatbuffers::Offset<wfb::PackageBranch>> tree;
     if (p.tree) {

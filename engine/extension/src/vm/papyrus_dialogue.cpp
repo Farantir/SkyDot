@@ -114,9 +114,11 @@ Dictionary SkydotPapyrus::dialogue_dictionary(const dialogue::Result& result) co
     return out;
 }
 
-Dictionary SkydotPapyrus::dialogue_open(std::int64_t speaker) {
+Dictionary SkydotPapyrus::dialogue_open(std::int64_t speaker, std::int64_t topic) {
     auto* logic = dialogue_.logic();
-    return logic != nullptr ? dialogue_dictionary(logic->open(static_cast<std::uint32_t>(speaker))) : Dictionary();
+    return logic != nullptr ? dialogue_dictionary(logic->open(static_cast<std::uint32_t>(speaker),
+                                                              static_cast<std::uint32_t>(topic)))
+                            : Dictionary();
 }
 
 Dictionary SkydotPapyrus::dialogue_choose(std::int64_t topic) {

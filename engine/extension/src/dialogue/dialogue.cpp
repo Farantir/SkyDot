@@ -416,6 +416,32 @@ Result Dialogue::open(std::uint32_t speaker) {
     return out;
 }
 
+Result Dialogue::open(std::uint32_t speaker, std::uint32_t topic_id) {
+    build_indexes();
+    const auto* topic = topic_id != 0 ? lookup(world_.dialogue_topics(), topic_id) : nullptr;
+    if (topic == nullptr) {
+        return open(speaker);
+    }
+    speaker_ = speaker;
+    blocking_only_ = false;
+    dice_ = true;
+    links_.clear();
+    exclusive_ = false;
+    const auto* chosen = pick(*topic, true);
+    if (chosen == nullptr) {
+        return open(speaker);
+    }
+    states_.set_speaker(speaker);
+    states_.mark_talked(speaker);
+    Result out;
+    speak(*topic, *chosen, out, true, 0);
+    finish(out);
+    if (out.closed) {
+        close();
+    }
+    return out;
+}
+
 Result Dialogue::peek(std::uint32_t speaker) {
     const auto saved_speaker = speaker_;
     const auto saved_blocking = blocking_only_;

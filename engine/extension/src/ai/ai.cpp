@@ -47,7 +47,14 @@ constexpr double k_think_interval = 1.5;
 constexpr double k_door_reach = 200.0;
 /// Game units: arrived at a travel destination, a bed, a marker.
 constexpr double k_arrive = 96.0;
+constexpr double k_edge_slack = 32.0;
 constexpr double k_stand_reach = 80.0;
+/// Game units: a ForceGreet speaks from here (assumed; the template's Travel brings it to 300-500).
+constexpr double k_greet_distance = 150.0;
+/// Follow's and Escort's distances when the package gives none (the Follow and Escort templates').
+constexpr double k_follow_min = 128.0;
+constexpr double k_follow_max = 256.0;
+constexpr double k_escort_wait = 512.0;
 /// A sandbox this close to its centre wanders; farther, it walks there.
 constexpr double k_min_sandbox = 256.0;
 /// Walks towards one spot before it counts as reached anyway (the navmesh
@@ -149,7 +156,7 @@ public:
     Mind* mind = nullptr;
 
     std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
-                                         const conditions::ConditionContext&) override {
+                                         const conditions::ConditionContext& ctx) override {
         switch (c.function()) {
         case conditions::fn::get_is_current_package:
             if (const auto it = ai_.minds_.find(subject); it != ai_.minds_.end()) {
@@ -159,6 +166,35 @@ public:
         case conditions::fn::get_random_percent:
             return mind != nullptr ? std::optional<double>(std::floor(ai_.roll(*mind) * 100.0))
                                    : std::nullopt;
+        case ai::k_get_within_package_location: {
+            // The subject is within the package's Location input `param1`.
+            const auto* in = ctx.package != nullptr ? ctx.package->input(static_cast<std::int32_t>(c.param1()))
+                                                    : nullptr;
+            if (in == nullptr || mind == nullptr) {
+                return std::nullopt;
+            }
+            const auto place = ai_.location_spot(*mind, *in);
+            const Spot here = spot_of(subject);
+            if (!place || here.space == 0 || here.space != place->space) {
+                return 0.0;
+            }
+            // Measured as a walk's arrival is, with a step of slack: a travel to the location ends on its edge.
+            return horizontal(here.position, place->position) <= std::max(place->radius, k_arrive) + k_edge_slack
+                       ? 1.0
+                       : 0.0;
+        }
+        case ai::k_get_detected: {
+            // The subject sees `param1` (with the package data flag: the reference of that input).
+            std::uint32_t target = c.param1();
+            if ((c.type() & static_cast<std::uint8_t>(wfb::ConditionFlags::use_package_data)) != 0) {
+                const auto* in = ctx.package != nullptr ? ctx.package->input(static_cast<std::int32_t>(c.param1()))
+                                                        : nullptr;
+                target = in != nullptr ? ai::input_ref(*in, subject) : 0;
+            }
+            const auto it = ai_.minds_.find(subject);
+            const SkydotActor* actor = it != ai_.minds_.end() ? ai_.node_of(it->second) : nullptr;
+            return actor != nullptr && target != 0 && ai_.sees(it->second, *actor, target) ? 1.0 : 0.0;
+        }
         default:
             return std::nullopt;
         }
@@ -291,6 +327,7 @@ void SkydotAi::_bind_methods() {
     ClassDB::bind_method(D_METHOD("get_furniture_state", "ref"), &SkydotAi::get_furniture_state);
     ClassDB::bind_method(D_METHOD("push_package", "ref", "package"), &SkydotAi::push_package);
     ClassDB::bind_method(D_METHOD("pop_package", "ref", "package"), &SkydotAi::pop_package);
+    ClassDB::bind_method(D_METHOD("greeted", "ref", "opened"), &SkydotAi::greeted);
     BIND_CONSTANT(PLACE_BUDGET_USEC);
     ClassDB::bind_method(D_METHOD("set_combat", "value"), &SkydotAi::set_combat);
     ClassDB::bind_method(D_METHOD("get_combat"), &SkydotAi::get_combat);
@@ -322,6 +359,9 @@ void SkydotAi::_bind_methods() {
                           PropertyInfo(Variant::INT, "shout"), PropertyInfo(Variant::STRING, "phase")));
     ADD_SIGNAL(MethodInfo("actor_arrived", PropertyInfo(Variant::INT, "ref")));
     ADD_SIGNAL(MethodInfo("actor_left", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "door")));
+    // A ForceGreet step is close to the player: open a dialogue with `ref` (saying `topic` first, 0 for the
+    // greeting) and answer with greeted().
+    ADD_SIGNAL(MethodInfo("force_greet", PropertyInfo(Variant::INT, "ref"), PropertyInfo(Variant::INT, "topic")));
 }
 
 godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::Ref<godot::RefCounted>& papyrus) {
@@ -391,6 +431,7 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
         });
     }
     persistent_.clear();
+    movers_.clear();
     attached_.clear();
     doors_.clear();
     const auto* root_fb = root(); // Null unless the world is valid and open.
@@ -398,12 +439,42 @@ godot::Error SkydotAi::setup(const godot::Ref<SkydotWorld>& world, const godot::
         return godot::ERR_UNCONFIGURED;
     }
     const auto& w = *root_fb;
+    // A package input naming a reference in another space than the actor's: the actor goes there
+    // even though it is not persistent (assumed: the game shows the Whiterun gate guard outside).
+    const auto leads_away = [&](const wfb::ActorRef& a, const std::vector<std::uint32_t>& packages) {
+        const auto home = world_->data().cell_space(a.cell());
+        for (const auto id : packages) {
+            const auto* p = ai::find_package(w, id);
+            if (p == nullptr || p->inputs() == nullptr) {
+                continue;
+            }
+            for (const auto* in : *p->inputs()) {
+                const auto ref = ai::input_ref(*in, 0);
+                if (ref == 0 || ref == k_player_ref || in->location_type() != near_reference) {
+                    continue;
+                }
+                const auto cell = static_cast<std::uint32_t>(world_->get_ref_cell(ref));
+                if (cell != 0 && world_->data().cell_space(cell) != home) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    };
     if (w.actors() != nullptr) {
         for (const auto* a : *w.actors()) {
-            if (formats::has_flag(a->flags(), wfb::RefFlags::persistent) &&
-                !world_->data().initially_disabled(*a) &&
-                !ai::package_list(w, a->base(), a->ref()).empty()) {
+            if (world_->data().initially_disabled(*a)) {
+                continue;
+            }
+            const auto packages = ai::package_list(w, a->base(), a->ref());
+            if (packages.empty()) {
+                continue;
+            }
+            if (formats::has_flag(a->flags(), wfb::RefFlags::persistent)) {
                 persistent_.push_back(a->ref());
+            } else if (leads_away(*a, packages)) {
+                persistent_.push_back(a->ref());
+                movers_.insert(a->ref());
             }
         }
     }
@@ -435,7 +506,7 @@ SkydotAi::Mind* SkydotAi::mind(std::uint32_t ref) {
     Mind m;
     m.ref = ref;
     m.npc = npc;
-    m.persistent = a != nullptr && formats::has_flag(a->flags(), wfb::RefFlags::persistent);
+    m.persistent = a != nullptr && (formats::has_flag(a->flags(), wfb::RefFlags::persistent) || movers_.contains(ref));
     m.dice = 0x9E3779B97F4A7C15ull ^ (static_cast<std::uint64_t>(ref) * 0xBF58476D1CE4E5B9ull);
     m.think = static_cast<double>(ref % 97) / 97.0 * k_think_interval;
     m.idle = static_cast<double>(ref % 89) / 89.0 * SkydotActor::ai_interval(2);
@@ -476,6 +547,11 @@ void SkydotAi::set_space(std::int64_t space) {
 std::optional<SkydotAi::Spot> SkydotAi::ref_spot(std::uint32_t ref) const {
     if (ref == 0 || root() == nullptr) {
         return std::nullopt;
+    }
+    if (ref == k_player_ref) {
+        // The player is where set_player said, in the space on screen.
+        return player_known_ && space_ != 0 ? std::optional<Spot>(Spot{space_, player_position_, 0.0F, 0.0, ref})
+                                            : std::nullopt;
     }
     if (const auto it = minds_.find(ref); it != minds_.end() && it->second.node != 0) {
         return Spot{it->second.space, it->second.last, 0.0F, 0.0, ref};
@@ -703,10 +779,12 @@ std::optional<SkydotAi::Spot> SkydotAi::step_spot(Mind& m, const ai::Step& s) {
             }
         }
         return s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
+    case Procedure::follow:
+        return s.target != nullptr ? target_spot(m, *s.target) : std::nullopt;
     case Procedure::wait:
     case Procedure::other:
         return std::nullopt;
-    default:
+    default: // ForceGreet's place is its target's; Escort's is where it leads to
         return s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
     }
 }
@@ -731,8 +809,10 @@ std::optional<SkydotAi::Spot> SkydotAi::settled_spot(Mind& m) {
             do_find(m, s);
             continue;
         }
+        // Following and greeting go after another actor: no place of their own.
         if (s.procedure == Procedure::wait || s.procedure == Procedure::other ||
-            s.procedure == Procedure::unlock_doors || s.procedure == Procedure::lock_doors) {
+            s.procedure == Procedure::unlock_doors || s.procedure == Procedure::lock_doors ||
+            s.procedure == Procedure::force_greet || s.procedure == Procedure::follow) {
             continue;
         }
         if (auto spot = step_spot(m, s)) {
@@ -886,12 +966,39 @@ bool SkydotAi::choose(Mind& m) {
                         ? forced->second.back()
                         : ai::choose_package(*root(), packages_of(m), m.ref, clock_, host, skip);
     if (id == m.package && !m.steps.empty()) {
+        replan(m);
         return false;
     }
     const auto previous = m.package;
     m.package = id;
     start_package(m, previous);
     return previous != id;
+}
+
+bool SkydotAi::replan(Mind& m, bool finished) {
+    if (m.package == 0 || (!finished && m.step >= m.steps.size())) {
+        return false;
+    }
+    const auto pkg = ai::resolve_package(*root(), m.package);
+    if (!ai::replans(pkg)) {
+        return false;
+    }
+    conditions_->mind = &m;
+    const ai::ConditionSource host(*conditions_, conditions_.get());
+    auto steps = ai::plan_steps(pkg, host, m.ref, [&]() { return roll(m); });
+    if (std::ranges::equal(steps, m.steps, [](const ai::Step& a, const ai::Step& b) { return a.same_as(b); })) {
+        return false;
+    }
+    m.steps = std::move(steps);
+    m.step = 0;
+    m.step_started = false;
+    m.step_time = 0.0;
+    m.target.reset();
+    m.door = 0;
+    m.failures = 0;
+    m.walks = 0;
+    m.greet_opened = false;
+    return true;
 }
 
 void SkydotAi::push_package(std::int64_t ref, std::int64_t package) {
@@ -934,6 +1041,7 @@ void SkydotAi::start_package(Mind& m, std::uint32_t previous) {
     m.patrol.clear();
     m.lists.clear();
     m.announced = false;
+    m.greet_opened = false;
     if (m.package == 0) {
         return;
     }
@@ -1454,6 +1562,8 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
         if (!m.steps.empty() && ai::repeats(pkg)) {
             m.step = 0;
             m.step_started = false;
+        } else if (!m.steps.empty() && replan(m, true)) {
+            // Its branches chose again from where the actor now is (a ForceGreet's travel, then the greeting).
         } else if (!m.steps.empty()) {
             // Done: the next package that applies takes over.
             m.completed[m.package] = clock_.days;
@@ -1568,6 +1678,18 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
             }
         }
         return;
+    case Procedure::force_greet:
+        force_greet_step(m, actor, s, seconds);
+        return;
+    case Procedure::follow:
+        follow_step(m, actor, s, seconds);
+        if (timed_out) {
+            next_step(m);
+        }
+        return;
+    case Procedure::escort:
+        escort_step(m, actor, s, seconds);
+        return;
     default: // Sleep, sit, eat, idle markers, activate, hold position: use the furniture, or go and stay.
         actor.set_wander(false);
         if (furniture_step(m, actor, s, seconds)) {
@@ -1583,6 +1705,117 @@ void SkydotAi::steer(Mind& m, SkydotActor& actor, double seconds) {
             next_step(m);
         }
         return;
+    }
+}
+
+// ---- going after another actor ---------------------------------------------
+
+void SkydotAi::chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds) {
+    // The target moves: a walk that ends far from where it is now is given up for a new one.
+    if (actor.is_walking()) {
+        const auto path = actor.get_path();
+        if (!path.is_empty() &&
+            horizontal(SkydotWorld::godot_to_skyrim(path[path.size() - 1]), spot.position) > std::max(reach, k_arrive)) {
+            actor.stop();
+        }
+    }
+    m.walks = 0; // never "close enough" after a few walks: the distance decides
+    go(m, actor, spot, reach, seconds);
+}
+
+void SkydotAi::force_greet_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds) {
+    actor.set_wander(false);
+    if (m.greet_opened) {
+        actor.clear_look_target();
+        next_step(m);
+        return;
+    }
+    m.greet_wait = std::max(0.0, m.greet_wait - seconds);
+    // Whom to greet: the reference of its place (ForceGreetLoc, the player), where it is now.
+    m.target = s.location != nullptr ? location_spot(m, *s.location) : std::nullopt;
+    if (!m.target || m.target->ref == 0 || m.target->ref == m.ref || m.target->space != m.space ||
+        (m.target->ref == k_player_ref && !player_alive_)) {
+        return; // no one here to greet: it stands
+    }
+    const double distance = horizontal(m.last, m.target->position);
+    if (m.target->radius > 0.0 && distance > m.target->radius) {
+        return; // out of its reach
+    }
+    if (distance > k_greet_distance) {
+        actor.clear_look_target();
+        chase(m, actor, *m.target, k_greet_distance * 0.8, seconds);
+        return;
+    }
+    if (actor.is_walking()) {
+        actor.stop();
+    }
+    actor.set_look_target(SkydotWorld::skyrim_position(m.target->position));
+    if (m.greet_wait > 0.0 || m.target->ref != k_player_ref) {
+        return; // only the player is greeted (an NPC target would need a conversation)
+    }
+    const auto* topic = !s.params.empty() ? s.params[0] : nullptr;
+    const std::uint32_t topic_id = topic != nullptr ? topic->topic() : 0; // world.fb 47 on
+    emit_signal("force_greet", static_cast<std::int64_t>(m.ref), static_cast<std::int64_t>(topic_id));
+    if (m.greet_opened) {
+        actor.clear_look_target();
+        next_step(m);
+    } else {
+        m.greet_wait = world_->get_gmst_float("fAIForceGreetingTimer", 3.0);
+    }
+}
+
+void SkydotAi::greeted(std::int64_t ref, bool opened) {
+    if (Mind* m = mind(static_cast<std::uint32_t>(ref))) {
+        m->greet_opened = opened;
+    }
+}
+
+void SkydotAi::follow_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds) {
+    // Parameters: target, min distance, max distance (the vanilla templates name the min input
+    // twice), then accompany, ride horse, need LOS.
+    actor.set_wander(false);
+    m.target = s.target != nullptr ? target_spot(m, *s.target) : std::nullopt;
+    if (!m.target || m.target->ref == m.ref) {
+        return;
+    }
+    const double near = std::max(s.number(1, k_follow_min), k_stand_reach);
+    const double far = std::max(s.number(2, k_follow_max), near);
+    if (m.target->space != m.space) {
+        go(m, actor, *m.target, near, seconds); // through the door it went
+        return;
+    }
+    const double distance = horizontal(m.last, m.target->position);
+    if (distance > far || (actor.is_walking() && distance > near)) {
+        chase(m, actor, *m.target, near, seconds);
+    } else if (actor.is_walking()) {
+        actor.stop();
+    }
+}
+
+void SkydotAi::escort_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds) {
+    // Parameters: the escorted, the number of followers, the place, the distance to wait at, the
+    // follower's min and max distance, ride horse, preferred path, run if behind.
+    actor.set_wander(false);
+    if (!m.target) {
+        next_step(m);
+        return;
+    }
+    const auto escorted = s.target != nullptr ? target_spot(m, *s.target) : std::nullopt;
+    const double wait = s.number(3, k_escort_wait);
+    if (escorted && escorted->ref != m.ref &&
+        (escorted->space != m.space || horizontal(m.last, escorted->position) > wait)) {
+        // Behind: it waits, turned to the one it escorts.
+        if (actor.is_walking()) {
+            actor.stop();
+        }
+        if (escorted->space == m.space) {
+            actor.set_look_target(SkydotWorld::skyrim_position(escorted->position));
+        }
+        return;
+    }
+    actor.clear_look_target();
+    if (go(m, actor, *m.target, std::max(m.target->radius, k_arrive), seconds)) {
+        next_step(m);
     }
 }
 

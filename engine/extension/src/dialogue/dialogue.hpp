@@ -86,6 +86,10 @@ public:
 
     /// The player starts talking to `speaker`.
     Result open(std::uint32_t speaker);
+    /// `speaker` starts talking to the player with `topic` (a ForceGreet
+    /// package's): its first INFO that passes, then what that lists. Without
+    /// one that passes, as `open`.
+    Result open(std::uint32_t speaker, std::uint32_t topic);
     /// The player picks a topic of the list.
     Result choose(std::uint32_t topic);
     void close();

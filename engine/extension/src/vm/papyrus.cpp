@@ -257,7 +257,7 @@ void SkydotPapyrus::_bind_methods() {
                                 &SkydotPapyrus::perk_entry_texts, DEFVAL(godot::Dictionary()));
     godot::ClassDB::bind_method(D_METHOD("set_progression_handler", "handler"), &SkydotPapyrus::set_progression_handler);
     godot::ClassDB::bind_method(D_METHOD("dialogue_can_talk", "ref"), &SkydotPapyrus::dialogue_can_talk);
-    godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker"), &SkydotPapyrus::dialogue_open);
+    godot::ClassDB::bind_method(D_METHOD("dialogue_open", "speaker", "topic"), &SkydotPapyrus::dialogue_open, DEFVAL(0));
     godot::ClassDB::bind_method(D_METHOD("topic_line", "speaker", "topic"), &SkydotPapyrus::topic_line);
     godot::ClassDB::bind_method(D_METHOD("dialogue_choose", "topic"), &SkydotPapyrus::dialogue_choose);
     godot::ClassDB::bind_method(D_METHOD("dialogue_close"), &SkydotPapyrus::dialogue_close);

@@ -22,22 +22,35 @@ constexpr int k_max_chain = 8;
 constexpr std::int32_t k_no_key = 255;
 
 /// Answers GetNumericPackageData from a package's inputs, the rest from the
-/// caller's overrides.
+/// caller's overrides; a condition run on package data runs on the reference
+/// of that input.
 class PackageDataOverrides final : public conditions::ConditionOverrides {
 public:
-    PackageDataOverrides(const Package& pkg, conditions::ConditionOverrides* inner)
-        : pkg_(pkg), inner_(inner) {}
+    PackageDataOverrides(const Package& pkg, const ConditionSource& source, std::uint32_t actor)
+        : pkg_(pkg), inner_(source.overrides), world_(source.world), actor_(actor) {}
     std::optional<double> function_value(const wfb::Condition& c, std::uint32_t subject,
                                          const conditions::ConditionContext& ctx) override {
         if (c.function() == k_get_numeric_package_data) {
             return pkg_.number(static_cast<std::int32_t>(c.param1()));
         }
-        return inner_ != nullptr ? inner_->function_value(c, subject, ctx) : std::nullopt;
+        conditions::ConditionContext with = ctx;
+        with.package = &pkg_;
+        if (c.run_on() == k_run_on_package_data && subject == 0 && world_ != nullptr) {
+            const auto* in = pkg_.input(c.param3());
+            subject = in != nullptr ? input_ref(*in, actor_) : 0;
+            if (auto v = inner_ != nullptr ? inner_->function_value(c, subject, with) : std::nullopt) {
+                return v;
+            }
+            return conditions::function_value(c, subject, with, *world_);
+        }
+        return inner_ != nullptr ? inner_->function_value(c, subject, with) : std::nullopt;
     }
 
 private:
     const Package& pkg_;
     conditions::ConditionOverrides* inner_;
+    conditions::ConditionWorld* world_;
+    std::uint32_t actor_;
 };
 
 conditions::ConditionContext context_of(std::uint32_t actor) {
@@ -72,7 +85,7 @@ std::string_view sv(const flatbuffers::String* s) {
 class Planner {
 public:
     Planner(const Package& pkg, const ConditionSource& source, std::uint32_t actor, const Dice& dice)
-        : pkg_(pkg), data_(pkg, source.overrides), host_(*source.world, &data_), actor_(actor),
+        : pkg_(pkg), data_(pkg, source, actor), host_(*source.world, &data_), actor_(actor),
           dice_(dice) {}
 
     std::vector<Step> run() {
@@ -181,10 +194,8 @@ private:
         s.procedure = procedure_of(s.name);
         if (const auto* keys = b.inputs()) {
             for (const auto key : *keys) {
-                if (key == k_no_key) {
-                    continue;
-                }
-                const auto* in = pkg_.input(key);
+                const auto* in = key != k_no_key ? pkg_.input(key) : nullptr;
+                s.params.push_back(in);
                 if (in == nullptr) {
                     continue;
                 }
@@ -325,6 +336,9 @@ Procedure procedure_of(std::string_view name) {
         {"Wait", Procedure::wait},
         {"UnlockDoors", Procedure::unlock_doors},
         {"LockDoors", Procedure::lock_doors},
+        {"ForceGreet", Procedure::force_greet},
+        {"Follow", Procedure::follow},
+        {"Escort", Procedure::escort},
     };
     for (const auto& [n, p] : k_names) {
         if (n == name) {
@@ -351,6 +365,9 @@ const char* procedure_name(Procedure p) {
     case Procedure::wait: return "wait";
     case Procedure::unlock_doors: return "unlock_doors";
     case Procedure::lock_doors: return "lock_doors";
+    case Procedure::force_greet: return "force_greet";
+    case Procedure::follow: return "follow";
+    case Procedure::escort: return "escort";
     case Procedure::other: return "other";
     }
     return "other";
@@ -365,6 +382,52 @@ bool repeats(const Package& pkg) {
     const auto* branches = pkg.tree != nullptr ? pkg.tree->branches() : nullptr;
     return branches != nullptr && branches->size() != 0 &&
            formats::has_flag(branches->Get(0)->flags(), wfb::BranchFlags::repeat_when_complete);
+}
+
+bool replans(const Package& pkg) {
+    const auto* branches = pkg.tree != nullptr ? pkg.tree->branches() : nullptr;
+    if (branches == nullptr) {
+        return false;
+    }
+    for (const auto* b : *branches) {
+        if (const auto* list = b->conditions()) {
+            for (const auto* c : *list) {
+                if (c->function() == k_get_within_package_location || c->function() == k_get_detected) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+double Step::number(std::size_t i, double fallback) const {
+    return i < params.size() && params[i] != nullptr ? static_cast<double>(params[i]->number()) : fallback;
+}
+
+bool Step::same_as(const Step& other) const {
+    return procedure == other.procedure && name == other.name && location == other.location &&
+           target == other.target && list_key == other.list_key && seconds == other.seconds &&
+           params == other.params;
+}
+
+std::uint32_t input_ref(const wfb::PackageInput& in, std::uint32_t actor) {
+    constexpr std::int32_t k_specific_reference = 0;
+    constexpr std::int32_t k_self = 6;
+    constexpr std::int32_t k_near_reference = 0;
+    constexpr std::int32_t k_near_self = 12;
+    const std::string_view type = sv(in.type());
+    if (type == "SingleRef" || type == "TargetSelector") {
+        return in.target_type() == k_specific_reference ? in.target_value()
+               : in.target_type() == k_self             ? actor
+                                                        : 0;
+    }
+    if (type == "Location") {
+        return in.location_type() == k_near_reference ? in.location_value()
+               : in.location_type() == k_near_self    ? actor
+                                                      : 0;
+    }
+    return 0;
 }
 
 std::vector<std::uint32_t> package_list(const wfb::World& world, std::uint32_t npc, std::uint32_t actor) {
@@ -413,7 +476,7 @@ std::uint32_t choose_package(const wfb::World& world, const std::vector<std::uin
             return id;
         }
         const auto pkg = resolve_package(world, id);
-        PackageDataOverrides data(pkg, host.overrides);
+        PackageDataOverrides data(pkg, host, actor);
         if (conditions_pass(pkg.own->conditions(), ConditionSource(*host.world, &data), actor)) {
             return id;
         }

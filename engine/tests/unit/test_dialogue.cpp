@@ -322,6 +322,25 @@ TEST_CASE("links list their topics, Invisible Continue speaks the next, Goodbye 
     CHECK(topic_texts(r) == std::vector<std::string>{"Only me"});
 }
 
+TEST_CASE("a ForceGreet opens on its topic; one with nothing to say greets as usual", "[dialogue]") {
+    Built world({{.id = 0x100}},
+                {{.id = 1, .start = 10}, {.id = 2, .start = 12}},
+                {{.id = 10, .text = "Start", .branch = 1, .infos = {{.id = 100, .lines = {"Pick."}}}},
+                 {.id = 12, .text = "Halt", .branch = 2, .infos = {{.id = 102, .lines = {"Halt!"}, .links = {13}}}},
+                 {.id = 13, .text = "News", .branch = 2, .infos = {{.id = 103, .lines = {"Go on."}}}},
+                 {.id = 14, .text = "Silent", .branch = 2, .infos = {{.id = 104, .lines = {"No."}, .speakers = {0x999}}}},
+                 {.id = 20, .quest = 0x100, .subtype = k_gree, .infos = {{.id = 200, .lines = {"Hello."}}}}});
+    Rig rig;
+    dialogue::Dialogue d(*world, rig.states, rig.conditions, rig.host);
+    auto r = d.open(0x20, 12);
+    CHECK(texts(r) == std::vector<std::string>{"Halt!"});
+    CHECK(topic_texts(r).front() == "News");
+    CHECK(rig.states.speaker() == 0x20);
+    CHECK(rig.states.talked_to_player(0x20));
+    d.close();
+    CHECK(texts(d.open(0x20, 14)) == std::vector<std::string>{"Hello."});
+}
+
 TEST_CASE("a quest's dialogue conditions and a topic's quest gate its topics", "[dialogue]") {
     Built world({{.id = 0x100, .gate_global = 0x500}}, {{.id = 1, .start = 10}},
                 {{.id = 10, .text = "Gated", .branch = 1, .infos = {{.id = 100, .lines = {"Open."}}}}});

@@ -9,6 +9,10 @@
 //   stand at a bed or marker, patrol linked markers). A place in another
 //   space is reached through load doors: the actor walks to the door, goes
 //   through, and is gone from this space.
+// - A ForceGreet step walks to its target (the player) and, close enough,
+//   emits `force_greet` (ref, topic); the game layer opens the dialogue and
+//   answers with `greeted`. Follow keeps within its distances of a target;
+//   Escort walks to its place, waiting while the escorted falls behind.
 // - Persistent actors that are not built are where their package says:
 //   `place_actors` moves them there (SkydotWorld.set_actor_place), so cells
 //   built afterwards build them there. One whose package brings it into the
@@ -51,6 +55,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <unordered_map>
 #include <vector>
 
@@ -138,6 +143,10 @@ public:
     void pop_package(std::int64_t ref, std::int64_t package);
     /// Where `ref`'s package wants it now (space, position, radius), or empty.
     godot::Dictionary get_destination(std::int64_t ref);
+    /// The answer to `force_greet`: whether the dialogue opened. Opened, the
+    /// step is done; refused, the actor asks again after
+    /// fAIForceGreetingTimer.
+    void greeted(std::int64_t ref, bool opened);
 
     // ---- combat (ai_combat.cpp; rules in combat_rules.hpp) ----
 
@@ -317,6 +326,8 @@ private:
         std::uint32_t furniture_skip{};  ///< A furniture it cannot use (no idle, no graph): not tried again.
         bool fresh{};                    ///< Attached and not yet at a step that moves: placed, not walking.
         bool placed{};                   ///< The current step began with the actor placed (not walked) to it.
+        double greet_wait{};             ///< Seconds before a refused ForceGreet asks again.
+        bool greet_opened{};             ///< `greeted` said the dialogue opened.
     };
 
     class Conditions;
@@ -363,6 +374,15 @@ private:
     void do_find(Mind& m, const ai::Step& s);
     bool has_lock(std::uint32_t door) const;
     void steer(Mind& m, SkydotActor& actor, double seconds);
+    /// The ForceGreet, Follow and Escort steps (they go after another actor).
+    void force_greet_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
+    void follow_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
+    void escort_step(Mind& m, SkydotActor& actor, const ai::Step& s, double seconds);
+    /// Walk after a moving `spot` until within `reach`.
+    void chase(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds);
+    /// A tree that reads where actors are is planned again; true if its steps changed. `finished`: also
+    /// once its steps ran out.
+    bool replan(Mind& m, bool finished = false);
     /// Walk towards `spot`; true once within `reach` game units of it.
     bool go(Mind& m, SkydotActor& actor, const Spot& spot, double reach, double seconds);
     void next_step(Mind& m);
@@ -495,7 +515,11 @@ private:
     double since_placed_{}; ///< Game seconds since the last pass started.
     bool placed_{}; ///< Whether any pass has run.
     std::unordered_map<std::uint32_t, Mind> minds_;
-    std::vector<std::uint32_t> persistent_; ///< Persistent actors with packages.
+    /// Actors placed while not built: persistent ones with packages, and the
+    /// others whose own package inputs name a reference in another space (the
+    /// Whiterun gate guard waits outside the gate, placed inside the city).
+    std::vector<std::uint32_t> persistent_;
+    std::set<std::uint32_t> movers_; ///< Of those, the ones not persistent.
     std::vector<std::uint32_t> attached_;
     /// While place() runs: door -> locked, unlocking winning, applied at its
     /// end (residents of one house may run different packages).

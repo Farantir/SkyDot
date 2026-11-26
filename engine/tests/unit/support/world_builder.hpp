@@ -71,6 +71,13 @@ struct InputSpec {
     /// Bool, Int, Float, Location, SingleRef, TargetSelector, ObjectList...
     std::string type;
     float number = 0.0F;
+    /// A SingleRef's or TargetSelector's PTDA: 0 a reference (`target_value`), 6 the actor itself.
+    std::int32_t target_type = -1;
+    std::uint32_t target_value = 0;
+    /// A Location's PLDT: 0 near a reference (`location_value`), 12 the actor itself.
+    std::int32_t location_type = -1;
+    std::uint32_t location_value = 0;
+    std::int32_t location_radius = 0;
 };
 
 [[nodiscard]] inline InputSpec input(std::int8_t key, std::string type, float number = 0.0F) {

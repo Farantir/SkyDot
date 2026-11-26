@@ -44,7 +44,12 @@ starts, the tree is flattened into steps:
   stays, for as long as the Waits beside it say.
 - Branch conditions are evaluated then, once; GetNumericPackageData (612)
   reads the package's own inputs, which is how Sandbox runs its Travel and
-  UnlockDoors only when "Unlock On Arrival?" is set.
+  UnlockDoors only when "Unlock On Arrival?" is set. A condition run on
+  package data (run_on 6) asks about the reference its input `param3` names.
+- A tree whose branches read where actors are (GetWithinPackageLocation,
+  GetDetected) is planned again on each think and when its steps run out;
+  new steps replace the old. That is how the ForceGreet template travels
+  to the player and then greets.
 
 A step's place comes from its procedure's first Location input (PLDT):
 near a reference, in a cell (by its door), near the editor location (where
@@ -64,7 +69,10 @@ Find put in an ObjectList input.
 | Find | the nearest bed (FURN named "bed"), chair ("chair", "bench", "stool", "throne", "seat"), furniture or base within the radius that no other actor has found or uses, for the steps after it |
 | UnlockDoors, LockDoors | the load doors of the place's interior (outside: those within its radius + 1024 units); only doors with a lock are locked |
 | Wait | stands for its seconds |
-| anything else (Follow, Escort, ForceGreet, UseWeapon, …) | stands |
+| ForceGreet | walks up to the player (input 2, ForceGreetLoc, within its radius) until 150 units away (assumed), faces them and opens the dialogue on its Topic (`force_greet`; the step ends when it opens; refused, it tries again after fAIForceGreetingTimer, 3 s); only the player is greeted |
+| Follow | keeps between its min and max distance (inputs 1 and 2; the template's 128 and 256) of its target, through doors |
+| Escort | walks to its destination (input 3) while the escorted (its target) is within the wait distance (input 4; 512), else stops and waits; done on arrival |
+| anything else (UseWeapon, KeepAnEyeOn, Shout, …) | stands |
 
 Run speed: when the package's "preferred speed" flag (0x2000) is set and its
 speed is Run; otherwise actors walk.
@@ -89,6 +97,10 @@ around the camera.
   (`actor_arrived`; the viewer builds it) and walks on.
 - A built actor whose cell is freed stays where it was (or where its walk
   was going).
+
+Non-persistent actors whose own package names a Location near a reference
+in another space count as persistent here (220 in SE): the Whiterun gate
+guard lives in WhiterunWorld and waits outside the gate in Tamriel.
 
 A pass runs over every persistent actor with packages (1,771 in SE with
 the CC plugins; about 75 ms in a debug build, the first 470 ms) before a
@@ -120,8 +132,10 @@ GetIsID, GetIsReference, GetInFaction, GetFactionRank, GetIsRace, GetIsSex,
 GetStage, GetStageDone, GetQuestRunning, GetQuestCompleted, GetGlobalValue,
 GetVMQuestVariable (through the quest's scripts), HasLinkedRef, GetDisabled,
 GetRandomPercent, GetCurrentTime, GetDayOfWeek, GetIsCurrentPackage,
-IsInInterior, GetInCell, GetInWorldspace, GetDistance, and
-GetNumericPackageData inside a tree. Every other function is 0, which is
+IsInInterior, GetInCell, GetInWorldspace, GetDistance (the player too),
+and inside a tree GetNumericPackageData, GetWithinPackageLocation (the
+subject within the Location input `param1`'s radius, horizontally, with 32
+units of slack) and GetDetected (the subject's AI sees the target). Every other function is 0, which is
 what most "is it so?" functions are by default (GetDead, GetSleeping,
 IsInCombat, GetPlayerTeammate). GetActorValue is 0 as well, so packages
 gated on Variable01-10 behave as for an actor no script has touched.
@@ -181,8 +195,10 @@ Alvor's house at 08:00 Alvor and Sigrid leave through the front door.
 - Doors on the way are not opened; actors pass through closed doors inside
   a space as the navmesh allows. Load doors are used without the door
   animation.
-- Follow, Escort, ForceGreet, KeepAnEyeOn, Shout, UseWeapon, Flee, Acquire,
-  CarryAndDropItem's carrying: the actor stands.
+- KeepAnEyeOn, Shout, UseWeapon, Flee, Acquire, CarryAndDropItem's
+  carrying: the actor stands. A ForceGreet greets only the player and does
+  not check menus; Follow and Escort do not ride or keep formation
+  (fFollowSpaceBetweenFollowers).
 - Location aliases, "object id/type" locations, GetInCurrentLoc and other
   location (LCTN) conditions: no cell-to-location mapping yet.
 - Horses (RideHorseIfPossible), swimming, preferred paths.

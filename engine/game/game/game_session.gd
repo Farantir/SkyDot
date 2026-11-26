@@ -320,6 +320,9 @@ func _open_world() -> bool:
 		clock.attach_ai(ai)
 		ai.drive = world.actor_wander
 		ai.actor_left.connect(_on_actor_left)
+		# A ForceGreet close to the player: the actor starts the talk (refused while one is open).
+		ai.force_greet.connect(func(ref: int, topic: int) -> void:
+			ai.greeted(ref, dialogue_open(ref, topic)))
 		papyrus.scene_package.connect(func(actor: int, package: int, push: bool) -> void:
 			if push:
 				ai.push_package(actor, package)
@@ -1430,12 +1433,13 @@ func ref_name(ref: int) -> String:
 
 
 ## The player talks to `ref`: its lines play (`dialogue_line`), then the topics
-## come (`dialogue_topics`). False if `ref` cannot talk or a dialogue is open.
-func dialogue_open(ref: int) -> bool:
+## come (`dialogue_topics`). With `topic` (a ForceGreet's) `ref` says it first.
+## False if `ref` cannot talk or a dialogue is open.
+func dialogue_open(ref: int, topic := 0) -> bool:
 	if _talk_speaker != 0 or not papyrus.dialogue_can_talk(ref):
 		return false
 	_talk_speaker = ref
-	_begin_talk(papyrus.dialogue_open(ref))
+	_begin_talk(papyrus.dialogue_open(ref, topic))
 	return true
 
 
