@@ -370,6 +370,14 @@ struct Reference {
     };
     std::optional<Lock> lock;
 
+    /// XPRD, XPPA, INAM (3,179 in Skyrim.esm): a patrol point, the seconds a
+    /// patroller waits there and the IDLE it plays. Source: UESP, REFR record.
+    struct Patrol {
+        float idle_time{};
+        FormId idle;
+    };
+    std::optional<Patrol> patrol;
+
     /// XRGD/XRGB (ragdoll state saved by the Creation Kit) and editor-only
     /// fields are tallied, not stored.
 

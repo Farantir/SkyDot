@@ -115,6 +115,14 @@ struct RefOwner {
     rank: int;
 }
 
+/// REFR XPRD and INAM (format 48): a patrol point, the seconds a patroller
+/// waits there and the IDLE it plays (0 none).
+struct PatrolPoint {
+    ref: uint32;
+    idle_time: float;
+    idle: uint32;
+}
+
 /// XLKR: a linked reference, optionally named by a keyword.
 struct LinkedRef {
     ref: uint32;
@@ -365,6 +373,8 @@ table Cell {
     owner_rank: int = -1;
     /// Sorted by ref (format 45): the references with an owner of their own.
     owners: [RefOwner];
+    /// Sorted by ref (format 48).
+    patrol_points: [PatrolPoint];
 }
 
 /// REFR XMRK (format 43): a map marker, the reference that stands for a
@@ -2017,6 +2027,16 @@ enum IdleFlags : ubyte (bit_flags) {
     blocking
 }
 
+/// IDLM (format 48): an idle marker, the IDLEs an actor plays at it (IDLA),
+/// for `timer` seconds (IDLT; 0: the user's own time). Flags (IDLF) as
+/// stored: 0x01 run in sequence, 0x04 do once, 0x10 ignored by sandbox.
+table IdleMarker {
+    id: uint32 (key);
+    flags: ubyte;
+    timer: float;
+    idles: [uint32];
+}
+
 /// An IDLE: a node of the tree an actor asks for an animation (format 40).
 /// Under an AACT (`parent`, e.g. ActionActivate) the children are one root per
 /// behaviour graph (`behaviour`), below them groups and leaves; the first leaf
@@ -2937,6 +2957,8 @@ table World {
     default_objects: [DefaultObject];
     /// Sorted by id (format 43).
     image_space_modifiers: [ImageSpaceModifier];
+    /// Sorted by id (format 48).
+    idle_markers: [IdleMarker];
 }
 
 root_type World;

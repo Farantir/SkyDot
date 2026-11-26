@@ -377,6 +377,10 @@ std::vector<wfb::IdleT> WorldFile::idles() const {
     return unpack_all(impl_->root->idles());
 }
 
+std::optional<wfb::IdleMarkerT> WorldFile::idle_marker(std::uint32_t id) const {
+    return unpack(lookup(impl_->root->idle_markers(), id));
+}
+
 std::vector<wfb::ShoutT> WorldFile::shouts() const {
     return unpack_all(impl_->root->shouts());
 }

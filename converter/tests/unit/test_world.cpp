@@ -166,6 +166,13 @@ ByteWriter scripted_refr_payload() {
     ByteWriter xemi;
     xemi.u32(0x0100'0B03);
     bethconv::test::write_field(payload, "XEMI", xemi);
+    ByteWriter xprd;
+    xprd.f32(7.5F);
+    bethconv::test::write_field(payload, "XPRD", xprd);
+    bethconv::test::write_field(payload, "XPPA", ByteWriter{});
+    ByteWriter inam;
+    inam.u32(0x0100'0B01);
+    bethconv::test::write_field(payload, "INAM", inam);
     return payload;
 }
 
@@ -747,6 +754,10 @@ TEST_CASE("world.fb resolves payload FormIDs through the winning plugin", "[pack
     CHECK(cell->owners[0].rank() == 2);
     CHECK(cell->owner == 0);
     CHECK(cell->owner_rank == -1);
+    REQUIRE(cell->patrol_points.size() == 1);
+    CHECK(cell->patrol_points[0].ref() == 0x0200'0B02);
+    CHECK(cell->patrol_points[0].idle_time() == 7.5F);
+    CHECK(cell->patrol_points[0].idle() == 0x0200'0B01);
     REQUIRE(cell->links.size() == 1);
     CHECK(cell->links[0].target() == 0x0200'0B03);
     REQUIRE(cell->activate_parents.size() == 1);

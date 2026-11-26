@@ -103,6 +103,24 @@ void make_idles(const TempDir& dir) {
     data(next, 0, 0, 0, 0, 0);
     record(file, "IDLE", 0xC03, next);
 
+    // An idle marker playing the leaf and its sibling for 2.5 s.
+    ByteWriter marker;
+    text(marker, "EDID", "TestIdleMarker");
+    ByteWriter idlf;
+    idlf.u8(0x08);
+    bethconv::test::write_field(marker, "IDLF", idlf);
+    ByteWriter idlc;
+    idlc.u8(2);
+    bethconv::test::write_field(marker, "IDLC", idlc);
+    ByteWriter idlt;
+    idlt.f32(2.5F);
+    bethconv::test::write_field(marker, "IDLT", idlt);
+    ByteWriter idla;
+    idla.u32(0xC02);
+    idla.u32(0xC03);
+    bethconv::test::write_field(marker, "IDLA", idla);
+    record(file, "IDLM", 0xC05, marker);
+
     std::ofstream out(dir / "Idles.esm", std::ios::binary);
     for (const auto b : file.bytes()) {
         out.put(static_cast<char>(b));
@@ -157,4 +175,10 @@ TEST_CASE("world.fb 40 carries IDLE records with their tree links and conditions
     REQUIRE(next.has_value());
     CHECK(next->previous == 0xC02);
     CHECK_FALSE(file->idle(0xC04).has_value());
+
+    const auto marker = file->idle_marker(0xC05);
+    REQUIRE(marker.has_value());
+    CHECK(marker->flags == 0x08);
+    CHECK(marker->timer == 2.5F);
+    CHECK(marker->idles == std::vector<std::uint32_t>{0xC02, 0xC03});
 }

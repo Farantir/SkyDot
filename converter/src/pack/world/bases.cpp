@@ -137,6 +137,9 @@ void BaseCollector::collect(const record::MergedRecord& merged, io::SpanReader& 
     case FourCC{"IDLE"}.value:
         on_idle(merged, data, form_ctx);
         break;
+    case FourCC{"IDLM"}.value:
+        on_idle_marker(merged, data, form_ctx);
+        break;
     case FourCC{"PERK"}.value:
         on_perk(merged, data, form_ctx);
         break;
@@ -1043,6 +1046,16 @@ void BaseCollector::on_idle(const record::MergedRecord& merged, io::SpanReader& 
     });
 }
 
+void BaseCollector::on_idle_marker(const record::MergedRecord& merged, io::SpanReader& data,
+                                   const record::FormContext& form_ctx) {
+    collect_into(shared_, idle_markers_, merged, record::parse_idle_marker(data, form_ctx),
+                 [&](auto& r, wfb::IdleMarkerT& out, bool& failed) {
+        out.flags = r->flags;
+        out.timer = r->timer;
+        out.idles = shared_.global_all(merged, r->idles, failed);
+    });
+}
+
 void BaseCollector::on_movement_type(const record::MergedRecord& merged, io::SpanReader& data,
                                      const record::FormContext& form_ctx) {
     collect_into(shared_, movement_types_, merged, record::parse_movement_type(data, form_ctx),
@@ -1514,6 +1527,7 @@ void BaseCollector::finish(wfb::WorldT& world) {
     move_into(world.actor_value_infos, actor_value_infos_);
     move_into(world.classes, classes_);
     move_into(world.idles, idles_);
+    move_into(world.idle_markers, idle_markers_);
     move_into(world.movement_types, movement_types_);
     for (auto& [id, ltex] : land_textures_) {
         if (const auto t = texture_sets_.find(ltex.texture_set); t != texture_sets_.end()) {

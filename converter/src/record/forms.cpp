@@ -433,6 +433,14 @@ io::ParseResult<Reference> parse_reference(const RecordHeader& header, io::SpanR
                 if (!failure) {
                     out.lock = lock;
                 }
+            } else if (field.type == FourCC{"XPRD"}) {
+                Reference::Patrol patrol;
+                take(failure, body.get<float>(), patrol.idle_time);
+                if (!failure) {
+                    out.patrol = patrol;
+                }
+            } else if (out.patrol && field.type == FourCC{"INAM"}) {
+                take(failure, read_formid(body), out.patrol->idle);
             } else {
                 return false;
             }

@@ -250,6 +250,10 @@ void PlaceCollector::on_reference(const record::MergedRecord& merged,
     if (!ref->emittance.is_null()) {
         cell.light_emitters.emplace_back(id, shared_.global(merged, ref->emittance, failed));
     }
+    if (ref->patrol) {
+        cell.patrol_points.emplace_back(id, ref->patrol->idle_time,
+                                        shared_.global(merged, ref->patrol->idle, failed));
+    }
     if (!ref->owner.is_null()) {
         cell.owners.emplace_back(id, shared_.global(merged, ref->owner, failed), ref->owner_rank);
     }
@@ -513,6 +517,7 @@ void PlaceCollector::finish(wfb::WorldT& world) {
         std::ranges::stable_sort(cell.scripts, {}, [](const auto& s) { return s->ref; });
         std::ranges::stable_sort(cell.locks, {}, &wfb::Lock::ref);
         std::ranges::stable_sort(cell.owners, {}, &wfb::RefOwner::ref);
+        std::ranges::stable_sort(cell.patrol_points, {}, &wfb::PatrolPoint::ref);
         std::ranges::stable_sort(cell.links, {}, &wfb::LinkedRef::ref);
         std::ranges::stable_sort(cell.activate_parents, {}, &wfb::ActivateParent::ref);
         std::ranges::stable_sort(cell.primitives, {}, &wfb::Primitive::ref);

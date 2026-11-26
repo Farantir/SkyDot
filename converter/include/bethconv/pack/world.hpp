@@ -27,7 +27,7 @@
 namespace bethconv::pack {
 
 /// Bumped whenever the meaning of anything in world.fbs changes.
-inline constexpr std::uint32_t k_world_format_version = 47;
+inline constexpr std::uint32_t k_world_format_version = 48;
 
 struct WorldStats {
     std::uint64_t cells{};
@@ -271,6 +271,8 @@ public:
     [[nodiscard]] std::optional<wfb::ClassT> actor_class(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::IdleT> idle(std::uint32_t id) const;
     [[nodiscard]] std::vector<wfb::IdleT> idles() const;
+    /// IDLM (format 48).
+    [[nodiscard]] std::optional<wfb::IdleMarkerT> idle_marker(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactDataSetT> impact_data_set(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::ImpactT> impact(std::uint32_t id) const;
     [[nodiscard]] std::optional<wfb::CombatStyleT> combat_style(std::uint32_t id) const;

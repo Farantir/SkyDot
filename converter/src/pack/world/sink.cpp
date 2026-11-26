@@ -128,6 +128,7 @@ void WorldSink::on_record(const record::MergedRecord& merged, const record::Reco
     case FourCC{"ENCH"}.value:
     case FourCC{"AMMO"}.value:
     case FourCC{"PROJ"}.value:
+    case FourCC{"IDLM"}.value:
         // Bases too (the model); the flight data is read from a copy.
         {
             io::SpanReader copy = data;
