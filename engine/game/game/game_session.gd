@@ -157,6 +157,9 @@ var training: SessionTraining
 var world_map: WorldMap
 ## Automatic load doors (cave mouths): taken when the player comes near.
 var auto_doors: AutoDoors
+## Holding Activate carries loose clutter.
+var grab: ObjectGrab
+var _activate_force := false  # Shift was held as Activate went down
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -383,6 +386,8 @@ func _make_game_nodes() -> void:
 	attack_rules = attack_rules_script.new(attack_data)
 	combat = Combat.new(world, pack, papyrus, host, sounds, func() -> Node3D: return _pointer,
 		func() -> Vector3: return _feet, actors, attack_rules)
+	grab = ObjectGrab.new(world, func() -> Node3D: return _pointer)
+	add_child(grab)
 	combat.projectiles = projectiles
 	combat.weapon_state_changed.connect(weapon_state_changed.emit)
 	combat.attack_started.connect(attack_started.emit)
@@ -937,6 +942,8 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 		auto_doors.step(delta, feet)
 	if transition.is_fading():
 		transition.step(delta)
+	if grab != null and (transition.is_fading() or not player_state.can(PlayerState.ACTIVATE)):
+		grab.drop()
 	update_scripts(delta, feet)
 	update_dialogue(delta)
 	update_scenes(delta)
@@ -1083,6 +1090,8 @@ func toggle_weapon() -> void:
 ## one a power attack (Combat.attack_pressed). A spell in the right hand is cast instead.
 func attack_pressed() -> void:
 	if not player_state.can(PlayerState.ATTACK):
+		return
+	if grab != null and grab.throw():
 		return
 	player_state.acted(PlayerState.ATTACK)
 	if magic.spell_in(Magic.RIGHT) != 0:
@@ -1393,6 +1402,20 @@ func activate_in_view(force: bool) -> void:
 	if not transition.is_fading() and player_state.can(PlayerState.ACTIVATE):
 		if _bridge.activate_in_view(force, _pointer):
 			player_state.acted(PlayerState.ACTIVATE)
+
+
+## Activate went down: on loose clutter it waits to tell a press (activates on release) from a hold
+## (grabs, ObjectGrab); elsewhere it activates at once.
+func activate_pressed(force: bool) -> void:
+	_activate_force = force
+	if grab == null or not player_state.can(PlayerState.ACTIVATE) or not grab.press():
+		activate_in_view(force)
+
+
+## Activate went up: drops what is held, or activates after a short press on loose clutter.
+func activate_released() -> void:
+	if grab != null and grab.release():
+		activate_in_view(_activate_force)
 
 
 ## The player activates reference `ref` (not what the pointer shows): the

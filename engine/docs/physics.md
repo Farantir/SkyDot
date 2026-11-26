@@ -93,6 +93,20 @@ usable, otherwise nothing behind it can be picked. Model bounds still find
 usable references without collision of their own (most triggers' activators,
 some flora), as long as they are in front of that first body.
 
+## Grab
+
+Holding Activate (`ObjectGrab`, game/game/object_grab.gd) on a loose clutter body
+for 0.35 s carries it: Havok's mouse spring at the body's centre pulls it to the
+point ahead of the pointer at the distance it was grabbed from (the camera, or
+the VR controller's aim). Letting go drops it, the attack button throws it, a
+short press activates on release (picks up) as before; elsewhere Activate acts
+on the press. Settings: fZKeyMaxForce 100 and fZKeyMaxForceWeightHigh 150 from
+Skyrim.esm; spring elasticity 0.2, damping 0.5, object damping 0.75 and
+fZKeyHeavyWeight 100 (heavier: not grabbed) are assumed exe values, as are the
+hold time, the 1 m drop distance and the throw (8 m/s, at most 40 kg m/s).
+Not grabbed: ragdolls (corpses, prop ragdolls) and static models.
+`tests/smoke/grab_sse.gd`.
+
 ## Viewer
 
 Walking is the default. The camera follows the player's eyes; P, saves and

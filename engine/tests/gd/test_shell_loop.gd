@@ -14,8 +14,11 @@ class StubSession extends GameSession:
 	func is_player_dead() -> bool:
 		return dead
 
-	func activate_in_view(force: bool) -> void:
+	func activate_pressed(force: bool) -> void:
 		calls.append("activate %s" % force)
+
+	func activate_released() -> void:
+		calls.append("activate up")
 
 	func toggle_weapon() -> void:
 		calls.append("toggle_weapon")
@@ -56,11 +59,12 @@ func before_each() -> void:
 
 
 func test_shared_commands_reach_the_session() -> void:
-	_controls.command.emit(PlayerInput.ACTIVATE, true)
+	_controls.activate_changed.emit(true, true)
+	_controls.activate_changed.emit(false, false)
 	_controls.command.emit(PlayerInput.READY_WEAPON, false)
 	_controls.command.emit(PlayerInput.QUICK_SAVE, false)
 	_controls.command.emit(PlayerInput.QUICK_LOAD, false)
-	expect_eq(_session.calls, ["activate true", "toggle_weapon", "save " + SaveService.QUICKSAVE,
+	expect_eq(_session.calls, ["activate true", "activate up", "toggle_weapon", "save " + SaveService.QUICKSAVE,
 		"load " + SaveService.QUICKSAVE], "the session's calls")
 
 

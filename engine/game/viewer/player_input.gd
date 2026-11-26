@@ -35,8 +35,9 @@ const WALK := &"walk"
 const JUMP := &"jump"
 ## Esc, the game's Pause: the journal on the tab it was closed on (the shell frees the mouse when there is none).
 const PAUSE := &"pause"
-# Pressed once: commands for the viewer, sent with `command`.
+## Held: down and up (`activate_changed`): a short press activates, holding grabs loose clutter (ObjectGrab).
 const ACTIVATE := &"activate"
+# Pressed once: commands for the viewer, sent with `command`.
 const QUICK_SAVE := &"quick_save"
 const QUICK_LOAD := &"quick_load"
 const TAKE_SHOT := &"take_shot"
@@ -75,7 +76,7 @@ const POWER := &"power"
 # `attack_left_changed` for the left: a spell in the left hand; blocking otherwise).
 const ATTACK_RIGHT := &"attack_right"
 const ATTACK_LEFT := &"attack_left"
-const COMMANDS: Array[StringName] = [ACTIVATE, QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
+const COMMANDS: Array[StringName] = [QUICK_SAVE, QUICK_LOAD, TAKE_SHOT, SHOW_JOURNAL,
 	SHOW_POSITION, TOGGLE_PRELOAD, CHANGE_TIME, INSPECT_ACTOR, NEXT_WEATHER, TOGGLE_NAVMESH,
 	TOGGLE_PERF, SHOW_PATH, LOD_DETAIL_DOWN, LOD_DETAIL_UP, RADIUS_DOWN, RADIUS_UP, CYCLE_MSAA, TOGGLE_FLY, INVENTORY, MAGIC, SKILLS, READY_WEAPON, FAVORITES, TWEEN_MENU, MAP, WAIT, JOURNAL, PAUSE,
 	&"hotkey_1", &"hotkey_2", &"hotkey_3", &"hotkey_4", &"hotkey_5", &"hotkey_6", &"hotkey_7", &"hotkey_8"]
@@ -101,6 +102,8 @@ signal attack_changed(pressed: bool)
 signal attack_left_changed(pressed: bool)
 ## The voice key (POWER) went down (true) or up (false).
 signal voice_changed(pressed: bool)
+## Activate went down (true, `modifier` with Shift held) or up (false).
+signal activate_changed(pressed: bool, modifier: bool)
 
 ## Set while a menu has the keyboard: the player stands still and the
 ## keys are not commands.
@@ -122,6 +125,7 @@ var _rig: PlayerRig
 var _attacking := false
 var _attacking_left := false
 var _voicing := false
+var _activating := false
 
 
 func _init(rig: PlayerRig) -> void:
@@ -230,6 +234,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_attacking_left(false)
 		if enabled and _voicing and event.is_action(POWER) and not event.is_pressed():
 			_set_voicing(false)
+		if enabled and _activating and event.is_action(ACTIVATE) and not event.is_pressed():
+			_activating = false
+			activate_changed.emit(false, false)
 		return
 	var captured := Input.mouse_mode == Input.MOUSE_MODE_CAPTURED
 	if event is InputEventMouseMotion and (captured or Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT)):
@@ -243,6 +250,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_set_attacking_left(event.is_pressed())
 	elif event.is_action(POWER):
 		_set_voicing(event.is_pressed())
+	elif event.is_action(ACTIVATE) and not (event is InputEventKey and event.is_echo()):
+		if event.is_pressed() != _activating:
+			_activating = event.is_pressed()
+			activate_changed.emit(_activating, event is InputEventWithModifiers and event.shift_pressed)
 	elif event.is_action_pressed(JUMP):
 		_rig.player.jump()
 	else:

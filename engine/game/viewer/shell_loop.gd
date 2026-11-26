@@ -73,6 +73,7 @@ func _init(host: Node, session: GameSession, rig: PlayerRig, controls: PlayerInp
 	options = StartOptions.new(settings, session, rig)
 	controls.command.connect(_on_command)
 	controls.attack_changed.connect(_on_attack_changed)
+	controls.activate_changed.connect(_on_activate_changed)
 	controls.attack_left_changed.connect(_on_attack_left_changed)
 	controls.voice_changed.connect(_on_voice_changed)
 	session.message.connect(_on_message)
@@ -228,8 +229,6 @@ static func fail_run(host: Node, message: String) -> void:
 ## menus are the shell's (signals), anything else is the shell's `command`.
 func _on_command(action: StringName, shift: bool) -> void:
 	match action:
-		PlayerInput.ACTIVATE:
-			_session.activate_in_view(shift)  # Shift opens locks
 		PlayerInput.READY_WEAPON:
 			_session.toggle_weapon()
 		PlayerInput.QUICK_SAVE:
@@ -267,6 +266,13 @@ func _on_command(action: StringName, shift: bool) -> void:
 			_session.use_hotkey(int(String(action).trim_prefix("hotkey_")))
 		_:
 			command.emit(action, shift)
+
+
+func _on_activate_changed(pressed: bool, shift: bool) -> void:
+	if pressed:
+		_session.activate_pressed(shift)  # Shift opens locks
+	else:
+		_session.activate_released()
 
 
 func _on_attack_changed(pressed: bool) -> void:
