@@ -286,6 +286,16 @@ if(SKYDOT_SSE_PACK)
         TIMEOUT 300
         ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
 
+    add_test(NAME sse_auto_door
+             COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/auto_door_sse.gd")
+    set_tests_properties(sse_auto_door PROPERTIES
+        LABELS sse
+        FIXTURES_REQUIRED godot_scan
+        SKIP_RETURN_CODE 77
+        FAIL_REGULAR_EXPRESSION "SCRIPT ERROR;SHADER ERROR"
+        TIMEOUT 300
+        ENVIRONMENT "SKYDOT_SSE_PACK=${SKYDOT_SSE_PACK}")
+
     add_test(NAME sse_world_map
              COMMAND "${SKYDOT_GODOT}" --headless --path "${_game}" --script "${_smoke}/world_map_sse.gd")
     set_tests_properties(sse_world_map PROPERTIES

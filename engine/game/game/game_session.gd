@@ -155,6 +155,8 @@ var rest: Rest
 var training: SessionTraining
 ## The world map's rules: markers, discovery, fast travel, the custom marker (game/world_map.gd), saved in WMAP.
 var world_map: WorldMap
+## Automatic load doors (cave mouths): taken when the player comes near.
+var auto_doors: AutoDoors
 ## The root of the place's nodes (cells, sky, LOD, placed references).
 var host: Node3D
 ## The actor nodes under `host`, kept from the tree's signals (what the scans of the whole host used to be).
@@ -464,8 +466,9 @@ func _make_game_nodes() -> void:
 	_bridge.quest_started.connect(quest_started.emit)
 	_bridge.quest_stage.connect(quest_stage.emit)
 	_bridge.objective_changed.connect(objective_changed.emit)
+	auto_doors = AutoDoors.new(self)
 	_lifecycle = [actors, projectiles, speech, combat, combat.gear, casting, magic, npc_magic, npc_shouts, corpses, visual_effects,
-		placed, transition]
+		placed, transition, auto_doors]
 	place.left.connect(_on_place_left)
 
 
@@ -922,6 +925,7 @@ func step(delta: float, feet: Vector3, benchmarking := false) -> void:
 	streamer.preload_step(feet)
 	if not transition.is_fading():
 		world_map.step(delta, feet)
+		auto_doors.step(delta, feet)
 	if transition.is_fading():
 		transition.step(delta)
 	update_scripts(delta, feet)
