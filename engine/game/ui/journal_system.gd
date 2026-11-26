@@ -630,17 +630,15 @@ func _draw_options(view: JournalView) -> void:
 		var type := int(option[1])
 		# SettingsOptionItem: the chosen option at full alpha, the others at 30%.
 		var alpha := 1.0 if i == option_index else UNSELECTED_ALPHA
-		var row := {"textField": UiDraw.translate(option[0]), "fit": ["textField"], "hide": [],
+		# The slider and the check box are drawn below at their value, so the row leaves out its own copies (they
+		# would show a second thumb at 0 and an unchecked box under the checked one).
+		var row := {"textField": UiDraw.translate(option[0]), "fit": ["textField"], "hide": ["scrollBar", "checkBox"],
 			"colours": {"optionStepper/textField": Color(1, 1, 1, alpha)}}
-		if type != 0:
-			row["hide"].append("scrollBar")
 		if type != 1:
 			row["hide"].append("optionStepper")
 		else:
 			var key: String = (option[3] as Array)[int(value)]
 			row["optionStepper/textField"] = DIFFICULTY_TEXT.get(key, UiDraw.translate(key))
-		if type != 2:
-			row["hide"].append("checkBox")
 		var clip: Dictionary = clips[slot]
 		var item := int(clip["character"])
 		view.draw_entry(clip, list["xform"], y, row, "", alpha)
